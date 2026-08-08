@@ -1,24 +1,25 @@
 ---
 title: "CLI"
-description: "נהל את כל Failproof AI Observability מהטרמינל או מסקריפט: ללא צורך בביקורים בדשבורד."
+description: "נהל את כל Failproof AI Observability מהטרמינל או מסקריפט: ללא התחברות לדשבורד."
 ---
 
-נהל את כל Failproof AI Observability מהטרמינל או מסקריפט: ללא צורך בביקורים בדשבורד. ה-CLI של `agenteye` שואל את הנתונים שלך (sessions, event logs, evaluations) ומנהל את הארגון שלך (API keys, users, settings, alerts, incidents, saved queries), כך שתוכל להשתמש בו כשאתה רוצה להפעיל בדיקה אוטומטית, לשלב Observability ב-CI, או לתת לכלי קוד סוכן לבדוק את הפרודקשן. כל פקודה תומכת בדגל `--json`, כך שהיא עובדת באותה מידה למישהו בשורת הפקודה או לכלי קוד סוכן (Claude Code, Cursor) שמפעיל ותוך ניתוח התוצאה.
 
-עם בינארי אחד אתה יכול:
+נהל את כל Failproof AI Observability מהטרמינל או מסקריפט: ללא התחברות לדשבורד. CLI ה-`agenteye` שואל על הנתונים שלך (sessions, event logs, evaluations) ומנהל את הארגון שלך (API keys, users, settings, alerts, incidents, saved queries), אז השתמש בו כאשר אתה רוצה להפעיל בדיקה אוטומטית, לחבר Observability ל-CI, או לתת לסוכן קוד לבדוק production. כל פקודה תומכת בדגל `--json`, כך שהיא עובדת בהחלט גם בשביל אתה בשורת הפקודה וגם בשביל סוכן קוד (Claude Code, Cursor) שמפעיל קליפה וניתח את התוצאה.
 
-- **קרוא את הנתונים שלך**: `sessions`, `events`, `evals`, `errors` (סנן לפי זמן, סוכן, env, ציון).
+עם בינרי אחד תוכל:
+
+- **קרא את הנתונים שלך**: `sessions`, `events`, `evals`, `errors` (סנן לפי זמן, סוכן, env, ציון).
 - **נהל את הארגון שלך**: `keys`, `users`, `settings`, `alerts`, `incidents`.
-- **הפעל ניתוח**: SQL שמור וכלי שאילתה ad-hoc (`query`).
-- **שאל את העוזר בינה מלאכותית**: אותו אנליסט read-only שאתה משוחח איתו בדשבורד (`agent`).
+- **הרץ ניתוח**: SQL שמור וריצה ad-hoc queries (`query`).
+- **שאל את העוזר AI**: אותו אנליסט read-only שאתה משוחח איתו בדשבורד (`agent`).
 
-> **הערה:** זה CLI של `agenteye`, כלי שונה מה-daemon של אוסף האירועים (`agenteye-collector`). ה-CLI מדבר עם הדשבורד שלך; האוסף שולח אירועים לשרת.
+> **הערה:** זה ה-CLI `agenteye`, כלי שונה מה-daemon של collector (`agenteye-collector`). ה-CLI מדבר עם הדשבורד שלך; ה-collector שולח events לשרת.
 
 ---
 
 ## Quickstart
 
-מאפס לתוצאה ראשונה בארבע שורות. כוון את ה-CLI אל הדשבורד שלך, התחבר, אשר מי אתה, ואז משוך את היום האחרון של הריצות:
+מ-0 לתוצאה הראשונה שלך בארבע שורות. הצבע את ה-CLI לדשבורד שלך, התחבר, אשר מי אתה, ואחר כך משוך את הריצות של היום האחרון:
 
 ```bash
 pipx install agenteye
@@ -27,7 +28,7 @@ agenteye whoami                                                                 
 agenteye --json sessions --since 24h                                             # one row per agent run, last 24h
 ```
 
-הפקודה האחרונה מדפיסה אובייקט JSON של ה-sessions האחרונים (החדשים ביותר ראשונים, מוגבל ל-50 כברירת מחדל). פייפ אותו ל-`jq` כדי לחתוך אותו, או הסר את `--json` כדי לקבל טבלה מעוצבת וצבעונית. כל שורה נושאת את סטטוס הריצה ו, אם מעריך ביקרה אותה, את ציוני ההערכה שלה (מקוצרים כאן):
+הפקודה האחרונה הדפסה JSON object של ה-sessions האחרונים (החדש ביותר קודם, מוגבל ל-50 כברירת מחדל). צנור אותו ל-`jq` כדי לחתוך אותו, או הוריד את `--json` לטבלה מוגן וצבעונית. כל שורה נושאת את סטטוס הריצה וההערות שלה, ואם מעריך הערך שלו, את ציוני המדד שלו (מקוצרים כאן):
 
 ```json
 {
@@ -47,13 +48,13 @@ agenteye --json sessions --since 24h                                            
 }
 ```
 
-שאר העמוד מסביר כל חלק: [התקנה](#installation) בבידוד, [התחברות](#authentication), [הגדרות](#configuration), ה[אפשרויות גלובליות](#global-options--conventions) שכל פקודה משותפת, וה[reference מלא של הפקודות](#command-reference).
+שאר הדף מסביר כל חלק: [התקנה](#installation) בבידוד, [התחברות](#authentication), [הגדרה](#configuration), ה-[יחידות גלובליות](#global-options--conventions) שכל פקודה חולקת, ו[ה-command reference המלא](#command-reference).
 
 ---
 
 ## Installation
 
-ה-CLI הוא חבילה ציבורית של PyPI בשם **`agenteye`**. התקן אותה בסביבה מבודדת כדי שתמיד יהיו לה תלויות משלה:
+ה-CLI הוא חבילת PyPI ציבורית בשם **`agenteye`**. התקן אותה בסביבה מבודדת כדי שתמיד יהיו לה התלויות שלה:
 
 ```bash
 pipx install agenteye
@@ -68,35 +69,35 @@ agenteye --version
 agenteye --help
 ```
 
-> **הערה:** ה-Python SDK של Failproof AI Observability משתמש גם בשם ההפצה `agenteye`. התקנת ה-CLI עם `pipx` או `uv tool` (ולא `pip install` לסביבה וירטואלית משותפת) שומרת על שני המרכיבים מפגיעה זה בזה. `pip install agenteye` רגיל בסדר רק אם ה-SDK לא מותקן באותה סביבה.
+> **הערה:** Python SDK של Failproof AI Observability משתמש גם בשם הפצה `agenteye`. התקנת ה-CLI עם `pipx` או `uv tool` (במקום `pip install` ל-virtualenv משותף) מונעת שניהם להתנגש. `pip install agenteye` רגיל בסדר רק אם ה-SDK לא מותקן באותה סביבה.
 
 ---
 
 ## Authentication
 
-ה-CLI מאמת את הגישה אל **דשבורד** עם קוד חד-פעמי ששודר בדוא״ל:
+ה-CLI מתחבר ל-**dashboard** עם קוד חד-פעמי באימייל:
 
 ```bash
 agenteye login --email you@example.com
 # A 6-digit code is emailed to you; paste it at the prompt.
 ```
 
-אסימון ההפעלה מאוחסן ב-`~/.agenteye/cli.json` (קריא רק לך, mode `0600`) והוא תוקף ל-24 שעות כברירת מחדל. כשהוא פוקע, הפעל `agenteye login` שוב.
+טוקן ה-session מאוחסן ב-`~/.agenteye/cli.json` (קריא רק לך, mode `0600`) והוא חוקי 24 שעות כברירת מחדל. כאשר הוא פג, הרץ `agenteye login` שוב.
 
 ```bash
 agenteye whoami     # show the current user, active org, and permissions
 agenteye logout     # revoke the session and clear the stored token
 ```
 
-`whoami` לעולם לא גורם לשגיאות בהפעלה חסרה או שפקעה; זה מדווח `logged_in: false` במקום זאת, כך שסקריפט או סוכן יכול לחקור בבטחה את מצב האימות (זה עדיין יכול לצאת non-zero אם לא מוגדרת כתובת URL בסיס או הדשבורד לא נגיש).
+`whoami` לעולם לא שגיאות בـ session חסר או פג; הוא דיווח `logged_in: false` במקום זאת, אז סקריפט או סוכן יכול לחקור באופן בטוח את מצב הזקיפויות (הוא עדיין יכול לצאת non-zero אם לא מוגדר base URL או אי-אפשר להגיע לדשבורד).
 
-**דרישות:** הדוא״ל שלך חייב להיות מורשה להתחבר לדשבורד (שאל את מנהל Failproof AI Observability), והדשבורד חייב להיות נגיש בכתובת URL הבסיס שלו (ראה [הגדרות](#configuration)). אם תבקש קוד וקוד לא מגיע, סביר שהדוא״ל שלך עדיין לא מופעל לגישה לדשבורד.
+**דרישות:** האימייל שלך חייב להיות בעל הרשאה להתחבר לדשבורד (שאל את מנהל ה-Failproof AI Observability שלך), והדשבורד חייב להיות מגיע בכתובת ה-base URL שלו (ראה [Configuration](#configuration)). אם אתה מבקש קוד ואף אחד לא מגיע, האימייל שלך כנראה עדיין לא מופעל עבור גישה לדשבורד.
 
 ---
 
 ## בחירת הארגון שלך (multi-tenant)
 
-אם החשבון שלך שייך ליותר מארגון אחד, בחר את זה הפעיל **בעת ההתחברות**; זה נשמר וחובר לכל פקודה מאוחרת יותר:
+אם החשבון שלך שייך ליותר מארגון אחד, בחר את הפעיל **בעת התחברות**; הוא שמור וב-use לכל פקודה מאוחרת יותר:
 
 ```bash
 agenteye login --org acme           # authenticate and set the active tenant in one step
@@ -105,7 +106,7 @@ agenteye orgs switch globex         # change the saved default
 agenteye --org globex sessions      # override for a single command
 ```
 
-אם אתה שייך לארגון אחד בדיוק הוא נבחר באופן אוטומטי ותוכל להתעלם מ-`--org` לחלוטין. אם אתה שייך לכמה ולא בחרת אחד, ה-CLI מרשים אותם ושואל אותך להפעיל מחדש עם `--org <slug>`. הארגון הפעיל נשלח לדשבורד בכל בקשה, וההיתרים שלך נפתרים **per org**; `agenteye whoami` מציג את הארגון הפעיל, את ההיתרים שלך בו, וכל החברויות שלך.
+אם אתה שייך בדיוק לארגון אחד הוא נבחר באופן אוטומטי ותוכל להתעלם מ-`--org` לחלוטין. אם אתה שייך לכמה ולא בחרת באחד, ה-CLI מפרט אותם וביקש מך להריץ מחדש עם `--org <slug>`. הארגון הפעיל נשלח לדשבורד בכל בקשה, וההרשאות שלך מוחלות **לפי ארגון**; `agenteye whoami` מציג את הארגון הפעיל, את ההרשאות שלך בו, וכל החברויות שלך.
 
 ---
 
@@ -121,59 +122,59 @@ agenteye --org globex sessions      # override for a single command
 | Request timeout (seconds) | `--timeout` | _(none)_ | 30 |
 | Disable usage telemetry | _(none)_ | `AGENTEYE_ANALYTICS_DISABLED` (or `DO_NOT_TRACK`) | telemetry is currently disabled; nothing is sent |
 
-סדר הפתרון הוא **flag → environment variable → config file**. אין ברירת מחדל; חייב להצביע את ה-CLI על דשבורד שלך, או לפי פקודה (`--base-url https://agenteye.example.com`) או פעם אחת דרך הסביבה (זה גם נשמר אחרי ה-`login` הראשון שלך):
+סדר הרזולוציה הוא **flag → environment variable → config file**. אין ברירת מחדל; עליך להצביע על ה-CLI לדשבורד שלך, או לכל פקודה (`--base-url https://agenteye.example.com`) או פעם דרך ה-environment (הוא גם שמור לאחר ה-`login` הראשון שלך):
 
 ```bash
 export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com
 ```
 
-ספרייה ההגדרות מכבדת `AGENTEYE_HOME` (אותה אמנה בה משתמשת ה-SDK וה-collector); אם מוגדר, `cli.json` חיים ב-`$AGENTEYE_HOME/cli.json`.
+ספריית ה-configuration מכבדת את `AGENTEYE_HOME` (אותו כלל המשמש את SDK וה-collector); אם מוגדר, `cli.json` גר ב-`$AGENTEYE_HOME/cli.json`.
 
-### Self-signed או internal TLS
+### Self-signed או פנימי TLS
 
-אם הדשבורד שלך מוגש על HTTPS עם תעודה self-signed או פנימית (למשל, שם hostname של load-balancer גולמי), אימות TLS דוחה אותו עם שגיאת `CERTIFICATE_VERIFY_FAILED`. עבור `--insecure` כדי לדלג על אימות תעודה:
+אם הדשבורד שלך מוגש דרך HTTPS עם תעודה self-signed או פנימית (לדוגמה, שם מארח load-balancer גולמי), אימות TLS דוחה אותה עם שגיאת `CERTIFICATE_VERIFY_FAILED`. העבור `--insecure` כדי לדלג על אימות תעודה:
 
 ```bash
 agenteye --base-url https://agenteye.internal --insecure login
 ```
 
-`--insecure` **נשמר ל-`cli.json` כשאתה מתחבר**, כך שפקודות מאוחרות יותר דולגות על אימות באופן אוטומטי; אתה לא צריך לחזור על הדגל. עבור `--secure` לשיחה חד-פעמית מאומתת, או כדי לשמור על אימות בחזרה בהתחברות הבאה שלך. ה-CLI מדפיס אזהרה ל-stderr לפני כל פקודה שיוצרת קשר לדשבורד בעוד אימות מנוטרל. דלוג על אימות מסיר הגנה מפני התקפות man-in-the-middle; ודא שאתה מוכן לנתיב הרשת אל הדשבורד (VPN, private subnet, וכו') לפני הסתמכות עליו.
+`--insecure` **נשמר ל-`cli.json` כאשר אתה מתחבר**, אז פקודות מאוחרות יותר דולגות על אימות באופן אוטומטי; אתה לא צריך לחזור על הדגל. העבור `--secure` לשיחה מאומתת חד-פעמית, או כדי לשמור על אימות חזרה בעת ה-login הבא שלך. ה-CLI מדפיס אזהרה ל-stderr לפני כל פקודה שיוצרת קשר לדשבורד בזמן שאימות מבוטל. דילוג על אימות מסיר הגנה נגד התקפות man-in-the-middle; ודא שאתה סומך על נתיב הרשת לדשבורד שלך (VPN, private subnet, וכו') לפני הסתמכות עליו.
 
 ---
 
 ## Telemetry & privacy
 
-> **הערה:** ה-CLI המשודר **לא שולח telemetry שימוש כיום.** Master kill switch הוא מופעל, כך שלא כלום מועבר ללא קשר לסביבה שלך. הסעיף מתחת מתאר את יכולת ה-opt-out עבור אם ו-כאשר telemetry אי פעם מופעל.
+> **הערה:** ה-CLI המשוגר שלח **אין telemetry שימוש היום.** קטל-switch master נמצא בהפעלה, ולכן שום דבר לא מועבר ללא תלות בסביבה שלך. הסעיף להלן מתאר את יכולת ה-opt-out אם וכאשר telemetry אי-פעם מופעלת.
 
-גם כאשר הוא מופעל, telemetry יהיה **ניתוח שימוש אנונימי בלבד**, לעולם לא האירועים, הפעלות, או נתוני ההפעלה שלך:
+גם כאשר מופעלת, telemetry תהיה **רק analytics שימוש אנונימי**, לעולם לא הסוכן, session, או event שלך:
 
-- **אף חוקי סוכן, הפעלה, או אירוע לעולם לא עוזב את התשתית שלך.** רק שימוש ב-CLI היה דווח: שם הפקודה וה-subcommand (למשל `keys create`), **השמות** של הדגלים בהם השתמשת (לעולם לא הערכים שלהם), סטטוס הצלחה/יציאה, ומשך הזמן, בתוספת אירוע לפעולה עבור מוטציות (למשל `api_key_created`, `query_run`) נושא רק שמות סטטיים/enums וספירות גסות. כתובת URL של הדשבורד שלך, אסימון הפעלה, דוא״ל, slug ארגון, מזהי משאבים, SQL, סודות מפתח, ופילטרי שאילתה **לעולם לא** ישודרו. מפעילים יזוהו רק באמצעות id פנימי אטום, לעולם לא בדוא״ל.
-- **Opt out קדימה** על ידי הגדרה `AGENTEYE_ANALYTICS_DISABLED=1` בסביבה של ה-CLI (ה-CLI גם מכבד את האמנה הקרוס-כלי `DO_NOT_TRACK=1`). זה תופס מיד כשטלמטריה אי פעם מופעלת, כך שסביבה מודעת לפרטיות יכולה להישאר opted out כל הזמן.
-- אם telemetry היה מופעל, ה-CLI היה שולח ישירות ל-PostHog (`https://us.i.posthog.com`); מכונה עם host זה חסום היה שולח בשתיקה כלום וה-CLI לא היה מושפע.
+- **אף סוכן, session, או event data לעולם לא יעזוב את האינפ"ס שלך.** רק שימוש CLI יידווח: שם הפקודה וה-subcommand (למשל `keys create`), **השמות** של הדגלים שהשתמשת בהם (לעולם לא הערכים שלהם), סטטוס הצלחה/יציאה, ומשך הזמן, בתוספת event לפעולה לכל פעולה (למשל `api_key_created`, `query_run`) הנושאת רק שמות סטטיים/enums וספירות גסות. כתובת הדשבורד שלך, session token, אימייל, org slug, resource ids, SQL, key secrets, וסינוני שאילתה **לעולם** לא יישלחו. מפעילים יזוהו רק לפי id פנימי אטום, לעולם לא לפי אימייל.
+- **Opt out ahead of time** על ידי הגדרה `AGENTEYE_ANALYTICS_DISABLED=1` בסביבה של ה-CLI (ה-CLI גם מכבד את כלל ה-cross-tool `DO_NOT_TRACK=1`). זה נכנס לתוקף ברגע שה-telemetry כשמופעלת, אז סביבה שמודעת לפרטיות יכולה להישמר opted out לצמיתות.
+- אם telemetry הייתה מופעלת, ה-CLI ישלח ישירות ל-PostHog (`https://us.i.posthog.com`); מכונה שיש לה את ה-host הזה חסום תשלח בשקט שום דבר וה-CLI לא יושפע.
 
 ---
 
 ## Global options & conventions
 
-קרא את זה פעם אחת; זה חל על כל פקודה.
+קרא את זה פעם אחת; הוא חל על כל פקודה.
 
-- **אפשרויות גלובליות הולכות לפני הפקודה.** `agenteye --json sessions` נכון; `agenteye sessions --json` הוא שגיאת שימוש. הגלובליים הם `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, ו-`--no-color`.
-- **`--json` מדפיס JSON טהור ל-stdout, ושום דבר אחר.** שורות סטטוס אנושיות, אזהרות, ושגיאות הולכות ל-**stderr**, כך שתיקייה `--json` stdout נשאר נקי לפייפ ל-`jq` גם כששורת סטטוס מוצגת. ללא `--json` אתה מקבל ביעוץ מעוצב וצבעוני לעיני אדם.
-- **תגלה עם `--help`.** כל פקודה וכל sub-command יש `--help` (וכינוי `-h`): `agenteye -h`, `agenteye sessions -h`, `agenteye keys create -h`. העזרה ברמה העליונה גם מרשימה את קודי ההיציאה והאפשרויות הגלובליות. אין surface קרוא-מכונה גלובלי; השתמש בפקודה ספציפית `--help`, בתוספת `agenteye query schema` וה-`agenteye settings schema` עבור שני הרגיסטרים האלה.
-- **אישורים דילוג אוטומטי לסקריפטים וסוכנים.** פקודות Create/update/delete מנערות "האם אתה בטוח?" בטרמינל אינטראקטיבי, אך **דלג אוטומטי על prompt זה תחת `--json` או בכל פעם שstdin אינו TTY** (TTY הוא session טרמינל אינטראקטיבי; pipe או CI runner אינם), כך שסקריפטים וסוכנים לעולם לא תלויים. עבור `--yes`/`-y` כדי לדלג עליו בהירות. מכיוון שה-prompt לא יעבור עבור סוכן, סוכן צריך לאשר פעולות הרסניות עם האדם תחילה.
-- **Pagination:** התוצאות הן newest-first ו-cursor-paginated (כל דף מחזיר אסימון בו אתה משתמש כדי להביא את הבא). `--limit N` (alias `-n`) מכסה שורות ו**ברירת מחדל ל-50**; `--all` auto-paginates (בחלקים של 200 שורות) **עד ל-`--limit`**, כך ש-bare `--all` עדיין עוצר ב-50. לטיפול מלא עבור cap ספציפי גבוה: `--all --limit 1000`. `--page-size N` שולט בחלק לבקשה (max 200); `--cursor <id>` מחדש מה-`next_cursor` של דף קודם.
-- **מסנני זמן:** `--since` לוקח חלון יחסי: `15m`, `1h`, `6h`, `24h`, `7d`, או `all` (ההגדרות של הדשבורד). לטווח ארוך יותר או מותאם אישית (נניח 30 הימים האחרונים), השתמש ב-`--from`/`--to`: ISO-8601 UTC בחזקות **עם `T` וtimezone** (למשל `2026-06-01T00:00:00Z`) שדורך כתיבה `--since`. ערך מופרד בחלל או ללא timezone הוא שגיאת שימוש.
-- **`--fields a,b,c`** (ב-`events`, `sessions`, `evals`, `errors`) מגביל את הפלט לאותם מפתחות, לשני הטבלה וה-`--json`. שמות לא ידועים דחויים עם הרשימה התקפה, דרך זולה כדי לגלות שמות שדות.
-- **`--file payload.json`** (או `--file -` לקריאה stdin) מספק גוף בקשת JSON מלא כאשר למשאב יש צורה מורכבת (ב-`alerts create/update`, `settings set`, ו-`users create/update`). Saved-query SQL משתמש ב-`--sql @file.sql` במקום זאת.
-- **מסנני ערכים מרובים** מופרדים בפסיקים → תואם ככולל (union בתוך מסנן אחד, AND על פני מסננים): `--event-type tool_use,tool_result`. אפשרויות Click אינן variadic, כך `--add a b` שובר. השתמש ב-`--add a,b`, חזור על הדגל (`--add a --add b`), או ציטוט (`--add "a b"`).
+- **אפשרויות גלובליות הולכות BEFORE הפקודה.** `agenteye --json sessions` נכון; `agenteye sessions --json` היא שגיאת שימוש. הגלובליות הן `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, ו-`--no-color`.
+- **`--json` הדפסה JSON טהור ל-stdout, ושום דבר אחר.** שורות סטטוס אדם, אזהרות, ושגיאות הולכות ל-**stderr**, אז `--json` stdout capture נשאר נקי כדי להצנור ל-`jq` גם כאשר שורת סטטוס מוצגת. ללא `--json` אתה מקבל תצוגה מוגנת וצבעונית לעיני אדם.
+- **גלה עם `--help`.** לכל פקודה ו-subcommand יש `--help` (ו-`-h` alias): `agenteye -h`, `agenteye sessions -h`, `agenteye keys create -h`. העזרה ברמה העליונה גם רשומה של קודי היציאה ואפשרויות גלובליות. אין שטח משטח machine-readable גלובלי; השתמש ב-`--help` לכל פקודה, בתוספת ה-`agenteye query schema` וה-`agenteye settings schema` הספציפי לדומיין עבור שתי הרגיסטריות הללו.
+- **אישורים auto-skip לסקריפטים וסוכנים.** פקודות Create/update/delete מהפכות "האם אתה בטוח?" בטרמינל אינטראקטיבי, אך **auto-skip את הבקשה בעת `--json` או בכל פעם שלא TTY stdin** (TTY הוא session טרמינל אינטראקטיבי; pipe או CI runner לא), אז סקריפטים וסוכנים לעולם לא תלויים. עבור `--yes`/`-y` כדי לדלג עליה במפורש. מכיוון שהבקשה לא תופעל לסוכן, סוכן צריך לאשר פעולות הרסניות עם האדם קודם.
+- **Pagination:** התוצאות הן newest-first ו-cursor-paginated (כל דף מחזיר טוקן בו אתה משתמש כדי להביא את הדף הבא). `--limit N` (alias `-n`) מכסה שורות ו**ברירות מחדל ל-50**; `--all` auto-paginates (בקטעי 200 שורות) **עד `--limit`**, אז `--all` חצוף עדיין עוצר בתוך 50. עבור סחיפה מלאה אשר cap מפורש גבוה: `--all --limit 1000`. `--page-size N` שולט בקטע לכל בקשה (מקס 200); `--cursor <id>` חוזר מ-`next_cursor` של דף קודם.
+- **Time filters:** `--since` לוקח חלון יחסי: `15m`, `1h`, `6h`, `24h`, `7d`, או `all` (ה-presets של הדשבורד). לטווח ארוך יותר או מותאם אישית (למשל 30 ימים אחרונים), השתמש ב-`--from`/`--to`: ISO-8601 UTC explicit timestamps **עם `T` ו-timezone** (למשל `2026-06-01T00:00:00Z`) שדורסים את `--since`. ערך מופרד ברווח או ללא timezone היא שגיאת שימוש.
+- **`--fields a,b,c`** (על `events`, `sessions`, `evals`, `errors`) מגביל את הפלט לאלה שמפתחים, לשם הטבלה ו-`--json`. שמות לא ידועים נדחות עם רשימה תקפה, דרך זולה לגלות שמות שדות.
+- **`--file payload.json`** (או `--file -` לקריאה stdin) מספקת גוף בקשה JSON מלא כאשר משאב יש צורה מורכבת (על `alerts create/update`, `settings set`, ו-`users create/update`). Saved-query SQL משתמש ב-`--sql @file.sql` במקום זאת.
+- **Multi-value filters** הם comma-separated → תאימה כערכה (union בתוך filter אחד, AND על פני filters): `--event-type tool_use,tool_result`. אפשרויות Click לא variadic, אז `--add a b` שבור. השתמש ב-`--add a,b`, חזור על הדגל (`--add a --add b`), או ציטוט (`--add "a b"`).
 
 ---
 
 ## Command reference
 
-### אתה תשתמש בפקודות אלה 5 ביותר
+### תשתמש ב-5 פקודות אלה ביותר
 
-רוב העבודה היומית עוברת דרך קומץ של פקודות קריאה. התחל כאן, ואז הגע לפני השטח המלא למטה כשאתה צריך את זה:
+עבודה יומיומית רובה דרך קומץ של פקודות קריאה. התחל כאן, ואחר כך הגיע לפני השטח המלא להלן כאשר אתה צריך את זה:
 
 | Command | What it does | Try it |
 |---|---|---|
@@ -183,9 +184,9 @@ agenteye --base-url https://agenteye.internal --insecure login
 | `errors` | Just the errored events; `--aggregate` for counts by type. | `agenteye --json errors --since 24h --aggregate` |
 | `list` | Discover the valid filter values (agents, envs, models, …). | `agenteye list agents` |
 
-### הכל מה ה-CLI יכול לעשות
+### הכל שה-CLI יכול לעשות
 
-השטח המלא עוקב. ל-CLI יש **18 פקודות ברמה עליונה**. כל פקודות read קבל `--json` והאפשרויות הגלובליות למעלה; הפעל `agenteye <command> -h` (או `<command> <subcommand> -h`) עבור דגל רשימה מלא וצורת JSON של כל אחד.
+השטח המלא הבא. לה-CLI יש **18 פקודות ברמה העליונה**. כל פקודות הקריאה מקבלות `--json` ואת האפשרויות הגלובליות לעיל; הרץ `agenteye <command> -h` (או `<command> <subcommand> -h`) להקד exhaustive דגל רשימה ו-JSON צורת כל אחד.
 
 ### Identity: `login` · `logout` · `whoami` · `orgs` · `version` · `help`
 
@@ -197,7 +198,7 @@ agenteye version                                      # print the CLI version (s
 agenteye help                                         # top-level help (same as --help)
 ```
 
-`orgs` בוחן ומחליף את הדייר הפעיל:
+`orgs` תופסים וחליפים את הטנסנט הפעיל:
 
 ```bash
 agenteye orgs list        # your orgs + your role in each (active one marked)
@@ -208,7 +209,7 @@ agenteye orgs perms       # your permissions in the active org, grouped by resou
 
 ### Observe (read-only): `events` · `sessions` · `evals` · `errors` · `list`
 
-אף אחד מאלה לא צריכים אישור. מסננים משותפים: `--session-id`, `--agent-id`, `--env` (**לא** `--environment`), וטווח הזמן (`--since` / `--from` / `--to`).
+כל אלה לא צריכים אישור. Shared filters: `--session-id`, `--agent-id`, `--env` (**לא** `--environment`), ו-time range (`--since` / `--from` / `--to`).
 
 ```bash
 # events (alias: the raw per-step trail), newest first
@@ -231,7 +232,7 @@ agenteye --json errors --since 24h --error-type timeout --all --limit 1000
 agenteye list envs        # also: agents event_types score_filters models hooks tools error_types
 ```
 
-`--score KEY:MIN..MAX` (ב-**`evals`**, לא `sessions`) הוא חוזר וAND-combined; שני הגבולות הם אופציונלים (`..0.5` פירושו ≤ 0.5, `0.9..` פירושו ≥ 0.9). עד 20 מסנני ניקוד לבקשה. `evals --scores-full` הוא דגל תצוגה **עבור הטבלה האנושית בלבד**; זה מציג כל זוג ניקוד במקום הראשונים כמה בתוספת `+N` ספירה. זה אין השפעה תחת `--json`, אשר תמיד מחזיר את אובייקט הניקוד המלא. כדי לקרוא **session אחד end-to-end**, שלב את שביל האירוע עם ההערכה שלו:
+`--score KEY:MIN..MAX` (על **`evals`**, לא `sessions`) הוא repeatable ו-AND-combined; כל קשור הוא optional (`..0.5` משמעות ≤ 0.5, `0.9..` משמעות ≥ 0.9). עד 20 score filters לכל בקשה. `evals --scores-full` היא דגל תצוגה ל-**human table בלבד**; הוא מציג כל score זוג במקום הראשון כמה בתוספת `+N` ספר. אין לו השפעה תחת `--json`, המחזיר תמיד את ה-score object השלם. כדי לקרוא **session אחד end-to-end**, חבור את event trail עם ה-evaluation שלו:
 
 ```bash
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
@@ -240,7 +241,7 @@ agenteye --json evals  --session-id run-001                       # its scores +
 
 ### Manage (permission-gated): `keys` · `users` · `settings` · `alerts` · `incidents`
 
-**`keys`**: API keys. הסוד נוצר באופן מקומי, נשלח לשרת (אשר מאחסן רק hash), ו-**מוצג פעם אחת** ב-create/regenerate; לכוד את זה אז. עם `--json` זה מופיע רק בשדה `key`. מסומן ב-**name**.
+**`keys`**: API keys. הסוד נוצר locally, נשלח לשרת (מאחסן רק hash), ו**מוצג פעם אחת** על create/regenerate; לכוד אותו אז. עם `--json` זה מופיע רק בשדה `key`. הערה לפי **name**.
 
 ```bash
 agenteye keys list                                   # active keys first, then revoked
@@ -252,9 +253,9 @@ agenteye keys regenerate ci-bot --yes                # rotate the secret (the ol
 agenteye keys disable ci-bot --yes                   # revoke
 ```
 
-היתרים עובדים כמו `(permission-set ∪ --add) − --remove`. אסימונים הם `slug:action` (למשל `events:read`) או `slug:action.action` כדי להרחיב כמה על משאב אחד (`events:read.add` → `events:read`, `events:add`). Presets: `read-only`, `standard`, `admin`. היתרים אנושיים בלבד (`keys:update`) לא יכולים להיות אנחות למפתח.
+הרשאות עובדות כ-`(permission-set ∪ --add) − --remove`. Tokens הם `slug:action` (למשל `events:read`) או `slug:action.action` כדי להרחיב כמה על משאב אחד (`events:read.add` → `events:read`, `events:add`). Presets: `read-only`, `standard`, `admin`. הרשאות אדם בלבד (`keys:update`) לא יכול להיות מוענק ל-key.
 
-**`users`**: חברי org, מסומנים ב-**email** (מזהה UUID הוא גם מתקבל).
+**`users`**: org members, הערה לפי **email** (UUID id גם מתקבל).
 
 ```bash
 agenteye users list [--active-only]
@@ -265,7 +266,7 @@ agenteye users disable dev@corp.com --yes            # has protected/self guards
 agenteye users enable dev@corp.com
 ```
 
-**`settings`**: רגיסטר קבוע (אתה קורא ומשנה מפתחות קיימים; אתה לא יכול ליצור חדשים).
+**`settings`**: רגיסטרי קבוע (אתה קורא ומשנה מפתחות קיימים; אתה לא יכול ליצור חדשים).
 
 ```bash
 agenteye settings list                               # key · value · type · updated (secrets masked)
@@ -273,7 +274,7 @@ agenteye settings schema                             # what each key accepts (ty
 agenteye settings set session_ttl_secs --value 86400 --yes
 ```
 
-**`alerts`**: הגדרות התרעה, מסומנות ב-**name**. `create` לוקח NAME פוזיציוני בתוספת דגלים או גוף JSON מלא דרך `--file`.
+**`alerts`**: הגדרות alert, הערה לפי **name**. `create` לוקח positional NAME בתוספת דגלים או גוף JSON מלא דרך `--file`.
 
 ```bash
 agenteye alerts list
@@ -284,7 +285,7 @@ agenteye alerts test high-errors --yes                        # fire a test noti
 agenteye alerts delete high-errors --yes
 ```
 
-**`incidents`**: התרעות התרעה, מסומנות ב-id (מזהים קצרים מתקבלים). `show` מדפיס את יומן הפעילות המלא; קרא אותו לפני ביצוע הפעולה.
+**`incidents`**: alert incidents, הערה לפי id (short ids מקובלת). `show` הדפסה רישום פעילות מלא; קרא את זה לפני הפעלה.
 
 ```bash
 agenteye incidents list --state firing                # also: acknowledged, resolved
@@ -301,7 +302,7 @@ agenteye incidents subscribe <id> ; agenteye incidents unsubscribe <id> ; agente
 
 ### Analytics & assistant: `query` · `agent`
 
-**`query`**: SQL שמור נגד store ניתוח שלך בתוספת runner ad-hoc. Saved queries מסומנות ב-**name**; SQL מאומת Server-side (SELECT/WITH בלבד, statement timeout, row cap).
+**`query`**: SQL שמור נגד analytics store שלך בתוספת ריצה ad-hoc. Saved queries הערה לפי **name**; ה-SQL מעודכן בחיזוק server-side (SELECT/WITH בלבד, statement timeout, row cap).
 
 ```bash
 agenteye query schema [TABLE]                         # column layout of the analytics views
@@ -312,7 +313,7 @@ agenteye query create errs --sql @errs.sql --description "errored events (24h)"
 agenteye query update errs --sql @errs.sql --yes ; agenteye query delete errs --yes
 ```
 
-**`agent`**: מדברת ל-**עוזר בינה מלאכותית** מובנה (אותו אנליסט read-only שתוכל לשוחח איתו בדשבורד). צ'אטים מסומנים ב-chat-id קצר (prefix-resolved).
+**`agent`**: דברים ל-**AI assistant** מובנה (אותו אנליסט read-only שאתה יכול לשוחח איתו בדשבורד). Chats הערה לפי short chat-id (prefix-resolved).
 
 ```bash
 agenteye agent health                                 # is the AI assistant configured/reachable
@@ -337,13 +338,13 @@ agenteye agent rename <short-id> --title "error triage" ; agenteye agent delete 
 | 5 | Authenticated, but your account lacks the required permission (the message names it) |
 | 6 | The requested resource was not found (e.g. unknown session or incident id) |
 
-אלה עושים את ה-CLI בטוח לסקריפט: סוכן קוד יכול להסתעף ב-`4` כדי להנציח אתך להתחבר שוב, או `5` כדי להפוך את ההיתרון החסר. ראה [CLI recipes לסוכנים](/he/agenteye/cli-recipes) לצורות exit-code-handling patterns וצורות JSON output.
+אלה עושה את ה-CLI בטוח לתסריט: coding agent יכול to branch על `4` כדי להנחות אותך להתחבר מחדש, או `5` כדי להנפיק את ההרשאה החסרה. ראה [CLI recipes for agents](/he/agenteye/cli-recipes) לsystème exit-code-handling וצורות JSON output.
 
 ---
 
-## Steps הבא
+## Next steps
 
-- **[CLI recipes לסוכנים](/he/agenteye/cli-recipes)**: הדבק-הדבק query patterns, `jq` one-liners, `--fields` projections, exit-code handling, וצורות JSON output, כתוב לסוכנים קוד driving the CLI.
-- **[CLI agent skill](/he/agenteye/cli-skill)**: חבילה זו CLI כ-installable Claude Code / Codex *skill* כך סוכן קוד drives Failproof AI Observability מבקשות plain-English.
-- **[API keys](/he/agenteye/api-keys)**: דגם ההיתרון מאחורי `keys create --add …`.
-- **[AI assistant](/he/agenteye/assistant)**: הפעלת העוזר שה-`agent ask` מדבר איתו.
+- **[CLI recipes for agents](/he/agenteye/cli-recipes)**: copy-paste query patterns, `jq` one-liners, `--fields` projections, exit-code handling, וצורות JSON output, כתוב לcoding agents driving ה-CLI.
+- **[CLI agent skill](/he/agenteye/cli-skill)**: package זה CLI כמו installable Claude Code / Codex *skill* אז coding agent drives Failproof AI Observability מ-plain-English requests.
+- **[API keys](/he/agenteye/api-keys)**: permission model מאחורי `keys create --add …`.
+- **[AI assistant](/he/agenteye/assistant)**: enabling ה-assistant שה-`agent ask` דברים ל.

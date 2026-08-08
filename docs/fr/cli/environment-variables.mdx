@@ -8,9 +8,9 @@ description: "Configurer le comportement de failproofai avec des variables d'env
 | Variable | Description |
 |----------|-------------|
 | `PORT` | Port du tableau de bord (par défaut : `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Remplacer l'emplacement où les dossiers de projets Claude Code sont recherchés |
+| `CLAUDE_PROJECTS_PATH` | Remplace l'emplacement où sont recherchés les dossiers de projets Claude Code |
 | `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Pages du tableau de bord à masquer, séparées par des virgules |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hôtes/IPs autorisés à accéder aux ressources de développement. Identique à `--allowed-origins`. |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hôtes/IPs autorisés à accéder aux ressources de développement. Équivalent à `--allowed-origins`. |
 
 ## Journalisation
 
@@ -21,27 +21,50 @@ description: "Configurer le comportement de failproofai avec des variables d'env
 
 ## Télémétrie
 
+failproofai envoie par défaut des données de télémétrie anonymes. Il existe deux façons de
+la désactiver, et c'est toujours la règle la plus restrictive qui s'applique — une variable
+d'environnement ne peut jamais réactiver ce que le fichier de configuration a désactivé.
+
 | Variable | Description |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Désactiver la télémétrie d'utilisation anonyme |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Désactive la télémétrie anonyme pour ce processus |
+
+Pour la désactiver définitivement sur la machine, ajoutez ceci dans `~/.failproofai/config.toml` :
+
+```toml
+[telemetry]
+enabled = false
+```
+
+<Note>
+Le fichier de configuration est l'option à privilégier si vous exécutez le **démon failproofaid**.
+Le démon est un service de portée système, et son environnement n'inclut pas
+les variables exportées depuis votre shell — `FAILPROOFAI_TELEMETRY_DISABLED` ne peut donc
+pas l'atteindre. `[telemetry] enabled = false` est lu aussi bien par le CLI que par le démon.
+</Note>
+
+Le démon ne rapporte que son propre **cycle de vie** : qu'il a démarré (et si le
+processus précédent s'est terminé proprement), qu'il s'est arrêté, quand son worker d'évaluation a été
+lancé ou redémarré, quand une tâche de collecte a échoué, et le résultat d'une
+récupération de politique cloud. Ces événements ne contiennent que des valeurs et des compteurs à faible cardinalité — jamais un chemin de fichier, une commande, une politique, un prompt, ni quoi que ce soit extrait d'une transcription. Il n'existe aucun événement par appel d'outil.
 
 ## Authentification
 
 | Variable | Description |
 |----------|-------------|
-| `FAILPROOF_API_URL` | Remplacer l'URL de base du serveur API utilisée par la boîte de dialogue d'authentification du tableau de bord. Par défaut `https://api.befailproof.ai` ; définir à `http://localhost:8080` (ou autre) lors de l'exécution d'un serveur API local. |
-| `FAILPROOFAI_AUTH_DIR` | Remplacer l'emplacement où `auth.json` est stocké (par défaut : `~/.failproofai`). Principalement utile pour les tests isolés. |
+| `FAILPROOF_API_URL` | Remplace l'URL de base du serveur API utilisée par la boîte de dialogue d'authentification du tableau de bord. Par défaut `https://api.befailproof.ai` ; à définir sur `http://localhost:8080` (ou autre) lors de l'exécution d'un serveur API local. |
+| `FAILPROOFAI_AUTH_DIR` | Remplace l'emplacement de stockage de `auth.json` (par défaut : `~/.failproofai`). Principalement utile pour les tests isolés. |
 
-## Invite de premier démarrage
+## Invite au premier lancement
 
 | Variable | Description |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Ignorer l'invite proposant d'installer les politiques lors de la première invocation simple de `failproofai` |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Ignore l'invite proposant d'installer les politiques lors du premier appel nu à `failproofai` |
 
 ## LLM (pour l'évaluation des politiques)
 
 | Variable | Description |
 |----------|-------------|
-| `FAILPROOFAI_LLM_BASE_URL` | Point d'accès de l'API LLM (par défaut : `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | Clé API pour les politiques basées sur un LLM |
+| `FAILPROOFAI_LLM_BASE_URL` | Point de terminaison de l'API LLM (par défaut : `https://api.openai.com/v1`) |
+| `FAILPROOFAI_LLM_API_KEY` | Clé API pour les politiques basées sur le LLM |
 | `FAILPROOFAI_LLM_MODEL` | Nom du modèle (par défaut : `gpt-4o-mini`) |

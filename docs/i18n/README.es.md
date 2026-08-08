@@ -17,8 +17,8 @@
 
 **Traducciones:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**Resolución de fallos en tiempo de ejecución para agentes de codificación.**
-Se integra con Claude Code y Codex. Detecta bucles, acciones peligrosas y fugas de secretos
+**Resolución de fallos en tiempo de ejecución para agentes de código.**
+Se integra con Claude Code y Codex. Detecta bucles, acciones peligrosas y filtraciones de secretos
 antes de que se conviertan en incidentes. Latencia cero. Se ejecuta localmente.
 
 </div>
@@ -129,11 +129,11 @@ antes de que se conviertan en incidentes. Latencia cero. Se ejecuta localmente.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # o simplemente ejecuta `failproofai` y acepta el aviso de primera ejecución
+failproofai policies --install   # o simplemente ejecuta `failproofai` y acepta el aviso del primer uso
 failproofai
 ```
 
-30 políticas integradas se activan de inmediato. Panel de control en `localhost:8020`. Desactiva el aviso de primera ejecución con `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 políticas integradas se activan de inmediato. Panel de control en `localhost:8020`. Desactiva el aviso del primer uso con `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
@@ -143,7 +143,7 @@ failproofai
 |---|---|
 | `block-push-master` | Pushes directos a `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Commits, merges y rebases en `main` / `master` |
+| `block-work-on-main` | Commits, merges, rebases en `main` / `master` |
 | `block-rm-rf` | Eliminación recursiva de archivos |
 | `sanitize-api-keys` | Claves de API que se filtran al contexto del agente |
 
@@ -154,7 +154,7 @@ failproofai
 ## Tus propias políticas
 
 Coloca un archivo en `.failproofai/policies/` — se carga automáticamente, sin necesidad de flags.
-Haz commit y todo el equipo lo recibirá en el próximo pull.
+Haz commit y todo el equipo lo obtiene en el próximo pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -184,8 +184,8 @@ Tres decisiones disponibles para cada política:
 
 ## Visibilidad de la sesión
 
-Cada llamada a herramienta que realiza tu agente se registra localmente. El panel de control muestra qué se ejecutó,
-qué fue bloqueado y qué le indicó la política al agente — para que no tengas que adivinar
+Cada llamada de herramienta que realiza tu agente se registra localmente. El panel de control muestra qué se ejecutó,
+qué fue bloqueado y qué le dijo la política al agente — para que no tengas que adivinar
 cuando algo sale mal. → [Guía del panel de control](https://docs.befailproof.ai/dashboard)
 
 ---
@@ -205,21 +205,21 @@ cuando algo sale mal. → [Guía del panel de control](https://docs.befailproof.
 
 ## Licencia
 
-MIT con [Commons Clause](https://commonsclause.com/) — libre para uso interno y personal; la reventa comercial de failproofai en sí requiere un acuerdo aparte. Consulta [LICENSE](../../LICENSE) para el texto completo.
+MIT con [Commons Clause](https://commonsclause.com/) — gratuito para uso interno y personal; la reventa comercial de failproofai en sí misma requiere un acuerdo por separado. Consulta [LICENSE](../../LICENSE) para el texto completo.
 
 ---
 
 ## Contribuir
 
-Consulta [CONTRIBUTING.md](../../CONTRIBUTING.md). Se aceptan con gusto nuevas políticas, casos límite y traducciones.
+Consulta [CONTRIBUTING.md](../../CONTRIBUTING.md). Se aceptan nuevas políticas, casos límite y traducciones.
 
-> **Compila antes de empezar.** Ejecuta `bun install && bun run build` primero. Este repositorio ejecuta
+> **Compila antes de empezar.** Ejecuta primero `bun install && bun run build`. Este repositorio ejecuta
 > los propios hooks de failproofai sobre sí mismo, y resuelven la importación de `failproofai` contra el
-> bundle compilado en `dist/` — sin una compilación previa obtendrás errores de hook del tipo `Cannot find package 'failproofai'`.
+> bundle compilado en `dist/` — sin una compilación obtendrás errores de hook `Cannot find package 'failproofai'`.
 > Vuelve a compilar tras modificar `src/`. Consulta
-> [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> [Compila antes de que los hooks de desarrollo del repositorio funcionen](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-Desarrollado por [Nivedit Jain](https://github.com/NiveditJain) y [Nikita Agarwal](https://github.com/nk-ag).
+Creado por [Nivedit Jain](https://github.com/NiveditJain) y [Nikita Agarwal](https://github.com/nk-ag).
 [befailproof.ai](https://befailproof.ai)

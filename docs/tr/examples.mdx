@@ -1,19 +1,20 @@
 ---
+---
 title: Örnekler
-description: "Claude Code ve Agents SDK için kancaları nasıl ayarlanır"
+description: "Claude Code ve Agents SDK için kancaları ayarlama"
 icon: book-open
 ---
 
-Yaygın senaryolar için hazır kullanım örnekleri. Her biri nasıl yükleneceğini ve neleri bekleyeceğinizi gösterir.
+Yaygın senaryolar için hazır kullanıma uygun örnekler. Her biri kurulumun nasıl yapılacağını ve ne bekleyeceğinizi gösterir.
 
 ---
 
 ## Claude Code için kancaları ayarlama
 
-Failproof AI, Claude Code ile [kanca sistemi](https://docs.anthropic.com/en/docs/claude-code/hooks) üzerinden entegre olur. `failproofai policies --install` komutunu çalıştırdığınızda, Claude Code'un `settings.json` dosyasında her araç çağrısında tetiklenen kanca komutlarını kaydeder.
+Failproof AI, Claude Code ile [kancalar sistemi](https://docs.anthropic.com/en/docs/claude-code/hooks) aracılığıyla entegre olur. `failproofai policies --install` komutunu çalıştırdığınızda, Claude Code'un `settings.json` dosyasında her araç çağrısında tetiklenen kanç komutlarını kaydeder.
 
 <Steps>
-  <Step title="failproofai yükleyin">
+  <Step title="failproofai'ı yükleyin">
     ```bash
     npm install -g failproofai
     ```
@@ -23,19 +24,19 @@ Failproof AI, Claude Code ile [kanca sistemi](https://docs.anthropic.com/en/docs
     failproofai policies --install
     ```
   </Step>
-  <Step title="Kancanın kayıtlı olduğunu doğrulayın">
+  <Step title="Kançaların kaydedildiğini doğrulayın">
     ```bash
     cat ~/.claude/settings.json | grep failproofai
     ```
 
-    `PreToolUse`, `PostToolUse`, `Notification` ve `Stop` olayları için kanca girdilerini görmelisiniz.
+    `PreToolUse`, `PostToolUse`, `Notification` ve `Stop` olayları için kanç girdileri göreceksiniz.
   </Step>
   <Step title="Claude Code'u çalıştırın">
     ```bash
     claude
     ```
 
-    Politikalar artık her araç çağrısında otomatik olarak çalışır. Claude'dan `sudo rm -rf /` çalıştırmasını istemeyi deneyin - engellenecektir.
+    Politikalar artık her araç çağrısında otomatik olarak çalışır. Claude'dan `sudo rm -rf /` komutunu çalıştırmasını istemeyi deneyin - bu engellenir.
   </Step>
 </Steps>
 
@@ -43,7 +44,7 @@ Failproof AI, Claude Code ile [kanca sistemi](https://docs.anthropic.com/en/docs
 
 ## Agents SDK için kancaları ayarlama
 
-[Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk) ile geliştiriyorsanız, aynı kanca sistemini programlı olarak kullanabilirsiniz.
+[Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk) ile geliştiriyorsanız, aynı kanç sistemini programlı olarak kullanabilirsiniz.
 
 <Steps>
   <Step title="failproofai'ı projenize yükleyin">
@@ -51,26 +52,26 @@ Failproof AI, Claude Code ile [kanca sistemi](https://docs.anthropic.com/en/docs
     npm install failproofai
     ```
   </Step>
-  <Step title="Aracınızda kancanları yapılandırın">
-    Aracı işlemi oluştururken kanca komutlarını iletin. Kancalar Claude Code'dakiyle aynı şekilde tetiklenir - stdin/stdout JSON aracılığıyla:
+  <Step title="Ajanınızda kançaları yapılandırın">
+    Aracı oluştururken kanç komutlarını iletin. Kançalar Claude Code'daki gibi çalışır - stdin/stdout JSON aracılığıyla:
 
     ```bash
     failproofai --hook PreToolUse   # her araçtan önce çağrılır
     failproofai --hook PostToolUse  # her araçtan sonra çağrılır
     ```
   </Step>
-  <Step title="Aracınız için özel bir politika yazın">
+  <Step title="Ajanınız için özel bir politika yazın">
     ```javascript
     import { customPolicies, allow, deny } from "failproofai";
 
     customPolicies.add({
       name: "limit-to-project-dir",
-      description: "Aracı proje dizini içinde tutun",
+      description: "Ajanı proje dizini içinde tutun",
       match: { events: ["PreToolUse"] },
       fn: async (ctx) => {
         const path = String(ctx.toolInput?.file_path ?? "");
         if (path.startsWith("/") && !path.startsWith(ctx.session?.cwd ?? "")) {
-          return deny("Araç proje dizini ile sınırlandırılmıştır");
+          return deny("Ajan proje dizini ile sınırlıdır");
         }
         return allow();
       },
@@ -86,23 +87,23 @@ Failproof AI, Claude Code ile [kanca sistemi](https://docs.anthropic.com/en/docs
 
 ---
 
-## Yıkıcı komutları engelle
+## Yıkıcı komutları engelleme
 
-En yaygın kurulum - ajanların geri döndürülemez hasara yol açmasını önle.
+En yaygın kurulum - ajanların geri döndürülemez hasara neden olmasını önleyin.
 
 ```bash
 failproofai policies --install block-sudo block-rm-rf block-force-push block-curl-pipe-sh
 ```
 
-Bunu ne yapar:
+Bunun yaptığı:
 - `block-sudo` - tüm `sudo` komutlarını engeller
 - `block-rm-rf` - özyinelemeli dosya silmeyi engeller
-- `block-force-push` - `git push --force` öğesini engeller
-- `block-curl-pipe-sh` - uzaktan betiklerin kabuğa aktarılmasını engeller
+- `block-force-push` - `git push --force` komutunu engeller
+- `block-curl-pipe-sh` - uzak betikleri shell'e aktarmayı engeller
 
 ---
 
-## Sır sızıntısını önle
+## Sır sızıntısını önleme
 
 Ajanların araç çıktısında kimlik bilgilerini görmesini veya sızıtmasını engelleyin.
 
@@ -110,26 +111,26 @@ Ajanların araç çıktısında kimlik bilgilerini görmesini veya sızıtmasın
 failproofai policies --install sanitize-api-keys sanitize-jwt sanitize-connection-strings sanitize-bearer-tokens
 ```
 
-Bunlar `PostToolUse` üzerinde tetiklenir - bir araç çalıştırıldıktan sonra, ajan görmeden önce çıktıyı temizlerler.
+Bunlar `PostToolUse` üzerinde tetiklenir - bir araç çalıştıktan sonra, ajan çıktıyı görmeden önce temizlerler.
 
 ---
 
-## Ajanlar dikkat gerektirdiğinde Slack uyarıları alın
+## Ajanların dikkat gerektirmesi durumunda Slack uyarıları alın
 
-Boş bekleme uyarılarını Slack'e iletmek için bildirim kancasını kullanın.
+Boş uyarıları Slack'e iletmek için bildirim kancasını kullanın.
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
 
 customPolicies.add({
   name: "slack-on-idle",
-  description: "Ajan giriş beklerken Slack'e uyarı gönderin",
+  description: "Ajan giriş beklediğinde Slack'e uyarı gönderin",
   match: { events: ["Notification"] },
   fn: async (ctx) => {
     const webhookUrl = process.env.SLACK_WEBHOOK_URL;
     if (!webhookUrl) return allow();
 
-    const message = String(ctx.payload?.message ?? "Ajan bekliyor");
+    const message = String(ctx.payload?.message ?? "Ajan beklemektedir");
     const project = ctx.session?.cwd ?? "bilinmiyor";
 
     try {
@@ -142,7 +143,7 @@ customPolicies.add({
         signal: AbortSignal.timeout(5000),
       });
     } catch {
-      // Slack ulaşılamıyorsa ajanı hiçbir zaman bloke etme
+      // Slack erişilemeyen durumlarda ajanı hiçbir zaman engellemeyin
     }
 
     return allow();
@@ -158,22 +159,22 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/... failproofai policies --install --c
 
 ---
 
-## Ajanları bir dalda tut
+## Ajanları bir şubede tutun
 
-Ajanların dalları değiştirmesini veya korumalı dallara gitmesini önleyin.
+Ajanların dalları değiştirmesini veya korumalı dallara göndermesini engelleyin.
 
 ```javascript
 import { customPolicies, allow, deny } from "failproofai";
 
 customPolicies.add({
   name: "stay-on-branch",
-  description: "Ajanın başka dallara geçmesini önle",
+  description: "Ajanın başka dallara geçmesini engelleyin",
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolName !== "Bash") return allow();
     const cmd = String(ctx.toolInput?.command ?? "");
     if (/git\s+checkout\s+(?!-b)/.test(cmd)) {
-      return deny("Mevcut dalda kal. Gerekirse -b ile yeni dal oluştur.");
+      return deny("Geçerli şubede kalın. Gerekirse -b ile yeni bir şube oluşturun.");
     }
     return allow();
   },
@@ -182,16 +183,16 @@ customPolicies.add({
 
 ---
 
-## Taahhüt etmeden önce testler gerekli kıl
+## Taahhütlerden önce testleri zorunlu kılın
 
-Ajanları taahhüt etmeden önce test çalıştırması konusunda uyarın.
+Ajanları taahhüt etmeden önce testleri çalıştırmaya hatırlatın.
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
 
 customPolicies.add({
   name: "test-before-commit",
-  description: "Ajanı taahhüt etmeden önce test çalıştırmaya hatırlatın",
+  description: "Ajanı taahhüt etmeden önce testleri çalıştırmaya hatırlatın",
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolName !== "Bash") return allow();
@@ -206,11 +207,11 @@ customPolicies.add({
 
 ---
 
-## Prodüksiyon deposunu kilitle
+## Üretim deposunu kilitleyin
 
-Proje düzeyinde yapılandırmayı taahhüt edin, böylece ekibinizdeki her geliştirici aynı politikaları alır.
+Proje düzeyinde bir yapılandırma taahhüt edin, böylece takımınızdaki her geliştirici aynı politikaları alır.
 
-Deponuzda `.failproofai/policies-config.json` oluşturun:
+Reponuzda `.failproofai/policies-config.json` oluşturun:
 
 ```json
 {
@@ -231,23 +232,23 @@ Deponuzda `.failproofai/policies-config.json` oluşturun:
 }
 ```
 
-Sonra taahhüt edin:
+Ardından taahhüt edin:
 
 ```bash
 git add .failproofai/policies-config.json
-git commit -m "failproofai ekip politikalarını ekle"
+git commit -m "failproofai takım politikalarını ekleyin"
 ```
 
 failproofai yüklü olan her takım üyesi bu kuralları otomatik olarak alacaktır.
 
 ---
 
-## Konvansiyon politikaları ile kuruluş çapında bir kalite standardı oluştur
+## Kural politikaları ile kurum genelinde kalite standartı oluşturun
 
-En etkili kurulum: `.failproofai/policies/` deponuza projenize göre uyarlanmış politikalarla taahhüt edin. Her takım üyesi bunları otomatik olarak alır — hiçbir yükleme komutu yok, hiçbir yapılandırma değişikliği yok.
+En etkili kurulum: `.failproofai/policies/` dizinini reponuza taahhüt edin ve politikaları projenize göre uyarlayın. Her takım üyesi bunları otomatik olarak alır — kurulum komutları, yapılandırma değişiklikleri gerekmez.
 
 <Steps>
-  <Step title="Dizini oluşturun ve politika ekleyin">
+  <Step title="Dizini oluşturun ve politikaları ekleyin">
     ```bash
     mkdir -p .failproofai/policies
     ```
@@ -256,7 +257,7 @@ En etkili kurulum: `.failproofai/policies/` deponuza projenize göre uyarlanmı�
     // .failproofai/policies/team-policies.mjs
     import { customPolicies, allow, deny, instruct } from "failproofai";
 
-    // Ekibinizin tercih ettiği paket yöneticisini uygulayın
+    // Takımınızın tercih ettiği paket yöneticisini zorunlu kılın
     // (veya bunun yerine yerleşik prefer-package-manager politikasını etkinleştirin)
     customPolicies.add({
       name: "enforce-bun",
@@ -269,7 +270,7 @@ En etkili kurulum: `.failproofai/policies/` deponuza projenize göre uyarlanmı�
       },
     });
 
-    // Ajanı taahhüt etmeden önce test çalıştırmaya hatırlatın
+    // Ajanı taahhüt etmeden önce testleri çalıştırmaya hatırlatın
     customPolicies.add({
       name: "test-before-commit",
       match: { events: ["PreToolUse"] },
@@ -286,11 +287,11 @@ En etkili kurulum: `.failproofai/policies/` deponuza projenize göre uyarlanmı�
   <Step title="Git'e taahhüt edin">
     ```bash
     git add .failproofai/policies/
-    git commit -m "Takım kalite politikaları ekle"
+    git commit -m "Takım kalite politikalarını ekleyin"
     ```
   </Step>
-  <Step title="İyileştirmeyi devam ettirin">
-    Ekibiniz yeni hata modları yaşadıkça, politika ekleyin ve itin. Herkes sonraki `git pull`da güncellemeyi alır. Bu politikalar, ekibinizle birlikte büyüyen canlı bir kalite standardı haline gelir.
+  <Step title="İyileştirmeye devam edin">
+    Takımınız yeni hata modlarıyla karşılaştıkça, politikalar ekleyin ve gönderin. Herkes bir sonraki `git pull` sırasında güncellemeleri alır. Bu politikalar takımınızla birlikte büyüyen canlı bir kalite standardı haline gelir.
   </Step>
 </Steps>
 
@@ -298,10 +299,10 @@ En etkili kurulum: `.failproofai/policies/` deponuza projenize göre uyarlanmı�
 
 ## Daha fazla örnek
 
-Depo içindeki [`examples/`](https://github.com/failproofai/failproofai/tree/main/examples) dizini şunları içerir:
+Repodaki [`examples/`](https://github.com/failproofai/failproofai/tree/main/examples) dizini şunları içerir:
 
-| Dosya | Neyi gösterir |
-|------|---------------|
-| `policies-basic.js` | Başlangıç politikaları - prodüksiyon yazılarını engelle, force-push, borulanan betikleri engelle |
-| `policies-notification.js` | Boş bildirimler ve oturum sonu için Slack uyarıları |
-| `policies-advanced/index.js` | Geçişli içe aktarmalar, eşzamansız kancalar, PostToolUse çıktı temizleme, Stop olay işleme |
+| Dosya | Gösterileni |
+|------|-------------|
+| `policies-basic.js` | Başlangıç politikaları - üretim yazılarını, zorla itmeyi, aktarılan betikleri engelleme |
+| `policies-notification.js` | Boş bildirimler ve oturum sonlandırma için Slack uyarıları |
+| `policies-advanced/index.js` | İthalatı aktarma, asenkron kançalar, PostToolUse çıktı temizleme, Stop olayı işleme |

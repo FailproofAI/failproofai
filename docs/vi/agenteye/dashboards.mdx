@@ -4,7 +4,7 @@ description: "Chuyển dữ liệu agent trực tiếp của bạn thành một 
 ---
 
 
-Chuyển dữ liệu agent trực tiếp của bạn thành một bức tranh chung mà toàn bộ đội của bạn theo dõi. Ghim những truy vấn quan trọng dưới dạng biểu đồ, và mọi người đều mở cùng một bộ số ngay lập tức, mà không cần chạy lại bất kỳ truy vấn nào.
+Chuyển dữ liệu agent trực tiếp của bạn thành một bức tranh chung mà toàn bộ đội của bạn theo dõi. Ghim các truy vấn quan trọng dưới dạng biểu đồ, và mọi người sẽ mở cùng một bộ số trong tích tắc, mà không cần chạy lại bất kỳ truy vấn nào.
 
 ![A dashboard built from saved queries: an events-per-hour line, an errors-by-type bar, a latency area chart, and tokens-by-model](/agenteye/images/dashboard-fleet.png)
 
@@ -12,35 +12,35 @@ Chuyển dữ liệu agent trực tiếp của bạn thành một bức tranh ch
 
 ## Mọi người đều thấy cùng một sự thật
 
-Dừng việc dán ảnh chụp màn hình vào chat và dừng chạy lại cùng một truy vấn năm lần một ngày. Một bảng điều khiển là một bảng chung toàn bộ tổ chức mà bất kỳ ai trong đội bạn đều có thể mở để xem chính xác cùng một khung nhìn. Khi dữ liệu cơ bản thay đổi, các biểu đồ sẽ thay đổi theo, vì vậy bảng luôn cập nhật và không ai tranh luận về những con số cũ.
+Hãy dừng việc dán các ảnh chụp màn hình vào chat và hãy dừng chạy lại truy vấn tương tự năm lần một ngày. Một bảng điều khiển là một bảng chung toàn org mà bất kỳ ai trong đội của bạn có thể mở để xem chính xác cùng một chế độ xem. Khi dữ liệu cơ bản thay đổi, các biểu đồ sẽ thay đổi theo, vì vậy bảng luôn cập nhật và không ai tranh cải về các con số cũ.
 
-Bảng fleet ở trên là một hình dạng khởi đầu tốt cho các hoạt động hàng ngày:
+Bảng fleet ở trên là một điểm khởi đầu tốt cho các hoạt động hàng ngày:
 
-- một dòng **sự kiện trên giờ**, để bạn có thể theo dõi thông lượng và bắt được một sự giảm đột ngột
-- một biểu đồ thanh **lỗi theo loại**, để những danh mục lỗi lớn nhất của bạn nổi bật
-- một biểu đồ khu vực **độ trễ**, để độ chậm hiển thị trước khi người dùng phàn nàn
-- một phân tích **token theo mô hình**, để chi phí luôn nằm trong tầm nhìn
+- một dòng **events-per-hour**, để bạn có thể theo dõi thông lượng và phát hiện một sự giảm đột ngột
+- một biểu đồ cột **errors-by-type**, để các danh mục lỗi lớn nhất nổi bật
+- một biểu đồ vùng **latency**, để các sự chậm lại xuất hiện trước khi người dùng phàn nàn
+- một bảng **tokens-by-model**, để chi phí luôn nằm trong tầm nhìn
 
-Bạn sẽ tìm thấy các bảng của mình tại `/<org-slug>/dashboards`.
+Bạn sẽ tìm thấy các bảng của bạn tại `/<org-slug>/dashboards`.
 
-## Ghim những truy vấn bạn đã lưu
+## Ghim các truy vấn bạn đã lưu
 
-Mỗi ô bắt đầu từ một truy vấn đã lưu. Xây dựng và lưu truy vấn mà bạn quan tâm trong thư viện [Queries](/vi/agenteye/queries) (cài sẵn cộng với của riêng bạn, trên các sự kiện và đánh giá của bạn), sau đó ghim nó vào một bảng điều khiển dưới dạng biểu đồ phù hợp với dữ liệu: một **dòng** cho xu hướng theo thời gian, một **thanh** để so sánh các danh mục, một **khu vực** cho khối lượng hoặc một **hình tròn** cho phân tích chia sẻ.
+Mỗi ô bắt đầu dưới dạng một truy vấn đã lưu. Xây dựng và lưu truy vấn bạn quan tâm trong thư viện [Queries](/vi/agenteye/queries) (các preset tích hợp cộng với của riêng bạn, trên các sự kiện và đánh giá của bạn), sau đó ghim nó vào một bảng điều khiển dưới dạng biểu đồ phù hợp với dữ liệu: một **line** cho xu hướng theo thời gian, một **bar** để so sánh các danh mục, một **area** cho khối lượng, hoặc một **pie** cho bảng chia sẻ.
 
-Vì một ô chỉ là truy vấn đã lưu của bạn được hiển thị dưới dạng biểu đồ, không có gì phải giữ đồng bộ bằng tay. Cập nhật truy vấn một lần và mọi bảng điều khiển sử dụng nó đều được cập nhật.
+Vì một ô chỉ là truy vấn đã lưu của bạn được hiển thị dưới dạng biểu đồ, không có gì để giữ đồng bộ bằng tay. Cập nhật truy vấn một lần và mọi bảng điều khiển sử dụng nó sẽ cập nhật cũng vậy.
 
 ## Theo dõi chất lượng, không chỉ khối lượng
 
-Khối lượng cho bạn biết rằng các agent đang bận. Chất lượng cho bạn biết họ thực sự đang làm công việc. Chỉ một bảng điều khiển vào [điểm đánh giá](/vi/agenteye/evaluations) của bạn và bạn sẽ có được một bảng theo dõi mức độ tốt của các lần chạy theo thời gian, vì vậy sự suy giảm chất lượng sẽ hiển thị dưới dạng một sự hạ thấp trên biểu đồ thay vì một bất ngờ từ khách hàng.
+Khối lượng cho bạn biết các agent đang bận. Chất lượng cho bạn biết họ thực sự đang làm công việc. Chỉ một bảng điều khiển vào [evaluation scores](/vi/agenteye/evaluations) của bạn và bạn sẽ nhận được một bảng theo dõi chất lượng của các lần chạy theo thời gian, do đó một sự suy giảm chất lượng xuất hiện dưới dạng một dip trên một biểu đồ thay vì một bất ngờ từ khách hàng.
 
 ![A quality-focused dashboard built from saved evaluation queries](/agenteye/images/dashboard-quality.png)
 
-*Một bảng chất lượng giữ điểm đánh giá của bạn ở trung tâm, ngay bên cạnh những con số hoạt động.*
+*Một bảng chất lượng giữ các điểm đánh giá của bạn ở trung tâm, ngay bên cạnh các con số hoạt động.*
 
-Giữ một bảng hoạt động và một bảng chất lượng cạnh nhau và đội bạn có một nơi để trả lời cả "nó có hoạt động không?" và "nó có tốt không?", mà không ai cần chạy lại một truy vấn.
+Giữ một bảng hoạt động và một bảng chất lượng cạnh nhau và đội của bạn có một nơi để trả lời cả hai "nó có hoạt động không?" và "nó có tốt không?", mà không ai phải chạy lại truy vấn.
 
 ## Liên quan
 
-- [Queries](/vi/agenteye/queries): xây dựng và lưu những truy vấn trở thành các ô của bạn.
-- [Evaluations](/vi/agenteye/evaluations): ghi điểm các lần chạy của bạn để bạn có thể biểu đồ chất lượng theo thời gian.
-- [Alerts](/vi/agenteye/alerts): biến một ngưỡng trên bất kỳ một trong những mức này thành một thông báo.
+- [Queries](/vi/agenteye/queries): xây dựng và lưu các truy vấn trở thành các ô của bạn.
+- [Evaluations](/vi/agenteye/evaluations): đánh giá các lần chạy của bạn để bạn có thể biểu đồ chất lượng theo thời gian.
+- [Alerts](/vi/agenteye/alerts): biến một ngưỡng trên bất kỳ một trong các chỉ số này thành một trang.

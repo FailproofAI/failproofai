@@ -8,35 +8,51 @@ description: "failproofai davranışını ortam değişkenleriyle yapılandırı
 | Değişken | Açıklama |
 |----------|----------|
 | `PORT` | Dashboard portu (varsayılan: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Claude Code proje klasörlerinin bulunduğu konumu geçersiz kıl |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Gizlenecek dashboard sayfalarının virgülle ayrılmış listesi |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Dev kaynaklara erişim izni verilen hostlar/IP'ler. `--allowed-origins` ile aynı. |
+| `CLAUDE_PROJECTS_PATH` | Claude Code proje klasörlerinin bulunduğu konumu geçersiz kılın |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Gizlenecek dashboard sayfaları (virgülle ayrılmış) |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Dev kaynaklarına erişime izin verilen konaklar/IP'ler. `--allowed-origins` ile aynıdır. |
 
-## Logging
-
-| Değişken | Açıklama |
-|----------|----------|
-| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Sunucu log seviyesi (varsayılan: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Özel hook log dosyası yolu veya varsayılan için `true` (`~/.failproofai/logs/hooks.log`) |
-
-## Telemetry
+## Günlükleme
 
 | Değişken | Açıklama |
 |----------|----------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Anonim kullanım telemetrisini devre dışı bırak |
+| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Sunucu günlük seviyesi (varsayılan: `warn`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Özel hook günlük dosyası yolu veya varsayılan için `true` (`~/.failproofai/logs/hooks.log`) |
 
-## Authentication
+## Telemetri
+
+failproofai varsayılan olarak anonim kullanım telemetrisi bildirir. Bunu kapatmanın iki yolu vardır ve en kısıtlayıcı olan geçerlidir — bir ortam değişkeni, yapılandırma dosyasının kapatmış olduğu bir şeyi hiçbir zaman yeniden etkinleştiremez.
 
 | Değişken | Açıklama |
 |----------|----------|
-| `FAILPROOF_API_URL` | dashboard auth iletişim kutusu tarafından kullanılan api-server temel URL'sini geçersiz kıl. Varsayılan `https://api.befailproof.ai`; yerel api-server çalıştırırken `http://localhost:8080` (veya başka bir adres) olarak ayarla. |
-| `FAILPROOFAI_AUTH_DIR` | `auth.json` dosyasının depolandığı konumu geçersiz kıl (varsayılan: `~/.failproofai`). Çoğunlukla izole testler için yararlı. |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Bu işlem için anonim kullanım telemetrisini devre dışı bırakın |
+
+Bunu makine için kalıcı olarak devre dışı bırakmak için `~/.failproofai/config.toml` dosyasına şunu ekleyin:
+
+```toml
+[telemetry]
+enabled = false
+```
+
+<Note>
+Yapılandırma dosyası, **failproofaid daemon**'unu çalıştırıyorsanız kullanılacak seçenektir.
+Daemon sistem kapsamlı bir hizmettir ve ortamı shell'den dışa aktarılan değişkenleri içermez — bu nedenle `FAILPROOFAI_TELEMETRY_DISABLED` buna ulaşamaz. `[telemetry] enabled = false` hem CLI hem de daemon tarafından okunur.
+</Note>
+
+Daemon yalnızca kendi **yaşam döngüsü**nü bildirir: başladığı (ve önceki çalıştırmanın temiz bir şekilde çıkıp çıkmadığı), durdurulduğu, değerlendirme çalışanının ne zaman oluşturulduğu veya yeniden başlatıldığı, bir toplayıcı görevinin başarısız olması ve bulut politikası çekişinin sonucu. Bunlar düşük kardinalite değerleri ve sayımları taşır — asla bir dosya yolu, komut, politika, istem veya transkripsiyondan okunan bir şey değildir. Araç çağrısı başına olay yoktur.
+
+## Kimlik doğrulama
+
+| Değişken | Açıklama |
+|----------|----------|
+| `FAILPROOF_API_URL` | Dashboard auth iletişim kutusu tarafından kullanılan api-server temel URL'sini geçersiz kılın. Varsayılan olarak `https://api.befailproof.ai`'dir; yerel api-server çalıştırırken `http://localhost:8080` (veya başka bir yer) olarak ayarlayın. |
+| `FAILPROOFAI_AUTH_DIR` | `auth.json`'un depolandığı konumu geçersiz kılın (varsayılan: `~/.failproofai`). Çoğunlukla izole testler için yararlıdır. |
 
 ## İlk çalıştırma istemi
 
 | Değişken | Açıklama |
 |----------|----------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | İlk bare `failproofai` çağrısında politikaları yüklemeyi teklif eden istemi atla |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | İlk basit `failproofai` çağrısında politika yüklemeyi teklif eden istemi atlayın |
 
 ## LLM (politika değerlendirmesi için)
 

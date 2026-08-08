@@ -1,6 +1,6 @@
 ---
 title: 환경 변수
-description: "환경 변수로 failproofai 동작 구성하기"
+description: "환경 변수로 failproofai 동작 설정하기"
 ---
 
 ## 대시보드
@@ -9,7 +9,7 @@ description: "환경 변수로 failproofai 동작 구성하기"
 |----------|-------------|
 | `PORT` | 대시보드 포트 (기본값: `8020`) |
 | `CLAUDE_PROJECTS_PATH` | Claude Code 프로젝트 폴더 경로 재정의 |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | 숨길 대시보드 페이지를 쉼표로 구분하여 지정 |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | 숨길 대시보드 페이지 (쉼표로 구분) |
 | `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | 개발 리소스 접근을 허용할 호스트/IP. `--allowed-origins`와 동일. |
 
 ## 로깅
@@ -19,18 +19,38 @@ description: "환경 변수로 failproofai 동작 구성하기"
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | 서버 로그 레벨 (기본값: `warn`) |
 | `FAILPROOFAI_HOOK_LOG_FILE` | 커스텀 훅 로그 파일 경로, 또는 기본 경로(`~/.failproofai/logs/hooks.log`)를 사용하려면 `true` |
 
-## 원격 측정
+## 텔레메트리
+
+failproofai는 기본적으로 익명 사용 텔레메트리를 보고합니다. 비활성화하는 방법은
+두 가지가 있으며, 더 제한적인 설정이 우선 적용됩니다. 환경 변수로는 설정 파일에서
+비활성화된 항목을 다시 활성화할 수 없습니다.
 
 | 변수 | 설명 |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 익명 사용 원격 측정 비활성화 |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 현재 프로세스에서 익명 사용 텔레메트리 비활성화 |
+
+머신에서 영구적으로 비활성화하려면 `~/.failproofai/config.toml`에 다음을 추가하세요:
+
+```toml
+[telemetry]
+enabled = false
+```
+
+<Note>
+**failproofaid 데몬**을 실행하는 경우 설정 파일 방식을 사용해야 합니다.
+데몬은 시스템 범위 서비스로, 셸에서 내보낸 환경 변수가 포함되지 않습니다.
+따라서 `FAILPROOFAI_TELEMETRY_DISABLED`는 데몬에 전달되지 않습니다.
+`[telemetry] enabled = false`는 CLI와 데몬 모두에서 읽힙니다.
+</Note>
+
+데몬은 자체 **라이프사이클** 정보만 보고합니다: 시작 여부(이전 실행이 정상 종료되었는지 포함), 종료 여부, 평가 워커가 생성되거나 재시작된 시점, 컬렉터 작업 실패 여부, 클라우드 정책 풀(pull) 결과 등입니다. 이 데이터에는 낮은 카디널리티의 값과 카운트만 포함되며, 파일 경로, 명령어, 정책, 프롬프트, 또는 트랜스크립트에서 읽은 내용은 절대 포함되지 않습니다. 도구 호출별 이벤트는 존재하지 않습니다.
 
 ## 인증
 
 | 변수 | 설명 |
 |----------|-------------|
-| `FAILPROOF_API_URL` | 대시보드 인증 다이얼로그에서 사용하는 API 서버 기본 URL 재정의. 기본값은 `https://api.befailproof.ai`이며, 로컬 API 서버 실행 시 `http://localhost:8080`(또는 해당 주소)으로 설정. |
-| `FAILPROOFAI_AUTH_DIR` | `auth.json` 저장 위치 재정의 (기본값: `~/.failproofai`). 주로 격리된 테스트 환경에서 유용함. |
+| `FAILPROOF_API_URL` | 대시보드 인증 다이얼로그에서 사용하는 API 서버 기본 URL 재정의. 기본값은 `https://api.befailproof.ai`이며, 로컬 API 서버 실행 시 `http://localhost:8080`(또는 해당 주소)으로 설정하세요. |
+| `FAILPROOFAI_AUTH_DIR` | `auth.json` 저장 위치 재정의 (기본값: `~/.failproofai`). 주로 격리된 테스트 환경에서 유용합니다. |
 
 ## 최초 실행 프롬프트
 
@@ -43,5 +63,5 @@ description: "환경 변수로 failproofai 동작 구성하기"
 | 변수 | 설명 |
 |----------|-------------|
 | `FAILPROOFAI_LLM_BASE_URL` | LLM API 엔드포인트 (기본값: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | LLM 기반 정책용 API 키 |
+| `FAILPROOFAI_LLM_API_KEY` | LLM 기반 정책에 사용할 API 키 |
 | `FAILPROOFAI_LLM_MODEL` | 모델 이름 (기본값: `gpt-4o-mini`) |

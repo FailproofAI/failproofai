@@ -1,26 +1,25 @@
 ---
----
 title: "CLI"
-description: "Điều khiển toàn bộ Failproof AI Observability từ terminal hoặc script: không cần truy cập dashboard."
+description: "Điều khiển toàn bộ Failproof AI Observability từ terminal hoặc script: không cần vào dashboard."
 ---
 
 
-Điều khiển toàn bộ Failproof AI Observability từ terminal hoặc script: không cần truy cập dashboard. CLI `agenteye` truy vấn dữ liệu của bạn (phiên, nhật ký sự kiện, đánh giá) và quản lý tổ chức (khóa API, người dùng, cài đặt, cảnh báo, sự cố, truy vấn đã lưu), vì vậy hãy sử dụng nó khi bạn muốn tự động hóa kiểm tra, tích hợp Observability vào CI, hoặc để coding agent kiểm tra production. Mọi lệnh đều hỗ trợ cờ `--json`, vì vậy nó hoạt động như nhau cho bạn tại dấu nhắc hoặc cho coding agent (Claude Code, Cursor) gọi và phân tích kết quả.
+Điều khiển toàn bộ Failproof AI Observability từ terminal hoặc script: không cần vào dashboard. CLI `agenteye` truy vấn dữ liệu của bạn (phiên làm việc, nhật ký sự kiện, đánh giá) và quản lý tổ chức (khóa API, người dùng, cài đặt, cảnh báo, sự cố, truy vấn đã lưu), vì vậy hãy sử dụng nó khi bạn muốn tự động hóa kiểm tra, tích hợp Observability vào CI, hoặc cho một coding agent kiểm tra production. Mọi lệnh đều hỗ trợ cờ `--json`, vì vậy nó hoạt động tốt cho bạn ở dòng lệnh hoặc cho một coding agent (Claude Code, Cursor) shell out và phân tích kết quả.
 
-Với một tệp nhị phân, bạn có thể:
+Với một binary duy nhất, bạn có thể:
 
-- **Đọc dữ liệu của bạn**: `sessions`, `events`, `evals`, `errors` (lọc theo thời gian, agent, env, điểm).
+- **Đọc dữ liệu của bạn**: `sessions`, `events`, `evals`, `errors` (lọc theo thời gian, agent, môi trường, điểm số).
 - **Quản lý tổ chức**: `keys`, `users`, `settings`, `alerts`, `incidents`.
-- **Chạy phân tích**: SQL đã lưu và bộ chạy truy vấn ad-hoc (`query`).
-- **Hỏi trợ lý AI**: cùng một nhà phân tích chỉ đọc mà bạn chat trong dashboard (`agent`).
+- **Chạy phân tích**: SQL đã lưu và trình chạy truy vấn ad-hoc (`query`).
+- **Hỏi trợ lý AI**: cùng một nhà phân tích chỉ đọc mà bạn trò chuyện với trong dashboard (`agent`).
 
-> **Lưu ý:** Đây là CLI `agenteye`, một công cụ khác với daemon collector (`agenteye-collector`). CLI nói chuyện với dashboard của bạn; collector gửi sự kiện đến máy chủ.
+> **Lưu ý:** Đây là CLI `agenteye`, một công cụ khác với daemon collector (`agenteye-collector`). CLI tương tác với dashboard của bạn; collector gửi sự kiện đến máy chủ.
 
 ---
 
 ## Khởi động nhanh
 
-Từ không có gì đến kết quả đầu tiên của bạn trong bốn dòng. Chỉ định CLI đến dashboard của bạn, đăng nhập, xác nhận danh tính của bạn, sau đó kéo chạy của ngày cuối cùng:
+Từ không gì cả đến kết quả đầu tiên trong bốn dòng. Trỏ CLI vào dashboard, đăng nhập, xác nhận danh tính của bạn, rồi lấy các lần chạy trong ngày qua:
 
 ```bash
 pipx install agenteye
@@ -29,7 +28,7 @@ agenteye whoami                                                                 
 agenteye --json sessions --since 24h                                             # one row per agent run, last 24h
 ```
 
-Lệnh cuối cùng này in một đối tượng JSON của các phiên gần đây nhất (mới nhất trước, giới hạn 50 theo mặc định). Sử dụng pipe vào `jq` để cắt nó, hoặc bỏ `--json` để có bảng hộp, đầy màu sắc. Mỗi hàng mang lại trạng thái của lần chạy và, nếu người đánh giá cho nó điểm, các điểm số liệu của nó (được viết tắt ở đây):
+Lệnh cuối cùng in ra một đối tượng JSON của các phiên gần đây nhất (mới nhất trước, giới hạn ở 50 theo mặc định). Pipe nó vào `jq` để cắt nó, hoặc bỏ `--json` để xem bảng có khung và màu sắc. Mỗi hàng chứa trạng thái của lần chạy và, nếu một evaluator đã chấm điểm, các điểm số của nó (viết tắt ở đây):
 
 ```json
 {
@@ -49,13 +48,13 @@ Lệnh cuối cùng này in một đối tượng JSON của các phiên gần �
 }
 ```
 
-Phần còn lại của trang này giải thích từng phần: [cài đặt](#installation) riêng biệt, [đăng nhập](#authentication), [cấu hình](#configuration), [các quy ước toàn cầu](#global-options--conventions) mà mọi lệnh chia sẻ, và [tham chiếu lệnh đầy đủ](#command-reference).
+Phần còn lại của trang này giải thích từng phần: [cài đặt](#installation) độc lập, [đăng nhập](#authentication), [cấu hình](#configuration), [các quy ước toàn cầu](#global-options--conventions) mà mọi lệnh đều chia sẻ, và [tham chiếu lệnh đầy đủ](#command-reference).
 
 ---
 
 ## Cài đặt
 
-CLI là một gói PyPI công khai tên **`agenteye`**. Cài đặt nó trong môi trường cô lập để nó luôn có các phụ thuộc của riêng nó:
+CLI là một gói PyPI công khai tên **`agenteye`**. Cài đặt nó trong một môi trường cách ly để nó luôn có các phụ thuộc của riêng nó:
 
 ```bash
 pipx install agenteye
@@ -70,35 +69,35 @@ agenteye --version
 agenteye --help
 ```
 
-> **Lưu ý:** Failproof AI Observability Python SDK cũng sử dụng tên phân phối `agenteye`. Cài đặt CLI với `pipx` hoặc `uv tool` (thay vì `pip install` vào virtualenv dùng chung) giữ cho hai thứ không va chạm. Một `pip install agenteye` đơn giản là được phép chỉ khi SDK không được cài đặt trong cùng một môi trường.
+> **Lưu ý:** Failproof AI Observability Python SDK cũng sử dụng tên phân phối `agenteye`. Cài đặt CLI với `pipx` hoặc `uv tool` (thay vì `pip install` vào một virtualenv dùng chung) giúp hai cái không xung đột. Một `pip install agenteye` thông thường cũng được nếu SDK không được cài đặt trong cùng một môi trường.
 
 ---
 
 ## Xác thực
 
-CLI xác thực với **dashboard** bằng cách sử dụng mã một lần được gửi qua email:
+CLI xác thực với **dashboard** bằng một mã một lần được gửi qua email:
 
 ```bash
 agenteye login --email you@example.com
 # A 6-digit code is emailed to you; paste it at the prompt.
 ```
 
-Mã thông báo phiên được lưu trữ trong `~/.agenteye/cli.json` (chỉ được đọc bởi bạn, chế độ `0600`) và có giá trị 24 giờ theo mặc định. Khi nó hết hạn, chạy `agenteye login` lại.
+Token phiên được lưu trữ trong `~/.agenteye/cli.json` (chỉ đọc được bởi bạn, chế độ `0600`) và có hiệu lực trong 24 giờ theo mặc định. Khi nó hết hạn, chạy `agenteye login` lại.
 
 ```bash
 agenteye whoami     # show the current user, active org, and permissions
 agenteye logout     # revoke the session and clear the stored token
 ```
 
-`whoami` không bao giờ lỗi trên phiên bị thiếu hoặc đã hết hạn; thay vào đó nó báo cáo `logged_in: false`, vì vậy một script hoặc agent có thể kiểm tra trạng thái xác thực một cách an toàn (nó vẫn có thể thoát bằng mã khác không nếu không có base URL được đặt hoặc dashboard không thể truy cập được).
+`whoami` không bao giờ báo lỗi khi phiên bị mất hoặc hết hạn; nó báo cáo `logged_in: false` thay thế, vì vậy một script hoặc agent có thể kiểm tra trạng thái xác thực một cách an toàn (nó vẫn có thể thoát khác không nếu không có URL cơ sở được đặt hoặc dashboard không thể truy cập).
 
-**Yêu cầu:** email của bạn phải được phép đăng nhập vào dashboard (hãy hỏi quản trị viên Failproof AI Observability của bạn), và dashboard phải có thể truy cập được tại base URL của nó (xem [Cấu hình](#configuration)). Nếu bạn yêu cầu mã và không có mã nào đến, email của bạn có thể chưa được bật để truy cập dashboard.
+**Yêu cầu:** email của bạn phải được phép đăng nhập vào dashboard (hỏi quản trị viên Failproof AI Observability của bạn), và dashboard phải có thể truy cập được ở URL cơ sở của nó (xem [Cấu hình](#configuration)). Nếu bạn yêu cầu mã và không có mã nào đến, email của bạn có thể chưa được bật để truy cập dashboard.
 
 ---
 
-## Chọn tổ chức của bạn (đa-tenant)
+## Chọn tổ chức của bạn (đa thuê)
 
-Nếu tài khoản của bạn thuộc về nhiều tổ chức hơn, hãy chọn tổ chức hoạt động **khi đăng nhập**; nó được lưu và sử dụng cho mọi lệnh sau này:
+Nếu tài khoản của bạn thuộc về nhiều hơn một tổ chức, hãy chọn tổ chức hoạt động **khi đăng nhập**; nó được lưu và sử dụng cho mọi lệnh sau:
 
 ```bash
 agenteye login --org acme           # authenticate and set the active tenant in one step
@@ -107,87 +106,87 @@ agenteye orgs switch globex         # change the saved default
 agenteye --org globex sessions      # override for a single command
 ```
 
-Nếu bạn thuộc về chính xác một tổ chức, nó sẽ được chọn tự động và bạn có thể hoàn toàn bỏ qua `--org`. Nếu bạn thuộc về nhiều tổ chức và không chọn một, CLI sẽ liệt kê chúng và yêu cầu bạn chạy lại với `--org <slug>`. Tổ chức hoạt động được gửi đến dashboard trên mọi yêu cầu, và các quyền của bạn được giải quyết **theo tổ chức**; `agenteye whoami` hiển thị tổ chức hoạt động, quyền của bạn trong đó, và tất cả các thành viên của bạn.
+Nếu bạn chỉ thuộc về chính xác một tổ chức thì nó được chọn tự động và bạn có thể bỏ qua `--org` hoàn toàn. Nếu bạn thuộc về một vài cái và không chọn cái nào, CLI liệt kê chúng và yêu cầu bạn chạy lại với `--org <slug>`. Tổ chức hoạt động được gửi đến dashboard trên mọi yêu cầu, và quyền của bạn được phân giải **trên mỗi tổ chức**; `agenteye whoami` hiển thị tổ chức hoạt động, quyền của bạn trong nó, và tất cả các thành viên của bạn.
 
 ---
 
 ## Cấu hình
 
-| Thiết lập | Cờ | Biến môi trường | Mặc định |
+| Cài đặt | Cờ | Biến môi trường | Mặc định |
 |---|---|---|---|
-| Dashboard base URL | `--base-url` | `AGENTEYE_DASHBOARD_URL` | **required** (no default) |
-| Active org/tenant | `--org` | `AGENTEYE_ORG` | chosen at login; saved in `~/.agenteye/cli.json` |
-| Session token | `--token` | `AGENTEYE_CLI_TOKEN` | from `~/.agenteye/cli.json` |
-| JSON output | `--json` | `AGENTEYE_CLI_JSON` | off |
-| Skip TLS verification | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | off (saved at login) |
-| Request timeout (seconds) | `--timeout` | _(none)_ | 30 |
-| Disable usage telemetry | _(none)_ | `AGENTEYE_ANALYTICS_DISABLED` (or `DO_NOT_TRACK`) | telemetry is currently disabled; nothing is sent |
+| URL cơ sở Dashboard | `--base-url` | `AGENTEYE_DASHBOARD_URL` | **bắt buộc** (không có mặc định) |
+| Tổ chức/thuê hoạt động | `--org` | `AGENTEYE_ORG` | được chọn khi đăng nhập; lưu trong `~/.agenteye/cli.json` |
+| Token phiên | `--token` | `AGENTEYE_CLI_TOKEN` | từ `~/.agenteye/cli.json` |
+| Đầu ra JSON | `--json` | `AGENTEYE_CLI_JSON` | tắt |
+| Bỏ qua xác minh TLS | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | tắt (được lưu khi đăng nhập) |
+| Thời gian chờ yêu cầu (giây) | `--timeout` | _(không có)_ | 30 |
+| Tắt telemetry sử dụng | _(không có)_ | `AGENTEYE_ANALYTICS_DISABLED` (hoặc `DO_NOT_TRACK`) | telemetry hiện tại bị vô hiệu hóa; không gửi gì |
 
-Thứ tự phân giải là **flag → environment variable → config file**. Không có mặc định; bạn phải chỉ định CLI đến dashboard của bạn, theo lệnh (`--base-url https://agenteye.example.com`) hoặc một lần qua môi trường (nó cũng được lưu sau `login` đầu tiên của bạn):
+Thứ tự phân giải là **cờ → biến môi trường → tệp cấu hình**. Không có mặc định; bạn phải trỏ CLI vào dashboard của bạn, hoặc là từng lệnh (`--base-url https://agenteye.example.com`) hoặc một lần thông qua môi trường (nó cũng được lưu sau `login` đầu tiên của bạn):
 
 ```bash
 export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com
 ```
 
-Thư mục cấu hình tuân theo `AGENTEYE_HOME` (quy ước tương tự được sử dụng bởi SDK và collector); nếu được đặt, `cli.json` nằm trong `$AGENTEYE_HOME/cli.json`.
+Thư mục cấu hình tôn trọng `AGENTEYE_HOME` (cùng quy ước được sử dụng bởi SDK và collector); nếu được đặt, `cli.json` sống trong `$AGENTEYE_HOME/cli.json`.
 
 ### TLS tự ký hoặc nội bộ
 
-Nếu dashboard của bạn được phục vụ qua HTTPS với chứng chỉ tự ký hoặc nội bộ (ví dụ: tên máy chủ load-balancer thô), xác minh TLS sẽ từ chối nó bằng lỗi `CERTIFICATE_VERIFY_FAILED`. Chuyển `--insecure` để bỏ qua xác minh chứng chỉ:
+Nếu dashboard của bạn được phục vụ qua HTTPS với chứng chỉ tự ký hoặc nội bộ (ví dụ, tên máy chủ load-balancer thô), xác minh TLS sẽ bác bỏ nó bằng lỗi `CERTIFICATE_VERIFY_FAILED`. Chuyển `--insecure` để bỏ qua xác minh chứng chỉ:
 
 ```bash
 agenteye --base-url https://agenteye.internal --insecure login
 ```
 
-`--insecure` được **lưu vào `cli.json` khi bạn đăng nhập**, vì vậy các lệnh sau sẽ bỏ qua xác minh tự động; bạn không phải lặp lại cờ. Chuyển `--secure` cho một lệnh gọi được xác minh một lần, hoặc để lưu xác minh lại vào lần đăng nhập tiếp theo của bạn. CLI in cảnh báo đến stderr trước bất kỳ lệnh nào liên hệ với dashboard trong khi xác minh bị tắt. Bỏ qua xác minh sẽ loại bỏ bảo vệ chống lại các cuộc tấn công man-in-the-middle; đảm bảo bạn tin tưởng đường dẫn mạng đến dashboard (VPN, subnet riêng, v.v.) trước khi dựa vào nó.
+`--insecure` được **lưu vào `cli.json` khi bạn đăng nhập**, vì vậy các lệnh sau bỏ qua xác minh tự động; bạn không phải lặp lại cờ. Chuyển `--secure` để gọi xác minh một lần, hoặc để lưu xác minh trở lại khi bạn đăng nhập lần tới. CLI in cảnh báo đến stderr trước bất kỳ lệnh nào liên hệ dashboard trong khi xác minh bị vô hiệu hóa. Bỏ qua xác minh loại bỏ bảo vệ chống lại các cuộc tấn công man-in-the-middle; hãy chắc chắn rằng bạn tin tưởng đường dẫn mạng đến dashboard (VPN, mạng con riêng, v.v.) trước khi dựa vào nó.
 
 ---
 
-## Telemetry & privacy
+## Telemetry & quyền riêng tư
 
-> **Lưu ý:** CLI được gửi **không có telemetry sử dụng ngày hôm nay.** Một công tắc diệt master được bật, vì vậy không có gì được truyền bất kể môi trường của bạn là gì. Phần bên dưới mô tả khả năng từ chối nếu và khi telemetry được bật.
+> **Lưu ý:** CLI được gửi **không gửi telemetry sử dụng hôm nay.** Một công tắc chính được bật, vì vậy không gì được truyền tải bất kể môi trường của bạn. Phần dưới đây mô tả khả năng tắt nếu và khi telemetry bao giờ được bật.
 
-Thậm chí khi được bật, telemetry sẽ là **phân tích sử dụng ẩn danh chỉ**, không bao giờ dữ liệu agent, phiên hoặc sự kiện của bạn:
+Ngay cả khi được bật, telemetry sẽ chỉ là **phân tích sử dụng nanonymous**, không bao giờ agent, phiên hoặc dữ liệu sự kiện của bạn:
 
-- **Không có dữ liệu agent, phiên hoặc sự kiện nào bao giờ rời khỏi cơ sở hạ tầng của bạn.** Chỉ có cách sử dụng CLI mới được báo cáo: tên lệnh và subcommand (ví dụ `keys create`), **tên** của các cờ bạn sử dụng (không bao giờ giá trị của chúng), trạng thái thành công/thoát và thời lượng, cộng với sự kiện cho mỗi hành động cho các phép đột biến (ví dụ `api_key_created`, `query_run`) chỉ mang tên/enum tĩnh và số lượng thô. Đường cơ sở dashboard, mã thông báo phiên, email, slug tổ chức, id tài nguyên, SQL, bí mật khóa và bộ lọc truy vấn của bạn sẽ **không bao giờ** được gửi. Các toán tử sẽ được xác định chỉ bằng id nội bộ mơ hồ, không bao giờ bằng email.
-- **Từ chối trước** bằng cách đặt `AGENTEYE_ANALYTICS_DISABLED=1` trong môi trường CLI (CLI cũng tuân theo quy ước `DO_NOT_TRACK=1` đa công cụ). Điều này có hiệu lực ngay khi telemetry bất kỳ lúc nào được bật, vì vậy một môi trường có nhận thức về quyền riêng tư có thể ở trạng thái từ chối vĩnh viễn.
-- Nếu telemetry được bật, CLI sẽ gửi trực tiếp đến PostHog (`https://us.i.posthog.com`); một máy có máy chủ đó bị chặn sẽ im lặng không gửi gì và CLI sẽ không bị ảnh hưởng.
+- **Không agent, phiên hoặc dữ liệu sự kiện nào bao giờ rời khỏi cơ sở hạ tầng của bạn.** Chỉ sử dụng CLI sẽ được báo cáo: tên lệnh và lệnh con (ví dụ `keys create`), **tên** của các cờ bạn sử dụng (không bao giờ giá trị của chúng), trạng thái thành công/thoát, và thời lượng, cộng với một sự kiện cho mỗi hành động cho các đột biến (ví dụ `api_key_created`, `query_run`) chỉ chứa tên/enum tĩnh và số lượng thô. URL dashboard, session token, email, slug tổ chức, id tài nguyên, SQL, bí mật khóa, và bộ lọc truy vấn sẽ **không bao giờ** được gửi. Các toán tử sẽ được xác định chỉ bằng một id nội bộ mơ hồ, không bao giờ bằng email.
+- **Tắt trước thời hạn** bằng cách đặt `AGENTEYE_ANALYTICS_DISABLED=1` trong môi trường của CLI (CLI cũng tôn trọng quy ước `DO_NOT_TRACK=1` qua công cụ). Điều này có hiệu lực vào thời điểm telemetry bao giờ được bật, vì vậy một môi trường có ý thức về quyền riêng tư có thể ở trạng thái tắt vĩnh viễn.
+- Nếu telemetry được bật, CLI sẽ gửi trực tiếp đến PostHog (`https://us.i.posthog.com`); một máy có máy chủ đó bị chặn sẽ âm thầm không gửi gì và CLI sẽ không bị ảnh hưởng.
 
 ---
 
-## Tùy chọn toàn cầu & quy ước
+## Các tùy chọn toàn cầu & quy ước
 
 Đọc cái này một lần; nó áp dụng cho mọi lệnh.
 
-- **Tùy chọn toàn cầu đi TRƯỚC lệnh.** `agenteye --json sessions` là đúng; `agenteye sessions --json` là lỗi sử dụng. Các toàn cầu là `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, và `--no-color`.
-- **`--json` in JSON thuần túy đến stdout, và không gì khác.** Các dòng trạng thái con người, cảnh báo và lỗi đi đến **stderr**, vì vậy bắt `--json` stdout sạch sẽ để pipe vào `jq` ngay cả khi dòng trạng thái được hiển thị. Không có `--json` bạn sẽ nhận được chế độ hộp, đầy màu sắc cho đôi mắt con người.
-- **Khám phá với `--help`.** Mọi lệnh và subcommand đều có `--help` (và bí danh `-h`): `agenteye -h`, `agenteye sessions -h`, `agenteye keys create -h`. Trợ giúp cấp cao nhất cũng liệt kê mã thoát và tùy chọn toàn cầu. Không có bề mặt đọc máy toàn cầu; sử dụng per-command `--help`, cộng với domain-specific `agenteye query schema` và `agenteye settings schema` cho hai sổ đăng ký đó.
-- **Xác nhận tự động bỏ qua cho script và agent.** Các lệnh tạo/cập nhật/xóa nhắc "bạn có chắc?" trong terminal tương tác, nhưng **tự động bỏ qua lời nhắc đó dưới `--json` hoặc bất cứ khi nào stdin không phải TTY** (TTY là phiên terminal tương tác; pipe hoặc CI runner không phải), vì vậy các script và agent không bao giờ bị treo. Chuyển `--yes`/`-y` để bỏ qua nó một cách rõ ràng. Vì lời nhắc sẽ không kích hoạt cho agent, agent nên xác nhận các hành động tàn phá với con người trước.
-- **Phân trang:** kết quả là mới nhất-trước và cursor-paginated (mỗi trang trả về mã thông báo bạn sử dụng để tìm nạp cái tiếp theo). `--limit N` (bí danh `-n`) giới hạn hàng và **mặc định là 50**; `--all` tự động phân trang (theo khối 200 hàng) **lên đến `--limit`**, vì vậy `--all` trần không vẫn dừng lại ở 50. Để lấy đầy đủ hãy sử dụng giới hạn rõ ràng cao: `--all --limit 1000`. `--page-size N` kiểm soát khối per-request (tối đa 200); `--cursor <id>` tiếp tục từ `next_cursor` của trang trước.
-- **Bộ lọc thời gian:** `--since` lấy một cửa sổ tương đối: `15m`, `1h`, `6h`, `24h`, `7d`, hoặc `all` (các cài đặt trước của dashboard). Đối với một phạm vi dài hơn hoặc tùy chỉnh (giả sử 30 ngày cuối cùng), sử dụng `--from`/`--to`: dấu thời gian UTC ISO-8601 rõ ràng **có `T` và múi giờ** (ví dụ `2026-06-01T00:00:00Z`) ghi đè `--since`. Một giá trị được phân tách bằng khoảng trắng hoặc không có múi giờ là lỗi sử dụng.
-- **`--fields a,b,c`** (trên `events`, `sessions`, `evals`, `errors`) hạn chế đầu ra cho các khóa đó, cho cả bảng và `--json`. Tên không xác định bị từ chối có danh sách hợp lệ, một cách rẻ để khám phá tên trường.
-- **`--file payload.json`** (hoặc `--file -` để đọc stdin) cung cấp toàn bộ nội dung yêu cầu JSON nơi tài nguyên có hình dạng phức tạp (trên `alerts create/update`, `settings set`, và `users create/update`). SQL truy vấn đã lưu sử dụng `--sql @file.sql` thay thế.
-- **Bộ lọc nhiều giá trị** được phân tách bằng dấu phẩy → so khớp dưới dạng tập hợp (liên hợp trong một bộ lọc, AND trên các bộ lọc): `--event-type tool_use,tool_result`. Các tùy chọn nhấp chuột không phải là variadic, vì vậy `--add a b` bị hỏng. Sử dụng `--add a,b`, lặp lại cờ (`--add a --add b`), hoặc trích dẫn (`--add "a b"`).
+- **Các tùy chọn toàn cầu TRƯỚC lệnh.** `agenteye --json sessions` là đúng; `agenteye sessions --json` là một lỗi sử dụng. Các tùy chọn toàn cầu là `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, và `--no-color`.
+- **`--json` in JSON thuần túy đến stdout, và không gì khác.** Các dòng trạng thái nhân văn, cảnh báo và lỗi đi đến **stderr**, vì vậy capture `--json` stdout ở lại sạch để pipe vào `jq` ngay cả khi một dòng trạng thái được hiển thị. Không có `--json` bạn nhận được một chế độ xem hộp, đầy màu sắc cho con mắt con người.
+- **Khám phá với `--help`.** Mọi lệnh và lệnh con đều có `--help` (và bí danh `-h`): `agenteye -h`, `agenteye sessions -h`, `agenteye keys create -h`. Trợ giúp cấp cao nhất cũng liệt kê các mã thoát và tùy chọn toàn cầu. Không có bề mặt dump có thể đọc máy toàn cầu; sử dụng `--help` cho mỗi lệnh, cộng với `agenteye query schema` và `agenteye settings schema` dành riêng cho hai đăng ký đó.
+- **Xác nhận tự động bỏ qua cho scripts và agents.** Các lệnh Tạo/Cập nhật/Xóa nhắc "bạn có chắc không?" trong một terminal tương tác, nhưng **tự động bỏ qua lời nhắc đó dưới `--json` hoặc bất cứ khi nào stdin không phải là TTY** (TTY là một phiên terminal tương tác; một pipe hoặc một CI runner không phải), vì vậy scripts và agents không bao giờ treo. Chuyển `--yes`/`-y` để bỏ qua nó một cách rõ ràng. Vì lời nhắc sẽ không kích hoạt cho một agent, một agent nên xác nhận các hành động phá hủy với con người trước.
+- **Phân trang:** kết quả là mới nhất trước và con trỏ được phân trang (mỗi trang trả về một token bạn sử dụng để lấy tiếp theo). `--limit N` (bí danh `-n`) giới hạn hàng và **mặc định là 50**; `--all` tự động phân trang (trong các khối 200 hàng) **lên đến `--limit`**, vì vậy một `--all` trần vẫn dừng lại ở 50. Để quét đầy đủ, chuyển một nắp rõ ràng cao: `--all --limit 1000`. `--page-size N` kiểm soát khối trên mỗi yêu cầu (tối đa 200); `--cursor <id>` tiếp tục từ `next_cursor` của một trang trước.
+- **Bộ lọc thời gian:** `--since` lấy một cửa sổ tương đối: `15m`, `1h`, `6h`, `24h`, `7d`, hoặc `all` (các cài đặt trước của dashboard). Đối với một phạm vi dài hơn hoặc tùy chỉnh (ví dụ 30 ngày qua), hãy sử dụng `--from`/`--to`: dấu thời gian UTC ISO-8601 rõ ràng **có `T` và múi giờ** (ví dụ `2026-06-01T00:00:00Z`) ghi đè `--since`. Một giá trị được phân tách bằng dấu cách hoặc không có múi giờ là một lỗi sử dụng.
+- **`--fields a,b,c`** (trên `events`, `sessions`, `evals`, `errors`) hạn chế đầu ra cho những khóa đó, cho cả bảng và `--json`. Tên không xác định bị từ chối bằng danh sách hợp lệ, một cách rẻ để khám phá tên trường.
+- **`--file payload.json`** (hoặc `--file -` để đọc stdin) cung cấp toàn bộ nội dung yêu cầu JSON khi một tài nguyên có hình dạng phức tạp (trên `alerts create/update`, `settings set`, và `users create/update`). SQL truy vấn được lưu sử dụng `--sql @file.sql` thay thế.
+- **Bộ lọc giá trị nhiều** được phân tách bằng dấu phẩy → khớp như một tập hợp (union trong một bộ lọc, AND trên các bộ lọc): `--event-type tool_use,tool_result`. Các tùy chọn Click không phải là biến, vì vậy `--add a b` sẽ phá vỡ. Sử dụng `--add a,b`, lặp lại cờ (`--add a --add b`), hoặc trích dẫn (`--add "a b"`).
 
 ---
 
 ## Tham chiếu lệnh
 
-### Bạn sẽ sử dụng những 5 lệnh này nhiều nhất
+### Bạn sẽ sử dụng 5 lệnh này nhiều nhất
 
-Hầu hết công việc hàng ngày chạy qua một số lệnh đọc. Bắt đầu từ đây, sau đó tiếp cận bề mặt đầy đủ bên dưới khi bạn cần:
+Hầu hết công việc hàng ngày chạy qua một số lệnh đọc. Bắt đầu ở đây, sau đó sử dụng bề mặt đầy đủ dưới đây khi bạn cần:
 
-| Lệnh | Nó làm gì | Hãy thử nó |
+| Lệnh | Công việc của nó | Thử nó |
 |---|---|---|
-| `sessions` | Một hàng cho mỗi lần chạy agent: thời gian, env, agent, trạng thái, điểm mới nhất. | `agenteye --json sessions --since 24h --status error` |
-| `events` | Dấu vết per-step thô bên trong một lần chạy (thêm `--full` cho tải trọng). | `agenteye --json events --session-id run-001 --all` |
-| `evals` | Kết quả đánh giá và điểm; `--aggregate` cuộn chúng lên. | `agenteye --json evals --aggregate --since 7d --env prod` |
-| `errors` | Chỉ các sự kiện lỗi; `--aggregate` cho số lượng theo loại. | `agenteye --json errors --since 24h --aggregate` |
-| `list` | Khám phá các giá trị bộ lọc hợp lệ (agent, env, model, …). | `agenteye list agents` |
+| `sessions` | Một hàng trên mỗi lần chạy agent: thời gian, môi trường, agent, trạng thái, điểm số mới nhất. | `agenteye --json sessions --since 24h --status error` |
+| `events` | Dấu vết thô mỗi bước bên trong một lần chạy (thêm `--full` cho payloads). | `agenteye --json events --session-id run-001 --all` |
+| `evals` | Kết quả đánh giá và điểm số; `--aggregate` cuộn chúng lên. | `agenteye --json evals --aggregate --since 7d --env prod` |
+| `errors` | Chỉ các sự kiện bị lỗi; `--aggregate` cho số lượng theo loại. | `agenteye --json errors --since 24h --aggregate` |
+| `list` | Khám phá các giá trị bộ lọc hợp lệ (agents, envs, models, …). | `agenteye list agents` |
 
 ### Mọi thứ CLI có thể làm
 
-Bề mặt đầy đủ theo sau. CLI có **18 lệnh cấp cao nhất**. Tất cả các lệnh đọc chấp nhận `--json` và các tùy chọn toàn cầu ở trên; chạy `agenteye <command> -h` (hoặc `<command> <subcommand> -h`) cho danh sách cờ đầy đủ và hình dạng JSON của bất kỳ cái nào.
+Bề mặt đầy đủ theo sau. CLI có **18 lệnh cấp cao nhất**. Tất cả các lệnh đọc chấp nhận `--json` và các tùy chọn toàn cầu trên; chạy `agenteye <command> -h` (hoặc `<command> <subcommand> -h`) cho danh sách cờ kiệt sức và hình dạng JSON của bất kỳ cái nào.
 
 ### Danh tính: `login` · `logout` · `whoami` · `orgs` · `version` · `help`
 
@@ -199,7 +198,7 @@ agenteye version                                      # print the CLI version (s
 agenteye help                                         # top-level help (same as --help)
 ```
 
-`orgs` kiểm tra và chuyển tenant hoạt động:
+`orgs` kiểm tra và chuyển đổi tenant hoạt động:
 
 ```bash
 agenteye orgs list        # your orgs + your role in each (active one marked)
@@ -210,7 +209,7 @@ agenteye orgs perms       # your permissions in the active org, grouped by resou
 
 ### Quan sát (chỉ đọc): `events` · `sessions` · `evals` · `errors` · `list`
 
-Không ai trong số những người này cần xác nhận. Bộ lọc dùng chung: `--session-id`, `--agent-id`, `--env` (**không phải** `--environment`), và phạm vi thời gian (`--since` / `--from` / `--to`).
+Không có cái nào trong số này cần xác nhận. Bộ lọc dùng chung: `--session-id`, `--agent-id`, `--env` (**không** `--environment`), và phạm vi thời gian (`--since` / `--from` / `--to`).
 
 ```bash
 # events (alias: the raw per-step trail), newest first
@@ -233,16 +232,16 @@ agenteye --json errors --since 24h --error-type timeout --all --limit 1000
 agenteye list envs        # also: agents event_types score_filters models hooks tools error_types
 ```
 
-`--score KEY:MIN..MAX` (trên **`evals`**, không phải `sessions`) có thể lặp lại và kết hợp AND; cả hai ràng buộc là tùy chọn (`..0.5` có nghĩa là ≤ 0.5, `0.9..` có nghĩa là ≥ 0.9). Tối đa 20 bộ lọc điểm trên mỗi yêu cầu. `evals --scores-full` là cờ hiển thị cho **bảng con người chỉ**; nó hiển thị mọi cặp điểm thay vì vài cặp đầu tiên cộng với số `+N`. Nó không có tác dụng dưới `--json`, luôn trả về đối tượng điểm hoàn chỉnh. Để đọc **một phiên từ đầu đến cuối**, kết hợp dấu vết sự kiện với đánh giá của nó:
+`--score KEY:MIN..MAX` (trên **`evals`**, không phải `sessions`) có thể lặp lại và AND-kết hợp; cả hai ràng buộc là tùy chọn (`..0.5` có nghĩa là ≤ 0.5, `0.9..` có nghĩa là ≥ 0.9). Tối đa 20 bộ lọc điểm số cho mỗi yêu cầu. `evals --scores-full` là một cờ hiển thị cho **bảng chỉ dành cho con người**; nó hiển thị mọi cặp điểm thay vì một vài cái đầu tiên cộng với số `+N`. Nó không có tác dụng dưới `--json`, luôn trả về đối tượng điểm số đầy đủ. Để đọc **một phiên từ đầu đến cuối**, kết hợp dấu vết sự kiện với đánh giá của nó:
 
 ```bash
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
 agenteye --json evals  --session-id run-001                       # its scores + status
 ```
 
-### Quản lý (được phép gated): `keys` · `users` · `settings` · `alerts` · `incidents`
+### Quản lý (được kiểm soát quyền): `keys` · `users` · `settings` · `alerts` · `incidents`
 
-**`keys`**: Khóa API. Bí mật được tạo cục bộ, gửi đến máy chủ (chỉ lưu trữ hash), và **được hiển thị một lần** trên tạo/tạo lại; nắm bắt nó sau đó. Với `--json` nó chỉ xuất hiện trong trường `key`. Được tham chiếu bởi **tên**.
+**`keys`**: Khóa API. Bí mật được tạo cục bộ, gửi đến máy chủ (chỉ lưu trữ một hash), và **hiển thị một lần** khi tạo/tạo lại; thu thập nó khi đó. Với `--json` nó chỉ xuất hiện trong trường `key`. Được tham chiếu bằng **tên**.
 
 ```bash
 agenteye keys list                                   # active keys first, then revoked
@@ -254,9 +253,9 @@ agenteye keys regenerate ci-bot --yes                # rotate the secret (the ol
 agenteye keys disable ci-bot --yes                   # revoke
 ```
 
-Quyền hoạt động như `(permission-set ∪ --add) − --remove`. Token là `slug:action` (ví dụ `events:read`) hoặc `slug:action.action` để mở rộng một số trên một tài nguyên (`events:read.add` → `events:read`, `events:add`). Cài đặt trước: `read-only`, `standard`, `admin`. Quyền chỉ dành cho con người (`keys:update`) không thể được cấp cho khóa.
+Quyền hoạt động như `(permission-set ∪ --add) − --remove`. Token là `slug:action` (ví dụ `events:read`) hoặc `slug:action.action` để mở rộng một số trên một tài nguyên (`events:read.add` → `events:read`, `events:add`). Cài đặt trước: `read-only`, `standard`, `admin`. Quyền chỉ dành cho con người (`keys:update`) không thể được cấp cho một khóa.
 
-**`users`**: Các thành viên tổ chức, được tham chiếu bằng **email** (cũng chấp nhận id UUID).
+**`users`**: thành viên tổ chức, được tham chiếu bằng **email** (một uuid id cũng được chấp nhận).
 
 ```bash
 agenteye users list [--active-only]
@@ -267,7 +266,7 @@ agenteye users disable dev@corp.com --yes            # has protected/self guards
 agenteye users enable dev@corp.com
 ```
 
-**`settings`**: Một sổ đăng ký cố định (bạn đọc và thay đổi các khóa hiện có; bạn không thể tạo các khóa mới).
+**`settings`**: một đăng ký cố định (bạn đọc và thay đổi các khóa hiện có; bạn không thể tạo khóa mới).
 
 ```bash
 agenteye settings list                               # key · value · type · updated (secrets masked)
@@ -275,7 +274,7 @@ agenteye settings schema                             # what each key accepts (ty
 agenteye settings set session_ttl_secs --value 86400 --yes
 ```
 
-**`alerts`**: Các định nghĩa cảnh báo, được tham chiếu bởi **tên**. `create` lấy một vị trí NAME cộng với các cờ hoặc nội dung JSON đầy đủ qua `--file`.
+**`alerts`**: định nghĩa cảnh báo, được tham chiếu bằng **tên**. `create` lấy một NAME vị trí cộng với cờ hoặc toàn bộ nội dung JSON thông qua `--file`.
 
 ```bash
 agenteye alerts list
@@ -286,7 +285,7 @@ agenteye alerts test high-errors --yes                        # fire a test noti
 agenteye alerts delete high-errors --yes
 ```
 
-**`incidents`**: Alert incidents, được tham chiếu bởi id (các id ngắn được chấp nhận). `show` in toàn bộ nhật ký hoạt động; đọc nó trước khi hành động.
+**`incidents`**: alert incidents, được tham chiếu bởi id (các id ngắn được chấp nhận). `show` in toàn bộ nhật ký hoạt động; đọc nó trước khi hành động.
 
 ```bash
 agenteye incidents list --state firing                # also: acknowledged, resolved
@@ -303,7 +302,7 @@ agenteye incidents subscribe <id> ; agenteye incidents unsubscribe <id> ; agente
 
 ### Phân tích & trợ lý: `query` · `agent`
 
-**`query`**: SQL đã lưu chống lại kho lưu trữ phân tích của bạn cộng với bộ chạy ad-hoc. Truy vấn đã lưu được tham chiếu bởi **tên**; SQL được xác thực phía máy chủ (chỉ SELECT/WITH, hết thời gian hoạt động, giới hạn hàng).
+**`query`**: SQL đã lưu chống lại kho lưu trữ phân tích của bạn cộng với một trình chạy ad-hoc. Các truy vấn đã lưu được tham chiếu bằng **tên**; SQL được xác nhận máy chủ (chỉ SELECT/WITH, thời gian tính toán, cap hàng).
 
 ```bash
 agenteye query schema [TABLE]                         # column layout of the analytics views
@@ -314,7 +313,7 @@ agenteye query create errs --sql @errs.sql --description "errored events (24h)"
 agenteye query update errs --sql @errs.sql --yes ; agenteye query delete errs --yes
 ```
 
-**`agent`**: Nói chuyện với **trợ lý AI** tích hợp (cùng một nhà phân tích chỉ đọc mà bạn có thể chat trong dashboard). Các cuộc trò chuyện được tham chiếu bởi một chat-id ngắn (phân giải tiền tố).
+**`agent`**: nói chuyện với **trợ lý AI** được xây dựng (cùng một nhà phân tích chỉ đọc mà bạn có thể trò chuyện với trong dashboard). Các cuộc trò chuyện được tham chiếu bằng một short chat-id (phân giải tiền tố).
 
 ```bash
 agenteye agent health                                 # is the AI assistant configured/reachable
@@ -332,20 +331,20 @@ agenteye agent rename <short-id> --title "error triage" ; agenteye agent delete 
 | Mã | Ý nghĩa |
 |---|---|
 | 0 | Thành công |
-| 1 | Lỗi không mong muốn (ví dụ: dashboard trả về 5xx) |
-| 2 | Lỗi sử dụng (đối số không hợp lệ, lệnh/cờ không xác định, va chạm tên) |
+| 1 | Lỗi không ngờ (ví dụ dashboard trả về 5xx) |
+| 2 | Lỗi sử dụng (đối số không hợp lệ, lệnh/cờ không xác định, xung đột tên) |
 | 3 | Không thể tiếp cận dashboard |
 | 4 | Không đăng nhập hoặc phiên hết hạn; chạy `agenteye login` |
-| 5 | Được xác thực, nhưng tài khoản của bạn thiếu quyền cần thiết (tin nhắn sẽ đặt tên nó) |
-| 6 | Tài nguyên được yêu cầu không được tìm thấy (ví dụ: id phiên hoặc sự cố không xác định) |
+| 5 | Đã xác thực, nhưng tài khoản của bạn thiếu quyền bắt buộc (thông báo đặt tên nó) |
+| 6 | Tài nguyên được yêu cầu không được tìm thấy (ví dụ: phiên hoặc incident id không xác định) |
 
-Điều này làm cho CLI an toàn để kịch bản: coding agent có thể nhánh trên `4` để nhắc bạn xác thực lại, hoặc `5` để bề mặt quyền bị thiếu. Xem [CLI recipes for agents](/vi/agenteye/cli-recipes) cho các mẫu xử lý exit-code và hình dạng đầu ra JSON.
+Những cái này làm cho CLI an toàn để script: một coding agent có thể nhánh trên `4` để nhắc bạn xác thực lại, hoặc `5` để bề mặt quyền bị thiếu. Xem [CLI recipes for agents](/vi/agenteye/cli-recipes) cho các mẫu xử lý mã thoát và hình dạng đầu ra JSON.
 
 ---
 
 ## Bước tiếp theo
 
-- **[CLI recipes for agents](/vi/agenteye/cli-recipes)**: sao chép các mẫu truy vấn dán, `jq` one-liners, `--fields` projections, xử lý exit-code, và hình dạng đầu ra JSON, được viết cho coding agent điều khiển CLI.
-- **[CLI agent skill](/vi/agenteye/cli-skill)**: đóng gói CLI này thành installable Claude Code / Codex *skill* vì vậy coding agent điều khiển Failproof AI Observability từ các yêu cầu tiếng Anh thuần túy.
+- **[CLI recipes for agents](/vi/agenteye/cli-recipes)**: sao chép-dán các mẫu truy vấn, `jq` one-liners, `--fields` projections, xử lý mã thoát, và hình dạng đầu ra JSON, được viết cho các coding agents điều khiển CLI.
+- **[CLI agent skill](/vi/agenteye/cli-skill)**: gói CLI này như một Claude Code / Codex *skill* có thể cài đặt để một coding agent điều khiển Failproof AI Observability từ các yêu cầu tiếng Anh đơn giản.
 - **[API keys](/vi/agenteye/api-keys)**: mô hình quyền đằng sau `keys create --add …`.
 - **[AI assistant](/vi/agenteye/assistant)**: bật trợ lý mà `agent ask` nói chuyện.

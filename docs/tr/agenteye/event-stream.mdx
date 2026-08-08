@@ -1,50 +1,50 @@
 ---
 title: "Event Stream"
-description: "Ajanınız bir şey yaptığı anda, siz bunu görürsünüz."
+description: "Aracınız bir şeyler yaptığı anda, siz de bunu görürsünüz."
 ---
 
 
-Ajanınız bir şey yaptığı anda, siz bunu görürsünüz. Event Stream, üretimde çalışan her ajanın canlı nabzıdır: bekleme yok, log dosyalarında arama yok, ne olduğunu tahmin etme yok.
+Aracınız bir şeyler yaptığı anda, siz de bunu görürsünüz. Event Stream, üretimdeki her aracının canlı nabzıdır: bekleme yok, günlükleri tarama yok, ne olduğunu tahmin etme yok.
 
-![Canlı Event Stream: renk kodlamalı olay satırları gerçek zamanlı olarak akmakta, ortam, ajan, oturum, olay türü ve serbest metin ile filtrelenebilir](/agenteye/images/events-stream.png)
+![Canlı Event Stream: renk kodlu olay satırları gerçek zamanlı olarak akıyor, ortam, aracı, oturum, olay türü ve serbest metin ile filtrelenebiliyor](/agenteye/images/events-stream.png)
 
-*Kuruluşunuzdaki her ajandan gelen her olay, en yeniler önce, olur olmaz güncelleniyor.*
+*Kuruluşunuzdaki her aracıdan gelen her olay, en yeni ilk sırada, gerçekleştikçe güncelleniyor.*
 
-## Her ajanın canlı nabzı
+## Her aracının canlı nabzı
 
-Bir ajan bir çalıştırma başlattığında, bir modeli çağırdığında, bir araç ateşlediğinde, bir kancayı çalıştırdığında veya bir hatayla karşılaştığında, satır olur olmaz akışın en üstünde görünür. Kuruluşunuzdaki her ajandan gelen her olayı izler, en yeniler önce, böylece her zaman güncel bir resme sahip olursunuz, eski bir değil.
+Bir aracı çalışmaya başladığında, bir modeli çağırdığında, bir araç tetiklediğinde, bir hook çalıştırdığında veya bir hata aldığında, satır anın hemen içinde akışın en üstünde görünür. Kuruluşunuzdaki her aracıdan gelen her olayı takip eder, en yeni ilk sırada, böylece her zaman güncel bir duruma sahip olursunuz, eski bir duruma değil.
 
-Bu, bir yerdeki log dosyalarını takip etmek, makineler arasında arama yapmak, zaman damgalarını el ile bir araya getirmek anlamına gelmez. Bir sayfayı açtığınız anda üretim izlemesini başlamış olursunuz.
+Bu, bir yerde günlük dosyalarını takip etmek anlamına gelmez, makineler arasında tarama yapmak anlamına gelmez, zaman damgalarını elle bir araya getirmek anlamına gelmez. Bir sayfayı açıyorsunuz ve zaten üretimi izliyorsunuz.
 
-Satırlar türe göre renk kodlamalıdır, böylece akışı hızlıca okuyabilir, her satırı analiz etmez. Bir bakışta, her satır size şunu gösterir:
+Satırlar tür grubuna göre renk kodlanmıştır, böylece akışı bir bakışta okuyabilirsiniz, her satırı ayrıntılı olarak ayrıştırmak yerine. Bir bakışta, her satır size şunları gösterir:
 
-- **Türü**, renk kodlamalı: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error` ve daha fazlası.
-- **Ne olduğunun bir satırlık özeti**, böylece genellikle sadece ana fikri almak için bir şey açmanız gerekmez.
+- **Türü**, renk kodlu: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error` ve daha fazlası.
+- **Ne olduğunun tek satırlık özeti**, böylece çoğu zaman sadece genel fikir almak için hiçbir şey açmanız gerekmez.
 - **Adım için token sayıları**.
-- **Uygulanabilir yerlerde bağlam penceresi dolu rozeti**, böylece hızlı bilgi büyümesi ve yaklaşan sıkıştırma, sizi ısıtmadan önce görünür olur.
+- **Uygulanabildiği durumda bağlam penceresi doldurma rozeti**, böylece hızlı artış ve yaklaşan sıkıştırma söz konusu olmadan önce görünür.
 
-Canlı izleme, kötü bir dağıtımı, kaçak bir döngüyü veya hata patlamasını olur olmaz yakalayacağınız anlamına gelir, yarınki log gözden geçirmesinde değil.
+Canlı izlemek demek, hatalı bir dağıtım, kaçak bir döngü veya hata dalgasını olur olmaz yakalamak demek, yarının günlük incelemesinde değil.
 
-## Önemli olan tek çalıştırmayı bulun
+## Önemli olan tek çalıştırmayı bul
 
-Bir şey yanlış görünüyorsa, çok fazla veri istemezsiniz. İstediğiniz şey, kıran tek çalıştırmadır. Akış hızlı filtreler: ortam, ajan, oturum, olay türü veya serbest metin tarafından.
+Bir şeyler yanlış görünüyorsa, ateş hortumunu istemezsiniz. İstediğiniz, kırılan tek çalıştırmadır. Akış hızla filtrelenir: ortam, aracı, oturum, olay türü veya serbest metin ile.
 
-Bir çalıştırmayı ilk olayından son olayına kadar takip etmek için oturum kimliğine veya ajan kimliğine göre filtreleyin. Tek bir etkinlik türünü yalıtmak için olay türüne göre filtreleyin, örneğin kuruluş genelinde tek görünüşte her `error`. "Her şey, her yerde"den "bu ajan, prod'da, hata veriyor"a birkaç tıkla daraltmak için filtreleri yığın, ardından bulduklarınız hakkında harekete geçin.
+Bir çalıştırmayı ilk olayından son olayına kadar takip etmek için oturum kimliğine veya aracı kimliğine göre filtreleyin. Tek bir etkinlik türünü izole etmek için olay türüne göre filtreleyin, örneğin kuruluş genelinde bir görünümde her `error`. Filtreleri yığınlayarak "her yerden her şey"den "bu aracı, üretimde, hatalı"a birkaç tıkla daraltın, ardından bulduğunuz şey üzerinde harekete geçin.
 
-Serbest metin arama, zaten elinizde olan bir mesaja, araç adına veya kimliğe doğru kesintisiz geçer, böylece müşteri raporu saniyeler içinde tam çalıştırmaya dönüşür.
+Serbest metin araması doğrudan zaten elinizde olan bir mesaja, araç adına veya kimliğe gider, böylece müşteri raporlaması kesin olarak birkaç saniyede çalıştırmaya dönüşür.
 
-## Nerede bulunur?
+## Nerede bulacaksınız
 
-Event Stream, kuruluş ana sayfanızıdır. Oturum açtığınız zaman ilk iniş yüzeyidir, `/<org-slug>/` konumunda, bu nedenle triyaj gelir gelmez başlar.
+Event Stream, kuruluş ana sayfasıdır. Oturum açtığınızda, bu ilk yüzeytir, `/<org-slug>/` adresinde, bu nedenle triaj varış anınızda başlar.
 
-Arkasında, ajanlarınız SDK üzerinden olayları yayar, toplayıcı bunları Failproof AI Observability sunucunuza gönderir ve akış kontrol ettiğiniz altyapıya vardıkları anda bunları takip eder. Ham izin yerine toplu görünümü istediğinizde, her çalıştırmanın olayları Sessions'ta tek bir satırda daraltılır, bir tık uzakta.
+Arkasında, aracılarınız SDK aracılığıyla olaylar yayınlar, toplayıcı bunları Failproof AI Observability sunucusuna gönderir ve akış kontrol ettiğiniz altyapıya varır varmaz onları takip eder. Hammadde yolu yerine toplu görünümü istediğinizde, her çalıştırmanın olayları Sessions'da tek satıra daraltılır, bir tıkta uzakta.
 
-Bu, diğer her observe yüzeyinin inşa ettiği ham gerçeğin kaynağıdır, bu nedenle başka bir yerde bir sayı yanlış görünüyorsa, akış aslında ne olduğunu doğrulamak için kullandığınız yerdir.
+Bu, diğer her gözlemlenme yüzeyinin üzerine inşa ettiği ham gerçek kaynağıdır, bu nedenle bir sayı başka yerde yanlış görünürse, akış aslında ne olduğunu onayladığınız yerdir.
 
-## İlgili
+## İlişkili
 
-- [Sessions](/tr/agenteye/sessions): aynı olaylar, çalıştırma başına bir satırda toplu, git tarzı yürütme grafiği ile.
-- [Telemetry](/tr/agenteye/telemetry): ajanlarınızın ne gönderdiği ve olayların akışa nasıl ulaştığı.
-- [Error tracking](/tr/agenteye/error-tracking): her şeyin ters gittiği bir triyaj yüzeyi.
-- [Alerts](/tr/agenteye/alerts): herhangi bir eşiği çağrı kuralına dönüştürün.
-- [CLI and agents](/tr/agenteye/cli-and-agents): terminalinizden aynı canlı iz.
+- [Sessions](/tr/agenteye/sessions): aynı olaylar bir çalıştırma başına bir satıra daraltılmış, git tarzı yürütme grafiği ile.
+- [Telemetry](/tr/agenteye/telemetry): aracılarınızın neler gönderdiği ve olayların akışa nasıl ulaştığı.
+- [Error tracking](/tr/agenteye/error-tracking): her şeyin yanlış gitmesi için bir triaj yüzeyi.
+- [Alerts](/tr/agenteye/alerts): herhangi bir eşiği sayfalama kuralına dönüştürün.
+- [CLI and agents](/tr/agenteye/cli-and-agents): terminalinizden aynı canlı yolu.

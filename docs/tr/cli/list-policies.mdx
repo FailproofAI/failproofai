@@ -1,6 +1,6 @@
 ---
-title: Politikaları listele
-description: "Hangi politikaların etkin olduğunu, parametrelerini ve özel politikaları görün"
+title: Politikaları Listele
+description: "Hangi politikaların etkinleştirildiğini, parametrelerini ve özel politikaları göreceğiniz yer"
 ---
 
 ```bash
@@ -16,16 +16,16 @@ Failproof AI Hook Policies (user)
 
   Status  Name                          Description
   ──────  ──────────────────────────────────────────────────────────────
-  ✓       block-sudo                    Sudo komutlarını engelle
+  ✓       block-sudo                    Block sudo commands
             allowPatterns: ["sudo systemctl status"]
-  ✓       block-rm-rf                   Özyinelemeli silmeleri engelle
-  ✗       block-curl-pipe-sh            curl|bash düzenini engelle
-  ✓       sanitize-api-keys             API anahtarlarını çıktıdan kaldır
+  ✓       block-rm-rf                   Block recursive deletions
+  ✗       block-curl-pipe-sh            Block curl|bash patterns
+  ✓       sanitize-api-keys             Redact API keys from output
             additionalPatterns: [{ regex: "MY_TOKEN_...", label: "..." }]
 
   ── Custom Policies (/home/alice/myproject/my-policies.js) ──────────────
-  ✓       require-jira-ticket           Bilet olmayan commit'leri engelle
-  ✓       approval-gate                 Yıkıcı işlemler için onay kapısı
+  ✓       require-jira-ticket           Block commits without ticket
+  ✓       approval-gate                 Approval gate for destructive ops
 ```
 
 `policyParams` içindeki bilinmeyen anahtarlar burada işaretlenir, böylece yazım hatalarını erken yakalayabilirsiniz.

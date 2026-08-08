@@ -1,23 +1,23 @@
 ---
-title: Hook 핸들러 (내부)
-description: "각 도구 이벤트마다 Claude Code가 호출하는 서브프로세스"
+title: Hook handler (내부)
+description: "각 도구 이벤트에서 Claude Code가 호출하는 서브프로세스"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-이 명령은 `failproofai policies --install`이 Claude Code의 `settings.json`에 등록하는 명령입니다. 일반적으로 직접 호출할 필요가 없습니다.
+이 명령은 `failproofai policies --install`이 Claude Code의 `settings.json`에 등록하는 명령입니다. 일반적으로 직접 호출하지 않습니다.
 
-stdin에서 JSON 페이로드를 읽고 활성화된 모든 정책을 평가한 후, 결정 결과를 나타내는 종료 코드로 종료합니다:
+stdin에서 JSON 페이로드를 읽고, 활성화된 모든 정책을 평가한 후, 결정을 나타내는 종료 코드로 종료합니다:
 
 | 종료 코드 | 결정 | 효과 |
 |-----------|----------|--------|
 | `0` | `allow` | 작업 허용 |
-| `1` | `deny` | 작업 차단 - Claude가 거부 이유를 확인함 |
-| `2` | `instruct` | Claude의 컨텍스트에 가이던스 주입 |
+| `1` | `deny` | 작업 차단 - Claude는 거부 이유를 확인합니다 |
+| `2` | `instruct` | Claude의 컨텍스트에 가이드를 주입합니다 |
 
-### 지원하는 이벤트 유형
+### 지원되는 이벤트 유형
 
 | 카테고리 | 이벤트 |
 |----------|--------|

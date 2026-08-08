@@ -11,16 +11,16 @@ failproofai には2つのテストスイートがあります：**ユニット�
 ## テストの実行
 
 ```bash
-# ユニットテストを1回実行
+# ユニットテストを一度実行する
 bun run test:run
 
-# ウォッチモードでユニットテストを実行
+# ウォッチモードでユニットテストを実行する
 bun run test
 
-# E2Eテストを実行（事前セットアップが必要 - 下記参照）
+# E2Eテストを実行する（事前セットアップが必要 — 下記参照）
 bun run test:e2e
 
-# ビルドせずに型チェック
+# ビルドせずに型チェックを行う
 bunx tsc --noEmit
 
 # リント
@@ -31,20 +31,20 @@ bun run lint
 
 ## ユニットテスト
 
-ユニットテストは `__tests__/` に配置されており、`jsdom` を使った [Vitest](https://vitest.dev) で実行されます。
+ユニットテストは `__tests__/` ディレクトリに配置されており、`jsdom` を使用した [Vitest](https://vitest.dev) で動作します。
 
 ```text
 __tests__/
   hooks/
     builtin-policies.test.ts      # 各ビルトインのポリシーロジック
     hooks-config.test.ts          # 設定の読み込みとスコープのマージ
-    policy-evaluator.test.ts      # パラメータ注入と評価順序
+    policy-evaluator.test.ts      # パラメータの注入と評価順序
     custom-hooks-registry.test.ts # globalThis レジストリの追加/取得/クリア
     custom-hooks-loader.test.ts   # ESM ローダー、推移的インポート、エラーハンドリング
-    manager.test.ts               # インストール/削除/一覧操作
+    manager.test.ts               # インストール/削除/一覧表示の操作
   components/
-    sessions-list.test.tsx        # セッションリストコンポーネント
-    project-list.test.tsx         # プロジェクトリストコンポーネント
+    sessions-list.test.tsx        # セッション一覧コンポーネント
+    project-list.test.tsx         # プロジェクト一覧コンポーネント
     ...
   lib/
     logger.test.ts
@@ -110,11 +110,11 @@ describe("block-sudo", () => {
 
 ## エンドツーエンドテスト
 
-E2Eテストは実際の `failproofai` バイナリをサブプロセスとして呼び出し、JSON ペイロードを stdin にパイプして、stdout の出力と終了コードを検証します。これにより、Claude Code が使用する完全な統合パスをテストします。
+E2Eテストは実際の `failproofai` バイナリをサブプロセスとして起動し、JSON ペイロードを stdin にパイプして、stdout の出力と終了コードをアサートします。これにより、Claude Code が使用する完全な統合パスをテストできます。
 
 ### セットアップ
 
-E2Eテストはリポジトリのソースから直接バイナリを実行します。初回実行の前に、カスタムフックファイルが `'failproofai'` からインポートする際に使用する CJS バンドルをビルドしてください：
+E2Eテストはリポジトリのソースから直接バイナリを実行します。初回実行前に、カスタムフックファイルが `'failproofai'` からインポートする際に使用する CJS バンドルをビルドしてください：
 
 ```bash
 bun build src/index.ts --outdir dist --target node --format cjs
@@ -126,32 +126,32 @@ bun build src/index.ts --outdir dist --target node --format cjs
 bun run test:e2e
 ```
 
-公開フック API（`src/hooks/custom-hooks-registry.ts`、`src/hooks/policy-helpers.ts`、または `src/hooks/policy-types.ts`）を変更した場合は、`dist/` を再ビルドしてください。
+公開フック API（`src/hooks/custom-hooks-registry.ts`、`src/hooks/policy-helpers.ts`、または `src/hooks/policy-types.ts`）を変更した場合は、都度 `dist/` を再ビルドしてください。
 
 ### E2Eテストの構成
 
 ```text
 __tests__/e2e/
   helpers/
-    hook-runner.ts      # バイナリを起動し、ペイロード JSON をパイプして、終了コード・stdout・stderr をキャプチャ
+    hook-runner.ts      # バイナリを起動し、ペイロード JSON をパイプして、終了コード・stdout・stderr をキャプチャする
     fixture-env.ts      # テストごとに分離された一時ディレクトリと設定ファイル
     payloads.ts         # 各イベントタイプに対応した Claude 準拠のペイロードファクトリ
   hooks/
-    builtin-policies.e2e.test.ts   # 実際のサブプロセスで各ビルトインポリシーをテスト
+    builtin-policies.e2e.test.ts   # 実際のサブプロセスを使った各ビルトインポリシーのテスト
     custom-hooks.e2e.test.ts       # カスタムフックの読み込みと評価
     config-scopes.e2e.test.ts      # プロジェクト/ローカル/グローバルをまたいだ設定のマージ
-    policy-params.e2e.test.ts      # パラメータ付きポリシーへのパラメータ注入
+    policy-params.e2e.test.ts      # パラメータ化されたポリシーへのパラメータ注入
 ```
 
 ### E2Eヘルパーの使い方
 
-**`FixtureEnv`** - テストごとに分離された環境：
+**`FixtureEnv`** — テストごとに分離された環境：
 
 ```typescript
 import { createFixtureEnv } from "../helpers/fixture-env";
 
 const env = createFixtureEnv();
-// env.cwd    - 一時ディレクトリ。payload.cwd として渡すと .failproofai/policies-config.json を読み込む
+// env.cwd    - 一時ディレクトリ。payload.cwd として渡すことで .failproofai/policies-config.json を読み込む
 // env.home   - 分離されたホームディレクトリ。実際の ~/.failproofai が混入しない
 
 env.writeConfig({
@@ -162,9 +162,9 @@ env.writeConfig({
 });
 ```
 
-`createFixtureEnv()` はクリーンアップ用の `afterEach` を自動的に登録します。
+`createFixtureEnv()` は `afterEach` によるクリーンアップを自動的に登録します。
 
-**`runHook`** - バイナリを呼び出す：
+**`runHook`** — バイナリを呼び出す：
 
 ```typescript
 import { runHook } from "../helpers/hook-runner";
@@ -180,7 +180,7 @@ expect(result.exitCode).toBe(0);
 expect(result.parsed?.hookSpecificOutput?.permissionDecision).toBe("deny");
 ```
 
-**`Payloads`** - 即座に使えるペイロードファクトリ：
+**`Payloads`** — 事前定義されたペイロードファクトリ：
 
 ```typescript
 Payloads.preToolUse.bash(command, cwd)
@@ -234,7 +234,7 @@ describe("block-rm-rf (E2E)", () => {
 ### E2Eレスポンスの形式
 
 | 判定 | 終了コード | stdout |
-|----------|-----------|--------|
+|------|-----------|--------|
 | `PreToolUse` deny | `0` | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"..."}}` |
 | `PostToolUse` deny | `0` | `{"hookSpecificOutput":{"additionalContext":"Blocked ... because: ..."}}` |
 | Instruct（Stop 以外） | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
@@ -243,18 +243,18 @@ describe("block-rm-rf (E2E)", () => {
 
 ### Vitest の設定
 
-E2Eテストは `vitest.config.e2e.mts` を使用し、以下の設定が適用されます：
+E2Eテストは `vitest.config.e2e.mts` を使用しており、以下の設定が適用されています：
 
-- `environment: "node"` - ブラウザのグローバル変数は不要
-- `pool: "forks"` - 真のプロセス分離（テストがサブプロセスを起動）
-- `testTimeout: 20_000` - テストあたり20秒（バイナリ起動 + フック評価）
+- `environment: "node"` — ブラウザのグローバル変数は不要
+- `pool: "forks"` — 真のプロセス分離（テストがサブプロセスを起動する）
+- `testTimeout: 20_000` — テストあたり 20 秒（バイナリの起動 + フックの評価）
 
-`forks` プールは重要な設定です。スレッドベースのワーカーは `globalThis` を共有するため、サブプロセスを起動するテストに干渉する可能性があります。プロセスベースのフォークはこの問題を回避します。
+`forks` プールは重要な設定です。スレッドベースのワーカーは `globalThis` を共有するため、サブプロセスを起動するテストに干渉する可能性があります。プロセスベースの forks はこの問題を回避できます。
 
 ---
 
 ## CI
 
-マージ前に、CI のフルラン（`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`）がすべてパスする必要があります。E2Eスイートは別の CI ジョブとして並列で実行されます。
+マージ前には、CI のフルラン（`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`）がすべてパスしている必要があります。E2Eスイートは並行して独立した CI ジョブとして実行されます。
 
-マージ前の完全なチェックリストは [Contributing](../CONTRIBUTING.md) を参照してください。
+完全なマージ前チェックリストについては [Contributing](../CONTRIBUTING.md) を参照してください。

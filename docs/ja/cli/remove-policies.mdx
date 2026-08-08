@@ -7,7 +7,7 @@ description: "Claude Code の設定からフックエントリを削除する"
 failproofai policies --uninstall [policy-names...] [options]
 ```
 
-Claude Code の `settings.json` から failproofai のフックエントリを削除します。
+Claude Code の `settings.json` から failproofai フックエントリを削除します。
 
 エイリアス: `failproofai p -u`
 
@@ -15,29 +15,29 @@ Claude Code の `settings.json` から failproofai のフックエントリを�
 
 | フラグ | 説明 |
 |------|-------------|
-| `--scope user` | グローバル設定から削除する（デフォルト） |
-| `--scope project` | プロジェクト設定から削除する |
-| `--scope local` | ローカル設定から削除する |
-| `--scope all` | すべてのスコープから一括削除する |
-| `--custom` / `-c` | 設定から `customPoliciesPath` をクリアする |
+| `--scope user` | グローバル設定から削除（デフォルト） |
+| `--scope project` | プロジェクト設定から削除 |
+| `--scope local` | ローカル設定から削除 |
+| `--scope all` | すべてのスコープから一括削除 |
+| `--custom` / `-c` | 設定から `customPoliciesPath` を削除 |
 
 ## 動作
 
-- **ポリシー名の指定なし** — 設定ファイルからすべての failproofai フックエントリを削除する
-- **特定の名前を指定** — 対象ポリシーを無効化するが、フックはインストールされたまま維持する
+- **ポリシー名なし** - 設定ファイルからすべての failproofai フックエントリを削除する
+- **特定の名前を指定** - 指定したポリシーを無効化するが、フック自体はインストールされたまま維持する
 
 ## 使用例
 
 ```bash
-# すべてのフックをグローバルから削除する
+# グローバルからすべてのフックを削除
 failproofai policies --uninstall
 
-# 特定のポリシーを無効化する（フックはインストール済みのまま維持）
+# 特定のポリシーを無効化（フックはインストール済みのまま）
 failproofai policies --uninstall block-sudo
 
-# すべてのスコープからフックを削除する
+# すべてのスコープからフックを削除
 failproofai policies --uninstall --scope all
 
-# カスタムポリシーのパスをクリアする
+# カスタムポリシーのパスを削除
 failproofai policies --uninstall --custom
 ```

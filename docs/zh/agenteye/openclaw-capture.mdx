@@ -1,23 +1,23 @@
 ---
 title: "OpenClaw 会话捕获"
-description: "将团队本地 OpenClaw 会话以普通会话和事件的形式同步到 AgentEye — 无需改变 OpenClaw 的运行方式。"
+description: "将团队本地 OpenClaw 会话以普通会话和事件的形式接入 AgentEye — 无需更改 OpenClaw 的任何运行方式。"
 ---
 
-如果你的团队使用 [OpenClaw](https://docs.openclaw.ai)，OpenClaw 会话捕获功能可将这些会话作为普通会话和事件引入 AgentEye，让你可以像查看其他观测数据一样对它们进行搜索、回放和评估。它与 [Python SDK](/zh/agenteye/python-sdk) 相辅相成：SDK 用于对你自己编写的 Agent 进行埋点，而此功能则捕获团队日常使用 OpenClaw 的工作内容——无需改变任何使用习惯。
+如果您的团队使用 [OpenClaw](https://docs.openclaw.ai)，OpenClaw 会话捕获功能可将这些会话作为普通会话和事件引入 AgentEye，让您能够与其他所有观测内容一起搜索、回放和评估。它是 [Python SDK](/zh/agenteye/python-sdk) 的补充：SDK 用于对您编写的 Agent 进行埋点，而此功能则捕获团队日常 OpenClaw 工作 — 无需更改任何运行方式。
 
-一个轻量级后台采集器会实时读取 OpenClaw 在本地写入的会话记录，并将其发送至 AgentEye。其工作方式与 [Codex 捕获](/zh/agenteye/codex-capture) 相同，且单个采集器可同时捕获两者。
+一个轻量级后台采集器会在 OpenClaw 本地会话记录写入时实时读取并上传至 AgentEye。其工作原理与 [Codex 捕获](/zh/agenteye/codex-capture) 相同，一个采集器可同时捕获两者。
 
 ---
 
 ## 捕获内容
 
-机器上 OpenClaw 配置中的每个 Agent 都会被该机器的采集器捕获，无需逐个 Agent 进行配置。
+某台机器上 OpenClaw 配置中的所有 Agent 均由该机器的采集器捕获 — 无需对每个 Agent 单独配置。
 
-每个 OpenClaw 会话将成为 AgentEye 中的一个[会话](/zh/agenteye/sessions)；其中的用户消息、助手消息、工具调用及工具结果将转换为对应的[事件](/zh/agenteye/event-stream)。
+每个 OpenClaw 会话将在 AgentEye 中成为一个[会话](/zh/agenteye/sessions)；其用户与助手消息、工具调用及工具结果将对应转换为相应的[事件](/zh/agenteye/event-stream)。
 
 ---
 
-## 开启方式
+## 启用捕获
 
 捕获功能默认关闭，需手动启用。使用具有 `events:add` 权限的 API 密钥安装采集器（参见 [API 密钥](/zh/agenteye/api-keys)），并开启 OpenClaw 捕获：
 
@@ -26,24 +26,24 @@ curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main
   | sh -s -- --key <YOUR_API_KEY> --openclaw-enabled
 ```
 
-此命令将安装采集器、将其注册为后台服务并开始捕获。确认其正常运行：
+此命令将安装采集器、将其注册为后台服务并开始捕获。确认其正在运行：
 
 ```bash
 agenteye-collector health
 ```
 
-需要在同一台机器上捕获多个 Agent？在同一命令中添加各自的标志即可，例如 `--openclaw-enabled --codex-enabled`。
+需要在同一台机器上捕获多个 Agent？在同一命令中添加各自的标志即可 — 例如 `--openclaw-enabled --codex-enabled`。
 
-首次运行时，现有的 OpenClaw 会话将被回填一次，此后新产生的活动将在数秒内实时同步。OpenClaw 的本地文件仅供读取，绝不会被修改、移动或删除，且每个会话即使在重启后也只会被发送一次。
+首次运行时，现有的 OpenClaw 会话将被回填一次，之后新产生的活动将在数秒内实时上传。OpenClaw 的原始文件仅被读取 — 不会被修改、移动或删除 — 每个会话仅上传一次，即使在重启后也是如此。
 
 ---
 
 ## 查看位置
 
-捕获的会话显示在 **Sessions** 中，其事件显示在 **Events** 流中，与其他受监测的 Agent 完全一致——因此[会话回放](/zh/agenteye/sessions)、[搜索](/zh/agenteye/queries)、[评估](/zh/agenteye/evaluations)和[告警](/zh/agenteye/alerts)均可对其生效。通过筛选 OpenClaw Agent 可单独查看这些数据。
+捕获的会话将显示在 **Sessions** 中，其事件显示在 **Events** 流中，与您观测的任何其他 Agent 完全一致 — 因此[会话回放](/zh/agenteye/sessions)、[搜索](/zh/agenteye/queries)、[评估](/zh/agenteye/evaluations)和[告警](/zh/agenteye/alerts)均可对其使用。通过筛选 OpenClaw Agent 可单独查看这些内容。
 
 ---
 
 ## 隐私说明
 
-OpenClaw 的会话记录包含完整的会话内容——包括命令输出、文件内容以及 Agent 读取或写入的任何信息——可能涉及敏感数据。捕获的会话将原样发送，因此请仅在适合将相关内容集中存储至 AgentEye 的机器和团队中启用捕获功能，并为采集器提供仅限 `events:add` 权限的密钥。数据隔离方式详见[安全说明](/zh/agenteye/security)。
+OpenClaw 记录包含完整的会话内容 — 包括命令输出、文件内容以及 Agent 读写的所有信息 — 可能含有敏感数据。捕获的会话将原样上传，因此请仅在适合将此类内容集中到 AgentEye 的机器和团队中启用捕获，并为采集器提供仅限 `events:add` 权限的密钥。有关数据隔离方式，请参阅[安全性](/zh/agenteye/security)。

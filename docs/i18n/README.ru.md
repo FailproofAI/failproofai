@@ -17,14 +17,14 @@
 
 **Переводы:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**Разрешение проблем во время выполнения для кодирующих агентов.**
-Интегрируется с Claude Code и Codex. Перехватывает зацикливания, опасные действия и утечки секретов
+**Разрешение ошибок агентов кодирования в рантайме.**
+Интегрируется с Claude Code и Codex. Предотвращает зацикливание, опасные действия и утечки секретов
 до того, как они станут инцидентами. Нулевая задержка. Работает локально.
 
 </div>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI в действии" width="800" />
 </p>
 
 ---
@@ -129,32 +129,32 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # или просто запустите `failproofai` и примите запрос при первом запуске
+failproofai policies --install   # или просто запустите `failproofai` и примите предложение при первом запуске
 failproofai
 ```
 
-30 встроенных политик активируются немедленно. Панель управления доступна по адресу `localhost:8020`. Отключите запрос при первом запуске с помощью `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 встроенных политик активируются сразу же. Панель управления доступна по адресу `localhost:8020`. Отключите предложение при первом запуске с помощью `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## Что оно блокирует
+## Что это блокирует
 
-| Политика | Что она блокирует |
+| Политика | Что блокируется |
 |---|---|
-| `block-push-master` | Прямые push в `main` / `master` |
+| `block-push-master` | Прямые пуши в `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Коммиты, слияния, перебазирования на `main` / `master` |
+| `block-work-on-main` | Коммиты, мержи, ребейсы в `main` / `master` |
 | `block-rm-rf` | Рекурсивное удаление файлов |
-| `sanitize-api-keys` | Утечки API-ключей в контекст агента |
+| `sanitize-api-keys` | API ключи, утекающие в контекст агента |
 
 → [Все 30 встроенных политик](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## Ваши собственные политики
+## Собственные политики
 
-Поместите файл в `.failproofai/policies/` — он загружается автоматически, никаких флагов не требуется.
-Зафиксируйте его, и вся команда получит его при следующем pull.
+Разместите файл в `.failproofai/policies/` — он загружается автоматически, никакие флаги не требуются.
+Закоммитьте его, и вся команда получит его при следующем pull'е.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -164,29 +164,29 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Writes to production paths are blocked.");
+      return deny("Записи в пути production заблокированы.");
     return allow();
   },
 });
 ```
 
-Три решения доступны для каждой политики:
+Каждой политике доступны три решения:
 
 | Решение | Эффект |
 |---|---|
 | `allow()` | Разрешить операцию |
-| `deny(message)` | Заблокировать — сообщение вернется агенту |
-| `instruct(message)` | Позволить пройти, но добавить контекст в следующий запрос агента |
+| `deny(message)` | Заблокировать — сообщение вернётся агенту |
+| `instruct(message)` | Пропустить, но добавить контекст в следующий запрос агенту |
 
 → [Руководство по пользовательским политикам](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## Видимость сессии
+## Видимость сеанса
 
-Каждый вызов инструмента, который делает ваш агент, регистрируется локально. Панель управления показывает, что было выполнено,
-что было заблокировано и что политика сказала агенту — поэтому вы не гадаете,
-когда что-то идет не так. → [Руководство панели управления](https://docs.befailproof.ai/dashboard)
+Каждый вызов инструмента, сделанный вашим агентом, логируется локально. Панель управления показывает, что было запущено,
+что было заблокировано и что политика сообщила агенту — так что вы не гадаете,
+когда что-то идёт не так. → [Руководство по панели управления](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -196,25 +196,28 @@ customPolicies.add({
 |---|---|
 | [Начало работы](https://docs.befailproof.ai/getting-started) | Установка и первые шаги |
 | [Встроенные политики](https://docs.befailproof.ai/built-in-policies) | Все 30 политик с параметрами |
-| [Пользовательские политики](https://docs.befailproof.ai/custom-policies) | Напишите свои собственные |
+| [Пользовательские политики](https://docs.befailproof.ai/custom-policies) | Напишите свои |
 | [Конфигурация](https://docs.befailproof.ai/configuration) | Области конфигурации и правила слияния |
-| [Панель управления](https://docs.befailproof.ai/dashboard) | Монитор сеансов и активность политик |
-| [Архитектура](https://docs.befailproof.ai/architecture) | Как работает система перехватов |
+| [Панель управления](https://docs.befailproof.ai/dashboard) | Монитор сеанса и активность политик |
+| [Архитектура](https://docs.befailproof.ai/architecture) | Как работает система перехватчиков |
 
 ---
 
 ## Лицензия
 
-MIT с [Commons Clause](https://commonsclause.com/) — бесплатно для внутреннего и личного использования; коммерческая перепродажа самого failproofai требует отдельного соглашения. Полный текст см. в [LICENSE](../../LICENSE).
+MIT с [Commons Clause](https://commonsclause.com/) — бесплатно для внутреннего и личного использования; коммерческая перепродажа самого failproofai требует отдельного соглашения. Полный текст смотрите в [LICENSE](../../LICENSE).
 
 ---
 
-## Внесение вклада
+## Вклад в проект
 
-См. [CONTRIBUTING.md](../../CONTRIBUTING.md). Новые политики, граничные случаи и переводы приветствуются.
+Смотрите [CONTRIBUTING.md](../../CONTRIBUTING.md). Новые политики, граничные случаи и переводы приветствуются.
 
-> **Собирайте перед началом.** Сначала запустите `bun install && bun run build`. Этот репозиторий запускает собственные перехватчики failproofai на себе, и они разрешают импорт `failproofai` для скомпилированного пакета `dist/` — без сборки вы столкнетесь с ошибками перехватчиков `Cannot find package 'failproofai'`. Пересобирайте после изменения `src/`. См.
-> [Сборка перед работой встроенных перехватчиков в репозитории](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **Соберите проект перед началом.** Запустите `bun install && bun run build` сначала. Этот репозиторий запускает
+> собственные перехватчики failproofai на себе, и они разрешают импорт `failproofai` в скомпилированном бандле `dist/`
+> — без сборки вы столкнётесь с ошибками перехватчиков `Cannot find package 'failproofai'`.
+> Пересобирайте после изменений `src/`. Смотрите
+> [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

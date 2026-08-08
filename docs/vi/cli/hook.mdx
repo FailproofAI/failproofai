@@ -1,20 +1,20 @@
 ---
-title: Hook handler (internal)
-description: "Subprocess mà Claude Code gọi trên mỗi sự kiện công cụ"
+title: Hook handler (nội bộ)
+description: "Tiến trình con mà Claude Code gọi trên mỗi sự kiện công cụ"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-Đây là lệnh được đăng ký trong `settings.json` của Claude Code bởi `failproofai policies --install`. Bình thường bạn không gọi trực tiếp lệnh này.
+Đây là lệnh được đăng ký trong `settings.json` của Claude Code bởi `failproofai policies --install`. Bạn thường không cần gọi lệnh này trực tiếp.
 
-Đọc một payload JSON từ stdin, đánh giá tất cả các chính sách được bật, và thoát với một mã chỉ định quyết định:
+Đọc một tải trọng JSON từ stdin, đánh giá tất cả các chính sách được bật, và thoát với mã code chỉ ra quyết định:
 
 | Mã thoát | Quyết định | Hiệu ứng |
 |-----------|------------|---------|
 | `0` | `allow` | Cho phép hành động |
-| `1` | `deny` | Chặn hành động - Claude sẽ thấy lý do từ chối |
+| `1` | `deny` | Chặn hành động - Claude nhìn thấy lý do từ chối |
 | `2` | `instruct` | Đưa hướng dẫn vào ngữ cảnh của Claude |
 
 ### Các loại sự kiện được hỗ trợ
@@ -24,7 +24,7 @@ failproofai --hook <EventType>
 | **Thực thi công cụ** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **Vòng đời phiên** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **Tương tác người dùng** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
-| **Subagents & nhiệm vụ** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
+| **Các agent phụ & tác vụ** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **Cấu hình** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
-| **Hệ thống tệp** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
+| **Hệ thống tập tin** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
 | **Ngữ cảnh** | `PreCompact`, `PostCompact` |

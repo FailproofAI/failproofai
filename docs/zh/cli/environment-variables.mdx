@@ -3,13 +3,13 @@ title: 环境变量
 description: "通过环境变量配置 failproofai 的行为"
 ---
 
-## 控制台
+## 仪表板
 
 | 变量 | 描述 |
 |----------|-------------|
-| `PORT` | 控制台端口（默认：`8020`） |
+| `PORT` | 仪表板端口（默认：`8020`） |
 | `CLAUDE_PROJECTS_PATH` | 覆盖 Claude Code 项目文件夹的查找路径 |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | 以逗号分隔的控制台页面列表，用于隐藏指定页面 |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | 以逗号分隔的需要隐藏的仪表板页面 |
 | `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | 允许访问开发资源的主机/IP，与 `--allowed-origins` 相同 |
 
 ## 日志
@@ -21,16 +21,31 @@ description: "通过环境变量配置 failproofai 的行为"
 
 ## 遥测
 
+failproofai 默认会上报匿名使用遥测数据。有两种方式可以关闭它，系统会采用限制更严格的那个设置——环境变量永远无法重新启用配置文件中已关闭的功能。
+
 | 变量 | 描述 |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 禁用匿名使用遥测 |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 为当前进程禁用匿名使用遥测 |
+
+若要在机器上永久禁用，请将以下内容添加到 `~/.failproofai/config.toml`：
+
+```toml
+[telemetry]
+enabled = false
+```
+
+<Note>
+如果你运行的是 **failproofaid 守护进程**，请使用配置文件方式。守护进程是系统级服务，其运行环境不包含从 shell 导出的变量，因此 `FAILPROOFAI_TELEMETRY_DISABLED` 对它不生效。`[telemetry] enabled = false` 可同时被 CLI 和守护进程读取。
+</Note>
+
+守护进程仅上报自身的**生命周期**事件：启动时（以及上次运行是否正常退出）、停止时、评估 worker 被启动或重启时、采集任务失败时，以及云端策略拉取的结果。这些事件仅携带低基数的值和计数——不包含任何文件路径、命令、策略、提示词，也不包含从记录中读取的任何内容。不存在单次工具调用的事件。
 
 ## 认证
 
 | 变量 | 描述 |
 |----------|-------------|
-| `FAILPROOF_API_URL` | 覆盖控制台认证对话框所使用的 API 服务器基础 URL，默认为 `https://api.befailproof.ai`；在本地运行 API 服务器时可设置为 `http://localhost:8080`（或其他地址） |
-| `FAILPROOFAI_AUTH_DIR` | 覆盖 `auth.json` 的存储位置（默认：`~/.failproofai`），主要用于隔离测试 |
+| `FAILPROOF_API_URL` | 覆盖仪表板认证对话框所使用的 API 服务器基础 URL。默认为 `https://api.befailproof.ai`；在本地运行 api-server 时可设置为 `http://localhost:8080`（或其他地址）。 |
+| `FAILPROOFAI_AUTH_DIR` | 覆盖 `auth.json` 的存储位置（默认：`~/.failproofai`），主要用于隔离测试。 |
 
 ## 首次运行提示
 

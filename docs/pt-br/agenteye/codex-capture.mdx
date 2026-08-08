@@ -1,11 +1,11 @@
 ---
 title: "Captura de sessões do Codex"
-description: "Transmita as sessões locais do OpenAI Codex da sua equipe para o AgentEye como sessões e eventos comuns — sem nenhuma mudança na forma como eles executam o Codex."
+description: "Envie as sessões locais do OpenAI Codex da sua equipe para o AgentEye como sessões e eventos comuns — sem nenhuma alteração na forma como eles executam o Codex."
 ---
 
-Seus engenheiros já executam o OpenAI Codex todos os dias. A captura de sessões do Codex traz essas sessões de codificação para o AgentEye como sessões e eventos comuns, para que você possa pesquisar, reproduzir e avaliar tudo junto com o restante do que você observa. Ela complementa o [Python SDK](/pt-br/agenteye/python-sdk): o SDK instrumenta agentes que você escreve, enquanto este captura o trabalho do Codex que sua equipe já realiza — sem nenhuma mudança na forma como eles o executam.
+Seus engenheiros já executam o OpenAI Codex todos os dias. A captura de sessões do Codex traz essas sessões de codificação para o AgentEye como sessões e eventos comuns, para que você possa pesquisar, reproduzir e avaliá-las ao lado de tudo o mais que você observa. Ela complementa o [Python SDK](/pt-br/agenteye/python-sdk): o SDK instrumenta os agentes que você escreve, enquanto esta captura o trabalho do Codex que sua equipe já realiza — sem nenhuma alteração na forma como ele é executado.
 
-Um pequeno coletor em segundo plano lê os transcritos de sessão locais do Codex conforme são gravados e os envia para o AgentEye. Um coletor por máquina captura todas as superfícies locais do Codex de uma vez — não há configuração por superfície.
+Um pequeno coletor em segundo plano lê as transcrições de sessão locais do Codex à medida que são gravadas e as envia para o AgentEye. Um coletor por máquina captura todas as superfícies locais do Codex de uma vez — não há configuração por superfície.
 
 O mesmo coletor captura outros agentes também — veja [OpenClaw](/pt-br/agenteye/openclaw-capture) e [Hermes](/pt-br/agenteye/hermes-capture). Ative cada um que você utiliza; um único coletor pode capturar vários ao mesmo tempo.
 
@@ -13,15 +13,15 @@ O mesmo coletor captura outros agentes também — veja [OpenClaw](/pt-br/agente
 
 ## O que é capturado
 
-Toda superfície do Codex executada **localmente** produz os mesmos transcritos de sessão em disco, e o coletor os recolhe todos:
+Toda superfície do Codex que é executada **localmente** produz as mesmas transcrições de sessão em disco, e o coletor as recupera todas:
 
 - o **CLI** do Codex e o `codex exec`
-- a **extensão para VS Code / IDE**
+- a **extensão do VS Code / IDE**
 - o **aplicativo desktop**, quando executa uma sessão localmente
 
-Cada sessão do Codex se torna uma [sessão](/pt-br/agenteye/sessions) do AgentEye; suas mensagens de usuário e assistente, raciocínio, chamadas de ferramentas, resultados de ferramentas e uso de tokens se tornam os [eventos](/pt-br/agenteye/event-stream) correspondentes. A superfície de onde cada sessão se originou (CLI, IDE ou desktop) é registrada, para que você possa distingui-las.
+Cada sessão do Codex se torna uma [sessão](/pt-br/agenteye/sessions) no AgentEye; suas mensagens de usuário e assistente, raciocínio, chamadas de ferramentas, resultados de ferramentas e uso de tokens se tornam os [eventos](/pt-br/agenteye/event-stream) correspondentes. A superfície de origem de cada sessão (CLI, IDE ou desktop) é registrada, para que você possa diferenciá-las.
 
-> **Sessões na nuvem não são capturadas.** O aplicativo desktop executa cada vez mais sessões na nuvem do Codex e mantém apenas os metadados delas na máquina — não há transcrito local para leitura. Apenas sessões executadas localmente são capturadas.
+> **Sessões em nuvem não são capturadas.** O aplicativo desktop executa cada vez mais sessões na nuvem do Codex e mantém apenas seus metadados na máquina — não há transcrição local para ler. Apenas sessões executadas localmente são capturadas.
 
 ---
 
@@ -34,7 +34,7 @@ curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main
   | sh -s -- --key <YOUR_API_KEY> --codex-enabled
 ```
 
-Isso instala o coletor, registra-o como um serviço em segundo plano e inicia a captura. Confirme que está em execução:
+Isso instala o coletor, registra-o como um serviço em segundo plano e inicia a captura. Confirme que ele está em execução:
 
 ```bash
 agenteye-collector health
@@ -44,12 +44,12 @@ Na primeira execução, suas sessões do Codex existentes são preenchidas retro
 
 ---
 
-## Onde aparece
+## Onde as sessões aparecem
 
-As sessões capturadas aparecem em **Sessões**, e seus eventos no fluxo de **Eventos**, da mesma forma que qualquer outro agente que você observa — assim, [reprodução de sessão](/pt-br/agenteye/sessions), [pesquisa](/pt-br/agenteye/queries), [avaliações](/pt-br/agenteye/evaluations) e [alertas](/pt-br/agenteye/alerts) funcionam nelas. Filtre pelo agente Codex para visualizá-las separadamente.
+As sessões capturadas aparecem em **Sessions**, e seus eventos no stream de **Events**, da mesma forma que qualquer outro agente que você observa — portanto, [reprodução de sessões](/pt-br/agenteye/sessions), [pesquisa](/pt-br/agenteye/queries), [avaliações](/pt-br/agenteye/evaluations) e [alertas](/pt-br/agenteye/alerts) funcionam normalmente com elas. Filtre pelo agente Codex para visualizá-las separadamente.
 
 ---
 
 ## Privacidade
 
-Os transcritos do Codex contêm a sessão completa — incluindo saída de comandos, conteúdo de arquivos e tudo que o Codex leu ou escreveu — e podem conter segredos. As sessões capturadas são enviadas como estão; portanto, ative a captura somente em máquinas e para equipes em que centralizar esse conteúdo no AgentEye seja apropriado, e forneça ao coletor uma chave com escopo apenas para `events:add`. Consulte [Segurança](/pt-br/agenteye/security) para saber como seus dados são mantidos isolados.
+As transcrições do Codex contêm a sessão completa — incluindo saída de comandos, conteúdo de arquivos e tudo o que o Codex leu ou escreveu — e podem conter segredos. As sessões capturadas são enviadas como estão, portanto, ative a captura apenas em máquinas e para equipes nas quais centralizar esse conteúdo no AgentEye seja apropriado, e forneça ao coletor uma chave com escopo apenas para `events:add`. Consulte [Segurança](/pt-br/agenteye/security) para saber como seus dados são mantidos isolados.

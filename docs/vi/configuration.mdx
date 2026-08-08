@@ -4,7 +4,7 @@ description: "Định dạng tệp cấu hình, hệ thống ba phạm vi và qu
 icon: gear
 ---
 
-failproofai sử dụng các tệp cấu hình JSON để kiểm soát những chính sách nào được kích hoạt, cách chúng hoạt động và nơi tải các chính sách tùy chỉnh. Cấu hình được thiết kế để dễ dàng chia sẻ với nhóm của bạn - lưu nó vào kho lưu trữ và mỗi nhà phát triển sẽ có cùng một lưới bảo vệ đại lý.
+failproofai sử dụng các tệp cấu hình JSON để điều khiển các chính sách nào đang hoạt động, cách chúng hoạt động và nơi tải các chính sách tùy chỉnh từ đó. Cấu hình được thiết kế để dễ dàng chia sẻ với đội của bạn - cam kết nó vào kho lưu trữ của bạn và mọi nhà phát triển đều nhận được cùng một lưới bảo vệ agent.
 
 ---
 
@@ -14,31 +14,31 @@ Có ba phạm vi cấu hình, được đánh giá theo thứ tự ưu tiên:
 
 | Phạm vi | Đường dẫn tệp | Mục đích |
 |-------|-----------|---------|
-| **project** | `.failproofai/policies-config.json` | Cài đặt cho từng kho lưu trữ, được lưu trong kiểm soát phiên bản |
-| **local** | `.failproofai/policies-config.local.json` | Ghi đè cá nhân cho từng kho lưu trữ, được gitignore |
-| **global** | `~/.failproofai/policies-config.json` | Mặc định ở cấp người dùng trên tất cả các dự án |
+| **project** | `.failproofai/policies-config.json` | Cài đặt riêng cho mỗi kho lưu trữ, được cam kết vào kiểm soát phiên bản |
+| **local** | `.failproofai/policies-config.local.json` | Ghi đè riêng cho mỗi kho lưu trữ, bị gitignored |
+| **global** | `~/.failproofai/policies-config.json` | Giá trị mặc định cấp người dùng trên tất cả các dự án |
 
-Khi failproofai nhận được sự kiện hook, nó tải và hợp nhất cả ba tệp tồn tại cho thư mục làm việc hiện tại.
+Khi failproofai nhận một sự kiện hook, nó tải và hợp nhất cả ba tệp tồn tại cho thư mục làm việc hiện tại.
 
 ### Quy tắc hợp nhất
 
-**`enabledPolicies`** - hợp của cả ba phạm vi. Một chính sách được bật ở bất kỳ mức nào đều hoạt động.
+**`enabledPolicies`** - hợp nhất các ba phạm vi. Một chính sách được bật ở bất kỳ mức nào là hoạt động.
 
 ```text
 project:  ["block-sudo"]
 local:    ["block-rm-rf"]
 global:   ["block-sudo", "sanitize-api-keys"]
 
-resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]  ← hợp không lặp lại
+resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]  ← hợp nhất loại bỏ trùng lặp
 ```
 
-**`policyParams`** - phạm vi đầu tiên xác định các tham số cho một chính sách nhất định chiến thắng hoàn toàn. Không có hợp nhất sâu của các giá trị trong các tham số của chính sách.
+**`policyParams`** - phạm vi đầu tiên định nghĩa tham số cho một chính sách nhất định sẽ thắng hoàn toàn. Không có hợp nhất sâu các giá trị trong các tham số của chính sách.
 
 ```text
 project:  block-sudo → { allowPatterns: ["sudo apt-get update"] }
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo apt-get update"] }   ← project chiến thắng, global bị bỏ qua
+resolved: { allowPatterns: ["sudo apt-get update"] }   ← project thắng, global bị bỏ qua
 ```
 
 ```text
@@ -46,14 +46,14 @@ project:  (không có mục block-sudo)
 local:    (không có mục block-sudo)
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo systemctl status"] }  ← lọt xuống global
+resolved: { allowPatterns: ["sudo systemctl status"] }  ← rơi xuống global
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** - phạm vi đầu tiên xác định bất kỳ hình thức nào đều chiến thắng.
+**`customPoliciesPaths` / `customPoliciesPath`** - phạm vi đầu tiên định nghĩa bất kỳ hình thức nào sẽ thắng.
 
-**`disabledCustomPolicies`** - hợp trên tất cả các phạm vi. Bảng điều khiển viết một ID được xác định nguồn ở đây khi bạn tắt một chính sách riêng lẻ từ một tệp chính sách rõ ràng hoặc theo quy ước. Các chính sách không được liệt kê vẫn được bật theo mặc định; ID bao gồm tệp nguồn để có thể kiểm soát các chính sách cùng tên trong nhiều tệp một cách độc lập.
+**`disabledCustomPolicies`** - hợp nhất trên tất cả các phạm vi. Bảng điều khiển ghi một ID có xác định nguồn ở đây khi bạn tắt một chính sách riêng lẻ từ một tệp chính sách rõ ràng hoặc quy ước. Các chính sách không được liệt kê vẫn được bật theo mặc định; các ID bao gồm tệp nguồn để các chính sách cùng tên trong nhiều tệp có thể được kiểm soát độc lập.
 
-**`llm`** - phạm vi đầu tiên xác định nó chiến thắng.
+**`llm`** - phạm vi đầu tiên định nghĩa nó sẽ thắng.
 
 ---
 
@@ -104,27 +104,27 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← lọt xuống global
 
 Kiểu: `string[]`
 
-Danh sách tên chính sách để bật. Tên phải khớp chính xác với các mã định danh chính sách được hiển thị bởi `failproofai policies`. Xem [Built-in Policies](/vi/built-in-policies) để biết danh sách đầy đủ.
+Danh sách tên chính sách cần bật. Tên phải khớp chính xác với các định danh chính sách được hiển thị bởi `failproofai policies`. Xem [Built-in Policies](/vi/built-in-policies) để có danh sách đầy đủ.
 
-Các chính sách không nằm trong `enabledPolicies` không hoạt động, ngay cả khi chúng có mục nhập trong `policyParams`.
+Các chính sách không nằm trong `enabledPolicies` là không hoạt động, ngay cả khi chúng có mục nhập trong `policyParams`.
 
 ### `policyParams`
 
 Kiểu: `Record<string, Record<string, unknown>>`
 
-Ghi đè tham số theo chính sách. Khóa bên ngoài là tên chính sách; các khóa bên trong là khóa dành riêng cho chính sách. Mỗi chính sách tài liệu hóa các tham số có sẵn của nó trong [Built-in Policies](/vi/built-in-policies).
+Ghi đè tham số cho mỗi chính sách. Khóa bên ngoài là tên chính sách; các khóa bên trong là dành riêng cho chính sách. Mỗi chính sách ghi lại các tham số có sẵn của nó trong [Built-in Policies](/vi/built-in-policies).
 
-Nếu một chính sách có các tham số nhưng bạn không chỉ định chúng, các mặc định tích hợp của chính sách sẽ được sử dụng. Những người dùng không cấu hình `policyParams` hoàn toàn sẽ nhận được hành vi giống hệt với các phiên bản trước đó.
+Nếu một chính sách có các tham số nhưng bạn không chỉ định chúng, các giá trị mặc định tích hợp của chính sách sẽ được sử dụng. Những người dùng không cấu hình `policyParams` sẽ nhận được hành vi giống hệt với các phiên bản trước đó.
 
-Các khóa không xác định bên trong khối tham số của chính sách được bỏ qua im lặng khi hook kích hoạt nhưng được đánh dấu là cảnh báo khi bạn chạy `failproofai policies`.
+Các khóa không xác định bên trong khối tham số của một chính sách được bỏ qua âm thầm tại thời điểm hook kích hoạt nhưng được cờ là cảnh báo khi bạn chạy `failproofai policies`.
 
-#### `hint` (cross-cutting)
+#### `hint` (xuyên suốt)
 
 Kiểu: `string` (tùy chọn)
 
-Một thông báo được thêm vào lý do khi chính sách trả về `deny` hoặc `instruct`. Sử dụng nó để cung cấp hướng dẫn hành động cho Claude mà không cần sửa đổi chính sách.
+Một thông báo được thêm vào lý do khi một chính sách trả về `deny` hoặc `instruct`. Sử dụng nó để cung cấp cho Claude hướng dẫn có thể thực hiện được mà không sửa đổi chính sách itself.
 
-Hoạt động với bất kỳ loại chính sách nào — tích hợp sẵn, tùy chỉnh (`custom/`), quy ước dự án (`.failproofai-project/`) hoặc quy ước người dùng (`.failproofai-user/`).
+Hoạt động với bất kỳ loại chính sách nào — tích hợp sẵn, tùy chỉnh (`custom/`), quy ước dự án (`.failproofai-project/`), hoặc quy ước người dùng (`.failproofai-user/`).
 
 ```json
 {
@@ -145,30 +145,37 @@ Hoạt động với bất kỳ loại chính sách nào — tích hợp sẵn, 
 
 Khi `block-force-push` từ chối, Claude thấy: *"Force-pushing is blocked. Try creating a fresh branch instead."*
 
-Các giá trị không phải chuỗi và chuỗi trống bị bỏ qua im lặng. Nếu `hint` không được đặt, hành vi không thay đổi (tương thích ngược).
+Các giá trị không phải chuỗi và chuỗi trống được bỏ qua âm thầm. Nếu `hint` không được đặt, hành vi không thay đổi (tương thích ngược).
 
 ### `customPoliciesPath`
 
 Kiểu: `string` (đường dẫn tuyệt đối)
 
-Đường dẫn đến tệp JavaScript chứa các chính sách hook tùy chỉnh. Đây được đặt tự động bởi `failproofai policies --install --custom <path>` (đường dẫn được phân giải thành tuyệt đối trước khi được lưu trữ).
+Đường dẫn đến tệp JavaScript chứa các chính sách hook tùy chỉnh. Điều này được đặt tự động bởi `failproofai policies --install --custom <path>` (đường dẫn được giải quyết thành tuyệt đối trước khi được lưu trữ).
 
-Tệp được tải mới trên mỗi sự kiện hook - không có bộ nhớ đệm. Xem [Custom Policies](/vi/custom-policies) để biết chi tiết tác giả.
+Tệp được tải lại trên mỗi sự kiện hook - không có bộ nhớ đệm. Xem [Custom Policies](/vi/custom-policies) để biết chi tiết tác giả.
 
 ### Chính sách dựa trên quy ước
 
-Ngoài `customPoliciesPath` rõ ràng, failproofai tự động phát hiện và tải các tệp chính sách từ các thư mục `.failproofai/policies/`:
+Ngoài `customPoliciesPath` rõ ràng, failproofai tự động khám phá và tải các tệp chính sách từ thư mục `.failproofai/policies/`:
 
 | Mức | Thư mục | Phạm vi |
 |-------|-----------|-------|
-| Dự án | `.failproofai/policies/` | Chia sẻ với nhóm thông qua kiểm soát phiên bản |
-| Người dùng | `~/.failproofai/policies/` | Cá nhân, áp dụng cho tất cả các dự án |
+| Dự án | `.failproofai/policies/` | Chia sẻ với đội thông qua kiểm soát phiên bản |
+| Người dùng | `~/.failproofai/policies/custom-policies/` | Riêng tư, áp dụng cho tất cả các dự án |
 
-**Khớp tệp:** Chỉ các tệp khớp với `*policies.{js,mjs,ts}` được tải (ví dụ: `security-policies.mjs`, `workflow-policies.js`). Các tệp khác trong thư mục bị bỏ qua.
+<Note>
+  Thư mục cấp người dùng đã chuyển xuống một cấp trong tổ chức lại thư mục home.
+  Các tệp còn lại tại `~/.failproofai/policies/` cũ được chuyển vào `custom-policies/`
+  tự động lần đầu tiên bạn chạy bất kỳ lệnh `failproofai` nào sau khi nâng cấp,
+  và lệnh cho bạn biết những tệp nào đã được chuyển.
+</Note>
 
-**Không cần cấu hình:** Chính sách quy ước không yêu cầu các mục nhập trong `policies-config.json`. Chỉ cần thả các tệp vào thư mục và chúng sẽ được nhận trên sự kiện hook tiếp theo.
+**Khớp tệp:** Chỉ các tệp phù hợp với `*policies.{js,mjs,ts}` được tải (ví dụ: `security-policies.mjs`, `workflow-policies.js`). Các tệp khác trong thư mục bị bỏ qua.
 
-**Tải hợp:** Cả thư mục quy ước dự án và người dùng đều được quét. Tất cả các tệp phù hợp từ cả hai cấp độ được tải (không giống như `customPoliciesPath` sử dụng chiến thắng phạm vi đầu tiên).
+**Không cần cấu hình:** Các chính sách quy ước không yêu cầu mục nhập trong `policies-config.json`. Chỉ cần thả tệp vào thư mục và chúng sẽ được nhận trên sự kiện hook tiếp theo.
+
+**Tải hợp nhất:** Cả thư mục quy ước dự án và người dùng đều được quét. Tất cả các tệp phù hợp từ cả hai mức được tải (không giống như `customPoliciesPath` sử dụng first-scope-wins).
 
 Xem [Custom Policies](/vi/custom-policies) để biết thêm chi tiết và ví dụ.
 
@@ -176,7 +183,7 @@ Xem [Custom Policies](/vi/custom-policies) để biết thêm chi tiết và ví
 
 Kiểu: `object` (tùy chọn)
 
-Cấu hình máy khách LLM cho các chính sách thực hiện các lệnh gọi AI. Không bắt buộc đối với hầu hết các thiết lập.
+Cấu hình ứng dụng khách LLM cho các chính sách thực hiện các cuộc gọi AI. Không cần thiết cho hầu hết các thiết lập.
 
 ```json
 {
@@ -191,25 +198,24 @@ Cấu hình máy khách LLM cho các chính sách thực hiện các lệnh gọ
 
 ## Quản lý cấu hình từ CLI
 
-Các lệnh `policies --install` và `policies --uninstall` ghi vào tệp cài đặt hook của CLI đại lý của bạn (các điểm vào hook), trong khi `policies-config.json` là tệp bạn quản lý trực tiếp. Hai cái này là riêng biệt:
+Các lệnh `policies --install` và `policies --uninstall` ghi vào tệp cài đặt hook của CLI agent của bạn (các điểm vào hook), trong khi `policies-config.json` là tệp bạn quản lý trực tiếp. Hai cái này là riêng biệt:
 
-- **Cài đặt CLI của Đại lý** — cho phép đại lý gọi `failproofai --hook <event>` trên mỗi lần sử dụng công cụ:
+- **Cài đặt CLI Agent** — cho agent biết gọi `failproofai --hook <event>` trên mỗi lần sử dụng công cụ:
   - **Claude Code**: `~/.claude/settings.json` (người dùng), `<cwd>/.claude/settings.json` (dự án), `<cwd>/.claude/settings.local.json` (cục bộ)
   - **OpenAI Codex**: `~/.codex/hooks.json` (người dùng), `<cwd>/.codex/hooks.json` (dự án) — Codex không có phạm vi `local`
-  - **GitHub Copilot CLI _(beta)_**: `~/.copilot/hooks/failproofai.json` (người dùng), `<cwd>/.github/hooks/failproofai.json` (dự án) — Copilot không có phạm vi `local`. Các mục nhập hook sử dụng các trường lệnh `bash`/`powershell` do Copilot khóa OS với `timeoutSec`; tệp mang một đánh dấu `version: 1` ở cấp cao nhất. Hỗ trợ Copilot CLI là **beta** trong khi chúng tôi xác minh lược đồ bản ghi `events.jsonl` (mà các tài liệu công khai không chỉ định) so với các phiên làm việc thực tế hơn. **Chế độ tác nhân Copilot Chat của VS Code (Bản xem trước)** đọc các cấu hình hook từ `.github/hooks/*.json`, `~/.copilot/hooks/*.json` và `~/.claude/settings.json` (được quản lý bởi cài đặt `chat.hookFilesLocations`) sử dụng cùng một hợp đồng định hình Claude `{hookSpecificOutput:{permissionDecision:"deny",…}}` — các đường dẫn chính xác mà tích hợp `copilot` này và tích hợp `claude` (`~/.claude/settings.json`) đã ghi, vì vậy `failproofai policies --install --cli copilot` (hoặc `--cli claude`) **đã thực thi trong chế độ tác nhân VS Code** mà không cần tích hợp `vscode` riêng biệt (xác nhận từ nhật ký phát hiện của VS Code).
-  - **Cursor Agent _(beta)_**: `~/.cursor/hooks.json` (người dùng), `<cwd>/.cursor/hooks.json` (dự án) — Cursor không có phạm vi `local`. Các mục nhập hook sử dụng dạng giống Claude `{type, command, timeout}` (không phân chia `bash`/`powershell`), nhưng được lưu trữ dưới các khóa sự kiện camelCase (`preToolUse`, `beforeSubmitPrompt`, …) trong một mảng phẳng theo [lược đồ hook](https://cursor.com/docs/hooks) của Cursor. Tệp mang một đánh dấu `version: 1` ở cấp cao nhất. Trình xử lý chuẩn hóa camelCase → PascalCase qua `CURSOR_EVENT_MAP` để các chính sách tích hợp sẵn kích hoạt không thay đổi. Hỗ trợ Cursor Agent là **beta** trong khi chúng tôi xác minh bản ghi Cursor trên đĩa (không được chỉ định trong tài liệu công khai) so với các bản cài đặt thực tế hơn.
-  - **OpenCode _(beta)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (người dùng), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (dự án) — OpenCode không có phạm vi `local`. Khác với năm CLI khác, OpenCode có **không có hệ thống hook lệnh bên ngoài**: nó tải các plugin JS/TS trong quá trình được đăng ký rõ ràng qua mảng `plugin: []` trong `opencode.json` (tự động khám phá từ `.opencode/plugins/` **không phải** cách plugin tải trên opencode v1.14.33). Cài đặt thả một nhóm plugin shim nhỏ được tạo gọi subprocess lệnh nhị phân failproofai và dịch phản hồi JSON định hình Claude của nhị phân trở lại ngữ nghĩa plugin: `throw new Error()` cho công cụ-sự kiện từ chối (hủy lệnh gọi công cụ), `client.session.prompt(...)` cho instruct AND cho `Stop` / `SubagentStop` từ chối (gửi lý do từ chối dưới dạng tin nhắn người dùng tiếp theo — kênh thử lại lực duy nhất vì `session.idle` là thông báo duy nhất và ném từ nó là không hoạt động), và không hoạt động cho phép. Shim chuẩn hóa cả tên công cụ (chữ thường → PascalCase qua `OPENCODE_TOOL_MAP`) và khóa arg đầu vào công cụ (camelCase → snake_case qua `OPENCODE_TOOL_INPUT_MAP` cho `Read` / `Write` / `Edit`, ví dụ: `filePath` → `file_path`, `oldString` → `old_string`) trước khi chuyển tiếp đến nhị phân, vì vậy các kiểm tra đường dẫn tích hợp sẵn như `block-read-outside-cwd`, `block-env-files` và `block-secrets-write` kích hoạt không thay đổi trên các lệnh gọi công cụ OpenCode. Các phiên hoạt động trong DB SQLite của opencode tại `~/.local/share/opencode/opencode.db`; người xem phiên bản bảng điều khiển đọc chúng thông qua `opencode db --format json` và `opencode export <id>`. Hỗ trợ OpenCode là **beta** trong khi chúng tôi xác minh hành vi trên các phiên bản và so với các phiên làm việc thực tế hơn. Xem [tài liệu plugin OpenCode](https://opencode.ai/docs/plugins/).
-  - **Pi _(beta)_**: `~/.pi/agent/settings.json` (người dùng), `<cwd>/.pi/settings.json` (dự án) — Pi không có phạm vi `local`. Pi tải các gói tiện ích mở rộng TypeScript khi khởi động; tệp cài đặt là một mảng chuỗi phẳng `{"packages": ["./relative/path", …]}`. failproofai ghi một mục mảng gói duy nhất trỏ đến thư mục `pi-extension/` được gói của nó. Tiện ích mở rộng bên trong đăng ký các sự kiện `tool_call` / `user_bash` / `input` / `session_start` của Pi và shell ra `failproofai --hook <Event> --cli pi`; trình xử lý chuẩn hóa underscore_lower_snake_case → PascalCase qua `PI_EVENT_MAP` để các chính sách tích hợp sẵn kích hoạt không thay đổi. Các arg đầu vào công cụ cũng được chuẩn hóa qua `PI_TOOL_INPUT_MAP` (Pi's Read / Write / Edit cung cấp `path` thay vì `file_path`; ánh xạ khóa cấp cao nhất cho phép `block-env-files` và `block-secrets-write` kích hoạt — `block-read-outside-cwd` đã có dự phòng `path`). Hỗ trợ Pi là **beta** trong khi API tiện ích mở rộng của Pi và bố cục nhật ký phiên ổn định.
-  - **Hermes (hermes-agent)**: `~/.hermes/config.yaml` (**phạm vi người dùng duy nhất** — Hermes không có cấu hình dự án/cục bộ). Hermes là **gateway** Slack/Telegram, vì vậy một bản cài đặt chặn các lệnh gọi công cụ từ mọi nền tảng (Slack/Telegram/cli/cron) **và** các đại lý phụ bên trong. Các mục nhập hook là cặp `{command, timeout}` (timeout tính bằng **giây**) dưới bản đồ `hooks:` được khóa bởi các sự kiện snake_case của Hermes (`pre_tool_call` / `post_tool_call` / `on_session_start` / `on_session_end` / `subagent_stop`); trình xử lý chuẩn hóa các sự kiện qua `HERMES_EVENT_MAP` và tên công cụ qua `HERMES_TOOL_MAP` để các chính sách tích hợp sẵn kích hoạt không thay đổi. Cấu hình được chỉnh sửa thông qua vòng lặp YAML `Document` bảo toàn nhận xét để các cài đặt khác của người điều hành tồn tại, và cài đặt `hooks_auto_accept: true` để gateway headless (không TTY) chạy hook mà không cần lời nhắc đồng ý. Bộ đánh giá phát ra hợp đồng stdout Hermes `{"decision":"block","reason"}` (Hermes bỏ qua mã thoát). **Hạn chế:** Hermes không có sự kiện `Stop` cuối lượt, vì vậy các tích hợp sẵn `require-*-before-stop` không bao giờ kích hoạt cho nó (không áp dụng, không bị hỏng); `instruct` suy giảm thành allow-with-logged-note (không kênh ngữ cảnh bổ sung); và redaction bí mật đầu ra (`sanitize-*`) không thể viết lại đầu ra công cụ qua hợp đồng shell-hook. Hermes cũng là **nguồn kiểm toán offline** — bảng điều khiển đọc các phiên gateway của nó trực tiếp từ `~/.hermes/state.db`.
-  - **OpenClaw (openclaw gateway)**: `~/.openclaw/openclaw.json` (**phạm vi người dùng duy nhất** — OpenClaw không có cấu hình dự án/cục bộ). Giống như Hermes, OpenClaw là **gateway** tự lưu trữ đa kênh, vì vậy một bản cài đặt chặn các lệnh gọi công cụ từ mọi kênh và các đại lý bên trong của nó. Thực thi chạy qua **hook plugin trong quá trình** của OpenClaw (hook dựa trên tệp nội bộ của nó chỉ dành cho quan sát và không thể chặn), vì vậy — giống như OpenCode/Pi — failproofai gửi một gói `openclaw-plugin/` tĩnh sinh ra nhị phân failproofai không đồng bộ và dịch bản án. Cài đặt đăng ký thư mục plugin được gửi trong `openclaw.json` của `plugins.load.paths[]` và bật nó dưới `plugins.entries.failproofai` (với `hooks.allowConversationAccess: true`, cần thiết cho các hook cuộc trò chuyện thô). Bộ đánh giá phát ra bản án `{permission, reason}` phẳng và shim ánh xạ nó thành hình dạng trả về của mỗi hook: `before_tool_call → {block:true, blockReason}` (**PreToolUse**), `before_agent_run → {outcome:"block", reason}` (**UserPromptSubmit**), và `before_agent_finalize → {action:"revise", reason}` (**Stop** — một cổng lượt kết thúc thực, vì vậy các tích hợp sẵn `require-*-before-stop` **thực thi** trên OpenClaw, không giống như Hermes). Các sự kiện và tên công cụ chuẩn hóa nhị phân-bên qua `OPENCLAW_EVENT_MAP` / `OPENCLAW_TOOL_MAP` (`exec→Bash`, `read→Read`, …) để các chính sách tích hợp sẵn kích hoạt không thay đổi; shim thất bại mở trên bất kỳ lỗi spawn/parse/timeout nào. OpenClaw cũng là **nguồn kiểm toán offline** — bảng điều khiển đọc các phiên JSONL tại `~/.openclaw/agents/<agentId>/sessions/<uuid>.jsonl`.
-  - **Factory Droid (`droid`)**: `~/.factory/hooks.json` (người dùng), `<cwd>/.factory/hooks.json` (dự án) — Factory không có phạm vi `local`. droid gửi một hệ thống hook lệnh bên ngoài kiểu Claude, nhưng với hai tính kỳ lạ được xác minh trực tiếp so với droid v0.171.0: (1) tên sự kiện sống ở **cấp cao nhất** của `hooks.json` — **không có wrapper `"hooks"`** (droid từ chối một); các sự kiện công cụ (`PreToolUse`/`PostToolUse`) mang `"matcher": "*"`, các sự kiện không phải công cụ bỏ qua nó. (2) Từ chối được điều khiển bởi **mã thoát hook 2 + stderr**, không phải quyết định JSON — nhánh `factory` của bộ đánh giá trả về thoát 2 cho các sự kiện công cụ/nhắc nhở và `{decision:"block", reason}` chỉ trên sự kiện cuối lượt `Stop` (kênh thử lại lực duy nhất của droid). Các sự kiện đã là PascalCase (không có bản đồ sự kiện) và tải trọng là snake_case Claude; chỉ tên công cụ được chuẩn hóa qua `FACTORY_TOOL_MAP` (`Execute→Bash`, `Create→Write`, `FetchUrl→WebFetch`, …). Factory cũng là **nguồn kiểm toán offline** — bảng điều khiển đọc các phiên JSONL trên đĩa tại `~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl`.
-  - **Devin CLI (`devin`, Cognition)**: `~/.config/devin/config.json` (người dùng), `<cwd>/.devin/config.json` (dự án) — Devin không có phạm vi `local`. Devin là **bản sao Claude thuần** được xác minh trực tiếp so với devin v3000.1.27: nó sử dụng lược đồ Claude tiêu chuẩn `"hooks"`-wrapper (ghi được bảo toàn hợp nhất để các khóa khác của tệp cấu hình — `org_id`, `theme_mode`, … — tồn tại), các tên sự kiện đã là PascalCase (không có bản đồ sự kiện, không có nhánh trình xử lý) và tải trọng stdin snake_case Claude (không chuẩn hóa). Nhánh `devin` của bộ đánh giá từ chối với JSON `{"decision":"block","reason"}` trên stdout ở thoát 0 cho **mọi** sự kiện (được xác minh — khối ghi đè `--permission-mode dangerous`); trên sự kiện cuối lượt `Stop` lý do mang từ ngữ thử lại lực bắt buộc để các tích hợp sẵn `require-*-before-stop` thực thi. Chỉ tên công cụ được chuẩn hóa qua `DEVIN_TOOL_MAP` (`exec→Bash`; `tool_input.command` đã là canonical). Devin cũng là **nguồn kiểm toán offline** — bảng điều khiển đọc các phiên SQLite tại `~/.local/share/devin/cli/sessions.db` (mỗi hàng `sessions` mang một thực `working_directory`, vì vậy các phiên nhóm theo dự án cwd như Claude).
-  - **Antigravity CLI (`agy`)**: `~/.gemini/config/hooks.json` (người dùng), `<cwd>/.agents/hooks.json` (dự án) — Antigravity không có phạm vi `local`. Không giống như Factory/Devin, Antigravity có **hợp đồng của riêng nó** (không phải bản sao Claude), được xác minh trực tiếp so với agy v1.1.2. `hooks.json` sử dụng lược đồ **hook được đặt tên**: khóa cấp cao nhất là tên hook (*`"failproofai"`) có giá trị là sự kiện → bản đồ trình xử lý — các sự kiện công cụ (`PreToolUse`/`PostToolUse`) gói trình xử lý trong `{matcher:"*", hooks:[…]}`, trong khi `PreInvocation`/`Stop` là **mảng trình xử lý phẳng** (các hook được đặt tên khác được bảo toàn). Tải trọng stdin là **protojson camelCase** (`toolCall:{name,args}`, `conversationId`, `workspacePaths`, `transcriptPath`) — failproofai chuẩn hóa nó thành snake_case trước khi các chính sách chạy và ánh xạ arg PascalCase của `run_command` (`CommandLine`/`Cwd`) qua `ANTIGRAVITY_TOOL_INPUT_MAP`. Nhánh `antigravity` của bộ đánh giá sử dụng hình dạng phản hồi **của riêng Antigravity**: `{decision:"deny", reason}` chặn một công cụ/nhắc nhở (thoát 0), `{decision:"continue", reason}` trên sự kiện cuối lượt `Stop` nhập lại vòng lặp (vì vậy các tích hợp sẵn `require-*-before-stop` thực thi), và `{injectSteps:[{ephemeralMessage}]}` tiêm hướng dẫn trên `PreInvocation` (→ `UserPromptSubmit`). Tên công cụ chuẩn hóa qua `ANTIGRAVITY_TOOL_MAP` (`run_command→Bash`, `view_file→Read`, …). Antigravity cũng là **nguồn kiểm toán offline** — bảng điều khiển đọc bản ghi JSONL thuần của nó tại `~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` (chỉ mục cuộc trò chuyện trong `conversation_summaries.db`).
-  - **Goose (codename goose, Block)**: `~/.agents/plugins/failproofai/hooks/hooks.json` (người dùng), `<cwd>/.agents/plugins/failproofai/hooks/hooks.json` (dự án) — Goose không có phạm vi `local`. Thực thi sử dụng hệ thống **hook** của Goose, spécification **Open Plugins** đa tác nhân: trình cài đặt chỉ thả thư mục plugin `failproofai` và Goose tự động phát hiện nó khi khởi động (tự đăng ký nó vào `~/.config/goose/config.yaml`). `hooks.json` sử dụng lược đồ Open Plugins **với** wrapper `"hooks"` cấp cao nhất, và matcher được **bỏ qua** trên mỗi sự kiện — `"*"` trần là regex không hợp lệ không khớp với gì cả (được xác minh trực tiếp so với goose v1.43.0). Tên sự kiện đã là PascalCase (không có bản đồ sự kiện); tải trọng stdin sử dụng `event`/`working_dir`, mà trình xử lý chuẩn hóa thành `hook_event_name`/`cwd`. Nhánh `goose` của bộ đánh giá từ chối với JSON `{"decision":"block","reason"}` trên stdout ở thoát 0, được tôn trọng trên sự kiện **`PreToolUse`** duy nhất (được gửi trong goose ≥ v1.37.0) — kích hoạt cho công cụ shell **và bên trong các đại lý phụ được ủy quyền**, vì vậy nó là điểm từ chối đơn lẻ đủ; bất kỳ lỗi hook khác không hoạt động **mở**. Goose có **không có sự kiện `Stop`**, vì vậy các tích hợp sẵn `require-*-before-stop` không áp dụng (như với Hermes). Tên công cụ chuẩn hóa qua `GOOSE_TOOL_MAP` (`shell→Bash`, `write→Write`, `todo__todo_write→TodoWrite`, …) và khóa đường dẫn qua `GOOSE_TOOL_INPUT_MAP` (`path`/`source` → `file_path`). Goose cũng là **nguồn kiểm toán offline** — bảng điều khiển đọc các phiên SQLite tại `~/.local/share/goose/sessions/sessions.db` (mỗi hàng `sessions` mang một thực `working_dir`, vì vậy các phiên nhóm theo dự án cwd như Devin; các lượt `--no-session` bị lọc).
+  - **GitHub Copilot CLI _(beta)_**: `~/.copilot/hooks/failproofai.json` (người dùng), `<cwd>/.github/hooks/failproofai.json` (dự án) — Copilot không có phạm vi `local`. Các mục nhập hook sử dụng các trường lệnh `bash`/`powershell` do Copilot xác định bằng OS với `timeoutSec`; tệp mang một ký hiệu `version: 1` cấp cao nhất. Hỗ trợ Copilot CLI là **beta** trong khi chúng tôi xác minh lược đồ bản ghi `events.jsonl` (mà các tài liệu công khai không chỉ định) so với nhiều phiên bản thế giới thực hơn. **VS Code Copilot Chat agent mode (Preview)** đọc các cấu hình hook từ `.github/hooks/*.json`, `~/.copilot/hooks/*.json` và `~/.claude/settings.json` (do cài đặt `chat.hookFilesLocations` chi phối) sử dụng cùng một hợp đồng Claude-shaped `{hookSpecificOutput:{permissionDecision:"deny",…}}` — các đường dẫn chính xác mà tích hợp `copilot` này và tích hợp `claude` (`~/.claude/settings.json`) đã ghi, do đó `failproofai policies --install --cli copilot` (hoặc `--cli claude`) **đã thực thi trong chế độ agent VS Code** mà không cần tích hợp `vscode` riêng (được xác nhận trực tiếp từ nhật ký phát hiện VS Code).
+  - **Cursor Agent _(beta)_**: `~/.cursor/hooks.json` (người dùng), `<cwd>/.cursor/hooks.json` (dự án) — Cursor không có phạm vi `local`. Các mục nhập hook sử dụng hình thức Claude-shaped `{type, command, timeout}` (không phân tách `bash`/`powershell`), nhưng được lưu trữ dưới các khóa sự kiện camelCase (`preToolUse`, `beforeSubmitPrompt`, …) trong một mảng phẳng cho mỗi [lược đồ hook](https://cursor.com/docs/hooks) của Cursor. Tệp mang một ký hiệu `version: 1` cấp cao nhất. Trình xử lý chính tắc hóa camelCase → PascalCase qua `CURSOR_EVENT_MAP` để các chính sách tích hợp sẵn kích hoạt không thay đổi. Hỗ trợ Cursor Agent là **beta** trong khi chúng tôi xác minh định dạng bảng điểm trên đĩa của Cursor (không được chỉ định trong tài liệu công khai) so với nhiều cài đặt thế giới thực hơn.
+  - **OpenCode _(beta)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (người dùng), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (dự án) — OpenCode không có phạm vi `local`. Không giống như năm CLI khác, OpenCode **không có hệ thống hook lệnh bên ngoài**: nó tải plugin JS/TS trong quy trình được đăng ký rõ ràng qua mảng `plugin: []` trong `opencode.json` (**không** tự động khám phá từ `.opencode/plugins/` là cách plugin tải trên opencode v1.14.33). Cài đặt bỏ một shim plugin tạo nhỏ gọi subprocess lệnh nhị phân failproofai và dịch phản hồi JSON Claude-shape của nhị phân trở lại ngữ nghĩa plugin: `throw new Error()` để từ chối sự kiện công cụ (hủy lệnh gọi công cụ), `client.session.prompt(...)` để `instruct` VÀ để từ chối `Stop` / `SubagentStop` (gửi lý do từ chối dưới dạng thông báo người dùng tiếp theo — kênh buộc thử lại duy nhất vì `session.idle` là thông báo và ném từ nó là no-op), và no-op để cho phép. Shim chính tắc hóa cả tên công cụ (chữ thường → PascalCase qua `OPENCODE_TOOL_MAP`) và khóa arg đầu vào công cụ (camelCase → snake_case qua `OPENCODE_TOOL_INPUT_MAP` cho `Read` / `Write` / `Edit`, ví dụ: `filePath` → `file_path`, `oldString` → `old_string`) trước khi chuyển tiếp đến nhị phân, do đó kiểm tra đường dẫn builtins như `block-read-outside-cwd`, `block-env-files` và `block-secrets-write` kích hoạt không thay đổi trên lệnh gọi công cụ OpenCode. Phiên làm việc sống trong DB SQLite của opencode tại `~/.local/share/opencode/opencode.db`; trình xem phiên làm việc của bảng điều khiển đọc chúng qua `opencode db --format json` và `opencode export <id>`. Hỗ trợ OpenCode là **beta** trong khi chúng tôi xác minh hành vi trên các phiên bản và so với nhiều phiên bản thế giới thực hơn. Xem [tài liệu plugin OpenCode](https://opencode.ai/docs/plugins/).
+  - **Pi _(beta)_**: `~/.pi/agent/settings.json` (người dùng), `<cwd>/.pi/settings.json` (dự án) — Pi không có phạm vi `local`. Pi tải các gói mở rộng TypeScript khi khởi động; tệp cài đặt là một mảng chuỗi phẳng `{"packages": ["./relative/path", …]}`. failproofai ghi một mục nhập mảng package duy nhất trỏ vào thư mục `pi-extension/` được gói của nó. Tiện ích nội bộ đăng ký vào các sự kiện `tool_call` / `user_bash` / `input` / `session_start` của Pi và shell ra `failproofai --hook <Event> --cli pi`; trình xử lý chính tắc hóa underscore_lower_snake_case → PascalCase qua `PI_EVENT_MAP` để các chính sách tích hợp sẵn kích hoạt không thay đổi. Các arg đầu vào công cụ cũng được chính tắc hóa qua `PI_TOOL_INPUT_MAP` (Read / Write / Edit của Pi cung cấp `path` thay vì `file_path`; ánh xạ khóa cấp cao nhất cho phép `block-env-files` và `block-secrets-write` kích hoạt — `block-read-outside-cwd` đã có fallback `path`). Hỗ trợ Pi là **beta** trong khi API tiện ích mở rộng của Pi và bố cục nhật ký phiên làm việc ổn định.
+  - **Hermes (hermes-agent)**: `~/.hermes/config.yaml` (**phạm vi người dùng duy nhất** — Hermes không có cấu hình dự án/cục bộ). Hermes là một **cổng** Slack/Telegram, do đó một cài đặt đánh chặn các lệnh gọi công cụ từ mọi nền tảng (Slack/Telegram/cli/cron) **và** subagent nội bộ. Các mục nhập hook là một cặp `{command, timeout}` (timeout tính bằng **giây**) dưới bản đồ `hooks:` được khóa bởi các sự kiện snake_case của Hermes (`pre_tool_call` / `post_tool_call` / `on_session_start` / `on_session_end` / `subagent_stop`); trình xử lý chính tắc hóa các sự kiện qua `HERMES_EVENT_MAP` và tên công cụ qua `HERMES_TOOL_MAP` để các chính sách tích hợp sẵn kích hoạt không thay đổi. Cấu hình được chỉnh sửa thông qua vòng quay YAML `Document` bảo tồn nhận xét để các cài đặt khác của nhà điều hành tồn tại, và cài đặt `hooks_auto_accept: true` để cổng headless (không TTY) chạy các hook mà không cần lời nhắc đồng ý. Bộ đánh giá phát ra hợp đồng stdout `{"decision":"block","reason"}` của Hermes (Hermes bỏ qua mã thoát). **Hạn chế:** Hermes không có sự kiện `Stop` cuối lần lặp, vì vậy các builtins `require-*-before-stop` không bao giờ kích hoạt cho nó (không áp dụng, không bị hỏng); `instruct` suy giảm thành allow-with-logged-note (không kênh ngữ cảnh bổ sung); và làm lại bí mật đầu ra (`sanitize-*`) không thể viết lại đầu ra công cụ qua hợp đồng shell-hook. Hermes cũng là một nguồn **kiểm toán** ngoại tuyến — bảng điều khiển đọc các phiên tập gateway của nó trực tiếp từ `~/.hermes/state.db`.
+  - **OpenClaw (openclaw gateway)**: `~/.openclaw/openclaw.json` (**phạm vi người dùng duy nhất** — OpenClaw không có cấu hình dự án/cục bộ). Giống như Hermes, OpenClaw là một **cổng** đa kênh tự lưu trữ, do đó một cài đặt đánh chặn các lệnh gọi công cụ từ mọi kênh và subagent nội bộ của nó. Thực thi chạy qua **hook plugin trong quy trình** của OpenClaw (các hook dựa trên tệp nội bộ của nó chỉ có thể quan sát và không thể chặn), vì vậy — giống như OpenCode/Pi — failproofai gửi một gói tĩnh `openclaw-plugin/` mà async-spawn nhị phân failproofai và dịch phán quyết. Cài đặt đăng ký thư mục plugin được gửi trong `openclaw.json` của `plugins.load.paths[]` và bật nó dưới `plugins.entries.failproofai` (với `hooks.allowConversationAccess: true`, cần thiết để hook cuộc trò chuyện thô). Bộ đánh giá phát ra một phán quyết phẳng `{permission, reason}` và shim ánh xạ nó vào hình dạng trả về gốc của mỗi hook: `before_tool_call → {block:true, blockReason}` (**PreToolUse**), `before_agent_run → {outcome:"block", reason}` (**UserPromptSubmit**), và `before_agent_finalize → {action:"revise", reason}` (**Stop** — một cổng cuối lần thực sự, vì vậy các builtins `require-*-before-stop` **thực thi** trên OpenClaw, không giống Hermes). Sự kiện và tên công cụ chính tắc hóa phía nhị phân qua `OPENCLAW_EVENT_MAP` / `OPENCLAW_TOOL_MAP` (`exec→Bash`, `read→Read`, …) để các chính sách tích hợp sẵn kích hoạt không thay đổi; shim không thành công mở trên bất kỳ lỗi sinh/phân tích/timeout nào. OpenClaw cũng là một nguồn **kiểm toán** ngoại tuyến — bảng điều khiển đọc các phiên làm việc JSONL của nó tại `~/.openclaw/agents/<agentId>/sessions/<uuid>.jsonl`.
+  - **Factory Droid (`droid`)**: `~/.factory/hooks.json` (người dùng), `<cwd>/.factory/hooks.json` (dự án) — Factory không có phạm vi `local`. droid gửi một hệ thống hook lệnh bên ngoài kiểu Claude, nhưng với hai điều kỳ lạ được xác minh trực tiếp so với droid v0.171.0: (1) tên sự kiện sống ở **cấp cao nhất** của `hooks.json` — không có **không có trình bao `"hooks"`** (droid từ chối một); các sự kiện công cụ (`PreToolUse`/`PostToolUse`) mang `"matcher": "*"`, các sự kiện không-công cụ bỏ qua nó. (2) Từ chối được điều khiển bởi mã thoát hook **2 + stderr**, không phải quyết định JSON — nhánh `factory` của bộ đánh giá trả về exit 2 cho sự kiện công cụ/nhắc nhủ và `{decision:"block", reason}` chỉ trên sự kiện cuối lần `Stop` (kênh buộc thử lại duy nhất của droid). Sự kiện đã ở PascalCase (không có bản đồ sự kiện) và tải trọng là snake_case Claude; chỉ có tên công cụ được chính tắc hóa qua `FACTORY_TOOL_MAP` (`Execute→Bash`, `Create→Write`, `FetchUrl→WebFetch`, …). Factory cũng là một nguồn **kiểm toán** ngoại tuyến — bảng điều khiển đọc các phiên JSONL trên đĩa của nó tại `~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl`.
+  - **Devin CLI (`devin`, Cognition)**: `~/.config/devin/config.json` (người dùng), `<cwd>/.devin/config.json` (dự án) — Devin không có phạm vi `local`. Devin là một **bản sao Claude thuần túy** được xác minh trực tiếp so với devin v3000.1.27: nó sử dụng lược đồ `"hooks"`-wrapper Claude tiêu chuẩn (ghi là bảo tồn hợp nhất để các khóa khác của tệp cấu hình — `org_id`, `theme_mode`, … — tồn tại), tên sự kiện đã ở PascalCase (không có bản đồ sự kiện, không có nhánh trình xử lý) và tải trọng stdin snake_case Claude (không chuẩn hóa). Nhánh `devin` của bộ đánh giá từ chối với JSON `{"decision":"block","reason"}` trên stdout ở exit 0 cho **mọi** sự kiện (được xác minh — khối ghi đè `--permission-mode dangerous`); trên sự kiện `Stop` cuối lần, lý do mang từ ngữ force-retry bắt buộc để các builtins `require-*-before-stop` thực thi. Chỉ có tên công cụ được chính tắc hóa qua `DEVIN_TOOL_MAP` (`exec→Bash`; `tool_input.command` đã ở dạng chính tắc). Devin cũng là một nguồn **kiểm toán** ngoại tuyến — bảng điều khiển đọc các phiên SQLite của nó tại `~/.local/share/devin/cli/sessions.db` (mỗi hàng `sessions` mang một `working_directory` thực sự, vì vậy các phiên làm việc nhóm theo dự án cwd như Claude).
+  - **Antigravity CLI (`agy`)**: `~/.gemini/config/hooks.json` (người dùng), `<cwd>/.agents/hooks.json` (dự án) — Antigravity không có phạm vi `local`. Không giống Factory/Devin, Antigravity có **hợp đồng riêng** của nó (không phải bản sao Claude), được xác minh trực tiếp so với agy v1.1.2. `hooks.json` sử dụng một **lược đồ hook được đặt tên**: khóa cấp cao nhất là một tên hook (*`"failproofai"`*) có giá trị là một bản đồ sự kiện → trình xử lý — các sự kiện công cụ (`PreToolUse`/`PostToolUse`) bao trình xử lý trong `{matcher:"*", hooks:[…]}`, trong khi `PreInvocation`/`Stop` là **mảng trình xử lý phẳng** (các hook được đặt tên khác được bảo tồn). Tải trọng stdin là **camelCase protojson** (`toolCall:{name,args}`, `conversationId`, `workspacePaths`, `transcriptPath`) — failproofai chuẩn hóa nó thành snake_case trước khi các chính sách chạy và ánh xạ args PascalCase của `run_command` (`CommandLine`/`Cwd`) qua `ANTIGRAVITY_TOOL_INPUT_MAP`. Nhánh `antigravity` của bộ đánh giá sử dụng hình dạng phản hồi **riêng** của Antigravity: `{decision:"deny", reason}` chặn một công cụ/nhắc nhủ (exit 0), `{decision:"continue", reason}` trên sự kiện `Stop` cuối lần nhập lại vòng lặp (vì vậy các builtins `require-*-before-stop` thực thi), và `{injectSteps:[{ephemeralMessage}]}` tiêm một hướng dẫn trên `PreInvocation` (→ `UserPromptSubmit`). Tên công cụ chính tắc hóa qua `ANTIGRAVITY_TOOL_MAP` (`run_command→Bash`, `view_file→Read`, …). Antigravity cũng là một nguồn **kiểm toán** ngoại tuyến — bảng điều khiển đọc các bảng điểm plain-JSONL của nó tại `~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` (chỉ mục cuộc trò chuyện trong `conversation_summaries.db`).
+  - **Goose (codename goose, Block)**: `~/.agents/plugins/failproofai/hooks/hooks.json` (người dùng), `<cwd>/.agents/plugins/failproofai/hooks/hooks.json` (dự án) — Goose không có phạm vi `local`. Thực thi sử dụng hệ thống **hook** của Goose, **Open Plugins** đặc tả xuyên đại lý: trình cài đặt chỉ cần thả thư mục plugin `failproofai` và Goose tự động khám phá nó khi khởi động (tự đăng ký nó vào `~/.config/goose/config.yaml`). `hooks.json` sử dụng lược đồ Open Plugins **với** trình bao `"hooks"` cấp cao nhất, và bộ phù hợp được **bỏ qua** trên mọi sự kiện — `"*"` trần là regex không hợp lệ không khớp với gì (được xác minh trực tiếp so với goose v1.43.0). Tên sự kiện đã ở PascalCase (không có bản đồ sự kiện); tải trọng stdin sử dụng `event`/`working_dir`, mà trình xử lý chuẩn hóa thành `hook_event_name`/`cwd`. Nhánh `goose` của bộ đánh giá từ chối với JSON `{"decision":"block","reason"}` trên stdout ở exit 0, được tôn trọng trên sự kiện **`PreToolUse`** duy nhất (được gửi trong goose ≥ v1.37.0) — cái này kích hoạt cho công cụ shell **và bên trong subagent được ủy quyền**, vì vậy nó là điểm từ chối duy nhất đủ; bất kỳ lỗi hook khác nào không **mở**. Goose không có **sự kiện `Stop`**, vì vậy các builtins `require-*-before-stop` không áp dụng (như với Hermes). Tên công cụ chính tắc hóa qua `GOOSE_TOOL_MAP` (`shell→Bash`, `write→Write`, `todo__todo_write→TodoWrite`, …) và các khóa đường dẫn qua `GOOSE_TOOL_INPUT_MAP` (`path`/`source` → `file_path`). Goose cũng là một nguồn **kiểm toán** ngoại tuyến — bảng điều khiển đọc các phiên SQLite của nó tại `~/.local/share/goose/sessions/sessions.db` (mỗi hàng `sessions` mang một `working_dir` thực sự, vì vậy các phiên làm việc nhóm theo dự án cwd như Devin; chạy từ xóa `--no-session` được lọc).
+- **`policies-config.json`** — cho failproofai biết chính sách nào cần đánh giá và với tham số gì (chia sẻ trên tất cả CLI agent)
 
-- **`policies-config.json`** — cho failproofai biết chính sách nào để đánh giá và với những tham số nào (được chia sẻ trên tất cả các CLI đại lý)
-
-Chuyển `--cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose` để nhắm vào một đại lý cụ thể (được phân tách bằng dấu cách hoặc lặp lại cho bất kỳ tập con nào):
+Truyền `--cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose` để nhắm mục tiêu một agent cụ thể (cách nhau bằng khoảng trắng hoặc lặp lại cho bất kỳ tập hợp con nào):
 
 ```bash
 failproofai policies --install --cli codex --scope project
@@ -226,18 +232,18 @@ failproofai policies --install --cli goose --scope project
 failproofai policies --install --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose
 ```
 
-Khi `--cli` được bỏ qua, `failproofai` phát hiện CLI đại lý nào được cài đặt (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw` / `which droid` / `which devin` / `which agy` / `which goose`):
+Khi `--cli` bị bỏ qua, `failproofai` phát hiện CLI agent nào được cài đặt (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw` / `which droid` / `which devin` / `which agy` / `which goose`):
 
 - **Một CLI được phát hiện** — tự động chọn CLI đó mà không cần nhắc.
-- **Nhiều CLI được phát hiện** trong thiết bị đầu cuối tương tác — hiển thị lời nhắc chọn đơn với mũi tên-phím được nhóm thành phần `Detected (N)` (với hàng tổng hợp `Install for all N detected` + từng CLI được phát hiện riêng lẻ) và phần `Not installed (M) · install hooks ahead of time` liệt kê mọi CLI được hỗ trợ nhưng chưa được phát hiện dưới dạng tùy chọn cài đặt phía trước (↑↓ để di chuyển, Enter để chọn, ^C để thoát). Luồng gỡ cài đặt chỉ hiển thị phần Phát hiện.
-- **Nhiều CLI được phát hiện** trong lần chạy không tương tác (CI, không TTY) — cài đặt cho tất cả các CLI được phát hiện mà không cần nhắc.
-- **Không được phát hiện** — quay lại `claude`, với cảnh báo rằng không tìm thấy nhị phân đại lý nào trong PATH; lệnh hook vẫn được ghi để nó kích hoạt ngay khi bạn cài đặt một.
+- **Nhiều CLI được phát hiện** trong thiết bị đầu cuối tương tác — hiển thị lời nhắc lựa chọn đơn lẻ sử dụng phím mũi tên được nhóm thành phần `Detected (N)` (với hàng tổng hợp `Install for all N detected` + mỗi CLI được phát hiện riêng lẻ) và phần `Not installed (M) · install hooks ahead of time` liệt kê mọi CLI được hỗ trợ chưa được phát hiện làm tùy chọn cài đặt trước (↑↓ để di chuyển, Enter để chọn, ^C để thoát). Luồng gỡ cài đặt chỉ hiển thị phần Detected.
+- **Nhiều CLI được phát hiện** trong chạy không tương tác (CI, không TTY) — cài đặt cho tất cả CLI được phát hiện mà không cần nhắc.
+- **Không phát hiện nào** — quay lại `claude`, có cảnh báo rằng không tìm thấy nhị phân agent nào trong PATH; lệnh hook vẫn được ghi để nó kích hoạt ngay khi bạn cài đặt một.
 
-Bạn có thể chỉnh sửa `policies-config.json` trực tiếp bất kỳ lúc nào; các thay đổi có hiệu lực ngay lập tức trên sự kiện hook tiếp theo mà không cần khởi động lại.
+Bạn có thể chỉnh sửa `policies-config.json` trực tiếp bất kỳ lúc nào; các thay đổi có hiệu lực ngay trên sự kiện hook tiếp theo mà không cần khởi động lại.
 
 ---
 
-## Ví dụ: cấu hình cấp dự án với mặc định nhóm
+## Ví dụ: cấu hình cấp dự án với giá trị mặc định của đội
 
 Cam kết `.failproofai/policies-config.json` vào kho lưu trữ của bạn:
 
@@ -258,4 +264,4 @@ Cam kết `.failproofai/policies-config.json` vào kho lưu trữ của bạn:
 }
 ```
 
-Mỗi nhà phát triển sau đó có thể tạo `.failproofai/policies-config.local.json` (gitignored) cho các ghi đè cá nhân mà không ảnh hưởng đến các thành viên trong nhóm.
+Sau đó, mỗi nhà phát triển có thể tạo `.failproofai/policies-config.local.json` (bị gitignored) để ghi đè cá nhân mà không ảnh hưởng đến đồng đội.

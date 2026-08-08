@@ -1,13 +1,13 @@
 ---
-title: התקנת מדיניויות
-description: "אפשר מדיניויות כך שהן יופעלו בכל קריאת כלי של agent"
+title: התקנת מדיניות
+description: "הפעל מדיניות כך שהן יפעלו בכל קריאת כלי של סוכן"
 ---
 
 ```bash
 failproofai policies --install [policy-names...] [options]
 ```
 
-כותב ערכי hook לקובץ ההגדרות של ה-CLI של agent המותקן שלך (Claude Code, OpenAI Codex, או GitHub Copilot CLI _(beta)_) כדי שfaiproofai יוכל לעכב קריאות כלים.
+כותב ערכי hook לקובץ הגדרות של ה-CLI של הסוכן המותקן שלך (Claude Code, OpenAI Codex, או GitHub Copilot CLI _(beta)_) כדי שה-failproofai יוכל להתערב בקריאות כלים.
 
 כינויים: `failproofai p -i`
 
@@ -15,43 +15,43 @@ failproofai policies --install [policy-names...] [options]
 
 | דגל | תיאור |
 |------|-------------|
-| `--cli claude\|codex\|copilot` | CLI(s) של agent להתקנה; מופרדים בחסם (למשל `--cli claude codex copilot`) או חוזרים. השמט כדי לזהות CLIs מותקנים ולבקש. |
-| `--scope user` | התקן לקובץ הגדרות בהיקף משתמש (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). ברירת מחדל. |
-| `--scope project` | התקן לקובץ הגדרות בהיקף פרויקט (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
-| `--scope local` | Claude בלבד — התקן ל-`<cwd>/.claude/settings.local.json`. ל-Codex וcopilot אין היקף `local`. |
-| `--custom <path>` / `-c` | נתיב לקובץ JS המכיל מדיניויות hook מותאמות אישית |
+| `--cli claude\|codex\|copilot` | CLI של סוכן להתקנה; מופרדים בחללים (לדוגמה `--cli claude codex copilot`) או חוזרים. השמט כדי לגלות CLI מותקנים וקבל הנחיות. |
+| `--scope user` | התקן לקובץ הגדרות בטווח משתמש (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). ברירת מחדל. |
+| `--scope project` | התקן לקובץ הגדרות בטווח פרויקט (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
+| `--scope local` | Claude בלבד — התקנה ל-`<cwd>/.claude/settings.local.json`. Codex ו-Copilot אינם תומכים בטווח `local`. |
+| `--custom <path>` / `-c` | נתיב לקובץ JS המכיל מדיניות hook מותאמות אישית |
 
 ## התנהגות
 
-- **אין שמות מדיניויות** - פותח הנחיה אינטראקטיבית לבחירת מדיניויות
-- **שמות ספציפיים** - מאפשר מדיניויות אלו (מוסף לכל אלה שכבר מופעלות)
-- **`all`** - מאפשר כל מדיניות זמינה
+- **ללא שמות מדיניות** - פותח הנחיה אינטראקטיבית לבחירת מדיניות
+- **שמות ספציפיים** - הפעל מדיניות אלה (מתווסף לכל אחד שכבר מופעל)
+- **`all`** - הפעל כל מדיניות זמינה
 
-התקנה היא תוספת: הפעלת `--install` שוב מוסיפה מדיניויות חדשות ללא הסרת הקיימות.
+התקנה היא תוספת: הפעלת `--install` שוב מוסיפה מדיניות חדשה ללא הסרה של קיימות.
 
 ## דוגמאות
 
 ```bash
-# התקן את כל המדיניויות ברירת המחדל באופן גלובלי (אינטראקטיבי)
+# התקן את כל המדיניות הברירת מחדל באופן גלובלי (אינטראקטיבי)
 failproofai policies --install
 
-# התקן מדיניויות ספציפיות לפרויקט הנוכחי
+# התקן מדיניות ספציפיות עבור הפרויקט הנוכחי
 failproofai policies --install block-sudo sanitize-api-keys --scope project
 
-# אפשר את כל המדיניויות בבת אחת
+# הפעל את כל המדיניות בבת אחת
 failproofai policies --install all
 
-# התקן עם קובץ מדיניויות מותאם אישית
+# התקן עם קובץ מדיניות מותאם אישית
 failproofai policies --install --custom ./my-policies.js
 
-# התקן עבור OpenAI Codex (היקף פרויקט)
+# התקן עבור OpenAI Codex (טווח פרויקט)
 failproofai policies --install --cli codex --scope project
 
-# התקן עבור GitHub Copilot CLI (beta) לפרויקט הנוכחי
+# התקן עבור GitHub Copilot CLI (beta) עבור הפרויקט הנוכחי
 failproofai policies --install --cli copilot --scope project
 
-# התקן לשלוש CLI בו זמנית
+# התקן עבור שלוש ה-CLI בו-זמנית
 failproofai policies --install --cli claude codex copilot
 ```
 
-כאשר `--custom <path>` מסופק, הקובץ מאומת מיד - הוא חייב לקרוא ל-`customPolicies.add()` לפחות פעם אחת. הנתיב שנפתר נשמר ל-`policies-config.json` כ-`customPoliciesPath`.
+כאשר `--custom <path>` מסופק, הקובץ מאומת מיד - הוא חייב לקרוא ל-`customPolicies.add()` לפחות פעם אחת. הנתיב המתורגם נשמר ל-`policies-config.json` בתור `customPoliciesPath`.

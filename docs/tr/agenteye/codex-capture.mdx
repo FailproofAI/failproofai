@@ -1,55 +1,56 @@
 ---
+---
 title: "Codex oturum yakalama"
-description: "Ekibinizin yerel OpenAI Codex oturumlarını AgentEye'a sıradan oturumlar ve etkinlikler olarak aktarın — Codex'i nasıl çalıştırdıklarında hiçbir değişiklik olmadan."
+description: "Ekibinizin yerel OpenAI Codex oturumlarını AgentEye'a sıradan oturumlar ve olaylar olarak kaydedin — Codex'i çalıştırma şeklinizde herhangi bir değişiklik yapılmadan."
 ---
 
-Mühendisleriniz zaten her gün OpenAI Codex'i çalıştırıyor. Codex oturum yakalama, bu kodlama oturumlarını AgentEye'a sıradan oturumlar ve etkinlikler olarak getiriyor, böylece bunları arayabilir, yeniden oynatabilir ve gözlemlediğiniz her şeyin yanında değerlendirebilirsiniz. [Python SDK](/tr/agenteye/python-sdk) ile tamamlayıcıdır: SDK yazdığınız ajanları enstrümante eder, bu ise ekibinizin zaten yaptığı Codex çalışmasını yakalar — çalıştırma şeklinde hiçbir değişiklik olmadan.
+Mühendisleriniz her gün OpenAI Codex'i çalıştırıyor. Codex oturum yakalama, bu kodlama oturumlarını AgentEye'a sıradan oturumlar ve olaylar olarak getirir; böylece bunları gözlemlediğiniz diğer her şeyle birlikte arayabilir, yeniden oynatabilir ve değerlendirebilirsiniz. [Python SDK](/tr/agenteye/python-sdk) tamamlar: SDK yazdığınız ajanları enstrümente eder, bu da ekibinizin zaten yaptığı Codex işini yakalar — çalıştırma şeklinizde herhangi bir değişiklik olmadan.
 
-Küçük bir arka plan toplayıcı, Codex'in yerel oturum transkriptlerini yazıldıkça okur ve bunları AgentEye'a gönderir. Makine başına bir toplayıcı tüm yerel Codex yüzeylerini aynı anda yakalar — yüzey başına kurulum gerekmez.
+Küçük bir arka plan toplayıcısı, Codex'in yerel oturum transkriptlerini yazıldıkça okur ve bunları AgentEye'a gönderir. Makine başına bir toplayıcı, tüm yerel Codex yüzeylerini aynı anda yakalar — yüzey başına kurulum yoktur.
 
-Aynı toplayıcı diğer ajanları da yakalar — bkz. [OpenClaw](/tr/agenteye/openclaw-capture) ve [Hermes](/tr/agenteye/hermes-capture). Çalıştırdığınız her birini etkinleştirin; tek bir toplayıcı aynı anda birkaç tanesini yakala­bilir.
+Aynı toplayıcı diğer ajanları da yakalar — bkz. [OpenClaw](/tr/agenteye/openclaw-capture) ve [Hermes](/tr/agenteye/hermes-capture). Çalıştırdığınız her birini etkinleştirin; tek bir toplayıcı aynı anda birkaçını yakalayabilir.
 
 ---
 
-## Neler yakalanır
+## Neyi yakalar
 
-**Yerel olarak** çalışan her Codex yüzeyi aynı disk üstü oturum transkriptlerini üretir ve toplayıcı hepsini alır:
+**Yerel olarak** çalışan her Codex yüzeyi, aynı diskte saklı oturum transkriptleri üretir ve toplayıcı hepsini alır:
 
 - Codex **CLI** ve `codex exec`
 - **VS Code / IDE uzantısı**
-- **masaüstü uygulaması**, bir oturumu yerel olarak çalıştırdığında
+- **masaüstü uygulaması**, yerel olarak bir oturum çalıştırdığında
 
-Her Codex oturumu bir AgentEye [oturumuna](/tr/agenteye/sessions) dönüşür; kullanıcı ve asistan mesajları, akıl yürütme, araç çağrıları, araç sonuçları ve belirteç kullanımı karşılık gelen [etkinliklere](/tr/agenteye/event-stream) dönüşür. Her oturumun geldiği yüzey (CLI, IDE veya masaüstü) kaydedilir, böylece bunları ayırt edebilirsiniz.
+Her Codex oturumu, AgentEye [oturumu](/tr/agenteye/sessions) olur; kullanıcı ve asistan mesajları, akıl yürütme, araç çağrıları, araç sonuçları ve token kullanımı, eşleşen [olaylar](/tr/agenteye/event-stream) olur. Her oturumun geldiği yüzey (CLI, IDE veya masaüstü) kaydedilir, böylece bunları ayırt edebilirsiniz.
 
-> **Bulut oturumları yakalanmaz.** Masaüstü uygulaması giderek daha fazla oturumu Codex bulutunda çalıştırıyor ve yalnızca meta verilerini makinede tutuyor — okuması gereken yerel transkript yok. Yalnızca yerel olarak yürütülen oturumlar yakalanır.
+> **Bulut oturumları yakalanmaz.** Masaüstü uygulaması giderek artan oranda oturumları Codex bulutunda çalıştırır ve makineye yalnızca meta verilerini tutar — okunacak yerel transkript yoktur. Yalnızca yerel olarak yürütülen oturumlar yakalanır.
 
 ---
 
-## Aç
+## Açın
 
-Yakalama, etkinleştirene kadar kapalıdır. `events:add` izni olan bir API anahtarı ile toplayıcıyı kurun (bkz. [API anahtarları](/tr/agenteye/api-keys)) ve Codex yakalamayı aç:
+Yakalama, etkinleştirene kadar kapalıdır. Toplayıcıyı `events:add` izni olan bir API anahtarıyla yükleyin (bkz. [API anahtarları](/tr/agenteye/api-keys)) ve Codex yakalamayı açın:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --codex-enabled
 ```
 
-Bu, toplayıcıyı kurar, onu arka plan hizmeti olarak kaydeder ve yakalamaya başlar. Çalıştığını doğrulayın:
+Bu, toplayıcıyı yükler, arka plan hizmeti olarak kaydeder ve yakalamayı başlatır. Çalışıyor olduğunu doğrulayın:
 
 ```bash
 agenteye-collector health
 ```
 
-İlk çalıştırmada, mevcut Codex oturumlarınız bir kez geri doldurulur ve yeni etkinlik ardından saniyeler içinde akışa başlar. Codex'in kendi dosyaları yalnızca okunur — asla değiştirilmez, taşınmaz veya silinmez — ve her oturum, yeniden başlatmalar arasında bile tam olarak bir kez gönderilir.
+İlk çalıştırmada, mevcut Codex oturumlarınız bir kez geri doldurulur ve yeni etkinlik birkaç saniye içinde akışa alınır. Codex'in dosyaları yalnızca okunur — asla değiştirilmez, taşınmaz veya silinmez — ve her oturum, yeniden başlatmalar arasında bile tam olarak bir kez gönderilir.
 
 ---
 
 ## Nerede görünür
 
-Yakalanan oturumlar **Oturumlar**'da görünür ve etkinlikleri **Etkinlikler** akışında, gözlemlediğiniz diğer herhangi bir ajanla aynı şekilde — böylece [oturum yeniden oynatma](/tr/agenteye/sessions), [arama](/tr/agenteye/queries), [değerlendirmeler](/tr/agenteye/evaluations) ve [uyarılar](/tr/agenteye/alerts) hepsi bunlar üzerinde çalışır. Codex ajanına göre filtreleyin, bunları kendi başlarına görmek için.
+Yakalanan oturumlar **Oturumlar**'da ve olayları **Olaylar** akışında görünür; gözlemlediğiniz diğer herhangi bir ajan gibi — bu nedenle [oturum yeniden oynatma](/tr/agenteye/sessions), [arama](/tr/agenteye/queries), [değerlendirmeler](/tr/agenteye/evaluations) ve [uyarılar](/tr/agenteye/alerts) hepsi bunlar üzerinde çalışır. Onları kendileri görmek için Codex ajanına göre filtreleyin.
 
 ---
 
 ## Gizlilik
 
-Codex transkriptleri tam oturumu içerir — komut çıktısı, dosya içeriği ve Codex'in okuduğu veya yazdığı her şey dahil — ve sırlar içerebilir. Yakalanan oturumlar olduğu gibi gönderilir, bu nedenle yakalamayı yalnızca bu içeriği AgentEye'a merkezileştirmenin uygun olduğu makineler ve takımlar için etkinleştirin ve toplayıcıya yalnızca `events:add` kapsamlı bir anahtar verin. Verilerinizin nasıl izole tutulduğu hakkında bkz. [Güvenlik](/tr/agenteye/security).
+Codex transkriptleri tam oturumu içerir — komut çıktısı, dosya içeriği ve Codex'in okuduğu veya yazdığı her şey dahil — ve sırlar içerebilir. Yakalanan oturumlar olduğu gibi gönderilir; bu nedenle yakalamayı yalnızca bu içeriği AgentEye'da merkezileştirmenin uygun olduğu makineler ve takımlar için etkinleştirin ve toplayıcıya yalnızca `events:add` kapsamlı bir anahtar verin. Verilerinizin nasıl izole tutulduğu hakkında [Güvenlik](/tr/agenteye/security) bölümüne bakın.

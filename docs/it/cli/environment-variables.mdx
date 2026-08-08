@@ -1,6 +1,6 @@
 ---
-title: Variabili d'ambiente
-description: "Configura il comportamento di failproofai con variabili d'ambiente"
+title: Variabili di ambiente
+description: "Configura il comportamento di failproofai con variabili di ambiente"
 ---
 
 ## Dashboard
@@ -8,40 +8,65 @@ description: "Configura il comportamento di failproofai con variabili d'ambiente
 | Variabile | Descrizione |
 |----------|-------------|
 | `PORT` | Porta del dashboard (predefinita: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Sostituisce il percorso in cui si trovano le cartelle dei progetti Claude Code |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Pagine del dashboard separate da virgola da nascondere |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Host/IP autorizzati ad accedere alle risorse di sviluppo. Equivalente a `--allowed-origins`. |
+| `CLAUDE_PROJECTS_PATH` | Sostituisci la posizione in cui vengono cercate le cartelle dei progetti di Claude Code |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Pagine del dashboard separate da virgole da nascondere |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Host/IP autorizzati ad accedere alle risorse dev. Come `--allowed-origins`. |
 
-## Logging
+## Registrazione
 
 | Variabile | Descrizione |
 |----------|-------------|
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Livello di log del server (predefinito: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Percorso personalizzato del file di log degli hook, oppure `true` per il percorso predefinito (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Percorso personalizzato del file di log dei hook, o `true` per il predefinito (`~/.failproofai/logs/hooks.log`) |
 
 ## Telemetria
 
+failproofai invia per impostazione predefinita telemetria di utilizzo anonima. Ci sono due modi per
+disattivarla e viene applicato il più restrittivo — una variabile di ambiente
+non può mai riabilitare qualcosa che il file di configurazione ha disattivato.
+
 | Variabile | Descrizione |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Disabilita la telemetria anonima di utilizzo |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Disabilita la telemetria di utilizzo anonima per questo processo |
+
+Per disabilitarla permanentemente sul computer, aggiungi questo a `~/.failproofai/config.toml`:
+
+```toml
+[telemetry]
+enabled = false
+```
+
+<Note>
+Il file di configurazione è l'opzione da usare se esegui il **daemon failproofaid**.
+Il daemon è un servizio a livello di sistema e il suo ambiente non include
+variabili esportate dalla tua shell — quindi `FAILPROOFAI_TELEMETRY_DISABLED` non
+può raggiungerlo. `[telemetry] enabled = false` viene letto sia dalla CLI che dal daemon.
+</Note>
+
+Il daemon segnala solo il proprio **ciclo di vita**: che ha avviato (e se
+l'esecuzione precedente è terminata correttamente), che ha arrestato, quando il
+suo worker di valutazione è stato generato o riavviato, quando un'attività di
+raccolta ha fallito e l'esito di un pull di policy cloud. Questi contengono valori
+e conteggi a bassa cardinalità — mai un percorso di file, un comando, una policy,
+un prompt o qualcosa letto da un trascritto. Non esiste un evento per ogni chiamata di strumento.
 
 ## Autenticazione
 
 | Variabile | Descrizione |
 |----------|-------------|
-| `FAILPROOF_API_URL` | Sostituisce l'URL di base del server API utilizzato da dalla finestra di dialogo di autenticazione del dashboard. Predefinito: `https://api.befailproof.ai`; impostare a `http://localhost:8080` (o altro percorso) quando si esegue un api-server locale. |
-| `FAILPROOFAI_AUTH_DIR` | Sostituisce il percorso in cui è memorizzato `auth.json` (predefinito: `~/.failproofai`). Principalmente utile per test isolati. |
+| `FAILPROOF_API_URL` | Sostituisci l'URL di base del server API utilizzato dalla finestra di dialogo di autenticazione del dashboard. Predefinito `https://api.befailproof.ai`; imposta `http://localhost:8080` (o altrove) quando esegui un server API locale. |
+| `FAILPROOFAI_AUTH_DIR` | Sostituisci dove viene archiviato `auth.json` (predefinito: `~/.failproofai`). Principalmente utile per test isolati. |
 
-## Prompt al primo avvio
+## Prompt di primo avvio
 
 | Variabile | Descrizione |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Salta il prompt che offre di installare le policy al primo richiamo di `failproofai` senza argomenti |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Salta il prompt che offre di installare le policy alla prima invocazione vuota di `failproofai` |
 
 ## LLM (per la valutazione delle policy)
 
 | Variabile | Descrizione |
 |----------|-------------|
 | `FAILPROOFAI_LLM_BASE_URL` | Endpoint dell'API LLM (predefinito: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | Chiave API per le policy basate su LLM |
+| `FAILPROOFAI_LLM_API_KEY` | Chiave API per le policy alimentate da LLM |
 | `FAILPROOFAI_LLM_MODEL` | Nome del modello (predefinito: `gpt-4o-mini`) |

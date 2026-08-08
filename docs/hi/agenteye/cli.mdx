@@ -1,24 +1,24 @@
 ---
 title: "CLI"
-description: "Failproof AI Observability को टर्मिनल या स्क्रिप्ट से पूरी तरह चलाएं: डैशबोर्ड के चक्कर नहीं लगाने पड़ेंगे।"
+description: "Failproof AI Observability के सभी कार्यों को टर्मिनल या स्क्रिप्ट से चलाएं: कोई डैशबोर्ड चक्कर नहीं।"
 ---
 
-Failproof AI Observability को टर्मिनल या स्क्रिप्ट से पूरी तरह चलाएं: डैशबोर्ड के चक्कर नहीं लगाने पड़ेंगे। `agenteye` CLI आपके डेटा (सेशन, इवेंट लॉग, मूल्यांकन) को क्वेरी करता है और आपके संगठन को प्रबंधित करता है (API कुंजियाँ, उपयोगकर्ता, सेटिंग्स, सतर्कताएं, घटनाएं, सहेजी गई क्वेरीज़), इसलिए जब आप कोई जांच स्वचालित करना चाहते हैं, CI में Observability को जोड़ना चाहते हैं, या किसी कोडिंग एजेंट को प्रोडक्शन का निरीक्षण करने देना चाहते हैं तो इसका उपयोग करें। प्रत्येक कमांड `--json` फ़्लैग को सपोर्ट करता है, इसलिए यह आपके लिए प्रॉम्प्ट पर समान रूप से काम करता है या किसी कोडिंग एजेंट (Claude Code, Cursor) के लिए जो आउटपुट को पार्स करता है।
+Failproof AI Observability के सभी कार्यों को टर्मिनल या स्क्रिप्ट से चलाएं: कोई डैशबोर्ड चक्कर नहीं। `agenteye` CLI आपके डेटा (sessions, event logs, evaluations) को query करता है और आपके org को प्रबंधित करता है (API keys, users, settings, alerts, incidents, saved queries), इसलिए जब आप कोई check स्वचालित करना चाहते हैं, CI में Observability जोड़ना चाहते हैं, या coding agent को production निरीक्षण करने दिखाना चाहते हैं, तो इसका उपयोग करें। प्रत्येक command एक `--json` flag को सपोर्ट करता है, इसलिए यह आपके लिए prompt पर या coding agent (Claude Code, Cursor) के लिए shell out करके result parse करने में समान रूप से काम करता है।
 
-एक ही बाइनरी से आप कर सकते हैं:
+एक binary के साथ आप ये कर सकते हैं:
 
-- **अपना डेटा पढ़ें**: `sessions`, `events`, `evals`, `errors` (समय, एजेंट, वातावरण, स्कोर के अनुसार फ़िल्टर करें)।
-- **अपने संगठन को प्रबंधित करें**: `keys`, `users`, `settings`, `alerts`, `incidents`।
-- **विश्लेषण चलाएं**: सहेजी गई SQL और एक ad-hoc क्वेरी रनर (`query`)।
-- **AI सहायक से पूछें**: वही read-only विश्लेषक जिससे आप डैशबोर्ड में बात करते हैं (`agent`)।
+- **अपना डेटा पढ़ें**: `sessions`, `events`, `evals`, `errors` (समय, agent, env, score द्वारा फ़िल्टर करें)।
+- **अपने org को प्रबंधित करें**: `keys`, `users`, `settings`, `alerts`, `incidents`।
+- **विश्लेषण चलाएं**: saved SQL और ad-hoc query runner (`query`)।
+- **AI assistant से पूछें**: वही read-only analyst जिससे आप डैशबोर्ड में चैट करते हैं (`agent`)।
 
-> **नोट:** यह `agenteye` CLI है, कलेक्टर डेमन (`agenteye-collector`) से एक अलग टूल है। CLI आपके डैशबोर्ड से बात करता है; कलेक्टर सर्वर को इवेंट भेजता है।
+> **नोट:** यह `agenteye` CLI है, collector daemon (`agenteye-collector`) से एक अलग tool है। CLI आपके डैशबोर्ड से बात करता है; collector events को server पर भेजता है।
 
 ---
 
-## शीघ्र प्रारंभ
+## Quickstart
 
-शून्य से आपका पहला परिणाम चार लाइनों में। CLI को अपने डैशबोर्ड पर इंगित करें, साइन इन करें, पुष्टि करें कि आप कौन हैं, फिर पिछले दिन के रन खींचें:
+कुछ भी नहीं से अपना पहला result चार लाइनों में प्राप्त करें। CLI को अपने डैशबोर्ड पर point करें, sign in करें, confirm करें कि आप कौन हैं, फिर पिछले दिन के runs pull करें:
 
 ```bash
 pipx install agenteye
@@ -27,7 +27,7 @@ agenteye whoami                                                                 
 agenteye --json sessions --since 24h                                             # one row per agent run, last 24h
 ```
 
-वह अंतिम कमांड सबसे हाल के सेशन का एक JSON ऑब्जेक्ट प्रिंट करता है (सबसे नया पहले, डिफ़ॉल्ट रूप से 50 तक सीमित)। इसे `jq` में पाइप करें इसे स्लाइस करने के लिए, या `--json` को छोड़ दें एक बॉक्सबद्ध, रंगीन तालिका के लिए। प्रत्येक पंक्ति रन की स्थिति और, यदि किसी मूल्यांकनकर्ता ने इसे स्कोर किया है, तो इसके मीट्रिक स्कोर (यहाँ संक्षिप्त) ले जाती है:
+वह अंतिम command सबसे हाल के sessions का एक JSON object print करता है (सबसे नए पहले, डिफ़ॉल्ट रूप से 50 तक सीमित)। इसे `jq` में pipe करें इसे slice करने के लिए, या table के लिए `--json` drop करें। प्रत्येक row run की status और, यदि evaluator ने इसे score किया है, तो इसके metric scores (यहाँ abbreviated) रखता है:
 
 ```json
 {
@@ -47,56 +47,56 @@ agenteye --json sessions --since 24h                                            
 }
 ```
 
-इस पृष्ठ का बाकी हिस्सा प्रत्येक टुकड़े की व्याख्या करता है: [अलग से स्थापित करना](#installation), [साइन इन करना](#authentication), [कॉन्फ़िगरेशन](#configuration), प्रत्येक कमांड द्वारा साझा किए जाने वाले [वैश्विक सम्मेलन](#global-options--conventions), और [संपूर्ण कमांड संदर्भ](#command-reference)।
+यह पृष्ठ बाकी सब कुछ समझाता है: isolated में [installing](#installation), [signing in](#authentication), [configuration](#configuration), [global conventions](#global-options--conventions) जो हर command share करता है, और [full command reference](#command-reference)।
 
 ---
 
-## स्थापना
+## Installation
 
-CLI एक सार्वजनिक PyPI पैकेज है जिसका नाम **`agenteye`** है। इसे एक अलग-थलग वातावरण में स्थापित करें ताकि इसके अपने निर्भरताएं हमेशा हों:
+CLI एक public PyPI package है जिसका नाम **`agenteye`** है। इसे एक isolated environment में install करें ताकि इसके हमेशा अपने dependencies हों:
 
 ```bash
 pipx install agenteye
-# या
+# or
 uv tool install agenteye
 ```
 
-इसे Python 3.10+ की आवश्यकता है। स्थापित कमांड **`agenteye`** है:
+इसे Python 3.10+ की आवश्यकता है। Installed command है **`agenteye`**:
 
 ```bash
 agenteye --version
 agenteye --help
 ```
 
-> **नोट:** Failproof AI Observability Python SDK भी `agenteye` वितरण नाम का उपयोग करता है। CLI को `pipx` या `uv tool` के साथ स्थापित करना (साझा virtualenv में `pip install` के बजाय) दोनों को टकराने से रोकता है। एक सादा `pip install agenteye` केवल तब ठीक है यदि SDK उसी वातावरण में स्थापित नहीं है।
+> **नोट:** Failproof AI Observability Python SDK भी `agenteye` distribution name का उपयोग करता है। `pipx` या `uv tool` के साथ CLI install करना (shared virtualenv में `pip install` करने के बजाय) दोनों को collision से बचाता है। एक साधारण `pip install agenteye` ठीक है केवल अगर SDK एक ही environment में install नहीं है।
 
 ---
 
-## प्रमाणीकरण
+## Authentication
 
-CLI **डैशबोर्ड** के साथ एक ईमेल किए गए एकबारी कोड से प्रमाणित करता है:
+CLI **dashboard** के साथ एक emailed one-time code द्वारा authenticate करता है:
 
 ```bash
 agenteye login --email you@example.com
-# आपको एक 6-अंकीय कोड ईमेल किया जाता है; इसे प्रॉम्प्ट पर पेस्ट करें।
+# A 6-digit code is emailed to you; paste it at the prompt.
 ```
 
-सेशन टोकन `~/.agenteye/cli.json` में संग्रहीत है (केवल आपके द्वारा पठनीय, मोड `0600`) और डिफ़ॉल्ट रूप से 24 घंटे के लिए वैध है। जब यह समाप्त हो जाता है, तो `agenteye login` को फिर से चलाएं।
+Session token को `~/.agenteye/cli.json` में store किया जाता है (केवल आप readable, mode `0600`) और डिफ़ॉल्ट रूप से 24 घंटों के लिए valid है। जब यह expire हो जाता है, तो `agenteye login` फिर से चलाएं।
 
 ```bash
 agenteye whoami     # show the current user, active org, and permissions
 agenteye logout     # revoke the session and clear the stored token
 ```
 
-`whoami` कभी भी एक गायब या समाप्त सेशन पर त्रुटि नहीं देता; इसके बजाय `logged_in: false` की रिपोर्ट करता है, इसलिए एक स्क्रिप्ट या एजेंट सुरक्षित रूप से प्रमाणन स्थिति का जांच कर सकता है (यदि कोई आधार URL सेट नहीं है या डैशबोर्ड अप्राप्य है तो यह अभी भी गैर-शून्य बाहर निकल सकता है)।
+`whoami` कभी missing या expired session पर error नहीं देता; इसके बजाय `logged_in: false` report करता है, इसलिए एक script या agent safely auth state को probe कर सकता है (यह अभी भी non-zero exit कर सकता है अगर कोई base URL set नहीं है या dashboard unreachable है)।
 
-**आवश्यकताएं:** आपके ईमेल को डैशबोर्ड में साइन इन करने की अनुमति दी जानी चाहिए (अपने Failproof AI Observability प्रशासक से पूछें), और डैशबोर्ड अपने आधार URL पर पहुंचने योग्य होना चाहिए ([कॉन्फ़िगरेशन](#configuration) देखें)। यदि आप कोड का अनुरोध करते हैं और कोई आता नहीं है, तो आपके ईमेल को शायद अभी तक डैशबोर्ड एक्सेस के लिए सक्षम नहीं किया गया है।
+**Requirements:** आपका email dashboard में sign in करने की अनुमति दी जानी चाहिए (अपने Failproof AI Observability administrator से पूछें), और dashboard इसके base URL पर reachable होना चाहिए (देखें [Configuration](#configuration))। यदि आप एक code request करते हैं और कोई नहीं आता है, तो आपका email शायद dashboard access के लिए अभी enabled नहीं है।
 
 ---
 
-## अपना संगठन चुनना (बहु-किरायेदार)
+## अपने org को चुनना (multi-tenant)
 
-यदि आपका खाता एक से अधिक संगठनों से संबंधित है, तो **लॉगिन पर** सक्रिय एक चुनें; इसे सहेजा जाता है और हर बाद की कमांड के लिए उपयोग किया जाता है:
+यदि आपका account एक से अधिक org से संबंधित है, तो **login पर** active को चुनें; यह saved है और हर बाद के command के लिए उपयोग किया जाता है:
 
 ```bash
 agenteye login --org acme           # authenticate and set the active tenant in one step
@@ -105,89 +105,89 @@ agenteye orgs switch globex         # change the saved default
 agenteye --org globex sessions      # override for a single command
 ```
 
-यदि आप बिल्कुल एक संगठन के हैं तो यह स्वचालित रूप से चुना जाता है और आप `--org` को पूरी तरह से नजरअंदाज कर सकते हैं। यदि आप कई से संबंधित हैं और एक नहीं चुनते हैं, तो CLI उन्हें सूचीबद्ध करता है और आपको `--org <slug>` के साथ फिर से चलाने के लिए कहता है। सक्रिय संगठन प्रत्येक अनुरोध पर डैशबोर्ड को भेजा जाता है, और आपकी अनुमतियों को **प्रति संगठन** के आधार पर हल किया जाता है; `agenteye whoami` सक्रिय संगठन, इसमें आपकी अनुमतियां, और आपकी सभी सदस्यताएं दिखाता है।
+यदि आप बिल्कुल एक org से संबंधित हैं तो यह automatically select किया जाता है और आप पूरी तरह `--org` को ignore कर सकते हैं। यदि आप कई से संबंधित हैं और कोई एक pick नहीं करते हैं, तो CLI उन्हें सूचीबद्ध करता है और आपको `--org <slug>` के साथ re-run करने के लिए कहता है। Active org हर request पर dashboard को भेजा जाता है, और आपकी permissions **per org** resolve होती हैं; `agenteye whoami` active org, उसमें आपकी permissions, और आपकी सभी memberships दिखाता है।
 
 ---
 
-## कॉन्फ़िगरेशन
+## Configuration
 
-| सेटिंग | फ़्लैग | वातावरण चर | डिफ़ॉल्ट |
+| Setting | Flag | Environment variable | Default |
 |---|---|---|---|
-| डैशबोर्ड आधार URL | `--base-url` | `AGENTEYE_DASHBOARD_URL` | **आवश्यक** (कोई डिफ़ॉल्ट नहीं) |
-| सक्रिय org/tenant | `--org` | `AGENTEYE_ORG` | लॉगिन पर चुना; `~/.agenteye/cli.json` में सहेजा गया |
-| सेशन टोकन | `--token` | `AGENTEYE_CLI_TOKEN` | `~/.agenteye/cli.json` से |
-| JSON आउटपुट | `--json` | `AGENTEYE_CLI_JSON` | बंद |
-| TLS सत्यापन छोड़ें | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | बंद (लॉगिन पर सहेजा गया) |
-| अनुरोध टाइमआउट (सेकंड) | `--timeout` | _(कोई नहीं)_ | 30 |
-| उपयोग टेलीमेट्री अक्षम करें | _(कोई नहीं)_ | `AGENTEYE_ANALYTICS_DISABLED` (या `DO_NOT_TRACK`) | टेलीमेट्री वर्तमान में अक्षम है; कुछ नहीं भेजा जाता है |
+| Dashboard base URL | `--base-url` | `AGENTEYE_DASHBOARD_URL` | **required** (no default) |
+| Active org/tenant | `--org` | `AGENTEYE_ORG` | chosen at login; saved in `~/.agenteye/cli.json` |
+| Session token | `--token` | `AGENTEYE_CLI_TOKEN` | from `~/.agenteye/cli.json` |
+| JSON output | `--json` | `AGENTEYE_CLI_JSON` | off |
+| Skip TLS verification | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | off (saved at login) |
+| Request timeout (seconds) | `--timeout` | _(none)_ | 30 |
+| Disable usage telemetry | _(none)_ | `AGENTEYE_ANALYTICS_DISABLED` (or `DO_NOT_TRACK`) | telemetry is currently disabled; nothing is sent |
 
-संकल्प क्रम **फ़्लैग → वातावरण चर → कॉन्फ़िग फ़ाइल** है। कोई डिफ़ॉल्ट नहीं है; आपको CLI को अपने डैशबोर्ड पर इंगित करना चाहिए, प्रति-कमांड (`--base-url https://agenteye.example.com`) या एक बार पर्यावरण के माध्यम से (यह आपके पहले `login` के बाद भी सहेजा जाता है):
+Resolution order है **flag → environment variable → config file**। कोई default नहीं है; आपको CLI को अपने dashboard पर point करना चाहिए, या तो per-command (`--base-url https://agenteye.example.com`) या एक बार environment के माध्यम से (यह आपके पहले `login` के बाद भी saved है):
 
 ```bash
 export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com
 ```
 
-कॉन्फ़िगरेशन निर्देशिका `AGENTEYE_HOME` को सम्मानित करती है (SDK और कलेक्टर द्वारा उपयोग किया जाने वाला एक ही सम्मेलन); यदि सेट है, तो `cli.json` `$AGENTEYE_HOME/cli.json` में रहता है।
+Configuration directory `AGENTEYE_HOME` को honour करता है (वही convention जो SDK और collector द्वारा उपयोग किया जाता है); यदि set है, तो `cli.json` `$AGENTEYE_HOME/cli.json` में रहता है।
 
-### स्व-हस्ताक्षरित या आंतरिक TLS
+### Self-signed या internal TLS
 
-यदि आपका डैशबोर्ड HTTPS पर स्व-हस्ताक्षरित या आंतरिक प्रमाणपत्र (उदाहरण के लिए, एक कच्चा लोड-बैलेंसर होस्टनाम) के साथ परोसा जाता है, तो TLS सत्यापन इसे `CERTIFICATE_VERIFY_FAILED` त्रुटि के साथ अस्वीकार करता है। प्रमाणपत्र सत्यापन छोड़ने के लिए `--insecure` पास करें:
+यदि आपका dashboard एक self-signed या internal certificate के साथ HTTPS पर serve किया जाता है (उदाहरण के लिए, एक raw load-balancer hostname), तो TLS verification इसे `CERTIFICATE_VERIFY_FAILED` error से reject करता है। Certificate verification को skip करने के लिए `--insecure` pass करें:
 
 ```bash
 agenteye --base-url https://agenteye.internal --insecure login
 ```
 
-`--insecure` **आपके लॉगिन पर `cli.json` में सहेजा जाता है**, इसलिए बाद की कमांड स्वचालित रूप से सत्यापन को छोड़ देती हैं; आपको फ़्लैग को दोहराना नहीं होता है। एक एकबारी सत्यापित कॉल के लिए `--secure` पास करें, या अपने अगले लॉगिन पर सत्यापन को फिर से सक्षम करने के लिए। CLI सेशन को स्टडआउट पर प्रत्येक कमांड से पहले डैशबोर्ड से संपर्क करते हुए एक चेतावनी प्रिंट करता है जबकि सत्यापन अक्षम है। सत्यापन को छोड़ना मैन-इन-द-द-मिडल हमलों से सुरक्षा हटाता है; अपने डैशबोर्ड के नेटवर्क पाथ पर निर्भर करने से पहले सुनिश्चित करें कि आप इस पर भरोसा करते हैं (VPN, निजी सबनेट, आदि)।
+`--insecure` **login करते समय `cli.json` में saved है**, इसलिए बाद के commands automatically verification को skip करते हैं; आपको flag को repeat नहीं करना है। One-off verified call के लिए `--secure` pass करें, या verification को अपने अगले login पर वापस save करने के लिए। CLI dashboard से contact करने वाले किसी भी command से पहले stderr पर एक warning print करता है जबकि verification disabled है। Verification को skip करना man-in-the-middle attacks से protection को remove करता है; अपने dashboard के network path पर भरोसा करने से पहले सुनिश्चित करें कि आप उस पर rely कर सकते हैं (VPN, private subnet, etc.)।
 
 ---
 
-## टेलीमेट्री और गोपनीयता
+## Telemetry & privacy
 
-> **नोट:** शिप किया गया CLI आज **कोई उपयोग टेलीमेट्री नहीं भेजता है।** एक मास्टर किल स्विच चालू है, इसलिए कुछ भी अपने वातावरण की परवाह किए बिना प्रेषित नहीं होता है। नीचे दिया गया अनुभाग opt-out क्षमता का वर्णन करता है यदि और जब टेलीमेट्री कभी सक्षम हो।
+> **नोट:** Shipped CLI आज **कोई usage telemetry नहीं भेजता है।** एक master kill switch on है, इसलिए आपके environment की परवाह किए बिना कुछ भी transmitted नहीं है। नीचे दिया गया section telemetry के लिए opt-out capability describe करता है यदि और जब कभी telemetry enable किया जाए।
 
-यहां तक कि जब सक्षम हो, टेलीमेट्री **केवल गुमनाम उपयोग विश्लेषण** होगा, कभी आपके एजेंट, सेशन, या इवेंट डेटा नहीं:
+भले ही enable हो, telemetry **anonymous usage analytics केवल** होगा, कभी नहीं आपके agent, session, या event data:
 
-- **कोई एजेंट, सेशन, या इवेंट डेटा कभी आपके बुनियादी ढांचे को नहीं छोड़ता है।** केवल CLI उपयोग की रिपोर्ट की जाएगी: कमांड और उप-कमांड नाम (जैसे `keys create`), **नाम** आपने जो फ़्लैग का उपयोग किया (कभी उनके मान नहीं), सफलता/निकास स्थिति, और अवधि, साथ ही परिवर्तन के लिए प्रति-कार्रवाई इवेंट (जैसे `api_key_created`, `query_run`) केवल स्थिर नाम/enums और मोटे गणनाएं ले जाते हुए। आपके डैशबोर्ड URL, सेशन टोकन, ईमेल, संगठन स्लग, संसाधन ids, SQL, मुख्य रहस्य, और क्वेरी फ़िल्टर **कभी** नहीं भेजे जाएंगे। ऑपरेटरों को केवल एक अपारदर्शी आंतरिक id द्वारा पहचाना जाएगा, कभी ईमेल द्वारा नहीं।
-- **पहले से ही opt out करें** `AGENTEYE_ANALYTICS_DISABLED=1` को CLI के वातावरण में सेट करके (CLI क्रॉस-टूल `DO_NOT_TRACK=1` सम्मेलन को भी सम्मानित करता है)। यह प्रभाव तब डालता है जब टेलीमेट्री कभी चालू होता है, इसलिए एक गोपनीयता-सचेत वातावरण स्थायी रूप से opted out रह सकता है।
-- यदि टेलीमेट्री सक्षम थे, तो CLI सीधे PostHog (`https://us.i.posthog.com`) को भेजेगा; वह होस्ट ब्लॉक किए गए एक मशीन चुप्पी से कुछ नहीं भेजेगी और CLI प्रभावित नहीं होगा।
-
----
-
-## वैश्विक विकल्प और सम्मेलन
-
-यह एक बार पढ़ें; यह प्रत्येक कमांड पर लागू होता है।
-
-- **वैश्विक विकल्प कमांड से पहले जाते हैं।** `agenteye --json sessions` सही है; `agenteye sessions --json` एक उपयोग त्रुटि है। वैश्विक `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, और `--no-color` हैं।
-- **`--json` स्टडआउट को शुद्ध JSON प्रिंट करता है, और कुछ भी नहीं।** मानव स्थिति लाइनें, चेतावनियां, और त्रुटियां **स्टडआउट** को जाती हैं, इसलिए एक `--json` स्टडआउट कैप्चर जब एक स्थिति लाइन दिखाई जाए भी `jq` में पाइप करने के लिए स्वच्छ रहता है। `--json` के बिना आप मानव आंखों के लिए एक बॉक्सबद्ध, रंगीन दृश्य प्राप्त करते हैं।
-- **`--help` के साथ खोजें।** प्रत्येक कमांड और उप-कमांड में `--help` (`-h` उपनाम) है: `agenteye -h`, `agenteye sessions -h`, `agenteye keys create -h`। शीर्ष-स्तर की सहायता भी निकास कोड और वैश्विक विकल्प सूचीबद्ध करती है। कोई वैश्विक मशीन-पठनीय सतह डंप नहीं है; प्रति-कमांड `--help` का उपयोग करें, साथ ही उन दोनों रजिस्ट्रीज़ के लिए डोमेन-विशिष्ट `agenteye query schema` और `agenteye settings schema`।
-- **पुष्टिकरण स्क्रिप्ट और एजेंटों के लिए स्वचालित-छोड़।** Create/update/delete कमांड एक इंटरैक्टिव टर्मिनल में "क्या आप सुनिश्चित हैं?" प्रॉम्प्ट करते हैं, लेकिन **जब `--json` के अंतर्गत या जब स्टडइन एक TTY नहीं है तो उस प्रॉम्प्ट को स्वचालित-छोड़ दें** (एक TTY एक इंटरैक्टिव टर्मिनल सेशन है; एक पाइप या CI रनर नहीं है), इसलिए स्क्रिप्ट और एजेंट कभी हैंग नहीं करते हैं। स्पष्ट रूप से छोड़ने के लिए `--yes`/`-y` पास करें। क्योंकि प्रॉम्प्ट एक एजेंट के लिए फायर नहीं करेगा, एक एजेंट को मानव के साथ विनाशकारी कार्यों की पुष्टि करनी चाहिए।
-- **पेजिनेशन:** परिणाम नए-पहले हैं और कर्सर-पेजिनेटेड हैं (प्रत्येक पेज एक टोकन लौटाता है जिसे आप अगले को फेच करने के लिए उपयोग करते हैं)। `--limit N` (उपनाम `-n`) पंक्तियों को कैप करता है और **डिफ़ॉल्ट रूप से 50**; `--all` स्वचालित-पेजिनेट करता है (200-पंक्ति चंक में) **`--limit` तक**, इसलिए एक अनावृत्त `--all` अभी भी 50 पर रुकता है। एक पूर्ण स्वीप के लिए एक उच्च स्पष्ट कैप पास करें: `--all --limit 1000`। `--page-size N` प्रति-अनुरोध चंक को नियंत्रित करता है (अधिकतम 200); `--cursor <id>` एक पूर्व पेज के `next_cursor` से फिर से शुरू करता है।
-- **समय फ़िल्टर:** `--since` एक सापेक्ष विंडो लेता है: `15m`, `1h`, `6h`, `24h`, `7d`, या `all` (डैशबोर्ड की पूर्वनिर्धारितियां)। एक लंबी या कस्टम रेंज के लिए (कहें पिछले 30 दिन), `--from`/`--to` का उपयोग करें: स्पष्ट ISO-8601 UTC टाइमस्टैम्प **`T` और एक टाइमज़ोन के साथ** (जैसे `2026-06-01T00:00:00Z`) जो `--since` को override करता है। एक स्पेस-अलग या टाइमज़ोन-रहित मान एक उपयोग त्रुटि है।
-- **`--fields a,b,c`** (on `events`, `sessions`, `evals`, `errors`) आउटपुट को उन कुंजियों तक सीमित करता है, टेबल और `--json` दोनों के लिए। अज्ञात नाम वैध सूची के साथ अस्वीकार किए जाते हैं, फ़ील्ड नामों को खोजने का एक सस्ता तरीका।
-- **`--file payload.json`** (या `--file -` स्टडइन को पढ़ने के लिए) एक पूर्ण JSON अनुरोध बॉडी प्रदान करता है जहां एक संसाधन में एक जटिल आकार है (on `alerts create/update`, `settings set`, और `users create/update`)। सहेजी गई-क्वेरी SQL `--sql @file.sql` का उपयोग करता है।
-- **बहु-मान फ़िल्टर** कोमा-अलग हैं → एक सेट के रूप में मेल खाते हैं (एक फ़िल्टर के भीतर संघ, फ़िल्टर भर में AND): `--event-type tool_use,tool_result`। क्लिक विकल्प भिन्नात्मक नहीं हैं, इसलिए `--add a b` टूट जाता है। `--add a,b`, फ़्लैग (`--add a --add b`) को दोहराएं, या उद्धरण (`--add "a b"`)।
+- **कोई agent, session, या event data कभी आपके infrastructure को नहीं छोड़ता है।** केवल CLI usage report किया जाएगा: command और subcommand name (e.g. `keys create`), flags के **names** जो आपने use किए (कभी नहीं उनकी values), success/exit status, और duration, साथ ही mutations के लिए एक per-action event (e.g. `api_key_created`, `query_run`) केवल static names/enums और coarse counts carry करते हुए। आपका dashboard URL, session token, email, org slug, resource ids, SQL, key secrets, और query filters कभी **नहीं** भेजे जाएंगे। Operators को केवल एक opaque internal id द्वारा identify किया जाएगा, कभी email द्वारा नहीं।
+- **Ahead of time opt out करें** CLI के environment में `AGENTEYE_ANALYTICS_DISABLED=1` set करके (CLI cross-tool `DO_NOT_TRACK=1` convention को भी honour करता है)। यह उस क्षण लागू होता है जब telemetry को ever turn on किया जाता है, इसलिए एक privacy-conscious environment permanently opted out रह सकता है।
+- यदि telemetry enable होता, तो CLI directly PostHog को (`https://us.i.posthog.com`) भेजता; एक machine जिसके पास वह host blocked है silently कुछ नहीं भेजता और CLI unaffected होता।
 
 ---
 
-## कमांड संदर्भ
+## Global options & conventions
 
-### आप इन 5 कमांड का सबसे अधिक उपयोग करेंगे
+यह एक बार पढ़ें; यह हर command पर लागू होता है।
 
-अधिकांश दैनिक कार्य कुछ ही read कमांड के माध्यम से चलते हैं। यहाँ शुरू करें, फिर नीचे पूरी सतह तक पहुंचें जब आपको इसकी आवश्यकता हो:
+- **Global options command से BEFORE जाते हैं।** `agenteye --json sessions` सही है; `agenteye sessions --json` एक usage error है। Globals हैं `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, और `--no-color`।
+- **`--json` stdout को pure JSON print करता है, और कुछ नहीं।** Human status lines, warnings, और errors **stderr** को जाते हैं, इसलिए एक `--json` stdout capture even जब एक status line shown हो clean रहता है `jq` में pipe करने के लिए। `--json` के बिना आप एक boxed, colourised view पाते हैं human eyes के लिए।
+- **`--help` के साथ discover करें।** हर command और subcommand के पास `--help` है (और `-h` alias): `agenteye -h`, `agenteye sessions -h`, `agenteye keys create -h`। Top-level help exit codes और global options को भी list करता है। कोई global machine-readable surface dump नहीं है; per-command `--help` use करें, साथ ही domain-specific `agenteye query schema` और `agenteye settings schema` उन दोनों registries के लिए।
+- **Confirmations scripts और agents के लिए auto-skip होती हैं।** Create/update/delete commands एक interactive terminal में "are you sure?" prompt देते हैं, लेकिन **`--json` के under auto-skip जब stdin एक TTY नहीं है** (एक TTY एक interactive terminal session है; एक pipe या CI runner नहीं), इसलिए scripts और agents कभी hang नहीं होते। Explicitly skip करने के लिए `--yes`/`-y` pass करें। क्योंकि prompt एक agent के लिए नहीं fire करेगा, एक agent को destructive actions को human के साथ confirm करना चाहिए।
+- **Pagination:** results newest-first हैं और cursor-paginated हैं (प्रत्येक page एक token return करता है जो आप next को fetch करने के लिए use करते हैं)। `--limit N` (alias `-n`) rows को cap करता है और **defaults to 50**; `--all` auto-paginates (200-row chunks में) **`--limit` तक**, इसलिए एक bare `--all` अभी भी 50 पर stop होता है। एक full sweep के लिए एक high explicit cap pass करें: `--all --limit 1000`। `--page-size N` per-request chunk को control करता है (max 200); `--cursor <id>` एक prior page के `next_cursor` से resume करता है।
+- **Time filters:** `--since` एक relative window लेता है: `15m`, `1h`, `6h`, `24h`, `7d`, या `all` (dashboard के presets)। एक longer या custom range के लिए (say last 30 days), `--from`/`--to` use करें: explicit ISO-8601 UTC timestamps **`T` और एक timezone के साथ** (e.g. `2026-06-01T00:00:00Z`) जो `--since` को override करते हैं। एक space-separated या timezone-less value एक usage error है।
+- **`--fields a,b,c`** (on `events`, `sessions`, `evals`, `errors`) output को उन keys में restrict करता है, table और `--json` दोनों के लिए। Unknown names को valid list के साथ reject किया जाता है, field names को discover करने का एक cheap तरीका।
+- **`--file payload.json`** (या `--file -` stdin को read करने के लिए) एक full JSON request body supply करता है जहाँ एक resource के पास एक complex shape है (on `alerts create/update`, `settings set`, और `users create/update`)। Saved-query SQL `--sql @file.sql` instead use करता है।
+- **Multi-value filters** comma-separated हैं → एक set के रूप में matched (union within one filter, AND across filters): `--event-type tool_use,tool_result`। Click options variadic नहीं हैं, इसलिए `--add a b` breaks। `--add a,b` use करें, flag को repeat करें (`--add a --add b`), या quote करें (`--add "a b"`)।
 
-| कमांड | यह क्या करता है | इसे आजमाएं |
+---
+
+## Command reference
+
+### आप इन 5 commands को सबसे अधिक use करेंगे
+
+Most day-to-day work एक handful read commands के through चलती है। यहाँ शुरू करें, फिर full surface के लिए पहुँचें जब आपको चाहिए:
+
+| Command | What it does | Try it |
 |---|---|---|
-| `sessions` | एजेंट रन प्रति एक पंक्ति: समय, env, एजेंट, स्थिति, नवीनतम स्कोर। | `agenteye --json sessions --since 24h --status error` |
-| `events` | एक रन के अंदर कच्चा प्रति-चरण ट्रेल (`--full` के लिए पेलोड जोड़ें)। | `agenteye --json events --session-id run-001 --all` |
-| `evals` | मूल्यांकन परिणाम और स्कोर; `--aggregate` उन्हें उठाता है। | `agenteye --json evals --aggregate --since 7d --env prod` |
-| `errors` | बस की गई त्रुटि इवेंट; `--aggregate` प्रकार द्वारा गणना के लिए। | `agenteye --json errors --since 24h --aggregate` |
-| `list` | वैध फ़िल्टर मान खोजें (एजेंट, envs, मॉडल, …)। | `agenteye list agents` |
+| `sessions` | एक row per agent run: time, env, agent, status, latest score। | `agenteye --json sessions --since 24h --status error` |
+| `events` | एक run के अंदर raw per-step trail (payloads के लिए `--full` add करें)। | `agenteye --json events --session-id run-001 --all` |
+| `evals` | Evaluation results और scores; `--aggregate` उन्हें roll up करता है। | `agenteye --json evals --aggregate --since 7d --env prod` |
+| `errors` | सिर्फ errored events; `--aggregate` type द्वारा counts के लिए। | `agenteye --json errors --since 24h --aggregate` |
+| `list` | Valid filter values को discover करें (agents, envs, models, …)। | `agenteye list agents` |
 
 ### CLI सब कुछ कर सकता है
 
-पूरी सतह निम्नानुसार है। CLI में **18 शीर्ष-स्तर कमांड** हैं। सभी read कमांड `--json` और ऊपर दिए गए वैश्विक विकल्पों को स्वीकार करते हैं; किसी भी एक के लिए संपूर्ण फ़्लैग सूची और JSON आकार के लिए `agenteye <command> -h` (या `<command> <subcommand> -h`) चलाएं।
+Full surface follows। CLI के पास **18 top-level commands** हैं। सभी read commands `--json` और ऊपर global options को accept करते हैं; किसी एक के exhaustive flag list और JSON shape के लिए `agenteye <command> -h` (या `<command> <subcommand> -h`) run करें।
 
-### पहचान: `login` · `logout` · `whoami` · `orgs` · `version` · `help`
+### Identity: `login` · `logout` · `whoami` · `orgs` · `version` · `help`
 
 ```bash
 agenteye login --email you@example.com [--org acme]   # emailed one-time code; saves the session
@@ -197,7 +197,7 @@ agenteye version                                      # print the CLI version (s
 agenteye help                                         # top-level help (same as --help)
 ```
 
-`orgs` सक्रिय tenant की जांच और स्विच करता है:
+`orgs` active tenant को inspects और switches करता है:
 
 ```bash
 agenteye orgs list        # your orgs + your role in each (active one marked)
@@ -206,9 +206,9 @@ agenteye orgs current     # identity card for the active org
 agenteye orgs perms       # your permissions in the active org, grouped by resource
 ```
 
-### निरीक्षण (read-only): `events` · `sessions` · `evals` · `errors` · `list`
+### Observe (read-only): `events` · `sessions` · `evals` · `errors` · `list`
 
-इनमें से कोई भी पुष्टि की आवश्यकता नहीं है। साझा फ़िल्टर: `--session-id`, `--agent-id`, `--env` (**नहीं** `--environment`), और समय रेंज (`--since` / `--from` / `--to`)।
+इनमें से कोई भी एक confirmation की जरूरत नहीं है। Shared filters: `--session-id`, `--agent-id`, `--env` (**not** `--environment`), और time range (`--since` / `--from` / `--to`)।
 
 ```bash
 # events (alias: the raw per-step trail), newest first
@@ -231,16 +231,16 @@ agenteye --json errors --since 24h --error-type timeout --all --limit 1000
 agenteye list envs        # also: agents event_types score_filters models hooks tools error_types
 ```
 
-`--score KEY:MIN..MAX` (on **`evals`**, `sessions` पर नहीं) दोहराया जा सकता है और AND-संयोजित है; किसी भी बाध्यता को छोड़ा जा सकता है (`..0.5` मतलब ≤ 0.5, `0.9..` मतलब ≥ 0.9)। प्रति अनुरोध 20 स्कोर फ़िल्टर तक। `evals --scores-full` **मानव टेबल केवल** के लिए एक प्रदर्शन फ़्लैग है; यह पहले कुछ के बजाय प्रत्येक स्कोर जोड़ी दिखाता है साथ `+N` गणना। `--json` के अंतर्गत कोई प्रभाव नहीं है, जो हमेशा संपूर्ण स्कोर ऑब्जेक्ट लौटाता है। **एक सेशन अंत-अंत तक पढ़ने के लिए**, इवेंट ट्रेल को इसके मूल्यांकन के साथ संयोजित करें:
+`--score KEY:MIN..MAX` (on **`evals`**, not `sessions`) repeatable है और AND-combined है; या तो bound optional है (`..0.5` का मतलब ≤ 0.5, `0.9..` का मतलब ≥ 0.9)। एक request per 20 score filters तक। `evals --scores-full` एक display flag है **human table केवल के लिए**; यह हर score pair को first few plus एक `+N` count की बजाय दिखाता है। यह `--json` के under कोई effect नहीं है, जो हमेशा complete score object return करता है। **एक session को end-to-end read करने के लिए**, event trail को उसके evaluation के साथ combine करें:
 
 ```bash
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
 agenteye --json evals  --session-id run-001                       # its scores + status
 ```
 
-### प्रबंधित करें (अनुमति-gated): `keys` · `users` · `settings` · `alerts` · `incidents`
+### Manage (permission-gated): `keys` · `users` · `settings` · `alerts` · `incidents`
 
-**`keys`**: API कुंजियां। गुप्त स्थानीय रूप से उत्पन्न होता है, सर्वर को भेजा जाता है (जो केवल एक हैश संग्रहीत करता है), और create/regenerate पर **एक बार दिखाया जाता है**; फिर इसे कैप्चर करें। `--json` के साथ यह केवल `key` फ़ील्ड में दिखाई देता है। **नाम** द्वारा संदर्भित।
+**`keys`**: API keys। Secret को locally generate किया जाता है, server को भेजा जाता है (जो केवल एक hash store करता है), और create/regenerate पर **once shown** किया जाता है; उसे तब capture करें। `--json` के साथ यह केवल `key` field में appear होता है। **name** द्वारा referenced।
 
 ```bash
 agenteye keys list                                   # active keys first, then revoked
@@ -252,9 +252,9 @@ agenteye keys regenerate ci-bot --yes                # rotate the secret (the ol
 agenteye keys disable ci-bot --yes                   # revoke
 ```
 
-अनुमतियां `(permission-set ∪ --add) − --remove` के रूप में काम करती हैं। टोकन `slug:action` (जैसे `events:read`) या `slug:action.action` एक संसाधन पर कई को expand करने के लिए (`events:read.add` → `events:read`, `events:add`)। Presets: `read-only`, `standard`, `admin`। मानव-केवल अनुमतियां (`keys:update`) एक कुंजी को नहीं दी जा सकतीं।
+Permissions `(permission-set ∪ --add) − --remove` के रूप में काम करते हैं। Tokens `slug:action` हैं (e.g. `events:read`) या `slug:action.action` एक resource पर कई को expand करने के लिए (`events:read.add` → `events:read`, `events:add`)। Presets: `read-only`, `standard`, `admin`। Human-only permissions (`keys:update`) को एक key को grant नहीं किया जा सकता।
 
-**`users`**: org सदस्य, **ईमेल** द्वारा संदर्भित (एक UUID id भी स्वीकार किया जाता है)।
+**`users`**: org members, **email** द्वारा referenced (एक UUID id को भी accept किया जाता है)।
 
 ```bash
 agenteye users list [--active-only]
@@ -265,7 +265,7 @@ agenteye users disable dev@corp.com --yes            # has protected/self guards
 agenteye users enable dev@corp.com
 ```
 
-**`settings`**: एक निश्चित रजिस्ट्री (आप मौजूदा कुंजियों को पढ़ते और बदलते हैं; आप नई कुंजियां नहीं बना सकते)।
+**`settings`**: एक fixed registry (आप existing keys को read और change करते हैं; आप नए ones create नहीं कर सकते)।
 
 ```bash
 agenteye settings list                               # key · value · type · updated (secrets masked)
@@ -273,7 +273,7 @@ agenteye settings schema                             # what each key accepts (ty
 agenteye settings set session_ttl_secs --value 86400 --yes
 ```
 
-**`alerts`**: सतर्कता परिभाषाएं, **नाम** द्वारा संदर्भित। `create` एक स्थिति NAME साथ फ़्लैग या `--file` के माध्यम से एक पूर्ण JSON बॉडी लेता है।
+**`alerts`**: alert definitions, **name** द्वारा referenced। `create` एक positional NAME plus flags या `--file` के through एक full JSON body लेता है।
 
 ```bash
 agenteye alerts list
@@ -284,7 +284,7 @@ agenteye alerts test high-errors --yes                        # fire a test noti
 agenteye alerts delete high-errors --yes
 ```
 
-**`incidents`**: सतर्कता घटनाएं, id द्वारा संदर्भित (छोटे ids स्वीकार किए गए)। `show` पूर्ण गतिविधि लॉग प्रिंट करता है; कार्य करने से पहले इसे पढ़ें।
+**`incidents`**: alert incidents, id द्वारा referenced (short ids accepted)। `show` full activity log को print करता है; उससे पहले इसे पढ़ें।
 
 ```bash
 agenteye incidents list --state firing                # also: acknowledged, resolved
@@ -299,9 +299,9 @@ agenteye incidents comment-list <id> ; agenteye incidents comment-delete <id> <c
 agenteye incidents subscribe <id> ; agenteye incidents unsubscribe <id> ; agenteye incidents subscribers <id>
 ```
 
-### विश्लेषण और सहायक: `query` · `agent`
+### Analytics & assistant: `query` · `agent`
 
-**`query`**: आपके विश्लेषण स्टोर के विरुद्ध सहेजी गई SQL साथ ad-hoc रनर। सहेजी गई क्वेरीज़ **नाम** द्वारा संदर्भित; SQL सर्वर-पक्ष सत्यापित है (SELECT/WITH केवल, statement टाइमआउट, पंक्ति कैप)।
+**`query`**: आपके analytics store के लिए saved SQL plus एक ad-hoc runner। Saved queries **name** द्वारा referenced; SQL को server-side validate किया जाता है (SELECT/WITH केवल, statement timeout, row cap)।
 
 ```bash
 agenteye query schema [TABLE]                         # column layout of the analytics views
@@ -312,7 +312,7 @@ agenteye query create errs --sql @errs.sql --description "errored events (24h)"
 agenteye query update errs --sql @errs.sql --yes ; agenteye query delete errs --yes
 ```
 
-**`agent`**: निर्मित **AI सहायक** से बातें करता है (वही read-only विश्लेषक जिससे आप डैशबोर्ड में बात कर सकते हैं)। चैट एक छोटे chat-id द्वारा संदर्भित हैं (prefix-resolved)।
+**`agent`**: built-in **AI assistant** से बात करता है (वही read-only analyst जिससे आप dashboard में chat कर सकते हैं)। Chats एक short chat-id (prefix-resolved) द्वारा referenced हैं।
 
 ```bash
 agenteye agent health                                 # is the AI assistant configured/reachable
@@ -325,25 +325,25 @@ agenteye agent rename <short-id> --title "error triage" ; agenteye agent delete 
 
 ---
 
-## निकास कोड
+## Exit codes
 
-| कोड | अर्थ |
+| Code | Meaning |
 |---|---|
-| 0 | सफलता |
-| 1 | अप्रत्याशित त्रुटि (जैसे डैशबोर्ड ने 5xx लौटाया) |
-| 2 | उपयोग त्रुटि (अमान्य तर्क, अज्ञात कमांड/फ़्लैग, नाम टकराव) |
-| 3 | डैशबोर्ड तक नहीं पहुंच सकते |
-| 4 | लॉगिन नहीं है या सेशन समाप्त; `agenteye login` चलाएं |
-| 5 | प्रमाणीकृत, लेकिन आपके खाते में आवश्यक अनुमति की कमी है (संदेश इसका नाम रखता है) |
-| 6 | अनुरोधित संसाधन नहीं मिला (जैसे अज्ञात सेशन या घटना id) |
+| 0 | Success |
+| 1 | Unexpected error (e.g. the dashboard returned a 5xx) |
+| 2 | Usage error (invalid arguments, unknown command/flag, name collision) |
+| 3 | Cannot reach the dashboard |
+| 4 | Not logged in or session expired; run `agenteye login` |
+| 5 | Authenticated, but your account lacks the required permission (the message names it) |
+| 6 | The requested resource was not found (e.g. unknown session or incident id) |
 
-ये CLI को स्क्रिप्ट करने के लिए सुरक्षित बनाते हैं: एक कोडिंग एजेंट पुनः-प्रमाणीकरण करने के लिए आपको प्रॉम्प्ट करने के लिए `4` पर branch कर सकता है, या `5` पर गायब अनुमति को सतह करने के लिए। निकास-कोड-हैंडलिंग पैटर्न और JSON आउटपुट आकार के लिए [CLI एजेंट के लिए व्यंजन](/hi/agenteye/cli-recipes) देखें।
+ये CLI को script के लिए safe बनाते हैं: एक coding agent एक `4` को branch कर सकता है आपको re-authenticate करने के लिए prompt करने के लिए, या एक `5` missing permission को surface करने के लिए। Exit-code-handling patterns और JSON output shapes के लिए [CLI recipes for agents](/hi/agenteye/cli-recipes) देखें।
 
 ---
 
-## अगले कदम
+## Next steps
 
-- **[एजेंटों के लिए CLI व्यंजन](/hi/agenteye/cli-recipes)**: copy-paste क्वेरी पैटर्न, `jq` एक-लाइनर, `--fields` प्रक्षेपण, निकास-कोड हैंडलिंग, और JSON आउटपुट आकार, कोडिंग एजेंटों को CLI चलाने के लिए लिखा गया।
-- **[CLI एजेंट कौशल](/hi/agenteye/cli-skill)**: इस CLI को एक स्थापन योग्य Claude Code / Codex *कौशल* के रूप में पैकेज करें ताकि एक कोडिंग एजेंट सादे-अंग्रेजी अनुरोधों से Failproof AI Observability चलाए।
-- **[API कुंजियां](/hi/agenteye/api-keys)**: `keys create --add …` के पीछे की अनुमति मॉडल।
-- **[AI सहायक](/hi/agenteye/assistant)**: सहायक सक्षम करना जिससे `agent ask` बातें करता है।
+- **[CLI recipes for agents](/hi/agenteye/cli-recipes)**: copy-paste query patterns, `jq` one-liners, `--fields` projections, exit-code handling, और JSON output shapes, coding agents के लिए written जो CLI को drive करते हैं।
+- **[CLI agent skill](/hi/agenteye/cli-skill)**: यह CLI को एक installable Claude Code / Codex *skill* के रूप में package करें ताकि एक coding agent plain-English requests से Failproof AI Observability को drive करे।
+- **[API keys](/hi/agenteye/api-keys)**: `keys create --add …` के पीछे permission model।
+- **[AI assistant](/hi/agenteye/assistant)**: assistant को enable करना जिससे `agent ask` बात करता है।

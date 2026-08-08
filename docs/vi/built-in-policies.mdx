@@ -1,43 +1,39 @@
 ---
-title: Các chính sách tích hợp sẵn
-description: "Tất cả 39 chính sách tích hợp sẵn bắt được các chế độ lỗi thông thường của agent"
+title: Các Chính Sách Tích Hợp
+description: "Tất cả 39 chính sách tích hợp giúp phát hiện các lỗi phổ biến của tác nhân"
 icon: shield
 ---
 
-failproofai được trang bị 39 chính sách tích hợp sẵn bắt được các chế độ lỗi thông thường của agent. Mỗi chính sách được kích hoạt trên một loại sự kiện hook cụ thể và tên công cụ. Mười chín chính sách chấp nhận các tham số cho phép bạn tinh chỉnh hành vi của chúng mà không cần viết mã. Năm chính sách quy trình làm việc thực thi đường dẫn commit → push → PR → CI trước khi Claude dừng lại.
+failproofai được trang bị 39 chính sách tích hợp giúp phát hiện các lỗi phổ biến của tác nhân. Mỗi chính sách được kích hoạt trên một loại sự kiện hook cụ thể và tên công cụ. Mười chín chính sách chấp nhận các tham số cho phép bạn tinh chỉnh hành vi mà không cần viết code. Năm chính sách quy trình làm việc thực thi đường dẫn commit → push → PR → CI trước khi Claude dừng lại.
 
 ---
 
-## Tổng quan
+## Tổng Quan
 
-Các chính sách được nhóm vào các danh mục:
+Các chính sách được nhóm thành các danh mục:
 
-| Danh mục | Chính sách | Loại hook |
+| Danh mục | Chính sách | Loại Hook |
 |----------|-----------|-----------|
-| [Lệnh nguy hiểm](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands | PreToolUse |
-| [Lệnh cơ sở hạ tầng](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
-| [Bí mật (sanitizers)](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
-| [Môi trường](#environment) | block-env-files, protect-env-vars | PreToolUse |
-| [Truy cập tệp](#file-access) | block-read-outside-cwd, block-secrets-write | PreToolUse |
+| [Lệnh nguy hiểm](#lệnh-nguy-hiểm) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
+| [Lệnh cơ sở hạ tầng](#lệnh-cơ-sở-hạ-tầng) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
+| [Bí mật (sanitizers)](#bí-mật-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
+| [Môi trường](#môi-trường) | block-env-files, protect-env-vars | PreToolUse |
+| [Truy cập tệp](#truy-cập-tệp) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
-| [Cơ sở dữ liệu](#database) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
-| [Cảnh báo](#warnings) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
-| [Trình quản lý gói](#package-managers) | prefer-package-manager | PreToolUse |
-| [Quy trình làm việc](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
+| [Cơ sở dữ liệu](#cơ-sở-dữ-liệu) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
+| [Cảnh báo](#cảnh-báo) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
+| [Trình quản lý gói](#trình-quản-lý-gói) | prefer-package-manager | PreToolUse |
+| [Quy trình làm việc](#quy-trình-làm-việc) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
-- **`block-`** — dừng agent không được tiếp tục.
-- **`warn-`** — cung cấp ngữ cảnh bổ sung để agent có thể tự sửa chữa.
-- **`sanitize-`** — loại bỏ dữ liệu nhạy cảm từ kết quả công cụ trước khi agent nhìn thấy.
+- **`block-`** — dừng tác nhân tiếp tục.
+- **`warn-`** — cung cấp cho tác nhân ngữ cảnh bổ sung để nó có thể tự sửa chữa.
+- **`sanitize-`** — xóa dữ liệu nhạy cảm khỏi kết quả công cụ trước khi tác nhân nhìn thấy.
 
 ### Không gian tên
 
-Mỗi chính sách sống trong một vị trí `<namespace>/<name>`. Các chính sách tích hợp sẵn thuộc về
-không gian tên **`failproofai/`** — ví dụ: `failproofai/sanitize-jwt`. Không gian tên
-ngăn chặn va chạm khi bạn cũng tải các chính sách tùy chỉnh hoặc của bên thứ ba
-có tên ngắn tương tự.
+Mỗi chính sách nằm trong một vị trí `<namespace>/<name>`. Các chính sách tích hợp thuộc về không gian tên **`failproofai/`** — ví dụ: `failproofai/sanitize-jwt`. Không gian tên ngăn chặn xung đột khi bạn cũng tải các chính sách tùy chỉnh hoặc của bên thứ ba với tên ngắn tương tự.
 
-Trong cấu hình của bạn, bạn có thể tham chiếu đến một chính sách tích hợp sẵn bằng tên ngắn hoặc tên
-đủ điều kiện; cả hai dạng đều giải quyết thành cùng một chính sách:
+Trong cấu hình của bạn, bạn có thể tham chiếu đến một chính sách tích hợp bằng tên ngắn hoặc tên đủ điều kiện; cả hai hình thức đều phân giải thành cùng một chính sách:
 
 ```json
 {
@@ -48,35 +44,39 @@ Trong cấu hình của bạn, bạn có thể tham chiếu đến một chính 
 }
 ```
 
-Nếu một tên không có `/`, failproofai coi nó thuộc về không gian tên mặc định
-`failproofai`. Các tên đã chứa `/` (ví dụ: `myorg/foo`,
-`custom/my-hook`) được giữ nguyên.
+Nếu một tên không có `/`, failproofai coi nó thuộc về không gian tên mặc định `failproofai`. Các tên đã chứa `/` (ví dụ: `myorg/foo`, `custom/my-hook`) được giữ nguyên.
 - **`require-`** — chặn sự kiện Stop cho đến khi các điều kiện được đáp ứng.
 
 ---
 
 <Tip>
-Mỗi chính sách hỗ trợ một trường `hint` tùy chọn trong `policyParams`. Hint được nối vào tin nhắn deny hoặc instruct mà Claude nhìn thấy, cung cấp hướng dẫn có thể hành động mà không sửa đổi mã chính sách. Hoạt động với các chính sách tích hợp sẵn, tùy chỉnh và theo quy ước. Xem [Configuration → hint](/vi/configuration#hint-cross-cutting) để biết chi tiết.
+Mỗi chính sách hỗ trợ một trường `hint` tùy chọn trong `policyParams`. Hint được thêm vào thông báo deny hoặc instruct mà Claude nhìn thấy, cung cấp hướng dẫn hữu ích mà không cần sửa đổi code chính sách. Hoạt động với các chính sách tích hợp, tùy chỉnh và công ước. Xem [Cấu hình → hint](/vi/configuration#hint-cross-cutting) để biết chi tiết.
 </Tip>
 
 ---
 
 ## Lệnh nguy hiểm
 
-Ngăn chặn agent chạy các thao tác khó hoàn tác hoặc có thể làm hỏng hệ thống chủ nhà.
+Ngăn chặn tác nhân chạy các hoạt động khó hoàn tác hoặc có thể làm hư hại hệ thống chủ.
 
 ### `block-sudo`
 
 **Sự kiện:** PreToolUse (Bash)  
-**Mặc định:** Từ chối bất kỳ lệnh `sudo` nào.
+**Mặc định:** Từ chối bất kỳ lệnh `sudo` hoặc `doas` nào.
 
-Chặn các lần gọi bao gồm từ khóa `sudo`. Phối hợp mẫu được thực hiện trên các token lệnh được phân tích cú pháp, không phải chuỗi thô, để ngăn chặn bypass qua tiêm toán tử shell.
+Chặn một lệnh chạy tệp nhị phân nâng cao **ở vị trí lệnh**. Phù hợp là cấu trúc hơn là văn bản: lệnh được chia thành các đoạn theo cách shell sẽ làm, các phép gán tiền tố (`FOO=bar`), chuyển hướng và runner với các cờ của chúng (`env`, `nohup`, `timeout`, `xargs`, `sh -c`, …) được xử lý, và tệp nhị phân kết quả được so sánh bằng **basename**. Vì vậy `/usr/bin/sudo`, `env sudo`, `timeout 5 sudo`, `"sudo"`, `\sudo` và `bash -c "sudo …"` đều bị từ chối, và `doas` được coi là cùng một khả năng dưới tên khác.
+
+Vì nó neo trên vị trí lệnh thay vì từ xuất hiện ở bất kỳ đâu, nó **không** kích hoạt trên các lệnh chỉ đề cập đến nó — `grep -r sudo /etc`, `cat /etc/sudoers`, `git commit -m "fix sudo handling"`, hoặc một phép thay thế `grep` chứa từ đều chạy bình thường.
+
+<Warning>
+Điều này dừng nỗ lực rõ ràng; nó không đóng lớp. Một tác nhân có thể chạy shell tùy ý vẫn có thể đạt được nâng cao một cách gián tiếp — thông qua một biến (`S=sudo; $S …`), một đường ống được giải mã base64, hoặc một script wrapper trên đĩa — vì không có kiểm tra chuỗi lệnh đơn nào có thể theo dõi những cái đó. Coi điều này là một hàng rào bảo vệ chống lại những sai lầm và nâng cao ngẫu nhiên, không phải là một ranh giới bảo mật chống lại một tác nhân quyết tâm. Ranh giới thực sự phải được thực thi dưới shell.
+</Warning>
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh chính xác được phép. Mỗi mục được so khớp với các token argv được phân tích cú pháp. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh chính xác được cho phép. Mỗi mục được so khớp với các token argv được phân tích cú pháp. |
 
 **Ví dụ:**
 
@@ -90,10 +90,10 @@ Chặn các lần gọi bao gồm từ khóa `sudo`. Phối hợp mẫu được
 }
 ```
 
-Với cấu hình này, `sudo systemctl status nginx` được phép, nhưng `sudo rm /etc/hosts` bị từ chối.
+Với cấu hình này, `sudo systemctl status nginx` được cho phép, nhưng `sudo rm /etc/hosts` bị từ chối.
 
 <Note>
-Các mẫu được so khớp với các token được phân tích cú pháp, không phải chuỗi lệnh thô. Điều này ngăn chặn bypass qua các toán tử shell được thêm vào (ví dụ: `sudo systemctl status x; rm -rf /` không khớp với `sudo systemctl status *`).
+Các mẫu được so khớp với các token được phân tích cú pháp, không phải chuỗi lệnh thô. Điều này ngăn chặn bypass thông qua các toán tử shell được nối thêm (ví dụ: `sudo systemctl status x; rm -rf /` không phù hợp với `sudo systemctl status *`).
 </Note>
 
 ---
@@ -101,13 +101,13 @@ Các mẫu được so khớp với các token được phân tích cú pháp, k
 ### `block-rm-rf`
 
 **Sự kiện:** PreToolUse (Bash)  
-**Mặc định:** Từ chối `rm -rf`, `rm -fr` và các dạng xóa đệ quy tương tự.
+**Mặc định:** Từ chối `rm -rf`, `rm -fr` và các hình thức xóa đệ quy tương tự.
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `allowPaths` | `string[]` | `[]` | Đường dẫn an toàn để xóa đệ quy (ví dụ: `/tmp`). |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `allowPaths` | `string[]` | `[]` | Các đường dẫn an toàn để xóa đệ quy (ví dụ: `/tmp`). |
 
 **Ví dụ:**
 
@@ -141,11 +141,24 @@ Không có tham số.
 
 ---
 
+### `block-self-pause`
+
+**Sự kiện:** PreToolUse (Bash)  
+**Mặc định:** Từ chối `failproofai config --pause`, được dùng để tạm dừng thực thi trong một phiên. Tạm dừng là một quyết định của con người — một tác nhân có thể chạy nó có thể tắt mọi chính sách khác bằng một lệnh duy nhất.
+
+Hẹp hơn [`block-failproofai-commands`](#block-failproofai-commands) có chủ đích, và không được bao phủ bởi nó: chính sách đó neo trên một ranh giới lệnh, do đó `npx -y failproofai config --pause` không phù hợp với nó, và vì nó rộng lớn nên thường bị tắt để các tác nhân có thể chạy `failproofai audit`. `--resume` và `--status` được cho phép — cả hai không loại bỏ thực thi.
+
+Điều này dừng nỗ lực trực tiếp, không phải toàn bộ lớp: một tác nhân vẫn có thể đạt được trạng thái tương tự thông qua alias hoặc script wrapper. Đóng nó hoàn toàn yêu cầu tạm dừng không thể truy cập được từ lệnh công cụ.
+
+Không có tham số.
+
+---
+
 ## Lệnh cơ sở hạ tầng
 
-Dừng các agent mã hóa chạy CLI cơ sở hạ tầng hoặc kích hoạt đường ống CI/CD. Tất cả các chính sách trong danh mục này là **opt-in** (`defaultEnabled: false`) — các agent hợp pháp cần gọi `kubectl`, `terraform`, v.v. sẽ không bị gián đoạn trừ khi bạn bật chính sách. Khi được bật, mỗi lần gọi CLI phù hợp bị từ chối trừ khi lệnh khớp với một mục trong `allowPatterns`.
+Ngăn chặn các tác nhân mã hóa chạy CLI cơ sở hạ tầng hoặc kích hoạt đường ống CI/CD. Tất cả các chính sách trong danh mục này là **có sự lựa chọn** (`defaultEnabled: false`) — các tác nhân cần hợp pháp để gọi `kubectl`, `terraform`, v.v. sẽ không bị gián đoạn trừ khi bạn bật chính sách. Khi được bật, mỗi lệnh gọi CLI được phù hợp bị từ chối trừ khi lệnh phù hợp với một mục trong `allowPatterns`.
 
-Ngữ pháp mẫu giống như [`block-sudo`](#block-sudo): các token được so khớp với argv được phân tích cú pháp, `*` là ký tự đại diện cho một token, và bất kỳ lệnh nào chứa toán tử shell độc lập (`&&`, `||`, `|`, `;`) hoặc token có ký tự siêu dữ liệu shell nhúng bị từ chối trước khi so khớp danh sách cho phép để ngăn chặn bypass tiêm.
+Ngữ pháp mẫu giống như [`block-sudo`](#block-sudo): các token được so khớp với argv được phân tích cú pháp, `*` là ký tự đại diện cho một token, và bất kỳ lệnh nào chứa toán tử shell độc lập (`&&`, `||`, `|`, `;`) hoặc token có ký tự siêu shell được nhúng bị từ chối trước khi so khớp danh sách cho phép để ngăn chặn bypass injection.
 
 ### `block-kubectl`
 
@@ -154,9 +167,9 @@ Ngữ pháp mẫu giống như [`block-sudo`](#block-sudo): các token được 
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh kubectl được phép. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh kubectl được cho phép. |
 
 **Ví dụ:**
 
@@ -170,7 +183,7 @@ Ngữ pháp mẫu giống như [`block-sudo`](#block-sudo): các token được 
 }
 ```
 
-Với cấu hình này, `kubectl get pods` được phép nhưng `kubectl apply -f deploy.yaml` bị từ chối.
+Với cấu hình này, `kubectl get pods` được cho phép nhưng `kubectl apply -f deploy.yaml` bị từ chối.
 
 ---
 
@@ -181,9 +194,9 @@ Với cấu hình này, `kubectl get pods` được phép nhưng `kubectl apply 
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh terraform/tofu được phép. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh terraform/tofu được cho phép. |
 
 **Ví dụ:**
 
@@ -206,9 +219,9 @@ Với cấu hình này, `kubectl get pods` được phép nhưng `kubectl apply 
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh aws CLI được phép. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh CLI aws được cho phép. |
 
 **Ví dụ:**
 
@@ -231,9 +244,9 @@ Với cấu hình này, `kubectl get pods` được phép nhưng `kubectl apply 
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh gcloud được phép. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh gcloud được cho phép. |
 
 **Ví dụ:**
 
@@ -256,9 +269,9 @@ Với cấu hình này, `kubectl get pods` được phép nhưng `kubectl apply 
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh az CLI được phép. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh CLI az được cho phép. |
 
 **Ví dụ:**
 
@@ -281,9 +294,9 @@ Với cấu hình này, `kubectl get pods` được phép nhưng `kubectl apply 
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh helm được phép. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `allowPatterns` | `string[]` | `[]` | Tiền tố lệnh helm được cho phép. |
 
 **Ví dụ:**
 
@@ -302,7 +315,7 @@ Với cấu hình này, `kubectl get pods` được phép nhưng `kubectl apply 
 ### `block-gh-pipeline`
 
 **Sự kiện:** PreToolUse (Bash)  
-**Mặc định:** Từ chối các lệnh phụ CLI `gh` sau đây gây ra thay đổi trạng thái hoặc kích hoạt đường ống:
+**Mặc định:** Từ chối các lệnh con CLI `gh` sau đây làm thay đổi trạng thái hoặc kích hoạt đường ống:
 
 - `gh workflow run`, `gh workflow enable`, `gh workflow disable`
 - `gh run rerun`, `gh run cancel`
@@ -311,13 +324,13 @@ Với cấu hình này, `kubectl get pods` được phép nhưng `kubectl apply 
 - `gh cache delete`
 - `gh secret set`, `gh secret delete`
 
-Các lệnh phụ `gh` chỉ đọc như `gh pr view`, `gh pr list`, `gh run list`, `gh release view` và `gh api repos/.../...` **không** được khớp bởi chính sách này — chúng thường cần thiết cho các kiểm tra quy trình làm việc (bao gồm cả chính sách `require-ci-green-before-stop` của failproofai).
+Các lệnh con `gh` chỉ đọc như `gh pr view`, `gh pr list`, `gh run list`, `gh release view` và `gh api repos/.../...` **không** được so khớp bởi chính sách này — chúng thường cần thiết cho kiểm tra quy trình làm việc (bao gồm `require-ci-green-before-stop` của failproofai).
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `allowPatterns` | `string[]` | `[]` | Các lệnh gọi được viết kịch bản cụ thể để cho phép ngay cả khi chúng sẽ bị từ chối. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `allowPatterns` | `string[]` | `[]` | Các lệnh gọi được kịch bản cụ thể để cho phép mặc dù chúng sẽ bị từ chối. |
 
 **Ví dụ:**
 
@@ -333,14 +346,14 @@ Các lệnh phụ `gh` chỉ đọc như `gh pr view`, `gh pr list`, `gh run lis
 
 ---
 
-## Bí mật (sanitizers)
+## Bí mật (Sanitizers)
 
-Dừng agent rò rỉ thông tin đăng nhập vào ngữ cảnh hoặc kết quả của chúng. Các chính sách sanitizer được kích hoạt trên các sự kiện **PostToolUse**. Khi Claude chạy lệnh Bash, đọc tệp hoặc gọi bất kỳ công cụ nào, các chính sách này kiểm tra kết quả trước khi nó được trả về Claude. Nếu phát hiện mẫu bí mật, chính sách trả về quyết định deny ngăn chặn kết quả được truyền lại.
+Ngăn chặn tác nhân rò rỉ thông tin xác thực vào ngữ cảnh hoặc kết quả đầu ra của họ. Các chính sách sanitizer kích hoạt trên các sự kiện **PostToolUse**. Khi Claude chạy lệnh Bash, đọc tệp, hoặc gọi bất kỳ công cụ nào, các chính sách này kiểm tra kết quả trước khi nó được trả lại cho Claude. Nếu phát hiện mẫu bí mật, chính sách sẽ trả về quyết định deny ngăn chặn kết quả đầu ra từ được truyền lại.
 
 ### `sanitize-jwt`
 
 **Sự kiện:** PostToolUse (tất cả công cụ)  
-**Mặc định:** Che khuất các token JWT (ba đoạn base64url được phân cách bằng `.`).
+**Mặc định:** Cắt bỏ các token JWT (ba đoạn base64url được phân tách bằng `.`).
 
 Không có tham số.
 
@@ -349,13 +362,13 @@ Không có tham số.
 ### `sanitize-api-keys`
 
 **Sự kiện:** PostToolUse (tất cả công cụ)  
-**Mặc định:** Che khuất các định dạng khóa API phổ biến: Anthropic (`sk-ant-`), OpenAI (`sk-`), GitHub PATs (`ghp_`), AWS access keys (`AKIA`), Stripe keys (`sk_live_`, `sk_test_`) và Google API keys (`AIza`).
+**Mặc định:** Cắt bỏ các định dạng khóa API phổ biến: Anthropic (`sk-ant-`), OpenAI (`sk-`), GitHub PATs (`ghp_`), khóa truy cập AWS (`AKIA`), khóa Stripe (`sk_live_`, `sk_test_`), và khóa API Google (`AIza`).
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `additionalPatterns` | `{ regex: string; label: string }[]` | `[]` | Các mẫu regex bổ sung để coi là bí mật. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `additionalPatterns` | `{ regex: string; label: string }[]` | `[]` | Các mẫu regex bổ sung được coi là bí mật. |
 
 **Ví dụ:**
 
@@ -377,7 +390,7 @@ Không có tham số.
 ### `sanitize-connection-strings`
 
 **Sự kiện:** PostToolUse (tất cả công cụ)  
-**Mặc định:** Che khuất chuỗi kết nối cơ sở dữ liệu chứa thông tin đăng nhập nhúng (ví dụ: `postgresql://user:password@host/db`).
+**Mặc định:** Cắt bỏ các chuỗi kết nối cơ sở dữ liệu chứa thông tin xác thực nhúng (ví dụ: `postgresql://user:password@host/db`).
 
 Không có tham số.
 
@@ -386,7 +399,7 @@ Không có tham số.
 ### `sanitize-private-key-content`
 
 **Sự kiện:** PostToolUse (tất cả công cụ)  
-**Mặc định:** Che khuất các khối PEM (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN RSA PRIVATE KEY-----`, v.v.).
+**Mặc định:** Cắt bỏ các khối PEM (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN RSA PRIVATE KEY-----`, v.v.).
 
 Không có tham số.
 
@@ -395,7 +408,7 @@ Không có tham số.
 ### `sanitize-bearer-tokens`
 
 **Sự kiện:** PostToolUse (tất cả công cụ)  
-**Mặc định:** Che khuất các tiêu đề `Authorization: Bearer <token>` nơi token là 20 hoặc nhiều ký tự hơn.
+**Mặc định:** Cắt bỏ các tiêu đề `Authorization: Bearer <token>` nơi token có 20 ký tự hoặc nhiều hơn.
 
 Không có tham số.
 
@@ -403,14 +416,14 @@ Không có tham số.
 
 ## Môi trường
 
-Bảo vệ cấu hình môi trường nhạy cảm khỏi việc agent đọc hoặc tiếp xúc.
+Bảo vệ cấu hình môi trường nhạy cảm khỏi bị các tác nhân đọc hoặc expose.
 
 ### `block-env-files`
 
 **Sự kiện:** PreToolUse (Bash, Read)  
-**Mặc định:** Từ chối đọc tệp `.env` qua `cat .env`, gọi công cụ `Read` với `.env` là đường dẫn tệp, v.v.
+**Mặc định:** Từ chối đọc các tệp `.env` thông qua `cat .env`, lệnh gọi công cụ Read với `.env` làm đường dẫn tệp, v.v.
 
-Không chặn `.envrc` hoặc các tệp liên quan môi trường khác - chỉ những tệp được đặt tên chính xác là `.env`.
+Không chặn `.envrc` hoặc các tệp liên quan môi trường khác - chỉ các tệp có tên chính xác là `.env`.
 
 Không có tham số.
 
@@ -427,18 +440,18 @@ Không có tham số.
 
 ## Truy cập tệp
 
-Giữ agent làm việc trong ranh giới dự án và tránh xa những tệp nhạy cảm.
+Giữ cho tác nhân hoạt động bên trong ranh giới dự án và xa khỏi các tệp nhạy cảm.
 
 ### `block-read-outside-cwd`
 
 **Sự kiện:** PreToolUse (Read, Bash)  
-**Mặc định:** Từ chối đọc tệp bên ngoài gốc dự án. Ranh giới là `CLAUDE_PROJECT_DIR` (được đặt một lần mỗi phiên bởi Claude Code), với dự phòng là thư mục làm việc hiện tại của phiên khi biến đó chưa được đặt. Sử dụng gốc dự án thay vì `cwd` trực tiếp có nghĩa là ranh giới vẫn ổn định ngay cả sau khi Claude `cd` vào thư mục con.
+**Mặc định:** Từ chối đọc các tệp bên ngoài gốc dự án. Ranh giới là `CLAUDE_PROJECT_DIR` (được đặt một lần mỗi phiên bởi Claude Code), với fallback đến thư mục làm việc hiện tại của phiên khi biến đó không được đặt. Sử dụng gốc dự án thay vì `cwd` trực tiếp có nghĩa là ranh giới vẫn ổn định ngay cả sau khi Claude `cd` vào một thư mục con.
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `allowPaths` | `string[]` | `[]` | Tiền tố đường dẫn tuyệt đối được phép ngay cả khi bên ngoài gốc dự án. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `allowPaths` | `string[]` | `[]` | Tiền tố đường dẫn tuyệt đối được cho phép ngay cả khi bên ngoài gốc dự án. |
 
 **Ví dụ:**
 
@@ -457,12 +470,12 @@ Giữ agent làm việc trong ranh giới dự án và tránh xa những tệp n
 ### `block-secrets-write`
 
 **Sự kiện:** PreToolUse (Write, Edit)  
-**Mặc định:** Từ chối ghi vào các tệp thường được sử dụng cho các khóa riêng tư và chứng chỉ: `id_rsa`, `id_ed25519`, `*.key`, `*.pem`, `*.p12`, `*.pfx`.
+**Mặc định:** Từ chối ghi vào các tệp thường được sử dụng cho khóa riêng tư và chứng chỉ: `id_rsa`, `id_ed25519`, `*.key`, `*.pem`, `*.p12`, `*.pfx`.
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
 | `additionalPatterns` | `string[]` | `[]` | Các mẫu tên tệp bổ sung (kiểu glob) để chặn. |
 
 **Ví dụ:**
@@ -481,7 +494,7 @@ Giữ agent làm việc trong ranh giới dự án và tránh xa những tệp n
 
 ## Git
 
-Ngăn chặn các lần push tình cờ, force-push và các lỗi nhánh khó hoàn tác.
+Ngăn chặn push ngẫu nhiên, force-push và lỗi nhánh khó hoàn tác.
 
 ### `block-push-master`
 
@@ -490,9 +503,9 @@ Ngăn chặn các lần push tình cờ, force-push và các lỗi nhánh khó h
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `protectedBranches` | `string[]` | `["main", "master"]` | Tên nhánh không thể được push trực tiếp. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `protectedBranches` | `string[]` | `["main", "master"]` | Tên nhánh không thể push trực tiếp. |
 
 **Ví dụ:**
 
@@ -507,7 +520,7 @@ Ngăn chặn các lần push tình cờ, force-push và các lỗi nhánh khó h
 ```
 
 <Tip>
-Để cho phép push đến tất cả các nhánh (có hiệu lực là vô hiệu hóa chính sách này mà không xóa nó khỏi `enabledPolicies`), đặt `protectedBranches: []`.
+Để cho phép push đến tất cả các nhánh (hiệu quả tắt chính sách này mà không cần loại bỏ nó khỏi `enabledPolicies`), đặt `protectedBranches: []`.
 </Tip>
 
 ---
@@ -515,13 +528,13 @@ Ngăn chặn các lần push tình cờ, force-push và các lỗi nhánh khó h
 ### `block-work-on-main`
 
 **Sự kiện:** PreToolUse (Bash)  
-**Mặc định:** Từ chối `git commit`, `git merge`, `git rebase` và `git cherry-pick` khi cây làm việc nằm trên `main` hoặc `master`. Tạo nhánh và chuyển đổi (`git checkout`, `git checkout -b`, `git switch`, `git switch -c`) không bị ảnh hưởng.
+**Mặc định:** Từ chối `git commit`, `git merge`, `git rebase` và `git cherry-pick` trong khi cây làm việc nằm trên `main` hoặc `master`. Tạo nhánh và chuyển đổi (`git checkout`, `git checkout -b`, `git switch`, `git switch -c`) không bị ảnh hưởng.
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `protectedBranches` | `string[]` | `["main", "master"]` | Tên nhánh trong đó commit/merge/rebase/cherry-pick bị từ chối. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `protectedBranches` | `string[]` | `["main", "master"]` | Tên nhánh nơi commit/merge/rebase/cherry-pick bị từ chối. |
 
 ---
 
@@ -530,13 +543,13 @@ Ngăn chặn các lần push tình cờ, force-push và các lỗi nhánh khó h
 **Sự kiện:** PreToolUse (Bash)  
 **Mặc định:** Từ chối `git push --force` và `git push -f`.
 
-Không có tham số cụ thể chính sách. Sử dụng [`hint`](/vi/configuration#hint-cross-cutting) cắt ngang để gợi ý các giải pháp thay thế:
+Không có tham số chính sách cụ thể. Sử dụng [`hint`](/vi/configuration#hint-cross-cutting) đa mục đích để gợi ý các lựa chọn thay thế:
 
 ```json
 {
   "policyParams": {
     "block-force-push": {
-      "hint": "Tạo một nhánh mới từ HEAD hiện tại của bạn (ví dụ: `git checkout -b <new-branch>`) và push nhánh đó thay vì."
+      "hint": "Create a new branch from your current HEAD (e.g. `git checkout -b <new-branch>`) and push that instead."
     }
   }
 }
@@ -547,7 +560,7 @@ Không có tham số cụ thể chính sách. Sử dụng [`hint`](/vi/configura
 ### `warn-git-amend`
 
 **Sự kiện:** PreToolUse (Bash)  
-**Mặc định:** Hướng dẫn Claude tiến hành cẩn thận khi chạy `git commit --amend`. Không chặn lệnh.
+**Mặc định:** Hướng dẫn Claude tiếp tục cẩn thận khi chạy `git commit --amend`. Không chặn lệnh.
 
 Không có tham số.
 
@@ -565,7 +578,7 @@ Không có tham số.
 ### `warn-all-files-staged`
 
 **Sự kiện:** PreToolUse (Bash)  
-**Mặc định:** Hướng dẫn Claude xem lại những gì nó sắp sàng lọc khi chạy `git add -A` hoặc `git add .`. Không chặn lệnh.
+**Mặc định:** Hướng dẫn Claude xem xét những gì nó đang stage khi chạy `git add -A` hoặc `git add .`. Không chặn lệnh.
 
 Không có tham số.
 
@@ -573,7 +586,7 @@ Không có tham số.
 
 ## Cơ sở dữ liệu
 
-Bắt các thao tác SQL phá hủy trước khi chúng thực thi đối với cơ sở dữ liệu của bạn.
+Phát hiện các hoạt động SQL tàn phá trước khi chúng được thực hiện trên cơ sở dữ liệu của bạn.
 
 ### `warn-destructive-sql`
 
@@ -595,7 +608,7 @@ Không có tham số.
 
 ## Cảnh báo
 
-Cung cấp agent ngữ cảnh bổ sung trước các hoạt động tiềm ẩn rủi ro nhưng không phá hủy.
+Cung cấp cho tác nhân ngữ cảnh bổ sung trước các hoạt động có thể rủi ro nhưng không phá hủy.
 
 ### `warn-large-file-write`
 
@@ -604,9 +617,9 @@ Cung cấp agent ngữ cảnh bổ sung trước các hoạt động tiềm ẩn
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `thresholdKb` | `number` | `1024` | Ngưỡng kích thước tệp tính bằng kilobyte mà cảnh báo được phát hành. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `thresholdKb` | `number` | `1024` | Ngưỡng kích thước tệp tính bằng kilobyte mà tại đó cảnh báo được phát hành. |
 
 **Ví dụ:**
 
@@ -621,7 +634,7 @@ Cung cấp agent ngữ cảnh bổ sung trước các hoạt động tiềm ẩn
 ```
 
 <Note>
-Xử lý hook thực thi giới hạn stdin 1 MB trên tải trọng. Để kiểm tra chính sách này với nội dung nhỏ, đặt `thresholdKb` thành giá trị tốt dưới 1024.
+Trình xử lý hook thực thi giới hạn stdin 1 MB trên các tải trọng. Để kiểm tra chính sách này với nội dung nhỏ, đặt `thresholdKb` thành một giá trị tốt dưới 1024.
 </Note>
 
 ---
@@ -638,7 +651,7 @@ Không có tham số.
 ### `warn-background-process`
 
 **Sự kiện:** PreToolUse (Bash)  
-**Mặc định:** Hướng dẫn Claude cẩn thận khi khởi chạy các quy trình nền qua `nohup`, `&`, `disown` hoặc `screen`.
+**Mặc định:** Hướng dẫn Claude cẩn thận khi khởi động các quy trình nền thông qua `nohup`, `&`, `disown` hoặc `screen`.
 
 Không có tham số.
 
@@ -655,21 +668,21 @@ Không có tham số.
 
 ## Trình quản lý gói
 
-Thực thi trình quản lý gói nào agent được phép sử dụng.
+Thực thi trình quản lý gói nào mà tác nhân được phép sử dụng.
 
 ### `prefer-package-manager`
 
 **Sự kiện:** PreToolUse (Bash)  
-**Mặc định:** Bị vô hiệu hóa. Khi được bật, chặn bất kỳ lệnh trình quản lý gói nào không trong danh sách `allowed` và yêu cầu Claude viết lại lệnh bằng trình quản lý được phép.
+**Mặc định:** Bị vô hiệu hóa. Khi được bật, chặn bất kỳ lệnh trình quản lý gói nào không có trong danh sách `allowed` và hướng dẫn Claude viết lại lệnh bằng trình quản lý được cho phép.
 
 Phát hiện: pip, pip3, python -m pip, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo.
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `allowed` | string[] | `[]` | Các tên trình quản lý gói được phép. Bất kỳ trình quản lý được phát hiện nào không có trong danh sách này bị chặn. Khi trống, chính sách là no-op. |
-| `blocked` | string[] | `[]` | Các tên trình quản lý bổ sung để chặn ngoài danh sách tích hợp sẵn (ví dụ: `['pdm', 'pipx']`). |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|---------|------|---------|--------|
+| `allowed` | string[] | `[]` | Tên trình quản lý gói được cho phép. Bất kỳ trình quản lý được phát hiện nào không có trong danh sách này bị chặn. Khi trống, chính sách là no-op. |
+| `blocked` | string[] | `[]` | Tên trình quản lý bổ sung để chặn ngoài danh sách tích hợp (ví dụ: `['pdm', 'pipx']`). |
 
-Danh sách chặn tích hợp sẵn bao gồm: pip, pip3, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo. Sử dụng `blocked` để thêm các trình quản lý không có trong danh sách này.
+Danh sách chặn tích hợp bao gồm: pip, pip3, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo. Sử dụng `blocked` để thêm trình quản lý không có trong danh sách này.
 
 **Cấu hình ví dụ:**
 
@@ -685,18 +698,18 @@ Danh sách chặn tích hợp sẵn bao gồm: pip, pip3, npm, npx, yarn, pnpm, 
 }
 ```
 
-Với cấu hình này, `pip install flask` và `pdm install flask` đều bị từ chối với thông báo yêu cầu Claude sử dụng `uv` hoặc `bun` thay vì. Các lệnh như `uv pip install flask` được phép vì `uv` nằm trong danh sách cho phép và được kiểm tra trước tiên.
+Với cấu hình này, `pip install flask` và `pdm install flask` đều bị từ chối với thông báo yêu cầu Claude sử dụng `uv` hoặc `bun` thay thế. Các lệnh như `uv pip install flask` được cho phép vì `uv` nằm trong danh sách cho phép và được kiểm tra trước.
 
 ---
 
 ## Hành vi AI
 
-Phát hiện khi agent bị mắc kẹt hoặc có hành vi bất thường.
+Phát hiện khi tác nhân bị kẹt hoặc hành động không như mong đợi.
 
 ### `warn-repeated-tool-calls`
 
 **Sự kiện:** PreToolUse (tất cả công cụ)  
-**Mặc định:** Hướng dẫn Claude xem xét lại khi cùng một công cụ được gọi 3 lần trở lên với các tham số giống hệt nhau - dấu hiệu phổ biến của agent bị mắc vòng lặp.
+**Mặc định:** Hướng dẫn Claude xem xét lại khi cùng một công cụ được gọi 3+ lần với các tham số giống hệt nhau - dấu hiệu phổ biến cho thấy tác nhân kẹt trong vòng lặp.
 
 Không có tham số.
 
@@ -704,39 +717,39 @@ Không có tham số.
 
 ## Quy trình làm việc
 
-Thực thi quy trình làm việc cuối phiên kỷ luật. Các chính sách này được kích hoạt trên sự kiện **Stop** và từ chối agent dừng lại cho đến khi mỗi điều kiện được đáp ứng. Chúng tuân theo chuỗi phụ thuộc tự nhiên: commit → push → PR → CI. Nếu chính sách từ chối, các chính sách sau trong chuỗi bị bỏ qua (deny short-circuits).
+Thực thi quy trình làm việc cuối phiên kỷ luật. Các chính sách này kích hoạt trên sự kiện **Stop** và từ chối tác nhân từ dừng cho đến khi từng điều kiện được đáp ứng. Chúng tuân theo chuỗi phụ thuộc tự nhiên: commit → push → PR → CI. Nếu chính sách từ chối, các chính sách sau trong chuỗi được bỏ qua (deny short-circuits).
 
-Tất cả các chính sách quy trình làm việc là **fail-open**: nếu công cụ được yêu cầu không có sẵn (ví dụ: `gh` không cài đặt, không có git remote), chính sách cho phép với thông báo thông tin giải thích lý do kiểm tra bị bỏ qua.
+Tất cả các chính sách quy trình làm việc **fail-open**: nếu công cụ bắt buộc không có sẵn (ví dụ: `gh` không được cài đặt, không có git remote), chính sách cho phép với thông báo thông tin giải thích lý do tại sao kiểm tra bị bỏ qua.
 
-### Ngữ nghĩa Stop theo CLI
+### Ngữ nghĩa Stop trên mỗi CLI
 
-Thực thi Stop trông hơi khác nhau trên bảy CLI được hỗ trợ vì mỗi CLI tiếp xúc với hợp đồng hook "agent kết thúc" khác nhau. **Kết quả** là như nhau — agent không thoát khỏi việc dừng lại trong khi cổng quy trình làm việc đang thất bại — nhưng **cơ chế** khác nhau. Bảng dưới đây tóm tắt; chỉ Pi có một điểm kỳ lạ hiển thị cho người dùng đáng hiểu trước khi bạn bật chính sách `require-*-before-stop`.
+Thực thi Stop trông hơi khác nhau trên sáu CLI được hỗ trợ vì mỗi CLI expose một hợp đồng hook hoàn thành tác nhân khác nhau. **Kết quả** là giống nhau — tác nhân không thoát khỏi dừng lại khi cổng quy trình làm việc đang thất bại — nhưng **cơ chế** khác nhau. Bảng dưới đây tóm tắt; chỉ Pi có một lỗi giao diện người dùng đáng hiểu trước khi bạn bật chính sách `require-*-before-stop`.
 
-| CLI | Khi cổng kích hoạt | Những gì bạn thấy |
+| CLI | Khi cổng kích hoạt | Những gì bạn nhìn thấy |
 |---|---|---|
-| Claude Code | Cùng vòng lặp agent, ngay lập tức | Claude tiếp tục làm việc — sửa vấn đề, sau đó cố gắng hoàn thành lại. Không có sự gián đoạn hiển thị cho bạn. |
-| Codex | Cùng vòng lặp agent, ngay lập tức | Giống như Claude. |
-| GitHub Copilot CLI | Cùng vòng lặp agent, ngay lập tức | Giống như Claude (sử dụng kênh `{decision:"block", reason}` retry của Copilot — đã xác minh theo kinh nghiệm đối với Copilot CLI 1.0.41). |
-| Cursor Agent | Cùng vòng lặp agent, ngay lập tức | Giống như Claude (sử dụng kênh `{followup_message}` của Cursor — bị giới hạn ở `loop_limit`, mặc định 5 lần thử lại). |
-| OpenCode | Cùng vòng lặp agent, ngay lập tức | Giống như Claude (sử dụng lệnh gọi SDK `client.session.prompt(...)` của OpenCode được định tuyến qua `hookSpecificOutput.additionalContext`). |
-| **Pi (pi-coding-agent)** | **Lần tới người dùng** | **Pi dừng lại rõ ràng** khi cổng kích hoạt — vòng lặp agent của nó thoát và bạn quay lại dấu nhắc. Cổng sau đó kích hoạt lần tiếp theo bạn gửi dấu nhắc: failproofai thêm tiền tố `MANDATORY ACTION REQUIRED` vào lời nhắc hệ thống của lần đó, hướng dẫn LLM hoàn thành bước quy trình làm việc (commit, push, v.v.) trước khi làm bất cứ điều gì bạn yêu cầu. |
+| Claude Code | Cùng vòng lặp tác nhân, ngay lập tức | Claude tiếp tục làm việc — sửa vấn đề, sau đó cố gắng hoàn thành lại. Không có ngắt quãng nào hiển thị cho bạn. |
+| Codex | Cùng vòng lặp tác nhân, ngay lập tức | Giống như Claude. |
+| GitHub Copilot CLI | Cùng vòng lặp tác nhân, ngay lập tức | Giống như Claude (sử dụng kênh retry `{decision:"block", reason}` của Copilot — được xác minh theo kinh nghiệm so với Copilot CLI 1.0.41). |
+| Cursor Agent | Cùng vòng lặp tác nhân, ngay lập tức | Giống như Claude (sử dụng kênh `{followup_message}` của Cursor — giới hạn ở `loop_limit`, mặc định 5 lần thử lại). |
+| OpenCode | Cùng vòng lặp tác nhân, ngay lập tức | Giống như Claude (sử dụng lệnh gọi `client.session.prompt(...)` của OpenCode SDK được định tuyến thông qua `hookSpecificOutput.additionalContext`). |
+| **Pi (pi-coding-agent)** | **Lần tiếp theo người dùng** | **Pi dừng rõ ràng** khi cổng kích hoạt — vòng lặp tác nhân của nó thoát và bạn được trả về thông báo. Cổng sau đó kích hoạt lần tiếp theo bạn gửi thông báo: failproofai thêm một chỉ thị `MANDATORY ACTION REQUIRED` vào hệ thống prompt của lần đó, hướng dẫn LLM hoàn thành bước quy trình làm việc (commit, push, v.v.) trước khi làm bất cứ điều gì bạn yêu cầu. |
 
 <Note>
-**Giới hạn Pi.** `AgentEndEvent` của Pi (tương đương thượng nguồn của hook `Stop` của Claude) không có loại Result — khi nó kích hoạt, vòng lặp agent của Pi đã thoát. Pi không thể bị buộc thử lại cùng một vòng lặp theo cách Claude / Copilot / Cursor / OpenCode. failproofai thay đổi cổng sang sự kiện `before_agent_start` của Pi (được kích hoạt sau dấu nhắc người dùng tiếp theo) để kiểm tra quy trình làm việc vẫn thực thi, chỉ trên lần tới thay vì lần hiện tại.
+**Hạn chế Pi.** `AgentEndEvent` của Pi (tương đương đầu dòng của sự kiện Stop của Claude) không có kiểu Result — khi nó kích hoạt, vòng lặp tác nhân của Pi đã thoát. Pi không thể bị buộc phải thử lại cùng một vòng lặp cách mà Claude / Copilot / Cursor / OpenCode có thể. failproofai dịch chuyển cổng sang sự kiện `before_agent_start` của Pi (kích hoạt sau khi prompt tiếp theo của người dùng) để kiểm tra quy trình làm việc vẫn thực thi, chỉ là trên lần tiếp theo thay vì lần hiện tại.
 
-**Điều này có nghĩa gì trong thực tế:**
+**Điều này có nghĩa trong thực tế:**
 
-- Sau khi Pi dừng lại, lý do từ chối được ghi vào bộ nhớ trong bằng id phiên Pi. Dấu nhắc rất tiếp theo bạn gửi trong cùng quy trình Pi lấy ra nó: LLM nhìn thấy chỉ thị `MANDATORY ACTION REQUIRED` ở đầu lời nhắc hệ thống của nó, commit (hoặc push / mở PR / chờ CI) và chỉ khi đó tiếp tục với yêu cầu của bạn. Lý do từ chối được ghi lại là một lần — sau khi lấy ra, cổng rõ ràng.
-- Cổng bị ràng buộc bởi vòng đời quá trình Pi. Nếu bạn `Ctrl+C` Pi hoặc thoát giữa các lần, mục bộ nhớ trong được loại bỏ cùng với quá trình và cổng bị bỏ lỡ. Claude, Copilot, Cursor và OpenCode có cùng ranh giới (giết agent và cổng bị bỏ lỡ) — Pi chỉ làm cho nó rõ ràng hơn vì agent rõ ràng thoát trước khi cổng kích hoạt.
-- Một từ chối đang chờ cũng bị xóa trên `session_shutdown` vì lý do gì đó (`new` / `resume` / `fork` / `quit`), vì vậy cổng cũ từ phiên trước không thể bị rò rỉ vào phiên mới được khởi động trong cùng quy trình Pi.
+- Sau khi Pi dừng, lý do từ chối được lưu trong bộ nhớ được khóa bằng id phiên Pi. Thông báo mà bạn gửi tiếp theo trong cùng quy trình Pi nạp nó: LLM nhìn thấy chỉ thị `MANDATORY ACTION REQUIRED` ở đầu hệ thống prompt của nó, cam kết (hoặc push / mở PR / đợi CI), và chỉ sau đó tiếp tục với yêu cầu của bạn. Lý do từ chối được lưu một lần — khi được nạp, cổng được xóa.
+- Cổng được giới hạn bởi vòng đời quy trình Pi. Nếu bạn `Ctrl+C` Pi hoặc thoát giữa các lần, mục được lưu trong bộ nhớ bị loại bỏ cùng với quy trình và cổng bị bỏ lỡ. Claude, Copilot, Cursor và OpenCode có cùng ràng buộc (tắt tác nhân và cổng bị bỏ lỡ) — Pi chỉ làm nó trở nên rõ ràng hơn vì tác nhân rõ ràng thoát trước khi cổng kích hoạt.
+- Một deny đang chờ xử lý cũng được xóa trên `session_shutdown` vì bất kỳ lý do nào (`new` / `resume` / `fork` / `quit`), do đó cổng cũ từ phiên trước không thể rò rỉ vào phiên mới được bắt đầu trong cùng quy trình Pi.
 
-Nếu bạn cần thử lại cùng vòng lặp kiểu Claude, hãy chạy các chính sách `Stop` của bạn dưới bất kỳ năm CLI được hỗ trợ khác. Chúng tôi đang theo dõi Pi thượng nguồn để có loại Result trong tương lai trên `AgentEndEvent` sẽ cho phép chúng tôi đóng khoảng cách này.
+Nếu bạn cần thử lại cùng vòng lặp như Claude, chạy chính sách `Stop` của bạn dưới bất kỳ năm CLI được hỗ trợ nào khác. Chúng tôi đang theo dõi Pi upstream cho một kiểu Result trong tương lai trên `AgentEndEvent` sẽ cho phép chúng tôi đóng khoảng cách này.
 </Note>
 
 ### `require-commit-before-stop`
 
 **Sự kiện:** Stop  
-**Mặc định:** Từ chối dừng lại khi có thay đổi chưa được xác nhận (tệp đã sửa đổi, được sắp xếp hoặc chưa theo dõi). Trả về thông báo thông tin khi thư mục làm việc sạch sẽ.
+**Mặc định:** Từ chối dừng khi có các thay đổi chưa được commit (các tệp đã sửa đổi, staged hoặc chưa được theo dõi). Trả về thông báo thông tin khi thư mục làm việc sạch sẽ.
 
 Không có tham số.
 
@@ -745,13 +758,13 @@ Không có tham số.
 ### `require-push-before-stop`
 
 **Sự kiện:** Stop  
-**Mặc định:** Từ chối dừng lại khi có các lần commit chưa được push hoặc khi nhánh hiện tại không có nhánh theo dõi từ xa. Gợi ý `git push -u` để tạo nhánh theo dõi nếu cần. Thất bại mở nếu không có remote được cấu hình.
+**Mặc định:** Từ chối dừng khi có các commit chưa được push hoặc khi nhánh hiện tại không có nhánh theo dõi từ xa. Gợi ý `git push -u` để tạo nhánh theo dõi nếu cần. Fail open nếu không có remote được cấu hình.
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `remote` | `string` | `"origin"` | Tên remote để push đến. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `remote` | `string` | `"origin"` | Tên remote để push tới. |
 
 **Ví dụ:**
 
@@ -770,14 +783,13 @@ Không có tham số.
 ### `require-pr-before-stop`
 
 **Sự kiện:** Stop  
-**Mặc định:** Từ chối dừng lại khi không có yêu cầu pull tồn tại cho nhánh hiện tại hoặc khi PR hiện có bị đóng mà không merge. Hướng dẫn Claude tạo PR với `gh pr create`. Khi PR được **merge**, chính sách cho phép (công việc đã được gửi) và thông báo gợi ý chuyển ra khỏi nhánh (`git checkout main && git pull`).
+**Mặc định:** Từ chối dừng khi không có pull request cho nhánh hiện tại, hoặc khi PR hiện có bị đóng mà không merge. Hướng dẫn Claude tạo PR với `gh pr create`. Khi PR **được merge**, chính sách cho phép (công việc đã ship) và thông báo gợi ý chuyển nhánh (`git checkout main && git pull`).
 
 Không có tham số.
 
 <Note>
 Chính sách này yêu cầu [GitHub CLI](https://cli.github.com/) (`gh`) được cài đặt và xác thực.
-Chạy `gh auth login` với token truy cập cá nhân có phạm vi `repo` để đọc
-yêu cầu pull. Nếu `gh` không được cài đặt hoặc không xác thực, chính sách thất bại mở và báo cáo lý do cho Claude.
+Chạy `gh auth login` với token truy cập cá nhân có phạm vi `repo` để truy cập đọc pull requests. Nếu `gh` không được cài đặt hoặc không được xác thực, chính sách fail open và báo cáo lý do cho Claude.
 </Note>
 
 ---
@@ -785,24 +797,21 @@ yêu cầu pull. Nếu `gh` không được cài đặt hoặc không xác thự
 ### `require-no-conflicts-before-stop`
 
 **Sự kiện:** Stop  
-**Mặc định:** Từ chối dừng lại khi nhánh hiện tại không thể merge sạch vào nhánh cơ sở. Chính sách trước tiên xác nhận có PR `OPEN` trên GitHub cho nhánh — nếu không có, không có mục tiêu merge để thực thi, vì vậy toàn bộ chính sách short-circuit cho phép. Khi PR `OPEN` được xác nhận, hai điều tra độc lập chạy:
+**Mặc định:** Từ chối dừng khi nhánh hiện tại không thể merge một cách sạch sẽ vào nhánh cơ sở. Chính sách trước tiên xác nhận có `OPEN` PR trên GitHub cho nhánh — nếu không có, không có mục tiêu merge để thực thi, do đó toàn bộ chính sách short-circuit để cho phép. Khi `OPEN` PR được xác nhận, hai điều tra độc lập chạy:
 
-1. **Local** — `git merge-tree --write-tree --name-only origin/<baseBranch> HEAD`. Xung đột, thông báo từ chối đặt tên các tệp xung đột để Claude biết chính xác phải giải quyết cái gì.
-2. **GitHub** — tái sử dụng kết quả `gh pr view --json mergeable,state` đã được tìm nạp trong kiểm tra trước. Bắt những xung đột mà `origin/<baseBranch>` cũ cục bộ sẽ bỏ lỡ (ví dụ: ai đó đã hạ cánh PR xung đột trên `main` kể từ lần tìm nạp cuối cùng). Kết quả `CONFLICTING` từ chối. Kết quả `UNKNOWN` cũng từ chối và hướng dẫn Claude chờ ~10 giây và kiểm tra lại trước khi cố gắng dừng lại lại — điều này ngăn chặn dương tính giả trong khi GitHub tính toán lại.
+1. **Cục bộ** — `git merge-tree --write-tree --name-only origin/<baseBranch> HEAD`. Khi xung đột, thông báo deny đặt tên các tệp xung đột để Claude biết chính xác những gì cần giải quyết.
+2. **GitHub** — tái sử dụng kết quả `gh pr view --json mergeable,state` đã được tìm nạp trong kiểm tra trước. Bắt các xung đột mà `origin/<baseBranch>` cũ cục bộ sẽ bỏ lỡ (ví dụ: ai đó đã đưa một PR xung đột vào `main` kể từ lần fetch cuối cùng). Kết quả `CONFLICTING` từ chối. Kết quả `UNKNOWN` cũng từ chối và hướng dẫn Claude chờ ~10 giây và kiểm tra lại trước khi cố gắng dừng lại — điều này ngăn chặn false negatives khi GitHub tính toán lại.
 
-Bỏ qua hoàn toàn (cho phép) khi: `gh` không được cài đặt, không có PR nào cho nhánh, trạng thái PR không phải `OPEN` (ví dụ: `MERGED`, `CLOSED`), hoặc `gh pr view` trả về kết quả không thể phân tích. Cũng thất bại mở khi `origin/<baseBranch>` bị thiếu cục bộ hoặc khi không có commit trước cơ sở — những lần rơi qua Layer 1 đó vẫn tham khảo kết quả PR mergeability được lưu trong bộ nhớ cache trước khi cho phép.
+Bỏ qua hoàn toàn (cho phép) khi: `gh` không được cài đặt, không có PR cho nhánh, trạng thái PR không phải `OPEN` (ví dụ: `MERGED`, `CLOSED`), hoặc `gh pr view` trả về kết quả không thể phân tích cú pháp. Cũng fail open khi `origin/<baseBranch>` bị thiếu cục bộ hoặc khi không có commit dẫn đầu cơ sở — những Layer 1 fall-through đó vẫn tham khảo PR mergeability đã lưu trữ trước khi cho phép.
 
 **Tham số:**
 
-| Tham số | Loại | Mặc định | Mô tả |
-|--------|------|---------|-------|
-| `baseBranch` | `string` | `"main"` | Nhánh cơ sở để kiểm tra xung đột đối với. |
+| Tham số | Kiểu | Mặc định | Mô tả |
+|--------|------|---------|--------|
+| `baseBranch` | `string` | `"main"` | Nhánh cơ sở để kiểm tra xung đột. |
 
 <Note>
-GitHub CLI (`gh`) là bắt buộc cho chính sách này. Chính sách sử dụng `gh pr view` để xác nhận
-một PR `OPEN` tồn tại trước khi chạy bất kỳ điều tra xung đột nào — nếu không có `gh`, chính sách
-short-circuit cho phép. Chạy `gh auth login` với token truy cập cá nhân có
-phạm vi `repo` để đọc yêu cầu pull.
+GitHub CLI (`gh`) được yêu cầu cho chính sách này. Chính sách sử dụng `gh pr view` để xác nhận `OPEN` PR tồn tại trước khi chạy bất kỳ điều tra xung đột nào — nếu không có `gh`, chính sách short-circuit để cho phép. Chạy `gh auth login` với token truy cập cá nhân có phạm vi `repo` để truy cập đọc pull requests.
 </Note>
 
 ---
@@ -810,14 +819,13 @@ phạm vi `repo` để đọc yêu cầu pull.
 ### `require-ci-green-before-stop`
 
 **Sự kiện:** Stop  
-**Mặc định:** Từ chối dừng lại khi các kiểm tra CI đang thất bại hoặc vẫn chạy trên nhánh hiện tại. Kiểm tra cả công việc GitHub Actions workflow và các kiểm tra bot của bên thứ ba (ví dụ: CodeRabbit, SonarCloud, Codecov). Coi `skipped`, `cancelled` và `neutral` kết luận là không thất bại (cái sau bao gồm ví dụ: Socket Security alerts trên PR của người đóng góp bên ngoài, nơi ứng dụng cố tình báo cáo neutral thay vì success/failure). Trả về thông báo thông tin khi tất cả các kiểm tra vượt qua.
+**Mặc định:** Từ chối dừng khi các kiểm tra CI đang thất bại hoặc vẫn đang chạy trên nhánh hiện tại. Kiểm tra cả chạy quy trình làm việc GitHub Actions và các kiểm tra bot của bên thứ ba (ví dụ: CodeRabbit, SonarCloud, Codecov). Coi `skipped`, `cancelled` và `neutral` kết luận là không thất bại (kết luận cuối cùng bao gồm ví dụ Socket Security alerts trên PR của người đóng góp bên ngoài, nơi ứng dụng có ý định báo cáo neutral thay vì success/failure). Trả về thông báo thông tin khi tất cả kiểm tra đạt.
 
 Không có tham số.
 
 <Note>
 Chính sách này yêu cầu [GitHub CLI](https://cli.github.com/) (`gh`) được cài đặt và xác thực.
-Chạy `gh auth login` với token truy cập cá nhân có phạm vi `repo` để đọc
-quy trình làm việc Actions và Checks API. Nếu `gh` không được cài đặt hoặc không xác thực, chính sách thất bại mở và báo cáo lý do cho Claude.
+Chạy `gh auth login` với token truy cập cá nhân có phạm vi `repo` để truy cập đọc chạy quy trình làm việc Actions và Checks API. Nếu `gh` không được cài đặt hoặc không được xác thực, chính sách fail open và báo cáo lý do cho Claude.
 </Note>
 
 ---
@@ -826,7 +834,7 @@ quy trình làm việc Actions và Checks API. Nếu `gh` không được cài �
 
 ## Vô hiệu hóa các chính sách riêng lẻ
 
-Xóa một chính sách cụ thể khỏi `enabledPolicies` trong cấu hình của bạn hoặc bật tắt nó trên tab Policies của bảng điều khiển.
+Loại bỏ một chính sách cụ thể khỏi `enabledPolicies` trong cấu hình của bạn, hoặc chuyển nó tắt trong tab Policies của dashboard.
 
 ```json
 {

@@ -1,16 +1,16 @@
 ---
-title: 예제
+title: 예시
 description: "Claude Code 및 Agents SDK에 훅을 설정하는 방법"
 icon: book-open
 ---
 
-일반적인 시나리오에 바로 사용할 수 있는 예제들입니다. 각 예제는 설치 방법과 예상 동작을 보여줍니다.
+일반적인 시나리오에 바로 사용할 수 있는 예시입니다. 각 예시에는 설치 방법과 예상 동작이 포함되어 있습니다.
 
 ---
 
 ## Claude Code에 훅 설정하기
 
-Failproof AI는 Claude Code의 [훅 시스템](https://docs.anthropic.com/en/docs/claude-code/hooks)을 통해 통합됩니다. `failproofai policies --install`을 실행하면 모든 도구 호출 시 실행되는 훅 명령어가 Claude Code의 `settings.json`에 등록됩니다.
+Failproof AI는 Claude Code의 [훅 시스템](https://docs.anthropic.com/en/docs/claude-code/hooks)을 통해 통합됩니다. `failproofai policies --install`을 실행하면 모든 툴 호출 시 실행되는 훅 명령어가 Claude Code의 `settings.json`에 등록됩니다.
 
 <Steps>
   <Step title="failproofai 설치">
@@ -18,7 +18,7 @@ Failproof AI는 Claude Code의 [훅 시스템](https://docs.anthropic.com/en/doc
     npm install -g failproofai
     ```
   </Step>
-  <Step title="모든 내장 정책 활성화">
+  <Step title="모든 기본 제공 정책 활성화">
     ```bash
     failproofai policies --install
     ```
@@ -35,7 +35,7 @@ Failproof AI는 Claude Code의 [훅 시스템](https://docs.anthropic.com/en/doc
     claude
     ```
 
-    이제 모든 도구 호출 시 정책이 자동으로 실행됩니다. Claude에게 `sudo rm -rf /` 실행을 요청해 보세요 - 차단될 것입니다.
+    이제 모든 툴 호출 시 정책이 자동으로 실행됩니다. Claude에게 `sudo rm -rf /` 실행을 요청해 보세요 - 차단됩니다.
   </Step>
 </Steps>
 
@@ -52,11 +52,11 @@ Failproof AI는 Claude Code의 [훅 시스템](https://docs.anthropic.com/en/doc
     ```
   </Step>
   <Step title="에이전트에 훅 구성">
-    에이전트 프로세스 생성 시 훅 명령어를 전달합니다. 훅은 Claude Code와 동일하게 stdin/stdout JSON 방식으로 실행됩니다:
+    에이전트 프로세스를 생성할 때 훅 명령어를 전달합니다. 훅은 Claude Code와 동일하게 stdin/stdout JSON 방식으로 실행됩니다.
 
     ```bash
-    failproofai --hook PreToolUse   # called before each tool
-    failproofai --hook PostToolUse  # called after each tool
+    failproofai --hook PreToolUse   # 각 툴 실행 전 호출
+    failproofai --hook PostToolUse  # 각 툴 실행 후 호출
     ```
   </Step>
   <Step title="에이전트용 커스텀 정책 작성">
@@ -86,37 +86,37 @@ Failproof AI는 Claude Code의 [훅 시스템](https://docs.anthropic.com/en/doc
 
 ---
 
-## 파괴적인 명령 차단
+## 파괴적인 명령어 차단
 
-가장 일반적인 설정 - 에이전트가 되돌릴 수 없는 손상을 일으키는 것을 방지합니다.
+가장 일반적인 설정으로, 에이전트가 되돌릴 수 없는 손상을 입히는 것을 방지합니다.
 
 ```bash
 failproofai policies --install block-sudo block-rm-rf block-force-push block-curl-pipe-sh
 ```
 
-이 설정의 기능:
-- `block-sudo` - 모든 `sudo` 명령 차단
+이 설정의 역할:
+- `block-sudo` - 모든 `sudo` 명령어 차단
 - `block-rm-rf` - 재귀적 파일 삭제 차단
 - `block-force-push` - `git push --force` 차단
-- `block-curl-pipe-sh` - 원격 스크립트를 셸에 파이프하는 것 차단
+- `block-curl-pipe-sh` - 원격 스크립트를 셸에 파이프하는 동작 차단
 
 ---
 
 ## 시크릿 유출 방지
 
-에이전트가 도구 출력에서 자격증명을 보거나 유출하는 것을 방지합니다.
+에이전트가 툴 출력에서 자격 증명을 보거나 유출하는 것을 막습니다.
 
 ```bash
 failproofai policies --install sanitize-api-keys sanitize-jwt sanitize-connection-strings sanitize-bearer-tokens
 ```
 
-이 정책들은 `PostToolUse` 시 실행됩니다 - 도구 실행 후 에이전트가 출력을 보기 전에 민감한 정보를 제거합니다.
+이 정책들은 `PostToolUse` 시점에 실행됩니다. 툴이 실행된 후 에이전트가 출력을 보기 전에 민감한 정보를 제거합니다.
 
 ---
 
-## 에이전트가 주의가 필요할 때 Slack 알림 받기
+## 에이전트 확인이 필요할 때 Slack 알림 받기
 
-알림 훅을 사용하여 유휴 알림을 Slack으로 전달합니다.
+알림 훅을 사용하여 대기 상태 알림을 Slack으로 전달합니다.
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
@@ -142,7 +142,7 @@ customPolicies.add({
         signal: AbortSignal.timeout(5000),
       });
     } catch {
-      // never block the agent if Slack is unreachable
+      // Slack에 연결할 수 없는 경우에도 에이전트를 절대 차단하지 않습니다
     }
 
     return allow();
@@ -184,7 +184,7 @@ customPolicies.add({
 
 ## 커밋 전 테스트 실행 요구
 
-에이전트에게 커밋 전 테스트를 실행하도록 상기시킵니다.
+커밋하기 전에 테스트를 실행하도록 에이전트에게 상기시킵니다.
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
@@ -208,9 +208,9 @@ customPolicies.add({
 
 ## 프로덕션 저장소 잠금
 
-프로젝트 레벨 설정을 커밋하여 팀의 모든 개발자가 동일한 정책을 적용받도록 합니다.
+팀의 모든 개발자가 동일한 정책을 적용받을 수 있도록 프로젝트 수준의 설정을 커밋합니다.
 
-저장소에 `.failproofai/policies-config.json`을 생성하세요:
+저장소에 `.failproofai/policies-config.json` 파일을 생성합니다.
 
 ```json
 {
@@ -231,7 +231,7 @@ customPolicies.add({
 }
 ```
 
-커밋:
+커밋합니다:
 
 ```bash
 git add .failproofai/policies-config.json
@@ -242,9 +242,9 @@ failproofai가 설치된 모든 팀원이 이 규칙을 자동으로 적용받�
 
 ---
 
-## 컨벤션 정책으로 조직 전체 품질 기준 구축
+## 컨벤션 정책으로 조직 전체 품질 기준 구축하기
 
-가장 효과적인 설정: 프로젝트에 맞춘 정책이 담긴 `.failproofai/policies/`를 저장소에 커밋하세요. 별도의 설치 명령이나 설정 변경 없이 모든 팀원이 자동으로 정책을 적용받습니다.
+가장 효과적인 설정: 프로젝트에 맞게 커스터마이징된 정책을 `.failproofai/policies/` 디렉토리에 담아 저장소에 커밋합니다. 모든 팀원이 자동으로 적용받으며, 별도의 설치 명령어나 설정 변경이 필요 없습니다.
 
 <Steps>
   <Step title="디렉토리 생성 및 정책 추가">
@@ -256,8 +256,8 @@ failproofai가 설치된 모든 팀원이 이 규칙을 자동으로 적용받�
     // .failproofai/policies/team-policies.mjs
     import { customPolicies, allow, deny, instruct } from "failproofai";
 
-    // Enforce your team's preferred package manager
-    // (or enable the built-in prefer-package-manager policy instead)
+    // 팀에서 선호하는 패키지 매니저 강제 적용
+    // (또는 기본 제공 prefer-package-manager 정책을 활성화할 수 있습니다)
     customPolicies.add({
       name: "enforce-bun",
       match: { events: ["PreToolUse"] },
@@ -269,7 +269,7 @@ failproofai가 설치된 모든 팀원이 이 규칙을 자동으로 적용받�
       },
     });
 
-    // Remind the agent to run tests before committing
+    // 커밋 전에 테스트를 실행하도록 에이전트에게 상기시킵니다
     customPolicies.add({
       name: "test-before-commit",
       match: { events: ["PreToolUse"] },
@@ -289,19 +289,19 @@ failproofai가 설치된 모든 팀원이 이 규칙을 자동으로 적용받�
     git commit -m "Add team quality policies"
     ```
   </Step>
-  <Step title="지속적인 개선">
-    팀이 새로운 문제를 발견할 때마다 정책을 추가하고 푸시하세요. 모든 팀원이 다음 `git pull` 시 업데이트를 받게 됩니다. 이 정책들은 팀과 함께 성장하는 살아있는 품질 기준이 됩니다.
+  <Step title="지속적으로 개선하기">
+    팀이 새로운 실패 패턴을 발견할 때마다 정책을 추가하고 푸시하세요. 모든 팀원이 다음 `git pull` 시 업데이트를 받게 됩니다. 이 정책들은 팀과 함께 성장하는 살아있는 품질 기준이 됩니다.
   </Step>
 </Steps>
 
 ---
 
-## 더 많은 예제
+## 더 많은 예시
 
 저장소의 [`examples/`](https://github.com/failproofai/failproofai/tree/main/examples) 디렉토리에는 다음이 포함되어 있습니다:
 
 | 파일 | 내용 |
-|------|---------------|
-| `policies-basic.js` | 기본 정책 - 프로덕션 쓰기, 강제 푸시, 파이프된 스크립트 차단 |
-| `policies-notification.js` | 유휴 알림 및 세션 종료에 대한 Slack 알림 |
+|------|------|
+| `policies-basic.js` | 기본 정책 - 프로덕션 쓰기 차단, 강제 푸시 차단, 파이프된 스크립트 차단 |
+| `policies-notification.js` | 대기 상태 알림 및 세션 종료 시 Slack 알림 |
 | `policies-advanced/index.js` | 전이적 임포트, 비동기 훅, PostToolUse 출력 스크러빙, Stop 이벤트 처리 |

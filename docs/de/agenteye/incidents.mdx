@@ -1,28 +1,28 @@
 ---
 title: "Incidents"
-description: "Wenn ein Alert ausgelöst wird, sieht jeder sofort: Das Incident ist offen, wer es übernommen hat und was bisher passiert ist – auf einer einheitlichen, zugeordneten Zeitleiste."
+description: "Wenn ein Alert ausgelöst wird, sieht jeder sofort, dass der Incident offen ist, wer ihn verantwortet und was bisher geschehen ist – in einer einzigen, zugeordneten Timeline."
 ---
 
 
-Wenn ein Alert ausgelöst wird, lautet die erste Frage immer: „Wer kümmert sich darum?" Incidents geben die Antwort: Sobald etwas eine Schwelle überschreitet, sieht das gesamte Team sofort, dass ein Incident offen ist, wer es besitzt und genau was bisher passiert ist – mit einem sauberen, zugeordneten Protokoll, das sich direkt als Grundlage für ein Post-mortem eignet.
+Wenn ein Alert ausgelöst wird, lautet die erste Frage immer: „Wer kümmert sich darum?" Incidents geben die Antwort: Sobald eine Schwelle überschritten wird, kann jeder sehen, dass der Incident offen ist, wer ihn verantwortet und genau was bisher passiert ist – als sauberes, zugeordnetes Protokoll, das sich direkt in ein Post-mortem übernehmen lässt.
 
-![Der Incidents-Posteingang: Alert-verknüpfte und manuell geöffnete Incident-Karten, nach Status gruppiert, jeweils mit einem Schweregrad-Badge und einer zugewiesenen Person](/agenteye/images/incidents.png)
-*Der Posteingang gruppiert offene Incidents nach Status und filtert nach Schweregrad und zugewiesener Person, damit du sofort siehst, was jetzt menschliches Eingreifen erfordert.*
+![Das Incidents-Postfach: alert-verknüpfte und manuell geöffnete Incident-Karten, nach Status gruppiert, jeweils mit Schweregrad-Badge und Zuständigem](/agenteye/images/incidents.png)
+*Das Postfach gruppiert offene Incidents nach Status und lässt sich nach Schweregrad und Zuständigem filtern – so siehst du sofort, was jetzt menschliches Eingreifen erfordert.*
 
-## Auf einen Blick sehen, wer zuständig ist
+## Auf einen Blick sehen, wer es hat
 
-Kein „Schaut sich das jemand an?" mehr im Chat-Thread. Eine Schwellenwertüberschreitung öffnet automatisch ein Incident und legt es in einen gemeinsamen Posteingang, gruppiert nach Status. Wer es bestätigt, hat seinen Namen daran – so weiß das restliche Team, dass es in Bearbeitung ist. Die Bestätigung ist geteilt: Mehrere Operatoren können dasselbe Incident bestätigen, und jede Bestätigung wird einzeln erfasst, sodass ein vollständiger War-Room namentlich aufgeführt wird, ohne sich gegenseitig zu überschreiben. Weise einen Verantwortlichen für die Triage zu und filtere den Posteingang nach Schweregrad oder zugewiesener Person, um ihn auf das Wesentliche zu reduzieren.
+Kein „Schaut sich das gerade jemand an?" mehr im Chat. Eine Schwellenüberschreitung öffnet automatisch einen Incident und legt ihn in ein gemeinsames Postfach, gruppiert nach Status. Wer ihn bestätigt (Acknowledge), erscheint namentlich – das Team weiß sofort, dass es in Bearbeitung ist. Das Bestätigen ist geteilt: Mehrere Operatoren können denselben Incident bestätigen, und jeder Eintrag wird einzeln erfasst, sodass ein ganzes War-Room-Team namentlich auftaucht, statt sich gegenseitig zu überschreiben. Weise einen Verantwortlichen für die Triage zu und filtere das Postfach nach Schweregrad oder Zuständigem, um es auf das Wesentliche zu reduzieren.
 
-## Die gesamte Geschichte in einer Zeitleiste
+## Die ganze Geschichte, in einer Timeline
 
-Wenn das Incident abgeschlossen ist, hast du den Bericht bereits fertig. Öffne ein beliebiges Incident und du siehst den Breach-Beweis, zugewiesene Personen und Abonnenten, einen Kommentar-Thread zur direkten Koordination sowie eine rein erweiterbare Aktivitäts-Zeitleiste.
+Wenn der Incident vorbei ist, ist der Bericht schon fertig. Öffne einen beliebigen Incident und du siehst die Beweise der Schwellenüberschreitung, die Zuständigen und Abonnenten, einen Kommentar-Thread zur Koordination vor Ort und eine rein erweiterbare Aktivitäts-Timeline.
 
-![Eine Incident-Detailansicht: übergeordneter Alert und Breach-Zusammenfassung, zugewiesene Personen und Abonnenten, eine zugeordnete Aktivitäts-Zeitleiste und ein Kommentar-Thread](/agenteye/images/incident-detail.png)
-*Alles, was passiert ist, in chronologischer Reihenfolge – jede Zeile signiert von der Person, die sie ausgeführt hat.*
+![Eine Incident-Detailansicht: der übergeordnete Alert und die Breach-Zusammenfassung, Zuständige und Abonnenten, eine zugeordnete Aktivitäts-Timeline und ein Kommentar-Thread](/agenteye/images/incident-detail.png)
+*Alles, was passiert ist, in chronologischer Reihenfolge – jede Zeile signiert von dem, der gehandelt hat.*
 
-Jede Aktion (geöffnet, bestätigt, gelöst usw.) wird in diese Zeitleiste geschrieben und nie nachträglich bearbeitet. Jeder Eintrag ist zugeordnet: dem Operator, der die Aktion ausgeführt hat, per E-Mail, oder als **automated** für alles, was Failproof AI Observability eigenständig getan hat, z. B. das Öffnen des Incidents beim Breach. Nichts ist anonym und nichts geht verloren – das Post-mortem schreibt sich dadurch fast von selbst.
+Jede Aktion (geöffnet, bestätigt, gelöst usw.) wird in diese Timeline geschrieben und nie nachträglich geändert. Jeder Eintrag ist zugeordnet: dem Operator, der gehandelt hat – per E-Mail –, oder **automated** für alles, was Failproof AI Observability eigenständig getan hat, z. B. das Öffnen des Incidents beim Breach. Nichts ist anonym, nichts geht verloren – das Post-mortem schreibt sich dadurch quasi von selbst.
 
-## Wie sich ein Incident entwickelt
+## Wie ein Incident sich bewegt
 
 ```mermaid
 stateDiagram-v2
@@ -33,18 +33,18 @@ stateDiagram-v2
     resolved --> [*]
 ```
 
-- **Offen (firing):** Der Breach öffnet das Incident und benachrichtigt deine Kanäle einmalig. Wiederholte Breaches werden in dasselbe Incident eingebunden und aktualisieren dessen Beweise, anstatt dich immer wieder zu benachrichtigen.
-- **Bestätigt (acknowledged):** Ein Operator übernimmt es. Es bleibt offen, und spätere Breaches aktualisieren die Beweise still im Hintergrund.
-- **Gelöst (resolved):** Ein Operator schließt es ab. Die automatische Auflösung beim Verschwinden der Bedingung ist geplant, aber noch nicht aktiviert – ein Incident bleibt daher so lange offen, bis ein Mensch es auflöst. Das hält alle ehrlich darüber, was tatsächlich behoben wurde. Für denselben Alert kann später ein neues Incident geöffnet werden.
+- **Offen (firing):** Die Schwellenüberschreitung öffnet den Incident und benachrichtigt deine Kanäle einmalig. Wiederholte Breaches werden in denselben Incident eingefaltet und aktualisieren die Beweise, anstatt dich immer wieder zu benachrichtigen.
+- **Bestätigt (Acknowledged):** Ein Operator übernimmt ihn. Er bleibt offen, und spätere Breaches aktualisieren die Beweise still im Hintergrund.
+- **Gelöst (Resolved):** Ein Operator schließt ihn ab. Automatische Auflösung bei Behebung der Ursache ist geplant, aber noch nicht aktiviert – ein Incident bleibt also so lange offen, bis ein Mensch ihn löst. Das sorgt für Klarheit darüber, was wirklich behoben ist. Für denselben Alert kann später ein neuer Incident geöffnet werden.
 
-Ein Alert kann höchstens ein offenes Incident gleichzeitig haben, sodass eine flatternde Regel dich nicht mit Duplikaten überhäufen kann. Du kannst ein Incident auch manuell öffnen: ein eigenständiges für etwas, das kein Alert erfasst hat, oder eines, das einem vorhandenen Alert zugeordnet ist, sofern du `incidents:write` besitzt.
+Ein Alert kann immer höchstens einen offenen Incident haben – eine flatternde Regel kann dich also nicht mit Duplikaten überfluten. Du kannst einen Incident auch manuell öffnen: einen eigenständigen für etwas, das kein Alert erfasst hat, oder einen an einen bestehenden Alert gebundenen – sofern du `incidents:write` hast.
 
 ## Wo du es findest
 
-Incidents befinden sich unter `/<org-slug>/incidents`. Zum Anzeigen wird **`incidents:read`** benötigt; zum Öffnen eines manuellen Incidents wird **`incidents:write`** benötigt; zum Bestätigen, Zuweisen, Kommentieren und Auflösen wird **`incidents:ack`** benötigt. Ältere Schlüssel, denen das veraltete `alerts:ack` gewährt wurde, funktionieren weiterhin, da es als `incidents:ack` anerkannt wird – deine Bereitschaftsrotation muss also nicht neu ausgestellt werden.
+Incidents sind unter `/<org-slug>/incidents` zu finden. Zum Ansehen ist **`incidents:read`** erforderlich; zum manuellen Öffnen eines Incidents **`incidents:write`**; zum Bestätigen, Zuweisen, Kommentieren und Lösen **`incidents:ack`**. Ältere Schlüssel mit dem abgelösten `alerts:ack` funktionieren weiterhin, da es als `incidents:ack` anerkannt wird – deine On-Call-Rotation muss also nicht neu ausgestellt werden.
 
-## Verwandte Themen
+## Verwandtes
 
-- [Alerts](/de/agenteye/alerts): Die Regeln, die diese Incidents öffnen, wenn ein Schwellenwert überschritten wird.
-- [Error tracking](/de/agenteye/error-tracking): Sieh jeden Fehler an einem Ort und befördere einen davon zu einem Alert.
+- [Alerts](/de/agenteye/alerts): Die Regeln, die diese Incidents öffnen, wenn eine Schwelle überschritten wird.
+- [Error tracking](/de/agenteye/error-tracking): Alle Fehler an einem Ort einsehen und einen davon zu einem Alert weiterentwickeln.
 - [Audits](/de/agenteye/audits): Der geplante Analyst, der Fehler findet, auf die keine Regel geachtet hat.

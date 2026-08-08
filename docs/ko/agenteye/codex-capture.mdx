@@ -1,55 +1,55 @@
 ---
 title: "Codex 세션 캡처"
-description: "팀의 로컬 OpenAI Codex 세션을 일반 세션 및 이벤트로 AgentEye에 수집합니다 — Codex 실행 방식은 전혀 변경되지 않습니다."
+description: "팀의 로컬 OpenAI Codex 세션을 AgentEye에 일반 세션 및 이벤트로 수집합니다 — 기존 Codex 사용 방식을 변경할 필요가 없습니다."
 ---
 
-엔지니어들은 이미 매일 OpenAI Codex를 사용하고 있습니다. Codex 세션 캡처는 이러한 코딩 세션을 AgentEye에 일반 세션 및 이벤트로 가져와, 다른 모든 관찰 대상과 함께 검색하고, 재생하며, 평가할 수 있게 해줍니다. 이 기능은 [Python SDK](/ko/agenteye/python-sdk)를 보완합니다. SDK는 직접 작성한 에이전트를 계측하는 반면, 이 기능은 팀이 이미 사용 중인 Codex 작업을 — 실행 방식의 변경 없이 — 캡처합니다.
+엔지니어들은 이미 매일 OpenAI Codex를 사용하고 있습니다. Codex 세션 캡처는 해당 코딩 세션을 AgentEye에 일반 세션 및 이벤트로 가져오므로, 관찰하는 다른 모든 것과 함께 검색하고, 재생하고, 평가할 수 있습니다. 이 기능은 [Python SDK](/ko/agenteye/python-sdk)를 보완합니다. SDK는 직접 작성하는 에이전트를 계측하는 반면, 이 기능은 팀이 이미 사용하고 있는 Codex 작업을 캡처합니다 — 기존 사용 방식을 변경하지 않고요.
 
-소형 백그라운드 수집기가 Codex의 로컬 세션 트랜스크립트를 작성되는 즉시 읽어 AgentEye로 전송합니다. 머신당 하나의 수집기로 모든 로컬 Codex 인터페이스를 한 번에 캡처할 수 있어 인터페이스별 별도 설정이 필요하지 않습니다.
+소형 백그라운드 수집기가 Codex의 로컬 세션 트랜스크립트를 작성 즉시 읽어 AgentEye로 전송합니다. 머신 한 대당 수집기 하나로 모든 로컬 Codex 화면을 한 번에 캡처할 수 있으며, 화면별 별도 설정은 필요하지 않습니다.
 
-동일한 수집기가 다른 에이전트도 캡처합니다 — [OpenClaw](/ko/agenteye/openclaw-capture) 및 [Hermes](/ko/agenteye/hermes-capture)를 참조하세요. 사용 중인 각 에이전트를 활성화하면 하나의 수집기로 여러 에이전트를 동시에 캡처할 수 있습니다.
+동일한 수집기로 다른 에이전트도 캡처할 수 있습니다 — [OpenClaw](/ko/agenteye/openclaw-capture) 및 [Hermes](/ko/agenteye/hermes-capture)를 참조하세요. 사용하는 것들을 각각 활성화하면, 수집기 하나로 여러 에이전트를 동시에 캡처할 수 있습니다.
 
 ---
 
-## 캡처 대상
+## 캡처되는 항목
 
-**로컬**에서 실행되는 모든 Codex 인터페이스는 동일한 온디스크 세션 트랜스크립트를 생성하며, 수집기가 이를 모두 수집합니다:
+**로컬**에서 실행되는 모든 Codex 화면은 동일한 온디스크 세션 트랜스크립트를 생성하며, 수집기가 이를 모두 수집합니다.
 
 - Codex **CLI** 및 `codex exec`
-- **VS Code / IDE 확장**
+- **VS Code / IDE 익스텐션**
 - **데스크톱 앱** (로컬에서 세션을 실행하는 경우)
 
-각 Codex 세션은 AgentEye [세션](/ko/agenteye/sessions)이 되며, 사용자 및 어시스턴트 메시지, 추론, 도구 호출, 도구 결과, 토큰 사용량이 대응하는 [이벤트](/ko/agenteye/event-stream)가 됩니다. 각 세션의 출처(CLI, IDE 또는 데스크톱)도 기록되어 구분할 수 있습니다.
+각 Codex 세션은 AgentEye [세션](/ko/agenteye/sessions)이 되고, 사용자 및 어시스턴트 메시지, 추론, 도구 호출, 도구 결과, 토큰 사용량은 해당 [이벤트](/ko/agenteye/event-stream)가 됩니다. 세션이 발생한 화면(CLI, IDE, 데스크톱)도 기록되므로 구분이 가능합니다.
 
-> **클라우드 세션은 캡처되지 않습니다.** 데스크톱 앱은 점점 더 많은 세션을 Codex 클라우드에서 실행하고 메타데이터만 로컬에 보관하므로 읽을 수 있는 로컬 트랜스크립트가 존재하지 않습니다. 로컬에서 실행된 세션만 캡처됩니다.
+> **클라우드 세션은 캡처되지 않습니다.** 데스크톱 앱은 점점 더 많은 세션을 Codex 클라우드에서 실행하며, 해당 메타데이터만 머신에 남깁니다 — 읽을 수 있는 로컬 트랜스크립트가 없습니다. 로컬에서 실행된 세션만 캡처됩니다.
 
 ---
 
 ## 활성화 방법
 
-캡처는 활성화하기 전까지 비활성 상태입니다. `events:add` 권한이 있는 API 키로 수집기를 설치하고([API keys](/ko/agenteye/api-keys) 참조), Codex 캡처를 활성화하세요:
+캡처는 명시적으로 활성화하기 전까지 비활성 상태입니다. `events:add` 권한이 있는 API 키([API 키](/ko/agenteye/api-keys) 참조)로 수집기를 설치하고, Codex 캡처를 활성화하세요.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --codex-enabled
 ```
 
-이 명령은 수집기를 설치하고, 백그라운드 서비스로 등록하며, 캡처를 시작합니다. 실행 중인지 확인하세요:
+이 명령은 수집기를 설치하고, 백그라운드 서비스로 등록한 뒤 캡처를 시작합니다. 실행 중인지 확인하려면:
 
 ```bash
 agenteye-collector health
 ```
 
-최초 실행 시 기존 Codex 세션이 한 번 백필되며, 이후 새로운 활동은 수 초 내에 스트리밍됩니다. Codex의 파일은 읽기만 할 뿐 — 수정, 이동, 삭제되지 않으며 — 재시작이 발생하더라도 각 세션은 정확히 한 번만 전송됩니다.
+최초 실행 시 기존 Codex 세션이 한 번 백필되며, 이후 새로운 활동은 수 초 내에 스트리밍됩니다. Codex의 파일은 읽기만 할 뿐 — 수정, 이동, 삭제되지 않으며 — 재시작 이후에도 각 세션은 정확히 한 번만 전송됩니다.
 
 ---
 
 ## 확인 위치
 
-캡처된 세션은 **Sessions**에, 해당 이벤트는 **Events** 스트림에 표시됩니다. 다른 에이전트와 동일하게 [세션 재생](/ko/agenteye/sessions), [검색](/ko/agenteye/queries), [평가](/ko/agenteye/evaluations), [알림](/ko/agenteye/alerts)이 모두 적용됩니다. Codex 에이전트로 필터링하면 해당 세션만 별도로 볼 수 있습니다.
+캡처된 세션은 **Sessions**에, 이벤트는 **Events** 스트림에 표시됩니다. 다른 에이전트와 동일하게 표시되므로 [세션 재생](/ko/agenteye/sessions), [검색](/ko/agenteye/queries), [평가](/ko/agenteye/evaluations), [알림](/ko/agenteye/alerts) 모두 사용할 수 있습니다. Codex 에이전트로 필터링하면 해당 세션만 확인할 수 있습니다.
 
 ---
 
 ## 개인정보 보호
 
-Codex 트랜스크립트에는 명령 출력, 파일 내용, Codex가 읽거나 쓴 모든 내용을 포함한 전체 세션이 담겨 있으며, 시크릿 정보가 포함될 수 있습니다. 캡처된 세션은 있는 그대로 전송되므로, AgentEye에 해당 콘텐츠를 중앙 집중화하는 것이 적절한 머신과 팀에서만 캡처를 활성화하고, 수집기에는 `events:add`만으로 범위가 제한된 키를 사용하세요. 데이터 격리 방법에 대한 자세한 내용은 [보안](/ko/agenteye/security)을 참조하세요.
+Codex 트랜스크립트에는 전체 세션 내용이 포함됩니다 — 명령 출력, 파일 내용, Codex가 읽거나 쓴 모든 내용 — 그리고 시크릿이 포함될 수 있습니다. 캡처된 세션은 있는 그대로 전송되므로, AgentEye에 해당 콘텐츠를 중앙화하는 것이 적합한 머신과 팀에만 캡처를 활성화하고, 수집기에는 `events:add` 권한만 가진 키를 제공하세요. 데이터가 격리되어 보관되는 방식은 [보안](/ko/agenteye/security)을 참조하세요.

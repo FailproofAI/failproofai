@@ -1,52 +1,52 @@
 ---
 title: "Performance Metrics"
-description: "देखें कि आपके models, tools, या hooks कब धीमे हो जाते हैं या बिल बढ़ता है, और tail-latency spike को अपने users महसूस करने से पहले ही पकड़ लें।"
+description: "देखें कि आपके मॉडल, टूल या हुक कब धीमे होते हैं या बिल बढ़ाते हैं, और tail-latency spike को अपने यूजर्स के महसूस करने से पहले ही पकड़ें।"
 ---
 
 
-देखें कि आपके models, tools, या hooks कब धीमे हो जाते हैं या बिल बढ़ता है, और tail-latency spike को अपने users महसूस करने से पहले ही पकड़ लें। तीन dedicated pages raw timings को p50, p95, और p99 में बदल देते हैं जिन्हें आप एक नज़र में पढ़ सकते हैं।
+देखें कि आपके मॉडल, टूल या हुक कब धीमे होते हैं या बिल बढ़ाते हैं, और tail-latency spike को अपने यूजर्स के महसूस करने से पहले ही पकड़ें। तीन dedicated पेज raw timings को p50, p95, और p99 में बदलते हैं जिन्हें आप एक नज़र में पढ़ सकते हैं।
 
 ![The Models page showing a latency heat-map, a percentile band, and per-model token, cost, and context-window figures](/agenteye/images/models.png)
-*Models page: एक latency heat-map, एक percentile band, और per-model tokens, अनुमानित cost, और context-window fill।*
+*The Models page: a latency heat-map, a percentile band, और per-model tokens, estimated cost, और context-window fill।*
 
-## औसत को अपनी सबसे ख़राब runs को छिपाने न दें
+## औसत को अपने सबसे ख़राब रन को छिपाने न दें
 
-औसत latency संख्या आरामदायक होती है और बेकार है: यह उन पचास में से एक call को smooth कर देती है जो रुक जाती है और सुबह 2 बजे आपके on-call को alert भेजती है। Models, Tools, और Hooks pages ऐसा नहीं करते। प्रत्येक एक ही आकार साझा करता है, इसलिए आप इसे एक बार सीखते हैं:
+एक औसत latency संख्या सुकून देने वाली और बेकार होती है: यह उस एक कॉल को छिप जाती है जो पचास में से एक को ठीक करता है और सुबह 2 बजे आपके on-call को पेज करता है। Models, Tools, और Hooks पेज ऐसा नहीं करते। प्रत्येक एक ही shape साझा करता है, इसलिए आप इसे एक बार सीखते हैं:
 
-- एक **24-bin sparkline** trend के लिए एक नज़र में: क्या यह बदतर हो रहा है?
-- एक **vitals strip** p50, p95, और p99 latency के साथ, ताकि typical run और tail एक दूसरे के बगल में हों।
-- एक **latency heat-map**, 24 time bins by latency buckets, जो दिखाता है कि *कब* slow calls clustered हुई थीं।
-- एक **percentile band**: एक p50 line जिसमें p25 to p75 और p10 to p90 shaded ribbons और p99 dots हों, ताकि spread visible रहे averaged away के बजाय।
+- एक **24-bin sparkline** ट्रेंड को एक नज़र में देखने के लिए: क्या यह बदतर हो रहा है?
+- एक **vitals strip** p50, p95, और p99 latency के साथ, ताकि typical run और tail एक दूसरे के बगल में बैठें।
+- एक **latency heat-map**, 24 time bins by latency buckets, जो दिखाता है कि *कब* slow calls cluster हुई थीं।
+- एक **percentile band**: एक p50 line with p25 to p75 और p10 to p90 shaded ribbons और p99 dots, ताकि spread दृश्यमान रहे average न होकर।
 
-एक shared hover crosshair heat-map और band को link करता है, इसलिए एक tail spike समय में दोनों में line हो जाता है, एक single mean line के पीछे छिपने के बजाय। तीनों pages को अपने dashboard के **observe** section में खोजें, प्रत्येक अपने organization को scope किया हुआ और date range, environment, agent, और session के आधार पर filterable।
+एक shared hover crosshair heat-map और band को जोड़ता है, इसलिए एक tail spike समय में दोनों में संरेखित होता है single mean line के पीछे छिपने की बजाय। तीनों पेज अपने dashboard के **observe** सेक्शन में खोजें, प्रत्येक आपके organization को scope किया गया और date range, environment, agent, और session द्वारा filterable।
 
-## Models: देखें कि प्रत्येक model आपको बिल्कुल कितना खर्च करता है
+## Models: देखें कि प्रत्येक मॉडल आपको बिल्कुल कितना खर्च करता है
 
-Models page (ऊपर दिखाया गया) दो सवालों का जवाब देता है जो bill हमेशा उठाता है: कौन सा model, और कितना। shared latency view के ऊपर, यह **per-model token consumption**, **अनुमानित cost**, और **context-window fill** जोड़ता है, ताकि runaway prompt growth और एक impending compaction visible हों surprise से पहले।
+Models पेज (ऊपर दिखाया गया है) उन दोनों सवालों का जवाब देता है जो एक बिल हमेशा उठाता है: कौन सा मॉडल, और कितना। shared latency view के ऊपर, यह **per-model token consumption**, **estimated cost**, और **context-window fill** जोड़ता है, ताकि runaway prompt growth और एक upcoming compaction दिखाई दें उससे पहले कि वे आपको आश्चर्यचकित करें।
 
-Failproof AI Observability common model IDs को automatically recognize करता है। अगर कोई window गलत दिख रहा है, या आप अपना private model चलाते हैं, तो इसे **Settings** में, **model context windows** के अंतर्गत correct या add करें, और fill readouts follow करेंगे।
+Failproof AI Observability common model IDs को automatically recognize करता है। यदि कोई window गलत दिखता है, या आप अपना निजी मॉडल चलाते हैं, तो इसे **Settings** में correct करें या add करें, **model context windows** में, और fill readouts follow करते हैं।
 
 ## Tools: slow को broken से अलग करें
 
-एक tool call slow हो सकती है, या यह quietly fail हो सकती है, और आप चाहते हैं कि यह जान लें कि कौन सी है सेकंड में, logs के माध्यम से dig करने के बाद नहीं।
+एक tool call slow हो सकता है, या यह quietly fail हो सकता है, और आप चाहते हैं कि यह कुछ सेकंड में पता चले, logs में खोदने के बाद नहीं।
 
 ![The Tools page showing the shared latency heat-map and percentile band beside a success and failure breakdown and a tool-distribution bar](/agenteye/images/tools.png)
-*Tools page: वही heat-map और percentile band, साथ ही एक success और failure breakdown और एक tool-distribution bar।*
+*The Tools page: same heat-map और percentile band, plus एक success और failure breakdown और एक tool-distribution bar।*
 
-Shared latency view के साथ-साथ, Tools page एक **success and failure breakdown** और एक **tool-distribution bar** जोड़ता है, ताकि आप एक नज़र में देखें कि आप कौन से tools पर सबसे ज्यादा भरोसा करते हैं और कौन से आपके error budget को खा रहे हैं।
+Shared latency view के साथ, Tools पेज एक **success और failure breakdown** और एक **tool-distribution bar** जोड़ता है, ताकि आप एक नज़र में देखें कि आप सबसे ज़्यादा किन tools पर depend करते हैं और कौन से आपके error budget को खा रहे हैं।
 
-## Hooks: बिल्कुल exact hook और trigger को pinpoint करें
+## Hooks: exact hook और trigger को pinpoint करें
 
-जब एक lifecycle hook एक run को drag करता है, तो "hooks are slow" कुछ ऐसा नहीं है जिस पर आप act कर सकते हैं। Hooks page आपको उस तक ले जाता है जो मायने रखता है।
+जब एक lifecycle hook एक run को drag करता है, "hooks are slow" कुछ ऐसा नहीं है जिस पर आप कार्य कर सकते हैं। Hooks page आपको उस तक ले जाता है जो मायने रखता है।
 
 ![The Hooks page showing latency broken down by hook name and trigger event over the shared heat-map and percentile band](/agenteye/images/hooks.png)
-*Hooks page: latency को hook name और trigger event के आधार पर break किया गया है।*
+*The Hooks page: latency broken down by hook name और trigger event के द्वारा।*
 
-उसी latency heat-map और percentile band पर, Hooks page activity को **hook name** और **trigger event** के आधार पर break down करता है, ताकि आप उस single hook और single event पर आएं जिसे attention की जरूरत है।
+Same latency heat-map और percentile band के ऊपर, Hooks page activity को **hook name** और **trigger event** द्वारा break down करता है, ताकि आप उस single hook और single event तक पहुंचें जिसे attention की ज़रूरत है।
 
-## Related
+## संबंधित
 
-- [Event stream](/hi/agenteye/event-stream): हर event की live, colour-coded trail।
-- [Sessions](/hi/agenteye/sessions): events को एक row में roll करें per run और इसका execution graph खोलें।
-- [Error tracking](/hi/agenteye/error-tracking): dashboard द्वारा red painted किए गए everything के लिए एक triage surface।
-- [Dashboards](/hi/agenteye/dashboards): अपने fleet के आर-पार roll-up views।
+- [Event stream](/hi/agenteye/event-stream): हर event का live, colour-coded trail।
+- [Sessions](/hi/agenteye/sessions): events को एक row per run में roll up करें और उसके execution graph को open करें।
+- [Error tracking](/hi/agenteye/error-tracking): dashboard द्वारा red पेंट की गई हर चीज़ के लिए एक triage surface।
+- [Dashboards](/hi/agenteye/dashboards): अपने fleet में roll-up views।

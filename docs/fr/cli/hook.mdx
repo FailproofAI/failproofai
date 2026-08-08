@@ -1,5 +1,5 @@
 ---
-title: Gestionnaire de hook (interne)
+title: Gestionnaire de hooks (interne)
 description: "Le sous-processus que Claude Code appelle à chaque événement d'outil"
 ---
 
@@ -7,14 +7,14 @@ description: "Le sous-processus que Claude Code appelle à chaque événement d'
 failproofai --hook <EventType>
 ```
 
-Il s'agit de la commande enregistrée dans le fichier `settings.json` de Claude Code par `failproofai policies --install`. Vous n'appelez normalement pas cette commande directement.
+Il s'agit de la commande enregistrée dans le fichier `settings.json` de Claude Code par `failproofai policies --install`. Vous n'avez normalement pas à l'appeler directement.
 
-Elle lit un payload JSON depuis stdin, évalue toutes les politiques activées, et se termine avec un code indiquant la décision prise :
+Lit un payload JSON depuis stdin, évalue toutes les politiques activées, puis se termine avec un code indiquant la décision :
 
 | Code de sortie | Décision | Effet |
 |----------------|----------|-------|
 | `0` | `allow` | Autoriser l'action |
-| `1` | `deny` | Bloquer l'action — Claude voit la raison du refus |
+| `1` | `deny` | Bloquer l'action — Claude reçoit le motif du refus |
 | `2` | `instruct` | Injecter des instructions dans le contexte de Claude |
 
 ### Types d'événements pris en charge

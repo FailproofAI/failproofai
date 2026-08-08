@@ -1,36 +1,36 @@
 ---
 title: "Failproof AI"
-description: "FailproofAI はAIエージェントに39種類の組み込み失敗ポリシーを提供し、ループ・シークレット漏洩・破壊的なツール呼び出しなどをワンインストールで検出します。"
+description: "FailproofAI は、ループ・シークレット漏洩・破壊的なツール呼び出しなどを検出する39の組み込みフェイルポリシーを、1回のインストールで AI エージェントに提供します。"
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-**AIの障害対応**・**エラーリカバリー**・**LLMの信頼性向上**のためのフックとポリシー。**Claude Code**・**OpenAI Codex**・**GitHub Copilot**・**Cursor Agent**・**OpenCode**・**Pi**・**Hermes**・**OpenClaw**・**Factory Droid**・**Devin CLI**・**Antigravity CLI**・**Agents SDK** 上でAIエージェントを安定して自律動作させ続けます。
+**AI 障害ハンドリング**・**エラーリカバリー**・**LLM 信頼性**のためのフックとポリシー。**Claude Code**、**OpenAI Codex**、**GitHub Copilot**、**Cursor Agent**、**OpenCode**、**Pi**、**Hermes**、**OpenClaw**、**Factory Droid**、**Devin CLI**、**Antigravity CLI**、そして **Agents SDK** 上で AI エージェントを安定稼働・自律稼働させ続けましょう。
 
-AIエージェントは、予測可能なパターンで失敗します。破壊的なコマンドを実行する、シークレットを漏洩する、タスクから外れる、ループにはまる、mainブランチへ直接プッシュする――そういった問題が放置されると、小さな障害が連鎖して障害停止・認証情報の漏洩・作業の消失へと発展します。
+AI エージェントは予測可能なパターンで失敗します。破壊的なコマンドを実行し、シークレットを漏洩させ、タスクから逸脱し、ループにはまり込み、main ブランチに直接プッシュする——こうした小さな失敗が放置されると、障害・認証情報の漏洩・作業の消失へと連鎖していきます。
 
-FailproofAI はこれを**ポリシー**によって解決します。これらのルールはエージェントのすべてのツール呼び出しにフックし、**障害を検出**し、**対処**（ブロック・指示・サニタイズ）し、注意が必要なときに**アラートを通知**します。ローカルダッシュボードでは、すべてのツール呼び出し・エージェントの障害・リカバリーアクションをあとから確認できます。
+FailproofAI はこれを **ポリシー** で解決します。各ルールはすべてのエージェントツール呼び出しにフックし、**障害を検出**し、**軽減**（ブロック・インストラクト・サニタイズ）し、注意が必要なときに**アラートを通知**します。ローカルダッシュボードでは、すべてのツール呼び出し・エージェント障害・リカバリーアクションを事後確認できます。
 
-トランスクリプトとポリシー評価はローカルマシン上に保存されます。データが送信されるのは、認証済み監査リマインダーや招待など、オンライン機能を明示的に使用した場合のみです。
+トランスクリプトとポリシー評価はお使いのマシン上に保持されます。データが送信されるのは、認証済み監査リマインダーや招待などのオンライン機能を明示的に使用した場合のみです。
 
 ## はじめに
 
 <CardGroup cols={2}>
 
-<Card title="39種類の組み込みポリシー" icon="shield" href="/ja/built-in-policies">
-  破壊的なコマンドのブロック、シークレット漏洩の防止、エージェントをプロジェクト境界内に制限するなど、すぐに使える機能が揃っています。
+<Card title="39の組み込みポリシー" icon="shield" href="/ja/built-in-policies">
+  破壊的なコマンドのブロック、シークレット漏洩の防止、エージェントをプロジェクト境界内に留めるなど、すぐに使える機能が充実しています。
 </Card>
 
 <Card title="カスタムポリシー" icon="code" href="/ja/custom-policies">
-  シンプルな allow / deny / instruct APIを使って、JavaScriptで独自のルールを作成できます。
+  シンプルな allow / deny / instruct API を使って、JavaScript で独自ルールを作成できます。
 </Card>
 
 <Card title="エージェントモニター" icon="chart-line" href="/ja/dashboard">
-  離席中にエージェントが何をしたかを確認できます。セッションの閲覧、ツール呼び出しの詳細確認、ポリシーが発動した箇所のレビューが可能です。
+  離席中にエージェントが何をしたかを確認できます。セッションの閲覧、ツール呼び出しの検査、ポリシーが発動した箇所のレビューが可能です。
 </Card>
 
 <Card title="簡単な設定" icon="gear" href="/ja/configuration">
-  コード不要でどのポリシーも調整できます。プロジェクト単位またはグローバルに、許可リスト・保護ブランチ・しきい値を設定できます。
+  コード不要でポリシーを調整できます。プロジェクト単位またはグローバルに、許可リスト・保護ブランチ・しきい値を設定できます。
 </Card>
 
 </CardGroup>
@@ -54,4 +54,4 @@ failproofai policies --install   # enable policies (or skip — `failproofai` wi
 failproofai                      # launch the dashboard
 ```
 
-詳しい手順は[はじめかたガイド](/ja/getting-started)をご覧ください。
+詳細な手順については、[はじめかた](/ja/getting-started) ガイドをご覧ください。

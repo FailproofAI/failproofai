@@ -1,23 +1,23 @@
 ---
-title: "Наблюдение"
-description: "Интерфейсы наблюдения позволяют смотреть, что делают ваши агенты прямо сейчас, и детально изучить любой отдельный запуск."
+title: "Observe"
+description: "The observe surfaces are where you watch what your agents are doing right now and drill into any single run."
 ---
 
 
-Интерфейсы наблюдения позволяют смотреть, что делают ваши агенты прямо сейчас, и детально изучить любой отдельный запуск. Все здесь работает в реальном времени, ограничено областью вашей организации и фильтруется по диапазону дат, окружению, агенту и сеансу, так что вы за секунды переходите от "что-то не так" к точному запуску.
+The observe surfaces are where you watch what your agents are doing right now and drill into any single run. Everything here is live, scoped to your organization, and filterable by date range, environment, agent, and session, so you go from "something feels off" to the exact run in seconds.
 
-![Прямой поток событий, раскрашенный по типам и фильтруемый по окружению, агенту и сеансу](/agenteye/images/events-stream.png)
+![The live Event Stream, colour-coded by type and filterable by environment, agent, and session](/agenteye/images/events-stream.png)
 
-Четыре интерфейса, каждый со своей страницей:
+Four surfaces, each with its own page:
 
-- **[Поток событий](/ru/agenteye/event-stream)**: прямой, пошаговый журнал каждого запуска всех агентов, самые новые первыми. Главная страница вашей организации и первая остановка для диагностики.
-- **[Сеансы и граф выполнения](/ru/agenteye/sessions)**: события, свёрнутые в одну строку на запуск, плюс картина в стиле git того, как разворачивался каждый запуск.
-- **[Метрики производительности](/ru/agenteye/telemetry)**: тепловые карты задержек и показатели p50/p95/p99 для ваших моделей, инструментов и хуков, так чтобы скачок на хвосте был заметен среди медианы.
-- **[Отслеживание ошибок](/ru/agenteye/error-tracking)**: единая поверхность диагностики для всего, что пошло не так, один клик от сработавшего оповещения к запуску, который сломался.
+- **[Event stream](/ru/agenteye/event-stream)**: the live, per-step trail of every run across every agent, newest first. Your org home and first stop for triage.
+- **[Sessions and execution graph](/ru/agenteye/sessions)**: those events rolled up into one row per run, plus a git-style picture of how each run unfolded.
+- **[Performance metrics](/ru/agenteye/telemetry)**: latency heat-maps and p50/p95/p99 vitals for your models, tools, and hooks, so a tail spike stands out from the median.
+- **[Error tracking](/ru/agenteye/error-tracking)**: one triage surface for everything that went wrong, one click from a firing alert to the run that broke.
 
-## Связанные разделы
+## Related
 
-- [Оценки](/ru/agenteye/evaluations): оценивайте качество каждого запуска.
-- [Оповещения](/ru/agenteye/alerts): превращайте любой порог в правило срабатывания.
-- [Аудиты](/ru/agenteye/audits): позвольте Failproof AI Observability находить для вас закономерности отказов в сеансах.
-- [CLI и агенты](/ru/agenteye/cli-and-agents): то же наблюдение из вашего терминала.
+- [Evaluations](/ru/agenteye/evaluations): score every run for quality.
+- [Alerts](/ru/agenteye/alerts): turn any threshold into a paging rule.
+- [Audits](/ru/agenteye/audits): let Failproof AI Observability find failure patterns across sessions for you.
+- [CLI and agents](/ru/agenteye/cli-and-agents): the same observability from your terminal.

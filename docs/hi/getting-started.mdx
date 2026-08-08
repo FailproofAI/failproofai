@@ -1,6 +1,7 @@
 ---
+---
 title: शुरुआत करें
-description: "failproofai इंस्टॉल करें, policies को सक्षम करें, और अपने agents को विश्वसनीयता से चलाएं"
+description: "failproofai इंस्टॉल करें, नीतियों को सक्षम करें, और अपने एजेंट्स को विश्वसनीयता से चलाएं"
 icon: rocket
 ---
 
@@ -30,16 +31,16 @@ bun add -g failproofai
 ## त्वरित शुरुआत
 
 <Steps>
-  <Step title="Policies को सक्षम करें">
-    Policies नियम हैं जो हर agent tool call से पहले और बाद में चलते हैं। ये विनाशकारी commands, secret leakage, और अन्य failure modes को नुकसान पहुंचने से पहले पकड़ते हैं।
+  <Step title="नीतियों को सक्षम करें">
+    नीतियां ऐसे नियम हैं जो हर एजेंट टूल कॉल से पहले और बाद में चलती हैं। वे विनाशकारी कमांड, सीक्रेट लीकेज, और अन्य विफलता मोड को नुकसान पहुंचाने से पहले पकड़ लेती हैं।
 
     ```bash
     failproofai policies --install
     ```
 
-    यह आपके इंस्टॉल किए गए agent CLIs में hook entries लिखता है (Claude Code के `~/.claude/settings.json`, OpenAI Codex के `~/.codex/hooks.json`, GitHub Copilot CLI के `~/.copilot/hooks/failproofai.json`, Cursor Agent के `~/.cursor/hooks.json`, OpenCode के generated plugin shim में `~/.config/opencode/plugins/failproofai.mjs` plus `~/.config/opencode/opencode.json` के `plugin` array में एक registration entry, Pi के `~/.pi/agent/settings.json`, या Hermes के `~/.hermes/config.yaml`)। जब एक से अधिक मौजूद हों तो आपसे prompt किया जाएगा; prompt को छोड़ने के लिए `--cli claude codex copilot cursor opencode pi hermes` (कोई भी subset) पास करें।
+    यह आपके इंस्टॉल किए गए एजेंट CLIs में हुक प्रविष्टियां लिखता है (Claude Code का `~/.claude/settings.json`, OpenAI Codex का `~/.codex/hooks.json`, GitHub Copilot CLI का `~/.copilot/hooks/failproofai.json`, Cursor Agent का `~/.cursor/hooks.json`, OpenCode का `~/.config/opencode/plugins/failproofai.mjs` पर जेनरेट की गई प्लगइन शिम और `~/.config/opencode/opencode.json` के `plugin` एरे में एक रजिस्ट्रेशन प्रविष्टि, Pi का `~/.pi/agent/settings.json`, Hermes का `~/.hermes/config.yaml`, OpenClaw का `~/.openclaw/openclaw.json`, Factory Droid का `~/.factory/hooks.json`, Devin CLI का `~/.config/devin/config.json`, Antigravity CLI का `~/.gemini/config/hooks.json`, या Goose का ऑटो-डिस्कवर किया गया प्लगइन डायरेक्टरी `~/.agents/plugins/failproofai/hooks/hooks.json`)। जब एक से अधिक मौजूद हों तो आपको प्रॉम्प्ट किया जाएगा; प्रॉम्प्ट को छोड़ने के लिए `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose` (कोई भी सबसेट) पास करें।
 
-    GitHub Copilot CLI, Cursor Agent, OpenCode, और Pi सपोर्ट **beta** है — `--cli copilot`, `--cli cursor`, `--cli opencode`, या `--cli pi` के साथ इंस्टॉल करें। Hermes (hermes-agent, एक Slack/Telegram gateway) user-scope के साथ `--cli hermes` के साथ इंस्टॉल होता है और **साथ ही** एक offline audit source है।
+    GitHub Copilot CLI, Cursor Agent, OpenCode, और Pi समर्थन **बीटा** हैं — `--cli copilot`, `--cli cursor`, `--cli opencode`, या `--cli pi` के साथ इंस्टॉल करें। Hermes (hermes-agent, एक Slack/Telegram गेटवे) `--cli hermes` के साथ यूजर-स्कोप इंस्टॉल करता है और **साथ ही** एक ऑफलाइन ऑडिट स्रोत है। OpenClaw (openclaw गेटवे, एक स्व-होस्टेड मल्टी-चैनल असिस्टेंट) `--cli openclaw` के साथ यूजर-स्कोप इंस्टॉल करता है — प्रवर्तन इसके इन-प्रोसेस प्लगइन हुक्स के माध्यम से चलता है (`before_agent_finalize` एक असली टर्न-एंड गेट है, इसलिए `require-*-before-stop` बिल्ट-इन लागू करते हैं) — और **साथ ही** एक ऑफलाइन ऑडिट स्रोत है। Factory Droid (`droid`) `--cli factory` के साथ इंस्टॉल करता है (यूजर + प्रोजेक्ट स्कोप) और **साथ ही** एक ऑफलाइन ऑडिट स्रोत है। Devin CLI (`devin`, Cognition) `--cli devin` के साथ इंस्टॉल करता है (यूजर + प्रोजेक्ट स्कोप) और **साथ ही** एक ऑफलाइन ऑडिट स्रोत है। Antigravity CLI (`agy`) `--cli antigravity` के साथ इंस्टॉल करता है (यूजर + प्रोजेक्ट स्कोप) और **साथ ही** एक ऑफलाइन ऑडिट स्रोत है। Goose (कोडनेम goose, Block) `--cli goose` के साथ इंस्टॉल करता है (यूजर + प्रोजेक्ट स्कोप) — इंस्टॉलर बस `~/.agents/plugins/failproofai/` पर एक प्लगइन डायरेक्टरी ड्रॉप करता है जिसे Goose ऑटो-डिस्कवर करता है, और यह **साथ ही** एक ऑफलाइन ऑडिट स्रोत है।
 
     ```bash
     failproofai policies --install --scope project
@@ -49,6 +50,11 @@ bun add -g failproofai
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
     failproofai policies --install --cli hermes --scope user
+    failproofai policies --install --cli openclaw --scope user
+    failproofai policies --install --cli factory --scope project
+    failproofai policies --install --cli devin --scope project
+    failproofai policies --install --cli antigravity --scope project
+    failproofai policies --install --cli goose --scope project
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```
   </Step>
@@ -57,62 +63,62 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    हर policy दिखाता है, चाहे वह सक्षम हो, और कोई भी configured parameters।
+    हर नीति, चाहे वह सक्षम हो, और किसी भी कॉन्फ़िगर किए गए पैरामीटर को दिखाता है।
   </Step>
-  <Step title="Dashboard लॉन्च करें">
+  <Step title="डैशबोर्ड लॉन्च करें">
     ```bash
     failproofai
     ```
 
-    `http://localhost:8020` पर एक local dashboard खोलता है जहां आप sessions को ब्राउज कर सकते हैं, tool calls की जांच कर सकते हैं, और policies को manage कर सकते हैं।
+    `http://localhost:8020` पर एक स्थानीय डैशबोर्ड खोलता है जहां आप सेशन ब्राउज़ कर सकते हैं, टूल कॉल का निरीक्षण कर सकते हैं, और नीतियों को प्रबंधित कर सकते हैं।
   </Step>
-  <Step title="अपने agent को चलाएं">
-    Claude Code को सामान्य तरीके से शुरू करें। अगर agent कुछ जोखिम भरा करने की कोशिश करता है, तो failproofai इसे स्वचालित रूप से intercept करता है। इसे unattended चलाएं और dashboard में देखें कि क्या हुआ।
+  <Step title="अपना एजेंट चलाएं">
+    Claude Code को सामान्य रूप से शुरू करें। यदि एजेंट कुछ जोखिमपूर्ण कोशिश करता है, तो failproofai स्वचालित रूप से इसे रोक देता है। इसे अनुपस्थित छोड़ें और डैशबोर्ड में देखें कि क्या हुआ।
   </Step>
 </Steps>
 
 ---
 
-## Policies कैसे काम करती हैं
+## नीतियां कैसे काम करती हैं
 
-हर बार जब एक agent किसी tool को चलाता है, Claude Code failproofai को एक subprocess के रूप में कॉल करता है:
+हर बार जब एक एजेंट कोई टूल चलाता है, Claude Code failproofai को एक सबप्रोसेस के रूप में कॉल करता है:
 
 ```text
 Claude Code  →  failproofai --hook PreToolUse  →  stdin JSON पढ़ता है
-                                                 policies का मूल्यांकन करता है
-                                                 stdout पर निर्णय लिखता है
+                                                 नीतियों का मूल्यांकन करता है
+                                                 stdout को निर्णय लिखता है
 ```
 
-प्रत्येक policy तीन निर्णयों में से एक देता है:
+प्रत्येक नीति तीन निर्णयों में से एक देती है:
 
-- **allow** - agent सामान्य रूप से आगे बढ़ता है
-- **deny** - कार्रवाई को ब्लॉक किया जाता है, agent को बताया जाता है कि क्यों
-- **instruct** - agent के prompt में extra context जोड़ा जाता है
+- **allow** - एजेंट सामान्य रूप से आगे बढ़ता है
+- **deny** - कार्य अवरुद्ध हो जाता है, एजेंट को बताया जाता है कि क्यों
+- **instruct** - एजेंट के प्रॉम्प्ट में अतिरिक्त संदर्भ जोड़ा जाता है
 
 <Note>
-Policies आपकी local process में चलती हैं। कुछ भी remote service को नहीं भेजा जाता है।
+नीतियां आपकी स्थानीय प्रक्रिया में चलती हैं। कुछ भी दूरस्थ सेवा को नहीं भेजा जाता है।
 </Note>
 
 ---
 
-## Convention-based policies के साथ team policies सेट अप करें
+## सम्मेलन-आधारित नीतियों के साथ टीम नीतियां सेट करें
 
-अपनी team के across quality standards स्थापित करने का सबसे तेज़ तरीका `.failproofai/policies/` convention है। इस directory में policy files डालें और वे automatically लोड हो जाती हैं — कोई flags नहीं, कोई config changes नहीं, कोई install commands नहीं।
+अपनी पूरी टीम में गुणवत्ता मानकों को स्थापित करने का सबसे तेज़ तरीका `.failproofai/policies/` सम्मेलन है। इस डायरेक्टरी में नीति फाइलें ड्रॉप करें और वे स्वचालित रूप से लोड हो जाती हैं — कोई फ्लैग, कोई कॉन्फ़िग परिवर्तन, कोई इंस्टॉल कमांड नहीं।
 
 <Steps>
-  <Step title="Policies directory बनाएं">
+  <Step title="नीति डायरेक्टरी बनाएं">
     ```bash
     mkdir -p .failproofai/policies
     ```
   </Step>
-  <Step title="Policy files जोड़ें">
-    Starter examples को कॉपी करें या अपने स्वयं के लिखें:
+  <Step title="नीति फाइलें जोड़ें">
+    स्टार्टर उदाहरण कॉपी करें या अपने स्वयं के लिखें:
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
     ```
 
-    या एक नया बनाएं:
+    या एक नई फाइल बनाएं:
 
     ```js
     // .failproofai/policies/team-policies.mjs
@@ -131,33 +137,33 @@ Policies आपकी local process में चलती हैं। कु�
     });
     ```
   </Step>
-  <Step title="Git को commit करें">
+  <Step title="git में कमिट करें">
     ```bash
     git add .failproofai/policies/
     git commit -m "Add team quality policies"
     ```
 
-    हर team member जिसके पास failproofai इंस्टॉल है, ये policies automatically pick up करता है। कोई per-developer setup की आवश्यकता नहीं है।
+    जिस भी टीम सदस्य के पास failproofai इंस्टॉल है वह स्वचालित रूप से इन नीतियों को उठाता है। कोई प्रति-डेवलपर सेटअप की आवश्यकता नहीं है।
   </Step>
 </Steps>
 
 <Tip>
-अपने repo में `.failproofai/policies/` को commit करें ताकि पूरी team एक ही standards शेयर करे। जैसे-जैसे आपकी team नए failure modes को discover करती है, policies को जोड़ें और push करें — हर कोई अपने अगले `git pull` पर update प्राप्त करता है। समय के साथ ये policies एक living quality standard बन जाती हैं जो बेहतर होती रहती हैं।
+अपने रिपो में `.failproofai/policies/` कमिट करें ताकि पूरी टीम समान मानकों को साझा करे। जैसे-जैसे आपकी टीम नई विफलता मोड की खोज करती है, नीतियां जोड़ें और पुश करें — हर किसी को अपने अगले `git pull` पर अपडेट मिलता है। समय के साथ ये नीतियां एक जीवंत गुणवत्ता मानक बन जाती हैं जो लगातार सुधार करती रहती है।
 </Tip>
 
 ---
 
-## डेटा स्टोरेज
+## डेटा भंडारण
 
-सभी configuration और logs आपकी machine पर रहते हैं:
+सभी कॉन्फ़िगरेशन और लॉग आपकी मशीन पर रहते हैं:
 
-| Path | क्या स्टोर करता है |
+| पथ | यह क्या संग्रहीत करता है |
 |------|----------------|
-| `~/.failproofai/policies-config.json` | Global policy config |
-| `~/.failproofai/hook-activity.jsonl` | Hook execution history |
-| `~/.failproofai/hook.log` | Custom hook errors के लिए debug log |
-| `.failproofai/policies-config.json` | Per-project config (committed) |
-| `.failproofai/policies-config.local.json` | व्यक्तिगत overrides (gitignored) |
+| `~/.failproofai/policies/local-policies/policies-config.json` | वैश्विक नीति कॉन्फ़िगरेशन |
+| `~/.failproofai/hook-activity/` | हुक निष्पादन इतिहास (पेजेड JSONL) |
+| `~/.failproofai/logs/` | कस्टम हुक त्रुटियों के लिए डीबग लॉग |
+| `.failproofai/policies-config.json` | प्रति-प्रोजेक्ट कॉन्फ़िगरेशन (कमिट किया गया) |
+| `.failproofai/policies-config.local.json` | व्यक्तिगत ओवरराइड (gitignored) |
 
 ---
 
@@ -167,7 +173,7 @@ Policies आपकी local process में चलती हैं। कु�
 failproofai policies --uninstall
 ```
 
-`~/.claude/settings.json` से hook entries को हटाता है। `~/.failproofai/` में config files को रखा जाता है।
+`~/.claude/settings.json` से हुक प्रविष्टियां हटाता है। `~/.failproofai/` में कॉन्फ़िगरेशन फाइलें रखी जाती हैं।
 
 ---
 
@@ -175,20 +181,20 @@ failproofai policies --uninstall
 
 <CardGroup cols={2}>
 
-<Card title="Configuration" icon="gear" href="/hi/configuration">
-  Scopes और config file format
+<Card title="कॉन्फ़िगरेशन" icon="gear" href="/hi/configuration">
+  स्कोप और कॉन्फ़िगरेशन फाइल प्रारूप
 </Card>
 
-<Card title="Built-in policies" icon="shield" href="/hi/built-in-policies">
-  सभी 26 policies with parameters
+<Card title="बिल्ट-इन नीतियां" icon="shield" href="/hi/built-in-policies">
+  सभी 26 नीतियां पैरामीटर के साथ
 </Card>
 
-<Card title="Custom policies" icon="code" href="/hi/custom-policies">
-  JavaScript में अपनी स्वयं की policies लिखें
+<Card title="कस्टम नीतियां" icon="code" href="/hi/custom-policies">
+  JavaScript में अपनी स्वयं की नीतियां लिखें
 </Card>
 
-<Card title="Agent monitor" icon="chart-line" href="/hi/dashboard">
-  Sessions को monitor करें और policy activity की समीक्षा करें
+<Card title="एजेंट मॉनिटर" icon="chart-line" href="/hi/dashboard">
+  सेशन मॉनिटर करें और नीति गतिविधि की समीक्षा करें
 </Card>
 
 </CardGroup>

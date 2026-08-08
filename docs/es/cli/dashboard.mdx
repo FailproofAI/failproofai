@@ -1,6 +1,6 @@
 ---
 title: Ver sesiones
-description: "Inicia el panel de control para explorar las sesiones del agente y gestionar las políticas"
+description: "Inicia el panel de control para explorar sesiones de agentes y gestionar políticas"
 ---
 
 ```bash
@@ -16,14 +16,14 @@ Inicia el panel web en `http://localhost:8020`.
 | `--port <number>` | Puerto en el que escuchar (por defecto: `8020`) |
 | `--allowed-origins <origins>` | Hosts/IPs separados por comas con acceso permitido a recursos de desarrollo |
 
-Para apuntar el panel a una carpeta de proyectos de Claude que no sea la predeterminada, establece la variable de entorno `CLAUDE_PROJECTS_PATH` al iniciar.
+Para apuntar el panel a una carpeta de proyecto Claude distinta a la predeterminada, establece la variable de entorno `CLAUDE_PROJECTS_PATH` al iniciar.
 
 ## Ejemplos
 
 ```bash
-# Launch on a different port
+# Iniciar en un puerto diferente
 failproofai --port 9000
 
-# Use a custom Claude projects path via environment variable
+# Usar una ruta de proyectos Claude personalizada mediante variable de entorno
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

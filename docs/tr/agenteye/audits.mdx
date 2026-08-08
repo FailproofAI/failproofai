@@ -1,52 +1,52 @@
 ---
-title: "Denetimler: otomatik güvenilirlik analistiniz"
-description: "Failproof AI Observability, hiçbir kural yazmamanız gereken hataları arar ve tam olarak neyi düzeltmeniz gerektiğini sıralanmış, kanıtlanmış bir yapılacaklar listesi olarak sunur."
+title: "Denetimler: otomatik güvenilirlik analisti"
+description: "Failproof AI Observability, kurallarını yazmayadığınız hataları bulur ve tam olarak neyi düzeltmeniz gerektiğine dair sıralı, kanıtlanmış bir yapılacaklar listesi sunar."
 ---
 
 
-Failproof AI Observability, hiçbir kural yazmamanız gereken hataları arar ve tam olarak neyi düzeltmeniz gerektiğini sıralanmış, kanıtlanmış bir yapılacaklar listesi olarak sunur. Her gece bir analistin günlüklerinizi taraması, sabah masanızda kısa listeyi bırakması gibidir.
+Failproof AI Observability, kurallarını yazmayadığınız hataları bulur ve tam olarak neyi düzeltmeniz gerektiğine dair sıralı, kanıtlanmış bir yapılacaklar listesi sunar. Tıpkı bir analistin her gece günlüklerinizi taradığını ve sabah masanız üzerinde kısa listeyi bıraktığını düşünün.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*İki dakikalık tur: planlanan çalıştırmadan harekete geçirebilecek bir düzeltmeye kadar.*
+*İki dakikalık bir tur: zamanlanmış bir çalıştırmadan harekete geçebileceğiniz bir düzeltmeye kadar.*
 
-![Denetimler sayfası: oturumlarınızı hata örüntüleri açısından tarayan, her birinin bir planlaması ve duyarlılığı olan yinelenen işler](/agenteye/images/audits.png)
-*Her denetim, oturumlarınızı inceleyen ve sıralanmış, kanıtlanmış öneriler sunan yinelenen bir işdir.*
+![Denetimler sayfası: oturumlarınızda hata düzenlerini taran ve her biri bir programa ve hassasiyet ayarına sahip olan yinelenen işler](/agenteye/images/audits.png)
+*Her denetim, oturumlarınızda araştırma yapan ve sıralı, kanıtlanmış öneriler sunan yinelenen bir işdir.*
 
-## Sonra neyi düzelteceğiniz konusunda tahmin yapmayı bırakın
+## Sonra ne düzeltmeniz gerektiğini tahmin etmeyi bırakın
 
-Uyarılar, zaten izlemeyi bildiğiniz sorunları yakalar. Denetimler, bilmediğiniz sorunları yakalar. Sizin belirlediğiniz bir programa göre, bir denetim tüm agent oturumlarınızı okur ve düzeltmeye değer örüntüleri arar, böylece zamanınızı bulguları incelemek yerine günlüklerde kaydırarak bunları kendileriniz bulmaya çalışmak yerine harcarsınız.
+Uyarılar, zaten izlemek için bildiğiniz sorunları yakalar. Denetimler bilinmeyenleri yakalar. Sizin belirlediğiniz bir programa göre, bir denetim tüm agent oturumlarınızı okur ve düzeltilmeye değer düzenleri arar, böylece zamanınızı bulguları engellemeye harcarsınız ve günlükleri kaydırarak kendi başınıza bunları bulduğunuzu umuş olmak yerine.
 
-Tek bir çalıştırma, production'da aracıları gerçekten kıran hata modlarını hedef alır:
+Tek bir çalıştırma, aslında production'da ajanları kıran hata modlarının peşine gider:
 
-- **Hata kümeleri**: aynı kök nedeni paylaşan aynı hatanın tekrarlanması.
-- **Taban çizgisine karşı sapma**: bilinen iyi bir pencereden davranışın sessizce kaymakta olması.
-- **Transkriptlerdeki hedef başarısızlığı**: teknik olarak tamamlanan ancak işi hiçbir zaman yapılmayan çalıştırmalar.
-- **Araç kötüye kullanımı**: yanlış araç, hatalı argümanlar veya çağrıları harcayan döngüler.
-- **Kalite ve maliyet dengeleri**: daha ucuza alabileceğiniz çıktı için fazla ödediğiniz yerler.
-- **Kapsama açıkları**: hiçbir değerlendirmenin veya uyarının izlemediği davranış.
+- **Hata kümeleri**: aynı hata kök nedeni paylaşan tekrar eder.
+- **Başlangıç noktasına karşı sapma**: davranış sessizce bilinen-iyi bir pencereden uzaklaşır.
+- **Transkriptlerde hedef başarısızlığı**: teknik olarak sona eren ancak işi asla yapmayan çalıştırmalar.
+- **Araç yanlış kullanımı**: yanlış araç, kötü argümanlar veya çağrı yazıp çıkan döngüler.
+- **Kalite ve maliyet dengesi**: daha ucuza alabileceğiniz çıktı için fazla para harcadığınız yerler.
+- **Kapsama boşlukları**: hiçbir değerlendirme veya uyarının izlemediği davranış.
 
-Tek bir **duyarlılık** ayarı (düşük, orta veya yüksek) ile ne kadar ileri baktığına siz karar verirsiniz, böylece gürültülü bir hazırlık aracısı ve kilitli bir production aracısı, istediğiniz sinyale ayarlanabilir.
+Tek bir **hassasiyet** ayarı (düşük, orta veya yüksek) ile ne kadar sıkı baktığına siz karar verirsiniz, böylece gürültülü bir hazırlık ajanı ve kilitli bir production ajanı istediğiniz sinyale göre ayarlanabilir.
 
-## Her öneri kanıtla birlikte gelir
+## Her öneri makbuzla beraber gelir
 
-Hiçbir zaman bir bulguya inanç temelinde karar vermek zorunda kalmazsınız. Her öneri, çıktığı kesin oturumları ve onu ortaya çıkaran SQL'i alıntı yapar, böylece bir talebi tersine mühendislik yapmak yerine bir tıkla kanıtları açabilir ve sorunu doğrulayabilirsiniz.
+Bulguyu hiçbir zaman imanla almak zorunda değilsiniz. Her öneri tam olarak hangi oturumlardan geldiğini ve bunları ortaya koyan SQL'i alıntı yapılıp, tıklama yerine kanıtı açıp sorunu doğrulayabilirsiniz.
 
-Bu aynı zamanda denetimleri dürüst tutar. Sunucu, alıntı yapılan her oturumun gerçekten var olduğunu kontrol eder ve **kanıtı tutmayan herhangi bir öneriyi atar**, böylece denetim araştırır ancak hiçbir zaman icat etmez. Listenize gelen her şey gerçek, tekrarlanabilir ve ne kadar önemli olduğuna göre sıralanmış, en büyük kazançlar en başta olacak şekilde.
+Bu aynı zamanda denetimleri dürüst tutar. Sunucu, alıntı yapılan her oturumun gerçekten var olduğunu kontrol eder ve **kanıtı tutmayan herhangi bir öneriyi siler**, böylece denetim araştırır ancak asla icat etmez. Listenize ne inerse gerçektir, tekrarlanabilir ve kaç önemli olduğuna göre sıralanmış, en büyük kazançlar en üstte.
 
-## Bir düzeltmeyi bir korumaya dönüştürün
+## Bir düzeltmeyi bir koruma sırası yapın
 
-Bir sorunu düzeltmek sadece kazancın yarısıdır. Diğer yarısı, sessizce geri gelmesine izin vermemektir. Her bulgu, **tek tıklamalı bir kısayolun bir yineleme uyarısını hazırlamasını** sağlar, ayarlayabileceğiniz makul bir başlangıç tetiklemesi önceden doldurulmuş. Bulguyu kapatın, uyarıyı açın ve bu örüntü tekrar göründüğünde bir sonraki denetimde yeniden keşfetmek yerine sayfaya geçersiniz.
+Bir sorunu düzeltmek yalnızca kazancın yarısıdır. Diğer yarısı onun sessizce geri gelmemesini sağlamaktır. Her bulgu, akıllıca başladığınız başlangıç tetikleyicisinin önceden doldurulmuş **tek tıklama uyarı kısayoluyla** beraber gelir. Buluşu kapatın, uyarıyı aktifleştirin ve o desen bir sonraki ortaya çıkışında gelecek denetimde yeniden keşfetmek yerine sayfanız yerine çağrılabilirsiniz.
 
-## Nerede bulacağınız
+## Bunu nerede bulacaksınız
 
-Denetimler gösterge panelinde **`/<org-slug>/audits`** adresinde bulunur (yan çubuk: *analiz* ile *denetimler*). Çalıştırmaları ve bulguları görüntülemek için **`audits:read`** gerekir; denetimleri oluşturmak, düzenlemek ve değerlendirmek için **`audits:write`** gerekir. Bir denetimin kapsamını ve temposunu ayarlayın, ardından bir sonraki planlanan çalıştırmayı beklemek yerine hemen sonuçlar almak istediğinizde **Şimdi çalıştır**'a basın.
+Denetimler pano'da **`/<org-slug>/audits`** adresinde yer alır (kenar çubuğu *analiz* et'ten *denetimler*'e). Çalıştırmaları ve bulguları görüntülemek **`audits:read`** gerektirir; denetimleri oluşturmak, düzenlemek ve sıralamak **`audits:write`** gerektirir. Denetimin kapsamını ve belirlenen saati ayarlayın, ardından sonuçları hemen almak istediğinizde **Şimdi Çalıştır**'a basın.
 
-## İlgili konular
+## İlgili
 
-- [Uyarılar](/tr/agenteye/alerts): zaten bildiğiniz bir eşiğin aşılması anında bilgilendirilin.
-- [Değerlendirmeler](/tr/agenteye/evaluations): her çalıştırmayı puanlandırın, kalite gerilemeleri kendiliğinden ortaya çıksın.
-- [Hata izleme](/tr/agenteye/error-tracking): aracılarınızın attığı hataları gruplandırın ve takip edin.
-- [Olaylar](/tr/agenteye/incidents): bir denetimin bulduğu sorunu düzeltilmesine kadar takip edin.
+- [Uyarılar](/tr/agenteye/alerts): zaten bildiğiniz bir eşik geçilir geçilmez sayfa alın.
+- [Değerlendirmeler](/tr/agenteye/evaluations): her çalıştırmayı puanlandırın; böylece kalite gerilemeler kendi kendilerine yüzey bulur.
+- [Hata izleme](/tr/agenteye/error-tracking): ajanlarınızın attığı hataları gruplandırıp takip edin.
+- [Olaylar](/tr/agenteye/incidents): denetimin bulduğu sorunu düzeltilişine kadar izleyin.

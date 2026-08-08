@@ -1,13 +1,14 @@
 ---
+---
 title: Disinstallare le policy
-description: "Rimuovere le voci di hook dalle impostazioni di Claude Code"
+description: "Rimuovi le voci hook dalle impostazioni di Claude Code"
 ---
 
 ```bash
 failproofai policies --uninstall [policy-names...] [options]
 ```
 
-Rimuove le voci di hook di failproofai da `settings.json` di Claude Code.
+Rimuove le voci hook di failproofai dal file `settings.json` di Claude Code.
 
 Alias: `failproofai p -u`
 
@@ -19,11 +20,11 @@ Alias: `failproofai p -u`
 | `--scope project` | Rimuovi dalle impostazioni del progetto |
 | `--scope local` | Rimuovi dalle impostazioni locali |
 | `--scope all` | Rimuovi da tutti gli ambiti contemporaneamente |
-| `--custom` / `-c` | Cancella il `customPoliciesPath` dalla configurazione |
+| `--custom` / `-c` | Cancella il percorso `customPoliciesPath` dalla configurazione |
 
 ## Comportamento
 
-- **Nessun nome di policy** - rimuove tutte le voci di hook di failproofai dal file di impostazioni
+- **Nessun nome di policy** - rimuove tutte le voci hook di failproofai dal file di impostazioni
 - **Nomi specifici** - disabilita quelle policy ma mantiene gli hook installati
 
 ## Esempi

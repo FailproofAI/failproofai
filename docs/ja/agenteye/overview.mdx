@@ -1,108 +1,108 @@
 ---
-title: "Failproof AI: エージェントの障害を観測する"
-description: "Failproof AI Observability は、本番環境の AI エージェントを観測・評価・改善するためのセルフホスト型プラットフォームです。"
+title: "Failproof AI: エージェントの障害を観察する"
+description: "Failproof AI Observabilityは、本番環境でAIエージェントを観察・評価・改善するためのセルフホスト型プラットフォームです。"
 ---
 
 
-Failproof AI Observability は、本番環境の AI エージェントを観測・評価・改善するためのセルフホスト型プラットフォームです。エージェントが行うすべての操作（ツール呼び出し、モデルリクエスト、フック、エラー）を記録し、各実行の品質をスコアリングし、気づいていなかった障害を検出して、すべて自社インフラ内で動作するダッシュボードに表示します。
+Failproof AI Observabilityは、本番環境でAIエージェントを観察・評価・改善するためのセルフホスト型プラットフォームです。エージェントのあらゆる動作（すべてのツール呼び出し、モデルリクエスト、フック、エラー）を記録し、各実行の品質をスコアリングし、見落とされがちな障害を可視化します。これらすべてを、自社インフラ内で運用するダッシュボードから確認できます。
 
-AI エージェントを本番リリースしていて、実行がどこで失敗したのか毎回推測するのに疲れたなら、このページから始めてください。インストールの前に、Failproof AI Observability が提供するものと各機能の関係を説明します。
+AIエージェントをリリースしていて、実行がうまくいかない原因を推測し続けることに疲れているなら、まずこのページから始めてください。インストールの前に、Failproof AI Observabilityが提供するものと、各コンポーネントの関係を説明します。
 
-> **Failproof AI Observability は Failproof AI のエンタープライズ製品です。** 実際の動作をご覧になりたい場合は、デモをリクエストしてください: [nikita@befailproof.ai](mailto:nikita@befailproof.ai) までメールをお送りください。
+> **Failproof AI Observabilityは、Failproof AIのエンタープライズ製品です。** 実際に動いているところを見たいですか？デモをリクエストしてください：[nikita@befailproof.ai](mailto:nikita@befailproof.ai) までメールをお送りください。
 
-![Failproof AI Observability のセッションを git スタイルの実行グラフとイベントタイムラインで表示し、右側のパネルにツール・モデル・フックの実行ごとの内訳を示したスクリーンショット](/agenteye/images/session-detail.png)
+![Failproof AI Observabilityのセッションをgitスタイルの実行グラフとイベントタイムラインで表示し、右側のパネルにツール・モデル・フックの実行ごとの内訳を表示している様子](/agenteye/images/session-detail.png)
 
-*各エージェントの実行は、git スタイルの実行グラフ（左）とイベントタイムラインとして描画されます。並列サブエージェントはそれぞれ独自のレーンを持ち、右パネルではその実行で使われたツール・モデル・フック・トークン消費量の内訳を確認できます。*
+*すべてのエージェント実行は、gitスタイルの実行グラフ（左）とイベントタイムラインとして描画されます。並列サブエージェントはそれぞれ独自のレーンを持ち、右側のパネルには実行ごとのツール、モデル、フック、トークン消費量の内訳が表示されます。*
 
 ---
 
 ## 実際の動作を見る
 
-2 本の短い動画で、チームが最初に求める 2 つの機能を紹介します: 実行のトレースと、障害の自動検出です。
+2本の短い動画で、チームが最初に必要とする2つのこと（実行のトレースと障害の自動検出）を紹介しています。
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*エージェントトレース: 1 回の実行をゴールからツール、最終回答まで、ステップごとに追跡します。*
+*エージェントトレーシング：1回の実行をゴールからツール、最終回答まで、ステップごとに追跡します。*
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Failproof Audit: Failproof AI Observability がセッションをまたいでログを分析し、修正すべき箇所を教えてくれます。*
+*Failproof Audit：Failproof AI Observabilityがセッション全体のログをマイニングし、修正すべき箇所を提示します。*
 
 ---
 
 ## チームが活用する理由
 
-- **エージェントが実際に何をしたかを把握できる。** すべての実行が読みやすい git スタイルの実行グラフになります。どのツールが並列で動いたか、どのサブエージェントが分岐したか、どこで停滞したか、何を消費したかが一目でわかります。
-- **品質の低下を自動的に検出できる。** 小規模なスコアリングサービスを接続すると、Failproof AI Observability がすべての完了した実行をスコアリングするため、有用性の低下やハルシネーションの急増が自動的に表面化します。
-- **ルールを書いていない障害も発見できる。** 定期監査がセッションをまたいでログからエラークラスター・レイテンシ外れ値・低スコア・停滞した実行を検出し、証拠付きの優先度付き調査結果として提示します。
-- **重要なときに通知を受け取れる。** エラーレート・レイテンシ・コスト・評価スコアに対するしきい値ルールがトリガーされると、確認・割り当て・解決が可能なインシデントが作成されます。
-- **自然な日本語で質問できる。** ダッシュボード内の AI アシスタントが「今週の本番環境での品質トレンドは？」といった質問に、自社データをもとに回答します。アシスタントが行う変更は承認が必要です。
-- **データは自社で管理できる。** Failproof AI Observability はセルフホスト型です。イベント・プロンプト・分析データはすべて自社が管理するインフラに留まります。
+- **エージェントが実際に何をしたかを把握できます。** すべての実行が読みやすいgitスタイルの実行グラフになります。どのツールが並列で実行されたか、どのサブエージェントが分岐したか、どこで停止したか、何を消費したかが一目でわかります。
+- **品質の低下を自動で検知できます。** 小さなスコアリングサービスを接続すると、Failproof AI Observabilityが完了した全実行にスコアを付けるため、有用性の低下やハルシネーションの急増が自動で表面化します。
+- **ルールを書いていない障害も発見できます。** 定期的な監査により、セッションをまたいでログをマイニングし、エラークラスター、レイテンシの外れ値、低スコア、スタックした実行を検出。証拠に基づいたランク付きの調査結果を提示します。
+- **重要なときにアラートを受け取れます。** エラー率、レイテンシ、コスト、または評価スコアに対してしきい値ルールが発火し、承認・割り当て・解決が可能なインシデントを作成します。
+- **平易な英語で質問できます。** ダッシュボード内のAIアシスタントが、自身のデータに対して「今週の本番環境での品質トレンドは？」といった質問に回答します。アシスタントが行う変更は承認が必要です。
+- **データを自社で管理できます。** Failproof AI Observabilityはセルフホスト型のため、イベント、プロンプト、分析データはすべて自社で管理するインフラに保存されます。
 
 ---
 
 ## 提供される機能
 
-Failproof AI Observability は 3 つの概念（**observe（観測）**、**analyze（分析）**、**admin（管理）**）を軸に構成されており、ダッシュボードの左サイドバーにも反映されています。
+Failproof AI Observabilityは、**observe（観察）**、**analyze（分析）**、**admin（管理）**という3つの考え方を中心に構成されており、ダッシュボードの左サイドバーにそのまま反映されています。
 
 **Observe**（何が起きたかの生の記録）:
 
-- **[イベントストリーム](/ja/agenteye/event-stream)**: すべての実行の各ステップのリアルタイムな記録（ツール呼び出し、モデル呼び出し、フック、エラー）。
-- **[セッション](/ja/agenteye/sessions)**: それらのイベントを実行ごとに 1 行にまとめたもの。各実行はスコアリング可能で、git スタイルの実行グラフも付いています。
-- **[パフォーマンスメトリクス](/ja/agenteye/telemetry)**: サーフェスごとのレイテンシヒートマップと、モデル・ツール・フックの p50/p95/p99 バイタル。テールスパイクと中央値の差が一目でわかります。
-- **[エラートラッキング](/ja/agenteye/error-tracking)**: 発生したすべての問題を一元管理するトリアージ画面。アラートの発火からワンクリックでアクセスできます。
+- **[イベントストリーム](/ja/agenteye/event-stream)**：すべての実行のリアルタイムなステップごとの記録（ツール呼び出し、モデル呼び出し、フック、エラー）。
+- **[セッション](/ja/agenteye/sessions)**：それらのイベントを1実行1行にまとめたもの。各行はスコアリング可能で、gitスタイルの実行グラフ付き。
+- **[パフォーマンスメトリクス](/ja/agenteye/telemetry)**：モデル、ツール、フックのサーフェスごとのレイテンシヒートマップとp50/p95/p99の指標。テールスパイクが中央値から際立って見えます。
+- **[エラートラッキング](/ja/agenteye/error-tracking)**：発生したすべての問題を一元的にトリアージできるサーフェス。発火中のアラートからワンクリックで到達可能。
 
-![Tools の observe ページ: 24 タイムビンにわたるレイテンシヒートマップ、パーセンタイルバンド、ツール分布バー](/agenteye/images/tools.png)
+![Toolsのobserveページ：レイテンシヒートマップ、パーセンタイルバンド、24タイムビンにわたるツール分布バー](/agenteye/images/tools.png)
 
-*各 observe サーフェスは、スパークラインと p50/p95/p99 バイタル、レイテンシヒートマップとパーセンタイルバンドを組み合わせて表示します。ここではツールの例を示しています。*
+*各observeサーフェスは、スパークラインとp50/p95/p99の指標に加え、レイテンシヒートマップとパーセンタイルバンドを組み合わせて表示します。ここではToolsを表示しています。*
 
 **Analyze**（活動を洞察に変える）:
 
-- **[クエリ](/ja/agenteye/queries)** と **[ダッシュボード](/ja/agenteye/dashboards)**: イベントと評価データに対して保存された SQL クエリを、組織共有のダッシュボードにグラフ化します。
-- **[評価](/ja/agenteye/evaluations)**: 自社の評価サービスが生成する品質スコア。スコアごとの理由付きで確認できます。
-- **[監査](/ja/agenteye/audits)**: セッションをまたいで障害パターンを検出する定期調査。
-- **[アラート](/ja/agenteye/alerts)** と **[インシデント](/ja/agenteye/incidents)**: 通知を送るしきい値ルールと、トリアージのためのインシデントワークフロー。
+- **[クエリ](/ja/agenteye/queries)**と**[ダッシュボード](/ja/agenteye/dashboards)**：イベントと評価に対する保存済みSQL。組織スコープの共有ダッシュボードにグラフ化されます。
+- **[評価](/ja/agenteye/evaluations)**：独自の評価サービスが生成する品質スコア。スコアごとの理由付き。
+- **[監査](/ja/agenteye/audits)**：セッションをまたいで障害パターンを表面化する定期的な調査。
+- **[アラート](/ja/agenteye/alerts)**と**[インシデント](/ja/agenteye/incidents)**：通知を行うしきい値ルールと、トリアージのためのインシデントワークフロー。
 
-**Interfaces**（自分のやり方でデータにアクセス）:
+**Interfaces**（自分のやり方でデータにアクセスする）:
 
-- **[CLI](/ja/agenteye/cli-and-agents)**: ターミナルやスクリプトからデプロイ全体を操作でき、コーディングエージェントに自然言語で任せることもできます。
-- **[AI アシスタント](/ja/agenteye/assistant)**: ダッシュボード内で、エージェントに関する質問を自然な言葉で行えます。
-- **REST API**: ダッシュボードと CLI のすべての操作は、スコープ付き [API キー](/ja/agenteye/api-keys) を使って直接呼び出せる REST API に裏付けられています。イベントの取り込み、セッション・評価のクエリ、ダッシュボード・アラート・監査・ユーザー・キーの管理が可能で、Failproof AI Observability を自社ツールに組み込めます。
+- **[CLI](/ja/agenteye/cli-and-agents)**：ターミナルやスクリプトからデプロイ全体を操作。コーディングエージェントに平易な英語で実行させることも可能。
+- **[AIアシスタント](/ja/agenteye/assistant)**：ダッシュボード内で平易な英語でエージェントについて質問できます。
+- **REST API**：ダッシュボードとCLIが行うすべての操作は、スコープ付きの[APIキー](/ja/agenteye/api-keys)を使って直接呼び出せるREST APIに裏付けられています。イベントの取り込み、セッションと評価のクエリ、ダッシュボード・アラート・監査・ユーザー・キーの管理が可能で、Failproof AI Observabilityを自社ツールに組み込めます。
 
 **Admin**（チームのための運用）:
 
-- **[API キー](/ja/agenteye/api-keys)**: コレクター・ダッシュボード・アシスタント向けのスコープ付きトークン。
-- **ユーザー**: パスワードレスのメールベース認証とアクセス許可リスト。
-- **設定**: モデルのコンテキストウィンドウのオーバーライドを含む、組織ごとの設定。
+- **[APIキー](/ja/agenteye/api-keys)**：コレクター、ダッシュボード、アシスタント向けのスコープ付きトークン。
+- **ユーザー**：メールアドレスベースのパスワードレスサインイン（許可リスト方式）。
+- **設定**：モデルのコンテキストウィンドウオーバーライドを含む、組織ごとの設定。
 
 ---
 
-## 仕組みの全体像
+## コンポーネントの関係
 
-データはエージェントコードからダッシュボードへ一方向に流れます。エージェント（Python SDK 経由）がイベントを agenteye-collector に送信し、それがサーバーに転送され、サーバーがダッシュボードを提供します。スコアリングサービス（評価）と AI アシスタントサービス（ダッシュボード内チャット）の 2 つのオプションサービスで構成が完成します。
+データはエージェントコードからダッシュボードへ一方向に流れます。エージェント（Python SDK経由）がagenteye-collectorにイベントを送信し、collectorがサーバーに転送し、サーバーがダッシュボードを提供します。2つのオプションサービスが補完します。スコアリングサービス（評価）とAIアシスタントサービス（ダッシュボード内チャット）です。
 
-- **Python SDK**: エージェントに `agenteye.event.*` の呼び出しをいくつか追加するだけで、イベントがローカルにバッファリングされます。
-- **agenteye-collector**: 各エージェントマシン上で動作する軽量デーモンで、イベントをバッチ処理してサーバーに転送します。
-- **サーバー**: イベントを取り込み、自社データベースに運用状態を保持し、ダッシュボード・CLI・自社インテグレーションが使用する REST API を提供します。
-- **ダッシュボード**: すべてを探索する場所。
-- **オプションサービス**: スコアリングサービス（評価）と AI アシスタントサービス（ダッシュボード内チャット）。
+- **Python SDK**：エージェントに `agenteye.event.*` 呼び出しをいくつか追加するだけで、イベントはローカルにバッファリングされます。
+- **agenteye-collector**：各エージェントマシン上の軽量デーモンで、イベントをバッチ処理してサーバーに送信します。
+- **サーバー**：イベントを取り込み、自社データベースに運用状態を保持し、ダッシュボード・CLI・独自インテグレーションが使用するREST APIを提供します。
+- **ダッシュボード**：すべてを探索する場所です。
+- **オプションサービス**：スコアリングサービス（評価）とAIアシスタントサービス（ダッシュボード内チャット）。
 
-ドキュメント全体で使用される用語（*event、session、evaluation、audit、finding、incident*）については、[コンセプト](/ja/agenteye/concepts) を参照してください。
+ドキュメント全体で使用される用語（*event、session、evaluation、audit、finding、incident*）については、[コンセプト](/ja/agenteye/concepts)を参照してください。
 
 ---
 
-## Failproof AI Observability の入手
+## Failproof AI Observabilityの入手方法
 
-Failproof AI Observability は Failproof AI のエンタープライズ製品であり、Failproof AI ブランドのもとでポリシーおよびガードレール製品である Failproof AI Enforcement と連携して動作します。完全に自社環境内で稼働します。パッケージへのアクセス権をまだお持ちでない場合は、デモをリクエストしていただければご案内します: [nikita@befailproof.ai](mailto:nikita@befailproof.ai) までメールをお送りください。
+Failproof AI ObservabilityはFailproof AIのエンタープライズ製品であり、ポリシーとガードレール製品であるFailproof AI Enforcementと並んで、Failproof AIブランドのもとで提供されています。完全に自社環境内で動作します。まだパッケージへのアクセス権がない場合は、デモをリクエストしてください。セットアップをサポートします：[nikita@befailproof.ai](mailto:nikita@befailproof.ai) までメールをお送りください。
 
 ---
 
 ## 次のステップ
 
-- [コンセプト](/ja/agenteye/concepts): Failproof AI Observability の用語集。
-- [Observability](/ja/agenteye/observability): エージェントの動作を実行ごとに追跡する。
-- [セキュリティ](/ja/agenteye/security): Failproof AI Observability がデータを分離し、管理下に置く方法。
+- [コンセプト](/ja/agenteye/concepts)：Failproof AI Observabilityの用語を一か所でまとめて確認できます。
+- [オブザーバビリティ](/ja/agenteye/observability)：実行ごとにエージェントの動作を追跡します。
+- [セキュリティ](/ja/agenteye/security)：Failproof AI Observabilityがデータを分離し、管理下に置く方法。

@@ -1,172 +1,172 @@
 ---
 title: "Chiavi API"
-description: "Le chiavi API controllano chi e cosa può raggiungere il tuo server Failproof AI Observability, permettendo a un collettore di inviare eventi senza mai ottenere permessi di lettura o amministrativi."
+description: "Le chiavi API controllano chi e cosa può raggiungere il tuo server Failproof AI Observability, consentendo a un collector di inviare eventi senza mai ottenere poteri di lettura o amministrativi."
 ---
 
-Le chiavi API controllano chi e cosa può raggiungere il tuo server Failproof AI Observability, permettendo a un collettore di inviare eventi senza mai ottenere permessi di lettura o amministrativi. Ogni chiave ha uno o più permessi, e ogni permesso controlla specifiche rotte del server; concedi solo quelli necessari a un lavoro. La maggior parte delle distribuzioni crea solo tre tipi di chiave.
+Le chiavi API controllano chi e cosa può raggiungere il tuo server Failproof AI Observability, consentendo a un collector di inviare eventi senza mai ottenere poteri di lettura o amministrativi. Ogni chiave porta uno o più permessi, e ogni permesso controlla route specifiche del server; concedi solo quelli di cui ha bisogno un job. La maggior parte delle distribuzioni crea solo tre tipi di chiave.
 
-## Le 3 chiavi che la maggior parte delle distribuzioni necessita
+## Le 3 chiavi di cui la maggior parte delle distribuzioni ha bisogno
 
 | Chiave | Permessi | Chi la utilizza |
 |---|---|---|
-| Chiave collettore | `events:add` | Il collettore `agenteye-collector` su ogni macchina agente, per inviare eventi. |
-| Chiave lettura dashboard | `events:read`, `keys:read` | Un operatore di sola lettura o un'integrazione che interroga i dati senza modificarli. |
-| Chiave bootstrap amministratore | tutti i permessi | L'operatore che avvia inizialmente l'istanza (e il dashboard). Fornita dalla variabile d'ambiente `ADMIN_KEY`. Vedi [Chiave bootstrap amministratore](#chiave-bootstrap-amministratore). |
+| Chiave collector | `events:add` | Il `agenteye-collector` su ogni macchina agente, per inviare eventi. |
+| Chiave di lettura dashboard | `events:read`, `keys:read` | Un operatore di sola lettura o un'integrazione che interroga i dati senza modificarli. |
+| Chiave admin bootstrap | tutti i permessi | L'operatore che avvia per la prima volta l'istanza (e il dashboard). Fornita dalla variabile di ambiente `ADMIN_KEY`. Vedi [Chiave admin bootstrap](#bootstrap-admin-key). |
 
-Inizia da qui. Consulta il catalogo completo dei permessi di seguito solo quando hai bisogno di una chiave più ristretta e personalizzata. Vedi anche [Layout di chiavi consigliato](#layout-di-chiavi-consigliato) e [Creazione di chiavi](#creazione-di-chiavi).
+Inizia da qui. Consulta il catalogo completo dei permessi di seguito solo quando hai bisogno di una chiave personalizzata con ambito più ristretto. Vedi anche [Layout consigliato delle chiavi](#recommended-key-layout) e [Creazione di chiavi](#creating-keys).
 
 ---
 
 ## Permessi
 
-Il server applica un catalogo fisso di permessi; ognuno controlla specifiche rotte HTTP. Una **chiave amministratore** li contiene tutti; una chiave con ambito contiene il sottoinsieme che concedi al momento della creazione. Stringhe di permessi sconosciute vengono rifiutate quando viene creata una chiave.
+Il server applica un catalogo fisso di permessi; ognuno controlla route HTTP specifiche. Una **chiave admin** li contiene tutti; una chiave con ambito contiene il sottoinsieme che concedi al momento della creazione. Stringhe di permessi sconosciute vengono rifiutate quando viene creata una chiave.
 
-> **Nota:** Due permessi validi sono solo per dashboard umani e non possono essere concessi a una chiave API: `orgs:admin` (amministrazione dell'istanza, solo per operatori) e `keys:update`. Una richiesta a `POST /keys` o `PATCH /keys/:id` che tenta di concedere uno di essi viene rifiutata con HTTP 422. Vedi la riga `keys:update` sotto per capire perché una chiave bearer può creare chiavi ma non modificarle.
+> **Nota:** Due permessi validi sono solo per dashboard umano e non possono essere assegnati a una chiave API: `orgs:admin` (amministrazione dell'istanza, solo per operatori) e `keys:update`. Una richiesta a `POST /keys` o `PATCH /keys/:id` che tenta di concedere uno di questi viene rifiutata con HTTP 422. Vedi la riga `keys:update` di seguito per capire perché una chiave bearer può creare chiavi ma mai modificarle.
 
-### Ingestione e interrogazione di eventi
+### Acquisizione e interrogazione di eventi
 
-| Permesso | Rotte HTTP | Cosa consente |
+| Permesso | Route HTTP | Cosa consente |
 |---|---|---|
-| `events:add` | `POST /events` | Ingestione di batch di eventi da un collettore. L'unico permesso di cui un collettore ha bisogno. |
-| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | Interrogare gli eventi, elencare gli ambienti noti, elencare gli identificatori del modello visti nei dati (utilizzati dalla visualizzazione Modelli e dai filtri del modello), calcolare l'aggregato di latenza che alimenta la mappa termica / banda percentile e esportare una sessione come JSONL. Gli endpoint facet della barra dei filtri condivisa `GET /events/environments` e `GET /events/agent_ids` sono raggiungibili con **uno tra** `events:read` **oppure** `evaluations:read`, quindi la pagina delle sessioni (controllata da `evaluations:read`) riutilizza lo stesso facet per organizzazione. `GET /events/models` non è uno di essi: richiede `events:read`, quindi un principale che ha solo `evaluations:read` riceve un 403. |
+| `events:add` | `POST /events` | Acquisire batch di eventi da un collector. L'unico permesso di cui ha bisogno un collector. |
+| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | Interrogare eventi, elencare gli ambienti noti, elencare gli identificatori dei modelli visualizzati nei dati (utilizzati dalla vista Models e dai filtri dei modelli), calcolare l'aggregato di latenza che alimenta la heat-map / banda percentile ed esportare una sessione come JSONL. Gli endpoint di facet della barra dei filtri condivisi `GET /events/environments` e `GET /events/agent_ids` sono raggiungibili con **either** `events:read` **o** `evaluations:read`, quindi la pagina delle sessioni (controllata da `evaluations:read`) riutilizza lo stesso facet per organizzazione. `GET /events/models` non è uno di loro: richiede `events:read`, quindi un principal che possiede solo `evaluations:read` riceve un 403. |
 
 ### Sessioni e valutazioni
 
-| Permesso | Rotte HTTP | Cosa consente |
+| Permesso | Route HTTP | Cosa consente |
 |---|---|---|
-| `evaluations:read` | `GET /sessions`, `GET /evaluations`, `GET /evaluations/aggregate`, `GET /evaluations/environments`, `GET /evaluation-jobs` | Elencare le sessioni, leggere i risultati delle valutazioni, l'integrità della valutazione aggregata utilizzata dai dashboard e lo stato della coda del worker dei job di valutazione. |
-| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | Mettere manualmente in coda una rivalutazione per una sessione terminata. |
+| `evaluations:read` | `GET /sessions`, `GET /evaluations`, `GET /evaluations/aggregate`, `GET /evaluations/environments`, `GET /evaluation-jobs` | Elencare sessioni, leggere risultati di valutazione, lo stato di salute valutativo aggregato utilizzato dai dashboard e lo stato della coda di lavoro del job di valutazione. |
+| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | Accodare manualmente una rivalutazione per una sessione terminata. |
 
 ### Dashboard
 
-| Permesso | Rotte HTTP | Cosa consente |
+| Permesso | Route HTTP | Cosa consente |
 |---|---|---|
-| `dashboards:read` | `GET /dashboards`, `GET /dashboards/:id`, `GET /dashboards/:id/tiles` | Elencare i dashboard, caricarne uno e leggere i suoi riquadri. |
-| `dashboards:write` | `POST /dashboards`, `PUT /dashboards/:id`, `POST /dashboards/:id/tiles`, `PUT /dashboards/:id/tiles/:tile_id`, `DELETE /dashboards/:id/tiles/:tile_id`, `PUT /dashboards/:id/tiles/layout` | Creare e modificare dashboard, aggiungere / modificare / rimuovere riquadri e riordinare la griglia dei riquadri. |
-| `dashboards:delete` | `DELETE /dashboards/:id` | Eliminare un intero dashboard (l'eliminazione a livello di riquadro è coperta da `dashboards:write`). |
+| `dashboards:read` | `GET /dashboards`, `GET /dashboards/:id`, `GET /dashboards/:id/tiles` | Elencare dashboard, caricarne uno e leggerne i tile. |
+| `dashboards:write` | `POST /dashboards`, `PUT /dashboards/:id`, `POST /dashboards/:id/tiles`, `PUT /dashboards/:id/tiles/:tile_id`, `DELETE /dashboards/:id/tiles/:tile_id`, `PUT /dashboards/:id/tiles/layout` | Creare e modificare dashboard, aggiungere / modificare / rimuovere tile e riordinare la griglia dei tile. |
+| `dashboards:delete` | `DELETE /dashboards/:id` | Eliminare un intero dashboard (l'eliminazione a livello di tile rientra in `dashboards:write`). |
 
 ### Query salvate (compositore SQL)
 
-| Permesso | Rotte HTTP | Cosa consente |
+| Permesso | Route HTTP | Cosa consente |
 |---|---|---|
-| `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | Elencare le query salvate, caricarne una e ispezionare lo schema di sola lettura che il compositore prende di mira. |
-| `queries:write` | `POST /queries`, `PUT /queries/:id` | Creare e modificare query salvate. SQL viene comunque instradato attraverso lo stesso ruolo di sola lettura e controllato come una chiamata `queries:run`. |
+| `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | Elencare query salvate, caricarne una e ispezionare lo schema di sola lettura che il compositore utilizza. |
+| `queries:write` | `POST /queries`, `PUT /queries/:id` | Creare e modificare query salvate. L'SQL viene comunque instradato attraverso lo stesso ruolo di sola lettura e i controlli SQL protetti come una chiamata `queries:run`. |
 | `queries:delete` | `DELETE /queries/:id` | Eliminare una query salvata. |
 | `queries:run` | `POST /queries/run` | Eseguire SQL salvato o ad hoc rispetto al ruolo di sola lettura utilizzato dal compositore. |
 
 ### Assistente AI
 
-| Permesso | Rotte HTTP | Cosa consente |
+| Permesso | Route HTTP | Cosa consente |
 |---|---|---|
-| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | Comunicare con l'assistente AI e gestire le proprie conversazioni (private). Richiesto sull'**utente** per visualizzare il riquadro dell'assistente; la chiave dell'assistente è `dashboard-assistant` e viene fornita separatamente (vedi sotto). |
+| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | Comunicare con l'assistente AI e gestire le tue conversazioni personali (private). Obbligatorio per l'**utente** per vedere il dock dell'assistente; la chiave dell'assistente stesso è `dashboard-assistant` e viene fornita separatamente (vedi sotto). |
 
 ### Chiavi API
 
-| Permesso | Rotte HTTP | Cosa consente |
+| Permesso | Route HTTP | Cosa consente |
 |---|---|---|
-| `keys:create` | `POST /keys` | Creare una nuova chiave API con ambito. **Non** concede di modificare i permessi di una chiave esistente (quello è `keys:update`). |
-| `keys:read` | `GET /keys` | Elencare le chiavi esistenti. I segreti non vengono mai restituiti da questo endpoint. |
-| `keys:update` | `PATCH /keys/:id` | Modificare i permessi di una chiave esistente. Un permesso **solo per dashboard/umani**; non può essere assegnato a una chiave API (una chiave bearer può creare chiavi ma non modificarle). |
-| `keys:disable` | `POST /keys/:id/disable` | Revocare una chiave. Le chiavi protette (`admin`, `dashboard-assistant`) non possono essere disabilitate; ruotale tramite variabile d'ambiente + riavvio. |
-| `keys:regenerate` | `POST /keys/:id/regenerate` | Ruotare il segreto di una chiave. Le chiavi protette non possono essere rigenerare tramite questo percorso. |
+| `keys:create` | `POST /keys` | Creare una nuova chiave API con ambito. **Non** concede la modifica dei permessi di una chiave esistente (cioè `keys:update`). |
+| `keys:read` | `GET /keys` | Elencare chiavi esistenti. I segreti non vengono mai restituiti da questo endpoint. |
+| `keys:update` | `PATCH /keys/:id` | Modificare i permessi di una chiave esistente. Un permesso **solo dashboard umano**; non può essere assegnato a una chiave API (una chiave bearer può creare chiavi ma mai modificarle). |
+| `keys:disable` | `POST /keys/:id/disable` | Revocare una chiave. Le chiavi protette (`admin`, `dashboard-assistant`) non possono essere disabilitate; ruotale tramite variabile env + riavvio. |
+| `keys:regenerate` | `POST /keys/:id/regenerate` | Ruotare il segreto di una chiave. Le chiavi protette non possono essere rigenerate attraverso questa route. |
 
 ### Utenti del dashboard
 
-| Permesso | Rotte HTTP | Cosa consente |
+| Permesso | Route HTTP | Cosa consente |
 |---|---|---|
-| `users:create` | `POST /users`, `GET /users/defaults` | Invitare un nuovo utente del dashboard (invia un'email + accesso con passcode monouso (OTP)) e leggere il set di permessi predefinito configurato nel dashboard utilizzato per seed del modulo di invito. |
-| `users:read` | `GET /users`, `GET /users/:id` | Elencare gli utenti e caricare un singolo record utente. |
-| `users:update` | `PUT /users/:id` | Modificare i permessi di un utente. Gli aggiornamenti inviano un'email di modifica dei permessi all'utente interessato e hanno effetto alla loro prossima richiesta; non è necessario eseguire nuovamente l'accesso. |
+| `users:create` | `POST /users`, `GET /users/defaults` | Invitare un nuovo utente del dashboard (emette un'email + accesso con one-time passcode (OTP)) e leggere il set di permessi predefinito configurato dal dashboard utilizzato per inizializzare il modulo di invito. |
+| `users:read` | `GET /users`, `GET /users/:id` | Elencare utenti e caricarne un singolo record. |
+| `users:update` | `PUT /users/:id` | Modificare i permessi di un utente. Gli aggiornamenti inviano un'email di cambio permessi all'utente interessato e hanno effetto alla sua prossima richiesta; non è richiesto un nuovo accesso. |
 | `users:delete` | `DELETE /users/:id`, `POST /users/:id/enable` | Disabilitare un utente (revoca immediatamente le sue sessioni) e riabilitare un utente precedentemente disabilitato. |
 
-Questi permessi supportano la pagina **Utenti** del dashboard, dove gli ambiti concessi di ogni membro sono mostrati come chip:
+Questi permessi supportano la pagina **Utenti** del dashboard, dove i permessi concessi di ogni membro vengono mostrati come chip:
 
-![La pagina Utenti: una scheda per utente del dashboard con email, permessi concessi e controlli di modifica/disabilitazione](/agenteye/images/users.png)
+![La pagina Utenti: una scheda per utente del dashboard con la loro email, permessi concessi e controlli modifica/disabilita](/agenteye/images/users.png)
 
 ### Impostazioni operative
 
-| Permesso | Rotte HTTP | Cosa consente |
+| Permesso | Route HTTP | Cosa consente |
 |---|---|---|
 | `settings:read` | `GET /settings`, `GET /settings/schema`, `GET /settings/model-context-windows`, `GET /settings/model-context-windows/resolve` | Visualizzare le impostazioni operative gestite dal dashboard e i loro metadati; elencare gli override della finestra di contesto per modello; e risolvere la finestra effettiva per un modello. |
-| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | Modificare le impostazioni operative e aggiungere, modificare o rimuovere override della finestra di contesto per modello. I cambiamenti interessano i nuovi eventi senza riavviare il server. |
+| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | Modificare le impostazioni operative e aggiungere, modificare o rimuovere override della finestra di contesto per modello. Le modifiche influenzano i nuovi eventi senza riavviare il server. |
 
-![La pagina Impostazioni: impostazioni operative gestite dal dashboard come accessi consentiti e durata di sessione/OTP, modificabili senza riavvio](/agenteye/images/settings.png)
+![La pagina Impostazioni: impostazioni operative gestite dal dashboard come accessi consentiti e durate di sessione/OTP, modificabili senza riavvio](/agenteye/images/settings.png)
 
 ### Avvisi e incidenti
 
-| Permesso | Rotte HTTP | Cosa consente |
+| Permesso | Route HTTP | Cosa consente |
 |---|---|---|
 | `alerts:read` | `GET /alerts`, `GET /alerts/:id` | Visualizzare le definizioni di avviso configurate. |
 | `alerts:write` | `POST /alerts`, `PUT /alerts/:id`, `DELETE /alerts/:id`, `POST /alerts/:id/test` | Creare, modificare, eliminare e testare le definizioni di avviso. |
-| `incidents:read` | `GET /alerts/incidents`, `GET /alerts/incidents/:iid`, `GET /alerts/incidents/:iid/comments`, `GET /alerts/incidents/:iid/subscribers` | Visualizzare gli incidenti e il loro percorso di triage. |
-| `incidents:write` | `POST /alerts/:id/incidents` | Aprire manualmente un incidente su un avviso esistente. |
-| `incidents:ack` | `POST /alerts/incidents/:iid/ack`, `POST /alerts/incidents/:iid/assign`, `POST /alerts/incidents/:iid/resolve`, `POST /alerts/incidents/:iid/comments`, `POST /alerts/incidents/:iid/subscribe`, `POST /alerts/incidents/:iid/unsubscribe` | Riconoscere, assegnare, risolvere e commentare gli incidenti. |
+| `incidents:read` | `GET /alerts/incidents`, `GET /alerts/incidents/:iid`, `GET /alerts/incidents/:iid/comments`, `GET /alerts/incidents/:iid/subscribers` | Visualizzare incidenti e il loro percorso di triage. |
+| `incidents:write` | `POST /alerts/:id/incidents` | Aprire manualmente un incidente contro un avviso esistente. |
+| `incidents:ack` | `POST /alerts/incidents/:iid/ack`, `POST /alerts/incidents/:iid/assign`, `POST /alerts/incidents/:iid/resolve`, `POST /alerts/incidents/:iid/comments`, `POST /alerts/incidents/:iid/subscribe`, `POST /alerts/incidents/:iid/unsubscribe` | Riconoscere, assegnare, risolvere e commentare incidenti. |
 
 ### Audit
 
-| Permesso | Rotte HTTP | Cosa consente |
+| Permesso | Route HTTP | Cosa consente |
 |---|---|---|
 | `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Visualizzare le definizioni di audit, la cronologia delle esecuzioni e i risultati. |
-| `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Creare, modificare, eliminare ed eseguire audit; triage dei risultati (riconoscere / disabilitare / rifiutare / risolvere / riaprire / assegnare). |
+| `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Creare, modificare, eliminare ed eseguire audit; triage dei risultati (riconoscere / silenziare / scartare / risolvere / riaprire / assegnare). |
 
-> **Nota:** Per concedere a una chiave la superficie di audit, concedi esplicitamente `audits:*`. Vedi [Note su upgrade e compatibilità all'indietro](#note-su-upgrade-e-compatibilità-allindietro) per come i beneficiari esistenti sono stati migrati quando è stata implementata l'auditing.
+> **Nota:** Per concedere a una chiave la superficie di audit, assegna `audits:*` esplicitamente. Vedi [Note di aggiornamento e retrocompatibilità](#upgrade-and-backward-compatibility-notes) per come i beneficiari esistenti sono stati migrati quando Audits è stato rilasciato.
 
-> L'endpoint del selettore dei destinatari `GET /alerts/recipients` (che elenca le email dei membri che un editor di avvisi può notificare) è raggiungibile da un titolare di **uno tra** `alerts:read` **oppure** `alerts:write`, quindi gli editor di avvisi possono popolare il selettore senza essere concesso `users:read`.
+> L'endpoint del selettore dei destinatari `GET /alerts/recipients` (che elenca le email dei membri a cui un editor di avvisi può notificare) è raggiungibile da un titolare di **entrambi** `alerts:read` **o** `alerts:write`, quindi gli editor di avvisi possono popolare il selettore senza essere assegnati `users:read`.
 
-> Un visualizzatore di dashboard ha bisogno **sia di** `dashboards:read` (per caricare le visualizzazioni salvate) **che di** `evaluations:read` (le metriche di integrità sono calcolate dai dati di valutazione). Concedi `dashboards:write` per consentire a un utente di creare o modificare dashboard e `dashboards:delete` per rimuoverli.
+> Un visualizzatore di dashboard ha bisogno **di entrambi** `dashboards:read` (per caricare le viste salvate) e `evaluations:read` (le metriche di salute sono calcolate dai dati di valutazione). Assegna `dashboards:write` per consentire a un utente di creare o modificare dashboard e `dashboards:delete` per rimuoverli.
 
-> `/health` e `/auth/*` (richiesta OTP, verifica OTP, controllo sessione, logout) non sono autenticati per design; sono il flusso di accesso e la sonda di liveness. `GET /access-granters` richiede una chiave valida ma nessun permesso specifico, quindi qualsiasi utente connesso può vedere quali amministratori contattare per le modifiche di accesso.
+> `/health` e `/auth/*` (richiesta OTP, verifica OTP, controllo sessione, logout) sono non autenticati per progettazione; sono il flusso di accesso e il probe di liveness. `GET /access-granters` richiede una chiave valida ma nessun permesso specifico, quindi qualsiasi utente loggato può vedere quali admin contattare per i cambiamenti di accesso.
 
 ---
 
 ## Set di permessi
 
-I set di permessi ti permettono di applicare un ruolo denominato invece di selezionare a mano token individuali ogni volta. Invece di selezionare una dozzina di permessi uno per uno per ogni nuovo utente del dashboard o chiave API, scegli un set e tutti gli assegnati ad esso hanno una concessione coerente e verificabile. La modifica di un set personalizzato riapplica la nuova concessione a ogni utente già assegnato, quindi il cambio di ruolo è una modifica anziché una revisione di ogni membro.
+I set di permessi ti consentono di applicare un ruolo denominato anziché selezionare manualmente i singoli token ogni volta. Anziché selezionare una dozzina di permessi uno per uno per ogni nuovo utente del dashboard o chiave API, scegli un set e tutti i titolari portano una concessione coerente e verificabile. La modifica di un set personalizzato riapplica la nuova concessione a ogni utente già assegnato ad esso, quindi un cambio di ruolo è una singola modifica anziché un passaggio attraverso ogni membro.
 
-Ogni organizzazione è fornita con tre set predefiniti:
+Ogni organizzazione è inizializzata con tre set built-in:
 
-| Set | Permessi | Previsto per |
+| Set | Permessi | Destinato a |
 |---|---|---|
-| `read-only` | `events:read`, `keys:read`, `users:read`, `evaluations:read`, `dashboards:read`, `queries:read`, `settings:read`, `alerts:read`, `audits:read`, `incidents:read` | Accesso in sola visualizzazione su ogni superficie operativa. |
-| `standard` | tutto in `read-only`, più `evaluations:trigger`, `queries:run`, `incidents:ack`, `agent:use` | Sola lettura più le azioni quotidiane sull'on-call: eseguire query, rivalutare sessioni, riconoscere incidenti e usare l'assistente AI. |
+| `read-only` | `events:read`, `keys:read`, `users:read`, `evaluations:read`, `dashboards:read`, `queries:read`, `settings:read`, `alerts:read`, `audits:read`, `incidents:read` | Accesso di sola visualizzazione su ogni superficie operativa. |
+| `standard` | tutto in `read-only`, più `evaluations:trigger`, `queries:run`, `incidents:ack`, `agent:use` | Sola lettura più le azioni quotidiane on-caller: eseguire query, rivalutare sessioni, riconoscere incidenti e utilizzare l'assistente AI. |
 | `admin` | ogni permesso assegnabile | Controllo completo dell'organizzazione. |
 
-I tre set predefiniti sono **immutabili**; i loro nomi significano sempre la stessa cosa, quindi `read-only`, `standard` e `admin` sono sicuri da referenziare nelle politiche e nell'onboarding. Un operatore può creare ulteriori **set personalizzati** per modellare ruoli specifici della tua organizzazione (ad esempio un ruolo "autore di dashboard" o un ruolo "solo collettore").
+I tre set built-in sono **immutabili**; i loro nomi significano sempre la stessa cosa, quindi `read-only`, `standard` e `admin` sono sicuri da referenziare in policy e onboarding. Un operatore può creare ulteriori **set personalizzati** per modellare ruoli specifici della tua organizzazione (ad esempio, un ruolo "dashboard author" o un ruolo "collector-only").
 
-I set sono superficiali nel dashboard e gestiti tramite API su `GET /permission-sets` (elenco, controllato da `users:read`) e `POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name` (creare, modificare, eliminare un set personalizzato, controllato da `settings:write`). Eliminare o modificare un set predefinito viene rifiutato.
+I set sono visualizzati nel dashboard e gestiti tramite l'API in `GET /permission-sets` (elenco, controllato da `users:read`) e `POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name` (creare, modificare, eliminare un set personalizzato, controllato da `settings:write`). L'eliminazione o la modifica di un set built-in viene rifiutata.
 
-L'appartenenza ai set supporta altre due funzionalità:
+L'appartenenza al set è ciò che supporta altre due funzioni:
 
-- **`DEFAULT_USER_PERMISSIONS`** (la concessione preselezionata quando un amministratore apre **+ nuovo utente**) è impostata di default al set `standard`.
-- **Il flag `--set`** su `agenteye-orgctl` (gestione dei membri dell'organizzazione) avvia un membro da un set denominato, che quindi affini con `--add` / `--remove`.
+- **`DEFAULT_USER_PERMISSIONS`** (la concessione preselezionata quando un admin apre **+ nuovo utente**) predefinito al set `standard`.
+- **Il flag `--set`** su `agenteye-orgctl` (gestione dei membri dell'organizzazione dell'operatore) avvia un membro da un set denominato, che quindi affini con `--add` / `--remove`.
 
-> **Nota:** Quando un set include un permesso che non è assegnabile a chiave (ad esempio un set personalizzato con `keys:update`), il seed di una chiave da quel set elimina i token non assegnabili; il server rifiuterebbe altrimenti la chiave con HTTP 422. Gli utenti del dashboard non sono soggetti a questa restrizione.
-
----
-
-## Chiave bootstrap amministratore
-
-La chiave amministratore è l'unica credenziale radice che consente a un operatore di instaurare l'accesso da zero: con essa puoi emettere ogni altra chiave con ambito, invitare i primi utenti del dashboard e configurare l'istanza prima che esista qualsiasi altra chiave. È l'unica chiave che non crei tramite l'API delle chiavi; viene fornita dall'ambiente in modo che il server sia raggiungibile al primo avvio.
-
-Imposta la variabile d'ambiente `ADMIN_KEY` sul server. Ad ogni avvio il server esegue l'upsert di questo valore come una chiave amministratore con tutti i permessi.
-
-Per ruotare: cambia `ADMIN_KEY` con un nuovo segreto e riavvia il server.
+> **Nota:** Quando un set include un permesso che non è assegnabile alle chiavi (ad esempio un set personalizzato che porta `keys:update`), l'inizializzazione di una chiave da quel set elimina i token non assegnabili; il server rifiuterebbe altrimenti la chiave con HTTP 422. Gli utenti del dashboard non sono soggetti a questa restrizione.
 
 ---
 
-## Ambito organizzativo
+## Chiave admin bootstrap
 
-**Le organizzazioni stesse vengono create e gestite out-of-band da un operatore, non tramite questa API delle chiavi.** Il ciclo di vita di organizzazione e membro (creare / rinominare / eliminare / eliminare un'organizzazione; aggiungere / aggiornare / rimuovere un membro) avviene con la CLI **`agenteye-orgctl`**; non c'è API HTTP o pulsante del dashboard per questo. Quello che *rimane* invariato: **le chiavi API per organizzazione vengono comunque emesse nel dashboard (o tramite questa API delle chiavi)** dai membri dell'organizzazione.
+La chiave admin è la singola credenziale root che consente a un operatore di avviare l'accesso dal nulla: con essa puoi coniare ogni altra chiave con ambito, invitare i primi utenti del dashboard e configurare l'istanza prima che esista qualsiasi altra chiave. È l'unica chiave che non crei tramite l'API delle chiavi; viene fornita dall'ambiente in modo che il server sia raggiungibile al primo avvio.
 
-In una distribuzione multi-organizzazione, ogni chiave che un membro dell'organizzazione crea (tramite questa API delle chiavi o la pagina del dashboard **Chiavi**) appartiene a **un'organizzazione** e può solo leggere o scrivere i dati di quell'organizzazione; l'organizzazione viene timbrata sulla chiave al momento della creazione e forzata su ogni richiesta. Le due chiavi di bootstrap sono l'unica eccezione: la chiave `admin` (fornita da `ADMIN_KEY`) e la chiave `dashboard-assistant` (fornita da `AGENT_API_KEY`) sono **ambito istanza** (non hanno organizzazione). Il dashboard si autentica con la chiave `admin` in modo da poter proxy le richieste per organizzazione per conto dei membri connessi. Le distribuzioni single-tenant non devono pensarci; tutte le chiavi appartengono all'organizzazione `default` predefinita.
+Imposta la variabile di ambiente `ADMIN_KEY` sul server. Ad ogni avvio il server sostituisce questo valore come chiave admin con tutti i permessi.
+
+Per ruotare: cambia `ADMIN_KEY` in un nuovo segreto e riavvia il server.
+
+---
+
+## Ambito dell'organizzazione
+
+**Le organizzazioni stesse vengono create e gestite fuori banda da un operatore, non tramite questa API delle chiavi.** Il ciclo di vita dell'organizzazione e dei membri (creare / rinominare / eliminare / purge un'organizzazione; aggiungere / aggiornare / rimuovere un membro) viene eseguito con la CLI **`agenteye-orgctl`**; non c'è API HTTP o pulsante del dashboard per esso. Ciò che **rimane** invariato: **le chiavi API per organizzazione vengono comunque coniate nel dashboard (o tramite questa API delle chiavi)** dai membri dell'organizzazione.
+
+In una distribuzione multi-org, ogni chiave che un membro dell'organizzazione crea (tramite questa API delle chiavi o la pagina **Chiavi** del dashboard) appartiene a **un'organizzazione** e può solo leggere o scrivere i dati di quell'organizzazione; l'organizzazione viene applicata sulla chiave al momento della creazione e applicata su ogni richiesta. Le due chiavi bootstrap sono l'unica eccezione: la chiave `admin` (fornita da `ADMIN_KEY`) e la chiave `dashboard-assistant` (fornita da `AGENT_API_KEY`) sono **instance-scoped** (non portano organizzazione). Il dashboard si autentica con la chiave `admin` in modo da poter delegare richieste per organizzazione per conto dei membri loggati. Le distribuzioni single-tenant non devono pensarci; tutte le chiavi appartengono all'organizzazione `default` built-in.
 
 ---
 
 ## Creazione di chiavi
 
-Usa la chiave amministratore (o qualsiasi chiave con permesso `keys:create`) per creare ulteriori chiavi con ambito.
+Usa la chiave admin (o qualsiasi chiave con permesso `keys:create`) per creare ulteriori chiavi con ambito.
 
-### Chiave collettore (solo ingestione)
+### Chiave collector (solo acquisizione)
 
 ```bash
 curl -s -X POST http://your-server/keys \
@@ -192,7 +192,7 @@ curl -s -X POST http://your-server/keys \
   }'
 ```
 
-Quando crei una chiave tramite l'API HTTP, fornisci tu stesso il valore della `key`; scegli un segreto forte e conservalo in modo sicuro. (Il dashboard funziona diversamente: genera un segreto forte per te e lo mostra una sola volta al momento della creazione; vedi [Gestione delle chiavi nel dashboard](#gestione-delle-chiavi-nel-dashboard).) La risposta conferma che la chiave è stata creata:
+Quando crei una chiave tramite l'API HTTP, fornisci tu stesso il valore `key`; scegli un segreto forte e conservalo in sicurezza. (Il dashboard funziona al contrario: genera un segreto forte per te e lo mostra una volta alla creazione; vedi [Gestione delle chiavi nel dashboard](#key-management-in-the-dashboard).) La risposta conferma che la chiave è stata creata:
 
 ```json
 {
@@ -236,44 +236,44 @@ curl -s -X POST http://your-server/keys/<id>/regenerate \
   -H "Authorization: Bearer $ADMIN_KEY"
 ```
 
-La risposta include il nuovo segreto in testo semplice, **mostrato una sola volta**.
+La risposta include il nuovo segreto in testo normale, **mostrato solo una volta**.
 
 ---
 
 ## Gestione delle chiavi nel dashboard
 
-La pagina **Chiavi** nel dashboard fornisce un'interfaccia utente per tutte le operazioni sopra indicate. Hai bisogno di una chiave con permesso `keys:read` per visualizzare l'elenco e `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate` per le azioni di creazione / modifica / disabilitazione / rigenerazione rispettivamente. La modifica dei permessi di una chiave (`keys:update`) è separata dalla creazione di una (`keys:create`), quindi puoi concedere a un operatore la capacità di emettere chiavi senza la capacità di ridefinire l'ambito di quelle esistenti o viceversa. La chiave amministratore copre tutte queste.
+La pagina **Chiavi** nel dashboard fornisce un'interfaccia utente per tutte le operazioni di cui sopra. Hai bisogno di una chiave con permesso `keys:read` per visualizzare l'elenco e `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate` per le azioni creare / modificare / disabilitare / rigenerare rispettivamente. La modifica dei permessi di una chiave (`keys:update`) è separata dalla creazione di una (`keys:create`), quindi puoi concedere a un operatore la capacità di coniare chiavi senza la capacità di riscaricare le chiavi esistenti, o viceversa. La chiave admin copre tutti questi.
 
-Quando crei una chiave dal dashboard non fornisci il segreto; il dashboard genera un segreto forte per te e lo visualizza **una sola volta** al momento della creazione. Copialo immediatamente e conservalo in modo sicuro; non viene mai mostrato di nuovo, esattamente come con una rigenerazione. Puoi comunque scegliere i permessi della chiave direttamente o seminarli da un set di permessi (vedi sotto).
+Quando crei una chiave dal dashboard non fornisci il segreto; il dashboard genera un segreto forte per te e lo visualizza **una volta** alla creazione. Copialo immediatamente e conservalo in sicurezza; non viene mai più mostrato, proprio come con una rigenerazione. Puoi comunque selezionare i permessi della chiave direttamente o inizializzarli da un set di permessi (vedi sotto).
 
-![La pagina Chiavi API: una scheda per chiave che mostra il suo nome, i permessi concessi e l'ora di creazione, con azioni di rigenerazione e disabilitazione; le chiavi protette come `admin` sono contrassegnate](/agenteye/images/api-keys.png)
+![La pagina Chiavi API: una scheda per chiave che mostra il suo nome, permessi concessi e tempo di creazione, con azioni rigenerare e disabilitare; le chiavi protette come `admin` sono contrassegnate](/agenteye/images/api-keys.png)
 
 ---
 
-## Layout di chiavi consigliato
+## Layout consigliato delle chiavi
 
 | Chiave | Permessi | Utilizzato da |
 |---|---|---|
-| `admin` (bootstrap via variabile d'ambiente `ADMIN_KEY`) | tutti | Setup/Ops e dashboard (si autentica con `ADMIN_KEY`, proxy delle richieste utente con controlli di permessi) |
-| Chiave collettore per host | `events:add` | Collettore su ogni macchina agente |
-| `dashboard-assistant` (bootstrap via variabile d'ambiente `AGENT_API_KEY`) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | Assistente AI, fornito automaticamente, **protetto**; non può essere modificato tramite l'API |
+| `admin` (bootstrap tramite variabile env `ADMIN_KEY`) | tutti | Ops/configurazione e il dashboard (si autentica con `ADMIN_KEY`, delega richieste utente con controlli di permessi) |
+| Chiave collector per host | `events:add` | Collector su ogni macchina agente |
+| `dashboard-assistant` (bootstrap tramite variabile env `AGENT_API_KEY`) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | Assistente AI, inizializzato automaticamente, **protetto**; non può essere modificato tramite l'API |
 | Chiave telemetria assistente (opzionale) | `events:add` | Auto-strumentazione dell'assistente AI, se abilitata |
 
-> **Nota:** La chiave dell'assistente è **fornita automaticamente** dal server dalla variabile d'ambiente `AGENT_API_KEY` (lo stesso segreto che l'agente presenta come `AGENTEYE_API_KEY`); non c'è nessun step manuale di emissione di chiave e nessuna chiave amministratore coinvolta. I suoi permessi sono fissi nel codice sorgente quindi l'ambito non può essere ampliato per errore di configurazione: lettura su eventi / valutazioni / dashboard, più dashboards-write e queries-read / write / run per il flusso di authoring "Chiedi all'AI di scrivere una query". Tutto l'SQL passa comunque attraverso lo stesso ruolo di sola lettura e percorso SQL protetto come una query scritta dall'utente, quindi questo amplia la *superficie di authoring*, non la superficie dei dati; le operazioni distruttive (`queries:delete`, `dashboards:delete`) deliberatamente rimangono fuori dalla chiave dell'assistente. Come la chiave `admin`, è **protetta**: non può essere disabilitata o rigenerata tramite l'API delle chiavi, solo ruotata cambiando `AGENT_API_KEY` e riavviando. Gli *utenti* del dashboard inoltre hanno bisogno del permesso `agent:use` per visualizzare e usare l'assistente. Se abiliti l'auto-strumentazione, dai all'assistente una chiave separata solo `events:add`.
+> **Nota:** La chiave dell'assistente è **inizializzata automaticamente** dal server dalla variabile env `AGENT_API_KEY` (lo stesso segreto che l'agente presenta come `AGENTEYE_API_KEY`); non c'è alcun manuale step di coniazione di chiavi e nessuna chiave admin coinvolta. I suoi permessi sono fissi nel codice sorgente in modo che l'ambito non possa essere ampliato da misconfiguration: leggere attraverso eventi / valutazioni / dashboard, più dashboards-write e queries-read / write / run per il flusso di authoring "Chiedi all'AI di scrivere una query". Tutto l'SQL passa comunque attraverso lo stesso ruolo di sola lettura e il percorso SQL protetto come una query scritta dall'utente, quindi questo amplia la *superficie di authoring*, non la superficie dei dati; le operazioni distruttive (`queries:delete`, `dashboards:delete`) rimangono deliberatamente fuori dalla chiave dell'assistente. Come la chiave `admin`, è **protetta**: non può essere disabilitata o rigenerata tramite l'API delle chiavi, solo ruotata cambiando `AGENT_API_KEY` e riavviando. Gli *utenti* del dashboard inoltre hanno bisogno del permesso `agent:use` per vedere e utilizzare l'assistente. Se abiliti l'auto-strumentazione, assegna all'assistente una chiave separata solo con `events:add`.
 
 ---
 
-## Note su upgrade e compatibilità all'indietro
+## Note di aggiornamento e retrocompatibilità
 
-Hai bisogno di queste solo se stai aggiornando un'istanza esistente; le nuove distribuzioni possono saltarle.
+Ne hai bisogno solo se stai aggiornando un'istanza esistente; le nuove distribuzioni possono saltarle.
 
-> Quando è stata implementata l'auditing, i beneficiari esistenti sono stati ampliati lungo le stesse forme di ruolo degli avvisi: ogni utente e set di permessi con `alerts:read` ha guadagnato `audits:read` e ogni titolare di `alerts:write` ha guadagnato `audits:write`. Le chiavi API esistenti **non** sono state ampliate. Concedi esplicitamente `audits:*` a una chiave se ha bisogno della superficie di audit.
+> Quando Audits è stato rilasciato, i beneficiari esistenti sono stati ampliati secondo le stesse forme di ruolo degli avvisi: ogni utente e set di permessi che conteneva `alerts:read` ha guadagnato `audits:read` e ogni titolare di `alerts:write` ha guadagnato `audits:write`. Le chiavi API esistenti **non** sono state ampliate. Assegna `audits:*` a una chiave esplicitamente se ha bisogno della superficie di audit.
 
-> Le concessioni archiviate del token legacy `alerts:ack` sono analizzate come `incidents:ack` quindi gli on-caller mantengono l'accesso senza ricreazione delle chiavi. Il token non è più assegnabile dall'editor utente del dashboard; la matrice offre `incidents:ack` al suo posto.
+> Le concessioni archiviate del token legacy `alerts:ack` vengono analizzate come `incidents:ack` in modo che gli on-caller mantengono l'accesso senza riconiare. Il token non è più assegnabile dall'editor utente del dashboard; la matrice offre `incidents:ack` al suo posto.
 
 ---
 
-## Prossimi passi
+## Passi successivi
 
 - [Python SDK](/it/agenteye/python-sdk): come il tuo codice agente si autentica quando invia eventi.
-- [Sicurezza](/it/agenteye/security): come l'accesso, il controllo di accesso e l'isolamento dei dati per organizzazione funzionano.
+- [Sicurezza](/it/agenteye/security): come accesso, controllo di accesso e isolamento dei dati per organizzazione funzionano.

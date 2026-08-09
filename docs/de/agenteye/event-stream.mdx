@@ -6,45 +6,45 @@ description: "In dem Moment, in dem dein Agent etwas tut, siehst du es."
 
 In dem Moment, in dem dein Agent etwas tut, siehst du es. Der Event Stream ist dein Live-Puls auf jeden Agenten in der Produktion: kein Warten, kein Durchsuchen von Logs, kein Rätseln, was gerade passiert ist.
 
-![Der Live Event Stream: farbcodierte Event-Zeilen, die in Echtzeit erscheinen, filterbar nach Umgebung, Agent, Session, Event-Typ und Freitext](/agenteye/images/events-stream.png)
+![Der Live-Event-Stream: farbkodierte Event-Zeilen, die in Echtzeit nachgeführt werden, filterbar nach Umgebung, Agent, Session, Event-Typ und Freitext](/agenteye/images/events-stream.png)
 
-*Jedes Event von jedem Agenten in deiner Organisation, neueste zuerst, aktualisiert sich laufend.*
+*Jedes Event von jedem Agenten in deiner Organisation, neueste zuerst, aktualisiert während es passiert.*
 
 ## Dein Live-Puls auf jeden Agenten
 
-Wenn ein Agent einen Lauf startet, ein Modell aufruft, ein Tool ausführt, einen Hook auslöst oder auf einen Fehler trifft, erscheint die Zeile in dem Moment oben im Stream. Er verfolgt jedes Event aller Agenten in deiner Organisation, neueste zuerst – du hast also immer ein aktuelles Bild statt eines veralteten.
+Wenn ein Agent einen Lauf startet, ein Modell aufruft, ein Tool auslöst, einen Hook ausführt oder auf einen Fehler stößt, erscheint die Zeile im gleichen Moment oben im Stream. Er verfolgt jeden Event über alle Agenten deiner Organisation hinweg, neueste zuerst – damit du immer ein aktuelles Bild hast statt eines veralteten.
 
-Das bedeutet: kein Tailing von Log-Dateien irgendwo auf einem Server, kein Durchsuchen über mehrere Maschinen, kein mühsames Zusammensetzen von Timestamps. Du öffnest eine Seite und beobachtest bereits die Produktion.
+Das bedeutet: kein Verfolgen von Log-Dateien auf irgendeinem Server, kein Durchsuchen von Maschinen, kein manuelles Zusammensetzen von Zeitstempeln. Du öffnest eine Seite und beobachtest sofort die Produktion.
 
-Zeilen sind farblich nach Typ gekennzeichnet, sodass du den Stream auf einen Blick lesen kannst, ohne jede Zeile zu analysieren. Auf einen Blick zeigt dir jede Zeile:
+Zeilen sind nach Typ farbkodiert, sodass du den Stream auf einen Blick erfassen kannst, ohne jede Zeile zu analysieren. Auf einen Blick zeigt dir jede Zeile:
 
-- **Ihren Typ**, farbcodiert: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error` und mehr.
-- **Eine einzeilige Zusammenfassung** des Geschehenen, sodass du selten etwas öffnen musst, nur um den Kern zu verstehen.
-- **Token-Anzahlen** für den Schritt.
-- **Ein Context-Window-Füllstand-Badge** wo relevant, damit Prompt-Wachstum und eine bevorstehende Komprimierung sichtbar sind, bevor sie zum Problem werden.
+- **Den Typ**, farbkodiert: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error` und weitere.
+- **Eine einzeilige Zusammenfassung** des Geschehens, sodass du selten etwas öffnen musst, um den Kern zu verstehen.
+- **Token-Zählungen** für den Schritt.
+- **Ein Kontext-Fenster-Füllstandsabzeichen**, wo zutreffend, damit das Anwachsen des Prompts und eine bevorstehende Komprimierung sichtbar sind, bevor sie zum Problem werden.
 
-Das Live-Beobachten bedeutet, dass du ein fehlerhaftes Deployment, eine endlose Schleife oder eine Häufung von Fehlern bemerkst, sobald es passiert – nicht beim morgigen Log-Review.
+Live zuzuschauen bedeutet, dass du einen fehlerhaften Deploy, eine unkontrollierte Schleife oder eine Häufung von Fehlern in dem Moment bemerkst, in dem es passiert – nicht bei der Log-Überprüfung am nächsten Tag.
 
 ## Den einen Lauf finden, der zählt
 
-Wenn etwas nicht stimmt, willst du nicht den kompletten Datenstrom. Du willst den einen Lauf, der kaputt ist. Der Stream lässt sich schnell filtern: nach Umgebung, nach Agent, nach Session, nach Event-Typ oder nach Freitext.
+Wenn etwas nicht stimmt, willst du nicht den Datenstrom in voller Breite. Du willst den einzelnen Lauf, der fehlgeschlagen ist. Der Stream lässt sich schnell filtern: nach Umgebung, nach Agent, nach Session, nach Event-Typ oder nach Freitext.
 
-Filtere nach Session-ID oder Agent-ID, um einem Lauf von seinem ersten bis zum letzten Event zu folgen. Filtere nach Event-Typ, um eine bestimmte Art von Aktivität zu isolieren – zum Beispiel alle `error`-Events der gesamten Organisation in einer Ansicht. Kombiniere Filter, um von „alles, überall" zu „dieser Agent, in Prod, mit Fehlern" in wenigen Klicks zu kommen, und handle dann entsprechend.
+Filtere nach Session-ID oder Agent-ID, um einen Lauf von seinem ersten bis zu seinem letzten Event zu verfolgen. Filtere nach Event-Typ, um eine einzelne Art von Aktivität zu isolieren – zum Beispiel alle `error`-Events der Organisation in einer Ansicht. Kombiniere Filter, um von „alles, überall" zu „dieser Agent, in Produktion, mit Fehlern" in wenigen Klicks zu gelangen, und handle dann entsprechend.
 
-Die Freitext-Suche führt dich direkt zu einer Meldung, einem Tool-Namen oder einer ID, die du bereits zur Hand hast – so wird ein Kundenreport in Sekunden zum exakten Lauf.
+Die Freitext-Suche führt dich direkt zu einer Nachricht, einem Tool-Namen oder einer ID, die du bereits zur Hand hast – so wird ein Kundenbericht in Sekunden zum genauen Lauf.
 
-## Wo du es findest
+## Wo du ihn findest
 
-Der Event Stream ist deine Organisations-Startseite. Melde dich an und er ist die erste Seite, auf der du landest, unter `/<org-slug>/` – die Triage beginnt also in dem Moment, in dem du ankommst.
+Der Event Stream ist deine Organisations-Startseite. Melde dich an und er ist die erste Oberfläche, auf der du landest, unter `/<org-slug>/` – damit die Triage in dem Moment beginnt, in dem du ankommst.
 
-Im Hintergrund senden deine Agenten Events über das SDK, der Collector schickt sie an deinen Failproof AI Observability-Server, und der Stream verfolgt sie, während sie in der von dir kontrollierten Infrastruktur ankommen. Wenn du statt der rohen Spur die zusammengefasste Ansicht möchtest, werden die Events jedes Laufs auf Sessions zu einer einzelnen Zeile zusammengefasst – einen Klick entfernt.
+Im Hintergrund senden deine Agenten Events über das SDK, der Collector leitet sie an deinen Failproof AI Observability-Server weiter, und der Stream verfolgt sie, während sie in der von dir kontrollierten Infrastruktur eintreffen. Wenn du die aggregierte Ansicht statt der rohen Spur möchtest, werden die Events jedes Laufs in Sessions zu einer einzelnen Zeile zusammengefasst – nur einen Klick entfernt.
 
-Dies ist die rohe Wahrheitsquelle, auf der jede andere Beobachtungsoberfläche aufbaut – wenn also anderswo eine Zahl falsch aussieht, ist der Stream der Ort, an dem du bestätigst, was wirklich passiert ist.
+Dies ist die unverfälschte Wahrheitsquelle, auf der jede andere Beobachtungsoberfläche aufbaut. Wenn also eine Zahl anderswo falsch aussieht, ist der Stream der Ort, an dem du bestätigst, was tatsächlich passiert ist.
 
-## Verwandtes
+## Verwandte Themen
 
-- [Sessions](/de/agenteye/sessions): dieselben Events zu einer Zeile pro Lauf zusammengefasst, mit einem git-ähnlichen Ausführungsgraph.
+- [Sessions](/de/agenteye/sessions): dieselben Events, zu einer Zeile pro Lauf zusammengefasst, mit einem Git-ähnlichen Ausführungsgraphen.
 - [Telemetry](/de/agenteye/telemetry): was deine Agenten senden und wie Events den Stream erreichen.
-- [Error tracking](/de/agenteye/error-tracking): eine Triage-Oberfläche für alles, was schiefgelaufen ist.
-- [Alerts](/de/agenteye/alerts): beliebige Schwellenwerte in Benachrichtigungsregeln umwandeln.
+- [Error tracking](/de/agenteye/error-tracking): eine einzige Triage-Oberfläche für alles, was schiefgelaufen ist.
+- [Alerts](/de/agenteye/alerts): jeden Schwellenwert in eine Benachrichtigungsregel umwandeln.
 - [CLI and agents](/de/agenteye/cli-and-agents): dieselbe Live-Spur aus deinem Terminal.

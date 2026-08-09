@@ -9,12 +9,12 @@ failproofai policies --uninstall [policy-names...] [options]
 
 Удаляет записи hook failproofai из `settings.json` Claude Code.
 
-Альтернативные команды: `failproofai p -u`
+Псевдонимы: `failproofai p -u`
 
-## Опции
+## Параметры
 
 | Флаг | Описание |
-|------|-------------|
+|------|----------|
 | `--scope user` | Удалить из глобальных настроек (по умолчанию) |
 | `--scope project` | Удалить из настроек проекта |
 | `--scope local` | Удалить из локальных настроек |
@@ -23,19 +23,19 @@ failproofai policies --uninstall [policy-names...] [options]
 
 ## Поведение
 
-- **Без указания имён политик** — удаляет все записи hook failproofai из файла настроек
-- **Конкретные имена** — отключает эти политики, но оставляет hook установленными
+- **Без названий политик** — удаляет все записи hook failproofai из файла настроек
+- **Конкретные названия** — отключает эти политики, но оставляет hooks установленными
 
 ## Примеры
 
 ```bash
-# Удалить все hook глобально
+# Удалить все hooks глобально
 failproofai policies --uninstall
 
-# Отключить конкретную политику (hook останутся установленными)
+# Отключить конкретную политику (hooks остаются установленными)
 failproofai policies --uninstall block-sudo
 
-# Удалить hook из всех областей
+# Удалить hooks из всех областей
 failproofai policies --uninstall --scope all
 
 # Очистить путь к пользовательским политикам

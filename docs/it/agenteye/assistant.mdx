@@ -1,62 +1,61 @@
 ---
 title: "Assistente AI"
-description: "Fai una domanda ai dati del tuo agente in inglese semplice e ottieni una risposta con i link diretto alle prove."
+description: "Fai una domanda sui dati del tuo agente in inglese semplice e ottieni una risposta con i link diretti alle prove."
 ---
 
 
-Fai una domanda ai dati del tuo agente in inglese semplice e ottieni una risposta con link diretto alle prove. Niente SQL da scrivere, niente dashboard da consultare — l'assistente **Failproof AI Observability** è il modo più veloce per chiunque nel tuo team di ottenere risposte sui tuoi agenti.
+Fai una domanda sui dati del tuo agente in inglese semplice e ottieni una risposta con i link diretti alle prove. Niente SQL da scrivere, niente dashboard da consultare — l'assistente **Failproof AI Observability** è il modo più veloce per chiunque nel tuo team di ottenere risposte sugli agenti.
 
-![L'assistente Failproof AI Observability che risponde a una domanda in inglese semplice dentro il dashboard, mostrando una tabella Agent Activity dal vivo, una ripartizione dell'utilizzo del modello per agente, e considerazioni scritte, con le query eseguite mostrate inline](/agenteye/images/assistant.png)
-*Fai una domanda in inglese semplice e ottieni una risposta costruita dai tuoi dati. Qui scompone quali agenti sono più occupati e quali modelli usano, e mostra le query eseguite così puoi verificare ogni numero.*
+![L'assistente Failproof AI Observability che risponde a una domanda in linguaggio naturale all'interno della dashboard, mostrando una tabella Agent Activity live, una suddivisione dell'utilizzo dei modelli per agente e conclusioni scritte, con le query eseguite mostrate inline](/agenteye/images/assistant.png)
+*Fai una domanda in linguaggio naturale e ottieni una risposta costruita dai tuoi dati. Qui suddivide quali agenti sono più occupati e quali modelli usano, e mostra le query eseguite così puoi verificare ogni numero.*
 
-Non c'è niente da imparare. Apri la chat, digita quello che vuoi sapere, e segui i link che ti restituisce:
+Non c'è nulla da imparare. Apri la chat, scrivi quello che vuoi sapere, e segui i link che ti vengono restituiti:
 
 ```
-Tu:     quali sessioni hanno dato errori oggi?
-AI:     5 sessioni hanno dato errori oggi, le più recenti per prime. Ognuna è collegata:
-        • checkout-agent   14:02   tool timeout
-        • billing-agent    11:47   unhandled error
-        • ...e 3 altre
+Tu:    quali sessioni hanno avuto errori oggi?
+IA:    5 sessioni hanno avuto errori oggi, le più recenti per prime. Ognuna è collegata:
+       • checkout-agent   14:02   tool timeout
+       • billing-agent    11:47   unhandled error
+       • ...e 3 altre
 
-Tu:     riassumi questa sessione          (chiesto mentre visualizzi un'esecuzione)
-AI:     Questa esecuzione ha richiesto 12 step su 3 tool e ha fallito verso la fine quando
-        uno strumento di pagamento ha restituito un errore. Ha ottenuto un punteggio basso
-        sulla tua valutazione "resolved". Link: la sessione, l'evento che ha causato il
-        fallimento, e quella valutazione.
+Tu:    riassumi questa sessione          (chiesto mentre visualizzi un run)
+IA:    Questo run ha richiesto 12 step su 3 tool e ha fallito verso la fine quando un
+       tool di pagamento ha restituito un errore. Ha avuto un punteggio basso nella tua
+       valutazione "resolved". Link: la sessione, l'evento di errore e quella valutazione.
 ```
 
-## Chiedi semplicemente e vai diretto alle prove
+## Basta chiedere e vai direttamente alle prove
 
-Smetti di indovinare e smetti di scrivere query. Chiedi "come sta andando la qualità in prod questa settimana?", "quali sessioni hanno dato errori oggi?" oppure "riassumi questa sessione", e ottieni una risposta diretta in secondi invece di costruire una query e leggerla da solo.
+Smetti di indovinare e smetti di scrivere query. Chiedi "come sta andando la qualità in prod questa settimana?", "quali sessioni hanno avuto errori oggi?", o "riassumi questa sessione", e ottieni una risposta diretta in secondi invece di costruire una query e leggerla tu stesso.
 
-Ogni risposta viene con le sue prove. L'assistente collega le sessioni esatte, le query salvate e le dashboard che ha usato per arrivare alla risposta, così puoi fare clic e confermare piuttosto che prendere la sua parola. È anche **consapevole della pagina**: chiedi informazioni su "questa sessione" mentre ne stai visualizzando una e sa già quale esecuzione intendi. Riapri qualsiasi conversazione precedente più tardi dal selettore della cronologia e continua da dove avevi lasciato.
+Ogni risposta viene con le sue ricevute. L'assistente collega esattamente le sessioni, le query salvate e i dashboard che ha usato per arrivare alla risposta, così puoi cliccare e confermare piuttosto che prenderlo per buono. È anche **consapevole della pagina**: chiedi di "questa sessione" mentre stai visualizzandone una e sa già quale run intendi. Riapri qualsiasi conversazione precedente in seguito dal selettore della cronologia e continua da dove hai lasciato.
 
 ## Trasforma una buona risposta in una query salvata o in una dashboard
 
-Quando una risposta vale la pena di conservare, chiedi all'assistente di salvarla. Redige l'SQL per una query salvata, o assembla una dashboard da quelle query, quindi ti mostra una scheda **Approva / Rifiuta**. Niente viene scritto finché non fai clic su Approva, quindi ottieni la velocità di "chiedi semplicemente" con l'ultima parola sempre tua.
+Quando una risposta vale la pena di tenere, chiedi all'assistente di salvarla. Prepara l'SQL per una query salvata, o assembla un dashboard da quelle query, poi ti mostra una scheda **Approva / Rifiuta**. Nulla viene scritto finché non clicchi Approva, quindi ottieni la velocità di "basta chiedere" con l'ultima parola sempre tua.
 
-Nella pagina **Query** fa un passo in più e diventa un autore SQL: descrivi la query che vuoi ("mostra il tasso di errore per agente negli ultimi 7 giorni") e trasmette SQL direttamente nell'editor, aprendo una vista diff così puoi **Accettare** o **Rifiutare** la modifica prima che venga implementata.
+Nella pagina **Query** fa un passo in più e diventa un autore SQL: descrivi la query che vuoi ("mostra il tasso di errore per agente degli ultimi 7 giorni") e l'assistente trasmette l'SQL direttamente nell'editor, aprendo una vista diff così puoi **Accettare** o **Rifiutare** il cambiamento prima che venga applicato.
 
-![La pagina Queries di Observability e il suo editor SQL](/agenteye/images/query-lab.png)
-*La pagina Queries: questo editor è dove l'assistente trasmette una bozza di query di sola lettura per accettare o rifiutare.*
+![La pagina Observability Queries e il suo editor SQL](/agenteye/images/query-lab.png)
+*La pagina Queries: questo editor è dove l'assistente trasmette una query in sola lettura da accettare o rifiutare.*
 
-Scrivere SQL chiedendo qui usa il permesso `queries:run`, lo stesso dietro al pulsante **Run** dell'editor. La chat ovunque altrove richiede `agent:use`.
+La creazione di SQL chiedendo qui utilizza il permesso `queries:run`, lo stesso dietro il pulsante **Run** dell'editor. La chat in tutti gli altri posti ha bisogno di `agent:use`.
 
 ## Sicuro da condividere con tutto il team
 
-Puoi aprire l'assistente a tutti senza preoccuparti di quello che potrebbe toccare:
+Puoi aprire l'assistente a tutti senza preoccuparti di ciò che potrebbe toccare:
 
-- **Legge solo quello che puoi già vedere.** Le risposte sono limitate ai tuoi permessi di lettura, quindi non amplia mai la tua superficie dati.
-- **Ogni scrittura attende te.** Le query salvate e le dashboard vengono create solo dopo il tuo clic esplicito di Approva, e non c'è nessuna impostazione che disattivi questo controllo.
-- **Non può mai eliminare niente.** Nessuno strumento di eliminazione è esposto e l'assistente non ha permessi di eliminazione. Le eliminazioni rimangono nelle tue mani, nel dashboard.
-- **Rimane dentro la tua organizzazione.** L'assistente vede solo l'organizzazione che stai visualizzando in quel momento.
-- **Le tue domande rimangono tue.** I prompt e le risposte vivono nel tuo database Observability personale; l'analisi dei prodotti registra solo i metadati di utilizzo, mai il testo del tuo prompt.
+- **Legge solo quello che puoi già vedere.** Le risposte sono limitate ai tuoi permessi di lettura, quindi non allarga mai la tua superficie di dati.
+- **Ogni scrittura attende te.** Le query salvate e i dashboard vengono creati solo dopo il tuo esplicito clic su Approva, e non c'è un'impostazione che disattiva questo controllo.
+- **Non può eliminare nulla.** Nessun tool di eliminazione è esposto e l'assistente non ha permesso di eliminazione. Le eliminazioni rimangono nelle tue mani, nella dashboard.
+- **Rimane dentro la tua organizzazione.** L'assistente vede solo l'organizzazione che stai visualizzando attualmente.
+- **Le tue domande rimangono tue.** I prompt e le risposte vivono nel tuo database Observability; gli analytics dei prodotti registrano solo i metadati di utilizzo, mai il testo dei tuoi prompt.
 
 ## Dove trovarlo
 
-L'assistente si trova sul bordo destro di ogni pagina sotto la tua organizzazione (`/<org-slug>/...`). Fai clic sulla barra laterale, oppure premi `⌘J` / `Ctrl+J`, per espanderla nel pannello chat completo, e trascina il suo bordo per ridimensionarlo; la tua larghezza viene ricordata tra i ricaricamenti. Hai bisogno del permesso **`agent:use`** per usarlo, altrimenti la barra laterale è disattivata. Se non è ancora stato attivato per la tua implementazione (ha bisogno di una connessione LLM), vedrai una barra laterale silenziosa al posto di una chat funzionante.
+L'assistente è posizionato sul bordo destro di ogni pagina sotto la tua organizzazione (`/<org-slug>/...`). Clicca sulla barra laterale, o premi `⌘J` / `Ctrl+J`, per espanderlo nel pannello chat completo, e trascina il suo bordo per ridimensionare; la tua larghezza viene ricordata tra gli aggiornamenti. Hai bisogno del permesso **`agent:use`** per usarlo, altrimenti la barra laterale è disattivata. Se non è stato ancora attivato per la tua distribuzione (ha bisogno di una connessione LLM), vedrai una barra laterale silenziosa al posto di una chat funzionante.
 
-## Correlato
+## Correlati
 
 - [CLI e agenti](/it/agenteye/cli-and-agents)
 - [Query](/it/agenteye/queries)

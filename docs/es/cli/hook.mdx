@@ -12,18 +12,18 @@ Este es el comando registrado en el `settings.json` de Claude Code por `failproo
 Lee un payload JSON desde stdin, evalúa todas las políticas habilitadas y termina con un código que indica la decisión:
 
 | Código de salida | Decisión | Efecto |
-|------------------|----------|--------|
-| `0` | `allow` | Permite la acción |
-| `1` | `deny` | Bloquea la acción - Claude recibe el motivo del rechazo |
-| `2` | `instruct` | Inyecta orientación en el contexto de Claude |
+|-----------------|----------|--------|
+| `0` | `allow` | Permitir la acción |
+| `1` | `deny` | Bloquear la acción — Claude recibe el motivo del rechazo |
+| `2` | `instruct` | Inyectar orientación en el contexto de Claude |
 
-### Tipos de eventos soportados
+### Tipos de evento admitidos
 
 | Categoría | Eventos |
 |-----------|---------|
 | **Ejecución de herramientas** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
-| **Ciclo de vida de sesión** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
-| **Interacción con el usuario** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
+| **Ciclo de vida de la sesión** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
+| **Interacción del usuario** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
 | **Subagentes y tareas** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **Configuración** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
 | **Sistema de archivos** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |

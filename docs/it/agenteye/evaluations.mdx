@@ -1,51 +1,51 @@
 ---
 title: "Valutazioni"
-description: "I problemi di qualità ti trovano ora, invece di sentirti parlare di loro in un reclamo di un utente."
+description: "I problemi di qualità ti trovano adesso, invece di scoprirli da un reclamo di un utente."
 ---
 
 
-I problemi di qualità ti trovano ora, invece di sentirti parlare di loro in un reclamo di un utente. Collega il tuo servizio di scoring una volta e Failproof AI Observability valuta automaticamente ogni esecuzione completata, quindi un calo di utilità o un picco di allucinazioni emerge da solo, prima che un cliente lo percepisca.
+I problemi di qualità ti trovano adesso, invece di scoprirli da un reclamo di un utente. Connetti il tuo servizio di valutazione una volta sola e Failproof AI Observability valuta automaticamente ogni esecuzione terminata, così una diminuzione dell'utilità o un picco di allucinazioni emerge da sola, prima che un cliente la noti.
 
-![La griglia Sessions con una colonna di score: ogni esecuzione ha un badge di stato di valutazione e badge con codice colore per utilità, fattualità ed efficienza degli strumenti](/agenteye/images/sessions-list.png)
+![La griglia Sessions con una colonna di punteggio: ogni esecuzione porta una pillola di stato di valutazione e badge con codice colore per utilità, fattualità ed efficienza dello strumento](/agenteye/images/sessions-list.png)
 
-*Ogni esecuzione nella griglia delle sessioni porta i suoi punteggi; i badge rossi, ambra e verdi fanno risaltare le esecuzioni deboli senza dover aprire un singolo transcript.*
+*Ogni esecuzione nella griglia sessions porta i suoi punteggi; i badge rossi, ambra e verdi fanno risaltare le esecuzioni deboli senza che tu apra nemmeno una trascrizione.*
 
-## Smetti di campionare manualmente le esecuzioni
+## Smetti di campionare le esecuzioni manualmente
 
-Una volta verificavi un pugno di esecuzioni e speravi che il resto fosse a posto. Ora ogni sessione completata viene valutata nel momento in cui finisce, sulle dimensioni che ti importano: utilità, efficienza degli strumenti, fattualità, sicurezza, qualunque sia il tuo standard di qualità. Tu definisci le chiavi di score; Failproof AI Observability memorizza, traccia e visualizza tutto ciò che il tuo valutatore rimanda indietro. Nessuna esecuzione sfugge senza valutazione, e smetti di scoprire una regressione da un ticket di supporto.
+Una volta controllavi un pugno di esecuzioni e speravi che il resto fosse ok. Adesso ogni sessione completata viene valutata nel momento in cui finisce, sulle dimensioni che ti interessano: utilità, efficienza dello strumento, fattualità, sicurezza, qualunque sia il tuo standard di qualità. Tu definisci le chiavi di punteggio; Failproof AI Observability archivia, traccia le tendenze e visualizza tutto quello che il tuo valutatore rimanda indietro. Nessuna esecuzione sfugge senza punteggio, e smetti di scoprire una regressione da un ticket di supporto.
 
-I punteggi compaiono sulla griglia delle sessioni in **`/<org-slug>/sessions`** (barra laterale → *observe* → *sessions*), con un cluster di badge per riga. Vuoi solo le esecuzioni che non hanno raggiunto lo standard? Filtra la griglia per intervallo di score, ad esempio utilità inferiore a 0,5, e visualizza esattamente le esecuzioni che vale la pena leggere. La visualizzazione dei punteggi richiede il permesso `evaluations:read`.
+I punteggi compaiono sulla griglia sessions a **`/<org-slug>/sessions`** (sidebar → *observe* → *sessions*), un gruppo di badge per riga. Vuoi solo le esecuzioni che non hanno raggiunto lo standard? Filtra la griglia per intervallo di punteggio, ad esempio utilità sotto 0.5, e visualizza esattamente le esecuzioni che vale la pena leggere. La visualizzazione dei punteggi richiede il permesso `evaluations:read`.
 
-## Scopri perché un'esecuzione ha ottenuto un basso punteggio
+## Capire perché un'esecuzione ha avuto un punteggio basso
 
-Un numero ti dice che un'esecuzione era debole; la pagina della sessione ti dice perché. Apri qualsiasi esecuzione e il pannello di destra inizia con il riassunto principale, quindi mostra una barra per dimensione con il ragionamento del tuo valutatore sotto ogni una, quindi passi da "questa ha ottenuto 0,4 sulla fattualità" all'affermazione esatta che ha sbagliato in pochi secondi.
+Un numero ti dice che un'esecuzione era debole; la pagina della sessione ti spiega perché. Apri qualsiasi esecuzione e il pannello di destra inizia con il riassunto principale, poi mostra una barra per dimensione con il ragionamento del tuo valutatore sotto ognuna, così passi da "questo ha preso 0.4 in fattualità" all'affermazione esatta che ha sbagliato in pochi secondi.
 
-![Il pannello di destra di una sessione: il riepilogo della valutazione in alto, quindi barre di score per dimensione ognuna con una riga di ragionamento, accanto alla completa cronologia degli eventi](/agenteye/images/session-detail.png)
+![Il pannello di destra di una sessione: il riassunto della valutazione in alto, poi barre di punteggio per dimensione ognuna con una riga di ragionamento, accanto alla timeline completa degli eventi](/agenteye/images/session-detail.png)
 
-*La vista dei dettagli della sessione: riassunto, barre di score per dimensione e il ragionamento dietro ogni punteggio, proprio accanto alla cronologia completa degli eventi dell'esecuzione.*
+*La vista dei dettagli della sessione: riassunto, barre di punteggio per dimensione e il ragionamento dietro ogni punteggio, proprio accanto alla timeline degli eventi dell'esecuzione.*
 
-Hai distribuito un valutatore più intelligente, o stai guardando un'esecuzione che si è interrotta prima di poter essere valutata? Un pulsante **re-evaluate** (protetto da `evaluations:trigger`) rivaluta la sessione sul posto e aggiunge il risultato fresco alla sua cronologia, quindi i punteggi precedenti rimangono visibili come cronologia. Lo troverai in **`/<org-slug>/sessions/<session-id>`**.
+Hai implementato un valutatore migliore, oppure stai guardando un'esecuzione che si è bloccata prima di poter essere valutata? Un pulsante **re-evaluate** (protetto da `evaluations:trigger`) rivaluta la sessione sul posto e aggiunge il risultato fresco alla sua timeline, così i punteggi precedenti rimangono visibili come cronologia. Lo troverai a **`/<org-slug>/sessions/<session-id>`**.
 
-## Osserva il trend di qualità nell'intera flotta
+## Monitora la qualità in tutta la flotta
 
-Un'esecuzione con basso punteggio è rumore; un'intera coorte in discesa è un segnale. I dashboard salvati trasformano i tuoi punteggi in un trend che puoi osservare a colpo d'occhio: utilità media questa settimana rispetto alla scorsa, per agente, per ambiente.
+Un'esecuzione che ottiene un punteggio basso è rumore; una coorte intera che scivola è un segnale. Le dashboard salvate trasformano i tuoi punteggi in una tendenza che puoi controllare a colpo d'occhio: utilità media questa settimana rispetto a quella scorsa, per agente, per ambiente.
 
-![Un dashboard di qualità: barre di punteggio medio per dimensione di valutatore insieme a un trend nel tempo](/agenteye/images/dashboard-quality.png)
+![Una dashboard di qualità: barre di punteggio medio per dimensione del valutatore insieme a una tendenza nel tempo](/agenteye/images/dashboard-quality.png)
 
-*Un dashboard di qualità salvato traccia le chiavi di score che presenti, quindi una lenta deriva è ovvia molto prima che diventi un incidente.*
+*Una dashboard di qualità salvata traccia le tendenze delle chiavi di punteggio che presenti, così una deriva lenta è evidente molto prima che diventi un incidente.*
 
-I dashboard si trovano in **`/<org-slug>/dashboards`** (barra laterale → *analyze* → *dashboards*), sono condivisi in tutta la tua organizzazione, e ogni scheda raggruppa le sessioni corrispondenti: quante sono, la media di ogni score in primo piano e una piccola linea di tendenza. "Apri nelle sessioni" ti porta direttamente nelle esecuzioni pre-filtrate dietro qualsiasi numero. La visualizzazione richiede `dashboards:read` più `evaluations:read`.
+Le dashboard si trovano a **`/<org-slug>/dashboards`** (sidebar → *analyze* → *dashboards*), sono condivise in tutta la tua organizzazione, e ogni card aggrega le sessioni corrispondenti: quante sono, la media di ogni punteggio presentato e una sparkline di tendenza. "Open in sessions" ti porta direttamente alle esecuzioni pre-filtrate dietro a qualsiasi numero. La visualizzazione richiede `dashboards:read` più `evaluations:read`.
 
-## Collega un valutatore una volta
+## Connetti un valutatore una volta sola
 
-Il scoring è facoltativo e rimane completamente disattivato finché non punti Failproof AI Observability verso uno scorer. Crei un piccolo servizio HTTP (Observability fornisce un riferimento funzionante che puoi copiare), imposti due valori sul tuo server, e da quel momento in poi ogni esecuzione viene valutata per te. La procedura dettagliata completa, il contratto di scoring e l'SDK si trovano nella guida approfondita.
+La valutazione è facoltativa e rimane completamente disattivata finché non punti Failproof AI Observability a un valutatore. Metti su un piccolo servizio HTTP (Observability fornisce un riferimento funzionante che puoi copiare), imposta due valori sul tuo server, e ogni esecuzione da quel momento in poi viene valutata per te. La procedura completa, il contratto di valutazione e l'SDK si trovano nella guida approfondita.
 
-Non sei sicuro di quali dimensioni valga la pena di valutare in primo luogo? La [evaluator agent skill](/it/agenteye/evaluator-skill) fa capire al tuo agente di codifica quali dimensioni valutare rispetto alle tue sessioni, quindi costruisce e distribuisce il servizio.
+Non sei sicuro di quali dimensioni valga la pena valutare in primo luogo? La [skill dell'agente valutatore](/it/agenteye/evaluator-skill) fa in modo che il tuo agente di codifica lo capisce dalle tue stesse sessioni, quindi crea e distribuisce il servizio.
 
 ## Correlati
 
-- [Evaluation suite](/it/agenteye/evaluation-suite): collega il tuo valutatore, il contratto di scoring e l'SDK.
-- [Evaluator agent skill](/it/agenteye/evaluator-skill): lascia che un agente di codifica scelga le tue dimensioni di score e costruisca il valutatore.
-- [Sessions](/it/agenteye/sessions): la griglia esecuzione per esecuzione dove appaiono i punteggi.
-- [Dashboards](/it/agenteye/dashboards): salva e condividi i trend di qualità in tutta la tua organizzazione.
-- [Audits](/it/agenteye/audits): l'altra funzione di qualità automatica di Observability, per indagini tra sessioni.
+- [Evaluation suite](/it/agenteye/evaluation-suite): connetti il tuo valutatore, il contratto di valutazione e l'SDK.
+- [Evaluator agent skill](/it/agenteye/evaluator-skill): lascia che un agente di codifica scelga le tue dimensioni di punteggio e costruisca il valutatore.
+- [Sessions](/it/agenteye/sessions): la griglia run-by-run dove compaiono i punteggi.
+- [Dashboards](/it/agenteye/dashboards): salva e condividi le tendenze di qualità in tutta la tua organizzazione.
+- [Audits](/it/agenteye/audits): l'altra funzione di qualità automatica di Observability, per le indagini cross-session.

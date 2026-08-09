@@ -1,52 +1,52 @@
 ---
-title: "Performance Metrics"
-description: "देखें कि आपके मॉडल, टूल या हुक कब धीमे होते हैं या बिल बढ़ाते हैं, और tail-latency spike को अपने यूजर्स के महसूस करने से पहले ही पकड़ें।"
+title: "परफॉर्मेंस मेट्रिक्स"
+description: "देखें कि आपके मॉडल, टूल्स, या हुक्स कब धीमे पड़ते हैं या बिल बढ़ाते हैं, और अपने उपयोगकर्ताओं को महसूस होने से पहले टेल-लेटेंसी स्पाइक को पकड़ें।"
 ---
 
 
-देखें कि आपके मॉडल, टूल या हुक कब धीमे होते हैं या बिल बढ़ाते हैं, और tail-latency spike को अपने यूजर्स के महसूस करने से पहले ही पकड़ें। तीन dedicated पेज raw timings को p50, p95, और p99 में बदलते हैं जिन्हें आप एक नज़र में पढ़ सकते हैं।
+देखें कि आपके मॉडल, टूल्स, या हुक्स कब धीमे पड़ते हैं या बिल बढ़ाते हैं, और अपने उपयोगकर्ताओं को महसूस होने से पहले टेल-लेटेंसी स्पाइक को पकड़ें। तीन समर्पित पेज रॉ टाइमिंग को p50, p95, और p99 में बदलते हैं जिन्हें आप एक नज़र में पढ़ सकते हैं।
 
-![The Models page showing a latency heat-map, a percentile band, and per-model token, cost, and context-window figures](/agenteye/images/models.png)
-*The Models page: a latency heat-map, a percentile band, और per-model tokens, estimated cost, और context-window fill।*
+![मॉडल्स पेज जो एक लेटेंसी हीट-मैप, एक पर्सेंटाइल बैंड, और प्रति-मॉडल टोकन, लागत, और कॉन्टेक्स्ट-विंडो आंकड़े दिखाता है](/agenteye/images/models.png)
+*मॉडल्स पेज: एक लेटेंसी हीट-मैप, एक पर्सेंटाइल बैंड, और प्रति-मॉडल टोकन, अनुमानित लागत, और कॉन्टेक्स्ट-विंडो भरण।*
 
-## औसत को अपने सबसे ख़राब रन को छिपाने न दें
+## औसत को अपने सबसे खराब रन को छिपाने न दें
 
-एक औसत latency संख्या सुकून देने वाली और बेकार होती है: यह उस एक कॉल को छिप जाती है जो पचास में से एक को ठीक करता है और सुबह 2 बजे आपके on-call को पेज करता है। Models, Tools, और Hooks पेज ऐसा नहीं करते। प्रत्येक एक ही shape साझा करता है, इसलिए आप इसे एक बार सीखते हैं:
+एक औसत लेटेंसी संख्या आरामदायक और बेकार है: यह उस एक कॉल को छिपा देता है जो पचास में से एक में रुक जाता है और सुबह 2 बजे आपके ऑन-कॉल को कॉल करता है। मॉडल्स, टूल्स, और हुक्स पेज ऐसा नहीं करते। प्रत्येक एक समान आकार साझा करता है, इसलिए आप इसे एक बार सीखते हैं:
 
-- एक **24-bin sparkline** ट्रेंड को एक नज़र में देखने के लिए: क्या यह बदतर हो रहा है?
-- एक **vitals strip** p50, p95, और p99 latency के साथ, ताकि typical run और tail एक दूसरे के बगल में बैठें।
-- एक **latency heat-map**, 24 time bins by latency buckets, जो दिखाता है कि *कब* slow calls cluster हुई थीं।
-- एक **percentile band**: एक p50 line with p25 to p75 और p10 to p90 shaded ribbons और p99 dots, ताकि spread दृश्यमान रहे average न होकर।
+- एक **24-बिन स्पार्कलाइन** एक नज़र में ट्रेंड के लिए: क्या यह बदतर हो रहा है?
+- एक **वाइटल्स स्ट्रिप** p50, p95, और p99 लेटेंसी के साथ, ताकि सामान्य रन और टेल साथ में बैठें।
+- एक **लेटेंसी हीट-मैप**, 24 समय बिन लेटेंसी बकेट द्वारा, जो दिखाता है *कब* धीमी कॉल्स क्लस्टर हुई।
+- एक **पर्सेंटाइल बैंड**: एक p50 लाइन p25 से p75 और p10 से p90 छायांकित रिबन और p99 डॉट्स के साथ, ताकि फैलाव दृश्यमान रहे बजाय औसत के पीछे छिपे।
 
-एक shared hover crosshair heat-map और band को जोड़ता है, इसलिए एक tail spike समय में दोनों में संरेखित होता है single mean line के पीछे छिपने की बजाय। तीनों पेज अपने dashboard के **observe** सेक्शन में खोजें, प्रत्येक आपके organization को scope किया गया और date range, environment, agent, और session द्वारा filterable।
+एक साझा होवर क्रॉसहेयर हीट-मैप और बैंड को लिंक करता है, ताकि एक टेल स्पाइक समय में दोनों भर में संरेखित हो बजाय एक औसत लाइन के पीछे छिपे। अपने डैशबोर्ड के **observe** सेक्शन में सभी तीन पेज खोजें, प्रत्येक आपके संगठन के लिए स्कोप किया गया और तारीख की रेंज, वातावरण, एजेंट, और सेशन द्वारा फ़िल्टर करने योग्य।
 
-## Models: देखें कि प्रत्येक मॉडल आपको बिल्कुल कितना खर्च करता है
+## मॉडल्स: देखें कि प्रत्येक मॉडल आपको कितना खर्च करता है
 
-Models पेज (ऊपर दिखाया गया है) उन दोनों सवालों का जवाब देता है जो एक बिल हमेशा उठाता है: कौन सा मॉडल, और कितना। shared latency view के ऊपर, यह **per-model token consumption**, **estimated cost**, और **context-window fill** जोड़ता है, ताकि runaway prompt growth और एक upcoming compaction दिखाई दें उससे पहले कि वे आपको आश्चर्यचकित करें।
+मॉडल्स पेज (ऊपर दिखाया गया) दोनों सवालों का जवाब देता है जो एक बिल हमेशा उठाता है: कौन सा मॉडल, और कितना। साझा लेटेंसी दृश्य के शीर्ष पर, यह **प्रति-मॉडल टोकन खपत**, **अनुमानित लागत**, और **कॉन्टेक्स्ट-विंडो भरण** जोड़ता है, ताकि अनियंत्रित प्रॉम्प्ट वृद्धि और आसन्न संपीड़न आपको आश्चर्यचकित करने से पहले दृश्यमान हों।
 
-Failproof AI Observability common model IDs को automatically recognize करता है। यदि कोई window गलत दिखता है, या आप अपना निजी मॉडल चलाते हैं, तो इसे **Settings** में correct करें या add करें, **model context windows** में, और fill readouts follow करते हैं।
+Failproof AI Observability सामान्य मॉडल IDs को स्वचालित रूप से पहचानता है। यदि एक विंडो गलत लगता है, या आप अपना निजी मॉडल चलाते हैं, तो इसे **Settings** में सुधारें या जोड़ें, **model context windows** में, और भरण रीडआउट का पालन करें।
 
-## Tools: slow को broken से अलग करें
+## टूल्स: धीमे को टूटे हुए से अलग करें
 
-एक tool call slow हो सकता है, या यह quietly fail हो सकता है, और आप चाहते हैं कि यह कुछ सेकंड में पता चले, logs में खोदने के बाद नहीं।
+एक टूल कॉल धीमी हो सकती है, या वह चुप्पी से विफल हो सकती है, और आप सेकंड में जानना चाहते हैं कि कौन सी है, लॉग के माध्यम से खोदने के बाद नहीं।
 
-![The Tools page showing the shared latency heat-map and percentile band beside a success and failure breakdown and a tool-distribution bar](/agenteye/images/tools.png)
-*The Tools page: same heat-map और percentile band, plus एक success और failure breakdown और एक tool-distribution bar।*
+![टूल्स पेज जो साझा लेटेंसी हीट-मैप और पर्सेंटाइल बैंड को सफलता और विफलता ब्रेकडाउन और एक टूल-डिस्ट्रिब्यूशन बार के साथ दिखाता है](/agenteye/images/tools.png)
+*टूल्स पेज: एक ही हीट-मैप और पर्सेंटाइल बैंड, साथ ही सफलता और विफलता ब्रेकडाउन और एक टूल-डिस्ट्रिब्यूशन बार।*
 
-Shared latency view के साथ, Tools पेज एक **success और failure breakdown** और एक **tool-distribution bar** जोड़ता है, ताकि आप एक नज़र में देखें कि आप सबसे ज़्यादा किन tools पर depend करते हैं और कौन से आपके error budget को खा रहे हैं।
+साझा लेटेंसी दृश्य के साथ-साथ, टूल्स पेज एक **सफलता और विफलता ब्रेकडाउन** और एक **टूल-डिस्ट्रिब्यूशन बार** जोड़ता है, ताकि आप एक नज़र में देख सकें कि आप किन टूल्स पर सबसे अधिक निर्भर हैं और कौन से आपकी त्रुटि बजट खा रहे हैं।
 
-## Hooks: exact hook और trigger को pinpoint करें
+## हुक्स: बिल्कुल सही हुक और ट्रिगर को इंगित करें
 
-जब एक lifecycle hook एक run को drag करता है, "hooks are slow" कुछ ऐसा नहीं है जिस पर आप कार्य कर सकते हैं। Hooks page आपको उस तक ले जाता है जो मायने रखता है।
+जब एक लाइफसाइकल हुक एक रन को खींचता है, "हुक्स धीमे हैं" कुछ ऐसा नहीं है जिस पर आप कार्य कर सकते हैं। हुक्स पेज आपको उस तक पहुंचाता है जो मायने रखता है।
 
-![The Hooks page showing latency broken down by hook name and trigger event over the shared heat-map and percentile band](/agenteye/images/hooks.png)
-*The Hooks page: latency broken down by hook name और trigger event के द्वारा।*
+![हुक्स पेज जो साझा हीट-मैप और पर्सेंटाइल बैंड पर हुक नाम और ट्रिगर इवेंट द्वारा विभाजित लेटेंसी दिखाता है](/agenteye/images/hooks.png)
+*हुक्स पेज: हुक नाम और ट्रिगर इवेंट द्वारा विभाजित लेटेंसी।*
 
-Same latency heat-map और percentile band के ऊपर, Hooks page activity को **hook name** और **trigger event** द्वारा break down करता है, ताकि आप उस single hook और single event तक पहुंचें जिसे attention की ज़रूरत है।
+एक ही लेटेंसी हीट-मैप और पर्सेंटाइल बैंड के ऊपर, हुक्स पेज गतिविधि को **हुक नाम** और **ट्रिगर इवेंट** द्वारा विभाजित करता है, ताकि आप उस एकल हुक और एकल इवेंट पर उतरें जिसे ध्यान देने की आवश्यकता है।
 
 ## संबंधित
 
-- [Event stream](/hi/agenteye/event-stream): हर event का live, colour-coded trail।
-- [Sessions](/hi/agenteye/sessions): events को एक row per run में roll up करें और उसके execution graph को open करें।
-- [Error tracking](/hi/agenteye/error-tracking): dashboard द्वारा red पेंट की गई हर चीज़ के लिए एक triage surface।
-- [Dashboards](/hi/agenteye/dashboards): अपने fleet में roll-up views।
+- [Event stream](/hi/agenteye/event-stream): हर इवेंट की लाइव, रंग-कोडित ट्रेल।
+- [Sessions](/hi/agenteye/sessions): इवेंट्स को एक रन प्रति पंक्ति में रोल करें और इसका निष्पादन ग्राफ खोलें।
+- [Error tracking](/hi/agenteye/error-tracking): सब कुछ के लिए एक ट्रिएज सतह जो डैशबोर्ड लाल पेंट करता है।
+- [Dashboards](/hi/agenteye/dashboards): आपके पूरे बेड़े में रोल-अप दृश्य।

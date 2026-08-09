@@ -1,23 +1,22 @@
 ---
----
 title: Yerleşik İlkeler
 description: "Aracı başarısızlık modlarını yakalayan 39 yerleşik ilke"
 icon: shield
 ---
 
-failproofai, yaygın aracı başarısızlık modlarını yakalayan 39 yerleşik ilke ile birlikte gelir. Her ilke, belirli bir kancı olay türü ve araç adı üzerinde çalışır. On dokuz ilke, davranışını kod yazmadan ayarlamanıza izin veren parametreleri kabul eder. Beş iş akışı ilkesi, Claude'un durması öncesinde bir commit → push → PR → CI boru hattını zorunlu kılar.
+failproofai, yaygın aracı başarısızlık modlarını yakalayan 39 yerleşik ilke ile birlikte gelir. Her ilke belirli bir hook olay türü ve araç adı üzerinde etkinleşir. On dokuz ilke, kodu yazmadan davranışlarını ayarlamanıza izin veren parametreleri kabul eder. Beş iş akışı ilkesi, Claude'un durmadan önce commit → push → PR → CI ardışık düzenini zorunlu kılar.
 
 ---
 
 ## Genel Bakış
 
-İlkeler kategorilere ayrılmıştır:
+İlkeler kategorilere ayrılır:
 
-| Kategori | İlkeler | Kancı türü |
+| Kategori | İlkeler | Hook türü |
 |----------|---------|-----------|
 | [Tehlikeli komutlar](#tehlikeli-komutlar) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
 | [Altyapı komutları](#altyapı-komutları) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
-| [Sırlar (temizleyiciler)](#sırlar-temizleyiciler) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
+| [Sırlar (sanitizer'lar)](#sırlar-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
 | [Ortam](#ortam) | block-env-files, protect-env-vars | PreToolUse |
 | [Dosya erişimi](#dosya-erişimi) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
@@ -26,15 +25,15 @@ failproofai, yaygın aracı başarısızlık modlarını yakalayan 39 yerleşik 
 | [Paket yöneticileri](#paket-yöneticileri) | prefer-package-manager | PreToolUse |
 | [İş akışı](#iş-akışı) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
-- **`block-`** — aracının devam etmesini durdurun.
-- **`warn-`** — aracıya kendini düzeltebilmesi için ek bağlam sağlayın.
-- **`sanitize-`** — araç çıktısından hassas verileri aracı görmeden önce temizleyin.
+- **`block-`** — aracının devam etmesini durdur.
+- **`warn-`** — aracıya kendi kendini düzeltmesi için ek bağlam sağla.
+- **`sanitize-`** — araç çıktısından aracı görmeden önce hassas verileri temizle.
 
 ### Ad Alanları
 
-Her ilke bir `<namespace>/<name>` yuvasında bulunur. Yerleşik ilkeler **`failproofai/`** ad alanına aittir — örneğin, `failproofai/sanitize-jwt`. Ad alanı, benzer kısa adlara sahip özel veya üçüncü taraf ilkeleri yüklerken çakışmaları önler.
+Her ilke bir `<namespace>/<name>` yuvasında bulunur. Yerleşik ilkeler **`failproofai/`** ad alanına aittir — örneğin, `failproofai/sanitize-jwt`. Ad alanı, benzer kısa adlara sahip özel veya üçüncü taraf ilkeler yüklediğinizde çakışmaları önler.
 
-Yapılandırmanızda yerleşik bir ilkeye kısa adı veya nitelikli adı ile başvurabilirsiniz; her iki form de aynı ilkeye çözümlenir:
+Yapılandırmanızda yerleşik bir ilkeye kısa adıyla veya tam nitelendirilmiş adıyla başvurabilirsiniz; her iki form da aynı ilkeye çözümlenir:
 
 ```json
 {
@@ -45,39 +44,39 @@ Yapılandırmanızda yerleşik bir ilkeye kısa adı veya nitelikli adı ile ba�
 }
 ```
 
-Bir ad `/` içermiyorsa, failproofai bunu varsayılan ad alanı `failproofai`'ye ait olarak işler. Zaten `/` içeren adlar (ör. `myorg/foo`, `custom/my-hook`) olduğu gibi tutulur.
-- **`require-`** — koşullar karşılanana kadar Stop olayını engelle.
+Bir adın `/` içermemesi durumunda, failproofai bunu `failproofai` varsayılan ad alanına ait olarak işler. Zaten `/` içeren adlar (ör. `myorg/foo`, `custom/my-hook`) olduğu gibi tutulur.
+- **`require-`** — koşullar yerine getirilene kadar Stop olayını engelle.
 
 ---
 
 <Tip>
-Her ilke, `policyParams` içinde isteğe bağlı bir `hint` alanını destekler. İpucu, Claude'un gördüğü deny veya instruct mesajına eklenir ve ilke kodunu değiştirmeden uygulanabilir rehberlik sağlar. Yerleşik, özel ve konvansiyon ilkeleriyle çalışır. Ayrıntılar için [Configuration → hint](/tr/configuration#hint-cross-cutting) bölümüne bakın.
+Her ilke `policyParams` içinde isteğe bağlı bir `hint` alanını destekler. İpucu, Claude'un gördüğü deny veya instruct mesajına eklenir ve ilke kodunu değiştirmeden işlem yapılabilir rehberlik sağlar. Yerleşik, özel ve kural ilkeleri ile çalışır. Ayrıntılar için [Yapılandırma → hint](/tr/configuration#hint-cross-cutting) bölümüne bakın.
 </Tip>
 
 ---
 
 ## Tehlikeli komutlar
 
-Aracıları geri almakması zor olan veya konak sistemine zarar verebilecek işlemler çalıştırmaktan koruyun.
+Aracıların geri almayı zor olan veya ana sistem hasarına neden olabilecek işlemleri çalıştırmasını önleyin.
 
 ### `block-sudo`
 
 **Olay:** PreToolUse (Bash)  
 **Varsayılan:** Herhangi bir `sudo` veya `doas` komutunu reddeder.
 
-Bir yükseltme ikili programını **komut konumunda** çalıştıran bir komutu engeller. Eşleştirme metinsel değil yapısaldır: komut bir kabuğun böleceği şekilde segmentlere ayrılır, ön ek atamaları (`FOO=bar`), yönlendirmeler ve çalıştırıcılar bayraklarıyla (`env`, `nohup`, `timeout`, `xargs`, `sh -c`, …) ayrılır ve sonuçta elde edilen ikili **basename** ile karşılaştırılır. `/usr/bin/sudo`, `env sudo`, `timeout 5 sudo`, `"sudo"`, `\sudo` ve `bash -c "sudo …"` hepsi reddedilir; `doas` da aynı yetenek başka bir adla kabul edilir.
+Komut konumunda bir yükseltme ikili dosyasını çalıştıran komutu engeller. Eşleştirme metinsel değil yapısaldır: komut bir kabuğun ayırması şekilde segmentlere ayrılır, ön atamalar (`FOO=bar`), yönlendirmeler ve bayraklı çalıştırıcılar (`env`, `nohup`, `timeout`, `xargs`, `sh -c`, …) üzerinden geçilir ve sonuç ikili dosyası **basename** ile karşılaştırılır. Bu nedenle `/usr/bin/sudo`, `env sudo`, `timeout 5 sudo`, `"sudo"`, `\sudo` ve `bash -c "sudo …"` hepsi reddedilir ve `doas` aynı yetenek olarak farklı bir adla işlem görür.
 
-Komutu herhangi bir yerde görünüyor değil komut konumunda çapaladığından, yalnızca söz edilişi olan komutlarda ateşlenmez — `grep -r sudo /etc`, `cat /etc/sudoers`, `git commit -m "fix sudo handling"` veya sözcüğü içeren bir `grep` alternatifi normalde çalışır.
+Komutu herhangi bir yerde görünen sözcüğe değil komut konumuna bağlamlandırdığı için, yalnızca sözü geçen komutlar için tetiklenmez — `grep -r sudo /etc`, `cat /etc/sudoers`, `git commit -m "fix sudo handling"` veya sözcük içeren bir `grep` alternasyonu normal olarak çalışır.
 
 <Warning>
-Bu açık girişimi engeller; sınıfı kapatmaz. Keyfi bir kabuğu çalıştırabilen bir aracı, dolaylı olarak yükseltmeye ulaşabilir — bir değişken (`S=sudo; $S …`), base64 kod çözmeli bir boru, veya diskte bir sarmalayıcı komut aracılığıyla — çünkü tek bir komut dizesinin hiçbir incelemesi bunu takip edemez. Bunu hatalar ve gündelik yükseltme karşısında bir koruma olarak değerlendirin, kararlı bir aracıya karşı güvenlik sınırı olarak değil. Gerçek bir sınır kabuğun altında uygulanmalıdır.
+Bu açık denemesini durdurur; sınıfını kapatmaz. Rastgele kabuk çalıştırabilen bir aracı, yine de yükseltmeye dolaylı olarak ulaşabilir — bir değişken (`S=sudo; $S …`), base64 çözülen bir boru veya diskte bulunan bir sarmalayıcı betik aracılığıyla — çünkü tek bir komut dizesinin incelenmesi bunları takip edemez. Bunu hata ve tesadüfi yükseltmeye karşı bir korkuluk olarak değerlendirin, kararlı bir aracıya karşı güvenlik sınırı olarak değil. Gerçek bir sınırın kabuğun altında uygulanması gerekir.
 </Warning>
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `allowPatterns` | `string[]` | `[]` | İzin verilen tam komut ön ekleri. Her giriş ayrıştırılmış argv jetonlarına karşı eşleştirilir. |
+|-------|-----|-----------|---------|
+| `allowPatterns` | `string[]` | `[]` | İzin verilen tam komut önekleri. Her giriş ayrıştırılmış argv simgeleri ile eşleştirilir. |
 
 **Örnek:**
 
@@ -91,10 +90,10 @@ Bu açık girişimi engeller; sınıfı kapatmaz. Keyfi bir kabuğu çalıştır
 }
 ```
 
-Bu yapılandırmayla, `sudo systemctl status nginx` izin verilir, ancak `sudo rm /etc/hosts` reddedilir.
+Bu yapılandırmayla `sudo systemctl status nginx` izin verilir, ancak `sudo rm /etc/hosts` reddedilir.
 
 <Note>
-Desenler ham komut dizesi değil, ayrıştırılmış jetonlara karşı eşleştirilir. Bu, ek kabuğun operatörleriyle bypass'ı önler (ör. `sudo systemctl status x; rm -rf /`, `sudo systemctl status *` ile eşleşmez).
+Desenler ham komut dizesine değil ayrıştırılmış simgelere karşı eşleştirilir. Bu, ek kabuk operatörleri (ör. `sudo systemctl status x; rm -rf /` `sudo systemctl status *` ile eşleşmez) aracılığıyla bypass'ı önler.
 </Note>
 
 ---
@@ -102,13 +101,13 @@ Desenler ham komut dizesi değil, ayrıştırılmış jetonlara karşı eşleşt
 ### `block-rm-rf`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** `rm -rf`, `rm -fr` ve benzeri özyinelemeli silme formlarını reddeder.
+**Varsayılan:** `rm -rf`, `rm -fr` ve benzer özyinelemeli silme formlarını reddeder.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `allowPaths` | `string[]` | `[]` | Özyinelemeli olarak silmek için güvenli yollar (ör. `/tmp`). |
+|-------|-----|-----------|---------|
+| `allowPaths` | `string[]` | `[]` | Özyinelemeli silme işlemi için güvenli olan yollar (ör. `/tmp`). |
 
 **Örnek:**
 
@@ -127,7 +126,7 @@ Desenler ham komut dizesi değil, ayrıştırılmış jetonlara karşı eşleşt
 ### `block-curl-pipe-sh`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** `curl <url> | bash`, `curl <url> | sh`, `wget <url> | bash` ve benzeri desenleri reddeder.
+**Varsayılan:** `curl <url> | bash`, `curl <url> | sh`, `wget <url> | bash` ve benzer desenleri reddeder.
 
 Parametresi yok.
 
@@ -136,7 +135,7 @@ Parametresi yok.
 ### `block-failproofai-commands`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** failproofai'yi kaldıracak veya devre dışı bırakacak komutları reddeder (ör. `npm uninstall failproofai`, `failproofai policies --uninstall`).
+**Varsayılan:** failproofai'ı kaldıracak veya devre dışı bırakacak komutları reddeder (ör. `npm uninstall failproofai`, `failproofai policies --uninstall`).
 
 Parametresi yok.
 
@@ -145,11 +144,11 @@ Parametresi yok.
 ### `block-self-pause`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** `failproofai config --pause`'u reddeder, bu da bir oturumun uygulanmasını askıya alır. Duraklatma bir insan kararıdır — bunu çalıştırabilen bir aracı tek bir komutla diğer tüm ilkeleri kapatabilir.
+**Varsayılan:** `failproofai config --pause` komutunu reddeder; bu komut bir oturum için uygulamayı askıya alır. Duraklatma bir insan kararıdır — bunu çalıştırabilen bir aracı tek bir komutla diğer tüm ilkeleri kapatabilir.
 
-Amaçlı olarak [`block-failproofai-commands`](#block-failproofai-commands) öğesinden daha dar, ve tarafından kapsanmamıştır: bu ilke komut sınırında çapa yaptığından, `npx -y failproofai config --pause` bunu eşleştirmez ve geniş olması nedeniyle genellikle kapatılır, böylece aracılar `failproofai audit` çalıştırabiliyor. `--resume` ve `--status` izin verilir — hiçbiri uygulamayı kaldırmaz.
+[`block-failproofai-commands`](#block-failproofai-commands) kasten daha dar ve bunu kapsanmaz: bu ilke komut sınırına bağlanır, bu nedenle `npx -y failproofai config --pause` bunu eşleştirmez ve geniş olduğu için çoğunlukla kapatılır, böylece aracılar `failproofai audit` çalıştırabilir. `--resume` ve `--status` izin verilir — hiçbiri uygulamayı kaldırmaz.
 
-Bu doğrudan girişimi durduruyor, tüm sınıfı değil: bir aracı bir diğer ad veya sarmalayıcı komut aracılığıyla aynı duruma ulaşabilir. Tam olarak kapatmak, duraklatmanın bir araç çağrısından tamamen ulaşılamaz olmasını gerektirir.
+Bu doğrudan denemesini durdurur, tüm sınıfını değil: aracı yine de bir takma ad veya sarmalayıcı betik aracılığıyla aynı duruma ulaşabilir. Tamamen kapatmak için duraklatmanın bir araç çağrısından tamamen erişilemez olması gerekir.
 
 Parametresi yok.
 
@@ -157,20 +156,20 @@ Parametresi yok.
 
 ## Altyapı komutları
 
-Kodlama aracılarını altyapı CLIleri çalıştırmaktan veya CI/CD boru hatlarını tetiklemekten durdurun. Bu kategorideki tüm ilkeler **seçme katılımı** (`defaultEnabled: false`) — meşru `kubectl`, `terraform` vb. çağırmak için ihtiyaç duyan aracılar ilke etkinleştirilmediği sürece kesintiye uğramayacaktır. Etkinleştirildiğinde, eşleşen CLInin her bir çağırılması, komut `allowPatterns` içindeki bir girdiye karşı eşleşmediği sürece reddedilir.
+Kodlama aracılarının altyapı CLI'lerini çalıştırmasını veya CI/CD ardışık düzenlerini tetiklemesini durdurun. Bu kategorideki tüm ilkeler **opt-in** (`defaultEnabled: false`) — `kubectl`, `terraform` vb. çağrılarının meşru bir şekilde gerekenler kesinlikle bu ilkeyi devre dışı bırakmadığı sürece kesintiye uğramayacaktır. Etkinleştirildiğinde, eşleşen CLI'nin her çağrısı komut bir `allowPatterns` girişiyle eşleşmedikçe reddedilir.
 
-Desen dilbilgisi [`block-sudo`](#block-sudo) ile aynıdır: jetonlar ayrıştırılmış argv'ye karşı eşleştirilir, `*` tek bir jeton için bir joker kartıdır ve gömülü kabuğun operatörleri (`&&`, `||`, `|`, `;`) veya gömülü kabuğun metakarakterleri olan jetonlar içeren herhangi bir komut, injeksiyon bypass'larını önlemek için allowlist eşleştirmesinden önce reddedilir.
+Desen dilbilgisi [`block-sudo`](#block-sudo) ile aynıdır: simgeleler ayrıştırılmış argv ile eşleştirilir, `*` bir simge için joker karakterdir ve hiçbir enjeksiyon bypass'ını önlemek için bağlantı bypass'ından kaçınmak için herhangi bir bağlantısız kabuk operatörü (`&&`, `||`, `|`, `;`) veya katıştırılmış kabuk üst karakterleri olan bir simge içeren komut izin listesi eşleşmesinden önce reddedilir.
 
 ### `block-kubectl`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Herhangi bir `kubectl` çağırılmasını reddeder.
+**Varsayılan:** Herhangi bir `kubectl` çağrısını reddeder.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `allowPatterns` | `string[]` | `[]` | İzin verilen kubectl komut ön ekleri. |
+|-------|-----|-----------|---------|
+| `allowPatterns` | `string[]` | `[]` | İzin verilen kubectl komut önekleri. |
 
 **Örnek:**
 
@@ -184,20 +183,20 @@ Desen dilbilgisi [`block-sudo`](#block-sudo) ile aynıdır: jetonlar ayrıştır
 }
 ```
 
-Bu yapılandırmayla, `kubectl get pods` izin verilir, ancak `kubectl apply -f deploy.yaml` reddedilir.
+Bu yapılandırmayla `kubectl get pods` izin verilir ancak `kubectl apply -f deploy.yaml` reddedilir.
 
 ---
 
 ### `block-terraform`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Herhangi bir `terraform` veya `tofu` (OpenTofu) çağırılmasını reddeder.
+**Varsayılan:** Herhangi bir `terraform` veya `tofu` (OpenTofu) çağrısını reddeder.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `allowPatterns` | `string[]` | `[]` | İzin verilen terraform/tofu komut ön ekleri. |
+|-------|-----|-----------|---------|
+| `allowPatterns` | `string[]` | `[]` | İzin verilen terraform/tofu komut önekleri. |
 
 **Örnek:**
 
@@ -216,13 +215,13 @@ Bu yapılandırmayla, `kubectl get pods` izin verilir, ancak `kubectl apply -f d
 ### `block-aws-cli`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Herhangi bir `aws` CLI çağırılmasını reddeder.
+**Varsayılan:** Herhangi bir `aws` CLI çağrısını reddeder.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `allowPatterns` | `string[]` | `[]` | İzin verilen aws CLI komut ön ekleri. |
+|-------|-----|-----------|---------|
+| `allowPatterns` | `string[]` | `[]` | İzin verilen aws CLI komut önekleri. |
 
 **Örnek:**
 
@@ -241,13 +240,13 @@ Bu yapılandırmayla, `kubectl get pods` izin verilir, ancak `kubectl apply -f d
 ### `block-gcloud`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Herhangi bir `gcloud` (Google Cloud) CLI çağırılmasını reddeder.
+**Varsayılan:** Herhangi bir `gcloud` (Google Cloud) CLI çağrısını reddeder.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `allowPatterns` | `string[]` | `[]` | İzin verilen gcloud komut ön ekleri. |
+|-------|-----|-----------|---------|
+| `allowPatterns` | `string[]` | `[]` | İzin verilen gcloud komut önekleri. |
 
 **Örnek:**
 
@@ -266,13 +265,13 @@ Bu yapılandırmayla, `kubectl get pods` izin verilir, ancak `kubectl apply -f d
 ### `block-az-cli`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Herhangi bir `az` (Azure) CLI çağırılmasını reddeder.
+**Varsayılan:** Herhangi bir `az` (Azure) CLI çağrısını reddeder.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `allowPatterns` | `string[]` | `[]` | İzin verilen az CLI komut ön ekleri. |
+|-------|-----|-----------|---------|
+| `allowPatterns` | `string[]` | `[]` | İzin verilen az CLI komut önekleri. |
 
 **Örnek:**
 
@@ -291,13 +290,13 @@ Bu yapılandırmayla, `kubectl get pods` izin verilir, ancak `kubectl apply -f d
 ### `block-helm`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Herhangi bir `helm` çağırılmasını reddeder.
+**Varsayılan:** Herhangi bir `helm` çağrısını reddeder.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `allowPatterns` | `string[]` | `[]` | İzin verilen helm komut ön ekleri. |
+|-------|-----|-----------|---------|
+| `allowPatterns` | `string[]` | `[]` | İzin verilen helm komut önekleri. |
 
 **Örnek:**
 
@@ -316,7 +315,7 @@ Bu yapılandırmayla, `kubectl get pods` izin verilir, ancak `kubectl apply -f d
 ### `block-gh-pipeline`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Durumu değiştirecek veya boru hatlarını tetikleyecek aşağıdaki `gh` CLI alt komutlarını reddeder:
+**Varsayılan:** Durumu değiştiren veya ardışık düzenleri tetikleyen aşağıdaki `gh` CLI alt komutlarını reddeder:
 
 - `gh workflow run`, `gh workflow enable`, `gh workflow disable`
 - `gh run rerun`, `gh run cancel`
@@ -325,13 +324,13 @@ Bu yapılandırmayla, `kubectl get pods` izin verilir, ancak `kubectl apply -f d
 - `gh cache delete`
 - `gh secret set`, `gh secret delete`
 
-`gh pr view`, `gh pr list`, `gh run list`, `gh release view` ve `gh api repos/.../...` gibi salt okunur `gh` alt komutları bu ilke tarafından eşleştirilmez — iş akışı denetlemeleri (failproofai'nin kendi `require-ci-green-before-stop` dahil) için rutin olarak gereklidir.
+`gh pr view`, `gh pr list`, `gh run list`, `gh release view` ve `gh api repos/.../...` gibi salt okunur `gh` alt komutları bu ilke tarafından eşleştirilmez — iş akışı denetimleri (failproofai'nın kendi `require-ci-green-before-stop` dahil) için rutin olarak gereklidir.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `allowPatterns` | `string[]` | `[]` | Aksi takdirde reddedilecek olsalar dahi izin verilecek spesifik komut dosyası çağırılmaları. |
+|-------|-----|-----------|---------|
+| `allowPatterns` | `string[]` | `[]` | Aksi takdirde reddedilecek olan belirli komut dosyası çağrışlarına izin vermek için. |
 
 **Örnek:**
 
@@ -347,14 +346,14 @@ Bu yapılandırmayla, `kubectl get pods` izin verilir, ancak `kubectl apply -f d
 
 ---
 
-## Sırlar (temizleyiciler)
+## Sırlar (sanitizers)
 
-Aracıları kimlik bilgilerini bağlamlarına veya çıktılarına sızdırmaktan koruyun. Temizleyici ilkeler **PostToolUse** olaylarında ateşlenir. Claude bir Bash komutu çalıştırdığında, bir dosyayı okuyduğunda veya herhangi bir araç çağırdığında, bu ilkeler çıktıyı Claude'a döndürülmeden önce inceler. Bir sır deseni algılanırsa, ilke çıktının geri iletilmesini önleyen bir deny kararı döndürür.
+Aracıların kimlik bilgilerini içeriklerine veya çıktılarına sızmasını durdurun. Sanitizer ilkeleri **PostToolUse** olaylarında tetiklenir. Claude bir Bash komutu çalıştırdığında, bir dosya okuyabilir veya herhangi bir araç çağrıdığında, bu ilkeler çıktıyı Claude'a geri döndürülmeden önce inceler. Bir sır deseni algılanırsa, ilke çıktının geri döndürülmesini önleyen bir deny kararı verir.
 
 ### `sanitize-jwt`
 
 **Olay:** PostToolUse (tüm araçlar)  
-**Varsayılan:** JWT jetonlarını reddeder (`.` ile ayrılan üç base64url segmenti).
+**Varsayılan:** JWT simgelerini (üç base64url segmenti `.` ile ayrılmış) temizler.
 
 Parametresi yok.
 
@@ -363,13 +362,13 @@ Parametresi yok.
 ### `sanitize-api-keys`
 
 **Olay:** PostToolUse (tüm araçlar)  
-**Varsayılan:** Yaygın API anahtar biçimlerini reddeder: Anthropic (`sk-ant-`), OpenAI (`sk-`), GitHub PAT'ler (`ghp_`), AWS erişim anahtarları (`AKIA`), Stripe anahtarları (`sk_live_`, `sk_test_`), ve Google API anahtarları (`AIza`).
+**Varsayılan:** Yaygın API anahtar biçimlerini temizler: Anthropic (`sk-ant-`), OpenAI (`sk-`), GitHub PAT'leri (`ghp_`), AWS erişim anahtarları (`AKIA`), Stripe anahtarları (`sk_live_`, `sk_test_`) ve Google API anahtarları (`AIza`).
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `additionalPatterns` | `{ regex: string; label: string }[]` | `[]` | Sır olarak işlenecek ek regex desenleri. |
+|-------|-----|-----------|---------|
+| `additionalPatterns` | `{ regex: string; label: string }[]` | `[]` | Sır olarak işlem görmek için ek regex desenleri. |
 
 **Örnek:**
 
@@ -378,8 +377,8 @@ Parametresi yok.
   "policyParams": {
     "sanitize-api-keys": {
       "additionalPatterns": [
-        { "regex": "myco_[A-Za-z0-9]{32}", "label": "MyCo iç API anahtarı" },
-        { "regex": "pat_[0-9a-f]{40}", "label": "İç PAT" }
+        { "regex": "myco_[A-Za-z0-9]{32}", "label": "MyCo internal API key" },
+        { "regex": "pat_[0-9a-f]{40}", "label": "Internal PAT" }
       ]
     }
   }
@@ -391,7 +390,7 @@ Parametresi yok.
 ### `sanitize-connection-strings`
 
 **Olay:** PostToolUse (tüm araçlar)  
-**Varsayılan:** Gömülü kimlik bilgileri içeren veritabanı bağlantı dizelerini reddeder (ör. `postgresql://user:password@host/db`).
+**Varsayılan:** Katıştırılmış kimlik bilgileri içeren veritabanı bağlantı dizelerini temizler (ör. `postgresql://user:password@host/db`).
 
 Parametresi yok.
 
@@ -400,7 +399,7 @@ Parametresi yok.
 ### `sanitize-private-key-content`
 
 **Olay:** PostToolUse (tüm araçlar)  
-**Varsayılan:** PEM bloklarını reddeder (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN RSA PRIVATE KEY-----`, vb.).
+**Varsayılan:** PEM blokları (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN RSA PRIVATE KEY-----` vb.) temizler.
 
 Parametresi yok.
 
@@ -409,7 +408,7 @@ Parametresi yok.
 ### `sanitize-bearer-tokens`
 
 **Olay:** PostToolUse (tüm araçlar)  
-**Varsayılan:** `Authorization: Bearer <token>` başlıklarını reddeder, burada jeton 20 veya daha fazla karakterdir.
+**Varsayılan:** `Authorization: Bearer <token>` üstbilgilerini temizler; burada simge 20 veya daha fazla karakterdir.
 
 Parametresi yok.
 
@@ -417,14 +416,14 @@ Parametresi yok.
 
 ## Ortam
 
-Hassas ortam yapılandırmasını aracılar tarafından okunmaktan veya açığa çıkarılmaktan koruyun.
+Aracılar tarafından okunan veya açığa çıkarılan hassas ortam yapılandırmasını koruyun.
 
 ### `block-env-files`
 
 **Olay:** PreToolUse (Bash, Read)  
-**Varsayılan:** `cat .env`, `.env` dosya yolu ile Read araç çağrıları vb. aracılığıyla `.env` dosyalarını okumasını reddeder.
+**Varsayılan:** `cat .env`, dosya yolu olarak `.env` ile araçları oku vb. aracılığıyla `.env` dosyalarını okumayı reddeder.
 
-`.envrc` veya diğer ortam-bitişik dosyaları engellemiyor - yalnızca tam olarak `.env` adlı dosyaları engeller.
+`.envrc` veya diğer ortam bitişik dosyalarını engellemiyor — yalnızca tam olarak `.env` adındaki dosyalar.
 
 Parametresi yok.
 
@@ -441,18 +440,18 @@ Parametresi yok.
 
 ## Dosya erişimi
 
-Aracıları proje sınırları içinde ve hassas dosyalardan uzak tutun.
+Aracıları proje sınırları içinde çalışmaya ve hassas dosyalardan uzak tutun.
 
 ### `block-read-outside-cwd`
 
 **Olay:** PreToolUse (Read, Bash)  
-**Varsayılan:** Proje kökü dışındaki dosyaları okumasını reddeder. Sınır, `CLAUDE_PROJECT_DIR` (Claude Code tarafından oturum başına bir kez ayarlanır), bu değişken ayarlanmadığında oturumun geçerli çalışma dizinine fallback olur. Canlı `cwd` yerine proje kökü kullanmak, Claude bir alt dizine `cd` girse bile sınırın kararlı kalması anlamına gelir.
+**Varsayılan:** Proje kökünün dışındaki dosyaları okumayı reddeder. Sınır `CLAUDE_PROJECT_DIR` (oturum başına bir kez Claude Code tarafından ayarlanır) ve bu değişken ayarlanmadığında oturumun geçerli çalışma dizinine geri döner. Canlı `cwd` yerine proje kökü kullanmak, sınırın Claude `cd` yaptıktan sonra bile kararlı kalmasını sağlar.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `allowPaths` | `string[]` | `[]` | Proje kökü dışında olsa dahi izin verilen mutlak yol ön ekleri. |
+|-------|-----|-----------|---------|
+| `allowPaths` | `string[]` | `[]` | Proje kökünün dışında olsa bile izin verilen mutlak yol önekleri. |
 
 **Örnek:**
 
@@ -471,13 +470,13 @@ Aracıları proje sınırları içinde ve hassas dosyalardan uzak tutun.
 ### `block-secrets-write`
 
 **Olay:** PreToolUse (Write, Edit)  
-**Varsayılan:** Özel anahtarlar ve sertifikalar için yaygın olarak kullanılan dosyalara yazmaları reddeder: `id_rsa`, `id_ed25519`, `*.key`, `*.pem`, `*.p12`, `*.pfx`.
+**Varsayılan:** Özel anahtarlar ve sertifikalar için yaygın olarak kullanılan dosyalara yazımı reddeder: `id_rsa`, `id_ed25519`, `*.key`, `*.pem`, `*.p12`, `*.pfx`.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `additionalPatterns` | `string[]` | `[]` | Bloke edilecek ek dosya adı desenleri (glob tarzı). |
+|-------|-----|-----------|---------|
+| `additionalPatterns` | `string[]` | `[]` | Engellenmek üzere ek dosya adı desenleri (glob tarzı). |
 
 **Örnek:**
 
@@ -495,18 +494,18 @@ Aracıları proje sınırları içinde ve hassas dosyalardan uzak tutun.
 
 ## Git
 
-Yanlışlıkla oluşan push'ları, zorla push'ları ve geri almakları zor olan dal hatalarını önleyin.
+Tesadüfi itiş, kuvvet itiş ve geri almayı zor olan dal hataları önleyin.
 
 ### `block-push-master`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** `git push origin main` ve `git push origin master` öğesini reddeder.
+**Varsayılan:** `git push origin main` ve `git push origin master` komutlarını reddeder.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `protectedBranches` | `string[]` | `["main", "master"]` | Doğrudan push'a izin verilmeyen dal adları. |
+|-------|-----|-----------|---------|
+| `protectedBranches` | `string[]` | `["main", "master"]` | Doğrudan itiş yapılamayan dal adları. |
 
 **Örnek:**
 
@@ -521,7 +520,7 @@ Yanlışlıkla oluşan push'ları, zorla push'ları ve geri almakları zor olan 
 ```
 
 <Tip>
-Tüm dallara push'a izin vermek için (bu ilkeyi `enabledPolicies` öğesinden kaldırmadan etkili bir şekilde devre dışı bırakmak için), `protectedBranches: []` öğesini ayarlayın.
+Tüm dallara itişe izin vermek için (bu ilkeyi `enabledPolicies` kaldırmadan etkili bir şekilde devre dışı bırakmak için) `protectedBranches: []` ayarlayın.
 </Tip>
 
 ---
@@ -529,28 +528,28 @@ Tüm dallara push'a izin vermek için (bu ilkeyi `enabledPolicies` öğesinden k
 ### `block-work-on-main`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** `git commit`, `git merge`, `git rebase` ve `git cherry-pick` öğesini çalışma ağacı `main` veya `master` üzerindeyken reddeder. Dal oluşturma ve değiştirme (`git checkout`, `git checkout -b`, `git switch`, `git switch -c`) etkilenmez.
+**Varsayılan:** Çalışma ağacı `main` veya `master` üzerinde iken `git commit`, `git merge`, `git rebase` ve `git cherry-pick` komutlarını reddeder. Dal oluşturma ve değiştirme (`git checkout`, `git checkout -b`, `git switch`, `git switch -c`) etkilenmez.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `protectedBranches` | `string[]` | `["main", "master"]` | Commit/merge/rebase/cherry-pick'in reddedildiği dal adları. |
+|-------|-----|-----------|---------|
+| `protectedBranches` | `string[]` | `["main", "master"]` | commit/merge/rebase/cherry-pick komutlarının reddedildiği dal adları. |
 
 ---
 
 ### `block-force-push`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** `git push --force` ve `git push -f` öğesini reddeder.
+**Varsayılan:** `git push --force` ve `git push -f` komutlarını reddeder.
 
-İlkeye özgü parametresi yok. Alternatifleri önermek için çapraz kesim [`hint`](/tr/configuration#hint-cross-cutting) öğesini kullanın:
+İlkeye özgü parametresi yok. Alternatif önerisinde bulunmak için çapraz kesme [`hint`](/tr/configuration#hint-cross-cutting) kullanın:
 
 ```json
 {
   "policyParams": {
     "block-force-push": {
-      "hint": "Geçerli HEAD'den yeni bir dal oluşturun (ör. `git checkout -b <new-branch>`) ve bunun yerine push'layın."
+      "hint": "Create a new branch from your current HEAD (e.g. `git checkout -b <new-branch>`) and push that instead."
     }
   }
 }
@@ -561,7 +560,7 @@ Tüm dallara push'a izin vermek için (bu ilkeyi `enabledPolicies` öğesinden k
 ### `warn-git-amend`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Claude'u `git commit --amend` çalıştırırken dikkatli ilerlemeye yönlendirir. Komutu engellemiyor.
+**Varsayılan:** `git commit --amend` komutunu çalıştırırken Claude'u dikkatli olmaya talimat verir. Komutu engellemiyor.
 
 Parametresi yok.
 
@@ -570,7 +569,7 @@ Parametresi yok.
 ### `warn-git-stash-drop`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Claude'u `git stash drop` çalıştırmadan önce onaylamaya yönlendirir. Komutu engellemiyor.
+**Varsayılan:** `git stash drop` komutunu çalıştırmadan önce Claude'u doğrulamaya talimat verir. Komutu engellemiyor.
 
 Parametresi yok.
 
@@ -579,7 +578,7 @@ Parametresi yok.
 ### `warn-all-files-staged`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Claude'u `git add -A` veya `git add .` çalıştırırken stageleştirdiği şeyleri gözden geçirmeye yönlendirir. Komutu engellemiyor.
+**Varsayılan:** `git add -A` veya `git add .` komutunu çalıştırırken Claude'u ne evrelendiğini incelemeye talimat verir. Komutu engellemiyor.
 
 Parametresi yok.
 
@@ -587,12 +586,12 @@ Parametresi yok.
 
 ## Veritabanı
 
-Veritabanınıza karşı yürütülmeden önce yıkıcı SQL işlemlerini yakalayın.
+Yıkıcı SQL işlemlerini veritabanınıza karşı çalıştırmadan önce yakalayın.
 
 ### `warn-destructive-sql`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Claude'u `DROP TABLE`, `DROP DATABASE` veya `WHERE` koşulu olmayan `DELETE` içeren SQL çalıştırmadan önce onaylamaya yönlendirir.
+**Varsayılan:** `DROP TABLE`, `DROP DATABASE` veya `WHERE` yan tümcesi olmayan `DELETE` komutlarından önce Claude'u doğrulamaya talimat verir.
 
 Parametresi yok.
 
@@ -601,7 +600,7 @@ Parametresi yok.
 ### `warn-schema-alteration`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Claude'u `ALTER TABLE` deyimlerini çalıştırmadan önce onaylamaya yönlendirir.
+**Varsayılan:** `ALTER TABLE` deyimlerini çalıştırmadan önce Claude'u doğrulamaya talimat verir.
 
 Parametresi yok.
 
@@ -609,18 +608,18 @@ Parametresi yok.
 
 ## Uyarılar
 
-Aracılara potansiyel olarak riskli ama yıkıcı olmayan işlemler hakkında ek bağlam verin.
+Aracılara potansiyel olarak riskli ancak yıkıcı olmayan işlemlerden önce ek bağlam verin.
 
 ### `warn-large-file-write`
 
 **Olay:** PreToolUse (Write)  
-**Varsayılan:** Claude'u 1024 KB'den büyük dosyalar yazmadan önce onaylamaya yönlendirir.
+**Varsayılan:** 1024 KB'den büyük dosyaları yazarken Claude'u doğrulamaya talimat verir.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `thresholdKb` | `number` | `1024` | Uyarının verildiği kilobayt cinsinden dosya boyutu eşiği. |
+|-------|-----|-----------|---------|
+| `thresholdKb` | `number` | `1024` | Uyarının verildiği dosya boyutu eşiği (kilobayt). |
 
 **Örnek:**
 
@@ -635,7 +634,7 @@ Aracılara potansiyel olarak riskli ama yıkıcı olmayan işlemler hakkında ek
 ```
 
 <Note>
-Kancı işleyicisi yükler üzerinde 1 MB stdin sınırını uygular. Bu ilkeyi küçük içerik ile test etmek için `thresholdKb` öğesini 1024'ten çok daha düşük bir değere ayarlayın.
+Hook işleyicisi taşyükler için 1 MB stdin sınırını uygular. Bu ilkeyi küçük içerikle test etmek için `thresholdKb` değerini 1024'ün iyi altında bir değere ayarlayın.
 </Note>
 
 ---
@@ -643,7 +642,7 @@ Kancı işleyicisi yükler üzerinde 1 MB stdin sınırını uygular. Bu ilkeyi 
 ### `warn-package-publish`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Claude'u `npm publish` çalıştırmadan önce onaylamaya yönlendirir.
+**Varsayılan:** `npm publish` komutundan önce Claude'u doğrulamaya talimat verir.
 
 Parametresi yok.
 
@@ -652,7 +651,7 @@ Parametresi yok.
 ### `warn-background-process`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Claude'u `nohup`, `&`, `disown` veya `screen` aracılığıyla arka plan işlemleri başlatırken dikkatli olmasını yönlendirir.
+**Varsayılan:** `nohup`, `&`, `disown` veya `screen` aracılığıyla arka plan işlemlerini başlatırken Claude'u dikkatli olmaya talimat verir.
 
 Parametresi yok.
 
@@ -661,7 +660,7 @@ Parametresi yok.
 ### `warn-global-package-install`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Claude'u `npm install -g`, `yarn global add` veya sanal ortam olmadan `pip install` çalıştırmadan önce onaylamaya yönlendirir.
+**Varsayılan:** Sanal ortam olmadan `npm install -g`, `yarn global add` veya `pip install` komutlarından önce Claude'u doğrulamaya talimat verir.
 
 Parametresi yok.
 
@@ -669,21 +668,21 @@ Parametresi yok.
 
 ## Paket yöneticileri
 
-Aracının hangi paket yöneticileri kullanmasına izin verileceğini zorunlu kılın.
+Aracının kullanmasına izin verilen paket yöneticilerini zorunlu kılın.
 
 ### `prefer-package-manager`
 
 **Olay:** PreToolUse (Bash)  
-**Varsayılan:** Devre dışı. Etkinleştirildiğinde, `allowed` listesinde olmayan herhangi bir paket yöneticisi komutunu engeller ve Claude'a komutu izin verilen bir yönetici kullanarak yeniden yazmayı söyler.
+**Varsayılan:** Devre dışı. Etkinleştirildiğinde, `allowed` listesinde olmayan herhangi bir paket yöneticisi komutunu engeller ve Claude'u komutu izin verilen bir yöneticiyi kullanarak yeniden yazması talimatını verir.
 
 Algılar: pip, pip3, python -m pip, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo.
 
 | Parametre | Tür | Varsayılan | Açıklama |
-|-----------|-----|-----------|----------|
-| `allowed` | string[] | `[]` | İzin verilen paket yöneticisi adları. Bu listede olmayan algılanan herhangi bir yönetici engellenir. Boş olduğunda, ilke bir işlem yapmaz. |
-| `blocked` | string[] | `[]` | Yerleşik liste dışında bloke edilecek ek yönetici adları (ör. `['pdm', 'pipx']`). |
+|-----------|-----|-----------|---------|
+| `allowed` | string[] | `[]` | İzin verilen paket yöneticisi adları. Bu listede olmayan algılanan yönetici engellenir. Boş olduğunda, ilke işlemsizdir. |
+| `blocked` | string[] | `[]` | Yerleşik listeden ötesinde engellenmek üzere ek yönetici adları (ör. `['pdm', 'pipx']`). |
 
-Yerleşik bloke listesi aşağıdakileri kapsar: pip, pip3, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo. Bu listeye ait olmayan yöneticileri eklemek için `blocked` öğesini kullanın.
+Yerleşik engel listesi şunları kapsar: pip, pip3, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo. Bu listede olmayan yöneticiler eklemek için `blocked` kullanın.
 
 **Örnek yapılandırma:**
 
@@ -699,18 +698,18 @@ Yerleşik bloke listesi aşağıdakileri kapsar: pip, pip3, npm, npx, yarn, pnpm
 }
 ```
 
-Bu yapılandırmayla, `pip install flask` ve `pdm install flask` her ikisi de reddedilir; Claude'a bunun yerine `uv` veya `bun` kullanmasını söyleyen bir ileti gösterilir. `uv pip install flask` gibi komutlar izin verilir, çünkü `uv` allowlist'te ve ilk olarak denetlenmiştir.
+Bu yapılandırmayla `pip install flask` ve `pdm install flask` her ikisi de reddedilir ve Claude'u bunun yerine `uv` veya `bun` kullanması için söyleyen bir mesaj görüntülenir. `uv pip install flask` gibi komutlar izin verilir çünkü `uv` izin listesinde ve ilk kontrol edilen komuttur.
 
 ---
 
 ## AI davranışı
 
-Aracılar takılıp kaldığında veya beklenmedik şekilde davrandığında algılayın.
+Aracılar sıkışıp kaldığında veya beklenmedik şekilde davrandığında algıla.
 
 ### `warn-repeated-tool-calls`
 
 **Olay:** PreToolUse (tüm araçlar)  
-**Varsayılan:** Claude'u aynı araç 3 veya daha fazla kez aynı parametrelerle çağrıldığında yeniden düşünmeye yönlendirir — aracının bir döngüde takılıp kaldığının yaygın bir işareti.
+**Varsayılan:** Aynı araç aynı parametrelerle 3+ kez çağrıldığında Claude'u yeniden düşünmeye talimat verir — aracının sonsuz döngüye saplandığının yaygın bir işareti.
 
 Parametresi yok.
 
@@ -718,39 +717,39 @@ Parametresi yok.
 
 ## İş akışı
 
-Disiplinli bir oturum sonu iş akışını zorunlu kılın. Bu ilkeler **Stop** olayında ateşlenir ve aracıyı her koşul karşılanana kadar durmaktan engeller. Bir doğal bağımlılık zincirini takip ederler: commit → push → PR → CI. Bir ilke redderse, zincirdeki sonraki ilkeler atlanır (deny kısa devresi).
+Disiplinli oturum sonu iş akışı zorunlu kılın. Bu ilkeler **Stop** olayında tetiklenir ve aracıyı her koşul yerine getirilene kadar durmaktan engeller. Doğal bir bağımlılık zinciri izler: commit → push → PR → CI. Bir ilke reddederse, zincirdeki sonraki ilkeler atlanır (deny kısaltır).
 
-Tüm iş akışı ilkeleri **başarısız açık**: gerekli araç kullanılamıyorsa (ör. `gh` kurulu değilse, git uzak yoksa), ilke neden atlandığını açıklayan bilgilendirici bir ileti ile izin verir.
+Tüm iş akışı ilkeleri **fail-open** ilkesidir: gerekli araç mevcut değilse (ör. `gh` yüklü değil, git uzaktan yok), ilke bunu açıklayan bilgilendirici bir mesajle izin verir.
 
-### CLI başına Stop semantiği
+### CLI Başına Stop Semantiği
 
-Stop uygulaması altı desteklenen CLI arasında biraz farklı görünür, çünkü her biri farklı bir "aracı bitti" kancı sözleşmesi sunar. **Sonuç** aynıdır — aracı bir iş akışı geçidinin başarısız olduğu sırada durmaktan kurtulamaz — ancak **mekanikler** farklıdır. Aşağıdaki tablo özet sunar; sadece Pi, bir `require-*-before-stop` ilkesini etkinleştirmeden önce anlamaya değer kullanıcı tarafından görülebilen bir tuhaflığa sahiptir.
+Stop uygulaması, desteklenen altı CLI arasında biraz farklı görünür çünkü her biri farklı bir "aracı bitti" hook sözleşmesi ortaya çıkarır. Sonuç — aracı bir iş akışı kapısı başarısız olurken durmaktan kaçamaz — aynıdır, ancak mekanikler farklıdır. Aşağıdaki tablo bir özet; yalnızca Pi, bir `require-*-before-stop` ilkesini etkinleştirmeden önce anlaşmaya değer bir kullanıcıya görünür tuhaflığı içerir.
 
-| CLI | Geçid ne zaman ateşlenir | Neyi görebilirsiniz |
+| CLI | Kapı ne zaman tetiklenir | Ne görsünüz |
 |---|---|---|
-| Claude Code | Aynı aracı döngüsü, hemen | Claude çalışmaya devam eder — sorunu düzeltir, ardından bitirmeyi yeniden dener. Size görünür bir kesinti yok. |
+| Claude Code | Aynı aracı döngüsü, hemen | Claude çalışmaya devam eder — sorunu düzeltir, sonra bitirmeye çalışır. Size hiçbir kesintilik görünmez. |
 | Codex | Aynı aracı döngüsü, hemen | Claude ile aynı. |
-| GitHub Copilot CLI | Aynı aracı döngüsü, hemen | Claude ile aynı (Copilot'ın `{decision:"block", reason}` yeniden deneme kanalını kullanır — Copilot CLI 1.0.41 karşı ampirik olarak doğrulanmıştır). |
-| Cursor Agent | Aynı aracı döngüsü, hemen | Claude ile aynı (Cursor'un `{followup_message}` kanalını kullanır — `loop_limit` ile sınırlı, varsayılan 5 yeniden deneme). |
-| OpenCode | Aynı aracı döngüsü, hemen | Claude ile aynı (OpenCode'un `client.session.prompt(...)` SDK çağrısını `hookSpecificOutput.additionalContext` aracılığıyla yönlendirilen kullanır). |
-| **Pi (pi-coding-agent)** | **Sonraki kullanıcı sırası** | **Pi görünür şekilde durur** — geçit ateşlendiğinde aracı döngüsü çıkar ve siz isteme geri dönersiniz. Geçit daha sonra bir sonraki istemi gönderdiğiniz zaman ateşlenir: failproofai o sıraya bir `MANDATORY ACTION REQUIRED` yönergesini başına ekler, LLM'yi iş akışı adımını (commit, push, vb.) yapması için talimatlandırır sizin ne istediğinizi yapmadan önce. |
+| GitHub Copilot CLI | Aynı aracı döngüsü, hemen | Copilot'ın `{decision:"block", reason}` yeniden deneme kanalını kullanan Claude ile aynı (Copilot CLI 1.0.41'e karşı deneysel olarak doğrulanmıştır). |
+| Cursor Agent | Aynı aracı döngüsü, hemen | Cursor'un `{followup_message}` kanalını kullanan Claude ile aynı (varsayılan `loop_limit` 5 yeniden denemede sınırlı). |
+| OpenCode | Aynı aracı döngüsü, hemen | OpenCode'un `client.session.prompt(...)` SDK çağrısını `hookSpecificOutput.additionalContext` aracılığıyla yönlendirerek Claude ile aynı. |
+| **Pi (pi-coding-agent)** | **Sonraki kullanıcı sırası** | **Pi görünürde durur** — kapı tetiklendiğinde aracı döngüsü çıkar ve isteme dönersiniz. Kapı daha sonra bir sonraki istemi gönderdiğinizde tetiklenir: failproofai, bu sıranın sistem istemine bir `MANDATORY ACTION REQUIRED` yönergesi prepend eder, LLM'yi istediğiniz her şeyi yapmadan önce iş akışı adımını (commit, push vb.) tamamlamaya talimat verir. |
 
 <Note>
-**Pi sınırlaması.** Pi'nin `AgentEndEvent` (Claude'un `Stop` kancasının yukarı akış eşdeğeri) bir Result türüne sahip değil — ateşlendiği zamanına kadar Pi'nin aracı döngüsü zaten çıkmıştır. Pi, Claude / Copilot / Cursor / OpenCode yapabildiği gibi aynı döngüyü yeniden denemek için zorlanamaz. failproofai geçidi Pi'nin `before_agent_start` olayına (bir sonraki kullanıcı isteminden sonra ateşlenir) kaydırır, böylece iş akışı kontrolü hala uygular, sadece geçerli oturum yerine bir sonraki oturumda.
+**Pi sınırlaması.** Pi'nın `AgentEndEvent` (Claude'un `Stop` hook'u eşdeğeridir) bir Result türüne sahip değildir — tetiklendiğinde, Pi'nın aracı döngüsü zaten çıkmıştır. Pi, Claude / Copilot / Cursor / OpenCode'un yapabildiği şekilde aynı döngüyü yeniden denemek için zorlanamazsa. failproofai kapıyı Pi'nın `before_agent_start` olayına kaydırır (sonraki kullanıcı istemi sonra tetiklenir), böylece iş akışı kontrolü yine de uygulanır, yalnızca geçerli sıra yerine bir sonraki sıra olarak.
 
-**Pratikte bu ne anlama gelir:**
+**Uygulamada bu ne anlama gelir:**
 
-- Pi'yi durdurduktan sonra, deny nedeni oturum kimliğiyle bellek içinde yakalanır. Aynı Pi işleminde gönderdiğiniz çok sonraki istem bunu boşaltır: LLM sistem istemiyle `MANDATORY ACTION REQUIRED` yönergesini başında görür, commit (veya push / açık PR / CI için bekle) ve daha sonra isteğinizle devam eder. Yakalanan deny nedeni bir kez kullanım — boşaltıldığında, geçit temizlenir.
-- Geçit Pi'nin işlem ömrü ile sınırlıdır. Aralar arasında Pi'yi `Ctrl+C` veya çıkış yaparsanız, bellek içi giriş işlemle birlikte çıkarılır ve geçit kaçırılır. Claude, Copilot, Cursor ve OpenCode aynı sınıra sahip (aracıyı öldürün ve geçit kaçırılır) — Pi sadece aracı görünür şekilde çıktıktan sonra geçit ateşleneceğinden bunu daha görünür kılar.
-- Beklemede olan bir deny herhangi bir nedenden dolayı `session_shutdown` üzerinde de temizlenir (`new` / `resume` / `fork` / `quit`), böylece önceki bir oturumdan eski bir geçit aynı Pi işleminde başlatılan yeni bir oturuma sızamaz.
+- Pi durdu sonra, deny nedeni Pi oturum id'si ile anahtarlanmış bellekte yakalanır. Aynı Pi sürecinde gönderdiğiniz çok sonraki istemi drenaşlar: LLM sistem isteminin en üstündeki `MANDATORY ACTION REQUIRED` yönergesini görür, commit eder (veya iterler / PR açar / CI'yi bekler) ve yalnızca o zaman isteğinizle devam eder. Yakalanan deny nedeni tek atış — boşaltıldığında, kapı temizlenir.
+- Kapı Pi'nın işlem ömrü ile sınırlıdır. Pi'yi `Ctrl+C` ile veya sıralar arasında çıkarsanız, bellek girişi işlemle birlikte bırakılır ve kapı kaçırılır. Claude, Copilot, Cursor ve OpenCode'un aynı sınırı vardır (aracıyı öldürün ve kapı kaçırılır) — Pi yalnızca kapı tetiklenmeden önce aracı görünürde çıktığı için daha görünürdür.
+- Bekleyen bir deny de herhangi bir nedenle (`new` / `resume` / `fork` / `quit`) `session_shutdown` üzerinde temizlenir, bu nedenle önceki oturumdan eski bir kapı aynı Pi işleminde başlatılan yeni bir oturuma sızmaz.
 
-Claude tarzı aynı döngü yeniden denemesine ihtiyaç duyarsanız, `Stop` ilkelerinizi desteklenen diğer beş CLIden herhangi biri altında çalıştırın. Pi upstream'i gelecekteki bir Result türü için `AgentEndEvent` öğesinde takip ediyoruz, bu da bu boşluğu kapatmamızı sağlayacaktır.
+Claude tarzı aynı döngü yeniden denemesine ihtiyacınız varsa, `Stop` ilkelerinizi desteklenen diğer beş CLI'nin herhangi birinde çalıştırın. Pi upstream'i `AgentEndEvent` üzerinde bir sonraki Result türü için takip ediyoruz, bu da bu boşluğu kapatmamıza izin verecektir.
 </Note>
 
 ### `require-commit-before-stop`
 
 **Olay:** Stop  
-**Varsayılan:** İşlenmemiş değişiklikler (değiştirilmiş, sahne alınmış veya izlenmemiş dosyalar) olduğunda durmasını reddeder. Çalışma dizini temiz olduğunda bilgilendirici bir ileti döndürür.
+**Varsayılan:** Kaydedilmemiş değişiklikler (değiştirilmiş, evreli veya izlenmeyen dosyalar) olduğunda durarak engeller. Çalışma dizini temiz olduğunda bilgilendirici bir mesaj döndürür.
 
 Parametresi yok.
 
@@ -759,13 +758,13 @@ Parametresi yok.
 ### `require-push-before-stop`
 
 **Olay:** Stop  
-**Varsayılan:** İtilmemiş taahhütler olduğunda veya geçerli dalın uzak izleme dalı olmadığında durmasını reddeder. Gerekirse izleme dalı oluşturmak için `git push -u` önerir. Yapılandırılmış uzak yoksa açık başarısızlık.
+**Varsayılan:** İtilmemiş commit'ler olduğunda veya geçerli dal hiçbir uzak izleme dalına sahip olmadığında durmayı engeller. Gerekirse izleme dalı oluşturmak için `git push -u` önerir. Hiçbir uzak yapılandırılmamışsa açık başarısız olur.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `remote` | `string` | `"origin"` | Push yapılacak uzak ad. |
+|-------|-----|-----------|---------|
+| `remote` | `string` | `"origin"` | İtilecek uzak ad. |
 
 **Örnek:**
 
@@ -784,13 +783,13 @@ Parametresi yok.
 ### `require-pr-before-stop`
 
 **Olay:** Stop  
-**Varsayılan:** Geçerli dal için hiçbir pull request yoksa veya mevcut PR birleştirilmeden kapatıldığında durmasını reddeder. `gh pr create` ile bir PR oluşturmasını yönlendirir. PR **birleştirildiğinde**, ilke izin verir (çalışma iş akışına girdiyse) ve ileti dalı değiştirmeyi ipuçlandırır (`git checkout main && git pull`).
+**Varsayılan:** Geçerli dal için hiçbir çekme talebinin bulunmadığından veya mevcut PR'nin birleştirilmeden kapatıldığından durmayı engeller. Claude'u `gh pr create` ile bir PR oluşturmaya talimat verir. PR **birleştirildiğinde**, ilke izin verir (iş sevk edilmiş) ve mesaj daldan geçmeyi kapatmaya hint verir (`git checkout main && git pull`).
 
 Parametresi yok.
 
 <Note>
-Bu ilke [GitHub CLI](https://cli.github.com/) (`gh`) kurulu ve doğrulanmış olmasını gerektirir.
-Pull isteklerine okuma erişimi için `repo` kapsamıyla kişisel erişim jetonu ile `gh auth login` çalıştırın. `gh` kurulu değilse veya doğrulanmadıysa, ilke açık başarısızlık ve nedeni Claude'a bildir.
+Bu ilke [GitHub CLI](https://cli.github.com/) (`gh`) yüklü ve kimliği doğrulanmış gerektirir.
+Çekme taleplerini okumak için `repo` kapsamına sahip bir kişisel erişim simgesiyle `gh auth login` çalıştırın. `gh` yüklü değilse veya kimliği doğrulanmamışsa, ilke açık başarısız olur ve nedeni Claude'a bildirir.
 </Note>
 
 ---
@@ -798,21 +797,21 @@ Pull isteklerine okuma erişimi için `repo` kapsamıyla kişisel erişim jetonu
 ### `require-no-conflicts-before-stop`
 
 **Olay:** Stop  
-**Varsayılan:** Geçerli dal taban dala temiz bir şekilde birleştirilmediğinde durmasını reddeder. İlke ilk olarak dal için GitHub'da `OPEN` bir PR olduğunu doğrular — biri yoksa, birleştirme hedefi olmadığından tüm ilke kısa devre ve izin verir. `OPEN` bir PR doğrulandığında, iki bağımsız prob çalışır:
+**Varsayılan:** Geçerli dal temel dala temiz bir şekilde birleştirilemeyecek olduğunda durmayı engeller. İlke ilk olarak dal için GitHub'da `OPEN` bir PR olduğunu doğrular — bir tane olmadan, birleşme hedefi olmadığından tüm ilke izin vermek için kısayola kesilir. Bir `OPEN` PR doğrulandıktan sonra, iki bağımsız araştırma çalışır:
 
-1. **Yerel** — `git merge-tree --write-tree --name-only origin/<baseBranch> HEAD`. Çatışma durumunda, deny ileti çatışmalı dosyaları adlandırır, böylece Claude tam olarak ne çözeceğini bilir.
-2. **GitHub** — zaten precontrol'de getirilen `gh pr view --json mergeable,state` sonucunu yeniden kullanır. Eski yerel `origin/<baseBranch>` öğesini kaçıracak çatışmaları yakalar (ör. biri `main` üzerinde çatışmalı bir PR yerleştirdi, son getirme). Bir `CONFLICTING` sonucu reddeder. Bir `UNKNOWN` sonucu da reddeder ve Claude'u yeniden kontrol etmeden ~10 saniye beklemesi ve durma girişiminden önce yeniden kontrol etmesi için yönlendirir — bu GitHub yeniden hesaplarken yanlış negatif engeller.
+1. **Yerel** — `git merge-tree --write-tree --name-only origin/<baseBranch> HEAD`. Çakışmada, deny mesajı çelişkili dosyaları adlandırır, böylece Claude tam olarak ne çözümlemesi gerektiğini bilir.
+2. **GitHub** — önceden ön kontrolde alınan `gh pr view --json mergeable,state` sonucunu yeniden kullanır. Eski bir yerel `origin/<baseBranch>` kaçıracağı çakışmaları yakalar (ör. birisi bu yana `main` üzerinde çelişkili bir PR iniş yaptı). Bir `CONFLICTING` sonucu engeller. Bir `UNKNOWN` sonucu da engeller ve Claude'u yeniden denetlemeden önce ~10 saniye beklemesi talimatını verir — bu yanlış negatifler önler, GitHub yeniden hesaplar.
 
-Şu durumlarda tamamen atlanır (izin verir): `gh` kurulu değilse, dal için PR yoksa, PR'nin durumu `OPEN` değilse (ör. `MERGED`, `CLOSED`), veya `gh pr view` ayrıştırılamaz çıktı döndürürse. Ayrıca yerel `origin/<baseBranch>` eksikse veya taban başına hiçbir taahhüt ileri gitmeyenken açık başarısızlık — bu Katman 1 fall-through'ları hala izin vermeden önce önbelleğe alınan PR birleştirilebilirliğini danışır.
+Atlanır (izin verir) şu durumlarda: `gh` yüklü değil, dal için PR yok, PR'nin durumu `OPEN` değil (ör. `MERGED`, `CLOSED`) veya `gh pr view` ayrıştırılamaz çıktı döndürür. Ayrıca yerel olarak `origin/<baseBranch>` eksik olduğunda veya taban'dan önceki commit'ler olmadığında açık başarısız olur — bu Layer 1 fallthrough'ları yine de izin vermeden önce önbelleğe alınan PR birleştirilebilirliğini danışır.
 
 **Parametreler:**
 
 | Param | Tür | Varsayılan | Açıklama |
-|-------|-----|-----------|----------|
-| `baseBranch` | `string` | `"main"` | Çatışmalar için kontrol edilecek temel dal. |
+|-------|-----|-----------|---------|
+| `baseBranch` | `string` | `"main"` | Çakışmalar için denetlenecek temel dal. |
 
 <Note>
-Bu ilke GitHub CLI (`gh`) gerektirir. İlke, herhangi bir çatışma prob çalıştırmadan önce `gh pr view` kullanarak bir `OPEN` PR olduğunu doğrular — `gh` olmadan, ilke kısa devre ve izin verir. Pull isteklerine okuma erişimi için `repo` kapsamıyla kişisel erişim jetonu ile `gh auth login` çalıştırın.
+Bu ilke için GitHub CLI (`gh`) gereklidir. İlke herhangi bir çakışma araştırması çalıştırmadan önce bir `OPEN` PR olduğunu doğrulamak için `gh pr view` kullanır — `gh` olmadan, ilke izin vermek için kısayola kesilir. Çekme taleplerini okumak için `repo` kapsamına sahip bir kişisel erişim simgesiyle `gh auth login` çalıştırın.
 </Note>
 
 ---
@@ -820,22 +819,22 @@ Bu ilke GitHub CLI (`gh`) gerektirir. İlke, herhangi bir çatışma prob çalı
 ### `require-ci-green-before-stop`
 
 **Olay:** Stop  
-**Varsayılan:** Geçerli dal üzerinde CI denemeleri başarısız olduğunda veya hala çalışırken durmasını reddeder. Hem GitHub Actions iş akışı çalışmalarını hem de üçüncü taraf bot denetlemelerini kontrol eder (ör. CodeRabbit, SonarCloud, Codecov). `skipped`, `cancelled` ve `neutral` sonuçlarını başarısız olmayan olarak işler (sonuncusu ör. Socket Security uyarılarını dış katkı PR'lerinde kapsar, burada uygulama kasıtlı olarak başarı/başarısızlık yerine tarafsızlığı bildirir). Tüm denetlemeler geçtiğinde bilgilendirici bir ileti döndürür.
+**Varsayılan:** Geçerli daldaki CI denetimleri başarısız veya hala çalışırken durmayı engeller. Hem GitHub Actions iş akışı çalışmaları hem de üçüncü taraf bot denetimleri (ör. CodeRabbit, SonarCloud, Codecov) kontrol eder. `skipped`, `cancelled` ve `neutral` sonuçlarını başarısız olmayan (bu ör. dış katılımcı PR'leri üzerindeki Socket Security uyarılarını kapsar; burada uygulama kasıtlı olarak başarı/başarısızlık yerine nötr bildirir) olarak işler. Tüm denetimler geçtiğinde bilgilendirici bir mesaj döndürür.
 
 Parametresi yok.
 
 <Note>
-Bu ilke [GitHub CLI](https://cli.github.com/) (`gh`) kurulu ve doğrulanmış olmasını gerektirir.
-Actions iş akışı çalışmalarına ve Denetler API'sine okuma erişimi için `repo` kapsamıyla kişisel erişim jetonu ile `gh auth login` çalıştırın. `gh` kurulu değilse veya doğrulanmadıysa, ilke açık başarısızlık ve nedeni Claude'a bildir.
+Bu ilke [GitHub CLI](https://cli.github.com/) (`gh`) yüklü ve kimliği doğrulanmış gerektirir.
+Actions iş akışı çalışmaları ve Checks API'sine okuma erişimi için `repo` kapsamına sahip bir kişisel erişim simgesiyle `gh auth login` çalıştırın. `gh` yüklü değilse veya kimliği doğrulanmamışsa, ilke açık başarısız olur ve nedeni Claude'a bildirir.
 </Note>
 
 ---
 
 ---
 
-## Bireysel ilkeleri devre dışı bırakma
+## Tek tek ilkeleri devre dışı bırakma
 
-Yapılandırmanızdan belirli bir ilkeyi `enabledPolicies` öğesinden kaldırın veya pano'nun Policies sekmesinde kapatın.
+Yapılandırmanızda `enabledPolicies` adresinden belirli bir ilkeyi kaldırın veya panodaki İlkeler sekmesinde kapatın.
 
 ```json
 {
@@ -846,4 +845,4 @@ Yapılandırmanızdan belirli bir ilkeyi `enabledPolicies` öğesinden kaldırı
 }
 ```
 
-`enabledPolicies` öğesinde listelenmemiş ilkeler, `policyParams` girdileri mevcut olsa bile çalışmaz.
+`enabledPolicies` adresinde listelenmemiş ilkeler çalışmaz; `policyParams` girişleri mevcut olsa bile.

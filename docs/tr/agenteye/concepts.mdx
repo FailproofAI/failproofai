@@ -1,83 +1,83 @@
 ---
 title: "Kavramlar"
-description: "Failproof AI Observability'nin arka planındaki sözcük dağarcığı — olaylar, oturumlar, değerlendirmeler, denetimler, bulgular ve olaylar — tek bir yerde tanımlanmıştır."
+description: "Failproof AI Observability'nin sözcüğü — etkinlikler, oturumlar, değerlendirmeler, denetimler, bulgular ve olaylar — tek bir yerde tanımlanmıştır."
 ---
 
 
-Bu sayfa, Failproof AI Observability'nin kullandığı sözcük dağarcığını tanımlar. Başka bir rehberde karşılaştığınız bir terim sizin için bilinmiyorsa, burada tanımlanmıştır. Bunu baştan sona okumanız gerekmez: göz atabilir veya tanımını almak istediğiniz bir sözcükle karşılaştığınızda geri dönebilirsiniz.
+Bu sayfa, Failproof AI Observability'nin kullandığı sözcüğü tanımlar. Başka bir kılavuzdaki bir terim size yabancı gelirse, burada tanımlanmıştır. Baştan sona okumanız gerekmez: hızlıca göz atın veya net bir şekilde anlamak istediğiniz bir sözcüğe çarptığınızda geri dönün.
 
 ---
 
 ## Veri modeli
 
-**Event (Olay)**
-Verilerin en küçük birimi. Bir olay, aracının attığı tek bir adımı kaydeder: bir `tool_use`, bir `model_request`, bir `hook_completed`, bir `error` ve benzeri. Aracınız, [Python SDK](/tr/agenteye/python-sdk) aracılığıyla olaylar yayar; bu olaylar **Events** sayfasında canlı olarak görünür.
+**Event (Etkinlik)**
+Verilerin en küçük birimi. Bir etkinlik, aracınızın aldığı tek bir adımı kaydeder: bir `tool_use`, bir `model_request`, bir `hook_completed`, bir `error` vb. Aracınız [Python SDK](/tr/agenteye/python-sdk) aracılığıyla etkinlikler yayar; bunlar **Events** sayfasında canlı olarak görünür.
 
 **Session (Oturum)**
-Bir agent çalışması, `session_id` ile tanımlanır. Bir oturum, bu id'yi paylaşan tüm olaylar olup, **Sessions** sayfasında tek bir satır halinde toplanmış ve ayrıntı sayfasında bir yürütme grafiği olarak çizilir. Bir oturum genellikle `agent_start` ile başlar ve `agent_end` ile biter.
+Bir aracı çalıştırması, `session_id` ile tanımlanır. Oturum, bu kimliği paylaşan tüm etkinliklerin **Sessions** sayfasında tek bir satırda gösterilmesi ve ayrıntı sayfasında yürütme grafiği olarak çizilmesidir. Oturum genellikle `agent_start` ile başlar ve `agent_end` ile biter.
 
-**Agent (Ajan)**
-Bir çalışmanın içinde adlandırılmış bir aktör, `agent_id` ile tanımlanır. Bir çalışma birkaç ajanı içerebilir: örneğin, bir alt-ajan üreten bir planlayıcı. Alt-ajanlar, Failproof AI Observability'nin yürütme grafiğinde kendi şeritlerinde çizilmesini sağlayan `parent_id` taşırlar.
+**Agent (Aracı)**
+Bir çalıştırma içindeki adlandırılmış bir aktör, `agent_id` ile tanımlanır. Bir çalıştırma birçok aracı içerebilir: örneğin, bir alt-aracı spawlayan bir planlayıcı. Alt-aracılar bir `parent_id` taşır; bu, Failproof AI Observability'nin yürütme grafiğinde bunları kendi şeritlerinde çizmesini sağlayan şeydir.
 
 **Environment (Ortam)**
-Çalışmanın nerede gerçekleştiği için bir etiket: `production`, `staging`, `dev`. Bunu, SDK'yı yapılandırdığınızda bir kez ayarlarsınız. Neredeyse her pano sayfası ortama göre filtreleme yapabilir.
+Çalıştırmanın gerçekleştiği yeri etiketleyen bir etiket: `production`, `staging`, `dev`. SDK'yı yapılandırırken bunu bir kez ayarlarsınız. Neredeyse her pano sayfası ortama göre filtrelenebilir.
 
 **Context-window fill (Bağlam-pencere doldurma)**
-Model'in bağlam penceresinin bir yanıtın tükettiği yüzde. Failproof AI Observability bunu, tanıdığı modeller için `model_response` olaylarına damgalar, böylece komut istemi büyümesi ve yaklaşan sıkıştırma olay akışında hemen görünür.
+Bir modelin bağlam penceresinin bir yanıtın tükettiği yüzdesi. Failproof AI Observability, tanıdığı modeller için `model_response` etkinliklerine bunu damgalar; böylece hızlı büyüme ve yaklaşan sıkıştırma, etkinlik akışında doğru görünür.
 
 ---
 
 ## Kalite
 
 **Evaluation (Değerlendirme)**
-Tamamlanan bir oturum için kalite puanı, çalıştığınız bir puanlama hizmeti tarafından üretilir. Değerlendirmeler isteğe bağlıdır: bir değerlendirici bağlayıncaya kadar, oturumlar kaydedilir ancak puanlandırılmaz. Her değerlendirme birkaç adlandırılmış puan taşıyabilir (örneğin `helpfulness`, `factuality`, `tool_efficiency`), her biri kısa bir akıl yürütme notu ile. Bkz. [Evaluation suite](/tr/agenteye/evaluation-suite).
+Bitmiş bir oturum için kalite puanı, çalıştırdığınız bir puanlama hizmeti tarafından üretilir. Değerlendirmeler isteğe bağlıdır: bir değerlendirici bağlayana kadar, oturumlar kaydedilir ancak puanlanmaz. Her değerlendirme birkaç adlandırılmış puan taşıyabilir (örneğin `helpfulness`, `factuality`, `tool_efficiency`), her biri kısa bir akıl yürütme notu ile. Bkz. [Evaluation suite](/tr/agenteye/evaluation-suite).
 
 **Score key (Puan anahtarı)**
-Bir değerlendirici tarafından bildirilen bir boyutun adı, örneğin `helpfulness`. Uyarılar ve denetimler, zaman içinde belirli bir puan anahtarını izleyebilir.
+Bir değerlendirici tarafından bildirilen bir boyutun adı, örneğin `helpfulness`. Uyarılar ve denetimler belirli bir puan anahtarını zaman içinde izleyebilir.
 
 **Evaluator (Değerlendirici)**
-Puanlama hizmetiniz. Failproof AI Observability, tamamlanan bir çalışmanın transkripsiyonunu buna POSTlar ve döndüğü puanları depolar. Varsayılan bir değerlendirici sevk etmez; puanlama mantığı sizindir.
+Puanlama hizmetiniz. Failproof AI Observability, bitmiş bir çalıştırmanın transkripsiyonunu ona POSTlar ve döndürdüğü puanları depolar. Varsayılan bir değerlendirici göndermiyor; puanlama mantığı sizinkidir.
 
 ---
 
-## Hataları bulma ve düzeltme
+## Başarısızlıkları bulma ve düzeltme
 
 **Hook**
-Agent framework'unün bir adım etrafında çalıştırdığı bir korkuluk veya yan etki: içerik güvenliği kontrolü, KŞV redaksiyonu, bütçe koruması. Hooklar, `allow`, `deny`, `modify` sonucu olan `hook_triggered` / `hook_completed` olayları yayarlar ve kendi gözlem sayfasına sahiptirler.
+Aracı çerçevenizin bir adım çevresinde çalıştırdığı bir koruma reli veya yan etki: bir içerik güvenliği kontrolü, KBA redaksiyonu, bir bütçe koruması. Hooklar `hook_triggered` / `hook_completed` etkinlikleri bir `outcome` (`allow`, `deny`, `modify`) ile yayarlar ve kendi observe sayfasını alırlar.
 
 **Alert rule (Uyarı kuralı)**
-Bir metriğin ayarladığınız bir eşiği geçtiğinde tetiklenen bir kural: hata oranı, p95 gecikmesi, token maliyeti veya bir değerlendirici puanı. Bir kural tetiklendiğinde, bir olayı açar ve seçtiğiniz kanallara (e-posta, Slack, webhook, pano içi) bildirir. Bkz. [Alerts](/tr/agenteye/alerts).
+Bir metrik ayarladığınız bir eşiği aştığında tetiklenen bir kural: hata oranı, p95 gecikmesi, belirteç maliyeti veya değerlendirici puanı. Bir kural tetiklendiğinde, bir olay açar ve seçtiğiniz kanallara bildirir (e-posta, Slack, webhook, panoda). Bkz. [Alerts](/tr/agenteye/alerts).
 
 **Incident (Olay)**
-Bir uyarı kuralı tetiklendiğinde oluşturulan açık bir sorun. Olayların bir yaşam döngüsü (kabul et, ata, çöz) ve her eylemi kaydeden bir etkinlik zaman çizelgesi vardır. Ayrıca birini manuel olarak açabilirsiniz.
+Bir uyarı kuralı tetiklendiğinde oluşturulan açık bir sorun. Olaylar bir yaşam döngüsüne (kabul etme, atama, çözme) ve her eylemi kaydeden bir etkinlik zaman çizelgesine sahiptir. Ayrıca bir tanesini el ile açabilirsiniz.
 
 **Audit (Denetim)**
-Saatlik ila haftalık olarak, başarısız kalıplar için henüz kural yazılmamış günlükleri oturumlar *arasında* inceleyen yinelenen bir araştırma: hata kümeleri, düşük puanlar, gecikme aykırı değerleri, tool-call döngüleri ve hiç bitmeyen çalışmalar. Bir uyarı zaten bildiğiniz bir metriği izlerken, bir denetim size sonra neye bakacağını söyler. Bkz. [Audits](/tr/agenteye/audits).
+Günlüklerinizi *oturumlar arasında* yazılı kural yazmadığınız başarısızlık desenleri için arayan yinelenen bir araştırma (saatlik haftalık): hata kümeleri, düşük puanlar, gecikme aykırı değerleri, araç çağrısı döngüleri ve hiç bitmemiş çalıştırmalar. Bir uyarı zaten bildiğiniz bir metriği izlerken, denetim size sonra neye bakacağınızı söyler. Bkz. [Audits](/tr/agenteye/audits).
 
 **Finding (Bulgu)**
-Bir denetim çalışmasından sıralanmış, kanıtla desteklenmiş bir sonuç. Bir bulgu bir kalıbı adlandırır, arkasındaki kesin oturumlarla bağlantılar kurar ve triaj yaşam döngüsü (kabul et, çöz, sessize al, kapat) taşır. Failproof AI Observability, bulguları çalışmadan çalışmaya göre çoğaltır, böylece bilinen bir kalıp, birikmek yerine güncellenir.
+Bir denetim çalıştırmasından sıralanmış, kanıtla desteklenen bir sonuç. Bulgu bir desen adlandırır, arkasındaki tam oturumlara bağlanır ve bir sınıflandırma yaşam döngüsü (kabul etme, çözme, sessiz tutma, reddetme) taşır. Failproof AI Observability, birikmek yerine bilinen bir desen güncellenecek şekilde bulgular çalıştırmadan çalıştırmaya çoğalır.
 
-**The AI assistant (AI asistanı)**
-Panodaki sohbet, aracılarınızla ilgili soruları düz İngilizce ve kendi verileriniz üzerinde yanıtlar. Varsayılan olarak salt okunurdur; oluşturduğu herhangi bir şey (kaydedilmiş bir sorgu, bir pano), onay kapılı olup, hiçbir zaman silemez. Bkz. [AI assistant](/tr/agenteye/assistant).
+**The AI assistant (AI yardımcısı)**
+Aracılarınız hakkında düz İngilizce sorulara, kendi verileriniz üzerinde yanıt veren panodaki sohbet. Varsayılan olarak salt okunurdur; oluşturduğu herhangi bir şey (kaydedilmiş sorgu, pano) onay kapısı altındadır ve asla silemez. Bkz. [AI assistant](/tr/agenteye/assistant).
 
 ---
 
-## Çalışma
+## Çalıştırma
 
 **Organization (tenant) (Kuruluş)**
-Yalıtılmış bir çalışma alanı. Bir Failproof AI Observability örneği birçok kuruluşa ev sahipliği yapabilir, her biri kendi kullanıcıları, anahtarları ve verilerine sahip. Her pano URL'si kuruluşunuzun slug'u altında kapsam alınır (`/<org-slug>/…`).
+Yalıtılmış bir çalışma alanı. Failproof AI Observability'nin bir örneği birçok kuruluşu barındırabilir; her biri kendi kullanıcıları, anahtarları ve verilerine sahiptir. Her pano URL'si kuruluş taslağınız altında kapsamlıdır (`/<org-slug>/…`).
 
 **Collector (Toplayıcı)**
-`agenteye-collector`, her agent makinesinde çalışan, SDK'nın diske yazdığı olayları toplu hale getiren ve sunucuya gönderen hafif daemon.
+`agenteye-collector`, her aracı makinesinde çalışan, SDK'nın diske yazdığı etkinlikleri gruplandıran ve bunları sunucuya gönderen hafif bir daemon.
 
 **API key (API anahtarı)**
-İstemciyi sunucuya karşı kimlik doğrulayan kapsamlı bir token. Anahtarlar ayrıntılı izinleri taşır (örneğin toplayıcı için `events:add`, pano anahtarı için salt okunur kapsamlar). Bkz. [API keys](/tr/agenteye/api-keys).
+Bir istemciyi sunucuya karşı kimlik doğrulayan kapsamlı bir belirteç. Anahtarlar ayrıntılı izinler taşır (örneğin toplayıcı için `events:add`, pano anahtarı için salt okunur kapsamlar). Bkz. [API keys](/tr/agenteye/api-keys).
 
 **Server (Sunucu)**
-Alım ve API hizmeti. Olayları alır, işlemsel durumu veritabanlarınızda depolar ve panoyu ve CLI'yi sunar.
+Alım ve API hizmeti. Etkinlikleri alır, işletimsel durumu veritabanlarınızda depolar ve panoyu ve CLI'yi sunar.
 
 **Dashboard (Pano)**
-Web kullanıcı arayüzü. Her sayfa bir kuruluş kapsamında alınır ve sunucunun API'si aracılığıyla okur.
+Web arayüzü. Her sayfa bir kuruluşa kapsamlıdır ve sunucunun API'si aracılığıyla okur.
 
 ---
 

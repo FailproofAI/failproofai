@@ -1,34 +1,34 @@
 ---
 title: "Hermes 会话捕获"
-description: "将您团队的 Hermes 网关会话——Slack、Telegram、CLI 及定时任务——作为普通会话和事件接入 AgentEye。"
+description: "将您团队的 Hermes 网关会话（Slack、Telegram、CLI 及计划任务）作为普通会话和事件引入 AgentEye。"
 ---
 
-[Hermes](https://hermes-agent.nousresearch.com) 可在您团队日常使用的任何渠道中响应请求——Slack、Telegram、CLI、定时任务。Hermes 会话捕获将所有这些内容作为普通会话和事件引入 AgentEye，让您团队每天交互的助手像您自己编写的 Agent 一样具备完整的可观测性。
+[Hermes](https://hermes-agent.nousresearch.com) 可在您的团队已有的任何工作场景中响应请求——Slack、Telegram、CLI、计划任务。Hermes 会话捕获功能将这一切以普通会话和事件的形式引入 AgentEye，让您每天与之交互的助手与您自己编写的 Agent 一样具备可观测性。
 
-一个轻量级后台采集器会在 Hermes 写入本地会话存储时实时读取，并将会话数据发送到 AgentEye。其工作方式与 [Codex](/zh/agenteye/codex-capture) 和 [OpenClaw](/zh/agenteye/openclaw-capture) 捕获完全相同，一个采集器可以同时捕获多个来源。
+一个轻量级的后台采集器会在 Hermes 写入本地会话存储时实时读取，并将会话推送至 AgentEye。其工作方式与 [Codex](/zh/agenteye/codex-capture) 和 [OpenClaw](/zh/agenteye/openclaw-capture) 的捕获方式相同，一个采集器可同时捕获多个来源。
 
 ---
 
 ## 捕获内容
 
-机器上所有 Hermes 会话均会被捕获，无论来自哪个渠道。每个会话都会成为 AgentEye 中的一个[会话](/zh/agenteye/sessions)；其中的用户消息、助手消息、工具调用及工具结果将转化为对应的[事件](/zh/agenteye/event-stream)。
+机器上的每一个 Hermes 会话都会被捕获，无论来自哪个渠道。每个会话会成为 AgentEye 的一个[会话](/zh/agenteye/sessions)；其中的用户消息、助手消息、工具调用及工具结果将对应转换为[事件](/zh/agenteye/event-stream)。
 
-会话发起所在的渠道——Slack、Telegram、CLI 或定时任务——会被记录在会话上，方便您区分来源并按渠道筛选。与此同时，还会记录该会话所使用的模型、发起会话的聊天频道和用户，以及当某个会话由另一个会话派生时，指向父会话的关联链接。
+会话的发起渠道——Slack、Telegram、CLI 或计划任务——会记录在会话上，便于区分和按渠道筛选。同时还会记录会话所使用的模型、发起会话的聊天对象及用户，以及当某个会话由另一个会话派生时，指向其父会话的关联链接。
 
-会话在 Hermes 启动后立即出现，无论是否已有任何消息；每轮对话的回复及工具调用均按实际发生顺序排列。会话结束后，您还能看到结束原因、消耗的费用以及使用的 Token 数量。
+会话在 Hermes 启动时即刻出现，无需等待任何消息发送，每轮对话的回复与工具调用也会按实际发生顺序排列。会话结束时，您还能获取结束原因、消耗费用及 token 用量。
 
 ---
 
-## 开启捕获
+## 开启方式
 
-捕获功能默认关闭，需手动启用。使用具有 `events:add` 权限的 API 密钥安装采集器（参见 [API 密钥](/zh/agenteye/api-keys)），并开启 Hermes 捕获：
+捕获功能默认关闭，需手动启用。使用具有 `events:add` 权限的 API 密钥（参见 [API 密钥](/zh/agenteye/api-keys)）安装采集器，并开启 Hermes 捕获：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --hermes-enabled
 ```
 
-此命令将安装采集器、将其注册为后台服务并开始捕获。确认运行状态：
+该命令会安装采集器、将其注册为后台服务并开始捕获。确认运行状态：
 
 ```bash
 agenteye-collector health
@@ -36,18 +36,18 @@ agenteye-collector health
 
 需要在同一台机器上捕获多个 Agent？在同一命令中添加各自的标志即可——例如 `--hermes-enabled --codex-enabled`。
 
-首次运行时，现有的 Hermes 会话会被一次性回填，此后新的活动将在数秒内实时同步。采集器只会读取 Hermes 自身的数据，绝不会修改或删除，且每条消息只会发送一次，即便重启也不例外。
+首次运行时，现有的 Hermes 会话会进行一次历史补全，之后的新活动将在数秒内实时推送。Hermes 的原始数据只会被读取，不会被修改或删除；每条消息只会推送一次，即使重启后也不会重复。
 
-`health` 命令还会告诉您采集器捕获的所有内容是否已成功到达 AgentEye。如果某批数据未能送达，它将被保留并重试，而非直接丢弃；在仍有数据待处理时，检查结果会报告为不健康——因此"健康"意味着数据已真正到达，而不仅仅是进程在运行。
+`health` 命令还会告知采集器捕获的内容是否全部成功到达 AgentEye。若某批数据未能送达，系统会保留并重试，而非丢弃；在任何数据仍处于待发送状态时，检查结果将显示为不健康——因此"健康"意味着您的数据已成功到达，而不仅仅是进程在运行。
 
 ---
 
-## 数据呈现位置
+## 查看位置
 
-捕获的会话显示在 **Sessions** 中，对应事件显示在 **Events** 流中，与您观测的其他任何 Agent 完全一致——因此[会话回放](/zh/agenteye/sessions)、[搜索](/zh/agenteye/queries)、[评估](/zh/agenteye/evaluations)和[告警](/zh/agenteye/alerts)均对其适用。按 Hermes Agent 筛选即可单独查看其会话。
+捕获的会话出现在 **Sessions** 中，其事件出现在 **Events** 流中，与您观测的任何其他 Agent 完全一致——因此[会话回放](/zh/agenteye/sessions)、[搜索](/zh/agenteye/queries)、[评估](/zh/agenteye/evaluations)和[告警](/zh/agenteye/alerts)均可使用。按 Hermes Agent 筛选即可单独查看。
 
 ---
 
 ## 隐私说明
 
-Hermes 会话包含完整的交互记录——包括命令输出、文件内容以及 Agent 读取或写入的任何内容——并可能包含敏感信息。捕获的会话将原样发送，因此请仅在将相关内容集中存储至 AgentEye 合规且适当的环境下启用捕获，并为采集器提供仅限 `events:add` 权限的密钥。有关数据隔离方式，请参阅[安全说明](/zh/agenteye/security)。
+Hermes 会话包含完整的对话记录——包括命令输出、文件内容以及 Agent 读取或写入的任何内容——并可能包含敏感信息。捕获的会话会原样推送，因此请仅在将这些内容集中存储于 AgentEye 合规合适的场景下启用捕获，并为采集器配置仅限 `events:add` 权限的密钥。数据隔离机制详见[安全说明](/zh/agenteye/security)。

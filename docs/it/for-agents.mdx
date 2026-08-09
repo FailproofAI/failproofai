@@ -1,31 +1,32 @@
 ---
-title: "Per gli agenti"
-description: "Aggiungi la conoscenza di Failproof AI al tuo agente di codifica in un comando. Funziona con Claude Code, Cursor, Windsurf e altri."
+---
+title: "Per gli agent"
+description: "Aggiungi la conoscenza di Failproof AI al tuo agent di coding in un comando. Funziona con Claude Code, Cursor, Windsurf e altri."
 ---
 
-Aggiungi il riferimento completo di Failproof AI al tuo agente di codifica in un comando. Funziona con Claude Code, Cursor, Windsurf e qualsiasi altro agente che supporta le skill.
+Aggiungi il riferimento completo di Failproof AI al tuo agent di coding in un comando. Funziona con Claude Code, Cursor, Windsurf e qualsiasi altro agent che supporti le skill.
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` rileva quali agenti hai installato e aggiunge la skill nel formato corretto per ciascuno automaticamente.
+`npx skills` rileva quali agent hai installato e aggiunge la skill nel formato corretto per ognuno automaticamente.
 
 ## Cosa copre la skill
 
 | Area | Cosa è incluso |
 |------|----------------|
-| Policies | Nomi delle policy integrate, tipi di evento, parametri, abilitazione/disabilitazione |
-| Custom policies | `customPolicies.add()`, filtri di corrispondenza, API `allow`/`deny`/`instruct` |
-| Oggetto Context | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
-| Configurazione | Struttura `policies-config.json`, fusione degli ambiti, `policyParams` |
-| CLI | `failproofai policies --install`, `--uninstall`, `--custom`, ambiti |
-| Dashboard | Visualizzatore di sessioni, attività delle policy, variabili di ambiente |
-| Architettura | Flusso del gestore di hook, codici di uscita, contratto stdin/stdout |
+| Policies | Nomi delle policy built-in, tipi di evento, parametri, enable/disable |
+| Custom policies | `customPolicies.add()`, filtri di match, API `allow`/`deny`/`instruct` |
+| Context object | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
+| Configuration | Struttura di `policies-config.json`, scope merging, `policyParams` |
+| CLI | `failproofai policies --install`, `--uninstall`, `--custom`, scope |
+| Dashboard | Session viewer, policy activity, variabili d'ambiente |
+| Architecture | Hook handler flow, codici di uscita, contratto stdin/stdout |
 
 ## La skill è completa?
 
-Mintlify genera `llms.txt` da tutte le pagine nella navigazione. La documentazione di Failproof AI copre l'intera API - ogni policy, opzione ed esempio è incluso. Se trovi qualcosa di mancante, la fonte è su `https://docs.befailproof.ai/llms-full.txt`.
+Mintlify genera `llms.txt` da tutte le pagine nella navigazione. La documentazione di Failproof AI copre l'intera API - ogni policy, opzione e esempio è incluso. Se trovi qualcosa di mancante, la fonte si trova in `https://docs.befailproof.ai/llms-full.txt`.
 
 Per un contesto mirato, collega direttamente a una pagina specifica:
 
@@ -33,6 +34,6 @@ Per un contesto mirato, collega direttamente a una pagina specifica:
 # Solo l'API delle custom policies
 npx skills add https://docs.befailproof.ai/custom-policies
 
-# Solo le policy integrate
+# Solo le built-in policies
 npx skills add https://docs.befailproof.ai/built-in-policies
 ```

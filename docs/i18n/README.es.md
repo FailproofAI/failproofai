@@ -129,23 +129,23 @@ antes de que se conviertan en incidentes. Latencia cero. Se ejecuta localmente.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # o simplemente ejecuta `failproofai` y acepta el aviso del primer uso
+failproofai policies --install   # o simplemente ejecuta `failproofai` y acepta el aviso de primer uso
 failproofai
 ```
 
-30 políticas integradas se activan de inmediato. Panel de control en `localhost:8020`. Desactiva el aviso del primer uso con `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 políticas integradas se activan de inmediato. Panel de control en `localhost:8020`. Desactiva el aviso de primer uso con `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## Qué detiene
+## Qué previene
 
 | Política | Qué bloquea |
 |---|---|
-| `block-push-master` | Pushes directos a `main` / `master` |
+| `block-push-master` | Envíos directos a `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Commits, merges, rebases en `main` / `master` |
+| `block-work-on-main` | Commits, merges y rebases en `main` / `master` |
 | `block-rm-rf` | Eliminación recursiva de archivos |
-| `sanitize-api-keys` | Claves de API que se filtran al contexto del agente |
+| `sanitize-api-keys` | Filtraciones de claves API hacia el contexto del agente |
 
 → [Las 30 políticas integradas](https://docs.befailproof.ai/built-in-policies)
 
@@ -153,8 +153,8 @@ failproofai
 
 ## Tus propias políticas
 
-Coloca un archivo en `.failproofai/policies/` — se carga automáticamente, sin necesidad de flags.
-Haz commit y todo el equipo lo obtiene en el próximo pull.
+Añade un archivo en `.failproofai/policies/` — se carga automáticamente, sin necesidad de flags.
+Súbelo al repositorio y todo el equipo lo tendrá en el próximo pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -170,23 +170,23 @@ customPolicies.add({
 });
 ```
 
-Tres decisiones disponibles para cada política:
+Cada política dispone de tres decisiones:
 
 | Decisión | Efecto |
 |---|---|
 | `allow()` | Permite la operación |
 | `deny(message)` | La bloquea — el mensaje se devuelve al agente |
-| `instruct(message)` | La deja pasar, pero añade contexto al siguiente prompt del agente |
+| `instruct(message)` | La permite, pero añade contexto al siguiente prompt del agente |
 
 → [Guía de políticas personalizadas](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## Visibilidad de la sesión
+## Visibilidad de sesión
 
-Cada llamada de herramienta que realiza tu agente se registra localmente. El panel de control muestra qué se ejecutó,
-qué fue bloqueado y qué le dijo la política al agente — para que no tengas que adivinar
-cuando algo sale mal. → [Guía del panel de control](https://docs.befailproof.ai/dashboard)
+Cada llamada a una herramienta que realiza tu agente se registra localmente. El panel de control muestra qué se ejecutó,
+qué fue bloqueado y qué le indicó la política al agente — para que no tengas que adivinar
+qué ocurrió cuando algo sale mal. → [Guía del panel de control](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -194,8 +194,8 @@ cuando algo sale mal. → [Guía del panel de control](https://docs.befailproof.
 
 | | |
 |---|---|
-| [Primeros pasos](https://docs.befailproof.ai/getting-started) | Instalación y primeros pasos |
-| [Políticas integradas](https://docs.befailproof.ai/built-in-policies) | Las 30 políticas con parámetros |
+| [Primeros pasos](https://docs.befailproof.ai/getting-started) | Instalación y pasos iniciales |
+| [Políticas integradas](https://docs.befailproof.ai/built-in-policies) | Las 30 políticas con sus parámetros |
 | [Políticas personalizadas](https://docs.befailproof.ai/custom-policies) | Escribe las tuyas propias |
 | [Configuración](https://docs.befailproof.ai/configuration) | Ámbitos de configuración y reglas de combinación |
 | [Panel de control](https://docs.befailproof.ai/dashboard) | Monitor de sesión y actividad de políticas |
@@ -205,21 +205,21 @@ cuando algo sale mal. → [Guía del panel de control](https://docs.befailproof.
 
 ## Licencia
 
-MIT con [Commons Clause](https://commonsclause.com/) — gratuito para uso interno y personal; la reventa comercial de failproofai en sí misma requiere un acuerdo por separado. Consulta [LICENSE](../../LICENSE) para el texto completo.
+MIT con [Commons Clause](https://commonsclause.com/) — libre para uso interno y personal; la reventa comercial de failproofai en sí misma requiere un acuerdo independiente. Consulta [LICENSE](../../LICENSE) para el texto completo.
 
 ---
 
-## Contribuir
+## Contribuciones
 
-Consulta [CONTRIBUTING.md](../../CONTRIBUTING.md). Se aceptan nuevas políticas, casos límite y traducciones.
+Consulta [CONTRIBUTING.md](../../CONTRIBUTING.md). Son bienvenidas nuevas políticas, casos límite y traducciones.
 
 > **Compila antes de empezar.** Ejecuta primero `bun install && bun run build`. Este repositorio ejecuta
-> los propios hooks de failproofai sobre sí mismo, y resuelven la importación de `failproofai` contra el
-> bundle compilado en `dist/` — sin una compilación obtendrás errores de hook `Cannot find package 'failproofai'`.
+> sus propios hooks de failproofai sobre sí mismo, y resuelven la importación de `failproofai` contra el
+> bundle compilado en `dist/` — sin una compilación previa obtendrás errores de hook con `Cannot find package 'failproofai'`.
 > Vuelve a compilar tras modificar `src/`. Consulta
-> [Compila antes de que los hooks de desarrollo del repositorio funcionen](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-Creado por [Nivedit Jain](https://github.com/NiveditJain) y [Nikita Agarwal](https://github.com/nk-ag).
+Desarrollado por [Nivedit Jain](https://github.com/NiveditJain) y [Nikita Agarwal](https://github.com/nk-ag).
 [befailproof.ai](https://befailproof.ai)

@@ -1,56 +1,56 @@
 ---
 title: "Abfragen"
-description: "Stellen Sie beliebige Fragen zu Ihren Agent-Daten und erhalten Sie in Sekunden eine Antwort."
+description: "Stellen Sie beliebige Fragen an Ihre Agent-Daten und erhalten Sie in Sekunden eine Antwort."
 ---
 
 
-Stellen Sie beliebige Fragen zu Ihren Agent-Daten und erhalten Sie in Sekunden eine Antwort. Failproof AI Observability bietet Ihnen eine Bibliothek mit gespeicherten, sofort ausführbaren Abfragen über Ihre Events und Auswertungen – damit starten Sie mit einem funktionierenden Beispiel statt vor einem leeren SQL-Editor.
+Stellen Sie beliebige Fragen an Ihre Agent-Daten und erhalten Sie in Sekunden eine Antwort. Failproof AI Observability bietet Ihnen eine Bibliothek gespeicherter, sofort ausführbarer Abfragen über Ihre Events und Evaluierungen – so starten Sie mit einem funktionierenden Beispiel statt vor einem leeren SQL-Editor.
 
-![Die Bibliothek gespeicherter Abfragen: ein Raster wiederverwendbarer Abfragen, sowohl eingebaute Voreinstellungen als auch eigene](/agenteye/images/queries.png)
+![Die Bibliothek gespeicherter Abfragen: ein Raster wiederverwendbarer Abfragen, sowohl integrierte Vorlagen als auch benutzerdefinierte](/agenteye/images/queries.png)
 
-*Ihre Bibliothek gespeicherter Abfragen unter `/<org-slug>/queries`: eingebaute Voreinstellungen neben den Abfragen, die Ihr Team gespeichert hat.*
+*Ihre Bibliothek gespeicherter Abfragen unter `/<org-slug>/queries`: integrierte Vorlagen neben den Abfragen, die Ihr Team gespeichert hat.*
 
-## Mit einer Vorlage starten, nicht mit einer leeren Seite
+## Starten Sie mit einer Vorlage, nicht mit einer leeren Seite
 
-Sie müssen sich keine Tabellennamen merken oder SQL von Grund auf neu schreiben. Die Bibliothek öffnet sich mit eingebauten Voreinstellungen für die Fragen, die Teams am häufigsten stellen – direkt neben den Abfragen, die Ihr Team gespeichert und benannt hat. Wählen Sie eine aus, die Ihrem Ziel nahekommt, und Sie sind dem Ergebnis schon einen großen Schritt nähergekommen.
+Sie müssen sich keine Tabellennamen merken oder SQL von Grund auf schreiben. Die Bibliothek öffnet sich mit integrierten Vorlagen für die Fragen, die Teams am häufigsten stellen – direkt neben den Abfragen, die Ihr Team selbst gespeichert und benannt hat. Wählen Sie eine aus, die Ihrem Bedarf nahekommt, und Sie sind dem Ergebnis schon nahe.
 
-Jede gespeicherte Abfrage ist organisations-weit gültig und geteilt – nützliche Abfragen Ihrer Kollegen stehen also auch Ihnen zur Verfügung. Benennen Sie eine Abfrage und geben Sie ihr einmal eine Beschreibung, und alle in Ihrer Organisation können sie finden, ausführen oder ihre Ergebnisse später auf einem Dashboard anheften.
+Jede gespeicherte Abfrage ist organisationsweit verfügbar und geteilt, sodass nützliche Abfragen Ihrer Teammitglieder auch Ihnen zugutekommen. Benennen Sie eine Abfrage einmal und versehen Sie sie mit einer Beschreibung – dann kann jede Person in Ihrer Organisation sie finden, ausführen oder die Ergebnisse später auf einem Dashboard anheften.
 
 Zu finden unter `/<org-slug>/queries`.
 
-## Im SQL-Composer anpassen und ausführen
+## Anpassen und ausführen im SQL-Composer
 
-Öffnen Sie eine beliebige Abfrage und sie wird im SQL-Composer geladen, wo Sie sie anpassen und die Antwort sofort sehen können – kein Export, kein Hin-und-Her, kein Warten auf andere.
+Öffnen Sie eine beliebige Abfrage und sie wird im SQL-Composer geladen, wo Sie sie anpassen und die Antwort sofort sehen können: kein Export, kein Umweg, kein Warten auf jemand anderen.
 
 ![Der SQL-Abfrage-Composer mit einer gespeicherten Abfrage, einer Schema-Seitenleiste und einem Live-Ergebnisraster](/agenteye/images/query-lab.png)
 
-*Der SQL-Composer: Ihre Abfrage links, eine Schema-Seitenleiste damit Sie nie einen Spaltennamen raten müssen, und ein Live-Ergebnisraster darunter.*
+*Der SQL-Composer: Ihre Abfrage links, eine Schema-Seitenleiste damit Sie keinen Spaltennamen erraten müssen, und ein Live-Ergebnisraster darunter.*
 
-- **Eine Schema-Seitenleiste** listet die Analysetabellen und ihre Spalten auf, sodass Sie eine Abfrage gestalten können, ohne nach Feldnamen suchen zu müssen.
-- **Ein Live-Ergebnisraster** gibt Zeilen zurück, sobald Sie die Abfrage ausführen – iterieren Sie in Sekunden statt immer wieder zu raten.
-- **Schreibgeschützt by Design.** Abfragen werden gegen Ihren Event-Speicher ausgeführt und auf dem Server validiert: Nur `SELECT`- und `WITH`-Anweisungen sind erlaubt, mit einem Statement-Timeout und einer Zeilenobergrenze. Eine explorative Abfrage kann Ihre Daten nie verändern, und eine unkontrolliert laufende wird für Sie gestoppt.
+- **Eine Schema-Seitenleiste** listet die Analytics-Tabellen und ihre Spalten auf, sodass Sie eine Abfrage gestalten können, ohne nach Feldnamen suchen zu müssen.
+- **Ein Live-Ergebnisraster** gibt Zeilen sofort nach der Ausführung zurück, sodass Sie in Sekunden iterieren statt mehrfach zu raten.
+- **Standardmäßig nur lesend.** Abfragen werden gegen Ihren Event-Store ausgeführt und serverseitig validiert: nur `SELECT`- und `WITH`-Anweisungen sind erlaubt, mit einem Statement-Timeout und einer Zeilenbegrenzung. Eine explorative Abfrage kann Ihre Daten niemals verändern, und eine außer Kontrolle geratene wird automatisch gestoppt.
 
-Mit dem Ergebnis zufrieden? Speichern Sie es zurück in die Bibliothek, damit das gesamte Team davon profitiert, oder heften Sie die Ausgabe als Linien-, Balken-, Flächen- oder Tortendiagramm-Kachel auf ein Dashboard.
+Zufrieden mit dem Ergebnis? Speichern Sie es in der Bibliothek, damit das gesamte Team davon profitiert, oder heften Sie die Ausgabe als Linien-, Balken-, Flächen- oder Kreisdiagramm-Kachel auf ein Dashboard.
 
-## Vom Terminal aus ausführen oder vom Assistenten schreiben lassen
+## Aus dem Terminal ausführen oder vom Assistenten schreiben lassen
 
-Dieselben gespeicherten Abfragen begleiten Sie überall:
+Dieselben gespeicherten Abfragen begleiten Sie überall, wo Sie arbeiten:
 
-- **Vom Terminal aus.** Das `agenteye`-CLI listet, führt aus und speichert genau dieselben Abfragen, sodass Sie ein Ergebnis in ein Skript einbetten, in CI einbinden oder an einen Coding-Agent weitergeben können.
+- **Aus dem Terminal.** Die `agenteye`-CLI listet, führt aus und speichert genau dieselben Abfragen, sodass Sie ein Ergebnis in ein Skript einbinden, in CI integrieren oder an einen Coding-Agent weitergeben können.
 
 ```bash
-agenteye query list                 # die gleichen gespeicherten Abfragen, vom Terminal aus
-agenteye query run errs --arg prod  # eine ausführen und die Zeilen ausgeben (--json zum Weiterleiten hinzufügen)
+agenteye query list                 # dieselben gespeicherten Abfragen, aus Ihrem Terminal
+agenteye query run errs --arg prod  # eine ausführen und Zeilen ausgeben (--json zum Weiterleiten)
 ```
 
   Den vollständigen Befehlssatz finden Sie unter [CLI und Agents](/de/agenteye/cli-and-agents).
 
-- **Vom KI-Assistenten.** Nicht sicher, wie Sie das SQL formulieren sollen? Fragen Sie den integrierten [KI-Assistenten](/de/agenteye/assistant) im Dashboard auf natürlichem Deutsch, und er entwirft die Abfrage und speichert sie für Sie in Ihrer Bibliothek.
+- **Vom KI-Assistenten.** Nicht sicher, wie Sie das SQL formulieren sollen? Fragen Sie den [KI-Assistenten](/de/agenteye/assistant) im Dashboard auf natürlichem Deutsch und er entwirft die Abfrage und speichert sie für Sie in Ihrer Bibliothek.
 
-Das Ausführen einer gespeicherten Abfrage ist durch die Berechtigung `queries:run` geschützt, die getrennt von den Berechtigungen zum Erstellen oder Löschen von Abfragen verwaltet wird – so können Sie Lesezugriff gewähren, ohne allen die Möglichkeit zu geben, die Bibliothek zu verändern.
+Die Ausführung einer gespeicherten Abfrage erfordert die Berechtigung `queries:run`, die separat von den Berechtigungen zum Erstellen oder Löschen von Abfragen gehalten wird – so können Sie Lesezugriff gewähren, ohne allen die Möglichkeit zu geben, die Bibliothek umzuschreiben.
 
 ## Verwandte Themen
 
-- [Dashboards](/de/agenteye/dashboards): Abfrageergebnisse in gemeinsam genutzte, organisationsweite Diagramme einbinden.
-- [KI-Assistent](/de/agenteye/assistant): Fragen auf natürlichem Deutsch stellen und eine fertige Abfrage erhalten.
-- [CLI und Agents](/de/agenteye/cli-and-agents): Dieselben Abfragen vom Terminal aus ausführen und speichern.
+- [Dashboards](/de/agenteye/dashboards): Abfrageergebnisse als gemeinsame, organisationsweite Diagramme anheften.
+- [KI-Assistent](/de/agenteye/assistant): Fragen in natürlicher Sprache stellen und eine fertige Abfrage erhalten.
+- [CLI und Agents](/de/agenteye/cli-and-agents): dieselben Abfragen aus dem Terminal ausführen und speichern.

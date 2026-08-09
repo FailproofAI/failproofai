@@ -133,7 +133,7 @@ failproofai policies --install   # ou simplesmente execute `failproofai` e aceit
 failproofai
 ```
 
-30 políticas integradas são ativadas imediatamente. Dashboard em `localhost:8020`. Desative o prompt da primeira execução com `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 políticas integradas ativadas imediatamente. Dashboard em `localhost:8020`. Desative o prompt da primeira execução com `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
@@ -143,7 +143,7 @@ failproofai
 |---|---|
 | `block-push-master` | Pushes diretos para `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Commits, merges e rebases em `main` / `master` |
+| `block-work-on-main` | Commits, merges, rebases em `main` / `master` |
 | `block-rm-rf` | Exclusão recursiva de arquivos |
 | `sanitize-api-keys` | Chaves de API vazando para o contexto do agente |
 
@@ -153,8 +153,8 @@ failproofai
 
 ## Suas próprias políticas
 
-Adicione um arquivo em `.failproofai/policies/` — ele é carregado automaticamente, sem necessidade de flags.
-Faça o commit e toda a equipe receberá na próxima atualização.
+Coloque um arquivo em `.failproofai/policies/` — ele é carregado automaticamente, sem necessidade de flags.
+Faça commit e todo o time recebe na próxima atualização.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -186,7 +186,7 @@ Três decisões disponíveis para cada política:
 
 Cada chamada de ferramenta feita pelo seu agente é registrada localmente. O dashboard mostra o que foi executado,
 o que foi bloqueado e o que a política informou ao agente — para que você não precise adivinhar
-quando algo der errado. → [Guia do Dashboard](https://docs.befailproof.ai/dashboard)
+quando algo dá errado. → [Guia do dashboard](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -213,10 +213,10 @@ MIT com [Commons Clause](https://commonsclause.com/) — gratuito para uso inter
 
 Consulte [CONTRIBUTING.md](../../CONTRIBUTING.md). Novas políticas, casos extremos e traduções são bem-vindos.
 
-> **Compile antes de começar.** Execute `bun install && bun run build` primeiro. Este repositório executa
-> os próprios hooks do failproofai sobre si mesmo, e eles resolvem o import `failproofai` a partir do
-> bundle compilado em `dist/` — sem uma compilação você encontrará erros de hook `Cannot find package 'failproofai'`.
-> Recompile após alterar `src/`. Consulte
+> **Faça o build antes de começar.** Execute `bun install && bun run build` primeiro. Este repositório executa
+> os próprios hooks do failproofai sobre si mesmo, e eles resolvem o import `failproofai` contra o
+> bundle compilado em `dist/` — sem um build você terá erros de hook `Cannot find package 'failproofai'`.
+> Reconstrua após alterar `src/`. Consulte
 > [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---

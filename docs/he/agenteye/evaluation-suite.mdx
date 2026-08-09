@@ -1,21 +1,21 @@
 ---
 title: "חבילת הערכה"
-description: "Failproof AI Observability יכול לדרג אוטומטית כל הרצה של agent שהסתיימה לאיכות: אתה מספק שירות דירוג קטן, ו-Observability מטפל בשאר."
+description: "Failproof AI Observability יכול לתת ציון באופן אוטומטי לכל הרצה של agent שהסתיימה עבור איכות: אתה מספק שירות ניקוד קטן, ו-Observability מטפל בשאר."
 ---
 
-Failproof AI Observability יכול לדרג אוטומטית כל הרצה של agent שהסתיימה לאיכות: אתה מספק שירות דירוג קטן, ו-Observability מטפל בשאר. השתמש בו כדי לעקוב אחר הממדים שחשובים לך (עזרתיות, יעילות כלים, עובדתיות, בטיחות; בחר בעצמך), תפוס רגרסיות מוקדם, והשווה בין agents או סביבות במבט מהיר. דירוג הוא אופציונלי: הצינור לא עושה כלום עד שתגדיר `EVALUATOR_ENDPOINT` בשרת.
+Failproof AI Observability יכול לתן ציון באופן אוטומטי לכל הרצה של agent שהסתיימה עבור איכות: אתה מספק שירות ניקוד קטן, ו-Observability מטפל בשאר. השתמש בזה כדי לעקוב אחר הממדים שחשובים לך (עזרתיות, יעילות כלים, עובדתיות, בטיחות; אתה בוחר), תופס רגרסיות מוקדמות, והשווה agents או סביבות במבט חוטף. ניקוד הוא אופציונלי: הצינור לא עושה שום דבר עד שתוגדר `EVALUATOR_ENDPOINT` על השרת.
 
-> **הערה:** אתה מגדיר את ממדי הדירוג. המעריך שלך יכול להחזיר כל מפתחות מספריים שהוא רוצה; Observability אחסן, מעקב ותצוגה של כל מה שאתה שולח חזרה.
+> **הערה:** אתה מגדיר את ממדי הציון. המעריך שלך יכול להחזיר כל מפתחות מספריים שהוא רוצה; Observability שומר, עוקב טרנדים, ומציג כל מה שאתה שולח חזרה.
 
-## בקיצור
+## בהצצה
 
-1. **כתוב דורג.** הקם שירות HTTP קטן שקורא תמלול הפעלה ומחזיר דירוגים. Observability משלח התייחסות עובדת שאתה יכול להעתיק. ראה [כתיבת מעריך עם ה-SDK](#writing-an-evaluator-with-the-sdk).
-2. **הצב את Observability עליו.** הגדר `EVALUATOR_ENDPOINT` (ו-`EVALUATOR_TOKEN` משותף) בתהליך השרת.
-3. **צפה בדירוגים להגיע.** כל הפעלה שהושלמה מדורגת אוטומטית; התוצאות מופיעות בעמוד פרטי ההפעלה, רשת ההפעלות, ותרשימי בקרה שנשמרו.
+1. **כתוב מעריך.** הקם שירות HTTP קטן שקורא תמליל הפעלה ומחזיר ציונים. Observability משלח עבודה חישוק שאתה יכול להעתיק. ראה [כתיבת מעריך עם ה-SDK](#writing-an-evaluator-with-the-sdk).
+2. **הצבע את Observability אליו.** תנו `EVALUATOR_ENDPOINT` (ו-`EVALUATOR_TOKEN` משותף) בתהליך השרת.
+3. **צפה בהנחתת הציונים.** כל הפעלה מסיימת מקבלת ציון באופן אוטומטי; התוצאות מופיעות בעמוד פרטי ההפעלה, ברשת ההפעלות, ובלוחות מידע שמורים.
 
-![תצוגת פרטי הפעלה עם סיכום ההערכה, פסי דירוג למימד, וטקסט נימוקים בתוך הפנל הימני](/agenteye/images/session-detail.png)
+![תצוגת פרטי הפעלה עם סיכום ההערכה, סרגלי ציון לכל ממד, וטקסט נימוק בעמודה הימנית](/agenteye/images/session-detail.png)
 
-*כשמעריך מוגדר, כל הרצה שהושלמה מדורגת והתוצאות מופיעות בתוך הפנל הימני של ההפעלה: הסיכום בחלק העליון, ואחריו פסי דירוג למימד עם נימוקים.*
+*כאשר מעריך מוגדר, כל הרצה שהושלמה מקבלת ציון והתוצאות מופיעות בעמודה הימנית של ההפעלה: הסיכום בחלק העליון, ואחר כך סרגלי ציון לכל ממד עם נימוק.*
 
 ---
 
@@ -31,44 +31,44 @@ flowchart LR
     SRV --> RES["evaluations<br/>terminal results"]
 ```
 
-כשה-SDK של Observability פולט אירוע `agent_end` עבור הפעלה, השרת מתכנן הערכה. לאחר מכן הוא POST את תמלול האירוע המלא לשירות המעריך שלך, שיכול להיות:
+כאשר Observability SDK משדר אירוע `agent_end` להפעלה, השרת מתזמן הערכה. לאחר מכן הוא משדר את תמליל האירוע המלא לשירות המעריך שלך, שיכול:
 
-- **החזר את התוצאה באופן מיידי** עם `{"status":"done", "scores":{...}, "reasoning":{...}, "summary":"..."}`. התוצאה מצורפת לציר הזמן של הערכת ההפעלה. `reasoning` ו-`summary` הם אופציונליים.
-- **דחה** עם `{"status":"pending", "job_id":"abc-123"}`. Observability לאחר מכן קורא `GET {EVALUATOR_ENDPOINT}/evaluate/abc-123` עד שהמעריך שלך מחזיר `{"status":"done", ...}` או `{"status":"error", "error":"..."}`.
+- **להחזיר את התוצאה בשורה** עם `{"status":"done", "scores":{...}, "reasoning":{...}, "summary":"..."}`. התוצאה מתוספת לציר הזמן של ההערכה של ההפעלה. `reasoning` ו-`summary` אופציונליים.
+- **להדחות** עם `{"status":"pending", "job_id":"abc-123"}`. Observability ואז קורא `GET {EVALUATOR_ENDPOINT}/evaluate/abc-123` עד שהמעריך שלך מחזיר `{"status":"done", ...}` או `{"status":"error", "error":"..."}`.
 
-  קצב הסקירה לכל עבודה: תגובת `pending` עשויה לכלול `next_poll_secs` כדי להחליף; אחרת Observability משתמש בערך `default_poll_interval_secs` מ-`GET /config`; אחרת השרת חוזר ל-`EVALUATOR_POLLING_INTERVAL_SECS` (ברירת מחדל 10s). כל הערכים קלויים ל-[1s, 1h].
+  קצב הסקר הוא לפי-עבודה: תגובת `pending` עשויה לכלול `next_poll_secs` כדי להפוך; אחרת Observability משתמש בערך `default_poll_interval_secs` מ-`GET /config`; אחרת השרת חוזר ל-`EVALUATOR_POLLING_INTERVAL_SECS` (ברירת מחדל 10s). כל הערכים מחוברים ל-[1s, 1h].
 
-הפעלות שלא פלטו `agent_end` (לדוגמה, תהליך agent שקרס) יכולות גם להיבחר: ה-`GET /config` של המעריך עשוי להחזיר `{"inactivity_timeout_secs": 1800}`, ו-Observability יערוך כל הפעלה שהייתה בשקט במשך זה הרבה זמן. הגדר את השדה ל-`null` או השמט אותו כדי להשבית את הסיוע הזה.
+הפעלות שלעולם לא משדרות `agent_end` (לדוגמה, תהליך agent שקרס) יכול גם להיאסוף: `GET /config` של המעריך עשוי להחזיר `{"inactivity_timeout_secs": 1800}`, ו-Observability יעריך כל הפעלה שהשתקתה במשך כל כך הרבה זמן. הגדר את השדה ל-`null` או השמט אותו כדי להשבית חלופה זו.
 
-הצינור הוא no-op לחלוטין כשלא הוגדר `EVALUATOR_ENDPOINT`.
+הצינור הוא no-op לחלוטין כאשר `EVALUATOR_ENDPOINT` לא מוגדר.
 
-הפעלה יכולה להצבור **מספר הערכות טרמינליות לאורך זמן**: כל אירוע `agent_end` (וכל re-eval ידני מהלוח) מוסיף שורת הערכה חדשה. זו הדרך המומלצת להערכת שיחה חדשה: משתמש מסיים agent, חוזר מאוחר יותר, שולח עוד אירועים, מסיים את agent שוב, וההערכה השנייה פועלת נגד התמלול המלא המעודכן. הלוח מעניק את ההערכה העדכנית ביותר כהכותרת והערכות הקודמות כציר זמן שניתן לכיווץ. בזמן שהערכה אחת פועלת עבור הפעלה, אירועי `agent_end` נוספים לאותה הפעלה מתעלמים; ההבא אחרי שהערכה הפעילה מסתיימת יקטלג הערכה חדשה כרגיל.
+הפעלה יכולה להצטבר **מרובות הערכות טרמינליות לאורך זמן**: כל אירוע `agent_end` (וכל הערכה חוזרת ידנית מלוח הנתונים) מוסיף שורת הערכה טרייה. זו הדרך הנתמכת להערכת שיחה שהורשמה: משתמש מסיים agent, חוזר מאוחר יותר, שולח עוד אירועים, מסיים את ה-agent שוב, והערכה שנייה פועלת מול התמליל המעודכן המלא. לוח הנתונים משדר את ההערכה האחרונה ביותר כהכותרת וההערכות הקודמות כציר זמן שניתן לקיפול. בזמן שהערכה אחת פועלת להפעלה, אירועי `agent_end` נוספים לאותה הפעלה מתעלמים; השנייה אחרי שההערכה הפועלת מסיימת תשדר הערכה טרייה כרגיל.
 
-הסיוע התוקף מחדש של חוסר פעילות פועל גם בהפעלות חדשות: אם אירועים חדשים מגיעים לאחר הערכה טרמינלית קודמת וההפעלה לאחר מכן תהיה בטל בעבר `inactivity_timeout_secs`, הערכה חדשה מתואזנת בתור.
+החלופה של אי-פעילות מופעלת מחדש גם בהפעלות שהורשמו: אם אירועים חדשים מגיעים לאחר הערכה טרמינלית קודמת והפעלה לאחר מכן משתקת עד `inactivity_timeout_secs`, הערכה טרייה תורשת.
 
-כשלים זמניים (5xx, 429, timeouts, שגיאות רשת) מופעלו מחדש עם backoff אקספוננציאלי עד `EVALUATOR_MAX_ATTEMPTS`; תגובות 4xx הן טרמינליות. Observability בטוח להריץ עם מספר instances שרת בקנה מידה אופקי; העבודה מחולקת כך שאותה הפעלה לא מועברת לעולם פעמיים בו-זמנית.
+כשלים חולפים (5xx, 429, timeouts, שגיאות רשת) מנסים שוב עם backoff אקספוננציאלי עד `EVALUATOR_MAX_ATTEMPTS`; תגובות 4xx הן טרמינליות. Observability בטוח לריצה עם מספר instances של שרת מדורג בצורה אופקית; עבודה מחולקת כך שאותה הפעלה לעולם לא תיישלח פעמיים בו-זמנית.
 
 ---
 
 ## חוזה HTTP
 
-כל נתיב מאומת משתמש **auth של bearer token**. אותו ערך חייב להיות מוגדר משני הצדדים:
+כל מסלול מאומת משתמש **בהנחתת token נושא**. אותו ערך חייב להיות מוגדר משני הצדדים:
 
 - שרת Observability: משתנה env `EVALUATOR_TOKEN`
-- שירות המעריך: מוגדר באותו אופן (ה-SDK `agenteye-evaluator` קורא `EVALUATOR_TOKEN` לפי מוסכמה)
+- שירות המעריך: מוגדר בדרך זהה (ה-SDK של `agenteye-evaluator` קורא `EVALUATOR_TOKEN` בהמשך)
 
-אם לא הוגדר `EVALUATOR_TOKEN`, השרת לא שולח header `Authorization`; המעריך עשוי אז לקבל בקשות ללא זיהוי, וזה בסדר לרשת פנימית בלבד אך מונע ברשת הציבור.
+אם `EVALUATOR_TOKEN` לא מוגדר, השרת לא שולח header `Authorization`; המעריך עשוי אז להסכים לבקשות אנונימיות, שזה בסדר לרשת פנימית בלבד אך מומלץ נגדו באינטרנט הציבורי.
 
-### נתיבים שהמעריך חייב להגיש
+### מסלולים שהמעריך חייב לשרת
 
-| נתיב | גוף / פרמטרים | תגובה |
+| מסלול | גוף / פרמטרים | תגובה |
 |---|---|---|
-| `GET /health` | אין | `{"status":"ok"}` (פתוח, ללא auth) |
-| `GET /config` | אין | `{"inactivity_timeout_secs": <int> \| null, "default_poll_interval_secs": <int> \| omitted}` |
+| `GET /health` | none | `{"status":"ok"}` (פתוח, ללא auth) |
+| `GET /config` | none | `{"inactivity_timeout_secs": <int> \| null, "default_poll_interval_secs": <int> \| omitted}` |
 | `POST /evaluate` | `EvalRequest` JSON | `{"status":"done", ...}` או `{"status":"pending", "job_id":"..."}` |
-| `GET /evaluate/{id}` | אין | אותו צורת תגובה כמו `/evaluate` |
+| `GET /evaluate/{id}` | none | צורת תגובה זהה ל-`/evaluate` |
 
-### גוף `EvalRequest` ששלח השרת
+### גוף `EvalRequest` שנשלח על ידי השרת
 
 ```json
 {
@@ -101,7 +101,7 @@ flowchart LR
 }
 ```
 
-`reasoning` (מפת הצדקה לדירוג) ו-`summary` (נרטיב של פסקה אחת כללית) שניהם אופציונליים. מפתחות ב-`reasoning` צריכים לשקף מפתחות ב-`scores`; הלוח מעניק כל ערך בתוך פס הדירוג שלו. מעריכים ישנים יותר שמחזירים רק `scores` ממשיכים לעבוד ללא שינוי; `reasoning` ו-`summary` פשוט קרוא כ-null והאפורדנסיות ממשק המתאימות מושמטות.
+`reasoning` (מפת הצדקה לכל ציון) ו-`summary` (נרטיב כולל של פסקה אחת) שניהם אופציונליים. מפתחות ב-`reasoning` צריכים להשתקף מפתחות ב-`scores`; לוח הנתונים משדר כל ערך בשורה מתחת לסרגל הציון שלו. מעריכים ישנים יותר שמחזירים רק `scores` ממשיכים לעבוד ללא שינוי; `reasoning` ו-`summary` פשוט קוראים כ-null וההנחתות ה-UI המתאימות מושמטות.
 
 **Async (deferred):**
 
@@ -109,7 +109,7 @@ flowchart LR
 { "status": "pending", "job_id": "abc-123", "next_poll_secs": 30 }
 ```
 
-`next_poll_secs` הוא אופציונלי; אם מושמט השרת חוזר ל-`default_poll_interval_secs` של המעריך מ-`/config`, ואחריו למשתנה env `EVALUATOR_POLLING_INTERVAL_SECS` שלו.
+`next_poll_secs` אופציונלי; אם השמט השרת חוזר ל-`default_poll_interval_secs` של המעריך מ-`/config`, ואחר כך למשתנה env `EVALUATOR_POLLING_INTERVAL_SECS` שלו.
 
 **שגיאת טרמינלית בצד המעריך:**
 
@@ -117,17 +117,17 @@ flowchart LR
 { "status": "error", "error": "model service unavailable" }
 ```
 
-השרת מטפל בכל גוף 2xx אחר כשגיאת פרוטוקול ומתעד שגיאה טרמינלית עבור ההפעלה.
+השרת מתייחס לכל גוף 2xx אחר כשגיאה בפרוטוקול ורושם `error` טרמינלי להפעלה.
 
 ---
 
 ## כתיבת מעריך עם ה-SDK
 
-אתה לא צריך ליישם את חוזה HTTP ביד. חבילת Python `agenteye-evaluator` נותנת לך עטיפה FastAPI מוקלדת שמטפלת ב-auth, ניתוב, וצורות בקשה/תגובה בשבילך.
+אתה לא צריך ליישם את חוזה ה-HTTP ביד. חבילת Python `agenteye-evaluator` נותנת לך wrapper FastAPI מוקלד שמטפל בהנחתה, ניתוב, וצורות בקשה/תגובה בשבילך.
 
-Failproof AI Observability גם משלח **מעריך התייחסות עובד** שדורג `helpfulness`, `tool_efficiency`, ו-`factuality` מצורת התמלול. העתק אותו כנקודת התחלה והחלף בלוגיקה שלך: שופט LLM, מנוע כללים, או כל מה שמתאים לסטנדרט האיכות שלך.
+Failproof AI Observability גם משלח **מעריך ייחוס עובד** שנותן ציונים ל-`helpfulness`, `tool_efficiency`, ו-`factuality` מצורת התמליל. העתק את זה כנקודת התחלה והחלף בלוגיקה שלך: שופט LLM, מנוע כללים, כל מה שמתאים לתקן האיכות שלך.
 
-מעריך מינימלי קיים:
+מעריך מינימלי:
 
 ```python
 import os
@@ -146,19 +146,19 @@ def run(req: EvalRequest) -> EvalResponse:
     )
 ```
 
-instance ה-`app` פועל תחת כל שרת ASGI, אז `uvicorn module:app` מפעיל אותו.
+מופע ה-`app` פועל תחת כל שרת ASGI, כך ש-`uvicorn module:app` מתחיל אותו.
 
-עבור מעריכים שצריכים להעביר עבודה יקרה, החזר `JobPending` בעוד בו ורשום `@app.job_lookup` handler; שרת Observability סוקר `GET /evaluate/{job_id}` עד שתחזיר מצב טרמינלי או תקע `EVALUATOR_MAX_POLL_DURATION_SECS` (ברירת מחדל 1 h) מתחיל.
+עבור מעריכים שצריכים להדחות עבודה יקרה, החזר `JobPending` במקום וגיש `@app.job_lookup` handler; שרת Observability בוחר `GET /evaluate/{job_id}` עד שאתה מחזיר סטטוס טרמינלי או עד שמכסה `EVALUATOR_MAX_POLL_DURATION_SECS` (ברירת מחדל 1 h).
 
-ה-API reference המלא, דפוס async, וסכמת אירוע מתועדים ב-README של SDK `agenteye-evaluator`.
+ההפניה המלאה של API, דפוס אסינך, וסכימת אירוע מתועדים ב-README של SDK `agenteye-evaluator`.
 
 ---
 
 ## הרצת המעריך שלך
 
-המעריך הוא **שירות שלך** — Failproof AI Observability לא משלח מעריך ברירת מחדל, כך שאתה בונה והרץ אותו איפה שאתה מריץ את השירותים שלך. הוא פועל תחת כל שרת ASGI (לדוגמה `uvicorn my_evaluator:app`); הגיש את נתיבי `/health`, `/config`, ו-`/evaluate` מה-[HTTP contract](#http-contract), ואחריו הצב את השרת עליו (ראה [הגדרת השרת](#configuring-the-server)).
+המעריך הוא **השירות שלך** — Failproof AI Observability לא משלח מעריך ברירת מחדל, אז אתה בנה והרץ אותו איפה שאתה מריץ את השירותים שלך. הוא פועל תחת כל שרת ASGI (לדוגמה `uvicorn my_evaluator:app`); הוא משדר את המסלולים `/health`, `/config`, ו-`/evaluate` מ-[חוזה ה-HTTP](#http-contract), ואחר כך הצבע את השרת אליו (ראה [הגדרת השרת](#configuring-the-server)).
 
-ברגע שהמעריך נגיע, `GET /health` מחזיר `{"status":"ok"}`. לאחר שהופעל agent מקצה לקצה, `GET /evaluations` בשרת מחזיר שורה עם `status: "done"` והדירוגים שהמעריך שלך הפיק.
+ברגע שהמעריך ניתן להשגה, `GET /health` מחזיר `{"status":"ok"}`. לאחר שagent פועל end-to-end, `GET /evaluations` על השרת מחזיר שורה עם `status: "done"` וציוני שהמעריך שלך הפיק.
 
 ---
 
@@ -168,38 +168,38 @@ instance ה-`app` פועל תחת כל שרת ASGI, אז `uvicorn module:app` מ
 
 | משתנה Env | משמעות |
 |---|---|
-| `EVALUATOR_ENDPOINT` | URL בסיס של המעריך שלך (`http://evaluator:9000`). לא מוגדר = צינור מוגבל. |
-| `EVALUATOR_TOKEN` | Bearer token. חייב להיות שווה לערך שהשירות המעריך מוגדר איתו. |
-| `EVALUATOR_WORKERS` | משימות worker לכל instance שרת (ברירת מחדל 2). |
-| `EVALUATOR_CLAIM_BATCH` | שורות שנתבעו לכל tick worker (ברירת מחדל 4). קבוצות מעובדות **בו-זמנית**; קונקורנציה יעילה בנקודת הקצה של המעריך שלך היא `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
-| `EVALUATOR_POLL_IDLE_SECS` | כמה זמן worker ישן בין ניסיונות משלוח כשלא הערכה הגיונית (ברירת מחדל 2s). |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | חזרה סופית עבור קצב `GET /evaluate/{id}` כשלא `next_poll_secs` לכל-תגובה ולא `default_poll_interval_secs` של המעריך הוגדר (ברירת מחדל 10s). |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | timeout לכל בקשה (ברירת מחדל 30000). |
-| `EVALUATOR_MAX_ATTEMPTS` | לאחר כל כך הרבה כשלים חולפים התוצאה מתועדת כ-`error` טרמינלי (ברירת מחדל 5). |
+| `EVALUATOR_ENDPOINT` | URL בסיס של המעריך שלך (`http://evaluator:9000`). Unset = pipeline disabled. |
+| `EVALUATOR_TOKEN` | bearer token. חייב להיות שווה לערך שירות המעריך מוגדר עם. |
+| `EVALUATOR_WORKERS` | משימות עובד לכל instance שרת (ברירת מחדל 2). |
+| `EVALUATOR_CLAIM_BATCH` | שורות שנתבעו לכל tick עובד (ברירת מחדל 4). אצוות מעובדות **בו-זמנית**; ניתוק אפקטיבי על ה-endpoint של המעריך שלך הוא `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH`. |
+| `EVALUATOR_POLL_IDLE_SECS` | כמה זמן עובד ישן בין ניסיונות dispatching כאשר לא הערכה תהיה (ברירת מחדל 2s). |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | fallback סופי עבור קצב `GET /evaluate/{id}` כאשר לא ה-per-response `next_poll_secs` ולא `default_poll_interval_secs` של המעריך הם הוגדרים (ברירת מחדל 10s). |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | timeout לכל-בקשה (ברירת מחדל 30000). |
+| `EVALUATOR_MAX_ATTEMPTS` | אחרי כל כך הרבה כשלים חולפים התוצאה מתועדת כ-`error` טרמינלי (ברירת מחדל 5). |
 | `EVALUATOR_CONFIG_REFRESH_SECS` | קצב `GET /config` (ברירת מחדל 300). |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | זמן wallclock מקסימלי שהפעלה עשויה להישאר בתור הסקירה לפני שהיא מסתיימת כ-`timeout` (ברירת מחדל 3600s). שומר נגד מעריך שממשיך להחזיר `pending` לחלוטין. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | זמן wallclock מקסימלי שהפעלה עשויה להישאר בתור הסקר לפני שהיא מופסקת כ-`timeout` (ברירת מחדל 3600s). שומר נגד מעריך שממשיך להחזיר `pending` לעד. |
 
-כדי להפעיל דירוג אוטומטי, הגדר גם `EVALUATOR_ENDPOINT` וגם `EVALUATOR_TOKEN` בשרת, ולאחר מכן הפעל מחדש כדי להרים את השינוי. עם `EVALUATOR_ENDPOINT` לא מוגדר הצינור נשאר no-op.
+כדי להפעיל ניקוד אוטומטי, הגדר גם `EVALUATOR_ENDPOINT` וגם `EVALUATOR_TOKEN` על השרת, ואחר כך הפעל אותו מחדש כדי להרים את השינוי. עם `EVALUATOR_ENDPOINT` unset הצינור נשאר no-op.
 
-כפתורי כיוונון הנ״ל הם אופציונליים; הגדר משתנים env תואמים בשרת רק אם אתה צריך להחליף את ברירות המחדל.
+כפתורי הכיוונון לעיל אופציונליים; הגדר את משתנה ה-env המתאים בשרת רק אם אתה צריך להציף את ברירת המחדל.
 
 ---
 
-## API reference
+## ייחוס API
 
 | שיטה | נתיב | הרשאה נדרשת | מטרה |
 |---|---|---|---|
-| `GET` | `/evaluations` | `evaluations:read` | תשאול תוצאות טרמינליות. תומך `session_id`, `agent_id`, `environment`, `status` (`done`/`error`/`timeout`), `ts_from`, `ts_to`, `cursor`, `limit`, `score_filters`, `latest_per_session`. `limit` ברירות 50 וקלוי ב-200 (שימו לב שזה שונה מ-`/events`, אשר קלוי ב-1000). `environment` מקבל רשימה מופרדת בפסיק (למשל `environment=prod,staging`); ערכים יחידים עדיין עובדים. עם `latest_per_session=true` התגובה מכילה לכל היותר שורה אחת לכל `session_id` (האחרון ביותר לפי `completed_at`) בשימוש בעמוד רשימת ההפעלות כדי לכווץ ציר זמן הערכת של הפעלה לכותרת הנוכחית שלה. ברירות ל-false (מחזיר את ההיסטוריה המלאה). |
-| `GET` | `/evaluations/aggregate` | `evaluations:read` | בריאות eval מעוטפת עבור פרוסה מסוננת: ספירה כוללת, פירוק done/error/timeout, סטטיסטיקות לכל-מפתח-דירוג (count/avg/min/max/p50 על `scores` שרירותי), וציר זמן קטוע זמן. מקבל **אותן פרמטרי סנן כמו `/evaluations`** בתוספת `featured_keys` (CSV של מפתחות דירוג כדי לעקוב) ו-`latest_per_session`. תומך בתכונה Dashboards; מטרות שדויקות על כל ערכה התואמת, לא דוגמה. |
-| `GET` | `/evaluations/environments` | `evaluations:read` | ערכי environment מובחנים מטבלת ה-`evaluations`. משמש למילוי תיבות סנן בהיקף נתונים קרוא-הערכה. |
-| `GET` | `/evaluation-jobs` | `evaluations:read` | ראות לתוך הערכות מעופות. סנן לפי `status` (`pending`/`polling`). |
-| `GET` | `/events` | `events:read` | הזרם אירועים גולמיים של הפעלה. תומך `session_id`, `agent_id`, `event_type` (CSV), `environment` (CSV), `ts_from`, `ts_to`, `cursor`, `limit`, ו-`order`. `order` הוא `desc` (newest-first, ברירת מחדל) או `asc` (oldest-first); ערך לא מוכר חוזר ל-`desc`. סמן-עמוד דרך ה-`next_cursor` של התגובה (id אירוע): העבר אותו חזרה כ-`cursor` כדי לקבל את העמוד הבא; עם `asc` העמוד הבא הוא האירועים לאחר אותו id, עם `desc` האירועים לפניו. `limit` ברירות 50 וקלוי ב-1000. |
-| `GET` | `/sessions/:session_id/export` | `events:read` | מחזיר את גוף JSON המדוייק שהמעריך היה מקבל עבור הפעלה זו, המוגש כעת קובץ להורדה בשם `session-<id>.json`. שימושי לניגון הפעלות ייצור דרך `agenteye-evaluator` לבדיקה פתוחה. הבתים זהים בדיוק לכל מה שצינור המעריך שולח. |
-| `POST` | `/sessions/:session_id/re-evaluate` | `evaluations:trigger` | תור הערכה טרית עבור הפעלה; מופעל בין אם קיימת הערכה קודמת ובין אם לא. התוצאה החדשה היא **מצורפת** לציר זמן הערכה של ההפעלה ולא החלפה של הקודמת, כך שדירוגים קודמים נשארים גלויים כהיסטוריה. מחזיר `202` בתור, `404` עבור הפעלה לא ידועה, `409` אם הערכה כבר בטיסה. השתמש בזה לאחר פרסום מעריך חדש, או עבור הפעלות שלא פלטו `agent_end`. |
+| `GET` | `/evaluations` | `evaluations:read` | תוצאות טרמינליות של שאילתה. תומך `session_id`, `agent_id`, `environment`, `status` (`done`/`error`/`timeout`), `ts_from`, `ts_to`, `cursor`, `limit`, `score_filters`, `latest_per_session`. `limit` ברירת מחדל ל-50 ומוגבל ל-200 (שים לב זה שונה מ-`/events`, הגבלה ל-1000). `environment` מקבל רשימה מופרדת בפסיקים (לדוגמה `environment=prod,staging`); ערכים יחידים עדיין עובדים. עם `latest_per_session=true` התגובה מכילה לכל היותר שורה אחת לכל `session_id` (המאוחרת ביותר על ידי `completed_at`) בשימוש עמוד רשימת ההפעלות לקיפול ציר זמן הערכה של הפעלה להכותרת הנוכחית שלה. ברירת מחדל ל-false (מחזיר את ההיסטוריה המלאה). |
+| `GET` | `/evaluations/aggregate` | `evaluations:read` | בריאות eval מקופלת עבור פרוסה מסוננת: ספירה כוללת, התמוטטות done/error/timeout, נתוני לכל-score-key (count/avg/min/max/p50 על פני מפתחות `scores` שרירותיים), וציר זמן מחולק זמן. מקבל את **אותם פרמטרי filter כמו `/evaluations`** בתוספת `featured_keys` (CSV של מפתחות ציון לטרנד) ו-`latest_per_session`. כוחות התכונה Dashboards; מדדים מדויקים על פני כל הסט תואם, לא דגימה. |
+| `GET` | `/evaluations/environments` | `evaluations:read` | ערכי סביבה משונים מטבלת `evaluations`. משמש למילוי filter dropdowns ספוגים לנתוני eval-readable. |
+| `GET` | `/evaluation-jobs` | `evaluations:read` | ראות לתוך הערכות בטיסה. סנן לפי `status` (`pending`/`polling`). |
+| `GET` | `/events` | `events:read` | זרום אירועי גולמיים של הפעלה. תומך `session_id`, `agent_id`, `event_type` (CSV), `environment` (CSV), `ts_from`, `ts_to`, `cursor`, `limit`, ו-`order`. `order` הוא `desc` (newest-first, ברירת מחדל) או `asc` (oldest-first); ערך לא מוכר חוזר ל-`desc`. Cursor-paginate דרך `next_cursor` של התגובה (אירוע id): מעביר אותו חזרה כ-`cursor` כדי להשיג את העמוד הבא; עם `asc` העמוד הבא הוא אירועים אחרי ה-id זה, עם `desc` האירועים לפניו. `limit` ברירת מחדל ל-50 ומוגבל ל-1000. |
+| `GET` | `/sessions/:session_id/export` | `events:read` | מחזיר את גוף JSON המדויק בדיוק ש-evaluator היה מקבל עבור הפעלה זו, משרת כצרופה ניתנת להורדה בשם `session-<id>.json`. שימושי ל-replay הפעלות ייצור דרך `agenteye-evaluator` לבדיקה offline. הבתים זהים בבתים למה הצינור eval שולח. |
+| `POST` | `/sessions/:session_id/re-evaluate` | `evaluations:trigger` | תור הערכה טרייה להפעלה; פועל בין אם הערכה קודמת קיימת או לא. התוצאה החדשה היא **מתוספת** לציר זמן הערכה של ההפעלה במקום להחליף את הקודמת, כך שציונים קודמים נשארים כנראים כהיסטוריה. מחזיר `202` על queuing, `404` עבור הפעלה לא ידועה, `409` אם הערכה כבר בטיסה. השתמש בזה אחרי development מעריך חדש, או עבור הפעלות שלעולם לא פלטו `agent_end`. |
 
-### סינון לפי טווח דירוג: `score_filters`
+### סינון לפי טווח ציון: `score_filters`
 
-`GET /evaluations` מקבל פרמטר `score_filters` אופציונלי שמצמצם תוצאות לפי ערכים מספריים בתוך הישות `scores`. הפרמטר הוא רשימה מופרדת בפסיק של ערכים `key:min..max`; כל קשר עשוי להיות מושמט. ערכים מרובים משולבים עם AND לוגי. שורות היכן שהמפתח הנקוב נעדר או לא מספרי מוחרגות. בקשה עשויה להכיל לכל היותר 20 ערכי סינון; חריגה מזה מחזיר HTTP 400.
+`GET /evaluations` מקבל פרמטר `score_filters` אופציונלי שמצמצם תוצאות לפי ערכים מספריים בתוך אובייקט `scores`. הפרמטר הוא רשימה מופרדת בפסיקים של ערכים `key:min..max`; שתי הגבולות עשויות להיות השמטות. ערכים מרובים משתלבים עם AND לוגי. שורות שבהן המפתח בשם אינו קיים או לא מספרי מוחרגות. בקשה עשויה לשאת לכל היותר 20 ערכי filter; חריגה על זה מחזירה HTTP 400.
 
 דוגמאות:
 ```text
@@ -213,87 +213,87 @@ GET /evaluations?score_filters=tool_efficiency:..0.3
 GET /evaluations?score_filters=helpfulness:0.5..,factuality:0.9..
 ```
 
-כל אובייקט תגובה `/evaluations` יש לו שדות אלה:
+לכל אובייקט תגובה `/evaluations` יש שדות אלה:
 
 | שדה | סוג | הערות |
 |---|---|---|
-| `evaluation_id` | string (UUID) | המזהה הקנוני עבור הערכה טרמינלית זו. כל הערכה טרמינלית מקבלת UUID חדש; הפעלה אחת יכולה להחזיק מרובים. |
-| `id` | string (UUID) | כינוי תאימות לאחור הנושא את אותו ערך כמו `evaluation_id`. |
-| `session_id` | string | ההפעלה שהערכה זו פעלה נגדה. הפעלה יכולה להיות בעלת מספר הערכות בציר הזמן. |
-| `agent_id` | string | מזהה את ה-agent שהייצר את ההפעלה. |
-| `environment` | string | תווית סביבה המועתקת מההפעלה. |
+| `evaluation_id` | string (UUID) | המזהה הקנוני עבור הערכה טרמינלית זו. כל הערכה טרמינלית מקבלת UUID חדש; הפעלה יחידה יכולה להחזיק מרובות. |
+| `id` | string (UUID) | backwards-compatibility alias נושא את אותו ערך כמו `evaluation_id`. |
+| `session_id` | string | ההפעלה שהערכה רצה נגדה. הפעלה יכולה להחזיק מרובות הערכות בציר הזמן. |
+| `agent_id` | string | מזהה את ה-agent שהיווה את ההפעלה. |
+| `environment` | string | תווית סביבה מועתקת מההפעלה. |
 | `status` | enum | אחד מ-`"done"`, `"error"`, `"timeout"`. |
-| `scores` | object \| null | דירוגים שהחזיר המעריך שלך. |
-| `reasoning` | object \| null | מפת הצדקה אופציונלית לכל-דירוג שהחזיר המעריך שלך. מפתחות בדרך כלל משקפים אלה ב-`scores`. הלוח מעניק כל ערך תחת פס הדירוג שלו. |
-| `summary` | string \| null | נרטיב אופציונלי של פסקה אחת כללית שהחזיר המעריך שלך. הלוח מעניק זאת מעל פירוק הדירוג לכל-מימד ככותרת ההערכה. |
-| `error` | string \| null | מלא ב-`"error"` / `"timeout"` בלבד. |
-| `attempt_count` | integer | מספר ניסיונות משלוח (≥ 1). |
+| `scores` | object \| null | ציונים שהוחזרו על ידי המעריך שלך. |
+| `reasoning` | object \| null | מפת הצדקה לכל-ציון אופציונלית שהוחזרה על ידי המעריך שלך. מפתחות בדרך כלל משתקפים אלה ב-`scores`. לוח הנתונים משדר כל ערך מתחת לסרגל הציון שלו. |
+| `summary` | string \| null | נרטיב כולל אופציונלי של פסקה אחת שהוחזר על ידי המעריך שלך. לוח הנתונים משדר זה מעל התמוטטות לכל-ציון כהכותרת ההערכה. |
+| `error` | string \| null | מלא על `"error"` / `"timeout"` בלבד. |
+| `attempt_count` | integer | מספר ניסיונות dispatch (≥ 1). |
 | `duration_ms` | integer \| null | משך הניסיון הסופי. |
-| `completed_at` | string (ISO 8601 UTC) | מתי התוצאה הטרמינלית תועדה. התוצאות מסודרות לפי `completed_at` (הנושן ראשון). |
-| `created_at` | string (ISO 8601 UTC) | נושא את אותו חותם זמן כמו `completed_at` (סמנטיקת כתיבה פעם אחת). |
+| `completed_at` | string (ISO 8601 UTC) | מתי התוצאה הטרמינלית תועדה. תוצאות מסודרות לפי `completed_at` (newest first). |
+| `created_at` | string (ISO 8601 UTC) | נושא את אותו timestamp כמו `completed_at` (סמנטיקה write-once). |
 
 ---
 
 ## הרשאות
 
-| הרשאה | מעניקות |
+| הרשאה | מעניק |
 |---|---|
-| `evaluations:read` | רשימת תוצאות הערכה, צפייה בדירוגים בלוח, וטעינה של מטרות בריאות לוח. |
-| `evaluations:trigger` | תור ידני של הערכה עבור הפעלה דרך `POST /sessions/:session_id/re-evaluate` או כפתור re-evaluate של הלוח. |
-| `dashboards:read` | צפייה בתרשימי בקרה שנשמרו (גם צריך `evaluations:read` כדי לטעון את המטרות שלהם). |
-| `dashboards:write` | יצירה ועריכה של תרשימי בקרה. |
-| `dashboards:delete` | מחיקה של תרשימי בקרה. |
+| `evaluations:read` | רשום תוצאות הערכה, הצג ציונים בלוח הנתונים, וטען מדדי בריאות לוח הנתונים. |
+| `evaluations:trigger` | ידנית תור הערכה להפעלה דרך `POST /sessions/:session_id/re-evaluate` או כפתור re-evaluate של לוח הנתונים. |
+| `dashboards:read` | הצג לוחות נתונים שמורים (גם צריך `evaluations:read` כדי לטען את המדדים שלהם). |
+| `dashboards:write` | יצור וערוך לוחות נתונים. |
+| `dashboards:delete` | מחק לוחות נתונים. |
 
-ה-admin בהנעה (`ADMIN_KEY`, `ADMIN_EMAIL`) מקבל אוטומטית את אלה.
-
----
-
-## צפייה בתוצאות
-
-- **`/sessions/<id>`**: ציר זמן אירועים + פנל ימני המציג את דירוגי ההפעלה וכל שגיאה מניסיון המשלוח. אם למפתח שלך יש `evaluations:trigger`, כפתור **re-evaluate** מופיע ליד כפתור ה-export, שימושי עבור הפעלות שלא פלטו `agent_end`, או לרענון דירוגים לאחר פרסום מעריך חדש. הלוח סוקר את התוצאה החדשה ומעדכן את הפנל הימני כשהוא מגיע.
-- **`/sessions`**: רשת הפעלה שניתנת לסינון; עמודת הדירוג מציגה את מצב ההערכה וקובץ של כל הפעלה בהסתכלות מהיר.
-- **`/dashboards`**: צפיות בריאות eval שנשמרו (ראה [Dashboards](#dashboards) למטה).
-
-![רשת Sessions עם דירוג כל הפעלה pills וקובץ תוך-צבע (helpfulness, factuality, tool_efficiency, safety, coherence)](/agenteye/images/sessions-list.png)
-
-*רשת הפעלות מציגה מצב הערכה וקובץ של כל הפעלה בהסתכלות מהיר; badges אדום/צהוב/ירוק הופכים דירוגים נמוכים קופצים החוצה.*
+ה-bootstrap admin (`ADMIN_KEY`, `ADMIN_EMAIL`) מקבל אוטומטית אלה.
 
 ---
 
-## Dashboards
+## הצגת תוצאות
 
-דף ה-**Dashboards** (`/dashboards`) מאפשר לך לשמור על שילוב של סנני הערכה כתצוגה שנקוב, ניתן לשימוש חוזר וצפה כיצד פרוסה זו של הערכות עושה בהסתכלות מהיר. Dashboards הם **משותף על כל הארגון שלך**; כולם עם `dashboards:read` רואים את אותה הערכה.
+- **`/sessions/<id>`**: אירועים timeline + עמודה ימנית המציגה את ציוני ההפעלה וכל שגיאה מניסיון ה-dispatch. אם המפתח שלך יש `evaluations:trigger`, כפתור **re-evaluate** מופיע ליד כפתור הייצוא, שימושי להפעלות שלעולם לא פלטו `agent_end`, או ל-refresh ציונים אחרי development מעריך חדש. לוח הנתונים בוחר בתוצאה החדשה וחוקה העמודה הימנית כאשר היא הנחתת.
+- **`/sessions`**: רשת הפעלה שניתן לסנן; טור הציון מציג לכל הפעלה את סטטוס ההערכה וציוני במבט חוטף.
+- **`/dashboards`**: תצוגות eval-health שמורות (ראה [לוחות נתונים](#dashboards) למטה).
 
-כל לוח מסיכות:
+![רשת Sessions עם כניות סטטוס הערכה לכל-הפעלה ותגים תגים ציונים צבעוניים (helpfulness, factuality, tool_efficiency, safety, coherence)](/agenteye/images/sessions-list.png)
 
-- **Filters**: אותו שליטוי כמו עמוד הפעלות: environment, status, agent, חלון זמן מתגלגל, וסנני טווח דירוג (`key:min..max`).
-- **תצוגת הגדרה**: איזה מפתחות דירוג לתכונה, סף בריאות ירוק/צהוב/אדום, אילו פנלים להציג, ואם לכווץ להערכה העדכנית ביותר לכל הפעלה.
+*רשת ההפעלות מציגה לכל הרצה סטטוס הערכה וציוני במבט חוטף; תגים אדומים/amber/ירוקים גורמים לציונים נמוכים לקפוץ החוצה.*
 
-כל כרטיס מציג את מספר הפעלות התואמות, פירוק done/error/timeout, הממוצע של כל דירוג תכונה, וספרקלין ספק קטן. פתיחת לוח מציג את הפנלים בגודל מלא; **"open in sessions"** מוריד אותך לעמוד הפעלות מסונן קדימה לבדיוק פרוסה זו. מטרות מחושב בצד השרת על כל ערכה התואמת (דרך `GET /evaluations/aggregate`), כך שהמספרים דויקים ולא דוגמה.
+---
 
-![לוח בריאות eval עם ממוצע-score bars לכל ממד evaluator, כלי ok-vs-error breakdown, כלים עליונים, וטרנד events-per-hour](/agenteye/images/dashboard-quality.png)
+## לוחות נתונים
 
-**Permissions:** הצפייה צריכה גם `dashboards:read` וגם `evaluations:read`; יצירה ועריכה צריכה `dashboards:write`; מחיקה צריכה `dashboards:delete`. ה-admin בהנעה מקבל את כל אלה אוטומטית.
+דף **Dashboards** (`/dashboards`) מאפשר לך לשמור שילוב של filters הערכה כתצוגה בשם, ניתנת לשימוש חוזר, וצפה כיצד פרוסה זו של הערכות עושה זאת במבט חוטף. לוחות נתונים הם **משותפים על פני כל הארגון שלך**; כל אחד עם `dashboards:read` רואה את אותה הסט.
+
+כל לוח מציית:
+
+- **Filters**: אותם כללים כמו דף ההפעלות: סביבה, סטטוס, agent, חלון זמן מתגלגל, וציון-range filters (`key:min..max`).
+- **תצורת תצוגה**: אילו מפתחות ציון לתכונה, סף בריאות ירוק/amber/אדום, אילו לוחות להציג, ואם להתמוטט להערכה האחרונה ביותר לכל הפעלה.
+
+כל כרטיס מציג את מספר ההפעלות התואמות, התמוטטות done/error/timeout, הממוצע של כל ציון מעוד, וספקלין טרנד קטן. פתיחת לוח מציגה את הלוחות בגודל מלא; **"open in sessions"** זורק אותך לעמוד ההפעלות מראש-מסונן לאותה פרוסה בדיוק. מדדים מחושבים server-side על פני כל הסט התואם (דרך `GET /evaluations/aggregate`), כך שהמספרים מדויקים במקום דגימה.
+
+![לוח eval-health עם סרגלי ממוצע-ציון לכל ממד מעריך, התמוטטות כלים ok-vs-error, כלים בעלי ערך, וטרנד events-per-hour](/agenteye/images/dashboard-quality.png)
+
+**הרשאות:** הצגה צריכה גם `dashboards:read` וגם `evaluations:read`; יצירה וערוך צריך `dashboards:write`; מחיקה צריך `dashboards:delete`. ה-bootstrap admin מקבל את כל אלה באופן אוטומטי.
 
 ---
 
 ## פתרון בעיות
 
-**הפעלות קיימות אך לא הערכות נוצרו.** אשר `EVALUATOR_ENDPOINT` מוגדר בתהליך השרת, ששרת המעריך משתפים את אותו ערך `EVALUATOR_TOKEN`, וכי נקודת הקצה `/health` של המעריך נגישה מהשרת. עם `EVALUATOR_ENDPOINT` לא מוגדר הצינור הוא no-op.
+**הפעלות קיימות אך לא הערכות נוצרות.** אשר `EVALUATOR_ENDPOINT` מוגדר בתהליך השרת, ששרת ו-evaluator חולקות את אותו ערך `EVALUATOR_TOKEN`, וש-endpoint `/health` של המעריך ניתן להשגה משרת. עם `EVALUATOR_ENDPOINT` unset הצינור הוא no-op.
 
-**הערכות מעופות ערמות.** שאול `GET /evaluation-jobs` כדי לראות תור מעופות. בדוק `attempt_count`, `next_attempt_at`, ו-`last_error` בכל שורה. סיבות נפוצות: שירות המעריך לא נגיש או מחזיר 5xx (הופעל מחדש עם backoff), `EVALUATOR_TOKEN` לא נכון (401 הוא טרמינלי), או מעריך async המחזיר `pending` לחלוטין (ראה למטה).
+**הערכות בטיסה ערימה עד.** שאילתה `GET /evaluation-jobs` כדי לראות את התור בטיסה. בדוק `attempt_count`, `next_attempt_at`, ו-`last_error` על כל שורה. סיבות נפוצות: שירות evaluator לא ניתן להשגה או מחזיר 5xx (נסה שוב עם backoff), `EVALUATOR_TOKEN` שגוי (401 הוא טרמינלי), או async evaluator שמחזיר `pending` לעד (ראה למטה).
 
-**הפעלות הושלמו אך לא הערכה טרמינלית.** שאול `GET /evaluation-jobs?status=polling`; התוצאה עשויה להיות עדיין מעופה. אם עבודה תקועה ב-`pending`, השרת מתקשה להגיע למעריך; בדוק שהמעריך הוא למעלה וכי `EVALUATOR_TOKEN` משחקים.
+**הפעלות הושלמו אך אין הערכה טרמינלית.** שאילתה `GET /evaluation-jobs?status=polling`; התוצאה עשויה להיות בטיסה. אם עבודה תקועה ב-`pending`, לשרת יש בעיה להגיע אל המעריך; בדוק ש-evaluator קם ו-`EVALUATOR_TOKEN` תואם.
 
-**`HTTP 401 from evaluator: invalid bearer token`.** ה-`EVALUATOR_TOKEN` בשרת לא תואם את הערך שהשירות המעריך מוגדר איתו. הם חייבים להיות זהים.
+**`HTTP 401 from evaluator: invalid bearer token`.** ה-`EVALUATOR_TOKEN` בשרת אינו תואם את הערך שירות המעריך מוגדר עם. הם חייבים להיות זהים.
 
-**Async מעריך מחזיר `pending` לחלוטין.** השרת סוקר `GET /evaluate/{job_id}` עד שהמעריך מחזיר `done` או `error`, או עד `EVALUATOR_MAX_POLL_DURATION_SECS` (ברירת מחדל 1 h) מתחיל. לאחר התקע ההערכה מתועדת כ-`timeout` ומוסר מתור מעופות. הגבה `EVALUATOR_MAX_POLL_DURATION_SECS` אם המעריך שלך בלגיטימציה צריך זמן ארוך מברירת המחדל.
+**Async evaluator מחזיר `pending` לעד.** השרת בוחר `GET /evaluate/{job_id}` עד המעריך מחזיר `done` או `error`, או עד `EVALUATOR_MAX_POLL_DURATION_SECS` (ברירת מחדל 1 h) אלאפס. אחרי הכובע ההערכה מתועדת כ-`timeout` והוסרה מתור הטיסה. להעלות `EVALUATOR_MAX_POLL_DURATION_SECS` אם המעריך שלך בעצם צריך יותר מברירת המחדל.
 
 ---
 
 ## צעדים הבאים
 
-- [Evaluator agent skill](/he/agenteye/evaluator-skill): היה בעל coding agent עיצוב הממדים שלך נגד הפעלות אמיתיות וביצוע שירות זה בשבילך.
-- [Python SDK](/he/agenteye/python-sdk): פלוט את אירועי `agent_end` שמפעילים דירוג.
-- [API keys](/he/agenteye/api-keys): הרשאות `evaluations:read` ו-`evaluations:trigger`.
-- [Audits](/he/agenteye/audits): תכונת איכות אוטומטית אחרת של Observability, לסקירה מבוססת מדיניות.
+- [skill agent Evaluator](/he/agenteye/evaluator-skill): יש agent בקוד עיצוב ממדים שלך נגד הפעלות אמיתיות ובנה שירות זה בשבילך.
+- [Python SDK](/he/agenteye/python-sdk): פלוט את אירועי `agent_end` הטריגר ניקוד.
+- [API keys](/he/agenteye/api-keys): ההרשאות `evaluations:read` ו-`evaluations:trigger`.
+- [Audits](/he/agenteye/audits): תכונת איכות אוטומטית אחרת של Observability, לבדיקה מבוססת-מדיניות.

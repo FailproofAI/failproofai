@@ -4,53 +4,53 @@ description: "Posez n'importe quelle question sur les données de votre agent et
 ---
 
 
-Posez n'importe quelle question sur les données de votre agent et obtenez une réponse en quelques secondes. L'observabilité Failproof AI vous propose une bibliothèque de requêtes sauvegardées, prêtes à l'emploi, portant sur vos événements et évaluations — vous partez ainsi d'un exemple fonctionnel plutôt que d'une page SQL vide.
+Posez n'importe quelle question sur les données de votre agent et obtenez une réponse en quelques secondes. L'observabilité Failproof AI met à votre disposition une bibliothèque de requêtes sauvegardées et prêtes à l'emploi sur vos événements et évaluations, pour démarrer depuis un exemple fonctionnel plutôt qu'un éditeur SQL vide.
 
-![La bibliothèque de requêtes sauvegardées : une grille de requêtes réutilisables, comprenant des préréglages intégrés et des requêtes personnalisées](/agenteye/images/queries.png)
+![La bibliothèque de requêtes sauvegardées : une grille de requêtes réutilisables, à la fois des préréglages intégrés et des requêtes personnalisées](/agenteye/images/queries.png)
 
-*Votre bibliothèque de requêtes sauvegardées à `/<org-slug>/queries` : des préréglages intégrés côte à côte avec les requêtes que votre équipe a enregistrées.*
+*Votre bibliothèque de requêtes sauvegardées accessible via `/<org-slug>/queries` : des préréglages intégrés côte à côte avec les requêtes que votre équipe a sauvegardées.*
 
 ## Partez d'un préréglage, pas d'une page blanche
 
-Vous n'avez pas besoin de mémoriser les noms de tables ni d'écrire du SQL de zéro. La bibliothèque s'ouvre avec des préréglages intégrés couvrant les questions les plus fréquentes, juste à côté des requêtes que votre équipe a sauvegardées et nommées. Choisissez celle qui se rapproche le plus de ce que vous cherchez, et vous êtes déjà à mi-chemin de la réponse.
+Inutile de mémoriser les noms de tables ou d'écrire du SQL de zéro. La bibliothèque s'ouvre avec des préréglages intégrés répondant aux questions les plus fréquentes, affichés juste à côté des requêtes que votre équipe a sauvegardées et nommées. Choisissez celle qui se rapproche le plus de votre besoin et vous êtes déjà à mi-chemin de la réponse.
 
-Chaque requête sauvegardée est partagée et rattachée à votre organisation : les requêtes utiles créées par vos collègues vous sont automatiquement accessibles. Nommez une requête, ajoutez-lui une description, et n'importe qui dans votre organisation pourra la retrouver, l'exécuter ou épingler ses résultats sur un tableau de bord ultérieurement.
+Chaque requête sauvegardée est partagée et rattachée à l'organisation : les requêtes utiles créées par vos collègues deviennent automatiquement disponibles pour vous. Nommez une requête, donnez-lui une description une seule fois, et n'importe qui dans votre organisation pourra la retrouver, l'exécuter ou épingler ses résultats sur un tableau de bord par la suite.
 
 Accédez-y via `/<org-slug>/queries`.
 
-## Ajustez-la et exécutez-la dans le compositeur SQL
+## Ajustez et exécutez dans le compositeur SQL
 
-Ouvrez n'importe quelle requête et elle s'affiche dans le compositeur SQL, où vous pouvez la modifier et obtenir la réponse immédiatement : pas d'export, pas d'aller-retour, pas d'attente.
+Ouvrez n'importe quelle requête et elle s'affiche dans le compositeur SQL, où vous pouvez la modifier et voir la réponse immédiatement : pas d'export, pas d'aller-retour, pas d'attente.
 
-![Le compositeur de requêtes SQL exécutant une requête sauvegardée, avec un panneau latéral de schéma et une grille de résultats en direct](/agenteye/images/query-lab.png)
+![Le compositeur de requêtes SQL exécutant une requête sauvegardée, avec une barre latérale de schéma et une grille de résultats en direct](/agenteye/images/query-lab.png)
 
-*Le compositeur SQL : votre requête à gauche, un panneau latéral de schéma pour ne jamais avoir à deviner un nom de colonne, et une grille de résultats en direct en dessous.*
+*Le compositeur SQL : votre requête à gauche, une barre latérale de schéma pour ne jamais avoir à deviner un nom de colonne, et une grille de résultats en direct en dessous.*
 
-- **Un panneau latéral de schéma** présente les tables d'analyse et leurs colonnes, afin que vous puissiez construire une requête sans chercher les noms de champs.
-- **Une grille de résultats en direct** retourne les lignes dès que vous exécutez la requête, pour itérer en quelques secondes plutôt que de tâtonner.
-- **Lecture seule par conception.** Les requêtes sont exécutées contre votre stockage d'événements et validées côté serveur : seules les instructions `SELECT` et `WITH` sont autorisées, avec un délai d'expiration et un plafond sur le nombre de lignes. Une requête exploratoire ne peut jamais modifier vos données, et une requête qui s'emballe est automatiquement interrompue.
+- **Une barre latérale de schéma** présente les tables d'analyse et leurs colonnes, pour que vous puissiez construire une requête sans chercher les noms de champs.
+- **Une grille de résultats en direct** retourne les lignes dès l'exécution, ce qui permet d'itérer en quelques secondes plutôt que de procéder par tâtonnements.
+- **Lecture seule par conception.** Les requêtes s'exécutent contre votre store d'événements et sont validées côté serveur : seules les instructions `SELECT` et `WITH` sont autorisées, avec un délai d'expiration et une limite de lignes. Une requête exploratoire ne peut jamais modifier vos données, et une requête incontrôlée est automatiquement interrompue.
 
-Satisfait du résultat ? Sauvegardez-le dans la bibliothèque pour que toute l'équipe en bénéficie, ou épinglez sa sortie sur un tableau de bord sous forme de tuile en courbe, en barres, en aire ou en camembert.
+Satisfait du résultat ? Sauvegardez-le dans la bibliothèque pour que toute l'équipe en bénéficie, ou épinglez sa sortie sur un tableau de bord sous forme de tuile en courbe, barre, aire ou camembert.
 
-## Exécutez-les depuis le terminal, ou laissez l'assistant les écrire
+## Exécutez-les depuis le terminal ou laissez l'assistant les écrire
 
 Les mêmes requêtes sauvegardées vous suivent partout où vous travaillez :
 
-- **Depuis le terminal.** Le CLI `agenteye` liste, exécute et sauvegarde exactement les mêmes requêtes, vous permettant d'intégrer un résultat dans un script, de le brancher sur une CI ou de le transmettre à un agent de code.
+- **Depuis le terminal.** Le CLI `agenteye` liste, exécute et sauvegarde exactement les mêmes requêtes, ce qui vous permet d'intégrer un résultat dans un script, de le connecter à la CI ou de le transmettre à un agent de développement.
 
 ```bash
-agenteye query list                 # les mêmes requêtes sauvegardées, depuis votre terminal
-agenteye query run errs --arg prod  # exécuter une requête et afficher les lignes (ajoutez --json pour les diriger dans un pipe)
+agenteye query list                 # the same saved queries, from your terminal
+agenteye query run errs --arg prod  # run one and print the rows (add --json to pipe it)
 ```
 
-  Consultez [CLI et agents](/fr/agenteye/cli-and-agents) pour l'ensemble des commandes disponibles.
+  Consultez [CLI et agents](/fr/agenteye/cli-and-agents) pour la liste complète des commandes.
 
-- **Depuis l'assistant IA.** Vous ne savez pas comment formuler le SQL ? Posez la question à l'[assistant IA](/fr/agenteye/assistant) intégré au tableau de bord, en langage naturel, et il rédigera la requête et la sauvegardera dans votre bibliothèque.
+- **Depuis l'assistant IA.** Vous ne savez pas comment formuler le SQL ? Posez la question à l'[assistant IA](/fr/agenteye/assistant) intégré au tableau de bord en langage naturel et il rédigera la requête et la sauvegardara dans votre bibliothèque.
 
-L'exécution d'une requête sauvegardée est soumise à la permission `queries:run`, distincte des permissions de création ou de suppression de requêtes — vous pouvez ainsi accorder un accès en lecture sans permettre à tout le monde de modifier la bibliothèque.
+L'exécution d'une requête sauvegardée est soumise à la permission `queries:run`, distincte des permissions de création ou de suppression de requêtes, ce qui vous permet d'accorder un accès en lecture sans autoriser tout le monde à réécrire la bibliothèque.
 
 ## Voir aussi
 
 - [Tableaux de bord](/fr/agenteye/dashboards) : épinglez les résultats de requêtes dans des graphiques partagés à l'échelle de l'organisation.
-- [Assistant IA](/fr/agenteye/assistant) : posez vos questions en langage naturel et obtenez une requête en retour.
+- [Assistant IA](/fr/agenteye/assistant) : posez des questions en langage naturel et obtenez une requête en retour.
 - [CLI et agents](/fr/agenteye/cli-and-agents) : exécutez et sauvegardez les mêmes requêtes depuis votre terminal.

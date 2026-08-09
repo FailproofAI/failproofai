@@ -1,49 +1,49 @@
 ---
-title: "OpenClaw-Sitzungsaufzeichnung"
-description: "Leite die lokalen OpenClaw-Sitzungen deines Teams als gewöhnliche Sitzungen und Ereignisse in AgentEye ein — ohne jede Änderung daran, wie OpenClaw ausgeführt wird."
+title: "OpenClaw Session-Aufzeichnung"
+description: "Leiten Sie die lokalen OpenClaw-Sessions Ihres Teams als gewöhnliche Sessions und Events in AgentEye weiter – ohne Änderungen an der Art und Weise, wie OpenClaw ausgeführt wird."
 ---
 
-Wenn dein Team [OpenClaw](https://docs.openclaw.ai) einsetzt, bringt die OpenClaw-Sitzungsaufzeichnung diese Sitzungen als gewöhnliche Sitzungen und Ereignisse in AgentEye, sodass du sie durchsuchen, wiedergeben und gemeinsam mit allem anderen, was du beobachtest, auswerten kannst. Sie ergänzt das [Python SDK](/de/agenteye/python-sdk): Das SDK instrumentiert Agents, die du selbst schreibst, während diese Funktion die OpenClaw-Arbeit aufzeichnet, die dein Team bereits erledigt — ohne jede Änderung an der Ausführung.
+Wenn Ihr Team [OpenClaw](https://docs.openclaw.ai) nutzt, bringt die OpenClaw-Session-Aufzeichnung diese Sessions als gewöhnliche Sessions und Events in AgentEye ein – so können Sie sie durchsuchen, wiedergeben und zusammen mit allem anderen auswerten, was Sie beobachten. Sie ergänzt das [Python SDK](/de/agenteye/python-sdk): Das SDK instrumentiert Agents, die Sie selbst schreiben, während diese Funktion die OpenClaw-Arbeit erfasst, die Ihr Team bereits erledigt – ohne Änderungen an der Ausführung.
 
-Ein kleiner Hintergrundkollektor liest die lokalen Sitzungstranskripte von OpenClaw, während sie geschrieben werden, und übermittelt sie an AgentEye. Er funktioniert genauso wie die [Codex-Aufzeichnung](/de/agenteye/codex-capture), und ein einzelner Kollektor kann beide gleichzeitig erfassen.
+Ein kleiner Hintergrund-Collector liest OpenClaw's lokale Session-Transkripte, während sie geschrieben werden, und sendet sie an AgentEye. Er funktioniert auf die gleiche Weise wie die [Codex-Aufzeichnung](/de/agenteye/codex-capture), und ein einziger Collector kann beides gleichzeitig erfassen.
 
 ---
 
-## Was aufgezeichnet wird
+## Was erfasst wird
 
-Jeder Agent, der in der OpenClaw-Konfiguration eines Rechners eingerichtet ist, wird vom Kollektor dieses Rechners aufgezeichnet — es ist keine agentenspezifische Einrichtung erforderlich.
+Jeder Agent, der in der OpenClaw-Konfiguration eines Rechners eingerichtet ist, wird vom Collector dieses Rechners erfasst – es ist keine agentenbezogene Konfiguration erforderlich.
 
-Jede OpenClaw-Sitzung wird zu einer AgentEye-[Sitzung](/de/agenteye/sessions); ihre Benutzer- und Assistenznachrichten, Tool-Aufrufe und Tool-Ergebnisse werden zu den entsprechenden [Ereignissen](/de/agenteye/event-stream).
+Jede OpenClaw-Session wird zu einer AgentEye-[Session](/de/agenteye/sessions); ihre Benutzer- und Assistentnachrichten, Tool-Aufrufe und Tool-Ergebnisse werden zu den entsprechenden [Events](/de/agenteye/event-stream).
 
 ---
 
 ## Aktivierung
 
-Die Aufzeichnung ist standardmäßig deaktiviert. Installiere den Kollektor mit einem API-Schlüssel, der die Berechtigung `events:add` besitzt (siehe [API-Schlüssel](/de/agenteye/api-keys)), und aktiviere die OpenClaw-Aufzeichnung:
+Die Aufzeichnung ist standardmäßig deaktiviert. Installieren Sie den Collector mit einem API-Schlüssel, der die Berechtigung `events:add` besitzt (siehe [API-Schlüssel](/de/agenteye/api-keys)), und aktivieren Sie die OpenClaw-Aufzeichnung:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --openclaw-enabled
 ```
 
-Damit wird der Kollektor installiert, als Hintergrunddienst registriert und die Aufzeichnung gestartet. Überprüfe, ob er läuft:
+Damit wird der Collector installiert, als Hintergrunddienst registriert und die Aufzeichnung gestartet. Überprüfen Sie, ob er läuft:
 
 ```bash
 agenteye-collector health
 ```
 
-Sollen mehrere Agents auf demselben Rechner aufgezeichnet werden? Füge die jeweiligen Flags demselben Befehl hinzu — zum Beispiel `--openclaw-enabled --codex-enabled`.
+Möchten Sie mehrere Agents auf demselben Rechner erfassen? Fügen Sie die jeweiligen Flags in einem einzigen Befehl hinzu – zum Beispiel `--openclaw-enabled --codex-enabled`.
 
-Beim ersten Start werden deine vorhandenen OpenClaw-Sitzungen einmalig nachgefüllt, danach werden neue Aktivitäten innerhalb von Sekunden gestreamt. Die eigenen Dateien von OpenClaw werden dabei ausschließlich gelesen — niemals verändert, verschoben oder gelöscht — und jede Sitzung wird genau einmal übermittelt, auch nach Neustarts.
+Beim ersten Start werden Ihre vorhandenen OpenClaw-Sessions einmalig nachgeladen, danach wird neue Aktivität innerhalb von Sekunden gestreamt. Die eigenen Dateien von OpenClaw werden ausschließlich gelesen – niemals verändert, verschoben oder gelöscht – und jede Session wird genau einmal übermittelt, auch nach Neustarts.
 
 ---
 
-## Wo die Daten erscheinen
+## Wo sie erscheinen
 
-Aufgezeichnete Sitzungen erscheinen unter **Sessions** und ihre Ereignisse im **Events**-Stream, genau wie bei jedem anderen beobachteten Agent — [Sitzungswiedergabe](/de/agenteye/sessions), [Suche](/de/agenteye/queries), [Auswertungen](/de/agenteye/evaluations) und [Warnmeldungen](/de/agenteye/alerts) funktionieren also auf die gleiche Weise. Filtere nach dem OpenClaw-Agent, um nur dessen Sitzungen anzuzeigen.
+Aufgezeichnete Sessions erscheinen unter **Sessions** und ihre Events im **Events**-Stream, genau wie bei jedem anderen Agent, den Sie beobachten – daher funktionieren [Session-Wiedergabe](/de/agenteye/sessions), [Suche](/de/agenteye/queries), [Auswertungen](/de/agenteye/evaluations) und [Alarme](/de/agenteye/alerts) für sie genauso. Filtern Sie nach dem OpenClaw-Agent, um nur dessen Sessions anzuzeigen.
 
 ---
 
 ## Datenschutz
 
-OpenClaw-Transkripte enthalten die vollständige Sitzung — einschließlich Befehlsausgaben, Dateiinhalten und allem, was der Agent gelesen oder geschrieben hat — und können Geheimnisse enthalten. Aufgezeichnete Sitzungen werden unverändert übermittelt. Aktiviere die Aufzeichnung daher nur auf Rechnern und für Teams, bei denen die zentrale Speicherung dieser Inhalte in AgentEye angemessen ist, und gib dem Kollektor ausschließlich einen auf `events:add` beschränkten Schlüssel. Unter [Sicherheit](/de/agenteye/security) erfährst du, wie deine Daten isoliert aufbewahrt werden.
+OpenClaw-Transkripte enthalten die vollständige Session – einschließlich Befehlsausgaben, Dateiinhalten und allem, was der Agent gelesen oder geschrieben hat – und können Secrets enthalten. Aufgezeichnete Sessions werden unverändert übermittelt. Aktivieren Sie die Aufzeichnung daher nur auf Rechnern und für Teams, bei denen die Zentralisierung dieser Inhalte in AgentEye angemessen ist, und geben Sie dem Collector einen Schlüssel, der ausschließlich auf `events:add` beschränkt ist. Unter [Sicherheit](/de/agenteye/security) erfahren Sie, wie Ihre Daten isoliert aufbewahrt werden.

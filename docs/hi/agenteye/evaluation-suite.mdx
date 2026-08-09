@@ -1,21 +1,22 @@
 ---
-title: "मूल्यांकन सूट"
-description: "Failproof AI Observability प्रत्येक पूर्ण एजेंट रन को स्वचालित रूप से गुणवत्ता के लिए स्कोर कर सकता है: आप एक छोटी स्कोरिंग सेवा प्रदान करते हैं, और Observability बाकी सब कुछ संभालता है।"
+title: "मूल्यांकन सुइट"
+description: "Failproof AI Observability प्रत्येक पूर्ण agent run को गुणवत्ता के लिए स्वचालित रूप से स्कोर कर सकता है: आप एक छोटी स्कोरिंग सेवा प्रदान करते हैं, और Observability बाकी को संभालता है।"
 ---
 
-Failproof AI Observability प्रत्येक पूर्ण एजेंट रन को स्वचालित रूप से गुणवत्ता के लिए स्कोर कर सकता है: आप एक छोटी स्कोरिंग सेवा प्रदान करते हैं, और Observability बाकी सब कुछ संभालता है। इसे उन आयामों को ट्रैक करने के लिए उपयोग करें जिन्हें आप महत्व देते हैं (सहायकता, टूल दक्षता, तथ्यपूर्णता, सुरक्षा; आप चुनते हैं), प्रतिगमन जल्दी पकड़ें, और एक नज़र में एजेंट या वातावरण की तुलना करें। स्कोरिंग वैकल्पिक है: सर्वर पर `EVALUATOR_ENDPOINT` सेट न होने तक पाइपलाइन कुछ भी नहीं करता है।
 
-> **नोट:** आप स्कोर आयाम परिभाषित करते हैं। आपका मूल्यांकक किसी भी संख्यात्मक कुंजी को वापस कर सकता है जो वह चाहता है; Observability जो कुछ भी आप भेजते हैं उसे संग्रहीत, ट्रेंड और प्रदर्शित करता है।
+Failproof AI Observability प्रत्येक पूर्ण agent run को गुणवत्ता के लिए स्वचालित रूप से स्कोर कर सकता है: आप एक छोटी स्कोरिंग सेवा प्रदान करते हैं, और Observability बाकी को संभालता है। उन आयामों को ट्रैक करने के लिए इसका उपयोग करें जिनकी आप परवाह करते हैं (सहायकता, टूल दक्षता, तथ्यात्मकता, सुरक्षा; आप चुनते हैं), प्रतिगमन को जल्दी पकड़ें, और agents या environments की तुलना एक नज़र में करें। स्कोरिंग वैकल्पिक है: जब तक आप सर्वर पर `EVALUATOR_ENDPOINT` सेट न करें तब तक पाइपलाइन कुछ नहीं करता।
+
+> **नोट:** आप स्कोर आयाम परिभाषित करते हैं। आपका evaluator कोई भी संख्यात्मक कुंजी वापस कर सकता है जो वह पसंद करता है; Observability जो भी आप वापस भेजते हैं उसे स्टोर, ट्रेंड और प्रदर्शित करता है।
 
 ## एक नज़र में
 
-1. **एक स्कोरर लिखें।** एक छोटी HTTP सेवा खड़ी करें जो सेशन ट्रांसक्रिप्ट को पढ़ता है और स्कोर लौटाता है। Observability एक कार्यशील संदर्भ भेज देता है जिसे आप कॉपी कर सकते हैं। [SDK के साथ एक मूल्यांकक लिखना](#writing-an-evaluator-with-the-sdk) देखें।
-2. **Observability को इसकी ओर इंगित करें।** सर्वर प्रक्रिया पर `EVALUATOR_ENDPOINT` (और एक साझा `EVALUATOR_TOKEN`) सेट करें।
-3. **स्कोर को लैंड होते देखें।** हर पूर्ण सेशन को स्वचालित रूप से स्कोर किया जाता है; परिणाम सेशन विवरण पृष्ठ, सेशन ग्रिड, और सहेजे गए डैशबोर्ड पर दिखाई देते हैं।
+1. **एक स्कोरर लिखें।** एक छोटी HTTP सेवा चलाएं जो एक session transcript पढ़ता है और स्कोर वापस करता है। Observability एक working reference भेज रहा है जिसे आप कॉपी कर सकते हैं। [SDK के साथ एक evaluator लिखना](#writing-an-evaluator-with-the-sdk) देखें।
+2. **Observability को इसकी ओर इशारा करें।** सर्वर प्रक्रिया पर `EVALUATOR_ENDPOINT` (और एक साझा `EVALUATOR_TOKEN`) सेट करें।
+3. **स्कोर आते देखें।** हर पूर्ण session को स्वचालित रूप से स्कोर किया जाता है; परिणाम session विवरण पृष्ठ, sessions grid, और saved dashboards पर दिखाई देते हैं।
 
-![मूल्यांकन सारांश, प्रति-आयाम स्कोर बार, और दाहिनी ओर की पट्टी में तर्क पाठ के साथ एक सेशन विस्तार दृश्य](/agenteye/images/session-detail.png)
+![मूल्यांकन सारांश, प्रति-आयाम स्कोर बार, और सही रेल में तर्क पाठ के साथ एक session विवरण दृश्य](/agenteye/images/session-detail.png)
 
-*एक बार मूल्यांकक कॉन्फ़िगर किए जाने के बाद, प्रत्येक पूर्ण रन को स्कोर किया जाता है और परिणाम सेशन की दाहिनी पट्टी में दिखाई देते हैं: शीर्ष पर सारांश, फिर प्रति-आयाम स्कोर बार और तर्क के साथ।*
+*एक बार evaluator कॉन्फ़िगर हो जाने पर, प्रत्येक पूर्ण run को स्कोर किया जाता है और परिणाम session के सही रेल में दिखाई देते हैं: शीर्ष पर सारांश, फिर प्रति-आयाम स्कोर बार तर्क के साथ।*
 
 ---
 
@@ -31,44 +32,44 @@ flowchart LR
     SRV --> RES["evaluations<br/>terminal results"]
 ```
 
-जब Observability SDK किसी सेशन के लिए `agent_end` इवेंट उत्सर्जित करता है, तो सर्वर एक मूल्यांकन शेड्यूल करता है। यह तब पूरी इवेंट ट्रांसक्रिप्ट को आपकी मूल्यांकन सेवा पर POST करता है, जो निम्न में से कोई भी कर सकता है:
+जब Observability SDK एक session के लिए `agent_end` event emit करता है, तो सर्वर एक मूल्यांकन शेड्यूल करता है। फिर यह पूर्ण event transcript को आपकी evaluator सेवा को POST करता है, जो निम्न में से कर सकता है:
 
-- **परिणाम को इनलाइन लौटाएं** `{"status":"done", "scores":{...}, "reasoning":{...}, "summary":"..."}` के साथ। परिणाम सेशन की मूल्यांकन समयरेखा में जोड़ा जाता है। `reasoning` और `summary` वैकल्पिक हैं।
-- **`{"status":"pending", "job_id":"abc-123"}`** के साथ स्थगित करें। Observability तब `GET {EVALUATOR_ENDPOINT}/evaluate/abc-123` को कॉल करता है जब तक आपका मूल्यांकक `{"status":"done", ...}` या `{"status":"error", "error":"..."}` लौटाता है।
+- **परिणाम इनलाइन वापस करें** `{"status":"done", "scores":{...}, "reasoning":{...}, "summary":"..."}` के साथ। परिणाम session के evaluation timeline में जोड़ा जाता है। `reasoning` और `summary` वैकल्पिक हैं।
+- **स्थगित करें** `{"status":"pending", "job_id":"abc-123"}` के साथ। Observability तब `GET {EVALUATOR_ENDPOINT}/evaluate/abc-123` को कॉल करता है जब तक कि आपका evaluator `{"status":"done", ...}` या `{"status":"error", "error":"..."}` वापस न करे।
 
-  पोलिंग कैडेंस प्रति-कार्य है: एक `pending` प्रतिक्रिया `next_poll_secs` को ओवरराइड करने के लिए शामिल कर सकती है; अन्यथा Observability `GET /config` से `default_poll_interval_secs` मान का उपयोग करता है; अन्यथा सर्वर `EVALUATOR_POLLING_INTERVAL_SECS` पर वापस आता है (डिफ़ॉल्ट 10s)। सभी मान [1s, 1h] तक सीमित हैं।
+  polling cadence प्रति-job है: एक `pending` response में `next_poll_secs` शामिल हो सकता है override करने के लिए; अन्यथा Observability `GET /config` से `default_poll_interval_secs` value का उपयोग करता है; अन्यथा सर्वर `EVALUATOR_POLLING_INTERVAL_SECS` (डिफ़ॉल्ट 10s) पर वापस आता है। सभी values को [1s, 1h] में clamped किया जाता है।
 
-जो सेशन कभी `agent_end` उत्सर्जित नहीं करते हैं (उदाहरण के लिए, एक क्रैश हुई एजेंट प्रक्रिया) को भी उठाया जा सकता है: मूल्यांकक का `GET /config` `{"inactivity_timeout_secs": 1800}` लौटा सकता है, और Observability किसी भी सेशन का मूल्यांकन करेगा जो उस लंबे समय के लिए निष्क्रिय रहा है। इस फॉलबैक को अक्षम करने के लिए फ़ील्ड को `null` पर सेट करें या इसे छोड़ दें।
+Sessions जो कभी `agent_end` emit नहीं करते हैं (उदाहरण के लिए, एक क्रैश किया गया agent process) को भी चुना जा सकता है: evaluator का `GET /config` `{"inactivity_timeout_secs": 1800}` वापस कर सकता है, और Observability किसी भी session का मूल्यांकन करेगा जो उतने समय के लिए idle हो गया है। इस fallback को अक्षम करने के लिए field को `null` पर सेट करें या इसे छोड़ दें।
 
-जब `EVALUATOR_ENDPOINT` सेट नहीं होता है तो पाइपलाइन पूरी तरह no-op है।
+जब `EVALUATOR_ENDPOINT` unset हो तो पाइपलाइन पूरी तरह से no-op है।
 
-एक सेशन समय के साथ **कई टर्मिनल मूल्यांकन जमा कर सकता है**: प्रत्येक `agent_end` इवेंट (और डैशबोर्ड से प्रत्येक मैनुअल री-इवल) एक ताज़ा मूल्यांकन पंक्ति जोड़ता है। यह एक पुनः शुरू किए गए वार्तालाप का मूल्यांकन करने का समर्थित तरीका है: एक उपयोगकर्ता एक एजेंट को समाप्त करता है, बाद में वापस आता है, अधिक इवेंट भेजता है, एजेंट को फिर से समाप्त करता है, और एक दूसरा मूल्यांकन पूर्ण अद्यतन ट्रांसक्रिप्ट के विरुद्ध चलता है। डैशबोर्ड सबसे हाल के मूल्यांकन को हेडलाइन के रूप में और पूर्व मूल्यांकन को एक संक्षिप्त समयरेखा के रूप में प्रदर्शित करता है। जबकि एक मूल्यांकन एक सेशन के लिए चल रहा है, उस सेशन के लिए अतिरिक्त `agent_end` इवेंट को अनदेखा किया जाता है; चलने वाले मूल्यांकन के बाद अगला एक सामान्य रूप से एक ताज़ा मूल्यांकन को कतारबद्ध करेगा।
+एक session समय के साथ **कई terminal evaluations जमा कर सकता है**: प्रत्येक `agent_end` event (और dashboard से प्रत्येक manual re-eval) एक ताज़ा evaluation row जोड़ता है। यह एक resumed conversation का मूल्यांकन करने के लिए समर्थित तरीका है: एक उपयोगकर्ता एक agent को समाप्त करता है, बाद में वापस आता है, अधिक events भेजता है, agent को फिर से समाप्त करता है, और एक दूसरा मूल्यांकन पूर्ण updated transcript के विरुद्ध चलता है। dashboard सबसे हाल के मूल्यांकन को headline के रूप में और prior evaluations को एक collapsible timeline के रूप में प्रस्तुत करता है। जबकि एक मूल्यांकन एक session के लिए चल रहा है, उस session के लिए अतिरिक्त `agent_end` events को अनदेखा किया जाता है; चलने वाला मूल्यांकन पूर्ण होने के बाद अगला एक सामान्य रूप से एक ताज़ा मूल्यांकन enqueue करेगा।
 
-निष्क्रियता फॉलबैक पुनः शुरू किए गए सेशन पर भी फिर से लगता है: यदि पिछले टर्मिनल मूल्यांकन के बाद नई इवेंट आती हैं और सेशन तब `inactivity_timeout_secs` को पास करके निष्क्रिय हो जाता है, तो एक ताज़ा मूल्यांकन कतारबद्ध किया जाता है।
+inactivity fallback resumed sessions पर भी फिर से engage करता है: यदि पिछले terminal evaluation के बाद नए events आते हैं और session फिर `inactivity_timeout_secs` से अधिक समय के लिए idle हो जाता है, तो एक ताज़ा मूल्यांकन enqueue किया जाता है।
 
-क्षणिक विफलताएं (5xx, 429, टाइमआउट, नेटवर्क त्रुटियां) `EVALUATOR_MAX_ATTEMPTS` तक घातीय बैकऑफ के साथ पुनः प्रयास की जाती हैं; 4xx प्रतिक्रियाएं टर्मिनल हैं। Observability कई क्षैतिज रूप से स्केल किए गए सर्वर उदाहरणों के साथ चलाने के लिए सुरक्षित है; कार्य विभाजित होता है ताकि एक ही सेशन को कभी भी समवर्ती रूप से भेजा न जाए।
+Transient failures (5xx, 429, timeouts, network errors) को `EVALUATOR_MAX_ATTEMPTS` तक exponential backoff के साथ retry किया जाता है; 4xx responses terminal हैं। Observability कई horizontally-scaled server instances के साथ चलाने के लिए सुरक्षित है; काम को विभाजित किया जाता है ताकि एक ही session को कभी भी simultaneously दो बार dispatch न किया जाए।
 
 ---
 
-## HTTP अनुबंध
+## HTTP contract
 
-हर प्रमाणीकृत मार्ग **वाहक टोकन प्रमाणीकरण** का उपयोग करता है। दोनों पक्षों पर एक ही मान कॉन्फ़िगर किया जाना चाहिए:
+हर authenticated route **bearer token auth** का उपयोग करता है। दोनों sides पर एक ही value को कॉन्फ़िगर किया जाना चाहिए:
 
-- Observability सर्वर: env var `EVALUATOR_TOKEN`
-- मूल्यांकन सेवा: उसी तरीके से कॉन्फ़िगर किया गया (agenteye-evaluator SDK परंपरा से `EVALUATOR_TOKEN` पढ़ता है)
+- Observability server: env var `EVALUATOR_TOKEN`
+- Evaluator service: एक ही तरीके से कॉन्फ़िगर किया गया (the `agenteye-evaluator` SDK convention के अनुसार `EVALUATOR_TOKEN` पढ़ता है)
 
-यदि `EVALUATOR_TOKEN` सेट नहीं है, तो सर्वर कोई `Authorization` हेडर नहीं भेजता है; मूल्यांकक तब गुमनाम अनुरोधों को स्वीकार कर सकता है, जो आंतरिक-केवल नेटवर्क के लिए ठीक है लेकिन सार्वजनिक इंटरनेट पर हतोत्साहित है।
+यदि `EVALUATOR_TOKEN` unset है, तो सर्वर कोई `Authorization` header नहीं भेजता; evaluator फिर anonymous requests को स्वीकार कर सकता है, जो एक internal-only network के लिए ठीक है लेकिन public internet पर discouraged है।
 
-### मूल्यांकक को सेवा देने वाले मार्ग
+### Routes जो evaluator को serve करना चाहिए
 
-| मार्ग | बॉडी / पैरामीटर | प्रतिक्रिया |
+| Route | Body / params | Response |
 |---|---|---|
-| `GET /health` | कोई नहीं | `{"status":"ok"}` (खुला, प्रमाणीकरण नहीं) |
-| `GET /config` | कोई नहीं | `{"inactivity_timeout_secs": <int> \| null, "default_poll_interval_secs": <int> \| omitted}` |
+| `GET /health` | none | `{"status":"ok"}` (open, no auth) |
+| `GET /config` | none | `{"inactivity_timeout_secs": <int> \| null, "default_poll_interval_secs": <int> \| omitted}` |
 | `POST /evaluate` | `EvalRequest` JSON | `{"status":"done", ...}` या `{"status":"pending", "job_id":"..."}` |
-| `GET /evaluate/{id}` | कोई नहीं | `/evaluate` के समान प्रतिक्रिया आकार |
+| `GET /evaluate/{id}` | none | `/evaluate` के समान response shape |
 
-### सर्वर द्वारा भेजा गया `EvalRequest` बॉडी
+### `EvalRequest` body जो सर्वर भेजता है
 
 ```json
 {
@@ -85,9 +86,9 @@ flowchart LR
 }
 ```
 
-### प्रतिक्रिया आकार
+### Response shapes
 
-**सिंक (पूर्ण):**
+**Sync (done):**
 
 ```json
 {
@@ -101,33 +102,33 @@ flowchart LR
 }
 ```
 
-`reasoning` (प्रति-स्कोर न्यायसंगतता मैप) और `summary` (एक समग्र एक-पैराग्राफ आख्यान) दोनों वैकल्पिक हैं। `reasoning` में कुंजियां `scores` में कुंजियों को प्रतिबिंबित करनी चाहिए; डैशबोर्ड प्रत्येक प्रविष्टि को अपने स्कोर बार के नीचे इनलाइन प्रस्तुत करता है। पुराने मूल्यांकनकर्ता जो केवल `scores` लौटाते हैं, अपरिवर्तित रहते हैं; `reasoning` और `summary` बस null के रूप में पढ़ते हैं और संबंधित UI सुविधाओं को छोड़ दिया जाता है।
+`reasoning` (एक per-score justification map) और `summary` (एक overall one-paragraph narrative) दोनों वैकल्पिक हैं। `reasoning` में keys को `scores` में keys को mirror करना चाहिए; dashboard प्रत्येक entry को अपने score bar के अंतर्गत inline प्रस्तुत करता है। पुराने evaluators जो केवल `scores` वापस करते हैं वे अपरिवर्तित जारी रहते हैं; `reasoning` और `summary` बस null के रूप में पढ़ते हैं और corresponding UI affordances को omitted किया जाता है।
 
-**एसिंक (स्थगित):**
+**Async (deferred):**
 
 ```json
 { "status": "pending", "job_id": "abc-123", "next_poll_secs": 30 }
 ```
 
-`next_poll_secs` वैकल्पिक है; यदि छोड़ दिया जाता है तो सर्वर `/config` से मूल्यांकक के `default_poll_interval_secs` पर वापस आता है, फिर अपने `EVALUATOR_POLLING_INTERVAL_SECS` env var पर।
+`next_poll_secs` वैकल्पिक है; यदि omitted है तो सर्वर evaluator के `/config` से `default_poll_interval_secs` पर वापस आता है, फिर अपने `EVALUATOR_POLLING_INTERVAL_SECS` env var पर।
 
-**टर्मिनल मूल्यांकक-पक्ष त्रुटि:**
+**Terminal evaluator-side error:**
 
 ```json
 { "status": "error", "error": "model service unavailable" }
 ```
 
-सर्वर किसी अन्य 2xx बॉडी को प्रोटोकॉल त्रुटि के रूप में मानता है और सेशन के लिए एक टर्मिनल `error` रिकॉर्ड करता है।
+सर्वर किसी अन्य 2xx body को एक protocol error के रूप में मानता है और session के लिए एक terminal `error` record करता है।
 
 ---
 
-## SDK के साथ एक मूल्यांकक लिखना
+## SDK के साथ एक evaluator लिखना
 
-आपको HTTP अनुबंध को हाथ से लागू करने की आवश्यकता नहीं है। `agenteye-evaluator` Python पैकेज आपको एक टाइपड FastAPI रैपर देता है जो प्रमाणीकरण, रूटिंग, और अनुरोध/प्रतिक्रिया आकार को आपके लिए संभालता है।
+आपको HTTP contract को manually implement करना नहीं है। `agenteye-evaluator` Python package आपको एक typed FastAPI wrapper देता है जो auth, routing, और request/response shapes को आपके लिए संभालता है।
 
-Failproof AI Observability एक **कार्यशील संदर्भ मूल्यांकक** भी भेज देता है जो ट्रांसक्रिप्ट के आकार से `helpfulness`, `tool_efficiency`, और `factuality` को स्कोर करता है। इसे एक शुरुआती बिंदु के रूप में कॉपी करें और अपना स्वयं का तर्क स्वैप करें: एक LLM न्यायाधीश, एक नियम इंजन, जो भी आपकी गुणवत्ता बार में फिट बैठता है।
+Failproof AI Observability एक **working reference evaluator** भी भेज रहा है जो transcript के आकार से `helpfulness`, `tool_efficiency`, और `factuality` को स्कोर करता है। इसे एक starting point के रूप में copy करें और अपने स्वयं के logic को swap करें: एक LLM judge, एक rule engine, जो भी आपकी quality bar के लिए उपयुक्त हो।
 
-न्यूनतम व्यावहारिक मूल्यांकक:
+न्यूनतम व्यवहार्य evaluator:
 
 ```python
 import os
@@ -146,62 +147,62 @@ def run(req: EvalRequest) -> EvalResponse:
     )
 ```
 
-`app` उदाहरण किसी भी ASGI सर्वर के अंतर्गत चलता है, इसलिए `uvicorn module:app` इसे शुरू करता है।
+`app` instance किसी भी ASGI server के अंतर्गत चलता है, इसलिए `uvicorn module:app` इसे शुरू करता है।
 
-जो मूल्यांकनकर्ता महंगे काम को स्थगित करने की आवश्यकता रखते हैं, उन्हें इसके बजाय `JobPending` लौटाना चाहिए और एक `@app.job_lookup` हैंडलर को रजिस्टर करना चाहिए; Observability सर्वर `GET /evaluate/{job_id}` को पोल करता है जब तक आप एक टर्मिनल स्थिति लौटाते हैं या `EVALUATOR_MAX_POLL_DURATION_SECS` कैप (डिफ़ॉल्ट 1 h) समाप्त होता है।
+उन evaluators के लिए जिन्हें महंगे काम को defer करना है, `JobPending` को instead return करें और एक `@app.job_lookup` handler register करें; Observability server `GET /evaluate/{job_id}` को poll करता है जब तक कि आप एक terminal status return न करें या `EVALUATOR_MAX_POLL_DURATION_SECS` cap (डिफ़ॉल्ट 1 h) elapses न हो जाए।
 
-संपूर्ण API संदर्भ, एसिंक पैटर्न, और इवेंट स्कीमा `agenteye-evaluator` SDK के README में प्रलेखित हैं।
-
----
-
-## आपके मूल्यांकक को चलाना
-
-मूल्यांकक **आपकी सेवा** है — Failproof AI Observability एक डिफ़ॉल्ट मूल्यांकक नहीं भेज देता है, इसलिए आप इसे जहां भी अपनी सेवाओं को चलाते हैं वहां बनाते और चलाते हैं। यह किसी भी ASGI सर्वर के अंतर्गत चलता है (उदाहरण के लिए `uvicorn my_evaluator:app`); [HTTP अनुबंध](#http-contract) से `/health`, `/config`, और `/evaluate` मार्गों को सेवा दें, फिर सर्वर को इस पर इंगित करें ([सर्वर कॉन्फ़िगर करना](#configuring-the-server) देखें)।
-
-एक बार मूल्यांकक पहुंचने योग्य होने के बाद, `GET /health` `{"status":"ok"}` लौटाता है। एक एजेंट के अंत-से-अंत चलने के बाद, सर्वर पर `GET /evaluations` एक `status: "done"` के साथ एक पंक्ति लौटाता है और आपके मूल्यांकक द्वारा उत्पादित स्कोर लौटाता है।
+पूर्ण API reference, async pattern, और event schema को `agenteye-evaluator` SDK के README में documented किया गया है।
 
 ---
 
-## सर्वर कॉन्फ़िगर करना
+## अपना evaluator चलाना
+
+evaluator **आपकी सेवा** है — Failproof AI Observability एक default evaluator ship नहीं करता, इसलिए आप इसे जहां अपनी own services चलाते हैं वहां build और चलाते हैं। यह किसी भी ASGI server के अंतर्गत चलता है (उदाहरण के लिए `uvicorn my_evaluator:app`); [HTTP contract](#http-contract) से `/health`, `/config`, और `/evaluate` routes serve करें, फिर सर्वर को इसकी ओर point करें (देखें [Configuring the server](#configuring-the-server))।
+
+एक बार evaluator reachable हो जाने पर, `GET /health` `{"status":"ok"}` return करता है। एक agent के बाद end-to-end चलता है, सर्वर पर `GET /evaluations` `status: "done"` के साथ एक row return करता है और आपके evaluator द्वारा उत्पादित scores।
+
+---
+
+## सर्वर को कॉन्फ़िगर करना
 
 सर्वर प्रक्रिया पर सेट करें:
 
-| Env var | अर्थ |
+| Env var | Meaning |
 |---|---|
-| `EVALUATOR_ENDPOINT` | आपके मूल्यांकक का बेस URL (`http://evaluator:9000`)। सेट नहीं = पाइपलाइन अक्षम। |
-| `EVALUATOR_TOKEN` | वाहक टोकन। मूल्यांकन सेवा के साथ कॉन्फ़िगर किए गए मान के बराबर होना चाहिए। |
-| `EVALUATOR_WORKERS` | सर्वर उदाहरण प्रति कार्य कार्य (डिफ़ॉल्ट 2)। |
-| `EVALUATOR_CLAIM_BATCH` | कार्यकर्ता टिक प्रति पंक्तियां दावा की गई (डिफ़ॉल्ट 4)। बैच **समवर्ती** रूप से संसाधित होते हैं; आपके मूल्यांकक एंडपॉइंट पर प्रभावी समवर्तिता `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH` है। |
-| `EVALUATOR_POLL_IDLE_SECS` | एक कार्यकर्ता कितने समय के लिए सोता है जब कोई मूल्यांकन डिस्पैच प्रयास में कारण न हो (डिफ़ॉल्ट 2s)। |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | अंतिम फॉलबैक `GET /evaluate/{id}` कैडेंस के लिए जब न तो प्रति-प्रतिक्रिया `next_poll_secs` और न ही मूल्यांकक का `default_poll_interval_secs` सेट हो (डिफ़ॉल्ट 10s)। |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | प्रति-अनुरोध टाइमआउट (डिफ़ॉल्ट 30000)। |
-| `EVALUATOR_MAX_ATTEMPTS` | इस कई क्षणिक विफलताओं के बाद परिणाम को टर्मिनल `error` के रूप में रिकॉर्ड किया जाता है (डिफ़ॉल्ट 5)। |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | `GET /config` कैडेंस (डिफ़ॉल्ट 300)। |
-| `EVALUATOR_MAX_POLL_DURATION_SECS` | अधिकतम वॉलक्लॉक समय एक सेशन पोलिंग कतार में `timeout` के रूप में समाप्त होने से पहले रह सकता है (डिफ़ॉल्ट 3600s)। एक मूल्यांकक के खिलाफ गार्ड जो हमेशा के लिए `pending` लौटाता रहता है। |
+| `EVALUATOR_ENDPOINT` | आपके evaluator का Base URL (`http://evaluator:9000`)। Unset = pipeline disabled। |
+| `EVALUATOR_TOKEN` | Bearer token। evaluator service को configured value के साथ equal होना चाहिए। |
+| `EVALUATOR_WORKERS` | सर्वर instance प्रति Worker tasks (डिफ़ॉल्ट 2)। |
+| `EVALUATOR_CLAIM_BATCH` | प्रति worker tick Rows claimed (डिफ़ॉल्ट 4)। Batches को **concurrently** processed किया जाता है; आपके evaluator endpoint पर effective concurrency `EVALUATOR_WORKERS × EVALUATOR_CLAIM_BATCH` है। |
+| `EVALUATOR_POLL_IDLE_SECS` | कितने समय के लिए एक worker dispatch attempts के बीच सोता है जब कोई evaluation due नहीं है (डिफ़ॉल्ट 2s)। |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | Final fallback `GET /evaluate/{id}` cadence के लिए जब न तो per-response `next_poll_secs` न ही evaluator का `default_poll_interval_secs` set है (डिफ़ॉल्ट 10s)। |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | Per-request timeout (डिफ़ॉल्ट 30000)। |
+| `EVALUATOR_MAX_ATTEMPTS` | इतने सारे transient failures के बाद परिणाम को terminal `error` के रूप में recorded किया जाता है (डिफ़ॉल्ट 5)। |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | `GET /config` cadence (डिफ़ॉल्ट 300)। |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | अधिकतम wallclock time एक session polling queue में रह सकता है इसे `timeout` के रूप में terminated होने से पहले (डिफ़ॉल्ट 3600s)। एक evaluator के विरुद्ध guards जो हमेशा `pending` return करता है। |
 
-स्वचालित स्कोरिंग चालू करने के लिए, सर्वर पर `EVALUATOR_ENDPOINT` और `EVALUATOR_TOKEN` दोनों सेट करें, फिर परिवर्तन को उठाने के लिए इसे पुनः शुरू करें। `EVALUATOR_ENDPOINT` सेट न होने के साथ पाइपलाइन एक no-op रहता है।
+automatic scoring को turn on करने के लिए, सर्वर पर `EVALUATOR_ENDPOINT` और `EVALUATOR_TOKEN` दोनों को सेट करें, फिर इसे restart करें change को pick up करने के लिए। `EVALUATOR_ENDPOINT` unset होने पर पाइपलाइन एक no-op रहता है।
 
-ऊपर ट्यूनिंग नॉब्स वैकल्पिक हैं; केवल सर्वर पर संबंधित पर्यावरण चर सेट करें यदि आपको डिफ़ॉल्ट को ओवरराइड करने की आवश्यकता है।
+ऊपर दिए गए tuning knobs वैकल्पिक हैं; केवल संबंधित environment variables को सर्वर पर तभी सेट करें जब आपको defaults को override करने की जरूरत हो।
 
 ---
 
-## API संदर्भ
+## API reference
 
-| विधि | पथ | आवश्यक अनुमति | उद्देश्य |
+| Method | Path | Required permission | Purpose |
 |---|---|---|---|
-| `GET` | `/evaluations` | `evaluations:read` | टर्मिनल परिणामों को क्वेरी करें। `session_id`, `agent_id`, `environment`, `status` (`done`/`error`/`timeout`), `ts_from`, `ts_to`, `cursor`, `limit`, `score_filters`, `latest_per_session` का समर्थन करता है। `limit` डिफ़ॉल्ट 50 है और 200 पर सीमित है (ध्यान दें यह `/events` से भिन्न है, जो 1000 पर सीमित है)। `environment` एक अल्पविराम-पृथक सूची स्वीकार करता है (जैसे `environment=prod,staging`); एकल मान अभी भी काम करते हैं। `latest_per_session=true` के साथ प्रतिक्रिया में अधिकतम एक पंक्ति प्रति `session_id` (सबसे हाल की `completed_at` द्वारा) होती है जो सेशन-सूची पृष्ठ द्वारा सेशन की मूल्यांकन समयरेखा को इसकी वर्तमान हेडलाइन में संक्षिप्त करने के लिए उपयोग की जाती है। डिफ़ॉल्ट गलत है (पूरा इतिहास लौटाता है)। |
-| `GET` | `/evaluations/aggregate` | `evaluations:read` | फ़िल्टर किए गए स्लाइस के लिए रोल्ड-अप eval स्वास्थ्य: कुल गणना, एक done/error/timeout ब्रेकडाउन, प्रति-स्कोर-कुंजी आँकड़े (मनमाने `scores` कुंजियों के ऊपर गणना/औसत/न्यूनतम/अधिकतम/p50), और एक समय-बकेटेड समयरेखा। `/evaluations` के समान फ़िल्टर पैरामीटर प्लस `featured_keys` (ट्रेंड करने के लिए स्कोर कुंजियों का CSV) और `latest_per_session` स्वीकार करता है। डैशबोर्ड सुविधा को शक्ति देता है; मेट्रिक्स पूरे मेल खाने वाले सेट पर सटीक हैं, नहीं नमूना किया गया। |
-| `GET` | `/evaluations/environments` | `evaluations:read` | `evaluations` तालिका से अलग पर्यावरण मान। मूल्यांकन-पठनीय डेटा को सीमित करने वाले फ़िल्टर ड्रॉपडाउन को भरने के लिए उपयोग किया जाता है। |
-| `GET` | `/evaluation-jobs` | `evaluations:read` | चलन-मध्य मूल्यांकनों में दृश्यमानता। `status` (`pending`/`polling`) द्वारा फ़िल्टर करें। |
-| `GET` | `/events` | `events:read` | एक सेशन की कच्ची इवेंट को स्ट्रीम करें। `session_id`, `agent_id`, `event_type` (CSV), `environment` (CSV), `ts_from`, `ts_to`, `cursor`, `limit`, और `order` का समर्थन करता है। `order` `desc` (सबसे नई-पहले, डिफ़ॉल्ट) या `asc` (सबसे पुरानी-पहले) है; एक अपहचाना मान `desc` पर वापस आता है। प्रतिक्रिया के `next_cursor` (एक इवेंट id) के माध्यम से कर्सर-पेजिनेट करें: अगला पृष्ठ प्राप्त करने के लिए इसे `cursor` के रूप में पास करें; `asc` के साथ अगला पृष्ठ उस id के बाद की इवेंट है, `desc` के साथ इसके पहले की इवेंट है। `limit` डिफ़ॉल्ट 50 है और 1000 पर सीमित है। |
-| `GET` | `/sessions/:session_id/export` | `events:read` | यह सटीक JSON बॉडी लौटाता है जो मूल्यांकक इस सेशन के लिए प्राप्त करेगा, `session-<id>.json` नामित एक डाउनलोड योग्य अनुलग्नक के रूप में सेवा की गई। ऑफ़लाइन परीक्षण के लिए उत्पादन सेशन को `agenteye-evaluator` के माध्यम से चलाना उपयोगी है। बाइट्स बाइट-समान हैं मूल्यांकक पाइपलाइन भेजने वाले को। |
-| `POST` | `/sessions/:session_id/re-evaluate` | `evaluations:trigger` | एक सेशन के लिए एक ताज़ा मूल्यांकन कतारबद्ध करें; चाहे एक पूर्व मूल्यांकन मौजूद हो। नया परिणाम सेशन की मूल्यांकन समयरेखा में **जोड़ा जाता है** पूर्व को ओवरराइट करने के बजाय, इसलिए पूर्व स्कोर इतिहास के रूप में दृश्यमान रहते हैं। कतारबद्ध पर `202`, अज्ञात सेशन के लिए `404`, यदि एक मूल्यांकन पहले से चल रहा है तो `409` लौटाता है। एक नए मूल्यांकक को तैनात करने के बाद, या सेशन के लिए जो कभी `agent_end` उत्सर्जित नहीं करते हैं, इसका उपयोग करें। |
+| `GET` | `/evaluations` | `evaluations:read` | Terminal results को query करें। `session_id`, `agent_id`, `environment`, `status` (`done`/`error`/`timeout`), `ts_from`, `ts_to`, `cursor`, `limit`, `score_filters`, `latest_per_session` को supports करता है। `limit` डिफ़ॉल्ट 50 है और 200 पर capped है (ध्यान दें कि यह `/events` से अलग है, जो 1000 पर capped है)। `environment` एक comma-separated list को accept करता है (जैसे `environment=prod,staging`); single values अभी भी काम करते हैं। `latest_per_session=true` के साथ response में `session_id` प्रति अधिकतम एक row होता है (सबसे हाल का `completed_at` द्वारा) sessions-list page द्वारा एक session के evaluation timeline को अपने current headline में collapse करने के लिए उपयोग किया जाता है। Defaults को false (full history return करता है)। |
+| `GET` | `/evaluations/aggregate` | `evaluations:read` | एक filtered slice के लिए Rolled-up eval health: total count, एक done/error/timeout breakdown, per-score-key stats (count/avg/min/max/p50 arbitrary `scores` keys के अधिक), और एक time-bucketed timeline। `/evaluations` के समान **filter params** को plus `featured_keys` (trend करने के लिए score keys का CSV) और `latest_per_session` को accept करता है। Dashboards feature को powers करता है; metrics exact हैं पूरे matching set पर, sampled नहीं। |
+| `GET` | `/evaluations/environments` | `evaluations:read` | `evaluations` table से Distinct environment values। evaluation-readable data को scoped filter dropdowns को populate करने के लिए उपयोग किया जाता है। |
+| `GET` | `/evaluation-jobs` | `evaluations:read` | In-flight evaluations में Visibility। `status` (`pending`/`polling`) द्वारा filter करें। |
+| `GET` | `/events` | `events:read` | एक session के raw events को stream करें। `session_id`, `agent_id`, `event_type` (CSV), `environment` (CSV), `ts_from`, `ts_to`, `cursor`, `limit`, और `order` को supports करता है। `order` `desc` (newest-first, default) या `asc` (oldest-first) है; एक unrecognized value `desc` पर fall back करता है। Cursor-paginate response के `next_cursor` के माध्यम से (एक event id): इसे `cursor` के रूप में वापस pass करें अगले page को प्राप्त करने के लिए; `asc` के साथ अगला page वह events है उस id के बाद, `desc` के साथ वह events पहले। `limit` डिफ़ॉल्ट 50 है और 1000 पर capped है। |
+| `GET` | `/sessions/:session_id/export` | `events:read` | सटीक JSON body return करता है जो evaluator इस session के लिए receive करेगा, एक downloadable attachment के रूप में served `session-<id>.json` नाम के साथ। production sessions को offline testing के लिए `agenteye-evaluator` के माध्यम से replay करने के लिए उपयोगी। Bytes byte-identical हैं जो evaluator pipeline भेजता है। |
+| `POST` | `/sessions/:session_id/re-evaluate` | `evaluations:trigger` | एक session के लिए एक ताज़ा मूल्यांकन enqueue करें; एक prior evaluation exist करता है या नहीं चलता है। नया परिणाम session के evaluation timeline में **appended** है previous one को overwrite करने के बजाय, इसलिए prior scores history के रूप में visible रहते हैं। Enqueue पर `202` return करता है, unknown session के लिए `404`, यदि evaluation already in flight है तो `409`। इसका उपयोग एक नए evaluator को deploy करने के बाद, या sessions के लिए करें जिन्होंने कभी `agent_end` emit नहीं किया। |
 
-### स्कोर रेंज द्वारा फ़िल्टर करना: `score_filters`
+### Score range द्वारा filtering: `score_filters`
 
-`GET /evaluations` एक वैकल्पिक `score_filters` पैरामीटर स्वीकार करता है जो `scores` ऑब्जेक्ट के अंदर संख्यात्मक मानों द्वारा परिणामों को संकीर्ण करता है। पैरामीटर `key:min..max` प्रविष्टियों की एक अल्पविराम-पृथक सूची है; किसी भी सीमा को छोड़ा जा सकता है। कई प्रविष्टियां तार्किक AND के साथ मिलती हैं। जहां नामित कुंजी अनुपस्थित या गैर-संख्यात्मक है, पंक्तियों को बाहर रखा जाता है। एक अनुरोध में अधिकतम 20 फ़िल्टर प्रविष्टियां हो सकती हैं; उससे अधिक HTTP 400 लौटाता है।
+`GET /evaluations` एक optional `score_filters` parameter को accept करता है जो `scores` object के अंदर numeric values द्वारा results को narrow करता है। Parameter एक comma-separated list है `key:min..max` entries का; किसी भी bound को omitted किया जा सकता है। Multiple entries logical AND के साथ combine होते हैं। Rows जहां named key absent या non-numeric है excluded किया जाता है। एक request में अधिकतम 20 filter entries हो सकते हैं; exceed करने पर HTTP 400 return होता है।
 
-उदाहरण:
+Examples:
 ```text
 # helpfulness in [0.5, 0.8]
 GET /evaluations?score_filters=helpfulness:0.5..0.8
@@ -213,87 +214,87 @@ GET /evaluations?score_filters=tool_efficiency:..0.3
 GET /evaluations?score_filters=helpfulness:0.5..,factuality:0.9..
 ```
 
-प्रत्येक `/evaluations` प्रतिक्रिया ऑब्जेक्ट के ये फ़ील्ड हैं:
+प्रत्येक `/evaluations` response object के पास ये fields हैं:
 
-| फ़ील्ड | प्रकार | नोट्स |
+| Field | Type | Notes |
 |---|---|---|
-| `evaluation_id` | string (UUID) | इस टर्मिनल मूल्यांकन के लिए विहित पहचानकर्ता। प्रत्येक टर्मिनल मूल्यांकन को एक नया UUID मिलता है; एक एकल सेशन कई धारण कर सकता है। |
-| `id` | string (UUID) | पश्चादृश्यता उपनाम `evaluation_id` के समान मान ले जा रहा है। |
-| `session_id` | string | वह सेशन जिसके विरुद्ध यह मूल्यांकन चलाया गया। एक सेशन समयरेखा में कई मूल्यांकन हो सकते हैं। |
-| `agent_id` | string | एजेंट को पहचानता है जिसने सेशन का उत्पादन किया। |
-| `environment` | string | पर्यावरण लेबल सेशन से कॉपी किया गया। |
-| `status` | enum | `"done"`, `"error"`, `"timeout"` में से एक। |
-| `scores` | object \| null | आपके मूल्यांकक द्वारा लौटाए गए स्कोर। |
-| `reasoning` | object \| null | आपके मूल्यांकक द्वारा लौटाया गया वैकल्पिक प्रति-स्कोर न्यायसंगतता मैप। कुंजियां आम तौर पर `scores` में उनके साथ प्रतिबिंबित करती हैं। डैशबोर्ड प्रत्येक प्रविष्टि को अपने स्कोर बार के नीचे प्रस्तुत करता है। |
-| `summary` | string \| null | आपके मूल्यांकक द्वारा लौटाया गया वैकल्पिक एक-पैराग्राफ समग्र आख्यान। डैशबोर्ड इसे प्रति-स्कोर ब्रेकडाउन के ऊपर मूल्यांकन की हेडलाइन के रूप में प्रस्तुत करता है। |
-| `error` | string \| null | केवल `"error"` / `"timeout"` पर भरा गया। |
-| `attempt_count` | integer | डिस्पैच प्रयासों की संख्या (≥ 1)। |
-| `duration_ms` | integer \| null | अंतिम प्रयास की अवधि। |
-| `completed_at` | string (ISO 8601 UTC) | जब टर्मिनल परिणाम रिकॉर्ड किया गया। परिणाम `completed_at` द्वारा क्रमबद्ध हैं (सबसे नई पहली)। |
-| `created_at` | string (ISO 8601 UTC) | `completed_at` के समान टाइमस्टैम्प लेता है (एक बार लिखना शब्दार्थ)। |
+| `evaluation_id` | string (UUID) | इस terminal evaluation के लिए canonical identifier। प्रत्येक terminal evaluation को एक नया UUID मिलता है; एक single session में multiple हो सकते हैं। |
+| `id` | string (UUID) | Backwards-compatibility alias `evaluation_id` के समान value carry करता है। |
+| `session_id` | string | Session जिसके विरुद्ध evaluation चला। एक session timeline में multiple evaluations हो सकते हैं। |
+| `agent_id` | string | Agent को identify करता है जिसने session produce किया। |
+| `environment` | string | Environment label session से copied। |
+| `status` | enum | एक `"done"`, `"error"`, `"timeout"`। |
+| `scores` | object \| null | आपके evaluator द्वारा return किए गए Scores। |
+| `reasoning` | object \| null | Optional per-score justification map आपके evaluator द्वारा return किया गया। Keys typically `scores` में keys को mirror करते हैं। Dashboard प्रत्येक entry को अपने score bar के अंतर्गत render करता है। |
+| `summary` | string \| null | Optional one-paragraph overall narrative आपके evaluator द्वारा return किया गया। Dashboard इसे per-score breakdown के ऊपर evaluation के headline के रूप में render करता है। |
+| `error` | string \| null | `"error"` / `"timeout"` पर ही populated। |
+| `attempt_count` | integer | Dispatch attempts की संख्या (≥ 1)। |
+| `duration_ms` | integer \| null | Final attempt की duration। |
+| `completed_at` | string (ISO 8601 UTC) | जब terminal result को recorded किया गया। Results को `completed_at` (newest first) द्वारा ordered किया गया। |
+| `created_at` | string (ISO 8601 UTC) | `completed_at` के साथ ही timestamp carry करता है (write-once semantics)। |
 
 ---
 
-## अनुमतियां
+## Permissions
 
-| अनुमति | अनुदान |
+| Permission | Grants |
 |---|---|
-| `evaluations:read` | मूल्यांकन परिणामों को सूचीबद्ध करें, डैशबोर्ड में स्कोर देखें, और डैशबोर्ड स्वास्थ्य मेट्रिक्स लोड करें। |
-| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` या डैशबोर्ड के री-इवल्यूएट बटन के माध्यम से एक सेशन के लिए मैनुअल रूप से एक मूल्यांकन कतारबद्ध करें। |
-| `dashboards:read` | सहेजे गए डैशबोर्ड देखें (उनकी मेट्रिक्स लोड करने के लिए `evaluations:read` भी चाहिए)। |
-| `dashboards:write` | डैशबोर्ड बनाएं और संपादित करें। |
-| `dashboards:delete` | डैशबोर्ड हटाएं। |
+| `evaluations:read` | List evaluation results, dashboard में scores को view करें, और dashboard health metrics को load करें। |
+| `evaluations:trigger` | Manually एक session के लिए एक evaluation को enqueue करें `POST /sessions/:session_id/re-evaluate` के माध्यम से या dashboard के re-evaluate button। |
+| `dashboards:read` | Saved dashboards को view करें (उनके metrics को load करने के लिए `evaluations:read` को भी चाहिए)। |
+| `dashboards:write` | Dashboards को create और edit करें। |
+| `dashboards:delete` | Dashboards को delete करें। |
 
-बूटस्ट्रैप व्यवस्थापक (`ADMIN_KEY`, `ADMIN_EMAIL`) स्वचालित रूप से ये प्राप्त करता है।
+Bootstrap admin (`ADMIN_KEY`, `ADMIN_EMAIL`) स्वचालित रूप से इन सभी को receive करता है।
 
 ---
 
 ## परिणाम देखना
 
-- **`/sessions/<id>`**: इवेंट समयरेखा + दाहिनी ओर की पट्टी सेशन के स्कोर और डिस्पैच प्रयास से किसी भी त्रुटि दिखाती है। यदि आपकी कुंजी के पास `evaluations:trigger` है, तो निर्यात बटन के आगे एक **री-इवल्यूएट** बटन दिखाई देता है, सेशन के लिए उपयोगी जो कभी `agent_end` उत्सर्जित नहीं करते हैं, या एक नए मूल्यांकक को तैनात करने के बाद स्कोर को ताज़ा करने के लिए। डैशबोर्ड नई परिणाम के लिए पोल करता है और यह लैंड करने पर दाहिनी ओर की पट्टी को अपडेट करता है।
-- **`/sessions`**: फ़िल्टर योग्य सेशन ग्रिड; स्कोर कॉलम प्रत्येक सेशन की मूल्यांकन स्थिति और स्कोर को एक नज़र में दिखाता है।
-- **`/dashboards`**: सहेजे गए eval-स्वास्थ्य दृश्य ([डैशबोर्ड](#dashboards) नीचे देखें)।
+- **`/sessions/<id>`**: events timeline + एक right rail session के scores और dispatch attempt से किसी error को दिखाता है। यदि आपकी key के पास `evaluations:trigger` है, तो एक **re-evaluate** button export button के बगल में दिखाई देता है, useful sessions के लिए जिन्होंने कभी `agent_end` emit नहीं किया, या एक नए evaluator को deploy करने के बाद scores को refresh करने के लिए। Dashboard नए result के लिए poll करता है और यह land होने पर right rail को update करता है।
+- **`/sessions`**: filterable session grid; score column प्रत्येक session के evaluation status और scores को एक नज़र में दिखाता है।
+- **`/dashboards`**: saved eval-health views (देखें [Dashboards](#dashboards) नीचे)।
 
-![सेशन ग्रिड प्रति-सेशन मूल्यांकन स्थिति गोलियों और रंग-कोडित स्कोर बैज (सहायकता, तथ्यपूर्णता, tool_efficiency, सुरक्षा, सामंजस्य) के साथ](/agenteye/images/sessions-list.png)
+![Per-session evaluation status pills और colour-coded score badges (helpfulness, factuality, tool_efficiency, safety, coherence) के साथ Sessions grid](/agenteye/images/sessions-list.png)
 
-*सेशन ग्रिड प्रत्येक रन की मूल्यांकन स्थिति और स्कोर को एक नज़र में दिखाता है; लाल/एम्बर/हरे बैज निम्न स्कोर को उछाल देते हैं।*
-
----
-
-## डैशबोर्ड
-
-**डैशबोर्ड** पृष्ठ (`/dashboards`) आपको एक नामित, पुनः प्रयोज्य दृश्य के रूप में मूल्यांकन फ़िल्टर का एक संयोजन सहेजने देता है और देखता है कि मूल्यांकन के उस स्लाइस को एक नज़र में कैसे प्राप्त करते हैं। डैशबोर्ड **आपके पूरे संगठन में साझा किए जाते हैं**; `dashboards:read` के साथ सभी समान सेट देखते हैं।
-
-प्रत्येक डैशबोर्ड पिन:
-
-- **फ़िल्टर**: सेशन पृष्ठ के समान नियंत्रण: पर्यावरण, स्थिति, एजेंट, एक रोलिंग समय विंडो, और स्कोर-रेंज फ़िल्टर (`key:min..max`)।
-- **एक प्रदर्शन कॉन्फ़िगरेशन**: कौन सी स्कोर कुंजियां सुविधा देने के लिए, हरे/एम्बर/लाल स्वास्थ्य थ्रेशहोल्ड, कौन से पैनल दिखाने के लिए, और क्या प्रति सेशन नवीनतम मूल्यांकन को संक्षिप्त करना है।
-
-प्रत्येक कार्ड मेल खाने वाले सेशन की संख्या, एक done/error/timeout ब्रेकडाउन, प्रत्येक विशेषता स्कोर का औसत, और एक छोटी प्रवृत्ति स्पार्कलाइन दिखाता है। एक डैशबोर्ड खोलने से पूर्ण आकार के पैनल दिखाई देते हैं; **"सेशन में खोलें"** आपको सेशन पृष्ठ में बिल्कुल उस स्लाइस में पूर्व-फ़िल्टर किया हुआ गिराता है। मेट्रिक्स पूरे मेल खाने वाले सेट के ऊपर सर्वर-पक्ष पर गणना की जाती हैं (`GET /evaluations/aggregate` के माध्यम से), इसलिए संख्याएं नहीं बल्कि सटीक हैं।
-
-![एक eval-स्वास्थ्य डैशबोर्ड औसत-स्कोर बार प्रति मूल्यांकन आयाम, एक उपकरण ठीक-बनाम-त्रुटि ब्रेकडाउन, शीर्ष उपकरण, और एक इवेंट-प्रति-घंटा प्रवृत्ति के साथ](/agenteye/images/dashboard-quality.png)
-
-**अनुमतियां:** देखने के लिए `dashboards:read` और `evaluations:read` दोनों की आवश्यकता है; बनाने और संपादित करने के लिए `dashboards:write` की आवश्यकता है; हटाने के लिए `dashboards:delete` की आवश्यकता है। बूटस्ट्रैप व्यवस्थापक स्वचालित रूप से सभी प्राप्त करता है।
+*Sessions grid प्रत्येक run के evaluation status और scores को एक नज़र में दिखाता है; red/amber/green badges low scores को jump out करते हैं।*
 
 ---
 
-## समस्या निवारण
+## Dashboards
 
-**सेशन मौजूद हैं लेकिन कोई मूल्यांकन नहीं बनाए जाते हैं।** सुनिश्चित करें कि सर्वर प्रक्रिया पर `EVALUATOR_ENDPOINT` सेट है, सर्वर और मूल्यांकक समान `EVALUATOR_TOKEN` मान साझा करते हैं, और मूल्यांकक का `/health` एंडपॉइंट सर्वर से पहुंचने योग्य है। `EVALUATOR_ENDPOINT` सेट नहीं होने पर पाइपलाइन एक no-op है।
+**Dashboards** page (`/dashboards`) आपको evaluation filters के एक combination को एक named, reusable view के रूप में save करने देता है और उस slice के evaluations को एक नज़र में देखते हैं कि कैसे doing किया जा रहा है। Dashboards **आपके पूरे organization में shared** हैं; हर कोई `dashboards:read` के साथ एक ही set देखता है।
 
-**चलन-मध्य मूल्यांकन ढेर हो जाते हैं।** चलन-मध्य कतार देखने के लिए `GET /evaluation-jobs` को क्वेरी करें। प्रत्येक पंक्ति पर `attempt_count`, `next_attempt_at`, और `last_error` का निरीक्षण करें। सामान्य कारण: मूल्यांकन सेवा अप्राप्य या 5xx लौटा रहा है (बैकऑफ के साथ पुनः प्रयास किया गया), गलत `EVALUATOR_TOKEN` (401 टर्मिनल है), या एक एसिंक मूल्यांकक जो अनिश्चित काल तक `pending` लौटाता है (नीचे देखें)।
+प्रत्येक dashboard pins:
 
-**सेशन पूरे हुए लेकिन कोई टर्मिनल मूल्यांकन नहीं।** `GET /evaluation-jobs?status=polling` को क्वेरी करें; परिणाम अभी भी चल रहा हो सकता है। यदि कोई कार्य `pending` में फंस जाता है, तो सर्वर को मूल्यांकक तक पहुंचने में परेशानी हो रही है; सुनिश्चित करें कि मूल्यांकक ऊपर है और `EVALUATOR_TOKEN` मेल खाता है।
+- **Filters**: sessions page के समान controls: environment, status, agent, एक rolling time window, और score-range filters (`key:min..max`)।
+- **एक display configuration**: कौन से score keys को feature करना है, green/amber/red health thresholds, कौन से panels को दिखाना है, और क्या latest evaluation प्रति session में collapse करना है।
 
-**`HTTP 401 from evaluator: invalid bearer token`।** सर्वर पर `EVALUATOR_TOKEN` मूल्यांकन सेवा के साथ कॉन्फ़िगर किए गए मान से मेल नहीं खाता। वे समान होने चाहिए।
+प्रत्येक card matching sessions की संख्या, एक done/error/timeout breakdown, प्रत्येक featured score की average, और एक small trend sparkline दिखाता है। एक dashboard को opening पर full-size panels दिखाई देते हैं; **"open in sessions"** आपको sessions page में उसी slice पर pre-filtered drop करता है। Metrics को server-side पर पूरे matching set के ऊपर compute किया जाता है (`GET /evaluations/aggregate` के माध्यम से), इसलिए numbers exact हैं rather than sampled।
 
-**एसिंक मूल्यांकक अनिश्चित काल तक `pending` लौटाता है।** सर्वर `GET /evaluate/{job_id}` को पोल करता है जब तक मूल्यांकक `done` या `error` लौटाता है, या जब तक `EVALUATOR_MAX_POLL_DURATION_SECS` (डिफ़ॉल्ट 1 h) समाप्त हो जाता है। कैप के बाद मूल्यांकन `timeout` के रूप में रिकॉर्ड किया जाता है और चलन-मध्य कतार से हटा दिया जाता है। यदि आपके मूल्यांकक को वास्तव में डिफ़ॉल्ट से अधिक समय की आवश्यकता है तो `EVALUATOR_MAX_POLL_DURATION_SECS` बढ़ाएं।
+![एक eval-health dashboard average-score bars के साथ प्रति evaluator dimension, एक tool ok-vs-error breakdown, top tools, और एक events-per-hour trend](/agenteye/images/dashboard-quality.png)
+
+**Permissions:** viewing को `dashboards:read` और `evaluations:read` दोनों चाहिए; creating और editing को `dashboards:write` चाहिए; deleting को `dashboards:delete` चाहिए। Bootstrap admin स्वचालित रूप से सभी को receive करता है।
+
+---
+
+## Troubleshooting
+
+**Sessions exist लेकिन कोई evaluations create नहीं होते हैं।** Confirm करें कि `EVALUATOR_ENDPOINT` सर्वर प्रक्रिया पर set है, कि सर्वर और evaluator एक ही `EVALUATOR_TOKEN` value share करते हैं, और कि evaluator का `/health` endpoint सर्वर से reachable है। `EVALUATOR_ENDPOINT` unset होने पर पाइपलाइन एक no-op है।
+
+**In-flight evaluations pile up होते हैं।** `GET /evaluation-jobs` को query करें in-flight queue को देखने के लिए। Inspect करें `attempt_count`, `next_attempt_at`, और `last_error` प्रत्येक row पर। Common causes: evaluator service unreachable या 5xx return कर रहा है (backoff के साथ retry किया जाता है), wrong `EVALUATOR_TOKEN` (401 terminal है), या एक async evaluator जो indefinitely `pending` return करता है (नीचे देखें)।
+
+**Sessions completed लेकिन कोई terminal evaluation नहीं।** `GET /evaluation-jobs?status=polling` को query करें; result अभी भी in flight हो सकता है। यदि एक job `pending` में stuck है, तो सर्वर को evaluator तक पहुंचने में trouble हो रहा है; check करें कि evaluator up है और कि `EVALUATOR_TOKEN` matches करता है।
+
+**`HTTP 401 from evaluator: invalid bearer token`।** सर्वर पर `EVALUATOR_TOKEN` evaluator service को configured value से match नहीं करता। वह identical होना चाहिए।
+
+**Async evaluator indefinitely `pending` return करता है।** सर्वर `GET /evaluate/{job_id}` को poll करता है जब तक evaluator `done` या `error` return न करे, या जब तक `EVALUATOR_MAX_POLL_DURATION_SECS` (डिफ़ॉल्ट 1 h) elapses न हो जाए। Cap के बाद evaluation को `timeout` के रूप में recorded किया जाता है और in-flight queue से removed किया जाता है। `EVALUATOR_MAX_POLL_DURATION_SECS` को raise करें यदि आपका evaluator legitimately डिफ़ॉल्ट से अधिक समय की जरूरत है।
 
 ---
 
 ## अगले कदम
 
-- [मूल्यांकक एजेंट कौशल](/hi/agenteye/evaluator-skill): एक कोडिंग एजेंट को वास्तविक सेशन के विरुद्ध आपके आयामों को डिजाइन करने और यह सेवा आपके लिए बनाने के लिए हो।
-- [Python SDK](/hi/agenteye/python-sdk): स्कोरिंग को ट्रिगर करने वाली `agent_end` इवेंट उत्सर्जित करें।
-- [API कुंजियां](/hi/agenteye/api-keys): `evaluations:read` और `evaluations:trigger` अनुमतियां।
-- [ऑडिट](/hi/agenteye/audits): Observability की अन्य स्वचालित गुणवत्ता सुविधा, नीति-आधारित समीक्षा के लिए।
+- [Evaluator agent skill](/hi/agenteye/evaluator-skill): एक coding agent को आपके real sessions के विरुद्ध dimensions को design करने और इस सेवा को आपके लिए build करने दें।
+- [Python SDK](/hi/agenteye/python-sdk): `agent_end` events को emit करें जो scoring को trigger करते हैं।
+- [API keys](/hi/agenteye/api-keys): `evaluations:read` और `evaluations:trigger` permissions।
+- [Audits](/hi/agenteye/audits): Observability की एक अन्य automated quality feature, policy-based review के लिए।

@@ -1,26 +1,26 @@
 ---
 title: Hook-Handler (intern)
-description: "Der Subprozess, den Claude Code bei jedem Tool-Ereignis aufruft"
+description: "Der Subprozess, den Claude Code bei jedem Tool-Event aufruft"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-Dies ist der Befehl, der in Claude Code's `settings.json` durch `failproofai policies --install` registriert wird. Normalerweise wird er nicht direkt aufgerufen.
+Dies ist der Befehl, der von `failproofai policies --install` in der `settings.json` von Claude Code registriert wird. Normalerweise rufen Sie diesen Befehl nicht direkt auf.
 
-Liest eine JSON-Nutzlast von stdin, wertet alle aktivierten Richtlinien aus und beendet sich mit einem Code, der die Entscheidung angibt:
+Liest eine JSON-Nutzlast von stdin, wertet alle aktivierten Richtlinien aus und beendet sich mit einem Exit-Code, der die Entscheidung angibt:
 
 | Exit-Code | Entscheidung | Wirkung |
 |-----------|--------------|---------|
 | `0` | `allow` | Aktion erlauben |
 | `1` | `deny` | Aktion blockieren – Claude sieht den Ablehnungsgrund |
-| `2` | `instruct` | Hinweise in Claudes Kontext einschleusen |
+| `2` | `instruct` | Hinweis in den Kontext von Claude einschleusen |
 
-### Unterstützte Ereignistypen
+### Unterstützte Event-Typen
 
-| Kategorie | Ereignisse |
-|-----------|------------|
+| Kategorie | Events |
+|-----------|--------|
 | **Tool-Ausführung** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **Sitzungslebenszyklus** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **Benutzerinteraktion** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |

@@ -1,50 +1,49 @@
 ---
----
-title: "OpenClaw oturumu yakalama"
-description: "Ekibinizin yerel OpenClaw oturumlarını AgentEye'a sıradan oturumlar ve olaylar olarak aktarın — OpenClaw'ın çalışma şeklinde herhangi bir değişiklik olmadan."
----
-
-Ekibiniz [OpenClaw](https://docs.openclaw.ai) çalıştırıyorsa, OpenClaw oturumu yakalama bu oturumları AgentEye'a sıradan oturumlar ve olaylar olarak getirir, böylece bunları gözlemlediğiniz diğer her şeyin yanında arayabilir, yeniden oynatabilir ve değerlendirebilirsiniz. [Python SDK](/tr/agenteye/python-sdk) ile tamamlayıcıdır: SDK yazdığınız ajanları enstrümente ederken, bu ekibinizin zaten yaptığı OpenClaw işini yakalar — çalışma şekilde herhangi bir değişiklik olmadan.
-
-Küçük bir arka plan toplayıcısı OpenClaw'ın yerel oturum transkriptlerini yazıldıkları sırada okur ve AgentEye'a gönderir. [Codex yakalamıyla](/tr/agenteye/codex-capture) aynı şekilde çalışır ve bir toplayıcı her ikisini aynı anda yakalayabilir.
-
+title: "OpenClaw oturum yakalanması"
+description: "Ekibinizin yerel OpenClaw oturumlarını AgentEye'a normal oturumlar ve etkinlikler olarak aktarın — OpenClaw'ın çalışma biçiminde hiçbir değişiklik yapmadan."
 ---
 
-## Neyi yakalar
+Ekibiniz [OpenClaw](https://docs.openclaw.ai) çalıştırıyorsa, OpenClaw oturum yakalanması bu oturumları AgentEye'a normal oturumlar ve etkinlikler olarak getirir. Böylece gözlemlediğiniz her şeyin yanında bunları arayabilir, yeniden oynatabilir ve değerlendirebilirsiniz. [Python SDK](/tr/agenteye/python-sdk) ile tamamlayıcıdır: SDK yazdığınız ajanları enstrümante ederken, bu da ekibinizin zaten yaptığı OpenClaw çalışmasını yakalar — çalışma biçiminde hiçbir değişiklik olmadan.
 
-Bir makinenin OpenClaw kurulumunda yapılandırılan her ajan, o makinenin toplayıcısı tarafından yakalanır — ajan başına kurulum gerekmez.
-
-Her OpenClaw oturumu bir AgentEye [oturumuna](/tr/agenteye/sessions) dönüşür; kullanıcı ve asistan mesajları, araç çağrıları ve araç sonuçları eşleşen [olaylara](/tr/agenteye/event-stream) dönüşür.
+Küçük bir arka plan toplayıcısı, OpenClaw'ın yerel oturum transkriptlerini yazıldıkları anda okur ve bunları AgentEye'a gönderir. [Codex yakalanması](/tr/agenteye/codex-capture) ile aynı şekilde çalışır ve bir toplayıcı aynı anda her ikisini de yakalayabilir.
 
 ---
 
-## Bunu etkinleştirin
+## Ne yakalanır
 
-Yakalama, etkinleştirene kadar kapalıdır. `events:add` izni olan bir API anahtarı ile toplayıcıyı yükleyin (bkz. [API anahtarları](/tr/agenteye/api-keys)) ve OpenClaw yakalamayı açın:
+Bir makinenin OpenClaw kurulumunda yapılandırılan her ajan, o makinenin toplayıcısı tarafından yakalanır — herhangi bir ajan başına kurulum yoktur.
+
+Her OpenClaw oturumu bir AgentEye [oturumu](/tr/agenteye/sessions) haline gelir; kullanıcı ve asistan mesajları, araç çağrıları ve araç sonuçları eşleşen [etkinlikler](/tr/agenteye/event-stream) olur.
+
+---
+
+## Açın
+
+Yakalama, etkinleştirene kadar kapalıdır. Toplayıcıyı `events:add` iznine sahip bir API anahtarı ile yükleyin (bkz. [API anahtarları](/tr/agenteye/api-keys)) ve OpenClaw yakalanmasını açın:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --openclaw-enabled
 ```
 
-Bu, toplayıcıyı yükler, onu bir arka plan hizmeti olarak kaydeder ve yakalamaya başlar. Çalıştığını doğrulayın:
+Bu, toplayıcıyı yükler, onu arka plan hizmeti olarak kaydeder ve yakalamaya başlar. Çalıştığını onaylayın:
 
 ```bash
 agenteye-collector health
 ```
 
-Aynı makinede birden fazla ajan yakalam mı? Her birinin bayrağını aynı komuta ekleyin — örneğin `--openclaw-enabled --codex-enabled`.
+Aynı makinede birden fazla ajan yakalıyor musunuz? Her birinin bayrağını aynı komuta ekleyin — örneğin `--openclaw-enabled --codex-enabled`.
 
-İlk çalışmada, mevcut OpenClaw oturumlarınız bir kez geri doldurulur ve yeni etkinlik birkaç saniye içinde akışa girer. OpenClaw'ın dosyaları yalnızca okunur — asla değiştirilmez, taşınmaz veya silinmez — ve her oturum yeniden başlatmalar arasında bile tam olarak bir kez gönderilir.
+İlk çalıştırmada, mevcut OpenClaw oturumlarınız bir kez geri doldurulur ve yeni aktivite ardından saniyeler içinde akışa başlar. OpenClaw'ın kendi dosyaları yalnızca okunur — asla değiştirilmez, taşınmaz veya silinmez — ve her oturum, yeniden başlatmalar arasında bile tam olarak bir kez gönderilir.
 
 ---
 
-## Nerede görünür
+## Nerede gösterilir
 
-Yakalanan oturumlar **Sessions**'da görünür ve olayları **Events** akışında, gözlemlediğiniz diğer herhangi bir ajan gibi — böylece [oturum yeniden oynatma](/tr/agenteye/sessions), [arama](/tr/agenteye/queries), [değerlendirmeler](/tr/agenteye/evaluations) ve [uyarılar](/tr/agenteye/alerts) bunlarda çalışır. Onları tek başına görmek için OpenClaw ajanına göre filtreleyin.
+Yakalanan oturumlar **Sessions**'da görünür ve etkinlikleri **Events** akışında, gözlemlediğiniz diğer herhangi bir ajan gibi — bu nedenle [oturum yeniden oynatma](/tr/agenteye/sessions), [arama](/tr/agenteye/queries), [değerlendirmeler](/tr/agenteye/evaluations) ve [uyarılar](/tr/agenteye/alerts) hepsi bunlar üzerinde çalışır. OpenClaw ajanına göre filtreleyin ve bunları ayrı olarak görün.
 
 ---
 
 ## Gizlilik
 
-OpenClaw transkriptleri tam oturumu içerir — komut çıktısı, dosya içeriği ve ajanın okuduğu veya yazdığı her şey dahil — ve sırları içerebilir. Yakalanan oturumlar olduğu gibi gönderilir, bu nedenle yakalamayı yalnızca bu içeriği AgentEye'a merkezileştirmenin uygun olduğu makineler ve ekipler için etkinleştirin ve toplayıcıya yalnızca `events:add` kapsamına alınmış bir anahtar verin. Verilerinizin nasıl izole tutulduğu hakkında [Güvenlik](/tr/agenteye/security)'e bakın.
+OpenClaw transkriptleri tam oturumu içerir — komut çıktısı, dosya içeriği ve ajanın okuduğu veya yazdığı her şey dahil olmak üzere — ve sırlar içerebilir. Yakalanan oturumlar olduğu gibi gönderilir, bu nedenle yakalamayı yalnızca o içeriği AgentEye'da merkezileştirmenin uygun olduğu makinelerde ve ekipler için etkinleştirin ve toplayıcıya yalnızca `events:add` kapsamına sahip bir anahtar verin. [Güvenlik](/tr/agenteye/security) bölümündeki verilerinizin nasıl izole tutulduğunu görün.

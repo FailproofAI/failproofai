@@ -1,60 +1,60 @@
 ---
-title: "AI Asistanı"
-description: "Ajanınızın verilerine düz İngilizce ile soru sorun ve kanıtlara doğrudan bağlanan bir cevap alın."
+title: "Yapay Zeka Asistanı"
+description: "Ajan verilerinize düz İngilizce bir soru sorun ve doğrudan kanıtlara bağlanan bir cevap alın."
 ---
 
 
-Ajanınızın verilerine düz İngilizce ile soru sorun ve kanıtlara doğrudan bağlanan bir cevap alın. SQL yazmanıza gerek yok, pano içinde dolaşmanıza gerek yok — **Failproof AI Observability** asistanı, takımınızın herhangi biri için ajanlarınız hakkında cevap alma konusunda en hızlı yoldur.
+Ajan verilerinize düz İngilizce bir soru sorun ve doğrudan kanıtlara bağlanan bir cevap alın. SQL yazmanıza gerek yok, panolar arasında aramaya gerek yok — **Failproof AI Observability** asistanı, takımınızdaki herkesin ajanlar hakkında cevap bulması için en hızlı yoldur.
 
-![Failproof AI Observability asistanı, düz İngilizce bir soruyu panoda yanıtlıyor; canlı Ajan Aktivite tablosunu, ajan başına model kullanım dökümünü ve yazılı sonuçları gösteriyor; çalıştırdığı sorgular satır içinde gösteriliyor](/agenteye/images/assistant.png)
-*Düz İngilizce ile sorun ve kendi verilerinizden oluşturulan bir cevap alın. Burada hangi ajanların en meşgul olduğunu ve hangi modelleri kullandıklarını gösterek, çalıştırdığı sorguları gösterir, böylece her sayıyı doğrulayabilirsiniz.*
+![Failproof AI Observability asistanı pano içinde düz İngilizce bir soruyu yanıtlarken, canlı bir Agent Activity tablosu, ajan başına model kullanım dökümü ve yazılı sonuçları gösteriyor; çalıştırdığı sorgular satır içinde gösterilmiş](/agenteye/images/assistant.png)
+*Düz İngilizce sorun ve kendi verilerinizden oluşturulmuş bir cevap alın. Burada hangi ajanların en meşgul olduğunu ve hangi modelleri kullandıklarını dökümleştiriyor, çalıştırdığı sorguları gösteriyor böylece her sayıyı doğrulayabilirsiniz.*
 
-Öğrenecek bir şey yok. Sohbeti açın, ne bilmek istediğinizi yazın ve size verdiği bağlantıları takip edin:
+Öğrenecek hiçbir şey yok. Sohbeti açın, bilmek istediğinizi yazın ve aldığı bağlantıları takip edin:
 
 ```
-Siz:   bugün hangi oturumlar hata verdi?
-AI:    Bugün 5 oturum hata verdi, en yeni ilk. Her biri bağlantılı:
-       • checkout-agent   14:02   tool timeout
-       • billing-agent    11:47   unhandled error
-       • ...ve 3 tane daha
+Siz:  bugün hangi oturumlar hata verdi?
+AI:   Bugün 5 oturum hata verdi, en yeniler başta. Her biri bağlantılı:
+      • checkout-agent   14:02   tool timeout
+      • billing-agent    11:47   unhandled error
+      • ...ve 3 tane daha
 
-Siz:   bu oturumu özetle          (bir çalıştırma görüntülenirken soruluyor)
-AI:    Bu çalıştırma 3 araç üzerinde 12 adım aldı ve bir ödeme aracı hata
-       döndürdüğünde yakın sonda başarısız oldu. Sizin "çözümlenmiş"
-       değerlendirmesinde düşük puan aldı. Bağlantılar: oturum, başarısız
-       olay ve bu değerlendirme.
+Siz:  bu oturumu özetle          (bir çalıştırma görürken soruldu)
+AI:   Bu çalıştırma 3 araç arasında 12 adım aldı ve bir ödeme
+      aracı hata döndürdüğü zaman sonda başarısız oldu. "çözüldü"
+      değerlendirmenizde düşük puan aldı.
+      Bağlantılar: oturum, başarısız olan olay ve o değerlendirme.
 ```
 
-## Sadece sorun ve kanıta doğrudan atlayın
+## Sadece sorun ve doğrudan kanıta gidin
 
-Tahminde bulunmayı bırakırsınız ve sorgu yazarken durursunuz. "Bu hafta prod'da kalite nasıl gidiyor?", "bugün hangi oturumlar hata verdi?" veya "bu oturumu özetle" sorusu sorun ve sorgu oluşturup kendiniz okumak yerine saniyeler içinde düz cevap alırsınız.
+Artık tahmin etmezsiniz ve sorgu yazmazsınız. "Bu hafta prod'da kalite nasıl gelişiyor?", "bugün hangi oturumlar hata verdi?" ya da "bu oturumu özetle" sorun ve sorgu oluşturup kendiniz okuması yerine saniyeler içinde düz bir cevap alırsınız.
 
-Her cevap parasız gelir. Asistan, cevaba ulaşmak için kullandığı tam oturumları, kaydedilmiş sorguları ve panoları bağlantılandırır, böylece tıklayıp sözcüğüne inanmak yerine onaylayabilirsiniz. Ayrıca **sayfa farkında**: birini görüntülerken "bu oturum" hakkında sorun ve hangi çalıştırmayı kastettiğinizi zaten bilir. Geçmiş değiştirici menüsünden herhangi bir önceki sohbeti yeniden açın ve kaldığınız yerden devam edin.
+Her cevap makbuzuyla birlikte gelir. Asistan, cevaba ulaşmak için kullandığı tam oturumları, kaydedilmiş sorguları ve panoları bağlar; böylece kelimesine inanmak yerine tıklayıp doğrulayabilirsiniz. Ayrıca **sayfa farkındadır**: bir oturumu görürken "bu oturum" hakkında sorun ve zaten hangi çalıştırmayı kastettiğinizi bilir. Geçmiş değiştiriciden daha önce yapılan herhangi bir konuşmayı yeniden açın ve kaldığınız yerden devam edin.
 
-## İyi bir cevabı kaydedilmiş sorguya veya panoya dönüştürün
+## İyi bir cevabı kaydedilmiş bir sorguya ya da panoya dönüştürün
 
-Bir cevap tutmaya değer olduğunda, asistandan bunu kaydetmesini isteyin. SQL'yi kaydedilmiş sorgu için taslaklandırır veya bu sorgulardan bir pano oluşturur, ardından bir **Onayla / Reddet** kartı gösterir. Siz Onayla'ya tıklayana kadar hiçbir şey yazılmaz, böylece "sadece sor" hızını "son söz her zaman sizin" diyerek alırsınız.
+Bir cevap saklamaya değerse, asistandan bunu kaydetmesini isteyin. SQL için kaydedilmiş bir sorgu taslağı yapar veya bu sorgulardan bir pano oluşturur, sonra bir **Onayla / Reddet** kartı gösterir. Onayla'yı tıklayana kadar hiçbir şey yazılmaz, bu yüzden "sadece sor" hızını son söz her zaman sizin olacak şekilde elde edersiniz.
 
-**Sorgular** sayfasında daha da ileri gider ve SQL yazarı olur: istediğiniz sorguyu ("son 7 günde ajan başına hata oranını göster") tarif edin ve SQL'i editöre akışkan hale getirir, değişikliği sabitlemeden önce **Kabul Et** veya **Reddet** edebileceğiniz bir fark görünümü açar.
+**Sorgular** sayfasında daha ileri gider ve SQL yazarı olur: istediğiniz sorguyu tanımlayın ("son 7 gün için ajan başına hata oranını göster") ve editöre doğrudan SQL akışı sağlar, değişikliği kabul etmeden veya reddetmeden önce görebileceğiniz bir diff görünümü açar.
 
 ![Observability Sorgular sayfası ve SQL editörü](/agenteye/images/query-lab.png)
-*Sorgular sayfası: bu editör, asistanın taslak, salt okunur sorguyu akışkan hale getirdiği yerdir.*
+*Sorgular sayfası: bu editör asistanın taslak, salt okunur bir sorgu aktardığı yer kabul ettiğiniz ya da reddettiğiniz yer.*
 
-Burada SQL yazma işlemi `queries:run` izni kullanır; editörün **Çalıştır** düğmesinin arkasında da aynı izin vardır. Başka yerlerdeki sohbet `agent:use` gerektirir.
+Burada SQL yazma `queries:run` iznini kullanır, editörün **Çalıştır** düğmesinin arkasındaki aynı izin. Başka her yerde sohbet `agent:use` gerektirir.
 
-## Tüm takıma verme açısından güvenli
+## Tüm takımı emniyetle işe alabilirsiniz
 
-Asistanı herkese açabilirsiniz ne yapabileceğinden endişe duymadan:
+Asistanı herkese açabilirsiniz neyi dokunabileceği konusunda endişe etmeden:
 
-- **Zaten görebildiğiniz şeyi okur.** Cevaplar kendi okuma izinlerinize kapsamlıdır, bu nedenle veri yüzeyinizi asla genişletmez.
-- **Her yazma sizin için bekler.** Kaydedilmiş sorgular ve panolar yalnızca açık Onayla tıklamanızdan sonra oluşturulur ve bunu kapatacak ayar yoktur.
-- **Hiçbir şeyi silemez.** Hiçbir silme aracı sunulmaz ve asistan hiçbir silme izni tutmaz. Silmeler elinizde kalır, panoda.
-- **Kuruluşunuzun içinde kalır.** Asistan yalnızca şu anda görüntülediğiniz kuruluşu görür.
-- **Sorularınız sizin kalır.** İstekler ve cevaplar kendi Observability veritabanınızda yaşar; ürün analitiği yalnızca kullanım metaverilerini kaydeder, asla istem metninizi kaydetmez.
+- **Sadece görebileceğiniz şeyi okur.** Cevaplar kendi okuma izinlerinize kapsamlıdır, bu yüzden asla veri yüzeyinizi genişletmez.
+- **Her yazma sizin için bekler.** Kaydedilmiş sorgular ve panolar ancak açık Onayla tıklamanızdan sonra oluşturulur ve bu kapıyı kapatacak bir ayar yoktur.
+- **Hiçbir şeyi asla silemez.** Hiçbir silme aracı ortaya konmaz ve asistan hiçbir silme iznine sahip değildir. Silmeler elinizde kalır, panoda.
+- **Kuruluşunuzun içinde kalır.** Asistan sadece şu anda görüntülediğiniz kuruluşu görür.
+- **Sorularınız sizde kalır.** İstemler ve cevaplar kendi Observability veritabanınızda yaşar; ürün analitikleri sadece kullanım metaverilerini kaydeder, asla istem metninizi kaydelmez.
 
 ## Nerede bulunur
 
-Asistan, org'unuzun sağ kenarında her sayfada (`/<org-slug>/...`) yer alır. Rayı tıklayın veya tam sohbet panelini genişletmek için `⌘J` / `Ctrl+J` tuşlarına basın ve kenarını yeniden boyutlandırmak için sürükleyin; genişliğiniz yeniden yüklemeler arasında hatırlanır. Bunu kullanmak için **`agent:use`** izni gerekir, aksi takdirde ray soluk görünür. Dağıtımınız için henüz açılmadıysa (LLM bağlantısı gerekir), çalışan sohbet yerine sessiz bir ray göreceksiniz.
+Asistan, kuruluşunuz altında her sayfanın sağ kenarında (`/<org-slug>/...`) yer alır. Rali tıklayın veya tam sohbet panelini genişletmek için `⌘J` / `Ctrl+J` tuşlarına basın ve genişlik için kenarını sürükleyin; genişliğiniz yeniden yüklenmeler arasında hatırlanır. Bunu kullanmak için **`agent:use`** iznine ihtiyacınız var, aksi halde rail gri görünür. Henüz dağıtımınız için açılmamışsa (bir LLM bağlantısı gerektirir), çalışan sohbet yerine sessiz bir ray göreceksiniz.
 
 ## İlgili
 

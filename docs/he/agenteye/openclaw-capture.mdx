@@ -1,50 +1,50 @@
 ---
 ---
-title: "OpenClaw session capture"
-description: "Tail your team's local OpenClaw sessions into AgentEye as ordinary sessions and events — with no change to how OpenClaw runs."
+title: "לכידת הפעלות OpenClaw"
+description: "עקוב אחרי הפעלות OpenClaw המקומיות של הצוות שלך לתוך AgentEye כהפעלות ואירועים רגילים — ללא שום שינוי בדרך שבה OpenClaw פועל."
 ---
 
-אם הצוות שלך מפעיל את [OpenClaw](https://docs.openclaw.ai), OpenClaw session capture מביא את הסשנים האלה ל-AgentEye כסשנים ואירועים רגילים, כך שתוכל לחפש, להשמיע שוב, ולהעריך אותם בצד הכל השני שאתה צופה בו. זה משלים את [Python SDK](/he/agenteye/python-sdk): ה-SDK מחליל agents שאתה כותב, בעוד שזה תופס את עבודת OpenClaw שהצוות שלך כבר עושה — ללא כל שינוי בדרך הפעלתו.
+אם הצוות שלך משתמש ב-[OpenClaw](https://docs.openclaw.ai), לכידת הפעלות OpenClaw מביאה את ההפעלות האלה ל-AgentEye כהפעלות ואירועים רגילים, כך שאתה יכול לחפש, להשמיע שוב, ולהעריך אותן לצד כל מה שאחר שאתה צופה בו. זה משלים את ה-[Python SDK](/he/agenteye/python-sdk): ה-SDK מחבר אגנטים שאתה כותב, בעוד שזה לוכד את עבודת OpenClaw שהצוות שלך כבר עושה — ללא שום שינוי בדרך שהם מפעילים אותו.
 
-מאסף רקע קטן קורא את תמלילי הסשן המקומיים של OpenClaw תוך כדי כתיבתם ושולח אותם ל-AgentEye. זה עובד באותו אופן כמו [Codex capture](/he/agenteye/codex-capture), ומאסף אחד יכול לתפוס את שניהם בו זמנית.
-
----
-
-## מה זה תופס
-
-כל agent שהוגדר בהגדרת OpenClaw של מכונה מסוימת נתפס על ידי מאסף המכונה הזו — אין הגדרה לכל agent.
-
-כל סשן OpenClaw הופך לסשן AgentEye של [session](/he/agenteye/sessions); הודעות המשתמש והעוזר שלו, קריאות הכלים, ותוצאות הכלים הופכות ל[אירועים](/he/agenteye/event-stream) המתאימים.
+אספן רקע קטן קורא תמלילי הפעלות מקומיים של OpenClaw כשהם נכתבים וגורם להם להישלח ל-AgentEye. זה עובד באותו אופן כמו [לכידת Codex](/he/agenteye/codex-capture), ואספן אחד יכול ללכוד את שניהם בו זמנית.
 
 ---
 
-## הפעל את זה
+## מה היא לוכדת
 
-Capture כבוי עד שתפעיל אותו. התקן את המאסף עם מפתח API שיש לו את ההרשאה `events:add` (ראה [API keys](/he/agenteye/api-keys)), והפעל את OpenClaw capture:
+כל אגנט שהוגדר בהגדרת OpenClaw של מכונה מקורט על ידי אספן המכונה של המכונה הזו — אין הגדרה לכל אגנט.
+
+כל הפעלת OpenClaw הופכת ל-[הפעלה](/he/agenteye/sessions) של AgentEye; ההודעות שלה של משתמש והיועץ, קריאות הכלים, ותוצאות הכלים הופכות ל-[אירועים](/he/agenteye/event-stream) התואמים.
+
+---
+
+## הפעל זאת
+
+הלכידה כבויה עד שתפעיל אותה. התקן את האספן עם מפתח API שיש לו את הרשות `events:add` (ראה [מפתחות API](/he/agenteye/api-keys)), והפעל את לכידת OpenClaw:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --openclaw-enabled
 ```
 
-זה מתקין את המאסף, רושם אותו כשירות רקע, ומתחיל תופיסה. אישר שהוא פועל:
+זה מתקין את האספן, רושם אותו כשירות רקע, ומתחיל ללכוד. אשר שהוא פועל:
 
 ```bash
 agenteye-collector health
 ```
 
-תופס יותר מ-agent אחד באותה מכונה? הוסף את הדגל של כל אחד לאותה פקודה — למשל `--openclaw-enabled --codex-enabled`.
+לוכדים יותר מאגנט אחד באותה מכונה? הוסף את הדגל של כל אחד לאותה פקודה — למשל `--openclaw-enabled --codex-enabled`.
 
-בהרצה הראשונה, הסשנים הקיימים שלך של OpenClaw מתמלאים בחזרה פעם אחת ופעילות חדשה אז מזרמת תוך שניות. הקבצים של OpenClaw עצמו נקראים בלבד — לעולם לא שינוי, הורדה, או מחיקה — וכל סשן נשלח בדיוק פעם אחת, אפילו בהתחלות מחדש.
+בהפעלה הראשונה, ההפעלות הקיימות שלך של OpenClaw מלאות בחזרה פעם אחת וההפעלות החדשות צורמות תוך שניות. הקבצים של OpenClaw עצמו נקראים בלבד — לעולם לא משונים, מעונים, או מחוקים — וכל הפעלה משלוחה בדיוק פעם אחת, אפילו על פני הפעלות מחדש.
 
 ---
 
-## איפה זה מופיע
+## היכן היא מופיעה
 
-סשנים תפוסים מופיעים ב-**Sessions**, והאירועים שלהם בזרם **Events**, בדיוק כמו כל agent אחר שאתה צופה בו — כך ש[session replay](/he/agenteye/sessions), [search](/he/agenteye/queries), [evaluations](/he/agenteye/evaluations), ו[alerts](/he/agenteye/alerts) כולם עובדים עליהם. סנן לפי ה-OpenClaw agent כדי לראות אותם בעצמאות.
+הפעלות שנלכדו מופיעות ב-**Sessions**, והאירועים שלהן בזרם **Events**, כמו כל אגנט אחר שאתה צופה בו — כך שהשמעה חוזרת של [הפעלה](/he/agenteye/sessions), [חיפוש](/he/agenteye/queries), [הערכות](/he/agenteye/evaluations), ו-[התראות](/he/agenteye/alerts) כולם עובדים עליהן. סנן לפי האגנט OpenClaw כדי לראות אותן בעצמן.
 
 ---
 
 ## פרטיות
 
-תמלילי OpenClaw מכילים את הסשן המלא — כולל פלט פקודה, תוכן קבצים, וכל דבר שה-agent קרא או כתב — ויכולים להכיל סודות. סשנים תפוסים משלחים כמו שהם, כך שהפעל capture רק על מכונות וצוותים שבהם מרכוז תוכן זה ב-AgentEye מתאים, ותן למאסף מפתח המוגבל ל-`events:add` בלבד. ראה [Security](/he/agenteye/security) להבנת איך הנתונים שלך מוחזקים מבודדים.
+תמלילי OpenClaw מכילים את ההפעלה המלאה — כולל פלט פקודה, תוכן קובץ, וכל דבר שהאגנט קרא או כתב — ויכולים להכיל סודות. הפעלות שנלכדו משלוחות כמו שהן, כך שהפעל את הלכידה רק על מכונות ועבור צוותים שבהם ריכוז של תוכן זה ב-AgentEye מתאים, ותן לאספן מפתח במעטות `events:add` בלבד. ראה [Security](/he/agenteye/security) כדי לראות כיצד הנתונים שלך מוחזקים בבידוד.

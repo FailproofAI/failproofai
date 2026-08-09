@@ -1,84 +1,83 @@
 ---
----
-title: "अवधारणाएँ"
-description: "Failproof AI Observability के पीछे की शब्दावली — events, sessions, evaluations, audits, findings, और incidents — एक जगह परिभाषित।"
+title: "Concepts"
+description: "Failproof AI Observability के पीछे की शब्दावली — events, sessions, evaluations, audits, findings, और incidents — एक जगह पर परिभाषित।"
 ---
 
 
-यह पृष्ठ Failproof AI Observability द्वारा उपयोग की जाने वाली शब्दावली को परिभाषित करता है। यदि किसी अन्य गाइड में कोई शब्द अपरिचित है, तो वह यहाँ परिभाषित है। आपको इसे शुरू से अंत तक पढ़ने की आवश्यकता नहीं है: इसे स्किम करें, या जब आप किसी ऐसे शब्द को समझना चाहते हैं तो वापस आएँ।
+यह पृष्ठ Failproof AI Observability द्वारा उपयोग की जाने वाली शब्दावली को परिभाषित करता है। यदि किसी अन्य गाइड में कोई शब्द अपरिचित है, तो वह यहाँ परिभाषित है। आपको इसे अंत तक पढ़ने की आवश्यकता नहीं है: इसे skim करें, या जब आप कोई शब्द स्पष्ट करना चाहें तो वापस आएं।
 
 ---
 
 ## डेटा मॉडल
 
 **Event**
-डेटा की सबसे छोटी इकाई। एक event आपके agent द्वारा उठाए गए एक एकल step को record करता है: एक `tool_use`, एक `model_request`, एक `hook_completed`, एक `error`, और इसी तरह। आपका agent [Python SDK](/hi/agenteye/python-sdk) के माध्यम से events emit करता है; वे **Events** पृष्ठ पर live दिखाई देते हैं।
+डेटा की सबसे छोटी इकाई। एक event आपके agent द्वारा उठाए गए एक एकल कदम को record करता है: एक `tool_use`, एक `model_request`, एक `hook_completed`, एक `error`, और इसी तरह आगे। आपका agent [Python SDK](/hi/agenteye/python-sdk) के माध्यम से events emit करता है; वे **Events** पृष्ठ पर live दिखाई देते हैं।
 
 **Session**
-एक agent run, जिसे `session_id` द्वारा identify किया जाता है। एक session सभी events हैं जो उस id को share करते हैं, **Sessions** पृष्ठ पर एक एकल row में rolled up और उसके detail पृष्ठ पर एक execution graph के रूप में drawn। एक session आमतौर पर `agent_start` से शुरू होता है और `agent_end` पर समाप्त होता है।
+एक agent run, जिसे `session_id` द्वारा पहचाना जाता है। एक session सभी events हैं जो उस id को साझा करते हैं, **Sessions** पृष्ठ पर एक एकल row में rolled up, और इसके detail page पर एक execution graph के रूप में drawn। एक session आमतौर पर `agent_start` के साथ शुरू होता है और `agent_end` के साथ समाप्त होता है।
 
 **Agent**
-एक run के अंदर एक named actor, जिसे `agent_id` द्वारा identify किया जाता है। एक run में कई agents शामिल हो सकते हैं: उदाहरण के लिए, एक planner जो एक summarizer sub-agent को spawn करता है। Sub-agents एक `parent_id` carry करते हैं, जो Failproof AI Observability को execution graph में उन्हें अपनी अलग lanes पर draw करने देता है।
+एक run के अंदर एक नामित actor, जिसे `agent_id` द्वारा पहचाना जाता है। एक run में कई agents शामिल हो सकते हैं: उदाहरण के लिए, एक planner जो एक summarizer sub-agent को spawn करता है। Sub-agents एक `parent_id` ले जाते हैं, जो Failproof AI Observability को execution graph में उन्हें अपनी lane पर draw करने देता है।
 
 **Environment**
-एक लेबल जहाँ run हुआ था: `production`, `staging`, `dev`। आप इसे SDK configure करते समय एक बार set करते हैं। लगभग हर dashboard page environment द्वारा filter कर सकता है।
+एक label जहाँ run हुआ: `production`, `staging`, `dev`। आप इसे SDK को configure करते समय एक बार set करते हैं। लगभग हर dashboard page को environment द्वारा filter किया जा सकता है।
 
 **Context-window fill**
-एक model के context window का प्रतिशत जो response ने consume किया। Failproof AI Observability इसे `model_response` events पर stamp करता है जिन्हें यह recognize करता है, इसलिए prompt growth और impending compaction event stream में सीधे visible होते हैं।
+प्रतिशत में कि एक model के context window का एक response कितना consume करता है। Failproof AI Observability इसे उन models के लिए `model_response` events पर stamp करता है जिन्हें वह recognize करता है, इसलिए prompt growth और impending compaction event stream में सीधे दिखाई देते हैं।
 
 ---
 
-## Quality
+## गुणवत्ता
 
 **Evaluation**
-एक finished session के लिए quality score, जो आप run करने वाली एक scoring service द्वारा produced होता है। Evaluations opt-in हैं: जब तक आप एक evaluator को connect नहीं करते, sessions recorded होते हैं लेकिन scored नहीं होते। प्रत्येक evaluation कई named scores carry कर सकता है (उदाहरण के लिए `helpfulness`, `factuality`, `tool_efficiency`), प्रत्येक एक short reasoning note के साथ। [Evaluation suite](/hi/agenteye/evaluation-suite) देखें।
+एक finished session के लिए quality score, जो आप run करने वाली scoring service द्वारा produce किया जाता है। Evaluations opt-in हैं: जब तक आप एक evaluator को connect नहीं करते, sessions record किए जाते हैं लेकिन scored नहीं होते। प्रत्येक evaluation कई named scores ले जा सकता है (उदाहरण के लिए `helpfulness`, `factuality`, `tool_efficiency`), प्रत्येक एक short reasoning note के साथ। [Evaluation suite](/hi/agenteye/evaluation-suite) देखें।
 
 **Score key**
-एक dimension का नाम जो एक evaluator report करता है, जैसे `helpfulness`। Alerts और audits समय के साथ एक specific score key को watch कर सकते हैं।
+एक dimension का नाम जो एक evaluator report करता है, जैसे `helpfulness`। Alerts और audits समय के साथ एक विशिष्ट score key को watch कर सकते हैं।
 
 **Evaluator**
-आपकी scoring service। Failproof AI Observability एक finished run का transcript इसे POST करता है और जो scores यह return करता है उन्हें store करता है। यह कोई default evaluator ship नहीं करता; scoring logic आपका है।
+आपकी scoring service। Failproof AI Observability एक finished run के transcript को इसे POST करता है और इसके द्वारा return किए गए scores को store करता है। यह एक default evaluator ship नहीं करता; scoring logic आपका है।
 
 ---
 
-## विफलताओं को खोजना और ठीक करना
+## असफलताओं को खोजना और ठीक करना
 
 **Hook**
-एक guardrail या side-effect जो आपकी agent framework एक step के चारों ओर run करती है: एक content-safety check, PII redaction, एक budget guard। Hooks `hook_triggered` / `hook_completed` events emit करते हैं एक `outcome` (allow, deny, modify) के साथ, और अपना स्वयं का observe page प्राप्त करते हैं।
+एक guardrail या side-effect जो आपकी agent framework एक कदम के चारों ओर run करती है: एक content-safety check, PII redaction, एक budget guard। Hooks `hook_triggered` / `hook_completed` events emit करते हैं एक `outcome` (allow, deny, modify) के साथ, और अपना स्वयं का observe page प्राप्त करते हैं।
 
 **Alert rule**
-एक rule जो fire होता है जब एक metric आपके द्वारा set किए गए threshold को cross करता है: error rate, p95 latency, token cost, या एक evaluator score। जब एक rule fires, यह एक incident को open करता है और आपके chosen channels (email, Slack, webhook, in-dashboard) को notify करता है। [Alerts](/hi/agenteye/alerts) देखें।
+एक rule जो तब fire होता है जब एक metric आपके द्वारा set किए गए threshold को cross करे: error rate, p95 latency, token cost, या एक evaluator score। जब एक rule fire होता है, तो यह एक incident खोलता है और आपके चुने हुए channels (email, Slack, webhook, in-dashboard) को notify करता है। [Alerts](/hi/agenteye/alerts) देखें।
 
 **Incident**
-एक open issue जो तब created होता है जब एक alert rule fires। Incidents का एक lifecycle (acknowledge, assign, resolve) और एक activity timeline होती है जो हर action को record करती है। आप manually भी एक को open कर सकते हैं।
+एक open issue जो एक alert rule fire होने पर create होता है। Incidents के पास एक lifecycle (acknowledge, assign, resolve) और एक activity timeline होती है जो प्रत्येक action को record करती है। आप manually भी एक खोल सकते हैं।
 
 **Audit**
-एक recurring investigation (hourly से weekly) जो आपके logs को sessions *across* में mine करती है failure patterns के लिए जो आपने rule नहीं लिखे हैं: error clusters, low scores, latency outliers, tool-call loops, और runs जो कभी finish नहीं हुए। जहाँ एक alert एक ऐसे metric को watches जो आप पहले से जानते हैं, एक audit आपको बताता है कि आगे क्या देखना चाहिए। [Audits](/hi/agenteye/audits) देखें।
+एक recurring investigation (hourly से weekly) जो आपके logs को *sessions के across* mine करती है failure patterns के लिए जो आपने एक rule के लिए नहीं लिखे हैं: error clusters, low scores, latency outliers, tool-call loops, और runs जो कभी finish नहीं हुए। जहाँ एक alert एक metric को watch करता है जो आप पहले से जानते हैं, एक audit आपको बताता है कि आगे क्या देखना है। [Audits](/hi/agenteye/audits) देखें।
 
 **Finding**
-एक audit run से एक ranked, evidence-backed result। एक finding एक pattern को name करता है, exact sessions को link करता है जो इसके पीछे हैं, और एक triage lifecycle (acknowledge, resolve, mute, dismiss) carry करता है। Failproof AI Observability findings को run-over-run deduplicate करता है इसलिए एक known pattern update होता है बजाय pile up के।
+एक audit run से एक ranked, evidence-backed result। एक finding एक pattern का नाम रखता है, इसके पीछे के exact sessions से link करता है, और एक triage lifecycle (acknowledge, resolve, mute, dismiss) ले जाता है। Failproof AI Observability run-over-run findings को deduplicate करता है इसलिए एक known pattern update होता है बजाय इसके कि pile up हो जाए।
 
-**The AI assistant**
-in-dashboard chat जो आपके agents के बारे में plain English में सवालों के जवाब देती है, आपके स्वयं के data पर। यह default द्वारा read-only है; कुछ भी जो यह creates करता है (एक saved query, एक dashboard) approval-gated है, और यह कभी delete नहीं कर सकता। [AI assistant](/hi/agenteye/assistant) देखें।
+**AI assistant**
+In-dashboard chat जो आपके agents के बारे में सवालों के जवाब देती है plain English में, आपके अपने data पर। यह default रूप से read-only है; कुछ भी जो यह create करता है (एक saved query, एक dashboard) approval-gated है, और यह कभी delete नहीं कर सकता। [AI assistant](/hi/agenteye/assistant) देखें।
 
 ---
 
 ## इसे चलाना
 
 **Organization (tenant)**
-एक isolated workspace। एक Failproof AI Observability instance कई organizations को host कर सकता है, प्रत्येक अपने स्वयं के users, keys, और data के साथ। हर dashboard URL आपके org slug (`/<org-slug>/…`) के तहत scoped है।
+एक isolated workspace। एक Failproof AI Observability instance कई organizations को host कर सकता है, प्रत्येक के साथ अपने users, keys, और data। हर dashboard URL आपके org slug के under scoped है (`/<org-slug>/…`)।
 
 **Collector**
-`agenteye-collector`, lightweight daemon जो प्रत्येक agent machine पर run होता है, SDK द्वारा disk में लिखे गए events को batch करता है, और उन्हें server को ship करता है।
+`agenteye-collector`, हल्का daemon जो प्रत्येक agent machine पर run करता है, SDK events को disk पर batch करता है, और उन्हें server को ship करता है।
 
 **API key**
-एक scoped token जो server के विरुद्ध एक client को authenticate करता है। Keys granular permissions carry करती हैं (उदाहरण के लिए collector के लिए `events:add`, dashboard key के लिए read-only scopes)। [API keys](/hi/agenteye/api-keys) देखें।
+एक scoped token जो एक client को server के विरुद्ध authenticate करता है। Keys granular permissions ले जाती हैं (उदाहरण के लिए collector के लिए `events:add`, dashboard key के लिए read-only scopes)। [API keys](/hi/agenteye/api-keys) देखें।
 
 **Server**
-ingest और API service। यह events को ingest करता है, operational state को आपकी databases में store करता है, और dashboard और CLI को serve करता है।
+Ingest और API service। यह events को ingest करता है, अपने databases में operational state को store करता है, और dashboard और CLI को serve करता है।
 
 **Dashboard**
-web UI। हर page एक organization के लिए scoped है और server के API के माध्यम से पढ़ता है।
+Web UI। हर page एक organization के लिए scoped है और server के API के through read करता है।
 
 ---
 

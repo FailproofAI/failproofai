@@ -1,44 +1,45 @@
 ---
+---
 title: تثبيت السياسات
-description: "تفعيل السياسات لتعمل على كل استدعاء أداة وكيل"
+description: "تفعيل السياسات بحيث تعمل على كل استدعاء أداة وكيل"
 ---
 
 ```bash
 failproofai policies --install [policy-names...] [options]
 ```
 
-يكتب مدخلات hook في ملف الإعدادات الخاص بـ CLI الوكيل المثبت (Claude Code أو OpenAI Codex أو GitHub Copilot CLI _(beta)_) بحيث يعترض failproofai استدعاءات الأدوات.
+يكتب إدخالات hook في ملف الإعدادات الخاص بـ agent CLI المثبت لديك (Claude Code أو OpenAI Codex أو GitHub Copilot CLI _(beta)_) بحيث يعترض failproofai استدعاءات الأدوات.
 
-الأسماء المستعارة: `failproofai p -i`
+الاختصارات: `failproofai p -i`
 
 ## الخيارات
 
 | العلم | الوصف |
-|------|------|
-| `--cli claude\|codex\|copilot` | CLI الوكيل (أو الوكلاء) للتثبيت؛ مفصول بمسافات (مثال: `--cli claude codex copilot`) أو متكرر. حذفه يؤدي إلى كشف CLIs المثبتة والطلب منك الاختيار. |
-| `--scope user` | التثبيت في ملف الإعدادات على نطاق المستخدم (Claude: `~/.claude/settings.json`؛ Codex: `~/.codex/hooks.json`؛ Copilot: `~/.copilot/hooks/failproofai.json`). الخيار الافتراضي. |
-| `--scope project` | التثبيت في ملف الإعدادات على نطاق المشروع (Claude: `<cwd>/.claude/settings.json`؛ Codex: `<cwd>/.codex/hooks.json`؛ Copilot: `<cwd>/.github/hooks/failproofai.json`). |
-| `--scope local` | Claude فقط — التثبيت في `<cwd>/.claude/settings.local.json`. Codex و Copilot لا يمتلكان نطاق `local`. |
+|------|-------------|
+| `--cli claude\|codex\|copilot` | CLI(s) الوكيل المراد التثبيت عليه؛ مفصول بمسافات (مثل `--cli claude codex copilot`) أو مكرر. اترك فارغاً للكشف عن CLIs المثبتة والمطالبة. |
+| `--scope user` | التثبيت في ملف إعدادات النطاق الشخصي (Claude: `~/.claude/settings.json`؛ Codex: `~/.codex/hooks.json`؛ Copilot: `~/.copilot/hooks/failproofai.json`). الافتراضي. |
+| `--scope project` | التثبيت في ملف إعدادات نطاق المشروع (Claude: `<cwd>/.claude/settings.json`؛ Codex: `<cwd>/.codex/hooks.json`؛ Copilot: `<cwd>/.github/hooks/failproofai.json`). |
+| `--scope local` | Claude فقط — تثبيت في `<cwd>/.claude/settings.local.json`. لا يملك Codex و Copilot نطاق `local`. |
 | `--custom <path>` / `-c` | المسار إلى ملف JS يحتوي على سياسات hook مخصصة |
 
 ## السلوك
 
-- **بدون أسماء سياسات** - يفتح موجه تفاعلي لاختيار السياسات
-- **أسماء محددة** - تفعيل تلك السياسات (تُضاف إلى أي منها مفعلة بالفعل)
+- **لا توجد أسماء سياسات** - يفتح موجه تفاعلي لتحديد السياسات
+- **أسماء محددة** - تفعيل تلك السياسات (مضافة إلى أي سياسات مفعلة بالفعل)
 - **`all`** - تفعيل كل سياسة متاحة
 
-التثبيت تراكمي: تشغيل `--install` مرة أخرى يضيف سياسات جديدة دون إزالة السياسات الموجودة.
+التثبيت تراكمي: تشغيل `--install` مرة أخرى يضيف سياسات جديدة دون إزالة الموجودة.
 
 ## أمثلة
 
 ```bash
-# تثبيت جميع السياسات الافتراضية عالميًا (تفاعلي)
+# تثبيت جميع السياسات الافتراضية على المستوى العام (تفاعلي)
 failproofai policies --install
 
 # تثبيت سياسات محددة للمشروع الحالي
 failproofai policies --install block-sudo sanitize-api-keys --scope project
 
-# تفعيل جميع السياسات مرة واحدة
+# تفعيل جميع السياسات دفعة واحدة
 failproofai policies --install all
 
 # التثبيت مع ملف سياسات مخصص
@@ -50,8 +51,8 @@ failproofai policies --install --cli codex --scope project
 # التثبيت لـ GitHub Copilot CLI (beta) للمشروع الحالي
 failproofai policies --install --cli copilot --scope project
 
-# التثبيت لجميع CLIs الثلاثة مرة واحدة
+# التثبيت لجميع CLIs الثلاثة في نفس الوقت
 failproofai policies --install --cli claude codex copilot
 ```
 
-عند توفير `--custom <path>`، يتم التحقق من صحة الملف على الفور - يجب أن يستدعي `customPolicies.add()` مرة واحدة على الأقل. يتم حفظ المسار المحل في `policies-config.json` باسم `customPoliciesPath`.
+عند توفير `--custom <path>`، يتم التحقق من الملف على الفور - يجب أن يستدعي `customPolicies.add()` مرة واحدة على الأقل. يتم حفظ المسار المحل في `policies-config.json` كـ `customPoliciesPath`.

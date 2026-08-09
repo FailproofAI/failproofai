@@ -1,63 +1,63 @@
 ---
-title: "Benachrichtigungen"
-description: "Erfahren Sie sofort, wenn eine Grenze überschritten wird – über den Kanal, den Ihr Team bereits nutzt, statt es erst von einem Kunden zu hören."
+title: "Alerts"
+description: "Erfahre es sofort, wenn etwas deine Grenze überschreitet – über den Kanal, den dein Team bereits nutzt, anstatt es von einem Kunden zu hören."
 ---
 
 
-Erfahren Sie sofort, wenn eine Grenze überschritten wird – über den Kanal, den Ihr Team bereits nutzt, statt es erst von einem Kunden zu hören. Legen Sie eine Regel einmalig fest, und Failproof AI Observability prüft sie nach einem Zeitplan und benachrichtigt Sie per E-Mail, Slack, Webhook oder direkt im Dashboard.
+Erfahre es sofort, wenn etwas deine Grenze überschreitet – über den Kanal, den dein Team bereits nutzt, anstatt es von einem Kunden zu hören. Lege eine Regel einmal fest und Failproof AI Observability prüft sie nach Plan, dann benachrichtigt es dich per E-Mail, Slack, Webhook oder direkt im Dashboard.
 
-![Die Benachrichtigungsseite: ein Raster aus Regelkarten, jede mit Auslöser, Auswertungszeitraum, Kanälen und einem Schweregrad-Badge (info, warning oder critical)](/agenteye/images/alerts.png)
-*Alle Benachrichtigungsregeln auf einen Blick: was überwacht wird, wie oft, wohin gemeldet wird und wie dringend.*
+![Die Alerts-Seite: ein Raster von Alert-Regelkarten, jede mit ihrem Auslöser, Auswertungsfenster, Kanälen und einem Info-, Warn- oder Kritisch-Schweregrad-Badge](/agenteye/images/alerts.png)
+*Alle Alert-Regeln auf einen Blick: was sie überwachen, wie häufig, wohin sie benachrichtigen und wie dringend.*
 
-## Erfahren Sie von Problemen, bevor Ihre Nutzer es tun
+## Erfahre von Problemen, bevor deine Nutzer es tun
 
-Hören Sie auf, Dashboards zu aktualisieren in der Hoffnung, eine Regression zu entdecken. Richten Sie eine Benachrichtigung ein, wenn es ein Signal gibt, über das Sie auch dann informiert werden möchten, wenn niemand hinschaut – und lassen Sie es dort ankommen, wo Sie sowieso sind:
+Hör auf, ein Dashboard zu aktualisieren und auf eine Regression zu warten. Richte einen Alert ein, wann immer es ein Signal gibt, über das du informiert werden möchtest – auch wenn gerade niemand hinschaut – und lass ihn dort ankommen, wo du bereits bist:
 
 - **E-Mail**, an alle, die es wissen sollten.
-- **Slack**, als ansprechende Nachricht mit einem Button, der direkt zum Incident führt.
-- **Webhook**, ein JSON-POST für PagerDuty, Opsgenie oder Ihren eigenen Endpunkt, optional mit Signatur, damit der Empfänger die Herkunft verifizieren kann.
-- **Im Dashboard**, bewusst unauffällig – für den Fall, dass Sie eine Regel noch feinabstimmen und noch niemanden benachrichtigen möchten.
+- **Slack**, eine angereicherte Nachricht mit einem Button, der direkt zum Vorfall führt.
+- **Webhook**, ein JSON-POST für PagerDuty, Opsgenie oder deinen eigenen Endpunkt, mit optionaler Signatur, damit der Empfänger es verifizieren kann.
+- **Im Dashboard**, von Haus aus unauffällig – für den Fall, dass du eine Regel feinjustierst und noch niemanden benachrichtigen möchtest.
 
-Kombinieren Sie beliebige Kanäle für eine einzige Regel. Der Schweregrad (info, warning oder critical) wird dabei mitgeliefert, damit dringende Meldungen auch dringend aussehen.
+Kombiniere beliebige Kanäle für eine einzige Regel, und der Schweregrad (Info, Warnung oder Kritisch) wird mitübertragen, sodass Dringendes auch dringend aussieht.
 
-## Regeln im Formular erstellen, nicht in JSON
+## Erstelle die Regel in einem Formular, nicht in JSON
 
-Sie beschreiben in einem Formular, was „fehlerhaft" bedeutet, und Failproof AI Observability erzeugt die zugrunde liegende Regel für Sie. Die JSON-Spezifikation ist lediglich das, was das Formular intern erzeugt – Sie können sie lesen, um eine Regel zu verstehen, müssen sie aber selten manuell eingeben.
+Du beschreibst, was „defekt" bedeutet, in einem Formular, und Failproof AI Observability schreibt die zugrunde liegende Regel für dich. Die JSON-Spezifikation ist lediglich das, was dieses Formular unter der Haube erzeugt – du kannst sie lesen, um eine Regel zu verstehen, tippst sie aber selten selbst.
 
-![Das Formular für neue Benachrichtigungen: Name und Beschreibung, ein Aktivierungsschalter und eine Auslöserauswahl mit den Optionen Metrisch, Benutzerdefiniertes SQL, Auswertungsscore, Zusammengesetzter Score und Einzelereignis](/agenteye/images/alert-new.png)
-*Wählen Sie einen Auslöser, und das Formular blendet die passenden Felder ein. Speichern schreibt die Regel.*
+![Das Neue-Alert-Formular: Name und Beschreibung, ein Aktivierungs-Toggle und eine Auslöser-Auswahl mit Metrikschwellwert, benutzerdefiniertem SQL, Bewertungs-Score, zusammengesetzter Auswertung und Pro-Ereignis-Bedingungen](/agenteye/images/alert-new.png)
+*Wähle einen Auslöser und das Formular zeigt die passenden Felder an; Speichern schreibt die Regel.*
 
-Der Standardweg ist schnell: Geben Sie einen Namen ein, wählen Sie einen **Auslöser** (was überwacht werden soll), legen Sie **Schwellenwert und Zeitfenster** fest (wie schwerwiegend, über welchen Zeitraum), fügen Sie mindestens einen **Kanal** hinzu, klicken Sie dann auf **Speichern** und anschließend auf **Testen**, um eine synthetische Benachrichtigung auszulösen und zu prüfen, ob alle Ziele korrekt eingerichtet sind. Intern erzeugt das eine kleine Spezifikation wie:
+Der einfache Weg geht schnell: Benenne die Regel, wähle einen **Auslöser** (was überwacht werden soll), lege **Schwellwert und Fenster** fest (wie schlimm, über welchen Zeitraum), füge mindestens einen **Kanal** hinzu, dann **Speichern** und **Test** drücken, um eine synthetische Benachrichtigung auszulösen und zu prüfen, ob jedes Ziel korrekt verdrahtet ist. Unter der Haube entsteht dabei eine kleine Spezifikation wie:
 
 ```json
 { "metric": "p95_latency_ms", "op": ">", "value": 5000, "window_secs": 900 }
 ```
 
-Sie sind nicht auf eine Art von Signal beschränkt. Wählen Sie den Auslöser, der dazu passt, wie Sie über den Fehler nachdenken:
+Du bist nicht auf eine einzige Art von Signal beschränkt. Wähle den Auslöser, der dazu passt, wie du über den Fehler denkst:
 
-| Auslöser | Wird ausgelöst, wenn |
+| Auslöser | Löst aus, wenn |
 |---|---|
-| **Metrischer Schwellenwert** | eine voreingestellte Metrik (Fehlerrate, p95- oder p99-Latenz, Ereignis- oder Fehlerzähler, Token-Verbrauch) innerhalb eines Zeitfensters Ihren Grenzwert überschreitet |
-| **Benutzerdefiniertes SQL** | Ihre eigene schreibgeschützte Abfrage eine Zeile zurückgibt oder ein berechneter Wert einen Schwellenwert überschreitet |
-| **Auswertungsscore** | der Durchschnittswert eines Evaluators (z. B. für Halluzinationen) einen Schwellenwert überschreitet |
-| **Zusammengesetzter Score** | mehrere Score-Prüfungen mit einer Logik wie „beliebige", „alle" oder „mindestens N" kombiniert werden, um eine Regression zu erkennen, die sich nur über mehrere Scores zeigt |
-| **Einzelereignis** | ein einzelnes passendes Ereignis eintrifft: ein bestimmter Agent, ein bestimmter Fehlertyp oder ein Nachrichtentext-Teilstring |
+| **Metrikschwellwert** | eine vordefinierte Metrik (Fehlerrate, p95- oder p99-Latenz, Ereignis- oder Fehlerzähler, Token-Ausgaben) über ein Zeitfenster deine Grenze überschreitet |
+| **Benutzerdefiniertes SQL** | deine eigene schreibgeschützte Abfrage eine Zeile zurückgibt oder ein berechneter Wert einen Schwellwert überschreitet |
+| **Bewertungs-Score** | der Durchschnitt eines Evaluator-Scores (z. B. Halluzination) einen Schwellwert überschreitet |
+| **Zusammengesetzte Auswertung** | mehrere Score-Prüfungen mit Any-, All- oder Mindestens-N-Logik kombiniert werden, um eine Regression zu erkennen, die sich erst über mehrere Scores hinweg zeigt |
+| **Pro Ereignis** | ein einzelnes passendes Ereignis eintrifft: ein bestimmter Agent, ein bestimmter Fehlertyp oder ein Nachrichten-Teilstring |
 
-Schauen Sie sich gerade einen Fehler auf der [Fehlerseite](/de/agenteye/error-tracking) an? Jede Zeile dort hat einen **+ alert**-Button, der dieses Formular vorausgefüllt öffnet, um genau diesen Fehler künftig abzufangen – der Incident, den Sie gerade untersucht haben, wird so zum nächsten, der Sie benachrichtigt.
+Schaust du gerade auf einen Fehler auf der [Errors-Seite](/de/agenteye/error-tracking)? Jede Zeile dort hat einen **+ Alert**-Button, der dieses Formular vorausgefüllt öffnet, um genau diesen Fehler wieder abzufangen – so wird der Vorfall, den du gerade triagiert hast, derjenige, der dich beim nächsten Mal benachrichtigt.
 
-**Wo Sie es finden:** Benachrichtigungen befinden sich unter `/<org-slug>/alerts`. Zum Erstellen, Bearbeiten, Löschen und Testen von Regeln wird **`alerts:write`** benötigt; `alerts:read` reicht zum Anzeigen. Die Empfängerauswahl listet die Mitglieder Ihrer Organisation namentlich auf, sodass Sie eine Person benachrichtigen können, ohne das Formular zu verlassen.
+**Wo du es findest:** Alerts befinden sich unter `/<org-slug>/alerts`. Zum Erstellen, Bearbeiten, Löschen und Testen von Regeln wird **`alerts:write`** benötigt; `alerts:read` reicht zum Anschauen. Die Empfänger-Auswahl listet die Mitglieder deiner Organisation namentlich auf, sodass du eine Person benachrichtigen kannst, ohne das Formular zu verlassen.
 
-## Nur benachrichtigen, wenn es wirklich relevant ist
+## Benachrichtige mich nur, wenn es wirklich zutrifft
 
-Ein einzelner schlechter Messwert sollte Sie nicht wecken. Der **M von N**-Rauschfilter steuert, wie viele der letzten Prüfungen fehlschlagen müssen, bevor die Benachrichtigung tatsächlich ausgelöst wird. Stellen Sie ihn auf **3 von 5** ein, und die Regel wird erst ausgelöst, nachdem drei der letzten fünf Prüfungen den Grenzwert überschritten haben – so hört ein instabiles Signal auf, falschen Alarm zu schlagen. Belassen Sie den Standardwert **1 von 1**, um beim ersten Überschreiten zu feuern. Sie legen außerdem fest, wie oft die Regel ausgeführt wird – aus Voreinstellungen von 1m, 5m, 15m und 1h, abgestimmt auf die tatsächliche Dynamik des Signals.
+Eine einzelne fehlerhafte Messung sollte dich nicht aufwecken. Der **M of N**-Rauschfilter steuert, wie viele der letzten Prüfungen fehlschlagen müssen, bevor der Alert tatsächlich benachrichtigt. Stelle ihn auf **3 of 5** und die Regel löst erst aus, wenn drei der letzten fünf Prüfungen verletzt wurden – so hört ein wackeliges Signal auf, falschen Alarm zu schlagen. Behalte den Standardwert **1 of 1**, um beim ersten Verstoß auszulösen. Du wählst außerdem, wie oft die Regel ausgeführt wird, aus vordefinierten Intervallen von 1m, 5m, 15m und 1h, abgestimmt auf die tatsächliche Dynamik des Signals.
 
-## Was passiert, wenn eine Benachrichtigung ausgelöst wird
+## Was passiert, wenn ein Alert auslöst
 
-Eine Überschreitung öffnet einen **Incident** und benachrichtigt Ihre Kanäle einmalig. Von dort aus kann Ihr Team ihn bestätigen, einen Verantwortlichen zuweisen, ihn besprechen und auflösen – alles in einem übersichtlichen, nachvollziehbaren Protokoll. Dieser Triage-Workflow hat sein eigenes Zuhause: siehe [Incidents](/de/agenteye/incidents).
+Ein Verstoß öffnet einen **Incident** und benachrichtigt deine Kanäle einmalig. Von dort aus bestätigt dein Team ihn, weist einen Verantwortlichen zu, bespricht ihn und löst ihn auf – alles in einem sauberen, nachvollziehbaren Protokoll. Dieser Triage-Workflow hat sein eigenes Zuhause: siehe [Incidents](/de/agenteye/incidents).
 
 ## Verwandte Themen
 
-- [Incidents](/de/agenteye/incidents): Verfolgen Sie einen ausgelösten Alert von offen über bestätigt bis gelöst.
-- [Fehlerverfolgung](/de/agenteye/error-tracking): Gruppieren Sie Agent-Fehler und wandeln Sie einen per Klick in eine Benachrichtigung um.
-- [Dashboards](/de/agenteye/dashboards): Beobachten Sie die gemeinsamen Boards, aus denen die überwachten Schwellenwerte stammen.
-- [CLI und Agents](/de/agenteye/cli-and-agents): Erstellen Sie Benachrichtigungen und bestätigen Sie Incidents aus Ihrem Terminal oder integrieren Sie sie per Skript in CI.
+- [Incidents](/de/agenteye/incidents): Verfolge einen ausgelösten Alert von offen über bestätigt bis gelöst.
+- [Error tracking](/de/agenteye/error-tracking): Gruppiere Agent-Fehler und wandle einen mit einem Klick in einen Alert um.
+- [Dashboards](/de/agenteye/dashboards): Beobachte die gemeinsamen Boards, aus denen die überwachten Schwellwerte stammen.
+- [CLI and agents](/de/agenteye/cli-and-agents): Erstelle Alerts und bestätige Incidents über dein Terminal oder binde sie per Skript in CI ein.

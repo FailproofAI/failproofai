@@ -13,18 +13,18 @@ failproofai policies --install [policy-names...] [options]
 
 ## 选项
 
-| 标志 | 描述 |
+| 标志 | 说明 |
 |------|------|
-| `--cli claude\|codex\|copilot` | 要安装的代理 CLI，以空格分隔（例如 `--cli claude codex copilot`）或重复使用。省略则自动检测已安装的 CLI 并提示选择。 |
-| `--scope user` | 安装到用户级配置文件（Claude：`~/.claude/settings.json`；Codex：`~/.codex/hooks.json`；Copilot：`~/.copilot/hooks/failproofai.json`）。默认选项。 |
+| `--cli claude\|codex\|copilot` | 要安装的目标代理 CLI，多个值以空格分隔（例如 `--cli claude codex copilot`）或重复指定。省略此项将自动检测已安装的 CLI 并提示选择。 |
+| `--scope user` | 安装到用户级配置文件（Claude：`~/.claude/settings.json`；Codex：`~/.codex/hooks.json`；Copilot：`~/.copilot/hooks/failproofai.json`）。默认值。 |
 | `--scope project` | 安装到项目级配置文件（Claude：`<cwd>/.claude/settings.json`；Codex：`<cwd>/.codex/hooks.json`；Copilot：`<cwd>/.github/hooks/failproofai.json`）。 |
-| `--scope local` | 仅限 Claude — 安装到 `<cwd>/.claude/settings.local.json`。Codex 和 Copilot 不支持 `local` 作用域。 |
+| `--scope local` | 仅限 Claude — 安装到 `<cwd>/.claude/settings.local.json`。Codex 和 Copilot 不支持 `local` 范围。 |
 | `--custom <path>` / `-c` | 包含自定义 hook 策略的 JS 文件路径 |
 
 ## 行为说明
 
 - **不指定策略名称** — 打开交互式提示以选择策略
-- **指定特定名称** — 启用对应策略（追加到已启用的策略中）
+- **指定具体名称** — 启用对应策略（追加到已启用的策略之上）
 - **`all`** — 启用所有可用策略
 
 安装操作为追加模式：再次运行 `--install` 只会添加新策略，不会移除已有策略。
@@ -32,7 +32,7 @@ failproofai policies --install [policy-names...] [options]
 ## 示例
 
 ```bash
-# 全局安装所有默认策略（交互式）
+# 以交互方式全局安装所有默认策略
 failproofai policies --install
 
 # 为当前项目安装指定策略
@@ -44,14 +44,14 @@ failproofai policies --install all
 # 使用自定义策略文件进行安装
 failproofai policies --install --custom ./my-policies.js
 
-# 为 OpenAI Codex 安装（项目作用域）
+# 为 OpenAI Codex 安装（项目范围）
 failproofai policies --install --cli codex --scope project
 
-# 为当前项目安装 GitHub Copilot CLI（测试版）
+# 为 GitHub Copilot CLI（测试版）安装到当前项目
 failproofai policies --install --cli copilot --scope project
 
 # 同时为三个 CLI 安装
 failproofai policies --install --cli claude codex copilot
 ```
 
-指定 `--custom <path>` 时，文件会立即进行验证——它必须至少调用一次 `customPolicies.add()`。解析后的路径将作为 `customPoliciesPath` 保存到 `policies-config.json` 中。
+当指定 `--custom <path>` 时，文件会立即进行验证——它必须至少调用一次 `customPolicies.add()`。解析后的路径将以 `customPoliciesPath` 的形式保存到 `policies-config.json` 中。

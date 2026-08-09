@@ -10,23 +10,23 @@ O pacote npm canônico é **`failproofai`**:
 
 ```bash
 npm install -g failproofai
-# ou
+# or
 bun add -g failproofai
 ```
 
 ---
 
-## Por que mantemos a propriedade dos aliases
+## Por que possuímos os nomes de alias
 
-Typosquatting é um ataque comum à cadeia de suprimentos de software, no qual um agente malicioso registra um nome de pacote que difere por apenas um caractere de um pacote popular. Usuários desatentos que digitam errado o comando de instalação acabam executando código controlado pelo atacante com acesso total ao sistema — exatamente o tipo de ameaça que o Failproof AI foi projetado para combater.
+Typosquatting é um ataque comum à cadeia de suprimentos de software, onde um agente malicioso registra um nome de pacote com apenas um caractere de diferença em relação a um pacote popular. Usuários desatentos que digitam errado o comando de instalação acabam executando código controlado pelo atacante com acesso total ao sistema — exatamente o tipo de ameaça que o Failproof AI foi projetado para combater.
 
-Para eliminar essa superfície de ataque, **nós registramos preventivamente todos os erros de digitação comuns e variantes de formatação** de `failproofai` no npm. Nenhum desses nomes pode ser registrado por terceiros. Cada um é um proxy simples que instala e delega para o pacote real `failproofai`.
+Para eliminar essa superfície de ataque, **nós pré-emptivamente possuímos todas as grafias incorretas comuns e variantes de formatação** de `failproofai` no npm. Nenhum desses nomes pode ser registrado por terceiros. Cada um é um proxy simples que instala e delega ao pacote real `failproofai`.
 
 ---
 
 ## Aliases registrados
 
-**Variantes de formatação** - diferentes formas de escrever "failproof ai":
+**Variantes de formatação** — diferentes formas de escrever "failproof ai":
 
 | Pacote | Status |
 |--------|--------|
@@ -37,7 +37,7 @@ Para eliminar essa superfície de ataque, **nós registramos preventivamente tod
 | `fail_proof_ai` | ⏳ Aguardando suporte do npm |
 | `fail-proofai` | ⏳ Aguardando suporte do npm |
 
-**Erros de digitação `failprof*`** - faltando um `o` em "proof":
+**Erros de digitação `failprof*`** — faltando um `o` em "proof":
 
 | Pacote | Status |
 |--------|--------|
@@ -47,7 +47,7 @@ Para eliminar essa superfície de ataque, **nós registramos preventivamente tod
 | `fail-prof-ai` | ⏳ Aguardando suporte do npm |
 | `failprof_ai` | ⏳ Aguardando suporte do npm |
 
-**Erros de digitação `faliproof*`** - transposição de `a` e `i`:
+**Erros de digitação `faliproof*`** — `a` e `i` invertidos:
 
 | Pacote | Status |
 |--------|--------|
@@ -55,25 +55,25 @@ Para eliminar essa superfície de ataque, **nós registramos preventivamente tod
 | `faliproof-ai` | ✅ Publicado |
 | `faliproofai` | ⏳ Aguardando suporte do npm |
 
-> **Por que aguardando?** A política de prevenção de spam do npm bloqueia nomes que, após remoção de pontuação e verificações de similaridade, normalizam para a mesma string de um pacote já existente. Entramos em contato com o suporte do npm para reservar esses nomes com fins anti-squatting. Eles serão ativados após aprovação.
+> **Por que "aguardando"?** A política de prevenção de spam do npm bloqueia nomes que se normalizam para a mesma string de um pacote existente após remoção de pontuação e verificações de similaridade. Entramos em contato com o suporte do npm para reservar esses nomes com fins anti-typosquatting. Eles serão ativados após aprovação.
 
 Você pode verificar que qualquer alias publicado pertence a nós:
 
 ```bash
 npm info failproof
-# Procure por: "ExosphereHost Inc." no campo maintainers
+# Look for: "ExosphereHost Inc." in the maintainers field
 ```
 
 ---
 
 ## Como os aliases funcionam
 
-Cada pacote alias:
+Cada pacote de alias:
 
 1. Lista `failproofai` como dependência — assim o pacote real é instalado e seu binário fica disponível
-2. Expõe um binário com seu próprio nome (ex.: `failprof-ai`) que repassa todos os argumentos para o binário `failproofai`
+2. Expõe um binário com seu próprio nome (ex.: `failprof-ai`) que encaminha todos os argumentos para o binário `failproofai`
 
-O proxy é um script Node de duas linhas; não há nenhuma lógica extra, chamadas de rede ou coleta de dados além do que o próprio `failproofai` realiza.
+O proxy é um script Node de duas linhas; não há lógica adicional, chamadas de rede nem coleta de dados além do que o próprio `failproofai` realiza.
 
 ---
 

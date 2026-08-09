@@ -1,6 +1,6 @@
 ---
 title: 정책 제거
-description: "Claude Code의 settings에서 훅 항목 제거"
+description: "Claude Code의 설정에서 훅 항목 제거"
 ---
 
 ```bash
@@ -24,7 +24,7 @@ Claude Code의 `settings.json`에서 failproofai 훅 항목을 제거합니다.
 ## 동작 방식
 
 - **정책 이름 미지정** - 설정 파일에서 모든 failproofai 훅 항목을 제거합니다
-- **특정 이름 지정** - 해당 정책을 비활성화하지만 훅은 설치된 상태로 유지합니다
+- **특정 이름 지정** - 해당 정책만 비활성화하고 훅은 설치된 상태로 유지합니다
 
 ## 예시
 
@@ -32,7 +32,7 @@ Claude Code의 `settings.json`에서 failproofai 훅 항목을 제거합니다.
 # 전역에서 모든 훅 제거
 failproofai policies --uninstall
 
-# 특정 정책 비활성화 (훅은 설치 상태 유지)
+# 특정 정책 비활성화 (훅은 설치된 상태 유지)
 failproofai policies --uninstall block-sudo
 
 # 모든 범위에서 훅 제거

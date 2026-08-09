@@ -1,31 +1,29 @@
 ---
+title: "מתכונים CLI לעבור"
+description: "דפוסי query וקבוצות jq שהיא העתק-הדבקה המתוך סשן, אירוע, וערכת הערכה לתוך משהו סקריפט או סוכן קידוד יכול להפוך לתוך אוטומציה."
 ---
-title: "מתכונים CLI לסוכנים"
-description: "העתק-הדבק דפוסי שאילתה ומתכונים jq המהפכים את נתוני הסשן, האירוע והערכה למשהו שסקריפט או סוכן קידוד יכול להפוך לאוטומטי."
----
 
+משוך סשן, אירוע, וערכת הערכה (והפעיל הערכות מחדש) ישירות מסקריפט או סוכן קידוד, עם JSON נקי על stdout שמעביר ישירות ל-`jq`. המתכונים הללו הופכים נתונים של Failproof AI Observability לתוך משהו שמשתמש טרמינל או סוכן קידוד AI (Claude Code, Cursor) יכול לשאול ולהפוך לאוטומציה, בלי ללחוץ דרך לוח הבקרה.
 
-משוך נתוני סשן, אירוע והערכה (והפעל הערכות חוזרות) ישירות מסקריפט או סוכן קידוד, עם JSON נקי על stdout שמתחבר ישירות ל-`jq`. המתכונים הללו הופכים את הנתונים של Failproof AI Observability למשהו שמשתמש בטרמינל או סוכן קידוד AI (Claude Code, Cursor) יכול לשאול וליישם אוטומציה, ללא לחיצה דרך הלוח המחווני.
+הדפוסים למטה מוכנים להעתק-הדבקה עבור Failproof AI Observability CLI (`agenteye`). להתקנה, אימות, וההשמה המלאה ראה [CLI](/he/agenteye/cli); הרץ `agenteye -h` או `agenteye <command> -h` להוראות מובנות.
 
-הדפוסים למטה מוכנים להעתקה עבור CLI של Failproof AI Observability (`agenteye`). להתקנה, אימות ורשימת האפשרויות המלאה ראה [CLI](/he/agenteye/cli); הרץ `agenteye -h` או `agenteye <command> -h` לעזרה מובנית.
+## כללים זהב
 
-## כללי זהב
-
-1. **אפשרויות גלובליות מתבצעות *לפני* הפקודה.** `agenteye --json sessions` נכון; `agenteye sessions --json` אינו נכון. הגלובליים הם `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`.
-2. **העבר `--json` בכל פעם שאתה מנתח פלט.** נתונים עוברים ל-**stdout** כ-JSON; סטטוס אנושי ושגיאות עוברים ל-**stderr**, כך ש-stdout נשאר נקי לחיבור ל-`jq`.
-3. **ענף על קוד היציאה**, לא על טקסט stderr: `0` בסדר · `1` שגיאה בלתי צפויה · `2` ארגומנטים גרועים · `3` לא יכול להגיע ללוח המחווני · `4` לא מחובר או פג תוקף · `5` הרשאה חסרה · `6` משאב לא נמצא.
-4. **גלה עם `-h`.** כל פקודה מתעדת את המסננים שלה, פורמטי הערכים וצורת JSON.
+1. **אפשרויות גלובליות הולכות *לפני* הפקודה.** `agenteye --json sessions` זה נכון; `agenteye sessions --json` לא. הגלובליים הם `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`.
+2. **העבר `--json` בכל פעם שאתה מנתח פלט.** נתונים הולכים ל-**stdout** כ-JSON; סטטוס אנושי ושגיאות הולכות ל-**stderr**, אז stdout נשאר נקי להעברה ל-`jq`.
+3. **הסתעף בקוד היציאה, לא בטקסט stderr**: `0` בסדר · `1` שגיאה בלתי צפויה · `2` ארגומנטים רעים · `3` לא יכול להגיע לוח בקרה · `4` לא התחברו או שפג תוקף · `5` הרשאה חסרה · `6` משאב לא נמצא.
+4. **גלה עם `-h`.** כל פקודה תיעד את המסננים, פורמטי ערך, וצורת JSON.
 
 ## הגדרה חד-פעמית
 
 ```bash
-export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # כך שלא תחזור על --base-url
-agenteye login --email you@example.com                       # הדבק את הקוד בדוא"ל; תקף ~24h
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # כך שלא תחזור --base-url
+agenteye login --email you@example.com                       # הדבק את הקוד שנשלח בדוא"ל; תוקף ~24h
 ```
 
 ## אשר אימות לפני ביצוע עבודה
 
-`whoami` לעולם לא טועה בסשן חסר או פג תוקף; במקום זאת היא מדווחת `logged_in:false`, כך שסוכן יכול לחקור את מצב האימות בבטחה. (זה עדיין יכול לצאת עם קוד שונה מאפס אם לא מוגדר כתובת URL בסיס או לא ניתן להגיע ללוח המחווני.)
+`whoami` לעולם לא שגיאות בסשן חסר או שפג תוקף; זה מדווח `logged_in:false` במקום, אז סוכן יכול לחקור מצב אימות בבטחה. (זה עדיין יכול לצאת non-zero אם אין base URL מוגדר או לוח הבקרה בלתי ניתן להשגה.)
 
 ```bash
 if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
@@ -33,98 +31,98 @@ if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
 fi
 ```
 
-## מצא סשנים נכשלים או בעלי ניקוד נמוך
+## מצא סשנים כושלים או בעלי ניקוד נמוך
 
 ```bash
-# סשנים ב-24 שעות האחרונות שהערכתם שגויה
+# סשנים בעת 24h האחרונות שהערכה שלהם נשגגה
 agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
 
-# הערכות בעלות ניקוד <= 0.5 בעזרתיות, לסוכן אחד
+# הערכות ניקוד <= 0.5 בעברה, עבור סוכן אחד
 agenteye --json evals --agent-id checkout-bot --score helpfulness:..0.5 \
   | jq '.evaluations[] | {session_id, scores}'
 ```
 
-סינון ניקוד חי על **`evals`**, לא `sessions`. `--score KEY:MIN..MAX` ניתן לחזור עליו והוא משולב עם AND; כל תחום הוא אופציונלי (`..0.5` אומר ≤ 0.5, `0.9..` אומר ≥ 0.9). אתה יכול להעביר עד 20 מסנני ניקוד לכל בקשה; יותר מזה מחזיר HTTP 400. `sessions` חולק את `--env`, `--status`, `--agent-id`, `--session-id` ומסננים טווח זמן עם `evals`, אך אין `--score`.
+סינון ניקוד חי על **`evals`**, לא `sessions`. `--score KEY:MIN..MAX` חוזר ו-AND-משולב; גבול כלשהו הוא אופציונלי (`..0.5` פירוש ≤ 0.5, `0.9..` פירוש ≥ 0.9). אתה יכול להעביר עד 20 מסננים ניקוד לכל בקשה; יותר מחזיר HTTP 400. `sessions` משתף `--env`, `--status`, `--agent-id`, `--session-id`, ומסננים טווח זמן עם `evals`, אבל אין `--score`.
 
 ## קרא סשן אחד מקצה לקצה
 
-אין פקודה `session show` יחידה. שלב את רצף האירועים עם ההערכה של הסשן:
+אין פקודה יחידה של `session show`. שלב את שביל האירוע עם הערכת הסשן:
 
 ```bash
-# ההערכה העדכנית ביותר של הסשן (סטטוס + ניקודות)
+# הערכה האחרונה של הסשן (סטטוס + ניקודים)
 agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scores}'
 
-# כל אירוע בהרצה (הגדל את --limit לסחיטה מלאה)
+# כל אירוע בהרצה (הגבה --limit לטאטא מלא)
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
 
-# רק קריאות הכלים בסשן (--full נדרש כדי לקבל את הטעינה הגולמית)
+# רק קריאות הכלים בסשן (--full נדרש כדי לקבל את ה-payload הגולמי)
 agenteye --json events --full --session-id run-001 --event-type tool_use,tool_result --all \
   | jq '.events[].payload'
 ```
 
-> **הערה:** כברירת מחדל, `events` קורא הזנה מהירה ללא טעינה. כל אירוע נושא שורת `summary` מחושבת בשרת בנוסף לדגלים כמו `is_error` וספירות אסימונים, אך `payload` חוזר כ-`{}`. כדי למשוך את הטעינה הגולמית, הוסף `--full` (או `--fields payload`). ההזנה המלאה איטית בהיקף, כך ששמור על זה מוגבל: שלב `--full` עם `--session-id` יחיד.
+> **הערה:** כברירת מחדל, `events` קורא ספציפיקה מהיר, ללא payload. כל אירוע נושא בעבודת שרת מחושבת `summary` של שורה אחת בתוספת דגלים כמו `is_error` וספירות אסימון, אבל `payload` חוזר כ-`{}`. כדי למשוך את ה-payload הגולמי, הוסף `--full` (או `--fields payload`). ספציפיקה מלאה איטית בקנה מידה, כך שהשאר אתה כבול: זוג `--full` עם `--session-id` יחיד.
 
-## אחוז הכל (דפדוף)
+## אחזר הכל (דירוג עמודים)
 
-התוצאות הן הראשונות החדשות ביותר ודפדוף עם cursor.
+התוצאות הן newest-first ו-cursor-paginated.
 
 ```bash
-# דגם אחד: אחוז עד 500 שורות בעמודים של 200 שורות
+# זריקה אחת: אחזור עד 500 שורות בעמודים של 200 שורות
 agenteye --json events --session-id run-001 --limit 500 --all > events.json
 
-# דפדוף ידני: הזן את next_cursor בחזרה
+# דירוג ידני: הזן את next_cursor חזרה
 page=$(agenteye --json events --limit 100)
 cursor=$(echo "$page" | jq -r '.next_cursor // empty')
 [ -n "$cursor" ] && agenteye --json events --limit 100 --cursor "$cursor"
 ```
 
-## הצר את הפלט עם --fields
+## הדק את הפלט עם --fields
 
-הגבל את המפתחות (הן בטבלה והן ב-`--json`) כדי להפחית מה שסוכן חייב לקרוא.
+הגבל את המפתחות (גם בטבלה וגם `--json`) כדי להפחית מה סוכן חייב לקרוא.
 
 ```bash
 agenteye --json sessions --since 7d --fields session_id,status,scores | jq -c '.sessions[]'
 agenteye --json events --session-id run-001 --fields ts,event_type --all
 ```
 
-שמות שדות לא ידועים נדחים (יציאה `2`) עם הרשימה התקפה, דרך זולה לגילוי שמות שדות.
+שמות שדות לא ידועים נדחים (יציאה `2`) עם הרשימה התקפה, דרך זולה לגלות שמות שדות.
 
-## גלה ערכי מסננים תקפים
+## גלה ערכי מסנן תקפים
 
 ```bash
-agenteye --json list envs | jq -r '.values[]'           # ערכים עבור --env
-agenteye --json list tools | jq -r '.values[]'          # שמות כלים; גם סוכנים, דגמים, event_types וכו'
-agenteye --json list score_filters | jq -r '.values[]'  # KEY תקף עבור --score KEY:MIN..MAX
+agenteye --json list envs | jq -r '.values[]'           # ערכים ל--env
+agenteye --json list tools | jq -r '.values[]'          # שמות כלים; גם סוכנים, מודלים, event_types, …
+agenteye --json list score_filters | jq -r '.values[]'  # KEY תקף ל--score KEY:MIN..MAX
 ```
 
-## בחר את הארגון שלך (ריבוי-דיירים)
+## בחר את ה-org שלך (ריבוי דיירים)
 
-אם אתה שייך ליותר מארגון אחד, בחר את הדיירים הפעילים בעת הכניסה (זה נשמר):
+אם אתה שייך ליותר מ-org אחד, בחר את הדייר הפעיל בהתחברות (זה חוסך):
 
 ```bash
-agenteye login --org acme --email you@corp.com   # קבע את הדיירים באותו שלב כמו הכניסה
+agenteye login --org acme --email you@corp.com   # קבע את הדייר בשלב זהה להתחברות
 agenteye --json orgs list | jq -r '.orgs[].org_slug'
-agenteye --org globex --json sessions --since 24h   # עקוף לפקודה אחת
+agenteye --org globex --json sessions --since 24h   # לפקודה אחת בלבד
 ```
 
-כניסה ריבוי-ארגון ללא `--org` יוצאת עם קוד שונה מאפס והדפסת הארגונים לבחירה.
+התחברות עם ריבוי ארגונים ללא `--org` יוצאת non-zero ופיצחה את הארגונים לבחירה.
 
-## הנושא מפתח API עבור SDK/collector
+## אפשר מפתח API ל-SDK/collector
 
 ```bash
-# הסוד מודפס פעם אחת, עם --json זה שדה .key
+# הסוד מודפס פעם אחת, עם --json זה .key שדה
 key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
-agenteye keys regenerate ci-bot --yes    # סיבוב; agenteye keys disable ci-bot --yes לביטול
+agenteye keys regenerate ci-bot --yes    # סובב; agenteye keys disable ci-bot --yes כדי לשלול
 ```
 
-## הרץ שאילתה שנשמרה או זמנית
+## הרץ שאילתה שמורה או ad-hoc
 
 ```bash
 agenteye --json query run --sql "select count(*) from analytics.events" | jq '.rows'
-agenteye --json query run errs --arg prod | jq '.rows'   # שאילתה שנשמרה + $1 פוזיציונלי
+agenteye --json query run errs --arg prod | jq '.rows'   # שאילתה שמורה + $1 פוזיציונלי
 ```
 
-## טריאז' של תקרית ללא אינטראקציה
+## ריאה דירוגים לא-אינטראקטיבית
 
 ```bash
 id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
@@ -133,9 +131,9 @@ agenteye incidents assign "$id" --assignee you@corp.com
 agenteye incidents resolve "$id" --yes
 ```
 
-> **הערה:** מוטציות דלג אוטומטית בהודעת האישור שלהן תחת `--json` או כאשר stdin אינו TTY, כך שסוכנים לעולם לא תלויים; העבר `--yes`/`-y` כדי לדלג עליה במפורש במקום אחר.
+> **הערה:** מוטציות דילוג אוטומטי את הודעת אישור תחת `--json` או כאשר stdin לא TTY, כך סוכנים לעולם תלויים; העבר `--yes`/`-y` לדלוג זה במפורש במקום אחר.
 
-## טיפול בקוד היציאה בסקריפט
+## עיבוד קוד יציאה בסקריפט
 
 ```bash
 out=$(agenteye --json sessions --since 1h) || code=$?
@@ -159,22 +157,22 @@ esac
 | `sessions` | `{"sessions": [...], "next_cursor": <cursor or null>}` |
 | `errors` | `{"errors": [...], "next_cursor": <cursor or null>}` |
 | `list <kind>` | `{"kind", "values": [...]}` |
-| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` מוצג פעם אחת) |
+| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` הוצג פעם אחת) |
 | `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
 | `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
 | `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
-| create/update/delete (כל אחד) | אובייקט המשאב, או `{"deleted": true, "id"}` למחיקות |
-| כישלון (כל אחד, עם `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` ב-stdout |
+| create/update/delete (כל) | אובייקט המשאב, או `{"deleted": true, "id"}` למחיקות |
+| כישלון (כל, עם `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` על stdout |
 
-- כל פריט **אירוע** (`events`): `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`. שים לב ש-`payload` הוא `{}` אלא אם אתה מבקש את ההזנה המלאה עם `--full` (או `--fields payload`).
+- כל פריט **אירוע** (`events`): `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`. שימו לב כי `payload` הוא `{}` אלא אם כן אתה מבקש את ספציפיקה המלא עם `--full` (או `--fields payload`).
 - כל פריט **הערכה** (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`.
 - כל פריט **סשן** (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`.
 
-ה-`--fields` של כל פקודה מקבל בדיוק שמות שדות של הפריט שלה. הסט שונה בין `sessions` ו-`evals`, כך ששם תקף לאחד יכול להיות נדחה על ידי השני.
+`--fields` של כל פקודה מקבלת בדיוק שמות שדות של הפריט שלה. הסט שונה בין `sessions` ל-`evals`, כך ששם תקף עבור אחד עלול להידחות על ידי השני.
 
-## הצעדים הבאים
+## שלבים הבאים
 
-- [CLI](/he/agenteye/cli): התקנה, אימות ותיאור אפשרויות מלא לכל פקודה.
-- [CLI agent skill](/he/agenteye/cli-skill): קרא לאריזה המתכונים הללו כמיומנות שסוכן הקידוד שלך יכול לטעון.
-- [מפתחות API](/he/agenteye/api-keys): יצור והיקף את המפתחות שה-CLI, SDK וקולט מאמתים עם.
-- [Python SDK](/he/agenteye/python-sdk): שלח אירועים ל-Failproof AI Observability כך שיהיו נתונים עבור המתכונים הללו לשאול.
+- [CLI](/he/agenteye/cli): התקנה, אימות, והייחוס האפציה המלא עבור כל פקודה.
+- [CLI agent skill](/he/agenteye/cli-skill): אריזה של מתכונים אלה כמו כישרון סוכן קידוד שלך יכול לטעון.
+- [API keys](/he/agenteye/api-keys): ליצור וטווח את המפתחות ה-CLI, SDK, ו-collector מאמתות עם.
+- [Python SDK](/he/agenteye/python-sdk): שלח אירועים ל-Failproof AI Observability כך יש נתונים עבור מתכונים אלה לשאול.

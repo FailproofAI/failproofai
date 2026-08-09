@@ -1,14 +1,13 @@
 ---
 title: "Python SDK"
-description: "Xem chính xác những gì các agent AI của bạn đã làm trong production: mỗi lần chạy agent, gọi tool, yêu cầu model, hook, và can thiệp của con người."
+description: "Xem chính xác những gì mà AI agents của bạn đã thực hiện trong production: mỗi agent run, tool call, model request, hook, và human intervention."
 ---
 
+Xem chính xác những gì mà AI agents của bạn đã thực hiện trong production: mỗi agent run, tool call, model request, hook, và human intervention. Failproof AI Observability Python SDK ghi lại toàn bộ quá trình này từ bên trong code của agent, giúp bạn debug, audit, và đánh giá những gì đã xảy ra. Sử dụng nó bất cứ khi nào bạn muốn Failproof AI Observability theo dõi agents của mình.
 
-Xem chính xác những gì các agent AI của bạn đã làm trong production: mỗi lần chạy agent, gọi tool, yêu cầu model, hook, và can thiệp của con người. Python SDK Observability của Failproof AI ghi lại toàn bộ quá trình này từ bên trong mã agent của bạn để bạn có thể gỡ lỗi, kiểm toán và đánh giá những gì đã xảy ra. Sử dụng nó bất cứ khi nào bạn muốn Failproof AI Observability quan sát các agent của mình.
+Dưới nắp công cụ, SDK viết các sự kiện có cấu trúc vào các file JSONL cục bộ, và daemon collector sẽ nhận chúng và tự động gửi tới platform. Bạn không cần quản lý các file này.
 
-Cơ chế hoạt động bên dưới là SDK ghi các sự kiện có cấu trúc vào các tệp JSONL cục bộ, và daemon collector sẽ chọn chúng và tự động gửi đến nền tảng. Bạn không cần quản lý các tệp này.
-
-> **Tip:** Mới làm quen với Failproof AI Observability? Trang này là tài liệu tham khảo đầy đủ về các sự kiện SDK.
+> **Tip:** Mới làm quen với Failproof AI Observability? Trang này là tài liệu tham khảo sự kiện SDK hoàn chỉnh.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
@@ -16,21 +15,21 @@ Cơ chế hoạt động bên dưới là SDK ghi các sự kiện có cấu tr�
 
 ---
 
-## Installation
+## Cài đặt
 
-SDK được phân phối cho khách hàng dưới dạng một wheel riêng tư thay vì từ một chỉ mục gói công cộng. Quá trình onboarding của bạn sẽ bao gồm cách lấy nó, cài đặt nó và ghim nó — hãy liên hệ với Failproof AI của bạn nếu bạn cần quyền truy cập.
+SDK được phân phối cho khách hàng dưới dạng private wheel thay vì từ một public package index. Quá trình onboarding của bạn sẽ bao gồm hướng dẫn cách lấy, cài đặt, và ghim version — liên hệ với Failproof AI contact của bạn nếu bạn cần truy cập.
 
-Sau khi nó được cài đặt, xác nhận rằng bạn có nó:
+Khi đã cài đặt, xác minh bạn có nó:
 
 ```bash
 python -c "import agenteye; print(agenteye.__version__)"
 ```
 
-Thích để cho một agent lập trình làm toàn bộ quá trình tích hợp? [Python SDK Agent Skill](/vi/agenteye/python-sdk-skill) biết đường dẫn cài đặt, lập kế hoạch các điểm máy, viết chúng và xác minh các sự kiện đã đến.
+Thích để cho một coding agent thực hiện toàn bộ tích hợp? [Python SDK Agent Skill](/vi/agenteye/python-sdk-skill) biết đường dẫn cài đặt, lên kế hoạch các điểm instrumentation, viết chúng, và xác minh sự kiện được ghi lại.
 
 ---
 
-## Quick Start
+## Bắt đầu nhanh
 
 ```python
 import agenteye
@@ -58,9 +57,9 @@ agenteye.event.tool_result(
 agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
 ```
 
-### Instrumenting a real call
+### Instrumentation cho một cuộc gọi thực
 
-Trong thực tế, bạn bao bọc mã agent hiện có của mình. Đặt một lệnh gọi model giữa `model_request` trước và `model_response` sau, để hai sự kiện bao phủ yêu cầu thực và Failproof AI Observability có thể ghép chúng lại:
+Trong thực tế, bạn wrap code agent hiện có của mình. Bao quanh một model call với `model_request` trước và `model_response` sau, để hai sự kiện bao trùm yêu cầu thực và Failproof AI Observability có thể ghép chúng:
 
 ```python
 import anthropic
@@ -95,11 +94,11 @@ agenteye.event.model_response(
 )
 ```
 
-Bao bọc các lệnh gọi tool theo cách tương tự với `tool_use` và `tool_result`, sử dụng lại một `tool_call_id` trên toàn bộ cặp.
+Wrap tool calls theo cách tương tự với `tool_use` và `tool_result`, tái sử dụng một `tool_call_id` giữa cặp đó.
 
-Dưới đây là những sự kiện này trông như thế nào khi chúng đến dashboard, được tô màu theo loại và có thể lọc theo môi trường, agent và session:
+Đây là những gì những sự kiện đó trông như thế nào khi chúng đến được dashboard, được mã hóa màu theo loại và có thể lọc theo environment, agent, và session:
 
-![Dòng sự kiện trực tiếp, được tô màu theo loại sự kiện và có thể lọc theo môi trường, agent và session](/agenteye/images/events-stream.png)
+![The live Events stream, colour-coded by event type and filterable by environment, agent, and session](/agenteye/images/events-stream.png)
 
 ---
 
@@ -113,18 +112,18 @@ agenteye.configure(
 )
 ```
 
-Gọi một lần trước bất kỳ lệnh gọi `event.*` nào. An toàn để bỏ qua; các giá trị mặc định hoạt động ngay trong hộp. Tất cả các đối số chỉ theo từ khóa; truyền chúng theo tên như hình trên.
+Gọi một lần trước bất kỳ cuộc gọi `event.*` nào. An toàn để bỏ qua; defaults hoạt động ngay lập tức. Tất cả các arguments đều là keyword-only; truyền chúng theo tên như được hiển thị ở trên.
 
 Khi `base_dir` là `None` (mặc định), SDK đọc `$AGENTEYE_HOME` nếu được đặt,
-nếu không sẽ quay lại `~/.agenteye`. Điều này khớp với độ phân giải của collector,
-vì vậy một biến env `AGENTEYE_HOME` duy nhất cấu hình spool sự kiện được chia sẻ cho cả
+nếu không sẽ quay trở lại `~/.agenteye`. Điều này khớp với resolution của collector riêng,
+vì vậy một biến env `AGENTEYE_HOME` duy nhất cấu hình spool event chia sẻ cho cả
 SDK và collector.
 
 ---
 
-## Environment
+## Môi trường
 
-Gắn nhãn mỗi sự kiện với một môi trường triển khai (`production`, `staging`, `qa`, `canary`, v.v.). Đặt nó một lần; SDK sẽ tự động đính kèm nó vào mỗi sự kiện.
+Gắn nhãn mỗi sự kiện với một deployment environment (`production`, `staging`, `qa`, `canary`, v.v.). Đặt nó một lần; SDK gắn nó vào mỗi sự kiện tự động.
 
 **Tùy chọn 1: qua `configure()`:**
 
@@ -140,40 +139,40 @@ export AGENTEYE_ENVIRONMENT=production
 
 **Ưu tiên:** `configure(environment=...)` thắng biến môi trường. Nếu không có cái nào được đặt, mặc định là `"dev"`.
 
-Giá trị môi trường xuất hiện dưới dạng bộ lọc hạng nhất trong dashboard và được lưu trữ trên máy chủ để truy vấn nhanh.
+Giá trị environment xuất hiện như một bộ lọc hạng nhất trong dashboard và được lưu trữ trên server để truy vấn nhanh.
 
-> **Warning:** Các giá trị môi trường không được chứa dấu phẩy `,` theo nghĩa đen. Các bộ lọc dashboard sử dụng đa chọn được phân tách bằng dấu phẩy trên dây (`?environment=prod,staging`), vì vậy một môi trường được đặt tên là `prod,blue` sẽ bị chia thành hai giá trị. Các sự kiện có môi trường chứa dấu phẩy bị từ chối tại thời điểm nhập.
+> **Warning:** Các giá trị Environment không được chứa `,` dấu phẩy. Các bộ lọc dashboard sử dụng multi-select được phân tách bằng dấu phẩy trên dây (`?environment=prod,staging`), vì vậy một environment được đặt tên `prod,blue` sẽ bị chia thành hai giá trị. Các sự kiện có environments chứa dấu phẩy bị từ chối vào thời điểm ingest.
 
 ---
 
-## Data and privacy
+## Dữ liệu và quyền riêng tư
 
-SDK chỉ ghi lại các trường bạn rõ ràng truyền. Prompt, tin nhắn, đầu vào và đầu ra của tool, và nội dung model chỉ được ghi vì bạn chuyển chúng đến lệnh gọi `event.*`. Không có gì được đọc từ quá trình của bạn hoặc được ghi lại ngầm. Bất kỳ trường nào bạn để không được đặt đều bị loại khỏi sự kiện hoàn toàn; nó không được ghi vào đĩa.
+SDK chỉ ghi lại những trường mà bạn explicitly truyền. Prompts, messages, tool inputs và outputs, và model content được capture chỉ vì bạn đã truyền chúng cho một cuộc gọi `event.*`. Không có gì được đọc từ process của bạn hoặc captured implicitly. Bất kỳ trường nào bạn để unset đều được bỏ qua hoàn toàn khỏi sự kiện; nó không được viết vào disk.
 
-Điều đó làm cho redaction trở thành lựa chọn và trách nhiệm của bạn. Nếu một prompt hoặc payload tool chứa PII hoặc bí mật mà bạn không muốn lưu trữ, hãy loại bỏ hoặc che dấu nó trước khi bạn chuyển nó đến phương thức sự kiện.
+Điều đó làm cho redaction trở thành lựa chọn và trách nhiệm của bạn. Nếu một prompt hoặc tool payload chứa PII hoặc secrets mà bạn không muốn lưu trữ, hãy loại bỏ hoặc che chúng trước khi truyền chúng cho phương thức event.
 
 ---
 
 ## Event Reference
 
-Hầu hết các sự kiện đến trong các cặp start/end chia sẻ một ID tương quan: `tool_use` và `tool_result` chia sẻ một `tool_call_id`, `hook_triggered` và `hook_completed` chia sẻ một `hook_id`, và `human_wait` và `human_input` chia sẻ một `input_id`. Phát ra sự kiện bắt đầu, thực hiện công việc, sau đó phát ra sự kiện kết thúc với cùng một ID. Failproof AI Observability khớp với cặp và tính toán `duration_ms` cho bạn, vì vậy bạn không bao giờ chuyển `duration_ms` chính mình.
+Hầu hết các sự kiện đến theo cặp start/end chia sẻ một correlation ID: `tool_use` và `tool_result` chia sẻ `tool_call_id`, `hook_triggered` và `hook_completed` chia sẻ `hook_id`, và `human_wait` và `human_input` chia sẻ `input_id`. Phát sự kiện start, làm công việc, sau đó phát sự kiện end với cùng ID. Failproof AI Observability khớp cặp và tính toán `duration_ms` cho bạn, vì vậy bạn không bao giờ truyền `duration_ms` chính mình.
 
-![Biểu đồ thực thi kiểu git của một session bên cạnh dòng thời gian sự kiện của nó, được xây dựng lại từ các sự kiện ghép đôi, với bảng điều khiển phân tích tool/model/hook](/agenteye/images/session-detail.png)
+![A session's git-style execution graph beside its event timeline, reconstructed from the paired events, with the tool/model/hook breakdown panel](/agenteye/images/session-detail.png)
 
-Tất cả các phương thức sự kiện yêu cầu hai trường này:
+Tất cả các phương thức event yêu cầu hai trường này:
 
 | Field | Type | Description |
 |---|---|---|
-| `session_id` | `str` | Xác định lần chạy agent ở cấp cao nhất |
-| `agent_id` | `str` | Xác định agent nào trong session phát ra sự kiện |
+| `session_id` | `str` | Xác định agent run cấp top-level |
+| `agent_id` | `str` | Xác định agent nào trong session phát sự kiện |
 
-Tất cả các phương thức cũng chấp nhận `**kwargs` tùy ý cho siêu dữ liệu tùy chỉnh (xem [Custom Fields](#custom-fields)).
+Tất cả các phương thức cũng chấp nhận `**kwargs` tùy ý cho metadata custom (xem [Custom Fields](#custom-fields)).
 
 ---
 
 ### `event.agent_start()`
 
-Được phát ra khi một agent bắt đầu công việc.
+Được phát khi một agent bắt đầu công việc.
 
 ```python
 agenteye.event.agent_start(
@@ -188,7 +187,7 @@ agenteye.event.agent_start(
 
 ### `event.agent_end()`
 
-Được phát ra khi một agent kết thúc công việc.
+Được phát khi một agent hoàn thành công việc.
 
 ```python
 agenteye.event.agent_end(
@@ -203,7 +202,7 @@ agenteye.event.agent_end(
 
 ### `event.tool_use()`
 
-Được phát ra khi một agent gọi một tool. Ghép với `tool_result`; SDK tự động tính `duration_ms`.
+Được phát khi một agent gọi một tool. Ghép với `tool_result`; SDK tự động tính toán `duration_ms`.
 
 ```python
 agenteye.event.tool_use(
@@ -219,7 +218,7 @@ agenteye.event.tool_use(
 
 ### `event.tool_result()`
 
-Được phát ra khi một tool trả về. Tương quan với `tool_use` qua `tool_call_id`.
+Được phát khi một tool trả về. Tương quan với `tool_use` qua `tool_call_id`.
 
 ```python
 agenteye.event.tool_result(
@@ -237,7 +236,7 @@ agenteye.event.tool_result(
 
 ### `event.model_request()`
 
-Được phát ra ngay trước khi gửi prompt đến một LLM.
+Được phát ngay trước khi gửi một prompt tới một LLM.
 
 ```python
 agenteye.event.model_request(
@@ -254,13 +253,13 @@ agenteye.event.model_request(
 )
 ```
 
-Các mục `messages` chấp nhận `content` chuỗi thuần túy hoặc nội dung danh sách kiểu Anthropic `content`. Các tham số lấy mẫu (`temperature`, `max_tokens`, v.v.) có thể được chuyển dưới dạng kwargs bổ sung.
+Các mục `messages` chấp nhận một `content` string thuần hoặc Anthropic-style list-of-blocks `content`. Sampling params (`temperature`, `max_tokens`, v.v.) có thể được truyền dưới dạng kwargs thêm.
 
 ---
 
 ### `event.model_response()`
 
-Được phát ra khi LLM trả về một phản hồi.
+Được phát khi LLM trả về một phản hồi.
 
 ```python
 agenteye.event.model_response(
@@ -277,13 +276,13 @@ agenteye.event.model_response(
 )
 ```
 
-`content` chấp nhận chuỗi thuần túy (nhà cung cấp chung) hoặc danh sách các khối nội dung kiểu Anthropic. Các lệnh gọi tool sống bên trong `content` dưới dạng các khối `{"type": "tool_use", ...}`, không có trường `tool_calls` riêng biệt.
+`content` chấp nhận một string thuần (generic providers) hoặc một danh sách các Anthropic-style content blocks. Tool calls nằm bên trong `content` dưới dạng `{"type": "tool_use", ...}` blocks, không có trường `tool_calls` riêng.
 
 ---
 
 ### `event.hook_triggered()`
 
-Được phát ra khi một hook kích hoạt. Ghép với `hook_completed`; SDK tự động tính `duration_ms`.
+Được phát khi một hook kích hoạt. Ghép với `hook_completed`; SDK tự động tính toán `duration_ms`.
 
 ```python
 agenteye.event.hook_triggered(
@@ -300,7 +299,7 @@ agenteye.event.hook_triggered(
 
 ### `event.hook_completed()`
 
-Được phát ra khi một hook hoàn thành. Tương quan với `hook_triggered` qua `hook_id`.
+Được phát khi một hook kết thúc. Tương quan với `hook_triggered` qua `hook_id`.
 
 ```python
 agenteye.event.hook_completed(
@@ -319,7 +318,7 @@ agenteye.event.hook_completed(
 
 ### `event.error()`
 
-Được phát ra khi một lỗi không được xử lý xảy ra.
+Được phát khi một lỗi unhandled xảy ra.
 
 ```python
 agenteye.event.error(
@@ -333,13 +332,13 @@ agenteye.event.error(
 
 ---
 
-## Human-in-the-Loop Events
+## Sự kiện Human-in-the-Loop
 
-Các sự kiện human-in-the-loop cung cấp cho bạn sự giám sát những khoảnh khắc mà một người bước vào thực thi của agent (chờ phê duyệt, cung cấp đầu vào, tạm dừng hoặc dừng agent). Chúng cho phép bạn đo lường thời gian con người mất để phản hồi (SDK tự động tính `duration_ms` trên các sự kiện ghép đôi), kiểm toán ai tạm dừng hoặc ngắt agent, và xây dựng các quy trình phê duyệt và giám sát xuất hiện trong dashboard.
+Các sự kiện human-in-the-loop cung cấp cho bạn sự giám sát những khoảnh khắc mà một người bước vào quá trình thực hiện của agent (chờ phê duyệt, cung cấp input, tạm dừng, hoặc dừng agent). Chúng cho phép bạn đo lường thời gian con người cần để phản ứng (SDK tự động tính toán `duration_ms` trên các sự kiện được ghép nối), audit người đã tạm dừng hoặc gián đoạn một agent, và xây dựng các luồng công việc phê duyệt và giám sát bề mặt trong dashboard.
 
 ### `event.human_wait()`
 
-Được phát ra khi agent tạm dừng thực thi để chờ con người cung cấp đầu vào. Ghép với `human_input`; SDK tự động tính `duration_ms` (thời gian con người mất để phản hồi).
+Được phát khi agent tạm dừng thực hiện để chờ một con người cung cấp input. Ghép với `human_input`; SDK tự động tính toán `duration_ms` (con người mất bao lâu để phản ứng).
 
 ```python
 agenteye.event.human_wait(
@@ -354,7 +353,7 @@ agenteye.event.human_wait(
 
 ### `event.human_input()`
 
-Được phát ra khi con người cung cấp đầu vào và agent tiếp tục. Tương quan với `human_wait` qua `input_id`. `duration_ms` được tính tự động và không được truyền bởi người gọi.
+Được phát khi một con người cung cấp input và agent tiếp tục. Tương quan với `human_wait` qua `input_id`. `duration_ms` được tự động tính toán và không được truyền bởi caller.
 
 ```python
 agenteye.event.human_input(
@@ -368,7 +367,7 @@ agenteye.event.human_input(
 
 ### `event.human_pause()`
 
-Được phát ra khi con người chủ động tạm dừng agent (ví dụ: qua một điều khiển dashboard). Agent bị tạm dừng nhưng không bị chấm dứt.
+Được phát khi một con người actively tạm dừng agent (ví dụ qua một dashboard control). Agent bị suspend nhưng không bị terminate.
 
 ```python
 agenteye.event.human_pause(
@@ -381,7 +380,7 @@ agenteye.event.human_pause(
 
 ### `event.human_interrupt()`
 
-Được phát ra khi con người chủ động dừng agent giữa lúc thực thi. Không giống như `human_pause`, công việc của agent bị chấm dứt thay vì bị tạm dừng.
+Được phát khi một con người actively dừng agent giữa quá trình thực hiện. Không giống như `human_pause`, công việc của agent bị terminate thay vì suspend.
 
 ```python
 agenteye.event.human_interrupt(
@@ -397,7 +396,7 @@ agenteye.event.human_interrupt(
 
 ## Custom Fields
 
-Bất kỳ đối số từ khóa bổ sung nào được nối thêm vào sự kiện sau các trường tiêu chuẩn:
+Bất kỳ keyword arguments thêm nào được thêm vào sự kiện sau các trường chuẩn:
 
 ```python
 agenteye.event.tool_use(
@@ -410,27 +409,27 @@ agenteye.event.tool_use(
 )
 ```
 
-`timestamp`, `type` và `environment` được dự trữ và sẽ nâng cao `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) nếu được chuyển làm các trường tùy chỉnh. `session_id` và `agent_id` là các tham số bắt buộc trên mỗi phương thức sự kiện và không thể được cung cấp lần thứ hai; Python sẽ nâng cao `TypeError` nếu bạn làm. Đặt môi trường bằng `configure(environment=...)` (hoặc biến `AGENTEYE_ENVIRONMENT`) thay thế.
+`timestamp`, `type`, và `environment` được bảo vệ và tăng `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) nếu được truyền dưới dạng custom fields. `session_id` và `agent_id` là required parameters trên mỗi phương thức event và không thể được cung cấp một lần thứ hai; Python tăng `TypeError` nếu bạn làm như vậy. Đặt environment với `configure(environment=...)` (hoặc biến `AGENTEYE_ENVIRONMENT`) thay thế.
 
-Giữ payload dưới dạng JSON có cấu trúc khi bạn muốn truy vấn các trường của chúng. Các giá trị JSON không hỗ trợ natively—chẳng hạn như datetime, UUID, số thập phân, tập hợp, byte hoặc đối tượng model—được chuyển đổi thành chuỗi để việc ghi tiếp tục an toàn.
+Giữ payloads như structured JSON khi bạn muốn truy vấn các trường của chúng. Các giá trị mà JSON không natively hỗ trợ — chẳng hạn như datetimes, UUIDs, decimals, sets, bytes, hoặc model objects — được chuyển đổi thành strings để ghi lại tiếp tục an toàn.
 
 ---
 
-## How Events Are Written
+## Cách Sự kiện Được Viết
 
-Các sự kiện được đệm trong quá trình và được xả vào đĩa mỗi `flush_interval` giây (mặc định 500 ms). Mỗi lần xả ghi một tệp JSONL:
+Sự kiện được buffer trong-process và flushed vào disk mỗi `flush_interval` giây (mặc định 500 ms). Mỗi flush viết một file JSONL:
 
 ```text
 ~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
 ```
 
-Collector theo dõi thư mục này và tải các tệp lên tự động. Bạn không cần quản lý các tệp này trực tiếp.
+Collector theo dõi thư mục này và tải lên files tự động. Bạn không cần quản lý các files này trực tiếp.
 
-Mỗi tệp được ghi một cách nguyên tử: SDK ghi vào một tệp tạm thời và sau đó đổi tên vào vị trí, vì vậy collector không bao giờ thấy một tệp chưa được ghi xong. Một lần xả cuối cùng cũng chạy khi quá trình của bạn thoát, vì vậy các sự kiện được đệm trong khoảng thời gian cuối cùng không bị mất. Nếu collector ngoại tuyến, các sự kiện đơn giản chỉ tích tụ dưới dạng các tệp trên đĩa và được gửi khi nó quay lại.
+Mỗi file được viết atomically: SDK viết vào một file tạm thời và sau đó đổi tên nó vào vị trí, vì vậy collector không bao giờ thấy một file half-written. Một flush cuối cùng cũng chạy khi process của bạn thoát, vì vậy sự kiện được buffer trong interval cuối cùng không bị mất. Nếu collector offline, sự kiện đơn giản là tích tụ dưới dạng files trên disk và ship khi nó quay trở lại.
 
 ---
 
-## Next steps
+## Các bước tiếp theo
 
-- [Event stream](/vi/agenteye/event-stream): xem các sự kiện này đến trực tiếp, được tô màu và có thể lọc theo môi trường, agent và session.
-- [Sessions](/vi/agenteye/sessions): xem cách các sự kiện ghép đôi tái cấu trúc mỗi lần chạy agent dưới dạng một biểu đồ thực thi và dòng thời gian.
+- [Event stream](/vi/agenteye/event-stream): theo dõi các sự kiện này đến real-time, được mã hóa màu và có thể lọc theo environment, agent, và session.
+- [Sessions](/vi/agenteye/sessions): xem cách các sự kiện được ghép nối tái tạo mỗi agent run dưới dạng một execution graph và timeline.

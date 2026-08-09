@@ -1,6 +1,6 @@
 ---
-title: Biến môi trường
-description: "Cấu hình hành vi failproofai bằng biến môi trường"
+title: Các biến môi trường
+description: "Cấu hình hành vi failproofai với các biến môi trường"
 ---
 
 ## Dashboard
@@ -8,26 +8,28 @@ description: "Cấu hình hành vi failproofai bằng biến môi trường"
 | Biến | Mô tả |
 |----------|-------------|
 | `PORT` | Cổng Dashboard (mặc định: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Ghi đè vị trí tìm kiếm thư mục dự án Claude Code |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Các trang Dashboard được ẩn, cách nhau bằng dấu phẩy |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Các máy chủ/IP được phép truy cập tài nguyên dev. Tương tự như `--allowed-origins`. |
+| `CLAUDE_PROJECTS_PATH` | Ghi đè vị trí tìm kiếm các thư mục dự án Claude Code |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Các trang dashboard cần ẩn, cách nhau bằng dấu phẩy |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Các máy chủ/IP được phép truy cập tài nguyên phát triển. Giống như `--allowed-origins`. |
 
 ## Logging
 
 | Biến | Mô tả |
 |----------|-------------|
-| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Mức độ log của máy chủ (mặc định: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Đường dẫn tệp log hook tùy chỉnh, hoặc `true` để sử dụng mặc định (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Mức độ ghi nhật ký máy chủ (mặc định: `warn`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Đường dẫn tệp nhật ký hook tùy chỉnh, hoặc `true` cho mặc định (`~/.failproofai/logs/hooks.log`) |
 
 ## Telemetry
 
-failproofai báo cáo telemetry sử dụng ẩn danh theo mặc định. Có hai cách để tắt nó, và chúng sẽ áp dụng cái hạn chế hơn — một biến môi trường không bao giờ có thể kích hoạt lại thứ gì đó mà tệp cấu hình đã tắt.
+failproofai báo cáo dữ liệu telemetry sử dụng ẩn danh theo mặc định. Có hai cách
+để tắt nó, và chúng sẽ áp dụng cái nào hạn chế hơn — một biến môi trường không
+bao giờ có thể bật lại điều gì mà tệp cấu hình đã tắt.
 
 | Biến | Mô tả |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Vô hiệu hóa telemetry sử dụng ẩn danh cho quy trình này |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Vô hiệu hóa dữ liệu telemetry sử dụng ẩn danh cho quy trình này |
 
-Để vô hiệu hóa nó vĩnh viễn cho máy, hãy thêm vào `~/.failproofai/config.toml`:
+Để vô hiệu hóa nó vĩnh viễn cho máy, thêm dòng này vào `~/.failproofai/config.toml`:
 
 ```toml
 [telemetry]
@@ -35,31 +37,31 @@ enabled = false
 ```
 
 <Note>
-Tệp cấu hình là tùy chọn được sử dụng nếu bạn chạy **failproofaid daemon**.
-Daemon là một dịch vụ có phạm vi hệ thống, và môi trường của nó không bao gồm
-các biến được xuất từ shell của bạn — vì vậy `FAILPROOFAI_TELEMETRY_DISABLED` không thể
-đến được nó. `[telemetry] enabled = false` được đọc bởi cả CLI và daemon.
+Tệp cấu hình là tùy chọn để sử dụng nếu bạn chạy **failproofaid daemon**.
+Daemon là một dịch vụ phạm vi hệ thống, và môi trường của nó không bao gồm
+các biến được xuất từ shell của bạn — vì vậy `FAILPROOFAI_TELEMETRY_DISABLED` không
+thể truy cập được. `[telemetry] enabled = false` được đọc bởi cả CLI và daemon.
 </Note>
 
-Daemon chỉ báo cáo **lifecycle** của nó: rằng nó đã khởi động (và liệu lần chạy trước có kết thúc sạch sẽ), rằng nó đã dừng, khi worker đánh giá của nó được sinh ra hoặc khởi động lại, khi một tác vụ collector bị lỗi, và kết quả của một lần kéo cloud-policy. Những thứ này mang các giá trị low-cardinality và các số lượng — không bao giờ là đường dẫn tệp, lệnh, chính sách, prompt, hoặc bất cứ thứ gì được đọc từ transcript. Không có sự kiện cho mỗi tool-call.
+Daemon chỉ báo cáo **vòng đời** của nó: rằng nó đã khởi động (và liệu lần chạy trước đó có thoát sạch hay không), rằng nó dừng lại, khi worker đánh giá của nó được tạo hoặc khởi động lại, khi một tác vụ bộ sưu tập thất bại, và kết quả của một lần lấy chính sách từ đám mây. Những cái này mang các giá trị cardinality thấp và số lượng — không bao giờ là đường dẫn tệp, lệnh, chính sách, lời nhắc, hoặc bất cứ điều gì được đọc từ bản ghi. Không có sự kiện cho mỗi lệnh gọi công cụ.
 
 ## Authentication
 
 | Biến | Mô tả |
 |----------|-------------|
-| `FAILPROOF_API_URL` | Ghi đè URL cơ sở api-server được sử dụng bởi hộp thoại xác thực dashboard. Mặc định là `https://api.befailproof.ai`; đặt thành `http://localhost:8080` (hoặc nơi khác) khi chạy api-server cục bộ. |
-| `FAILPROOFAI_AUTH_DIR` | Ghi đè vị trí lưu trữ `auth.json` (mặc định: `~/.failproofai`). Chủ yếu hữu ích cho các bài kiểm tra cô lập. |
+| `FAILPROOF_API_URL` | Ghi đè URL cơ sở máy chủ api được sử dụng bởi hộp thoại xác thực dashboard. Mặc định là `https://api.befailproof.ai`; đặt thành `http://localhost:8080` (hoặc nơi khác) khi chạy máy chủ api cục bộ. |
+| `FAILPROOFAI_AUTH_DIR` | Ghi đè vị trí lưu trữ `auth.json` (mặc định: `~/.failproofai`). Hầu như chỉ hữu ích cho các bài kiểm tra cô lập. |
 
-## Prompt lần chạy đầu tiên
+## Lời nhắc lần đầu tiên chạy
 
 | Biến | Mô tả |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Bỏ qua prompt cung cấp cài đặt chính sách trên lần gọi `failproofai` đầu tiên |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Bỏ qua lời nhắc mà nó cung cấp để cài đặt chính sách khi gọi `failproofai` đầu tiên một cách trực tiếp |
 
 ## LLM (để đánh giá chính sách)
 
 | Biến | Mô tả |
 |----------|-------------|
-| `FAILPROOFAI_LLM_BASE_URL` | Điểm cuối API LLM (mặc định: `https://api.openai.com/v1`) |
+| `FAILPROOFAI_LLM_BASE_URL` | Điểm cuối LLM API (mặc định: `https://api.openai.com/v1`) |
 | `FAILPROOFAI_LLM_API_KEY` | Khóa API cho các chính sách được hỗ trợ bởi LLM |
 | `FAILPROOFAI_LLM_MODEL` | Tên mô hình (mặc định: `gpt-4o-mini`) |

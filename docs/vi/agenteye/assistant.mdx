@@ -1,59 +1,59 @@
 ---
-title: "Trợ Lý AI"
-description: "Đặt câu hỏi về dữ liệu agent của bạn bằng tiếng Anh thông thường và nhận được câu trả lời có liên kết trực tiếp đến bằng chứng."
+title: "Trợ lý AI"
+description: "Đặt câu hỏi cho dữ liệu agent của bạn bằng tiếng Anh thông thường và nhận được câu trả lời có liên kết trực tiếp đến bằng chứng."
 ---
 
 
-Đặt câu hỏi về dữ liệu agent của bạn bằng tiếng Anh thông thường và nhận được câu trả lời có liên kết trực tiếp đến bằng chứng. Không cần viết SQL, không cần tìm kiếm qua các dashboard — trợ lý **Failproof AI Observability** là cách nhanh nhất để bất kỳ ai trong nhóm của bạn có thể nhận được câu trả lời về các agent của mình.
+Đặt câu hỏi cho dữ liệu agent của bạn bằng tiếng Anh thông thường và nhận được câu trả lời có liên kết trực tiếp đến bằng chứng. Không cần viết SQL, không cần xem qua các dashboard — **trợ lý Failproof AI Observability** là cách nhanh nhất để bất kỳ ai trong nhóm của bạn có thể nhận được câu trả lời về các agent của bạn.
 
-![Trợ lý Failproof AI Observability trả lời một câu hỏi bằng tiếng Anh thông thường trong dashboard, hiển thị bảng hoạt động Agent trực tiếp, bảng phân tích sử dụng mô hình từng agent và những phần kết luận được viết, cùng với các truy vấn mà nó đã chạy được hiển thị inline](/agenteye/images/assistant.png)
-*Hỏi bằng tiếng Anh thông thường và nhận được câu trả lời được xây dựng từ dữ liệu của riêng bạn. Ở đây nó phân tích các agent nào bận nhất và họ sử dụng những mô hình nào, đồng thời hiển thị các truy vấn mà nó đã chạy để bạn có thể xác minh từng con số.*
+![Trợ lý Failproof AI Observability trả lời một câu hỏi bằng tiếng Anh thông thường bên trong dashboard, hiển thị bảng Agent Activity trực tiếp, phân tích sử dụng mô hình theo từng agent và các nhận xét được viết, với các truy vấn nó chạy được hiển thị nội tuyến](/agenteye/images/assistant.png)
+*Hỏi bằng tiếng Anh thông thường và nhận được câu trả lời được xây dựng từ dữ liệu của riêng bạn. Tại đây nó phân tích những agent nào bận nhất và các mô hình họ sử dụng, đồng thời hiển thị các truy vấn nó chạy để bạn có thể xác minh từng con số.*
 
-Không có gì phải học. Mở cuộc trò chuyện, gõ những gì bạn muốn biết, và làm theo các liên kết mà nó gửi lại:
+Không có gì để học. Mở cuộc trò chuyện, nhập những gì bạn muốn biết, và theo dõi các liên kết nó cung cấp:
 
 ```
-Bạn:    những phiên nào gặp lỗi hôm nay?
-AI:     5 phiên gặp lỗi hôm nay, mới nhất trước. Mỗi cái đều có liên kết:
-        • checkout-agent   14:02   tool timeout
-        • billing-agent    11:47   unhandled error
-        • ...và 3 cái khác
+You:  which sessions errored today?
+AI:   5 sessions errored today, newest first. Each one is linked:
+      • checkout-agent   14:02   tool timeout
+      • billing-agent    11:47   unhandled error
+      • ...and 3 more
 
-Bạn:    tóm tắt phiên này          (hỏi khi đang xem một lần chạy)
-AI:     Lần chạy này có 12 bước trên 3 công cụ và thất bại gần phần cuối khi
-        công cụ thanh toán trả về lỗi. Nó có điểm thấp trên eval "resolved"
-        của bạn. Liên kết: phiên, sự kiện thất bại, và đánh giá đó.
+You:  summarize this session          (asked while viewing a run)
+AI:   This run took 12 steps across 3 tools and failed near the end when a
+      payment tool returned an error. It scored low on your "resolved" eval.
+      Links: the session, the failing event, and that evaluation.
 ```
 
-## Chỉ cần hỏi và nhảy thẳng đến bằng chứng
+## Chỉ cần hỏi, và nhảy thẳng đến bằng chứng
 
-Bạn không cần đoán và không cần viết truy vấn. Hỏi "chất lượng đang xu hướng như thế nào trong prod tuần này?", "những phiên nào gặp lỗi hôm nay?", hoặc "tóm tắt phiên này," và bạn sẽ nhận được câu trả lời thẳng trong vài giây thay vì phải xây dựng truy vấn và tự đọc nó.
+Bạn không còn phải đoán mò và bạn không cần phải viết các truy vấn. Hỏi "chất lượng đang xu hướng như thế nào trong prod tuần này?", "những session nào có lỗi hôm nay?" hoặc "tóm tắt session này," và bạn sẽ nhận được câu trả lời thẳng thắn trong vài giây thay vì xây dựng một truy vấn và tự đọc nó.
 
-Mỗi câu trả lời đều đi kèm với biên lai của nó. Trợ lý liên kết chính xác các phiên, truy vấn đã lưu và dashboard mà nó đã sử dụng để đạt được câu trả lời, vì vậy bạn có thể nhấp chuột và xác nhận thay vì tin lời nó. Nó cũng **nhận biết trang**: hỏi về "phiên này" khi bạn đang xem và nó đã biết bạn nói đến lần chạy nào. Mở lại bất kỳ cuộc trò chuyện nào trước đó từ công tắc lịch sử và tiếp tục từ nơi bạn dừng lại.
+Mỗi câu trả lời đều kèm theo chứng cứ của nó. Trợ lý liên kết các phiên chính xác, các truy vấn đã lưu và các dashboard mà nó sử dụng để đưa ra câu trả lời, vì vậy bạn có thể nhấp vào và xác nhận thay vì phải tin tưởng nó. Nó cũng **nhận biết trang**: hỏi về "session này" khi bạn đang xem một và nó đã biết bạn đang nói về phiên chạy nào. Mở lại bất kỳ cuộc trò chuyện trước đó nào từ trình chuyển đổi lịch sử và tiếp tục từ nơi bạn dừng lại.
 
-## Biến một câu trả lời tốt thành truy vấn đã lưu hoặc dashboard
+## Biến một câu trả lời tốt thành một truy vấn đã lưu hoặc dashboard
 
-Khi một câu trả lời đáng giá để giữ lại, yêu cầu trợ lý lưu nó. Nó soạn thảo SQL cho truy vấn đã lưu hoặc lắp ráp một dashboard từ những truy vấn đó, sau đó hiển thị cho bạn thẻ **Approve / Reject**. Không có gì được viết cho đến khi bạn nhấp Approve, vì vậy bạn có được tốc độ của "chỉ cần hỏi" với quyền quyết định cuối cùng luôn là của bạn.
+Khi một câu trả lời đáng giữ lại, hãy yêu cầu trợ lý lưu nó. Nó soạn thảo SQL cho một truy vấn đã lưu, hoặc lắp ráp một dashboard từ những truy vấn đó, sau đó hiển thị cho bạn một thẻ **Phê duyệt / Từ chối**. Không có gì được viết cho đến khi bạn nhấp vào Phê duyệt, vì vậy bạn nhận được tốc độ của cách "chỉ cần hỏi" với lời nói cuối cùng luôn là của bạn.
 
-Trên trang **Queries** nó đi xa hơn một bước và trở thành tác giả SQL: mô tả truy vấn bạn muốn ("hiển thị tỷ lệ lỗi theo agent cho 7 ngày qua") và nó sẽ phát trực tiếp SQL vào trình soạn thảo, mở chế độ xem diff để bạn có thể **Accept** hoặc **Reject** thay đổi trước khi nó được triển khai.
+Trên trang **Truy vấn**, nó đi xa hơn và trở thành một tác giả SQL: mô tả truy vấn bạn muốn ("hiển thị tỷ lệ lỗi theo agent cho 7 ngày qua") và nó luồng SQL trực tiếp vào trình chỉnh sửa, mở một chế độ xem diff để bạn có thể **Chấp nhận** hoặc **Từ chối** thay đổi trước khi nó được triển khai.
 
-![Trang Observability Queries và trình soạn thảo SQL của nó](/agenteye/images/query-lab.png)
-*Trang Queries: đây là nơi trợ lý phát một bản dự thảo truy vấn chỉ đọc để bạn chấp nhận hoặc từ chối.*
+![Trang Truy vấn Observability và trình chỉnh sửa SQL của nó](/agenteye/images/query-lab.png)
+*Trang Truy vấn: trình chỉnh sửa này là nơi trợ lý luồng một bản dự thảo truy vấn chỉ đọc để bạn chấp nhận hoặc từ chối.*
 
-Tác giả SQL bằng cách hỏi ở đây sử dụng quyền `queries:run`, cùng quyền đằng sau nút **Run** của trình soạn thảo. Chat ở mọi nơi khác cần `agent:use`.
+Soạn thảo SQL bằng cách hỏi ở đây sử dụng quyền `queries:run`, cùng quyền đằng sau nút **Chạy** của trình chỉnh sửa. Trò chuyện ở bất kỳ nơi nào khác cần `agent:use`.
 
 ## An toàn để trao cho toàn bộ nhóm
 
-Bạn có thể mở trợ lý cho mọi người mà không lo lắng nó có thể chạm vào điều gì:
+Bạn có thể mở trợ lý cho mọi người mà không lo lắng về những gì nó có thể chạm vào:
 
-- **Nó chỉ đọc những gì bạn đã có thể nhìn thấy.** Câu trả lời được xác định phạm vi theo quyền đọc của riêng bạn, vì vậy nó không bao giờ mở rộng bề mặt dữ liệu của bạn.
-- **Mỗi lần ghi đều chờ bạn.** Các truy vấn đã lưu và dashboard chỉ được tạo sau khi nhấp Approve rõ ràng của bạn, và không có cài đặt nào có thể tắt cổng đó.
+- **Nó chỉ đọc những gì bạn đã có thể nhìn thấy.** Câu trả lời được phạm vi đến các quyền đọc của riêng bạn, vì vậy nó không bao giờ mở rộng bề mặt dữ liệu của bạn.
+- **Mỗi ghi đều chờ bạn.** Các truy vấn đã lưu và dashboard chỉ được tạo sau khi bạn nhấp Phê duyệt rõ ràng, và không có cài đặt nào khiến cổng đó tắt.
 - **Nó không bao giờ có thể xóa bất cứ điều gì.** Không có công cụ xóa nào được hiển thị và trợ lý không có quyền xóa. Các lần xóa vẫn nằm trong tay bạn, trong dashboard.
-- **Nó vẫn ở bên trong tổ chức của bạn.** Trợ lý chỉ bao giờ nhìn thấy tổ chức bạn đang xem.
-- **Câu hỏi của bạn vẫn là của bạn.** Lời nhắc và câu trả lời sống trong cơ sở dữ liệu Observability của riêng bạn; phân tích sản phẩm chỉ ghi lại dữ liệu meta sử dụng, không bao giờ là văn bản lời nhắc của bạn.
+- **Nó ở bên trong tổ chức của bạn.** Trợ lý chỉ khi nào nhìn thấy tổ chức bạn đang xem.
+- **Các câu hỏi của bạn thuộc về bạn.** Các lời nhắc và câu trả lời sống trong cơ sở dữ liệu Observability của riêng bạn; phân tích sản phẩm chỉ ghi lại siêu dữ liệu sử dụng, không bao giờ là văn bản lời nhắc của bạn.
 
-## Nơi tìm nó
+## Nơi tìm thấy nó
 
-Trợ lý hoạt động dọc theo cạnh phải của mọi trang dưới org của bạn (`/<org-slug>/...`). Nhấp vào thanh, hoặc nhấn `⌘J` / `Ctrl+J`, để mở rộng nó thành bảng trò chuyện đầy đủ, và kéo cạnh của nó để thay đổi kích thước; chiều rộng của bạn sẽ được ghi nhớ khi tải lại. Bạn cần quyền **`agent:use`** để sử dụng nó, nếu không thanh sẽ bị tắt màu. Nếu nó chưa được bật cho triển khai của bạn (nó cần kết nối LLM), bạn sẽ thấy một thanh muted thay vì một cuộc trò chuyện hoạt động.
+Trợ lý chạy theo cạnh bên phải của mỗi trang dưới tổ chức của bạn (`/<org-slug>/...`). Nhấp vào thanh rail hoặc nhấn `⌘J` / `Ctrl+J`, để mở rộng nó thành bảng trò chuyện đầy đủ, và kéo cạnh của nó để thay đổi kích thước; chiều rộng của bạn được ghi nhớ qua các lần tải lại. Bạn cần quyền **`agent:use`** để sử dụng nó, nếu không thanh railing sẽ bị tắt màu. Nếu nó chưa được bật cho triển khai của bạn (nó cần kết nối LLM), bạn sẽ thấy một railing bị muted thay cho một trò chuyện hoạt động.
 
 ## Liên quan
 

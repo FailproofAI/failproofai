@@ -1,41 +1,41 @@
 ---
-title: "Theo dõi lỗi"
-description: "Xem mọi lỗi mà các agent của bạn tạo ra ở một nơi, được nhóm lại để một loạt lỗi liên tiếp được hiển thị như một vấn đề duy nhất."
+title: "Theo Dõi Lỗi"
+description: "Xem mọi lỗi mà các agent của bạn tạo ra ở một nơi, được nhóm lại sao cho một loạt lỗi liên tiếp được hiển thị dưới dạng một vấn đề duy nhất."
 ---
 
 
-Xem mọi lỗi mà các agent của bạn tạo ra ở một nơi, được nhóm lại để một loạt lỗi liên tiếp được hiển thị như một vấn đề duy nhất. Bạn có đường dẫn một cú nhấp chuột từ "có gì đó hiển thị màu đỏ" đến chính xác run bị lỗi, mà không cần cuộn qua một luồng sự kiện trực tiếp để tìm thấy nó.
+Xem mọi lỗi mà các agent của bạn tạo ra ở một nơi, được nhóm lại sao cho một loạt lỗi liên tiếp được hiển thị dưới dạng một vấn đề duy nhất. Bạn có được một đường dẫn chỉ cần một cú nhấp chuột từ "cái gì đó là màu đỏ" đến lần chạy chính xác đã gây ra sự cố, mà không cần phải cuộn qua dòng sự kiện để tìm nó.
 
-![Trang Lỗi: biểu đồ cột lỗi theo thời gian ở phía trên, với các dòng lỗi màu đỏ được nhóm lại, mỗi dòng có nút "+ alert" có thể nhấp một lần](/agenteye/images/errors.png)
-*Trang Lỗi: biểu đồ cột lỗi theo thời gian, với các lỗi lặp lại được thu gọn thành một dòng cho mỗi sự cố.*
+![Trang Errors: một biểu đồ tần suất của các lỗi theo thời gian ở phía trên, với các hàng lỗi màu đỏ được nhóm lại, mỗi hàng có một nút "+ alert" chỉ cần một cú nhấp chuột](/agenteye/images/errors.png)
+*Trang Errors: một biểu đồ tần suất của các lỗi theo thời gian, với các lỗi lặp lại được thu gọn thành một hàng cho mỗi sự cố.*
 
 ## Mọi lỗi đã được thu thập cho bạn
 
-Khi một agent bị lỗi, bạn không nên phải cuộn qua một luồng sự kiện trực tiếp với hy vọng bắt được các dòng màu đỏ trước khi chúng cuộn ra khỏi tầm nhìn. Trang **Errors** thực hiện việc thu thập cho bạn. Nó tập hợp mọi thứ mà bảng điều khiển sẽ hiển thị màu đỏ vào một bề mặt phân loại, vì vậy điều đầu tiên bạn thấy là cái gì bị lỗi, chứ không phải nơi để tìm kiếm nó.
+Khi một agent gặp sự cố, bạn không nên phải cuộn qua một dòng sự kiện trực tiếp và hy vọng bắt được các hàng màu đỏ trước khi chúng cuộn khỏi màn hình. Trang **Errors** sẽ thu thập dữ liệu cho bạn. Nó kéo tất cả những gì bảng điều khiển sẽ hiển thị dưới dạng màu đỏ vào một bề mặt phân loại, vì vậy điều đầu tiên bạn thấy là những gì đang gây ra lỗi, không phải nơi cần tìm kiếm.
 
-Và nó bắt được nhiều hơn những cái rõ ràng. Cùng với các sự kiện `error` rõ ràng, Failproof AI Observability cũng công khai các lỗi yên tĩnh: bất kỳ `tool_result`, `hook_completed`, hoặc `agent_end` nào có payload chứa một lỗi đều xuất hiện ở đây. Một công cụ trả về lỗi, hoặc một hook thoát kém, không còn trượt qua bạn chỉ vì không có gì ném ra một ngoại lệ lớn.
+Và nó phát hiện được nhiều hơn những lỗi hiển nhiên. Cùng với các sự kiện `error` rõ ràng, Failproof AI Observability cũng hiển thị những lỗi yên tĩnh: bất kỳ `tool_result`, `hook_completed`, hoặc `agent_end` nào có payload chứa lỗi sẽ xuất hiện ở đây. Một tool đã trả về lỗi, hoặc một hook đã thoát kém, sẽ không còn thoát khỏi bạn vì không có ngoại lệ lớn nào được ném ra.
 
-Trên cùng, một biểu đồ cột biểu thị lỗi theo thời gian. Một cái nhìn cho bạn biết đây là một dòng nền ổn định hay một sự tăng vọt bắt đầu vài phút trước, vì vậy bạn biết ngay liệu có nên dừng những gì bạn đang làm hay không.
+Ở phía trên, một biểu đồ tần suất vẽ các lỗi theo thời gian. Một cái nhìn sơ qua cho bạn biết đây có phải là một dòng nền ổn định hay một đỉnh bắt đầu vài phút trước đây, vì vậy bạn biết ngay lập tức liệu có nên dừng công việc của mình hay không.
 
-Giống như mọi bề mặt observe, trang Errors được phạm vi tổ chức của bạn và lọc theo phạm vi ngày, môi trường, agent và phiên. Điều đó có nghĩa là bạn có thể lấy danh sách toàn bộ hfleet và thu hẹp nó xuống agent hoặc môi trường duy nhất mà bạn thực sự quan tâm.
+Giống như mọi bề mặt observe, trang Errors được phạm vi trong tổ chức của bạn và lọc theo phạm vi ngày, môi trường, agent và phiên. Điều đó có nghĩa là bạn có thể lấy một danh sách toàn bộ fleet và thu hẹp nó thành một agent hoặc một môi trường mà bạn thực sự quan tâm.
 
-## Một sự cố, không phải một trăm dòng giống hệt nhau
+## Một sự cố, không phải trăm hàng giống nhau
 
-Một phụ thuộc bị hỏng duy nhất có thể kích hoạt cùng một lỗi hàng trăm lần một phút. Để lại ở trạng thái thô, đó là một bức tường các dòng gần như giống hệt nhau làm che khuất một điều bạn thực sự cần phải thấy.
+Một phụ thuộc bị hỏng duy nhất có thể phát hành cùng một lỗi hàng trăm lần mỗi phút. Để nguyên, đó là một bức tường gần giống hệt nhau làm che khuất điều duy nhất bạn thực sự cần nhìn thấy.
 
-Failproof AI Observability thu gọn các lỗi lặp lại có cùng phiên và loại lỗi thành một dòng duy nhất. Một loạt lỗi được đọc như một sự cố. Bạn kết thúc việc đếm các vấn đề, không phải các dòng nhật ký, và tín hiệu quan trọng vẫn ở trên cùng thay vì bị chìm khuất bởi khối lượng của chính nó.
+Failproof AI Observability thu gọn các lỗi lặp lại có cùng phiên và loại lỗi thành một hàng duy nhất. Một loạt lỗi được đọc dưới dạng một sự cố. Bạn kết thúc bằng việc đếm các vấn đề, không phải các dòng nhật ký, và tín hiệu quan trọng ở trên cùng thay vì bị dìm xuống do khối lượng của nó.
 
-## Từ "có gì đó hiển thị màu đỏ" đến sự kiện chính xác
+## Từ "cái gì đó là màu đỏ" đến sự kiện chính xác
 
-Nhấp vào bất kỳ dòng nào để hạ cánh trực tiếp bên trong phiên của run đó, được định vị trên sự kiện chính xác bị lỗi. Không cần sao chép ID phiên, không cần cuộn để tìm kiếm khoảnh khắc nó bị lỗi: bạn hạ cánh đúng trên nó, với biểu đồ thực thi đầy đủ chỉ cần nhìn qua để bạn có thể thấy agent đã làm gì trong những khoảnh khắc trước khi nó bị lỗi.
+Nhấp vào bất kỳ hàng nào để hạ cánh thẳng vào phiên chạy của nó, được định vị trên sự kiện chính xác đã gây ra lỗi. Không cần sao chép ID phiên, không cần cuộn để tìm thời điểm nó xảy ra sự cố: bạn sẽ hạ cánh ngay trên đó, với toàn bộ biểu đồ thực thi chỉ cần một cái nhìn sơ qua để bạn có thể thấy những gì agent đã làm trong những khoảnh khắc trước khi nó gặp sự cố.
 
-Nếu bạn có `alerts:write`, mỗi dòng cũng có nút **+ alert**. Nhấp vào nó và Observability mở một quy tắc cảnh báo mới đã được điền sẵn để bắt cùng một lỗi đó một lần nữa. Sự cố bạn vừa phân loại trở thành cái sẽ cảnh báo cho bạn vào lần tới, thay vì làm bạn ngạc nhiên hai lần.
+Nếu bạn có quyền `alerts:write`, mọi hàng cũng đều có một nút **+ alert**. Nhấp vào nó và Observability sẽ mở một quy tắc cảnh báo mới đã được điền để bắt được cùng một lỗi đó lần tiếp theo. Sự cố bạn vừa phân loại sẽ trở thành cái sẽ trang bị cho bạn lần tới, thay vì làm bạn ngạc nhiên hai lần.
 
-**Nơi tìm thấy:** trang **Errors** nằm trong phần observe của bảng điều khiển, tại `/<org-slug>/errors`.
+**Nơi để tìm nó:** trang **Errors** nằm trong phần observe của bảng điều khiển, tại `/<org-slug>/errors`.
 
 ## Liên quan
 
-- [Alerts](/vi/agenteye/alerts): chuyển bất kỳ lỗi nào thành quy tắc cảnh báo.
-- [Incidents](/vi/agenteye/incidents): theo dõi một cảnh báo bắn từ khi mở đến khi giải quyết.
-- [Sessions](/vi/agenteye/sessions): mở đầy đủ run đằng sau bất kỳ lỗi nào.
-- [Audits](/vi/agenteye/audits): cho phép Observability tìm các mẫu lỗi trên các run của bạn cho bạn.
+- [Alerts](/vi/agenteye/alerts): biến bất kỳ lỗi nào thành một quy tắc trang bị.
+- [Incidents](/vi/agenteye/incidents): theo dõi một cảnh báo phát hành từ mở cho đến giải quyết.
+- [Sessions](/vi/agenteye/sessions): mở lần chạy đầy đủ đằng sau bất kỳ lỗi nào.
+- [Audits](/vi/agenteye/audits): để Observability tìm các mẫu lỗi trên các lần chạy của bạn cho bạn.

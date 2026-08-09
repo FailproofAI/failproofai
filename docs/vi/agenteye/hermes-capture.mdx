@@ -1,53 +1,53 @@
 ---
 title: "Hermes session capture"
-description: "Đưa các phiên Hermes gateway của team bạn — Slack, Telegram, CLI, và scheduled runs — vào AgentEye dưới dạng các phiên và sự kiện thông thường."
+description: "Đưa các phiên Hermes gateway của nhóm bạn — Slack, Telegram, CLI, và các lần chạy theo lịch — vào AgentEye dưới dạng các phiên và sự kiện thông thường."
 ---
 
-[Hermes](https://hermes-agent.nousresearch.com) trả lời team bạn từ bất kỳ nơi nào họ đang làm việc — Slack, Telegram, CLI, scheduled runs. Hermes session capture đưa tất cả chúng vào AgentEye dưới dạng các phiên và sự kiện thông thường, vì vậy trợ lý mà team bạn nói chuyện hàng ngày cũng có thể quan sát được giống như các agent bạn viết.
+[Hermes](https://hermes-agent.nousresearch.com) trả lời nhóm bạn từ bất kỳ nơi nào họ đã làm việc — Slack, Telegram, CLI, các lần chạy theo lịch. Hermes session capture đưa tất cả vào AgentEye dưới dạng các phiên và sự kiện thông thường, vì vậy trợ lý mà nhóm bạn trao đổi hàng ngày có thể quan sát được như các agent mà bạn viết.
 
-Một bộ thu thập nền nhỏ đọc local session store của Hermes khi nó được ghi và gửi các phiên đến AgentEye. Nó hoạt động giống cách [Codex](/vi/agenteye/codex-capture) và [OpenClaw](/vi/agenteye/openclaw-capture) capture, và một bộ thu thập có thể capture nhiều cái cùng lúc.
-
----
-
-## Nó capture gì
-
-Mỗi phiên Hermes trên máy đều được capture, bất kể nó đến từ kênh nào. Mỗi cái trở thành một [phiên](/vi/agenteye/sessions) AgentEye; các tin nhắn của người dùng và trợ lý, lệnh gọi công cụ, và kết quả công cụ trở thành các [sự kiện](/vi/agenteye/event-stream) phù hợp.
-
-Kênh mà phiên bắt đầu — Slack, Telegram, CLI, hoặc scheduled run — được ghi nhận trên phiên, vì vậy bạn có thể phân biệt chúng và lọc chỉ một cái. Cùng với đó là model mà phiên chạy trên, cuộc trò chuyện và người bắt đầu nó, và, khi một phiên sinh ra phiên khác, liên kết trở lại phiên cha của nó.
-
-Các phiên xuất hiện ngay khi Hermes bắt đầu chúng, bất kể có gì được nói hay không, và câu trả lời của một lượt và các lệnh gọi công cụ của nó vẫn giữ nguyên thứ tự chúng thực sự xảy ra. Khi một phiên kết thúc, bạn cũng nhận được lý do tại sao nó kết thúc, chi phí của nó, và bao nhiêu token nó đã sử dụng.
+Một trình thu thập nền nhỏ đọc kho lưu trữ phiên cục bộ của Hermes khi nó được ghi và gửi các phiên đến AgentEye. Nó hoạt động theo cách tương tự như [Codex](/vi/agenteye/codex-capture) và [OpenClaw](/vi/agenteye/openclaw-capture) capture, và một trình thu thập có thể nắm bắt được nhiều cái cùng một lúc.
 
 ---
 
-## Bật nó
+## Nó nắm bắt cái gì
 
-Capture bị tắt cho đến khi bạn bật nó. Cài đặt bộ thu thập với API key có quyền `events:add` (xem [API keys](/vi/agenteye/api-keys)), và bật Hermes capture:
+Mọi phiên Hermes trên máy đều được nắm bắt, bất kể nó đến từ kênh nào. Mỗi phiên trở thành một [phiên](/vi/agenteye/sessions) AgentEye; các thông điệp của người dùng và trợ lý, lệnh gọi công cụ và kết quả công cụ trở thành các [sự kiện](/vi/agenteye/event-stream) phù hợp.
+
+Kênh mà phiên bắt đầu từ — Slack, Telegram, CLI, hoặc một lần chạy theo lịch — được ghi lại trên phiên, vì vậy bạn có thể phân biệt chúng và lọc từng cái một. Cùng với đó là mô hình mà phiên chạy trên đó, cuộc trò chuyện và người bắt đầu nó, và khi một phiên sinh ra một phiên khác, liên kết trở lại cha mẹ của nó.
+
+Các phiên xuất hiện ngay khi Hermes bắt đầu chúng, cho dù có gì được nói hay không, và các lượt trả lời và lệnh gọi công cụ của nó vẫn giữ nguyên theo thứ tự chúng thực sự xảy ra. Khi một phiên kết thúc, bạn cũng nhận được lý do tại sao nó kết thúc, nó có chi phí bao nhiêu và nó sử dụng bao nhiêu token.
+
+---
+
+## Bật nó lên
+
+Capture bị tắt cho đến khi bạn bật nó. Cài đặt trình thu thập bằng một khóa API có quyền `events:add` (xem [API keys](/vi/agenteye/api-keys)) và bật Hermes capture:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --hermes-enabled
 ```
 
-Điều đó cài đặt bộ thu thập, đăng ký nó như một dịch vụ nền, và bắt đầu capturing. Xác nhận nó đang chạy:
+Điều đó cài đặt trình thu thập, đăng ký nó như một dịch vụ nền và bắt đầu nắm bắt. Xác nhận rằng nó đang chạy:
 
 ```bash
 agenteye-collector health
 ```
 
-Capturing nhiều hơn một agent trên cùng một máy? Thêm cờ của mỗi cái vào cùng một lệnh — ví dụ `--hermes-enabled --codex-enabled`.
+Nắm bắt nhiều hơn một agent trên cùng một máy? Thêm cờ của mỗi cái vào cùng một lệnh — ví dụ `--hermes-enabled --codex-enabled`.
 
-Lần chạy đầu tiên, các phiên Hermes hiện có của bạn được backfill một lần và hoạt động mới sau đó stream trong vòng vài giây. Dữ liệu của chính Hermes chỉ được đọc — không bao giờ được sửa đổi hoặc xóa — và mỗi tin nhắn được gửi một lần, ngay cả khi restart.
+Lần chạy đầu tiên, các phiên Hermes hiện có của bạn sẽ được backfill một lần và hoạt động mới sau đó sẽ phát trực tuyến trong vòng vài giây. Dữ liệu của chính Hermes chỉ được đọc — không bao giờ được sửa đổi hoặc xóa — và mỗi thông điệp được gửi một lần, thậm chí qua các lần khởi động lại.
 
-`health` cũng cho bạn biết liệu mọi thứ mà bộ thu thập capture có thực sự đến AgentEye hay không. Nếu một batch không thể được gửi, nó được giữ lại và thử lại thay vì bị loại bỏ, và kiểm tra báo cáo unhealthy trong khi bất cứ điều gì vẫn còn đang chờ xử lý — vì vậy "healthy" có nghĩa là dữ liệu của bạn đã tới, không chỉ là quá trình còn sống.
+`health` cũng cho bạn biết liệu mọi thứ mà trình thu thập nắm bắt có thực sự đến AgentEye không. Nếu một lô không thể được gửi, nó sẽ được giữ lại và thử lại thay vì bị loại bỏ, và kiểm tra báo cáo không lành mạnh khi có bất kỳ thứ gì vẫn còn tồn tại — vì vậy "lành mạnh" có nghĩa là dữ liệu của bạn đã tới, không chỉ là quá trình vẫn còn hoạt động.
 
 ---
 
 ## Nó xuất hiện ở đâu
 
-Các phiên được capture xuất hiện trong **Sessions**, và các sự kiện của chúng trong **Events** stream, giống như bất kỳ agent nào khác bạn quan sát — vì vậy [session replay](/vi/agenteye/sessions), [search](/vi/agenteye/queries), [evaluations](/vi/agenteye/evaluations), và [alerts](/vi/agenteye/alerts) đều hoạt động trên chúng. Lọc theo agent Hermes để xem chúng riêng.
+Các phiên được nắm bắt xuất hiện trong **Sessions** và các sự kiện của chúng trong luồng **Events**, giống như bất kỳ agent nào khác mà bạn quan sát — vì vậy [session replay](/vi/agenteye/sessions), [search](/vi/agenteye/queries), [evaluations](/vi/agenteye/evaluations) và [alerts](/vi/agenteye/alerts) đều hoạt động trên chúng. Lọc theo agent Hermes để xem chúng một mình.
 
 ---
 
-## Bảo mật
+## Quyền riêng tư
 
-Các phiên Hermes chứa toàn bộ transcript — bao gồm command output, nội dung tệp, và bất cứ thứ gì agent đã đọc hoặc viết — và có thể chứa secrets. Các phiên được capture được gửi nguyên trạng, vì vậy chỉ bật capture nơi tập trung nội dung đó trong AgentEye là thích hợp, và cấp cho bộ thu thập một key có phạm vi chỉ `events:add`. Xem [Security](/vi/agenteye/security) để biết dữ liệu của bạn được giữ cách ly như thế nào.
+Các phiên Hermes chứa toàn bộ bản ghi — bao gồm đầu ra lệnh, nội dung tệp và bất kỳ thứ gì agent đã đọc hoặc ghi — và có thể chứa các bí mật. Các phiên được nắm bắt được gửi nguyên trạng, vì vậy chỉ bật capture khi tập trung nội dung đó trong AgentEye là thích hợp và cung cấp cho trình thu thập một khóa có phạm vi chỉ `events:add`. Xem [Security](/vi/agenteye/security) để biết cách dữ liệu của bạn được giữ cách ly.

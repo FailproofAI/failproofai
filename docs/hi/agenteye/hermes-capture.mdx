@@ -1,53 +1,53 @@
 ---
 title: "Hermes session capture"
-description: "अपनी टीम के Hermes gateway सेशन — Slack, Telegram, CLI, और शेड्यूल किए गए रन — को AgentEye में साधारण सेशन और events के रूप में लाएं।"
+description: "अपनी टीम के Hermes gateway sessions — Slack, Telegram, CLI, और scheduled runs — को AgentEye में ordinary sessions और events के रूप में लाएं।"
 ---
 
-[Hermes](https://hermes-agent.nousresearch.com) आपकी टीम को जहां भी वे पहले से काम कर रहे हैं वहां से जवाब देता है — Slack, Telegram, CLI, शेड्यूल किए गए रन। Hermes session capture सभी को AgentEye में साधारण सेशन और events के रूप में लाता है, इसलिए आपकी टीम जो असिस्टेंट हर दिन से बात करती है वह उतना ही अवलोकनीय है जितना कि agents जो आप स्वयं लिखते हैं।
+[Hermes](https://hermes-agent.nousresearch.com) आपकी टीम को उन्हीं जगहों से जवाब देता है जहाँ वे पहले से काम करते हैं — Slack, Telegram, CLI, scheduled runs। Hermes session capture इन सभी को AgentEye में ordinary sessions और events के रूप में लाता है, इसलिए जिस assistant से आपकी टीम रोज बात करती है, वह उतना ही observable है जितना कि agents जो आप खुद लिखते हैं।
 
-एक छोटा background collector Hermes के local session store को पढ़ता है जैसे-जैसे वह लिखा जाता है और सेशन को AgentEye को भेजता है। यह [Codex](/hi/agenteye/codex-capture) और [OpenClaw](/hi/agenteye/openclaw-capture) capture के समान तरीके से काम करता है, और एक collector कई को एक साथ capture कर सकता है।
+एक छोटा background collector Hermes के local session store को पढ़ता है जैसे-जैसे वह लिखा जाता है और sessions को AgentEye में भेजता है। यह [Codex](/hi/agenteye/codex-capture) और [OpenClaw](/hi/agenteye/openclaw-capture) capture के समान तरीके से काम करता है, और एक collector एक साथ कई को capture कर सकता है।
 
 ---
 
 ## यह क्या capture करता है
 
-मशीन पर प्रत्येक Hermes सेशन capture किया जाता है, चाहे वह किसी भी channel से आया हो। हर एक एक AgentEye [session](/hi/agenteye/sessions) बन जाता है; इसके user और assistant messages, tool calls, और tool results संबंधित [events](/hi/agenteye/event-stream) बन जाते हैं।
+Machine पर हर Hermes session capture होता है, चाहे वह किसी भी channel से आया हो। प्रत्येक एक AgentEye [session](/hi/agenteye/sessions) बन जाता है; इसके user और assistant messages, tool calls, और tool results संबंधित [events](/hi/agenteye/event-stream) बन जाते हैं।
 
-जिस channel से सेशन शुरू हुआ था — Slack, Telegram, CLI, या एक शेड्यूल किया गया रन — सेशन पर दर्ज किया जाता है, इसलिए आप उन्हें अलग कर सकते हैं और एक बार में एक को filter कर सकते हैं। इसके साथ वह model भी आता है जिस पर सेशन चला था, वह chat और person जिससे वह शुरू हुआ था, और, जब कोई सेशन दूसरे को जन्म देता है, तो अपने parent के लिए वापस की गई link।
+जिस channel से session शुरू हुआ था — Slack, Telegram, CLI, या scheduled run — वह session पर record होता है, ताकि आप उन्हें अलग बता सकें और एक बार में एक को filter कर सकें। इसके साथ वह model भी आता है जिस पर session चला, chat और व्यक्ति जिससे यह शुरू हुआ था, और जब session ने दूसरा spawn किया था, तो अपने parent के साथ link।
 
-सेशन तुरंत दिखाई देते हैं जब Hermes उन्हें शुरू करता है, चाहे कुछ भी कहा गया हो या नहीं, और एक turn का reply और इसके tool calls वास्तव में जैसे-जैसे घटित हुए हैं उसी क्रम में रहते हैं। जब सेशन समाप्त होता है तो आप यह भी देखते हैं कि यह क्यों समाप्त हुआ, इसकी cost क्या थी, और इसने कितने tokens का उपयोग किया।
+Sessions तुरंत दिखाई देते हैं जब Hermes उन्हें शुरू करता है, चाहे कुछ कहा गया हो या नहीं, और एक turn का reply और इसके tool calls वही क्रम में रहते हैं जिस क्रम में वे वास्तव में घटे। जब session समाप्त होता है, तो आप यह भी जानते हैं कि इसे क्यों समाप्त किया गया, इसकी cost क्या थी, और इसने कितने tokens का उपयोग किया।
 
 ---
 
 ## इसे चालू करें
 
-Capture तब तक बंद रहता है जब तक आप इसे सक्षम न करें। `events:add` permission वाली एक API key के साथ collector को install करें (देखें [API keys](/hi/agenteye/api-keys)), और Hermes capture को चालू करें:
+Capture तब तक off रहता है जब तक आप इसे enable न करें। `events:add` permission वाली API key के साथ collector install करें (देखें [API keys](/hi/agenteye/api-keys)), और Hermes capture चालू करें:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --hermes-enabled
 ```
 
-यह collector को install करता है, इसे background service के रूप में register करता है, और capturing शुरू करता है। पुष्टि करें कि यह चल रहा है:
+यह collector को install करता है, इसे background service के रूप में register करता है, और capturing शुरू करता है। confirm करें कि यह चल रहा है:
 
 ```bash
 agenteye-collector health
 ```
 
-एक ही मशीन पर एक से अधिक agent को capture कर रहे हैं? प्रत्येक के flag को समान command में जोड़ें — उदाहरण के लिए `--hermes-enabled --codex-enabled`।
+एक ही machine पर एक से अधिक agent capture कर रहे हैं? उसी command में प्रत्येक का flag जोड़ें — उदाहरण के लिए `--hermes-enabled --codex-enabled`।
 
-पहली run पर, आपके मौजूदा Hermes सेशन एक बार backfill किए जाते हैं और नई activity फिर कुछ सेकंड के भीतर stream होती है। Hermes के अपने data को केवल पढ़ा जाता है — कभी संशोधित या हटाया नहीं जाता — और प्रत्येक message एक बार भेजा जाता है, यहां तक कि restarts के दौरान भी।
+पहली बार run करने पर, आपके मौजूदा Hermes sessions एक बार backfill होते हैं और नई activity फिर कुछ सेकंड में stream होती है। Hermes के अपने data को केवल read किया जाता है — कभी modify या delete नहीं किया जाता — और प्रत्येक message एक बार shipped होता है, restarts के बीच भी।
 
-`health` आपको यह भी बताता है कि collector ने जो कुछ capture किया वह वास्तव में AgentEye तक पहुंचा या नहीं। यदि batch को deliver नहीं किया जा सका तो यह keep किया जाता है और फिर से retry किया जाता है न कि discarded किया जाता है, और check तब तक unhealthy report करता है जब तक कुछ outstanding है — इसलिए "healthy" का मतलब है कि आपका data पहुंचा, बस यह नहीं कि process alive है।
+`health` आपको यह भी बताता है कि क्या collector द्वारा capture किया गया सभी कुछ वास्तव में AgentEye तक पहुंचा। यदि कोई batch deliver नहीं हो सकती तो वह keep की जाती है और retry की जाती है, discard नहीं की जाती, और check unhealthy report करता है जब तक कुछ outstanding है — तो "healthy" का मतलब है कि आपका data पहुंचा, केवल यह नहीं कि process alive है।
 
 ---
 
-## यह कहां दिखाई देता है
+## यह कहाँ दिखाई देता है
 
-Captured सेशन **Sessions** में दिखाई देते हैं, और उनके events **Events** stream में, किसी अन्य agent की तरह जिसे आप observe करते हैं — तो [session replay](/hi/agenteye/sessions), [search](/hi/agenteye/queries), [evaluations](/hi/agenteye/evaluations), और [alerts](/hi/agenteye/alerts) सभी उन पर काम करते हैं। Hermes agent द्वारा filter करें ताकि उन्हें अलग से देखें।
+Captured sessions **Sessions** में दिखाई देते हैं, और उनकी events **Events** stream में, किसी भी अन्य agent के समान जिसे आप observe करते हैं — तो [session replay](/hi/agenteye/sessions), [search](/hi/agenteye/queries), [evaluations](/hi/agenteye/evaluations), और [alerts](/hi/agenteye/alerts) सभी उन पर काम करते हैं। उन्हें अकेले देखने के लिए Hermes agent द्वारा filter करें।
 
 ---
 
 ## गोपनीयता
 
-Hermes sessions में पूरी transcript होती है — command output, file contents सहित, और कुछ भी जो agent ने read या write किया — और इसमें secrets हो सकते हैं। Captured sessions को as-is भेजा जाता है, इसलिए capture को केवल तभी सक्षम करें जब वह content को AgentEye में centralize करना appropriate हो, और collector को एक key दें जो केवल `events:add` के लिए scoped हो। देखें [Security](/hi/agenteye/security) कि आपका data कैसे isolated रखा जाता है।
+Hermes sessions में पूरा transcript होता है — command output, file contents, और कुछ भी जो agent ने read या write किया — और इसमें secrets हो सकते हैं। Captured sessions as-is shipped होते हैं, इसलिए capture केवल उन जगहों पर enable करें जहाँ उस content को AgentEye में centralize करना उपयुक्त हो, और collector को `events:add` तक scoped की गई key दें। देखें [Security](/hi/agenteye/security) कि आपके data को कैसे isolated रखा जाता है।

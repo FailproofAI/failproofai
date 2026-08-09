@@ -3,170 +3,170 @@ title: "API Anahtarları"
 description: "API anahtarları, Failproof AI Observability sunucunuza kimin ve neyin erişebileceğini kontrol eder; böylece bir toplayıcı, hiçbir zaman okuma veya yönetici yetkisi kazanmadan olayları gönderebilir."
 ---
 
-API anahtarları, Failproof AI Observability sunucunuza kimin ve neyin erişebileceğini kontrol eder; böylece bir toplayıcı, hiçbir zaman okuma veya yönetici yetkisi kazanmadan olayları gönderebilir. Her anahtar bir veya daha fazla izne sahiptir ve her izin belirli sunucu rotalarını kontrol eder; yalnızca bir işin ihtiyaç duyduğu birkaç izni verirsiniz. Çoğu dağıtım yalnızca üç tür anahtar oluşturur.
+API anahtarları, Failproof AI Observability sunucunuza kimin ve neyin erişebileceğini kontrol eder; böylece bir toplayıcı, hiçbir zaman okuma veya yönetici yetkisi kazanmadan olayları gönderebilir. Her anahtar bir veya daha fazla izne sahiptir ve her izin belirli sunucu rotalarını korur; yalnızca bir işin ihtiyaç duyduğu kadarını verirsiniz. Çoğu dağıtım sadece üç tür anahtar oluşturur.
 
 ## Çoğu dağıtımın ihtiyaç duyduğu 3 anahtar
 
-| Anahtar | İzinler | Kullanıcı |
+| Anahtar | İzinler | Kullananlar |
 |---|---|---|
-| Toplayıcı anahtarı | `events:add` | Her agent makinesindeki `agenteye-collector`, olayları göndermek için. |
+| Toplayıcı anahtarı | `events:add` | Her ajan makinesindeki `agenteye-collector`, olayları göndermek için. |
 | Pano okuma anahtarı | `events:read`, `keys:read` | Verileri değiştirmeden sorgulayan salt okunur operatör veya entegrasyon. |
-| Bootstrap yönetici anahtarı | tüm izinler | Örneği ilk kez başlatan operatör (ve pano). `ADMIN_KEY` ortam değişkeninden alınır. Bkz. [Bootstrap yönetici anahtarı](#bootstrap-yönetici-anahtarı). |
+| Önyükleme yönetici anahtarı | tüm izinler | İlk olarak örneği başlatan operatör (ve pano). `ADMIN_KEY` ortam değişkeninden sağlanır. Bkz. [Önyükleme yönetici anahtarı](#önyükleme-yönetici-anahtarı). |
 
-Buradan başlayın. Daha dar, özel kapsamlı bir anahtar gerektiğinde aşağıdaki tam izin kataloguna başvurun. Ayrıca bkz. [Önerilen anahtar düzeni](#önerilen-anahtar-düzeni) ve [Anahtar oluşturma](#anahtar-oluşturma).
+Buradan başlayın. Daha dar, özel kapsamlı bir anahtar gerektiğinde, aşağıdaki tam izin kataloğuna gidin. Ayrıca bkz. [Önerilen anahtar düzeni](#önerilen-anahtar-düzeni) ve [Anahtarlar oluşturma](#anahtarlar-oluşturma).
 
 ---
 
 ## İzinler
 
-Sunucu sabit bir izin kataloğunu uygular; her biri belirli HTTP rotalarını kontrol eder. Bir **yönetici anahtarı** tümünü içerir; kapsamlı bir anahtar oluşturmada verdiğiniz alt kümeyi içerir. Bilinmeyen izin dizeleri, bir anahtar oluşturulduğunda reddedilir.
+Sunucu sabit bir izin kataloğu uygular; her biri belirli HTTP rotalarını korur. Bir **yönetici anahtarı** tümünü içerir; kapsamlı bir anahtar, oluşturmada verdiğiniz alt kümesini içerir. Bilinmeyen izin dizeleri, bir anahtar oluşturulduğunda reddedilir.
 
-> **Not:** İki geçerli izin insan/pano-yalnız izinlerdir ve API anahtarına verilemez: `orgs:admin` (örnek yönetimi, yalnızca operatör) ve `keys:update`. `POST /keys` veya `PATCH /keys/:id` işleminde birini vermeye çalışan bir istek HTTP 422 ile reddedilir. Bir taşıyıcı anahtarının neden anahtar oluşturabileceği ama asla düzenleyemeyeceği hakkında bilgi için aşağıdaki `keys:update` satırına bakın.
+> **Not:** İki geçerli izin, insan/pano-yalnız ve bir API anahtarına verilemez: `orgs:admin` (örnek yönetimi, sadece operatör için) ve `keys:update`. `POST /keys` veya `PATCH /keys/:id` isteğinin bunlardan birini vermeye çalışması, HTTP 422 ile reddedilir. Bir taşıyıcı anahtarın anahtarlar oluşturabileceği ancak hiçbir zaman düzenleyemeyeceği nedenini anlamak için aşağıdaki `keys:update` satırına bakın.
 
 ### Olaylar alımı ve sorgulaması
 
-| İzin | HTTP rotaları | İzin verir |
+| İzin | HTTP rotaları | Ne izin verir |
 |---|---|---|
-| `events:add` | `POST /events` | Toplayıcıdan olayların gruplarını alır. Bir toplayıcının ihtiyaç duyduğu tek izin. |
-| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | Olayları sorgula, bilinen ortamları listele, verilerde görülen model tanımlayıcılarını listele (Modeller görünümü ve model filtreleri tarafından kullanılır), ısı haritası / yüzdelik band'i destekleyen gecikme agregasını hesapla ve oturumu JSONL olarak dışa aktar. Paylaşılan filtre çubuğu faset uç noktaları `GET /events/environments` ve `GET /events/agent_ids` **ya da** `events:read` **ya da** `evaluations:read` ile erişilebilir, bu nedenle oturumlar sayfası (kontrol altında `evaluations:read`) aynı org başına faset'i yeniden kullanır. `GET /events/models` bunlardan biri değildir: `events:read` gerektirir, bu nedenle yalnızca `evaluations:read` tutarı olan bir asıl bundan 403 alır. |
+| `events:add` | `POST /events` | Toplayıcıdan olayların toplu alımı. Toplayıcının ihtiyaç duyduğu tek izin. |
+| `events:read` | `GET /events`, `GET /events/latency_aggregate`, `GET /events/environments`, `GET /events/models`, `GET /sessions/:session_id/export` | Olayları sorgulama, bilinen ortamları listeleme, veriler içinde görülen model tanımlayıcılarını listeleme (Modeller görünümü ve model filtreleri tarafından kullanılır), ısı haritası / yüzdelik bandını güçlendiren gecikme toplamını hesaplama ve oturumu JSONL olarak dışa aktarma. Paylaşılan filtre çubuğu facet uç noktaları `GET /events/environments` ve `GET /events/agent_ids`, **ya** `events:read` **ya da** `evaluations:read` ile erişilebilir, böylece oturumlar sayfası (`evaluations:read` ile korunan) aynı org-başına facet'i yeniden kullanır. `GET /events/models` bunlardan biri değildir: `events:read` gerektirir, bu nedenle yalnızca `evaluations:read` içeren bir sorumlunun bu rotadan 403 alması. |
 
 ### Oturumlar ve değerlendirmeler
 
-| İzin | HTTP rotaları | İzin verir |
+| İzin | HTTP rotaları | Ne izin verir |
 |---|---|---|
-| `evaluations:read` | `GET /sessions`, `GET /evaluations`, `GET /evaluations/aggregate`, `GET /evaluations/environments`, `GET /evaluation-jobs` | Oturumları listele, değerlendirme sonuçlarını oku, panolar tarafından kullanılan toplam eval sağlığını ve değerlendirme işi çalışan kuyruğu durumunu. |
-| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | Tamamlanan oturum için manuel olarak yeniden değerlendirme kuyruğuna al. |
+| `evaluations:read` | `GET /sessions`, `GET /evaluations`, `GET /evaluations/aggregate`, `GET /evaluations/environments`, `GET /evaluation-jobs` | Oturumları listeleme, değerlendirme sonuçlarını okuma, panolar tarafından kullanılan yuvarlanmış eval sağlığı ve değerlendirme-iş işçi sırası durumunu listeleme. |
+| `evaluations:trigger` | `POST /sessions/:session_id/re-evaluate` | Biten bir oturum için el ile yeniden değerlendirme sıraya alma. |
 
 ### Panolar
 
-| İzin | HTTP rotaları | İzin verir |
+| İzin | HTTP rotaları | Ne izin verir |
 |---|---|---|
-| `dashboards:read` | `GET /dashboards`, `GET /dashboards/:id`, `GET /dashboards/:id/tiles` | Panoları listele, birini yükle ve kutucuklarını oku. |
-| `dashboards:write` | `POST /dashboards`, `PUT /dashboards/:id`, `POST /dashboards/:id/tiles`, `PUT /dashboards/:id/tiles/:tile_id`, `DELETE /dashboards/:id/tiles/:tile_id`, `PUT /dashboards/:id/tiles/layout` | Panoları oluştur ve düzenle, kutucuk ekle / düzenle / kaldır ve kutucuk ızgarasını yeniden sırala. |
-| `dashboards:delete` | `DELETE /dashboards/:id` | Tüm panoyu sil (kutucuk düzeyinde silme `dashboards:write` altında yaşar). |
+| `dashboards:read` | `GET /dashboards`, `GET /dashboards/:id`, `GET /dashboards/:id/tiles` | Panoları listeleme, birini yükleme ve kutucuklarını okuma. |
+| `dashboards:write` | `POST /dashboards`, `PUT /dashboards/:id`, `POST /dashboards/:id/tiles`, `PUT /dashboards/:id/tiles/:tile_id`, `DELETE /dashboards/:id/tiles/:tile_id`, `PUT /dashboards/:id/tiles/layout` | Panoları oluşturma ve düzenleme, kutucuk ekleme / düzenleme / kaldırma ve kutucuk ızgarasını yeniden sıralama. |
+| `dashboards:delete` | `DELETE /dashboards/:id` | Tüm panoyu silme (kutucuk seviyesinde silme `dashboards:write` altında yer alır). |
 
-### Kaydedilmiş sorgular (SQL besteci)
+### Kaydedilmiş sorgular (SQL oluşturucu)
 
-| İzin | HTTP rotaları | İzin verir |
+| İzin | HTTP rotaları | Ne izin verir |
 |---|---|---|
-| `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | Kaydedilmiş sorguları listele, birini yükle ve besteleci'nin hedeflediği salt okunur şemayı incele. |
-| `queries:write` | `POST /queries`, `PUT /queries/:id` | Kaydedilmiş sorguları oluştur ve düzenle. SQL hala `queries:run` çağrısıyla aynı salt okunur rolü ve korunan SQL denetimlerinden geçer. |
-| `queries:delete` | `DELETE /queries/:id` | Kaydedilmiş sorguyu sil. |
-| `queries:run` | `POST /queries/run` | Besteci tarafından kullanılan salt okunur role karşı kaydedilmiş veya geçici SQL'i yürüt. |
+| `queries:read` | `GET /queries`, `GET /queries/:id`, `GET /queries/schema` | Kaydedilmiş sorguları listeleme, birini yükleme ve oluşturucunun hedeflediği salt okunur şemayı inceleme. |
+| `queries:write` | `POST /queries`, `PUT /queries/:id` | Kaydedilmiş sorguları oluşturma ve düzenleme. SQL hâlâ `queries:run` çağrısıyla aynı salt okunur rol ve korunan SQL denetimleri aracılığıyla yönlendirilir. |
+| `queries:delete` | `DELETE /queries/:id` | Kaydedilmiş sorguyu silme. |
+| `queries:run` | `POST /queries/run` | Oluşturucu tarafından kullanılan salt okunur role karşı kaydedilmiş veya geçici SQL yürütme. |
 
-### AI asistanı
+### Yapay zeka asistanı
 
-| İzin | HTTP rotaları | İzin verir |
+| İzin | HTTP rotaları | Ne izin verir |
 |---|---|---|
-| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | AI asistanıyla konuş ve kendi (özel) konuşmalarını yönet. Asistanı görmek için **kullanıcıda** gerekli; asistan'ın kendi anahtarı `dashboard-assistant` ve ayrı olarak tohumlanır (aşağı bakın). |
+| `agent:use` | `GET /agent/conversations`, `POST /agent/conversations`, `GET /agent/conversations/:id`, `PATCH /agent/conversations/:id`, `DELETE /agent/conversations/:id`, `PUT /agent/conversations/:id/messages` | Yapay zeka asistanıyla konuşma ve kendi (özel) konuşmalarını yönetme. Asistan'ı görmek için **kullanıcıda** gerekli; asistan'ın kendi anahtarı `dashboard-assistant` ve ayrı olarak sağlanır (aşağıya bakın). |
 
 ### API anahtarları
 
-| İzin | HTTP rotaları | İzin verir |
+| İzin | HTTP rotaları | Ne izin verir |
 |---|---|---|
-| `keys:create` | `POST /keys` | Yeni kapsamlı API anahtarı oluştur. Mevcut bir anahtarın izinlerini düzenlemek için **değildir** (bu `keys:update` dir). |
-| `keys:read` | `GET /keys` | Mevcut anahtarları listele. Sırlar bu uç noktada hiçbir zaman döndürülmez. |
-| `keys:update` | `PATCH /keys/:id` | Mevcut anahtarın izinlerini düzenle. Bir **insan/pano-yalnız** izni; bir API anahtarına atanamazlar (bir taşıyıcı anahtar anahtar oluşturabilir ama asla düzenleyemez). |
-| `keys:disable` | `POST /keys/:id/disable` | Anahtarı iptal et. Korunan anahtarlar (`admin`, `dashboard-assistant`) devre dışı bırakılamaz; ortam değişkeni + yeniden başlatma yoluyla döndür. |
-| `keys:regenerate` | `POST /keys/:id/regenerate` | Anahtarın sırrını döndür. Korunan anahtarlar bu rota yoluyla yeniden oluşturulamaz. |
+| `keys:create` | `POST /keys` | Yeni kapsamlı API anahtarı oluşturma. Mevcut bir anahtarın izinlerini düzenleme **ile** aynı değildir (bu `keys:update`). |
+| `keys:read` | `GET /keys` | Mevcut anahtarları listeleme. Sırlar bu uç nokta tarafından asla döndürülmez. |
+| `keys:update` | `PATCH /keys/:id` | Mevcut anahtarın izinlerini düzenleme. **İnsan/pano-yalnız** izni; bir API anahtarına atanmaz (bir taşıyıcı anahtar anahtarlar oluşturabilir ancak hiçbir zaman düzenleyemez). |
+| `keys:disable` | `POST /keys/:id/disable` | Anahtarı iptal etme. Korunan anahtarlar (`admin`, `dashboard-assistant`) devre dışı bırakılamaz; ortam değişkeni aracılığıyla döndürün + yeniden başlatın. |
+| `keys:regenerate` | `POST /keys/:id/regenerate` | Anahtarın sırrını döndürme. Korunan anahtarlar bu rota üzerinden yenilenmez. |
 
 ### Pano kullanıcıları
 
-| İzin | HTTP rotaları | İzin verir |
+| İzin | HTTP rotaları | Ne izin verir |
 |---|---|---|
-| `users:create` | `POST /users`, `GET /users/defaults` | Yeni pano kullanıcısını davet et (e-posta + tek seferlik şifre (OTP) giriş yayınla) ve davet formunu tohum olarak kullanılan panoda yapılandırılan varsayılan izin setini oku. |
-| `users:read` | `GET /users`, `GET /users/:id` | Kullanıcıları listele ve tek bir kullanıcı kaydını yükle. |
-| `users:update` | `PUT /users/:id` | Kullanıcının izinlerini düzenle. Güncellemeler etkilenen kullanıcıya izin değişikliği e-postası gönderir ve sonraki isteğinde yürürlüğe girer; yeniden giriş gerekli değildir. |
-| `users:delete` | `DELETE /users/:id`, `POST /users/:id/enable` | Kullanıcıyı devre dışı bırak (oturumlarını hemen iptal et) ve daha önce devre dışı bırakılan bir kullanıcıyı yeniden etkinleştir. |
+| `users:create` | `POST /users`, `GET /users/defaults` | Yeni pano kullanıcısını davet etme (e-posta + tek seferlik şifre (OTP) girişi verir) ve davet formunu başlatmak için kullanılan pano tarafından yapılandırılan varsayılan izin setini okuma. |
+| `users:read` | `GET /users`, `GET /users/:id` | Kullanıcıları listeleme ve tek bir kullanıcı kaydı yükleme. |
+| `users:update` | `PUT /users/:id` | Kullanıcının izinlerini düzenleme. Güncellemeler, etkilenen kullanıcıya izin değişikliği e-postası gönderir ve sonraki isteklerinde etkin olur; yeniden giriş gerekmez. |
+| `users:delete` | `DELETE /users/:id`, `POST /users/:id/enable` | Kullanıcıyı devre dışı bırakma (oturumlarını hemen iptal eder) ve önceden devre dışı bırakılmış bir kullanıcıyı yeniden etkinleştirme. |
 
-Bu izinler pano'nun **Kullanıcılar** sayfasını destekler; burada her üyenin verilen kapsamları chips olarak gösterilir:
+Bu izinler panonun **Kullanıcılar** sayfasını destekler, burada her üyenin verilen kapsamları yongalar olarak gösterilir:
 
-![Kullanıcılar sayfası: pano kullanıcısı başına e-postası, verilen izinleri ve düzenle/devre dışı bırak kontrolleriyle bir kart](/agenteye/images/users.png)
+![Kullanıcılar sayfası: pano kullanıcısı başına bir kart, e-posta, verilen izinler ve düzenleme/devre dışı bırakma kontrolleri](/agenteye/images/users.png)
 
 ### Operasyonel ayarlar
 
-| İzin | HTTP rotaları | İzin verir |
+| İzin | HTTP rotaları | Ne izin verir |
 |---|---|---|
-| `settings:read` | `GET /settings`, `GET /settings/schema`, `GET /settings/model-context-windows`, `GET /settings/model-context-windows/resolve` | Pano tarafından yönetilen operasyonel ayarları ve meta verilerini görüntüle; model başına bağlam penceresi geçersiz kılmalarını listele; ve bir model için geçerli pencereyi çözümle. |
-| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | Operasyonel ayarları düzenle ve model başına bağlam penceresi geçersiz kılmalarını ekle, değiştir veya kaldır. Değişiklikler sunucuyu yeniden başlatmadan yeni olayları etkiler. |
+| `settings:read` | `GET /settings`, `GET /settings/schema`, `GET /settings/model-context-windows`, `GET /settings/model-context-windows/resolve` | Pano tarafından yönetilen operasyonel ayarları ve meta verilerini görüntüleme; model başına bağlam penceresi geçersiz kılmalarını listeleme; ve bir model için etkili pencereyi çözme. |
+| `settings:write` | `PUT /settings/:key`, `PUT /settings/model-context-windows`, `DELETE /settings/model-context-windows` | Operasyonel ayarları düzenleme ve model başına bağlam penceresi geçersiz kılmalarını ekleme, değiştirme veya kaldırma. Değişiklikler sunucuyu yeniden başlatmadan yeni olaylara etki eder. |
 
-![Ayarlar sayfası: izin verilen oturum açmalar ve oturum/OTP ömürleri gibi pano tarafından yönetilen operasyonel ayarlar, yeniden başlatmadan düzenlenebilir](/agenteye/images/settings.png)
+![Ayarlar sayfası: izin verilen oturum açmalar ve oturum/OTP ömrü gibi pano tarafından yönetilen operasyonel ayarlar, yeniden başlatmadan düzenlenebilir](/agenteye/images/settings.png)
 
 ### Uyarılar ve olaylar
 
-| İzin | HTTP rotaları | İzin verir |
+| İzin | HTTP rotaları | Ne izin verir |
 |---|---|---|
-| `alerts:read` | `GET /alerts`, `GET /alerts/:id` | Yapılandırılmış uyarı tanımlarını görüntüle. |
-| `alerts:write` | `POST /alerts`, `PUT /alerts/:id`, `DELETE /alerts/:id`, `POST /alerts/:id/test` | Uyarı tanımlarını oluştur, düzenle, sil ve test-ateş et. |
-| `incidents:read` | `GET /alerts/incidents`, `GET /alerts/incidents/:iid`, `GET /alerts/incidents/:iid/comments`, `GET /alerts/incidents/:iid/subscribers` | Olayları ve bunların sınıflandırma izini görüntüle. |
-| `incidents:write` | `POST /alerts/:id/incidents` | Mevcut uyarıya karşı manual olarak olay aç. |
-| `incidents:ack` | `POST /alerts/incidents/:iid/ack`, `POST /alerts/incidents/:iid/assign`, `POST /alerts/incidents/:iid/resolve`, `POST /alerts/incidents/:iid/comments`, `POST /alerts/incidents/:iid/subscribe`, `POST /alerts/incidents/:iid/unsubscribe` | Olayları onayla, ata, çözümle ve yorumla. |
+| `alerts:read` | `GET /alerts`, `GET /alerts/:id` | Yapılandırılmış uyarı tanımlarını görüntüleme. |
+| `alerts:write` | `POST /alerts`, `PUT /alerts/:id`, `DELETE /alerts/:id`, `POST /alerts/:id/test` | Uyarı tanımlarını oluşturma, düzenleme, silme ve test etme. |
+| `incidents:read` | `GET /alerts/incidents`, `GET /alerts/incidents/:iid`, `GET /alerts/incidents/:iid/comments`, `GET /alerts/incidents/:iid/subscribers` | Olayları ve bunların önceliklendirme izini görüntüleme. |
+| `incidents:write` | `POST /alerts/:id/incidents` | Mevcut bir uyarıya karşı el ile olay açma. |
+| `incidents:ack` | `POST /alerts/incidents/:iid/ack`, `POST /alerts/incidents/:iid/assign`, `POST /alerts/incidents/:iid/resolve`, `POST /alerts/incidents/:iid/comments`, `POST /alerts/incidents/:iid/subscribe`, `POST /alerts/incidents/:iid/unsubscribe` | Olayları onaylama, atama, çözme ve yorum yapma. |
 
 ### Denetimler
 
-| İzin | HTTP rotaları | İzin verir |
+| İzin | HTTP rotaları | Ne izin verir |
 |---|---|---|
-| `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Denetim tanımlarını, çalışma geçmişini ve bulgularını görüntüle. |
-| `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Denetim tanımlarını oluştur, düzenle, sil ve çalıştır; bulguları sınıflandır (onayla / sustur / reddet / çözümle / yeniden aç / ata). |
+| `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Denetim tanımlarını, çalıştırma geçmişini ve bulguları görüntüleme. |
+| `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Denetimler oluşturma, düzenleme, silme ve çalıştırma; bulguları önceliklendirme (onaylama / susturma / reddetme / çözme / yeniden açma / atama). |
 
-> **Not:** Bir anahtara denetim yüzeyini vermek için `audits:*` açıkça verin. Denetimler gönderildiğinde mevcut grantéler nasıl taşındığını öğrenmek için [Yükseltme ve geriye dönük uyumluluk notlarına](#yükseltme-ve-geriye-dönük-uyumluluk-notları) bakın.
+> **Not:** Bir anahtara denetim yüzeyini vermek için, açık olarak `audits:*` verin. Denetimler sevk edildiğinde mevcut hibe alanlarının nasıl geçirildiğini görmek için [Yükseltme ve geriye dönük uyumluluğu notları](#yükseltme-ve-geriye-dönük-uyumluluğu-notları) bölümüne bakın.
 
-> Alıcı seçici uç noktası `GET /alerts/recipients` (bir uyarı editörünün bildirebileceği üye e-postalarını listeler) **ya da** `alerts:read` **ya da** `alerts:write` tutarı olan biri tarafından erişilebilir, bu nedenle uyarı editörleri seçiciyi `users:read` olmadan doldurabilir.
+> Alıcı seçici uç noktası `GET /alerts/recipients` (bir uyarı editörünün bildirebileceği üye e-postalarını listeler), **ya** `alerts:read` **ya da** `alerts:write` sahibi tarafından erişilebilir, böylece uyarı editörleri seçiciyi `users:read` verilmeden doldurabilir.
 
-> Pano görüntüleyicisi **hem** `dashboards:read` (kaydedilmiş görünümleri yüklemek için) hem de `evaluations:read` (sağlık metrikleri değerlendirme verilerinden hesaplanır) ihtiyaç duyar. Bir kullanıcının panoları oluşturmasına veya düzenlemesine izin vermek için `dashboards:write` verin ve onları kaldırmak için `dashboards:delete` verin.
+> Pano görüntüleyici **her ikisi de** ihtiyaç duyar: `dashboards:read` (kaydedilmiş görünümleri yüklemek için) ve `evaluations:read` (sağlık ölçümleri değerlendirme verilerinden hesaplanır). Bir kullanıcıya pano oluşturmasına veya düzenlemesine izin vermek için `dashboards:write` verin ve bunları kaldırmak için `dashboards:delete` verin.
 
-> `/health` ve `/auth/*` (OTP isteği, OTP doğru, oturum kontrolü, çıkış) tasarım gereği kimliği doğrulanmamış; bunlar giriş akışı ve canlılık probı'dır. `GET /access-granters` geçerli bir anahtar gerektirir ama spesifik izin gerektirmez, bu nedenle herhangi bir oturum açmış kullanıcı erişim değişiklikleri hakkında hangi adminleri kontrol edeceğini görebilir.
+> `/health` ve `/auth/*` (OTP isteği, OTP doğrulama, oturum kontrolü, çıkış) tasarım gereği kimliğinin doğrulanmamıştır; bunlar giriş akışı ve yaşam süresi probunudur. `GET /access-grangers` geçerli bir anahtar gerektirir ancak belirli bir izin değil, yani herhangi bir giriş yapan kullanıcı hangi yöneticilere erişim değişiklikleri hakkında iletişim kuracağını görebilir.
 
 ---
 
 ## İzin Setleri
 
-İzin setleri, her seferinde bireysel tokenları elle seçmek yerine adlandırılmış bir rol uygulamanıza olanak tanır. Her yeni pano kullanıcısı veya API anahtarı için bir düzine izni birer birer seçmek yerine, bir set seçersiniz ve herkese atanan tutarlı, gözden geçirilebilir bir hibe vardır. Özel bir seti düzenlemek, zaten ona atanan her kullanıcıya yeni hibeyi yeniden uygular, bu nedenle rol değişikliği her üyeyi tarayan bir işlem yerine tek bir düzenlemedir.
+İzin setleri, her seferinde bireysel belirteçleri elle seçmek yerine adlandırılmış bir rol uygulamaya izin verir. Her yeni pano kullanıcısı veya API anahtarı için bir düzine izni birbiri ardına seçmek yerine, bir set seçersiniz ve herkese atanan kişi tutarlı, gözden geçirilebilir bir hibe taşır. Özel bir seti düzenlemek, buna atanan tüm kullanıcılara yeni hibeyi yeniden uygular, bu nedenle bir rol değişikliği bir düzenleme yerine her üyeyi taraması yerine yapılır.
 
-Her organizasyon üç yerleşik set ile tohum olarak alınır:
+Her kuruluş üç yerleşik sete sahip olacak şekilde sağlanır:
 
-| Set | İzinler | Amaçlanan kullanıcı |
+| Set | İzinler | Amaçlanan |
 |---|---|---|
-| `read-only` | `events:read`, `keys:read`, `users:read`, `evaluations:read`, `dashboards:read`, `queries:read`, `settings:read`, `alerts:read`, `audits:read`, `incidents:read` | Her operasyonel yüzey genelinde salt okunur erişim. |
-| `standard` | `read-only` içindeki her şey, artı `evaluations:trigger`, `queries:run`, `incidents:ack`, `agent:use` | Salt okunur artı günlük araç sorumlusu işlemleri: sorgu çalıştır, oturumları yeniden değerlendir, olayları onayla ve AI asistanını kullan. |
-| `admin` | atanabilir her izin | Org'un tam kontrolü. |
+| `read-only` | `events:read`, `keys:read`, `users:read`, `evaluations:read`, `dashboards:read`, `queries:read`, `settings:read`, `alerts:read`, `audits:read`, `incidents:read` | Her operasyonel yüzey genelinde salt görüntü erişimi. |
+| `standard` | `read-only` içinde her şey, artı `evaluations:trigger`, `queries:run`, `incidents:ack`, `agent:use` | Salt okunur artı günlük arası çevirmen eylemler: sorguları çalıştırma, oturumları yeniden değerlendirme, olayları onaylama ve AI asistanını kullanma. |
+| `admin` | atanabilir her izin | Kuruluşun tam kontrolü. |
 
-Üç yerleşik set **değişmezdir**; isimler her zaman aynı şeyi ifade eder, bu nedenle `read-only`, `standard` ve `admin` politika ve yerleşim'de referans verilmek için güvenlidir. Bir operatör, kuruluşunuza özgü roller modellemek için ek **özel setler** oluşturabilir (örneğin, bir "pano yazarı" rolü veya bir "yalnızca toplayıcı" rolü).
+Üç yerleşik set **değişmez**; adlarının her zaman aynı anlamı vardır, bu nedenle `read-only`, `standard` ve `admin` ilkede ve eklemeyi başlatmada güvenli olarak başvurulabilir. Bir operatör, kuruluşunuza özgü roller modellemek için ek **özel setler** oluşturabilir (örneğin, bir "pano yazarı" rolü veya "toplayıcı-yalnız" rolü).
 
-Setler pano'da gösterilir ve `GET /permission-sets` (`users:read` ile kontrol altında), listele) ve `POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name` (özel set oluştur, düzenle, sil, `settings:write` ile kontrol altında) adresinde API üzerinden yönetilir. Yerleşik bir set silme veya düzenleme reddedilir.
+Setler panonun içinde gösterilir ve API'de `GET /permission-sets` (liste, `users:read` ile korunan) ve `POST /permission-sets` / `PUT /permission-sets/:name` / `DELETE /permission-sets/:name` (özel set oluşturma, düzenleme, silme, `settings:write` ile korunan) aracılığıyla yönetilir. Yerleşik bir seti silme veya düzenleme reddedilir.
 
 Set üyeliği iki diğer özelliği destekler:
 
-- **`DEFAULT_USER_PERMISSIONS`** (yönetici **+ yeni kullanıcı** açtığında önceden seçilen hibe), `standard` sete varsayılan olarak ayarlanır.
-- **`agenteye-orgctl` üzerindeki `--set` bayrağı** (operatör üye yönetimi), bir üyeyi adlandırılmış bir set'ten başlatır; `--add` / `--remove` ile daha sonra ince ayar yaparsınız.
+- **`DEFAULT_USER_PERMISSIONS`** (bir yönetici **+ yeni kullanıcı** açtığında önceden seçilen hibe) varsayılan olarak `standard` setine ayarlanır.
+- **`--set` bayrağı** `agenteye-orgctl` üzerinde (operatör üye yönetimi) bir üyeyi adlandırılmış bir setten başlatır, daha sonra `--add` / `--remove` ile ince ayar yaparsınız.
 
-> **Not:** Bir set anahtar-atanabilir olmayan bir izni içerdiğinde (örneğin `keys:update` taşıyan özel bir set), bu set'ten bir anahtar tohumlamak, atanabilir olmayan tokenları düşürür; sunucu aksi takdirde anahtarı HTTP 422 ile reddeder. Pano kullanıcıları bu kısıtlamaya konu değildir.
-
----
-
-## Bootstrap Yönetici Anahtarı
-
-Yönetici anahtarı, bir operatöre hiçbir şeyden erişim getirmesini sağlayan tek kök kimlik bilgisidir: bununla her diğer kapsamlı anahtarı oluşturabilir, ilk pano kullanıcılarını davet edebilir ve başka anahtar var olmadan örneği yapılandırabilirsiz. Bu, anahtarlar API'sı aracılığıyla oluşturmadığınız tek anahtardır; sunucu ilk önyükleme'de ulaşılabilir olması için ortamdan sağlanır.
-
-Sunucuda `ADMIN_KEY` ortam değişkenini ayarlayın. Her başlangıçta sunucu bu değeri tüm izinlere sahip yönetici anahtarı olarak yukarı sokulur.
-
-Döndürmek için: `ADMIN_KEY` yeni bir sıra olacak şekilde değiştirin ve sunucuyu yeniden başlatın.
+> **Not:** Bir set, anahtar atanabilir olmayan izin içerdiğinde (örneğin `keys:update` taşıyan özel bir set), bu setten bir anahtar tohumunu atmak atanabilir olmayan belirteçleri bırakır; sunucu aksi takdirde anahtarı HTTP 422 ile reddederdi. Pano kullanıcıları bu kısıtlamaya tabi değildir.
 
 ---
 
-## Organizasyon kapsamı
+## Önyükleme Yönetici Anahtarı
 
-**Organizasyonlar kendileri bu anahtarlar API'sı yoluyla değil, bir operatör tarafından bant dışında oluşturulur ve yönetilir.** Org ve üye yaşam döngüsü (org'u oluştur / yeniden adlandır / sil / temizle; üye ekle / güncelle / kaldır) **`agenteye-orgctl`** CLI ile yapılır; bunun için HTTP API veya pano düğmesi yoktur. **Değişmez olan şey:** pano'da (veya bu anahtarlar API'sı yoluyla) bir org üyesinin oluşturduğu **org başına API anahtarları yine de basılır.**
+Yönetici anahtarı, bir operatörün hiçbir şeyden erişimi yükseltmesine izin veren tek kök kimlik bilgisidir: bununla diğer her kapsamlı anahtarı basabilir, ilk pano kullanıcılarını davet edebilir ve başka anahtar bulunmadan önce örneği yapılandırabilirsiniz. Bir anahtar oluşturmadığınız tek anahtardır; ortam yoluyla sağlanır, böylece sunucu ilk önyüklemede erişilebilir.
 
-Çok org'lu bir dağıtımda, bir org üyesinin oluşturduğu her anahtar (bu anahtarlar API'sı veya pano **Anahtarlar** sayfası yoluyla) **bir organizasyona** aittir ve o org'un verilerini okuyabilir veya yazabilir; org oluşturmada anahtara damgalanır ve her istekte uygulanır. İki bootstrap anahtarı tek istisnadır: `admin` anahtarı (`ADMIN_KEY` den tohum olarak alınan) ve `dashboard-assistant` anahtarı (`AGENT_API_KEY` den tohum olarak alınan) **örnek-kapsamlı** (org'u taşımaz). Pano `admin` anahtarıyla kimlik doğrular; böylece oturum açmış üyeler adına org başına istekleri vekil yapabilir. Tek kiracı dağıtımları bunu düşünmek zorunda değildir; tüm anahtarlar yerleşik `default` org'a aittir.
+Sunucuda `ADMIN_KEY` ortam değişkenini ayarlayın. Her başlangıçta sunucu bu değeri tüm izinlerle yönetici anahtarı olarak yükseltir.
+
+Döndürmek için: `ADMIN_KEY` öğesini yeni bir sırrla değiştirin ve sunucuyu yeniden başlatın.
 
 ---
 
-## Anahtar Oluşturma
+## Kuruluş kapsamı
 
-Ek kapsamlı anahtarlar oluşturmak için yönetici anahtarını (veya `keys:create` izni olan herhangi bir anahtarı) kullanın.
+**Kuruluşlar, bu anahtarlar API'si aracılığıyla değil, bir operatör tarafından bant dışında oluşturulur ve yönetilir.** Org ve üye yaşam döngüsü (org oluşturma / yeniden adlandırma / silme / temizleme; üye ekleme / güncelleme / kaldırma), **`agenteye-orgctl`** CLI ile yapılır; bunun için HTTP API veya pano düğmesi yoktur. Değişmeyen şey: **Org başına API anahtarları panoda (veya bu anahtarlar API'si aracılığıyla) org üyeleri tarafından basılır.**
 
-### Toplayıcı anahtarı (yalnızca alım)
+Çok org dağıtımında, bir org üyesinin oluşturduğu her anahtar (bu anahtarlar API'si veya pano **Anahtarlar** sayfası üzerinden) **bir kuruluşa** aittir ve sadece bu org'un verilerine okuyabilir veya yazabilir; org oluşturmada anahtara damgalanır ve her istekte uygulanır. İki önyükleme anahtarı tek istisnadır: `admin` anahtarı (`ADMIN_KEY` öğesinden sağlanan) ve `dashboard-assistant` anahtarı (`AGENT_API_KEY` öğesinden sağlanan) **örnek kapsamlı** olur (hiçbir org taşımaz). Pano `admin` anahtarıyla kimlik doğrulaması yapar, böylece oturum açmış üyeleri adına org başına istekleri vekalet edebilir. Tek kiracılı dağıtımlar bunu düşünmesine gerek olmaz; tüm anahtarlar yerleşik `default` org'a aittir.
+
+---
+
+## Anahtarlar Oluşturma
+
+Ek kapsamlı anahtarlar oluşturmak için yönetici anahtarı (veya `keys:create` izni olan herhangi bir anahtar) kullanın.
+
+### Toplayıcı anahtarı (sadece alım)
 
 ```bash
 curl -s -X POST http://your-server/keys \
@@ -192,7 +192,7 @@ curl -s -X POST http://your-server/keys \
   }'
 ```
 
-HTTP API'sı üzerinden bir anahtar oluşturduğunuzda, `key` değerini kendiniz sağlarsınız; güçlü bir sır seçin ve güvenle depolayın. (Pano diğer yönde çalışır: sizin için güçlü bir sır oluşturur ve oluşturmada bir kez gösterir; bkz. [Pano'da Anahtar Yönetimi](#panoda-anahtar-yönetimi).) Yanıt anahtarın oluşturulduğunu onaylar:
+HTTP API üzerinden bir anahtar oluştururken, `key` değerini kendiniz sağlarsınız; güçlü bir sır seçin ve güvenli bir şekilde depolayın. (Pano ters şekilde çalışır: sizin için güçlü bir sır oluşturur ve oluşturmada bir kez gösterir; bkz. [Panoda Anahtar Yönetimi](#panoda-anahtar-yönetimi).) Yanıt anahtarın oluşturulduğunu doğrular:
 
 ```json
 {
@@ -218,7 +218,7 @@ Anahtar sırları liste yanıtlarında döndürülmez, yalnızca kimlikler, adla
 
 ## Anahtarı Devre Dışı Bırakma
 
-Devre dışı bırakmak anahtarı silmeden erişimi hemen iptal eder.
+Devre dışı bırakmak, anahtar kaydını silmeden erişimi hemen iptal eder.
 
 ```bash
 curl -s -X POST http://your-server/keys/<id>/disable \
@@ -227,53 +227,53 @@ curl -s -X POST http://your-server/keys/<id>/disable \
 
 ---
 
-## Anahtarı Yeniden Oluşturma
+## Anahtarı Yenileme
 
-Mevcut anahtar için yeni bir sır oluşturur. Eski sır hemen geçersiz kılınır.
+Mevcut bir anahtar için yeni sır oluşturur. Eski sır hemen geçersiz hale getirilir.
 
 ```bash
 curl -s -X POST http://your-server/keys/<id>/regenerate \
   -H "Authorization: Bearer $ADMIN_KEY"
 ```
 
-Yanıt yeni düz metin sırrı içerir, **yalnızca bir kez gösterilir**.
+Yanıt yeni düz metin sırrı içerir, **sadece bir kez gösterilen**.
 
 ---
 
-## Pano'da Anahtar Yönetimi
+## Panoda Anahtar Yönetimi
 
-Pano'daki **Anahtarlar** sayfası yukarıdaki tüm işlemler için UI sağlar. Listeyi görüntülemek için `keys:read` izni gerekir ve oluştur / düzenle / devre dışı bırak / yeniden oluştur işlemleri için `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate`. Anahtarın izinlerini düzenlemek (`keys:update`), birini oluşturmaktan (`keys:create`) ayrıdır, bu nedenle bir operatöre anahtarlar basması yetkisini verip mevcut olanları yeniden kapsamlandırması yetkisini vermeyebilir, ya da tam tersi. Yönetici anahtarı tümünü kapsar.
+Pano içindeki **Anahtarlar** sayfası, yukarıdakilerin tümü için bir arayüz sağlar. Listeyi görmek için `keys:read` izni olan bir anahtara ihtiyacınız vardır ve sırasıyla oluştur / düzenle / devre dışı bırak / yenile eylemler için `keys:create` / `keys:update` / `keys:disable` / `keys:regenerate`. Bir anahtarın izinlerini düzenlemek (`keys:update`), bir tane oluşturmaktan (`keys:create`) ayrıdır, böylece bir operatöre anahtarlar basma yeteneği verebilir ancak mevcut olanları yeniden kapsamlandırma yeteneği vermezsiniz veya tam tersi. Yönetici anahtarı tümünü kapsar.
 
-Pano'dan bir anahtar oluşturduğunuzda sırrı sağlamazsınız; pano sizin için güçlü bir sır oluşturur ve oluşturmada **bir kez** gösterir. Hemen kopyalayın ve güvenle depolayın; yeniden oluştur'da olduğu gibi asla tekrar gösterilmez. Anahtarın izinlerini doğrudan seçebilir veya bir izin seti'nden tohum olarak çalabilirsiniz (aşağı bakın).
+Panodan bir anahtar oluşturduğunuzda, sırrı sağlamazsınız; pano sizin için güçlü bir sır oluşturur ve oluşturmada **bir kez** görüntüler. Hemen kopyalayın ve güvenli bir şekilde depolayın; tıpkı yenileme gibi hiçbir zaman tekrar gösterilmez. Anahtarın izinlerini doğrudan seçebilir veya bir izin seti içinde tohumlayabilirsiniz (aşağıya bakın).
 
-![API Anahtarları sayfası: anahtar başına kart, adı, verilen izinleri ve oluşturma zamanı gösterir; yeniden oluştur ve devre dışı bırak işlemleriyle; `admin` gibi korunan anahtarlar işaretlenir](/agenteye/images/api-keys.png)
+![API Anahtarları sayfası: anahtar başına bir kart, adı, verilen izinler ve oluşturma saatini gösteren; `admin` gibi korunan anahtarlar işaretlenir](/agenteye/images/api-keys.png)
 
 ---
 
 ## Önerilen Anahtar Düzeni
 
-| Anahtar | İzinler | Kullanan |
+| Anahtar | İzinler | Kullananlar |
 |---|---|---|
-| `admin` (bootstrap `ADMIN_KEY` ortam değişkeni yoluyla) | tümü | Ops/kurulum ve pano (` ADMIN_KEY` ile kimlik doğrular, izin denetimi ile üye isteklerini vekil yapar) |
-| Ev sahibi başına toplayıcı anahtarı | `events:add` | Her agent makinesindeki toplayıcı |
-| `dashboard-assistant` (bootstrap `AGENT_API_KEY` ortam değişkeni yoluyla) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | AI asistanı, otomatik tohum alınır, **korunan**; API yoluyla düzenlenemez |
-| Asistan telemetrisi anahtarı (isteğe bağlı) | `events:add` | AI asistanı kendi-enstrümantasyonu, etkinse |
+| `admin` (`ADMIN_KEY` ortam değişkeni aracılığıyla önyükleme) | tüm | Ops/kurulum ve pano (kimlik doğrulama `ADMIN_KEY` ile, kullanıcı isteklerini izin denetimleriyle delegeler) |
+| Ana bilgisayar başına toplayıcı anahtarı | `events:add` | Her ajan makinesindeki toplayıcı |
+| `dashboard-assistant` (`AGENT_API_KEY` ortam değişkeni aracılığıyla önyükleme) | `events:read`, `evaluations:read`, `dashboards:read`, `dashboards:write`, `queries:read`, `queries:write`, `queries:run` | AI asistanı, otomatik sağlanır, **korunan**; API aracılığıyla düzenlenemez |
+| Asistan telemetrisi anahtarı (isteğe bağlı) | `events:add` | AI asistanı öz-enstrümantasyonu, etkinleştirilmişse |
 
-> **Not:** Asistan'ın anahtarı sunucu tarafından `AGENT_API_KEY` ortam değişkeninden (agent'ın `AGENTEYE_API_KEY` olarak sunduğu aynı sır) otomatik tohum alınır; el ile anahtar basma adımı ve yönetici anahtarı yoktur. İzinleri kaynak kodda sabitlenmiştir, bu nedenle kapsam yanlış yapılandırma tarafından genişletilemez: olaylar / değerlendirmeler / panolar genelinde oku, artı pano yazma ve sorgu-oku / yazma / çalıştırma için "AI'ya sorgu yazmasını söyle" yazarlık akışı. Tüm SQL hala bir kullanıcı yazarı sorgusunda olduğu gibi aynı salt okunur rol ve korunan SQL yolundan geçer, bu nedenle bu, **yazarlık yüzeyini** genişletir, veri yüzeyini değil; yıkıcı işlemler (`queries:delete`, `dashboards:delete`) kasıtlı olarak asistan anahtarında kalır. `admin` anahtarı gibi, bu **korunan**: anahtarlar API'sı yoluyla devre dışı bırakılamaz veya yeniden oluşturulamaz, yalnızca `AGENT_API_KEY` değiştirilerek ve yeniden başlatılarak döndürülür. Pano **kullanıcıları** ek olarak asistanı görmek ve kullanmak için `agent:use` izni gerekir. Kendi-enstrümantasyonu etkinleştirirseniz, asistana ayrı bir `events:add`-yalnız anahtar verin.
+> **Not:** Asistan'ın anahtarı, sunucu tarafından `AGENT_API_KEY` ortam değişkeninden otomatik olarak **sağlanır** (aracı `AGENTEYE_API_KEY` olarak sunan aynı sır); hiçbir manuel anahtar basımı adımı yoktur ve hiçbir yönetici anahtarı dahil değildir. Izinleri kaynak kodunda sabitlenmiştir, böylece kapsam yapılandırma yanlışlığıyla genişletilemez: olaylar / değerlendirmeler / panolar genelinde oku, artı panolar yazması ve sorgular oku / yaz / çalıştır "Yapay zekanın sorgu yazmasını isteyin" yazma akışı için. Tüm SQL, yine de kullanıcı tarafından yazılan sorguyla aynı salt okunur rol ve korunan SQL yolundan geçer, bu nedenle bu, veri yüzeyini değil *yazma yüzeyini* genişletir; yıkıcı işlemler (`queries:delete`, `dashboards:delete`) kasıtlı olarak asistan anahtarının dışında kalır. `admin` anahtarı gibi, **korunan**: anahtarlar API'si aracılığıyla devre dışı bırakılamaz veya yenilenmez, sadece `AGENT_API_KEY` değiştirilerek ve yeniden başlatılarak döndürülür. Pano *kullanıcıları* ek olarak asistan'ı görmek ve kullanmak için `agent:use` izni gerektirir. Öz-enstrümantasyonu etkinleştirirseniz, asistan'a ayrı `events:add`-yalnız anahtar verin.
 
 ---
 
-## Yükseltme ve geriye dönük uyumluluk notları
+## Yükseltme ve geriye dönük uyumluluğu notları
 
-Mevcut bir örneği yükseltiyorsanız bunlara yalnızca ihtiyaç duyarsınız; yeni dağıtımlar bunları atlayabilir.
+Yalnızca mevcut bir örneği yükseltiyorsanız buna ihtiyacınız vardır; yeni dağıtımlar bunu atlayabilir.
 
-> Denetimler gönderildiğinde, mevcut grantéler uyarılarla aynı rol şekilleri boyunca genişletildi: `alerts:read` tutarı olan her kullanıcı ve izin seti `audits:read` kazandı ve `alerts:write` tutarı olan her sahip `audits:write` kazandı. Mevcut API anahtarları **genişletilmedi**. Anahtar denetim yüzeyine ihtiyaç duyarsa `audits:*` açıkça verin.
+> Denetimler sevk edildiğinde, mevcut grantlar, uyarılarla aynı rol şekilleri boyunca genişletildi: `alerts:read` taşıyan her kullanıcı ve izin seti `audits:read` kazandı ve her `alerts:write` sahibi `audits:write` kazandı. Mevcut API anahtarları **genişletilmedi**. Anahtarın denetim yüzeyine ihtiyacı varsa, açıkça `audits:*` verin.
 
-> Eski `alerts:ack` token'ı depolanan hibeler `incidents:ack` olarak ayrıştırılır, bu nedenle araç sorumlular anahtarı değiştirmeden erişimi korur. Token artık pano kullanıcı editöründen atanabilir değil; matris `incidents:ack` sunuyor.
+> Eski `alerts:ack` belirtecinin saklanan hibeleri, araya giren kişilerin rekey olmadan erişimi koruması için `incidents:ack` olarak ayrıştırılır. Belirteç artık pano'nun kullanıcı editöründen atanabilir değildir; matris bunun yerine `incidents:ack` sunmaktadır.
 
 ---
 
 ## Sonraki adımlar
 
-- [Python SDK](/tr/agenteye/python-sdk): agent kodu olayları gönderirken nasıl kimlik doğrular.
-- [Güvenlik](/tr/agenteye/security): oturum açma, erişim kontrolü ve org başına veri yalıtımı nasıl çalışır.
+- [Python SDK](/tr/agenteye/python-sdk): ajan kodu olayları gönderirken nasıl kimlik doğrulaması yapılır.
+- [Güvenlik](/tr/agenteye/security): oturum açma, erişim kontrolü ve kuruluş başına veri yalıtımı nasıl çalışır.

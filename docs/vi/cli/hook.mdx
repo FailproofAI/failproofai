@@ -1,30 +1,31 @@
 ---
-title: Hook handler (nội bộ)
-description: "Tiến trình con mà Claude Code gọi trên mỗi sự kiện công cụ"
+---
+title: Hook handler (internal)
+description: "The subprocess Claude Code calls on each tool event"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-Đây là lệnh được đăng ký trong `settings.json` của Claude Code bởi `failproofai policies --install`. Bạn thường không cần gọi lệnh này trực tiếp.
+Đây là lệnh được đăng ký trong `settings.json` của Claude Code bởi `failproofai policies --install`. Bình thường bạn không cần gọi trực tiếp lệnh này.
 
-Đọc một tải trọng JSON từ stdin, đánh giá tất cả các chính sách được bật, và thoát với mã code chỉ ra quyết định:
+Đọc một payload JSON từ stdin, đánh giá tất cả các chính sách được bật, và thoát với mã lệnh biểu thị quyết định:
 
-| Mã thoát | Quyết định | Hiệu ứng |
-|-----------|------------|---------|
+| Exit code | Decision | Effect |
+|-----------|----------|--------|
 | `0` | `allow` | Cho phép hành động |
-| `1` | `deny` | Chặn hành động - Claude nhìn thấy lý do từ chối |
-| `2` | `instruct` | Đưa hướng dẫn vào ngữ cảnh của Claude |
+| `1` | `deny` | Chặn hành động - Claude sẽ thấy lý do từ chối |
+| `2` | `instruct` | Chèn hướng dẫn vào ngữ cảnh của Claude |
 
-### Các loại sự kiện được hỗ trợ
+### Supported event types
 
-| Danh mục | Sự kiện |
-|----------|---------|
-| **Thực thi công cụ** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
-| **Vòng đời phiên** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
-| **Tương tác người dùng** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
-| **Các agent phụ & tác vụ** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
-| **Cấu hình** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
-| **Hệ thống tập tin** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
-| **Ngữ cảnh** | `PreCompact`, `PostCompact` |
+| Category | Events |
+|----------|--------|
+| **Tool execution** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
+| **Session lifecycle** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
+| **User interaction** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
+| **Subagents & tasks** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
+| **Configuration** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
+| **File system** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
+| **Context** | `PreCompact`, `PostCompact` |

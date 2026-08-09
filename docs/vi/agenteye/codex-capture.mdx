@@ -1,55 +1,55 @@
 ---
-title: "Ghi lại phiên làm việc Codex"
-description: "Theo dõi các phiên làm việc Codex cục bộ của nhóm bạn vào AgentEye dưới dạng các phiên và sự kiện thông thường — mà không cần thay đổi cách họ chạy Codex."
+title: "Ghi lại phiên Codex"
+description: "Theo dõi các phiên OpenAI Codex cục bộ của nhóm bạn vào AgentEye dưới dạng các phiên và sự kiện thông thường — mà không cần thay đổi cách họ chạy Codex."
 ---
 
-Các kỹ sư của bạn đã chạy OpenAI Codex hàng ngày. Ghi lại phiên làm việc Codex đưa những phiên làm việc lập trình đó vào AgentEye dưới dạng các phiên và sự kiện thông thường, để bạn có thể tìm kiếm, phát lại và đánh giá chúng cùng với mọi thứ khác mà bạn quan sát. Nó bổ sung cho [Python SDK](/vi/agenteye/python-sdk): SDK này cung cấp công cụ cho các agent bạn viết, trong khi phần này ghi lại công việc Codex mà nhóm bạn đã làm — mà không cần thay đổi cách họ chạy nó.
+Các kỹ sư của bạn đã chạy OpenAI Codex hàng ngày. Ghi lại phiên Codex đưa những phiên mã hóa đó vào AgentEye dưới dạng các phiên và sự kiện thông thường, để bạn có thể tìm kiếm, phát lại và đánh giá chúng cùng với mọi thứ khác mà bạn quan sát. Nó bổ sung cho [Python SDK](/vi/agenteye/python-sdk): SDK đóng vai trò trong các agent bạn viết, trong khi tính năng này ghi lại công việc Codex mà nhóm của bạn đã làm — mà không cần thay đổi cách họ chạy nó.
 
-Một bộ sưu tập nền nhỏ đọc các bản ghi phiên Codex cục bộ khi chúng được viết và gửi chúng đến AgentEye. Một bộ sưu tập cho mỗi máy tính ghi lại mọi bề mặt Codex cục bộ cùng một lúc — không cần thiết lập cho từng bề mặt.
+Một trình thu thập nền nhỏ đọc các bản ghi ghi chép phiên Codex cục bộ khi chúng được viết và gửi chúng đến AgentEye. Một trình thu thập cho mỗi máy ghi lại tất cả bề mặt Codex cục bộ cùng một lúc — không có cấu hình cho từng bề mặt.
 
-Bộ sưu tập tương tự cũng ghi lại các agent khác — xem [OpenClaw](/vi/agenteye/openclaw-capture) và [Hermes](/vi/agenteye/hermes-capture). Bật từng cái bạn chạy; một bộ sưu tập có thể ghi lại nhiều cái cùng một lúc.
+Trình thu thập tương tự cũng ghi lại các agent khác — xem [OpenClaw](/vi/agenteye/openclaw-capture) và [Hermes](/vi/agenteye/hermes-capture). Bật từng cái bạn chạy; một trình thu thập có thể ghi lại nhiều cái cùng một lúc.
 
 ---
 
-## Những gì nó ghi lại
+## Nó ghi lại cái gì
 
-Mọi bề mặt Codex chạy **cục bộ** đều tạo ra các bản ghi phiên làm việc trên đĩa giống nhau, và bộ sưu tập sẽ nhận tất cả chúng:
+Mọi bề mặt Codex chạy **cục bộ** đều tạo ra cùng các bản ghi ghi chép phiên trên đĩa, và trình thu thập nhặt tất cả chúng:
 
 - **CLI** Codex và `codex exec`
-- **Tiện ích mở rộng VS Code / IDE**
-- **Ứng dụng máy tính để bàn**, khi nó chạy một phiên làm việc cục bộ
+- **phần mở rộng VS Code / IDE**
+- **ứng dụng desktop**, khi nó chạy một phiên cục bộ
 
-Mỗi phiên làm việc Codex trở thành một [phiên](/vi/agenteye/sessions) AgentEye; các tin nhắn của người dùng và trợ lý, lý luận, lệnh gọi công cụ, kết quả công cụ và mức sử dụng token trở thành các [sự kiện](/vi/agenteye/event-stream) tương ứng. Bề mặt mà mỗi phiên làm việc đến từ đó (CLI, IDE hoặc máy tính để bàn) được ghi lại, để bạn có thể phân biệt chúng.
+Mỗi phiên Codex trở thành một [phiên](/vi/agenteye/sessions) AgentEye; các tin nhắn của người dùng và trợ lý, lý do, lệnh gọi công cụ, kết quả công cụ và mức sử dụng token của nó trở thành [sự kiện](/vi/agenteye/event-stream) phù hợp. Bề mặt mà mỗi phiên đến từ (CLI, IDE hoặc desktop) được ghi lại, vì vậy bạn có thể phân biệt chúng.
 
-> **Các phiên làm việc trên cloud không được ghi lại.** Ứng dụng máy tính để bàn ngày càng chạy các phiên làm việc trong cloud Codex và chỉ giữ lại metadata của chúng trên máy — không có bản ghi cục bộ nào để đọc. Chỉ các phiên làm việc được thực hiện cục bộ mới được ghi lại.
+> **Các phiên đám mây không được ghi lại.** Ứng dụng desktop ngày càng chạy các phiên trong đám mây Codex và chỉ giữ metadata của chúng trên máy — không có bản ghi cục bộ nào để đọc. Chỉ các phiên được thực thi cục bộ mới được ghi lại.
 
 ---
 
-## Bật nó
+## Bật nó lên
 
-Ghi lại bị tắt cho đến khi bạn bật nó. Cài đặt bộ sưu tập với một khóa API có quyền `events:add` (xem [API keys](/vi/agenteye/api-keys)) và bật ghi lại Codex:
+Ghi lại bị tắt cho đến khi bạn bật nó. Cài đặt trình thu thập bằng khóa API có quyền `events:add` (xem [Khóa API](/vi/agenteye/api-keys)) và bật ghi lại Codex:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --codex-enabled
 ```
 
-Điều đó cài đặt bộ sưu tập, đăng ký nó như một dịch vụ nền và bắt đầu ghi lại. Xác nhận rằng nó đang chạy:
+Điều đó cài đặt trình thu thập, đăng ký nó như một dịch vụ nền và bắt đầu ghi lại. Xác nhận rằng nó đang chạy:
 
 ```bash
 agenteye-collector health
 ```
 
-Lần chạy đầu tiên, các phiên làm việc Codex hiện tại của bạn được lấp đầy một lần và hoạt động mới sau đó được truyền phát trong vài giây. Các tập tin của Codex chính nó chỉ bao giờ được đọc — không bao giờ được sửa đổi, di chuyển hoặc xóa — và mỗi phiên làm việc được gửi đúng một lần, ngay cả khi khởi động lại.
+Lần chạy đầu tiên, các phiên Codex hiện tại của bạn được điền lại một lần và hoạt động mới sau đó được phát trực tuyến trong vòng vài giây. Các tệp của Codex chỉ được đọc — không bao giờ được sửa đổi, di chuyển hoặc xóa — và mỗi phiên được gửi chính xác một lần, ngay cả trên các lần khởi động lại.
 
 ---
 
 ## Nó xuất hiện ở đâu
 
-Các phiên làm việc được ghi lại xuất hiện trong **Sessions**, và các sự kiện của chúng trong luồng **Events**, giống như bất kỳ agent nào khác mà bạn quan sát — vì vậy [phát lại phiên làm việc](/vi/agenteye/sessions), [tìm kiếm](/vi/agenteye/queries), [đánh giá](/vi/agenteye/evaluations) và [cảnh báo](/vi/agenteye/alerts) đều hoạt động trên chúng. Lọc theo agent Codex để xem chúng riêng.
+Các phiên được ghi lại xuất hiện trong **Sessions**, và các sự kiện của chúng trong luồng **Events**, giống như bất kỳ agent nào khác bạn quan sát — vì vậy [phát lại phiên](/vi/agenteye/sessions), [tìm kiếm](/vi/agenteye/queries), [đánh giá](/vi/agenteye/evaluations) và [cảnh báo](/vi/agenteye/alerts) đều hoạt động trên chúng. Lọc theo agent Codex để xem chúng riêng lẻ.
 
 ---
 
 ## Quyền riêng tư
 
-Các bản ghi Codex chứa toàn bộ phiên làm việc — bao gồm đầu ra lệnh, nội dung tập tin và bất cứ thứ gì Codex đọc hoặc viết — và có thể chứa bí mật. Các phiên làm việc được ghi lại được gửi nguyên trạng, vì vậy chỉ bật ghi lại trên các máy tính và cho các nhóm nơi tập trung nội dung đó trong AgentEye là phù hợp, và cấp cho bộ sưu tập một khóa có phạm vi chỉ `events:add`. Xem [Security](/vi/agenteye/security) để biết cách dữ liệu của bạn được giữ cô lập.
+Bản ghi Codex chứa toàn bộ phiên — bao gồm đầu ra lệnh, nội dung tệp và bất cứ thứ gì Codex đọc hoặc viết — và có thể chứa bí mật. Các phiên được ghi lại được gửi nguyên trạng, vì vậy chỉ bật ghi lại trên các máy và cho các nhóm mà tập trung nội dung đó trong AgentEye là thích hợp, và cung cấp cho trình thu thập một khóa có phạm vi chỉ `events:add`. Xem [Security](/vi/agenteye/security) để tìm hiểu cách dữ liệu của bạn được giữ cô lập.

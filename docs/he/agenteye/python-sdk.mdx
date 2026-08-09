@@ -1,14 +1,14 @@
 ---
 title: "Python SDK"
-description: "ראו בדיוק מה שהסוכנים ה-AI שלכם עשו בייצור: כל הרצה של סוכן, קריאת כלי, בקשת מודל, hook והתערבות אנושית."
+description: "ראה בדיוק מה עשו סוכנים AI שלך בייצור: כל הרצת סוכן, קריאת כלי, בקשת מודל, hook, והתערבות אדם."
 ---
 
 
-ראו בדיוק מה שהסוכנים ה-AI שלכם עשו בייצור: כל הרצה של סוכן, קריאת כלי, בקשת מודל, hook והתערבות אנושית. ה-SDK של Failproof AI Observability Python מתעד את השביל הזה מתוך קוד הסוכן שלכם כדי שתוכלו לבצע ניפוי באגים, ביקורת והערכה של מה שקרה. השתמשו בו בכל פעם שאתם רוצים ש-Failproof AI Observability יעקוב אחר הסוכנים שלכם.
+ראה בדיוק מה עשו סוכנים AI שלך בייצור: כל הרצת סוכן, קריאת כלי, בקשת מודל, hook, והתערבות אדם. Failproof AI Observability Python SDK מתעד את השביל הזה מתוך קוד הסוכן שלך כדי שתוכל לבצע ניפוי באגים, ביקורת, והערכה של מה קרה. השתמש בו בכל פעם שאתה רוצה שFailproof AI Observability יקבל תצפיות על הסוכנים שלך.
 
-מתחת למכסה המנוע, ה-SDK כותב אירועים מובנים לקבצי JSONL מקומיים, ושרת האספן אוסף אותם וכולל אותם לפלטפורמה באופן אוטומטי. אתם לא מנהלים את הקבצים האלה בעצמכם.
+תחת הקרקע, ה-SDK כותב אירועים מובנים לקבצי JSONL מקומיים, וה-collector daemon אוסף אותם ושולח אותם לפלטפורמה באופן אוטומטי. אתה לא מנהל את הקבצים הללו בעצמך.
 
-> **עצה:** חדש ל-Failproof AI Observability? דף זה הוא ההתייחסות השלמה של אירועי ה-SDK.
+> **טיפ:** חדש ב-Failproof AI Observability? הדף הזה הוא ההתייחסות המלאה לאירועי SDK.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
@@ -18,15 +18,15 @@ description: "ראו בדיוק מה שהסוכנים ה-AI שלכם עשו בי
 
 ## התקנה
 
-ה-SDK מופץ ללקוחות כ-wheel פרטי ולא מאינדקס חבילות ציבורי. התרגום שלכם מכסה כיצד להשיג אותו, להתקין אותו ולהצמיד אותו — דברו עם איש הקשר שלכם ב-Failproof AI אם אתם זקוקים לגישה.
+ה-SDK מופץ ללקוחות כ-wheel פרטי ולא מ-package index ציבורי. Onboarding שלך מכסה כיצד להשיג אותו, להתקין אותו, וליצור pin עליו — דבר עם Failproof AI contact שלך אם אתה זקוק לגישה.
 
-לאחר התקנתו, אשרו שיש לכם אותו:
+לאחר התקנתו, אימת שיש לך אותו:
 
 ```bash
 python -c "import agenteye; print(agenteye.__version__)"
 ```
 
-מעדיפים לתת לסוכן קידוד לעשות את כל השילוב? [Python SDK Agent Skill](/he/agenteye/python-sdk-skill) יודע את נתיב ההתקנה, מתכנן את נקודות הציוד, כותב אותן ומאמת שהאירועים מגיעים.
+מעדיף להניח לסוכן קידוד לבצע את כל ההשתלבות? ה-[Python SDK Agent Skill](/he/agenteye/python-sdk-skill) יודע את נתיב ההתקנה, מתכננת את נקודות הציוד, כותבת אותן, ומאומתת שהאירועים מגיעים.
 
 ---
 
@@ -58,9 +58,9 @@ agenteye.event.tool_result(
 agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
 ```
 
-### ציוד של קריאה בפועל
+### ציוד של קריאה אמיתית
 
-בפועל אתם עוטפים את קוד הסוכן הקיים שלכם. תחום קריאה למודל עם `model_request` לפני ו-`model_response` אחרי, כך שני האירועים משתרעים על הבקשה בפועל וה-Failproof AI Observability יכול להתאים אותם:
+בפועל אתה עוטף את קוד הסוכן הקיים שלך. סוגר קריאת מודל עם `model_request` לפני ו-`model_response` אחרי, כך ששני האירועים משתרעים על הבקשה האמיתית וFailproof AI Observability יכול לצמד אותם:
 
 ```python
 import anthropic
@@ -95,11 +95,11 @@ agenteye.event.model_response(
 )
 ```
 
-עטפו קריאות כלים באותו אופן עם `tool_use` ו-`tool_result`, תוך שימוש חוזר באותו `tool_call_id` על פני הזוג.
+עטוף קריאות כלים באותו אופן עם `tool_use` ו-`tool_result`, בשימוש חוזר של `tool_call_id` אחד על פני הצמד.
 
-הנה איך נראים אירועים אלה לאחר שהם מגיעים לתDashboard, מקודדים בצבע לפי סוג וניתן לסנן לפי סביבה, סוכן וסשן:
+הנה איך אירועים אלה נראים לאחר שהם מגיעים לדashboard, קודי צבע לפי סוג וניתנים לסינון לפי סביבה, סוכן, וסשן:
 
-![זרם האירועים החי, מקודד בצבע לפי סוג אירוע וניתן לסנן לפי סביבה, סוכן וסשן](/agenteye/images/events-stream.png)
+![ה-Events stream החי, קודי צבע לפי סוג אירוע וניתן לסינון לפי סביבה, סוכן, וסשן](/agenteye/images/events-stream.png)
 
 ---
 
@@ -113,18 +113,18 @@ agenteye.configure(
 )
 ```
 
-קרא פעם אחת לפני כל קריאת `event.*`. בטוח להשמיט; ברירות המחדל עובדות מחוץ לקופסה. כל הארגומנטים הם רק מילות מפתח; העברו אותם לפי שם כמו למעלה.
+קרא פעם אחת לפני כל קריאת `event.*`. בטוח להשמיט; ברירות מחדל עובדות מתוך התיבה. כל הארגומנטים הם keyword-only; העבור אותם בשם כما הוא מוצג לעיל.
 
-כאשר `base_dir` הוא `None` (ברירת המחדל), ה-SDK קורא `$AGENTEYE_HOME` אם מוגדר,
-אחרת חוזר אל `~/.agenteye`. זה תואם את ההחלטה של אספן עצמו,
-כך שמשתנה `AGENTEYE_HOME` אחד env מגדיר את spooler האירועים הרחוקים לשניהם
-ה-SDK והאספן.
+כאשר `base_dir` הוא `None` (ברירת המחדל), ה-SDK קורא `$AGENTEYE_HOME` אם הוא מוגדר,
+אחרת הוא חוזר ל-`~/.agenteye`. זה תואם את ההחלטה של ה-collector שלו,
+כך משתנה env `AGENTEYE_HOME` יחיד מגדיר את ה-event spool המשותף לשני
+ה-SDK וה-collector.
 
 ---
 
 ## סביבה
 
-סמנו כל אירוע עם סביבת פריסה (`production`, `staging`, `qa`, `canary`, וכו'). קבעו אותו פעם אחת; ה-SDK מצרף אותו לכל אירוע באופן אוטומטי.
+תייג כל אירוע עם סביבת פריסה (`production`, `staging`, `qa`, `canary`, וכו'). קבע אותה פעם אחת; ה-SDK מצרף אותה לכל אירוע באופן אוטומטי.
 
 **אפשרות 1: דרך `configure()`:**
 
@@ -138,42 +138,42 @@ agenteye.configure(environment="production")
 export AGENTEYE_ENVIRONMENT=production
 ```
 
-**עדיפות:** `configure(environment=...)` מנצח על משתנה הסביבה. אם לא קבעתם אף אחד, ברירת המחדל היא `"dev"`.
+**עדיפות:** `configure(environment=...)` מנצח על משתנה הסביבה. אם אף אחד לא מוגדר, בברירת מחדל ל-`"dev"`.
 
-ערך הסביבה מופיע כמסנן מדרגה ראשונה בתDashboard וגם מאוחסן בשרת לשאילתות מהירות.
+ערך הסביבה מופיע כ-filter בדרגה ראשונה ב-dashboard ונשמר בשרת לשאילתות מהירות.
 
-> **אזהרה:** ערכי סביבה לא חייבים להכיל פסיק `,` מילולי. מסננים Dashboard משתמשים בבחירה מרובה מופרדת בפסיק בחוט (`?environment=prod,staging`), כך שסביבה בשם `prod,blue` תחולק לשני ערכים. אירועים עם סביבות המכילות פסיק נדחים בזמן ספיגה.
-
----
-
-## נתונים וגוגנות
-
-ה-SDK מתעד רק את השדות שאתם מעבירים במפורש. הנושאים, ההודעות, הקלטים ופלטי הכלים והתוכן של המודל נתפסים אך ורק מכיוון שהעברתם אותם לקריאת `event.*`. שום דבר לא נקרא מתהליך שלכם או נתפס בצורה מובנית. כל שדה שלא הגדרתם מושמט לחלוטין מהאירוע; הוא לא כתוב לדיסק.
-
-זה הופך את ההסתרה לבחירה שלכם ולאחריות שלכם. אם נושא או טעינת כלי מכיל PII או סודות שלא הייתם רוצים לאחסן, הסירו או סיכו זאת לפני שתעבירו אותו לשיטת האירוע.
+> **אזהרה:** ערכי סביבה חייבים לא להכיל פסיק `,` משחק. ה-dashboard filters משתמשים ב-multi-select המופרד בפסיקים על החוט (`?environment=prod,staging`), כך סביבה בשם `prod,blue` תחולק לשני ערכים. אירועים עם סביבות המכילות פסיקים דחויים בזמן ingest.
 
 ---
 
-## התייחסות אירועים
+## נתונים ופרטיות
 
-רוב האירועים מגיעים בזוגות התחלה/סיום החולקים מזהה מתאם: `tool_use` ו-`tool_result` חולקים `tool_call_id`, `hook_triggered` ו-`hook_completed` חולקים `hook_id`, ו-`human_wait` ו-`human_input` חולקים `input_id`. פלוטו את אירוע ההתחלה, עשו את העבודה, ואז פלוטו את אירוע הסיום עם אותו מזהה. Failproof AI Observability מתאים את הזוג ומחשב עבורכם `duration_ms`, כך שלא אתם עצמכם מעבירים `duration_ms`.
+ה-SDK מתעד רק את השדות שאתה מעביר במפורש. הנושאים, ההודעות, קלטי הכלים וערכיהם, ותוכן המודל נתפסים אך ורק מכיוון שאתה מעביר אותם לקריאת `event.*`. שום דבר לא נקרא מתהליך שלך או נתפס באופן משתמע. כל שדה שאתה משאיר מוגדר הוא מושמט מהאירוע לחלוטין; זה לא כתוב לדיסק.
 
-![גרף הביצוע בסגנון git של סשן ליד ציר הזמן שלו, שנבנה מחדש מהאירועים המזווגים, עם פאנל פירוט הכלים/מודל/hook](/agenteye/images/session-detail.png)
+זה הופך redaction לבחירה שלך ואחריותך. אם prompt או tool payload מכיל PII או secrets שאתה מעדיף לא לאחסן, הסר או mask אותו לפני שאתה מעביר אותו לשיטת האירוע.
 
-כל שיטות אירועים דורשות את שני השדות הבאים:
+---
+
+## התייחסות לאירוע
+
+רוב האירועים מגיעים בזוגות התחלה/סיום החולקים מזהה קורלציה: `tool_use` ו-`tool_result` חולקים `tool_call_id`, `hook_triggered` ו-`hook_completed` חולקים `hook_id`, ו-`human_wait` ו-`human_input` חולקים `input_id`. פלוט את אירוע ההתחלה, בצע את העבודה, ואז פלוט את אירוע הסיום עם אותו מזהה. Failproof AI Observability מתאים את הצמד ומחשבת `duration_ms` עבורך, כך שאתה לעולם לא מעביר `duration_ms` בעצמך.
+
+![גרף ביצוע בסגנון git של סשן לצד שדול האירועים שלו, שנבנה מחדש מהאירועים המזוודים, עם לוח ההתפלגות tool/model/hook](/agenteye/images/session-detail.png)
+
+כל שיטות אירוע דורשות את שני השדות הללו:
 
 | שדה | סוג | תיאור |
 |---|---|---|
-| `session_id` | `str` | מזהה את הרצת הסוכן ברמה הגבוהה ביותר |
+| `session_id` | `str` | מזהה את הרצת הסוכן ברמה העליונה |
 | `agent_id` | `str` | מזהה איזה סוכן בתוך הסשן פלט את האירוע |
 
-כל השיטות מקבלות גם `**kwargs` שרירותי למטא-נתונים מותאמים אישית (ראו [שדות מותאמים אישית](#custom-fields)).
+כל השיטות קיבלו גם `**kwargs` שרירותיים למטא-נתונים מותאמים אישית (ראה [Custom Fields](#custom-fields)).
 
 ---
 
 ### `event.agent_start()`
 
-נפלט כאשר סוכן מתחיל עבודה.
+פלוט כאשר סוכן מתחיל עבודה.
 
 ```python
 agenteye.event.agent_start(
@@ -188,7 +188,7 @@ agenteye.event.agent_start(
 
 ### `event.agent_end()`
 
-נפלט כאשר סוכן סיים עבודה.
+פלוט כאשר סוכן מסיים עבודה.
 
 ```python
 agenteye.event.agent_end(
@@ -203,7 +203,7 @@ agenteye.event.agent_end(
 
 ### `event.tool_use()`
 
-נפלט כאשר סוכן מזמין כלי. התאימו עם `tool_result`; ה-SDK מחשב `duration_ms` באופן אוטומטי.
+פלוט כאשר סוכן משקף כלי. צמד עם `tool_result`; ה-SDK auto-computes `duration_ms`.
 
 ```python
 agenteye.event.tool_use(
@@ -219,7 +219,7 @@ agenteye.event.tool_use(
 
 ### `event.tool_result()`
 
-נפלט כאשר כלי חוזר. קשורה עם `tool_use` דרך `tool_call_id`.
+פלוט כאשר כלי חוזר. משקבל עם `tool_use` דרך `tool_call_id`.
 
 ```python
 agenteye.event.tool_result(
@@ -237,7 +237,7 @@ agenteye.event.tool_result(
 
 ### `event.model_request()`
 
-נפלט ממש לפני שליחת הנושא ל-LLM.
+פלוט ממש לפני שליחת prompt ל-LLM.
 
 ```python
 agenteye.event.model_request(
@@ -254,13 +254,13 @@ agenteye.event.model_request(
 )
 ```
 
-רישומי `messages` מקבלים או תוכן מחרוזת פשוט `content` או תוכן מדוגמת Anthropic עם רשימה של בלוקים `content`. פרמטרים דגימה (`temperature`, `max_tokens`, וכו') יכולים להעבר כ-kwargs נוספים.
+ערכי `messages` מקבלים או פשוט `content` של מחרוזת או רשימת-של-blocks בסגנון Anthropic `content`. פרמטרים דגימה (`temperature`, `max_tokens`, וכו') יכולים להיות מעברים ככwarargs נוספים.
 
 ---
 
 ### `event.model_response()`
 
-נפלט כאשר ה-LLM מחזיר תשובה.
+פלוט כאשר ה-LLM חוזר עם תגובה.
 
 ```python
 agenteye.event.model_response(
@@ -277,13 +277,13 @@ agenteye.event.model_response(
 )
 ```
 
-`content` מקבל או מחרוזת פשוט (ספקים גנריים) או רשימת בלוקי תוכן בסגנון Anthropic. קריאות כלים חיות בתוך `content` כ-`{"type": "tool_use", ...}` בלוקים, ללא שדה `tool_calls` נפרד.
+`content` מקבל או פשוט מחרוזת (ספקים גנריים) או רשימה של בלוקי תוכן בסגנון Anthropic. קריאות כלים חיות בתוך `content` כבלוקים `{"type": "tool_use", ...}`, ללא שדה `tool_calls` נפרד.
 
 ---
 
 ### `event.hook_triggered()`
 
-נפלט כאשר hook משתחרר. התאימו עם `hook_completed`; ה-SDK מחשב `duration_ms` באופן אוטומטי.
+פלוט כאשר hook מעלה. צמד עם `hook_completed`; ה-SDK auto-computes `duration_ms`.
 
 ```python
 agenteye.event.hook_triggered(
@@ -300,7 +300,7 @@ agenteye.event.hook_triggered(
 
 ### `event.hook_completed()`
 
-נפלט כאשר hook מסיים. קשורה עם `hook_triggered` דרך `hook_id`.
+פלוט כאשר hook מסיים. משקבל עם `hook_triggered` דרך `hook_id`.
 
 ```python
 agenteye.event.hook_completed(
@@ -319,7 +319,7 @@ agenteye.event.hook_completed(
 
 ### `event.error()`
 
-נפלט כאשר שגיאה לא טופלה מתרחשת.
+פלוט כאשר שגיאה לא מטופלת מתרחשת.
 
 ```python
 agenteye.event.error(
@@ -333,13 +333,13 @@ agenteye.event.error(
 
 ---
 
-## אירועי התערבות אנושית
+## אירועי Human-in-the-Loop
 
-אירועי התערבות אנושית מעניקים לכם פיקוח על הרגעים שבהם אדם צעד אל התשלום של הסוכן (המתנה לאישור, הספקת קלט, השהיה או עצירת הסוכן). הם מאפשרים לכם למדוד כמה זמן בני אדם לוקחים להגיב (ה-SDK מחשב באופן אוטומטי `duration_ms` על אירועים מזווגים), לבצע ביקורת על מי עצר או הפריע לסוכן, ולבנות זרימות אישור וכיווץ המופיעות בתDashboard.
+אירועי human-in-the-loop נותנים לך감독 על הרגעים שבהם אדם צעד לביצוע הסוכן (המתנה לאישור, מתן קלט, השהיה, או עצירת הסוכן). הם מאפשרים לך למדוד כמה זמן בני אדם לוקחים לתגובה (ה-SDK auto-computes `duration_ms` על האירועים המזוודים), ביקורת שמי השהה או הפריע לסוכן, ובנית עומבות אישור ופיקוח שעולות על הלוח.
 
 ### `event.human_wait()`
 
-נפלט כאשר הסוכן מעצור ביצוע כדי להמתין לאדם לספק קלט. התאימו עם `human_input`; ה-SDK מחשב באופן אוטומטי `duration_ms` (כמה זמן האדם לקח להגיב).
+פלוט כאשר הסוכן משהה ביצוע כדי להמתין לאדם לספק קלט. צמד עם `human_input`; ה-SDK auto-computes `duration_ms` (כמה זמן לקח לאדם להגיב).
 
 ```python
 agenteye.event.human_wait(
@@ -354,7 +354,7 @@ agenteye.event.human_wait(
 
 ### `event.human_input()`
 
-נפלט כאשר אדם מספק קלט והסוכן מחדש. קשורה עם `human_wait` דרך `input_id`. `duration_ms` מחושב באופן אוטומטי ואסור להעבר על ידי הקורא.
+פלוט כאשר אדם מספק קלט והסוכן חוזר. משקבל עם `human_wait` דרך `input_id`. `duration_ms` הוא auto-computed ויש לא לעבור על ידי הקורא.
 
 ```python
 agenteye.event.human_input(
@@ -368,7 +368,7 @@ agenteye.event.human_input(
 
 ### `event.human_pause()`
 
-נפלט כאשר אדם באופן פעיל עוצר את הסוכן (למשל דרך בקרת תDashboard). הסוכן מושהה אך לא מסיים.
+פלוט כאשר אדם בפועל השהה את הסוכן (למשל דרך בקרת dashboard). הסוכן מושהה אך לא מסתיים.
 
 ```python
 agenteye.event.human_pause(
@@ -381,7 +381,7 @@ agenteye.event.human_pause(
 
 ### `event.human_interrupt()`
 
-נפלט כאשר אדם באופן פעיל עוצר את הסוכן בביצוע. בניגוד ל-`human_pause`, עבודת הסוכן מסתיימת ולא מושהה.
+פלוט כאשר אדם בפועל עוצר את הסוכן באמצע ביצוע. בניגוד ל-`human_pause`, עבודת הסוכן מסתיימת ולא מושהית.
 
 ```python
 agenteye.event.human_interrupt(
@@ -397,7 +397,7 @@ agenteye.event.human_interrupt(
 
 ## שדות מותאמים אישית
 
-כל ארגומנטים מילות מפתח נוספים מצורפים לאירוע אחרי השדות הרגילים:
+כל keyword arguments נוסף מוספים לאירוע לאחר השדות הסטנדרטיים:
 
 ```python
 agenteye.event.tool_use(
@@ -410,27 +410,27 @@ agenteye.event.tool_use(
 )
 ```
 
-`timestamp`, `type` ו-`environment` שמורים ולהעלות `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) אם התחיל כשדות מותאמים אישית. `session_id` ו-`agent_id` הם פרמטרים נדרשים על כל שיטת אירוע ולא יכולים להסופק שוב; Python מעלה `TypeError` אם אתם עושים זאת. קבעו את הסביבה עם `configure(environment=...)` (או משתנה `AGENTEYE_ENVIRONMENT`) במקום זאת.
+`timestamp`, `type`, ו-`environment` שמורים ועולים `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) אם מעברים כשדות מותאמים אישית. `session_id` ו-`agent_id` הם פרמטרים נדרשים בכל שיטת אירוע ולא יכולים להיות מסופקים שוב; Python עולה `TypeError` אם אתה כן. קבע את הסביבה עם `configure(environment=...)` (או משתנה `AGENTEYE_ENVIRONMENT`) במקום.
 
-שמור על עומסי עבודה כ-JSON מובנה כאשר אתה רוצה לשאול את התחומים שלהם. ערכים שה-JSON לא תומך בהם באופן מקובל — כמו datetimes, UUIDs, decimals, sets, bytes או model objects — מומרים למחרוזות כך שההקלטה ממשיכה בבטחה.
+שמור payloads כ-JSON מובנה כאשר אתה רוצה שואל את השדות שלהם. ערכים ש-JSON לא תומך בהם במהותו—כמו datetimes, UUIDs, decimals, sets, bytes, או אובייקטי מודל—מומרים למחרוזות כך הקלטה ממשיכה בבטחה.
 
 ---
 
-## כיצד אירועים כתובים
+## כיצד אירועים נכתבים
 
-אירועים מוצמדים בתוך התהליך ודוחפים לדיסק כל `flush_interval` שניות (ברירת המחדל 500 ms). כל flush כותב קובץ JSONL אחד:
+אירועים buffered בתוך התהליך ו-flushed לדיסק כל `flush_interval` שניות (דברי 500 ms). כל flush כותבת קובץ JSONL אחד:
 
 ```text
 ~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
 ```
 
-האספן מעקב על ספרייה זו ומעלה קבצים באופן אוטומטי. אתם לא צריכים לנהל את הקבצים הללו ישירות.
+ה-collector משקיף על ספריה זו ועולה קבצים באופן אוטומטי. אתה לא צריך לנהל קבצים אלה ישירות.
 
-כל קובץ כתוב בצורה אטומית: ה-SDK כותב לקובץ זמני ואז משם שמות אותו למקום, כך שהאספן לא רואה קובץ חצי-כתוב. flush סופי גם פועל כאשר התהליך שלכם יוצא, כך שאירועים מוצמדים במרווח האחרון לא אבדו. אם האספן אופליין, אירועים פשוט מתצברים כקבצים בדיסק וספינה ברגע שחוזרים.
+כל קובץ כתוב באופן אטומי: ה-SDK כותב לקובץ זמני ואז משנה את שמו למקום, כך שה-collector לעולם לא רואה קובץ חצי-כתוב. flush סופי גם רץ כאשר התהליך שלך יוצא, כך אירועים buffered בשדול האחרון לא אבדו. אם ה-collector אופליין, אירועים פשוט צבר כקבצים על דיסק ודשים ברגע שהוא חוזר.
 
 ---
 
 ## הצעדים הבאים
 
-- [זרם אירועים](/he/agenteye/event-stream): צפו באירועים אלה מגיעים בחיים, מקודדים בצבע וניתן לסנן לפי סביבה, סוכן וסשן.
-- [סשנים](/he/agenteye/sessions): ראו כיצד אירועים מזווגים משחזרים כל הרצה של סוכן כגרף ביצוע וציר זמן.
+- [Event stream](/he/agenteye/event-stream): צפה באירועים אלה הגיעו חי, קודי צבע וניתנים לסינון לפי סביבה, סוכן, וסשן.
+- [Sessions](/he/agenteye/sessions): ראה כיצד האירועים המזוודים שנבנו מחדש כל הרצת סוכן כגרף ביצוע וציר זמן.

@@ -1,41 +1,41 @@
 ---
 title: "Hata Takibi"
-description: "Ajanlarınızın ürettiği her hatayı bir yerde görün, gruplandırılmış şekilde, böylece gürültülü bir patlama tek bir sorun olarak görünür."
+description: "Ajanlarınızın ürettikleri tüm hataları tek bir yerde görün, gürültülü bir patlamanın tek bir sorun olarak okunacak şekilde gruplandırılmış."
 ---
 
 
-Ajanlarınızın ürettiği her hatayı bir yerde görün, gruplandırılmış şekilde, böylece gürültülü bir patlama tek bir sorun olarak görünür. "Bir şey kırmızı" durumundan hatasının nedeni olan kesin çalıştırmaya gitmek için tek tık yapmanız yeterlidir; canlı akışta scroll yaparak bulmanıza gerek yoktur.
+Ajanlarınızın ürettikleri tüm hataları tek bir yerde görün, gürültülü bir patlamanın tek bir sorun olarak okunacak şekilde gruplandırılmış. "Bir şey kırmızı" durumundan sorunu yaratan tam çalışmaya kadar tek tıklamayla ulaşırsınız, canlı akış arasında bulmak için kaymaya gerek yoktur.
 
-![Hatalar sayfası: zaman içinde hataların histogramı üstünde gruplandırılmış kırmızı hata satırları, her birinin tek tıklamalı "+ uyarı" düğmesi var](/agenteye/images/errors.png)
-*Hatalar sayfası: zaman içinde hataların histogramı, tekrarlanan hatalar olay başına bir satıra daraltılmış.*
+![Hatalar sayfası: zaman içindeki hatalar için yukarıda bir histogram, gruplandırılmış kırmızı hata satırları, her birinin tek tıklamayla "+ uyarı" düğmesi vardır](/agenteye/images/errors.png)
+*Hatalar sayfası: zaman içindeki hatalar için histogram, tekrar eden hatalar olay başına bir satıra daraltılmıştır.*
 
-## Her hata, sizin için zaten toplanmış
+## Her hata zaten sizin için toplanmış
 
-Bir ajan hata verdiğinde, canlı olay akışında scroll yaparak kırmızı satırları kayıp olmadan yakalamaya çalışmamalısınız. **Hatalar** sayfası toplama işini sizin için yapar. Kontrol panelinin kırmızı renge boyayacağı her şeyi bir triyaj yüzeyinde bir araya getirir, böylece ilk gördüğünüz şey nerenin başarısız olduğudur, nerede arama yapacağınız değil.
+Bir ajan bozulduğunda, canlı olay akışını kaydırıp kırmızı satırları kaçırmadan yakalama ümidiyle geçirmeniz gerekli değildir. **Hatalar** sayfası toplama işlemini sizin için yapar. Kontrol panelinin kırmızı göstereceği her şeyi tek bir triage yüzeyinde bir araya getirir, böylece ilk gördüğünüz şey nereye bakacağınız değil, neyin başarısız olduğudur.
 
-Ayrıca açıkça görülenlerden daha fazlasını yakalar. Açık `error` olaylarının yanında, Failproof AI Observability sessiz hataları da ortaya çıkarır: yükü hata taşıyan herhangi bir `tool_result`, `hook_completed` veya `agent_end` burada görünür. Hata döndüren bir araç veya kötü çıkış yapan bir hook, yüksek sesli bir istisna atılmadığı için artık sizden kaçmaz.
+Ve açık olanlardan daha fazlasını yakalar. Açık `error` olaylarının yanı sıra, Failproof AI Observability sessiz hataları da ortaya çıkarır: yükü bir hata içeren herhangi bir `tool_result`, `hook_completed` veya `agent_end` burada görünür. Bir hata döndüren bir araç veya kötü çıkış yapan bir hook, hiçbir şey yüksek sesle bir istisna atmaması nedeniyle artık sizin gözünüzden kaçmaz.
 
-Sayfanın üstünde, hataların zaman içindeki dağılımını gösteren bir histogram bulunur. Bir bakışta bunun sabit bir arka plan akışı mı yoksa birkaç dakika önce başlayan bir patlama mı olduğunu anlarsınız, böylece hemen ne yapmanız gerektiğini bilirsiniz.
+Sayfanın üstünde, zaman içindeki hataları çizen bir histogram yer alır. Tek bir bakışta bunun sabit bir arka plan akışı mı yoksa birkaç dakika önce başlayan bir artış mı olduğunu söyleyebilir, böylece hemen neyin yapılması gerektiğini bilirsiniz.
 
-Her gözlem yüzeyi gibi, Hatalar sayfası kuruluşunuza kapsamlıdır ve tarih aralığı, ortam, ajan ve oturum tarafından filtreler. Bu, filoye özgü bir listeyi, gerçekten önemsediğiniz bir ajana veya bir ortama daraltmanız anlamına gelir.
+Her gözlem yüzeyi gibi, Hatalar sayfası da kuruluşunuza kapsamlıdır ve tarih aralığı, ortam, ajan ve oturum tarafından filtre edilir. Bu, bir filo genişliğindeki listeyi alıp gerçekten önemsediğiniz tek bir ajanı veya ortamı daraltabileceğiniz anlamına gelir.
 
-## Yüz özdeş satırın yerine bir olay
+## Yüz özdeş satır değil, bir olay
 
-Tek bir bozuk bağımlılık aynı hatayı dakikada yüzlerce kez tetikleyebilir. İşlenmemiş halde, bu, gerçekten görmeniz gereken bir şeyi gömebilecek neredeyse özdeş satırlardan oluşan bir duvarıdır.
+Tek bir bozuk bağımlılık aynı hatayı dakikada yüzlerce kez tetikleyebilir. Rawda bırakılırsa, bu neredeyse özdeş satırların duvarıdır ve gerçekten görmesi gereken tek şeyi gömüştür.
 
-Failproof AI Observability aynı oturum ve hata türünü paylaşan tekrarlanan hataları tek bir satıra daraltır. Bir patlama bir olay olarak görünür. Sonuçta sorun sayarsınız, günlük satırları değil, önemli olan sinyal kendi hacminden boğulmak yerine üstte kalır.
+Failproof AI Observability, aynı oturum ve hata türünü paylaşan tekrar eden hataları tek bir satıra daraltır. Bir patlama bir olay olarak okunur. Sonunda log satırlarını değil, sorunları sayarsınız ve önemli olan sinyal ses tarafından boğulmak yerine en üstte kalır.
 
-## "Bir şey kırmızı" durumundan kesin olaya
+## "Bir şey kırmızı" dan tam olaya
 
-Herhangi bir satıra tıklayın ve bu çalıştırmanın oturumunun içine, başarısız olan kesin olaya konumlandırılmış şekilde inin. Oturum kimliklerini kopyalamaya gerek yok, nerenin yanlış gittiğini bulma için scroll yapmanıza gerek yok: tam oraya gidersiniz, yürütme grafiği bir bakışta uzağınızda olduğu için ajanın kırmış olmadan önceki anlarda ne yaptığını görebilirsiniz.
+Herhangi bir satıra tıklayarak o çalışmanın oturumunun içine gelin, başarısız olan tam olaya konumlandırılmış. Oturum kimliğini kopyalamaya gerek yoktur, yanlış gittiği anı bulmak için kaymaya gerek yoktur: doğrudan oraya varırsınız ve tam yürütme grafı bir bakışta uzakta olması, ajanın bozulmadan önceki anlarda ne yaptığını görebilmeniz için.
 
-`alerts:write` izniniz varsa, her satırda bir **+ uyarı** düğmesi de bulunur. Tıklayın ve Gözlenebilirlik, yeni bir uyarı kuralını zaten aynı hatayı yakalaması için doldurulmuş şekilde açar. Yeni triyaj yaptığınız olay, bir sonraki sefer sizi şaşırtmak yerine sizi uyandırır.
+Eğer `alerts:write` yetkiniz varsa, her satır ayrıca bir **+ uyarı** düğmesi taşır. Buna tıklayın ve Observability aynı hatayı yakalamak için zaten doldurulmuş yeni bir uyarı kuralını açar. Az önce triage ettiğiniz olay, sizi iki kez şaşırtmak yerine bir sonraki seferde sayfanız yapacak olay olur.
 
-**Nerede bulunur:** **Hatalar** sayfası kontrol panelinin gözlem bölümünde, `/<org-slug>/errors` adresinde yer alır.
+**Nerede bulunur:** **Hatalar** sayfası kontrol panelinin gözlem bölümünde `/<org-slug>/errors` adresinde bulunur.
 
-## İlişkili
+## İlgili
 
-- [Uyarılar](/tr/agenteye/alerts): herhangi bir hatayı bir sayfalama kuralına dönüştürün.
-- [Olaylar](/tr/agenteye/incidents): açılan bir uyarıyı açık durumdan çözülene kadar takip edin.
-- [Oturumlar](/tr/agenteye/sessions): herhangi bir hatanın arkasındaki tam çalıştırmayı açın.
-- [Denetimler](/tr/agenteye/audits): Gözlenebilirliğe çalıştırmalarınız arasında hata modellerini bulmasını sağlayın.
+- [Uyarılar](/tr/agenteye/alerts): herhangi bir hatayı çağrıya dönüştürün.
+- [Olaylar](/tr/agenteye/incidents): açıktan çözülmeye kadar ateşlenen bir uyarıyı izleyin.
+- [Oturumlar](/tr/agenteye/sessions): herhangi bir hatanın arkasında tam çalışmayı açın.
+- [Denetimler](/tr/agenteye/audits): Observability'nin çalışmalarınız arasında hata kalıplarını bulmasını sağlayın.

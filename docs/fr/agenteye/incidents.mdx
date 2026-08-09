@@ -1,26 +1,26 @@
 ---
 title: "Incidents"
-description: "Quand une alerte se déclenche, tout le monde peut voir que l'incident est ouvert, qui en est responsable, et ce qui s'est passé jusqu'ici — sur une seule chronologie horodatée."
+description: "Quand une alerte se déclenche, tout le monde peut voir que l'incident est ouvert, qui en est responsable et ce qui s'est passé jusqu'ici — sur une chronologie attribuée unique."
 ---
 
 
 Quand une alerte se déclenche, la première question est toujours « qui s'en occupe ? » Les incidents y répondent : dès qu'un seuil est franchi, tout le monde peut voir que l'incident est ouvert, qui en est responsable, et exactement ce qui s'est passé jusqu'ici, avec un historique clair et attribué que vous pouvez transmettre directement à un post-mortem.
 
-![La liste des incidents : cartes d'incidents liés à des alertes et ouverts manuellement, regroupés par état, chacun avec un badge de sévérité et un responsable assigné](/agenteye/images/incidents.png)
-*La liste regroupe les incidents ouverts par état et permet de filtrer par sévérité et par responsable, afin de voir immédiatement ce qui nécessite une intervention humaine.*
+![La liste des incidents : cartes d'incidents liés à des alertes et ouverts manuellement, regroupées par état, chacune avec un badge de sévérité et un assignataire](/agenteye/images/incidents.png)
+*La liste regroupe les incidents ouverts par état et permet de filtrer par sévérité et assignataire, afin que vous voyiez ce qui nécessite une intervention humaine immédiate.*
 
 ## Savoir qui s'en occupe, d'un coup d'œil
 
-Fini les « est-ce que quelqu'un regarde ça ? » dans un fil de discussion. Un franchissement de seuil ouvre automatiquement un incident et le dépose dans une boîte de réception partagée, regroupée par état. Prenez-le en charge et votre nom y apparaît, signalant au reste de l'équipe que c'est traité. La prise en charge est partagée : plusieurs opérateurs peuvent acquitter le même incident et chacun est enregistré séparément, de sorte qu'une cellule de crise complète s'affiche par nom sans que les uns n'écrasent les autres. Assignez un responsable pour le triage, et filtrez la liste par sévérité ou par responsable pour ne voir que ce qui vous incombe.
+Plus de « quelqu'un s'en occupe ? » dans un fil de discussion. Un dépassement de seuil ouvre automatiquement un incident et le dépose dans une boîte de réception partagée, regroupée par état. Accusez réception et votre nom y est associé, indiquant au reste de l'équipe que c'est pris en charge. L'accusé de réception est partagé : plusieurs opérateurs peuvent accuser réception du même incident, chacun étant enregistré séparément, de sorte qu'une cellule de crise complète apparaît nominativement plutôt que de se superposer. Assignez un responsable pour le triage, et filtrez la liste par sévérité ou assignataire pour n'afficher que ce qui vous concerne.
 
 ## Toute l'histoire, dans une seule chronologie
 
-Quand l'incident est terminé, le compte-rendu est déjà là. Ouvrez n'importe quel incident et vous obtenez les preuves du franchissement, ses responsables et abonnés, un fil de commentaires pour coordonner sur place, et une chronologie d'activité en ajout seul.
+Quand l'incident est terminé, le compte-rendu est déjà rédigé. Ouvrez n'importe quel incident et vous obtenez les preuves du dépassement, ses assignataires et abonnés, un fil de commentaires pour coordonner sur place, et une chronologie d'activité en ajout seul.
 
-![Vue détaillée d'un incident : l'alerte parente et le résumé du franchissement, les responsables et abonnés, une chronologie d'activité attribuée, et un fil de commentaires](/agenteye/images/incident-detail.png)
+![Vue détaillée d'un incident : l'alerte parente et le résumé du dépassement, les assignataires et abonnés, une chronologie d'activité attribuée, et un fil de commentaires](/agenteye/images/incident-detail.png)
 *Tout ce qui s'est passé, dans l'ordre, chaque ligne signée par celui qui l'a fait.*
 
-Chaque action (ouverture, acquittement, résolution, etc.) est inscrite dans cette chronologie et n'en est jamais effacée. Chaque entrée est attribuée : à l'opérateur qui l'a effectuée, par e-mail, ou à **automated** pour tout ce que Failproof AI Observability a fait de son propre chef, comme l'ouverture de l'incident lors du franchissement. Rien n'est anonyme et rien n'est perdu, si bien que le post-mortem s'écrit presque tout seul.
+Chaque action (ouverture, accusé de réception, résolution, etc.) est consignée dans cette chronologie et ne peut jamais être modifiée. Chaque entrée est attribuée : à l'opérateur qui l'a effectuée, par e-mail, ou à **automated** pour tout ce que Failproof AI Observability a fait de façon autonome, comme l'ouverture de l'incident lors du dépassement. Rien n'est anonyme et rien n'est perdu, de sorte que le post-mortem s'écrit presque tout seul.
 
 ## Comment un incident évolue
 
@@ -33,18 +33,18 @@ stateDiagram-v2
     resolved --> [*]
 ```
 
-- **Ouvert (firing) :** le franchissement ouvre l'incident et notifie vos canaux une seule fois. Les franchissements répétés se regroupent dans le même incident et actualisent ses preuves plutôt que de vous notifier encore et encore.
-- **Acquitté (acknowledged) :** un opérateur prend en charge l'incident. Il reste ouvert, et les franchissements ultérieurs mettent à jour les preuves discrètement.
-- **Résolu (resolved) :** un opérateur le clôture. La résolution automatique lorsque la condition se normalise est prévue mais pas encore activée, donc un incident reste ouvert jusqu'à ce qu'un humain le résolve, ce qui oblige chacun à rester honnête sur ce qui est vraiment réglé. Un nouvel incident peut s'ouvrir sur la même alerte ultérieurement.
+- **Ouvert (firing) :** le dépassement ouvre l'incident et notifie vos canaux une seule fois. Les dépassements répétés se regroupent dans le même incident et actualisent ses preuves au lieu de vous notifier encore et encore.
+- **Accusé de réception (acknowledged) :** un opérateur prend en charge l'incident. Il reste ouvert, et les dépassements ultérieurs mettent à jour les preuves discrètement.
+- **Résolu (resolved) :** un opérateur clôture l'incident. La résolution automatique lorsque la condition se résorbe est prévue mais pas encore activée, donc un incident reste ouvert jusqu'à ce qu'un humain le résolve, ce qui garantit que tout le monde soit honnête sur ce qui a réellement été résolu. Un nouvel incident peut s'ouvrir sur la même alerte ultérieurement.
 
-Une alerte ne peut avoir qu'un seul incident ouvert à la fois, de sorte qu'une règle instable ne peut pas vous noyer sous les doublons. Vous pouvez également ouvrir un incident manuellement : un incident autonome pour quelque chose qu'aucune alerte n'a détecté, ou un incident rattaché à une alerte existante, si vous disposez de `incidents:write`.
+Une alerte ne peut avoir qu'un seul incident ouvert à la fois, de sorte qu'une règle instable ne peut pas vous noyer dans des doublons. Vous pouvez également ouvrir un incident manuellement : un incident autonome pour quelque chose qu'aucune alerte n'a détecté, ou un incident rattaché à une alerte existante, si vous disposez de `incidents:write`.
 
 ## Où le trouver
 
-Les incidents se trouvent à `/<org-slug>/incidents`. La consultation nécessite **`incidents:read`** ; l'ouverture d'un incident manuel nécessite **`incidents:write`** ; l'acquittement, l'assignation, les commentaires et la résolution nécessitent **`incidents:ack`**. Les clés plus anciennes accordant l'autorisation `alerts:ack` désormais retirée continuent de fonctionner, car elle est honorée en tant que `incidents:ack`, de sorte que votre rotation d'astreinte n'a pas besoin d'être réémise.
+Les incidents se trouvent à `/<org-slug>/incidents`. La consultation nécessite **`incidents:read`** ; l'ouverture d'un incident manuel nécessite **`incidents:write`** ; l'accusé de réception, l'assignation, les commentaires et la résolution nécessitent **`incidents:ack`**. Les clés plus anciennes ayant accordé le droit retraité `alerts:ack` continuent de fonctionner, car il est reconnu comme `incidents:ack`, de sorte que votre rotation d'astreinte n'a pas besoin d'être réémise.
 
 ## Voir aussi
 
-- [Alertes](/fr/agenteye/alerts) : les règles qui ouvrent ces incidents lorsqu'un seuil est franchi.
-- [Suivi des erreurs](/fr/agenteye/error-tracking) : visualisez toutes les défaillances en un seul endroit et promouvez-en une en alerte.
-- [Audits](/fr/agenteye/audits) : l'analyste planifié qui détecte les défaillances qu'aucune règle ne surveillait.
+- [Alertes](/fr/agenteye/alerts) : les règles qui ouvrent ces incidents lors d'un dépassement de seuil.
+- [Suivi des erreurs](/fr/agenteye/error-tracking) : visualisez chaque échec en un seul endroit et promouvez-en un en alerte.
+- [Audits](/fr/agenteye/audits) : l'analyste planifié qui détecte les échecs qu'aucune règle ne surveillait.

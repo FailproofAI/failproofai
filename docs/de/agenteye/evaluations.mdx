@@ -1,50 +1,50 @@
 ---
 title: "Evaluierungen"
-description: "Qualitätsprobleme kommen jetzt zu dir – bevor du sie aus einer Nutzerbeschwerde erfährst."
+description: "Qualitätsprobleme fallen dir jetzt auf, bevor du davon durch eine Nutzerbeschwerde erfährst."
 ---
 
-Qualitätsprobleme kommen jetzt zu dir – bevor du sie aus einer Nutzerbeschwerde erfährst. Verbinde einmalig deinen eigenen Scoring-Service, und Failproof AI Observability bewertet automatisch jeden abgeschlossenen Run, sodass ein Rückgang der Hilfsbereitschaft oder ein Anstieg von Halluzinationen sichtbar wird, bevor ein Kunde es bemerkt.
+Qualitätsprobleme fallen dir jetzt auf, bevor du davon durch eine Nutzerbeschwerde erfährst. Verbinde einmal deinen eigenen Scoring-Service, und Failproof AI Observability bewertet jeden abgeschlossenen Run automatisch – ein Rückgang der Hilfsbereitschaft oder eine Häufung von Halluzinationen zeigt sich von selbst, bevor ein Kunde es überhaupt bemerkt.
 
-![Das Sessions-Raster mit einer Score-Spalte: Jeder Run trägt eine Evaluierungsstatus-Markierung sowie farbkodierte Badges für Hilfsbereitschaft, Faktentreue und Tool-Effizienz](/agenteye/images/sessions-list.png)
+![Das Sessions-Raster mit einer Score-Spalte: Jeder Run trägt ein Evaluierungsstatus-Badge und farbkodierte Badges für Hilfsbereitschaft, Faktentreue und Tool-Effizienz](/agenteye/images/sessions-list.png)
 
-*Jeder Run im Sessions-Raster trägt seine Scores; rote, gelbe und grüne Badges lassen schwache Runs sofort hervorstechen, ohne dass du auch nur ein einziges Transkript öffnen musst.*
+*Jeder Run im Sessions-Raster trägt seine Bewertungen; rote, gelbe und grüne Badges heben schwache Runs hervor, ohne dass du auch nur ein einziges Transkript öffnen musst.*
 
-## Kein manuelles Stichproben mehr
+## Manuelle Stichproben abschaffen
 
-Früher hast du eine Handvoll Runs stichprobenartig geprüft und gehofft, der Rest sei in Ordnung. Jetzt wird jede abgeschlossene Session in dem Moment bewertet, in dem sie endet – anhand der Dimensionen, die dir wichtig sind: Hilfsbereitschaft, Tool-Effizienz, Faktentreue, Sicherheit oder was auch immer dein Qualitätsmaßstab ist. Du definierst die Score-Schlüssel; Failproof AI Observability speichert, verfolgt und zeigt alles an, was dein Evaluator zurückliefert. Kein Run bleibt unbewertet, und du erfährst Regressionen nicht mehr aus einem Support-Ticket.
+Früher hast du ein paar Runs stichprobenartig geprüft und gehofft, der Rest sei in Ordnung. Jetzt wird jede abgeschlossene Session in dem Moment bewertet, in dem sie endet – entlang der Dimensionen, auf die es dir ankommt: Hilfsbereitschaft, Tool-Effizienz, Faktentreue, Sicherheit – was auch immer dein Qualitätsmaßstab ist. Du legst die Score-Schlüssel fest; Failproof AI Observability speichert, verfolgt und zeigt alles an, was dein Evaluator zurücksendet. Kein Run bleibt unbewertet, und du erfährst von einer Regression nicht mehr erst durch ein Support-Ticket.
 
-Die Scores erscheinen direkt im Sessions-Raster unter **`/<org-slug>/sessions`** (Seitenleiste → *observe* → *sessions*) – ein Badge-Cluster pro Zeile. Nur die Runs sehen, die nicht gut abgeschnitten haben? Filtere das Raster nach Score-Bereich, etwa Hilfsbereitschaft unter 0,5, und rufe genau die Runs auf, die es wert sind, gelesen zu werden. Zum Anzeigen von Scores wird die Berechtigung `evaluations:read` benötigt.
+Die Scores erscheinen direkt im Sessions-Raster unter **`/<org-slug>/sessions`** (Seitenleiste → *observe* → *sessions*), als Badge-Gruppe pro Zeile. Willst du nur die Runs sehen, die schwach abgeschnitten haben? Filtere das Raster nach Score-Bereich – z. B. Hilfsbereitschaft unter 0,5 – und ruf genau die Runs auf, die eine nähere Betrachtung lohnen. Zum Anzeigen von Scores wird die Berechtigung `evaluations:read` benötigt.
 
 ## Verstehen, warum ein Run schlecht bewertet wurde
 
-Eine Zahl zeigt dir, dass ein Run schwach war; die Session-Seite zeigt dir, warum. Öffne einen beliebigen Run, und die rechte Seitenleiste beginnt mit der übergeordneten Zusammenfassung und zeigt dann einen Balken pro Dimension mit der eigenen Begründung deines Evaluators darunter – so gelangst du in Sekunden von „0,4 bei Faktentreue" zur genauen Aussage, die falsch war.
+Eine Zahl sagt dir, dass ein Run schwach war; die Session-Seite erklärt dir warum. Öffne einen beliebigen Run: Die rechte Seitenleiste beginnt mit der Kurzzusammenfassung und zeigt dann pro Dimension einen Balken mit der eigenen Begründung deines Evaluators darunter – so gelangst du in Sekunden von „0,4 bei Faktentreue" zu genau der Aussage, die falsch war.
 
-![Die rechte Seitenleiste einer Session: oben die Evaluierungszusammenfassung, dann Score-Balken je Dimension mit je einer Begründungszeile, neben dem vollständigen Event-Zeitstrahl](/agenteye/images/session-detail.png)
+![Die rechte Seitenleiste einer Session: oben die Evaluierungszusammenfassung, darunter Score-Balken pro Dimension mit je einer Begründungszeile, neben der vollständigen Event-Timeline](/agenteye/images/session-detail.png)
 
-*Die Session-Detailansicht: Zusammenfassung, dimensionsspezifische Score-Balken und die Begründung hinter jedem Score – direkt neben dem Event-Zeitstrahl des Runs.*
+*Die Session-Detailansicht: Zusammenfassung, Score-Balken pro Dimension und die Begründung hinter jedem Score – direkt neben der Event-Timeline des Runs.*
 
-Hast du einen schärferen Evaluator ausgeliefert oder schaust du dir einen Run an, der vor der Bewertung abgestürzt ist? Ein **Re-evaluate**-Button (gesichert durch `evaluations:trigger`) bewertet die Session erneut und hängt das neue Ergebnis an ihren Zeitstrahl an, sodass frühere Scores als Verlauf sichtbar bleiben. Du findest ihn unter **`/<org-slug>/sessions/<session-id>`**.
+Hast du einen schärferen Evaluator eingesetzt oder schaust du dir einen Run an, der vor der Bewertung abgestürzt ist? Ein **Re-evaluate**-Button (gesperrt hinter `evaluations:trigger`) bewertet die Session neu und hängt das frische Ergebnis an ihre Timeline an, sodass frühere Scores als Verlauf sichtbar bleiben. Du findest ihn unter **`/<org-slug>/sessions/<session-id>`**.
 
 ## Qualitätstrend über die gesamte Flotte beobachten
 
-Ein einzelner schwacher Run ist Rauschen; eine ganze Kohorte, die abgleitet, ist ein Signal. Gespeicherte Dashboards verwandeln deine Scores in einen Trend, den du auf einen Blick verfolgen kannst: durchschnittliche Hilfsbereitschaft diese Woche im Vergleich zur letzten, pro Agent, pro Umgebung.
+Ein einzelner schwacher Run ist Rauschen; eine ganze Kohorte, die absinkt, ist ein Signal. Gespeicherte Dashboards verwandeln deine Scores in einen Trend, den du auf einen Blick verfolgen kannst: durchschnittliche Hilfsbereitschaft diese Woche im Vergleich zur letzten, pro Agent, pro Umgebung.
 
-![Ein Qualitäts-Dashboard: durchschnittliche Score-Balken je Evaluierungsdimension sowie ein zeitlicher Trendverlauf](/agenteye/images/dashboard-quality.png)
+![Ein Qualitätsdashboard: Durchschnitts-Score-Balken pro Evaluatordimension sowie ein Zeitverlauf](/agenteye/images/dashboard-quality.png)
 
-*Ein gespeichertes Qualitäts-Dashboard zeigt den Trend der von dir hervorgehobenen Score-Schlüssel – sodass ein langsamer Drift offensichtlich wird, lange bevor er zum Vorfall wird.*
+*Ein gespeichertes Qualitätsdashboard zeigt den Verlauf der Score-Schlüssel, die du hervorhebst – ein langsamer Drift wird lange sichtbar, bevor er zum Vorfall wird.*
 
-Dashboards befinden sich unter **`/<org-slug>/dashboards`** (Seitenleiste → *analyze* → *dashboards*), werden organisationsweit geteilt, und jede Karte fasst die passenden Sessions zusammen: Anzahl, Durchschnitt jedes hervorgehobenen Scores und ein Trend-Sparkline. „Open in sessions" führt dich direkt zu den vorgefilterten Runs hinter einer beliebigen Zahl. Zum Anzeigen werden `dashboards:read` und `evaluations:read` benötigt.
+Dashboards befinden sich unter **`/<org-slug>/dashboards`** (Seitenleiste → *analyze* → *dashboards*), sind organisationsweit geteilt, und jede Karte aggregiert die passenden Sessions: Anzahl, Durchschnitt jedes hervorgehobenen Scores und ein Trend-Sparkline. „Open in sessions" führt dich direkt zu den vorgefilterten Runs hinter einer Kennzahl. Zum Anzeigen werden `dashboards:read` sowie `evaluations:read` benötigt.
 
-## Einmalig einen Evaluator verbinden
+## Einmalig einen Evaluator anschließen
 
-Scoring ist optional und vollständig deaktiviert, bis du Failproof AI Observability auf einen Scorer ausrichtest. Du richtest einen kleinen HTTP-Dienst ein (Observability liefert eine funktionierende Referenzimplementierung zum Kopieren), setzt zwei Werte auf deinem Server, und ab da wird jeder Run automatisch für dich bewertet. Die vollständige Anleitung, der Scoring-Vertrag und das SDK befinden sich im ausführlichen Leitfaden.
+Scoring ist optional und bleibt vollständig deaktiviert, bis du Failproof AI Observability auf einen Scorer zeigst. Du richtest einen kleinen HTTP-Dienst ein (Observability liefert ein funktionsfähiges Referenzbeispiel, das du kopieren kannst), setzt zwei Werte auf deinem Server, und von da an wird jeder Run automatisch für dich bewertet. Die vollständige Anleitung, den Scoring-Vertrag und das SDK findest du im ausführlichen Guide.
 
-Noch nicht sicher, welche Dimensionen es überhaupt wert sind, bewertet zu werden? Der [Evaluator-Agent-Skill](/de/agenteye/evaluator-skill) lässt deinen Coding-Agenten das anhand deiner eigenen Sessions herausarbeiten und den Service dann bauen und deployen.
+Du bist dir nicht sicher, welche Dimensionen überhaupt sinnvoll zu bewerten sind? Der [Evaluator-Agent-Skill](/de/agenteye/evaluator-skill) lässt deinen Coding-Agenten das anhand deiner eigenen Sessions herausarbeiten und anschließend den Service aufbauen und deployen.
 
 ## Verwandte Themen
 
-- [Evaluation Suite](/de/agenteye/evaluation-suite): Evaluator verbinden, Scoring-Vertrag und SDK.
-- [Evaluator-Agent-Skill](/de/agenteye/evaluator-skill): Einen Coding-Agenten die Score-Dimensionen auswählen und den Evaluator bauen lassen.
-- [Sessions](/de/agenteye/sessions): Das run-basierte Raster, in dem Scores angezeigt werden.
-- [Dashboards](/de/agenteye/dashboards): Qualitätstrends in deiner Organisation speichern und teilen.
-- [Audits](/de/agenteye/audits): Das andere automatische Qualitätsmerkmal von Observability, für sitzungsübergreifende Untersuchungen.
+- [Evaluation Suite](/de/agenteye/evaluation-suite): Evaluator anschließen, Scoring-Vertrag und SDK.
+- [Evaluator-Agent-Skill](/de/agenteye/evaluator-skill): Einen Coding-Agenten deine Score-Dimensionen auswählen und den Evaluator aufbauen lassen.
+- [Sessions](/de/agenteye/sessions): Das laufbezogene Raster, in dem Scores erscheinen.
+- [Dashboards](/de/agenteye/dashboards): Qualitätstrends organisationsweit speichern und teilen.
+- [Audits](/de/agenteye/audits): Das andere automatische Qualitätsmerkmal von Observability für sitzungsübergreifende Untersuchungen.

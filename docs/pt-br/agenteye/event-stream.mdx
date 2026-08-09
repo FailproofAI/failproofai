@@ -1,50 +1,50 @@
 ---
-title: "Fluxo de Eventos"
-description: "No instante em que seu agente faz algo, você vê."
+title: "Stream de Eventos"
+description: "No momento em que seu agente faz algo, você vê."
 ---
 
 
-No instante em que seu agente faz algo, você vê. O Fluxo de Eventos é o seu pulso ao vivo sobre cada agente em produção: sem espera, sem varrer logs, sem precisar adivinhar o que acabou de acontecer.
+No momento em que seu agente faz algo, você vê. O Stream de Eventos é o seu pulso em tempo real sobre cada agente em produção: sem espera, sem vasculhar logs, sem precisar adivinhar o que acabou de acontecer.
 
-![O Fluxo de Eventos ao vivo: linhas de eventos com código de cores aparecendo em tempo real, filtráveis por ambiente, agente, sessão, tipo de evento e texto livre](/agenteye/images/events-stream.png)
+![O Stream de Eventos ao vivo: linhas de eventos coloridas por tipo sendo exibidas em tempo real, filtráveis por ambiente, agente, sessão, tipo de evento e texto livre](/agenteye/images/events-stream.png)
 
-*Cada evento de cada agente na sua organização, do mais recente ao mais antigo, atualizando em tempo real.*
+*Cada evento de cada agente na sua organização, do mais recente para o mais antigo, atualizando conforme acontece.*
 
-## Seu pulso ao vivo sobre cada agente
+## Seu pulso em tempo real sobre cada agente
 
-Quando um agente inicia uma execução, chama um modelo, dispara uma ferramenta, executa um hook ou encontra um erro, a linha aparece no topo do fluxo no exato momento em que isso acontece. Ele acompanha todos os eventos de todos os agentes da sua organização, do mais recente ao mais antigo, para que você tenha sempre uma visão atual — e nunca desatualizada.
+Quando um agente inicia uma execução, chama um modelo, dispara uma ferramenta, executa um hook ou encontra um erro, a linha aparece no topo do stream no exato momento em que isso ocorre. Ele acompanha cada evento de cada agente da sua organização, do mais recente para o mais antigo, para que você sempre tenha uma visão atual em vez de uma desatualizada.
 
-Isso significa que não é preciso ficar monitorando arquivos de log em algum servidor, nem vasculhar logs entre máquinas, nem juntar carimbos de tempo manualmente. Você abre uma página e já está observando a produção.
+Isso significa nada de ficar monitorando arquivos de log em algum servidor, nada de vasculhar máquinas, nada de juntar timestamps manualmente. Você abre uma página e já está observando a produção.
 
-As linhas têm código de cores por tipo, então você consegue ler o fluxo de relance, sem precisar analisar cada linha. Em uma olhada rápida, cada linha mostra:
+As linhas são coloridas por tipo, então você consegue ler o stream de relance em vez de analisar cada linha. De forma imediata, cada linha mostra:
 
-- **O tipo**, com código de cores: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error`, entre outros.
-- **Um resumo em uma linha** do que aconteceu, para que você raramente precise abrir algo só para entender o que ocorreu.
-- **Contagem de tokens** para o passo.
-- **Um indicador de uso da janela de contexto** onde aplicável, para que o crescimento do prompt e uma compactação iminente fiquem visíveis antes de se tornarem um problema.
+- **Seu tipo**, codificado por cor: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error`, entre outros.
+- **Um resumo em uma linha** do que aconteceu, para que raramente seja necessário abrir algo só para entender o contexto.
+- **Contagens de tokens** para a etapa.
+- **Um indicador de preenchimento da janela de contexto** onde aplicável, tornando o crescimento do prompt e uma compactação iminente visíveis antes que se tornem um problema.
 
-Observar em tempo real significa que você detecta um deploy problemático, um loop descontrolado ou uma explosão de erros assim que acontecem — não na revisão de logs do dia seguinte.
+Acompanhar em tempo real significa que você detecta um deploy problemático, um loop descontrolado ou uma explosão de erros conforme acontece — não na revisão de logs do dia seguinte.
 
 ## Encontre a execução que importa
 
-Quando algo parece errado, você não quer o firehose de informações. Você quer a execução específica que quebrou. O fluxo filtra rapidamente: por ambiente, por agente, por sessão, por tipo de evento ou por texto livre.
+Quando algo parece errado, você não quer o dilúvio de informações. Você quer a única execução que falhou. O stream filtra rapidamente: por ambiente, por agente, por sessão, por tipo de evento ou por texto livre.
 
-Filtre por ID de sessão ou ID de agente para acompanhar uma execução desde seu primeiro evento até o último. Filtre por tipo de evento para isolar um único tipo de atividade — por exemplo, todos os `error` da organização em uma só visão. Combine filtros para ir de "tudo, em todo lugar" até "este agente, em produção, com erro" em alguns cliques, e então aja com base no que encontrar.
+Filtre por id de sessão ou id de agente para acompanhar uma execução do seu primeiro evento ao último. Filtre por tipo de evento para isolar uma única categoria de atividade — por exemplo, todos os `error` na organização em uma só visão. Combine filtros para ir de "tudo, em todo lugar" para "este agente, em produção, com erros" em alguns cliques, e então aja com base no que encontrar.
 
-A busca por texto livre vai direto a uma mensagem, um nome de ferramenta ou um ID que você já tem em mãos, transformando o relato de um cliente na execução exata em segundos.
+A busca por texto livre vai direto a uma mensagem, o nome de uma ferramenta ou um id que você já tem em mãos, então um relato de cliente se transforma na execução exata em segundos.
 
 ## Onde encontrar
 
-O Fluxo de Eventos é a página inicial da sua organização. Ao entrar, é a primeira tela que você vê, em `/<org-slug>/`, para que a triagem comece no segundo em que você chega.
+O Stream de Eventos é a página inicial da sua organização. Faça login e é a primeira tela em que você chega, em `/<org-slug>/`, para que a triagem comece no segundo em que você acessa.
 
-Por trás dele, seus agentes emitem eventos pelo SDK, o coletor os envia para o seu servidor de Observabilidade do Failproof AI, e o fluxo os acompanha assim que chegam na infraestrutura que você controla. Quando você quiser a visão consolidada em vez da trilha bruta, os eventos de cada execução se agrupam em uma única linha no Sessions, a um clique de distância.
+Por baixo, seus agentes emitem eventos pelo SDK, o coletor os envia para o seu servidor de Observabilidade do Failproof AI, e o stream os acompanha conforme chegam na infraestrutura que você controla. Quando você quiser a visão consolidada em vez do histórico bruto, os eventos de cada execução se agrupam em uma única linha em Sessões, a um clique de distância.
 
-Esta é a fonte de verdade bruta sobre a qual todas as outras superfícies de observação se baseiam — portanto, quando um número parece errado em outro lugar, o fluxo é onde você confirma o que realmente aconteceu.
+Este é o registro bruto da verdade sobre o qual cada outra superfície de observabilidade é construída, então quando um número parecer errado em outro lugar, o stream é onde você confirma o que realmente aconteceu.
 
 ## Relacionados
 
-- [Sessions](/pt-br/agenteye/sessions): os mesmos eventos agrupados em uma linha por execução, com um gráfico de execução no estilo git.
-- [Telemetry](/pt-br/agenteye/telemetry): o que seus agentes enviam e como os eventos chegam ao fluxo.
-- [Error tracking](/pt-br/agenteye/error-tracking): uma superfície de triagem unificada para tudo que deu errado.
-- [Alerts](/pt-br/agenteye/alerts): transforme qualquer limite em uma regra de notificação.
-- [CLI and agents](/pt-br/agenteye/cli-and-agents): a mesma trilha ao vivo a partir do seu terminal.
+- [Sessões](/pt-br/agenteye/sessions): os mesmos eventos agrupados em uma linha por execução, com um grafo de execução estilo git.
+- [Telemetria](/pt-br/agenteye/telemetry): o que seus agentes enviam e como os eventos chegam ao stream.
+- [Rastreamento de erros](/pt-br/agenteye/error-tracking): uma única superfície de triagem para tudo que deu errado.
+- [Alertas](/pt-br/agenteye/alerts): transforme qualquer limite em uma regra de notificação.
+- [CLI e agentes](/pt-br/agenteye/cli-and-agents): o mesmo histórico em tempo real pelo seu terminal.

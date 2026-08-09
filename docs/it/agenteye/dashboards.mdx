@@ -1,47 +1,46 @@
 ---
----
 title: "Dashboard"
-description: "Trasforma i dati live del tuo agente in un'unica vista condivisa che tutto il team osserva."
+description: "Trasforma i tuoi dati agente live in un'unica visione condivisa che tutto il team può controllare."
 ---
 
 
-Trasforma i dati live del tuo agente in un'unica vista condivisa che tutto il team osserva. Fissa le query che contano come grafici e tutti vedono gli stessi numeri a colpo d'occhio, senza rieseguire una sola query.
+Trasforma i tuoi dati agente live in un'unica visione condivisa che tutto il team può controllare. Fissa i query che contano come grafici, e tutti vedono gli stessi numeri a colpo d'occhio, senza rieseguire un singolo query.
 
-![Un dashboard creato da query salvate: una linea eventi-per-ora, un grafico a barre errori-per-tipo, un grafico ad area latenza e token-per-modello](/agenteye/images/dashboard-fleet.png)
+![Un dashboard costruito da query salvate: una linea eventi-per-ora, un grafico a barre errori-per-tipo, un grafico ad area di latenza, e token-per-modello](/agenteye/images/dashboard-fleet.png)
 
 *Una board, quattro query salvate: eventi per ora, errori per tipo, latenza e token per modello.*
 
-## Tutti vedono la stessa realtà
+## Tutti vedono la stessa verità
 
-Smetti di incollare screenshot in chat e smetti di rieseguire la stessa query cinque volte al giorno. Un dashboard è una board condivisa a livello organizzativo che chiunque nel team può aprire per vedere esattamente la stessa vista. Quando i dati sottostanti cambiano, i grafici si muovono con loro, quindi la board è sempre aggiornata e nessuno discute di numeri obsoleti.
+Smetti di incollare screenshot in chat e smetti di rieseguire lo stesso query cinque volte al giorno. Un dashboard è una board condivisa a livello organizzativo che chiunque nel tuo team può aprire per vedere esattamente la stessa vista. Quando i dati sottostanti si muovono, i grafici si muovono con loro, quindi la board è sempre aggiornata e nessuno discute su numeri obsoleti.
 
-Il dashboard della flotta sopra è una buona struttura iniziale per le operazioni quotidiane:
+Il dashboard della flotta qui sopra è una buona base per le operazioni quotidiane:
 
-- una linea **eventi-per-ora**, così puoi osservare il throughput e cogliere un calo improvviso
-- un grafico a barre **errori-per-tipo**, così le tue categorie di errore più importanti saltano all'occhio
-- un grafico ad area **latenza**, così i rallentamenti emergono prima che gli utenti si lamentino
-- una ripartizione **token-per-modello**, così i costi rimangono visibili
+- una linea **eventi-per-ora**, così puoi monitorare il throughput e rilevare un calo improvviso
+- un grafico a barre **errori-per-tipo**, così le tue categorie di errore più grandi spiccano
+- un grafico ad area di **latenza**, così i rallentamenti si notano prima che gli utenti si lamentino
+- una ripartizione **token-per-modello**, così i costi rimangono sempre visibili
 
-Troverai le tue board all'indirizzo `/<org-slug>/dashboards`.
+Troverai le tue board su `/<org-slug>/dashboards`.
 
-## Fissa le query che hai già salvato
+## Fissa i query che hai già salvato
 
-Ogni tile parte da una query salvata. Crea e salva la query che ti interessa nella libreria [Queries](/it/agenteye/queries) (preset incorporati più i tuoi, sui tuoi eventi e valutazioni), quindi fissala a un dashboard come il grafico che si adatta ai dati: una **linea** per i trend nel tempo, un **grafico a barre** per confrontare categorie, un'**area** per il volume, o un **grafico a torta** per una ripartizione percentuale.
+Ogni tile inizia come un query salvato. Costruisci e salva il query che ti interessa nella libreria [Query](/it/agenteye/queries) (preset incorporati più i tuoi, sui tuoi eventi e valutazioni), poi fissalo a un dashboard come il grafico più adatto ai dati: una **linea** per tendenze nel tempo, un **grafico a barre** per confrontare categorie, un **grafico ad area** per il volume, o una **torta** per una ripartizione percentuale.
 
-Poiché un tile è solo la tua query salvata resa come grafico, non c'è nulla da mantenere sincronizzato manualmente. Aggiorna la query una volta e ogni dashboard che la utilizza si aggiorna automaticamente.
+Poiché una tile è solo il tuo query salvato renderizzato come grafico, non c'è nulla da mantenere sincronizzato manualmente. Aggiorna il query una volta e ogni dashboard che lo utilizza si aggiorna automaticamente.
 
-## Osserva la qualità, non solo il volume
+## Monitora la qualità, non solo il volume
 
-Il volume ti dice che gli agenti sono occupati. La qualità ti dice che stanno effettivamente svolgendo il lavoro. Punta un dashboard ai tuoi [punteggi di valutazione](/it/agenteye/evaluations) e ottieni una board che traccia quanto bene stanno andando le esecuzioni nel tempo, così una regressione della qualità emerge come un calo su un grafico invece che come una sorpresa da un cliente.
+Il volume ti dice che gli agenti sono occupati. La qualità ti dice che stanno effettivamente svolgendo il lavoro. Punta un dashboard ai tuoi [punteggi di valutazione](/it/agenteye/evaluations) e ottieni una board che tiene traccia di quanto bene vanno gli esecuzioni nel tempo, così una regressione di qualità si mostra come un calo su un grafico invece di una sorpresa da un cliente.
 
-![Un dashboard focalizzato sulla qualità creato da query di valutazione salvate](/agenteye/images/dashboard-quality.png)
+![Un dashboard incentrato sulla qualità costruito da query di valutazione salvate](/agenteye/images/dashboard-quality.png)
 
-*Una board di qualità mantiene i tuoi punteggi di valutazione al centro dell'attenzione, proprio accanto ai numeri operativi.*
+*Una board di qualità tiene i tuoi punteggi di valutazione in primo piano, proprio accanto ai numeri operativi.*
 
-Tieni una board operativa e una board di qualità una accanto all'altra e il tuo team avrà un unico posto per rispondere sia a "sta funzionando?" che a "è di buona qualità?", senza che nessuno riesegua una query.
+Tieni una board operativa e una board di qualità una accanto all'altra e il tuo team avrà un unico posto per rispondere sia a "funziona?" che a "è buono?", senza che nessuno riesegua un query.
 
 ## Correlati
 
-- [Queries](/it/agenteye/queries): crea e salva le query che diventano i tuoi tile.
-- [Evaluations](/it/agenteye/evaluations): valuta le tue esecuzioni così puoi tracciare la qualità nel tempo.
-- [Alerts](/it/agenteye/alerts): trasforma una soglia su una qualsiasi di queste metriche in un avviso.
+- [Query](/it/agenteye/queries): costruisci e salva i query che diventano le tue tile.
+- [Valutazioni](/it/agenteye/evaluations): valuta i tuoi esecuzioni così puoi rappresentare la qualità nel tempo.
+- [Avvisi](/it/agenteye/alerts): trasforma una soglia su una qualsiasi di queste metriche in una notifica.

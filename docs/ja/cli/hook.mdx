@@ -9,7 +9,7 @@ failproofai --hook <EventType>
 
 これは `failproofai policies --install` によって Claude Code の `settings.json` に登録されるコマンドです。通常、直接呼び出すことはありません。
 
-stdin から JSON ペイロードを読み込み、有効なすべてのポリシーを評価した後、判定結果を示す終了コードで終了します。
+stdin から JSON ペイロードを読み取り、有効なすべてのポリシーを評価し、判定結果を示す終了コードで終了します。
 
 | 終了コード | 判定 | 効果 |
 |-----------|------|------|
@@ -19,8 +19,8 @@ stdin から JSON ペイロードを読み込み、有効なすべてのポリ�
 
 ### サポートされているイベントタイプ
 
-| カテゴリ | イベント |
-|----------|---------|
+| カテゴリー | イベント |
+|-----------|---------|
 | **ツール実行** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **セッションライフサイクル** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **ユーザーインタラクション** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |

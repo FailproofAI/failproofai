@@ -1,13 +1,14 @@
 ---
+---
 title: התחלה
-description: "התקן את failproofai, הפעל מדיניויות, והנח לסוכנים שלך לפעול באמינות"
+description: "התקן את failproofai, הפעל מדיניויות, והנח לאג'נטים שלך לפעול בצורה אמינה"
 icon: rocket
 ---
 
 ## דרישות
 
 - **Node.js** >= 20.9.0
-- **Bun** >= 1.3.0 (אופציונלי - נדרש רק לבנייה מקוד מקור)
+- **Bun** >= 1.3.0 (אופציונלי - נדרש רק לבניה מקוד מקור)
 
 ---
 
@@ -31,15 +32,15 @@ bun add -g failproofai
 
 <Steps>
   <Step title="הפעל מדיניויות">
-    מדיניויות הן כללים שפועלים לפני ואחרי כל קריאת כלי של סוכן. הן תופסות פקודות הרסניות, דיווח סודות וקווי כשל נוספים לפני שהם גורמים נזק.
+    מדיניויות הן כללים שרצים לפני ואחרי כל קריאת כלי של אג'נט. הם תופסים פקודות הרסניות, דליפות סודות ומצבי כשל אחרים לפני שהם גורמים נזק.
 
     ```bash
     failproofai policies --install
     ```
 
-    זה כותב ערכי hook לתוך ה-CLI של הסוכנים המותקנים שלך (Claude Code's `~/.claude/settings.json`, OpenAI Codex's `~/.codex/hooks.json`, GitHub Copilot CLI's `~/.copilot/hooks/failproofai.json`, Cursor Agent's `~/.cursor/hooks.json`, OpenCode's generated plugin shim at `~/.config/opencode/plugins/failproofai.mjs` plus a registration entry in `~/.config/opencode/opencode.json`'s `plugin` array, Pi's `~/.pi/agent/settings.json`, Hermes's `~/.hermes/config.yaml`, OpenClaw's `~/.openclaw/openclaw.json`, Factory Droid's `~/.factory/hooks.json`, Devin CLI's `~/.config/devin/config.json`, Antigravity CLI's `~/.gemini/config/hooks.json`, או Goose's auto-discovered plugin dir at `~/.agents/plugins/failproofai/hooks/hooks.json`). כאשר קיים יותר מאחד, תיקבל הנחיה; העבר `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose` (כל תת-קבוצה) כדי לדלג על ההנחיה.
+    הפקודה זו כותבת ערכי hook לתוך ממשקי ה-CLI של האג'נט המותקנים (Claude Code ל`~/.claude/settings.json`, OpenAI Codex ל`~/.codex/hooks.json`, GitHub Copilot CLI ל`~/.copilot/hooks/failproofai.json`, Cursor Agent ל`~/.cursor/hooks.json`, OpenCode לשימת ה-plugin שנוצרה ב`~/.config/opencode/plugins/failproofai.mjs` בתוספת ערך רישום במערך `plugin` של `~/.config/opencode/opencode.json`, Pi ל`~/.pi/agent/settings.json`, Hermes ל`~/.hermes/config.yaml`, OpenClaw ל`~/.openclaw/openclaw.json`, Factory Droid ל`~/.factory/hooks.json`, Devin CLI ל`~/.config/devin/config.json`, Antigravity CLI ל`~/.gemini/config/hooks.json`, או תיקיית ה-plugin שגוגל גילתה באופן אוטומטי של Goose ב`~/.agents/plugins/failproofai/hooks/hooks.json`). כאשר יותר מאחד קיים, תוביל לשאלה; העבר `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose` (כל תת-קבוצה) כדי לדלג על השאלה.
 
-    GitHub Copilot CLI, Cursor Agent, OpenCode, ותמיכה ב-Pi הם **beta** — התקן עם `--cli copilot`, `--cli cursor`, `--cli opencode`, או `--cli pi`. Hermes (hermes-agent, שער Slack/Telegram) מתקין בהיקף משתמש עם `--cli hermes` והוא **גם** מקור אודיט לא מקוון. OpenClaw (openclaw gateway, עוזר מרובה ערוצים באירוח עצמי) מתקין בהיקף משתמש עם `--cli openclaw` — אכיפה פועלת דרך ה-hooks של plugin בתוך התהליך שלו (`before_agent_finalize` הוא שער סוף תור אמיתי, כך שה-`require-*-before-stop` builtins אוכפים) — והוא **גם** מקור אודיט לא מקוון. Factory Droid (`droid`) מתקין עם `--cli factory` (היקף משתמש + פרויקט) והוא **גם** מקור אודיט לא מקוון. Devin CLI (`devin`, Cognition) מתקין עם `--cli devin` (היקף משתמש + פרויקט) והוא **גם** מקור אודיט לא מקוון. Antigravity CLI (`agy`) מתקין עם `--cli antigravity` (היקף משתמש + פרויקט) והוא **גם** מקור אודיט לא מקוון. Goose (codename goose, Block) מתקין עם `--cli goose` (היקף משתמש + פרויקט) — המתקין פשוט זורק ספריית plugin ב-`~/.agents/plugins/failproofai/` שGoose גוגל באופן אוטומטי, והוא **גם** מקור אודיט לא מקוון.
+    GitHub Copilot CLI, Cursor Agent, OpenCode, ו-Pi תמך הוא **beta** — התקן עם `--cli copilot`, `--cli cursor`, `--cli opencode`, או `--cli pi`. Hermes (hermes-agent, שער Slack/Telegram) מתקין בתחום משתמש עם `--cli hermes` והוא **גם** מקור ביקורת לא מקוון. OpenClaw (שער openclaw, עוזר רב-ערוצי מסודר עצמאי) מתקין בתחום משתמש עם `--cli openclaw` — אכיפה פועלת דרך hook-י plugin שלו בתוך התהליך (`before_agent_finalize` הוא שער סיום תור אמיתי, כך שה-`require-*-before-stop` המובנים אוכפים) — והוא **גם** מקור ביקורת לא מקוון. Factory Droid (`droid`) מתקין עם `--cli factory` (תחום משתמש + פרויקט) והוא **גם** מקור ביקורת לא מקוון. Devin CLI (`devin`, Cognition) מתקין עם `--cli devin` (תחום משתמש + פרויקט) והוא **גם** מקור ביקורת לא מקוון. Antigravity CLI (`agy`) מתקין עם `--cli antigravity` (תחום משתמש + פרויקט) והוא **גם** מקור ביקורת לא מקוון. Goose (שם קוד goose, Block) מתקין עם `--cli goose` (תחום משתמש + פרויקט) — המתקין פשוט משחרר תיקיית plugin ב`~/.agents/plugins/failproofai/` שהוא Goose מגלה באופן אוטומטי, והוא **גם** מקור ביקורת לא מקוון.
 
     ```bash
     failproofai policies --install --scope project
@@ -62,25 +63,25 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    מציג כל מדיניות, אם היא מופעלת, וכל פרמטרים מוגדרים.
+    מציג כל מדיניות, האם היא מופעלת, וכל פרמטרים שהוגדרו.
   </Step>
-  <Step title="הפעל את לוח המחוונים">
+  <Step title="הפעל את לוח הבקרה">
     ```bash
     failproofai
     ```
 
-    פותח לוח מחוונים מקומי ב-`http://localhost:8020` כאשר אתה יכול לעיין בהפעלות, לבדוק קריאות כלים ולנהל מדיניויות.
+    פותח לוח בקרה מקומי ב`http://localhost:8020` שבו אתה יכול לרשום הפעלות, לבדוק קריאות כלים, ולנהל מדיניויות.
   </Step>
-  <Step title="הרץ את הסוכן שלך">
-    התחל את Claude Code כרגיל. אם הסוכן מנסה משהו מסוכן, failproofai יתפוס זאת באופן אוטומטי. תן לו לרוץ ללא השגחה ובדוק מה קרה בלוח המחוונים.
+  <Step title="הפעל את האג'נט שלך">
+    הפעל את Claude Code כרגיל. אם האג'נט מנסה משהו מסוכן, failproofai יחסום אותו באופן אוטומטי. השאר אותו רץ ללא השגחה ובדוק מה קרה בלוח הבקרה.
   </Step>
 </Steps>
 
 ---
 
-## איך מדיניויות עובדות
+## כיצד מדיניויות עובדות
 
-בכל פעם שסוכן מריץ כלי, Claude Code קורא ל-failproofai כתהליך משנה:
+בכל פעם שאג'נט מפעיל כלי, Claude Code קורא ל-failproofai כ-subprocess:
 
 ```text
 Claude Code  →  failproofai --hook PreToolUse  →  קורא JSON מ-stdin
@@ -90,34 +91,34 @@ Claude Code  →  failproofai --hook PreToolUse  →  קורא JSON מ-stdin
 
 כל מדיניות מחזירה אחת משלוש החלטות:
 
-- **allow** - הסוכן ממשיך כרגיל
-- **deny** - הפעולה נחסמת, הסוכן נמודע למה
-- **instruct** - הקשר נוסף מתווסף להנחיית הסוכן
+- **allow** - האג'נט ממשיך בדרך רגילה
+- **deny** - הפעולה חסומה, לאג'נט מסברים למה
+- **instruct** - הקשר נוסף מוסף להנחיות של האג'נט
 
 <Note>
-מדיניויות פועלות בתהליך המקומי שלך. שום דבר לא נשלח לשירות מרחוק.
+מדיניויות רצות בתהליך המקומי שלך. שום דבר לא נשלח לשירות מרוחק.
 </Note>
 
 ---
 
-## הגדר מדיניויות קבוצה עם מדיניויות המבוססות על קונבנציה
+## הגדר מדיניויות קבוצתיות עם מדיניויות מבוססות על קונבנציה
 
-הדרך המהירה ביותר לקבוע תקנים איכות בצוות שלך היא הקונבנציה `.failproofai/policies/`. שחרר קבצי מדיניות לתוך ספרייה זו והם נטענים באופן אוטומטי — ללא דגלים, ללא שינויי תצורה, ללא פקודות התקנה.
+הדרך המהירה ביותר לעיצוב תקנים איכות על פני הקבוצה שלך היא הקונבנציה `.failproofai/policies/`. הניח קבצי מדיניויות בתיקייה זו והם יטענו באופן אוטומטי — ללא דגלים, ללא שינויי הגדרה, ללא פקודות התקנה.
 
 <Steps>
-  <Step title="צור את ספריית המדיניויות">
+  <Step title="צור את תיקיית המדיניויות">
     ```bash
     mkdir -p .failproofai/policies
     ```
   </Step>
-  <Step title="הוסף קבצי מדיניות">
-    העתק דוגמאות ההתחלה או כתוב שלך:
+  <Step title="הוסף קבצי מדיניויות">
+    העתק דוגמאות התחלה או כתוב שלך:
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
     ```
 
-    או צור אחד חדש:
+    או צור חדש:
 
     ```js
     // .failproofai/policies/team-policies.mjs
@@ -129,40 +130,40 @@ Claude Code  →  failproofai --hook PreToolUse  →  קורא JSON מ-stdin
       fn: async (ctx) => {
         if (ctx.toolName !== "Bash") return allow();
         if (/git\s+commit/.test(ctx.toolInput?.command ?? "")) {
-          return instruct("הרץ בדיקות לפני ביצוע.");
+          return instruct("Run tests before committing.");
         }
         return allow();
       },
     });
     ```
   </Step>
-  <Step title="בצע commit ל-git">
+  <Step title="אשר ל-git">
     ```bash
     git add .failproofai/policies/
-    git commit -m "הוסף מדיניויות איכות קבוצה"
+    git commit -m "Add team quality policies"
     ```
 
-    כל חברי צוות שיש להם failproofai מותקן קוטפים את המדיניויות הללו באופן אוטומטי. אין צורך בהגדרה לכל מפתח.
+    כל חברי הקבוצה שיש להם failproofai מותקן יבחרו את המדיניויות הללו באופן אוטומטי. אין צורך בהגדרה לפי מפתח.
   </Step>
 </Steps>
 
 <Tip>
-בצע commit ל-`.failproofai/policies/` אל המאגר שלך כך שכל הצוות חולקים את אותם תקנים. כשהצוות שלך מגלה קווי כשל חדשים, הוסף מדיניויות ודחוף — כולם מקבלים את העדכון ב-`git pull` הבא שלהם. עם הזמן מדיניויות אלה הופכות לתקן איכות חי המשתפר בעצמו.
+אשר את `.failproofai/policies/` למאגר שלך כדי שכל הקבוצה תחלוק את אותם התקנים. כאשר הקבוצה שלך גילתה מצבי כשל חדשים, הוסף מדיניויות והדחף — כולם מקבלים את העדכון ב-`git pull` הבא שלהם. לאורך זמן המדיניויות הללו הופכות לתקן איכות חי השומר ובשיפור מתמיד.
 </Tip>
 
 ---
 
 ## אחסון נתונים
 
-כל התצורה והיומנים נשארים במכונה שלך:
+כל התצורה והיומנים נשמרים על המכונה שלך:
 
-| נתיב | מה הוא שומר |
+| נתיב | מה הוא מאחסן |
 |------|----------------|
 | `~/.failproofai/policies/local-policies/policies-config.json` | תצורת מדיניות גלובלית |
-| `~/.failproofai/hook-activity/` | היסטוריית ביצוע hook (JSONL עמוד) |
-| `~/.failproofai/logs/` | יומנים לניפוי שגיאות עבור שגיאות hook מותאם אישית |
-| `.failproofai/policies-config.json` | תצורה לכל פרויקט (committed) |
-| `.failproofai/policies-config.local.json` | עדכונים אישיים (gitignored) |
+| `~/.failproofai/hook-activity/` | היסטוריית הבצוע של hook (JSONL בעמודים) |
+| `~/.failproofai/logs/` | יומנים לניפוי שגיאות לשגיאות hook מותאמות |
+| `.failproofai/policies-config.json` | תצורה לכל פרויקט (מאושרת) |
+| `.failproofai/policies-config.local.json` | עקיפות אישיות (ב-gitignore) |
 
 ---
 
@@ -172,28 +173,28 @@ Claude Code  →  failproofai --hook PreToolUse  →  קורא JSON מ-stdin
 failproofai policies --uninstall
 ```
 
-מסיר ערכי hook מ-`~/.claude/settings.json`. קבצי תצורה ב-`~/.failproofai/` נשמרים.
+מסיר ערכי hook מ`~/.claude/settings.json`. קבצי הגדרה ב`~/.failproofai/` נשמרים.
 
 ---
 
-## השלבים הבאים
+## שלבים הבאים
 
 <CardGroup cols={2}>
 
-<Card title="תצורה" icon="gear" href="/he/configuration">
-  היקפים וקטגוריית קובץ התצורה
+<Card title="הגדרה" icon="gear" href="/he/configuration">
+  תחומים ופורמט קובץ הגדרה
 </Card>
 
 <Card title="מדיניויות מובנות" icon="shield" href="/he/built-in-policies">
-  כל 26 מדיניויות עם פרמטרים
+  כל 26 המדיניויות עם פרמטרים
 </Card>
 
-<Card title="מדיניויות מותאם אישית" icon="code" href="/he/custom-policies">
+<Card title="מדיניויות מותאמות" icon="code" href="/he/custom-policies">
   כתוב את המדיניויות שלך ב-JavaScript
 </Card>
 
-<Card title="מוקד סוכן" icon="chart-line" href="/he/dashboard">
-  מעקב אחר הפעלות ובדיקת פעילות מדיניות
+<Card title="מוניטור אג'נט" icon="chart-line" href="/he/dashboard">
+  עקוב על הפעלות ובדוק פעילות מדיניויות
 </Card>
 
 </CardGroup>

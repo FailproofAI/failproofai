@@ -1,29 +1,30 @@
 ---
-title: "Công thức CLI cho các agent"
-description: "Sao chép và dán các mẫu truy vấn và công thức jq để chuyển đổi dữ liệu phiên, sự kiện và đánh giá thành thứ gì đó mà một kịch bản hoặc agent mã hóa có thể tự động hóa."
+title: "Các công thức CLI cho agents"
+description: "Copy-paste các mẫu truy vấn và công thức jq biến dữ liệu session, event và evaluation thành thứ mà một script hoặc coding agent có thể tự động hóa."
 ---
 
-Kéo dữ liệu phiên, sự kiện và đánh giá (và kích hoạt lại đánh giá) trực tiếp từ một kịch bản hoặc agent mã hóa, với JSON sạch trên stdout có thể ống vào `jq`. Những công thức này biến dữ liệu của Failproof AI Observability thành thứ gì đó mà người dùng terminal hoặc agent mã hóa AI (Claude Code, Cursor) có thể truy vấn và tự động hóa, mà không cần nhấp qua bảng điều khiển.
 
-Các mẫu dưới đây sẵn sàng để sao chép và dán cho CLI Failproof AI Observability (`agenteye`). Để biết cách cài đặt, xác thực và danh sách tùy chọn đầy đủ, xem [CLI](/vi/agenteye/cli); chạy `agenteye -h` hoặc `agenteye <command> -h` để xem trợ giúp tích hợp.
+Kéo dữ liệu session, event và evaluation (và kích hoạt các đánh giá lại) trực tiếp từ một script hoặc coding agent, với JSON sạch trên stdout có thể đưa trực tiếp vào `jq`. Các công thức này biến dữ liệu của Failproof AI Observability thành thứ mà một người dùng terminal hoặc một coding agent AI (Claude Code, Cursor) có thể truy vấn và tự động hóa, mà không cần phải nhấp vào dashboard.
 
-## Các quy tắc vàng
+Các mẫu dưới đây có thể copy-paste sẵn sàng cho Failproof AI Observability CLI (`agenteye`). Để cài đặt, xác thực và danh sách tùy chọn đầy đủ, xem [CLI](/vi/agenteye/cli); chạy `agenteye -h` hoặc `agenteye <command> -h` để xem trợ giúp tích hợp.
 
-1. **Các tùy chọn toàn cục đi *trước* lệnh.** `agenteye --json sessions` là chính xác; `agenteye sessions --json` không phải. Các giá trị toàn cục là `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`.
-2. **Vượt qua `--json` bất cứ khi nào bạn phân tích cú pháp đầu ra.** Dữ liệu đi tới **stdout** dưới dạng JSON; trạng thái của con người và lỗi đi tới **stderr**, vì vậy stdout vẫn sạch để ống vào `jq`.
-3. **Phân nhánh theo mã thoát**, không phải theo văn bản stderr: `0` ok · `1` lỗi không mong muốn · `2` đối số không chính xác · `3` không thể tiếp cận bảng điều khiển · `4` không đăng nhập hoặc hết hạn · `5` quyền bị thiếu · `6` không tìm thấy tài nguyên.
-4. **Khám phá với `-h`.** Mỗi lệnh ghi lại các bộ lọc, định dạng giá trị và hình dạng JSON của nó.
+## Quy tắc vàng
 
-## Thiết lập một lần
+1. **Các tùy chọn toàn cục đi *trước* lệnh.** `agenteye --json sessions` là đúng; `agenteye sessions --json` là sai. Các tùy chọn toàn cục là `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`.
+2. **Truyền `--json` bất cứ khi nào bạn phân tích kết quả đầu ra.** Dữ liệu đi tới **stdout** dưới dạng JSON; trạng thái và lỗi cho con người đi tới **stderr**, vì vậy stdout vẫn sạch để đưa vào `jq`.
+3. **Phân nhánh dựa trên mã thoát**, không phải trên văn bản stderr: `0` ok · `1` lỗi không mong muốn · `2` đối số không hợp lệ · `3` không thể kết nối tới dashboard · `4` chưa đăng nhập hoặc hết hạn · `5` thiếu quyền · `6` không tìm thấy tài nguyên.
+4. **Khám phá bằng `-h`.** Mỗi lệnh ghi lại các bộ lọc, định dạng giá trị và hình dạng JSON của nó.
+
+## Cài đặt một lần
 
 ```bash
-export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # so you don't repeat --base-url
-agenteye login --email you@example.com                       # paste the emailed code; valid ~24h
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # để bạn không lặp lại --base-url
+agenteye login --email you@example.com                       # dán mã gửi qua email; hợp lệ ~24h
 ```
 
 ## Xác nhận xác thực trước khi làm việc
 
-`whoami` không bao giờ gặp lỗi trên một phiên bị thiếu hoặc hết hạn; thay vào đó nó báo cáo `logged_in:false`, vì vậy một agent có thể an toàn kiểm tra trạng thái xác thực. (Nó vẫn có thể thoát khác không nếu không có URL cơ sở nào được đặt hoặc bảng điều khiển không thể tiếp cận.)
+`whoami` không bao giờ gặp lỗi khi session bị thiếu hoặc hết hạn; thay vào đó nó báo cáo `logged_in:false`, vì vậy một agent có thể an toàn đo thử trạng thái xác thực. (Nó vẫn có thể thoát khác 0 nếu không có URL cơ sở được đặt hoặc dashboard không thể kết nối được.)
 
 ```bash
 if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
@@ -31,54 +32,54 @@ if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
 fi
 ```
 
-## Tìm các phiên bị lỗi hoặc điểm số thấp
+## Tìm các session thất bại hoặc điểm thấp
 
 ```bash
-# sessions in the last 24h whose evaluation errored
+# các session trong 24h qua mà đánh giá gặp lỗi
 agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
 
-# evaluations scoring <= 0.5 on helpfulness, for one agent
+# các đánh giá có điểm <= 0.5 về tính hữu ích, cho một agent
 agenteye --json evals --agent-id checkout-bot --score helpfulness:..0.5 \
   | jq '.evaluations[] | {session_id, scores}'
 ```
 
-Lọc điểm số tồn tại trên **`evals`**, không phải `sessions`. `--score KEY:MIN..MAX` có thể lặp lại và được kết hợp bằng AND; mỗi ràng buộc là tùy chọn (`..0.5` có nghĩa là ≤ 0.5, `0.9..` có nghĩa là ≥ 0.9). Bạn có thể vượt qua tối đa 20 bộ lọc điểm trên mỗi yêu cầu; hơn thế nữa sẽ trả về HTTP 400. `sessions` chia sẻ các bộ lọc `--env`, `--status`, `--agent-id`, `--session-id` và phạm vi thời gian với `evals`, nhưng không có `--score`.
+Bộ lọc điểm số nằm trên **`evals`**, không phải `sessions`. `--score KEY:MIN..MAX` có thể lặp lại và được kết hợp bằng AND; bất kỳ giới hạn nào cũng là tùy chọn (`..0.5` có nghĩa ≤ 0.5, `0.9..` có nghĩa ≥ 0.9). Bạn có thể truyền tối đa 20 bộ lọc điểm số cho mỗi yêu cầu; nhiều hơn sẽ trả về HTTP 400. `sessions` chia sẻ các bộ lọc `--env`, `--status`, `--agent-id`, `--session-id` và khoảng thời gian với `evals`, nhưng không có `--score`.
 
-## Đọc một phiên từ đầu đến cuối
+## Đọc một session từ đầu đến cuối
 
-Không có lệnh `session show` duy nhất. Kết hợp dấu vết sự kiện với đánh giá của phiên:
+Không có lệnh `session show` duy nhất. Kết hợp dấu vết sự kiện với đánh giá session:
 
 ```bash
-# the session's latest evaluation (status + scores)
+# đánh giá mới nhất của session (trạng thái + điểm số)
 agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scores}'
 
-# every event in the run (raise --limit for a full sweep)
+# mỗi sự kiện trong lần chạy (nâng --limit để quét đầy đủ)
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
 
-# just the tool calls in a session (--full is required to get the raw payload)
+# chỉ các lệnh gọi công cụ trong một session (--full được yêu cầu để lấy payload thô)
 agenteye --json events --full --session-id run-001 --event-type tool_use,tool_result --all \
   | jq '.events[].payload'
 ```
 
-> **Lưu ý:** Theo mặc định, `events` đọc một luồng nhanh, không có tải trọng. Mỗi sự kiện mang một dòng duy nhất được tính toán bởi máy chủ `summary` cộng với các cờ như `is_error` và số lượng token, nhưng `payload` trở lại dưới dạng `{}`. Để kéo tải trọng thô, thêm `--full` (hoặc `--fields payload`). Luồng đầy đủ chậm hơn ở quy mô, vì vậy hãy giữ nó có ràng buộc: ghép `--full` với một `--session-id` duy nhất.
+> **Lưu ý:** Theo mặc định, `events` đọc một dòng nhanh không có payload. Mỗi sự kiện mang theo một `summary` một dòng được tính toán bởi máy chủ cộng với các cờ như `is_error` và số lượng token, nhưng `payload` trả về dưới dạng `{}`. Để kéo payload thô, thêm `--full` (hoặc `--fields payload`). Dòng đầy đủ chậm hơn khi có quy mô, vì vậy hãy giữ nó bị giới hạn: ghép `--full` với một `--session-id` duy nhất.
 
 ## Tìm nạp mọi thứ (phân trang)
 
-Kết quả là mới nhất trước và được phân trang bằng con trỏ.
+Kết quả là mới nhất trước tiên và được phân trang bằng con trỏ.
 
 ```bash
-# one shot: fetch up to 500 rows in 200-row pages
+# một lần: tìm nạp tối đa 500 hàng trong các trang 200 hàng
 agenteye --json events --session-id run-001 --limit 500 --all > events.json
 
-# manual paging: feed next_cursor back in
+# phân trang thủ công: đưa next_cursor trở lại
 page=$(agenteye --json events --limit 100)
 cursor=$(echo "$page" | jq -r '.next_cursor // empty')
 [ -n "$cursor" ] && agenteye --json events --limit 100 --cursor "$cursor"
 ```
 
-## Giảm kích thước đầu ra với --fields
+## Thu gọn kết quả đầu ra bằng --fields
 
-Hạn chế các khóa (cả trong bảng và `--json`) để giảm những gì một agent phải đọc.
+Hạn chế các khóa (trong cả bảng và `--json`) để giảm những gì mà một agent phải đọc.
 
 ```bash
 agenteye --json sessions --since 7d --fields session_id,status,scores | jq -c '.sessions[]'
@@ -90,36 +91,36 @@ Tên trường không xác định bị từ chối (thoát `2`) với danh sác
 ## Khám phá các giá trị bộ lọc hợp lệ
 
 ```bash
-agenteye --json list envs | jq -r '.values[]'           # values for --env
-agenteye --json list tools | jq -r '.values[]'          # tool names; also agents, models, event_types, …
-agenteye --json list score_filters | jq -r '.values[]'  # valid KEY for --score KEY:MIN..MAX
+agenteye --json list envs | jq -r '.values[]'           # các giá trị cho --env
+agenteye --json list tools | jq -r '.values[]'          # tên công cụ; cũng agents, models, event_types, …
+agenteye --json list score_filters | jq -r '.values[]'  # KEY hợp lệ cho --score KEY:MIN..MAX
 ```
 
 ## Chọn tổ chức của bạn (đa người thuê)
 
-Nếu bạn thuộc về nhiều hơn một tổ chức, hãy chọn người thuê hoạt động khi đăng nhập (nó được lưu):
+Nếu bạn thuộc về nhiều hơn một tổ chức, chọn đối tượng thuê hoạt động tại lúc đăng nhập (nó được lưu):
 
 ```bash
-agenteye login --org acme --email you@corp.com   # set the tenant in the same step as login
+agenteye login --org acme --email you@corp.com   # đặt đối tượng thuê trong cùng bước với đăng nhập
 agenteye --json orgs list | jq -r '.orgs[].org_slug'
-agenteye --org globex --json sessions --since 24h   # override for one command
+agenteye --org globex --json sessions --since 24h   # ghi đè cho một lệnh
 ```
 
-Đăng nhập nhiều tổ chức mà không có `--org` sẽ thoát khác không và in các tổ chức để chọn.
+Đăng nhập đa tổ chức mà không có `--org` thoát khác 0 và in ra các tổ chức để chọn từ.
 
-## Cấp phép khóa API cho SDK/collector
+## Cấp phát khóa API cho SDK/collector
 
 ```bash
-# the secret is printed ONCE, with --json it's the .key field
+# bí mật được in một lần, với --json nó là trường .key
 key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
-agenteye keys regenerate ci-bot --yes    # rotate; agenteye keys disable ci-bot --yes to revoke
+agenteye keys regenerate ci-bot --yes    # xoay vòng; agenteye keys disable ci-bot --yes để thu hồi
 ```
 
-## Chạy truy vấn đã lưu hoặc ad-hoc
+## Chạy một truy vấn đã lưu hoặc ad-hoc
 
 ```bash
 agenteye --json query run --sql "select count(*) from analytics.events" | jq '.rows'
-agenteye --json query run errs --arg prod | jq '.rows'   # a saved query + a positional $1
+agenteye --json query run errs --arg prod | jq '.rows'   # một truy vấn đã lưu + một $1 vị trí
 ```
 
 ## Phân loại một sự cố không tương tác
@@ -131,9 +132,9 @@ agenteye incidents assign "$id" --assignee you@corp.com
 agenteye incidents resolve "$id" --yes
 ```
 
-> **Lưu ý:** Các đột biến tự động bỏ qua lời nhắc xác nhận của họ dưới `--json` hoặc khi stdin không phải là TTY, vì vậy các agent không bao giờ treo; vượt qua `--yes`/`-y` để bỏ qua nó rõ ràng ở nơi khác.
+> **Lưu ý:** Các phép biến đổi tự động bỏ qua lời nhắc xác nhận của chúng dưới `--json` hoặc khi stdin không phải là TTY, vì vậy các agent không bao giờ bị treo; truyền `--yes`/`-y` để bỏ qua nó rõ ràng ở nơi khác.
 
-## Xử lý mã thoát trong một kịch bản
+## Xử lý mã thoát trong một script
 
 ```bash
 out=$(agenteye --json sessions --since 1h) || code=$?
@@ -146,9 +147,9 @@ case "${code:-0}" in
 esac
 ```
 
-## Hình dạng đầu ra JSON
+## Hình dạng kết quả đầu ra JSON
 
-| Lệnh | stdout JSON (with `--json`) |
+| Lệnh | stdout JSON (với `--json`) |
 |---|---|
 | `whoami` | `{"logged_in": true, "id", "email", "is_instance_admin", "active_org", "permissions": [...], "memberships": [...]}` hoặc `{"logged_in": false}` |
 | `orgs list` | `{"active_org", "orgs": [{"org_slug","org_name","permission_set","permissions"}]}` |
@@ -157,22 +158,22 @@ esac
 | `sessions` | `{"sessions": [...], "next_cursor": <cursor or null>}` |
 | `errors` | `{"errors": [...], "next_cursor": <cursor or null>}` |
 | `list <kind>` | `{"kind", "values": [...]}` |
-| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` shown once) |
+| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` chỉ hiển thị một lần) |
 | `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
 | `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
 | `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
-| create/update/delete (any) | đối tượng tài nguyên hoặc `{"deleted": true, "id"}` cho xóa |
-| failure (any, with `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` trên stdout |
+| create/update/delete (bất kỳ) | đối tượng tài nguyên, hoặc `{"deleted": true, "id"}` cho các lần xóa |
+| failure (bất kỳ, với `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` trên stdout |
 
-- Mỗi mục **event** (`events`): `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`. Lưu ý rằng `payload` là `{}` trừ khi bạn yêu cầu luồng đầy đủ với `--full` (hoặc `--fields payload`).
+- Mỗi mục **event** (`events`): `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`. Lưu ý rằng `payload` là `{}` trừ khi bạn yêu cầu dòng đầy đủ bằng `--full` (hoặc `--fields payload`).
 - Mỗi mục **evaluation** (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`.
 - Mỗi mục **session** (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`.
 
-`--fields` của mỗi lệnh chấp nhận chính xác tên trường của mục riêng của nó. Bộ này khác nhau giữa `sessions` và `evals`, vì vậy một tên hợp lệ cho cái này có thể bị từ chối bởi cái kia.
+`--fields` của mỗi lệnh chấp nhận chính xác tên trường của mục riêng của nó. Tập hợp khác nhau giữa `sessions` và `evals`, vì vậy một tên hợp lệ cho một tên có thể bị từ chối bởi tên kia.
 
 ## Bước tiếp theo
 
 - [CLI](/vi/agenteye/cli): cài đặt, xác thực và tham chiếu tùy chọn đầy đủ cho mỗi lệnh.
-- [Kỹ năng CLI agent](/vi/agenteye/cli-skill): gói những công thức này dưới dạng một kỹ năng mà agent mã hóa của bạn có thể tải.
-- [Khóa API](/vi/agenteye/api-keys): tạo và phạm vi các khóa mà CLI, SDK và collector xác thực với.
-- [Python SDK](/vi/agenteye/python-sdk): gửi sự kiện vào Failproof AI Observability để có dữ liệu để những công thức này truy vấn.
+- [CLI agent skill](/vi/agenteye/cli-skill): đóng gói các công thức này dưới dạng một kỹ năng mà coding agent của bạn có thể tải.
+- [API keys](/vi/agenteye/api-keys): tạo và phạm vi các khóa mà CLI, SDK và collector xác thực bằng.
+- [Python SDK](/vi/agenteye/python-sdk): gửi các sự kiện vào Failproof AI Observability để có dữ liệu cho các công thức này để truy vấn.

@@ -1,15 +1,15 @@
 ---
-title: Kiểm toán các phiên trước (beta)
-description: "Đếm xem agent đã làm những việc lãng phí hoặc rủi ro bao nhiêu lần trên các bản ghi quá khứ"
+title: Kiểm tra các phiên làm việc trước đây (beta)
+description: "Đếm xem agent đã thực hiện những việc lãng phí hoặc rủi ro bao nhiêu lần trên các bản ghi phiên"
 ---
 
 <Note>
-  **Tính năng beta.** Công cụ kiểm toán được phát hành dưới dạng beta trong khi chúng tôi thu thập phản hồi ban đầu.
-  Danh mục detector và định dạng báo cáo có thể thay đổi trước bản ổn định tiếp theo.
-  Vui lòng tạo issue nếu bạn thấy bất cứ điều gì sai sót.
+  **Tính năng beta.** Bộ kiểm tra được phát hành dưới dạng beta trong khi chúng tôi thu thập phản hồi ban đầu.
+  Danh mục detector và định dạng báo cáo có thể thay đổi trước bản phát hành ổn định tiếp theo.
+  Vui lòng mở issue nếu có gì không ổn.
 </Note>
 
-Công cụ kiểm toán sẽ phát lại các bản ghi quá khứ của agent-CLI qua engine chính sách của failproofai và tạo ra một báo cáo trực quan có thể chia sẻ trên **trang dashboard `/audit`** — kiểu mẫu của agent, điểm từ 0–100, và chính xác những chính sách nào sẽ phát hiện được điều gì.
+Bộ kiểm tra phát lại các bản ghi phiên agent-CLI trước đây của bạn thông qua engine chính sách của failproofai và tạo ra một báo cáo trực quan có thể chia sẻ trên **trang dashboard `/audit`** — kiểu mẫu agent của bạn, điểm từ 0–100, và chính xác những chính sách nào sẽ bắt được cái gì.
 
 ## Chạy nó
 
@@ -33,56 +33,90 @@ failproofai
 
 <CardGroup cols={3}>
   <Card title="Không cần cài đặt" icon="bolt">
-    `npx -y failproofai audit` tải failproofai, chạy quét, và mở dashboard cho bạn — không cần cài đặt trước.
+    `npx -y failproofai audit` tải failproofai, chạy quét và mở dashboard cho bạn — không cần cài đặt trước.
   </Card>
   <Card title="Từ CLI" icon="terminal">
-    `failproofai audit` chạy quét trong terminal của bạn, sau đó tự động mở `localhost:8020/audit` khi hoàn tất.
+    `failproofai audit` chạy quét trong terminal của bạn, sau đó tự động mở `localhost:8020/audit` khi hoàn thành.
   </Card>
   <Card title="Từ dashboard" icon="gauge">
-    Chạy `failproofai` và nhấp **Audit** trong navbar (giữa Policies và Projects), hoặc mở `/audit` trực tiếp.
+    Chạy `failproofai` và nhấp **Audit** trong thanh điều hướng (giữa Policies và Projects), hoặc mở `/audit` trực tiếp.
   </Card>
 </CardGroup>
 
 <Tip>
-  Chạy `failproofai audit -h` (hoặc `--help`) để xem cách sử dụng. Công cụ kiểm toán chạy **hoàn toàn ngoại tuyến** — không cần tài khoản hay mạng — và dashboard tiếp tục hoạt động cho đến khi bạn dừng nó bằng `Ctrl+C`.
+  Chạy `failproofai audit -h` (hoặc `--help`) để xem cách sử dụng. Bộ kiểm tra chạy **hoàn toàn ngoại tuyến** — không cần tài khoản hoặc mạng — và dashboard tiếp tục phục vụ cho đến khi bạn dừng nó bằng `Ctrl+C`.
 </Tip>
 
-Dashboard quét các bản ghi agent CLI quá khứ trên máy này (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) và báo cáo tần suất agent làm những việc mà failproofai được xây dựng để ngăn chặn — kiểm tra biến môi trường, force push, tiền tố `cd <cwd>` dư thừa, vòng lặp sleep-polling, đọc lại tệp vừa chỉnh sửa, và nhiều hơn nữa.
+Dashboard quét các bản ghi phiên agent CLI trước đây trên máy này (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) và báo cáo agent đã thực hiện bao nhiêu lần những việc mà failproofai được xây dựng để dừng — kiểm tra biến môi trường, force push, tiền tố `cd <cwd>` dư thừa, vòng lặp sleep-polling, đọc lại các tệp vừa chỉnh sửa, v.v.
 
-Đối với mỗi bản ghi, mỗi sự kiện tool-use được phát lại thông qua 39 chính sách tích hợp **và** thông qua 8 detector chỉ dùng cho kiểm toán để phát hiện các mẫu chưa được bao phủ bởi các chính sách thời gian chạy. Các số được tổng hợp theo chính sách/detector trên tất cả các phiên.
+Với mỗi bản ghi phiên, mọi sự kiện tool-use được phát lại thông qua 39 chính sách tích hợp **và** thông qua 8 detector chỉ dùng cho audit bắt các mẫu chưa được bao gồm bởi chính sách runtime. Số lượng được tổng hợp cho mỗi chính sách / detector trên tất cả các phiên.
 
-## Những gì bạn nhận được
+## Bạn nhận được gì
 
-Trang `/audit` là một **áp phích** toàn màn hình có thể chia sẻ, theo sau bởi bốn phần dưới nền trang:
+Trang `/audit` là một **poster** trên màn hình duy nhất có thể chia sẻ được, sau đó là bốn phần dưới đây:
 
-1. **Áp phích** — danh tính của agent một cách nhanh chóng: **kiểu mẫu** của nó (một trong 8 — `optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`), các từ khóa tính cách của nó, mức độ hiếm của kiểu mẫu đó, và **điểm 0–100** với dải hạng (`S` cho đến `bottom tier`). Được xây dựng để chia sẻ — đăng lên X hoặc LinkedIn, hoặc tải xuống dưới dạng PNG.
-2. **`// strengths`** — những gì agent của bạn đã làm tốt, dưới dạng các số thực từ quét (ví dụ: clean-tool-call %, `0` lần push-to-main), chỉ hiển thị nơi chính sách liên quan có hồ sơ sạch sẽ.
-3. **`// quirks`** — những gì đã trượt qua: một bảng xếp hạng các hành vi mà failproofai sẽ phát hiện — *khi* nó lần cuối cùng xảy ra, *những gì đã trượt* (và built-in sẽ chặn nó), *mức độ nghiêm trọng* của nó, và *tần suất* nó *được nhìn thấy* (`new` / `recurring` / `N× seen`).
-4. **`// how to improve`** — danh sách sửa chữa được quy định: một hàng trên mỗi chính sách với `failproofai policy add <slug>` sao chép-dán, cộng với nút **install all** cho phép mọi đề xuất cùng một lúc và hiển thị **projected score** của bạn nếu bạn làm vậy.
-5. **`// come back better`** — hình thành thói quen: đặt **reminder** kiểm toán lại qua email (`3d` / `7d` / `14d` / `30d`) hoặc kiểm toán lại ngay bây giờ, và **invite a friend** để chạy kiểm toán của riêng họ (được gửi từ failproof.ai, được Cc cho bạn). Reminder và lời mời cần đăng nhập.
+1. **Poster** — danh tính agent của bạn một cách nhanh chóng: **kiểu mẫu** của nó (một trong 8 — `optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`), các từ khóa persona của nó, kiểu mẫu đó hiếm thế nào, và **điểm từ 0–100** với dải hạng (`S` xuống `bottom tier`). Được xây dựng để chia sẻ — đăng trên X hoặc LinkedIn, hoặc tải xuống dưới dạng PNG.
+2. **`// strengths`** — những gì agent của bạn đã làm tốt, dưới dạng số thực từ quét (ví dụ: clean-tool-call %, `0` push-to-main attempts), chỉ hiển thị khi chính sách liên quan có hồ sơ sạch sẽ.
+3. **`// quirks`** — những gì đã trượt qua: bảng xếp hạng các hành vi mà failproofai sẽ bắt được — *khi* nó xảy ra lần cuối cùng, *cái gì bị mất* (và điều tích hợp sẽ đã chặn nó), *mức độ nghiêm trọng* của nó, và nó được *nhìn thấy* bao nhiêu lần (`new` / `recurring` / `N× seen`).
+4. **`// how to improve`** — danh sách bản sửa quy định: một hàng trên mỗi chính sách với `failproofai policy add <slug>` sao chép dán được, cộng với nút **install all** cho phép tất cả các khuyến nghị cùng một lúc và hiển thị **projected score** của bạn nếu bạn làm.
+5. **`// come back better`** — xây dựng thói quen: đặt **reminder** kiểm tra lại qua email (`3d` / `7d` / `14d` / `30d`) hoặc kiểm tra lại ngay bây giờ, và **invite a friend** để chạy audit của riêng họ (được gửi từ failproof.ai, Cc cho bạn). Reminders và invites yêu cầu đăng nhập.
 
-## Detector chỉ dùng cho kiểm toán
+## Audits được lên lịch
 
-Những cái này phát hiện các mẫu hành vi "ngớ ngẩn" chưa được (thực thi) trong thời gian thực. Chúng chỉ chạy trong quá trình kiểm toán và không bao giờ chặn một lệnh tool gọi trực tiếp.
+Nếu bạn chạy **daemon failproofaid** (xem [`failproofai config`](/vi/cli/install-policies)),
+nó có thể chạy lại audit cho bạn theo lịch trình và làm mới báo cáo `/audit` trong
+nền. Nó **tắt theo mặc định**, vì quét đọc *nội dung*
+của mọi bản ghi phiên agent trên máy này — không có gì quét theo bộ định thời
+cho đến khi bạn yêu cầu.
 
-| Detector | Những gì nó đếm |
+Bật nó trong `~/.failproofai/config.toml`:
+
+```toml
+[audit]
+auto = true
+interval_days = 7
+```
+
+| Key | Ý nghĩa |
 |---|---|
-| `redundant-cd-cwd` | Lệnh Bash bắt đầu với `cd <cwd> && …` mặc dù các lệnh đã chạy trong `cwd`. |
-| `prefer-edit-over-read-cat` | `cat`/`head`/`tail`/`less`/`more` trên một tệp nguồn duy nhất — hãy sử dụng công cụ `Read`. |
-| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` chỉnh sửa tại chỗ — hãy sử dụng công cụ `Edit`. |
-| `prefer-write-over-heredoc` | Heredoc / `echo > file` đa dòng ghi tệp — hãy sử dụng công cụ `Write`. |
-| `sleep-polling-loop` | Long `sleep N` (≥ 30s) hoặc `while …; sleep …; done` vòng lặp polling. |
-| `find-from-root` | `find /`, `find /home`, `find /usr`, v.v. — phạm vi đến `cwd` thay thế. |
-| `git-commit-no-verify` | `git commit … --no-verify` / `-n`, bỏ qua hook. |
-| `reread-after-edit` | `Read` của một tệp vừa được `Edit`/`Write` trong cùng một phiên. |
+| `auto` | `true` cho phép quét theo lịch trình. Bất cứ cái khác — vắng mặt, `false`, `"yes"` — là tắt. |
+| `interval_days` | Ngày giữa các lần quét. Được giới hạn từ 1–90; `0`, âm hoặc không phải số sẽ quay lại `7`. |
 
-## Bộ nhớ đệm
+- Lịch trình là **wall-clock**, vì vậy nó tồn tại sau suspend và reboot: một laptop
+  đã ngủ quá thời hạn của nó chạy **một lần** khi thức dậy, không bao giờ một backlog.
+- Mỗi lần chạy là một quy trình riêng biệt, ưu tiên thấp (`nice 19`) — không bao giờ đường dẫn hook của daemon, điều này giữ cho nó tự do để trả lời lệnh gọi công cụ.
+- Một quét bị bỏ qua nếu `failproofai audit` hoặc re-run của dashboard đã
+  đang diễn ra; nó sẽ được thử lại không lâu sau thay vì bị coi là lỗi.
+- Tiến độ được ghi vào `~/.failproofai/state/audit-schedule.json` (lần chạy cuối, due tiếp theo). Daemon sở hữu tệp đó — thay đổi cadence trong `config.toml`.
 
-- **Bộ nhớ đệm trên mỗi bản ghi** tại `~/.failproofai/cache/audit/<sha1>.json` được khóa bởi `(mtime, size, engineVersion, detectorVersion)` — tự động vô hiệu hóa khi bản ghi hoặc mã chính sách/detector thay đổi. Mỗi mục nhập cũng lưu trữ dấu thời gian `cachedAt` như **siêu dữ liệu TTL** (không phải là một phần của khóa bộ nhớ đệm); các mục nhập cũ hơn **7 ngày** bị từ chối khi đọc để các kết quả lâu dài không vượt quá ý định detector phát triển.
-- **Bộ nhớ đệm toàn bộ kết quả** tại `~/.failproofai/audit-dashboard.json` (chế độ 0600). Cho phép dashboard hiển thị ngay lập tức khi điều hướng mà không cần chạy lại. Cũng bị từ chối khi đọc quá **7 ngày TTL** — `/audit` sau đó rơi vào trạng thái trống và nhắc chạy lại. Nhấp `[ re-audit now ]` gần phía dưới của báo cáo để làm mới — kiểm toán lại gửi `noCache: true`, vì vậy nó bỏ qua bộ nhớ đệm trên mỗi bản ghi và quét lại mỗi bản ghi thay vì trả về kết quả được lưu trong bộ nhớ đệm; chạy phát trực tuyến tiến trình qua một dải trên cùng dính và hoán đổi kết quả tại chỗ khi thành công (không tải lại trang; một lần kiểm toán lại không thành công sẽ giữ báo cáo trước đó).
+<Note>
+Nếu bạn bật tính năng này trên máy được thiết lập bởi failproofai cũ hơn, hãy chạy
+`failproofai config` một lần. Định nghĩa dịch vụ của daemon cần một mục nhập bổ sung
+trước khi nó có thể khởi chạy CLI, và làm mới là một phần của lệnh đó.
+</Note>
+
+## Audit-only detectors
+
+Các detector này phát hiện các mẫu hành vi vô dụng không (còn) được thực thi trong thời gian thực. Chúng chỉ chạy trong quá trình audit và không bao giờ chặn lệnh gọi công cụ trực tiếp.
+
+| Detector | Nó đếm cái gì |
+|---|---|
+| `redundant-cd-cwd` | Lệnh Bash bắt đầu bằng `cd <cwd> && …` mặc dù các lệnh đã chạy trong `cwd`. |
+| `prefer-edit-over-read-cat` | `cat`/`head`/`tail`/`less`/`more` trên một tệp nguồn duy nhất — sử dụng công cụ `Read`. |
+| `prefer-edit-over-sed-awk` | Chỉnh sửa tại chỗ `sed -i` / `awk … > file` — sử dụng công cụ `Edit`. |
+| `prefer-write-over-heredoc` | Heredoc / multi-line `echo > file` viết tệp — sử dụng công cụ `Write`. |
+| `sleep-polling-loop` | `sleep N` dài (≥ 30s) hoặc `while …; sleep …; done` vòng lặp polling. |
+| `find-from-root` | `find /`, `find /home`, `find /usr`, v.v. — giới hạn cho `cwd` thay thế. |
+| `git-commit-no-verify` | `git commit … --no-verify` / `-n`, bỏ qua hooks. |
+| `reread-after-edit` | `Read` của tệp vừa được `Edit`/`Write` trong cùng phiên. |
+
+## Bộ nhớ cache
+
+- **Bộ nhớ cache mỗi bản ghi phiên** tại `~/.failproofai/cache/audit/<sha1>.json` được khóa bởi `(mtime, size, engineVersion, detectorVersion)` — hủy hiệu lực tự động khi bản ghi phiên hoặc mã chính sách/detector thay đổi. Mỗi mục cũng lưu trữ dấu thời gian `cachedAt` dưới dạng **metadata TTL** (không phải một phần của khóa bộ nhớ cache); các mục cũ hơn **7 ngày** bị từ chối khi đọc để các kết quả có thời gian dài không vượt quá ý định detector phát triển.
+- **Bộ nhớ cache kết quả toàn bộ** tại `~/.failproofai/audit-dashboard.json` (mode 0600). Cho phép dashboard hiển thị ngay lập tức khi điều hướng mà không cần chạy lại. Cũng bị từ chối khi đọc quá **7-day TTL** — `/audit` sau đó rơi vào trạng thái trống của nó và nhắc đến một lần chạy mới. Nhấp `[ re-audit now ]` gần dưới cùng của báo cáo để làm mới — re-audit gửi `noCache: true`, vì vậy nó bỏ qua bộ nhớ cache mỗi bản ghi phiên và quét lại mọi bản ghi phiên thay vì trả lại kết quả được lưu trong bộ nhớ cache; lần chạy phát trực tuyến tiến độ thông qua một dải trên cùng dính và trao đổi kết quả tại chỗ khi thành công (không tải lại trang; một re-audit không thành công giữ lại báo cáo trước đó).
 
 ## Ghi chú
 
-- **Không có đột biến.** Kiểm toán phát lại ở chế độ chỉ đọc. `warn-repeated-tool-calls` bị bỏ qua vì sidecar trên mỗi phiên của nó sẽ bị sửa đổi nếu không.
-- **Chính sách workflow bị bỏ qua.** Các chính sách `require-*-before-stop` chỉ kích hoạt trên các sự kiện `Stop` và `execSync` đối với trạng thái git trực tiếp — chúng không có cách diễn giải có ý nghĩa "những gì sẽ xảy ra vào năm 2025", vì vậy chúng không xuất hiện trong số kiểm toán.
-- **Chính sách tùy chỉnh bị bỏ qua.** Hook tùy chỉnh do người dùng cung cấp không được phát lại (chúng có thể đã thay đổi kể từ phiên gốc).
+- **Không có thay đổi.** Audit phát lại ở chế độ chỉ đọc. `warn-repeated-tool-calls` bị bỏ qua vì sidecar mỗi phiên sẽ bị sửa đổi.
+- **Chính sách Workflow bị bỏ qua.** Các chính sách `require-*-before-stop` chỉ phát hành trên các sự kiện `Stop` và `execSync` so với trạng thái git trực tiếp — chúng không có giải thích có ý nghĩa về "điều gì sẽ xảy ra vào năm 2025", vì vậy chúng không xuất hiện trong số lần audit.
+- **Chính sách tùy chỉnh bị bỏ qua.** Các hook tùy chỉnh được cung cấp bởi người dùng không được phát lại (chúng có thể đã thay đổi kể từ phiên ban đầu).

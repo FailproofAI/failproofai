@@ -1,16 +1,16 @@
 ---
 title: 使用例
-description: "Claude Code と Agents SDK にフックを設定する方法"
+description: "Claude Code と Agents SDK のフックを設定する方法"
 icon: book-open
 ---
 
-よくあるシナリオに対応したすぐに使える使用例です。インストール方法と期待される動作を紹介します。
+よくあるシナリオに対応した、すぐに使えるサンプル集です。それぞれのインストール方法と動作内容を紹介します。
 
 ---
 
-## Claude Code へのフック設定
+## Claude Code のフックを設定する
 
-Failproof AI は Claude Code の[フックシステム](https://docs.anthropic.com/en/docs/claude-code/hooks)を通じて統合されます。`failproofai policies --install` を実行すると、すべてのツール呼び出し時に起動するフックコマンドが Claude Code の `settings.json` に登録されます。
+Failproof AI は Claude Code の[フックシステム](https://docs.anthropic.com/en/docs/claude-code/hooks)と連携します。`failproofai policies --install` を実行すると、すべてのツール呼び出しで起動するフックコマンドが Claude Code の `settings.json` に登録されます。
 
 <Steps>
   <Step title="failproofai をインストールする">
@@ -18,7 +18,7 @@ Failproof AI は Claude Code の[フックシステム](https://docs.anthropic.c
     npm install -g failproofai
     ```
   </Step>
-  <Step title="組み込みポリシーをすべて有効にする">
+  <Step title="すべての組み込みポリシーを有効にする">
     ```bash
     failproofai policies --install
     ```
@@ -35,13 +35,13 @@ Failproof AI は Claude Code の[フックシステム](https://docs.anthropic.c
     claude
     ```
 
-    すべてのツール呼び出しでポリシーが自動的に実行されます。Claude に `sudo rm -rf /` を実行するよう指示してみてください — ブロックされます。
+    すべてのツール呼び出しでポリシーが自動的に実行されます。試しに Claude に `sudo rm -rf /` を実行するよう指示してみてください — ブロックされます。
   </Step>
 </Steps>
 
 ---
 
-## Agents SDK へのフック設定
+## Agents SDK のフックを設定する
 
 [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk) を使って開発している場合、同じフックシステムをプログラムから利用できます。
 
@@ -51,12 +51,12 @@ Failproof AI は Claude Code の[フックシステム](https://docs.anthropic.c
     npm install failproofai
     ```
   </Step>
-  <Step title="エージェントにフックを設定する">
-    エージェントプロセスの作成時にフックコマンドを渡します。フックは Claude Code と同じように stdin/stdout の JSON を介して起動します。
+  <Step title="エージェントでフックを設定する">
+    エージェントのプロセスを作成する際にフックコマンドを渡します。フックは Claude Code と同様に stdin/stdout の JSON 経由で起動します。
 
     ```bash
-    failproofai --hook PreToolUse   # 各ツールの呼び出し前に実行
-    failproofai --hook PostToolUse  # 各ツールの呼び出し後に実行
+    failproofai --hook PreToolUse   # 各ツールの実行前に呼ばれる
+    failproofai --hook PostToolUse  # 各ツールの実行後に呼ばれる
     ```
   </Step>
   <Step title="エージェント用のカスタムポリシーを作成する">
@@ -88,13 +88,13 @@ Failproof AI は Claude Code の[フックシステム](https://docs.anthropic.c
 
 ## 破壊的なコマンドをブロックする
 
-最も一般的なセットアップ — エージェントが取り返しのつかない操作を行うのを防ぎます。
+最も一般的な設定 — エージェントが取り消しのきかない操作を行うのを防ぎます。
 
 ```bash
 failproofai policies --install block-sudo block-rm-rf block-force-push block-curl-pipe-sh
 ```
 
-このコマンドの動作：
+この設定の内容:
 - `block-sudo` — すべての `sudo` コマンドをブロック
 - `block-rm-rf` — 再帰的なファイル削除をブロック
 - `block-force-push` — `git push --force` をブロック
@@ -104,17 +104,17 @@ failproofai policies --install block-sudo block-rm-rf block-force-push block-cur
 
 ## シークレットの漏洩を防ぐ
 
-エージェントがツールの出力からクレデンシャルを参照・漏洩するのを防ぎます。
+エージェントがツールの出力で認証情報を参照したり漏洩したりするのを防ぎます。
 
 ```bash
 failproofai policies --install sanitize-api-keys sanitize-jwt sanitize-connection-strings sanitize-bearer-tokens
 ```
 
-これらは `PostToolUse` で起動します — ツール実行後、エージェントが出力を受け取る前にクレデンシャル情報を除去します。
+これらは `PostToolUse` で実行されます — ツールが完了した後、エージェントが出力を受け取る前に機密情報を除去します。
 
 ---
 
-## エージェントが注意を要するときに Slack へ通知する
+## エージェントが応答待ちのときに Slack へ通知する
 
 通知フックを使って、アイドル状態のアラートを Slack に転送します。
 
@@ -142,7 +142,7 @@ customPolicies.add({
         signal: AbortSignal.timeout(5000),
       });
     } catch {
-      // Slack に接続できない場合でもエージェントをブロックしない
+      // Slack に接続できなくてもエージェントをブロックしない
     }
 
     return allow();
@@ -150,7 +150,7 @@ customPolicies.add({
 });
 ```
 
-インストールする：
+インストール:
 
 ```bash
 SLACK_WEBHOOK_URL=https://hooks.slack.com/... failproofai policies --install --custom ./slack-alerts.js
@@ -158,7 +158,7 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/... failproofai policies --install --c
 
 ---
 
-## エージェントをブランチに固定する
+## エージェントをブランチに留める
 
 エージェントが別のブランチに切り替えたり、保護されたブランチにプッシュしたりするのを防ぎます。
 
@@ -208,9 +208,9 @@ customPolicies.add({
 
 ## 本番リポジトリをロックダウンする
 
-プロジェクトレベルの設定をコミットして、チームの全員が同じポリシーを使えるようにします。
+プロジェクトレベルの設定をコミットして、チーム全員が同じポリシーを使えるようにします。
 
-リポジトリに `.failproofai/policies-config.json` を作成します：
+リポジトリに `.failproofai/policies-config.json` を作成します:
 
 ```json
 {
@@ -231,20 +231,20 @@ customPolicies.add({
 }
 ```
 
-コミットします：
+コミットします:
 
 ```bash
 git add .failproofai/policies-config.json
 git commit -m "Add failproofai team policies"
 ```
 
-failproofai をインストールしているすべてのチームメンバーがこれらのルールを自動的に取得します。
+failproofai をインストール済みのチームメンバー全員に、これらのルールが自動的に適用されます。
 
 ---
 
-## コンベンションポリシーでorg全体の品質標準を構築する
+## コンベンションポリシーで組織全体の品質基準を構築する
 
-最も効果的なセットアップ：プロジェクトに合わせたポリシーを含む `.failproofai/policies/` をリポジトリにコミットします。インストールコマンドや設定変更なしに、すべてのチームメンバーが自動的にポリシーを取得できます。
+最も効果的な設定: `.failproofai/policies/` をリポジトリにコミットし、プロジェクトに合わせたポリシーを追加します。チームメンバー全員が自動的に適用されます — インストールコマンドも設定変更も不要です。
 
 <Steps>
   <Step title="ディレクトリを作成してポリシーを追加する">
@@ -256,8 +256,8 @@ failproofai をインストールしているすべてのチームメンバー�
     // .failproofai/policies/team-policies.mjs
     import { customPolicies, allow, deny, instruct } from "failproofai";
 
-    // チームが使うパッケージマネージャーを強制する
-    // （代わりに組み込みの prefer-package-manager ポリシーを有効にすることもできます）
+    // チームで使用するパッケージマネージャーを強制する
+    // (代わりに組み込みの prefer-package-manager ポリシーを有効にすることも可能)
     customPolicies.add({
       name: "enforce-bun",
       match: { events: ["PreToolUse"] },
@@ -290,7 +290,7 @@ failproofai をインストールしているすべてのチームメンバー�
     ```
   </Step>
   <Step title="継続的に改善する">
-    チームが新たな問題に直面したら、ポリシーを追加してプッシュします。次回の `git pull` で全員がアップデートを取得できます。これらのポリシーはチームとともに成長する、生きた品質標準になります。
+    チームで新たな問題が発生したら、ポリシーを追加してプッシュしてください。次の `git pull` で全員に更新が届きます。これらのポリシーはチームとともに成長する、生きた品質基準となります。
   </Step>
 </Steps>
 
@@ -298,10 +298,10 @@ failproofai をインストールしているすべてのチームメンバー�
 
 ## その他の使用例
 
-リポジトリの [`examples/`](https://github.com/failproofai/failproofai/tree/main/examples) ディレクトリには以下が含まれています：
+リポジトリの [`examples/`](https://github.com/failproofai/failproofai/tree/main/examples) ディレクトリには以下が含まれています:
 
 | ファイル | 内容 |
 |------|---------------|
-| `policies-basic.js` | 基本的なポリシー — 本番環境への書き込み、force-push、パイプスクリプトのブロック |
+| `policies-basic.js` | 基本ポリシー — 本番への書き込み、フォースプッシュ、パイプスクリプトをブロック |
 | `policies-notification.js` | アイドル通知とセッション終了時の Slack アラート |
 | `policies-advanced/index.js` | 推移的インポート、非同期フック、PostToolUse の出力スクラビング、Stop イベントの処理 |

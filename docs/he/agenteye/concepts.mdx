@@ -1,88 +1,87 @@
 ---
----
-title: "קונספטים"
-description: "אוצר המילים של Failproof AI Observability — אירועים, sessions, הערכות, ביקורות, ממצאים והתקادמויות — מוגדרים במקום אחד."
+title: "מושגים"
+description: "אוצר המילים של Failproof AI Observability — events, sessions, evaluations, audits, findings, and incidents — מוגדר במקום אחד."
 ---
 
 
-עמוד זה מגדיר את אוצר המילים שבו משתמשת Failproof AI Observability. אם כל מונח במדריך אחר לא익ר לך, הוא מוגדר כאן. אתה לא צריך לקרוא את הכל מהתחלה לסוף: דלג על המסמך, או חזור אחורה כשתיתקל במילה שאתה רוצה להבהיר.
+דף זה מגדיר את אוצר המילים שבו משתמשת Failproof AI Observability. אם מונח כלשהו במדריך אחר אינו מוכר לך, הוא מוגדר כאן. אתה לא צריך לקרוא את זה מקצה לקצה: תסרוק אותו, או חזור אליו כשתתקל במילה שאתה רוצה להבהיר.
 
 ---
 
 ## מודל הנתונים
 
-**Event (אירוע)**
-יחידת הנתונים הקטנה ביותר. אירוע אחד מתעד צעד יחיד שהסוכן שלך נקט: `tool_use`, `model_request`, `hook_completed`, `error`, וכן הלאה. הסוכן שלך משדר אירועים דרך ה-[Python SDK](/he/agenteye/python-sdk); הם מופיעים בזמן אמת בעמוד **Events**.
+**Event**
+היחידה הקטנה ביותר של נתונים. אירוע אחד מתעד שלב יחיד שהסוכן שלך ביצע: `tool_use`, `model_request`, `hook_completed`, `error`, וכו'. הסוכן שלך פולט אירועים דרך ה-[Python SDK](/he/agenteye/python-sdk); הם מופיעים בזמן אמת בדף **Events**.
 
 **Session**
-הרצה אחת של סוכן, המזוהה על ידי `session_id`. session הוא כל האירועים החולקים את המזהה הזה, מצטברים לשורה יחידה בעמוד **Sessions** ומצוירים כגרף הרצה בעמוד הפרטים שלה. session בדרך כלל מתחיל ב-`agent_start` וסיימות עם `agent_end`.
+ריצה אחת של סוכן, המזוהה ב-`session_id`. session הוא כל האירועים החולקים את המזהה הזה, מקובצים לשורה אחת בדף **Sessions** ומצוירים כגרף ביצוע בדף הפרטים שלהם. session בדרך כלל מתחיל ב-`agent_start` ומסתיים ב-`agent_end`.
 
-**Agent (סוכן)**
-שחקן בעל שם בהרצה, המזוהה על ידי `agent_id`. הרצה יכולה להיות מעורבת עם כמה סוכנים: מתכנן שמייצר תת-סוכן מסכם, למשל. תת-סוכנים נושאים `parent_id`, וזה מה שמאפשר ל-Failproof AI Observability לצייר אותם בשורות משלהם בגרף ההרצה.
+**Agent**
+שחקן בעל שם בתוך ריצה, המזוהה ב-`agent_id`. ריצה יכולה להיות כוללת כמה סוכנים: תוכננית שמייצרת sub-agent מסכם, לדוגמה. sub-agents נושאים `parent_id`, וזה מה שמאפשר ל-Failproof AI Observability לצייר אותם בנתיבים שלהם בגרף הביצוע.
 
-**Environment (סביבה)**
-תווית למקום בו התרחשה ההרצה: `production`, `staging`, `dev`. אתה קובע אותה פעם אחת כשאתה מגדיר את ה-SDK. כמעט כל עמוד לוח מחומים יכול לסנן לפי סביבה.
+**Environment**
+תווית למקום בו התרחשה הריצה: `production`, `staging`, `dev`. אתה מגדיר אותה פעם אחת כשאתה קונפיגורציה של ה-SDK. כמעט כל דף בלוח הבקרה יכול להסנן לפי environment.
 
 **Context-window fill**
-אחוז חלון ההקשר של מודל שתגובה צרכה. Failproof AI Observability חותמת עליו באירועי `model_response` למודלים שהוא מכיר, כך שגדילת הprompt וקומפקציה קרובה נראים ישירות בזרם האירועים.
+האחוז של חלון ההקשר של מודל שתגובה צרכה. Failproof AI Observability משימה אותו על אירועים `model_response` עבור מודלים שהוא מזהה, כך שגדילת prompt והדחיסה הקרובה נראים ממש בזרם האירועים.
 
 ---
 
 ## איכות
 
-**Evaluation (הערכה)**
-ציון איכות עבור session שהסתיים, המיוצר על ידי שירות ניקוד שאתה מפעיל. הערכות הן opt-in: עד שתחבר מעריך, sessions נתיעדות אך לא מדורגות. כל הערכה יכולה לשאת כמה ציונים בעלי שם (למשל `helpfulness`, `factuality`, `tool_efficiency`), כל אחד עם הערת הנמקה קצרה. ראה [Evaluation suite](/he/agenteye/evaluation-suite).
+**Evaluation**
+ציון איכות לסשן סיים, המופק על ידי שירות ניקוד שאתה מפעיל. Evaluations הם opt-in: עד שתחבר evaluator, sessions מתועדים אבל לא מדורגים. כל evaluation יכול לשאת כמה ניקוד בעלי שם (לדוגמה `helpfulness`, `factuality`, `tool_efficiency`), כל אחד עם הערת נימוק קצרה. ראה [Evaluation suite](/he/agenteye/evaluation-suite).
 
-**Score key (מפתח ניקוד)**
-השם של מימד אחד שמעריך מדווח עליו, כגון `helpfulness`. התראות וביקורות יכולות לראות מפתח ניקוד ספציפי לאורך זמן.
+**Score key**
+השם של מימד אחד שמדווח evaluator, כגון `helpfulness`. Alerts ו-audits יכול לעקוב אחרי score key ספציפי לאורך זמן.
 
-**Evaluator (מעריך)**
-שירות הניקוד שלך. Failproof AI Observability POST את הטעמת של הרצה שהסתיימה אליו ואחסן את הציונים שהוא מחזיר. הוא לא משלח evaluator ברירת מחדל; לוגיקת הניקוד היא שלך.
-
----
-
-## מציאה תיקון כשלים
-
-**Hook (קטע בטיחות)**
-מדרגה או תופעת לוואי שמסגרת הסוכן שלך מפעילה סביב צעד: בדיקת בטיחות תוכן, redaction של PII, מד תקציב. Hooks משדרים אירועי `hook_triggered` / `hook_completed` עם `outcome` (allow, deny, modify), ויש להם דף observe משלהם.
-
-**Alert rule (כלל התראה)**
-כלל שמופעל כשמטרי חוצה סף שאתה קבעת: שיעור שגיאה, p95 latency, עלות token, או ציון evaluator. כשכלל נורה, הוא פותח התקادמות ומודיע לערוצים שבחרת (דוא"ל, Slack, webhook, בתוך ה-dashboard). ראה [Alerts](/he/agenteye/alerts).
-
-**Incident (התקדמות)**
-בעיה פתוחה שנוצרה כשכלל התראה נורה. להתקדמויות יש מחזור חיים (acknowledge, assign, resolve) וציר הזמן של פעילות השומר על כל פעולה. אתה יכול גם לפתוח אחת ידנית.
-
-**Audit (ביקורת)**
-חקירה חוזרת (כל שעה לשבועות) שכורה את היומנים שלך *על פני* sessions לדפוסי כשל שלא כתבת כלל בעבורם: מקבצי שגיאה, ציונים נמוכים, חריגי latency, לולאות tool-call, והרצות שלא הסתיימו לעולם. איפה התראה צופה במטרי שאתה כבר יודע עליו, ביקורת אומרת לך מה להסתכל עליו הבא. ראה [Audits](/he/agenteye/audits).
-
-**Finding (ממצא)**
-תוצאה אחת דורגת וגב עדויות מריצת ביקורת. ממצא שם דפוס, קישורים להפגשות המדויקות מאחוריו, וסחיטה מחזור חיים (acknowledge, resolve, mute, dismiss). Failproof AI Observability משכפל ממצאים מרוץ-על-רוץ כך שדפוס ידוע מעדכנים במקום שלהם.
-
-**The AI assistant (העוזר AI)**
-צ'אט בתוך ה-dashboard שעונה על שאלות על הסוכנים שלך בעברית פשוטה, על הנתונים שלך. זה read-only כברירת מחדל; כל דבר שהוא יוצר (query שמור, dashboard) הוא approval-gated, ולעולם לא יכול למחוק. ראה [AI assistant](/he/agenteye/assistant).
+**Evaluator**
+שירות הניקוד שלך. Failproof AI Observability משדרת את התמליל של ריצה סיימה אליו ושמורה את הציונים שהוא מחזיר. זה לא משולח evaluator ברירת מחדל; ההיגיון של הניקוד הוא שלך.
 
 ---
 
-## הרצתו
+## מציאת תיקון כשלים
 
-**Organization (tenant) (ארגון)**
-סביבת עבודה מבודדת. מקרה Failproof AI Observability אחד יכול להארח ארגונים רבים, כל אחד עם משתמשים שלו, מפתחות, ונתונים. כל כתובת URL של dashboard מוגבלת תחת slug ארגון שלך (`/<org-slug>/…`).
+**Hook**
+הגנת חומה או תופעת לוואי שהמסגרת הסוכן שלך מחוברת סביב שלב: בדיקת בטיחות תוכן, גזירת PII, שמירת תקציב. Hooks פולטים אירועים `hook_triggered` / `hook_completed` עם `outcome` (allow, deny, modify), וקבלים דף observe משלהם.
 
-**Collector (אוסף)**
-`agenteye-collector`, daemon קל משקל שרץ על כל מכונת סוכן, batch את האירועים שה-SDK כותב לדיסק, ומשדר אותם לשרת.
+**Alert rule**
+כלל שנורים כאשר מדד חוצה סף שאתה קובע: שיעור שגיאה, p95 latency, עלות token, או ציון evaluator. כאשר כלל נורים, הוא פותח incident ומודיע לערוצים שבחרת (דוא"ל, Slack, webhook, in-dashboard). ראה [Alerts](/he/agenteye/alerts).
 
-**API key (מפתח API)**
-token מוגבל שמאמת לקוח כנגד השרת. מפתחות נושאים הרשאות מפורטות (למשל `events:add` עבור ה-collector, scopes read-only עבור מפתח dashboard). ראה [API keys](/he/agenteye/api-keys).
+**Incident**
+בעיה פתוחה שנוצרה כאשר כלל alert נורים. Incidents יש מחזור חיים (acknowledge, assign, resolve) וציר הזמן של פעילות שמתעד כל פעולה. אתה יכול גם לפתוח אחד ידנית.
 
-**Server (שרת)**
-שירות ingest ו-API. הוא בולע אירועים, אחסון מצב תפעולי בבסיסי הנתונים שלך, ומשרת את ה-dashboard וה-CLI.
+**Audit**
+חקירה חוזרת (כל שעה עד שבועות) שחופרת את יומני שלך *על פני* sessions עבור דפוסי כשל שלא כתבת כלל עבור: clusters שגיאה, ציונים נמוכים, latency outliers, tool-call loops, וריצות שלא נגמרו. כאשר alert משקיף על מדד שאתה כבר יודע עליו, audit אומר לך מה להסתכל עליו הבא. ראה [Audits](/he/agenteye/audits).
 
-**Dashboard (לוח מחומים)**
-ממשק משתמש ווב. כל עמוד מוגבל לארגון וקריאות דרך API של השרת.
+**Finding**
+תוצאה אחת דורגת, מבוססת ראיות מריצת audit. finding שם דפוס, קישורים לסשנים המדויקים מאחוריו, ונושא מחזור ג'ז (acknowledge, resolve, mute, dismiss). Failproof AI Observability משכפלת findings מריצה לריצה כך שדפוס ידוע מעדכן במקום להצטבר.
+
+**The AI assistant**
+הצ'אט in-dashboard שעונה על שאלות על הסוכנים שלך באנגלית פשוטה, על הנתונים שלך. זה read-only כברירת מחדל; כל דבר שהוא יוצר (שאילתה שנשמרה, לוח בקרה) עוברות brapproval gate, וזה לא יכול לעולם למחוק. ראה [AI assistant](/he/agenteye/assistant).
 
 ---
 
-## צעדים הבאים
+## הפעלה
 
-- [Overview](/he/agenteye/overview): איך החלקים האלה משתלבים ביחד.
-- [Observability](/he/agenteye/observability): משטחי התצפית (Events, Sessions, Models, Tools, Hooks, Errors).
+**Organization (tenant)**
+מרחב עבודה מבודד. instance אחד של Failproof AI Observability יכול להנחות הרבה organizations, כל אחד עם המשתמשים, המפתחות והנתונים שלו. כל URL של לוח בקרה מוגבל תחת org slug שלך (`/<org-slug>/…`).
+
+**Collector**
+`agenteye-collector`, ה-daemon הקל שפועל על כל מכונת סוכן, batches את האירועים ש-SDK כותב לדיסק, ומשלח אותם לשרת.
+
+**API key**
+token מוגבל שמאמת לקוח כנגד השרת. מפתחות נושאים הרשאות דקות (לדוגמה `events:add` לאספן, scopes read-only עבור מפתח לוח בקרה). ראה [API keys](/he/agenteye/api-keys).
+
+**Server**
+השירות ingest ו-API. זה ingests events, stores operational state במסדי הנתונים שלך, ומשרת את לוח הבקרה ו-CLI.
+
+**Dashboard**
+ה-web UI. כל עמוד מוגבל לארגון וקורא דרך API של השרת.
+
+---
+
+## הצעדים הבאים
+
+- [Overview](/he/agenteye/overview): איך חלקים אלה משתלבים.
+- [Observability](/he/agenteye/observability): משטחי observation (Events, Sessions, Models, Tools, Hooks, Errors).

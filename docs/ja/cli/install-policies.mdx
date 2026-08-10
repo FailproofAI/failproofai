@@ -1,6 +1,6 @@
 ---
 title: ポリシーのインストール
-description: "エージェントのツール呼び出しごとにポリシーが実行されるよう有効化する"
+description: "エージェントのツール呼び出しごとにポリシーが実行されるよう有効化します"
 ---
 
 ```bash
@@ -15,42 +15,42 @@ failproofai policies --install [policy-names...] [options]
 
 | フラグ | 説明 |
 |------|-------------|
-| `--cli claude\|codex\|copilot` | インストール対象のエージェント CLI。スペース区切り（例: `--cli claude codex copilot`）または繰り返し指定が可能。省略するとインストール済みの CLI を自動検出し、プロンプトを表示する。 |
-| `--scope user` | ユーザースコープの設定ファイルにインストールする（Claude: `~/.claude/settings.json`、Codex: `~/.codex/hooks.json`、Copilot: `~/.copilot/hooks/failproofai.json`）。デフォルト。 |
-| `--scope project` | プロジェクトスコープの設定ファイルにインストールする（Claude: `<cwd>/.claude/settings.json`、Codex: `<cwd>/.codex/hooks.json`、Copilot: `<cwd>/.github/hooks/failproofai.json`）。 |
-| `--scope local` | Claude のみ — `<cwd>/.claude/settings.local.json` にインストールする。Codex と Copilot には `local` スコープは存在しない。 |
+| `--cli claude\|codex\|copilot` | インストール対象のエージェント CLI。スペース区切り（例: `--cli claude codex copilot`）または繰り返し指定が可能。省略するとインストール済み CLI を自動検出してプロンプトを表示します。 |
+| `--scope user` | ユーザースコープの設定ファイルにインストールします（Claude: `~/.claude/settings.json`、Codex: `~/.codex/hooks.json`、Copilot: `~/.copilot/hooks/failproofai.json`）。デフォルト。 |
+| `--scope project` | プロジェクトスコープの設定ファイルにインストールします（Claude: `<cwd>/.claude/settings.json`、Codex: `<cwd>/.codex/hooks.json`、Copilot: `<cwd>/.github/hooks/failproofai.json`）。 |
+| `--scope local` | Claude のみ — `<cwd>/.claude/settings.local.json` にインストールします。Codex および Copilot には `local` スコープがありません。 |
 | `--custom <path>` / `-c` | カスタムフックポリシーを含む JS ファイルへのパス |
 
 ## 動作
 
-- **ポリシー名を指定しない場合** — インタラクティブなプロンプトを開き、ポリシーを選択できる
-- **特定の名前を指定した場合** — 指定したポリシーを有効化する（既に有効なポリシーに追加される）
-- **`all`** — 利用可能なすべてのポリシーを有効化する
+- **ポリシー名を指定しない場合** — ポリシーを選択するインタラクティブなプロンプトが表示されます
+- **特定の名前を指定した場合** — 該当するポリシーが有効化されます（既に有効なものに追加されます）
+- **`all`** — 利用可能なすべてのポリシーを有効化します
 
-インストールは追加型です。`--install` を再度実行しても、既存のポリシーが削除されることなく新しいポリシーが追加されます。
+インストールは追記型です。`--install` を再実行しても既存のポリシーは削除されず、新しいポリシーが追加されます。
 
 ## 使用例
 
 ```bash
-# すべてのデフォルトポリシーをグローバルにインストールする（インタラクティブ）
+# デフォルトのポリシーをすべてグローバルにインストール（インタラクティブ）
 failproofai policies --install
 
-# 現在のプロジェクトに特定のポリシーをインストールする
+# 現在のプロジェクトに特定のポリシーをインストール
 failproofai policies --install block-sudo sanitize-api-keys --scope project
 
-# すべてのポリシーを一括で有効化する
+# すべてのポリシーを一度に有効化
 failproofai policies --install all
 
-# カスタムポリシーファイルを指定してインストールする
+# カスタムポリシーファイルを指定してインストール
 failproofai policies --install --custom ./my-policies.js
 
-# OpenAI Codex 向けにインストールする（プロジェクトスコープ）
+# OpenAI Codex 向けにインストール（プロジェクトスコープ）
 failproofai policies --install --cli codex --scope project
 
-# GitHub Copilot CLI（ベータ版）向けに現在のプロジェクトへインストールする
+# 現在のプロジェクトに GitHub Copilot CLI（ベータ版）向けをインストール
 failproofai policies --install --cli copilot --scope project
 
-# 3 つの CLI すべてに一括でインストールする
+# 3 つの CLI すべてに一度にインストール
 failproofai policies --install --cli claude codex copilot
 ```
 

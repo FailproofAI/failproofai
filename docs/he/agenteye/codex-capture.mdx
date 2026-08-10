@@ -1,56 +1,56 @@
 ---
 ---
 title: "Codex session capture"
-description: "עקוב אחר הפעלות Codex המקומיות של הצוות שלך ב-AgentEye כפעלות ואירועים רגילים — ללא שינוי בדרך ההפעלה שלהם."
+description: "Tail your team's local OpenAI Codex sessions into AgentEye as ordinary sessions and events — with no change to how they run Codex."
 ---
 
-המהנדסים שלך כבר מפעילים OpenAI Codex כל יום. Codex session capture מביא את הפעלות הקידוד הללו ל-AgentEye כפעלות ואירועים רגילים, כך שתוכל לחפש, להשמיע שוב ולהעריך אותם לצד כל שאר מה שאתה צופה. זה משלים את [Python SDK](/he/agenteye/python-sdk): ה-SDK מציידים agents שאתה כותב, בעוד שזה תופס את עבודת Codex של הצוות שלך כבר — ללא שינוי בדרך הפעלתם.
+המהندסים שלך כבר משתמשים ב-OpenAI Codex כל יום. Codex session capture מביא את הסשנים הקודינג האלה ל-AgentEye כסשנים וevents רגילים, כדי שתוכל לחפש, להשמיע שוב, והערכה עליהם לצד הכל האחר שאתה צופה. זה משלים את [Python SDK](/he/agenteye/python-sdk): ה-SDK משדר agents שאתה כותב, בעוד שזה תופס את עבודת ה-Codex שהצוות שלך כבר עושה — ללא שינוי בדרך שהם משתמשים בה.
 
-קולט רקע קטן קורא תמלילי הפעלות Codex המקומיים כשהם נכתבים וגורם להם להיות משודרים ל-AgentEye. קולט אחד למכונה תופס כל משטח Codex מקומי בו-זמנית — אין הגדרה per-surface.
+collector קטן בחזקה בקרקע קורא את שיריות הסשן המקומיות של Codex כשהן נכתבות ושולח אותן ל-AgentEye. collector אחד למכונה תופס כל משטח Codex מקומי בו-זמנית — אין הגדרה לכל משטח.
 
-אותו קולט תופס agents אחרים גם — ראה [OpenClaw](/he/agenteye/openclaw-capture) ו-[Hermes](/he/agenteye/hermes-capture). הפעל כל אחד מהם שאתה משתמש בו; קולט יחיד יכול לתפוס כמה ערוצים בו-זמנית.
-
----
-
-## מה הוא תופס
-
-כל משטח Codex שרץ **באופן מקומי** מייצר את אותם תמלילי הפעלות על-דיסק, והקולט קוטף את כולם:
-
-- ה-Codex **CLI** ו-`codex exec`
-- ה-**VS Code / IDE extension**
-- ה-**desktop app**, כשהוא מפעיל הפעלה באופן מקומי
-
-כל הפעלת Codex הופכת ל-AgentEye [session](/he/agenteye/sessions); ההודעות שלה של משתמש ועוזר, הנמקה, קריאות כלים, תוצאות כלים והשימוש בטוקנים הופכים ל-[events](/he/agenteye/event-stream) התואמים. המשטח שממנו הגיעה כל הפעלה (CLI, IDE, או desktop) נרשם, כך שתוכל להבדיל ביניהם.
-
-> **הפעלות ענן אינן תפוסות.** ה-desktop app הולך ורב מפעיל הפעלות בענן Codex ושומר רק את המטא-נתונים שלהם על המכונה — אין תמליל מקומי לקרוא. רק הפעלות שבוצעו באופן מקומי תפוסות.
+אותו collector תופס agents אחרים גם — ראה [OpenClaw](/he/agenteye/openclaw-capture) ו-[Hermes](/he/agenteye/hermes-capture). הפעל את כל אחד שאתה משתמש בו; collector יחיד יכול לתפוס כמה בו-זמנית.
 
 ---
 
-## הפוך את זה להפעלה
+## מה זה תופס
 
-Capture כבויה עד שתוכל להפעיל אותה. התקן את הקולט עם מפתח API שיש לו את ההרשאה `events:add` (ראה [API keys](/he/agenteye/api-keys)), והפעל את Codex capture:
+כל משטח Codex שפעל **באופן מקומי** מייצר את אותן שיריות סשן על-דיסק, וה-collector אוסף את כולן:
+
+- ה-Codex **CLI** וכן `codex exec`
+- הרחבת **VS Code / IDE**
+- את **desktop app**, כשהוא מחיל סשן באופן מקומי
+
+כל סשן Codex הופך ל-AgentEye [session](/he/agenteye/sessions); הודעות המשתמש וה-assistant שלו, חשיבה, קריאות כלים, תוצאות כלים, וצריכת tokens הופכות ל-[events](/he/agenteye/event-stream) תואמים. המשטח שממנו הגיע כל סשן (CLI, IDE, או desktop) מתועד, כדי שתוכל להבדיל בינם.
+
+> **לא תופסים סשנים בענן.** The desktop app יותר ויותר מחיל סשנים בענן Codex ושומר רק את metadata שלהם על המכונה — אין שיר סשן מקומי לקרוא. רק סשנים שביצעו באופן מקומי תופסים.
+
+---
+
+## הפעל אותו
+
+Capture כבוי עד שתפעיל אותו. התקן את ה-collector עם API key שיש לו ההרשאה `events:add` (ראה [API keys](/he/agenteye/api-keys)), והפעל את Codex capture:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --codex-enabled
 ```
 
-זה מתקין את הקולט, רושם אותו כשירות רקע, והחל לתפוס. אשר שהוא רץ:
+זה מתקין את ה-collector, רושם אותו כשירות רקע, והתחיל לתפוס. אשר שהוא פועל:
 
 ```bash
 agenteye-collector health
 ```
 
-בהרצה הראשונה, הפעלות Codex הקיימות שלך מתמלאות חזרה פעם אחת והפעילות חדשה משודרת בתוך שניות. קובצים שלהם של Codex קוראים בלבד — לעולם לא משונים, מועברים, או מחוקים — וכל הפעלה משודרת בדיוק פעם אחת, גם על פני restarts.
+בהרצה הראשונה, הסשנים הקיימים שלך ב-Codex מלא טעון פעם אחת וpractice חדש זורם תוך שניות. קבצים של Codex עצמו קראו בלבד — אף פעם לא שונו, הועברו, או מחקו — וכל סשן נשלח בדיוק פעם אחת, אפילו על פני restarts.
 
 ---
 
 ## איפה זה מופיע
 
-הפעלות שתפוסות מופיעות ב-**Sessions**, והאירועים שלהם ב-**Events** stream, אותו דבר כמו כל agent אחר שאתה צופה — אז [session replay](/he/agenteye/sessions), [search](/he/agenteye/queries), [evaluations](/he/agenteye/evaluations), ו-[alerts](/he/agenteye/alerts) כולם עובדים עליהם. סנן לפי ה-Codex agent כדי לראות אותם בעצמם.
+סשנים תופסים מופיעים ב-**Sessions**, וה-events שלהם בזרם **Events**, כמו כל agent אחר שאתה צופה — אז [session replay](/he/agenteye/sessions), [search](/he/agenteye/queries), [evaluations](/he/agenteye/evaluations), ו-[alerts](/he/agenteye/alerts) כולם עובדים עליהם. סנן לפי ה-agent של Codex כדי לראות אותם בעצמם.
 
 ---
 
 ## פרטיות
 
-תמלילי Codex מכילים את הפעלה המלאה — כולל פלט הפקודה, תוכן הקובץ, וכל מה ש-Codex קרא או כתב — ויכול להכיל סודות. הפעלות שתפוסות משודרות כמו שהן, אז הפעל capture רק על מכונות ובשביל צוותים שבהם ריכוז תוכן זה ב-AgentEye מתאים, וגיברת לקולט מפתח מוגבל ל-`events:add` בלבד. ראה [Security](/he/agenteye/security) לדיון בכיצד הנתונים שלך משמרים בדידים.
+שיריות Codex מכילות את הסשן המלא — כולל פלט פקודה, תכנים קבצים, וכל דבר שCodex קרא או כתב — ויכול להכיל סודות. סשנים תופסים נשלחים כפי שהם, אז הפעל capture רק על מכונות ועבור צוותים שם מרכזית על תוכן ב-AgentEye מתאימה, ותן ל-collector key scoped ל-`events:add` בלבד. ראה [Security](/he/agenteye/security) לאיך הנתונים שלך נשמרים מבודדים.

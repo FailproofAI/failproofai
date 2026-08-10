@@ -1,17 +1,17 @@
 ---
 ---
 title: أمثلة
-description: "كيفية إعداد hooks لـ Claude Code و Agents SDK"
+description: "كيفية إعداد الخطاطيف (Hooks) لـ Claude Code و Agents SDK"
 icon: book-open
 ---
 
-أمثلة جاهزة للاستخدام للسيناريوهات الشائعة. يوضح كل منها كيفية التثبيت وما يمكن توقعه.
+أمثلة جاهزة للاستخدام لسيناريوهات شائعة. يوضح كل مثال كيفية التثبيت وما يمكن توقعه.
 
 ---
 
-## إعداد hooks لـ Claude Code
+## إعداد الخطاطيف (Hooks) لـ Claude Code
 
-يتكامل Failproof AI مع Claude Code عبر [نظام hooks](https://docs.anthropic.com/en/docs/claude-code/hooks). عند تشغيل `failproofai policies --install`، يسجل أوامر hook في `settings.json` الخاص بـ Claude Code التي تُشغَّل عند كل استدعاء أداة.
+يتكامل Failproof AI مع Claude Code عبر [نظام الخطاطيف](https://docs.anthropic.com/en/docs/claude-code/hooks). عند تشغيل `failproofai policies --install`، يتم تسجيل أوامر الخطاطيف في `settings.json` الخاص بـ Claude Code التي تعمل عند كل استدعاء أداة.
 
 <Steps>
   <Step title="تثبيت failproofai">
@@ -24,27 +24,27 @@ icon: book-open
     failproofai policies --install
     ```
   </Step>
-  <Step title="التحقق من تسجيل hooks">
+  <Step title="التحقق من تسجيل الخطاطيف">
     ```bash
     cat ~/.claude/settings.json | grep failproofai
     ```
 
-    يجب أن تشاهد مدخلات hook لأحداث `PreToolUse`، `PostToolUse`، `Notification`، و `Stop`.
+    يجب أن ترى إدخالات خطاطيف لأحداث `PreToolUse`، `PostToolUse`، `Notification`، و `Stop`.
   </Step>
   <Step title="تشغيل Claude Code">
     ```bash
     claude
     ```
 
-    تعمل السياسات تلقائياً عند كل استدعاء أداة. جرّب طلب Claude لتشغيل `sudo rm -rf /` - سيتم حجبه.
+    تعمل السياسات تلقائياً عند كل استدعاء أداة. حاول طلب Claude لتشغيل `sudo rm -rf /` - سيتم حجبها.
   </Step>
 </Steps>
 
 ---
 
-## إعداد hooks لـ Agents SDK
+## إعداد الخطاطيف (Hooks) لـ Agents SDK
 
-إذا كنت تبني باستخدام [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk)، يمكنك استخدام نفس نظام hooks برمجياً.
+إذا كنت تبني باستخدام [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk)، يمكنك استخدام نفس نظام الخطاطيف برمجياً.
 
 <Steps>
   <Step title="تثبيت failproofai في مشروعك">
@@ -52,26 +52,26 @@ icon: book-open
     npm install failproofai
     ```
   </Step>
-  <Step title="تكوين hooks في وكيلك">
-    مرّر أوامر hook عند إنشاء عملية وكيلك. تُشغَّل hooks بنفس الطريقة كما هو الحال في Claude Code - عبر JSON على stdin/stdout:
+  <Step title="تكوين الخطاطيف في وكيلك">
+    مرر أوامر الخطاطيف عند إنشاء عملية الوكيل. تعمل الخطاطيف بنفس الطريقة كما في Claude Code - عبر JSON في stdin/stdout:
 
     ```bash
     failproofai --hook PreToolUse   # يُستدعى قبل كل أداة
     failproofai --hook PostToolUse  # يُستدعى بعد كل أداة
     ```
   </Step>
-  <Step title="كتابة سياسة مخصصة لوكيلك">
+  <Step title="اكتب سياسة مخصصة لوكيلك">
     ```javascript
     import { customPolicies, allow, deny } from "failproofai";
 
     customPolicies.add({
       name: "limit-to-project-dir",
-      description: "ابقِ الوكيل داخل مجلد المشروع",
+      description: "اجعل الوكيل داخل مجلد المشروع",
       match: { events: ["PreToolUse"] },
       fn: async (ctx) => {
         const path = String(ctx.toolInput?.file_path ?? "");
         if (path.startsWith("/") && !path.startsWith(ctx.session?.cwd ?? "")) {
-          return deny("الوكيل مقيد بمجلد المشروع");
+          return deny("الوكيل مقتصر على مجلد المشروع");
         }
         return allow();
       },
@@ -87,51 +87,51 @@ icon: book-open
 
 ---
 
-## حجب الأوامر التدميرية
+## حجب الأوامر الضارة
 
-الإعداد الأكثر شيوعاً - منع الوكلاء من إلحاق الضرر الذي لا يمكن عكسه.
+الإعداد الأكثر شيوعاً - منع الوكلاء من إحداث ضرر لا يمكن إصلاحه.
 
 ```bash
 failproofai policies --install block-sudo block-rm-rf block-force-push block-curl-pipe-sh
 ```
 
-ما يفعله هذا:
+ما يفعله:
 - `block-sudo` - يحجب جميع أوامر `sudo`
-- `block-rm-rf` - يحجب حذف الملفات العودي
+- `block-rm-rf` - يحجب حذف الملفات بشكل متكرر
 - `block-force-push` - يحجب `git push --force`
-- `block-curl-pipe-sh` - يحجب توجيه السكريبتات البعيدة إلى الـ shell
+- `block-curl-pipe-sh` - يحجب إرسال النصوص البعيدة إلى shell
 
 ---
 
-## منع تسريب الأسرار
+## منع تسرب الأسرار
 
-منع الوكلاء من رؤية أو تسريب بيانات الاعتماد في مخرجات الأداة.
+منع الوكلاء من رؤية أو تسرب بيانات الاعتماد في مخرجات الأداة.
 
 ```bash
 failproofai policies --install sanitize-api-keys sanitize-jwt sanitize-connection-strings sanitize-bearer-tokens
 ```
 
-تعمل هذه على `PostToolUse` - بعد تشغيل أداة، تقوم بتنظيف المخرجات قبل أن يراها الوكيل.
+تعمل هذه السياسات على `PostToolUse` - بعد تشغيل الأداة، تقوم بتنظيف المخرجات قبل أن يراها الوكيل.
 
 ---
 
-## احصل على تنبيهات Slack عند احتياج الوكلاء إلى الاهتمام
+## الحصول على تنبيهات Slack عندما يحتاج الوكلاء إلى اهتمام
 
-استخدم notification hook لإعادة توجيه تنبيهات عدم النشاط إلى Slack.
+استخدم خطاف الإشعار لإعادة توجيه تنبيهات الخمول إلى Slack.
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
 
 customPolicies.add({
   name: "slack-on-idle",
-  description: "تنبيه Slack عندما يكون الوكيل في انتظار إدخال",
+  description: "تنبيه Slack عندما ينتظر الوكيل الإدخال",
   match: { events: ["Notification"] },
   fn: async (ctx) => {
     const webhookUrl = process.env.SLACK_WEBHOOK_URL;
     if (!webhookUrl) return allow();
 
-    const message = String(ctx.payload?.message ?? "الوكيل في انتظار");
-    const project = ctx.session?.cwd ?? "غير معروف";
+    const message = String(ctx.payload?.message ?? "الوكيل ينتظر");
+    const project = ctx.session?.cwd ?? "unknown";
 
     try {
       await fetch(webhookUrl, {
@@ -143,7 +143,7 @@ customPolicies.add({
         signal: AbortSignal.timeout(5000),
       });
     } catch {
-      // لا تحجب الوكيل أبداً إذا كان Slack غير متاح
+      // لا تحجب الوكيل أبداً إذا كان Slack غير قابل للوصول
     }
 
     return allow();
@@ -159,7 +159,7 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/... failproofai policies --install --c
 
 ---
 
-## إبقاء الوكلاء على فرع معين
+## اجعل الوكلاء على فرع محدد
 
 منع الوكلاء من تبديل الفروع أو الدفع إلى الفروع المحمية.
 
@@ -168,13 +168,13 @@ import { customPolicies, allow, deny } from "failproofai";
 
 customPolicies.add({
   name: "stay-on-branch",
-  description: "منع الوكيل من التحقق من فروع أخرى",
+  description: "منع الوكيل من الانتقال إلى فروع أخرى",
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolName !== "Bash") return allow();
     const cmd = String(ctx.toolInput?.command ?? "");
     if (/git\s+checkout\s+(?!-b)/.test(cmd)) {
-      return deny("ابقَ على الفرع الحالي. أنشئ فرع جديد بـ -b إذا لزم الأمر.");
+      return deny("ابق على الفرع الحالي. أنشئ فرعاً جديداً بـ -b إذا لزم الأمر.");
     }
     return allow();
   },
@@ -183,9 +183,9 @@ customPolicies.add({
 
 ---
 
-## اطلب الاختبارات قبل الالتزام
+## طلب الاختبارات قبل الالتزام
 
-ذكّر الوكلاء بتشغيل الاختبارات قبل الالتزام.
+تذكير الوكلاء بتشغيل الاختبارات قبل الالتزام.
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
@@ -232,20 +232,20 @@ customPolicies.add({
 }
 ```
 
-ثم التزم بها:
+ثم التزم به:
 
 ```bash
 git add .failproofai/policies-config.json
 git commit -m "Add failproofai team policies"
 ```
 
-كل عضو في الفريق لديه failproofai مثبت سيختار هذه القواعس تلقائياً.
+كل عضو في الفريق لديه failproofai مثبت سيختار هذه القواعد تلقائياً.
 
 ---
 
-## بناء معيار جودة على مستوى المؤسسة باستخدام سياسات الاتفاقية
+## بناء معيار جودة على مستوى المؤسسة مع سياسات الاتفاقية
 
-الإعداد الأكثر تأثيراً: التزم بـ `.failproofai/policies/` في مستودعك مع سياسات مخصصة لمشروعك. يحصل كل عضو في الفريق عليها تلقائياً — بدون أوامر تثبيت ولا تغييرات تكوين.
+الإعداد الأكثر تأثيراً: التزم بـ `.failproofai/policies/` في مستودعك مع سياسات مخصصة لمشروعك. يحصل كل عضو في الفريق عليها تلقائياً - بدون أوامر تثبيت، بدون تغييرات في الإعداد.
 
 <Steps>
   <Step title="أنشئ المجلد وأضف السياسات">
@@ -257,7 +257,7 @@ git commit -m "Add failproofai team policies"
     // .failproofai/policies/team-policies.mjs
     import { customPolicies, allow, deny, instruct } from "failproofai";
 
-    // طبّق مدير الحزم المفضل لفريقك
+    // فرض مدير الحزم المفضل لفريقك
     // (أو فعّل سياسة prefer-package-manager المدمجة بدلاً من ذلك)
     customPolicies.add({
       name: "enforce-bun",
@@ -270,7 +270,7 @@ git commit -m "Add failproofai team policies"
       },
     });
 
-    // ذكّر الوكيل بتشغيل الاختبارات قبل الالتزام
+    // تذكير الوكيل بتشغيل الاختبارات قبل الالتزام
     customPolicies.add({
       name: "test-before-commit",
       match: { events: ["PreToolUse"] },
@@ -291,18 +291,18 @@ git commit -m "Add failproofai team policies"
     ```
   </Step>
   <Step title="استمر في التحسين">
-    عندما يواجه فريقك حالات فشل جديدة، أضف سياسات والدفع. يحصل الجميع على التحديث عند `git pull` التالي. تصبح هذه السياسات معياراً حياً للجودة ينمو مع فريقك.
+    مع مواجهة فريقك لأنماط فشل جديدة، أضف السياسات واضغط. يحصل الجميع على التحديث عند `git pull` التالي. تصبح هذه السياسات معياراً حياً للجودة ينمو مع فريقك.
   </Step>
 </Steps>
 
 ---
 
-## أمثلة إضافية
+## أمثلة أخرى
 
 يحتوي دليل [`examples/`](https://github.com/failproofai/failproofai/tree/main/examples) في المستودع على:
 
 | الملف | ما يوضحه |
 |------|----------|
-| `policies-basic.js` | سياسات بدء التشغيل - حجب كتابات الإنتاج والدفع القسري والسكريبتات الموجهة |
-| `policies-notification.js` | تنبيهات Slack لإخطارات عدم النشاط ونهاية الجلسة |
-| `policies-advanced/index.js` | الواردات الانتقالية، hooks غير متزامنة، تنظيف مخرجات PostToolUse، معالجة حدث Stop |
+| `policies-basic.js` | سياسات المبتدئين - حجب كتابات الإنتاج، الدفع القسري، النصوص المرسلة |
+| `policies-notification.js` | تنبيهات Slack لإشعارات الخمول ونهاية الجلسة |
+| `policies-advanced/index.js` | الواردات المتعدية، خطاطيف غير متزامنة، تنظيف مخرجات PostToolUse، معالجة أحداث Stop |

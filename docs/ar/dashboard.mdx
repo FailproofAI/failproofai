@@ -1,15 +1,15 @@
 ---
 ---
-title: لوحة التحكم
+title: لوحة المعلومات
 description: "مراقبة جلسات الوكيل، ومراجعة استدعاءات الأدوات، وإدارة السياسات"
 icon: chart-line
 ---
 
-لوحة التحكم في failproofai هي تطبيق ويب محلي لمراقبة جلسات وكيل الذكاء الاصطناعي الخاص بك وإدارة السياسات. شاهد ما فعله وكلاؤك أثناء غيابك.
+لوحة معلومات failproofai هي تطبيق ويب محلي لمراقبة جلسات وكيل الذكاء الاصطناعي الخاص بك وإدارة السياسات. اطّلع على ما فعله وكلاؤك أثناء غيابك.
 
 ---
 
-## بدء لوحة التحكم
+## بدء لوحة المعلومات
 
 ```bash
 failproofai
@@ -17,7 +17,7 @@ failproofai
 
 يفتح على `http://localhost:8020`.
 
-تقرأ لوحة التحكم بيانات المشروع والجلسة وإعدادات failproofai المحلية مباشرة من نظام الملفات. تُرسل الميزات المصادقة الاختيارية، مثل تذكيرات التدقيق والدعوات، المعلومات المطلوبة لتلك الطلبات (بما في ذلك عناوين البريد الإلكتروني) إلى واجهات برمجية بعيدة.
+تقرأ لوحة المعلومات بيانات المشروع المحلي والجلسة وتكوين failproofai مباشرة من نظام الملفات. تُرسل الميزات المصرح بها الاختيارية، مثل تذكيرات التدقيق والدعوات، المعلومات اللازمة لتلك الطلبات (بما في ذلك عناوين البريد الإلكتروني) إلى واجهات برمجية بعيدة.
 
 ---
 
@@ -25,13 +25,13 @@ failproofai
 
 ### المشاريع
 
-يسرد جميع مشاريع Claude Code و OpenAI Codex و GitHub Copilot CLI _(beta)_ و Cursor Agent _(beta)_ و OpenCode _(beta)_ و Pi _(beta)_ و Hermes و OpenClaw و Factory Droid و Devin و Antigravity و Goose الموجودة على جهازك. يتم اكتشاف مشاريع Claude من `~/.claude/projects/` (أو المسار المحدد بـ `CLAUDE_PROJECTS_PATH`)؛ يتم اكتشاف مشاريع Codex بفحص كل النصوص تحت `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` وتجميعها حسب `cwd` المسجل في السجل الأول لكل جلسة؛ يتم اكتشاف مشاريع Copilot CLI بفحص كل `~/.copilot/session-state/<sessionId>/workspace.yaml` (قابل للتكوين عبر `COPILOT_HOME`) وتجميعها حسب حقل `cwd`؛ يتم اكتشاف مشاريع Cursor Agent بفحص البيانات الوصفية لكل جلسة تحت `~/.cursor/agent-sessions/<sessionId>/` (قابل للتكوين عبر `CURSOR_HOME`، مع اختبار `conversations/` و `sessions/` كبدائل) بحثاً عن قيمة `cwd` في `meta.json` / `session.json` / `workspace.yaml`؛ يتم اكتشاف مشاريع OpenCode من خلال الاستعلام عن قاعدة بيانات SQLite الخاصة به على `~/.local/share/opencode/opencode.db` عبر `opencode db --format json` (نقرأ جداول `session` و `project` ونجمعها حسب `project_id`)؛ يتم اكتشاف مشاريع Pi بفحص نسخ JSONL لكل جلسة تحت `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (قابل للتكوين عبر `PI_SESSIONS_DIR`) واستخراج `cwd` من السجل الأول لكل جلسة؛ يتم قراءة جلسات بوابة Hermes مباشرة من مخزن SQLite لكل ملف تعريف — `~/.hermes/state.db` بالإضافة إلى `~/.hermes/profiles/<name>/state.db` (قابل للتجاوز عبر `HERMES_HOME` أو `HERMES_DB_PATH` لقاعدة بيانات واحدة) — وتجميعها في مشاريع `hermes-<profile>-<source>` حسب الملف الشخصي و `source` (Slack/Telegram/cli/cron — جلسات البوابة بدون cwd)؛ يتم قراءة جلسات بوابة OpenClaw من `~/.openclaw/agents/<agentId>/sessions/*.jsonl` وتجميعها في مشاريع `openclaw-<agentId>-<channel>` حسب الوكيل والقناة (بدون cwd أيضاً)؛ يتم اكتشاف مشاريع Factory Droid من نصوص JSONL في `~/.factory/sessions/<encoded-cwd>/*.jsonl` وتجميعها حسب cwd؛ مشاريع Devin من قاعدة بيانات SQLite الخاصة بها في `~/.local/share/devin/cli/sessions.db` (مجمعة حسب `working_directory` لكل جلسة)؛ مشاريع Antigravity من نصوص JSONL في `~/.gemini/antigravity-cli/brain/<conversationId>/…/transcript_full.jsonl` وتجميعها حسب cwd؛ ومشاريع Goose من قاعدة بيانات SQLite الخاصة بها في `~/.local/share/goose/sessions/sessions.db` (مجمعة حسب `working_dir` لكل جلسة). يظهر المشروع الذي استُخدم بواسطة عدة CLIs كصف واحد مع جميع الشارات المتطابقة. استخدم القائمة المنسدلة **CLI** فوق الجدول لتصفية حسب CLI وكيل معين؛ يحتفظ الرابط باختيارك كـ `?cli=claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose`.
+يسرد جميع مشاريع Claude Code و OpenAI Codex و GitHub Copilot CLI _(beta)_ و Cursor Agent _(beta)_ و OpenCode _(beta)_ و Pi _(beta)_ و Hermes و OpenClaw و Factory Droid و Devin و Antigravity و Goose الموجودة على جهازك. يتم اكتشاف مشاريع Claude من `~/.claude/projects/` (أو المسار المحدد بواسطة `CLAUDE_PROJECTS_PATH`); يتم اكتشاف مشاريع Codex من خلال مسح كل نسخة تحت `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` وتجميعها حسب `cwd` المسجل في السجل الأول لكل جلسة; يتم اكتشاف مشاريع Copilot CLI من خلال مسح كل `~/.copilot/session-state/<sessionId>/workspace.yaml` (قابل للتخصيص عبر `COPILOT_HOME`) وتجميعها حسب حقل `cwd`; يتم اكتشاف مشاريع Cursor Agent من خلال مسح البيانات الوصفية لكل جلسة تحت `~/.cursor/agent-sessions/<sessionId>/` (قابل للتخصيص عبر `CURSOR_HOME`، مع اختبار `conversations/` و `sessions/` كبدائل) عن قيمة `cwd` في `meta.json` / `session.json` / `workspace.yaml`; يتم اكتشاف مشاريع OpenCode من خلال الاستعلام عن قاعدة بيانات SQLite الخاصة بها في `~/.local/share/opencode/opencode.db` عبر `opencode db --format json` (نقرأ جداول `session` و `project` ونجمّع حسب `project_id`); يتم اكتشاف مشاريع Pi من خلال مسح نصوص JSONL لكل جلسة تحت `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (قابل للتخصيص عبر `PI_SESSIONS_DIR`) واستخراج `cwd` من السجل الأول لكل جلسة; يتم قراءة جلسات بوابة Hermes مباشرة من متجر SQLite لكل ملف شخصي — `~/.hermes/state.db` بالإضافة إلى `~/.hermes/profiles/<name>/state.db` (قابل للتجاوز عبر `HERMES_HOME` أو `HERMES_DB_PATH` لقاعدة بيانات واحدة) — وتجميعها في مشاريع `hermes-<profile>-<source>` حسب الملف الشخصي و `source` (Slack/Telegram/cli/cron — جلسات البوابة ليس لديها cwd); يتم قراءة جلسات بوابة OpenClaw من `~/.openclaw/agents/<agentId>/sessions/*.jsonl` وتجميعها في مشاريع `openclaw-<agentId>-<channel>` حسب الوكيل والقناة (أيضًا بدون cwd); يتم اكتشاف مشاريع Factory Droid من نصوص JSONL في `~/.factory/sessions/<encoded-cwd>/*.jsonl` وتجميعها حسب cwd; مشاريع Devin من قاعدة بيانات SQLite الخاصة بها في `~/.local/share/devin/cli/sessions.db` (مجمعة حسب `working_directory` لكل جلسة); مشاريع Antigravity من نصوص JSONL في `~/.gemini/antigravity-cli/brain/<conversationId>/…/transcript_full.jsonl` وتجميعها حسب cwd; ومشاريع Goose من قاعدة بيانات SQLite الخاصة بها في `~/.local/share/goose/sessions/sessions.db` (مجمعة حسب `working_dir` لكل جلسة). يظهر المشروع الذي استخدمته أكثر من واجهة سطر أوامر واحدة كصف واحد بجميع الشارات المطابقة. استخدم القائمة المنسدلة **CLI** أعلى الجدول للتصفية حسب واجهة سطر أوامر وكيل محددة; يحتفظ الرابط باختيارك كـ `?cli=claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose`.
 
-Hermes و OpenClaw محدودة بنطاق المستخدم وليس لديها دليل عمل للتجميع حسبه، لذا تظهران كـ **شجرة مجلدات قابلة للطي** — الملف الشخصي (أو الوكيل) على المستوى الأعلى، قنواته تحتها — بينما يبقى كل CLI قائم على cwd صفاً مسطحاً. تجمع صفوف المجلدات عدد الجلسات والنشاط الأكثر حداثة لكل شيء تحتها، والمجلدات المطويّة يتم تذكرها بين الزيارات، والبحث عن كلمات رئيسية يوسع أي شيء يتطابق معه.
+Hermes و OpenClaw يقتصران على الحساب الفردي وليس لديهما دليل عمل للتجميع حسبه، لذا يتم عرضهما كـ **شجرة مجلدات قابلة للطي** — الملف الشخصي (أو الوكيل) في المستوى الأعلى، ورسائله أسفله — بينما كل واجهة سطر أوامر قائمة على cwd تبقى صفًا مسطحًا. تلخص صفوف المجلدات عدد الجلسات والنشاط الأكثر حداثة لكل شيء تحتها، وتُتذكر المجلدات المطوية بين الزيارات، وكلمة بحث تتسع لأي شيء تطابقه.
 
 يعرض كل مشروع:
 - اسم المشروع (مشتق من مسار المجلد)
-- شارة CLI — `Claude Code` (برتقالي)، `OpenAI Codex` (بنفسجي)، `GitHub Copilot` (أزرق)، `Cursor Agent` (زمردي)، `OpenCode` (عنبري)، `Pi` (وردي)، و/أو `Hermes` (نيلي)
+- شارة CLI — `Claude Code` (برتقالي)، `OpenAI Codex` (بنفسجي)، `GitHub Copilot` (أزرق)، `Cursor Agent` (أخضر زمردي)، `OpenCode` (كهرماني)، `Pi` (وردي)، و/أو `Hermes` (نيلي)
 - تاريخ نشاط الجلسة الأكثر حداثة
 
 انقر على مشروع لرؤية جلساته.
@@ -39,85 +39,81 @@ Hermes و OpenClaw محدودة بنطاق المستخدم وليس لديها 
 ### الجلسات
 
 يسرد جميع الجلسات داخل مشروع. تعرض كل جلسة:
-- معرّف الجلسة
-- طوابع زمنية البداية والنهاية
+- معرف الجلسة
+- الطوابع الزمنية للبداية والنهاية
 - عدد استدعاءات الأدوات
-- عدد نشاط السنّارة (السياسات التي تم تفعيلها)
+- عدد نشاط الخطافات (السياسات التي تم تفعيلها)
 
-استخدم مرشح نطاق التاريخ وبحث معرّف الجلسة لتضييق القائمة. الجلسات مقسمة إلى صفحات.
+استخدم مرشح نطاق التاريخ وبحث معرف الجلسة لتضييق القائمة. يتم تقسيم الجلسات على صفحات.
 
 انقر على جلسة لفتح عارض الجلسة.
 
 ### عارض الجلسة
 
-يجيب عارض الجلسة على السؤال الرئيسي للوكلاء المستقلين: ماذا فعل الوكيل، وهل بقي على المسار الصحيح؟ شارة CLI بجانب الرأس تشير إلى ما إذا كانت الجلسة نسخة Claude Code أم OpenAI Codex أم GitHub Copilot CLI أم Cursor Agent أم OpenCode أم Pi أم Hermes أم OpenClaw أم Factory Droid أم Devin أم Antigravity أم Goose. يعرض جدول زمني لكل ما حدث في جلسة:
+يجيب عارض الجلسة على السؤال الرئيسي للوكلاء المستقلين: ماذا فعل الوكيل، وهل بقي على المسار الصحيح؟ تشير شارة CLI بجانب رأس الصفحة إلى ما إذا كانت الجلسة نسخة Claude Code أو OpenAI Codex أو GitHub Copilot CLI أو Cursor Agent أو OpenCode أو Pi أو Hermes أو OpenClaw أو Factory Droid أو Devin أو Antigravity أو Goose. تعرض خطًا زمنيًا بكل ما حدث في جلسة:
 
 - **الرسائل** - استجابات Claude النصية وطلبات المستخدم
 - **استدعاءات الأدوات** - كل أداة استدعاها Claude، مع مدخلاتها ومخرجاتها
 - **نشاط السياسة** - لكل استدعاء أداة، السياسات التي تم تفعيلها والقرار الذي أرجعته
 
-يعرض شريط الإحصائيات في الأعلى مدة الجلسة وإجمالي استدعاءات الأدوات وملخصاً لقرارات السنّارة (عدد allow / deny / instruct).
+يعرض شريط الإحصائيات في الأعلى مدة الجلسة وإجمالي استدعاءات الأدوات وملخص قرارات الخطافات (عد allow / deny / instruct).
 
-انقر على زر **Download Logs** لتصدير الجلسة. بالنسبة لجلسات Claude Code و Codex و Copilot و Cursor و Pi تحصل على نسخة JSONL الأصلية على القرص بالبايت الكامل؛ بالنسبة لـ OpenCode (التي تعيش جلساتها في SQLite وليس على القرص) تحصل على مستند JSON يعكس جداول `session` / `messages` / `parts` الأساسية.
+انقر على الزر **Download Logs** لتصدير الجلسة. بالنسبة لجلسات Claude Code و Codex و Copilot و Cursor و Pi، ستحصل على نسخة النص الأصلي على القرص JSONL كما هي؛ بالنسبة لـ OpenCode (التي تعيش جلساتها في SQLite، وليس على القرص)، ستحصل على مستند JSON يعكس جداول `session` / `messages` / `parts` الأساسية.
 
 ### التدقيق
 
-تقرير موجه بالشخصية حول كيفية تصرف وكيلك فعلياً عبر الجلسات السابقة. يشغل نفس الفحص مثل CLI `failproofai audit` لكنه يعرضه كملصق واحد قابل للمشاركة على الشاشة + أربعة أقسام أسفل الطي:
+تقرير يحركه الشخصية عن كيفية تصرف وكيلك بالفعل عبر الجلسات الماضية. يشغل نفس الفحص مثل CLI `failproofai audit` لكن يعرضه كملصق على شاشة واحدة قابل للمشاركة + أربعة أقسام أسفل الطية:
 
-1. **الملصق** — يملأ عرض الجهاز الأول. منطقة التقاط PNG مكتفية ذاتياً مع شعار failproof_ai + تسمية التدقيق · مؤشر النموذج الأولي (`№ NN من 08`) + تاريخ التدقيق · درجة رقمية (0–100) + حبة ترتيب النسبة المئوية (`top 15%`) · اسم النموذج الأولي (أحدها `the optimist` أو `the cowboy` أو `the explorer` أو `the goldfish` أو `the paranoid architect` أو `the precision builder` أو `the hammer` أو `the ghost`) + شريط كلمات مفتاحية 3 · سطر ندرة `// only N% of agents are this archetype` · بلاط sigil 8×8 بكسل · تذييل `audit yours → failproof.ai`. ثلاث أزرار مشاركة تجلس خارج صندوق التقاط: `post your archetype` (X intent) و `share on linkedin` و `download poster`. يتم تنفيذ التقاط من خلال `html-to-image` بحيث يطابق PNG العرض على الشاشة بكسل تلو كسل (حدود متقطعة وقناع شعار SVG والتدرجات ومقاييس الخط — جميعها محفوظة).
+1. **الملصق** — يملأ عرض النافذة الأول. منطقة PNG قابلة للالتقاط مكتفية ذاتيًا تحتوي على شعار failproof_ai + تسمية التدقيق · مؤشر النموذج الأولي (`№ NN of 08`) + تاريخ التدقيق · درجة رقمية (0–100) + حبة ترتيب النسبة المئوية (`top 15%`) · اسم النموذج الأولي (واحد من `the optimist` و `the cowboy` و `the explorer` و `the goldfish` و `the paranoid architect` و `the precision builder` و `the hammer` و `the ghost`) + شريط 3 كلمات · سطر ندرة `// only N% of agents are this archetype` · بلاط sigil 8×8 بكسل · تذييل `audit yours → failproof.ai`. تجلس ثلاثة أزرار مشاركة خارج صندوق الالتقاط: `post your archetype` (نية X)، `share on linkedin`، `download poster`. يتم الالتقاط عبر `html-to-image` لذا يطابق PNG عرض الشاشة بكسل تلو بكسل (الحدود المتقطعة، قناع شعار SVG، التدرجات، مقاييس الخط — كل شيء محفوظ).
+2. **نقاط القوة** — قائمة صفوف هادئة من السلوكيات التي يقوم بها وكيلك بالفعل بشكل صحيح، مشتقة من بيانات التدقيق المباشرة (معدل استدعاء أداة نظيف، لا توجد عمليات دفع مباشرة للرئيسية، لا تسريب بيانات اعتماد، لا عواصف إعادة محاولة) — يتم عرض كل واحدة فقط عندما تحتفظ السياسة ذات الصلة بسجل نظيف عبر نافذة التدقيق.
+3. **الغرائب** — جدول بما انزلق، مرتبة حسب الخطورة: `when · what slipped + the policy that would've caught it · severity pill · seen`، حيث تقرأ التكرار `new` (مرة واحدة)، `N× seen` (2–9 مرات)، أو `recurring` (10+).
+4. **كيفية التحسين** — قائمة صفوف هادئة، واحدة لكل سياسة موصى بها: اسم السياسة بالأبيض، وصف سطر واحد، أمر التثبيت + زر النسخ على الجانب الأيمن. يقرأ رأس القسم `enable all N → projected <score> · <tier>` (الدرجة التي ستصل إليها مع تطبيق كل إصلاح)، وزره `[install all]` ينسخ الأمر `failproofai policy add a b c …` المدمج لكل سياسة موصى بها.
+5. **عد بشكل أفضل** — بطاقتان جنبًا إلى جنب. اليسار: اضبط تذكيرًا (منتقي قالب `3d` / `7d` / `14d` / `30d`; يستمر عبر `/api/auth/reminder` بمجرد المصادقة). اليمين: فتح مزايا failproof — `invite a friend` يفتح نموذجًا يأخذ قائمة بريد إلكترونية للأصدقاء مفصولة بفواصل/مسافات/أسطر جديدة (200 كحد أقصى لكل إرسال)، POSTs الحد الأقصى إلى `/api/audit/invite`، الذي يعيد التوجيه إلى `POST /v0/invite` على خادم api. يرسل خادم api بريدًا إلكترونيًا واحدًا لكل متلقٍ من `invite@failproof.ai` مع نسخ المرسل وتعيين `Reply-To`، لذا يرى المتلقي من دعاه والمرسل يحصل على نسخة في بريده الوارد. يتم توجيه المستخدمين المجهولين عبر `AuthDialog` أولاً بحيث يكون بريد المرسل معروفًا قبل إرسال الدعوات. الاستحقاق وتنفيذ المزايا هو ما يتبع ذلك.
 
-2. **نقاط القوة** — قائمة صف هادئة ✓ للسلوكيات التي يفعلها وكيلك بالفعل بشكل صحيح، مشتقة من بيانات التدقيق الحية (معدل استدعاء أداة نظيف، بدون دفع مباشر إلى الفرع الرئيسي، بدون تسريب بيانات اعتماد، بدون عواصف إعادة محاولة) — كل واحدة تُعرض فقط عندما تكون السياسة ذات الصلة لها سجل نظيف عبر نافذة التدقيق.
-
-3. **الخصائص** — جدول ما تسرب، مرتب حسب الشدة: `when · what slipped + the policy that would've caught it · severity pill · seen`، حيث يُقرأ التكرار كـ `new` (مرة واحدة) أو `N× seen` (2–9 مرات) أو `recurring` (10+).
-
-4. **كيفية التحسن** — قائمة صف هادئة، واحدة لكل سياسة موصى بها: اسم السياسة بالأبيض، وصف سطر واحد، أمر التثبيت + زر نسخ على الجانب الأيمن. يقرأ رأس القسم `enable all N → projected <score> · <tier>` (الدرجة التي ستصل إليها مع تطبيق كل إصلاح)، وزر `[install all]` الخاص به ينسخ أمر `failproofai policy add a b c …` المدمج لكل سياسة موصى بها.
-
-5. **عد أفضل** — بطاقتان جنباً إلى جنب. اليسار: اضبط تذكيراً (منتقي متوازن `3d` / `7d` / `14d` / `30d`؛ ثابت من خلال `/api/auth/reminder` بمجرد المصادقة عليه). اليمين: افتح مزايا failproof — يفتح `invite a friend` حوارياً يأخذ قائمة رسائل بريد صديق مفصولة بفواصل/مسافات/أسطر جديدة (بحد أقصى 10 لكل إرسال)، POSTs لها إلى `/api/audit/invite`، والتي توجه إلى `POST /v0/invite` الخاص بـ api-server. يرسل api-server بريداً إلكترونياً واحداً لكل مستقبل من `invite@failproof.ai` مع نسخ المرسل وضبط `Reply-To`، حتى يرى المستقبل من دعاهم والمرسل يحصل على نسخة في صندوق الوارد الخاص به. يتم توجيه المستخدمين المجهولين من خلال `AuthDialog` أولاً بحيث يكون البريد الإلكتروني للمرسل معروفاً قبل ذهاب الدعوات. الاستحقاق/تتمة المزايا عبارة عن متابعة.
-
-يتم تشغيله بواسطة وقت `failproofai audit` — انظر [Audit CLI](/ar/cli/audit) لمحرك المسح الأساسي والأعلام المدعومة وثوابت ذاكرة التخزين المؤقت لكل نسخة. تخزن لوحة التحكم آخر نتيجة مؤقتة في `~/.failproofai/audit-dashboard.json` (الوضع `0600`، فتحة واحدة، التشغيلات الجديدة تستبدل) بحيث تكون إعادة الزيارات فورية؛ **يتم رفض كل من ذاكرة التخزين المؤقت لكل نسخة وذاكرة النتيجة الكاملة عند القراءة بمجرد أن تتجاوز 7 أيام** بحيث لا تخدم لوحة التحكم أبداً نتيجة قديمة بصمت — بعد انتهاء الصلاحية `/audit` تسقط إلى حالتها الفارغة وتطالب بتشغيل جديد. انقر على `[ re-audit now ]` بالقرب من أسفل التقرير POSTs `/api/audit/run` مع `noCache: true` — إعادة التدقيق تتجاوز ذاكرة التخزين المؤقت لكل نسخة وتعيد فحص كل نسخة من الصفر بدلاً من إرجاع النتيجة المخزنة مؤقتاً بصمت — ولوحة التحكم تستقصي `/api/audit/status` بـ 1Hz حتى ينتهي التشغيل؛ شريط تقدم وردي لزج ينتقد إلى أعلى عرض الجهاز أثناء التشغيل مع مؤقت مضى، والنتيجة الطازجة تتبدل في مكانها بنجاح (بدون إعادة تحميل صفحة كاملة؛ إعادة تدقيق فاشلة تترك التقرير السابق سليماً). عند الفشل يتحول الشريط إلى اللون الأحمر مع نسخ مفتاح من `RerunError.kind` (`timeout` / `network` / `post_failed`). يتم عرض الحالة الفارغة (بدون ذاكرة تخزين مؤقت أو منتهية الصلاحية) وحالة عدم وجود جلسات (توجد ذاكرة تخزين مؤقت لكن المسح لم يعثر على نسخ) بشكل منفصل.
+يحركه وقت تشغيل `failproofai audit` — انظر [Audit CLI](/ar/cli/audit) لمحرك الفحص الأساسي والأعلام المدعومة وثوابت التخزين المؤقت لكل نسخة. تخزن لوحة المعلومات النتيجة الأخيرة في `~/.failproofai/audit-dashboard.json` (الوضع `0600`، فتحة واحدة، عمليات التشغيل الجديدة تحل محل) لذا تكون إعادة الزيارة فورية؛ **يتم رفض كل من التخزين المؤقت لكل نسخة والنتيجة الكاملة عند القراءة بمجرد أن تصبح أقدم من 7 أيام** لذا لا تقدم لوحة المعلومات نتيجة بعمر أسبوع بصمت — بعد انتهاء TTL يسقط `/audit` في حالته الفارغة ويطلب تشغيلًا جديدًا. ينشر النقر على `[ re-audit now ]` بالقرب من أسفل التقرير `/api/audit/run` مع `noCache: true` — تجاوز إعادة التدقيق التخزين المؤقت لكل نسخة وإعادة فحص كل نسخة من البداية بدلاً من الإرجاع الصامت للنتيجة المخزنة مؤقتًا — وتستقصي لوحة المعلومات `/api/audit/status` بمعدل 1Hz حتى ينتهي التشغيل; يثبت شريط تقدم وردي لاصق أعلى عرض النافذة أثناء التشغيل مع مؤقت مضى، والنتيجة الطازجة تحل محل في المكان عند النجاح (لا إعادة تحميل كاملة للصفحة؛ فشل إعادة التدقيق يترك التقرير السابق سليمًا). عند الفشل، يتحول الشريط إلى الأحمر مع نسخ مفتاح خارج `RerunError.kind` (`timeout` / `network` / `post_failed`). يتم عرض الحالة الفارغة (لا يوجد تخزين مؤقت أو منتهي الصلاحية) وحالة الصفر-جلسات (موجود تخزين مؤقت لكن الفحص لم يجد نصوصًا) بشكل منفصل.
 
 ### السياسات
 
-صفحة ذات تبويبين لإدارة السياسات ومراجعة النشاط.
+صفحة بتبويبين لإدارة السياسات ومراجعة النشاط.
 
 <Tabs>
   <Tab title="تبويب السياسات">
-  - اختر متعدد التحديد أي CLIs من وكيل يحمي failproofai من لوحة واحدة — Claude Code و OpenAI Codex و GitHub Copilot و Cursor Agent و OpenCode و Pi و Hermes جميعاً لديهم صف مع حالة التثبيت (`Active` / `Detected` / `Inactive`)، مسار إعدادات نطاق المستخدم، وضبط ملون حسب العلامة التجارية. اختر أو أزل تحديد CLIs التي تريدها وانقر على `Apply changes` لتثبيت/إلغاء تثبيت الفارق في خطوة واحدة. CLIs التي تم اكتشاف ثنائيها على PATH يتم فحصها مسبقاً.
-  - بدّل السياسات الفردية على أو إيقاف بنقرة واحدة (يكتب إلى `~/.failproofai/policies-config.json` — مشترك عبر كل CLI مثبت)
-  - وسّع سياسة لتكوين معاملات بحث المياه (للسياسات التي تدعم `policyParams`)
-  - ضبط مسار ملف السياسات المخصص
+  - اختر من لوحة واحدة أي واجهات سطر أوامر وكيل يحمي failproofai — Claude Code و OpenAI Codex و GitHub Copilot و Cursor Agent و OpenCode و Pi و Hermes جميعها لها صف بحالة التثبيت (`Active` / `Detected` / `Inactive`)، ومسار إعدادات النطاق الفردي، وجرس لون العلامة التجارية. اختر أو ألغِ اختيار واجهات سطر الأوامر التي تريدها وانقر على `Apply changes` لتثبيت/إلغاء تثبيت الفرق في خطوة واحدة. يتم فحص واجهات سطر الأوامر التي يتم اكتشاف الثنائيات الخاصة بها على PATH مسبقًا.
+  - بدّل السياسات الفردية بضغطة واحدة (يكتب إلى `~/.failproofai/policies-config.json` — مشترك بين كل واجهة سطر أوامر مثبتة)
+  - قم بتوسيع سياسة لتكوين معاملات السياسة (بالنسبة للسياسات التي تدعم `policyParams`)
+  - قم بتعيين مسار ملف سياسات مخصص
   </Tab>
   <Tab title="تبويب النشاط">
-  - سجل تاريخ مكتمل مقسم إلى صفحات لكل حدث سنّارة تم تفعيله عبر جميع الجلسات
-  - تصفية حسب القرار أو نوع الحدث أو CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Hermes / OpenClaw / Factory Droid / Devin / Antigravity / Goose) أو اسم السياسة أو معرّف الجلسة
-  - يعرض كل صف: الطابع الزمني، اسم السياسة، القرار، شارة CLI (برتقالي = Claude Code، بنفسجي = OpenAI Codex، أزرق = GitHub Copilot، زمردي = Cursor Agent، عنبري = OpenCode، وردي = Pi، نيلي = Hermes، تركواز = OpenClaw، وردي = Factory Droid، بنفسجي = Devin، سماوي = Antigravity، أخضر ليموني = Goose)، اسم الأداة، معرّف الجلسة، والسبب لقرارات deny/instruct
-  - انقر على معرّف جلسة لفتح النسخة الخاصة بها — يكتشف العارض تلقائياً أي CLI أطلق السنّارة (Claude `~/.claude/projects/…`، Codex `~/.codex/sessions/…`، Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`، Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`، OpenCode `~/.local/share/opencode/opencode.db`، Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`، Hermes `~/.hermes/state.db`، OpenClaw `~/.openclaw/agents/<id>/sessions/*.jsonl`، Factory Droid `~/.factory/sessions/<encoded-cwd>/<id>.jsonl`، Devin `~/.local/share/devin/cli/sessions.db`، Antigravity `~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`، Goose `~/.local/share/goose/sessions/sessions.db`) ويعرض شارة CLI المطابقة في الرأس
+  - السجل الكامل المقسم على صفحات لكل حدث خطاف تم تفعيله عبر جميع الجلسات
+  - التصفية حسب القرار أو نوع الحدث أو CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Hermes / OpenClaw / Factory Droid / Devin / Antigravity / Goose) أو اسم السياسة أو معرف الجلسة
+  - يعرض كل صف: الطابع الزمني واسم السياسة والقرار وشارة CLI (برتقالي = Claude Code، بنفسجي = OpenAI Codex، أزرق = GitHub Copilot، أخضر زمردي = Cursor Agent، كهرماني = OpenCode، وردي = Pi، نيلي = Hermes، أخضر مائي = OpenClaw، وردي فاتح = Factory Droid، بنفسجي = Devin، أزرق سماوي = Antigravity، أخضر فاتح = Goose) واسم الأداة ومعرف الجلسة والسبب وقرارات deny/instruct
+  - انقر على معرف جلسة لفتح النسخة — يكتشف العارض تلقائيًا أي CLI أطلق الخطاف (Claude `~/.claude/projects/…`، Codex `~/.codex/sessions/…`، Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`، Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`، OpenCode `~/.local/share/opencode/opencode.db`، Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`، Hermes `~/.hermes/state.db`، OpenClaw `~/.openclaw/agents/<id>/sessions/*.jsonl`، Factory Droid `~/.factory/sessions/<encoded-cwd>/<id>.jsonl`، Devin `~/.local/share/devin/cli/sessions.db`، Antigravity `~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`، Goose `~/.local/share/goose/sessions/sessions.db`) ويعرض شارة CLI المطابقة في الرأس
   </Tab>
 </Tabs>
 
 ---
 
-## الانتعاش التلقائي
+## التحديث التلقائي
 
-تحتوي لوحة التحكم على تبديل انتعاش تلقائي في التنقل الأعلى. عند تفعيله، تنعش الصفحة الحالية بشكل دوري لإظهار جلسات جديدة ونشاط سياسة جديد عند ظهوره. ضروري لمراقبة جلسات وكيل مستقلة طويلة الأمد.
+تحتوي لوحة المعلومات على تبديل تحديث تلقائي في الملاحة العلوية. عند تفعيله، تحدث الصفحة الحالية بشكل دوري لعرض جلسات جديدة ونشاط سياسة وهي تظهر. ضروري لمراقبة جلسات الوكلاء المستقلين طويلة المدى.
 
 ---
 
 ## تعطيل الصفحات
 
-إذا كنت تحتاج فقط إلى بعض أجزاء لوحة التحكم، اضبط `FAILPROOFAI_DISABLE_PAGES` على قائمة مفصولة بفواصل من أسماء الصفحات:
+إذا كنت تحتاج فقط إلى بعض أجزاء لوحة المعلومات، عيّن `FAILPROOFAI_DISABLE_PAGES` إلى قائمة مفصولة بفواصل من أسماء الصفحات:
 
 ```bash
 FAILPROOFAI_DISABLE_PAGES=policies failproofai
 ```
 
-القيم الصحيحة: `policies` أو `projects` أو `audit`.
+القيم الصحيحة: `policies` و `projects` و `audit`.
 
 ---
 
 ## تكوين مسار المشاريع
 
-افتراضياً، تقرأ لوحة التحكم من دليل مشاريع Claude Code القياسي. تجاوزه بحثاً عن الإعدادات المخصصة:
+بشكل افتراضي، تقرأ لوحة المعلومات من دليل مشاريع Claude Code القياسي. تجاوزها للإعدادات المخصصة:
 
 ```bash
 CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
@@ -125,32 +121,32 @@ CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
 
 ---
 
-## الوصول من مضيف غير محلي
+## الوصول من مضيف غير localhost
 
-عند تشغيل لوحة التحكم في **وضع dev** (`npm run dev`) والوصول إليها من اسم مضيف بخلاف `localhost` - على سبيل المثال، نطاق مخصص أو IP بعيد أو عنوان URL عبر نفق — قد ترى تحذيراً مثل:
+عند تشغيل لوحة المعلومات في **وضع dev** (`npm run dev`) والوصول إليها من اسم مضيف آخر غير `localhost` - على سبيل المثال، مجال مخصص أو عنوان IP بعيد أو رابط نفق — قد تشاهد تحذيرًا مثل:
 
 ```text
 ⚠ Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr from "dashboard.example.com".
 ```
 
-هذا هو Next.js يحظر الوصول عبر الأصل إلى مورد HMR الخاص به (إعادة تحميل الوحدة الساخنة)، وهي ميزة dev فقط. للسماح بمضيفك، استخدم العلم `--allowed-origins`:
+هذا هو Next.js يحظر الوصول عبر الأصول إلى ويب سوكيت HMR (التحديث الفوري للوحدة)، وهي ميزة خاصة بـ dev فقط. للسماح للمضيف الخاص بك، استخدم علم `--allowed-origins`:
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com
 ```
 
-لعدة مضيفين أو IPs، مرر قائمة مفصولة بفواصل:
+لعدة مضيفات أو عناوين IP، مرر قائمة مفصولة بفواصل:
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com,192.168.1.5
 ```
 
-يمكنك أيضاً ضبط متغير البيئة `FAILPROOFAI_ALLOWED_DEV_ORIGINS` بدلاً من ذلك:
+يمكنك أيضًا تعيين متغير البيئة `FAILPROOFAI_ALLOWED_DEV_ORIGINS` بدلاً من ذلك:
 
 ```bash
 FAILPROOFAI_ALLOWED_DEV_ORIGINS=dashboard.example.com npm run dev
 ```
 
 <Note>
-هذا ينطبق فقط على وضع dev. عند تشغيل `failproofai` (وضع الإنتاج)، لا توجد أي أداة HMR websocket ولا توجد مشكلة مورد dev عبر الأصل.
+هذا ينطبق فقط على وضع dev. عند تشغيل `failproofai` (وضع الإنتاج)، لا يوجد ويب سوكيت HMR وليس هناك مشكلة مورد dev عبر الأصول.
 </Note>

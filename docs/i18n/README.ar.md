@@ -19,14 +19,14 @@
 
 **الترجمات:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**حل أعطال وقت التشغيل لوكلاء البرمجة.**
-يتكامل مع Claude Code و Codex. يكتشف الحلقات والإجراءات الخطرة وتسريب الأسرار
-قبل أن تصبح حوادث. بدون تأخير. يعمل محليًا.
+**حل فشل التشغيل للوكلاء البرمجيين.**
+يتكامل مع Claude Code و Codex. يمسك الحلقات والإجراءات الخطيرة وتسرب الأسرار
+قبل أن تصبح حوادث. بدون تأخير. يعمل محلياً.
 
 </div>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI في العمل" width="800" />
 </p>
 
 ---
@@ -131,32 +131,32 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # أو ما عليك سوى تشغيل failproofai وقبول الموجه عند التشغيل الأول
+failproofai policies --install   # أو شغّل `failproofai` فقط واقبل الطلب عند التشغيل الأول
 failproofai
 ```
 
-30 سياسة مدمجة تنشط فورًا. لوحة التحكم على `localhost:8020`. عطل موجه التشغيل الأول باستخدام `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 سياسة مدمجة تنشط فوراً. لوحة المعلومات على `localhost:8020`. عطّل موجه التشغيل الأول باستخدام `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## ما الذي توقفه
+## ما الذي يوقفه
 
-| السياسة | ما الذي تحظره |
+| السياسة | ما الذي يحجبه |
 |---|---|
 | `block-push-master` | الدفع المباشر إلى `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | الالتزامات والدمج والإعادة على `main` / `master` |
-| `block-rm-rf` | حذف الملفات التكراري |
-| `sanitize-api-keys` | تسريب مفاتيح API إلى سياق الوكيل |
+| `block-work-on-main` | الالتزامات والدمج وإعادة القاعدة على `main` / `master` |
+| `block-rm-rf` | حذف الملفات بشكل متكرر |
+| `sanitize-api-keys` | مفاتيح API التي تتسرب إلى سياق الوكيل |
 
-→ [السياسات المدمجة الـ 30 كاملة](https://docs.befailproof.ai/built-in-policies)
+→ [جميع السياسات المدمجة الـ 30](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## سياساتك الخاصة
+## السياسات الخاصة بك
 
-اسقط ملفًا في `.failproofai/policies/` — يتم تحميله تلقائيًا، بدون الحاجة إلى أعلام.
-التزم به والفريق بأكمله يحصل عليه عند السحب التالي.
+أفلت ملف في `.failproofai/policies/` — يتم تحميله تلقائياً، بدون أي أعلام مطلوبة.
+التزم به وسيحصل عليه الفريق بأكمله في الطلب التالي.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -177,8 +177,8 @@ customPolicies.add({
 | القرار | التأثير |
 |---|---|
 | `allow()` | السماح بالعملية |
-| `deny(message)` | حظرها — تعود الرسالة إلى الوكيل |
-| `instruct(message)` | السماح بها، لكن أضف سياق إلى موجه الوكيل التالي |
+| `deny(message)` | حجبها — تعود الرسالة إلى الوكيل |
+| `instruct(message)` | اسمح به، لكن أضف سياق إلى الموجه التالي للوكيل |
 
 → [دليل السياسات المخصصة](https://docs.befailproof.ai/custom-policies)
 
@@ -186,9 +186,9 @@ customPolicies.add({
 
 ## رؤية الجلسة
 
-كل استدعاء أداة يقوم به وكيلك يتم تسجيله محليًا. تعرض لوحة التحكم ما تم تشغيله،
-وما تم حظره، وما قالته السياسة للوكيل — بحيث لا تخمن
-عندما يحدث خطأ ما. → [دليل لوحة التحكم](https://docs.befailproof.ai/dashboard)
+يتم تسجيل كل استدعاء أداة يقوم به وكيلك محلياً. لوحة المعلومات توضح ما الذي تم تشغيله
+وما الذي تم حجبه وما قالته السياسة للوكيل — لذلك لن تكون تخمّن
+عند حدوث خطأ ما. → [دليل لوحة المعلومات](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -197,33 +197,33 @@ customPolicies.add({
 | | |
 |---|---|
 | [البدء السريع](https://docs.befailproof.ai/getting-started) | التثبيت والخطوات الأولى |
-| [السياسات المدمجة](https://docs.befailproof.ai/built-in-policies) | السياسات الـ 30 كاملة مع المعاملات |
+| [السياسات المدمجة](https://docs.befailproof.ai/built-in-policies) | جميع السياسات الـ 30 مع المعاملات |
 | [السياسات المخصصة](https://docs.befailproof.ai/custom-policies) | اكتب سياساتك الخاصة |
 | [التكوين](https://docs.befailproof.ai/configuration) | نطاقات التكوين وقواعد الدمج |
-| [لوحة التحكم](https://docs.befailproof.ai/dashboard) | مراقب الجلسة ونشاط السياسة |
+| [لوحة المعلومات](https://docs.befailproof.ai/dashboard) | مراقب الجلسة وأنشطة السياسة |
 | [العمارة](https://docs.befailproof.ai/architecture) | كيفية عمل نظام الخطافات |
 
 ---
 
 ## الترخيص
 
-MIT مع [Commons Clause](https://commonsclause.com/) — مجاني للاستخدام الداخلي والشخصي؛ إعادة بيع failproofai نفسه بشكل تجاري يتطلب اتفاقية منفصلة. انظر [LICENSE](../../LICENSE) للنص الكامل.
+MIT مع [Commons Clause](https://commonsclause.com/) — مجاني للاستخدام الداخلي والشخصي؛ إعادة بيع failproofai نفسه تجارياً يتطلب اتفاقية منفصلة. انظر [LICENSE](../../LICENSE) للنص الكامل.
 
 ---
 
 ## المساهمة
 
-انظر [CONTRIBUTING.md](../../CONTRIBUTING.md). السياسات الجديدة وحالات الحدود والترجمات كلها موضع ترحيب.
+انظر [CONTRIBUTING.md](../../CONTRIBUTING.md). السياسات الجديدة وحالات الحافة والترجمات كلها مرحب بها.
 
-> **الإنشاء قبل البدء.** قم بتشغيل `bun install && bun run build` أولاً. يعمل هذا المستودع
-> على خطافات failproofai الخاصة به، ويقوم بحل استيراد failproofai مقابل
-> حزمة `dist/` المجمعة — بدون إنشاء ستواجه أخطاء خطافات `Cannot find package 'failproofai'`
-> انقر مجددًا بعد تغيير `src/`. انظر
-> [الإنشاء قبل أن تعمل خطافات المستودع المضمن](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **ابنِ قبل أن تبدأ.** شغّل `bun install && bun run build` أولاً. يقوم هذا المستودع بتشغيل
+> خطافات failproofai على نفسه، ويحل استيراد `failproofai` مقابل
+> الحزمة المترجمة `dist/` — بدون بناء ستواجه أخطاء خطافات `Cannot find package 'failproofai'`.
+> أعد البناء بعد تغيير `src/`. انظر
+> [البناء قبل أن تعمل خطافات التطوير في المستودع](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-تم البناء بواسطة [Nivedit Jain](https://github.com/NiveditJain) و [Nikita Agarwal](https://github.com/nk-ag).
+بني بواسطة [Nivedit Jain](https://github.com/NiveditJain) و [Nikita Agarwal](https://github.com/nk-ag).
 [befailproof.ai](https://befailproof.ai)
 
 

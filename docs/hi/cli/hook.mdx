@@ -1,30 +1,30 @@
 ---
-title: Hook हैंडलर (आंतरिक)
-description: "प्रत्येक टूल ईवेंट पर subprocess Claude Code कॉल करता है"
+title: हुक हैंडलर (आंतरिक)
+description: "सबप्रोसेस Claude Code प्रत्येक टूल इवेंट पर कॉल करता है"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-यह वह कमांड है जो `failproofai policies --install` द्वारा Claude Code के `settings.json` में पंजीकृत की जाती है। आप आमतौर पर इसे सीधे कॉल नहीं करते हैं।
+यह वह कमांड है जो `failproofai policies --install` द्वारा Claude Code के `settings.json` में पंजीकृत है। आप आम तौर पर इसे सीधे कॉल नहीं करते हैं।
 
-stdin से एक JSON पेलोड पढ़ता है, सभी सक्षम नीतियों का मूल्यांकन करता है, और निर्णय को दर्शाने वाली एक कोड के साथ बाहर निकलता है:
+stdin से एक JSON पेलोड पढ़ता है, सभी सक्षम नीतियों का मूल्यांकन करता है, और निर्णय को दर्शाने वाले एक कोड के साथ बाहर निकलता है:
 
-| Exit code | निर्णय | प्रभाव |
+| एक्जिट कोड | निर्णय | प्रभाव |
 |-----------|--------|--------|
-| `0` | `allow` | क्रिया को अनुमति दें |
-| `1` | `deny` | क्रिया को ब्लॉक करें - Claude को अस्वीकृति का कारण दिखता है |
-| `2` | `instruct` | Claude के संदर्भ में मार्गदर्शन इंजेक्ट करें |
+| `0` | `allow` | कार्रवाई की अनुमति दें |
+| `1` | `deny` | कार्रवाई को अवरुद्ध करें - Claude इनकार का कारण देखता है |
+| `2` | `instruct` | Claude के संदर्भ में निर्देश इंजेक्ट करें |
 
-### समर्थित ईवेंट प्रकार
+### समर्थित इवेंट प्रकार
 
-| श्रेणी | ईवेंट |
+| श्रेणी | इवेंट |
 |----------|--------|
 | **टूल निष्पादन** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
-| **सेशन जीवनचक्र** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
+| **सत्र जीवनचक्र** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **उपयोगकर्ता इंटरैक्शन** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
-| **उप-एजेंट और कार्य** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
+| **सबएजेंट और कार्य** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **कॉन्फ़िगरेशन** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
 | **फाइल सिस्टम** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
 | **संदर्भ** | `PreCompact`, `PostCompact` |

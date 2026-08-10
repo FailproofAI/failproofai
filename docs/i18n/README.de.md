@@ -18,7 +18,7 @@
 **Übersetzungen:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **Laufzeit-Fehlerbehebung für Coding-Agenten.**
-Klinkt sich in Claude Code und Codex ein. Erkennt Endlosschleifen, gefährliche Aktionen und geheime Datenlecks,
+Klinkt sich in Claude Code und Codex ein. Erkennt Endlosschleifen, gefährliche Aktionen und Secret-Leaks,
 bevor sie zu Vorfällen werden. Keine Latenz. Läuft lokal.
 
 </div>
@@ -29,7 +29,7 @@ bevor sie zu Vorfällen werden. Keine Latenz. Läuft lokal.
 
 ---
 
-## Unterstützte Agent-CLIs
+## Unterstützte Agenten-CLIs
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -137,15 +137,15 @@ failproofai
 
 ---
 
-## Was blockiert wird
+## Was es verhindert
 
-| Richtlinie | Was sie verhindert |
+| Richtlinie | Was sie blockiert |
 |---|---|
 | `block-push-master` | Direkte Pushes auf `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Commits, Merges und Rebases auf `main` / `master` |
+| `block-work-on-main` | Commits, Merges, Rebases auf `main` / `master` |
 | `block-rm-rf` | Rekursives Löschen von Dateien |
-| `sanitize-api-keys` | API-Schlüssel, die in den Agenten-Kontext gelangen |
+| `sanitize-api-keys` | API-Keys, die in den Agenten-Kontext gelangen |
 
 → [Alle 30 integrierten Richtlinien](https://docs.befailproof.ai/built-in-policies)
 
@@ -170,22 +170,22 @@ customPolicies.add({
 });
 ```
 
-Jeder Richtlinie stehen drei Entscheidungen zur Verfügung:
+Drei Entscheidungen stehen jeder Richtlinie zur Verfügung:
 
 | Entscheidung | Wirkung |
 |---|---|
-| `allow()` | Aktion erlauben |
-| `deny(message)` | Aktion blockieren — die Nachricht wird an den Agenten zurückgegeben |
-| `instruct(message)` | Aktion durchlassen, aber dem Agenten zusätzlichen Kontext im nächsten Prompt mitgeben |
+| `allow()` | Operation erlauben |
+| `deny(message)` | Blockieren — Nachricht wird an den Agenten zurückgesendet |
+| `instruct(message)` | Durchlassen, aber dem nächsten Prompt des Agenten Kontext hinzufügen |
 
 → [Leitfaden für eigene Richtlinien](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## Sitzungs-Transparenz
+## Sitzungstransparenz
 
-Jeder Tool-Aufruf deines Agenten wird lokal protokolliert. Das Dashboard zeigt, was ausgeführt wurde,
-was blockiert wurde und was die Richtlinie dem Agenten mitgeteilt hat — damit du nicht im Dunkeln tappst,
+Jeder Tool-Aufruf des Agenten wird lokal protokolliert. Das Dashboard zeigt, was ausgeführt wurde,
+was blockiert wurde und was die Richtlinie dem Agenten mitgeteilt hat — damit du nicht rätseln musst,
 wenn etwas schiefläuft. → [Dashboard-Leitfaden](https://docs.befailproof.ai/dashboard)
 
 ---
@@ -194,9 +194,9 @@ wenn etwas schiefläuft. → [Dashboard-Leitfaden](https://docs.befailproof.ai/d
 
 | | |
 |---|---|
-| [Einstieg](https://docs.befailproof.ai/getting-started) | Installation und erste Schritte |
+| [Erste Schritte](https://docs.befailproof.ai/getting-started) | Installation und Einstieg |
 | [Integrierte Richtlinien](https://docs.befailproof.ai/built-in-policies) | Alle 30 Richtlinien mit Parametern |
-| [Eigene Richtlinien](https://docs.befailproof.ai/custom-policies) | Schreibe deine eigenen |
+| [Eigene Richtlinien](https://docs.befailproof.ai/custom-policies) | Eigene Richtlinien schreiben |
 | [Konfiguration](https://docs.befailproof.ai/configuration) | Konfigurationsbereiche und Zusammenführungsregeln |
 | [Dashboard](https://docs.befailproof.ai/dashboard) | Sitzungsmonitor und Richtlinienaktivität |
 | [Architektur](https://docs.befailproof.ai/architecture) | Funktionsweise des Hook-Systems |
@@ -205,7 +205,7 @@ wenn etwas schiefläuft. → [Dashboard-Leitfaden](https://docs.befailproof.ai/d
 
 ## Lizenz
 
-MIT mit [Commons Clause](https://commonsclause.com/) — kostenlos für den internen und persönlichen Gebrauch; der kommerzielle Weiterverkauf von failproofai selbst erfordert eine gesonderte Vereinbarung. Den vollständigen Text findest du in [LICENSE](../../LICENSE).
+MIT mit [Commons Clause](https://commonsclause.com/) — kostenlos für den internen und persönlichen Gebrauch; der kommerzielle Weiterverkauf von failproofai selbst erfordert eine separate Vereinbarung. Den vollständigen Text findest du in [LICENSE](../../LICENSE).
 
 ---
 
@@ -213,13 +213,13 @@ MIT mit [Commons Clause](https://commonsclause.com/) — kostenlos für den inte
 
 Siehe [CONTRIBUTING.md](../../CONTRIBUTING.md). Neue Richtlinien, Randfälle und Übersetzungen sind herzlich willkommen.
 
-> **Erst bauen, dann starten.** Führe zunächst `bun install && bun run build` aus. Dieses Repository verwendet
-> failproofais eigene Hooks auf sich selbst, und diese lösen den `failproofai`-Import gegen das
-> kompilierte `dist/`-Bundle auf — ohne einen Build kommt es zu `Cannot find package 'failproofai'`
-> Hook-Fehlern. Nach Änderungen an `src/` neu bauen. Siehe
+> **Vor dem Start bauen.** Führe zunächst `bun install && bun run build` aus. Dieses Repository verwendet
+> failproofai's eigene Hooks auf sich selbst, und diese lösen den `failproofai`-Import gegen das
+> kompilierte `dist/`-Bundle auf — ohne einen Build erhältst du `Cannot find package 'failproofai'`-
+> Hook-Fehler. Nach Änderungen an `src/` neu bauen. Siehe
 > [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-Entwickelt von [Nivedit Jain](https://github.com/NiveditJain) und [Nikita Agarwal](https://github.com/nk-ag).
+Erstellt von [Nivedit Jain](https://github.com/NiveditJain) und [Nikita Agarwal](https://github.com/nk-ag).
 [befailproof.ai](https://befailproof.ai)

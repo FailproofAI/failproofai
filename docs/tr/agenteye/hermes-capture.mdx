@@ -1,53 +1,53 @@
 ---
 title: "Hermes oturum yakalama"
-description: "Ekibinizin Hermes ağ geçidi oturumlarını — Slack, Telegram, CLI ve planlanmış çalıştırmalar — AgentEye'da sıradan oturumlar ve etkinlikler olarak getirin."
+description: "Ekibinizin Hermes ağ geçidi oturumlarını — Slack, Telegram, CLI ve zamanlanmış çalıştırmalar — AgentEye'a sıradan oturumlar ve olaylar olarak getirin."
 ---
 
-[Hermes](https://hermes-agent.nousresearch.com), ekibinizin zaten çalıştığı her yerden yanıt verir — Slack, Telegram, CLI, planlanmış çalıştırmalar. Hermes oturum yakalama, bunların tümünü AgentEye'da sıradan oturumlar ve etkinlikler olarak getirerek, ekibinizin her gün konuştuğu asistan, yazmanız gereken ajanlar kadar gözlemlenebilir hale gelir.
+[Hermes](https://hermes-agent.nousresearch.com), ekibinizin zaten çalıştığı her yerden yanıt verir — Slack, Telegram, CLI, zamanlanmış çalıştırmalar. Hermes oturum yakalama, bunların tümünü AgentEye'a sıradan oturumlar ve olaylar olarak getirir, böylece ekibinizin her gün konuştuğu asistan, yazılı ajanlar kadar gözlemlenebilir hale gelir.
 
-Küçük bir arka plan toplayıcısı, Hermes'in yerel oturum deposunu yazıldıkça okur ve oturumları AgentEye'a gönderir. [Codex](/tr/agenteye/codex-capture) ve [OpenClaw](/tr/agenteye/openclaw-capture) yakalaması ile aynı şekilde çalışır ve bir toplayıcı aynı anda birkaçını yakalayabilir.
-
----
-
-## Ne yakalar
-
-Makinedeki her Hermes oturumu, hangi kanaldan gelirse gelsin yakalanır. Her biri AgentEye [oturumuna](/tr/agenteye/sessions) dönüşür; kullanıcı ve asistan mesajları, araç çağrıları ve araç sonuçları eşleşen [etkinliklere](/tr/agenteye/event-stream) dönüşür.
-
-Oturumun başladığı kanal — Slack, Telegram, CLI veya planlanmış çalıştırma — oturumda kaydedilir, böylece onları ayırt edebilir ve tek seferde birine filtreyebilirsiniz. Bununla birlikte oturumun çalıştığı model, başlatıldığı sohbet ve kişi, ve bir oturum başka birini oluşturduğunda üst öğesine geri bağlantı da gelir.
-
-Oturumlar Hermes'in başladığı anda görünür, henüz birşey söylenmiş olsa da olmasa da, ve bir döngünün yanıtı ile araç çağrıları gerçekten meydana gelen sırada kalır. Bir oturum sona erdiğinde, neden sona erdiğini, ne kadar maliyeti olduğunu ve kaç token kullandığını da alırsınız.
+Küçük bir arka plan toplayıcısı, Hermes'in yerel oturum deposunu yazıldığı sırada okur ve oturumları AgentEye'a gönderir. Bu, [Codex](/tr/agenteye/codex-capture) ve [OpenClaw](/tr/agenteye/openclaw-capture) yakalamasıyla aynı şekilde çalışır ve bir toplayıcı birden fazla oturumu aynı anda yakalayabilir.
 
 ---
 
-## Etkinleştirin
+## Neler yakalanır
 
-Yakalama, etkinleştirene kadar kapalıdır. Toplayıcıyı `events:add` izni olan bir API anahtarı ile yükleyin ([API anahtarlarına](/tr/agenteye/api-keys) bakın) ve Hermes yakalamasını açın:
+Makinedeki her Hermes oturumu, hangi kanaldan geldiği fark etmeksizin yakalanır. Her biri bir AgentEye [oturumu](/tr/agenteye/sessions) olur; kullanıcı ve asistan mesajları, araç çağrıları ve araç sonuçları, eşleştirilen [olaylar](/tr/agenteye/event-stream) olur.
+
+Oturumun başladığı kanal — Slack, Telegram, CLI veya zamanlanmış çalıştırma — oturuma kaydedilir, böylece bunları ayırt edebilir ve birer birer filtreleyebilirsiniz. Bununla birlikte, oturumun çalıştığı model, başlatıldığı sohbet ve kişi, ve oturum başka bir oturumu başlattığında, ana oturuma olan bağlantı gelir.
+
+Oturumlar, herhangi bir şey söylenmiş olsun ya da olmasın, Hermes bunları başladığında görünür; bir çevirişin yanıtı ve araç çağrıları gerçekte olduğu sırada kalır. Bir oturum sona erdiğinde, neden sona erdiğini, ne kadar maliyeti olduğunu ve kaç token kullandığını da öğrenirsiniz.
+
+---
+
+## Açın
+
+Yakalama, etkinleştirene kadar kapalıdır. Toplayıcıyı `events:add` izni olan bir API anahtarıyla kurun ([API anahtarları](/tr/agenteye/api-keys) başlığına bakın) ve Hermes yakalamayı açın:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --hermes-enabled
 ```
 
-Bu, toplayıcıyı kurar, arka plan hizmeti olarak kaydeder ve yakalamaya başlar. Çalıştığını doğrulayın:
+Bu, toplayıcıyı kurar, onu arka plan hizmeti olarak kaydeder ve yakalamayı başlatır. Çalıştığını doğrulayın:
 
 ```bash
 agenteye-collector health
 ```
 
-Aynı makinede birden fazla ajan mı yakalaması yapacaksınız? Her birinin bayrağını aynı komuta ekleyin — örneğin `--hermes-enabled --codex-enabled`.
+Aynı makinede birden fazla ajan yakalıyor musunuz? Aynı komuta her birinin bayrağını ekleyin — örneğin `--hermes-enabled --codex-enabled`.
 
-İlk çalıştırmada, mevcut Hermes oturumlarınız bir kez geri doldurulur ve yeni etkinlik birkaç saniye içinde akışa alınır. Hermes'in kendi verileri yalnızca okunur — asla değiştirilmez veya silinmez — ve her mesaj bir kez gönderilir, yeniden başlatmalar arasında bile.
+İlk çalıştırmada, mevcut Hermes oturumlarınız bir kez geri doldurulur ve yeni etkinlik daha sonra saniyeler içinde akışa girer. Hermes'in kendi verileri sadece okunur — asla değiştirilmez veya silinmez — ve her mesaj, yeniden başlatmalar arasında bile bir kez gönderilir.
 
-`health` ayrıca toplayıcının yakaladığı her şeyin gerçekten AgentEye'a ulaşıp ulaşmadığını söyler. Bir batch teslimat edilemezse, atılmak yerine tutulur ve tekrar denenir ve kontrol, henüz ödenmemiş herhangi bir şey varsa sağlıksız olarak rapor eder — bu nedenle "sağlıklı" verilerinizin ulaştığı anlamına gelir, yalnızca işlemin canlı olduğu değil.
+`health`, toplayıcının yakaladığı her şeyin aslında AgentEye'a ulaşıp ulaşmadığını da söyler. Bir toplu iş gönderilemezse, atılmak yerine tutulur ve yeniden denenir; herhangi bir şey beklemede olduğu sürece kontrol sağlıksız bildir — bu nedenle "sağlıklı" demek verilerinizin ulaştığı anlamına gelir, sadece işlemin canlı olduğu anlamına gelmez.
 
 ---
 
 ## Nerede görünür
 
-Yakalanan oturumlar **Oturumlar**'da ve etkinlikleri **Etkinlikler** akışında görünür, gözlemlenmiş diğer herhangi bir ajan gibi — bu nedenle [oturum yeniden oynatma](/tr/agenteye/sessions), [arama](/tr/agenteye/queries), [değerlendirmeler](/tr/agenteye/evaluations) ve [uyarılar](/tr/agenteye/alerts) bunlar üzerinde çalışır. Onları kendi başına görmek için Hermes ajanına göre filtreleyin.
+Yakalanan oturumlar **Oturumlar**'da, olayları **Olaylar** akışında gözlemlediğiniz başka ajan gibi görünür — bu nedenle [oturum yeniden oynatma](/tr/agenteye/sessions), [arama](/tr/agenteye/queries), [değerlendirmeler](/tr/agenteye/evaluations) ve [uyarılar](/tr/agenteye/alerts) hepsi bunlar üzerinde çalışır. Hermes ajanına göre filtreleyin ve bunları kendi başlarına görün.
 
 ---
 
 ## Gizlilik
 
-Hermes oturumları tam transkripti içerir — komut çıktısı, dosya içerikleri ve ajanın okuduğu veya yazdığı herhangi bir şey dahil — ve sırlar içerebilir. Yakalanan oturumlar olduğu gibi gönderilir, bu nedenle yaklamasını yalnızca bu içeriği AgentEye'da merkezileştirmenin uygun olduğu yerlerde etkinleştirin ve toplayıcıya yalnızca `events:add` kapsamına sahip bir anahtar verin. Verilerinizin nasıl yalıtılı tutulduğu hakkında [Güvenlik](/tr/agenteye/security) bölümüne bakın.
+Hermes oturumları tam transkripti içerir — komut çıktısı, dosya içeriği ve ajanın okuduğu veya yazdığı her şey dahil — ve sırlar içerebilir. Yakalanan oturumlar olduğu gibi gönderilir, bu nedenle yakalamayı sadece bu içeriği AgentEye'a merkezileştirmenin uygun olduğu yerlerde açın ve toplayıcıya sadece `events:add` ile kapsamlı bir anahtar verin. Verilerinizin nasıl izole tutulduğu hakkında [Güvenlik](/tr/agenteye/security) başlığına bakın.

@@ -14,9 +14,9 @@ Web panosunu `http://localhost:8020` adresinde başlatır.
 | Bayrak | Açıklama |
 |------|-------------|
 | `--port <number>` | Dinlenecek port (varsayılan: `8020`) |
-| `--allowed-origins <origins>` | Dev kaynaklarına erişime izin verilen virgülle ayrılmış ana bilgisayarlar/IP'ler |
+| `--allowed-origins <origins>` | Geliştirici kaynaklarına erişime izin verilen virgülle ayrılmış ana bilgisayarlar/IP'ler |
 
-Panoyu varsayılan olmayan bir Claude proje klasörüne yönlendirmek için başlatırken `CLAUDE_PROJECTS_PATH` ortam değişkenini ayarlayın.
+Panoyu varsayılan olmayan bir Claude proje klasörüne yönlendirmek için, başlatırken `CLAUDE_PROJECTS_PATH` ortam değişkenini ayarlayın.
 
 ## Örnekler
 
@@ -24,6 +24,6 @@ Panoyu varsayılan olmayan bir Claude proje klasörüne yönlendirmek için baş
 # Farklı bir portta başlat
 failproofai --port 9000
 
-# Ortam değişkeni aracılığıyla özel bir Claude projeleri yolunu kullan
+# Ortam değişkeni aracılığıyla özel bir Claude projeler yolu kullan
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

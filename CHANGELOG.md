@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-beta.20 — 2026-08-10
+
+### Fixes
+
+- Name the policy bundles in the setup summary instead of counting the policies inside them. The completion line read `Setup complete — 9 policies · 12 harnesses`, and "9 policies" is a number the user cannot check and did not choose — they ticked two **named** bundles two screens earlier, so the line that confirms their setup now says which: `Setup complete — Secrets & data, Git safety · 12 harnesses · custom, daemon`. Bounded against the same 80-column budget the existing summary tests already assert (80 minus a 3-column gutter), because `writeLines` truncates with a hard cut and no ellipsis — an over-long line does not lose its tail, it reads as broken output. All four labels joined is 57 characters and runs the line past 80 with the harness and extras clauses, so naming degrades to the count when it will not fit, rather than being cut. Two names is also the common case, so most runs see every name. `Everything` carries its size (`Everything (47 policies)`), since the word alone does not say how much that is; a machine whose policies were all enabled one at a time with `policies add` has no bundle to name and keeps the count. (#663)
+
 ## 1.0.0-beta.19 — 2026-08-10
 
 ### Fixes

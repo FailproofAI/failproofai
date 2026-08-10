@@ -450,6 +450,61 @@ describe("configure-wizard pure builders", () => {
     expect(message).toContain("custom off");
   });
 
+  it("NAMES the bundles instead of counting the policies inside them", () => {
+    // "9 policies" is a number the user cannot check and did not choose — they
+    // ticked two named bundles two screens earlier, and the line confirming their
+    // setup should say which. This is the exact shape reported from live use.
+    const message = buildCompletionSummary(9, 12, true, true, false, ["secrets", "git"]);
+
+    expect(message).toBe("Setup complete — Secrets & data, Git safety · 12 harnesses · custom, daemon");
+    expect(message.length + GUTTER).toBeLessThanOrEqual(80);
+    expect(message).not.toContain("9 policies");
+  });
+
+  it("counts the bundles it cannot name, rather than truncating", () => {
+    // All four labels joined is 57 characters; with the prefix and both clauses
+    // the line runs past 80, and `writeLines` cuts hard with no ellipsis — so an
+    // over-long line does not lose a tail, it reads as broken output.
+    const message = buildCompletionSummary(30, 12, true, true, true, [
+      "secrets",
+      "git",
+      "ship",
+      "cloud",
+    ]);
+    expect(message.length + GUTTER).toBeLessThanOrEqual(80);
+    // Degraded to the count, which is the honest fallback when naming will not fit.
+    expect(message).toContain("30 policies");
+  });
+
+  it("keeps a bundle name alongside a policy enabled by hand", () => {
+    // The mixed case: bundles plus something added with `policies add`, which the
+    // locked "enabled individually" row stands for. `+N` rather than `+N more`
+    // because those five characters decide whether this gets named at all.
+    const message = buildCompletionSummary(10, 12, true, true, false, [
+      "secrets",
+      "__individual__",
+    ]);
+    expect(message).toContain("Secrets & data +1");
+    expect(message.length + GUTTER).toBeLessThanOrEqual(80);
+  });
+
+  it("names Everything with its size, since the word alone does not say how much", () => {
+    const message = buildCompletionSummary(9, 1, undefined, false, false, ["__everything__"]);
+    expect(message).toBe("Setup complete — Everything (9 policies) · 1 harness");
+  });
+
+  it("falls back to the count when nothing maps to a bundle", () => {
+    // A machine whose policies were all enabled one at a time has no bundle to
+    // name, and inventing one would be worse than the count.
+    expect(buildCompletionSummary(3, 1, undefined, false, false, ["__individual__"])).toBe(
+      "Setup complete — 3 policies · 1 harness",
+    );
+    // And an old caller that passes no presets keeps the previous wording.
+    expect(buildCompletionSummary(3, 1, undefined, false, false)).toBe(
+      "Setup complete — 3 policies · 1 harness",
+    );
+  });
+
   it("omits every optional note when nothing is present", () => {
     const message = buildCompletionSummary(2, 1, undefined, false, false);
     expect(message).toBe("Setup complete — 2 policies · 1 harness");

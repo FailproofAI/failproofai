@@ -528,6 +528,15 @@ export function buildCompletionSummary(
   customEnabled: boolean | undefined,
   daemonInstalled: boolean,
   connected: boolean,
+  /**
+   * What was ticked on the policy step, so the summary can NAME the bundles.
+   *
+   * "9 policies" is a number the user cannot check and did not choose — they
+   * picked two named bundles two screens earlier, and the line that confirms
+   * their setup should say which. Optional so the existing callers and tests
+   * that only have a count keep working and keep the old wording.
+   */
+  presetValues?: readonly string[],
 ): string {
   const extras: string[] = [];
   if (customEnabled === true) extras.push("custom");
@@ -536,7 +545,65 @@ export function buildCompletionSummary(
   if (connected) extras.push("reporting");
   const extrasNote = extras.length > 0 ? ` · ${extras.join(", ")}` : "";
   const harnesses = `${harnessesCount} harness${harnessesCount === 1 ? "" : "es"}`;
-  return `Setup complete — ${policiesCount} policies · ${harnesses}${extrasNote}`;
+  const line = (selection: string) =>
+    `Setup complete — ${selection} · ${harnesses}${extrasNote}`;
+
+  // Bound the WHOLE line, not just the names. `writeLines` truncates with a hard
+  // cut and no ellipsis, so 81 characters does not lose a tail — it reads as
+  // broken output. Naming is preferred and degrades to the count only when the
+  // full line will not fit, which is checked rather than guessed at: the extras
+  // clause grows too ("custom, daemon, reporting" is 25 characters), so a names
+  // budget alone was wrong for exactly the combinations that need it most.
+  const named = line(describeSelection(policiesCount, presetValues));
+  if (named.length <= MAX_SUMMARY_COLUMNS) return named;
+  return line(describeSelection(policiesCount, undefined));
+}
+
+/**
+ * The budget this line has to fit in.
+ *
+ * 80 columns minus the 3-column gutter the existing summary tests already assert
+ * (`message.length + GUTTER <= 80`) — matching that convention rather than
+ * inventing a second one, because two different width rules for the same line is
+ * how one of them ends up wrong.
+ */
+const MAX_SUMMARY_COLUMNS = 77;
+
+/**
+ * Name the bundles rather than counting the policies inside them.
+ *
+ * BOUNDED AT TWO NAMES ON PURPOSE. `writeLines` truncates with a hard cut and no
+ * ellipsis, so an over-long line does not lose its tail, it reads as broken
+ * output — the same constraint that stopped this summary naming all twelve CLIs.
+ * All four bundle labels joined is 57 characters, which with the prefix, the
+ * harness clause and the extras clause runs to about 106. Two names plus a count
+ * of the rest stays inside 80 for every combination, and two is also the common
+ * case, so most runs see every name.
+ *
+ * Falls back to the old "N policies" when nothing maps to a bundle — a machine
+ * whose policies were all enabled one at a time with `policies add` has no bundle
+ * to name, and inventing one would be worse than the count.
+ */
+function describeSelection(policiesCount: number, presetValues?: readonly string[]): string {
+  const plural = `${policiesCount} polic${policiesCount === 1 ? "y" : "ies"}`;
+  if (!presetValues) return plural;
+
+  // "Everything" is one name for the whole set, and the count is the useful half
+  // of it — "Everything" alone does not say how much that is.
+  if (presetValues.includes(EVERYTHING)) return `Everything (${plural})`;
+
+  const named = POLICY_PRESETS.filter((p) => presetValues.includes(p.id)).map((p) => p.label);
+  // The locked "enabled individually" row stands for policies outside every
+  // bundle, so it is counted among the unnamed rest rather than named.
+  const individual = presetValues.includes(INDIVIDUAL) ? 1 : 0;
+  if (named.length === 0) return plural;
+
+  const shown = named.slice(0, 2);
+  const rest = named.length - shown.length + individual;
+  // `+N` rather than `+N more`: five characters, and they decide whether the
+  // mixed case (two bundles plus a policy added by hand) gets named at all — with
+  // "more" the line is 83 and falls back to a bare count.
+  return rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
 }
 
 export function reviewLines(state: {
@@ -1632,7 +1699,14 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // are no longer occasional additions — see buildCompletionSummary's own doc
   // comment for why the widest combination still fits in 80 columns.
   outro(
-    buildCompletionSummary(policies.length, clis.length, customEnabled, daemonInstalled, connected),
+    buildCompletionSummary(
+      policies.length,
+      clis.length,
+      customEnabled,
+      daemonInstalled,
+      connected,
+      chosenPresets,
+    ),
     { ok: true },
     stdout,
   );

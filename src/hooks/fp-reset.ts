@@ -207,6 +207,22 @@ export function migrateConventionPolicies(): string[] {
       // the same rule, one level down.
       if (entry.isDirectory() && statSync(target).isDirectory()) {
         mergeInto(source, target, `${name}/`);
+        // AND remove the child once the recursion drained it. Without this, a
+        // merged directory leaves an empty husk behind, so the `rmdirSync(from)`
+        // below throws ENOTEMPTY into a swallowing `catch` and
+        // `custom-policies/` survives the migration it just completed —
+        // permanently, because the next run recurses into the same empty child
+        // and fails the same way, so it never self-heals.
+        //
+        // Only reachable when the merge moved EVERYTHING: a genuine leaf
+        // collision inside leaves a file here, `rmdirSync` refuses, and the
+        // catch is then correct — that husk is the user's remaining source,
+        // which is the one thing this function must not delete.
+        try {
+          rmdirSync(source);
+        } catch {
+          // Not empty, so something was deliberately left. Keep it.
+        }
       }
     }
   };

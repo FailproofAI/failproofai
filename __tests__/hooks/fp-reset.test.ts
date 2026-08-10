@@ -169,6 +169,54 @@ describe("resetHome", () => {
       expect(existsSync(legacy.customPoliciesDir())).toBe(false);
     });
 
+    it("removes custom-policies/ even when a subdirectory had to MERGE", () => {
+      // The gap in this file's coverage. Every existing case moved `lib/`
+      // wholesale via one `renameSync`, because the destination had no `lib/` —
+      // so the recursive merge branch, and the empty husk it leaves, were never
+      // exercised. Reported by review, reproduced on a seeded home.
+      //
+      // Without the child rmdir, `mergeInto` drains `custom-policies/lib/` and
+      // leaves it empty, so `rmdirSync(custom-policies)` throws ENOTEMPTY into a
+      // swallowing catch and the directory survives the migration that just
+      // completed — and never self-heals, because the next run recurses into the
+      // same empty child and fails identically.
+      seedLayoutOne();
+      mkdirSync(resolve(legacy.customPoliciesDir(), "lib"), { recursive: true });
+      mkdirSync(resolve(policiesDir(), "lib"), { recursive: true });
+      writeFileSync(resolve(legacy.customPoliciesDir(), "lib", "rules.mjs"), "// v2\n");
+      // Forces a DIRECTORY collision on `lib/` rather than a clean rename.
+      writeFileSync(resolve(policiesDir(), "lib", "other.mjs"), "// existing\n");
+      writeFileSync(resolve(legacy.customPoliciesDir(), "team-policies.mjs"), "// mine\n");
+
+      const out = resetHome(2);
+
+      expect(out.migrated).toContain("lib/rules.mjs");
+      expect(existsSync(resolve(policiesDir(), "lib", "rules.mjs"))).toBe(true);
+      expect(existsSync(resolve(policiesDir(), "lib", "other.mjs"))).toBe(true);
+      expect(existsSync(legacy.customPoliciesDir())).toBe(false);
+    });
+
+    it("KEEPS the husk when a genuine leaf collision left a file behind", () => {
+      // The other side of the same rmdir, and why it is a `try`. A same-named file
+      // on both sides is deliberately not overwritten, so something remains — and
+      // that remainder is the user's own source, which this function must never
+      // delete. `custom-policies/` surviving is then correct, not a leak.
+      seedLayoutOne();
+      mkdirSync(resolve(legacy.customPoliciesDir(), "lib"), { recursive: true });
+      mkdirSync(resolve(policiesDir(), "lib"), { recursive: true });
+      writeFileSync(resolve(legacy.customPoliciesDir(), "lib", "rules.mjs"), "// v2\n");
+      writeFileSync(resolve(policiesDir(), "lib", "rules.mjs"), "// v3\n");
+
+      resetHome(2);
+
+      expect(readFileSync(resolve(legacy.customPoliciesDir(), "lib", "rules.mjs"), "utf8")).toBe(
+        "// v2\n",
+      );
+      // The destination keeps its own version — a merge never overwrites.
+      expect(readFileSync(resolve(policiesDir(), "lib", "rules.mjs"), "utf8")).toBe("// v3\n");
+      expect(existsSync(legacy.customPoliciesDir())).toBe(true);
+    });
+
     it("carries the helpers and data files a policy imports, not just sources", () => {
       // `custom-policies/` is deleted by the reset, so anything the migration
       // leaves behind is DESTROYED, not merely stranded. Moving only

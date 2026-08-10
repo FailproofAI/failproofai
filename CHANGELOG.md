@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-beta.15 — 2026-08-10
+
+### Fixes
+
+- Remove an unused local in `readCarriedPolicyConfig()` (`src/hooks/fp-reset.ts`) left over from splitting the read/write phases of the layout-1→3 policy-config carry apart; the write target it computed belongs to the paired `writeCarriedPolicyConfig()` a few lines down. (#663)
+
 ## 1.0.0-beta.15 — 2026-08-09
 
 ### Fixes

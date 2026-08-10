@@ -501,7 +501,11 @@ mod rename_compat_tests {
             r#"{"timestamp":1700000000,"cloudPolicyId":"block-curl","cloudRevision":3,"cloudGeneration":9}"#,
         )
         .expect("a pre-rename hook-activity row must still deserialize");
-        assert_eq!(row.cloud_version, Some(3), "cloudRevision must alias to cloudVersion");
+        assert_eq!(
+            row.cloud_version,
+            Some(3),
+            "cloudRevision must alias to cloudVersion"
+        );
         assert_eq!(
             row.cloud_deployment,
             Some(9),

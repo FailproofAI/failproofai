@@ -834,15 +834,24 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         // Resolve one harness's configured extra paths against the roots it
         // already watches, logging every rejection — each one is a path the
         // operator asked for and is not getting.
-        let extras = |harness: &str,
-                      defaults: &[std::path::PathBuf]|
+        // `reserved` are labels the source's own DEFAULT tasks already occupy.
+        // Empty for every source but Hermes, whose default labels are DERIVED per
+        // profile database — so an extra could be given one of them, and the two
+        // pollers would then share a cursor directory and a health key.
+        let extras_reserving = |harness: &str,
+                                defaults: &[std::path::PathBuf],
+                                reserved: &[String]|
          -> Vec<fpai_collect::ExtraPath> {
             let entries = settings.extra_paths_for(harness);
             if entries.is_empty() {
                 return Vec::new();
             }
-            let resolved =
-                fpai_collect::extra_paths::resolve(&entries, defaults, home_dir.as_deref());
+            let resolved = fpai_collect::extra_paths::resolve_reserving(
+                &entries,
+                defaults,
+                reserved,
+                home_dir.as_deref(),
+            );
             for bad in &resolved.rejected {
                 eprintln!(
                     "[failproofaid] ignoring extra path {:?} for {harness}: {}",
@@ -858,6 +867,10 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 );
             }
             resolved.accepted
+        };
+        // The common case: no default task derives a label, so nothing is reserved.
+        let extras = |harness: &str, defaults: &[std::path::PathBuf]| {
+            extras_reserving(harness, defaults, &[])
         };
 
         use fpai_collect::sources::{
@@ -1101,7 +1114,17 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         // Configured extras are resolved against EVERY default profile database,
         // so pointing one at a profile Hermes already exposes is rejected rather
         // than collected twice under two ids.
-        for ep in extras("hermes", &hermes_dbs) {
+        // Reserved: the labels the default profile tasks above just claimed. Without
+        // this, `add-path hermes prod=<other>.db` on a machine with a `prod` profile
+        // is accepted, and the two pollers share `cursors/hermes/prod` and the
+        // health key `hermes:prod` — the exact clobbering the comment above says
+        // each profile gets its own directory to avoid.
+        let hermes_reserved: Vec<String> = hermes_dbs
+            .iter()
+            .enumerate()
+            .map(|(i, db)| profile_dir_name(db, i))
+            .collect();
+        for ep in extras_reserving("hermes", &hermes_dbs, &hermes_reserved) {
             sqlite_source(
                 &mut tasks,
                 "hermes",

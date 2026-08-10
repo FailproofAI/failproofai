@@ -511,7 +511,9 @@ impl PolicyStore {
             if activated && path.exists() {
                 match fs::remove_dir_all(&path) {
                     Ok(()) => tracing::info!("removed the layout-2 {legacy}/ tree"),
-                    Err(err) => tracing::warn!(?err, "could not remove the layout-2 {legacy}/ tree"),
+                    Err(err) => {
+                        tracing::warn!(?err, "could not remove the layout-2 {legacy}/ tree")
+                    }
                 }
             }
         }
@@ -932,7 +934,11 @@ mod tests {
         // rather than covering both.
         for legacy in ["generations", "deployments"] {
             std::fs::create_dir_all(store.root().join(legacy).join("4")).unwrap();
-            std::fs::write(store.root().join(legacy).join("4").join("old.mjs"), b"stale").unwrap();
+            std::fs::write(
+                store.root().join(legacy).join("4").join("old.mjs"),
+                b"stale",
+            )
+            .unwrap();
         }
 
         let desired = desired(1, "p", &bytes);

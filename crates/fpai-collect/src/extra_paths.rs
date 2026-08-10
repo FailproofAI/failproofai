@@ -146,8 +146,47 @@ fn clean(raw: &str, home: Option<&Path>) -> PathBuf {
 /// `defaults` are the roots the source already watches. An entry overlapping
 /// any of them is rejected rather than silently double-collected.
 pub fn resolve(entries: &[String], defaults: &[PathBuf], home: Option<&Path>) -> Resolved {
+    resolve_reserving(entries, defaults, &[], home)
+}
+
+/// As [`resolve`], additionally refusing labels a source's own DEFAULT tasks
+/// already use.
+///
+/// `defaults` catches an entry pointing at a path the source already watches. It
+/// cannot catch an entry whose LABEL collides with one a default task derived —
+/// and for Hermes those are derived, one per profile database
+/// (`cursors/hermes/<profile>`, health key `hermes:<profile>`). So
+/// `add-path hermes prod=/mnt/other/state.db` on a machine with a `prod` profile
+/// was accepted, and the two SQLite pollers then shared a cursor directory and a
+/// health key.
+///
+/// Which is precisely the failure this whole feature documents preventing: the
+/// cursor store rewrites its map atomically, so both instances clobber each
+/// other's watermark and each re-reads from zero after every restart, and one
+/// health record overwrites the other so `root_present` alternates — destroying
+/// the "absent root versus merely idle" distinction that record exists to draw.
+/// Hermes is called out by name in that note as the source that reached this shape
+/// first; it is also the one source whose default labels are derived rather than
+/// fixed, which is why it is the one that could collide.
+///
+/// Separate entry point rather than a fourth parameter on `resolve`: every other
+/// caller has no reserved labels, and widening the shared signature would make
+/// twelve call sites pass an empty slice to describe a case only one of them has.
+pub fn resolve_reserving(
+    entries: &[String],
+    defaults: &[PathBuf],
+    reserved_labels: &[String],
+    home: Option<&Path>,
+) -> Resolved {
     let mut out = Resolved::default();
-    let mut seen_labels: BTreeSet<String> = BTreeSet::new();
+    // Seeded with the labels the source's own default tasks already occupy, so a
+    // collision with one is rejected by the same check that catches a collision
+    // between two extras — one rule, one error message, no second code path.
+    let mut seen_labels: BTreeSet<String> = reserved_labels
+        .iter()
+        .map(|l| sanitize_label(l))
+        .filter(|l| !l.is_empty())
+        .collect();
     let mut seen_paths: Vec<PathBuf> = Vec::new();
 
     let defaults: Vec<PathBuf> = defaults
@@ -366,5 +405,70 @@ mod tests {
     #[test]
     fn namespacing_is_label_dash_agent() {
         assert_eq!(namespaced("work", "claude-myrepo"), "work-claude-myrepo");
+    }
+
+    /// A label a DEFAULT task already derived is refused.
+    ///
+    /// `defaults` catches an entry pointing at a path the source already watches;
+    /// it cannot catch one whose LABEL collides with a default's. Hermes is the
+    /// only source where that is possible, because its default labels are derived
+    /// per profile database rather than fixed — so `prod=<other>.db` on a machine
+    /// with a `prod` profile was accepted, and the two SQLite pollers then shared
+    /// `cursors/hermes/prod` and the health key `hermes:prod`. Both re-read from
+    /// zero after every restart, and one health record overwrote the other.
+    #[test]
+    fn a_label_reserved_by_a_default_task_is_refused() {
+        let entries = vec!["prod=/mnt/other/state.db".to_string()];
+        let reserved = vec!["prod".to_string()];
+
+        let resolved = resolve_reserving(&entries, &[], &reserved, None);
+
+        assert!(
+            resolved.accepted.is_empty(),
+            "a reserved label must not be accepted"
+        );
+        assert_eq!(resolved.rejected.len(), 1);
+        assert!(
+            resolved.rejected[0].reason.contains("prod"),
+            "the reason must name the label, got: {}",
+            resolved.rejected[0].reason
+        );
+    }
+
+    /// Reserved labels are compared AFTER sanitisation, like every other label.
+    #[test]
+    fn a_reserved_label_collides_through_sanitisation_too() {
+        let entries = vec!["Prod Two=/mnt/other/state.db".to_string()];
+        // The default task derived this from a directory called "prod-two".
+        let reserved = vec!["prod-two".to_string()];
+
+        let resolved = resolve_reserving(&entries, &[], &reserved, None);
+
+        assert!(resolved.accepted.is_empty());
+    }
+
+    /// And an unreserved label still works — the check must not refuse everything.
+    #[test]
+    fn a_label_no_default_uses_is_still_accepted() {
+        let entries = vec!["staging=/mnt/other/state.db".to_string()];
+        let reserved = vec!["prod".to_string()];
+
+        let resolved = resolve_reserving(&entries, &[], &reserved, None);
+
+        assert_eq!(
+            resolved.accepted.len(),
+            1,
+            "rejected: {:?}",
+            resolved.rejected
+        );
+        assert_eq!(resolved.accepted[0].label, "staging");
+    }
+
+    /// `resolve` keeps its old behaviour: nothing reserved.
+    #[test]
+    fn plain_resolve_reserves_nothing() {
+        let entries = vec!["prod=/mnt/other/state.db".to_string()];
+        let resolved = resolve(&entries, &[], None);
+        assert_eq!(resolved.accepted.len(), 1);
     }
 }

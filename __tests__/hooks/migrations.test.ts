@@ -374,6 +374,36 @@ describe("describePlan", () => {
     expect(readVersionFile()?.layout).toBe(2);
   });
 
+  it("lists each file to be saved EXACTLY ONCE", () => {
+    // Seen on a real machine: the dry run printed `policies-config.json` twice
+    // while the backup correctly wrote it once, because two places built the same
+    // list and only one deduped. The duplicate is structural rather than a typo —
+    // `legacy.policyConfig()` and `globalPolicyConfigFile()` are the SAME path,
+    // since layout 3 put the policy config back where layout 1 kept it — so any
+    // caller that walks both arrays sees it twice.
+    //
+    // This is the command whose entire job is to state accurately what is about to
+    // happen, so a cosmetic-looking defect here is the substance of the feature.
+    mkdirSync(home, { recursive: true });
+    writeFileSync(globalPolicyConfigFile(), '{"enabledPolicies":[]}');
+    writeFileSync(versionFile(), "layout = 1\n");
+
+    // Only the lines after the "would be copied" heading — the indented lines
+    // above it are the chain steps.
+    const lines = describePlan(1);
+    const start = lines.findIndex((l) => l.includes("would be copied to"));
+    const listed = lines
+      .slice(start + 1)
+      .filter((l) => l.startsWith("  "))
+      .map((l) => l.trim())
+      .sort();
+
+    expect(listed).toEqual(["VERSION", "policies-config.json"]);
+    // And it agrees with what the backup actually writes — the two built this
+    // list separately before, which is exactly how they came to disagree.
+    expect(listed).toEqual([...backupBeforeMigrating(1)].sort());
+  });
+
   it("says so plainly when there is nothing to do", () => {
     expect(describePlan(LAYOUT_VERSION).join("\n")).toContain("Nothing to migrate");
   });

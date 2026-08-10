@@ -209,6 +209,31 @@ function appendLedger(entry: LedgerEntry): void {
 const BACKED_UP = [configFile, credentialsFile, globalPolicyConfigFile, versionFile];
 const BACKED_UP_LEGACY = [legacy.configToml, legacy.credentialsToml, legacy.policyConfig];
 
+/**
+ * The files that exist right now and would be backed up, each exactly once.
+ *
+ * ONE function, because there were two: `backupBeforeMigrating` deduped by path
+ * and `describePlan` built the same list again without deduping, so
+ * `migrate --dry-run` printed `policies-config.json` TWICE while the backup
+ * correctly wrote it once. Seen on a real machine, in the one command whose
+ * entire job is to state accurately what is about to happen.
+ *
+ * The duplicate is not a typo waiting to be spotted, it is structural:
+ * `legacy.policyConfig()` and `globalPolicyConfigFile()` are the SAME path,
+ * because layout 3 put the policy config back exactly where layout 1 kept it. Any
+ * caller that walks both lists sees it twice. So the walk lives here once and
+ * nobody walks those arrays directly — which is the same "state it once, derive
+ * the rest" move `resettablePaths()` makes over `HOME_CLASSES`.
+ */
+function filesToBackUp(): string[] {
+  const seen = new Set<string>();
+  for (const at of [...BACKED_UP, ...BACKED_UP_LEGACY]) {
+    const path = at();
+    if (existsSync(path)) seen.add(path);
+  }
+  return [...seen];
+}
+
 /** Copy the irreplaceable files aside. Returns the basenames it saved. */
 export function backupBeforeMigrating(from: number): string[] {
   const dir = migrationBackupDir(from);
@@ -221,16 +246,7 @@ export function backupBeforeMigrating(from: number): string[] {
   } catch {
     return [];
   }
-  // DEDUPED BY PATH. `legacy.policyConfig()` and `globalPolicyConfigFile()` are
-  // the SAME file — layout 3 put the policy config back exactly where layout 1
-  // kept it — so listing both copied it twice and printed the name twice in the
-  // "Saved first:" line the user actually reads.
-  const seen = new Set<string>();
-  for (const at of [...BACKED_UP, ...BACKED_UP_LEGACY]) {
-    const source = at();
-    if (seen.has(source)) continue;
-    seen.add(source);
-    if (!existsSync(source)) continue;
+  for (const source of filesToBackUp()) {
     try {
       copyFileSync(source, resolve(dir, basename(source)));
       saved.push(basename(source));
@@ -350,10 +366,7 @@ export function describePlan(from: number): string[] {
     ...chain.map((m) => `  ${m.from} → ${m.to}  ${m.describe}`),
     ``,
     `These would be copied to ${migrationBackupDir(from)} first:`,
-    ...[...BACKED_UP, ...BACKED_UP_LEGACY]
-      .map((at) => at())
-      .filter((p) => existsSync(p))
-      .map((p) => `  ${basename(p)}`),
+    ...filesToBackUp().map((p) => `  ${basename(p)}`),
     ``,
     `Settings, cloud enrolment, policy selection, your own policy files, decision`,
     `history and undelivered events are carried, not removed — see \`HOME_CLASSES\`.`,

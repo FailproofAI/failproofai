@@ -38,6 +38,8 @@ Click any session to open its execution graph: a git-style view of how agents, t
 
 The right rail gives you the per-run breakdown: which tools and models ran, which hooks fired, and what the run spent in tokens. That is the answer to "why did this run cost so much?" or "which tool is the slow one?" sitting right next to the graph that caused it.
 
+Individual events are addressable, so you can hand someone a link to one moment rather than "the session, about two thirds down". Copy the link from any event, or follow one from an [audit](/agenteye/audits) finding or an error, and the session opens with that event selected and scrolled to. This holds for very long runs too: the timeline loads a bounded window for the sake of your browser, and a link pointing past that window still finds its event rather than dropping you at the start. If the event has aged out of your retention window, the page tells you that instead of quietly selecting nothing.
+
 ---
 
 ## Where to find it

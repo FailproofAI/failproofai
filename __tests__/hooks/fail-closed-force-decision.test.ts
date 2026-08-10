@@ -43,15 +43,23 @@ const FORCED = {
 };
 
 let projectDir: string;
+let homeDir: string;
 
 beforeEach(() => {
   warnings.length = 0;
   projectDir = mkdtempSync(join(tmpdir(), "fpai-fail-closed-"));
+  // ISOLATE THE HOME — see the note in `worker-server.test.ts`. This suite drives
+  // the real hook path, which persists activity, so without this it appended test
+  // decisions to the developer's own `~/.failproofai/hook-activity`.
+  homeDir = mkdtempSync(join(tmpdir(), "fpai-fail-closed-home-"));
+  process.env.FAILPROOFAI_HOME = homeDir;
   mkdirSync(join(projectDir, ".failproofai"), { recursive: true });
 });
 
 afterEach(() => {
+  delete process.env.FAILPROOFAI_HOME;
   rmSync(projectDir, { recursive: true, force: true });
+  rmSync(homeDir, { recursive: true, force: true });
 });
 
 function stdin(extra: Record<string, unknown> = {}): string {

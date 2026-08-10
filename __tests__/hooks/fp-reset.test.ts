@@ -12,14 +12,22 @@ import {
   policiesDir,
   globalPolicyConfigFile,
   cloudPoliciesDir,
+  spoolDir,
   legacy,
 } from "../../src/hooks/fp-home";
-import { detectLayout, readConfig, readVersionFile, writeVersionFile } from "../../src/hooks/fp-config";
+import {
+  detectLayout,
+  readConfig,
+  readCredentials,
+  readVersionFile,
+  writeVersionFile,
+} from "../../src/hooks/fp-config";
 import {
   resetHome,
   checkLayoutForCli,
   layoutWarningForHook,
   layoutBlockerForScheduledRun,
+  parseLegacyToml,
 } from "../../src/hooks/fp-reset";
 
 let home: string;
@@ -710,5 +718,298 @@ describe("resetHome carries the layout-1 policy selection", () => {
     expect(existsSync(globalPolicyConfigFile())).toBe(true);
     const after = JSON.parse(readFileSync(globalPolicyConfigFile(), "utf8"));
     expect(after.enabledPolicies).toContain("block-sudo");
+  });
+});
+
+// The layout-2 leg of the same problem `HOME_CLASSES` fixed for layout 3.
+// `config.toml` and `credentials.toml` are both on the retired list, and NOTHING
+// carried them — so a 2 → 3 upgrade deleted the cloud token and the ingest key
+// outright, and with them `daemon.configured` and `mode`. That is a machine
+// silently off the fleet: still enforcing whatever it last had, still reporting
+// healthy, never reconciling again, with no operator action that caused it. And
+// 2 → 3 is the upgrade that actually exists to be run.
+describe("resetHome carries the layout-2 TOML config and credentials", () => {
+  const configToml = [
+    "# failproofai configuration. Safe to edit by hand.",
+    "",
+    "[mode]",
+    'kind = "cloud"',
+    "",
+    "[daemon]",
+    "configured = true",
+    "",
+    "[collector]",
+    "sessions = true",
+    "hooks = true",
+    'hooks_verbosity = "all"',
+    'redact = "off"',
+    'environment = "staging"',
+    'machine_id = "m-legacy"',
+    "",
+    "[collector.sources.claude]",
+    'extra_paths = ["work=/srv/team/.claude/projects"]',
+    "",
+    "[audit]",
+    "auto = true",
+    "interval_days = 14",
+  ].join("\n");
+
+  const credentialsToml = [
+    "# failproofai credentials — owner-only (0600). Do not commit.",
+    "",
+    "[cloud]",
+    'url = "https://api.example"',
+    'machine_id = "m1"',
+    'machine_label = "laptop"',
+    'token = "tok-live"',
+    "",
+    "[ingest]",
+    'url = "https://ingest.example"',
+    'key = "ing-live"',
+    "",
+    "[org]",
+    'id = "o1"',
+    'slug = "acme"',
+    'name = "Acme"',
+  ].join("\n");
+
+  function seedLayoutTwo() {
+    writeFileSync(legacy.configToml(), configToml);
+    writeFileSync(legacy.credentialsToml(), credentialsToml);
+  }
+
+  it("carries the cloud token and the ingest key", () => {
+    // The one that takes a machine off the fleet.
+    seedLayoutTwo();
+
+    resetHome(2);
+
+    const creds = readCredentials();
+    expect(creds.cloud?.token).toBe("tok-live");
+    expect(creds.cloud?.url).toBe("https://api.example");
+    expect(creds.cloud?.machineId).toBe("m1");
+    expect(creds.cloud?.machineLabel).toBe("laptop");
+    expect(creds.ingest?.key).toBe("ing-live");
+    expect(creds.org?.slug).toBe("acme");
+  });
+
+  it("carries daemon.configured, mode, the collector prefs and the audit schedule", () => {
+    // Losing `daemon.configured` silently downgrades the machine from fail-closed
+    // enforcement to the in-process path; losing `mode` disconnects it. Neither is
+    // re-derivable and neither said anything.
+    seedLayoutTwo();
+
+    resetHome(2);
+
+    const cfg = readConfig();
+    expect(cfg.mode).toBe("cloud");
+    expect(cfg.daemon.configured).toBe(true);
+    expect(cfg.collector.sessions).toBe(true);
+    expect(cfg.collector.hooksVerbosity).toBe("all");
+    expect(cfg.collector.redact).toBe("off");
+    expect(cfg.collector.environment).toBe("staging");
+    expect(cfg.collector.machineId).toBe("m-legacy");
+    expect(cfg.audit.auto).toBe(true);
+    expect(cfg.audit.intervalDays).toBe(14);
+  });
+
+  it("carries a dotted sub-table — the extra_paths a person typed", () => {
+    // `[collector.sources.claude]` has to NEST, or `readSources` looks for it at
+    // `collector.sources.claude` and finds a flat key called
+    // "collector.sources.claude" instead.
+    seedLayoutTwo();
+
+    resetHome(2);
+
+    expect(readConfig().collector.sources).toEqual({
+      claude: { extraPaths: ["work=/srv/team/.claude/projects"] },
+    });
+  });
+
+  it("lets the telemetry opt-out win over the carried default", () => {
+    // Both paths end at `telemetry.enabled`, and only one of them is a choice
+    // somebody made. The carried config's `true` is the shipped default — reading
+    // it back would revoke an opt-out by way of preserving a setting.
+    writeFileSync(legacy.configToml(), `${configToml}\n\n[telemetry]\nenabled = false`);
+
+    resetHome(2);
+
+    expect(readConfig().telemetry.enabled).toBe(false);
+  });
+
+  it("writes no credentials file when the TOML had nothing that validates", () => {
+    // A cloud table with no token is not a cloud table. Writing it would produce
+    // a credentials file that looks present and authenticates nothing.
+    writeFileSync(legacy.credentialsToml(), '[cloud]\nurl = "https://api.example"');
+
+    resetHome(2);
+
+    expect(readCredentials()).toEqual({});
+  });
+
+  it("is a no-op on a layout-1 home, which had neither file", () => {
+    seedLayoutOne();
+
+    resetHome(1);
+
+    expect(readCredentials()).toEqual({});
+    expect(readConfig().mode).toBe("oss");
+  });
+});
+
+describe("parseLegacyToml", () => {
+  // Not a TOML implementation — the subset layout 2's two writers emitted, where
+  // every value went through JSON.stringify, so JSON.parse on the right-hand side
+  // is exact rather than approximate.
+  it("parses tables, dotted tables, and every value type those writers emitted", () => {
+    const parsed = parseLegacyToml(
+      [
+        "# a comment",
+        "[mode]",
+        'kind = "cloud"',
+        "[daemon]",
+        "configured = true",
+        "[collector]",
+        "sessions = false",
+        'environment = "local"',
+        "[collector.sources.goose]",
+        'extra_paths = ["a", "b"]',
+        "[auth]",
+        "expires_at = 1234567890",
+      ].join("\n"),
+    );
+
+    expect(parsed).toEqual({
+      mode: { kind: "cloud" },
+      daemon: { configured: true },
+      collector: {
+        sessions: false,
+        environment: "local",
+        sources: { goose: { extra_paths: ["a", "b"] } },
+      },
+      auth: { expires_at: 1234567890 },
+    });
+  });
+
+  it("skips a malformed line rather than losing the whole file", () => {
+    // A hand-edit that broke one value must not cost the user their token.
+    const parsed = parseLegacyToml(
+      ['[cloud]', 'url = "https://api.example"', "token = not-json-at-all", 'machine_id = "m1"'].join(
+        "\n",
+      ),
+    );
+
+    expect(parsed).toEqual({ cloud: { url: "https://api.example", machine_id: "m1" } });
+  });
+
+  it("merges two headers naming the same table", () => {
+    const parsed = parseLegacyToml('[collector]\nhooks = true\n[collector]\nsessions = true');
+    expect(parsed).toEqual({ collector: { hooks: true, sessions: true } });
+  });
+});
+
+// The ordering here is the whole point, and the intuitive order is wrong.
+// Flushing BEFORE the migration reads better and is structurally incapable of
+// working: `readConfig()` reads config.json and `readIngestCredential()` reads
+// credentials.json, both LAYOUT-3 files that a stale home does not have. Called
+// first, the flush finds no ingest credential on every machine it ever runs on,
+// refuses, and reports nothing pending — a step that looks protective and does
+// nothing. These tests pin that it runs after, where it can succeed.
+describe("draining the spool across a migration", () => {
+  const layoutTwoCloud = [
+    "[mode]",
+    'kind = "cloud"',
+    "[collector]",
+    "hooks = true",
+    "[ingest]",
+  ].join("\n");
+
+  function seedLayoutTwoCloud() {
+    writeFileSync(legacy.configToml(), layoutTwoCloud);
+    writeFileSync(
+      legacy.credentialsToml(),
+      ['[ingest]', 'url = "https://ingest.example"', 'key = "ing-live"'].join("\n"),
+    );
+  }
+
+  it("flushes AFTER the migration, when the carried credential exists", async () => {
+    seedLayoutTwoCloud();
+    const flush = await import("../../src/hooks/flush-cli");
+    let credentialVisibleAtFlushTime = false;
+    const spy = vi.spyOn(flush, "runFlushCommand").mockImplementation(async () => {
+      // The assertion that matters: by the time the flush runs, the token the
+      // flush needs has been carried into the layout-3 file. Before the
+      // migration this is false, which is why the order is what it is.
+      credentialVisibleAtFlushTime = readCredentials().ingest?.key === "ing-live";
+      return { exitCode: 0, pending: 0, lines: [] };
+    });
+
+    await checkLayoutForCli();
+
+    expect(spy).toHaveBeenCalledWith({ wait: true, timeoutSecs: 30 });
+    expect(credentialVisibleAtFlushTime).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("does NOT flush an OSS machine", async () => {
+    // No dynamic import, no daemon probe, nothing to deliver.
+    writeFileSync(legacy.configToml(), '[mode]\nkind = "oss"');
+    const flush = await import("../../src/hooks/flush-cli");
+    const spy = vi.spyOn(flush, "runFlushCommand");
+
+    await checkLayoutForCli();
+
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("does NOT flush when collection is switched off entirely", async () => {
+    writeFileSync(
+      legacy.configToml(),
+      ['[mode]', 'kind = "cloud"', "[collector]", "hooks = false", "sessions = false"].join("\n"),
+    );
+    const flush = await import("../../src/hooks/flush-cli");
+    const spy = vi.spyOn(flush, "runFlushCommand");
+
+    await checkLayoutForCli();
+
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("completes the migration when the flush throws, with the spool intact", async () => {
+    // Best-effort by construction: the events are carried either way, so the
+    // worst case is "delivered later" and never "lost". A delivery attempt must
+    // never be able to fail a migration.
+    seedLayoutTwoCloud();
+    mkdirSync(spoolDir(), { recursive: true });
+    writeFileSync(resolve(spoolDir(), "batch-1.jsonl"), "{}\n");
+    const flush = await import("../../src/hooks/flush-cli");
+    const spy = vi.spyOn(flush, "runFlushCommand").mockRejectedValue(new Error("daemon down"));
+
+    const check = await checkLayoutForCli();
+
+    expect(check.fatal).toBe(false);
+    expect(readVersionFile()?.layout).toBe(LAYOUT_VERSION);
+    expect(existsSync(resolve(spoolDir(), "batch-1.jsonl"))).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("names a surviving backlog rather than leaving it silent", async () => {
+    // "Safe" and "delivered" are different states, and only one of them shows up
+    // on a dashboard. Saying nothing invites reading an incomplete dashboard as
+    // data loss.
+    seedLayoutTwoCloud();
+    const flush = await import("../../src/hooks/flush-cli");
+    const spy = vi
+      .spyOn(flush, "runFlushCommand")
+      .mockResolvedValue({ exitCode: 0, pending: 3, lines: [] });
+
+    const check = await checkLayoutForCli();
+
+    const text = check.lines.join("\n");
+    expect(text).toContain("3 batch(es) were still undelivered");
+    expect(text).toContain("failproofai flush --wait");
+    spy.mockRestore();
   });
 });

@@ -401,6 +401,25 @@ export function readConfigRaw(): { raw: Record<string, unknown>; config: FpConfi
 export function readConfig(): FpConfig {
   try {
     const parsed = JSON.parse(readFileSync(configFile(), "utf8")) as Record<string, unknown>;
+    return projectConfig(parsed);
+  } catch {
+    return structuredClone(DEFAULT_CONFIG);
+  }
+}
+
+/**
+ * Project a parsed config object onto {@link FpConfig}.
+ *
+ * Split out of `readConfig` so the layout-2 → 3 carry can run the SAME
+ * projection over a `config.toml` it parsed itself, rather than a second reader
+ * that has to be kept in step with this one. The two formats use identical key
+ * names (`hooks_verbosity`, `machine_id`, `interval_days`,
+ * `sources.<h>.extra_paths`), so the only difference between them is how the
+ * bytes become an object — and once that is a parameter there is nothing left to
+ * drift. Every failure-direction decision below is therefore made once, for both.
+ */
+export function projectConfig(parsed: Record<string, unknown>): FpConfig {
+  {
     const mode = (parsed.mode as Record<string, unknown> | undefined)?.kind;
     const daemon = (parsed.daemon ?? {}) as Record<string, unknown>;
     const collector = (parsed.collector ?? {}) as Record<string, unknown>;
@@ -445,8 +464,6 @@ export function readConfig(): FpConfig {
       // reads as off, because the failure direction is a machine that starts
       // mailing a report nobody asked for to an org address it never sees.
     };
-  } catch {
-    return structuredClone(DEFAULT_CONFIG);
   }
 }
 
@@ -689,7 +706,25 @@ export function readCredentialsRaw(): { raw: Record<string, unknown>; credential
 
 export function readCredentials(): FpCredentials {
   try {
-    const parsed = JSON.parse(readFileSync(credentialsFile(), "utf8")) as Record<string, unknown>;
+    return projectCredentials(
+      JSON.parse(readFileSync(credentialsFile(), "utf8")) as Record<string, unknown>,
+    );
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Project a parsed credentials object onto {@link FpCredentials}.
+ *
+ * Split out for the reason {@link projectConfig} is: the layout-2 → 3 carry
+ * parses `credentials.toml` itself and needs the SAME validation, not a copy of
+ * it. The validation is the part worth not duplicating — "a cloud block without
+ * a token is not a cloud block" is a security property, and two readers
+ * disagreeing about it is how a half-written credential gets treated as live.
+ */
+export function projectCredentials(parsed: Record<string, unknown>): FpCredentials {
+  {
     const cloud = parsed.cloud as Record<string, unknown> | undefined;
     const ingest = parsed.ingest as Record<string, unknown> | undefined;
     const auth = parsed.auth as Record<string, unknown> | undefined;
@@ -726,8 +761,6 @@ export function readCredentials(): FpCredentials {
       };
     }
     return out;
-  } catch {
-    return {};
   }
 }
 

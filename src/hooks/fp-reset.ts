@@ -52,7 +52,19 @@ import {
   policiesDir,
   resettablePaths,
 } from "./fp-home";
-import { detectLayout, readConfig, updateConfig, writeVersionFile, type LayoutState } from "./fp-config";
+import {
+  detectLayout,
+  projectConfig,
+  projectCredentials,
+  readConfig,
+  updateConfig,
+  writeConfig,
+  writeCredentials,
+  writeVersionFile,
+  type FpConfig,
+  type FpCredentials,
+  type LayoutState,
+} from "./fp-config";
 import {
   daemonServiceStatus,
   daemonStatusCommand,
@@ -527,14 +539,144 @@ export function readCarriedTelemetryOptOut(): boolean {
   }
 }
 
+/**
+ * Parse the TOML subset layout 2 actually wrote, into the object shape layout 3
+ * parses out of JSON.
+ *
+ * NOT a TOML implementation, and it does not need to be: layout 2's `config.toml`
+ * and `credentials.toml` were written by this codebase, by two functions that
+ * emitted nothing but `[table]` / `[dotted.table]` headers and `key = <value>`
+ * lines where every value went through `JSON.stringify`. So `JSON.parse` on the
+ * right-hand side is EXACT rather than approximate — strings, booleans, numbers
+ * and the one array (`extra_paths`) all round-trip by construction. Removing the
+ * `toml` dependency was half the point of layout 3; adding it back to read two
+ * files we wrote ourselves would undo that.
+ *
+ * The output uses layout 2's own snake_case key names, unchanged, because layout
+ * 3's JSON uses exactly the same ones (`hooks_verbosity`, `machine_id`,
+ * `interval_days`, `sources.<h>.extra_paths`). That is what lets the carry run
+ * `projectConfig` / `projectCredentials` — the SAME projections the JSON readers
+ * use — instead of a second reader that would have to be kept in step. The only
+ * thing that differs between the two layouts is how bytes become an object.
+ *
+ * A dotted header nests: `[collector.sources.claude]` lands at
+ * `collector.sources.claude`, which is where `readSources` looks for it.
+ * Anything unparseable is skipped rather than throwing, because a single
+ * malformed line must not cost the user the whole file.
+ */
+export function parseLegacyToml(text: string): Record<string, unknown> {
+  const root: Record<string, unknown> = {};
+  let table = root;
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (line === "" || line.startsWith("#")) continue;
+    const header = /^\[([^\]]+)\]$/.exec(line);
+    if (header) {
+      table = root;
+      for (const part of header[1].split(".")) {
+        const key = part.trim();
+        if (!key) break;
+        const existing = table[key];
+        if (existing && typeof existing === "object" && !Array.isArray(existing)) {
+          table = existing as Record<string, unknown>;
+        } else {
+          const created: Record<string, unknown> = {};
+          table[key] = created;
+          table = created;
+        }
+      }
+      continue;
+    }
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    if (!key) continue;
+    try {
+      table[key] = JSON.parse(line.slice(eq + 1).trim()) as unknown;
+    } catch {
+      // A value this codebase did not write, or a hand-edit that broke it. Skip
+      // the line; the projection then falls back to that field's default, which
+      // is the same answer an absent key gets.
+    }
+  }
+  return root;
+}
+
+/**
+ * Carry the whole layout-2 `config.toml` across, not just the telemetry opt-out.
+ *
+ * `readCarriedTelemetryOptOut()` above rescued one field, and the reason it was
+ * only one was that the rest was described as "re-derived by setup or a thing the
+ * wizard re-asks". That is true of a machine whose owner is about to re-run
+ * setup, and false of every other machine — `config.toml` also holds:
+ *
+ *   mode                    a machine reverting to `oss` stops reporting entirely
+ *   daemon.configured       the flag that makes the machine FAIL CLOSED
+ *   collector.*             sessions/hooks/verbosity/redact/environment/machine_id
+ *   collector.sources.*     every extra_paths a person typed
+ *   audit.auto/interval     the scheduled scan they switched on
+ *
+ * Losing `daemon.configured` silently downgrades a machine from fail-closed
+ * enforcement to the in-process path, and losing `mode` disconnects it from the
+ * fleet — neither with any message, and neither re-derivable without a human.
+ * Those are the same failures `HOME_CLASSES` stopped for `config.json`; this is
+ * the layout-2 leg of the same problem, in the other format.
+ *
+ * Read BEFORE the deletions (the source is on the retired list), applied after.
+ */
+export function readCarriedLegacyConfig(): FpConfig | null {
+  const from = legacy.configToml();
+  if (!existsSync(from)) return null;
+  try {
+    return projectConfig(parseLegacyToml(readFileSync(from, "utf8")));
+  } catch {
+    // Unreadable is not worth aborting a reset over, and the telemetry carry
+    // below still gets its own chance at the same bytes.
+    return null;
+  }
+}
+
+/**
+ * Carry the layout-2 `credentials.toml` across.
+ *
+ * This is the one that takes a machine off the fleet. `credentials.toml` is on
+ * the retired list and NOTHING carried it, so a layout-2 → 3 upgrade deleted the
+ * cloud token and the ingest key outright: the machine stops reconciling
+ * cloud-managed policy, stops delivering anything it spools, and says nothing —
+ * it keeps enforcing whatever it last had and keeps reporting healthy. On a fleet
+ * that is every box going quiet at once, with no operator action that caused it.
+ *
+ * `HOME_CLASSES` classes `credentials.json` `user-typed` so this cannot happen
+ * again from layout 3 onwards, but 2 → 3 is the upgrade that actually exists to
+ * be run, and it needed this.
+ *
+ * Written through `writeCredentials`, so the file lands 0600 with the home
+ * tightened to 0700 — a token must not arrive here by a path that skips that.
+ */
+export function readCarriedLegacyCredentials(): FpCredentials | null {
+  const from = legacy.credentialsToml();
+  if (!existsSync(from)) return null;
+  try {
+    const creds = projectCredentials(parseLegacyToml(readFileSync(from, "utf8")));
+    // An empty object means the file held nothing that passed validation — a
+    // cloud table with no token, say. Writing that would create a credentials
+    // file that looks present and authenticates nothing.
+    return Object.keys(creds).length > 0 ? creds : null;
+  } catch {
+    return null;
+  }
+}
+
 export function resetHome(from: number): ResetOutcome {
   // BEFORE the deletions, so a file that is mid-move is never one the reset
   // then walks over.
   const migrated = migrateConventionPolicies();
   const activity = migrateHookActivity();
   const pendingPolicyConfig = readCarriedPolicyConfig();
-  // Read before the deletions for the same reason as the policy config: its
-  // source (`config.toml`) is on the list below.
+  // Read before the deletions for the same reason as the policy config: their
+  // sources (`config.toml`, `credentials.toml`) are both on the list below.
+  const pendingConfig = readCarriedLegacyConfig();
+  const pendingCredentials = readCarriedLegacyCredentials();
   const telemetryOptOut = readCarriedTelemetryOptOut();
   const removed: string[] = [];
   for (const path of resettablePaths()) {
@@ -558,8 +700,18 @@ export function resetHome(from: number): ResetOutcome {
   // AFTER the carry, so a layout-2 value that happens to be named `collector`
   // is retired too rather than surviving because it arrived a moment later.
   retirePolicyConfigKeys();
-  // After the deletions, onto the fresh config, so the upgrade cannot revoke a
+  // After the deletions, onto the fresh files, so the upgrade cannot revoke a
   // choice the user made.
+  //
+  // The credentials go first and unconditionally: `daemon.configured` below makes
+  // the machine fail closed, and a machine that fails closed against a fleet it
+  // can no longer authenticate to is worse than either half alone.
+  if (pendingCredentials) writeCredentials(pendingCredentials);
+  if (pendingConfig) writeConfig(pendingConfig);
+  // AFTER the config carry, or a carried `telemetry.enabled: true` — the default,
+  // which is not a choice anyone made — would overwrite the opt-out this reads
+  // straight out of the same file. Both paths end at the same key, and only one
+  // of them represents something a person typed.
   if (telemetryOptOut) updateConfig({ telemetry: { enabled: false } });
   writeVersionFile();
   return { removed, migrated, activity, policyConfig, from };
@@ -610,6 +762,61 @@ export interface LayoutCheck {
  * written by a NEWER CLI holds data this build cannot read but a simple
  * upgrade could, and deleting it would destroy something recoverable.
  */
+/**
+ * Deliver what is already spooled, immediately AFTER the migration.
+ *
+ * The order is the whole subtlety here, and the obvious one is wrong. Flushing
+ * FIRST reads intuitive — get the events out before touching the disk — and it
+ * cannot work: everything a flush needs to run is in a file the stale layout
+ * hasn't got. `readConfig()` reads `config.json` and `readIngestCredential()`
+ * reads `credentials.json`, both of which are LAYOUT-3 files, and a stale home by
+ * definition has neither. Called before the migration, the flush would find no
+ * ingest credential on every machine it ever ran on, refuse, and report nothing
+ * pending — a step that looks like it protects data and is structurally incapable
+ * of doing anything at all.
+ *
+ * Afterwards, both files exist: `readCarriedLegacyCredentials()` has just put the
+ * token back and `readCarriedLegacyConfig()` the mode. So this runs where it can
+ * actually succeed.
+ *
+ * What makes that safe rather than a gamble is that this is NOT the thing
+ * protecting the events. `HOME_CLASSES` classes the spool `undelivered`, so it
+ * survives the migration whatever happens here — losing it would be permanent,
+ * because `cursors/` survives too and the watermark has already advanced past
+ * every batch in it. This is the difference between "delivered" and "delivered on
+ * the next collector pass", which matters only because the collector is unhurried
+ * on purpose (a batch is swept once it is older than two minutes, at most 64 per
+ * pass, on a 60-second cadence) and somebody standing at a dashboard cannot tell
+ * "not yet" from "not working".
+ *
+ * BEST-EFFORT BY CONSTRUCTION. `runFlushCommand` refuses, with its own message
+ * and a non-zero code, on every machine where a flush cannot work: collection
+ * off, no ingest credential, an unsupported platform, no daemon listening. All of
+ * those are ordinary here rather than errors, so the result is read for its COUNT
+ * and its exit code discarded. Bounded at 30s: this sits in front of a command
+ * the user typed, and a spool that will not drain is not a reason to hold their
+ * terminal.
+ */
+async function drainSpoolAfterMigrating(): Promise<number> {
+  try {
+    // Cheap gates first, so an OSS machine and one that never connected cost
+    // nothing at all — no dynamic import, no daemon probe. Read AFTER the
+    // migration, so these see the carried values rather than the defaults a
+    // missing layout-3 file would have produced.
+    const cfg = readConfig();
+    if (cfg.mode !== "cloud") return 0;
+    if (!cfg.collector.hooks && !cfg.collector.sessions) return 0;
+    const { runFlushCommand } = await import("./flush-cli");
+    const result = await runFlushCommand({ wait: true, timeoutSecs: 30 });
+    return result.pending;
+  } catch {
+    // A flush that throws is not a migration failure. Reported as "nothing
+    // pending" because the number only adds a line to a message, and inventing a
+    // count from a failed probe would be worse than saying nothing.
+    return 0;
+  }
+}
+
 export async function checkLayoutForCli(): Promise<LayoutCheck> {
   const state = detectLayout();
 
@@ -630,6 +837,9 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
 
   if (state.kind === "stale") {
     const { removed, migrated, activity } = resetHome(state.found);
+    // After, not before — see the function's own note for why the intuitive
+    // order cannot work.
+    const pending = await drainSpoolAfterMigrating();
     return {
       state,
       fatal: false,
@@ -665,6 +875,19 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
           ? [
               ``,
               `Carried ${activity.length} page(s) of decision history into ${hookActivityDir()}.`,
+            ]
+          : []),
+        // Said only when a backlog actually survived the flush. Silence here
+        // would be the wrong kind: the events are safe, but "safe" and
+        // "delivered" are different states and only one of them shows up on a
+        // dashboard. Naming the count is what stops a user reading an incomplete
+        // dashboard as data loss.
+        ...(pending > 0
+          ? [
+              ``,
+              `${pending} batch(es) were still undelivered and were carried across.`,
+              `They ship on the next collector pass — \`failproofai flush --wait\` now if you`,
+              `are waiting on a dashboard.`,
             ]
           : []),
         // No "run `failproofai config` to set up again". There is nothing to set

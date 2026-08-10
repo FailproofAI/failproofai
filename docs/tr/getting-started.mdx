@@ -1,6 +1,7 @@
 ---
+---
 title: Başlarken
-description: "failproofai'ı kurun, politikaları etkinleştirin ve ajanlarınızın güvenilir şekilde çalışmasını sağlayın"
+description: "failproofai'ı yükleyin, politikaları etkinleştirin ve ajanlarınızı güvenilir bir şekilde çalıştırın"
 icon: rocket
 ---
 
@@ -31,15 +32,15 @@ bun add -g failproofai
 
 <Steps>
   <Step title="Politikaları etkinleştirin">
-    Politikalar, ajanın her araç çağrısından önce ve sonra çalışan kurallardır. Yıkıcı komutları, gizli bilgi sızıntılarını ve hasara neden olmadan diğer başarısızlık modlarını yakalar.
+    Politikalar, her ajan araç çağrısından önce ve sonra çalışan kurallardır. Yıkıcı komutları, gizli anahtar sızıntılarını ve hasar vermeden önce diğer başarısızlık modlarını yakalarlar.
 
     ```bash
     failproofai policies --install
     ```
 
-    Bu, yüklü ajan CLI'lerinize hook girişleri yazar (Claude Code'un `~/.claude/settings.json`, OpenAI Codex'in `~/.codex/hooks.json`, GitHub Copilot CLI'nin `~/.copilot/hooks/failproofai.json`, Cursor Agent'ın `~/.cursor/hooks.json`, OpenCode'un `~/.config/opencode/plugins/failproofai.mjs` konumundaki oluşturulmuş plugin shim'i ve `~/.config/opencode/opencode.json` dosyasındaki `plugin` dizisinde bir kayıt girişi, Pi'nin `~/.pi/agent/settings.json` veya Hermes'in `~/.hermes/config.yaml` dosyası). Birden fazla varsa size sorulacak; `--cli claude codex copilot cursor opencode pi hermes` (herhangi bir alt küme) geçerek sorguyu atlayabilirsiniz.
+    Bu, yüklü ajan CLI'lerinize hook girişleri yazar (Claude Code'un `~/.claude/settings.json`, OpenAI Codex'in `~/.codex/hooks.json`, GitHub Copilot CLI'nin `~/.copilot/hooks/failproofai.json`, Cursor Agent'in `~/.cursor/hooks.json`, OpenCode'un `~/.config/opencode/plugins/failproofai.mjs`'teki oluşturulan eklenti dolgusunu ve `~/.config/opencode/opencode.json`'in `plugin` dizisindeki bir kayıt girişini, Pi'nin `~/.pi/agent/settings.json`'unu, Hermes'in `~/.hermes/config.yaml`'ını, OpenClaw'ın `~/.openclaw/openclaw.json`'unu, Factory Droid'in `~/.factory/hooks.json`'unu, Devin CLI'nin `~/.config/devin/config.json`'unu, Antigravity CLI'nin `~/.gemini/config/hooks.json`'unu veya Goose'un `~/.agents/plugins/failproofai/hooks/hooks.json`'daki otomatik keşfedilen eklenti dizinini). Birden fazlası mevcut olduğunda size sorulacaktır; istem atlamak için `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose` (herhangi bir alt küme) geçirin.
 
-    GitHub Copilot CLI, Cursor Agent, OpenCode ve Pi desteği **beta** aşamasındadır — `--cli copilot`, `--cli cursor`, `--cli opencode` veya `--cli pi` ile kurun. Hermes (hermes-agent, bir Slack/Telegram ağ geçidi) `--cli hermes` ile kullanıcı kapsamında yüklenir ve **ayrıca** çevrimdışı bir denetim kaynağıdır.
+    GitHub Copilot CLI, Cursor Agent, OpenCode ve Pi desteği **beta** aşamasındadır — `--cli copilot`, `--cli cursor`, `--cli opencode` veya `--cli pi` ile yükleyin. Hermes (hermes-agent, bir Slack/Telegram ağ geçidi) `--cli hermes` ile kullanıcı kapsamında yüklenir ve **aynı zamanda** çevrimdışı denetim kaynağıdır. OpenClaw (openclaw ağ geçidi, kendi kendine barındırılan çok kanallı bir asistan) `--cli openclaw` ile kullanıcı kapsamında yüklenir — uygulama işlem içi eklenti hookları aracılığıyla çalışır (`before_agent_finalize` gerçek bir tur sonlandırma kapısıdır, bu nedenle `require-*-before-stop` yerleşikleri uygulanır) — ve **aynı zamanda** çevrimdışı denetim kaynağıdır. Factory Droid (`droid`) `--cli factory` ile yüklenir (kullanıcı + proje kapsamı) ve **aynı zamanda** çevrimdışı denetim kaynağıdır. Devin CLI (`devin`, Cognition) `--cli devin` ile yüklenir (kullanıcı + proje kapsamı) ve **aynı zamanda** çevrimdışı denetim kaynağıdır. Antigravity CLI (`agy`) `--cli antigravity` ile yüklenir (kullanıcı + proje kapsamı) ve **aynı zamanda** çevrimdışı denetim kaynağıdır. Goose (kod adı goose, Block) `--cli goose` ile yüklenir (kullanıcı + proje kapsamı) — yükleyici sadece `~/.agents/plugins/failproofai/` konumunda bir eklenti dizini bırakır ve Goose bunu otomatik olarak keşfeder, ve **aynı zamanda** çevrimdışı denetim kaynağıdır.
 
     ```bash
     failproofai policies --install --scope project
@@ -49,6 +50,11 @@ bun add -g failproofai
     failproofai policies --install --cli opencode --scope project
     failproofai policies --install --cli pi --scope project
     failproofai policies --install --cli hermes --scope user
+    failproofai policies --install --cli openclaw --scope user
+    failproofai policies --install --cli factory --scope project
+    failproofai policies --install --cli devin --scope project
+    failproofai policies --install --cli antigravity --scope project
+    failproofai policies --install --cli goose --scope project
     failproofai policies --install block-sudo block-rm-rf sanitize-api-keys
     ```
   </Step>
@@ -57,25 +63,25 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    Her politikayı, etkinleştirilip etkinleştirilmediğini ve yapılandırılmış parametreleri gösterir.
+    Her politikayı, etkin olup olmadığını ve yapılandırılmış parametreleri gösterir.
   </Step>
   <Step title="Panoyu başlatın">
     ```bash
     failproofai
     ```
 
-    Oturumları göz atabilir, araç çağrılarını inceleyebilir ve politikaları yönetebileceğiniz `http://localhost:8020` konumundaki yerel bir panoyu açar.
+    `http://localhost:8020` adresinde yerel bir pano açar; burada oturumları göz atabilir, araç çağrılarını inceleyebilir ve politikaları yönetebilirsiniz.
   </Step>
   <Step title="Ajanınızı çalıştırın">
-    Claude Code'u her zamanki gibi başlatın. Ajan riskli bir şey denerse, failproofai bunu otomatik olarak durdurur. Bunu çalıştırılır durumda bırakın ve panoda ne olduğunu gözden geçirin.
+    Claude Code'u her zamanki gibi başlatın. Ajan riskli bir şey yapmaya çalışırsa, failproofai bunu otomatik olarak engeller. Bunu çalıştırılıp bırakın ve panoda neler olduğunu gözden geçirin.
   </Step>
 </Steps>
 
 ---
 
-## Politikalar nasıl çalışır
+## Politikalar nasıl çalışır?
 
-Ajan bir araç her çalıştırdığında, Claude Code failproofai'ı bir alt işlem olarak çağırır:
+Her ajan bir araç çalıştırdığında, Claude Code failproofai'ı bir alt işlem olarak çağırır:
 
 ```text
 Claude Code  →  failproofai --hook PreToolUse  →  stdin JSON'ı okur
@@ -83,11 +89,11 @@ Claude Code  →  failproofai --hook PreToolUse  →  stdin JSON'ı okur
                                                  kararı stdout'a yazar
 ```
 
-Her politika üç karardan birini döndürür:
+Her politika şu üç karardan birini döndürür:
 
-- **allow** - ajan normal şekilde devam eder
-- **deny** - eylem engellenir, ajanına neden engelleneceği söylenir
-- **instruct** - ajanın isteminine ek bağlam eklenir
+- **allow** - ajan normal şekilde ilerleme
+- **deny** - işlem engellenir, ajana neden olduğu söylenir
+- **instruct** - ajanın istemine ekstra bağlam eklenir
 
 <Note>
 Politikalar yerel işleminizde çalışır. Hiçbir şey uzak bir hizmete gönderilmez.
@@ -95,9 +101,9 @@ Politikalar yerel işleminizde çalışır. Hiçbir şey uzak bir hizmete gönde
 
 ---
 
-## Kural tabanlı politikalarla ekip politikaları ayarlayın
+## Kural tabanlı politikalar ile takım politikaları ayarlayın
 
-Ekibiniz genelinde kalite standartları oluşturmanın en hızlı yolu `.failproofai/policies/` kuralıdır. Bu dizine politika dosyalarını bırakın ve otomatik olarak yüklenir — bayrak yok, yapılandırma değişikliği yok, kurulum komutu yok.
+Takımınız genelinde kalite standartları oluşturmanın en hızlı yolu `.failproofai/policies/` kuralıdır. Politika dosyalarını bu dizine bırakın ve bunlar otomatik olarak yüklenir — bayrak yok, yapılandırma değişikliği yok, yükleme komutu yok.
 
 <Steps>
   <Step title="Politikalar dizinini oluşturun">
@@ -106,7 +112,7 @@ Ekibiniz genelinde kalite standartları oluşturmanın en hızlı yolu `.failpro
     ```
   </Step>
   <Step title="Politika dosyaları ekleyin">
-    Başlangıç örneklerini kopyalayın veya kendi dosyalarınızı yazın:
+    Başlangıç örneklerini kopyalayın veya kendi politikalarınızı yazın:
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
@@ -124,7 +130,7 @@ Ekibiniz genelinde kalite standartları oluşturmanın en hızlı yolu `.failpro
       fn: async (ctx) => {
         if (ctx.toolName !== "Bash") return allow();
         if (/git\s+commit/.test(ctx.toolInput?.command ?? "")) {
-          return instruct("Run tests before committing.");
+          return instruct("İşlem yapmadan önce testleri çalıştırın.");
         }
         return allow();
       },
@@ -134,30 +140,30 @@ Ekibiniz genelinde kalite standartları oluşturmanın en hızlı yolu `.failpro
   <Step title="Git'e işleyin">
     ```bash
     git add .failproofai/policies/
-    git commit -m "Add team quality policies"
+    git commit -m "Takım kalite politikaları ekle"
     ```
 
-    failproofai yüklü olan her ekip üyesi bu politikaları otomatik olarak alır. Geliştirici başına kurulum gerekmez.
+    failproofai yüklü olan her takım üyesi bu politikaları otomatik olarak alır. Geliştirici başına kurulum gerekmez.
   </Step>
 </Steps>
 
 <Tip>
-Tüm ekibin aynı standartları paylaşması için `.failproofai/policies/` dizinini deponuza işleyin. Ekibiniz yeni başarısızlık modları keşfettikçe politika ekleyin ve gönderin — herkes bir sonraki `git pull` işleminde güncellemeyi alır. Zamanla bu politikalar, sürekli iyileşen ve ekibi güvende tutan canlı bir kalite standardı haline gelir.
+Tüm takımın aynı standartları paylaşması için `.failproofai/policies/` komitini repo'ya yapın. Takımınız yeni başarısızlık modları keşfettikçe, politikalar ekleyin ve gönderin — herkes bir sonraki `git pull`'da güncellemeyi alır. Zaman içinde bu politikalar, sürekli iyileşen canlı bir kalite standardı haline gelir.
 </Tip>
 
 ---
 
-## Veri depolama
+## Veri depolaması
 
 Tüm yapılandırma ve günlükler makinenizde kalır:
 
-| Yol | Ne depolar |
-|------|------------|
-| `~/.failproofai/policies-config.json` | Genel politika yapılandırması |
-| `~/.failproofai/hook-activity.jsonl` | Hook yürütme geçmişi |
-| `~/.failproofai/hook.log` | Özel hook hataları için hata ayıklama günlüğü |
+| Yol | Ne depoladığı |
+|------|----------------|
+| `~/.failproofai/policies/local-policies/policies-config.json` | Global politika yapılandırması |
+| `~/.failproofai/hook-activity/` | Hook yürütme geçmişi (sayfalanmış JSONL) |
+| `~/.failproofai/logs/` | Özel hook hatalarının hata ayıklama günlükleri |
 | `.failproofai/policies-config.json` | Proje başına yapılandırma (işlenmiş) |
-| `.failproofai/policies-config.local.json` | Kişisel geçersiz kılmalar (gitignore) |
+| `.failproofai/policies-config.local.json` | Kişisel geçersiz kılmalar (gitignore'lanmış) |
 
 ---
 
@@ -167,7 +173,7 @@ Tüm yapılandırma ve günlükler makinenizde kalır:
 failproofai policies --uninstall
 ```
 
-`~/.claude/settings.json` dosyasından hook girişlerini kaldırır. `~/.failproofai/` içindeki yapılandırma dosyaları korunur.
+`~/.claude/settings.json` adresinden hook girişlerini kaldırır. `~/.failproofai/` içindeki yapılandırma dosyaları tutulur.
 
 ---
 
@@ -180,15 +186,15 @@ failproofai policies --uninstall
 </Card>
 
 <Card title="Yerleşik politikalar" icon="shield" href="/tr/built-in-policies">
-  Parameterlerle 26 politikanın tümü
+  Tüm 26 politika parametrelerle
 </Card>
 
 <Card title="Özel politikalar" icon="code" href="/tr/custom-policies">
   JavaScript'te kendi politikalarınızı yazın
 </Card>
 
-<Card title="Ajan izleyici" icon="chart-line" href="/tr/dashboard">
-  Oturumları izleyin ve politika etkinliğini gözden geçirin
+<Card title="Ajan monitörü" icon="chart-line" href="/tr/dashboard">
+  Oturumları izleyin ve politika faaliyetini gözden geçirin
 </Card>
 
 </CardGroup>

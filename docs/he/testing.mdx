@@ -1,10 +1,11 @@
 ---
+---
 title: בדיקות
-description: "בדיקות יחידה, בדיקות E2E ועוזרי בדיקה"
+description: "בדיקות יחידה, בדיקות קצה-לקצה ועוזרי בדיקה"
 icon: flask-vial
 ---
 
-failproofai כולל שתי חבילות בדיקה: **בדיקות יחידה** (מהירות, מתואמות) ו**בדיקות מקצה לקצה** (הפעלות תהליך אמיתיות).
+ל-failproofai יש שתי חוביות בדיקה: **בדיקות יחידה** (מהירות, מחוקות) ו**בדיקות קצה-לקצה** (הזעקות subprocess אמיתיות).
 
 ---
 
@@ -14,16 +15,16 @@ failproofai כולל שתי חבילות בדיקה: **בדיקות יחידה**
 # הפעל את כל בדיקות היחידה פעם אחת
 bun run test:run
 
-# הפעל בדיקות יחידה במצב צפייה
+# הפעל בדיקות יחידה במצב watch
 bun run test
 
-# הפעל בדיקות E2E (דורש הגדרה - ראה להלן)
+# הפעל בדיקות E2E (דורש הגדרה - ראה בהמשך)
 bun run test:e2e
 
 # בדוק סוגים ללא בנייה
 bunx tsc --noEmit
 
-# בדוק סטיל
+# Lint
 bun run lint
 ```
 
@@ -31,20 +32,20 @@ bun run lint
 
 ## בדיקות יחידה
 
-בדיקות יחידה נמצאות ב-`__tests__/` וממשות את [Vitest](https://vitest.dev) עם `jsdom`.
+בדיקות יחידה חיות ב-`__tests__/` ומשתמשות ב-[Vitest](https://vitest.dev) עם `jsdom`.
 
 ```text
 __tests__/
   hooks/
-    builtin-policies.test.ts      # לוגיקת מדיניות לכל מדיניות מובנית
-    hooks-config.test.ts          # טעינת תצורה ומיזוג טווח
-    policy-evaluator.test.ts      # הזרקת פרמטרים וסדר הערכה
-    custom-hooks-registry.test.ts # הוספה/קבלה/ניקוי רישום globalThis
-    custom-hooks-loader.test.ts   # טוען ESM, ייבוא מעבר, טיפול בשגיאות
-    manager.test.ts               # פעולות התקנה/הסרה/רשימה
+    builtin-policies.test.ts      # לוגיקת Policy עבור כל builtin
+    hooks-config.test.ts          # טעינת Config ומיזוג scope
+    policy-evaluator.test.ts      # Param injection וסדר הערכה
+    custom-hooks-registry.test.ts # globalThis registry add/get/clear
+    custom-hooks-loader.test.ts   # ESM loader, transitive imports, טיפול שגיאות
+    manager.test.ts               # פעולות install/remove/list
   components/
-    sessions-list.test.tsx        # רכיב רשימת הפעלות
-    project-list.test.tsx         # רכיב רשימת פרויקטים
+    sessions-list.test.tsx        # רכיב רשימת Session
+    project-list.test.tsx         # רכיב רשימת Project
     ...
   lib/
     logger.test.ts
@@ -61,7 +62,7 @@ __tests__/
     AutoRefreshContext.test.tsx
 ```
 
-### כתיבת בדיקת יחידה למדיניות
+### כתיבת בדיקת יחידה של policy
 
 ```typescript
 import { describe, it, expect, beforeEach } from "vitest";
@@ -108,13 +109,13 @@ describe("block-sudo", () => {
 
 ---
 
-## בדיקות מקצה לקצה
+## בדיקות קצה-לקצה
 
-בדיקות E2E מפעילות את הקובץ `failproofai` האמיתי כתהליך משנה, משדרות מטען JSON ל-stdin, ובוחנות את פלט ה-stdout וקוד היציאה. זה בוחן את נתיב ההשתלבות המלא ש-Claude Code משתמש בו.
+בדיקות E2E מעוררות את הקובץ ההפעלה `failproofai` האמיתי כתהליך משנה, משדרות payload JSON ל-stdin, ובודקות את פלט stdout וקוד היציאה. זה בודק את נתיב האינטגרציה המלא שבו Claude Code משתמש.
 
 ### הגדרה
 
-בדיקות E2E מפעילות את הקובץ הבינארי ישירות ממקור המאגר. לפני ההפעלה הראשונה, בנה את ערכת ה-CJS שקבצי hook מותאמים משתמשים בהם בעת ייבוא מ-`'failproofai'`:
+בדיקות E2E הפעילו את הקובץ ההפעלה ישירות מתוך קוד המאגר. לפני ההפעלה הראשונה, בנה את ה-CJS bundle שקובצי custom hook משתמשים בו כשהם מייבאים מ-`'failproofai'`:
 
 ```bash
 bun build src/index.ts --outdir dist --target node --format cjs
@@ -126,33 +127,33 @@ bun build src/index.ts --outdir dist --target node --format cjs
 bun run test:e2e
 ```
 
-בנה מחדש את `dist/` בכל פעם שתשנה את ה-API הציבורי של hook (`src/hooks/custom-hooks-registry.ts`, `src/hooks/policy-helpers.ts`, או `src/hooks/policy-types.ts`).
+בנה מחדש את `dist/` בכל פעם שתשנה את ה-hook API הציבורי (`src/hooks/custom-hooks-registry.ts`, `src/hooks/policy-helpers.ts`, או `src/hooks/policy-types.ts`).
 
 ### מבנה בדיקת E2E
 
 ```text
 __tests__/e2e/
   helpers/
-    hook-runner.ts      # הפעל את הקובץ הבינארי, שדר JSON מטען, ולכוד קוד יציאה + stdout + stderr
-    fixture-env.ts      # ספריות זמניות מבודדות לכל בדיקה עם קבצי תצורה
-    payloads.ts         # מפעלי מטען בדויקות Claude לכל סוג אירוע
+    hook-runner.ts      # Spawn הקובץ ההפעלה, שדר payload JSON, תפוס exit code + stdout + stderr
+    fixture-env.ts      # סביבות מבודדות לפי בדיקה עם קובצי config
+    payloads.ts         # מפעלות payload מדויקות ל-Claude לכל סוג event
   hooks/
-    builtin-policies.e2e.test.ts   # כל מדיניות מובנית עם תהליך משנה אמיתי
-    custom-hooks.e2e.test.ts       # טעינה והערכה של hook מותאם
-    config-scopes.e2e.test.ts      # מיזוג תצורה בין פרויקט/מקומי/גלובלי
-    policy-params.e2e.test.ts      # הזרקת פרמטרים לכל מדיניות שניתנת לפרמטריזציה
+    builtin-policies.e2e.test.ts   # כל builtin policy עם subprocess אמיתי
+    custom-hooks.e2e.test.ts       # טעינה והערכה של custom hook
+    config-scopes.e2e.test.ts      # מיזוג Config על פני project/local/global
+    policy-params.e2e.test.ts      # Param injection לכל parameterized policy
 ```
 
 ### שימוש בעוזרי E2E
 
-**`FixtureEnv`** - סביבה מבודדת לכל בדיקה:
+**`FixtureEnv`** - סביבה מבודדת לפי בדיקה:
 
 ```typescript
 import { createFixtureEnv } from "../helpers/fixture-env";
 
 const env = createFixtureEnv();
-// env.cwd    - ספרייה זמנית; העבר כ-payload.cwd כדי לבחור ב-.failproofai/policies-config.json
-// env.home   - ספרית בית מבודדת; ללא דליפות אמיתיות ~/.failproofai
+// env.cwd    - temp dir; עבור כ-payload.cwd לקליטת .failproofai/policies-config.json
+// env.home   - isolated home dir; בלי דליפות אמיתיות של ~/.failproofai
 
 env.writeConfig({
   enabledPolicies: ["block-sudo"],
@@ -162,9 +163,9 @@ env.writeConfig({
 });
 ```
 
-`createFixtureEnv()` רושמת ניקוי `afterEach` באופן אוטומטי.
+`createFixtureEnv()` רושם `afterEach` ניקוי באופן אוטומטי.
 
-**`runHook`** - הפעל את הקובץ הבינארי:
+**`runHook`** - העיר את הקובץ ההפעלה:
 
 ```typescript
 import { runHook } from "../helpers/hook-runner";
@@ -180,7 +181,7 @@ expect(result.exitCode).toBe(0);
 expect(result.parsed?.hookSpecificOutput?.permissionDecision).toBe("deny");
 ```
 
-**`Payloads`** - מפעלי מטען מוכנים:
+**`Payloads`** - מפעלות payload מוכנות:
 
 ```typescript
 Payloads.preToolUse.bash(command, cwd)
@@ -233,28 +234,28 @@ describe("block-rm-rf (E2E)", () => {
 
 ### צורות תגובה E2E
 
-| החלטה | קוד יציאה | stdout |
+| החלטה | Exit code | stdout |
 |----------|-----------|--------|
 | `PreToolUse` deny | `0` | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"..."}}` |
 | `PostToolUse` deny | `0` | `{"hookSpecificOutput":{"additionalContext":"Blocked ... because: ..."}}` |
 | Instruct (non-Stop) | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
-| Stop instruct | `2` | stdout ריק; סיבה ב-stderr |
-| Allow | `0` | מחרוזת ריקה |
+| Stop instruct | `2` | empty stdout; reason in stderr |
+| Allow | `0` | empty string |
 
-### תצורת Vitest
+### Vitest config
 
 בדיקות E2E משתמשות ב-`vitest.config.e2e.mts` עם:
 
 - `environment: "node"` - אין צורך בגלובלים של דפדפן
 - `pool: "forks"` - בידוד תהליך אמיתי (בדיקות משדרות תהליכים משניים)
-- `testTimeout: 20_000` - 20 שניות לכל בדיקה (הפעלת קובץ בינארי + הערכת hook)
+- `testTimeout: 20_000` - 20 שניות לכל בדיקה (startup של קובץ הפעלה + hook eval)
 
-ה-`forks` pool חשוב: עובדים מבוססי thread משתפים את `globalThis`, מה שיכול להפריע לבדיקות המשדרות תהליכים משניים. forks מבוססי תהליך מונעים זאת.
+ה-`forks` pool חשוב: עובדי מבוססי thread משתפים `globalThis`, מה שיכול להפריע לבדיקות המשדרות תהליכים משניים. Process-based forks מונעים זאת.
 
 ---
 
 ## CI
 
-הריצה המלאה ב-CI (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) חייבת להעביר לפני מיזוג. הצד E2E פועל כעבודת CI נפרדת במקביל.
+ההפעלה CI המלאה (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) נדרשת כדי להעביר טהור לפני מיזוג. חוביית E2E רצה כעבודת CI נפרדת במקביל.
 
-ראה [תרומה](../CONTRIBUTING.md) לרשימת הבדיקה המלאה לפני מיזוג.
+ראה [Contributing](../CONTRIBUTING.md) לקבלת רשימת הבדיקה המלאה לפני מיזוג.

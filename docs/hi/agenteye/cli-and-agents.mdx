@@ -1,10 +1,11 @@
 ---
+---
 title: "CLI"
-description: "आपकी संपूर्ण Failproof AI Observability डिप्लॉयमेंट, बस एक कमांड दूर।"
+description: "आपकी संपूर्ण Failproof AI Observability deployment, एक कमांड की दूरी पर।"
 ---
 
 
-आपकी संपूर्ण Failproof AI Observability डिप्लॉयमेंट, बस एक कमांड दूर। प्रोडक्शन की जांच करें, API की बनाएं, या घटना को स्वीकार करें — सब कुछ अपने टर्मिनल से ही करें। फिर इसे CI में स्क्रिप्ट करें, या किसी कोडिंग एजेंट को सादी अंग्रेजी में निर्देश दें।
+आपकी संपूर्ण Failproof AI Observability deployment, एक कमांड की दूरी पर। Production को देखें, API key काटें, या incident को स्वीकार करें, सब कुछ अपने terminal से बाहर निकले बिना, फिर इसे CI में script करें, या एक coding agent को plain English में इसे करने दें।
 
 ```bash
 pipx install agenteye
@@ -12,18 +13,18 @@ agenteye login --email you@example.com      # a 6-digit code lands in your inbox
 agenteye --json sessions --since 24h         # every agent run from the last day, newest first
 ```
 
-*`agenteye` CLI आपके डैशबोर्ड से बात करता है। यह कलेक्टर से अलग टूल है, जो सर्वर को इवेंट भेजता है।*
+*`agenteye` CLI आपके dashboard से बात करता है। यह collector से एक अलग tool है, जो server को events भेजता है।*
 
-## आपकी पूरी डिप्लॉयमेंट, एक कमांड में
+## आपकी पूरी deployment, एक कमांड की दूरी पर
 
-टैब के बीच भटकना बंद करें और जल्दी सवाल का जवाब पाएं। `agenteye` CLI आपके डेटा को पढ़ता है और एक ही बाइनरी से आपके संगठन को प्रबंधित करता है। जो जांच पहले डैशबोर्ड में क्लिक करने से होती थी, वह अब एक लाइन में हो जाती है — जिसे आप फिर से चला सकते हैं, एलियास बना सकते हैं, या runbook में पेस्ट कर सकते हैं। आपको चार इंटरफेस मिलते हैं:
+एक त्वरित सवाल का जवाब देने के लिए tab-hopping बंद करें। `agenteye` CLI आपके data को पढ़ता है और एक single binary से अपने org को manage करता है, इसलिए एक check जो पहले dashboard के through clicking का मतलब था, अब एक line बन जाता है जिसे आप rerun कर सकते हैं, alias कर सकते हैं, या runbook में paste कर सकते हैं। आपको चार surfaces मिलते हैं:
 
-- **अपने डेटा को पढ़ें:** `sessions`, `events`, `evals`, और `errors`, जिन्हें समय, एजेंट और वातावरण से फ़िल्टर करें।
-- **अपने संगठन को प्रबंधित करें:** `keys`, `users`, `settings`, `alerts`, और `incidents`।
-- **विश्लेषण चलाएं:** सेव किए हुए SQL और आपके इवेंट डेटा पर ad-hoc `query` रनर।
-- **सहायक से पूछें:** `agent ask` वही read-only विश्लेषक तक पहुंचता है जिससे आप डैशबोर्ड में बात करते हैं।
+- **अपना data पढ़ें:** `sessions`, `events`, `evals`, और `errors`, time, agent, और environment के आधार पर filtered।
+- **अपने org को manage करें:** `keys`, `users`, `settings`, `alerts`, और `incidents`।
+- **Analytics चलाएं:** saved SQL plus एक ad-hoc `query` runner आपके event data पर।
+- **Assistant से पूछें:** `agent ask` उसी read-only analyst तक पहुंचता है जिससे आप dashboard में chat करते हैं।
 
-`pipx` से एक बार इंस्टॉल करें, ईमेल किए गए 6-अंकीय कोड से साइन इन करें, और आप तैयार हैं। सत्र लगभग एक दिन तक चलता है; समय समाप्त होने पर `agenteye login` फिर से चलाएं। इसे प्रोडक्शन की जांच करने, कुंजी प्रदान करने, या एक विफल घटना को वर्गीकृत करने के लिए उपयोग करें — सब कुछ बिना ब्राउजर खोले:
+इसे एक बार `pipx` के साथ install करें, emailed 6-digit code के साथ sign in करें, और आप तैयार हैं। Session लगभग एक दिन तक रहता है; जब यह expire हो, तो `agenteye login` को rerun करें। Production को spot-check करने, key provision करने, या firing incident को triage करने के लिए इसे reach करें, सब कुछ browser खोले बिना:
 
 ```bash
 agenteye errors --since 24h --aggregate      # what is breaking, grouped by error type
@@ -31,25 +32,25 @@ agenteye incidents list --state firing       # what is on fire right now
 agenteye keys create ci --add events:add     # a key that can only push events, secret shown once
 ```
 
-एक आदत जानने के लिए: वैश्विक विकल्प जैसे `--json` कमांड से पहले जाते हैं। `agenteye --json sessions` सही है; `agenteye sessions --json` नहीं है।
+जानने वाली एक आदत: global options जैसे `--json` command से पहले जाते हैं। `agenteye --json sessions` सही है; `agenteye sessions --json` नहीं है।
 
-## इसे स्क्रिप्ट करें, CI में जोड़ें
+## इसे Script करें, CI में wire करें
 
-हर कमांड `--json` लेता है, और यह सबकुछ बदल देता है। स्वच्छ JSON stdout पर जाता है जबकि मानवीय स्थिति और चेतावनियां stderr पर जाती हैं, इसलिए `--json` कैप्चर `jq` में सीधे पाइप होता है — कोई भी लाइन हटाने के लिए नहीं। यही कारण है कि CLI टर्मिनल प्रॉम्प्ट पर आपके लिए और कोडिंग एजेंट के लिए आउटपुट को पार्स करने के लिए समान रूप से अच्छा है:
+हर command `--json` लेता है, और यह सब कुछ बदल देता है। Clean JSON stdout को जाता है जबकि human status और warnings stderr को जाते हैं, इसलिए एक `--json` capture सीधे `jq` में pipe हो जाता है बिना किसी stray line को strip किए। यह वह है जो CLI को आपके लिए prompt पर और एक coding agent के लिए output को parse करने के लिए equally अच्छा बनाता है:
 
 ```bash
 agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
 ```
 
-यह बिना निरीक्षण के चलने के लिए बनाया गया है। पुष्टि संकेत स्वचालित रूप से छोड़ दिए जाते हैं जब कोई टर्मिनल संलग्न नहीं होता, इसलिए पाइपलाइन में कुछ भी लटकता नहीं है, और हर कमांड एक सार्थक exit code देता है: `0` सफल, `4` लॉगिन नहीं किया गया, `5` अनुमति नहीं है (संदेश इसे नाम देता है, उदाहरण के लिए `alerts:write`), `3` डैशबोर्ड unreachable। एक स्क्रिप्ट `4` पर पुनः प्रमाणीकरण करने या `5` पर आपको यह बताने के लिए शाखा कर सकता है कि एक admin से क्या मांगना है, अंधे विफल होने के बजाय।
+यह unattended चलाने के लिए बनाया गया है। Confirmation prompts auto-skip हो जाते हैं जब कोई terminal attached नहीं होता, इसलिए कुछ भी pipeline में hang नहीं होता, और हर command एक meaningful exit code return करता है: `0` success, `4` not logged in, `5` missing a permission (message इसे names करता है, उदाहरण के लिए `alerts:write`), `3` dashboard unreachable। एक script एक `4` पर reauthenticate करने के लिए या एक `5` पर branch कर सकता है ताकि आप बिल्कुल बता सकें कि admin से क्या मांगना है, blind fail करने के बजाय।
 
-## एक कोडिंग एजेंट को सादी अंग्रेजी में ड्राइव करने दें
+## एक coding agent को plain English में इसे drive करने दें
 
-इससे भी बेहतर, आपको इन सभी flags को याद नहीं रखना चाहिए। **CLI skill** एक छोटा Agent Skill फोल्डर है जिसे `agenteye-cli` कहा जाता है जो Claude Code या Codex जैसे कोडिंग एजेंट को सादी-अंग्रेजी अनुरोधों से CLI चलाना सिखाता है। पूछें "क्या आज कुछ टूटा है?" और एजेंट कमांड चुनता है, इसे आपके रूप में चलाता है, और गद्य में उत्तर देता है।
+बेहतर है कि आपको इन flags में से किसी को भी याद रखना नहीं चाहिए। **CLI skill** एक small Agent Skill folder है जिसे `agenteye-cli` नाम दिया गया है जो एक coding agent जैसे Claude Code या Codex को plain-English requests से CLI को drive करना सिखाता है। "क्या आज कुछ broken है?" पूछें और agent command pick करता है, इसे आप के रूप में run करता है, और prose में जवाब देता है।
 
-Claude Code के लिए, `agenteye-cli` फोल्डर को `~/.claude/skills/` में ड्रॉप करें और यह स्वचालित रूप से खोजा जाता है। Failproof AI Observability फोल्डर प्रदान करता है; कुछ भी अतिरिक्त इंस्टॉल करने के लिए नहीं है, क्योंकि यह केवल CLI को चलाता है जो आप पहले से इंस्टॉल कर चुके हैं। पहले स्वयं लॉगिन करें: skill ईमेल किए गए कोड लॉगिन को पूरा नहीं कर सकता।
+Claude Code के लिए, `agenteye-cli` folder को `~/.claude/skills/` में drop करें और यह auto-discovered होता है। Failproof AI Observability folder प्रदान करता है; install करने के लिए कोई extra नहीं है, क्योंकि यह केवल CLI को drive करता है जो आप पहले से install कर चुके हैं। पहले अपने आप को log in करें: skill emailed-code login को complete नहीं कर सकता है आपके लिए।
 
-क्योंकि एजेंट आपके रूप में CLI चलाता है, यह सब कुछ कर सकता है जो आपकी लॉगिन अनुमति देती है, पढ़ना और लिखना दोनों: कुंजियां बनाएं, सेटिंग्स बदलें, घटनाओं को हल करें। CLI का "क्या आप सुनिश्चित हैं?" संकेत एजेंट के लिए नहीं आता, इसलिए skill ठीक कमांड बताने और किसी भी परिवर्तन से पहले आपकी ठीक होने का इंतजार करने के लिए लिखा गया है। आप पुष्टि चरण हैं।
+क्योंकि agent CLI को आप के रूप में run करता है, यह सब कुछ कर सकता है जो आपकी login permit करती है, reads और writes दोनों: keys create करें, settings बदलें, incidents resolve करें। CLI का "क्या आप सुनिश्चित हैं?" prompt agent के लिए fire नहीं होता है, इसलिए skill को exact command state करने और किसी भी change से पहले आपके OK की प्रतीक्षा करने के लिए लिखा जाता है। आप confirmation step हैं।
 
 ```text
 you    Why did session run-001 fail?
@@ -58,7 +59,7 @@ agent  Running: agenteye --json events --session-id run-001 --all
        The checkout-agent hit a TimeoutError on its third tool call.
 ```
 
-पढ़ना तुरंत रहता है, और हर लेखन आपके लिए रुकता है:
+Reads instant रहते हैं, और हर write आपके लिए pause करता है:
 
 ```text
 you    Give CI a key that can only push events.
@@ -74,7 +75,7 @@ agent  Done. Key "ci" created with events:add only. The secret is shown once, so
 
 ## संबंधित
 
-- [CLI reference](/hi/agenteye/cli): हर कमांड, flag, और JSON shape।
-- [CLI recipes for agents](/hi/agenteye/cli-recipes): copy-paste `jq` पैटर्न और exit-code हैंडलिंग।
-- [CLI agent skill](/hi/agenteye/cli-skill): `agenteye-cli` skill को इंस्टॉल और चलाएं।
-- [AI assistant](/hi/agenteye/assistant): डैशबोर्ड विश्लेषक जिससे `agent ask` बात करता है।
+- [CLI reference](/hi/agenteye/cli): हर command, flag, और JSON shape।
+- [CLI recipes for agents](/hi/agenteye/cli-recipes): copy-paste `jq` patterns और exit-code handling।
+- [CLI agent skill](/hi/agenteye/cli-skill): `agenteye-cli` skill को install और run करें।
+- [AI assistant](/hi/agenteye/assistant): in-dashboard analyst जिससे `agent ask` बात करता है।

@@ -1,10 +1,10 @@
 ---
 title: "CLI"
-description: "Failproof AI Observability 배포 전체를 명령어 하나로 관리하세요."
+description: "Failproof AI Observability 배포 전체를 명령어 하나로."
 ---
 
 
-Failproof AI Observability 배포 전체를 명령어 하나로 관리하세요. 터미널을 벗어나지 않고 프로덕션을 확인하고, API 키를 생성하고, 인시던트를 처리할 수 있습니다. CI에 스크립트로 연결하거나, 코딩 에이전트가 일반적인 영어 문장으로 대신 처리하도록 할 수도 있습니다.
+Failproof AI Observability 배포 전체를 명령어 하나로. 터미널을 떠나지 않고 프로덕션을 확인하고, API 키를 발급하고, 인시던트를 확인(ack)하세요. 그런 다음 CI에 스크립트로 통합하거나, 코딩 에이전트가 자연어로 대신 처리하도록 할 수도 있습니다.
 
 ```bash
 pipx install agenteye
@@ -12,18 +12,18 @@ agenteye login --email you@example.com      # a 6-digit code lands in your inbox
 agenteye --json sessions --since 24h         # every agent run from the last day, newest first
 ```
 
-*`agenteye` CLI는 대시보드와 통신합니다. 이벤트를 서버로 전송하는 콜렉터와는 다른 도구입니다.*
+*`agenteye` CLI는 대시보드와 통신합니다. 이 도구는 이벤트를 서버로 전송하는 컬렉터와는 별개입니다.*
 
 ## 배포 전체를 명령어 하나로
 
-간단한 질문에 답하기 위해 탭을 전환하는 일을 그만하세요. `agenteye` CLI는 단일 바이너리로 데이터를 조회하고 조직을 관리합니다. 예전에는 대시보드를 클릭해야 했던 확인 작업이 이제 한 줄의 명령어가 되며, 재실행하거나 별칭을 지정하거나 런북에 붙여 넣을 수 있습니다. 네 가지 기능 영역을 제공합니다:
+간단한 질문 하나 답하려고 탭을 여러 개 열지 마세요. `agenteye` CLI는 단일 바이너리로 데이터를 읽고 조직을 관리합니다. 대시보드를 클릭해가며 확인하던 작업이 한 줄짜리 명령어로 바뀌어, 재실행하거나 alias로 등록하거나 runbook에 붙여넣을 수 있습니다. 네 가지 영역을 지원합니다:
 
-- **데이터 조회:** `sessions`, `events`, `evals`, `errors`를 시간, 에이전트, 환경별로 필터링.
-- **조직 관리:** `keys`, `users`, `settings`, `alerts`, `incidents` 관리.
-- **분석 실행:** 저장된 SQL과 이벤트 데이터에 대한 임시 `query` 실행기.
-- **어시스턴트 요청:** `agent ask`로 대시보드의 읽기 전용 분석가와 동일한 기능 이용.
+- **데이터 조회:** `sessions`, `events`, `evals`, `errors` — 시간, 에이전트, 환경별로 필터링 가능.
+- **조직 관리:** `keys`, `users`, `settings`, `alerts`, `incidents`.
+- **분석 실행:** 저장된 SQL과 이벤트 데이터에 대한 임시 `query` 실행.
+- **어시스턴트 질의:** `agent ask`로 대시보드의 읽기 전용 분석가와 동일한 기능을 사용.
 
-`pipx`로 한 번 설치하고, 이메일로 전송된 6자리 코드로 로그인하면 바로 사용할 수 있습니다. 세션은 약 하루 동안 유지되며, 만료되면 `agenteye login`을 다시 실행하세요. 브라우저를 열지 않고도 프로덕션 상태를 확인하고, 키를 프로비저닝하고, 발생 중인 인시던트를 분류할 수 있습니다:
+`pipx`로 한 번 설치하고, 이메일로 전송된 6자리 코드로 로그인하면 바로 사용할 수 있습니다. 세션은 약 하루 동안 유지되며, 만료되면 `agenteye login`을 다시 실행하세요. 브라우저를 열지 않고 프로덕션 상태를 점검하거나, 키를 발급하거나, 발생 중인 인시던트를 분류하는 데 활용하세요:
 
 ```bash
 agenteye errors --since 24h --aggregate      # what is breaking, grouped by error type
@@ -31,25 +31,25 @@ agenteye incidents list --state firing       # what is on fire right now
 agenteye keys create ci --add events:add     # a key that can only push events, secret shown once
 ```
 
-알아두어야 할 습관이 하나 있습니다. `--json`과 같은 전역 옵션은 커맨드 앞에 위치해야 합니다. `agenteye --json sessions`는 올바르지만, `agenteye sessions --json`은 그렇지 않습니다.
+알아두어야 할 한 가지 습관: `--json`과 같은 전역 옵션은 명령어 앞에 위치합니다. `agenteye --json sessions`가 맞고, `agenteye sessions --json`은 틀립니다.
 
-## 스크립트로 작성하거나 CI에 연결하기
+## 스크립트로 만들고 CI에 연결하기
 
-모든 커맨드에 `--json`을 사용할 수 있으며, 이것이 모든 것을 바꿉니다. 깔끔한 JSON은 stdout으로, 사람이 읽는 상태 메시지와 경고는 stderr로 출력됩니다. 따라서 `--json` 캡처는 불필요한 줄을 제거할 필요 없이 `jq`로 바로 파이프할 수 있습니다. 이 덕분에 CLI는 프롬프트에서 직접 사용하는 경우와 출력을 파싱하는 코딩 에이전트 모두에게 똑같이 유용합니다:
+모든 명령어는 `--json`을 지원하며, 이것이 모든 것을 바꿉니다. 깔끔한 JSON은 stdout으로, 사람이 읽는 상태 메시지와 경고는 stderr로 출력됩니다. 따라서 `--json` 출력은 불필요한 줄 제거 없이 바로 `jq`로 파이프할 수 있습니다. 이 덕분에 CLI는 터미널에서 직접 사용하는 경우와 출력을 파싱하는 코딩 에이전트 모두에게 동일하게 유용합니다:
 
 ```bash
 agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
 ```
 
-비대화형 환경에서도 실행되도록 설계되었습니다. 터미널이 연결되지 않은 경우 확인 프롬프트가 자동으로 생략되므로 파이프라인에서 중단되는 일이 없으며, 모든 커맨드는 의미 있는 종료 코드를 반환합니다: `0` 성공, `4` 로그인 필요, `5` 권한 부족(예: `alerts:write`처럼 메시지에 명시됨), `3` 대시보드 연결 불가. 스크립트는 `4`를 감지해 재인증하거나, `5`를 감지해 관리자에게 어떤 권한을 요청해야 하는지 정확히 알 수 있어 원인을 모른 채 실패하는 상황을 방지합니다.
+비대화형 환경에서도 동작하도록 설계되었습니다. 터미널이 연결되어 있지 않으면 확인 프롬프트가 자동으로 건너뛰어 파이프라인이 멈추지 않으며, 모든 명령어는 의미 있는 종료 코드를 반환합니다: `0` 성공, `4` 미로그인, `5` 권한 부족(예: `alerts:write`처럼 메시지에 구체적으로 명시됨), `3` 대시보드 연결 불가. 스크립트에서 `4`를 받으면 재인증 로직을, `5`를 받으면 관리자에게 정확히 무엇을 요청해야 하는지 표시하는 로직을 분기할 수 있습니다. 더 이상 원인 모를 실패가 없습니다.
 
-## 코딩 에이전트가 일반 문장으로 구동하도록 하기
+## 코딩 에이전트가 자연어로 대신 처리하도록 하기
 
-더 나아가, 이런 플래그들을 전혀 기억하지 않아도 됩니다. **CLI 스킬**은 `agenteye-cli`라는 작은 Agent Skill 폴더로, Claude Code나 Codex 같은 코딩 에이전트가 일반 영어 요청으로 CLI를 구동할 수 있도록 합니다. "오늘 문제가 있나요?"라고 물으면 에이전트가 적절한 커맨드를 선택하고, 사용자 권한으로 실행한 뒤, 산문으로 답변합니다.
+더 나아가, 이런 플래그들을 일일이 기억할 필요가 없어야 합니다. **CLI skill**은 `agenteye-cli`라는 작은 Agent Skill 폴더로, Claude Code나 Codex 같은 코딩 에이전트가 자연어 요청으로 CLI를 구동할 수 있게 해줍니다. "오늘 문제가 있는 게 있나요?"라고 물으면 에이전트가 적절한 명령어를 선택해 실행하고 결과를 문장으로 답합니다.
 
-Claude Code의 경우, `agenteye-cli` 폴더를 `~/.claude/skills/`에 넣으면 자동으로 인식됩니다. Failproof AI Observability가 해당 폴더를 제공하며, 이미 설치한 CLI를 구동하는 것이므로 추가로 설치할 것은 없습니다. 먼저 직접 로그인하세요. 스킬은 이메일 코드 로그인을 대신 완료할 수 없습니다.
+Claude Code의 경우, `agenteye-cli` 폴더를 `~/.claude/skills/`에 넣으면 자동으로 인식됩니다. Failproof AI Observability가 해당 폴더를 제공하며, 이미 설치된 CLI를 구동하는 것뿐이므로 별도로 설치할 것이 없습니다. 먼저 직접 로그인해두세요: skill은 이메일 코드 로그인을 대신 완료할 수 없습니다.
 
-에이전트는 사용자 로그인으로 CLI를 실행하므로, 키 생성, 설정 변경, 인시던트 해결 등 로그인 권한으로 할 수 있는 모든 작업(읽기 및 쓰기 모두)을 수행할 수 있습니다. 에이전트에게는 CLI의 "확인하시겠습니까?" 프롬프트가 실행되지 않으므로, 스킬은 변경 작업 전에 정확한 커맨드를 명시하고 사용자의 승인을 기다리도록 설계되어 있습니다. 사용자가 확인 단계입니다.
+에이전트는 여러분의 로그인으로 CLI를 실행하기 때문에, 읽기와 쓰기 모두 여러분의 권한 범위 내에서 가능합니다: 키 생성, 설정 변경, 인시던트 해결 등. 에이전트에서는 CLI의 "정말 진행하시겠습니까?" 프롬프트가 실행되지 않으므로, skill은 변경 사항이 있을 때 정확한 명령어를 먼저 표시하고 여러분의 승인을 기다리도록 작성되어 있습니다. 여러분이 확인 단계입니다.
 
 ```text
 you    Why did session run-001 fail?
@@ -58,7 +58,7 @@ agent  Running: agenteye --json events --session-id run-001 --all
        The checkout-agent hit a TimeoutError on its third tool call.
 ```
 
-읽기 작업은 즉시 수행되며, 모든 쓰기 작업은 사용자 승인을 기다립니다:
+읽기는 즉시 실행되며, 모든 쓰기는 여러분의 확인을 기다립니다:
 
 ```text
 you    Give CI a key that can only push events.
@@ -74,7 +74,7 @@ agent  Done. Key "ci" created with events:add only. The secret is shown once, so
 
 ## 관련 문서
 
-- [CLI 레퍼런스](/ko/agenteye/cli): 모든 커맨드, 플래그, JSON 형식.
-- [에이전트를 위한 CLI 레시피](/ko/agenteye/cli-recipes): 복사해서 사용할 수 있는 `jq` 패턴과 종료 코드 처리.
-- [CLI 에이전트 스킬](/ko/agenteye/cli-skill): `agenteye-cli` 스킬 설치 및 실행.
+- [CLI 참조](/ko/agenteye/cli): 모든 명령어, 플래그, JSON 구조.
+- [에이전트를 위한 CLI 레시피](/ko/agenteye/cli-recipes): 복사해서 바로 쓰는 `jq` 패턴과 종료 코드 처리.
+- [CLI 에이전트 skill](/ko/agenteye/cli-skill): `agenteye-cli` skill 설치 및 실행.
 - [AI 어시스턴트](/ko/agenteye/assistant): `agent ask`가 연결되는 대시보드 내 분석가.

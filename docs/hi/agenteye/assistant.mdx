@@ -1,15 +1,16 @@
 ---
+---
 title: "AI Assistant"
-description: "अपने agent data से plain English में कोई सवाल पूछें और ऐसा जवाब पाएं जो सीधे सबूत से जुड़ा हो।"
+description: "अपने agent डेटा से सादे अंग्रेजी में एक सवाल पूछें और एक जवाब पाएं जो सीधे सबूत से जुड़ा हो।"
 ---
 
 
-अपने agent data से plain English में कोई सवाल पूछें और ऐसा जवाब पाएं जो सीधे सबूत से जुड़ा हो। SQL लिखने की जरूरत नहीं, dashboards में खोदाई करने की कोई बात नहीं — **Failproof AI Observability** assistant आपकी team के किसी भी सदस्य के लिए agents के बारे में जवाब पाने का सबसे तेज़ तरीका है।
+अपने agent डेटा से सादे अंग्रेजी में एक सवाल पूछें और एक जवाब पाएं जो सीधे सबूत से जुड़ा हो। SQL लिखने की जरूरत नहीं, dashboards में खोजने की परेशानी नहीं — **Failproof AI Observability** assistant आपकी टीम के किसी को भी अपने agents के बारे में जवाब पाने का सबसे तेज़ तरीका है।
 
-![Failproof AI Observability assistant dashboard के अंदर plain-English सवाल का जवाब दे रहा है, जिसमें live Agent Activity table, per-agent model-usage breakdown, और लिखित takeaways दिख रहे हैं, साथ ही वह queries दिखाई दे रही हैं जो यह चलाई](/agenteye/images/assistant.png)
-*Plain English में पूछें और अपने ही data से बना जवाब पाएं। यहां यह बताता है कि कौन से agents सबसे ज्यादा व्यस्त हैं और वे कौन से models use करते हैं, और वह queries दिखाता है जो यह चलाई ताकि आप हर संख्या को verify कर सकें।*
+![Failproof AI Observability assistant dashboard के अंदर एक सादे-अंग्रेजी सवाल का जवाब देते हुए, एक live Agent Activity table, प्रति-agent model-usage breakdown, और लिखी गई takeaways दिखाते हुए, जिसमें यह चलाई गई queries inline दिखाई गई हैं](/agenteye/images/assistant.png)
+*सादे अंग्रेजी में पूछें और अपने डेटा से बना एक जवाब पाएं। यह दिखाता है कि कौन से agents सबसे व्यस्त हैं और वे कौन से models उपयोग करते हैं, और चलाई गई queries दिखाता है ताकि आप हर संख्या को सत्यापित कर सकें।*
 
-सीखने के लिए कुछ नहीं है। chat खोलें, टाइप करें कि आप क्या जानना चाहते हैं, और जो links यह देता है उन्हें follow करें:
+सीखने के लिए कुछ नहीं है। Chat खोलें, टाइप करें कि आप क्या जानना चाहते हैं, और इसे वापस पास किए गए links को फॉलो करें:
 
 ```
 You:  which sessions errored today?
@@ -26,38 +27,38 @@ AI:   This run took 12 steps across 3 tools and failed near the end when a
 
 ## बस पूछें, और सीधे सबूत तक पहुंचें
 
-आप अनुमान लगाना बंद करते हैं और queries लिखना बंद करते हैं। "यह हफ्ता prod में quality कैसी trend कर रही है?", "आज कौन से sessions error हुए?", या "इस session को summarize करें," पूछें और आपको कुछ सेकंड में सीधा जवाब मिलता है बजाय query बनाने और खुद पढ़ने के।
+आप अनुमान लगाना बंद कर देते हैं और query लिखना बंद कर देते हैं। "prod में इस हफ्ते quality कैसे trending है?", "आज कौन से sessions error हुए?", या "इस session को summarize करें" पूछें, और आपको query बनाने और खुद पढ़ने की जगह कुछ ही सेकंड में सीधा जवाब मिलता है।
 
-हर जवाब अपने receipts के साथ आता है। assistant उन exact sessions, saved queries, और dashboards को link करता है जिन्हें यह जवाब तक पहुंचने के लिए use करता है, ताकि आप click करके confirm कर सकें बजाय इसके word पर भरोसा करने के। यह **page-aware** भी है: जब आप किसी को view कर रहे हों तो "इस session" के बारे में पूछें और यह पहले से ही जानता है कि आप किस run की बात कर रहे हैं। history switcher से कोई भी earlier conversation फिर से खोलें और वहीं से शुरू करें जहां आप रुके थे।
+हर जवाब अपनी receipts के साथ आता है। Assistant सटीक sessions, saved queries, और dashboards को link करता है जिसे यह जवाब तक पहुंचने के लिए उपयोग करता है, इसलिए आप अपने शब्द पर विश्वास करने की जगह क्लिक कर सकते हैं और पुष्टि कर सकते हैं। यह **page-aware** भी है: जब आप एक को देख रहे हों तो "इस session" के बारे में पूछें और यह पहले से ही जानता है कि आपका मतलब कौन सी run है। किसी भी पहले की बातचीत को history switcher से बाद में फिर से खोलें और जहां आप रुके थे वहां से शुरू करें।
 
 ## एक अच्छे जवाब को saved query या dashboard में बदलें
 
-जब कोई जवाब रखने लायक हो, तो assistant से कहें कि इसे save करे। यह एक saved query के लिए SQL तैयार करता है, या उन queries से एक dashboard assemble करता है, फिर आपको एक **Approve / Reject** card दिखाता है। जब तक आप Approve पर click नहीं करते तब तक कुछ नहीं लिखा जाता, इसलिए आप "बस पूछें" की speed पाते हैं और आपके पास हमेशा आखिरी बात होती है।
+जब कोई जवाब सहेजने योग्य हो, तो assistant को सहेजने के लिए कहें। यह saved query के लिए SQL का ड्राफ्ट तैयार करता है, या उन queries से एक dashboard बनाता है, फिर एक **Approve / Reject** card दिखाता है। कुछ भी नहीं लिखा जाता जब तक आप Approve पर क्लिक नहीं करते, तो आप "बस पूछें" की गति पाते हैं, आखिरी शब्द हमेशा आपका ही रहता है।
 
-**Queries** page पर यह एक कदम आगे जाता है और एक SQL author बन जाता है: जो query आप चाहते हैं उसका वर्णन करें ("last 7 days के लिए agent के हिसाब से error rate दिखाएं") और यह SQL को editor में सीधे stream करता है, एक diff view खोलता है ताकि आप change को accept या reject कर सकें इससे पहले कि यह लाइव हो।
+**Queries** पेज पर यह एक कदम आगे जाता है और SQL author बन जाता है: वह query बताएं जो आप चाहते हैं ("पिछले 7 दिनों के लिए agent द्वारा error rate दिखाएं") और यह सीधे editor में SQL stream करता है, एक diff view खोलता है ताकि आप **Accept** या **Reject** कर सकें इससे पहले कि यह land हो।
 
 ![Observability Queries page और इसका SQL editor](/agenteye/images/query-lab.png)
-*Queries page: यह editor वह जगह है जहां assistant एक draft, read-only query stream करता है जिसे आप accept या reject कर सकते हैं।*
+*Queries page: यह editor वह जगह है जहां assistant एक ड्राफ्ट, read-only query stream करता है जिसे आप accept या reject कर सकते हैं।*
 
-यहां SQL authoring `queries:run` permission use करती है, वही जो editor के **Run** button के पीछे है। अन्य जगहों पर chat को `agent:use` की जरूरत होती है।
+यहां SQL बनाना `queries:run` permission उपयोग करता है, वही जो editor के **Run** button के पीछे है। अन्य सभी जगहों पर Chat के लिए `agent:use` की आवश्यकता है।
 
-## पूरी team को देने के लिए सुरक्षित
+## पूरी टीम को देने के लिए सुरक्षित
 
-आप assistant को सभी को खोल सकते हैं बिना इस बात की चिंता किए कि यह क्या छू सकता है:
+आप assistant को सभी को खोल सकते हैं बिना चिंता के कि यह क्या touch कर सकता है:
 
-- **यह सिर्फ वह पढ़ता है जो आप पहले से देख सकते हैं।** Answers आपकी अपनी read permissions के लिए scoped होते हैं, इसलिए यह आपकी data surface को कभी नहीं बढ़ाता।
-- **हर write आपके लिए wait करता है।** Saved queries और dashboards सिर्फ आपके explicit Approve click के बाद बनाए जाते हैं, और ऐसा कोई setting नहीं है जो उस gate को बंद करे।
-- **यह कुछ delete नहीं कर सकता।** कोई delete tool expose नहीं है और assistant के पास कोई delete permission नहीं है। Deletions आपके हाथों में रहते हैं, dashboard में।
-- **यह आपके org के अंदर रहता है।** Assistant सिर्फ उस organization को देखता है जिसे आप currently view कर रहे हैं।
-- **आपके सवाल आपके हैं।** Prompts और answers आपके अपने Observability database में रहते हैं; product analytics सिर्फ usage metadata record करता है, कभी आपकी prompt text नहीं।
+- **यह केवल वह पढ़ता है जो आप पहले से देख सकते हैं।** जवाब आपकी अपनी read permissions तक scoped हैं, तो यह कभी भी आपकी data surface को नहीं बढ़ाता है।
+- **हर write आपके लिए प्रतीक्षा करता है।** Saved queries और dashboards केवल आपके स्पष्ट Approve क्लिक के बाद बनाए जाते हैं, और कोई भी setting नहीं है जो उस gate को बंद कर दे।
+- **यह कभी कुछ भी delete नहीं कर सकता।** कोई भी delete tool expose नहीं है और assistant के पास कोई delete permission नहीं है। Deletions आपके हाथों में रहते हैं, dashboard में।
+- **यह आपके org के अंदर रहता है।** Assistant केवल उसी organization को देखता है जो आप वर्तमान में देख रहे हैं।
+- **आपके सवाल आपके ही हैं।** Prompts और answers आपकी अपनी Observability database में रहते हैं; product analytics केवल usage metadata को record करता है, आपकी prompt text कभी नहीं।
 
 ## इसे कहां खोजें
 
-Assistant हर page के दाहिनी edge पर आपके org (`/<org-slug>/...`) के तहत चलता है। rail पर click करें, या `⌘J` / `Ctrl+J` दबाएं, इसे full chat panel में expand करने के लिए, और पूरी चौड़ाई बदलने के लिए इसके edge को drag करें; आपकी चौड़ाई reloads में याद रहती है। इसे use करने के लिए आपको **`agent:use`** permission की जरूरत है, अन्यथा rail grey होता है। अगर यह आपकी deployment के लिए अभी switch नहीं किया गया है (इसे एक LLM connection की जरूरत है), तो आप एक काम करने वाले chat की जगह एक muted rail देखेंगे।
+Assistant आपके org (`/<org-slug>/...`) के तहत प्रत्येक पेज के दाहिनी edge पर सवारी करता है। Rail पर क्लिक करें, या `⌘J` / `Ctrl+J` दबाएं, पूर्ण chat panel में expand करने के लिए, और इसके edge को drag करें resize करने के लिए; आपकी width reloads भर में याद रखी जाती है। इसे उपयोग करने के लिए आपको **`agent:use`** permission की आवश्यकता है, अन्यथा rail greyed out होता है। यदि यह अभी तक आपके deployment के लिए स्विच ऑन नहीं किया गया है (इसे एक LLM connection की जरूरत है), तो आप एक working chat की जगह एक muted rail देखेंगे।
 
 ## संबंधित
 
-- [CLI और agents](/hi/agenteye/cli-and-agents)
+- [CLI and agents](/hi/agenteye/cli-and-agents)
 - [Queries](/hi/agenteye/queries)
 - [Dashboards](/hi/agenteye/dashboards)
 - [Evaluation suite](/hi/agenteye/evaluation-suite)

@@ -1,12 +1,12 @@
 ---
 title: Paketaliase
-description: "Registrierte Tippfehler-Schutzaliase und wie sie funktionieren"
+description: "Registrierte Tippfehler-Präventionsaliase und ihre Funktionsweise"
 icon: copy
 ---
 
 ## Offizielles Paket
 
-Das offizielle npm-Paket ist **`failproofai`**:
+Das kanonische npm-Paket ist **`failproofai`**:
 
 ```bash
 npm install -g failproofai
@@ -18,9 +18,9 @@ bun add -g failproofai
 
 ## Warum wir die Aliasnamen besitzen
 
-Typosquatting ist ein verbreiteter Angriff auf die Software-Lieferkette, bei dem ein böswilliger Akteur einen Paketnamen registriert, der sich nur um einen Tastendruck vom Namen eines beliebten Pakets unterscheidet. Ahnungslose Nutzer, die beim Installationsbefehl einen Tippfehler machen, führen dann Code unter Angreiferkontrolle mit vollem Systemzugriff aus – genau die Art von Bedrohung, gegen die Failproof AI entwickelt wurde.
+Typosquatting ist ein verbreiteter Supply-Chain-Angriff, bei dem ein böswilliger Akteur einen Paketnamen registriert, der sich nur um einen Tastenanschlag vom Namen eines beliebten Pakets unterscheidet. Ahnungslose Benutzer, die beim Installationsbefehl einen Tippfehler machen, führen dadurch Code unter der Kontrolle des Angreifers mit vollem Systemzugriff aus – genau die Art von Bedrohung, gegen die Failproof AI schützen soll.
 
-Um diese Angriffsfläche zu eliminieren, **registrieren wir vorsorglich alle gängigen Falschschreibungen und Formatierungsvarianten** von `failproofai` auf npm. Keiner dieser Namen kann von Dritten registriert werden. Jeder davon ist ein schlanker Proxy, der das echte `failproofai`-Paket installiert und alle Aufrufe dorthin weiterleitet.
+Um diese Angriffsfläche zu beseitigen, **registrieren wir vorbeugend alle gängigen Schreibfehler und Formatierungsvarianten** von `failproofai` auf npm. Keiner dieser Namen kann von Dritten registriert werden. Jeder ist ein schlanker Proxy, der das echte `failproofai`-Paket installiert und an dieses delegiert.
 
 ---
 
@@ -31,11 +31,11 @@ Um diese Angriffsfläche zu eliminieren, **registrieren wir vorsorglich alle gä
 | Paket | Status |
 |-------|--------|
 | `failproof` | ✅ Veröffentlicht |
-| `failproof-ai` | ⏳ Ausstehend (npm-Freigabe) |
-| `fail-proof-ai` | ⏳ Ausstehend (npm-Freigabe) |
-| `failproof_ai` | ⏳ Ausstehend (npm-Freigabe) |
-| `fail_proof_ai` | ⏳ Ausstehend (npm-Freigabe) |
-| `fail-proofai` | ⏳ Ausstehend (npm-Freigabe) |
+| `failproof-ai` | ⏳ Ausstehende npm-Freigabe |
+| `fail-proof-ai` | ⏳ Ausstehende npm-Freigabe |
+| `failproof_ai` | ⏳ Ausstehende npm-Freigabe |
+| `fail_proof_ai` | ⏳ Ausstehende npm-Freigabe |
+| `fail-proofai` | ⏳ Ausstehende npm-Freigabe |
 
 **`failprof*`-Tippfehler** – fehlendes „o" in „proof":
 
@@ -43,21 +43,21 @@ Um diese Angriffsfläche zu eliminieren, **registrieren wir vorsorglich alle gä
 |-------|--------|
 | `failprof` | ✅ Veröffentlicht |
 | `failprof-ai` | ✅ Veröffentlicht |
-| `failprofai` | ⏳ Ausstehend (npm-Freigabe) |
-| `fail-prof-ai` | ⏳ Ausstehend (npm-Freigabe) |
-| `failprof_ai` | ⏳ Ausstehend (npm-Freigabe) |
+| `failprofai` | ⏳ Ausstehende npm-Freigabe |
+| `fail-prof-ai` | ⏳ Ausstehende npm-Freigabe |
+| `failprof_ai` | ⏳ Ausstehende npm-Freigabe |
 
-**`faliproof*`-Tippfehler** – vertauschte Buchstaben „a" und „i":
+**`faliproof*`-Tippfehler** – vertauschtes „a" und „i":
 
 | Paket | Status |
 |-------|--------|
 | `faliproof` | ✅ Veröffentlicht |
 | `faliproof-ai` | ✅ Veröffentlicht |
-| `faliproofai` | ⏳ Ausstehend (npm-Freigabe) |
+| `faliproofai` | ⏳ Ausstehende npm-Freigabe |
 
-> **Warum ausstehend?** Die Spam-Schutzrichtlinie von npm blockiert Namen, die nach dem Entfernen von Satzzeichen und Ähnlichkeitsprüfungen auf denselben String wie ein bestehendes Paket normalisiert werden. Wir haben den npm-Support kontaktiert, um diese Namen für Anti-Squatting-Zwecke zu reservieren. Sie werden nach Genehmigung freigeschaltet.
+> **Warum ausstehend?** Die Spam-Präventionsrichtlinie von npm blockiert Namen, die nach dem Entfernen von Satzzeichen und Ähnlichkeitsprüfungen auf denselben String wie ein bestehendes Paket normalisiert werden. Wir haben den npm-Support kontaktiert, um diese Namen für Anti-Squatting-Zwecke zu reservieren. Sie werden nach der Genehmigung aktiviert.
 
-Du kannst überprüfen, ob ein veröffentlichter Alias uns gehört:
+Sie können überprüfen, ob ein veröffentlichter Alias uns gehört:
 
 ```bash
 npm info failproof
@@ -70,13 +70,13 @@ npm info failproof
 
 Jedes Aliaspaket:
 
-1. Listet `failproofai` als Abhängigkeit auf – das echte Paket wird installiert und sein Binary wird verfügbar
-2. Stellt ein Binary bereit, das dem eigenen Namen entspricht (z. B. `failprof-ai`), und leitet alle Argumente an das `failproofai`-Binary weiter
+1. Listet `failproofai` als Abhängigkeit auf – damit wird das echte Paket installiert und dessen Binary verfügbar
+2. Stellt ein Binary mit dem eigenen Namen bereit (z. B. `failprof-ai`), das alle Argumente an das `failproofai`-Binary weiterleitet
 
 Der Proxy ist ein zweizeiliges Node-Skript; es enthält keine Logik, keine Netzwerkaufrufe und keine Datenerfassung über das hinaus, was `failproofai` selbst tut.
 
 ---
 
-## Falls du einen Namen gefunden hast, den wir übersehen haben
+## Falls Sie einen Namen finden, den wir übersehen haben
 
-Erstelle ein Issue unter [failproofai/failproofai](https://github.com/failproofai/failproofai/issues) und wir werden ihn registrieren.
+Öffnen Sie ein Issue unter [failproofai/failproofai](https://github.com/failproofai/failproofai/issues) und wir werden ihn registrieren.

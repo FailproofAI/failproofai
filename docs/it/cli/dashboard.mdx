@@ -1,6 +1,6 @@
 ---
 title: Visualizza sessioni
-description: "Avvia la dashboard per sfogliare le sessioni degli agenti e gestire le policy"
+description: "Avvia la dashboard per navigare le sessioni degli agenti e gestire le policy"
 ---
 
 ```bash
@@ -13,10 +13,10 @@ Avvia la dashboard web su `http://localhost:8020`.
 
 | Flag | Descrizione |
 |------|-------------|
-| `--port <number>` | Porta su cui ascoltare (default: `8020`) |
+| `--port <number>` | Porta su cui ascoltare (predefinito: `8020`) |
 | `--allowed-origins <origins>` | Host/IP separati da virgola autorizzati ad accedere alle risorse di sviluppo |
 
-Per puntare la dashboard a una cartella di progetto Claude non standard, impostare la variabile di ambiente `CLAUDE_PROJECTS_PATH` al momento dell'avvio.
+Per indirizzare la dashboard a una cartella di progetto Claude non predefinita, imposta la variabile di ambiente `CLAUDE_PROJECTS_PATH` al momento dell'avvio.
 
 ## Esempi
 
@@ -24,6 +24,6 @@ Per puntare la dashboard a una cartella di progetto Claude non standard, imposta
 # Avvia su una porta diversa
 failproofai --port 9000
 
-# Utilizza un percorso progetti Claude personalizzato tramite variabile d'ambiente
+# Usa un percorso personalizzato per i progetti Claude tramite variabile di ambiente
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

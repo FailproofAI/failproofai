@@ -1,6 +1,6 @@
 ---
 title: Testing
-description: "Pruebas unitarias, pruebas E2E y helpers de prueba"
+description: "Pruebas unitarias, pruebas E2E y utilidades de prueba"
 icon: flask-vial
 ---
 
@@ -8,7 +8,7 @@ failproofai cuenta con dos suites de pruebas: **pruebas unitarias** (rápidas, c
 
 ---
 
-## Ejecutar las pruebas
+## Ejecutar pruebas
 
 ```bash
 # Ejecutar todas las pruebas unitarias una vez
@@ -31,7 +31,7 @@ bun run lint
 
 ## Pruebas unitarias
 
-Las pruebas unitarias se encuentran en `__tests__/` y utilizan [Vitest](https://vitest.dev) con `jsdom`.
+Las pruebas unitarias se encuentran en `__tests__/` y usan [Vitest](https://vitest.dev) con `jsdom`.
 
 ```text
 __tests__/
@@ -61,7 +61,7 @@ __tests__/
     AutoRefreshContext.test.tsx
 ```
 
-### Escribir una prueba unitaria de política
+### Cómo escribir una prueba unitaria de política
 
 ```typescript
 import { describe, it, expect, beforeEach } from "vitest";
@@ -71,7 +71,7 @@ import { allow, deny } from "../../src/hooks/policy-types";
 describe("block-sudo", () => {
   const policy = getBuiltinPolicies().find((p) => p.name === "block-sudo")!;
 
-  it("deniega comandos sudo", () => {
+  it("denies sudo commands", () => {
     const ctx = {
       eventType: "PreToolUse" as const,
       payload: {},
@@ -82,7 +82,7 @@ describe("block-sudo", () => {
     expect(policy.fn(ctx)).toEqual(deny("sudo command blocked by failproofai"));
   });
 
-  it("permite comandos sin sudo", () => {
+  it("allows non-sudo commands", () => {
     const ctx = {
       eventType: "PreToolUse" as const,
       payload: {},
@@ -93,7 +93,7 @@ describe("block-sudo", () => {
     expect(policy.fn(ctx)).toEqual(allow());
   });
 
-  it("permite patrones incluidos en allowPatterns", () => {
+  it("allows patterns in allowPatterns", () => {
     const ctx = {
       eventType: "PreToolUse" as const,
       payload: {},
@@ -110,7 +110,7 @@ describe("block-sudo", () => {
 
 ## Pruebas end-to-end
 
-Las pruebas E2E invocan el binario real de `failproofai` como subproceso, le envían un payload JSON por stdin y verifican la salida en stdout junto con el código de salida. Esto prueba el camino de integración completo que utiliza Claude Code.
+Las pruebas E2E invocan el binario real de `failproofai` como subproceso, envían un payload JSON por stdin y verifican la salida de stdout y el código de salida. Esto prueba la ruta de integración completa que utiliza Claude Code.
 
 ### Configuración
 
@@ -133,17 +133,17 @@ Recompila `dist/` cada vez que modifiques la API pública de hooks (`src/hooks/c
 ```text
 __tests__/e2e/
   helpers/
-    hook-runner.ts      # Lanza el binario, envía el payload JSON y captura el código de salida + stdout + stderr
+    hook-runner.ts      # Lanza el binario, envía el payload JSON, captura el código de salida + stdout + stderr
     fixture-env.ts      # Directorios temporales aislados por prueba con archivos de configuración
-    payloads.ts         # Fábricas de payloads con la estructura real de Claude para cada tipo de evento
+    payloads.ts         # Fábricas de payloads fieles a Claude para cada tipo de evento
   hooks/
     builtin-policies.e2e.test.ts   # Cada política builtin con subproceso real
     custom-hooks.e2e.test.ts       # Carga y evaluación de hooks personalizados
-    config-scopes.e2e.test.ts      # Fusión de configuración entre scopes: project/local/global
+    config-scopes.e2e.test.ts      # Fusión de configuración entre scopes project/local/global
     policy-params.e2e.test.ts      # Inyección de parámetros para cada política parametrizada
 ```
 
-### Uso de los helpers E2E
+### Cómo usar los helpers E2E
 
 **`FixtureEnv`** - entorno aislado por prueba:
 
@@ -152,7 +152,7 @@ import { createFixtureEnv } from "../helpers/fixture-env";
 
 const env = createFixtureEnv();
 // env.cwd    - directorio temporal; pásalo como payload.cwd para cargar .failproofai/policies-config.json
-// env.home   - directorio home aislado; evita que el ~/.failproofai real interfiera
+// env.home   - directorio home aislado; evita que se filtre el ~/.failproofai real
 
 env.writeConfig({
   enabledPolicies: ["block-sudo"],
@@ -162,7 +162,7 @@ env.writeConfig({
 });
 ```
 
-`createFixtureEnv()` registra la limpieza con `afterEach` de forma automática.
+`createFixtureEnv()` registra automáticamente la limpieza con `afterEach`.
 
 **`runHook`** - invocar el binario:
 
@@ -192,7 +192,7 @@ Payloads.notification(message, cwd)
 Payloads.stop(cwd)
 ```
 
-### Escribir una prueba E2E
+### Cómo escribir una prueba E2E
 
 ```typescript
 import { describe, it, expect } from "vitest";
@@ -201,7 +201,7 @@ import { runHook } from "../helpers/hook-runner";
 import { Payloads } from "../helpers/payloads";
 
 describe("block-rm-rf (E2E)", () => {
-  it("deniega rm -rf", async () => {
+  it("denies rm -rf", async () => {
     const env = createFixtureEnv();
     env.writeConfig({ enabledPolicies: ["block-rm-rf"] });
 
@@ -215,7 +215,7 @@ describe("block-rm-rf (E2E)", () => {
     expect(result.parsed?.hookSpecificOutput?.permissionDecision).toBe("deny");
   });
 
-  it("permite rm sin recursión", async () => {
+  it("allows non-recursive rm", async () => {
     const env = createFixtureEnv();
     env.writeConfig({ enabledPolicies: ["block-rm-rf"] });
 
@@ -234,22 +234,22 @@ describe("block-rm-rf (E2E)", () => {
 ### Formatos de respuesta E2E
 
 | Decisión | Código de salida | stdout |
-|----------|-----------------|--------|
+|----------|------------------|--------|
 | `PreToolUse` deny | `0` | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"..."}}` |
 | `PostToolUse` deny | `0` | `{"hookSpecificOutput":{"additionalContext":"Blocked ... because: ..."}}` |
-| Instruct (sin Stop) | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
+| Instruct (excepto Stop) | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
 | Stop instruct | `2` | stdout vacío; motivo en stderr |
 | Allow | `0` | cadena vacía |
 
 ### Configuración de Vitest
 
-Las pruebas E2E utilizan `vitest.config.e2e.mts` con:
+Las pruebas E2E usan `vitest.config.e2e.mts` con:
 
 - `environment: "node"` - no se necesitan globales del navegador
 - `pool: "forks"` - aislamiento real de procesos (las pruebas lanzan subprocesos)
-- `testTimeout: 20_000` - 20 segundos por prueba (inicio del binario + evaluación del hook)
+- `testTimeout: 20_000` - 20 segundos por prueba (arranque del binario + evaluación del hook)
 
-El pool `forks` es importante: los workers basados en hilos comparten `globalThis`, lo que puede interferir con pruebas que lanzan subprocesos. Los forks basados en procesos evitan este problema.
+El pool `forks` es importante: los workers basados en hilos comparten `globalThis`, lo que puede interferir con las pruebas que lanzan subprocesos. Los forks basados en procesos evitan este problema.
 
 ---
 

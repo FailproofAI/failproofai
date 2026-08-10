@@ -1,14 +1,14 @@
 ---
 title: "会话与执行图"
-description: "将一次运行的所有事件汇总为一行可读记录，并以类 git 风格的执行图直观呈现，让你一眼看懂整个运行过程。"
+description: "将一次运行中的所有事件汇聚成一行清晰记录，并以类似 git 的执行图直观呈现，让你几秒内看懂全貌。"
 ---
 
 
-不必再猜测运行失败的原因。Failproof AI Observability 将一次运行的所有事件汇总为一行可读记录，再将整个运行过程绘制成类 git 风格的图形，让你一眼看懂，清晰追踪 Agent 的每一个步骤。
+不必再猜测运行失败的原因。Failproof AI Observability 将一次运行中的所有事件整合为一行清晰记录，并将整个运行过程绘制成类似 git 的图形，几秒内即可读懂，让你逐步看清 Agent 的每一个操作。
 
-![Sessions 列表：跨环境、跨 Agent 的每次运行各占一行，附带状态标签和评估分数徽章](/agenteye/images/sessions-list.png)
+![会话列表：跨环境和 Agent 的每次运行占一行，带有状态标签和评估分数徽章](/agenteye/images/sessions-list.png)
 
-*每次运行占一行：状态标签一眼告诉你运行结果，连接评估器后分数徽章也会同步显示。*
+*每次运行占一行：状态标签让你一眼看出运行结果，一旦连接了评估器，分数徽章也会随之显示。*
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
@@ -20,36 +20,36 @@ description: "将一次运行的所有事件汇总为一行可读记录，并以
 
 ## 一览所有运行
 
-原始事件流记录了每一个步骤的真实情况，但当你面对数十次运行、数千个步骤时，你需要的是整体视图，而非单个步骤的细节。Sessions 页面将一次运行的所有事件汇总为一行，让一天的活动变成一份可快速浏览的列表，而不是信息洪流。
+原始事件记录是每个步骤的真实依据，但当你面对数十次运行中的数千个步骤时，你需要的是整体视图，而不是单个步骤。会话页面将一次运行的所有事件汇总为一行，让一天的活动变成可快速扫描的列表，而不是应接不暇的数据流。
 
-每行都带有状态标签，失败的运行在你点击之前就能一眼辨认。通过日期范围、环境、Agent 或会话进行筛选，几次点击即可从"全部"定位到"我关心的那次运行"。
+每一行都带有状态标签，让失败的运行在你点击之前就从正常运行中脱颖而出。可按日期范围、环境、Agent 或会话进行筛选，只需几次点击，即可从"全部"定位到"我关心的那次运行"。
 
-连接评估器后，每次已完成的运行会自动评分，最新分数以徽章形式显示在对应行上。你可以按任意分数范围筛选，"显示本周所有低分生产运行"只是一个筛选条件，无需手动逐一审查。在你设置评估器之前，会话仍会完整记录每次运行，只是暂时不带分数。
+连接评估器后，每次完成的运行都会自动获得评分，最新分数以徽章形式显示在对应行上。你可以按任意分数范围筛选，"显示本周所有低分生产运行"只是一个筛选条件，无需手动逐一审查。在配置评估器之前，会话仍会捕获完整的运行数据，只是暂时没有分数。
 
 ---
 
-## 以图形读懂整个运行过程
+## 以图形读懂完整运行过程
 
-![会话的类 git 执行图与事件时间线并排显示，右侧面板展示工具、模型及 Hook 的详情](/agenteye/images/session-detail.png)
+![会话的类 git 执行图与事件时间线并排显示，右侧面板展示工具、模型和 Hook 的详细信息](/agenteye/images/session-detail.png)
 
-*执行图（左）与事件时间线并排显示；右侧栏按运行维度列出工具、模型、Hook 及 Token 消耗。*
+*执行图（左侧）与事件时间线并排显示；右侧栏对该次运行所用的工具、模型、Hook 及 Token 消耗进行细分。*
 
-点击任意会话即可打开其执行图：以类 git 视图展示 Agent、工具、Hook 和模型调用随时间展开的全过程。并行的子 Agent 各自分支到独立泳道，让你清楚看到哪些工作同时进行、哪个子 Agent 出现停滞、运行在哪里偏离了轨道——无需在脑海中从一堆日志里逐行回放。
+点击任意会话，即可打开其执行图：这是一个类似 git 风格的视图，展示 Agent、工具、Hook 和模型调用随时间展开的过程。并行子 Agent 各自分支到独立通道，让你清楚看到哪些工作是并行执行的、哪个子 Agent 发生了停滞、运行在哪里偏离了预期——无需在脑海中从一堆日志里重新复盘。
 
-右侧栏提供每次运行的详细拆解：运行了哪些工具和模型、触发了哪些 Hook、消耗了多少 Token。"这次运行为什么这么贵？"或"哪个工具最慢？"的答案就在执行图旁边一目了然。
+右侧栏提供每次运行的详细拆分：运行了哪些工具和模型、触发了哪些 Hook、以及本次运行消耗的 Token 量。这就是"为什么这次运行成本这么高？"或"哪个工具最慢？"的答案，就显示在引发问题的图形旁边。
 
 ---
 
 ## 在哪里找到它
 
-每个 Dashboard 页面都限定在你的组织范围内（`/<org-slug>/…`）。Sessions 位于左侧边栏的 **Observe** 下，与 Events 并列，列表顶部提供日期范围、环境、Agent 和会话筛选器。每行均可一键跳转至完整的执行图。
+所有控制台页面均限定在你的组织范围内（`/<org-slug>/…`）。会话位于左侧边栏 **Observe** 下方，紧邻 Events，列表顶部有日期范围、环境、Agent 和会话筛选器。每一行只需点击一次即可查看完整执行图。
 
-若要开启分数徽章和分数范围筛选，请连接评估器，详见[评估（Evaluations）](/zh/agenteye/evaluations)。
+要开启分数徽章和分数范围筛选，请连接评估器：参见 [Evaluations](/zh/agenteye/evaluations)。
 
 ---
 
 ## 相关内容
 
-- [事件流（Event stream）](/zh/agenteye/event-stream)：每个会话汇总自原始的逐步事件记录。
-- [评估（Evaluations）](/zh/agenteye/evaluations)：连接评估器，让每次运行获得可筛选的分数徽章。
-- [遥测（Telemetry）](/zh/agenteye/telemetry)：了解运行数据如何从你的 Agent 传入这些会话。
+- [事件流](/zh/agenteye/event-stream)：每个会话汇总自的原始逐步记录。
+- [Evaluations](/zh/agenteye/evaluations)：连接评估器，让每次运行获得可筛选的分数徽章。
+- [Telemetry](/zh/agenteye/telemetry)：运行数据如何从你的 Agent 传入这些会话。

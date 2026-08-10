@@ -168,7 +168,7 @@ describe("--machine-label alone renames without re-enrolling", () => {
   it("stores the new label and reports the change", async () => {
     writeCloudCredentials({ url: "https://x", machineId: "abcd1234-ffff", token: "t", machineLabel: "old-name" });
 
-    const r = await runRenameCommand("Nikita's Mac", { verify: async () => ({ ok: true }) });
+    const r = await runRenameCommand("Nikita's Mac", { verify: async () => ({ ok: true, policyCount: 0, deployment: 1 }) as const });
 
     expect(r.exitCode).toBe(0);
     expect(readCloudCredentials()?.machineLabel).toBe("Nikita's Mac");
@@ -192,14 +192,14 @@ describe("--machine-label alone renames without re-enrolling", () => {
   });
 
   it("refuses when the machine is not connected", async () => {
-    const r = await runRenameCommand("Anything", { verify: async () => ({ ok: true }) });
+    const r = await runRenameCommand("Anything", { verify: async () => ({ ok: true, policyCount: 0, deployment: 1 }) as const });
     expect(r.exitCode).toBe(1);
     expect(r.lines.join("\n")).toContain("not connected");
   });
 
   it("needs a name", async () => {
     writeCloudCredentials({ url: "https://x", machineId: "m", token: "t" });
-    const r = await runRenameCommand("   ", { verify: async () => ({ ok: true }) });
+    const r = await runRenameCommand("   ", { verify: async () => ({ ok: true, policyCount: 0, deployment: 1 }) as const });
     expect(r.exitCode).toBe(1);
   });
 });

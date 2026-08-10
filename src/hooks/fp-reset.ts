@@ -337,7 +337,6 @@ const CARRIED_POLICY_CONFIG_KEYS = [
  * So: READ before, WRITE after.
  */
 export function readCarriedPolicyConfig(): Record<string, unknown> | null {
-  const to = globalPolicyConfigFile();
   // NEWEST SOURCE WINS. Two older layouts kept this file in two places, and a
   // home being upgraded may hold either:
   //

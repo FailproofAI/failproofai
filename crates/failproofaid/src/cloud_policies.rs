@@ -486,17 +486,33 @@ impl PolicyStore {
         }
 
         // AFTER the flip, never before. A machine upgrading from layout 2 has a
-        // `deployments/` tree whose files the OLD `active.json` still named; once
+        // per-deployment tree whose files the OLD `active.json` still named; once
         // the new pointer is live nothing reads it, and leaving it behind means
         // carrying a full copy of every policy set the machine has ever had.
         //
+        // `generations` FIRST, and that is the whole point: layout 2 wrote
+        // `cloud-policies/generations/<n>/`, and the generation→deployment rename
+        // swept this string literal along with the code. But a literal naming an
+        // ON-DISK artifact written by an OLDER build is not a symbol to rename —
+        // it is data, exactly like the `generation`/`revision` field names that
+        // needed aliases. Checking only `deployments` tested for a directory
+        // nothing has ever written, so the cleanup never ran on any real machine
+        // and the tree it exists to remove was kept forever. The comment above
+        // said "has a `deployments/` tree", which was the same mistake in prose.
+        //
+        // `deployments` is still checked, for a daemon built from this branch
+        // between the rename and the flattening. Costs one `exists()` on a path
+        // that is absent everywhere else.
+        //
         // Best-effort: a directory we cannot remove is dead weight, not a reason
         // to fail a reconcile that has already succeeded.
-        let legacy_deployments = self.root.join("deployments");
-        if activated && legacy_deployments.exists() {
-            match fs::remove_dir_all(&legacy_deployments) {
-                Ok(()) => tracing::info!("removed the layout-2 deployments/ tree"),
-                Err(err) => tracing::warn!(?err, "could not remove the layout-2 deployments/ tree"),
+        for legacy in ["generations", "deployments"] {
+            let path = self.root.join(legacy);
+            if activated && path.exists() {
+                match fs::remove_dir_all(&path) {
+                    Ok(()) => tracing::info!("removed the layout-2 {legacy}/ tree"),
+                    Err(err) => tracing::warn!(?err, "could not remove the layout-2 {legacy}/ tree"),
+                }
             }
         }
 
@@ -898,6 +914,39 @@ mod tests {
         assert_eq!(fs::read(store.active_manifest_path()).unwrap(), before);
         assert_eq!(store.read_active().unwrap().unwrap().deployment, 1);
         fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// The layout-2 tree is actually removed — under the name layout 2 wrote.
+    ///
+    /// This checked `deployments/` only, a name nothing has ever written: the
+    /// generation→deployment rename swept up a string literal that names an
+    /// ON-DISK artifact from an older build. So the cleanup never ran on any real
+    /// machine, and the full copy of every policy set the machine had ever held
+    /// was kept forever — the exact outcome the code's own comment says it exists
+    /// to prevent.
+    #[test]
+    fn the_layout_two_generations_tree_is_removed_after_the_flip() {
+        let store = temp_store("legacy-generations");
+        let bytes = b"export default 'x';\n".to_vec();
+        // Both names, so the test would catch a fix that swapped one for the other
+        // rather than covering both.
+        for legacy in ["generations", "deployments"] {
+            std::fs::create_dir_all(store.root().join(legacy).join("4")).unwrap();
+            std::fs::write(store.root().join(legacy).join("4").join("old.mjs"), b"stale").unwrap();
+        }
+
+        let desired = desired(1, "p", &bytes);
+        store
+            .reconcile(&desired, &|_: &DesiredPolicy| Ok(bytes.clone()))
+            .expect("reconcile");
+
+        assert!(
+            !store.root().join("generations").exists(),
+            "the layout-2 generations/ tree must be removed once the new pointer is live"
+        );
+        assert!(!store.root().join("deployments").exists());
+        // And the live set is untouched by the cleanup.
+        assert!(store.read_active().unwrap().is_some());
     }
 
     #[test]

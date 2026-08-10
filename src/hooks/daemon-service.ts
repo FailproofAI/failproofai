@@ -1506,77 +1506,61 @@ export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult>
  * to in-process evaluation would trade a visible failure for an invisible one.
  * The lines say so.
  */
-export async function refreshDaemonToCliVersion(): Promise<{ ok: boolean; lines: string[] }> {
-  const lines: string[] = [];
-  if (daemonServiceStatus() === "not-installed") {
+export async function refreshDaemonToCliVersion(
+  /**
+   * Injectable for tests, matching `waitForDaemonRunning`'s shape in this file.
+   * A `vi.spyOn` on the module namespace cannot intercept these — the module
+   * calls its own local bindings — so without a seam a test asserting either
+   * branch passes for the wrong reason: on a machine with no service, "no-op"
+   * and "the spy worked" are indistinguishable.
+   */
+  deps: {
+    status?: () => DaemonServiceStatus;
+    install?: () => Promise<DaemonInstallResult>;
+  } = {},
+): Promise<{ ok: boolean; lines: string[] }> {
+  const status = deps.status ?? daemonServiceStatus;
+  const install = deps.install ?? installDaemonService;
+  if (status() === "not-installed") {
     return { ok: true, lines: ["No failproofaid service on this machine; nothing to update."] };
   }
 
-  const binary = await ensureFailproofaidBinary();
-  if (!binary.path) {
+  // `installDaemonService()`, not a binary fetch plus a restart.
+  //
+  // The first version of this did the latter, and it did not work: it called
+  // `ensureFailproofaidBinary()` (which correctly lands
+  // `bin/failproofaid-<this version>`) and then `ensureDaemonServiceCurrent()`,
+  // whose rewrite goes through `upgradedServiceDefinition` — and that PRESERVES
+  // the existing `ExecStart` via `installedExecStart(definition)`, by design,
+  // because its job is to upgrade the unit's SHAPE without changing which binary
+  // runs. So on a machine coming from an older release the new binary was
+  // downloaded, the unit was rewritten, the service was restarted, and the OLD
+  // binary came back up — under a message that said the daemon had been
+  // refreshed. Worse than not having the command, because it reports success.
+  //
+  // `installDaemonService()` is the function that already knows how to make the
+  // service run THIS CLI's version: it resolves the binary for this version,
+  // writes the unit around that path, removes any legacy user unit, reloads,
+  // enables, and waits for the service to reach AND HOLD a running state rather
+  // than trusting the moment a `Type=simple` unit reports active. It is
+  // idempotent, which is what makes it safe to call on an already-installed
+  // machine.
+  const result = await install();
+  if (!result.installed) {
     return {
       ok: false,
       lines: [
-        `Could not put the failproofaid ${version} binary in place: ${binary.reason ?? "unknown reason"}`,
-        `The installed daemon is unchanged. It refuses to start against a layout it does`,
-        `not speak, so if this machine has just been migrated, run \`failproofai config\`.`,
+        `failproofaid ${version} could not be installed: ${result.reason ?? "unknown reason"}`,
+        `The previous daemon is untouched. On a machine configured to require it,`,
+        `enforcement continues; collection and cloud policy may be stale until this`,
+        `succeeds. \`${daemonStatusCommand() ?? "systemctl status"}\` will say more.`,
       ],
     };
   }
-  lines.push(`failproofaid ${version} binary in place.`);
-
-  const upgrade = await ensureDaemonServiceCurrent();
-  if (upgrade.outcome === "failed") {
-    return {
-      ok: false,
-      lines: [
-        ...lines,
-        `The service definition could not be refreshed: ${upgrade.reason ?? "unknown reason"}`,
-        ...(upgrade.daemonRunning === false
-          ? [
-              `failproofaid is NOT running. On a machine configured to require it, every tool`,
-              `call denies until it is back — run \`failproofai config\` to rebuild the service.`,
-            ]
-          : []),
-      ],
-    };
-  }
-
-  // `daemonRestartCommand()` returns the human-facing string (`sudo systemctl
-  // restart …`); the actual call goes through `runPrivileged`, which is `sudo -n`
-  // and never prompts. A machine that cannot elevate gets the command to run by
-  // hand — the same contract `installDaemonService` follows.
-  const restart = daemonRestartCommand();
-  try {
-    if (process.platform === "darwin") {
-      runPrivileged("launchctl", ["kickstart", "-k", `system/${launchdLabel()}`]);
-    } else {
-      runPrivileged("systemctl", ["restart", systemdUnitName()]);
-    }
-  } catch {
-    return {
-      ok: false,
-      lines: [
-        ...lines,
-        `Could not restart failproofaid without a password. Run this yourself:`,
-        `  ${restart ?? "restart the failproofaid service"}`,
-      ],
-    };
-  }
-  // Probed, never inferred from the restart command's exit code — see
-  // `waitForDaemonRunning`, which exists because one reading of `is-active`
-  // passes a daemon that died immediately after forking.
-  if (!(await waitForDaemonRunning())) {
-    return {
-      ok: false,
-      lines: [
-        ...lines,
-        `failproofaid was restarted but did not come back up. \`${daemonStatusCommand()}\` will say why.`,
-        `On a machine configured to require it, every tool call denies until it does.`,
-      ],
-    };
-  }
-  return { ok: true, lines: [...lines, `failproofaid restarted and running.`] };
+  return {
+    ok: true,
+    lines: [`failproofaid ${version} installed, service restarted and holding.`],
+  };
 }
 
 export async function uninstallDaemonService(): Promise<void> {

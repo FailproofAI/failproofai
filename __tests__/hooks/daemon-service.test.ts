@@ -6,6 +6,7 @@ import { tmpdir, userInfo } from "node:os";
 import { resolve } from "node:path";
 import { binDir } from "../../src/hooks/fp-home";
 import { waitForDaemonRunning } from "../../src/hooks/daemon-service";
+import * as svc from "../../src/hooks/daemon-service";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogWarn: vi.fn(),
@@ -960,5 +961,69 @@ describe("hooks/daemon-service waitForDaemonRunning", () => {
     });
     expect(ok).toBe(false);
     expect(c.elapsed()).toBeGreaterThanOrEqual(5000);
+  });
+});
+
+// `failproofai update`'s daemon half. The property that matters is which BINARY
+// the service ends up running, and the first version of this got it wrong in the
+// most misleading way available: it fetched the new binary, rewrote the unit via
+// `upgradedServiceDefinition` — which PRESERVES the existing `ExecStart` by
+// design, since its job is the unit's shape and not which binary runs — restarted,
+// and reported success while the OLD binary came back up.
+//
+// So it delegates to `installDaemonService()` now, the function that resolves this
+// version's binary, writes the unit around that path, and uses `restart` rather
+// than `enable --now` precisely so a live daemon is replaced.
+describe("refreshDaemonToCliVersion", () => {
+  it("is a clean no-op on a machine with no service", async () => {
+    let installed = false;
+    const result = await svc.refreshDaemonToCliVersion({
+      status: () => "not-installed",
+      install: async () => {
+        installed = true;
+        return { installed: true };
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.lines.join("\n")).toContain("nothing to update");
+    // The point: it did not try. Asserting only the message would pass on a
+    // machine that genuinely has no service, whatever the code did.
+    expect(installed).toBe(false);
+  });
+
+  it("goes through the INSTALL, not a bare restart", async () => {
+    // The property that was broken. The first version fetched the binary and then
+    // rewrote the unit via `upgradedServiceDefinition`, which PRESERVES the
+    // existing ExecStart by design — so the new binary landed, the service
+    // restarted, and the OLD binary came back up under a success message.
+    // `installDaemonService` is the path that writes the unit around the binary it
+    // just resolved.
+    let installed = false;
+    const result = await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      install: async () => {
+        installed = true;
+        return { installed: true };
+      },
+    });
+
+    expect(installed).toBe(true);
+    expect(result.ok).toBe(true);
+    expect(result.lines.join("\n")).toContain("service restarted and holding");
+  });
+
+  it("surfaces the install's failure instead of claiming a refresh", async () => {
+    const result = await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      install: async () => ({ installed: false, reason: "root privileges are required" }),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.lines.join("\n")).toContain("root privileges are required");
+    // On a machine configured to require the daemon, saying it came back up when
+    // it did not is the difference between a known-stale collector and a silent one.
+    expect(result.lines.join("\n")).not.toContain("restarted and holding");
+    expect(result.lines.join("\n")).toContain("previous daemon is untouched");
   });
 });

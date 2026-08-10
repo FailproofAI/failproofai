@@ -847,13 +847,21 @@ describe("resetHome carries the layout-2 TOML config and credentials", () => {
     expect(readCredentials()).toEqual({});
   });
 
-  it("is a no-op on a layout-1 home, which had neither file", () => {
+  it("is a no-op on a layout-1 home for the TOML files, which it never had", () => {
+    // Layout 1 had no `config.toml`, so nothing config-shaped is carried and the
+    // mode falls back to `oss` — the safe direction, since a corrupt or absent
+    // config must never be able to turn cloud reporting ON.
+    //
+    // Its CREDENTIALS are a different story and are carried: `seedLayoutOne()`
+    // writes an `ingest.json`, and this asserted that it was discarded, which was
+    // this same bug one layout further back. See "carries the layout-1 JSON
+    // credentials" below.
     seedLayoutOne();
 
     resetHome(1);
 
-    expect(readCredentials()).toEqual({});
     expect(readConfig().mode).toBe("oss");
+    expect(readCredentials().ingest).toEqual({ url: "https://x", key: "k" });
   });
 });
 
@@ -1011,5 +1019,99 @@ describe("draining the spool across a migration", () => {
     expect(text).toContain("3 batch(es) were still undelivered");
     expect(text).toContain("failproofai flush --wait");
     spy.mockRestore();
+  });
+});
+
+// Layout 1 kept its credentials in TWO JSON files with a camelCase `machineId`,
+// and both are on the retired list. Nothing carried them, so a layout-1 → 3
+// upgrade deleted the cloud token — the same "machine silently off the fleet"
+// failure as the layout-2 case, on the path that matters MORE: the published
+// `latest` npm tag is still a pre-daemon 0.0.x release, so "install the current
+// stable, then upgrade" IS a layout-1 migration.
+describe("resetHome carries the layout-1 JSON credentials", () => {
+  it("carries cloud.json and ingest.json, mapping camelCase machineId", () => {
+    writeFileSync(
+      legacy.cloudCredentials(),
+      JSON.stringify({ url: "https://api.example", machineId: "m-one", token: "tok-one" }),
+    );
+    writeFileSync(
+      legacy.ingestCredentials(),
+      JSON.stringify({ url: "https://ingest.example", key: "ing-one" }),
+    );
+    writeFileSync(legacy.policyConfig(), '{"enabledPolicies":["block-sudo"]}');
+
+    resetHome(1);
+
+    const creds = readCredentials();
+    // `machineId` → `machine_id` is the whole reason the raw object is rebuilt
+    // rather than passed through: layout 2 moved to snake_case, and the shared
+    // projection reads the newer spelling.
+    expect(creds.cloud).toEqual({
+      url: "https://api.example",
+      machineId: "m-one",
+      token: "tok-one",
+      machineLabel: undefined,
+    });
+    expect(creds.ingest).toEqual({ url: "https://ingest.example", key: "ing-one" });
+    // The originals still go — they are layout 1's files and nothing reads them.
+    expect(existsSync(legacy.cloudCredentials())).toBe(false);
+    expect(existsSync(legacy.ingestCredentials())).toBe(false);
+  });
+
+  it("carries an ingest-only machine, which is the events-add-key case", () => {
+    writeFileSync(
+      legacy.ingestCredentials(),
+      JSON.stringify({ url: "https://ingest.example", key: "ing-only" }),
+    );
+
+    resetHome(1);
+
+    const creds = readCredentials();
+    expect(creds.ingest?.key).toBe("ing-only");
+    expect(creds.cloud).toBeUndefined();
+  });
+
+  it("writes nothing for a cloud.json missing its token", () => {
+    // A cloud block without a token is not a cloud block. Writing it would leave
+    // a credentials file that looks present and authenticates nothing.
+    writeFileSync(
+      legacy.cloudCredentials(),
+      JSON.stringify({ url: "https://api.example", machineId: "m-one" }),
+    );
+
+    resetHome(1);
+
+    expect(readCredentials()).toEqual({});
+  });
+
+  it("prefers layout 2's TOML when a home somehow holds both", () => {
+    writeFileSync(
+      legacy.credentialsToml(),
+      '[cloud]\nurl = "https://api.example"\nmachine_id = "m-two"\ntoken = "tok-two"\n',
+    );
+    writeFileSync(
+      legacy.cloudCredentials(),
+      JSON.stringify({ url: "https://api.example", machineId: "m-one", token: "tok-one" }),
+    );
+
+    resetHome(2);
+
+    // The newer file is the newer answer; carrying layout 1's would undo an
+    // enrolment the user redid after upgrading.
+    expect(readCredentials().cloud?.token).toBe("tok-two");
+  });
+
+  it("falls back to layout 1 when the layout-2 TOML is unreadable", () => {
+    // An unparseable newer file is not evidence that the older one is absent —
+    // returning early there would discard a token that is sitting right here.
+    writeFileSync(legacy.credentialsToml(), "{{{ not toml at all");
+    writeFileSync(
+      legacy.cloudCredentials(),
+      JSON.stringify({ url: "https://api.example", machineId: "m-one", token: "tok-one" }),
+    );
+
+    resetHome(2);
+
+    expect(readCredentials().cloud?.token).toBe("tok-one");
   });
 });

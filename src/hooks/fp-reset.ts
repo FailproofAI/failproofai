@@ -676,17 +676,65 @@ export function readCarriedLegacyConfig(): FpConfig | null {
  * tightened to 0700 — a token must not arrive here by a path that skips that.
  */
 export function readCarriedLegacyCredentials(): FpCredentials | null {
-  const from = legacy.credentialsToml();
-  if (!existsSync(from)) return null;
-  try {
-    const creds = projectCredentials(parseLegacyToml(readFileSync(from, "utf8")));
-    // An empty object means the file held nothing that passed validation — a
-    // cloud table with no token, say. Writing that would create a credentials
-    // file that looks present and authenticates nothing.
-    return Object.keys(creds).length > 0 ? creds : null;
-  } catch {
-    return null;
+  // NEWEST SOURCE WINS, and both older layouts have to be handled here because
+  // BOTH of their credential files are on the retired list with nothing else
+  // carrying them:
+  //
+  //   layout 2 — `credentials.toml`, one file, TOML
+  //   layout 1 — `cloud.json` + `ingest.json`, two files, JSON, camelCase
+  //
+  // Layout 1 is the one that matters most in practice: the published `latest`
+  // npm tag is still a pre-daemon 0.0.x release, so "install the current stable,
+  // then upgrade" is a LAYOUT-1 → 3 migration, which makes this the upgrade real
+  // users actually perform. Losing the token there takes the machine off the
+  // fleet exactly as the layout-2 case does — silently, still enforcing whatever
+  // it last had, still reporting healthy.
+  const toml = legacy.credentialsToml();
+  if (existsSync(toml)) {
+    try {
+      const creds = projectCredentials(parseLegacyToml(readFileSync(toml, "utf8")));
+      // An empty object means the file held nothing that passed validation — a
+      // cloud table with no token, say. Writing that would create a credentials
+      // file that looks present and authenticates nothing.
+      if (Object.keys(creds).length > 0) return creds;
+    } catch {
+      // Fall through to layout 1's files rather than returning: an unreadable
+      // layout-2 file is not evidence that a layout-1 one is absent.
+    }
   }
+
+  // Layout 1. `machineId` is CAMELCASE in `cloud.json` — layout 2 moved to
+  // snake_case — so the raw object is rebuilt in the shape `projectCredentials`
+  // reads rather than passed through. Reusing that projection is the point: "a
+  // cloud block without a token is not a cloud block" is a security property,
+  // and a second validator here is how a half-written credential comes to be
+  // treated as live.
+  const readJson = (path: string): Record<string, unknown> | null => {
+    try {
+      const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  };
+  const cloud = readJson(legacy.cloudCredentials());
+  const ingest = readJson(legacy.ingestCredentials());
+  if (!cloud && !ingest) return null;
+  const raw: Record<string, unknown> = {};
+  if (cloud) {
+    raw.cloud = {
+      url: cloud.url,
+      machine_id: cloud.machineId,
+      token: cloud.token,
+      // Layout 1 had no machine label; absent is correct rather than empty.
+      ...(typeof cloud.machineLabel === "string" ? { machine_label: cloud.machineLabel } : {}),
+    };
+  }
+  if (ingest) raw.ingest = { url: ingest.url, key: ingest.key };
+  const creds = projectCredentials(raw);
+  return Object.keys(creds).length > 0 ? creds : null;
 }
 
 export function resetHome(from: number): ResetOutcome {

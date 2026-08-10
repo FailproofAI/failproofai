@@ -64,6 +64,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { rebuildHookActivityStats } from "./hook-activity-store";
 import {
   LAYOUT_VERSION,
   customPoliciesDir,
@@ -73,6 +74,8 @@ import {
   legacy,
   migrationBackupDir,
   policiesDir,
+  spoolDir,
+  failedDir,
   resettablePaths,
 } from "./fp-home";
 import {
@@ -105,6 +108,15 @@ export interface ResetOutcome {
   activity: string[];
   /** Keys of the layout-1 policy config carried into layout 2's. */
   policyConfig: string[];
+  /**
+   * Undelivered event batches moved out of a legacy root `spool/`/`failed/`.
+   *
+   * Reported rather than discarded because these are events that had NOT been
+   * shipped: if the number is ever non-zero on a real machine it is the only
+   * evidence that a root spool existed at all, and silence would make a carry
+   * indistinguishable from a directory that was never there.
+   */
+  spooled: string[];
   /** The layout that was found before the reset. */
   from: number;
 }
@@ -270,11 +282,83 @@ export function migrateConventionPolicies(): string[] {
  * # What is deliberately NOT carried
  *
  * `current.count` and `stats.json` are derived state, and two of each cannot be
- * merged without inventing a number. They are dropped and the store rebuilds
- * them. The legacy `current.jsonl` is moved under a PAGE name rather than onto
+ * merged without inventing a number, so they are dropped — and then REBUILT here,
+ * explicitly, by `rebuildHookActivityStats()`.
+ *
+ * That call is the fix for a real loss. This comment used to say the store rebuilt
+ * them by itself; it did not. `stats.json` is incremental — one entry folded in per
+ * append, nothing ever rescans — so a dropped file simply read as zeroes and began
+ * accumulating again from the next event. A user upgrading from a pre-daemon home
+ * kept every record and lost every total: the dashboard listed their history while
+ * reporting 0 events, 0 denies and no top policy. Verified on a seeded home before
+ * and after. Dropping it is still right — the numbers are exactly recomputable
+ * because pages are never pruned — but only if something actually recomputes them. The legacy `current.jsonl` is moved under a PAGE name rather than onto
  * the destination's own `current.jsonl`, which may already exist and may be
  * mid-write — a rotated page is exactly what the store would have made of it.
  */
+/**
+ * Move layout 1's root `spool/` and `failed/` into the daemon's `state/` pair.
+ *
+ * Both root paths are on the retired list, so the migration DELETES them, and
+ * nothing regenerates an undelivered event: once the file is gone the decision it
+ * records was never reported and never will be. `HOME_CLASSES` classes the layout-3
+ * equivalents `undelivered` with the note "never deleted" — so without this the two
+ * halves of the same module contradicted each other and the delete won.
+ *
+ * It is insurance rather than a live path, and that is worth being precise about:
+ * no PUBLISHED version writes a root spool. `fpai-collect` used `home.join("spool")`
+ * only on the unmerged daemon branch; the commit that reached `main` already wrote
+ * `state/spool`, and the pre-daemon line (0.0.x) has no spool concept at all —
+ * checked against the published 0.0.10, 0.0.14, 0.0.15 and 1.0.0-beta.0 tarballs.
+ * So on every real machine this finds nothing and costs a single `existsSync`.
+ *
+ * It exists because "listed for deletion, with no carry and no backup" is a trap
+ * regardless of whether anything currently falls into it: the next thing to write a
+ * root spool would lose undelivered telemetry silently, and the cost of closing it
+ * now is one directory walk.
+ *
+ * Carried INTO the live spool rather than into the backup, so the events actually
+ * ship — `drainSpoolAfterMigrating()` flushes `state/spool` moments later. Safe for
+ * an unknown-format file because the uploader quarantines a batch it cannot send
+ * into `failed/` rather than failing on it, so the worst case is a preserved file
+ * in the place designed to hold preserved files.
+ */
+function migrateLegacySpool(): string[] {
+  const moved: string[] = [];
+  for (const [from, to] of [
+    [legacy.spoolDir(), spoolDir()],
+    [legacy.failedDir(), failedDir()],
+  ] as const) {
+    if (!existsSync(from)) continue;
+    try {
+      mkdirSync(to, { recursive: true });
+      for (const entry of readdirSync(from, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        // Never overwrite: a same-named batch in the destination is a different
+        // batch with different events, and losing either defeats the point.
+        let name = entry.name;
+        let n = 0;
+        while (existsSync(resolve(to, name))) name = `legacy-${n++}-${entry.name}`;
+        try {
+          renameSync(resolve(from, entry.name), resolve(to, name));
+          moved.push(name);
+        } catch {
+          try {
+            copyFileSync(resolve(from, entry.name), resolve(to, name));
+            moved.push(name);
+          } catch {
+            // Unreadable. Left where it is; the delete below may remove it, which
+            // is the pre-existing behaviour rather than a regression.
+          }
+        }
+      }
+    } catch {
+      // A spool directory we cannot read is not worth aborting a reset over.
+    }
+  }
+  return moved;
+}
+
 export function migrateHookActivity(): string[] {
   const from = legacy.hookActivityDir();
   if (!existsSync(from)) return [];
@@ -340,6 +424,17 @@ export function migrateHookActivity(): string[] {
     }
   } catch {
     // An activity directory we cannot read is not worth aborting a reset over.
+  }
+  // AFTER the pages are in place, so the rebuild sees the carried history rather
+  // than only whatever the new layout already had. Best-effort: a machine whose
+  // totals cannot be rewritten still keeps every record, which is the half that
+  // matters, and the next append starts accumulating from whatever it managed.
+  if (moved.length > 0) {
+    try {
+      rebuildHookActivityStats();
+    } catch {
+      // Never fail a migration over a derived number.
+    }
   }
   return moved.sort((a, b) => a.localeCompare(b));
 }
@@ -826,6 +921,9 @@ export function resetHome(from: number): ResetOutcome {
   const pendingConfig = readCarriedLegacyConfig();
   const pendingCredentials = readCarriedLegacyCredentials();
   const telemetryOptOut = readCarriedTelemetryOptOut();
+  // BEFORE the deletions, like every other carry here: both source directories are
+  // on the retired list below.
+  const spooled = migrateLegacySpool();
   const removed: string[] = [];
   for (const path of resettablePaths()) {
     // The guard that stood here skipped `globalPolicyConfigFile()` when the
@@ -862,7 +960,7 @@ export function resetHome(from: number): ResetOutcome {
   // of them represents something a person typed.
   if (telemetryOptOut) updateConfig({ telemetry: { enabled: false } });
   writeVersionFile();
-  return { removed, migrated, activity, policyConfig, from };
+  return { removed, migrated, activity, policyConfig, spooled, from };
 }
 
 export interface LayoutCheck {

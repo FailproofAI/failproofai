@@ -259,8 +259,15 @@ function readStoredStats(): StoredStats {
   }
 }
 
-function updateStats(entry: HookActivityEntry): void {
-  const s = readStoredStats();
+/**
+ * Fold one entry into a running total, in place.
+ *
+ * Extracted so the incremental path and {@link rebuildHookActivityStats} cannot
+ * disagree: a rebuild that counted differently from the appends would produce
+ * numbers that silently drift from the log they claim to summarise, and nothing
+ * would catch it because both sides look plausible on their own.
+ */
+function foldEntry(s: StoredStats, entry: HookActivityEntry): void {
   s.totalEvents += 1;
   if (entry.decision === "deny") s.denyCount += 1;
   if (entry.policyNames && entry.policyNames.length > 0) {
@@ -270,15 +277,62 @@ function updateStats(entry: HookActivityEntry): void {
   } else if (entry.policyName) {
     s.policyMap[entry.policyName] = (s.policyMap[entry.policyName] ?? 0) + 1;
   }
-  // Write atomically: write to a PID-unique temp file then rename — prevents partial reads.
+}
+
+/** Write stats atomically: PID-unique temp then rename, so no reader sees a partial file. */
+function writeStoredStats(s: StoredStats): boolean {
   const tmpPath = join(storeDirValue(), `stats.json.${process.pid}.tmp`);
   try {
     writeFileSync(tmpPath, JSON.stringify(s), "utf-8");
     renameSync(tmpPath, join(storeDirValue(), STATS_FILE));
+    return true;
   } catch {
     try { unlinkSync(tmpPath); } catch { /* ignore */ }
     // Non-fatal: stats file write failure doesn't block the hook
+    return false;
   }
+}
+
+function updateStats(entry: HookActivityEntry): void {
+  const s = readStoredStats();
+  foldEntry(s, entry);
+  writeStoredStats(s);
+}
+
+/**
+ * Recompute `stats.json` from every page on disk.
+ *
+ * WHY THIS EXISTS. `stats.json` is INCREMENTAL — `updateStats` adds one entry per
+ * append and nothing ever rescans — so it is the only part of the decision log
+ * that cannot survive being lost. The layout migration carries the pages (real
+ * records) and deliberately drops `stats.json` and `current.count` as derived
+ * state, on the stated grounds that "the store rebuilds them". It did not: there
+ * was no rebuild anywhere in the store, so `readStoredStats()` fell through its
+ * catch to zeroes and began re-accumulating from the next event. A user upgrading
+ * from a pre-daemon home kept every record and lost every total — the dashboard
+ * listed their history while reporting 0 events, 0 denies and no top policy.
+ *
+ * It is exactly recomputable, which is what makes dropping it the right call and
+ * this function the missing half: pages are never pruned (there is no retention
+ * anywhere in this module), so the files on disk ARE the whole history.
+ *
+ * Returns the totals it wrote, or null if there was nothing to read.
+ */
+export function rebuildHookActivityStats(): StoredStats | null {
+  ensureDir();
+  const files = [CURRENT_FILE, ...getArchiveFiles()];
+  const s: StoredStats = { totalEvents: 0, denyCount: 0, policyMap: {} };
+  let sawAny = false;
+  for (const file of files) {
+    const path = join(storeDirValue(), file);
+    if (!existsSync(path)) continue;
+    sawAny = true;
+    // `readJsonlFile` already skips malformed lines, so a truncated tail costs
+    // that line rather than the whole rebuild.
+    for (const entry of readJsonlFile(path)) foldEntry(s, entry);
+  }
+  if (!sawAny) return null;
+  return writeStoredStats(s) ? s : null;
 }
 
 function readStats(): HookActivityStats {

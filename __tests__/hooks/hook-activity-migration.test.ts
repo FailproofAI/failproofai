@@ -66,7 +66,9 @@ describe("carrying the log across", () => {
     const moved = migrateHookActivity();
 
     expect(moved).toHaveLength(3);
-    const landed = readdirSync(hookActivityDir());
+    // Pages, not directory entries: `stats.json` is rebuilt beside them now (see
+    // the counters test below), and this assertion is about the log being carried.
+    const landed = readdirSync(hookActivityDir()).filter((f) => f.endsWith(".jsonl"));
     expect(landed).toHaveLength(3);
     // Nothing is left behind to be deleted later.
     expect(readdirSync(legacy.hookActivityDir()).filter((f) => f.endsWith(".jsonl"))).toEqual([]);
@@ -127,7 +129,18 @@ describe("carrying the log across", () => {
     expect(bodies.some((b) => b.includes("from-legacy"))).toBe(true);
   });
 
-  it("drops derived counters rather than inventing a merged number", () => {
+  it("never COPIES the legacy counters, and rebuilds the stats from the pages", () => {
+    // This asserted that `stats.json` simply did not exist afterwards, on the
+    // stated grounds that the store would rebuild it. Nothing did: `stats.json` is
+    // incremental — one entry folded in per append, never rescanned — so a dropped
+    // file read as zeroes and began accumulating from the next event. A user
+    // upgrading from a pre-daemon home kept every record and lost every total,
+    // which is what this now pins.
+    //
+    // The original intent still holds and is still tested: the legacy file is NOT
+    // copied across (its shape is not even the current one) and `current.count` is
+    // not carried. The numbers are recomputed from the pages instead, which is
+    // exact because pages are never pruned.
     seedLegacy({
       "page-1000-0.jsonl": entry("a"),
       "current.count": "7",
@@ -138,7 +151,43 @@ describe("carrying the log across", () => {
 
     expect(moved.every((n) => n.endsWith(".jsonl"))).toBe(true);
     expect(existsSync(resolve(hookActivityDir(), "current.count"))).toBe(false);
-    expect(existsSync(resolve(hookActivityDir(), "stats.json"))).toBe(false);
+
+    // Present, and NOT the legacy body.
+    const statsPath = resolve(hookActivityDir(), "stats.json");
+    expect(existsSync(statsPath)).toBe(true);
+    const stats = JSON.parse(readFileSync(statsPath, "utf8")) as Record<string, unknown>;
+    expect(stats.total).toBeUndefined();
+    // Recomputed from the one carried page.
+    expect(stats.totalEvents).toBe(1);
+  });
+
+  it("the dashboard's totals survive the upgrade, not just the records", () => {
+    // The bug as a user hit it: upgrade a pre-daemon home, and the activity list
+    // still showed every decision while the summary reported 0 events, 0 denies and
+    // no top policy. The records were carried; the totals were not, and nothing
+    // recomputed them.
+    seedLegacy({
+      "page-1000-0.jsonl":
+        JSON.stringify({ decision: "deny", policyName: "block-sudo" }) +
+        "\n" +
+        JSON.stringify({ decision: "allow", policyName: "block-env-files" }) +
+        "\n",
+      "current.jsonl": JSON.stringify({ decision: "deny", policyName: "block-sudo" }) + "\n",
+      "stats.json": JSON.stringify({ totalEvents: 3, denyCount: 2, policyMap: { "block-sudo": 2 } }),
+    });
+
+    migrateHookActivity();
+
+    const stats = JSON.parse(
+      readFileSync(resolve(hookActivityDir(), "stats.json"), "utf8"),
+    ) as { totalEvents: number; denyCount: number; policyMap: Record<string, number> };
+
+    // Recomputed from the carried pages, and equal to what the legacy file said —
+    // which is the point: the recount agrees with the incremental total it replaces.
+    expect(stats.totalEvents).toBe(3);
+    expect(stats.denyCount).toBe(2);
+    expect(stats.policyMap["block-sudo"]).toBe(2);
+    expect(stats.policyMap["block-env-files"]).toBe(1);
   });
 
   it("is a no-op with nothing to carry", () => {

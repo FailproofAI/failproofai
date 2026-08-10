@@ -73,8 +73,8 @@ describe("planMigration", () => {
     // always `from + 1` — today's steps are real two-hops — so the walk has to
     // follow the link.
     const registry: Migration[] = [
-      { from: 1, to: 2, describe: "1→2", run: () => ({ removed: [], migrated: [], activity: [], policyConfig: [], from: 1 }) },
-      { from: 2, to: LAYOUT_VERSION, describe: "2→cur", run: () => ({ removed: [], migrated: [], activity: [], policyConfig: [], from: 2 }) },
+      { from: 1, to: 2, describe: "1→2", run: () => ({ removed: [], migrated: [], activity: [], policyConfig: [], spooled: [], from: 1 }) },
+      { from: 2, to: LAYOUT_VERSION, describe: "2→cur", run: () => ({ removed: [], migrated: [], activity: [], policyConfig: [], spooled: [], from: 2 }) },
     ];
 
     expect(planMigration(1, registry).map((m) => `${m.from}->${m.to}`)).toEqual([
@@ -87,7 +87,7 @@ describe("planMigration", () => {
     // A partial plan silently leaves a home half-migrated, which `fp-reset.ts`'s
     // header names as worse than refusing.
     const registry: Migration[] = [
-      { from: 1, to: 2, describe: "1→2", run: () => ({ removed: [], migrated: [], activity: [], policyConfig: [], from: 1 }) },
+      { from: 1, to: 2, describe: "1→2", run: () => ({ removed: [], migrated: [], activity: [], policyConfig: [], spooled: [], from: 1 }) },
     ];
 
     expect(() => planMigration(1, registry)).toThrow(/no migration from layout 2/);
@@ -108,7 +108,7 @@ describe("migrationCoverageGap", () => {
   });
 
   it("catches a step that does not move forward, and two steps reading one layout", () => {
-    const noop = () => ({ removed: [], migrated: [], activity: [], policyConfig: [], from: 1 });
+    const noop = () => ({ removed: [], migrated: [], activity: [], policyConfig: [], spooled: [], from: 1 });
     const backwards: Migration[] = [{ from: 2, to: 1, describe: "x", run: noop }];
     expect(migrationCoverageGap(backwards).some((p) => p.includes("does not move forward"))).toBe(true);
 
@@ -120,7 +120,7 @@ describe("migrationCoverageGap", () => {
   });
 
   it("catches a step that overshoots the current layout", () => {
-    const noop = () => ({ removed: [], migrated: [], activity: [], policyConfig: [], from: 1 });
+    const noop = () => ({ removed: [], migrated: [], activity: [], policyConfig: [], spooled: [], from: 1 });
     const over: Migration[] = [
       { from: 1, to: LAYOUT_VERSION + 1, describe: "over", run: noop },
       { from: 2, to: LAYOUT_VERSION, describe: "ok", run: noop },
@@ -393,7 +393,7 @@ describe("runMigrations", () => {
       removed: [],
       migrated: [],
       activity: [],
-      policyConfig: [],
+      policyConfig: [], spooled: [],
       from,
     });
     const chain: Migration[] = [
@@ -439,7 +439,7 @@ describe("runMigrations", () => {
         describe: "must not run",
         run: () => {
           thirdRan = true;
-          return { removed: [], migrated: [], activity: [], policyConfig: [], from: 2 };
+          return { removed: [], migrated: [], activity: [], policyConfig: [], spooled: [], from: 2 };
         },
       },
     ];

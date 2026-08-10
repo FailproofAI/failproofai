@@ -357,6 +357,7 @@ export function runMigrations(
     migrated: [],
     activity: [],
     policyConfig: [],
+    spooled: [],
     from,
   };
   let failed: MigrationRun["failed"];
@@ -369,6 +370,7 @@ export function runMigrations(
       outcome.migrated.push(...result.migrated);
       outcome.activity.push(...result.activity);
       outcome.policyConfig.push(...result.policyConfig);
+      outcome.spooled.push(...result.spooled);
       steps.push({ from: step.from, to: step.to, ok: true });
       appendLedger({
         from: step.from,

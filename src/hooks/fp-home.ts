@@ -320,6 +320,147 @@ export const codexSessionPathsFile = (home?: string) => resolve(stateDir(home), 
 
 export const logsDir = (home?: string) => atHome(home, "logs");
 
+// ── What each path HOLDS ─────────────────────────────────────────────────────
+
+/**
+ * What kind of data a path in the home holds, which is what decides whether an
+ * upgrade may throw it away.
+ *
+ * The rule, stated once: **derived and re-fetchable may be dropped; anything a
+ * person typed, anything not yet delivered, and anything that identifies the
+ * machine is carried.**
+ */
+export type DataClass =
+  /** A person set this and nothing regenerates it. Never deleted. */
+  | "user-typed"
+  /** Recorded here and not yet shipped anywhere. Never deleted. */
+  | "undelivered"
+  /** Stable ids and watermarks. Never deleted — a new one is a new machine. */
+  | "identity"
+  /** Rebuilt on demand. May be dropped. */
+  | "derived"
+  /** The server is the source of truth. May be dropped and re-fetched. */
+  | "refetchable"
+  /** Sockets, locks, binaries: live process state. Never touched by a reset. */
+  | "ephemeral";
+
+/**
+ * Every path in the home, and what it holds.
+ *
+ * `resettablePaths()` is DERIVED from this rather than hand-listed beside it,
+ * and that is the whole point. Before this table one path was declared in four
+ * places — as a function above, again in `legacy` once it moved, again in the
+ * delete list, and again in `CARRIED_POLICY_CONFIG_KEYS` if it held carried
+ * keys — with nothing making the four agree. **Every silent-data-loss bug this
+ * module has had is one of those lists falling out of sync with a path that
+ * moved:** layout 1's `policies/` (hand-written source, deleted), layout 2's
+ * nested policy config (enabled policies, emptied), `cache/hook-activity` (the
+ * whole decision log, deleted with its parent), the layout-2 `credentials.toml`
+ * (a live token left behind), and `collector.sources.extra_paths` — which was
+ * on the delete list by way of `config.json` and would have taken every extra
+ * path a user typed at the next layout bump.
+ *
+ * Two consequences worth naming:
+ *
+ *  - **Forgetting is now safe.** A path absent from this table is not deleted,
+ *    because the delete list is a filter over what is here rather than a
+ *    catch-all. The failure mode of an oversight becomes a stale file — loud
+ *    and recoverable — instead of a deleted cloud token.
+ *  - **`state/` is not classified as a whole**, because it is mixed: its
+ *    `spool/` and `telemetry-id` are things we must never drop, and everything
+ *    else under it is scratch. Listing the parent is exactly how a reset came
+ *    to delete undelivered events and the machine's own telemetry identity.
+ *
+ * `home-classification.test.ts` asserts every exported path function in this
+ * module is either classified here or covered by a classified parent, so the
+ * next path added to the home cannot skip the one question that matters.
+ */
+export const HOME_CLASSES: readonly { path: (home?: string) => string; class: DataClass }[] = [
+  // ── Never deleted: a person typed it ──
+  // The cloud enrolment. Deleting it drops the machine out of cloud-managed
+  // policy silently — it keeps enforcing whatever it last had, reports healthy,
+  // and never reconciles again. Nothing re-derives a token.
+  { path: credentialsFile, class: "user-typed" },
+  // Holds `daemon.configured` (the flag that makes the machine fail closed),
+  // the collector preferences, `[audit] auto`, the telemetry opt-out, and
+  // `collector.sources.*.extra_paths` — the entire output of `harness add-path`.
+  { path: configFile, class: "user-typed" },
+  // The builtin enable/disable set and per-policy params. `resetHome` used to
+  // clear this and carry eight named keys back over; it is simply kept now.
+  { path: globalPolicyConfigFile, class: "user-typed" },
+  // The user's own convention policies, the `lib/` they import and the data
+  // files they read. `at("policies")` was on the delete list once: hand-written
+  // source destroyed, while `isConfigured()` still read true so the wizard never
+  // re-asked and hooks kept firing against an empty policy set.
+  { path: policiesDir, class: "user-typed" },
+
+  // ── Never deleted: recorded and not yet shipped ──
+  // Batches read out of transcripts and queued for upload. The reason losing
+  // these is PERMANENT and not merely slow is `cursorsDir` below: the watermark
+  // has already advanced past them, so nothing will ever read that range again.
+  { path: spoolDir, class: "undelivered" },
+  { path: failedDir, class: "undelivered" },
+  // The SDK spool (`events/` + `failed/`), same argument.
+  { path: customAgentsDir, class: "undelivered" },
+  // The decision log the dashboard's activity tab reads. Neither derived nor
+  // re-fetchable: it is the record of what this machine did, and nothing
+  // regenerates it. Deleting its layout-1 parent threw away every decision a
+  // machine had recorded, which is why `migrateHookActivity()` exists.
+  { path: hookActivityDir, class: "undelivered" },
+  // Requests the CLI wrote for the daemon to drain on its next tick. The file's
+  // existence IS the pending state, so deleting one silently cancels something
+  // a person asked for. Rust-only paths (`crates/failproofaid/src/paths.rs`),
+  // hence spelled here rather than exported — nothing on this side reads them.
+  { path: (home) => resolve(stateDir(home), "flush-request.json"), class: "undelivered" },
+  { path: (home) => resolve(stateDir(home), "backfill-request.json"), class: "undelivered" },
+
+  // ── Never deleted: it names the machine ──
+  // Per-source watermarks. Kept out of the reset so pages carried by
+  // `migrateHookActivity()` are not re-shipped in full — it MOVES them, which
+  // preserves the inode a cursor is keyed on. A cursor whose file is gone is
+  // inert (`retain_existing` drops it), so keeping them costs nothing.
+  { path: cursorsDir, class: "identity" },
+  // The anonymous instance id both the CLI and the daemon report under. Tiers 1
+  // and 2 of `getInstanceId()` re-derive the same value, so most machines would
+  // survive losing it — but a machine that fell through to the daemon's own
+  // fallback would come back as a brand-new PostHog person, and no analysis
+  // spans that split.
+  { path: telemetryIdFile, class: "identity" },
+  { path: (home) => resolve(stateDir(home), "daemon-telemetry-id"), class: "identity" },
+  // The layout marker itself. Not user data, and `resetHome` rewrites it
+  // immediately — but listing it made a no-op reset report "removed 1 item" for
+  // a file it had just recreated.
+  { path: versionFile, class: "identity" },
+
+  // ── May be dropped: rebuilt on demand ──
+  { path: auditDir, class: "derived" },
+  { path: collectorHealthFile, class: "derived" },
+  { path: auditScheduleFile, class: "derived" },
+  { path: codexSessionPathsFile, class: "derived" },
+  { path: shimsDir, class: "derived" },
+  { path: sessionPauseDir, class: "derived" },
+  { path: logsDir, class: "derived" },
+  { path: lastVersionFile, class: "derived" },
+  { path: launcherMarker, class: "derived" },
+  { path: onboardingLockFile, class: "derived" },
+  { path: onboardingAttemptFile, class: "derived" },
+
+  // ── May be dropped: the server has it ──
+  // Re-fetched and digest-verified on the next daemon poll. This is the whole
+  // reason the delete list is per-entry rather than `rm -rf policies/`: one
+  // directory holds both the files a person wrote and the ones the fleet sent,
+  // and only the second kind may be thrown away.
+  { path: cloudPoliciesDir, class: "refetchable" },
+
+  // ── Never touched ──
+  // A downloaded daemon binary is large, version-pinned and re-verified on use,
+  // so deleting it only forces a needless re-download.
+  { path: binDir, class: "ephemeral" },
+  // Sockets and the singleton flock belong to a process that may be alive right
+  // now; removing them breaks it rather than resetting configuration.
+  { path: runDir, class: "ephemeral" },
+];
+
 // ── Layout 1 (legacy) ────────────────────────────────────────────────────────
 
 /**
@@ -385,11 +526,58 @@ export const legacy = {
  * out something a future layout adds and this list has not been taught about
  * — and so the function is auditable at a glance, which matters for anything
  * that deletes user data.
+ *
+ * TWO HALVES, and they are not maintained the same way. The paths of layouts
+ * that no longer exist are listed by hand below, because a retired path has no
+ * definition left to hang a class off — it exists only in this file. The paths
+ * of the CURRENT layout are DERIVED from `HOME_CLASSES`, so a path that moves
+ * or is added cannot silently fall off (or onto) the list. See `HOME_CLASSES`
+ * for what each class means and which incidents the split is answering.
  */
 export function resettablePaths(): string[] {
   return [
+    ...retiredLayoutPaths(),
+    // The current layout, by what each path HOLDS. `user-typed`, `undelivered`
+    // and `identity` are absent from this list by construction rather than by
+    // anyone remembering to leave them out.
+    ...HOME_CLASSES.filter((e) => e.class === "derived" || e.class === "refetchable").map((e) =>
+      e.path(),
+    ),
+  ];
+}
+
+/**
+ * The paths of layouts this build no longer writes.
+ *
+ * Hand-listed, and they have to be: a retired path has no definition to carry a
+ * class, and `legacy` is the only place it still exists. Each entry is here
+ * because an upgrade would otherwise leave it behind — see the notes inline,
+ * every one of which records something that actually happened.
+ *
+ * Phase-splitting these per migration step is what the migration registry does
+ * with them next; until then they are one list because `resetHome` is one step.
+ */
+function retiredLayoutPaths(): string[] {
+  return [
     // Layout 1
-    legacy.policyConfig(),
+    //
+    // NOT `legacy.policyConfig()`. It is `at("policies-config.json")` — the
+    // EXACT path layout 3 puts the live config back at, which `legacy`'s own
+    // note records and `detectLayout()` has a whole ordering rule about. Listing
+    // it here while `HOME_CLASSES` calls the same path `user-typed` would have
+    // the two halves of this function contradict each other, and the delete
+    // would win.
+    //
+    // Leaving it in place is also strictly better than what it replaced. The old
+    // sequence was delete-then-carry-eight-named-keys, so every key outside
+    // `CARRIED_POLICY_CONFIG_KEYS` was dropped on a layout-1 upgrade; now the
+    // file is simply not touched and keeps everything. `readCarriedPolicyConfig`
+    // is narrowed to layout 2's NESTED copy accordingly — that path really is
+    // deleted (`legacy.localPoliciesDir()`, below) and really does need carrying.
+    //
+    // The project-scope `policies-config.local.json` is a different file at a
+    // different path (`{cwd}/.failproofai/`, see `hooks-config.ts`); the global
+    // one below is a layout-1 artefact nothing reads.
     legacy.policyConfigLocal(),
     legacy.cloudCredentials(),
     legacy.ingestCredentials(),
@@ -426,66 +614,53 @@ export function resettablePaths(): string[] {
     // a `lib/` of helpers colliding with a stale `policies/lib/` was destroyed
     // outright, and the policy that did move was left importing a file that no
     // longer existed.
-    // The MACHINE-OWNED things, never the directory the user owns.
     //
-    // `at("policies")` stood here, and on layout 1 that directory IS the
-    // documented home for hand-written personal policies — `docs/
-    // configuration.mdx` names `~/.failproofai/policies/` as the user scope,
-    // and `manager.ts` read it. Those are source files a person wrote; nothing
-    // regenerates them, nothing backed them up, and the reset message named
-    // only "policy config, activity history and audit cache". Worse, the
-    // machine then reported itself configured — `isConfigured()` is a union
-    // that still sees the agent CLIs' untouched settings files — so the wizard
-    // was skipped and hooks kept firing against an empty policy set.
+    // Everything that used to follow here — `globalPolicyConfigFile()`,
+    // `cloudPoliciesDir()`, `at("state")`, `configFile()`, `credentialsFile()`,
+    // `auditDir()`, `customAgentsDir()`, `logsDir()` — was the CURRENT layout,
+    // hand-listed. It is derived from `HOME_CLASSES` now, and five of those
+    // entries stopped being deleted as a result, each for a reason recorded on
+    // its row: the cloud token, the whole of `config.json` (including the
+    // `extra_paths` a user typed), the undelivered spool, the SDK spool, and the
+    // machine's telemetry identity.
     //
-    // `policies/` is deliberately absent from this list for the same reason —
-    // the user's own convention policies sit directly in it and nothing
-    // re-derives them. Its `cloud-policies/` CHILD is listed instead, which is
-    // the whole reason this is a per-entry list and not `rm -rf policies/`:
-    // one directory now holds both the files a person wrote by hand and the
-    // ones the fleet sent, and only the second kind can be thrown away. Both
-    // entries below are re-derived — the policy config by setup,
-    // `cloud-policies/` by the next daemon poll.
+    // `at("state")` is the sharpest of them. It is MIXED — `spool/` and
+    // `telemetry-id` sit under it beside a dozen scratch files — so listing the
+    // parent is precisely how a reset came to delete events that were recorded,
+    // queued, and then unreachable forever, because `cursors/` deliberately
+    // survives and the watermark had already moved past them. Its scratch
+    // children are classified individually now and the parent is not listed at
+    // all, so anything under it this table has not been taught about survives
+    // rather than being swept up.
     //
-    // The policy config holds ONE thing — the user's enabled-policy selection —
-    // and clearing it on a layout migration is deliberate and tested. But it is
-    // also the destination `migratePolicyConfig()` carries layout 1's selection
-    // into, so the carry is written AFTER this list runs, and `resetHome` skips
-    // this entry when the reset is not a layout migration at all. See both.
+    // Two notes worth keeping from the old list, because they explain absences
+    // that still hold:
     //
-    // Layout 3 moved it from `policies/local-policies/policies-config.json` to
-    // the home root, so this is a FILE now rather than the directory that held
-    // it — `policies/` itself must survive, because in layout 3 it is the
-    // user's.
-    globalPolicyConfigFile(),
-    cloudPoliciesDir(),
-    // `at("cursors")` is deliberately NOT here, and it is load-bearing for the
-    // activity migration above rather than a separate opinion. Cursors are keyed
-    // on `(device, inode)`; `migrateHookActivity()` MOVES pages, which preserves
+    // `policies/` is `user-typed`, not absent by oversight. On layout 1 that
+    // directory IS the documented home for hand-written personal policies —
+    // `docs/configuration.mdx` names `~/.failproofai/policies/` as the user
+    // scope, and `manager.ts` read it. It stood on this list once: source files
+    // a person wrote, nothing regenerating them, nothing backing them up, and a
+    // reset message that named only "policy config, activity history and audit
+    // cache". Worse, the machine then reported itself configured —
+    // `isConfigured()` is a union that still sees the agent CLIs' untouched
+    // settings files — so the wizard was skipped and hooks kept firing against
+    // an empty policy set. Its `cloud-policies/` CHILD is `refetchable` and does
+    // still go, which is the whole reason this is a per-entry list and not
+    // `rm -rf policies/`.
+    //
+    // `cursors/` is `identity` for a reason load-bearing to the activity
+    // migration rather than a separate opinion. Cursors are keyed on
+    // `(device, inode)`; `migrateHookActivity()` MOVES pages, which preserves
     // the inode, so a surviving cursor still points at the file it belongs to
     // and resumes at the right offset. Delete the cursors and every carried page
-    // reads as new and re-ships in full — which is the outcome the move exists
-    // to avoid. A cursor whose file is gone is inert (`retain_existing` drops
-    // it), so keeping them costs nothing when there is nothing to resume.
-    at("state"),
-    // Layout 2.
-    // NOT versionFile() — it is the layout marker, not user data, and the
-    // reset rewrites it immediately afterwards. Listing it made a no-op reset
-    // report "removed 1 item" for a file it had just recreated.
-    configFile(),
-    credentialsFile(),
-    auditDir(),
-    // NOT hookActivityDir(). It is the DESTINATION `migrateHookActivity()` has
-    // just moved layout 1's log into, so listing it here deleted the migration
-    // moments after it happened — the reset runs every path in this list after
-    // the migrations. It is also the one directory here that is neither derived
-    // nor re-fetchable: a decision log is the record of what this machine did,
-    // and nothing regenerates it.
-    customAgentsDir(),
-    logsDir(),
-    // NOT bin/ — a downloaded daemon binary is large, version-pinned and
-    // re-verified on use, so deleting it only forces a needless re-download.
-    // NOT run/ — sockets belong to a running daemon; removing them out from
-    // under it breaks a live process rather than resetting configuration.
+    // reads as new and re-ships in full — the outcome the move exists to avoid.
+    // A cursor whose file is gone is inert (`retain_existing` drops it), so
+    // keeping them costs nothing when there is nothing to resume.
+    //
+    // And `hook-activity/` is `undelivered`, never listed: it is the DESTINATION
+    // `migrateHookActivity()` moves layout 1's log into, so listing it deleted
+    // the migration moments after it happened — the reset runs every path in
+    // this list after the migrations.
   ];
 }

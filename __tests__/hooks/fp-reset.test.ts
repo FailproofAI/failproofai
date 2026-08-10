@@ -288,21 +288,32 @@ describe("resetHome", () => {
       expect(readConfig().telemetry.enabled).toBe(true);
     });
 
-    it("still clears the machine-owned policy state", () => {
-      // Narrowing the reset must not turn it into a no-op: both of these are
-      // re-derived (the config by setup, cloud by the next daemon poll) and a
-      // stale one is exactly what the reset exists to remove.
+    it("still clears the re-fetchable policy state", () => {
+      // Narrowing the reset must not turn it into a no-op: cloud deployments are
+      // re-fetched and digest-verified on the next daemon poll, and a stale one
+      // is exactly what the reset exists to remove.
+      //
+      // `globalPolicyConfigFile()` was asserted absent here, and is not any more.
+      // It is `user-typed` in `HOME_CLASSES` — the user's enabled-policy
+      // selection, their `policyParams`, their `customPoliciesPaths` — and
+      // nothing re-derives it. Clearing it left the machine reading as configured
+      // (`isConfigured()` is a union that sees the agent CLIs' untouched settings
+      // files) with hooks firing against the DEFAULT policy set, which is the
+      // silent enforcement gap the carry functions were bolted on to patch. It
+      // simply survives now, with every key rather than the eight the carry knew.
       seedLayoutOne();
-      writeFileSync(globalPolicyConfigFile(), "{}");
+      writeFileSync(globalPolicyConfigFile(), JSON.stringify({ enabledPolicies: ["block-sudo"] }));
       mkdirSync(cloudPoliciesDir(), { recursive: true });
       writeFileSync(resolve(cloudPoliciesDir(), "active.json"), "{}");
       mkdirSync(legacy.cloudManagedPolicies(), { recursive: true });
 
       resetHome(1);
 
-      expect(existsSync(globalPolicyConfigFile())).toBe(false);
       expect(existsSync(cloudPoliciesDir())).toBe(false);
       expect(existsSync(legacy.cloudManagedPolicies())).toBe(false);
+      expect(JSON.parse(readFileSync(globalPolicyConfigFile(), "utf8")).enabledPolicies).toEqual([
+        "block-sudo",
+      ]);
     });
 
     it("leaves a layout-1 home's policy files exactly where they are", () => {
@@ -332,15 +343,44 @@ describe("resetHome", () => {
 });
 
 describe("checkLayoutForCli", () => {
-  it("resets a stale home and explains what happened", async () => {
+  it("migrates a stale home and explains what happened", async () => {
     seedLayoutOne();
     const check = await checkLayoutForCli();
     expect(check.fatal).toBe(false);
-    expect(check.lines.join("\n")).toContain("failproofai config");
-    // NOT absent: layout 3 keeps the policy config at this exact path and the
-    // carry rewrites it with the user's selection. What must be gone is the
-    // layout-1 state around it.
+    const text = check.lines.join("\n");
+    // It used to end with "Run `failproofai config` to set up again", and that
+    // instruction is gone because there is nothing left to set up: the settings,
+    // the enrolment and the policy selection all survive, so the machine enforces
+    // exactly as it did before the command ran. Telling a fleet operator to
+    // re-run an interactive wizard on every box would be asking for work that
+    // changes nothing.
+    expect(text).not.toContain("to set up again");
+    // What it must say instead: what was rebuilt, and what was kept.
+    expect(text).toContain("that this version rebuilds");
+    expect(text).toContain("cloud enrolment");
+    // NOT absent: layout 3 keeps the policy config at this exact path, and it is
+    // `user-typed` now so nothing touches it. What must be gone is the layout-1
+    // state around it.
     expect(existsSync(legacy.policyConfig())).toBe(true);
+  });
+
+  it("reports the migration without asking the caller to force setup", async () => {
+    // `didReset` used to mean "force the wizard", which was right while the
+    // migration emptied the policy set behind a machine that still read as
+    // configured. It is reporting-only now — the flag stays true because a
+    // migration really happened, and `bin/failproofai.mjs` deliberately does not
+    // read it. This pins the pair so neither half drifts alone.
+    seedLayoutOne();
+    writeFileSync(globalPolicyConfigFile(), JSON.stringify({ enabledPolicies: ["block-sudo"] }));
+
+    const check = await checkLayoutForCli();
+
+    expect(check.didReset).toBe(true);
+    // The machine is configured in FACT, not merely in appearance — which is the
+    // whole reason forcing is no longer needed.
+    expect(JSON.parse(readFileSync(globalPolicyConfigFile(), "utf8")).enabledPolicies).toEqual([
+      "block-sudo",
+    ]);
   });
 
   it("REFUSES a future layout instead of deleting it", async () => {
@@ -537,25 +577,49 @@ describe("resetHome carries the layout-1 policy selection", () => {
     writeFileSync(legacy.policyConfig(), JSON.stringify(layoutOneConfig, null, 2));
   }
 
-  it("carries the fields layout 2 still means", () => {
+  it("keeps every field layout 3 still means", () => {
+    // These used to be CARRIED — read, the file deleted, then eight named keys
+    // written back. The file is `user-typed` in `HOME_CLASSES` now and is not on
+    // the delete list, so it survives untouched and the assertions are the same
+    // ones for a better reason: nothing had to know these key names to keep them.
+    //
+    // `out.policyConfig` is therefore empty for a layout-1 home. It reports what
+    // the reset WROTE, and it wrote nothing — which is the honest answer, and the
+    // one the next assertion pins so this cannot quietly become a copy again.
     seedLayoutOne();
     seedLayoutOnePolicyConfig();
 
     const out = resetHome(1);
 
-    const carried = JSON.parse(
-      readFileSync(globalPolicyConfigFile(), "utf8"),
-    );
-    expect(carried.enabledPolicies).toEqual([
+    const kept = JSON.parse(readFileSync(globalPolicyConfigFile(), "utf8"));
+    expect(kept.enabledPolicies).toEqual([
       "block-sudo",
       "block-env-files",
       "require-tests-before-stop",
     ]);
-    expect(carried.customPoliciesPaths).toEqual(["/home/u/team/policies.mjs"]);
-    expect(carried.disabledCustomPolicies).toEqual(["team/noisy-rule"]);
-    expect(carried.policyParams).toEqual({ "block-sudo": { allowlist: ["sudo -n true"] } });
-    expect(carried.llm).toEqual({ baseUrl: "https://llm.internal/v1", model: "gpt-4o-mini" });
-    expect(out.policyConfig).toContain("enabledPolicies");
+    expect(kept.customPoliciesPaths).toEqual(["/home/u/team/policies.mjs"]);
+    expect(kept.disabledCustomPolicies).toEqual(["team/noisy-rule"]);
+    expect(kept.policyParams).toEqual({ "block-sudo": { allowlist: ["sudo -n true"] } });
+    expect(kept.llm).toEqual({ baseUrl: "https://llm.internal/v1", model: "gpt-4o-mini" });
+    expect(out.policyConfig).toEqual([]);
+  });
+
+  it("keeps a key NO version of this file ever knew about", () => {
+    // The property the allowlist could not have: a key written by a NEWER build
+    // survives an upgrade run by an older one. Under the carry this was dropped,
+    // silently, because it was not one of the eight names.
+    seedLayoutOne();
+    writeFileSync(
+      legacy.policyConfig(),
+      JSON.stringify({ ...layoutOneConfig, futureSetting: { rolloutPercent: 25 } }),
+    );
+
+    resetHome(1);
+
+    const kept = JSON.parse(readFileSync(globalPolicyConfigFile(), "utf8"));
+    expect(kept.futureSetting).toEqual({ rolloutPercent: 25 });
+    // …while the RETIRED key still goes. Both halves, one file.
+    expect(kept.collector).toBeUndefined();
   });
 
   // The one exclusion, and the reason the carry is an allowlist rather than a

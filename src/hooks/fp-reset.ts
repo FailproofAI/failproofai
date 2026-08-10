@@ -336,19 +336,75 @@ const CARRIED_POLICY_CONFIG_KEYS = [
  *
  * So: READ before, WRITE after.
  */
+/**
+ * Keys the policy config used to hold that nothing reads any more.
+ *
+ * `collector` is the whole list, and it is why the layout-1 carry was an
+ * ALLOWLIST rather than a copy: layout 1 kept collector settings here in
+ * camelCase, and layout 2 moved them to `config.toml`/`config.json` in
+ * snake_case, where `fpai-collect`'s `Settings` deserializes them. A camelCase
+ * `collector` block sitting in the layout-3 file reads as a preserved setting and
+ * does nothing — the worst of both, because it looks answered.
+ *
+ * A NAMED list, not "everything outside the keep-list". The file survives the
+ * reset now (`HOME_CLASSES` classes it `user-typed`), so dropping by exclusion
+ * would delete every key a NEWER build had written — which is the bug Phase 1
+ * fixed for `config.json`, arriving here by a different door.
+ */
+const RETIRED_POLICY_CONFIG_KEYS = ["collector"] as const;
+
+/**
+ * Remove the retired keys from the policy config, in place.
+ *
+ * Runs regardless of which layout we came from: a key is retired or it is not,
+ * and a layout-2 home carrying a stray layout-1 root file should be cleaned the
+ * same way. Returns what it removed.
+ *
+ * The file is DELETED if stripping empties it — a `{}` policy config is not a
+ * selection, and the old behaviour for a file holding nothing but `collector`
+ * was no file at all.
+ */
+export function retirePolicyConfigKeys(): string[] {
+  const at = globalPolicyConfigFile();
+  let parsed: Record<string, unknown>;
+  try {
+    const raw = JSON.parse(readFileSync(at, "utf8")) as unknown;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    parsed = raw as Record<string, unknown>;
+  } catch {
+    // Absent or unparseable. Not worth aborting a reset over, and there is
+    // nothing to retire — the same answer the carry gives for the same input.
+    return [];
+  }
+  const removed = RETIRED_POLICY_CONFIG_KEYS.filter((k) => parsed[k] !== undefined);
+  if (removed.length === 0) return [];
+  for (const key of removed) delete parsed[key];
+  try {
+    if (Object.keys(parsed).length === 0) rmSync(at, { force: true });
+    else writeFileSync(at, JSON.stringify(parsed, null, 2) + "\n", "utf8");
+  } catch {
+    // A file we cannot rewrite keeps its dead key. Misleading, but not fatal,
+    // and not worth failing the migration over.
+    return [];
+  }
+  return [...removed];
+}
+
 export function readCarriedPolicyConfig(): Record<string, unknown> | null {
-  // NEWEST SOURCE WINS. Two older layouts kept this file in two places, and a
-  // home being upgraded may hold either:
+  // LAYOUT 2's NESTED COPY ONLY — `policies/local-policies/policies-config.json`.
   //
-  //   layout 2 — `policies/local-policies/policies-config.json`
-  //   layout 1 — `policies-config.json` at the home root
+  // This used to prefer that path and fall back to `legacy.policyConfig()`, the
+  // layout-1 file at the home root. That fallback is gone because the file is:
+  // layout 3 puts the live config back at exactly that path, `HOME_CLASSES`
+  // classes it `user-typed`, and it is no longer deleted — so a layout-1 home
+  // keeps it untouched, with EVERY key rather than the eight this function knows
+  // to carry. Reading it here and writing it back would be the only thing that
+  // could still narrow it.
   //
-  // Layout 3 puts it back at the ROOT, so layout 1's path and the destination
-  // are now the same file. Reading layout 1's copy while a layout-2 one exists
-  // would carry the OLDER answer forward and silently undo whatever the user
-  // chose since — so layout 2's nested file is preferred whenever it is there.
-  const layoutTwo = resolve(legacy.localPoliciesDir(), "policies-config.json");
-  const from = existsSync(layoutTwo) ? layoutTwo : legacy.policyConfig();
+  // Layout 2's copy is different: `legacy.localPoliciesDir()` is on the retired
+  // list and really is deleted, so without this it is lost. A home cannot hold
+  // both — layout 2 never wrote the root file, and going 1 → 2 removed it.
+  const from = resolve(legacy.localPoliciesDir(), "policies-config.json");
   if (!existsSync(from)) return null;
 
   let parsed: Record<string, unknown>;
@@ -381,13 +437,30 @@ export function readCarriedPolicyConfig(): Record<string, unknown> | null {
   return carried;
 }
 
-/** Second phase of {@link readCarriedPolicyConfig}; runs AFTER the deletions. */
+/**
+ * Second phase of {@link readCarriedPolicyConfig}; runs AFTER the deletions.
+ *
+ * MERGES onto whatever is at the destination rather than replacing it. The
+ * destination is `user-typed` now and survives the reset, so a plain write would
+ * truncate a live file down to the keys this carry happens to know about — the
+ * same class of loss the carry exists to prevent, arriving by the other door.
+ * The carried values still win: they are the ones being migrated.
+ */
 export function writeCarriedPolicyConfig(carried: Record<string, unknown> | null): string[] {
   if (!carried) return [];
   const to = globalPolicyConfigFile();
+  let existing: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(readFileSync(to, "utf8")) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      existing = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Absent or unparseable — the carry is the whole file, as before.
+  }
   try {
     mkdirSync(dirname(to), { recursive: true });
-    writeFileSync(to, JSON.stringify(carried, null, 2) + "\n", "utf8");
+    writeFileSync(to, JSON.stringify({ ...existing, ...carried }, null, 2) + "\n", "utf8");
   } catch {
     // A destination we cannot write is not worth aborting the reset over; the
     // user re-runs setup, which is the pre-existing behaviour.
@@ -465,14 +538,12 @@ export function resetHome(from: number): ResetOutcome {
   const telemetryOptOut = readCarriedTelemetryOptOut();
   const removed: string[] = [];
   for (const path of resettablePaths()) {
-    // A reset FROM the current layout is not a layout migration, and the only
-    // thing under `local-policies/` is the user's enabled-policy selection.
-    // Clearing it is right when moving off an old layout (setup re-asks) and
-    // wrong when nothing is being migrated — there it would silently discard a
-    // current, valid selection, including one this function had just carried.
-    // The single production caller always passes a DETECTED stale layout, so
-    // this only ever changes the forced same-layout case.
-    if (from === LAYOUT_VERSION && path === globalPolicyConfigFile()) continue;
+    // The guard that stood here skipped `globalPolicyConfigFile()` when the
+    // reset was not a layout migration, because clearing a current, valid
+    // policy selection is only right when setup is about to re-ask. That path is
+    // `user-typed` in `HOME_CLASSES` now and therefore never on this list at
+    // all, for either kind of reset — so the special case has nothing left to
+    // guard. See the `legacy.policyConfig()` note in `retiredLayoutPaths()`.
     if (!existsSync(path)) continue;
     try {
       rmSync(path, { recursive: true, force: true });
@@ -484,6 +555,9 @@ export function resetHome(from: number): ResetOutcome {
     }
   }
   const policyConfig = writeCarriedPolicyConfig(pendingPolicyConfig);
+  // AFTER the carry, so a layout-2 value that happens to be named `collector`
+  // is retired too rather than surviving because it arrived a moment later.
+  retirePolicyConfigKeys();
   // After the deletions, onto the fresh config, so the upgrade cannot revoke a
   // choice the user made.
   if (telemetryOptOut) updateConfig({ telemetry: { enabled: false } });
@@ -498,15 +572,32 @@ export interface LayoutCheck {
   /** True when the caller should stop rather than continue. */
   fatal: boolean;
   /**
-   * True when this call actually reset the home.
+   * True when this call actually migrated the home.
    *
-   * The caller must force setup when it is set. A reset removes the global
-   * policy config, but `isConfigured()` is a union that also counts the agent
-   * CLIs' settings files — which the reset deliberately leaves alone — so the
-   * machine still reads as configured, the wizard is skipped, and
-   * `markLauncherSeen()` back-fills the marker so every later run skips it too.
-   * The user is left with hooks firing on every tool call against no policies
-   * at all, and nothing ever says so again.
+   * **Reporting only. The caller must NOT force setup on it.**
+   *
+   * It used to mean "force the wizard", and the reason was a real gap: the reset
+   * removed the global policy config while `isConfigured()` is a union that also
+   * counts the agent CLIs' settings files — which the reset deliberately leaves
+   * alone — so the machine read as configured, the wizard was skipped, and
+   * `markLauncherSeen()` back-filled the marker so every later run skipped it
+   * too. The user was left with hooks firing on every tool call against no
+   * policies at all, and nothing ever said so again.
+   *
+   * That gap is closed at the source. `policies-config.json`, `config.json` and
+   * `credentials.json` are `user-typed` in `HOME_CLASSES` and are no longer
+   * removed, so after a migration `isConfigured()` is true because the machine
+   * genuinely IS configured — its policy selection, its `daemon.configured`
+   * flag and its cloud enrolment all survived. Everything the migration still
+   * drops (audit cache, cloud deployments, daemon scratch) is re-derived or
+   * re-fetched with nobody present.
+   *
+   * Forcing setup from here would now mean opening an interactive wizard for a
+   * machine with nothing to answer — and on the machines that matter most (a
+   * fleet box, a CI runner, a headless gateway) there is nobody to answer it. A
+   * home that genuinely never finished setup still reaches the wizard by the
+   * ordinary route: `isConfigured()` is false for it, so `shouldOfferFirstRun`
+   * fires on its own. That is why forcing was redundant even before it was wrong.
    */
   didReset: boolean;
 }
@@ -546,11 +637,15 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
       lines: [
         `failproofai reorganised ${failproofaiHome()} in this version.`,
         // "activity history" was in this sentence while the reset was deleting
-        // it. It is carried over now, so the message says what was KEPT as well
-        // as what went — a user who reads "removed" and nothing else has no way
-        // to know their decision log survived.
-        `Removed ${removed.length} item(s) from the old layout — policy config and`,
-        `audit cache. Your daemon binary and decision history were kept.`,
+        // it, and "policy config" stayed in it after that file stopped being
+        // removed. Both are the same failure: a message describing a delete list
+        // it is not derived from. It names the CLASSES now, which is what
+        // `HOME_CLASSES` actually decides — so it cannot drift again without the
+        // rule itself changing.
+        `Removed ${removed.length} item(s) that this version rebuilds — the audit`,
+        `cache, cloud deployments (re-fetched on the next poll) and daemon scratch.`,
+        `Your settings, cloud enrolment, policy selection, decision history,`,
+        `undelivered events and daemon binary were all kept.`,
         // Named individually rather than counted. These are files a person
         // wrote; "moved 3 items" is not something you can check at a glance,
         // and the whole point of saying it is that they can.
@@ -572,8 +667,11 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
               `Carried ${activity.length} page(s) of decision history into ${hookActivityDir()}.`,
             ]
           : []),
-        ``,
-        `Run \`failproofai config\` to set up again.`,
+        // No "run `failproofai config` to set up again". There is nothing to set
+        // up: the settings, the enrolment and the policy selection all survived,
+        // so the machine enforces exactly as it did before this command ran. A
+        // home that genuinely never finished setup reaches the wizard through
+        // `shouldOfferFirstRun`, which reads `isConfigured()` — see `didReset`.
       ],
     };
   }

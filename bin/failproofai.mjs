@@ -445,7 +445,6 @@ LINKS
   // past the help block above and reach here, so without this a user typing
   // `failproofai policies --help` had their home reset by a question. The
   // adjacent, far less destructive first-run gate exempted help from the start.
-  let layoutWasReset = false;
   {
     const isHelpOrVersion =
       args.includes("--help") || args.includes("-h") || args.includes("--version") || args.includes("-v");
@@ -469,7 +468,10 @@ LINKS
       const check = await checkLayoutForCli();
       for (const line of check.lines) console.error(line);
       if (check.fatal) process.exit(1);
-      layoutWasReset = check.didReset;
+      // `check.didReset` is deliberately not read. It used to force the wizard
+      // below; see the note at `shouldOfferFirstRun` for why a migrated machine
+      // no longer needs setup re-run, and `didReset` in `fp-reset.ts` for what
+      // the field means now.
     }
   }
 
@@ -496,20 +498,25 @@ LINKS
   }
 
   const { shouldOfferFirstRun } = await import("../src/hooks/first-run-gate");
-  if (shouldOfferFirstRun(args) || layoutWasReset) {
+  // `|| layoutWasReset` stood here, with `force: layoutWasReset` below, because a
+  // migration used to delete the home's policy config while leaving the agent
+  // CLIs' settings files alone — so `isConfigured()` read true off
+  // `hasGlobalHooks` and setup was skipped, leaving hooks firing against no
+  // policies, silently and permanently.
+  //
+  // The migration keeps that file now (`HOME_CLASSES` classes it `user-typed`),
+  // along with `config.json` and `credentials.json`, so a migrated machine is
+  // configured in fact and not merely in appearance. Forcing the wizard here
+  // would open an interactive prompt with nothing to answer — and on a fleet box,
+  // a CI runner or a headless gateway, nobody to answer it. A home that never
+  // finished setup still gets here on its own: `isConfigured()` is false for it.
+  // See `didReset` in `fp-reset.ts`.
+  if (shouldOfferFirstRun(args)) {
     try {
       const { maybeFirstRunConfigure } = await import("../src/hooks/configure-wizard");
       // `audit` runs its own scan immediately after this returns; firing the
       // post-setup audit too would scan the whole history twice in a row.
-      //
-      // `force` after a reset: the home's policy config is gone, but the agent
-      // CLIs' settings files were deliberately left alone, so `isConfigured()`
-      // still reads true off `hasGlobalHooks` and setup would be skipped —
-      // leaving hooks firing against no policies, silently and permanently.
-      await maybeFirstRunConfigure(
-        {},
-        { postSetupAudit: args[0] !== "audit", force: layoutWasReset },
-      );
+      await maybeFirstRunConfigure({}, { postSetupAudit: args[0] !== "audit" });
     } catch {
       // Onboarding is never allowed to block the command the user actually typed.
     }

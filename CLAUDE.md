@@ -28,9 +28,10 @@ moment bun is off the *hook's* PATH — which happens routinely even when bun is
 macOS GUI launch gets a launchd PATH built without `~/.zshrc`. The session then runs with
 zero enforcement, silently. The launcher locates bun across PATH, `$BUN_INSTALL/bin`,
 `~/.bun/bin`, Homebrew, and every `~/.nvm/versions/node/*/bin`; installs it via npm if it
-is genuinely absent; ensures `dist/index.js` exists so `.failproofai/policies/*.mjs` can
-resolve `import ... from 'failproofai'`; then delegates with `stdio: "inherit"` and
-propagates the child's exit code verbatim.
+is genuinely absent; runs `bun install --frozen-lockfile` once when a fresh or partial
+checkout is missing the source hook's runtime dependencies; ensures `dist/index.js`
+exists so `.failproofai/policies/*.mjs` can resolve `import ... from 'failproofai'`; then
+delegates with `stdio: "inherit"` and propagates the child's exit code verbatim.
 
 **The `command -v node` prefix is a pre-check, never a `||` fallback.** Exit 2 is the deny
 signal, so a reactive `launcher || fallback` chain would re-fire on every legitimate

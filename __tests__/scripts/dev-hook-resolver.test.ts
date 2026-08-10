@@ -211,6 +211,63 @@ describe("bunMissingMessage", () => {
   });
 });
 
+describe("projectDependenciesInstalled", () => {
+  it("returns true when all source-hook runtime dependencies are installed", async () => {
+    const { projectDependenciesInstalled } = await import(LAUNCHER);
+    expect(projectDependenciesInstalled(deps({ exists: () => true }))).toBe(true);
+  });
+
+  it("returns false for a fresh checkout with no node_modules", async () => {
+    const { projectDependenciesInstalled } = await import(LAUNCHER);
+    expect(projectDependenciesInstalled(deps())).toBe(false);
+  });
+
+  it("returns false for a partial or interrupted install", async () => {
+    const { projectDependenciesInstalled } = await import(LAUNCHER);
+    expect(
+      projectDependenciesInstalled(deps({
+        exists: (path: string) => !path.includes("sql.js"),
+      })),
+    ).toBe(false);
+  });
+});
+
+describe("ensureProjectDependencies", () => {
+  it("runs a lockfile-pinned install for a fresh checkout", async () => {
+    const { ensureProjectDependencies } = await import(LAUNCHER);
+    let installed = false;
+    const run = vi.fn(() => {
+      installed = true;
+      return { status: 0 };
+    });
+
+    expect(
+      ensureProjectDependencies("/tools/bun", deps({
+        exists: () => installed,
+        spawn: run,
+      })),
+    ).toBe(true);
+    expect(run).toHaveBeenCalledOnce();
+    expect(run).toHaveBeenCalledWith(
+      "/tools/bun",
+      ["install", "--frozen-lockfile"],
+      expect.objectContaining({ cwd: process.cwd() }),
+    );
+  });
+
+  it("does not run install when dependencies are already present", async () => {
+    const { ensureProjectDependencies } = await import(LAUNCHER);
+    const run = vi.fn();
+    expect(
+      ensureProjectDependencies("/tools/bun", deps({
+        exists: () => true,
+        spawn: run,
+      })),
+    ).toBe(true);
+    expect(run).not.toHaveBeenCalled();
+  });
+});
+
 // Every CLI except Claude and Factory reads its deny decision as JSON on the
 // hook's stdout. One stray byte from the launcher corrupts that parse and turns
 // a denial into a silent allow, so the launcher must never write there at all.

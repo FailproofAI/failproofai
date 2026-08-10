@@ -2,6 +2,10 @@
 
 ## 1.0.0-beta.15 — 2026-08-09
 
+### Fixes
+
+- Bootstrap this repo's dogfood hooks on a fresh checkout. `scripts/dev-hook.mjs` already installed the Bun executable and built `dist/index.js`, but never installed the project dependencies that the source hook binary imports, so self-development hooks failed before they could enforce while published-package use kept working. The launcher now detects missing or partial runtime dependencies and runs `bun install --frozen-lockfile` once under its existing cross-hook lock before loading policies; a failed install is reported and the hook exits instead of silently continuing unenforced.
+
 ### Docs
 
 - Trim the extra-capture-path guidance in `failproofai --help` back to the command listing, and keep the useful half — the per-user labelling rule and the container `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` override — in `harness --help`, where someone who has decided to use the feature will look. Twenty-one lines of prose in a listing that is scanned rather than read is not help. (#663)

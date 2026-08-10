@@ -618,7 +618,10 @@ mod tests {
     #[test]
     fn fetches_desired_state_and_artifact_into_the_store() {
         let artifact = b"export default 'managed';\n".to_vec();
-        let sha = format!("{:x}", Sha256::digest(&artifact));
+        let sha = Sha256::digest(&artifact)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let expected_sha = sha.clone();

@@ -9,6 +9,7 @@ mod telemetry;
 mod test_env;
 mod worker;
 
+use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -47,6 +48,7 @@ fn init_logging() {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
+    refuse_foreign_layout()?;
     let lock_path = paths::lock_path()?;
     paths::ensure_run_dir()?;
     let _singleton = lock::acquire(&lock_path)?;
@@ -198,6 +200,51 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     run_result?;
     Ok(())
+}
+
+/// Refuse to run against a home written by a layout this binary does not speak.
+///
+/// Every path in `paths.rs` is correct for exactly one layout, and this binary
+/// never read the marker that says which one is on disk — so a daemon whose
+/// version had drifted from the CLI's happily read and wrote LAYOUT-3 paths in a
+/// layout-4 home. That is the failure `fp-home.ts` was created to end: the daemon
+/// writes where nothing reads, silently, because an absent directory is
+/// indistinguishable from an idle one. The skew is ordinary rather than exotic —
+/// `npm i -g` replaces the CLI while the binary under
+/// `~/.failproofai/bin/failproofaid-<version>` stays exactly where it was, which
+/// is why `daemonVersionSkew()` exists on the CLI side at all.
+///
+/// Refusing is the fail-closed-consistent answer and it mirrors what the CLI
+/// already does for a `future` layout: stop, name the version, and say what fixes
+/// it. A machine that fails closed then denies tool calls until the daemon is
+/// updated — loud, immediate, and pointing at the remedy — which is the outcome
+/// this codebase picks every other time it has this choice.
+///
+/// An ABSENT marker starts normally. A fresh home has none until the first CLI
+/// command stamps one, and refusing there would break the install itself.
+fn refuse_foreign_layout() -> Result<(), Box<dyn std::error::Error>> {
+    let home = paths::failproofai_home()?;
+    let Some(found) = paths::read_layout(&home) else {
+        return Ok(());
+    };
+    if found == paths::LAYOUT_VERSION {
+        return Ok(());
+    }
+    // Both directions refuse, and the message differs because the remedy does.
+    // An OLDER home is one the CLI is about to migrate; a NEWER one means this
+    // binary is the stale half.
+    let remedy = if found < paths::LAYOUT_VERSION {
+        "run any `failproofai` command to migrate it, then restart this service"
+    } else {
+        "run `failproofai update` to bring this daemon up to the CLI's version"
+    };
+    Err(io::Error::other(format!(
+        "{} was written by layout {found}, and this failproofaid speaks layout {}. \
+         Refusing to start rather than read and write paths that moved — {remedy}.",
+        home.display(),
+        paths::LAYOUT_VERSION,
+    ))
+    .into())
 }
 
 /// The collector tasks to supervise for this process.

@@ -207,7 +207,19 @@ function appendLedger(entry: LedgerEntry): void {
  * such a bug would hurt.
  */
 const BACKED_UP = [configFile, credentialsFile, globalPolicyConfigFile, versionFile];
-const BACKED_UP_LEGACY = [legacy.configToml, legacy.credentialsToml, legacy.policyConfig];
+const BACKED_UP_LEGACY = [
+  legacy.configToml,
+  legacy.credentialsToml,
+  legacy.policyConfig,
+  // Layout 1's credentials, which the migration DELETES and which nothing
+  // regenerates. They were missing here while the carry that reads them was
+  // added, so on the layout-1 leg — the one a user upgrading from the published
+  // `latest` actually takes — the cloud token was removed with no copy kept. That
+  // is precisely the file this backup exists for, and its absence made the backup
+  // most incomplete exactly where it mattered most.
+  legacy.cloudCredentials,
+  legacy.ingestCredentials,
+];
 
 /**
  * The files that exist right now and would be backed up, each exactly once.

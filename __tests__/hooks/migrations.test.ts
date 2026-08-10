@@ -173,6 +173,40 @@ describe("the backup taken before a migration", () => {
     expect(existsSync(resolve(migrationBackupDir(2), "credentials.json"))).toBe(true);
   });
 
+  it("copies layout 1's credential files, which the migration deletes", () => {
+    // The gap the functional matrix caught. `cloud.json` and `ingest.json` are on
+    // the retired list, so the migration removes them, and nothing regenerates a
+    // cloud token — they are the definition of what this backup is for. They were
+    // absent from it while the carry that reads them was being added, so the
+    // layout-1 leg (the one an upgrade from the published `latest` takes) deleted
+    // the token with no copy kept.
+    mkdirSync(home, { recursive: true });
+    writeFileSync(legacy.cloudCredentials(), '{"url":"u","machineId":"m","token":"tok"}');
+    writeFileSync(legacy.ingestCredentials(), '{"url":"u","key":"k"}');
+
+    const saved = backupBeforeMigrating(1);
+
+    expect([...saved].sort()).toEqual(["cloud.json", "ingest.json"]);
+    expect(
+      JSON.parse(readFileSync(resolve(migrationBackupDir(1), "cloud.json"), "utf8")).token,
+    ).toBe("tok");
+  });
+
+  it("a full layout-1 migration leaves the token recoverable", () => {
+    // End to end: the originals are gone afterwards, so the backup is the only
+    // copy — assert it is actually there and readable.
+    mkdirSync(home, { recursive: true });
+    writeFileSync(legacy.cloudCredentials(), '{"url":"u","machineId":"m","token":"tok-live"}');
+    writeFileSync(globalPolicyConfigFile(), '{"enabledPolicies":[]}');
+
+    runMigrations(1);
+
+    expect(existsSync(legacy.cloudCredentials())).toBe(false);
+    expect(
+      JSON.parse(readFileSync(resolve(migrationBackupDir(1), "cloud.json"), "utf8")).token,
+    ).toBe("tok-live");
+  });
+
   it("skips what is not there rather than failing", () => {
     mkdirSync(home, { recursive: true });
     writeFileSync(configFile(), "{}");

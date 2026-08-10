@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-beta.21 — 2026-08-10
+
+### Fixes
+
+- Version bump only, so the merge from `main` this PR needs has a version left to publish. beta.20 is on the registry and `publish.yml`'s preflight refuses to start when the publish version already exists — deliberately, because the root package publishes LAST, so a burned version would run the whole cross-compile, attach the release assets and publish the four platform packages before taking `E403` on the root, stranding four orphan versions nothing pins. Everything shipped in beta.20 stays described under its own heading below. (#663)
+
 ## 1.0.0-beta.20 — 2026-08-10
 
 ### Fixes

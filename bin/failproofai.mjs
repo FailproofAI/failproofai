@@ -993,7 +993,9 @@ USAGE
 
 WHAT IT REMOVES
   • failproofai hook entries from every agent CLI that has them
-  • the failproofaid daemon service (needs sudo)
+  • the failproofaid daemon service — ASKED on a plain uninstall (kept unless
+    you say yes); always removed with --purge, which prompts for your password
+    rather than printing commands to paste
   • the "require the daemon" flag — cleared FIRST, so a partial uninstall can
     never leave this machine denying every tool call
 
@@ -1055,6 +1057,30 @@ WHY THIS EXISTS
             return answer === true;
           }
         : undefined,
+      // Only on a plain uninstall: `--purge` removes the service unconditionally
+      // because it deletes the binary the service points at. Absent without a TTY,
+      // which the module reads as "keep it".
+      confirmDaemon:
+        process.stdin.isTTY && !purge
+          ? async () => {
+              const { selectOne } = await import("../src/hooks/tui");
+              const answer = await selectOne({
+                message: "Remove the failproofaid background service too?",
+                body: [
+                  "It runs as a system service and needs sudo to remove, so you",
+                  "will be asked for your password.",
+                  "",
+                  "Keeping it is fine if you plan to reinstall — the hooks are",
+                  "already gone either way, so nothing is being enforced.",
+                ],
+                choices: [
+                  { label: "Yes, remove the service", value: true },
+                  { label: "No, leave it installed", value: false },
+                ],
+              });
+              return answer === true;
+            }
+          : undefined,
     });
 
     // The prompt already rendered the plan as its body; re-printing it would

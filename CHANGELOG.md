@@ -6,6 +6,9 @@
 - Bump the `postcss` override from `8.5.23` to `8.5.26` to pull in `nanoid@^3.3.17`, clearing a high-severity OSV advisory (GHSA-2v37-7h3g-55p8) against the transitively-locked `nanoid@3.3.16`. (#670)
 - Move the `Supply Chain` workflow's scheduled OSV-Scanner run from weekly to daily, and optionally post the daily run's failures to Slack when `SLACK_WEBHOOK_URL` is configured — a scheduled failure on `main` previously surfaced only when the next PR happened to touch the lockfile, since a red scheduled run has no PR author to notice it. PR and push runs don't post; those failures are already visible to whoever opened or merged the PR. The notify step needed its own `failure()` clause — a bare `if:` without one is implicitly ANDed with `success()`, so without it the step would have been silently skipped every single time (the one time it's meant to run is exactly when the job already failed) — and now retries the webhook POST 3 times, exiting nonzero on exhaustion so a broken webhook fails visibly instead of a green step that posted nothing. (#670)
 
+### Dependencies
+- Upgrade `sha2` from `0.10.9` to `0.11.0` and explicitly hex-encode digest bytes to preserve cloud-policy hash verification with the new digest output type. (#658)
+
 ## 1.0.0-beta.13 — 2026-08-07
 
 ### Fixes

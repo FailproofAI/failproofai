@@ -1557,6 +1557,22 @@ export async function refreshDaemonToCliVersion(
       ],
     };
   }
+  // RECORD THE VERSION, or the refresh is invisible to everything that asks.
+  //
+  // `installDaemonService()` deliberately does not write it — only the wizard did
+  // (`setDaemonConfigured(true, cliVersion)`), because that is where "this machine
+  // is now configured, at this version" is decided. So without this line the new
+  // binary runs while `VERSION.daemon` still names the old one, and
+  // `daemonVersionSkew()` reads that file: every later CLI command keeps nudging
+  // about a stale daemon that was just replaced, and the wizard's `daemonMaybeUp`
+  // stays false on the skew it should no longer see — so a later `failproofai
+  // config` would tear down and rebuild a perfectly current service.
+  //
+  // `writeVersionFile` rather than `setDaemonConfigured(true, …)`: that helper also
+  // sets `daemon.configured`, and turning on fail-closed enforcement as a SIDE
+  // EFFECT of an update is not this command's decision to make. An update refreshes
+  // what is installed; it does not change whether the machine requires it.
+  writeVersionFile({ daemon: version });
   return {
     ok: true,
     lines: [`failproofaid ${version} installed, service restarted and holding.`],

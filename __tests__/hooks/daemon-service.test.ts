@@ -1013,6 +1013,30 @@ describe("refreshDaemonToCliVersion", () => {
     expect(result.lines.join("\n")).toContain("service restarted and holding");
   });
 
+  it("records the new daemon version, so the skew actually clears", async () => {
+    // Without this the refresh is invisible to everything that asks. Only the
+    // wizard wrote `VERSION.daemon`, so a successful update left the file naming
+    // the OLD version: `daemonVersionSkew()` reads it, so every later command
+    // would nudge about a stale daemon that had just been replaced, and the
+    // wizard would rebuild a current service on a skew it should not see.
+    const { writeVersionFile, readVersionFile } = await import("../../src/hooks/fp-config");
+    const { version } = await import("../../package.json");
+    writeVersionFile({ daemon: "0.0.0-old" });
+    expect(readVersionFile()?.daemon).toBe("0.0.0-old");
+
+    await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      install: async () => ({ installed: true }),
+    });
+
+    expect(readVersionFile()?.daemon).toBe(version);
+    // And it must NOT have flipped the fail-closed flag as a side effect: an
+    // update refreshes what is installed, it does not decide whether the machine
+    // requires it.
+    const { readConfig } = await import("../../src/hooks/fp-config");
+    expect(readConfig().daemon.configured).toBe(false);
+  });
+
   it("surfaces the install's failure instead of claiming a refresh", async () => {
     const result = await svc.refreshDaemonToCliVersion({
       status: () => "running",

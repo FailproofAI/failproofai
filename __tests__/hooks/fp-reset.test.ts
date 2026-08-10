@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  chmodSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import {
@@ -75,6 +83,34 @@ describe("resetHome", () => {
     expect(existsSync(legacy.ingestCredentials())).toBe(false);
     expect(readVersionFile()?.layout).toBe(LAYOUT_VERSION);
     expect(detectLayout().kind).toBe("current");
+  });
+
+  it("carries a decision-log page by COPY when the rename cannot work", () => {
+    // The fallback tested only EXDEV, on the reasoning that a cross-filesystem
+    // rename is the only failure a copy can rescue. It is not: a rename needs
+    // write permission on the SOURCE DIRECTORY, a copy needs only read on the
+    // file — so EACCES on `cache/` failed the rename and made no copy attempt,
+    // and the page was silently dropped from the carry.
+    //
+    // Permanent, not deferred: `resetHome` stamps VERSION regardless, so
+    // `detectLayout()` reports `current` and `migrateHookActivity()` never runs
+    // again. The page is abandoned in the old layout rather than left for a retry.
+    seedLayoutOne();
+    mkdirSync(legacy.hookActivityDir(), { recursive: true });
+    writeFileSync(resolve(legacy.hookActivityDir(), "page-1.jsonl"), '{"decision":"deny"}\n');
+    // Read+execute but not write: readdir works, rename out does not.
+    chmodSync(legacy.hookActivityDir(), 0o555);
+
+    try {
+      const out = resetHome(1);
+
+      expect(out.activity).toContain("page-1.jsonl");
+      expect(
+        readFileSync(resolve(hookActivityDir(), "page-1.jsonl"), "utf8"),
+      ).toContain('"deny"');
+    } finally {
+      chmodSync(legacy.hookActivityDir(), 0o755);
+    }
   });
 
   it("KEEPS cursors — the decision was reversed deliberately", () => {

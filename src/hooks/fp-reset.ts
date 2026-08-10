@@ -308,17 +308,33 @@ export function migrateHookActivity(): string[] {
       try {
         renameSync(source, target);
         moved.push(name);
-      } catch (err) {
-        // EXDEV: a rename across filesystems. Copy instead and accept the
-        // re-ship; a page left behind would be data lost.
-        if ((err as NodeJS.ErrnoException)?.code === "EXDEV") {
-          try {
-            copyFileSync(source, target);
-            moved.push(name);
-          } catch {
-            // Unreadable or undeletable — leave it where it is. `cache/` is no
-            // longer deleted wholesale, so "left behind" means "still there".
-          }
+      } catch {
+        // Fall back to a copy on ANY rename failure, not just EXDEV.
+        //
+        // EXDEV (a rename across filesystems) was the only code handled, on the
+        // reasoning that it is the only one a copy can rescue. It is not: a
+        // rename needs write permission on the SOURCE DIRECTORY, while a copy
+        // needs only read on the file and write on the destination — so EACCES,
+        // EPERM and EROFS on `cache/` all fail the rename and all succeed as a
+        // copy. Those were silently dropped from the carry with no attempt made.
+        //
+        // Getting this wrong is permanent rather than deferred. The comment here
+        // used to say a page left behind is merely "still there", which is true
+        // of the file and false of its fate: `resetHome` stamps VERSION at the
+        // end regardless, `detectLayout` then reports `current`, and this
+        // function never runs again — so the page is not left for a retry, it is
+        // abandoned in the old layout where nothing reads it.
+        //
+        // The copy leaves the original in place, which is the right trade in the
+        // one direction that matters: the store's reader is keyed on the pages it
+        // finds under the CURRENT layout, so a duplicate there would double-count
+        // and a duplicate left behind is inert.
+        try {
+          copyFileSync(source, target);
+          moved.push(name);
+        } catch {
+          // Genuinely unreadable. Reported by omission from `activity`, which is
+          // the signal `resetHome`'s caller prints.
         }
       }
     }

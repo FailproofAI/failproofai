@@ -13,18 +13,18 @@
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
 [![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?style=flat-square&logo=discord)](https://discord.befailproof.ai/)
 [![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/introduction)
-[![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](./LICENSE)
+[![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](../../LICENSE)
 
-**Переводы:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
+**Переводы:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**Разрешение проблем во время выполнения для кодирующих агентов.**
-Интегрируется с Claude Code и Codex. Перехватывает зацикливания, опасные действия и утечки секретов
-до того, как они станут инцидентами. Нулевая задержка. Работает локально.
+**Разрешение проблем во время выполнения для агентов кодирования.**
+Интегрируется с Claude Code и Codex. Перехватывает циклы, опасные действия и утечки секретов
+прежде чем они станут инцидентами. Нулевая латентность. Работает локально.
 
 </div>
 
 <p align="center">
-  <img src="readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI в действии" width="800" />
 </p>
 
 ---
@@ -38,46 +38,46 @@
   <tr>
     <td align="center" width="96">
       <a href="https://claude.com/claude-code" title="Claude Code">
-        <img src="assets/logos/claude.svg" alt="Claude Code" width="56" height="56" />
+        <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/claude.svg" alt="Claude Code" width="56" height="56" />
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://learn.chatgpt.com" title="OpenAI Codex">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />
-          <img src="assets/logos/openai-light.svg" alt="OpenAI Codex" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/openai-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/openai-light.svg" alt="OpenAI Codex" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://github.com/features/copilot/cli" title="GitHub Copilot CLI">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/copilot-dark.svg" />
-          <img src="assets/logos/copilot-light.svg" alt="GitHub Copilot" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/copilot-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/copilot-light.svg" alt="GitHub Copilot" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://cursor.com" title="Cursor Agent CLI">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/cursor-dark.svg" />
-          <img src="assets/logos/cursor-light.svg" alt="Cursor Agent" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/cursor-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/cursor-light.svg" alt="Cursor Agent" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://opencode.ai/" title="OpenCode">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/opencode-dark.svg" />
-          <img src="assets/logos/opencode-light.svg" alt="OpenCode" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/opencode-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/opencode-light.svg" alt="OpenCode" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://pi.dev/" title="Pi (pi-coding-agent)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/pi-dark.svg" />
-          <img src="assets/logos/pi-light.svg" alt="Pi" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/pi-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/pi-light.svg" alt="Pi" width="56" height="56" />
         </picture>
       </a>
     </td>
@@ -86,39 +86,39 @@
     <td align="center" width="96">
       <a href="https://hermes-agent.nousresearch.com/" title="Hermes (hermes-agent)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
-          <img src="assets/logos/hermes-light.svg" alt="Hermes" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/hermes-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/hermes-light.svg" alt="Hermes" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://openclaw.ai/" title="OpenClaw (openclaw gateway)">
-        <img src="assets/logos/openclaw.svg" alt="OpenClaw" width="56" height="56" />
+        <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/openclaw.svg" alt="OpenClaw" width="56" height="56" />
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://factory.ai/" title="Factory Droid (droid)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/factory-dark.png" />
-          <img src="assets/logos/factory-light.png" alt="Factory Droid" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/factory-dark.png" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/factory-light.png" alt="Factory Droid" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://devin.ai" title="Devin CLI (Cognition)">
-        <img src="assets/logos/devin.svg" alt="Devin CLI" width="56" height="56" />
+        <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/devin.svg" alt="Devin CLI" width="56" height="56" />
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://antigravity.google" title="Antigravity CLI (agy)">
-        <img src="assets/logos/antigravity.svg" alt="Antigravity CLI" width="56" height="56" />
+        <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/antigravity.svg" alt="Antigravity CLI" width="56" height="56" />
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://goose-docs.ai/" title="Goose (codename goose)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
-          <img src="assets/logos/goose-light.svg" alt="Goose" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/goose-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/goose-light.svg" alt="Goose" width="56" height="56" />
         </picture>
       </a>
     </td>
@@ -129,23 +129,23 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # или просто запустите `failproofai` и примите запрос при первом запуске
+failproofai policies --install   # или просто запустите `failproofai` и согласитесь с предложением при первом запуске
 failproofai
 ```
 
-30 встроенных политик активируются немедленно. Панель управления доступна по адресу `localhost:8020`. Отключите запрос при первом запуске с помощью `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 встроенных политик активируются немедленно. Панель управления по адресу `localhost:8020`. Отключите запрос при первом запуске с помощью `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
 ## Что оно блокирует
 
-| Политика | Что она блокирует |
+| Политика | Что блокирует |
 |---|---|
-| `block-push-master` | Прямые push в `main` / `master` |
+| `block-push-master` | Прямые отправки в `main` / `master` |
 | `block-force-push` | `git push --force` |
 | `block-work-on-main` | Коммиты, слияния, перебазирования на `main` / `master` |
 | `block-rm-rf` | Рекурсивное удаление файлов |
-| `sanitize-api-keys` | Утечки API-ключей в контекст агента |
+| `sanitize-api-keys` | API ключи, утекающие в контекст агента |
 
 → [Все 30 встроенных политик](https://docs.befailproof.ai/built-in-policies)
 
@@ -153,8 +153,8 @@ failproofai
 
 ## Ваши собственные политики
 
-Поместите файл в `.failproofai/policies/` — он загружается автоматически, никаких флагов не требуется.
-Зафиксируйте его, и вся команда получит его при следующем pull.
+Положите файл в `.failproofai/policies/` — он загружается автоматически, никаких флагов не требуется.
+Отправьте его, и вся команда получит его при следующем pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -164,7 +164,7 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Writes to production paths are blocked.");
+      return deny("Запись в production пути заблокирована.");
     return allow();
   },
 });
@@ -175,18 +175,18 @@ customPolicies.add({
 | Решение | Эффект |
 |---|---|
 | `allow()` | Разрешить операцию |
-| `deny(message)` | Заблокировать — сообщение вернется агенту |
-| `instruct(message)` | Позволить пройти, но добавить контекст в следующий запрос агента |
+| `deny(message)` | Заблокировать — сообщение вернётся агенту |
+| `instruct(message)` | Пропустить, но добавить контекст в следующий запрос агента |
 
 → [Руководство по пользовательским политикам](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## Видимость сессии
+## Видимость сессий
 
-Каждый вызов инструмента, который делает ваш агент, регистрируется локально. Панель управления показывает, что было выполнено,
-что было заблокировано и что политика сказала агенту — поэтому вы не гадаете,
-когда что-то идет не так. → [Руководство панели управления](https://docs.befailproof.ai/dashboard)
+Каждый вызов инструмента, который делает ваш агент, регистрируется локально. Панель управления показывает, что запустилось,
+что было заблокировано и что политика сказала агенту — так вы не будете гадать
+когда что-то пойдёт не так. → [Руководство панели управления](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -196,25 +196,28 @@ customPolicies.add({
 |---|---|
 | [Начало работы](https://docs.befailproof.ai/getting-started) | Установка и первые шаги |
 | [Встроенные политики](https://docs.befailproof.ai/built-in-policies) | Все 30 политик с параметрами |
-| [Пользовательские политики](https://docs.befailproof.ai/custom-policies) | Напишите свои собственные |
+| [Пользовательские политики](https://docs.befailproof.ai/custom-policies) | Напишите свою |
 | [Конфигурация](https://docs.befailproof.ai/configuration) | Области конфигурации и правила слияния |
-| [Панель управления](https://docs.befailproof.ai/dashboard) | Монитор сеансов и активность политик |
-| [Архитектура](https://docs.befailproof.ai/architecture) | Как работает система перехватов |
+| [Панель управления](https://docs.befailproof.ai/dashboard) | Монитор сессий и активность политик |
+| [Архитектура](https://docs.befailproof.ai/architecture) | Как работает система хуков |
 
 ---
 
 ## Лицензия
 
-MIT с [Commons Clause](https://commonsclause.com/) — бесплатно для внутреннего и личного использования; коммерческая перепродажа самого failproofai требует отдельного соглашения. Полный текст см. в [LICENSE](./LICENSE).
+MIT с [Commons Clause](https://commonsclause.com/) — бесплатно для внутреннего и личного использования; коммерческая перепродажа самого failproofai требует отдельного соглашения. Смотрите [LICENSE](../../LICENSE) для полного текста.
 
 ---
 
-## Внесение вклада
+## Участие в разработке
 
-См. [CONTRIBUTING.md](./CONTRIBUTING.md). Новые политики, граничные случаи и переводы приветствуются.
+Смотрите [CONTRIBUTING.md](../../CONTRIBUTING.md). Новые политики, граничные случаи и переводы приветствуются.
 
-> **Собирайте перед началом.** Сначала запустите `bun install && bun run build`. Этот репозиторий запускает собственные перехватчики failproofai на себе, и они разрешают импорт `failproofai` для скомпилированного пакета `dist/` — без сборки вы столкнетесь с ошибками перехватчиков `Cannot find package 'failproofai'`. Пересобирайте после изменения `src/`. См.
-> [Сборка перед работой встроенных перехватчиков в репозитории](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **Соберите перед началом.** Сначала запустите `bun install && bun run build`. Этот репозиторий запускает
+> собственные хуки failproofai на себе, и они разрешают импорт `failproofai` против
+> скомпилированного бандла `dist/` — без сборки вы получите ошибки хуков `Cannot find package 'failproofai'`.
+> Пересоберите после изменения `src/`. Смотрите
+> [Сборка перед включением in-repo dev хуков](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

@@ -1,29 +1,29 @@
 ---
 title: Удаление политик
-description: "Удаление записей hook из settings Claude Code"
+description: "Удалите записи hook из settings Claude Code"
 ---
 
 ```bash
 failproofai policies --uninstall [policy-names...] [options]
 ```
 
-Удаляет записи hook failproofai из файла `settings.json` Claude Code.
+Удаляет записи hook failproofai из `settings.json` Claude Code.
 
-Alias: `failproofai p -u`
+Псевдонимы: `failproofai p -u`
 
-## Опции
+## Параметры
 
 | Флаг | Описание |
-|------|-------------|
-| `--scope user` | Удалить из глобальных параметров (по умолчанию) |
-| `--scope project` | Удалить из параметров проекта |
-| `--scope local` | Удалить из локальных параметров |
-| `--scope all` | Удалить из всех областей одновременно |
+|------|----------|
+| `--scope user` | Удалить из глобальных настроек (по умолчанию) |
+| `--scope project` | Удалить из настроек проекта |
+| `--scope local` | Удалить из локальных настроек |
+| `--scope all` | Удалить из всех областей сразу |
 | `--custom` / `-c` | Очистить `customPoliciesPath` из конфигурации |
 
 ## Поведение
 
-- **Без названий политик** — удаляет все записи hook failproofai из файла параметров
+- **Без названий политик** — удаляет все записи hook failproofai из файла настроек
 - **Конкретные названия** — отключает эти политики, но оставляет hooks установленными
 
 ## Примеры

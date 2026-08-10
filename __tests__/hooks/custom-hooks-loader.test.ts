@@ -17,6 +17,12 @@ vi.mock("../../src/hooks/loader-utils", () => ({
   rewriteFileTree: vi.fn(() => Promise.resolve([])),
   cleanupTmpFiles: vi.fn(() => Promise.resolve()),
   TMP_SUFFIX: ".__failproofai_tmp__.mjs",
+  // The loader sweeps generated files left behind by a killed load before
+  // anything scans a policy directory. Real behaviour is covered by
+  // `loader-tmp-artifacts.test.ts` against a real filesystem; here it only
+  // needs to exist, since this suite mocks `node:fs`.
+  isTmpArtifact: vi.fn(() => false),
+  sweepStaleTmpArtifacts: vi.fn(() => Promise.resolve(0)),
 }));
 
 vi.mock("node:fs", async () => {

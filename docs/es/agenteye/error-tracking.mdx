@@ -1,37 +1,37 @@
 ---
 title: "Seguimiento de Errores"
-description: "Ve todos los fallos que producen tus agentes en un solo lugar, agrupados para que una ráfaga ruidosa se lea como un único problema."
+description: "Ve todos los fallos que producen tus agentes en un solo lugar, agrupados para que una ráfaga de errores se lea como un único problema."
 ---
 
 
-Ve todos los fallos que producen tus agentes en un solo lugar, agrupados para que una ráfaga ruidosa se lea como un único problema. Tienes un camino de un clic desde "algo está en rojo" hasta la ejecución exacta que falló, sin tener que desplazarte por un feed en vivo para encontrarlo.
+Ve todos los fallos que producen tus agentes en un solo lugar, agrupados para que una ráfaga de errores se lea como un único problema. Tienes un camino de un clic desde "algo está en rojo" hasta la ejecución exacta que falló, sin tener que desplazarte por un feed en vivo para encontrarlo.
 
-![La página de Errores: un histograma de fallos a lo largo del tiempo sobre filas de errores en rojo agrupadas, cada una con un botón "+ alert" de un solo clic](/agenteye/images/errors.png)
-*La página de Errores: un histograma de fallos a lo largo del tiempo, con los fallos repetidos contraídos en una sola fila por incidente.*
+![La página de Errores: un histograma de fallos a lo largo del tiempo sobre filas de errores rojos agrupados, cada una con un botón "+ alert" de un clic](/agenteye/images/errors.png)
+*La página de Errores: un histograma de fallos a lo largo del tiempo, con los fallos repetidos colapsados en una sola fila por incidente.*
 
 ## Todos los fallos, ya recopilados para ti
 
-Cuando un agente falla, no deberías tener que desplazarte por un stream de eventos en vivo esperando capturar las filas rojas antes de que desaparezcan. La página **Errors** hace la recopilación por ti. Reúne todo lo que el panel marcaría en rojo en una única superficie de triaje, para que lo primero que veas sea qué está fallando, no dónde ir a buscarlo.
+Cuando un agente falla, no deberías tener que desplazarte por un flujo de eventos en vivo esperando atrapar las filas rojas antes de que desaparezcan. La página **Errors** hace la recopilación por ti. Reúne todo lo que el panel marcaría en rojo en una única superficie de triaje, de modo que lo primero que ves es qué está fallando, no dónde buscarlo.
 
-Y detecta más que los fallos evidentes. Además de los eventos `error` explícitos, Failproof AI Observability también muestra los fallos silenciosos: cualquier `tool_result`, `hook_completed` o `agent_end` cuyo payload contenga un fallo aparecerá aquí. Una herramienta que devolvió un error, o un hook que terminó mal, ya no pasa desapercibida solo porque nada lanzó una excepción ruidosa.
+Y detecta más que los fallos obvios. Junto con los eventos `error` explícitos, Failproof AI Observability también muestra los fallos silenciosos: cualquier `tool_result`, `hook_completed` o `agent_end` cuyo payload indique un fallo aparece aquí. Una herramienta que devolvió un error, o un hook que terminó de forma incorrecta, ya no pasa desapercibida simplemente porque nada lanzó una excepción ruidosa.
 
-En la parte superior, un histograma representa los errores a lo largo del tiempo. Un vistazo te indica si se trata de un goteo constante de fondo o un pico que comenzó hace unos minutos, para que sepas de inmediato si debes dejar lo que estás haciendo.
+En la parte superior, un histograma muestra los errores a lo largo del tiempo. Un vistazo te dice si se trata de un goteo constante de fondo o de un pico que comenzó hace unos minutos, para que sepas de inmediato si debes dejar lo que estás haciendo.
 
-Como toda superficie de observación, la página de Errores está acotada a tu organización y se puede filtrar por rango de fechas, entorno, agente y sesión. Esto significa que puedes partir de una lista a nivel de toda la flota y reducirla al agente o entorno que realmente te importa.
+Como toda superficie de observabilidad, la página de Errores está delimitada por tu organización y permite filtrar por rango de fechas, entorno, agente y sesión. Eso significa que puedes partir de una lista de toda la flota y reducirla al agente o entorno que realmente te importa.
 
-## Un incidente, no cientos de filas idénticas
+## Un incidente, no cien filas idénticas
 
-Una sola dependencia rota puede disparar el mismo error cientos de veces por minuto. Sin procesar, eso es una pared de líneas casi idénticas que entierra lo único que realmente necesitas ver.
+Una única dependencia rota puede disparar el mismo error cientos de veces por minuto. En bruto, eso es una pared de líneas casi idénticas que entierra lo único que realmente necesitas ver.
 
-Failproof AI Observability colapsa los fallos repetidos que comparten la misma sesión y tipo de error en una única fila. Una ráfaga se lee como un solo incidente. Acabas contando problemas, no líneas de log, y la señal que importa permanece visible en lugar de quedar ahogada por su propio volumen.
+Failproof AI Observability colapsa los fallos repetidos que comparten la misma sesión y tipo de error en una sola fila. Una ráfaga se lee como un único incidente. Terminas contando problemas, no líneas de log, y la señal que importa se mantiene en primer plano en lugar de ahogarse en su propio volumen.
 
 ## De "algo está en rojo" al evento exacto
 
-Haz clic en cualquier fila para ir directamente a la sesión de esa ejecución, posicionado en el evento exacto que falló. Sin copiar IDs de sesión, sin desplazarte para encontrar el momento en que algo salió mal: llegas justo ahí, con el grafo de ejecución completo a un vistazo para que puedas ver qué hizo el agente en los momentos previos al fallo.
+Haz clic en cualquier fila para llegar directamente a la sesión de esa ejecución, posicionado en el evento exacto que falló. Sin copiar IDs de sesión, sin desplazarte buscando el momento en que salió mal: llegas justo ahí, con el grafo de ejecución completo a un vistazo para que puedas ver qué hizo el agente en los momentos previos al fallo.
 
-Si tienes `alerts:write`, cada fila también incluye un botón **+ alert**. Haz clic y Observability abre una nueva regla de alerta ya rellenada para detectar ese mismo fallo en el futuro. El incidente que acabas de triar se convierte en el que te avisa la próxima vez, en lugar de sorprenderte dos veces.
+Si tienes `alerts:write`, cada fila también tiene un botón **+ alert**. Haz clic en él y Observability abre una nueva regla de alerta ya rellenada para detectar ese mismo fallo en el futuro. El incidente que acabas de triar se convierte en el que te avisará la próxima vez, en lugar de sorprenderte dos veces.
 
-**Dónde encontrarlo:** la página **Errors** se encuentra en la sección de observación del panel, en `/<org-slug>/errors`.
+**Dónde encontrarlo:** la página **Errors** se encuentra en la sección de observabilidad del panel, en `/<org-slug>/errors`.
 
 ## Relacionado
 

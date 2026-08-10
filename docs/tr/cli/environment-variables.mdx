@@ -1,6 +1,6 @@
 ---
 title: Ortam değişkenleri
-description: "failproofai davranışını ortam değişkenleriyle yapılandırın"
+description: "Ortam değişkenleri ile failproofai davranışını yapılandırın"
 ---
 
 ## Dashboard
@@ -8,35 +8,61 @@ description: "failproofai davranışını ortam değişkenleriyle yapılandırı
 | Değişken | Açıklama |
 |----------|----------|
 | `PORT` | Dashboard portu (varsayılan: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Claude Code proje klasörlerinin bulunduğu konumu geçersiz kıl |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Gizlenecek dashboard sayfalarının virgülle ayrılmış listesi |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Dev kaynaklara erişim izni verilen hostlar/IP'ler. `--allowed-origins` ile aynı. |
+| `CLAUDE_PROJECTS_PATH` | Claude Code proje klasörlerinin bulunduğu yeri geçersiz kılın |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Gizlenecek dashboard sayfaları (virgülle ayrılmış) |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Dev kaynaklarına erişime izin verilen host'lar/IP'ler. `--allowed-origins` ile aynı. |
 
-## Logging
-
-| Değişken | Açıklama |
-|----------|----------|
-| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Sunucu log seviyesi (varsayılan: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | Özel hook log dosyası yolu veya varsayılan için `true` (`~/.failproofai/logs/hooks.log`) |
-
-## Telemetry
+## Günlükleme
 
 | Değişken | Açıklama |
 |----------|----------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Anonim kullanım telemetrisini devre dışı bırak |
+| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Sunucu günlük seviyesi (varsayılan: `warn`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Özel hook günlük dosyası yolu veya varsayılan için `true` (`~/.failproofai/logs/hooks.log`) |
 
-## Authentication
+## Telemetri
+
+failproofai varsayılan olarak anonim kullanım telemetrisi raporlar. Bunu kapatmanın
+iki yolu vardır ve en kısıtlayıcı olanı geçerli olur — bir ortam değişkeni
+yapılandırma dosyasının kapatığı bir şeyi asla yeniden etkinleştiremez.
 
 | Değişken | Açıklama |
 |----------|----------|
-| `FAILPROOF_API_URL` | `failproofai auth` ve dashboard auth iletişim kutusu tarafından kullanılan api-server temel URL'sini geçersiz kıl. Varsayılan `https://api.befailproof.ai`; yerel api-server çalıştırırken `http://localhost:8080` (veya başka bir adres) olarak ayarla. |
-| `FAILPROOFAI_AUTH_DIR` | `auth.json` dosyasının depolandığı konumu geçersiz kıl (varsayılan: `~/.failproofai`). Çoğunlukla izole testler için yararlı. |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Bu işlem için anonim kullanım telemetrisi devre dışı bırak |
+
+Makine için kalıcı olarak devre dışı bırakmak için, `~/.failproofai/config.toml` dosyasına
+şunu ekleyin:
+
+```toml
+[telemetry]
+enabled = false
+```
+
+<Note>
+Yapılandırma dosyası, **failproofaid daemon** çalıştırıyorsanız kullanılacak seçenektir.
+Daemon sistem kapsamında bir hizmettir ve ortamı shell'inizden dışa aktarılan
+değişkenleri içermez — bu nedenle `FAILPROOFAI_TELEMETRY_DISABLED` daemon'a ulaşamaz.
+`[telemetry] enabled = false` hem CLI hem de daemon tarafından okunur.
+</Note>
+
+Daemon, kendi **yaşam döngüsünü** raportar: başladığını (ve önceki çalışmanın
+temiz bir şekilde çıkıp çıkmadığını), durduğunu, değerlendirme worker'ının ne zaman
+oluşturulduğunu veya yeniden başlatıldığını, bir collector görevinin başarısız olduğunu
+ve bulut politikası çekme sonucunu. Bunlar düşük kardinaliteli değerler ve sayımlar taşır —
+asla dosya yolu, komut, politika, komut istemi veya transkriptten okunan hiçbir şey değil.
+Araç çağrısı başına olay yoktur.
+
+## Kimlik Doğrulama
+
+| Değişken | Açıklama |
+|----------|----------|
+| `FAILPROOF_API_URL` | Dashboard kimlik doğrulama iletişim kutusu tarafından kullanılan api-sunucu temel URL'sini geçersiz kılın. Varsayılan olarak `https://api.befailproof.ai`; yerel api-sunucu çalıştırırken `http://localhost:8080` (veya başka bir yer) olarak ayarlayın. |
+| `FAILPROOFAI_AUTH_DIR` | `auth.json` dosyasının depolandığı yeri geçersiz kılın (varsayılan: `~/.failproofai`). Çoğunlukla izole testler için faydalıdır. |
 
 ## İlk çalıştırma istemi
 
 | Değişken | Açıklama |
 |----------|----------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | İlk bare `failproofai` çağrısında politikaları yüklemeyi teklif eden istemi atla |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | İlk çıplak `failproofai` çağrısında politikaları yüklemeyi öneren istemi atla |
 
 ## LLM (politika değerlendirmesi için)
 

@@ -13,23 +13,23 @@
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
 [![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?style=flat-square&logo=discord)](https://discord.befailproof.ai/)
 [![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/introduction)
-[![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](./LICENSE)
+[![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](../../LICENSE)
 
-**번역:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
+**번역:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **코딩 에이전트를 위한 런타임 장애 해결 도구.**
-Claude Code 및 Codex에 연결됩니다. 루프, 위험한 동작, 시크릿 유출을
+Claude Code 및 Codex에 연동됩니다. 루프, 위험한 동작, 시크릿 유출을
 인시던트가 되기 전에 차단합니다. 지연 없음. 로컬에서 실행.
 
 </div>
 
 <p align="center">
-  <img src="readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ---
 
-## 지원되는 에이전트 CLI
+## 지원 에이전트 CLI
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -38,46 +38,46 @@ Claude Code 및 Codex에 연결됩니다. 루프, 위험한 동작, 시크릿 �
   <tr>
     <td align="center" width="96">
       <a href="https://claude.com/claude-code" title="Claude Code">
-        <img src="assets/logos/claude.svg" alt="Claude Code" width="56" height="56" />
+        <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/claude.svg" alt="Claude Code" width="56" height="56" />
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://learn.chatgpt.com" title="OpenAI Codex">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />
-          <img src="assets/logos/openai-light.svg" alt="OpenAI Codex" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/openai-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/openai-light.svg" alt="OpenAI Codex" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://github.com/features/copilot/cli" title="GitHub Copilot CLI">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/copilot-dark.svg" />
-          <img src="assets/logos/copilot-light.svg" alt="GitHub Copilot" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/copilot-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/copilot-light.svg" alt="GitHub Copilot" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://cursor.com" title="Cursor Agent CLI">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/cursor-dark.svg" />
-          <img src="assets/logos/cursor-light.svg" alt="Cursor Agent" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/cursor-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/cursor-light.svg" alt="Cursor Agent" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://opencode.ai/" title="OpenCode">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/opencode-dark.svg" />
-          <img src="assets/logos/opencode-light.svg" alt="OpenCode" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/opencode-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/opencode-light.svg" alt="OpenCode" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://pi.dev/" title="Pi (pi-coding-agent)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/pi-dark.svg" />
-          <img src="assets/logos/pi-light.svg" alt="Pi" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/pi-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/pi-light.svg" alt="Pi" width="56" height="56" />
         </picture>
       </a>
     </td>
@@ -86,39 +86,39 @@ Claude Code 및 Codex에 연결됩니다. 루프, 위험한 동작, 시크릿 �
     <td align="center" width="96">
       <a href="https://hermes-agent.nousresearch.com/" title="Hermes (hermes-agent)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/hermes-dark.svg" />
-          <img src="assets/logos/hermes-light.svg" alt="Hermes" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/hermes-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/hermes-light.svg" alt="Hermes" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://openclaw.ai/" title="OpenClaw (openclaw gateway)">
-        <img src="assets/logos/openclaw.svg" alt="OpenClaw" width="56" height="56" />
+        <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/openclaw.svg" alt="OpenClaw" width="56" height="56" />
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://factory.ai/" title="Factory Droid (droid)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/factory-dark.png" />
-          <img src="assets/logos/factory-light.png" alt="Factory Droid" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/factory-dark.png" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/factory-light.png" alt="Factory Droid" width="56" height="56" />
         </picture>
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://devin.ai" title="Devin CLI (Cognition)">
-        <img src="assets/logos/devin.svg" alt="Devin CLI" width="56" height="56" />
+        <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/devin.svg" alt="Devin CLI" width="56" height="56" />
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://antigravity.google" title="Antigravity CLI (agy)">
-        <img src="assets/logos/antigravity.svg" alt="Antigravity CLI" width="56" height="56" />
+        <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/antigravity.svg" alt="Antigravity CLI" width="56" height="56" />
       </a>
     </td>
     <td align="center" width="96">
       <a href="https://goose-docs.ai/" title="Goose (codename goose)">
         <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
-          <img src="assets/logos/goose-light.svg" alt="Goose" width="56" height="56" />
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/goose-dark.svg" />
+          <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/goose-light.svg" alt="Goose" width="56" height="56" />
         </picture>
       </a>
     </td>
@@ -133,7 +133,7 @@ failproofai policies --install   # 또는 `failproofai`를 실행하고 최초 �
 failproofai
 ```
 
-30개의 내장 정책이 즉시 활성화됩니다. 대시보드는 `localhost:8020`에서 확인할 수 있습니다. `FAILPROOFAI_NO_FIRST_RUN=1`로 최초 실행 프롬프트를 비활성화할 수 있습니다.
+기본 제공 정책 30개가 즉시 활성화됩니다. 대시보드는 `localhost:8020`에서 확인하세요. `FAILPROOFAI_NO_FIRST_RUN=1`로 최초 실행 프롬프트를 비활성화할 수 있습니다.
 
 ---
 
@@ -141,20 +141,20 @@ failproofai
 
 | 정책 | 차단 내용 |
 |---|---|
-| `block-push-master` | `main` / `master` 브랜치로의 직접 푸시 |
+| `block-push-master` | `main` / `master`에 직접 푸시 |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | `main` / `master`에서의 커밋, 머지, 리베이스 |
+| `block-work-on-main` | `main` / `master`에 커밋, 머지, 리베이스 |
 | `block-rm-rf` | 재귀적 파일 삭제 |
 | `sanitize-api-keys` | 에이전트 컨텍스트로 유출되는 API 키 |
 
-→ [내장 정책 30개 전체 보기](https://docs.befailproof.ai/built-in-policies)
+→ [기본 제공 정책 30가지 전체 보기](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## 사용자 정의 정책
+## 직접 만드는 정책
 
-`.failproofai/policies/` 디렉터리에 파일을 추가하면 별도의 플래그 없이 자동으로 로드됩니다.
-커밋하면 팀 전체가 다음 풀 시 적용받습니다.
+`.failproofai/policies/` 디렉터리에 파일을 추가하면 자동으로 로드됩니다 — 별도 플래그 불필요.
+커밋하면 다음 풀(pull) 시 팀 전체에 적용됩니다.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -174,11 +174,11 @@ customPolicies.add({
 
 | 결정 | 효과 |
 |---|---|
-| `allow()` | 작업을 허용 |
+| `allow()` | 작업 허용 |
 | `deny(message)` | 차단 — 메시지가 에이전트에게 반환됨 |
-| `instruct(message)` | 통과시키되, 에이전트의 다음 프롬프트에 컨텍스트 추가 |
+| `instruct(message)` | 통과 허용, 단 에이전트의 다음 프롬프트에 컨텍스트 추가 |
 
-→ [사용자 정의 정책 가이드](https://docs.befailproof.ai/custom-policies)
+→ [커스텀 정책 가이드](https://docs.befailproof.ai/custom-policies)
 
 ---
 
@@ -186,7 +186,7 @@ customPolicies.add({
 
 에이전트가 수행하는 모든 도구 호출은 로컬에 기록됩니다. 대시보드에서 실행된 항목,
 차단된 항목, 정책이 에이전트에게 전달한 내용을 확인할 수 있어 — 문제가 발생했을 때
-추측하지 않아도 됩니다. → [대시보드 가이드](https://docs.befailproof.ai/dashboard)
+추측할 필요가 없습니다. → [대시보드 가이드](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -195,29 +195,29 @@ customPolicies.add({
 | | |
 |---|---|
 | [시작하기](https://docs.befailproof.ai/getting-started) | 설치 및 첫 번째 단계 |
-| [내장 정책](https://docs.befailproof.ai/built-in-policies) | 파라미터를 포함한 30개 정책 전체 |
-| [사용자 정의 정책](https://docs.befailproof.ai/custom-policies) | 직접 작성하기 |
+| [기본 제공 정책](https://docs.befailproof.ai/built-in-policies) | 파라미터가 포함된 30가지 정책 전체 |
+| [커스텀 정책](https://docs.befailproof.ai/custom-policies) | 직접 작성하기 |
 | [설정](https://docs.befailproof.ai/configuration) | 설정 범위 및 병합 규칙 |
 | [대시보드](https://docs.befailproof.ai/dashboard) | 세션 모니터 및 정책 활동 |
-| [아키텍처](https://docs.befailproof.ai/architecture) | 훅 시스템 작동 방식 |
+| [아키텍처](https://docs.befailproof.ai/architecture) | 훅 시스템 동작 방식 |
 
 ---
 
 ## 라이선스
 
-[Commons Clause](https://commonsclause.com/)가 포함된 MIT 라이선스 — 내부 및 개인 사용은 무료이며, failproofai 자체의 상업적 재판매는 별도 계약이 필요합니다. 전체 내용은 [LICENSE](./LICENSE)를 참조하세요.
+[Commons Clause](https://commonsclause.com/)가 적용된 MIT — 내부 및 개인 사용은 무료이며, failproofai 자체의 상업적 재판매는 별도 계약이 필요합니다. 전체 내용은 [LICENSE](../../LICENSE)를 참고하세요.
 
 ---
 
-## 기여
+## 기여하기
 
-[CONTRIBUTING.md](./CONTRIBUTING.md)를 참조하세요. 새로운 정책, 엣지 케이스, 번역 모두 환영합니다.
+[CONTRIBUTING.md](../../CONTRIBUTING.md)를 참고하세요. 새로운 정책, 엣지 케이스, 번역 모두 환영합니다.
 
-> **시작하기 전에 빌드하세요.** 먼저 `bun install && bun run build`를 실행하세요. 이 저장소는
-> failproofai 자체 훅을 자신에게 적용하며, `failproofai` 임포트를 컴파일된 `dist/` 번들에서
-> 해석합니다 — 빌드 없이는 `Cannot find package 'failproofai'` 훅 오류가 발생합니다.
+> **시작 전에 먼저 빌드하세요.** `bun install && bun run build`를 먼저 실행하세요. 이 저장소는
+> failproofai 자체 훅을 스스로에게 적용하며, 컴파일된 `dist/` 번들에서 `failproofai` 임포트를
+> 해석합니다 — 빌드 없이 실행하면 `Cannot find package 'failproofai'` 훅 오류가 발생합니다.
 > `src/`를 변경한 후에는 다시 빌드하세요. 자세한 내용은
-> [Build before the in-repo dev hooks will work](./CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)를 참조하세요.
+> [빌드 전 인-레포 개발 훅 작동 방법](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)을 참고하세요.
 
 ---
 

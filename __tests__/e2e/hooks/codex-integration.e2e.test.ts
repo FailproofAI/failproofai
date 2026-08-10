@@ -20,6 +20,7 @@ import {
   assertPermissionRequestDeny,
 } from "../helpers/hook-runner";
 import { CodexPayloads } from "../helpers/payloads";
+import { hookActivityDir } from "../../../src/hooks/fp-home";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const BINARY_PATH = resolve(REPO_ROOT, "bin/failproofai.mjs");
@@ -154,7 +155,7 @@ describe("E2E: Codex integration — hook protocol", () => {
         { homeDir: env.home, cli: "codex" },
       );
       // Activity store path resolves against $HOME → env.home/.failproofai/cache/hook-activity/current.jsonl
-      const activityPath = resolve(env.home, ".failproofai", "cache", "hook-activity", "current.jsonl");
+      const activityPath = resolve(hookActivityDir(env.home), "current.jsonl");
       expect(existsSync(activityPath)).toBe(true);
       const lines = readFileSync(activityPath, "utf-8").trim().split("\n").filter(Boolean);
       const last = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;

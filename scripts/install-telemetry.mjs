@@ -86,12 +86,19 @@ function getInstanceId() {
  * fire from the CLI (see lib/install-check.ts) because package managers block
  * install scripts by default.
  *
+ * `opts.enabled` carries the resolved answer from lib/telemetry-enabled.ts. This
+ * file is a dependency-free .mjs so that it can run with no node_modules, which
+ * also means it cannot import the TOML config — so the caller, which can, passes
+ * the verdict in. Without it `[telemetry] enabled = false` would silence three
+ * dispatchers out of four and this one would keep reporting.
+ *
  * @param {string} event
  * @param {Record<string, unknown>} [properties]
- * @param {{ version?: string, timeoutMs?: number }} [opts]
+ * @param {{ version?: string, timeoutMs?: number, enabled?: boolean }} [opts]
  */
 export async function trackInstallEvent(event, properties = {}, opts = {}) {
   if (process.env.FAILPROOFAI_TELEMETRY_DISABLED === "1") return;
+  if (opts.enabled === false) return;
 
   const version = opts.version ?? process.env.npm_package_version ?? "unknown";
   const body = JSON.stringify({

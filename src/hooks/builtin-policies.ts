@@ -2,6 +2,7 @@
  * Built-in security policies for Claude Code hooks.
  */
 import { resolve, join } from "node:path";
+import { statSync } from "node:fs";
 import { readFile, writeFile, stat, open } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -163,12 +164,201 @@ const ENV_FILE_PATH_RE = /(?:^|[\\/])\.env(?:\.|$)/;
 const ENV_CMD_RE = /\.env(?:\b|\s|$|\.)/;
 
 // blockSudo
-const SUDO_RE = /(?:^|;|&&|\|\|)\s*sudo\s/;
 const PS_ELEVATION_RE = /Start-Process\s+.*-Verb\s+RunAs/i;
 const RUNAS_RE = /(?:^|;|&&|\|\|)\s*runas\s/i;
 
 // blockCurlPipeSh
 const CURL_PIPE_SH_RE = /(?:curl|wget)\s.*\|\s*(?:sh|bash|zsh|dash|ksh|csh|tcsh|fish|ash)\b/;
+/**
+ * `failproofai config --pause` in any of its reachable spellings — direct, via
+ * `npx`/`bunx`/`pnpm dlx`, by absolute path, or through the `configure`/`setup`
+ * aliases the CLI normalizes. Only `--pause` matches: `--resume` and `--status`
+ * restore or merely report enforcement, so an agent running either is harmless.
+ *
+ * Two details carry the whole policy, and an earlier version got both wrong:
+ *
+ * `failproofai[^\s]*` rather than `\bfailproofai\b`. A word boundary stops at
+ * the character after the name, so every ordinary way of pinning or pathing the
+ * binary walked straight through: `npx failproofai@latest`, `npx -y
+ * failproofai@0.0.16`, `bunx failproofai@latest`, and
+ * `node /usr/lib/node_modules/failproofai/bin/failproofai.mjs`. The suffix has
+ * to be absorbed by the same token.
+ *
+ * `\s+--pause` rather than `\s--pause`. With a single `\s`, two spaces before
+ * the flag — which no shell cares about and any agent may emit — did not match.
+ *
+ * This still raises the bar rather than closing the class: base64, a wrapper
+ * script, an alias or a shell variable all still reach the same state. Closing
+ * it properly means a pause cannot originate from a tool call at all.
+ *
+ * Matched against BOTH the raw command and its shell-unescaped form (see
+ * `stripShellQuoting`), because a shell reconstructs the binary name from
+ * fragments a regex over the raw string cannot see.
+ *
+ * ANCHORED ON COMMAND POSITION, which is the third thing an earlier version got
+ * wrong and the most expensive: with no anchor, the pattern fired on any string
+ * that merely CONTAINED the invocation, so `grep -rn "failproofai config
+ * --pause" docs/`, `git commit -m "docs: explain failproofai config --pause"`,
+ * `gh pr create --body "...failproofai config --pause"` and `git log --grep`
+ * were all denied. This policy is `defaultEnabled`, and this repo's own
+ * CHANGELOG and `docs/built-in-policies.mdx` contain that literal string, so
+ * the first thing it did on a real machine was block someone reading the
+ * documentation for it. Its sibling `FAILPROOFAI_CLI_RE` was anchored from the
+ * start; this one was not.
+ *
+ * The distinction that matters is structural, not textual: in a real
+ * invocation the binary sits where the shell will look for a COMMAND — first in
+ * a segment, or behind a runner (`npx`, `pnpm dlx`, `node`, `sh -c`) and its
+ * flags. In every false positive above it sits where an ARGUMENT goes.
+ */
+
+/**
+ * Split a command into the pieces a shell would treat as separate commands.
+ *
+ * Includes `(`, `)` and backtick alongside the ordinary operators so that
+ * command substitution — `echo $(failproofai config --pause)` — puts the inner
+ * invocation in command position of its own segment rather than hiding it as an
+ * argument of `echo`.
+ */
+const SEGMENT_SEPARATORS = /[;&|\n\r(){}`]+/;
+
+/**
+ * Tokens that stand in front of the real binary without being it: package
+ * runners, interpreters, and the `exec`-alikes. Compared by basename, so
+ * `/usr/bin/env` and `env` behave identically.
+ */
+const COMMAND_PREFIX_TOKENS = new Set([
+  "npx", "bunx", "pnpx", "npm", "pnpm", "yarn", "dlx", "exec", "run",
+  "node", "bun", "deno", "env", "command", "builtin", "nohup", "setsid",
+  "time", "timeout", "nice", "stdbuf", "xargs", "sudo", "doas",
+  "sh", "bash", "zsh", "dash", "ksh", "fish", "ash",
+]);
+
+/** The binary itself, however it is pinned or pathed: `failproofai`,
+ * `failproofai@latest`, `/usr/local/bin/failproofai`,
+ * `./node_modules/.bin/failproofai`, `.../failproofai/bin/failproofai.mjs`. */
+const SELF_BINARY_TOKEN_RE = /(?:^|\/)failproofai[^/]*$/;
+
+/** `config`, and the two aliases the entrypoint normalizes to it. */
+const CONFIG_SUBCOMMAND_RE = /^(?:config|configure|setup)$/;
+
+/** `--pause`, with or without an `=value` tail. */
+const PAUSE_FLAG_RE = /^--pause(?:=|$)/;
+
+/** An `FOO=bar` prefix assignment, which a shell consumes before the command. */
+const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+/**
+ * A bare operand belonging to the runner in front of it — `timeout 30 …`,
+ * `nice -n 5 …`. Skipped so the runner's argument is not mistaken for the
+ * command. Safe to skip unconditionally: no binary is named `30` or `5m`.
+ */
+const RUNNER_OPERAND_RE = /^\d+[a-z]*$/i;
+
+/**
+ * True when `command` runs `failproofai config --pause` in command position.
+ *
+ * Residual false positive, deliberately accepted: a quoted argument that itself
+ * contains a shell operator AND the whole invocation — `git commit -m "x;
+ * failproofai config --pause"` — survives `stripShellQuoting` as two segments
+ * and denies. That is a far narrower miss than matching every mention, and it
+ * errs toward refusing rather than toward silently suspending enforcement.
+ */
+function namesSelfPause(command: string): boolean {
+  for (const segment of command.split(SEGMENT_SEPARATORS)) {
+    const tokens = segment.split(/\s+/).filter(Boolean);
+    let i = 0;
+    // Walk off everything a shell resolves before it settles on the command:
+    // prefix assignments, redirections, runner flags, and the runners.
+    while (i < tokens.length) {
+      const token = tokens[i];
+      const isSkippable =
+        ENV_ASSIGNMENT_RE.test(token) ||
+        token.startsWith("-") ||
+        token.startsWith(">") ||
+        token.startsWith("<") ||
+        RUNNER_OPERAND_RE.test(token) ||
+        COMMAND_PREFIX_TOKENS.has(token.slice(token.lastIndexOf("/") + 1));
+      if (!isSkippable) break;
+      i++;
+    }
+    if (i >= tokens.length) continue;
+    if (!SELF_BINARY_TOKEN_RE.test(tokens[i])) continue;
+
+    // The binary IS the command here. Now require `config … --pause` in the
+    // argument order the CLI actually accepts.
+    const args = tokens.slice(i + 1);
+    const configAt = args.findIndex((a) => CONFIG_SUBCOMMAND_RE.test(a));
+    if (configAt === -1) continue;
+    if (args.slice(configAt + 1).some((a) => PAUSE_FLAG_RE.test(a))) return true;
+  }
+  return false;
+}
+
+/**
+ * Decode one ANSI-C `$'...'` body (the text between the quotes) to the bytes a
+ * shell would produce. Covers the escape forms that can reconstruct an ASCII
+ * identifier: `\xHH`, octal `\NNN`, `\uHHHH`, `\UHHHHHHHH`, and the named
+ * controls. An out-of-range or malformed sequence is left as-is rather than
+ * throwing — this runs on adversarial input and must never crash the hook.
+ */
+function decodeAnsiC(body: string): string {
+  return body.replace(
+    /\\(x[0-9A-Fa-f]{1,2}|u[0-9A-Fa-f]{1,4}|U[0-9A-Fa-f]{1,8}|[0-7]{1,3}|.)/g,
+    (_, seq: string) => {
+      try {
+        if (seq[0] === "x") return String.fromCharCode(parseInt(seq.slice(1), 16));
+        if (seq[0] === "u" || seq[0] === "U") return String.fromCodePoint(parseInt(seq.slice(1), 16));
+        if (/^[0-7]+$/.test(seq)) return String.fromCharCode(parseInt(seq, 8));
+      } catch {
+        return seq;
+      }
+      const named: Record<string, string> = {
+        a: "\x07", b: "\b", e: "\x1b", f: "\f", n: "\n",
+        r: "\r", t: "\t", v: "\v", "\\": "\\", "'": "'", '"': '"', "?": "?",
+      };
+      return named[seq] ?? seq;
+    },
+  );
+}
+
+/**
+ * Collapse the quoting a POSIX shell resolves LEXICALLY — before it execs a
+ * command — so a literal matcher sees roughly what will actually run.
+ *
+ * Two adversarial red-team rounds defeated the pattern above by reassembling
+ * the binary name from fragments the regex could not see: first backslash and
+ * quote splitting (`fail\proofai`, `fail"proof"ai`, `f\a\i\l\p\r\o\o\f\a\i`),
+ * then ANSI-C quoting (`$'fail\x70roofai'`, octal `\160`, unicode `p`).
+ * Each executes the real pause. This now normalizes all three lexical forms:
+ * ANSI-C `$'...'` bodies are decoded first (the generic backslash pass below
+ * would otherwise turn `\x70` into `x70`), then surrounding single/double
+ * quotes and lone backslash-escapes are removed.
+ *
+ * The boundary is principled, not arbitrary: everything handled here is pure
+ * shell LEXING. What remains — a variable (`f=failproofai; $f …`), command
+ * substitution (`$(printf failproofai)`), `eval`, an alias, a base64 pipe —
+ * requires the shell to EXECUTE something to reconstruct the name, which no
+ * PreToolUse hook inspecting a command string can follow. That class is the one
+ * the header comment above calls out, and the only real closure is to make the
+ * pause ACTION itself refuse to originate from a tool call — deferred with the
+ * rest of the daemon-side redesign.
+ */
+function stripShellQuoting(command: string): string {
+  // Line continuation FIRST. A shell deletes a backslash-newline pair entirely
+  // and rejoins the fragments, so `fail\<newline>proofai` runs the real binary.
+  // The generic `\(.)` strip below cannot catch it — JS `.` excludes newline —
+  // so it has to be removed before that pass, or the fragments never join.
+  // (A third red-team round rode exactly this in.) `\r?\n` also covers a
+  // CRLF-joined line.
+  const joined = command.replace(/\\\r?\n/g, "");
+  // `$'...'` next, honoring `\'` inside the body, so its own escapes decode
+  // before the generic backslash-strip can mangle them.
+  const ansiDecoded = joined.replace(/\$'((?:[^'\\]|\\.)*)'/g, (_, body: string) =>
+    decodeAnsiC(body),
+  );
+  return ansiDecoded.replace(/\\(.)/g, "$1").replace(/['"]/g, "");
+}
 const PS_WEB_PIPE_RE = /(?:Invoke-WebRequest|iwr|Invoke-RestMethod|irm)\s+.*\|\s*(?:Invoke-Expression|iex)/i;
 
 // blockForcePush
@@ -240,22 +430,45 @@ const HELM_RE = /(?:^|[;\n]|&&|\|\|?|&)\s*helm(?:\s|$)/;
 // failproofai's own workflow policies depend on them.
 const GH_PIPELINE_RE = /(?:^|[;\n]|&&|\|\|?|&)\s*gh\s+(?:workflow\s+(?:run|enable|disable)|run\s+(?:rerun|cancel)|pr\s+merge|release\s+(?:create|delete)|cache\s+delete|secret\s+(?:set|delete))\b/;
 
-// Caches the current branch per cwd to avoid repeated execSync calls.
-// Trade-off: if the user switches branches externally mid-session, the cache serves
-// the stale value until the process restarts. This is acceptable since branch switches
-// during an active Claude session are rare.
-const gitBranchCache = new Map<string, string>();
+// Caches the current branch per cwd to avoid repeated execSync calls, gated
+// on .git/HEAD's mtime rather than reused unconditionally for the life of
+// the process. In the one-shot-process model that unconditional reuse cost
+// nothing (the cache never outlived a single hook call), but the daemon's
+// warm worker keeps this Map alive across many calls and potentially many
+// different projects' cwds — reusing a branch name forever would silently
+// deny/allow a Stop based on a branch the user checked out an hour ago.
+// git updates .git/HEAD's mtime on every checkout/switch, so a cheap local
+// statSync (no subprocess) is a real, precise invalidation signal. Falls
+// back to always re-fetching (no caching) when .git/HEAD can't be stat'd
+// (worktrees/submodules), matching today's behavior for that case. Bounded
+// at 500 entries so a warm worker touching many projects over its lifetime
+// doesn't grow this unboundedly.
+const gitBranchCache = new Map<string, { branch: string; headMtimeMs: number }>();
+const GIT_BRANCH_CACHE_MAX_ENTRIES = 500;
+
+function statGitHeadMtimeMs(cwd: string): number | null {
+  try {
+    return statSync(join(cwd, ".git", "HEAD")).mtimeMs;
+  } catch {
+    return null;
+  }
+}
 
 function getCurrentBranch(cwd: string): string | null {
   try {
-    let branch = gitBranchCache.get(cwd);
-    if (branch === undefined) {
-      branch = execSync("git rev-parse --abbrev-ref HEAD", {
-        cwd,
-        encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
-        timeout: 3000,
-      }).trim();
-      gitBranchCache.set(cwd, branch);
+    const headMtimeMs = statGitHeadMtimeMs(cwd);
+    const cached = gitBranchCache.get(cwd);
+    if (cached && headMtimeMs !== null && cached.headMtimeMs === headMtimeMs) {
+      return cached.branch || null;
+    }
+    const branch = execSync("git rev-parse --abbrev-ref HEAD", {
+      cwd,
+      encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+      timeout: 3000,
+    }).trim();
+    if (headMtimeMs !== null) {
+      if (gitBranchCache.size >= GIT_BRANCH_CACHE_MAX_ENTRIES) gitBranchCache.clear();
+      gitBranchCache.set(cwd, { branch, headMtimeMs });
     }
     return branch || null;
   } catch {
@@ -535,10 +748,163 @@ function blockEnvFiles(ctx: PolicyContext): PolicyResult {
   return allow();
 }
 
+/**
+ * True when a segment runs an elevation binary IN COMMAND POSITION.
+ *
+ * Anchored structurally rather than by token, for the reason `namesSelfPause`
+ * is: `SUDO_RE` required the literal token `sudo` at a command boundary, so
+ * **`/usr/bin/sudo rm -rf /` was ALLOWED** — a direct invocation, no
+ * obfuscation, one absolute path away from root on a `defaultEnabled` guard.
+ * Every other form the shell resolves before settling on the binary — prefix
+ * assignments, redirections, runners and their flags — is walked off first, and
+ * the comparison is on the BASENAME so a path cannot hide the name.
+ *
+ * `doas` is included because it is the same capability under a different name;
+ * a machine with `doas` installed and only `sudo` blocked is not blocked.
+ *
+ * This raises the bar; it does not close the class. `bash -c "sudo …"`, a
+ * variable (`S=sudo; $S …`) and base64-through-a-pipe all still reach root,
+ * because static inspection of one command string cannot follow them. Closing
+ * that properly needs enforcement below the shell, not a better regex.
+ */
+/**
+ * Split a command into per-segment TOKEN LISTS the way a shell reads it.
+ *
+ * Distinct from `shellSegments` below, which returns raw segment STRINGS and is
+ * what the deletion policies want. Named apart deliberately: defining a second
+ * `shellSegments` here shadowed that one, silently broke every `rm -rf` check,
+ * and disabled this matcher too — caught only because `tsc` reports duplicate
+ * implementations.
+ *
+ * Segmentation happens on the RAW string and skips separators inside quotes,
+ * which is the whole point: stripping quoting FIRST turns `\|` — a literal pipe
+ * in a grep alternation — into a real separator, so `grep "a\|sudo b"` parses
+ * as a command called `sudo` and gets denied. That is a common enough pattern
+ * that over-blocking it is worse than the evasion it would catch.
+ *
+ * Each token is unquoted individually afterwards, which still defeats `\sudo`
+ * and `"sudo"` without ever letting quote removal change where the boundaries
+ * are. Quoted tokens are returned separately so a caller can decide whether
+ * their CONTENTS deserve a second look — see `EVAL_FLAG_RE`.
+ */
+function quoteAwareSegments(command: string): Array<string[]> {
+  const segments: Array<string[]> = [];
+  let tokens: string[] = [];
+  let token = "";
+  let quote: '"' | "'" | null = null;
+  const endToken = () => {
+    if (token) tokens.push(token);
+    token = "";
+  };
+  const endSegment = () => {
+    endToken();
+    if (tokens.length) segments.push(tokens);
+    tokens = [];
+  };
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+    if (quote) {
+      // Inside single quotes a backslash is literal; inside double quotes it escapes.
+      if (c === "\\" && quote === '"' && i + 1 < command.length) {
+        token += command[++i];
+        continue;
+      }
+      if (c === quote) {
+        quote = null;
+        continue;
+      }
+      token += c;
+      continue;
+    }
+    if (c === "\\" && i + 1 < command.length) {
+      // An escaped character is literal — `\sudo` is still sudo, and `\|` is a
+      // pipe CHARACTER rather than a separator.
+      token += command[++i];
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      quote = c;
+      continue;
+    }
+    if (/\s/.test(c)) {
+      endToken();
+      continue;
+    }
+    if (/[;&|\n\r(){}`]/.test(c)) {
+      endSegment();
+      continue;
+    }
+    token += c;
+  }
+  endSegment();
+  return segments;
+}
+
+/** `-c` and friends: the flags whose ARGUMENT is a command, not data. */
+const EVAL_FLAG_RE = /^-{1,2}c$/;
+
+/**
+ * True when a command runs an elevation binary IN COMMAND POSITION.
+ *
+ * Anchored structurally rather than by token, for the reason `namesSelfPause`
+ * is: `SUDO_RE` required the literal token `sudo` at a command boundary, so
+ * **`/usr/bin/sudo rm -rf /` was ALLOWED** — a direct invocation, no
+ * obfuscation, one absolute path away from root on a `defaultEnabled` guard.
+ * Every other form the shell resolves before settling on the binary — prefix
+ * assignments, redirections, runners and their flags — is walked off first, and
+ * the comparison is on the BASENAME so a path cannot hide the name.
+ *
+ * `doas` is included because it is the same capability under a different name;
+ * a machine with `doas` installed and only `sudo` blocked is not blocked.
+ *
+ * A quoted argument is re-examined ONLY when the command that owns it is a
+ * shell runner invoked with an eval flag (`bash -c "sudo …"`). That distinction
+ * is load-bearing: `bash -c "sudo x"` and `grep "a|sudo x"` are identical from
+ * the outside, and the only thing separating an execution from a search string
+ * is whether the receiving binary evaluates its argument.
+ *
+ * This raises the bar; it does not close the class. A variable (`S=sudo; $S …`),
+ * base64 through a pipe, and a wrapper script on disk all still reach root,
+ * because static inspection of one command string cannot follow them. Closing
+ * that properly needs enforcement below the shell, not a better matcher.
+ */
+function namesElevation(command: string, depth = 0): boolean {
+  for (const tokens of quoteAwareSegments(command)) {
+    let i = 0;
+    while (i < tokens.length) {
+      const token = tokens[i];
+      const base = token.slice(token.lastIndexOf("/") + 1);
+      // `sudo`/`doas` are themselves in COMMAND_PREFIX_TOKENS (they legitimately
+      // stand in front of another binary), so they must be tested BEFORE the
+      // skip list or the walk would step straight over the thing being looked for.
+      if (base === "sudo" || base === "doas") return true;
+      const isSkippable =
+        ENV_ASSIGNMENT_RE.test(token) ||
+        token.startsWith("-") ||
+        token.startsWith(">") ||
+        token.startsWith("<") ||
+        RUNNER_OPERAND_RE.test(token) ||
+        COMMAND_PREFIX_TOKENS.has(base);
+      if (!isSkippable) break;
+      // `sh -c "…"` / `bash -c "…"`: the next token is a COMMAND. Bounded
+      // recursion so a nested `bash -c "bash -c …"` cannot spin.
+      if (EVAL_FLAG_RE.test(token) && depth < 3 && i + 1 < tokens.length) {
+        if (namesElevation(tokens[i + 1], depth + 1)) return true;
+      }
+      i++;
+    }
+  }
+  return false;
+}
+
 function blockSudo(ctx: PolicyContext): PolicyResult {
   if (ctx.toolName !== "Bash") return allow();
   const cmd = getCommand(ctx).trimStart();
-  if (SUDO_RE.test(cmd) || cmd.startsWith("sudo ")) {
+  // ONE pass. `shellSegments` unquotes each token individually, so `\sudo` and
+  // `"sudo"` are still caught — without a whole-string strip, which is what
+  // turned an escaped pipe in `grep "a\|sudo b"` into a segment separator and
+  // denied an ordinary search.
+  if (namesElevation(cmd)) {
     // Check allowPatterns — match against parsed tokens, not raw string
     const allowPatterns = ((ctx.params?.allowPatterns ?? []) as string[]);
     if (allowPatterns.some((p) => matchesAllowedPattern(cmd, p))) return allow();
@@ -551,6 +917,42 @@ function blockSudo(ctx: PolicyContext): PolicyResult {
   // Windows: runas command
   if (RUNAS_RE.test(cmd)) {
     return deny("runas elevation is blocked");
+  }
+  return allow();
+}
+
+/**
+ * A pause the agent can issue is not a guardrail.
+ *
+ * `failproofai config --pause` is a human affordance: you watched the agent get
+ * blocked, you judged the block wrong, you suspended enforcement for a bit. An
+ * agent that can run it turns every other policy advisory — it need only shell
+ * out once to switch them all off, and the pause even survives into later turns.
+ *
+ * This raises the bar rather than closing the class: an agent can still reach
+ * the same state obfuscated (base64, a wrapper script, an alias). Closing it
+ * properly means the pause cannot originate from a tool call at all — a
+ * dashboard action, or a daemon that accepts it only from a TTY. Until then,
+ * the honest description of this policy is "stops the obvious attempt".
+ *
+ * It is deliberately NOT redundant with `block-failproofai-commands`, which
+ * blocks the CLI far more broadly. That one anchors on a command boundary
+ * (`FAILPROOFAI_CLI_RE`), so `npx -y failproofai config --pause` does not match
+ * it — and being broad, it is a policy people plausibly switch off so agents
+ * can run `failproofai audit`. Neither gap should leave pausing reachable, so
+ * this stays narrow, matches the runner forms, and survives that one being off.
+ */
+function blockSelfPause(ctx: PolicyContext): PolicyResult {
+  if (ctx.toolName !== "Bash") return allow();
+  const cmd = getCommand(ctx);
+  // The raw command AND its shell-unescaped form: a shell strips quotes and
+  // backslashes before running the binary, so `fail\proofai config --pause`
+  // reaches the pause CLI even though the literal name is broken.
+  if (namesSelfPause(cmd) || namesSelfPause(stripShellQuoting(cmd))) {
+    return deny(
+      "Pausing failproofai enforcement is a human action, not an agent one. " +
+        "If a policy is blocking legitimate work, say so and let the operator decide.",
+    );
   }
   return allow();
 }
@@ -1727,6 +2129,16 @@ export const BUILTIN_POLICIES: BuiltinPolicyDefinition[] = [
         default: [],
       },
     } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-self-pause",
+    displayTitle: "Tried to pause failproofai enforcement",
+    impact: "An agent that can pause enforcement can switch off every other policy.",
+    description: "Block agents from pausing failproofai enforcement",
+    fn: blockSelfPause,
+    match: { events: ["PreToolUse", "PermissionRequest"], toolNames: ["Bash"] },
+    defaultEnabled: true,
+    category: "Dangerous Commands",
   },
   {
     name: "block-sudo",

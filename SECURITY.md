@@ -35,8 +35,10 @@ advisories **and** the [OpenSSF malicious-packages feed](https://github.com/ossf
 
 **Policy: block on any finding.** The gate fails on *any* known-vulnerable or
 malicious package in the tree — not just newly introduced ones. It runs on every
-PR, on pushes to `main`, and weekly (to catch advisories disclosed after a
-dependency was already merged).
+PR, on pushes to `main`, and daily (to catch advisories disclosed after a
+dependency was already merged). A daily run that fails on `main` — where there's
+no PR author already looking at the check — also posts to Slack, via the
+`SLACK_WEBHOOK_URL` repository secret.
 
 ### 2. Socket — behavioral early-warning
 
@@ -71,3 +73,7 @@ These steps live outside the repo and require admin access:
 3. *(Optional)* For a Socket CI gate in addition to the App, add a
    `SOCKET_SECURITY_API_KEY` repository secret and the Socket CI action — deferred
    until tuned, since behavioral findings can have false positives.
+4. **Slack alert on a failed daily scan**: set the `SLACK_WEBHOOK_URL` repository
+   secret to a Slack Incoming Webhook URL (the same secret `integration-suite`
+   already posts to). Without it, the daily job still runs and still fails CI on a
+   finding — it just skips the Slack POST and logs that the secret is unset.

@@ -1,7 +1,7 @@
 ---
 ---
-title: משתנים סביבה
-description: "הגדרת התנהגות failproofai באמצעות משתנים סביבה"
+title: משתני סביבה
+description: "הגדר את התנהגות failproofai באמצעות משתני סביבה"
 ---
 
 ## Dashboard
@@ -9,40 +9,56 @@ description: "הגדרת התנהגות failproofai באמצעות משתנים 
 | משתנה | תיאור |
 |----------|-------------|
 | `PORT` | יציאת ה-Dashboard (ברירת מחדל: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | דריסת המקום בו נמצאים תיקיות פרויקט Claude Code |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | עמודי Dashboard להסתרה (מופרדים בפסיקים) |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | משרתים/כתובות IP המורשות לגישה למשאבי פיתוח. זהה ל-`--allowed-origins`. |
+| `CLAUDE_PROJECTS_PATH` | עקוף את המיקום שבו נמצאות תיקיות פרויקטי Claude Code |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | עמודי Dashboard מופרדים בפסיק להסתרה |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | הוסטים/כתובות IP המורשים לגשת למשאבי פיתוח. זהה ל-`--allowed-origins`. |
 
-## רישום
+## Logging
 
 | משתנה | תיאור |
 |----------|-------------|
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | רמת יומן השרת (ברירת מחדל: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | נתיב קובץ יומן hook מותאם אישית, או `true` לברירת מחדל (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | נתיב קובץ יומן hook מותאם אישית, או `true` לברירת המחדל (`~/.failproofai/logs/hooks.log`) |
 
 ## Telemetry
 
-| משתנה | תיאור |
-|----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | ביטול טלמטריית שימוש אנונימית |
-
-## זיהוי הזהות
+failproofai דיווח טלמטריה שימוש אנונימית כברירת מחדל. ישנן שתי דרכים לכבות אותה, והן מתפקדות לפי איזה מהם מגביל יותר — משתנה סביבה לעולם לא יכול להפעיל מחדש משהו שקובץ ההגדרות כיבה.
 
 | משתנה | תיאור |
 |----------|-------------|
-| `FAILPROOF_API_URL` | דריסת כתובת ה-URL הבסיסית של שרת ה-api המשמשת את `failproofai auth` וחלון תיאום הזהות של ה-Dashboard. ברירת מחדל: `https://api.befailproof.ai`; הגדר ל-`http://localhost:8080` (או בכל מקום אחר) כאשר מריצים שרת api מקומי. |
-| `FAILPROOFAI_AUTH_DIR` | דריסת המקום בו נשמר `auth.json` (ברירת מחדל: `~/.failproofai`). שימושי בעיקר לבדיקות מבודדות. |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | כבה טלמטריית שימוש אנונימית עבור התהליך הזה |
 
-## הנמקה בהרצה ראשונה
+כדי לכבות אותה לצמיתות עבור המכונה, הוסף זאת ל-`~/.failproofai/config.toml`:
+
+```toml
+[telemetry]
+enabled = false
+```
+
+<Note>
+קובץ ההגדרות הוא האפשרות שבה יש להשתמש אם אתה מריץ את **failproofaid daemon**.
+ה-daemon הוא שירות בהיקף המערכת, והסביבה שלו אינה כוללת משתנים המיוצאים מ-shell שלך — כך ש-`FAILPROOFAI_TELEMETRY_DISABLED` לא יכול להגיע אליו. `[telemetry] enabled = false` נקרא על ידי הCLI וגם על ידי ה-daemon.
+</Note>
+
+ה-daemon דיווח על **lifecycle** משלו בלבד: שהוא התחיל (והאם ההרצה הקודמת יצאה בנקיוני), שהוא עצר, כאשר worker ההערכה שלו נוצר או הופעל מחדש, כאשר משימת collector נכשלה, ותוצאה של pull של cloud-policy. אלה נושאים ערכים בקרדינליות נמוכה וספירות — אף פעם לא נתיב קובץ, פקודה, מדיניות, prompt, או כל דבר שנקרא מתמלול. אין אירוע לכל קריאת כלי.
+
+## Authentication
 
 | משתנה | תיאור |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | דילוג על ההנמקה המציעה להתקין מדיניויות בהפעלה ראשונה של `failproofai` |
+| `FAILPROOF_API_URL` | עקוף את ה-URL בסיס של api-server המשמש דיאלוג auth של ה-dashboard. ברירת מחדל ל-`https://api.befailproof.ai`; הגדר ל-`http://localhost:8080` (או למקום אחר) כאשר אתה מריץ api-server מקומי. |
+| `FAILPROOFAI_AUTH_DIR` | עקוף את המיקום שבו `auth.json` מאוחסן (ברירת מחדל: `~/.failproofai`). שימושי בעיקר לבדיקות מבודדות. |
+
+## First-run prompt
+
+| משתנה | תיאור |
+|----------|-------------|
+| `FAILPROOFAI_NO_FIRST_RUN=1` | דלג על ה-prompt שמציע התקנת מדיניויות בהפעלה ראשונה של `failproofai` |
 
 ## LLM (להערכת מדיניות)
 
 | משתנה | תיאור |
 |----------|-------------|
 | `FAILPROOFAI_LLM_BASE_URL` | נקודת קצה של LLM API (ברירת מחדל: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | מפתח API למדיניויות מופעלות LLM |
-| `FAILPROOFAI_LLM_MODEL` | שם המודל (ברירת מחדל: `gpt-4o-mini`) |
+| `FAILPROOFAI_LLM_API_KEY` | מפתח API לעמיתות מונעות LLM |
+| `FAILPROOFAI_LLM_MODEL` | שם דגם (ברירת מחדל: `gpt-4o-mini`) |

@@ -1,6 +1,6 @@
 ---
-title: İlkeleri Kaldır
-description: "Claude Code ayarlarından hook girişlerini kaldırın"
+title: Politikaları Kaldır
+description: "Claude Code'un ayarlarından hook girişlerini kaldırın"
 ---
 
 ```bash
@@ -19,12 +19,12 @@ Takma adlar: `failproofai p -u`
 | `--scope project` | Proje ayarlarından kaldırın |
 | `--scope local` | Yerel ayarlardan kaldırın |
 | `--scope all` | Tüm kapsamlardan aynı anda kaldırın |
-| `--custom` / `-c` | Yapılandırmadan `customPoliciesPath` değerini temizleyin |
+| `--custom` / `-c` | Yapılandırmadan `customPoliciesPath` öğesini temizleyin |
 
 ## Davranış
 
-- **İlke adı yok** - ayarlar dosyasından tüm failproofai hook girişlerini kaldırır
-- **Belirli adlar** - bu ilkeleri devre dışı bırakır ancak hook'ları yüklü tutar
+- **Politika adı yok** - ayarlar dosyasından tüm failproofai hook girişlerini kaldırır
+- **Belirli adlar** - bu politikaları devre dışı bırakır ancak hook'ları yüklü tutar
 
 ## Örnekler
 
@@ -32,12 +32,12 @@ Takma adlar: `failproofai p -u`
 # Tüm hook'ları genel olarak kaldırın
 failproofai policies --uninstall
 
-# Belirli bir ilkeyi devre dışı bırakın (hook'ları yüklü tutar)
+# Belirli bir politikayı devre dışı bırakın (hook'ları yüklü tutar)
 failproofai policies --uninstall block-sudo
 
-# Her kapsamdan hook'ları kaldırın
+# Hook'ları her kapsamdan kaldırın
 failproofai policies --uninstall --scope all
 
-# Özel ilkeler yolunu temizleyin
+# Özel politikalar yolunu temizleyin
 failproofai policies --uninstall --custom
 ```

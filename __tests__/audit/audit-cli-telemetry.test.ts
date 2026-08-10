@@ -13,6 +13,9 @@
  * event's promise has resolved.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import type { AuditResult } from "../../src/audit/types";
 
 const resolvedEvents = new Set<string>();
@@ -50,8 +53,18 @@ function result(over: Partial<AuditResult>): AuditResult {
 }
 
 let exitInfo: { code: number | undefined; resolvedAtExit: Set<string> } | null;
+let home: string;
+let prevHome: string | undefined;
 
 beforeEach(() => {
+  // A fresh home per test, because runAuditCli now takes a real cross-process
+  // lock under `run/`. Without this the suite would plant lockfiles in the
+  // developer's own ~/.failproofai — and the mocked process.exit throws instead
+  // of exiting, so the handle's exit hook never fires and one leaked lock would
+  // make every later test in the file lose the lock and report nothing.
+  prevHome = process.env.FAILPROOFAI_HOME;
+  home = mkdtempSync(resolve(tmpdir(), "fpai-audit-cli-"));
+  process.env.FAILPROOFAI_HOME = home;
   vi.clearAllMocks();
   resolvedEvents.clear();
   exitInfo = null;
@@ -79,6 +92,9 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  if (prevHome === undefined) delete process.env.FAILPROOFAI_HOME;
+  else process.env.FAILPROOFAI_HOME = prevHome;
+  rmSync(home, { recursive: true, force: true });
 });
 
 const names = () => h.trackHookEvent.mock.calls.map((c) => c[1] as string);

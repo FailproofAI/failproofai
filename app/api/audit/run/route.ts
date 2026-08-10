@@ -17,6 +17,7 @@ import { writeDashboardCache } from "@/src/audit/dashboard-cache";
 import { INTEGRATION_TYPES, type IntegrationType } from "@/src/hooks/types";
 import type { RunAuditOptions } from "@/src/audit/types";
 import { finishRun, tryAcquireRun } from "../_state";
+import { acquireAuditLock } from "@/src/audit/audit-lock";
 import { initTelemetry, trackEvent } from "@/lib/telemetry";
 import { sanitizeErrorMessage } from "@/lib/telemetry-sanitize";
 
@@ -90,6 +91,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // The in-memory lock above only serialises runs WITHIN this Next.js process.
+  // The scheduled daemon child and a manual `failproofai audit` are separate
+  // processes writing the same sha1-keyed per-transcript cache and the same
+  // single-slot dashboard cache — three writers, and the module singleton is
+  // blind to the other two. Take the cross-process lock as well so this run
+  // cannot co-write that cache with one of them. Held ⇒ back the in-memory lock
+  // out and report "already running" — the same 409 the client already treats
+  // as "poll the in-flight run"; /api/audit/status reflects the cross-process
+  // lock via readActiveAuditLock, so the poll waits out the external scan rather
+  // than reading the machine as idle. This is information, not an error.
+  const auditLock = acquireAuditLock("dashboard");
+  if (!auditLock.ok) {
+    finishRun(null); // release the in-memory lock we just took
+    trackEvent("audit_run_rejected", { source: "dashboard", reason: "cross_process_lock" });
+    return NextResponse.json(
+      { error: "Audit already running", status: "already-running" },
+      { status: 409 },
+    );
+  }
+
   // Mirror the CLI's cli_audit_* funnel for the dashboard path (which shares the
   // same runAudit() core but previously emitted no server telemetry at all).
   trackEvent("audit_run_started", {
@@ -133,6 +154,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         error_message: sanitizeErrorMessage(err),
       });
       finishRun(err instanceof Error ? err.message : String(err));
+    } finally {
+      // Release the cross-process lock the moment the scan settles — before the
+      // in-memory lock is even relevant again — so the next scheduled tick or a
+      // `failproofai audit` is not locked out longer than the scan actually ran.
+      // Idempotent and never throws; the process-exit hook is the backstop if
+      // this task is killed outright.
+      auditLock.lock.release();
     }
   })();
 

@@ -112,10 +112,10 @@ export function colorsEnabled(out: TTYOut): boolean {
 
 /**
  * The raw ANSI opening sequence for a brand role, for callers that assemble
- * their own strings instead of using `paint()`'s wrappers (`src/audit/cli.ts`,
- * `src/auth/cli.ts`). Those files previously hardcoded their own 256-colour
- * palette — a green and a blue that appear nowhere in the brand — so `audit`
- * and `auth` looked like different products from `config`. Routing them here
+ * their own strings instead of using `paint()`'s wrappers (`src/audit/cli.ts`).
+ * That file previously hardcoded its own 256-colour palette — a green and a
+ * blue that appear nowhere in the brand — so `audit` looked like a different
+ * product from `config`. Routing it here
  * keeps HUES the single source of truth: change a hue once and every surface
  * follows. Emits truecolor where the terminal advertises it, basic ANSI
  * otherwise; the caller still decides *whether* to colour at all.
@@ -641,5 +641,120 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null>
               .map((ch) => ch.label),
             noun,
           ),
+  });
+}
+
+// ── promptText (single line, optionally masked) ───────────────────────────────
+
+export interface PromptTextOptions {
+  message: string;
+  /** Shown dimmed under the prompt. */
+  hint?: string;
+  /** Used when the user submits an empty line. */
+  defaultValue?: string;
+  /**
+   * Render `•` instead of the typed characters. For credentials: the wizard is
+   * routinely run while screen-sharing, and a pasted key would otherwise sit in
+   * the scrollback of every recording of that session.
+   */
+  mask?: boolean;
+  /** Return an error string to reject and re-ask, or null to accept. */
+  validate?: (value: string) => string | null;
+  stdin?: TTYIn;
+  stdout?: TTYOut;
+}
+
+/**
+ * Read one line. Resolves `null` on Ctrl-C / Escape, which every caller in the
+ * wizard treats as "cancel the whole run" — consistent with selectOne.
+ *
+ * Falls back to a plain non-TTY read so `failproofai config` still works when
+ * driven from a pipe or a test, the same way the other prompts do.
+ */
+export function promptText(opts: PromptTextOptions): Promise<string | null> {
+  const stdin: TTYIn = opts.stdin ?? process.stdin;
+  const stdout: TTYOut = opts.stdout ?? process.stdout;
+  const c = paint(colorsEnabled(stdout));
+
+  const accept = (raw: string): { ok: true; value: string } | { ok: false; error: string } => {
+    const value = raw.trim() || opts.defaultValue || "";
+    const error = opts.validate?.(value) ?? null;
+    return error ? { ok: false, error } : { ok: true, value };
+  };
+
+  if (!stdin.isTTY) {
+    // Non-TTY: read whatever is piped, validate once, no re-ask loop (there is
+    // no one to re-ask).
+    return new Promise((resolve) => {
+      let buf = "";
+      const onData = (chunk: Buffer | string) => {
+        buf += String(chunk);
+        if (buf.includes("\n")) done();
+      };
+      const done = () => {
+        stdin.removeListener("data", onData);
+        stdin.removeListener("end", done);
+        const r = accept(buf.split("\n")[0] ?? "");
+        resolve(r.ok ? r.value : null);
+      };
+      stdin.on("data", onData);
+      stdin.on("end", done);
+    });
+  }
+
+  return new Promise((resolve) => {
+    let value = "";
+    const draw = (error?: string) => {
+      const shown = opts.mask ? "•".repeat(value.length) : value;
+      const hint = opts.hint ? `  ${c.dim(opts.hint)}` : "";
+      const err = error ? `\n  ${c.warn(error)}` : "";
+      stdout.write(`\r\x1b[2K${c.bold(opts.message)} ${shown}${hint}${err}`);
+      if (err) stdout.write("\x1b[1A");
+    };
+    draw();
+
+    readline.emitKeypressEvents(stdin);
+    const wasRaw = stdin.isRaw;
+    stdin.setRawMode?.(true);
+    stdin.resume();
+
+    const cleanup = () => {
+      stdin.removeListener("keypress", onKey);
+      stdin.setRawMode?.(wasRaw ?? false);
+      stdin.pause();
+      stdout.write("\n");
+    };
+
+    function onKey(str: string | undefined, key: readline.Key): void {
+      if (!key) return;
+      if ((key.ctrl && (key.name === "c" || key.name === "d")) || key.name === "escape") {
+        cleanup();
+        resolve(null);
+        return;
+      }
+      if (key.name === "return" || key.name === "enter") {
+        const r = accept(value);
+        if (r.ok) {
+          cleanup();
+          resolve(r.value);
+        } else {
+          draw(r.error);
+        }
+        return;
+      }
+      if (key.name === "backspace") {
+        value = value.slice(0, -1);
+        draw();
+        return;
+      }
+      // Ignore control keys; accept any printable character, including a
+      // bracketed paste arriving as one chunk.
+      if (str && !key.ctrl && !key.meta) {
+        value += str;
+        draw();
+      }
+    }
+
+    stdin.on("keypress", onKey);
   });
 }

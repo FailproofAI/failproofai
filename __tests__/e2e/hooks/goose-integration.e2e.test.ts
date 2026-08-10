@@ -18,6 +18,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runHook, assertAllow, assertGooseDeny } from "../helpers/hook-runner";
 import { GoosePayloads } from "../helpers/payloads";
+import { hookActivityDir } from "../../../src/hooks/fp-home";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const BINARY_PATH = resolve(REPO_ROOT, "bin/failproofai.mjs");
@@ -115,7 +116,7 @@ describe("E2E: Goose integration — hook protocol", () => {
         GoosePayloads.preToolUse.bash("sudo cat /etc/passwd", env.cwd),
         { homeDir: env.home, cli: "goose" },
       );
-      const activityPath = resolve(env.home, ".failproofai", "cache", "hook-activity", "current.jsonl");
+      const activityPath = resolve(hookActivityDir(env.home), "current.jsonl");
       expect(existsSync(activityPath)).toBe(true);
       const lines = readFileSync(activityPath, "utf-8").trim().split("\n").filter(Boolean);
       const last = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;

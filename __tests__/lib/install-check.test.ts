@@ -7,8 +7,20 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resolve } from "node:path";
 
 const FAKE_HOME = "/fake/home";
-const LAST_VERSION = resolve(FAKE_HOME, ".failproofai", "last-version");
-const HOOKS_CONFIG = resolve(FAKE_HOME, ".failproofai", "policies-config.json");
+// Layout-2 paths, via the same shape `fp-home.ts` builds. `last-version` moved
+// under `state/` because at the root it doubled as one of the landmarks
+// `detectLayout()` reads as "layout 1" — and this file writes it, so a fresh
+// machine reported itself stale. The hooks config moved with the rest of the
+// policy tree; reading the old path made `checkHooks()` report every layout-2
+// install as unconfigured with zero policies.
+const LAST_VERSION = resolve(FAKE_HOME, ".failproofai", "state", "last-version");
+const HOOKS_CONFIG = resolve(
+  FAKE_HOME,
+  ".failproofai",
+  "policies",
+  "local-policies",
+  "policies-config.json",
+);
 const USER_SETTINGS = resolve(FAKE_HOME, ".claude", "settings.json");
 
 vi.mock("node:fs", () => ({

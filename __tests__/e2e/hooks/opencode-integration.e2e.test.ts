@@ -31,6 +31,7 @@ import {
 } from "../helpers/hook-runner";
 import { OpenCodePayloads } from "../helpers/payloads";
 import { FAILPROOFAI_HOOK_MARKER } from "../../../src/hooks/types";
+import { hookActivityDir } from "../../../src/hooks/fp-home";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const BINARY_PATH = resolve(REPO_ROOT, "bin/failproofai.mjs");
@@ -293,7 +294,7 @@ describe("E2E: OpenCode integration — hook protocol", () => {
       // homedir(), and the test's runHook overrides HOME=env.home).
       // Fail explicitly if missing so an OpenCode activity-tagging regression
       // can't silently slip through with a no-op assertion.
-      const logPath = resolve(env.home, ".failproofai", "cache", "hook-activity", "current.jsonl");
+      const logPath = resolve(hookActivityDir(env.home), "current.jsonl");
       expect(existsSync(logPath)).toBe(true);
       const lines = readFileSync(logPath, "utf8").trim().split("\n").filter(Boolean);
       const entries = lines.map((l) => JSON.parse(l));

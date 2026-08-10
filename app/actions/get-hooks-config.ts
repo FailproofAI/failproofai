@@ -13,6 +13,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, resolve } from "node:path";
+import { customPoliciesDir } from "@/src/hooks/fp-home";
 
 export interface PolicyParamSpec {
   type: string;
@@ -108,7 +109,7 @@ async function discoverConventionPolicies(
   //     resolving at the exact cwd disagrees with it from any subdirectory.
   const launchCwd = process.env.FAILPROOFAI_LAUNCH_CWD || process.cwd();
   const projectDir = resolve(findProjectConfigDir(launchCwd), ".failproofai", "policies");
-  const userDir = resolve(homedir(), ".failproofai", "policies");
+  const userDir = customPoliciesDir();
 
   const dirs: { scope: "project" | "user"; dir: string }[] = [
     { scope: "project", dir: projectDir },

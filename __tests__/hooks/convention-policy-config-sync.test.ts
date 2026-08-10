@@ -11,10 +11,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 
 import { listHooks } from "@/src/hooks/manager";
 import { syncConventionPolicies } from "@/src/hooks/hooks-config";
+import { customPoliciesDir, globalPolicyConfigFile } from "../../src/hooks/fp-home";
 
 function policySource(hookName: string): string {
   return `
@@ -32,11 +33,16 @@ describe("convention policies are mirrored into policies-config.json", () => {
   let home: string;
   let logSpy: ReturnType<typeof vi.spyOn>;
 
-  const configPath = () => join(home, ".failproofai", "policies-config.json");
+  const configPath = () => globalPolicyConfigFile(home);
+  /** Layout 2 nests the global config, so its parent must be created first. */
+  const writeConfigFile = (body: string) => {
+    mkdirSync(dirname(configPath()), { recursive: true });
+    writeFileSync(configPath(), body, "utf8");
+  };
   const readConfig = () => JSON.parse(readFileSync(configPath(), "utf8"));
 
   function seed(files: Record<string, string>) {
-    const dir = join(home, ".failproofai", "policies");
+    const dir = customPoliciesDir(home);
     mkdirSync(dir, { recursive: true });
     for (const [name, body] of Object.entries(files)) {
       writeFileSync(join(dir, name), body, "utf8");
@@ -58,7 +64,7 @@ describe("convention policies are mirrored into policies-config.json", () => {
 
   it("records each discovered file and the hooks it registered", async () => {
     seed({ "team-policies.mjs": policySource("team-rule") });
-    writeFileSync(configPath(), JSON.stringify({ enabledPolicies: [] }), "utf8");
+    writeConfigFile(JSON.stringify({ enabledPolicies: [] }));
 
     await listHooks(home);
 
@@ -69,11 +75,7 @@ describe("convention policies are mirrored into policies-config.json", () => {
 
   it("preserves the keys that were already there", async () => {
     seed({ "team-policies.mjs": policySource("team-rule") });
-    writeFileSync(
-      configPath(),
-      JSON.stringify({ enabledPolicies: ["warn-schema-alteration"], policyParams: { foo: { a: 1 } } }),
-      "utf8",
-    );
+    writeConfigFile(JSON.stringify({ enabledPolicies: ["warn-schema-alteration"], policyParams: { foo: { a: 1 } } }));
 
     await listHooks(home);
 
@@ -88,11 +90,11 @@ describe("convention policies are mirrored into policies-config.json", () => {
       "team-policies.mjs": policySource("team-rule"),
       "extra-policies.mjs": policySource("extra-rule"),
     });
-    writeFileSync(configPath(), JSON.stringify({ enabledPolicies: [] }), "utf8");
+    writeConfigFile(JSON.stringify({ enabledPolicies: [] }));
     await listHooks(home);
     expect(readConfig().conventionPolicies).toHaveLength(2);
 
-    rmSync(join(home, ".failproofai", "policies", "extra-policies.mjs"));
+    rmSync(join(customPoliciesDir(home), "extra-policies.mjs"));
     await listHooks(home);
 
     // Wholesale replace, not merge — a stale entry would claim a policy is
@@ -104,7 +106,7 @@ describe("convention policies are mirrored into policies-config.json", () => {
 
   it("does not rewrite the file when nothing changed", async () => {
     seed({ "team-policies.mjs": policySource("team-rule") });
-    writeFileSync(configPath(), JSON.stringify({ enabledPolicies: [] }), "utf8");
+    writeConfigFile(JSON.stringify({ enabledPolicies: [] }));
     await listHooks(home);
     const firstWrite = statSync(configPath()).mtimeMs;
 
@@ -127,11 +129,11 @@ describe("convention policies are mirrored into policies-config.json", () => {
 
   it("removes the key entirely when the last policy file goes away", async () => {
     seed({ "team-policies.mjs": policySource("team-rule") });
-    writeFileSync(configPath(), JSON.stringify({ enabledPolicies: [] }), "utf8");
+    writeConfigFile(JSON.stringify({ enabledPolicies: [] }));
     await listHooks(home);
     expect(readConfig().conventionPolicies).toBeDefined();
 
-    rmSync(join(home, ".failproofai", "policies", "team-policies.mjs"));
+    rmSync(join(customPoliciesDir(home), "team-policies.mjs"));
     await listHooks(home);
 
     expect("conventionPolicies" in readConfig()).toBe(false);
@@ -167,7 +169,7 @@ describe("convention policies are mirrored into policies-config.json", () => {
   it("never overwrites a config file that does not parse", async () => {
     seed({ "team-policies.mjs": policySource("team-rule") });
     const malformed = '{\n  "enabledPolicies": ["block-sudo"],\n  OOPS\n}\n';
-    writeFileSync(configPath(), malformed, "utf8");
+    writeConfigFile(malformed);
 
     await listHooks(home);
 

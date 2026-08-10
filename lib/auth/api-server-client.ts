@@ -1,9 +1,8 @@
 /**
  * Low-level HTTP client for the FailproofAI api-server's /v0/auth/* endpoints.
  *
- * Shared by both the CLI (failproofai auth ...) and the dashboard's Next.js
- * API route proxies. Has no filesystem access — token persistence lives in
- * `./auth-store.ts`.
+ * Used by the dashboard's Next.js API route proxies. Has no filesystem access
+ * — token persistence lives in `./auth-store.ts`.
  *
  * The base URL is resolved from FAILPROOF_API_URL (preferred) or the legacy
  * FAILPROOFAI_API_URL, falling back to the hosted api-server. Local-dev

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import {
   collectMdxFiles,
   encodeAnnotation,
+  findBrokenAssetRefs,
   findFrontmatterError,
   findMdxParseError,
   findPageError,
@@ -245,5 +246,114 @@ describe("collectMdxFiles", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("findBrokenAssetRefs", () => {
+  // Fixtures resolve against the real repo so the check is exercised with the
+  // same two path conventions the docs actually use.
+  const REPO = join(__dirname, "..", "..");
+  const DOCS_PAGE = join(REPO, "docs", "agenteye", "alerts.mdx");
+  const I18N_PAGE = join(REPO, "docs", "i18n", "README.ja.md");
+
+  it("flags the exact regression that broke every translated README", () => {
+    // The root README writes `assets/logos/claude.svg` because it sits AT the
+    // repo root. Copied verbatim into docs/i18n/ it resolves two levels too
+    // deep and 404s — this is the bug the check exists to prevent recurring.
+    const broken = findBrokenAssetRefs(
+      I18N_PAGE,
+      '<img src="assets/logos/claude.svg" alt="Claude Code" />\n',
+    );
+    expect(broken).toHaveLength(1);
+    expect(broken[0].ref).toBe("assets/logos/claude.svg");
+    expect(broken[0].resolved).toBe("docs/i18n/assets/logos/claude.svg");
+    expect(broken[0].line).toBe(1);
+  });
+
+  it("accepts the rebased forms the translated READMEs now use", () => {
+    expect(
+      findBrokenAssetRefs(
+        I18N_PAGE,
+        '<img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/logos/claude.svg" />\n' +
+          "[link](../../CONTRIBUTING.md)\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it("resolves a leading slash against docs/, not the page directory", () => {
+    // Mintlify site-absolute form, used by every agenteye page.
+    expect(
+      findBrokenAssetRefs(
+        DOCS_PAGE,
+        "![Alerts](/agenteye/images/alerts.png)\n",
+      ),
+    ).toEqual([]);
+    const broken = findBrokenAssetRefs(
+      DOCS_PAGE,
+      "![Nope](/agenteye/images/does-not-exist.png)\n",
+    );
+    expect(broken).toHaveLength(1);
+    expect(broken[0].resolved).toBe("docs/agenteye/images/does-not-exist.png");
+  });
+
+  it("checks srcset candidates, not just src", () => {
+    // The README's logo table pairs every <img src> with a dark-mode
+    // <source srcset>. Extracting only `src` passed a half-broken table.
+    const broken = findBrokenAssetRefs(
+      I18N_PAGE,
+      '<source media="(prefers-color-scheme: dark)" srcset="assets/logos/openai-dark.svg" />\n',
+    );
+    expect(broken).toHaveLength(1);
+    expect(broken[0].resolved).toBe("docs/i18n/assets/logos/openai-dark.svg");
+  });
+
+  it("splits a multi-candidate srcset and strips each descriptor", () => {
+    const broken = findBrokenAssetRefs(
+      DOCS_PAGE,
+      '<source srcset="images/alerts.png 1x, images/missing@2x.png 2x" />\n',
+    );
+    expect(broken.map((b) => b.ref)).toEqual(["images/missing@2x.png"]);
+  });
+
+  it("accepts a page-relative path that exists", () => {
+    expect(
+      findBrokenAssetRefs(DOCS_PAGE, "![Alerts](images/alerts.png)\n"),
+    ).toEqual([]);
+  });
+
+  it("ignores external URLs, other schemes, and bare anchors", () => {
+    expect(
+      findBrokenAssetRefs(
+        DOCS_PAGE,
+        "![npm](https://img.shields.io/npm/dw/failproofai.svg)\n" +
+          "![inline](data:image/png;base64,iVBORw0KGgo=)\n" +
+          "![proto](//cdn.example.com/x.png)\n" +
+          "[jump](#section)\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it("ignores non-asset links, which mintlify validate already covers", () => {
+    // Extensionless Mintlify routes and .md links must not false-positive.
+    expect(
+      findBrokenAssetRefs(
+        DOCS_PAGE,
+        "[Getting started](/getting-started)\n[Contributing](../../CONTRIBUTING.md)\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it("strips a query or fragment before resolving", () => {
+    expect(
+      findBrokenAssetRefs(DOCS_PAGE, "![Alerts](images/alerts.png?v=2)\n"),
+    ).toEqual([]);
+  });
+
+  it("reports the line number of each broken reference", () => {
+    const broken = findBrokenAssetRefs(
+      DOCS_PAGE,
+      "# Title\n\n![One](images/nope-a.png)\n\n![Two](images/nope-b.png)\n",
+    );
+    expect(broken.map((b) => b.line)).toEqual([3, 5]);
   });
 });

@@ -12,9 +12,11 @@
 # broke on `main` between PRs went unnoticed until the next one happened to
 # touch the lockfile.
 #
-# A daily `main` failure also posts to Slack (see the notify step below) —
-# the PR/push runs don't, since those failures are already visible to whoever
-# opened the PR without needing a second channel.
+# A daily scheduled failure also posts to Slack (see the notify step below,
+# gated on github.event_name == 'schedule') — PR and push runs don't, since
+# those failures are already visible to whoever opened or merged the PR
+# without needing a second channel. Posting is itself optional: it silently
+# no-ops when the SLACK_WEBHOOK_URL repository secret isn't set.
 #
 # Triage / allow-listing unfixable advisories: see SECURITY.md and osv-scanner.toml
 # (auto-loaded from the repo root by OSV-Scanner).
@@ -53,17 +55,18 @@ jobs:
       # not Dependabot, which had no `cargo` ecosystem — for a TLS stack that
       # compiles into a root-installed system service.
       - name: Scan bun.lock and Cargo.lock for known-vulnerable / malicious dependencies
+        id: scan
         uses: google/osv-scanner-action/osv-scanner-action@9fd1bcce27f67e3bd819a0a7620e332803dc43bc # v2.3.8
         with:
           scan-args: |-
             --lockfile=bun.lock
             --lockfile=Cargo.lock
-      # PR/push runs skip this — a failure there is already visible to whoever
-      # opened the PR. It's the schedule run (nothing on main touched the
-      # lockfile, so nobody is watching) that needs a channel of its own; same
+      # Only the schedule run notifies — nothing on main touched the lockfile,
+      # so nobody is watching it the way a PR author watches their own checks
+      # or a push failure shows up against the commit they just merged. Same
       # webhook + `node -e … | curl` idiom integration-suite/run.sh uses.
       - name: Notify Slack on failure
-        if: failure() && github.event_name != 'pull_request'
+        if: steps.scan.outcome == 'failure' && github.event_name == 'schedule'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |

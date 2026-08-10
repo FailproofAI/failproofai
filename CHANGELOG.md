@@ -7,6 +7,7 @@
 - Remove an unused local in `readCarriedPolicyConfig()` (`src/hooks/fp-reset.ts`) left over from splitting the read/write phases of the layout-1→3 policy-config carry apart; the write target it computed belongs to the paired `writeCarriedPolicyConfig()` a few lines down. (#663)
 - Remove `ino.ujh3/`, a test-sandbox directory (bun's install-cache `.pile` blobs and a fake `~/.failproofai` `VERSION`/state) accidentally committed alongside the layout-3 migration in `587d0567`. Nothing in the codebase referenced the path. (#663)
 - Ignore bun's install-cache blobs and this CLI's own runtime state (`bin/`, `run/`, `state/`) wherever they appear, so a future smoke test whose `HOME` lands inside the repo can't recommit the class of file `ino.ujh3/` was. Scoped to leave the repo's own dogfood `/.failproofai/` (`policies-config.json`, `policies/`) untouched. (#663)
+- Remove an unused `dirname` import in `__tests__/hooks/fp-reset.test.ts`, the other `noUnusedLocals` violation this branch was carrying (see #666). (#663)
 
 ## 1.0.0-beta.15 — 2026-08-09
 

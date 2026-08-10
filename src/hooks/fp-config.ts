@@ -360,6 +360,44 @@ function readSources(raw: unknown): FpConfig["collector"]["sources"] {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * {@link readConfig}, plus the raw object it was projected from.
+ *
+ * `readConfig` is a WHITELIST PROJECTION, not a merge: it names every key it
+ * understands and builds a fresh `FpConfig`. Paired with a `writeConfig` that
+ * regenerates the file wholesale, that means **any key this build does not know
+ * is erased on the next write** — and that is a data-loss bug with no layout
+ * change involved at all. Two CLI versions on the same layout round-trip the
+ * file and silently delete each other's keys, and most releases do not bump the
+ * layout, so `detectLayout()`'s `future` refusal never fires to protect it.
+ *
+ * `collector.sources` is the live example: added inside layout 3, so a CLI that
+ * predates it drops every extra path a user typed on the first `updateConfig()`
+ * call — from `harness add-path`, which is the one command whose entire output is
+ * that key.
+ *
+ * So every mutation path reads the raw object and hands it back to `writeConfig`,
+ * which preserves what it does not own. `readConfig` stays as it was for the many
+ * read-only callers that genuinely only want the projection.
+ */
+export function readConfigRaw(): { raw: Record<string, unknown>; config: FpConfig } {
+  let raw: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(readFileSync(configFile(), "utf8")) as unknown;
+    // An array or a scalar is not a config object, and spreading one into the
+    // merge below would produce index keys. Anything unusable reads as empty,
+    // which is what the projection already falls back to.
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      raw = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Absent or unparseable. `readConfig` returns defaults for the same input;
+    // an empty raw means the write below carries nothing forward, which is the
+    // only honest answer when the previous bytes could not be read.
+  }
+  return { raw, config: readConfig() };
+}
+
 export function readConfig(): FpConfig {
   try {
     const parsed = JSON.parse(readFileSync(configFile(), "utf8")) as Record<string, unknown>;
@@ -413,15 +451,100 @@ export function readConfig(): FpConfig {
 }
 
 /**
- * Regenerates `config.json` wholesale.
+ * Every key `writeConfig` owns, as a path into the emitted JSON.
+ *
+ * Ownership is what makes preserving unknown keys safe in BOTH directions, and
+ * getting the direction wrong is a bug either way:
+ *
+ *  - An **owned** key absent from the projection is a DELIBERATE OMISSION and
+ *    must be deleted. `writeConfig` uses absence to express state — `telemetry`
+ *    is emitted only when switched off, `machine_id` only when set, `sources`
+ *    only when non-empty. Merging blindly over the old bytes would resurrect
+ *    them, so switching telemetry back on would leave `enabled: false` in the
+ *    file and the opt-out would become un-revokable.
+ *  - An **unowned** key belongs to a build that knows more than this one and
+ *    must survive. That is the bug this list exists to fix; see
+ *    {@link readConfigRaw}.
+ *
+ * A `"*"` segment matches every key at that level. `collector.sources` is keyed
+ * by harness name, so its paths cannot be enumerated — and owning the subtree
+ * wholesale would delete a future per-harness sibling of `extra_paths`, which is
+ * the same class of loss one level down.
+ *
+ * Held honest by `config-round-trip.test.ts`, which populates every optional
+ * field, runs `writeConfig`, and asserts the emitted key set is exactly this.
+ */
+const OWNED_CONFIG_KEYS: readonly (readonly string[])[] = [
+  ["mode", "kind"],
+  ["daemon", "configured"],
+  ["collector", "sessions"],
+  ["collector", "hooks"],
+  ["collector", "hooks_verbosity"],
+  ["collector", "redact"],
+  ["collector", "environment"],
+  ["collector", "machine_id"],
+  ["collector", "sources", "*", "extra_paths"],
+  ["telemetry", "enabled"],
+  ["audit", "auto"],
+  ["audit", "interval_days"],
+];
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * Remove one owned path, pruning any container the removal emptied.
+ *
+ * The pruning is not tidiness. Without it, deleting `telemetry.enabled` from a
+ * file that held nothing else under `[telemetry]` leaves `telemetry: {}` — so a
+ * default install would stop producing the byte-identical file that
+ * `readSources` and `writeConfig` both document, and every fixture asserting
+ * exact bytes would drift. A container that still holds an UNKNOWN key is never
+ * pruned, which is the whole point.
+ */
+function deleteOwnedPath(node: Record<string, unknown>, path: readonly string[]): void {
+  const [head, ...rest] = path;
+  if (head === undefined) return;
+  const keys = head === "*" ? Object.keys(node) : [head];
+  for (const key of keys) {
+    if (rest.length === 0) {
+      delete node[key];
+      continue;
+    }
+    const child = node[key];
+    if (!isPlainObject(child)) continue;
+    deleteOwnedPath(child, rest);
+    if (Object.keys(child).length === 0) delete node[key];
+  }
+}
+
+/** Deep-merge `patch` onto `base`, recursing only where both sides are objects. */
+function mergeOnto(base: Record<string, unknown>, patch: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(patch)) {
+    const existing = base[key];
+    if (isPlainObject(existing) && isPlainObject(value)) {
+      mergeOnto(existing, value);
+    } else {
+      base[key] = value;
+    }
+  }
+}
+
+/**
+ * Regenerates the keys `config.json` owns, preserving every key it does not.
  *
  * The layout-2 file was hand-written TOML carrying its own documentation — what
  * `oss` meant, why `daemon.configured` must never be hand-set. JSON cannot hold
  * a comment, so that guidance now lives in `failproofai config --status` and the
  * docs. It is a real loss on the one file a user opens when something is wrong;
  * the trade is one serialisation format across the whole home instead of two.
+ *
+ * `raw` is the object the projection came from — pass it whenever you have one
+ * ({@link readConfigRaw} returns both together). Omitting it re-reads the file,
+ * which is the safe default: a caller who forgets still preserves, where the
+ * alternative silently erases. Pass `{}` deliberately to write a clean file.
  */
-export function writeConfig(config: FpConfig): void {
+export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): void {
   const c = config.collector;
   const out: Record<string, unknown> = {
     mode: { kind: config.mode },
@@ -466,7 +589,14 @@ export function writeConfig(config: FpConfig): void {
     // total rather than conditional.
     audit: { auto: config.audit.auto, interval_days: config.audit.intervalDays },
   };
-  writeFileAt(configFile(), `${JSON.stringify(out, null, 2)}\n`);
+  // Start from the previous bytes, strip the keys this build owns — so an
+  // omission above really removes — then lay the projection on top. What is left
+  // untouched in between is exactly the set of keys a newer build wrote and this
+  // one has never heard of.
+  const merged = structuredClone(raw ?? readConfigRaw().raw);
+  for (const path of OWNED_CONFIG_KEYS) deleteOwnedPath(merged, path);
+  mergeOnto(merged, out);
+  writeFileAt(configFile(), `${JSON.stringify(merged, null, 2)}\n`);
 }
 
 /** Merge a partial update into the config on disk. */
@@ -477,7 +607,11 @@ export function updateConfig(patch: {
   telemetry?: Partial<FpConfig["telemetry"]>;
   audit?: Partial<FpConfig["audit"]>;
 }): FpConfig {
-  const current = readConfig();
+  // `readConfigRaw`, not `readConfig` — this is the function EVERY mutation path
+  // goes through (the wizard, `harness add-path`, `healDaemonFlag`, the telemetry
+  // opt-out), so carrying the raw object here is what makes unknown-key
+  // preservation total rather than per-caller.
+  const { raw, config: current } = readConfigRaw();
   const next: FpConfig = {
     mode: patch.mode ?? current.mode,
     daemon: { ...current.daemon, ...patch.daemon },
@@ -485,7 +619,7 @@ export function updateConfig(patch: {
     telemetry: { ...current.telemetry, ...patch.telemetry },
     audit: { ...current.audit, ...patch.audit },
   };
-  writeConfig(next);
+  writeConfig(next, raw);
   return next;
 }
 
@@ -511,6 +645,46 @@ export interface FpCredentials {
   org?: { id?: string; slug?: string; name?: string };
   ingest?: { url: string; key: string };
   auth?: { baseUrl?: string; sessionToken?: string; expiresAt?: number; email?: string };
+}
+
+/**
+ * Every key `writeCredentials` owns. Same contract as {@link OWNED_CONFIG_KEYS},
+ * same reason — `readCredentials` is a whitelist projection too, and
+ * `writeCredentials` regenerates the file wholesale.
+ *
+ * `org` is the live example on this side: its own doc records that it is "absent
+ * against a server predating introspect, and in files written by an older CLI" —
+ * which is precisely a key an older CLI would delete on write, taking with it the
+ * only local answer to "where does this machine's data go?".
+ */
+const OWNED_CREDENTIAL_KEYS: readonly (readonly string[])[] = [
+  ["cloud", "url"],
+  ["cloud", "machine_id"],
+  ["cloud", "machine_label"],
+  ["cloud", "token"],
+  ["org", "id"],
+  ["org", "slug"],
+  ["org", "name"],
+  ["ingest", "url"],
+  ["ingest", "key"],
+  ["auth", "base_url"],
+  ["auth", "session_token"],
+  ["auth", "expires_at"],
+  ["auth", "email"],
+];
+
+/** {@link readCredentials}, plus the raw object it was projected from. */
+export function readCredentialsRaw(): { raw: Record<string, unknown>; credentials: FpCredentials } {
+  let raw: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(readFileSync(credentialsFile(), "utf8")) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      raw = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Absent or unparseable — nothing to carry forward.
+  }
+  return { raw, credentials: readCredentials() };
 }
 
 export function readCredentials(): FpCredentials {
@@ -565,7 +739,7 @@ export function readCredentials(): FpCredentials {
  * when the file is CREATED, so an existing over-permissive file keeps its mode
  * without the explicit chmod.
  */
-export function writeCredentials(creds: FpCredentials): void {
+export function writeCredentials(creds: FpCredentials, raw?: Record<string, unknown>): void {
   const out: Record<string, unknown> = {};
   if (creds.cloud) {
     out.cloud = {
@@ -594,6 +768,13 @@ export function writeCredentials(creds: FpCredentials): void {
     };
   }
 
+  // Same three-step as `writeConfig`: previous bytes, minus the keys this build
+  // owns, plus the projection. An unowned key here is a credential a newer build
+  // stored, and deleting one costs the machine an enrolment it cannot re-derive.
+  const merged = structuredClone(raw ?? readCredentialsRaw().raw);
+  for (const path of OWNED_CREDENTIAL_KEYS) deleteOwnedPath(merged, path);
+  mergeOnto(merged, out);
+
   const home = failproofaiHome();
   mkdirSync(home, { recursive: true });
   try {
@@ -601,7 +782,7 @@ export function writeCredentials(creds: FpCredentials): void {
   } catch {
     // Not fatal: the file's own 0600 is the primary protection.
   }
-  writeFileSync(credentialsFile(), `${JSON.stringify(out, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(credentialsFile(), `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
   try {
     chmodSync(credentialsFile(), 0o600);
   } catch {

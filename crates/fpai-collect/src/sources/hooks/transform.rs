@@ -70,13 +70,27 @@ pub struct HookRow {
     pub policy_source: Option<String>,
     #[serde(rename = "cloudPolicyId")]
     pub cloud_policy_id: Option<String>,
-    #[serde(rename = "cloudVersion")]
+    /// `cloudRevision` is the pre-rename spelling, and the alias is what keeps
+    /// history attributed.
+    ///
+    /// These rows are written by a DAEMON, not received from a server, so a
+    /// machine that was cloud-connected before the rename has real
+    /// `hook-activity/*.jsonl` naming `cloudRevision`/`cloudGeneration`. There is
+    /// no `deny_unknown_fields` here, so those keys do not error — they are
+    /// silently ignored, and every pre-upgrade cloud-decided row deserializes with
+    /// `None` and renders as unattributed. Which is the question this field was
+    /// added to answer: "how much is my org's policy actually doing".
+    ///
+    /// Same reasoning as the aliases on `ActiveDeployment` and the legacy
+    /// desired-state shape: a rename is safe on a symbol and never on the name of
+    /// data an older build already wrote.
+    #[serde(rename = "cloudVersion", alias = "cloudRevision")]
     pub cloud_version: Option<i64>,
     /// Present on EVERY row of a managed machine, not just cloud-decided ones:
     /// "what was deployed here" is a different question from "what decided",
     /// and only the former separates a rollout that changed no outcomes from
     /// one that never reached the machine.
-    #[serde(rename = "cloudDeployment")]
+    #[serde(rename = "cloudDeployment", alias = "cloudGeneration")]
     pub cloud_deployment: Option<i64>,
 
     // ---- Suspension ------------------------------------------------------
@@ -466,5 +480,43 @@ impl AllowBucket {
         // attribution, so it describes all of them.
         self.attribution.apply(&mut m);
         Some(Value::Object(m))
+    }
+}
+
+#[cfg(test)]
+mod rename_compat_tests {
+    use super::*;
+
+    /// A row written before the rename keeps its cloud attribution.
+    ///
+    /// These pages come from a DAEMON, so a machine that was cloud-connected
+    /// before the rename has real rows naming `cloudRevision`/`cloudGeneration`.
+    /// There is no `deny_unknown_fields` here, so without the aliases those keys
+    /// are silently ignored and every pre-upgrade cloud-decided row deserializes
+    /// to `None` — rendering as unattributed, which is the one question these
+    /// fields exist to answer.
+    #[test]
+    fn a_pre_rename_row_keeps_its_cloud_attribution() {
+        let row: HookRow = serde_json::from_str(
+            r#"{"timestamp":1700000000,"cloudPolicyId":"block-curl","cloudRevision":3,"cloudGeneration":9}"#,
+        )
+        .expect("a pre-rename hook-activity row must still deserialize");
+        assert_eq!(row.cloud_version, Some(3), "cloudRevision must alias to cloudVersion");
+        assert_eq!(
+            row.cloud_deployment,
+            Some(9),
+            "cloudGeneration must alias to cloudDeployment"
+        );
+    }
+
+    /// And the current spelling is unaffected.
+    #[test]
+    fn the_current_spelling_still_wins() {
+        let row: HookRow = serde_json::from_str(
+            r#"{"timestamp":1700000000,"cloudPolicyId":"block-curl","cloudVersion":4,"cloudDeployment":11}"#,
+        )
+        .expect("current rows deserialize");
+        assert_eq!(row.cloud_version, Some(4));
+        assert_eq!(row.cloud_deployment, Some(11));
     }
 }

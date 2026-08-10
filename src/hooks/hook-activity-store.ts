@@ -388,6 +388,34 @@ export function getHookActivityHistory(page: number): {
 
 // ── Internal helpers ──
 
+/**
+ * Accept the pre-rename spelling of the two cloud-attribution fields.
+ *
+ * These pages are written by the DAEMON, so a machine that was cloud-connected
+ * before `cloudRevision`→`cloudVersion` / `cloudGeneration`→`cloudDeployment` has
+ * real rows on disk naming the old keys. Nothing here validates the shape — the
+ * line is `JSON.parse`d and cast — so those rows do not error, they simply carry
+ * keys nothing reads: every pre-upgrade cloud-decided decision renders as
+ * unattributed, which is the exact question these fields were added to answer.
+ *
+ * The Rust writer takes the same two aliases (`transform.rs`). Renaming a symbol
+ * is safe; renaming the name of data an older build already wrote is not.
+ *
+ * One-directional and non-destructive: the new key wins if both somehow appear,
+ * and the old key is left in place rather than deleted, since nothing reads it and
+ * removing it would rewrite history to look like it was always current.
+ */
+function withRenamedCloudFields(raw: Record<string, unknown>): HookActivityEntry {
+  const entry = raw as HookActivityEntry & Record<string, unknown>;
+  if (entry.cloudVersion === undefined && typeof raw.cloudRevision === "number") {
+    entry.cloudVersion = raw.cloudRevision;
+  }
+  if (entry.cloudDeployment === undefined && typeof raw.cloudGeneration === "number") {
+    entry.cloudDeployment = raw.cloudGeneration;
+  }
+  return entry;
+}
+
 function readJsonlFile(filePath: string): HookActivityEntry[] {
   const content = readFileSafe(filePath);
   if (!content.trim()) return [];
@@ -395,7 +423,7 @@ function readJsonlFile(filePath: string): HookActivityEntry[] {
   const entries: HookActivityEntry[] = [];
   for (const line of content.trim().split("\n")) {
     try {
-      entries.push(JSON.parse(line) as HookActivityEntry);
+      entries.push(withRenamedCloudFields(JSON.parse(line) as Record<string, unknown>));
     } catch {
       // Skip malformed lines
     }

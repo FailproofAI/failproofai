@@ -1,9 +1,13 @@
 # Changelog
 
-## 1.0.0-beta.13 — 2026-08-07
+## 1.0.0-beta.13 — 2026-08-10
 
 ### Fixes
 - Bump the `postcss` override from `8.5.23` to `8.5.26` to pull in `nanoid@^3.3.17`, clearing a high-severity OSV advisory (GHSA-2v37-7h3g-55p8) against the transitively-locked `nanoid@3.3.16`. (#PR)
+
+## 1.0.0-beta.13 — 2026-08-07
+
+### Fixes
 - Make `failproofai config` refuse setup on an unsupported platform (Windows, today) instead of completing it unenforced. The wizard used to skip the daemon requirement and finish anyway, leaving the machine reading as configured while enforcing in-process with no fail-closed guarantee — now it prints why and exits 1 before drawing a single prompt, writing nothing. (#664)
 
 ## 1.0.0-beta.12 — 2026-08-07

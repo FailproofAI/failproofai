@@ -3,7 +3,7 @@
 ## 1.0.0-beta.13 — 2026-08-10
 
 ### Fixes
-- Bump the `postcss` override from `8.5.23` to `8.5.26` to pull in `nanoid@^3.3.17`, clearing a high-severity OSV advisory (GHSA-2v37-7h3g-55p8) against the transitively-locked `nanoid@3.3.16`. (#PR)
+- Bump the `postcss` override from `8.5.23` to `8.5.26` to pull in `nanoid@^3.3.17`, clearing a high-severity OSV advisory (GHSA-2v37-7h3g-55p8) against the transitively-locked `nanoid@3.3.16`. (#670)
 
 ## 1.0.0-beta.13 — 2026-08-07
 

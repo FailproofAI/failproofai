@@ -4,6 +4,7 @@
 
 ### Fixes
 - Bump the `postcss` override from `8.5.23` to `8.5.26` to pull in `nanoid@^3.3.17`, clearing a high-severity OSV advisory (GHSA-2v37-7h3g-55p8) against the transitively-locked `nanoid@3.3.16`. (#670)
+- Move the `Supply Chain` workflow's scheduled OSV-Scanner run from weekly to daily, and post to Slack when it fails — a scheduled failure on `main` previously surfaced only when the next PR happened to touch the lockfile, since a red scheduled run has no PR author to notice it. (#670)
 
 ## 1.0.0-beta.13 — 2026-08-07
 

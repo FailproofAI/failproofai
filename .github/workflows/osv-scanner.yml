@@ -6,8 +6,15 @@
 # package (block-on-any-finding policy). OSV-Scanner exits non-zero when it finds
 # anything, which fails this job.
 #
-# Runs on every PR (incl. Dependabot bumps), on pushes to main, and weekly to
-# catch advisories disclosed after a dependency was already merged.
+# Runs on every PR (incl. Dependabot bumps), on pushes to main, and daily to
+# catch advisories disclosed after a dependency was already merged — a PR is
+# the only thing that surfaced a scheduled failure before this, so a scan that
+# broke on `main` between PRs went unnoticed until the next one happened to
+# touch the lockfile.
+#
+# A daily `main` failure also posts to Slack (see the notify step below) —
+# the PR/push runs don't, since those failures are already visible to whoever
+# opened the PR without needing a second channel.
 #
 # Triage / allow-listing unfixable advisories: see SECURITY.md and osv-scanner.toml
 # (auto-loaded from the repo root by OSV-Scanner).
@@ -22,7 +29,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "17 4 * * 1" # Mondays 04:17 UTC
+    - cron: "17 4 * * *" # daily, 04:17 UTC
   workflow_dispatch:
 
 # Least privilege: the scan only needs to read the checked-out source.
@@ -51,3 +58,24 @@ jobs:
           scan-args: |-
             --lockfile=bun.lock
             --lockfile=Cargo.lock
+      # PR/push runs skip this — a failure there is already visible to whoever
+      # opened the PR. It's the schedule run (nothing on main touched the
+      # lockfile, so nobody is watching) that needs a channel of its own; same
+      # webhook + `node -e … | curl` idiom integration-suite/run.sh uses.
+      - name: Notify Slack on failure
+        if: failure() && github.event_name != 'pull_request'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "(no SLACK_WEBHOOK_URL set — not posted)" >&2
+            exit 0
+          fi
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          text="🔴 *Supply Chain scan failed* on \`${GITHUB_REF_NAME}\` (${GITHUB_EVENT_NAME}) — known-vulnerable or known-malicious dependency detected. <${run_url}|View run>"
+          payload="$(node -e 'const t=require("fs").readFileSync(0,"utf8");process.stdout.write(JSON.stringify({text:t}))' <<<"$text")"
+          code="$(curl -sS --connect-timeout 10 --max-time 30 \
+                    -o /dev/null -w '%{http_code}' -X POST -H 'Content-type: application/json' \
+                    --data "$payload" "$SLACK_WEBHOOK_URL" 2>/dev/null || echo 000)"
+          if [ "$code" = 200 ]; then echo "✓ posted to Slack webhook"
+          else echo "⚠️  Slack webhook POST returned HTTP $code" >&2; fi

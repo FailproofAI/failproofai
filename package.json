@@ -106,7 +106,7 @@
     "yaml": "^2.9.0"
   },
   "overrides": {
-    "postcss": "8.5.23",
+    "postcss": "8.5.26",
     "eslint-plugin-react-hooks": "7.0.1",
     "vite": "8.0.16",
     "undici": "7.29.0",

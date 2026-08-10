@@ -65,8 +65,12 @@ jobs:
       # so nobody is watching it the way a PR author watches their own checks
       # or a push failure shows up against the commit they just merged. Same
       # webhook + `node -e … | curl` idiom integration-suite/run.sh uses.
+      # `failure()` is required, not decorative: a bare `if:` expression is
+      # implicitly ANDed with success(), so without it this step would be
+      # skipped every time — the one time it's meant to run is exactly when
+      # the job already failed.
       - name: Notify Slack on failure
-        if: steps.scan.outcome == 'failure' && github.event_name == 'schedule'
+        if: failure() && steps.scan.outcome == 'failure' && github.event_name == 'schedule'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
@@ -77,8 +81,13 @@ jobs:
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           text="🔴 *Supply Chain scan failed* on \`${GITHUB_REF_NAME}\` (${GITHUB_EVENT_NAME}) — known-vulnerable or known-malicious dependency detected. <${run_url}|View run>"
           payload="$(node -e 'const t=require("fs").readFileSync(0,"utf8");process.stdout.write(JSON.stringify({text:t}))' <<<"$text")"
-          code="$(curl -sS --connect-timeout 10 --max-time 30 \
-                    -o /dev/null -w '%{http_code}' -X POST -H 'Content-type: application/json' \
-                    --data "$payload" "$SLACK_WEBHOOK_URL" 2>/dev/null || echo 000)"
-          if [ "$code" = 200 ]; then echo "✓ posted to Slack webhook"
-          else echo "⚠️  Slack webhook POST returned HTTP $code" >&2; fi
+          for attempt in 1 2 3; do
+            code="$(curl -sS --connect-timeout 10 --max-time 30 \
+                      -o /dev/null -w '%{http_code}' -X POST -H 'Content-type: application/json' \
+                      --data "$payload" "$SLACK_WEBHOOK_URL" 2>/dev/null || echo 000)"
+            if [ "$code" = 200 ]; then echo "✓ posted to Slack webhook"; exit 0; fi
+            echo "⚠️  Slack webhook POST attempt $attempt returned HTTP $code" >&2
+            [ "$attempt" -lt 3 ] && sleep 5
+          done
+          echo "✗ Slack webhook POST failed after 3 attempts" >&2
+          exit 1

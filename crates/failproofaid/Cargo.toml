@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license-file.workspace = true
 repository.workspace = true
-description = "Thin Rust supervisor: owns the failproofai IPC socket, service lifecycle, and warm worker process supervision. Carries no policy logic."
+description = "FailproofAI background service for hook evaluation, policy synchronization, collection, scheduled audits, and telemetry."
 publish = false
 
 [[bin]]

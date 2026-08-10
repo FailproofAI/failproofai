@@ -10,7 +10,7 @@
  * A single "install all" button at the section header copies the
  * combined install command for every prescribed policy.
  */
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { AuditResult } from "@/src/audit/types";
 import { type Grade, tierName } from "@/src/audit/scoring";
 import { usePostHog } from "@/contexts/PostHogContext";

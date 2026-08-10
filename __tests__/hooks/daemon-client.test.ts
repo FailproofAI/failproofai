@@ -11,6 +11,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeConfig, DEFAULT_CONFIG } from "../../src/hooks/fp-config";
+import type { DaemonHookRequest, DaemonHookResponse } from "../../src/hooks/daemon-client";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogInfo: vi.fn(),
@@ -74,6 +75,12 @@ describe("hooks/daemon-client", () => {
     await new Promise<void>((resolvePromise) => server!.listen(socketPath, resolvePromise));
   }
 
+  async function daemonResult(req: DaemonHookRequest): Promise<DaemonHookResponse | null> {
+    const { attemptDaemonHook } = await import("../../src/hooks/daemon-client");
+    const attempt = await attemptDaemonHook(req);
+    return attempt.ok ? attempt.response : null;
+  }
+
   it("returns the parsed result on a real hookResult response", async () => {
     await startServer(async (socket) => {
       const req = await readFrame(socket);
@@ -92,8 +99,7 @@ describe("hooks/daemon-client", () => {
       );
     });
 
-    const { tryDaemonHook } = await import("../../src/hooks/daemon-client");
-    const result = await tryDaemonHook({
+    const result = await daemonResult({
       hookEvent: "PreToolUse",
       cli: "claude",
       stdin: "{}",
@@ -116,8 +122,7 @@ describe("hooks/daemon-client", () => {
       );
     });
 
-    const { tryDaemonHook } = await import("../../src/hooks/daemon-client");
-    const result = await tryDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+    const result = await daemonResult({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
     expect(result).toEqual({ exitCode: 2, stdout: "", stderr: "blocked: sudo is not allowed" });
   });
 
@@ -127,8 +132,7 @@ describe("hooks/daemon-client", () => {
       socket.end(encodeFrame({ type: "error", protocolVersion: 1, message: "daemon unreachable" }));
     });
 
-    const { tryDaemonHook } = await import("../../src/hooks/daemon-client");
-    const result = await tryDaemonHook({ hookEvent: "Stop", cli: "codex", stdin: "{}" });
+    const result = await daemonResult({ hookEvent: "Stop", cli: "codex", stdin: "{}" });
     expect(result).toBeNull();
   });
 
@@ -140,8 +144,7 @@ describe("hooks/daemon-client", () => {
       );
     });
 
-    const { tryDaemonHook } = await import("../../src/hooks/daemon-client");
-    const result = await tryDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+    const result = await daemonResult({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
     expect(result).toBeNull();
   });
 
@@ -204,16 +207,14 @@ describe("hooks/daemon-client", () => {
       socket.end(encodeFrame({ type: "hookResult", protocolVersion: 1, stdout: "", stderr: "" }));
     });
 
-    const { tryDaemonHook } = await import("../../src/hooks/daemon-client");
-    const result = await tryDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+    const result = await daemonResult({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
     expect(result).toBeNull();
   });
 
   it("returns null immediately when no socket file exists at all", async () => {
     // No server started — socketPath was never bound.
-    const { tryDaemonHook } = await import("../../src/hooks/daemon-client");
     const start = Date.now();
-    const result = await tryDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+    const result = await daemonResult({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
     const elapsedMs = Date.now() - start;
     expect(result).toBeNull();
     // ENOENT/ECONNREFUSED on a nonexistent socket is a kernel-level rejection,
@@ -237,9 +238,8 @@ describe("hooks/daemon-client", () => {
       }, 600);
     });
 
-    const { tryDaemonHook } = await import("../../src/hooks/daemon-client");
     const start = Date.now();
-    const result = await tryDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+    const result = await daemonResult({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
     expect(result).toEqual({ exitCode: 0, stdout: "ok", stderr: "" });
     expect(Date.now() - start).toBeGreaterThanOrEqual(500);
   });
@@ -252,9 +252,8 @@ describe("hooks/daemon-client", () => {
       // Deliberately never write a response.
     });
 
-    const { tryDaemonHook } = await import("../../src/hooks/daemon-client");
     let settled = false;
-    const pending = tryDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" }).then((r) => {
+    const pending = daemonResult({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" }).then((r) => {
       settled = true;
       return r;
     });
@@ -277,8 +276,7 @@ describe("hooks/daemon-client", () => {
       socket.end(Buffer.concat([header, body]));
     });
 
-    const { tryDaemonHook } = await import("../../src/hooks/daemon-client");
-    const result = await tryDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+    const result = await daemonResult({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
     expect(result).toBeNull();
   });
 
@@ -286,9 +284,8 @@ describe("hooks/daemon-client", () => {
     const originalPlatform = process.platform;
     Object.defineProperty(process, "platform", { value: "win32" });
     try {
-      const { tryDaemonHook } = await import("../../src/hooks/daemon-client");
       const start = Date.now();
-      const result = await tryDaemonHook({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
+      const result = await daemonResult({ hookEvent: "PreToolUse", cli: "claude", stdin: "{}" });
       const elapsedMs = Date.now() - start;
       expect(result).toBeNull();
       expect(elapsedMs).toBeLessThan(20);

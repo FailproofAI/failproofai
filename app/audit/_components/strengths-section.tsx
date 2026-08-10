@@ -5,7 +5,6 @@
  * ✓ glyph · headline + sub · right-aligned metric. No card chrome,
  * no hover backgrounds, no checkmark backdrop.
  */
-import React from "react";
 import type { Strength } from "@/src/audit/strengths";
 
 interface Props {

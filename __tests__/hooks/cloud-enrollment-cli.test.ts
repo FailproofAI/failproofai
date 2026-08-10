@@ -6,7 +6,6 @@ import { resolve } from "node:path";
 import { runConnectCommand, runDisconnectCommand, connectionStatusLines } from "../../src/hooks/cloud-enrollment-cli";
 import { cloudCredentialPath, readCloudCredentials, writeCloudCredentials } from "../../src/hooks/cloud-enrollment";
 import { readIngestCredential } from "../../src/hooks/collector-config";
-import { readHooksConfig } from "../../src/hooks/hooks-config";
 import { readConfig } from "../../src/hooks/fp-config";
 
 let dir: string;

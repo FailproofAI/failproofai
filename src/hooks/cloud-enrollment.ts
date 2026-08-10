@@ -18,8 +18,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { homedir, hostname } from "node:os";
-import { join } from "node:path";
+import { hostname } from "node:os";
 import { writeJsonAtomically } from "../../lib/atomic-write";
 import { fetchWithTimeout, isAbortError } from "../../lib/fetch-with-timeout";
 import { credentialsFile } from "./fp-home";

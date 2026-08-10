@@ -7,7 +7,6 @@
  */
 
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { writeJsonAtomically } from "../atomic-write";

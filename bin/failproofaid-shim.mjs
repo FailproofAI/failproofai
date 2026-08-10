@@ -11,10 +11,10 @@
  * keep alive itself. This shim exists only for a user (or script)
  * invoking `failproofaid` by hand.
  *
- * The npm package deliberately ships no binary: one tarball serves every
- * platform, and the four cross-compiled binaries live on the GitHub
- * Release for this version (see `src/hooks/daemon-download.ts`).
- * `failproofai config` is what fetches one. So "not installed" here is a
+ * The root npm tarball contains no native binary. A matching optional platform
+ * package normally supplies it; the GitHub Release for this version is the
+ * verified fallback (see `src/hooks/daemon-download.ts`). `failproofai config`
+ * installs either source into `~/.failproofai/bin`. So "not installed" here is a
  * normal state rather than a broken install, and it degrades with a
  * one-line message and a non-zero exit — never a stack trace — including
  * on a platform that has no binary at all (Windows). The daemon-connect

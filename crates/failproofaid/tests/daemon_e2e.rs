@@ -1,6 +1,6 @@
 //! Black-box tests that spawn the real compiled `failproofaid` binary as a
-//! subprocess and talk to it over a real Unix socket — closer to how a
-//! systemd unit / launchd agent will actually invoke it (Stage 4) than the
+//! subprocess and talk to it over a real Unix socket — closer to how the
+//! installed systemd unit / launchd daemon invokes it than the
 //! in-process unit tests in `src/server.rs` are.
 
 use fpai_ipc::{ClientMessage, PROTOCOL_VERSION, ServerMessage, read_message, write_message};

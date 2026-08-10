@@ -16,7 +16,7 @@
  * pink "▮▮" / dim "○" markers, and a marquee progress bar at the bottom
  * filling pink-on-dark as the run advances.
  */
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 const STAGES = [
   { label: "discovering transcripts", detail: "walking ~/.claude, ~/.codex, ~/.cursor, …" },

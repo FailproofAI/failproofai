@@ -25,9 +25,8 @@
  * user one printed hint, where wrongly proceeding costs a duplicated install.
  * The command the user typed always runs either way.
  */
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
 import { onboardingLockFile, stateDir } from "./fp-home";
 
 interface LockBody {

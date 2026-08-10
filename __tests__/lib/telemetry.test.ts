@@ -29,7 +29,6 @@ import {
   isTelemetryEnabled,
   initTelemetry,
   trackEvent,
-  flushTelemetry,
   shutdownTelemetry,
 } from "@/lib/telemetry";
 

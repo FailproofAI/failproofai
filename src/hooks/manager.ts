@@ -8,7 +8,7 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve, basename } from "node:path";
-import { homedir, platform, arch, release, hostname } from "node:os";
+import { platform, arch, release, hostname } from "node:os";
 import {
   HOOK_SCOPES,
   type HookScope,

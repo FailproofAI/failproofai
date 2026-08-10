@@ -99,7 +99,6 @@
   },
   "dependencies": {
     "html-to-image": "^1.11.13",
-    "html2canvas": "^1.4.1",
     "posthog-node": "^5.47.7",
     "sql.js": "^1.14.1",
     "yaml": "^2.9.0"

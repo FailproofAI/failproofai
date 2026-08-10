@@ -288,8 +288,13 @@ describe("the binary-level scheduled entry point", () => {
       resolve(fp, "config.toml"),
       '[mode]\nkind = "cloud"\n\n[telemetry]\nenabled = false\n\n[audit]\nauto = true\ninterval_days = 7\n',
     );
+    // Layout 2's filenames on purpose — this fixture IS an old home. Converting
+    // these to layout 3's `.json` names would mean the test no longer builds
+    // the thing it is named after.
     writeFileSync(resolve(fp, "credentials.toml"), '[cloud]\ntoken = "secret-token"\n');
-    // A layout-1 landmark, which is what makes `detectLayout` say "stale".
+    // `config.toml` above is what makes `detectLayout` say "stale": layout 3
+    // reuses layout 1's `policies-config.json` path, so that file alone no
+    // longer proves an old layout.
     writeFileSync(resolve(fp, "policies-config.json"), "{}\n");
     return home;
   }
@@ -350,13 +355,15 @@ describe("the binary-level scheduled entry point", () => {
     box = mkdtempSync(resolve(tmpdir(), "fpai-current-"));
     const fp = resolve(box, ".failproofai");
     mkdirSync(fp, { recursive: true });
-    writeFileSync(resolve(fp, "VERSION"), `layout = ${LAYOUT_VERSION}\ncli = "test"\n`);
-    writeFileSync(resolve(fp, "config.toml"), "[audit]\nauto = true\ninterval_days = 7\n");
+    writeFileSync(resolve(fp, "VERSION"), JSON.stringify({ layout: LAYOUT_VERSION, cli: "test" }));
+    writeFileSync(resolve(fp, "config.json"), JSON.stringify({ audit: { auto: true, interval_days: 7 } }));
 
     const out = run(box, "audit", "--scheduled");
 
     expect(out.status).toBe(0);
     expect(out.stdout).toContain("audit complete");
-    expect(existsSync(resolve(fp, "config.toml"))).toBe(true);
+    // Survives untouched: a current home is not reset, so its config is still
+    // there afterwards.
+    expect(existsSync(resolve(fp, "config.json"))).toBe(true);
   }, SUBPROCESS_TIMEOUT_MS);
 });

@@ -2753,7 +2753,7 @@ describe("hooks/builtin-policies", () => {
         }
         // Base branch comparison: log {remote}/{baseBranch}..HEAD
         if (joined.includes("log") && joined.includes(`${remote}/${baseBranch}..HEAD`)) {
-          if (opts.baseRefExists === false) throw new Error("unknown revision");
+          if (opts.baseRefExists === false) throw new Error("fatal: ambiguous argument: unknown revision or path not in the working tree.");
           return opts.commitsAheadOfBase ?? "abc123 some commit\n";
         }
         // Tracking branch comparison: log {remote}/{branch}..HEAD
@@ -3001,11 +3001,11 @@ describe("hooks/builtin-policies", () => {
       vi.mocked(execFileSync).mockImplementation((_cmd: string, args?: readonly string[]) => {
         const joined = args?.join(" ") ?? "";
         if (joined.includes("log") && joined.includes("..HEAD")) {
-          if (opts.baseRefExists === false) throw new Error("unknown revision");
+          if (opts.baseRefExists === false) throw new Error("fatal: ambiguous argument: unknown revision or path not in the working tree.");
           return opts.commitsAhead ?? "abc123 some commit\n";
         }
         if (joined.includes("diff") && joined.includes("--stat")) {
-          if (opts.baseRefExists === false) throw new Error("unknown revision");
+          if (opts.baseRefExists === false) throw new Error("fatal: ambiguous argument: unknown revision or path not in the working tree.");
           return opts.fileDiff ?? " src/index.ts | 2 +-\n 1 file changed\n";
         }
         return "";
@@ -3387,7 +3387,7 @@ describe("hooks/builtin-policies", () => {
       vi.mocked(execFileSync).mockImplementation((_cmd: string, args?: readonly string[]) => {
         const joined = args?.join(" ") ?? "";
         if (joined.includes("rev-parse") && joined.includes("--verify")) {
-          if (opts.baseRefExists === false) throw new Error("unknown revision");
+          if (opts.baseRefExists === false) throw new Error("fatal: ambiguous argument: unknown revision or path not in the working tree.");
           return "";
         }
         if (joined.includes("log") && joined.includes("..HEAD")) {

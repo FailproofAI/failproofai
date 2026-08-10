@@ -1,7 +1,7 @@
 {
   "name": "failproofai",
-  "version": "1.0.0-beta.13",
-  "description": "The easiest way to manage policies that keep your AI agents reliable, on-task, and running autonomously — for Claude Code & the Agents SDK",
+  "version": "1.0.0-beta.21",
+  "description": "The easiest way to manage policies that keep your AI agents reliable, on-task, and running autonomously \u2014 for Claude Code & the Agents SDK",
   "bin": {
     "failproofai": "./dist/cli.mjs",
     "failproofaid": "./bin/failproofaid-shim.mjs"
@@ -99,9 +99,7 @@
   },
   "dependencies": {
     "html-to-image": "^1.11.13",
-    "html2canvas": "^1.4.1",
     "posthog-node": "^5.47.7",
-    "smol-toml": "^1.7.1",
     "sql.js": "^1.14.1",
     "yaml": "^2.9.0"
   },

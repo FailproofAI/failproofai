@@ -7,7 +7,7 @@
 // policies off disk (`readActiveCloudManagedPolicies`), so a developer with a
 // real deployment saw its artifacts arrive as arguments the assertions never
 // expected — one failure read
-// `["/home/…/cloud-policies/generations/4/block-curl-simple.mjs"]` where the
+// `["/home/…/cloud-policies/deployments/4/block-curl-simple.mjs"]` where the
 // test wanted `undefined`. Nothing was broken; the test was reading their
 // laptop.
 //

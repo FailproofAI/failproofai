@@ -67,7 +67,7 @@ function twoHooks() {
         { name: "org-guard", description: "", match: {}, fn: async () => ({ decision: "allow" }) },
         {
           __policyId: "cloud:org-guard@7:org-guard",
-          __cloudManaged: { id: "org-guard", revision: 7, sha256: "a".repeat(64), path: "/x.mjs", generation: 4 },
+          __cloudManaged: { id: "org-guard", version: 7, sha256: "a".repeat(64), path: "/x.mjs", deployment: 4 },
         },
       ),
     ],

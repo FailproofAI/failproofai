@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef, useTransition } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useTransition } from "react";
+import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Check, ChevronDown, Code, Copy, Settings, Shield, ShieldAlert, ShieldCheck, ShieldX, TriangleAlert, X } from "lucide-react";
@@ -11,7 +12,7 @@ import { getActivePausesAction } from "@/app/actions/get-active-pauses";
 import type { ActivePause } from "@/src/hooks/session-pause";
 import { PausedBanner, PausedNote, PausedPill } from "@/app/components/pause-notices";
 import { getHooksConfigAction } from "@/app/actions/get-hooks-config";
-import type { HooksConfigPayload, PolicyInfo, CustomPolicyInfo } from "@/app/actions/get-hooks-config";
+import type { HooksConfigPayload, PolicyInfo } from "@/app/actions/get-hooks-config";
 import type { IntegrationType } from "@/src/hooks/types";
 import { toggleCustomPolicyAction, togglePolicyAction } from "@/app/actions/update-hooks-config";
 import { installHooksWebAction, removeHooksWebAction } from "@/app/actions/install-hooks-web";
@@ -396,18 +397,18 @@ function DetailPanel({
                 <span className="text-muted-foreground">Decided by: </span>
                 <span className="font-mono text-foreground">
                   {item.policySource === "cloud" && item.cloudPolicyId
-                    ? `cloud · ${item.cloudPolicyId} rev ${item.cloudRevision}`
+                    ? `cloud · ${item.cloudPolicyId} version ${item.cloudVersion}`
                     : item.policySource}
                 </span>
               </div>
             )}
-            {item.cloudGeneration !== undefined && (
+            {item.cloudDeployment !== undefined && (
               <div>
                 {/* Present on every row of a managed machine, not just cloud
                     decisions — it is what separates a rollout that changed no
                     outcomes from one that never arrived. */}
-                <span className="text-muted-foreground">Cloud generation: </span>
-                <span className="font-mono text-foreground">{item.cloudGeneration}</span>
+                <span className="text-muted-foreground">Cloud deployment: </span>
+                <span className="font-mono text-foreground">{item.cloudDeployment}</span>
               </div>
             )}
             <div>

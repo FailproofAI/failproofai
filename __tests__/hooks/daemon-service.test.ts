@@ -5,6 +5,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir, userInfo } from "node:os";
 import { resolve } from "node:path";
 import { binDir } from "../../src/hooks/fp-home";
+import { waitForDaemonRunning } from "../../src/hooks/daemon-service";
+import * as svc from "../../src/hooks/daemon-service";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
   hookLogWarn: vi.fn(),
@@ -41,6 +43,14 @@ describe("hooks/daemon-service", () => {
   function useScratchHome(): string {
     home = mkdtempSync(resolve(tmpdir(), "fpai-daemon-service-"));
     process.env.HOME = home;
+    // The systemd unit directory too. "A failed install writes nothing" was
+    // asserted against the REAL /etc/systemd/system — green in CI, where nothing
+    // is installed, and red on the machine of anyone who actually USES
+    // failproofai, whose genuine unit file is sitting right there. Same bug
+    // class `handler.test.ts`'s header documents: the red is only ever seen
+    // locally, by exactly the people who most need to trust the suite.
+    process.env.FAILPROOFAI_SYSTEMD_DIR = resolve(home, "systemd");
+    mkdirSync(process.env.FAILPROOFAI_SYSTEMD_DIR, { recursive: true });
     return home;
   }
 
@@ -53,6 +63,9 @@ describe("hooks/daemon-service", () => {
     // — which is what broke CI while passing locally. The download path
     // itself is covered in daemon-download.test.ts against a local server.
     process.env.FAILPROOFAI_NO_DOWNLOAD = "1";
+    // Never inherited between tests: one that does not call useScratchHome
+    // must not silently reuse the previous test's scratch directory.
+    delete process.env.FAILPROOFAI_SYSTEMD_DIR;
   });
 
   afterEach(() => {
@@ -61,6 +74,7 @@ describe("hooks/daemon-service", () => {
     else delete process.env.HOME;
     if (originalNoDownload !== undefined) process.env.FAILPROOFAI_NO_DOWNLOAD = originalNoDownload;
     else delete process.env.FAILPROOFAI_NO_DOWNLOAD;
+    delete process.env.FAILPROOFAI_SYSTEMD_DIR;
     Object.defineProperty(process, "platform", { value: originalPlatform });
     Object.defineProperty(process, "arch", { value: originalArch });
     if (originalBinaryEnv !== undefined) process.env.FAILPROOFAI_DAEMON_BINARY = originalBinaryEnv;
@@ -416,7 +430,9 @@ describe("hooks/daemon-service", () => {
           expect(result.reason).toContain("systemctl enable");
           expect(result.reason).toContain("systemctl restart");
           expect(result.reason).not.toContain("enable --now");
-          expect(existsSync(`/etc/systemd/system/failproofaid@${userInfo().username}.service`)).toBe(false);
+          expect(
+              existsSync(resolve(process.env.FAILPROOFAI_SYSTEMD_DIR!, `failproofaid@${userInfo().username}.service`)),
+            ).toBe(false);
         } finally {
           vi.doUnmock("node:child_process");
           vi.resetModules();
@@ -873,4 +889,231 @@ describe("hooks/daemon-service", () => {
       });
     },
   );
+});
+
+describe("hooks/daemon-service waitForDaemonRunning", () => {
+  // A virtual clock: `sleep` advances it, so these assert the SHAPE of the wait
+  // without spending the wall-clock time being asserted about.
+  const clock = () => {
+    let t = 0;
+    return {
+      now: () => t,
+      sleep: async (ms: number) => {
+        t += ms;
+      },
+      elapsed: () => t,
+    };
+  };
+
+  it("returns as soon as the socket answers, instead of sitting out the settle window", async () => {
+    const c = clock();
+    let calls = 0;
+    const ok = await waitForDaemonRunning({
+      now: c.now,
+      sleep: c.sleep,
+      status: () => "running",
+      // Answers on the second look — the real machine binds its socket in ~13ms.
+      accepts: async () => ++calls >= 2,
+    });
+    expect(ok).toBe(true);
+    // The old code slept a flat 750ms here regardless. Anything near that means
+    // the early exit is gone.
+    expect(c.elapsed()).toBeLessThan(300);
+  });
+
+  it("fails the moment the unit leaves running, rather than waiting the window out", async () => {
+    const c = clock();
+    let looks = 0;
+    const ok = await waitForDaemonRunning({
+      now: c.now,
+      sleep: c.sleep,
+      // Active on the first read, dead on the next — the startup-death case the
+      // settle window exists to catch.
+      status: () => (++looks <= 1 ? "running" : "stopped"),
+      accepts: async () => false,
+    });
+    expect(ok).toBe(false);
+    // Detected on the first poll, not after a 750ms sleep.
+    expect(c.elapsed()).toBeLessThan(300);
+  });
+
+  it("still holds the full window when the socket never answers but the unit stays up", async () => {
+    const c = clock();
+    const ok = await waitForDaemonRunning({
+      now: c.now,
+      sleep: c.sleep,
+      status: () => "running",
+      accepts: async () => false,
+    });
+    // Held rather than failed: a unit that stayed active for the whole window
+    // did not die at startup, which is all the settle ever established.
+    expect(ok).toBe(true);
+    expect(c.elapsed()).toBeGreaterThanOrEqual(750);
+  });
+
+  it("gives up when the unit never reaches running at all", async () => {
+    const c = clock();
+    const ok = await waitForDaemonRunning({
+      now: c.now,
+      sleep: c.sleep,
+      status: () => "stopped",
+      accepts: async () => false,
+    });
+    expect(ok).toBe(false);
+    expect(c.elapsed()).toBeGreaterThanOrEqual(5000);
+  });
+});
+
+// `failproofai update`'s daemon half. The property that matters is which BINARY
+// the service ends up running, and the first version of this got it wrong in the
+// most misleading way available: it fetched the new binary, rewrote the unit via
+// `upgradedServiceDefinition` — which PRESERVES the existing `ExecStart` by
+// design, since its job is the unit's shape and not which binary runs — restarted,
+// and reported success while the OLD binary came back up.
+//
+// So it delegates to `installDaemonService()` now, the function that resolves this
+// version's binary, writes the unit around that path, and uses `restart` rather
+// than `enable --now` precisely so a live daemon is replaced.
+describe("refreshDaemonToCliVersion", () => {
+  // Its own isolation, because this block sits OUTSIDE the file's main
+  // `beforeEach` — and without it these tests read and WRITE the developer's real
+  // `~/.failproofai`: `readConfig()` returned the machine's actual
+  // `daemon.configured`, and `writeVersionFile()` rewrote its real `VERSION`.
+  // Caught when a machine that had just been set up started answering `true`.
+  let refreshHome: string;
+  let prevRefreshHome: string | undefined;
+  beforeEach(() => {
+    prevRefreshHome = process.env.FAILPROOFAI_HOME;
+    refreshHome = mkdtempSync(resolve(tmpdir(), "fpai-refresh-"));
+    process.env.FAILPROOFAI_HOME = refreshHome;
+  });
+  afterEach(() => {
+    if (prevRefreshHome === undefined) delete process.env.FAILPROOFAI_HOME;
+    else process.env.FAILPROOFAI_HOME = prevRefreshHome;
+    rmSync(refreshHome, { recursive: true, force: true });
+  });
+
+  it("is a clean no-op on a machine with no service", async () => {
+    let installed = false;
+    const result = await svc.refreshDaemonToCliVersion({
+      status: () => "not-installed",
+      install: async () => {
+        installed = true;
+        return { installed: true };
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.lines.join("\n")).toContain("nothing to update");
+    // The point: it did not try. Asserting only the message would pass on a
+    // machine that genuinely has no service, whatever the code did.
+    expect(installed).toBe(false);
+  });
+
+  it("goes through the INSTALL, not a bare restart", async () => {
+    // The property that was broken. The first version fetched the binary and then
+    // rewrote the unit via `upgradedServiceDefinition`, which PRESERVES the
+    // existing ExecStart by design — so the new binary landed, the service
+    // restarted, and the OLD binary came back up under a success message.
+    // `installDaemonService` is the path that writes the unit around the binary it
+    // just resolved.
+    let installed = false;
+    const result = await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      install: async () => {
+        installed = true;
+        return { installed: true };
+      },
+    });
+
+    expect(installed).toBe(true);
+    expect(result.ok).toBe(true);
+    expect(result.lines.join("\n")).toContain("service restarted and holding");
+  });
+
+  it("records the new daemon version, so the skew actually clears", async () => {
+    // Without this the refresh is invisible to everything that asks. Only the
+    // wizard wrote `VERSION.daemon`, so a successful update left the file naming
+    // the OLD version: `daemonVersionSkew()` reads it, so every later command
+    // would nudge about a stale daemon that had just been replaced, and the
+    // wizard would rebuild a current service on a skew it should not see.
+    const { writeVersionFile, readVersionFile } = await import("../../src/hooks/fp-config");
+    const { version } = await import("../../package.json");
+    writeVersionFile({ daemon: "0.0.0-old" });
+    expect(readVersionFile()?.daemon).toBe("0.0.0-old");
+
+    await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      install: async () => ({ installed: true }),
+    });
+
+    expect(readVersionFile()?.daemon).toBe(version);
+    // And it must NOT have flipped the fail-closed flag as a side effect: an
+    // update refreshes what is installed, it does not decide whether the machine
+    // requires it.
+    const { readConfig } = await import("../../src/hooks/fp-config");
+    expect(readConfig().daemon.configured).toBe(false);
+  });
+
+  it("asks for sudo up front when there is somebody to ask", async () => {
+    // The gap this command shipped with. Writing the unit needs root and
+    // `runPrivileged` uses `sudo -n`, which never prompts — a rule that exists for
+    // the WIZARD, because a password prompt under a full-screen TUI is unreadable.
+    // This command is plain line output, so it does not inherit that constraint,
+    // and without the prompt `failproofai update` on a daemon machine failed with
+    // "sudo credentials were not available" and a 30-line unit file to paste.
+    let primed = false;
+    let primedBeforeInstall = false;
+    await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      interactive: () => true,
+      prime: () => {
+        primed = true;
+        return true;
+      },
+      install: async () => {
+        primedBeforeInstall = primed;
+        return { installed: true };
+      },
+    });
+
+    expect(primed).toBe(true);
+    // Order matters: priming after the install would be asking for a password to
+    // fix something that already failed.
+    expect(primedBeforeInstall).toBe(true);
+  });
+
+  it("never prompts on a non-TTY, where nothing would answer", async () => {
+    // A CI runner or a fleet box. `sudo -v` there blocks on a prompt nobody types,
+    // so those runs fall through to `sudo -n`, fail, and get the commands — which
+    // is the right outcome for an unattended machine.
+    let primed = false;
+    const result = await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      interactive: () => false,
+      prime: () => {
+        primed = true;
+        return true;
+      },
+      install: async () => ({ installed: false, reason: "root privileges are required" }),
+    });
+
+    expect(primed).toBe(false);
+    expect(result.ok).toBe(false);
+    expect(result.lines.join("\n")).toContain("root privileges are required");
+  });
+
+  it("surfaces the install's failure instead of claiming a refresh", async () => {
+    const result = await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      install: async () => ({ installed: false, reason: "root privileges are required" }),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.lines.join("\n")).toContain("root privileges are required");
+    // On a machine configured to require the daemon, saying it came back up when
+    // it did not is the difference between a known-stale collector and a silent one.
+    expect(result.lines.join("\n")).not.toContain("restarted and holding");
+    expect(result.lines.join("\n")).toContain("previous daemon is untouched");
+  });
 });

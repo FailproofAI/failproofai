@@ -1,10 +1,9 @@
 //! Verifies that a Unix socket peer is running as the same OS user as this
 //! process.
 //!
-//! failproofaid is user-scope only (see the plan: "no elevation, the daemon
-//! spawns the worker because the daemon already runs as the user"): the
-//! socket directory is `0700` and the socket file `0600`, which is the
-//! actual access-control boundary. This check is a second, defense-in-depth
+//! failproofaid's service definition is installed system-wide but runs the
+//! process as the configured user. The socket directory is `0700` and the
+//! socket file `0600`. This check is a second, defense-in-depth
 //! layer against the narrow window between a socket file existing and its
 //! permissions having been fully applied, and against misconfigured
 //! filesystems (e.g. a shared mount with unexpectedly loose permissions).

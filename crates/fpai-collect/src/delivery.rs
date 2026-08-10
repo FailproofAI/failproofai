@@ -29,6 +29,7 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
@@ -48,6 +49,11 @@ const MAX_CONCURRENT_UPLOADS: usize = 8;
 
 /// How often the sweeper scans the spool directories.
 const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+
+/// How often the sweeper looks for a `failproofai flush` request while it is
+/// otherwise idle. Short enough that a flush feels immediate, long enough that
+/// an idle daemon is not spinning.
+const FLUSH_POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// How old a batch must be before the sweeper claims it.
 ///
 /// Not politeness — it is what keeps the two paths from racing on a file the
@@ -219,6 +225,7 @@ pub async fn sweep(
     dirs: Vec<PathBuf>,
     failed_dir: PathBuf,
     sd: Shutdown,
+    flush_now: Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<(), TaskError> {
     // Run one pass immediately. A cold start must not wait a full interval to
     // deliver what accumulated while the daemon was stopped, and a filesystem
@@ -241,8 +248,33 @@ pub async fn sweep(
             next_failed_pass = SystemTime::now() + FAILED_RETRY_INTERVAL;
         }
 
-        if !sd.sleep(SWEEP_INTERVAL).await {
-            return Ok(());
+        // Poll for a flush request rather than sleeping the whole interval in
+        // one go. `failproofai flush` exists because the guarantees that make
+        // the sweeper safe in steady state — only touch batches older than
+        // SWEEP_MIN_AGE, at most SWEEP_MAX_FILES per pass — are exactly wrong
+        // for someone standing at a dashboard waiting for their own events.
+        let deadline = SystemTime::now() + SWEEP_INTERVAL;
+        loop {
+            if flush_now.swap(false, Ordering::SeqCst) {
+                // A flush pass: no minimum age, no per-pass cap. This is the
+                // one caller that has explicitly asked to trade the backlog
+                // pacing for latency.
+                for dir in &dirs {
+                    for path in stale_batches(dir, Duration::ZERO, usize::MAX).await {
+                        if sd.is_set() {
+                            return Ok(());
+                        }
+                        delivery.deliver(path).await;
+                    }
+                }
+                break;
+            }
+            if SystemTime::now() >= deadline {
+                break;
+            }
+            if !sd.sleep(FLUSH_POLL_INTERVAL).await {
+                return Ok(());
+            }
         }
     }
 }

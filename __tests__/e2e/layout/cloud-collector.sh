@@ -2,7 +2,11 @@
 # E2E pass 2 — the real cloud path against the freshly built stack, plus a live
 # daemon + collector writing into the layout-2 directories.
 set -uo pipefail
-REPO=/home/sidd/Desktop/work-failproofai/failproofai
+# Repo root, derived from this script's own location: these live at
+# <repo>/__tests__/e2e/layout/. It was hardcoded to one contributor's home
+# directory, so the suite ran on exactly one machine and silently used the
+# wrong CLI (or none) on every other.
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 CLI="node $REPO/dist/cli.mjs"
 API=http://localhost:18080
 CH=http://localhost:18123
@@ -23,17 +27,18 @@ printf '\n=== 1. CONNECT: both capabilities verified against the real server ===
 OUT=$($CLI config --connect "$API" --token "$KEY" --send-transcripts 2>&1); RC=$?
 has "reports a full connection" "$OUT" "Connected to"
 check "exit 0 when policy enrolment succeeds" "$RC" "0"
-check "credentials.toml written" "$([ -f "$H/home/credentials.toml" ] && echo y || echo n)" "y"
-check "credentials are 0600" "$(stat -c '%a' "$H/home/credentials.toml")" "600"
-has "mode flipped to cloud" "$(cat "$H/home/config.toml")" 'kind = "cloud"'
-hasnt "token never lands in config.toml" "$(cat "$H/home/config.toml")" "$KEY"
-has "both tables present" "$(cat "$H/home/credentials.toml")" "\[cloud\]"
-has "ingest table present" "$(cat "$H/home/credentials.toml")" "\[ingest\]"
-has "transcripts opted in" "$(cat "$H/home/config.toml")" "sessions = true"
+check "credentials.json written" "$([ -f "$H/home/credentials.json" ] && echo y || echo n)" "y"
+check "credentials are 0600" "$(stat -c '%a' "$H/home/credentials.json")" "600"
+has "mode flipped to cloud" "$(cat "$H/home/config.json")" '"kind": "cloud"'
+hasnt "token never lands in config.json" "$(cat "$H/home/config.json")" "$KEY"
+has "both tables present" "$(cat "$H/home/credentials.json")" "\"cloud\":"
+has "ingest table present" "$(cat "$H/home/credentials.json")" "\"ingest\":"
+has "transcripts opted in" "$(cat "$H/home/config.json")" '"sessions": true'
 
 printf '\n=== 2. DAEMON: starts, reads layout-2 config, enables the collector ===\n'
-mkdir -p "$H/home/policies/local-policies"
-printf '{"enabledPolicies":["block-sudo"]}' > "$H/home/policies/local-policies/policies-config.json"
+mkdir -p "$H/home/policies"
+# Home ROOT — layout 3 never reads policies/local-policies/.
+printf '{"enabledPolicies":["block-sudo"]}' > "$H/home/policies-config.json"
 mkdir -p "$H/run"; chmod 700 "$H/run"
 FAILPROOFAI_DAEMON_SOCKET="$H/run/d.sock" \
 FAILPROOFAI_HOME="$H/home" \
@@ -43,9 +48,9 @@ DPID=$!
 sleep 10
 check "daemon alive" "$(kill -0 $DPID 2>/dev/null && echo y || echo n)" "y"
 LOG=$(cat "$H/daemon.log")
-has "collector enabled from config.toml" "$LOG" "collector enabled"
+has "collector enabled from config.json" "$LOG" "collector enabled"
 has "sessions=true read from TOML" "$LOG" "sessions=true"
-has "ingest URL read from credentials.toml" "$LOG" "$API/events"
+has "ingest URL read from credentials.json" "$LOG" "$API/events"
 has "cloud policy polling ON (credentials found)" "$LOG" "cloud"
 
 printf '\n=== 3. COLLECTOR WRITES INTO LAYOUT 2, NOT THE OLD PATHS ===\n'
@@ -82,8 +87,8 @@ printf '\n=== 6. DISCONNECT RETURNS THE MACHINE TO OSS ===\n'
 kill -TERM $DPID 2>/dev/null; sleep 3
 DIS=$($CLI config --disconnect 2>&1)
 has "reports disconnection" "$DIS" "Disconnected"
-has "mode back to oss" "$(cat "$H/home/config.toml")" 'kind = "oss"'
-CRED=$(cat "$H/home/credentials.toml" 2>/dev/null || echo "")
+has "mode back to oss" "$(cat "$H/home/config.json")" '"kind": "oss"'
+CRED=$(cat "$H/home/credentials.json" 2>/dev/null || echo "")
 hasnt "cloud token gone" "$CRED" "$KEY"
 
 printf '\n=== 7. OSS MODE IS PROVABLY SILENT ===\n'

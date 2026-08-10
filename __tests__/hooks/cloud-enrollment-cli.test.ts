@@ -3,15 +3,20 @@ import { mkdirSync, mkdtempSync, rmSync, existsSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
-import { runConnectCommand, runDisconnectCommand, connectionStatusLines } from "../../src/hooks/cloud-enrollment-cli";
+import {
+  runConnectCommand,
+  runDisconnectCommand,
+  runRenameCommand,
+  describeMachine,
+  connectionStatusLines,
+} from "../../src/hooks/cloud-enrollment-cli";
 import { cloudCredentialPath, readCloudCredentials, writeCloudCredentials } from "../../src/hooks/cloud-enrollment";
 import { readIngestCredential } from "../../src/hooks/collector-config";
-import { readHooksConfig } from "../../src/hooks/hooks-config";
 import { readConfig } from "../../src/hooks/fp-config";
 
 let dir: string;
 let realHome: string | undefined;
-const ok = vi.fn(async () => ({ ok: true as const, policyCount: 3, generation: 12 }));
+const ok = vi.fn(async () => ({ ok: true as const, policyCount: 3, deployment: 12 }));
 const ingestOk = vi.fn(async () => ({ ok: true as const }));
 // A key carrying both permissions, so the capability gating is transparent here
 // and each test exercises whatever `verify`/`verifyIngest` it injected. Reports
@@ -64,7 +69,7 @@ describe("--connect", () => {
     expect(r.exitCode).toBe(0);
     // The label is the human name; the explicit id is shown in parentheses.
     expect(r.lines.join("\n")).toMatch(/Connected to https:\/\/be\.failproof\.ai as lab-1 \(m-1\)/);
-    expect(r.lines.join("\n")).toMatch(/3 policies assigned \(generation 12\)/);
+    expect(r.lines.join("\n")).toMatch(/3 policies assigned \(deployment 12\)/);
     expect(readCloudCredentials()).toEqual({
       url: base.url,
       machineId: "m-1",
@@ -132,6 +137,91 @@ describe("--connect", () => {
   it("warns differently when the daemon is installed but stopped", async () => {
     const r = await runConnectCommand({ ...base, machineId: "m", daemonStatus: () => "stopped" as const });
     expect(r.lines.join("\n")).toMatch(/not running/);
+  });
+
+  it("does NOT claim a daemon runs outside the service manager when the state is unreadable", async () => {
+    // macOS: a LaunchDaemon is in launchd's system domain, so reading its state
+    // needs elevation. Without a cached `sudo -n` credential — the normal case for
+    // a read-only status command — `daemonServiceStatus()` returns "unknown",
+    // meaning "I could not tell".
+    //
+    // That used to fall through to the socket branch and announce the daemon was
+    // "running outside the service manager", telling the user to install a service
+    // they already had. Linux never showed it, because `systemctl is-active` needs
+    // no privileges — and that asymmetry was the entire bug.
+    const r = await runConnectCommand({ ...base, machineId: "m", daemonStatus: () => "unknown" as const });
+
+    const out = r.lines.join("\n");
+    expect(r.exitCode).toBe(0);
+    expect(out).not.toMatch(/outside the service manager/);
+    expect(out).not.toMatch(/Install it as a service/);
+    // And it says what IS true: the state could not be read.
+    expect(out).toMatch(/needs elevation to read/);
+  });
+});
+
+describe("--machine-label alone renames without re-enrolling", () => {
+  // The flag was accepted only with --connect, so changing a display name meant
+  // re-running enrolment with the url and token again. The hostname default is a
+  // suggestion, so renaming is the expected path rather than an exception.
+
+  it("stores the new label and reports the change", async () => {
+    writeCloudCredentials({ url: "https://x", machineId: "abcd1234-ffff", token: "t", machineLabel: "old-name" });
+
+    const r = await runRenameCommand("Nikita's Mac", { verify: async () => ({ ok: true, policyCount: 0, deployment: 1 }) as const });
+
+    expect(r.exitCode).toBe(0);
+    expect(readCloudCredentials()?.machineLabel).toBe("Nikita's Mac");
+    expect(r.lines.join("\n")).toContain("old-name");
+    expect(r.lines.join("\n")).toContain("Nikita's Mac");
+  });
+
+  it("keeps the rename when the server cannot be reached", async () => {
+    // Refusing to rename because the network is down would fail exactly when
+    // someone is labelling a machine they are debugging. The daemon sends the
+    // label on its next poll, so the dashboard catches up by itself.
+    writeCloudCredentials({ url: "https://x", machineId: "abcd1234-ffff", token: "t" });
+
+    const r = await runRenameCommand("Build box", {
+      verify: async () => ({ ok: false, reason: "No response from https://x within 5s." }),
+    });
+
+    expect(r.exitCode).toBe(0);
+    expect(readCloudCredentials()?.machineLabel).toBe("Build box");
+    expect(r.lines.join("\n")).toMatch(/stored but .* could not be told/);
+  });
+
+  it("refuses when the machine is not connected", async () => {
+    const r = await runRenameCommand("Anything", { verify: async () => ({ ok: true, policyCount: 0, deployment: 1 }) as const });
+    expect(r.exitCode).toBe(1);
+    expect(r.lines.join("\n")).toContain("not connected");
+  });
+
+  it("needs a name", async () => {
+    writeCloudCredentials({ url: "https://x", machineId: "m", token: "t" });
+    const r = await runRenameCommand("   ", { verify: async () => ({ ok: true, policyCount: 0, deployment: 1 }) as const });
+    expect(r.exitCode).toBe(1);
+  });
+});
+
+describe("machine names in output", () => {
+  it("shows the label with a SHORT id, not the whole uuid", () => {
+    // 36 characters of uuid in every status line is noise for the one reader who
+    // cannot use them, and it made the id look like the machine's name.
+    const shown = describeMachine("dde01f39-afba-40eb-bf1a-815d9f17ac2d", "Mac.localdomain");
+    expect(shown).toBe("Mac.localdomain (dde01f39)");
+  });
+
+  it("keeps the full id when asked", () => {
+    const shown = describeMachine("dde01f39-afba-40eb-bf1a-815d9f17ac2d", "Mac.localdomain", true);
+    expect(shown).toBe("Mac.localdomain (dde01f39-afba-40eb-bf1a-815d9f17ac2d)");
+  });
+
+  it("falls back to the bare id when there is no label", () => {
+    // Credentials written before labels existed, and the case where the label IS
+    // the id — printing it twice would be worse than printing it once.
+    expect(describeMachine("m-1")).toBe("m-1");
+    expect(describeMachine("m-1", "m-1")).toBe("m-1");
   });
 });
 
@@ -349,13 +439,14 @@ describe("--disconnect means disconnect", () => {
     // Clearing the credential ends polling. Every artifact already on disk
     // stayed referenced by active.json and kept being loaded on every tool
     // call, so a machine that had deliberately left its organisation went on
-    // being governed by whatever generation was current when it left.
+    // being governed by whatever deployment was current when it left.
     await runConnectCommand({ ...base, machineId: "m-1" });
+    // A child of `policies/`: one directory holds every policy on the machine.
     const managedRoot = resolve(dir, "home", "policies", "cloud-policies");
     mkdirSync(managedRoot, { recursive: true });
     writeFileSync(
       resolve(managedRoot, "active.json"),
-      JSON.stringify({ schemaVersion: 1, generation: 4, policies: [] }),
+      JSON.stringify({ schemaVersion: 1, deployment: 4, policies: [] }),
     );
 
     runDisconnectCommand();
@@ -386,5 +477,62 @@ describe("status shows one connection with two capabilities", () => {
     const out = connectionStatusLines(() => "running").join("\n");
     expect(out).toMatch(/Policy\s+pulling/);
     expect(out).toMatch(/Dashboard sending hook activity/);
+  });
+});
+
+/**
+ * The two-step connect, end to end through the real writers and readers.
+ *
+ * `cloud-enrollment.test.ts` pins `resolveMachineId`'s fallback against a
+ * hand-written `config.json`. This pins the same property against the file
+ * `connectToCloud` ACTUALLY writes, which is the half a unit test cannot vouch
+ * for: if `writeCollectorSettings` ever stopped persisting the id, or persisted
+ * it under a different key, the unit test would still pass while every
+ * ingest-first machine in the fleet silently split in two on its next connect.
+ */
+describe("an ingest-only connect does not cost the machine its identity", () => {
+  // A key carrying `events:add` and NOT `policies:pull` — exactly what the
+  // `collector` preset mints in the dashboard's key drawer.
+  const introspectIngestOnly = vi.fn(async () => ({
+    kind: "ok" as const,
+    identity: { permissions: ["events:add"] },
+  }));
+
+  it("reuses the collector-written id on a later policies-capable connect", async () => {
+    // ── Step 1: telemetry only. No --machine-id, so one is minted. ──────────
+    await runConnectCommand({ ...base, introspect: introspectIngestOnly });
+
+    // The policy half never verified, so there is no cloud credential at all —
+    // this is precisely the state that used to strand the id.
+    expect(readCloudCredentials()).toBeNull();
+    const minted = readConfig().collector.machineId;
+    expect(minted).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+
+    // ── Step 2: the operator creates a full key and reconnects. ─────────────
+    await runConnectCommand({ ...base });
+
+    // The SAME machine, not a second one. Before the collector fallback this
+    // returned a freshly minted UUID, and the host appeared twice in the fleet
+    // list with its first month of history stranded under the original id.
+    expect(readCloudCredentials()?.machineId).toBe(minted);
+    // And both stores still agree, which is what keeps the enrolment row and
+    // the event stream pointing at one machine.
+    expect(readConfig().collector.machineId).toBe(minted);
+  });
+
+  it("keeps an explicit --machine-id across the same two steps", async () => {
+    await runConnectCommand({
+      ...base,
+      introspect: introspectIngestOnly,
+      machineId: "prod-runner-01",
+    });
+    expect(readCloudCredentials()).toBeNull();
+    expect(readConfig().collector.machineId).toBe("prod-runner-01");
+
+    // No --machine-id the second time: the operator should not have to remember
+    // it, and the fallback is what makes forgetting harmless.
+    await runConnectCommand({ ...base });
+    expect(readCloudCredentials()?.machineId).toBe("prod-runner-01");
+    expect(readConfig().collector.machineId).toBe("prod-runner-01");
   });
 });

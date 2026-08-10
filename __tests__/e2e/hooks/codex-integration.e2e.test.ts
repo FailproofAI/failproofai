@@ -16,7 +16,6 @@ import {
   assertAllow,
   assertPreToolUseDeny,
   assertPostToolUseDeny,
-  assertStopInstruct,
   assertPermissionRequestDeny,
 } from "../helpers/hook-runner";
 import { CodexPayloads } from "../helpers/payloads";

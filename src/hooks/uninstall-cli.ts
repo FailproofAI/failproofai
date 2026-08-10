@@ -40,6 +40,7 @@ import {
   daemonServiceStatus,
   daemonStatusCommand,
   isDaemonSupportedPlatform,
+  primeElevation,
   setDaemonConfigured,
   uninstallDaemonService,
 } from "./daemon-service";
@@ -62,6 +63,25 @@ export interface UninstallOptions {
    * see the non-interactive branch.
    */
   confirm?: (lines: string[]) => Promise<boolean>;
+  /**
+   * Asked, on a plain uninstall only, whether the daemon service should go too.
+   *
+   * A plain uninstall removes the hooks and leaves the machine otherwise intact,
+   * so the daemon is a genuine choice: someone clearing hooks before reinstalling
+   * has no reason to tear down a system service and re-enter their password for
+   * it. Absent means "could not ask" and the daemon is KEPT — declining to remove
+   * a service is the recoverable half of that decision, and removing one nobody
+   * asked about is not.
+   *
+   * NOT consulted under `--purge`. See `removeDaemon` in the implementation for
+   * why purge cannot leave it behind.
+   */
+  confirmDaemon?: () => Promise<boolean>;
+  /**
+   * Ask for the sudo password before removing the service. Injected for tests;
+   * defaults to `primeElevation`.
+   */
+  elevate?: () => boolean;
 }
 
 export interface UninstallResult {
@@ -173,7 +193,11 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
     plan.push(`  • stop requiring the daemon (policies go back to evaluating in-process)`);
   }
   if (found.serviceInstalled) {
-    plan.push(`  • stop, disable and delete the service at ${found.servicePath} — needs sudo`);
+    plan.push(
+      opts.purge || opts.yes
+        ? `  • stop, disable and delete the service at ${found.servicePath} — needs sudo`
+        : `  • ask whether to remove the service at ${found.servicePath} (kept unless you say so)`,
+    );
   }
   let purged = false;
   if (opts.purge && found.homeExists) {
@@ -229,7 +253,7 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
         purged: false,
         lines: [
           ...lines,
-          `✗ could not update ${failproofaiHome()}/config.toml: ${err instanceof Error ? err.message : String(err)}`,
+          `✗ could not update ${failproofaiHome()}/config.json: ${err instanceof Error ? err.message : String(err)}`,
           ``,
           `Stopped before touching the service. Removing it while this machine still`,
           `requires it would deny every tool call. Fix the file's permissions and re-run.`,
@@ -259,21 +283,66 @@ export async function runUninstallCommand(opts: UninstallOptions = {}): Promise<
   }
 
   if (found.serviceInstalled) {
-    try {
-      await uninstallDaemonService();
-      // uninstallDaemonService is best-effort by contract — it warns and
-      // returns rather than throwing when it cannot elevate — so the unit file
-      // is what gets believed here, not the absence of an exception.
-      if (found.servicePath && existsSync(found.servicePath)) {
-        failures.push(
-          `the service at ${found.servicePath} is still there (most often: no sudo). ` +
-            `Remove it with the commands below.`,
-        );
-      } else {
-        lines.push(`✓ stopped and removed the daemon service`);
+    // PURGE ALWAYS REMOVES IT, and is not asked. `--purge` deletes
+    // `~/.failproofai`, which is where the daemon BINARY lives
+    // (`bin/failproofaid-<version>`) — so keeping an enabled unit whose ExecStart
+    // has just been deleted leaves the machine crash-looping the service at every
+    // boot. "Keep the daemon" is not an option purge can offer, because purge has
+    // already destroyed what the daemon needs to run.
+    //
+    // A plain uninstall is the opposite: the home survives, the binary survives,
+    // and someone clearing hooks before a reinstall has no reason to tear down a
+    // system service and re-type their password. So it asks, and a missing answer
+    // means KEEP — declining to remove a service is recoverable, removing one
+    // nobody asked about is not.
+    //
+    // `--yes` also removes it, and that is deliberate rather than incidental: the
+    // flag means "yes to the plan", the plan has always included the service, and
+    // scripted uninstalls rely on it. Making `--yes` keep the daemon would silently
+    // start leaving a service behind on every automated run — a behaviour change
+    // nobody asked for, in the direction of leaving more behind.
+    //
+    // So the only case that keeps it is an INTERACTIVE run where the person said no
+    // (or could not be asked).
+    const removeDaemon =
+      opts.purge || opts.yes ? true : ((await opts.confirmDaemon?.()) ?? false);
+
+    if (!removeDaemon) {
+      lines.push(
+        `• kept the daemon service at ${found.servicePath}`,
+        `  Remove it later with: failproofai uninstall --purge`,
+      );
+    } else {
+      // Ask for the password BEFORE trying, rather than failing on `sudo -n` and
+      // printing a unit file to delete by hand. `uninstallDaemonService()` is
+      // deliberately non-interactive — the wizard cannot prompt from under a
+      // full-screen TUI — but this command is plain line output and has a person
+      // in front of it, which is the same reasoning `failproofai update` follows.
+      // Best-effort: a refused or absent sudo still falls through to the existing
+      // "still there, here are the commands" path below.
+      const elevate = opts.elevate ?? primeElevation;
+      try {
+        elevate();
+      } catch {
+        // A failed prompt is not a reason to skip the attempt; `sudo -n` inside
+        // the removal will simply fail the same way it would have anyway.
       }
-    } catch (err) {
-      failures.push(`daemon service: ${err instanceof Error ? err.message : String(err)}`);
+      try {
+        await uninstallDaemonService();
+        // uninstallDaemonService is best-effort by contract — it warns and
+        // returns rather than throwing when it cannot elevate — so the unit file
+        // is what gets believed here, not the absence of an exception.
+        if (found.servicePath && existsSync(found.servicePath)) {
+          failures.push(
+            `the service at ${found.servicePath} is still there (most often: no sudo). ` +
+              `Remove it with the commands below.`,
+          );
+        } else {
+          lines.push(`✓ stopped and removed the daemon service`);
+        }
+      } catch (err) {
+        failures.push(`daemon service: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 

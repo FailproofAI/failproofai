@@ -5,7 +5,7 @@
  */
 "use client";
 
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, Wrench } from "lucide-react";
 import type { LogEntry, ToolUseBlock } from "@/lib/log-entries";

@@ -1000,6 +1000,7 @@ fn spec(db: PathBuf, spool: PathBuf, state: PathBuf) -> sqlitepoll::Spec {
             max_rows_per_poll: 500,
             max_batch_bytes: 8 * 1024 * 1024,
             max_drain_passes: 8,
+            label: None,
         },
     }
 }

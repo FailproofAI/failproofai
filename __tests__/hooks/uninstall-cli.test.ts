@@ -44,6 +44,12 @@ vi.mock("../../src/hooks/daemon-service", () => ({
     calls.push("uninstallDaemonService");
     if (serviceExists) rmSync(servicePath, { force: true });
   }),
+  // Recorded, so a test can assert the password prompt happens BEFORE the
+  // removal rather than after it fails on `sudo -n`.
+  primeElevation: vi.fn(() => {
+    calls.push("primeElevation");
+    return true;
+  }),
 }));
 
 vi.mock("../../src/hooks/fp-config", () => ({
@@ -66,7 +72,7 @@ beforeEach(() => {
   calls.length = 0;
   home = mkdtempSync(join(tmpdir(), "fpai-uninstall-"));
   mkdirSync(join(home, "state"), { recursive: true });
-  writeFileSync(join(home, "config.toml"), "[daemon]\nconfigured = true\n");
+  writeFileSync(join(home, "config.json"), JSON.stringify({ daemon: { configured: true } }));
   servicePath = join(home, "failproofaid@tester.service");
   writeFileSync(servicePath, "[Unit]\n");
   serviceExists = true;
@@ -209,6 +215,78 @@ describe("hooks/uninstall-cli", () => {
     // The plan is a prefix of the output, and what follows it is the outcome.
     expect(res.lines.slice(0, res.planLines).join("\n")).toMatch(/failproofai uninstall will:/);
     expect(res.lines.slice(res.planLines).join("\n")).toMatch(/Cancelled/);
+  });
+});
+
+describe("hooks/uninstall-cli — who decides the daemon's fate", () => {
+  it("a plain uninstall ASKS, and keeps the service when the answer is no", async () => {
+    // Removing a system service and asking for a password is not what someone
+    // clearing hooks before a reinstall wants. The hooks are gone either way, so
+    // nothing is being enforced — keeping the service is a real choice.
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const res = await runUninstallCommand({ confirm: async () => true, confirmDaemon: async () => false });
+
+    expect(res.exitCode).toBe(0);
+    expect(calls).not.toContain("uninstallDaemonService");
+    expect(calls).not.toContain("primeElevation");
+    expect(res.lines.join("\n")).toMatch(/kept the daemon service/);
+    expect(existsSync(servicePath)).toBe(true);
+  });
+
+  it("a plain uninstall removes it when the answer is yes, asking for sudo FIRST", async () => {
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const res = await runUninstallCommand({ confirm: async () => true, confirmDaemon: async () => true });
+
+    expect(res.exitCode).toBe(0);
+    // The prompt comes BEFORE the removal, or the removal fails on `sudo -n` and
+    // prints a unit file to delete by hand — the whole point of asking.
+    expect(calls.indexOf("primeElevation")).toBeGreaterThanOrEqual(0);
+    expect(calls.indexOf("primeElevation")).toBeLessThan(calls.indexOf("uninstallDaemonService"));
+    expect(existsSync(servicePath)).toBe(false);
+  });
+
+  it("keeps the service when there is nobody to ask", async () => {
+    // No TTY and no --yes: the confirm hook is absent. Declining to remove a
+    // service is recoverable; removing one nobody asked about is not.
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const res = await runUninstallCommand({ confirm: async () => true });
+
+    expect(calls).not.toContain("uninstallDaemonService");
+    expect(res.lines.join("\n")).toMatch(/kept the daemon service/);
+  });
+
+  it("--purge removes it WITHOUT asking, because it deletes the binary", async () => {
+    // Purge deletes ~/.failproofai, where the daemon binary lives. Leaving an
+    // enabled unit whose ExecStart has just been deleted crash-loops the service
+    // at every boot — so "keep the daemon" is not an option purge can offer.
+    const confirmDaemon = vi.fn(async () => false);
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const res = await runUninstallCommand({ purge: true, confirm: async () => true, confirmDaemon });
+
+    expect(confirmDaemon).not.toHaveBeenCalled();
+    expect(calls).toContain("uninstallDaemonService");
+    expect(calls.indexOf("primeElevation")).toBeLessThan(calls.indexOf("uninstallDaemonService"));
+    expect(res.exitCode).toBe(0);
+  });
+
+  it("--yes still removes it — the flag means yes to the plan", async () => {
+    // Scripted uninstalls rely on this. Making --yes keep the daemon would
+    // silently start leaving a service behind on every automated run.
+    const confirmDaemon = vi.fn(async () => false);
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    await runUninstallCommand({ yes: true, confirmDaemon });
+
+    expect(confirmDaemon).not.toHaveBeenCalled();
+    expect(calls).toContain("uninstallDaemonService");
+  });
+
+  it("says it will ASK in the plan, rather than promising removal", async () => {
+    const { runUninstallCommand } = await import("../../src/hooks/uninstall-cli");
+    const res = await runUninstallCommand({ dryRun: true });
+    expect(res.lines.join("\n")).toMatch(/ask whether to remove the service/);
+
+    const purged = await runUninstallCommand({ purge: true, dryRun: true });
+    expect(purged.lines.join("\n")).toMatch(/stop, disable and delete the service/);
   });
 });
 

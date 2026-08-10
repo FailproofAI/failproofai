@@ -18,12 +18,11 @@
  */
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { homedir, hostname } from "node:os";
-import { join } from "node:path";
+import { hostname } from "node:os";
 import { writeJsonAtomically } from "../../lib/atomic-write";
 import { fetchWithTimeout, isAbortError } from "../../lib/fetch-with-timeout";
 import { credentialsFile } from "./fp-home";
-import { readCredentials, writeCredentials } from "./fp-config";
+import { readConfig, readCredentials, writeCredentials } from "./fp-config";
 
 const SCHEMA_VERSION = 1;
 const VERIFY_TIMEOUT_MS = 10_000;
@@ -136,18 +135,60 @@ export function writeCloudCredentials(creds: CloudCredentials): void {
 /**
  * The stable key that identifies this machine to the cloud.
  *
- * An explicit `--machine-id` always wins. Otherwise the id already enrolled on
+ * An explicit `--machine-id` always wins. Otherwise the id already recorded on
  * this machine is reused, so re-running `--connect` is idempotent and never
  * "moves" the machine. Only a machine that has none mints a fresh one — and it
  * mints a random id, NOT the hostname, because two hosts sharing a hostname
  * (fresh cloud VMs, cloned images) would otherwise silently merge into one
  * machine on the server. The hostname becomes the human label instead.
+ *
+ * ## Why this looks in TWO places before minting
+ *
+ * `connectToCloud` writes the id to two files under two INDEPENDENT conditions:
+ * `credentials.json`'s `cloud` table only when `policies:pull` verified, and
+ * `config.json`'s `collector.machine_id` only when `events:add` did. A key
+ * carrying one grant and not the other is not a broken setup — it is a
+ * first-class state the key-creation drawer offers as two separate presets
+ * (`policies` and `collector`), so half-written is a shape this function must
+ * expect rather than an anomaly.
+ *
+ * Consulting only the cloud credential therefore missed the id whenever the
+ * FIRST connection was ingest-only, and the consequences all landed on the
+ * server, where nothing could undo them:
+ *
+ *   1. a telemetry-only connect stamps `collector.machine_id = A` on every
+ *      event and writes no cloud credential;
+ *   2. a later connect with a policies-capable key finds no cloud credential,
+ *      mints B, and overwrites the collector block with it;
+ *   3. the fleet list — a union of enrolment rows and event-derived ids — now
+ *      shows ONE host as TWO machines: A reporting with no label and nothing
+ *      deployed, B enrolled and empty. A's history is stranded, and A counts
+ *      toward `unguarded` on the policy page, which is the exact false reading
+ *      that page exists to surface.
+ *
+ * Order is most-explicit to least, and the cloud credential stays ABOVE the
+ * collector block deliberately: if the two ever disagree, the cloud one is what
+ * the server has keyed this machine's enrolment, deployment and history on, and
+ * that is the association that must not break. Minting drops to last, where it
+ * now means what it says — nothing on this machine has ever carried an id.
+ *
+ * The collector value is returned VERBATIM rather than trimmed, because the
+ * daemon stamps it on events verbatim too (`spool.rs`, which filters only the
+ * empty string); normalising it here would hand the cloud a different id than
+ * the one the events carry and reintroduce the split this exists to close. A
+ * blank or whitespace-only value is not adopted — it identifies nothing, and
+ * the server would refuse it.
  */
 export function resolveMachineId(explicit?: string): string {
   const trimmed = explicit?.trim();
   if (trimmed) return trimmed;
   const existing = readCloudCredentials();
   if (existing?.machineId) return existing.machineId;
+  // `readConfig` swallows a missing or corrupt file and answers with defaults,
+  // so an unreadable config degrades to minting rather than throwing on a path
+  // whose whole job is to keep enrolment working.
+  const collectorId = readConfig().collector.machineId;
+  if (collectorId?.trim()) return collectorId;
   return randomUUID();
 }
 
@@ -182,7 +223,7 @@ export function clearCloudCredentials(): boolean {
 }
 
 export type VerifyResult =
-  | { ok: true; policyCount: number; generation: number }
+  | { ok: true; policyCount: number; deployment: number }
   | { ok: false; reason: string };
 
 /**
@@ -228,11 +269,11 @@ export async function verifyCloudCredentials(creds: CloudCredentials): Promise<V
   }
 
   try {
-    const body = (await response.json()) as { policies?: unknown[]; generation?: number };
+    const body = (await response.json()) as { policies?: unknown[]; deployment?: number };
     return {
       ok: true,
       policyCount: Array.isArray(body.policies) ? body.policies.length : 0,
-      generation: typeof body.generation === "number" ? body.generation : 0,
+      deployment: typeof body.deployment === "number" ? body.deployment : 0,
     };
   } catch {
     return {

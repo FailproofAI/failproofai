@@ -101,7 +101,7 @@ describe("listHooks — convention policy column width", () => {
   // and the ESM cache short-circuits `customPolicies.add`, so
   // `loadCustomHooks` legitimately returns 0 hooks. Reported from a live
   // install where four working policies all showed ✗.
-  it("cannot double-list from $HOME any more — the two dirs are now distinct", async () => {
+  it("does not double-list from $HOME, even though the two dirs collide again", async () => {
     // The original defect: run from $HOME and both scopes resolved to the SAME
     // <tmp>/.failproofai/policies, so every file printed twice and the second
     // pass rendered as "failed to load" (the ESM cache short-circuits
@@ -112,7 +112,15 @@ describe("listHooks — convention policy column width", () => {
     // policies/. They can no longer be the same path, whatever the cwd. The
     // dedup logic still exists for other cases; this asserts the shape that
     // made it necessary is gone.
-    expect(customPoliciesDir(tmp)).not.toBe(join(tmp, ".failproofai", "policies"));
+    // LAYOUT 3 REINTRODUCES THE COLLISION, deliberately: user convention
+    // policies moved back to `~/.failproofai/policies/`, so running from $HOME
+    // makes user scope and project scope the same directory again. Layout 2
+    // made that impossible by construction; layout 3 trades the structural
+    // guarantee for a simpler tree and relies on the dedup logic instead.
+    //
+    // Which makes the assertion below the ONLY thing standing between a user
+    // and the original defect, so it is asserted rather than assumed.
+    expect(customPoliciesDir(tmp)).toBe(join(tmp, ".failproofai", "policies"));
 
     seed({ [SHORT_NAME]: policySource("team-rule") });
     vi.stubEnv("HOME", tmp);

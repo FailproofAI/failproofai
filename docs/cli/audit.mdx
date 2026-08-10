@@ -77,12 +77,16 @@ the background. It is **off by default**, because the scan reads the *contents*
 of every agent session transcript on this machine — nothing scans on a timer
 until you ask for it.
 
-Turn it on in `~/.failproofai/config.toml`:
+Turn it on in `~/.failproofai/config.json` — add the `audit` key alongside
+whatever else the file already holds:
 
-```toml
-[audit]
-auto = true
-interval_days = 7
+```json
+{
+  "audit": {
+    "auto": true,
+    "interval_days": 7
+  }
+}
 ```
 
 | Key | Meaning |
@@ -97,7 +101,7 @@ interval_days = 7
 - A scan is skipped if `failproofai audit` or the dashboard's re-run is already
   in flight; it is retried shortly afterwards rather than treated as a failure.
 - Progress is written to `~/.failproofai/state/audit-schedule.json` (last run,
-  next due). The daemon owns that file — change the cadence in `config.toml`.
+  next due). The daemon owns that file — change the cadence in `config.json`.
 
 <Note>
 If you enabled this on a machine set up by an older failproofai, run

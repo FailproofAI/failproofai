@@ -5,10 +5,8 @@
  * fire at the trigger site. Keep one focused case per event.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { resolve } from "node:path";
-import { homedir } from "node:os";
 
 vi.mock("node:fs", () => ({
   readFileSync: vi.fn(),

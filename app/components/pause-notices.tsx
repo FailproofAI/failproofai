@@ -8,7 +8,7 @@
  * where every policy ran and allowed, and without saying so the log asserts a
  * clean window over exactly the window that was not enforced.
  */
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ShieldAlert, TriangleAlert } from "lucide-react";
 import type { ActivePause } from "@/src/hooks/session-pause";
 

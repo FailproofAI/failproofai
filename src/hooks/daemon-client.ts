@@ -6,17 +6,12 @@
  * request, a 4-byte big-endian u32 length prefix followed by that many
  * bytes of UTF-8 JSON, camelCase fields, `"type"` as the tag.
  *
- * This module makes NO decision about what to do when the daemon can't be
- * reached — `tryDaemonHook` just returns `null` on any failure. The caller
- * (`bin/failproofai.mjs`) decides: fall back to full in-process evaluation
- * on a machine that was never daemon-configured, or fail closed on one that
- * was. See `isDaemonConfigured`.
+ * This module reports whether a daemon request succeeded, was unreachable, or
+ * used an incompatible protocol. The caller (`bin/failproofai.mjs`) owns the
+ * fail-closed response for daemon-configured machines.
  */
 import { createConnection } from "node:net";
-import { resolve } from "node:path";
-import { homedir } from "node:os";
 import type { IntegrationType } from "./types";
-import { readHooksConfig } from "./hooks-config";
 import { existsSync } from "node:fs";
 import { daemonSocket as daemonSocketPath } from "./fp-home";
 import { readConfig } from "./fp-config";
@@ -181,26 +176,7 @@ function encodeFrame(value: unknown): Buffer {
   return Buffer.concat([header, body]);
 }
 
-/**
- * Attempts one hook evaluation via the daemon. Returns `null` on **any**
- * failure — no socket, connection refused, timeout, malformed response,
- * protocol-version mismatch, or an explicit `error` message from the
- * daemon. The caller never needs to distinguish failure modes; it just
- * falls through to whatever its own fallback policy is.
- */
-export async function tryDaemonHook(req: DaemonHookRequest): Promise<DaemonHookResponse | null> {
-  const attempt = await attemptDaemonHook(req);
-  return attempt.ok ? attempt.response : null;
-}
-
-/**
- * The same attempt, but reporting WHY it failed.
- *
- * `tryDaemonHook` above collapses every failure into `null`, which loses the
- * one thing the caller still needs: both failures deny (see `DaemonFailure`),
- * but they call for different remedies — reinstall the daemon versus start it —
- * and a `null` cannot say which to print.
- */
+/** Attempts a daemon evaluation while preserving the failure category. */
 export async function attemptDaemonHook(
   req: DaemonHookRequest,
   opts?: {

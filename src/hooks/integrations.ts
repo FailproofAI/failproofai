@@ -14,7 +14,6 @@ import { homedir } from "node:os";
 import { parseDocument, type Document } from "yaml";
 import { listHermesProfiles, hermesRoot } from "../../lib/hermes-profiles";
 import {
-  HOOK_EVENT_TYPES,
   CLAUDE_INSTALL_EVENT_TYPES,
   HOOK_SCOPES,
   CODEX_HOOK_EVENT_TYPES,

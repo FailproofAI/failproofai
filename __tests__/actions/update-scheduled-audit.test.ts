@@ -15,7 +15,7 @@
  * parity is real: both write through the same `updateConfig`.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { configFile } from "../../src/hooks/fp-home";
@@ -68,7 +68,7 @@ describe("scheduled-audit write actions", () => {
     const off = readConfig();
     off.telemetry.enabled = false;
     writeConfig(off);
-    expect(readFileSync(configFile(), "utf8")).toContain("[telemetry]\nenabled = false");
+    expect(JSON.parse(readFileSync(configFile(), "utf8")).telemetry).toEqual({ enabled: false });
 
     // Now drive the dashboard's write paths.
     await setAutoAuditAction(true);
@@ -77,7 +77,7 @@ describe("scheduled-audit write actions", () => {
     // Telemetry is still off, in memory and on disk. A dropped field would have
     // re-enabled it (absent [telemetry] block reads as enabled).
     expect(readConfig().telemetry.enabled).toBe(false);
-    expect(readFileSync(configFile(), "utf8")).toContain("[telemetry]\nenabled = false");
+    expect(JSON.parse(readFileSync(configFile(), "utf8")).telemetry).toEqual({ enabled: false });
     // And the audit write actually landed alongside it.
     expect(readConfig().audit).toEqual({ auto: true, intervalDays: 14 });
   });

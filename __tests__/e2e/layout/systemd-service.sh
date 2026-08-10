@@ -3,7 +3,11 @@
 # Runs in a privileged container so none of it touches the operator's machine
 # and none of it needs a password.
 set -uo pipefail
-REPO=/home/sidd/Desktop/work-failproofai/failproofai
+# Repo root, derived from this script's own location: these live at
+# <repo>/__tests__/e2e/layout/. It was hardcoded to one contributor's home
+# directory, so the suite ran on exactly one machine and silently used the
+# wrong CLI (or none) on every other.
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 C=fpai-e2e-sd
 PASS=0; FAIL=0
 ok(){ PASS=$((PASS+1)); printf '  \033[32mPASS\033[0m %s\n' "$1"; }
@@ -82,9 +86,9 @@ dex 'FAILPROOFAI_HOME=/root/.failproofai FAILPROOFAI_NO_FIRST_RUN=1 node /opt/fp
 check "VERSION stamped by a CLI run (not by the daemon)" "$(dex '[ -f /root/.failproofai/VERSION ] && echo y || echo n' | tr -d '\r')" "y"
 
 printf '\n=== 3. HOOKS ROUTE THROUGH THE SERVICE, AND FAIL CLOSED WHEN IT STOPS ===\n'
-dex 'mkdir -p /root/.failproofai/policies/local-policies &&
-     printf "{\"enabledPolicies\":[\"block-sudo\"]}" > /root/.failproofai/policies/local-policies/policies-config.json &&
-     printf "[mode]\nkind = \"oss\"\n\n[daemon]\nconfigured = true\n" > /root/.failproofai/config.toml' >/dev/null
+dex 'mkdir -p /root/.failproofai/policies &&
+     printf "{\"enabledPolicies\":[\"block-sudo\"]}" > /root/.failproofai/policies-config.json &&
+     printf '{\"mode\":{\"kind\":\"oss\"},\"daemon\":{\"configured\":true}}\n' > /root/.failproofai/config.json' >/dev/null
 DENY=$(dex 'printf "{\"session_id\":\"sd\",\"cwd\":\"/tmp\",\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"sudo id\"}}" | FAILPROOFAI_HOME=/root/.failproofai node /opt/fp/dist/cli.mjs --hook PreToolUse --cli claude 2>/dev/null' | tr -d '\r')
 has "daemon-routed hook denies sudo (REAL policy, not fail-closed)" "$DENY" "sudo commands are blocked"
 ALLOW=$(dex 'printf "{\"session_id\":\"sd\",\"cwd\":\"/tmp\",\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls\"}}" | FAILPROOFAI_HOME=/root/.failproofai node /opt/fp/dist/cli.mjs --hook PreToolUse --cli claude 2>/dev/null' | tr -d '\r')
@@ -101,7 +105,7 @@ dex 'systemctl disable --now failproofaid@root >/dev/null 2>&1; rm -f /etc/syste
 # for root is exactly the unit just removed.
 HEAL=$(dex 'FAILPROOFAI_HOME=/root/.failproofai FAILPROOFAI_NO_FIRST_RUN=1 node /opt/fp/dist/cli.mjs policies 2>&1 >/dev/null' | tr -d '\r')
 has "self-heal explains the repair" "$HEAL" "denies every tool call"
-has "flag cleared in config.toml" "$(dex 'cat /root/.failproofai/config.toml' | tr -d '\r')" "configured = false"
+has "flag cleared in config.json" "$(dex 'cat /root/.failproofai/config.json' | tr -d '\r')" '"configured": false'
 RECOV=$(dex 'printf "{\"session_id\":\"sd\",\"cwd\":\"/tmp\",\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls\"}}" | FAILPROOFAI_HOME=/root/.failproofai node /opt/fp/dist/cli.mjs --hook PreToolUse --cli claude 2>/dev/null' | tr -d '\r')
 check "machine RECOVERS — no more lockout" "${RECOV:-empty}" "empty"
 

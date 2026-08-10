@@ -3,7 +3,7 @@
 //! Cloud transport deliberately does not live here. A caller supplies an
 //! [`ArtifactFetcher`], while this module owns the security-sensitive local
 //! transaction: validate the manifest, verify SHA-256, write immutable cache
-//! objects, materialize a complete generation, then switch `active.json`
+//! objects, materialize a complete deployment, then switch `active.json`
 //! atomically. The hook hot path never downloads or partially activates policy.
 
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,24 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-pub const DESIRED_STATE_SCHEMA_VERSION: u32 = 1;
+/// What this daemon WRITES, and what the server emits today.
+///
+/// 2, because the v1 payload named these fields `generation` and `revision`
+/// and neither appears any more. Same endpoint, same version number, different
+/// shape is precisely what a schema version exists to prevent — see the note at
+/// the emit site in AgentEye's `enforcement.rs`.
+pub const DESIRED_STATE_SCHEMA_VERSION: u32 = 2;
+
+/// What this daemon ACCEPTS when reading.
+///
+/// 1 is here for files on DISK, never for a server: a machine that ran an
+/// earlier beta has a `desired-state.json` and an `active.json` written at
+/// version 1, and both structs carry `deny_unknown_fields`, so refusing the
+/// version would make the daemon unable to read its own persisted state — it
+/// would silently stop enforcing cloud policy until a poll re-materialised
+/// everything. The field aliases on `ActiveDeployment` exist for the same
+/// files and the same reason.
+pub const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[1, DESIRED_STATE_SCHEMA_VERSION];
 const MANAGED_FILE_MODE: u32 = 0o600;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -27,21 +44,86 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// manifest below. This is parsed from a SERVER response, and daemons update on
 /// their own schedule — so strictness here means the first field cloud adds
 /// makes every older daemon reject desired-state and silently stop pulling,
-/// stranding fleets on whatever generation they happened to hold. Strictness
+/// stranding fleets on whatever deployment they happened to hold. Strictness
 /// belongs on files we write ourselves, not on a remote payload.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DesiredState {
     pub schema_version: u32,
-    pub generation: u64,
+    pub deployment: u64,
     pub policies: Vec<DesiredPolicy>,
+}
+
+/// A `desired-state.json` as a PRE-RENAME daemon wrote it — disk only.
+///
+/// `DesiredState` above decodes bytes from a server we version in lockstep, so it
+/// deliberately refuses the old `generation`/`revision` spelling: an alias there
+/// would be dead code guarding a case no server can produce, and a
+/// silently-tolerated old field is how two sides drift back apart.
+///
+/// That reasoning is right about the wire and incomplete about the FILE. The axis
+/// is *who wrote these bytes*, and `desired-state.json` is written by a daemon
+/// that may be older than the one now reading it — exactly like `active.json`,
+/// which is why that struct carries aliases. One struct was decoding bytes from
+/// two different writers, so the strictness the wire needs made the disk read
+/// fail: a v1 file does not trip the unknown `generation` key (this family has no
+/// `deny_unknown_fields`, on purpose) — it fails on `deployment` being MISSING.
+///
+/// The consequence was not cosmetic. `repair_active_from_cache()` swallows that
+/// parse error, and if `active.json` is also gone or corrupt while OFFLINE it
+/// returns without rebuilding — so cloud policy stops being enforced until a poll
+/// succeeds, on a machine that has no way to poll.
+///
+/// So: two types, one per writer, rather than one lenient type. The wire keeps its
+/// hard edge; the disk read falls back to this and converts. No `schema_version`
+/// is checked here — `read_desired()` validates after the conversion, through the
+/// same path the current shape takes.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyDesiredState {
+    schema_version: u32,
+    generation: u64,
+    policies: Vec<LegacyDesiredPolicy>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyDesiredPolicy {
+    id: String,
+    revision: u64,
+    sha256: String,
+    artifact_url: String,
+    #[serde(default)]
+    effect: PolicyEffect,
+}
+
+impl From<LegacyDesiredState> for DesiredState {
+    fn from(old: LegacyDesiredState) -> Self {
+        DesiredState {
+            schema_version: old.schema_version,
+            deployment: old.generation,
+            policies: old.policies.into_iter().map(DesiredPolicy::from).collect(),
+        }
+    }
+}
+
+impl From<LegacyDesiredPolicy> for DesiredPolicy {
+    fn from(old: LegacyDesiredPolicy) -> Self {
+        DesiredPolicy {
+            id: old.id,
+            version: old.revision,
+            sha256: old.sha256,
+            artifact_url: old.artifact_url,
+            effect: old.effect,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DesiredPolicy {
     pub id: String,
-    pub revision: u64,
+    pub version: u64,
     pub sha256: String,
     /// Opaque locator interpreted only by the cloud transport implementation.
     pub artifact_url: String,
@@ -68,9 +150,19 @@ pub enum PolicyEffect {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ActiveGeneration {
+pub struct ActiveDeployment {
     pub schema_version: u32,
-    pub generation: u64,
+    /// `generation` is what every daemon before the rename wrote here.
+    ///
+    /// The alias is load-bearing rather than tidy: this struct carries
+    /// `deny_unknown_fields`, so without it an upgraded daemon fails to parse
+    /// its OWN `active.json` on three counts at once — `generation` unrecognised,
+    /// `deployment` missing, and the same again for every policy's `revision`.
+    /// A machine would silently lose the deployment it was enforcing until a
+    /// poll succeeded, which on a fail-closed machine is the gap this whole
+    /// subsystem exists to prevent.
+    #[serde(alias = "generation")]
+    pub deployment: u64,
     pub policies: Vec<ActivePolicy>,
 }
 
@@ -78,7 +170,9 @@ pub struct ActiveGeneration {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActivePolicy {
     pub id: String,
-    pub revision: u64,
+    /// `revision` is the pre-rename spelling. See `ActiveDeployment::deployment`.
+    #[serde(alias = "revision")]
+    pub version: u64,
     pub sha256: String,
     /// Relative to the cloud-managed root. Never supplied by the server.
     pub path: String,
@@ -90,7 +184,7 @@ pub struct ActivePolicy {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReconcileOutcome {
-    pub generation: u64,
+    pub deployment: u64,
     pub downloaded: usize,
     pub repaired: usize,
     pub activated: bool,
@@ -136,7 +230,7 @@ impl std::fmt::Display for ReconcileError {
             }
             Self::NoVerifiedCopy { policy_id } => write!(
                 f,
-                "cloud policy {policy_id} has no verified artifact or generation copy"
+                "cloud policy {policy_id} has no verified artifact or deployment copy"
             ),
         }
     }
@@ -174,9 +268,9 @@ where
 #[derive(Debug, Clone)]
 pub struct PolicyStore {
     root: PathBuf,
-    /// Highest generation this process has seen the SERVER offer.
+    /// Highest deployment this process has seen the SERVER offer.
     ///
-    /// The rollback guard used to compare against `active.json`'s generation.
+    /// The rollback guard used to compare against `active.json`'s deployment.
     /// That file is a derived local pointer owned by the user — which this
     /// module's own comment says — so on the product's stated threat model (a
     /// rogue agent running as the user) it was an attacker-controlled veto over
@@ -220,7 +314,7 @@ impl PolicyStore {
         self.root.join("desired-state.json")
     }
 
-    pub fn read_active(&self) -> Result<Option<ActiveGeneration>, ReconcileError> {
+    pub fn read_active(&self) -> Result<Option<ActiveDeployment>, ReconcileError> {
         let path = self.active_manifest_path();
         if !path.exists() {
             return Ok(None);
@@ -235,13 +329,26 @@ impl PolicyStore {
             return Ok(None);
         }
         let bytes = fs::read(path)?;
-        let desired: DesiredState = serde_json::from_slice(&bytes)?;
+        // Current shape first, so the common path pays nothing. A pre-rename file
+        // falls through to `LegacyDesiredState` rather than failing — see its note
+        // for why this file needs the leniency `DesiredState` must not have.
+        let desired: DesiredState = match serde_json::from_slice::<DesiredState>(&bytes) {
+            Ok(desired) => desired,
+            Err(current_err) => match serde_json::from_slice::<LegacyDesiredState>(&bytes) {
+                Ok(legacy) => legacy.into(),
+                // The CURRENT error is reported, not the legacy one: a genuinely
+                // corrupt file is far likelier than a pre-rename one, and
+                // "missing field `generation`" would send someone hunting the
+                // wrong spelling.
+                Err(_) => return Err(current_err.into()),
+            },
+        };
         validate_desired_state(&desired)?;
         Ok(Some(desired))
     }
 
-    /// Installs a complete desired generation. Any error before the final
-    /// `active.json` rename leaves the previous generation authoritative.
+    /// Installs a complete desired deployment. Any error before the final
+    /// `active.json` rename leaves the previous deployment authoritative.
     pub fn reconcile(
         &self,
         desired: &DesiredState,
@@ -260,36 +367,52 @@ impl PolicyStore {
         // Rollback guard, anchored on what the SERVER has said this session —
         // never on the local pointer. See `server_high_water`.
         let floor = self.server_high_water.load(Ordering::Relaxed);
-        if desired.generation < floor {
+        if desired.deployment < floor {
             return Err(ReconcileError::InvalidDesiredState(format!(
-                "generation rollback from {} to {} is not allowed",
-                floor, desired.generation
+                "deployment rollback from {} to {} is not allowed",
+                floor, desired.deployment
             )));
         }
         // Recorded before the work below so a mid-reconcile failure cannot let
-        // an immediately-following lower generation through.
+        // an immediately-following lower deployment through.
         self.server_high_water
-            .fetch_max(desired.generation, Ordering::Relaxed);
+            .fetch_max(desired.deployment, Ordering::Relaxed);
 
         // A local pointer AHEAD of the server is not authority, but it is worth
         // saying out loud: it means either a restored/re-registered control
         // plane, or that something edited this machine's state.
         if let Some(active) = &previous
-            && active.generation > desired.generation
+            && active.deployment > desired.deployment
         {
             eprintln!(
-                "[failproofaid] local active generation {} is ahead of the server's {}; \
+                "[failproofaid] local active deployment {} is ahead of the server's {}; \
                  taking the server's state (the local pointer is not authority)",
-                active.generation, desired.generation
+                active.deployment, desired.deployment
             );
         }
 
+        // ONE copy of every policy, addressed by its own hash.
+        //
+        // Layout 2 kept two: `artifacts/<sha>` plus a per-deployment copy under
+        // `deployments/<n>/<id>.mjs`. The second copy bought two things, and
+        // neither survives contact with content addressing:
+        //
+        //   • Staging. A deployment was materialised whole under its own number
+        //     before `active.json` pointed at it, so a half-downloaded set could
+        //     not go live. But an artifact path CONTAINS its hash, so a new
+        //     deployment only ever writes new files — it cannot disturb the ones
+        //     the current `active.json` names. Nothing needs staging away from a
+        //     live set it is structurally incapable of touching.
+        //
+        //   • Mutual repair. A tampered artifact was rebuilt from the deployment
+        //     copy and vice versa. That is a cache repairing a cache; the server
+        //     is the authority, the hash is known, and a re-fetch is both simpler
+        //     and correct even when BOTH copies are bad — the case the old scheme
+        //     could not recover from at all.
+        //
+        // `active.json` is still the single atomic activation point, and the flip
+        // is still last.
         fs::create_dir_all(self.root.join("artifacts"))?;
-        let generation_dir = self
-            .root
-            .join("generations")
-            .join(desired.generation.to_string());
-        fs::create_dir_all(&generation_dir)?;
 
         let mut downloaded = 0;
         let mut repaired = 0;
@@ -297,19 +420,13 @@ impl PolicyStore {
 
         for policy in &desired.policies {
             let artifact_path = self.artifact_path(&policy.sha256);
-            let generation_path = generation_dir.join(format!("{}.mjs", policy.id));
 
-            let artifact_valid = file_matches_hash(&artifact_path, &policy.sha256)?;
-            let generation_valid = file_matches_hash(&generation_path, &policy.sha256)?;
-
-            let bytes = if artifact_valid {
-                fs::read(&artifact_path)?
-            } else if generation_valid {
-                let bytes = fs::read(&generation_path)?;
-                write_atomic(&artifact_path, &bytes)?;
-                repaired += 1;
-                bytes
-            } else {
+            if !file_matches_hash(&artifact_path, &policy.sha256)? {
+                // Present-but-wrong and absent are different events, and the
+                // metric is worth keeping honest: one means somebody or
+                // something modified a verified file, the other is a first
+                // download.
+                let existed = artifact_path.exists();
                 let bytes = fetcher
                     .fetch(policy)
                     .map_err(|message| ReconcileError::Fetch {
@@ -318,46 +435,46 @@ impl PolicyStore {
                     })?;
                 verify_bytes(policy, &bytes)?;
                 write_atomic(&artifact_path, &bytes)?;
-                downloaded += 1;
-                bytes
-            };
-
-            if !generation_valid {
-                write_atomic(&generation_path, &bytes)?;
-                if artifact_valid {
+                if existed {
                     repaired += 1;
+                } else {
+                    downloaded += 1;
                 }
             }
 
-            let relative_path = generation_path
+            let deployment_path = artifact_path;
+
+            let relative_path = deployment_path
                 .strip_prefix(&self.root)
                 .map_err(|_| {
                     ReconcileError::InvalidDesiredState(
-                        "generation path escaped policy root".into(),
+                        "deployment path escaped policy root".into(),
                     )
                 })?
                 .to_string_lossy()
                 .into_owned();
             active_policies.push(ActivePolicy {
                 id: policy.id.clone(),
-                revision: policy.revision,
+                version: policy.version,
                 effect: policy.effect,
                 sha256: policy.sha256.clone(),
                 path: relative_path,
             });
         }
 
-        let active = ActiveGeneration {
+        let active = ActiveDeployment {
             schema_version: DESIRED_STATE_SCHEMA_VERSION,
-            generation: desired.generation,
+            deployment: desired.deployment,
             policies: active_policies,
         };
         let manifest_bytes = serde_json::to_vec_pretty(&active)?;
-        write_atomic(&generation_dir.join("manifest.json"), &manifest_bytes)?;
+        // The per-deployment `manifest.json` is gone with `deployments/<n>/`. It
+        // duplicated `active.json` for a directory that no longer exists, and a
+        // second copy of the pointer is a second thing that can disagree.
 
         // Persist the cloud snapshot before switching active.json. A crash in
         // between is recoverable: the maintenance loop reconstructs the active
-        // pointer from this snapshot and the fully staged generation.
+        // pointer from this snapshot and the artifacts already verified on disk.
         write_atomic(
             &self.desired_state_path(),
             &serde_json::to_vec_pretty(desired)?,
@@ -368,27 +485,74 @@ impl PolicyStore {
             write_atomic(&self.active_manifest_path(), &manifest_bytes)?;
         }
 
+        // AFTER the flip, never before. A machine upgrading from layout 2 has a
+        // per-deployment tree whose files the OLD `active.json` still named; once
+        // the new pointer is live nothing reads it, and leaving it behind means
+        // carrying a full copy of every policy set the machine has ever had.
+        //
+        // `generations` FIRST, and that is the whole point: layout 2 wrote
+        // `cloud-policies/generations/<n>/`, and the generation→deployment rename
+        // swept this string literal along with the code. But a literal naming an
+        // ON-DISK artifact written by an OLDER build is not a symbol to rename —
+        // it is data, exactly like the `generation`/`revision` field names that
+        // needed aliases. Checking only `deployments` tested for a directory
+        // nothing has ever written, so the cleanup never ran on any real machine
+        // and the tree it exists to remove was kept forever. The comment above
+        // said "has a `deployments/` tree", which was the same mistake in prose.
+        //
+        // `deployments` is still checked, for a daemon built from this branch
+        // between the rename and the flattening. Costs one `exists()` on a path
+        // that is absent everywhere else.
+        //
+        // Best-effort: a directory we cannot remove is dead weight, not a reason
+        // to fail a reconcile that has already succeeded.
+        for legacy in ["generations", "deployments"] {
+            let path = self.root.join(legacy);
+            if activated && path.exists() {
+                match fs::remove_dir_all(&path) {
+                    Ok(()) => tracing::info!("removed the layout-2 {legacy}/ tree"),
+                    Err(err) => {
+                        tracing::warn!(?err, "could not remove the layout-2 {legacy}/ tree")
+                    }
+                }
+            }
+        }
+
         Ok(ReconcileOutcome {
-            generation: desired.generation,
+            deployment: desired.deployment,
             downloaded,
             repaired,
             activated,
         })
     }
 
-    /// Verifies the active generation and repairs one bad copy from the other
-    /// verified local copy. If both copies are missing/corrupt, the cloud
-    /// transport must re-fetch; active.json remains unchanged and the worker's
-    /// already-loaded generation remains the last known good decision set.
+    /// Verifies every artifact the active deployment names, and reports what it
+    /// cannot fix.
+    ///
+    /// WHAT THIS LOST WHEN `deployments/<n>/` WENT AWAY, stated plainly because
+    /// it is a real capability and not an implementation detail: layout 2 kept
+    /// two copies of every policy, so a tampered one could be rebuilt from the
+    /// other WITHOUT the network. There is one copy now, and a corrupt copy has
+    /// no local source of truth — the fix is a re-fetch, which needs the server.
+    ///
+    /// What is NOT lost is the safety property. The hook path verifies each
+    /// artifact's digest before importing it, so a tampered file is refused, not
+    /// executed. The cost is availability: on a machine that cannot reach the
+    /// control plane, that one policy stops enforcing until it can, and this
+    /// function's error is what says so. For a tool whose job is refusing
+    /// dangerous things, failing closed and loudly beats self-healing quietly.
+    ///
+    /// active.json is left unchanged either way, so the worker keeps its last
+    /// known-good decision set.
     pub fn repair_active_from_cache(&self) -> Result<usize, ReconcileError> {
         // A corrupted `desired-state.json` must not disable repair.
         //
         // `self.read_desired()?` propagated any parse error straight out,
         // short-circuiting before the `active.json`-driven branch below — the
-        // one that rebuilds a tampered `generations/<n>/<id>.mjs` from the
+        // one that rebuilds a tampered `deployments/<n>/<id>.mjs` from the
         // still-valid, content-addressed `artifacts/<sha>.mjs` copy. So one bad
         // byte in a file this branch does not even need permanently disabled
-        // generation-copy self-healing, and per `CLOUD_POLICIES.md` the only
+        // deployment-copy self-healing, and per `CLOUD_POLICIES.md` the only
         // thing that rewrites it is a successful cloud poll — which never
         // happens on an unenrolled or unreachable machine.
         //
@@ -418,10 +582,10 @@ impl PolicyStore {
         let Some(active) = self.read_active()? else {
             return Ok(0);
         };
-        if active.schema_version != DESIRED_STATE_SCHEMA_VERSION {
+        if !SUPPORTED_SCHEMA_VERSIONS.contains(&active.schema_version) {
             return Err(ReconcileError::InvalidDesiredState(format!(
-                "unsupported active schema version {}",
-                active.schema_version
+                "unsupported active schema version {} (supported: {:?})",
+                active.schema_version, SUPPORTED_SCHEMA_VERSIONS
             )));
         }
 
@@ -429,19 +593,19 @@ impl PolicyStore {
         for policy in &active.policies {
             validate_policy_identity(&policy.id)?;
             validate_sha256(&policy.sha256)?;
-            let generation_path = safe_join_relative(&self.root, &policy.path)?;
+            let deployment_path = safe_join_relative(&self.root, &policy.path)?;
             let artifact_path = self.artifact_path(&policy.sha256);
             let artifact_valid = file_matches_hash(&artifact_path, &policy.sha256)?;
-            let generation_valid = file_matches_hash(&generation_path, &policy.sha256)?;
+            let deployment_valid = file_matches_hash(&deployment_path, &policy.sha256)?;
 
-            match (artifact_valid, generation_valid) {
+            match (artifact_valid, deployment_valid) {
                 (true, true) => {}
                 (true, false) => {
-                    write_atomic(&generation_path, &fs::read(&artifact_path)?)?;
+                    write_atomic(&deployment_path, &fs::read(&artifact_path)?)?;
                     repaired += 1;
                 }
                 (false, true) => {
-                    write_atomic(&artifact_path, &fs::read(&generation_path)?)?;
+                    write_atomic(&artifact_path, &fs::read(&deployment_path)?)?;
                     repaired += 1;
                 }
                 (false, false) => {
@@ -487,10 +651,10 @@ pub fn spawn_integrity_monitor(
 }
 
 fn validate_desired_state(desired: &DesiredState) -> Result<(), ReconcileError> {
-    if desired.schema_version != DESIRED_STATE_SCHEMA_VERSION {
+    if !SUPPORTED_SCHEMA_VERSIONS.contains(&desired.schema_version) {
         return Err(ReconcileError::InvalidDesiredState(format!(
-            "unsupported schema version {}",
-            desired.schema_version
+            "unsupported schema version {} (supported: {:?})",
+            desired.schema_version, SUPPORTED_SCHEMA_VERSIONS
         )));
     }
     let mut ids = HashSet::new();
@@ -634,14 +798,14 @@ mod tests {
         // Daemons update on their own schedule. If this struct rejected unknown
         // fields, the first thing cloud added would make every older daemon
         // fail to parse desired-state and silently stop pulling — a fleet
-        // stranded on whatever generation it happened to hold, with no error
+        // stranded on whatever deployment it happened to hold, with no error
         // anyone would look for.
-        let json = r#"{"schemaVersion":1,"generation":4,"policies":[
-            {"id":"guard","revision":2,"sha256":"aa","artifactUrl":"/a","effect":"observe",
+        let json = r#"{"schemaVersion":1,"deployment":4,"policies":[
+            {"id":"guard","version":2,"sha256":"aa","artifactUrl":"/a","effect":"observe",
              "someFutureField":{"nested":true}}
         ],"anotherFutureField":42}"#;
         let parsed: DesiredState = serde_json::from_str(json).expect("must parse");
-        assert_eq!(parsed.generation, 4);
+        assert_eq!(parsed.deployment, 4);
         assert_eq!(parsed.policies[0].effect, PolicyEffect::Observe);
     }
 
@@ -650,8 +814,8 @@ mod tests {
         // The default has to be the one that keeps enforcing: a server that
         // predates observe mode must not silently downgrade a fleet to
         // observation.
-        let json = r#"{"schemaVersion":1,"generation":1,"policies":[
-            {"id":"g","revision":1,"sha256":"aa","artifactUrl":"/a"}]}"#;
+        let json = r#"{"schemaVersion":1,"deployment":1,"policies":[
+            {"id":"g","version":1,"sha256":"aa","artifactUrl":"/a"}]}"#;
         let parsed: DesiredState = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.policies[0].effect, PolicyEffect::Enforce);
     }
@@ -660,9 +824,9 @@ mod tests {
     fn an_unreadable_effect_is_rejected_rather_than_guessed() {
         // Guessing would mean choosing between enforcing something cloud did
         // not ask to enforce, or observing something it wanted enforced. Both
-        // are worse than refusing the generation.
-        let json = r#"{"schemaVersion":1,"generation":1,"policies":[
-            {"id":"g","revision":1,"sha256":"aa","artifactUrl":"/a","effect":"maybe"}]}"#;
+        // are worse than refusing the deployment.
+        let json = r#"{"schemaVersion":1,"deployment":1,"policies":[
+            {"id":"g","version":1,"sha256":"aa","artifactUrl":"/a","effect":"maybe"}]}"#;
         assert!(serde_json::from_str::<DesiredState>(json).is_err());
     }
 
@@ -671,18 +835,18 @@ mod tests {
         // active.json is what the evaluator reads. If the effect were not
         // carried here, an observe-mode policy would enforce the moment the
         // daemon restarted and re-read its own manifest.
-        let manifest = ActiveGeneration {
+        let manifest = ActiveDeployment {
             schema_version: 1,
-            generation: 9,
+            deployment: 9,
             policies: vec![ActivePolicy {
                 id: "g".into(),
-                revision: 1,
+                version: 1,
                 sha256: "aa".into(),
-                path: "generations/9/g.mjs".into(),
+                path: "deployments/9/g.mjs".into(),
                 effect: PolicyEffect::Observe,
             }],
         };
-        let round_tripped: ActiveGeneration =
+        let round_tripped: ActiveDeployment =
             serde_json::from_str(&serde_json::to_string(&manifest).unwrap()).unwrap();
         assert_eq!(round_tripped.policies[0].effect, PolicyEffect::Observe);
         assert!(
@@ -702,22 +866,22 @@ mod tests {
         PolicyStore::new(root)
     }
 
-    fn desired(generation: u64, id: &str, bytes: &[u8]) -> DesiredState {
+    fn desired(deployment: u64, id: &str, bytes: &[u8]) -> DesiredState {
         DesiredState {
             schema_version: DESIRED_STATE_SCHEMA_VERSION,
-            generation,
+            deployment,
             policies: vec![DesiredPolicy {
                 id: id.to_string(),
-                revision: generation,
+                version: deployment,
                 sha256: sha256_hex(bytes),
-                artifact_url: format!("https://cloud.invalid/{id}/{generation}"),
+                artifact_url: format!("https://cloud.invalid/{id}/{deployment}"),
                 effect: PolicyEffect::Enforce,
             }],
         }
     }
 
     #[test]
-    fn activates_a_complete_verified_generation() {
+    fn activates_a_complete_verified_deployment() {
         let store = temp_store("activate");
         let bytes = b"export default 'cloud policy';\n";
         let state = desired(7, "block-secrets", bytes);
@@ -733,7 +897,7 @@ mod tests {
         assert!(outcome.activated);
         assert_eq!(fetches.load(Ordering::Relaxed), 1);
         let active = store.read_active().unwrap().unwrap();
-        assert_eq!(active.generation, 7);
+        assert_eq!(active.deployment, 7);
         assert_eq!(active.policies[0].id, "block-secrets");
         let active_path = store.root().join(&active.policies[0].path);
         assert_eq!(fs::read(active_path).unwrap(), bytes);
@@ -760,31 +924,57 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, ReconcileError::HashMismatch { .. }));
         assert_eq!(fs::read(store.active_manifest_path()).unwrap(), before);
-        assert_eq!(store.read_active().unwrap().unwrap().generation, 1);
+        assert_eq!(store.read_active().unwrap().unwrap().deployment, 1);
         fs::remove_dir_all(store.root()).ok();
     }
 
+    /// The layout-2 tree is actually removed — under the name layout 2 wrote.
+    ///
+    /// This checked `deployments/` only, a name nothing has ever written: the
+    /// generation→deployment rename swept up a string literal that names an
+    /// ON-DISK artifact from an older build. So the cleanup never ran on any real
+    /// machine, and the full copy of every policy set the machine had ever held
+    /// was kept forever — the exact outcome the code's own comment says it exists
+    /// to prevent.
     #[test]
-    fn repairs_a_tampered_generation_copy_from_the_verified_artifact() {
-        let store = temp_store("repair-generation");
-        let bytes = b"export default 'verified';\n";
-        store
-            .reconcile(&desired(3, "guard", bytes), &|_: &DesiredPolicy| {
-                Ok(bytes.to_vec())
-            })
+    fn the_layout_two_generations_tree_is_removed_after_the_flip() {
+        let store = temp_store("legacy-generations");
+        let bytes = b"export default 'x';\n".to_vec();
+        // Both names, so the test would catch a fix that swapped one for the other
+        // rather than covering both.
+        for legacy in ["generations", "deployments"] {
+            std::fs::create_dir_all(store.root().join(legacy).join("4")).unwrap();
+            std::fs::write(
+                store.root().join(legacy).join("4").join("old.mjs"),
+                b"stale",
+            )
             .unwrap();
-        let active = store.read_active().unwrap().unwrap();
-        let generation_path = store.root().join(&active.policies[0].path);
-        fs::write(&generation_path, b"tampered").unwrap();
+        }
 
-        assert_eq!(store.repair_active_from_cache().unwrap(), 1);
-        assert_eq!(fs::read(generation_path).unwrap(), bytes);
-        fs::remove_dir_all(store.root()).ok();
+        let desired = desired(1, "p", &bytes);
+        store
+            .reconcile(&desired, &|_: &DesiredPolicy| Ok(bytes.clone()))
+            .expect("reconcile");
+
+        assert!(
+            !store.root().join("generations").exists(),
+            "the layout-2 generations/ tree must be removed once the new pointer is live"
+        );
+        assert!(!store.root().join("deployments").exists());
+        // And the live set is untouched by the cleanup.
+        assert!(store.read_active().unwrap().is_some());
     }
 
     #[test]
-    fn repairs_a_tampered_artifact_from_the_verified_generation_copy() {
-        let store = temp_store("repair-artifact");
+    fn a_tampered_artifact_is_reported_rather_than_silently_repaired() {
+        // Layout 2 kept a second copy under `deployments/<n>/` and rebuilt one
+        // from the other offline. There is one copy now, so a corrupt artifact
+        // has no local source of truth and the honest outcome is an error the
+        // caller logs — both callers already treat it as an integrity error.
+        //
+        // The safety property is unchanged: the hook path verifies the digest
+        // before importing, so the tampered bytes are refused rather than run.
+        let store = temp_store("tampered-artifact");
         let bytes = b"export default 'verified';\n";
         let state = desired(4, "guard", bytes);
         store
@@ -793,28 +983,39 @@ mod tests {
         let artifact_path = store.artifact_path(&state.policies[0].sha256);
         fs::write(&artifact_path, b"tampered").unwrap();
 
-        assert_eq!(store.repair_active_from_cache().unwrap(), 1);
-        assert_eq!(fs::read(artifact_path).unwrap(), bytes);
+        let err = store
+            .repair_active_from_cache()
+            .expect_err("a corrupt artifact with no second copy cannot be repaired locally");
+        assert!(
+            format!("{err}").contains("refetch"),
+            "the error must say a re-fetch is required, got: {err}"
+        );
+        // active.json is untouched, so the worker keeps its last known-good set.
+        assert!(store.read_active().unwrap().is_some());
         fs::remove_dir_all(store.root()).ok();
     }
 
     #[test]
-    fn reports_when_both_verified_copies_are_lost() {
-        let store = temp_store("both-lost");
+    fn a_real_poll_refetches_what_local_repair_cannot() {
+        // The other half of the same contract: the fix exists, it just needs the
+        // server. With a working fetcher the tampered artifact is replaced and
+        // counted as a repair rather than a first download.
+        let store = temp_store("refetch-tampered");
         let bytes = b"export default 'verified';\n";
-        let state = desired(5, "guard", bytes);
+        let state = desired(4, "guard", bytes);
         store
             .reconcile(&state, &|_: &DesiredPolicy| Ok(bytes.to_vec()))
             .unwrap();
-        let active = store.read_active().unwrap().unwrap();
-        fs::write(store.root().join(&active.policies[0].path), b"bad-one").unwrap();
-        fs::write(store.artifact_path(&state.policies[0].sha256), b"bad-two").unwrap();
+        let artifact_path = store.artifact_path(&state.policies[0].sha256);
+        fs::write(&artifact_path, b"tampered").unwrap();
 
-        assert!(matches!(
-            store.repair_active_from_cache(),
-            Err(ReconcileError::Fetch { .. })
-        ));
-        assert_eq!(store.read_active().unwrap().unwrap().generation, 5);
+        let outcome = store
+            .reconcile(&state, &|_: &DesiredPolicy| Ok(bytes.to_vec()))
+            .unwrap();
+
+        assert_eq!(outcome.repaired, 1, "present-but-wrong counts as a repair");
+        assert_eq!(outcome.downloaded, 0, "not a first download");
+        assert_eq!(fs::read(artifact_path).unwrap(), bytes);
         fs::remove_dir_all(store.root()).ok();
     }
 
@@ -830,7 +1031,7 @@ mod tests {
 
         fs::write(
             store.active_manifest_path(),
-            br#"{"schemaVersion":1,"generation":11,"policies":[]}"#,
+            br#"{"schemaVersion":1,"deployment":11,"policies":[]}"#,
         )
         .unwrap();
         assert_eq!(store.repair_active_from_cache().unwrap(), 1);
@@ -846,7 +1047,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_traversal_duplicate_ids_and_generation_rollback() {
+    fn rejects_traversal_duplicate_ids_and_deployment_rollback() {
         let store = temp_store("validation");
         let bytes = b"policy";
         let mut traversal = desired(1, "../escape", bytes);
@@ -876,7 +1077,7 @@ mod tests {
         fs::remove_dir_all(store.root()).ok();
     }
 
-    /// A tampered local generation must not be able to veto the control plane.
+    /// A tampered local deployment must not be able to veto the control plane.
     ///
     /// The guard used to compare against `active.json`, a 0600 file owned by
     /// the very user the product's threat model treats as compromised. Writing
@@ -886,8 +1087,8 @@ mod tests {
     /// closed on every tool call. A permanent denial of service for one file
     /// write.
     #[test]
-    fn a_tampered_local_generation_cannot_permanently_veto_the_server() {
-        let store = temp_store("tampered-generation");
+    fn a_tampered_local_deployment_cannot_permanently_veto_the_server() {
+        let store = temp_store("tampered-deployment");
         let bytes = b"policy";
 
         store
@@ -900,7 +1101,7 @@ mod tests {
         let manifest = store.active_manifest_path();
         let raw = fs::read_to_string(&manifest).unwrap();
         let mut active: serde_json::Value = serde_json::from_str(&raw).unwrap();
-        active["generation"] = serde_json::json!(u64::MAX);
+        active["deployment"] = serde_json::json!(u64::MAX);
         fs::write(&manifest, serde_json::to_vec(&active).unwrap()).unwrap();
 
         // A fresh process, as after any restart. It must take the server's
@@ -912,7 +1113,7 @@ mod tests {
             })
             .expect("the server's state must win over a local pointer");
         assert!(outcome.activated);
-        assert_eq!(restarted.read_active().unwrap().unwrap().generation, 6);
+        assert_eq!(restarted.read_active().unwrap().unwrap().deployment, 6);
 
         // And replay protection still holds WITHIN the session, which is the
         // transport failure the guard actually exists for.
@@ -927,7 +1128,14 @@ mod tests {
     }
 
     #[test]
-    fn background_monitor_repairs_without_touching_the_hook_path() {
+    fn the_background_monitor_detects_tampering_without_touching_the_hook_path() {
+        // The monitor's job changed with the flattening. It used to REPAIR a
+        // tampered copy from the other one; with a single content-addressed copy
+        // it DETECTS and reports, and the fix comes from the next cloud poll.
+        //
+        // What it must still never do is disturb the hook path: `active.json` is
+        // left exactly as it was, so the worker keeps enforcing its last
+        // known-good set while the corruption is reported.
         let store = temp_store("monitor");
         let bytes = b"export default 'verified';\n";
         store
@@ -935,21 +1143,227 @@ mod tests {
                 Ok(bytes.to_vec())
             })
             .unwrap();
-        let active = store.read_active().unwrap().unwrap();
-        let generation_path = store.root().join(&active.policies[0].path);
-        fs::write(&generation_path, b"tampered").unwrap();
+        let active_before = store.read_active().unwrap().unwrap();
+        let artifact = store.root().join(&active_before.policies[0].path);
+        fs::write(&artifact, b"tampered").unwrap();
 
         let shutdown = Arc::new(AtomicBool::new(false));
         let handle =
             spawn_integrity_monitor(store.clone(), shutdown.clone(), Duration::from_millis(10));
-        let deadline = Instant::now() + Duration::from_secs(1);
-        while fs::read(&generation_path).unwrap() != bytes && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        std::thread::sleep(Duration::from_millis(60));
         shutdown.store(true, Ordering::Relaxed);
         handle.join().unwrap();
 
-        assert_eq!(fs::read(generation_path).unwrap(), bytes);
+        // Still tampered — the monitor cannot fix this alone any more — but the
+        // pointer the worker reads is untouched.
+        assert_eq!(fs::read(&artifact).unwrap(), b"tampered");
+        assert_eq!(store.read_active().unwrap().unwrap(), active_before);
         fs::remove_dir_all(store.root()).ok();
+    }
+}
+
+#[cfg(test)]
+mod pre_rename_state_tests {
+    use super::*;
+
+    /// Byte-exact `active.json` written by a daemon before the
+    /// generation→deployment / revision→version rename, captured from a live
+    /// machine rather than hand-written.
+    const PRE_RENAME_ACTIVE: &str = r#"{
+  "schemaVersion": 1,
+  "generation": 1,
+  "policies": [
+    {
+      "id": "e2e-block-curl",
+      "revision": 1,
+      "sha256": "732c6e780e183a15259688d858e4ec0db20c7dd13352601c73db5540122e2c30",
+      "path": "generations/1/e2e-block-curl.mjs",
+      "effect": "enforce"
+    }
+  ]
+}"#;
+
+    /// A byte-accurate `desired-state.json` as an earlier beta wrote it.
+    ///
+    /// The sibling of `PRE_RENAME_ACTIVE`, and the file that had no test. Note it
+    /// carries `generation` / `revision` and NO `schemaVersion` field name change —
+    /// the version is 1 and the field names are the v1 spelling.
+    const PRE_RENAME_DESIRED: &str = r#"{
+  "schemaVersion": 1,
+  "generation": 4,
+  "policies": [
+    {
+      "id": "e2e-block-curl",
+      "revision": 2,
+      "sha256": "732c6e780e183a15259688d858e4ec0db20c7dd13352601c73db5540122e2c30",
+      "artifactUrl": "enforcement/v1/artifacts/e2e-block-curl/2",
+      "effect": "enforce"
+    }
+  ]
+}"#;
+
+    /// The other half of the upgrade case, which the rename missed.
+    ///
+    /// `SUPPORTED_SCHEMA_VERSIONS`'s own comment says version 1 is accepted "for
+    /// files on DISK" and names `desired-state.json` as one of them — but the
+    /// aliases went only on `ActiveDeployment`, so this file could not be read.
+    /// It does not fail on the unknown `generation` key (this struct has no
+    /// `deny_unknown_fields`, deliberately, since it also decodes a remote
+    /// payload) — it fails on `deployment` being MISSING, which is the confusing
+    /// shape of the same bug.
+    ///
+    /// The consequence is not cosmetic: `repair_active_from_cache()` swallows the
+    /// parse error, and with `active.json` also gone or corrupt while offline it
+    /// returns without rebuilding, so cloud policy stops being enforced until a
+    /// poll succeeds.
+    #[test]
+    fn a_pre_rename_desired_state_converts_through_the_legacy_shape() {
+        // NOT through `DesiredState` directly — that type keeps its hard edge, and
+        // `the_wire_does_not_accept_the_pre_rename_spelling` below is what holds it
+        // there. The leniency lives in a disk-only type instead, so the two
+        // writers of this file each get the strictness they warrant.
+        let legacy: LegacyDesiredState = serde_json::from_str(PRE_RENAME_DESIRED)
+            .expect("a pre-rename desired-state.json must still be readable after an upgrade");
+        let converted: DesiredState = legacy.into();
+        assert_eq!(converted.schema_version, 1);
+        assert_eq!(converted.deployment, 4, "`generation` becomes `deployment`");
+        assert_eq!(converted.policies.len(), 1);
+        assert_eq!(
+            converted.policies[0].version, 2,
+            "`revision` becomes `version`"
+        );
+        assert_eq!(converted.policies[0].effect, PolicyEffect::Enforce);
+    }
+
+    /// And it survives the round trip the daemon actually performs: written to
+    /// disk by an older build, read back by this one.
+    #[test]
+    fn read_desired_accepts_a_v1_file_left_by_an_earlier_beta() {
+        // Inlined rather than reusing `temp_store`, which lives in the sibling
+        // `tests` module: these two belong beside the fixture they read.
+        let root =
+            std::env::temp_dir().join(format!("failproofaid-v1-desired-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let store = PolicyStore::new(root.clone());
+        std::fs::create_dir_all(store.desired_state_path().parent().unwrap()).unwrap();
+        std::fs::write(store.desired_state_path(), PRE_RENAME_DESIRED).unwrap();
+
+        let desired = store
+            .read_desired()
+            .expect("a v1 desired-state.json on disk must be readable")
+            .expect("it exists");
+
+        assert_eq!(desired.deployment, 4);
+        assert_eq!(desired.policies[0].version, 2);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The upgrade case. `ActiveDeployment` carries `deny_unknown_fields`, so
+    /// without the aliases this fails on three counts at once: `generation`
+    /// unrecognised, `deployment` missing, and `revision`/`version` likewise per
+    /// policy. The machine would lose the deployment it was already enforcing
+    /// until a poll succeeded — on a fail-closed machine, exactly the gap this
+    /// subsystem exists to close.
+    #[test]
+    fn active_json_written_before_the_rename_still_parses() {
+        let parsed: ActiveDeployment = serde_json::from_str(PRE_RENAME_ACTIVE)
+            .expect("a pre-rename active.json must still be readable after an upgrade");
+        assert_eq!(parsed.schema_version, 1);
+        assert_eq!(parsed.deployment, 1);
+        assert_eq!(parsed.policies.len(), 1);
+        assert_eq!(parsed.policies[0].version, 1);
+        assert_eq!(parsed.policies[0].id, "e2e-block-curl");
+        assert_eq!(parsed.policies[0].effect, PolicyEffect::Enforce);
+    }
+
+    /// The WIRE deliberately does NOT accept the old spelling.
+    ///
+    /// The alias was there and was removed on purpose: AgentEye#559 emits only
+    /// the new names and bumped the payload to `schemaVersion: 2`, so an alias
+    /// here would be dead code guarding a case no server can produce — and a
+    /// silently-tolerated old field is how two sides drift back apart. If a
+    /// payload ever arrives with `generation`/`revision`, it is either a stale
+    /// server or something forged, and both should fail loudly.
+    ///
+    /// This is the exact opposite choice from `ActiveDeployment` above, and the
+    /// difference is *who wrote the bytes*: the wire comes from a server we
+    /// version in lockstep, `active.json` comes from a daemon that may be older
+    /// than the one now reading it.
+    #[test]
+    fn the_wire_does_not_accept_the_pre_rename_spelling() {
+        let err = serde_json::from_str::<DesiredState>(
+            r#"{"schemaVersion":1,"generation":184,
+                "policies":[{"id":"p","revision":7,"sha256":"a",
+                             "artifactUrl":"/enforcement/v1/artifacts/a"}]}"#,
+        )
+        .expect_err("the old wire spelling must be refused, not silently accepted");
+        assert!(
+            err.to_string().contains("missing field"),
+            "expected a missing-field error, got: {err}"
+        );
+    }
+
+    /// Both schema versions are readable, and only from disk does 1 arise.
+    #[test]
+    fn both_schema_versions_are_accepted() {
+        assert!(
+            SUPPORTED_SCHEMA_VERSIONS.contains(&1),
+            "a beta daemon's files are v1"
+        );
+        assert!(
+            SUPPORTED_SCHEMA_VERSIONS.contains(&DESIRED_STATE_SCHEMA_VERSION),
+            "what we write must be readable"
+        );
+        assert_eq!(DESIRED_STATE_SCHEMA_VERSION, 2, "the server emits 2");
+
+        // The version the server actually sends must validate.
+        let desired: DesiredState = serde_json::from_str(
+            r#"{"schemaVersion":2,"deployment":1,
+                "policies":[{"id":"p","version":1,
+                  "sha256":"439735423d5d532041bccbbc62cafefacd2253d3a7c71ff99d6473b38acda0ee",
+                  "artifactUrl":"/enforcement/v1/artifacts/x","effect":"enforce"}]}"#,
+        )
+        .expect("schemaVersion 2 is what AgentEye emits");
+        validate_desired_state(&desired).expect("v2 desired state must validate");
+
+        // ...and an unknown one is still refused.
+        let bad = DesiredState {
+            schema_version: 99,
+            ..desired
+        };
+        assert!(
+            validate_desired_state(&bad).is_err(),
+            "an unknown version must be refused"
+        );
+    }
+
+    /// The new spelling is what we WRITE, and must keep round-tripping — an
+    /// alias that quietly became the canonical name would be its own bug.
+    #[test]
+    fn the_current_spelling_round_trips() {
+        let state = ActiveDeployment {
+            schema_version: 1,
+            deployment: 9,
+            policies: vec![ActivePolicy {
+                id: "p".into(),
+                version: 3,
+                sha256: "a".into(),
+                path: "deployments/9/p.mjs".into(),
+                effect: PolicyEffect::Observe,
+            }],
+        };
+        let text = serde_json::to_string(&state).unwrap();
+        assert!(
+            text.contains("\"deployment\":9"),
+            "must serialize the NEW name: {text}"
+        );
+        assert!(
+            text.contains("\"version\":3"),
+            "must serialize the NEW name: {text}"
+        );
+        assert_eq!(
+            serde_json::from_str::<ActiveDeployment>(&text).unwrap(),
+            state
+        );
     }
 }

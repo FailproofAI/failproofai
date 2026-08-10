@@ -254,13 +254,13 @@ export async function evaluateHookEvent(
     /** Registered policy name → where it came from. See the set() below. */
     const policyAttribution = new Map<
       string,
-      { source: "custom" | "convention" | "cloud"; cloudPolicyId?: string; cloudRevision?: number }
+      { source: "custom" | "convention" | "cloud"; cloudPolicyId?: string; cloudVersion?: number }
     >();
-    let cloudGeneration: number | undefined;
+    let cloudDeployment: number | undefined;
     /** What observe-mode policies WOULD have done, had they been enforcing. */
     const observedResults: Array<{
       policyId: string;
-      revision: number;
+      version: number;
       decision: "deny" | "instruct";
       reason: string | null;
     }> = [];
@@ -293,7 +293,7 @@ export async function evaluateHookEvent(
 
       // Cloud-managed policies are daemon-reconciled artifacts, but they use
       // the same public JS policy API as local custom policies. Verify and add
-      // only the paths referenced by the atomically active generation.
+      // only the paths referenced by the atomically active deployment.
       //
       // Wrapped, like `readConfigAt` and `readActivePause` above it. This call
       // has fourteen throw sites — a malformed manifest, an unsafe id, an
@@ -332,7 +332,7 @@ export async function evaluateHookEvent(
       // policy decided this event: "what was deployed here at the time" is a
       // separate question from "what decided", and only the former can tell a
       // rollout that changed nothing from one that never reached the machine.
-      cloudGeneration = cloudManagedPolicies[0]?.generation;
+      cloudDeployment = cloudManagedPolicies[0]?.deployment;
       const configuredCustomPaths = config.customPoliciesPaths ?? config.customPoliciesPath;
       const allExplicitPaths =
         cloudManagedPolicies.length === 0
@@ -368,7 +368,7 @@ export async function evaluateHookEvent(
         const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
         const isConvention = !!conventionScope;
         const prefix = cloudManaged
-          ? `cloud/${cloudManaged.id}@${cloudManaged.revision}`
+          ? `cloud/${cloudManaged.id}@${cloudManaged.version}`
           : isConvention
             ? `.failproofai-${conventionScope}`
             : "custom";
@@ -383,7 +383,7 @@ export async function evaluateHookEvent(
             if (shadow.decision !== "allow") {
               observedResults.push({
                 policyId: cloudManaged!.id,
-                revision: cloudManaged!.revision,
+                version: cloudManaged!.version,
                 decision: shadow.decision,
                 reason: shadow.reason ?? null,
               });
@@ -419,7 +419,7 @@ export async function evaluateHookEvent(
         // this decision", could only be answered by re-parsing our own label.
         policyAttribution.set(registeredName, {
           source: cloudManaged ? "cloud" : isConvention ? "convention" : "custom",
-          ...(cloudManaged ? { cloudPolicyId: cloudManaged.id, cloudRevision: cloudManaged.revision } : {}),
+          ...(cloudManaged ? { cloudPolicyId: cloudManaged.id, cloudVersion: cloudManaged.version } : {}),
         });
         registerPolicy(
           registeredName,
@@ -497,13 +497,13 @@ export async function evaluateHookEvent(
             return {
               policySource: attribution?.source ?? ("builtin" as const),
               ...(attribution?.cloudPolicyId ? { cloudPolicyId: attribution.cloudPolicyId } : {}),
-              ...(attribution?.cloudRevision !== undefined
-                ? { cloudRevision: attribution.cloudRevision }
+              ...(attribution?.cloudVersion !== undefined
+                ? { cloudVersion: attribution.cloudVersion }
                 : {}),
             };
           })()
         : {}),
-      ...(cloudGeneration !== undefined ? { cloudGeneration } : {}),
+      ...(cloudDeployment !== undefined ? { cloudDeployment } : {}),
       // The point of observe mode is this record. Without it the rollout is
       // unmeasurable and the row is indistinguishable from one where the policy
       // never matched at all.

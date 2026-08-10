@@ -1,8 +1,8 @@
-# Cloud-managed policy generations
+# Cloud-managed policy deployments
 
 This is the contract between the Failproof Cloud HTTP transport and the
 `failproofaid` policy worker. Polling and integrity maintenance run outside the
-hook path; hooks evaluate only the last verified local generation.
+hook path; hooks evaluate only the last verified local deployment.
 
 ## Layout
 
@@ -12,8 +12,8 @@ hook path; hooks evaluate only the last verified local generation.
 ├── active.json
 ├── artifacts/
 │   └── <sha256>.mjs
-└── generations/
-    └── <generation>/
+└── deployments/
+    └── <deployment>/
         ├── manifest.json
         └── <policy-id>.mjs
 ```
@@ -22,9 +22,9 @@ hook path; hooks evaluate only the last verified local generation.
   from cloud. A later slice must authenticate it with a publisher signature;
   SHA-256 alone proves byte identity, not publisher identity.
 - `artifacts/` is a content-addressed cache.
-- `generations/` contains complete materialized policy sets. New generations
+- `deployments/` contains complete materialized policy sets. New deployments
   are built without modifying the active one.
-- `active.json` is an atomically replaced pointer to one complete generation.
+- `active.json` is an atomically replaced pointer to one complete deployment.
   It is derived state and is reconstructed when it is deleted, malformed, or
   disagrees with `desired-state.json`.
 
@@ -32,12 +32,12 @@ hook path; hooks evaluate only the last verified local generation.
 
 ```json
 {
-  "schemaVersion": 1,
-  "generation": 184,
+  "schemaVersion": 2,
+  "deployment": 184,
   "policies": [
     {
       "id": "block-secret-exfiltration",
-      "revision": 7,
+      "version": 7,
       "sha256": "<64 lowercase hex characters>",
       "artifactUrl": "https://..."
     }
@@ -92,26 +92,26 @@ resolved against the configured base URL; cross-origin locators are rejected
 before the token is sent.
 
 An HTTP failure, invalid desired-state response, bad digest, or incomplete
-generation leaves the previous generation active.
+deployment leaves the previous deployment active.
 
 ## Activation transaction
 
-1. Validate schema, policy IDs, unique IDs, digests, and monotonic generation.
-2. Reuse a verified cache/generation copy or fetch missing bytes.
+1. Validate schema, policy IDs, unique IDs, digests, and monotonic deployment.
+2. Reuse a verified cache/deployment copy or fetch missing bytes.
 3. Verify every artifact digest.
-4. Materialize the complete generation and `fsync` its files/directories.
+4. Materialize the complete deployment and `fsync` its files/directories.
 5. Persist `desired-state.json`.
 6. Atomically replace `active.json`.
 
-Any failure before step 6 leaves the previous generation active. The worker
+Any failure before step 6 leaves the previous deployment active. The worker
 loads only paths named by `active.json` and independently verifies every digest
 immediately before importing JavaScript.
 
 ## Integrity maintenance
 
 `failproofaid` runs a maintenance thread outside the hook path. It hashes the
-active generation periodically (30 seconds by default) and repairs either a
-modified generation copy or a modified content-addressed artifact from the
+active deployment periodically (30 seconds by default) and repairs either a
+modified deployment copy or a modified content-addressed artifact from the
 other verified copy. If both are gone, it retains the active manifest and
 reports that a cloud re-fetch is required.
 

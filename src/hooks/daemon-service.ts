@@ -1,8 +1,7 @@
 /**
- * Installs/uninstalls/checks failproofaid as a real OS-level user service
- * (systemd `--user` on Linux, launchd `LaunchAgent` on macOS) so it's
- * "constant" — starts at login, restarts on crash — without ever needing
- * elevation. User-scope only, matching the daemon itself.
+ * Installs, upgrades, checks, and removes failproofaid as a system-managed
+ * service. The definition is root-owned and starts at boot, but the daemon
+ * process itself runs as the user who configured failproofai.
  *
  * No public `failproofai daemon install`-style subcommand exists —
  * `configure-wizard.ts` calls the functions here directly, the same
@@ -18,18 +17,17 @@ import {
   rmSync,
 } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
-import { resolve, dirname } from "node:path";
+import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { hookLogWarn } from "./hook-logger";
-import { getConfigPathForScope } from "./hooks-config";
 import { downloadFailproofaidBinary, installFromNpmPackage, installedBinaryPath } from "./daemon-download";
 import { logsDir } from "./fp-home";
 import { version } from "../../package.json";
 import { readVersionFile, updateConfig, writeVersionFile } from "./fp-config";
 
 /**
- * Every `systemctl --user` / `launchctl` call is bounded. Both talk to a
- * per-user session bus or to launchd, and a wedged session makes an
+ * Every `systemctl` / `launchctl` call is bounded. A wedged service manager
+ * makes an
  * unbounded `execFileSync` block forever — inside the interactive wizard
  * that reads as a hang with no output at all (`stdio: "ignore"`), right
  * after the user pressed "apply". A timeout throws instead, which the
@@ -39,7 +37,7 @@ const SERVICE_CMD_TIMEOUT_MS = 10_000;
 
 /**
  * How long to wait for the service manager to actually get the daemon into
- * a running state after `enable --now` / `load -w`. Both commands return as
+ * a running state after restart/load. Those commands return as
  * soon as the job is accepted, which is well before the process has proven
  * it can stay up.
  */
@@ -47,7 +45,7 @@ const SERVICE_START_TIMEOUT_MS = 5_000;
 const SERVICE_START_POLL_MS = 100;
 /**
  * How long a unit has to still be running after it first reports running.
- * `systemctl --user is-active` calls a `Type=simple` unit active the moment
+ * `systemctl is-active` calls a `Type=simple` unit active the moment
  * it forks, so a daemon that dies immediately still reports active once —
  * a single check would wave through exactly the crash-at-startup case this
  * is here to catch. Comfortably longer than the unit's `RestartSec=2`
@@ -393,8 +391,25 @@ function systemdUnitName(user: string = serviceUser()): string {
   return `failproofaid@${user}.service`;
 }
 
+/**
+ * The unit directory, redirectable for tests ONLY.
+ *
+ * It was hardcoded, which left a test asserting "a failed install writes
+ * nothing" checking the REAL `/etc/systemd/system` — so it passed in CI, where
+ * nothing is installed, and failed on the machine of anyone who actually uses
+ * failproofai, whose genuine unit file is sitting right there. That is the bug
+ * class `handler.test.ts`'s header already documents: CI is green, so the red is
+ * only ever seen locally, by exactly the people who most need to trust the suite.
+ *
+ * Read through a function rather than captured at module load, because a test
+ * sets it after importing this module.
+ */
+function systemdUnitDir(): string {
+  return process.env.FAILPROOFAI_SYSTEMD_DIR || "/etc/systemd/system";
+}
+
 function systemdUnitPath(user: string = serviceUser()): string {
-  return resolve("/etc/systemd/system", systemdUnitName(user));
+  return resolve(systemdUnitDir(), systemdUnitName(user));
 }
 
 /**
@@ -688,9 +703,8 @@ ${conditionLines}
 Type=simple
 User=${user}
 # Set explicitly rather than relying on systemd deriving it from User=:
-# failproofaid is user-scope by construction and refuses to start without
-# HOME ("HOME is not set; failproofaid is user-scope only"), so the one
-# variable it cannot do without is not left to a version-dependent default.
+# failproofaid stores per-user state and refuses to start without HOME, so this
+# required variable is not left to a version-dependent default.
 Environment="HOME=${homedir()}"
 ${envLines}ExecStart=${binaryPath}
 Restart=on-failure
@@ -810,9 +824,8 @@ export async function installDaemonService(): Promise<DaemonInstallResult> {
     return { installed: false, reason: `failproofaid is not supported on ${process.platform} yet` };
   }
 
-  // May reach the network: the npm package carries no binary, so this is
-  // where a machine opting into the daemon fetches the one built for its
-  // platform from this version's release.
+  // May reach the network when the matching optional platform package is not
+  // installed. The GitHub release asset is the verified fallback channel.
   const { path: binaryPath, reason: binaryReason } = await ensureFailproofaidBinary();
   if (!binaryPath) {
     return { installed: false, reason: binaryReason ?? "failproofaid binary not found for this platform" };
@@ -1036,25 +1049,80 @@ export async function probeDaemon(): Promise<DaemonProbe> {
   }
 }
 
+/**
+ * "Is anything listening on the daemon socket?" — never throws.
+ *
+ * Split out because `waitForDaemonRunning` needs the connect check WITHOUT the
+ * hook evaluation: it runs inside a settle loop, and a failed import or a
+ * transient refusal there must read as "not yet", never as an error.
+ */
+async function daemonAcceptsConnectionsQuietly(): Promise<boolean> {
+  try {
+    const { daemonAcceptsConnections } = await import("./daemon-client");
+    return await daemonAcceptsConnections();
+  } catch {
+    return false;
+  }
+}
+
 /** Boolean form, for callers that only branch on healthy/not. */
 export async function probeDaemonEndToEnd(): Promise<boolean> {
   return (await probeDaemon()).ok;
 }
 
 /**
- * Waits for the service to report running, then re-checks after a settle
- * window (see `SERVICE_SETTLE_MS`) so a daemon that dies at startup doesn't
- * pass on the strength of one optimistic reading.
+ * Waits for the service to report running and to HOLD it — a `Type=simple` unit
+ * is active the moment it forks, so one optimistic reading passes a daemon that
+ * died at startup.
+ *
+ * WATCHED, not slept through. This used to sleep `SERVICE_SETTLE_MS` blind and
+ * read the status once at the end, which was wrong in both directions on a
+ * healthy machine and a broken one:
+ *
+ *   • Healthy: the socket is up in ~13ms and answers a real hook in ~125ms, and
+ *     setup still sat there for the remaining ~600ms with the answer already in
+ *     hand. Setup runs this twice on the repair path (uninstall, reinstall), so
+ *     it was over a second of dead wait every time.
+ *   • Broken: a daemon that died at 100ms was not noticed until 750ms, because
+ *     nothing looked until the sleep was over.
+ *
+ * Now the window is polled. Leaving `running` at any point fails immediately,
+ * and the wait ends early once the daemon has answered a real hook — a reply is
+ * strictly stronger evidence of "did not die at startup" than "still active
+ * after an arbitrary sleep", which is all the settle ever established.
  */
-async function waitForDaemonRunning(): Promise<boolean> {
-  const deadline = Date.now() + SERVICE_START_TIMEOUT_MS;
+export interface WaitForDaemonDeps {
+  status?: () => DaemonServiceStatus;
+  accepts?: () => Promise<boolean>;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+}
+
+export async function waitForDaemonRunning(deps: WaitForDaemonDeps = {}): Promise<boolean> {
+  const status = deps.status ?? daemonServiceStatus;
+  const accepts = deps.accepts ?? daemonAcceptsConnectionsQuietly;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const now = deps.now ?? Date.now;
+
+  const deadline = now() + SERVICE_START_TIMEOUT_MS;
   for (;;) {
-    if (daemonServiceStatus() === "running") break;
-    if (Date.now() >= deadline) return false;
-    await new Promise((r) => setTimeout(r, SERVICE_START_POLL_MS));
+    if (status() === "running") break;
+    if (now() >= deadline) return false;
+    await sleep(SERVICE_START_POLL_MS);
   }
-  await new Promise((r) => setTimeout(r, SERVICE_SETTLE_MS));
-  return daemonServiceStatus() === "running";
+
+  const settleUntil = now() + SERVICE_SETTLE_MS;
+  for (;;) {
+    // A unit that has left `running` is dead now; there is nothing to wait out.
+    if (status() !== "running") return false;
+    // A daemon that accepted a connection is a daemon that got past startup and
+    // bound its socket. Deliberately the CHEAP check, not a full hook
+    // evaluation: `probeDaemon` runs the end-to-end one moments later, and
+    // paying for it twice is what this rewrite exists to stop.
+    if (await accepts()) return true;
+    if (now() >= settleUntil) return true;
+    await sleep(SERVICE_START_POLL_MS);
+  }
 }
 
 // ── Upgrading a service definition that predates a variable ──────────────────
@@ -1125,7 +1193,7 @@ function installedExecStart(definition: string): string | null {
  * True when a service IS installed but its definition predates
  * `FAILPROOFAI_CLI_CMD`.
  *
- * Deliberately a content check against the definition on disk, not a revision
+ * Deliberately a content check against the definition on disk, not a version
  * number mirrored into `config.toml`. The mirror is the tempting shape — it is
  * how `daemon.installed_version` is modelled — but that field is declared,
  * read and cleared and has never once been WRITTEN (both `setDaemonConfigured`
@@ -1415,6 +1483,129 @@ export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult>
  * event on the machine with no recovery short of hand-editing
  * `~/.failproofai/policies-config.json`.
  */
+/**
+ * Bring the installed daemon up to this CLI's version — the second half of an
+ * upgrade that npm does not do.
+ *
+ * `npm i -g` replaces the CLI and nothing else. The binary lives at
+ * `~/.failproofai/bin/failproofaid-<version>` precisely so an upgrade cannot swap
+ * it under a running service, which means after an npm upgrade the two halves are
+ * different versions until something like this runs. `daemonVersionSkew()` has
+ * been reporting that state on every command; this is the command that fixes it.
+ *
+ * Composed from the pieces that already exist rather than reimplementing any of
+ * them: `ensureFailproofaidBinary()` puts the right file on disk (npm optional
+ * dependency first, release asset second, SHA-256 verified either way),
+ * `ensureDaemonServiceCurrent()` rewrites the unit if its shape has changed, and
+ * `waitForDaemonRunning()` is what distinguishes "started" from "started and
+ * still up" — a `Type=simple` unit reports active the moment it forks.
+ *
+ * NEVER clears `daemonConfigured`. A refresh that fails leaves a machine
+ * fail-closed against a daemon that may be down, and that is the correct, loud
+ * state: the remedy is `failproofai config`, and silently downgrading the machine
+ * to in-process evaluation would trade a visible failure for an invisible one.
+ * The lines say so.
+ */
+export async function refreshDaemonToCliVersion(
+  /**
+   * Injectable for tests, matching `waitForDaemonRunning`'s shape in this file.
+   * A `vi.spyOn` on the module namespace cannot intercept these — the module
+   * calls its own local bindings — so without a seam a test asserting either
+   * branch passes for the wrong reason: on a machine with no service, "no-op"
+   * and "the spy worked" are indistinguishable.
+   */
+  deps: {
+    status?: () => DaemonServiceStatus;
+    install?: () => Promise<DaemonInstallResult>;
+    prime?: () => boolean;
+    interactive?: () => boolean;
+  } = {},
+): Promise<{ ok: boolean; lines: string[] }> {
+  const status = deps.status ?? daemonServiceStatus;
+  const install = deps.install ?? installDaemonService;
+  const prime = deps.prime ?? primeElevation;
+  const interactive =
+    deps.interactive ?? (() => Boolean(process.stdin.isTTY && process.stdout.isTTY));
+  if (status() === "not-installed") {
+    return { ok: true, lines: ["No failproofaid service on this machine; nothing to update."] };
+  }
+
+  // `installDaemonService()`, not a binary fetch plus a restart.
+  //
+  // The first version of this did the latter, and it did not work: it called
+  // `ensureFailproofaidBinary()` (which correctly lands
+  // `bin/failproofaid-<this version>`) and then `ensureDaemonServiceCurrent()`,
+  // whose rewrite goes through `upgradedServiceDefinition` — and that PRESERVES
+  // the existing `ExecStart` via `installedExecStart(definition)`, by design,
+  // because its job is to upgrade the unit's SHAPE without changing which binary
+  // runs. So on a machine coming from an older release the new binary was
+  // downloaded, the unit was rewritten, the service was restarted, and the OLD
+  // binary came back up — under a message that said the daemon had been
+  // refreshed. Worse than not having the command, because it reports success.
+  //
+  // `installDaemonService()` is the function that already knows how to make the
+  // service run THIS CLI's version: it resolves the binary for this version,
+  // writes the unit around that path, removes any legacy user unit, reloads,
+  // enables, and waits for the service to reach AND HOLD a running state rather
+  // than trusting the moment a `Type=simple` unit reports active. It is
+  // idempotent, which is what makes it safe to call on an already-installed
+  // machine.
+  // ASK FOR THE PASSWORD, when there is somebody to ask.
+  //
+  // Writing the unit needs root, and `runPrivileged` uses `sudo -n` — which never
+  // prompts. That rule exists for the WIZARD, whose reason is stated where it is
+  // enforced: a password prompt fired from underneath a full-screen TUI is
+  // unreadable at best. It does not transfer to this command, which is plain line
+  // output with nothing to corrupt, and the wizard itself calls `primeElevation()`
+  // for exactly this at exactly this point.
+  //
+  // Without it, `failproofai update` on the machine it exists for — one with a
+  // daemon, upgrading — failed with "sudo credentials were not available" and a
+  // thirty-line unit file to paste by hand. The only working alternatives were
+  // `sudo -v` first (undocumented) or `failproofai config`, an interactive wizard.
+  // That is not an upgrade path.
+  //
+  // Gated on a TTY, not attempted blindly: on a CI runner or a fleet box there is
+  // nobody to type a password, and `sudo -v` there would block on a prompt nothing
+  // will answer. Those runs still fall through to `sudo -n`, fail, and get the
+  // exact commands to run — which is the right outcome for an unattended machine.
+  // `primeElevation()` is itself a no-op when already root or NOPASSWD.
+  if (interactive()) prime();
+
+  const result = await install();
+  if (!result.installed) {
+    return {
+      ok: false,
+      lines: [
+        `failproofaid ${version} could not be installed: ${result.reason ?? "unknown reason"}`,
+        `The previous daemon is untouched. On a machine configured to require it,`,
+        `enforcement continues; collection and cloud policy may be stale until this`,
+        `succeeds. \`${daemonStatusCommand() ?? "systemctl status"}\` will say more.`,
+      ],
+    };
+  }
+  // RECORD THE VERSION, or the refresh is invisible to everything that asks.
+  //
+  // `installDaemonService()` deliberately does not write it — only the wizard did
+  // (`setDaemonConfigured(true, cliVersion)`), because that is where "this machine
+  // is now configured, at this version" is decided. So without this line the new
+  // binary runs while `VERSION.daemon` still names the old one, and
+  // `daemonVersionSkew()` reads that file: every later CLI command keeps nudging
+  // about a stale daemon that was just replaced, and the wizard's `daemonMaybeUp`
+  // stays false on the skew it should no longer see — so a later `failproofai
+  // config` would tear down and rebuild a perfectly current service.
+  //
+  // `writeVersionFile` rather than `setDaemonConfigured(true, …)`: that helper also
+  // sets `daemon.configured`, and turning on fail-closed enforcement as a SIDE
+  // EFFECT of an update is not this command's decision to make. An update refreshes
+  // what is installed; it does not change whether the machine requires it.
+  writeVersionFile({ daemon: version });
+  return {
+    ok: true,
+    lines: [`failproofaid ${version} installed, service restarted and holding.`],
+  };
+}
+
 export async function uninstallDaemonService(): Promise<void> {
   setDaemonConfigured(false);
   if (!isDaemonSupportedPlatform()) return;

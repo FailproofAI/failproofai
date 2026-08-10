@@ -8,7 +8,7 @@
  * Its input is the agent's ENTIRE transcript, which is why the negative fixtures matter as
  * much as the positive ones: patterns loose enough to match ordinary model prose ("400
  * tests passed", "that flag is not supported") turn a chatty refusal into a fake vendor
- * outage, inverting exactly what the function exists to signal. An earlier revision of
+ * outage, inverting exactly what the function exists to signal. An earlier version of
  * this regex did precisely that with a bare `\b400\b` and a bare `not supported`.
  *
  * The function is read out of the shell script and executed by bash, so this test tracks

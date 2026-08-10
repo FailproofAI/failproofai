@@ -10,7 +10,11 @@
 # MESSAGE, which still names which of the two failures happened, because the
 # remedies differ (upgrade the daemon vs. find out why it is down).
 set -uo pipefail
-R=/home/sidd/Desktop/work-failproofai/failproofai
+# Repo root, derived from this script's own location: these live at
+# <repo>/__tests__/e2e/layout/. It was hardcoded to one contributor's home
+# directory, so the suite ran on exactly one machine and silently used the
+# wrong CLI (or none) on every other.
+R=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 H=/tmp/fpai-proto
 PASS=0; FAIL=0
 ok(){ PASS=$((PASS+1)); printf '  \033[32mPASS\033[0m %s\n' "$1"; }
@@ -18,11 +22,13 @@ bad(){ FAIL=$((FAIL+1)); printf '  \033[31mFAIL\033[0m %s\n     %s\n' "$1" "${2:
 has(){ if printf '%s' "$2" | grep -q "$3"; then ok "$1"; else bad "$1" "missing [$3] in: $(printf '%s' "$2"|head -c 220)"; fi; }
 hasnt(){ if printf '%s' "$2" | grep -q "$3"; then bad "$1" "unexpected [$3]"; else ok "$1"; fi; }
 
-rm -rf "$H"; mkdir -p "$H/run" "$H/policies/local-policies" "$H/proj"
+rm -rf "$H"; mkdir -p "$H/run" "$H/policies" "$H/proj"
 chmod 700 "$H/run"
-printf '{"enabledPolicies":["block-sudo"]}' > "$H/policies/local-policies/policies-config.json"
-printf '[mode]\nkind = "oss"\n\n[daemon]\nconfigured = true\n' > "$H/config.toml"
-printf 'layout = 2\ncli = "1.0.0-beta.5"\n' > "$H/VERSION"
+# Layout 3 reads the global policy config at the home ROOT; under
+# policies/local-policies/ it is never loaded and the policy never fires.
+printf '{"enabledPolicies":["block-sudo"]}' > "$H/policies-config.json"
+printf '{"mode":{"kind":"oss"},"daemon":{"configured":true}}\n' > "$H/config.json"
+printf '{"layout":3,"cli":"1.0.0-beta.5"}\n' > "$H/VERSION"
 
 # A daemon that answers every request stamped with a DIFFERENT protocol version
 # — exactly what an old daemon does after the CLI bumps PROTOCOL_VERSION.

@@ -3,7 +3,7 @@
 //! The collector resolves its ingest credential once, when it starts, and the
 //! uploader caches the bearer key at construction. So rotating a key used to
 //! leave the file correct and the process wrong: `--connect` verified the NEW
-//! key and reported success, the service stayed healthy, `credentials.toml`
+//! key and reported success, the service stayed healthy, `credentials.json`
 //! held a key that worked when curled — and every batch 401'd and parked.
 //!
 //! Observed live before this existed: a key revoked at 13:05:37 and replaced 37
@@ -12,7 +12,7 @@
 //! data that never arrived, which is the hardest kind of failure to notice.
 //!
 //! These drive the REAL binary against a real config file on disk, because the
-//! property under test is "an edit somebody else made is noticed". `config.toml`
+//! property under test is "an edit somebody else made is noticed". `config.json`
 //! says "Safe to edit by hand" and means it — a fleet tool, an editor or a `sed`
 //! are all legitimate, and none of them run our code. A test that called an
 //! internal reload function would prove something else entirely.
@@ -57,19 +57,18 @@ fn make_home(home: &Path, ingest_key: &str) {
         }
     }
     std::fs::write(
-        home.join("config.toml"),
-        "[mode]\nkind = \"cloud\"\n\n[collector]\nsessions = false\nhooks = true\n\
-         hooks_verbosity = \"decisions\"\nredact = \"minimal\"\nenvironment = \"local\"\n",
+        home.join("config.json"),
+        r#"{"mode":{"kind":"cloud"},"collector":{"sessions":false,"hooks":true,"hooks_verbosity":"decisions","redact":"minimal","environment":"local"}}"#,
     )
     .unwrap();
     write_credentials(home, ingest_key);
 }
 
 fn write_credentials(home: &Path, key: &str) {
-    let path = home.join("credentials.toml");
+    let path = home.join("credentials.json");
     std::fs::write(
         &path,
-        format!("[ingest]\nurl = \"http://127.0.0.1:59999/v1/events\"\nkey = \"{key}\"\n"),
+        format!(r#"{{"ingest":{{"url":"http://127.0.0.1:59999/v1/events","key":"{key}"}}}}"#),
     )
     .unwrap();
     #[cfg(unix)]
@@ -176,9 +175,9 @@ fn it_keeps_noticing_changes_rather_than_reloading_once() {
     // A one-shot reload would pass the test above and still strand the second
     // rotation, so the loop is asserted rather than the first iteration.
     //
-    // Each edit waits for the previous generation to be RUNNING, not merely for
+    // Each edit waits for the previous deployment to be RUNNING, not merely for
     // the cycle to be announced. "cycling the collector" is logged before
-    // `join_with_flush` drains the old generation, so an edit made on that log
+    // `join_with_flush` drains the old deployment, so an edit made on that log
     // line lands mid-cycle and is picked up by the same rebuild — the daemon
     // coalesces to the latest config, correctly, and no second cycle is ever
     // logged. Asserting the count without this sync tests the timing of the
@@ -202,7 +201,7 @@ fn it_keeps_noticing_changes_rather_than_reloading_once() {
 fn an_unchanged_config_does_not_cycle_anything() {
     // Re-reading the file every tick must not look like a change, or the
     // collector would be torn down and rebuilt twice a second — losing the
-    // in-flight batches of every generation.
+    // in-flight batches of every deployment.
     let home = unique_home("stable");
     make_home(&home, "a-stable-key");
     let daemon = spawn_daemon(&home);
@@ -232,8 +231,8 @@ fn a_half_written_config_is_waited_out_rather_than_acted_on() {
     daemon.wait_for("collector enabled", 1, Duration::from_secs(20));
 
     // Truncated TOML: a real mid-save state, not invented garbage.
-    let mut f = std::fs::File::create(home.join("credentials.toml")).unwrap();
-    f.write_all(b"[ingest]\nurl = \"http://127.0.0.1:59999/v1/ev")
+    let mut f = std::fs::File::create(home.join("credentials.json")).unwrap();
+    f.write_all(b"{\"ingest\":{\"url\":\"http://127.0.0.1:59999/v1/ev")
         .unwrap();
     drop(f);
     std::thread::sleep(Duration::from_secs(3));
@@ -262,12 +261,81 @@ fn disabling_collection_stops_it_and_re_enabling_starts_it_again() {
     let daemon = spawn_daemon(&home);
     daemon.wait_for("collector enabled", 1, Duration::from_secs(20));
 
-    let cfg = home.join("config.toml");
+    let cfg = home.join("config.json");
     let on = std::fs::read_to_string(&cfg).unwrap();
-    std::fs::write(&cfg, on.replace("hooks = true", "hooks = false")).unwrap();
+    // JSON now, so the edit is on the key/value pair, not a TOML line. A
+    // string replace that silently matches nothing writes the file back
+    // unchanged and the test then waits 20s for a reload that never had a
+    // reason to happen — which is exactly how this broke.
+    std::fs::write(&cfg, on.replace(r#""hooks":true"#, r#""hooks":false"#)).unwrap();
     daemon.wait_for("no longer enabled", 1, Duration::from_secs(20));
 
     std::fs::write(&cfg, &on).unwrap();
     daemon.wait_for("collector enabled", 2, Duration::from_secs(20));
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// An extra capture path added by hand is picked up without a restart.
+///
+/// `failproofai harness add-path` writes `[collector.sources.<harness>]
+/// extra_paths` and tells the user the daemon will notice on its own. That
+/// promise rests entirely on `sources` living inside the `CollectorConfig` the
+/// manager compares each tick — nothing registers the field explicitly, and
+/// moving it anywhere resolved later would break the promise silently: the CLI
+/// keeps reporting success, the config keeps parsing, and the running daemon
+/// simply never captures the path until it is restarted for some unrelated
+/// reason.
+///
+/// Asserted on the REAL binary against a hand-edited file, like the cases above
+/// and for the same reason — the property is "an edit somebody else made is
+/// noticed", and a fleet tool or a `sed` is a legitimate way to make it.
+///
+/// The task-count line is what proves the path was actually REGISTERED rather
+/// than merely triggering a cycle: `sessions = true` turns the session sources
+/// on, and each labelled path adds its own task on top (claude's extra path
+/// adds two — the main and subagent formats share a root).
+#[test]
+fn an_extra_capture_path_added_by_hand_is_registered_without_a_restart() {
+    let home = unique_home("extra-path");
+    make_home(&home, "a-key");
+    // Session capture on: extra paths are a session-source feature, and the
+    // default config `make_home` writes has it off.
+    let cfg = home.join("config.json");
+    let base = std::fs::read_to_string(&cfg)
+        .unwrap()
+        .replace(r#""sessions":false"#, r#""sessions":true"#);
+    std::fs::write(&cfg, &base).unwrap();
+
+    let daemon = spawn_daemon(&home);
+    daemon.wait_for("collector enabled", 1, Duration::from_secs(20));
+    daemon.wait_for("collector started", 1, Duration::from_secs(20));
+
+    let extra = home.join("extra-claude-projects");
+    std::fs::create_dir_all(&extra).unwrap();
+    // Appending a TOML table to a JSON file produces something no parser
+    // accepts, and `load_settings` treats an unreadable config as "unchanged" —
+    // so the daemon would never cycle and this test would wait out its full
+    // timeout for a reason that had nothing to do with the feature.
+    std::fs::write(
+        &cfg,
+        base.replace(
+            r#""environment":"local""#,
+            &format!(
+                r#""environment":"local","sources":{{"claude":{{"extra_paths":["late={}"]}}}}"#,
+                extra.display()
+            ),
+        ),
+    )
+    .unwrap();
+
+    daemon.wait_for(
+        "collector configuration changed; cycling the collector",
+        1,
+        Duration::from_secs(20),
+    );
+    // The daemon names every extra path it accepts, so this is the line that
+    // says the entry was parsed and not rejected.
+    daemon.wait_for("also capturing", 1, Duration::from_secs(20));
+    daemon.wait_for("collector started", 2, Duration::from_secs(20));
     let _ = std::fs::remove_dir_all(&home);
 }

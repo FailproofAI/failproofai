@@ -271,7 +271,7 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill"];
+  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill", "flush", "harness"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -286,6 +286,13 @@ USAGE
 COMMANDS
   (no args)                      Launch the policy dashboard
   config                         Interactive setup — pick scope, agents & policies
+    --connect <url> --token <key>  Connect to Failproof Cloud non-interactively
+    --machine-id <id>              Stable id for this machine
+    --machine-label <name>         Human-readable name in the dashboard
+    --no-transcripts               Report decisions only, never transcripts
+    --disconnect                   Stop pulling policy and sending activity
+    --status                       Show connection, daemon and pause state
+    --pause / --resume             Pause or resume enforcement
 
   policy add <name>              Enable a single policy (see \`policy --help\`)
   policy remove <name>           Disable a single policy
@@ -312,9 +319,41 @@ COMMANDS
 
   policies --help, -h            Show this help for the policies command
 
+  harness list                   Show extra capture paths per agent CLI
+  harness add-path <h> <path>    Also capture sessions from <path> for harness
+                                 <h>. Accepts \`<label>=<path>\`; the label
+                                 namespaces agent ids so two copies of one
+                                 project stay distinct.
+  harness remove-path <h> <p>    Stop capturing that path
+  harness --help, -h             Show this help for the harness command
+
   audit                          Audit your agent's behavior, then open the
                                  dashboard at http://localhost:8020/audit
   audit --help, -h               Show this help for the audit command
+
+  backfill                       Re-send history the collector already read past
+                                 — after clearing the dashboard, re-enrolling a
+                                 machine, or connecting later than the work
+    --since <when>                 How far back: 30d, 6m, or YYYY-MM-DD
+                                   (default: 30 days)
+    --dry-run                      Report what would be re-read, change nothing
+
+  flush                          Deliver everything already spooled, now,
+                                 instead of waiting for the next sweep
+    --wait                         Block until the spool drains (or --timeout)
+    --timeout <secs>               How long to wait with --wait (default: 60)
+
+  update                         Finish an upgrade npm cannot: migrate
+                                 ~/.failproofai to this version's layout, put the
+                                 matching daemon binary in place, restart it.
+                                 Run after \`npm install -g failproofai@latest\`.
+    --no-daemon                    Migrate the home only
+
+  migrate                        Run pending layout migrations on their own,
+                                 keyed on the layout in ~/.failproofai/VERSION
+                                 (not the npm version, so skipping releases with
+                                 no layout change runs nothing)
+    --dry-run                      Print the steps and change nothing
 
   uninstall                      Remove failproofai from this machine: hook
                                  entries from every agent CLI, and the daemon
@@ -355,6 +394,10 @@ EXAMPLES
   failproofai policies --uninstall --cli opencode
   failproofai policies --uninstall --cli pi
   failproofai policies --uninstall --custom
+  failproofai backfill --since 6m
+  failproofai backfill --dry-run
+  failproofai flush --wait
+  failproofai config --status
 
 LINKS
   ⭐ Star us:      https://github.com/failproofai/failproofai
@@ -414,13 +457,16 @@ LINKS
   // past the help block above and reach here, so without this a user typing
   // `failproofai policies --help` had their home reset by a question. The
   // adjacent, far less destructive first-run gate exempted help from the start.
-  let layoutWasReset = false;
   {
     const isHelpOrVersion =
       args.includes("--help") || args.includes("-h") || args.includes("--version") || args.includes("-v");
     if (args[0] === "audit" && args.includes("--scheduled")) {
-      const { layoutWarningForHook } = await import("../src/hooks/fp-reset");
-      const warning = layoutWarningForHook();
+      // NOT `layoutWarningForHook` — that one answers the hook's question
+      // ("are policies unenforced?") and deliberately stays quiet when the
+      // global config is readable. This gate is about the LAYOUT, and must
+      // fire whenever completing the run would reset the home.
+      const { layoutBlockerForScheduledRun } = await import("../src/hooks/fp-reset");
+      const warning = layoutBlockerForScheduledRun();
       if (warning) {
         // Exit 1, not 75: 75 means "another audit holds the lock" and is retried
         // in fifteen minutes, which here would just re-warn four times an hour
@@ -429,12 +475,23 @@ LINKS
         console.error(warning);
         process.exit(1);
       }
-    } else if (!isHelpOrVersion) {
+    } else if (!isHelpOrVersion && args[0] !== "migrate" && args[0] !== "update") {
+      // `migrate` and `update` are exempt because they ARE this step, and letting
+      // it run first breaks them both. `migrate --dry-run` promises to change
+      // nothing and print what would happen — with the check ahead of it, the home
+      // was already migrated by the time the subcommand looked, so it reported
+      // "nothing to migrate" on every stale machine it was ever pointed at, which
+      // is the one answer a dry run must never give wrongly. Caught by a smoke
+      // test on a seeded layout-2 home, not by a unit test: nothing below the CLI
+      // entry point can see this ordering.
       const { checkLayoutForCli } = await import("../src/hooks/fp-reset");
       const check = await checkLayoutForCli();
       for (const line of check.lines) console.error(line);
       if (check.fatal) process.exit(1);
-      layoutWasReset = check.didReset;
+      // `check.didReset` is deliberately not read. It used to force the wizard
+      // below; see the note at `shouldOfferFirstRun` for why a migrated machine
+      // no longer needs setup re-run, and `didReset` in `fp-reset.ts` for what
+      // the field means now.
     }
   }
 
@@ -461,20 +518,25 @@ LINKS
   }
 
   const { shouldOfferFirstRun } = await import("../src/hooks/first-run-gate");
-  if (shouldOfferFirstRun(args) || layoutWasReset) {
+  // `|| layoutWasReset` stood here, with `force: layoutWasReset` below, because a
+  // migration used to delete the home's policy config while leaving the agent
+  // CLIs' settings files alone — so `isConfigured()` read true off
+  // `hasGlobalHooks` and setup was skipped, leaving hooks firing against no
+  // policies, silently and permanently.
+  //
+  // The migration keeps that file now (`HOME_CLASSES` classes it `user-typed`),
+  // along with `config.json` and `credentials.json`, so a migrated machine is
+  // configured in fact and not merely in appearance. Forcing the wizard here
+  // would open an interactive prompt with nothing to answer — and on a fleet box,
+  // a CI runner or a headless gateway, nobody to answer it. A home that never
+  // finished setup still gets here on its own: `isConfigured()` is false for it.
+  // See `didReset` in `fp-reset.ts`.
+  if (shouldOfferFirstRun(args)) {
     try {
       const { maybeFirstRunConfigure } = await import("../src/hooks/configure-wizard");
       // `audit` runs its own scan immediately after this returns; firing the
       // post-setup audit too would scan the whole history twice in a row.
-      //
-      // `force` after a reset: the home's policy config is gone, but the agent
-      // CLIs' settings files were deliberately left alone, so `isConfigured()`
-      // still reads true off `hasGlobalHooks` and setup would be skipped —
-      // leaving hooks firing against no policies, silently and permanently.
-      await maybeFirstRunConfigure(
-        {},
-        { postSetupAudit: args[0] !== "audit", force: layoutWasReset },
-      );
+      await maybeFirstRunConfigure({}, { postSetupAudit: args[0] !== "audit" });
     } catch {
       // Onboarding is never allowed to block the command the user actually typed.
     }
@@ -487,6 +549,72 @@ LINKS
   // over. Every precondition a person can get wrong is still checked HERE,
   // synchronously, because reporting success and leaving the real failure in the
   // journal is what already cost twenty minutes on a live machine.
+  if (args[0] === "flush") {
+    const subArgs = args.slice(1);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai flush — deliver what is already spooled, now
+
+USAGE
+  failproofai flush [--wait] [--timeout <secs>]
+
+WHY
+  The collector is unhurried on purpose: a batch is swept once it is older than
+  two minutes, at most 64 per pass, on a 60-second cadence. That pacing keeps a
+  backlog from stampeding the server, and it is exactly wrong when you are
+  standing at a dashboard waiting to see your own events — "not delivered yet"
+  and "not working" look identical from there.
+
+  This asks the daemon to make a pass right now, with no minimum age and no
+  per-pass cap. It re-sends nothing: only batches already spooled and not yet
+  delivered. For history the collector has already read past, use \`backfill\`.
+
+OPTIONS
+  --wait             Block until the spool drains, or --timeout elapses.
+  --timeout <secs>   How long --wait waits. Default: 60.
+`);
+      process.exit(0);
+    }
+
+    const KNOWN = new Set(["--wait", "--timeout"]);
+    const unknown = subArgs.find(
+      (a, i) => a.startsWith("-") && !KNOWN.has(a) && subArgs[i - 1] !== "--timeout",
+    );
+    if (unknown) {
+      throw new CliError(`Unexpected argument: ${unknown}\nRun \`failproofai flush --help\` for usage.`);
+    }
+
+    let timeoutSecs;
+    const tIdx = subArgs.indexOf("--timeout");
+    if (tIdx >= 0) {
+      const raw = subArgs[tIdx + 1];
+      if (!raw || raw.startsWith("-")) throw new CliError("Missing value after --timeout.");
+      const n = Number(raw);
+      // Rejected rather than coerced: NaN would silently become "wait forever
+      // or not at all" depending on the comparison, and neither is what was asked.
+      if (!Number.isFinite(n) || n <= 0) {
+        throw new CliError(`Could not read --timeout ${raw}. Give a number of seconds.`);
+      }
+      timeoutSecs = n;
+    }
+
+    lastSubcommand = "flush";
+    const { runFlushCommand } = await import("../src/hooks/flush-cli");
+    const result = await runFlushCommand({ wait: subArgs.includes("--wait"), timeoutSecs });
+    for (const line of result.lines) {
+      if (result.exitCode === 0) console.log(line);
+      else console.error(line);
+    }
+    await track("cli_flush", {
+      ok: result.exitCode === 0,
+      waited: subArgs.includes("--wait"),
+      pending: result.pending,
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
   if (args[0] === "backfill") {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
@@ -557,12 +685,303 @@ OPTIONS
     return;
   }
 
+  // harness list | add-path | remove-path
+  //
+  // Extra capture paths per harness. Writes ~/.failproofai/config.toml and
+  // nothing else — no root, no daemon call — so it works on a machine whose
+  // daemon is stopped, which is when someone is most likely to be fixing what
+  // it captures.
+  if (args[0] === "harness") {
+    const subArgs = args.slice(1);
+    if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai harness — capture sessions from more than one location per agent CLI
+
+USAGE
+  failproofai harness list [<harness>]
+  failproofai harness add-path <harness> [<label>=]<path>
+  failproofai harness remove-path <harness> <path|label>
+
+WHY
+  Each agent CLI is watched wherever its own installer put it — ~/.claude/projects,
+  ~/.hermes/state.db, and so on. That misses every other arrangement: a second
+  profile, a mounted team share, a container's home beside the host's, an agent
+  an operator moved. Those hold real sessions and nothing collects them.
+
+THE LABEL
+  An entry is \`<path>\` or \`<label>=<path>\`. The label namespaces agent ids as
+  <label>-<agentId>, and it matters: two locations holding the same project
+  derive the SAME id (it comes from the cwd inside the transcript, identical in
+  both copies), so without a label they merge into one agent whose sessions
+  interleave from two machines' worth of history. Omit it and one is derived
+  from the folder name.
+
+HARNESSES
+  claude, codex, copilot, openclaw, pi, factory, antigravity, cursor,
+  goose, opencode, devin, hermes
+
+  \`claude\` covers subagent transcripts too — they live under the same root.
+
+NOTES
+  • Session collection must be on for any of this to be read; extra paths live
+    under "collector" in ~/.failproofai/config.json like the default ones do.
+  • A path overlapping one already captured is REFUSED by the daemon at startup
+    rather than collected twice under two ids. It says so in the journal.
+  • Two entries sharing a LABEL are refused too: they would share one cursor
+    directory, whose whole map is written at once, so each would clobber the
+    other's watermark and re-read from zero after every restart.
+  • Takes effect within seconds — the daemon re-reads config.json on an interval
+    and cycles its collector. No restart, no sudo.
+
+EXAMPLES
+  failproofai harness add-path claude work=/srv/team/.claude/projects
+  failproofai harness add-path hermes prod=/srv/hermes-prod/state.db
+  failproofai harness add-path codex /mnt/other-home/.codex/sessions
+  failproofai harness list
+  failproofai harness remove-path claude work
+
+  One home per person — label them, or both derive the same folder-name label
+  and the second is refused:
+  failproofai harness add-path openclaw user1=/srv/.openclaw-user1
+  failproofai harness add-path openclaw user2=/srv/.openclaw-user2
+
+  Containers: FAILPROOFAI_<HARNESS>_EXTRA_PATHS replaces the file's entries.
+  FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/.openclaw-user1,user2=/srv/.openclaw-user2"
+
+`.trimStart());
+      process.exit(0);
+    }
+
+    lastSubcommand = "harness";
+    const { runHarnessCommand } = await import("../src/hooks/harness-cli");
+    const result = runHarnessCommand(subArgs);
+    for (const line of result.lines) {
+      if (result.exitCode === 0) console.log(line);
+      else console.error(line);
+    }
+    await track("cli_harness", {
+      ok: result.exitCode === 0,
+      // The subcommand only — never the harness name, the label or the path.
+      // A path is a value the user typed, and `enterprise-docs/product-analytics.md`
+      // promises we send shape, never value.
+      sub: ["list", "add-path", "remove-path"].includes(subArgs[0]) ? subArgs[0] : "unknown",
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
   // uninstall [--purge] [--dry-run] [--yes|-y]
   //
   // Top-level, and deliberately NOT a flag on `policies`. `policies --uninstall`
   // disables policies; this removes the product — hook entries across every
   // agent CLI plus the root-owned daemon service — and the two must not be one
   // keystroke apart.
+  if (args[0] === "migrate") {
+    const subArgs = args.slice(1);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai migrate — bring ~/.failproofai up to the layout this version speaks
+
+USAGE
+  failproofai migrate [--dry-run]
+
+WHY
+  npm cannot update an installed package on its own, so a machine can sit on an
+  old version for months and then jump several layouts at once. This runs the
+  steps for that jump in order, keyed on the LAYOUT recorded in
+  ~/.failproofai/VERSION rather than on the npm version — so skipping thirty
+  releases with no layout change runs nothing at all.
+
+  It normally happens by itself, on the first command after an upgrade. This is
+  for running it deliberately, and for seeing what it would do first.
+
+  Your settings, cloud enrolment, policy selection, your own policy files,
+  decision history and undelivered events are carried across, not removed. The
+  irreplaceable files are copied to migrations/backup-layout<n>/ before anything
+  runs, and every step is recorded in migrations/applied.json.
+
+OPTIONS
+  --dry-run   Print the steps and the files that would be saved. Change nothing.
+`);
+      process.exit(0);
+    }
+
+    const KNOWN = new Set(["--dry-run"]);
+    const unknown = subArgs.find((a) => a.startsWith("-") && !KNOWN.has(a));
+    if (unknown) {
+      throw new CliError(
+        `Unexpected argument: ${unknown}\nRun \`failproofai migrate --help\` for usage.`,
+      );
+    }
+
+    lastSubcommand = "migrate";
+    const { detectLayout } = await import("../src/hooks/fp-config");
+    const { LAYOUT_VERSION } = await import("../src/hooks/fp-home");
+    const { describePlan, runMigrations } = await import("../src/hooks/migrations");
+    const state = detectLayout();
+
+    // A NEWER home is refused here exactly as `checkLayoutForCli` refuses it: the
+    // data is fine and an upgrade would read it, so migrating "forward" from it
+    // is not a thing that exists.
+    if (state.kind === "future") {
+      console.error(
+        `This machine's failproofai directory was written by a newer version (layout ${state.found};`,
+      );
+      console.error(`this build speaks ${LAYOUT_VERSION}). Upgrade rather than migrate:`);
+      console.error(`  npm install -g failproofai@latest`);
+      await track("cli_migrate", { ok: false, reason: "future_layout" });
+      lastSubcommand = null;
+      await exitAfterFlush(1);
+      return;
+    }
+
+    const from = state.kind === "stale" ? state.found : LAYOUT_VERSION;
+    if (subArgs.includes("--dry-run")) {
+      for (const line of describePlan(from)) console.log(line);
+      await track("cli_migrate", { ok: true, dry_run: true, from });
+      lastSubcommand = null;
+      await exitAfterFlush(0);
+      return;
+    }
+
+    if (state.kind !== "stale") {
+      console.log(`Already at layout ${LAYOUT_VERSION}. Nothing to migrate.`);
+      await track("cli_migrate", { ok: true, from, steps: 0 });
+      lastSubcommand = null;
+      await exitAfterFlush(0);
+      return;
+    }
+
+    const run = runMigrations(from);
+    for (const step of run.steps) {
+      console.log(`${step.ok ? "migrated" : "FAILED  "} layout ${step.from} → ${step.to}`);
+    }
+    if (run.backedUp.length > 0) {
+      console.log(`Saved first: ${run.backedUp.join(", ")}`);
+    }
+    if (run.failed) {
+      console.error(`Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}`);
+      console.error(`The home is still marked layout ${from} and will be retried.`);
+    }
+    await track("cli_migrate", {
+      ok: !run.failed,
+      from,
+      steps: run.steps.length,
+      removed: run.outcome.removed.length,
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(run.failed ? 1 : 0);
+    return;
+  }
+
+  if (args[0] === "update") {
+    const subArgs = args.slice(1);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai update — finish an upgrade: migrate the home, match the daemon
+
+USAGE
+  npm install -g failproofai@latest && failproofai update [--no-daemon]
+
+WHY
+  npm replaces the CLI and nothing else. The daemon binary lives at
+  ~/.failproofai/bin/failproofaid-<version> and stays exactly where it was, so
+  after an npm upgrade the two halves are different versions — and failproofaid
+  refuses to start against a layout it does not speak, which is the loud version
+  of that problem rather than the silent one.
+
+  This does the rest of the upgrade: runs any pending layout migrations, puts the
+  matching daemon binary in place, and restarts the service.
+
+OPTIONS
+  --no-daemon   Migrate the home only. Leaves a version-skewed daemon in place,
+                so prefer letting it run.
+`);
+      process.exit(0);
+    }
+
+    const KNOWN = new Set(["--no-daemon"]);
+    const unknown = subArgs.find((a) => a.startsWith("-") && !KNOWN.has(a));
+    if (unknown) {
+      throw new CliError(
+        `Unexpected argument: ${unknown}\nRun \`failproofai update --help\` for usage.`,
+      );
+    }
+
+    lastSubcommand = "update";
+    // Runs the migration itself rather than leaning on the check at the top of
+    // this file, which this command is exempt from. Reading the ledger and
+    // inferring "the top-level check must have done it" was the first version, and
+    // it is the kind of indirection that reads fine and reports the wrong thing
+    // the moment either half moves.
+    const { detectLayout } = await import("../src/hooks/fp-config");
+    const { LAYOUT_VERSION } = await import("../src/hooks/fp-home");
+    const { runMigrations } = await import("../src/hooks/migrations");
+    const state = detectLayout();
+
+    if (state.kind === "future") {
+      console.error(
+        `This machine's failproofai directory was written by a NEWER version (layout ${state.found};`,
+      );
+      console.error(`this build speaks ${LAYOUT_VERSION}). This CLI is the stale half:`);
+      console.error(`  npm install -g failproofai@latest`);
+      await track("cli_update", { ok: false, reason: "future_layout" });
+      lastSubcommand = null;
+      await exitAfterFlush(1);
+      return;
+    }
+
+    let migrationsRan = 0;
+    let migrationFailed = false;
+    if (state.kind === "stale") {
+      const run = runMigrations(state.found);
+      migrationsRan = run.steps.length;
+      migrationFailed = Boolean(run.failed);
+      for (const step of run.steps) {
+        console.log(`${step.ok ? "migrated" : "FAILED  "} layout ${step.from} → ${step.to}`);
+      }
+      if (run.backedUp.length > 0) console.log(`Saved first: ${run.backedUp.join(", ")}`);
+      if (run.failed) {
+        console.error(
+          `Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}`,
+        );
+        console.error(`The home is still marked layout ${state.found} and will be retried.`);
+      }
+    } else {
+      console.log(`Home is at layout ${LAYOUT_VERSION}; no migration was needed.`);
+    }
+
+    // The daemon is refreshed even when a step failed, and deliberately: the
+    // binary and the layout are independent halves, and leaving a version-skewed
+    // daemon behind on top of a failed migration is strictly worse than fixing
+    // the half that can be fixed. The exit code still reports the failure.
+    let daemonOk = true;
+    if (subArgs.includes("--no-daemon")) {
+      console.log("Skipped the daemon (--no-daemon). Its version may not match this CLI.");
+    } else {
+      const svc = await import("../src/hooks/daemon-service");
+      if (!svc.isDaemonSupportedPlatform()) {
+        console.log(`failproofaid does not run on ${process.platform}; nothing to update.`);
+      } else {
+        // `refreshDaemonToCliVersion` answers "is there a service at all" itself,
+        // so there is no separate installed check to get out of step with it.
+        const result = await svc.refreshDaemonToCliVersion();
+        for (const line of result.lines) console.log(line);
+        daemonOk = result.ok;
+      }
+    }
+
+    await track("cli_update", {
+      ok: daemonOk && !migrationFailed,
+      migrations: migrationsRan,
+      migration_failed: migrationFailed,
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(daemonOk && !migrationFailed ? 0 : 1);
+    return;
+  }
+
   if (args[0] === "uninstall") {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {
@@ -574,7 +993,9 @@ USAGE
 
 WHAT IT REMOVES
   • failproofai hook entries from every agent CLI that has them
-  • the failproofaid daemon service (needs sudo)
+  • the failproofaid daemon service — ASKED on a plain uninstall (kept unless
+    you say yes); always removed with --purge, which prompts for your password
+    rather than printing commands to paste
   • the "require the daemon" flag — cleared FIRST, so a partial uninstall can
     never leave this machine denying every tool call
 
@@ -636,6 +1057,30 @@ WHY THIS EXISTS
             return answer === true;
           }
         : undefined,
+      // Only on a plain uninstall: `--purge` removes the service unconditionally
+      // because it deletes the binary the service points at. Absent without a TTY,
+      // which the module reads as "keep it".
+      confirmDaemon:
+        process.stdin.isTTY && !purge
+          ? async () => {
+              const { selectOne } = await import("../src/hooks/tui");
+              const answer = await selectOne({
+                message: "Remove the failproofaid background service too?",
+                body: [
+                  "It runs as a system service and needs sudo to remove, so you",
+                  "will be asked for your password.",
+                  "",
+                  "Keeping it is fine if you plan to reinstall — the hooks are",
+                  "already gone either way, so nothing is being enforced.",
+                ],
+                choices: [
+                  { label: "Yes, remove the service", value: true },
+                  { label: "No, leave it installed", value: false },
+                ],
+              });
+              return answer === true;
+            }
+          : undefined,
     });
 
     // The prompt already rendered the plan as its body; re-printing it would
@@ -1115,7 +1560,7 @@ USAGE
 WHAT IT DOES
   Walks you through 4 quick steps and writes everything for you:
     1. Where      — global (all projects) or just this project
-    2. Assistants — which agent CLIs to protect (Claude, Codex, ...)
+    2. Harnesses  — which agent CLIs to protect (Claude, Codex, ...)
     3. Policies   — presets (combine any), Everything, or a custom pick
     4. Review     — confirms the exact files it will change, then applies
 
@@ -1124,7 +1569,14 @@ FAILPROOF CLOUD
                                     Connect this machine to Failproof Cloud
                                     [--no-transcripts] decisions only, no transcripts
   failproofai config --disconnect   Stop pulling policy and sending activity
-  failproofai config --status       Show connection and pause state
+  failproofai config --status       Show connection, daemon and pause state
+  failproofai config --pause [--session <id>]
+                                    Pause enforcement, time-boxed
+  failproofai config --resume [--all]
+                                    Resume enforcement
+
+    --machine-label <name>          Human-readable name in the dashboard
+                                    (use alone to rename an already-connected machine)
 
   One connection, two capabilities: this machine PULLS centrally-managed
   policies and SENDS what its hooks decided, so the dashboard shows the fleet
@@ -1169,7 +1621,13 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
     // sudo, and lets an already-installed daemon be connected.
     const connectIdx = args.indexOf("--connect");
     const wantsDisconnect = args.includes("--disconnect");
-    if (connectIdx >= 0 || wantsDisconnect) {
+    // `--machine-label` ALONE is a rename, not an enrolment. Alongside --connect it
+    // keeps its old meaning (the name to enrol under); on its own it changes the
+    // name of a machine that is already connected, which previously required
+    // re-running enrolment with the url and token again just to fix a display name.
+    const wantsRename =
+      connectIdx < 0 && !wantsDisconnect && args.includes("--machine-label");
+    if (connectIdx >= 0 || wantsDisconnect || wantsRename) {
       if (connectIdx >= 0 && wantsDisconnect) {
         throw new CliError("--connect and --disconnect cannot be combined.");
       }
@@ -1181,7 +1639,10 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
         return v;
       };
       let result;
-      if (wantsDisconnect) {
+      if (wantsRename) {
+        const { runRenameCommand } = await import("../src/hooks/cloud-enrollment-cli");
+        result = await runRenameCommand(valueAfter("--machine-label"));
+      } else if (wantsDisconnect) {
         const { runDisconnectCommand } = await import("../src/hooks/cloud-enrollment-cli");
         result = runDisconnectCommand();
       } else {
@@ -1207,7 +1668,7 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
         else console.error(line);
       }
       await track("cli_cloud_enrollment", {
-        action: wantsDisconnect ? "disconnect" : "connect",
+        action: wantsRename ? "rename" : wantsDisconnect ? "disconnect" : "connect",
         ok: result.exitCode === 0,
       });
       await exitAfterFlush(result.exitCode);

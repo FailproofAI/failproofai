@@ -168,7 +168,7 @@ export function runBackfillCommand(opts: BackfillOptions = {}): BackfillResult {
       exitCode: 1,
       lines: [
         "Collection is switched off, so a backfill would re-read history and send",
-        "none of it. Enable it in ~/.failproofai/config.toml under [collector].",
+        'none of it. Enable it in ~/.failproofai/config.json under "collector".',
       ],
     };
   }

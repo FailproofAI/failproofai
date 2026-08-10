@@ -29,11 +29,14 @@ variable can never re-enable something the config file switched off.
 |----------|-------------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | Disable anonymous usage telemetry for this process |
 
-To disable it permanently for the machine, add this to `~/.failproofai/config.toml`:
+To disable it permanently for the machine, add this to `~/.failproofai/config.json`:
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>

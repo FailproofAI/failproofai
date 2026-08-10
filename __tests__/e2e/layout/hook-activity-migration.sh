@@ -56,7 +56,11 @@ printf '\n\033[1m── cursors kept ──\033[0m\n'
 
 printf '\n\033[1m── and the rest of layout 1 IS gone ──\033[0m\n'
 [ -d "$H/cache/audit" ] && bad "audit cache removed" "still there" || ok "audit cache removed"
-[ -f "$H/policies-config.json" ] && bad "layout-1 policy config removed" "still there" || ok "layout-1 policy config removed"
+# Layout 3 puts the CURRENT policy config back at layout 1's path and CARRIES
+# the user's selection into it, so its presence is the correct outcome — the
+# same reason layout-reset.sh asserts the carry rather than the deletion.
+[ -f "$H/policies-config.json" ] && ok "policy config carried to the layout-3 path" \
+  || bad "policy config carried to the layout-3 path" "missing"
 [ -d "$H/cache/hook-activity" ] && printf '  (legacy dir left in place, now empty — harmless)\n' || true
 
 printf '\n\033[1m── the message tells the user ──\033[0m\n'

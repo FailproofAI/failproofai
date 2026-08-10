@@ -166,13 +166,19 @@ In addition to the explicit `customPoliciesPath`, failproofai automatically disc
 | Level | Directory | Scope |
 |-------|-----------|-------|
 | Project | `.failproofai/policies/` | Shared with team via version control |
-| User | `~/.failproofai/policies/custom-policies/` | Personal, applies to all projects |
+| User | `~/.failproofai/policies/` | Personal, applies to all projects |
 
 <Note>
-  The user-level directory moved down a level in the home-directory
-  reorganisation. Files left at the old `~/.failproofai/policies/` are moved
-  into `custom-policies/` automatically the first time you run any `failproofai`
-  command after upgrading, and the command tells you which files it moved.
+  Drop your policies straight into `~/.failproofai/policies/`. The
+  `cloud-policies/` folder beside them holds policies your organisation deployed
+  to this machine — discovery does not descend into subdirectories, so it is
+  never scanned, and nothing you put in `policies/` can collide with it.
+
+  If you are upgrading from a version that used
+  `~/.failproofai/policies/custom-policies/`, everything in that folder — your
+  policy files, any `lib/` of helpers they import, and any data files they read
+  — is moved back up automatically the first time you run a `failproofai`
+  command, and the command tells you what it moved.
 </Note>
 
 **File matching:** Only files matching `*policies.{js,mjs,ts}` are loaded (e.g. `security-policies.mjs`, `workflow-policies.js`). Other files in the directory are ignored.
@@ -244,6 +250,24 @@ When `--cli` is omitted, `failproofai` detects which agent CLIs are installed (`
 - **None detected** — falls back to `claude`, with a warning that no agent binary was found in PATH; the hook command is still written so it activates as soon as you install one.
 
 You can edit `policies-config.json` directly at any time; changes take effect immediately on the next hook event with no restart needed.
+
+## Upgrades keep your configuration
+
+A new version of failproofai may organise `~/.failproofai/` differently. When it does, the first command after the upgrade migrates the directory, and **your configuration is carried across, not reset**:
+
+| Kept | Rebuilt |
+|---|---|
+| Your policy selection and params (`policies-config.json`) | The audit cache |
+| Your settings, including `daemon.configured` and extra capture paths (`config.json`) | Cloud-managed policy deployments — re-fetched and digest-verified on the next poll |
+| Your cloud enrolment (`credentials.json`) | Daemon scratch state |
+| Your own policy files in `policies/`, and the helpers they import | |
+| The decision log the dashboard reads, and events not yet delivered | |
+
+Keys written by a *newer* failproofai are preserved as well, rather than being dropped by an older reader — so moving between versions does not silently discard settings either direction.
+
+You do **not** need to re-run setup afterwards: a migrated machine enforces exactly as it did before, which is what makes an upgrade safe on machines with nobody sitting at them. Every migration is recorded in `~/.failproofai/migrations/applied.json`, and the irreplaceable files are copied to `~/.failproofai/migrations/backup-layout<n>/` before anything runs.
+
+See [`failproofai update`](/cli/update) for the one-line upgrade, and [`failproofai migrate`](/cli/migrate) — including `--dry-run` — for the details.
 
 ---
 

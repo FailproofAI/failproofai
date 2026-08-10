@@ -140,7 +140,7 @@ fn rewriting_an_already_permissive_credential_file_fixes_its_mode() {
     {
         use std::os::unix::fs::PermissionsExt;
         let home = tmp_home("rewrite");
-        let path = home.join("credentials.toml");
+        let path = home.join("credentials.json");
         fs::write(&path, "{}").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
 
@@ -167,7 +167,7 @@ fn the_endpoint_defaults_to_the_hosted_one_and_round_trips() {
     let home = tmp_home("url");
     // A file with only a key is the common case — the wizard need not write a
     // url when the user accepts the default.
-    fs::write(home.join("credentials.toml"), "[ingest]\nkey = \"abc\"\n").unwrap();
+    fs::write(home.join("credentials.json"), r#"{"ingest":{"key":"abc"}}"#).unwrap();
 
     let cfg = without_env_overrides(|| config::load(&home).unwrap());
     let ingest = cfg.ingest.unwrap();
@@ -176,8 +176,8 @@ fn the_endpoint_defaults_to_the_hosted_one_and_round_trips() {
 
     // A self-hoster replaces the whole endpoint, path included.
     fs::write(
-        home.join("credentials.toml"),
-        "[ingest]\nkey = \"abc\"\nurl = \"http://localhost:8080/events\"\n",
+        home.join("credentials.json"),
+        r#"{"ingest":{"key":"abc","url":"http://localhost:8080/events"}}"#,
     )
     .unwrap();
     let cfg = without_env_overrides(|| config::load(&home).unwrap());
@@ -190,7 +190,7 @@ fn an_empty_key_is_treated_as_unconfigured_rather_than_sent() {
     // Otherwise every request goes out as `Authorization: Bearer ` and the
     // spool fills with 401s that look like a server problem.
     let home = tmp_home("emptykey");
-    fs::write(home.join("credentials.toml"), "[ingest]\nkey = \"   \"\n").unwrap();
+    fs::write(home.join("credentials.json"), r#"{"ingest":{"key":"   "}}"#).unwrap();
     let cfg = without_env_overrides(|| config::load(&home).unwrap());
     assert!(cfg.ingest.is_none());
     assert!(!cfg.is_enabled());
@@ -202,9 +202,10 @@ fn malformed_json_is_an_error_not_a_silent_disable() {
     // Quietly disabling collection because of a stray comma is precisely the
     // silent failure this project exists to remove.
     let home = tmp_home("malformed");
-    // Not valid TOML — a truncated table header. Must be an error, not a
-    // silent disable.
-    fs::write(home.join("credentials.toml"), "[ingest\nkey = \"abc\"\n").unwrap();
+    // Not valid JSON — an unterminated object. Must be an error, not a silent
+    // disable. (This file was TOML through layout 2, so the shape that used to
+    // be tested here was a truncated `[ingest` table header.)
+    fs::write(home.join("credentials.json"), r#"{"ingest":{"key":"abc"}"#).unwrap();
     let err = without_env_overrides(|| config::load(&home)).unwrap_err();
     assert!(
         format!("{err}").contains("not valid JSON"),
@@ -214,12 +215,12 @@ fn malformed_json_is_an_error_not_a_silent_disable() {
 }
 
 #[test]
-fn settings_come_from_the_config_toml_collector_table() {
+fn settings_come_from_the_config_json_collector_object() {
     let home = tmp_home("settings");
-    fs::write(home.join("credentials.toml"), "[ingest]\nkey = \"abc\"\n").unwrap();
+    fs::write(home.join("credentials.json"), r#"{"ingest":{"key":"abc"}}"#).unwrap();
     fs::write(
-        home.join("config.toml"),
-        "[collector]\nsessions = true\nhooks_verbosity = \"all\"\nredact = \"off\"\nenvironment = \"ci\"\n",
+        home.join("config.json"),
+        r#"{"collector":{"sessions":true,"hooks_verbosity":"all","redact":"off","environment":"ci"}}"#,
     )
     .unwrap();
 
@@ -235,10 +236,10 @@ fn settings_come_from_the_config_toml_collector_table() {
 fn a_config_with_no_collector_table_uses_defaults() {
     // Every existing install is this case; it must not error or change.
     let home = tmp_home("nocollector");
-    fs::write(home.join("credentials.toml"), "[ingest]\nkey = \"abc\"\n").unwrap();
-    // A config with no [collector] table at all — every machine that has not
+    fs::write(home.join("credentials.json"), r#"{"ingest":{"key":"abc"}}"#).unwrap();
+    // A config with no `collector` object at all — every machine that has not
     // opted into collection is this case, and it must not error or change.
-    fs::write(home.join("config.toml"), "[mode]\nkind = \"oss\"\n").unwrap();
+    fs::write(home.join("config.json"), r#"{"mode":{"kind":"oss"}}"#).unwrap();
 
     let cfg = without_env_overrides(|| config::load(&home).unwrap());
     assert!(!cfg.settings.sessions);
@@ -253,15 +254,24 @@ fn a_comma_in_environment_is_rejected_rather_than_dropped_downstream() {
     // Accepting it here would mean every event from this machine vanished
     // server-side with nothing on this end to show for it.
     let home = tmp_home("comma");
-    fs::write(home.join("credentials.toml"), "[ingest]\nkey = \"abc\"\n").unwrap();
+    fs::write(home.join("credentials.json"), r#"{"ingest":{"key":"abc"}}"#).unwrap();
     fs::write(
-        home.join("config.toml"),
-        "[collector]\nenvironment = \"local,ci\"\n",
+        home.join("config.json"),
+        r#"{"collector":{"environment":"local,ci"}}"#,
     )
     .unwrap();
 
     let err = without_env_overrides(|| config::load(&home)).unwrap_err();
-    assert!(format!("{err}").contains("comma"), "got: {err}");
+    // Asserted against the MESSAGE, not just the word: `tmp_home("comma")` puts
+    // "comma" in the path, and the path is part of every error's Display — so a
+    // bare `.contains("comma")` passed even when the file failed to parse for a
+    // completely unrelated reason, which is exactly what it did while this file
+    // still held TOML bodies under .json names.
+    let text = format!("{err}");
+    assert!(
+        text.contains("environment") && text.contains("comma"),
+        "expected the comma rejection, got: {text}"
+    );
     fs::remove_dir_all(&home).ok();
 }
 

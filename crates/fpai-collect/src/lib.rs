@@ -14,6 +14,7 @@
 pub mod config;
 pub mod cursor;
 pub mod delivery;
+pub mod extra_paths;
 pub mod filetail;
 pub mod health;
 pub mod redact;
@@ -21,10 +22,15 @@ pub mod sources;
 pub mod spool;
 pub mod sqlitepoll;
 pub mod supervisor;
+#[cfg(test)]
+mod test_env;
 pub mod uploader;
 
-pub use config::{CollectorConfig, DEFAULT_INGEST_URL, HooksVerbosity, Ingest, Redact, Settings};
+pub use config::{
+    CollectorConfig, DEFAULT_INGEST_URL, HooksVerbosity, Ingest, Redact, Settings, SourceSettings,
+};
 pub use delivery::Delivery;
+pub use extra_paths::{ExtraPath, Resolved as ResolvedExtraPaths};
 pub use health::{Health, HealthFile, SourceHealth, health_path};
 pub use spool::SpoolWriter;
 pub use supervisor::{

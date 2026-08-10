@@ -76,11 +76,20 @@ async function sendRequest(socketPath: string, request: unknown): Promise<Record
 
 describe("hooks/worker-server (real socket, real evaluation)", () => {
   let projectDir: string;
+  let homeDir: string;
   let workerSocketPath: string;
   let server: import("node:net").Server;
 
   beforeEach(async () => {
     projectDir = mkdtempSync(join(tmpdir(), "fpai-worker-server-test-"));
+    // ISOLATE THE HOME. This suite drives the real hook path, which calls
+    // `persistHookActivity()` — and without this it wrote every test decision
+    // into the DEVELOPER'S OWN `~/.failproofai/hook-activity` and re-counted
+    // their `stats.json`. Found because a user asked why their activity had grown
+    // after an upgrade when they had triggered no hooks; the records were theirs
+    // to see, with `cwd` values like `/tmp/fpai-worker-server-test-…`.
+    homeDir = mkdtempSync(join(tmpdir(), "fpai-worker-server-home-"));
+    process.env.FAILPROOFAI_HOME = homeDir;
     mkdirSync(join(projectDir, ".failproofai"), { recursive: true });
     writeFileSync(
       join(projectDir, ".failproofai", "policies-config.json"),
@@ -101,7 +110,9 @@ describe("hooks/worker-server (real socket, real evaluation)", () => {
     delete process.env.FAILPROOFAI_CLOUD_POLICY_DIR;
     delete process.env.FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS;
     delete (globalThis as Record<string, unknown>).__fpaiRepeatLoadCount;
+    delete process.env.FAILPROOFAI_HOME;
     rmSync(projectDir, { recursive: true, force: true });
+    rmSync(homeDir, { recursive: true, force: true });
   });
 
   it("denies a sudo command via the real, unmodified builtin policy engine", async () => {
@@ -244,7 +255,7 @@ customPolicies.add({
 
   it("loads a hash-verified active cloud policy with a cloud-qualified identity", async () => {
     const managedRoot = join(projectDir, "cloud-managed");
-    const generationDir = join(managedRoot, "generations", "42");
+    const generationDir = join(managedRoot, "deployments", "42");
     mkdirSync(generationDir, { recursive: true });
     const policyPath = join(generationDir, "org-guard.mjs");
     const policyBytes = `import { customPolicies, deny } from "failproofai";
@@ -260,13 +271,13 @@ customPolicies.add({
       join(managedRoot, "active.json"),
       JSON.stringify({
         schemaVersion: 1,
-        generation: 42,
+        deployment: 42,
         policies: [
           {
             id: "org-guard",
-            revision: 8,
+            version: 8,
             sha256,
-            path: "generations/42/org-guard.mjs",
+            path: "deployments/42/org-guard.mjs",
           },
         ],
       }),

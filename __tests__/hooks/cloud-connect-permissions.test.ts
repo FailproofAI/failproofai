@@ -49,7 +49,7 @@ function probes() {
     ran,
     verifyPolicy: async () => {
       ran.policy = true;
-      return { ok: true as const, policyCount: 3, generation: 7 };
+      return { ok: true as const, policyCount: 3, deployment: 7 };
     },
     verifyIngest: async () => {
       ran.ingest = true;
@@ -126,14 +126,16 @@ describe("a key missing policies:pull", () => {
     expect(readCloudCredentials()).toBeNull();
   });
 
-  it("records the org even though [cloud] was never written", async () => {
+  it("records the org even though the cloud object was never written", async () => {
     // The case a per-table org field would have silently lost: an events-only
     // key configures ingest and nothing else, and `--status` must still be able
     // to say where this machine's data goes.
     await connect(withPermissions("events:add"));
 
     expect(readCredentials().org?.slug).toBe("acme");
-    expect(readFileSync(credentialsFile(), "utf8")).toContain("[org]");
+    expect(JSON.parse(readFileSync(credentialsFile(), "utf8")).org).toMatchObject({
+      slug: "acme",
+    });
   });
 });
 

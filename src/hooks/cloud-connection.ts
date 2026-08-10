@@ -137,7 +137,7 @@ export interface CapabilityOutcome {
 }
 
 export interface ConnectOutcome {
-  policy: CapabilityOutcome & { policyCount?: number; generation?: number };
+  policy: CapabilityOutcome & { policyCount?: number; deployment?: number };
   ingest: CapabilityOutcome;
   /** Which organisation the key belongs to. Absent on a pre-introspect server. */
   org?: { id?: string; slug?: string; name?: string };
@@ -232,7 +232,7 @@ export async function connectToCloud(input: ConnectInput): Promise<ConnectOutcom
 
   const outcome: ConnectOutcome = {
     policy: policyResult.ok
-      ? { ok: true, policyCount: policyResult.policyCount, generation: policyResult.generation }
+      ? { ok: true, policyCount: policyResult.policyCount, deployment: policyResult.deployment }
       : { ok: false, reason: policyResult.reason },
     ingest: ingestResult.ok ? { ok: true } : { ok: false, reason: ingestResult.reason },
     anyConfigured: false,
@@ -309,7 +309,7 @@ export function describeOutcome(outcome: ConnectOutcome, machineId: string, url:
   if (outcome.policy.ok && outcome.ingest.ok) {
     lines.push(`Connected to ${url} as ${machineId}${into}.`);
     const n = outcome.policy.policyCount ?? 0;
-    lines.push(`  Policy    ${n} polic${n === 1 ? "y" : "ies"} assigned (generation ${outcome.policy.generation ?? 0}).`);
+    lines.push(`  Policy    ${n} polic${n === 1 ? "y" : "ies"} assigned (deployment ${outcome.policy.deployment ?? 0}).`);
     lines.push(`  Dashboard hook activity will be sent to ${ingestUrlFor(url)}.`);
     return lines;
   }
@@ -317,7 +317,7 @@ export function describeOutcome(outcome: ConnectOutcome, machineId: string, url:
   if (outcome.policy.ok && !outcome.ingest.ok) {
     const n = outcome.policy.policyCount ?? 0;
     lines.push(`Connected to ${url} as ${machineId}${into}, for policy only.`);
-    lines.push(`  Policy    ${n} polic${n === 1 ? "y" : "ies"} assigned (generation ${outcome.policy.generation ?? 0}).`);
+    lines.push(`  Policy    ${n} polic${n === 1 ? "y" : "ies"} assigned (deployment ${outcome.policy.deployment ?? 0}).`);
     lines.push(`  Dashboard NOT configured: ${outcome.ingest.reason}`);
     lines.push("");
     lines.push("  Enforcement works. Nothing will appear in the dashboard until this");

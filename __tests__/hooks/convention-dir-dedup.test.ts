@@ -64,4 +64,23 @@ describe("convention discovery deduplicates overlapping directories", () => {
     const entries = result.conventionSources.filter((s) => s.file === "probe-policies.mjs");
     expect(entries).toHaveLength(1);
   });
+
+  it("reports it under USER scope, so the policy id does not depend on cwd", async () => {
+    // Deduplication picks one list to load; which SCOPE it is tagged with is a
+    // separate question, and the answer has to be the same wherever the agent
+    // was launched from. `__policyId` is what a recorded disable is keyed on, so
+    // tagging this `project` here and `user` from any other directory means a
+    // policy switched off stays off — until the user happens to work out of
+    // their home directory, where it silently starts firing again.
+    //
+    // Layout 3 is what made this reachable: it collapsed `customPoliciesDir()`
+    // onto `policiesDir()`, so `<cwd>/.failproofai/policies` and the user
+    // directory can now be the same path. Under layout 2 the user directory was
+    // nested a level deeper and they never coincided.
+    const result = await loadAllCustomHooks(undefined, { sessionCwd: home });
+
+    expect(result.conventionSources[0]?.scope).toBe("user");
+    const tagged = result.hooks[0] as { __policyId?: string };
+    expect(tagged.__policyId).toBe("convention:user:probe-policies.mjs:dedup-probe");
+  });
 });

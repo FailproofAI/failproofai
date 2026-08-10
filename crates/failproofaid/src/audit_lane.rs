@@ -87,39 +87,32 @@ const SCHEMA: u32 = 1;
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
-/// The `[audit]` table of `config.toml`, resolved.
+/// The `[audit]` table of `config.json`, resolved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct AuditConfig {
     auto: bool,
     interval: Duration,
 }
 
-/// Read `[audit]` out of `config.toml`.
+/// Read `[audit]` out of `config.json`.
 ///
-/// Every failure — absent file, unparseable TOML, an `[audit]` table of the
+/// Every failure — absent file, unparseable JSON, an `[audit]` table of the
 /// wrong shape — resolves to OFF rather than to an error or a default-on. The
 /// asymmetry with [`crate::cloud_client`], which treats a malformed credential
 /// as an error worth surfacing, is deliberate: this switch guards a scan that
 /// reads the CONTENTS of every session transcript on disk, so the only safe
 /// reading of "we could not tell" is "do not scan". The collector already
-/// reports a malformed `config.toml` loudly on the same startup path, so nothing
+/// reports a malformed `config.json` loudly on the same startup path, so nothing
 /// is hidden by staying quiet here.
 fn load_config(home: &Path) -> AuditConfig {
     let off = AuditConfig {
         auto: false,
         interval: Duration::from_secs(DEFAULT_INTERVAL_DAYS * 86_400),
     };
-    let Ok(text) = std::fs::read_to_string(home.join("config.toml")) else {
+    let Ok(text) = std::fs::read_to_string(home.join("config.json")) else {
         return off;
     };
-    // `toml::from_str`, NOT `text.parse::<toml::Value>()`: `FromStr for Value`
-    // parses a single VALUE, so it rejects a whole document at the first table
-    // header ("unexpected content, expected nothing"). It compiles, it never
-    // errors visibly, and it makes every `[audit]` table on every machine read
-    // as absent — i.e. the feature would ship permanently off with no symptom.
-    // The rest of the codebase reads this file the same way (see
-    // `fpai_collect::config::load_settings`).
-    let Ok(root) = toml::from_str::<toml::Value>(&text) else {
+    let Ok(root) = serde_json::from_str::<serde_json::Value>(&text) else {
         return off;
     };
     let Some(audit) = root.get("audit") else {
@@ -130,7 +123,7 @@ fn load_config(home: &Path) -> AuditConfig {
         // matching `readConfig` in fp-config.ts — the failure direction that
         // matters is a machine that starts reading every transcript it can find
         // on a timer nobody set.
-        auto: audit.get("auto") == Some(&toml::Value::Boolean(true)),
+        auto: audit.get("auto") == Some(&serde_json::Value::Bool(true)),
         interval: Duration::from_secs(read_interval_days(audit.get("interval_days")) * 86_400),
     }
 }
@@ -144,10 +137,9 @@ fn load_config(home: &Path) -> AuditConfig {
 /// to get that wrong. A too-large value is clamped DOWN to 90 instead, which is
 /// the conservative direction there — falling back to 7 would scan an order of
 /// magnitude more often than was asked for.
-fn read_interval_days(raw: Option<&toml::Value>) -> u64 {
-    let days = match raw {
-        Some(toml::Value::Integer(n)) => *n as f64,
-        Some(toml::Value::Float(f)) if f.is_finite() => *f,
+fn read_interval_days(raw: Option<&serde_json::Value>) -> u64 {
+    let days = match raw.and_then(serde_json::Value::as_f64) {
+        Some(n) if n.is_finite() => n,
         _ => return DEFAULT_INTERVAL_DAYS,
     };
     let days = days.floor();
@@ -373,7 +365,7 @@ struct Lane {
 /// every tool call on the machine.
 ///
 /// The thread starts even when `auto = false`, which is the default and the
-/// common case. It re-reads `config.toml` every tick for the same reason the
+/// common case. It re-reads `config.json` every tick for the same reason the
 /// collector manager and the cloud lane do: `failproofai config` writes that
 /// file without root while this is a SYSTEM unit, so resolving once at startup
 /// would put `sudo systemctl restart` back into the flow that was built to avoid
@@ -763,15 +755,15 @@ mod tests {
     fn auto_is_off_unless_the_table_says_exactly_true() {
         let dir = scratch("auto");
         for (body, expected) in [
-            ("[audit]\nauto = true\n", true),
-            ("[audit]\nauto = false\n", false),
-            ("[audit]\nauto = \"true\"\n", false),
-            ("[audit]\nauto = 1\n", false),
-            ("[audit]\n", false),
-            ("[collector]\nhooks = true\n", false),
+            (r#"{"audit":{"auto":true}}"#, true),
+            (r#"{"audit":{"auto":false}}"#, false),
+            (r#"{"audit":{"auto":"true"}}"#, false),
+            (r#"{"audit":{"auto":1}}"#, false),
+            (r#"{"audit":{}}"#, false),
+            (r#"{"collector":{"hooks":true}}"#, false),
             ("", false),
         ] {
-            std::fs::write(dir.join("config.toml"), body).unwrap();
+            std::fs::write(dir.join("config.json"), body).unwrap();
             assert_eq!(load_config(&dir).auto, expected, "for config: {body:?}");
         }
         std::fs::remove_dir_all(&dir).ok();
@@ -781,9 +773,9 @@ mod tests {
     fn an_absent_or_unparseable_config_reads_as_off() {
         // "We could not tell" must never mean "scan every transcript on disk".
         let dir = scratch("bad-config");
-        assert!(!load_config(&dir).auto, "no config.toml at all");
-        std::fs::write(dir.join("config.toml"), "[audit\nauto = true").unwrap();
-        assert!(!load_config(&dir).auto, "unparseable TOML");
+        assert!(!load_config(&dir).auto, "no config.json at all");
+        std::fs::write(dir.join("config.json"), "{ not json").unwrap();
+        assert!(!load_config(&dir).auto, "unparseable JSON");
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -792,20 +784,20 @@ mod tests {
         // Two readers of one file. A disagreement here is a machine scanning on
         // a cadence nobody chose, which nothing reports.
         for (raw, expected_days) in [
-            (Some(toml::Value::Integer(3)), 3_u64),
-            (Some(toml::Value::Integer(1)), 1),
-            (Some(toml::Value::Integer(90)), 90),
+            (Some(serde_json::json!(3)), 3_u64),
+            (Some(serde_json::json!(1)), 1),
+            (Some(serde_json::json!(90)), 90),
             // Clamped DOWN, because scanning less often than asked is the
             // conservative direction.
-            (Some(toml::Value::Integer(3650)), 90),
+            (Some(serde_json::json!(3650)), 90),
             // 0 almost certainly means "off", which has its own switch — reading
             // it as a DAILY full scan is the loudest possible misreading.
-            (Some(toml::Value::Integer(0)), DEFAULT_INTERVAL_DAYS),
-            (Some(toml::Value::Integer(-5)), DEFAULT_INTERVAL_DAYS),
-            (Some(toml::Value::Float(0.5)), DEFAULT_INTERVAL_DAYS),
-            (Some(toml::Value::Float(7.9)), 7),
-            (Some(toml::Value::Float(1e30)), 90),
-            (Some(toml::Value::String("7".into())), DEFAULT_INTERVAL_DAYS),
+            (Some(serde_json::json!(0)), DEFAULT_INTERVAL_DAYS),
+            (Some(serde_json::json!(-5)), DEFAULT_INTERVAL_DAYS),
+            (Some(serde_json::json!(0.5)), DEFAULT_INTERVAL_DAYS),
+            (Some(serde_json::json!(7.9)), 7),
+            (Some(serde_json::json!(1e30)), 90),
+            (Some(serde_json::json!("7")), DEFAULT_INTERVAL_DAYS),
             (None, DEFAULT_INTERVAL_DAYS),
         ] {
             assert_eq!(

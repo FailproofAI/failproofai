@@ -12,7 +12,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { BUILTIN_POLICIES } from "../hooks/builtin-policies";
 import { AUDIT_DETECTORS } from "./detectors";
 import type { TranscriptAuditResult } from "./types";

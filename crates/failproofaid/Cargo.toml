@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license-file.workspace = true
 repository.workspace = true
-description = "Thin Rust supervisor: owns the failproofai IPC socket, service lifecycle, and warm worker process supervision. Carries no policy logic."
+description = "FailproofAI background service for hook evaluation, policy synchronization, collection, scheduled audits, and telemetry."
 publish = false
 
 [[bin]]
@@ -23,7 +23,6 @@ serde_json = "1"
 # Layout 2 keeps the cloud credential in credentials.toml's [cloud] table, so
 # the daemon has to read TOML to find its own enrolment. Already in the tree via
 # fpai-collect, which parses the same file's [ingest] table.
-toml = "1.1.4"
 libc = "0.2"
 sha2 = "0.11"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }

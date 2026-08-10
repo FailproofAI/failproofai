@@ -55,20 +55,26 @@ pub fn worker_socket_path() -> io::Result<PathBuf> {
     Ok(run_dir()?.join("worker.sock"))
 }
 
-/// `~/.failproofai/policies/cloud-policies` — where pulled generations land.
+/// `~/.failproofai/policies/cloud-policies` — where pulled deployments land.
 /// The override keeps tests and development runs away from a user's real
 /// policy directory.
 ///
 /// The directory name is `cloud-policies`, matching `fp-home.ts`'s
 /// `cloudPoliciesDir`, which is what the hook path actually reads. Layout 2
 /// renamed it from `cloud-managed` and this function kept writing the old
-/// name — so the daemon downloaded every generation, verified it, wrote it to
+/// name — so the daemon downloaded every deployment, verified it, wrote it to
 /// disk, and the CLI read an empty directory and enforced nothing. Both halves
 /// looked healthy; only the combination was broken.
 pub fn cloud_managed_policy_dir() -> io::Result<PathBuf> {
     if let Some(path) = std::env::var_os("FAILPROOFAI_CLOUD_POLICY_DIR") {
         return Ok(PathBuf::from(path));
     }
+    // A CHILD of `policies/` — every policy on the machine lives under one
+    // directory, whoever put it there. Safe because the CLI's convention loader
+    // does not recurse (`discoverPolicyFiles` filters `isFile()`), so these
+    // artifacts are never picked up as unverified convention policies. Mirrors
+    // `cloudPoliciesDir()` in fp-home.ts, and the cross-language test at the
+    // bottom of this file executes that module to prove the two agree.
     Ok(failproofai_home()?.join("policies").join("cloud-policies"))
 }
 
@@ -123,6 +129,15 @@ pub fn backfill_request_path() -> io::Result<PathBuf> {
         .join("backfill-request.json"))
 }
 
+/// Where `failproofai flush` leaves its request. Same hand-off shape as the
+/// backfill request: the CLI cannot deliver spooled batches itself (the
+/// uploader's concurrency limiter and in-flight set live in the running
+/// daemon, and a second uploader would POST the same files twice), so it
+/// writes a request the daemon drains on its next tick.
+pub fn flush_request_path() -> io::Result<PathBuf> {
+    Ok(failproofai_home()?.join("state").join("flush-request.json"))
+}
+
 pub fn audit_schedule_path() -> io::Result<PathBuf> {
     Ok(failproofai_home()?
         .join("state")
@@ -168,6 +183,49 @@ pub fn failproofai_home() -> io::Result<PathBuf> {
     Ok(PathBuf::from(home).join(".failproofai"))
 }
 
+/// The on-disk layout this binary speaks. Mirrors `LAYOUT_VERSION` in
+/// `src/hooks/fp-home.ts`, and the parity test below asserts the two agree —
+/// every path in this file is only correct for one layout, so a mismatch here is
+/// a daemon reading and writing somewhere nothing else looks.
+pub const LAYOUT_VERSION: u32 = 3;
+
+/// `~/.failproofai/VERSION` — the layout marker the CLI stamps.
+pub fn version_file_path(home: &std::path::Path) -> PathBuf {
+    home.join("VERSION")
+}
+
+/// The layout the home on disk was written by, if it says.
+///
+/// `None` covers absent, unreadable and unparseable alike. The caller treats that
+/// as "run" rather than "refuse", because a fresh home has no marker until the
+/// first CLI command stamps one, and a daemon that refused to start on a machine
+/// where failproofai had only just been installed would fail the install.
+///
+/// Only the layout number is read. The file also carries `cli` and `daemon`
+/// versions, and this deliberately does not compare them: a CLI newer than its
+/// daemon is an ordinary state between an `npm i -g` and the next
+/// `failproofai update`, already reported by `daemonVersionSkew()` on the CLI
+/// side, and refusing to start over it would take a working machine down for a
+/// condition that resolves itself.
+pub fn read_layout(home: &std::path::Path) -> Option<u32> {
+    let text = fs::read_to_string(version_file_path(home)).ok()?;
+    // Layout 2 wrote this file as TOML and layout 3 writes JSON, so both shapes
+    // are read for the same reason `readLegacyTomlVersion` exists on the CLI
+    // side: guessing wrong here means refusing to start on a home that is merely
+    // OLD, which is the one case the CLI is about to fix by migrating it.
+    if let Some(value) = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|v| v.get("layout").and_then(serde_json::Value::as_u64))
+    {
+        return u32::try_from(value).ok();
+    }
+    text.lines()
+        .map(str::trim)
+        .find_map(|line| line.strip_prefix("layout"))
+        .and_then(|rest| rest.trim_start().strip_prefix('='))
+        .and_then(|rest| rest.trim().parse::<u32>().ok())
+}
+
 /// Creates the run directory (`0700`) if it doesn't exist yet. This
 /// directory holds a socket that evaluates security-relevant decisions, so
 /// a freshly created one is always locked to owner-only.
@@ -204,16 +262,60 @@ pub fn ensure_run_dir() -> io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
 
-    // std::env::set_var affects the whole process, so these tests must not
-    // run concurrently with each other or with other tests reading these
-    // vars.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    // std::env::set_var affects the whole process, so these tests must not run
+    // concurrently with each other OR with any other module's env tests — which
+    // is why the lock is crate-wide rather than declared here. See test_env.rs.
+    use crate::test_env::lock_env;
+
+    /// A throwaway home holding one `VERSION` file with the given body.
+    fn home_with_version(label: &str, body: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "failproofaid-layout-{label}-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(version_file_path(&dir), body).unwrap();
+        dir
+    }
+
+    #[test]
+    fn read_layout_reads_the_json_marker_layout_3_writes() {
+        let home = home_with_version("json", "{\n  \"layout\": 3,\n  \"cli\": \"1.0.0\"\n}\n");
+        assert_eq!(read_layout(&home), Some(3));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn read_layout_reads_the_toml_marker_layout_2_wrote() {
+        // Refusing to start on a home that is merely OLD is the one case the CLI
+        // is about to fix by migrating it, so the older format has to parse — the
+        // same reason `readLegacyTomlVersion` exists on the CLI side.
+        let home = home_with_version("toml", "layout = 2\ncli = \"1.0.0-beta.5\"\n");
+        assert_eq!(read_layout(&home), Some(2));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn read_layout_is_none_for_absent_or_unreadable_markers() {
+        // None means "start anyway": a fresh home has no marker until the first
+        // CLI command stamps one, and refusing there would break the install.
+        let missing = std::env::temp_dir().join(format!(
+            "failproofaid-layout-missing-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&missing);
+        assert_eq!(read_layout(&missing), None);
+
+        let garbage = home_with_version("garbage", "this is not a marker at all\n");
+        assert_eq!(read_layout(&garbage), None);
+        let _ = fs::remove_dir_all(&garbage);
+    }
 
     #[test]
     fn socket_override_takes_precedence_over_home() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         unsafe {
             std::env::set_var("FAILPROOFAI_DAEMON_SOCKET", "/tmp/example/daemon.sock");
         }
@@ -229,7 +331,7 @@ mod tests {
 
     #[test]
     fn default_socket_path_lives_under_home_dot_failproofai_run() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         unsafe {
             std::env::remove_var("FAILPROOFAI_DAEMON_SOCKET");
             std::env::remove_var("FAILPROOFAI_HOME");
@@ -249,7 +351,7 @@ mod tests {
         // A daemon-configured machine fails closed when it cannot reach the
         // daemon — so a HEALTHY daemon denied every tool call across all 11
         // CLIs, and the only symptom was the generic "could not be reached".
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         unsafe {
             std::env::remove_var("FAILPROOFAI_DAEMON_SOCKET");
             std::env::set_var("HOME", "/home/example-user");
@@ -276,16 +378,19 @@ mod tests {
     fn pulled_policies_land_where_the_cli_reads_them() {
         // `fp-home.ts`: `cloudPoliciesDir = policies/cloud-policies`. This
         // wrote layout 1's `policies/cloud-managed`, so the daemon downloaded
-        // every generation, verified its hashes, wrote it to disk — and the CLI
+        // every deployment, verified its hashes, wrote it to disk — and the CLI
         // read an empty directory and enforced nothing. Both halves logged
         // success; only the combination was broken.
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         unsafe {
             std::env::remove_var("FAILPROOFAI_CLOUD_POLICY_DIR");
             std::env::set_var("FAILPROOFAI_HOME", "/tmp/alt-home");
         }
         assert_eq!(
             cloud_managed_policy_dir().unwrap(),
+            // A CHILD of `policies/`: one directory holds every policy on the
+            // machine. The CLI's convention loader does not recurse, so these
+            // never load as unverified drop-in policies.
             PathBuf::from("/tmp/alt-home/policies/cloud-policies")
         );
         unsafe {
@@ -304,7 +409,7 @@ mod tests {
         // all three bugs above: some paths read `$HOME/.failproofai` and the
         // rest read FAILPROOFAI_HOME, so the daemon silently split itself
         // across two directories.
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         unsafe {
             std::env::remove_var("FAILPROOFAI_DAEMON_SOCKET");
             std::env::remove_var("FAILPROOFAI_CLOUD_POLICY_DIR");
@@ -330,7 +435,7 @@ mod tests {
 
     #[test]
     fn ensure_run_dir_creates_it_with_owner_only_permissions() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         let tmp =
             std::env::temp_dir().join(format!("failproofaid-paths-test-{}", std::process::id()));
         unsafe {
@@ -350,7 +455,7 @@ mod tests {
 
     #[test]
     fn ensure_run_dir_refuses_to_touch_a_preexisting_directory_with_the_wrong_permissions() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
         let tmp = std::env::temp_dir().join(format!(
             "failproofaid-paths-test-preexisting-{}",
             std::process::id()
@@ -430,7 +535,7 @@ mod tests {
     /// were live bugs at once: `run_dir` read `$HOME` while the CLI honoured
     /// `FAILPROOFAI_HOME` (so a healthy daemon denied every tool call on a
     /// fail-closed machine), `cloud_managed_policy_dir` still wrote layout 1's
-    /// `cloud-managed` (so every verified generation landed in a directory
+    /// `cloud-managed` (so every verified deployment landed in a directory
     /// nothing opened), and the credential moved to `credentials.toml` on one
     /// side only (so `--connect` wrote a token the daemon never read). Each was
     /// fixed by hand; nothing stopped the next one, and BOTH files cited a test
@@ -444,7 +549,7 @@ mod tests {
     /// pins Rust against Rust.
     #[test]
     fn every_mirrored_path_agrees_with_fp_home_ts() {
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = lock_env();
 
         let home =
             std::env::temp_dir().join(format!("failproofaid-layout-parity-{}", std::process::id()));
@@ -472,7 +577,7 @@ mod tests {
         // Ask the TypeScript module itself, in a child process that sees the
         // same FAILPROOFAI_HOME.
         let script = format!(
-            "const m = await import({:?}); console.log(JSON.stringify({{{}}}));",
+            "const m = await import({:?}); console.log(JSON.stringify({{__layout: m.LAYOUT_VERSION, {}}}));",
             fp_home_ts.to_string_lossy(),
             rows.iter()
                 .map(|(name, _, ts_expr)| format!("{name:?}: m.{ts_expr}"))
@@ -496,6 +601,19 @@ mod tests {
         );
         let ts: serde_json::Value =
             serde_json::from_slice(&out.stdout).expect("fp-home.ts must print one JSON object");
+
+        // The constant, checked in the same breath as the paths it governs. Every
+        // path below is correct for exactly ONE layout, so these two numbers
+        // disagreeing means the daemon now refuses to start against a home the CLI
+        // considers current — or, worse before this was asserted, reads and writes
+        // paths that moved.
+        assert_eq!(
+            u64::from(LAYOUT_VERSION),
+            ts.get("__layout")
+                .and_then(serde_json::Value::as_u64)
+                .expect("fp-home.ts must export LAYOUT_VERSION"),
+            "paths.rs::LAYOUT_VERSION and fp-home.ts's LAYOUT_VERSION disagree"
+        );
 
         for (name, rust_value, ts_expr) in &rows {
             let ts_value = ts

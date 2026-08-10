@@ -504,6 +504,7 @@ fn spec(root: PathBuf, spool: PathBuf, state: PathBuf) -> Spec {
         spool_dir: spool,
         state_dir: state,
         poll_interval: Duration::from_millis(200),
+        health_key: None,
         params: Params {
             redact: fpai_collect::Redact::Minimal,
             agent_id: claude::DEFAULT_AGENT_ID.into(),
@@ -514,6 +515,7 @@ fn spec(root: PathBuf, spool: PathBuf, state: PathBuf) -> Spec {
             max_read_bytes: 8 * 1024 * 1024,
             max_batch_bytes: 8 * 1024 * 1024,
             since_days: None,
+            label: None,
         },
     }
 }
@@ -742,12 +744,12 @@ fn claude_declares_itself_byte_tailable() {
     assert_eq!(claude::FORMAT.reread, RereadPolicy::ByteCursor);
 }
 
-/// `[collector] redact` has to reach a real source, not just parse.
+/// `collector.redact` has to reach a real source, not just parse.
 ///
 /// It parsed correctly and reached nothing: no source carried the field, so
 /// `SpoolWriter::with_redact` had exactly two references — its own definition
 /// and its own unit test — and every real writer kept the hardcoded
-/// `Redact::Minimal`. Setting `redact = "off"` in `config.toml` had no
+/// `Redact::Minimal`. Setting `redact = "off"` in `config.json` had no
 /// observable effect anywhere, which is worse than not offering the setting.
 ///
 /// Asserted through a real filetail run rather than against `SpoolWriter`

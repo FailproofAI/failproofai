@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -68,13 +68,21 @@ describe("hooks/hook-activity-store", () => {
       expect(getHookActivityPage(2)).toHaveLength(PAGE_SIZE);
     });
 
+    // 80 entries, each a full synchronous round trip: acquire the advisory lock,
+    // read the count, sometimes rotate, append, rewrite the count, rewrite the
+    // stats file through a temp + rename, release the lock. That is well over
+    // five hundred filesystem operations, and vitest's 5s default is sized for
+    // in-memory tests — under a loaded machine running 191 files in parallel it
+    // is not enough, and this timed out at 20s while passing in 24ms on its own.
+    // The timeout is raised rather than the work reduced, because the number of
+    // rotations IS what the test is for.
     it("rotates multiple times", () => {
       for (let i = 0; i < PAGE_SIZE * 3 + 5; i++) {
         persistHookActivity(makeEntry({ timestamp: 1000 + i }));
       }
       expect(getHookActivityPageCount()).toBe(4);
       expect(getHookActivityPage(1)).toHaveLength(5);
-    });
+    }, 30_000);
   });
 
   describe("getHookActivityPage", () => {
@@ -106,6 +114,56 @@ describe("hooks/hook-activity-store", () => {
       expect(all).toHaveLength(PAGE_SIZE + 5);
       // First entry should be the newest
       expect(all[0].timestamp).toBe(1000 + PAGE_SIZE + 4);
+    });
+  });
+
+  describe("pre-rename cloud attribution", () => {
+    // These pages are written by the DAEMON, so a machine that was cloud-connected
+    // before `cloudRevision`→`cloudVersion` / `cloudGeneration`→`cloudDeployment`
+    // has real rows on disk naming the old keys. Nothing validates the shape here —
+    // a line is `JSON.parse`d and cast — so those rows do not error, they simply
+    // carry keys nothing reads, and every pre-upgrade cloud-decided decision
+    // renders as unattributed. Which is the one question these fields exist to
+    // answer: "how much is my org's policy actually doing".
+    it("reads cloudRevision/cloudGeneration written before the rename", () => {
+      // Written as raw JSONL, because that is how the old daemon wrote it — going
+      // through `persistHookActivity` would emit today's spelling and test nothing.
+      // `testDir` — the store dir this suite overrides via `_resetForTest`.
+      const page = join(testDir, "page-1700000000-0.jsonl");
+      writeFileSync(
+        page,
+        JSON.stringify({
+          timestamp: 1700000000,
+          eventType: "PreToolUse",
+          decision: "deny",
+          policySource: "cloud",
+          cloudPolicyId: "block-curl",
+          cloudRevision: 3,
+          cloudGeneration: 9,
+        }) + "\n",
+      );
+
+      const all = getAllHookActivityEntries();
+      const row = all.find((e) => e.cloudPolicyId === "block-curl");
+
+      expect(row?.cloudVersion).toBe(3);
+      expect(row?.cloudDeployment).toBe(9);
+    });
+
+    it("prefers the current spelling when both somehow appear", () => {
+      const page = join(testDir, "page-1700000001-0.jsonl");
+      writeFileSync(
+        page,
+        JSON.stringify({
+          timestamp: 1700000001,
+          cloudPolicyId: "both",
+          cloudVersion: 5,
+          cloudRevision: 3,
+        }) + "\n",
+      );
+
+      const row = getAllHookActivityEntries().find((e) => e.cloudPolicyId === "both");
+      expect(row?.cloudVersion).toBe(5);
     });
   });
 

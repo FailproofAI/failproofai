@@ -5,7 +5,7 @@
  * End users never run this. They install `npx -y failproofai --hook <Event>`
  * (see `src/hooks/integrations.ts`), which resolves the published package.
  * This file exists because this repo dogfoods itself from source, and doing so
- * has two prerequisites that silently rot:
+ * has three prerequisites that silently rot:
  *
  *   1. `bun` on the hook's PATH. `bin/failproofai.mjs` cannot run under node —
  *      it does a bare `import { version } from "../package.json"` (node needs
@@ -17,13 +17,17 @@
  *      When that happens every hook exits 127 and the session runs with ZERO
  *      policy enforcement — silently.
  *
- *   2. `dist/index.js`. The committed policies in `.failproofai/policies/`
+ *   2. Project dependencies. A fresh checkout has no `node_modules`, so the
+ *      source binary cannot import its runtime dependencies. The launcher
+ *      runs the lockfile-pinned install once before attempting enforcement.
+ *
+ *   3. `dist/index.js`. The committed policies in `.failproofai/policies/`
  *      `import from 'failproofai'`, which `findDistIndex()` resolves to that
  *      bundle. Without it all three fail-open and only builtins enforce.
  *
- * So: locate bun (installing it via npm if we must), make sure the bundle
- * exists, then hand off to the real binary. If we cannot enforce, say so in
- * one line rather than failing silently.
+ * So: locate bun (installing it via npm if we must), install this checkout's
+ * dependencies, make sure the bundle exists, then hand off to the real binary.
+ * If we cannot enforce, say so in one line rather than failing silently.
  *
  * INVARIANT — never write to stdout. Most CLIs' deny contracts are JSON on
  * stdout (Copilot `{decision:"block"}`, Cursor `{followup_message}`, Devin,
@@ -43,6 +47,11 @@ const SRC_BIN = resolve(REPO_ROOT, "bin", "failproofai.mjs");
 const BUNDLE = resolve(REPO_ROOT, "dist", "index.js");
 const CACHE_DIR = resolve(REPO_ROOT, "node_modules", ".cache", "failproofai-dev");
 const LOCK_DIR = join(CACHE_DIR, ".lock");
+const DEPENDENCY_SENTINELS = [
+  resolve(REPO_ROOT, "node_modules", "posthog-node", "package.json"),
+  resolve(REPO_ROOT, "node_modules", "sql.js", "package.json"),
+  resolve(REPO_ROOT, "node_modules", "yaml", "package.json"),
+];
 
 /** A lock older than this belonged to a process that died mid-install. */
 const LOCK_STALE_MS = 5 * 60_000;
@@ -58,6 +67,7 @@ const LOCK_WAIT_MS = 250;
  * @property {string} [home]
  * @property {(p: string) => boolean} [exists]
  * @property {(p: string) => string[]} [readdir]
+ * @property {typeof spawnSync} [spawn]
  */
 
 function warn(msg) {
@@ -168,6 +178,16 @@ export function bunMissingMessage() {
 }
 
 /**
+ * A cheap every-hook check for the runtime dependencies the source hook path
+ * imports. Requiring several direct dependencies also catches interrupted or
+ * partial installs instead of treating any non-empty node_modules as ready.
+ */
+export function projectDependenciesInstalled(deps = {}) {
+  const exists = deps.exists ?? existsSync;
+  return DEPENDENCY_SENTINELS.every((path) => exists(path));
+}
+
+/**
  * Run `doWork` at most once across concurrently-firing hooks. `mkdirSync` is
  * atomic, so it doubles as the lock: EEXIST means another process got there.
  * Losers wait for the artifact rather than duplicating the work.
@@ -233,6 +253,26 @@ function installBun(deps = {}) {
   return findBun(deps);
 }
 
+/** Install a fresh/partial checkout from the committed lockfile, once. */
+export function ensureProjectDependencies(bunPath, deps = {}) {
+  const run = deps.spawn ?? spawnSync;
+  return ensureOnce(
+    () => projectDependenciesInstalled(deps),
+    () => {
+      warn("project dependencies missing — running bun install (one time)");
+      const r = run(bunPath, ["install", "--frozen-lockfile"], {
+        // Installation/build output is not hook protocol output. Keep stdout
+        // clean, but expose errors so a broken bootstrap is actionable.
+        stdio: ["ignore", "ignore", "inherit"],
+        cwd: REPO_ROOT,
+      });
+      if (r.status !== 0) {
+        warn("bun install failed — hooks are NOT enforcing; see the error above");
+      }
+    },
+  );
+}
+
 /**
  * Build dist/index.js if absent, so `.failproofai/policies/*.mjs` can resolve
  * `import ... from 'failproofai'`. Non-fatal: builtins enforce without it.
@@ -258,6 +298,7 @@ function main() {
     warn(bunMissingMessage());
     process.exit(1);
   }
+  if (!ensureProjectDependencies(bun)) process.exit(1);
   ensureBundle(bun);
 
   // stdio:"inherit" hands the child our actual fds: the payload on stdin and

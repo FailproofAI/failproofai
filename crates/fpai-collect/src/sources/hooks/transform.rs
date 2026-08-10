@@ -70,14 +70,28 @@ pub struct HookRow {
     pub policy_source: Option<String>,
     #[serde(rename = "cloudPolicyId")]
     pub cloud_policy_id: Option<String>,
-    #[serde(rename = "cloudRevision")]
-    pub cloud_revision: Option<i64>,
+    /// `cloudRevision` is the pre-rename spelling, and the alias is what keeps
+    /// history attributed.
+    ///
+    /// These rows are written by a DAEMON, not received from a server, so a
+    /// machine that was cloud-connected before the rename has real
+    /// `hook-activity/*.jsonl` naming `cloudRevision`/`cloudGeneration`. There is
+    /// no `deny_unknown_fields` here, so those keys do not error — they are
+    /// silently ignored, and every pre-upgrade cloud-decided row deserializes with
+    /// `None` and renders as unattributed. Which is the question this field was
+    /// added to answer: "how much is my org's policy actually doing".
+    ///
+    /// Same reasoning as the aliases on `ActiveDeployment` and the legacy
+    /// desired-state shape: a rename is safe on a symbol and never on the name of
+    /// data an older build already wrote.
+    #[serde(rename = "cloudVersion", alias = "cloudRevision")]
+    pub cloud_version: Option<i64>,
     /// Present on EVERY row of a managed machine, not just cloud-decided ones:
     /// "what was deployed here" is a different question from "what decided",
     /// and only the former separates a rollout that changed no outcomes from
     /// one that never reached the machine.
-    #[serde(rename = "cloudGeneration")]
-    pub cloud_generation: Option<i64>,
+    #[serde(rename = "cloudDeployment", alias = "cloudGeneration")]
+    pub cloud_deployment: Option<i64>,
 
     // ---- Suspension ------------------------------------------------------
     /// Set while `failproofai config --pause` is in effect. An `allow` on such
@@ -103,8 +117,8 @@ pub struct HookRow {
 pub struct Attribution {
     pub policy_source: Option<String>,
     pub cloud_policy_id: Option<String>,
-    pub cloud_revision: Option<i64>,
-    pub cloud_generation: Option<i64>,
+    pub cloud_version: Option<i64>,
+    pub cloud_deployment: Option<i64>,
     pub paused: bool,
 }
 
@@ -113,8 +127,8 @@ impl Attribution {
         Self {
             policy_source: row.policy_source.clone(),
             cloud_policy_id: row.cloud_policy_id.clone(),
-            cloud_revision: row.cloud_revision,
-            cloud_generation: row.cloud_generation,
+            cloud_version: row.cloud_version,
+            cloud_deployment: row.cloud_deployment,
             paused: row.paused_by.is_some(),
         }
     }
@@ -131,11 +145,11 @@ impl Attribution {
         if let Some(id) = &self.cloud_policy_id {
             m.insert("cloud_policy_id".into(), json!(id));
         }
-        if let Some(r) = self.cloud_revision {
-            m.insert("cloud_revision".into(), json!(r));
+        if let Some(r) = self.cloud_version {
+            m.insert("cloud_version".into(), json!(r));
         }
-        if let Some(g) = self.cloud_generation {
-            m.insert("cloud_generation".into(), json!(g));
+        if let Some(g) = self.cloud_deployment {
+            m.insert("cloud_deployment".into(), json!(g));
         }
         // Always emitted, never conditionally: an absent key and `false` must
         // not be distinguishable to a reader counting unenforced calls.
@@ -320,7 +334,7 @@ pub fn to_events(row: &HookRow, offset: u64, environment: &str) -> Vec<Value> {
     }
     if row.has_observation() {
         // Carried whole rather than flattened: a row can observe several
-        // policies at once, and the id/revision/decision only mean anything
+        // policies at once, and the id/version/decision only mean anything
         // together.
         end.insert(
             "failproofai_observed".into(),
@@ -427,8 +441,8 @@ impl AllowBucket {
         // dedups on `hook_id`, so the split was undone downstream and the two
         // rows collapsed back into one. That happened in exactly the two cases
         // the split was built for: the minute a pause starts, and the minute a
-        // cloud generation flips during a rollout, which is the measurement
-        // `cloud_generation` exists to enable.
+        // cloud deployment flips during a rollout, which is the measurement
+        // `cloud_deployment` exists to enable.
         let a = &self.attribution;
         m.insert(
             "hook_id".into(),
@@ -440,10 +454,10 @@ impl AllowBucket {
                 self.tool_name.as_deref().unwrap_or("-"),
                 a.policy_source.as_deref().unwrap_or("-"),
                 a.cloud_policy_id.as_deref().unwrap_or("-"),
-                a.cloud_revision
+                a.cloud_version
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".into()),
-                a.cloud_generation
+                a.cloud_deployment
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".into()),
                 if a.paused { "paused" } else { "-" },
@@ -466,5 +480,47 @@ impl AllowBucket {
         // attribution, so it describes all of them.
         self.attribution.apply(&mut m);
         Some(Value::Object(m))
+    }
+}
+
+#[cfg(test)]
+mod rename_compat_tests {
+    use super::*;
+
+    /// A row written before the rename keeps its cloud attribution.
+    ///
+    /// These pages come from a DAEMON, so a machine that was cloud-connected
+    /// before the rename has real rows naming `cloudRevision`/`cloudGeneration`.
+    /// There is no `deny_unknown_fields` here, so without the aliases those keys
+    /// are silently ignored and every pre-upgrade cloud-decided row deserializes
+    /// to `None` — rendering as unattributed, which is the one question these
+    /// fields exist to answer.
+    #[test]
+    fn a_pre_rename_row_keeps_its_cloud_attribution() {
+        let row: HookRow = serde_json::from_str(
+            r#"{"timestamp":1700000000,"cloudPolicyId":"block-curl","cloudRevision":3,"cloudGeneration":9}"#,
+        )
+        .expect("a pre-rename hook-activity row must still deserialize");
+        assert_eq!(
+            row.cloud_version,
+            Some(3),
+            "cloudRevision must alias to cloudVersion"
+        );
+        assert_eq!(
+            row.cloud_deployment,
+            Some(9),
+            "cloudGeneration must alias to cloudDeployment"
+        );
+    }
+
+    /// And the current spelling is unaffected.
+    #[test]
+    fn the_current_spelling_still_wins() {
+        let row: HookRow = serde_json::from_str(
+            r#"{"timestamp":1700000000,"cloudPolicyId":"block-curl","cloudVersion":4,"cloudDeployment":11}"#,
+        )
+        .expect("current rows deserialize");
+        assert_eq!(row.cloud_version, Some(4));
+        assert_eq!(row.cloud_deployment, Some(11));
     }
 }

@@ -3,7 +3,7 @@
  * Attribution on the activity row.
  *
  * The design doc's requirement is that Failproof Cloud can tie a decision to
- * the exact rollout that produced it. Until now the only trace of a revision
+ * the exact rollout that produced it. Until now the only trace of a version
  * was a substring of a display name ("cloud/org-guard@7/…"), which nothing can
  * query and which re-parsing our own label would be the only way to read.
  */
@@ -44,7 +44,7 @@ const hook = (name: string, extra: Record<string, unknown> = {}) =>
     extra,
   );
 
-const CLOUD = { id: "org-guard", revision: 7, sha256: "a".repeat(64), path: "/x.mjs", generation: 184 };
+const CLOUD = { id: "org-guard", version: 7, sha256: "a".repeat(64), path: "/x.mjs", deployment: 184 };
 
 function decidedBy(policyName: string | null, decision: "allow" | "deny" = "deny") {
   vi.mocked(evaluatePolicies).mockReturnValue({
@@ -88,7 +88,7 @@ describe("policy attribution", () => {
     expect(row().policySource).toBe("convention");
   });
 
-  it("attributes a cloud decision to its exact policy id and revision", async () => {
+  it("attributes a cloud decision to its exact policy id and version", async () => {
     vi.mocked(readActiveCloudManagedPolicies).mockReturnValue([CLOUD] as never);
     vi.mocked(loadAllCustomHooks).mockResolvedValue({
       hooks: [hook("org-guard", { __cloudManaged: CLOUD })], conventionSources: [],
@@ -97,11 +97,11 @@ describe("policy attribution", () => {
     await evaluateHookEvent("PreToolUse", "claude", stdin);
     expect(row().policySource).toBe("cloud");
     expect(row().cloudPolicyId).toBe("org-guard");
-    expect(row().cloudRevision).toBe(7);
-    expect(row().cloudGeneration).toBe(184);
+    expect(row().cloudVersion).toBe(7);
+    expect(row().cloudDeployment).toBe(184);
   });
 
-  it("records the active generation even when a LOCAL policy decided", async () => {
+  it("records the active deployment even when a LOCAL policy decided", async () => {
     // "What was deployed here" is a different question from "what decided" —
     // and only the former separates a rollout that changed no outcomes from
     // one that never reached the machine.
@@ -112,22 +112,22 @@ describe("policy attribution", () => {
     decidedBy("custom/local");
     await evaluateHookEvent("PreToolUse", "claude", stdin);
     expect(row().policySource).toBe("custom");
-    expect(row().cloudGeneration).toBe(184);
+    expect(row().cloudDeployment).toBe(184);
     expect(row().cloudPolicyId).toBeUndefined();
   });
 
   it("leaves attribution off entirely on a plain allow, where nothing decided", async () => {
     await evaluateHookEvent("PreToolUse", "claude", stdin);
     expect(row().policySource).toBeUndefined();
-    expect(row().cloudRevision).toBeUndefined();
+    expect(row().cloudVersion).toBeUndefined();
   });
 
-  it("omits the generation on an unmanaged machine rather than writing 0", async () => {
-    // A literal 0 would read as "generation zero is deployed"; absent reads as
+  it("omits the deployment on an unmanaged machine rather than writing 0", async () => {
+    // A literal 0 would read as "deployment zero is deployed"; absent reads as
     // "not managed", which is the truth.
     decidedBy("block-sudo");
     await evaluateHookEvent("PreToolUse", "claude", stdin);
-    expect(row().cloudGeneration).toBeUndefined();
+    expect(row().cloudDeployment).toBeUndefined();
   });
 });
 

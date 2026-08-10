@@ -343,6 +343,18 @@ COMMANDS
     --wait                         Block until the spool drains (or --timeout)
     --timeout <secs>               How long to wait with --wait (default: 60)
 
+  update                         Finish an upgrade npm cannot: migrate
+                                 ~/.failproofai to this version's layout, put the
+                                 matching daemon binary in place, restart it.
+                                 Run after \`npm install -g failproofai@latest\`.
+    --no-daemon                    Migrate the home only
+
+  migrate                        Run pending layout migrations on their own,
+                                 keyed on the layout in ~/.failproofai/VERSION
+                                 (not the npm version, so skipping releases with
+                                 no layout change runs nothing)
+    --dry-run                      Print the steps and change nothing
+
   uninstall                      Remove failproofai from this machine: hook
                                  entries from every agent CLI, and the daemon
                                  service. Run this BEFORE \`npm rm -g failproofai\`
@@ -463,7 +475,15 @@ LINKS
         console.error(warning);
         process.exit(1);
       }
-    } else if (!isHelpOrVersion) {
+    } else if (!isHelpOrVersion && args[0] !== "migrate" && args[0] !== "update") {
+      // `migrate` and `update` are exempt because they ARE this step, and letting
+      // it run first breaks them both. `migrate --dry-run` promises to change
+      // nothing and print what would happen — with the check ahead of it, the home
+      // was already migrated by the time the subcommand looked, so it reported
+      // "nothing to migrate" on every stale machine it was ever pointed at, which
+      // is the one answer a dry run must never give wrongly. Caught by a smoke
+      // test on a seeded layout-2 home, not by a unit test: nothing below the CLI
+      // entry point can see this ordering.
       const { checkLayoutForCli } = await import("../src/hooks/fp-reset");
       const check = await checkLayoutForCli();
       for (const line of check.lines) console.error(line);
@@ -757,6 +777,211 @@ EXAMPLES
   // disables policies; this removes the product — hook entries across every
   // agent CLI plus the root-owned daemon service — and the two must not be one
   // keystroke apart.
+  if (args[0] === "migrate") {
+    const subArgs = args.slice(1);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai migrate — bring ~/.failproofai up to the layout this version speaks
+
+USAGE
+  failproofai migrate [--dry-run]
+
+WHY
+  npm cannot update an installed package on its own, so a machine can sit on an
+  old version for months and then jump several layouts at once. This runs the
+  steps for that jump in order, keyed on the LAYOUT recorded in
+  ~/.failproofai/VERSION rather than on the npm version — so skipping thirty
+  releases with no layout change runs nothing at all.
+
+  It normally happens by itself, on the first command after an upgrade. This is
+  for running it deliberately, and for seeing what it would do first.
+
+  Your settings, cloud enrolment, policy selection, your own policy files,
+  decision history and undelivered events are carried across, not removed. The
+  irreplaceable files are copied to migrations/backup-layout<n>/ before anything
+  runs, and every step is recorded in migrations/applied.json.
+
+OPTIONS
+  --dry-run   Print the steps and the files that would be saved. Change nothing.
+`);
+      process.exit(0);
+    }
+
+    const KNOWN = new Set(["--dry-run"]);
+    const unknown = subArgs.find((a) => a.startsWith("-") && !KNOWN.has(a));
+    if (unknown) {
+      throw new CliError(
+        `Unexpected argument: ${unknown}\nRun \`failproofai migrate --help\` for usage.`,
+      );
+    }
+
+    lastSubcommand = "migrate";
+    const { detectLayout } = await import("../src/hooks/fp-config");
+    const { LAYOUT_VERSION } = await import("../src/hooks/fp-home");
+    const { describePlan, runMigrations } = await import("../src/hooks/migrations");
+    const state = detectLayout();
+
+    // A NEWER home is refused here exactly as `checkLayoutForCli` refuses it: the
+    // data is fine and an upgrade would read it, so migrating "forward" from it
+    // is not a thing that exists.
+    if (state.kind === "future") {
+      console.error(
+        `This machine's failproofai directory was written by a newer version (layout ${state.found};`,
+      );
+      console.error(`this build speaks ${LAYOUT_VERSION}). Upgrade rather than migrate:`);
+      console.error(`  npm install -g failproofai@latest`);
+      await track("cli_migrate", { ok: false, reason: "future_layout" });
+      lastSubcommand = null;
+      await exitAfterFlush(1);
+      return;
+    }
+
+    const from = state.kind === "stale" ? state.found : LAYOUT_VERSION;
+    if (subArgs.includes("--dry-run")) {
+      for (const line of describePlan(from)) console.log(line);
+      await track("cli_migrate", { ok: true, dry_run: true, from });
+      lastSubcommand = null;
+      await exitAfterFlush(0);
+      return;
+    }
+
+    if (state.kind !== "stale") {
+      console.log(`Already at layout ${LAYOUT_VERSION}. Nothing to migrate.`);
+      await track("cli_migrate", { ok: true, from, steps: 0 });
+      lastSubcommand = null;
+      await exitAfterFlush(0);
+      return;
+    }
+
+    const run = runMigrations(from);
+    for (const step of run.steps) {
+      console.log(`${step.ok ? "migrated" : "FAILED  "} layout ${step.from} → ${step.to}`);
+    }
+    if (run.backedUp.length > 0) {
+      console.log(`Saved first: ${run.backedUp.join(", ")}`);
+    }
+    if (run.failed) {
+      console.error(`Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}`);
+      console.error(`The home is still marked layout ${from} and will be retried.`);
+    }
+    await track("cli_migrate", {
+      ok: !run.failed,
+      from,
+      steps: run.steps.length,
+      removed: run.outcome.removed.length,
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(run.failed ? 1 : 0);
+    return;
+  }
+
+  if (args[0] === "update") {
+    const subArgs = args.slice(1);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai update — finish an upgrade: migrate the home, match the daemon
+
+USAGE
+  npm install -g failproofai@latest && failproofai update [--no-daemon]
+
+WHY
+  npm replaces the CLI and nothing else. The daemon binary lives at
+  ~/.failproofai/bin/failproofaid-<version> and stays exactly where it was, so
+  after an npm upgrade the two halves are different versions — and failproofaid
+  refuses to start against a layout it does not speak, which is the loud version
+  of that problem rather than the silent one.
+
+  This does the rest of the upgrade: runs any pending layout migrations, puts the
+  matching daemon binary in place, and restarts the service.
+
+OPTIONS
+  --no-daemon   Migrate the home only. Leaves a version-skewed daemon in place,
+                so prefer letting it run.
+`);
+      process.exit(0);
+    }
+
+    const KNOWN = new Set(["--no-daemon"]);
+    const unknown = subArgs.find((a) => a.startsWith("-") && !KNOWN.has(a));
+    if (unknown) {
+      throw new CliError(
+        `Unexpected argument: ${unknown}\nRun \`failproofai update --help\` for usage.`,
+      );
+    }
+
+    lastSubcommand = "update";
+    // Runs the migration itself rather than leaning on the check at the top of
+    // this file, which this command is exempt from. Reading the ledger and
+    // inferring "the top-level check must have done it" was the first version, and
+    // it is the kind of indirection that reads fine and reports the wrong thing
+    // the moment either half moves.
+    const { detectLayout } = await import("../src/hooks/fp-config");
+    const { LAYOUT_VERSION } = await import("../src/hooks/fp-home");
+    const { runMigrations } = await import("../src/hooks/migrations");
+    const state = detectLayout();
+
+    if (state.kind === "future") {
+      console.error(
+        `This machine's failproofai directory was written by a NEWER version (layout ${state.found};`,
+      );
+      console.error(`this build speaks ${LAYOUT_VERSION}). This CLI is the stale half:`);
+      console.error(`  npm install -g failproofai@latest`);
+      await track("cli_update", { ok: false, reason: "future_layout" });
+      lastSubcommand = null;
+      await exitAfterFlush(1);
+      return;
+    }
+
+    let migrationsRan = 0;
+    let migrationFailed = false;
+    if (state.kind === "stale") {
+      const run = runMigrations(state.found);
+      migrationsRan = run.steps.length;
+      migrationFailed = Boolean(run.failed);
+      for (const step of run.steps) {
+        console.log(`${step.ok ? "migrated" : "FAILED  "} layout ${step.from} → ${step.to}`);
+      }
+      if (run.backedUp.length > 0) console.log(`Saved first: ${run.backedUp.join(", ")}`);
+      if (run.failed) {
+        console.error(
+          `Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}`,
+        );
+        console.error(`The home is still marked layout ${state.found} and will be retried.`);
+      }
+    } else {
+      console.log(`Home is at layout ${LAYOUT_VERSION}; no migration was needed.`);
+    }
+
+    // The daemon is refreshed even when a step failed, and deliberately: the
+    // binary and the layout are independent halves, and leaving a version-skewed
+    // daemon behind on top of a failed migration is strictly worse than fixing
+    // the half that can be fixed. The exit code still reports the failure.
+    let daemonOk = true;
+    if (subArgs.includes("--no-daemon")) {
+      console.log("Skipped the daemon (--no-daemon). Its version may not match this CLI.");
+    } else {
+      const svc = await import("../src/hooks/daemon-service");
+      if (!svc.isDaemonSupportedPlatform()) {
+        console.log(`failproofaid does not run on ${process.platform}; nothing to update.`);
+      } else {
+        // `refreshDaemonToCliVersion` answers "is there a service at all" itself,
+        // so there is no separate installed check to get out of step with it.
+        const result = await svc.refreshDaemonToCliVersion();
+        for (const line of result.lines) console.log(line);
+        daemonOk = result.ok;
+      }
+    }
+
+    await track("cli_update", {
+      ok: daemonOk && !migrationFailed,
+      migrations: migrationsRan,
+      migration_failed: migrationFailed,
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(daemonOk && !migrationFailed ? 0 : 1);
+    return;
+  }
+
   if (args[0] === "uninstall") {
     const subArgs = args.slice(1);
     if (subArgs.includes("--help") || subArgs.includes("-h")) {

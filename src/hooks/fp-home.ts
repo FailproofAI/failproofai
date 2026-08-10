@@ -320,6 +320,40 @@ export const codexSessionPathsFile = (home?: string) => resolve(stateDir(home), 
 
 export const logsDir = (home?: string) => atHome(home, "logs");
 
+// ── Migration state ──────────────────────────────────────────────────────────
+
+/**
+ * Where a migration records what it did, and what it saved first.
+ *
+ * The migration CODE ships in the npm package, never here. A home written by
+ * 1.0.0 contains only 1.0.0's migrations, and the steps that get that machine
+ * forward are precisely the ones its old install never had — so the installed
+ * CLI, always the newest thing on the machine, is the only correct source. What
+ * belongs in the home is the STATE: which steps have run, and the files they
+ * saved before running. Exactly the split a database makes, where migrations are
+ * code in the repo and the applied set is a table.
+ */
+export const migrationsDir = (home?: string) => atHome(home, "migrations");
+
+/** One line per step that has run: `{from, to, cli, at, durationMs, ok}`. */
+export const migrationLedgerFile = (home?: string) =>
+  resolve(migrationsDir(home), "applied.json");
+
+/**
+ * Copies of the irreplaceable files, taken before the layout-`n` migration ran.
+ *
+ * NOT a copy of the whole home, and the reason is that `HOME_CLASSES` already
+ * made one unnecessary: a migration deletes only `derived` and `refetchable`
+ * paths, so there is no longer anything irreplaceable for it to lose by design.
+ * What remains worth insuring against is a BUG in a step — and for that, the few
+ * kilobytes of `config.json`, `credentials.json`, `policies-config.json`, the
+ * marker, and the retired layout's own config are a real undo, where a full-home
+ * copy would cost a duplicate of `bin/` and `hook-activity/` and need a
+ * two-rename window that also has to dodge a live daemon holding `run/`.
+ */
+export const migrationBackupDir = (layout: number, home?: string) =>
+  resolve(migrationsDir(home), `backup-layout${layout}`);
+
 // ── What each path HOLDS ─────────────────────────────────────────────────────
 
 /**
@@ -431,6 +465,11 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // immediately — but listing it made a no-op reset report "removed 1 item" for
   // a file it had just recreated.
   { path: versionFile, class: "identity" },
+  // The record of what this machine has been migrated through, and the copies a
+  // step took before running. A migration deleting its own audit trail would
+  // leave "what has this home been through?" answerable only by guessing, and
+  // deleting the backup is deleting the undo for the step that just ran.
+  { path: migrationsDir, class: "identity" },
 
   // ── May be dropped: rebuilt on demand ──
   { path: auditDir, class: "derived" },

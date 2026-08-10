@@ -1483,6 +1483,102 @@ export async function ensureDaemonServiceCurrent(): Promise<DaemonUpgradeResult>
  * event on the machine with no recovery short of hand-editing
  * `~/.failproofai/policies-config.json`.
  */
+/**
+ * Bring the installed daemon up to this CLI's version — the second half of an
+ * upgrade that npm does not do.
+ *
+ * `npm i -g` replaces the CLI and nothing else. The binary lives at
+ * `~/.failproofai/bin/failproofaid-<version>` precisely so an upgrade cannot swap
+ * it under a running service, which means after an npm upgrade the two halves are
+ * different versions until something like this runs. `daemonVersionSkew()` has
+ * been reporting that state on every command; this is the command that fixes it.
+ *
+ * Composed from the pieces that already exist rather than reimplementing any of
+ * them: `ensureFailproofaidBinary()` puts the right file on disk (npm optional
+ * dependency first, release asset second, SHA-256 verified either way),
+ * `ensureDaemonServiceCurrent()` rewrites the unit if its shape has changed, and
+ * `waitForDaemonRunning()` is what distinguishes "started" from "started and
+ * still up" — a `Type=simple` unit reports active the moment it forks.
+ *
+ * NEVER clears `daemonConfigured`. A refresh that fails leaves a machine
+ * fail-closed against a daemon that may be down, and that is the correct, loud
+ * state: the remedy is `failproofai config`, and silently downgrading the machine
+ * to in-process evaluation would trade a visible failure for an invisible one.
+ * The lines say so.
+ */
+export async function refreshDaemonToCliVersion(): Promise<{ ok: boolean; lines: string[] }> {
+  const lines: string[] = [];
+  if (daemonServiceStatus() === "not-installed") {
+    return { ok: true, lines: ["No failproofaid service on this machine; nothing to update."] };
+  }
+
+  const binary = await ensureFailproofaidBinary();
+  if (!binary.path) {
+    return {
+      ok: false,
+      lines: [
+        `Could not put the failproofaid ${version} binary in place: ${binary.reason ?? "unknown reason"}`,
+        `The installed daemon is unchanged. It refuses to start against a layout it does`,
+        `not speak, so if this machine has just been migrated, run \`failproofai config\`.`,
+      ],
+    };
+  }
+  lines.push(`failproofaid ${version} binary in place.`);
+
+  const upgrade = await ensureDaemonServiceCurrent();
+  if (upgrade.outcome === "failed") {
+    return {
+      ok: false,
+      lines: [
+        ...lines,
+        `The service definition could not be refreshed: ${upgrade.reason ?? "unknown reason"}`,
+        ...(upgrade.daemonRunning === false
+          ? [
+              `failproofaid is NOT running. On a machine configured to require it, every tool`,
+              `call denies until it is back — run \`failproofai config\` to rebuild the service.`,
+            ]
+          : []),
+      ],
+    };
+  }
+
+  // `daemonRestartCommand()` returns the human-facing string (`sudo systemctl
+  // restart …`); the actual call goes through `runPrivileged`, which is `sudo -n`
+  // and never prompts. A machine that cannot elevate gets the command to run by
+  // hand — the same contract `installDaemonService` follows.
+  const restart = daemonRestartCommand();
+  try {
+    if (process.platform === "darwin") {
+      runPrivileged("launchctl", ["kickstart", "-k", `system/${launchdLabel()}`]);
+    } else {
+      runPrivileged("systemctl", ["restart", systemdUnitName()]);
+    }
+  } catch {
+    return {
+      ok: false,
+      lines: [
+        ...lines,
+        `Could not restart failproofaid without a password. Run this yourself:`,
+        `  ${restart ?? "restart the failproofaid service"}`,
+      ],
+    };
+  }
+  // Probed, never inferred from the restart command's exit code — see
+  // `waitForDaemonRunning`, which exists because one reading of `is-active`
+  // passes a daemon that died immediately after forking.
+  if (!(await waitForDaemonRunning())) {
+    return {
+      ok: false,
+      lines: [
+        ...lines,
+        `failproofaid was restarted but did not come back up. \`${daemonStatusCommand()}\` will say why.`,
+        `On a machine configured to require it, every tool call denies until it does.`,
+      ],
+    };
+  }
+  return { ok: true, lines: [...lines, `failproofaid restarted and running.`] };
+}
+
 export async function uninstallDaemonService(): Promise<void> {
   setDaemonConfigured(false);
   if (!isDaemonSupportedPlatform()) return;

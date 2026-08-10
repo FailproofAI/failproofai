@@ -2,11 +2,33 @@
  * What happens when this CLI meets a home directory written by a different
  * layout.
  *
- * The decision was wipe-and-re-setup rather than migrate. A migration has to
- * be right on every path or it half-moves a home, and a half-moved home fails
- * in the worst available way: the daemon writes where the dashboard does not
- * read, and an absent directory is indistinguishable from an idle one. A reset
- * is one destructive operation that is either done or not done.
+ * ## This was wipe-and-re-setup. It is a migration now.
+ *
+ * The original decision, and the reasoning for it, was: a migration has to be
+ * right on every path or it half-moves a home, and a half-moved home fails in the
+ * worst available way — the daemon writes where the dashboard does not read, and
+ * an absent directory is indistinguishable from an idle one. A reset is one
+ * destructive operation that is either done or not done.
+ *
+ * That was correct while there were no customers, no cloud tokens on real
+ * machines, no fleet enrolment and no undelivered event spools. All four now
+ * exist, and the cost landed on the other side of the ledger: a wipe deleted the
+ * cloud token (so the machine dropped off the fleet, silently, still reporting
+ * healthy), `daemon.configured` (so it stopped failing closed), every
+ * `extra_paths` a person had typed, and events already read out of transcripts
+ * and queued — the last of those PERMANENTLY, because `cursors/` survived and the
+ * watermark had already moved past them.
+ *
+ * So the shape inverted. `HOME_CLASSES` in `fp-home.ts` classifies every path by
+ * what it HOLDS and the delete list is derived from that, which means the default
+ * is now "carried" and deletion is the exception a class has to earn. The
+ * half-moved-home worry is answered by keeping the property that made a reset
+ * safe: `VERSION` is stamped only after a step completes, so a step that fails
+ * leaves the home marked with the OLD layout and the next command retries it. No
+ * home is ever marked current on the strength of a partial migration.
+ *
+ * `migrations.ts` owns the ORDER and the record — which steps exist, which ran,
+ * and what was copied aside first. This file owns the MOVES.
  *
  * ## Where the deletion happens, and where it deliberately does not
  *
@@ -49,6 +71,7 @@ import {
   globalPolicyConfigFile,
   hookActivityDir,
   legacy,
+  migrationBackupDir,
   policiesDir,
   resettablePaths,
 } from "./fp-home";
@@ -290,30 +313,23 @@ export function migrateHookActivity(): string[] {
 }
 
 /**
- * Fields of layout 1's `policies-config.json` that layout 2's still means.
+ * The eight keys the layout-2 carry used to move, kept only as a record.
  *
- * An allowlist, not a copy, and the exclusion is the point: layout 1's file
- * ALSO carried a `collector` block, and layout 2 moved collector settings to
- * `[collector]` in `config.toml` — in snake_case, deliberately, because
+ * It was an ALLOWLIST, and that was the bug: anything outside these eight names
+ * was dropped, including a key a NEWER build had written into a layout-2 file.
+ * The carry preserves every key now and deletes only the retired ones
+ * (`RETIRED_POLICY_CONFIG_KEYS`), which is the same rule `writeConfig` follows for
+ * `config.json` — unowned keys survive, dead ones go.
+ *
+ * The one exclusion this list existed for is still enforced, by that other
+ * constant: layout 1's file also carried a `collector` block, and layout 2 moved
+ * collector settings to `config.toml` in snake_case — deliberately, because
  * `fpai-collect`'s `Settings` deserializes them and camelCase keys would make
  * every field silently fall back to its default (see the note on `Settings` in
  * `crates/fpai-collect/src/config.rs`, which records that exact bug). Carrying
  * `collector` forward would put a block into the new file that nothing reads,
- * where it would look like a preserved setting and behave like an absent one.
- *
- * The `llm` block moves because the loader still reads it from here, and its
- * value is an endpoint and a model name a person configured by hand.
+ * looking like a preserved setting and behaving like an absent one.
  */
-const CARRIED_POLICY_CONFIG_KEYS = [
-  "enabledPolicies",
-  "customPoliciesPaths",
-  "customPoliciesPath",
-  "disabledCustomPolicies",
-  "conventionPolicies",
-  "disabledConventionPolicies",
-  "policyParams",
-  "llm",
-] as const;
 
 /**
  * Carry the user's policy SELECTION across the layout-1 → layout-2 move.
@@ -430,17 +446,23 @@ export function readCarriedPolicyConfig(): Record<string, unknown> | null {
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
 
+  // EVERY key except the retired ones. This was an eight-name ALLOWLIST, and it
+  // dropped anything outside it — including a key a NEWER build had written into a
+  // layout-2 file, which is the same loss Phase 1 fixed for `config.json` arriving
+  // by a third door. Caught by a smoke test on a seeded home: a `futureKey` in the
+  // nested config was gone after the migration, silently.
+  //
+  // Retired keys still go, because they are dead rather than unknown — see
+  // `RETIRED_POLICY_CONFIG_KEYS` for why leaving `collector` here is worse than
+  // deleting it.
   const carried: Record<string, unknown> = {};
-  let found = false;
-  for (const key of CARRIED_POLICY_CONFIG_KEYS) {
-    if (parsed[key] !== undefined) {
-      carried[key] = parsed[key];
-      found = true;
-    }
+  for (const [key, value] of Object.entries(parsed)) {
+    if ((RETIRED_POLICY_CONFIG_KEYS as readonly string[]).includes(key)) continue;
+    carried[key] = value;
   }
-  // Nothing worth carrying — a file holding only excluded fields must not
-  // produce an empty layout-2 config that looks like a real one.
-  if (!found) return null;
+  // Nothing worth carrying — a file holding only retired fields must not produce
+  // an empty config that looks like a real one.
+  if (Object.keys(carried).length === 0) return null;
 
   // `enabledPolicies` is required by the type and by every reader. A layout-1
   // file that somehow lacked it would otherwise produce a layout-2 file that
@@ -836,7 +858,15 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
   }
 
   if (state.kind === "stale") {
-    const { removed, migrated, activity } = resetHome(state.found);
+    // Through the registry, not `resetHome` directly. The two look identical for
+    // today's layouts — the chain from 1 or 2 is one step, and that step IS
+    // `resetHome` — and they stop being identical the moment a layout 4 exists,
+    // at which point this call site needs no change. It also means every
+    // migration this machine has ever run is recorded, and the irreplaceable
+    // files are copied aside first. See `migrations.ts`.
+    const { runMigrations } = await import("./migrations");
+    const run = runMigrations(state.found);
+    const { removed, migrated, activity } = run.outcome;
     // After, not before — see the function's own note for why the intuitive
     // order cannot work.
     const pending = await drainSpoolAfterMigrating();
@@ -888,6 +918,17 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
               `${pending} batch(es) were still undelivered and were carried across.`,
               `They ship on the next collector pass — \`failproofai flush --wait\` now if you`,
               `are waiting on a dashboard.`,
+            ]
+          : []),
+        // A step that threw leaves the home marked with the OLD layout, so the
+        // next command tries again — which is right, and is also why this must
+        // say so rather than let a partial migration pass for a finished one.
+        ...(run.failed
+          ? [
+              ``,
+              `Step ${run.failed.from} → ${run.failed.to} did not finish: ${run.failed.error}`,
+              `The home is still marked layout ${state.found} and will be retried. Copies of`,
+              `your settings and enrolment were saved first, in ${migrationBackupDir(state.found)}.`,
             ]
           : []),
         // No "run `failproofai config` to set up again". There is nothing to set

@@ -195,6 +195,8 @@ describe("HOME_CLASSES", () => {
     daemonLock: "runDir",
     auditLockFile: "runDir",
     daemonBinary: "binDir",
+    migrationLedgerFile: "migrationsDir",
+    migrationBackupDir: "migrationsDir",
     stateDir: "stateDir",
   };
 

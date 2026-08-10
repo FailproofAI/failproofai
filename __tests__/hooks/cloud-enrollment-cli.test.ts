@@ -389,3 +389,60 @@ describe("status shows one connection with two capabilities", () => {
     expect(out).toMatch(/Dashboard sending hook activity/);
   });
 });
+
+/**
+ * The two-step connect, end to end through the real writers and readers.
+ *
+ * `cloud-enrollment.test.ts` pins `resolveMachineId`'s fallback against a
+ * hand-written `config.json`. This pins the same property against the file
+ * `connectToCloud` ACTUALLY writes, which is the half a unit test cannot vouch
+ * for: if `writeCollectorSettings` ever stopped persisting the id, or persisted
+ * it under a different key, the unit test would still pass while every
+ * ingest-first machine in the fleet silently split in two on its next connect.
+ */
+describe("an ingest-only connect does not cost the machine its identity", () => {
+  // A key carrying `events:add` and NOT `policies:pull` — exactly what the
+  // `collector` preset mints in the dashboard's key drawer.
+  const introspectIngestOnly = vi.fn(async () => ({
+    kind: "ok" as const,
+    identity: { permissions: ["events:add"] },
+  }));
+
+  it("reuses the collector-written id on a later policies-capable connect", async () => {
+    // ── Step 1: telemetry only. No --machine-id, so one is minted. ──────────
+    await runConnectCommand({ ...base, introspect: introspectIngestOnly });
+
+    // The policy half never verified, so there is no cloud credential at all —
+    // this is precisely the state that used to strand the id.
+    expect(readCloudCredentials()).toBeNull();
+    const minted = readConfig().collector.machineId;
+    expect(minted).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+
+    // ── Step 2: the operator creates a full key and reconnects. ─────────────
+    await runConnectCommand({ ...base });
+
+    // The SAME machine, not a second one. Before the collector fallback this
+    // returned a freshly minted UUID, and the host appeared twice in the fleet
+    // list with its first month of history stranded under the original id.
+    expect(readCloudCredentials()?.machineId).toBe(minted);
+    // And both stores still agree, which is what keeps the enrolment row and
+    // the event stream pointing at one machine.
+    expect(readConfig().collector.machineId).toBe(minted);
+  });
+
+  it("keeps an explicit --machine-id across the same two steps", async () => {
+    await runConnectCommand({
+      ...base,
+      introspect: introspectIngestOnly,
+      machineId: "prod-runner-01",
+    });
+    expect(readCloudCredentials()).toBeNull();
+    expect(readConfig().collector.machineId).toBe("prod-runner-01");
+
+    // No --machine-id the second time: the operator should not have to remember
+    // it, and the fallback is what makes forgetting harmless.
+    await runConnectCommand({ ...base });
+    expect(readCloudCredentials()?.machineId).toBe("prod-runner-01");
+    expect(readConfig().collector.machineId).toBe("prod-runner-01");
+  });
+});

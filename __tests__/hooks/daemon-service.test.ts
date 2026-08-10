@@ -975,6 +975,24 @@ describe("hooks/daemon-service waitForDaemonRunning", () => {
 // version's binary, writes the unit around that path, and uses `restart` rather
 // than `enable --now` precisely so a live daemon is replaced.
 describe("refreshDaemonToCliVersion", () => {
+  // Its own isolation, because this block sits OUTSIDE the file's main
+  // `beforeEach` — and without it these tests read and WRITE the developer's real
+  // `~/.failproofai`: `readConfig()` returned the machine's actual
+  // `daemon.configured`, and `writeVersionFile()` rewrote its real `VERSION`.
+  // Caught when a machine that had just been set up started answering `true`.
+  let refreshHome: string;
+  let prevRefreshHome: string | undefined;
+  beforeEach(() => {
+    prevRefreshHome = process.env.FAILPROOFAI_HOME;
+    refreshHome = mkdtempSync(resolve(tmpdir(), "fpai-refresh-"));
+    process.env.FAILPROOFAI_HOME = refreshHome;
+  });
+  afterEach(() => {
+    if (prevRefreshHome === undefined) delete process.env.FAILPROOFAI_HOME;
+    else process.env.FAILPROOFAI_HOME = prevRefreshHome;
+    rmSync(refreshHome, { recursive: true, force: true });
+  });
+
   it("is a clean no-op on a machine with no service", async () => {
     let installed = false;
     const result = await svc.refreshDaemonToCliVersion({
@@ -1035,6 +1053,54 @@ describe("refreshDaemonToCliVersion", () => {
     // requires it.
     const { readConfig } = await import("../../src/hooks/fp-config");
     expect(readConfig().daemon.configured).toBe(false);
+  });
+
+  it("asks for sudo up front when there is somebody to ask", async () => {
+    // The gap this command shipped with. Writing the unit needs root and
+    // `runPrivileged` uses `sudo -n`, which never prompts — a rule that exists for
+    // the WIZARD, because a password prompt under a full-screen TUI is unreadable.
+    // This command is plain line output, so it does not inherit that constraint,
+    // and without the prompt `failproofai update` on a daemon machine failed with
+    // "sudo credentials were not available" and a 30-line unit file to paste.
+    let primed = false;
+    let primedBeforeInstall = false;
+    await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      interactive: () => true,
+      prime: () => {
+        primed = true;
+        return true;
+      },
+      install: async () => {
+        primedBeforeInstall = primed;
+        return { installed: true };
+      },
+    });
+
+    expect(primed).toBe(true);
+    // Order matters: priming after the install would be asking for a password to
+    // fix something that already failed.
+    expect(primedBeforeInstall).toBe(true);
+  });
+
+  it("never prompts on a non-TTY, where nothing would answer", async () => {
+    // A CI runner or a fleet box. `sudo -v` there blocks on a prompt nobody types,
+    // so those runs fall through to `sudo -n`, fail, and get the commands — which
+    // is the right outcome for an unattended machine.
+    let primed = false;
+    const result = await svc.refreshDaemonToCliVersion({
+      status: () => "running",
+      interactive: () => false,
+      prime: () => {
+        primed = true;
+        return true;
+      },
+      install: async () => ({ installed: false, reason: "root privileges are required" }),
+    });
+
+    expect(primed).toBe(false);
+    expect(result.ok).toBe(false);
+    expect(result.lines.join("\n")).toContain("root privileges are required");
   });
 
   it("surfaces the install's failure instead of claiming a refresh", async () => {

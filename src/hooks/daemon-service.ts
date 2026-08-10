@@ -1517,10 +1517,15 @@ export async function refreshDaemonToCliVersion(
   deps: {
     status?: () => DaemonServiceStatus;
     install?: () => Promise<DaemonInstallResult>;
+    prime?: () => boolean;
+    interactive?: () => boolean;
   } = {},
 ): Promise<{ ok: boolean; lines: string[] }> {
   const status = deps.status ?? daemonServiceStatus;
   const install = deps.install ?? installDaemonService;
+  const prime = deps.prime ?? primeElevation;
+  const interactive =
+    deps.interactive ?? (() => Boolean(process.stdin.isTTY && process.stdout.isTTY));
   if (status() === "not-installed") {
     return { ok: true, lines: ["No failproofaid service on this machine; nothing to update."] };
   }
@@ -1545,6 +1550,28 @@ export async function refreshDaemonToCliVersion(
   // than trusting the moment a `Type=simple` unit reports active. It is
   // idempotent, which is what makes it safe to call on an already-installed
   // machine.
+  // ASK FOR THE PASSWORD, when there is somebody to ask.
+  //
+  // Writing the unit needs root, and `runPrivileged` uses `sudo -n` — which never
+  // prompts. That rule exists for the WIZARD, whose reason is stated where it is
+  // enforced: a password prompt fired from underneath a full-screen TUI is
+  // unreadable at best. It does not transfer to this command, which is plain line
+  // output with nothing to corrupt, and the wizard itself calls `primeElevation()`
+  // for exactly this at exactly this point.
+  //
+  // Without it, `failproofai update` on the machine it exists for — one with a
+  // daemon, upgrading — failed with "sudo credentials were not available" and a
+  // thirty-line unit file to paste by hand. The only working alternatives were
+  // `sudo -v` first (undocumented) or `failproofai config`, an interactive wizard.
+  // That is not an upgrade path.
+  //
+  // Gated on a TTY, not attempted blindly: on a CI runner or a fleet box there is
+  // nobody to type a password, and `sudo -v` there would block on a prompt nothing
+  // will answer. Those runs still fall through to `sudo -n`, fail, and get the
+  // exact commands to run — which is the right outcome for an unattended machine.
+  // `primeElevation()` is itself a no-op when already root or NOPASSWD.
+  if (interactive()) prime();
+
   const result = await install();
   if (!result.installed) {
     return {

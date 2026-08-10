@@ -63,7 +63,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import {
   LAYOUT_VERSION,
   customPoliciesDir,
@@ -500,7 +500,53 @@ export function readCarriedPolicyConfig(): Record<string, unknown> | null {
   // file that somehow lacked it would otherwise produce a layout-2 file that
   // throws on read — worse than the empty default it replaces.
   if (carried.enabledPolicies === undefined) carried.enabledPolicies = [];
+  rewriteCarriedCustomPaths(carried);
   return carried;
+}
+
+/**
+ * Repoint `customPoliciesPaths` at where the files now live, in place.
+ *
+ * `migrateConventionPolicies()` moves layout 2's `policies/custom-policies/*` up
+ * into `policies/`, and nothing rewrote the paths the user had REGISTERED — so
+ * every explicit entry still named the directory the migration had just deleted.
+ * Reproduced on a seeded layout-2 home: the file was correctly at
+ * `policies/acme.mjs`, and the config still said
+ * `policies/custom-policies/acme.mjs`, which resolved to nothing.
+ *
+ * Layout 3 collapses `customPoliciesDir()` onto `policiesDir()`, so a moved file
+ * is still discovered BY CONVENTION and usually keeps firing — which is exactly
+ * what made this quiet. It is not harmless: a convention-loaded policy gets a
+ * different id from an explicitly-pathed one, and `disabledCustomPolicies` records
+ * a disable against that id, so a policy the user had switched off can come back.
+ * Repointing the path keeps the id it had.
+ *
+ * Layout-2 shaped on purpose. Layout 1 kept these files in `policies/` already —
+ * the same place layout 3 does — so a layout-1 path needs no rewrite, and its
+ * config is not carried through here anyway.
+ */
+function rewriteCarriedCustomPaths(carried: Record<string, unknown>): void {
+  const fromDir = legacy.customPoliciesDir();
+  const toDir = policiesDir();
+  const repoint = (value: unknown): unknown => {
+    if (typeof value !== "string" || value === "") return value;
+    const abs = resolve(value);
+    // `relative()` rather than a prefix test on the string: `policies/custom-policies-old`
+    // starts with `policies/custom-policies` and is a DIFFERENT directory the
+    // migration never touched, so a prefix match would move a path that is still
+    // correct. An entry outside the moved tree is returned untouched.
+    const rel = relative(fromDir, abs);
+    if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return value;
+    return resolve(toDir, rel);
+  };
+
+  if (Array.isArray(carried.customPoliciesPaths)) {
+    carried.customPoliciesPaths = carried.customPoliciesPaths.map(repoint);
+  }
+  // The legacy singular field, still accepted on read.
+  if (typeof carried.customPoliciesPath === "string") {
+    carried.customPoliciesPath = repoint(carried.customPoliciesPath);
+  }
 }
 
 /**

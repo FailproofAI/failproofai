@@ -812,6 +812,65 @@ describe("resetHome carries the layout-1 policy selection", () => {
 // silently off the fleet: still enforcing whatever it last had, still reporting
 // healthy, never reconciling again, with no operator action that caused it. And
 // 2 → 3 is the upgrade that actually exists to be run.
+describe("the layout-2 carry repoints registered custom-policy paths", () => {
+  function seedLayoutTwoWithRegisteredPath(entry: string) {
+    mkdirSync(home, { recursive: true });
+    writeFileSync(legacy.configToml(), "layout = 2\n");
+    mkdirSync(legacy.localPoliciesDir(), { recursive: true });
+    writeFileSync(
+      resolve(legacy.localPoliciesDir(), "policies-config.json"),
+      JSON.stringify({ enabledPolicies: ["block-sudo"], customPoliciesPaths: [entry] }),
+    );
+    mkdirSync(legacy.customPoliciesDir(), { recursive: true });
+    writeFileSync(resolve(legacy.customPoliciesDir(), "acme.mjs"), "// client policy\n");
+  }
+
+  function carriedPaths(): string[] {
+    const cfg = JSON.parse(readFileSync(globalPolicyConfigFile(), "utf8")) as {
+      customPoliciesPaths?: string[];
+    };
+    return cfg.customPoliciesPaths ?? [];
+  }
+
+  it("repoints a path into the directory the migration deleted", () => {
+    // `migrateConventionPolicies()` moves `policies/custom-policies/*` up into
+    // `policies/`, and nothing rewrote what the user had REGISTERED — so the entry
+    // named a directory that no longer exists. Reproduced on a real seeded home:
+    // the file was at `policies/acme.mjs` and the config still said
+    // `policies/custom-policies/acme.mjs`.
+    const old = resolve(legacy.customPoliciesDir(), "acme.mjs");
+    seedLayoutTwoWithRegisteredPath(old);
+
+    resetHome(2);
+
+    expect(carriedPaths()).toEqual([resolve(policiesDir(), "acme.mjs")]);
+    // The point of the rewrite: the recorded path resolves to a real file.
+    expect(existsSync(carriedPaths()[0]!)).toBe(true);
+  });
+
+  it("leaves a path OUTSIDE the moved tree alone", () => {
+    // A user's own checkout is not ours to move.
+    const outside = resolve(home, "elsewhere", "mine.mjs");
+    seedLayoutTwoWithRegisteredPath(outside);
+
+    resetHome(2);
+
+    expect(carriedPaths()).toEqual([outside]);
+  });
+
+  it("does not repoint a SIBLING whose name merely starts the same", () => {
+    // `relative()`, not a string prefix test: `custom-policies-old/` starts with
+    // `custom-policies` and is a different directory the migration never touched,
+    // so a prefix match would break a path that was still correct.
+    const sibling = resolve(`${legacy.customPoliciesDir()}-old`, "mine.mjs");
+    seedLayoutTwoWithRegisteredPath(sibling);
+
+    resetHome(2);
+
+    expect(carriedPaths()).toEqual([sibling]);
+  });
+});
+
 describe("resetHome carries the layout-2 TOML config and credentials", () => {
   const configToml = [
     "# failproofai configuration. Safe to edit by hand.",

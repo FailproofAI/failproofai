@@ -1550,6 +1550,7 @@ FAILPROOF CLOUD
                                     Resume enforcement
 
     --machine-label <name>          Human-readable name in the dashboard
+                                    (use alone to rename an already-connected machine)
 
   One connection, two capabilities: this machine PULLS centrally-managed
   policies and SENDS what its hooks decided, so the dashboard shows the fleet
@@ -1594,7 +1595,13 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
     // sudo, and lets an already-installed daemon be connected.
     const connectIdx = args.indexOf("--connect");
     const wantsDisconnect = args.includes("--disconnect");
-    if (connectIdx >= 0 || wantsDisconnect) {
+    // `--machine-label` ALONE is a rename, not an enrolment. Alongside --connect it
+    // keeps its old meaning (the name to enrol under); on its own it changes the
+    // name of a machine that is already connected, which previously required
+    // re-running enrolment with the url and token again just to fix a display name.
+    const wantsRename =
+      connectIdx < 0 && !wantsDisconnect && args.includes("--machine-label");
+    if (connectIdx >= 0 || wantsDisconnect || wantsRename) {
       if (connectIdx >= 0 && wantsDisconnect) {
         throw new CliError("--connect and --disconnect cannot be combined.");
       }
@@ -1606,7 +1613,10 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
         return v;
       };
       let result;
-      if (wantsDisconnect) {
+      if (wantsRename) {
+        const { runRenameCommand } = await import("../src/hooks/cloud-enrollment-cli");
+        result = await runRenameCommand(valueAfter("--machine-label"));
+      } else if (wantsDisconnect) {
         const { runDisconnectCommand } = await import("../src/hooks/cloud-enrollment-cli");
         result = runDisconnectCommand();
       } else {
@@ -1632,7 +1642,7 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
         else console.error(line);
       }
       await track("cli_cloud_enrollment", {
-        action: wantsDisconnect ? "disconnect" : "connect",
+        action: wantsRename ? "rename" : wantsDisconnect ? "disconnect" : "connect",
         ok: result.exitCode === 0,
       });
       await exitAfterFlush(result.exitCode);

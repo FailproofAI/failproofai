@@ -139,6 +139,7 @@ import {
   buildAgentChoices,
   buildCompletionSummary,
   buildPresetChoices,
+  splitEnabled,
   clisSupportingScope,
   resolvePresetSelection,
   reviewLines,
@@ -297,6 +298,88 @@ describe("configure-wizard pure builders", () => {
   it("resolvePresetSelection returns the full set when Everything is ticked (wins over presets)", () => {
     expect(resolvePresetSelection(["__everything__"])).toEqual(resolveEverything());
     expect(resolvePresetSelection(["git", "__everything__"])).toEqual(resolveEverything());
+  });
+
+  // ── The wizard must not silently discard an existing selection ────────────
+  //
+  // `installHooks` is called with `replace: true`, so the ticked set becomes the
+  // WHOLE enabled set at that scope. That is the right rule — unticking a policy
+  // has to remove it — but every bundle box rendered unticked on every run, so
+  // re-running setup showed a blank slate and then made it authoritative. The
+  // user's policies were gone with nothing on screen to say so.
+
+  it("ticks a bundle whose policies are already all enabled", () => {
+    const git = resolvePreset("git");
+    const choices = buildPresetChoices(mkdtempSync(resolve(tmpdir(), "fpai-seed-")), true, git);
+
+    expect(choices.find((c) => c.value === "git")?.checked).toBe(true);
+    // And not the others, or confirming would enable bundles nobody picked.
+    expect(choices.find((c) => c.value === "secrets")?.checked).toBeFalsy();
+  });
+
+  it("does NOT tick a bundle that is only partly enabled", () => {
+    // "any" would tick every bundle sharing one policy, and `replace: true` would
+    // then enable all of them — turning a display bug into an enforcement change.
+    const git = resolvePreset("git");
+    expect(git.length).toBeGreaterThan(1);
+    const choices = buildPresetChoices(
+      mkdtempSync(resolve(tmpdir(), "fpai-partial-")),
+      true,
+      [git[0]!],
+    );
+
+    expect(choices.find((c) => c.value === "git")?.checked).toBeFalsy();
+    // It is enabled though, so it must be visible as an individual.
+    const row = choices.find((c) => c.value === "__individual__");
+    expect(row?.locked).toBe(true);
+    expect(row?.hint).toContain(git[0]!);
+  });
+
+  it("ticks Everything when the whole set is enabled", () => {
+    const choices = buildPresetChoices(
+      mkdtempSync(resolve(tmpdir(), "fpai-all-")),
+      true,
+      resolveEverything(),
+    );
+    expect(choices.find((c) => c.value === "__everything__")?.checked).toBe(true);
+    // Nothing is left over, so no locked row.
+    expect(choices.find((c) => c.value === "__individual__")).toBeUndefined();
+  });
+
+  it("shows no individual row when there is nothing enabled", () => {
+    const choices = buildPresetChoices(mkdtempSync(resolve(tmpdir(), "fpai-none-")), true, []);
+    expect(choices.find((c) => c.value === "__individual__")).toBeUndefined();
+    expect(choices.filter((c) => c.checked && c.value !== "__custom__")).toEqual([]);
+  });
+
+  it("carries individually-enabled policies through a confirm, so replace cannot drop them", () => {
+    // The end-to-end property: seed from a config, take the boxes as the wizard
+    // would render them, resolve, and get back everything that was enabled.
+    const enabled = [...resolvePreset("git"), "block-sudo"];
+    const { individual } = splitEnabled(enabled);
+    expect(individual).toContain("block-sudo");
+
+    const choices = buildPresetChoices(mkdtempSync(resolve(tmpdir(), "fpai-carry-")), true, enabled);
+    // What multiSelect returns on a straight ↵: every checked row, locked included.
+    const ticked = choices.filter((c) => (c.locked ? (c.checked ?? true) : !!c.checked)).map((c) => c.value);
+
+    const written = resolvePresetSelection(ticked, individual);
+
+    for (const name of enabled) expect(written).toContain(name);
+  });
+
+  it("carries a beta policy through Everything, which does not include beta", () => {
+    // `resolveEverything()` is non-beta only, so the branch meant to enable
+    // everything would drop a beta policy someone had enabled by hand.
+    const individual = ["some-beta-policy"];
+    const written = resolvePresetSelection(["__everything__", "__individual__"], individual);
+    expect(written).toContain("some-beta-policy");
+    for (const name of resolveEverything()) expect(written).toContain(name);
+  });
+
+  it("ignores the individual row when it is absent from the ticked set", () => {
+    const written = resolvePresetSelection(["git"], ["block-sudo"]);
+    expect(written).not.toContain("block-sudo");
   });
 
   it("buildAgentChoices pre-checks detected CLIs and sections the rest", () => {

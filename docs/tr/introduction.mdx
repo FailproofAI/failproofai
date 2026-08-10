@@ -1,36 +1,36 @@
 ---
 title: "Failproof AI"
-description: "FailproofAI, AI agenlarının döngüleri, gizli bilgi sızıntılarını, yıkıcı araç çağrılarını ve daha fazlasını tek bir kurulumda yakalayan 39 yerleşik hata ilkesini içerir."
+description: "FailproofAI, AI aracılarına 39 yerleşik başarısızlık politikası sağlayarak döngüleri, gizli sızdırmaları, yıkıcı araç çağrılarını ve daha pbirçok sorunu tek bir kurulumla yakalar."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-**AI hata işleme**, **hata kurtarma** ve **LLM güvenilirliği** için kancalar ve ilkeler. AI agenlarınızı güvenilir ve **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI** ve **Agents SDK** genelinde özerk olarak çalışırken tutun.
+**AI başarısızlık yönetimi**, **hata kurtarma** ve **LLM güvenilirliği** için kancalar ve politikalar. AI aracılarınızı **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI** ve **Agents SDK** üzerinde güvenilir ve otonom şekilde çalıştırın.
 
-AI agenları öngörülebilir şekillerde başarısız olur. Yıkıcı komutlar çalıştırırlar, gizli bilgileri sızdırırlar, görevden saparlar, döngülerde takılırlar veya doğrudan main'e itme yaparlar. Gözetimsiz bırakıldığında, küçük hatalar kesintilere, sızıntıya uğramış kimlik bilgilerine ve kaybedilen işlere dönüşebilir.
+AI aracıları öngörülebilir şekillerde başarısız olur. Yıkıcı komutlar çalıştırırlar, gizli bilgiler sızdırırlar, görevden sapıyor, döngülerde sıkışırlar veya doğrudan ana dala gönderim yaparlar. Denetimsiz bırakıldığında, küçük başarısızlıklar kesintilere, sızdırılan kimlik bilgilerine ve kaybedilen işlere dönüşebilir.
 
-FailproofAI bunu **ilkeler** ile çözer. Bu kurallar, her agent araç çağrısında **hataları tespit etmek**, **onları azaltmak** (bloke etmek, yönlendirmek, temizlemek) ve **sizin bilginize sunmak** için kancaya bağlanırlar. Yerel bir pano, daha sonra her araç çağrısını, agent hatasını ve kurtarma işlemini incelemenizi sağlar.
+FailproofAI bunu **politikalar** ile çözer. Bu kurallar her araç çağrısına takılarak **başarısızlıkları tespit eder**, **bunları hafifletir** (engelle, talimat ver, dezenfekte et) ve **dikkat gerektiğinde sizi uyarır**. Yerel bir pano, her araç çağrısını, aracı başarısızlığını ve kurtarma eylemini daha sonra gözden geçirmenizi sağlar.
 
-Transcript'ler ve ilke değerlendirmesi makinenizde kalır. Veriler yalnızca kimliği doğrulanmış denetim anımsatıcıları veya davetler gibi çevrimiçi bir özelliği açıkça kullandığınızda gönderilir.
+Transkriptler ve politika değerlendirmesi makinenizde kalır. Veriler yalnızca doğrulanan denetim hatırlatıcıları veya davetler gibi çevrimiçi bir özelliği açıkça kullandığınızda gönderilir.
 
 ## Başlayın
 
 <CardGroup cols={2}>
 
-<Card title="39 yerleşik ilke" icon="shield" href="/tr/built-in-policies">
-  Yıkıcı komutları engelleyin, gizli bilgi sızıntısını önleyin, agenları proje sınırları içinde tutun ve daha fazlasını yapın. Hepsi hazır olarak.
+<Card title="39 yerleşik politika" icon="shield" href="/tr/built-in-policies">
+  Yıkıcı komutları engelleyin, gizli sızıntısını önleyin, aracıları proje sınırları içinde tutun ve daha pbirçok şey. Hepsi kutu içinde.
 </Card>
 
-<Card title="Özel ilkeler" icon="code" href="/tr/custom-policies">
+<Card title="Özel politikalar" icon="code" href="/tr/custom-policies">
   Basit allow / deny / instruct API'si ile JavaScript'te kendi kurallarınızı yazın.
 </Card>
 
-<Card title="Agent monitörü" icon="chart-line" href="/tr/dashboard">
-  Agenlarınız yokken ne yaptığını görün. Oturumları tarayın, araç çağrılarını inceleyin, ilkelerin nerede çalıştığını gözden geçirin.
+<Card title="Aracı monitörü" icon="chart-line" href="/tr/dashboard">
+  Aracılarınız yokkenken ne yaptığını görün. Oturumları tarayın, araç çağrılarını inceleyin, politikaların nerede etkinleştiğini gözden geçirin.
 </Card>
 
 <Card title="Kolay yapılandırma" icon="gear" href="/tr/configuration">
-  Herhangi bir ilkeyi kod olmadan ayarlayın. Allowlistler, korumalı dallar veya eşikleri projeye özel veya küresel olarak ayarlayın.
+  Herhangi bir politikayı kod olmadan ayarlayın. İzin listelerini, korunan dalları veya eşikleri proje başına veya genel olarak ayarlayın.
 </Card>
 
 </CardGroup>
@@ -50,8 +50,8 @@ bun add -g failproofai
 </CodeGroup>
 
 ```bash
-failproofai policies --install   # ilkeleri etkinleştir (veya atla — ilk çalıştırmada `failproofai` kurulum teklif edecektir)
-failproofai                      # panoyu aç
+failproofai policies --install   # politikaları etkinleştir (veya atla — `failproofai` ilk çalıştırmada bunları ayarlamayı teklif edecek)
+failproofai                      # panoyu başlat
 ```
 
-Tam kılavuz için [Başlarken](/tr/getting-started) sayfasına bakın.
+Tam yer gösterimler için [Başlangıç](/tr/getting-started) kılavuzuna bakın.

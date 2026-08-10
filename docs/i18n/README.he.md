@@ -19,19 +19,19 @@
 
 **תרגומים:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**פתרון כשלים בזמן ריצה עבור סוכני קידוד.**
-משתלבת ב-Claude Code ו-Codex. תופסת לולאות, פעולות מסוכנות, ודליפות סודות
-לפני שהם הופכים לתקריות. אפס זמן השהייה. רץ באופן מקומי.
+**פתרון כישלונות בזמן ריצה עבור סוכנים קידוד.**
+מתחבר לתוך Claude Code ו-Codex. תופס לולאות, פעולות מסוכנות וגדילות סודות
+לפני שהם הופכים לתקלות. חביון אפס. פועל locally.
 
 </div>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI בפעולה" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ---
 
-## CLI של סוכנים נתמכים
+## CLIs סוכנים נתמכים
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -131,32 +131,32 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # או רק הריצו `failproofai` והסכימו לבקשת ההתקנה הראשונה
+failproofai policies --install   # או פשוט הרץ `failproofai` וקבל את הבקשה בהרצה ראשונה
 failproofai
 ```
 
-30 מדיניות מובנות מופעלות מיד. לוח מחוונים ב-`localhost:8020`. כבו את בקשת ההתקנה הראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 מדיניויות מובנות מופעלות מיד. לוח בקרה ב-`localhost:8020`. השבת את בקשת ההרצה הראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
 ## מה זה עוצר
 
-| מדיניות | מה היא חוסמת |
+| מדיניות | מה זה חוסם |
 |---|---|
-| `block-push-master` | דחיפה ישירה ל-`main` / `master` |
+| `block-push-master` | דחיפות ישירות ל-`main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | כתיבה, מיזוג, rebase על `main` / `master` |
+| `block-work-on-main` | commits, merges, rebases על `main` / `master` |
 | `block-rm-rf` | מחיקת קבצים רקורסיבית |
-| `sanitize-api-keys` | מפתחות API דוליפים להקשר הסוכן |
+| `sanitize-api-keys` | מפתחות API שנדלפים לתוך תיאום הסוכן |
 
-→ [כל 30 המדיניות המובנות](https://docs.befailproof.ai/built-in-policies)
+→ [כל 30 המדיניויות המובנות](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## המדיניויות שלך
+## המדיניויות שלך שלך
 
-השליכו קובץ ל-`.failproofai/policies/` — הוא נטען באופן אוטומטי, לא צריך דגלים.
-התחייבו אותו וכל הצוות יקבל אותו בפול הבא.
+הטלה קובץ ל-`.failproofai/policies/` — הוא טוען באופן אוטומטי, ללא דגלים נדרשים.
+התחייב בו והצוות כולו מקבל אותו ב-pull הבא.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -178,17 +178,17 @@ customPolicies.add({
 |---|---|
 | `allow()` | אפשר את הפעולה |
 | `deny(message)` | חסום אותה — ההודעה חוזרת לסוכן |
-| `instruct(message)` | תן לזה לעבור, אבל הוסף הקשר להודעה הבאה של הסוכן |
+| `instruct(message)` | תן לזה לעבור, אך הוסף הקשר להנחיה הבאה של הסוכן |
 
 → [מדריך מדיניויות מותאמות](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## נראות הפעלה
+## ראות session
 
-כל קריאת כלי שהסוכן שלך עושה מתועדת באופן מקומי. לוח המחוונים מציג מה רץ,
-מה היה חסום, ומה המדיניות אמרה לסוכן — כדי שלא תגידו
-כשמשהו משתבש. → [מדריך לוח המחוונים](https://docs.befailproof.ai/dashboard)
+כל קריאת כלי שהסוכן שלך עושה היא נרשמת locally. לוח הבקרה מציג מה רץ,
+מה נחסם, והודעה שהמדיניות אמרה לסוכן — כך שאתה לא מנחש
+כשמשהו משתבש. → [מדריך לוח הבקרה](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -196,30 +196,30 @@ customPolicies.add({
 
 | | |
 |---|---|
-| [התחלה בעבודה](https://docs.befailproof.ai/getting-started) | התקנה וצעדים ראשונים |
+| [התחל](https://docs.befailproof.ai/getting-started) | התקנה וצעדים ראשונים |
 | [מדיניויות מובנות](https://docs.befailproof.ai/built-in-policies) | כל 30 המדיניויות עם פרמטרים |
 | [מדיניויות מותאמות](https://docs.befailproof.ai/custom-policies) | כתוב שלך |
-| [תצורה](https://docs.befailproof.ai/configuration) | היקפי הגדרות וכללי מיזוג |
-| [לוח מחוונים](https://docs.befailproof.ai/dashboard) | מסקר הפעלה ופעילות מדיניות |
+| [תצורה](https://docs.befailproof.ai/configuration) | זימוני תצורה וכללי merge |
+| [לוח בקרה](https://docs.befailproof.ai/dashboard) | מעקב session ופעילות מדיניות |
 | [ארכיטקטורה](https://docs.befailproof.ai/architecture) | איך מערכת ה-hook עובדת |
 
 ---
 
 ## רישיון
 
-MIT עם [Commons Clause](https://commonsclause.com/) — חינם לשימוש פנימי ואישי; מכירת מסחרית של failproofai עצמו דורשת הסכם נפרד. ראה [LICENSE](../../LICENSE) לטקסט המלא.
+MIT עם [Commons Clause](https://commonsclause.com/) — חינם לשימוש פנימי ואישי; מכירה מסחרית מחדש של failproofai עצמו דורשת הסכם נפרד. ראה [LICENSE](../../LICENSE) לטקסט המלא.
 
 ---
 
 ## תרומה
 
-ראה [CONTRIBUTING.md](../../CONTRIBUTING.md). מדיניויות חדשות, מקרים קצה, ותרגומים כולם מוזמנים.
+ראה [CONTRIBUTING.md](../../CONTRIBUTING.md). מדיניויות חדשות, edge cases, ותרגומים כולם מוזמנים.
 
-> **בנה לפני שתתחיל.** הריץ `bun install && bun run build` תחילה. ריפו זה מריץ
-> את hook-ים שלו עצמו, והם פותרים את ייבוא `failproofai` נגד
-> bundle של `dist/` המהודר — בלי build תקבלו `Cannot find package 'failproofai'`
-> שגיאות hook. בנו מחדש אחרי שינוי `src/`. ראה
-> [בנה לפני שה-hook-ים dev בריפו יעבדו](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` ראשון. repo זה מריץ
+> את hook ה-failproofai של עצמו, והם פותרים את יבוא ה-`failproofai` כנגד
+> ה-bundle `dist/` המהודר — ללא build אתה תפגע בשגיאות hook `Cannot find package 'failproofai'`.
+> בנה מחדש לאחר שינוי `src/`. ראה
+> [בנה לפני שה-hook פיתוח in-repo יעבדו](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

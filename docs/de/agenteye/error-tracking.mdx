@@ -1,41 +1,41 @@
 ---
 title: "Fehlerverfolgung"
-description: "Sehen Sie jeden Fehler Ihrer Agents an einem Ort, gruppiert, sodass ein lauter Fehlersturm als ein einziges Problem erscheint."
+description: "Sehen Sie jeden Fehler Ihrer Agenten an einem Ort, gruppiert, damit ein Fehlerstoß als ein einziges Problem erscheint."
 ---
 
 
-Sehen Sie jeden Fehler Ihrer Agents an einem Ort, gruppiert, sodass ein lauter Fehlersturm als ein einziges Problem erscheint. Sie erhalten einen Ein-Klick-Pfad von „irgendetwas ist rot" bis zum genauen Lauf, der den Fehler verursacht hat – ohne einen Live-Feed nach der Ursache durchscrollen zu müssen.
+Sehen Sie jeden Fehler Ihrer Agenten an einem Ort, gruppiert, damit ein Fehlerstoß als ein einziges Problem erscheint. Sie erhalten einen Klick-Pfad von „etwas ist rot" bis zum genauen Lauf, der abgebrochen ist, ohne einen Live-Feed durchscrollen zu müssen.
 
-![Die Errors-Seite: ein Histogramm der Fehler über die Zeit oberhalb von gruppierten roten Fehlerzeilen, jede mit einer Ein-Klick-Schaltfläche „+ alert"](/agenteye/images/errors.png)
-*Die Errors-Seite: ein Histogramm der Fehler über die Zeit, wobei wiederkehrende Fehler zu einer Zeile pro Vorfall zusammengefasst werden.*
+![Die Fehlerseite: ein Histogramm der Fehler über die Zeit über gruppierten roten Fehlerzeilen, jede mit einer Ein-Klick-Schaltfläche „+ alert"](/agenteye/images/errors.png)
+*Die Fehlerseite: ein Histogramm der Fehler über die Zeit, wobei wiederkehrende Fehler in einer Zeile pro Vorfall zusammengefasst werden.*
 
 ## Jeder Fehler, bereits für Sie gesammelt
 
-Wenn ein Agent abstürzt, sollten Sie nicht durch einen Live-Eventstream scrollen müssen und hoffen, die roten Zeilen zu erwischen, bevor sie verschwinden. Die **Errors**-Seite übernimmt das Sammeln für Sie. Sie bündelt alles, was das Dashboard rot einfärben würde, auf einer einzigen Triagefläche – das Erste, was Sie sehen, ist was fehlschlägt, nicht wo Sie danach suchen müssen.
+Wenn ein Agent abstürzt, sollten Sie keinen Live-Event-Stream durchscrollen müssen, um rote Zeilen zu finden, bevor sie verschwinden. Die **Fehlerseite** übernimmt das Sammeln für Sie. Sie bündelt alles, was das Dashboard rot markieren würde, auf einer einzigen Triage-Oberfläche – das Erste, was Sie sehen, ist, was fehlschlägt, nicht wo Sie danach suchen müssen.
 
-Und sie erfasst mehr als die offensichtlichen Fehler. Neben expliziten `error`-Events bringt Failproof AI Observability auch die stillen Fehler ans Licht: jedes `tool_result`, `hook_completed` oder `agent_end`, dessen Payload einen Fehler enthält, erscheint hier. Ein Tool, das einen Fehler zurückgegeben hat, oder ein Hook, der fehlerhaft beendet wurde, entgeht Ihnen nicht mehr nur deshalb, weil keine laute Exception geworfen wurde.
+Und sie erfasst mehr als die offensichtlichen Fehler. Neben expliziten `error`-Events macht Failproof AI Observability auch die stillen Fehler sichtbar: Jedes `tool_result`, `hook_completed` oder `agent_end`, dessen Payload einen Fehler enthält, wird hier angezeigt. Ein Tool, das einen Fehler zurückgegeben hat, oder ein Hook, der fehlerhaft beendet wurde, entgeht Ihnen nicht mehr, nur weil keine laute Exception ausgelöst wurde.
 
-Am oberen Rand zeigt ein Histogramm die Fehler über die Zeit. Ein Blick genügt, um zu erkennen, ob es sich um ein stetiges Hintergrundrauschen oder eine Spitze handelt, die vor wenigen Minuten begann – so wissen Sie sofort, ob Sie alles stehen und liegen lassen müssen.
+Am oberen Rand zeigt ein Histogramm Fehler über die Zeit. Ein Blick zeigt Ihnen, ob es sich um ein stetiges Hintergrundrauschen oder um einen Anstieg handelt, der vor wenigen Minuten begann – damit wissen Sie sofort, ob Sie alles stehen und liegen lassen müssen.
 
-Wie jede Observe-Ansicht ist die Errors-Seite auf Ihre Organisation beschränkt und lässt sich nach Zeitraum, Umgebung, Agent und Session filtern. Das bedeutet, Sie können eine flottenweit gültige Liste nehmen und sie auf den einen Agent oder die eine Umgebung einengen, die Sie tatsächlich interessiert.
+Wie jede Beobachtungsoberfläche ist die Fehlerseite auf Ihre Organisation begrenzt und lässt sich nach Datumsbereich, Umgebung, Agent und Session filtern. So können Sie eine flottenweit gültige Liste auf den einen Agent oder die eine Umgebung eingrenzen, die Sie tatsächlich interessiert.
 
 ## Ein Vorfall, nicht hundert identische Zeilen
 
-Eine einzige fehlerhafte Abhängigkeit kann denselben Fehler hunderte Male pro Minute auslösen. Roh belassen ergibt das eine Wand aus nahezu identischen Zeilen, die das Eine begräbt, was Sie eigentlich sehen müssen.
+Eine einzige defekte Abhängigkeit kann denselben Fehler hunderte Male pro Minute auslösen. Unbearbeitet ergibt das eine Wand aus nahezu identischen Zeilen, die das Wesentliche verbirgt.
 
-Failproof AI Observability fasst wiederkehrende Fehler, die dieselbe Session und denselben Fehlertyp teilen, zu einer einzigen Zeile zusammen. Ein Fehlersturm erscheint als ein einziger Vorfall. Sie zählen Probleme, keine Log-Zeilen, und das Signal, das zählt, bleibt oben, anstatt von seinem eigenen Volumen übertönt zu werden.
+Failproof AI Observability fasst wiederkehrende Fehler mit derselben Session und demselben Fehlertyp in einer einzigen Zeile zusammen. Ein Fehlerstoß erscheint als ein einziger Vorfall. Sie zählen Probleme, keine Log-Zeilen – und das Signal, das wichtig ist, bleibt oben, anstatt von seinem eigenen Volumen überwältigt zu werden.
 
-## Von „irgendetwas ist rot" zum genauen Event
+## Von „etwas ist rot" zum genauen Event
 
-Klicken Sie auf eine Zeile und Sie landen direkt im Verlauf dieser Session, positioniert auf genau dem Event, das fehlgeschlagen ist. Kein Kopieren von Session-IDs, kein Scrollen auf der Suche nach dem Moment, an dem es schiefging: Sie kommen direkt dorthin, mit dem vollständigen Ausführungsgraphen auf einen Blick, sodass Sie sehen können, was der Agent in den Momenten vor dem Fehler getan hat.
+Klicken Sie auf eine beliebige Zeile, um direkt in die Session dieses Laufs zu gelangen, positioniert auf dem genauen Event, das fehlgeschlagen ist. Kein Kopieren von Session-IDs, kein Scrollen, um den Moment des Fehlers zu finden: Sie landen genau dort, mit dem vollständigen Ausführungsgraph auf einen Blick, sodass Sie sehen können, was der Agent in den Momenten vor dem Absturz getan hat.
 
-Wenn Sie `alerts:write` besitzen, enthält jede Zeile außerdem eine **+ alert**-Schaltfläche. Ein Klick darauf öffnet in Observability eine neue Alert-Regel, die bereits ausgefüllt ist, um genau denselben Fehler erneut abzufangen. Der Vorfall, den Sie gerade triagiert haben, wird zum Vorfall, der Sie beim nächsten Mal benachrichtigt – statt Sie zweimal zu überraschen.
+Wenn Sie `alerts:write`-Berechtigung haben, enthält jede Zeile auch eine **+ alert**-Schaltfläche. Klicken Sie darauf, öffnet Observability eine neue Alert-Regel, die bereits so ausgefüllt ist, dass sie denselben Fehler beim nächsten Mal erkennt. Der Vorfall, den Sie gerade triagiert haben, wird zu dem, der Sie beim nächsten Mal benachrichtigt – anstatt Sie zweimal zu überraschen.
 
-**Wo Sie sie finden:** Die **Errors**-Seite befindet sich im Observe-Bereich des Dashboards unter `/<org-slug>/errors`.
+**Wo Sie es finden:** Die **Fehlerseite** befindet sich im Beobachtungsbereich des Dashboards unter `/<org-slug>/errors`.
 
-## Verwandte Seiten
+## Verwandte Themen
 
-- [Alerts](/de/agenteye/alerts): jeden Fehler in eine Benachrichtigungsregel umwandeln.
-- [Incidents](/de/agenteye/incidents): einen ausgelösten Alert von offen bis gelöst verfolgen.
-- [Sessions](/de/agenteye/sessions): den vollständigen Lauf hinter einem Fehler öffnen.
-- [Audits](/de/agenteye/audits): Observability Fehlermuster über Ihre Läufe hinweg finden lassen.
+- [Alerts](/de/agenteye/alerts): Jeden Fehler in eine Benachrichtigungsregel umwandeln.
+- [Incidents](/de/agenteye/incidents): Einen ausgelösten Alert von offen bis gelöst verfolgen.
+- [Sessions](/de/agenteye/sessions): Den vollständigen Lauf hinter einem Fehler öffnen.
+- [Audits](/de/agenteye/audits): Observability Fehlermuster in Ihren Läufen automatisch erkennen lassen.

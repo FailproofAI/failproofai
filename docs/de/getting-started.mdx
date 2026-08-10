@@ -1,13 +1,13 @@
 ---
 title: Erste Schritte
-description: "Installiere failproofai, aktiviere Policies und lass deine Agenten zuverlässig laufen"
+description: "Installiere failproofai, aktiviere Richtlinien und lass deine Agenten zuverlässig laufen"
 icon: rocket
 ---
 
 ## Voraussetzungen
 
 - **Node.js** >= 20.9.0
-- **Bun** >= 1.3.0 (optional – nur zum Bauen aus dem Quellcode erforderlich)
+- **Bun** >= 1.3.0 (optional – nur für den Build aus dem Quellcode erforderlich)
 
 ---
 
@@ -30,16 +30,16 @@ bun add -g failproofai
 ## Schnellstart
 
 <Steps>
-  <Step title="Policies aktivieren">
-    Policies sind Regeln, die vor und nach jedem Tool-Aufruf eines Agenten ausgeführt werden. Sie erkennen destruktive Befehle, Datenlecks bei Secrets und andere Fehlerquellen, bevor diese Schaden anrichten.
+  <Step title="Richtlinien aktivieren">
+    Richtlinien sind Regeln, die vor und nach jedem Tool-Aufruf eines Agenten ausgeführt werden. Sie erkennen destruktive Befehle, das Durchsickern von Geheimnissen und andere Fehlerquellen, bevor sie Schaden anrichten.
 
     ```bash
     failproofai policies --install
     ```
 
-    Damit werden Hook-Einträge in die installierten Agent-CLIs geschrieben (Claude Codes `~/.claude/settings.json`, OpenAI Codex' `~/.codex/hooks.json`, GitHub Copilot CLIs `~/.copilot/hooks/failproofai.json`, Cursor Agents `~/.cursor/hooks.json`, OpenCodes generierter Plugin-Shim unter `~/.config/opencode/plugins/failproofai.mjs` sowie ein Registrierungseintrag im `plugin`-Array von `~/.config/opencode/opencode.json`, Pis `~/.pi/agent/settings.json`, Hermes' `~/.hermes/config.yaml`, OpenClaws `~/.openclaw/openclaw.json`, Factory Droids `~/.factory/hooks.json`, Devin CLIs `~/.config/devin/config.json`, Antigravity CLIs `~/.gemini/config/hooks.json` oder Gooses automatisch erkanntem Plugin-Verzeichnis unter `~/.agents/plugins/failproofai/hooks/hooks.json`). Wenn mehr als eine CLI vorhanden ist, wirst du zur Auswahl aufgefordert; übergib `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose` (beliebige Teilmenge), um die Abfrage zu überspringen.
+    Dies schreibt Hook-Einträge in die installierten Agenten-CLIs (Claude Code's `~/.claude/settings.json`, OpenAI Codex's `~/.codex/hooks.json`, GitHub Copilot CLI's `~/.copilot/hooks/failproofai.json`, Cursor Agent's `~/.cursor/hooks.json`, OpenCode's generiertes Plugin-Shim unter `~/.config/opencode/plugins/failproofai.mjs` plus einen Registrierungseintrag im `plugin`-Array von `~/.config/opencode/opencode.json`, Pi's `~/.pi/agent/settings.json`, Hermes's `~/.hermes/config.yaml`, OpenClaw's `~/.openclaw/openclaw.json`, Factory Droid's `~/.factory/hooks.json`, Devin CLI's `~/.config/devin/config.json`, Antigravity CLI's `~/.gemini/config/hooks.json` oder Goose's automatisch erkanntes Plugin-Verzeichnis unter `~/.agents/plugins/failproofai/hooks/hooks.json`). Wenn mehr als eine CLI vorhanden ist, wird eine Abfrage angezeigt; übergib `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose` (beliebige Teilmenge), um die Abfrage zu überspringen.
 
-    GitHub Copilot CLI, Cursor Agent, OpenCode und Pi befinden sich im **Beta**-Stadium – installiere mit `--cli copilot`, `--cli cursor`, `--cli opencode` oder `--cli pi`. Hermes (hermes-agent, ein Slack/Telegram-Gateway) wird im User-Scope mit `--cli hermes` installiert und ist **außerdem** eine Offline-Auditquelle. OpenClaw (openclaw gateway, ein selbst gehosteter Multi-Channel-Assistent) wird im User-Scope mit `--cli openclaw` installiert – die Durchsetzung erfolgt über seine In-Process-Plugin-Hooks (`before_agent_finalize` ist ein echter Turn-End-Gate, sodass die eingebauten `require-*-before-stop`-Regeln greifen) – und ist **außerdem** eine Offline-Auditquelle. Factory Droid (`droid`) wird mit `--cli factory` (User- und Projekt-Scope) installiert und ist **außerdem** eine Offline-Auditquelle. Devin CLI (`devin`, Cognition) wird mit `--cli devin` (User- und Projekt-Scope) installiert und ist **außerdem** eine Offline-Auditquelle. Antigravity CLI (`agy`) wird mit `--cli antigravity` (User- und Projekt-Scope) installiert und ist **außerdem** eine Offline-Auditquelle. Goose (Codename goose, Block) wird mit `--cli goose` (User- und Projekt-Scope) installiert – der Installer legt lediglich ein Plugin-Verzeichnis unter `~/.agents/plugins/failproofai/` ab, das Goose automatisch erkennt, und ist **außerdem** eine Offline-Auditquelle.
+    GitHub Copilot CLI, Cursor Agent, OpenCode und Pi-Unterstützung sind **Beta** – installiere mit `--cli copilot`, `--cli cursor`, `--cli opencode` oder `--cli pi`. Hermes (hermes-agent, ein Slack/Telegram-Gateway) wird im User-Scope mit `--cli hermes` installiert und ist **außerdem** eine Offline-Audit-Quelle. OpenClaw (openclaw-Gateway, ein selbst gehosteter Multi-Channel-Assistent) wird im User-Scope mit `--cli openclaw` installiert – die Durchsetzung erfolgt über seine In-Process-Plugin-Hooks (`before_agent_finalize` ist ein echter Turn-End-Gate, sodass die eingebauten `require-*-before-stop`-Richtlinien greifen) – und ist **außerdem** eine Offline-Audit-Quelle. Factory Droid (`droid`) wird mit `--cli factory` (User- und Projekt-Scope) installiert und ist **außerdem** eine Offline-Audit-Quelle. Devin CLI (`devin`, Cognition) wird mit `--cli devin` (User- und Projekt-Scope) installiert und ist **außerdem** eine Offline-Audit-Quelle. Antigravity CLI (`agy`) wird mit `--cli antigravity` (User- und Projekt-Scope) installiert und ist **außerdem** eine Offline-Audit-Quelle. Goose (Codename goose, Block) wird mit `--cli goose` (User- und Projekt-Scope) installiert – der Installer legt ein Plugin-Verzeichnis unter `~/.agents/plugins/failproofai/` an, das Goose automatisch erkennt, und ist **außerdem** eine Offline-Audit-Quelle.
 
     ```bash
     failproofai policies --install --scope project
@@ -62,25 +62,25 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    Zeigt alle Policies, ob sie aktiviert sind, und eventuell konfigurierte Parameter.
+    Zeigt jede Richtlinie an, ob sie aktiviert ist und welche Parameter konfiguriert sind.
   </Step>
   <Step title="Dashboard starten">
     ```bash
     failproofai
     ```
 
-    Öffnet ein lokales Dashboard unter `http://localhost:8020`, in dem du Sessions durchsuchen, Tool-Aufrufe untersuchen und Policies verwalten kannst.
+    Öffnet ein lokales Dashboard unter `http://localhost:8020`, in dem du Sitzungen durchsuchen, Tool-Aufrufe untersuchen und Richtlinien verwalten kannst.
   </Step>
   <Step title="Agenten starten">
-    Starte Claude Code wie gewohnt. Wenn der Agent etwas Riskantes versucht, unterbricht failproofai es automatisch. Lass ihn unbeaufsichtigt laufen und schaue dir anschließend im Dashboard an, was passiert ist.
+    Starte Claude Code wie gewohnt. Wenn der Agent etwas Riskantes versucht, greift failproofai automatisch ein. Lass ihn unbeaufsichtigt laufen und überprüfe im Dashboard, was passiert ist.
   </Step>
 </Steps>
 
 ---
 
-## Wie Policies funktionieren
+## Wie Richtlinien funktionieren
 
-Jedes Mal, wenn ein Agent ein Tool ausführt, ruft Claude Code failproofai als Subprocess auf:
+Jedes Mal, wenn ein Agent ein Tool ausführt, ruft Claude Code failproofai als Unterprozess auf:
 
 ```text
 Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
@@ -88,30 +88,30 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
                                                  writes decision to stdout
 ```
 
-Jede Policy gibt eine von drei Entscheidungen zurück:
+Jede Richtlinie gibt eine von drei Entscheidungen zurück:
 
 - **allow** – der Agent fährt normal fort
-- **deny** – die Aktion wird blockiert, der Agent erfährt den Grund
+- **deny** – die Aktion wird blockiert und der Agent wird über den Grund informiert
 - **instruct** – dem Prompt des Agenten wird zusätzlicher Kontext hinzugefügt
 
 <Note>
-Policies laufen in deinem lokalen Prozess. Es werden keine Daten an einen Remote-Dienst übermittelt.
+Richtlinien werden in deinem lokalen Prozess ausgeführt. Es werden keine Daten an einen Remote-Dienst gesendet.
 </Note>
 
 ---
 
-## Team-Policies mit konventionsbasierten Policies einrichten
+## Team-Richtlinien mit konventionsbasierten Richtlinien einrichten
 
-Der schnellste Weg, Qualitätsstandards im Team zu etablieren, ist die `.failproofai/policies/`-Konvention. Lege Policy-Dateien in dieses Verzeichnis – sie werden automatisch geladen, ohne Flags, ohne Konfigurationsänderungen, ohne Installationsbefehle.
+Der schnellste Weg, Qualitätsstandards im gesamten Team zu etablieren, ist die `.failproofai/policies/`-Konvention. Lege Richtliniendateien in dieses Verzeichnis und sie werden automatisch geladen – keine Flags, keine Konfigurationsänderungen, keine Install-Befehle.
 
 <Steps>
-  <Step title="Policies-Verzeichnis erstellen">
+  <Step title="Richtlinienverzeichnis erstellen">
     ```bash
     mkdir -p .failproofai/policies
     ```
   </Step>
-  <Step title="Policy-Dateien hinzufügen">
-    Kopiere die mitgelieferten Beispiele oder schreibe deine eigenen:
+  <Step title="Richtliniendateien hinzufügen">
+    Kopiere die Startbeispiele oder schreibe eigene:
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
@@ -136,32 +136,32 @@ Der schnellste Weg, Qualitätsstandards im Team zu etablieren, ist die `.failpro
     });
     ```
   </Step>
-  <Step title="In Git committen">
+  <Step title="In Git einchecken">
     ```bash
     git add .failproofai/policies/
     git commit -m "Add team quality policies"
     ```
 
-    Jedes Teammitglied, das failproofai installiert hat, übernimmt diese Policies automatisch. Keine individuelle Einrichtung pro Entwickler erforderlich.
+    Jedes Teammitglied, das failproofai installiert hat, übernimmt diese Richtlinien automatisch. Kein Setup pro Entwickler erforderlich.
   </Step>
 </Steps>
 
 <Tip>
-Committe `.failproofai/policies/` in dein Repository, damit das gesamte Team dieselben Standards teilt. Wenn euer Team neue Fehlerquellen entdeckt, fügt Policies hinzu und pusht – alle erhalten das Update beim nächsten `git pull`. Mit der Zeit werden diese Policies zu einem lebendigen Qualitätsstandard, der sich kontinuierlich verbessert.
+Checke `.failproofai/policies/` in dein Repository ein, damit das gesamte Team dieselben Standards teilt. Wenn dein Team neue Fehlerquellen entdeckt, füge Richtlinien hinzu und pushe – alle erhalten das Update beim nächsten `git pull`. Mit der Zeit werden diese Richtlinien zu einem lebendigen Qualitätsstandard, der sich kontinuierlich verbessert.
 </Tip>
 
 ---
 
 ## Datenspeicherung
 
-Alle Konfigurationsdaten und Logs verbleiben auf deinem Rechner:
+Alle Konfigurationen und Protokolle verbleiben auf deinem Rechner:
 
-| Pfad | Gespeicherter Inhalt |
+| Pfad | Was gespeichert wird |
 |------|----------------------|
-| `~/.failproofai/policies/local-policies/policies-config.json` | Globale Policy-Konfiguration |
+| `~/.failproofai/policies/local-policies/policies-config.json` | Globale Richtlinienkonfiguration |
 | `~/.failproofai/hook-activity/` | Hook-Ausführungsverlauf (seitenweise JSONL) |
-| `~/.failproofai/logs/` | Debug-Logs für benutzerdefinierte Hook-Fehler |
-| `.failproofai/policies-config.json` | Projekt-spezifische Konfiguration (committet) |
+| `~/.failproofai/logs/` | Debug-Protokolle für benutzerdefinierte Hook-Fehler |
+| `.failproofai/policies-config.json` | Projektbezogene Konfiguration (eingecheckt) |
 | `.failproofai/policies-config.local.json` | Persönliche Überschreibungen (gitignored) |
 
 ---
@@ -181,19 +181,19 @@ Entfernt Hook-Einträge aus `~/.claude/settings.json`. Konfigurationsdateien in 
 <CardGroup cols={2}>
 
 <Card title="Konfiguration" icon="gear" href="/de/configuration">
-  Scopes und das Konfigurationsdateiformat
+  Scopes und Konfigurationsdateiformat
 </Card>
 
-<Card title="Eingebaute Policies" icon="shield" href="/de/built-in-policies">
-  Alle 26 Policies mit Parametern
+<Card title="Integrierte Richtlinien" icon="shield" href="/de/built-in-policies">
+  Alle 26 Richtlinien mit Parametern
 </Card>
 
-<Card title="Benutzerdefinierte Policies" icon="code" href="/de/custom-policies">
-  Schreibe eigene Policies in JavaScript
+<Card title="Benutzerdefinierte Richtlinien" icon="code" href="/de/custom-policies">
+  Schreibe eigene Richtlinien in JavaScript
 </Card>
 
 <Card title="Agenten-Monitor" icon="chart-line" href="/de/dashboard">
-  Sessions überwachen und Policy-Aktivitäten einsehen
+  Sitzungen überwachen und Richtlinienaktivitäten überprüfen
 </Card>
 
 </CardGroup>

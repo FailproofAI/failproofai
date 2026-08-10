@@ -1,33 +1,34 @@
 ---
-title: "Cho các agent"
-description: "Thêm kiến thức Failproof AI vào agent lập trình của bạn chỉ bằng một lệnh. Hoạt động với Claude Code, Cursor, Windsurf và nhiều hơn nữa."
+---
+title: "For agents"
+description: "Thêm kiến thức Failproof AI vào agent viết code của bạn chỉ bằng một lệnh. Hoạt động với Claude Code, Cursor, Windsurf và nhiều hơn nữa."
 ---
 
-Thêm tham chiếu Failproof AI đầy đủ vào agent lập trình của bạn chỉ bằng một lệnh. Hoạt động với Claude Code, Cursor, Windsurf và bất kỳ agent nào khác hỗ trợ kỹ năng.
+Thêm toàn bộ tài liệu tham khảo Failproof AI vào agent viết code của bạn chỉ bằng một lệnh. Hoạt động với Claude Code, Cursor, Windsurf và bất kỳ agent nào khác hỗ trợ skills.
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` tự động phát hiện các agent bạn đã cài đặt và thêm kỹ năng theo đúng định dạng cho từng agent.
+`npx skills` phát hiện các agent bạn đã cài đặt và tự động thêm skill ở định dạng phù hợp cho từng agent.
 
-## Kỹ năng bao gồm những gì
+## Skill bao gồm những gì
 
 | Lĩnh vực | Nội dung bao gồm |
-|---------|-----------------|
-| Policies | Tên policy được tích hợp sẵn, các loại sự kiện, tham số, bật/tắt |
-| Custom policies | `customPolicies.add()`, bộ lọc khớp, API `allow`/`deny`/`instruct` |
+|------|----------------|
+| Policies | Tên policy được tích hợp sẵn, loại sự kiện, tham số, bật/tắt |
+| Custom policies | `customPolicies.add()`, match filters, API `allow`/`deny`/`instruct` |
 | Context object | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
-| Configuration | Cấu trúc `policies-config.json`, hợp nhất scope, `policyParams` |
+| Configuration | Cấu trúc `policies-config.json`, scope merging, `policyParams` |
 | CLI | `failproofai policies --install`, `--uninstall`, `--custom`, scopes |
-| Dashboard | Trình xem phiên, hoạt động policy, các biến môi trường |
-| Architecture | Luồng xử lý hook, mã thoát, hợp đồng stdin/stdout |
+| Dashboard | Session viewer, policy activity, biến môi trường |
+| Architecture | Hook handler flow, exit codes, hợp đồng stdin/stdout |
 
-## Kỹ năng có hoàn chỉnh không?
+## Skill có hoàn chỉnh không?
 
-Mintlify tạo `llms.txt` từ tất cả các trang trong điều hướng. Tài liệu Failproof AI bao gồm toàn bộ API - mọi policy, tùy chọn và ví dụ đều được bao gồm. Nếu bạn tìm thấy điều gì bị thiếu, nguồn nằm tại `https://docs.befailproof.ai/llms-full.txt`.
+Mintlify tạo `llms.txt` từ tất cả các trang trong navigation. Tài liệu Failproof AI bao gồm toàn bộ API - mọi policy, tùy chọn và ví dụ đều có. Nếu bạn thấy thiếu điều gì, nguồn là tại `https://docs.befailproof.ai/llms-full.txt`.
 
-Để có bối cảnh cụ thể, hãy liên kết trực tiếp đến một trang cụ thể:
+Để có nội dung được lọc lại, hãy liên kết trực tiếp đến một trang cụ thể:
 
 ```bash
 # Chỉ API custom policies

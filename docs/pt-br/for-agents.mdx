@@ -14,25 +14,25 @@ O `npx skills` detecta quais agentes você tem instalados e adiciona a skill no 
 ## O que a skill cobre
 
 | Área | O que está incluído |
-|------|---------------------|
-| Policies | Nomes de políticas integradas, tipos de eventos, parâmetros, habilitar/desabilitar |
+|------|----------------|
+| Policies | Nomes de policies nativas, tipos de eventos, parâmetros, ativar/desativar |
 | Custom policies | `customPolicies.add()`, filtros de correspondência, API `allow`/`deny`/`instruct` |
 | Objeto de contexto | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
 | Configuração | Estrutura do `policies-config.json`, mesclagem de escopos, `policyParams` |
 | CLI | `failproofai policies --install`, `--uninstall`, `--custom`, escopos |
-| Dashboard | Visualizador de sessões, atividade de políticas, variáveis de ambiente |
-| Arquitetura | Fluxo do handler de hooks, códigos de saída, contrato stdin/stdout |
+| Dashboard | Visualizador de sessões, atividade de policies, variáveis de ambiente |
+| Arquitetura | Fluxo do hook handler, códigos de saída, contrato stdin/stdout |
 
 ## A skill está completa?
 
-O Mintlify gera o `llms.txt` a partir de todas as páginas da navegação. A documentação do Failproof AI cobre a API completa — cada política, opção e exemplo está incluído. Se encontrar algo faltando, a fonte está em `https://docs.befailproof.ai/llms-full.txt`.
+O Mintlify gera o `llms.txt` a partir de todas as páginas da navegação. A documentação do Failproof AI cobre a API completa — cada policy, opção e exemplo está incluído. Se você encontrar algo faltando, a fonte está em `https://docs.befailproof.ai/llms-full.txt`.
 
-Para contexto mais específico, aponte diretamente para uma página em particular:
+Para contexto direcionado, vincule diretamente a uma página específica:
 
 ```bash
 # Apenas a API de custom policies
 npx skills add https://docs.befailproof.ai/custom-policies
 
-# Apenas as políticas integradas
+# Apenas as built-in policies
 npx skills add https://docs.befailproof.ai/built-in-policies
 ```

@@ -1,25 +1,25 @@
 ---
 title: "Sicherheit"
-description: "Failproof AI Observability ist so konzipiert, dass es eng an Ihren Produktions-Agenten sitzt – das bedeutet, es sieht Ihre Prompts, Tool-Eingaben und Ausgaben."
+description: "Failproof AI Observability ist darauf ausgelegt, nah an Ihren Produktions-Agents zu laufen – das bedeutet, es sieht Ihre Prompts, Tool-Eingaben und Ausgaben."
 ---
 
 
-Failproof AI Observability ist so konzipiert, dass es eng an Ihren Produktions-Agenten sitzt – das bedeutet, es sieht Ihre Prompts, Tool-Eingaben und Ausgaben. Diese Seite erläutert, wie Ihre Daten isoliert, kontrolliert und in Ihren Händen bleiben. Wenn Sie Failproof AI Observability im Rahmen einer Sicherheitsüberprüfung evaluieren, beginnen Sie hier.
+Failproof AI Observability ist darauf ausgelegt, nah an Ihren Produktions-Agents zu laufen – das bedeutet, es sieht Ihre Prompts, Tool-Eingaben und Ausgaben. Diese Seite erklärt, wie die Daten isoliert, kontrolliert und in Ihren Händen bleiben. Wenn Sie Failproof AI Observability im Rahmen einer Sicherheitsprüfung evaluieren, beginnen Sie hier.
 
 ---
 
 ## Ihre Daten bleiben in Ihrer Umgebung
 
-Failproof AI Observability ist selbst gehostet. Events, Prompts, Modellantworten und Analysen werden in Ihren eigenen Datenbanken, in Ihrer eigenen Umgebung gespeichert. Nichts wird zur Speicherung an einen Drittanbieter-SaaS übertragen, und Ihre Daten verbleiben in Ihrem eigenen Cloud-Account.
+Failproof AI Observability wird selbst gehostet. Events, Prompts, Modellantworten und Analysen werden in Ihren eigenen Datenbanken, in Ihrer eigenen Umgebung gespeichert. Es werden keine Daten zur Speicherung an einen Drittanbieter-SaaS übermittelt – Ihre Daten verbleiben in Ihrem eigenen Cloud-Account.
 
 ---
 
-## Mandanten-Isolation
+## Mandantenisolierung
 
-Eine Failproof AI Observability-Instanz kann viele Organisationen hosten, und jede ist auf der Speicherebene isoliert – durchgesetzt durch die Datenbank, nicht nur durch die Benutzeroberfläche:
+Eine Failproof AI Observability-Instanz kann viele Organisationen beherbergen, und jede ist auf Speicherebene isoliert – durchgesetzt von der Datenbank, nicht nur von der Benutzeroberfläche:
 
 - Die operativen Daten einer Organisation (Benutzer, Schlüssel, Dashboards, gespeicherte Abfragen) sind auf diese Organisation beschränkt, und organisationsübergreifende Lesezugriffe werden von der Datenbank selbst blockiert.
-- Jedes aufgezeichnete Event wird mit der zugehörigen Organisation gekennzeichnet, sodass Events einer Organisation niemals von einer anderen gelesen werden können.
+- Jedes aufgenommene Event wird mit der zugehörigen Organisation gestempelt, sodass die Events einer Organisation niemals von einer anderen gelesen werden können.
 
 Jede Dashboard-Route ist unter einem Org-Slug (`/<org-slug>/…`) eingeschränkt.
 
@@ -27,42 +27,42 @@ Jede Dashboard-Route ist unter einem Org-Slug (`/<org-slug>/…`) eingeschränkt
 
 ## Anmeldung
 
-Failproof AI Observability verwendet passwortlose, E-Mail-basierte Anmeldung. Es gibt kein Passwort, das abgephisht oder geleakt werden könnte. Ein Benutzer fordert einen Einmalcode (oder einen One-Click-Magic-Link) an, der per E-Mail zugestellt wird und schnell abläuft. Die Anmeldung ist durch eine **Zulassungsliste** gesichert: Nur E-Mail-Adressen (oder Domains), die Sie freigeben, können sich authentifizieren.
+Failproof AI Observability verwendet passwortlose, E-Mail-basierte Anmeldung. Es gibt kein Passwort, das abgephisht oder geleakt werden könnte. Ein Benutzer fordert einen Einmalcode (oder einen Magic Link zum einmaligen Klicken) an, der per E-Mail zugestellt wird und schnell abläuft. Die Anmeldung ist durch eine **Allowlist** gesichert: Nur E-Mail-Adressen (oder Domains), die Sie freigeben, können sich authentifizieren.
 
-![Der Failproof AI Observability-Anmeldebildschirm, der einen Einmalcode an Ihre E-Mail sendet](/agenteye/images/login.png)
+![Der Anmeldebildschirm von Failproof AI Observability, der einen Einmalcode an Ihre E-Mail-Adresse sendet](/agenteye/images/login.png)
 
 ---
 
 ## Eingeschränkter Zugriff mit API-Schlüsseln
 
-Jeder Client authentifiziert sich mit einem API-Schlüssel, der granulare Berechtigungen nach dem Prinzip der minimalen Rechte trägt. Ein Collector benötigt nur `events:add`; ein Dashboard- oder Assistenten-Schlüssel kann schreibgeschützt sein; destruktive Aktionen (Löschen, Regenerieren) sind separate Berechtigungen, die Sie gezielt vergeben.
+Jeder Client authentifiziert sich mit einem API-Schlüssel, der granulare, minimal privilegierte Berechtigungen trägt. Ein Collector benötigt lediglich `events:add`; ein Dashboard- oder Assistenten-Schlüssel kann schreibgeschützt sein; destruktive Aktionen (Löschen, Neugenerieren) sind separate Berechtigungen, die Sie gezielt vergeben.
 
-![Die API-Schlüssel-Seite: die Berechtigungen jedes Schlüssels, farblich nach Lese-, Schreib- und destruktivem Umfang kodiert](/agenteye/images/api-keys.png)
+![Die API-Schlüssel-Seite: Berechtigungen jedes Schlüssels, farblich nach Lese-, Schreib- und destruktivem Umfang kodiert](/agenteye/images/api-keys.png)
 
-Behalten Sie den Administrator-Bootstrap-Schlüssel für die Einrichtung, und erstellen Sie eingeschränkte Schlüssel für alles andere. Siehe [API-Schlüssel](/de/agenteye/api-keys).
+Behalten Sie den Admin-Bootstrap-Schlüssel für die Einrichtung, und vergeben Sie eingeschränkte Schlüssel für alles andere. Siehe [API-Schlüssel](/de/agenteye/api-keys).
 
 ---
 
 ## Ein schreibgeschützter, genehmigungspflichtiger Assistent
 
-Der [KI-Assistent](/de/agenteye/assistant) im Dashboard beantwortet Fragen über Ihre Daten, ist jedoch konstruktionsbedingt eingeschränkt:
+Der [KI-Assistent](/de/agenteye/assistant) im Dashboard beantwortet Fragen über Ihre Daten, ist aber bewusst eingeschränkt:
 
-- Er ist **standardmäßig schreibgeschützt**: Sein SQL läuft durch eine Absicherung, die nur `SELECT`/`WITH`-Abfragen erlaubt – einzelne Anweisungen, mit einer Zeilenobergrenze.
+- Er ist **standardmäßig schreibgeschützt**: Sein SQL wird durch einen Guard geleitet, der nur `SELECT`/`WITH`-Abfragen, einzelne Anweisungen und eine Zeilenbegrenzung erlaubt.
 - Alles, was er erstellt (eine gespeicherte Abfrage, ein Dashboard), ist **genehmigungspflichtig**: Sie prüfen und genehmigen jeden Schreibvorgang, bevor er ausgeführt wird.
 - Er **kann niemals löschen**.
 
-So kann ein Teammitglied fragen „Welche Agenten haben diese Woche am häufigsten Fehler gehabt?" und auf die Antwort reagieren, ohne dass der Assistent Ihre Daten eigenständig ändern oder löschen kann.
+So kann ein Teammitglied fragen „Welche Agents haben diese Woche am häufigsten Fehler gemeldet?" und auf die Antwort reagieren – ohne dass der Assistent Ihre Daten eigenständig ändern oder entfernen kann.
 
 ---
 
-## Übertragungssicherheit
+## Daten in Übertragung
 
-Der gesamte Datenverkehr läuft über HTTPS. Sie terminieren TLS mit Ihren eigenen Zertifikaten, sodass der Datenverkehr vom Collector zum Server sowie vom Browser zum Server verschlüsselt übertragen wird.
+Der gesamte Datenverkehr läuft über HTTPS. Sie terminieren TLS mit Ihren eigenen Zertifikaten, sodass der Datenverkehr zwischen Collector und Server sowie zwischen Browser und Server verschlüsselt übertragen wird.
 
 ---
 
 ## Nächste Schritte
 
-- [Übersicht](/de/agenteye/overview): wie Failproof AI Observability zusammenwirkt.
+- [Übersicht](/de/agenteye/overview): Wie Failproof AI Observability zusammenarbeitet.
 - [API-Schlüssel](/de/agenteye/api-keys): Zugriff für Collector, Dashboard und Assistent einschränken.
-- [Observability](/de/agenteye/observability): was Failproof AI Observability von Ihren Agenten erfasst.
+- [Observability](/de/agenteye/observability): Was Failproof AI Observability von Ihren Agents erfasst.

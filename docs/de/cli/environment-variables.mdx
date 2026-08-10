@@ -1,6 +1,6 @@
 ---
 title: Umgebungsvariablen
-description: "Das Verhalten von failproofai mit Umgebungsvariablen konfigurieren"
+description: "Verhalten von failproofai mit Umgebungsvariablen konfigurieren"
 ---
 
 ## Dashboard
@@ -9,7 +9,7 @@ description: "Das Verhalten von failproofai mit Umgebungsvariablen konfigurieren
 |----------|-------------|
 | `PORT` | Dashboard-Port (Standard: `8020`) |
 | `CLAUDE_PROJECTS_PATH` | Überschreibt den Speicherort der Claude Code-Projektordner |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Kommagetrennte Dashboard-Seiten, die ausgeblendet werden sollen |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Kommagetrennte Liste von Dashboard-Seiten, die ausgeblendet werden sollen |
 | `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hosts/IPs, die auf Entwicklungsressourcen zugreifen dürfen. Entspricht `--allowed-origins`. |
 
 ## Protokollierung
@@ -22,8 +22,8 @@ description: "Das Verhalten von failproofai mit Umgebungsvariablen konfigurieren
 ## Telemetrie
 
 failproofai übermittelt standardmäßig anonyme Nutzungstelemetrie. Es gibt zwei Möglichkeiten,
-diese zu deaktivieren. Es gilt jeweils die restriktivere Einstellung — eine Umgebungsvariable
-kann etwas, das in der Konfigurationsdatei deaktiviert wurde, nicht wieder aktivieren.
+diese zu deaktivieren. Es gilt immer die restriktivere Einstellung – eine Umgebungsvariable
+kann niemals etwas wieder aktivieren, das in der Konfigurationsdatei deaktiviert wurde.
 
 | Variable | Beschreibung |
 |----------|-------------|
@@ -37,36 +37,36 @@ enabled = false
 ```
 
 <Note>
-Die Konfigurationsdatei ist die richtige Option, wenn Sie den **failproofaid-Daemon** ausführen.
+Die Konfigurationsdatei ist die richtige Option, wenn Sie den **failproofaid-Daemon** betreiben.
 Der Daemon ist ein systemweiter Dienst, dessen Umgebung keine aus Ihrer Shell exportierten
-Variablen enthält — daher kann `FAILPROOFAI_TELEMETRY_DISABLED` ihn nicht erreichen.
+Variablen enthält – `FAILPROOFAI_TELEMETRY_DISABLED` kann ihn daher nicht erreichen.
 `[telemetry] enabled = false` wird sowohl von der CLI als auch vom Daemon gelesen.
 </Note>
 
-Der Daemon meldet ausschließlich seinen eigenen **Lebenszyklus**: ob er gestartet wurde (und ob
-der vorherige Lauf sauber beendet wurde), ob er gestoppt wurde, wann sein Auswertungs-Worker
-gestartet oder neu gestartet wurde, wann eine Collector-Aufgabe fehlgeschlagen ist und das
-Ergebnis eines Cloud-Policy-Abrufs. Diese Ereignisse enthalten nur Werte mit geringer
-Kardinalität und Zähler — niemals einen Dateipfad, einen Befehl, eine Policy, einen Prompt
-oder irgendetwas aus einem Transkript. Es gibt kein Ereignis pro Tool-Aufruf.
+Der Daemon meldet ausschließlich seinen eigenen **Lebenszyklus**: ob er gestartet wurde (und ob der
+vorherige Lauf sauber beendet wurde), ob er gestoppt wurde, wann sein Auswertungs-Worker gestartet
+oder neu gestartet wurde, wann eine Collector-Aufgabe fehlgeschlagen ist sowie das Ergebnis eines
+Cloud-Policy-Abrufs. Diese Ereignisse enthalten nur wenige kategorische Werte und Zählerstände –
+niemals einen Dateipfad, einen Befehl, eine Richtlinie, einen Prompt oder andere Inhalte aus einem
+Transkript. Es gibt kein Ereignis pro Tool-Aufruf.
 
 ## Authentifizierung
 
 | Variable | Beschreibung |
 |----------|-------------|
-| `FAILPROOF_API_URL` | Überschreibt die API-Server-Basis-URL, die vom Authentifizierungsdialog des Dashboards verwendet wird. Standardmäßig `https://api.befailproof.ai`; auf `http://localhost:8080` (oder einen anderen Wert) setzen, wenn ein lokaler API-Server betrieben wird. |
+| `FAILPROOF_API_URL` | Überschreibt die vom Dashboard-Authentifizierungsdialog verwendete API-Server-Basis-URL. Standardmäßig `https://api.befailproof.ai`; auf `http://localhost:8080` (oder einen anderen Wert) setzen, wenn ein lokaler API-Server verwendet wird. |
 | `FAILPROOFAI_AUTH_DIR` | Überschreibt den Speicherort von `auth.json` (Standard: `~/.failproofai`). Hauptsächlich für isolierte Tests nützlich. |
 
 ## Erster-Start-Hinweis
 
 | Variable | Beschreibung |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Überspringt die Aufforderung zur Policy-Installation beim ersten einfachen Aufruf von `failproofai` |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Überspringt die Aufforderung zur Installation von Richtlinien beim ersten einfachen Aufruf von `failproofai` |
 
-## LLM (für die Policy-Auswertung)
+## LLM (für die Richtlinienauswertung)
 
 | Variable | Beschreibung |
 |----------|-------------|
 | `FAILPROOFAI_LLM_BASE_URL` | LLM-API-Endpunkt (Standard: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | API-Schlüssel für LLM-gestützte Policies |
+| `FAILPROOFAI_LLM_API_KEY` | API-Schlüssel für LLM-gestützte Richtlinien |
 | `FAILPROOFAI_LLM_MODEL` | Modellname (Standard: `gpt-4o-mini`) |

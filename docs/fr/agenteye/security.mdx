@@ -1,54 +1,54 @@
 ---
 title: "Sécurité"
-description: "Failproof AI Observability est conçu pour se placer au plus près de vos agents en production, ce qui signifie qu'il voit vos prompts, les entrées des outils et leurs sorties."
+description: "Failproof AI Observability est conçu pour fonctionner au plus près de vos agents en production, ce qui signifie qu'il voit vos prompts, les entrées des outils et leurs sorties."
 ---
 
 
-Failproof AI Observability est conçu pour se placer au plus près de vos agents en production, ce qui signifie qu'il voit vos prompts, les entrées des outils et leurs sorties. Cette page explique comment il maintient ces données isolées, contrôlées et entre vos mains. Si vous évaluez Failproof AI Observability dans le cadre d'un audit de sécurité, commencez ici.
+Failproof AI Observability est conçu pour fonctionner au plus près de vos agents en production, ce qui signifie qu'il voit vos prompts, les entrées des outils et leurs sorties. Cette page explique comment vos données restent isolées, contrôlées et entre vos mains. Si vous évaluez Failproof AI Observability dans le cadre d'une revue de sécurité, commencez ici.
 
 ---
 
 ## Vos données restent dans votre environnement
 
-Failproof AI Observability est auto-hébergé. Les événements, prompts, réponses des modèles et données analytiques sont stockés dans vos propres bases de données, dans votre propre environnement. Rien n'est envoyé vers un SaaS tiers pour y être stocké, et vos données restent dans votre propre compte cloud.
+Failproof AI Observability est auto-hébergé. Les événements, prompts, réponses des modèles et analyses sont stockés dans vos propres bases de données, dans votre propre environnement. Rien n'est envoyé à un service SaaS tiers pour y être stocké, et vos données demeurent dans votre propre compte cloud.
 
 ---
 
 ## Isolation des locataires
 
-Une instance de Failproof AI Observability peut héberger plusieurs organisations, chacune étant isolée au niveau de la couche de stockage — appliqué par la base de données elle-même, et pas uniquement par l'interface :
+Une instance Failproof AI Observability peut héberger plusieurs organisations, chacune étant isolée au niveau de la couche de stockage — appliqué par la base de données elle-même, et pas seulement par l'interface :
 
-- Les données opérationnelles d'une organisation (utilisateurs, clés, tableaux de bord, requêtes sauvegardées) sont limitées à cette organisation, et les lectures croisées entre organisations sont bloquées par la base de données elle-même.
-- Chaque événement ingéré est marqué avec l'organisation propriétaire, de sorte que les événements d'une organisation ne peuvent jamais être lus par une autre.
+- Les données opérationnelles d'une organisation (utilisateurs, clés, tableaux de bord, requêtes sauvegardées) sont limitées à cette organisation, et les lectures inter-organisations sont bloquées par la base de données elle-même.
+- Chaque événement ingéré est marqué avec l'organisation à laquelle il appartient, de sorte qu'une organisation ne peut jamais lire les événements d'une autre.
 
-Chaque route de tableau de bord est délimitée par un slug d'organisation (`/<org-slug>/…`).
+Chaque route de tableau de bord est délimitée sous un slug d'organisation (`/<org-slug>/…`).
 
 ---
 
 ## Connexion
 
-Failproof AI Observability utilise une connexion sans mot de passe, par e-mail. Il n'y a aucun mot de passe à hameçonner ou à faire fuiter. Un utilisateur demande un code à usage unique (ou un lien magique en un clic), qui lui est envoyé par e-mail et expire rapidement. La connexion est conditionnée par une **liste d'autorisation** : seules les adresses e-mail (ou domaines) que vous autorisez peuvent s'authentifier.
+Failproof AI Observability utilise une connexion sans mot de passe, par e-mail. Il n'y a pas de mot de passe à hameçonner ou à divulguer. Un utilisateur demande un code à usage unique (ou un lien magique en un clic), qui lui est envoyé par e-mail et expire rapidement. La connexion est contrôlée par une **liste d'autorisation** : seules les adresses e-mail (ou domaines) que vous autorisez peuvent s'authentifier.
 
 ![L'écran de connexion de Failproof AI Observability, qui envoie un code à usage unique à votre adresse e-mail](/agenteye/images/login.png)
 
 ---
 
-## Accès délimité avec les clés API
+## Accès délimité avec des clés API
 
-Chaque client s'authentifie avec une clé API dotée de permissions granulaires, selon le principe du moindre privilège. Un collecteur n'a besoin que de `events:add` ; une clé de tableau de bord ou d'assistant peut être en lecture seule ; les actions destructives (suppression, regénération) sont des autorisations séparées que vous choisissez d'inclure.
+Chaque client s'authentifie avec une clé API dotée de permissions granulaires et à moindre privilège. Un collecteur n'a besoin que de `events:add` ; une clé de tableau de bord ou d'assistant peut être en lecture seule ; les actions destructives (suppression, regénération) sont des droits distincts que vous choisissez d'inclure.
 
-![La page des clés API : les autorisations accordées à chaque clé, avec un code couleur distinguant les portées lecture, écriture et destructive](/agenteye/images/api-keys.png)
+![La page des clés API : les permissions accordées à chaque clé, avec un code couleur par portée lecture, écriture et destructive](/agenteye/images/api-keys.png)
 
-Conservez la clé d'amorçage administrateur pour la configuration initiale, et émettez des clés à portée réduite pour tout le reste. Voir [Clés API](/fr/agenteye/api-keys).
+Conservez la clé d'amorçage administrateur pour la configuration, et créez des clés restreintes pour tout le reste. Voir [Clés API](/fr/agenteye/api-keys).
 
 ---
 
 ## Un assistant en lecture seule avec validation obligatoire
 
-L'[assistant IA](/fr/agenteye/assistant) intégré au tableau de bord répond à vos questions sur vos données, mais il est délibérément contraint :
+L'[assistant IA](/fr/agenteye/assistant) intégré au tableau de bord répond à vos questions sur vos données, mais il est limité par conception :
 
-- Il est **en lecture seule par défaut** : son SQL est soumis à un garde-fou qui n'autorise que les requêtes `SELECT`/`WITH`, instruction unique, avec un plafond de lignes.
-- Tout ce qu'il crée (une requête sauvegardée, un tableau de bord) est **soumis à validation** : vous examinez et approuvez chaque écriture avant qu'elle n'ait lieu.
+- Il est **en lecture seule par défaut** : son SQL passe par un garde-fou qui n'autorise que les requêtes `SELECT`/`WITH`, à instruction unique, avec un plafond de lignes.
+- Tout ce qu'il crée (une requête sauvegardée, un tableau de bord) est soumis à **validation** : vous examinez et approuvez chaque écriture avant qu'elle ne se produise.
 - Il **ne peut jamais supprimer**.
 
 Ainsi, un membre de l'équipe peut demander « quels agents ont généré le plus d'erreurs cette semaine ? » et agir sur la réponse, sans que l'assistant puisse modifier ou supprimer vos données de son propre chef.
@@ -57,12 +57,12 @@ Ainsi, un membre de l'équipe peut demander « quels agents ont généré le plu
 
 ## En transit
 
-Tout le trafic transite via HTTPS. Vous terminez le TLS avec vos propres certificats, de sorte que le trafic du collecteur vers le serveur et du navigateur vers le serveur est chiffré en transit.
+Tout le trafic passe par HTTPS. Vous terminez le TLS avec vos propres certificats, de sorte que le trafic collecteur-vers-serveur et navigateur-vers-serveur est chiffré en transit.
 
 ---
 
-## Prochaines étapes
+## Étapes suivantes
 
 - [Vue d'ensemble](/fr/agenteye/overview) : comment Failproof AI Observability s'articule.
-- [Clés API](/fr/agenteye/api-keys) : délimitez les accès pour le collecteur, le tableau de bord et l'assistant.
+- [Clés API](/fr/agenteye/api-keys) : délimitez l'accès pour le collecteur, le tableau de bord et l'assistant.
 - [Observabilité](/fr/agenteye/observability) : ce que Failproof AI Observability capture depuis vos agents.

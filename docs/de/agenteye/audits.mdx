@@ -1,52 +1,54 @@
 ---
 title: "Audits: Ihr automatischer Zuverlässigkeitsanalyst"
-description: "Failproof AI Observability sucht nach Fehlern, für die Sie noch keine Regel geschrieben haben, und liefert Ihnen eine priorisierte, beleggestützte To-do-Liste mit genau den Punkten, die behoben werden müssen."
+description: "Failproof AI Observability sucht nach den Fehlern, für die Sie nie eine Regel geschrieben haben, und liefert Ihnen eine priorisierte, evidenzbasierte Aufgabenliste mit genau dem, was behoben werden muss."
 ---
 
 
-Failproof AI Observability sucht nach Fehlern, für die Sie noch keine Regel geschrieben haben, und liefert Ihnen eine priorisierte, beleggestützte To-do-Liste mit genau den Punkten, die behoben werden müssen. Es ist, als hätten Sie einen Analysten, der jede Nacht Ihre Logs durchforstet und morgens eine kurze Zusammenfassung auf Ihrem Schreibtisch hinterlässt.
+Failproof AI Observability sucht nach den Fehlern, für die Sie nie eine Regel geschrieben haben, und liefert Ihnen eine priorisierte, evidenzbasierte Aufgabenliste mit genau dem, was behoben werden muss. Es ist so, als würde ein Analyst jede Nacht Ihre Logs durchforsten und Ihnen morgens die Kurzliste auf den Schreibtisch legen.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Eine zweiminütige Tour: vom geplanten Durchlauf bis hin zu einem umsetzbaren Fix.*
+*Ein zweiminütiger Rundgang: vom geplanten Lauf bis zu einer umsetzbaren Lösung.*
 
-![Die Audits-Seite: wiederkehrende Jobs, die Ihre Sessions nach Fehlermustern durchsuchen, jeweils mit Zeitplan und Empfindlichkeit](/agenteye/images/audits.png)
-*Jedes Audit ist ein wiederkehrender Job, der Ihre Sessions analysiert und priorisierte, beleggestützte Empfehlungen erstellt.*
+![Die Audits-Seite: wiederkehrende Jobs, die Ihre Sessions auf Fehlermuster scannen, jeweils mit Zeitplan und Sensitivität](/agenteye/images/audits.png)
+*Jedes Audit ist ein wiederkehrender Job, der Ihre Sessions auswertet und priorisierte, evidenzbasierte Empfehlungen erstellt.*
 
 ## Hören Sie auf zu raten, was als Nächstes behoben werden soll
 
-Alerts erkennen Probleme, die Sie bereits kennen und überwachen. Audits erkennen die, die Sie nicht kennen. Nach einem von Ihnen festgelegten Zeitplan liest ein Audit alle Ihre Agenten-Sessions und sucht nach Mustern, die es wert sind, behoben zu werden – damit Sie Ihre Zeit damit verbringen, auf Erkenntnisse zu reagieren, anstatt Logs zu durchsuchen und dabei auf eine Entdeckung zu hoffen.
+Alerts erfassen die Probleme, auf die Sie bereits zu achten wissen. Audits erfassen die, die Sie noch nicht kennen. In einem von Ihnen festgelegten Rhythmus liest ein Audit alle Ihre Agent-Sessions durch und sucht nach den Mustern, die es wert sind, behoben zu werden – sodass Sie Ihre Zeit damit verbringen, auf Erkenntnisse zu reagieren, anstatt Logs zu durchblättern und zu hoffen, sie selbst zu entdecken.
 
-Ein einzelner Durchlauf geht die Fehlermodi an, die Agenten in der Produktion tatsächlich zum Scheitern bringen:
+Ein einzelner Lauf geht die Fehlermodi an, die Agents in der Produktion tatsächlich zum Scheitern bringen:
 
-- **Fehler-Cluster**: derselbe Fehler, der sich unter einer gemeinsamen Grundursache wiederholt.
-- **Abweichung von einer Basislinie**: Verhalten, das sich still und leise von einem bekannt guten Zustand entfernt.
-- **Zielerreichungsfehler in Transkripten**: Durchläufe, die technisch abgeschlossen wurden, aber nie die eigentliche Aufgabe erfüllt haben.
-- **Tool-Missbrauch**: das falsche Tool, fehlerhafte Argumente oder Schleifen, die API-Aufrufe verschwenden.
-- **Qualitäts- und Kostenabwägungen**: wo Sie für Ergebnisse zu viel bezahlen, die Sie günstiger bekommen könnten.
-- **Abdeckungslücken**: Verhalten, das von keinem Eval oder Alert überwacht wird.
+- **Fehler-Cluster**: Dieselbe Fehlfunktion, die sich unter einer gemeinsamen Grundursache wiederholt.
+- **Abweichung von einer Baseline**: Verhalten, das sich still und leise von einem bekannt-guten Zeitfenster entfernt.
+- **Zielverfehlung in Transkripten**: Läufe, die technisch abgeschlossen wurden, aber den Auftrag nie erfüllt haben.
+- **Tool-Missbrauch**: Das falsche Tool, fehlerhafte Argumente oder Schleifen, die Aufrufe verschwenden.
+- **Qualitäts- und Kostenabwägungen**: Wo Sie für Output zu viel bezahlen, den Sie günstiger bekommen könnten.
+- **Coverage-Lücken**: Verhalten, das kein Eval und kein Alert überwacht.
 
-Sie entscheiden mit einer einzigen **Empfindlichkeits**-Einstellung (niedrig, mittel oder hoch), wie gründlich gesucht wird – so kann ein lauter Staging-Agent und ein strenger Produktionsagent jeweils auf das gewünschte Signal abgestimmt werden.
+Mit einer einzigen **Sensitivitäts**-Einstellung (niedrig, mittel oder hoch) bestimmen Sie, wie gründlich die Suche ist – so kann ein rauschender Staging-Agent und ein abgesicherter Produktions-Agent jeweils auf das gewünschte Signal eingestellt werden.
 
 ## Jede Empfehlung kommt mit Belegen
 
-Sie müssen einen Befund nie auf Treu und Glauben akzeptieren. Jede Empfehlung zitiert die genauen Sessions, aus denen sie stammt, sowie das SQL, das sie zutage gefördert hat – so können Sie die Belege öffnen und das Problem mit einem Klick bestätigen, anstatt eine Aussage rückwärts zu analysieren.
+Sie müssen einem Befund niemals blind vertrauen. Jede Empfehlung zitiert die genauen Sessions, aus denen sie stammt, sowie das SQL, das sie aufgedeckt hat – so können Sie die Beweise öffnen und das Problem mit einem Klick bestätigen, anstatt eine Behauptung rückwärts analysieren zu müssen.
 
-Das sorgt auch dafür, dass Audits ehrlich bleiben. Der Server prüft, ob jede zitierte Session tatsächlich existiert, und **verwirft jede Empfehlung, deren Belege nicht standhalten** – das Audit untersucht, erfindet jedoch nie. Was auf Ihrer Liste landet, ist real, reproduzierbar und nach Bedeutung priorisiert, mit den wichtigsten Verbesserungen ganz oben.
+Wenn ein Befund ein durchgesickertes Credential betrifft, geht er einen Schritt weiter und verlinkt die einzelnen übereinstimmenden Events. Klicken Sie darauf und Sie landen genau an diesem Moment in der Session, bereits markiert – nicht am Anfang eines langen Transkripts, durch das Sie scrollen müssen. Der Link benennt das Event; er kopiert das erkannte Secret niemals in den Befund, sodass das Lesen eines Befunds kein zweiter Ort ist, an dem Ihr Credential aufgezeichnet ist. Falls ein Event nicht mehr vorhanden ist, weil die Session Ihr Aufbewahrungsfenster überschritten hat, teilt die Seite das klar mit, anstatt Sie im Unklaren zu lassen.
 
-## Einen Fix in eine Absicherung umwandeln
+Das ist auch das, was Audits ehrlich hält. Der Server prüft, ob jede zitierte Session tatsächlich existiert, und **verwirft jede Empfehlung, deren Beweise nicht standhalten** – das Audit untersucht also, erfindet aber nie. Was auf Ihrer Liste landet, ist real, reproduzierbar und nach Relevanz gerankt, mit den größten Verbesserungen ganz oben.
 
-Ein Problem zu beheben ist nur die halbe Miete. Die andere Hälfte besteht darin, sicherzustellen, dass es nicht still und leise zurückkommt. Jeder Befund enthält eine **Ein-Klick-Verknüpfung, die einen Wiederholungs-Alert entwirft**, vorab ausgefüllt mit einem sinnvollen Starttrigger, den Sie anpassen können. Schließen Sie den Befund, aktivieren Sie den Alert – und wenn dieses Muster das nächste Mal auftaucht, werden Sie benachrichtigt, anstatt es in einem zukünftigen Audit neu zu entdecken.
+## Aus einer Lösung eine Absicherung machen
+
+Ein Problem zu beheben ist nur die halbe Miete. Die andere Hälfte ist sicherzustellen, dass es nicht still und leise zurückkehren kann. Jeder Befund enthält eine **Ein-Klick-Verknüpfung, die einen Wiederholungs-Alert entwirft**, vorausgefüllt mit einem sinnvollen Ausgangstrigger, den Sie anpassen können. Schließen Sie den Befund, aktivieren Sie den Alert – und wenn dieses Muster das nächste Mal auftaucht, werden Sie benachrichtigt, anstatt es bei einem zukünftigen Audit neu zu entdecken.
 
 ## Wo Sie es finden
 
-Audits befinden sich im Dashboard unter **`/<org-slug>/audits`** (Seitenleiste zu *analyze* zu *audits*). Zum Anzeigen von Durchläufen und Befunden wird **`audits:read`** benötigt; zum Erstellen, Bearbeiten und Triagieren von Audits wird **`audits:write`** benötigt. Legen Sie Umfang und Kadenz eines Audits fest und klicken Sie auf **Run now**, wenn Sie sofort Ergebnisse möchten, anstatt auf den nächsten geplanten Durchlauf zu warten.
+Audits befinden sich im Dashboard unter **`/<org-slug>/audits`** (Seitenleiste zu *analyze* zu *audits*). Das Anzeigen von Läufen und Befunden erfordert **`audits:read`**; das Erstellen, Bearbeiten und Bearbeiten von Audits erfordert **`audits:write`**. Legen Sie Umfang und Rhythmus eines Audits fest und klicken Sie auf **Run now**, wenn Sie sofort Ergebnisse möchten, ohne auf den nächsten geplanten Lauf zu warten.
 
-## Verwandte Themen
+## Verwandtes
 
-- [Alerts](/de/agenteye/alerts): Erhalten Sie eine Benachrichtigung, sobald ein bekannter Schwellenwert überschritten wird.
-- [Evaluations](/de/agenteye/evaluations): Bewerten Sie jeden Durchlauf, damit Qualitätsregressionen von selbst sichtbar werden.
-- [Error tracking](/de/agenteye/error-tracking): Gruppieren und verfolgen Sie die Fehler, die Ihre Agenten werfen.
-- [Incidents](/de/agenteye/incidents): Verfolgen Sie ein von einem Audit aufgedecktes Problem bis zu seiner Behebung.
+- [Alerts](/de/agenteye/alerts): Werden Sie benachrichtigt, sobald ein Schwellenwert, den Sie bereits kennen, überschritten wird.
+- [Evaluations](/de/agenteye/evaluations): Bewerten Sie jeden Lauf, damit Qualitätsregressionen von selbst auffallen.
+- [Error tracking](/de/agenteye/error-tracking): Gruppieren und verfolgen Sie die Fehler, die Ihre Agents ausgeben.
+- [Incidents](/de/agenteye/incidents): Verfolgen Sie ein von einem Audit aufgedecktes Problem bis zu seiner Lösung.

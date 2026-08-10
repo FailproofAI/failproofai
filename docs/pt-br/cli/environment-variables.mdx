@@ -22,14 +22,14 @@ description: "Configure o comportamento do failproofai com variáveis de ambient
 ## Telemetria
 
 O failproofai envia telemetria de uso anônima por padrão. Há duas formas de
-desativá-la, e prevalece sempre a opção mais restritiva — uma variável de
-ambiente nunca pode reativar algo que o arquivo de configuração desativou.
+desativá-la, e prevalece sempre a mais restritiva — uma variável de ambiente
+nunca pode reativar algo que o arquivo de configuração desligou.
 
 | Variável | Descrição |
 |----------|-----------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | Desativa a telemetria de uso anônima para este processo |
 
-Para desativá-la permanentemente na máquina, adicione isto ao `~/.failproofai/config.toml`:
+Para desativar permanentemente na máquina, adicione o seguinte ao `~/.failproofai/config.toml`:
 
 ```toml
 [telemetry]
@@ -37,18 +37,18 @@ enabled = false
 ```
 
 <Note>
-O arquivo de configuração é a opção indicada quando você executa o **daemon failproofaid**.
-O daemon é um serviço de escopo do sistema e seu ambiente não inclui
+O arquivo de configuração é a opção recomendada se você executa o **daemon failproofaid**.
+O daemon é um serviço de escopo do sistema, e seu ambiente não inclui
 variáveis exportadas pelo seu shell — portanto, `FAILPROOFAI_TELEMETRY_DISABLED` não
 chega até ele. `[telemetry] enabled = false` é lido tanto pela CLI quanto pelo daemon.
 </Note>
 
-O daemon reporta apenas seu próprio **ciclo de vida**: que foi iniciado (e se a
-execução anterior terminou corretamente), que foi encerrado, quando seu worker de
-avaliação foi criado ou reiniciado, quando uma tarefa de coleta falhou e o resultado
-de uma sincronização de política na nuvem. Esses eventos carregam valores de baixa
-cardinalidade e contagens — nunca um caminho de arquivo, um comando, uma política,
-um prompt ou qualquer coisa lida de uma transcrição. Não há evento por chamada de ferramenta.
+O daemon reporta apenas seu próprio **ciclo de vida**: quando iniciou (e se a
+execução anterior encerrou corretamente), quando parou, quando seu worker de avaliação
+foi iniciado ou reiniciado, quando uma tarefa de coleta falhou e o resultado de uma
+sincronização de políticas da nuvem. Esses eventos carregam valores de baixa cardinalidade
+e contagens — nunca um caminho de arquivo, um comando, uma política, um prompt ou
+qualquer conteúdo lido de uma transcrição. Não há evento por chamada de ferramenta.
 
 ## Autenticação
 

@@ -1,50 +1,50 @@
 ---
 title: "Olaylar"
-description: "Bir uyarı tetiklendiğinde, herkes olayın açık olduğunu, kimin sahibi olduğunu ve şimdiye kadar neler olduğunu görebilir — tek bir atfedilen zaman çizelgesinde."
+description: "Bir uyarı tetiklendiğinde, herkes olayın açık olduğunu, kimin sahip olduğunu ve şimdiye kadar neler olduğunu görebilir — bir atfedilen zaman çizelgesinde."
 ---
 
 
-Bir uyarı tetiklendiğinde, ilk soru daima "kim bununla ilgileniyor?" Olaylar buna cevap verir: bir şey ihlal edilirse, herkes olayın açık olduğunu, kimin sahibi olduğunu ve tam olarak şimdiye kadar neler olduğunu görebilir; doğrudan bir post-mortem toplantısına sunabileceğiniz temiz, atfedilen bir kayıt ile.
+Bir uyarı tetiklendiğinde, ilk soru her zaman "kim bunu ele alıyor?" Olaylar buna yanıt verir: bir şey ihlal olduğu anda, herkes olayın açık olduğunu, kimin sahip olduğunu ve tam olarak şimdiye kadar neler olduğunu görebilir; doğrudan bir post-mortem'e verebileceğiniz temiz, atfedilen bir kaydı ile.
 
-![Olaylar gelen kutusu: uyarıya bağlı ve manuel olarak açılan olay kartları, duruma göre gruplandırılmış, her biri ciddiyet rozeti ve atanan kişi ile](/agenteye/images/incidents.png)
-*Gelen kutusu açık olayları duruma göre gruplandırır ve ciddiyet ile atanan kişiye göre filtreler, böylece şu an insani müdahale gerektiren şeyleri görürsünüz.*
+![Olaylar gelen kutusu: uyarı bağlantılı ve manuel olarak açılmış olay kartları, duruma göre gruplandırılmış, her birinin bir önem düzeyi rozeti ve bir sorumlusu var](/agenteye/images/incidents.png)
+*Gelen kutusu açık olayları duruma göre gruplandırır ve önem düzeyi ve sorumlulu göre filtreler, böylece şu anda insan müdahalesine ihtiyaç duyan şeyleri görürsünüz.*
 
 ## Kimin sahip olduğunu bir bakışta bilin
 
-Artık bir sohbet iş parçacığında "biri bununla ilgileniyor mu?" sorusu yok. Bir ihlal otomatik olarak bir olay açar ve onu paylaşılan bir gelen kutusuna koyar, duruma göre gruplandırılmış. Bunu kabul edin ve adınız üzerinde olur, böylece takımın geri kalanı bunun işlendiğini bilir. Kabul etme paylaşılmıştır: birden fazla operatör aynı olayı kabul edebilir ve her biri ayrı ayrı kaydedilir, böylece tam bir savaş odası ad ile gösterilir ve birbirinin üzerine basılmaz. Triyaj için bir sahip atayın ve gelen kutuyu ciddiyet veya atanan kişiye göre filtreleyin; böylece sadece sizin olan şeyleri göreceksiniz.
+Artık bir sohbet dizisinde "bunu kim bakıyor?" sorusu yok. Bir ihlal otomatik olarak bir olay açar ve bunu paylaşılan bir gelen kutusuna koyar, duruma göre gruplandırılmış. Bunu kabul ederseniz, adınız üzerine yazılır, böylece takımın geri kalanı bunun ele alındığını bilir. Kabul paylaşılmıştır: birçok operatör aynı olayı kabul edebilir ve her biri kendi başına kaydedilir, böylece tam bir savaş odası adları ile gösterilir, birbirinin üzerine basılmaz. Triage için bir sahip atayın ve gelen kutuyu önem düzeyi veya sorumluya göre filtreleyin ve bunu sizinkine indirin.
 
-## Bütün hikaye, tek bir zaman çizelgesinde
+## Tüm hikaye, bir zaman çizelgesinde
 
-Olay bittiğinde, yazı işini zaten hazırlamışsınızdır. Herhangi bir olayı açın ve ihlal kanıtı, atanan kişiler ve abone olanlar, koordinasyon için bir yorum başlığı ve salt ekleme etkinlik zaman çizelgesi alırsınız.
+Olay bittiğinde, zaten yazı işleriniz hazırdır. Herhangi bir olayı açın ve ihlal kanıtını, sorumluları ve abone uygulamasını, yerinde koordinasyon için bir yorum dizisini ve append-only etkinlik zaman çizelgesini alırsınız.
 
-![Bir olay ayrıntı görünümü: ana uyarı ve ihlal özeti, atanan kişiler ve aboneler, atfedilen bir etkinlik zaman çizelgesi ve bir yorum başlığı](/agenteye/images/incident-detail.png)
-*Her şey meydana geldiği sırada, her satır onu yapan kişi tarafından imzalanmış.*
+![Bir olay detay görünümü: ana uyarı ve ihlal özeti, sorumlular ve abone uygulaması, atfedilen etkinlik zaman çizelgesi ve yorum dizisi](/agenteye/images/incident-detail.png)
+*Olan her şey, sırayla, her satır bunu yapan tarafından imzalanmış.*
 
-Her işlem (açıldı, kabul edildi, çözüldü vb.) bu zaman çizelgesine yazılır ve hiçbir zaman silinmez. Her giriş atfedilir: bunu yapan operatöre, e-posta yoluyla, veya **automated** olarak Failproof AI Observability'nin kendi başına yaptığı işler için, örneğin olayı ihlalde açmak gibi. Hiçbir şey anonim değildir ve hiçbir şey kaybolmaz, bu nedenle post-mortem daha veya az yazı yazı yazıyor.
+Her eylem (açıldı, kabul edildi, çözüldü, vb.) bu zaman çizelgesine yazılır ve hiçbir zaman düzenlenmez. Her giriş atfedilir: onu yapan operatöre, e-posta ile veya Failproof AI Observability'nin kendi başına yaptığı her şey için **automated** olarak (ihlal üzerine olay açmak gibi). Hiçbir şey anonim değildir ve hiçbir şey kaybolmaz, bu nedenle post-mortem daha az çok kendi kendini yazar.
 
 ## Bir olay nasıl hareket eder
 
 ```mermaid
 stateDiagram-v2
     [*] --> firing
-    firing --> acknowledged: an operator acks
-    firing --> resolved: an operator resolves
-    acknowledged --> resolved: an operator resolves
+    firing --> acknowledged: bir operatör kabul eder
+    firing --> resolved: bir operatör çözer
+    acknowledged --> resolved: bir operatör çözer
     resolved --> [*]
 ```
 
-- **Açık (firing):** ihlal olayı açar ve kanallarınızı bir kez sayfalar. Tekrarlanan ihlallar aynı olaya katlanır ve sizi tekrar tekrar sayfalamak yerine kanıtlarını tazelenir.
-- **Kabul edildi:** bir operatör bunu alır. Açık kalır ve daha sonraki ihlallar kanıtı sessizce güncelleştirir.
-- **Çözüldü:** bir operatör bunu kapatır. Koşul temizlendiğinde otomatik çözme planlanmıştır ancak henüz etkin değildir, bu nedenle bir olay bir insan bunu çözene kadar açık kalır ve bu da herkesi aslında temizlenmiş olanlar hakkında dürüst tutar. Aynı uyarıda daha sonra yeni bir olay açılabilir.
+- **Açık (tetikleniyor):** ihlal olayı açar ve kanallarınıza bir kez sayfa gösterir. Tekrarlanan ihlaller aynı olaya katlanır ve sizi tekrar tekrar sayfa göstermek yerine kanıtlarını yeniler.
+- **Kabul edildi:** bir operatör bunu ele alır. Açık kalır ve sonraki ihlaller kanıtları sessizce günceller.
+- **Çözüldü:** bir operatör bunu kapatır. Koşul temizlendiğinde otomatik çözüm planlanmıştır ancak henüz etkinleştirilmemiştir, bu nedenle bir olay bir insan onu çözene kadar açık kalır ve bu herkesin gerçekte neler temizlendiği konusunda dürüst olmasını sağlar. Aynı uyarıda daha sonra yeni bir olay açılabilir.
 
-Bir uyarı aynı anda en fazla bir açık olayı tutar, bu nedenle titrek bir kural sizi kopyalarla gömemez. Ayrıca elle bir olay açabilirsiniz: hiçbir uyarının yakalamadığı bir şey için bağımsız bir olay, veya mevcut bir uyarıya bağlı bir olay, `incidents:write` izniniz varsa.
+Bir uyarı aynı anda en fazla bir açık olayı tutar, bu nedenle titreşen bir kural sizi çiftliklere gömeemez. Ayrıca bir olayı elle açabilirsiniz: hiçbir uyarının yakalamadığı bir şey için bağımsız bir olay veya `incidents:write` varsa mevcut bir uyarıya bağlı bir olay.
 
 ## Nerede bulabilirim
 
-Olaylar `/<org-slug>/incidents` adresinde bulunur. Görüntüleme **`incidents:read`** gerektirir; manuel bir olay açmak **`incidents:write`** gerektirir; kabul etme, atama, yorum yapma ve çözme **`incidents:ack`** gerektirir. Emekli `alerts:ack` iznini veren eski anahtarlar çalışmaya devam eder, çünkü `incidents:ack` olarak kabul edilir, bu nedenle nöbet görevli rotasyonunuz yeniden verilmesi gerekmez.
+Olaylar `/<org-slug>/incidents` konumunda bulunur. Görüntüleme **`incidents:read`** gerektirir; manuel bir olay açmak **`incidents:write`** gerektirir; kabul etme, atama, yorum yapma ve çözüm **`incidents:ack`** gerektirir. Emekli `alerts:ack` tuşu verilen eski anahtarlar `incidents:ack` olarak onurlandırıldığından çalışmaya devam eder, bu nedenle on-call rotasyonunuz yeniden verilmesi gerekmez.
 
-## İlgili
+## İlişkili
 
-- [Uyarılar](/tr/agenteye/alerts): bir eşik ihlal edildiğinde bu olayları açan kurallar.
-- [Hata takibi](/tr/agenteye/error-tracking): her hatayı tek bir yerde görün ve birini bir uyarıya yükseltin.
-- [Denetimler](/tr/agenteye/audits): hiçbir kural izlenmeyecek olan başarısızlıkları bulan planlanan analist.
+- [Uyarılar](/tr/agenteye/alerts): bir eşik ihlal ettiğinde bu olayları açan kurallar.
+- [Hata izleme](/tr/agenteye/error-tracking): her hatayı tek bir yerde görün ve birini uyarıya yükseltin.
+- [Denetim](/tr/agenteye/audits): hiçbir kuralın izlemediği hataları bulan zamanlanmış analist.

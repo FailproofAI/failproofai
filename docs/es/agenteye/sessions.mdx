@@ -1,55 +1,56 @@
 ---
-title: "Sesiones y Grafo de Ejecución"
-description: "Cada evento de una ejecución, consolidado en una fila legible y representado como un grafo de ejecución estilo git que puedes interpretar en segundos."
+title: "Sesiones y Gráfico de Ejecución"
+description: "Cada evento de una ejecución, resumido en una fila legible y representado como un gráfico de ejecución al estilo git que puedes interpretar en segundos."
 ---
 
+Deja de adivinar por qué falló una ejecución. La Observabilidad de Failproof AI consolida cada evento de una ejecución en una fila legible y luego representa la ejecución completa como un diagrama al estilo git que puedes interpretar en segundos, para que veas exactamente qué hizo tu agente, paso a paso.
 
-Deja de adivinar por qué falló una ejecución. Failproof AI Observability consolida cada evento de una ejecución en una fila legible, y luego dibuja toda la ejecución como un diagrama estilo git que puedes interpretar en segundos, para que veas exactamente lo que hizo tu agente, paso a paso.
+![La lista de Sesiones: una fila por ejecución, a través de entornos y agentes, con indicadores de estado y etiquetas de puntuación de evaluación](/agenteye/images/sessions-list.png)
 
-![La lista de Sesiones: una fila por ejecución, entre entornos y agentes, con indicadores de estado y badges de puntuación de evaluación](/agenteye/images/sessions-list.png)
-
-*Una fila por ejecución: el indicador de estado te dice de un vistazo cómo terminó la ejecución, y un badge de puntuación aparece en cuanto conectas un evaluador.*
+*Una fila por ejecución: el indicador de estado te dice cómo terminó la ejecución de un vistazo, y una etiqueta de puntuación aparece en cuanto conectas un evaluador.*
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Trazado de agentes: sigue una única ejecución paso a paso, desde el objetivo hasta las herramientas y la respuesta final.*
+*Trazado de agentes: sigue una sola ejecución paso a paso, desde el objetivo hasta las herramientas y la respuesta final.*
 
 ---
 
 ## Ve todas las ejecuciones de un vistazo
 
-El rastro de eventos sin procesar es la fuente de verdad de cada paso, pero cuando tienes miles de pasos a lo largo de decenas de ejecuciones, lo que necesitas es la ejecución, no el paso. La página de Sesiones agrupa todos los eventos de una ejecución en una sola fila, de modo que un día de actividad se convierte en una lista escaneable en lugar de un torrente de datos.
+El registro de eventos en bruto es la fuente de verdad de cada paso, pero cuando tienes miles de pasos repartidos en decenas de ejecuciones, necesitas ver la ejecución, no el paso individual. La página de Sesiones consolida todos los eventos de una ejecución en una sola fila, de modo que la actividad de un día se convierte en una lista que puedes revisar de un vistazo en lugar de un flujo interminable de datos.
 
-Cada fila lleva un indicador de estado, por lo que una ejecución fallida se distingue de una exitosa antes de hacer clic en nada. Filtra por rango de fechas, entorno, agente o sesión para pasar de "todo" a "la ejecución que me interesa" en un par de clics.
+Cada fila lleva un indicador de estado, así que una ejecución fallida resalta frente a una exitosa antes de que hagas clic en nada. Filtra por rango de fechas, entorno, agente o sesión para pasar de "todo" a "la ejecución que me interesa" en un par de clics.
 
-Una vez que conectas un evaluador, cada ejecución completada recibe una puntuación automáticamente y su última puntuación aparece en la fila como un badge. Puedes filtrar por cualquier rango de puntuación, así que "muéstrame todas las ejecuciones de producción con baja puntuación esta semana" es un filtro, no una revisión manual. Hasta que configures uno, las sesiones siguen capturando la ejecución completa; simplemente no llevan puntuación todavía.
+Una vez que conectas un evaluador, cada ejecución completada recibe una puntuación automáticamente y la puntuación más reciente aparece en la fila como una etiqueta. Puedes filtrar por cualquier rango de puntuación, así que "muéstrame todas las ejecuciones de producción con baja puntuación esta semana" es un filtro, no una revisión manual. Hasta que configures uno, las sesiones siguen capturando la ejecución completa; simplemente aún no llevan puntuación.
 
 ---
 
-## Lee toda la ejecución como un diagrama
+## Lee la ejecución completa como un diagrama
 
-![El grafo de ejecución estilo git de una sesión junto a su línea de tiempo de eventos, con el panel de desglose de herramientas, modelos y hooks](/agenteye/images/session-detail.png)
+![El gráfico de ejecución al estilo git de una sesión junto a su cronología de eventos, con el panel de desglose de herramientas, modelos y hooks](/agenteye/images/session-detail.png)
 
-*El grafo de ejecución (izquierda) aparece junto a la línea de tiempo de eventos; el panel derecho desglosa las herramientas, modelos, hooks y el consumo de tokens de la ejecución.*
+*El gráfico de ejecución (izquierda) aparece junto a la cronología de eventos; el panel derecho desglosa las herramientas, modelos, hooks y el consumo de tokens de la ejecución.*
 
-Haz clic en cualquier sesión para abrir su grafo de ejecución: una vista estilo git de cómo se desarrollaron agentes, herramientas, hooks y llamadas al modelo a lo largo del tiempo. Los sub-agentes paralelos se ramifican cada uno en su propio carril, para que puedas ver qué trabajo se ejecutó en paralelo, qué sub-agente se bloqueó y dónde la ejecución se desvió del camino, sin tener que reconstruirlo mentalmente a partir de un muro de logs.
+Haz clic en cualquier sesión para abrir su gráfico de ejecución: una vista al estilo git de cómo se desarrollaron los agentes, herramientas, hooks y llamadas al modelo a lo largo del tiempo. Los subagentes paralelos se ramifican cada uno en su propio carril, de modo que puedes ver qué trabajo se ejecutó en paralelo, qué subagente se detuvo y dónde se desvió la ejecución, sin tener que reconstruirlo mentalmente a partir de una pared de registros.
 
-El panel derecho te ofrece el desglose por ejecución: qué herramientas y modelos se ejecutaron, qué hooks se activaron y cuántos tokens consumió la ejecución. Esa es la respuesta a "¿por qué costó tanto esta ejecución?" o "¿cuál es la herramienta lenta?", justo al lado del grafo que lo originó.
+El panel derecho te ofrece el desglose por ejecución: qué herramientas y modelos se ejecutaron, qué hooks se activaron y cuántos tokens consumió la ejecución. Esa es la respuesta a "¿por qué costó tanto esta ejecución?" o "¿cuál es la herramienta más lenta?", justo al lado del gráfico que lo originó.
+
+Los eventos individuales tienen su propia dirección, así que puedes pasarle a alguien un enlace a un momento concreto en lugar de "la sesión, más o menos a dos tercios". Copia el enlace desde cualquier evento, o síguelo desde un hallazgo de [auditoría](/es/agenteye/audits) o un error, y la sesión se abre con ese evento seleccionado y desplazado hasta él. Esto funciona también en ejecuciones muy largas: la cronología carga una ventana acotada por el bien de tu navegador, y un enlace que apunte más allá de esa ventana igualmente encontrará su evento en lugar de llevarte al inicio. Si el evento ha superado tu ventana de retención, la página te lo indica en lugar de seleccionar nada de forma silenciosa.
 
 ---
 
 ## Dónde encontrarlo
 
-Cada página del dashboard está delimitada por tu organización (`/<org-slug>/…`). Sesiones se encuentra en **Observe** en la barra lateral izquierda, junto a Eventos, con los filtros de rango de fechas, entorno, agente y sesión en la parte superior de la lista. Cada fila está a un clic de su grafo de ejecución completo.
+Cada página del panel de control está dentro del alcance de tu organización (`/<org-slug>/…`). Sesiones se encuentra en **Observe** en la barra lateral izquierda, junto a Eventos, con los filtros de rango de fechas, entorno, agente y sesión en la parte superior de la lista. Cada fila está a un clic de su gráfico de ejecución completo.
 
-Para activar los badges de puntuación y el filtrado por rango de puntuación, conecta un evaluador: consulta [Evaluaciones](/es/agenteye/evaluations).
+Para activar las etiquetas de puntuación y el filtrado por rango de puntuación, conecta un evaluador: consulta [Evaluaciones](/es/agenteye/evaluations).
 
 ---
 
 ## Relacionado
 
-- [Flujo de eventos](/es/agenteye/event-stream): el rastro sin procesar por paso del que se compila cada sesión.
-- [Evaluaciones](/es/agenteye/evaluations): conecta un evaluador para que cada ejecución obtenga un badge de puntuación por el que puedas filtrar.
-- [Telemetría](/es/agenteye/telemetry): cómo llegan las ejecuciones desde tu agente hasta estas sesiones.
+- [Flujo de eventos](/es/agenteye/event-stream): el registro en bruto por paso del que se compila cada sesión.
+- [Evaluaciones](/es/agenteye/evaluations): conecta un evaluador para que cada ejecución obtenga una etiqueta de puntuación por la que puedas filtrar.
+- [Telemetría](/es/agenteye/telemetry): cómo pasan las ejecuciones de tu agente a estas sesiones.

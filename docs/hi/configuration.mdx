@@ -1,11 +1,10 @@
 ---
----
 title: कॉन्फ़िगरेशन
 description: "कॉन्फ़िग फ़ाइल प्रारूप, तीन-स्कोप सिस्टम, और मर्ज नियम"
 icon: gear
 ---
 
-failproofai JSON कॉन्फ़िगरेशन फ़ाइलों का उपयोग करता है ताकि यह नियंत्रित किया जा सके कि कौन से नीतियां सक्रिय हैं, वे कैसे काम करती हैं, और कस्टम नीतियां कहां से लोड होती हैं। कॉन्फ़िगरेशन आपकी टीम के साथ साझा करना आसान बनाने के लिए डिज़ाइन किया गया है - इसे अपने रिपो में कमिट करें और हर डेवलपर को एजेंट सेफ्टी नेट मिल जाएगा।
+failproofai JSON कॉन्फ़िगरेशन फ़ाइलों का उपयोग करके नियंत्रित करता है कि कौन सी नीतियां सक्रिय हैं, वे कैसे व्यवहार करती हैं, और कस्टम नीतियां कहां से लोड की जाती हैं। कॉन्फ़िगरेशन आपकी टीम के साथ साझा करना आसान बनाने के लिए डिज़ाइन किया गया है - इसे अपने रेपो में कमिट करें और प्रत्येक डेवलपर को एक ही एजेंट सेफ्टी नेट मिलता है।
 
 ---
 
@@ -15,31 +14,31 @@ failproofai JSON कॉन्फ़िगरेशन फ़ाइलों क�
 
 | स्कोप | फ़ाइल पथ | उद्देश्य |
 |-------|-----------|---------|
-| **project** | `.failproofai/policies-config.json` | प्रति-रिपो सेटिंग्स, संस्करण नियंत्रण में कमिट की गई |
-| **local** | `.failproofai/policies-config.local.json` | व्यक्तिगत प्रति-रिपो ओवरराइड, gitignored |
-| **global** | `~/.failproofai/policies-config.json` | सभी प्रोजेक्ट्स में उपयोगकर्ता-स्तर की डिफ़ॉल्ट सेटिंग्स |
+| **प्रोजेक्ट** | `.failproofai/policies-config.json` | प्रति-रेपो सेटिंग्स, संस्करण नियंत्रण में कमिट की गई |
+| **स्थानीय** | `.failproofai/policies-config.local.json` | व्यक्तिगत प्रति-रेपो ओवरराइड, gitignore किया गया |
+| **वैश्विक** | `~/.failproofai/policies-config.json` | सभी प्रोजेक्ट्स में उपयोगकर्ता-स्तर की डिफ़ॉल्ट |
 
-जब failproofai को हुक ईवेंट प्राप्त होता है, तो यह वर्तमान कार्य निर्देशिका के लिए मौजूद सभी तीन फ़ाइलों को लोड और मर्ज करता है।
+जब failproofai को एक हुक इवेंट प्राप्त होता है, तो वह वर्तमान कार्यशील निर्देशिका के लिए मौजूद तीनों फ़ाइलों को लोड और मर्ज करता है।
 
 ### मर्ज नियम
 
-**`enabledPolicies`** - सभी तीन स्कोप का यूनियन। किसी भी स्तर पर सक्षम नीति सक्रिय होती है।
+**`enabledPolicies`** - तीनों स्कोप का संघ। कोई भी स्तर पर सक्षम नीति सक्रिय होती है।
 
 ```text
 project:  ["block-sudo"]
 local:    ["block-rm-rf"]
 global:   ["block-sudo", "sanitize-api-keys"]
 
-resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]  ← डिडुप्लिकेटेड यूनियन
+resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]  ← डुप्लिकेट रहित संघ
 ```
 
-**`policyParams`** - दी गई नीति के लिए पैरामीटर परिभाषित करने वाला पहला स्कोप पूरी तरह जीत जाता है। नीति के पैरामीटर में गहरी मर्जिंग नहीं होती है।
+**`policyParams`** - पहला स्कोप जो किसी दिए गए नीति के लिए पैरामीटर परिभाषित करता है, पूरी तरह जीत जाता है। नीति के पैरामीटर के भीतर कोई गहरी मर्जिंग नहीं है।
 
 ```text
 project:  block-sudo → { allowPatterns: ["sudo apt-get update"] }
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo apt-get update"] }   ← project जीतता है, global को अनदेखा किया जाता है
+resolved: { allowPatterns: ["sudo apt-get update"] }   ← project जीतता है, global अनदेखा किया गया
 ```
 
 ```text
@@ -50,11 +49,11 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← global तक गिरता है
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** - दोनों में से किसी को परिभाषित करने वाला पहला स्कोप जीत जाता है।
+**`customPoliciesPaths` / `customPoliciesPath`** - पहला स्कोप जो किसी भी रूप को परिभाषित करता है, जीत जाता है।
 
-**`disabledCustomPolicies`** - सभी स्कोप में यूनियन। डैशबोर्ड जब आप किसी स्पष्ट या कन्वेंशन नीति फ़ाइल से किसी व्यक्तिगत नीति को बंद करते हैं तो यहां स्रोत-योग्य ID लिखता है। सूची में न होने वाली नीतियां डिफ़ॉल्ट रूप से सक्षम रहती हैं; ID स्रोत फ़ाइल को शामिल करते हैं ताकि कई फ़ाइलों में समान-नाम वाली नीतियों को स्वतंत्र रूप से नियंत्रित किया जा सके।
+**`disabledCustomPolicies`** - सभी स्कोप में संघ। डैशबोर्ड यहां एक स्रोत-योग्य ID लिखता है जब आप किसी स्पष्ट या परंपरा नीति फ़ाइल से एक व्यक्तिगत नीति को बंद करते हैं। सूचीबद्ध नहीं की गई नीतियां डिफ़ॉल्ट रूप से सक्षम रहती हैं; ID में स्रोत फ़ाइल शामिल है ताकि कई फ़ाइलों में एक ही नाम की नीतियों को स्वतंत्र रूप से नियंत्रित किया जा सके।
 
-**`llm`** - पहला स्कोप जो इसे परिभाषित करता है वह जीत जाता है।
+**`llm`** - पहला स्कोप जो इसे परिभाषित करता है, जीत जाता है।
 
 ---
 
@@ -105,60 +104,60 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global तक गि
 
 प्रकार: `string[]`
 
-सक्षम करने के लिए नीति नामों की सूची। नाम `failproofai policies` द्वारा दिखाई गई नीति पहचानकर्ताओं से बिल्कुल मेल खाना चाहिए। पूरी सूची के लिए [Built-in Policies](/hi/built-in-policies) देखें।
+सक्षम करने के लिए नीति नामों की सूची। नाम बिल्कुल `failproofai policies` द्वारा दिखाए गए नीति आइडेंटिफायर से मेल खाना चाहिए। पूरी सूची के लिए [Built-in Policies](/hi/built-in-policies) देखें।
 
-`enabledPolicies` में न होने वाली नीतियां निष्क्रिय होती हैं, भले ही `policyParams` में उनकी प्रविष्टियां हों।
+`enabledPolicies` में नहीं होने वाली नीतियां निष्क्रिय हैं, भले ही उनके पास `policyParams` में प्रविष्टियां हों।
 
 ### `policyParams`
 
 प्रकार: `Record<string, Record<string, unknown>>`
 
-प्रति-नीति पैरामीटर ओवरराइड। बाहरी कुंजी नीति का नाम है; आंतरिक कुंजियां नीति-विशिष्ट हैं। प्रत्येक नीति [Built-in Policies](/hi/built-in-policies) में अपने उपलब्ध पैरामीटर का दस्तावेज बनाती है।
+प्रति-नीति पैरामीटर ओवरराइड। बाहरी कुंजी नीति का नाम है; भीतरी कुंजियां नीति-विशिष्ट हैं। प्रत्येक नीति [Built-in Policies](/hi/built-in-policies) में अपने उपलब्ध पैरामीटर का दस्तावेज़ देती है।
 
-यदि नीति के पैरामीटर हैं लेकिन आप उन्हें निर्दिष्ट नहीं करते हैं, तो नीति की बनी-बनाई डिफ़ॉल्ट सेटिंग्स का उपयोग किया जाता है। जो उपयोगकर्ता `policyParams` को बिल्कुल कॉन्फ़िगर नहीं करते हैं वे पिछले संस्करणों के समान आचरण प्राप्त करते हैं।
+यदि किसी नीति के पैरामीटर हैं लेकिन आप उन्हें निर्दिष्ट नहीं करते हैं, तो नीति के बिल्ट-इन डिफ़ॉल्ट का उपयोग किया जाता है। जो उपयोगकर्ता `policyParams` को बिल्कुल कॉन्फ़िगर नहीं करते हैं, वे पिछले संस्करणों के समान व्यवहार प्राप्त करते हैं।
 
-नीति के पैरामीटर ब्लॉक में अज्ञात कुंजियों को हुक-फ़ायर के समय चुप-चाप नजरअंदाज किया जाता है लेकिन जब आप `failproofai policies` चलाते हैं तो चेतावनियों के रूप में फ़्लैग किया जाता है।
+नीति के पैरामीटर ब्लॉक के अंदर अज्ञात कुंजियां हुक-फायरिंग के समय चुप रहती हैं, लेकिन जब आप `failproofai policies` चलाते हैं तो चेतावनी के रूप में फ्लैग की जाती हैं।
 
 #### `hint` (क्रॉस-कटिंग)
 
 प्रकार: `string` (वैकल्पिक)
 
-एक संदेश जो तब जोड़ा जाता है जब कोई नीति `deny` या `instruct` लौटाती है। नीति को संशोधित किए बिना Claude को कार्यवाही योग्य मार्गदर्शन देने के लिए इसका उपयोग करें।
+एक संदेश जो कारण में जोड़ा जाता है जब कोई नीति `deny` या `instruct` लौटाती है। इसका उपयोग नीति को स्वयं संशोधित किए बिना Claude को कार्यकारी मार्गदर्शन देने के लिए करें।
 
-किसी भी नीति प्रकार के साथ काम करता है - बनी-बनाई, कस्टम (`custom/`), प्रोजेक्ट कन्वेंशन (`.failproofai-project/`), या उपयोगकर्ता कन्वेंशन (`.failproofai-user/`)।
+किसी भी नीति प्रकार के साथ काम करता है — बिल्ट-इन, कस्टम (`custom/`), प्रोजेक्ट परंपरा (`.failproofai-project/`), या उपयोगकर्ता परंपरा (`.failproofai-user/`)।
 
 ```json
 {
   "policyParams": {
     "block-force-push": {
-      "hint": "इसके बजाय एक ताजी ब्रांच बनाने का प्रयास करें।"
+      "hint": "इसके बजाय एक नई शाखा बनाने का प्रयास करें।"
     },
     "block-sudo": {
       "allowPatterns": ["sudo apt-get"],
       "hint": "sudo के बिना सीधे apt-get का उपयोग करें।"
     },
     "custom/my-policy": {
-      "hint": "पहले उपयोगकर्ता से अनुमति लें।"
+      "hint": "पहले उपयोगकर्ता से अनुमति मांगें।"
     }
   }
 }
 ```
 
-जब `block-force-push` को अनुमति मिलती है, तो Claude देखता है: *"Force-pushing अवरुद्ध है। इसके बजाय एक ताजी ब्रांच बनाने का प्रयास करें।"*
+जब `block-force-push` अस्वीकार करता है, तो Claude देखता है: *"Force-pushing अवरुद्ध है। इसके बजाय एक नई शाखा बनाने का प्रयास करें।"*
 
-गैर-स्ट्रिंग मान और खाली स्ट्रिंग्स को चुप-चाप अनदेखा किया जाता है। यदि `hint` सेट नहीं है, तो आचरण अपरिवर्तित रहता है (पिछड़ी संगति)।
+गैर-स्ट्रिंग मान और खाली स्ट्रिंग्स को चुप रहे हुए अनदेखा किया जाता है। यदि `hint` सेट नहीं है, तो व्यवहार अपरिवर्तित है (पिछड़ी संगतता)।
 
 ### `customPoliciesPath`
 
-प्रकार: `string` (पूर्ण पथ)
+प्रकार: `string` (निरपेक्ष पथ)
 
-कस्टम हुक नीतियां युक्त JavaScript फ़ाइल का पथ। यह `failproofai policies --install --custom <path>` द्वारा स्वचालित रूप से सेट होता है (पथ को संग्रहीत करने से पहले पूर्ण में हल किया जाता है)।
+कस्टम हुक नीतियां युक्त JavaScript फ़ाइल का पथ। यह `failproofai policies --install --custom <path>` द्वारा स्वचालित रूप से सेट किया जाता है (पथ को संग्रहीत करने से पहले निरपेक्ष में हल किया जाता है)।
 
-फ़ाइल हर हुक ईवेंट पर ताज़ी लोड की जाती है - कोई कैशिंग नहीं है। विस्तार के लिए [Custom Policies](/hi/custom-policies) देखें।
+फ़ाइल प्रत्येक हुक इवेंट पर ताज़ी लोड की जाती है - कोई कैशिंग नहीं है। विस्तार के लिए [Custom Policies](/hi/custom-policies) देखें।
 
-### कन्वेंशन-आधारित नीतियां
+### परंपरा-आधारित नीतियां
 
-स्पष्ट `customPoliciesPath` के अलावा, failproofai स्वचालित रूप से `.failproofai/policies/` निर्देशिकाओं से नीति फ़ाइलों की खोज और लोड करता है:
+स्पष्ट `customPoliciesPath` के अलावा, failproofai `.failproofai/policies/` निर्देशिकाओं से स्वचालित रूप से नीति फ़ाइलें खोजता है और लोड करता है:
 
 | स्तर | निर्देशिका | स्कोप |
 |-------|-----------|-------|
@@ -166,14 +165,14 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global तक गि
 | उपयोगकर्ता | `~/.failproofai/policies/custom-policies/` | व्यक्तिगत, सभी प्रोजेक्ट्स पर लागू होता है |
 
 <Note>
-  उपयोगकर्ता-स्तर की निर्देशिका होम-निर्देशिका पुनर्गठन में नीचे चली गई। `.failproofai/policies/` पर छोड़ी गई पुरानी फ़ाइलें स्वचालित रूप से `custom-policies/` में अपग्रेड के बाद किसी भी `failproofai` कमांड को चलाने पर स्थानांतरित की जाती हैं, और कमांड आपको बताता है कि इसने कौन सी फ़ाइलें स्थानांतरित की हैं।
+  उपयोगकर्ता-स्तर की निर्देशिका होम-निर्देशिका पुनर्गठन में एक स्तर नीचे चली गई है। पुरानी `~/.failproofai/policies/` में छोड़ी गई फ़ाइलें अपग्रेड करने के बाद पहली बार कोई भी `failproofai` कमांड चलाने पर स्वचालित रूप से `custom-policies/` में स्थानांतरित की जाती हैं, और कमांड आपको बताता है कि यह कौन सी फ़ाइलें स्थानांतरित करता है।
 </Note>
 
-**फ़ाइल मिलान:** केवल `*policies.{js,mjs,ts}` से मिलने वाली फ़ाइलें लोड की जाती हैं (उदा. `security-policies.mjs`, `workflow-policies.js`)। निर्देशिका में अन्य फ़ाइलें अनदेखी की जाती हैं।
+**फ़ाइल मिलान:** केवल `*policies.{js,mjs,ts}` से मेल खाने वाली फ़ाइलें लोड की जाती हैं (उदाहरण के लिए `security-policies.mjs`, `workflow-policies.js`)। निर्देशिका में अन्य फ़ाइलों को अनदेखा किया जाता है।
 
-**कोई कॉन्फ़िग आवश्यक नहीं:** कन्वेंशन नीतियों के लिए `policies-config.json` में कोई प्रविष्टि आवश्यक नहीं है। बस फ़ाइलों को निर्देशिका में डालें और वे अगली हुक ईवेंट पर उठाई जाती हैं।
+**कोई कॉन्फ़िग की आवश्यकता नहीं:** परंपरा नीतियों को `policies-config.json` में कोई प्रविष्टियां नहीं चाहिए। बस निर्देशिका में फ़ाइलें छोड़ें और वे अगली हुक इवेंट पर उठाई जाएंगी।
 
-**यूनियन लोडिंग:** प्रोजेक्ट और उपयोगकर्ता दोनों कन्वेंशन निर्देशिकाओं को स्कैन किया जाता है। दोनों स्तरों से सभी मेल खाने वाली फ़ाइलें लोड की जाती हैं (`customPoliciesPath` के विपरीत जो पहले-स्कोप-जीत का उपयोग करता है)।
+**यूनियन लोडिंग:** प्रोजेक्ट और उपयोगकर्ता दोनों परंपरा निर्देशिकाओं को स्कैन किया जाता है। दोनों स्तरों से सभी मेल खाने वाली फ़ाइलें लोड की जाती हैं (`customPoliciesPath` के विपरीत जो पहले-स्कोप-जीत का उपयोग करता है)।
 
 अधिक विवरण और उदाहरणों के लिए [Custom Policies](/hi/custom-policies) देखें।
 
@@ -181,7 +180,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global तक गि
 
 प्रकार: `object` (वैकल्पिक)
 
-उन नीतियों के लिए LLM क्लाइंट कॉन्फ़िगरेशन जो AI कॉल करती हैं। अधिकांश सेटअप के लिए आवश्यक नहीं।
+AI कॉल करने वाली नीतियों के लिए LLM क्लाइंट कॉन्फ़िगरेशन। अधिकांश सेटअप के लिए आवश्यक नहीं है।
 
 ```json
 {
@@ -196,24 +195,24 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global तक गि
 
 ## CLI से कॉन्फ़िगरेशन प्रबंधित करना
 
-`policies --install` और `policies --uninstall` कमांड आपके एजेंट CLI की हुक सेटिंग्स फ़ाइल (हुक प्रवेश बिंदु) में लिखते हैं, जबकि `policies-config.json` वह फ़ाइल है जिसे आप सीधे प्रबंधित करते हैं। दोनों अलग हैं:
+`policies --install` और `policies --uninstall` कमांड आपके एजेंट CLI की हुक सेटिंग्स फ़ाइल (हुक एंट्री पॉइंट) में लिखते हैं, जबकि `policies-config.json` वह फ़ाइल है जिसे आप सीधे प्रबंधित करते हैं। दोनों अलग हैं:
 
-- **एजेंट CLI सेटिंग्स** — एजेंट को प्रत्येक टूल उपयोग पर `failproofai --hook <event>` को कॉल करने के लिए बताता है:
+- **एजेंट CLI सेटिंग्स** — एजेंट को प्रत्येक टूल उपयोग पर `failproofai --hook <event>` कॉल करने के लिए कहता है:
   - **Claude Code**: `~/.claude/settings.json` (उपयोगकर्ता), `<cwd>/.claude/settings.json` (प्रोजेक्ट), `<cwd>/.claude/settings.local.json` (स्थानीय)
-  - **OpenAI Codex**: `~/.codex/hooks.json` (उपयोगकर्ता), `<cwd>/.codex/hooks.json` (प्रोजेक्ट) — Codex के पास `local` स्कोप नहीं है
-  - **GitHub Copilot CLI _(बीटा)_**: `~/.copilot/hooks/failproofai.json` (उपयोगकर्ता), `<cwd>/.github/hooks/failproofai.json` (प्रोजेक्ट) — Copilot के पास `local` स्कोप नहीं है। हुक प्रविष्टियां Copilot के OS-कुंजीकृत `bash`/`powershell` कमांड फ़ील्ड का उपयोग करती हैं `timeoutSec` के साथ; फ़ाइल एक शीर्ष-स्तर `version: 1` मार्कर रखती है। Copilot CLI समर्थन **बीटा** है जबकि हम `events.jsonl` रिकॉर्ड स्कीमा (जिसे सार्वजनिक दस्तावेज निर्दिष्ट नहीं करते हैं) को अधिक वास्तविक-विश्व सत्रों के विरुद्ध सत्यापित करते हैं। **VS Code Copilot Chat एजेंट मोड (पूर्वावलोकन)** `.github/hooks/*.json`, `~/.copilot/hooks/*.json`, और `~/.claude/settings.json` (जिसे `chat.hookFilesLocations` सेटिंग द्वारा नियंत्रित किया जाता है) से हुक कॉन्फ़िगरेशन पढ़ता है जो Claude-आकार का `{hookSpecificOutput:{permissionDecision:"deny",…}}` अनुबंध का उपयोग करते हैं — यह `copilot` इंटीग्रेशन और `claude` इंटीग्रेशन (`~/.claude/settings.json`) पहले से ही लिखते हैं, तो `failproofai policies --install --cli copilot` (या `--cli claude`) **पहले से ही VS Code एजेंट मोड में लागू होता है** कोई अलग `vscode` इंटीग्रेशन की आवश्यकता के बिना (VS Code की डिस्कवरी लॉग से लाइव पुष्टि की गई)।
-  - **Cursor Agent _(बीटा)_**: `~/.cursor/hooks.json` (उपयोगकर्ता), `<cwd>/.cursor/hooks.json` (प्रोजेक्ट) — Cursor के पास `local` स्कोप नहीं है। हुक प्रविष्टियां Claude-आकार का `{type, command, timeout}` फॉर्म का उपयोग करती हैं (कोई `bash`/`powershell` विभाजन नहीं), लेकिन Cursor की [hooks स्कीमा](https://cursor.com/docs/hooks) के अनुसार एक फ्लैट सरणी में camelCase इवेंट कुंजियों (`preToolUse`, `beforeSubmitPrompt`, …) के तहत संग्रहीत हैं; फ़ाइल एक शीर्ष-स्तर `version: 1` मार्कर रखती है। हैंडलर `CURSOR_EVENT_MAP` के माध्यम से camelCase → PascalCase को सामान्य बनाता है ताकि मौजूदा बनी-बनाई नीतियां अपरिवर्तित फ़ायर करें। Cursor Agent समर्थन **बीटा** है जबकि हम Cursor के डिस्क पर ट्रांसक्रिप्ट प्रारूप (सार्वजनिक दस्तावेज में निर्दिष्ट नहीं) को अधिक वास्तविक-विश्व इंस्टॉल के विरुद्ध सत्यापित करते हैं।
-  - **OpenCode _(बीटा)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (उपयोगकर्ता), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (प्रोजेक्ट) — OpenCode के पास `local` स्कोप नहीं है। अन्य पांच CLIs के विपरीत, OpenCode के पास **कोई बाहरी-कमांड हुक सिस्टम नहीं है**: यह `opencode.json` में `plugin: []` सरणी के माध्यम से स्पष्ट रूप से पंजीकृत इन-प्रक्रिया JS/TS प्लगइन लोड करता है (`.opencode/plugins/` से स्वचालित खोज **नहीं** है कि opencode v1.14.33 पर प्लगइन कैसे लोड होते हैं)। Install एक छोटा जनरेट किया गया प्लगइन शिम डालता है जो failproofai बाइनरी को सबप्रोसेस-कॉल करता है और बाइनरी के Claude-आकार JSON प्रतिक्रिया को प्लगइन शब्दार्थ में वापस अनुवाद करता है: टूल ईवेंट deny के लिए `throw new Error()` (टूल कॉल को रद्द करता है), `instruct` के लिए `client.session.prompt(...)` **और** `Stop` / `SubagentStop` deny के लिए (अगले उपयोगकर्ता संदेश के रूप में deny कारण जमा करता है — एकमात्र बल-पुनः प्रयास चैनल क्योंकि `session.idle` सूचना-केवल है और इससे फेंकना एक no-op है), और allow के लिए no-op। शिम टूल नामों (lowercase → `OPENCODE_TOOL_MAP` के माध्यम से PascalCase) और टूल-इनपुट arg कुंजियों (camelCase → `OPENCODE_TOOL_INPUT_MAP` के माध्यम से snake_case for `Read` / `Write` / `Edit`, उदा. `filePath` → `file_path`, `oldString` → `old_string`) दोनों को सामान्य बनाता है, फिर OpenCode टूल कॉल पर `block-read-outside-cwd`, `block-env-files`, और `block-secrets-write` जैसे पथ-जांच बिल्ट-इन बिना परिवर्तन के फ़ायर करते हैं। सत्र opencode के SQLite DB में `~/.local/share/opencode/opencode.db` पर रहते हैं; डैशबोर्ड का सत्र दर्शक उन्हें `opencode db --format json` और `opencode export <id>` के माध्यम से पढ़ता है। OpenCode समर्थन **बीटा** है जबकि हम संस्करणों और अधिक वास्तविक-विश्व सत्रों के विरुद्ध व्यवहार को सत्यापित करते हैं। [OpenCode प्लगइन्स दस्तावेज](https://opencode.ai/docs/plugins/) देखें।
-  - **Pi _(बीटा)_**: `~/.pi/agent/settings.json` (उपयोगकर्ता), `<cwd>/.pi/settings.json` (प्रोजेक्ट) — Pi के पास `local` स्कोप नहीं है। Pi स्टार्टअप पर TypeScript एक्सटेंशन पैकेज लोड करता है; सेटिंग्स फ़ाइल एक फ्लैट स्ट्रिंग सरणी `{"packages": ["./relative/path", …]}` है। failproofai एक single packages-array प्रविष्टि लिखता है जो अपनी बंडल की गई `pi-extension/` निर्देशिका की ओर इशारा करता है। एक्सटेंशन आंतरिक रूप से Pi के `tool_call` / `user_bash` / `input` / `session_start` ईवेंट्स में सबस्क्राइब करता है और `failproofai --hook <Event> --cli pi` के लिए शेल करता है; हैंडलर `PI_EVENT_MAP` के माध्यम से underscore_lower_snake_case → PascalCase को सामान्य बनाता है ताकि मौजूदा बनी-बनाई नीतियां अपरिवर्तित फ़ायर करें। टूल इनपुट args भी `PI_TOOL_INPUT_MAP` के माध्यम से सामान्य बनाए जाते हैं (Pi का Read / Write / Edit `file_path` के बजाय `path` प्रदान करता है; शीर्ष-स्तर कुंजी को मैपिंग करने से `block-env-files` और `block-secrets-write` को फ़ायर करने देता है — `block-read-outside-cwd` पहले से ही एक `path` फॉलबैक था)। Pi समर्थन **बीटा** है जबकि Pi का एक्सटेंशन API और सत्र-लॉग लेआउट स्थिर हो जाता है।
-  - **Hermes (hermes-agent)**: `~/.hermes/config.yaml` (**केवल उपयोगकर्ता स्कोप** — Hermes के पास प्रोजेक्ट/स्थानीय कॉन्फ़िग नहीं है)। Hermes एक Slack/Telegram **गेटवे** है, तो एक install हर प्लेटफॉर्म (Slack/Telegram/cli/cron) से टूल कॉल को रोकता है **और** आंतरिक subagents। हुक प्रविष्टियां एक `{command, timeout}` जोड़ी हैं (**सेकंड** में timeout) Hermes की snake_case ईवेंट्स (`pre_tool_call` / `post_tool_call` / `on_session_start` / `on_session_end` / `subagent_stop`) द्वारा कुंजीकृत एक `hooks:` नक्शे के तहत; हैंडलर `HERMES_EVENT_MAP` के माध्यम से ईवेंट्स और `HERMES_TOOL_MAP` के माध्यम से टूल नामों को सामान्य बनाता है ताकि बनी-बनाई नीतियां अपरिवर्तित फ़ायर करें। कॉन्फ़िग एक टिप्पणी-संरक्षण YAML `Document` राउंड-ट्रिप के माध्यम से संपादित किया जाता है ताकि ऑपरेटर की अन्य सेटिंग्स जीवित रहें, और install `hooks_auto_accept: true` को सेट करता है ताकि हेडलेस गेटवे (कोई TTY नहीं) सहमति प्रॉम्प्ट के बिना हुक चलाए। मूल्यांकनकर्ता Hermes के `{"decision":"block","reason"}` stdout अनुबंध को उत्सर्जित करता है (Hermes exit कोड को अनदेखा करता है)। **सीमाएं:** Hermes के पास कोई turn-end `Stop` ईवेंट नहीं है, तो `require-*-before-stop` बिल्ट-इन कभी इसके लिए फ़ायर नहीं होते (लागू नहीं, टूटे हुए नहीं); `instruct` allow-with-logged-note को degrade करता है (कोई अतिरिक्त-संदर्भ चैनल नहीं); और आउटपुट-गुप्त redaction (`sanitize-*`) शेल-हुक अनुबंध के ऊपर टूल आउटपुट को फिर से लिख नहीं सकता। Hermes **भी** एक ऑफलाइन **ऑडिट** स्रोत है — डैशबोर्ड `~/.hermes/state.db` से सीधे इसके गेटवे सत्रों को पढ़ता है।
-  - **OpenClaw (openclaw गेटवे)**: `~/.openclaw/openclaw.json` (**केवल उपयोगकर्ता स्कोप** — OpenClaw के पास प्रोजेक्ट/स्थानीय कॉन्फ़िग नहीं है)। Hermes की तरह, OpenClaw एक self-hosted multi-channel **गेटवे** है, तो एक install हर चैनल और इसके आंतरिक subagents से टूल कॉल को रोकता है। Enforcement OpenClaw के **in-process प्लगइन हुक** के माध्यम से चलता है (इसके फ़ाइल-आधारित आंतरिक हुक केवल अवलोकन हैं और ब्लॉक नहीं कर सकते), तो — OpenCode/Pi की तरह — failproofai एक static `openclaw-plugin/` पैकेज भेज जो async-spawns failproofai बाइनरी और verdice को अनुवाद करता है। Install shipped प्लगइन dir को `openclaw.json` के `plugins.load.paths[]` में पंजीकृत करता है और इसे `plugins.entries.failproofai` के तहत सक्षम करता है (`hooks.allowConversationAccess: true` के साथ, required कच्चे-बातचीत हुक के लिए)। मूल्यांकनकर्ता एक फ्लैट `{permission, reason}` verdice उत्सर्जित करता है और शिम इसे प्रत्येक हुक के native return आकार में मैप करता है: `before_tool_call → {block:true, blockReason}` (**PreToolUse**), `before_agent_run → {outcome:"block", reason}` (**UserPromptSubmit**), और `before_agent_finalize → {action:"revise", reason}` (**Stop** — एक real turn-end गेट, तो `require-*-before-stop` बिल्ट-इन **लागू होते हैं** OpenClaw पर, Hermes के विपरीत)। ईवेंट्स और टूल नामों को binary-side में `OPENCLAW_EVENT_MAP` / `OPENCLAW_TOOL_MAP` के माध्यम से सामान्य बनाया जाता है (`exec→Bash`, `read→Read`, …) तो बनी-बनाई नीतियां अपरिवर्तित फ़ायर करती हैं; शिम spawn/parse/timeout error पर खुला विफल होता है। OpenClaw **भी** एक ऑफलाइन **ऑडिट** स्रोत है — डैशबोर्ड `~/.openclaw/agents/<agentId>/sessions/<uuid>.jsonl` पर इसके JSONL सत्रों को पढ़ता है।
-  - **Factory Droid (`droid`)**: `~/.factory/hooks.json` (उपयोगकर्ता), `<cwd>/.factory/hooks.json` (प्रोजेक्ट) — Factory के पास `local` स्कोप नहीं है। droid एक Claude-शैली बाहरी-कमांड हुक सिस्टम भेज, लेकिन droid v0.171.0 के विरुद्ध लाइव सत्यापित दो quirks के साथ: (1) ईवेंट नाम `hooks.json` के **शीर्ष स्तर** पर रहते हैं — कोई **`"hooks"` wrapper नहीं है** (droid एक को अस्वीकार करता है); टूल ईवेंट्स (`PreToolUse`/`PostToolUse`) `"matcher": "*"` ले जाते हैं, गैर-टूल ईवेंट्स इसे छोड़ देते हैं। (2) Deny को हुक **exit code 2 + stderr** द्वारा संचालित किया जाता है, JSON निर्णय नहीं — मूल्यांकनकर्ता की `factory` branch टूल/prompt ईवेंट्स के लिए exit 2 लौटाता है और turn-end `Stop` ईवेंट पर केवल `{decision:"block", reason}` (droid की एकमात्र बल-पुनः प्रयास चैनल)। ईवेंट्स पहले से PascalCase हैं (कोई ईवेंट नक्शा नहीं) और payload Claude snake_case है; केवल टूल नामों को `FACTORY_TOOL_MAP` के माध्यम से सामान्य बनाया जाता है (`Execute→Bash`, `Create→Write`, `FetchUrl→WebFetch`, …)। Factory **भी** एक ऑफलाइन **ऑडिट** स्रोत है — डैशबोर्ड `~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl` पर इसके on-disk JSONL सत्रों को पढ़ता है।
-  - **Devin CLI (`devin`, Cognition)**: `~/.config/devin/config.json` (उपयोगकर्ता), `<cwd>/.devin/config.json` (प्रोजेक्ट) — Devin के पास `local` स्कोप नहीं है। Devin एक **pure Claude-क्लोन** है devin v3000.1.27 के विरुद्ध लाइव सत्यापित: यह standard Claude `"hooks"`-wrapper स्कीमा का उपयोग करता है (लिखता merge-preserving है तो कॉन्फ़िग फ़ाइल की अन्य कुंजियां — `org_id`, `theme_mode`, … — जीवित रहती हैं), पहले से PascalCase ईवेंट नाम (कोई ईवेंट नक्शा नहीं, कोई हैंडलर branch नहीं), और Claude snake_case stdin payload (कोई normalization नहीं)। मूल्यांकनकर्ता की `devin` branch **हर** ईवेंट के लिए exit 0 पर `{"decision":"block","reason"}` JSON के साथ deny करता है (सत्यापित — ब्लॉक ने `--permission-mode dangerous` को ओवरराइड किया); turn-end `Stop` ईवेंट पर कारण `require-*-before-stop` बिल्ट-इन लागू करने के लिए MANDATORY-ACTION बल-पुनः प्रयास शब्दार्थ रखता है। केवल टूल नामों को `DEVIN_TOOL_MAP` के माध्यम से सामान्य बनाया जाता है (`exec→Bash`; `tool_input.command` पहले से ही canonical है)। Devin **भी** एक ऑफलाइन **ऑडिट** स्रोत है — डैशबोर्ड `~/.local/share/devin/cli/sessions.db` पर इसके SQLite सत्रों को पढ़ता है (प्रत्येक `sessions` row एक real `working_directory` रखता है, तो सत्र Claude की तरह project cwd द्वारा समूहित होते हैं)।
-  - **Antigravity CLI (`agy`)**: `~/.gemini/config/hooks.json` (उपयोगकर्ता), `<cwd>/.agents/hooks.json` (प्रोजेक्ट) — Antigravity के पास `local` स्कोप नहीं है। Factory/Devin के विपरीत, Antigravity के पास अपना **खुद का** अनुबंध है (कोई Claude-क्लोन नहीं), agy v1.1.2 के विरुद्ध लाइव सत्यापित। `hooks.json` एक **named-hook** स्कीमा का उपयोग करता है: शीर्ष-स्तर कुंजी एक हुक *नाम* (`"failproofai"`) है जिसका मान एक ईवेंट→handlers नक्शा है — टूल ईवेंट्स (`PreToolUse`/`PostToolUse`) handlers को `{matcher:"*", hooks:[…]}` में wrap करते हैं, जबकि `PreInvocation`/`Stop` **फ्लैट** handler सरणियां हैं (अन्य named हुक संरक्षित हैं)। stdin payload **camelCase protojson** है (`toolCall:{name,args}`, `conversationId`, `workspacePaths`, `transcriptPath`) — failproofai नीतियां चलाने से पहले इसे snake_case में सामान्य बनाता है, और `run_command` के PascalCase args को `ANTIGRAVITY_TOOL_INPUT_MAP` के माध्यम से मैप करता है। मूल्यांकनकर्ता की `antigravity` branch Antigravity के **खुद के** प्रतिक्रिया आकार का उपयोग करता है: `{decision:"deny", reason}` एक टूल/prompt को ब्लॉक करता है (exit 0), `{decision:"continue", reason}` turn-end `Stop` ईवेंट पर लूप को फिर से दर्ज करता है (तो `require-*-before-stop` बिल्ट-इन लागू होते हैं), और `{injectSteps:[{ephemeralMessage}]}` `PreInvocation` पर एक निर्देश को inject करता है (→ `UserPromptSubmit`)। टूल नामों को `ANTIGRAVITY_TOOL_MAP` के माध्यम से सामान्य बनाया जाता है (`run_command→Bash`, `view_file→Read`, …)। Antigravity **भी** एक ऑफलाइन **ऑडिट** स्रोत है — डैशबोर्ड `~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` पर इसके plain-JSONL ट्रांसक्रिप्ट को पढ़ता है (conversation index `conversation_summaries.db` में)।
-  - **Goose (कोडनाम goose, Block)**: `~/.agents/plugins/failproofai/hooks/hooks.json` (उपयोगकर्ता), `<cwd>/.agents/plugins/failproofai/hooks/hooks.json` (प्रोजेक्ट) — Goose के पास `local` स्कोप नहीं है। Enforcement Goose के **हुक** सिस्टम का उपयोग करता है, cross-agent **Open Plugins** spec: installer बस `failproofai` प्लगइन dir को डालता है और Goose startup पर स्वचालित-आविष्कार करता है (स्व-पंजीकृत `~/.config/goose/config.yaml` में)। `hooks.json` एक Open Plugins स्कीमा का उपयोग करता है **शीर्ष-स्तर `"hooks"` wrapper के साथ**, और matcher **हर ईवेंट पर omitted है** — एक bare `"*"` एक अमान्य regex है जो कुछ भी मेल नहीं खाता (goose v1.43.0 के विरुद्ध लाइव सत्यापित)। ईवेंट नाम पहले से PascalCase हैं (कोई ईवेंट नक्शा नहीं); stdin payload `event`/`working_dir` का उपयोग करता है, जिसे हैंडलर `hook_event_name`/`cwd` में सामान्य बनाता है। मूल्यांकनकर्ता की `goose` branch exit 0 पर `{"decision":"block","reason"}` JSON के साथ deny करता है, honored **`PreToolUse`** ईवेंट पर केवल (goose ≥ v1.37.0 में shipped) — जो shell टूल के लिए फ़ायर करता है **और delegated subagents के अंदर**, तो यह एक single sufficient deny बिंदु है; कोई अन्य हुक error **खुला** विफल होता है। Goose के पास **कोई `Stop` ईवेंट नहीं है**, तो `require-*-before-stop` बिल्ट-इन लागू नहीं होते हैं (Hermes की तरह)। टूल नामों को `GOOSE_TOOL_MAP` के माध्यम से सामान्य बनाया जाता है (`shell→Bash`, `write→Write`, `todo__todo_write→TodoWrite`, …) और path कुंजियों को `GOOSE_TOOL_INPUT_MAP` के माध्यम से (`path`/`source` → `file_path`)। Goose **भी** एक ऑफलाइन **ऑडिट** स्रोत है — डैशबोर्ड `~/.local/share/goose/sessions/sessions.db` पर इसके SQLite सत्रों को पढ़ता है (प्रत्येक `sessions` row एक real `working_dir` रखता है, तो सत्र Devin की तरह project cwd द्वारा समूहित होते हैं; `--no-session` scratch runs को फ़िल्टर किया जाता है)।
-- **`policies-config.json`** — failproofai को बताता है कि कौन सी नीतियों का मूल्यांकन करना है और किन params के साथ (सभी एजेंट CLIs में साझा)
+  - **OpenAI Codex**: `~/.codex/hooks.json` (उपयोगकर्ता), `<cwd>/.codex/hooks.json` (प्रोजेक्ट) — Codex के पास कोई `local` स्कोप नहीं है
+  - **GitHub Copilot CLI _(बीटा)_**: `~/.copilot/hooks/failproofai.json` (उपयोगकर्ता), `<cwd>/.github/hooks/failproofai.json` (प्रोजेक्ट) — Copilot के पास कोई `local` स्कोप नहीं है। हुक प्रविष्टियां Copilot के OS-कुंजीबद्ध `bash`/`powershell` कमांड फ़ील्ड का उपयोग करती हैं जिसमें `timeoutSec` है; फ़ाइल शीर्ष-स्तर `version: 1` मार्कर रखती है। Copilot CLI समर्थन **बीटा** है क्योंकि हम `events.jsonl` रिकॉर्ड स्कीमा (जिसे सार्वजनिक दस्तावेज़ निर्दिष्ट नहीं करते हैं) को अधिक वास्तविक-दुनिया सत्रों के विरुद्ध सत्यापित करते हैं। **VS Code Copilot Chat एजेंट मोड (प्रिव्यू)** `.github/hooks/*.json`, `~/.copilot/hooks/*.json`, और `~/.claude/settings.json` (जो `chat.hookFilesLocations` सेटिंग द्वारा नियंत्रित है) से हुक कॉन्फ़िग पढ़ता है जो समान Claude-आकार `{hookSpecificOutput:{permissionDecision:"deny",…}}` अनुबंध का उपयोग करता है — बिल्कुल वे पथ जो `copilot` इंटीग्रेशन और `claude` इंटीग्रेशन (`~/.claude/settings.json`) पहले से लिखते हैं, इसलिए `failproofai policies --install --cli copilot` (या `--cli claude`) **अलग `vscode` इंटीग्रेशन की आवश्यकता के बिना VS Code एजेंट मोड में पहले से लागू होता है** (VS Code की खोज लॉग से लाइव पुष्टि)।
+  - **Cursor Agent _(बीटा)_**: `~/.cursor/hooks.json` (उपयोगकर्ता), `<cwd>/.cursor/hooks.json` (प्रोजेक्ट) — Cursor के पास कोई `local` स्कोप नहीं है। हुक प्रविष्टियां Claude-आकार `{type, command, timeout}` रूप का उपयोग करती हैं (`bash`/`powershell` विभाजन नहीं), लेकिन Cursor की [hooks schema](https://cursor.com/docs/hooks) के अनुसार एक समतल सरणी में camelCase इवेंट कुंजियों (`preToolUse`, `beforeSubmitPrompt`, …) के तहत संग्रहीत होती हैं; फ़ाइल शीर्ष-स्तर `version: 1` मार्कर रखती है। हैंडलर `CURSOR_EVENT_MAP` के माध्यम से camelCase → PascalCase को विहित करता है ताकि मौजूदा बिल्ट-इन नीतियां अपरिवर्तित फायरिंग करें। Cursor Agent समर्थन **बीटा** है जबकि हम Cursor के डिस्क-पर प्रतिलेख प्रारूप (सार्वजनिक दस्तावेज़ में निर्दिष्ट नहीं) को अधिक वास्तविक-दुनिया इंस्टॉल के विरुद्ध सत्यापित करते हैं।
+  - **OpenCode _(बीटा)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (उपयोगकर्ता), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (प्रोजेक्ट) — OpenCode के पास कोई `local` स्कोप नहीं है। अन्य पाँच CLI के विपरीत, OpenCode के पास **कोई बाहरी-कमांड हुक सिस्टम नहीं है**: यह `opencode.json` में `plugin: []` सरणी के माध्यम से स्पष्ट रूप से पंजीकृत इन-प्रोसेस JS/TS प्लगइन लोड करता है (`.opencode/plugins/` से स्वचालित-खोज यह नहीं है कि opencode v1.14.33 पर प्लगइन कैसे लोड होते हैं)। इंस्टॉल एक छोटी उत्पन्न प्लगइन शिम छोड़ता है जो failproofai बाइनरी को सबप्रोसेस-कॉल करता है और बाइनरी के Claude-shape JSON प्रतिक्रिया को प्लगइन सिमेंटिक्स में वापस अनुवाद करता है: टूल-इवेंट deny के लिए `throw new Error()` (टूल कॉल रद्द करता है), `client.session.prompt(...)` instruct और `Stop` / `SubagentStop` deny के लिए (deny कारण को अगली उपयोगकर्ता संदेश के रूप में जमा करता है — एकमात्र बल-पुनः प्रयास चैनल चूंकि `session.idle` केवल-अधिसूचना है और इससे फेंकना एक नो-ऑप है), और allow के लिए नो-ऑप। शिम `OPENCODE_TOOL_MAP` के माध्यम से दोनों टूल नामों (लोअरकेस → PascalCase) और टूल-इनपुट arg कुंजियों (camelCase → snake_case via `OPENCODE_TOOL_INPUT_MAP` for `Read` / `Write` / `Edit`, e.g. `filePath` → `file_path`, `oldString` → `old_string`) को बाइनरी में अग्रेषित करने से पहले विहित करता है, इसलिए पथ-जांच builtins जैसे `block-read-outside-cwd`, `block-env-files`, और `block-secrets-write` OpenCode टूल कॉल पर अपरिवर्तित फायरिंग करते हैं। सत्र `~/.local/share/opencode/opencode.db` पर opencode के SQLite DB में रहते हैं; डैशबोर्ड का सत्र व्यूअर `opencode db --format json` और `opencode export <id>` के माध्यम से उन्हें पढ़ता है। OpenCode समर्थन **बीटा** है जबकि हम संस्करणों के पार व्यवहार सत्यापित करते हैं और अधिक वास्तविक-दुनिया सत्रों के विरुद्ध। [OpenCode plugins docs](https://opencode.ai/docs/plugins/) देखें।
+  - **Pi _(बीटा)_**: `~/.pi/agent/settings.json` (उपयोगकर्ता), `<cwd>/.pi/settings.json` (प्रोजेक्ट) — Pi के पास कोई `local` स्कोप नहीं है। Pi स्टार्टअप पर TypeScript एक्सटेंशन पैकेज लोड करता है; सेटिंग्स फ़ाइल एक समतल स्ट्रिंग सरणी `{"packages": ["./relative/path", …]}` है। failproofai एक एकल packages-array प्रविष्टि लिखता है जो अपनी bundled `pi-extension/` निर्देशिका की ओर इशारा करती है। एक्सटेंशन आंतरिक रूप से Pi के `tool_call` / `user_bash` / `input` / `session_start` इवेंट्स को सबस्क्राइब करता है और `failproofai --hook <Event> --cli pi` को शेल आउट करता है; हैंडलर `PI_EVENT_MAP` के माध्यम से underscore_lower_snake_case → PascalCase को विहित करता है ताकि मौजूदा बिल्ट-इन नीतियां अपरिवर्तित फायरिंग करें। टूल इनपुट args को भी `PI_TOOL_INPUT_MAP` के माध्यम से विहित किया जाता है (Pi के Read / Write / Edit `file_path` के बजाय `path` प्रदान करते हैं; शीर्ष-स्तरीय कुंजी को मैप करने देता है `block-env-files` और `block-secrets-write` आग — `block-read-outside-cwd` पहले से ही `path` fallback था)। Pi समर्थन **बीटा** है जबकि Pi का एक्सटेंशन API और सत्र-लॉग लेआउट स्थिर होता है।
+  - **Hermes (hermes-agent)**: `~/.hermes/config.yaml` (**केवल उपयोगकर्ता स्कोप** — Hermes के पास कोई project/local कॉन्फ़िग नहीं है)। Hermes एक Slack/Telegram **गेटवे** है, इसलिए एक इंस्टॉल हर प्लेटफॉर्म से टूल कॉल को रोकता है (Slack/Telegram/cli/cron) **और** आंतरिक subagents। हुक प्रविष्टियां Hermes के snake_case इवेंट्स (`pre_tool_call` / `post_tool_call` / `on_session_start` / `on_session_end` / `subagent_stop`) द्वारा कुंजीबद्ध `hooks:` मानचित्र के तहत एक `{command, timeout}` जोड़ी हैं; हैंडलर `HERMES_EVENT_MAP` के माध्यम से इवेंट्स को विहित करता है और `HERMES_TOOL_MAP` के माध्यम से टूल नाम करता है ताकि बिल्ट-इन नीतियां अपरिवर्तित फायरिंग करें। कॉन्फ़िग को comment-preserving YAML `Document` round-trip के माध्यम से संपादित किया जाता है ताकि ऑपरेटर की अन्य सेटिंग्स जीवित रहें, और इंस्टॉल `hooks_auto_accept: true` सेट करता है ताकि headless गेटवे (कोई TTY) सहमति संकेत के बिना हुक चलाए। evaluator Hermes के `{"decision":"block","reason"}` stdout अनुबंध का उत्सर्जन करता है (Hermes exit codes को अनदेखा करता है)। **सीमाएं:** Hermes के पास कोई turn-end `Stop` इवेंट नहीं है, इसलिए `require-*-before-stop` builtins इसके लिए कभी नहीं फायरिंग करते हैं (inapplicable, broken नहीं); `instruct` allow-with-logged-note तक degraded होता है (कोई अतिरिक्त-context चैनल नहीं); और output-secret redaction (`sanitize-*`) shell-hook अनुबंध पर टूल आउटपुट को फिर से नहीं लिख सकते। Hermes है **साथ ही** एक offline **audit** स्रोत — डैशबोर्ड `~/.hermes/state.db` से अपने गेटवे सत्र सीधे पढ़ता है।
+  - **OpenClaw (openclaw gateway)**: `~/.openclaw/openclaw.json` (**केवल उपयोगकर्ता स्कोप** — OpenClaw के पास कोई project/local कॉन्फ़िग नहीं है)। Hermes की तरह, OpenClaw एक self-hosted multi-channel **गेटवे** है, इसलिए एक इंस्टॉल हर चैनल और इसके आंतरिक subagents से टूल कॉल को रोकता है। Enforcement OpenClaw के **in-process plugin hooks** के माध्यम से चलता है (इसकी file-based आंतरिक हुक केवल observation हैं और ब्लॉक नहीं कर सकते), इसलिए — OpenCode/Pi की तरह — failproofai एक स्थिर `openclaw-plugin/` पैकेज शिप करता है जो failproofai बाइनरी को async-spawn करता है और निर्णय का अनुवाद करता है। इंस्टॉल `openclaw.json` के `plugins.load.paths[]` में shipped plugin dir को रजिस्टर करता है और इसे `plugins.entries.failproofai` के तहत सक्षम करता है (`hooks.allowConversationAccess: true` के साथ, कच्चे-conversation हुक के लिए आवश्यक)। evaluator एक समतल `{permission, reason}` निर्णय का उत्सर्जन करता है और शिम इसे प्रत्येक हुक के देशी रिटर्न shape में मैप करता है: `before_tool_call → {block:true, blockReason}` (**PreToolUse**), `before_agent_run → {outcome:"block", reason}` (**UserPromptSubmit**), और `before_agent_finalize → {action:"revise", reason}` (**Stop** — एक real turn-end gate, इसलिए `require-*-before-stop` builtins **लागू** OpenClaw पर होते हैं, Hermes के विपरीत)। इवेंट्स और टूल नाम `OPENCLAW_EVENT_MAP` / `OPENCLAW_TOOL_MAP` के माध्यम से binary-side को विहित करते हैं (`exec→Bash`, `read→Read`, …) ताकि बिल्ट-इन नीतियां अपरिवर्तित फायरिंग करें; शिम किसी भी spawn/parse/timeout त्रुटि पर खुलकर विफल हो जाता है। OpenClaw है **साथ ही** एक offline **audit** स्रोत — डैशबोर्ड `~/.openclaw/agents/<agentId>/sessions/<uuid>.jsonl` पर अपने JSONL सत्र पढ़ता है।
+  - **Factory Droid (`droid`)**: `~/.factory/hooks.json` (उपयोगकर्ता), `<cwd>/.factory/hooks.json` (प्रोजेक्ट) — Factory के पास कोई `local` स्कोप नहीं है। droid एक Claude-style बाहरी-कमांड हुक सिस्टम शिप करता है, लेकिन droid v0.171.0 के विरुद्ध लाइव सत्यापित दो quirks के साथ: (1) इवेंट नाम `hooks.json` के **शीर्ष स्तर** पर रहते हैं — कोई **`"hooks"` wrapper नहीं है** (droid एक को अस्वीकार करता है); टूल इवेंट्स (`PreToolUse`/`PostToolUse`) `"matcher": "*"` ले जाते हैं, गैर-टूल इवेंट्स इसे छोड़ते हैं। (2) Deny हुक **exit code 2 + stderr** द्वारा संचालित होता है, JSON निर्णय नहीं — evaluator की `factory` branch टूल/prompt इवेंट्स के लिए exit 2 लौटाता है और turn-end `Stop` इवेंट पर केवल `{decision:"block", reason}` (droid का एकमात्र बल-पुनः प्रयास चैनल)। इवेंट्स पहले से ही PascalCase हैं (कोई इवेंट मैप नहीं) और payload Claude snake_case है; केवल टूल नाम `FACTORY_TOOL_MAP` के माध्यम से विहित होते हैं (`Execute→Bash`, `Create→Write`, `FetchUrl→WebFetch`, …)। Factory है **साथ ही** एक offline **audit** स्रोत — डैशबोर्ड `~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl` पर अपने on-disk JSONL सत्र पढ़ता है।
+  - **Devin CLI (`devin`, Cognition)**: `~/.config/devin/config.json` (उपयोगकर्ता), `<cwd>/.devin/config.json` (प्रोजेक्ट) — Devin के पास कोई `local` स्कोप नहीं है। Devin एक **pure Claude-clone** है devin v3000.1.27 के विरुद्ध लाइव सत्यापित: यह standard Claude `"hooks"`-wrapper schema का उपयोग करता है (लिखना merge-preserving है ताकि कॉन्फ़िग फ़ाइल की अन्य कुंजियां — `org_id`, `theme_mode`, … — जीवित रहें), पहले से ही-PascalCase इवेंट नाम (कोई इवेंट मैप नहीं, कोई हैंडलर शाखा नहीं), और एक Claude snake_case stdin payload (कोई normalization नहीं)। evaluator की `devin` branch **हर** इवेंट के लिए exit 0 पर `{"decision":"block","reason"}` JSON के साथ अस्वीकार करता है (सत्यापित — block ने `--permission-mode dangerous` को override किया); turn-end `Stop` इवेंट पर कारण MANDATORY-ACTION बल-पुनः प्रयास शब्दांकन रखता है ताकि `require-*-before-stop` builtins लागू करें। केवल टूल नाम `DEVIN_TOOL_MAP` के माध्यम से विहित होते हैं (`exec→Bash`; `tool_input.command` पहले से ही canonical है)। Devin है **साथ ही** एक offline **audit** स्रोत — डैशबोर्ड `~/.local/share/devin/cli/sessions.db` पर अपने SQLite सत्र पढ़ता है (प्रत्येक `sessions` row एक real `working_directory` रखता है, इसलिए सत्र प्रोजेक्ट cwd द्वारा Claude की तरह समूह करते हैं)।
+  - **Antigravity CLI (`agy`)**: `~/.gemini/config/hooks.json` (उपयोगकर्ता), `<cwd>/.agents/hooks.json` (प्रोजेक्ट) — Antigravity के पास कोई `local` स्कोप नहीं है। Factory/Devin के विपरीत, Antigravity के पास अपना **ही** अनुबंध है (Claude-clone नहीं), agy v1.1.2 के विरुद्ध लाइव सत्यापित। `hooks.json` एक **named-hook** schema का उपयोग करता है: शीर्ष-स्तरीय कुंजी एक हुक *नाम* (`"failproofai"`) है जिसका मूल्य एक इवेंट→handlers मैप है — टूल इवेंट्स (`PreToolUse`/`PostToolUse`) handlers को `{matcher:"*", hooks:[…]}` में लपेटते हैं, जबकि `PreInvocation`/`Stop` **flat** handler arrays हैं (अन्य named हुक संरक्षित हैं)। stdin payload **camelCase protojson** है (`toolCall:{name,args}`, `conversationId`, `workspacePaths`, `transcriptPath`) — failproofai इसे नीतियां चलाने से पहले snake_case में normalize करता है, और `ANTIGRAVITY_TOOL_INPUT_MAP` के माध्यम से `run_command` के PascalCase args (`CommandLine`/`Cwd`) को मैप करता है। evaluator की `antigravity` branch Antigravity के **ही** प्रतिक्रिया shapes का उपयोग करता है: `{decision:"deny", reason}` एक टूल/prompt को ब्लॉक करता है (exit 0), `{decision:"continue", reason}` turn-end `Stop` पर लूप को फिर से दर्ज करता है (इसलिए `require-*-before-stop` builtins लागू), और `{injectSteps:[{ephemeralMessage}]}` `PreInvocation` पर एक निर्देश को inject करता है (→ `UserPromptSubmit`)। टूल नाम `ANTIGRAVITY_TOOL_MAP` के माध्यम से विहित करते हैं (`run_command→Bash`, `view_file→Read`, …)। Antigravity है **साथ ही** एक offline **audit** स्रोत — डैशबोर्ड `~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` पर अपने plain-JSONL transcripts पढ़ता है (conversation index `conversation_summaries.db` में)।
+  - **Goose (codename goose, Block)**: `~/.agents/plugins/failproofai/hooks/hooks.json` (उपयोगकर्ता), `<cwd>/.agents/plugins/failproofai/hooks/hooks.json` (प्रोजेक्ट) — Goose के पास कोई `local` स्कोप नहीं है। Enforcement Goose के **hooks** सिस्टम का उपयोग करता है, cross-agent **Open Plugins** spec: installer बस `failproofai` plugin dir छोड़ता है और Goose startup पर इसे auto-discover करता है (इसे `~/.config/goose/config.yaml` में self-register करता है)। `hooks.json` एक Open Plugins schema का उपयोग करता है **with** एक शीर्ष-स्तरीय `"hooks"` wrapper, और matcher हर इवेंट पर **omitted** होता है — एक bare `"*"` एक invalid regex है जो कुछ नहीं मेल खाता (goose v1.43.0 के विरुद्ध लाइव सत्यापित)। इवेंट नाम पहले से ही PascalCase हैं (कोई इवेंट मैप नहीं); stdin payload `event`/`working_dir` का उपयोग करता है, जिसे हैंडलर `hook_event_name`/`cwd` में normalize करता है। evaluator की `goose` branch exit 0 पर `{"decision":"block","reason"}` JSON के साथ अस्वीकार करता है, **`PreToolUse`** इवेंट पर honor किया जाता है केवल (goose ≥ v1.37.0 में shipped) — जो shell tool **और inside delegated subagents** के लिए fires, इसलिए यह एकल पर्याप्त अस्वीकार बिंदु है; कोई अन्य हुक त्रुटि **खुलकर** विफल हो जाता है। Goose के पास **कोई `Stop` इवेंट नहीं है**, इसलिए `require-*-before-stop` builtins apply नहीं करते हैं (Hermes की तरह)। टूल नाम `GOOSE_TOOL_MAP` के माध्यम से विहित होते हैं (`shell→Bash`, `write→Write`, `todo__todo_write→TodoWrite`, …) और पथ कुंजियां `GOOSE_TOOL_INPUT_MAP` के माध्यम से (`path`/`source` → `file_path`)। Goose है **साथ ही** एक offline **audit** स्रोत — डैशबोर्ड `~/.local/share/goose/sessions/sessions.db` पर अपने SQLite सत्र पढ़ता है (प्रत्येक `sessions` row एक real `working_dir` रखता है, इसलिए सत्र प्रोजेक्ट cwd द्वारा Devin की तरह समूह करते हैं; `--no-session` scratch runs फ़िल्टर किए जाते हैं)।
+- **`policies-config.json`** — failproofai को बताता है कि कौन सी नीतियों का मूल्यांकन करना है और किन params के साथ (सभी एजेंट CLI के पार साझा)
 
-एक विशिष्ट एजेंट को लक्षित करने के लिए `--cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose` पास करें (space-separated या किसी भी subset के लिए repeated):
+एक विशिष्ट एजेंट को लक्षित करने के लिए `--cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose` पास करें (space-separated या किसी भी सबसेट के लिए repeated):
 
 ```bash
 failproofai policies --install --cli codex --scope project
@@ -230,20 +229,20 @@ failproofai policies --install --cli goose --scope project
 failproofai policies --install --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose
 ```
 
-जब `--cli` को छोड़ा जाता है, `failproofai` यह पता लगाता है कि कौन से एजेंट CLIs इंस्टॉल हैं (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw` / `which droid` / `which devin` / `which agy` / `which goose`):
+जब `--cli` छोड़ा जाता है, तो `failproofai` पहचानता है कि कौन से एजेंट CLI इंस्टॉल किए गए हैं (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw` / `which droid` / `which devin` / `which agy` / `which goose`):
 
-- **एक CLI detected** — प्रॉम्प्ट के बिना स्वचालित रूप से उस CLI को चुनता है।
-- **Multiple CLIs detected** एक interactive टर्मिनल में — एक arrow-key single-select प्रॉम्प्ट दिखाता है `Detected (N)` सेक्शन में समूहीकृत (एक `Install for all N detected` aggregate row + प्रत्येक detected CLI individually के साथ) और एक `Not installed (M) · install hooks ahead of time` सेक्शन हर undetected supported CLI को एक forward-install विकल्प के रूप में सूचीबद्ध करता है (↑↓ चलने के लिए, Enter चुनने के लिए, ^C बाहर निकलने के लिए)। uninstall प्रवाह केवल Detected सेक्शन दिखाता है।
-- **Multiple CLIs detected** एक non-interactive चलाने में (CI, कोई TTY नहीं) — सभी detected CLIs के लिए प्रॉम्प्ट के बिना install करता है।
-- **None detected** — `claude` पर वापस जाता है, एक चेतावनी के साथ कि कोई एजेंट बाइनरी PATH में नहीं मिला; हुक कमांड अभी भी लिखा जाता है तो यह सक्रिय हो जाता है जैसे ही आप एक install करते हैं।
+- **एक CLI detected** — उस CLI को बिना prompt के auto-select करता है।
+- **Multiple CLIs detected** एक interactive terminal में — एक arrow-key single-select prompt दिखाता है एक `Detected (N)` सेक्शन में grouped (एक `Install for all N detected` aggregate row + प्रत्येक detected CLI individually के साथ) और एक `Not installed (M) · install hooks ahead of time` सेक्शन हर undetected supported CLI को एक forward-install option के रूप में सूचीबद्ध करता है (↑↓ चलने के लिए, Enter select करने के लिए, ^C quit करने के लिए)। uninstall flow केवल Detected सेक्शन दिखाता है।
+- **Multiple CLIs detected** एक non-interactive run में (CI, कोई TTY) — बिना prompt के सभी detected CLI के लिए इंस्टॉल करता है।
+- **None detected** — `claude` को fallback करता है, एक warning के साथ कि कोई एजेंट बाइनरी PATH में नहीं मिला; हुक कमांड अभी भी लिखा जाता है ताकि यह सक्रिय हो जाता है जैसे ही आप एक इंस्टॉल करते हैं।
 
-आप किसी भी समय `policies-config.json` को सीधे संपादित कर सकते हैं; परिवर्तन अगली हुक ईवेंट पर तुरंत प्रभाव लेते हैं कोई restart की आवश्यकता के बिना।
+आप किसी भी समय सीधे `policies-config.json` संपादित कर सकते हैं; परिवर्तन अगली हुक इवेंट पर बिना restart की आवश्यकता के तुरंत प्रभावी होते हैं।
 
 ---
 
-## उदाहरण: टीम डिफ़ॉल्ट के साथ प्रोजेक्ट-स्तर कॉन्फ़िगरेशन
+## उदाहरण: टीम डिफ़ॉल्ट के साथ प्रोजेक्ट-स्तर कॉन्फ़िग
 
-अपने रिपो में `.failproofai/policies-config.json` को commit करें:
+`.failproofai/policies-config.json` को अपने रेपो में कमिट करें:
 
 ```json
 {
@@ -262,4 +261,4 @@ failproofai policies --install --cli claude codex copilot cursor opencode pi her
 }
 ```
 
-प्रत्येक डेवलपर तब `.failproofai/policies-config.local.json` (gitignored) बना सकता है व्यक्तिगत ओवरराइड के लिए टीममेट्स को प्रभावित किए बिना।
+प्रत्येक डेवलपर फिर व्यक्तिगत overrides के लिए `.failproofai/policies-config.local.json` (gitignored) बना सकता है बिना teammates को प्रभावित किए।

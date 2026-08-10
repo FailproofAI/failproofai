@@ -1,130 +1,133 @@
 ---
 title: "Failproof AI Observability Python SDK Agent Skill"
-description: "एक अनुपकरणीकृत एजेंट से शुरुआत करके ऐसी घटनाओं तक पहुँचें जिन्हें आप देख सकते हैं, जिनमें आपका कोडिंग एजेंट उपकरणीकरण बिंदु खोजता है, उन्हें लिखता है, और यह साबित करता है कि वे काम कर गए हैं।"
+description: "बिना instrumented agent से शुरू करके ऐसे events तक पहुंचें जिन्हें आप देख सकें, आपके coding agent के साथ instrumentation points खोजते हुए, उन्हें लिखते हुए, और यह साबित करते हुए कि वे काम कर रहे हैं।"
 ---
 
-अपने कोडिंग एजेंट को बताएं *"इस एजेंट में Failproof AI Observability जोड़ें"* और इसे अपने लूप को पढ़ने, यह पता लगाने, कि उपकरणीकरण कहाँ होना चाहिए, इसे लिखने, और काम पूरा करने से पहले घटनाओं को सत्यापित करने दें।
+अपने coding agent को बताएं *"इस agent में Failproof AI Observability जोड़ें"* और इसे अपना loop पढ़ने दें, काम करें कि instrumentation कहां जाना चाहिए, इसे लिखें, और events को verify करें इससे पहले कि वह काम पूरा करे।
 
-**Python SDK skill** (`agenteye-python-sdk`) एक *Agent Skill* है: निर्देशों का एक फोल्डर जिसे Claude Code या Codex जैसे कोडिंग एजेंट द्वारा आवश्यकता पड़ने पर लोड किया जाता है। यह एजेंट को [Python SDK](/hi/agenteye/python-sdk) का उपयोग करना सिखाता है — यह एक लाइब्रेरी नहीं है, और यह SDK के काम करने के तरीके में कुछ नहीं बदलता।
+**Python SDK skill** (`agenteye-python-sdk`) एक *Agent Skill* है: निर्देशों का एक folder जिसे coding agent जैसे Claude Code या Codex demand पर load करता है जब कोई task उससे match करे। यह agent को [Python SDK](/hi/agenteye/python-sdk) का उपयोग करना सिखाता है — यह एक library नहीं है, और यह SDK के काम करने के तरीके में कुछ नहीं बदलता।
 
-## उपकरणीकरण लिखना आसान है और चुप-चाप गलत होना भी आसान है
+## Instrumentation लिखना आसान है और आसानी से गलत हो सकता है
 
-SDK छोटा है: तेरह घटना विधियाँ, सभी कीवर्ड-only हैं। एक कोडिंग एजेंट [Python SDK](/hi/agenteye/python-sdk) संदर्भ को पढ़ सकता है और एक मिनट में प्रशंसनीय उपकरणीकरण तैयार कर सकता है।
+SDK छोटा है: तेरह event methods, सभी keyword-only। एक coding agent [Python SDK](/hi/agenteye/python-sdk) reference को पढ़ सकता है और एक मिनट में plausible instrumentation बना सकता है।
 
-समस्या यह है कि यह SDK गलत होने पर कोई त्रुटि नहीं उठाता, और गलत उपकरणीकरण बिल्कुल सही उपकरणीकरण जैसा दिखता है जब तक कोई डैशबोर्ड खोलकर इसे खाली न पाए। जो गलतियाँ वास्तविक समय बर्बाद करती हैं वे सभी मौन हैं:
+समस्या यह है कि यह SDK गलत होने पर raise नहीं करता, और गलत instrumentation बिल्कुल सही instrumentation जैसी दिखती है जब तक कोई dashboard नहीं खोलता और इसे खाली नहीं पाता। असली समय खर्च करने वाली गलतियां सभी silence हैं:
 
 | गलती | आप क्या देखते हैं |
 |---|---|
-| कोई `agent_start` नहीं | हर घटना उतरती है। शून्य सेशन। |
-| पर्यावरण कभी सेट नहीं किया गया | सब कुछ काम करता है, `dev` के तहत दाखिल। |
-| `outcome="failure"` | रन हरे रंग में दिखता है — केवल `failed`, `error`, `timeout`, `rejected` गिनती करते हैं। |
-| एक गलत वर्तनी वाली फील्ड का नाम | स्वीकृत और एक नई फील्ड के रूप में संग्रहीत। |
-| थ्रेड पूल से उत्सर्जित घटनाएँ | चुप-चाप हटा दी गई। |
+| No `agent_start` | हर event land होता है। Zero sessions। |
+| Environment कभी set नहीं होता | सब कुछ काम करता है, `dev` के तहत filed। |
+| `outcome="failure"` | Run green दिखता है — केवल `failed`, `error`, `timeout`, `rejected` count होते हैं। |
+| Typo'd field name | Accepted होता है और एक नए field के रूप में stored। |
+| Thread pool से emitted events | Silently dropped। |
 
-इनमें से कोई भी त्रुटि नहीं उठाता। ये परीक्षणों में दिखाई नहीं देते। ये सभी skill में हैं, एक अनुबंध के रूप में कथित हैं जिसमें वह जाँच है जो इसे पकड़ता है।
+इनमें से कोई भी raise नहीं करता। कोई भी tests में दिखाई नहीं देता। हर एक skill में है, एक contract के रूप में stated जिसमें check है जो इसे catch करता है।
 
 ## यह क्या करता है, क्रम में
 
-Skill वही तीन चरण चलाता है जो एक सावधान इंजीनियर करेगा:
+Skill उन्हीं तीन steps को चलाता है जो एक सावधान engineer करेगा:
 
-1. **योजना बनाएँ।** यह आपके एजेंट लूप को पढ़ता है और दो प्रश्न पूछता है जिनका उत्तर केवल आप दे सकते हैं: एक रन क्या मायने रखता है (आपका `session_id`), और कौन से अलग करने योग्य अभिनेता हैं (आपका `agent_id`)। यह कोड लिखने से पहले इन पर सहमति प्राप्त करता है, क्योंकि बाद में उन्हें बदलने से आपका इतिहास विभाजित हो जाता है और ट्रेंड टूट जाते हैं।
-2. **लिखें।** यह प्रति रन एक बार पहचान को बाँधता है बजाय इसे हर कॉल साइट के माध्यम से थ्रेड करने के, और यह एक समवर्ती-सुरक्षित आकार चुनता है — एक ऐसी विवरण जो महत्वपूर्ण है, क्योंकि स्पष्ट शॉर्टकट चुप-चाप दो ओवरलैपिंग रन को एक सेशन में मिला देता है।
-3. **सत्यापित करें।** यह आपके एजेंट को चलाता है और परिणामी घटना फाइलों को पढ़ता है, यह जाँचता है कि `agent_start` मौजूद है, पर्यावरण सही है, और एक रन ने एक सेशन का उत्पादन किया है।
+1. **Plan.** यह आपके agent loop को पढ़ता है और दो सवाल पूछता है जिनका जवाब केवल आप दे सकते हैं: क्या एक run के लिए गिना जाए (`session_id`), और अलग-अलग actors कौन हैं (`agent_id`)। यह code लिखने से पहले उन पर सहमति प्राप्त करता है, क्योंकि बाद में उन्हें बदलने से आपका history split होता है और trends टूट जाते हैं।
+2. **Write.** यह identity को एक बार per run bind करता है बजाय हर call site के माध्यम से thread करने के, और एक concurrency-safe shape चुनता है — एक विवरण जो मायने रखता है, क्योंकि स्पष्ट shortcut silently दो overlapping runs को एक session में mix कर सकता है।
+3. **Verify.** यह आपके agent को चलाता है और resulting event files को पढ़ता है, यह check करते हुए कि `agent_start` present है, environment सही है, और एक run ने एक session बनाया है।
 
-वह तीसरा चरण है जिसे लोग छोड़ देते हैं। SDK घटनाओं को स्थानीय फाइलों में लिखता है, इसलिए एक संपूर्ण एकीकरण लैपटॉप पर बिना सर्वर, API कुंजी या नेटवर्क के सिद्ध किया जा सकता है — जो बिल्कुल वही कारण है कि skill इसे करने पर जोर देता है।
+वह तीसरा step है जिसे लोग skip करते हैं। SDK events को local files में लिखता है, तो एक complete integration को एक laptop पर server, API key, या network के बिना proved किया जा सकता है — जो बिल्कुल वही कारण है कि skill इसे करने पर настаивает।
 
 ## यह अन्य skills से कैसे संबंधित है
 
-तीन skills, एक स्वच्छ विभाजन:
+तीन skills, एक स्पष्ट split:
 
-| Skill | इसे तब प्राप्त करें जब | यह क्या स्पर्श करता है |
+| Skill | इसे तब प्राप्त करें जब | यह क्या छूता है |
 |---|---|---|
-| **Python SDK skill** (यह पृष्ठ) | आप चाहते हैं कि आपका एजेंट *उत्सर्जित* करे दूरदर्शिता — "अवलोकनीयता जोड़ें", "मेरा एजेंट क्यों नहीं दिख रहा है?" | आपके एजेंट के रिपो में कोड लिखता है। कुछ भी नहीं पढ़ता। |
-| **[Evaluator skill](/hi/agenteye/evaluator-skill)** | आप चाहते हैं *स्कोर* करने के लिए रन — "हमें क्या मापना चाहिए?" | आपके रिपो में कोड लिखता है; दूरदर्शिता पढ़ता है |
-| **[CLI skill](/hi/agenteye/cli-skill)** | आप चाहते हैं *पढ़ने* के लिए क्या हुआ, या अपने डिप्लॉयमेंट को संचालित करें | CLI को आप के रूप में चलाता है, परिवर्तन सहित |
+| **Python SDK skill** (यह पृष्ठ) | आप चाहते हैं कि आपका agent *emit* करे telemetry — "observability जोड़ें", "मेरा agent क्यों दिखाई नहीं दे रहा?" | आपके agent के repo में code लिखता है। कुछ नहीं पढ़ता। |
+| **[Evaluator skill](/hi/agenteye/evaluator-skill)** | आप *score* करना चाहते हैं runs — "हमें क्या मापना चाहिए?" | आपके repo में code लिखता है; telemetry पढ़ता है |
+| **[CLI skill](/hi/agenteye/cli-skill)** | आप *read* करना चाहते हैं कि क्या हुआ, या अपनी deployment operate करना चाहते हैं | CLI को as you drive करता है, changes सहित |
 
-वे उस क्रम में हस्तांतरित करते हैं: यह skill घटनाएँ बहता है, मूल्यांकन उन्हें स्कोर करता है, CLI उन्हें वापस पढ़ता है। जब तक आपका एजेंट सेशन उत्सर्जित नहीं करता, तब तक मूल्यांकन करने के लिए कुछ नहीं है और पढ़ने के लिए कुछ नहीं है, इसलिए यदि आप शुरुआत से शुरू कर रहे हैं, तो यहाँ से शुरू करें।
+वे उसी order में hand off करते हैं: यह skill events को flowing करता है, evaluator उन्हें score करता है, CLI उन्हें वापस पढ़ता है। जब तक आपका agent sessions emit नहीं करता तब तक evaluate करने के लिए कुछ नहीं है और read करने के लिए कुछ नहीं है, तो यदि आप scratch से शुरू कर रहे हैं, तो यहां से शुरू करें।
 
-## पूर्वापेक्षाएँ
+## Prerequisites
 
-1. **Python 3.10+** और एजेंट कोडबेस जिसे आप उपकरणीकृत करना चाहते हैं।
-2. **SDK।** इसे ग्राहकों को सार्वजनिक इंडेक्स से सार्वजनिक व्हील के बजाय निजी रूप से वितरित किया जाता है — आपकी शुरुआत इसे कैसे प्राप्त करें और इंस्टॉल करें यह बताती है। Skill इंस्टॉल पथ जानता है और यदि यह इसे नहीं खोज सकता तो आपसे पूछेगा बजाय अनुमान लगाने के।
-3. **कुछ नहीं।** कोई डैशबोर्ड लॉगिन नहीं, कोई API कुंजी नहीं, कोई नेटवर्क नहीं। Skill उन घटना फाइलों के विरुद्ध सत्यापित करता है जो SDK लिखती है, इसलिए यह ऑफलाइन काम पूरा कर सकता है और अपना काम साबित कर सकता है।
+1. **Python 3.10+** और agent codebase जिसे आप instrument करना चाहते हैं।
+2. **The SDK.** यह customers को एक private wheel के रूप में distributed किया जाता है एक public index से नहीं — आपके onboarding में यह शामिल है कि इसे कैसे प्राप्त करें और install करें। Skill install path को जानता है और यदि इसे नहीं मिल सकता तो आपसे पूछेगा बजाय अनुमान लगाने के।
+3. **कुछ नहीं।** कोई dashboard login नहीं, कोई API key नहीं, कोई network नहीं। Skill SDK द्वारा लिखी जाने वाली event files के विरुद्ध verify करता है, तो यह offline काम पूरा कर सकता है और साबित कर सकता है।
 
-## इसे कहाँ प्राप्त करें
+## इसे कहां प्राप्त करें
 
-Skill सार्वजनिक [`FailproofAI/skills`](https://github.com/FailproofAI/skills) संग्रह में रहता है:
+Skill public [`FailproofAI/skills`](https://github.com/FailproofAI/skills) collection में रहता है:
 
 ```bash
 npx skills add FailproofAI/skills --skill agenteye-python-sdk -a claude-code
 ```
 
-हर परियोजना के लिए इसे इंस्टॉल करने के लिए `-g` जोड़ें केवल वर्तमान के बजाय, और `--copy` यदि आपका पर्यावरण symlinks का पालन नहीं करता। Codex के लिए, `-a codex` पास करें।
+हर project के लिए install करने के लिए `-g` जोड़ें बजाय सिर्फ current के, और `--copy` जोड़ें यदि आपका environment symlinks को follow नहीं करता है। Codex के लिए, `-a codex` pass करें।
 
-## इसे मैन्युअल रूप से इंस्टॉल करना
+## इसे manually install करना
 
-Agent Skills फोल्डर हैं जिनमें `SKILL.md` और संदर्भ हैं। यदि आप installer का उपयोग नहीं करना चाहते हैं:
+Agent Skills `SKILL.md` और references वाले folders हैं। यदि आप installer का उपयोग नहीं करना चाहते:
 
-- **Claude Code**: `agenteye-python-sdk/` फोल्डर को `~/.claude/skills/` (हर परियोजना) या `<your-repo>/.claude/skills/` (केवल वह रिपो) में कॉपी करें। Claude Code इसे स्वचालित रूप से खोज लेता है — `/skills` सूची जाँचें, या बस कुछ ऐसा पूछें जो इससे मेल खाता हो।
-- **Codex**: Codex एक ही `SKILL.md` पढ़ता है। बंडल की गई `agents/openai.yaml` `allow_implicit_invocation: true` सेट करती है, इसलिए यह तब स्वचालित रूप से चयनित होता है जब कोई कार्य मेल खाता है; अन्यथा इसे `$agenteye-python-sdk` के रूप में आह्वान करें।
+- **Claude Code**: `agenteye-python-sdk/` folder को `~/.claude/skills/` (हर project) या `<your-repo>/.claude/skills/` (सिर्फ वह repo) में copy करें। Claude Code इसे automatically discover करता है — `/skills` list check करें, या बस कुछ ऐसा पूछें जो इससे match करे।
+- **Codex**: Codex एक ही `SKILL.md` पढ़ता है। Bundled `agents/openai.yaml` `allow_implicit_invocation: true` set करता है, तो यह auto-selected होता है जब कोई task match करे; अन्यथा इसे `$agenteye-python-sdk` के रूप में invoke करें।
 
-**कोड रखने वाली रिपॉजिटरी में अपने एजेंट को चलाएँ जिसे आप उपकरणीकृत करना चाहते हैं** — skill कोड का प्रस्ताव करने से पहले आपके एजेंट लूप को पढ़ता है।
+अपने agent को **उस repository में** run करें जिसमें आप instrumented करना चाहते हैं — skill code लिखने से पहले आपके agent loop को पढ़ता है।
 
-## एक सेशन कैसा दिखता है
+## एक session कैसा दिखता है
 
 ```text
-आप   ▸ इस एजेंट में Failproof AI Observability जोड़ें।
+आप   ▸ इस agent में Failproof AI Observability जोड़ें।
 
-एजेंट ▸ आपके लूप को पढ़ा — tools.py में एक tool dispatcher, llm.py में एक Anthropic
-        wrapper। कोड लिखने से पहले दो प्रश्न।
+agent ▸ आपके loop को read करें — tools.py में एक tool dispatcher, llm.py
+        में एक Anthropic wrapper। कुछ भी लिखने से पहले दो सवाल।
 
-        एक रन क्या मायने रखता है? आप सेशन को समवर्ती रूप से संभालते हैं, इसलिए मैं
-        request id का उपयोग करूँगा जो आपके पास पहले से ctx.request_id में है —
-        फिर एक सेशन यहाँ और आपके लॉग में एक request एक ही स्ट्रिंग हैं।
+        क्या एक run के लिए गिना जाए? आप requests को concurrently
+        handle करते हैं, तो मैं ctx.request_id में request id का उपयोग
+        करूंगा — तब यहां एक session और आपके logs में एक request
+        एक ही string हैं।
 
-        और अभिनेता कौन हैं? मुझे एक planner पथ और एक researcher
-        पथ दिखता है। उन्हें अलग से लेबल करें, या क्या वह आपके लिए एक एजेंट है?
+        और actors कौन हैं? मैं एक planner path और एक researcher path
+        देखता हूं। उन्हें अलग से label करें, या यह आपके लिए एक agent है?
 
-आप   ▸ Request id सही है। वे एक एजेंट हैं, इसे "assistant" कहें।
+आप   ▸ Request id सही है। वे एक agent हैं, इसे "assistant" कहें।
 
-एजेंट ▸ पूरा हुआ। Dispatcher और LLM client को लपेटा; agent_start और
-        agent_end bracket handle_request, त्रुटि पथ सहित। पहचान के लिए
-        एक context-local का उपयोग किया — आपका dispatcher thread pool में tools चलाता है,
-        और सरल दृष्टिकोण से समवर्ती रन को बिना कहे एक सेशन में मिल सकते हैं।
+agent ▸ पूरा हुआ। Dispatcher और LLM client को wrap किया;
+        agent_start और agent_end handle_request को bracket करते हैं,
+        error path सहित। Identity के लिए एक context-local का उपयोग
+        किया — आपका dispatcher tools को एक thread pool में चलाता है,
+        और सरल approach concurrent runs को एक session में mix कर
+        सकता था बिना complain किए।
 
-        एक वास्तविक रन के विरुद्ध सत्यापित: 11 घटनाएँ 4 फाइलों में —
+        एक real run के विरुद्ध verify किया: 4 files में 11 events —
         agent_start, model_request/response, tool_use/tool_result x3,
-        agent_end (outcome=success)। environment=production, प्रति request एक सेशन,
-        जोड़ी हुई अवधि।
+        agent_end (outcome=success)। environment=production, हर request
+        के लिए एक session, durations paired।
 
-        एक चीज़ मैंने नहीं की: आपके worker pool in batch.py सीधे executor को
-        सबमिट करता है, इसलिए वहाँ से घटनाएँ हटा दी जाएँगी। क्या आप चाहते हैं
-        कि मैं वह भी ठीक करूँ?
+        एक चीज जो मैंने नहीं की: आपके batch.py में worker pool
+        सीधे executor में submit करता है, तो वहां से events
+        drop होते। क्या आप चाहते हैं कि मैं उन्हें भी fix करूं?
 ```
 
-ध्यान देने योग्य पैटर्न: यह कोड पढ़ता है प्रस्ताव देने से पहले, केवल उन प्रश्नों पूछता है जिनका आप उत्तर दे सकते हैं, एक id का पुन: उपयोग करता है जो आपके पास पहले से है, समवर्ती-सुरक्षित आकार चुनता है *क्योंकि* यह thread pool देखता है, और सफलता घोषित करने के बजाय **वास्तविक घटनाओं को पढ़कर सत्यापित करता है** — फिर वह एक जगह का संकेत देता है जहाँ वह जानता है चुप-चाप असफल होगा।
+ध्यान देने योग्य pattern: यह code लिखने से पहले code को पढ़ा, केवल वे सवाल पूछे जिनका जवाब आप दे सकते हैं, एक id को reuse किया जो आप पहले से had करते हैं, concurrency-safe shape को चुना *क्योंकि* इसने एक thread pool देखा, और **actual events को पढ़कर verify किया** बजाय सफलता की घोषणा करने के — फिर उस एक जगह को flag किया जहां यह जानता था कि silently fail होगा।
 
 ## आप इससे क्या पूछ सकते हैं
 
-- *"मेरा एजेंट डैशबोर्ड पर क्यों नहीं दिख रहा है?"* → सीढ़ी पर चलता है: क्या घटनाएँ लिखी जा रही हैं, क्या `agent_start` है, क्या पर्यावरण सही है, क्या संग्राहक एक ही जगह पढ़ रहा है।
-- *"सब कुछ dev के तहत उतर रहा है।"* → पर्यावरण कभी सेट नहीं किया गया था, या बाद में कॉल द्वारा रीसेट किया गया था।
-- *"टोकन ट्रैकिंग जोड़ें।"* → आपके LLM wrapper को खोजता है और मॉडल, stop reason, और उपयोग रिकॉर्ड करता है।
-- *"उप-एजेंट को भी उपकरणीकृत करें।"* → एक सेशन, अलग एजेंट लेबल, अपने माता-पिता के तहत नेस्टेड।
-- *"उपकरणीकरण के लिए परीक्षण लिखें।"* → SDK को एक अस्थायी निर्देशिका की ओर इंगित करता है और घटनाओं पर assert करता है जो इसने लिखीं।
+- *"मेरा agent dashboard पर क्यों नहीं दिख रहा है?"* → ladder को walk करता है: क्या events write हो रहे हैं, क्या `agent_start` है, क्या environment सही है, क्या collector एक ही जगह से read कर रहा है।
+- *"सब कुछ dev के तहत land हो रहा है।"* → environment कभी set नहीं हुआ, या एक later call द्वारा reset हुआ।
+- *"Token tracking जोड़ें।"* → आपके LLM wrapper को खोजता है और model, stop reason, और usage record करता है।
+- *"Sub-agents को भी instrument करें।"* → एक session, distinct agent labels, अपने parent के तहत nested।
+- *"Instrumentation के लिए tests लिखें।"* → SDK को एक temporary directory की ओर point करता है और इसके द्वारा लिखी गई events पर assert करता है।
 
-## क्या ध्यान रखें
+## इस पर ध्यान दें
 
-**इसे सत्यापित करने दें।** वह चरण जो इस skill को उपयोग करने योग्य बनाता है आखिरी है — आपके एजेंट को चलाना और घटनाओं को वापस पढ़ना। एक एजेंट जो उपकरणीकरण लिखता है और रुकता है, आसान आधा किया है, और आधा जो चुप-चाप असफल होता है दूसरा है।
+**इसे verify करने दें।** वह step जो इस skill को उपयोग करने के लायक बनाता है वह आखिरी है — आपके agent को चलाना और events को वापस पढ़ना। एक agent जो instrumentation लिखता है और रुकता है आसान आधा किया है, और आधा जो silently fail होता है वह दूसरा है।
 
-**नाम तय करें कोड से पहले।** `session_id` और `agent_id` वे अक्ष हैं जिनके द्वारा हर सतह समूह बनाती है। बाद में उन्हें नाम बदलने से इतिहास विभाजित हो जाता है: पुराने रन पुरानी लेबल रखते हैं और आपके ट्रेंड टूट जाते हैं। Skill पूछेगा; उत्तर एक मिनट के विचार के लायक है।
+**Names पर code से पहले सहमति प्राप्त करें।** `session_id` और `agent_id` वह axes हैं जिन पर हर surface group करता है। उन्हें बाद में rename करने से history split होता है: पुरानी runs पुरानी labels रखती हैं और आपके trends टूट जाते हैं। Skill पूछेगा; answer एक मिनट के विचार के लायक है।
 
-**यदि आपका एजेंट सार्वजनिक इंडेक्स से SDK स्थापित करने का प्रस्ताव देता है, तो skill लोड नहीं हुई है।** SDK निजी रूप से वितरित किया जाता है। वह प्रस्ताव एक विश्वसनीय संकेत है कि आपका कोडिंग एजेंट अनुमान लगा रहा है बजाय skill का पालन करने के — इसे वहाँ रोकें और जाँचें कि skill स्थापित है।
+**यदि आपका agent SDK को एक public index से install करने का प्रस्ताव देता है, तो skill load नहीं हुई।** SDK privately distributed है। वह प्रस्ताव एक reliable tell है कि आपका coding agent skill को follow करने के बजाय अनुमान लगा रहा है — इसे वहीं रोकें और check करें कि skill install है।
 
-इसके आगे इसका विस्फोट त्रिज्या छोटी है: यह आपकी कार्य निर्देशिका में कोड लिखता है और घटना फाइलें जहाँ आप कहते हैं। यह अपने डिप्लॉयमेंट से कुछ नहीं पढ़ता और इसमें कुछ नहीं बदलता।
+इसके आगे इसका blast radius छोटा है: यह आपकी working directory में code लिखता है और event files जहां आप कहते हैं। यह अपनी deployment से कुछ नहीं पढ़ता और इसके बारे में कुछ नहीं बदलता।
 
 ## अगले कदम
 
-- **[Python SDK](/hi/agenteye/python-sdk)**: संपूर्ण घटना संदर्भ — हर घटना प्रकार और फील्ड — जो यह skill स्वचालित करता है।
-- **[Sessions](/hi/agenteye/sessions)**: आपका उपकरणीकरण एक बार घटनाएँ उतरती हैं क्या उत्पादन करता है।
-- **[Evaluator Agent Skill](/hi/agenteye/evaluator-skill)**: अगला कदम एक बार रन उतरते हैं — उन्हें स्कोर करना।
-- **[CLI Agent Skill](/hi/agenteye/cli-skill)**: आपकी दूरदर्शिता को वापस पढ़ना।
+- **[Python SDK](/hi/agenteye/python-sdk)**: complete event reference — हर event type और field — जो यह skill automate करता है।
+- **[Sessions](/hi/agenteye/sessions)**: आपका instrumentation क्या produce करता है एक बार events land हो जाएं।
+- **[Evaluator Agent Skill](/hi/agenteye/evaluator-skill)**: अगला step एक बार runs land होने लगें — उन्हें score करना।
+- **[CLI Agent Skill](/hi/agenteye/cli-skill)**: आपकी telemetry को वापस read करना।

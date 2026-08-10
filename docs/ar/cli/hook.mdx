@@ -1,27 +1,27 @@
 ---
 ---
 title: معالج الخطاف (داخلي)
-description: "العملية الفرعية التي يستدعيها Claude Code في كل حدث أداة"
+description: "العملية الفرعية التي يستدعيها Claude Code عند كل حدث أداة"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-هذا هو الأمر المسجل في `settings.json` الخاص بـ Claude Code بواسطة `failproofai policies --install`. لا تستدعيه مباشرة بشكل عادي.
+هذا هو الأمر المسجل في `settings.json` الخاص بـ Claude Code بواسطة `failproofai policies --install`. لا تستدعيه عادةً بشكل مباشر.
 
-يقرأ حمل عمل JSON من stdin، ويقيّم جميع السياسات المفعّلة، ويخرج برمز يشير إلى القرار:
+يقرأ حمولة JSON من stdin، ويقيّم جميع السياسات المُفعّلة، ويُنهي العملية برمز يشير إلى القرار:
 
 | رمز الخروج | القرار | التأثير |
 |-----------|--------|--------|
 | `0` | `allow` | السماح بالإجراء |
-| `1` | `deny` | حظر الإجراء - يرى Claude سبب الحظر |
-| `2` | `instruct` | إدراج توجيهات في سياق Claude |
+| `1` | `deny` | حظر الإجراء - يرى Claude سبب الرفض |
+| `2` | `instruct` | حقن التوجيهات في سياق Claude |
 
 ### أنواع الأحداث المدعومة
 
 | الفئة | الأحداث |
-|----------|--------|
+|-------|--------|
 | **تنفيذ الأداة** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **دورة حياة الجلسة** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **تفاعل المستخدم** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |

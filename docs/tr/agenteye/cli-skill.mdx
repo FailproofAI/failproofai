@@ -1,159 +1,161 @@
 ---
+---
 title: "Failproof AI Observability CLI Agent Skill"
-description: "Kodlama ajanınıza \"bugün bir şey bozuk mu?\" sorusunu sorun ve Failproof AI Observability verilerinizden canlı yanıt alın, hiçbir komut ezberlemesine gerek kalmadan."
+description: "Kodlama aracınıza \"bugün bir şey bozuk mu?\" sorusu sorun ve Failproof AI Observability verilerinizden canlı yanıt alın — hiç komut ezberlemek zorunda değilsiniz."
 ---
 
 
-Kodlama ajanınıza *"bugün bir şey bozuk mu?"* sorusunu sorun ve Failproof AI Observability verilerinizden canlı yanıt alın, hiçbir komut ezberlemesine gerek kalmadan. **Failproof AI Observability CLI becerisi** (`agenteye-cli`), bir *Agent Skill* (ajan becerisi): Claude Code veya Codex gibi bir kodlama ajanının talep üzerine yüklediği küçük bir talimat klasörü. Ajanı Observability dağıtımınızı [`agenteye` CLI](/tr/agenteye/cli) aracılığıyla *"sadece etkinlik gönderebilen CI'ye bir anahtar ver"* veya *"başarısız olmuş olayı kabul et ve bana ata"* gibi düz İngilizceden gelen isteklerle çalıştırmayı öğretir.
+Kodlama aracınıza *"bugün bir şey bozuk mu?"* sorusu sorun ve Failproof AI Observability canlı verilerinizden yanıt alın — hiç komut ezberlemek zorunda değilsiniz. **Failproof AI Observability CLI becerisi** (`agenteye-cli`), bir *Agent Becerisi*dir: kodlama aracı olarak Claude Code veya Codex'in isteğe bağlı olarak yükleyebileceği küçük bir talimat klasörü. Aracınızı, *"sadece etkinlik gönderebilecek CI için bir anahtar ver"* veya *"açık olayı onayla ve bana ata"* gibi basit İngilizce isteklerle [`agenteye` CLI](/tr/agenteye/cli) aracılığıyla Observability dağıtımınızı kullanmayı öğretir.
 
-Bu, bir hizmet veya ayrı bir ikili dosya **değildir**; dağıtacak hiçbir şey yoktur. Zaten kurmuş olduğunuz CLI'nin üzerinde çalışır: ajan `agenteye --json …` komutunu çalıştırır, temiz JSON'u ayrıştırır ve size düz yazı olarak yanıt verir. Yapabildiği her şey, aynı komutları yazarak kendiniz de yapabilirdiniz.
+Bu **değildir** bir hizmet veya ayrı bir ikili dosya; dağıtılacak hiçbir şey yoktur. Zaten yüklemiş olduğunuz CLI'nin üzerinde çalışır: ajan `agenteye --json …` komutunu çalıştırır, temiz JSON'u ayrıştırır ve size cevapı düz metin şeklinde verir. Yapabileceği her şey, aynı komutları kendiniz yazarak da yapabilirsiniz.
 
 ---
 
 ## Diğer Failproof AI Observability arayüzleriyle ilişkisi
 
-Failproof AI Observability, aynı verilere ve kontrollere ulaşmanın dört yolunu sunar. Birbirini tamamlarlar:
+Failproof AI Observability aynı verilere ve kontrollere ulaşmanız için dört yol sunar. Birbirlerini tamamlarlar:
 
-| Arayüz | Ne olduğu | Nerede çalışır | Ne zaman kullanılır |
+| Arayüz | Ne olduğu | Nerede çalışır | Şu durumlarda kullanın |
 |---|---|---|---|
-| **[CLI](/tr/agenteye/cli)** | `agenteye` komut/bayrak referansı | Terminal'inizde | Belirli bir komutu çalıştırmak veya yazı yazmak istediğinizde |
-| **[CLI tarifleri](/tr/agenteye/cli-recipes)** | Kopyala-yapıştır `jq`/pipeline desenleri | Terminal / betikler | CLI'yi otomasyona entegre ettiğinizde |
-| **CLI becerisi** (bu belge) | CLI üzerinde doğal dil ön kapısı | İş istasyonunuzdaki kodlama ajanı | Sadece sorıp ajanın komutu seçmesini istediğinizde |
-| **[Evaluator becerisi](/tr/agenteye/evaluator-skill)** | Puanlama hizmetinizi tasarlayan ve oluşturan kardeş beceri | İş istasyonunuzdaki kodlama ajanı | Puanları okumak yerine *üretmek* istediğinizde |
-| **[Python SDK becerisi](/tr/agenteye/python-sdk-skill)** | Ajanınızı tüm telemetri yayacak şekilde enstrümente eden kardeş beceri | İş istasyonunuzdaki kodlama ajanı | Ajanınızın bu becerinin okuduğu olayları *üretmesini* istediğinizde |
-| **[Kontrol paneli içi AI asistanı](/tr/agenteye/assistant)** | Kontrol paneline gömülü bir sohbet | Sunucu tarafı (kontrol panelinde) | Verileriniz üzerinde kontrol paneli içi Q&A istediğinizde |
+| **[CLI](/tr/agenteye/cli)** | `agenteye` için komut/bayrak başvurusu | Terminaliniz | Belirli bir komutu çalıştırmak veya betiklemek istediğinizde |
+| **[CLI tarifleri](/tr/agenteye/cli-recipes)** | Kopyala-yapıştır `jq`/pipeline desenleri | Terminaliniz / betikleriniz | CLI'yi otomasyon içine bağlıyorsanız |
+| **CLI becerisi** (bu belge) | CLI üzerinde doğal dil giriş kapısı | Kodlama aracınız, iş istasyonunuzda | Sadece sormak ve aracın komutu seçmesini bırakmak istediğinizde |
+| **[Evaluator becerisi](/tr/agenteye/evaluator-skill)** | Puanlama hizmetinizi tasarlayan ve kuran kardeş beceri | Kodlama aracınız, iş istasyonunuzda | Puanlamayı *üretmek* istediğinizde, okumak değil |
+| **[Python SDK becerisi](/tr/agenteye/python-sdk-skill)** | Aracınıza telemetri yayması için enstrüman takılan kardeş beceri | Kodlama aracınız, iş istasyonunuzda | Aracınızın bu becerinin okuduğu olayları *üretmesini* istediğinizde |
+| **[Panodaki AI asistanı](/tr/agenteye/assistant)** | Panoya gömülü sohbet | Sunucu tarafı (panoda) | Verileriniz üzerinde pano içi soru-cevap istediğinizde |
 
-Becerinin kendisinin ayrı bir yetkisi yoktur; sadece sözlerinizi sizin olarak çalışacak CLI çağrılarına dönüştürür:
+Becerinin kendi imtiyazı yoktur; sadece sözlerinizi sizin olarak çalışan CLI çağrılarına dönüştürür:
 
 ```mermaid
 flowchart TD
-    YOU["sen: 'başarısız olmuş olayı kabul et'"] --> AGENT["kodlama ajanı (Claude Code / Codex)<br/>agenteye-cli becerisini yükler"]
+    YOU["siz: 'açık olayı onayla'"] --> AGENT["kodlama aracı (Claude Code / Codex)<br/>agenteye-cli becerisini yükler"]
     AGENT --> CLI["agenteye --json incidents ack ..."]
-    CLI -->|sizin kimliğiyle doğrulanmış CLI oturumu| API["Observability kontrol paneli API"]
+    CLI -->|kimliğiniz doğrulanan CLI oturumu| API["Observability panosu API"]
 ```
 
-### Kontrol paneli içi AI asistanı ile karşılaştırıldığında: önemli bir ayrım
+### Panodaki AI asistanına karşı: önemli bir fark
 
 Bunlar çok farklı etki alanlarına sahip iki farklı araçtır:
 
-- **Kontrol paneli içi AI asistanı** ([AI asistanı](/tr/agenteye/assistant)), kontrol paneline gömülü bir sohbettir ve ajan hizmeti tarafından desteklenir. **Salt okunur artı onay kapılı yazma**: kaydedilmiş sorguları ve kontrol panellerini taslaklandırabilir, ancak her yazma işlemi açık tıklamanız için duraklatılır ve asla silmez. `agent:use` izni tarafından kontrol edilir ve yalnızca görüntülediğiniz kuruluşun verilerini görür.
-- **CLI becerisi**, *sizin* iş istasyonunuzda *sizin* kodlama ajanınız içinde çalışır ve `agenteye` CLI'yi **siz olarak** yönlendirir. CLI'nin **tam yüzeyini, mutasyonlar da dahil olmak üzere** (API anahtarları oluştur/döndür/devre dışı bırak, kuruluş ayarlarını değiştir, olayları çöz, kaydedilmiş sorguları sil) yapabilir, yalnızca CLI oturum açmanızın izinleriyle sınırlıdır. Bunu, bu komutları elle çalıştıracağınız kadar dikkatli değerlendirilmelidir.
+- **Panodaki AI asistanı** ([AI asistanı](/tr/agenteye/assistant)) panoya gömülü bir sohbet, ajan hizmeti tarafından desteklenir. **Yalnızca okunur artı onay gerektiren yazma**: kaydedilen sorguları ve panoları hazırlayabilir, ancak her yazma işlemi açık tıklamanızı bekler ve hiçbir zaman silmez. `agent:use` izni tarafından korunan ve yalnızca görüntülediğiniz kuruluşun verilerini görür.
+- **CLI becerisi** *sizin* iş istasyonunuzda *sizin* kodlama aracınız içinde çalışır ve `agenteye` CLI'yi **sizin olarak** kullanır. CLI'nin **tam yüzeyini, değişiklikleri** (API anahtarları oluşturma/döndürme/devre dışı bırakma, kuruluş ayarlarını değiştirme, olayları çözme, kaydedilen sorguları silme) gerçekleştirebilir; bunlar yalnızca CLI oturumunuzun izinleriyle sınırlanır. Bunu tam olarak bu komutları elle çalıştırıyor gibi dikkatle kullanın.
 
 ---
 
 ## Ön koşullar
 
-1. **`agenteye` CLI yüklü** ve `PATH`'te (bkz. [CLI](/tr/agenteye/cli) referansı: `pipx install agenteye`).
-2. **Kontrol paneli URL'si ayarlanmış** (`AGENTEYE_DASHBOARD_URL` veya ajan `--base-url` geçer).
-3. **Oturum açmış bir oturum**: önce kendiniz `agenteye login` komutunu çalıştırın. Beceri, e-posta gönderilen tek kullanımlık kod oturumu açma işlemini sizin için **tamamlayamaz**; oturum eksikse veya süresi dolmuşsa (CLI çıkış kodu `4`), `agenteye login` çalıştırmanızı söyleyecektir.
+1. **`agenteye` CLI yüklü** ve `PATH` içinde (bkz. [CLI](/tr/agenteye/cli) başvurusu: `pipx install agenteye`).
+2. **Pano URL'niz ayarlanmış** (`AGENTEYE_DASHBOARD_URL` veya ajan `--base-url` iletir).
+3. **Oturum açmış bir oturum**: önce kendiniz `agenteye login` çalıştırın. Beceri **yapamaz** e-postayla gelen tek seferlik kod girişini sizin için tamamlamak; oturum eksikse veya süresi dolmuşsa (`CLI çıkış kodu 4`) size `agenteye login` çalıştırmasını söyler.
 
 ---
 
-## Nereden bulabileceğiniz
+## Nerede bulabileceğiniz
 
-Beceri, Failproof AI'nin genel beceri koleksiyonunda yayınlanmıştır:
+Beceri, Failproof AI'nın genel beceri koleksiyonunda yayınlanır:
 
 **[github.com/FailproofAI/skills](https://github.com/FailproofAI/skills)** → [`skills/agenteye-cli/`](https://github.com/FailproofAI/skills/tree/main/skills/agenteye-cli)
 
-Hiçbir şey kapılı değildir — depo halkadır ve becerinin kendi kimlik bilgisine ihtiyacı yoktur, çünkü yalnızca **kamuya açık** `agenteye` CLI'sini *sizin* kontrol panelinize karşı yönlendirir, *sizin* oturum açtığınız oturumu kullanarak. Bunu birinden istemeniz gerekmez.
+Hiçbir şey kilitli değildir — depo halka açıktır ve becerinin kendi kimlik bilgisine ihtiyacı yoktur, çünkü sadece **genel** `agenteye` CLI'yi *sizin* panonuza karşı, *sizin* oturum açtığınız oturumu kullanarak kullanır. Bunu almak için kimseye sormak zorunda değilsiniz.
 
-`pipx install agenteye` paketi içinde **değil** kendi klasörü olarak geldiğini unutmayın, bu nedenle orada aramayın.
+`pipx install agenteye` paketi içinde kendi klasörü olarak gönderildiğine, **değil** içinde olduğunu, bu nedenle orada arama yapmayın.
 
 ## Beceriyi yükleme
 
-En hızlı yol [`skills`](https://skills.sh) CLI'sidir; klasörü getirir ve ajanınızın baktığı yere bırakır:
+En hızlı yol [`skills`](https://skills.sh) CLI'dir; bu klasörü getirir ve aracınızın aradığı yere koyar:
 
 ```bash
-# Claude Code, sadece bu proje
+# Claude Code, yalnızca bu proje
 npx skills add FailproofAI/skills --skill agenteye-cli -a claude-code
 
-# her proje (~/.claude/skills/ içine yükler)
+# her proje (~/.claude/skills/ dizinine yükler)
 npx skills add FailproofAI/skills --skill agenteye-cli -a claude-code -g --copy
 
 # Bunun yerine Codex
 npx skills add FailproofAI/skills --skill agenteye-cli -a codex
 ```
 
-Ardından diğer beceriler gibi yönetin:
+Sonra bunu başka herhangi bir beceri gibi yönetin:
 
 ```bash
-npx skills list -a claude-code      # neler yüklü
-npx skills update agenteye-cli      # en son sürümü çek
+npx skills list -a claude-code      # yüklü olanlar
+npx skills update agenteye-cli      # en son sürümü al
 npx skills remove agenteye-cli      # kaldır
 ```
 
-Elle yüklemeyi tercih ediyor musunuz? Bir Agent Skill sadece bir `SKILL.md` içeren klasördür (artı isteğe bağlı referanslar), bu nedenle kopyalama da işe yarar:
+El ile yüklemeyi tercih ediyor musunuz? Bir Agent Becerisi sadece bir `SKILL.md` (artı isteğe bağlı referanslar) içeren bir klasördür; kopyalama da işe yarar:
 
-- **Claude Code**: `agenteye-cli/` klasörünü `~/.claude/skills/` (her proje) veya `<your-repo>/.claude/skills/` (sadece bu depo) içine koyun. Claude Code otomatik olarak keşfeder — `/skills` listesiyle doğrulayın veya açıklamasıyla eşleşen bir soruyu sorun.
-- **Codex (OpenAI)**: Codex aynı `SKILL.md`'yi okur. Paketlenmiş `agents/openai.yaml`, `allow_implicit_invocation: true` ayarlar, bu nedenle Codex bir görev eşleştiğinde beceriyi otomatik seçer; aksi takdirde açıkça `$agenteye-cli` olarak çağırın.
+- **Claude Code**: `agenteye-cli/` klasörünü `~/.claude/skills/` (her proje) veya `<your-repo>/.claude/skills/` (yalnızca o repo) içine koyun. Claude Code otomatik olarak keşfeder — `/skills` listinde doğrulayın veya açıklamasıyla eşleşen bir soru sorun.
+- **Codex (OpenAI)**: Codex aynı `SKILL.md` dosyasını okur. Paketlenen `agents/openai.yaml`, `allow_implicit_invocation: true` olarak ayarlanmıştır; bu nedenle görev eşleştiğinde Codex beceriyi otomatik olarak seçer; aksi takdirde bunu açıkça `$agenteye-cli` olarak çağırın.
 
 ---
 
-## Güvenlik: mutasyonlar bir ajan CLI çalıştırdığında istemi **göstermez**
+## Güvenlik: değişiklikler bir ajan CLI çalıştırdığında uyarı vermez
 
 > **Uyarı:** Bir ajanın değişiklik yapmasına izin vermeden önce bunu okuyun.
 
-`agenteye` CLI normalde yıkıcı bir eylemden önce *"emin misiniz?"* sorar. **Terminal'e bağlı olmadığında (tam olarak bir kodlama ajanının çalıştırılışı) bu onayı otomatik olarak atlar ve `--json` da atlar.** Bu nedenle güvenlik istemi ajan için **başlamayacaktır**.
+`agenteye` CLI normalde yıkıcı bir eylemden önce *"emin misiniz?"* sorular. **Hiçbir zaman terminale bağlı olmadığında (tam olarak bir kodlama aracının onu çalıştırma şekli) ve `--json` de atlar onayı, bu onaylamayı otomatik olarak atlayın.** Bu nedenle güvenlik uyarısı ajan için **ateşlenmez**.
 
-Beceri bunu telafi etmek için yazılmıştır: tam olarak çalıştıracağı komutu belirtmesi ve herhangi bir durum değişikliğinden önce açık **TAMAM** almanız için talimatlandırılır. Bu disiplini koruyun. Failproof AI Observability'yi bir ajan aracılığıyla kullandığınızda, *siz* onay adımısınız. İzleyecek durum değiştiren komutlar:
+Beceri bunu telafi etmek için yazılmıştır: çalıştıracağı tam komutu belirtmesi ve herhangi bir durum değişikliğinden önce açık **OK** alması talimatı verilir. Bu disiplini koruyun. Failproof AI Observability'yi bir ajan aracılığıyla kullanırken, *siz* onaylama adımısınız. İzlenecek durum değiştiren komutlar:
 
 - `keys create` / `update` / `disable` / `regenerate`
 - `users create` / `update` / `disable` / `enable`
 - `settings set`
 - `alerts create` / `update` / `delete` / `test`
-- yazma yapan `incidents` alt komutları: `ack` / `assign` / `resolve` / `open` / `comment-add` / `comment-delete` / `subscribe` / `unsubscribe`
+- yazma `incidents` alt komutları: `ack` / `assign` / `resolve` / `open` / `comment-add` / `comment-delete` / `subscribe` / `unsubscribe`
 - `query create` / `update` / `delete`
 - `agent rename` / `delete`
 - `orgs switch`
 
-**Gözlem** altındaki her şey (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) salt okunurdur ve hiçbir şeyi değiştirmez.
+**Gözlem** altındaki her şey (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) yalnızca okunur ve hiçbir şeyi değiştirmez.
 
-Ajan **siz** olarak hareket ettiğinden, yalnızca oturum açmanızın yapmasına izin verdiği şeyleri yapabilir; izinler **kuruluş başına** çözülür (bkz. [API anahtarları](/tr/agenteye/api-keys)). İzniniz olmayan bir komut çıkış kodu `5` ile tam izin adını döndürür, bu nedenle ajan ajan tam olarak ne isteyeceğinizi söyleyebilir yerine muğlak bir başarısızlık.
+Ajan **sizin olarak** davrandığı için, yalnızca oturum açmanızın izin verdiği işlemleri yapabilir; izinler **kuruluş başına** çözülür (bkz. [API anahtarları](/tr/agenteye/api-keys)). İzniniz olmayan bir komut, çıkış kodu `5` ile tam izin adı döndürür; bu sayede ajan hata alması yerine tam olarak ne isteyeceğini bir yöneticiden söyleyebilir.
 
 ---
 
-## Sorabileceğiniz şeyler
+## Ne sorabilirsiniz
 
-Gerçek bir gidiş-dönüş örneği, bir okuma, ardından sizin TAMAM'ınızı bekleyen bir değişiklik:
+İşte gerçek bir gidiş-dönüş; bir okuma, ardından sizin tamam vermesini bekleyen bir değişiklik:
 
 ```text
-sen    ▸ Son günde bir şey bozuk mu?
+siz   ▸ Son gün içinde bir şey bozuk mu?
 
-ajan   ▸ Çalıştırılıyor: agenteye --json errors --since 24h --aggregate
-        Son 24 saatte 3 hata türü. En büyüğü TimeoutError
-        (18 adet, checkout-agent'de), sonra RateLimited (5).
-        TimeoutError için başarısız oturumları ister misin?
+ajan ▸ Çalıştırılıyor: agenteye --json errors --since 24h --aggregate
+       Son 24 saat içinde 3 hata türü. En büyüğü TimeoutError
+       (18 isabet, tamamı checkout-agent üzerinde), ardından RateLimited (5).
+       TimeoutError için başarısız oturumları görmek ister misiniz?
 
-sen    ▸ CI'ye sadece etkinlik gönderebilen bir anahtar ver.
+siz   ▸ CI'ye sadece etkinlik gönderebilecek bir anahtar ver.
 
-ajan   ▸ Bu bir API anahtarı oluşturur. Çalıştıracağım:
-          agenteye keys create ci --add events:add
-        Devam etmemi uygun mu?
+ajan ▸ Bu bir API anahtarı oluşturur. Çalıştıracağım:
+         agenteye keys create ci --add events:add
+       Devam etmeye izin var mı?
 
-sen    ▸ evet
+siz   ▸ evet
 
-ajan   ▸ Bitti. "ci" anahtarı sadece events:add ile oluşturuldu.
-        Gizli yalnızca bir kez gösterilir, bu nedenle şimdi kaydedin. Bunu yeniden yazdıramam.
+ajan ▸ Bitti. "ci" anahtarı events:add ile oluşturuldu.
+       Sır sadece bir kez gösterilir, bu nedenle şimdi kaydedin. 
+       Yeniden yazdıramam.
 ```
 
-Beceri, her düz İngilizce niyeti doğru `agenteye` komutuna eşler, önce geçerli değerleri keşfeder (`list <kind>`, `whoami`) böylece tahmin etmez ve herhangi bir değişiklikten önce tam komutu belirtir. Daha fazla örnek:
+Beceri her basit İngilizce niyeti doğru `agenteye` komutuna eşler; geçerli değerleri önceden keşfeder (`list <kind>`, `whoami`) böylece tahmin etmez ve herhangi bir değişiklikten önce tam komutu belirtir. Daha fazla örnek:
 
-- *"Son 24 saat içinde bir şey bozuk / başarısız mı?"* → `errors --since 24h --aggregate`, ardından bir dökme.
+- *"Son gün içinde bir şey bozuk / başarısız mı?"* → `errors --since 24h --aggregate`, sonra bir döküm.
 - *"Oturum `run-001` neden başarısız oldu?"* → `events --session-id run-001 --all` + `evals --session-id run-001`.
-- *"Kalite bu hafta nasıl değişiyor?"* → `evals --aggregate --since 7d`, sonra düşük puanlı çalıştırmalara dalın.
-- *"CI'ye sadece etkinlik gönderebilen bir anahtar ver."* → `keys create ci --add events:add` (komutu belirtir, sonra oluşturur ve tek seferlik sırrı yakalar).
+- *"Bu hafta kalite nasıl gidiyor?"* → `evals --aggregate --since 7d`, sonra düşük puanlamaya dalın.
+- *"CI'ye sadece etkinlik gönderebilecek bir anahtar ver."* → `keys create ci --add events:add` (komutu belirtir, sonra oluşturur ve tek seferlik sırrı yakalar).
 - *"Kimin erişimi var? Dana'yı salt okunur yap."* → `users list` → `users update dana@… --permission-set read-only` (sizinle onayladıktan sonra).
-- *"Başarısız olmuş olayı kabul et ve bana ata."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> you@…`.
+- *"Açık olayı onayla ve bana ata."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> you@…`.
 
-Tam komutlar, bayraklar ve bu komutların arkasındaki JSON şekilleri için bkz. [CLI](/tr/agenteye/cli) referansı ve [ajanlar için CLI tarifleri](/tr/agenteye/cli-recipes).
+Bunların arkasındaki tam komutlar, bayraklar ve JSON şekilleri için bkz. [CLI](/tr/agenteye/cli) başvurusu ve [Ajanlar için CLI tarifleri](/tr/agenteye/cli-recipes).
 
 ---
 
 ## Sonraki adımlar
 
-- **[CLI](/tr/agenteye/cli)**: `agenteye` için tam komut ve bayrak referansı.
-- **[Ajanlar için CLI tarifleri](/tr/agenteye/cli-recipes)**: kopyala-yapıştır `jq` desenleri ve çıkış kodu yönetimi.
-- **[Evaluator ajan becerisi](/tr/agenteye/evaluator-skill)**: kardeş beceri, `agenteye evals` okur puanlama inşa etmek için.
-- **[Python SDK ajan becerisi](/tr/agenteye/python-sdk-skill)**: kardeş beceri, bir ajanı enstrümente etmek için `agenteye` okur telemetri yayacak şekilde.
-- **[AI asistanı](/tr/agenteye/assistant)**: kontrol paneli içi asistan (bu terminal becerisiyle karıştırılmaması için).
-- **[API anahtarları](/tr/agenteye/api-keys)**: becerinin ne yapabileceğini sınırlayan kuruluş başına izin modeli.
+- **[CLI](/tr/agenteye/cli)**: `agenteye` için tam komut ve bayrak başvurusu.
+- **[Ajanlar için CLI tarifleri](/tr/agenteye/cli-recipes)**: kopyala-yapıştır `jq` desenleri ve çıkış kodu işleme.
+- **[Evaluator ajan becerisi](/tr/agenteye/evaluator-skill)**: kardeş beceri, `agenteye evals` içindeki puanları okuyan puanlayıcıyı kurmak için.
+- **[Python SDK ajan becerisi](/tr/agenteye/python-sdk-skill)**: kardeş beceri, `agenteye` nin okuduğu telemetriyi yayması için aracı enstrüman takma için.
+- **[AI asistanı](/tr/agenteye/assistant)**: pano içi asistan (bu terminal beceriyle karıştırılmamalıdır).
+- **[API anahtarları](/tr/agenteye/api-keys)**: becerinin yapabileceklerini sınırlayan kuruluş başına izin modeli.

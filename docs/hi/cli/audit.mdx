@@ -1,14 +1,15 @@
 ---
-title: पिछले सेशन्स को ऑडिट करें (beta)
-description: "पिछले ट्रांसक्रिप्ट्स में एजेंट ने कितनी बार बेकार या जोखिम भरे काम किए, यह गिनें"
+title: पिछले सत्रों का ऑडिट (beta)
+description: "जांचें कि एजेंट ने पिछले ट्रांसक्रिप्ट में कितनी बार व्यर्थ या जोखिम भरे काम किए"
 ---
 
 <Note>
-  **बीटा फीचर।** ऑडिट बीटा के रूप में शिप होता है जबकि हम शुरुआती फीडबैक एकत्र कर रहे हैं।
-  अगले स्थिर रिलीज़ से पहले डिटेक्टर कैटलॉग और रिपोर्ट फॉर्मेट बदल सकते हैं। यदि कुछ गलत लगे तो कृपया एक इश्यू खोलें।
+  **बीटा फीचर।** ऑडिट बीटा के रूप में जारी है जबकि हम शुरुआती प्रतिक्रिया एकत्र करते हैं।
+  डिटेक्टर कैटलॉग और रिपोर्ट प्रारूप अगले स्थिर संस्करण से पहले बदल सकते हैं।
+  यदि कुछ गलत लगे तो कृपया एक समस्या खोलें।
 </Note>
 
-ऑडिट आपके पिछले एजेंट-CLI ट्रांसक्रिप्ट्स को failproofai की पॉलिसी इंजन के माध्यम से फिर से चलाता है और **`/audit` डैशबोर्ड पेज** पर एक शेयरेबल, विजुअल रिपोर्ट रेंडर करता है — आपके एजेंट का आर्कटाइप, 0–100 स्कोर, और ठीक से यह दिखाता है कि कौन सी पॉलिसीज़ को क्या पकड़ा होता।
+ऑडिट आपके पिछले एजेंट-CLI ट्रांसक्रिप्ट को failproofai की policy इंजन के माध्यम से फिर से चलाता है और **`/audit` डैशबोर्ड पृष्ठ** पर एक साझाकरण योग्य, दृश्य रिपोर्ट प्रदान करता है — आपके एजेंट का आर्कीटाइप, 0–100 स्कोर, और वास्तव में कौन सी policies क्या पकड़ सकती हैं।
 
 ## इसे चलाएं
 
@@ -16,7 +17,7 @@ description: "पिछले ट्रांसक्रिप्ट्स म�
 
 <CodeGroup>
 
-```bash npx (no install)
+```bash npx (कोई इंस्टॉल नहीं)
 npx -y failproofai audit
 ```
 
@@ -24,18 +25,18 @@ npx -y failproofai audit
 failproofai audit
 ```
 
-```bash failproofai (dashboard)
+```bash failproofai (डैशबोर्ड)
 failproofai
 ```
 
 </CodeGroup>
 
 <CardGroup cols={3}>
-  <Card title="कोई इंस्टॉलेशन नहीं" icon="bolt">
-    `npx -y failproofai audit` failproofai को फेच करता है, स्कैन चलाता है, और आपके लिए डैशबोर्ड खोलता है — पहले कोई इंस्टॉलेशन नहीं।
+  <Card title="कोई इंस्टॉल नहीं" icon="bolt">
+    `npx -y failproofai audit` failproofai को लाता है, स्कैन चलाता है, और डैशबोर्ड खोलता है — पहले कुछ इंस्टॉल करने की आवश्यकता नहीं।
   </Card>
   <Card title="CLI से" icon="terminal">
-    `failproofai audit` आपके टर्मिनल में स्कैन चलाता है, फिर समाप्त होने पर स्वचालित रूप से `localhost:8020/audit` खोलता है।
+    `failproofai audit` आपके टर्मिनल में स्कैन चलाता है, फिर यह समाप्त होने पर `localhost:8020/audit` स्वचालित रूप से खोलता है।
   </Card>
   <Card title="डैशबोर्ड से" icon="gauge">
     `failproofai` चलाएं और नेवबार में **Audit** पर क्लिक करें (Policies और Projects के बीच), या सीधे `/audit` खोलें।
@@ -43,27 +44,27 @@ failproofai
 </CardGroup>
 
 <Tip>
-  उपयोग देखने के लिए `failproofai audit -h` (या `--help`) चलाएं। ऑडिट **पूरी तरह ऑफलाइन** चलता है — कोई खाता या नेटवर्क आवश्यक नहीं है — और डैशबोर्ड तब तक सेवा प्रदान करता है जब तक आप इसे `Ctrl+C` से बंद न करें।
+  उपयोग देखने के लिए `failproofai audit -h` (या `--help`) चलाएं। ऑडिट **पूरी तरह ऑफलाइन** चलता है — कोई खाता या नेटवर्क आवश्यक नहीं — और डैशबोर्ड तब तक सेवा प्रदान करता रहता है जब तक आप इसे `Ctrl+C` से बंद न करें।
 </Tip>
 
-डैशबोर्ड इस मशीन पर पिछले एजेंट CLI ट्रांसक्रिप्ट्स को स्कैन करता है (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) और रिपोर्ट करता है कि एजेंट कितनी बार वह काम करता है जो failproofai को रोकने के लिए बनाया गया है — env-var चेक, force push, redundant `cd <cwd>` प्रीफिक्स, sleep-polling लूप्स, अभी-अभी एडिट की गई फाइलें दोबारा पढ़ना, और बहुत कुछ।
+डैशबोर्ड इस मशीन पर पिछले एजेंट CLI ट्रांसक्रिप्ट को स्कैन करता है (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) और रिपोर्ट करता है कि एजेंट ने कितनी बार वे काम किए जो failproofai रोकने के लिए बनाया गया है — env-var चेक, force pushes, redundant `cd <cwd>` prefixes, sleep-polling loops, अभी-अभी edited files को फिर से पढ़ना, और अधिक।
 
-प्रत्येक ट्रांसक्रिप्ट के लिए, हर tool-use इवेंट को 39 बिल्ट-इन पॉलिसीज़ **और** 8 audit-only डिटेक्टर्स के माध्यम से फिर से चलाया जाता है जो रनटाइम पॉलिसीज़ द्वारा अभी तक कवर नहीं किए गए पैटर्न को पकड़ते हैं। सभी सेशन्स में प्रति पॉलिसी / डिटेक्टर काउंट्स को एकत्रित किया जाता है।
+प्रत्येक ट्रांसक्रिप्ट के लिए, हर tool-use इवेंट को 39 builtin policies **और** 8 audit-only detectors के माध्यम से फिर से चलाया जाता है जो उन पैटर्न को पकड़ते हैं जो अभी तक runtime policies द्वारा कवर नहीं किए गए हैं। काउंट्स सभी सत्रों में प्रति policy / detector को एकत्रित किए जाते हैं।
 
 ## आपको क्या मिलता है
 
-`/audit` पेज एक single-screen, शेयरेबल **पोस्टर** है जिसके बाद चार below-the-fold सेक्शन हैं:
+`/audit` पृष्ठ एक single-screen, साझाकरण योग्य **पोस्टर** है जिसके बाद चार अनुभाग हैं:
 
-1. **Poster** — आपके एजेंट की पहचान एक नज़र में: इसका **आर्कटाइप** (8 में से एक — `optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`), इसके व्यक्तित्व के कीवर्ड, वह आर्कटाइप कितना दुर्लभ है, और 0–100 **स्कोर** एक टियर बैंड के साथ (`S` से `bottom tier` तक)। शेयर करने के लिए बनाया गया — X या LinkedIn पर पोस्ट करें, या इसे PNG के रूप में डाउनलोड करें।
-2. **`// strengths`** — आपका एजेंट पहले से क्या अच्छी तरह करता है, स्कैन से वास्तविक संख्याओं के रूप में (जैसे clean-tool-call %, `0` push-to-main प्रयास), केवल जहां प्रासंगिक पॉलिसी के पास एक स्वच्छ रिकॉर्ड है।
-3. **`// quirks`** — क्या सरक गया: failproofai को पकड़ा जाता behaviors की एक रैंकिंग वाली तालिका — *कब* यह आखिरी बार हुआ, *क्या सरक गया* (और बिल्ट-इन जो इसे ब्लॉक करता), इसकी *गंभीरता*, और यह कितनी बार *देखा गया* (`new` / `recurring` / `N× seen`)।
-4. **`// how to improve`** — निर्धारित फिक्स लिस्ट: प्रति पॉलिसी एक पंक्ति copy-paste `failproofai policy add <slug>` के साथ, प्लस **install all** बटन जो हर सिफारिश को एक बार में सक्षम करता है और आपका **projected score** दिखाता है यदि आप करते।
-5. **`// come back better`** — आदत बनाएं: एक re-audit email **reminder** सेट करें (`3d` / `7d` / `14d` / `30d`) या अभी फिर से ऑडिट करें, और **एक दोस्त को आमंत्रित करें** अपना स्वयं का ऑडिट चलाने के लिए (failproof.ai से भेजा गया, आपको Cc किया गया)। Reminders और invites को साइन-इन की आवश्यकता है।
+1. **पोस्टर** — आपके एजेंट की पहचान एक नज़र में: इसका **आर्कीटाइप** (8 में से एक — `optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`), इसके persona कीवर्ड, वह आर्कीटाइप कितना दुर्लभ है, और एक **0–100 स्कोर** एक tier band (`S` से `bottom tier`) के साथ। साझा करने के लिए बनाया गया — X या LinkedIn पर पोस्ट करें, या इसे PNG के रूप में डाउनलोड करें।
+2. **`// strengths`** — स्कैन से आपका एजेंट पहले से ही क्या अच्छा करता है, real numbers के रूप में (उदाहरण के लिए clean-tool-call %, `0` push-to-main attempts), केवल वहां दिखाया गया जहां प्रासंगिक policy का रिकॉर्ड clean है।
+3. **`// quirks`** — क्या पार निकल गया: failproofai द्वारा पकड़े गए व्यवहारों की एक ranked तालिका — *कब* यह आखिरी बार हुआ, *क्या पार निकल गया* (और builtin जो इसे ब्लॉक कर सकता था), इसकी *severity*, और यह कितनी बार *देखा गया* (`new` / `recurring` / `N× seen`)।
+4. **`// how to improve`** — prescribed fix list: प्रति policy एक row एक copy-paste `failproofai policy add <slug>` के साथ, साथ ही एक **install all** बटन जो हर सिफारिश को एक साथ सक्षम करता है और आपका **projected score** दिखाता है यदि आपने ऐसा किया।
+5. **`// come back better`** — आदत बनाएं: एक re-audit email **reminder** सेट करें (`3d` / `7d` / `14d` / `30d`) या अभी फिर से ऑडिट करें, और **एक दोस्त को आमंत्रित करें** अपना खुद का ऑडिट चलाने के लिए (failproof.ai से भेजा गया, आपको Cc किया गया)। Reminders और invites के लिए sign-in की आवश्यकता है।
 
-## शेड्यूल किए गए ऑडिट्स
+## Scheduled audits
 
 यदि आप **failproofaid daemon** चलाते हैं (देखें [`failproofai config`](/hi/cli/install-policies)),
-यह आपके लिए शेड्यूल पर ऑडिट को फिर से चला सकता है और `/audit` रिपोर्ट को बैकग्राउंड में रीफ्रेश कर सकता है। यह **डिफॉल्ट रूप से बंद** है, क्योंकि स्कैन इस मशीन पर हर एजेंट सेशन ट्रांसक्रिप्ट की *सामग्री* पढ़ता है — कुछ भी टाइमर पर स्कैन नहीं होता जब तक आप इसके लिए न कहें।
+यह आपके लिए schedule पर ऑडिट को फिर से चला सकता है और background में `/audit` रिपोर्ट को refresh कर सकता है। यह **डिफ़ॉल्ट रूप से बंद** है, क्योंकि स्कैन इस मशीन पर हर एजेंट सत्र ट्रांसक्रिप्ट की *सामग्री* को पढ़ता है — जब तक आप इसके लिए न कहें, कोई भी timer पर स्कैन नहीं करता।
 
 इसे `~/.failproofai/config.toml` में चालू करें:
 
@@ -73,42 +74,44 @@ auto = true
 interval_days = 7
 ```
 
-| Key | Meaning |
+| Key | अर्थ |
 |---|---|
-| `auto` | `true` शेड्यूल किए गए स्कैन को सक्षम करता है। कुछ भी और — अनुपस्थित, `false`, `"yes"` — बंद है। |
-| `interval_days` | स्कैन के बीच दिन। 1–90 तक क्लैम्प किया गया; `0`, नकारात्मक या गैर-संख्या `7` पर वापस जाता है। |
+| `auto` | `true` scheduled स्कैन को सक्षम करता है। कुछ भी और — अनुपस्थित, `false`, `"yes"` — बंद है। |
+| `interval_days` | स्कैन के बीच दिन। 1–90 के लिए क्लैम्प किया गया; `0`, नकारात्मक या non-number `7` पर वापस आता है। |
 
-- शेड्यूल **wall-clock** है, इसलिए यह suspend और reboots से बचता है: एक लैपटॉप जो अपने कारण समय के दौरान सो रहा था **एक बार** wake पर चलता है, कभी backlog नहीं।
-- प्रत्येक रन एक अलग, low-priority (`nice 19`) प्रक्रिया है — कभी daemon के hook path का नहीं, जो tool calls का उत्तर देने के लिए स्वतंत्र रहता है।
-- एक स्कैन छोड़ दिया जाता है यदि `failproofai audit` या डैशबोर्ड के re-run पहले से ही चल रहे हैं; इसे जल्द ही फिर से प्रयास किया जाता है बजाय failure के रूप में माने जाने के।
-- Progress को `~/.failproofai/state/audit-schedule.json` में लिखा जाता है (last run, next due)। Daemon उस फाइल के मालिक हैं — `config.toml` में cadence बदलें।
+- शेड्यूल **wall-clock** है, इसलिए यह suspend और reboots को survive करता है: एक लैपटॉप जो अपने due समय के बाद सो रहा था **एक बार** wake पर चलता है, कभी backlog नहीं।
+- प्रत्येक run एक अलग, low-priority (`nice 19`) प्रक्रिया है — कभी भी daemon के hook path नहीं, जो tool calls का जवाब देने के लिए free रहता है।
+- एक स्कैन को छोड़ दिया जाता है यदि `failproofai audit` या डैशबोर्ड की re-run पहले से ही flight में है; यह failure के रूप में treat किए जाने के बजाय शीघ्र ही फिर से try किया जाता है।
+- Progress को `~/.failproofai/state/audit-schedule.json` में लिखा जाता है (last run, next due)। Daemon उस फ़ाइल का मालिक है — `config.toml` में cadence बदलें।
 
 <Note>
-यदि आपने इसे एक पुराने failproofai द्वारा सेट की गई मशीन पर सक्षम किया है, तो एक बार `failproofai config` चलाएं। Daemon की service definition को इसे लॉन्च करने से पहले CLI एक अतिरिक्त entry की आवश्यकता है, और refresh उस command का हिस्सा है।
+यदि आपने इसे एक पुराने failproofai द्वारा सेट किए गए मशीन पर सक्षम किया है, तो
+`failproofai config` एक बार चलाएं। Daemon की service definition को CLI को launch करने के लिए एक अतिरिक्त
+entry की आवश्यकता है, और refresh उस command का हिस्सा है।
 </Note>
 
-## Audit-only डिटेक्टर्स
+## Audit-only detectors
 
-ये real time में अभी (अभी तक) लागू नहीं किए गए "stupid behavior" पैटर्न का पता लगाते हैं। वे केवल ऑडिट के दौरान चलते हैं और कभी live tool call को ब्लॉक नहीं करते।
+ये "stupid behavior" पैटर्न का पता लगाते हैं जो (अभी तक) real time में लागू नहीं किए जाते हैं। ये केवल ऑडिट के दौरान चलते हैं और कभी भी live tool call को ब्लॉक नहीं करते।
 
-| Detector | क्या यह गिनता है |
+| Detector | यह क्या गिनता है |
 |---|---|
-| `redundant-cd-cwd` | Bash कमांड जो `cd <cwd> && …` से शुरू होते हैं भले ही कमांड पहले से `cwd` में चलते हों। |
-| `prefer-edit-over-read-cat` | एकल स्रोत फाइल पर `cat`/`head`/`tail`/`less`/`more` — `Read` tool का उपयोग करें। |
-| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` in-place edits — `Edit` tool का उपयोग करें। |
-| `prefer-write-over-heredoc` | Heredoc / multi-line `echo > file` लिखती फाइलें — `Write` tool का उपयोग करें। |
+| `redundant-cd-cwd` | Bash commands जो `cd <cwd> && …` से शुरू होते हैं भले ही commands पहले से `cwd` में चलते हैं। |
+| `prefer-edit-over-read-cat` | `cat`/`head`/`tail`/`less`/`more` एक एकल source file पर — `Read` tool का use करें। |
+| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` in-place edits — `Edit` tool का use करें। |
+| `prefer-write-over-heredoc` | Heredoc / multi-line `echo > file` लिखते हुए files — `Write` tool का use करें। |
 | `sleep-polling-loop` | लंबे `sleep N` (≥ 30s) या `while …; sleep …; done` polling loops। |
-| `find-from-root` | `find /`, `find /home`, `find /usr`, आदि। — `cwd` के बजाय स्कोप करें। |
+| `find-from-root` | `find /`, `find /home`, `find /usr`, आदि — instead `cwd` को scope करें। |
 | `git-commit-no-verify` | `git commit … --no-verify` / `-n`, hooks को छोड़ते हुए। |
-| `reread-after-edit` | एक फाइल का `Read` जो उसी सेशन में अभी-अभी `Edit`/`Write` था। |
+| `reread-after-edit` | एक file का `Read` जो एक ही सत्र में अभी-अभी `Edit`/`Write` था। |
 
 ## Caches
 
-- **Per-transcript cache** `~/.failproofai/cache/audit/<sha1>.json` पर `(mtime, size, engineVersion, detectorVersion)` द्वारा keyed — transcript या policy/detector code बदलने पर स्वचालित रूप से अमान्य हो जाता है। प्रत्येक entry एक `cachedAt` टाइमस्टैम्प को **TTL metadata** के रूप में भी स्टोर करता है (cache key का हिस्सा नहीं); **7 दिन** से पुरानी entries को read पर अस्वीकार किया जाता है ताकि लंबे समय तक चलने वाले परिणाम विकसित होते डिटेक्टर intent को outlive न करें।
-- **Whole-result cache** `~/.failproofai/audit-dashboard.json` पर (mode 0600)। डैशबोर्ड को re-running के बिना navigation पर तुरंत रेंडर करने देता है। **7-day TTL** के बाद read पर भी अस्वीकार किया जाता है — `/audit` फिर अपने empty state में गिरता है और एक ताज़ा run के लिए प्रेरित करता है। रिपोर्ट के निचले हिस्से के पास `[ re-audit now ]` पर क्लिक करें refresh करने के लिए — re-audit `noCache: true` भेजता है, इसलिए यह per-transcript cache को bypass करता है और cached result देने के बजाय हर transcript को फिर से स्कैन करता है; run एक sticky top strip के माध्यम से progress को stream करता है और success पर result को जगह में swap करता है (कोई page reload नहीं; एक failed re-audit पिछली रिपोर्ट रखता है)।
+- **Per-transcript cache** `~/.failproofai/cache/audit/<sha1>.json` पर `(mtime, size, engineVersion, detectorVersion)` द्वारा keyed — स्वचालित रूप से अमान्य करता है जब ट्रांसक्रिप्ट या policy/detector कोड बदलता है। प्रत्येक entry एक `cachedAt` timestamp को **TTL metadata** के रूप में भी store करता है (cache key का हिस्सा नहीं); **7 दिनों** से पुरानी entries को read पर reject किया जाता है ताकि long-lived results विकसित होते detector intent को outlive न करें।
+- **Whole-result cache** `~/.failproofai/audit-dashboard.json` पर (mode 0600)। डैशबोर्ड को re-run किए बिना navigation पर instantly render करने देता है। **7-day TTL** के बाद read पर भी reject किया जाता है — `/audit` फिर अपनी empty state में falls through और एक fresh run के लिए prompt करता है। रिपोर्ट के नीचे के पास `[ re-audit now ]` पर क्लिक करें refresh करने के लिए — re-audit `noCache: true` भेजता है, इसलिए यह per-transcript cache को bypass करता है और cached result return करने के बजाय हर transcript को फिर से scan करता है; run एक sticky top strip के माध्यम से progress को stream करता है और success पर result को place में swap करता है (कोई page reload नहीं; एक failed re-audit पिछली रिपोर्ट को रखता है)।
 
-## नोट्स
+## Notes
 
-- **कोई mutation नहीं।** ऑडिट read-only mode में फिर से चलाता है। `warn-repeated-tool-calls` को छोड़ दिया जाता है क्योंकि इसका per-session sidecar अन्यथा संशोधित हो जाएगा।
-- **Workflow policies छोड़े गए।** `require-*-before-stop` policies केवल `Stop` events और live git state के विरुद्ध `execSync` पर fire होती हैं — उनके पास कोई सार्थक "2025 में क्या हुआ होता" interpretation नहीं है, इसलिए वे audit counts में दिखाई नहीं देते।
-- **कस्टम policies छोड़े गए।** User-supplied कस्टम hooks को फिर से चलाया नहीं जाता (वे मूल सेशन के बाद से बदल सकते हैं)।
+- **कोई mutation नहीं।** ऑडिट read-only mode में replays करता है। `warn-repeated-tool-calls` को छोड़ा जाता है क्योंकि इसका per-session sidecar अन्यथा modified होगा।
+- **Workflow policies छोड़े गए।** `require-*-before-stop` policies केवल `Stop` events पर और live git state के विरुद्ध `execSync` पर fire करती हैं — उनके पास कोई meaningful "what would have happened in 2025" interpretation नहीं है, इसलिए वे audit counts में दिखाई नहीं देते।
+- **Custom policies छोड़े गए।** User-supplied custom hooks को replay नहीं किया जाता है (वे original session के बाद से बदल सकते हैं)।

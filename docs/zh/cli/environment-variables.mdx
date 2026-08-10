@@ -3,13 +3,13 @@ title: 环境变量
 description: "通过环境变量配置 failproofai 的行为"
 ---
 
-## 控制台
+## 仪表盘
 
 | 变量 | 描述 |
 |----------|-------------|
-| `PORT` | 控制台端口（默认：`8020`） |
+| `PORT` | 仪表盘端口（默认：`8020`） |
 | `CLAUDE_PROJECTS_PATH` | 覆盖 Claude Code 项目文件夹的查找路径 |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | 以逗号分隔的控制台页面列表，用于隐藏指定页面 |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | 以逗号分隔的仪表盘页面名称，用于隐藏对应页面 |
 | `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | 允许访问开发资源的主机/IP，与 `--allowed-origins` 相同 |
 
 ## 日志
@@ -21,13 +21,13 @@ description: "通过环境变量配置 failproofai 的行为"
 
 ## 遥测
 
-failproofai 默认会上报匿名使用遥测数据。有两种方式可以关闭遥测，系统会采用限制更严格的那一方——环境变量无法重新启用已通过配置文件关闭的功能。
+failproofai 默认会上报匿名使用遥测数据。有两种方式可以关闭遥测，系统会采用两者中限制更严格的那个——环境变量无法重新启用已被配置文件关闭的功能。
 
 | 变量 | 描述 |
 |----------|-------------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | 为当前进程禁用匿名使用遥测 |
 
-如需在机器上永久禁用，请将以下内容添加到 `~/.failproofai/config.toml`：
+若要在机器上永久禁用遥测，请将以下内容添加到 `~/.failproofai/config.toml`：
 
 ```toml
 [telemetry]
@@ -35,28 +35,28 @@ enabled = false
 ```
 
 <Note>
-如果你运行的是 **failproofaid 守护进程**，请使用配置文件方式。守护进程是系统级服务，其运行环境不包含从 shell 中导出的变量，因此 `FAILPROOFAI_TELEMETRY_DISABLED` 对其无效。`[telemetry] enabled = false` 同时适用于 CLI 和守护进程。
+如果你运行的是 **failproofaid 守护进程**，推荐使用配置文件的方式。守护进程是系统级服务，其运行环境不包含从 shell 导出的变量，因此 `FAILPROOFAI_TELEMETRY_DISABLED` 对它无效。`[telemetry] enabled = false` 对 CLI 和守护进程均有效。
 </Note>
 
-守护进程仅上报自身的**生命周期**事件：启动时（以及上次运行是否正常退出）、停止时、评估 worker 被创建或重启时、某个采集任务失败时，以及云端策略拉取的结果。这些数据仅包含低基数的值和计数——不包含任何文件路径、命令、策略、提示词，以及从会话记录中读取的任何内容。不存在针对单次工具调用的事件。
+守护进程仅上报自身的**生命周期**事件：启动时（以及上次运行是否正常退出）、停止时、评估 worker 被启动或重启时、采集任务失败时，以及云端策略拉取的结果。这些事件只携带低基数的值和计数——不包含任何文件路径、命令、策略、提示词，或从记录中读取的任何内容，也不存在每次工具调用的事件。
 
 ## 认证
 
 | 变量 | 描述 |
 |----------|-------------|
-| `FAILPROOF_API_URL` | 覆盖控制台认证对话框所使用的 API 服务器基础 URL。默认为 `https://api.befailproof.ai`；在本地运行 api-server 时，可设置为 `http://localhost:8080`（或其他地址）。 |
+| `FAILPROOF_API_URL` | 覆盖仪表盘认证对话框使用的 API 服务器基础 URL。默认为 `https://api.befailproof.ai`；在本地运行 API 服务器时，可设置为 `http://localhost:8080`（或对应地址）。 |
 | `FAILPROOFAI_AUTH_DIR` | 覆盖 `auth.json` 的存储路径（默认：`~/.failproofai`），主要用于隔离测试。 |
 
 ## 首次运行提示
 
 | 变量 | 描述 |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | 跳过首次裸运行 `failproofai` 时弹出的策略安装提示 |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | 跳过首次裸调用 `failproofai` 时提示安装策略的交互 |
 
 ## LLM（用于策略评估）
 
 | 变量 | 描述 |
 |----------|-------------|
 | `FAILPROOFAI_LLM_BASE_URL` | LLM API 端点（默认：`https://api.openai.com/v1`） |
-| `FAILPROOFAI_LLM_API_KEY` | LLM 驱动策略所使用的 API 密钥 |
+| `FAILPROOFAI_LLM_API_KEY` | LLM 驱动策略所需的 API 密钥 |
 | `FAILPROOFAI_LLM_MODEL` | 模型名称（默认：`gpt-4o-mini`） |

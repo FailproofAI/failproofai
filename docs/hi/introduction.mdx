@@ -1,42 +1,42 @@
 ---
 ---
 title: "Failproof AI"
-description: "FailproofAI AI एजेंट्स को 39 बिल्ट-इन फेलियर पॉलिसीज देता है जो एक ही इंस्टॉल में लूप्स, सीक्रेट लीक्स, डिस्ट्रक्टिव टूल कॉल्स और बहुत कुछ पकड़ते हैं।"
+description: "FailproofAI आपके AI agents को 39 built-in failure policies देता है जो एक ही install में loops, secret leaks, destructive tool calls और बहुत कुछ को पकड़ते हैं।"
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-**AI फेलियर हैंडलिंग**, **एरर रिकवरी**, और **LLM रिलायबिलिटी** के लिए हुक्स और पॉलिसीज। अपने AI एजेंट्स को **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI**, और **Agents SDK** के साथ रिलायबल और ऑटोनमसली रनिंग रखें।
+**AI failure handling**, **error recovery**, और **LLM reliability** के लिए Hooks और policies। अपने AI agents को **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI**, और **Agents SDK** पर विश्वसनीय और स्वायत्त रूप से चलता रहें।
 
-AI एजेंट्स अनुमानित तरीकों से फेल करते हैं। वे डिस्ट्रक्टिव कमांड्स चलाते हैं, सीक्रेट्स लीक करते हैं, टास्क से भटकते हैं, लूप्स में फंसते हैं, या सीधे मेन में पुश करते हैं। अनअटेंडेड छोड़ दिए जाने पर, छोटी फेलियर्स आउटेजेस, लीक की गई क्रेडेंशियल्स, और खोए हुए काम में बदल जाती हैं।
+AI agents पूर्वानुमानित तरीकों से विफल होते हैं। वे विनाशकारी commands चलाते हैं, secrets लीक करते हैं, task से भटकते हैं, loops में फंस जाते हैं, या सीधे main में push करते हैं। अगर बिना निरीक्षण के छोड़ दिए जाएं, तो छोटी failures बड़े outages, लीक किए गए credentials और खोए हुए काम में बदल जाती हैं।
 
-FailproofAI इसे **पॉलिसीज** से हल करता है। ये नियम हर एजेंट टूल कॉल में हुक करते हैं ताकि **फेलियर्स डिटेक्ट** हों, **उन्हें मिटिगेट** किया जाए (ब्लॉक, निर्देश दें, सैनिटाइज करें), और **आपको अलर्ट** किया जाए जब कुछ ध्यान देने की जरूरत हो। एक लोकल डैशबोर्ड आपको बाद में हर टूल कॉल, एजेंट फेलियर, और रिकवरी एक्शन की समीक्षा करने देता है।
+FailproofAI इसे **policies** के साथ हल करता है। ये rules हर agent tool call में hook करते हैं ताकि **failures को detect** करें, **उन्हें mitigate** करें (block, instruct, sanitize), और जब कुछ attention की जरूरत हो तो **आपको alert** करें। एक local dashboard आपको afterward में हर tool call, agent failure और recovery action को review करने देता है।
 
-ट्रांसक्रिप्ट्स और पॉलिसी इवैल्यूएशन आपकी मशीन पर रहते हैं। डेटा केवल तब भेजा जाता है जब आप स्पष्ट रूप से किसी ऑनलाइन फीचर का उपयोग करते हैं, जैसे ऑथेंटिकेटेड ऑडिट रिमाइंडर्स या इनविटेशन्स।
+Transcripts और policy evaluation आपकी machine पर रहते हैं। Data सिर्फ तब भेजा जाता है जब आप explicitly किसी online feature का उपयोग करते हैं, जैसे authenticated audit reminders या invitations।
 
 ## शुरुआत करें
 
 <CardGroup cols={2}>
 
-<Card title="39 बिल्ट-इन पॉलिसीज" icon="shield" href="/hi/built-in-policies">
-  डिस्ट्रक्टिव कमांड्स को ब्लॉक करें, सीक्रेट लीकेज को रोकें, एजेंट्स को प्रोजेक्ट बाउंड्रीज के अंदर रखें, और बहुत कुछ। सब कुछ बॉक्स से बाहर।
+<Card title="39 built-in policies" icon="shield" href="/hi/built-in-policies">
+  विनाशकारी commands को block करें, secret leakage को रोकें, agents को project boundaries के अंदर रखें, और बहुत कुछ। सब कुछ बॉक्स से बाहर।
 </Card>
 
-<Card title="कस्टम पॉलिसीज" icon="code" href="/hi/custom-policies">
-  सिंपल allow / deny / instruct API के साथ JavaScript में अपने नियम लिखें।
+<Card title="Custom policies" icon="code" href="/hi/custom-policies">
+  JavaScript में अपने खुद के rules लिखें एक simple allow / deny / instruct API के साथ।
 </Card>
 
-<Card title="एजेंट मॉनिटर" icon="chart-line" href="/hi/dashboard">
-  देखें कि जब आप दूर थे तो आपके एजेंट्स ने क्या किया। सेशन्स ब्राउज करें, टूल कॉल्स इंस्पेक्ट करें, पॉलिसीज कहां फायर हुईं यह समीक्षा करें।
+<Card title="Agent monitor" icon="chart-line" href="/hi/dashboard">
+  देखें कि आपके agents ने आपके दूर रहने के दौरान क्या किया। Sessions browse करें, tool calls को inspect करें, उन जगहों को review करें जहां policies fired हुई।
 </Card>
 
-<Card title="आसान कॉन्फ़िगरेशन" icon="gear" href="/hi/configuration">
-  किसी भी पॉलिसी को कोड के बिना ट्यून करें। एलाउलिस्ट्स, प्रोटेक्टेड ब्रांचेस, या थ्रेशहोल्ड्स प्रति-प्रोजेक्ट या ग्लोबली सेट करें।
+<Card title="Easy configuration" icon="gear" href="/hi/configuration">
+  किसी भी policy को बिना code के tune करें। Per-project या globally allowlists, protected branches, या thresholds set करें।
 </Card>
 
 </CardGroup>
 
-## क्विक स्टार्ट
+## त्वरित शुरुआत
 
 <CodeGroup>
 
@@ -51,8 +51,8 @@ bun add -g failproofai
 </CodeGroup>
 
 ```bash
-failproofai policies --install   # पॉलिसीज एनेबल करें (या स्किप करें — `failproofai` पहली रन पर उन्हें सेट अप करने की ऑफर देगा)
-failproofai                      # डैशबोर्ड लॉन्च करें
+failproofai policies --install   # policies enable करें (या skip करें — `failproofai` पहली run पर उन्हें set करने का offer देगा)
+failproofai                      # dashboard launch करें
 ```
 
-पूरी वॉकथ्रू के लिए [शुरुआत करें](/hi/getting-started) गाइड देखें।
+पूर्ण walkthrough के लिए [Getting started](/hi/getting-started) guide देखें।

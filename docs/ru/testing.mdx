@@ -1,10 +1,10 @@
 ---
 title: Тестирование
-description: "Модульные тесты, E2E тесты и вспомогательные инструменты тестирования"
+description: "Модульные тесты, E2E-тесты и вспомогательные утилиты для тестирования"
 icon: flask-vial
 ---
 
-failproofai содержит два набора тестов: **модульные тесты** (быстрые, с моками) и **сквозные тесты** (реальные вызовы подпроцессов).
+failproofai имеет два набора тестов: **модульные тесты** (быстрые, с моками) и **сквозные тесты** (реальные вызовы подпроцессов).
 
 ---
 
@@ -17,13 +17,13 @@ bun run test:run
 # Запустить модульные тесты в режиме наблюдения
 bun run test
 
-# Запустить E2E тесты (требуется подготовка - см. ниже)
+# Запустить E2E-тесты (требует предварительной настройки - см. ниже)
 bun run test:e2e
 
 # Проверка типов без сборки
 bunx tsc --noEmit
 
-# Линтинг
+# Проверка кода
 bun run lint
 ```
 
@@ -36,12 +36,12 @@ bun run lint
 ```text
 __tests__/
   hooks/
-    builtin-policies.test.ts      # Логика политик для каждой встроенной
-    hooks-config.test.ts          # Загрузка конфига и объединение областей
-    policy-evaluator.test.ts      # Внедрение параметров и порядок оценки
-    custom-hooks-registry.test.ts # globalThis реестр добавления/получения/очистки
+    builtin-policies.test.ts      # Логика политик для каждой встроенной политики
+    hooks-config.test.ts          # Загрузка конфига и слияние областей видимости
+    policy-evaluator.test.ts      # Инъекция параметров и порядок оценки
+    custom-hooks-registry.test.ts # Регистр globalThis - добавление/получение/очистка
     custom-hooks-loader.test.ts   # ESM загрузчик, транзитивные импорты, обработка ошибок
-    manager.test.ts               # Операции установки/удаления/списка
+    manager.test.ts               # Операции установки/удаления/списания
   components/
     sessions-list.test.tsx        # Компонент списка сессий
     project-list.test.tsx         # Компонент списка проектов
@@ -110,11 +110,11 @@ describe("block-sudo", () => {
 
 ## Сквозные тесты
 
-E2E тесты запускают реальный бинарный файл `failproofai` как подпроцесс, передают JSON-полезную нагрузку на stdin и проверяют вывод stdout и код выхода. Это тестирует полный путь интеграции, который использует Claude Code.
+E2E-тесты вызывают реальный бинарный файл `failproofai` в виде подпроцесса, отправляют JSON-полезную нагрузку в stdin и проверяют вывод на stdout и код выхода. Это тестирует полный путь интеграции, который использует Claude Code.
 
-### Подготовка
+### Настройка
 
-E2E тесты запускают бинарный файл непосредственно из исходного кода репозитория. Перед первым запуском соберите CJS пакет, который используют файлы пользовательских хуков при импорте из `'failproofai'`:
+E2E-тесты запускают бинарный файл непосредственно из исходного кода репозитория. Перед первым запуском соберите CJS-пакет, который используют файлы пользовательских hook при импорте из `'failproofai'`:
 
 ```bash
 bun build src/index.ts --outdir dist --target node --format cjs
@@ -126,33 +126,33 @@ bun build src/index.ts --outdir dist --target node --format cjs
 bun run test:e2e
 ```
 
-Пересоберите `dist/` каждый раз, когда вы изменяете публичный API хуков (`src/hooks/custom-hooks-registry.ts`, `src/hooks/policy-helpers.ts` или `src/hooks/policy-types.ts`).
+Пересоберите `dist/` каждый раз, когда вы изменяете публичный API hook (`src/hooks/custom-hooks-registry.ts`, `src/hooks/policy-helpers.ts` или `src/hooks/policy-types.ts`).
 
-### Структура E2E теста
+### Структура E2E-теста
 
 ```text
 __tests__/e2e/
   helpers/
-    hook-runner.ts      # Запуск бинарного файла, передача JSON на stdin, захват кода выхода + stdout + stderr
+    hook-runner.ts      # Запуск бинарного файла, отправка JSON в stdin, получение кода выхода + stdout + stderr
     fixture-env.ts      # Изолированные для каждого теста временные директории с файлами конфига
-    payloads.ts         # Фабрики полезной нагрузки, точные для Claude, для каждого типа события
+    payloads.ts         # Фабрики полезных нагрузок для каждого типа события, совместимые с Claude
   hooks/
     builtin-policies.e2e.test.ts   # Каждая встроенная политика с реальным подпроцессом
-    custom-hooks.e2e.test.ts       # Загрузка и оценка пользовательских хуков
-    config-scopes.e2e.test.ts      # Объединение конфига для проекта/локального/глобального уровней
-    policy-params.e2e.test.ts      # Внедрение параметров для каждой параметризованной политики
+    custom-hooks.e2e.test.ts       # Загрузка и оценка пользовательских hook
+    config-scopes.e2e.test.ts      # Слияние конфига в проекте/локально/глобально
+    policy-params.e2e.test.ts      # Инъекция параметров для каждой параметризованной политики
 ```
 
-### Использование E2E вспомогательных функций
+### Использование E2E-вспомогательных утилит
 
-**`FixtureEnv`** - изолированная для каждого теста среда:
+**`FixtureEnv`** - изолированная среда для каждого теста:
 
 ```typescript
 import { createFixtureEnv } from "../helpers/fixture-env";
 
 const env = createFixtureEnv();
-// env.cwd    - временная директория; передайте как payload.cwd, чтобы подобрать .failproofai/policies-config.json
-// env.home   - изолированная домашняя директория; утечек ~/.failproofai не будет
+// env.cwd    - временная директория; передайте как payload.cwd для использования .failproofai/policies-config.json
+// env.home   - изолированная домашняя директория; никакие настоящие ~/.failproofai не протекают
 
 env.writeConfig({
   enabledPolicies: ["block-sudo"],
@@ -180,7 +180,7 @@ expect(result.exitCode).toBe(0);
 expect(result.parsed?.hookSpecificOutput?.permissionDecision).toBe("deny");
 ```
 
-**`Payloads`** - готовые фабрики полезной нагрузки:
+**`Payloads`** - готовые фабрики полезных нагрузок:
 
 ```typescript
 Payloads.preToolUse.bash(command, cwd)
@@ -192,7 +192,7 @@ Payloads.notification(message, cwd)
 Payloads.stop(cwd)
 ```
 
-### Написание E2E теста
+### Написание E2E-теста
 
 ```typescript
 import { describe, it, expect } from "vitest";
@@ -226,35 +226,35 @@ describe("block-rm-rf (E2E)", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("");  // allow → empty stdout
+    expect(result.stdout).toBe("");  // разрешено → пустой stdout
   });
 });
 ```
 
-### Формы E2E ответов
+### Форматы ответов E2E
 
 | Решение | Код выхода | stdout |
 |----------|-----------|--------|
-| `PreToolUse` deny | `0` | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"..."}}` |
-| `PostToolUse` deny | `0` | `{"hookSpecificOutput":{"additionalContext":"Blocked ... because: ..."}}` |
-| Instruct (non-Stop) | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
-| Stop instruct | `2` | пустой stdout; причина в stderr |
-| Allow | `0` | пустая строка |
+| `PreToolUse` отклонено | `0` | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"..."}}` |
+| `PostToolUse` отклонено | `0` | `{"hookSpecificOutput":{"additionalContext":"Blocked ... because: ..."}}` |
+| Инструкция (не Stop) | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
+| Stop-инструкция | `2` | пустой stdout; причина в stderr |
+| Разрешить | `0` | пустая строка |
 
 ### Конфиг Vitest
 
-E2E тесты используют `vitest.config.e2e.mts` с:
+E2E-тесты используют `vitest.config.e2e.mts` с:
 
 - `environment: "node"` - браузерные глобальные переменные не требуются
 - `pool: "forks"` - истинная изоляция процессов (тесты запускают подпроцессы)
-- `testTimeout: 20_000` - 20s на тест (запуск бинарного файла + оценка хука)
+- `testTimeout: 20_000` - 20s на тест (запуск бинарного файла + оценка hook)
 
-Пул `forks` важен: рабочие процессы на основе потоков совместно используют `globalThis`, что может помешать тестам, запускающим подпроцессы. Форки на основе процессов избегают этого.
+Пул `forks` важен: рабочие на основе потоков совместно используют `globalThis`, что может помешать тестам, запускающим подпроцессы. Форки на основе процессов избегают этого.
 
 ---
 
 ## CI
 
-Полный CI прогон (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) должен пройти перед слиянием. E2E набор запускается как отдельная задача CI параллельно.
+Полный запуск CI (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) должен пройти перед слиянием. E2E-набор запускается как отдельное задание CI параллельно.
 
-См. [Contributing](../CONTRIBUTING.md) для полного контрольного списка перед слиянием.
+Смотрите [Участие в разработке](../CONTRIBUTING.md) для полного контрольного списка перед слиянием.

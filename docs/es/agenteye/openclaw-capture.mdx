@@ -1,17 +1,17 @@
 ---
 title: "Captura de sesiones de OpenClaw"
-description: "Transmite las sesiones locales de OpenClaw de tu equipo a AgentEye como sesiones y eventos normales, sin necesidad de cambiar cómo se ejecuta OpenClaw."
+description: "Transmite las sesiones locales de OpenClaw de tu equipo a AgentEye como sesiones y eventos ordinarios, sin cambiar la forma en que OpenClaw se ejecuta."
 ---
 
-Si tu equipo utiliza [OpenClaw](https://docs.openclaw.ai), la captura de sesiones de OpenClaw incorpora esas sesiones en AgentEye como sesiones y eventos normales, para que puedas buscarlas, reproducirlas y evaluarlas junto con todo lo demás que observas. Complementa el [SDK de Python](/es/agenteye/python-sdk): el SDK instrumenta los agentes que tú escribes, mientras que esta función captura el trabajo en OpenClaw que tu equipo ya realiza, sin ningún cambio en su forma de ejecutarlo.
+Si tu equipo usa [OpenClaw](https://docs.openclaw.ai), la captura de sesiones de OpenClaw incorpora esas sesiones en AgentEye como sesiones y eventos ordinarios, para que puedas buscarlas, reproducirlas y evaluarlas junto al resto de lo que observas. Complementa el [SDK de Python](/es/agenteye/python-sdk): el SDK instrumenta los agentes que tú escribes, mientras que esto captura el trabajo de OpenClaw que tu equipo ya realiza, sin ningún cambio en cómo lo ejecuta.
 
-Un pequeño recolector en segundo plano lee los registros de sesión locales de OpenClaw a medida que se van escribiendo y los envía a AgentEye. Funciona de la misma manera que la [captura de Codex](/es/agenteye/codex-capture), y un solo recolector puede capturar ambos al mismo tiempo.
+Un pequeño recolector en segundo plano lee los transcritos de sesión locales de OpenClaw conforme se van escribiendo y los envía a AgentEye. Funciona de la misma manera que la [captura de Codex](/es/agenteye/codex-capture), y un único recolector puede capturar ambos al mismo tiempo.
 
 ---
 
 ## Qué captura
 
-Todos los agentes configurados en la instalación de OpenClaw de una máquina son capturados por el recolector de esa máquina; no es necesario configurar nada por agente.
+Cada agente configurado en la instalación de OpenClaw de una máquina es capturado por el recolector de esa máquina; no se requiere configuración por agente.
 
 Cada sesión de OpenClaw se convierte en una [sesión](/es/agenteye/sessions) de AgentEye; sus mensajes de usuario y asistente, llamadas a herramientas y resultados de herramientas se convierten en los [eventos](/es/agenteye/event-stream) correspondientes.
 
@@ -26,24 +26,24 @@ curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main
   | sh -s -- --key <YOUR_API_KEY> --openclaw-enabled
 ```
 
-Esto instala el recolector, lo registra como servicio en segundo plano y comienza a capturar. Confirma que está en ejecución con:
+Esto instala el recolector, lo registra como un servicio en segundo plano y comienza a capturar. Para confirmar que está en ejecución:
 
 ```bash
 agenteye-collector health
 ```
 
-¿Necesitas capturar más de un agente en la misma máquina? Añade el indicador de cada uno en el mismo comando; por ejemplo, `--openclaw-enabled --codex-enabled`.
+¿Capturas más de un agente en la misma máquina? Añade el indicador de cada uno al mismo comando; por ejemplo, `--openclaw-enabled --codex-enabled`.
 
-En la primera ejecución, tus sesiones de OpenClaw existentes se importan de forma retroactiva una sola vez, y la nueva actividad se transmite en cuestión de segundos. Los archivos propios de OpenClaw solo se leen, nunca se modifican, mueven ni eliminan, y cada sesión se envía exactamente una vez, incluso tras reinicios.
+En la primera ejecución, tus sesiones de OpenClaw existentes se importan de forma retroactiva una sola vez, y la nueva actividad se transmite en cuestión de segundos. Los archivos propios de OpenClaw solo se leen; nunca se modifican, mueven ni eliminan, y cada sesión se envía exactamente una vez, incluso tras reinicios.
 
 ---
 
 ## Dónde aparece
 
-Las sesiones capturadas aparecen en **Sessions**, y sus eventos en el flujo de **Events**, igual que cualquier otro agente que observes. Así, la [reproducción de sesiones](/es/agenteye/sessions), la [búsqueda](/es/agenteye/queries), las [evaluaciones](/es/agenteye/evaluations) y las [alertas](/es/agenteye/alerts) funcionan con ellas del mismo modo. Filtra por el agente de OpenClaw para verlas de forma independiente.
+Las sesiones capturadas aparecen en **Sessions**, y sus eventos en el flujo de **Events**, igual que cualquier otro agente que observes; por lo tanto, la [reproducción de sesiones](/es/agenteye/sessions), la [búsqueda](/es/agenteye/queries), las [evaluaciones](/es/agenteye/evaluations) y las [alertas](/es/agenteye/alerts) funcionan con ellas. Filtra por el agente de OpenClaw para verlas de forma independiente.
 
 ---
 
 ## Privacidad
 
-Los registros de OpenClaw contienen la sesión completa, incluyendo la salida de comandos, el contenido de archivos y todo lo que el agente leyó o escribió, por lo que pueden contener información sensible. Las sesiones capturadas se envían tal cual, así que activa la captura únicamente en las máquinas y para los equipos donde centralizar ese contenido en AgentEye sea apropiado, y asigna al recolector una clave con alcance limitado a `events:add`. Consulta [Seguridad](/es/agenteye/security) para saber cómo se mantienen tus datos aislados.
+Los transcritos de OpenClaw contienen la sesión completa, incluida la salida de comandos, el contenido de archivos y todo lo que el agente leyó o escribió, y pueden contener secretos. Las sesiones capturadas se envían tal cual, así que activa la captura únicamente en máquinas y para equipos donde centralizar ese contenido en AgentEye sea apropiado, y proporciona al recolector una clave con alcance limitado a `events:add`. Consulta [Seguridad](/es/agenteye/security) para conocer cómo se mantienen tus datos aislados.

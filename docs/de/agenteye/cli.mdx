@@ -1,25 +1,25 @@
 ---
 title: "CLI"
-description: "Failproof AI Observability vollständig vom Terminal oder einem Skript aus steuern – ohne Umwege über das Dashboard."
+description: "Steuere die gesamte Failproof AI Observability vom Terminal oder einem Skript aus: kein Umweg über das Dashboard."
 ---
 
 
-Failproof AI Observability vollständig vom Terminal oder einem Skript aus steuern – ohne Umwege über das Dashboard. Die `agenteye`-CLI fragt Ihre Daten ab (Sessions, Event-Logs, Evaluierungen) und verwaltet Ihre Organisation (API-Keys, Benutzer, Einstellungen, Benachrichtigungen, Incidents, gespeicherte Abfragen). Greifen Sie darauf zurück, wenn Sie eine Prüfung automatisieren, Observability in CI einbinden oder einem Coding-Agenten die Inspektion der Produktionsumgebung ermöglichen möchten. Jeder Befehl unterstützt ein `--json`-Flag, sodass er gleichermaßen für Sie an der Eingabeaufforderung oder für einen Coding-Agenten (Claude Code, Cursor) geeignet ist, der ihn aufruft und das Ergebnis parst.
+Steuere die gesamte Failproof AI Observability vom Terminal oder einem Skript aus: kein Umweg über das Dashboard. Die `agenteye` CLI fragt deine Daten ab (Sessions, Event-Logs, Evaluierungen) und verwaltet deine Organisation (API-Keys, Nutzer, Einstellungen, Alerts, Incidents, gespeicherte Abfragen) – greife darauf zurück, wenn du eine Prüfung automatisieren, Observability in CI einbinden oder einen Coding-Agenten die Produktion inspizieren lassen möchtest. Jeder Befehl unterstützt ein `--json`-Flag, sodass er gleichermaßen für dich an der Eingabeaufforderung oder für einen Coding-Agenten (Claude Code, Cursor) funktioniert, der das Ergebnis parst.
 
-Mit einer einzigen Binärdatei können Sie:
+Mit einer einzigen Binary kannst du:
 
-- **Ihre Daten lesen**: `sessions`, `events`, `evals`, `errors` (nach Zeit, Agent, Umgebung, Score filtern).
-- **Ihre Organisation verwalten**: `keys`, `users`, `settings`, `alerts`, `incidents`.
-- **Analysen ausführen**: gespeichertes SQL und ein Ad-hoc-Abfrage-Runner (`query`).
-- **Den KI-Assistenten befragen**: denselben schreibgeschützten Analysten, mit dem Sie im Dashboard chatten (`agent`).
+- **Deine Daten lesen**: `sessions`, `events`, `evals`, `errors` (gefiltert nach Zeit, Agent, Umgebung, Score).
+- **Deine Organisation verwalten**: `keys`, `users`, `settings`, `alerts`, `incidents`.
+- **Analysen ausführen**: gespeichertes SQL und einen Ad-hoc-Query-Runner (`query`).
+- **Den KI-Assistenten befragen**: denselben schreibgeschützten Analysten, mit dem du im Dashboard chattest (`agent`).
 
-> **Hinweis:** Dies ist die `agenteye`-CLI, ein anderes Werkzeug als der Collector-Daemon (`agenteye-collector`). Die CLI kommuniziert mit Ihrem Dashboard; der Collector sendet Events an den Server.
+> **Hinweis:** Dies ist die `agenteye` CLI, ein anderes Werkzeug als der Collector-Daemon (`agenteye-collector`). Die CLI kommuniziert mit deinem Dashboard; der Collector sendet Events an den Server.
 
 ---
 
 ## Schnellstart
 
-Von null zum ersten Ergebnis in vier Zeilen. Zeigen Sie die CLI auf Ihr Dashboard, melden Sie sich an, bestätigen Sie Ihre Identität und rufen Sie dann die Läufe des letzten Tages ab:
+Von null zum ersten Ergebnis in vier Zeilen. Weise die CLI auf dein Dashboard, melde dich an, bestätige deine Identität und rufe dann die letzten 24 Stunden an Runs ab:
 
 ```bash
 pipx install agenteye
@@ -28,7 +28,7 @@ agenteye whoami                                                                 
 agenteye --json sessions --since 24h                                             # one row per agent run, last 24h
 ```
 
-Der letzte Befehl gibt ein JSON-Objekt der neuesten Sessions aus (neueste zuerst, standardmäßig auf 50 begrenzt). Leiten Sie es in `jq` weiter, um es zu verarbeiten, oder lassen Sie `--json` weg, um eine eingerahmte, farbige Tabelle zu erhalten. Jede Zeile enthält den Status des Laufs und, falls ein Evaluator ihn bewertet hat, dessen Metrik-Scores (hier gekürzt):
+Der letzte Befehl gibt ein JSON-Objekt mit den neuesten Sessions aus (neueste zuerst, standardmäßig auf 50 begrenzt). Leite es in `jq` weiter, um es zu filtern, oder lass `--json` weg für eine umrahmte, kolorierte Tabelle. Jede Zeile enthält den Status des Runs und, sofern ein Evaluator ihn bewertet hat, seine Metrik-Scores (hier gekürzt):
 
 ```json
 {
@@ -48,13 +48,13 @@ Der letzte Befehl gibt ein JSON-Objekt der neuesten Sessions aus (neueste zuerst
 }
 ```
 
-Der Rest dieser Seite erläutert jeden Abschnitt: [Installation](#installation) in einer isolierten Umgebung, [Anmeldung](#authentication), [Konfiguration](#configuration), die [globalen Konventionen](#global-options--conventions), die jeder Befehl teilt, sowie die [vollständige Befehlsreferenz](#command-reference).
+Der Rest dieser Seite erläutert die einzelnen Bestandteile: [Installation](#installation) in einer isolierten Umgebung, [Anmeldung](#authentication), [Konfiguration](#configuration), die [globalen Konventionen](#global-options--conventions), die alle Befehle teilen, sowie die [vollständige Befehlsreferenz](#command-reference).
 
 ---
 
 ## Installation
 
-Die CLI ist ein öffentliches PyPI-Paket namens **`agenteye`**. Installieren Sie es in einer isolierten Umgebung, damit es stets über eigene Abhängigkeiten verfügt:
+Die CLI ist ein öffentliches PyPI-Paket namens **`agenteye`**. Installiere es in einer isolierten Umgebung, damit es stets eigene Abhängigkeiten hat:
 
 ```bash
 pipx install agenteye
@@ -62,42 +62,42 @@ pipx install agenteye
 uv tool install agenteye
 ```
 
-Es erfordert Python 3.10+. Der installierte Befehl lautet **`agenteye`**:
+Python 3.10+ ist erforderlich. Der installierte Befehl lautet **`agenteye`**:
 
 ```bash
 agenteye --version
 agenteye --help
 ```
 
-> **Hinweis:** Das Failproof AI Observability Python SDK verwendet ebenfalls den Distributionsnamen `agenteye`. Die Installation der CLI mit `pipx` oder `uv tool` (anstatt `pip install` in ein gemeinsames Virtualenv) verhindert Konflikte zwischen beiden. Ein einfaches `pip install agenteye` ist nur dann in Ordnung, wenn das SDK nicht in derselben Umgebung installiert ist.
+> **Hinweis:** Das Failproof AI Observability Python SDK verwendet ebenfalls den Distributionsnamen `agenteye`. Die Installation der CLI mit `pipx` oder `uv tool` (statt `pip install` in ein gemeinsames Virtualenv) verhindert Konflikte zwischen beiden. Ein einfaches `pip install agenteye` ist nur dann problemlos, wenn das SDK nicht in derselben Umgebung installiert ist.
 
 ---
 
 ## Authentifizierung
 
-Die CLI authentifiziert sich beim **Dashboard** mit einem per E-Mail zugesandten Einmalcode:
+Die CLI authentifiziert sich gegenüber dem **Dashboard** mit einem per E-Mail zugesandten Einmalcode:
 
 ```bash
 agenteye login --email you@example.com
 # A 6-digit code is emailed to you; paste it at the prompt.
 ```
 
-Das Session-Token wird in `~/.agenteye/cli.json` gespeichert (nur für Sie lesbar, Modus `0600`) und ist standardmäßig 24 Stunden gültig. Nach Ablauf führen Sie erneut `agenteye login` aus.
+Das Session-Token wird in `~/.agenteye/cli.json` gespeichert (nur für dich lesbar, Modus `0600`) und ist standardmäßig 24 Stunden gültig. Nach Ablauf führe erneut `agenteye login` aus.
 
 ```bash
 agenteye whoami     # show the current user, active org, and permissions
 agenteye logout     # revoke the session and clear the stored token
 ```
 
-`whoami` gibt bei einer fehlenden oder abgelaufenen Session keinen Fehler aus; stattdessen meldet es `logged_in: false`, sodass ein Skript oder Agent den Authentifizierungsstatus sicher prüfen kann (es kann dennoch mit einem Fehlercode ungleich null beenden, wenn keine Basis-URL gesetzt ist oder das Dashboard nicht erreichbar ist).
+`whoami` schlägt bei einer fehlenden oder abgelaufenen Session nie fehl; stattdessen meldet es `logged_in: false`, sodass ein Skript oder Agent den Auth-Status sicher abfragen kann (es kann dennoch mit einem Nicht-Null-Wert enden, wenn keine Basis-URL gesetzt oder das Dashboard nicht erreichbar ist).
 
-**Voraussetzungen:** Ihre E-Mail-Adresse muss für die Anmeldung am Dashboard berechtigt sein (wenden Sie sich an Ihren Failproof AI Observability-Administrator), und das Dashboard muss unter seiner Basis-URL erreichbar sein (siehe [Konfiguration](#configuration)). Wenn Sie einen Code anfordern und keiner ankommt, ist Ihre E-Mail-Adresse wahrscheinlich noch nicht für den Dashboard-Zugang freigeschaltet.
+**Voraussetzungen:** Deine E-Mail-Adresse muss für die Anmeldung am Dashboard berechtigt sein (frage deinen Failproof AI Observability-Administrator), und das Dashboard muss über seine Basis-URL erreichbar sein (siehe [Konfiguration](#configuration)). Wenn du einen Code anforderst und keiner eintrifft, ist deine E-Mail-Adresse wahrscheinlich noch nicht für den Dashboard-Zugang freigeschalten.
 
 ---
 
-## Organisation auswählen (Mandantenfähigkeit)
+## Organisation auswählen (Multi-Tenant)
 
-Wenn Ihr Konto zu mehr als einer Organisation gehört, wählen Sie die aktive **beim Login** aus; sie wird gespeichert und für alle späteren Befehle verwendet:
+Wenn dein Konto zu mehr als einer Organisation gehört, wähle die aktive **bei der Anmeldung**; sie wird gespeichert und für alle späteren Befehle verwendet:
 
 ```bash
 agenteye login --org acme           # authenticate and set the active tenant in one step
@@ -106,7 +106,7 @@ agenteye orgs switch globex         # change the saved default
 agenteye --org globex sessions      # override for a single command
 ```
 
-Wenn Sie genau einer Organisation angehören, wird diese automatisch ausgewählt, und Sie können `--org` vollständig ignorieren. Wenn Sie mehreren angehören und keine auswählen, listet die CLI diese auf und fordert Sie auf, erneut mit `--org <slug>` auszuführen. Die aktive Organisation wird bei jeder Anfrage an das Dashboard übermittelt, und Ihre Berechtigungen werden **pro Organisation** aufgelöst; `agenteye whoami` zeigt die aktive Organisation, Ihre Berechtigungen darin und alle Ihre Mitgliedschaften an.
+Wenn du genau einer Organisation angehörst, wird diese automatisch ausgewählt, und du kannst `--org` vollständig ignorieren. Wenn du mehreren angehörst und keine auswählst, listet die CLI sie auf und fordert dich auf, den Befehl mit `--org <slug>` erneut auszuführen. Die aktive Organisation wird bei jeder Anfrage an das Dashboard gesendet, und deine Berechtigungen werden **pro Organisation** aufgelöst; `agenteye whoami` zeigt die aktive Organisation, deine Berechtigungen darin und alle deine Mitgliedschaften.
 
 ---
 
@@ -115,78 +115,78 @@ Wenn Sie genau einer Organisation angehören, wird diese automatisch ausgewählt
 | Einstellung | Flag | Umgebungsvariable | Standard |
 |---|---|---|---|
 | Dashboard-Basis-URL | `--base-url` | `AGENTEYE_DASHBOARD_URL` | **erforderlich** (kein Standard) |
-| Aktive Organisation/Mandant | `--org` | `AGENTEYE_ORG` | beim Login gewählt; gespeichert in `~/.agenteye/cli.json` |
+| Aktive Organisation/Tenant | `--org` | `AGENTEYE_ORG` | bei Anmeldung gewählt; in `~/.agenteye/cli.json` gespeichert |
 | Session-Token | `--token` | `AGENTEYE_CLI_TOKEN` | aus `~/.agenteye/cli.json` |
-| JSON-Ausgabe | `--json` | `AGENTEYE_CLI_JSON` | aus |
-| TLS-Verifizierung überspringen | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | aus (beim Login gespeichert) |
+| JSON-Ausgabe | `--json` | `AGENTEYE_CLI_JSON` | deaktiviert |
+| TLS-Überprüfung überspringen | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | deaktiviert (bei Anmeldung gespeichert) |
 | Anfrage-Timeout (Sekunden) | `--timeout` | _(keine)_ | 30 |
 | Nutzungstelemetrie deaktivieren | _(keine)_ | `AGENTEYE_ANALYTICS_DISABLED` (oder `DO_NOT_TRACK`) | Telemetrie ist derzeit deaktiviert; es wird nichts gesendet |
 
-Die Auflösungsreihenfolge ist **Flag → Umgebungsvariable → Konfigurationsdatei**. Es gibt keinen Standard; Sie müssen die CLI auf Ihr Dashboard zeigen, entweder pro Befehl (`--base-url https://agenteye.example.com`) oder einmalig über die Umgebung (sie wird auch nach Ihrem ersten `login` gespeichert):
+Die Auflösungsreihenfolge ist **Flag → Umgebungsvariable → Konfigurationsdatei**. Es gibt keinen Standard; du musst die CLI auf dein Dashboard zeigen, entweder pro Befehl (`--base-url https://agenteye.example.com`) oder einmalig über die Umgebung (wird auch nach deinem ersten `login` gespeichert):
 
 ```bash
 export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com
 ```
 
-Das Konfigurationsverzeichnis berücksichtigt `AGENTEYE_HOME` (dieselbe Konvention wie beim SDK und Collector); wenn gesetzt, befindet sich `cli.json` unter `$AGENTEYE_HOME/cli.json`.
+Das Konfigurationsverzeichnis berücksichtigt `AGENTEYE_HOME` (dieselbe Konvention wie beim SDK und Collector); wenn gesetzt, liegt `cli.json` unter `$AGENTEYE_HOME/cli.json`.
 
 ### Selbstsignierte oder interne TLS-Zertifikate
 
-Wenn Ihr Dashboard über HTTPS mit einem selbstsignierten oder internen Zertifikat bereitgestellt wird (z. B. ein roher Load-Balancer-Hostname), schlägt die TLS-Verifizierung mit einem `CERTIFICATE_VERIFY_FAILED`-Fehler fehl. Übergeben Sie `--insecure`, um die Zertifikatsprüfung zu überspringen:
+Wenn dein Dashboard über HTTPS mit einem selbstsignierten oder internen Zertifikat betrieben wird (zum Beispiel ein roher Load-Balancer-Hostname), lehnt die TLS-Überprüfung es mit einem `CERTIFICATE_VERIFY_FAILED`-Fehler ab. Übergib `--insecure`, um die Zertifikatsprüfung zu überspringen:
 
 ```bash
 agenteye --base-url https://agenteye.internal --insecure login
 ```
 
-`--insecure` wird **beim Login in `cli.json` gespeichert**, sodass spätere Befehle die Verifizierung automatisch überspringen; Sie müssen das Flag nicht wiederholen. Übergeben Sie `--secure` für einen einmaligen verifizierten Aufruf oder um die Verifizierung bei Ihrem nächsten Login wieder zu aktivieren. Die CLI gibt vor jedem Befehl, der das Dashboard kontaktiert, während die Verifizierung deaktiviert ist, eine Warnung an stderr aus. Das Überspringen der Verifizierung hebt den Schutz gegen Man-in-the-Middle-Angriffe auf; stellen Sie sicher, dass Sie dem Netzwerkpfad zu Ihrem Dashboard vertrauen (VPN, privates Subnetz usw.), bevor Sie sich darauf verlassen.
+`--insecure` wird **bei der Anmeldung in `cli.json` gespeichert**, sodass spätere Befehle die Überprüfung automatisch überspringen; du musst das Flag nicht wiederholen. Übergib `--secure` für einen einmaligen verifizierten Aufruf oder um die Überprüfung bei deiner nächsten Anmeldung wieder zu aktivieren. Die CLI gibt vor jedem Befehl, der das Dashboard kontaktiert, eine Warnung an stderr aus, solange die Überprüfung deaktiviert ist. Das Überspringen der Überprüfung beseitigt den Schutz vor Man-in-the-Middle-Angriffen; stelle sicher, dass du dem Netzwerkpfad zu deinem Dashboard vertraust (VPN, privates Subnetz usw.), bevor du dich darauf verlässt.
 
 ---
 
 ## Telemetrie & Datenschutz
 
-> **Hinweis:** Die ausgelieferte CLI sendet **heute keine Nutzungstelemetrie.** Ein globaler Kill-Switch ist aktiv, sodass unabhängig von Ihrer Umgebung nichts übertragen wird. Der folgende Abschnitt beschreibt die Opt-out-Möglichkeit für den Fall, dass Telemetrie irgendwann aktiviert wird.
+> **Hinweis:** Die ausgelieferte CLI sendet **heute keine Nutzungstelemetrie.** Ein globaler Kill-Switch ist aktiviert, sodass unabhängig von deiner Umgebung nichts übertragen wird. Der folgende Abschnitt beschreibt die Opt-out-Möglichkeit für den Fall, dass Telemetrie jemals aktiviert wird.
 
-Selbst wenn aktiviert, wäre Telemetrie **ausschließlich anonyme Nutzungsanalyse**, niemals Ihre Agenten-, Session- oder Event-Daten:
+Selbst wenn aktiviert, wären Telemetriedaten **ausschließlich anonyme Nutzungsanalysen**, niemals deine Agenten-, Session- oder Event-Daten:
 
-- **Keine Agenten-, Session- oder Event-Daten verlassen jemals Ihre Infrastruktur.** Es würde nur die CLI-Nutzung gemeldet: der Befehls- und Unterbefehls-Name (z. B. `keys create`), die **Namen** der verwendeten Flags (niemals deren Werte), Erfolg/Exit-Status und Dauer, sowie ein Aktions-Event pro Mutation (z. B. `api_key_created`, `query_run`), das nur statische Namen/Enums und grobe Zählwerte enthält. Ihre Dashboard-URL, Ihr Session-Token, Ihre E-Mail, Ihr Organisations-Slug, Ressourcen-IDs, SQL, Key-Secrets und Abfragefilter würden **niemals** gesendet. Betreiber würden nur durch eine opake interne ID identifiziert, niemals per E-Mail.
-- **Optieren Sie frühzeitig aus**, indem Sie `AGENTEYE_ANALYTICS_DISABLED=1` in der Umgebung der CLI setzen (die CLI berücksichtigt auch die Tool-übergreifende Konvention `DO_NOT_TRACK=1`). Dies tritt in dem Moment in Kraft, in dem Telemetrie jemals aktiviert wird, sodass eine datenschutzbewusste Umgebung dauerhaft ausgeoptiert bleiben kann.
-- Wenn Telemetrie aktiviert wäre, würde die CLI direkt an PostHog (`https://us.i.posthog.com`) senden; ein Rechner, bei dem dieser Host blockiert ist, würde stillschweigend nichts senden, und die CLI wäre davon unberührt.
+- **Keine Agenten-, Session- oder Event-Daten verlassen jemals deine Infrastruktur.** Nur CLI-Nutzung würde gemeldet: der Befehls- und Unterbefehls-Name (z. B. `keys create`), die **Namen** der verwendeten Flags (niemals deren Werte), Erfolgs-/Exit-Status und Dauer, sowie ein Pro-Aktion-Event für Mutationen (z. B. `api_key_created`, `query_run`), das nur statische Namen/Enums und grobe Zählwerte enthält. Deine Dashboard-URL, dein Session-Token, deine E-Mail, dein Org-Slug, Ressourcen-IDs, SQL, Key-Secrets und Abfragefilter würden **niemals** gesendet. Operatoren würden nur durch eine opaque interne ID identifiziert, niemals per E-Mail.
+- **Vorab abmelden** durch Setzen von `AGENTEYE_ANALYTICS_DISABLED=1` in der Umgebung der CLI (die CLI berücksichtigt auch die toolübergreifende Konvention `DO_NOT_TRACK=1`). Dies greift sofort, wenn Telemetrie jemals aktiviert wird, sodass eine datenschutzbewusste Umgebung dauerhaft abgemeldet bleiben kann.
+- Wenn Telemetrie aktiviert wäre, würde die CLI direkt an PostHog senden (`https://us.i.posthog.com`); ein Gerät, bei dem dieser Host geblockt ist, würde still nichts senden, ohne dass die CLI beeinträchtigt würde.
 
 ---
 
 ## Globale Optionen & Konventionen
 
-Lesen Sie dies einmal; es gilt für jeden Befehl.
+Lies dies einmal; es gilt für jeden Befehl.
 
-- **Globale Optionen kommen VOR dem Befehl.** `agenteye --json sessions` ist korrekt; `agenteye sessions --json` ist ein Verwendungsfehler. Die globalen Optionen sind `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet` und `--no-color`.
-- **`--json` gibt reines JSON auf stdout aus, und sonst nichts.** Menschliche Statuszeilen, Warnungen und Fehler gehen an **stderr**, sodass eine `--json`-stdout-Erfassung sauber in `jq` geleitet werden kann, selbst wenn eine Statuszeile angezeigt wird. Ohne `--json` erhalten Sie eine eingerahmte, farbige Ansicht für menschliche Augen.
-- **Mit `--help` erkunden.** Jeder Befehl und Unterbefehl hat `--help` (und den `-h`-Alias): `agenteye -h`, `agenteye sessions -h`, `agenteye keys create -h`. Die oberste Ebene listet auch die Exit-Codes und globalen Optionen auf. Es gibt keine globale maschinenlesbare Oberflächenübersicht; verwenden Sie `--help` pro Befehl sowie das domänenspezifische `agenteye query schema` und `agenteye settings schema` für diese beiden Register.
-- **Bestätigungen werden für Skripte und Agenten automatisch übersprungen.** Befehle zum Erstellen/Aktualisieren/Löschen fragen in einem interaktiven Terminal nach Bestätigung, aber **überspringen diese Eingabeaufforderung automatisch unter `--json` oder wenn stdin kein TTY ist** (ein TTY ist eine interaktive Terminal-Sitzung; eine Pipe oder ein CI-Runner ist keins), sodass Skripte und Agenten nie hängen bleiben. Übergeben Sie `--yes`/`-y`, um es explizit zu überspringen. Da die Eingabeaufforderung für einen Agenten nicht ausgelöst wird, sollte ein Agent destruktive Aktionen zuerst mit dem Menschen bestätigen.
-- **Paginierung:** Ergebnisse sind neueste zuerst und cursor-paginiert (jede Seite gibt ein Token zurück, das Sie zum Abrufen der nächsten verwenden). `--limit N` (Alias `-n`) begrenzt Zeilen und **ist standardmäßig 50**; `--all` paginiert automatisch (in 200-Zeilen-Blöcken) **bis zu `--limit`**, sodass ein einfaches `--all` immer noch bei 50 stoppt. Für einen vollständigen Durchlauf übergeben Sie ein hohes explizites Limit: `--all --limit 1000`. `--page-size N` steuert den Chunk pro Anfrage (max. 200); `--cursor <id>` setzt bei dem `next_cursor` einer vorherigen Seite fort.
-- **Zeitfilter:** `--since` nimmt ein relatives Fenster: `15m`, `1h`, `6h`, `24h`, `7d` oder `all` (die Dashboard-Voreinstellungen). Für einen längeren oder benutzerdefinierten Bereich (z. B. die letzten 30 Tage) verwenden Sie `--from`/`--to`: explizite ISO-8601-UTC-Zeitstempel **mit `T` und einer Zeitzone** (z. B. `2026-06-01T00:00:00Z`), die `--since` überschreiben. Ein leerzeichengetrennter oder zeitzonenloser Wert ist ein Verwendungsfehler.
-- **`--fields a,b,c`** (bei `events`, `sessions`, `evals`, `errors`) schränkt die Ausgabe auf diese Schlüssel ein, sowohl für die Tabelle als auch für `--json`. Unbekannte Namen werden mit der gültigen Liste abgewiesen – eine einfache Möglichkeit, Feldnamen zu entdecken.
-- **`--file payload.json`** (oder `--file -` zum Lesen von stdin) liefert einen vollständigen JSON-Anfragekörper, wenn eine Ressource eine komplexe Form hat (bei `alerts create/update`, `settings set` und `users create/update`). Gespeicherte Abfrage-SQL verwendet stattdessen `--sql @file.sql`.
-- **Mehrfachwert-Filter** sind kommagetrennt → werden als Menge abgeglichen (Union innerhalb eines Filters, AND über Filter hinweg): `--event-type tool_use,tool_result`. Click-Optionen sind nicht variadisch, daher schlägt `--add a b` fehl. Verwenden Sie `--add a,b`, wiederholen Sie das Flag (`--add a --add b`) oder verwenden Sie Anführungszeichen (`--add "a b"`).
+- **Globale Optionen stehen VOR dem Befehl.** `agenteye --json sessions` ist korrekt; `agenteye sessions --json` ist ein Verwendungsfehler. Die globalen Optionen sind `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet` und `--no-color`.
+- **`--json` gibt reines JSON nach stdout aus, und sonst nichts.** Lesbare Statuszeilen, Warnungen und Fehler gehen an **stderr**, sodass eine `--json`-stdout-Erfassung sauber in `jq` geleitet werden kann, auch wenn eine Statuszeile angezeigt wird. Ohne `--json` erhältst du eine umrahmte, kolorierte Ansicht für menschliche Augen.
+- **Erkunden mit `--help`.** Jeder Befehl und Unterbefehl hat `--help` (und das `-h`-Alias): `agenteye -h`, `agenteye sessions -h`, `agenteye keys create -h`. Die oberste Hilfe listet auch die Exit-Codes und globalen Optionen auf. Es gibt keine globale maschinenlesbare Oberflächenauflistung; verwende `--help` pro Befehl sowie die domänenspezifischen `agenteye query schema` und `agenteye settings schema` für diese zwei Register.
+- **Bestätigungen werden für Skripte und Agenten automatisch übersprungen.** Erstell-/Aktualisierungs-/Löschbefehle fragen in einem interaktiven Terminal nach, ob du sicher bist, **überspringen diese Abfrage aber automatisch unter `--json` oder wenn stdin kein TTY ist** (ein TTY ist eine interaktive Terminalsitzung; eine Pipe oder ein CI-Runner ist keins), sodass Skripte und Agenten nie hängen bleiben. Übergib `--yes`/`-y`, um es explizit zu überspringen. Da die Abfrage für einen Agenten nicht ausgelöst wird, sollte ein Agent destruktive Aktionen vorher mit dem Menschen bestätigen.
+- **Paginierung:** Ergebnisse sind neueste zuerst und cursor-paginiert (jede Seite gibt ein Token zurück, das du zum Abrufen der nächsten verwendest). `--limit N` (Alias `-n`) begrenzt Zeilen und **standardmäßig auf 50**; `--all` paginiert automatisch (in 200-Zeilen-Chunks) **bis `--limit`**, sodass ein bloßes `--all` immer noch bei 50 stoppt. Für eine vollständige Abfrage übergib ein hohes explizites Limit: `--all --limit 1000`. `--page-size N` steuert den Chunk pro Anfrage (max. 200); `--cursor <id>` setzt ab dem `next_cursor` einer vorherigen Seite fort.
+- **Zeitfilter:** `--since` nimmt ein relatives Zeitfenster: `15m`, `1h`, `6h`, `24h`, `7d` oder `all` (die Voreinstellungen des Dashboards). Für einen längeren oder benutzerdefinierten Bereich (z. B. die letzten 30 Tage) verwende `--from`/`--to`: explizite ISO-8601-UTC-Zeitstempel **mit `T` und einer Zeitzone** (z. B. `2026-06-01T00:00:00Z`), die `--since` überschreiben. Ein mit Leerzeichen getrennter oder zeitzonenloser Wert ist ein Verwendungsfehler.
+- **`--fields a,b,c`** (bei `events`, `sessions`, `evals`, `errors`) schränkt die Ausgabe auf diese Schlüssel ein, sowohl für die Tabelle als auch für `--json`. Unbekannte Namen werden mit der gültigen Liste abgewiesen – eine einfache Methode, Feldnamen zu entdecken.
+- **`--file payload.json`** (oder `--file -`, um stdin zu lesen) liefert einen vollständigen JSON-Request-Body, wenn eine Ressource eine komplexe Form hat (bei `alerts create/update`, `settings set` und `users create/update`). SQL für gespeicherte Abfragen verwendet stattdessen `--sql @file.sql`.
+- **Mehrwertige Filter** sind kommagetrennt → als Menge abgeglichen (Union innerhalb eines Filters, UND über Filter hinweg): `--event-type tool_use,tool_result`. Click-Optionen sind nicht variadisch, daher schlägt `--add a b` fehl. Verwende `--add a,b`, wiederhole das Flag (`--add a --add b`) oder setze Anführungszeichen (`--add "a b"`).
 
 ---
 
 ## Befehlsreferenz
 
-### Die 5 am häufigsten verwendeten Befehle
+### Die 5 häufigsten Befehle
 
-Der Großteil der täglichen Arbeit läuft über eine Handvoll Lesebefehle. Beginnen Sie hier und greifen Sie bei Bedarf auf die vollständige Oberfläche unten zurück:
+Die meisten alltäglichen Aufgaben laufen über eine Handvoll Lesebefehle. Fange hier an und greife bei Bedarf auf die vollständige Oberfläche unten zurück:
 
 | Befehl | Was er tut | Ausprobieren |
 |---|---|---|
-| `sessions` | Eine Zeile pro Agentenlauf: Zeit, Umgebung, Agent, Status, letzter Score. | `agenteye --json sessions --since 24h --status error` |
-| `events` | Der rohe schrittweise Verlauf innerhalb eines Laufs (mit `--full` für Payloads). | `agenteye --json events --session-id run-001 --all` |
+| `sessions` | Eine Zeile pro Agent-Run: Zeit, Umgebung, Agent, Status, neuester Score. | `agenteye --json sessions --since 24h --status error` |
+| `events` | Der rohe schrittweise Verlauf innerhalb eines Runs (mit `--full` für Payloads). | `agenteye --json events --session-id run-001 --all` |
 | `evals` | Evaluierungsergebnisse und Scores; `--aggregate` fasst sie zusammen. | `agenteye --json evals --aggregate --since 7d --env prod` |
 | `errors` | Nur die fehlerhaften Events; `--aggregate` für Zählungen nach Typ. | `agenteye --json errors --since 24h --aggregate` |
 | `list` | Gültige Filterwerte entdecken (Agenten, Umgebungen, Modelle, …). | `agenteye list agents` |
 
 ### Alles, was die CLI kann
 
-Die vollständige Oberfläche folgt. Die CLI hat **18 Top-Level-Befehle**. Alle Lesebefehle akzeptieren `--json` und die obigen globalen Optionen; führen Sie `agenteye <command> -h` (oder `<command> <subcommand> -h`) aus, um die vollständige Flag-Liste und JSON-Form eines einzelnen Befehls zu erhalten.
+Die vollständige Oberfläche folgt. Die CLI hat **18 Top-Level-Befehle**. Alle Lesebefehle akzeptieren `--json` und die globalen Optionen oben; führe `agenteye <command> -h` (oder `<command> <subcommand> -h`) für die vollständige Flag-Liste und JSON-Form eines Befehls aus.
 
 ### Identität: `login` · `logout` · `whoami` · `orgs` · `version` · `help`
 
@@ -198,7 +198,7 @@ agenteye version                                      # print the CLI version (s
 agenteye help                                         # top-level help (same as --help)
 ```
 
-`orgs` prüft und wechselt den aktiven Mandanten:
+`orgs` prüft und wechselt den aktiven Tenant:
 
 ```bash
 agenteye orgs list        # your orgs + your role in each (active one marked)
@@ -207,7 +207,7 @@ agenteye orgs current     # identity card for the active org
 agenteye orgs perms       # your permissions in the active org, grouped by resource
 ```
 
-### Beobachten (schreibgeschützt): `events` · `sessions` · `evals` · `errors` · `list`
+### Beobachten (nur lesend): `events` · `sessions` · `evals` · `errors` · `list`
 
 Keiner dieser Befehle benötigt eine Bestätigung. Gemeinsame Filter: `--session-id`, `--agent-id`, `--env` (**nicht** `--environment`) und der Zeitbereich (`--since` / `--from` / `--to`).
 
@@ -232,7 +232,7 @@ agenteye --json errors --since 24h --error-type timeout --all --limit 1000
 agenteye list envs        # also: agents event_types score_filters models hooks tools error_types
 ```
 
-`--score KEY:MIN..MAX` (bei **`evals`**, nicht `sessions`) ist wiederholbar und AND-kombiniert; jede Grenze ist optional (`..0.5` bedeutet ≤ 0,5, `0.9..` bedeutet ≥ 0,9). Bis zu 20 Score-Filter pro Anfrage. `evals --scores-full` ist ein Anzeigeformat-Flag **nur für die menschliche Tabelle**; es zeigt jedes Score-Paar anstatt der ersten paar plus einer `+N`-Zählung. Es hat keine Auswirkung unter `--json`, das immer das vollständige Score-Objekt zurückgibt. Um **eine Session von Anfang bis Ende zu lesen**, kombinieren Sie den Event-Verlauf mit seiner Evaluierung:
+`--score KEY:MIN..MAX` (bei **`evals`**, nicht `sessions`) ist wiederholbar und UND-kombiniert; jede Grenze ist optional (`..0.5` bedeutet ≤ 0,5, `0.9..` bedeutet ≥ 0,9). Bis zu 20 Score-Filter pro Anfrage. `evals --scores-full` ist ein Anzeigeformat-Flag **nur für die menschliche Tabelle**; es zeigt jedes Score-Paar anstelle der ersten wenigen plus einer `+N`-Zählung. Es hat keine Auswirkung unter `--json`, das immer das vollständige Score-Objekt zurückgibt. Um **eine Session von Anfang bis Ende zu lesen**, kombiniere den Event-Verlauf mit seiner Evaluierung:
 
 ```bash
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
@@ -241,7 +241,7 @@ agenteye --json evals  --session-id run-001                       # its scores +
 
 ### Verwalten (berechtigungsgesteuert): `keys` · `users` · `settings` · `alerts` · `incidents`
 
-**`keys`**: API-Keys. Das Secret wird lokal generiert, an den Server gesendet (der nur einen Hash speichert) und bei Erstellung/Regenerierung **einmalig angezeigt**; erfassen Sie es dann. Mit `--json` erscheint es nur im `key`-Feld. Referenziert durch **Name**.
+**`keys`**: API-Keys. Das Secret wird lokal generiert, an den Server gesendet (der nur einen Hash speichert) und beim Erstellen/Regenerieren **einmalig angezeigt**; erfasse es sofort. Mit `--json` erscheint es nur im Feld `key`. Referenziert nach **Name**.
 
 ```bash
 agenteye keys list                                   # active keys first, then revoked
@@ -253,9 +253,9 @@ agenteye keys regenerate ci-bot --yes                # rotate the secret (the ol
 agenteye keys disable ci-bot --yes                   # revoke
 ```
 
-Berechtigungen funktionieren als `(permission-set ∪ --add) − --remove`. Tokens sind `slug:action` (z. B. `events:read`) oder `slug:action.action`, um mehrere auf einer Ressource zu erweitern (`events:read.add` → `events:read`, `events:add`). Voreinstellungen: `read-only`, `standard`, `admin`. Rein menschliche Berechtigungen (`keys:update`) können einem Key nicht gewährt werden.
+Berechtigungen funktionieren als `(permission-set ∪ --add) − --remove`. Tokens sind `slug:action` (z. B. `events:read`) oder `slug:action.action`, um mehrere für eine Ressource zu erweitern (`events:read.add` → `events:read`, `events:add`). Voreinstellungen: `read-only`, `standard`, `admin`. Rein menschliche Berechtigungen (`keys:update`) können keinem Key gewährt werden.
 
-**`users`**: Organisations-Mitglieder, referenziert durch **E-Mail** (eine UUID-ID wird ebenfalls akzeptiert).
+**`users`**: Org-Mitglieder, referenziert per **E-Mail** (eine UUID-ID wird ebenfalls akzeptiert).
 
 ```bash
 agenteye users list [--active-only]
@@ -266,7 +266,7 @@ agenteye users disable dev@corp.com --yes            # has protected/self guards
 agenteye users enable dev@corp.com
 ```
 
-**`settings`**: ein festes Register (Sie lesen und ändern vorhandene Schlüssel; Sie können keine neuen erstellen).
+**`settings`**: Ein festes Register (du liest und ändert vorhandene Schlüssel; du kannst keine neuen erstellen).
 
 ```bash
 agenteye settings list                               # key · value · type · updated (secrets masked)
@@ -274,7 +274,7 @@ agenteye settings schema                             # what each key accepts (ty
 agenteye settings set session_ttl_secs --value 86400 --yes
 ```
 
-**`alerts`**: Alert-Definitionen, referenziert durch **Name**. `create` nimmt einen positionalen NAME plus Flags oder einen vollständigen JSON-Body über `--file`.
+**`alerts`**: Alert-Definitionen, referenziert nach **Name**. `create` nimmt einen positionale NAME plus Flags oder einen vollständigen JSON-Body via `--file`.
 
 ```bash
 agenteye alerts list
@@ -285,7 +285,7 @@ agenteye alerts test high-errors --yes                        # fire a test noti
 agenteye alerts delete high-errors --yes
 ```
 
-**`incidents`**: Alert-Incidents, referenziert durch ID (Kurz-IDs werden akzeptiert). `show` gibt das vollständige Aktivitätsprotokoll aus; lesen Sie es, bevor Sie handeln.
+**`incidents`**: Alert-Incidents, referenziert per ID (Kurzformen akzeptiert). `show` gibt das vollständige Aktivitätsprotokoll aus; lies es vor dem Handeln.
 
 ```bash
 agenteye incidents list --state firing                # also: acknowledged, resolved
@@ -302,7 +302,7 @@ agenteye incidents subscribe <id> ; agenteye incidents unsubscribe <id> ; agente
 
 ### Analysen & Assistent: `query` · `agent`
 
-**`query`**: gespeichertes SQL gegen Ihren Analytics-Speicher plus ein Ad-hoc-Runner. Gespeicherte Abfragen werden durch **Namen** referenziert; das SQL wird serverseitig validiert (nur SELECT/WITH, Statement-Timeout, Zeilenbegrenzung).
+**`query`**: Gespeichertes SQL gegen deinen Analyse-Store plus einen Ad-hoc-Runner. Gespeicherte Abfragen werden nach **Name** referenziert; das SQL wird serverseitig validiert (nur SELECT/WITH, Statement-Timeout, Zeilenlimit).
 
 ```bash
 agenteye query schema [TABLE]                         # column layout of the analytics views
@@ -313,7 +313,7 @@ agenteye query create errs --sql @errs.sql --description "errored events (24h)"
 agenteye query update errs --sql @errs.sql --yes ; agenteye query delete errs --yes
 ```
 
-**`agent`**: kommuniziert mit dem eingebauten **KI-Assistenten** (demselben schreibgeschützten Analysten, mit dem Sie im Dashboard chatten können). Chats werden durch eine kurze Chat-ID referenziert (Präfix-aufgelöst).
+**`agent`**: Kommuniziert mit dem eingebauten **KI-Assistenten** (demselben schreibgeschützten Analysten, mit dem du im Dashboard chatten kannst). Chats werden per Kurz-Chat-ID referenziert (Präfix-aufgelöst).
 
 ```bash
 agenteye agent health                                 # is the AI assistant configured/reachable
@@ -331,20 +331,20 @@ agenteye agent rename <short-id> --title "error triage" ; agenteye agent delete 
 | Code | Bedeutung |
 |---|---|
 | 0 | Erfolg |
-| 1 | Unerwarteter Fehler (z. B. Dashboard hat einen 5xx zurückgegeben) |
-| 2 | Verwendungsfehler (ungültige Argumente, unbekannter Befehl/Flag, Namenskonflikt) |
+| 1 | Unerwarteter Fehler (z. B. Dashboard gab einen 5xx zurück) |
+| 2 | Verwendungsfehler (ungültige Argumente, unbekannter Befehl/Flag, Namenskollision) |
 | 3 | Dashboard nicht erreichbar |
-| 4 | Nicht angemeldet oder Session abgelaufen; führen Sie `agenteye login` aus |
-| 5 | Authentifiziert, aber Ihr Konto hat nicht die erforderliche Berechtigung (die Meldung nennt sie) |
+| 4 | Nicht angemeldet oder Session abgelaufen; führe `agenteye login` aus |
+| 5 | Authentifiziert, aber dein Konto verfügt nicht über die erforderliche Berechtigung (die Meldung nennt sie) |
 | 6 | Die angeforderte Ressource wurde nicht gefunden (z. B. unbekannte Session- oder Incident-ID) |
 
-Diese machen die CLI sicher für Skripte: Ein Coding-Agent kann bei einem `4` verzweigen, um Sie zur erneuten Authentifizierung aufzufordern, oder bei einem `5`, um die fehlende Berechtigung anzuzeigen. Siehe [CLI-Rezepte für Agenten](/de/agenteye/cli-recipes) für Exit-Code-Behandlungsmuster und JSON-Ausgabeformen.
+Diese machen die CLI sicher skriptfähig: Ein Coding-Agent kann bei `4` darauf reagieren, dich zur erneuten Authentifizierung aufzufordern, oder bei `5` die fehlende Berechtigung anzeigen. Siehe [CLI-Rezepte für Agenten](/de/agenteye/cli-recipes) für Exit-Code-Behandlungsmuster und JSON-Ausgabeformen.
 
 ---
 
 ## Nächste Schritte
 
-- **[CLI-Rezepte für Agenten](/de/agenteye/cli-recipes)**: Kopierfertige Abfragemuster, `jq`-Einzeiler, `--fields`-Projektionen, Exit-Code-Behandlung und JSON-Ausgabeformen, geschrieben für Coding-Agenten, die die CLI steuern.
-- **[CLI-Agenten-Skill](/de/agenteye/cli-skill)**: Paketieren Sie diese CLI als installierbaren Claude Code / Codex-*Skill*, damit ein Coding-Agent Failproof AI Observability über einfache Sprachanfragen steuert.
+- **[CLI-Rezepte für Agenten](/de/agenteye/cli-recipes)**: Kopierfertige Abfragemuster, `jq`-Einzeiler, `--fields`-Projektionen, Exit-Code-Behandlung und JSON-Ausgabeformen – geschrieben für Coding-Agenten, die die CLI steuern.
+- **[CLI-Agent-Skill](/de/agenteye/cli-skill)**: Paketiere diese CLI als installierbaren Claude Code / Codex-*Skill*, damit ein Coding-Agent Failproof AI Observability über einfache Textanfragen steuert.
 - **[API-Keys](/de/agenteye/api-keys)**: Das Berechtigungsmodell hinter `keys create --add …`.
 - **[KI-Assistent](/de/agenteye/assistant)**: Den Assistenten aktivieren, mit dem `agent ask` kommuniziert.

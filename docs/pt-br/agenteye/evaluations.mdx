@@ -1,50 +1,51 @@
 ---
 title: "Avaliações"
-description: "Problemas de qualidade chegam até você antes de você ficar sabendo por uma reclamação de usuário."
+description: "Problemas de qualidade chegam até você antes de virar reclamação de usuário."
 ---
 
-Problemas de qualidade chegam até você antes de você ficar sabendo por uma reclamação de usuário. Conecte seu próprio serviço de pontuação uma única vez e a Observabilidade do Failproof AI avalia automaticamente cada execução concluída — assim, uma queda na utilidade ou um pico em alucinações aparece sozinho, antes que o cliente sinta qualquer coisa.
 
-![A grade de Sessões com uma coluna de pontuação: cada execução exibe um indicador de status de avaliação e badges coloridos de utilidade, factualidade e eficiência de ferramentas](/agenteye/images/sessions-list.png)
+Problemas de qualidade chegam até você antes de virar reclamação de usuário. Conecte seu próprio serviço de pontuação uma única vez e a Observabilidade do Failproof AI avalia automaticamente cada execução concluída — assim, uma queda na utilidade ou um pico de alucinações aparece sozinho, antes que qualquer cliente sinta.
 
-*Cada execução na grade de sessões carrega suas pontuações; badges vermelhos, âmbar e verdes fazem as execuções problemáticas se destacarem sem que você precise abrir uma única transcrição.*
+![A grade de Sessões com uma coluna de pontuação: cada execução exibe um indicador de status de avaliação e badges com código de cores para utilidade, factualidade e eficiência de ferramentas](/agenteye/images/sessions-list.png)
 
-## Pare de verificar execuções manualmente
+*Cada execução na grade de sessões carrega suas pontuações; badges vermelhos, âmbar e verdes destacam as execuções problemáticas sem que você precise abrir uma única transcrição.*
 
-Antes, você inspecionava algumas execuções e torcia para que o restante estivesse bem. Agora toda sessão concluída é pontuada no momento em que termina, nas dimensões que importam para você: utilidade, eficiência de ferramentas, factualidade, segurança — qualquer que seja o seu critério de qualidade. Você define as chaves de pontuação; a Observabilidade do Failproof AI armazena, acompanha tendências e exibe o que quer que o seu avaliador retorne. Nenhuma execução passa sem pontuação, e você para de ficar sabendo de uma regressão por um ticket de suporte.
+## Pare de amostrar execuções manualmente
 
-As pontuações aparecem na grade de sessões em **`/<org-slug>/sessions`** (barra lateral → *observe* → *sessions*), com um cluster de badges por linha. Quer ver apenas as execuções que ficaram abaixo do esperado? Filtre a grade por faixa de pontuação — por exemplo, utilidade abaixo de 0,5 — e acesse exatamente as execuções que vale a pena analisar. Para visualizar as pontuações, é necessária a permissão `evaluations:read`.
+Antes, você verificava algumas execuções aleatoriamente e torcia para que o restante estivesse bem. Agora, toda sessão concluída é pontuada no momento em que termina, nas dimensões que importam para você: utilidade, eficiência de ferramentas, factualidade, segurança — qualquer que seja o seu critério de qualidade. Você define as chaves de pontuação; a Observabilidade do Failproof AI armazena, analisa tendências e exibe tudo que o seu avaliador retornar. Nenhuma execução fica sem pontuação, e você para de descobrir regressões por meio de tickets de suporte.
+
+As pontuações aparecem na grade de sessões em **`/<org-slug>/sessions`** (barra lateral → *observe* → *sessions*), com um cluster de badges por linha. Quer ver apenas as execuções que ficaram abaixo do esperado? Filtre a grade por intervalo de pontuação — por exemplo, utilidade abaixo de 0,5 — e acesse exatamente as execuções que valem a pena examinar. Para visualizar pontuações, é necessária a permissão `evaluations:read`.
 
 ## Entenda por que uma execução teve pontuação baixa
 
-Um número indica que uma execução foi fraca; a página da sessão explica o motivo. Abra qualquer execução e o painel lateral à direita apresenta o resumo principal, seguido de uma barra por dimensão com o raciocínio do próprio avaliador abaixo de cada uma — assim você vai de "essa execução ficou com 0,4 em factualidade" até a afirmação exata que estava errada em segundos.
+Um número te diz que uma execução foi fraca; a página da sessão te diz o porquê. Abra qualquer execução e o painel lateral começa com o resumo geral, depois exibe uma barra por dimensão com o próprio raciocínio do avaliador abaixo de cada uma — assim você vai de "essa execução tirou 0,4 em factualidade" até a afirmação exata que deu errado, em segundos.
 
 ![O painel lateral de uma sessão: o resumo da avaliação no topo, depois barras de pontuação por dimensão cada uma com uma linha de raciocínio, ao lado da linha do tempo completa de eventos](/agenteye/images/session-detail.png)
 
-*A visão de detalhe da sessão: resumo, barras de pontuação por dimensão e o raciocínio por trás de cada pontuação, bem ao lado da linha do tempo de eventos da execução.*
+*A visualização de detalhe da sessão: resumo, barras de pontuação por dimensão e o raciocínio por trás de cada pontuação, bem ao lado da linha do tempo de eventos da execução.*
 
-Implantou um avaliador mais preciso, ou está analisando uma execução que falhou antes de ser pontuada? Um botão de **re-evaluate** (controlado por `evaluations:trigger`) reaplica a pontuação à sessão e adiciona o novo resultado à sua linha do tempo, mantendo as pontuações anteriores visíveis como histórico. Você o encontrará em **`/<org-slug>/sessions/<session-id>`**.
+Implantou um avaliador mais preciso, ou está olhando para uma execução que travou antes de ser pontuada? Um botão **re-evaluate** (bloqueado por `evaluations:trigger`) reponua a sessão no lugar e adiciona o novo resultado à sua linha do tempo, preservando as pontuações anteriores como histórico. Você o encontrará em **`/<org-slug>/sessions/<session-id>`**.
 
 ## Acompanhe a tendência de qualidade em toda a frota
 
-Uma execução com pontuação baixa é ruído; uma coorte inteira caindo é um sinal. Dashboards salvos transformam suas pontuações em uma tendência que você pode acompanhar de relance: utilidade média desta semana versus a semana passada, por agente, por ambiente.
+Uma execução com pontuação baixa é ruído; uma coorte inteira caindo é um sinal. Dashboards salvos transformam suas pontuações em uma tendência que você pode acompanhar de relance: média de utilidade desta semana versus a semana passada, por agente, por ambiente.
 
 ![Um dashboard de qualidade: barras de pontuação média por dimensão do avaliador ao lado de uma tendência ao longo do tempo](/agenteye/images/dashboard-quality.png)
 
-*Um dashboard de qualidade salvo acompanha as chaves de pontuação que você destacou, tornando uma deriva gradual evidente muito antes de se tornar um incidente.*
+*Um dashboard de qualidade salvo mostra a tendência das chaves de pontuação que você destaca, tornando uma deriva lenta óbvia muito antes de se tornar um incidente.*
 
-Os dashboards ficam em **`/<org-slug>/dashboards`** (barra lateral → *analyze* → *dashboards*), são compartilhados com toda a sua organização, e cada card agrega as sessões correspondentes: quantas há, a média de cada pontuação destacada e um sparkline de tendência. "Open in sessions" leva você diretamente para as execuções pré-filtradas por trás de qualquer número. Para visualizar, são necessárias as permissões `dashboards:read` e `evaluations:read`.
+Os dashboards ficam em **`/<org-slug>/dashboards`** (barra lateral → *analyze* → *dashboards*), são compartilhados com toda a sua organização, e cada card consolida as sessões correspondentes: quantas houve, a média de cada pontuação destacada e um sparkline de tendência. "Open in sessions" leva você diretamente às execuções pré-filtradas por trás de qualquer número. Para visualizar, são necessárias as permissões `dashboards:read` e `evaluations:read`.
 
 ## Conecte um avaliador uma única vez
 
-A pontuação é opcional e permanece totalmente desativada até que você aponte a Observabilidade do Failproof AI para um avaliador. Você sobe um pequeno serviço HTTP (a Observabilidade inclui uma referência funcional que você pode copiar), define dois valores no seu servidor, e a partir daí todas as execuções são pontuadas automaticamente. O guia completo, o contrato de pontuação e o SDK estão no guia detalhado.
+A pontuação é opt-in e fica completamente desativada até que você aponte a Observabilidade do Failproof AI para um avaliador. Você sobe um pequeno serviço HTTP (a Observabilidade inclui uma referência funcional que você pode copiar), define dois valores no seu servidor, e a partir daí toda execução é pontuada automaticamente. O guia completo, o contrato de pontuação e o SDK estão no guia detalhado.
 
-Não sabe quais dimensões vale a pena pontuar? A [skill de agente avaliador](/pt-br/agenteye/evaluator-skill) faz com que seu agente de código determine isso com base nas suas próprias sessões, e então constrói e implanta o serviço.
+Não tem certeza de quais dimensões valem a pena pontuar? A [habilidade de agente avaliador](/pt-br/agenteye/evaluator-skill) faz com que seu agente de código descubra isso com base nas suas próprias sessões, depois cria e implanta o serviço.
 
 ## Relacionados
 
 - [Suite de avaliação](/pt-br/agenteye/evaluation-suite): conecte seu avaliador, o contrato de pontuação e o SDK.
-- [Skill de agente avaliador](/pt-br/agenteye/evaluator-skill): deixe um agente de código escolher suas dimensões de pontuação e construir o avaliador.
-- [Sessions](/pt-br/agenteye/sessions): a grade execução por execução onde as pontuações aparecem.
+- [Habilidade de agente avaliador](/pt-br/agenteye/evaluator-skill): deixe um agente de código escolher suas dimensões de pontuação e construir o avaliador.
+- [Sessões](/pt-br/agenteye/sessions): a grade execução por execução onde as pontuações aparecem.
 - [Dashboards](/pt-br/agenteye/dashboards): salve e compartilhe tendências de qualidade em toda a sua organização.
-- [Audits](/pt-br/agenteye/audits): o outro recurso de qualidade automático da Observabilidade, para investigações entre sessões.
+- [Auditorias](/pt-br/agenteye/audits): outro recurso automático de qualidade da Observabilidade, para investigações entre sessões.

@@ -1,42 +1,41 @@
 ---
----
 title: "Failproof AI"
-description: "FailproofAI cung cấp 39 chính sách xử lý lỗi tích hợp sẵn để bắt các vòng lặp, rò rỉ bí mật, lệnh gọi công cụ phá hủy và nhiều hơn nữa chỉ trong một lần cài đặt."
+description: "FailproofAI cung cấp 39 chính sách xử lý lỗi tích hợp sẵn giúp bắt các vòng lặp, rò rỉ bí mật, lệnh gọi công cụ hủy diệt, và nhiều hơn nữa chỉ với một lần cài đặt."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-Hooks và chính sách cho **xử lý lỗi của AI**, **phục hồi lỗi**, và **độ tin cậy của LLM**. Giữ cho các agent AI của bạn đáng tin cậy và chạy tự động trên **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI**, và **Agents SDK**.
+Hooks và chính sách cho **xử lý lỗi AI**, **phục hồi lỗi**, và **độ tin cậy LLM**. Giữ cho các đại lý AI của bạn hoạt động đáng tin cậy và tự trị trên **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI**, và **Agents SDK**.
 
-Các agent AI gặp lỗi theo những cách có thể dự đoán được. Chúng chạy các lệnh phá hủy, rò rỉ bí mật, lệch khỏi nhiệm vụ, bị mắc kẹt trong các vòng lặp, hoặc đẩy trực tiếp đến nhánh chính. Nếu để không được kiểm soát, những lỗi nhỏ sẽ dẫn đến sự cố, rò rỉ thông tin xác thực và mất công việc.
+Các đại lý AI thất bại theo những cách có thể dự đoán được. Chúng chạy các lệnh hủy diệt, rò rỉ bí mật, lệch khỏi tác vụ, mắc kẹt trong các vòng lặp, hoặc đẩy trực tiếp lên nhánh chính. Nếu không được giám sát, các lỗi nhỏ có thể dẫn đến sự cố hệ thống, rò rỉ thông tin xác thực, và mất công việc.
 
-FailproofAI giải quyết vấn đề này bằng **chính sách**. Những quy tắc này gắn kết vào mỗi lệnh gọi công cụ của agent để **phát hiện lỗi**, **giảm thiểu chúng** (chặn, hướng dẫn, vệ sinh), và **cảnh báo bạn** khi cần chú ý. Một bảng điều khiển cục bộ cho phép bạn xem xét mỗi lệnh gọi công cụ, lỗi agent và hành động phục hồi sau này.
+FailproofAI giải quyết vấn đề này bằng **chính sách**. Những quy tắc này kết nối vào mọi lệnh gọi công cụ của đại lý để **phát hiện lỗi**, **giảm nhẹ chúng** (chặn, hướng dẫn, làm sạch), và **cảnh báo bạn** khi có điều gì cần chú ý. Một bảng điều khiển cục bộ cho phép bạn xem lại mọi lệnh gọi công cụ, lỗi đại lý, và hành động khôi phục sau đó.
 
-Các bản ghi chép và đánh giá chính sách được lưu giữ trên máy của bạn. Dữ liệu chỉ được gửi khi bạn sử dụng tính năng trực tuyến, chẳng hạn như nhắc nhở kiểm toán được xác thực hoặc lời mời.
+Các bản ghi và đánh giá chính sách được giữ trên máy của bạn. Dữ liệu chỉ được gửi khi bạn rõ ràng sử dụng một tính năng trực tuyến, chẳng hạn như nhắc nhở kiểm toán được xác thực hoặc lời mời.
 
 ## Bắt đầu
 
 <CardGroup cols={2}>
 
 <Card title="39 chính sách tích hợp sẵn" icon="shield" href="/vi/built-in-policies">
-  Chặn các lệnh phá hủy, ngăn chặn rò rỉ bí mật, giữ các agent trong ranh giới dự án và nhiều hơn nữa. Tất cả sẵn sàng ngay từ đầu.
+  Chặn các lệnh hủy diệt, ngăn chặn rò rỉ bí mật, giữ các đại lý trong giới hạn dự án, và nhiều hơn nữa. Tất cả đều có sẵn ngoài hộp.
 </Card>
 
 <Card title="Chính sách tùy chỉnh" icon="code" href="/vi/custom-policies">
-  Viết quy tắc của riêng bạn bằng JavaScript với API allow / deny / instruct đơn giản.
+  Viết các quy tắc của riêng bạn trong JavaScript với API allow / deny / instruct đơn giản.
 </Card>
 
-<Card title="Agent monitor" icon="chart-line" href="/vi/dashboard">
-  Xem các agent của bạn đã làm gì trong khi bạn vắng mặt. Duyệt các phiên, kiểm tra lệnh gọi công cụ, xem xét nơi chính sách được áp dụng.
+<Card title="Công cụ giám sát đại lý" icon="chart-line" href="/vi/dashboard">
+  Xem những gì các đại lý của bạn đã làm khi bạn vắng mặt. Duyệt qua các phiên, kiểm tra các lệnh gọi công cụ, xem lại nơi các chính sách được kích hoạt.
 </Card>
 
 <Card title="Cấu hình dễ dàng" icon="gear" href="/vi/configuration">
-  Điều chỉnh bất kỳ chính sách nào mà không cần code. Đặt danh sách cho phép, các nhánh được bảo vệ hoặc ngưỡng cho từng dự án hoặc toàn cầu.
+  Điều chỉnh bất kỳ chính sách nào mà không cần mã. Đặt danh sách cho phép, nhánh được bảo vệ, hoặc ngưỡng cho mỗi dự án hoặc toàn cầu.
 </Card>
 
 </CardGroup>
 
-## Bắt đầu nhanh
+## Bắt đầu nhanh chóng
 
 <CodeGroup>
 
@@ -55,4 +54,4 @@ failproofai policies --install   # enable policies (or skip — `failproofai` wi
 failproofai                      # launch the dashboard
 ```
 
-Xem hướng dẫn [Bắt đầu](/vi/getting-started) để biết toàn bộ hướng dẫn chi tiết.
+Xem hướng dẫn [Bắt đầu](/vi/getting-started) để có hướng dẫn đầy đủ.

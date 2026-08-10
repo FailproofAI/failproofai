@@ -1,52 +1,52 @@
 ---
 title: "Métricas de Performance"
-description: "Veja o exato momento em que seus modelos, ferramentas ou hooks ficam lentos ou aumentam os custos, e identifique um pico de latência de cauda antes que seus usuários percebam."
+description: "Veja no instante em que seus modelos, ferramentas ou hooks ficam lentos ou aumentam sua fatura, e detecte um pico de latência na cauda antes que seus usuários percebam."
 ---
 
 
-Veja o exato momento em que seus modelos, ferramentas ou hooks ficam lentos ou aumentam os custos, e identifique um pico de latência de cauda antes que seus usuários percebam. Três páginas dedicadas transformam timings brutos em p50, p95 e p99 que você lê de relance.
+Veja no instante em que seus modelos, ferramentas ou hooks ficam lentos ou aumentam sua fatura, e detecte um pico de latência na cauda antes que seus usuários percebam. Três páginas dedicadas transformam tempos brutos em p50, p95 e p99 que você lê de relance.
 
 ![A página Models exibindo um mapa de calor de latência, uma faixa de percentis e valores de tokens, custo e janela de contexto por modelo](/agenteye/images/models.png)
-*A página Models: um mapa de calor de latência, uma faixa de percentis e, por modelo, tokens, custo estimado e preenchimento da janela de contexto.*
+*A página Models: um mapa de calor de latência, uma faixa de percentis e, por modelo, tokens, custo estimado e ocupação da janela de contexto.*
 
-## Pare de deixar as médias esconderem seus piores casos
+## Pare de deixar as médias esconderem suas piores execuções
 
-Um número médio de latência é reconfortante e inútil: ele suaviza aquela chamada em cinquenta que trava e aciona o seu plantão às 2 da manhã. As páginas Models, Tools e Hooks se recusam a fazer isso. Cada uma compartilha o mesmo formato, então você aprende uma vez:
+Um número médio de latência é reconfortante e inútil: ele suaviza aquela chamada em cinquenta que trava e aciona seu plantão às 2h da manhã. As páginas Models, Tools e Hooks recusam fazer isso. Cada uma tem o mesmo formato, então você aprende uma vez:
 
-- Um **sparkline de 24 bins** para ver a tendência de relance: isso está piorando?
+- Um **sparkline de 24 bins** para a tendência de relance: isso está piorando?
 - Uma **faixa de vitais** com latência p50, p95 e p99, para que a execução típica e a cauda fiquem lado a lado.
-- Um **mapa de calor de latência**, com 24 bins de tempo por buckets de latência, que mostra *quando* as chamadas lentas se concentraram.
-- Uma **faixa de percentis**: uma linha p50 com faixas sombreadas de p25 a p75 e de p10 a p90, além de pontos p99, para que a dispersão permaneça visível em vez de ser ocultada pela média.
+- Um **mapa de calor de latência**, com 24 bins de tempo por buckets de latência, que mostra *quando* as chamadas lentas se agruparam.
+- Uma **faixa de percentis**: uma linha p50 com faixas sombreadas de p25 a p75 e p10 a p90 e pontos p99, para que a dispersão permaneça visível em vez de ser diluída na média.
 
-Um crosshair de hover compartilhado vincula o mapa de calor e a faixa de percentis, de modo que um pico de cauda se alinha no tempo em ambos, em vez de se esconder atrás de uma única linha de média. Encontre todas as três páginas na seção **observe** do seu dashboard, cada uma com escopo para sua organização e filtrável por intervalo de datas, ambiente, agente e sessão.
+Um crosshair de hover compartilhado conecta o mapa de calor e a faixa, então um pico na cauda se alinha no tempo nos dois em vez de se esconder atrás de uma única linha de média. Encontre as três páginas na seção **observe** do seu dashboard, cada uma com escopo para sua organização e filtrável por intervalo de datas, ambiente, agente e sessão.
 
 ## Models: veja exatamente o que cada modelo custa
 
-A página Models (mostrada acima) responde às duas perguntas que uma fatura sempre levanta: qual modelo e quanto custa. Além da visão de latência compartilhada, ela adiciona **consumo de tokens por modelo**, **custo estimado** e **preenchimento da janela de contexto**, tornando visível o crescimento descontrolado de prompts e uma compactação iminente antes que eles te surpreendam.
+A página Models (exibida acima) responde às duas perguntas que uma fatura sempre levanta: qual modelo e quanto. Além da visão de latência compartilhada, ela adiciona **consumo de tokens por modelo**, **custo estimado** e **ocupação da janela de contexto**, para que o crescimento descontrolado de prompts e uma compactação iminente sejam visíveis antes de te surpreenderem.
 
-O Failproof AI Observability reconhece IDs de modelos comuns automaticamente. Se uma janela parecer incorreta, ou se você rodar um modelo privado próprio, corrija-a ou adicione uma em **Settings**, em **model context windows**, e as leituras de preenchimento serão atualizadas.
+O Failproof AI Observability reconhece IDs de modelos comuns automaticamente. Se uma janela parecer incorreta, ou se você rodar um modelo próprio privado, corrija ou adicione um em **Settings**, em **model context windows**, e as leituras de ocupação se atualizam.
 
-## Tools: diferencie o lento do quebrado
+## Tools: distinga o lento do quebrado
 
-Uma chamada de ferramenta pode estar lenta ou pode estar falhando silenciosamente, e você quer saber qual é o caso em segundos, não depois de vasculhar logs.
+Uma chamada de ferramenta pode ser lenta ou pode estar falhando silenciosamente, e você quer saber qual é o caso em segundos, não após vasculhar logs.
 
-![A página Tools exibindo o mapa de calor de latência e a faixa de percentis compartilhados ao lado de um detalhamento de sucesso e falha e uma barra de distribuição de ferramentas](/agenteye/images/tools.png)
-*A página Tools: o mesmo mapa de calor e faixa de percentis, mais um detalhamento de sucesso e falha e uma barra de distribuição de ferramentas.*
+![A página Tools exibindo o mapa de calor de latência e a faixa de percentis compartilhados ao lado de uma divisão de sucesso e falha e uma barra de distribuição de ferramentas](/agenteye/images/tools.png)
+*A página Tools: o mesmo mapa de calor e faixa de percentis, mais uma divisão de sucesso e falha e uma barra de distribuição de ferramentas.*
 
-Junto com a visão de latência compartilhada, a página Tools adiciona um **detalhamento de sucesso e falha** e uma **barra de distribuição de ferramentas**, para que você veja de relance quais ferramentas você mais utiliza e quais estão consumindo seu orçamento de erros.
+Junto à visão de latência compartilhada, a página Tools adiciona uma **divisão de sucesso e falha** e uma **barra de distribuição de ferramentas**, para que você veja de relance em quais ferramentas você mais depende e quais estão consumindo seu orçamento de erros.
 
-## Hooks: identifique o hook e o trigger exatos
+## Hooks: identifique o hook e o gatilho exatos
 
-Quando um hook de ciclo de vida atrasa uma execução, "hooks estão lentos" não é algo que você pode agir. A página Hooks te leva diretamente ao que importa.
+Quando um hook de ciclo de vida atrasa uma execução, "os hooks estão lentos" não é algo sobre o qual você pode agir. A página Hooks leva você até o que importa.
 
-![A página Hooks exibindo latência detalhada por nome de hook e evento de trigger sobre o mapa de calor e a faixa de percentis compartilhados](/agenteye/images/hooks.png)
-*A página Hooks: latência detalhada por nome de hook e evento de trigger.*
+![A página Hooks exibindo a latência detalhada por nome de hook e evento de gatilho sobre o mapa de calor e a faixa de percentis compartilhados](/agenteye/images/hooks.png)
+*A página Hooks: latência detalhada por nome de hook e evento de gatilho.*
 
-Sobre o mesmo mapa de calor de latência e faixa de percentis, a página Hooks detalha a atividade por **nome do hook** e **evento de trigger**, para que você chegue ao hook único e ao evento único que precisam de atenção.
+Sobre o mesmo mapa de calor de latência e faixa de percentis, a página Hooks detalha a atividade por **nome do hook** e **evento de gatilho**, para que você chegue ao único hook e ao único evento que precisam de atenção.
 
 ## Relacionados
 
-- [Event stream](/pt-br/agenteye/event-stream): o rastro ao vivo, com código de cores, de cada evento.
-- [Sessions](/pt-br/agenteye/sessions): agrupe eventos em uma linha por execução e abra seu gráfico de execução.
+- [Event stream](/pt-br/agenteye/event-stream): o rastro em tempo real, com código de cores, de cada evento.
+- [Sessions](/pt-br/agenteye/sessions): agrupe eventos em uma linha por execução e abra seu grafo de execução.
 - [Error tracking](/pt-br/agenteye/error-tracking): uma superfície de triagem unificada para tudo que o dashboard pinta de vermelho.
 - [Dashboards](/pt-br/agenteye/dashboards): visões consolidadas de toda a sua frota.

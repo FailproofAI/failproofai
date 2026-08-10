@@ -1,6 +1,6 @@
 ---
 title: ポリシーのアンインストール
-description: "Claude Code の設定からフックエントリを削除する"
+description: "Claude Code の settings.json からフックエントリを削除する"
 ---
 
 ```bash
@@ -14,7 +14,7 @@ Claude Code の `settings.json` から failproofai フックエントリを削�
 ## オプション
 
 | フラグ | 説明 |
-|--------|------|
+|------|-------------|
 | `--scope user` | グローバル設定から削除（デフォルト） |
 | `--scope project` | プロジェクト設定から削除 |
 | `--scope local` | ローカル設定から削除 |
@@ -24,7 +24,7 @@ Claude Code の `settings.json` から failproofai フックエントリを削�
 ## 動作
 
 - **ポリシー名を指定しない場合** — 設定ファイルからすべての failproofai フックエントリを削除します
-- **特定の名前を指定した場合** — 該当ポリシーを無効化しますが、フックはインストールされたまま維持されます
+- **特定の名前を指定した場合** — 該当ポリシーを無効化しますが、フックはインストールされたままにします
 
 ## 使用例
 
@@ -38,6 +38,6 @@ failproofai policies --uninstall block-sudo
 # すべてのスコープからフックを削除
 failproofai policies --uninstall --scope all
 
-# カスタムポリシーパスをクリア
+# カスタムポリシーのパスをクリア
 failproofai policies --uninstall --custom
 ```

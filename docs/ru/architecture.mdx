@@ -1,11 +1,11 @@
 ---
 ---
 title: Архитектура
-description: "Как работают обработчик hook, загрузка конфигурации и оценка политик"
+description: "Как внутри работают обработчик хука, загрузка конфигурации и оценка политик"
 icon: sitemap
 ---
 
-Этот документ объясняет внутреннее устройство failproofai: как система hook перехватывает вызовы инструментов агента, как загружается и объединяется конфигурация, как оцениваются политики и как панель мониторинга отслеживает активность агента.
+Этот документ объясняет, как работает failproofai изнутри: как система хуков перехватывает вызовы инструментов агента, как загружается и объединяется конфигурация, как вычисляются политики и как приборная панель отслеживает активность агента.
 
 ---
 
@@ -13,18 +13,18 @@ icon: sitemap
 
 failproofai состоит из двух независимых подсистем:
 
-1. **Обработчик hook** — быстрый CLI подпроцесс, который Claude Code вызывает при каждом вызове инструмента агента. Оценивает политики и возвращает решение.
-2. **Agent Monitor (Dashboard)** — веб-приложение Next.js для мониторинга сеансов агента и управления политиками.
+1. **Обработчик хука** — быстрый CLI-подпроцесс, который Claude Code вызывает при каждом вызове инструмента агентом. Вычисляет политики и возвращает решение.
+2. **Монитор агента (приборная панель)** — веб-приложение Next.js для мониторинга сеансов агента и управления политиками.
 
-Обе подсистемы используют общие файлы конфигурации в `~/.failproofai/` и директории `.failproofai/` проекта, но работают как отдельные процессы и взаимодействуют только через файловую систему.
+Обе подсистемы используют одни и те же файлы конфигурации в `~/.failproofai/` и в директории `.failproofai/` проекта, но запускаются как отдельные процессы и взаимодействуют только через файловую систему.
 
 ---
 
-## Обработчик hook
+## Обработчик хука
 
 ### Интеграция с Claude Code
 
-Когда вы запускаете `failproofai policies --install`, он записывает записи вроде этой в `~/.claude/settings.json`:
+Когда вы запускаете `failproofai policies --install`, в `~/.claude/settings.json` записываются записи вроде этой:
 
 ```json
 {
@@ -45,7 +45,7 @@ failproofai состоит из двух независимых подсисте
 }
 ```
 
-Claude Code затем вызывает `failproofai --hook PreToolUse` как подпроцесс перед каждым вызовом инструмента, передав JSON-полезную нагрузку на stdin.
+Claude Code затем вызывает `failproofai --hook PreToolUse` как подпроцесс перед каждым вызовом инструмента, передавая JSON-полезную нагрузку на stdin.
 
 ### Формат полезной нагрузки
 
@@ -61,9 +61,9 @@ Claude Code затем вызывает `failproofai --hook PreToolUse` как �
 }
 ```
 
-Для событий `PostToolUse` полезная нагрузка также содержит `tool_result` с выводом инструмента.
+Для событий `PostToolUse` полезная нагрузка также содержит `tool_result` с выходом инструмента.
 
-Обработчик применяет ограничение stdin в 1 МБ. Полезные нагрузки, превышающие это значение, отбрасываются и все политики неявно разрешают операцию.
+Обработчик устанавливает лимит stdin в 1 МБ. Полезные нагрузки, превышающие этот лимит, отбрасываются и все политики неявно разрешают операцию.
 
 ### Формат ответа
 
@@ -95,9 +95,9 @@ Claude Code затем вызывает `failproofai --hook PreToolUse` как �
 }
 ```
 
-**Инструкция события Stop:**
+**Instruct события Stop:**
 - Код выхода: `2`
-- Причина записана в stderr (не stdout)
+- Причина написана в stderr (не stdout)
 
 **Allow:**
 - Код выхода: `0`
@@ -105,10 +105,10 @@ Claude Code затем вызывает `failproofai --hook PreToolUse` как �
 
 **Allow с сообщением:**
 
-`allow(message)` позволяет политике отправить информационный контекст обратно Claude даже если операция разрешена. Обработчик hook записывает следующий JSON в **stdout** (не в файл конфигурации — это ответ обработчика Claude Code, как и ответы deny и instruct выше):
+`allow(message)` позволяет политике отправить информационный контекст обратно в Claude, даже когда операция разрешена. Обработчик хука записывает следующий JSON в **stdout** (не в файл конфигурации — это ответ обработчика Claude Code, как и ответы deny и instruct выше):
 
 ```json
-// Записано в stdout процессом hook handler
+// Записано в stdout процессом обработчика хука
 {
   "hookSpecificOutput": {
     "additionalContext": "All CI checks passed on branch 'feat/my-feature'."
@@ -116,7 +116,7 @@ Claude Code затем вызывает `failproofai --hook PreToolUse` как �
 }
 ```
 - Код выхода: `0` (операция разрешена)
-- Когда несколько политик возвращают `allow` с сообщением, их сообщения объединяются с переносами строк в одну строку `additionalContext`
+- Когда несколько политик возвращают `allow` с сообщением, их сообщения объединяются переводами строк в одну строку `additionalContext`
 - Если ни одна политика не предоставляет сообщение, stdout пуст (как и раньше)
 
 ### Конвейер обработки
@@ -125,63 +125,63 @@ Claude Code затем вызывает `failproofai --hook PreToolUse` как �
 
 ```text
 stdin JSON
-  → parse payload (max 1 MB)
-  → extract session metadata (session_id, cwd, tool_name, tool_input, etc.)
-  → readMergedHooksConfig(cwd)    ← merges project + local + global config
-  → register enabled builtin policies with resolved params
-  → load custom policies from customPoliciesPath (if set)
-  → register custom policies into policy registry
-  → evaluate all policies (builtins first, then custom)
-      → first deny short-circuits
-      → instruct decisions accumulate
-      → allow messages accumulate
-  → write JSON decision to stdout
-  → persist event to ~/.failproofai/hook-activity/current.jsonl
-  → exit
+  → разбор полезной нагрузки (макс. 1 МБ)
+  → извлечение метаданных сеанса (session_id, cwd, tool_name, tool_input и т.д.)
+  → readMergedHooksConfig(cwd)    ← объединение конфигурации проекта + локальной + глобальной
+  → регистрация включенных встроенных политик с разрешенными параметрами
+  → загрузка пользовательских политик из customPoliciesPath (если установлено)
+  → регистрация пользовательских политик в реестре политик
+  → вычисление всех политик (встроенные первыми, затем пользовательские)
+      → первый deny прерывает выполнение
+      → решения instruct накапливаются
+      → сообщения allow накапливаются
+  → запись решения JSON в stdout
+  → сохранение события в ~/.failproofai/hook-activity/current.jsonl
+  → выход
 ```
 
-Весь процесс выполняется менее чем за 100 мс для типичных полезных нагрузок без вызовов LLM.
+Весь процесс выполняется менее чем за 100 мс для типичных полезных нагрузок без LLM-вызовов.
 
 ---
 
 ## Загрузка конфигурации
 
-`src/hooks/hooks-config.ts` реализует загрузку конфигурации в три области.
+`src/hooks/hooks-config.ts` реализует загрузку конфигурации в три области видимости.
 
 ```text
-[1] {cwd}/.failproofai/policies-config.json        ← project  (highest priority)
-[2] {cwd}/.failproofai/policies-config.local.json  ← local
-[3] ~/.failproofai/policies-config.json             ← global   (lowest priority)
+[1] {cwd}/.failproofai/policies-config.json        ← проект  (высший приоритет)
+[2] {cwd}/.failproofai/policies-config.local.json  ← локальная
+[3] ~/.failproofai/policies-config.json             ← глобальная   (низший приоритет)
 ```
 
 Логика объединения:
-- `enabledPolicies` — дедублицированное объединение всех трёх файлов
-- `policyParams` — по ключу политики, первый файл, который его определяет, выигрывает полностью
-- `customPoliciesPath` — первый файл, который это определяет, выигрывает
-- `llm` — первый файл, который это определяет, выигрывает
+- `enabledPolicies` — дедублицированное объединение всех трех файлов
+- `policyParams` — ключ для каждой политики, первый файл, который определяет его, побеждает полностью
+- `customPoliciesPath` — первый файл, который определяет его, побеждает
+- `llm` — первый файл, который определяет его, побеждает
 
-Веб-панель использует `readHooksConfig()` (только глобальная область) для чтения и записи, так как она не вызывается с cwd проекта.
+Веб-приборная панель использует `readHooksConfig()` (только глобальная) для чтения и записи, так как она не вызывается с cwd проекта.
 
 ---
 
-## Оценка политик
+## Вычисление политик
 
-`src/hooks/policy-evaluator.ts` запускает политики по порядку.
+`src/hooks/policy-evaluator.ts` выполняет политики по порядку.
 
 Для каждой политики:
 
-1. Найти схему `params` политики (если она есть).
-2. Прочитать `policyParams[policy.name]` из объединённой конфигурации.
-3. Объединить значения, предоставленные пользователем, с умолчаниями схемы, чтобы получить `ctx.params`.
-4. Вызвать `policy.fn(ctx)` с разрешённым контекстом.
-5. Если результат `deny`, остановиться немедленно и вернуть это решение.
-6. Если результат `instruct`, накопить сообщение и продолжить.
-7. Если результат `allow`, перейти к следующей политике.
+1. Поиск схемы `params` политики (если она есть).
+2. Чтение `policyParams[policy.name]` из объединенной конфигурации.
+3. Объединение предоставленных пользователем значений поверх стандартных значений схемы для получения `ctx.params`.
+4. Вызов `policy.fn(ctx)` с разрешенным контекстом.
+5. Если результат — `deny`, остановиться немедленно и вернуть это решение.
+6. Если результат — `instruct`, накопить сообщение и продолжить.
+7. Если результат — `allow`, перейти к следующей политике.
 
 После выполнения всех политик:
-- Если было возвращено `deny`, выдать ответ deny.
-- Если были собраны возвращаемые значения `instruct`, выдать один ответ instruct со всеми сообщениями, объединёнными вместе.
-- В остальном выдать ответ allow (пустой stdout, выход 0).
+- Если было возвращено какое-либо `deny`, выдать ответ deny.
+- Если собраны какие-либо возвраты `instruct`, выдать один ответ instruct со всеми сообщениями, объединенными вместе.
+- Иначе выдать ответ allow (пустой stdout, выход 0).
 
 ---
 
@@ -205,15 +205,15 @@ interface BuiltinPolicyDefinition {
 }
 ```
 
-Политики, которые принимают `params`, объявляют `PolicyParamsSchema` с типами и значениями по умолчанию для каждого параметра. Оценщик политик вводит разрешённые значения в `ctx.params` перед вызовом `fn`. Функции политик читают `ctx.params` без проверки на null, потому что по умолчанию всегда применяются значения.
+Политики, которые принимают `params`, объявляют `PolicyParamsSchema` с типами и стандартными значениями для каждого параметра. Оценщик политик внедряет разрешенные значения в `ctx.params` перед вызовом `fn`. Функции политик читают `ctx.params` без защиты от null, так как стандартные значения всегда применяются первыми.
 
-Сопоставление шаблонов внутри политик использует разобранные маркеры команд (argv), а не сопоставление необработанных строк. Это предотвращает обход через инъекцию оператора shell (например, шаблон для `sudo systemctl status *` не может быть обойден добавлением `; rm -rf /` к команде).
+Сопоставление шаблонов внутри политик использует разобранные токены команд (argv), а не сопоставление сырых строк. Это предотвращает обход путем инъекции оператора оболочки (например, шаблон для `sudo systemctl status *` не может быть обойден путем добавления `; rm -rf /` к команде).
 
 ---
 
 ## Пользовательские политики
 
-`src/hooks/custom-hooks-registry.ts` реализует реестр на основе `globalThis`:
+`src/hooks/custom-hooks-registry.ts` реализует реестр на базе `globalThis`:
 
 ```typescript
 const REGISTRY_KEY = "__failproofai_custom_hooks__";
@@ -223,28 +223,28 @@ export const customPolicies = {
 };
 
 export function getCustomHooks(): CustomHook[] { ... }
-export function clearCustomHooks(): void { ... }  // used in tests
+export function clearCustomHooks(): void { ... }  // используется в тестах
 ```
 
 `src/hooks/custom-hooks-loader.ts` загружает файл политики пользователя:
 
-1. Прочитать `customPoliciesPath` из конфигурации; пропустить если отсутствует.
-2. Разрешить в абсолютный путь; проверить, существует ли файл.
-3. Переписать все импорты `from "failproofai"` на фактический путь dist, чтобы `customPolicies` разрешался в один и тот же реестр `globalThis`.
-4. Рекурсивно переписать переходные локальные импорты, чтобы обеспечить совместимость ESM.
-5. Записать временные файлы `.mjs` и `import()` файл входа.
-6. Вызвать `getCustomHooks()` для получения зарегистрированных hook.
-7. Очистить все временные файлы в блоке `finally`.
+1. Чтение `customPoliciesPath` из конфигурации; пропуск если отсутствует.
+2. Преобразование в абсолютный путь; проверка существования файла.
+3. Переписывание всех импортов `from "failproofai"` на фактический путь dist, чтобы `customPolicies` разрешалось на тот же реестр `globalThis`.
+4. Рекурсивное переписывание транзитивных локальных импортов для обеспечения совместимости ESM.
+5. Запись временных файлов `.mjs` и `import()` входного файла.
+6. Вызов `getCustomHooks()` для получения зарегистрированных хуков.
+7. Очистка всех временных файлов в блоке `finally`.
 
 При любой ошибке (файл не найден, синтаксическая ошибка, ошибка импорта) ошибка записывается в `~/.failproofai/hook.log` и загрузчик возвращает пустой массив. Встроенные политики не затрагиваются.
 
-Пользовательские политики оцениваются после всех встроенных политик. Пользовательская политика `deny` всё ещё короткозамыкает дальнейшие пользовательские политики (но все встроенные уже выполнены к этому моменту).
+Пользовательские политики вычисляются после всех встроенных политик. `deny` пользовательской политики все еще прерывает дальнейшие пользовательские политики (но все встроенные уже выполнены к этому времени).
 
 ---
 
 ## Логирование активности
 
-После каждого события hook обработчик добавляет строку JSONL в `~/.failproofai/hook-activity/current.jsonl`, которая ротируется в `page-<timestamp>-<seq>.jsonl` после достижения страницы:
+После каждого события хука обработчик добавляет строку JSONL в `~/.failproofai/hook-activity/current.jsonl`, которая ротирует в `page-<timestamp>-<seq>.jsonl` после достижения размера страницы:
 
 ```json
 {
@@ -259,75 +259,75 @@ export function clearCustomHooks(): void { ... }  // used in tests
 }
 ```
 
-По одной строке на политику, которая принесла решение не-allow. Решения allow не логируются (чтобы сохранить размер файла небольшим).
+Одна строка на политику, которая приняла решение не-allow. Решения allow не логируются (чтобы файл оставался небольшим).
 
 ---
 
-## Архитектура панели мониторинга
+## Архитектура приборной панели
 
-Панель мониторинга — это приложение **Next.js 16** с использованием App Router с React Server Components и Server Actions.
+Приборная панель — это приложение **Next.js 16** с использованием App Router с React Server Components и Server Actions.
 
 ```text
 app/
-  layout.tsx                  ← Root layout (theme, telemetry, nav)
-  projects/page.tsx           ← Server component: list all Claude projects
-  project/[name]/page.tsx     ← Server component: list sessions in a project
+  layout.tsx                  ← Корневой макет (тема, телеметрия, навигация)
+  projects/page.tsx           ← Компонент сервера: список всех проектов Claude
+  project/[name]/page.tsx     ← Компонент сервера: список сеансов в проекте
   project/[name]/session/
-    [sessionId]/page.tsx      ← Server component: render session viewer
-  policies/page.tsx           ← Client component: policy management + activity log
+    [sessionId]/page.tsx      ← Компонент сервера: рендеринг просмотра сеанса
+  policies/page.tsx           ← Компонент клиента: управление политиками + журнал активности
   actions/
-    get-hooks-config.ts       ← Read config + policy list
-    update-hooks-config.ts    ← Toggle policy on/off
-    update-policy-params.ts   ← Update policy parameters
-    get-hook-activity.ts      ← Paginate/search activity log
-    install-hooks-web.ts      ← Install/remove hooks from the browser
+    get-hooks-config.ts       ← Чтение конфигурации + список политик
+    update-hooks-config.ts    ← Включение/отключение политики
+    update-policy-params.ts   ← Обновление параметров политики
+    get-hook-activity.ts      ← Разбиение на страницы/поиск в журнале активности
+    install-hooks-web.ts      ← Установка/удаление хуков из браузера
   api/
-    download/[project]/[session]/route.ts   ← Per-CLI session export (JSONL or JSON)
+    download/[project]/[session]/route.ts   ← Экспорт по сеансу CLI (JSONL или JSON)
 ```
 
 **Поток данных:**
 
-- Компоненты страницы вызывают `lib/projects.ts` и `lib/log-entries.ts` для прямого чтения данных проекта/сеанса из файловой системы (без слоя API для чтения).
-- Страница Policies использует Server Actions для всех изменений (включение/отключение, обновление параметров, установка/удаление).
-- Средство просмотра сеанса разбирает формат транскрипта JSONL Claude и отображает временную шкалу сообщений и вызовов инструментов.
+- Компоненты страницы вызывают `lib/projects.ts` и `lib/log-entries.ts` для прямого чтения данных проекта/сеанса из файловой системы (нет API-слоя для чтения).
+- Страница политик использует Server Actions для всех изменений (переключение, обновление параметров, установка/удаление).
+- Просмотр сеанса разбирает формат JSONL-транскрипта Claude и рендерит временную шкалу сообщений и вызовов инструментов.
 
-**Ключевые дизайн-решения:**
+**Ключевые решения по дизайну:**
 
 - Нет базы данных — все постоянное состояние хранится в простых файлах (`~/.failproofai/`, `~/.claude/projects/`).
 - Server Actions для изменений — REST API не требуется для операций CRUD.
-- React Server Components для страниц чтения — более быстрая начальная загрузка, нет bundle на клиенте для получения данных.
-- Компоненты клиента только там, где требуется интерактивность (переключатели политик, поиск активности, средство просмотра логов).
+- React Server Components для страниц чтения — более быстрая первоначальная загрузка, отсутствие клиентского пакета для получения данных.
+- Клиентские компоненты только там, где требуется интерактивность (переключатели политик, поиск в активности, просмотр журнала).
 
 ---
 
-## Структура файлов
+## Макет файлов
 
 ```text
 failproofai/
 ├── bin/
-│   └── failproofai.mjs           # CLI router (hook / dashboard / install / etc.)
+│   └── failproofai.mjs           # CLI маршрутизатор (hook / dashboard / install / и т.д.)
 ├── src/hooks/
-│   ├── handler.ts                # Hook event pipeline
-│   ├── builtin-policies.ts       # 39 policy definitions
-│   ├── policy-evaluator.ts       # Policy execution engine
-│   ├── policy-registry.ts        # Policy registration and lookup
-│   ├── policy-types.ts           # TypeScript interfaces
-│   ├── hooks-config.ts           # Multi-scope config loading
-│   ├── custom-hooks-registry.ts  # globalThis-backed hook registry
-│   ├── custom-hooks-loader.ts    # ESM loader for user JS hooks
-│   ├── manager.ts                # install / remove / list operations
-│   ├── install-prompt.ts         # Interactive policy selection prompt
-│   ├── hook-logger.ts            # Logging to hook.log
-│   ├── hook-activity-store.ts    # Persist activity to hook-activity/
-│   └── llm-client.ts             # LLM API client (for AI-powered policies)
-├── app/                          # Next.js dashboard (pages + server actions)
-├── lib/                          # Shared utilities
-│   ├── projects.ts               # Enumerate Claude projects from filesystem
-│   ├── log-entries.ts            # Parse Claude transcript JSONL format
-│   ├── paths.ts                  # Resolve system paths
+│   ├── handler.ts                # Конвейер события хука
+│   ├── builtin-policies.ts       # 39 определений политик
+│   ├── policy-evaluator.ts       # Двигатель выполнения политик
+│   ├── policy-registry.ts        # Регистрация и поиск политик
+│   ├── policy-types.ts           # Интерфейсы TypeScript
+│   ├── hooks-config.ts           # Загрузка конфигурации в несколько областей видимости
+│   ├── custom-hooks-registry.ts  # Реестр хуков на базе globalThis
+│   ├── custom-hooks-loader.ts    # ESM-загрузчик для пользовательских JS-хуков
+│   ├── manager.ts                # Операции install / remove / list
+│   ├── install-prompt.ts         # Интерактивное приглашение выбора политики
+│   ├── hook-logger.ts            # Логирование в hook.log
+│   ├── hook-activity-store.ts    # Сохранение активности в hook-activity/
+│   └── llm-client.ts             # LLM API клиент (для политик с AI-поддержкой)
+├── app/                          # Приборная панель Next.js (страницы + server actions)
+├── lib/                          # Общие утилиты
+│   ├── projects.ts               # Перечисление проектов Claude из файловой системы
+│   ├── log-entries.ts            # Разбор формата Claude JSONL-транскрипта
+│   ├── paths.ts                  # Разрешение системных путей
 │   └── ...
-├── components/                   # Shared React UI components
-├── contexts/                     # React context providers (theme, auto-refresh, telemetry)
-├── examples/                     # Example custom hook files
-└── __tests__/                    # Unit and E2E tests
+├── components/                   # Общие компоненты React UI
+├── contexts/                     # Поставщики контекста React (тема, автообновление, телеметрия)
+├── examples/                     # Примеры файлов пользовательских хуков
+└── __tests__/                    # Модульные и E2E тесты
 ```

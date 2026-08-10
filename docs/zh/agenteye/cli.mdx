@@ -1,34 +1,34 @@
 ---
 title: "CLI"
-description: "从终端或脚本驱动所有 Failproof AI Observability 功能：无需往返 Dashboard。"
+description: "通过终端或脚本驱动所有 Failproof AI Observability 功能，无需往返控制台。"
 ---
 
 
-从终端或脚本驱动所有 Failproof AI Observability 功能：无需往返 Dashboard。`agenteye` CLI 可查询你的数据（会话、事件日志、评估结果），并管理你的组织（API 密钥、用户、设置、告警、事件、已保存查询），适合在以下场景使用：自动化检查、将 Observability 接入 CI，或让编码智能体检查生产环境。每个命令都支持 `--json` 标志，因此无论是你在终端直接使用，还是编码智能体（Claude Code、Cursor）通过 shell 调用并解析结果，都同样适用。
+通过终端或脚本驱动所有 Failproof AI Observability 功能，无需往返控制台。`agenteye` CLI 可查询您的数据（会话、事件日志、评估结果）并管理您的组织（API 密钥、用户、设置、告警、事件、已保存查询），非常适合自动化检查、将 Observability 集成到 CI 流程，或让编码智能体检查生产环境。每个命令均支持 `--json` 标志，因此无论是您在终端交互使用，还是编码智能体（Claude Code、Cursor）调用并解析结果，都同样适用。
 
-一个二进制文件即可完成以下操作：
+使用这一个二进制文件，您可以：
 
-- **读取数据**：`sessions`、`events`、`evals`、`errors`（按时间、智能体、环境、分数过滤）。
+- **读取数据**：`sessions`、`events`、`evals`、`errors`（按时间、智能体、环境、评分筛选）。
 - **管理组织**：`keys`、`users`、`settings`、`alerts`、`incidents`。
-- **运行分析**：已保存的 SQL 查询及临时查询运行器（`query`）。
-- **使用 AI 助手**：与 Dashboard 中相同的只读分析助手（`agent`）。
+- **运行分析**：已保存的 SQL 和临时查询执行器（`query`）。
+- **咨询 AI 助手**：与控制台中相同的只读分析师（`agent`）。
 
-> **注意：** 这是 `agenteye` CLI，与采集器守护进程（`agenteye-collector`）是两个不同的工具。CLI 与你的 Dashboard 通信；采集器负责将事件发送到服务器。
+> **注意：** 这是 `agenteye` CLI，与采集器守护进程（`agenteye-collector`）是不同的工具。CLI 与您的控制台通信；采集器负责将事件上报到服务器。
 
 ---
 
 ## 快速开始
 
-从零到第一个结果只需四行命令。将 CLI 指向你的 Dashboard，登录，确认身份，然后拉取最近一天的运行记录：
+从零到获得第一个结果只需四行命令。将 CLI 指向您的控制台，登录，确认身份，然后拉取最近一天的运行记录：
 
 ```bash
 pipx install agenteye
-agenteye --base-url https://agenteye.example.com login --email you@example.com   # 邮件发送 6 位验证码
-agenteye whoami                                                                  # 确认用户 + 当前活跃组织
-agenteye --json sessions --since 24h                                             # 每行一个智能体运行记录，最近 24h
+agenteye --base-url https://agenteye.example.com login --email you@example.com   # 系统会发送6位验证码到您的邮箱
+agenteye whoami                                                                  # 确认用户 + 当前激活的组织
+agenteye --json sessions --since 24h                                             # 每行对应一次智能体运行，最近24小时
 ```
 
-最后一条命令会以 JSON 对象形式输出最新会话（默认按最新优先排列，最多 50 条）。可通过管道传给 `jq` 进行切片处理，或去掉 `--json` 以获得带边框和彩色高亮的表格视图。每行包含运行状态以及（若评估器已评分）各指标得分（此处为简略显示）：
+最后一条命令输出最近会话的 JSON 对象（最新的排在最前，默认最多50条）。可以通过管道传给 `jq` 进行切片处理，或去掉 `--json` 以获得带边框的彩色表格。每行包含运行状态，以及评估器评分后的指标分数（此处为简略版）：
 
 ```json
 {
@@ -48,13 +48,13 @@ agenteye --json sessions --since 24h                                            
 }
 ```
 
-本页其余部分依次介绍各个模块：[安装](#installation)、[登录认证](#authentication)、[配置](#configuration)、所有命令共用的[全局约定](#global-options--conventions)，以及[完整命令参考](#command-reference)。
+本页其余部分将逐一说明各个环节：[安装](#installation)（隔离安装）、[登录](#authentication)、[配置](#configuration)、所有命令共用的[全局约定](#global-options--conventions)，以及[完整命令参考](#command-reference)。
 
 ---
 
 ## 安装
 
-CLI 是 PyPI 上的公开包，包名为 **`agenteye`**。建议安装在独立环境中，以确保其拥有自己的依赖项：
+CLI 是一个公开的 PyPI 包，名为 **`agenteye`**。建议安装到隔离环境中，以确保其拥有独立的依赖项：
 
 ```bash
 pipx install agenteye
@@ -69,44 +69,44 @@ agenteye --version
 agenteye --help
 ```
 
-> **注意：** Failproof AI Observability Python SDK 也使用 `agenteye` 这一发行包名。使用 `pipx` 或 `uv tool` 安装 CLI（而非 `pip install` 到共享虚拟环境）可避免两者冲突。只有在同一环境中未安装 SDK 的情况下，才可以直接使用 `pip install agenteye`。
+> **注意：** Failproof AI Observability Python SDK 也使用 `agenteye` 这个发行包名称。使用 `pipx` 或 `uv tool` 安装 CLI（而非 `pip install` 到共享虚拟环境中）可以避免两者冲突。只有在同一环境中未安装 SDK 的情况下，才可以直接使用 `pip install agenteye`。
 
 ---
 
 ## 认证
 
-CLI 通过邮件一次性验证码向 **Dashboard** 进行认证：
+CLI 通过邮件一次性验证码向**控制台**进行身份验证：
 
 ```bash
 agenteye login --email you@example.com
-# 系统会向你发送 6 位验证码；在提示符处粘贴即可。
+# 系统会向您的邮箱发送6位验证码，粘贴到提示符处即可。
 ```
 
-会话 token 存储在 `~/.agenteye/cli.json`（仅当前用户可读，权限为 `0600`），默认有效期为 24 小时。过期后，重新运行 `agenteye login` 即可。
+会话令牌存储在 `~/.agenteye/cli.json` 中（仅您本人可读，权限为 `0600`），默认有效期为 24 小时。过期后，重新运行 `agenteye login` 即可。
 
 ```bash
-agenteye whoami     # 显示当前用户、活跃组织及权限
-agenteye logout     # 吊销会话并清除本机存储的 token
+agenteye whoami     # 显示当前用户、激活的组织及权限
+agenteye logout     # 吊销会话并清除存储的令牌
 ```
 
-`whoami` 在会话缺失或过期时不会报错，而是返回 `logged_in: false`，因此脚本或智能体可以安全地探测认证状态（若未设置 base URL 或 Dashboard 不可达，仍可能以非零状态退出）。
+`whoami` 在会话缺失或过期时不会报错，而是返回 `logged_in: false`，因此脚本或智能体可以安全地探测认证状态（如果未设置 base URL 或控制台不可达，仍可能以非零状态退出）。
 
-**前提条件：** 你的邮箱必须已被允许登录 Dashboard（请联系你的 Failproof AI Observability 管理员），且 Dashboard 必须可通过其 base URL 访问（参见[配置](#configuration)）。如果你请求了验证码但未收到，说明你的邮箱可能尚未开通 Dashboard 访问权限。
+**要求：** 您的邮箱必须获准登录控制台（请联系您的 Failproof AI Observability 管理员），且控制台必须可通过其 base URL 访问（参见[配置](#configuration)）。如果申请了验证码但未收到，您的邮箱可能尚未开通控制台访问权限。
 
 ---
 
 ## 选择组织（多租户）
 
-如果你的账号属于多个组织，请在**登录时**选择当前活跃组织；该选择会被保存并用于后续所有命令：
+如果您的账户属于多个组织，请在**登录时**选择当前激活的组织；该选择会被保存并用于后续所有命令：
 
 ```bash
-agenteye login --org acme           # 一步完成认证并设置活跃租户
-agenteye orgs list                  # 列出你可访问的组织（活跃组织有标记）
+agenteye login --org acme           # 在一步中完成身份验证并设置激活的租户
+agenteye orgs list                  # 您可访问的组织列表（激活的组织有标记）
 agenteye orgs switch globex         # 更改已保存的默认组织
-agenteye --org globex sessions      # 仅对单次命令使用指定组织
+agenteye --org globex sessions      # 仅对单条命令覆盖组织
 ```
 
-如果你只属于一个组织，系统会自动选中，可完全忽略 `--org`。如果你属于多个组织但未指定，CLI 会列出所有组织并提示你以 `--org <slug>` 重新运行。活跃组织会随每个请求一起发送到 Dashboard，且权限按**每个组织**单独解析；`agenteye whoami` 会显示活跃组织、你在其中的权限以及所有成员身份。
+如果您只属于一个组织，系统会自动选中，无需关注 `--org`。如果您属于多个组织但未指定，CLI 会列出所有组织并要求您重新运行并加上 `--org <slug>`。激活的组织会随每次请求发送到控制台，权限按**每个组织**单独解析；`agenteye whoami` 会显示激活的组织、您在其中的权限以及您的所有成员资格。
 
 ---
 
@@ -114,59 +114,59 @@ agenteye --org globex sessions      # 仅对单次命令使用指定组织
 
 | 设置项 | 标志 | 环境变量 | 默认值 |
 |---|---|---|---|
-| Dashboard base URL | `--base-url` | `AGENTEYE_DASHBOARD_URL` | **必填**（无默认值） |
-| 活跃组织/租户 | `--org` | `AGENTEYE_ORG` | 登录时选择；保存在 `~/.agenteye/cli.json` |
-| 会话 token | `--token` | `AGENTEYE_CLI_TOKEN` | 来自 `~/.agenteye/cli.json` |
+| 控制台 base URL | `--base-url` | `AGENTEYE_DASHBOARD_URL` | **必填**（无默认值） |
+| 激活的组织/租户 | `--org` | `AGENTEYE_ORG` | 登录时选择；保存在 `~/.agenteye/cli.json` |
+| 会话令牌 | `--token` | `AGENTEYE_CLI_TOKEN` | 来自 `~/.agenteye/cli.json` |
 | JSON 输出 | `--json` | `AGENTEYE_CLI_JSON` | 关闭 |
 | 跳过 TLS 验证 | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | 关闭（登录时保存） |
 | 请求超时（秒） | `--timeout` | _（无）_ | 30 |
-| 禁用使用遥测 | _（无）_ | `AGENTEYE_ANALYTICS_DISABLED`（或 `DO_NOT_TRACK`） | 遥测当前已禁用；不发送任何数据 |
+| 禁用使用遥测 | _（无）_ | `AGENTEYE_ANALYTICS_DISABLED`（或 `DO_NOT_TRACK`） | 遥测目前已禁用；不发送任何数据 |
 
-解析顺序为**标志 → 环境变量 → 配置文件**。没有默认值，你必须将 CLI 指向你的 Dashboard，可以每次命令单独指定（`--base-url https://agenteye.example.com`），或通过环境变量一次性配置（首次 `login` 后也会自动保存）：
+解析优先级为**标志 → 环境变量 → 配置文件**。没有默认值；您必须将 CLI 指向您的控制台，可以在每条命令中指定（`--base-url https://agenteye.example.com`），也可以通过环境变量设置一次（首次 `login` 后也会自动保存）：
 
 ```bash
 export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com
 ```
 
-配置目录遵循 `AGENTEYE_HOME` 约定（与 SDK 和采集器保持一致）；若已设置，`cli.json` 将位于 `$AGENTEYE_HOME/cli.json`。
+配置目录遵循 `AGENTEYE_HOME`（与 SDK 和采集器使用相同约定）；如果设置了该变量，`cli.json` 位于 `$AGENTEYE_HOME/cli.json`。
 
 ### 自签名或内部 TLS
 
-如果你的 Dashboard 使用自签名或内部证书（例如，裸负载均衡器主机名）通过 HTTPS 提供服务，TLS 验证会报 `CERTIFICATE_VERIFY_FAILED` 错误。传入 `--insecure` 可跳过证书验证：
+如果您的控制台使用自签名或内部证书通过 HTTPS 提供服务（例如原始负载均衡器主机名），TLS 验证会以 `CERTIFICATE_VERIFY_FAILED` 错误拒绝连接。传入 `--insecure` 可跳过证书验证：
 
 ```bash
 agenteye --base-url https://agenteye.internal --insecure login
 ```
 
-`--insecure` **会在登录时保存到 `cli.json`**，后续命令会自动跳过验证，无需重复传入该标志。使用 `--secure` 可对单次命令强制进行验证，或在下次登录时将验证重新开启。CLI 会在每次禁用验证时向 stderr 输出警告。跳过验证会消除中间人攻击的防护，请确保在依赖此功能前信任通往 Dashboard 的网络路径（VPN、私有子网等）。
+**`--insecure` 在登录时会被保存到 `cli.json`**，因此后续命令会自动跳过验证，无需重复传入该标志。传入 `--secure` 可对单次调用进行强制验证，或在下次登录时将验证重新开启并保存。在验证被禁用期间，CLI 在任何联系控制台的命令之前都会向 stderr 打印警告。跳过验证会消除对中间人攻击的防护；请确保在依赖此选项之前，您信任通往控制台的网络路径（VPN、私有子网等）。
 
 ---
 
 ## 遥测与隐私
 
-> **注意：** 当前发布的 CLI **不发送任何使用遥测数据。** 已启用全局关闭开关，无论你的环境如何，都不会传输任何数据。以下部分描述的是万一遥测在未来被启用时的退出机制。
+> **注意：** 目前发布的 CLI **不发送任何使用遥测数据。** 主开关处于关闭状态，无论您的环境如何配置，均不会传输任何数据。以下内容描述了一旦遥测功能启用时的退出机制。
 
-即便启用，遥测也将**仅限匿名使用分析数据**，绝不包含你的智能体、会话或事件数据：
+即使在启用状态下，遥测也**仅为匿名使用分析数据**，绝不包含您的智能体、会话或事件数据：
 
-- **你的智能体、会话或事件数据绝不会离开你的基础设施。** 遥测仅上报 CLI 使用情况：命令和子命令名称（如 `keys create`）、你使用的标志的**名称**（绝不包含标志的值）、成功/退出状态、耗时，以及针对写操作的单次事件（如 `api_key_created`、`query_run`），其中仅携带静态名称/枚举值和粗粒度计数。你的 Dashboard URL、会话 token、邮箱、组织 slug、资源 id、SQL、密钥密文和查询过滤条件**绝不会被发送**。运营者仅通过不透明的内部 id 标识，绝不使用邮箱。
-- **提前退出遥测**：在 CLI 的环境中设置 `AGENTEYE_ANALYTICS_DISABLED=1`（CLI 也遵循跨工具的 `DO_NOT_TRACK=1` 约定）。该设置在遥测启用的第一时间即生效，因此注重隐私的环境可永久保持退出状态。
-- 若遥测被启用，CLI 会直接向 PostHog（`https://us.i.posthog.com`）发送数据；封锁该主机的机器将静默地不发送任何内容，CLI 本身不受影响。
+- **您的智能体、会话或事件数据绝不会离开您的基础设施。** 仅上报 CLI 使用情况：命令和子命令名称（例如 `keys create`）、您使用的标志**名称**（绝不包含标志值）、成功/退出状态和耗时，以及变更操作的单次事件（例如 `api_key_created`、`query_run`，仅包含静态名称/枚举和粗略计数）。您的控制台 URL、会话令牌、邮箱、组织 slug、资源 id、SQL、密钥密文和查询过滤器**绝不会被发送**。运营者仅以不透明的内部 id 标识，绝不以邮箱标识。
+- **提前退出**可通过在 CLI 环境中设置 `AGENTEYE_ANALYTICS_DISABLED=1`（CLI 也支持跨工具的 `DO_NOT_TRACK=1` 约定）实现。一旦遥测功能开启，该设置立即生效，因此注重隐私的环境可以永久保持退出状态。
+- 如果遥测功能启用，CLI 会直接向 PostHog（`https://us.i.posthog.com`）发送数据；屏蔽了该主机的机器将静默地不发送任何数据，且 CLI 不受任何影响。
 
 ---
 
 ## 全局选项与约定
 
-请阅读本节，这些约定适用于所有命令。
+请阅读一遍；以下内容适用于每一条命令。
 
-- **全局选项必须放在命令之前。** `agenteye --json sessions` 是正确用法；`agenteye sessions --json` 是用法错误。全局选项包括 `--json`、`--base-url`、`--org`、`--token`、`--insecure`/`--secure`、`--timeout`、`--quiet` 和 `--no-color`。
-- **`--json` 将纯 JSON 输出到 stdout，且仅此而已。** 状态信息、警告和错误会输出到 **stderr**，因此 `--json` 的 stdout 捕获内容即便在显示状态行时也保持干净，可直接管道传给 `jq`。不加 `--json` 时，输出为带边框和彩色高亮的人类可读视图。
-- **使用 `--help` 探索命令。** 每个命令和子命令都有 `--help`（以及 `-h` 别名）：`agenteye -h`、`agenteye sessions -h`、`agenteye keys create -h`。顶层帮助还列出了退出码和全局选项。没有全局机器可读的接口全量输出；请使用各命令的 `--help`，以及针对两个注册表的 `agenteye query schema` 和 `agenteye settings schema`。
-- **确认提示在脚本和智能体环境下自动跳过。** 创建/更新/删除命令在交互式终端中会提示"确认操作吗？"，但**在 `--json` 模式下或 stdin 不是 TTY 时会自动跳过该提示**（TTY 是交互式终端会话；管道或 CI 运行器不是 TTY），因此脚本和智能体不会因此卡住。使用 `--yes`/`-y` 可显式跳过提示。由于智能体环境不会触发提示，智能体在执行破坏性操作前应先与人类确认。
-- **分页：** 结果按最新优先排列，使用游标分页（每页返回一个 token 用于获取下一页）。`--limit N`（别名 `-n`）限制行数，**默认为 50**；`--all` 自动分页（每次拉取 200 行），但**上限仍为 `--limit`**，因此裸 `--all` 仍止步于 50 条。如需完整扫描，请传入较大的明确上限：`--all --limit 1000`。`--page-size N` 控制每次请求的批量大小（最大 200）；`--cursor <id>` 从上一页返回的 `next_cursor` 处续读。
-- **时间过滤：** `--since` 接受相对时间窗口：`15m`、`1h`、`6h`、`24h`、`7d` 或 `all`（Dashboard 的预设值）。如需更长或自定义范围（例如最近 30 天），请使用 `--from`/`--to`：明确的 ISO-8601 UTC 时间戳，**必须包含 `T` 和时区**（如 `2026-06-01T00:00:00Z`），将覆盖 `--since`。使用空格分隔或不带时区的值属于用法错误。
-- **`--fields a,b,c`**（适用于 `events`、`sessions`、`evals`、`errors`）将输出限制为指定字段，对表格视图和 `--json` 均有效。未知字段名会被拒绝并提示有效列表，这也是探索字段名称的便捷方式。
-- **`--file payload.json`**（或 `--file -` 从 stdin 读取）用于在资源结构复杂时（`alerts create/update`、`settings set` 和 `users create/update`）提供完整 JSON 请求体。已保存查询的 SQL 则使用 `--sql @file.sql`。
-- **多值过滤**使用逗号分隔 → 匹配为集合（同一过滤条件内为 union，跨过滤条件为 AND）：`--event-type tool_use,tool_result`。Click 选项不支持可变参数，因此 `--add a b` 会出错。请使用 `--add a,b`、重复标志（`--add a --add b`）或加引号（`--add "a b"`）。
+- **全局选项必须放在命令之前。** `agenteye --json sessions` 是正确的；`agenteye sessions --json` 会报用法错误。全局选项包括：`--json`、`--base-url`、`--org`、`--token`、`--insecure`/`--secure`、`--timeout`、`--quiet` 和 `--no-color`。
+- **`--json` 仅向 stdout 输出纯 JSON，不输出其他内容。** 人类可读的状态行、警告和错误均输出到 **stderr**，因此 `--json` 的 stdout 捕获保持干净，即使显示了状态行也可以直接通过管道传给 `jq`。不使用 `--json` 时，将显示适合人类阅读的带框彩色表格。
+- **通过 `--help` 探索功能。** 每个命令和子命令都支持 `--help`（以及 `-h` 别名）：`agenteye -h`、`agenteye sessions -h`、`agenteye keys create -h`。顶层帮助还列出了退出码和全局选项。没有全局机器可读的接口导出；请使用各命令的 `--help`，以及特定领域的 `agenteye query schema` 和 `agenteye settings schema` 来了解这两个注册表。
+- **确认提示在脚本和智能体中自动跳过。** 创建/更新/删除命令在交互式终端中会提示"确认吗？"，但**在 `--json` 模式下或 stdin 不是 TTY 时会自动跳过该提示**（TTY 是交互式终端会话；管道或 CI 运行器不是），因此脚本和智能体不会挂起。传入 `--yes`/`-y` 可显式跳过提示。由于智能体不会触发提示，智能体应在执行破坏性操作前先与用户确认。
+- **分页：** 结果按最新优先排列，使用游标分页（每页返回一个令牌用于获取下一页）。`--limit N`（别名 `-n`）限制行数，**默认为 50**；`--all` 自动翻页（每次 200 行）**但仍受 `--limit` 限制**，因此单独使用 `--all` 仍会在 50 条时停止。如需完整扫描，请传入较大的显式上限：`--all --limit 1000`。`--page-size N` 控制每次请求的块大小（最大 200）；`--cursor <id>` 从上一页的 `next_cursor` 恢复。
+- **时间过滤器：** `--since` 接受相对时间窗口：`15m`、`1h`、`6h`、`24h`、`7d` 或 `all`（控制台的预设值）。对于更长或自定义的范围（例如最近 30 天），请使用 `--from`/`--to`：**必须包含 `T` 和时区的** ISO-8601 UTC 时间戳（例如 `2026-06-01T00:00:00Z`），会覆盖 `--since`。以空格分隔或不含时区的值会报用法错误。
+- **`--fields a,b,c`**（适用于 `events`、`sessions`、`evals`、`errors`）将输出限制为指定字段，对表格和 `--json` 均有效。未知字段名称会被拒绝并显示有效列表，这是一种快速探索字段名称的方法。
+- **`--file payload.json`**（或 `--file -` 读取 stdin）用于提供完整的 JSON 请求体，适用于资源结构复杂的情况（`alerts create/update`、`settings set` 和 `users create/update`）。已保存查询的 SQL 使用 `--sql @file.sql` 代替。
+- **多值过滤器** 使用逗号分隔 → 以集合方式匹配（同一过滤器内为并集，跨过滤器为交集）：`--event-type tool_use,tool_result`。Click 选项不支持可变参数，因此 `--add a b` 会出错。请使用 `--add a,b`、重复标志（`--add a --add b`）或加引号（`--add "a b"`）。
 
 ---
 
@@ -174,86 +174,86 @@ agenteye --base-url https://agenteye.internal --insecure login
 
 ### 最常用的 5 个命令
 
-日常工作大多通过少数几个读取命令完成。从这里开始，有需要时再查阅下方的完整命令列表：
+日常工作中大多数操作只需用到少数几个读取命令。从这里开始，有需要时再查阅下方完整列表：
 
 | 命令 | 功能 | 示例 |
 |---|---|---|
-| `sessions` | 每行一个智能体运行记录：时间、环境、智能体、状态、最新分数。 | `agenteye --json sessions --since 24h --status error` |
-| `events` | 运行内每一步的原始事件轨迹（加 `--full` 可查看载荷）。 | `agenteye --json events --session-id run-001 --all` |
-| `evals` | 评估结果和分数；`--aggregate` 可汇总统计。 | `agenteye --json evals --aggregate --since 7d --env prod` |
-| `errors` | 仅查看出错事件；`--aggregate` 可按类型统计数量。 | `agenteye --json errors --since 24h --aggregate` |
-| `list` | 探索有效的过滤值（智能体、环境、模型等）。 | `agenteye list agents` |
+| `sessions` | 每行对应一次智能体运行：时间、环境、智能体、状态、最新评分。 | `agenteye --json sessions --since 24h --status error` |
+| `events` | 运行内每一步的原始事件流（加 `--full` 获取完整载荷）。 | `agenteye --json events --session-id run-001 --all` |
+| `evals` | 评估结果和评分；`--aggregate` 汇总统计。 | `agenteye --json evals --aggregate --since 7d --env prod` |
+| `errors` | 仅显示出错事件；`--aggregate` 按类型统计数量。 | `agenteye --json errors --since 24h --aggregate` |
+| `list` | 探索有效的过滤器值（智能体、环境、模型……）。 | `agenteye list agents` |
 
 ### CLI 的全部功能
 
-以下是完整功能列表。CLI 共有 **18 个顶层命令**。所有读取命令均支持 `--json` 和上述全局选项；运行 `agenteye <command> -h`（或 `<command> <subcommand> -h`）可查看任意命令的完整标志列表和 JSON 结构。
+以下是完整功能列表。CLI 共有 **18 个顶层命令**。所有读取命令均支持 `--json` 和上述全局选项；运行 `agenteye <command> -h`（或 `<command> <subcommand> -h`）可查看任一命令的详细标志列表和 JSON 输出结构。
 
 ### 身份认证：`login` · `logout` · `whoami` · `orgs` · `version` · `help`
 
 ```bash
 agenteye login --email you@example.com [--org acme]   # 邮件一次性验证码；保存会话
-agenteye logout                                       # 清除本机已保存的会话
-agenteye whoami                                       # 当前用户、活跃组织、权限
+agenteye logout                                       # 清除本机保存的会话
+agenteye whoami                                       # 当前用户、激活的组织及权限
 agenteye version                                      # 输出 CLI 版本（与 --version 相同）
 agenteye help                                         # 顶层帮助（与 --help 相同）
 ```
 
-`orgs` 用于查看和切换活跃租户：
+`orgs` 用于查看和切换当前激活的租户：
 
 ```bash
-agenteye orgs list        # 你的组织及你在各组织中的角色（活跃组织有标记）
-agenteye orgs switch acme # 更改已保存的活跃组织（在 TTY 上省略 slug 可从列表中选择）
-agenteye orgs current     # 活跃组织的身份信息
-agenteye orgs perms       # 你在活跃组织中的权限，按资源分组
+agenteye orgs list        # 您的组织列表 + 您在各组织中的角色（激活的已标记）
+agenteye orgs switch acme # 更改已保存的激活组织（在 TTY 上省略 slug 可从列表中选择）
+agenteye orgs current     # 当前激活组织的身份信息
+agenteye orgs perms       # 您在当前激活组织中的权限，按资源分组
 ```
 
 ### 观测（只读）：`events` · `sessions` · `evals` · `errors` · `list`
 
-以下命令均无需确认提示。共用过滤器：`--session-id`、`--agent-id`、`--env`（**不是** `--environment`）以及时间范围（`--since` / `--from` / `--to`）。
+这些命令均无需确认。共用过滤器：`--session-id`、`--agent-id`、`--env`（**不是** `--environment`）以及时间范围（`--since` / `--from` / `--to`）。
 
 ```bash
-# events（别名：原始的逐步事件轨迹），最新优先
+# events（别名：原始每步事件流），最新优先
 agenteye --json events --session-id run-001 --event-type tool_use,tool_result --all --limit 1000
 agenteye --json events --since 1h --search timeout --all | jq '.events[].payload'
 
-# sessions：每行一个智能体运行记录（时间/环境/智能体/会话/状态；不支持按分数过滤）
+# sessions：每行对应一次智能体运行（时间/环境/智能体/会话/状态；不支持评分过滤）
 agenteye --json sessions --since 24h --status error
 agenteye --json sessions --agent-id checkout-bot --env prod --all --limit 1000
 
-# evals：评估结果 + 分数；--score 按指标过滤，--aggregate 汇总统计
+# evals：评估结果 + 评分；--score 按指标过滤，--aggregate 汇总统计
 agenteye --json evals --score helpfulness:0.5..0.8 --score tool_efficiency:..0.3
-agenteye --json evals --aggregate --since 7d --env prod        # 状态分布 + 各指标分数统计
+agenteye --json evals --aggregate --since 7d --env prod        # 状态分布 + 各键评分统计
 
-# errors：出错事件；--aggregate 统计数量/会话/智能体/最近出现时间
+# errors：出错事件；--aggregate 统计数量/会话/智能体/最后出现时间
 agenteye --json errors --since 24h --aggregate
 agenteye --json errors --since 24h --error-type timeout --all --limit 1000
 
-# list：过滤前先探索有效的过滤值
+# list：过滤前先探索有效的过滤器值
 agenteye list envs        # 还支持：agents event_types score_filters models hooks tools error_types
 ```
 
-`--score KEY:MIN..MAX`（适用于 **`evals`**，不适用于 `sessions`）可重复使用，多个条件为 AND 关系；两侧边界均可省略（`..0.5` 表示 ≤ 0.5，`0.9..` 表示 ≥ 0.9）。每次请求最多可指定 20 个分数过滤条件。`evals --scores-full` 是**仅限人类表格视图**的显示标志，会显示全部分数对，而非只显示前几个加 `+N` 计数。在 `--json` 模式下无效，`--json` 始终返回完整的分数对象。如需**端到端读取某个会话**，可将事件轨迹与其评估结果结合使用：
+`--score KEY:MIN..MAX`（适用于 **`evals`**，不适用于 `sessions`）可重复使用，多个条件取交集；任一边界均可省略（`..0.5` 表示 ≤ 0.5，`0.9..` 表示 ≥ 0.9）。每次请求最多支持 20 个评分过滤器。`evals --scores-full` 是**仅适用于人类表格**的显示标志；它会显示所有评分对，而不是前几个加上 `+N` 计数。在 `--json` 模式下无效，`--json` 始终返回完整的评分对象。如需**端到端读取一个会话**，可将事件流与其评估结果结合使用：
 
 ```bash
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
-agenteye --json evals  --session-id run-001                       # 该会话的分数 + 状态
+agenteye --json evals  --session-id run-001                       # 对应的评分 + 状态
 ```
 
-### 管理（权限限制）：`keys` · `users` · `settings` · `alerts` · `incidents`
+### 管理（需要权限）：`keys` · `users` · `settings` · `alerts` · `incidents`
 
-**`keys`**：API 密钥。密钥在本地生成后发送到服务器（服务器仅存储哈希值），**仅在创建/重新生成时显示一次**；请务必及时保存。使用 `--json` 时，密钥仅出现在 `key` 字段中。通过**名称**引用。
+**`keys`**：API 密钥。密文在本地生成后发送到服务器（服务器仅存储其哈希值），并在创建/重新生成时**仅显示一次**；请立即保存。使用 `--json` 时，密文仅出现在 `key` 字段中。通过**名称**引用。
 
 ```bash
-agenteye keys list                                   # 活跃密钥优先，然后是已吊销密钥
+agenteye keys list                                   # 先显示激活的密钥，再显示已吊销的
 agenteye keys show ci-bot
-agenteye keys create ci-bot --add events:read.add    # 按需设置权限范围；仅输出一次密钥
-agenteye keys create ops --permission-set standard --remove queries:run   # 基于预设，再做裁剪
+agenteye keys create ci-bot --add events:read.add    # 按需限定权限范围；一次性输出密文
+agenteye keys create ops --permission-set standard --remove queries:run   # 从预设开始，再裁剪
 agenteye keys update ci-bot --add evaluations:read --yes
-agenteye keys regenerate ci-bot --yes                # 轮换密钥（旧密钥立即失效）
+agenteye keys regenerate ci-bot --yes                # 轮换密文（旧密文立即失效）
 agenteye keys disable ci-bot --yes                   # 吊销
 ```
 
-权限计算方式：`(permission-set ∪ --add) − --remove`。Token 格式为 `slug:action`（如 `events:read`）或 `slug:action.action`，可对一个资源展开多个操作（`events:read.add` → `events:read`、`events:add`）。预设权限集：`read-only`、`standard`、`admin`。人类专属权限（如 `keys:update`）不能授予密钥。
+权限计算方式为 `(permission-set ∪ --add) − --remove`。令牌格式为 `slug:action`（例如 `events:read`），或 `slug:action.action` 在单个资源上展开多个权限（`events:read.add` → `events:read`、`events:add`）。预设值：`read-only`、`standard`、`admin`。人类专用权限（`keys:update`）不能授予给密钥。
 
 **`users`**：组织成员，通过**邮箱**引用（也接受 UUID id）。
 
@@ -262,39 +262,39 @@ agenteye users list [--active-only]
 agenteye users show dev@corp.com
 agenteye users create dev@corp.com --permission-set standard
 agenteye users update dev@corp.com --add alerts:write --remove queries:delete   # 预览 + 确认
-agenteye users disable dev@corp.com --yes            # 有受保护账户/自身账户防护
+agenteye users disable dev@corp.com --yes            # 有受保护/自身保护机制
 agenteye users enable dev@corp.com
 ```
 
-**`settings`**：固定注册表（只能读取和修改已有键；不能新增键）。
+**`settings`**：固定注册表（您只能读取和修改现有键；不能创建新键）。
 
 ```bash
-agenteye settings list                               # 键 · 值 · 类型 · 更新时间（密钥已脱敏）
-agenteye settings schema                             # 每个键的接受格式（类型 · 范围 · 描述）
+agenteye settings list                               # 键 · 值 · 类型 · 更新时间（密文已遮蔽）
+agenteye settings schema                             # 每个键的接受规范（类型 · 范围 · 描述）
 agenteye settings set session_ttl_secs --value 86400 --yes
 ```
 
-**`alerts`**：告警定义，通过**名称**引用。`create` 接受一个位置参数 NAME，并可通过标志或 `--file` 提供完整 JSON 请求体。
+**`alerts`**：告警定义，通过**名称**引用。`create` 接受位置参数 NAME，以及标志或通过 `--file` 提供的完整 JSON 请求体。
 
 ```bash
 agenteye alerts list
 agenteye alerts show high-errors
 agenteye alerts create high-errors --file alert.json          # NAME 为必填（位置参数）
 agenteye alerts update high-errors --severity critical --yes
-agenteye alerts test high-errors --yes                        # 发送测试通知
+agenteye alerts test high-errors --yes                        # 触发测试通知
 agenteye alerts delete high-errors --yes
 ```
 
-**`incidents`**：告警事件，通过 id 引用（支持短 id）。`show` 输出完整的活动日志；建议操作前先阅读。
+**`incidents`**：告警事件，通过 id 引用（支持短 id）。`show` 输出完整的活动日志；在操作前请先阅读。
 
 ```bash
-agenteye incidents list --state firing                # 也支持：acknowledged, resolved
+agenteye incidents list --state firing                # 还支持：acknowledged, resolved
 agenteye incidents count
 agenteye incidents show <id>
 agenteye incidents ack <id>
-agenteye incidents assign <id> you@corp.com           # 受让人必须是运营者
+agenteye incidents assign <id> you@corp.com           # 受托人必须是运营者
 agenteye incidents resolve <id> --yes
-agenteye incidents open --alert-id <id> --severity critical    # 针对某告警手动创建事件
+agenteye incidents open --alert-id <id> --severity critical    # 针对告警手动开启一个事件
 agenteye incidents comment-add <id> "root cause: upstream 5xx"
 agenteye incidents comment-list <id> ; agenteye incidents comment-delete <id> <comment-id>
 agenteye incidents subscribe <id> ; agenteye incidents unsubscribe <id> ; agenteye incidents subscribers <id>
@@ -302,7 +302,7 @@ agenteye incidents subscribe <id> ; agenteye incidents unsubscribe <id> ; agente
 
 ### 分析与助手：`query` · `agent`
 
-**`query`**：针对分析存储的已保存 SQL 查询及临时查询运行器。已保存查询通过**名称**引用；SQL 在服务器端进行验证（仅允许 SELECT/WITH，有语句超时和行数上限）。
+**`query`**：针对分析存储的已保存 SQL，以及临时查询执行器。已保存查询通过**名称**引用；SQL 在服务器端验证（仅支持 SELECT/WITH，有语句超时和行数上限）。
 
 ```bash
 agenteye query schema [TABLE]                         # 分析视图的列布局
@@ -313,12 +313,12 @@ agenteye query create errs --sql @errs.sql --description "errored events (24h)"
 agenteye query update errs --sql @errs.sql --yes ; agenteye query delete errs --yes
 ```
 
-**`agent`**：与内置 **AI 助手**对话（与 Dashboard 中相同的只读分析助手）。对话通过短 chat-id 引用（支持前缀匹配）。
+**`agent`**：与内置 **AI 助手**对话（与控制台中相同的只读分析师）。对话通过短 chat-id 引用（支持前缀解析）。
 
 ```bash
 agenteye agent health                                 # AI 助手是否已配置/可访问
-agenteye agent models                                 # 可传给 --model 的模型列表（默认已标记）
-agenteye agent ask "which agents errored most in the last day?"    # 开始对话；输出短 id
+agenteye agent models                                 # 可通过 --model 传入的模型列表（默认已标记）
+agenteye agent ask "which agents errored most in the last day?"    # 开启对话；输出其短 id
 agenteye agent ask --chat <short-id> "and which tools did they call?"   # 继续该对话
 agenteye agent chats ; agenteye agent show <short-id>
 agenteye agent rename <short-id> --title "error triage" ; agenteye agent delete <short-id>
@@ -331,20 +331,20 @@ agenteye agent rename <short-id> --title "error triage" ; agenteye agent delete 
 | 代码 | 含义 |
 |---|---|
 | 0 | 成功 |
-| 1 | 意外错误（如 Dashboard 返回 5xx） |
-| 2 | 用法错误（参数无效、未知命令/标志、名称冲突） |
-| 3 | 无法连接到 Dashboard |
+| 1 | 意外错误（例如控制台返回 5xx） |
+| 2 | 用法错误（无效参数、未知命令/标志、名称冲突） |
+| 3 | 无法连接控制台 |
 | 4 | 未登录或会话已过期；请运行 `agenteye login` |
-| 5 | 已认证，但账号缺少所需权限（错误信息中会指明所需权限） |
-| 6 | 请求的资源不存在（如未知的会话或事件 id） |
+| 5 | 已认证，但账户缺少所需权限（消息中会指明具体权限） |
+| 6 | 请求的资源未找到（例如未知的会话或事件 id） |
 
-这些退出码使 CLI 适合脚本化使用：编码智能体可根据 `4` 提示用户重新认证，或根据 `5` 提示缺少的权限。参见 [CLI 智能体使用示例](/zh/agenteye/cli-recipes)，了解退出码处理模式和 JSON 输出结构。
+这些退出码使 CLI 适合脚本化使用：编码智能体可以根据 `4` 提示您重新认证，或根据 `5` 提示缺少的权限。请参阅 [CLI 智能体使用食谱](/zh/agenteye/cli-recipes)，了解退出码处理模式和 JSON 输出结构。
 
 ---
 
 ## 下一步
 
-- **[CLI 智能体使用示例](/zh/agenteye/cli-recipes)**：可直接复制的查询模式、`jq` 单行命令、`--fields` 投影、退出码处理及 JSON 输出结构，专为通过 CLI 驱动编码智能体而编写。
-- **[CLI 智能体技能](/zh/agenteye/cli-skill)**：将此 CLI 打包为可安装的 Claude Code / Codex *skill*，让编码智能体通过自然语言请求驱动 Failproof AI Observability。
+- **[CLI 智能体使用食谱](/zh/agenteye/cli-recipes)**：可直接复用的查询模式、`jq` 单行命令、`--fields` 投影、退出码处理以及 JSON 输出结构，专为驱动 CLI 的编码智能体编写。
+- **[CLI 智能体技能](/zh/agenteye/cli-skill)**：将此 CLI 打包为可安装的 Claude Code / Codex *技能*，让编码智能体通过自然语言请求驱动 Failproof AI Observability。
 - **[API 密钥](/zh/agenteye/api-keys)**：`keys create --add …` 背后的权限模型。
 - **[AI 助手](/zh/agenteye/assistant)**：启用 `agent ask` 所使用的助手。

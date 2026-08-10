@@ -1,32 +1,32 @@
 ---
 title: "Failproof AI"
-description: "FailproofAI offre aux agents IA 39 politiques de fiabilité intégrées qui détectent les boucles, les fuites de secrets, les appels d'outils destructeurs et bien plus encore, en une seule installation."
+description: "FailproofAI donne aux agents IA 39 politiques de défaillance intégrées qui détectent les boucles, les fuites de secrets, les appels d'outils destructeurs et bien plus encore, en une seule installation."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-Hooks et politiques pour la **gestion des défaillances IA**, la **récupération après erreur** et la **fiabilité des LLM**. Gardez vos agents IA fiables et autonomes avec **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI** et l'**Agents SDK**.
+Hooks et politiques pour la **gestion des défaillances IA**, la **récupération d'erreurs** et la **fiabilité des LLM**. Gardez vos agents IA fiables et en fonctionnement autonome avec **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI** et le **Agents SDK**.
 
-Les agents IA échouent de façon prévisible. Ils exécutent des commandes destructrices, laissent fuiter des secrets, dérivent hors de leur tâche, se retrouvent coincés dans des boucles ou poussent directement sur la branche principale. Sans surveillance, de petites défaillances se transforment en pannes généralisées, en identifiants compromis et en travail perdu.
+Les agents IA échouent de manière prévisible. Ils exécutent des commandes destructrices, laissent fuiter des secrets, dérivent hors de leur périmètre, se retrouvent coincés dans des boucles ou poussent directement sur la branche principale. Sans surveillance, de petites défaillances se transforment en pannes en cascade, en identifiants compromis et en travail perdu.
 
-FailproofAI résout ce problème grâce aux **politiques**. Ces règles s'accrochent à chaque appel d'outil de l'agent pour **détecter les défaillances**, **les atténuer** (bloquer, instruire, assainir) et **vous alerter** lorsqu'une intervention est nécessaire. Un tableau de bord local vous permet de passer en revue chaque appel d'outil, chaque défaillance et chaque action corrective après coup.
+FailproofAI résout ce problème grâce aux **politiques**. Ces règles s'accrochent à chaque appel d'outil de l'agent pour **détecter les défaillances**, **les atténuer** (bloquer, instruire, assainir) et **vous alerter** quand quelque chose nécessite votre attention. Un tableau de bord local vous permet de revoir chaque appel d'outil, chaque défaillance d'agent et chaque action de récupération après coup.
 
 Les transcriptions et l'évaluation des politiques restent sur votre machine. Les données ne sont envoyées que lorsque vous utilisez explicitement une fonctionnalité en ligne, comme les rappels d'audit authentifiés ou les invitations.
 
-## Démarrage
+## Démarrer
 
 <CardGroup cols={2}>
 
 <Card title="39 politiques intégrées" icon="shield" href="/fr/built-in-policies">
-  Bloquez les commandes destructrices, empêchez les fuites de secrets, maintenez les agents dans les limites du projet, et bien plus encore. Tout inclus, prêt à l'emploi.
+  Bloquez les commandes destructrices, empêchez les fuites de secrets, maintenez les agents dans les limites du projet, et bien plus encore. Tout est disponible dès l'installation.
 </Card>
 
 <Card title="Politiques personnalisées" icon="code" href="/fr/custom-policies">
-  Écrivez vos propres règles en JavaScript avec une API simple allow / deny / instruct.
+  Rédigez vos propres règles en JavaScript avec une API simple allow / deny / instruct.
 </Card>
 
 <Card title="Moniteur d'agents" icon="chart-line" href="/fr/dashboard">
-  Voyez ce que vos agents ont fait pendant votre absence. Parcourez les sessions, inspectez les appels d'outils, consultez où les politiques se sont déclenchées.
+  Voyez ce que vos agents ont fait pendant votre absence. Parcourez les sessions, inspectez les appels d'outils, examinez où les politiques se sont déclenchées.
 </Card>
 
 <Card title="Configuration simplifiée" icon="gear" href="/fr/configuration">
@@ -50,8 +50,8 @@ bun add -g failproofai
 </CodeGroup>
 
 ```bash
-failproofai policies --install   # activer les politiques (ou ignorer — `failproofai` proposera de les configurer au premier lancement)
-failproofai                      # lancer le tableau de bord
+failproofai policies --install   # enable policies (or skip — `failproofai` will offer to set them up on first run)
+failproofai                      # launch the dashboard
 ```
 
-Consultez le guide [Premiers pas](/fr/getting-started) pour la procédure complète.
+Consultez le guide [Premiers pas](/fr/getting-started) pour le parcours complet.

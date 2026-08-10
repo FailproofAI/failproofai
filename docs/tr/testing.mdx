@@ -1,10 +1,11 @@
 ---
+---
 title: Test Etme
-description: "Birim testleri, E2E testleri ve test yardımcıları"
+description: "Birim testleri, uçtan uca testleri ve test yardımcıları"
 icon: flask-vial
 ---
 
-failproofai iki test paketine sahiptir: **birim testleri** (hızlı, mock'lanmış) ve **uçtan uca testler** (gerçek subprocess çağrıları).
+failproofai iki test paketine sahiptir: **birim testleri** (hızlı, mock edilmiş) ve **uçtan uca testleri** (gerçek alt işlem çağrıları).
 
 ---
 
@@ -17,13 +18,13 @@ bun run test:run
 # Birim testlerini izleme modunda çalıştır
 bun run test
 
-# E2E testlerini çalıştır (kurulum gerektirir - aşağıya bakınız)
+# E2E testlerini çalıştır (kurulum gerekli - aşağıya bakın)
 bun run test:e2e
 
-# Derleme yapmadan tür denetlemesi yap
+# Derleme yapmadan tür kontrolü yap
 bunx tsc --noEmit
 
-# Linter çalıştır
+# Lint kontrolü
 bun run lint
 ```
 
@@ -31,16 +32,16 @@ bun run lint
 
 ## Birim testleri
 
-Birim testleri `__tests__/` klasöründe bulunur ve [Vitest](https://vitest.dev) ile `jsdom` kullanır.
+Birim testleri `__tests__/` içinde yaşar ve [Vitest](https://vitest.dev) ile `jsdom` kullanır.
 
 ```text
 __tests__/
   hooks/
-    builtin-policies.test.ts      # Her yerleşik politika için politika mantığı
-    hooks-config.test.ts          # Config yükleme ve kapsam birleştirme
-    policy-evaluator.test.ts      # Param enjeksiyonu ve değerlendirme sırası
-    custom-hooks-registry.test.ts # globalThis kayıt defteri ekle/al/temizle
-    custom-hooks-loader.test.ts   # ESM yükleyici, geçişli içe aktarmalar, hata işleme
+    builtin-policies.test.ts      # Her yerleşik ilke için ilke mantığı
+    hooks-config.test.ts          # Konfigürasyon yükleme ve kapsam birleştirme
+    policy-evaluator.test.ts      # Parametre enjeksiyonu ve değerlendirme sırası
+    custom-hooks-registry.test.ts # globalThis kaydı ekle/al/temizle
+    custom-hooks-loader.test.ts   # ESM yükleyici, geçişli içe aktarımlar, hata işleme
     manager.test.ts               # yükle/kaldır/listele işlemleri
   components/
     sessions-list.test.tsx        # Oturum listesi bileşeni
@@ -61,7 +62,7 @@ __tests__/
     AutoRefreshContext.test.tsx
 ```
 
-### Politika birim testi yazma
+### İlke birim testi yazma
 
 ```typescript
 import { describe, it, expect, beforeEach } from "vitest";
@@ -71,7 +72,7 @@ import { allow, deny } from "../../src/hooks/policy-types";
 describe("block-sudo", () => {
   const policy = getBuiltinPolicies().find((p) => p.name === "block-sudo")!;
 
-  it("sudo komutlarını reddeder", () => {
+  it("denies sudo commands", () => {
     const ctx = {
       eventType: "PreToolUse" as const,
       payload: {},
@@ -82,7 +83,7 @@ describe("block-sudo", () => {
     expect(policy.fn(ctx)).toEqual(deny("sudo command blocked by failproofai"));
   });
 
-  it("sudo olmayan komutlara izin verir", () => {
+  it("allows non-sudo commands", () => {
     const ctx = {
       eventType: "PreToolUse" as const,
       payload: {},
@@ -93,7 +94,7 @@ describe("block-sudo", () => {
     expect(policy.fn(ctx)).toEqual(allow());
   });
 
-  it("allowPatterns içindeki desenlere izin verir", () => {
+  it("allows patterns in allowPatterns", () => {
     const ctx = {
       eventType: "PreToolUse" as const,
       payload: {},
@@ -108,13 +109,13 @@ describe("block-sudo", () => {
 
 ---
 
-## Uçtan uca testler
+## Uçtan uca testleri
 
-E2E testleri gerçek `failproofai` ikili dosyasını bir subprocess olarak çalıştırır, stdin'e JSON yükünü aktarır ve stdout çıktısı ile çıkış kodunu doğrular. Bu, Claude Code'un kullandığı tam entegrasyon yolunu sınar.
+E2E testleri gerçek `failproofai` ikilisini alt işlem olarak çağırır, stdin'e bir JSON yükü gönderir ve stdout çıktısı ile çıkış koduna karşı doğrulama yapar. Bu, Claude Code'un kullandığı tam entegrasyon yolunu test eder.
 
 ### Kurulum
 
-E2E testleri, depo kaynağından doğrudan ikili dosyayı çalıştırır. İlk çalıştırmadan önce, custom hook dosyalarının `'failproofai'` dosyasından içe aktarırken kullandığı CJS paketini oluşturun:
+E2E testleri ikiliyi doğrudan depo kaynağından çalıştırır. İlk çalıştırmadan önce, özel kancı dosyalarının `'failproofai'`'den içe aktarırken kullandığı CJS paketini derleyin:
 
 ```bash
 bun build src/index.ts --outdir dist --target node --format cjs
@@ -126,33 +127,33 @@ Ardından testleri çalıştırın:
 bun run test:e2e
 ```
 
-Genel hook API'sini değiştirdiğiniz zaman (`src/hooks/custom-hooks-registry.ts`, `src/hooks/policy-helpers.ts` veya `src/hooks/policy-types.ts`) `dist/` klasörünü yeniden derleyin.
+Genel kancı API'sini değiştirdikçe (`src/hooks/custom-hooks-registry.ts`, `src/hooks/policy-helpers.ts` veya `src/hooks/policy-types.ts`) `dist/` yeniden derleyin.
 
 ### E2E test yapısı
 
 ```text
 __tests__/e2e/
   helpers/
-    hook-runner.ts      # İkili dosyayı çalıştır, yükü JSON olarak aktarıl, çıkış kodu + stdout + stderr yakala
-    fixture-env.ts      # Test başına izole edilmiş geçici dizinler ve config dosyaları
-    payloads.ts         # Her olay türü için Claude doğru yükü fabrikaları
+    hook-runner.ts      # İkiliyi başlat, yük JSON'ını gönder, çıkış kodu + stdout + stderr yakala
+    fixture-env.ts      # Yapılandırma dosyaları ile test başına izole edilmiş geçici dizinler
+    payloads.ts         # Her olay türü için Claude-doğru yük fabrikaları
   hooks/
-    builtin-policies.e2e.test.ts   # Her yerleşik politika gerçek subprocess ile
-    custom-hooks.e2e.test.ts       # Custom hook yüklemesi ve değerlendirmesi
-    config-scopes.e2e.test.ts      # Proje/yerel/genel konfigürasyonlarda birleştirme
-    policy-params.e2e.test.ts      # Her parametreleştirilmiş politika için param enjeksiyonu
+    builtin-policies.e2e.test.ts   # Gerçek alt işlem ile her yerleşik ilke
+    custom-hooks.e2e.test.ts       # Özel kancı yükleme ve değerlendirmesi
+    config-scopes.e2e.test.ts      # Proje/yerel/genel arasında yapılandırma birleştirme
+    policy-params.e2e.test.ts      # Parametreli her ilke için parametre enjeksiyonu
 ```
 
 ### E2E yardımcılarını kullanma
 
-**`FixtureEnv`** - test başına izole ortam:
+**`FixtureEnv`** - test başına izole edilmiş ortam:
 
 ```typescript
 import { createFixtureEnv } from "../helpers/fixture-env";
 
 const env = createFixtureEnv();
-// env.cwd    - geçici dizin; .failproofai/policies-config.json'u seçmek için payload.cwd olarak geç
-// env.home   - izole edilmiş ana dizin; gerçek ~/.failproofai sızıntısı yok
+// env.cwd    - geçici dizin; .failproofai/policies-config.json'ı almak için payload.cwd olarak geçir
+// env.home   - izole edilmiş ev dizini; gerçek ~/.failproofai sızıntısı yok
 
 env.writeConfig({
   enabledPolicies: ["block-sudo"],
@@ -164,7 +165,7 @@ env.writeConfig({
 
 `createFixtureEnv()` `afterEach` temizliğini otomatik olarak kaydeder.
 
-**`runHook`** - ikili dosyayı çalıştır:
+**`runHook`** - ikiliyi çağır:
 
 ```typescript
 import { runHook } from "../helpers/hook-runner";
@@ -180,7 +181,7 @@ expect(result.exitCode).toBe(0);
 expect(result.parsed?.hookSpecificOutput?.permissionDecision).toBe("deny");
 ```
 
-**`Payloads`** - hazır yükü fabrikaları:
+**`Payloads`** - hazır yük fabrikaları:
 
 ```typescript
 Payloads.preToolUse.bash(command, cwd)
@@ -201,7 +202,7 @@ import { runHook } from "../helpers/hook-runner";
 import { Payloads } from "../helpers/payloads";
 
 describe("block-rm-rf (E2E)", () => {
-  it("rm -rf komutunu reddeder", async () => {
+  it("denies rm -rf", async () => {
     const env = createFixtureEnv();
     env.writeConfig({ enabledPolicies: ["block-rm-rf"] });
 
@@ -215,7 +216,7 @@ describe("block-rm-rf (E2E)", () => {
     expect(result.parsed?.hookSpecificOutput?.permissionDecision).toBe("deny");
   });
 
-  it("özyinelemeli olmayan rm'e izin verir", async () => {
+  it("allows non-recursive rm", async () => {
     const env = createFixtureEnv();
     env.writeConfig({ enabledPolicies: ["block-rm-rf"] });
 
@@ -237,24 +238,24 @@ describe("block-rm-rf (E2E)", () => {
 |----------|-----------|--------|
 | `PreToolUse` reddet | `0` | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"..."}}` |
 | `PostToolUse` reddet | `0` | `{"hookSpecificOutput":{"additionalContext":"Blocked ... because: ..."}}` |
-| Talimattır (Stop olmayan) | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
-| Stop talimatı | `2` | boş stdout; sebep stderr'de |
+| Talimat (Stop dışında) | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
+| Stop talimatı | `2` | boş stdout; nedeni stderr'de |
 | İzin ver | `0` | boş dize |
 
-### Vitest konfigürasyonu
+### Vitest yapılandırması
 
-E2E testleri şunları içeren `vitest.config.e2e.mts` kullanır:
+E2E testleri `vitest.config.e2e.mts` ile kullanır:
 
-- `environment: "node"` - tarayıcı global değişkenleri gerekli değil
-- `pool: "forks"` - gerçek işlem izolasyonu (testler alt işlemleri oluşturur)
-- `testTimeout: 20_000` - test başına 20s (ikili başlatma + hook değerlendirmesi)
+- `environment: "node"` - tarayıcı globals gerekli değil
+- `pool: "forks"` - gerçek işlem izolasyonu (testler alt işlemler başlatır)
+- `testTimeout: 20_000` - test başına 20s (ikili başlatma + kancı değerlendirmesi)
 
-`forks` havuzu önemlidir: iş parçacığı tabanlı çalışanlar `globalThis` paylaşır ve bu da alt işlem oluşturan testleri etkileyebilir. İşlem tabanlı fork'lar bunu engeller.
+`forks` havuzu önemlidir: iş parçacığı tabanlı çalışanlar `globalThis` paylaşırlar, bu da alt işlem başlatma testlerini etkileyebilir. İşlem tabanlı forklar bunu önler.
 
 ---
 
 ## CI
 
-Tam CI çalıştırması (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) birleştirilmeden önce geçmesi gerekir. E2E paketi paralel olarak ayrı bir CI işi olarak çalışır.
+Tam CI çalıştırması (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`) birleştirmeden önce geçmesi gerekir. E2E paketi paralel olarak ayrı bir CI işi olarak çalışır.
 
-Tam ön birleştirme kontrol listesi için [Contributing](../CONTRIBUTING.md) bölümüne bakınız.
+Tam birleştirme öncesi kontrol listesi için [Katkı](../CONTRIBUTING.md)'ya bakın.

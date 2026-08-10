@@ -1,45 +1,46 @@
 ---
-title: "Gösterge Panelleri"
-description: "Canlı ajanlarınızın verilerini tek bir paylaşılan görünüme dönüştürün ve tüm ekibiniz bunu izlesin."
+title: "Panolar"
+description: "Canlı aracı verilerinizi tüm ekibinizin izlediği tek bir görüntüye dönüştürün."
 ---
 
-Canlı ajanlarınızın verilerini tek bir paylaşılan görünüme dönüştürün ve tüm ekibiniz bunu izlesin. Önemli sorgularını grafikler olarak sabitleyin ve herkes tek bakışta aynı sayıları görsün, hiç sorguyu yeniden çalıştırmaya gerek kalmadan.
 
-![Kaydedilmiş sorgulardan oluşturulmuş bir gösterge paneli: saatlik olaylar çizgisi, türe göre hatalar çubuğu, gecikme alan grafiği ve modele göre tokenler](/agenteye/images/dashboard-fleet.png)
+Canlı aracı verilerinizi tüm ekibinizin izlediği tek bir görüntüye dönüştürün. Önemli sorgularını grafikler olarak sabitleyin ve herkes bir bakışta aynı sayıları görür—hiç bir sorguyu yeniden çalıştırmaya gerek kalmaz.
+
+![Kaydedilmiş sorgulardan oluşturulmuş bir pano: saatlik olayların satırı, türe göre hatalar çubuğu, gecikme alan grafiği ve modele göre tokenler](/agenteye/images/dashboard-fleet.png)
 
 *Bir pano, dört kaydedilmiş sorgu: saatlik olaylar, türe göre hatalar, gecikme ve modele göre tokenler.*
 
 ## Herkes aynı gerçeği görür
 
-Sohbete ekran görüntüsü yapıştırmayı bırakın ve aynı sorguyu günde beş kez çalıştırmayı bırakın. Gösterge paneli, ekibinizin herhangi biri açabileceği, tam olarak aynı görünümü gösteren paylaşılan, kuruluş genelinde bir tahta olur. Temel veriler değiştiğinde, grafikler de onunla birlikte hareket eder, böylece pano her zaman günceldir ve kimse eski sayılar üzerinde tartışmaz.
+Ekran görüntülerini sohbete yapıştırmayı ve aynı sorguyu günde beş kez çalıştırmayı bırakın. Pano, ekibinizdeki herkesin tam olarak aynı görünümü açabileceği paylaşılan, kuruluş genelinde bir tahta olur. Alttaki veriler değiştiğinde, grafikler bununla birlikte hareket eder, bu nedenle pano her zaman günceldir ve kimse eski sayılar üzerinde tartışmaz.
 
-Yukarıdaki filo gösterge paneli, günlük operasyonlar için iyi bir başlangıç şeklidir:
+Yukarıdaki filo panosu günlük işlemler için iyi bir başlangıç şeklidir:
 
-- bir **saatlik olaylar** çizgisi, böylece verimlilik izlenebilir ve ani düşüş yakalanabilir
-- bir **türe göre hatalar** çubuğu, böylece en büyük hata kategorileri hemen göze çarpar
-- bir **gecikme** alan grafiği, böylece yavaşlamalar kullanıcılar şikayet etmeden ortaya çıkar
-- bir **modele göre tokenler** dökümü, böylece maliyet görünümde kalır
+- bir **saatlik olayları** satırı, böylece verimliliği izleyebilir ve ani bir düşüşü yakalayabilirsiniz
+- bir **türe göre hatalar** çubuğu, böylece en büyük başarısızlık kategorileriniz hemen göze çarpar
+- bir **gecikme** alan grafiği, böylece yavaşlamalar kullanıcılar şikayetçi olmadan görülür
+- bir **modele göre tokenler** dökümü, böylece maliyet göz önünde tutulur
 
-Panolarınızı `/<org-slug>/dashboards` adresinde bulabilirsiniz.
+Panolarınızı `/<org-slug>/dashboards` adresinde bulacaksınız.
 
 ## Zaten kaydettiğiniz sorguları sabitleyin
 
-Her karo kaydedilmiş bir sorgudan başlar. [Sorgular](/tr/agenteye/queries) kütüphanesinde (yerleşik ön ayarlar ve sizin kendi özel sorgularınız, olaylar ve değerlendirmeleriniz üzerinde) önemsediğiniz sorguyu oluşturun ve kaydedin, ardından bunu bir gösterge paneline veriye uygun grafik olarak sabitleyin: trendler için **çizgi**, kategorileri karşılaştırmak için **çubuk**, hacim için **alan** veya pay dökümü için **pasta**.
+Her karo kaydedilmiş bir sorguyla başlar. [Sorguları](/tr/agenteye/queries) kütüphanesinde (yerleşik ön ayarlar artı kendi öğeleriniz, olaylarınız ve değerlendirmeleriniz üzerinde) önemsediğiniz sorguyu oluşturun ve kaydedin, ardından bunu veriye uygun grafik olarak bir panoya sabitleyin: trend için bir **satır**, kategorileri karşılaştırmak için bir **çubuk**, hacim için bir **alan** veya hisse dökümü için bir **pasta**.
 
-Bir karo yalnızca kaydedilmiş sorgunuzun grafik olarak oluşturulduğu için, elle senkronize tutulması gereken bir şey yoktur. Sorguyu bir kez güncelleyin ve onu kullanan her gösterge paneli de güncellenir.
+Bir karo sadece kaydedilmiş sorgunuz grafik olarak gösterildiğinden, elimiz tarafından senkronizasyonda tutulacak bir şey yoktur. Sorguyu bir kez güncelleyin ve onu kullanan her pano da güncellenir.
 
-## Hacim değil, kaliteyi izleyin
+## Sadece hacmi değil, kaliteyi izleyin
 
-Hacim, ajanların meşgul olduğunu söyler. Kalite, aslında işi yapıyor olduklarını söyler. Bir gösterge panelini [değerlendirme puanlarınıza](/tr/agenteye/evaluations) yönlendirin ve zamanla çalıştırmaların ne kadar iyi gittiğini izleyen bir pano elde edin; böylece kalite gerilemeleri müşteriden gelen sürpriz yerine bir grafikteki düşüş olarak ortaya çıkar.
+Hacim, aracıların meşgul olduğunu gösterir. Kalite, aslında işi yaptıklarını gösterir. Bir panoları [değerlendirme puanlarınıza](/tr/agenteye/evaluations) yönlendirin ve zamanla çalıştırmaların ne kadar iyi gittiğini izleyen bir pano alırsınız, bu nedenle kalite gerilemeleri bir müşteriden sürpriz yerine bir grafikte düşüş olarak görülür.
 
-![Kaydedilmiş değerlendirme sorgularından oluşturulmuş, kaliteye odaklı bir gösterge paneli](/agenteye/images/dashboard-quality.png)
+![Kaydedilmiş değerlendirme sorgularından oluşturulmuş, kaliteye odaklanan bir pano](/agenteye/images/dashboard-quality.png)
 
-*Bir kalite panosu, değerlendirme puanlarınızı en önemli konuma yerleştirir, operasyonel sayıların hemen yanında.*
+*Bir kalite panosu, değerlendirme puanlarınızı ön plana ve merkeze alır, işletimsel sayıların hemen yanında.*
 
-Bir operasyon panelini ve bir kalite panelini yan yana tutun ve ekibinizin "çalışıyor mu?" ve "iyi mi?" sorularının her ikisini de cevaplamak için tek bir yeri olur, kimse sorguyu yeniden çalıştırmaya gerek duymadan.
+Operasyon panolarını ve kalite panolarını yan yana tutun ve ekibinizin "çalışıyor mu?" ve "iyi mi?" soruların her ikisine de cevap vermek için bir yeri vardır, hiç kimse bir sorguyu yeniden çalıştırmaz.
 
 ## İlgili
 
-- [Sorgular](/tr/agenteye/queries): karosu olacak sorguları oluşturun ve kaydedin.
-- [Değerlendirmeler](/tr/agenteye/evaluations): çalıştırmaları puanlandırın, böylece kaliteyi zaman içinde grafiğe dökebilirsiniz.
-- [Uyarılar](/tr/agenteye/alerts): bu ölçütlerden herhangi birindeki eşiği bir uyarıya dönüştürün.
+- [Sorgular](/tr/agenteye/queries): karolar haline gelen sorguları oluşturun ve kaydedin.
+- [Değerlendirmeler](/tr/agenteye/evaluations): zamanla kaliteyi grafiklendirmek için çalıştırmalarınız puanlayın.
+- [Uyarılar](/tr/agenteye/alerts): bu ölçümlerden herhangi birine bir eşik dönüştürün.

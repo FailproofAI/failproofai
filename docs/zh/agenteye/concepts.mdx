@@ -1,87 +1,87 @@
 ---
 title: "概念"
-description: "Failproof AI 可观测性术语表——事件、会话、评估、审计、发现与事故，一站式定义。"
+description: "Failproof AI 可观测性的术语词汇表——事件、会话、评估、审计、发现与事件单——集中定义于此。"
 ---
 
 
-本页定义了 Failproof AI 可观测性所使用的词汇。如果在其他指南中遇到不熟悉的术语，请来此查阅。无需从头到尾阅读：快速浏览，或在遇到需要明确含义的词时跳转回来即可。
+本页定义了 Failproof AI 可观测性所使用的术语词汇。如果您在其他指南中遇到不熟悉的术语，可在此查找其定义。无需从头到尾通读：快速浏览即可，或在遇到需要明确含义的词汇时随时跳回查阅。
 
 ---
 
 ## 数据模型
 
 **事件（Event）**
-最小的数据单元。一个事件记录了 Agent 执行的单个步骤：`tool_use`、`model_request`、`hook_completed`、`error` 等。Agent 通过 [Python SDK](/zh/agenteye/python-sdk) 发出事件，这些事件会实时显示在 **Events** 页面上。
+最小数据单元。一条事件记录了您的 Agent 执行的单个步骤：一次 `tool_use`、一次 `model_request`、一次 `hook_completed`、一次 `error` 等等。您的 Agent 通过 [Python SDK](/zh/agenteye/python-sdk) 发出事件，这些事件会实时显示在**事件（Events）**页面上。
 
 **会话（Session）**
-一次 Agent 运行，由 `session_id` 标识。会话是共享该 ID 的所有事件的集合，在 **Sessions** 页面上汇总为一行，并在详情页上以执行图的形式展示。会话通常以 `agent_start` 开始，以 `agent_end` 结束。
+一次 Agent 运行，以 `session_id` 标识。会话是共享同一 ID 的所有事件的集合，在**会话（Sessions）**页面上汇总为单行，并在详情页上以执行图的形式呈现。会话通常以 `agent_start` 开始，以 `agent_end` 结束。
 
 **Agent**
-运行中的具名参与者，由 `agent_id` 标识。一次运行可以涉及多个 Agent：例如，一个规划器可能派生出一个摘要子 Agent。子 Agent 携带 `parent_id`，这使 Failproof AI 可观测性能够在执行图中将它们绘制在各自的泳道上。
+一次运行中具名的参与者，以 `agent_id` 标识。一次运行可以涉及多个 Agent：例如一个规划器（planner）派生出一个摘要子 Agent。子 Agent 携带 `parent_id`，正是这个字段使 Failproof AI 可观测性能够在执行图中将它们绘制在各自的泳道上。
 
 **环境（Environment）**
-标识运行发生位置的标签：`production`、`staging`、`dev`。在配置 SDK 时设置一次即可。几乎所有仪表板页面都支持按环境筛选。
+标识运行发生位置的标签：`production`、`staging`、`dev`。您在配置 SDK 时设置一次，几乎每个仪表板页面都可以按环境进行筛选。
 
 **上下文窗口占用率（Context-window fill）**
-一次响应所消耗的模型上下文窗口百分比。Failproof AI 可观测性会在其识别的模型的 `model_response` 事件上标注该指标，从而在事件流中直接呈现提示词增长情况和即将发生的压缩问题。
+模型响应所消耗的上下文窗口百分比。Failproof AI 可观测性会在其识别的模型的 `model_response` 事件上标记该数值，使提示词增长趋势和即将到来的压缩行为直接在事件流中可见。
 
 ---
 
 ## 质量
 
 **评估（Evaluation）**
-由您运行的评分服务为已完成的会话生成的质量分数。评估为可选功能：在接入评估器之前，会话仅被记录而不会被评分。每次评估可包含多个具名分数（例如 `helpfulness`、`factuality`、`tool_efficiency`），每个分数附带简短的推理说明。详见[评估套件](/zh/agenteye/evaluation-suite)。
+由您运行的评分服务为已完成会话生成的质量分数。评估为选装功能：在接入评估器之前，会话只会被记录，不会被评分。每次评估可以包含多个命名维度的分数（例如 `helpfulness`、`factuality`、`tool_efficiency`），每个维度附带简短的推理说明。请参阅[评估套件（Evaluation suite）](/zh/agenteye/evaluation-suite)。
 
 **分数键（Score key）**
-评估器报告的某一维度的名称，例如 `helpfulness`。告警和审计可以随时间跟踪特定的分数键。
+评估器报告的某一维度名称，例如 `helpfulness`。告警规则和审计可以随时间追踪特定的分数键。
 
 **评估器（Evaluator）**
-您的评分服务。Failproof AI 可观测性会将已完成运行的对话记录以 POST 请求发送给它，并存储其返回的分数。系统不提供默认评估器；评分逻辑由您自行定义。
+您的评分服务。Failproof AI 可观测性会将已完成运行的对话记录以 POST 方式发送给它，并存储其返回的分数。平台不内置默认评估器，评分逻辑由您自行实现。
 
 ---
 
 ## 发现与修复故障
 
-**钩子（Hook）**
-Agent 框架在某个步骤前后运行的防护措施或副作用处理程序：内容安全检查、PII 脱敏、预算守卫等。钩子会发出带有 `outcome`（allow、deny、modify）的 `hook_triggered` / `hook_completed` 事件，并拥有专属的观测页面。
+**Hook**
+您的 Agent 框架在某个步骤前后运行的守卫或副作用逻辑：内容安全检查、PII 脱敏、预算限制等。Hook 会发出 `hook_triggered` / `hook_completed` 事件，携带 `outcome`（allow、deny、modify），并拥有独立的观测页面。
 
 **告警规则（Alert rule）**
-当指标超过您设定的阈值时触发的规则：错误率、p95 延迟、Token 成本或评估器分数。规则触发时，会创建一个事故并通过您选择的渠道（邮件、Slack、Webhook、仪表板内通知）发送通知。详见[告警](/zh/agenteye/alerts)。
+当指标超过您设定的阈值时触发的规则：错误率、p95 延迟、Token 成本或评估分数。规则触发时，会创建一个事件单并通过您选择的渠道（邮件、Slack、Webhook、仪表板内）发送通知。请参阅[告警（Alerts）](/zh/agenteye/alerts)。
 
-**事故（Incident）**
-告警规则触发时创建的待处理问题。事故具有生命周期（确认、分配、解决）和记录每项操作的活动时间线。您也可以手动创建事故。
+**事件单（Incident）**
+告警规则触发时创建的待处理问题。事件单具有生命周期（确认、分配、解决）以及记录每次操作的活动时间线。您也可以手动创建事件单。
 
 **审计（Audit）**
-定期运行的调查（频率从每小时到每周不等），用于跨会话挖掘您尚未编写规则的故障模式：错误聚类、低分会话、延迟异常值、工具调用循环以及未正常结束的运行。告警监测您已知的指标，而审计则告诉您接下来应该关注什么。详见[审计](/zh/agenteye/audits)。
+定期（每小时至每周）运行的调查任务，在*跨会话*的日志中挖掘您尚未编写规则的故障模式：错误聚类、低分、延迟异常值、工具调用循环以及未正常结束的运行。告警监控的是您已知的指标，而审计则告诉您下一步应该关注什么。请参阅[审计（Audits）](/zh/agenteye/audits)。
 
 **发现（Finding）**
-审计运行产生的一条有优先级排序、有证据支撑的结果。一条发现描述了一种模式，链接到其背后的具体会话，并具有分类处理的生命周期（确认、解决、静默、忽略）。Failproof AI 可观测性会对多次运行间的发现进行去重，让已知模式得到更新而不是不断堆积。
+一次审计运行产出的带有排名和证据支撑的结果。发现会描述一种模式，关联到其背后的具体会话，并具有分级处理生命周期（确认、解决、静默、忽略）。Failproof AI 可观测性会对多次运行间的发现进行去重，使已知模式得到更新而不是不断堆积。
 
 **AI 助手（The AI assistant）**
-仪表板内置的对话助手，能够以自然语言回答关于您 Agent 的问题，数据来源于您自己的数据。默认为只读模式；它创建的任何内容（已保存的查询、仪表板）均需审批，且永远无法执行删除操作。详见 [AI 助手](/zh/agenteye/assistant)。
+仪表板内的对话工具，能够用自然语言回答关于您的 Agent 的问题，基于您自己的数据。默认为只读模式；其创建的任何内容（已保存的查询、仪表板）均需审批，且无法执行删除操作。请参阅 [AI 助手（AI assistant）](/zh/agenteye/assistant)。
 
 ---
 
-## 运行配置
+## 运行方式
 
-**组织（租户）**
-一个隔离的工作空间。一个 Failproof AI 可观测性实例可以托管多个组织，每个组织拥有独立的用户、密钥和数据。所有仪表板 URL 均以您的组织标识符为作用域（`/<org-slug>/…`）。
+**组织（Organization / 租户）**
+隔离的工作空间。一个 Failproof AI 可观测性实例可以托管多个组织，每个组织拥有独立的用户、密钥和数据。所有仪表板 URL 均限定在您的组织标识符下（`/<org-slug>/…`）。
 
 **采集器（Collector）**
 `agenteye-collector`，运行在每台 Agent 机器上的轻量级守护进程，负责批量处理 SDK 写入磁盘的事件并将其发送到服务器。
 
 **API 密钥（API key）**
-用于向服务器认证客户端的作用域令牌。密钥携带细粒度权限（例如，采集器使用 `events:add`，仪表板密钥使用只读作用域）。详见 [API 密钥](/zh/agenteye/api-keys)。
+用于向服务器验证客户端身份的作用域令牌。密钥携带细粒度权限（例如，采集器使用 `events:add`，仪表板密钥使用只读作用域）。请参阅 [API 密钥（API keys）](/zh/agenteye/api-keys)。
 
 **服务器（Server）**
-数据摄取与 API 服务。负责摄取事件、在数据库中存储运行状态，以及为仪表板和 CLI 提供服务。
+数据采集和 API 服务。负责采集事件、将运行状态存储到您的数据库中，并提供仪表板和 CLI 服务。
 
 **仪表板（Dashboard）**
-Web 用户界面。每个页面均以组织为作用域，并通过服务器 API 读取数据。
+Web 界面。每个页面均限定在某个组织范围内，通过服务器 API 读取数据。
 
 ---
 
 ## 后续步骤
 
-- [概览](/zh/agenteye/overview)：了解各部分如何协同工作。
-- [可观测性](/zh/agenteye/observability)：观测界面介绍（Events、Sessions、Models、Tools、Hooks、Errors）。
+- [概览（Overview）](/zh/agenteye/overview)：了解各组件如何协同工作。
+- [可观测性（Observability）](/zh/agenteye/observability)：各观测页面（Events、Sessions、Models、Tools、Hooks、Errors）的详细介绍。

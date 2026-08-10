@@ -1,107 +1,107 @@
 ---
-title: "Failproof AI: Ajanlarınızın Başarısızlıklarını İzleyin"
-description: "Failproof AI Gözlemlenebilirliği, yapay zeka ajanlarınızı üretimde gözlemlemek, değerlendirmek ve iyileştirmek için kendi sunucunuzda çalıştırdığınız bir platformdur."
+title: "Failproof AI: Ajanlarınızdaki Hataları Gözlemleyin"
+description: "Failproof AI Observability, üretim ortamında AI ajanlarınızı gözlemlemek, değerlendirmek ve geliştirmek için kendi sunucunuzda çalışan bir platformdur."
 ---
 
-Failproof AI Gözlemlenebilirliği, yapay zeka ajanlarınızı üretimde gözlemlemek, değerlendirmek ve iyileştirmek için kendi sunucunuzda çalıştırdığınız bir platformdur. Ajanlarınızın yaptığı her şeyi kaydeder (her araç çağrısı, model isteği, kancası ve hatası), her çalıştırmanın kalitesini puanlandırır ve bilmediğiniz başarısızlıkları bulup, hepsi kendi altyapınızda çalıştırdığınız bir panoda sunarsınız.
+Failproof AI Observability, üretim ortamında AI ajanlarınızı gözlemlemek, değerlendirmek ve geliştirmek için kendi sunucunuzda çalışan bir platformdur. Ajanlarınızın yaptığı her şeyi kaydeder (her araç çağrısı, model isteği, hook ve hata), her çalıştırmanın kalitesini puanlandırır ve bilmediğiniz hataları ortaya çıkarır — tamamı kendi altyapınızda çalıştırdığınız bir panoda.
 
-AI ajanları yayınlıyor ve bir çalıştırmanın neden başarısız olduğunu tahmin etmekten sıkıldıysanız, burası başlamanız gereken sayfa. Failproof AI Gözlemlenebilirliğinin size neler sunduğunu ve parçaların nasıl bir araya geldiğini açıklar; herhangi bir şey yüklemeden önce okuyun.
+AI ajanları yayınladıysanız ve bir çalıştırmanın neden başarısız olduğunu tahmin etmekten bıktıysanız, burası başlamanız gereken sayfa. Failproof AI Observability'nin size ne sunduğunu ve parçaların nasıl bir araya geldiğini açıklar; herhangi bir şey yüklemeden önce okuyun.
 
-> **Failproof AI Gözlemlenebilirliği, Failproof AI'dan bir kuruluş ürünüdür.** İş başında görmek ister misiniz? Bir demo isteyin: [nikita@befailproof.ai](mailto:nikita@befailproof.ai) adresine e-posta gönderin.
+> **Failproof AI Observability, Failproof AI'dan bir kurumsal üründür.** Canlı olarak görmek ister misiniz? Bir demo talep edin: [nikita@befailproof.ai](mailto:nikita@befailproof.ai) adresine e-posta gönderin.
 
-![Failproof AI Gözlemlenebilirliği oturumu, git tarzında bir yürütme grafiği olarak çizilmiş, yanında olay zaman çizelgesi ve sağ tarafta araçlar, modeller ve kancaların çalıştırma başına dökümü](/agenteye/images/session-detail.png)
+![Failproof AI Observability oturumu, git tarzı bir yürütme grafiği olarak çizilmiş, yanında olay zaman çizelgesi ve sağ panelde araçlar, modeller ve hooklar ayrıntısı](/agenteye/images/session-detail.png)
 
-*Her ajan çalıştırması, git tarzında bir yürütme grafiği (sol) olarak çizilir, yanında olay zaman çizelgesi bulunur. Paralel alt-ajanların her biri kendi şeritini alır; sağ taraf çalıştırma için araçları, modelleri, kancaları ve belirteç harcamasını ayrıntılı olarak gösterir.*
+*Her ajan çalıştırması, git tarzı bir yürütme grafiği (sol) olarak çizilmiş ve yanında olay zaman çizelgesi vardır. Paralel alt ajanların her birinin kendi şeridi vardır; sağ panel, çalıştırmanın araçlarını, modellerini, hooklarını ve token harcamasını ayrıntılarıyla gösterir.*
 
 ---
 
-## İş başında görün
+## Canlı olarak görmek
 
-İki kısa video, ekiplerin ilk aradığı iki şeyi gösterir: bir çalıştırmayı izlemek ve otomatik olarak başarısızlıkları bulmak.
+İki kısa video, ekiplerin ilk başta yaptığı iki şeyi gösterir: bir çalıştırmayı izlemek ve hataları otomatik olarak bulma.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="İzleyin: Failproof AI tarafından Ajan İzleme (2 dak.)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="İzleyin: Failproof AI tarafından Ajan İzleme (2 dk)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Ajan izleme: tek bir çalıştırmayı hedeften araçlara ve son cevaba kadar adım adım izleyin.*
+*Ajan izleme: hedeften araçlara ve son cevaba kadar tek bir çalıştırmayı adım adım izleyin.*
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="İzleyin: Ajanınızın nerede başarısız olduğunu otomatik olarak bulun (2 dak.)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="İzleyin: Ajanınızın nerede başarısız olduğunu otomatik olarak bulun (2 dk)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Failproof Denetimi: Failproof AI Gözlemlenebilirliğinin oturumlar arasında günlüklerinizi analiz etmesine ve neyi düzeltmeniz gerektiğini söylemesine izin verin.*
+*Failproof Audit: Failproof AI Observability'nin günlüklerinizi oturumlar arasında analiz etmesine izin verin ve ne düzeltmesi gerektiğini öğrenin.*
 
 ---
 
-## Ekipler neden bunu kullanıyor
+## Ekipler neden kullanıyor
 
-- **Ajanınızın gerçekte ne yaptığını görün.** Her çalıştırma okunabilir, git tarzında bir yürütme grafiğine dönüşür: hangi araçlar paralel olarak çalıştı, hangi alt-ajanlar dallandı, nerede takılı kaldı ve ne harcadı.
-- **Kalite gerilişlerini otomatik olarak yakalayın.** Küçük bir puanlama hizmeti bağlayın ve Failproof AI Gözlemlenebilirliği her tamamlanan çalıştırmayı puanlandırsın, böylece yardımcılıkta bir düşüş veya halüsinasyonlarda bir artış kendi kendine ortaya çıksın.
-- **Bir kural yazmayla başarısızlıkları bulun.** Yinelenen denetimler oturumlar arasında günlüklerinizi hata kümeleri, gecikme aykırı değerleri, düşük puanlar ve takılı çalıştırmalar için analiz eder, ardından size sıralanmış, kanıtlarla desteklenmiş bulgular sunar.
-- **Önemli olduğunda sayfalı alın.** Eşik kuralları hata oranı, gecikme, maliyet veya değerlendiricinin puanları üzerinde çalışır ve onaylayabileceğiniz, atayabileceğiniz ve çözebileceğiniz olaylar açar.
-- **Sorularınızı düz İngilizce ile sorun.** Pano içi AI asistanı, bu hafta üretim kalitesi nasıl yöneliyor gibi soruları, kendi verileriniz üzerinden yanıtlar. Yaptığı herhangi bir değişiklik onay geçerlidir.
-- **Verilerinizi koruyun.** Failproof AI Gözlemlenebilirliği kendi sunucunuzda çalışır: olaylar, istemler ve analitikler kontrol ettiğiniz altyapıda kalır.
+- **Ajanınızın gerçekte ne yaptığını görün.** Her çalıştırma okunabilir bir git tarzı yürütme grafiğine dönüşür: hangi araçlar paralel çalıştı, hangi alt ajanlar dallandı, nerede durdu ve ne harcadı.
+- **Kalite gerilemeşini otomatik olarak yakalayın.** Küçük bir puanlama hizmetini bağlayın ve Failproof AI Observability her tamamlanan çalıştırmayı puanlandırır; böylece yardımcılıkta düşüş veya halüsinasyonlarda artış kendi kendine ortaya çıkar.
+- **Kuralı yazacağınızı bilmediğiniz hataları bulun.** Yinelenen denetimler, günlüklerinizi oturumlar arasında hata kümeleri, gecikme aykırı değerleri, düşük puanlar ve takılı çalıştırmalar açısından analiz eder, ardından size sıralanmış, kanıtla desteklenmiş bulgular sunar.
+- **Önemli olduğunda sayfa alın.** Eşik kuralları hata oranı, gecikme, maliyet veya değerlendirici puanlarında çalışır ve yanıtlayabileceğiniz, atayabileceğiniz ve çözebileceğiniz olaylar açar.
+- **Düz İngilizcede sorular sorun.** Panoda yer alan bir AI asistanı, kendi verileriniz üzerinde „bu hafta üretimde kalite nasıl gelişiyor?" gibi soruları yanıtlar. Yaptığı her değişiklik onay geçidir.
+- **Verilerinizi tutun.** Failproof AI Observability kendi sunucunuzda çalışır: olaylar, istemler ve analizler kontrol ettiğiniz altyapıda kalır.
 
 ---
 
 ## Ne alıyorsunuz
 
-Failproof AI Gözlemlenebilirliği üç fikir etrafında organize edilir (**gözlemle**, **analiz et** ve **yönet**), pano sol kenar çubuğunda yansıtılır.
+Failproof AI Observability, üç fikir etrafında organize edilmiştir (**gözlemle**, **analiz et** ve **yönet**), panelin sol kenar çubuğuna yansıtılır.
 
 **Gözlemle** (ne olduğunun ham gerçeği):
 
-- **[Olay akışı](/tr/agenteye/event-stream)**: her çalıştırmanın canlı, adım adım izi (araç çağrıları, model çağrıları, kancalar, hatalar).
-- **[Oturumlar](/tr/agenteye/sessions)**: bu olaylar çalıştırma başına bir satır olarak yukarı alınır, her biri puanlanmaya hazırdır, git tarzında yürütme grafiğiyle.
-- **[Performans metrikleri](/tr/agenteye/telemetry)**: yüzey başına gecikme ısı haritaları ve modeller, araçlar ve kancalar için p50/p95/p99 temel değerleri, böylece kuyruk artışı medyandan ayrılır.
-- **[Hata izleme](/tr/agenteye/error-tracking)**: her şey için bir değerlendirme yüzeyi, ateşleyen bir uyarıdan bir tık uzakta.
+- **[Olay akışı](/tr/agenteye/event-stream)**: her çalıştırmanın canlı, adım adım izi (araç çağrıları, model çağrıları, hooklar, hatalar).
+- **[Oturumlar](/tr/agenteye/sessions)**: bu olaylar, çalıştırma başına bir satır halinde, her biri puanlandırılmaya hazır, git tarzı bir yürütme grafiği ile birlikte sunulur.
+- **[Performans metrikleri](/tr/agenteye/telemetry)**: yüzey başına gecikme harita grafikleri ve modeller, araçlar ve hooklar için p50/p95/p99 vitalleri; böylece kuyruk artışı ortalamanın dışında görünür.
+- **[Hata izleme](/tr/agenteye/error-tracking)**: her şeyin ters gittiği tek bir işlem yüzeyinde; bir uyarının ateşlenmesinden tek bir tıkla uzak.
 
-![Araçlar gözlemle sayfası: gecikme ısı haritası, yüzdelik bant ve 24 zaman kutusu üzerinde araç dağılımı çubuğu](/agenteye/images/tools.png)
+![Tools gözlemle sayfası: gecikme harita grafiği, yüzdelik dilim bandı ve 24 zaman kutusu üzerinde araç dağılım çubuğu](/agenteye/images/tools.png)
 
-*Her gözlemle yüzeyi, bir sparkline ve p50/p95/p99 temel değerleriyle bir gecikme ısı haritası ve yüzdelik bir bant eşleştirir. Gösterilen: Araçlar.*
+*Her gözlemle yüzeyi, bir kıvılcım çizgisi ve p50/p95/p99 vitalleriyle bir gecikme harita grafiği ve yüzdelik dilim bandını eşleştirir. Gösterilen: Araçlar.*
 
-**Analiz et** (aktiviteyi cevaplara dönüştürün):
+**Analiz et** (etkinliği cevaplara dönüştürün):
 
-- **[Sorgular](/tr/agenteye/queries)** ve **[panolar](/tr/agenteye/dashboards)**: olaylarınız ve değerlendirmeleriniz üzerinde kaydedilmiş SQL, paylaşılan, org kapsamlı panolara çizilir.
-- **[Değerlendirmeler](/tr/agenteye/evaluations)**: kendi değerlendiricisi hizmetiniz tarafından üretilen kalite puanları, puan başına gerekçe ile.
-- **[Denetimler](/tr/agenteye/audits)**: oturumlar arasında başarısızlık desenleri ortaya koyan yinelenen araştırmalar.
-- **[Uyarılar](/tr/agenteye/alerts)** ve **[olaylar](/tr/agenteye/incidents)**: sizi sayfalandıran eşik kuralları, artı bunları değerlendirmek için bir olay iş akışı.
+- **[Sorgular](/tr/agenteye/queries)** ve **[panolar](/tr/agenteye/dashboards)**: olaylarınız ve değerlendirmeleriniz üzerinde kaydedilmiş SQL, paylaşılan, kurum kapsamı panolara çizilmiştir.
+- **[Değerlendirmeler](/tr/agenteye/evaluations)**: kendi değerlendirici hizmetiniz tarafından üretilen kalite puanları, puan başına akıl yürütmesi ile.
+- **[Denetimler](/tr/agenteye/audits)**: oturumlar arasında hata modellerini ortaya çıkaran yinelenen araştırmalar.
+- **[Uyarılar](/tr/agenteye/alerts)** ve **[olaylar](/tr/agenteye/incidents)**: sizi sayfaya alan eşik kuralları, artı bunları işlemek için bir olay iş akışı.
 
-**Arayüzler** (verilerinize kendi yolunuzdan ulaşın):
+**Arayüzler** (verilerinize kendi yolunuzla ulaşın):
 
-- **[CLI](/tr/agenteye/cli-and-agents)**: tüm dağıtımınızı terminalden veya bir komut dosyasından yönlendirin ve bir kodlama ajanına düz İngilizce ile bunu yapmasını izin verin.
-- **[AI asistanı](/tr/agenteye/assistant)**: pano içinde ajanlarınız hakkında düz İngilizce ile sorular sorun.
-- **REST API**: pano ve CLI'nin yaptığı her şey, doğrudan scoped [API anahtarı](/tr/agenteye/api-keys) ile çağırabileceğiniz bir REST API tarafından desteklenir — olayları alın, oturumları ve değerlendirmeleri sorgulayın ve panolar, uyarılar, denetimler, kullanıcılar ve anahtarları yönetin, böylece Failproof AI Gözlemlenebilirliğini kendi araçlarınıza entegre edebilirsiniz.
+- **[CLI](/tr/agenteye/cli-and-agents)**: tüm dağıtımınızı terminalden veya bir betikten çalıştırın ve bir kodlama ajanının bunu düz İngilizcede yapmasına izin verin.
+- **[AI asistanı](/tr/agenteye/assistant)**: ajanlarınız hakkında düz İngilizcede soru sorun, doğrudan panoda.
+- **REST API**: panelin ve CLI'nin yaptığı her şey, kapsamlı bir [API anahtarı](/tr/agenteye/api-keys) ile doğrudan çağırabileceğiniz bir REST API tarafından desteklenir — olayları alın, oturumları ve değerlendirmeleri sorgulayın ve panoları, uyarıları, denetimleri, kullanıcıları ve anahtarları yönetin; böylece Failproof AI Observability'yi kendi araçlarınızla entegre edin.
 
 **Yönet** (ekibiniz için çalıştırın):
 
-- **[API anahtarları](/tr/agenteye/api-keys)**: toplayıcı, pano ve asistan için scoped jetonu.
-- **Kullanıcılar**: şifresiz, e-posta tabanlı oturum açma ve izin listesi.
-- **Ayarlar**: org başına yapılandırma, model bağlam penceresi geçersiz kılmaları dahil.
+- **[API anahtarları](/tr/agenteye/api-keys)**: toplayıcı, pano ve asistan için kapsamlı jetonlar.
+- **Kullanıcılar**: şifresiz, e-posta tabanlı oturum açma ve izin listesiyle.
+- **Ayarlar**: kurum başına yapılandırma, model bağlam penceresi geçersiz kılmalar dahil.
 
 ---
 
 ## Parçalar nasıl bir araya gelir
 
-Veri bir yönde akar, ajan kodunuzdan panoya: ajanınız (Python SDK aracılığıyla) agenteye-collector'a olaylar yayınlar, bu da sunucuya gönderer, sunucu panoyu sunar. İki isteğe bağlı hizmet bunu tamamlar — bir puanlama hizmeti (değerlendirmeler) ve bir AI asistanı hizmeti (pano içi sohbet).
+Veri bir yönde akar, ajan kodunuzdan panoya: ajanınız (Python SDK aracılığıyla) agenteye-toplayıcıya olaylar yayınlar; bu olaylar sunucuya gönderilir ve sunucu panoyu sunar. İki isteğe bağlı hizmet bunu tamamlar — bir puanlama hizmet (değerlendirmeler) ve bir AI asistan hizmet (panoda sohbet).
 
 - **Python SDK**: ajanınıza birkaç `agenteye.event.*` çağrısı eklersiniz; olaylar yerel olarak arabelleğe alınır.
-- **agenteye-collector**: her ajan makinesinde hafif bir daemon, olayları toplar ve sunucuya gönderir.
-- **Sunucu**: olaylarınızı alır, işlemsel durumu kendi veritabanlarında tutar ve pano, CLI ve kendi entegrasyonlarınızın kullandığı REST API'yi sunar.
-- **Pano**: her şeyi keşfettiğiniz yerdir.
-- **İsteğe bağlı hizmetler**: bir puanlama hizmeti (değerlendirmeler) ve bir AI asistanı hizmeti (pano içi sohbet).
+- **agenteye-toplayıcı**: her ajan makinesinde, olayları toplu olarak işleyen ve sunucuya gönderen hafif bir daemon.
+- **Sunucu**: olaylarınızı alır, operasyonel durumu kendi veritabanlarınızda tutar ve pano, CLI ve kendi entegrasyonlarınızın hepsinin kullandığı REST API'yi sunar.
+- **Pano**: her şeyi keşfettiğiniz yer.
+- **İsteğe bağlı hizmetler**: bir puanlama hizmet (değerlendirmeler) ve bir AI asistan hizmet (panoda sohbet).
 
-Dokümentasyon boyunca kullanılan sözcük dağarcığı için (*olay, oturum, değerlendirme, denetim, bulgu, olay*), bkz. [Kavramlar](/tr/agenteye/concepts).
+Belgeler genelinde kullanılan kelime dağarcığı (*olay, oturum, değerlendirme, denetim, bulgu, olay*) için bkz. [Kavramlar](/tr/agenteye/concepts).
 
 ---
 
-## Failproof AI Gözlemlenebilirliğini Alma
+## Failproof AI Observability'yi Almak
 
-Failproof AI Gözlemlenebilirliği, Failproof AI'dan bir kuruluş ürünüdür ve Failproof AI Egemenliği — politika ve koruma rayları ürünü — ile Failproof AI markası altında birlikte çalışır. Tamamen kendi ortamınızda çalışır. Paketlere henüz erişiminiz yoksa, bir demo isteyin ve sizi ayarlayacağız: [nikita@befailproof.ai](mailto:nikita@befailproof.ai) adresine e-posta gönderin.
+Failproof AI Observability, Failproof AI'dan bir kurumsal üründür ve Failproof AI Enforcement — politika ve korkuluk ürünü — ile Failproof AI markası altında birlikte çalışır. Tamamen kendi ortamınızda çalışır. Paketlere henüz erişiminiz yoksa, bir demo talep edin ve sizi hazırlayacağız: [nikita@befailproof.ai](mailto:nikita@befailproof.ai) adresine e-posta gönderin.
 
 ---
 
 ## Sonraki adımlar
 
-- [Kavramlar](/tr/agenteye/concepts): Failproof AI Gözlemlenebilirliği sözcük dağarcığı tek bir yerde.
-- [Gözlemlenebilirlik](/tr/agenteye/observability): ajanlarınızın yaptığını izleyin, çalıştırma başına.
-- [Güvenlik](/tr/agenteye/security): Failproof AI Gözlemlenebilirliğinin verilerinizi nasıl izole tuttuğu ve kontrolünüzde tuttuğu.
+- [Kavramlar](/tr/agenteye/concepts): Failproof AI Observability kelime dağarcığı bir yerde.
+- [Observabilite](/tr/agenteye/observability): ajanlarınızın ne yaptığını, çalıştırmayı izleyin.
+- [Güvenlik](/tr/agenteye/security): Failproof AI Observability verilerinizi nasıl izole tuttuğu ve kontrol altında tuttuğu.

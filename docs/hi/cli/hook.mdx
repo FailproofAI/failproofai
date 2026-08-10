@@ -1,28 +1,28 @@
 ---
 title: हुक हैंडलर (आंतरिक)
-description: "सबप्रोसेस Claude Code प्रत्येक टूल इवेंट पर कॉल करता है"
+description: "जो सबप्रोसेस Claude Code प्रत्येक टूल इवेंट पर कॉल करता है"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-यह वह कमांड है जो `failproofai policies --install` द्वारा Claude Code के `settings.json` में पंजीकृत है। आप आम तौर पर इसे सीधे कॉल नहीं करते हैं।
+यह वह कमांड है जो `failproofai policies --install` द्वारा Claude Code की `settings.json` में पंजीकृत होती है। आप आमतौर पर इसे सीधे कॉल नहीं करते।
 
-stdin से एक JSON पेलोड पढ़ता है, सभी सक्षम नीतियों का मूल्यांकन करता है, और निर्णय को दर्शाने वाले एक कोड के साथ बाहर निकलता है:
+stdin से JSON पेलोड पढ़ता है, सभी सक्षम नीतियों का मूल्यांकन करता है, और एक कोड के साथ बाहर निकलता है जो निर्णय को दर्शाता है:
 
 | एक्जिट कोड | निर्णय | प्रभाव |
 |-----------|--------|--------|
 | `0` | `allow` | कार्रवाई की अनुमति दें |
-| `1` | `deny` | कार्रवाई को अवरुद्ध करें - Claude इनकार का कारण देखता है |
-| `2` | `instruct` | Claude के संदर्भ में निर्देश इंजेक्ट करें |
+| `1` | `deny` | कार्रवाई को ब्लॉक करें - Claude को अस्वीकृति का कारण दिखाई देता है |
+| `2` | `instruct` | Claude के संदर्भ में मार्गदर्शन इंजेक्ट करें |
 
 ### समर्थित इवेंट प्रकार
 
 | श्रेणी | इवेंट |
 |----------|--------|
 | **टूल निष्पादन** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
-| **सत्र जीवनचक्र** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
+| **सेशन जीवनचक्र** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **उपयोगकर्ता इंटरैक्शन** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
 | **सबएजेंट और कार्य** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **कॉन्फ़िगरेशन** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |

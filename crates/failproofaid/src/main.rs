@@ -1593,4 +1593,36 @@ mod tests {
         // calls within one process.
         assert_eq!(current_os_user().as_deref(), Some(name.as_str()));
     }
+
+    /// The reserved-label guard passes these names to `resolve_reserving`
+    /// VERBATIM, and that is only correct because this function is NOT
+    /// `sanitize_label`. It maps each non-alphanumeric one-for-one, does not
+    /// lowercase, and does not trim — so the root database's directory keeps its
+    /// leading dash. Pinned here because the guard is silently wrong the moment
+    /// the two normalisers agree by accident: sanitising `-hermes` yields
+    /// `hermes`, a name no task owns, which reserves the wrong string on EVERY
+    /// machine (index 0 is always the root db).
+    #[test]
+    fn profile_dir_name_is_not_sanitize_label() {
+        let root = std::path::Path::new("/home/u/.hermes/state.db");
+        assert_eq!(
+            profile_dir_name(root, 0),
+            "-hermes",
+            "the leading dot becomes a dash and is NOT trimmed"
+        );
+
+        // A named profile's directory is already in canonical form, which is the
+        // case the guard actually protects: an extra labelled `prod` sanitises to
+        // `prod` and would collide with this task's cursor dir.
+        let named = std::path::Path::new("/home/u/.hermes/profiles/prod/state.db");
+        assert_eq!(profile_dir_name(named, 1), "prod");
+
+        // Neither lowercased nor dash-collapsed, unlike `sanitize_label`.
+        let odd = std::path::Path::new("/home/u/.hermes/profiles/Prod A/state.db");
+        assert_eq!(profile_dir_name(odd, 2), "Prod-A");
+
+        // Only an all-dashes result falls back to the index.
+        let dots = std::path::Path::new("/home/u/.hermes/profiles/.../state.db");
+        assert_eq!(profile_dir_name(dots, 3), "profile-3");
+    }
 }

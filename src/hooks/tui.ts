@@ -68,6 +68,22 @@ export interface MultiChoice<T> {
 export interface MultiSelectOptions<T> {
   /** Offer ← to go back a step. The caller must handle `BACK`. */
   allowBack?: boolean;
+  /**
+   * Called with what was ticked at the moment ← was pressed.
+   *
+   * `BACK` is a symbol, so it cannot carry a value, and the selection lives in a
+   * local array here rather than on the caller's choice objects — so a caller had
+   * no way to learn what a user had toggled before stepping back. The wizard's
+   * harness step needs exactly that: without it, deselecting a CLI and pressing ←
+   * discards the deselection, the step is redrawn from the detected defaults, and
+   * confirming re-enables hook installation for a CLI the user explicitly turned
+   * off.
+   *
+   * OPTIONAL and additive rather than a change to the return type: `BACK` is
+   * shared with `selectOne` and every other caller, and widening that contract to
+   * fix one step's state would be a much larger surface than the bug.
+   */
+  onBack?: (checkedNow: T[]) => void;
   message: string;
   choices: MultiChoice<T>[];
   minSelected?: number;
@@ -429,6 +445,8 @@ interface PromptSpec<R> {
   warnLine?: () => string | null;
   /** When set, ← resolves `BACK` so the caller can step backwards. */
   allowBack?: boolean;
+  /** Called just before ← resolves, so a caller can keep in-progress state. */
+  onBack?: () => void;
   footer: string;
   /** Handle non-navigation keys. `{done}` finishes, `"redraw"` repaints. */
   onKey: (key: readline.Key, cursor: number) => { done: R } | "redraw" | undefined;
@@ -520,6 +538,11 @@ function runPrompt<R>(p: PromptSpec<R>): Promise<R | null> {
       } else if (key.name === "left" && p.allowBack) {
         // Only when the caller opted in. A prompt with nowhere to go back TO
         // must not appear to offer it.
+        //
+        // Reported BEFORE finishing, because `finish` collapses the prompt and
+        // resolves — after that the selection is gone and the caller is already
+        // running.
+        p.onBack?.();
         finish(BACK as unknown as never);
       } else if (key.name === "up") {
         cursor = cursor > 0 ? cursor - 1 : choices.length - 1;
@@ -648,6 +671,11 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null 
     },
     warnLine: () => (warn ? c.warn(`Select at least ${minSelected}.`) : null),
     allowBack: opts.allowBack,
+    // Reads the SAME `checked` array the prompt is driving, so what the caller
+    // learns is exactly what was on screen when ← was pressed.
+    onBack: opts.onBack
+      ? () => opts.onBack?.(choices.filter((_, i) => checked[i]).map((ch) => ch.value))
+      : undefined,
     footer:
       opts.hint ??
       (opts.allowBack

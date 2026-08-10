@@ -967,6 +967,24 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // is stated, not prompted), so ← there would sometimes go nowhere.
   let presets: string[] | null = null;
   let clisSel: string[] | null = null;
+  /**
+   * What the harness step had ticked when ← was last pressed.
+   *
+   * A SEPARATE variable, because `clisSel` cannot do this job: it is the loop's
+   * own condition (`while (clisSel === null)`), so it is null on every entry into
+   * the body by definition, and it is assigned only on the line that ends the
+   * loop. The restore that read `clisSel` was therefore unreachable — provably
+   * dead, with a comment stating the opposite intent.
+   *
+   * The cost was not cosmetic: deselect a CLI, press ← to fix an earlier answer,
+   * come back, and the step showed the detected defaults again. Pressing ↵ then —
+   * reasonably, having been told the selection was carried back — re-enabled hook
+   * installation for a CLI the user had explicitly turned off.
+   *
+   * `presets` just above works because it is assigned MID-loop and survives to the
+   * next iteration; this mirrors that, filled from the prompt's `onBack`.
+   */
+  const carried: { clis: string[] | null } = { clis: null };
   while (clisSel === null) {
     // Re-entering after a ← must show what was picked, not a blank slate.
     // Selection state lives on each choice, so carry it back in.
@@ -986,7 +1004,16 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
 
     // 3 — Which harnesses? An "Everything available" row protects every supported
     // CLI (detected + set-up-ahead); when ticked it wins over the individual boxes.
-    const priorClis = clisSel as string[] | null;
+    // Read off a HOLDER OBJECT, not a bare `let`, and not through a cast.
+    //
+    // A `let` assigned only inside a callback is narrowed by control-flow analysis
+    // to its initializer, so `priorClis.includes` will not compile — and the
+    // original defeated that with `clisSel as string[] | null`. That cast is
+    // precisely why the dead code type-checked and nobody noticed: it silenced the
+    // compiler making exactly the point the reviewer later made by hand, that the
+    // value could only ever be null. A property read carries the declared type
+    // without suppressing anything.
+    const priorClis = carried.clis;
     const picked: string[] | typeof BACK | null = await multiSelect<string>({
     message: "Which harnesses should it protect?",
     choices: [
@@ -1006,6 +1033,12 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       summaryNoun: "harnesses",
       hint: "detected CLIs are pre-selected · space toggles · ctrl+a all · ← back · ↵ confirm",
       allowBack: true as const,
+      // `BACK` is a symbol and cannot carry the selection, so the prompt reports
+      // it here instead — otherwise a ← discards what the user had ticked and the
+      // next pass redraws the detected defaults.
+      onBack: (checkedNow) => {
+        carried.clis = checkedNow;
+      },
       stdin,
       stdout,
     });

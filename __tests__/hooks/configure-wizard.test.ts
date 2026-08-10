@@ -1284,6 +1284,41 @@ describe("wizard back-navigation", () => {
     expect(checked.map((c) => String(c.value)).sort()).toEqual(["git", "secrets"]);
   });
 
+  it("← on the harness step carries the HARNESS selection back in too", async () => {
+    // The sibling of the test above, and the one that was missing. That one pins
+    // the POLICY answer surviving a ←; the harness answer did not, and the restore
+    // that was supposed to do it was unreachable: `priorClis` read `clisSel`, which
+    // is the loop's own condition (`while (clisSel === null)`) and so is null on
+    // every entry into the body by definition.
+    //
+    // The cost was not cosmetic. Deselect a CLI, press ← to fix an earlier answer,
+    // come back, and the step redrew the DETECTED DEFAULTS — so confirming
+    // re-enabled hook installation for a CLI the user had explicitly turned off.
+    const one = vi.mocked(selectOne);
+    const many = vi.mocked(multiSelect);
+    one.mockResolvedValueOnce("user" as never); // scope
+    many.mockResolvedValueOnce(["secrets"] as never); // policies, 1st pass
+    // The harness step: the user has ticked ONLY codex — deliberately not the
+    // detected default — and then presses ←. `BACK` cannot carry that, so the
+    // prompt reports it through `onBack`, which is what this exercises.
+    many.mockImplementationOnce((async (opts: { onBack?: (v: string[]) => void }) => {
+      opts.onBack?.(["codex"]);
+      return BACK;
+    }) as never);
+    many.mockResolvedValueOnce(["secrets"] as never); // policies, re-asked
+    many.mockResolvedValueOnce(["codex"] as never); // harnesses, 2nd pass
+    one.mockResolvedValueOnce("local" as never); // connect
+    one.mockResolvedValueOnce("apply" as never); // review
+
+    await runConfigureWizard(ttyIO());
+
+    // The re-asked harness step must arrive with codex ticked and nothing else —
+    // the user's edit, not the detected defaults.
+    const reasked = many.mock.calls[3]![0];
+    const checked = reasked.choices.filter((c) => c.checked).map((c) => String(c.value));
+    expect(checked).toEqual(["codex"]);
+  });
+
   it("the policy step itself offers no ←, because the step before it is often not asked", async () => {
     const one = vi.mocked(selectOne);
     const many = vi.mocked(multiSelect);

@@ -529,6 +529,15 @@ export const legacy = {
   credentialsToml: () => at("credentials.toml"),
   /** Layout 2 nested the policy config two levels down. */
   localPoliciesDir: () => at("policies", "local-policies"),
+  /**
+   * Layout 2's policy config, at its nested path.
+   *
+   * The file `readCarriedPolicyConfig()` reads and `localPoliciesDir()` above
+   * deletes — so on the layout-2 leg this, not `policyConfig()`, is the policy
+   * selection the migration destroys. Named separately because its BASENAME is
+   * identical to the layout-1 root copy's, and the backup directory is flat.
+   */
+  localPolicyConfig: () => at("policies", "local-policies", "policies-config.json"),
   /** Layout 2 kept convention policies in a subdirectory. */
   customPoliciesDir: () => at("policies", "custom-policies"),
   // NO `cloudPoliciesDir` HERE. Layout 2 put cloud deployments at

@@ -244,6 +244,92 @@ describe("the backup taken before a migration", () => {
   it("restores nothing when there is no backup for that layout", () => {
     expect(restoreBackup(2)).toEqual([]);
   });
+
+  it("copies layout 2's policy selection from the NESTED path it actually lives at", () => {
+    // The backup's claim to protect a policy selection rested on
+    // `legacy.policyConfig()`, the layout-1 ROOT path — which layout 3 reuses and
+    // the migration therefore leaves alone, so on a layout-2 home it is usually
+    // absent. Layout 2 keeps the selection two levels down, under
+    // `legacy.localPoliciesDir()`, which IS deleted. So the one leg where the
+    // selection is destroyed was the one leg with no copy of it.
+    mkdirSync(home, { recursive: true });
+    mkdirSync(legacy.localPoliciesDir(), { recursive: true });
+    writeFileSync(
+      resolve(legacy.localPoliciesDir(), "policies-config.json"),
+      '{"enabledPolicies":["block-sudo"],"policyParams":{"a":1}}',
+    );
+
+    const saved = backupBeforeMigrating(2);
+
+    expect(saved).toContain("local-policies-policies-config.json");
+    const kept = JSON.parse(
+      readFileSync(resolve(migrationBackupDir(2), "local-policies-policies-config.json"), "utf8"),
+    );
+    expect(kept.enabledPolicies).toEqual(["block-sudo"]);
+    expect(kept.policyParams).toEqual({ a: 1 });
+  });
+
+  it("a full layout-2 migration leaves the nested selection recoverable", () => {
+    // End to end: the nested original is gone afterwards, so the backup is the
+    // only copy of what the user had chosen.
+    mkdirSync(home, { recursive: true });
+    writeFileSync(legacy.configToml(), "layout = 2\n");
+    mkdirSync(legacy.localPoliciesDir(), { recursive: true });
+    writeFileSync(
+      resolve(legacy.localPoliciesDir(), "policies-config.json"),
+      '{"enabledPolicies":["block-env-files"]}',
+    );
+
+    runMigrations(2);
+
+    expect(existsSync(resolve(legacy.localPoliciesDir(), "policies-config.json"))).toBe(false);
+    expect(
+      JSON.parse(
+        readFileSync(resolve(migrationBackupDir(2), "local-policies-policies-config.json"), "utf8"),
+      ).enabledPolicies,
+    ).toEqual(["block-env-files"]);
+  });
+
+  it("the nested and root policy configs do not overwrite each other, either way", () => {
+    // They share a BASENAME, and the backup directory is flat. Saved under one
+    // name, whichever was copied second would win — and on restore that single
+    // survivor would be written back to BOTH paths, putting layout 2's nested
+    // selection over layout 3's live config. Hence the explicit distinct name.
+    mkdirSync(home, { recursive: true });
+    writeFileSync(globalPolicyConfigFile(), '{"enabledPolicies":["root-one"]}');
+    mkdirSync(legacy.localPoliciesDir(), { recursive: true });
+    writeFileSync(
+      resolve(legacy.localPoliciesDir(), "policies-config.json"),
+      '{"enabledPolicies":["nested-one"]}',
+    );
+
+    const saved = backupBeforeMigrating(2);
+    expect(saved).toContain("policies-config.json");
+    expect(saved).toContain("local-policies-policies-config.json");
+
+    // Both survive in the backup, each with its own contents.
+    expect(
+      JSON.parse(readFileSync(resolve(migrationBackupDir(2), "policies-config.json"), "utf8"))
+        .enabledPolicies,
+    ).toEqual(["root-one"]);
+    expect(
+      JSON.parse(
+        readFileSync(resolve(migrationBackupDir(2), "local-policies-policies-config.json"), "utf8"),
+      ).enabledPolicies,
+    ).toEqual(["nested-one"]);
+
+    // And a restore puts each back where it came from, not one over both.
+    writeFileSync(globalPolicyConfigFile(), '{"enabledPolicies":["CLOBBERED"]}');
+    restoreBackup(2);
+    expect(
+      JSON.parse(readFileSync(globalPolicyConfigFile(), "utf8")).enabledPolicies,
+    ).toEqual(["root-one"]);
+    expect(
+      JSON.parse(
+        readFileSync(resolve(legacy.localPoliciesDir(), "policies-config.json"), "utf8"),
+      ).enabledPolicies,
+    ).toEqual(["nested-one"]);
+  });
 });
 
 describe("runMigrations", () => {

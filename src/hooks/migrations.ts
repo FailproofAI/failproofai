@@ -206,20 +206,62 @@ function appendLedger(entry: LedgerEntry): void {
  * What is left to insure against is a BUG in a step, and these files are where
  * such a bug would hurt.
  */
-const BACKED_UP = [configFile, credentialsFile, globalPolicyConfigFile, versionFile];
-const BACKED_UP_LEGACY = [
-  legacy.configToml,
-  legacy.credentialsToml,
-  legacy.policyConfig,
+/**
+ * One file to back up: where it lives, and what to call it in the backup.
+ *
+ * `as` exists because the backup directory is FLAT and two of these paths share a
+ * basename. It is only set where that happens, so every other entry keeps the
+ * name it has always been saved under — which matters, because `backup-layout<n>/`
+ * directories written by beta.17 and beta.18 are already on real machines and
+ * `restoreBackup()` has to keep finding them. Restructuring the backup into
+ * mirrored subdirectories would have been the tidier scheme and would have renamed
+ * data an older build already wrote: the same mistake as the four rename bugs
+ * above it in this changelog.
+ */
+interface BackedUpFile {
+  at: () => string;
+  as?: string;
+}
+
+const BACKED_UP: BackedUpFile[] = [
+  { at: configFile },
+  { at: credentialsFile },
+  { at: globalPolicyConfigFile },
+  { at: versionFile },
+];
+
+const BACKED_UP_LEGACY: BackedUpFile[] = [
+  { at: legacy.configToml },
+  { at: legacy.credentialsToml },
+  { at: legacy.policyConfig },
+  // Layout 2's policy selection, at the NESTED path. `legacy.policyConfig` above
+  // is the layout-1 ROOT path, which layout 3 reuses and which the migration
+  // therefore leaves alone — so on the layout-2 leg it is usually absent, and
+  // listing it was the whole of this backup's claim to protect a policy
+  // selection. The file layout 2 actually holds it in is under
+  // `legacy.localPoliciesDir()`, which IS deleted. So the one leg where the
+  // selection is destroyed was the one leg with no copy of it, while
+  // `describePlan` reported a backup either way.
+  //
+  // Saved under a distinct name because the basename collides with the entry
+  // above: flat, they would overwrite each other on backup, and on restore the
+  // single surviving file would be copied back to BOTH paths — writing layout 2's
+  // nested selection over layout 3's live config.
+  { at: legacy.localPolicyConfig, as: "local-policies-policies-config.json" },
   // Layout 1's credentials, which the migration DELETES and which nothing
   // regenerates. They were missing here while the carry that reads them was
   // added, so on the layout-1 leg — the one a user upgrading from the published
   // `latest` actually takes — the cloud token was removed with no copy kept. That
   // is precisely the file this backup exists for, and its absence made the backup
   // most incomplete exactly where it mattered most.
-  legacy.cloudCredentials,
-  legacy.ingestCredentials,
+  { at: legacy.cloudCredentials },
+  { at: legacy.ingestCredentials },
 ];
+
+/** The name a file is saved under inside `backup-layout<n>/`. */
+function backupNameOf(f: BackedUpFile): string {
+  return f.as ?? basename(f.at());
+}
 
 /**
  * The files that exist right now and would be backed up, each exactly once.
@@ -237,13 +279,13 @@ const BACKED_UP_LEGACY = [
  * nobody walks those arrays directly — which is the same "state it once, derive
  * the rest" move `resettablePaths()` makes over `HOME_CLASSES`.
  */
-function filesToBackUp(): string[] {
-  const seen = new Set<string>();
-  for (const at of [...BACKED_UP, ...BACKED_UP_LEGACY]) {
-    const path = at();
-    if (existsSync(path)) seen.add(path);
+function filesToBackUp(): { path: string; as: string }[] {
+  const seen = new Map<string, string>();
+  for (const f of [...BACKED_UP, ...BACKED_UP_LEGACY]) {
+    const path = f.at();
+    if (existsSync(path)) seen.set(path, backupNameOf(f));
   }
-  return [...seen];
+  return [...seen].map(([path, as]) => ({ path, as }));
 }
 
 /** Copy the irreplaceable files aside. Returns the basenames it saved. */
@@ -258,10 +300,10 @@ export function backupBeforeMigrating(from: number): string[] {
   } catch {
     return [];
   }
-  for (const source of filesToBackUp()) {
+  for (const { path: source, as } of filesToBackUp()) {
     try {
-      copyFileSync(source, resolve(dir, basename(source)));
-      saved.push(basename(source));
+      copyFileSync(source, resolve(dir, as));
+      saved.push(as);
     } catch {
       // One unreadable file must not stop the rest being saved, and must not
       // stop the migration — the backup is insurance, not a precondition.
@@ -378,7 +420,7 @@ export function describePlan(from: number): string[] {
     ...chain.map((m) => `  ${m.from} → ${m.to}  ${m.describe}`),
     ``,
     `These would be copied to ${migrationBackupDir(from)} first:`,
-    ...filesToBackUp().map((p) => `  ${basename(p)}`),
+    ...filesToBackUp().map((f) => `  ${f.as}`),
     ``,
     `Settings, cloud enrolment, policy selection, your own policy files, decision`,
     `history and undelivered events are carried, not removed — see \`HOME_CLASSES\`.`,
@@ -390,14 +432,14 @@ export function restoreBackup(layout: number): string[] {
   const dir = migrationBackupDir(layout);
   if (!existsSync(dir)) return [];
   const restored: string[] = [];
-  for (const at of [...BACKED_UP, ...BACKED_UP_LEGACY]) {
-    const target = at();
-    const source = resolve(dir, basename(target));
+  for (const f of [...BACKED_UP, ...BACKED_UP_LEGACY]) {
+    const target = f.at();
+    const source = resolve(dir, backupNameOf(f));
     if (!existsSync(source)) continue;
     try {
       mkdirSync(dirname(target), { recursive: true });
       copyFileSync(source, target);
-      restored.push(basename(target));
+      restored.push(backupNameOf(f));
     } catch {
       // Report what did land rather than claiming a restore that did not.
     }

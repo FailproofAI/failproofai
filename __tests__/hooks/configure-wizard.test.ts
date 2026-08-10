@@ -139,6 +139,7 @@ import {
   buildAgentChoices,
   buildCompletionSummary,
   buildPresetChoices,
+  splitEnabled,
   clisSupportingScope,
   resolvePresetSelection,
   reviewLines,
@@ -146,14 +147,13 @@ import {
   maybeFirstRunConfigure,
   hasSeenLauncher,
   markLauncherSeen,
-  classifyDaemonInstallFailure,
 } from "../../src/hooks/configure-wizard";
 import { resolvePreset, resolveEverything } from "../../src/hooks/policy-presets";
 import { INTEGRATION_TYPES, type IntegrationType } from "../../src/hooks/types";
 import { getIntegration } from "../../src/hooks/integrations";
 import { runPostSetupAudit } from "../../src/audit/cli";
 import { trackHookEvent } from "../../src/hooks/hook-telemetry";
-import { globalPolicyConfigFile, configFile as fpConfigFile, launcherMarker } from "../../src/hooks/fp-home";
+import { configFile as fpConfigFile, launcherMarker } from "../../src/hooks/fp-home";
 import { readConfig as readFpConfig } from "../../src/hooks/fp-config";
 
 const mkTtyStdin = (): TTYIn => ({ isTTY: true }) as unknown as TTYIn;
@@ -298,6 +298,88 @@ describe("configure-wizard pure builders", () => {
   it("resolvePresetSelection returns the full set when Everything is ticked (wins over presets)", () => {
     expect(resolvePresetSelection(["__everything__"])).toEqual(resolveEverything());
     expect(resolvePresetSelection(["git", "__everything__"])).toEqual(resolveEverything());
+  });
+
+  // ── The wizard must not silently discard an existing selection ────────────
+  //
+  // `installHooks` is called with `replace: true`, so the ticked set becomes the
+  // WHOLE enabled set at that scope. That is the right rule — unticking a policy
+  // has to remove it — but every bundle box rendered unticked on every run, so
+  // re-running setup showed a blank slate and then made it authoritative. The
+  // user's policies were gone with nothing on screen to say so.
+
+  it("ticks a bundle whose policies are already all enabled", () => {
+    const git = resolvePreset("git");
+    const choices = buildPresetChoices(mkdtempSync(resolve(tmpdir(), "fpai-seed-")), true, git);
+
+    expect(choices.find((c) => c.value === "git")?.checked).toBe(true);
+    // And not the others, or confirming would enable bundles nobody picked.
+    expect(choices.find((c) => c.value === "secrets")?.checked).toBeFalsy();
+  });
+
+  it("does NOT tick a bundle that is only partly enabled", () => {
+    // "any" would tick every bundle sharing one policy, and `replace: true` would
+    // then enable all of them — turning a display bug into an enforcement change.
+    const git = resolvePreset("git");
+    expect(git.length).toBeGreaterThan(1);
+    const choices = buildPresetChoices(
+      mkdtempSync(resolve(tmpdir(), "fpai-partial-")),
+      true,
+      [git[0]!],
+    );
+
+    expect(choices.find((c) => c.value === "git")?.checked).toBeFalsy();
+    // It is enabled though, so it must be visible as an individual.
+    const row = choices.find((c) => c.value === "__individual__");
+    expect(row?.locked).toBe(true);
+    expect(row?.hint).toContain(git[0]!);
+  });
+
+  it("ticks Everything when the whole set is enabled", () => {
+    const choices = buildPresetChoices(
+      mkdtempSync(resolve(tmpdir(), "fpai-all-")),
+      true,
+      resolveEverything(),
+    );
+    expect(choices.find((c) => c.value === "__everything__")?.checked).toBe(true);
+    // Nothing is left over, so no locked row.
+    expect(choices.find((c) => c.value === "__individual__")).toBeUndefined();
+  });
+
+  it("shows no individual row when there is nothing enabled", () => {
+    const choices = buildPresetChoices(mkdtempSync(resolve(tmpdir(), "fpai-none-")), true, []);
+    expect(choices.find((c) => c.value === "__individual__")).toBeUndefined();
+    expect(choices.filter((c) => c.checked && c.value !== "__custom__")).toEqual([]);
+  });
+
+  it("carries individually-enabled policies through a confirm, so replace cannot drop them", () => {
+    // The end-to-end property: seed from a config, take the boxes as the wizard
+    // would render them, resolve, and get back everything that was enabled.
+    const enabled = [...resolvePreset("git"), "block-sudo"];
+    const { individual } = splitEnabled(enabled);
+    expect(individual).toContain("block-sudo");
+
+    const choices = buildPresetChoices(mkdtempSync(resolve(tmpdir(), "fpai-carry-")), true, enabled);
+    // What multiSelect returns on a straight ↵: every checked row, locked included.
+    const ticked = choices.filter((c) => (c.locked ? (c.checked ?? true) : !!c.checked)).map((c) => c.value);
+
+    const written = resolvePresetSelection(ticked, individual);
+
+    for (const name of enabled) expect(written).toContain(name);
+  });
+
+  it("carries a beta policy through Everything, which does not include beta", () => {
+    // `resolveEverything()` is non-beta only, so the branch meant to enable
+    // everything would drop a beta policy someone had enabled by hand.
+    const individual = ["some-beta-policy"];
+    const written = resolvePresetSelection(["__everything__", "__individual__"], individual);
+    expect(written).toContain("some-beta-policy");
+    for (const name of resolveEverything()) expect(written).toContain(name);
+  });
+
+  it("ignores the individual row when it is absent from the ticked set", () => {
+    const written = resolvePresetSelection(["git"], ["block-sudo"]);
+    expect(written).not.toContain("block-sudo");
   });
 
   it("buildAgentChoices pre-checks detected CLIs and sections the rest", () => {
@@ -1283,6 +1365,41 @@ describe("wizard back-navigation", () => {
     const reasked = many.mock.calls[2]![0];
     const checked = reasked.choices.filter((c) => c.checked);
     expect(checked.map((c) => String(c.value)).sort()).toEqual(["git", "secrets"]);
+  });
+
+  it("← on the harness step carries the HARNESS selection back in too", async () => {
+    // The sibling of the test above, and the one that was missing. That one pins
+    // the POLICY answer surviving a ←; the harness answer did not, and the restore
+    // that was supposed to do it was unreachable: `priorClis` read `clisSel`, which
+    // is the loop's own condition (`while (clisSel === null)`) and so is null on
+    // every entry into the body by definition.
+    //
+    // The cost was not cosmetic. Deselect a CLI, press ← to fix an earlier answer,
+    // come back, and the step redrew the DETECTED DEFAULTS — so confirming
+    // re-enabled hook installation for a CLI the user had explicitly turned off.
+    const one = vi.mocked(selectOne);
+    const many = vi.mocked(multiSelect);
+    one.mockResolvedValueOnce("user" as never); // scope
+    many.mockResolvedValueOnce(["secrets"] as never); // policies, 1st pass
+    // The harness step: the user has ticked ONLY codex — deliberately not the
+    // detected default — and then presses ←. `BACK` cannot carry that, so the
+    // prompt reports it through `onBack`, which is what this exercises.
+    many.mockImplementationOnce((async (opts: { onBack?: (v: string[]) => void }) => {
+      opts.onBack?.(["codex"]);
+      return BACK;
+    }) as never);
+    many.mockResolvedValueOnce(["secrets"] as never); // policies, re-asked
+    many.mockResolvedValueOnce(["codex"] as never); // harnesses, 2nd pass
+    one.mockResolvedValueOnce("local" as never); // connect
+    one.mockResolvedValueOnce("apply" as never); // review
+
+    await runConfigureWizard(ttyIO());
+
+    // The re-asked harness step must arrive with codex ticked and nothing else —
+    // the user's edit, not the detected defaults.
+    const reasked = many.mock.calls[3]![0];
+    const checked = reasked.choices.filter((c) => c.checked).map((c) => String(c.value));
+    expect(checked).toEqual(["codex"]);
   });
 
   it("the policy step itself offers no ←, because the step before it is often not asked", async () => {

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef, useTransition } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useTransition } from "react";
+import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Check, ChevronDown, Code, Copy, Settings, Shield, ShieldAlert, ShieldCheck, ShieldX, TriangleAlert, X } from "lucide-react";
@@ -11,7 +12,7 @@ import { getActivePausesAction } from "@/app/actions/get-active-pauses";
 import type { ActivePause } from "@/src/hooks/session-pause";
 import { PausedBanner, PausedNote, PausedPill } from "@/app/components/pause-notices";
 import { getHooksConfigAction } from "@/app/actions/get-hooks-config";
-import type { HooksConfigPayload, PolicyInfo, CustomPolicyInfo } from "@/app/actions/get-hooks-config";
+import type { HooksConfigPayload, PolicyInfo } from "@/app/actions/get-hooks-config";
 import type { IntegrationType } from "@/src/hooks/types";
 import { toggleCustomPolicyAction, togglePolicyAction } from "@/app/actions/update-hooks-config";
 import { installHooksWebAction, removeHooksWebAction } from "@/app/actions/install-hooks-web";

@@ -6,14 +6,19 @@ import {
   clearCloudCredentials,
   maskToken,
   readCloudCredentials,
+  writeCloudCredentials,
   resolveMachineId,
   resolveMachineLabel,
   validateCloudUrl,
   verifyCloudCredentials,
-  writeCloudCredentials,
   cloudCredentialPath,
 } from "./cloud-enrollment";
-import { daemonRestartCommand, daemonServiceStatus, daemonVersionSkew } from "./daemon-service";
+import {
+  daemonRestartCommand,
+  daemonServiceStatus,
+  daemonStatusCommand,
+  daemonVersionSkew,
+} from "./daemon-service";
 import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
 import { readVersionFile, readCredentials } from "./fp-config";
 import { version as cliVersion } from "../../package.json";
@@ -23,7 +28,6 @@ import {
   configuredPaths,
   connectToCloud,
   describeOutcome,
-  ingestUrlFor,
 } from "./cloud-connection";
 import {
   clearIngestCredential,
@@ -79,6 +83,28 @@ export interface CommandResult {
 }
 
 /**
+ * How a machine is named in CLI output: the human label, plus enough of the id to
+ * tell two machines apart.
+ *
+ * The full uuid used to be printed in every status line — `Mac.localdomain
+ * (dde01f39-afba-40eb-bf1a-815d9f17ac2d)` — which is 36 characters of noise for
+ * the one reader who cannot use them, and it made the id look like the machine's
+ * name. The id still has to appear: labels default to the hostname and are free to
+ * collide, so the label alone cannot identify a machine. Eight hex characters
+ * distinguish any realistic fleet while staying readable.
+ *
+ * `failproofai config --status --verbose` prints the full id for support.
+ */
+export function describeMachine(
+  machineId: string,
+  machineLabel?: string,
+  full = false,
+): string {
+  if (!machineLabel || machineLabel === machineId) return machineId;
+  return full ? `${machineLabel} (${machineId})` : `${machineLabel} (${machineId.slice(0, 8)})`;
+}
+
+/**
  * Warn rather than refuse when there is no daemon.
  *
  * Cloud policy is evaluated by failproofaid, so credentials alone pull
@@ -88,6 +114,29 @@ export interface CommandResult {
  */
 function daemonWarning(status: ReturnType<typeof daemonServiceStatus>): string[] {
   if (status === "running") return [];
+  // "I could not tell", NOT "it is not a service". This has its own branch, and it
+  // is ahead of the socket check, because on macOS it is the COMMON case rather
+  // than an edge one: a LaunchDaemon lives in launchd's system domain, so
+  // `daemonServiceStatus()` needs elevation to read it and returns "unknown"
+  // whenever `sudo -n` finds no cached credential — which is most of the time, for
+  // a normal user running a read-only status command.
+  //
+  // With no branch of its own it fell through to the socket check below and
+  // announced that the daemon was "running outside the service manager", which is
+  // flatly false for a correctly installed service, and told the user to install
+  // something they already had. Linux never showed it, because `systemctl
+  // is-active` needs no privileges — that asymmetry was the whole of the bug.
+  if (status === "unknown") {
+    const check = daemonStatusCommand();
+    return [
+      "",
+      ...(daemonSocketPresent()
+        ? ["  A daemon is running and policy is being pulled."]
+        : ["! No daemon is answering, so nothing is being pulled right now."]),
+      "  Its service state needs elevation to read, so it is not shown above.",
+      ...(check ? [`  Check it with: sudo ${check}`] : []),
+    ];
+  }
   // A daemon started by hand is invisible to the service manager but is
   // running and pulling. Telling someone whose machine is actively enforcing
   // that "nothing will be pulled" is false, and it is exactly the state a
@@ -150,7 +199,7 @@ export async function runConnectCommand(opts: ConnectOptions): Promise<CommandRe
   const machineLabel = resolveMachineLabel(opts.machineLabel ?? opts.defaultMachineId);
   // Humans read the label; the id is shown in parentheses only when it differs,
   // so an operator who set an explicit --machine-id still sees it.
-  const shownAs = machineLabel === machineId ? machineId : `${machineLabel} (${machineId})`;
+  const shownAs = describeMachine(machineId, machineLabel);
 
   // ONE connection, both capabilities. Each is verified before anything is
   // written and reported on its own, because a key can carry `policies:pull`
@@ -200,6 +249,69 @@ export async function runConnectCommand(opts: ConnectOptions): Promise<CommandRe
   lines.push(...daemonWarning(status));
 
   return { exitCode, lines };
+}
+
+/**
+ * Rename this machine without re-enrolling it.
+ *
+ * `--machine-label` was accepted only alongside `--connect`, so the sole way to
+ * change a name was to re-run enrolment with the URL and token again — which reads
+ * as a destructive operation for what is a display change, and which nobody with a
+ * machine token to hand is going to do casually. The hostname default is a
+ * suggestion (`resolveMachineLabel`), so renaming is the expected path, not an
+ * exception.
+ *
+ * The label rides the desired-state request (`&label=`), which is also the check
+ * that the credentials still work — so a rename verifies as a side effect. A
+ * server that cannot be reached is NOT treated as failure: the label is stored
+ * locally first and the daemon sends it on its next poll. Refusing to rename a
+ * machine because the network is down would make this useless exactly when someone
+ * is trying to label a machine they are debugging.
+ */
+export async function runRenameCommand(
+  label: string | undefined,
+  deps: { verify?: typeof verifyCloudCredentials } = {},
+): Promise<CommandResult> {
+  const trimmed = label?.trim();
+  if (!trimmed) {
+    return { exitCode: 1, lines: ["--machine-label needs a name, e.g. --machine-label \"Nikita's Mac\""] };
+  }
+  const creds = readCloudCredentials();
+  if (!creds) {
+    return {
+      exitCode: 1,
+      lines: [
+        "This machine is not connected to Failproof Cloud, so it has no name to change.",
+        "Connect it first: failproofai config --connect <url> --token <key>",
+      ],
+    };
+  }
+  if (creds.machineLabel === trimmed) {
+    return { exitCode: 0, lines: [`This machine is already named ${describeMachine(creds.machineId, trimmed)}.`] };
+  }
+
+  const previous = creds.machineLabel;
+  // Stored BEFORE the push, so a rename survives an unreachable server.
+  writeCloudCredentials({ ...creds, machineLabel: trimmed });
+
+  const verify = deps.verify ?? verifyCloudCredentials;
+  const result = await verify({ ...creds, machineLabel: trimmed });
+
+  const lines = [
+    previous
+      ? `Renamed ${previous} to ${describeMachine(creds.machineId, trimmed)}.`
+      : `Named this machine ${describeMachine(creds.machineId, trimmed)}.`,
+  ];
+  if (!result.ok) {
+    lines.push(
+      "",
+      `! The new name is stored but ${creds.url} could not be told: ${result.reason}`,
+      "  The daemon sends it on its next poll, so the dashboard catches up on its own.",
+    );
+  }
+  // Exit 0 either way: the rename DID happen locally, and reporting failure for a
+  // stored change would send the user round again to redo something that is done.
+  return { exitCode: 0, lines };
 }
 
 export function runDisconnectCommand(): CommandResult {
@@ -267,7 +379,11 @@ export function versionStatusLines(): string[] {
   ];
 }
 
-export function connectionStatusLines(daemonStatus = daemonServiceStatus): string[] {
+export function connectionStatusLines(
+  daemonStatus = daemonServiceStatus,
+  /** Print the full machine id rather than a short prefix. */
+  verbose = false,
+): string[] {
   const envUrl = process.env.FAILPROOFAI_CLOUD_URL;
   if (envUrl) {
     // Env wins over the file in the daemon, so reporting the file here would
@@ -299,11 +415,9 @@ export function connectionStatusLines(daemonStatus = daemonServiceStatus): strin
 
   const lines: string[] = [];
   if (creds) {
-    // Show the human label with the stable id in parentheses; fall back to the
-    // bare id for credentials written before labels existed.
-    const shownAs = creds.machineLabel
-      ? `${creds.machineLabel} (${creds.machineId})`
-      : creds.machineId;
+    // Label first, with a short id to disambiguate; the bare id is the fallback
+    // for credentials written before labels existed.
+    const shownAs = describeMachine(creds.machineId, creds.machineLabel, verbose);
     lines.push(`Cloud: connected to ${creds.url} as ${shownAs} (token ${maskToken(creds.token)}).`);
     lines.push(`  Policy    pulling centrally-managed policies.`);
   } else {

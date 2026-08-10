@@ -35,6 +35,8 @@
  * running daemon never picks up.
  */
 
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 import { readConfig, updateConfig } from "./fp-config";
 import { configFile } from "./fp-home";
 
@@ -143,6 +145,55 @@ const TAKES_EFFECT_HINT = [
   "The daemon picks this up on its own within a few seconds — no restart, no sudo.",
 ];
 
+/**
+ * The daemon's label rule, FOR COMPARISON ONLY.
+ *
+ * Mirrors `sanitize_label()` in `crates/fpai-collect/src/extra_paths.rs`:
+ * lowercase, every non-alphanumeric run collapsed to one `-`, leading and
+ * trailing dashes trimmed.
+ *
+ * Deliberately NOT used to rewrite what is stored. The daemon is the authority on
+ * the grammar, and this file's header is explicit that it must not re-implement
+ * the parser — "two parsers is how the CLI comes to accept a path the daemon then
+ * silently drops". Normalising for a duplicate CHECK is the narrow opposite of
+ * that: it makes the CLI's own pre-flight agree with the rule it exists to
+ * pre-empt, while the stored string stays exactly what the user typed and the
+ * daemon still derives the real label.
+ */
+function comparableLabel(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * The daemon's path rule, for comparison only. Mirrors `clean()`: `~/` expanded,
+ * trailing slashes trimmed.
+ */
+function comparablePath(raw: string): string {
+  const home = homedir();
+  const expanded = raw === "~" ? home : raw.startsWith("~/") ? resolve(home, raw.slice(2)) : raw;
+  return expanded.replace(/\/+$/, "");
+}
+
+/**
+ * What the daemon will call this entry, label given or derived.
+ *
+ * Mirrors `derive_label()` for the unlabelled case: the folder name with a leading
+ * dot stripped, then sanitised. Without this an unlabelled
+ * `/mnt/team-a/.claude/projects` and `/mnt/team-b/.claude/projects` both derive
+ * "projects" — the CLI's label check was skipped entirely for unlabelled entries,
+ * so both were written and the daemon silently dropped the second.
+ */
+function effectiveLabel(entry: string): string {
+  const given = labelOf(entry);
+  if (given) return comparableLabel(given);
+  const path = comparablePath(pathOf(entry));
+  const base = path.split("/").filter(Boolean).pop() ?? "";
+  return comparableLabel(base.replace(/^\.+/, ""));
+}
+
 export function addPath(harness: string, entry: string): HarnessResult {
   if (!(HARNESS_KEYS as readonly string[]).includes(harness)) return unknownHarness(harness);
   const trimmed = entry.trim();
@@ -163,7 +214,11 @@ export function addPath(harness: string, entry: string): HarnessResult {
   // Both are rejected HERE rather than left to the daemon, because the daemon
   // resolves them at startup and drops one — so the CLI would report success
   // for a path that is never captured.
-  const samePath = existing.find((e) => pathOf(e) === pathOf(trimmed));
+  // Compared NORMALISED, not raw. `add-path claude a=/srv/x/` then
+  // `add-path claude b=/srv/x` differ as strings and are the same path to the
+  // daemon, which resolves them at startup and drops one — so the CLI reported
+  // success for a path that is never captured.
+  const samePath = existing.find((e) => comparablePath(pathOf(e)) === comparablePath(pathOf(trimmed)));
   if (samePath) {
     return fail([
       `${harness} already captures ${pathOf(trimmed)} as ${JSON.stringify(samePath)}.`,
@@ -173,24 +228,46 @@ export function addPath(harness: string, entry: string): HarnessResult {
     ]);
   }
   const wanted = labelOf(trimmed);
-  if (wanted) {
-    const sameLabel = existing.find((e) => labelOf(e) === wanted);
-    if (sameLabel) {
-      return fail([
-        `${harness} already uses the label ${JSON.stringify(wanted)} for ${pathOf(sameLabel)}.`,
-        "",
-        "Labels namespace agent ids, so two paths cannot share one.",
-      ]);
-    }
+  // The EFFECTIVE label, normalised, and computed for unlabelled entries too.
+  // Three inputs slipped past the old exact-string check on the given label:
+  // `"Team Share"` vs `team-share` (the daemon lowercases and substitutes), and two
+  // unlabelled paths whose folder name derives the same label — for which the check
+  // did not run at all. In every case both entries were written, `harness list`
+  // showed both, and only one was captured.
+  const effective = effectiveLabel(trimmed);
+  const sameLabel = effective
+    ? existing.find((e) => effectiveLabel(e) === effective)
+    : undefined;
+  if (sameLabel) {
+    return fail([
+      `${harness} already uses the label ${JSON.stringify(effective)} for ${pathOf(sameLabel)}.`,
+      "",
+      "Labels namespace agent ids, so two paths cannot share one — and the daemon",
+      "lowercases them and collapses punctuation to `-`, so labels that differ only",
+      "in case or spacing collide. An unlabelled path takes its folder name.",
+      "",
+      "Give this one an explicit label:",
+      `  failproofai harness add-path ${harness} <label>=${pathOf(trimmed)}`,
+    ]);
   }
 
   writePaths(harness, [...existing, trimmed]);
   return ok([
-    `${harness}: now also capturing ${pathOf(trimmed)}`,
+    // "configured", NOT "now capturing". The checks above cover what this side can
+    // know — the entries already in the file — and there is one rejection it
+    // cannot: a path overlapping the harness's own DEFAULT capture root, which the
+    // daemon owns and refuses. Claiming capture there was a promise this command
+    // is not in a position to make, so it says what it did and where the answer
+    // is. Teaching the CLI all thirteen sources' default roots would be the second
+    // parser this file exists to avoid.
+    `${harness}: configured to also capture ${pathOf(trimmed)}`,
     wanted
       ? `  agent ids will be namespaced ${wanted}-*`
       : "  a label will be derived from the folder name; `failproofai harness list` shows it",
     `  written to ${configFile()}`,
+    "",
+    "  The daemon validates it on the next read and reports what it rejected —",
+    "  `failproofai harness list` shows what is actually being captured.",
     ...TAKES_EFFECT_HINT,
   ]);
 }

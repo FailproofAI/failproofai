@@ -54,6 +54,71 @@ pub struct DesiredState {
     pub policies: Vec<DesiredPolicy>,
 }
 
+/// A `desired-state.json` as a PRE-RENAME daemon wrote it — disk only.
+///
+/// `DesiredState` above decodes bytes from a server we version in lockstep, so it
+/// deliberately refuses the old `generation`/`revision` spelling: an alias there
+/// would be dead code guarding a case no server can produce, and a
+/// silently-tolerated old field is how two sides drift back apart.
+///
+/// That reasoning is right about the wire and incomplete about the FILE. The axis
+/// is *who wrote these bytes*, and `desired-state.json` is written by a daemon
+/// that may be older than the one now reading it — exactly like `active.json`,
+/// which is why that struct carries aliases. One struct was decoding bytes from
+/// two different writers, so the strictness the wire needs made the disk read
+/// fail: a v1 file does not trip the unknown `generation` key (this family has no
+/// `deny_unknown_fields`, on purpose) — it fails on `deployment` being MISSING.
+///
+/// The consequence was not cosmetic. `repair_active_from_cache()` swallows that
+/// parse error, and if `active.json` is also gone or corrupt while OFFLINE it
+/// returns without rebuilding — so cloud policy stops being enforced until a poll
+/// succeeds, on a machine that has no way to poll.
+///
+/// So: two types, one per writer, rather than one lenient type. The wire keeps its
+/// hard edge; the disk read falls back to this and converts. No `schema_version`
+/// is checked here — `read_desired()` validates after the conversion, through the
+/// same path the current shape takes.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyDesiredState {
+    schema_version: u32,
+    generation: u64,
+    policies: Vec<LegacyDesiredPolicy>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyDesiredPolicy {
+    id: String,
+    revision: u64,
+    sha256: String,
+    artifact_url: String,
+    #[serde(default)]
+    effect: PolicyEffect,
+}
+
+impl From<LegacyDesiredState> for DesiredState {
+    fn from(old: LegacyDesiredState) -> Self {
+        DesiredState {
+            schema_version: old.schema_version,
+            deployment: old.generation,
+            policies: old.policies.into_iter().map(DesiredPolicy::from).collect(),
+        }
+    }
+}
+
+impl From<LegacyDesiredPolicy> for DesiredPolicy {
+    fn from(old: LegacyDesiredPolicy) -> Self {
+        DesiredPolicy {
+            id: old.id,
+            version: old.revision,
+            sha256: old.sha256,
+            artifact_url: old.artifact_url,
+            effect: old.effect,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DesiredPolicy {
@@ -264,7 +329,20 @@ impl PolicyStore {
             return Ok(None);
         }
         let bytes = fs::read(path)?;
-        let desired: DesiredState = serde_json::from_slice(&bytes)?;
+        // Current shape first, so the common path pays nothing. A pre-rename file
+        // falls through to `LegacyDesiredState` rather than failing — see its note
+        // for why this file needs the leniency `DesiredState` must not have.
+        let desired: DesiredState = match serde_json::from_slice::<DesiredState>(&bytes) {
+            Ok(desired) => desired,
+            Err(current_err) => match serde_json::from_slice::<LegacyDesiredState>(&bytes) {
+                Ok(legacy) => legacy.into(),
+                // The CURRENT error is reported, not the legacy one: a genuinely
+                // corrupt file is far likelier than a pre-rename one, and
+                // "missing field `generation`" would send someone hunting the
+                // wrong spelling.
+                Err(_) => return Err(current_err.into()),
+            },
+        };
         validate_desired_state(&desired)?;
         Ok(Some(desired))
     }
@@ -408,17 +486,35 @@ impl PolicyStore {
         }
 
         // AFTER the flip, never before. A machine upgrading from layout 2 has a
-        // `deployments/` tree whose files the OLD `active.json` still named; once
+        // per-deployment tree whose files the OLD `active.json` still named; once
         // the new pointer is live nothing reads it, and leaving it behind means
         // carrying a full copy of every policy set the machine has ever had.
         //
+        // `generations` FIRST, and that is the whole point: layout 2 wrote
+        // `cloud-policies/generations/<n>/`, and the generation→deployment rename
+        // swept this string literal along with the code. But a literal naming an
+        // ON-DISK artifact written by an OLDER build is not a symbol to rename —
+        // it is data, exactly like the `generation`/`revision` field names that
+        // needed aliases. Checking only `deployments` tested for a directory
+        // nothing has ever written, so the cleanup never ran on any real machine
+        // and the tree it exists to remove was kept forever. The comment above
+        // said "has a `deployments/` tree", which was the same mistake in prose.
+        //
+        // `deployments` is still checked, for a daemon built from this branch
+        // between the rename and the flattening. Costs one `exists()` on a path
+        // that is absent everywhere else.
+        //
         // Best-effort: a directory we cannot remove is dead weight, not a reason
         // to fail a reconcile that has already succeeded.
-        let legacy_deployments = self.root.join("deployments");
-        if activated && legacy_deployments.exists() {
-            match fs::remove_dir_all(&legacy_deployments) {
-                Ok(()) => tracing::info!("removed the layout-2 deployments/ tree"),
-                Err(err) => tracing::warn!(?err, "could not remove the layout-2 deployments/ tree"),
+        for legacy in ["generations", "deployments"] {
+            let path = self.root.join(legacy);
+            if activated && path.exists() {
+                match fs::remove_dir_all(&path) {
+                    Ok(()) => tracing::info!("removed the layout-2 {legacy}/ tree"),
+                    Err(err) => {
+                        tracing::warn!(?err, "could not remove the layout-2 {legacy}/ tree")
+                    }
+                }
             }
         }
 
@@ -651,11 +747,21 @@ fn file_matches_hash(path: &Path, expected: &str) -> Result<bool, ReconcileError
         }
         hasher.update(&buffer[..read]);
     }
-    Ok(format!("{:x}", hasher.finalize()) == expected)
+    Ok(hex_encode(&hasher.finalize()) == expected)
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex_encode(&Sha256::digest(bytes))
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for &byte in bytes {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    encoded
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ReconcileError> {
@@ -820,6 +926,43 @@ mod tests {
         assert_eq!(fs::read(store.active_manifest_path()).unwrap(), before);
         assert_eq!(store.read_active().unwrap().unwrap().deployment, 1);
         fs::remove_dir_all(store.root()).ok();
+    }
+
+    /// The layout-2 tree is actually removed — under the name layout 2 wrote.
+    ///
+    /// This checked `deployments/` only, a name nothing has ever written: the
+    /// generation→deployment rename swept up a string literal that names an
+    /// ON-DISK artifact from an older build. So the cleanup never ran on any real
+    /// machine, and the full copy of every policy set the machine had ever held
+    /// was kept forever — the exact outcome the code's own comment says it exists
+    /// to prevent.
+    #[test]
+    fn the_layout_two_generations_tree_is_removed_after_the_flip() {
+        let store = temp_store("legacy-generations");
+        let bytes = b"export default 'x';\n".to_vec();
+        // Both names, so the test would catch a fix that swapped one for the other
+        // rather than covering both.
+        for legacy in ["generations", "deployments"] {
+            std::fs::create_dir_all(store.root().join(legacy).join("4")).unwrap();
+            std::fs::write(
+                store.root().join(legacy).join("4").join("old.mjs"),
+                b"stale",
+            )
+            .unwrap();
+        }
+
+        let desired = desired(1, "p", &bytes);
+        store
+            .reconcile(&desired, &|_: &DesiredPolicy| Ok(bytes.clone()))
+            .expect("reconcile");
+
+        assert!(
+            !store.root().join("generations").exists(),
+            "the layout-2 generations/ tree must be removed once the new pointer is live"
+        );
+        assert!(!store.root().join("deployments").exists());
+        // And the live set is untouched by the cleanup.
+        assert!(store.read_active().unwrap().is_some());
     }
 
     #[test]
@@ -1039,6 +1182,81 @@ mod pre_rename_state_tests {
     }
   ]
 }"#;
+
+    /// A byte-accurate `desired-state.json` as an earlier beta wrote it.
+    ///
+    /// The sibling of `PRE_RENAME_ACTIVE`, and the file that had no test. Note it
+    /// carries `generation` / `revision` and NO `schemaVersion` field name change —
+    /// the version is 1 and the field names are the v1 spelling.
+    const PRE_RENAME_DESIRED: &str = r#"{
+  "schemaVersion": 1,
+  "generation": 4,
+  "policies": [
+    {
+      "id": "e2e-block-curl",
+      "revision": 2,
+      "sha256": "732c6e780e183a15259688d858e4ec0db20c7dd13352601c73db5540122e2c30",
+      "artifactUrl": "enforcement/v1/artifacts/e2e-block-curl/2",
+      "effect": "enforce"
+    }
+  ]
+}"#;
+
+    /// The other half of the upgrade case, which the rename missed.
+    ///
+    /// `SUPPORTED_SCHEMA_VERSIONS`'s own comment says version 1 is accepted "for
+    /// files on DISK" and names `desired-state.json` as one of them — but the
+    /// aliases went only on `ActiveDeployment`, so this file could not be read.
+    /// It does not fail on the unknown `generation` key (this struct has no
+    /// `deny_unknown_fields`, deliberately, since it also decodes a remote
+    /// payload) — it fails on `deployment` being MISSING, which is the confusing
+    /// shape of the same bug.
+    ///
+    /// The consequence is not cosmetic: `repair_active_from_cache()` swallows the
+    /// parse error, and with `active.json` also gone or corrupt while offline it
+    /// returns without rebuilding, so cloud policy stops being enforced until a
+    /// poll succeeds.
+    #[test]
+    fn a_pre_rename_desired_state_converts_through_the_legacy_shape() {
+        // NOT through `DesiredState` directly — that type keeps its hard edge, and
+        // `the_wire_does_not_accept_the_pre_rename_spelling` below is what holds it
+        // there. The leniency lives in a disk-only type instead, so the two
+        // writers of this file each get the strictness they warrant.
+        let legacy: LegacyDesiredState = serde_json::from_str(PRE_RENAME_DESIRED)
+            .expect("a pre-rename desired-state.json must still be readable after an upgrade");
+        let converted: DesiredState = legacy.into();
+        assert_eq!(converted.schema_version, 1);
+        assert_eq!(converted.deployment, 4, "`generation` becomes `deployment`");
+        assert_eq!(converted.policies.len(), 1);
+        assert_eq!(
+            converted.policies[0].version, 2,
+            "`revision` becomes `version`"
+        );
+        assert_eq!(converted.policies[0].effect, PolicyEffect::Enforce);
+    }
+
+    /// And it survives the round trip the daemon actually performs: written to
+    /// disk by an older build, read back by this one.
+    #[test]
+    fn read_desired_accepts_a_v1_file_left_by_an_earlier_beta() {
+        // Inlined rather than reusing `temp_store`, which lives in the sibling
+        // `tests` module: these two belong beside the fixture they read.
+        let root =
+            std::env::temp_dir().join(format!("failproofaid-v1-desired-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let store = PolicyStore::new(root.clone());
+        std::fs::create_dir_all(store.desired_state_path().parent().unwrap()).unwrap();
+        std::fs::write(store.desired_state_path(), PRE_RENAME_DESIRED).unwrap();
+
+        let desired = store
+            .read_desired()
+            .expect("a v1 desired-state.json on disk must be readable")
+            .expect("it exists");
+
+        assert_eq!(desired.deployment, 4);
+        assert_eq!(desired.policies[0].version, 2);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     /// The upgrade case. `ActiveDeployment` carries `deny_unknown_fields`, so
     /// without the aliases this fails on three counts at once: `generation`

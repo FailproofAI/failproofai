@@ -119,3 +119,16 @@ COMMIT_MSG.tmp
 # lands them here.
 /.daemon-packages/
 /release-assets/
+
+# Sandbox HOME directories from local/Docker smoke tests (see CLAUDE.md's
+# testing protocol) leak into the repo when HOME points at a relative path
+# instead of a real temp directory. A real one holds bun's install cache and
+# this CLI's own runtime state, never source — and the parent directory name
+# is random each time it happens (587d0567's committed ino.ujh3/ was one),
+# so match the tell-tale contents anywhere in the tree rather than a name.
+# The repo's own dogfood `/.failproofai/` (policies-config.json, policies/)
+# has none of these subpaths, so it is unaffected.
+**/.bun/install/cache/
+**/.failproofai/bin/
+**/.failproofai/run/
+**/.failproofai/state/

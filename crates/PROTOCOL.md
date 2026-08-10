@@ -8,9 +8,8 @@ invocation already has today — see `src/hooks/handler.ts`'s
 relays it over a socket instead of a fresh process's argv/stdin/stdout.
 
 Implemented in `crates/fpai-ipc` (framing + envelope + peer verification) and
-`crates/failproofaid` (the socket server itself). As of Stage 2, the daemon
-answers `ping` and rejects `hook` with a stub "not implemented" error — Stage 3
-wires `hook` up to a real warm Node/Bun worker.
+`crates/failproofaid` (the socket server and worker supervisor). The daemon
+answers `ping` directly and relays `hook` requests to its warm Node/Bun worker.
 
 ## Transport
 
@@ -25,9 +24,9 @@ this at a directory failproofaid doesn't own itself; see
 `crates/failproofaid/src/paths.rs`'s `ensure_run_dir`, which refuses to modify
 permissions on a pre-existing directory it didn't create).
 
-Permissions: the run directory is `0700` and the socket file `0600` — this is
-the actual access-control boundary (user-scope only, no elevation, same OS
-user only). `crates/fpai-ipc/src/peer.rs`'s `SO_PEERCRED` (Linux) /
+Permissions: the run directory is `0700` and the socket file `0600`. Although
+the service definition is installed system-wide, the daemon process runs as
+the configured OS user. `crates/fpai-ipc/src/peer.rs`'s `SO_PEERCRED` (Linux) /
 `getpeereid` (macOS) check is defense-in-depth on top of that, not a stronger
 boundary — same-user access can always reach this daemon regardless.
 
@@ -86,8 +85,8 @@ hazard" the TS-side plan calls out explicitly).
 }
 
 // The daemon accepted the connection and parsed the request, but could not
-// produce a verdict (worker down/hung, or — in Stage 2 — hook evaluation
-// simply isn't wired up yet). Distinct from hookResult so the client can
+// produce a verdict (for example, the worker is down or hung). Distinct from
+// hookResult so the client can
 // tell "ran and decided" apart from "daemon couldn't evaluate at all" — the
 // latter is what drives the client's fail-closed path.
 { "type": "error", "protocolVersion": 1, "message": "..." }
@@ -96,11 +95,10 @@ hazard" the TS-side plan calls out explicitly).
 ## Protocol versioning
 
 `protocolVersion` is carried on every message in both directions. A mismatch
-gets an explicit `error` response from the daemon — the client treats *any*
-failure mode (missing socket, refused connection, timeout, malformed
-response, or an explicit version mismatch) identically: fall through to
-whatever the client's fail-closed/in-process policy dictates. There is no
-negotiation, only agree-or-fall-back.
+gets an explicit `error` response from the daemon. A daemon-configured client
+fails closed on every missing or unusable verdict; it preserves the mismatch
+category only to print the correct repair instructions. There is no protocol
+negotiation: the CLI and daemon must agree exactly.
 
 ## Peer verification
 

@@ -1,13 +1,13 @@
 ---
-title: policies इंस्टॉल करें
-description: "policies को सक्षम करें ताकि वे हर agent tool call पर चलें"
+title: नीतियों को इंस्टॉल करें
+description: "नीतियों को सक्षम करें ताकि वे हर एजेंट टूल कॉल पर चलें"
 ---
 
 ```bash
 failproofai policies --install [policy-names...] [options]
 ```
 
-आपके इंस्टॉल किए गए agent CLI की सेटिंग्स फ़ाइल (Claude Code, OpenAI Codex, या GitHub Copilot CLI _(beta)_) में hook एंट्रीज लिखता है ताकि failproofai tool calls को इंटरसेप्ट कर सके।
+आपके इंस्टॉल किए गए एजेंट CLI की सेटिंग्स फ़ाइल (Claude Code, OpenAI Codex, या GitHub Copilot CLI _(beta)_) में हुक एंट्रीज़ लिखता है ताकि failproofai टूल कॉल को इंटरसेप्ट कर सके।
 
 उपनाम: `failproofai p -i`
 
@@ -15,33 +15,33 @@ failproofai policies --install [policy-names...] [options]
 
 | फ़्लैग | विवरण |
 |------|-------------|
-| `--cli claude\|codex\|copilot` | Agent CLI(s) जिनके लिए इंस्टॉल करना है; स्पेस से अलग (जैसे `--cli claude codex copilot`) या दोहराए गए। छोड़ने पर इंस्टॉल किए गए CLIs का पता लगाया जाएगा और प्रॉम्प्ट दिया जाएगा। |
-| `--scope user` | यूजर-स्कोप सेटिंग्स फ़ाइल में इंस्टॉल करें (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`)। डिफ़ॉल्ट। |
+| `--cli claude\|codex\|copilot` | एजेंट CLI(s) जिसके लिए इंस्टॉल करना है; स्पेस-सेपरेटेड (जैसे `--cli claude codex copilot`) या दोहराया गया। छोड़ने पर इंस्टॉल किए गए CLIs का पता लगाता है और प्रॉम्प्ट करता है। |
+| `--scope user` | यूजर-स्कोप सेटिंग्स फ़ाइल में इंस्टॉल करें (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`)। डिफॉल्ट। |
 | `--scope project` | प्रोजेक्ट-स्कोप सेटिंग्स फ़ाइल में इंस्टॉल करें (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`)। |
-| `--scope local` | Claude केवल — `<cwd>/.claude/settings.local.json` में इंस्टॉल करता है। Codex और Copilot के पास `local` स्कोप नहीं है। |
-| `--custom <path>` / `-c` | कस्टम hook policies वाली JS फ़ाइल का पथ |
+| `--scope local` | केवल Claude — `<cwd>/.claude/settings.local.json` में इंस्टॉल करता है। Codex और Copilot के पास `local` स्कोप नहीं है। |
+| `--custom <path>` / `-c` | कस्टम हुक नीतियों युक्त JS फ़ाइल का पथ |
 
 ## व्यवहार
 
-- **कोई policy नाम नहीं** - policies चुनने के लिए एक इंटरैक्टिव प्रॉम्प्ट खोलता है
-- **विशिष्ट नाम** - उन policies को सक्षम करता है (पहले से सक्षम किए गए में जोड़ा जाता है)
-- **`all`** - सभी उपलब्ध policies को सक्षम करता है
+- **कोई नीति नाम नहीं** - नीतियों का चयन करने के लिए एक इंटरैक्टिव प्रॉम्प्ट खोलता है
+- **विशिष्ट नाम** - उन नीतियों को सक्षम करता है (पहले से सक्षम किसी भी नीति में जोड़ा गया)
+- **`all`** - हर उपलब्ध नीति को सक्षम करता है
 
-इंस्टॉलेशन योगात्मक है: `--install` को फिर से चलाने से नई policies जोड़ी जाती हैं बिना मौजूदा लोगों को हटाए।
+इंस्टॉलेशन योगात्मक है: `--install` को फिर से चलाने से नई नीतियां जुड़ती हैं बिना मौजूदा लोगों को हटाए।
 
 ## उदाहरण
 
 ```bash
-# सभी डिफ़ॉल्ट policies को globally इंस्टॉल करें (इंटरएक्टिव)
+# सभी डिफॉल्ट नीतियों को विश्व स्तर पर इंस्टॉल करें (इंटरैक्टिव)
 failproofai policies --install
 
-# वर्तमान प्रोजेक्ट के लिए विशिष्ट policies इंस्टॉल करें
+# वर्तमान प्रोजेक्ट के लिए विशिष्ट नीतियों को इंस्टॉल करें
 failproofai policies --install block-sudo sanitize-api-keys --scope project
 
-# सभी policies को एक बार में सक्षम करें
+# एक बार में सभी नीतियों को सक्षम करें
 failproofai policies --install all
 
-# कस्टम policies फ़ाइल के साथ इंस्टॉल करें
+# कस्टम नीतियों फ़ाइल के साथ इंस्टॉल करें
 failproofai policies --install --custom ./my-policies.js
 
 # OpenAI Codex के लिए इंस्टॉल करें (प्रोजेक्ट स्कोप)
@@ -50,8 +50,8 @@ failproofai policies --install --cli codex --scope project
 # वर्तमान प्रोजेक्ट के लिए GitHub Copilot CLI (beta) के लिए इंस्टॉल करें
 failproofai policies --install --cli copilot --scope project
 
-# एक बार में तीनों CLIs के लिए इंस्टॉल करें
+# एक बार में सभी तीन CLIs के लिए इंस्टॉल करें
 failproofai policies --install --cli claude codex copilot
 ```
 
-जब `--custom <path>` प्रदान किया जाता है, तो फ़ाइल तुरंत सत्यापित की जाती है - इसे कम से कम एक बार `customPolicies.add()` को कॉल करना चाहिए। अनुमानित पथ `policies-config.json` में `customPoliciesPath` के रूप में सहेजा जाता है।
+जब `--custom <path>` प्रदान किया जाता है, तो फ़ाइल तुरंत सत्यापित की जाती है - इसे कम से कम एक बार `customPolicies.add()` को कॉल करना चाहिए। समाधान किया गया पथ `policies-config.json` में `customPoliciesPath` के रूप में सहेजा जाता है।

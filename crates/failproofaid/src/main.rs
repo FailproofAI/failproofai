@@ -9,6 +9,7 @@ mod telemetry;
 mod test_env;
 mod worker;
 
+use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -47,6 +48,7 @@ fn init_logging() {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
+    refuse_foreign_layout()?;
     let lock_path = paths::lock_path()?;
     paths::ensure_run_dir()?;
     let _singleton = lock::acquire(&lock_path)?;
@@ -198,6 +200,51 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     run_result?;
     Ok(())
+}
+
+/// Refuse to run against a home written by a layout this binary does not speak.
+///
+/// Every path in `paths.rs` is correct for exactly one layout, and this binary
+/// never read the marker that says which one is on disk — so a daemon whose
+/// version had drifted from the CLI's happily read and wrote LAYOUT-3 paths in a
+/// layout-4 home. That is the failure `fp-home.ts` was created to end: the daemon
+/// writes where nothing reads, silently, because an absent directory is
+/// indistinguishable from an idle one. The skew is ordinary rather than exotic —
+/// `npm i -g` replaces the CLI while the binary under
+/// `~/.failproofai/bin/failproofaid-<version>` stays exactly where it was, which
+/// is why `daemonVersionSkew()` exists on the CLI side at all.
+///
+/// Refusing is the fail-closed-consistent answer and it mirrors what the CLI
+/// already does for a `future` layout: stop, name the version, and say what fixes
+/// it. A machine that fails closed then denies tool calls until the daemon is
+/// updated — loud, immediate, and pointing at the remedy — which is the outcome
+/// this codebase picks every other time it has this choice.
+///
+/// An ABSENT marker starts normally. A fresh home has none until the first CLI
+/// command stamps one, and refusing there would break the install itself.
+fn refuse_foreign_layout() -> Result<(), Box<dyn std::error::Error>> {
+    let home = paths::failproofai_home()?;
+    let Some(found) = paths::read_layout(&home) else {
+        return Ok(());
+    };
+    if found == paths::LAYOUT_VERSION {
+        return Ok(());
+    }
+    // Both directions refuse, and the message differs because the remedy does.
+    // An OLDER home is one the CLI is about to migrate; a NEWER one means this
+    // binary is the stale half.
+    let remedy = if found < paths::LAYOUT_VERSION {
+        "run any `failproofai` command to migrate it, then restart this service"
+    } else {
+        "run `failproofai update` to bring this daemon up to the CLI's version"
+    };
+    Err(io::Error::other(format!(
+        "{} was written by layout {found}, and this failproofaid speaks layout {}. \
+         Refusing to start rather than read and write paths that moved — {remedy}.",
+        home.display(),
+        paths::LAYOUT_VERSION,
+    ))
+    .into())
 }
 
 /// The collector tasks to supervise for this process.
@@ -787,15 +834,24 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         // Resolve one harness's configured extra paths against the roots it
         // already watches, logging every rejection — each one is a path the
         // operator asked for and is not getting.
-        let extras = |harness: &str,
-                      defaults: &[std::path::PathBuf]|
+        // `reserved` are labels the source's own DEFAULT tasks already occupy.
+        // Empty for every source but Hermes, whose default labels are DERIVED per
+        // profile database — so an extra could be given one of them, and the two
+        // pollers would then share a cursor directory and a health key.
+        let extras_reserving = |harness: &str,
+                                defaults: &[std::path::PathBuf],
+                                reserved: &[String]|
          -> Vec<fpai_collect::ExtraPath> {
             let entries = settings.extra_paths_for(harness);
             if entries.is_empty() {
                 return Vec::new();
             }
-            let resolved =
-                fpai_collect::extra_paths::resolve(&entries, defaults, home_dir.as_deref());
+            let resolved = fpai_collect::extra_paths::resolve_reserving(
+                &entries,
+                defaults,
+                reserved,
+                home_dir.as_deref(),
+            );
             for bad in &resolved.rejected {
                 eprintln!(
                     "[failproofaid] ignoring extra path {:?} for {harness}: {}",
@@ -811,6 +867,10 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 );
             }
             resolved.accepted
+        };
+        // The common case: no default task derives a label, so nothing is reserved.
+        let extras = |harness: &str, defaults: &[std::path::PathBuf]| {
+            extras_reserving(harness, defaults, &[])
         };
 
         use fpai_collect::sources::{
@@ -1054,7 +1114,17 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         // Configured extras are resolved against EVERY default profile database,
         // so pointing one at a profile Hermes already exposes is rejected rather
         // than collected twice under two ids.
-        for ep in extras("hermes", &hermes_dbs) {
+        // Reserved: the labels the default profile tasks above just claimed. Without
+        // this, `add-path hermes prod=<other>.db` on a machine with a `prod` profile
+        // is accepted, and the two pollers share `cursors/hermes/prod` and the
+        // health key `hermes:prod` — the exact clobbering the comment above says
+        // each profile gets its own directory to avoid.
+        let hermes_reserved: Vec<String> = hermes_dbs
+            .iter()
+            .enumerate()
+            .map(|(i, db)| profile_dir_name(db, i))
+            .collect();
+        for ep in extras_reserving("hermes", &hermes_dbs, &hermes_reserved) {
             sqlite_source(
                 &mut tasks,
                 "hermes",
@@ -1522,5 +1592,37 @@ mod tests {
         // It reads the process uid, not the environment, so it is stable across
         // calls within one process.
         assert_eq!(current_os_user().as_deref(), Some(name.as_str()));
+    }
+
+    /// The reserved-label guard passes these names to `resolve_reserving`
+    /// VERBATIM, and that is only correct because this function is NOT
+    /// `sanitize_label`. It maps each non-alphanumeric one-for-one, does not
+    /// lowercase, and does not trim — so the root database's directory keeps its
+    /// leading dash. Pinned here because the guard is silently wrong the moment
+    /// the two normalisers agree by accident: sanitising `-hermes` yields
+    /// `hermes`, a name no task owns, which reserves the wrong string on EVERY
+    /// machine (index 0 is always the root db).
+    #[test]
+    fn profile_dir_name_is_not_sanitize_label() {
+        let root = std::path::Path::new("/home/u/.hermes/state.db");
+        assert_eq!(
+            profile_dir_name(root, 0),
+            "-hermes",
+            "the leading dot becomes a dash and is NOT trimmed"
+        );
+
+        // A named profile's directory is already in canonical form, which is the
+        // case the guard actually protects: an extra labelled `prod` sanitises to
+        // `prod` and would collide with this task's cursor dir.
+        let named = std::path::Path::new("/home/u/.hermes/profiles/prod/state.db");
+        assert_eq!(profile_dir_name(named, 1), "prod");
+
+        // Neither lowercased nor dash-collapsed, unlike `sanitize_label`.
+        let odd = std::path::Path::new("/home/u/.hermes/profiles/Prod A/state.db");
+        assert_eq!(profile_dir_name(odd, 2), "Prod-A");
+
+        // Only an all-dashes result falls back to the index.
+        let dots = std::path::Path::new("/home/u/.hermes/profiles/.../state.db");
+        assert_eq!(profile_dir_name(dots, 3), "profile-3");
     }
 }

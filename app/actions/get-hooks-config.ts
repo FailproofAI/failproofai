@@ -11,7 +11,6 @@ import { customPolicyId, conventionPolicyId, discoverPolicyFiles } from "@/src/h
 import { findProjectConfigDir } from "@/src/hooks/hooks-config";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
 import { basename, resolve } from "node:path";
 import { customPoliciesDir } from "@/src/hooks/fp-home";
 

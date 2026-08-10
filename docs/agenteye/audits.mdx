@@ -34,6 +34,8 @@ You decide how hard it looks with a single **sensitivity** setting (low, medium,
 
 You never have to take a finding on faith. Each recommendation cites the exact sessions it came from and the SQL that surfaced it, so you can open the evidence and confirm the problem in a click instead of reverse-engineering a claim.
 
+When a finding is about a leaked credential, it goes one step further and links the individual events it matched. Click one and you land on that exact moment in the session, already selected — not the top of a long transcript to scroll through. The link names the event; it never copies the detected secret into the finding, so reading a finding is not a second place your credential is written down. If an event is no longer there because the session has passed your retention window, the page says so plainly rather than leaving you wondering whether you clicked the wrong thing.
+
 That is also what keeps audits honest. The server checks that every cited session actually exists and **discards any recommendation whose evidence does not hold up**, so the audit investigates but never invents. What lands on your list is real, reproducible, and ranked by how much it matters, with the biggest wins at the top.
 
 ## Turn a fix into a guardrail

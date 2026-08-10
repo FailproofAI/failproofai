@@ -251,6 +251,24 @@ When `--cli` is omitted, `failproofai` detects which agent CLIs are installed (`
 
 You can edit `policies-config.json` directly at any time; changes take effect immediately on the next hook event with no restart needed.
 
+## Upgrades keep your configuration
+
+A new version of failproofai may organise `~/.failproofai/` differently. When it does, the first command after the upgrade migrates the directory, and **your configuration is carried across, not reset**:
+
+| Kept | Rebuilt |
+|---|---|
+| Your policy selection and params (`policies-config.json`) | The audit cache |
+| Your settings, including `daemon.configured` and extra capture paths (`config.json`) | Cloud-managed policy deployments — re-fetched and digest-verified on the next poll |
+| Your cloud enrolment (`credentials.json`) | Daemon scratch state |
+| Your own policy files in `policies/`, and the helpers they import | |
+| The decision log the dashboard reads, and events not yet delivered | |
+
+Keys written by a *newer* failproofai are preserved as well, rather than being dropped by an older reader — so moving between versions does not silently discard settings either direction.
+
+You do **not** need to re-run setup afterwards: a migrated machine enforces exactly as it did before, which is what makes an upgrade safe on machines with nobody sitting at them. Every migration is recorded in `~/.failproofai/migrations/applied.json`, and the irreplaceable files are copied to `~/.failproofai/migrations/backup-layout<n>/` before anything runs.
+
+See [`failproofai update`](/cli/update) for the one-line upgrade, and [`failproofai migrate`](/cli/migrate) — including `--dry-run` — for the details.
+
 ---
 
 ## Example: project-level config with team defaults

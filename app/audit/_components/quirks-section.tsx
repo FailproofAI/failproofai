@@ -8,7 +8,6 @@
  * detector. No per-finding card chrome, no 4-quad body, no corner
  * crosshairs — evidence and fix live in section 04 (How to improve).
  */
-import React from "react";
 import type { FindingCard } from "@/src/audit/findings";
 
 interface Props {

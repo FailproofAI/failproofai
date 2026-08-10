@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import * as H from "../../src/hooks/fp-home";
@@ -147,18 +147,143 @@ describe("fp-home layout", () => {
 
   it("resettablePaths covers both layouts", () => {
     const paths = H.resettablePaths();
-    expect(paths).toContain(H.legacy.policyConfig());
-    expect(paths).toContain(H.credentialsFile());
     // `cache/` is no longer removed as a unit — it CONTAINS layout 1's decision
     // log, which is now carried across — so its other children are named
     // individually and must still be here.
     expect(paths).not.toContain(H.legacy.cacheDir());
     expect(paths).toContain(H.legacy.auditCacheDir());
     expect(paths).toContain(H.legacy.codexSessionPaths());
+    // Retired layout-2 files, by their layout-2 names: without them an upgraded
+    // home keeps a stale config beside the new one, and a live token in a file
+    // nothing reads and nothing will clean up.
+    expect(paths).toContain(H.legacy.configToml());
+    expect(paths).toContain(H.legacy.credentialsToml());
     // The decision log and the cursors that resume it are the two things a
     // reset must NOT take. See `hook-activity-migration.test.ts`.
     expect(paths).not.toContain(H.hookActivityDir());
     expect(paths).not.toContain(H.cursorsDir());
+    // `credentialsFile()` and `legacy.policyConfig()` were asserted PRESENT here.
+    // Both are off the list on purpose now — see the classification tests below,
+    // which assert the rule rather than the two instances.
+    expect(paths).not.toContain(H.credentialsFile());
+    expect(paths).not.toContain(H.legacy.policyConfig());
+  });
+});
+
+// The guard that makes `HOME_CLASSES` a mechanism rather than a comment. A path
+// added to the home with no class is not merely undocumented — the delete list is
+// a filter over this table, so an unclassified path silently opts out of the one
+// question that decides whether an upgrade may throw it away.
+//
+// This is the same shape as the two other cross-list guards in this repo:
+// `HARNESS_KEYS` is checked by reading `main.rs`, and `paths.rs` imports this
+// module in a child process to compare every mirrored path. A required TS field
+// cannot do it — these are ~34 standalone exported functions that every other
+// module imports by name, and turning them into table rows would rewrite every
+// import and break the Rust parity test.
+describe("HOME_CLASSES", () => {
+  // Paths that live INSIDE something already classified. Each names its parent,
+  // so this list cannot be used to quietly excuse a genuinely unclassified path.
+  const COVERED_BY_PARENT: Record<string, keyof typeof H> = {
+    customPoliciesDir: "policiesDir",
+    customAgentsEventsDir: "customAgentsDir",
+    customAgentsFailedDir: "customAgentsDir",
+    auditDashboardFile: "auditDir",
+    auditCacheDir: "auditDir",
+    daemonSocket: "runDir",
+    workerSocket: "runDir",
+    daemonLock: "runDir",
+    auditLockFile: "runDir",
+    daemonBinary: "binDir",
+    migrationLedgerFile: "migrationsDir",
+    migrationBackupDir: "migrationsDir",
+    stateDir: "stateDir",
+  };
+
+  /** Every exported function that returns a path inside the home. */
+  function pathExports(): { name: string; call: () => string }[] {
+    const out: { name: string; call: () => string }[] = [];
+    for (const [name, value] of Object.entries(H)) {
+      if (typeof value !== "function") continue;
+      if (name === "failproofaiHome" || name === "resettablePaths") continue;
+      // `daemonBinary` needs a version; everything else takes an optional home.
+      const call = () => (value as (a?: string) => unknown)(name === "daemonBinary" ? "1.2.3" : undefined);
+      try {
+        const result = call();
+        if (typeof result === "string" && result.startsWith(H.failproofaiHome())) {
+          out.push({ name, call: call as () => string });
+        }
+      } catch {
+        // Not a path accessor — a helper that needs different arguments.
+      }
+    }
+    return out;
+  }
+
+  it("classifies every exported path, or covers it by a classified parent", () => {
+    const classified = new Set(H.HOME_CLASSES.map((e) => e.path()));
+    const unclassified = pathExports()
+      .filter((e) => !(e.name in COVERED_BY_PARENT))
+      .filter((e) => !classified.has(e.call()))
+      .map((e) => e.name);
+
+    expect(unclassified).toEqual([]);
+  });
+
+  it("every COVERED_BY_PARENT entry names a parent that is really classified", () => {
+    // Without this the escape hatch above would be a way to skip the question.
+    const classified = new Set(H.HOME_CLASSES.map((e) => e.path()));
+    for (const [child, parent] of Object.entries(COVERED_BY_PARENT)) {
+      const parentFn = H[parent] as (h?: string) => string;
+      // `stateDir` is the one entry that maps to itself: it is deliberately NOT
+      // classified, because it is MIXED — `spool/` and `telemetry-id` must never
+      // be dropped while a dozen scratch files under it should be. Listing the
+      // parent is exactly how a reset came to delete undelivered events.
+      if (child === parent) {
+        expect(classified.has(parentFn())).toBe(false);
+        continue;
+      }
+      expect(classified.has(parentFn()), `${child} → ${parent}`).toBe(true);
+    }
+  });
+
+  it("classifies no path twice", () => {
+    const seen = H.HOME_CLASSES.map((e) => e.path());
+    expect(seen.length).toBe(new Set(seen).size);
+  });
+
+  it("never puts a user-typed, undelivered or identity path on the delete list", () => {
+    // The rule the classes exist to encode, asserted as a rule. Each of the five
+    // paths this newly protects was a real deletion: the cloud token, the whole of
+    // config.json (including the extra paths a user typed), the undelivered
+    // spool, the SDK spool, and the machine's telemetry identity.
+    const paths = H.resettablePaths();
+    for (const entry of H.HOME_CLASSES) {
+      if (entry.class === "derived" || entry.class === "refetchable") continue;
+      expect(paths, `${entry.path()} is ${entry.class}`).not.toContain(entry.path());
+    }
+  });
+
+  it("puts every derived and refetchable path on the delete list", () => {
+    // The other direction: narrowing the reset must not turn it into a no-op.
+    const paths = H.resettablePaths();
+    for (const entry of H.HOME_CLASSES) {
+      if (entry.class !== "derived" && entry.class !== "refetchable") continue;
+      expect(paths, `${entry.path()} is ${entry.class}`).toContain(entry.path());
+    }
+  });
+
+  it("protects the spool and the telemetry id under a state/ dir it does not classify", () => {
+    // The mixed-parent case, spelled out because it is the one that bit.
+    const paths = H.resettablePaths();
+    expect(paths).not.toContain(H.stateDir());
+    expect(paths).not.toContain(H.spoolDir());
+    expect(paths).not.toContain(H.failedDir());
+    expect(paths).not.toContain(H.telemetryIdFile());
+    // …while the scratch beside them still goes.
+    expect(paths).toContain(H.shimsDir());
+    expect(paths).toContain(H.collectorHealthFile());
+    expect(paths).toContain(H.sessionPauseDir());
   });
 });
 

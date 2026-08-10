@@ -1,32 +1,32 @@
 ---
 title: "Python SDK"
-description: "Üretimdeki AI ajanlarınızın tam olarak ne yaptığını görün: her ajanlı çalıştırma, araç çağrısı, model isteği, hook ve insan müdahalesi."
+description: "Üretim ortamında AI aracılarınızın tam olarak ne yaptığını görün: her aracı çalışması, araç çağrısı, model isteği, hook ve insan müdahalesi."
 ---
 
 
-Üretimdeki AI ajanlarınızın tam olarak ne yaptığını görün: her ajanlı çalıştırma, araç çağrısı, model isteği, hook ve insan müdahalesi. Failproof AI Observability Python SDK, ajanlı kodunuzun içinden bu izleri kaydeder ve böylece ne olduğunu hata ayıklayabilir, denetleyebilir ve değerlendirebilirsiniz. Failproof AI Observability'nin ajanlarınızı gözlemlemesini istediğiniz her zaman bunu kullanın.
+Üretim ortamında AI aracılarınızın tam olarak ne yaptığını görün: her aracı çalışması, araç çağrısı, model isteği, hook ve insan müdahalesi. Failproof AI Observability Python SDK, aracı kodunuzun içinden bu izleri kaydederek sorun giderme, denetim ve değerlendirme yapabilmenizi sağlar. Failproof AI Observability'nin aracılarınızı gözlemlemesini istediğiniz her zaman bunu kullanın.
 
-Arka planda SDK, yapılandırılmış olayları yerel JSONL dosyalarına yazar ve toplayıcı daemon bunları alır ve otomatik olarak platforma gönderir. Bu dosyaları kendiniz yönetmenize gerek yoktur.
+Arka planda SDK, yapılandırılmış olayları yerel JSONL dosyalarına yazarken, toplayıcı daemon bunları alıp otomatik olarak platforma gönderir. Bu dosyaları kendiniz yönetmeniz gerekmez.
 
-> **İpucu:** Failproof AI Observability'ye yeni misiniz? Bu sayfa tam SDK olay referansıdır.
+> **İpucu:** Failproof AI Observability'ye yeni mi başlıyorsunuz? Bu sayfa tam SDK etkinlik referansıdır.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="İzle: Failproof AI tarafından Agent Tracing (2 dk)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
 ---
 
 ## Kurulum
 
-SDK müşterilere özel bir wheel olarak dağıtılır ve genel paket dizininden değil. Onboarding'iniz nasıl elde edileceğini, kurulacağını ve sabitleneceğini kapsar — erişime ihtiyacınız varsa Failproof AI temsilcinize başvurun.
+SDK, müşterilere kamu paket indeksinden değil özel bir wheel olarak dağıtılır. Onboarding sürecinde onu nasıl edineceğiniz, yükleyeceğiniz ve sabitleyeceğiniz açıklanır — erişim gerekiyorsa Failproof AI temsilcinizle iletişime geçin.
 
-Kurulduktan sonra bunu kontrol edin:
+Yüklendikten sonra, sahip olduğunuzu doğrulayın:
 
 ```bash
 python -c "import agenteye; print(agenteye.__version__)"
 ```
 
-Bir kodlama ajanının tüm entegrasyonu yapmasını mı tercih edersiniz? [Python SDK Agent Skill](/tr/agenteye/python-sdk-skill) kurulum yolunu bilir, enstrümantasyon noktalarını planlar, yazar ve olayların ulaştığını doğrular.
+Tüm entegrasyonu bir kodlama aracısına yaptırmayı tercih mi ediyorsunuz? [Python SDK Agent Skill](/tr/agenteye/python-sdk-skill), kurulum yolunu bilir, enstrümantasyon noktalarını planlar, yazarlar ve olayların geleceğini doğrular.
 
 ---
 
@@ -58,9 +58,9 @@ agenteye.event.tool_result(
 agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
 ```
 
-### Gerçek bir çağrıyı enstrümante etme
+### Gerçek bir çağrıyı enstrümente etme
 
-Uygulamada mevcut ajanlı kodunuzu sararsınız. Bir model çağrısını `model_request` ile başlatıp `model_response` ile bitirerek, iki olay gerçek istek üzerinde aralığı kaplar ve Failproof AI Observability bunları eşleştirebilir:
+Pratikte mevcut aracı kodunuzu sarar. Model çağrısını `model_request` ile öncesinde ve `model_response` ile sonrasında parantezleyin, böylece iki olay gerçek isteği kapsar ve Failproof AI Observability bunları eşleştirebilir:
 
 ```python
 import anthropic
@@ -95,11 +95,11 @@ agenteye.event.model_response(
 )
 ```
 
-Araç çağrılarını da aynı şekilde `tool_use` ve `tool_result` ile sarın, çift içinde aynı `tool_call_id` kullanarak.
+Araç çağrılarını aynı şekilde `tool_use` ve `tool_result` ile sarın, ikili arasında aynı `tool_call_id` kullanın.
 
-İşte bu olayların pano üzerinde göründüğü hali, türe göre renk kodlanmış ve ortam, ajan ve oturum tarafından filtrelenebilir:
+Bu olaylar pano ile buluştuktan sonra nasıl göründüğü aşağıdadır; türe göre renklendirilmiş ve ortam, aracı ve oturuma göre filtrelenebilir:
 
-![Canlı Events akışı, olay türüne göre renk kodlanmış ve ortam, ajan ve oturum tarafından filtrelenebilir](/agenteye/images/events-stream.png)
+![Canlı Olaylar akışı, olay türüne göre renklendirilmiş ve ortam, aracı ve oturuma göre filtrelenebilir](/agenteye/images/events-stream.png)
 
 ---
 
@@ -113,17 +113,17 @@ agenteye.configure(
 )
 ```
 
-Herhangi bir `event.*` çağrısından önce bir kez çağırın. Çıkarmak güvenlidir; varsayılanlar kutudan çıkabilir durumda çalışır. Tüm argümanlar yalnızca anahtar sözcüklerdir; yukarıda gösterildiği gibi ada göre geçirin.
+Herhangi bir `event.*` çağrısından önce bir kez çağırın. Atlamak güvenlidir; varsayılanlar kutudan çıkır çıkmaz çalışır. Tüm bağımsız değişkenler yalnızca anahtar sözcük tarafından verilir; yukarıda gösterildiği gibi ad ile iletin.
 
-`base_dir` `None` (varsayılan) olduğunda, SDK `$AGENTEYE_HOME` ayarlanmışsa okur,
-aksi takdirde `~/.agenteye` olarak geri döner. Bu, toplayıcının kendi çözünürlüğüyle eşleşir,
-böylece tek bir `AGENTEYE_HOME` ortam değişkeni hem SDK hem de toplayıcı için paylaşılan olay sürüsünü yapılandırır.
+`base_dir` `None` (varsayılan) olduğunda, SDK `$AGENTEYE_HOME` okur (ayarlanmışsa),
+aksi takdirde `~/.agenteye` öğesine geri döner. Bu, toplayıcının kendi çözümlemesini eşleştirir,
+böylece tek bir `AGENTEYE_HOME` env değişkeni hem SDK hem de toplayıcı için paylaşılan olay spoolunu yapılandırır.
 
 ---
 
 ## Ortam
 
-Her olayı dağıtım ortamı (`production`, `staging`, `qa`, `canary`, vb.) ile etiketleyin. Bir kez ayarlayın; SDK bunu otomatik olarak her olaya ekler.
+Her olayı dağıtım ortamı (`production`, `staging`, `qa`, `canary` vb.) ile etiketleyin. Bir kez ayarlayın; SDK bunu otomatik olarak her olaya ekler.
 
 **Seçenek 1: `configure()` aracılığıyla:**
 
@@ -137,49 +137,49 @@ agenteye.configure(environment="production")
 export AGENTEYE_ENVIRONMENT=production
 ```
 
-**Öncelik:** `configure(environment=...)` ortam değişkenini geçersiz kılar. İkisi de ayarlanmamışsa, varsayılan olarak `"dev"` olur.
+**Öncelik:** `configure(environment=...)` ortam değişkenini geçersiz kılar. Hiçbiri ayarlanmazsa, `"dev"` öğesine varsayılan olur.
 
-Ortam değişkeni, pano üzerinde birinci sınıf filtre olarak görüntülenir ve hızlı sorgular için sunucuda depolanır.
+Ortam değişkeni, panoda birinci sınıf bir filtre olarak görünür ve sunucu üzerinde hızlı sorgular için depolanır.
 
-> **Uyarı:** Ortam değerleri gerçek virgül `,` içermemelidir. Pano filtreleri tel üzerinde virgülle ayrılmış çoklu seçim kullanır (`?environment=prod,staging`), bu nedenle `prod,blue` adlı bir ortam iki değere bölünür. Virgül içeren ortamlara sahip olaylar alım sırasında reddedilir.
+> **Uyarı:** Ortam değerleri hazır virgül `,` içermemelidir. Pano filtreleri tel üzerinde virgülle ayrılmış çoklu seçim kullanır (`?environment=prod,staging`), bu nedenle `prod,blue` olarak adlandırılan bir ortam iki değere bölünür. Virgül içeren ortamlara sahip olaylar alım zamanında reddedilir.
 
 ---
 
 ## Veri ve Gizlilik
 
-SDK yalnızca açıkça geçtiğiniz alanları kaydeder. İstemleri, mesajları, araç girdilerini ve çıktılarını ve model içeriğini, bunları bir `event.*` çağrısına verdiğiniz için yakalarsınız. İşleminizden hiçbir şey okunmaz veya örtülü olarak yakalanmaz. Ayarlamadığınız herhangi bir alan, olaydan tamamen atlanır; diske yazılmaz.
+SDK yalnızca açıkça ilettiğiniz alanları kaydeder. İstemleri, mesajları, araç girdilerini ve çıktılarını ve model içeriğini ancak bunları bir `event.*` çağrısına ilettiğiniz için yakalar. İşleminizden hiçbir şey okunmaz veya dolaylı olarak yakalanmaz. Ayarlamadığınız herhangi bir alan olaydan tamamen atlanır; diske yazılmaz.
 
-Bu, redaksiyonu sizin seçiminiz ve sorumluluğunuz yapar. Bir istem veya araç yükü KKT veya sırlar içeriyorsa ve bunları depolamak istemiyorsanız, event yöntemine geçirmeden önce bunu çıkarın veya maskeleyin.
+Bu, redaksyon seçiminiz ve sorumluluğunuz haline getirir. Hızlı tut veya araç yükü PII veya saklamak istemediğiniz sırları içeriyorsa, olay yöntemine geçirmeden önce çıkartın veya maskeyin.
 
 ---
 
-## Olay Referansı
+## Olay Başvurusu
 
-Çoğu olay, korelasyon kimliğini paylaşan başlangıç/bitiş çiftleri olarak gelir: `tool_use` ve `tool_result` bir `tool_call_id` paylaşır, `hook_triggered` ve `hook_completed` bir `hook_id` paylaşır ve `human_wait` ve `human_input` bir `input_id` paylaşır. Başlangıç olayını yayın, işi yapın, sonra bitiş olayını aynı kimlikle yayın. Failproof AI Observability çifti eşleştirir ve `duration_ms` sizin için hesaplar, bu yüzden `duration_ms` hiç geçmezsiniz.
+Çoğu olay, bir korelasyon kimliği paylaşan başlangıç/bitiş çiftlerine gelir: `tool_use` ve `tool_result` bir `tool_call_id` paylaşır, `hook_triggered` ve `hook_completed` bir `hook_id` paylaşır ve `human_wait` ve `human_input` bir `input_id` paylaşır. Başlangıç olayını yayınlayın, işi yapın, ardından aynı kimlikle bitiş olayını yayınlayın. Failproof AI Observability çifti eşleştirir ve `duration_ms` sizin için hesaplar, bu nedenle `duration_ms` hiçbir zaman kendiniz iletmezsiniz.
 
-![Bir oturumun, eşleştirilmiş olaylardan yeniden yapılandırılan git tarzı yürütme grafiği, olay zaman çizelgesi ve araç/model/hook dağılım paneli](/agenteye/images/session-detail.png)
+![Bir oturumun git stilinde yürütme grafiği, olay zaman çizelgesi yanında, eşleştirilmiş olaylardan yeniden oluşturulan, araç/model/hook kesme paneli ile](/agenteye/images/session-detail.png)
 
-Tüm olay yöntemleri şu iki alanı gerekli kılar:
+Tüm olay yöntemleri bu iki alanı gerektirir:
 
 | Alan | Tür | Açıklama |
 |---|---|---|
-| `session_id` | `str` | Üst düzey ajanlı çalıştırmayı tanımlar |
-| `agent_id` | `str` | Oturumda olayı yayan ajanı tanımlar |
+| `session_id` | `str` | Üst düzey aracı çalışmasını tanımlar |
+| `agent_id` | `str` | Olay yayan oturumun hangi aracısını tanımlar |
 
-Tüm yöntemler ayrıca özel meta veriler için rasgele `**kwargs` kabul eder (bkz. [Özel Alanlar](#custom-fields)).
+Tüm yöntemler ayrıca özel meta veri için keyfi `**kwargs` kabul eder ([Özel Alanlar](#özel-alanlar) bölümüne bakın).
 
 ---
 
 ### `event.agent_start()`
 
-Bir ajan çalışmaya başladığında yayılır.
+Bir aracı işe başladığında yayınlanır.
 
 ```python
 agenteye.event.agent_start(
     session_id="run-001",
     agent_id="planner",
     goal="answer user query",   # str | None
-    parent_id=None,             # str | None - nested ajanlar için üst agent_id
+    parent_id=None,             # str | None - nested aracılar için parent agent_id
 )
 ```
 
@@ -187,7 +187,7 @@ agenteye.event.agent_start(
 
 ### `event.agent_end()`
 
-Bir ajan çalışmayı bitirdiğinde yayılır.
+Bir aracı işi bitirdiğinde yayınlanır.
 
 ```python
 agenteye.event.agent_end(
@@ -202,14 +202,14 @@ agenteye.event.agent_end(
 
 ### `event.tool_use()`
 
-Bir ajan bir araç çağırdığında yayılır. `tool_result` ile eşleştirin; SDK otomatik olarak `duration_ms` hesaplar.
+Bir aracı bir araç çağırdığında yayınlanır. `tool_result` ile eşleştirin; SDK otomatik olarak `duration_ms` hesaplar.
 
 ```python
 agenteye.event.tool_use(
     session_id="run-001",
     agent_id="planner",
-    tool_name="web_search",     # str, required
-    tool_call_id="toolu_01",    # str, required - matching tool_result için korelasyon anahtarı
+    tool_name="web_search",     # str, gerekli
+    tool_call_id="toolu_01",    # str, gerekli - eşleşen tool_result için korelasyon anahtarı
     input={"query": "..."},     # dict | None
 )
 ```
@@ -218,17 +218,17 @@ agenteye.event.tool_use(
 
 ### `event.tool_result()`
 
-Bir araç döndüğünde yayılır. `tool_call_id` aracılığıyla `tool_use` ile ilişkilendir.
+Bir araç döndüğünde yayınlanır. `tool_call_id` aracılığıyla `tool_use` ile ilişkilendirilir.
 
 ```python
 agenteye.event.tool_result(
     session_id="run-001",
     agent_id="planner",
     tool_name="web_search",
-    tool_call_id="toolu_01",        # prior tool_use ile eşleşmelidir
+    tool_call_id="toolu_01",        # önceki tool_use ile eşleşmelidir
     output={"results": ["..."]},    # Any | None
-    error=None,                     # str | None - araç ortaya koyduysa ayarlayın
-    # duration_ms otomatik olarak hesaplanır - bunu geçmeyin
+    error=None,                     # str | None - araç bir istisna oluşturduysa ayarlayın
+    # duration_ms otomatik olarak hesaplanır - bunu iletmeyin
 )
 ```
 
@@ -236,60 +236,60 @@ agenteye.event.tool_result(
 
 ### `event.model_request()`
 
-Bir LLM'ye istem göndermeden hemen önce yayılır.
+LLM'ye bir istem gönderilmeden hemen önce yayınlanır.
 
 ```python
 agenteye.event.model_request(
     session_id="run-001",
     agent_id="planner",
-    model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
-    messages=[                   # list[dict] | None - conversation turns
+    model="claude-sonnet-4-6", # str | None - herhangi bir sağlayıcı/model dizesi; doğrulanmaz
+    messages=[                   # list[dict] | None - konuşma dönüşleri
         {"role": "user", "content": "..."},
     ],
-    system="You are helpful.",   # Any | None - str or list of content blocks
-    tools=[                      # list[dict] | None - tool schemas offered to the model
+    system="You are helpful.",   # Any | None - str veya içerik blokları listesi
+    tools=[                      # list[dict] | None - modele sunulan araç şemaları
         {"name": "search", "input_schema": {"type": "object"}},
     ],
 )
 ```
 
-`messages` girişleri düz dize `content` veya Anthropic tarzı blok listesi `content` kabul eder. Örnekleme parametreleri (`temperature`, `max_tokens`, vb.) ek kwargs olarak geçilebilir.
+`messages` girişleri düz dize `content` veya Anthropic stilinde liste-blok `content` kabul eder. Örnekleme parametreleri (`temperature`, `max_tokens` vb.) ekstra kwargs olarak geçirilebilir.
 
 ---
 
 ### `event.model_response()`
 
-LLM bir yanıt döndüğünde yayılır.
+LLM bir yanıt döndüğünde yayınlanır.
 
 ```python
 agenteye.event.model_response(
     session_id="run-001",
     agent_id="planner",
-    model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
+    model="claude-sonnet-4-6", # str | None - herhangi bir sağlayıcı/model dizesi; doğrulanmaz
     stop_reason="end_turn",     # str | None
     input_tokens=1024,          # int | None
     output_tokens=256,          # int | None
-    content=[                    # Any | None - str, or list of content blocks
+    content=[                    # Any | None - dize veya içerik bloklarının listesi
         {"type": "text", "text": "..."},
     ],
     role="assistant",            # str | None
 )
 ```
 
-`content` düz dize (genel sağlayıcılar) veya Anthropic tarzı içerik bloklarının listesini kabul eder. Araç çağrıları `{"type": "tool_use", ...}` blokları olarak `content` içinde yaşar, ayrı `tool_calls` alanı yoktur.
+`content` düz dize (genel sağlayıcılar) veya Anthropic stilinde içerik blokları listesini kabul eder. Araç çağrıları, ayrı `tool_calls` alanı olmadan `{"type": "tool_use", ...}` blokları olarak `content` içinde yaşarlar.
 
 ---
 
 ### `event.hook_triggered()`
 
-Bir hook ateşlendiğinde yayılır. `hook_completed` ile eşleştirin; SDK otomatik olarak `duration_ms` hesaplar.
+Bir hook tetiklendiğinde yayınlanır. `hook_completed` ile eşleştirin; SDK otomatik olarak `duration_ms` hesaplar.
 
 ```python
 agenteye.event.hook_triggered(
     session_id="run-001",
     agent_id="planner",
-    hook_name="pre_tool_use",   # str, required
-    hook_id="hook-abc",         # str, required - korelasyon anahtarı
+    hook_name="pre_tool_use",   # str, gerekli
+    hook_id="hook-abc",         # str, gerekli - korelasyon anahtarı
     trigger_event="tool_use",   # str | None
     input={"tool": "search"},   # Any | None
 )
@@ -299,18 +299,18 @@ agenteye.event.hook_triggered(
 
 ### `event.hook_completed()`
 
-Bir hook bittiğinde yayılır. `hook_id` aracılığıyla `hook_triggered` ile ilişkilendir.
+Bir hook bittiğinde yayınlanır. `hook_id` aracılığıyla `hook_triggered` ile ilişkilendirilir.
 
 ```python
 agenteye.event.hook_completed(
     session_id="run-001",
     agent_id="planner",
     hook_name="pre_tool_use",
-    hook_id="hook-abc",         # prior hook_triggered ile eşleşmelidir
+    hook_id="hook-abc",         # önceki hook_triggered ile eşleşmelidir
     outcome="allow",            # str | None
     output=None,                # Any | None
     error=None,                 # str | None
-    # duration_ms otomatik olarak hesaplanır - bunu geçmeyin
+    # duration_ms otomatik olarak hesaplanır - bunu iletmeyin
 )
 ```
 
@@ -318,77 +318,77 @@ agenteye.event.hook_completed(
 
 ### `event.error()`
 
-İşlenmeyen bir hata oluştuğunda yayılır.
+İşlenmemiş bir hata oluştuğunda yayınlanır.
 
 ```python
 agenteye.event.error(
     session_id="run-001",
     agent_id="planner",
-    error_type="TimeoutError",  # str, required
-    message="timed out",        # str, required
+    error_type="TimeoutError",  # str, gerekli
+    message="timed out",        # str, gerekli
     traceback="Traceback...",   # str | None
 )
 ```
 
 ---
 
-## İnsan-in-the-Loop Olayları
+## İnsan Döngüsü Olayları
 
-İnsan-in-the-loop olayları, bir kişinin ajanın yürütülmesine adım attığı anlar üzerinde gözetim sağlar (onay bekleme, giriş sağlama, duraklatma veya ajanı durdurma). İnsanların yanıt vermesinin ne kadar sürdüğünü ölçmenize (SDK eşleştirilmiş olaylarda otomatik olarak `duration_ms` hesaplar), kimin bir ajanı durduğunu veya kesintiye uğrattığını denetlemenize ve pano üzerinde yüzey alan onay ve gözetim iş akışları oluşturmanıza olanak tanır.
+İnsan döngüsü olayları, bir kişinin aracının yürütülmesine girdiği anları (onay bekleme, giriş sağlama, aracı durdurma veya durdurma) gözetlemenize olanak tanır. İnsanların yanıt vermesinin ne kadar sürdüğünü ölçmenize (SDK eşleştirilmiş olaylarda `duration_ms` otomatik hesaplar), bir aracıyı kimin durdurduğunu veya kesintiye uğrattığını denetlemenize ve pano yüzeyine çıkan onay ve gözetim iş akışları oluşturmanıza olanak tanır.
 
 ### `event.human_wait()`
 
-Ajan insan tarafından giriş sağlanması için beklemeye yürütmeyi duraklattığında yayılır. `human_input` ile eşleştirin; SDK otomatik olarak `duration_ms` hesaplar (insanın yanıt vermesi ne kadar sürdü).
+Aracı, bir insanın giriş sağlamasını beklemek için yürütmeyi durakladığında yayınlanır. `human_input` ile eşleştirin; SDK otomatik olarak `duration_ms` hesaplar (insanın yanıt vermesinin ne kadar sürdüğü).
 
 ```python
 agenteye.event.human_wait(
     session_id="run-001",
     agent_id="planner",
-    input_id="inp-abc",                          # str, required - matching human_input için korelasyon anahtarı
+    input_id="inp-abc",                          # str, gerekli - eşleşen human_input için korelasyon anahtarı
     prompt="Do you approve this action?",        # str | None - insana gösterilen soru
-    options=["approve", "reject", "defer"],      # list[str] | None - insana sunulan seçenekler
-    reason="approval_required",                  # str | None - ajanın neden beklediği
+    options=["approve", "reject", "defer"],      # list[str] | None - insana sunulan seçimler
+    reason="approval_required",                  # str | None - aracının neden beklediği
 )
 ```
 
 ### `event.human_input()`
 
-Bir insan giriş sağladığında ve ajan devam ettiğinde yayılır. `input_id` aracılığıyla `human_wait` ile ilişkilendir. `duration_ms` otomatik olarak hesaplanır ve arayan tarafından geçilmemelidir.
+Bir insan giriş sağladığında ve aracı devam ettiğinde yayınlanır. `input_id` aracılığıyla `human_wait` ile ilişkilendirilir. `duration_ms` otomatik olarak hesaplanır ve arayan tarafından geçirilmemelidir.
 
 ```python
 agenteye.event.human_input(
     session_id="run-001",
     agent_id="planner",
-    input_id="inp-abc",    # str, required - prior human_wait ile eşleşmelidir
-    response="approve",    # str | None - insanın cevabı (serbest metin veya seçili seçenek)
-    # duration_ms otomatik olarak hesaplanır - bunu geçmeyin
+    input_id="inp-abc",    # str, gerekli - önceki human_wait ile eşleşmelidir
+    response="approve",    # str | None - insanın cevabı (serbest metin veya seçilen seçenek)
+    # duration_ms otomatik olarak hesaplanır - bunu iletmeyin
 )
 ```
 
 ### `event.human_pause()`
 
-Bir insan ajanı aktif olarak duraklattığında yayılır (örn. pano kontrolü aracılığıyla). Ajan askıya alınır ancak sonlandırılmaz.
+Bir insan aracıyı aktif olarak durakladığında (örneğin, pano kontrolü aracılığıyla) yayınlanır. Aracı askıya alınmıştır ancak sonlandırılmamıştır.
 
 ```python
 agenteye.event.human_pause(
     session_id="run-001",
     agent_id="planner",
     reason="user_requested",  # str | None
-    user_id="usr_42",         # str | None - ajanı kimin durduğu
+    user_id="usr_42",         # str | None - aracıyı duraklatanın kim olduğu
 )
 ```
 
 ### `event.human_interrupt()`
 
-Bir insan yürütme sırasında ajanı aktif olarak durdurduğunda yayılır. `human_pause` aksine, ajanın çalışması askıya alınmak yerine sonlandırılır.
+Bir insan aracıyı yürütme sırasında aktif olarak durdurduğunda yayınlanır. `human_pause` öğesinden farklı olarak, aracının işi askıya alınmak yerine sonlandırılır.
 
 ```python
 agenteye.event.human_interrupt(
     session_id="run-001",
     agent_id="planner",
     reason="output_incorrect",       # str | None
-    user_id="usr_42",                # str | None - ajanı kimin kesintiye uğrattığı
-    at_step="tool_use:web_search",   # str | None - durdurulduğu sırada ajan ne yapıyordu
+    user_id="usr_42",                # str | None - aracıyı kesintiye uğratanın kim olduğu
+    at_step="tool_use:web_search",   # str | None - aracı durdurulduğunda ne yapıyordu
 )
 ```
 
@@ -396,7 +396,7 @@ agenteye.event.human_interrupt(
 
 ## Özel Alanlar
 
-Herhangi bir ek anahtar sözcük argümanı standart alanların ardından olaya eklenir:
+Herhangi bir ekstra anahtar sözcük bağımsız değişken, standart alanlardan sonra olaya eklenir:
 
 ```python
 agenteye.event.tool_use(
@@ -404,32 +404,32 @@ agenteye.event.tool_use(
     agent_id="planner",
     tool_name="db_query",
     tool_call_id="toolu_02",
-    tenant_id="acme",           # custom field
-    region="us-east-1",         # custom field
+    tenant_id="acme",           # özel alan
+    region="us-east-1",         # özel alan
 )
 ```
 
-`timestamp`, `type` ve `environment` ayrılmıştır ve özel alanlar olarak geçirilirse `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) oluşturur. `session_id` ve `agent_id`, her olay yönteminde gerekli parametrelerdir ve ikinci kez sağlanamazlar; bunu yaparsanız Python `TypeError` oluşturur. Bunun yerine ortamı `configure(environment=...)` (veya `AGENTEYE_ENVIRONMENT` değişkeni) ile ayarlayın.
+`timestamp`, `type` ve `environment` ayrılmıştır ve özel alanlar olarak iletilirse `ValueError` oluşturur (`Reserved field names cannot be used as custom fields: [...]`). `session_id` ve `agent_id` her olay yönteminde gerekli parametrelerdir ve ikinci kez sağlanamaz; bunu yaparsanız Python `TypeError` oluşturur. Ortamı `configure(environment=...)` ile ayarlayın (veya `AGENTEYE_ENVIRONMENT` değişkeni).
 
-Alanlarını sorgulamak istediğinizde yüklemleri yapılandırılmış JSON olarak tutun. JSON'un yerel olarak desteklemediği değerler—tarihler, UU'lar, ondalıklar, kümeler, baytlar veya model nesneleri gibi—kayıt güvenle devam edebilsin diye dizelere dönüştürülür.
+Alanlarını sorgulamak istediğinizde yükü yapılandırılmış JSON olarak tutun. JSON natively desteklemediği değerler (datetimeler, UUID'ler, ondalıklar, kümeler, baytlar veya model nesneleri gibi) kayıt güvenli şekilde devam etmesi için dizelere dönüştürülür.
 
 ---
 
 ## Olaylar Nasıl Yazılır
 
-Olaylar işlemde arabelleğe alınır ve `flush_interval` saniye (varsayılan 500 ms) her blokta diske temizlenir. Her temizleme bir JSONL dosyası yazar:
+Olaylar işlem içinde arabelleğe alınır ve her `flush_interval` saniyede diske temizlenir (varsayılan 500 ms). Her flush, bir JSONL dosyasını yazar:
 
 ```text
 ~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
 ```
 
-Toplayıcı bu dizini izler ve dosyaları otomatik olarak yükler. Bu dosyaları doğrudan yönetmenize gerek yoktur.
+Toplayıcı bu dizini izler ve dosyaları otomatik olarak yükler. Bu dosyaları doğrudan yönetmeniz gerekmez.
 
-Her dosya atomik olarak yazılır: SDK geçici bir dosyaya yazar ve ardından yerinde yeniden adlandırır, böylece toplayıcı asla yarım yazılmış bir dosya görmez. Son temizleme işleminiz çıktığında da çalışır, bu yüzden son aralıkta arabelleğe alınan olaylar kaybolmaz. Toplayıcı çevrimdışıysa, olaylar diske dosya olarak basitçe biriktikçe ve tekrar geldiğinde gönderilir.
+Her dosya atomik olarak yazılır: SDK geçici bir dosyaya yazar ve ardından yerine taşır, böylece toplayıcı hiçbir zaman yarı yazılmış bir dosya görmez. Son flush ayrıca işleminiz çıktığında çalışır, bu nedenle son aralıkta arabelleğe alınan olaylar kaybolmaz. Toplayıcı çevrimdışıysa, olaylar diska dosya olarak birikir ve tekrar çevrimiçi olduğunda gönderilir.
 
 ---
 
 ## Sonraki adımlar
 
-- [Event stream](/tr/agenteye/event-stream): bu olayları canlı olarak izleyin, ortam, ajan ve oturum tarafından renk kodlanmış ve filtrelenebilir.
-- [Sessions](/tr/agenteye/sessions): eşleştirilmiş olayların her ajanlı çalıştırmayı bir yürütme grafiği ve zaman çizelgesi olarak nasıl yeniden yapılandırdığını görün.
+- [Olay akışı](/tr/agenteye/event-stream): bu olayları canlı olarak izleyin, olay türüne göre renklendirilmiş ve ortam, aracı ve oturuma göre filtrelenebilir.
+- [Oturumlar](/tr/agenteye/sessions): eşleştirilmiş olayların her aracı çalışmasını yürütme grafiği ve zaman çizelgesi olarak nasıl yeniden oluşturduğunu görün.

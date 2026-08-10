@@ -110,6 +110,8 @@
                   "cli/list-policies",
                   "cli/hook",
                   "cli/audit",
+                  "cli/update",
+                  "cli/migrate",
                   "cli/version",
                   "cli/environment-variables"
                 ]

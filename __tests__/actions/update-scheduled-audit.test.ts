@@ -15,7 +15,7 @@
  * parity is real: both write through the same `updateConfig`.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { configFile } from "../../src/hooks/fp-home";

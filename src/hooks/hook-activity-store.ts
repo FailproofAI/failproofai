@@ -259,8 +259,15 @@ function readStoredStats(): StoredStats {
   }
 }
 
-function updateStats(entry: HookActivityEntry): void {
-  const s = readStoredStats();
+/**
+ * Fold one entry into a running total, in place.
+ *
+ * Extracted so the incremental path and {@link rebuildHookActivityStats} cannot
+ * disagree: a rebuild that counted differently from the appends would produce
+ * numbers that silently drift from the log they claim to summarise, and nothing
+ * would catch it because both sides look plausible on their own.
+ */
+function foldEntry(s: StoredStats, entry: HookActivityEntry): void {
   s.totalEvents += 1;
   if (entry.decision === "deny") s.denyCount += 1;
   if (entry.policyNames && entry.policyNames.length > 0) {
@@ -270,15 +277,62 @@ function updateStats(entry: HookActivityEntry): void {
   } else if (entry.policyName) {
     s.policyMap[entry.policyName] = (s.policyMap[entry.policyName] ?? 0) + 1;
   }
-  // Write atomically: write to a PID-unique temp file then rename — prevents partial reads.
+}
+
+/** Write stats atomically: PID-unique temp then rename, so no reader sees a partial file. */
+function writeStoredStats(s: StoredStats): boolean {
   const tmpPath = join(storeDirValue(), `stats.json.${process.pid}.tmp`);
   try {
     writeFileSync(tmpPath, JSON.stringify(s), "utf-8");
     renameSync(tmpPath, join(storeDirValue(), STATS_FILE));
+    return true;
   } catch {
     try { unlinkSync(tmpPath); } catch { /* ignore */ }
     // Non-fatal: stats file write failure doesn't block the hook
+    return false;
   }
+}
+
+function updateStats(entry: HookActivityEntry): void {
+  const s = readStoredStats();
+  foldEntry(s, entry);
+  writeStoredStats(s);
+}
+
+/**
+ * Recompute `stats.json` from every page on disk.
+ *
+ * WHY THIS EXISTS. `stats.json` is INCREMENTAL — `updateStats` adds one entry per
+ * append and nothing ever rescans — so it is the only part of the decision log
+ * that cannot survive being lost. The layout migration carries the pages (real
+ * records) and deliberately drops `stats.json` and `current.count` as derived
+ * state, on the stated grounds that "the store rebuilds them". It did not: there
+ * was no rebuild anywhere in the store, so `readStoredStats()` fell through its
+ * catch to zeroes and began re-accumulating from the next event. A user upgrading
+ * from a pre-daemon home kept every record and lost every total — the dashboard
+ * listed their history while reporting 0 events, 0 denies and no top policy.
+ *
+ * It is exactly recomputable, which is what makes dropping it the right call and
+ * this function the missing half: pages are never pruned (there is no retention
+ * anywhere in this module), so the files on disk ARE the whole history.
+ *
+ * Returns the totals it wrote, or null if there was nothing to read.
+ */
+export function rebuildHookActivityStats(): StoredStats | null {
+  ensureDir();
+  const files = [CURRENT_FILE, ...getArchiveFiles()];
+  const s: StoredStats = { totalEvents: 0, denyCount: 0, policyMap: {} };
+  let sawAny = false;
+  for (const file of files) {
+    const path = join(storeDirValue(), file);
+    if (!existsSync(path)) continue;
+    sawAny = true;
+    // `readJsonlFile` already skips malformed lines, so a truncated tail costs
+    // that line rather than the whole rebuild.
+    for (const entry of readJsonlFile(path)) foldEntry(s, entry);
+  }
+  if (!sawAny) return null;
+  return writeStoredStats(s) ? s : null;
 }
 
 function readStats(): HookActivityStats {
@@ -388,6 +442,34 @@ export function getHookActivityHistory(page: number): {
 
 // ── Internal helpers ──
 
+/**
+ * Accept the pre-rename spelling of the two cloud-attribution fields.
+ *
+ * These pages are written by the DAEMON, so a machine that was cloud-connected
+ * before `cloudRevision`→`cloudVersion` / `cloudGeneration`→`cloudDeployment` has
+ * real rows on disk naming the old keys. Nothing here validates the shape — the
+ * line is `JSON.parse`d and cast — so those rows do not error, they simply carry
+ * keys nothing reads: every pre-upgrade cloud-decided decision renders as
+ * unattributed, which is the exact question these fields were added to answer.
+ *
+ * The Rust writer takes the same two aliases (`transform.rs`). Renaming a symbol
+ * is safe; renaming the name of data an older build already wrote is not.
+ *
+ * One-directional and non-destructive: the new key wins if both somehow appear,
+ * and the old key is left in place rather than deleted, since nothing reads it and
+ * removing it would rewrite history to look like it was always current.
+ */
+function withRenamedCloudFields(raw: Record<string, unknown>): HookActivityEntry {
+  const entry = raw as HookActivityEntry & Record<string, unknown>;
+  if (entry.cloudVersion === undefined && typeof raw.cloudRevision === "number") {
+    entry.cloudVersion = raw.cloudRevision;
+  }
+  if (entry.cloudDeployment === undefined && typeof raw.cloudGeneration === "number") {
+    entry.cloudDeployment = raw.cloudGeneration;
+  }
+  return entry;
+}
+
 function readJsonlFile(filePath: string): HookActivityEntry[] {
   const content = readFileSafe(filePath);
   if (!content.trim()) return [];
@@ -395,7 +477,7 @@ function readJsonlFile(filePath: string): HookActivityEntry[] {
   const entries: HookActivityEntry[] = [];
   for (const line of content.trim().split("\n")) {
     try {
-      entries.push(JSON.parse(line) as HookActivityEntry);
+      entries.push(withRenamedCloudFields(JSON.parse(line) as Record<string, unknown>));
     } catch {
       // Skip malformed lines
     }

@@ -9,9 +9,9 @@
 use serde::{Deserialize, Serialize};
 
 /// Bumped whenever a wire-incompatible change is made to either message
-/// enum below. The client treats any mismatch identically to "daemon
-/// unreachable" (see `docs/configuration.mdx` and the failproofaid plan) —
-/// there is no negotiation, only agree-or-fall-back.
+/// enum below. A daemon-configured client fails closed on a mismatch and uses
+/// the distinct failure category only to explain how to repair the skew.
+/// There is no protocol negotiation.
 pub const PROTOCOL_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

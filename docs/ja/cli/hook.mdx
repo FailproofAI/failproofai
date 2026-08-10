@@ -12,15 +12,15 @@ failproofai --hook <EventType>
 stdin から JSON ペイロードを読み取り、有効なすべてのポリシーを評価し、判定結果を示す終了コードで終了します。
 
 | 終了コード | 判定 | 効果 |
-|-----------|----------|--------|
+|-----------|------|------|
 | `0` | `allow` | アクションを許可する |
 | `1` | `deny` | アクションをブロックする — Claude には拒否理由が通知される |
 | `2` | `instruct` | Claude のコンテキストにガイダンスを注入する |
 
 ### サポートされているイベントタイプ
 
-| カテゴリ | イベント |
-|----------|--------|
+| カテゴリー | イベント |
+|-----------|---------|
 | **ツール実行** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **セッションライフサイクル** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **ユーザーインタラクション** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |

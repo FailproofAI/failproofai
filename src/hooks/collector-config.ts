@@ -3,31 +3,15 @@
  *
  * Two files, deliberately:
  *
- *   ~/.failproofai/ingest.json           mode 0600, the credential ONLY
- *   ~/.failproofai/policies-config.json  the non-secret settings
+ *   ~/.failproofai/credentials.toml  mode 0600, including the ingest credential
+ *   ~/.failproofai/config.toml       non-secret collector settings
  *
- * The split is not tidiness. `policies-config.json` is written with a bare
- * `writeFileSync`, so it inherits the umask and lands at 0664 on a normal
- * machine — inside a `~/.failproofai/` that is itself 0775. An API key there
- * would be readable by every local user on the box. `~/.agenteye/cli.json`
- * already stores its session token at 0600, so the correct precedent existed.
+ * The split keeps bearer credentials out of the human-readable configuration
+ * file and gives every token the same owner-only storage boundary.
  *
  * The Rust daemon reads both (see `crates/fpai-collect/src/config.rs`); this is
  * the only thing that writes them.
  */
-import {
-  writeFileSync,
-  mkdirSync,
-  existsSync,
-  chmodSync,
-  statSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
-
-import { readHooksConfig, writeHooksConfig } from "./hooks-config";
 import { credentialsFile, failproofaiHome as layoutHome } from "./fp-home";
 import { readCredentials, writeCredentials, updateConfig } from "./fp-config";
 

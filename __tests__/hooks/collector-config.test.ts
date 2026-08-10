@@ -4,7 +4,7 @@
 // `policies-config.json` is 0664 inside a 0775 `~/.failproofai` on a normal
 // machine, which is exactly why the key lives in its own file at 0600.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, statSync, readFileSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 

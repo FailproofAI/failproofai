@@ -1,56 +1,56 @@
 ---
 ---
-title: "Codex सत्र कैप्चर"
-description: "अपनी टीम के स्थानीय OpenAI Codex सत्रों को AgentEye में सामान्य सत्र और इवेंट्स के रूप में कैप्चर करें — Codex चलाने के तरीके में कोई बदलाव नहीं।"
+title: "Codex session capture"
+description: "अपनी टीम के स्थानीय OpenAI Codex सेशन को AgentEye में सामान्य सेशन और इवेंट के रूप में कैप्चर करें — Codex को चलाने के तरीके में कोई बदलाव नहीं।"
 ---
 
-आपके इंजीनियर पहले से ही हर दिन OpenAI Codex चलाते हैं। Codex सत्र कैप्चर उन कोडिंग सत्रों को AgentEye में सामान्य सत्र और इवेंट्स के रूप में लाता है, ताकि आप उन्हें खोज सकें, रीप्ले कर सकें, और आपके द्वारा देखी गई अन्य सभी चीजों के साथ मिलाकर मूल्यांकन कर सकें। यह [Python SDK](/hi/agenteye/python-sdk) को पूरक बनाता है: SDK आपके द्वारा लिखे गए agents को साधन करता है, जबकि यह आपकी टीम द्वारा पहले से किए जा रहे Codex काम को कैप्चर करता है — इसे चलाने के तरीके में कोई बदलाव नहीं।
+आपके engineers हर दिन OpenAI Codex चलाते हैं। Codex session capture उन कोडिंग सेशन को AgentEye में सामान्य सेशन और इवेंट के रूप में लाता है, ताकि आप उन्हें खोज सकें, रीप्ले कर सकें, और आप जो कुछ और भी देखते हैं उसके साथ उनका मूल्यांकन कर सकें। यह [Python SDK](/hi/agenteye/python-sdk) को पूरक करता है: SDK आप द्वारा लिखे गए agents को instrument करता है, जबकि यह आपकी टीम द्वारा पहले से चलाए जा रहे Codex कार्य को कैप्चर करता है — इसे चलाने के तरीके में कोई बदलाव नहीं।
 
-एक छोटा बैकग्राउंड कलेक्टर Codex के स्थानीय सत्र ट्रांसक्रिप्ट्स को पढ़ता है जैसे ही वे लिखे जाते हैं और उन्हें AgentEye में भेजता है। एक मशीन प्रति कलेक्टर एक ही समय में हर स्थानीय Codex सतह को कैप्चर करता है — प्रति-सतह सेटअप की कोई आवश्यकता नहीं है।
+एक छोटा background collector Codex के स्थानीय session transcripts को जब वे लिखे जाते हैं तब पढ़ता है और उन्हें AgentEye को भेजता है। एक मशीन प्रति collector सभी स्थानीय Codex surfaces को एक साथ कैप्चर करता है — कोई per-surface setup नहीं है।
 
-वही कलेक्टर अन्य agents को भी कैप्चर करता है — [OpenClaw](/hi/agenteye/openclaw-capture) और [Hermes](/hi/agenteye/hermes-capture) देखें। प्रत्येक को सक्षम करें जो आप चलाते हैं; एक ही कलेक्टर एक ही समय में कई को कैप्चर कर सकता है।
+यही collector अन्य agents को भी कैप्चर करता है — [OpenClaw](/hi/agenteye/openclaw-capture) और [Hermes](/hi/agenteye/hermes-capture) देखें। आप जो भी चलाते हैं उसे सक्षम करें; एक single collector एक साथ कई को कैप्चर कर सकता है।
 
 ---
 
 ## यह क्या कैप्चर करता है
 
-हर Codex सतह जो **स्थानीय रूप से** चलती है, वही डिस्क-पर सत्र ट्रांसक्रिप्ट्स बनाती है, और कलेक्टर उन सभी को उठाता है:
+हर Codex surface जो **स्थानीय रूप से** चलता है वही disk पर session transcripts बनाता है, और collector सभी को उठाता है:
 
 - Codex **CLI** और `codex exec`
-- **VS Code / IDE एक्सटेंशन**
-- **डेस्कटॉप ऐप**, जब वह स्थानीय रूप से कोई सत्र चलाता है
+- **VS Code / IDE extension**
+- **desktop app**, जब यह स्थानीय रूप से एक सेशन चलाता है
 
-प्रत्येक Codex सत्र AgentEye [सत्र](/hi/agenteye/sessions) बन जाता है; इसके उपयोगकर्ता और सहायक संदेश, तर्क, टूल कॉल, टूल परिणाम, और टोकन उपयोग मिलान करने वाले [इवेंट्स](/hi/agenteye/event-stream) बन जाते हैं। जिस सतह से प्रत्येक सत्र आया है (CLI, IDE, या डेस्कटॉप) वह रिकॉर्ड किया जाता है, ताकि आप उन्हें अलग बता सकें।
+प्रत्येक Codex सेशन एक AgentEye [session](/hi/agenteye/sessions) बन जाता है; इसके user और assistant संदेश, reasoning, tool calls, tool results, और token usage से मेल खाने वाले [events](/hi/agenteye/event-stream) बनते हैं। प्रत्येक सेशन किस surface (CLI, IDE, या desktop) से आया है यह दर्ज किया जाता है, ताकि आप उन्हें अलग बता सकें।
 
-> **क्लाउड सत्र कैप्चर नहीं किए जाते हैं।** डेस्कटॉप ऐप बढ़ती हुई Codex क्लाउड में सत्रों को चलाता है और मशीन पर केवल उनके मेटाडेटा को रखता है — पढ़ने के लिए कोई स्थानीय ट्रांसक्रिप्ट नहीं है। केवल स्थानीय रूप से निष्पादित सत्र कैप्चर किए जाते हैं।
+> **Cloud sessions कैप्चर नहीं किए जाते।** Desktop app तेजी से Codex cloud में सेशन चलाता है और मशीन पर केवल उनके metadata रखता है — कोई स्थानीय transcript नहीं है। केवल स्थानीय रूप से executed sessions ही कैप्चर किए जाते हैं।
 
 ---
 
 ## इसे चालू करें
 
-कैप्चर तब तक बंद रहता है जब तक आप इसे सक्षम न करें। एक API key के साथ कलेक्टर को इंस्टॉल करें जिसके पास `events:add` अनुमति है ([API keys](/hi/agenteye/api-keys) देखें), और Codex कैप्चर चालू करें:
+Capture तब तक बंद रहता है जब तक आप इसे सक्षम नहीं करते। Collector को एक API key के साथ इंस्टॉल करें जिसमें `events:add` permission है ([API keys](/hi/agenteye/api-keys) देखें), और Codex capture को चालू करें:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --codex-enabled
 ```
 
-यह कलेक्टर को इंस्टॉल करता है, इसे एक बैकग्राउंड सेवा के रूप में पंजीकृत करता है, और कैप्चर करना शुरू करता है। पुष्टि करें कि यह चल रहा है:
+यह collector को इंस्टॉल करता है, इसे एक background service के रूप में register करता है, और कैप्चरिंग शुरू करता है। पुष्टि करें कि यह चल रहा है:
 
 ```bash
 agenteye-collector health
 ```
 
-पहली बार चलाने पर, आपके मौजूदा Codex सत्रों को एक बार बैकफिल किया जाता है और नई गतिविधि फिर सेकंड के भीतर स्ट्रीम होती है। Codex की अपनी फाइलें केवल कभी पढ़ी जाती हैं — कभी संशोधित, स्थानांतरित, या हटाई नहीं जाती हैं — और प्रत्येक सत्र को बिल्कुल एक बार भेजा जाता है, यहां तक कि पुनरारंभ के भी।
+पहली बार चलाने पर, आपके मौजूदा Codex सेशन एक बार backfill किए जाते हैं और नई activity तब कुछ सेकंड में stream होती है। Codex की अपनी फाइलें केवल पढ़ी ही जाती हैं — कभी modified, moved, या deleted नहीं — और प्रत्येक सेशन बिल्कुल एक बार shipped होता है, भले ही restarts के पार हो।
 
 ---
 
-## यह कहां दिखता है
+## यह कहाँ दिखाई देता है
 
-कैप्चर किए गए सत्र **सत्र** में दिखाई देते हैं, और उनके इवेंट्स **इवेंट्स** स्ट्रीम में, किसी अन्य agent के समान जिसे आप देखते हैं — इसलिए [सत्र रीप्ले](/hi/agenteye/sessions), [खोज](/hi/agenteye/queries), [मूल्यांकन](/hi/agenteye/evaluations), और [सतर्कताएं](/hi/agenteye/alerts) सभी उन पर काम करती हैं। Codex agent द्वारा फ़िल्टर करें उन्हें अपने आप पर देखने के लिए।
+Captured sessions **Sessions** में दिखाई देते हैं, और उनकी events **Events** stream में, बिल्कुल किसी अन्य agent की तरह जिसे आप observe करते हैं — तो [session replay](/hi/agenteye/sessions), [search](/hi/agenteye/queries), [evaluations](/hi/agenteye/evaluations), और [alerts](/hi/agenteye/alerts) सभी इन पर काम करते हैं। Codex agent द्वारा filter करें उन्हें अपने आप पर देखने के लिए।
 
 ---
 
 ## गोपनीयता
 
-Codex ट्रांसक्रिप्ट्स में पूरा सत्र होता है — कमांड आउटपुट, फ़ाइल सामग्री, और कुछ भी Codex ने पढ़ा या लिखा — और इसमें गोपनीय चीजें हो सकती हैं। कैप्चर किए गए सत्रों को ऐसे भेजा जाता है, इसलिए केवल उन मशीनों और टीमों पर कैप्चर सक्षम करें जहां उस सामग्री को AgentEye में केंद्रीकृत करना उपयुक्त है, और कलेक्टर को केवल `events:add` तक सीमित एक key दें। अपने डेटा को कैसे अलग रखा जाता है इसके बारे में [Security](/hi/agenteye/security) देखें।
+Codex transcripts में पूरा सेशन होता है — command output, file contents, और कुछ भी जो Codex ने read या write किया — और इसमें secrets हो सकते हैं। Captured sessions को as-is shipped किया जाता है, तो capture को केवल उन मशीन और टीमों पर सक्षम करें जहाँ उस content को AgentEye में centralize करना appropriate है, और collector को केवल `events:add` के लिए scoped एक key दें। अपने data को isolated कैसे रखा जाता है यह देखने के लिए [Security](/hi/agenteye/security) देखें।

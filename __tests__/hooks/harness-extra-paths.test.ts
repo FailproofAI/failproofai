@@ -274,4 +274,71 @@ describe("harness extra paths", () => {
     // Neither becomes a phantom entry, and reading does not throw.
     expect(readConfig().collector.sources).toBeUndefined();
   });
+
+  // The CLI's duplicate checks exist to pre-empt a specific silent failure: the
+  // daemon resolves entries at startup and DROPS a colliding one, logging only
+  // server-side — so the CLI would print success for a path that is never
+  // captured. They compared raw strings while the daemon normalises, so three
+  // shapes slipped straight through.
+  describe("duplicate checks match the daemon's normalisation", () => {
+    it("rejects a label that differs only in case or punctuation", () => {
+      // `sanitize_label()` lowercases and collapses non-alphanumerics to `-`, so
+      // "Team Share" and "team-share" are ONE label to the daemon.
+      expect(addPath("claude", "Team Share=/mnt/x").exitCode).toBe(0);
+
+      const second = addPath("claude", "team-share=/mnt/y");
+
+      expect(second.exitCode).toBe(1);
+      expect(second.lines.join("\n")).toContain("already uses the label");
+      expect(readConfig().collector.sources?.claude?.extraPaths).toEqual(["Team Share=/mnt/x"]);
+    });
+
+    it("rejects the same path written with a trailing slash", () => {
+      // `clean()` trims trailing slashes, so these are one path to the daemon.
+      expect(addPath("claude", "a=/srv/x/").exitCode).toBe(0);
+
+      const second = addPath("claude", "b=/srv/x");
+
+      expect(second.exitCode).toBe(1);
+      expect(second.lines.join("\n")).toContain("already captures");
+    });
+
+    it("rejects two UNLABELLED paths whose folder name derives one label", () => {
+      // The label check used to be skipped entirely without an explicit label, but
+      // `derive_label()` takes the folder name — so both of these are "projects".
+      expect(addPath("claude", "/mnt/team-a/.claude/projects").exitCode).toBe(0);
+
+      const second = addPath("claude", "/mnt/team-b/.claude/projects");
+
+      expect(second.exitCode).toBe(1);
+      expect(second.lines.join("\n")).toContain("already uses the label");
+    });
+
+    it("still accepts two paths that genuinely differ", () => {
+      // The checks must not become so eager that a legitimate second path is
+      // refused — that would be a worse failure than the one being fixed.
+      expect(addPath("claude", "team-a=/mnt/a/projects").exitCode).toBe(0);
+      expect(addPath("claude", "team-b=/mnt/b/projects").exitCode).toBe(0);
+      expect(readConfig().collector.sources?.claude?.extraPaths).toHaveLength(2);
+    });
+
+    it("stores exactly what the user typed, normalising only the comparison", () => {
+      // The daemon is the authority on the grammar; normalising for a CHECK must
+      // not turn into rewriting what is stored, or this becomes the second parser
+      // the module header warns about.
+      addPath("claude", "Team Share=/srv/x/");
+      expect(readConfig().collector.sources?.claude?.extraPaths).toEqual(["Team Share=/srv/x/"]);
+    });
+
+    it("does not claim capture it cannot verify", () => {
+      // A path overlapping the harness's own DEFAULT root is rejected by the
+      // daemon, and this side does not know those roots — so it reports what it
+      // wrote and where the real answer is, rather than promising capture.
+      const result = addPath("claude", "sub=/home/u/.claude/projects/myrepo");
+      const text = result.lines.join("\n");
+      expect(text).toContain("configured to also capture");
+      expect(text).not.toContain("now also capturing");
+      expect(text).toContain("validates it on the next read");
+    });
+  });
 });

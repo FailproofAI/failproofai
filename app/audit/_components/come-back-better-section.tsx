@@ -18,7 +18,7 @@
  * link sits under the reminder card so the affordance survives without
  * dominating the layout.
  */
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePostHog } from "@/contexts/PostHogContext";
 import { isAbortError } from "@/lib/fetch-with-timeout";
 import { AuthDialog, type AuthedUser } from "./auth-dialog";

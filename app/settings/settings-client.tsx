@@ -17,11 +17,10 @@
  * documented on each action module.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getScheduledAuditAction, type ScheduledAuditView } from "@/app/actions/get-scheduled-audit";
 import { setAutoAuditAction, setAuditIntervalAction } from "@/app/actions/update-scheduled-audit";
 import { triggerRun, RerunError } from "@/app/audit/_components/rerun-button";
-import { AuthDialog } from "@/app/audit/_components/auth-dialog";
 import { toast } from "@/app/components/toast";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { formatRelativeTime } from "@/lib/format-duration";

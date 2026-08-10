@@ -3,10 +3,15 @@ import { mkdirSync, mkdtempSync, rmSync, existsSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
-import { runConnectCommand, runDisconnectCommand, connectionStatusLines } from "../../src/hooks/cloud-enrollment-cli";
+import {
+  runConnectCommand,
+  runDisconnectCommand,
+  runRenameCommand,
+  describeMachine,
+  connectionStatusLines,
+} from "../../src/hooks/cloud-enrollment-cli";
 import { cloudCredentialPath, readCloudCredentials, writeCloudCredentials } from "../../src/hooks/cloud-enrollment";
 import { readIngestCredential } from "../../src/hooks/collector-config";
-import { readHooksConfig } from "../../src/hooks/hooks-config";
 import { readConfig } from "../../src/hooks/fp-config";
 
 let dir: string;
@@ -132,6 +137,91 @@ describe("--connect", () => {
   it("warns differently when the daemon is installed but stopped", async () => {
     const r = await runConnectCommand({ ...base, machineId: "m", daemonStatus: () => "stopped" as const });
     expect(r.lines.join("\n")).toMatch(/not running/);
+  });
+
+  it("does NOT claim a daemon runs outside the service manager when the state is unreadable", async () => {
+    // macOS: a LaunchDaemon is in launchd's system domain, so reading its state
+    // needs elevation. Without a cached `sudo -n` credential — the normal case for
+    // a read-only status command — `daemonServiceStatus()` returns "unknown",
+    // meaning "I could not tell".
+    //
+    // That used to fall through to the socket branch and announce the daemon was
+    // "running outside the service manager", telling the user to install a service
+    // they already had. Linux never showed it, because `systemctl is-active` needs
+    // no privileges — and that asymmetry was the entire bug.
+    const r = await runConnectCommand({ ...base, machineId: "m", daemonStatus: () => "unknown" as const });
+
+    const out = r.lines.join("\n");
+    expect(r.exitCode).toBe(0);
+    expect(out).not.toMatch(/outside the service manager/);
+    expect(out).not.toMatch(/Install it as a service/);
+    // And it says what IS true: the state could not be read.
+    expect(out).toMatch(/needs elevation to read/);
+  });
+});
+
+describe("--machine-label alone renames without re-enrolling", () => {
+  // The flag was accepted only with --connect, so changing a display name meant
+  // re-running enrolment with the url and token again. The hostname default is a
+  // suggestion, so renaming is the expected path rather than an exception.
+
+  it("stores the new label and reports the change", async () => {
+    writeCloudCredentials({ url: "https://x", machineId: "abcd1234-ffff", token: "t", machineLabel: "old-name" });
+
+    const r = await runRenameCommand("Nikita's Mac", { verify: async () => ({ ok: true, policyCount: 0, deployment: 1 }) as const });
+
+    expect(r.exitCode).toBe(0);
+    expect(readCloudCredentials()?.machineLabel).toBe("Nikita's Mac");
+    expect(r.lines.join("\n")).toContain("old-name");
+    expect(r.lines.join("\n")).toContain("Nikita's Mac");
+  });
+
+  it("keeps the rename when the server cannot be reached", async () => {
+    // Refusing to rename because the network is down would fail exactly when
+    // someone is labelling a machine they are debugging. The daemon sends the
+    // label on its next poll, so the dashboard catches up by itself.
+    writeCloudCredentials({ url: "https://x", machineId: "abcd1234-ffff", token: "t" });
+
+    const r = await runRenameCommand("Build box", {
+      verify: async () => ({ ok: false, reason: "No response from https://x within 5s." }),
+    });
+
+    expect(r.exitCode).toBe(0);
+    expect(readCloudCredentials()?.machineLabel).toBe("Build box");
+    expect(r.lines.join("\n")).toMatch(/stored but .* could not be told/);
+  });
+
+  it("refuses when the machine is not connected", async () => {
+    const r = await runRenameCommand("Anything", { verify: async () => ({ ok: true, policyCount: 0, deployment: 1 }) as const });
+    expect(r.exitCode).toBe(1);
+    expect(r.lines.join("\n")).toContain("not connected");
+  });
+
+  it("needs a name", async () => {
+    writeCloudCredentials({ url: "https://x", machineId: "m", token: "t" });
+    const r = await runRenameCommand("   ", { verify: async () => ({ ok: true, policyCount: 0, deployment: 1 }) as const });
+    expect(r.exitCode).toBe(1);
+  });
+});
+
+describe("machine names in output", () => {
+  it("shows the label with a SHORT id, not the whole uuid", () => {
+    // 36 characters of uuid in every status line is noise for the one reader who
+    // cannot use them, and it made the id look like the machine's name.
+    const shown = describeMachine("dde01f39-afba-40eb-bf1a-815d9f17ac2d", "Mac.localdomain");
+    expect(shown).toBe("Mac.localdomain (dde01f39)");
+  });
+
+  it("keeps the full id when asked", () => {
+    const shown = describeMachine("dde01f39-afba-40eb-bf1a-815d9f17ac2d", "Mac.localdomain", true);
+    expect(shown).toBe("Mac.localdomain (dde01f39-afba-40eb-bf1a-815d9f17ac2d)");
+  });
+
+  it("falls back to the bare id when there is no label", () => {
+    // Credentials written before labels existed, and the case where the label IS
+    // the id — printing it twice would be worse than printing it once.
+    expect(describeMachine("m-1")).toBe("m-1");
+    expect(describeMachine("m-1", "m-1")).toBe("m-1");
   });
 });
 

@@ -184,7 +184,7 @@ async function writeShim(
 }
 
 export async function createEsmShim(
-  distIndex: string,
+  _distIndex: string,
   distUrl: string,
   tmpSuffix = TMP_SUFFIX,
 ): Promise<{ shimPath: string; shimUrl: string }> {

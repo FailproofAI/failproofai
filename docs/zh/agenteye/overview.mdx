@@ -1,95 +1,95 @@
 ---
-title: "Failproof AI：监控 Agent 故障"
-description: "Failproof AI Observability 是一个自托管平台，用于在生产环境中观测、评估和改进您的 AI 智能体。"
+title: "Failproof AI：观测 Agent 故障"
+description: "Failproof AI Observability 是一个自托管平台，用于在生产环境中观测、评估和改进您的 AI agent。"
 ---
 
 
-Failproof AI Observability 是一个自托管平台，用于在生产环境中观测、评估和改进您的 AI 智能体。它记录智能体的所有操作（每次工具调用、模型请求、钩子和错误），对每次运行的质量进行评分，并将您未曾预料到的故障呈现出来——所有这些都在您自己基础设施内运行的控制台中完成。
+Failproof AI Observability 是一个自托管平台，用于在生产环境中观测、评估和改进您的 AI agent。它记录 agent 的一切行为（每次工具调用、模型请求、hook 和错误），对每次运行的质量进行评分，并在您自己基础设施内运行的仪表板中呈现那些您未曾预料到的故障。
 
-如果您正在部署 AI 智能体，却苦于无法搞清楚某次运行为何出错，那么这就是您的起点。本页将介绍 Failproof AI Observability 能为您提供什么，以及各个组件如何协同工作——在您安装任何内容之前。
+如果您在交付 AI agent，并且厌倦了猜测某次运行为何出错，那么本页就是您的起点。它将介绍 Failproof AI Observability 能为您提供什么，以及各个组成部分如何协同工作——在您安装任何内容之前。
 
-> **Failproof AI Observability 是 Failproof AI 的企业级产品。** 想亲眼看看它的实际效果？请申请演示：发送邮件至 [nikita@befailproof.ai](mailto:nikita@befailproof.ai)。
+> **Failproof AI Observability 是 Failproof AI 的企业级产品。** 想亲眼见识它的实际效果？申请演示：发送邮件至 [nikita@befailproof.ai](mailto:nikita@befailproof.ai)。
 
-![Failproof AI Observability 会话以类 git 风格的执行图展示，旁边是事件时间线，右侧栏按工具、模型和钩子分类展示每次运行的详情](/agenteye/images/session-detail.png)
+![Failproof AI Observability 会话以 git 风格的执行图展示，旁边是事件时间线，右侧栏按运行细分了工具、模型和 hook](/agenteye/images/session-detail.png)
 
-*每次智能体运行都以类 git 风格的执行图（左）呈现，旁边是事件时间线。并行子智能体各占一条泳道；右侧栏细分了本次运行的工具、模型、钩子和 Token 消耗。*
+*每次 agent 运行都以 git 风格的执行图（左侧）呈现，旁边是事件时间线。并行子 agent 各有独立泳道；右侧栏列出了本次运行的工具、模型、hook 及 token 消耗明细。*
 
 ---
 
 ## 实际演示
 
-以下两段短视频展示了团队最常用的两项功能：追踪运行过程，以及自动发现故障。
+以下两段短视频展示了团队最常使用的两项功能：追踪一次运行，以及自动发现故障。
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*智能体追踪：逐步跟踪单次运行，从目标到工具再到最终答案。*
+*Agent 追踪：逐步跟踪单次运行，从目标到工具调用，再到最终答案。*
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Failproof Audit：让 Failproof AI Observability 跨会话挖掘您的日志，并告诉您需要修复的问题。*
+*Failproof Audit：让 Failproof AI Observability 跨会话挖掘您的日志，并告诉您需要修复什么。*
 
 ---
 
 ## 为什么团队选择它
 
-- **看清智能体实际做了什么。** 每次运行都会生成一个可读的类 git 风格执行图：哪些工具并行运行、哪些子智能体分支出去、在哪里卡住，以及消耗了多少资源。
-- **自动捕获质量回归。** 接入一个轻量评分服务后，Failproof AI Observability 会对每次完成的运行进行评分，帮助能力下降或幻觉激增等问题自动浮出水面。
-- **发现您未曾预设规则的故障。** 定期审计会跨会话挖掘日志，查找错误聚类、延迟异常值、低分和卡住的运行，并将带有证据支撑的排名发现呈现给您。
+- **查看 agent 的实际行为。** 每次运行都会生成一个可读的 git 风格执行图：哪些工具并行运行、哪些子 agent 分叉、在哪里停滞，以及消耗了多少资源。
+- **自动捕获质量回退。** 接入一个小型评分服务后，Failproof AI Observability 会对每次完成的运行打分，一旦有用性下降或幻觉激增，问题会自动浮现。
+- **发现您未曾定义规则的故障。** 定期审计会跨会话挖掘日志，寻找错误集群、延迟异常值、低分和卡死运行，并将有据可查的排名发现呈现给您。
 - **在关键时刻收到告警。** 阈值规则在错误率、延迟、成本或评估分数触发时创建事件，您可以确认、分配和解决这些事件。
-- **用自然语言提问。** 控制台内置 AI 助手，可基于您自己的数据回答「本周生产环境的质量趋势如何？」之类的问题。任何变更都需要审批。
-- **数据归您所有。** Failproof AI Observability 是自托管的：事件、提示词和分析数据都保留在您控制的基础设施中。
+- **用自然语言提问。** 仪表板内置 AI 助手，可以用自然语言回答"本周生产环境的质量趋势如何？"等问题，数据来自您自己的系统。它做出的任何更改都需要审批。
+- **数据归您掌控。** Failproof AI Observability 是自托管的：事件、提示词和分析数据均保留在您控制的基础设施中。
 
 ---
 
-## 功能全览
+## 您将获得什么
 
-Failproof AI Observability 围绕三大理念组织（**观测**、**分析**和**管理**），对应控制台左侧边栏的结构。
+Failproof AI Observability 围绕三个理念组织（**观测**、**分析**和**管理**），在仪表板左侧边栏中有对应体现。
 
-**观测**（真实发生了什么）：
+**观测**（发生了什么的原始真相）：
 
-- **[事件流](/zh/agenteye/event-stream)**：每次运行的实时逐步记录（工具调用、模型调用、钩子、错误）。
-- **[会话](/zh/agenteye/sessions)**：将这些事件汇总为每次运行一行，每行均可评分，并附带类 git 风格执行图。
-- **[性能指标](/zh/agenteye/telemetry)**：按维度划分的延迟热图，以及模型、工具和钩子的 p50/p95/p99 关键指标，让尾部延迟峰值一目了然。
-- **[错误追踪](/zh/agenteye/error-tracking)**：一个统一的故障分类界面，一键直达触发告警的详情。
+- **[事件流](/zh/agenteye/event-stream)**：每次运行的实时逐步记录（工具调用、模型调用、hook、错误）。
+- **[会话](/zh/agenteye/sessions)**：将事件汇总为每次运行一行，每行均可打分，并附有 git 风格的执行图。
+- **[性能指标](/zh/agenteye/telemetry)**：按维度划分的延迟热图，以及模型、工具和 hook 的 p50/p95/p99 关键指标，让尾部延迟峰值从中位数中凸显出来。
+- **[错误追踪](/zh/agenteye/error-tracking)**：一个用于处理所有异常的分类界面，距触发告警只需一次点击。
 
-![工具观测页面：24 个时间段的延迟热图、百分位带和工具分布条形图](/agenteye/images/tools.png)
+![工具观测页面：延迟热图、百分位带以及 24 个时间段的工具分布柱状图](/agenteye/images/tools.png)
 
-*每个观测界面都将迷你趋势图和 p50/p95/p99 关键指标与延迟热图及百分位带相结合。图示：工具页面。*
+*每个观测界面将迷你折线图和 p50/p95/p99 关键指标与延迟热图及百分位带配对展示。图中所示为：工具。*
 
-**分析**（将活动转化为洞察）：
+**分析**（将活动转化为答案）：
 
-- **[查询](/zh/agenteye/queries)** 和 **[仪表板](/zh/agenteye/dashboards)**：对事件和评估数据执行已保存的 SQL 查询，以图表形式呈现在团队共享的组织级仪表板中。
-- **[评估](/zh/agenteye/evaluations)**：由您自己的评估服务生成的质量分数，附带每项评分的推理过程。
-- **[审计](/zh/agenteye/audits)**：定期调查，跨会话发现故障模式。
-- **[告警](/zh/agenteye/alerts)** 和 **[事件](/zh/agenteye/incidents)**：触发通知的阈值规则，以及用于分类处理的事件工作流。
+- **[查询](/zh/agenteye/queries)** 和 **[仪表板](/zh/agenteye/dashboards)**：基于事件和评估数据保存的 SQL 查询，以图表形式呈现在组织级共享仪表板中。
+- **[评估](/zh/agenteye/evaluations)**：由您自己的评估服务生成的质量分数，附带每项评分的推理依据。
+- **[审计](/zh/agenteye/audits)**：定期调查，跨会话呈现故障模式。
+- **[告警](/zh/agenteye/alerts)** 和 **[事件](/zh/agenteye/incidents)**：向您发送通知的阈值规则，以及用于分类处理的事件工作流。
 
-**接口**（以您喜欢的方式访问数据）：
+**接入方式**（以您习惯的方式访问数据）：
 
-- **[CLI](/zh/agenteye/cli-and-agents)**：从终端或脚本驱动整个部署，也可以让编程智能体用自然语言完成操作。
-- **[AI 助手](/zh/agenteye/assistant)**：直接在控制台内用自然语言询问有关智能体的问题。
-- **REST API**：控制台和 CLI 的所有功能都由 REST API 支撑，您可以使用有范围限制的 [API 密钥](/zh/agenteye/api-keys) 直接调用——摄取事件、查询会话和评估、管理仪表板、告警、审计、用户和密钥，从而将 Failproof AI Observability 集成到您自己的工具链中。
+- **[CLI](/zh/agenteye/cli-and-agents)**：通过终端或脚本驱动整个部署流程，也可以让编码 agent 用自然语言替您完成。
+- **[AI 助手](/zh/agenteye/assistant)**：直接在仪表板内，用自然语言询问关于您 agent 的问题。
+- **REST API**：仪表板和 CLI 的所有功能均由 REST API 支撑，您可以使用有权限范围的 [API 密钥](/zh/agenteye/api-keys)直接调用——摄取事件、查询会话和评估、管理仪表板、告警、审计、用户和密钥，从而将 Failproof AI Observability 接入您自己的工具链。
 
-**管理**（为您的团队运维）：
+**管理**（为您的团队运营）：
 
-- **[API 密钥](/zh/agenteye/api-keys)**：面向采集器、控制台和助手的范围化令牌。
-- **用户**：基于电子邮件的无密码登录，支持白名单管理。
-- **设置**：组织级配置，包括模型上下文窗口覆盖设置。
+- **[API 密钥](/zh/agenteye/api-keys)**：为采集器、仪表板和助手划定权限范围的令牌。
+- **用户**：基于邮箱白名单的无密码登录。
+- **设置**：组织级配置，包括模型上下文窗口覆盖。
 
 ---
 
-## 各组件如何协同
+## 各部分如何协同工作
 
-数据单向流动，从您的智能体代码流向控制台：您的智能体（通过 Python SDK）向 agenteye-collector 发送事件，后者将事件传输到服务器，服务器再为控制台提供数据。另有两个可选服务作为补充——评分服务（评估）和 AI 助手服务（控制台内聊天）。
+数据沿一个方向流动，从您的 agent 代码到仪表板：您的 agent（通过 Python SDK）将事件发送给 agenteye-collector，后者将事件批量传输到服务器，服务器再提供仪表板服务。另外还有两个可选服务——评分服务（评估）和 AI 助手服务（仪表板内聊天）。
 
-- **Python SDK**：在您的智能体中添加少量 `agenteye.event.*` 调用；事件在本地缓冲。
-- **agenteye-collector**：每台智能体机器上的轻量守护进程，批量将事件传输到服务器。
-- **服务器**：摄取您的事件，将运营状态保存在您自己的数据库中，并提供控制台、CLI 和您的集成所使用的 REST API。
-- **控制台**：探索所有内容的地方。
-- **可选服务**：评分服务（评估）和 AI 助手服务（控制台内聊天）。
+- **Python SDK**：您在 agent 中添加少量 `agenteye.event.*` 调用；事件会在本地缓冲。
+- **agenteye-collector**：每台 agent 机器上的轻量级守护进程，负责批量收集并传输事件至服务器。
+- **服务器**：摄取您的事件，将运营状态保存在您自己的数据库中，并提供供仪表板、CLI 及您自定义集成使用的 REST API。
+- **仪表板**：您探索一切内容的地方。
+- **可选服务**：评分服务（评估）和 AI 助手服务（仪表板内聊天）。
 
 关于文档中使用的术语（*事件、会话、评估、审计、发现、事件*），请参阅[概念](/zh/agenteye/concepts)。
 
@@ -97,12 +97,12 @@ Failproof AI Observability 围绕三大理念组织（**观测**、**分析**和
 
 ## 获取 Failproof AI Observability
 
-Failproof AI Observability 是 Failproof AI 的企业级产品，与 Failproof AI Enforcement（策略和护栏产品）共同构成 Failproof AI 品牌体系。它完全运行在您自己的环境中。如果您尚未获得软件包访问权限，请申请演示，我们会帮您完成部署：发送邮件至 [nikita@befailproof.ai](mailto:nikita@befailproof.ai)。
+Failproof AI Observability 是 Failproof AI 的企业级产品，与 Failproof AI Enforcement（策略与护栏产品）同属 Failproof AI 品牌旗下，完全运行在您自己的环境中。如果您尚未获得软件包访问权限，请申请演示，我们将为您完成配置：发送邮件至 [nikita@befailproof.ai](mailto:nikita@befailproof.ai)。
 
 ---
 
 ## 后续步骤
 
-- [概念](/zh/agenteye/concepts)：Failproof AI Observability 术语汇总。
-- [可观测性](/zh/agenteye/observability)：逐次运行地追踪智能体的行为。
-- [安全性](/zh/agenteye/security)：Failproof AI Observability 如何确保您的数据隔离并受您掌控。
+- [概念](/zh/agenteye/concepts)：Failproof AI Observability 词汇表汇总。
+- [可观测性](/zh/agenteye/observability)：逐次运行跟踪您的 agent 行为。
+- [安全性](/zh/agenteye/security)：Failproof AI Observability 如何确保您的数据隔离并在您的掌控之下。

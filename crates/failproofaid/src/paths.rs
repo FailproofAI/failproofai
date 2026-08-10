@@ -183,6 +183,49 @@ pub fn failproofai_home() -> io::Result<PathBuf> {
     Ok(PathBuf::from(home).join(".failproofai"))
 }
 
+/// The on-disk layout this binary speaks. Mirrors `LAYOUT_VERSION` in
+/// `src/hooks/fp-home.ts`, and the parity test below asserts the two agree —
+/// every path in this file is only correct for one layout, so a mismatch here is
+/// a daemon reading and writing somewhere nothing else looks.
+pub const LAYOUT_VERSION: u32 = 3;
+
+/// `~/.failproofai/VERSION` — the layout marker the CLI stamps.
+pub fn version_file_path(home: &std::path::Path) -> PathBuf {
+    home.join("VERSION")
+}
+
+/// The layout the home on disk was written by, if it says.
+///
+/// `None` covers absent, unreadable and unparseable alike. The caller treats that
+/// as "run" rather than "refuse", because a fresh home has no marker until the
+/// first CLI command stamps one, and a daemon that refused to start on a machine
+/// where failproofai had only just been installed would fail the install.
+///
+/// Only the layout number is read. The file also carries `cli` and `daemon`
+/// versions, and this deliberately does not compare them: a CLI newer than its
+/// daemon is an ordinary state between an `npm i -g` and the next
+/// `failproofai update`, already reported by `daemonVersionSkew()` on the CLI
+/// side, and refusing to start over it would take a working machine down for a
+/// condition that resolves itself.
+pub fn read_layout(home: &std::path::Path) -> Option<u32> {
+    let text = fs::read_to_string(version_file_path(home)).ok()?;
+    // Layout 2 wrote this file as TOML and layout 3 writes JSON, so both shapes
+    // are read for the same reason `readLegacyTomlVersion` exists on the CLI
+    // side: guessing wrong here means refusing to start on a home that is merely
+    // OLD, which is the one case the CLI is about to fix by migrating it.
+    if let Some(value) = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|v| v.get("layout").and_then(serde_json::Value::as_u64))
+    {
+        return u32::try_from(value).ok();
+    }
+    text.lines()
+        .map(str::trim)
+        .find_map(|line| line.strip_prefix("layout"))
+        .and_then(|rest| rest.trim_start().strip_prefix('='))
+        .and_then(|rest| rest.trim().parse::<u32>().ok())
+}
+
 /// Creates the run directory (`0700`) if it doesn't exist yet. This
 /// directory holds a socket that evaluates security-relevant decisions, so
 /// a freshly created one is always locked to owner-only.
@@ -224,6 +267,51 @@ mod tests {
     // concurrently with each other OR with any other module's env tests — which
     // is why the lock is crate-wide rather than declared here. See test_env.rs.
     use crate::test_env::lock_env;
+
+    /// A throwaway home holding one `VERSION` file with the given body.
+    fn home_with_version(label: &str, body: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "failproofaid-layout-{label}-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(version_file_path(&dir), body).unwrap();
+        dir
+    }
+
+    #[test]
+    fn read_layout_reads_the_json_marker_layout_3_writes() {
+        let home = home_with_version("json", "{\n  \"layout\": 3,\n  \"cli\": \"1.0.0\"\n}\n");
+        assert_eq!(read_layout(&home), Some(3));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn read_layout_reads_the_toml_marker_layout_2_wrote() {
+        // Refusing to start on a home that is merely OLD is the one case the CLI
+        // is about to fix by migrating it, so the older format has to parse — the
+        // same reason `readLegacyTomlVersion` exists on the CLI side.
+        let home = home_with_version("toml", "layout = 2\ncli = \"1.0.0-beta.5\"\n");
+        assert_eq!(read_layout(&home), Some(2));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn read_layout_is_none_for_absent_or_unreadable_markers() {
+        // None means "start anyway": a fresh home has no marker until the first
+        // CLI command stamps one, and refusing there would break the install.
+        let missing = std::env::temp_dir().join(format!(
+            "failproofaid-layout-missing-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&missing);
+        assert_eq!(read_layout(&missing), None);
+
+        let garbage = home_with_version("garbage", "this is not a marker at all\n");
+        assert_eq!(read_layout(&garbage), None);
+        let _ = fs::remove_dir_all(&garbage);
+    }
 
     #[test]
     fn socket_override_takes_precedence_over_home() {
@@ -489,7 +577,7 @@ mod tests {
         // Ask the TypeScript module itself, in a child process that sees the
         // same FAILPROOFAI_HOME.
         let script = format!(
-            "const m = await import({:?}); console.log(JSON.stringify({{{}}}));",
+            "const m = await import({:?}); console.log(JSON.stringify({{__layout: m.LAYOUT_VERSION, {}}}));",
             fp_home_ts.to_string_lossy(),
             rows.iter()
                 .map(|(name, _, ts_expr)| format!("{name:?}: m.{ts_expr}"))
@@ -513,6 +601,19 @@ mod tests {
         );
         let ts: serde_json::Value =
             serde_json::from_slice(&out.stdout).expect("fp-home.ts must print one JSON object");
+
+        // The constant, checked in the same breath as the paths it governs. Every
+        // path below is correct for exactly ONE layout, so these two numbers
+        // disagreeing means the daemon now refuses to start against a home the CLI
+        // considers current — or, worse before this was asserted, reads and writes
+        // paths that moved.
+        assert_eq!(
+            u64::from(LAYOUT_VERSION),
+            ts.get("__layout")
+                .and_then(serde_json::Value::as_u64)
+                .expect("fp-home.ts must export LAYOUT_VERSION"),
+            "paths.rs::LAYOUT_VERSION and fp-home.ts's LAYOUT_VERSION disagree"
+        );
 
         for (name, rust_value, ts_expr) in &rows {
             let ts_value = ts

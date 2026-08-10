@@ -1,45 +1,46 @@
 ---
 title: "Dashboards"
-description: "Verwandle deine Live-Agentendaten in ein gemeinsames Bild, das dein gesamtes Team im Blick behält."
+description: "Verwandle deine Live-Agent-Daten in ein gemeinsames Bild, das dein gesamtes Team im Blick behält."
 ---
 
-Verwandle deine Live-Agentendaten in ein gemeinsames Bild, das dein gesamtes Team im Blick behält. Hefte die relevanten Abfragen als Diagramme an, und jeder sieht auf einen Blick dieselben Zahlen – ohne auch nur eine einzige Abfrage erneut ausführen zu müssen.
 
-![Ein Dashboard aus gespeicherten Abfragen: eine Linie für Ereignisse pro Stunde, ein Balkendiagramm für Fehler nach Typ, ein Flächendiagramm für Latenz und Tokens nach Modell](/agenteye/images/dashboard-fleet.png)
+Verwandle deine Live-Agent-Daten in ein gemeinsames Bild, das dein gesamtes Team im Blick behält. Hefte die wichtigen Abfragen als Diagramme an, und alle sehen auf einen Blick dieselben Zahlen – ohne eine einzige Abfrage erneut ausführen zu müssen.
 
-*Ein Board, vier gespeicherte Abfragen: Ereignisse pro Stunde, Fehler nach Typ, Latenz und Tokens nach Modell.*
+![Ein Dashboard aus gespeicherten Abfragen: eine Linien-Kurve für Events pro Stunde, ein Balkendiagramm für Fehler nach Typ, ein Flächendiagramm für Latenz und eine Aufschlüsselung der Tokens nach Modell](/agenteye/images/dashboard-fleet.png)
+
+*Ein Board, vier gespeicherte Abfragen: Events pro Stunde, Fehler nach Typ, Latenz und Tokens nach Modell.*
 
 ## Alle sehen dieselbe Wahrheit
 
-Hör auf, Screenshots in den Chat zu kopieren, und hör auf, dieselbe Abfrage fünfmal am Tag erneut auszuführen. Ein Dashboard ist ein gemeinsames, organisationsweites Board, das jeder in deinem Team aufrufen kann und dabei genau dieselbe Ansicht erhält. Wenn sich die zugrunde liegenden Daten ändern, aktualisieren sich die Diagramme mit, sodass das Board immer aktuell ist und niemand über veraltete Zahlen diskutiert.
+Schluss mit Screenshots in den Chat einfügen und Schluss damit, dieselbe Abfrage fünfmal am Tag erneut auszuführen. Ein Dashboard ist ein gemeinsames, organisationsweites Board, das jeder in deinem Team öffnen kann und dabei exakt dieselbe Ansicht erhält. Wenn sich die zugrundeliegenden Daten ändern, aktualisieren sich die Diagramme mit – das Board ist also immer aktuell, und niemand streitet über veraltete Zahlen.
 
-Das Fleet-Dashboard oben eignet sich gut als Ausgangspunkt für den täglichen Betrieb:
+Das Fleet-Dashboard oben ist eine gute Ausgangsform für den täglichen Betrieb:
 
-- eine **Ereignisse-pro-Stunde**-Linie, um den Durchsatz zu beobachten und plötzliche Einbrüche zu erkennen
+- eine **Events-pro-Stunde**-Linie, um den Durchsatz zu beobachten und einen plötzlichen Einbruch zu erkennen
 - ein **Fehler-nach-Typ**-Balkendiagramm, damit die größten Fehlerkategorien sofort ins Auge fallen
 - ein **Latenz**-Flächendiagramm, damit Verlangsamungen sichtbar werden, bevor Nutzer sich beschweren
-- eine **Tokens-nach-Modell**-Aufschlüsselung, damit die Kosten stets im Blick bleiben
+- eine **Tokens-nach-Modell**-Aufschlüsselung, damit die Kosten immer im Blick bleiben
 
 Deine Boards findest du unter `/<org-slug>/dashboards`.
 
-## Gespeicherte Abfragen anheften
+## Bereits gespeicherte Abfragen anheften
 
-Jede Kachel beginnt als gespeicherte Abfrage. Erstelle und speichere die gewünschte Abfrage in der [Queries](/de/agenteye/queries)-Bibliothek (mit integrierten Vorlagen sowie eigenen Abfragen über deine Ereignisse und Evaluierungen) und hefte sie dann als passendes Diagramm an ein Dashboard: eine **Linie** für zeitliche Trends, ein **Balken** für Kategorienvergleiche, eine **Fläche** für Volumen oder ein **Kreisdiagramm** für Anteile.
+Jede Kachel beginnt als gespeicherte Abfrage. Erstelle und speichere die gewünschte Abfrage in der [Abfragen](/de/agenteye/queries)-Bibliothek (integrierte Voreinstellungen plus eigene, über deine Events und Auswertungen), und hefte sie dann als passendes Diagramm an ein Dashboard: eine **Linie** für Trends über die Zeit, einen **Balken** für den Kategorienvergleich, eine **Fläche** für Volumen oder ein **Tortendiagramm** für eine Anteilsdarstellung.
 
-Da eine Kachel lediglich deine gespeicherte Abfrage als Diagramm darstellt, ist keine manuelle Synchronisation erforderlich. Aktualisiere die Abfrage einmal, und jedes Dashboard, das sie verwendet, wird ebenfalls aktualisiert.
+Da eine Kachel nur deine gespeicherte Abfrage als Diagramm darstellt, gibt es nichts manuell synchron zu halten. Aktualisiere die Abfrage einmal, und jedes Dashboard, das sie verwendet, wird automatisch aktualisiert.
 
 ## Qualität beobachten, nicht nur Volumen
 
-Das Volumen zeigt dir, dass die Agenten beschäftigt sind. Die Qualität zeigt dir, ob sie ihre Aufgabe tatsächlich erfüllen. Richte ein Dashboard auf deine [Evaluierungswerte](/de/agenteye/evaluations) aus und du erhältst ein Board, das den Verlauf der Ausführungsqualität über die Zeit verfolgt – sodass eine Qualitätsverschlechterung als Einbruch im Diagramm sichtbar wird, anstatt als unangenehme Überraschung vom Kunden.
+Volumen zeigt dir, dass die Agents beschäftigt sind. Qualität zeigt dir, ob sie ihre Aufgabe tatsächlich erfüllen. Richte ein Dashboard auf deine [Auswertungs-Scores](/de/agenteye/evaluations) aus, und du erhältst ein Board, das verfolgt, wie gut die Ausführungen im Laufe der Zeit laufen – sodass eine Qualitätsverschlechterung als Einbruch in einem Diagramm sichtbar wird, anstatt als Überraschung von einem Kunden.
 
-![Ein qualitätsorientiertes Dashboard aus gespeicherten Evaluierungsabfragen](/agenteye/images/dashboard-quality.png)
+![Ein qualitätsorientiertes Dashboard aus gespeicherten Auswertungsabfragen](/agenteye/images/dashboard-quality.png)
 
-*Ein Qualitäts-Board hält deine Evaluierungswerte immer im Vordergrund – direkt neben den operativen Kennzahlen.*
+*Ein Qualitäts-Board hält deine Auswertungs-Scores immer im Vordergrund, direkt neben den operativen Kennzahlen.*
 
-Halte ein Betriebs-Board und ein Qualitäts-Board nebeneinander, und dein Team hat einen einzigen Ort, um sowohl „Funktioniert es?" als auch „Ist es gut?" zu beantworten – ohne dass jemand eine Abfrage erneut ausführen muss.
+Halte ein Betriebsboard und ein Qualitätsboard nebeneinander, und dein Team hat einen einzigen Ort, um sowohl „funktioniert es?" als auch „ist es gut?" zu beantworten – ohne dass jemand eine Abfrage erneut ausführen muss.
 
 ## Verwandte Themen
 
-- [Queries](/de/agenteye/queries): Abfragen erstellen und speichern, die zu deinen Kacheln werden.
-- [Evaluations](/de/agenteye/evaluations): Ausführungen bewerten, um Qualität über die Zeit darzustellen.
-- [Alerts](/de/agenteye/alerts): Schwellenwerte für beliebige dieser Metriken in eine Benachrichtigung umwandeln.
+- [Abfragen](/de/agenteye/queries): Erstelle und speichere die Abfragen, die zu deinen Kacheln werden.
+- [Auswertungen](/de/agenteye/evaluations): Bewerte deine Ausführungen, um Qualität über die Zeit darzustellen.
+- [Benachrichtigungen](/de/agenteye/alerts): Verwandle einen Schwellenwert für eine dieser Metriken in eine Benachrichtigung.

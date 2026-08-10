@@ -45,8 +45,6 @@ import {
 import {
   DEFAULT_INGEST_URL,
   validateIngestKey,
-  writeIngestCredential,
-  writeCollectorSettings,
 } from "./collector-config";
 import {
   detectInstalledClis,
@@ -56,7 +54,7 @@ import {
 } from "./integrations";
 import { INTEGRATION_TYPES, type IntegrationType, type HookScope } from "./types";
 import { installHooks } from "./manager";
-import { getConfigPathForScope, readHooksConfig } from "./hooks-config";
+import { getConfigPathForScope, readHooksConfig, readScopedHooksConfig } from "./hooks-config";
 import { POLICY_PRESETS, resolvePreset, resolveEverything } from "./policy-presets";
 import { discoverPolicyFiles, findSkippedPolicyFiles } from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
@@ -83,8 +81,6 @@ import {
   resolveMachineId,
   resolveMachineLabel,
   validateCloudUrl,
-  verifyCloudCredentials,
-  writeCloudCredentials,
 } from "./cloud-enrollment";
 import {
   cloudBaseFor,
@@ -235,19 +231,90 @@ const ALL_CLIS = "__all_clis__";
 /** Sentinel for the locked "Custom" row — informational, never resolves to
  *  builtin policy names (custom policies load by convention, not by config). */
 const CUSTOM = "__custom__";
+/**
+ * Sentinel for the locked "enabled individually" row.
+ *
+ * Policies enabled one at a time (`failproofai policies add <name>`) need not map
+ * onto any preset, so seeding the preset boxes cannot represent them. The wizard
+ * writes with `replace: true`, which makes the ticked set the WHOLE enabled set —
+ * so anything this row stands for must be unioned back in, or confirming the
+ * wizard would silently drop it. Locked and pre-checked, because it reports a
+ * state rather than offering a choice.
+ */
+const INDIVIDUAL = "__individual__";
+
+/**
+ * Split what is enabled now into the bundles that cover it and the leftovers.
+ *
+ * A pure function, and the SINGLE definition of that split — `buildPresetChoices`
+ * renders it and the wizard writes from it, so the row the user sees and the set
+ * that gets written can never disagree. The first version of this derived the
+ * leftovers by parsing them back out of the row's hint text, which coupled a
+ * display string to enforcement behaviour and would have broken on any policy
+ * name containing the separator.
+ */
+export function splitEnabled(currentlyEnabled: readonly string[] = []): {
+  /** Preset ids (or `EVERYTHING`) whose policies are all already enabled. */
+  presets: string[];
+  /** Enabled policies no ticked bundle accounts for. */
+  individual: string[];
+} {
+  const current = new Set(currentlyEnabled);
+  // A bundle is ticked when everything it turns on is already on. Not "any", or
+  // one shared policy would tick every bundle containing it and confirming would
+  // enable all of them.
+  const isOn = (policies: string[]) =>
+    policies.length > 0 && policies.every((name) => current.has(name));
+
+  const everything = resolveEverything();
+  const presets = isOn(everything)
+    ? [EVERYTHING]
+    : POLICY_PRESETS.filter((p) => isOn(resolvePreset(p.id))).map((p) => p.id);
+
+  // Against the TICKED bundles, not all of them: a policy belonging only to a
+  // bundle the user has NOT enabled is still enabled, and that is the fact the
+  // locked row exists to make visible.
+  const accounted = new Set(
+    presets.flatMap((id) => (id === EVERYTHING ? everything : resolvePreset(id))),
+  );
+  const individual = [...current].filter((name) => !accounted.has(name)).sort();
+  return { presets, individual };
+}
 
 /** The themed preset bundles for the wizard's multi-select, plus an "Everything"
  *  option that enables the full builtin policy set. */
-export function buildPresetChoices(cwd: string = process.cwd(), enabled = true) {
+export function buildPresetChoices(
+  cwd: string = process.cwd(),
+  enabled = true,
+  /**
+   * What is enabled at this scope RIGHT NOW, used to tick the boxes.
+   *
+   * Without it every row rendered unticked on every run while the wizard wrote
+   * with `replace: true` — so re-running setup showed a blank slate and then made
+   * that blank slate authoritative, discarding the user's selection with nothing
+   * on screen to say it had happened. The comment on the Custom row below has
+   * always described the intended behaviour ("shows the current state rather than
+   * resetting it every run"); it was implemented for that one row out of eight.
+   *
+   * Optional so the first-run call sites stay unchanged: an empty set ticks
+   * nothing, which is the correct rendering for a machine with no selection.
+   */
+  currentlyEnabled: readonly string[] = [],
+) {
+  const { presets: onPresets, individual } = splitEnabled(currentlyEnabled);
+  const on = new Set(onPresets);
+
   const choices: MultiChoice<string>[] = POLICY_PRESETS.map((p) => ({
     label: p.label,
     value: p.id,
     hint: p.description,
+    checked: on.has(p.id),
   }));
   choices.push({
     label: "Everything",
     value: EVERYTHING,
     hint: `all ${resolveEverything().length} policies`,
+    checked: on.has(EVERYTHING),
   });
 
   // The Custom row is ALWAYS present, because it is the only place the feature
@@ -288,21 +355,45 @@ export function buildPresetChoices(cwd: string = process.cwd(), enabled = true) 
           : "none yet · drop *-policies.mjs in .failproofai/policies/",
     });
   }
+  if (individual.length > 0) {
+    choices.push({
+      label: `${individual.length} enabled individually`,
+      value: INDIVIDUAL,
+      locked: true,
+      hint: `kept as-is · ${individual.join(", ")}`,
+      // Not one of the bundles being counted, like the Everything and Custom rows.
+      summaryExclude: true,
+    });
+  }
   return choices;
 }
+
 
 /**
  * Resolve the ticked options to a concrete policy set. Presets are additive —
  * the deduped union of every selected preset's policies — while "Everything"
  * enables the full policy set and wins over any presets.
  */
-export function resolvePresetSelection(values: string[]): string[] {
+export function resolvePresetSelection(
+  values: string[],
+  /**
+   * What the locked "enabled individually" row stands for. Unioned in whenever
+   * that row is present, INCLUDING under "Everything": `resolveEverything()`
+   * covers the non-beta builtins only, so a beta policy someone enabled by hand
+   * would otherwise be dropped by the very branch meant to enable everything.
+   */
+  individual: readonly string[] = [],
+): string[] {
   // The Custom row is informational — custom policies are discovered from disk
   // by the loader, never named in the enabled-policies config — so it must not
-  // reach resolvePreset(), which only knows builtin bundle ids.
-  const selected = values.filter((v) => v !== CUSTOM);
-  if (selected.includes(EVERYTHING)) return resolveEverything();
-  return [...new Set(selected.flatMap((id) => resolvePreset(id)))];
+  // reach resolvePreset(), which only knows builtin bundle ids. Same for the
+  // locked individually-enabled row, which carries its policies in `individual`.
+  const selected = values.filter((v) => v !== CUSTOM && v !== INDIVIDUAL);
+  const carried = values.includes(INDIVIDUAL) ? individual : [];
+  if (selected.includes(EVERYTHING)) {
+    return [...new Set([...resolveEverything(), ...carried])];
+  }
+  return [...new Set([...selected.flatMap((id) => resolvePreset(id)), ...carried])];
 }
 
 const DIM_NOTE = "(auto-loaded)";
@@ -943,10 +1034,21 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // question the user came here to answer; which CLIs to wire it into is
   // plumbing that follows from it.
   //
-  // Seed the Custom checkbox from whatever the config already says, so the
-  // wizard shows the current state rather than resetting it every run.
+  // Seed the Custom checkbox AND the bundle boxes from whatever the config already
+  // says, so the wizard shows the current state rather than resetting it every run.
+  //
+  // Read at the scope this run will WRITE to, not the merged view. `installHooks`
+  // is called with `replace: true` per scope, so seeding from the merge would tick
+  // a bundle because it is enabled at PROJECT scope and then write it into USER
+  // scope — copying a selection between scopes as a side effect of opening the
+  // wizard. `readHooksConfig()` stays for the custom flag, which is read the same
+  // merged way everywhere else.
   const customEnabledBefore = readHooksConfig().customPoliciesEnabled !== false;
-  const presetChoices = buildPresetChoices(cwd, customEnabledBefore);
+  const enabledHere = readScopedHooksConfig(primaryScope, cwd).enabledPolicies ?? [];
+  const presetChoices = buildPresetChoices(cwd, customEnabledBefore, enabledHere);
+  // The policies no ticked bundle accounts for. Derived from the SAME pure split
+  // the rows are built from, so the locked row and the written set agree.
+  const carriedIndividual = splitEnabled(enabledHere).individual;
   const hasCustomFiles = describeCustomPolicies(cwd).fileCount > 0;
 
   // No minimum. Ticking nothing is a real answer — someone who only wants their
@@ -971,6 +1073,24 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // is stated, not prompted), so ← there would sometimes go nowhere.
   let presets: string[] | null = null;
   let clisSel: string[] | null = null;
+  /**
+   * What the harness step had ticked when ← was last pressed.
+   *
+   * A SEPARATE variable, because `clisSel` cannot do this job: it is the loop's
+   * own condition (`while (clisSel === null)`), so it is null on every entry into
+   * the body by definition, and it is assigned only on the line that ends the
+   * loop. The restore that read `clisSel` was therefore unreachable — provably
+   * dead, with a comment stating the opposite intent.
+   *
+   * The cost was not cosmetic: deselect a CLI, press ← to fix an earlier answer,
+   * come back, and the step showed the detected defaults again. Pressing ↵ then —
+   * reasonably, having been told the selection was carried back — re-enabled hook
+   * installation for a CLI the user had explicitly turned off.
+   *
+   * `presets` just above works because it is assigned MID-loop and survives to the
+   * next iteration; this mirrors that, filled from the prompt's `onBack`.
+   */
+  const carried: { clis: string[] | null } = { clis: null };
   while (clisSel === null) {
     // Re-entering after a ← must show what was picked, not a blank slate.
     // Selection state lives on each choice, so carry it back in.
@@ -990,7 +1110,16 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
 
     // 3 — Which harnesses? An "Everything available" row protects every supported
     // CLI (detected + set-up-ahead); when ticked it wins over the individual boxes.
-    const priorClis = clisSel as string[] | null;
+    // Read off a HOLDER OBJECT, not a bare `let`, and not through a cast.
+    //
+    // A `let` assigned only inside a callback is narrowed by control-flow analysis
+    // to its initializer, so `priorClis.includes` will not compile — and the
+    // original defeated that with `clisSel as string[] | null`. That cast is
+    // precisely why the dead code type-checked and nobody noticed: it silenced the
+    // compiler making exactly the point the reviewer later made by hand, that the
+    // value could only ever be null. A property read carries the declared type
+    // without suppressing anything.
+    const priorClis = carried.clis;
     const picked: string[] | typeof BACK | null = await multiSelect<string>({
     message: "Which harnesses should it protect?",
     choices: [
@@ -1010,6 +1139,12 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       summaryNoun: "harnesses",
       hint: "detected CLIs are pre-selected · space toggles · ctrl+a all · ← back · ↵ confirm",
       allowBack: true as const,
+      // `BACK` is a symbol and cannot carry the selection, so the prompt reports
+      // it here instead — otherwise a ← discards what the user had ticked and the
+      // next pass redraws the detected defaults.
+      onBack: (checkedNow) => {
+        carried.clis = checkedNow;
+      },
       stdin,
       stdout,
     });
@@ -1020,7 +1155,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   }
   // Non-null by construction: the loop only exits once both are assigned.
   const chosenPresets: string[] = presets ?? [];
-  const policies = resolvePresetSelection(chosenPresets);
+  const policies = resolvePresetSelection(chosenPresets, carriedIndividual);
   // Only meaningful when there are files to switch off; with none, the row is
   // locked-unchecked and must not write a disabling flag.
   const customEnabled = hasCustomFiles ? chosenPresets.includes(CUSTOM) : undefined;

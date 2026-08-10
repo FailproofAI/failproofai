@@ -1,4 +1,6 @@
-use crate::cloud_policies::{DesiredPolicy, DesiredState, PolicyStore};
+use crate::cloud_policies::{
+    DESIRED_STATE_SCHEMA_VERSION, DesiredPolicy, DesiredState, PolicyStore,
+};
 use reqwest::Url;
 use reqwest::blocking::Client;
 use std::sync::Arc;
@@ -263,8 +265,40 @@ impl CloudClient {
             .send()
             .and_then(|response| response.error_for_status())
             .map_err(|err| format!("desired-state request failed: {err}"))?
-            .json()
+            .json::<serde_json::Value>()
             .map_err(|err| format!("invalid desired-state response: {err}"))
+            .and_then(|raw| {
+                // THE VERSION IS CHECKED BEFORE THE FIELDS, which is the whole
+                // point of having one. `SUPPORTED_SCHEMA_VERSIONS` accepts 1 as
+                // well, and its comment says that is "for files on DISK, never for
+                // a server" — but nothing enforced the second half, so this path
+                // took a v1 response.
+                //
+                // Decoding straight into `DesiredState` would also reject a v1
+                // payload, since that type has no aliases for the old spelling —
+                // but on the WRONG grounds: serde reports "missing field
+                // `deployment`", which sends an operator hunting a malformed
+                // payload instead of a stale server. Reading the version off an
+                // untyped value first means the error names both halves and says
+                // which to upgrade.
+                let version = raw.get("schemaVersion").and_then(serde_json::Value::as_u64);
+                match version {
+                    Some(v) if v == u64::from(DESIRED_STATE_SCHEMA_VERSION) => {}
+                    Some(v) => {
+                        return Err(format!(
+                            "server sent desired-state schemaVersion {v} but this daemon \
+                             speaks {DESIRED_STATE_SCHEMA_VERSION} — upgrade whichever half is behind"
+                        ));
+                    }
+                    None => {
+                        return Err(
+                            "desired-state response has no schemaVersion field".to_string()
+                        );
+                    }
+                }
+                serde_json::from_value::<DesiredState>(raw)
+                    .map_err(|err| format!("invalid desired-state response: {err}"))
+            })
     }
 
     fn artifact(&self, policy: &DesiredPolicy) -> Result<Vec<u8>, String> {
@@ -539,10 +573,55 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
 
+    /// The wire half of the version boundary, over a real socket.
+    ///
+    /// `SUPPORTED_SCHEMA_VERSIONS` accepts 1 as well, and its comment says that is
+    /// "for files on DISK, never for a server" — but nothing enforced the second
+    /// half, so this path took a v1 response. The disk half is now handled by a
+    /// dedicated legacy type in `cloud_policies.rs`, which is what lets this end be
+    /// strict without costing an upgraded machine its persisted state.
+    #[test]
+    fn refuses_a_desired_state_response_at_an_older_schema_version() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut discard = [0u8; 1024];
+            let _ = stream.read(&mut discard);
+            let body = br#"{"schemaVersion":1,"generation":7,"policies":[]}"#;
+            let mut response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+                body.len()
+            )
+            .into_bytes();
+            response.extend_from_slice(body);
+            stream.write_all(&response).unwrap();
+        });
+
+        let client = CloudClient::new(
+            &format!("http://{address}"),
+            "token".into(),
+            "machine".into(),
+        )
+        .expect("client");
+        let err = client
+            .desired_state()
+            .expect_err("a v1 response must be refused");
+
+        assert!(
+            err.contains("schemaVersion 1") && err.contains("speaks 2"),
+            "the error must name both versions so the operator knows which half is behind, got: {err}"
+        );
+        server.join().unwrap();
+    }
+
     #[test]
     fn fetches_desired_state_and_artifact_into_the_store() {
         let artifact = b"export default 'managed';\n".to_vec();
-        let sha = format!("{:x}", Sha256::digest(&artifact));
+        let sha = Sha256::digest(&artifact)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let expected_sha = sha.clone();
@@ -560,7 +639,13 @@ mod tests {
                 let body = if request
                     .starts_with("GET /enforcement/v1/desired-state?machineId=machine-1")
                 {
-                    format!(r#"{{"schemaVersion":1,"deployment":7,"policies":[{{"id":"guard","version":2,"sha256":"{expected_sha}","artifactUrl":"/enforcement/v1/artifacts/{expected_sha}"}}]}}"#).into_bytes()
+                    // schemaVersion 2, matching what AgentEye actually emits. This
+                    // said 1 while using the v2 field names — a payload no server
+                    // produces — and nothing noticed, because until the version was
+                    // pinned here the wire accepted any supported version. That the
+                    // fixture was incoherent is itself the evidence the wire half
+                    // was untested.
+                    format!(r#"{{"schemaVersion":2,"deployment":7,"policies":[{{"id":"guard","version":2,"sha256":"{expected_sha}","artifactUrl":"/enforcement/v1/artifacts/{expected_sha}"}}]}}"#).into_bytes()
                 } else {
                     expected_artifact.clone()
                 };

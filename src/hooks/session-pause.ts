@@ -22,7 +22,6 @@
  * never ended".
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { writeJsonAtomically } from "../../lib/atomic-write";

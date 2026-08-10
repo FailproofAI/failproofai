@@ -70,8 +70,8 @@ impl WorkerCommand {
         if let Ok(cmd) = std::env::var("FAILPROOFAI_WORKER_CMD") {
             return WorkerCommand::shell(cmd);
         }
-        // Packaging (Stage 5) lands dist/worker.mjs; until then this is only
-        // reachable via the explicit override above in dev/test.
+        // Published packages place dist/worker.mjs at this relative path; the
+        // installed service normally supplies an absolute command via env.
         WorkerCommand::Node {
             script: PathBuf::from("dist/worker.mjs"),
         }

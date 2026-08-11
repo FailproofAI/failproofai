@@ -1,64 +1,66 @@
 ---
-title: Environment variables
-description: "failproofai के व्यवहार को environment variables से कॉन्फ़िगर करें"
+title: पर्यावरण चर
+description: "पर्यावरण चर के साथ failproofai व्यवहार को कॉन्फ़िगर करें"
 ---
 
-## Dashboard
+## डैशबोर्ड
 
-| Variable | Description |
+| चर | विवरण |
 |----------|-------------|
-| `PORT` | Dashboard port (डिफ़ॉल्ट: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | Claude Code प्रोजेक्ट फोल्डर्स को खोजने की जगह को ओवरराइड करें |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | कॉमा-अलग किए गए dashboard पेज छिपाने के लिए |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | dev संसाधनों तक पहुंचने की अनुमति वाले होस्ट/IP। `--allowed-origins` के समान। |
+| `PORT` | डैशबोर्ड पोर्ट (डिफ़ॉल्ट: `8020`) |
+| `CLAUDE_PROJECTS_PATH` | Claude Code प्रोजेक्ट फोल्डर खोजे जाने के स्थान को ओवरराइड करें |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | डैशबोर्ड पृष्ठ छिपाने के लिए अल्पविराम से अलग किए गए |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | विकास संसाधनों तक पहुँचने की अनुमति प्राप्त होस्ट/आईपी। `--allowed-origins` के समान। |
 
-## Logging
+## लॉगिंग
 
-| Variable | Description |
+| चर | विवरण |
 |----------|-------------|
-| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Server log level (डिफ़ॉल्ट: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | कस्टम hook लॉग फ़ाइल पथ, या डिफ़ॉल्ट के लिए `true` (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | सर्वर लॉग स्तर (डिफ़ॉल्ट: `warn`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | कस्टम हुक लॉग फाइल पथ, या डिफ़ॉल्ट के लिए `true` (`~/.failproofai/logs/hooks.log`) |
 
-## Telemetry
+## टेलीमेट्री
 
-failproofai डिफ़ॉल्ट रूप से anonymous usage telemetry रिपोर्ट करता है। इसे बंद करने के दो तरीके हैं, और वे जो अधिक प्रतिबंधात्मक है उसे चुनते हैं — एक environment variable कभी भी कॉन्फ़िग फ़ाइल द्वारा बंद किए गए कुछ को फिर से सक्षम नहीं कर सकता।
+failproofai डिफ़ॉल्ट रूप से अनाम उपयोग टेलीमेट्री रिपोर्ट करता है। इसे बंद करने के दो तरीके हैं, और वे अधिक प्रतिबंधक को हल करते हैं — एक पर्यावरण चर कभी भी किसी ऐसी चीज़ को फिर से सक्षम नहीं कर सकता जिसे कॉन्फ़िग फाइल ने बंद कर दिया हो।
 
-| Variable | Description |
+| चर | विवरण |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | इस प्रक्रिया के लिए anonymous usage telemetry को अक्षम करें |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | इस प्रक्रिया के लिए अनाम उपयोग टेलीमेट्री अक्षम करें |
 
-इसे मशीन के लिए स्थायी रूप से अक्षम करने के लिए, इसे `~/.failproofai/config.toml` में जोड़ें:
+इसे मशीन के लिए स्थायी रूप से अक्षम करने के लिए, इसे `~/.failproofai/config.json` में जोड़ें:
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
-कॉन्फ़िग फ़ाइल यह विकल्प है यदि आप **failproofaid daemon** चलाते हैं।
-daemon एक system-scope सेवा है, और इसके environment में
-आपके shell से export किए गए variables शामिल नहीं होते — इसलिए `FAILPROOFAI_TELEMETRY_DISABLED` इसतक नहीं पहुंच सकता। `[telemetry] enabled = false` को CLI और daemon दोनों द्वारा पढ़ा जाता है।
+यह कॉन्फ़िग फाइल वह विकल्प है जिसका उपयोग करें यदि आप **failproofaid daemon** चलाते हैं।
+डेमन एक सिस्टम-स्कोप सेवा है, और इसके पर्यावरण में आपके शेल से निर्यात किए गए चर शामिल नहीं हैं — इसलिए `FAILPROOFAI_TELEMETRY_DISABLED` इस तक नहीं पहुँच सकता है। `[telemetry] enabled = false` को CLI और डेमन दोनों द्वारा पढ़ा जाता है।
 </Note>
 
-daemon केवल अपना **lifecycle** रिपोर्ट करता है: कि यह शुरू हुआ (और क्या पिछला रन स्वच्छता से बंद हुआ), कि यह बंद हुआ, जब इसका evaluation worker स्पॉन या पुनः शुरू किया गया था, जब एक collector task विफल हुआ, और एक cloud-policy pull का परिणाम। ये कम-cardinality values और counts ले जाते हैं — कभी एक फ़ाइल पथ, एक कमांड, एक policy, एक prompt, या transcript से कुछ भी नहीं पढ़ा जाता। कोई per-tool-call event नहीं है।
+डेमन केवल अपना **जीवनचक्र** रिपोर्ट करता है: कि यह शुरू हुआ (और चाहे पिछला रन स्वच्छता से बाहर निकला), कि यह बंद हुआ, जब इसका मूल्यांकन कार्यकर्ता स्पॉन या पुनः आरंभ किया गया था, जब एक संग्रहणकर्ता कार्य विफल हुआ, और एक क्लाउड-नीति पुल का परिणाम। ये कम-कार्डिनैलिटी मूल्य और गणना ले जाते हैं — कभी एक फाइल पथ, एक आदेश, एक नीति, एक प्रेरणा, या किसी प्रतिलिपि से पढ़ी गई कोई चीज़ नहीं। कोई प्रति-उपकरण-कॉल घटना नहीं है।
 
-## Authentication
+## प्रमाणीकरण
 
-| Variable | Description |
+| चर | विवरण |
 |----------|-------------|
-| `FAILPROOF_API_URL` | dashboard auth dialog द्वारा उपयोग किए जाने वाले api-server base URL को ओवरराइड करें। डिफ़ॉल्ट `https://api.befailproof.ai`; स्थानीय api-server चलाते समय `http://localhost:8080` (या जहां भी) पर सेट करें। |
-| `FAILPROOFAI_AUTH_DIR` | `auth.json` को स्टोर करने की जगह को ओवरराइड करें (डिफ़ॉल्ट: `~/.failproofai`)। अधिकतर isolated tests के लिए उपयोगी। |
+| `FAILPROOF_API_URL` | डैशबोर्ड प्रमाणीकरण संवाद द्वारा उपयोग किए गए api-सर्वर आधार URL को ओवरराइड करें। डिफ़ॉल्ट: `https://api.befailproof.ai`; स्थानीय api-सर्वर चलाते समय `http://localhost:8080` (या कहीं और) पर सेट करें। |
+| `FAILPROOFAI_AUTH_DIR` | ओवरराइड करें कि `auth.json` कहाँ संग्रहीत है (डिफ़ॉल्ट: `~/.failproofai`)। मुख्य रूप से अलग-थलग परीक्षणों के लिए उपयोगी। |
 
-## First-run prompt
+## पहली बार चलाने का प्रेरणा
 
-| Variable | Description |
+| चर | विवरण |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | पहली bare `failproofai` invocation पर policies को install करने का प्रस्ताव देने वाले prompt को स्किप करें |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | पहली बार बिना failproofai आह्वान पर नीतियों को स्थापित करने का प्रस्ताव देने वाली प्रेरणा को छोड़ें |
 
-## LLM (policy evaluation के लिए)
+## LLM (नीति मूल्यांकन के लिए)
 
-| Variable | Description |
+| चर | विवरण |
 |----------|-------------|
-| `FAILPROOFAI_LLM_BASE_URL` | LLM API endpoint (डिफ़ॉल्ट: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | LLM-powered policies के लिए API key |
-| `FAILPROOFAI_LLM_MODEL` | Model name (डिफ़ॉल्ट: `gpt-4o-mini`) |
+| `FAILPROOFAI_LLM_BASE_URL` | LLM API समापन बिंदु (डिफ़ॉल्ट: `https://api.openai.com/v1`) |
+| `FAILPROOFAI_LLM_API_KEY` | LLM-संचालित नीतियों के लिए API कुंजी |
+| `FAILPROOFAI_LLM_MODEL` | मॉडल नाम (डिफ़ॉल्ट: `gpt-4o-mini`) |

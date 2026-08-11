@@ -1,42 +1,43 @@
 ---
 ---
-title: המדיניות המובנות
-description: "כל 39 המדיניות המובנות שתופסות מצבי כשל נפוצים של סוכנים"
+title: מדיניויות מובנות
+description: "כל 39 המדיניויות המובנות שתופסות מצבי כשל נפוצים של סוכנים"
 icon: shield
 ---
 
-failproofai מגיע עם 39 מדיניות מובנות שתופסות מצבי כשל נפוצים של סוכנים. כל מדיניות מופעלת על סוג אירוע hook ספציפי ושם כלי. תשע עשרה מדיניות מקבלות פרמטרים שמאפשרים לך לכוונן את התנהגותן ללא כתיבת קוד. חמש מדיניות של זרימת עבודה אוכפות צינור commit → push → PR → CI לפני שהסוכן מפסיק.
+failproofai משלוח עם 39 מדיניויות מובנות שתופסות מצבי כשל נפוצים של סוכנים. כל מדיניות מופעלת על סוג אירוע hook ספציפי ושם כלי. תשע עשרה מדיניויות מקבלות פרמטרים המאפשרים לך להתאים את התנהגותן ללא כתיבת קוד. חמש מדיניויות זרימת עבודה אוכפות pipeline של commit → push → PR → CI לפני שClaude עוצר.
 
 ---
 
 ## סקירה כללית
 
-המדיניות מחולקות לקטגוריות:
+מדיניויות מקובצות לקטגוריות:
 
-| קטגוריה | מדיניות | סוג Hook |
-|----------|---------|-----------|
-| [פקודות מסוכנות](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
-| [פקודות Infrastructure](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
-| [סודות (sanitizers)](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
-| [סביבה](#environment) | block-env-files, protect-env-vars | PreToolUse |
-| [גישת קבצים](#file-access) | block-read-outside-cwd, block-secrets-write | PreToolUse |
+| קטגוריה | מדיניויות | סוג Hook |
+|----------|----------|-----------|
+| [פקודות מסוכנות](#פקודות-מסוכנות) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
+| [פקודות תשתית](#פקודות-תשתית) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
+| [סודות (מנקות)](#סודות-מנקות) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
+| [סביבה](#סביבה) | block-env-files, protect-env-vars | PreToolUse |
+| [גישה לקבצים](#גישה-לקבצים) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
-| [מסד נתונים](#database) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
-| [אזהרות](#warnings) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
-| [מנהלי חבילות](#package-managers) | prefer-package-manager | PreToolUse |
-| [זרימת עבודה](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
+| [מסד נתונים](#מסד-נתונים) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
+| [אזהרות](#אזהרות) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
+| [מנהלי חבילות](#מנהלי-חבילות) | prefer-package-manager | PreToolUse |
+| [זרימת עבודה](#זרימת-עבודה) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
-- **`block-`** — עצור את הסוכן מההמשך.
+- **`block-`** — עצור את הסוכן מלהמשיך.
 - **`warn-`** — תן לסוכן הקשר נוסף כדי שיוכל להתקן את עצמו.
-- **`sanitize-`** — הסר נתונים רגישים מפלט הכלי לפני שהסוכן רואה זאת.
+- **`sanitize-`** — נקה נתונים רגישים מפלט כלי לפני שהסוכן רואה זאת.
 
-### Namespaces
+### מרחבי שם (Namespaces)
 
-כל מדיניות נמצאת בחריץ `<namespace>/<name>`. המדיניות המובנות שייכות ל-
-namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namespace 
-מונע התנגשויות כאשר אתה טוען גם מדיניות מותאמות או של צד שלישי עם שמות קצרים דומים.
+כל מדיניות חיה בחריץ `<namespace>/<name>`. מדיניויות מובנות שייכות ל
+**`failproofai/`** namespace — לדוגמה, `failproofai/sanitize-jwt`. ה
+namespace מונע התנגשויות כאשר אתה גם טוען מדיניויות מותאמות או צד שלישי
+עם שמות קצרים דומים.
 
-בתצורה שלך אתה יכול להתייחס למדיניות מובנית בשם קצר או בשם מוקדם; שתי הצורות מתייחסות לאותה מדיניות:
+בתצורה שלך אתה יכול להתייחס למדיניות מובנית בשם קצר או שם מוסמך; שתי הצורות מתפקדות לאותה מדיניות:
 
 ```json
 {
@@ -47,42 +48,43 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 }
 ```
 
-אם לשם אין `/`, failproofai מתייחס אליו כשייך ל-namespace ברירת המחדל `failproofai`. שמות שכבר מכילים `/` (למשל `myorg/foo`,
+אם לשם אין `/`, failproofai מתייחס אליו כשייך ל
+namespace ברירת המחדל `failproofai`. שמות שכבר מכילים `/` (לדוגמה `myorg/foo`,
 `custom/my-hook`) נשמרים כמו שהם.
 - **`require-`** — חסום את אירוע Stop עד שתנאים מתקיימים.
 
 ---
 
 <Tip>
-כל מדיניות תומכת בשדה `hint` אופציונלי ב-`policyParams`. ה-hint מצורף להודעת ה-deny או ה-instruct שClaude רואה, מה שנותן הנחיות שימושיות ללא שינוי קוד מדיניות. עובד עם מדיניות מובנות, מותאמות, וקונווקציה. ראה [Configuration → hint](/he/configuration#hint-cross-cutting) לפרטים.
+כל מדיניות תומכת בשדה `hint` אופציוני ב`policyParams`. ה hint מתווסף להודעת deny או instruct שClaude רואה, נותן הדרכה פעולית ללא שינוי קוד מדיניות. עובד עם מדיניויות מובנות, מותאמות ותקנות. ראה [תצורה → hint](/he/configuration#hint-cross-cutting) לפרטים.
 </Tip>
 
 ---
 
 ## פקודות מסוכנות
 
-מנע מסוכנים הפעלת פעולות שקשה לבטל או שיכולות לפגוע במערכת המארח.
+מנע סוכנים מהפעלת פעולות שקשה לבטל או שיכולות לפגוע במערכת המחשב.
 
 ### `block-sudo`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום כל פקודת `sudo` או `doas`.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה כל פקודה `sudo` או `doas`.
 
-חוסם פקודה שמריצה בינארית הרמה **במצב הפקודה**. ההתאמה היא מבנית ולא טקסטואלית: הפקודה מחולקת לקטעים כמו שקליפה הייתה עושה זאת, הקצאות קידומת (`FOO=bar`), הפניות מחדש, ורייצים עם הדגלים שלהם (`env`, `nohup`, `timeout`, `xargs`, `sh -c`, …) מהולכים ברחוק, והבינארי המתקבל מושווה לפי **basename**. אז `/usr/bin/sudo`, `env sudo`, `timeout 5 sudo`, `"sudo"`, `\sudo` ו-`bash -c "sudo …"` כולם חסומים, ו-`doas` מתורגמן בתור אותו היכולת תחת שם שונה.
+חוסם פקודה שמפעילה בינארי הגבלת הרשאות **במיקום הפקודה**. התאמה היא מבנית ולא טקסטואלית: הפקודה מתחלקת לקטעים כפי שהקליפה תעשה, הקצאות קידומת (`FOO=bar`), הפניות, וממנהלים עם הדגלים שלהם (`env`, `nohup`, `timeout`, `xargs`, `sh -c`, ...) מופנו, והבינארי המתקבל מושווה ל**basename**. לכן `/usr/bin/sudo`, `env sudo`, `timeout 5 sudo`, `"sudo"`, `\sudo` ו `bash -c "sudo …"` כולם דחויים, ו`doas` מטופל כאותו כושר תחת שם שונה.
 
-כי זה מעוגן במצב פקודה ולא בהופעת המילה בכל מקום, זה **לא** מופעל על פקודות שרק מזכירות זאת — `grep -r sudo /etc`, `cat /etc/sudoers`, `git commit -m "fix sudo handling"`, או ההיתוך `grep` המכיל את המילה כלם רצים בדרך כלל.
+מכיוון שהוא עוגן למיקום הפקודה ולא למילה המופיעה בכל מקום, היא **לא** מופעלת על פקודות שמזכירות אותה בלבד — `grep -r sudo /etc`, `cat /etc/sudoers`, `git commit -m "fix sudo handling"`, או `grep` alternation המכיל את המילה הם כולם פועלים בדרך כלל.
 
 <Warning>
-זה עוצר את הניסיון הברור; זה לא סוגר את הסוג. סוכן שיכול להריץ shell שרירותי יכול עדיין להגיע להרמה בעקיפין — דרך משתנה (`S=sudo; $S …`), צינור מפוענח base64, או קובץ מעטפת על דיסק — כי לא ניתן לעקוב אחר אלה מבדיקה של string פקודה בודדה. תייחס לזה כמשוער כנגד טעויות וסקאלציה מזדמנת, לא כגבול ביטחון נגד סוכן מוחלט. גבול אמיתי חייב להיות אכוף מתחת לקליפה.
+זה עוצר את הנסיון הברור; זה לא סוגר את המחלקה. סוכן שיכול להפעיל shell שרירותי עדיין יכול להגיע להגבלת הרשאות בעקיפין — דרך משתנה (`S=sudo; $S …`), צינור שמפוענח ב base64, או סקריפט wrapper בדיסק — מכיוון ששום בדיקה של מחרוזת פקודה יחידה לא יכולה לעקוב אחרי אלה. התייחס לזה כמו כמעקף לטעויות והסלמה מטונפת, לא כגבול ביטחוני נגד סוכן נחוש. גבול אמיתי חייב להיות אכוף מתחת לקליפה.
 </Warning>
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
-| `allowPatterns` | `string[]` | `[]` | קידומות פקודה מדויקות המותרות. כל רשומה מתאימה לאסימוני argv מנתחים. |
+| `allowPatterns` | `string[]` | `[]` | קידומות פקודה מדויקות המותרות. כל ערך מותאם לאזמן argv שנתוענ. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -94,26 +96,26 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 }
 ```
 
-עם תצורה זו, `sudo systemctl status nginx` מותרת, אך `sudo rm /etc/hosts` חסומה.
+עם תצורה זו, `sudo systemctl status nginx` מותר, אבל `sudo rm /etc/hosts` דחוי.
 
 <Note>
-דפוסים מתאימים לאסימוני מנתחים, לא ל-raw command string. זה מונע bypass דרך אופרטורים קליפה מצורפים (למשל `sudo systemctl status x; rm -rf /` לא תואמת `sudo systemctl status *`).
+דפוסים מותאמים לאזמנים שנתוענו, לא למחרוזת הפקודה הגולמית. זה מונע עקיפה דרך אופרטורים קליפה מצורפים (לדוגמה `sudo systemctl status x; rm -rf /` לא תואם `sudo systemctl status *`).
 </Note>
 
 ---
 
 ### `block-rm-rf`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום `rm -rf`, `rm -fr`, וצורות מחיקה רקורסיבית דומות.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה `rm -rf`, `rm -fr`, וצורות מחיקה רקורסיביות דומות.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
-| `allowPaths` | `string[]` | `[]` | נתיבים שבטוח למחוק בצורה רקורסיבית (למשל `/tmp`). |
+| `allowPaths` | `string[]` | `[]` | נתיבים שבטוח למחוק בצורה רקורסיבית (לדוגמה `/tmp`). |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -129,53 +131,53 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 
 ### `block-curl-pipe-sh`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום `curl <url> | bash`, `curl <url> | sh`, `wget <url> | bash`, ודפוסים דומים.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה `curl <url> | bash`, `curl <url> | sh`, `wget <url> | bash`, ודפוסים דומים.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ### `block-failproofai-commands`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום פקודות שהיו מסירות או מנטרלות את failproofai עצמו (למשל `npm uninstall failproofai`, `failproofai policies --uninstall`).
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה פקודות שהיו מסירות או משבתות את failproofai עצמו (לדוגמה `npm uninstall failproofai`, `failproofai policies --uninstall`).
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ### `block-self-pause`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום `failproofai config --pause`, שמושהה את האכיפה לסשן. השהיה היא החלטה אנושית — סוכן שיכול להריץ אותה יכול לכבות כל מדיניות אחרת עם פקודה אחת.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה `failproofai config --pause`, אשר משהה אכיפה לסשן. השהיה היא החלטה אנושית — סוכן שיכול להפעיל אותה יכול להשבית כל מדיניות אחרת עם פקודה יחידה.
 
-צר יותר מ-[`block-failproofai-commands`](#block-failproofai-commands) בכוונה, ולא מכוסה על ידו: מדיניות זו מעוגנת בגבול פקודה, כך `npx -y failproofai config --pause` לא תואמת אותה, ובהיותה רחבה היא לעתים קרובות כבויה כדי שסוכנים יוכלו להריץ `failproofai audit`. `--resume` ו-`--status` מותרים — אף אחד מהם לא מסיר אכיפה.
+צרה יותר מ[`block-failproofai-commands`](#block-failproofai-commands) בכוונה, ולא כוללת בו: המדיניות ההיא עוגנת לגבול פקודה, לכן `npx -y failproofai config --pause` לא תואם אותו, וכשהיא רחבה היא לעתים קרובות משבתת כדי סוכנים יוכלו להפעיל `failproofai audit`. `--resume` ו `--status` מותרים — אף אחד מהם לא מסיר אכיפה.
 
-זה עוצר את הניסיון הישיר, לא את כל הסוג: סוכן יכול עדיין להגיע לאותו מצב דרך כינוי או קובץ מעטפת. סגירתו במלואו דורשת שההשהיה לא תהיה נגישה מקריאת כלי כלל.
+זה עוצר את הנסיון הישיר, לא את כל המחלקה: סוכן עדיין יכול להגיע לאותו מצב דרך alias או סקריפט wrapper. סגירת זה לחלוטין דורשת שה pause יהיה בלתי נגיש מקריאת כלי בכלל.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
-## פקודות Infrastructure
+## פקודות תשתית
 
-עצור סוכני קידוד מהפעלת CLIs infrastructure או הפעלת צינורות CI/CD. כל מדיניות בקטגוריה זו היא **opt-in** (`defaultEnabled: false`) — סוכנים שצריכים בדרך כלל לקרוא `kubectl`, `terraform`, וכו' לא יופרעו אלא אם תפעיל את המדיניות. כאשר הוא מופעל, כל הקראת ה-CLI המתאימה חסומה אלא אם הפקודה תואמת רשומה ב-`allowPatterns`.
+עצור סוכני קידוד מהפעלת CLIs תשתית או הפעלת pipelines CI/CD. כל המדיניויות בקטגוריה זו הן **opt-in** (`defaultEnabled: false`) — סוכנים שצריכים בצורה לגיטימית לקרוא ל`kubectl`, `terraform`, וכו' לא יופרעו אלא אם תפעיל את המדיניות. בהפעלה, כל הפעלה של ה CLI התואמת דחויה אלא אם הפקודה תואמת ערך ב`allowPatterns`.
 
-דקדוק דפוס זהה ל-[`block-sudo`](#block-sudo): אסימונים מתאימים לאסימוני argv מנתחים, `*` הוא כרטיס בר-תוקף לאסימון אחד, וכל פקודה המכילה אופרטור קליפה עצמאי (`&&`, `||`, `|`, `;`) או אסימון עם תווי מטא-קליפה משובצים נדחת לפני התאמת allowlist להגנה מפני התעלמות הזרקה.
+דקדוק הדפוס זהה ל[`block-sudo`](#block-sudo): אזמנים מותאמים לאזמנים שנתוענו, `*` הוא wildcard לאזמן אחד, וכל פקודה המכילה אופרטור קליפה עצמאי (`&&`, `||`, `|`, `;`) או אזמן עם metacharacters קליפה מוטבעים דחויה לפני התאמת allowlist למניעת עקיפות הזרקה.
 
 ### `block-kubectl`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום כל הקראת `kubectl`.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה כל הפעלה של `kubectl`.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
 | `allowPatterns` | `string[]` | `[]` | קידומות פקודה kubectl המותרות. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -187,22 +189,22 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 }
 ```
 
-עם תצורה זו, `kubectl get pods` מותרת אך `kubectl apply -f deploy.yaml` חסומה.
+עם תצורה זו, `kubectl get pods` מותר אבל `kubectl apply -f deploy.yaml` דחוי.
 
 ---
 
 ### `block-terraform`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום כל הקראת `terraform` או `tofu` (OpenTofu).
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה כל הפעלה של `terraform` או `tofu` (OpenTofu).
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
 | `allowPatterns` | `string[]` | `[]` | קידומות פקודה terraform/tofu המותרות. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -218,16 +220,16 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 
 ### `block-aws-cli`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום כל הקראת `aws` CLI.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה כל הפעלה של `aws` CLI.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
 | `allowPatterns` | `string[]` | `[]` | קידומות פקודה aws CLI המותרות. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -243,16 +245,16 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 
 ### `block-gcloud`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום כל הקראת `gcloud` (Google Cloud) CLI.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה כל הפעלה של `gcloud` (Google Cloud) CLI.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
 | `allowPatterns` | `string[]` | `[]` | קידומות פקודה gcloud המותרות. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -268,16 +270,16 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 
 ### `block-az-cli`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום כל הקראת `az` (Azure) CLI.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה כל הפעלה של `az` (Azure) CLI.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
 | `allowPatterns` | `string[]` | `[]` | קידומות פקודה az CLI המותרות. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -293,16 +295,16 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 
 ### `block-helm`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום כל הקראת `helm`.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה כל הפעלה של `helm`.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
 | `allowPatterns` | `string[]` | `[]` | קידומות פקודה helm המותרות. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -318,8 +320,8 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 
 ### `block-gh-pipeline`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום את תת-הפקודות `gh` CLI הבאות שמתחזקות מצב או מפעילות צינורות:
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה את תת-הפקודות הבאות של `gh` CLI ששינוי מצב או הפעלת pipelines:
 
 - `gh workflow run`, `gh workflow enable`, `gh workflow disable`
 - `gh run rerun`, `gh run cancel`
@@ -328,15 +330,15 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 - `gh cache delete`
 - `gh secret set`, `gh secret delete`
 
-תת-פקודות `gh` של קריאה בלבד כגון `gh pr view`, `gh pr list`, `gh run list`, `gh release view`, ו-`gh api repos/.../...` הם **לא** תואמים על ידי מדיניות זו — הם נדרשים בדרך כלל לבדיקות זרימת עבודה (כולל `require-ci-green-before-stop` של failproofai עצמו).
+תת-פקודות `gh` קריאה בלבד כמו `gh pr view`, `gh pr list`, `gh run list`, `gh release view`, ו`gh api repos/.../...` הן **לא** תואמות המדיניות — הן נדרשות בדרך כלל לבדיקות זרימה עבודה (כולל `require-ci-green-before-stop` של failproofai שלנו).
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
-| `allowPatterns` | `string[]` | `[]` | הקראות סקריפטיות ספציפיות להרשות גם כי אחרת הן היו חסומות. |
+| `allowPatterns` | `string[]` | `[]` | הפעלות סקריפט ספציפיות להרשות אפילו למרות שהן היו דחויות אחרת. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -350,31 +352,31 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 
 ---
 
-## סודות (sanitizers)
+## סודות (מנקות)
 
-עצור סוכנים מדליפת אישורים להקשר או פלט שלהם. מדיניות sanitizer מופעלת על אירועי **PostToolUse**. כאשר Claude מריץ פקודת Bash, קורא קובץ, או קורא לכל כלי, מדיניות אלה בוחנות את הפלט לפני שהוא מוחזר ל-Claude. אם תבנית סוד מתגלתה, המדיניות מחזירה החלטת deny שמונעת להעביר את הפלט חזרה.
+עצור סוכנים מהדלפת אישורים להקשר או פלט שלהם. מדיניויות מנקות מופעלות על אירועי **PostToolUse**. כאשר Claude מפעיל פקודת Bash, קורא קובץ, או קורא לכלי כלשהו, המדיניויות הללו בודקות את הפלט לפני שהוא מוחזר לClaude. אם דפוס סוד מזוהה, המדיניות מחזירה החלטת deny המונעת את הפלט מלהעבור חזרה.
 
 ### `sanitize-jwt`
 
-**Event:** PostToolUse (כל כלים)  
-**Default:** Redacts JWT tokens (שלוש קטעים base64url מופרדים ב-`.`).
+**אירוע:** PostToolUse (כל כלי)  
+**ברירת מחדל:** מחזיק JWT tokens (שלושה קטעי base64url מופרדים בנקודה).
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ### `sanitize-api-keys`
 
-**Event:** PostToolUse (כל כלים)  
-**Default:** Redacts תבניות מפתח API נפוצות: Anthropic (`sk-ant-`), OpenAI (`sk-`), GitHub PATs (`ghp_`), AWS access keys (`AKIA`), Stripe keys (`sk_live_`, `sk_test_`), ומפתחות Google API (`AIza`).
+**אירוע:** PostToolUse (כל כלי)  
+**ברירת מחדל:** מחזיק פורמטים API key נפוצים: Anthropic (`sk-ant-`), OpenAI (`sk-`), GitHub PATs (`ghp_`), AWS access keys (`AKIA`), Stripe keys (`sk_live_`, `sk_test_`), וGoogle API keys (`AIza`).
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
-| `additionalPatterns` | `{ regex: string; label: string }[]` | `[]` | דפוסי regex נוספים להתייחס כסודות. |
+| `additionalPatterns` | `{ regex: string; label: string }[]` | `[]` | דפוסי regex נוספים לטיפול בהם כסודות. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -393,71 +395,71 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 
 ### `sanitize-connection-strings`
 
-**Event:** PostToolUse (כל כלים)  
-**Default:** Redacts connection strings של מסד נתונים המכילות אישורים משובצים (למשל `postgresql://user:password@host/db`).
+**אירוע:** PostToolUse (כל כלי)  
+**ברירת מחדל:** מחזיק מחרוזות חיבור מסד נתונים המכילות אישורים מוטבעים (לדוגמה `postgresql://user:password@host/db`).
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ### `sanitize-private-key-content`
 
-**Event:** PostToolUse (כל כלים)  
-**Default:** Redacts PEM blocks (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN RSA PRIVATE KEY-----`, וכו').
+**אירוע:** PostToolUse (כל כלי)  
+**ברירת מחדל:** מחזיק בלוקי PEM (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN RSA PRIVATE KEY-----`, וכו').
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ### `sanitize-bearer-tokens`
 
-**Event:** PostToolUse (כל כלים)  
-**Default:** Redacts headers `Authorization: Bearer <token>` כאשר הטוקן הוא 20 תווים או יותר.
+**אירוע:** PostToolUse (כל כלי)  
+**ברירת מחדל:** מחזיק `Authorization: Bearer <token>` headers כאשר ה token הוא 20 או יותר תווים.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ## סביבה
 
-הגן על תצורת סביבה רגישה מלהיות קראה או חשופה על ידי סוכנים.
+הגן על תצורה סביבה רגישה מלהיות קריאה או חשופה על ידי סוכנים.
 
 ### `block-env-files`
 
-**Event:** PreToolUse (Bash, Read)  
-**Default:** מחסום קריאה של קבצי `.env` דרך `cat .env`, קריאות כלי `Read` עם `.env` כנתיב קובץ, וכו'.
+**אירוע:** PreToolUse (Bash, Read)  
+**ברירת מחדל:** דוחה קריאה של קבצי `.env` דרך `cat .env`, קריאות `Read` tool עם `.env` כנתיב הקובץ, וכו'.
 
-לא חוסם `.envrc` או קבצים סמוכים לסביבה אחרים - רק קבצים בשם בדיוק `.env`.
+לא חוסם `.envrc` או קבצים סביב סביבה אחרים - רק קבצים בשם בדיוק `.env`.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ### `protect-env-vars`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום פקודות שמדפיסות משתני סביבה: `printenv`, `env`, `echo $VAR`.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה פקודות שמדפיסות משתני סביבה: `printenv`, `env`, `echo $VAR`.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
-## גישת קבצים
+## גישה לקבצים
 
-שמור סוכנים עובדים בתוך גבולות פרויקט ובמרחק מקבצים רגישים.
+שמור סוכנים עובדים בתוך גבולות פרויקט וחוק מקבצים רגישים.
 
 ### `block-read-outside-cwd`
 
-**Event:** PreToolUse (Read, Bash)  
-**Default:** מחסום קריאה של קבצים מחוץ לשורש הפרויקט. הגבול הוא `CLAUDE_PROJECT_DIR` (מוגדר פעם אחת לסשן על ידי Claude Code), עם fallback לספריית העבודה הנוכחית של הסשן כאשר משתנה זה לא מוגדר. שימוש בשורש הפרויקט בעדיפות על פני `cwd` החיוני פירושו שהגבול נשאר יציב גם לאחר ש-Claude מבחין ל-subdirectory.
+**אירוע:** PreToolUse (Read, Bash)  
+**ברירת מחדל:** דוחה קריאה של קבצים מחוץ לשורש הפרויקט. הגבול הוא `CLAUDE_PROJECT_DIR` (מוגדר פעם לכל סשן על ידי Claude Code), עם fallback ל cwd הנוכחי של הסשן כאשר המשתנה הזה אינו מוגדר. שימוש בשורש הפרויקט במקום ה cwd חי פירושו שהגבול נשאר יציב אפילו לאחר Claude `cd`s לתת-תיקייה.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
-| `allowPaths` | `string[]` | `[]` | קידומות נתיבים מוחלטים המותרות גם אם מחוץ לשורש הפרויקט. |
+| `allowPaths` | `string[]` | `[]` | קידומות נתיבים מוחלטות המותרות גם אם מחוץ לשורש הפרויקט. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -473,16 +475,16 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 
 ### `block-secrets-write`
 
-**Event:** PreToolUse (Write, Edit)  
-**Default:** מחסום כתיבה לקבצים בשימוש נפוץ למפתחות פרטיים ותעודות: `id_rsa`, `id_ed25519`, `*.key`, `*.pem`, `*.p12`, `*.pfx`.
+**אירוע:** PreToolUse (Write, Edit)  
+**ברירת מחדל:** דוחה כתיבה לקבצים המשמשים בדרך כלל למפתחות ותעודות פרטיות: `id_rsa`, `id_ed25519`, `*.key`, `*.pem`, `*.p12`, `*.pfx`.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
-| `additionalPatterns` | `string[]` | `[]` | דפוסי שם קובץ נוספים (סגנון glob) לחסום. |
+| `additionalPatterns` | `string[]` | `[]` | דפוסי שם קובץ נוספים (glob-style) לחסימה. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -498,20 +500,20 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 
 ## Git
 
-מנע pushes אקראיות, force-pushes, וטעויות ענף שקשה לבטל.
+מנע pushes accidental, force-pushes, וטעויות ענף שקשה לבטל.
 
 ### `block-push-master`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום `git push origin main` ו-`git push origin master`.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה `git push origin main` ו `git push origin master`.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
 | `protectedBranches` | `string[]` | `["main", "master"]` | שמות ענפים שלא ניתן לדחוף אליהם ישירות. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -524,30 +526,30 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 ```
 
 <Tip>
-כדי לאפשר דחיפה לכל הענפים (למעשה הכבאה מדיניות זו ללא הסרתה מ-`enabledPolicies`), הגדר `protectedBranches: []`.
+כדי לאפשר דחיפה לכל ענפים (למעשה משבתת מדיניות זו ללא הסרה מ `enabledPolicies`), הגדר `protectedBranches: []`.
 </Tip>
 
 ---
 
 ### `block-work-on-main`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום `git commit`, `git merge`, `git rebase`, ו-`git cherry-pick` בזמן שעץ העבודה נמצא על `main` או `master`. יצירה וחלפה של ענפים (`git checkout`, `git checkout -b`, `git switch`, `git switch -c`) אינם מושפעים.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה `git commit`, `git merge`, `git rebase`, ו `git cherry-pick` כשעץ העבודה הוא ב `main` או `master`. יצירת ענף והחלפה (`git checkout`, `git checkout -b`, `git switch`, `git switch -c`) לא מושפעות.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
-| `protectedBranches` | `string[]` | `["main", "master"]` | שמות ענפים שעליהם commit/merge/rebase/cherry-pick חסום. |
+| `protectedBranches` | `string[]` | `["main", "master"]` | שמות ענפים שבהם commit/merge/rebase/cherry-pick דחוי. |
 
 ---
 
 ### `block-force-push`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מחסום `git push --force` ו-`git push -f`.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** דוחה `git push --force` ו `git push -f`.
 
-אין פרמטרים ספציפיים למדיניות. השתמש ב-[`hint`](/he/configuration#hint-cross-cutting) חוצה-גזירה להציע חלופות:
+ללא פרמטרים ספציפיים למדיניות. השתמש ב[`hint`](/he/configuration#hint-cross-cutting) חוצה-חיתוך להצעת חלופות:
 
 ```json
 {
@@ -563,69 +565,69 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 
 ### `warn-git-amend`
 
-**Event:** PreToolUse (Bash)  
-**Default:** משנה את Claude להמשיך בזהירות בעת הפעלת `git commit --amend`. לא חוסם את הפקודה.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** מנחה Claude להמשיך בזהירות בעת הפעלת `git commit --amend`. לא חוסם את הפקודה.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ### `warn-git-stash-drop`
 
-**Event:** PreToolUse (Bash)  
-**Default:** משנה את Claude לאישור לפני הפעלת `git stash drop`. לא חוסם את הפקודה.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** מנחה Claude לאשר לפני הפעלת `git stash drop`. לא חוסם את הפקודה.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ### `warn-all-files-staged`
 
-**Event:** PreToolUse (Bash)  
-**Default:** משנה את Claude לבדיקת מה שהוא מבצע staging כאשר הוא מריץ `git add -A` או `git add .`. לא חוסם את הפקודה.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** מנחה Claude לבדוק מה הוא מתרים כאשר הוא מפעיל `git add -A` או `git add .`. לא חוסם את הפקודה.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ## מסד נתונים
 
-תפוס פעולות SQL הרסניות לפני שהן מבוצעות כנגד מסד הנתונים שלך.
+תופס פעולות SQL הורסות לפני שהן מבצעות נגד מסד הנתונים שלך.
 
 ### `warn-destructive-sql`
 
-**Event:** PreToolUse (Bash)  
-**Default:** משנה את Claude לאישור לפני הפעלת SQL המכילה `DROP TABLE`, `DROP DATABASE`, או `DELETE` ללא סעיף `WHERE`.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** מנחה Claude לאשר לפני הפעלת SQL המכיל `DROP TABLE`, `DROP DATABASE`, או `DELETE` ללא `WHERE` clause.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ### `warn-schema-alteration`
 
-**Event:** PreToolUse (Bash)  
-**Default:** משנה את Claude לאישור לפני הפעלת הצהרות `ALTER TABLE`.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** מנחה Claude לאשר לפני הפעלת הצהרות `ALTER TABLE`.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ## אזהרות
 
-תן לסוכנים הקשר נוסף לפני פעולות פוטנציאליות מסוכנות אך לא הרסניות.
+תן לסוכנים הקשר נוסף לפני פעולות פוטנציאליות מסוכנות אך לא הורסות.
 
 ### `warn-large-file-write`
 
-**Event:** PreToolUse (Write)  
-**Default:** משנה את Claude לאישור לפני כתיבת קבצים גדולים מ-1024 KB.
+**אירוע:** PreToolUse (Write)  
+**ברירת מחדל:** מנחה Claude לאשר לפני כתיבת קבצים גדולים מ 1024 KB.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
-| `thresholdKb` | `number` | `1024` | סף גודל קובץ בקילובייטים שמעליו הוצגת אזהרה. |
+| `thresholdKb` | `number` | `1024` | סף גודל קובץ בקילובייטים שמעליו הוא מוזהר. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -638,57 +640,57 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 ```
 
 <Note>
-עורך ה-hook אוכף מגבלת stdin של 1 MB על עומסים. כדי לבדוק מדיניות זו עם תוכן קטן, הגדר `thresholdKb` לערך הרבה מתחת ל-1024.
+מטפל hook אוכף גבול stdin של 1 MB על payloads. כדי לבדוק מדיניות זו עם תוכן קטן, הגדר `thresholdKb` לערך הרבה מתחת ל 1024.
 </Note>
 
 ---
 
 ### `warn-package-publish`
 
-**Event:** PreToolUse (Bash)  
-**Default:** משנה את Claude לאישור לפני הפעלת `npm publish`.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** מנחה Claude לאשר לפני הפעלת `npm publish`.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ### `warn-background-process`
 
-**Event:** PreToolUse (Bash)  
-**Default:** משנה את Claude להיות זהיר בעת הפעלת תהליכים בתמונה דרך `nohup`, `&`, `disown`, או `screen`.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** מנחה Claude להיות זהיר בעת הפעלת תהליכים בחלל הרקע דרך `nohup`, `&`, `disown`, או `screen`.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ### `warn-global-package-install`
 
-**Event:** PreToolUse (Bash)  
-**Default:** משנה את Claude לאישור לפני הפעלת `npm install -g`, `yarn global add`, או `pip install` ללא סביבה וירטואלית.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** מנחה Claude לאשר לפני הפעלת `npm install -g`, `yarn global add`, או `pip install` ללא סביבה וירטואלית.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ## מנהלי חבילות
 
-אכוף אילו מנהלי חבילות הסוכן רשאי להשתמש.
+כופה איזה מנהלי חבילות מותר לסוכן להשתמש בהם.
 
 ### `prefer-package-manager`
 
-**Event:** PreToolUse (Bash)  
-**Default:** מנוטרל. כאשר מופעל, חוסם כל פקודת מנהל חבילות שלא ברשימת ה-`allowed` ואומר ל-Claude לכתוב מחדש את הפקודה בעזרת מנהל מותר.
+**אירוע:** PreToolUse (Bash)  
+**ברירת מחדל:** משבתת. בהפעלה, חוסמת כל פקודת מנהל חבילות לא ברשימה `allowed` ואומר לClaude לכתוב מחדש את הפקודה באמצעות מנהל מותר.
 
-גילויים: pip, pip3, python -m pip, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo.
+מגלה: pip, pip3, python -m pip, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo.
 
-| Parameter | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-----------|------|---------|-------------|
-| `allowed` | string[] | `[]` | שמות מנהלי חבילות מותרים. כל מנהל שנגילה שאינו ברשימה זו חסום. כאשר ריק, המדיניות היא no-op. |
-| `blocked` | string[] | `[]` | שמות מנהלים נוספים לחסום מעבר לרשימה המובנית (למשל `['pdm', 'pipx']`). |
+| `allowed` | string[] | `[]` | שמות מנהלי חבילות מותרים. כל מנהל שמגולה שלא ברשימה זו דחוי. כאשר ריק, המדיניות היא no-op. |
+| `blocked` | string[] | `[]` | שמות מנהלים נוספים לחסימה מעבר לרשימה המובנית (לדוגמה `['pdm', 'pipx']`). |
 
-רשימת החסימה המובנית מכסה: pip, pip3, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo. השתמש ב-`blocked` כדי להוסיף מנהלים שלא ברשימה זו.
+רשימת החסימה המובנית מכסה: pip, pip3, npm, npx, yarn, pnpm, pnpx, bun, bunx, uv, poetry, pipenv, conda, cargo. השתמש ב`blocked` להוספת מנהלים לא ברשימה זו.
 
-**Example configuration:**
+**דוגמה של תצורה:**
 
 ```json
 {
@@ -702,75 +704,75 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 }
 ```
 
-עם תצורה זו, `pip install flask` ו-`pdm install flask` שניהם חסומים עם הודעה שאומרת ל-Claude להשתמש ב-`uv` או `bun` במקום זאת. פקודות כמו `uv pip install flask` מותרות כי `uv` ברשימת ה-allowlist ובדיקות תחילה.
+עם תצורה זו, `pip install flask` ו `pdm install flask` שניהם דחויים עם הודעה לClaude להשתמש ב `uv` או `bun` במקום. פקודות כמו `uv pip install flask` מותרות מכיוון ש `uv` ברשימה המותר וברור תחילה.
 
 ---
 
 ## התנהגות AI
 
-גלה כאשר סוכנים תקועים או מתנהגים בצורה בלתי צפויה.
+זהה כאשר סוכנים תקועים או מתנהגים בדרך בלתי צפויה.
 
 ### `warn-repeated-tool-calls`
 
-**Event:** PreToolUse (כל כלים)  
-**Default:** משנה את Claude להיעדר זימה כאשר אותו כלי נקרא 3 + פעמים עם פרמטרים זהים - סימן נפוץ שהסוכן תקוע בלופ.
+**אירוע:** PreToolUse (כל כלי)  
+**ברירת מחדל:** מנחה Claude להחשיב מחדש כאשר אותו כלי נקרא 3 + פעמים עם פרמטרים זהים - סימן נפוץ שהסוכן תקוע בלולאה.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ## זרימת עבודה
 
-אכוף זרימת עבודה משומרת של סיום סשן. מדיניות אלה מופעלות על אירוע **Stop** וחוסמות את הסוכן מהפסקה עד שכל תנאי מתקיימים. הם עוקבים אחר שרשרת תלות טבעית: commit → push → PR → CI. אם מדיניות חוסמת, מדיניות מאוחרות יותר בשרשרת דלוקות (deny short-circuits).
+כופה זרימת עבודה מסודרת בסוף סשן. המדיניויות הללו מופעלות על אירוע **Stop** ודוחות את הסוכן מעצירה עד שכל תנאי מתקיימים. הם עוקבים אחר שרשרת תלות טבעית: commit → push → PR → CI. אם מדיניות דוחה, מדיניויות מאוחרות יותר בשרשרת דילוג (deny short-circuits).
 
-כל מדיניות זרימת עבודה היא **fail-open**: אם הכלי הנדרש לא זמין (למשל `gh` לא מותקן, אין git remote), המדיניות מאפשרת עם הודעה מידע המסבירה מדוע הבדיקה דלוקה.
+כל מדיניויות זרימת עבודה הן **fail-open**: אם הכלי הנדרש אינו זמין (לדוגמה `gh` לא מותקן, אין git remote), המדיניות מאפשרת עם הודעה אינפורמטיבית המסבירה מדוע הבדיקה דולגה.
 
-### Stop semantics לכל CLI
+### Stop Semantics לכל CLI
 
-אכיפת Stop נראית מעט שונה בין שישת CLIs הנתמכים כי לכל אחד יש חוזה hook שונה של סיום סוכן. התוצאה (**outcome**) זהה — הסוכן לא יוצא מהפסקה בזמן שדלת זרימת עבודה נכשלת — אך **המכניקה** שונה. הטבלה להלן מסכמת; רק Pi יש quirk נראה למשתמש ראוי להבנה לפני שתפעיל מדיניות `require-*-before-stop`.
+Stop enforcement נראה קצת שונה על פני שישה CLIs נתמכים מכיוון שלכל אחד מהם יש חוזה hook שונה של `<agent finished>`. ה**outcome** הוא זהה — הסוכן לא יוכל להיות בעצור כששער זרימת עבודה נכשל — אבל ה**mechanics** שונים. הטבלה שלהלן מסכמת; רק Pi יש quirk שגלוי למשתמש שכדאי להבין לפני שתאפשר מדיניות `require-*-before-stop`.
 
-| CLI | מתי השער מופעל | מה אתה רואה |
+| CLI | כאשר השער מופעל | מה אתה רואה |
 |---|---|---|
-| Claude Code | אותה לולאת סוכן, מיד | Claude ממשיך לעבוד — תיקונים הבעיה, ואז מנסה לסיים שוב. אין הפסקה גלויה לך. |
-| Codex | אותה לולאת סוכן, מיד | זהה Claude. |
-| GitHub Copilot CLI | אותה לולאת סוכן, מיד | זהה Claude (משתמש בערוץ ניסיון של Copilot `{decision:"block", reason}` — אומת אמפיראית נגד Copilot CLI 1.0.41). |
-| Cursor Agent | אותה לולאת סוכן, מיד | זהה Claude (משתמש בערוץ `{followup_message}` של Cursor — מוגבל ל-`loop_limit`, ברירת מחדל 5 ניסיונות). |
-| OpenCode | אותה לולאת סוכן, מיד | זהה Claude (משתמש בקריאה SDK של OpenCode `client.session.prompt(...)` מנותבת דרך `hookSpecificOutput.additionalContext`). |
-| **Pi (pi-coding-agent)** | **תור משתמש הבא** | **Pi חסום גלוי** כאשר השער מופעל — לולאת הסוכן שלו יוצאת והוחזרו ללאים. השער ואז מופעל את הפעם הבאה בה תגיש בקשה: failproofai הקדים directive `MANDATORY ACTION REQUIRED` למערכת prompt של התור ההוא, משנה את ה-LLM להשלים את שלב זרימת העבודה (commit, push, וכו') לפני לעשות מה שבקשת. |
+| Claude Code | אותה לולאת סוכן, מייד | Claude ממשיך לעבוד — מתקן את הבעיה, ואז מנסה להיות בעצור שוב. ללא הפרעה גלויה לך. |
+| Codex | אותה לולאת סוכן, מייד | זהה ל Claude. |
+| GitHub Copilot CLI | אותה לולאת סוכן, מייד | זהה ל Claude (משתמש בערוץ ההנצחה של Copilot `{decision:"block", reason}` — אומתה אמפירית כנגד Copilot CLI 1.0.41). |
+| Cursor Agent | אותה לולאת סוכן, מייד | זהה ל Claude (משתמש בערוץ `{followup_message}` של Cursor — מוגבל ל `loop_limit`, ברירת מחדל 5 ניסיונות). |
+| OpenCode | אותה לולאת סוכן, מייד | זהה ל Claude (משתמש ב `client.session.prompt(...)` SDK call מותמר דרך `hookSpecificOutput.additionalContext`). |
+| **Pi (pi-coding-agent)** | **סיבוב משתמש הבא** | **Pi עוצר בגלוי** כאשר השער מופעל — לולאת הסוכן שלה יוצא ואתה חוזר להנמקה. השער אז מופעל בפעם הבאה שאתה שולח הנמקה: failproofai קדימה תוספת ניהול `MANDATORY ACTION REQUIRED` להנמקת סיבוב זו, משמעות LLM להשלים את שלב זרימת העבודה (commit, push, וכו') לפני כל מה שביקשת. |
 
 <Note>
-**מגבלת Pi.** `AgentEndEvent` של Pi (המקבילה של ה-upstream של Claude's `Stop` hook) אין סוג Result — בזמן שזה מופעל, לולאת הסוכן של Pi כבר יצאה. Pi לא יכול להיאכף להקראות אותה לולאה כמו Claude / Copilot / Cursor / OpenCode יכול. failproofai משנה את השער לאירוע `before_agent_start` של Pi (שמופעל לאחר בקשת משתמש הבאה) כך בדיקת הזרימה עדיין אוכפת, רק בתור הבא במקום הנוכחי.
+**Pi limitation.** ה `AgentEndEvent` של Pi (שווה ערך upstream של Claude's `Stop` hook) אין סוג Result — עד שזה מופעל, לולאת הסוכן של Pi כבר יצאה. Pi לא יכול להיות מכופה לנסות שוב אותה לולאה כמו Claude / Copilot / Cursor / OpenCode יכול. failproofai משמעות השער ל `before_agent_start` אירוע Pi (אשר מופעל לאחר ההנמקה הבאה של המשתמש) כדי שהבדיקת זרימת העבודה כל עוד אוכפה, רק בסיבוב הבא במקום הנוכחי.
 
-**מה זה אומר בפועל:**
+**מה זה אומר בפרקטיקה:**
 
-- לאחר Pi מפסיק, סיבת ה-deny נתפסת בזיכרון מונחה על ידי Pi session id. הבקשה הבאה בדיוק בה אתה מגיש בתור אותו Pi processes סוביה: ה-LLM רואה את directive `MANDATORY ACTION REQUIRED` בחלק העליון של system prompt שלו, commits (או pushes / פותח את PR / מחכה עבור CI), ורק אחר כך ממשיך עם הבקשה שלך. סיבת ה-deny שנתפסה היא one-shot — פעם סוביה, השער ברור.
-- השער מוגבל על ידי lifetime התהליך של Pi. אם אתה `Ctrl+C` Pi או יוצא בין תורות, הרשומה בזיכרון מוטלת יחד עם התהליך והשער הוא miss. Claude, Copilot, Cursor, ו-OpenCode יש את אותו bound (להרוג את הסוכן והשער הוא miss) — Pi פשוט עושה את זה גלוי יותר כי הסוכן עוזב גלוי לפני השער.
-- ה-deny תלוי גם מתוך ברור על `session_shutdown` בשום סיבה (`new` / `resume` / `fork` / `quit`), כך gate stale מתור קוד לא יכול דלוף לתור פרייש התחיל בתהליך אותו Pi.
+- לאחר Pi עוצר, סיבת הדחייה נתפסת בזיכרון מולבש על ידי Pi session id. ההנמקה הבאה בדיוק שאתה משלח באותה תהליך Pi מנקז אותו: LLM רואה את ההנמקה `MANDATORY ACTION REQUIRED` בחלק העליון של מערכת ההנמקה שלו, commits (או pushes / opens PR / מחכה CI), וגם מעבר אז עם ההנמקה שלך. סיבת הדחייה שנתפסה היא חד פעמית — כשנמצה, השער ברור.
+- השער מוגבל על ידי Pi's lifetime תהליך. אם `Ctrl+C` Pi או יוצא בין סיבובים, ערך הזיכרון מופל יחד עם התהליך והשער מיפה. Claude, Copilot, Cursor, ו OpenCode יש את אותו bound (הרוג את הסוכן והשער מיפה) — Pi רק עושה יותר גלוי מכיוון שהסוכן בגלוי יוצא לפני השער מופעל.
+- דחייה תלויה הוא גם ברור ב `session_shutdown` לכל סיבה (`new` / `resume` / `fork` / `quit`), לכן שער מיושנה מסשן קודם לא יכול ניצול לתוך סשן טרי שהוקם באותו תהליך Pi.
 
-אם אתה צריך Claude-סגנון אותו-לולאה ניסיון, הפעל את `Stop` מדיניות שלך תחת כל אחד מחמש CLIs נתמך. אנחנו עוקבים Pi upstream עבור עתידי Result סוג על `AgentEndEvent` שהיה לתן לנו לסגור את הפער זה.
+אם אתה צריך Claude-style same-loop retry, הפעל את `Stop` policies תחת כל אחד משנים חמשה CLIs נתמכים אחרים. אנחנו עוקבים Pi upstream לסוג Result עתיד על `AgentEndEvent` אשר היה לתת לנו סגור הפער.
 </Note>
 
 ### `require-commit-before-stop`
 
-**Event:** Stop  
-**Default:** חוסם עצירה כאשר יש שינויים uncommitted (שונה, staged, או קבצים untracked). מחזיר הודעת מידע כאשר ספריית העבודה ברורה.
+**אירוע:** Stop  
+**ברירת מחדל:** דוחה עצירה כאשר יש שינויים uncommitted (שונה, staged, או untracked files). מחזיר הודעה אינפורמטיבית כאשר מדריך העבודה נקי.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 ---
 
 ### `require-push-before-stop`
 
-**Event:** Stop  
-**Default:** חוסם עצירה כאשר יש commits unpushed או כאשר הענף הנוכחי אין remote tracking branch. מציע `git push -u` ליצור tracking branch אם נדרש. נכשל פתוח אם אין remote מוגדר.
+**אירוע:** Stop  
+**ברירת מחדל:** דוחה עצירה כאשר יש commits unpushed או כאשר הענף הנוכחי אין remote tracking branch. מציע `git push -u` להיות remote tracking branch אם צריך. נכשל פתוח אם אין remote מוגדר.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
 | `remote` | `string` | `"origin"` | שם remote לדחוף אליו. |
 
-**Example:**
+**דוגמה:**
 
 ```json
 {
@@ -786,64 +788,64 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 
 ### `require-pr-before-stop`
 
-**Event:** Stop  
-**Default:** חוסם עצירה כאשר אין pull request קיים לענף הנוכחי, או כאשר ה-PR הקיים סגור ללא merge. משנה את Claude ליצור PR עם `gh pr create`. כאשר ה-PR הוא **merged**, המדיניות מאפשרת (העבודה חיברה) והודעה רמזת להחליף ענף (`git checkout main && git pull`).
+**אירוע:** Stop  
+**ברירת מחדל:** דוחה עצירה כאשר אין pull request קיים לענף הנוכחי, או כאשר ה PR הקיים סגור ללא merge. מנחה Claude ליצור PR עם `gh pr create`. כאשר ה PR הוא **merged**, המדיניות מאפשרת (העבודה נשלחה) והודעה מציעה להחליף את הענף (`git checkout main && git pull`).
 
-אין פרמטרים.
+ללא פרמטרים.
 
 <Note>
-מדיניות זו דורשת [GitHub CLI](https://cli.github.com/) (`gh`) להיות מותקן ומאומת.
-הפעל `gh auth login` עם personal access token שיש לו `repo` scope לקריאה גישה ל-
-pull requests. אם `gh` לא מותקן או לא מאומת, המדיניות נכשל פתוח ודיווח הסיבה ל-Claude.
+מדיניות זו דורשת [GitHub CLI](https://cli.github.com/) (`gh`) להיות מותקנת ובמות.
+הפעל `gh auth login` עם personal access token ש `repo` scope לקריאה לגישה
+פול בקשות. אם `gh` אינו מותקן או לא מות, המדיניות נכשלת פתוח ודוחה הסיבה לClaude.
 </Note>
 
 ---
 
 ### `require-no-conflicts-before-stop`
 
-**Event:** Stop  
-**Default:** חוסם עצירה כאשר הענף הנוכחי לא יכול לערבב בניקיון לענף הבסיס. המדיניות תחילה מאשרת יש `OPEN` PR ב-GitHub לענף — ללא אחד, אין merge target לאכיפה, כל המדיניות short-circuits לאפשר. פעם `OPEN` PR אושרה, שניים probes עצמאיים:
+**אירוע:** Stop  
+**ברירת מחדל:** דוחה עצירה כאשר הענף הנוכחי לא יכול מנקי merge לתוך ענף base. המדיניות קודם מאשר יש`OPEN` PR על GitHub לענף — ללא אחד, אין merge target לאכיפה, לכן כל מדיניות short-circuits לאפשור. פעם `OPEN` PR מאושר, שתי בדיקות עצמאיות הפעולה:
 
-1. **Local** — `git merge-tree --write-tree --name-only origin/<baseBranch> HEAD`. בסכסוך, ה-deny הודעה שמות הקבצים conflicted כך Claude יודע בדיוק מה לפתור.
-2. **GitHub** — reuses את `gh pr view --json mergeable,state` תוצאה כבר fetched בה-precheck. תופסת סכסוכים stale המקומי `origin/<baseBranch>` היה miss (למשל מישהו נחת conflicting PR ב-`main` מאז ה-last fetch). תוצאת `CONFLICTING` חוסמת. תוצאת `UNKNOWN` גם חוסמת משנה את Claude להמתין ~10 שניות ו-re-check לפני לנסות עצירה שוב — זה מונע false negatives בזמן GitHub recomputes.
+1. **Local** — `git merge-tree --write-tree --name-only origin/<baseBranch> HEAD`. עם סכסוך, הודעת deny שמות ה conflicted files כדי Claude יודע בדיוק מה לפתור.
+2. **GitHub** — מחדש `gh pr view --json mergeable,state` תוצאה כבר fetched בפרה בדיקה. תופסות סכסוכים ש stale local `origin/<baseBranch>` היה miss (לדוגמה מישהו נחת conflicting PR על `main` מאז last fetch). `CONFLICTING` תוצאה דוחה. `UNKNOWN` תוצאה גם דוחה ומנחה Claude להמתין ~10 seconds וקביעה חוזרת לפני כל מה שנסיון לעצור שוב — זה מונע false negatives בזמן GitHub recomputes.
 
-דלוקות כלל בעת: `gh` לא מותקן, PR לא קיים לענף, ה-PR state לא `OPEN` (למשל `MERGED`, `CLOSED`), או `gh pr view` מחזיר unparseable פלט. גם נכשל פתוח כאשר `origin/<baseBranch>` חסר locally או כאשר commits אין קדמה של בסיס — אלה Slayer 1 fall-throughs עדיין להתייעץ את ה-cached PR mergeability לפני יום.
+דלג לגמרי (מאפשר) כאשר: `gh` לא מותקן, אין PR קיים לענף, PR של state איננו `OPEN` (לדוגמה `MERGED`, `CLOSED`), או `gh pr view` מחזיר פלט unparseable. גם נכשלות פתוח כאשר `origin/<baseBranch>` missing locally או כאשר אין commits קדימה של base — אלה Layer 1 fall-throughs עדיין בדוק ה cached PR mergeability לפני הרשה.
 
-**Parameters:**
+**פרמטרים:**
 
-| Param | Type | Default | Description |
+| פרמטר | סוג | ברירת מחדל | תיאור |
 |-------|------|---------|-------------|
-| `baseBranch` | `string` | `"main"` | בסיס ענף לבדיקה סכסוכים נגד. |
+| `baseBranch` | `string` | `"main"` | Base branch לבדוק סכסוכים נגד. |
 
 <Note>
-GitHub CLI (`gh`) נדרש למדיניות זו. המדיניות משתמשת `gh pr view` לאשר
-`OPEN` PR קיים לפני הפעלת כל probe סכסוך — ללא `gh`, המדיניות
-short-circuits לאפשר. הפעל `gh auth login` עם personal access token שיש לו
-`repo` scope לקריאה גישה ל-pull requests.
+GitHub CLI (`gh`) נדרש למדיניות זו. המדיניות משתמש `gh pr view` לאשר
+`OPEN` PR קיים לפני כל בדיקת סכסוך הפעולה — ללא `gh`, המדיניות
+short-circuits לאפשור. הפעל `gh auth login` עם personal access token ש
+`repo` scope לקריאה לגישה פול בקשות.
 </Note>
 
 ---
 
 ### `require-ci-green-before-stop`
 
-**Event:** Stop  
-**Default:** חוסם עצירה כאשר בדיקות CI נוכשלות או עדיין רצות על הענף הנוכחי. בדוקות GitHub Actions זרימות עבודה וב-third-party bot בדיקות (למשל CodeRabbit, SonarCloud, Codecov). מתרגמות `skipped`, `cancelled`, ו-`neutral` מסקנות כ-non-failing (האחרונות מכסות למשל Socket Security alerts על ציבור חיצוני PRs, כאשר ה-app intentionally דיווחים neutral רמת success/failure). מחזירה הודעת מידע כאשר כל בדיקות לעבור.
+**אירוע:** Stop  
+**ברירת מחדל:** דוחה עצירה כאשר CI בדיקות נכשלות או עדיין רצות על הענף הנוכחי. בדוקות שניהם GitHub Actions workflow runs ו bot בדיקות צד שלישי (לדוגמה CodeRabbit, SonarCloud, Codecov). חטיפים `skipped`, `cancelled`, ו `neutral` מסקנות כלא נכשל (האחרון מכסה לדוגמה Socket Security alerts על outside contributor PRs, כאשר האפליקציה намерено דוחה neutral במקום success/failure). מחזיר הודעה אינפורמטיבית כאשר כל בדיקות עובר.
 
-אין פרמטרים.
+ללא פרמטרים.
 
 <Note>
-מדיניות זו דורשת [GitHub CLI](https://cli.github.com/) (`gh`) להיות מותקן ומאומת.
-הפעל `gh auth login` עם personal access token שיש לו `repo` scope לקריאה גישה ל-
-Actions זרימות עבודה רצות ו-Checks API. אם `gh` לא מותקן או לא מאומת, המדיניות נכשל פתוח ודיווח הסיבה ל-Claude.
+מדיניות זו דורשת [GitHub CLI](https://cli.github.com/) (`gh`) להיות מותקנת ובמות.
+הפעל `gh auth login` עם personal access token ש `repo` scope לקריאה לגישה
+פעולות זרימת עבודה ו Checks API. אם `gh` אינו מותקן או לא מות, המדיניות נכשלת פתוח ודוחה הסיבה לClaude.
 </Note>
 
 ---
 
 ---
 
-## השבתת מדיניות בודדות
+## משבתת מדיניויות בודדות
 
-הסר מדיניות ספציפית מ-`enabledPolicies` בתצורה שלך, או כבה אותה בכרטיסיית Policies של ה-dashboard.
+הסר מדיניות ספציפית מ `enabledPolicies` בתצורה שלך, או toggle זה משבתת באפליקציית תחת Policies tab.
 
 ```json
 {
@@ -854,4 +856,4 @@ Actions זרימות עבודה רצות ו-Checks API. אם `gh` לא מותק�
 }
 ```
 
-מדיניות שלא רשומה ב-`enabledPolicies` לא רצות, גם אם ערכי `policyParams` קיימים עבורם.
+מדיניויות לא רשום ב `enabledPolicies` לא הפעולה, גם אם `policyParams` ערכים קיימים להם.

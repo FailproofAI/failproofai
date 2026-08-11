@@ -1,38 +1,39 @@
 ---
-title: "לסוכנים"
-description: "הוסף ידע של Failproof AI לסוכן הקוד שלך בפקודה אחת. עובד עם Claude Code, Cursor, Windsurf ועוד."
+---
+title: "עבור agents"
+description: "הוסף ידע של Failproof AI ל-coding agent שלך בפקודה אחת. עובד עם Claude Code, Cursor, Windsurf ועוד."
 ---
 
-הוסף את ההפניה המלאה של Failproof AI לסוכן הקוד שלך בפקודה אחת. עובד עם Claude Code, Cursor, Windsurf וכל סוכן אחר התומך ב-skills.
+הוסף את ההפניה המלאה של Failproof AI ל-coding agent שלך בפקודה אחת. עובד עם Claude Code, Cursor, Windsurf וכל agent אחר התומך ב-skills.
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` מזהה אילו סוכנים יש לך מותקנים ומוסיף את ה-skill בפורמט הנכון לכל אחד מהם באופן אוטומטי.
+`npx skills` מזהה אילו agents יש לך מותקנים ומוסיף את ה-skill בפורמט הנכון לכל אחד מהם באופן אוטומטי.
 
 ## מה ה-skill מכסה
 
-| אזור | מה כלול |
+| תחום | מה כלול |
 |------|---------|
 | Policies | שמות policy מובנים, סוגי אירועים, פרמטרים, הפעלה/השבתה |
-| Custom policies | `customPolicies.add()`, match filters, `allow`/`deny`/`instruct` API |
+| Custom policies | `customPolicies.add()`, match filters, ממשק `allow`/`deny`/`instruct` |
 | Context object | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
 | Configuration | מבנה `policies-config.json`, scope merging, `policyParams` |
 | CLI | `failproofai policies --install`, `--uninstall`, `--custom`, scopes |
-| Dashboard | Session viewer, policy activity, משתני סביבה |
+| Dashboard | Session viewer, policy activity, environment variables |
 | Architecture | Hook handler flow, exit codes, stdin/stdout contract |
 
 ## האם ה-skill שלם?
 
-Mintlify יוצר `llms.txt` מכל הדפים בניווט. המסמכים של Failproof AI מכסים את ה-API המלא - כל policy, אפשרות וכל דוגמה כלולות. אם אתה מגלה משהו חסר, המקור נמצא ב-`https://docs.befailproof.ai/llms-full.txt`.
+Mintlify יוצר `llms.txt` מכל הדפים בניווט. תיעוד Failproof AI מכסה את ה-API המלא - כל policy, אפשרות וכל דוגמה כלולים. אם אתה מוצא משהו חסר, המקור נמצא ב-`https://docs.befailproof.ai/llms-full.txt`.
 
-לקונטקסט ממוקד, קישור ישירות לדף ספציפי:
+לקונטקסט ממוקד, קשר ישירות לדף ספציפי:
 
 ```bash
-# רק ה-custom policies API
+# רק את ה-custom policies API
 npx skills add https://docs.befailproof.ai/custom-policies
 
-# רק ה-built-in policies
+# רק את ה-built-in policies
 npx skills add https://docs.befailproof.ai/built-in-policies
 ```

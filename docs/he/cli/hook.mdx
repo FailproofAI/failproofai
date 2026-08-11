@@ -1,20 +1,21 @@
 ---
-title: Hook handler (internal)
-description: "תת-תהליך שClaude Code קוראה בכל אירוע כלי"
+---
+title: מטפל ווקו (פנימי)
+description: "תת-תהליך שClaude Code קורא בכל אירוע כלי"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-זה הפקודה שנרשמת ב-`settings.json` של Claude Code על ידי `failproofai policies --install`. בדרך כלל אתה לא קורא לזה ישירות.
+זהו הפקודה הרשומה ב-`settings.json` של Claude Code על ידי `failproofai policies --install`. בדרך כלל לא תקרא לה ישירות.
 
-קוראה JSON payload מ-stdin, מעריכה את כל הפוליסיות המופעלות, ויוצאת עם קוד המציין את ההחלטה:
+קורא עומס JSON מ-stdin, מעריך את כל המדיניויות המופעלות, ויוצא עם קוד המציין את ההחלטה:
 
 | קוד יציאה | החלטה | השפעה |
 |-----------|--------|--------|
 | `0` | `allow` | אפשר את הפעולה |
-| `1` | `deny` | חסום את הפעולה - Claude יראה את סיבת הדחייה |
+| `1` | `deny` | חסום את הפעולה - Claude רואה את סיבת הדחייה |
 | `2` | `instruct` | הזרק הנחיות להקשר של Claude |
 
 ### סוגי אירועים נתמכים
@@ -22,9 +23,9 @@ failproofai --hook <EventType>
 | קטגוריה | אירועים |
 |----------|--------|
 | **ביצוע כלים** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
-| **מחזור חיי הסשן** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
-| **אינטראקציה עם המשתמש** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
-| **תת-אגנטים ומשימות** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
+| **מחזור חיים של הפעלה** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
+| **אינטראקציה של משתמש** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
+| **תת-סוכנים וממשקים** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **תצורה** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
 | **מערכת קבצים** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
 | **הקשר** | `PreCompact`, `PostCompact` |

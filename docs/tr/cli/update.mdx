@@ -1,0 +1,100 @@
+---
+---
+title: Yükseltmeden sonra güncelleme
+description: "Yükseltmenin npm'nin yapamadığı diğer yarısını tamamlayın: ana dizini geçirin ve daemon'u eşleştirin"
+---
+
+```bash
+npm install -g failproofai@latest && failproofai update
+```
+
+Yükseltmenin tamamı budur. `npm` CLI'yi değiştirir; `failproofai update` geri
+kalanını yapar.
+
+## İkinci komutun varlık nedeni
+
+`npm install -g` bir şeyi değiştirir — CLI'yi. failproofai kurulumunun diğer iki
+bölümü paket dışında ve kasıtlı olarak bulunur, npm çalıştığında hiçbiri
+hareket etmez:
+
+- **`~/.failproofai/`**, ayarlarınız, bulut kaydı, politika seçimi ve
+  geçmiş. Yeni bir sürüm bunu farklı şekilde organize edebilir ve bu
+  reorganizasyon her iki şekli de bilen kodla yapılmalıdır.
+- **`failproofaid` daemon ikili dosyası**, konumu
+  `~/.failproofai/bin/failproofaid-<version>`. Kasıtlı olarak `node_modules`
+  içinde *değildir*: çalışan bir hizmetin altında dosyayı değiştiren bir
+  yükseltme, canlı daemon'u farklı kaynaktan derlenmiş bir ikili dosyaya
+  yönlendirir ve paketi kaldırmak bunu hizmetin altından silerek her önyüklemede
+  kilitlenmeye neden olur.
+
+Bu nedenle yalnızca `npm install -g` çalıştırıldıktan sonra CLI yenidir ve daemon
+değildir. `failproofaid` anlamadığı ana dizin düzenine karşı başlamayı reddeder —
+bu uyumsuzluğun gürültülü versiyonu sessiz olanın yerine — bu nedenle iki yarının
+bir araya getirilmesi gerekir. `failproofai update` bu adımdır.
+
+## Ne yapıyor
+
+<Steps>
+  <Step title="Bekleyen tüm düzen göçlerini çalıştırır">
+    `~/.failproofai/VERSION` içinde kaydedilen düzeni okur ve bunu bu sürümün
+    konuştuğu düzene getiren adımları çalıştırır. Genellikle hiçbiri — bkz.
+    [`failproofai migrate`](/tr/cli/migrate).
+  </Step>
+  <Step title="Eşleşen daemon ikili dosyasını yerleştirir">
+    npm'nin mümkün olduğunda zaten indirdiği platform paketinden (ağ yok),
+    aksi takdirde bu tam sürümün sürüm varlığından, SHA-256 doğrulanarak
+    kullanılmadan önce.
+  </Step>
+  <Step title="Hizmeti yeniden başlatır ve geri döndüğünü onaylar">
+    Varsayılan yerine algılanır — bir hizmet yöneticisi bir süreci çatallanır
+    çalmaz aktif olarak raporlar, bu çalışıyor olmakla aynı şey değildir.
+  </Step>
+</Steps>
+
+## Seçenekler
+
+| Bayrak | Etki |
+|--------|------|
+| `--no-daemon` | Yalnızca ana dizini geçirin, daemon'u mevcut sürümünde bırakın. |
+
+<Warning>
+  `--no-daemon` sürüm uyumsuzluğu olan bir daemon bırakır. Daemon'u gerekli
+  olacak şekilde yapılandırılmış bir makinede, daemon cevap veremezse her
+  hook olayı **kapalı olarak başarısız olur** — ve geçişli ana dizine karşı
+  başlamayı reddeden daemon cevap veremez. Daemon yarısının çalışmasına izin
+  vermeyi tercih edin.
+</Warning>
+
+## Bir şey ters giderse
+
+Komut sıfır olmayan bir değerle çıkıp hangi yarının başarısız olduğunu söyler.
+Bilmekte değer olan iki durum:
+
+- **Bir göç adımı bitmedi.** Ana dizin *eski* düzeni ile işaretlenir, bu nedenle
+  sonraki komut bunu yeniden dener — kısmi göçün gücü üzerinde ana dizin hiçbir
+  zaman geçerli olarak işaretlenmez. Ayarlarınızın ve kaydınızın kopyaları her
+  şey çalıştırılmadan önce `~/.failproofai/migrations/backup-layout<n>/`
+  içinde kaydedildi.
+- **Daemon parola olmadan yeniden başlatılamadı.** `sudo -n` kasıtlı olarak
+  kullanılır, bu nedenle bir ilerleme ekranının altından hiçbir şey istemi
+  almaz. Komut çalıştırmanız gereken tam satırı yazdırır.
+
+<Note>
+  Buradaki hiçbir şey etkileşimli kurulum sihirbazına ihtiyaç duymaz.
+  Ayarlarınız, bulut kaydınız ve politika seçiminiz yükseltmeyi
+  korur, bu nedenle geçişli makine tam olarak daha önce olduğu gibi
+  zorlar — bu, kimsenin yanında olmayan makinelerde en önemlidir:
+  CI çalıştırıcı, filo kutusu, başsız ağ geçidi.
+</Note>
+
+## Otomatikleştirme
+
+`failproofai update` etkileşimsiz ve yapılacak hiçbir şey olmadığında çalıştırılması
+güvenlidir — "göç gerekmedi" bildirir ve 0 ile çıkar. Bunu sağlama betiği veya
+Dockerfile'daki her yükseltmeden sonra koymak amaçlanmış kullanımıdır:
+
+```dockerfile
+RUN npm install -g failproofai@latest && failproofai update --no-daemon
+```
+
+(Henüz yeniden başlatılacak hizmet olmayan bir görüntü derlemesinde `--no-daemon`.)

@@ -1,33 +1,33 @@
 ---
 title: "Ajanlar için"
-description: "Failproof AI bilgisini kodlama ajanınıza tek komutla ekleyin. Claude Code, Cursor, Windsurf ve daha fazlasıyla çalışır."
+description: "Failproof AI bilgisini kodlama ajanınıza tek komutla ekleyin. Claude Code, Cursor, Windsurf ve daha birçok araçla çalışır."
 ---
 
-Failproof AI başvuru rehberinin tamamını kodlama ajanınıza tek komutla ekleyin. Claude Code, Cursor, Windsurf ve beceri desteği olan diğer tüm ajanlarla çalışır.
+Failproof AI referansının tamamını kodlama ajanınıza tek komutla ekleyin. Claude Code, Cursor, Windsurf ve skill desteği olan diğer tüm ajanlarla çalışır.
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` hangi ajanları yüklü olduğunu tespit eder ve beceriyi her biri için doğru biçimde otomatik olarak ekler.
+`npx skills`, hangi ajanların yüklü olduğunu tespit eder ve her biri için skill'i otomatik olarak doğru formatta ekler.
 
-## Beceri neyi kapsar
+## Skill'in kapsadığı alanlar
 
-| Alan | İçindekiler |
-|------|------------|
-| Politikalar | Yerleşik politika adları, olay türleri, parametreler, etkinleştirme/devre dışı bırakma |
-| Özel politikalar | `customPolicies.add()`, eşleşme filtreleri, `allow`/`deny`/`instruct` API |
+| Alan | İçerik |
+|------|--------|
+| Politikalar | Yerleşik politika adları, olay türleri, parametreler, etkinleştir/devre dışı bırak |
+| Özel politikalar | `customPolicies.add()`, eşleştirme filtreleri, `allow`/`deny`/`instruct` API'si |
 | Context nesnesi | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
-| Yapılandırma | `policies-config.json` yapısı, kapsam birleştirme, `policyParams` |
+| Konfigürasyon | `policies-config.json` yapısı, kapsam birleştirmesi, `policyParams` |
 | CLI | `failproofai policies --install`, `--uninstall`, `--custom`, kapsamlar |
-| Dashboard | Oturum görüntüleyicisi, politika aktivitesi, ortam değişkenleri |
-| Mimari | Hook işleyici akışı, çıkış kodları, stdin/stdout sözleşmesi |
+| Kontrol paneli | Oturum görüntüleyici, politika aktivitesi, ortam değişkenleri |
+| Mimari | Hook handler akışı, çıkış kodları, stdin/stdout sözleşmesi |
 
-## Beceri tam mı?
+## Skill tam mı?
 
-Mintlify, `llms.txt` dosyasını gezintideki tüm sayfalardan oluşturur. Failproof AI dokümanları tam API'yi kapsar - her politika, seçenek ve örnek dahil edilmiştir. Eksik bir şey bulursanız, kaynak `https://docs.befailproof.ai/llms-full.txt` konumundadır.
+Mintlify, navigasyondaki tüm sayfalardan `llms.txt` dosyasını oluşturur. Failproof AI dokümantasyonu tam API'yi kapsar - her politika, seçenek ve örnek dahildir. Eksik bir şey bulursanız, kaynak `https://docs.befailproof.ai/llms-full.txt` adresindedir.
 
-Hedeflenen içerik için doğrudan belirli bir sayfaya bağlantı verin:
+Hedeflenmiş bağlam için doğrudan belirli bir sayfaya bağlantı verin:
 
 ```bash
 # Yalnızca özel politikalar API'si

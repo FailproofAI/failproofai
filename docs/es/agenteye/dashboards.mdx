@@ -1,10 +1,10 @@
 ---
 title: "Dashboards"
-description: "Convierte los datos en vivo de tus agentes en una vista compartida que todo tu equipo puede consultar."
+description: "Convierte los datos en vivo de tus agentes en una imagen compartida que todo tu equipo puede consultar."
 ---
 
 
-Convierte los datos en vivo de tus agentes en una vista compartida que todo tu equipo puede consultar. Fija las consultas más importantes como gráficos, y todos verán los mismos números de un vistazo, sin necesidad de volver a ejecutar ni una sola consulta.
+Convierte los datos en vivo de tus agentes en una imagen compartida que todo tu equipo puede consultar. Ancla las consultas importantes como gráficos y todos verán los mismos números de un vistazo, sin necesidad de volver a ejecutar una sola consulta.
 
 ![Un dashboard construido a partir de consultas guardadas: una línea de eventos por hora, una barra de errores por tipo, un gráfico de área de latencia y tokens por modelo](/agenteye/images/dashboard-fleet.png)
 
@@ -12,34 +12,34 @@ Convierte los datos en vivo de tus agentes en una vista compartida que todo tu e
 
 ## Todos ven la misma realidad
 
-Deja de pegar capturas de pantalla en el chat y de volver a ejecutar la misma consulta cinco veces al día. Un dashboard es un tablero compartido a nivel de organización que cualquier miembro de tu equipo puede abrir para ver exactamente la misma información. Cuando los datos subyacentes cambian, los gráficos cambian con ellos, por lo que el tablero siempre está actualizado y nadie discute sobre números desactualizados.
+Deja de pegar capturas de pantalla en el chat y de volver a ejecutar la misma consulta cinco veces al día. Un dashboard es un tablero compartido a nivel organizacional que cualquier miembro de tu equipo puede abrir para ver exactamente la misma vista. Cuando los datos subyacentes cambian, los gráficos cambian con ellos, de modo que el tablero siempre está actualizado y nadie discute por números obsoletos.
 
-El dashboard de flota de arriba es un buen punto de partida para las operaciones del día a día:
+El dashboard de flota que aparece arriba es un buen punto de partida para las operaciones del día a día:
 
 - una línea de **eventos por hora**, para monitorear el rendimiento y detectar caídas repentinas
-- una barra de **errores por tipo**, para identificar de inmediato las categorías de fallos más frecuentes
-- un gráfico de área de **latencia**, para detectar ralentizaciones antes de que los usuarios se quejen
+- una barra de **errores por tipo**, para que las categorías de fallos más frecuentes sean evidentes de inmediato
+- un gráfico de área de **latencia**, para identificar ralentizaciones antes de que los usuarios se quejen
 - un desglose de **tokens por modelo**, para mantener los costos bajo control
 
 Encontrarás tus tableros en `/<org-slug>/dashboards`.
 
-## Fija las consultas que ya tienes guardadas
+## Ancla las consultas que ya tienes guardadas
 
-Cada mosaico comienza como una consulta guardada. Crea y guarda la consulta que necesitas en la biblioteca de [Consultas](/es/agenteye/queries) (presets integrados más los tuyos propios, sobre tus eventos y evaluaciones), y luego fíjala en un dashboard como el gráfico que mejor se adapte a los datos: una **línea** para tendencias en el tiempo, una **barra** para comparar categorías, un **área** para volumen, o un **pastel** para mostrar proporciones.
+Cada mosaico comienza como una consulta guardada. Crea y guarda la consulta que te interesa en la biblioteca de [Consultas](/es/agenteye/queries) (con presets integrados y los tuyos propios, sobre tus eventos y evaluaciones), y luego ancálala a un dashboard como el gráfico que mejor se adapte a los datos: una **línea** para tendencias a lo largo del tiempo, una **barra** para comparar categorías, un **área** para volumen, o un **pastel** para una distribución porcentual.
 
-Como un mosaico no es más que tu consulta guardada representada como gráfico, no hay nada que mantener sincronizado manualmente. Actualiza la consulta una vez y todos los dashboards que la usan se actualizan también.
+Dado que un mosaico es simplemente tu consulta guardada representada como un gráfico, no hay nada que mantener sincronizado manualmente. Actualiza la consulta una vez y todos los dashboards que la utilizan se actualizarán también.
 
 ## Monitorea la calidad, no solo el volumen
 
-El volumen te dice que los agentes están ocupados. La calidad te dice que realmente están haciendo bien su trabajo. Apunta un dashboard a tus [puntuaciones de evaluación](/es/agenteye/evaluations) y obtendrás un tablero que rastrea el rendimiento de las ejecuciones a lo largo del tiempo, de modo que una regresión de calidad aparece como una caída en el gráfico en lugar de como una sorpresa de un cliente.
+El volumen te indica que los agentes están activos. La calidad te indica que realmente están haciendo bien su trabajo. Apunta un dashboard a tus [puntuaciones de evaluación](/es/agenteye/evaluations) y obtendrás un tablero que rastrea el desempeño de las ejecuciones a lo largo del tiempo, de modo que una regresión de calidad se manifieste como una caída en un gráfico en lugar de una sorpresa por parte de un cliente.
 
-![Un dashboard enfocado en calidad, construido a partir de consultas de evaluación guardadas](/agenteye/images/dashboard-quality.png)
+![Un dashboard enfocado en calidad construido a partir de consultas de evaluación guardadas](/agenteye/images/dashboard-quality.png)
 
-*Un tablero de calidad mantiene tus puntuaciones de evaluación en primer plano, justo junto a los números operativos.*
+*Un tablero de calidad mantiene tus puntuaciones de evaluación en primer plano, justo al lado de los números operacionales.*
 
-Mantén un tablero de operaciones y un tablero de calidad lado a lado, y tu equipo tendrá un único lugar para responder tanto "¿está funcionando?" como "¿lo está haciendo bien?", sin que nadie tenga que volver a ejecutar una consulta.
+Mantén un tablero de operaciones y un tablero de calidad lado a lado, y tu equipo tendrá un único lugar para responder tanto "¿está funcionando?" como "¿está funcionando bien?", sin que nadie tenga que volver a ejecutar una consulta.
 
-## Relacionados
+## Relacionado
 
 - [Consultas](/es/agenteye/queries): crea y guarda las consultas que se convertirán en tus mosaicos.
 - [Evaluaciones](/es/agenteye/evaluations): puntúa tus ejecuciones para poder graficar la calidad a lo largo del tiempo.

@@ -1,48 +1,48 @@
 ---
 title: "Métriques de performance"
-description: "Détectez à l'instant précis où vos modèles, outils ou hooks ralentissent ou font grimper la facture, et interceptez un pic de latence en queue de distribution avant que vos utilisateurs ne le ressentent."
+description: "Détectez immédiatement quand vos modèles, outils ou hooks ralentissent ou font grimper la facture, et repérez un pic de latence extrême avant que vos utilisateurs ne le ressentent."
 ---
 
 
-Détectez à l'instant précis où vos modèles, outils ou hooks ralentissent ou font grimper la facture, et interceptez un pic de latence en queue de distribution avant que vos utilisateurs ne le ressentent. Trois pages dédiées transforment les mesures brutes en p50, p95 et p99 lisibles en un coup d'œil.
+Détectez immédiatement quand vos modèles, outils ou hooks ralentissent ou font grimper la facture, et repérez un pic de latence extrême avant que vos utilisateurs ne le ressentent. Trois pages dédiées transforment les mesures brutes en percentiles p50, p95 et p99 lisibles en un coup d'œil.
 
-![La page Models affichant une carte de chaleur de latence, une bande de percentiles et des chiffres de tokens, coût et fenêtre de contexte par modèle](/agenteye/images/models.png)
-*La page Models : une carte de chaleur de latence, une bande de percentiles et, par modèle, le nombre de tokens, le coût estimé et le remplissage de la fenêtre de contexte.*
+![La page Models affichant une carte de chaleur de latence, une bande de percentiles, ainsi que les tokens, coûts et remplissage de fenêtre de contexte par modèle](/agenteye/images/models.png)
+*La page Models : une carte de chaleur de latence, une bande de percentiles, et par modèle : les tokens, le coût estimé et le taux de remplissage de la fenêtre de contexte.*
 
 ## Arrêtez de laisser les moyennes masquer vos pires exécutions
 
-Un chiffre de latence moyenne est rassurant et inutile : il lisse le seul appel sur cinquante qui bloque et réveille votre équipe d'astreinte à 2h du matin. Les pages Models, Tools et Hooks refusent de faire ça. Chacune partage la même structure, à apprendre une seule fois :
+Un chiffre de latence moyen est rassurant et inutile : il lisse le seul appel sur cinquante qui se bloque et réveille votre équipe d'astreinte à 2h du matin. Les pages Models, Tools et Hooks refusent de faire ça. Chacune partage la même structure, ce qui vous permet de l'apprendre une seule fois :
 
-- Un **sparkline à 24 bins** pour saisir la tendance d'un coup d'œil : la situation empire-t-elle ?
-- Une **bande de métriques vitales** avec les latences p50, p95 et p99, pour voir côte à côte l'exécution typique et la queue de distribution.
-- Une **carte de chaleur de latence**, 24 intervalles temporels croisés avec des buckets de latence, qui indique *quand* les appels lents se sont concentrés.
-- Une **bande de percentiles** : une ligne p50 avec des rubans ombrés p25–p75 et p10–p90, et des points p99, afin que l'écart reste visible plutôt que noyé dans une moyenne.
+- Un **graphique sparkline à 24 tranches** pour voir la tendance d'un coup d'œil : est-ce que ça se dégrade ?
+- Une **bande de métriques essentielles** avec la latence p50, p95 et p99, pour que l'exécution typique et la valeur extrême soient côte à côte.
+- Une **carte de chaleur de latence**, composée de 24 tranches temporelles croisées avec des plages de latence, qui indique *quand* les appels lents se sont concentrés.
+- Une **bande de percentiles** : une ligne p50 avec des rubans ombrés de p25 à p75 et de p10 à p90, ainsi que des points p99, pour que la dispersion reste visible au lieu d'être noyée dans une moyenne.
 
-Un réticule de survol partagé relie la carte de chaleur et la bande, de sorte qu'un pic en queue de distribution s'aligne dans le temps sur les deux vues plutôt que de se cacher derrière une unique ligne de moyenne. Retrouvez ces trois pages dans la section **observe** de votre tableau de bord, chacune limitée à votre organisation et filtrable par plage de dates, environnement, agent et session.
+Un réticule de survol partagé relie la carte de chaleur et la bande, de sorte qu'un pic de latence extrême s'aligne dans le temps sur les deux vues plutôt que de se cacher derrière une simple ligne de moyenne. Retrouvez les trois pages dans la section **observe** de votre tableau de bord, chacune limitée à votre organisation et filtrable par plage de dates, environnement, agent et session.
 
 ## Models : voyez exactement ce que chaque modèle vous coûte
 
-La page Models (illustrée ci-dessus) répond aux deux questions qu'une facture soulève invariablement : quel modèle, et combien. En plus de la vue de latence partagée, elle ajoute la **consommation de tokens par modèle**, le **coût estimé** et le **remplissage de la fenêtre de contexte**, afin que la croissance incontrôlée des prompts et une compaction imminente soient visibles avant de vous surprendre.
+La page Models (illustrée ci-dessus) répond aux deux questions que soulève toujours une facture : quel modèle, et combien. En plus de la vue de latence partagée, elle ajoute la **consommation de tokens par modèle**, le **coût estimé** et le **taux de remplissage de la fenêtre de contexte**, afin que la croissance incontrôlée des prompts et une compaction imminente soient visibles avant de vous surprendre.
 
-Failproof AI Observability reconnaît automatiquement les identifiants de modèles courants. Si une fenêtre semble incorrecte, ou si vous utilisez un modèle privé, corrigez-la ou ajoutez-en un depuis **Settings**, dans **model context windows** — les indicateurs de remplissage se mettront à jour en conséquence.
+Failproof AI Observability reconnaît automatiquement les identifiants de modèles courants. Si une fenêtre semble incorrecte, ou si vous utilisez un modèle privé, corrigez-la ou ajoutez-en un dans **Settings**, sous **model context windows**, et les indicateurs de remplissage se mettront à jour en conséquence.
 
-## Tools : distinguez la lenteur de la défaillance
+## Tools : distinguez les lents des défaillants
 
-Un appel d'outil peut être lent, ou il peut échouer silencieusement — et vous voulez savoir lequel en quelques secondes, pas après avoir fouillé des logs.
+Un appel d'outil peut être lent, ou il peut échouer silencieusement — et vous voulez savoir lequel en quelques secondes, sans avoir à fouiller dans les logs.
 
-![La page Tools affichant la carte de chaleur et la bande de percentiles partagées, à côté d'une répartition succès/échecs et d'une barre de distribution des outils](/agenteye/images/tools.png)
+![La page Tools affichant la carte de chaleur de latence et la bande de percentiles partagées, à côté d'une répartition succès/échecs et d'une barre de distribution des outils](/agenteye/images/tools.png)
 *La page Tools : la même carte de chaleur et bande de percentiles, plus une répartition succès/échecs et une barre de distribution des outils.*
 
-En complément de la vue de latence partagée, la page Tools ajoute une **répartition succès/échecs** et une **barre de distribution des outils**, afin de voir en un coup d'œil quels outils vous sollicitez le plus et lesquels grignotent votre budget d'erreurs.
+En complément de la vue de latence partagée, la page Tools ajoute une **répartition succès/échecs** et une **barre de distribution des outils**, afin que vous voyiez d'un coup d'œil quels outils sont les plus sollicités et lesquels consomment votre budget d'erreurs.
 
-## Hooks : identifiez le hook et le déclencheur exacts
+## Hooks : identifiez précisément le hook et le déclencheur concernés
 
-Quand un hook de cycle de vie alourdit une exécution, constater que « les hooks sont lents » n'est pas exploitable. La page Hooks vous amène directement à celui qui pose problème.
+Quand un hook de cycle de vie ralentit une exécution, « les hooks sont lents » n'est pas quelque chose sur lequel vous pouvez agir. La page Hooks vous amène directement à celui qui pose problème.
 
-![La page Hooks affichant la latence décomposée par nom de hook et événement déclencheur, sur la carte de chaleur et la bande de percentiles partagées](/agenteye/images/hooks.png)
-*La page Hooks : la latence décomposée par nom de hook et événement déclencheur.*
+![La page Hooks affichant la latence décomposée par nom de hook et événement déclencheur, au-dessus de la carte de chaleur et de la bande de percentiles partagées](/agenteye/images/hooks.png)
+*La page Hooks : latence décomposée par nom de hook et événement déclencheur.*
 
-Au-dessus de la même carte de chaleur et bande de percentiles, la page Hooks décompose l'activité par **nom de hook** et **événement déclencheur**, afin de cibler précisément le hook unique et l'événement unique qui nécessitent votre attention.
+Par-dessus la même carte de chaleur et bande de percentiles, la page Hooks décompose l'activité par **nom de hook** et **événement déclencheur**, afin que vous arriviez directement au hook et à l'événement uniques qui nécessitent votre attention.
 
 ## Voir aussi
 

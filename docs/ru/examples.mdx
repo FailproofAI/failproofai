@@ -4,13 +4,13 @@ description: "Как настроить хуки для Claude Code и Agents SD
 icon: book-open
 ---
 
-Готовые примеры для часто встречающихся сценариев. Каждый показывает, как установить и чего ожидать.
+Готовые примеры для типичных сценариев. Каждый показывает, как установить и чего ожидать.
 
 ---
 
 ## Настройка хуков для Claude Code
 
-Failproof AI интегрируется с Claude Code через его [систему хуков](https://docs.anthropic.com/en/docs/claude-code/hooks). Когда вы запускаете `failproofai policies --install`, он регистрирует команды хуков в файле `settings.json` Claude Code, которые срабатывают при каждом вызове инструмента.
+Failproof AI интегрируется с Claude Code через его [систему хуков](https://docs.anthropic.com/en/docs/claude-code/hooks). Когда вы запускаете `failproofai policies --install`, это регистрирует команды хуков в `settings.json` Claude Code, которые срабатывают при каждом вызове инструмента.
 
 <Steps>
   <Step title="Установите failproofai">
@@ -23,7 +23,7 @@ Failproof AI интегрируется с Claude Code через его [сис
     failproofai policies --install
     ```
   </Step>
-  <Step title="Проверьте, что хуки зарегистрированы">
+  <Step title="Проверьте регистрацию хуков">
     ```bash
     cat ~/.claude/settings.json | grep failproofai
     ```
@@ -35,7 +35,7 @@ Failproof AI интегрируется с Claude Code через его [сис
     claude
     ```
 
-    Политики теперь автоматически запускаются при каждом вызове инструмента. Попросите Claude выполнить `sudo rm -rf /` — это будет заблокировано.
+    Политики теперь запускаются автоматически при каждом вызове инструмента. Попробуйте попросить Claude выполнить `sudo rm -rf /` — это будет заблокировано.
   </Step>
 </Steps>
 
@@ -43,7 +43,7 @@ Failproof AI интегрируется с Claude Code через его [сис
 
 ## Настройка хуков для Agents SDK
 
-Если вы разрабатываете с использованием [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk), вы можете использовать ту же систему хуков программно.
+Если вы разрабатываете с использованием [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk), вы можете использовать ту же систему хуков программным способом.
 
 <Steps>
   <Step title="Установите failproofai в ваш проект">
@@ -52,7 +52,7 @@ Failproof AI интегрируется с Claude Code через его [сис
     ```
   </Step>
   <Step title="Настройте хуки в вашем агенте">
-    Передайте команды хуков при создании процесса агента. Хуки срабатывают так же, как в Claude Code — через JSON в stdin/stdout:
+    Передавайте команды хуков при создании процесса агента. Хуки срабатывают так же, как в Claude Code — через stdin/stdout JSON:
 
     ```bash
     failproofai --hook PreToolUse   # вызывается перед каждым инструментом
@@ -65,12 +65,12 @@ Failproof AI интегрируется с Claude Code через его [сис
 
     customPolicies.add({
       name: "limit-to-project-dir",
-      description: "Keep the agent inside the project directory",
+      description: "Держите агента внутри директории проекта",
       match: { events: ["PreToolUse"] },
       fn: async (ctx) => {
         const path = String(ctx.toolInput?.file_path ?? "");
         if (path.startsWith("/") && !path.startsWith(ctx.session?.cwd ?? "")) {
-          return deny("Agent is restricted to the project directory");
+          return deny("Агент ограничен директорией проекта");
         }
         return allow();
       },
@@ -88,7 +88,7 @@ Failproof AI интегрируется с Claude Code через его [сис
 
 ## Блокировка деструктивных команд
 
-Наиболее распространенная настройка — предотвращение необратимых действий агентами.
+Самая распространенная настройка — предотвращение необратимого ущерба от агентов.
 
 ```bash
 failproofai policies --install block-sudo block-rm-rf block-force-push block-curl-pipe-sh
@@ -98,38 +98,38 @@ failproofai policies --install block-sudo block-rm-rf block-force-push block-cur
 - `block-sudo` — блокирует все команды `sudo`
 - `block-rm-rf` — блокирует рекурсивное удаление файлов
 - `block-force-push` — блокирует `git push --force`
-- `block-curl-pipe-sh` — блокирует передачу удаленных скриптов в оболочку
+- `block-curl-pipe-sh` — блокирует передачу удаленных скриптов в shell
 
 ---
 
-## Предотвращение утечек секретов
+## Предотвращение утечки секретов
 
-Остановите агентов от просмотра или утечки учетных данных в выводе инструмента.
+Остановите агентов от просмотра или утечки учетных данных в выводе инструментов.
 
 ```bash
 failproofai policies --install sanitize-api-keys sanitize-jwt sanitize-connection-strings sanitize-bearer-tokens
 ```
 
-Они срабатывают на `PostToolUse` — после выполнения инструмента они очищают вывод перед тем, как агент его увидит.
+Они срабатывают на `PostToolUse` — после выполнения инструмента они очищают вывод перед тем, как агент его видит.
 
 ---
 
 ## Получайте оповещения Slack, когда агентам нужно внимание
 
-Используйте хук уведомления для отправки предупреждений об ожидании в Slack.
+Используйте хук уведомлений для переадресации оповещений о неактивности в Slack.
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
 
 customPolicies.add({
   name: "slack-on-idle",
-  description: "Alert Slack when the agent is waiting for input",
+  description: "Отправьте оповещение в Slack, когда агент ожидает ввода",
   match: { events: ["Notification"] },
   fn: async (ctx) => {
     const webhookUrl = process.env.SLACK_WEBHOOK_URL;
     if (!webhookUrl) return allow();
 
-    const message = String(ctx.payload?.message ?? "Agent is waiting");
+    const message = String(ctx.payload?.message ?? "Агент ожидает");
     const project = ctx.session?.cwd ?? "unknown";
 
     try {
@@ -142,7 +142,7 @@ customPolicies.add({
         signal: AbortSignal.timeout(5000),
       });
     } catch {
-      // never block the agent if Slack is unreachable
+      // никогда не блокируйте агента, если Slack недоступен
     }
 
     return allow();
@@ -160,20 +160,20 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/... failproofai policies --install --c
 
 ## Держите агентов на ветке
 
-Предотвратите переключение ветвей агентами или отправку в защищенные ветви.
+Предотвратите переключение веток агентами или отправку на защищенные ветки.
 
 ```javascript
 import { customPolicies, allow, deny } from "failproofai";
 
 customPolicies.add({
   name: "stay-on-branch",
-  description: "Prevent the agent from checking out other branches",
+  description: "Предотвратите переключение агента на другие ветки",
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolName !== "Bash") return allow();
     const cmd = String(ctx.toolInput?.command ?? "");
     if (/git\s+checkout\s+(?!-b)/.test(cmd)) {
-      return deny("Stay on the current branch. Create a new branch with -b if needed.");
+      return deny("Останьтесь на текущей ветке. Создайте новую ветку с -b, если необходимо.");
     }
     return allow();
   },
@@ -191,13 +191,13 @@ import { customPolicies, allow, instruct } from "failproofai";
 
 customPolicies.add({
   name: "test-before-commit",
-  description: "Remind the agent to run tests before committing",
+  description: "Напомните агенту запустить тесты перед коммитом",
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolName !== "Bash") return allow();
     const cmd = String(ctx.toolInput?.command ?? "");
     if (/git\s+commit/.test(cmd)) {
-      return instruct("Run tests before committing. Use `npm test` or `bun test` first.");
+      return instruct("Запустите тесты перед коммитом. Сначала используйте `npm test` или `bun test`.");
     }
     return allow();
   },
@@ -206,9 +206,9 @@ customPolicies.add({
 
 ---
 
-## Заблокируйте производственный репозиторий
+## Заблокируйте production репозиторий
 
-Зафиксируйте конфигурацию на уровне проекта, чтобы каждый разработчик вашей команды получал одинаковые политики.
+Зафиксируйте конфигурацию на уровне проекта, чтобы все разработчики в вашей команде получили одинаковые политики.
 
 Создайте `.failproofai/policies-config.json` в вашем репозитории:
 
@@ -238,13 +238,13 @@ git add .failproofai/policies-config.json
 git commit -m "Add failproofai team policies"
 ```
 
-Каждый член команды, у которого установлен failproofai, автоматически получит эти правила.
+Каждый член команды с установленным failproofai автоматически получит эти правила.
 
 ---
 
-## Создайте стандарт качества на уровне организации с политиками по соглашению
+## Создайте стандарт качества для всей организации с политиками конвенции
 
-Наиболее эффективная настройка: зафиксируйте `.failproofai/policies/` в вашем репозитории с политиками, адаптированными к вашему проекту. Каждый член команды получает их автоматически — без команд установки, без изменения конфигурации.
+Самая эффективная настройка: зафиксируйте `.failproofai/policies/` в вашем репозитории с политиками, адаптированными к вашему проекту. Каждый член команды получает их автоматически — никаких команд установки, никаких изменений конфигурации.
 
 <Steps>
   <Step title="Создайте директорию и добавьте политики">
@@ -256,27 +256,27 @@ git commit -m "Add failproofai team policies"
     // .failproofai/policies/team-policies.mjs
     import { customPolicies, allow, deny, instruct } from "failproofai";
 
-    // Enforce your team's preferred package manager
-    // (or enable the built-in prefer-package-manager policy instead)
+    // Соблюдайте предпочитаемый пакетный менеджер вашей команды
+    // (или вместо этого включите встроенную политику prefer-package-manager)
     customPolicies.add({
       name: "enforce-bun",
       match: { events: ["PreToolUse"] },
       fn: async (ctx) => {
         if (ctx.toolName !== "Bash") return allow();
         const cmd = String(ctx.toolInput?.command ?? "");
-        if (/\bnpm\b/.test(cmd)) return deny("Use bun instead of npm.");
+        if (/\bnpm\b/.test(cmd)) return deny("Используйте bun вместо npm.");
         return allow();
       },
     });
 
-    // Remind the agent to run tests before committing
+    // Напомните агенту запустить тесты перед коммитом
     customPolicies.add({
       name: "test-before-commit",
       match: { events: ["PreToolUse"] },
       fn: async (ctx) => {
         if (ctx.toolName !== "Bash") return allow();
         if (/git\s+commit/.test(ctx.toolInput?.command ?? "")) {
-          return instruct("Run tests before committing.");
+          return instruct("Запустите тесты перед коммитом.");
         }
         return allow();
       },
@@ -289,19 +289,19 @@ git commit -m "Add failproofai team policies"
     git commit -m "Add team quality policies"
     ```
   </Step>
-  <Step title="Продолжайте совершенствоваться">
-    Когда ваша команда сталкивается с новыми режимами отказа, добавляйте политики и отправляйте их. Каждый получит обновление при следующем `git pull`. Эти политики становятся живым стандартом качества, который растет вместе с вашей командой.
+  <Step title="Продолжайте улучшать">
+    Когда ваша команда столкнется с новыми режимами отказа, добавьте политики и отправьте их. Все получат обновление при следующем `git pull`. Эти политики становятся живым стандартом качества, который растет вместе с вашей командой.
   </Step>
 </Steps>
 
 ---
 
-## Больше примеров
+## Дополнительные примеры
 
 Директория [`examples/`](https://github.com/failproofai/failproofai/tree/main/examples) в репозитории содержит:
 
 | Файл | Что он показывает |
-|------|---------------|
-| `policies-basic.js` | Базовые политики — блокировка производственных записей, force-push, скриптов с передачей |
-| `policies-notification.js` | Оповещения Slack для уведомлений об ожидании и завершении сессии |
-| `policies-advanced/index.js` | Транзитивные импорты, асинхронные хуки, очистка выводов PostToolUse, обработка события Stop |
+|------|------------------|
+| `policies-basic.js` | Стартовые политики — блокировка производственных записей, force-push, передача скриптов |
+| `policies-notification.js` | Оповещения Slack для уведомлений о неактивности и завершении сеанса |
+| `policies-advanced/index.js` | Транзитивные импорты, асинхронные хуки, очистка вывода PostToolUse, обработка события Stop |

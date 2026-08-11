@@ -1,5 +1,5 @@
 ---
-title: Hook handler (interne)
+title: Hook handler (internal)
 description: "Le sous-processus que Claude Code appelle à chaque événement d'outil"
 ---
 
@@ -7,9 +7,9 @@ description: "Le sous-processus que Claude Code appelle à chaque événement d'
 failproofai --hook <EventType>
 ```
 
-Il s'agit de la commande enregistrée dans le fichier `settings.json` de Claude Code par `failproofai policies --install`. Vous n'avez normalement pas à l'appeler directement.
+Il s'agit de la commande enregistrée dans le fichier `settings.json` de Claude Code par `failproofai policies --install`. Vous n'avez normalement pas besoin de l'appeler directement.
 
-Lit un payload JSON depuis stdin, évalue toutes les politiques activées, et se termine avec un code indiquant la décision :
+Lit un payload JSON depuis stdin, évalue toutes les politiques activées et se termine avec un code indiquant la décision :
 
 | Code de sortie | Décision | Effet |
 |----------------|----------|-------|
@@ -20,7 +20,7 @@ Lit un payload JSON depuis stdin, évalue toutes les politiques activées, et se
 ### Types d'événements pris en charge
 
 | Catégorie | Événements |
-|-----------|------------|
+|-----------|-----------|
 | **Exécution d'outils** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **Cycle de vie de session** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **Interaction utilisateur** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |

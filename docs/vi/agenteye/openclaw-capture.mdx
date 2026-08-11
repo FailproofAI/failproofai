@@ -1,32 +1,32 @@
 ---
-title: "Tính năng ghi lại phiên làm việc OpenClaw"
-description: "Đưa các phiên làm việc OpenClaw cục bộ của nhóm của bạn vào AgentEye dưới dạng các phiên và sự kiện thông thường — mà không cần thay đổi cách OpenClaw hoạt động."
+title: "Ghi lại phiên OpenClaw"
+description: "Theo dõi các phiên OpenClaw cục bộ của nhóm bạn vào AgentEye dưới dạng các phiên và sự kiện thông thường — mà không thay đổi cách OpenClaw hoạt động."
 ---
 
-Nếu nhóm của bạn sử dụng [OpenClaw](https://docs.openclaw.ai), tính năng ghi lại phiên làm việc OpenClaw sẽ đưa những phiên đó vào AgentEye dưới dạng các phiên và sự kiện thông thường, giúp bạn tìm kiếm, phát lại và đánh giá chúng cùng với tất cả những gì khác mà bạn quan sát. Nó bổ sung cho [Python SDK](/vi/agenteye/python-sdk): SDK sẽ theo dõi các agent mà bạn viết, trong khi tính năng này ghi lại công việc OpenClaw mà nhóm của bạn đã thực hiện — mà không cần thay đổi cách họ chạy nó.
+Nếu nhóm bạn chạy [OpenClaw](https://docs.openclaw.ai), ghi lại phiên OpenClaw sẽ đưa những phiên đó vào AgentEye dưới dạng các phiên và sự kiện thông thường, để bạn có thể tìm kiếm, phát lại và đánh giá chúng cùng với mọi thứ khác bạn quan sát. Nó bổ sung cho [Python SDK](/vi/agenteye/python-sdk): SDK này cung cấp công cụ cho các agent bạn viết, trong khi tính năng này ghi lại công việc OpenClaw mà nhóm bạn đã làm — mà không thay đổi cách họ chạy nó.
 
-Một bộ thu thập dữ liệu nền nhỏ đọc các bảng ghi chép phiên làm việc OpenClaw cục bộ khi chúng được ghi và gửi chúng đến AgentEye. Nó hoạt động giống như [Codex capture](/vi/agenteye/codex-capture), và một bộ thu thập có thể ghi lại cả hai cùng một lúc.
-
----
-
-## Điều gì được ghi lại
-
-Mọi agent được cấu hình trong cài đặt OpenClaw của một máy đều được ghi lại bởi bộ thu thập của máy đó — không cần cài đặt riêng cho từng agent.
-
-Mỗi phiên làm việc OpenClaw trở thành một [phiên](/vi/agenteye/sessions) AgentEye; các tin nhắn của người dùng và trợ lý, lệnh gọi công cụ và kết quả công cụ trở thành những [sự kiện](/vi/agenteye/event-stream) tương ứng.
+Một bộ sưu tập nền nhỏ đọc các bản ghi phiên OpenClaw cục bộ khi chúng được viết và gửi chúng đến AgentEye. Nó hoạt động giống như [ghi lại Codex](/vi/agenteye/codex-capture), và một bộ sưu tập có thể ghi lại cả hai cùng lúc.
 
 ---
 
-## Bật tính năng này
+## Thứ nó ghi lại
 
-Tính năng ghi lại được tắt cho đến khi bạn bật nó. Cài đặt bộ thu thập với một khóa API có quyền `events:add` (xem [API keys](/vi/agenteye/api-keys)), và bật tính năng ghi lại OpenClaw:
+Mọi agent được cấu hình trong thiết lập OpenClaw của máy đều được ghi lại bởi bộ sưu tập của máy đó — không có thiết lập cho từng agent.
+
+Mỗi phiên OpenClaw trở thành một [phiên](/vi/agenteye/sessions) AgentEye; các thông điệp của người dùng và trợ lý, lệnh gọi công cụ và kết quả công cụ của nó trở thành các [sự kiện](/vi/agenteye/event-stream) phù hợp.
+
+---
+
+## Bật nó lên
+
+Ghi lại bị tắt cho đến khi bạn bật nó. Cài đặt bộ sưu tập với khóa API có quyền `events:add` (xem [API keys](/vi/agenteye/api-keys)) và bật ghi lại OpenClaw:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --openclaw-enabled
 ```
 
-Điều này sẽ cài đặt bộ thu thập, đăng ký nó làm dịch vụ nền, và bắt đầu ghi lại. Xác nhận rằng nó đang chạy:
+Điều này cài đặt bộ sưu tập, đăng ký nó làm dịch vụ nền và bắt đầu ghi lại. Xác nhận nó đang chạy:
 
 ```bash
 agenteye-collector health
@@ -34,16 +34,16 @@ agenteye-collector health
 
 Ghi lại nhiều hơn một agent trên cùng một máy? Thêm cờ của mỗi cái vào cùng một lệnh — ví dụ `--openclaw-enabled --codex-enabled`.
 
-Lần chạy đầu tiên, các phiên làm việc OpenClaw hiện có của bạn sẽ được điền lại một lần và sau đó hoạt động mới sẽ truyến phát trong vòng vài giây. Các tệp của chính OpenClaw chỉ được đọc — không bao giờ được sửa đổi, di chuyển hoặc xóa — và mỗi phiên được gửi đúng một lần, thậm chí qua các lần khởi động lại.
+Khi chạy lần đầu tiên, các phiên OpenClaw hiện tại của bạn được lấp đầy một lần và hoạt động mới sau đó được truyền trong vòng vài giây. Các tập tin của chính OpenClaw chỉ được đọc — không bao giờ được sửa đổi, di chuyển hoặc xóa — và mỗi phiên được gửi chính xác một lần, ngay cả khi khởi động lại.
 
 ---
 
-## Nơi nó xuất hiện
+## Nó xuất hiện ở đâu
 
-Các phiên được ghi lại xuất hiện trong **Sessions**, và các sự kiện của chúng trong luồng **Events**, giống như bất kỳ agent nào khác mà bạn quan sát — vì vậy [session replay](/vi/agenteye/sessions), [search](/vi/agenteye/queries), [evaluations](/vi/agenteye/evaluations), và [alerts](/vi/agenteye/alerts) đều hoạt động trên chúng. Lọc theo agent OpenClaw để xem chúng riêng biệt.
+Các phiên được ghi lại xuất hiện trong **Sessions** và các sự kiện của chúng trong luồng **Events**, giống như bất kỳ agent nào khác mà bạn quan sát — vì vậy [phát lại phiên](/vi/agenteye/sessions), [tìm kiếm](/vi/agenteye/queries), [đánh giá](/vi/agenteye/evaluations) và [cảnh báo](/vi/agenteye/alerts) đều hoạt động trên chúng. Lọc theo agent OpenClaw để xem chúng riêng biệt.
 
 ---
 
-## Bảo mật
+## Quyền riêng tư
 
-Các bảng ghi chép OpenClaw chứa toàn bộ phiên — bao gồm đầu ra lệnh, nội dung tệp và bất cứ điều gì mà agent đã đọc hoặc ghi — và có thể chứa các bí mật. Các phiên được ghi lại được gửi như cũ, vì vậy chỉ bật tính năng ghi lại trên các máy và cho các nhóm nơi tập trung nội dung đó trong AgentEye là thích hợp, và cấp cho bộ thu thập một khóa được phạm vi chỉ `events:add`. Xem [Security](/vi/agenteye/security) để biết cách dữ liệu của bạn được giữ riêng biệt.
+Các bản ghi OpenClaw chứa toàn bộ phiên — bao gồm đầu ra lệnh, nội dung tập tin và bất cứ thứ gì agent đọc hoặc viết — và có thể chứa các bí mật. Các phiên được ghi lại được gửi nguyên vẹn, vì vậy chỉ bật ghi lại trên các máy và cho các nhóm nơi tập trung nội dung đó trong AgentEye là phù hợp, và cấp cho bộ sưu tập một khóa có phạm vi chỉ `events:add`. Xem [Security](/vi/agenteye/security) để biết dữ liệu của bạn được giữ riêng biệt như thế nào.

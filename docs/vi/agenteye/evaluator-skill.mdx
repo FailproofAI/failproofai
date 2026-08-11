@@ -1,78 +1,77 @@
 ---
 title: "Kỹ năng Failproof AI Observability Evaluator Agent"
-description: "Từ 'Tôi nghĩ agent của chúng tôi đôi khi có vấn đề' đến một dịch vụ scoring được triển khai, với coding agent của bạn vừa quyết định vừa xây dựng."
+description: "Từ 'Tôi nghĩ agent của chúng tôi đôi khi không hoạt động tốt' đến một dịch vụ chấm điểm đã triển khai, với agent code của bạn vừa quyết định vừa xây dựng."
 ---
 
+Từ *"Tôi nghĩ agent của chúng tôi đôi khi không hoạt động tốt"* đến một dịch vụ chấm điểm đã triển khai, với agent code của bạn vừa quyết định vừa xây dựng. **Kỹ năng đánh giá Failproof AI Observability** (`agenteye-evaluator`) là một *Agent Skill*: một thư mục nhỏ chứa các hướng dẫn mà một agent code như Claude Code hoặc Codex có thể tải theo yêu cầu. Nó dạy agent cách xác định những thứ kích thước chất lượng nào đáng theo dõi cho *agent của bạn*, sau đó viết, kiểm tra và triển khai [dịch vụ evaluator](/vi/agenteye/evaluation-suite) mà chấm điểm chúng.
 
-Từ *"Tôi nghĩ agent của chúng tôi đôi khi có vấn đề"* đến một dịch vụ scoring được triển khai, với coding agent của bạn vừa quyết định vừa xây dựng. **Kỹ năng Failproof AI Observability evaluator** (`agenteye-evaluator`) là một *Agent Skill*: một thư mục nhỏ chứa hướng dẫn mà một coding agent như Claude Code hay Codex có thể tải khi cần. Nó dạy agent cách xác định những chiều chất lượng nào đáng theo dõi cho *agent của bạn*, sau đó viết, kiểm thử và triển khai [dịch vụ evaluator](/vi/agenteye/evaluation-suite) để chấm điểm chúng.
-
-Nó **không** phải là một scorer được lưu trữ, một registry bạn tải lên, hay một hệ thống plugin. Evaluator của bạn vẫn là dịch vụ HTTP riêng trên cơ sở hạ tầng riêng của bạn, chính xác như mô tả trong hướng dẫn [Evaluation suite](/vi/agenteye/evaluation-suite). Kỹ năng này chỉ dạy agent của bạn cách xây dựng nó tốt, vì vậy mọi thứ nó làm, bạn cũng có thể tự làm bằng cách viết cùng một đoạn mã.
+Nó **không phải** là một scorer được lưu trữ, một registry bạn tải lên, hay một hệ thống plugin. Evaluator của bạn vẫn là dịch vụ HTTP riêng của bạn trên cơ sở hạ tầng riêng của bạn, chính xác như được mô tả trong hướng dẫn [bộ đánh giá](/vi/agenteye/evaluation-suite). Kỹ năng chỉ dạy agent cách xây dựng nó tốt, vì vậy mọi thứ nó làm, bạn cũng có thể tự làm bằng cách viết cùng một đoạn code.
 
 ---
 
-## Phần khó là quyết định cái gì cần chấm điểm
+## Phần khó là quyết định những gì cần chấm điểm
 
-Bề mặt SDK rất nhỏ — một decorator và hai model — và agent có thể viết từ [contract](/vi/agenteye/evaluation-suite#http-contract) một mình. Đó không phải là nơi evaluator thất bại. Chúng thất bại vì chúng chấm điểm những thứ sai, và một evaluator chấm những thứ sai thì còn tệ hơn không có gì: nó tạo ra một bảng điều khiển mà mọi người học cách bỏ qua.
+Bề mặt SDK rất nhỏ — một decorator và hai mô hình — và một agent có thể viết đó chỉ từ [hợp đồng](/vi/agenteye/evaluation-suite#http-contract) mà thôi. Đó không phải nơi evaluator thất bại. Chúng thất bại vì chấm điểm những thứ sai, và một evaluator chấm điểm sai thứ gì đó còn tồi tệ hơn không có: nó tạo ra một bảng điều khiển mà mọi người học cách bỏ qua.
 
-Vì vậy, hầu hết kỹ năng là phần trước khi bất kỳ mã nào tồn tại. Nó có agent phỏng vấn bạn (*"mô tả một lần chạy diễn ra tốt; bây giờ mô tả một lần chạy diễn ra xấu"*), sau đó kéo các phiên thực tế của bạn qua [`agenteye` CLI](/vi/agenteye/cli) và đọc chúng từ đầu đến cuối. Hai nửa này thường không đồng ý, và khoảng cách chính là điểm: những gì bạn định đo so với những gì transcript của bạn thực sự có thể hỗ trợ. Một chiều chỉ tồn tại nếu nó **có thể tính toán** từ các sự kiện và **phân biệt** — nếu nó chấm 0.9 cho cả lần chạy tốt và lần chạy xấu của bạn, nó không dạy gì cả và sẽ bị loại.
+Vì vậy, hầu hết kỹ năng là phần trước khi bất kỳ code nào tồn tại. Nó có agent phỏng vấn bạn (*"mô tả một lần chạy diễn ra tốt; giờ thì một lần diễn ra tệ"*), sau đó kéo các phiên thực tế của bạn thông qua [`agenteye` CLI](/vi/agenteye/cli) và đọc chúng từ đầu đến cuối. Hai nửa này thường không đồng ý, và khoảng cách chính là điểm: những gì bạn định đo lường so với những gì bản ghi của bạn thực sự có thể hỗ trợ. Một thứ kích thước chỉ tồn tại nếu nó **có thể tính toán được** từ các sự kiện và **phân biệt được** — nếu nó chấm 0.9 trên cả lần chạy tốt và lần chạy tệ của bạn, nó không dạy gì và bị cắt bỏ.
 
-Kết quả là một đề xuất 2-4 chiều kèm theo lý do, để bạn phê duyệt trước khi bất kỳ dòng nào được viết.
+Những gì quay lại là một đề xuất 2-4 thứ kích thước kèm theo lý do, để bạn ký xác nhận trước khi viết một dòng code nào.
 
 ```mermaid
 flowchart TD
-    YOU["bạn: 'Tôi muốn evals cho support bot của tôi'"] --> AGENT["coding agent (Claude Code / Codex)<br/>tải kỹ năng agenteye-evaluator"]
-    AGENT -->|"phỏng vấn: good vs bad trông như thế nào?"| YOU
+    YOU["bạn: 'Tôi muốn evals cho support bot của tôi'"] --> AGENT["agent code (Claude Code / Codex)<br/>tải kỹ năng agenteye-evaluator"]
+    AGENT -->|"phỏng vấn: tốt vs tệ trông như thế nào?"| YOU
     AGENT -->|"agenteye --json sessions / events"| DATA["các phiên thực tế của bạn<br/>những gì thực sự xảy ra"]
-    DATA --> DIMS["2-4 chiều, bạn phê duyệt"]
+    DATA --> DIMS["2-4 thứ kích thước, bạn ký xác nhận"]
     DIMS --> SVC["dịch vụ evaluator của bạn<br/>agenteye-evaluator SDK"]
-    SVC --> SCORES["điểm chấm xuất hiện trong bảng điều khiển<br/>và agenteye evals"]
+    SVC --> SCORES["điểm được nhập vào bảng điều khiển<br/>và agenteye evals"]
 ```
 
 ---
 
-## Nó liên quan như thế nào với những phần evaluation khác
+## Nó liên quan đến những phần đánh giá khác như thế nào
 
-Bốn tài liệu đề cập đến scoring, và chúng trao quyền cho nhau theo thứ tự:
+Bốn tài liệu bao gồm chấm điểm, và chúng bàn giao cho nhau theo thứ tự:
 
-| Trang | Nó là gì | Tìm đến nó khi |
+| Trang | Đó là gì | Sử dụng khi |
 |---|---|---|
-| **[Evaluations](/vi/agenteye/evaluations)** | Tính năng: điểm trên lưới phiên, bảng điều khiển, đánh giá lại | Bạn muốn biết automatic scoring mang lại gì |
-| **[Evaluation suite](/vi/agenteye/evaluation-suite)** | HTTP contract, SDK, server env vars | Bạn đang triển khai hoặc gỡ lỗi evaluator |
-| **Evaluator skill** (tài liệu này) | Một cửa ngôn ngữ tự nhiên để thiết kế *và* xây dựng scorer | Bạn muốn từ "Tôi muốn evals" đến dịch vụ chạy |
-| **[CLI skill](/vi/agenteye/cli-skill)** | Một cửa ngôn ngữ tự nhiên cho `agenteye` CLI | Bạn muốn *đọc* điểm bạn đã có |
-| **[Python SDK skill](/vi/agenteye/python-sdk-skill)** | Một cửa ngôn ngữ tự nhiên để instrument agent của bạn | Agent của bạn chưa phát hành phiên — không có gì để chấm điểm |
+| **[Evaluations](/vi/agenteye/evaluations)** | Tính năng: điểm trên lưới phiên, bảng điều khiển, đánh giá lại | Bạn muốn biết chấm điểm tự động mang lại gì |
+| **[Bộ đánh giá](/vi/agenteye/evaluation-suite)** | Hợp đồng HTTP, SDK, biến môi trường máy chủ | Bạn đang triển khai hoặc gỡ lỗi evaluator một mình |
+| **Kỹ năng Evaluator** (tài liệu này) | Một cửa trước ngôn ngữ tự nhiên để thiết kế *và* xây dựng scorer | Bạn muốn đi từ "Tôi muốn evals" đến một dịch vụ đang chạy |
+| **[Kỹ năng CLI](/vi/agenteye/cli-skill)** | Một cửa trước ngôn ngữ tự nhiên trên CLI `agenteye` | Bạn muốn *đọc* những điểm bạn đã có |
+| **[Kỹ năng Python SDK](/vi/agenteye/python-sdk-skill)** | Một cửa trước ngôn ngữ tự nhiên về việc instrumentation agent của bạn | Agent của bạn chưa phát ra phiên — không có gì để chấm |
 
-### so với CLI skill: xây dựng versus đọc
+### so với kỹ năng CLI: xây dựng so với đọc
 
-Hai kỹ năng có ý định không trùng lặp, và cài đặt cả hai là thiết lập bình thường — agent chọn giữa chúng dựa trên những gì bạn hỏi:
+Hai kỹ năng được thiết kế cố ý không trùng lặp, và cài đặt cả hai là cấu hình bình thường — agent chọn giữa chúng dựa trên những gì bạn hỏi:
 
-- **`agenteye-evaluator`** (tài liệu này) xây dựng thứ *tạo ra* điểm. Công việc của nó kết thúc khi điểm xuất hiện lần đầu tiên.
+- **`agenteye-evaluator`** (tài liệu này) xây dựng thứ *tạo ra* điểm. Công việc của nó kết thúc khi điểm được nhập lần đầu tiên.
 - **[`agenteye-cli`](/vi/agenteye/cli-skill)** đọc điểm đã tồn tại (`agenteye evals`). *"Chất lượng có giảm tuần này không?"* là câu hỏi của nó, không phải của kỹ năng này.
 
 ---
 
-## Điều kiện tiên quyết
+## Yêu cầu trước
 
-1. **`agenteye` CLI được cài đặt và đăng nhập** (`pipx install agenteye`, sau đó `agenteye login`). Kỹ năng dựa vào nó hai lần: để kéo các phiên thực tế nó thiết kế cho, và để xác nhận điểm của bạn xuất hiện ở cuối. Đăng nhập của bạn cần `events:read`, cộng với `evaluations:read` để kiểm tra cuối cùng đó. Giống như CLI skill, nó **không thể** hoàn thành đăng nhập mã một lần qua email cho bạn.
-2. **Một nơi cho evaluator ở.** Nó được xây dựng thành một image và chạy như một dịch vụ chạy liên tục, vì vậy nó cần một repo thực, không phải một tệp tạm thời. Các evaluator thường sống trong repo riêng của chúng, tách biệt với agent đang được chấm điểm — kỹ năng tìm kiếm một cái hiện có và hỏi trước khi tạo cái mới.
-3. **Wheel SDK `agenteye-evaluator`** — đọc phần tiếp theo trước khi agent của bạn bắt đầu gõ lệnh `pip`.
+1. **`agenteye` CLI được cài đặt và đã đăng nhập** (`pipx install agenteye`, sau đó `agenteye login`). Kỹ năng dựa vào nó hai lần: để kéo các phiên thực tế nó thiết kế, và để xác nhận điểm của bạn được nhập ở cuối. Lần đăng nhập của bạn cần `events:read`, cộng với `evaluations:read` để kiểm tra cuối cùng đó. Như với kỹ năng CLI, nó **không thể** hoàn thành lần đăng nhập mã một lần qua email cho bạn.
+2. **Một nơi để evaluator tồn tại.** Nó được xây dựng thành một image và chạy như một dịch vụ chạy lâu dài, vì vậy nó cần một kho thực tế, không phải một tệp scratch. Evaluator thường sống trong kho của riêng chúng, tách rời khỏi agent được chấm — kỹ năng tìm kiếm một cái hiện có và hỏi trước khi scaffolding một cái mới.
+3. **Bánh xe SDK `agenteye-evaluator`** — đọc phần tiếp theo trước khi agent của bạn bắt đầu nhập các lệnh `pip`.
 
 ---
 
-## Nơi lấy nó
+## Nơi để lấy nó
 
 Kỹ năng được công bố trong bộ sưu tập kỹ năng công khai của Failproof AI:
 
 **[github.com/FailproofAI/skills](https://github.com/FailproofAI/skills)** → [`skills/agenteye-evaluator/`](https://github.com/FailproofAI/skills/tree/main/skills/agenteye-evaluator)
 
-Kho lưu trữ là công khai và kỹ năng không cần bất kỳ thông tin xác thực riêng nào — nó chỉ điều khiển `agenteye` CLI với phiên *bạn* đã đăng nhập, và viết mã trong *repo của bạn*. Lưu ý nó được gửi như là một thư mục riêng và **không** nằm bên trong gói `pipx install agenteye`, vì vậy đừng tìm nó ở đó.
+Kho lưu trữ là công khai và kỹ năng không cần bất kỳ thông tin xác thực nào của riêng nó — nó chỉ điều khiển CLI `agenteye` với phiên *bạn* đã đăng nhập, và viết code trong *kho của bạn*. Lưu ý rằng nó được xuất hành như một thư mục riêng của nó và **không** nằm trong gói `pipx install agenteye`, vì vậy không tìm nó ở đó.
 
 ## Cài đặt kỹ năng
 
-Cách nhanh nhất là CLI [`skills`](https://skills.sh), nó tìm nạp thư mục và đặt nó nơi agent của bạn tìm:
+Con đường nhanh nhất là CLI [`skills`](https://skills.sh), nó lấy thư mục và đặt nó nơi agent của bạn tìm kiếm:
 
 ```bash
-# Claude Code, dự án này chỉ
+# Claude Code, chỉ dự án này
 npx skills add FailproofAI/skills --skill agenteye-evaluator -a claude-code
 
 # mọi dự án (cài đặt vào ~/.claude/skills/)
@@ -85,87 +84,83 @@ npx skills add FailproofAI/skills --skill agenteye-evaluator -a codex
 Sau đó quản lý nó như bất kỳ kỹ năng nào khác:
 
 ```bash
-npx skills list -a claude-code           # cái gì được cài đặt
+npx skills list -a claude-code           # cái nào được cài
 npx skills update agenteye-evaluator     # kéo phiên bản mới nhất
-npx skills remove agenteye-evaluator     # xóa nó
+npx skills remove agenteye-evaluator     # gỡ nó
 ```
 
-Thích cài đặt bằng tay? An Agent Skill chỉ là một thư mục chứa một `SKILL.md` (cộng với các tham chiếu tuỳ chọn), vì vậy sao chép nó cũng hoạt động:
+Thích cài đặt bằng tay? Một Agent Skill chỉ là một thư mục chứa một `SKILL.md` (cộng với các tham chiếu tùy chọn), vì vậy sao chép nó cũng hoạt động:
 
-- **Claude Code**: đặt thư mục `agenteye-evaluator/` trong `~/.claude/skills/` (mọi dự án) hoặc `<your-repo>/.claude/skills/` (chỉ repo đó). Claude Code tự khám phá nó — xác minh bằng danh sách `/skills`, hoặc chỉ cần hỏi về evals.
-- **Codex (OpenAI)**: Codex đọc cùng một `SKILL.md`. `agents/openai.yaml` được đi kèm đặt `allow_implicit_invocation: true`, vì vậy Codex tự chọn kỹ năng khi một tác vụ phù hợp; nếu không hãy gọi nó rõ ràng như `$agenteye-evaluator`.
-
----
-
-## SDK không nằm trên public PyPI công khai
-
-> **Cảnh báo:** Đọc điều này trước khi để agent cài đặt SDK.
-
-Kỹ năng là công khai; SDK nó điều khiển thì không. `agenteye-evaluator` được gửi chỉ như một artifact phát hành riêng, và không giống như `agenteye`, tên **chưa được áp dụng trên public PyPI** — vì vậy một `pip install agenteye-evaluator` trần truồng có thể kéo gói của người lạ vào dịch vụ đọc transcript sản xuất của bạn. Đó là một vấn đề chuỗi cung ứng, không phải một lỗi đánh máy.
-
-Kỹ năng biết điều này và thay vào đó hoạt động xuống một cầu thang cài đặt, dừng lại ở bậc đầu tiên áp dụng: nguồn monorepo nếu bạn ở trong repo AgentEye, nếu không là wheel phát hành riêng từ GitHub Releases (cần truy cập), và nếu cái nào không có sẵn nó **dừng lại và cho bạn biết hãy hỏi Failproof AI contact của bạn để lấy wheel** thay vì ứng phó.
-
-Vì vậy nếu agent của bạn đề xuất một `pip install agenteye-evaluator` trần truồng từ public PyPI, đó là dấu hiệu kỹ năng không bao giờ được tải. Dừng ở đó và kiểm tra nó được cài đặt.
+- **Claude Code**: đặt thư mục `agenteye-evaluator/` trong `~/.claude/skills/` (mọi dự án) hoặc `<kho-của-bạn>/.claude/skills/` (chỉ kho đó). Claude Code tự động phát hiện nó — xác minh bằng danh sách `/skills`, hoặc chỉ hỏi về evals.
+- **Codex (OpenAI)**: Codex đọc cùng `SKILL.md`. `agents/openai.yaml` đi kèm đặt `allow_implicit_invocation: true`, vì vậy Codex tự động chọn kỹ năng khi một tác vụ khớp; nếu không thì gọi nó một cách rõ ràng như `$agenteye-evaluator`.
 
 ---
 
-## Những gì bạn có thể hỏi nó
+## SDK không có trên public PyPI
 
-Một vòng chuyến thực tế bắt đầu với một yêu cầu mơ hồ và kết thúc bằng một thiết kế được ký duyệt, không phải mã:
+> **Cảnh báo:** Đọc điều này trước khi để một agent cài đặt SDK.
+
+Kỹ năng là công khai; SDK nó điều khiển không phải. `agenteye-evaluator` chỉ được xuất hành như một artifact phát hành riêng, và không giống `agenteye`, tên **không được yêu cầu trên public PyPI** — vì vậy một `pip install agenteye-evaluator` trần có thể kéo gói của người lạ vào dịch vụ đọc bản ghi sản xuất của bạn. Đó là một vấn đề chuỗi cung ứng, không phải một lỗi đánh máy.
+
+Kỹ năng biết điều này và hoạt động xuống một thang máy cài đặt thay vào đó, dừng ở bậc đầu tiên áp dụng: nguồn monorepo nếu bạn ở trong kho AgentEye, nếu không thì bánh xe phát hành riêng từ GitHub Releases (cần truy cập), và nếu không thể truy cập được cả hai thì nó **dừng lại và yêu cầu bạn liên hệ với liên hệ Failproof AI của bạn để lấy bánh xe** thay vì tự tìm cách.
+
+Vì vậy, nếu agent của bạn đề xuất một `pip install agenteye-evaluator` trần từ public PyPI, đó là dấu hiệu cho thấy kỹ năng không bao giờ tải. Dừng lại ở đó và kiểm tra nó được cài đặt.
+
+---
+
+## Bạn có thể hỏi nó gì
+
+Một vòng lặp thực tế bắt đầu với một yêu cầu mơ hồ và kết thúc với một thiết kế được ký xác nhận, không phải với code:
 
 ```text
-bạn   ▸ Tôi muốn evals cho support bot của chúng tôi. Tôi nghĩ
-        nó đôi khi có vấn đề.
+bạn   ▸ Tôi muốn evals cho support bot của chúng tôi. Tôi nghĩ đôi khi nó không tốt.
 
-agent ▸ Trước khi tôi viết bất cứ thứ gì: mô tả một lần chạy
-        diễn ra tốt, và một lần chạy diễn ra xấu.
+agent ▸ Trước khi tôi viết bất kỳ thứ gì: mô tả một lần chạy diễn ra tốt,
+        và một lần diễn ra tệ.
 
-bạn   ▸ Tốt: nó trả lời từ các tài liệu. Xấu: nó bịa chuyện,
-        hoặc từ bỏ và nói "liên hệ hỗ trợ".
+bạn   ▸ Tốt: nó trả lời từ tài liệu. Tệ: nó bịa chuyện,
+        hoặc từ bỏ và nói "liên hệ bộ phận hỗ trợ".
 
-agent ▸ Chạy: agenteye --json sessions --status error --since 7d
-        Đọc 5 phiên, bao gồm hai bạn gọi là xấu.
+agent ▸ Đang chạy: agenteye --json sessions --status error --since 7d
+        Đọc 5 phiên, bao gồm hai cái bạn gọi là tệ.
 
-        Lời của bạn nói tính thực tế và sự chối từ. Các transcript
-        đồng ý về sự chối từ (2 trong 5 kết thúc bằng một tay qua
-        hỗ trợ, và nó rõ ràng trong model_response.content), nhưng
-        tính thực tế cần một sự thật mặt đất mà sự kiện của bạn
-        không mang theo.
+        Những từ của bạn nói về tính xác thực và sự từ chối. Bản ghi đồng ý
+        về sự từ chối (2 của 5 kết thúc bằng một chuyến tay đến hỗ trợ,
+        và nó rõ ràng trong model_response.content), nhưng tính xác thực
+        cần một sự thật cơ bản mà sự kiện của bạn không mang.
 
         Vì vậy tôi sẽ chấm ba điều:
           - deflection      quy tắc, rẻ, tách hai lần chạy của bạn
-          - tool_efficiency quy tắc, bắt vòng lặp lại trong run-004
-          - groundedness    LLM judge: mỗi yêu cầu trong tài liệu
-                            nó lấy lại đều có trong tài liệu?
+          - tool_efficiency quy tắc, bắt lại vòng lặp retry trong run-004
+          - groundedness    LLM judge: mọi yêu sách trong tài liệu nó lấy có đúng không?
 
-        "factuality" sẽ cần một sự thật mặt đất mà chúng tôi
-        không có; groundedness là thứ gần nhất mà transcript của
-        bạn thực sự có thể hỗ trợ. OK với ba tên đó? Đổi tên
-        sau này sẽ tách lịch sử.
+        "factuality" sẽ cần sự thật cơ bản mà chúng tôi không có; groundedness
+        là thứ gần nhất mà bản ghi của bạn thực sự có thể hỗ trợ.
+        OK với ba cái tên đó? Đổi tên sau này sẽ chia nhỏ lịch sử.
 
-bạn   ▸ có
+bạn   ▸ vâng
 
-agent ▸ Không có evaluator trong repo này. Tôi có nên tạo một ở
-        đây, hay bạn có một ở nơi khác?
+agent ▸ Không có evaluator trong kho này. Tôi có nên scaffolding một ở đây không, hoặc
+        bạn có một ở chỗ khác?
 ```
 
-Từ đó nó viết các chiều dựa trên quy tắc trước tiên (miễn phí, tức thì, xác định), kiểm thử chúng với một phiên thực tế bao gồm những cái rỗng và không bao giờ hoàn thành mà làm hỏng các evaluator ngây thơ, và chỉ tìm đến một LLM judge cho chiều chủ quan. Nó biết [giới hạn của dispatcher](/vi/agenteye/evaluation-suite#configuring-the-server) — timeout yêu cầu 30 giây và 8 cuộc gọi đồng thời triển khai toàn diện — vì vậy nếu judge không vừa một cách đáng tin cậy, nó đi không đồng bộ với `JobPending` thay vì để judge của bạn bị hủy và thử lại năm lần với chi phí gấp năm lần.
+Từ đó nó viết những thứ kích thước dựa trên quy tắc trước tiên (miễn phí, tức thì, xác định), kiểm tra chúng dựa trên một phiên bắt được thực tế bao gồm những cái trống và không bao giờ hoàn thành khiến evaluator ngây thơ bị sập, và chỉ tiếp cận một LLM judge trên thứ kích thước chủ quan. Nó biết những giới hạn của [dispatcher](/vi/agenteye/evaluation-suite#configuring-the-server) — một timeout yêu cầu 30 giây và 8 lệnh gọi đồng thời trên toàn bộ triển khai — vì vậy nếu judge không sẽ thích hợp một cách đáng tin cậy, nó đi không đồng bộ với `JobPending` thay vì để judge bị hủy và thử lại năm lần với chi phí năm lần.
 
-Sau đó nó triển khai, đặt hai server env vars, và xác nhận bằng `agenteye --json evals --session-id <id>` rằng điểm thực sự xuất hiện. Điểm xuất hiện là bằng chứng duy nhất.
+Sau đó nó triển khai, đặt hai biến môi trường máy chủ, và xác nhận bằng `agenteye --json evals --session-id <id>` rằng điểm thực sự được nhập. Điểm được nhập là bằng chứng duy nhất.
 
 ---
 
-## Những gì cần chú ý
+## Những gì cần lưu ý
 
-- **Tên chiều gần như vĩnh viễn.** Các khóa điểm là các chuỗi tuỳ ý và nền tảng xu hướng bất cứ thứ gì bạn gửi, có nghĩa là không có gì hạ lưu sửa một lựa chọn xấu. Đổi tên sau và lịch sử bị tách: các phiên cũ giữ khóa cũ và xu hướng bị ngắt. Đó là lý do tại sao kỹ năng nhận ký duyệt rõ ràng trước khi viết mã — hãy xem xét lời nhắc đó một cách nghiêm túc.
-- **Fixture là các transcript sản xuất thực tế.** Thiết kế dựa trên các phiên thực tế có nghĩa là kéo chúng xuống đĩa, và chúng có thể chứa dữ liệu khách hàng. Kỹ năng hỏi trước khi commit chúng vào git; nếu không chắc chắn, giữ `fixtures/` ngoài repo và để mỗi nhà phát triển kéo riêng của họ.
-- **Agent viết và triển khai một dịch vụ đọc mọi transcript.** Nó hoạt động như bạn, giới hạn bởi quyền hạn đăng nhập CLI của bạn, nhưng xem xét evaluator như bất kỳ mã nào khác chạm vào dữ liệu sản xuất.
+- **Tên thứ kích thước gần như vĩnh viễn.** Khóa điểm là các chuỗi tùy ý và xu hướng nền tảng bất kỳ thứ gì bạn gửi, có nghĩa là không có gì hạ lưu sửa một lựa chọn xấu. Đổi tên sau này và lịch sử chia tách: các phiên cũ giữ khóa cũ và xu hướng bị gãy. Đây là lý do tại sao kỹ năng có được ký xác nhận rõ ràng trước khi viết code — hãy coi lời nhắc đó một cách nghiêm túc.
+- **Fixture là bản ghi sản xuất thực tế.** Thiết kế dựa trên các phiên thực tế có nghĩa là kéo chúng vào đĩa, và chúng có thể chứa dữ liệu khách hàng. Kỹ năng hỏi trước khi commit chúng vào git; nếu nghi ngờ, giữ `fixtures/` ra khỏi kho và có mỗi nhà phát triển kéo của riêng họ.
+- **Agent viết và triển khai một dịch vụ đọc mọi bản ghi.** Nó hoạt động như bạn, được giới hạn bởi quyền đăng nhập CLI của bạn, nhưng xem xét evaluator như bất kỳ code nào khác sử dụng dữ liệu sản xuất.
 
 ---
 
 ## Bước tiếp theo
 
-- **[Evaluation suite](/vi/agenteye/evaluation-suite)**: HTTP contract, SDK, và server env vars mà kỹ năng cấu hình.
-- **[Evaluations](/vi/agenteye/evaluations)**: nơi các điểm xuất hiện sau khi chúng xuất hiện.
-- **[CLI skill](/vi/agenteye/cli-skill)**: kỹ năng em gái, để đọc kết quả thay vì xây dựng scorer.
-- **[CLI](/vi/agenteye/cli)**: tham chiếu lệnh đằng sau dữ liệu phiên mà kỹ năng thiết kế.
+- **[Bộ đánh giá](/vi/agenteye/evaluation-suite)**: hợp đồng HTTP, SDK, và biến môi trường máy chủ mà kỹ năng cấu hình.
+- **[Evaluations](/vi/agenteye/evaluations)**: nơi điểm xuất hiện một khi chúng được nhập.
+- **[Kỹ năng CLI](/vi/agenteye/cli-skill)**: kỹ năng anh em, để đọc kết quả thay vì xây dựng scorer.
+- **[CLI](/vi/agenteye/cli)**: tham chiếu lệnh phía sau dữ liệu phiên mà kỹ năng thiết kế.

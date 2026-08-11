@@ -1,54 +1,54 @@
 ---
-title: "Audit: il tuo analista di affidabilità automatico"
-description: "Failproof AI Observability cerca i guasti che non hai mai scritto una regola per gestire e ti consegna un elenco ordinato per priorità e basato su prove di esattamente cosa correggere."
+title: "Audits: il tuo analista di affidabilità automatico"
+description: "Failproof AI Observability cerca i guasti per cui non hai mai scritto una regola e ti consegna una lista di cose da fare classificata e supportata da prove, esattamente quello che devi correggere."
 ---
 
 
-Failproof AI Observability cerca i guasti che non hai mai scritto una regola per gestire e ti consegna un elenco ordinato per priorità e basato su prove di esattamente cosa correggere. È come avere un analista che esamina i tuoi log ogni notte, lasciando sul tuo desk la lista ristretta al mattino.
+Failproof AI Observability cerca i guasti per cui non hai mai scritto una regola e ti consegna una lista di cose da fare classificata e supportata da prove, esattamente quello che devi correggere. È come avere un analista che esamina i tuoi log ogni notte e poi ti lascia la lista breve sulla scrivania al mattino.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Un tour di due minuti: da un'esecuzione programmata a una correzione su cui puoi agire.*
+*Un tour di due minuti: da un'esecuzione pianificata a una correzione su cui puoi agire.*
 
-![La pagina Audit: lavori ricorrenti che analizzano le tue sessioni cercando pattern di guasto, ognuno con una pianificazione e sensibilità](/agenteye/images/audits.png)
-*Ogni audit è un lavoro ricorrente che analizza le tue sessioni e redige raccomandazioni ordinate per priorità e basate su prove.*
+![La pagina Audits: lavori ricorrenti che analizzano le tue sessioni alla ricerca di modelli di guasto, ciascuno con una pianificazione e una sensibilità](/agenteye/images/audits.png)
+*Ogni audit è un lavoro ricorrente che scandaglia le tue sessioni e redige raccomandazioni classificate e supportate da prove.*
 
 ## Smetti di indovinare cosa correggere dopo
 
-Gli alert catturano i problemi che già sai di dover tenere d'occhio. Gli audit catturano quelli che non conosci. Su una pianificazione che imposti tu, un audit legge tutte le tue sessioni di agent e cerca i pattern che vale la pena correggere, così puoi dedicare il tuo tempo ad agire sui risultati invece di scorrere i log sperando di individuarli da solo.
+Gli avvisi catturano i problemi che sai già di dover controllare. Gli audit catturano quelli che non conosci. Su una pianificazione che tu scegli, un audit legge tutte le tue sessioni dell'agente e caccia i modelli che vale la pena correggere, così passi il tuo tempo ad agire sui risultati invece di scorrere i log sperando di individuarli da solo.
 
-Una singola esecuzione va dopo i modi di guasto che in realtà rompono gli agent in produzione:
+Una singola esecuzione va alla ricerca dei modi di guasto che effettivamente rompono gli agenti in produzione:
 
 - **Cluster di errori**: lo stesso guasto che si ripete sotto una causa radice condivisa.
-- **Deriva rispetto a un baseline**: il comportamento che silenziosamente si allontana da una finestra nota e affidabile.
-- **Fallimento dell'obiettivo nei transcript**: esecuzioni che tecnicamente sono terminate ma non hanno mai svolto il lavoro.
-- **Uso errato dello strumento**: lo strumento sbagliato, argomenti errati, o loop che consumano chiamate.
-- **Compromessi tra qualità e costo**: dove stai pagando troppo per un output che potresti ottenere a un prezzo inferiore.
-- **Gap di copertura**: comportamento che nessun eval o alert sta monitorando.
+- **Deriva rispetto a una linea di base**: comportamento che silenziosamente si allontana da una finestra nota e buona.
+- **Guasto dell'obiettivo nelle trascrizioni**: esecuzioni che tecnicamente sono finite ma non hanno mai fatto il lavoro.
+- **Uso errato dello strumento**: lo strumento sbagliato, argomenti non validi, o loop che bruciano le chiamate.
+- **Compromessi tra qualità e costo**: dove stai pagando troppo per un output che potresti ottenere più economico.
+- **Lacune di copertura**: comportamento che nessun eval o avviso sta controllando.
 
-Decidi quanto approfondire con una singola impostazione di **sensibilità** (bassa, media o alta), così un agent di staging rumoroso e uno di produzione bloccato possono essere sintonizzati ognuno sul segnale che desideri.
+Tu decidi quanto duramente cerca con una singola impostazione di **sensibilità** (bassa, media o alta), così un agente di staging rumoroso e uno di produzione bloccato possono ognuno essere sintonizzati sul segnale che vuoi.
 
 ## Ogni raccomandazione viene con le prove
 
-Non dovrai mai prendere un risultato sulla fiducia. Ogni raccomandazione cita le esatte sessioni da cui proviene e l'SQL che l'ha riportata alla luce, così puoi aprire le prove e confermare il problema con un clic invece di fare ingegneria inversa su un'affermazione.
+Non dovrai mai accettare un risultato sulla fiducia. Ogni raccomandazione cita le sessioni esatte da cui proviene e l'SQL che l'ha fatta emergere, così puoi aprire le prove e confermare il problema con un clic invece di fare ingegneria inversa di un'affermazione.
 
-Quando un risultato riguarda una credenziale persa, fa un passo oltre e collega gli eventi individuali che ha trovato. Fai clic su uno e atterri esattamente su quel momento nella sessione, già selezionato — non all'inizio di un lungo transcript da scorrere. Il link nomina l'evento; non copia mai il segreto rilevato nel risultato, così leggere un risultato non è un secondo posto dove la tua credenziale è scritta. Se un evento non è più presente perché la sessione ha superato la tua finestra di conservazione, la pagina lo dice chiaramente invece di lasciarti chiederti se hai cliccato sul posto sbagliato.
+Quando un risultato riguarda una credenziale trapelata, va un passo oltre e collega gli eventi individuali che ha abbinato. Fai clic su uno e atterri a quel momento esatto nella sessione, già selezionato — non all'inizio di una lunga trascrizione da scorrere. Il collegamento nomina l'evento; non copia mai il segreto rilevato nel risultato, quindi leggere un risultato non è un secondo posto dove la tua credenziale è scritta. Se un evento non è più lì perché la sessione ha superato la finestra di conservazione, la pagina lo dice chiaramente piuttosto che lasciandoti chiederti se hai fatto clic sulla cosa sbagliata.
 
-Questo è anche quello che mantiene gli audit onesti. Il server verifica che ogni sessione citata esista effettivamente e **scarta qualsiasi raccomandazione le cui prove non si mantengono**, così l'audit indaga ma mai inventa. Quello che finisce nella tua lista è reale, riproducibile e ordinato per priorità in base a quanto conta, con i vincitori più grandi in cima.
+Questo è anche quello che mantiene gli audit onesti. Il server verifica che ogni sessione citata esista effettivamente e **scarta qualsiasi raccomandazione le cui prove non reggono**, così l'audit indaga ma non inventa mai. Quello che arriva sulla tua lista è reale, riproducibile, e classificato per quanto sia importante, con le vittorie più grandi in cima.
 
-## Trasforma una correzione in una barriera protettiva
+## Trasforma una correzione in una guardrail
 
-Correggere un problema è solo metà della vittoria. L'altra metà è assicurarsi che non torni silenziosamente. Ogni risultato porta un **collegamento con un solo clic che redige un alert di ricorrenza**, precompilato con un trigger di partenza sensato che puoi sintonizzare. Chiudi il risultato, attiva l'alert, e la prossima volta che quel pattern riappare ricevi una notifica invece di riscoprirlo in un audit futuro.
+Correggere un problema è solo metà della vittoria. L'altra metà è assicurarsi che non possa tornare silenziosamente. Ogni risultato porta un **scorciatoia con un clic che redige un avviso di ricorrenza**, precompilato con un trigger di partenza sensato che puoi sintonizzare. Chiudi il risultato, attiva l'avviso, e la prossima volta che quel modello riappare riceverai una notifica invece di riscoprirlo in un audit futuro.
 
 ## Dove trovarlo
 
-Gli audit si trovano nel dashboard a **`/<org-slug>/audits`** (barra laterale su *analyze* quindi su *audits*). La visualizzazione delle esecuzioni e dei risultati richiede **`audits:read`**; la creazione, la modifica e la triaging degli audit richiedono **`audits:write`**. Imposta l'ambito e la cadenza di un audit, quindi fai clic su **Run now** ogni volta che desideri i risultati immediatamente invece di attendere il prossimo passaggio programmato.
+Gli audit si trovano nel dashboard a **`/<org-slug>/audits`** (barra laterale su *analyze* su *audits*). Visualizzare esecuzioni e risultati richiede **`audits:read`**; creare, modificare e triage degli audit richiede **`audits:write`**. Imposta lo scope e la cadenza di un audit, poi premi **Run now** ogni volta che vuoi risultati immediatamente invece di aspettare il prossimo passaggio pianificato.
 
-## Correlati
+## Correlato
 
-- [Alerts](/it/agenteye/alerts): ricevi una notifica nel momento in cui viene superata una soglia che conosci già.
+- [Alerts](/it/agenteye/alerts): ricevi una notifica nel momento in cui una soglia che conosci già è superata.
 - [Evaluations](/it/agenteye/evaluations): assegna un punteggio a ogni esecuzione così le regressioni di qualità emergono da sole.
-- [Error tracking](/it/agenteye/error-tracking): raggruppa e segui gli errori che i tuoi agent generano.
+- [Error tracking](/it/agenteye/error-tracking): raggruppa e segui gli errori che i tuoi agenti generano.
 - [Incidents](/it/agenteye/incidents): traccia un problema che un audit scopre fino alla sua correzione.

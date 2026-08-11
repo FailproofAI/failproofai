@@ -1,10 +1,10 @@
 ---
 title: "CLI"
-description: "Todo tu despliegue de Failproof AI Observability, a un comando de distancia."
+description: "Todo tu despliegue de observabilidad de Failproof AI, a un solo comando."
 ---
 
 
-Todo tu despliegue de Failproof AI Observability, a un comando de distancia. Revisa producción, genera una clave de API o reconoce un incidente sin salir de tu terminal, luego automatiza cualquiera de estas acciones en CI, o deja que un agente de código lo haga por ti en lenguaje natural.
+Todo tu despliegue de observabilidad de Failproof AI, a un solo comando. Revisa producción, genera una clave API o reconoce un incidente sin salir de tu terminal; luego automatiza cualquier tarea en CI o deja que un agente de codificación lo haga por ti en lenguaje natural.
 
 ```bash
 pipx install agenteye
@@ -12,18 +12,18 @@ agenteye login --email you@example.com      # a 6-digit code lands in your inbox
 agenteye --json sessions --since 24h         # every agent run from the last day, newest first
 ```
 
-*El CLI `agenteye` se comunica con tu dashboard. Es una herramienta distinta al colector, que envía eventos al servidor.*
+*El CLI `agenteye` se comunica con tu dashboard. Es una herramienta distinta del recolector, que envía eventos al servidor.*
 
-## Todo tu despliegue, a un comando de distancia
+## Todo tu despliegue, a un solo comando
 
-Deja de cambiar de pestaña para responder una pregunta rápida. El CLI `agenteye` lee tus datos y administra tu organización desde un único binario, de modo que una verificación que antes requería navegar por el dashboard se convierte en una línea que puedes volver a ejecutar, crear un alias o pegar en un runbook. Dispones de cuatro áreas:
+Deja de cambiar de pestaña para responder una pregunta rápida. El CLI `agenteye` lee tus datos y administra tu organización desde un único binario, de modo que una comprobación que antes requería navegar por el dashboard se convierte en una línea que puedes volver a ejecutar, crear como alias o pegar en un runbook. Dispones de cuatro áreas:
 
 - **Lee tus datos:** `sessions`, `events`, `evals` y `errors`, filtrados por tiempo, agente y entorno.
 - **Administra tu organización:** `keys`, `users`, `settings`, `alerts` e `incidents`.
-- **Ejecuta análisis:** SQL guardado y un ejecutor `query` ad hoc sobre tus datos de eventos.
-- **Consulta al asistente:** `agent ask` accede al mismo analista de solo lectura con el que conversas en el dashboard.
+- **Ejecuta analíticas:** SQL guardado más un ejecutor `query` ad hoc sobre tus datos de eventos.
+- **Consulta el asistente:** `agent ask` accede al mismo analista de solo lectura con el que chateas en el dashboard.
 
-Instálalo una vez con `pipx`, inicia sesión con un código de 6 dígitos enviado por correo, y ya estás listo. La sesión dura aproximadamente un día; vuelve a ejecutar `agenteye login` cuando expire. Úsalo para revisar producción a fondo, aprovisionar una clave o clasificar un incidente activo, todo sin abrir un navegador:
+Instálalo una vez con `pipx`, inicia sesión con un código de 6 dígitos enviado por correo y listo. La sesión dura aproximadamente un día; vuelve a ejecutar `agenteye login` cuando expire. Úsalo para revisar producción, aprovisionar una clave o hacer triage de un incidente activo, todo sin abrir el navegador:
 
 ```bash
 agenteye errors --since 24h --aggregate      # what is breaking, grouped by error type
@@ -31,25 +31,25 @@ agenteye incidents list --state firing       # what is on fire right now
 agenteye keys create ci --add events:add     # a key that can only push events, secret shown once
 ```
 
-Un hábito importante: las opciones globales como `--json` van antes del comando. `agenteye --json sessions` es correcto; `agenteye sessions --json`, no.
+Un detalle importante: las opciones globales como `--json` van antes del comando. `agenteye --json sessions` es correcto; `agenteye sessions --json` no lo es.
 
-## Automatízalo, intégralo en CI
+## Automatízalo e intégralo en CI
 
-Cada comando acepta `--json`, y eso lo cambia todo. El JSON limpio va a stdout mientras los mensajes de estado y advertencias van a stderr, por lo que una captura con `--json` se puede pasar directamente a `jq` sin necesidad de limpiar líneas adicionales. Esto hace que el CLI sea igual de útil tanto para ti en la terminal como para un agente de código que procesa la salida:
+Cada comando acepta `--json`, y eso lo cambia todo. El JSON limpio va a stdout mientras los mensajes de estado y advertencias van a stderr, así que una captura con `--json` se puede pasar directamente a `jq` sin necesidad de filtrar líneas extrañas. Eso es lo que hace que el CLI sea igual de útil para ti en el terminal y para un agente de codificación que analice la salida:
 
 ```bash
 agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
 ```
 
-Está diseñado para ejecutarse de forma desatendida. Las confirmaciones se omiten automáticamente cuando no hay terminal conectada, así que nada queda bloqueado en un pipeline, y cada comando devuelve un código de salida significativo: `0` éxito, `4` no autenticado, `5` permiso faltante (el mensaje lo indica, por ejemplo `alerts:write`), `3` dashboard inaccesible. Un script puede bifurcarse en un `4` para reautenticarse o en un `5` para saber exactamente qué solicitar a un administrador, en lugar de fallar sin información.
+Está diseñado para ejecutarse de forma desatendida. Los prompts de confirmación se omiten automáticamente cuando no hay terminal conectada, así que nada queda bloqueado en un pipeline, y cada comando devuelve un código de salida significativo: `0` éxito, `4` sesión no iniciada, `5` permiso insuficiente (el mensaje lo indica, por ejemplo `alerts:write`), `3` dashboard inaccesible. Un script puede ramificarse ante un `4` para reautenticarse o ante un `5` para saber exactamente qué permiso solicitar a un administrador, en lugar de fallar sin información.
 
-## Deja que un agente de código lo maneje en lenguaje natural
+## Deja que un agente de codificación lo gestione en lenguaje natural
 
-Mejor aún, no deberías tener que recordar ninguna de estas opciones. El **CLI skill** es una pequeña carpeta de Agent Skill llamada `agenteye-cli` que enseña a un agente de código como Claude Code o Codex a manejar el CLI mediante solicitudes en lenguaje natural. Pregunta "¿hay algo roto hoy?" y el agente selecciona el comando, lo ejecuta como tú y responde en prosa.
+Mejor aún: no deberías tener que recordar ninguno de estos flags. El **CLI skill** es una pequeña carpeta de Agent Skill llamada `agenteye-cli` que enseña a un agente de codificación como Claude Code o Codex a manejar el CLI a partir de instrucciones en lenguaje natural. Pregunta "¿hay algo roto hoy?" y el agente elige el comando, lo ejecuta con tu sesión y responde en prosa.
 
-Para Claude Code, coloca la carpeta `agenteye-cli` en `~/.claude/skills/` y se descubre automáticamente. Failproof AI Observability proporciona la carpeta; no hay nada extra que instalar, ya que solo controla el CLI que ya tienes instalado. Inicia sesión tú mismo primero: el skill no puede completar el inicio de sesión con código enviado por correo en tu lugar.
+Para Claude Code, coloca la carpeta `agenteye-cli` en `~/.claude/skills/` y se detectará automáticamente. Failproof AI Observability proporciona la carpeta; no hay nada adicional que instalar, ya que solo maneja el CLI que ya instalaste. Inicia sesión tú primero: el skill no puede completar el inicio de sesión con código por correo en tu lugar.
 
-Como el agente ejecuta el CLI como tú, puede hacer todo lo que tu sesión permite, tanto lecturas como escrituras: crear claves, cambiar configuraciones, resolver incidentes. La confirmación interactiva del CLI no se activa para un agente, por lo que el skill está diseñado para indicar el comando exacto y esperar tu aprobación antes de cualquier cambio. Tú eres el paso de confirmación.
+Como el agente ejecuta el CLI con tu sesión, puede hacer todo lo que tu login permite, tanto lecturas como escrituras: crear claves, cambiar configuraciones, resolver incidentes. El prompt de confirmación del CLI no se activa para un agente, por eso el skill está diseñado para indicar el comando exacto y esperar tu aprobación antes de cualquier cambio. Tú eres el paso de confirmación.
 
 ```text
 you    Why did session run-001 fail?
@@ -58,7 +58,7 @@ agent  Running: agenteye --json events --session-id run-001 --all
        The checkout-agent hit a TimeoutError on its third tool call.
 ```
 
-Las lecturas son inmediatas, y cada escritura se pausa esperando tu confirmación:
+Las lecturas son instantáneas, y cada escritura espera tu confirmación:
 
 ```text
 you    Give CI a key that can only push events.
@@ -74,7 +74,7 @@ agent  Done. Key "ci" created with events:add only. The secret is shown once, so
 
 ## Relacionado
 
-- [Referencia del CLI](/es/agenteye/cli): cada comando, opción y estructura JSON.
-- [Recetas del CLI para agentes](/es/agenteye/cli-recipes): patrones `jq` listos para usar y manejo de códigos de salida.
-- [CLI agent skill](/es/agenteye/cli-skill): instala y ejecuta el skill `agenteye-cli`.
-- [Asistente de IA](/es/agenteye/assistant): el analista integrado en el dashboard con el que `agent ask` se comunica.
+- [Referencia del CLI](/es/agenteye/cli): todos los comandos, flags y estructuras JSON.
+- [Recetas del CLI para agentes](/es/agenteye/cli-recipes): patrones `jq` listos para copiar y manejo de códigos de salida.
+- [Agent skill del CLI](/es/agenteye/cli-skill): instalación y uso del skill `agenteye-cli`.
+- [Asistente de IA](/es/agenteye/assistant): el analista integrado en el dashboard al que accede `agent ask`.

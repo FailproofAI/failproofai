@@ -1,35 +1,36 @@
 ---
 title: "Python SDK"
-description: "अपने AI एजेंट्स को प्रोडक्शन में बिल्कुल देखें: हर एजेंट रन, टूल कॉल, मॉडल रिक्वेस्ट, हुक, और मानव हस्तक्षेप।"
+description: "देखें कि आपके AI agents ने production में क्या किया: हर agent run, tool call, model request, hook, और human intervention।"
 ---
 
-अपने AI एजेंट्स को प्रोडक्शन में बिल्कुल देखें: हर एजेंट रन, टूल कॉल, मॉडल रिक्वेस्ट, हुक, और मानव हस्तक्षेप। Failproof AI Observability Python SDK आपके एजेंट कोड के अंदर से उस ट्रेल को रिकॉर्ड करता है ताकि आप डीबग, ऑडिट, और मूल्यांकन कर सकें कि क्या हुआ। जब भी आप Failproof AI Observability को अपने एजेंट्स को देखना चाहते हैं, तब इसका उपयोग करें।
 
-हुड के नीचे, SDK स्ट्रक्चर्ड ईवेंट्स को लोकल JSONL फाइलों में लिखता है, और कलेक्टर डेमन उन्हें चुनता है और स्वचालित रूप से प्लेटफॉर्म को भेज देता है। आप इन फाइलों को स्वयं प्रबंधित नहीं करते हैं।
+देखें कि आपके AI agents ने production में क्या किया: हर agent run, tool call, model request, hook, और human intervention। Failproof AI Observability Python SDK आपके agent code के अंदर से उस trail को record करता है ताकि आप debug, audit, और evaluate कर सकें कि क्या हुआ। इसका उपयोग करें जब भी आप चाहते हैं कि Failproof AI Observability आपके agents को observe करे।
 
-> **सुझाव:** Failproof AI Observability के लिए नए हैं? यह पृष्ठ संपूर्ण SDK ईवेंट संदर्भ है।
+पर्दे के पीछे, SDK structured events को local JSONL files में write करता है, और collector daemon उन्हें pick करता है और automatically platform को भेजता है। आप इन files को स्वयं manage नहीं करते।
+
+> **Tip:** Failproof AI Observability में नए हैं? यह page complete SDK event reference है।
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="देखें: Agent Tracing by Failproof AI (2 मिनट)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="देखें: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
 ---
 
-## इंस्टॉलेशन
+## Installation
 
-SDK को ग्राहकों को एक प्राइवेट व्हील के रूप में वितरित किया जाता है, न कि किसी सार्वजनिक पैकेज इंडेक्स से। आपके ऑनबोर्डिंग में इसे कैसे प्राप्त करें, इंस्टॉल करें, और पिन करें, यह दिया गया है — यदि आपको एक्सेस की आवश्यकता है तो अपने Failproof AI संपर्क से बात करें।
+SDK को customers को private wheel के रूप में distribute किया जाता है, न कि public package index से। आपके onboarding में यह cover है कि इसे कैसे obtain, install, और pin करें — यदि आपको access की आवश्यकता है तो अपने Failproof AI contact से बात करें।
 
-एक बार यह इंस्टॉल हो जाए, तो पुष्टि करें कि आपके पास यह है:
+एक बार install होने के बाद, confirm करें कि आपके पास है:
 
 ```bash
 python -c "import agenteye; print(agenteye.__version__)"
 ```
 
-क्या कोडिंग एजेंट को पूरा इंटीग्रेशन करने देना पसंद करते हैं? [Python SDK Agent Skill](/hi/agenteye/python-sdk-skill) इंस्टॉल पाथ को जानता है, इंस्ट्रूमेंटेशन पॉइंट्स की योजना बनाता है, उन्हें लिखता है, और ईवेंट्स के आने की पुष्टि करता है।
+क्या एक coding agent को पूरा integration करने देना पसंद है? [Python SDK Agent Skill](/hi/agenteye/python-sdk-skill) install path को जानता है, instrumentation points को plan करता है, उन्हें write करता है, और verify करता है कि events land होते हैं।
 
 ---
 
-## त्वरित शुरुआत
+## Quick Start
 
 ```python
 import agenteye
@@ -57,9 +58,9 @@ agenteye.event.tool_result(
 agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
 ```
 
-### असली कॉल को इंस्ट्रूमेंट करना
+### एक real call को instrument करना
 
-व्यवहार में आप अपने मौजूदा एजेंट कोड को लपेटते हैं। एक मॉडल कॉल को `model_request` से पहले और `model_response` के बाद ब्रैकेट करें, ताकि दोनों ईवेंट्स असली रिक्वेस्ट को स्पैन करें और Failproof AI Observability उन्हें जोड़ सकें:
+व्यवहार में आप अपने existing agent code को wrap करते हैं। एक model call को `model_request` से पहले और `model_response` के बाद bracket करें, ताकि दोनों events real request को span करें और Failproof AI Observability उन्हें pair कर सकें:
 
 ```python
 import anthropic
@@ -94,11 +95,11 @@ agenteye.event.model_response(
 )
 ```
 
-टूल कॉल्स को `tool_use` और `tool_result` के साथ समान तरीके से लपेटें, जोड़ी में एक ही `tool_call_id` का पुन: उपयोग करें।
+Tool calls को same तरीके से wrap करें `tool_use` और `tool_result` के साथ, pair के across एक ही `tool_call_id` को reuse करते हुए।
 
-यहाँ देखें कि वे ईवेंट्स डैशबोर्ड पर कैसे दिखते हैं, प्रकार के अनुसार रंग-कोडित और पर्यावरण, एजेंट, और सेशन के अनुसार फ़िल्टर योग्य:
+यहाँ देखें कि ये events dashboard में कैसे दिखाई देते हैं, type द्वारा colour-coded और environment, agent, और session द्वारा filterable:
 
-![लाइव ईवेंट्स स्ट्रीम, ईवेंट प्रकार के अनुसार रंग-कोडित और पर्यावरण, एजेंट, और सेशन के अनुसार फ़िल्टर योग्य](/agenteye/images/events-stream.png)
+![Live Events stream, event type द्वारा colour-coded और environment, agent, और session द्वारा filterable](/agenteye/images/events-stream.png)
 
 ---
 
@@ -106,23 +107,23 @@ agenteye.event.model_response(
 
 ```python
 agenteye.configure(
-    base_dir=None,           # Path | str | None. Default: $AGENTEYE_HOME or ~/.agenteye
-    flush_interval=0.5,      # float, seconds between flush cycles
+    base_dir=None,           # Path | str | None. Default: $AGENTEYE_HOME या ~/.agenteye
+    flush_interval=0.5,      # float, flush cycles के बीच seconds
     environment=None,        # str | None. Deployment environment label
 )
 ```
 
-किसी भी `event.*` कॉल से पहले एक बार कॉल करें। लोप करना सुरक्षित है; डिफ़ॉल्ट्स बॉक्स से बाहर काम करते हैं। सभी तर्क कीवर्ड-केवल हैं; उन्हें ऊपर दिखाए गए के अनुसार नाम से पास करें।
+किसी भी `event.*` call से पहले एक बार call करें। Omit करना safe है; defaults out of the box काम करते हैं। सभी arguments keyword-only हैं; उन्हें ऊपर दिखाए गए अनुसार नाम से pass करें।
 
-जब `base_dir` `None` है (डिफ़ॉल्ट), SDK `$AGENTEYE_HOME` को पढ़ता है यदि सेट है,
-अन्यथा `~/.agenteye` पर फॉल बैक करता है। यह कलेक्टर के अपने रेज़ोल्यूशन से मेल खाता है,
-इसलिए एक एकल `AGENTEYE_HOME` env var SDK और कलेक्टर दोनों के लिए साझा ईवेंट स्पूल को कॉन्फ़िगर करता है।
+जब `base_dir` `None` है (default), SDK `$AGENTEYE_HOME` को read करता है यदि set है,
+अन्यथा `~/.agenteye` पर fallback करता है। यह collector के स्वयं के resolution को match करता है,
+ताकि एक single `AGENTEYE_HOME` env var both SDK और collector के लिए shared event spool को configure करे।
 
 ---
 
-## पर्यावरण
+## Environment
 
-हर ईवेंट को एक डिप्लॉयमेंट पर्यावरण के साथ लेबल करें (`production`, `staging`, `qa`, `canary`, आदि)। इसे एक बार सेट करें; SDK इसे हर ईवेंट में स्वचालित रूप से संलग्न करता है।
+हर event को deployment environment (`production`, `staging`, `qa`, `canary`, आदि) के साथ label करें। इसे एक बार set करें; SDK इसे automatically हर event के लिए attach करता है।
 
 **विकल्प 1: `configure()` के माध्यम से:**
 
@@ -130,48 +131,48 @@ agenteye.configure(
 agenteye.configure(environment="production")
 ```
 
-**विकल्प 2: पर्यावरण चर के माध्यम से:**
+**विकल्प 2: environment variable के माध्यम से:**
 
 ```bash
 export AGENTEYE_ENVIRONMENT=production
 ```
 
-**प्राथमिकता:** `configure(environment=...)` पर्यावरण चर पर जीत जाता है। यदि कोई भी सेट नहीं है, तो `"dev"` पर डिफॉल्ट करता है।
+**Priority:** `configure(environment=...)` environment variable को win करता है। यदि कोई भी set नहीं है, तो `"dev"` को default करता है।
 
-पर्यावरण मान डैशबोर्ड में एक प्रथम-श्रेणी फ़िल्टर के रूप में दिखाई देता है और तेज़ क्वेरीज़ के लिए सर्वर पर संग्रहीत होता है।
+Environment value dashboard में first-class filter के रूप में दिखाई देता है और fast queries के लिए server पर store होता है।
 
-> **चेतावनी:** पर्यावरण मानों में एक शाब्दिक `,` कोमा नहीं होना चाहिए। डैशबोर्ड फ़िल्टर्स वायर पर अल्पविराम-सीमांकित मल्टी-सिलेक्ट का उपयोग करते हैं (`?environment=prod,staging`), इसलिए `prod,blue` नामित एक पर्यावरण दो मानों में विभाजित हो जाएगा। कोमा-युक्त वातावरण वाली ईवेंट्स इनजेस्ट समय पर खारिज कर दी जाती हैं।
-
----
-
-## डेटा और गोपनीयता
-
-SDK केवल उन फील्ड्स को रिकॉर्ड करता है जो आप स्पष्ट रूप से पास करते हैं। प्रॉम्प्ट्स, मैसेज, टूल इनपुट और आउटपुट्स, और मॉडल कंटेंट केवल इसलिए कैप्चर किए जाते हैं क्योंकि आप उन्हें एक `event.*` कॉल में सौंपते हैं। कुछ भी आपकी प्रक्रिया से नहीं पढ़ा जाता है या निहित रूप से कैप्चर नहीं किया जाता है। कोई भी फील्ड जो आप अनसेट छोड़ते हैं वह ईवेंट से पूरी तरह से छोड़ दिया जाता है; यह डिस्क पर लिखा नहीं जाता है।
-
-जो रिडेक्शन को आपकी पसंद और आपकी जिम्मेदारी बनाता है। यदि कोई प्रॉम्प्ट या टूल पेलोड में PII या सीक्रेट्स हैं जिन्हें आप स्टोर नहीं करना चाहते हैं, तो आप उन्हें ईवेंट मेथड में पास करने से पहले स्ट्रिप या मास्क करें।
+> **Warning:** Environment values में literal `,` comma नहीं होना चाहिए। Dashboard filters wire पर comma-separated multi-select का उपयोग करते हैं (`?environment=prod,staging`), तो `prod,blue` नाम का एक environment दो values में split हो जाएगा। Comma-containing environments के साथ events ingest time पर reject होते हैं।
 
 ---
 
-## ईवेंट संदर्भ
+## Data और privacy
 
-अधिकांश ईवेंट्स स्टार्ट/एंड पेयर्स में आते हैं जो एक कोरिलेशन ID साझा करते हैं: `tool_use` और `tool_result` एक `tool_call_id` साझा करते हैं, `hook_triggered` और `hook_completed` एक `hook_id` साझा करते हैं, और `human_wait` और `human_input` एक `input_id` साझा करते हैं। स्टार्ट ईवेंट उत्सर्जित करें, काम करें, फिर एंड ईवेंट को समान ID के साथ उत्सर्जित करें। Failproof AI Observability पेयर को मेल करता है और आपके लिए `duration_ms` की गणना करता है, इसलिए आप कभी `duration_ms` स्वयं पास नहीं करते हैं।
+SDK केवल उन fields को record करता है जो आप explicitly pass करते हैं। Prompts, messages, tool inputs और outputs, और model content केवल इसलिए capture होते हैं क्योंकि आप उन्हें एक `event.*` call को hand करते हैं। आपके process से कुछ भी read नहीं किया जाता या implicitly capture नहीं किया जाता। कोई भी field जो आप unset छोड़ते हैं वह event से completely omitted है; यह disk पर write नहीं किया जाता।
 
-![एक सेशन का git-शैली एक्सीक्यूशन ग्राफ इसकी ईवेंट टाइमलाइन के साथ, पेयर्ड ईवेंट्स से पुनर्निर्मित, टूल/मॉडल/हुक ब्रेकडाउन पैनल के साथ](/agenteye/images/session-detail.png)
+यह redaction को आपकी choice और आपकी responsibility बनाता है। यदि एक prompt या tool payload में PII या secrets हैं जिन्हें आप store नहीं करना चाहते, तो उन्हें strip या mask करें इससे पहले कि आप इसे event method को pass करें।
 
-सभी ईवेंट मेथड्स को ये दो फील्ड्स आवश्यक हैं:
+---
 
-| फील्ड | प्रकार | विवरण |
+## Event Reference
+
+ज्यादातर events start/end pairs में आते हैं जो एक correlation ID share करते हैं: `tool_use` और `tool_result` एक `tool_call_id` share करते हैं, `hook_triggered` और `hook_completed` एक `hook_id` share करते हैं, और `human_wait` और `human_input` एक `input_id` share करते हैं। Start event emit करें, काम करें, फिर end event को same ID के साथ emit करें। Failproof AI Observability pair को match करता है और आपके लिए `duration_ms` को compute करता है, इसलिए आप कभी `duration_ms` को स्वयं pass नहीं करते।
+
+![एक session का git-style execution graph उसके event timeline के बगल में, paired events से reconstructed, tool/model/hook breakdown panel के साथ](/agenteye/images/session-detail.png)
+
+सभी event methods के लिए ये दो fields required हैं:
+
+| Field | Type | Description |
 |---|---|---|
-| `session_id` | `str` | टॉप-लेवल एजेंट रन को पहचानता है |
-| `agent_id` | `str` | पहचानता है कि सेशन के भीतर कौन-सा एजेंट ईवेंट उत्सर्जित किया |
+| `session_id` | `str` | Top-level agent run को identify करता है |
+| `agent_id` | `str` | Identify करता है कि session के within कौन सा agent ने event emit किया |
 
-सभी मेथड्स कस्टम मेटाडेटा के लिए मनमाना `**kwargs` भी स्वीकार करते हैं ([कस्टम फील्ड्स](#custom-fields) देखें)।
+सभी methods arbitrary `**kwargs` को भी accept करते हैं custom metadata के लिए (देखें [Custom Fields](#custom-fields))।
 
 ---
 
 ### `event.agent_start()`
 
-जब कोई एजेंट काम शुरू करता है तो उत्सर्जित होता है।
+Emitted होता है जब एक agent काम शुरू करता है।
 
 ```python
 agenteye.event.agent_start(
@@ -186,7 +187,7 @@ agenteye.event.agent_start(
 
 ### `event.agent_end()`
 
-जब कोई एजेंट काम पूरा करता है तो उत्सर्जित होता है।
+Emitted होता है जब एक agent काम खत्म करता है।
 
 ```python
 agenteye.event.agent_end(
@@ -201,14 +202,14 @@ agenteye.event.agent_end(
 
 ### `event.tool_use()`
 
-जब कोई एजेंट एक टूल को लागू करता है तो उत्सर्जित होता है। `tool_result` के साथ पेयर करें; SDK स्वचालित रूप से `duration_ms` की गणना करता है।
+Emitted होता है जब एक agent एक tool invoke करता है। `tool_result` के साथ pair करें; SDK auto-computes `duration_ms`।
 
 ```python
 agenteye.event.tool_use(
     session_id="run-001",
     agent_id="planner",
     tool_name="web_search",     # str, required
-    tool_call_id="toolu_01",    # str, required - matching tool_result के लिए कोरिलेशन की
+    tool_call_id="toolu_01",    # str, required - matching tool_result के लिए correlation key
     input={"query": "..."},     # dict | None
 )
 ```
@@ -217,17 +218,17 @@ agenteye.event.tool_use(
 
 ### `event.tool_result()`
 
-जब कोई टूल वापस आता है तो उत्सर्जित होता है। `tool_call_id` के माध्यम से `tool_use` के साथ कोरिलेट होता है।
+Emitted होता है जब एक tool return करता है। `tool_call_id` के माध्यम से `tool_use` के साथ correlates।
 
 ```python
 agenteye.event.tool_result(
     session_id="run-001",
     agent_id="planner",
     tool_name="web_search",
-    tool_call_id="toolu_01",        # prior tool_use से मेल खाना चाहिए
+    tool_call_id="toolu_01",        # prior tool_use से match करना चाहिए
     output={"results": ["..."]},    # Any | None
-    error=None,                     # str | None - यदि टूल ने raise किया तो सेट करें
-    # duration_ms स्वचालित रूप से गणना की जाती है - इसे पास न करें
+    error=None,                     # str | None - set करें यदि tool ने raise किया
+    # duration_ms automatically compute होता है - इसे pass न करें
 )
 ```
 
@@ -235,60 +236,60 @@ agenteye.event.tool_result(
 
 ### `event.model_request()`
 
-LLM को एक प्रॉम्प्ट भेजने से पहले उत्सर्जित होता है।
+Emitted होता है एक LLM को एक prompt भेजने से just पहले।
 
 ```python
 agenteye.event.model_request(
     session_id="run-001",
     agent_id="planner",
-    model="claude-sonnet-4-6", # str | None - कोई भी provider/model स्ट्रिंग; सत्यापित नहीं है
-    messages=[                   # list[dict] | None - कनवर्सेशन टर्न्स
+    model="claude-sonnet-4-6", # str | None - कोई भी provider/model string; validated नहीं
+    messages=[                   # list[dict] | None - conversation turns
         {"role": "user", "content": "..."},
     ],
     system="You are helpful.",   # Any | None - str या content blocks की list
-    tools=[                      # list[dict] | None - मॉडल को दी गई tool schemas
+    tools=[                      # list[dict] | None - tool schemas model को offer किए गए
         {"name": "search", "input_schema": {"type": "object"}},
     ],
 )
 ```
 
-`messages` एंट्रीज़ या तो एक सादे स्ट्रिंग `content` या Anthropic-शैली list-of-blocks `content` स्वीकार करते हैं। सैम्पलिंग पैरामीटर्स (`temperature`, `max_tokens`, आदि) अतिरिक्त kwargs के रूप में पास किए जा सकते हैं।
+`messages` entries plain string `content` या Anthropic-style list-of-blocks `content` को accept करते हैं। Sampling params (`temperature`, `max_tokens`, आदि) को extra kwargs के रूप में pass किया जा सकता है।
 
 ---
 
 ### `event.model_response()`
 
-जब LLM एक response वापस करता है तो उत्सर्जित होता है।
+Emitted होता है जब LLM एक response return करता है।
 
 ```python
 agenteye.event.model_response(
     session_id="run-001",
     agent_id="planner",
-    model="claude-sonnet-4-6", # str | None - कोई भी provider/model स्ट्रिंग; सत्यापित नहीं है
+    model="claude-sonnet-4-6", # str | None - कोई भी provider/model string; validated नहीं
     stop_reason="end_turn",     # str | None
     input_tokens=1024,          # int | None
     output_tokens=256,          # int | None
-    content=[                    # Any | None - str, या Anthropic-शैली content blocks की list
+    content=[                    # Any | None - str, या Anthropic-style content blocks की list
         {"type": "text", "text": "..."},
     ],
     role="assistant",            # str | None
 )
 ```
 
-`content` या तो एक सादे स्ट्रिंग (सामान्य providers) या Anthropic-शैली content blocks की एक list स्वीकार करता है। टूल कॉल्स `content` के अंदर `{"type": "tool_use", ...}` ब्लॉक्स के रूप में रहते हैं, कोई अलग `tool_calls` फील्ड नहीं।
+`content` plain string (generic providers) या Anthropic-style content blocks की list को accept करता है। Tool calls `content` के अंदर `{"type": "tool_use", ...}` blocks के रूप में live करते हैं, कोई separate `tool_calls` field के साथ नहीं।
 
 ---
 
 ### `event.hook_triggered()`
 
-जब कोई हुक फायर होता है तो उत्सर्जित होता है। `hook_completed` के साथ पेयर करें; SDK स्वचालित रूप से `duration_ms` की गणना करता है।
+Emitted होता है जब एक hook fire करता है। `hook_completed` के साथ pair करें; SDK auto-computes `duration_ms`।
 
 ```python
 agenteye.event.hook_triggered(
     session_id="run-001",
     agent_id="planner",
     hook_name="pre_tool_use",   # str, required
-    hook_id="hook-abc",         # str, required - कोरिलेशन की
+    hook_id="hook-abc",         # str, required - correlation key
     trigger_event="tool_use",   # str | None
     input={"tool": "search"},   # Any | None
 )
@@ -298,18 +299,18 @@ agenteye.event.hook_triggered(
 
 ### `event.hook_completed()`
 
-जब कोई हुक खत्म हो जाता है तो उत्सर्जित होता है। `hook_id` के माध्यम से `hook_triggered` के साथ कोरिलेट होता है।
+Emitted होता है जब एक hook finish करता है। `hook_id` के माध्यम से `hook_triggered` के साथ correlates।
 
 ```python
 agenteye.event.hook_completed(
     session_id="run-001",
     agent_id="planner",
     hook_name="pre_tool_use",
-    hook_id="hook-abc",         # prior hook_triggered से मेल खाना चाहिए
+    hook_id="hook-abc",         # prior hook_triggered से match करना चाहिए
     outcome="allow",            # str | None
     output=None,                # Any | None
     error=None,                 # str | None
-    # duration_ms स्वचालित रूप से गणना की जाती है - इसे पास न करें
+    # duration_ms automatically compute होता है - इसे pass न करें
 )
 ```
 
@@ -317,7 +318,7 @@ agenteye.event.hook_completed(
 
 ### `event.error()`
 
-जब एक अनहैंडल किया गया एरर होता है तो उत्सर्जित होता है।
+Emitted होता है जब एक unhandled error occur करता है।
 
 ```python
 agenteye.event.error(
@@ -331,71 +332,71 @@ agenteye.event.error(
 
 ---
 
-## मानव-इन-द-लूप ईवेंट्स
+## Human-in-the-Loop Events
 
-मानव-इन-द-लूप ईवेंट्स आपको उन क्षणों पर निरीक्षण देते हैं जहाँ कोई व्यक्ति एजेंट के एक्सीक्यूशन में कदम रखता है (अनुमोदन की प्रतीक्षा करना, इनपुट प्रदान करना, रोकना, या एजेंट को बंद करना)। वे आपको मापने देते हैं कि मनुष्य प्रतिक्रिया देने में कितना समय लेते हैं (SDK पेयर्ड ईवेंट्स पर `duration_ms` स्वचालित रूप से गणना करता है), ऑडिट करता है कि किसने एजेंट को रोका या बाधित किया, और अनुमोदन और निरीक्षण वर्कफ़्लो बनाता है जो डैशबोर्ड में सतह पर आते हैं।
+Human-in-the-loop events आपको उन moments पर oversight देते हैं जहाँ एक person agent के execution में step करता है (approval के लिए wait करना, input provide करना, pause करना, या agent को stop करना)। वे आपको measure करने देते हैं कि humans को respond करने में कितना समय लगता है (SDK auto-computes `duration_ms` paired events पर), audit करते हैं कि किसने agent को pause या interrupt किया, और approval और oversight workflows बनाते हैं जो dashboard में surface होते हैं।
 
 ### `event.human_wait()`
 
-जब एजेंट एक मानव को इनपुट प्रदान करने की प्रतीक्षा करने के लिए एक्सीक्यूशन को रोकता है तो उत्सर्जित होता है। `human_input` के साथ पेयर करें; SDK स्वचालित रूप से `duration_ms` (मानव को प्रतिक्रिया देने में कितना समय लगा) की गणना करता है।
+Emitted होता है जब agent एक human के input provide करने के लिए wait करने के लिए execution को pause करता है। `human_input` के साथ pair करें; SDK auto-computes `duration_ms` (human को respond करने में कितना समय लगा)।
 
 ```python
 agenteye.event.human_wait(
     session_id="run-001",
     agent_id="planner",
-    input_id="inp-abc",                          # str, required - matching human_input के लिए कोरिलेशन की
-    prompt="Do you approve this action?",        # str | None - मानव को दिखाया गया प्रश्न
-    options=["approve", "reject", "defer"],      # list[str] | None - मानव को प्रस्तुत किए गए विकल्प
-    reason="approval_required",                  # str | None - एजेंट क्यों प्रतीक्षा कर रहा है
+    input_id="inp-abc",                          # str, required - matching human_input के लिए correlation key
+    prompt="Do you approve this action?",        # str | None - human को show किया गया question
+    options=["approve", "reject", "defer"],      # list[str] | None - human को presented choices
+    reason="approval_required",                  # str | None - agent क्यों wait कर रहा है
 )
 ```
 
 ### `event.human_input()`
 
-जब कोई मानव इनपुट प्रदान करता है और एजेंट फिर से शुरू होता है तो उत्सर्जित होता है। `input_id` के माध्यम से `human_wait` के साथ कोरिलेट होता है। `duration_ms` स्वचालित रूप से गणना की जाती है और कॉलर द्वारा पास नहीं की जानी चाहिए।
+Emitted होता है जब एक human input provide करता है और agent resume होता है। `input_id` के माध्यम से `human_wait` के साथ correlates। `duration_ms` auto-computed है और caller द्वारा pass नहीं किया जाना चाहिए।
 
 ```python
 agenteye.event.human_input(
     session_id="run-001",
     agent_id="planner",
-    input_id="inp-abc",    # str, required - prior human_wait से मेल खाना चाहिए
-    response="approve",    # str | None - मानव का जवाब (मुक्त पाठ या चयनित विकल्प)
-    # duration_ms स्वचालित रूप से गणना की जाती है - इसे पास न करें
+    input_id="inp-abc",    # str, required - prior human_wait से match करना चाहिए
+    response="approve",    # str | None - human का answer (free text या selected option)
+    # duration_ms automatically compute होता है - इसे pass न करें
 )
 ```
 
 ### `event.human_pause()`
 
-जब कोई मानव सक्रिय रूप से एजेंट को रोकता है (उदा. डैशबोर्ड नियंत्रण के माध्यम से) तो उत्सर्जित होता है। एजेंट को निलंबित किया जाता है लेकिन समाप्त नहीं किया जाता है।
+Emitted होता है जब एक human actively agent को pause करता है (जैसे dashboard control के माध्यम से)। Agent suspend है लेकिन terminated नहीं।
 
 ```python
 agenteye.event.human_pause(
     session_id="run-001",
     agent_id="planner",
     reason="user_requested",  # str | None
-    user_id="usr_42",         # str | None - किसने एजेंट को रोका
+    user_id="usr_42",         # str | None - किसने agent को pause किया
 )
 ```
 
 ### `event.human_interrupt()`
 
-जब कोई मानव एक्सीक्यूशन के बीच सक्रिय रूप से एजेंट को बंद करता है तो उत्सर्जित होता है। `human_pause` के विपरीत, एजेंट का काम निलंबित नहीं बल्कि समाप्त हो जाता है।
+Emitted होता है जब एक human actively execution के mid में agent को stop करता है। `human_pause` के विपरीत, agent का काम terminate होता है न कि suspend।
 
 ```python
 agenteye.event.human_interrupt(
     session_id="run-001",
     agent_id="planner",
     reason="output_incorrect",       # str | None
-    user_id="usr_42",                # str | None - किसने एजेंट को बाधित किया
-    at_step="tool_use:web_search",   # str | None - एजेंट को बंद करते समय क्या कर रहा था
+    user_id="usr_42",                # str | None - किसने agent को interrupt किया
+    at_step="tool_use:web_search",   # str | None - agent क्या कर रहा था जब stopped हुआ
 )
 ```
 
 ---
 
-## कस्टम फील्ड्स
+## Custom Fields
 
-कोई भी अतिरिक्त कीवर्ड आर्गुमेंट्स मानक फील्ड्स के बाद ईवेंट में जोड़े जाते हैं:
+कोई भी extra keyword arguments standard fields के बाद appended होते हैं:
 
 ```python
 agenteye.event.tool_use(
@@ -403,32 +404,32 @@ agenteye.event.tool_use(
     agent_id="planner",
     tool_name="db_query",
     tool_call_id="toolu_02",
-    tenant_id="acme",           # कस्टम फील्ड
-    region="us-east-1",         # कस्टम फील्ड
+    tenant_id="acme",           # custom field
+    region="us-east-1",         # custom field
 )
 ```
 
-`timestamp`, `type`, और `environment` आरक्षित हैं और `ValueError` उठाते हैं (`Reserved field names cannot be used as custom fields: [...]`) यदि कस्टम फील्ड्स के रूप में पास किए जाते हैं। `session_id` और `agent_id` हर ईवेंट मेथड पर आवश्यक पैरामीटर हैं और दूसरी बार आपूर्ति नहीं किए जा सकते; यदि आप ऐसा करते हैं तो Python `TypeError` उठाता है। इसके बजाय `configure(environment=...)` (या `AGENTEYE_ENVIRONMENT` चर) के साथ पर्यावरण सेट करें।
+`timestamp`, `type`, और `environment` reserved हैं और `ValueError` raise करते हैं (`Reserved field names cannot be used as custom fields: [...]`) यदि custom fields के रूप में pass किए जाएं। `session_id` और `agent_id` हर event method पर required parameters हैं और दूसरी बार supply नहीं किए जा सकते; Python `TypeError` raise करता है यदि आप करते हैं। इसके बजाय `configure(environment=...)` (या `AGENTEYE_ENVIRONMENT` variable) के साथ environment set करें।
 
-जब आप उनकी फील्ड्स को क्वेरी करना चाहते हैं तो पेलोड्स को स्ट्रक्चर्ड JSON के रूप में रखें। वे मान जो JSON स्वाभाविक रूप से समर्थन नहीं करते—जैसे datetimes, UUIDs, decimals, sets, bytes, या model objects—सेट रिकॉर्डिंग को सुरक्षित रूप से जारी रखने के लिए स्ट्रिंग में परिवर्तित होते हैं।
+Payloads को structured JSON के रूप में रखें जब आप उनके fields को query करना चाहते हैं। Values जिन्हें JSON natively support नहीं करता—जैसे datetimes, UUIDs, decimals, sets, bytes, या model objects—को strings में convert किया जाता है ताकि recording safely continue रहे।
 
 ---
 
-## ईवेंट्स कैसे लिखी जाती हैं
+## Events कैसे Written हैं
 
-ईवेंट्स इन-प्रोसेस में बफर होते हैं और हर `flush_interval` सेकंड (डिफॉल्ट 500 ms) में डिस्क पर फ्लश होते हैं। प्रत्येक फ्लश एक JSONL फाइल लिखता है:
+Events को in-process में buffer किया जाता है और हर `flush_interval` seconds (default 500 ms) में disk पर flush किया जाता है। प्रत्येक flush एक JSONL file write करता है:
 
 ```text
 ~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
 ```
 
-कलेक्टर इस डायरेक्टरी को देखता है और फाइलों को स्वचालित रूप से अपलोड करता है। आपको इन फाइलों को सीधे प्रबंधित करने की आवश्यकता नहीं है।
+Collector इस directory को watch करता है और files को automatically upload करता है। आप इन files को directly manage करने की आवश्यकता नहीं है।
 
-प्रत्येक फाइल को atomically लिखा जाता है: SDK एक अस्थायी फाइल में लिखता है और फिर इसे जगह में पुनर्नाम करता है, इसलिए कलेक्टर कभी भी आधी-लिखी फाइल नहीं देखता है। अंतिम फ्लश आपकी प्रक्रिया के exit होने पर भी चलता है, इसलिए अंतिम अंतराल में बफर की गई ईवेंट्स खो नहीं जाती हैं। यदि कलेक्टर ऑफलाइन है, तो ईवेंट्स डिस्क पर फाइलों के रूप में जमा हो जाती हैं और एक बार यह वापस आ जाए तो भेज दी जाती हैं।
+प्रत्येक file atomically write किया जाता है: SDK एक temporary file में write करता है और फिर इसे place में rename करता है, ताकि collector कभी half-written file न देखे। एक final flush भी चलता है जब आपका process exit होता है, इसलिए last interval में buffered events lost नहीं होते। यदि collector offline है, तो events बस disk पर files के रूप में accumulate होते हैं और once it आता है तो ship होते हैं।
 
 ---
 
-## अगले कदम
+## अगले steps
 
-- [ईवेंट स्ट्रीम](/hi/agenteye/event-stream): ये ईवेंट्स लाइव में आने देखें, रंग-कोडित और पर्यावरण, एजेंट, और सेशन के अनुसार फ़िल्टर योग्य।
-- [सेशन्स](/hi/agenteye/sessions): देखें कि पेयर्ड ईवेंट्स प्रत्येक एजेंट रन को एक्सीक्यूशन ग्राफ और टाइमलाइन के रूप में कैसे पुनर्निर्मित करते हैं।
+- [Event stream](/hi/agenteye/event-stream): इन events को live arrive होते देखें, colour-coded और environment, agent, और session द्वारा filterable।
+- [Sessions](/hi/agenteye/sessions): देखें कि कैसे paired events हर agent run को एक execution graph और timeline के रूप में reconstruct करते हैं।

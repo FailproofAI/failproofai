@@ -1,35 +1,35 @@
 ---
 title: "Python SDK"
-description: "شاهد بالضبط ما فعلته وكلاء الذكاء الاصطناعي الخاصة بك في الإنتاج: كل تشغيل للوكيل، استدعاء أداة، طلب نموذج، خطاف، وتدخل بشري."
+description: "شاهد بالضبط ما فعله وكلاء الذكاء الاصطناعي لديك في الإنتاج: كل تشغيل للوكيل، واستدعاء الأداة، وطلب النموذج، والخطاف، والتدخل البشري."
 ---
 
-شاهد بالضبط ما فعلته وكلاء الذكاء الاصطناعي الخاصة بك في الإنتاج: كل تشغيل للوكيل، استدعاء أداة، طلب نموذج، خطاف، وتدخل بشري. يسجل Failproof AI Observability Python SDK هذا المسار من داخل كود الوكيل الخاص بك حتى تتمكن من تصحيح الأخطاء والتدقيق وتقييم ما حدث. استخدمه كلما أردت أن يراقب Failproof AI Observability وكلاءك.
+شاهد بالضبط ما فعله وكلاء الذكاء الاصطناعي لديك في الإنتاج: كل تشغيل للوكيل، واستدعاء الأداة، وطلب النموذج، والخطاف، والتدخل البشري. يسجل Python SDK لـ Failproof AI Observability هذا المسار من داخل كود الوكيل الخاص بك حتى تتمكن من تصحيح الأخطاء والتدقيق وتقييم ما حدث. استخدمه كلما أردت أن تراقب Failproof AI Observability وكلاءك.
 
-تحت الغطاء، يكتب SDK أحداثاً منظمة في ملفات JSONL محلية، وتلتقطها عملية جمع البيانات الخلفية وترسلها إلى المنصة تلقائياً. لا تحتاج إلى إدارة تلك الملفات بنفسك.
+تحت الغطاء، يكتب SDK الأحداث المنظمة إلى ملفات JSONL محلية، وتقوم العفريت المجمع باستقطاعها وإرسالها إلى المنصة تلقائياً. أنت لا تدير هذه الملفات بنفسك.
 
 > **نصيحة:** جديد في Failproof AI Observability؟ هذه الصفحة هي مرجع أحداث SDK الكامل.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="شاهد: Agent Tracing من Failproof AI (دقيقتان)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="شاهد: تتبع الوكيل بواسطة Failproof AI (دقيقتان)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
 ---
 
 ## التثبيت
 
-يتم توزيع SDK على العملاء كعجلة خاصة بدلاً من فهرس حزمة عام. يغطي التكامل الخاص بك كيفية الحصول عليه وتثبيته وتثبيت إصداره — تحدث إلى جهة الاتصال Failproof AI الخاصة بك إذا كنت بحاجة إلى الوصول.
+يتم توزيع SDK للعملاء كعجلة خاصة بدلاً من فهرس حزم عام. يغطي الإعداد الخاص بك كيفية الحصول عليها وتثبيتها وتثبيتها — تحدث مع جهة الاتصال الخاصة بك في Failproof AI إذا كنت تحتاج إلى إمكانية الوصول.
 
-بمجرد تثبيته، تأكد من أن لديك:
+بمجرد تثبيته، تأكد من أنك تمتلكه:
 
 ```bash
 python -c "import agenteye; print(agenteye.__version__)"
 ```
 
-هل تفضل السماح لوكيل ترميز بإجراء التكامل كله؟ [Python SDK Agent Skill](/ar/agenteye/python-sdk-skill) يعرف مسار التثبيت، ويخطط نقاط الأداة، ويكتبها، ويتحقق من وصول الأحداث.
+تفضل السماح لعامل ترميز بالقيام بالتكامل كله؟ يعرف [Python SDK Agent Skill](/ar/agenteye/python-sdk-skill) مسار التثبيت، ويخطط نقاط الأداة، ويكتبها، ويتحقق من وصول الأحداث.
 
 ---
 
-## البداية السريعة
+## البدء السريع
 
 ```python
 import agenteye
@@ -59,7 +59,7 @@ agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="succ
 
 ### أداة استدعاء حقيقية
 
-في الممارسة العملية، تلف كود الوكيل الموجود لديك. ضع استدعاء نموذج بين `model_request` قبل و `model_response` بعده، بحيث يمتد الحدثان على الطلب الفعلي ويمكن لـ Failproof AI Observability أن يقرن بينهما:
+في الممارسة العملية تقوم بتغليف كود الوكيل الموجود لديك. ضع قوسين حول استدعاء نموذج بـ `model_request` قبل و `model_response` بعد، بحيث يغطي الحدثان الطلب الحقيقي ويمكن لـ Failproof AI Observability إقرانهما:
 
 ```python
 import anthropic
@@ -94,11 +94,11 @@ agenteye.event.model_response(
 )
 ```
 
-لف استدعاءات الأداة بنفس الطريقة باستخدام `tool_use` و `tool_result`، وأعد استخدام `tool_call_id` واحد عبر الزوج.
+غلّف استدعاءات الأدوات بنفس الطريقة باستخدام `tool_use` و `tool_result`، وأعد استخدام `tool_call_id` واحد عبر الزوج.
 
-إليك ما تبدو عليه تلك الأحداث بمجرد وصولها إلى لوحة التحكم، مرمزة بالألوان حسب النوع وقابلة للتصفية حسب البيئة والوكيل والجلسة:
+إليك ما تبدو عليه هذه الأحداث بمجرد وصولها إلى لوحة المعلومات، مع ترميز بألوان حسب النوع وقابلة للتصفية حسب البيئة والوكيل والجلسة:
 
-![تدفق الأحداث المباشر، مرمز بألوان حسب نوع الحدث وقابل للتصفية حسب البيئة والوكيل والجلسة](/agenteye/images/events-stream.png)
+![تدفق الأحداث المباشر، مع ترميز بألوان حسب نوع الحدث وقابل للتصفية حسب البيئة والوكيل والجلسة](/agenteye/images/events-stream.png)
 
 ---
 
@@ -112,18 +112,18 @@ agenteye.configure(
 )
 ```
 
-استدع مرة واحدة قبل أي استدعاء `event.*`. من الآمن الحذف؛ الافتراضيات تعمل خارج الصندوق. جميع الحجج مفتاح فقط؛ مررها بالاسم كما هو موضح أعلاه.
+اتصل مرة واحدة قبل أي استدعاء `event.*`. آمن للحذف؛ تعمل الافتراضيات بسهولة. جميع الحجج بالكلمات الرئيسية فقط؛ مررها بالاسم كما هو موضح أعلاه.
 
-عندما يكون `base_dir` هو `None` (الافتراضي)، يقرأ SDK `$AGENTEYE_HOME` إذا تم تعيينه،
-وإلا يعود إلى `~/.agenteye`. هذا يتطابق مع قرار جامع البيانات الخاص به،
-لذا متغير بيئة `AGENTEYE_HOME` واحد يحتوي على مجلد حدث مشترك لكل من
-SDK وجامع البيانات.
+عندما يكون `base_dir` `None` (القيمة الافتراضية)، يقرأ SDK `$AGENTEYE_HOME` إذا تم تعيينه،
+وإلا يعود إلى `~/.agenteye`. هذا يطابق دقة المجمع الخاصة به،
+لذا يقوم متغير `AGENTEYE_HOME` env واحد بتكوين مجمع الأحداث المشترك لكل من
+SDK والمجمع.
 
 ---
 
 ## البيئة
 
-قم بتسمية كل حدث ببيئة نشر (`production`، `staging`، `qa`، `canary`، إلخ). اضبطها مرة واحدة؛ يرفقها SDK بكل حدث تلقائياً.
+اجعل كل حدث مع علامة بيئة النشر (`production`، `staging`، `qa`، `canary`، إلخ). اضبطها مرة واحدة؛ سيقوم SDK بإرفاقها بكل حدث تلقائياً.
 
 **الخيار 1: عبر `configure()`:**
 
@@ -131,55 +131,55 @@ SDK وجامع البيانات.
 agenteye.configure(environment="production")
 ```
 
-**الخيار 2: عبر متغير البيئة:**
+**الخيار 2: عبر متغير بيئة:**
 
 ```bash
 export AGENTEYE_ENVIRONMENT=production
 ```
 
-**الأولوية:** `configure(environment=...)` يتغلب على متغير البيئة. إذا لم يتم تعيين أي منهما، يتم الافتراضي إلى `"dev"`.
+**الأولوية:** `configure(environment=...)` يفوز على متغير البيئة. إذا لم يتم تعيين أي منهما، الافتراضي هو `"dev"`.
 
-تظهر قيمة البيئة كمرشح من الدرجة الأولى في لوحة التحكم وتُخزن على الخادم لعمليات الاستعلام السريعة.
+تظهر قيمة البيئة كمرشح من الدرجة الأولى في لوحة المعلومات وتُخزن على الخادم للاستعلامات السريعة.
 
-> **تحذير:** يجب ألا تحتوي قيم البيئة على فاصلة حرفية `,`. عوامل التصفية في لوحة التحكم تستخدم الاختيار المتعدد المفصول بفواصل على السلك (`?environment=prod,staging`)، لذا ستكون البيئة المسماة `prod,blue` مقسومة إلى قيمتين. يتم رفض الأحداث التي تحتوي على بيئات تحتوي على فواصل وقت الابتلاع.
+> **تحذير:** قيم البيئة يجب ألا تحتوي على فاصلة حرفية `,`. تستخدم مرشحات لوحة المعلومات التحديد المتعدد المفصول بفواصل على السلك (`?environment=prod,staging`)، لذا فإن البيئة المسماة `prod,blue` ستُقسم إلى قيمتين. يتم رفض الأحداث ذات البيئات التي تحتوي على فواصل عند وقت الاستقبال.
 
 ---
 
 ## البيانات والخصوصية
 
-يسجل SDK فقط الحقول التي تمررها بشكل صريح. يتم التقاط المحفزات والرسائل ومدخلات الأداة والمخرجات ومحتوى النموذج فقط لأنك تسلمها لاستدعاء `event.*`. لا يتم قراءة أي شيء من عمليتك أو التقاطه بشكل ضمني. أي حقل تتركه غير محدد يُحذف من الحدث بالكامل؛ لم يتم كتابته إلى القرص.
+يسجل SDK فقط الحقول التي تمررها بصراحة. تُلتقط الأوامر والرسائل ومدخلات ومخرجات الأدوات والمحتوى النموذجي فقط لأنك تسليمها إلى استدعاء `event.*`. لا يتم قراءة أي شيء من عمليتك أو التقاطه بشكل ضمني. أي حقل تتركه غير مضبوط يُحذف من الحدث تماماً؛ لم يتم كتابته إلى القرص.
 
-هذا يجعل الحجب خياراً ومسؤوليتك. إذا كان المحفز أو حمولة الأداة تحتوي على PII أو أسرار لا تفضل تخزينها، امسحها أو قنعها قبل تمريرها إلى طريقة الحدث.
+هذا يجعل الاستبدال اختيارك ومسؤوليتك. إذا كان الأمر أو حمل الأداة يحتوي على معلومات شخصية أو أسرار لا تريد تخزينها، قم بإزالتها أو إخفاء هويتها قبل تمريرها إلى طريقة الحدث.
 
 ---
 
-## مرجع الأحداث
+## مرجع الحدث
 
-تأتي معظم الأحداث في أزواج البداية/النهاية التي تشترك في معرف الارتباط: يشترك `tool_use` و `tool_result` في `tool_call_id`، و `hook_triggered` و `hook_completed` يشتركان في `hook_id`، و `human_wait` و `human_input` يشتركان في `input_id`. أرسل حدث البداية، قم بالعمل، ثم أرسل حدث النهاية برفقة نفس المعرف. يطابق Failproof AI Observability الزوج ويحسب `duration_ms` لك، لذا لا تمرر `duration_ms` بنفسك.
+تأتي معظم الأحداث في أزواج بدء/نهاية تشترك في معرف الارتباط: يشترك `tool_use` و `tool_result` في `tool_call_id`، ويشترك `hook_triggered` و `hook_completed` في `hook_id`، ويشترك `human_wait` و `human_input` في `input_id`. اعتمد حدث البداية، افعل العمل، ثم اعتمد حدث النهاية برفقة نفس المعرف. تطابق Failproof AI Observability الزوج وتحسب `duration_ms` لك، لذا لن تمرر `duration_ms` بنفسك.
 
-![رسم بياني لتنفيذ جلسة على طراز git بجانب الخط الزمني للحدث، تم إعادة بناؤه من الأحداث المقترنة، مع لوحة تفصيل الأداة/النموذج/الخطاف](/agenteye/images/session-detail.png)
+![رسم بياني للتنفيذ على غرار git للجلسة بجانب الجدول الزمني للأحداث الخاصة بها، تم إعادة بناؤها من الأحداث المقترنة، مع لوحة تفصيل الأداة/النموذج/الخطاف](/agenteye/images/session-detail.png)
 
 تتطلب جميع طرق الأحداث هذين الحقلين:
 
 | الحقل | النوع | الوصف |
 |---|---|---|
-| `session_id` | `str` | يحدد تشغيل الوكيل من الدرجة الأولى |
-| `agent_id` | `str` | يحدد أي وكيل داخل الجلسة أرسل الحدث |
+| `session_id` | `str` | يحدد تشغيل الوكيل من المستوى الأعلى |
+| `agent_id` | `str` | يحدد أي وكيل داخل الجلسة انبعث الحدث |
 
-تقبل جميع الطرق أيضاً `**kwargs` عشوائية للبيانات الوصفية المخصصة (راجع [الحقول المخصصة](#custom-fields)).
+تقبل جميع الطرق أيضاً `**kwargs` تعسفية للبيانات الوصفية المخصصة (انظر [الحقول المخصصة](#custom-fields)).
 
 ---
 
 ### `event.agent_start()`
 
-تُطلق عند بدء الوكيل في العمل.
+يُصدر عندما يبدأ الوكيل العمل.
 
 ```python
 agenteye.event.agent_start(
     session_id="run-001",
     agent_id="planner",
     goal="answer user query",   # str | None
-    parent_id=None,             # str | None - معرف وكيل الوالد للوكلاء المتداخلين
+    parent_id=None,             # str | None - parent agent_id for nested agents
 )
 ```
 
@@ -187,7 +187,7 @@ agenteye.event.agent_start(
 
 ### `event.agent_end()`
 
-تُطلق عند انتهاء الوكيل من العمل.
+يُصدر عندما ينتهي الوكيل من العمل.
 
 ```python
 agenteye.event.agent_end(
@@ -202,14 +202,14 @@ agenteye.event.agent_end(
 
 ### `event.tool_use()`
 
-تُطلق عند استدعاء الوكيل لأداة. اقرن مع `tool_result`؛ يحسب SDK تلقائياً `duration_ms`.
+يُصدر عندما يستدعي الوكيل أداة. اقرنها مع `tool_result`؛ يحسب SDK `duration_ms` تلقائياً.
 
 ```python
 agenteye.event.tool_use(
     session_id="run-001",
     agent_id="planner",
     tool_name="web_search",     # str, required
-    tool_call_id="toolu_01",    # str, required - مفتاح الارتباط للمطابقة tool_result
+    tool_call_id="toolu_01",    # str, required - correlation key for the matching tool_result
     input={"query": "..."},     # dict | None
 )
 ```
@@ -218,17 +218,17 @@ agenteye.event.tool_use(
 
 ### `event.tool_result()`
 
-تُطلق عند عودة الأداة. يرتبط مع `tool_use` عبر `tool_call_id`.
+يُصدر عندما تُرجع أداة النتيجة. يرتبط مع `tool_use` عبر `tool_call_id`.
 
 ```python
 agenteye.event.tool_result(
     session_id="run-001",
     agent_id="planner",
     tool_name="web_search",
-    tool_call_id="toolu_01",        # يجب أن يطابق tool_use السابق
+    tool_call_id="toolu_01",        # must match the prior tool_use
     output={"results": ["..."]},    # Any | None
-    error=None,                     # str | None - اضبط إذا أطلقت الأداة
-    # يتم حساب duration_ms تلقائياً - لا تمرره
+    error=None,                     # str | None - set if the tool raised
+    # duration_ms is computed automatically - do not pass it
 )
 ```
 
@@ -236,60 +236,60 @@ agenteye.event.tool_result(
 
 ### `event.model_request()`
 
-تُطلق قبل إرسال مباشر لنموذج LLM.
+يُصدر قبل إرسال أمر إلى نموذج لغة كبير.
 
 ```python
 agenteye.event.model_request(
     session_id="run-001",
     agent_id="planner",
-    model="claude-sonnet-4-6", # str | None - أي سلسلة موفر/نموذج؛ غير معتمدة
-    messages=[                   # list[dict] | None - أدوار المحادثة
+    model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
+    messages=[                   # list[dict] | None - conversation turns
         {"role": "user", "content": "..."},
     ],
-    system="You are helpful.",   # Any | None - str أو قائمة كتل المحتوى
-    tools=[                      # list[dict] | None - مخططات الأداة المقدمة للنموذج
+    system="You are helpful.",   # Any | None - str or list of content blocks
+    tools=[                      # list[dict] | None - tool schemas offered to the model
         {"name": "search", "input_schema": {"type": "object"}},
     ],
 )
 ```
 
-تقبل إدخالات `messages` إما سلسلة عادية `content` أو قائمة كتل محتوى على طراز Anthropic. يمكن تمرير معاملات أخذ العينات (`temperature`، `max_tokens`، إلخ) كـ kwargs إضافية.
+تقبل مدخلات `messages` إما `content` نص عادي أو محتوى Anthropic على غرار قائمة `content`. يمكن تمرير معاملات العينة (`temperature`، `max_tokens`، إلخ) كـ kwargs إضافية.
 
 ---
 
 ### `event.model_response()`
 
-تُطلق عند عودة LLM برد.
+يُصدر عندما يُرجع النموذج استجابة.
 
 ```python
 agenteye.event.model_response(
     session_id="run-001",
     agent_id="planner",
-    model="claude-sonnet-4-6", # str | None - أي سلسلة موفر/نموذج؛ غير معتمدة
+    model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
     stop_reason="end_turn",     # str | None
     input_tokens=1024,          # int | None
     output_tokens=256,          # int | None
-    content=[                    # Any | None - str، أو قائمة كتل المحتوى
+    content=[                    # Any | None - str, or list of content blocks
         {"type": "text", "text": "..."},
     ],
     role="assistant",            # str | None
 )
 ```
 
-يقبل `content` إما سلسلة عادية (موفرو عام) أو قائمة كتل محتوى على طراز Anthropic. تعيش استدعاءات الأداة داخل `content` كـ `{"type": "tool_use", ...}` كتل، بدون حقل منفصل `tool_calls`.
+يقبل `content` إما نص عادي (موفروا الخدمات العام) أو قائمة كتل محتوى على غرار Anthropic. تعيش استدعاءات الأدوات داخل `content` كـ `{"type": "tool_use", ...}` كتل، بدون حقل `tool_calls` منفصل.
 
 ---
 
 ### `event.hook_triggered()`
 
-تُطلق عند إطلاق خطاف. اقرن مع `hook_completed`؛ يحسب SDK تلقائياً `duration_ms`.
+يُصدر عندما يطلق خطاف. اقرنه مع `hook_completed`؛ يحسب SDK `duration_ms` تلقائياً.
 
 ```python
 agenteye.event.hook_triggered(
     session_id="run-001",
     agent_id="planner",
     hook_name="pre_tool_use",   # str, required
-    hook_id="hook-abc",         # str, required - مفتاح الارتباط
+    hook_id="hook-abc",         # str, required - correlation key
     trigger_event="tool_use",   # str | None
     input={"tool": "search"},   # Any | None
 )
@@ -299,18 +299,18 @@ agenteye.event.hook_triggered(
 
 ### `event.hook_completed()`
 
-تُطلق عند انتهاء الخطاف. يرتبط مع `hook_triggered` عبر `hook_id`.
+يُصدر عندما ينتهي خطاف. يرتبط مع `hook_triggered` عبر `hook_id`.
 
 ```python
 agenteye.event.hook_completed(
     session_id="run-001",
     agent_id="planner",
     hook_name="pre_tool_use",
-    hook_id="hook-abc",         # يجب أن يطابق hook_triggered السابق
+    hook_id="hook-abc",         # must match the prior hook_triggered
     outcome="allow",            # str | None
     output=None,                # Any | None
     error=None,                 # str | None
-    # يتم حساب duration_ms تلقائياً - لا تمرره
+    # duration_ms is computed automatically - do not pass it
 )
 ```
 
@@ -318,7 +318,7 @@ agenteye.event.hook_completed(
 
 ### `event.error()`
 
-تُطلق عند حدوث خطأ لم يتم التعامل معه.
+يُصدر عندما يحدث خطأ غير معالج.
 
 ```python
 agenteye.event.error(
@@ -332,63 +332,63 @@ agenteye.event.error(
 
 ---
 
-## أحداث التدخل البشري
+## أحداث الإنسان في الحلقة
 
-تمنحك أحداث التدخل البشري الإشراف على اللحظات التي يتدخل فيها الشخص في تنفيذ الوكيل (الانتظار للموافقة، توفير المدخلات، الإيقاف المؤقت، أو إيقاف الوكيل). تسمح لك بقياس المدة التي يستغرقها البشر للرد (يحسب SDK تلقائياً `duration_ms` على الأحداث المقترنة)، وتدقيق من أيقف أو قاطع الوكيل، وبناء سير عمل الموافقة والإشراف التي تظهر في لوحة التحكم.
+أحداث الإنسان في الحلقة تعطيك إشرافاً على اللحظات التي يتدخل فيها الشخص في تنفيذ الوكيل (انتظار الموافقة، تقديم إدخال، إيقاف مؤقت، أو إيقاف الوكيل). تسمح لك بقياس المدة التي يستغرقها الإنسان للرد (يحسب SDK `duration_ms` تلقائياً على الأحداث المقترنة)، وتدقيق من أوقف أو قاطع وكيلاً، وبناء سير عمل الموافقة والإشراف التي تظهر في لوحة المعلومات.
 
 ### `event.human_wait()`
 
-تُطلق عندما يوقف الوكيل التنفيذ بانتظار الإنسان لتوفير مدخلات. اقرن مع `human_input`؛ يحسب SDK تلقائياً `duration_ms` (كم من الوقت استغرق الإنسان للرد).
+يُصدر عندما يوقف الوكيل التنفيذ انتظاراً لإنسان لتقديم إدخال. اقرنه مع `human_input`؛ يحسب SDK `duration_ms` تلقائياً (كم من الوقت استغرق الإنسان للرد).
 
 ```python
 agenteye.event.human_wait(
     session_id="run-001",
     agent_id="planner",
-    input_id="inp-abc",                          # str, required - مفتاح الارتباط للمطابقة human_input
-    prompt="Do you approve this action?",        # str | None - السؤال المعروض للإنسان
-    options=["approve", "reject", "defer"],      # list[str] | None - الخيارات المعروضة على الإنسان
-    reason="approval_required",                  # str | None - لماذا ينتظر الوكيل
+    input_id="inp-abc",                          # str, required - correlation key for the matching human_input
+    prompt="Do you approve this action?",        # str | None - the question shown to the human
+    options=["approve", "reject", "defer"],      # list[str] | None - choices presented to the human
+    reason="approval_required",                  # str | None - why the agent is waiting
 )
 ```
 
 ### `event.human_input()`
 
-تُطلق عندما يوفر الإنسان مدخلات ويستأنف الوكيل. يرتبط مع `human_wait` عبر `input_id`. يتم حساب `duration_ms` تلقائياً ولا يجب تمريره من قبل المتصل.
+يُصدر عندما يقدم الإنسان إدخالاً واستئناف الوكيل. يرتبط مع `human_wait` عبر `input_id`. يتم حساب `duration_ms` تلقائياً ويجب عدم تمريره من قبل المتصل.
 
 ```python
 agenteye.event.human_input(
     session_id="run-001",
     agent_id="planner",
-    input_id="inp-abc",    # str, required - يجب أن يطابق human_wait السابق
-    response="approve",    # str | None - إجابة الإنسان (نص حر أو خيار محدد)
-    # يتم حساب duration_ms تلقائياً - لا تمرره
+    input_id="inp-abc",    # str, required - must match the prior human_wait
+    response="approve",    # str | None - the human's answer (free text or selected option)
+    # duration_ms is computed automatically - do not pass it
 )
 ```
 
 ### `event.human_pause()`
 
-تُطلق عندما يوقف الإنسان الوكيل بنشاط (مثل عبر عنصر تحكم في لوحة التحكم). يتم تعليق الوكيل لكن لم ينته.
+يُصدر عندما يوقف الإنسان الوكيل بنشاط (على سبيل المثال عبر عنصر تحكم لوحة المعلومات). يتم تعليق الوكيل لكن ليس إنهاؤه.
 
 ```python
 agenteye.event.human_pause(
     session_id="run-001",
     agent_id="planner",
     reason="user_requested",  # str | None
-    user_id="usr_42",         # str | None - من أوقف الوكيل
+    user_id="usr_42",         # str | None - who paused the agent
 )
 ```
 
 ### `event.human_interrupt()`
 
-تُطلق عندما يوقف الإنسان الوكيل بشكل نشط في منتصف التنفيذ. بخلاف `human_pause`، يتم إنهاء عمل الوكيل بدلاً من تعليقه.
+يُصدر عندما يوقف الإنسان الوكيل بنشاط أثناء التنفيذ. على عكس `human_pause`، يتم إنهاء عمل الوكيل بدلاً من تعليقه.
 
 ```python
 agenteye.event.human_interrupt(
     session_id="run-001",
     agent_id="planner",
     reason="output_incorrect",       # str | None
-    user_id="usr_42",                # str | None - من قاطع الوكيل
-    at_step="tool_use:web_search",   # str | None - ما كان الوكيل يفعله عند الإيقاف
+    user_id="usr_42",                # str | None - who interrupted the agent
+    at_step="tool_use:web_search",   # str | None - what the agent was doing when stopped
 )
 ```
 
@@ -396,7 +396,7 @@ agenteye.event.human_interrupt(
 
 ## الحقول المخصصة
 
-أي حجج كلمة رئيسية إضافية تُلحق بالحدث بعد الحقول القياسية:
+أي حجج كلمات رئيسية إضافية تُُلحق بالحدث بعد الحقول القياسية:
 
 ```python
 agenteye.event.tool_use(
@@ -404,32 +404,32 @@ agenteye.event.tool_use(
     agent_id="planner",
     tool_name="db_query",
     tool_call_id="toolu_02",
-    tenant_id="acme",           # حقل مخصص
-    region="us-east-1",         # حقل مخصص
+    tenant_id="acme",           # custom field
+    region="us-east-1",         # custom field
 )
 ```
 
-`timestamp`، و `type`، و `environment` محجوزة وترفع `ValueError` (`لا يمكن استخدام أسماء الحقول المحجوزة كحقول مخصصة: [...]`) إذا تم تمريرها كحقول مخصصة. `session_id` و `agent_id` معاملات مطلوبة في كل طريقة حدث ولا يمكن توفيرها مرة ثانية؛ يرفع Python `TypeError` إذا فعلت. اضبط البيئة باستخدام `configure(environment=...)` (أو متغير `AGENTEYE_ENVIRONMENT`) بدلاً من ذلك.
+يتم حجز `timestamp` و `type` و `environment` وتطرح `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) إذا تم تمريرها كحقول مخصصة. `session_id` و `agent_id` معاملات مطلوبة في كل طريقة حدث ولا يمكن توريدها مرة ثانية؛ يطرح Python `TypeError` إذا فعلت ذلك. اضبط البيئة بـ `configure(environment=...)` (أو متغير `AGENTEYE_ENVIRONMENT`) بدلاً من ذلك.
 
-احفظ الحمولات كـ JSON منظمة عندما تريد الاستعلام عن حقولها. القيم التي لا يدعمها JSON بشكل أصلي — مثل التواريخ، UUIDs، الكسور العشرية، المجموعات، البايتات، أو كائنات النموذج — يتم تحويلها إلى سلاسل نصية بحيث يستمر التسجيل بأمان.
+احفظ الحمولات كـ JSON منظم عندما تريد الاستعلام عن حقولها. يتم تحويل القيم التي لا يدعمها JSON بشكل أصلي — مثل التواريخ والمعرّفات الفريدة والعشرية والمجموعات والبايتات أو كائنات النموذج — إلى سلاسل حتى يستمر التسجيل بأمان.
 
 ---
 
-## كيف يتم كتابة الأحداث
+## كيفية كتابة الأحداث
 
-يتم تخزين الأحداث مؤقتاً داخل العملية وتُغسل على القرص كل `flush_interval` ثانية (500 ملليثانية افتراضياً). كل عملية غسل تكتب ملف JSONL واحد:
+يتم مؤقتاً الأحداث داخل العملية وتفريغها إلى القرص كل `flush_interval` ثانية (الافتراضي 500 مللي ثانية). يكتب كل تفريغ ملف JSONL واحد:
 
 ```text
 ~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
 ```
 
-يراقب جامع البيانات هذا الدليل ويرفع الملفات تلقائياً. لا تحتاج إلى إدارة هذه الملفات مباشرة.
+يراقب المجمع هذا الدليل ويحمل الملفات تلقائياً. لا تحتاج إلى إدارة هذه الملفات مباشرة.
 
-يتم كتابة كل ملف بشكل ذري: يكتب SDK إلى ملف مؤقت ثم يعيد تسميته في مكانه، لذا لا يرى جامع البيانات أبداً ملف نصفي. عملية غسل نهائية تعمل أيضاً عند خروج عمليتك، لذا لم تُفقد الأحداث المخزنة مؤقتاً في الفترة الأخيرة. إذا كان جامع البيانات غير متصل، تتراكم الأحداث ببساطة كملفات على القرص وتُرسل بمجرد عودته.
+يتم كتابة كل ملف بشكل ذري: يكتب SDK إلى ملف مؤقت ثم يعيد تسميته إلى مكانه، بحيث لا يرى المجمع ملف نصف مكتوب. يعمل تفريغ نهائي أيضاً عند خروج عمليتك، بحيث لا تُفقد الأحداث المؤقتة في الفترة الأخيرة. إذا كان المجمع غير متصل، تتراكم الأحداث ببساطة كملفات على القرص ويتم شحنها بمجرد عودتها للاتصال.
 
 ---
 
 ## الخطوات التالية
 
-- [تدفق الأحداث](/ar/agenteye/event-stream): شاهد هذه الأحداث تصل مباشرة، مرمزة بألوان وقابلة للتصفية حسب البيئة والوكيل والجلسة.
-- [الجلسات](/ar/agenteye/sessions): شاهد كيف يعيد الأحداث المقترنة بناء كل تشغيل وكيل كرسم بياني للتنفيذ وخط زمني.
+- [تدفق الأحداث](/ar/agenteye/event-stream): شاهد هذه الأحداث تصل مباشرة، مع ترميز بألوان وقابلة للتصفية حسب البيئة والوكيل والجلسة.
+- [الجلسات](/ar/agenteye/sessions): شاهد كيف تعيد الأحداث المقترنة بناء كل تشغيل للوكيل كرسم بياني للتنفيذ وجدول زمني.

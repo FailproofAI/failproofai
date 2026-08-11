@@ -1,10 +1,10 @@
 ---
 title: Benutzerdefinierte Richtlinien
-description: "Schreiben Sie eigene Richtlinien in JavaScript – Konventionen durchsetzen, Drift verhindern, Fehler erkennen, externe Systeme integrieren"
+description: "Schreibe eigene Richtlinien in JavaScript – Konventionen durchsetzen, Drift verhindern, Fehler erkennen, externe Systeme integrieren"
 icon: code
 ---
 
-Benutzerdefinierte Richtlinien ermöglichen es Ihnen, Regeln für beliebige Agentverhalten zu schreiben: Projektkonventionen durchsetzen, Drift verhindern, destruktive Operationen absichern, feststeckende Agenten erkennen oder Integrationen mit Slack, Genehmigungsworkflows und mehr umsetzen. Sie nutzen dasselbe Hook-Event-System und dieselben `allow`-, `deny`- und `instruct`-Entscheidungen wie die integrierten Richtlinien.
+Benutzerdefinierte Richtlinien ermöglichen es dir, Regeln für jedes Agentenverhalten zu schreiben: Projektkonventionen durchsetzen, Drift verhindern, destruktive Operationen absichern, feststeckende Agenten erkennen oder in Slack, Genehmigungsworkflows und mehr integrieren. Sie verwenden dasselbe Hook-Event-System und dieselben `allow`, `deny`, `instruct`-Entscheidungen wie integrierte Richtlinien.
 
 ---
 
@@ -41,10 +41,10 @@ failproofai policies --install --custom ./my-policies.js
 
 ### Option 1: Konventionsbasiert (empfohlen)
 
-Legen Sie `*policies.{js,mjs,ts}`-Dateien im Verzeichnis `.failproofai/policies/` ab – sie werden automatisch geladen, ohne Flags oder Konfigurationsänderungen. Dies funktioniert wie Git-Hooks: Datei ablegen, fertig.
+Lege `*policies.{js,mjs,ts}`-Dateien in `.failproofai/policies/` ab – sie werden automatisch geladen, ohne Flags oder Konfigurationsänderungen. Das funktioniert wie Git-Hooks: Datei ablegen, fertig.
 
 ```
-# Projektebene — in Git eingecheckt, mit dem Team geteilt
+# Projektebene — wird in Git eingecheckt, mit dem Team geteilt
 .failproofai/policies/security-policies.mjs
 .failproofai/policies/workflow-policies.mjs
 
@@ -53,23 +53,23 @@ Legen Sie `*policies.{js,mjs,ts}`-Dateien im Verzeichnis `.failproofai/policies/
 ```
 
 **So funktioniert es:**
-- Sowohl das Projekt- als auch das Benutzerverzeichnis werden durchsucht (Vereinigungsmenge – kein Erster-gewinnt-nach-Scope)
-- Dateien werden alphabetisch innerhalb jedes Verzeichnisses geladen. Mit `01-`, `02-` als Präfix können Sie die Reihenfolge steuern
+- Sowohl Projekt- als auch Benutzerverzeichnisse werden durchsucht (Vereinigung – kein „Erste-Scope-gewinnt")
+- Dateien werden innerhalb jedes Verzeichnisses alphabetisch geladen. Präfixe wie `01-`, `02-` steuern die Reihenfolge
 - Nur Dateien, die `*policies.{js,mjs,ts}` entsprechen, werden geladen; andere Dateien werden ignoriert
-- Jede Datei wird unabhängig geladen (Fail-open pro Datei)
-- Funktioniert zusammen mit explizitem `--custom` und integrierten Richtlinien
+- Jede Datei wird unabhängig geladen (fail-open pro Datei)
+- Funktioniert zusammen mit expliziten `--custom`- und integrierten Richtlinien
 
 <Tip>
-Konventionsrichtlinien sind der einfachste Weg, einen Qualitätsstandard für Ihre Organisation aufzubauen. Checken Sie `.failproofai/policies/` in Git ein, und jedes Teammitglied erhält automatisch dieselben Regeln – kein Setup pro Entwickler erforderlich. Wenn Ihr Team neue Fehlermuster entdeckt, fügen Sie eine Richtlinie hinzu und pushen Sie. Mit der Zeit werden diese zu einem lebendigen Qualitätsstandard, der sich mit jedem Beitrag weiterentwickelt.
+Konventionsrichtlinien sind der einfachste Weg, einen Qualitätsstandard für dein Unternehmen aufzubauen. Checke `.failproofai/policies/` in Git ein, und jedes Teammitglied erhält automatisch dieselben Regeln – kein individuelles Setup erforderlich. Wenn dein Team neue Fehlermuster entdeckt, füge eine Richtlinie hinzu und pushe. Mit der Zeit werden diese zu einem lebendigen Qualitätsstandard, der sich mit jedem Beitrag weiterentwickelt.
 </Tip>
 
 ### Option 2: Expliziter Dateipfad
 
 ```bash
-# Installation mit einer benutzerdefinierten Richtliniendatei
+# Mit einer benutzerdefinierten Richtliniendatei installieren
 failproofai policies --install --custom ./my-policies.js
 
-# Benutzerdefinierte Richtlinienpfade ersetzen
+# Die benutzerdefinierten Richtlinienpfade ersetzen
 failproofai policies --install --custom ./new-policies.js
 
 # Mehrere explizite Dateien konfigurieren (in Flag-Reihenfolge geladen)
@@ -79,17 +79,17 @@ failproofai policies --install --custom ./security.js --custom ./workflow.js
 failproofai policies --uninstall --custom
 ```
 
-Aufgelöste absolute Pfade werden in `policies-config.json` als `customPoliciesPaths` gespeichert. Wiederholen Sie `--custom`, um mehrere Dateien zu konfigurieren. Bestehende Konfigurationen mit dem veralteten Feld `customPoliciesPath` funktionieren weiterhin. Dateien werden bei jedem Hook-Event neu geladen – es gibt kein Caching zwischen Events.
+Aufgelöste absolute Pfade werden in `policies-config.json` als `customPoliciesPaths` gespeichert. Wiederhole `--custom`, um mehrere Dateien zu konfigurieren. Bestehende Konfigurationen, die das veraltete `customPoliciesPath`-Feld verwenden, funktionieren weiterhin. Dateien werden bei jedem Hook-Event neu geladen – es gibt kein Caching zwischen Events.
 
-Jede registrierte Richtlinie erscheint mit einem eigenen Umschalter im Dashboard. Das Deaktivieren einer Richtlinie speichert ihre quellenqualifizierte ID in `disabledCustomPolicies`; die Datei und ihre anderen Richtlinien werden weiterhin geladen, während die deaktivierte Richtlinie vor dem Event-Matching ausgeschlossen wird. Richtliniennamen, die über mehrere Dateien hinweg doppelt vorkommen, haben unabhängige Umschalter.
+Jede registrierte Richtlinie erscheint mit eigenem Umschalter im Dashboard. Das Deaktivieren einer Richtlinie speichert deren quellenqualifizierte ID in `disabledCustomPolicies`; die Datei und ihre anderen Richtlinien werden weiterhin geladen, während die deaktivierte Richtlinie vor dem Event-Matching ausgeschlossen wird. Richtliniennamen, die über mehrere Dateien hinweg doppelt vorkommen, haben unabhängige Umschalter.
 
-### Beide Methoden kombinieren
+### Beide gemeinsam verwenden
 
 Konventionsrichtlinien und explizite `--custom`-Dateien können nebeneinander existieren. Ladereihenfolge:
 
 1. Explizite `customPoliciesPaths`-Dateien (in konfigurierter Reihenfolge)
-2. Projektkonventionsdateien (`{cwd}/.failproofai/policies/`, alphabetisch)
-3. Benutzerkonventionsdateien (`~/.failproofai/policies/`, alphabetisch)
+2. Projekt-Konventionsdateien (`{cwd}/.failproofai/policies/`, alphabetisch)
+3. Benutzer-Konventionsdateien (`~/.failproofai/policies/`, alphabetisch)
 
 ---
 
@@ -103,45 +103,45 @@ import { customPolicies, allow, deny, instruct } from "failproofai";
 
 ### `customPolicies.add(hook)`
 
-Registriert eine Richtlinie. Rufen Sie diese Methode beliebig oft auf, um mehrere Richtlinien in derselben Datei zu definieren.
+Registriert eine Richtlinie. Kann beliebig oft aufgerufen werden, um mehrere Richtlinien in derselben Datei zu definieren.
 
 ```ts
 customPolicies.add({
-  name: string;                         // erforderlich – eindeutige Kennung
+  name: string;                         // erforderlich – eindeutiger Bezeichner
   description?: string;                 // wird in der Ausgabe von `failproofai policies` angezeigt
-  match?: { events?: HookEventType[] }; // nach Eventtyp filtern; weglassen, um alle zu erfassen
+  match?: { events?: HookEventType[] }; // nach Event-Typ filtern; weglassen, um alle zu matchen
   fn: (ctx: PolicyContext) => PolicyResult | Promise<PolicyResult>;
 });
 ```
 
 ### Entscheidungs-Hilfsfunktionen
 
-| Funktion | Wirkung | Wann verwenden |
+| Funktion | Wirkung | Verwenden wenn |
 |----------|--------|----------|
-| `allow()` | Operation stillschweigend erlauben | Die Aktion ist sicher, keine Meldung erforderlich |
-| `deny(message)` | Operation blockieren | Der Agent sollte diese Aktion nicht ausführen |
-| `instruct(message)` | Kontext hinzufügen, ohne zu blockieren | Dem Agenten zusätzlichen Kontext geben, um ihn auf Kurs zu halten |
+| `allow()` | Operation lautlos erlauben | Die Aktion ist sicher, keine Nachricht erforderlich |
+| `deny(message)` | Operation blockieren | Der Agent soll diese Aktion nicht ausführen |
+| `instruct(message)` | Kontext hinzufügen ohne zu blockieren | Dem Agenten zusätzlichen Kontext geben, um ihn auf Kurs zu halten |
 
-`deny(message)` – die Nachricht erscheint für Claude mit dem Präfix `"Blocked by failproofai:"`. Ein einzelnes `deny` bricht alle weiteren Auswertungen ab.
+`deny(message)` – die Nachricht erscheint für Claude mit dem Präfix `"Blocked by failproofai:"`. Ein einziges `deny` schließt alle weitere Auswertung kurz.
 
-`instruct(message)` – die Nachricht wird dem Kontext von Claude für den aktuellen Tool-Aufruf hinzugefügt. Alle `instruct`-Nachrichten werden gesammelt und gemeinsam übermittelt.
+`instruct(message)` – die Nachricht wird dem Kontext von Claude für den aktuellen Tool-Aufruf hinzugefügt. Alle `instruct`-Nachrichten werden gesammelt und gemeinsam zugestellt.
 
 <Tip>
-Sie können jedem `deny`- oder `instruct`-Message zusätzliche Hinweise anfügen, indem Sie ein `hint`-Feld in `policyParams` angeben – ohne Codeänderungen. Dies funktioniert auch für benutzerdefinierte (`custom/`), Projektkonventions- (`.failproofai-project/`) und Benutzerkonventionsrichtlinien (`.failproofai-user/`). Weitere Details finden Sie unter [Konfiguration → hint](/de/configuration#hint-cross-cutting).
+Du kannst jeder `deny`- oder `instruct`-Nachricht zusätzliche Hinweise hinzufügen, indem du ein `hint`-Feld in `policyParams` angibst – ohne Codeänderungen. Das funktioniert auch für benutzerdefinierte (`custom/`), Projekt-Konventions- (`.failproofai-project/`) und Benutzer-Konventionsrichtlinien (`.failproofai-user/`). Siehe [Konfiguration → hint](/de/configuration#hint-cross-cutting) für Details.
 </Tip>
 
 ### Informative Allow-Nachrichten
 
-`allow(message)` erlaubt die Operation **und** sendet eine informative Nachricht an Claude. Die Nachricht wird als `additionalContext` in der stdout-Antwort des Hook-Handlers übermittelt – derselbe Mechanismus wie bei `instruct`, aber semantisch anders: Es handelt sich um ein Statusupdate, nicht um eine Warnung.
+`allow(message)` erlaubt die Operation **und** sendet eine informative Nachricht an Claude zurück. Die Nachricht wird als `additionalContext` in der stdout-Antwort des Hook-Handlers zugestellt – derselbe Mechanismus wie bei `instruct`, aber semantisch unterschiedlich: Es handelt sich um eine Statusmeldung, nicht um eine Warnung.
 
-| Funktion | Wirkung | Wann verwenden |
+| Funktion | Wirkung | Verwenden wenn |
 |----------|--------|----------|
-| `allow(message)` | Erlauben und Kontext an Claude senden | Bestätigen, dass eine Prüfung erfolgreich war, oder erklären, warum eine Prüfung übersprungen wurde |
+| `allow(message)` | Erlauben und Kontext an Claude senden | Eine bestandene Prüfung bestätigen oder erklären, warum eine Prüfung übersprungen wurde |
 
 Anwendungsfälle:
 - **Statusbestätigungen:** `allow("All CI checks passed.")` – teilt Claude mit, dass alles in Ordnung ist
-- **Fail-open-Erklärungen:** `allow("GitHub CLI not installed, skipping CI check.")` – erklärt Claude, warum eine Prüfung übersprungen wurde, damit es den vollen Kontext hat
-- **Mehrere Nachrichten werden gesammelt:** Wenn mehrere Richtlinien jeweils `allow(message)` zurückgeben, werden alle Nachrichten mit Zeilenumbrüchen verbunden und gemeinsam übermittelt
+- **Fail-open-Erklärungen:** `allow("GitHub CLI not installed, skipping CI check.")` – teilt Claude mit, warum eine Prüfung übersprungen wurde, damit es den vollen Kontext hat
+- **Mehrere Nachrichten akkumulieren:** Wenn mehrere Richtlinien jeweils `allow(message)` zurückgeben, werden alle Nachrichten mit Zeilenumbrüchen verbunden und gemeinsam zugestellt
 
 ```js
 customPolicies.add({
@@ -167,23 +167,23 @@ customPolicies.add({
 | `eventType` | `string` | `"PreToolUse"`, `"PostToolUse"`, `"Notification"`, `"Stop"` |
 | `toolName` | `string \| undefined` | Das aufgerufene Tool (z. B. `"Bash"`, `"Write"`, `"Read"`) |
 | `toolInput` | `Record<string, unknown> \| undefined` | Die Eingabeparameter des Tools |
-| `payload` | `Record<string, unknown>` | Vollständige rohe Event-Nutzlast von Claude Code |
+| `payload` | `Record<string, unknown>` | Vollständige rohe Event-Payload von Claude Code |
 | `session` | `SessionMetadata \| undefined` | Sitzungskontext (siehe unten) |
 
 ### `SessionMetadata`-Felder
 
 | Feld | Typ | Beschreibung |
 |-------|------|-------------|
-| `sessionId` | `string` | Claude Code-Sitzungskennung |
+| `sessionId` | `string` | Claude Code-Sitzungsbezeichner |
 | `cwd` | `string` | Arbeitsverzeichnis der Claude Code-Sitzung |
 | `transcriptPath` | `string` | Pfad zur JSONL-Transkriptdatei der Sitzung |
 
-### Eventtypen
+### Event-Typen
 
 | Event | Wann es ausgelöst wird | `toolInput`-Inhalt |
 |-------|--------------|----------------------|
 | `PreToolUse` | Bevor Claude ein Tool ausführt | Die Eingabe des Tools (z. B. `{ command: "..." }` für Bash) |
-| `PostToolUse` | Nachdem ein Tool abgeschlossen wurde | Die Eingabe des Tools + `tool_result` (die Ausgabe) |
+| `PostToolUse` | Nachdem ein Tool abgeschlossen ist | Die Eingabe des Tools + `tool_result` (die Ausgabe) |
 | `Notification` | Wenn Claude eine Benachrichtigung sendet | `{ message: "...", notification_type: "idle" \| "permission_prompt" \| ... }` – Hooks müssen immer `allow()` zurückgeben, sie können Benachrichtigungen nicht blockieren |
 | `Stop` | Wenn die Claude-Sitzung endet | Leer |
 
@@ -199,12 +199,12 @@ Richtlinien werden in dieser Reihenfolge ausgewertet:
 4. Konventionsrichtlinien aus dem Benutzerverzeichnis `~/.failproofai/policies/` (Dateien alphabetisch, `.add()`-Reihenfolge innerhalb)
 
 <Note>
-Das erste `deny` bricht alle nachfolgenden Richtlinien ab. Alle `instruct`-Nachrichten werden gesammelt und gemeinsam übermittelt.
+Das erste `deny` schließt alle nachfolgenden Richtlinien kurz. Alle `instruct`-Nachrichten werden gesammelt und gemeinsam zugestellt.
 </Note>
 
 ---
 
-## Transitive Imports
+## Transitive Importe
 
 Benutzerdefinierte Richtliniendateien können lokale Module über relative Pfade importieren:
 
@@ -223,13 +223,13 @@ customPolicies.add({
 });
 ```
 
-Alle relativen Imports, die von der Einstiegsdatei aus erreichbar sind, werden aufgelöst. Dies wird implementiert, indem `from "failproofai"`-Imports auf den tatsächlichen dist-Pfad umgeschrieben und temporäre `.mjs`-Dateien erstellt werden, um ESM-Kompatibilität sicherzustellen.
+Alle relativen Importe, die von der Einstiegsdatei aus erreichbar sind, werden aufgelöst. Dies wird durch das Umschreiben von `from "failproofai"`-Importen auf den tatsächlichen dist-Pfad und das Erstellen temporärer `.mjs`-Dateien implementiert, um ESM-Kompatibilität sicherzustellen.
 
 ---
 
-## Eventtyp-Filterung
+## Event-Typ-Filterung
 
-Verwenden Sie `match.events`, um einzuschränken, wann eine Richtlinie ausgelöst wird:
+Verwende `match.events`, um einzuschränken, wann eine Richtlinie ausgelöst wird:
 
 ```js
 customPolicies.add({
@@ -243,7 +243,7 @@ customPolicies.add({
 });
 ```
 
-Lassen Sie `match` vollständig weg, um bei jedem Eventtyp ausgelöst zu werden.
+`match` ganz weglassen, um bei jedem Event-Typ ausgelöst zu werden.
 
 ---
 
@@ -254,15 +254,15 @@ Benutzerdefinierte Richtlinien sind **fail-open**: Fehler blockieren niemals int
 | Fehler | Verhalten |
 |---------|----------|
 | `customPoliciesPath` nicht gesetzt | Keine expliziten benutzerdefinierten Richtlinien werden ausgeführt; Konventionsrichtlinien und integrierte Richtlinien laufen normal weiter |
-| Datei nicht gefunden | Warnung in `~/.failproofai/hook.log` protokolliert; integrierte Richtlinien laufen weiter |
-| Syntax-/Importfehler (explizit) | Fehler in `~/.failproofai/hook.log` protokolliert; explizite benutzerdefinierte Richtlinien werden übersprungen |
-| Syntax-/Importfehler (Konvention) | Fehler protokolliert; diese Datei wird übersprungen, andere Konventionsdateien werden weiterhin geladen |
-| `fn` wirft zur Laufzeit | Fehler protokolliert; dieser Hook wird als `allow` behandelt; andere Hooks laufen weiter |
-| `fn` dauert länger als 10 Sekunden | Timeout protokolliert; wird als `allow` behandelt |
+| Datei nicht gefunden | Warnung wird in `~/.failproofai/hook.log` protokolliert; integrierte Richtlinien laufen weiter |
+| Syntax-/Importfehler (explizit) | Fehler wird in `~/.failproofai/hook.log` protokolliert; explizite benutzerdefinierte Richtlinien werden übersprungen |
+| Syntax-/Importfehler (Konvention) | Fehler wird protokolliert; diese Datei wird übersprungen, andere Konventionsdateien werden weiterhin geladen |
+| `fn` wirft zur Laufzeit | Fehler wird protokolliert; dieser Hook wird als `allow` behandelt; andere Hooks laufen weiter |
+| `fn` dauert länger als 10 Sekunden | Timeout wird protokolliert; als `allow` behandelt |
 | Konventionsverzeichnis fehlt | Keine Konventionsrichtlinien werden ausgeführt; kein Fehler |
 
 <Tip>
-Um Fehler in benutzerdefinierten Richtlinien zu debuggen, beobachten Sie die Logdatei:
+Um Fehler in benutzerdefinierten Richtlinien zu debuggen, beobachte die Logdatei:
 
 ```bash
 tail -f ~/.failproofai/hook.log
@@ -328,14 +328,14 @@ export { customPolicies };
 
 ## Beispiele
 
-Das Verzeichnis `examples/` enthält sofort ausführbare Richtliniendateien:
+Das Verzeichnis `examples/` enthält sofort verwendbare Richtliniendateien:
 
 | Datei | Inhalt |
 |------|----------|
-| `examples/policies-basic.js` | Fünf Einstiegsrichtlinien für häufige Agentfehlermodi |
-| `examples/policies-advanced/index.js` | Fortgeschrittene Muster: transitive Imports, asynchrone Aufrufe, Output-Bereinigung und Sitzungsende-Hooks |
-| `examples/convention-policies/security-policies.mjs` | Konventionsbasierte Sicherheitsrichtlinien (Block .env-Schreibvorgänge, Git-Historienschreiben verhindern) |
-| `examples/convention-policies/workflow-policies.mjs` | Konventionsbasierte Workflow-Richtlinien (Testeinstufungen, Audit-Dateischreibvorgänge) |
+| `examples/policies-basic.js` | Fünf Einstiegsrichtlinien für häufige Agentenfehlermodi |
+| `examples/policies-advanced/index.js` | Fortgeschrittene Muster: transitive Importe, asynchrone Aufrufe, Ausgabebereinigung und Sitzungsende-Hooks |
+| `examples/convention-policies/security-policies.mjs` | Konventionsbasierte Sicherheitsrichtlinien (blockiert .env-Schreibzugriffe, verhindert das Umschreiben der Git-Historie) |
+| `examples/convention-policies/workflow-policies.mjs` | Konventionsbasierte Workflow-Richtlinien (Test-Erinnerungen, Audit-Dateischreibzugriffe) |
 
 ### Explizite Dateibeispiele verwenden
 

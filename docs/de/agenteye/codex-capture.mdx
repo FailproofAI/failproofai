@@ -1,55 +1,55 @@
 ---
-title: "Codex-Sitzungsaufzeichnung"
-description: "Leite die lokalen OpenAI Codex-Sitzungen deines Teams als gewöhnliche Sessions und Events in AgentEye weiter – ohne Änderungen an ihrer Arbeitsweise."
+title: "Codex-Sitzungserfassung"
+description: "Übertragen Sie die lokalen OpenAI-Codex-Sitzungen Ihres Teams als gewöhnliche Sitzungen und Ereignisse in AgentEye — ohne Änderungen an der Art und Weise, wie sie Codex ausführen."
 ---
 
-Deine Entwickler nutzen OpenAI Codex bereits täglich. Die Codex-Sitzungsaufzeichnung bringt diese Coding-Sessions als gewöhnliche Sessions und Events in AgentEye, sodass du sie durchsuchen, wiedergeben und zusammen mit allem anderen, was du beobachtest, auswerten kannst. Sie ergänzt das [Python SDK](/de/agenteye/python-sdk): Das SDK instrumentiert Agenten, die du selbst schreibst, während dieses Feature die Codex-Arbeit deines Teams aufzeichnet – ohne dass sich an deren Arbeitsweise etwas ändert.
+Ihre Entwickler arbeiten bereits täglich mit OpenAI Codex. Die Codex-Sitzungserfassung überträgt diese Coding-Sitzungen als gewöhnliche Sitzungen und Ereignisse in AgentEye, sodass Sie sie durchsuchen, wiedergeben und neben allem anderen, was Sie beobachten, auswerten können. Sie ergänzt das [Python SDK](/de/agenteye/python-sdk): Das SDK instrumentiert Agents, die Sie selbst schreiben, während diese Funktion die Codex-Arbeit Ihres Teams erfasst — ohne Änderungen an deren Arbeitsweise.
 
-Ein kleiner Hintergrundkollektor liest Codex' lokale Sitzungstranskripte, während sie geschrieben werden, und überträgt sie an AgentEye. Ein Kollektor pro Maschine erfasst alle lokalen Codex-Oberflächen gleichzeitig – es ist keine oberflächenspezifische Einrichtung erforderlich.
+Ein kleiner Hintergrund-Collector liest Codex' lokale Sitzungsprotokolle, während sie geschrieben werden, und überträgt sie an AgentEye. Ein Collector pro Maschine erfasst gleichzeitig jede lokale Codex-Oberfläche — es ist keine Einrichtung pro Oberfläche erforderlich.
 
-Derselbe Kollektor erfasst auch andere Agenten – siehe [OpenClaw](/de/agenteye/openclaw-capture) und [Hermes](/de/agenteye/hermes-capture). Aktiviere jede Variante, die du verwendest; ein einzelner Kollektor kann mehrere gleichzeitig aufzeichnen.
+Derselbe Collector erfasst auch andere Agents — siehe [OpenClaw](/de/agenteye/openclaw-capture) und [Hermes](/de/agenteye/hermes-capture). Aktivieren Sie jeden, den Sie verwenden; ein einzelner Collector kann mehrere gleichzeitig erfassen.
 
 ---
 
-## Was aufgezeichnet wird
+## Was erfasst wird
 
-Jede Codex-Oberfläche, die **lokal** ausgeführt wird, erzeugt dieselben Sitzungstranskripte auf der Festplatte, und der Kollektor liest alle davon:
+Jede Codex-Oberfläche, die **lokal** ausgeführt wird, erzeugt dieselben lokalen Sitzungsprotokolle auf der Festplatte, und der Collector liest sie alle:
 
-- das Codex **CLI** und `codex exec`
+- die Codex **CLI** und `codex exec`
 - die **VS Code / IDE-Erweiterung**
 - die **Desktop-App**, wenn sie eine Sitzung lokal ausführt
 
-Jede Codex-Sitzung wird zu einer AgentEye-[Session](/de/agenteye/sessions); ihre Nutzer- und Assistentennachrichten, das Reasoning, Tool-Aufrufe, Tool-Ergebnisse und der Token-Verbrauch werden zu den entsprechenden [Events](/de/agenteye/event-stream). Die Oberfläche, von der die jeweilige Sitzung stammt (CLI, IDE oder Desktop), wird festgehalten, damit du sie unterscheiden kannst.
+Jede Codex-Sitzung wird zu einer AgentEye-[Sitzung](/de/agenteye/sessions); ihre Benutzer- und Assistentennachrichten, Überlegungen, Tool-Aufrufe, Tool-Ergebnisse und Token-Nutzung werden zu den entsprechenden [Ereignissen](/de/agenteye/event-stream). Die Oberfläche, von der jede Sitzung stammt (CLI, IDE oder Desktop), wird aufgezeichnet, damit Sie sie unterscheiden können.
 
-> **Cloud-Sitzungen werden nicht aufgezeichnet.** Die Desktop-App führt Sitzungen zunehmend in der Codex-Cloud aus und speichert lokal nur deren Metadaten – es gibt kein lokales Transkript zum Lesen. Nur lokal ausgeführte Sitzungen werden aufgezeichnet.
+> **Cloud-Sitzungen werden nicht erfasst.** Die Desktop-App führt Sitzungen zunehmend in der Codex-Cloud aus und speichert nur deren Metadaten lokal — es gibt kein lokales Protokoll zum Lesen. Nur lokal ausgeführte Sitzungen werden erfasst.
 
 ---
 
 ## Aktivierung
 
-Die Aufzeichnung ist standardmäßig deaktiviert. Installiere den Kollektor mit einem API-Schlüssel, der die Berechtigung `events:add` besitzt (siehe [API-Schlüssel](/de/agenteye/api-keys)), und aktiviere die Codex-Aufzeichnung:
+Die Erfassung ist deaktiviert, bis Sie sie einschalten. Installieren Sie den Collector mit einem API-Schlüssel, der die Berechtigung `events:add` besitzt (siehe [API-Schlüssel](/de/agenteye/api-keys)), und aktivieren Sie die Codex-Erfassung:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --codex-enabled
 ```
 
-Damit wird der Kollektor installiert, als Hintergrunddienst registriert und die Aufzeichnung gestartet. Prüfe, ob er läuft:
+Dadurch wird der Collector installiert, als Hintergrunddienst registriert und die Erfassung gestartet. Überprüfen Sie, ob er läuft:
 
 ```bash
 agenteye-collector health
 ```
 
-Beim ersten Start werden deine vorhandenen Codex-Sitzungen einmalig nachgefüllt, danach werden neue Aktivitäten innerhalb von Sekunden übertragen. Die Dateien von Codex werden ausschließlich gelesen – niemals verändert, verschoben oder gelöscht – und jede Sitzung wird genau einmal übertragen, auch nach einem Neustart.
+Beim ersten Start werden Ihre vorhandenen Codex-Sitzungen einmalig nachgefüllt, und neue Aktivitäten werden anschließend innerhalb von Sekunden übertragen. Codex' eigene Dateien werden ausschließlich gelesen — niemals verändert, verschoben oder gelöscht — und jede Sitzung wird genau einmal übertragen, auch nach Neustarts.
 
 ---
 
-## Wo die Daten erscheinen
+## Wo sie erscheinen
 
-Aufgezeichnete Sitzungen erscheinen unter **Sessions** und ihre Events im **Events**-Stream – genauso wie bei jedem anderen beobachteten Agenten. Damit funktionieren [Session-Replay](/de/agenteye/sessions), [Suche](/de/agenteye/queries), [Auswertungen](/de/agenteye/evaluations) und [Alerts](/de/agenteye/alerts) für sie ganz normal. Filtere nach dem Codex-Agenten, um nur diese anzuzeigen.
+Erfasste Sitzungen erscheinen unter **Sitzungen** und ihre Ereignisse im **Ereignisse**-Stream, genau wie jeder andere Agent, den Sie beobachten — sodass [Sitzungswiedergabe](/de/agenteye/sessions), [Suche](/de/agenteye/queries), [Auswertungen](/de/agenteye/evaluations) und [Benachrichtigungen](/de/agenteye/alerts) alle darauf angewendet werden können. Filtern Sie nach dem Codex-Agent, um nur diese anzuzeigen.
 
 ---
 
 ## Datenschutz
 
-Codex-Transkripte enthalten die vollständige Sitzung – einschließlich Befehlsausgaben, Dateiinhalten und allem, was Codex gelesen oder geschrieben hat – und können sensible Informationen enthalten. Aufgezeichnete Sitzungen werden unverändert übertragen. Aktiviere die Aufzeichnung daher nur auf Maschinen und für Teams, bei denen das Zentralisieren dieser Inhalte in AgentEye angemessen ist, und weise dem Kollektor ausschließlich einen Schlüssel mit dem Umfang `events:add` zu. Unter [Sicherheit](/de/agenteye/security) erfährst du, wie deine Daten isoliert aufbewahrt werden.
+Codex-Protokolle enthalten die vollständige Sitzung — einschließlich Befehlsausgaben, Dateiinhalten und allem, was Codex gelesen oder geschrieben hat — und können Geheimnisse enthalten. Erfasste Sitzungen werden unverändert übertragen. Aktivieren Sie die Erfassung daher nur auf Maschinen und für Teams, bei denen die Zentralisierung dieser Inhalte in AgentEye angemessen ist, und geben Sie dem Collector einen Schlüssel, der ausschließlich auf `events:add` beschränkt ist. Weitere Informationen zur Isolation Ihrer Daten finden Sie unter [Sicherheit](/de/agenteye/security).

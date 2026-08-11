@@ -1,171 +1,166 @@
 ---
----
 title: "Failproof AI Observability Evaluator Agent Skill"
-description: "Go from \"I think our agent is sometimes bad\" to a deployed scoring service, with your coding agent doing both the deciding and the building."
+description: "\"मुझे लगता है कि हमारा एजेंट कभी-कभी खराब है\" से लेकर एक तैनात स्कोरिंग सेवा तक जाएं, आपके कोडिंग एजेंट के साथ फैसला लेने और निर्माण दोनों को करते हुए।"
 ---
 
-*"मुझे लगता है हमारा agent कभी-कभी खराब है"* से लेकर deployed scoring service तक जाएं, आपके coding agent के साथ both the deciding और building दोनों कर रहे हों। **Failproof AI Observability evaluator skill** (`agenteye-evaluator`) एक *Agent Skill* है: instructions का एक छोटा folder जो एक coding agent जैसे Claude Code या Codex on demand load करता है। यह agent को सिखाता है कि कौन से quality dimensions आपके *agent* के लिए tracking के लायक हैं, फिर [evaluator service](/hi/agenteye/evaluation-suite) को write, test, और deploy करते हैं जो उन्हें score करता है।
+*"मुझे लगता है कि हमारा एजेंट कभी-कभी खराब है"* से लेकर एक तैनात स्कोरिंग सेवा तक जाएं, आपके कोडिंग एजेंट के साथ फैसला लेने और निर्माण दोनों को करते हुए। **Failproof AI Observability evaluator skill** (`agenteye-evaluator`) एक *Agent Skill* है: निर्देशों का एक छोटा फोल्डर जो एक कोडिंग एजेंट जैसे Claude Code या Codex मांग पर लोड करता है। यह एजेंट को यह काम करना सिखाता है कि कौन से गुणवत्ता आयाम आपके *एजेंट* के लिए ट्रैक करने लायक हैं, फिर [evaluator service](/hi/agenteye/evaluation-suite) लिखें, परीक्षण करें और तैनात करें जो उन्हें स्कोर करता है।
 
-यह एक **hosted scorer नहीं है**, न ही एक registry जहां आप upload करते हैं, न ही एक plugin system। आपका evaluator आपका अपना HTTP service रहता है आपके अपने infrastructure पर, बिल्कुल जैसा [Evaluation suite](/hi/agenteye/evaluation-suite) guide में described है। skill केवल आपके agent को इसे अच्छे तरीके से बनाना सिखाती है, इसलिए जो कुछ भी यह करता है, आप खुद कर सकते हैं same code लिखकर।
+यह एक होस्ट किया गया स्कोरर **नहीं** है, एक रजिस्ट्री जिसमें आप अपलोड करते हैं, या एक प्लगइन सिस्टम नहीं है। आपका evaluator आपका अपना HTTP सेवा आपके अपने बुनियादी ढांचे पर रहता है, ठीक जैसा [Evaluation suite](/hi/agenteye/evaluation-suite) गाइड में वर्णित है। यह कौशल केवल आपके एजेंट को इसे अच्छी तरह से बनाना सिखाता है, इसलिए यह जो कुछ भी करता है, आप स्वयं समान कोड लिखकर कर सकते हैं।
 
 ---
 
-## कठिन हिस्सा है कि क्या score करें यह तय करना
+## कठिन हिस्सा यह तय करना है कि क्या स्कोर करें
 
-SDK surface छोटा है — एक decorator और two models — और एक agent इसे [contract](/hi/agenteye/evaluation-suite#http-contract) से ही लिख सकता है। यहीं से evaluators fail नहीं होते। वे fail होते हैं क्योंकि वे गलत चीज़ को score करते हैं, और एक evaluator जो गलत चीज़ को score करता है वह कोई भी नहीं होने से बदतर है: यह एक dashboard produce करता है जिसे सब ignore करना सीख जाते हैं।
+SDK सतह छोटी है — एक डेकोरेटर और दो मॉडल — और एक एजेंट [contract](/hi/agenteye/evaluation-suite#http-contract) से अकेले इसे लिख सकता है। यह वह जगह नहीं है जहां evaluators विफल होते हैं। वे विफल होते हैं क्योंकि वे गलत चीज़ को स्कोर करते हैं, और एक evaluator जो गलत चीज़ को स्कोर करता है वह कोई भी नहीं होने से बदतर है: यह एक डैशबोर्ड बनाता है जिसे हर कोई अनदेखा करना सीख जाता है।
 
-तो skill का ज़्यादातर हिस्सा code exist करने से पहले का है। इसमें agent आपसे interview करता है (*"एक run describe करें जो अच्छा गया; अब एक जो बुरा गया"*), फिर आपके real sessions को [`agenteye` CLI](/hi/agenteye/cli) के through pull करता है और उन्हें end to end पढ़ता है। ये दोनों halves आमतौर पर disagree करते हैं, और gap ही वह point है: जो आप measure करना चाहते हैं बनाम जो आपके transcripts actually support कर सकते हैं। एक dimension तभी survive करता है जब वह events से **computable** हो और **discriminating** हो — अगर यह आपके good run और bad run दोनों पर 0.9 score करता है, तो यह कुछ नहीं सिखाता और cut हो जाता है।
+इसलिए अधिकांश कौशल कोड होने से पहले का हिस्सा है। इसमें एजेंट आपसे साक्षात्कार लेता है (*"एक ऐसा रन बताएं जो अच्छा चला; अब एक बुरा"*), फिर [`agenteye` CLI](/hi/agenteye/cli) के माध्यम से आपके वास्तविक सत्र खींचता है और उन्हें अंत तक पढ़ता है। ये दोनों हिस्से आमतौर पर असहमत होते हैं, और यह अंतर बिंदु है: आप क्या मापने का इरादा रखते हैं बनाम आपके ट्रांसक्रिप्ट वास्तव में क्या समर्थन कर सकते हैं। एक आयाम केवल तभी जीवित रहता है जब वह घटनाओं से **computable** और **discriminating** हो — यदि यह आपके अच्छे रन और बुरे दोनों पर 0.9 का स्कोर देता है, तो यह कुछ नहीं सिखाता है और काट दिया जाता है।
 
-जो वापस आता है वह 2-4 dimensions का एक proposal है reasoning के साथ, जिसे आप कोई भी line लिखने से पहले sign off करते हैं।
+जो वापस आता है वह 2-4 आयामों का एक प्रस्ताव है जिसके साथ तर्क संलग्न है, आपके हस्ताक्षर के लिए कोई भी पंक्ति लिखे जाने से पहले।
 
 ```mermaid
 flowchart TD
-    YOU["you: 'I want evals for my support bot'"] --> AGENT["coding agent (Claude Code / Codex)<br/>loads the agenteye-evaluator skill"]
-    AGENT -->|"interview: what does good vs bad look like?"| YOU
-    AGENT -->|"agenteye --json sessions / events"| DATA["your real sessions<br/>what actually happens"]
-    DATA --> DIMS["2-4 dimensions, you sign off"]
-    DIMS --> SVC["your evaluator service<br/>agenteye-evaluator SDK"]
-    SVC --> SCORES["scores land in the dashboard<br/>and agenteye evals"]
+    YOU["आप: 'मैं अपने support bot के लिए evals चाहता हूं'"] --> AGENT["कोडिंग एजेंट (Claude Code / Codex)<br/>agenteye-evaluator कौशल लोड करता है"]
+    AGENT -->|"साक्षात्कार: अच्छा बनाम बुरा कैसा दिखता है?"| YOU
+    AGENT -->|"agenteye --json sessions / events"| DATA["आपके वास्तविक सत्र<br/>वास्तव में क्या होता है"]
+    DATA --> DIMS["2-4 आयाम, आप हस्ताक्षर करें"]
+    DIMS --> SVC["आपकी evaluator सेवा<br/>agenteye-evaluator SDK"]
+    SVC --> SCORES["स्कोर डैशबोर्ड में उतरते हैं<br/>और agenteye evals"]
 ```
 
 ---
 
-## यह दूसरे evaluation pieces से कैसे संबंधित है
+## यह अन्य मूल्यांकन टुकड़ों से कैसे संबंधित है
 
-चार docs scoring को cover करते हैं, और वे order में एक-दूसरे को hand off करते हैं:
+चार दस्तावेज़ स्कोरिंग को कवर करते हैं, और वे क्रम में एक दूसरे को सौंपते हैं:
 
-| Page | यह क्या है | इसे तब use करें जब |
+| पृष्ठ | यह क्या है | इसके लिए पहुंचें जब |
 |---|---|---|
-| **[Evaluations](/hi/agenteye/evaluations)** | Feature: sessions grid पर scores, dashboards, re-evaluate | आप जानना चाहते हैं कि automatic scoring आपको क्या देता है |
-| **[Evaluation suite](/hi/agenteye/evaluation-suite)** | HTTP contract, SDK, server env vars | आप evaluator को खुद implement या debug कर रहे हैं |
-| **Evaluator skill** (यह doc) | Scorer को design *और* build करने का एक natural-language front door | आप "I want evals" से एक running service तक जाना चाहते हैं |
-| **[CLI skill](/hi/agenteye/cli-skill)** | `agenteye` CLI का एक natural-language front door | आप scores को पढ़ना चाहते हैं जो आपके पास पहले से हैं |
-| **[Python SDK skill](/hi/agenteye/python-sdk-skill)** | अपने agent को instrument करने का एक natural-language front door | आपका agent sessions emit नहीं कर रहा है — score करने के लिए कुछ नहीं है |
+| **[Evaluations](/hi/agenteye/evaluations)** | यह विशेषता: सत्र ग्रिड पर स्कोर, डैशबोर्ड, पुनः-मूल्यांकन करें | आप जानना चाहते हैं कि स्वचालित स्कोरिंग क्या देती है |
+| **[Evaluation suite](/hi/agenteye/evaluation-suite)** | HTTP contract, SDK, सर्वर env vars | आप स्वयं evaluator को लागू या डीबग कर रहे हैं |
+| **Evaluator skill** (यह दस्तावेज़) | स्कोरर को डिजाइन *और* बनाने पर एक प्राकृतिक-भाषा फ्रंट दरवाज़ा | आप "मैं evals चाहता हूं" से एक चलती हुई सेवा तक जाना चाहते हैं |
+| **[CLI skill](/hi/agenteye/cli-skill)** | `agenteye` CLI पर एक प्राकृतिक-भाषा फ्रंट दरवाज़ा | आप जो स्कोर पहले से ही हैं उन्हें *पढ़ना* चाहते हैं |
+| **[Python SDK skill](/hi/agenteye/python-sdk-skill)** | अपने एजेंट को instrumented करने पर एक प्राकृतिक-भाषा फ्रंट दरवाज़ा | आपका एजेंट अभी तक सत्र emit नहीं कर रहा है — स्कोर करने के लिए कुछ भी नहीं है |
 
-### CLI skill के मुकाबले: build बनाम read
+### CLI कौशल बनाम: निर्माण बनाम पढ़ना
 
-दोनों skills intentionally non-overlapping हैं, और दोनों को install करना normal setup है — agent यह तय करता है कि आप क्या पूछते हैं इसके आधार पर:
+ये दोनों कौशल जानबूझकर गैर-अतिव्यापी हैं, और दोनों को स्थापित करना सामान्य सेटअप है — एजेंट आप जो पूछते हैं उसके आधार पर उनके बीच चुनता है:
 
-- **`agenteye-evaluator`** (यह doc) उस चीज़ को build करता है जो scores *produce* करता है। इसका job तब खत्म होता है जब scores पहली बार land करते हैं।
-- **[`agenteye-cli`](/hi/agenteye/cli-skill)** scores को पढ़ता है जो पहले से exist करते हैं (`agenteye evals`)। *"क्या quality इस हफ्ते drop हुई?"* इसका सवाल है, इस skill का नहीं।
-
----
-
-## Prerequisites
-
-1. **`agenteye` CLI installed और logged in** (`pipx install agenteye`, फिर `agenteye login`)। Skill इसे दो बार use करती है: real sessions को pull करने के लिए जिसके against यह design करती है, और यह confirm करने के लिए कि आपके scores end में land हुए। आपके login को `events:read` की ज़रूरत है, प्लस उस final check के लिए `evaluations:read`। CLI skill की तरह, यह **नहीं** कर सकता emailed one-time-code login को complete करना आपके लिए।
-2. **Evaluator के लिए कहीं रहने के लिए जगह।** यह एक image में build हो जाता है और एक long-running service के रूप में run होता है, तो इसे एक real repo की ज़रूरत है, scratch file नहीं। Evaluators अक्सर अपने अपने repo में रहते हैं, agent से अलग जिसे scored किया जा रहा है — skill एक existing को look करती है और नए को scaffold करने से पहले पूछती है।
-3. **`agenteye-evaluator` SDK wheel** — अपने agent के `pip` commands type करना शुरू करने से पहले अगला section पढ़ें।
+- **`agenteye-evaluator`** (यह दस्तावेज़) उस चीज़ को बनाता है जो स्कोर *produce* करता है। इसका काम तब समाप्त होता है जब स्कोर पहली बार उतरते हैं।
+- **[`agenteye-cli`](/hi/agenteye/cli-skill)** पहले से मौजूद स्कोर पढ़ता है (`agenteye evals`)। *"क्या गुणवत्ता इस हफ्ते गिरी?"* इसका सवाल है, इस कौशल का नहीं।
 
 ---
 
-## इसे कहां से प्राप्त करें
+## पूर्वापेक्षाएं
 
-Skill Failproof AI के public skills collection में publish है:
+1. **`agenteye` CLI स्थापित और लॉगिन** (`pipx install agenteye`, फिर `agenteye login`)। कौशल इसे दो बार लीवर करता है: वास्तविक सत्र खींचने के लिए जो यह डिजाइन करता है, और यह पुष्टि करने के लिए कि आपके स्कोर अंत में उतरे। आपकी लॉगिन को `events:read` की आवश्यकता है, साथ ही उस अंतिम जांच के लिए `evaluations:read`। CLI कौशल के साथ, यह ईमेल किए गए one-time-code लॉगिन को आपके लिए **पूरा नहीं कर सकता**।
+2. **evaluator के लिए कहीं।** यह एक image में बनाया जाता है और एक लंबे समय तक चलने वाली सेवा के रूप में चलाया जाता है, इसलिए इसे एक वास्तविक repo की आवश्यकता है, scratch फ़ाइल नहीं। Evaluators अक्सर अपने स्वयं के repo में रहते हैं, जिस एजेंट को स्कोर किया जा रहा है उससे अलग — कौशल एक मौजूदा को खोजता है और एक नया scaffold करने से पहले पूछता है।
+3. **`agenteye-evaluator` SDK wheel** — अगले अनुभाग को पढ़ें इससे पहले कि आपका एजेंट `pip` कमांड टाइप करना शुरू करे।
+
+---
+
+## इसे कहां प्राप्त करें
+
+कौशल Failproof AI के सार्वजनिक कौशल संग्रह में प्रकाशित है:
 
 **[github.com/FailproofAI/skills](https://github.com/FailproofAI/skills)** → [`skills/agenteye-evaluator/`](https://github.com/FailproofAI/skills/tree/main/skills/agenteye-evaluator)
 
-Repository public है और skill को अपने credential की ज़रूरत नहीं है — यह केवल `agenteye` CLI को drive करता है session के साथ *जिसे* आप logged in थे, और *आपके* repo में code लिखता है। ध्यान दें कि यह अपने folder के रूप में ship होता है और `pipx install agenteye` package के inside **नहीं** है, तो इसे वहां न ढूंढें।
+Repository सार्वजनिक है और कौशल को अपना कोई credential की आवश्यकता नहीं है — यह केवल `agenteye` CLI को सत्र के साथ चलाता है *जिसमें आप* लॉगिन किए हैं, और *आपके* repo में कोड लिखता है। ध्यान दें कि यह अपने स्वयं के फोल्डर के रूप में शिप करता है और `pipx install agenteye` पैकेज के अंदर **नहीं** है, इसलिए वहां इसे न देखें।
 
-## Skill को install करना
+## कौशल स्थापित करना
 
-सबसे तेज़ path [`skills`](https://skills.sh) CLI है, जो folder को fetch करता है और वहां drop करता है जहां आपका agent look करता है:
+सबसे तेज़ रास्ता [`skills`](https://skills.sh) CLI है, जो फोल्डर को लाता है और इसे वहां गिराता है जहां आपका एजेंट देखता है:
 
 ```bash
-# Claude Code, यह project केवल
+# Claude Code, केवल यह प्रोजेक्ट
 npx skills add FailproofAI/skills --skill agenteye-evaluator -a claude-code
 
-# हर project (installs to ~/.claude/skills/)
+# हर प्रोजेक्ट (~/.claude/skills/ में स्थापित करता है)
 npx skills add FailproofAI/skills --skill agenteye-evaluator -a claude-code -g --copy
 
-# Codex इसकी जगह
+# इसके बजाय Codex
 npx skills add FailproofAI/skills --skill agenteye-evaluator -a codex
 ```
 
-फिर इसे किसी दूसरे skill की तरह manage करें:
+फिर इसे किसी अन्य कौशल की तरह प्रबंधित करें:
 
 ```bash
-npx skills list -a claude-code           # क्या installed है
-npx skills update agenteye-evaluator     # latest version pull करें
+npx skills list -a claude-code           # क्या स्थापित है
+npx skills update agenteye-evaluator     # नवीनतम संस्करण खींचें
 npx skills remove agenteye-evaluator     # इसे हटाएं
 ```
 
-हाथ से install करना पसंद हैं? एक Agent Skill सिर्फ एक folder है जिसमें `SKILL.md` है (plus optional references), तो इसे copy करना काम करता है:
+हाथ से स्थापित करना पसंद करते हैं? एक Agent Skill केवल एक फोल्डर है जिसमें `SKILL.md` (साथ ही optional references) है, इसलिए इसकी प्रतिलिपि भी काम करती है:
 
-- **Claude Code**: `agenteye-evaluator/` folder को `~/.claude/skills/` में रखें (हर project) या `<your-repo>/.claude/skills/` में (केवल वह repo)। Claude Code इसे auto-discover करता है — `/skills` list से verify करें, या बस evals के लिए पूछें।
-- **Codex (OpenAI)**: Codex same `SKILL.md` को read करता है। Bundled `agents/openai.yaml` `allow_implicit_invocation: true` set करता है, तो Codex skill को auto-select करता है जब task match हो; अन्यथा इसे explicitly invoke करें `$agenteye-evaluator` के रूप में।
+- **Claude Code**: `agenteye-evaluator/` फोल्डर को `~/.claude/skills/` (हर प्रोजेक्ट) या `<your-repo>/.claude/skills/` (केवल वह repo) में रखें। Claude Code इसे auto-discover करता है — `/skills` सूची के साथ सत्यापित करें, या बस evals के लिए पूछें।
+- **Codex (OpenAI)**: Codex एक ही `SKILL.md` पढ़ता है। bundled `agents/openai.yaml` `allow_implicit_invocation: true` सेट करता है, इसलिए Codex जब एक कार्य मेल खाता है तब कौशल को auto-select करता है; अन्यथा इसे explicitly `$agenteye-evaluator` के रूप में invoke करें।
 
 ---
 
-## SDK public PyPI पर नहीं है
+## SDK सार्वजनिक PyPI पर नहीं है
 
-> **Warning:** Agent को SDK install करने देने से पहले यह पढ़ें।
+> **Warning:** इससे पहले पढ़ें कि एक एजेंट को SDK स्थापित करने दें।
 
-Skill public है; जिस SDK को यह drive करता है वह नहीं है। `agenteye-evaluator` केवल एक private release artifact के रूप में ship होता है, और `agenteye` के विपरीत, name public PyPI पर **unclaimed** है — तो एक bare `pip install agenteye-evaluator` एक stranger के package को pull कर सकता है उस service में जो आपके production transcripts को read करता है। यह एक supply-chain problem है, typo नहीं।
+कौशल सार्वजनिक है; यह जो SDK चलाता है वह नहीं है। `agenteye-evaluator` केवल एक private release artifact के रूप में शिप करता है, और `agenteye` के विपरीत, नाम सार्वजनिक PyPI पर **unclaimed** है — इसलिए एक bare `pip install agenteye-evaluator` किसी अजनबी के पैकेज को उस सेवा में खींच सकता है जो आपके production transcripts पढ़ता है। यह एक typo नहीं है, एक supply-chain समस्या है।
 
-Skill यह जानता है और इसकी जगह एक install ladder down करता है, पहले rung पर रुकता है जो apply होता है: monorepo source अगर आप AgentEye repo के inside हैं, अन्यथा GitHub Releases से private release wheel (needs access), और अगर न ही कोई reachable है तो यह **रुकता है और आपको अपने Failproof AI contact से wheel पूछने के लिए बताता है** improvising करने की बजाय।
+कौशल यह जानता है और एक स्थापना सीढ़ी के नीचे काम करता है, पहले rung पर रुकता है जो लागू होता है: monorepo स्रोत यदि आप AgentEye repo के अंदर हैं, अन्यथा GitHub Releases से private release wheel (access की जरूरत है), और यदि दोनों में से कोई भी नहीं पहुंचने योग्य है तो यह **रुकता है और आपको आपके Failproof AI संपर्क से wheel के लिए पूछने को कहता है** improvise करने के बजाय।
 
-तो अगर आपका agent public PyPI से bare `pip install agenteye-evaluator` propose करता है, वह flag है कि skill कभी load नहीं हुई। वहीं रुकें और check करें कि यह installed है।
+तो यदि आपका एजेंट सार्वजनिक PyPI से एक bare `pip install agenteye-evaluator` का प्रस्ताव देता है, तो वह संकेत है कि कौशल कभी लोड नहीं हुआ। वहां रुकें और जांचें कि यह स्थापित है।
 
 ---
 
 ## आप इससे क्या पूछ सकते हैं
 
-एक real round-trip एक vague ask से शुरू होता है और code के साथ नहीं, signed-off design के साथ end होता है:
+एक वास्तविक round-trip एक vague ask से शुरू होता है और एक signed-off डिजाइन के साथ समाप्त होता है, कोड के साथ नहीं:
 
 ```text
-you   ▸ मुझे हमारे support bot के लिए evals चाहिए। मुझे लगता है यह कभी-कभी
-        खराब है।
+आप   ▸ मैं अपने support bot के लिए evals चाहता हूं। मुझे लगता है कि यह कभी-कभी खराब है।
 
-agent ▸ कुछ लिखने से पहले: एक run describe करें जो अच्छा गया,
-        और एक जो बुरा गया।
+एजेंट ▸ कुछ भी लिखने से पहले: एक run बताएं जो अच्छा चला,
+        और एक जो बुरा चला।
 
-you   ▸ अच्छा: यह docs से answer करता है। बुरा: यह stuff बनाता है,
-        या हार मानता है और कहता है "contact support"।
+आप   ▸ अच्छा: यह docs से उत्तर देता है। बुरा: यह चीजें बनाता है,
+        या हार मान जाता है और कहता है "support से संपर्क करें"।
 
-agent ▸ Running: agenteye --json sessions --status error --since 7d
-        5 sessions पढ़ रहे हैं, दो सहित जिन्हें आप bad कहेंगे।
+एजेंट ▸ चल रहा है: agenteye --json sessions --status error --since 7d
+        5 सत्र पढ़ रहा है, जिसमें दो हैं जिन्हें आप बुरा कहेंगे।
 
-        आपके शब्द factuality और deflection कहते हैं। Transcripts
-        deflection पर सहमत हैं (5 में से 2 support hand-off के साथ
-        end होते हैं, और यह model_response.content में plain है),
-        लेकिन factuality को ground truth की ज़रूरत है जो आपके
-        events carry नहीं करते।
+        आपके शब्द factuality और deflection कहते हैं। ट्रांसक्रिप्ट
+        deflection पर सहमत हैं (5 में से 2 एक support hand-off के साथ समाप्त होते हैं,
+        और यह model_response.content में स्पष्ट है), लेकिन factuality
+        को एक ground truth की जरूरत है जो आपकी events carry नहीं करते।
 
-        तो मैं तीन चीज़ें score करूंगा:
-          - deflection      rules, cheap, आपके दोनों runs को अलग करता है
-          - tool_efficiency rules, run-004 में retry loop को catch करता है
-          - groundedness    LLM judge: क्या हर claim जो यह retrieved है
-                            docs में है?
+        तो मैं तीन चीजें स्कोर करूंगा:
+          - deflection      rules, सस्ता, आपके दोनों runs को अलग करता है
+          - tool_efficiency rules, run-004 में retry loop को पकड़ता है
+          - groundedness    LLM judge: क्या हर दावा docs में है जो इसे retrieve करता है?
 
-        "factuality" को ground truth की ज़रूरत होगी जो हमारे पास
-        नहीं है; groundedness सबसे करीबी चीज़ है जो आपके transcripts
-        actually support कर सकते हैं। ये तीनों names के साथ ठीक है?
-        बाद में rename करने से history split हो जाता है।
+        "factuality" को ground truth की जरूरत होगी जो हमारे पास नहीं है; groundedness
+        आपके transcripts वास्तव में support कर सकते हैं उसका सबसे करीबी चीज है।
+        उन तीन नामों के साथ ठीक है? बाद में नाम बदलना इतिहास को बाँटता है।
 
-you   ▸ हां
+आप   ▸ हाँ
 
-agent ▸ इस repo में कोई evaluator नहीं। क्या मुझे यहां एक scaffold
-        करना चाहिए, या क्या आपके पास कहीं और एक है?
+एजेंट ▸ इस repo में कोई evaluator नहीं है। क्या मुझे यहां एक scaffold करना चाहिए, या आपके
+        पास एक कहीं और है?
 ```
 
-वहां से यह पहले rules-based dimensions लिखता है (free, instant, deterministic), उन्हें एक real captured session के against test करता है जिसमें empty और never-finished ones भी शामिल हैं जो naive evaluators को crash करते हैं, और केवल subjective dimension पर एक LLM judge के लिए पहुंचता है। यह [dispatcher की limits](/hi/agenteye/evaluation-suite#configuring-the-server) को जानता है — 30s request timeout और 8 concurrent calls deployment-wide — तो अगर judge reliably fit नहीं होगा, तो यह `JobPending` के साथ async जाता है न कि आपके judge को cancelled और retried होने देता है पांच बार पांच बार लागत पर।
+वहां से यह नियम-आधारित आयामों को पहले लिखता है (free, instant, deterministic), उन्हें एक वास्तविक captured session के विरुद्ध परीक्षण करता है जिसमें खाली और कभी-खत्म न होने वाले शामिल हैं जो naive evaluators को crash करते हैं, और केवल subjective आयाम पर एक LLM judge तक पहुंचता है। यह [dispatcher की limits](/hi/agenteye/evaluation-suite#configuring-the-server) जानता है — 30s request timeout और 8 concurrent calls deployment-wide — तो यदि judge reliably fit नहीं होगा, तो यह `JobPending` के साथ async जाता है आपके judge को cancelled और पांच बार retried न होने देने के बजाय पांच बार की लागत पर।
 
-फिर यह deploy करता है, दो server env vars set करता है, और `agenteye --json evals --session-id <id>` से confirm करता है कि scores actually land हुए। Scores landing ही एकमात्र proof है।
+फिर यह तैनात करता है, दो server env vars सेट करता है, और `agenteye --json evals --session-id <id>` के साथ पुष्टि करता है कि स्कोर वास्तव में उतरे। स्कोर उतरना एकमात्र प्रमाण है।
 
 ---
 
-## देखने के लिए क्या है
+## क्या ध्यान रखें
 
-- **Dimension names करीब-करीब permanent हैं।** Score keys arbitrary strings हैं और platform जो कुछ भी आप send करते हैं उसे trend करता है, जिसका मतलब है कि कोई भी downstream एक bad choice को correct नहीं करता। बाद में rename करें और history split हो जाता है: old sessions old key को keep करते हैं और trend break हो जाता है। यही है कि skill को code लिखने से पहले explicit sign-off क्यों मिलता है — वह prompt को seriously लें।
-- **Fixtures real production transcripts हैं।** Real sessions के against design करने का मतलब है उन्हें disk पर pull करना, और उनमें customer data हो सकता है। Skill यह commit करने से पहले पूछती है कि क्या git में करें; अगर doubt हो तो `fixtures/` को repo के बाहर रखें और हर developer को अपने अपने pull करने दें।
-- **Agent एक service write और deploy करता है जो हर transcript को read करता है।** यह आपके रूप में कार्य करता है, bounded by आपके CLI login की permissions, लेकिन evaluator को review करें जैसे कोई अन्य code जो production data को touch करता है।
+- **Dimension नाम लगभग permanent होते हैं।** Score keys मनमाने strings हैं और प्लेटफॉर्म जो कुछ भी आप भेजते हैं उसे trend करता है, जिसका मतलब है कि कुछ भी downstream एक बुरे विकल्प को सही नहीं करता है। बाद में नाम बदलें और इतिहास बिखर जाता है: पुराने सत्र पुरानी key रखते हैं और trend टूट जाता है। यह वह कारण है कि कौशल कोड लिखने से पहले explicit sign-off देता है — उस prompt को गंभीरता से लें।
+- **Fixtures वास्तविक production transcripts हैं।** वास्तविक सत्रों के विरुद्ध designing का मतलब है उन्हें disk पर खींचना, और वे customer data contain कर सकते हैं। कौशल उन्हें git में commit करने से पहले पूछता है; यदि संदेह हो तो `fixtures/` को repo से बाहर रखें और प्रत्येक developer को अपना खींचने दें।
+- **एजेंट एक सेवा लिखता है और तैनात करता है जो हर transcript पढ़ता है।** यह आपके रूप में कार्य करता है, आपकी CLI login की permissions से bounded है, लेकिन evaluator को किसी भी अन्य कोड की तरह review करें जो production data को touch करता है।
 
 ---
 
 ## अगले कदम
 
-- **[Evaluation suite](/hi/agenteye/evaluation-suite)**: HTTP contract, SDK, और server env vars जिन्हें skill configure करता है।
-- **[Evaluations](/hi/agenteye/evaluations)**: जहां scores show up होते हैं एक बार जब वे land करते हैं।
-- **[CLI skill](/hi/agenteye/cli-skill)**: sibling skill, scorer build करने की बजाय results read करने के लिए।
-- **[CLI](/hi/agenteye/cli)**: command reference जिसके against skill session data design करती है।
+- **[Evaluation suite](/hi/agenteye/evaluation-suite)**: HTTP contract, SDK, और server env vars जो कौशल configure करता है।
+- **[Evaluations](/hi/agenteye/evaluations)**: जहां स्कोर दिखाई देते हैं एक बार वे उतरते हैं।
+- **[CLI skill](/hi/agenteye/cli-skill)**: sibling कौशल, scorer बनाने के बजाय परिणामों को पढ़ने के लिए।
+- **[CLI](/hi/agenteye/cli)**: command reference जिस सत्र डेटा के पीछे कौशल design करता है।

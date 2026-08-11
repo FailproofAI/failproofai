@@ -1,68 +1,69 @@
 ---
+---
 title: "Sicurezza"
-description: "Failproof AI Observability è costruito per stare vicino ai tuoi agenti in produzione, il che significa che vede i tuoi prompt, gli input degli strumenti e gli output."
+description: "Failproof AI Observability è costruito per stare vicino ai tuoi agenti di produzione, il che significa che vede i tuoi prompt, gli input dei tool e gli output."
 ---
 
 
-Failproof AI Observability è costruito per stare vicino ai tuoi agenti in produzione, il che significa che vede i tuoi prompt, gli input degli strumenti e gli output. Questa pagina spiega come mantiene questi dati isolati, controllati e nelle tue mani. Se stai valutando Failproof AI Observability per una revisione di sicurezza, inizia da qui.
+Failproof AI Observability è costruito per stare vicino ai tuoi agenti di produzione, il che significa che vede i tuoi prompt, gli input dei tool e gli output. Questa pagina spiega come mantiene quei dati isolati, controllati e nelle tue mani. Se stai valutando Failproof AI Observability per una revisione di sicurezza, inizia da qui.
 
 ---
 
 ## I tuoi dati rimangono nel tuo ambiente
 
-Failproof AI Observability è self-hosted. Gli eventi, i prompt, le risposte del modello e l'analitca sono memorizzati nei tuoi database, nel tuo ambiente. Nessun dato viene inviato a un servizio SaaS di terze parti per l'archiviazione, e i tuoi dati rimangono nel tuo account cloud.
+Failproof AI Observability è self-hosted. Gli eventi, i prompt, le risposte del modello e gli analytics vengono archiviati nei tuoi database, nel tuo ambiente. Niente viene inviato a un SaaS di terze parti per l'archiviazione, e i tuoi dati rimangono nel tuo account cloud.
 
 ---
 
 ## Isolamento dei tenant
 
-Un'istanza di Failproof AI Observability può ospitare molte organizzazioni, ognuna isolata a livello di storage — applicato dal database, non solo dall'interfaccia utente:
+Un'istanza di Failproof AI Observability può ospitare molte organizzazioni, e ognuna è isolata a livello di archiviazione — applicato dal database, non solo dall'interfaccia utente:
 
-- I dati operativi di un'organizzazione (utenti, chiavi, dashboard, query salvate) sono vincolati a quell'organizzazione, e le letture cross-org sono bloccate dal database stesso.
-- Ogni evento acquisito è contrassegnato con l'organizzazione proprietaria, quindi gli eventi di un'organizzazione non possono mai essere letti da un'altra.
+- I dati operativi di un'organizzazione (utenti, chiavi, dashboard, query salvate) sono limitati a quell'org, e le letture tra org sono bloccate dal database stesso.
+- Ogni evento acquisito è contrassegnato con l'org proprietaria, quindi gli eventi di un'organizzazione non possono mai essere letti da un'altra.
 
-Ogni rotta della dashboard è vincolata sotto uno slug dell'organizzazione (`/<org-slug>/…`).
+Ogni rotta della dashboard è limitata sotto uno slug org (`/<org-slug>/…`).
 
 ---
 
 ## Accesso
 
-Failproof AI Observability utilizza l'accesso senza password basato su email. Non c'è alcuna password da phishare o perdere. Un utente richiede un codice monouso (o un link magic a un click), che gli viene inviato per email e scade rapidamente. L'accesso è controllato da una **lista di whitelist**: solo gli indirizzi email (o i domini) che permetti possono autenticarsi.
+Failproof AI Observability utilizza un accesso senza password basato su email. Non c'è password da rubare o trapelare. Un utente richiede un codice una tantum (o un link magico con un clic), che viene inviato per email e scade rapidamente. L'accesso è controllato da una **lista di autorizzazione**: solo gli indirizzi email (o i domini) che consenti possono autenticarsi.
 
-![La schermata di accesso di Failproof AI Observability, che invia un codice monouso alla tua email](/agenteye/images/login.png)
-
----
-
-## Accesso con ambito limitato con chiavi API
-
-Ogni client si autentica con una chiave API che possiede permessi granulari e con il principio del minimo privilegio. Un collector ha bisogno solo di `events:add`; una chiave dashboard o assistant può essere di sola lettura; le azioni distruttive (eliminazione, rigenerazione) sono grant separati che scegli di includere.
-
-![La pagina delle chiavi API: i grant di permessi di ogni chiave, codificati per colore in base all'ambito di lettura, scrittura e distruttività](/agenteye/images/api-keys.png)
-
-Mantieni la chiave bootstrap dell'admin per la configurazione e emetti chiavi ristrette per tutto il resto. Vedi [Chiavi API](/it/agenteye/api-keys).
+![La schermata di accesso di Failproof AI Observability, che invia un codice a uso singolo alla tua email](/agenteye/images/login.png)
 
 ---
 
-## Un assistente di sola lettura e controllato da approvazione
+## Accesso limitato con chiavi API
 
-L'[assistente AI](/it/agenteye/assistant) nel dashboard risponde a domande sui tuoi dati, ma è vincolato da design:
+Ogni client si autentica con una chiave API che ha autorizzazioni granulari e con il minimo privilegio. Un collector ha bisogno solo di `events:add`; una chiave dashboard o assistant può essere di sola lettura; le azioni distruttive (eliminazione, rigenerazione) sono grant separate che scegli di includere.
+
+![La pagina delle chiavi API: i grant di autorizzazione di ogni chiave, codificati a colori per ambito di lettura, scrittura e distruttivo](/agenteye/images/api-keys.png)
+
+Mantieni la chiave bootstrap admin per la configurazione e emetti chiavi ristrette per tutto il resto. Vedi [Chiavi API](/it/agenteye/api-keys).
+
+---
+
+## Un assistant di sola lettura e approvazione controllata
+
+L'[assistant AI](/it/agenteye/assistant) integrato nella dashboard risponde a domande sui tuoi dati, ma è vincolato da progettazione:
 
 - È **di sola lettura per impostazione predefinita**: il suo SQL viene eseguito attraverso una guardia che consente solo query `SELECT`/`WITH`, a singola istruzione, con un limite di righe.
-- Tutto quello che crea (una query salvata, una dashboard) è **controllato dall'approvazione**: esamini e approvi ogni scrittura prima che accada.
+- Qualsiasi cosa crei (una query salvata, una dashboard) è **controllata dall'approvazione**: esamini e approvi ogni scrittura prima che accada.
 - **Non può mai eliminare**.
 
-Quindi un collega può chiedere "quali agenti hanno avuto il maggior numero di errori questa settimana?" e agire in base alla risposta, senza che l'assistente sia in grado di modificare o rimuovere i tuoi dati da solo.
+Quindi un collega può chiedere "quali agenti hanno dato il maggior numero di errori questa settimana?" e agire sulla risposta, senza che l'assistant sia in grado di modificare o rimuovere i tuoi dati da solo.
 
 ---
 
 ## In transito
 
-Tutto il traffico avviene su HTTPS. Termini TLS con i tuoi certificati, quindi il traffico da collector a server e da browser a server è crittografato in transito.
+Tutto il traffico viene eseguito su HTTPS. Termini TLS con i tuoi certificati, quindi il traffico da collector a server e da browser a server è crittografato in transito.
 
 ---
 
-## Passaggi successivi
+## Prossimi passi
 
-- [Panoramica](/it/agenteye/overview): come Failproof AI Observability si collega insieme.
-- [Chiavi API](/it/agenteye/api-keys): limita l'accesso per il collector, la dashboard e l'assistente.
-- [Observability](/it/agenteye/observability): cosa cattura Failproof AI Observability dai tuoi agenti.
+- [Overview](/it/agenteye/overview): come Failproof AI Observability si integra.
+- [Chiavi API](/it/agenteye/api-keys): limita l'accesso per il collector, dashboard e assistant.
+- [Observability](/it/agenteye/observability): cosa Failproof AI Observability cattura dai tuoi agenti.

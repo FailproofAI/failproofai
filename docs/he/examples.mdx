@@ -1,25 +1,25 @@
 ---
 ---
 title: דוגמאות
-description: "כיצד להגדיר hooks עבור Claude Code ו-Agents SDK"
+description: "כיצד להגדיר hooks ל-Claude Code ול-Agents SDK"
 icon: book-open
 ---
 
-דוגמאות מוכנות לשימוש עבור תרחישים נפוצים. כל אחת מציגה כיצד להתקין ומה לצפות.
+דוגמאות מוכנות לשימוש עבור תרחישים נפוצים. כל אחת מהן מציגה כיצד להתקין ומה לצפות.
 
 ---
 
-## הגדרת hooks עבור Claude Code
+## הגדרת hooks ל-Claude Code
 
-Failproof AI משתלבת עם Claude Code דרך [מערכת ה-hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) שלה. כשאתה מריץ `failproofai policies --install`, זה רושם פקודות hook ב-`settings.json` של Claude Code שפועלות בכל קריאת כלי.
+Failproof AI משתלבת עם Claude Code דרך [מערכת ה-hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) שלה. כשתריצו `failproofai policies --install`, זה רושם פקודות hook ב-`settings.json` של Claude Code המופעלות בכל קריאה לכלי.
 
 <Steps>
-  <Step title="התקן את failproofai">
+  <Step title="התקן failproofai">
     ```bash
     npm install -g failproofai
     ```
   </Step>
-  <Step title="הפעל את כל מדיניות ה-built-in">
+  <Step title="הפעל את כל המדיניויות המובנות">
     ```bash
     failproofai policies --install
     ```
@@ -29,38 +29,38 @@ Failproof AI משתלבת עם Claude Code דרך [מערכת ה-hooks](https://
     cat ~/.claude/settings.json | grep failproofai
     ```
 
-    אתה אמור לראות ערכי hook עבור אירועי `PreToolUse`, `PostToolUse`, `Notification`, ו-`Stop`.
+    אתה צריך לראות רשומות hook עבור イベנטים `PreToolUse`, `PostToolUse`, `Notification` ו-`Stop`.
   </Step>
   <Step title="הרץ את Claude Code">
     ```bash
     claude
     ```
 
-    המדיניויות רצות כעת באופן אוטומטי בכל קריאת כלי. נסה לבקש מ-Claude להריץ `sudo rm -rf /` - זה יהיה חסום.
+    המדיניויות רצות כעת באופן אוטומטי בכל קריאה לכלי. נסה לבקש מ-Claude להריץ `sudo rm -rf /` - זה יחסום.
   </Step>
 </Steps>
 
 ---
 
-## הגדרת hooks עבור Agents SDK
+## הגדרת hooks ל-Agents SDK
 
-אם אתה בונה עם [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk), אתה יכול להשתמש באותה מערכת hook בצורה תכנותית.
+אם אתה בונה עם [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk), אתה יכול להשתמש באותה מערכת hooks באופן תוכנתי.
 
 <Steps>
-  <Step title="התקן את failproofai בפרויקט שלך">
+  <Step title="התקן failproofai בפרויקט שלך">
     ```bash
     npm install failproofai
     ```
   </Step>
   <Step title="הגדר hooks ב-agent שלך">
-    העבר פקודות hook בעת יצירת תהליך ה-agent. ה-hooks פועלים באותו אופן כמו ב-Claude Code - דרך JSON של stdin/stdout:
+    העבר פקודות hook כשאתה יוצר את תהליך ה-agent. ה-hooks מופעלים באותו אופן כמו ב-Claude Code - דרך stdin/stdout JSON:
 
     ```bash
-    failproofai --hook PreToolUse   # called before each tool
-    failproofai --hook PostToolUse  # called after each tool
+    failproofai --hook PreToolUse   # נקרא לפני כל כלי
+    failproofai --hook PostToolUse  # נקרא אחרי כל כלי
     ```
   </Step>
-  <Step title="כתוב מדיניות מותאמת אישית עבור ה-agent שלך">
+  <Step title="כתוב מדיניות מותאמת עבור ה-agent שלך">
     ```javascript
     import { customPolicies, allow, deny } from "failproofai";
 
@@ -78,7 +78,7 @@ Failproof AI משתלבת עם Claude Code דרך [מערכת ה-hooks](https://
     });
     ```
   </Step>
-  <Step title="התקן את המדיניות המותאמת אישית">
+  <Step title="התקן את המדיניות המותאמת">
     ```bash
     failproofai policies --install --custom ./my-agent-policies.js
     ```
@@ -89,7 +89,7 @@ Failproof AI משתלבת עם Claude Code דרך [מערכת ה-hooks](https://
 
 ## חסום פקודות הרסניות
 
-ההגדרה הנפוצה ביותר - מנע מ-agents לגרום נזק בלתי הפיך.
+ההגדרה השכיחה ביותר - מנע מ-agents לגרום לנזק בלתי הפיך.
 
 ```bash
 failproofai policies --install block-sudo block-rm-rf block-force-push block-curl-pipe-sh
@@ -99,25 +99,25 @@ failproofai policies --install block-sudo block-rm-rf block-force-push block-cur
 - `block-sudo` - חוסם את כל פקודות `sudo`
 - `block-rm-rf` - חוסם מחיקת קבצים רקורסיבית
 - `block-force-push` - חוסם `git push --force`
-- `block-curl-pipe-sh` - חוסם הזרמת סקריפטים מרוחקים ל-shell
+- `block-curl-pipe-sh` - חוסם צנרור של סקריפטים מרוחקים לשל
 
 ---
 
 ## מנע דליפת סודות
 
-עצור agents מלראות או לדליף אישורים בפלט הכלי.
+עצור agents מלראות או להדליף אישורים בפלט של כלים.
 
 ```bash
 failproofai policies --install sanitize-api-keys sanitize-jwt sanitize-connection-strings sanitize-bearer-tokens
 ```
 
-אלה פועלות על `PostToolUse` - אחרי שכלי רץ, הם מנקים את הפלט לפני שה-agent רואה אותו.
+אלה מופעלים על `PostToolUse` - אחרי שכלי רץ, הם מנקים את הפלט לפני שה-agent רואה אותו.
 
 ---
 
-## קבל התראות Slack כשהעוזרים צריכים תשומת לב
+## קבל התראות Slack כשה-agents צריכים עזרה
 
-השתמש ב-notification hook כדי להעביר התראות של inactivity ל-Slack.
+השתמש ב-notification hook כדי להעביר התראות עמידה ל-Slack.
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
@@ -151,7 +151,7 @@ customPolicies.add({
 });
 ```
 
-התקן אותו:
+התקן זאת:
 
 ```bash
 SLACK_WEBHOOK_URL=https://hooks.slack.com/... failproofai policies --install --custom ./slack-alerts.js
@@ -159,9 +159,9 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/... failproofai policies --install --c
 
 ---
 
-## שמור על agents בענף
+## שמור agents על ענף
 
-מנע מ-agents להחליף ענפים או לדחוף לענפים מוגנים.
+מנע מ-agents להחליף ענפים או לדחוף לאנים מוגנים.
 
 ```javascript
 import { customPolicies, allow, deny } from "failproofai";
@@ -183,7 +183,7 @@ customPolicies.add({
 
 ---
 
-## דרוש בדיקות לפני commits
+## דרוש בדיקות לפני commit
 
 הזכר ל-agents להריץ בדיקות לפני commit.
 
@@ -207,11 +207,11 @@ customPolicies.add({
 
 ---
 
-## נעל מאגר production
+## נעל ריפו של ייצור
 
-Commit תצורה ברמת פרויקט כדי שכל מפתח בצוות שלך יקבל את אותן מדיניויות.
+Commit תצורה ברמת פרויקט כך שכל פיתחן בצוות שלך יקבל את אותן מדיניויות.
 
-צור `.failproofai/policies-config.json` בספריית ה-repo שלך:
+צור `.failproofai/policies-config.json` ב-repo שלך:
 
 ```json
 {
@@ -232,23 +232,23 @@ Commit תצורה ברמת פרויקט כדי שכל מפתח בצוות שלך
 }
 ```
 
-לאחר מכן commit אותו:
+אז commit זאת:
 
 ```bash
 git add .failproofai/policies-config.json
 git commit -m "Add failproofai team policies"
 ```
 
-כל חבר בצוות שיש לו failproofai מותקן ילקוט באופן אוטומטי את הכללים הללו.
+כל חברי צוות שיש להם failproofai מותקן יהיו רואים את הכללים האלה באופן אוטומטי.
 
 ---
 
-## בנה תקן איכות בסקלה ארגונית עם convention policies
+## בנה תקן איכות ברחבי הארגון עם מדיניויות כנוסכה
 
-ההגדרה בעלת ההשפעה הרבה ביותר: commit `.failproofai/policies/` ל-repo שלך עם מדיניויות המותאמות לפרויקט שלך. כל חבר בצוות יקבל אותם באופן אוטומטי - אין פקודות התקנה, אין שינויי תצורה.
+ההגדרה היעילה ביותר: commit `.failproofai/policies/` ל-repo שלך עם מדיניויות המותאמות לפרויקט שלך. כל חברי צוות יקבלו אותן באופן אוטומטי — ללא פקודות התקנה, ללא שינויי תצורה.
 
 <Steps>
-  <Step title="צור את הספריה והוסף מדיניויות">
+  <Step title="צור את התיקייה והוסף מדיניויות">
     ```bash
     mkdir -p .failproofai/policies
     ```
@@ -291,18 +291,18 @@ git commit -m "Add failproofai team policies"
     ```
   </Step>
   <Step title="המשך להשתפר">
-    כשהצוות שלך נתקל בעוד אופני כשל, הוסף מדיניויות ודחוף. כולם יקבלו את העדכון בה-`git pull` הבא שלהם. המדיניויות הללו הופכות לתקן איכות חי המתגדל עם הצוות שלך.
+    כשהצוות שלך פוגש מצבי כישלון חדשים, הוסף מדיניויות ודחוף. כולם מקבלים את העדכון בפעם הבאה שלהם `git pull`. מדיניויות אלה הופכות לתקן איכות חי הגדל עם הצוות שלך.
   </Step>
 </Steps>
 
 ---
 
-## עוד דוגמאות
+## דוגמאות נוספות
 
-ספריית [`examples/`](https://github.com/failproofai/failproofai/tree/main/examples) ב-repo מכילה:
+התיקייה [`examples/`](https://github.com/failproofai/failproofai/tree/main/examples) ב-repo מכילה:
 
 | קובץ | מה הוא מציג |
 |------|---------------|
-| `policies-basic.js` | מדיניויות התחלה - חסום כתיבה ל-production, force-push, סקריפטים שהוזרמו |
-| `policies-notification.js` | התראות Slack עבור idle notifications וסוף session |
-| `policies-advanced/index.js` | transitive imports, async hooks, PostToolUse output scrubbing, Stop event handling |
+| `policies-basic.js` | מדיניויות התחלה - חסום כתיבה לייצור, force-push, סקריפטים מצנורים |
+| `policies-notification.js` | התראות Slack לעמידה וסיום הסשן |
+| `policies-advanced/index.js` | יבוא טרנזיטיבי, hooks אסינכרוני, ניקוי פלט PostToolUse, טיפול בEscapeイベנט Stop |

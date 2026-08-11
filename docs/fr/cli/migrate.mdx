@@ -1,0 +1,91 @@
+---
+title: Migrer le répertoire personnel
+description: "Mettre ~/.failproofai à jour selon la structure attendue par cette version, et prévisualiser les changements avant de les appliquer"
+---
+
+```bash
+failproofai migrate --dry-run   # affiche le plan, ne modifie rien
+failproofai migrate             # exécute la migration
+```
+
+La plupart des utilisateurs n'auront jamais à taper cette commande manuellement. Elle s'exécute automatiquement au premier lancement après une mise à jour, et [`failproofai update`](/fr/cli/update) l'inclut déjà. Utilisez-la directement uniquement si vous souhaitez prévisualiser le plan avant son exécution, ou lancer la migration de façon isolée.
+
+## Basée sur la structure, pas sur la version
+
+`~/.failproofai/VERSION` enregistre un numéro de **structure** — la forme du répertoire, non la version qui l'a écrit. Les migrations sont indexées sur ce numéro, ce qui rend un saut important peu coûteux :
+
+- Les versions npm changent à chaque publication, des dizaines entre deux structures.
+- Ainsi, une machine qui saute trente versions sans **aucun changement de structure** exécute **zéro** migration, et non trente opérations inutiles.
+- Et une machine qui saute plusieurs structures à la fois exécute chaque étape dans l'ordre, chaque étape ne connaissant que ses deux extrémités.
+
+C'est important car npm ne peut pas mettre à jour un paquet installé tout seul. Une machine restée sur une version pendant des mois avant de sauter plusieurs structures est le cas normal, pas l'exception.
+
+## Le dry run
+
+`--dry-run` affiche la chaîne exacte et les fichiers qui seraient sauvegardés en premier, sans effectuer aucune modification — ni migration, ni sauvegarde, ni entrée dans le journal :
+
+```
+Layout 2 on disk; this build speaks 3.
+1 step(s) would run:
+  2 → 3  layout 2 → 3: carry config.toml and credentials.toml into JSON, move
+         custom-policies/ back up into policies/, nest the policy config at the root
+
+These would be copied to ~/.failproofai/migrations/backup-layout2 first:
+  VERSION
+  config.toml
+  credentials.toml
+```
+
+## Ce qui est conservé, et ce qui est reconstruit
+
+Chaque chemin du répertoire personnel déclare le type de données qu'il contient, ce qui détermine si une migration peut le supprimer. La règle : **les données dérivées et récupérables peuvent être abandonnées ; tout ce que vous avez saisi, tout ce qui n'a pas encore été livré, et tout ce qui identifie la machine est conservé.**
+
+| Conservé | Reconstruit ou récupéré |
+|---|---|
+| `config.json` — paramètres, `daemon.configured`, chemins de capture supplémentaires | Le cache d'audit |
+| `credentials.json` — votre inscription cloud | Les déploiements gérés par le cloud (récupérés et vérifiés par condensat au prochain sondage) |
+| `policies-config.json` — votre sélection de politiques et leurs paramètres | L'état temporaire du daemon |
+| `policies/` — vos propres fichiers de politiques et les helpers qu'ils importent | |
+| `hook-activity/` — le journal de décisions lu par le tableau de bord | |
+| Les événements non livrés encore en attente d'envoi | |
+| `cursors/` — les repères du collecteur | |
+| Le binaire du daemon dans `bin/` | |
+
+<Note>
+  Les événements non livrés sont conservés plutôt que supprimés car la perte serait
+  définitive, pas simplement différée : le repère du collecteur a déjà avancé au-delà
+  de tout ce qui se trouve dans la file d'attente, donc rien ne relirait jamais cette
+  plage d'une transcription. La migration demande également au daemon de livrer ce qui
+  est en attente dès qu'elle se termine, de sorte que le résultat habituel est qu'il
+  ne reste rien à conserver.
+</Note>
+
+Les clés écrites par une version *plus récente* dans `config.json`, `credentials.json` ou `policies-config.json` sont également préservées, plutôt que supprimées par un lecteur plus ancien.
+
+## Le journal qu'elle laisse
+
+```
+~/.failproofai/migrations/
+  applied.json                 une entrée par étape : structure, CLI, horodatage, durée, résultat
+  backup-layout<n>/            copies des fichiers irremplaçables, prises avant la première étape
+```
+
+`applied.json` répond à la question « par quoi cette machine est-elle réellement passée » — la première chose à vérifier quand quelque chose semble anormal après une mise à jour. Joignez-le à un rapport de bug.
+
+La sauvegarde est délibérément légère plutôt qu'une copie de tout le répertoire : la migration ne supprime plus rien d'irremplaçable par conception, donc ce contre quoi il vaut la peine de se prémunir, c'est un *défaut dans une étape*, et ces quelques fichiers sont là où un tel défaut ferait des dégâts.
+
+## Si une étape échoue
+
+La chaîne s'arrête à ce point. `VERSION` n'est mis à jour que par une étape qui s'est terminée avec succès, donc le répertoire reste marqué avec son ancienne structure et la prochaine commande la réessaiera — un répertoire n'est jamais marqué comme à jour sur la base d'une migration partielle. L'étape est enregistrée dans `applied.json` avec `"ok": false`, et la sauvegarde reste là où elle a été prise.
+
+## Un répertoire plus récent est refusé, pas migré
+
+Si `~/.failproofai/` a été écrit par une version de failproofai **plus récente** que celle que vous utilisez, la commande s'arrête et vous demande de mettre à jour. Ces données sont intactes et une CLI plus récente les lit sans problème ; les migrer « en avance » n'est pas quelque chose qui existe, et les réinitialiser détruirait quelque chose de récupérable.
+
+```
+This machine's failproofai directory was written by a newer version (layout 4;
+this build speaks 3). Upgrade rather than migrate:
+  npm install -g failproofai@latest
+```
+
+Le daemon applique la même règle : `failproofaid` refuse de démarrer avec une structure qu'il ne reconnaît pas, plutôt que de lire et d'écrire des chemins qui ont changé.

@@ -1,46 +1,46 @@
 ---
 title: "Tableaux de bord"
-description: "Transformez vos données d'agents en temps réel en une vue partagée que toute votre équipe consulte."
+description: "Transformez vos données d'agents en direct en une vue partagée que toute votre équipe peut consulter."
 ---
 
 
-Transformez vos données d'agents en temps réel en une vue partagée que toute votre équipe consulte. Épinglez les requêtes importantes sous forme de graphiques, et tout le monde accède instantanément aux mêmes chiffres, sans avoir à relancer une seule requête.
+Transformez vos données d'agents en direct en une vue partagée que toute votre équipe peut consulter. Épinglez les requêtes importantes sous forme de graphiques, et chacun accède instantanément aux mêmes chiffres, sans avoir à relancer la moindre requête.
 
-![Un tableau de bord construit à partir de requêtes sauvegardées : une courbe d'événements par heure, un histogramme des erreurs par type, un graphique en aire de la latence, et une répartition des tokens par modèle](/agenteye/images/dashboard-fleet.png)
+![Un tableau de bord construit à partir de requêtes enregistrées : une courbe d'événements par heure, un histogramme des erreurs par type, un graphique en aires de la latence, et les tokens par modèle](/agenteye/images/dashboard-fleet.png)
 
-*Un tableau de bord, quatre requêtes sauvegardées : événements par heure, erreurs par type, latence et tokens par modèle.*
+*Un seul tableau, quatre requêtes enregistrées : événements par heure, erreurs par type, latence et tokens par modèle.*
 
 ## Tout le monde voit la même réalité
 
-Fini les captures d'écran partagées dans le chat et les mêmes requêtes relancées cinq fois par jour. Un tableau de bord est un espace partagé à l'échelle de l'organisation, que n'importe quel membre de votre équipe peut ouvrir pour consulter exactement la même vue. Quand les données sous-jacentes évoluent, les graphiques évoluent avec elles : le tableau est toujours à jour, et personne ne se dispute sur des chiffres périmés.
+Fini les captures d'écran collées dans le chat, fini les mêmes requêtes relancées cinq fois par jour. Un tableau de bord est un espace partagé à l'échelle de l'organisation, que n'importe quel membre de votre équipe peut ouvrir pour avoir exactement la même vue. Quand les données sous-jacentes évoluent, les graphiques évoluent avec elles — le tableau est donc toujours à jour et personne ne se dispute autour de chiffres périmés.
 
-Le tableau de bord de flotte ci-dessus est une bonne base pour les opérations quotidiennes :
+Le tableau de bord de flotte ci-dessus est un bon point de départ pour les opérations quotidiennes :
 
 - une **courbe d'événements par heure**, pour surveiller le débit et détecter une chute soudaine
-- un **histogramme des erreurs par type**, pour identifier en un coup d'œil vos principales catégories de pannes
-- un **graphique en aire de la latence**, pour repérer les ralentissements avant que les utilisateurs se plaignent
-- une **répartition des tokens par modèle**, pour garder les coûts sous contrôle
+- un **histogramme des erreurs par type**, pour que vos principales catégories d'échecs sautent aux yeux
+- un **graphique en aires de la latence**, pour repérer les ralentissements avant que les utilisateurs se plaignent
+- une **répartition des tokens par modèle**, pour garder les coûts en ligne de mire
 
-Vous trouverez vos tableaux de bord à `/<org-slug>/dashboards`.
+Vous trouverez vos tableaux de bord à l'adresse `/<org-slug>/dashboards`.
 
-## Épinglez les requêtes que vous avez déjà sauvegardées
+## Épinglez les requêtes que vous avez déjà enregistrées
 
-Chaque vignette commence par une requête sauvegardée. Créez et sauvegardez la requête qui vous intéresse dans la bibliothèque [Requêtes](/fr/agenteye/queries) (préréglages intégrés et requêtes personnalisées, sur vos événements et évaluations), puis épinglez-la sur un tableau de bord sous la forme du graphique adapté à vos données : une **courbe** pour les tendances dans le temps, un **histogramme** pour comparer des catégories, une **aire** pour les volumes, ou un **camembert** pour une répartition en parts.
+Chaque tuile part d'une requête enregistrée. Construisez et enregistrez la requête qui vous intéresse dans la bibliothèque [Requêtes](/fr/agenteye/queries) (préréglages intégrés et requêtes personnalisées, sur vos événements et évaluations), puis épinglez-la sur un tableau de bord sous la forme du graphique adapté aux données : une **courbe** pour les tendances dans le temps, un **histogramme** pour comparer des catégories, une **aire** pour les volumes, ou un **camembert** pour une répartition en parts.
 
-Puisqu'une vignette n'est que votre requête sauvegardée affichée sous forme de graphique, rien n'est à synchroniser manuellement. Mettez à jour la requête une fois, et tous les tableaux de bord qui l'utilisent se mettent à jour automatiquement.
+Étant donné qu'une tuile n'est que votre requête enregistrée rendue sous forme de graphique, il n'y a rien à synchroniser manuellement. Mettez à jour la requête une fois, et tous les tableaux de bord qui l'utilisent se mettent à jour automatiquement.
 
 ## Surveillez la qualité, pas seulement le volume
 
-Le volume vous indique que les agents sont actifs. La qualité vous indique qu'ils font réellement leur travail. Orientez un tableau de bord vers vos [scores d'évaluation](/fr/agenteye/evaluations) et vous obtenez un tableau qui suit la qualité des exécutions dans le temps : une régression de qualité apparaît comme un creux sur un graphique, plutôt que comme une mauvaise surprise venue d'un client.
+Le volume vous indique que les agents sont occupés. La qualité vous indique qu'ils font vraiment le travail. Pointez un tableau de bord sur vos [scores d'évaluation](/fr/agenteye/evaluations) et vous obtenez un tableau qui suit la qualité des exécutions dans le temps — une régression de qualité apparaît alors comme une baisse sur un graphique, plutôt que comme une mauvaise surprise venant d'un client.
 
-![Un tableau de bord axé sur la qualité, construit à partir de requêtes d'évaluation sauvegardées](/agenteye/images/dashboard-quality.png)
+![Un tableau de bord axé sur la qualité, construit à partir de requêtes d'évaluation enregistrées](/agenteye/images/dashboard-quality.png)
 
-*Un tableau de bord qualité garde vos scores d'évaluation au premier plan, juste à côté des métriques opérationnelles.*
+*Un tableau de qualité garde vos scores d'évaluation au premier plan, juste à côté des chiffres opérationnels.*
 
-Maintenez un tableau de bord opérationnel et un tableau de bord qualité côte à côte, et votre équipe dispose d'un seul endroit pour répondre à la fois à « est-ce que ça fonctionne ? » et « est-ce que c'est bon ? », sans que personne n'ait à relancer une requête.
+Gardez un tableau de bord opérationnel et un tableau de qualité côte à côte, et votre équipe dispose d'un seul endroit pour répondre à la fois à « est-ce que ça fonctionne ? » et « est-ce que c'est bon ? », sans que personne n'ait à relancer une requête.
 
 ## Voir aussi
 
-- [Requêtes](/fr/agenteye/queries) : créez et sauvegardez les requêtes qui deviendront vos vignettes.
-- [Évaluations](/fr/agenteye/evaluations) : scorez vos exécutions pour pouvoir suivre la qualité dans le temps.
-- [Alertes](/fr/agenteye/alerts) : transformez un seuil sur n'importe laquelle de ces métriques en une notification.
+- [Requêtes](/fr/agenteye/queries) : construisez et enregistrez les requêtes qui deviendront vos tuiles.
+- [Évaluations](/fr/agenteye/evaluations) : notez vos exécutions pour pouvoir suivre la qualité dans le temps.
+- [Alertes](/fr/agenteye/alerts) : transformez un seuil sur n'importe laquelle de ces métriques en notification.

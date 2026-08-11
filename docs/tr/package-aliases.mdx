@@ -6,11 +6,11 @@ icon: copy
 
 ## Resmi paket
 
-Kanonik npm paketi **`failproofai`**:
+Canonical npm paketi **`failproofai`**:
 
 ```bash
 npm install -g failproofai
-# or
+# veya
 bun add -g failproofai
 ```
 
@@ -18,19 +18,19 @@ bun add -g failproofai
 
 ## Neden takma ad adlarına sahibiz
 
-Yazım hatası ile kötüye kullanım, bir saldırganın popüler bir paket adından tek tuş kadar uzakta olan bir paket adını kaydettiği yaygın bir tedarik zinciri saldırısıdır. Kurulum komutunu yanlış yazan şüphelenmeyen kullanıcılar, saldırgana ait kod ile tam sistem erişimi sağlanarak çalıştırılır - tam olarak Failproof AI'nin savunmak için tasarlandığı tehdit türüdür.
+Typosquatting, kötü niyetli bir aktörün popüler bir paketin adından sadece bir tuş kadar farklı olan bir paket adını kaydettiği yaygın bir tedarik zinciri saldırısıdır. Yükleme komutunu yanlış yazan şüpheci kullanıcılar, tam sistem erişimiyle saldırgan kontrollü kodu çalıştırmakla sonuçlanır - tam da Failproof AI'nin savunması için tasarlandığı tehdit türü.
 
-Bu riski ortadan kaldırmak için, **npm üzerinde `failproofai`'nin tüm yaygın yazım hatalarına ve biçimlendirme varyantlarına proaktif olarak sahibiz**. Bu adlardan hiçbiri üçüncü taraf tarafından kayıtlanamaz. Her biri, gerçek `failproofai` paketini kuran ve ona devredilen ince bir proxy'dir.
+Bu riski ortadan kaldırmak için, **npm'de `failproofai` komutunun tüm yaygın yazım yanlışlarına ve biçim varyantlarına önceden sahip oluyoruz**. Bu adların hiçbiri üçüncü bir taraf tarafından kaydetilemez. Her biri, gerçek `failproofai` paketini yükleyen ve ona delege eden ince bir proxy'dir.
 
 ---
 
 ## Kayıtlı takma adlar
 
-**Biçimlendirme varyantları** - "failproof ai" yazmanın farklı yolları:
+**Biçim varyantları** - "failproof ai" yazmanın farklı yolları:
 
 | Paket | Durum |
 |---------|--------|
-| `failproof` | ✅ Yayımlandı |
+| `failproof` | ✅ Yayınlandı |
 | `failproof-ai` | ⏳ npm desteği bekleniyor |
 | `fail-proof-ai` | ⏳ npm desteği bekleniyor |
 | `failproof_ai` | ⏳ npm desteği bekleniyor |
@@ -41,27 +41,27 @@ Bu riski ortadan kaldırmak için, **npm üzerinde `failproofai`'nin tüm yaygı
 
 | Paket | Durum |
 |---------|--------|
-| `failprof` | ✅ Yayımlandı |
-| `failprof-ai` | ✅ Yayımlandı |
+| `failprof` | ✅ Yayınlandı |
+| `failprof-ai` | ✅ Yayınlandı |
 | `failprofai` | ⏳ npm desteği bekleniyor |
 | `fail-prof-ai` | ⏳ npm desteği bekleniyor |
 | `failprof_ai` | ⏳ npm desteği bekleniyor |
 
-**`faliproof*` yazım hataları** - `a` ve `i` yer değişimi:
+**`faliproof*` yazım hataları** - `a` ve `i` transpoze edilmiş:
 
 | Paket | Durum |
 |---------|--------|
-| `faliproof` | ✅ Yayımlandı |
-| `faliproof-ai` | ✅ Yayımlandı |
+| `faliproof` | ✅ Yayınlandı |
+| `faliproof-ai` | ✅ Yayınlandı |
 | `faliproofai` | ⏳ npm desteği bekleniyor |
 
-> **Neden bekleniyor?** npm'nin spam önleme politikası, noktalama işaretleri çıkarıldıktan sonra ve benzerlik kontrolleri yapıldıktan sonra mevcut bir paket ile aynı dizeye normalleşen adları engeller. Bu adları yazım hatası ile kötüye kullanımı önleme amaçlı rezerve etmek için npm desteğine başvurduk. Onaylandıktan sonra etkinleştirilecektir.
+> **Neden bekleniyor?** npm'nin spam önleme politikası, noktalama işaretleri çıkarıldıktan ve benzerlik kontrolleri yapıldıktan sonra mevcut bir paketle aynı dizeye normalize olan adları engeller. Anti-squatting amaçlı bu adları rezerve etmek için npm desteğiyle iletişime geçtik. Onay alındıktan sonra aktifleştirilecekler.
 
-Herhangi bir yayımlanmış takma adın bize ait olduğunu doğrulayabilirsiniz:
+Yayınlanan herhangi bir takma adın bize ait olduğunu doğrulayabilirsiniz:
 
 ```bash
 npm info failproof
-# Bak: maintainers alanında "ExosphereHost Inc."
+# Arayın: maintainers alanında "ExosphereHost Inc."
 ```
 
 ---
@@ -70,13 +70,13 @@ npm info failproof
 
 Her takma ad paketi:
 
-1. `failproofai`'yi bir bağımlılık olarak listeler - böylece gerçek paket kurulur ve onun binary dosyası kullanılabilir hale gelir
-2. Kendi adıyla eşleşen bir binary'yi (örneğin `failprof-ai`) açığa çıkarır ve tüm argümanları `failproofai` binary'sine proxy eder
+1. `failproofai`'yi bir bağımlılık olarak listeler - böylece gerçek paket yüklenir ve binary'si kullanılabilir hale gelir
+2. Kendi adıyla eşleşen bir binary ortaya koymaktadır (örn. `failprof-ai`) ve tüm argümanları `failproofai` binary'sine proxy'ler
 
-Proxy, iki satırlık bir Node scriptidir; hiçbir mantık, hiçbir ağ çağrısı ve `failproofai`'nin kendisinin yaptığı şeyden başka veri toplama yoktur.
+Proxy, iki satırlık bir Node script'idir; hiçbir mantık, ağ çağrısı ve `failproofai`'nin kendisinin yaptığı şeyin ötesinde veri toplama yoktur.
 
 ---
 
 ## Kaçırdığımız bir ad bulursanız
 
-[failproofai/failproofai](https://github.com/failproofai/failproofai/issues) adresinde bir issue açın ve biz onu kaydedeceğiz.
+[failproofai/failproofai](https://github.com/failproofai/failproofai/issues) adresinde bir issue açın ve biz onu kaydederiz.

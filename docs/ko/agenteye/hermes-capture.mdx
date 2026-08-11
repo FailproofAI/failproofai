@@ -1,53 +1,53 @@
 ---
 title: "Hermes 세션 캡처"
-description: "팀의 Hermes 게이트웨이 세션 — Slack, Telegram, CLI, 예약 실행 — 을 일반 세션 및 이벤트로 AgentEye에 가져옵니다."
+description: "팀의 Hermes 게이트웨이 세션(Slack, Telegram, CLI, 예약 실행)을 AgentEye에 일반 세션 및 이벤트로 가져옵니다."
 ---
 
-[Hermes](https://hermes-agent.nousresearch.com)는 팀원들이 이미 사용하는 어떤 채널에서든 — Slack, Telegram, CLI, 예약 실행 — 응답을 제공합니다. Hermes 세션 캡처는 이 모든 것을 AgentEye에 일반 세션 및 이벤트로 가져오므로, 팀이 매일 대화하는 어시스턴트도 직접 작성한 에이전트만큼 관찰 가능해집니다.
+[Hermes](https://hermes-agent.nousresearch.com)는 팀이 이미 사용하는 어떤 채널에서든 — Slack, Telegram, CLI, 예약 실행 — 응답합니다. Hermes 세션 캡처는 이 모든 것을 AgentEye에 일반 세션 및 이벤트로 가져오므로, 팀이 매일 대화하는 어시스턴트도 직접 작성한 에이전트만큼 관측 가능해집니다.
 
-소형 백그라운드 수집기가 Hermes의 로컬 세션 저장소를 작성 즉시 읽어 AgentEye로 전송합니다. 동작 방식은 [Codex](/ko/agenteye/codex-capture) 및 [OpenClaw](/ko/agenteye/openclaw-capture) 캡처와 동일하며, 하나의 수집기로 여러 에이전트를 동시에 캡처할 수 있습니다.
+소형 백그라운드 수집기가 Hermes의 로컬 세션 스토어를 작성 시점에 읽어 AgentEye로 전송합니다. [Codex](/ko/agenteye/codex-capture) 및 [OpenClaw](/ko/agenteye/openclaw-capture) 캡처와 동일한 방식으로 동작하며, 하나의 수집기로 여러 에이전트를 동시에 캡처할 수 있습니다.
 
 ---
 
-## 캡처 항목
+## 캡처 대상
 
-머신의 모든 Hermes 세션은 어느 채널에서 시작되었든 캡처됩니다. 각 세션은 AgentEye [세션](/ko/agenteye/sessions)이 되고, 사용자 및 어시스턴트 메시지, 도구 호출, 도구 결과는 해당하는 [이벤트](/ko/agenteye/event-stream)가 됩니다.
+머신의 모든 Hermes 세션이 캡처되며, 어떤 채널에서 시작되었든 상관없습니다. 각 세션은 AgentEye [세션](/ko/agenteye/sessions)이 되고, 사용자·어시스턴트 메시지, 도구 호출, 도구 결과는 해당 [이벤트](/ko/agenteye/event-stream)로 변환됩니다.
 
-세션이 시작된 채널 — Slack, Telegram, CLI, 예약 실행 — 은 세션에 기록되므로 구분하거나 하나씩 필터링할 수 있습니다. 함께 기록되는 정보로는 세션이 실행된 모델, 세션이 시작된 채팅 및 사용자, 그리고 세션이 다른 세션을 생성한 경우 부모 세션으로의 링크가 있습니다.
+세션이 시작된 채널(Slack, Telegram, CLI, 예약 실행)이 세션에 기록되므로 구분하거나 하나씩 필터링할 수 있습니다. 함께 기록되는 정보로는 세션이 실행된 모델, 시작된 채팅과 담당자, 그리고 세션이 다른 세션을 생성한 경우 상위 세션으로의 연결이 포함됩니다.
 
-세션은 Hermes가 시작하는 즉시 표시되며, 아직 아무 말도 나누지 않은 상태여도 마찬가지입니다. 한 턴의 응답과 도구 호출은 실제로 발생한 순서대로 유지됩니다. 세션이 종료되면 종료 이유, 비용, 사용된 토큰 수도 함께 확인할 수 있습니다.
+세션은 Hermes가 시작하는 즉시 — 아직 아무 말도 하지 않은 상태에서도 — 표시되며, 턴의 응답과 도구 호출은 실제로 발생한 순서대로 유지됩니다. 세션이 종료되면 종료 이유, 비용, 사용된 토큰 수도 확인할 수 있습니다.
 
 ---
 
 ## 활성화 방법
 
-캡처는 활성화하기 전까지 비활성 상태입니다. `events:add` 권한이 있는 API 키([API 키](/ko/agenteye/api-keys) 참조)로 수집기를 설치하고 Hermes 캡처를 활성화합니다.
+캡처는 직접 활성화하기 전까지 비활성 상태입니다. `events:add` 권한이 있는 API 키([API 키](/ko/agenteye/api-keys) 참조)로 수집기를 설치하고 Hermes 캡처를 켭니다.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --hermes-enabled
 ```
 
-이 명령으로 수집기가 설치되고, 백그라운드 서비스로 등록되며, 캡처가 시작됩니다. 실행 여부를 확인합니다.
+이 명령은 수집기를 설치하고, 백그라운드 서비스로 등록한 뒤 캡처를 시작합니다. 실행 중인지 확인하려면:
 
 ```bash
 agenteye-collector health
 ```
 
-동일한 머신에서 여러 에이전트를 캡처하려면? 같은 명령에 각 에이전트의 플래그를 추가하면 됩니다 — 예: `--hermes-enabled --codex-enabled`.
+같은 머신에서 여러 에이전트를 캡처하려면? 동일한 명령에 각 에이전트의 플래그를 추가하세요 — 예: `--hermes-enabled --codex-enabled`.
 
-첫 실행 시 기존 Hermes 세션이 한 번 백필되고, 이후 새로운 활동은 몇 초 이내에 스트리밍됩니다. Hermes의 데이터는 읽기만 할 뿐 수정하거나 삭제하지 않으며, 각 메시지는 재시작이 있더라도 한 번만 전송됩니다.
+첫 실행 시 기존 Hermes 세션이 한 번 백필되고, 이후 새로운 활동은 몇 초 내에 스트리밍됩니다. Hermes의 데이터는 읽기 전용으로 사용되며 — 수정하거나 삭제하지 않습니다 — 재시작 여부와 관계없이 각 메시지는 한 번만 전송됩니다.
 
-`health` 명령은 수집기가 캡처한 모든 데이터가 실제로 AgentEye에 도달했는지도 알려줍니다. 배치 전송에 실패한 경우 삭제되지 않고 보존되어 재시도되며, 미전송 데이터가 남아 있는 동안은 비정상 상태로 보고됩니다 — 따라서 "정상"은 단순히 프로세스가 살아있다는 의미가 아니라 데이터가 실제로 도착했음을 의미합니다.
+`health`는 수집기가 캡처한 모든 내용이 실제로 AgentEye에 도달했는지도 알려줍니다. 배치를 전달하지 못한 경우 폐기하지 않고 보관한 후 재시도하며, 미처리 항목이 남아 있는 동안에는 비정상(unhealthy) 상태로 보고합니다 — 따라서 "정상(healthy)"은 단순히 프로세스가 살아있다는 것이 아니라 데이터가 실제로 도달했음을 의미합니다.
 
 ---
 
 ## 확인 위치
 
-캡처된 세션은 **Sessions**에, 이벤트는 **Events** 스트림에 표시되며, 다른 에이전트와 동일하게 취급됩니다 — 따라서 [세션 재생](/ko/agenteye/sessions), [검색](/ko/agenteye/queries), [평가](/ko/agenteye/evaluations), [알림](/ko/agenteye/alerts) 모두 이 세션에 적용됩니다. Hermes 에이전트로 필터링하면 해당 세션만 볼 수 있습니다.
+캡처된 세션은 **Sessions**에, 이벤트는 **Events** 스트림에 표시됩니다 — 다른 관측 에이전트와 동일하게 — 따라서 [세션 재생](/ko/agenteye/sessions), [검색](/ko/agenteye/queries), [평가](/ko/agenteye/evaluations), [알림](/ko/agenteye/alerts) 모두 사용할 수 있습니다. Hermes 에이전트로 필터링하면 해당 세션만 볼 수 있습니다.
 
 ---
 
-## 개인정보 보호
+## 개인 정보 보호
 
-Hermes 세션에는 전체 대화 내용 — 명령 출력, 파일 내용, 에이전트가 읽거나 쓴 모든 것 — 이 포함되며, 비밀 정보가 담길 수 있습니다. 캡처된 세션은 있는 그대로 전송되므로, AgentEye에 해당 콘텐츠를 중앙화하는 것이 적절한 환경에서만 캡처를 활성화하고, 수집기에는 `events:add` 권한만 있는 키를 부여하세요. 데이터가 격리되어 보관되는 방식은 [보안](/ko/agenteye/security)을 참조하세요.
+Hermes 세션에는 전체 트랜스크립트가 포함되며 — 명령 출력, 파일 내용, 에이전트가 읽거나 작성한 모든 내용 — 비밀 정보가 포함될 수 있습니다. 캡처된 세션은 그대로 전송되므로, AgentEye에 해당 콘텐츠를 중앙화하는 것이 적절한 환경에서만 캡처를 활성화하고, 수집기에는 `events:add`만 범위로 지정된 키를 제공하세요. 데이터 격리 방법에 대한 자세한 내용은 [보안](/ko/agenteye/security)을 참조하세요.

@@ -1,52 +1,52 @@
 ---
 title: "Performans Metrikleri"
-description: "Modellerinizin, araçlarınızın veya hook'larınızın yavaşladığı veya maliyeti artırdığı anı görün ve kullanıcılarınız bunu hissetmeden tail-latency artışını yakalayın."
+description: "Modellerinizin, araçlarınızın veya hook'larınızın ne zaman yavaşladığını veya maliyetlerin arttığını anlık olarak görün ve kullanıcılarınız hissetmeden tail-latency artışını yakalayın."
 ---
 
 
-Modellerinizin, araçlarınızın veya hook'larınızın yavaşladığı veya maliyeti artırdığı anı görün ve kullanıcılarınız bunu hissetmeden tail-latency artışını yakalayın. Üç ayrı sayfa ham zamanlama verilerini p50, p95 ve p99'a dönüştürerek bir bakışta okuyabileceğiniz hale getirir.
+Modellerinizin, araçlarınızın veya hook'larınızın ne zaman yavaşladığını veya maliyetlerin arttığını anlık olarak görün ve kullanıcılarınız hissetmeden tail-latency artışını yakalayın. Üç ayrılmış sayfa, ham zamanlamayı p50, p95 ve p99'a dönüştürerek bir bakışta okuyabileceğiniz şekilde sunuyor.
 
-![Models sayfası, latency ısı haritasını, yüzdelik bantı ve model başına token, maliyet ve bağlam penceresi rakamlarını gösteriyor](/agenteye/images/models.png)
-*Models sayfası: latency ısı haritası, yüzdelik bandı ve model başına tokenler, tahmini maliyet ve bağlam penceresi doldurma.*
+![Models sayfasını gösteren ekran: latency ısı haritası, yüzdelik dilim bandı ve model başına token, tahmini maliyet ve bağlam penceresi rakamları](/agenteye/images/models.png)
+*Models sayfası: latency ısı haritası, yüzdelik dilim bandı ve model başına tokenlar, tahmini maliyet ve bağlam penceresi doluluğu.*
 
-## Ortalamaların kötü çalışmaları saklamasına izin vermeyin
+## Ortalamaların kötü çalıştırmalarınızı gizlemesine izin vermeyin
 
-Ortalama latency numarası rahatlatıcı ve işe yaramaz: elli çağrıdan birinin takılıp kalıp sabah 2'de on-call personelini çağırmasının üzerini örter. Models, Tools ve Hooks sayfaları bunu yapmayı reddeder. Her biri aynı yapıya sahiptir, böylece bunu bir kez öğrenirsiniz:
+Ortalama bir latency rakamı teselli verici ama işe yaramaz: ellide birinde takılan ve saat 02:00'de on-call görevlisini uyandıran çağrıyı gizler. Models, Tools ve Hooks sayfaları bunu yapmayı reddeder. Her biri aynı yapıyı paylaştığından, bunu bir kez öğrenirsiniz:
 
-- Trendi bir bakışta görmek için **24-kutulu sparkline**: bu durum kötüye gidiyor mu?
-- p50, p95 ve p99 latency ile **vitals şeridi**, böylece tipik çalışma ve tail yan yana oturur.
-- **Latency ısı haritası**, 24 zaman kutusu x latency segmentleri, *ne zaman* yavaş çağrıların kümelendiğini gösterir.
-- **Yüzdelik bant**: p50 çizgisi ile p25 ila p75 ve p10 ila p90 gölgeli şeritleri ve p99 noktaları, böylece yayılma ortalama yerine görünür kalır.
+- Bir bakışta trendi görmek için **24 bölmeli sparkline**: bu daha mı kötüleşiyor?
+- p50, p95 ve p99 latency ile **vitals şeridi**, tipik çalıştırma ve tail yan yana duruyor.
+- Yavaş çağrıların **ne zaman** kümelendiğini gösteren **latency ısı haritası**, 24 zaman bölmesi x latency kategorileri.
+- **Yüzdelik dilim bandı**: p50 çizgisi ile p25 ila p75 ve p10 ila p90 gölgeli şeritleri ve p99 noktaları, yayılış ortalamalanmış yerine görünür kalır.
 
-Paylaşılan bir hover crosshair ısı haritasını ve bandı zaman olarak bağlar, böylece tail spike her ikisinde de zaman içinde sıralanır ve tek bir ortalama çizgisinin arkasında gizlenmez. Üç sayfayı da panonuzun **observe** bölümünde bulun, her biri kuruluşunuza kapsamlı ve tarih aralığı, ortam, agent ve oturum ile filtrelenebilir.
+Paylaşılan bir hover çaprazı, ısı haritasını ve bandı zaman içinde bağlantılandırır, böylece tail artışı tek bir ortalama çizginin arkasında gizlenmek yerine her iki tarafta da hizalanır. Dashboardunuzun **observe** bölümünde üç sayfayı bulun; her biri kuruluşunuza göre kapsamlı ve tarih aralığı, ortam, agent ve oturum ile filtrelenebilir.
 
-## Models: her modelin size ne kadara mal olduğunu tam olarak görün
+## Models: her modelin size ne kadar mal olduğunu tam olarak görün
 
-Models sayfası (üstte gösterilmiştir) bir faturanın her zaman ortaya çıkardığı iki soruya yanıt verir: hangi model ve ne kadar. Paylaşılan latency görünümünün üzerine, **model başına token tüketimi**, **tahmini maliyet** ve **bağlam penceresi doldurma** ekler, böylece kontrolsüz prompt büyümesi ve yaklaşan sıkıştırma sizi şaşırtmadan önce görünür.
+Models sayfası (yukarıda gösterilen) faturanın her zaman sorduğu iki soruyu yanıtlar: hangi model ve ne kadar. Paylaşılan latency görünümünün üstüne, **model başına token tüketimi**, **tahmini maliyet** ve **bağlam penceresi doluluğu** ekler, böylece kontrolsüz istemi artışı ve yaklaşan bir sıkıştırma sizi şaşırtmadan önce görülür.
 
-Failproof AI Observability ortak model kimliklerini otomatik olarak tanır. Bir pencere yanlış görünüyorsa veya kendi özel modelinizi çalıştırıyorsanız, **Settings** altında, **model context windows** içinde düzeltin veya ekleyin ve doldurma okumaları bunu takip eder.
+Failproof AI Observability, yaygın model ID'lerini otomatik olarak tanır. Bir pencere yanlış görünüyorsa veya kendi özel modelinizi çalıştırıyorsanız, **Settings** altında, **model context windows** bölümünde düzeltin veya ekleyin ve doluluğu okumaları takip eder.
 
-## Tools: yavaş olanı kırık olandan ayırt edin
+## Tools: yavaş olanları kırılan olanlardan ayırın
 
-Bir tool çağrısı yavaş olabilir veya sessizce başarısız olabilir ve bunu günlükleri inceledikten sonra değil de saniyeler içinde bilmek istersiniz.
+Bir araç çağrısı yavaş olabilir veya sessizce başarısız olabilir ve bunu günlüklere dalmadan önce saniyeler içinde bilmek istersiniz.
 
-![Tools sayfası, paylaşılan latency ısı haritasını ve yüzdelik bandı yanında başarı ve hata dökümü ile tool dağılım çubuğunu gösteriyor](/agenteye/images/tools.png)
-*Tools sayfası: aynı ısı haritası ve yüzdelik bant, artı başarı ve hata dökümü ile tool dağılım çubuğu.*
+![Tools sayfasını gösteren ekran: paylaşılan latency ısı haritası ve yüzdelik dilim bandı, başarı ve başarısızlık dağılımı ve araç dağılım çubuğu ile birlikte](/agenteye/images/tools.png)
+*Tools sayfası: aynı ısı haritası ve yüzdelik dilim bandı, artı başarı ve başarısızlık dağılımı ve araç dağılım çubuğu.*
 
-Paylaşılan latency görünümünün yanında, Tools sayfası bir **başarı ve hata dökümü** ve **tool dağılım çubuğu** ekler, böylece bir bakışta hangi toolları en çok kullandığınızı ve hangilerinin hata bütçenizi tükettiğini görürsünüz.
+Paylaşılan latency görünümünün yanında, Tools sayfası bir **başarı ve başarısızlık dağılımı** ve bir **araç dağılım çubuğu** ekler, böylece hangi araçlara çoğunlukla dayandığınızı ve hangilerinin hata bütçenizi tükettiğini bir bakışta görürsünüz.
 
-## Hooks: tam hook ve trigger'ı belirleyin
+## Hooks: tam olarak hangi hook ve tetikleyiciyi belirleyin
 
-Bir lifecycle hook bir çalışmayı yavaşlatırken, "hook'lar yavaş" üzerinde harekete geçebileceğiniz bir şey değildir. Hooks sayfası sizi önemli olana götürür.
+Bir yaşam döngüsü hook'u bir çalıştırmayı yavaşlattığında, "hook'lar yavaş" üzerinde harekete geçemeyeceğiniz bir şeydir. Hooks sayfası sizi önemli olanın üzerine getirir.
 
-![Hooks sayfası, latency'nin paylaşılan ısı haritası ve yüzdelik bandı üzerinde hook adı ve trigger olayına göre dökülmüş olarak gösteriyor](/agenteye/images/hooks.png)
-*Hooks sayfası: latency'nin hook adı ve trigger olayına göre dökülmüş.*
+![Hooks sayfasını gösteren ekran: latency hook adı ve tetikleme olayı ile paylaşılan ısı haritası ve yüzdelik dilim bandı üzerinde kırılmış](/agenteye/images/hooks.png)
+*Hooks sayfası: latency hook adı ve tetikleme olayı ile kırılmış.*
 
-Aynı latency ısı haritası ve yüzdelik bandı üzerinde, Hooks sayfası etkinliği **hook adı** ve **trigger olayı** tarafından kırıyor, böylece ilgilenilmesi gereken tek hook'a ve tek olaya inersiniz.
+Aynı latency ısı haritası ve yüzdelik dilim bandı üzerinde, Hooks sayfası aktiviteyi **hook adı** ve **tetikleme olayı** ile kırılmış şekilde sunuyor, böylece dikkat gerektiren tek hook ve tek olayın üzerine iniyorsunuz.
 
 ## İlgili
 
-- [Event stream](/tr/agenteye/event-stream): her olayın canlı, renkle kodlanmış izi.
-- [Sessions](/tr/agenteye/sessions): olayları çalışma başına bir satırda toplayın ve yürütme grafiğini açın.
-- [Error tracking](/tr/agenteye/error-tracking): panoda kırmızı olan her şey için tek triage yüzeyi.
-- [Dashboards](/tr/agenteye/dashboards): filoğunuz genelinde toparlama görünümleri.
+- [Event stream](/tr/agenteye/event-stream): her olayın canlı, renk kodlanmış izi.
+- [Sessions](/tr/agenteye/sessions): olayları bir çalıştırma başına bir satırda toplayın ve yürütme grafiğini açın.
+- [Error tracking](/tr/agenteye/error-tracking): dashboard'un kırmızıyla boyadığı her şey için tek bir triage yüzeyi.
+- [Dashboards](/tr/agenteye/dashboards): filosunuz genelinde toplu görünümler.

@@ -1,27 +1,27 @@
 ---
 ---
-title: Hook işleyicisi (dahili)
-description: "Claude Code'un her araç olayında çağırdığı alt işlem"
+title: Hook handler (internal)
+description: "Subprocess Claude Code'un her araç etkinliğinde çağırdığı"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-Bu, `failproofai policies --install` tarafından Claude Code'un `settings.json` dosyasına kaydedilen komuttur. Normalde bunu doğrudan çağırmazsınız.
+`failproofai policies --install` tarafından Claude Code'un `settings.json` dosyasında kayıtlı olan komuttur. Normalde bunu doğrudan çağırmazsınız.
 
-stdin'den bir JSON yükü okur, tüm etkin politikaları değerlendirir ve kararı gösteren bir çıkış kodu ile sonlanır:
+stdin'den JSON yükünü okur, tüm etkinleştirilmiş politikaları değerlendirir ve kararı belirten bir çıkış koduyla çıkar:
 
 | Çıkış kodu | Karar | Etki |
 |-----------|-------|------|
 | `0` | `allow` | Eylemi izin ver |
-| `1` | `deny` | Eylemi engelle - Claude reddetme nedenini görür |
+| `1` | `deny` | Eylemi engelle - Claude ret nedenini görür |
 | `2` | `instruct` | Claude'un bağlamına rehberlik ekle |
 
-### Desteklenen olay türleri
+### Desteklenen etkinlik türleri
 
-| Kategori | Olaylar |
-|----------|---------|
+| Kategori | Etkinlikler |
+|----------|-------------|
 | **Araç yürütme** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **Oturum yaşam döngüsü** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **Kullanıcı etkileşimi** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |

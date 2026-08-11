@@ -3,48 +3,48 @@ title: "Evaluaciones"
 description: "Los problemas de calidad te encuentran a ti, en lugar de que te enteres por una queja de un usuario."
 ---
 
-Los problemas de calidad te encuentran a ti, en lugar de que te enteres por una queja de un usuario. Conecta tu propio servicio de puntuación una sola vez y Failproof AI Observability califica automáticamente cada ejecución completada, de modo que una caída en la utilidad o un aumento en las alucinaciones aparece por sí solo, antes de que el cliente lo sienta.
+Los problemas de calidad te encuentran a ti, en lugar de que te enteres por una queja de un usuario. Conecta tu propio servicio de puntuación una sola vez y Failproof AI Observability califica automáticamente cada ejecución completada, de modo que una caída en la utilidad o un pico en alucinaciones aparece por sí solo antes de que un cliente lo sienta.
 
-![La cuadrícula de sesiones con una columna de puntuación: cada ejecución lleva una etiqueta de estado de evaluación y distintivos codificados por color de utilidad, factualidad y eficiencia de herramientas](/agenteye/images/sessions-list.png)
+![La cuadrícula de sesiones con una columna de puntuación: cada ejecución muestra una etiqueta de estado de evaluación e insignias codificadas por color de utilidad, factualidad y eficiencia de herramientas](/agenteye/images/sessions-list.png)
 
-*Cada ejecución en la cuadrícula de sesiones lleva sus puntuaciones; los distintivos rojos, ámbar y verdes hacen que las ejecuciones débiles resalten sin necesidad de abrir ni una sola transcripción.*
+*Cada ejecución en la cuadrícula de sesiones lleva sus puntuaciones; las insignias en rojo, ámbar y verde hacen que las ejecuciones débiles destaquen sin necesidad de abrir una sola transcripción.*
 
 ## Deja de revisar ejecuciones manualmente
 
-Antes tenías que verificar un puñado de ejecuciones y esperar que el resto estuviera bien. Ahora cada sesión completada se puntúa en el momento en que termina, en las dimensiones que te importan: utilidad, eficiencia de herramientas, factualidad, seguridad, lo que sea que defina tu estándar de calidad. Tú defines las claves de puntuación; Failproof AI Observability almacena, sigue las tendencias y muestra lo que tu evaluador devuelva. Ninguna ejecución queda sin puntuar, y dejas de enterarte de una regresión a través de un ticket de soporte.
+Antes solías revisar un puñado de ejecuciones y esperar que el resto estuvieran bien. Ahora cada sesión completada se puntúa en el momento en que termina, en las dimensiones que te importan: utilidad, eficiencia de herramientas, factualidad, seguridad, cualquier criterio de calidad que definas. Tú defines las claves de puntuación; Failproof AI Observability almacena, analiza tendencias y muestra lo que sea que tu evaluador devuelva. Ninguna ejecución queda sin puntuar, y dejas de enterarte de una regresión a través de un ticket de soporte.
 
-Las puntuaciones aparecen en la cuadrícula de sesiones en **`/<org-slug>/sessions`** (barra lateral → *observe* → *sessions*), con un grupo de distintivos por fila. ¿Quieres solo las ejecuciones que no alcanzaron el nivel? Filtra la cuadrícula por rango de puntuación, por ejemplo utilidad por debajo de 0,5, y obtén exactamente las ejecuciones que vale la pena revisar. Ver las puntuaciones requiere el permiso `evaluations:read`.
+Las puntuaciones aparecen en la cuadrícula de sesiones en **`/<org-slug>/sessions`** (barra lateral → *observe* → *sessions*), con un conjunto de insignias por fila. ¿Quieres solo las ejecuciones que no alcanzaron el estándar? Filtra la cuadrícula por rango de puntuación, por ejemplo utilidad por debajo de 0.5, y obtén exactamente las ejecuciones que vale la pena revisar. Para ver las puntuaciones se necesita el permiso `evaluations:read`.
 
-## Descubre por qué una ejecución obtuvo una puntuación baja
+## Descubre por qué una ejecución recibió una puntuación baja
 
-Un número te dice que una ejecución fue débil; la página de sesión te dice por qué. Abre cualquier ejecución y el panel lateral derecho muestra primero el resumen general, seguido de una barra por dimensión con el razonamiento propio de tu evaluador debajo de cada una, de modo que pasas de "esto obtuvo 0,4 en factualidad" a la afirmación exacta que falló en cuestión de segundos.
+Un número te dice que una ejecución fue débil; la página de sesión te dice por qué. Abre cualquier ejecución y el panel derecho muestra primero el resumen general, luego una barra por dimensión con el razonamiento propio de tu evaluador debajo de cada una, de modo que pasas de "esto tuvo 0.4 en factualidad" a la afirmación exacta que salió mal en segundos.
 
-![El panel lateral derecho de una sesión: el resumen de evaluación arriba, luego barras de puntuación por dimensión con una línea de razonamiento en cada una, junto a la línea de tiempo completa de eventos](/agenteye/images/session-detail.png)
+![El panel derecho de una sesión: el resumen de evaluación arriba, luego barras de puntuación por dimensión cada una con una línea de razonamiento, junto a la línea de tiempo completa de eventos](/agenteye/images/session-detail.png)
 
 *La vista de detalle de sesión: resumen, barras de puntuación por dimensión y el razonamiento detrás de cada puntuación, justo al lado de la línea de tiempo de eventos de la ejecución.*
 
-¿Implementaste un evaluador más preciso o estás revisando una ejecución que falló antes de poder ser puntuada? Un botón de **re-evaluate** (restringido por `evaluations:trigger`) vuelve a puntuar la sesión en el lugar y añade el nuevo resultado a su línea de tiempo, de modo que las puntuaciones anteriores permanecen visibles como historial. Lo encontrarás en **`/<org-slug>/sessions/<session-id>`**.
+¿Lanzaste un evaluador más preciso, o estás viendo una ejecución que falló antes de poder ser puntuada? Un botón de **re-evaluate** (con acceso restringido a `evaluations:trigger`) vuelve a puntuar la sesión en su lugar y añade el nuevo resultado a su línea de tiempo, de modo que las puntuaciones anteriores permanecen visibles como historial. Lo encontrarás en **`/<org-slug>/sessions/<session-id>`**.
 
 ## Observa la tendencia de calidad en toda la flota
 
-Una ejecución con puntuación baja es ruido; un grupo entero descendiendo es una señal. Los dashboards guardados convierten tus puntuaciones en una tendencia que puedes monitorear de un vistazo: utilidad promedio esta semana frente a la anterior, por agente, por entorno.
+Una sola ejecución con puntuación baja es ruido; todo un grupo que cae es una señal. Los dashboards guardados convierten tus puntuaciones en una tendencia que puedes monitorear de un vistazo: utilidad promedio esta semana versus la anterior, por agente, por entorno.
 
-![Un dashboard de calidad: barras de puntuación promedio por dimensión del evaluador junto a una tendencia a lo largo del tiempo](/agenteye/images/dashboard-quality.png)
+![Un dashboard de calidad: barras de puntuación promedio por dimensión de evaluación junto a una tendencia en el tiempo](/agenteye/images/dashboard-quality.png)
 
-*Un dashboard de calidad guardado sigue la tendencia de las claves de puntuación que destacas, de modo que una deriva lenta es obvia mucho antes de convertirse en un incidente.*
+*Un dashboard de calidad guardado muestra la tendencia de las claves de puntuación que destacas, de modo que una deriva gradual es evidente mucho antes de convertirse en un incidente.*
 
-Los dashboards se encuentran en **`/<org-slug>/dashboards`** (barra lateral → *analyze* → *dashboards*), se comparten en toda tu organización, y cada tarjeta agrupa las sesiones correspondientes: cuántas hay, el promedio de cada puntuación destacada y una minigráfica de tendencia. "Open in sessions" te lleva directamente a las ejecuciones prefiltradas detrás de cualquier número. Para verlos se requiere `dashboards:read` más `evaluations:read`.
+Los dashboards se encuentran en **`/<org-slug>/dashboards`** (barra lateral → *analyze* → *dashboards*), se comparten en toda tu organización, y cada tarjeta agrupa las sesiones correspondientes: cuántas hay, el promedio de cada puntuación destacada y una minigráfica de tendencia. "Open in sessions" te lleva directamente a las ejecuciones pre-filtradas detrás de cualquier número. Para verlos se necesitan los permisos `dashboards:read` y `evaluations:read`.
 
 ## Conecta un evaluador una sola vez
 
-La puntuación es opcional y permanece completamente desactivada hasta que apuntes Failproof AI Observability a un puntuador. Configuras un pequeño servicio HTTP (Observability incluye una referencia funcional que puedes copiar), estableces dos valores en tu servidor, y a partir de entonces todas las ejecuciones se puntúan automáticamente. La guía completa, el contrato de puntuación y el SDK están disponibles en la guía detallada.
+La puntuación es opcional y permanece completamente desactivada hasta que apuntes Failproof AI Observability a un evaluador. Configuras un pequeño servicio HTTP (Observability incluye una referencia funcional que puedes copiar), estableces dos valores en tu servidor y a partir de entonces cada ejecución se puntúa automáticamente. El recorrido completo, el contrato de puntuación y el SDK están en la guía detallada.
 
-¿No sabes qué dimensiones vale la pena puntuar en primer lugar? La [habilidad de agente evaluador](/es/agenteye/evaluator-skill) hace que tu agente de codificación lo determine en función de tus propias sesiones, y luego construye y despliega el servicio.
+¿No sabes qué dimensiones vale la pena puntuar en primer lugar? La [habilidad de agente evaluador](/es/agenteye/evaluator-skill) hace que tu agente de codificación lo determine usando tus propias sesiones, y luego construya e implemente el servicio.
 
 ## Relacionado
 
 - [Suite de evaluación](/es/agenteye/evaluation-suite): conecta tu evaluador, el contrato de puntuación y el SDK.
 - [Habilidad de agente evaluador](/es/agenteye/evaluator-skill): deja que un agente de codificación elija tus dimensiones de puntuación y construya el evaluador.
-- [Sesiones](/es/agenteye/sessions): la cuadrícula ejecución por ejecución donde aparecen las puntuaciones.
+- [Sesiones](/es/agenteye/sessions): la cuadrícula por ejecución donde aparecen las puntuaciones.
 - [Dashboards](/es/agenteye/dashboards): guarda y comparte tendencias de calidad en toda tu organización.
 - [Auditorías](/es/agenteye/audits): la otra función de calidad automática de Observability, para investigaciones entre sesiones.

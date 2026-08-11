@@ -1,30 +1,30 @@
 ---
-title: "Failproof AI : Observez vos agents pour détecter les défaillances"
+title: "Failproof AI : Observer les agents pour détecter les défaillances"
 description: "Failproof AI Observability est une plateforme auto-hébergée pour observer, évaluer et améliorer vos agents IA en production."
 ---
 
 
-Failproof AI Observability est une plateforme auto-hébergée pour observer, évaluer et améliorer vos agents IA en production. Elle enregistre tout ce que font vos agents (chaque appel d'outil, requête de modèle, hook et erreur), note la qualité de chaque exécution, et met en évidence les défaillances que vous n'auriez pas su chercher — le tout dans un tableau de bord que vous faites tourner dans votre propre infrastructure.
+Failproof AI Observability est une plateforme auto-hébergée pour observer, évaluer et améliorer vos agents IA en production. Elle enregistre tout ce que font vos agents (chaque appel d'outil, requête de modèle, hook et erreur), évalue la qualité de chaque exécution, et met en évidence les défaillances que vous n'auriez pas pensé à chercher — le tout dans un tableau de bord que vous hébergez au sein de votre propre infrastructure.
 
-Si vous déployez des agents IA et que vous en avez assez de deviner pourquoi une exécution a mal tourné, c'est par ici qu'il faut commencer. Cette page explique ce que Failproof AI Observability vous apporte et comment les différentes pièces s'articulent, avant même que vous n'installiez quoi que ce soit.
+Si vous déployez des agents IA et que vous en avez assez de deviner pourquoi une exécution a mal tourné, c'est la page par laquelle commencer. Elle explique ce que Failproof AI Observability vous apporte et comment les différentes pièces s'assemblent, avant toute installation.
 
-> **Failproof AI Observability est un produit entreprise de Failproof AI.** Vous voulez le voir en action ? Demandez une démo : écrivez à [nikita@befailproof.ai](mailto:nikita@befailproof.ai).
+> **Failproof AI Observability est un produit entreprise de Failproof AI.** Vous souhaitez le voir en action ? Demandez une démonstration : écrivez à [nikita@befailproof.ai](mailto:nikita@befailproof.ai).
 
-![Une session Failproof AI Observability représentée sous forme de graphe d'exécution à la git, à côté de sa chronologie d'événements, avec un détail par exécution des outils, modèles et hooks dans le panneau de droite](/agenteye/images/session-detail.png)
+![Une session Failproof AI Observability représentée sous forme de graphe d'exécution de type git, aux côtés de sa chronologie d'événements, avec un détail par exécution des outils, modèles et hooks dans le panneau de droite](/agenteye/images/session-detail.png)
 
-*Chaque exécution d'agent est représentée sous forme de graphe d'exécution à la git (gauche), à côté de sa chronologie d'événements. Les sous-agents parallèles ont chacun leur propre couloir ; le panneau de droite détaille les outils, modèles, hooks et la consommation de tokens pour l'exécution.*
+*Chaque exécution d'agent est représentée sous forme de graphe d'exécution de type git (à gauche) aux côtés de sa chronologie d'événements. Les sous-agents parallèles disposent chacun de leur propre voie ; le panneau de droite détaille les outils, modèles, hooks et la consommation de tokens pour l'exécution.*
 
 ---
 
-## Voir en action
+## Voyez-le en action
 
-Deux courtes vidéos illustrent les deux choses que les équipes recherchent en premier : tracer une exécution, et détecter automatiquement les défaillances.
+Deux courtes vidéos illustrent les deux fonctionnalités que les équipes utilisent en priorité : le traçage d'une exécution et la détection automatique des défaillances.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Traçage d'agent : suivez une exécution pas à pas, de l'objectif aux outils jusqu'à la réponse finale.*
+*Traçage d'agent : suivez une exécution étape par étape, de l'objectif aux outils jusqu'à la réponse finale.*
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
@@ -36,60 +36,60 @@ Deux courtes vidéos illustrent les deux choses que les équipes recherchent en 
 
 ## Pourquoi les équipes l'utilisent
 
-- **Voyez ce que votre agent a réellement fait.** Chaque exécution devient un graphe d'exécution lisible à la git : quels outils ont fonctionné en parallèle, quels sous-agents ont divergé, où l'exécution s'est bloquée, et ce qu'elle a consommé.
-- **Détectez automatiquement les régressions de qualité.** Connectez un petit service de notation et Failproof AI Observability note chaque exécution terminée — une baisse d'utilité ou une hausse des hallucinations apparaît d'elle-même.
-- **Trouvez les défaillances pour lesquelles vous n'avez écrit aucune règle.** Des audits récurrents analysent vos logs sur l'ensemble des sessions pour repérer des clusters d'erreurs, des valeurs aberrantes de latence, des scores faibles et des exécutions bloquées, puis vous remettent des résultats classés et étayés par des preuves.
-- **Soyez alerté quand ça compte vraiment.** Des règles de seuil se déclenchent sur le taux d'erreur, la latence, le coût ou les scores d'évaluation, et ouvrent des incidents que vous pouvez prendre en charge, assigner et résoudre.
-- **Posez des questions en langage naturel.** Un assistant IA intégré au tableau de bord répond à des questions comme « comment évolue la qualité en production cette semaine ? » en s'appuyant sur vos propres données. Toute modification qu'il propose est soumise à validation.
-- **Gardez la maîtrise de vos données.** Failproof AI Observability est auto-hébergé : les événements, les prompts et les analyses restent dans une infrastructure que vous contrôlez.
+- **Voyez ce que votre agent a réellement fait.** Chaque exécution devient un graphe d'exécution lisible de type git : quels outils ont tourné en parallèle, quels sous-agents ont divergé, où l'exécution a calé, et ce qu'elle a consommé.
+- **Détectez automatiquement les régressions de qualité.** Connectez un petit service de scoring et Failproof AI Observability évalue chaque exécution terminée — une baisse d'utilité ou une hausse des hallucinations apparaît d'elle-même.
+- **Trouvez les défaillances pour lesquelles vous n'avez pas écrit de règle.** Des audits récurrents analysent vos logs sur l'ensemble des sessions pour identifier des clusters d'erreurs, des valeurs aberrantes de latence, des scores faibles et des exécutions bloquées, puis vous restituent des résultats classés et étayés par des preuves.
+- **Soyez alerté au bon moment.** Des règles de seuil se déclenchent sur le taux d'erreur, la latence, le coût ou les scores d'évaluation, et ouvrent des incidents que vous pouvez acquitter, assigner et résoudre.
+- **Posez vos questions en langage naturel.** Un assistant IA intégré au tableau de bord répond à des questions comme « comment évolue la qualité en prod cette semaine ? » sur vos propres données. Toute modification qu'il propose est soumise à validation.
+- **Gardez le contrôle de vos données.** Failproof AI Observability est auto-hébergé : les événements, les prompts et les analyses restent dans une infrastructure que vous contrôlez.
 
 ---
 
 ## Ce que vous obtenez
 
-Failproof AI Observability s'articule autour de trois idées (**observer**, **analyser** et **administrer**), reflétées dans la barre latérale gauche du tableau de bord.
+Failproof AI Observability s'articule autour de trois axes (**observer**, **analyser** et **administrer**), reflétés dans la barre latérale gauche du tableau de bord.
 
-**Observer** (la réalité brute de ce qui s'est passé) :
+**Observer** (la vérité brute de ce qui s'est passé) :
 
 - **[Flux d'événements](/fr/agenteye/event-stream)** : la trace en direct, étape par étape, de chaque exécution (appels d'outils, appels de modèles, hooks, erreurs).
-- **[Sessions](/fr/agenteye/sessions)** : ces événements regroupés en une ligne par exécution, chacune prête à être notée, avec un graphe d'exécution à la git.
-- **[Métriques de performance](/fr/agenteye/telemetry)** : cartes thermiques de latence par surface et indicateurs p50/p95/p99 pour les modèles, outils et hooks, pour qu'une valeur aberrante en queue de distribution ressorte clairement par rapport à la médiane.
-- **[Suivi des erreurs](/fr/agenteye/error-tracking)** : une surface de triage unique pour tout ce qui a dysfonctionné, à un clic d'une alerte déclenchée.
+- **[Sessions](/fr/agenteye/sessions)** : ces événements regroupés en une ligne par exécution, chacune prête à être évaluée, avec un graphe d'exécution de type git.
+- **[Métriques de performance](/fr/agenteye/telemetry)** : cartes thermiques de latence par surface et indicateurs p50/p95/p99 pour les modèles, outils et hooks, afin qu'un pic en queue de distribution se distingue nettement de la médiane.
+- **[Suivi des erreurs](/fr/agenteye/error-tracking)** : une surface de triage unique pour tout ce qui a mal tourné, à un clic d'une alerte déclenchée.
 
-![La page d'observation des outils : une carte thermique de latence, une bande de percentiles et un graphique de distribution des outils sur 24 plages temporelles](/agenteye/images/tools.png)
+![La page d'observation des outils : une carte thermique de latence, une bande de percentiles et un graphique de distribution des outils sur 24 intervalles de temps](/agenteye/images/tools.png)
 
-*Chaque surface d'observation associe une sparkline et des indicateurs p50/p95/p99 à une carte thermique de latence et une bande de percentiles. Ici : Outils.*
+*Chaque surface d'observation associe un graphique sparkline et les indicateurs p50/p95/p99 à une carte thermique de latence et une bande de percentiles. Représenté ici : Outils.*
 
 **Analyser** (transformer l'activité en réponses) :
 
-- **[Requêtes](/fr/agenteye/queries)** et **[tableaux de bord](/fr/agenteye/dashboards)** : du SQL sauvegardé sur vos événements et évaluations, représenté sous forme de graphiques dans des tableaux de bord partagés à l'échelle de l'organisation.
+- **[Requêtes](/fr/agenteye/queries)** et **[tableaux de bord](/fr/agenteye/dashboards)** : SQL sauvegardé sur vos événements et évaluations, visualisé dans des tableaux de bord partagés à l'échelle de l'organisation.
 - **[Évaluations](/fr/agenteye/evaluations)** : scores de qualité produits par votre propre service d'évaluation, avec le raisonnement associé à chaque score.
-- **[Audits](/fr/agenteye/audits)** : investigations récurrentes qui font remonter les patterns de défaillance sur l'ensemble des sessions.
-- **[Alertes](/fr/agenteye/alerts)** et **[incidents](/fr/agenteye/incidents)** : règles de seuil qui vous notifient, accompagnées d'un workflow d'incidents pour les trier.
+- **[Audits](/fr/agenteye/audits)** : investigations récurrentes qui font remonter les patterns de défaillances sur l'ensemble des sessions.
+- **[Alertes](/fr/agenteye/alerts)** et **[incidents](/fr/agenteye/incidents)** : règles de seuil qui vous alertent, avec un workflow d'incident pour les trier.
 
-**Interfaces** (accédez à vos données à votre façon) :
+**Interfaces** (accédez à vos données comme vous le souhaitez) :
 
-- **[CLI](/fr/agenteye/cli-and-agents)** : pilotez l'ensemble de votre déploiement depuis le terminal ou un script, et laissez un agent de développement le faire pour vous en langage naturel.
+- **[CLI](/fr/agenteye/cli-and-agents)** : pilotez l'intégralité de votre déploiement depuis le terminal ou un script, et laissez un agent de codage le faire pour vous en langage naturel.
 - **[Assistant IA](/fr/agenteye/assistant)** : posez des questions sur vos agents en langage naturel, directement depuis le tableau de bord.
-- **API REST** : tout ce que font le tableau de bord et la CLI est soutenu par une API REST que vous pouvez appeler directement avec une [clé API](/fr/agenteye/api-keys) à portée limitée — ingérer des événements, interroger des sessions et des évaluations, et gérer des tableaux de bord, alertes, audits, utilisateurs et clés, pour intégrer Failproof AI Observability dans vos propres outils.
+- **REST API** : tout ce que font le tableau de bord et le CLI repose sur une REST API que vous pouvez appeler directement avec une [clé API](/fr/agenteye/api-keys) limitée en portée — ingérez des événements, interrogez les sessions et les évaluations, et gérez les tableaux de bord, alertes, audits, utilisateurs et clés, pour intégrer Failproof AI Observability dans votre propre outillage.
 
-**Administrer** (faites-le tourner pour votre équipe) :
+**Administrer** (gérez la plateforme pour votre équipe) :
 
 - **[Clés API](/fr/agenteye/api-keys)** : tokens à portée limitée pour le collecteur, le tableau de bord et l'assistant.
-- **Utilisateurs** : connexion sans mot de passe, par e-mail avec liste d'autorisation.
+- **Utilisateurs** : authentification sans mot de passe par email avec liste d'autorisation.
 - **Paramètres** : configuration par organisation, y compris les surcharges de fenêtre de contexte des modèles.
 
 ---
 
-## Comment les pièces s'articulent
+## Comment les pièces s'assemblent
 
-Les données circulent dans un seul sens, de votre code d'agent vers le tableau de bord : votre agent (via le SDK Python) émet des événements vers l'agenteye-collector, qui les achemine vers le serveur, lequel sert le tableau de bord. Deux services optionnels complètent l'ensemble — un service de notation (évaluations) et un service d'assistant IA (le chat intégré au tableau de bord).
+Les données circulent dans une seule direction, de votre code d'agent vers le tableau de bord : votre agent (via le SDK Python) émet des événements vers l'agenteye-collector, qui les achemine vers le serveur, lequel alimente le tableau de bord. Deux services optionnels complètent l'ensemble — un service de scoring (évaluations) et un service d'assistant IA (le chat intégré au tableau de bord).
 
 - **SDK Python** : vous ajoutez quelques appels `agenteye.event.*` à votre agent ; les événements sont mis en mémoire tampon localement.
-- **agenteye-collector** : un démon léger sur chaque machine agent qui regroupe les événements en lots et les envoie au serveur.
-- **Serveur** : ingère vos événements, maintient l'état opérationnel dans vos propres bases de données, et expose l'API REST utilisée par le tableau de bord, la CLI et vos propres intégrations.
+- **agenteye-collector** : un daemon léger sur chaque machine agent qui regroupe les événements en lots et les envoie au serveur.
+- **Serveur** : ingère vos événements, maintient l'état opérationnel dans vos propres bases de données, et expose la REST API utilisée par le tableau de bord, le CLI et vos propres intégrations.
 - **Tableau de bord** : l'endroit où vous explorez tout.
-- **Services optionnels** : un service de notation (évaluations) et un service d'assistant IA (le chat intégré au tableau de bord).
+- **Services optionnels** : un service de scoring (évaluations) et un service d'assistant IA (le chat intégré au tableau de bord).
 
 Pour le vocabulaire utilisé tout au long de la documentation (*event, session, evaluation, audit, finding, incident*), consultez [Concepts](/fr/agenteye/concepts).
 
@@ -97,12 +97,12 @@ Pour le vocabulaire utilisé tout au long de la documentation (*event, session, 
 
 ## Obtenir Failproof AI Observability
 
-Failproof AI Observability est un produit entreprise de Failproof AI, et fonctionne en complément de Failproof AI Enforcement — le produit de politiques et de garde-fous — sous la marque Failproof AI. Il fonctionne entièrement dans votre propre environnement. Si vous n'avez pas encore accès aux packages, demandez une démo et nous vous aiderons à démarrer : écrivez à [nikita@befailproof.ai](mailto:nikita@befailproof.ai).
+Failproof AI Observability est un produit entreprise de Failproof AI, et il fonctionne aux côtés de Failproof AI Enforcement — le produit de politiques et de garde-fous — sous la marque Failproof AI. Il s'exécute entièrement dans votre propre environnement. Si vous n'avez pas encore accès aux packages, demandez une démonstration et nous vous accompagnerons dans la mise en place : écrivez à [nikita@befailproof.ai](mailto:nikita@befailproof.ai).
 
 ---
 
 ## Prochaines étapes
 
 - [Concepts](/fr/agenteye/concepts) : le vocabulaire de Failproof AI Observability en un seul endroit.
-- [Observabilité](/fr/agenteye/observability) : suivez ce que font vos agents, exécution par exécution.
-- [Sécurité](/fr/agenteye/security) : comment Failproof AI Observability maintient vos données isolées et sous votre contrôle.
+- [Observability](/fr/agenteye/observability) : suivez ce que font vos agents, exécution par exécution.
+- [Security](/fr/agenteye/security) : comment Failproof AI Observability maintient vos données isolées et sous votre contrôle.

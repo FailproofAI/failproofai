@@ -1,0 +1,120 @@
+---
+title: Migrar el directorio de inicio
+description: "Pone ~/.failproofai al día con el esquema que esta versión utiliza, y permite ver qué ocurriría antes de ejecutarlo"
+---
+
+```bash
+failproofai migrate --dry-run   # muestra el plan, sin hacer ningún cambio
+failproofai migrate             # ejecutarlo
+```
+
+La mayoría de las personas nunca escribe este comando. Se ejecuta solo la primera
+vez que se usa cualquier comando tras una actualización, y
+[`failproofai update`](/es/cli/update) ya lo incluye. Recúrrase a él directamente
+cuando se quiera ver el plan antes de que ocurra, o para ejecutar la migración de
+forma independiente.
+
+## Basado en el esquema, no en la versión
+
+`~/.failproofai/VERSION` registra un número de **esquema** — la estructura del
+directorio, no la versión que lo escribió. Las migraciones están vinculadas a ese
+número, lo que hace que un salto largo sea poco costoso:
+
+- Las versiones de npm cambian en cada lanzamiento, decenas de ellas entre dos esquemas.
+- Así, una máquina que se salta treinta versiones **sin cambio de esquema** ejecuta
+  **cero** migraciones, no treinta operaciones vacías.
+- Y una máquina que se salta varios esquemas a la vez ejecuta cada paso en orden,
+  donde cada paso solo conoce sus dos extremos.
+
+Esto importa porque npm no puede actualizar un paquete instalado por sí solo. Lo
+habitual es que una máquina permanezca en una versión durante meses y luego salte
+varios esquemas de golpe; eso es el caso normal, no el excepcional.
+
+## El simulacro
+
+`--dry-run` imprime la cadena exacta y los archivos que se guardarían previamente,
+sin hacer nada en absoluto — sin migración, sin copia de seguridad, sin registro:
+
+```
+Layout 2 on disk; this build speaks 3.
+1 step(s) would run:
+  2 → 3  layout 2 → 3: carry config.toml and credentials.toml into JSON, move
+         custom-policies/ back up into policies/, nest the policy config at the root
+
+These would be copied to ~/.failproofai/migrations/backup-layout2 first:
+  VERSION
+  config.toml
+  credentials.toml
+```
+
+## Qué se conserva y qué se reconstruye
+
+Cada ruta en el directorio de inicio declara qué tipo de datos contiene, y eso
+determina si una migración puede descartarla. La regla: **lo derivado y
+recuperable puede descartarse; todo lo que el usuario haya escrito, todo lo que
+aún no se haya entregado, y todo lo que identifique la máquina se conserva.**
+
+| Se conserva | Se reconstruye o se vuelve a obtener |
+|---|---|
+| `config.json` — configuración, `daemon.configured`, rutas de captura adicionales | La caché de auditoría |
+| `credentials.json` — la inscripción en la nube | Despliegues gestionados en la nube (se vuelven a obtener y se verifica su resumen en el siguiente ciclo) |
+| `policies-config.json` — la selección de políticas y sus parámetros | Estado temporal del daemon |
+| `policies/` — los archivos de políticas propios y los helpers que importan | |
+| `hook-activity/` — el registro de decisiones que lee el panel de control | |
+| Eventos pendientes de entrega aún en cola para subir | |
+| `cursors/` — marcas de posición del recolector | |
+| El binario del daemon en `bin/` | |
+
+<Note>
+  Los eventos pendientes de entrega se conservan en lugar de descartarse porque la
+  pérdida sería permanente, no simplemente lenta: la marca de posición del
+  recolector ya ha avanzado más allá de cualquier cosa que esté en la cola, por lo
+  que nada volvería a leer ese rango de una transcripción. La migración también le
+  pide al daemon que entregue lo que está en cola en cuanto termine, así que el
+  resultado habitual es que no queda nada por conservar.
+</Note>
+
+Las claves que una versión *más reciente* haya escrito en `config.json`,
+`credentials.json` o `policies-config.json` también se preservan, en lugar de ser
+eliminadas por un lector más antiguo.
+
+## El registro que deja
+
+```
+~/.failproofai/migrations/
+  applied.json                 una entrada por paso: esquema, CLI, marca de tiempo, duración, resultado
+  backup-layout<n>/            copias de los archivos irremplazables, tomadas antes del primer paso
+```
+
+`applied.json` es lo que responde a la pregunta «por qué ha pasado realmente esta
+máquina» — la primera pregunta que vale la pena hacer cuando algo parece incorrecto
+tras una actualización. Adjúntelo a un informe de error.
+
+La copia de seguridad es deliberadamente pequeña en lugar de ser una copia de todo
+el directorio: la migración ya no elimina nada irremplazable por diseño, por lo que
+de lo que vale la pena protegerse es de un *defecto en un paso*, y estos pocos
+archivos son donde ese defecto podría causar daño.
+
+## Si un paso falla
+
+La cadena se detiene ahí. `VERSION` solo se actualiza cuando un paso se completa,
+por lo que el directorio permanece marcado con su esquema anterior y el siguiente
+comando lo reintenta — un directorio nunca se marca como actual a partir de una
+migración parcial. El paso se registra en `applied.json` con `"ok": false`, y la
+copia de seguridad permanece donde fue tomada.
+
+## Un directorio más nuevo se rechaza, no se migra
+
+Si `~/.failproofai/` fue escrito por una versión de failproofai **más reciente** que
+la que se está ejecutando, el comando se detiene e indica que hay que actualizar.
+Esos datos están bien y una CLI más reciente los lee; migrar «hacia adelante» desde
+ellos no es algo que exista, y restablecerlos destruiría algo recuperable.
+
+```
+This machine's failproofai directory was written by a newer version (layout 4;
+this build speaks 3). Upgrade rather than migrate:
+  npm install -g failproofai@latest
+```
+
+El daemon aplica la misma regla: `failproofaid` se niega a iniciarse con un esquema
+que no reconoce, en lugar de leer y escribir rutas que han cambiado de lugar.

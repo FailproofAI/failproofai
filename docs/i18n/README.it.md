@@ -17,9 +17,9 @@
 
 **Traduzioni:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**Risoluzione runtime degli errori per agenti di codifica.**
-Si integra con Claude Code e Codex. Cattura loop, azioni pericolose e perdite di segreti
-prima che diventino incidenti. Zero latenza. Eseguito localmente.
+**Risoluzione degli errori in tempo reale per agenti di codifica.**
+Si integra con Claude Code e Codex. Cattura i loop, le azioni pericolose e le fughe di segreti
+prima che diventino incidenti. Latenza zero. Eseguito localmente.
 
 </div>
 
@@ -129,11 +129,11 @@ prima che diventino incidenti. Zero latenza. Eseguito localmente.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # oppure esegui semplicemente `failproofai` e accetta il prompt della prima esecuzione
+failproofai policies --install   # o esegui semplicemente `failproofai` e accetta il prompt al primo avvio
 failproofai
 ```
 
-30 politiche integrate si attivano immediatamente. Dashboard su `localhost:8020`. Disabilita il prompt della prima esecuzione con `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 politiche integrate si attivano immediatamente. Dashboard su `localhost:8020`. Disabilita il prompt al primo avvio con `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
@@ -151,10 +151,10 @@ failproofai
 
 ---
 
-## Le tue politiche personali
+## Le tue politiche
 
-Aggiungi un file in `.failproofai/policies/` — si carica automaticamente, senza flag necessari.
-Committalo e tutto il team lo avrà al prossimo pull.
+Rilascia un file in `.failproofai/policies/` — viene caricato automaticamente, nessun flag necessario.
+Eseguine il commit e l'intero team lo riceverà al prossimo pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -174,9 +174,9 @@ Tre decisioni disponibili per ogni politica:
 
 | Decisione | Effetto |
 |---|---|
-| `allow()` | Permette l'operazione |
-| `deny(message)` | La blocca — il messaggio torna all'agente |
-| `instruct(message)` | La lascia passare, ma aggiunge contesto al prompt successivo dell'agente |
+| `allow()` | Permetti l'operazione |
+| `deny(message)` | Bloccala — il messaggio ritorna all'agente |
+| `instruct(message)` | Lasciala passare, ma aggiungi contesto al prompt successivo dell'agente |
 
 → [Guida alle politiche personalizzate](https://docs.befailproof.ai/custom-policies)
 
@@ -184,9 +184,9 @@ Tre decisioni disponibili per ogni politica:
 
 ## Visibilità della sessione
 
-Ogni tool call che il tuo agente effettua viene registrato localmente. Il dashboard mostra cosa è stato eseguito,
-cosa è stato bloccato e cosa la politica ha detto all'agente — così non stai indovinando
-quando qualcosa va storto. → [Guida al Dashboard](https://docs.befailproof.ai/dashboard)
+Ogni chiamata a uno strumento effettuata dal tuo agente viene registrata localmente. Il dashboard mostra cosa è stato eseguito,
+cosa è stato bloccato e cosa la politica ha comunicato all'agente — così non stai indovinando
+quando qualcosa va storto. → [Guida al dashboard](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -194,11 +194,11 @@ quando qualcosa va storto. → [Guida al Dashboard](https://docs.befailproof.ai/
 
 | | |
 |---|---|
-| [Iniziare](https://docs.befailproof.ai/getting-started) | Installazione e primi passi |
+| [Primi passi](https://docs.befailproof.ai/getting-started) | Installazione e primi passaggi |
 | [Politiche integrate](https://docs.befailproof.ai/built-in-policies) | Tutte le 30 politiche con parametri |
 | [Politiche personalizzate](https://docs.befailproof.ai/custom-policies) | Scrivi le tue |
-| [Configurazione](https://docs.befailproof.ai/configuration) | Scope di configurazione e regole di merge |
-| [Dashboard](https://docs.befailproof.ai/dashboard) | Monitor di sessione e attività politica |
+| [Configurazione](https://docs.befailproof.ai/configuration) | Ambiti di configurazione e regole di merge |
+| [Dashboard](https://docs.befailproof.ai/dashboard) | Monitor della sessione e attività delle politiche |
 | [Architettura](https://docs.befailproof.ai/architecture) | Come funziona il sistema di hook |
 
 ---
@@ -209,13 +209,13 @@ MIT con [Commons Clause](https://commonsclause.com/) — gratuito per uso intern
 
 ---
 
-## Contribuire
+## Contributi
 
 Vedi [CONTRIBUTING.md](../../CONTRIBUTING.md). Nuove politiche, casi limite e traduzioni sono tutti benvenuti.
 
-> **Compila prima di iniziare.** Esegui `bun install && bun run build` prima. Questo repository esegue
-> i propri hook di failproofai su se stesso, e risolvono l'import `failproofai` contro il
-> bundle compilato `dist/` — senza una compilazione otterrai errori di hook `Cannot find package 'failproofai'`.
+> **Compila prima di iniziare.** Esegui `bun install && bun run build` per primo. Questo repository esegue
+> i propri hook di failproofai su se stesso, e risolvono l'import `failproofai` rispetto al
+> bundle compilato `dist/` — senza una build otterrai errori di hook `Cannot find package 'failproofai'`.
 > Ricompila dopo aver modificato `src/`. Vedi
 > [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 

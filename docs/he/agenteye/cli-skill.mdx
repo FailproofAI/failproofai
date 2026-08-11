@@ -1,13 +1,13 @@
 ---
 ---
-title: "כישורון CLI Observability של Failproof AI"
-description: "שאל את סוכן הקוד שלך \"האם משהו שבור היום?\" והנח לו לענות מנתוני Failproof AI Observability השידוריים שלך, ללא צורך לשנן פקודות."
+title: "Failproof AI Observability CLI Agent Skill"
+description: "שאל את ה-agent שלך \"האם משהו מקולקל היום?\" והנח לו לענות מנתוני Failproof AI Observability החיים שלך, ללא צורך בשינון פקודות."
 ---
 
 
-שאל את סוכן הקוד שלך *"האם משהו שבור היום?"* והנח לו לענות מנתוני Failproof AI Observability השידוריים שלך, ללא צורך לשנן פקודות. **כישורון CLI Observability של Failproof AI** (`agenteye-cli`) הוא *Agent Skill*: תיקייה קטנה של הוראות שסוכן קוד כגון Claude Code או Codex טוען לפי הצורך. היא מלמדת את הסוכן להפעיל את התפוצה של Observability שלך דרך ה-[`agenteye` CLI](/he/agenteye/cli) מבקשות בעברית רגילה כמו *"תן ל-CI מפתח שיכול רק לדחוף אירועים"* או *"אשר את האירוע הפועל והקצה אותו אלי."*
+שאל את ה-agent שלך *"האם משהו מקולקל היום?"* והנח לו לענות מנתוני Failproof AI Observability החיים שלך, ללא צורך בשינון פקודות. ה-**Failproof AI Observability CLI skill** (`agenteye-cli`) הוא *Agent Skill*: תיקייה קטנה של הוראות שה-agent כמו Claude Code או Codex טוען בעת הצורך. היא מלמדת את ה-agent לעבוד עם ה-Observability שלך דרך [`agenteye` CLI](/he/agenteye/cli) מבקשות בשפה טבעית כמו *"תן ל-CI מפתח שיכול רק לדחוף אירועים"* או *"אשר את התקרית שנשלחה והקצה אותה אלי."*
 
-זה **לא** שירות או בינארי נפרד; אין כלום לפרוס. זה עובד על גבי ה-CLI שכבר התקנת: הסוכן שדרג אל `agenteye --json …`, מנתח את ה-JSON הנקי, והשיב לך בטקסט. כל דבר שהוא יכול לעשות, אתה יכול לעשות בעצמך בהקלדת אותן פקודות.
+זה **לא** שירות או בינארי נפרד; אין כלום לפרוס. הוא פועל על גבי ה-CLI שכבר התקנת: ה-agent משדר `agenteye --json …`, מחלץ את ה-JSON הנקי, ומענה לך בטקסט. כל מה שהוא יכול לעשות, אתה יכול לעשות בעצמך בהקלדת אותן פקודות.
 
 ---
 
@@ -15,146 +15,146 @@ description: "שאל את סוכן הקוד שלך \"האם משהו שבור ה
 
 Failproof AI Observability נותן לך ארבע דרכים להגיע לאותם נתונים ובקרות. הם משלימים זה את זה:
 
-| ממשק | מה זה | איפה זה רץ | הגש אליו כאשר |
+| ממשק | מה זה | איפה זה פועל | השתמש בזה כאשר |
 |---|---|---|---|
-| **[CLI](/he/agenteye/cli)** | ההתייחסות לפקודה/דגל עבור `agenteye` | הטרמינל שלך | אתה רוצה להריץ או לתסריט פקודה ספציפית |
-| **[CLI recipes](/he/agenteye/cli-recipes)** | דוגמות `jq`/pipeline להעתקה-הדבקה | הטרמינל / סקריפטים שלך | אתה מחברת את ה-CLI לאוטומציה |
-| **כישורון CLI** (מסמך זה) | דלת חזיתית בשפה טבעית ל-CLI | סוכן הקוד שלך, בתחנת העבודה שלך | אתה רוצה לשאול ולתת לסוכן לבחור את הפקודה |
-| **[כישורון Evaluator](/he/agenteye/evaluator-skill)** | כישורון אחות שתכנן ובונה את שירות הניקוד שלך | סוכן הקוד שלך, בתחנת העבודה שלך | אתה רוצה **לייצר** ניקוד eval במקום לקרוא אותו |
-| **[כישורון Python SDK](/he/agenteye/python-sdk-skill)** | כישורון אחות שמכשיר את הסוכן שלך כך שהוא פולט טלמטריה כלל | סוכן הקוד שלך, בתחנת העבודה שלך | אתה רוצה שהסוכן שלך **ייצור** את האירועים שכישורון זה קורא |
-| **[עוזר AI בתוך הלוח](/he/agenteye/assistant)** | צ'אט משובץ בלוח המחוונים | צד שרת (בלוח המחוונים) | אתה רוצה שאלות ותשובות בתוך לוח המחוונים על הנתונים שלך |
+| **[CLI](/he/agenteye/cli)** | הפניה לפקודות וסדרי גודל של `agenteye` | הטרמינל שלך | אתה רוצה להריץ או להתאים לתסריט פקודה מסוימת |
+| **[CLI recipes](/he/agenteye/cli-recipes)** | דפוסי `jq`/pipeline להעתקה הדבקה | הטרמינל / סקריפטים שלך | אתה מחבר את ה-CLI לאוטומציה |
+| **CLI skill** (דוקומנטציה זו) | דלת קדמית בשפה טבעית ל-CLI | ה-agent שלך, בתחנת העבודה שלך | אתה רוצה *פשוט לשאול* ולתת ל-agent לבחור את הפקודה |
+| **[Evaluator skill](/he/agenteye/evaluator-skill)** | skill אחות שמעצבת ובונה את שירות ה-scoring שלך | ה-agent שלך, בתחנת העבודה שלך | אתה רוצה *לייצר* ניקוד eval במקום לקרוא אותו |
+| **[Python SDK skill](/he/agenteye/python-sdk-skill)** | skill אחות שמעדכנת את ה-agent שלך כדי שיפיק טלמטריה בכלל | ה-agent שלך, בתחנת העבודה שלך | אתה רוצה שה-agent שלך *ייצור* את האירועים שהskill הזה קורא |
+| **[In-dashboard AI assistant](/he/agenteye/assistant)** | צ'ט מובנה בלוח המחוונים | צד שרת (בלוח המחוונים) | אתה רוצה שאלות ותשובות בלוח המחוונים על הנתונים שלך |
 
-לכישורון עצמו אין הרשאות שלו; הוא רק הופך את המילים שלך לקריאות CLI שרצות כך:
+ל-skill עצמו אין הרשאות משלו; זה פשוט הופך את הדברים שלך ל-CLI קורא שפועלים כמוך:
 
 ```mermaid
 flowchart TD
-    YOU["אתה: 'אשר את האירוע הפועל'"] --> AGENT["סוכן קוד (Claude Code / Codex)<br/>טוען את כישורון agenteye-cli"]
+    YOU["אתה: 'אשר את התקרית שנשלחה'"] --> AGENT["agent קוד (Claude Code / Codex)<br/>טוען את agenteye-cli skill"]
     AGENT --> CLI["agenteye --json incidents ack ..."]
-    CLI -->|הפעלת CLI המאומתת שלך| API["API לוח Observability"]
+    CLI -->|הסדרת CLI המאומתת שלך| API["Observability dashboard API"]
 ```
 
-### לעומת עוזר ה-AI בתוך הלוח: הבחנה חשובה
+### לעומת ה-in-dashboard AI assistant: הבחנה חשובה
 
-אלה שני כלים שונים עם טווחי פיצוץ שונים מאוד:
+אלה שני כלים שונים עם רדיוסי הנפץ שונה מאוד:
 
-- **עוזר ה-AI בתוך הלוח** ([AI assistant](/he/agenteye/assistant)) הוא צ'אט משובץ בלוח המחוונים, בגיבוי שירות הסוכן. זה **קריאה בלבד בתוספת כתיבה שאושרה**: הוא יכול לטיוטה שאלות שמורות ולוחות, אך כל כתיבה עוצרת לאישור ההקלקה המפורש שלך, והוא לעולם לא מוחק. זה נשער על ידי ההרשאה `agent:use` ורק אי פעם רואה נתונים עבור הארגון שאתה צופה בו.
-- **כישורון CLI** רץ על *תחנת העבודה שלך* בתוך *סוכן הקוד שלך* ומנהל את `agenteye` CLI כ-**אתה**. הוא יכול לבצע את **המשטח המלא של ה-CLI, כולל מוטציות** (יצור/סיבוב/הפסקה של מפתחות API, שנה הגדרות ארגון, פתור אירועים, מחק שאלות שמורות), מוגבל רק בהרשאות ההתחברות שלך ל-CLI. התייחס אליו בדיוק כפי שהיית מתייחס להרצת אותן פקודות ביד.
+- ה-**in-dashboard AI assistant** ([AI assistant](/he/agenteye/assistant)) הוא צ'ט מובנה בלוח המחוונים, המונע על ידי שירות ה-agent. הוא **קריאה בלבד בתוספת authoring בשערי אישור**: הוא יכול לתסקיר שאילתות שמור ודשבורדים, אך כל כתיבה עוצרת לקבלת אישור click מפורש שלך, ו-delete לעולם לא. זה מוגבל על ידי ההרשאה `agent:use` ורואה רק נתונים עבור הארגון שאתה צופה בו.
+- ה-**CLI skill** פועל ב*תחנת העבודה שלך* בתוך *ה-agent שלך* וממכן את `agenteye` CLI כ-**אתה**. זה יכול לבצע את **פני CLI המלה, כולל מוטציות** (יצירה/סיבוב/השבתה של מפתחות API, שינוי הגדרות org, פתרון תקריות, מחיקה של שאילתות שמור), מוגבל רק על ידי ההרשאות של ה-CLI login שלך. התייחס אליו בדיוק כפי שהיית מתייחס להרצת אותן פקודות ביד.
 
 ---
 
-## דרישות ראשוניות
+## דרישות מוקדמות
 
-1. **ה-`agenteye` CLI מותקן** ו-`PATH` (ראה את התייחסות [CLI](/he/agenteye/cli): `pipx install agenteye`).
-2. **כתובת ה-URL של לוח המחוונים שלך** מוגדרת (`AGENTEYE_DASHBOARD_URL`, או הסוכן עובר `--base-url`).
-3. **הפעלה שנכנסה**: הרץ `agenteye login` בעצמך קודם לכן. הכישורון **לא יכול** להשלים את הכניסה לקוד חד-פעמי בדוא״ל עבורך; זה אמר לך להרוץ `agenteye login` אם ההפעלה חסרה או פג תוקף (קוד יציאת CLI `4`).
+1. **`agenteye` CLI מותקן** וב-`PATH` (ראה ההפניה [CLI](/he/agenteye/cli): `pipx install agenteye`).
+2. **URL לוח המחוונים שלך** מוגדר (`AGENTEYE_DASHBOARD_URL`, או ה-agent עובר `--base-url`).
+3. **סדרה מחוברת**: הרץ `agenteye login` בעצמך תחילה. ה-skill **לא יכול** להשלים את ה-login עם קוד חד פעמי בדוא"ל בשבילך; זה יגיד לך להרוץ `agenteye login` אם ההסדרה חסרה או פג תוקף (יציאת CLI קוד `4`).
 
 ---
 
 ## איפה להשיג את זה
 
-הכישורון פורסם באוסף הכישורונים הציבורי של Failproof AI:
+ה-skill מפורסם בקולקציית ה-skills הציבורית של Failproof AI:
 
 **[github.com/FailproofAI/skills](https://github.com/FailproofAI/skills)** → [`skills/agenteye-cli/`](https://github.com/FailproofAI/skills/tree/main/skills/agenteye-cli)
 
-שום דבר בו לא משוער — המאגר ציבורי והכישורון לא זקוק לעדות משלו משום שהוא רק מנהל את `agenteye` CLI **הציבורי** מול לוח המחוונים שלך, תוך שימוש בהפעלה **שהתחברת אליה**. אתה לא צריך לשאול אף אחד על זה.
+שום דבר בזה לא מוגבל — הrepository פתוח וה-skill לא צריך credential משלו, כי הוא רק מנהל את `agenteye` CLI **הציבורי** כנגד *לוח המחוונים שלך*, תוך שימוש בסדרה *שאתה* התחברת אליה. אתה לא צריך לבקש את זה מאף אחד.
 
-שימו לב שהוא משתלח כתיקייה משלו והוא **לא** בתוך חבילת `pipx install agenteye`, כך שלא תחפש אותו שם.
+שים לב שהוא משודר כתיקייה משלו ו-**לא** בתוך חבילת `pipx install agenteye`, אז אל תחפש אותה שם.
 
-## התקנת הכישורון
+## התקנת ה-Skill
 
-הנתיב המהיר ביותר הוא CLI [`skills`](https://skills.sh), אשר אחזר את התיקייה ושוחק אותה כאשר הסוכן שלך מחפש:
+הנתיב המהיר ביותר הוא [`skills`](https://skills.sh) CLI, שמביא את התיקייה ומניח אותה היכן שה-agent שלך מחפש:
 
 ```bash
 # Claude Code, פרויקט זה בלבד
 npx skills add FailproofAI/skills --skill agenteye-cli -a claude-code
 
-# כל פרויקט (מתקין ל-~/.claude/skills/)
+# כל פרויקט (מותקן ל-~/.claude/skills/)
 npx skills add FailproofAI/skills --skill agenteye-cli -a claude-code -g --copy
 
 # Codex במקום זאת
 npx skills add FailproofAI/skills --skill agenteye-cli -a codex
 ```
 
-לאחר מכן נהל אותו כמו כל כישורון אחר:
+לאחר מכן נהל אותו כמו כל skill אחר:
 
 ```bash
-npx skills list -a claude-code      # מה שהותקן
-npx skills update agenteye-cli      # משוך את הגרסה העדכנית
+npx skills list -a claude-code      # מה מותקן
+npx skills update agenteye-cli      # משוך את הגרסה החדשה ביותר
 npx skills remove agenteye-cli      # הסר אותו
 ```
 
-מעדיף להתקין ביד? Agent Skill הוא רק תיקייה המכילה `SKILL.md` (בתוספת התייחסויות אופציונליות), כך שהעתקה פועלת גם:
+מעדיף להתקין ביד? Agent Skill הוא פשוט תיקייה המכילה `SKILL.md` (בתוספת הפניות אופציונליות), אז העתקה עובדת גם:
 
-- **Claude Code**: שים את תיקיית `agenteye-cli/` ב-`~/.claude/skills/` (כל פרויקט) או `<your-repo>/.claude/skills/` (רק אותו רפו). Claude Code מגלה זאת באופן אוטומטי — אמת עם רשימת `/skills`, או פשוט שאל שאלה התואמת את התיאור שלו.
-- **Codex (OpenAI)**: Codex קורא את אותה `SKILL.md`. ה-`agents/openai.yaml` המצורף קובע `allow_implicit_invocation: true`, כך ש-Codex בוחר באופן אוטומטי את הכישורון כאשר משימה תואמת; אחרת הפעל אותו באופן מפורש כ-`$agenteye-cli`.
+- **Claude Code**: שים את התיקייה `agenteye-cli/` ב-`~/.claude/skills/` (כל פרויקט) או `<your-repo>/.claude/skills/` (רק ה-repo הזה). Claude Code גילוי אוטומטי אותו — אמת עם רשימת `/skills`, או פשוט שאל שאלה התואמת את התיאור שלו.
+- **Codex (OpenAI)**: Codex קורא את אותו `SKILL.md`. ה-`agents/openai.yaml` הכלול קובע `allow_implicit_invocation: true`, אז Codex בחר את ה-skill באופן אוטומטי כאשר משימה תואמת; אחרת הפעל אותו במפורש כ-`$agenteye-cli`.
 
 ---
 
-## בטיחות: מוטציות **לא** מבקשות כאשר סוכן מריץ את ה-CLI
+## בטיחות: מוטציות **לא** מדיניות כאשר ה-agent מריץ את ה-CLI
 
-> **אזהרה:** קרא זאת לפני שאתה נותן לסוכן לבצע שינויים.
+> **אזהרה:** קרא את זה לפני שאתה מאפשר ל-agent לבצע שינויים.
 
-ה-CLI `agenteye` בדרך כלל שואל *"האם אתה בטוח?"* לפני פעולה הרסנית. זה **דילוג אוטומטי על אישור זה בכל פעם שלא מוצמד לטרמינל (שהוא בדיוק איך סוכן קוד מריץ אותו), ו-`--json` דילוג עליו גם.** אז הנושא הבטיחות **לא** יופעל עבור הסוכן.
+ה-`agenteye` CLI בדרך כלל שואל *"האם אתה בטוח?"* לפני פעולה הרסנית. זה **דילוג אוטומטי על אישור זה בכל פעם שהוא לא מחובר לטרמינל (וזה בדיוק איך ה-agent מריץ אותו), ו-`--json` דילוגים גם כן.** אז ההודעת הבטיחות **לא** תשלח עבור ה-agent.
 
-הכישורון כתוב לפיצוי: הוא מוּעד להצהיר על הפקודה המדויקת שהוא יריץ ולהשיג את ה-**אישור המפורש שלך לפני כל שינוי מצב**. השמור על המשמעת הזו. כאשר אתה מנהל את Failproof AI Observability דרך סוכן, *אתה* הצעד האישור. הפקודות המשנות מצב שצריך להיזהר מהן:
+ה-skill כתוב כדי לפצות: זה מקבל הנחיות לציין את הפקודה המדויקת שהוא יריץ ולקבל את ה-**אישור המפורש שלך לפני שום שינוי מצב**. שמור על המשמעת הזו. כאשר אתה מנהל את Failproof AI Observability דרך ה-agent, *אתה* הצעד האישור. הפקודות המשנות מצב לצפייה:
 
 - `keys create` / `update` / `disable` / `regenerate`
 - `users create` / `update` / `disable` / `enable`
 - `settings set`
 - `alerts create` / `update` / `delete` / `test`
-- תת-הפקודות הכתיבה `incidents`: `ack` / `assign` / `resolve` / `open` / `comment-add` / `comment-delete` / `subscribe` / `unsubscribe`
+- כתיבת `incidents` subcommands: `ack` / `assign` / `resolve` / `open` / `comment-add` / `comment-delete` / `subscribe` / `unsubscribe`
 - `query create` / `update` / `delete`
 - `agent rename` / `delete`
 - `orgs switch`
 
-הכל תחת **Observe** (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) הוא קריאה בלבד ולא משנה שום דבר.
+הכל תחת **Observe** (`events`, `sessions`, `evals`, `errors`, `list`, `whoami`, `orgs list/current/perms`) הוא קריאה בלבד ולא משנה דבר.
 
-מכיוון שהסוכן פועל כ-**אתה**, הוא יכול לעשות רק מה שההתחברות שלך מורשת לעשות; הרשאות מתבררות **לכל ארגון** (ראה [API keys](/he/agenteye/api-keys)). פקודה שאתה חסר הרשאה עבורה מחזירה קוד יציאה `5` עם ההרשאה המדויקת שנקראה, כך שהסוכן יכול לומר לך בדיוק למה לבקש מ-admin במקום להיכשל בעלום.
+מכיוון שה-agent פועל כ-**אתה**, הוא יכול רק לעשות מה שההתחברות שלך מורשה לעשות; הרשאות מתבררות **לכל org** (ראה [מפתחות API](/he/agenteye/api-keys)). פקודה שאתה חסום מהרשאה עבורה מחזירה קוד יציאה `5` עם ההרשאה המדויקת שמוקלדת, כך שה-agent יכול להגיד לך בדיוק למה לבקש from admin במקום להיכשל באופן אטום.
 
 ---
 
-## מה אתה יכול לשאול אותו
+## מה אתה יכול לשאול
 
-הנה איך נראית סיבוב בעולם האמת, קריאה ואחריה שינוי שמחכה לאישור שלך:
+הנה מה סיבוב בעולם האמיתי נראה, קריאה, ואז שינוי שמחכה לאישור שלך:
 
 ```text
-אתה   ▸ האם משהו שבור בבחינה האחרונה?
+אתה    ▸ האם משהו מקולקל ביום האחרון?
 
-סוכן ▸ ריצה: agenteye --json errors --since 24h --aggregate
-        3 סוגי שגיאה בבחינה האחרונה. הגדול ביותר הוא TimeoutError
-        (18 עוקבים, כולם ב-checkout-agent), ואחריו RateLimited (5).
-        רוצה את ההפעלות הנכשלות עבור TimeoutError?
+agent ▸ ריצה: agenteye --json errors --since 24h --aggregate
+        3 סוגי שגיאות ביום האחרון. הגדול ביותר הוא TimeoutError
+        (18 hit, כולם ב-checkout-agent), ואז RateLimited (5).
+        רוצה את הסדרות שנכשלו עבור TimeoutError?
 
-אתה   ▸ תן ל-CI מפתח שיכול רק לדחוף אירועים.
+אתה    ▸ תן ל-CI מפתח שיכול רק לדחוף אירועים.
 
-סוכן ▸ זה יוצר מפתח API. אני אריץ:
+agent ▸ זה יוצר מפתח API. אני אריץ:
           agenteye keys create ci --add events:add
         בסדר להמשיך?
 
-אתה   ▸ כן
+אתה    ▸ כן
 
-סוכן ▸ בוצע. מפתח "ci" נוצר עם events:add בלבד.
-        הסוד מוצג רק פעם אחת, כך שאחסן אותו עכשיו. אני לא יכול להדפיס מחדש.
+agent ▸ בוצע. מפתח "ci" נוצר עם רק events:add.
+        הסוד מוצג רק פעם אחת, אז שמור אותו עכשיו. אני לא יכול להדפיס אותו מחדש.
 ```
 
-הכישורון ממפה כל כוונה בשפה טבעית לפקודת `agenteye` הנכונה, תוך גילוי ערכים חוקיים קודם (`list <kind>`, `whoami`) כך שהוא לא מנחש, והצהיר על הפקודה המדויקת לפני כל שינוי. עוד דוגמאות:
+ה-skill ממפה כל כוונה בשפה טבעית לפקודת `agenteye` הנכונה, גילוי ערכים תקפים תחילה (`list <kind>`, `whoami`) אז זה לא ניחוש, וציון הפקודה המדויקת לפני שום שינוי. דוגמאות נוספות:
 
-- *"האם משהו שבור / נכשל בבחינה האחרונה?"* → `errors --since 24h --aggregate`, ואחריו פירוט.
-- *"למה הפעלה `run-001` נכשלה?"* → `events --session-id run-001 --all` + `evals --session-id run-001`.
-- *"איך האיכות מתגברת בשבוע זה?"* → `evals --aggregate --since 7d`, ואחריו קדרילה לתוך ריצות בציון נמוך.
-- *"תן ל-CI מפתח שיכול רק לדחוף אירועים."* → `keys create ci --add events:add` (זה מצהיר על הפקודה, ואחריו יוצר אותה ותופס את הסוד החד-פעמי).
-- *"מי יש גישה? הפוך את Dana לקריאה בלבד."* → `users list` → `users update dana@… --permission-set read-only` (לאחר אישור איתך).
-- *"אשר את האירוע הפועל והקצה אותו אלי."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> you@…`.
+- *"האם משהו מקולקל / נכשל ביום האחרון?"* → `errors --since 24h --aggregate`, ואז פירוק.
+- *"למה הסדרה `run-001` נכשלה?"* → `events --session-id run-001 --all` + `evals --session-id run-001`.
+- *"איך איכות מתמגמגת השבוע?"* → `evals --aggregate --since 7d`, ואז קדר לריצות ניקוד נמוך.
+- *"תן ל-CI מפתח שיכול רק לדחוף אירועים."* → `keys create ci --add events:add` (זה מציין את הפקודה, ואז יוצר אותה ולוכד את הסוד החד פעמי).
+- *"למי יש גישה? עשה את Dana read-only."* → `users list` → `users update dana@… --permission-set read-only` (אחרי שאישור אתה).
+- *"אשר את התקרית שנשלחה והקצה אותה אלי."* → `incidents list --state firing` → `incidents ack <id>` / `incidents assign <id> you@…`.
 
-עבור הפקודות המדויקות, הדגלים, וצורות JSON שמאחוריהן, ראה את התייחסות [CLI](/he/agenteye/cli) ו-[CLI recipes for agents](/he/agenteye/cli-recipes).
+עבור הפקודות המדויקות, הסדרי גודל, והצורות JSON מאחורי אלה, ראה ההפניה [CLI](/he/agenteye/cli) ו-[CLI recipes עבור agents](/he/agenteye/cli-recipes).
 
 ---
 
-## שלבים הבאים
+## הצעדים הבאים
 
-- **[CLI](/he/agenteye/cli)**: ההתייחסות המלאה לפקודה ודגל עבור `agenteye`.
-- **[CLI recipes for agents](/he/agenteye/cli-recipes)**: דוגמות `jq` להעתקה-הדבקה וטיפול בקוד יציאה.
-- **[כישורון סוכן Evaluator](/he/agenteye/evaluator-skill)**: הכישורון אחות, לבניית ה-evaluator שאותו ניקוד `agenteye evals` קורא.
-- **[כישורון סוכן Python SDK](/he/agenteye/python-sdk-skill)**: הכישורון אחות, להכשרת סוכן כך שהוא פולט את הטלמטריה שקוראת `agenteye`.
-- **[עוזר AI](/he/agenteye/assistant)**: העוזר בתוך הלוח (לא להתבלבל עם כישורון הטרמינל הזה).
-- **[API keys](/he/agenteye/api-keys)**: מודל ההרשאה לכל ארגון שמגביל מה הכישורון יכול לעשות.
+- **[CLI](/he/agenteye/cli)**: הפניה פקודה וסדר גודל מלא עבור `agenteye`.
+- **[CLI recipes עבור agents](/he/agenteye/cli-recipes)**: דפוסי `jq` וטיפול בקוד יציאה להעתקה הדבקה.
+- **[Evaluator agent skill](/he/agenteye/evaluator-skill)**: ה-skill אחות, לבנייה ה-evaluator שעבור אשריים `agenteye evals` קורא.
+- **[Python SDK agent skill](/he/agenteye/python-sdk-skill)**: ה-skill אחות, לעדכון ה-agent כדי שזה פיצה את הטלמטריה `agenteye` קורא.
+- **[AI assistant](/he/agenteye/assistant)**: ה-in-dashboard assistant (לא להתבלבל עם ה-skill טרמינל זה).
+- **[מפתחות API](/he/agenteye/api-keys)**: ה-per-org מודל הרשאה שמקשור מה ה-skill יכול לעשות.

@@ -1,0 +1,114 @@
+---
+title: Ana dizini geçir
+description: "~/.failproofai dosyasını bu sürümün konuştuğu düzene getir ve önce ne olacağını gör"
+---
+
+```bash
+failproofai migrate --dry-run   # planı yazdır, hiçbir şeyi değiştirme
+failproofai migrate             # çalıştır
+```
+
+Çoğu kişi bunu hiç yazmaz. Bir güncellemeden sonra ilk komutta kendi kendine çalışır ve
+[`failproofai update`](/tr/cli/update) buna dahildir. İşlemi çalıştırmadan önce planı görmek
+istediğinizde veya geçişi kendi başına çalıştırmak istediğinizde doğrudan buna başvurun.
+
+## Sürüme değil, düzene göre anahtar
+
+`~/.failproofai/VERSION` bir **düzen** numarası kaydeder — yayın değil, dizinin şekli.
+Geçişler bu numaraya göre anahtar alır, bu da uzun bir boşluğu ucuz hale getirir:
+
+- npm sürümleri her yayında değişir, iki düzen arasında onlarca sürüm olabilir.
+- Bu nedenle **düzen değişikliği olmayan** otuz yayını atlayan bir makine **sıfır** geçiş
+  çalıştırır, otuz tane no-op değil.
+- Ve birden fazla düzeni atlayan bir makine her adımı sırayla çalıştırır; her adım sadece
+  kendi iki ucunu bilir.
+
+Bu önemli çünkü npm yüklü bir paketi kendi başına güncelleyemez. Aylarca bir sürümde
+oturan ve sonra birden fazla düzeni atlayan bir makine, egzotik değil, normal durumdur.
+
+## Dry run
+
+`--dry-run` tam zinciri ve ilk olarak kaydedilecek dosyaları yazdırır ve hiçbir şeyi
+değiştirmez — geçiş yok, yedek yok, kayıt girdisi yok:
+
+```
+Diskte Düzen 2; bu yapı 3 konuşur.
+1 adım çalışacak:
+  2 → 3  düzen 2 → 3: config.toml ve credentials.toml JSON'a taşı, custom-policies/
+         öğesini policies/ klasörüne geri taşı, policy config'i kökün altına yerleştir
+
+Bunlar ilk olarak ~/.failproofai/migrations/backup-layout2 öğesine kopyalanacak:
+  VERSION
+  config.toml
+  credentials.toml
+```
+
+## Neyi taşınır, neyi yeniden oluşturulur
+
+Ana dizindeki her yol, tuttuğu veri türünü bildirir ve bu, bir geçişin bunu
+atıp atabileceğini belirler. Kural: **türetilmiş ve yeniden getirilebilir olanlar
+atılabilir; yazdığınız hiçbir şey, henüz teslim edilmemiş hiçbir şey ve makineyi
+tanımlayan hiçbir şey taşınır.**
+
+| Taşınan | Yeniden oluşturulan veya yeniden getirilen |
+|---|---|
+| `config.json` — ayarlar, `daemon.configured`, ek yakalama yolları | Denetim önbelleği |
+| `credentials.json` — bulut kaydınız | Bulut tarafından yönetilen dağıtımlar (sonraki araştırmada yeniden getirilir ve özet doğrulanır) |
+| `policies-config.json` — policy seçiminiz ve parametreleriniz | Daemon geçici durum |
+| `policies/` — kendi policy dosyalarınız ve bunların içe aktardığı yardımcılar | |
+| `hook-activity/` — panosnun okuduğu karar günlüğü | |
+| Hala yükleme için sıraya alınmış teslim edilmemiş olaylar | |
+| `cursors/` — toplayıcı filigranları | |
+| `bin/` içindeki daemon ikilisi | |
+
+<Note>
+  Teslim edilmemiş olaylar atılmak yerine taşınır çünkü kayıp kalıcı olur, yavaş değil:
+  toplayıcının filigranı zaten biriktirmede oturan herhangi bir şeyin ötesine geçmiştir,
+  bu nedenle hiçbir şey bir transkriptin bu aralığını yeniden okumazdı. Geçiş ayrıca
+  daemon'a bitirdikten sonra tutulan öğeleri teslim etmesini ister, bu nedenle olağan
+  sonuç, taşınacak bir şey olmadığıdır.
+</Note>
+
+*Daha yeni* bir sürümün `config.json`, `credentials.json` veya `policies-config.json`
+içine yazdığı anahtarlar da, eski bir okuyucu tarafından atılmak yerine korunur.
+
+## Bıraktığı kayıt
+
+```
+~/.failproofai/migrations/
+  applied.json                 adım başına bir giriş: düzen, CLI, zaman damgası, süre, sonuç
+  backup-layout<n>/            ilk adımdan önce alınan değiştirilemeyen dosyaların kopyaları
+```
+
+`applied.json` "bu makine gerçekten nelerin içinden geçti" sorusuna cevap verir —
+bir güncellemeden sonra bir şey yanlış göründüğünde sorulacak ilk soru. Bunu bir
+hata raporuna ekleyin.
+
+Yedek, tüm dizinin bir kopyası yerine kasıtlı olarak küçüktür: geçiş tasarımı
+gereği artık hiçbir şey değiştirilemeyen öğeyi silmez, bu nedenle sigorta altına
+almaya değer olan bir *adımdaki kusur*dur ve bu birkaç dosya, bu tür bir kusurun
+zarar vereceği yerdir.
+
+## Bir adım başarısız olursa
+
+Zincir orada durur. `VERSION` yalnızca tamamlanan bir adım tarafından damgalanır,
+bu nedenle ana dizin eski düzeniyle işaretlenmiş kalır ve sonraki komut bunu
+yeniden dener — bir ana dizin asla kısmi geçişin gücüne dayanarak güncel
+işaretlenmez. Adım `applied.json` dosyasında `"ok": false` ile kaydedilir ve yedek
+alındığı yerdedir.
+
+## Daha yeni bir ana dizin geçirilmez, reddedilir
+
+`~/.failproofai/` **daha yeni** bir failproofai tarafından yazıldıysa, çalıştırdığınız
+sürümden daha yeni, komut durur ve bunun yerine yükseltmenizi söyler. Bu veriler iyi
+durumdadır ve daha yeni bir CLI bunları okur; bundan "ileri" geçiş yapmak var olmayan
+bir şeydir ve bunu sıfırlamak kurtarılabilir bir şeyi yok ederdi.
+
+```
+Bu makinenin failproofai dizini daha yeni bir sürüm tarafından yazıldı (düzen 4;
+bu yapı 3 konuşur). Geçiş yapmak yerine yükseltin:
+  npm install -g failproofai@latest
+```
+
+Daemon aynı kuralı uygular: `failproofaid` konuşmadığı bir düzene karşı başlamayı
+reddeder, taşınan yolları okuyup yazmak yerine.

@@ -18,7 +18,7 @@
 **Übersetzungen:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **Laufzeit-Fehlerbehebung für Coding-Agenten.**
-Greift in Claude Code und Codex ein. Erkennt Schleifen, gefährliche Aktionen und geheime Datenlecks,
+Klinkt sich in Claude Code und Codex ein. Erkennt Endlosschleifen, gefährliche Aktionen und Secret-Leaks,
 bevor sie zu Vorfällen werden. Keine Latenz. Läuft lokal.
 
 </div>
@@ -129,21 +129,21 @@ bevor sie zu Vorfällen werden. Keine Latenz. Läuft lokal.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # oder einfach `failproofai` ausführen und die Erststart-Eingabeaufforderung bestätigen
+failproofai policies --install   # oder einfach `failproofai` ausführen und die Erststart-Aufforderung bestätigen
 failproofai
 ```
 
-30 integrierte Richtlinien werden sofort aktiviert. Dashboard unter `localhost:8020`. Die Erststart-Eingabeaufforderung lässt sich mit `FAILPROOFAI_NO_FIRST_RUN=1` deaktivieren.
+30 integrierte Richtlinien werden sofort aktiviert. Dashboard unter `localhost:8020`. Die Erststart-Aufforderung lässt sich mit `FAILPROOFAI_NO_FIRST_RUN=1` deaktivieren.
 
 ---
 
 ## Was blockiert wird
 
-| Richtlinie | Was sie blockiert |
+| Richtlinie | Was blockiert wird |
 |---|---|
-| `block-push-master` | Direkte Pushes auf `main` / `master` |
+| `block-push-master` | Direkte Pushes nach `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Commits, Merges, Rebases auf `main` / `master` |
+| `block-work-on-main` | Commits, Merges und Rebases auf `main` / `master` |
 | `block-rm-rf` | Rekursives Löschen von Dateien |
 | `sanitize-api-keys` | API-Schlüssel, die in den Agenten-Kontext gelangen |
 
@@ -153,8 +153,8 @@ failproofai
 
 ## Eigene Richtlinien
 
-Legen Sie eine Datei in `.failproofai/policies/` ab — sie wird automatisch geladen, ohne zusätzliche Flags.
-Committen Sie sie, und das gesamte Team erhält sie beim nächsten Pull.
+Lege eine Datei in `.failproofai/policies/` ab — sie wird automatisch geladen, ohne zusätzliche Flags.
+Committe sie ins Repository und das gesamte Team erhält sie beim nächsten Pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -170,23 +170,23 @@ customPolicies.add({
 });
 ```
 
-Drei Entscheidungen stehen jeder Richtlinie zur Verfügung:
+Jede Richtlinie kann eine von drei Entscheidungen treffen:
 
-| Entscheidung | Auswirkung |
+| Entscheidung | Wirkung |
 |---|---|
 | `allow()` | Operation erlauben |
 | `deny(message)` | Blockieren — die Nachricht wird an den Agenten zurückgegeben |
 | `instruct(message)` | Durchlassen, aber dem nächsten Prompt des Agenten Kontext hinzufügen |
 
-→ [Leitfaden für eigene Richtlinien](https://docs.befailproof.ai/custom-policies)
+→ [Anleitung für eigene Richtlinien](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## Sitzungsübersicht
+## Sitzungstransparenz
 
-Jeder Tool-Aufruf Ihres Agenten wird lokal protokolliert. Das Dashboard zeigt, was ausgeführt wurde,
-was blockiert wurde und was die Richtlinie dem Agenten mitgeteilt hat — damit Sie bei Fehlern nicht
-im Dunkeln tappen. → [Dashboard-Leitfaden](https://docs.befailproof.ai/dashboard)
+Jeder Tool-Aufruf deines Agenten wird lokal protokolliert. Das Dashboard zeigt, was ausgeführt wurde,
+was blockiert wurde und was die Richtlinie dem Agenten mitgeteilt hat — damit du bei Problemen
+nicht im Dunkeln tappst. → [Dashboard-Anleitung](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -194,7 +194,7 @@ im Dunkeln tappen. → [Dashboard-Leitfaden](https://docs.befailproof.ai/dashboa
 
 | | |
 |---|---|
-| [Erste Schritte](https://docs.befailproof.ai/getting-started) | Installation und erste Schritte |
+| [Erste Schritte](https://docs.befailproof.ai/getting-started) | Installation und Einstieg |
 | [Integrierte Richtlinien](https://docs.befailproof.ai/built-in-policies) | Alle 30 Richtlinien mit Parametern |
 | [Eigene Richtlinien](https://docs.befailproof.ai/custom-policies) | Eigene Richtlinien schreiben |
 | [Konfiguration](https://docs.befailproof.ai/configuration) | Konfigurationsbereiche und Zusammenführungsregeln |
@@ -205,18 +205,18 @@ im Dunkeln tappen. → [Dashboard-Leitfaden](https://docs.befailproof.ai/dashboa
 
 ## Lizenz
 
-MIT mit [Commons Clause](https://commonsclause.com/) — kostenlos für den internen und persönlichen Gebrauch; der kommerzielle Weiterverkauf von failproofai selbst erfordert eine gesonderte Vereinbarung. Den vollständigen Text finden Sie unter [LICENSE](../../LICENSE).
+MIT mit [Commons Clause](https://commonsclause.com/) — kostenlos für den internen und privaten Einsatz; der kommerzielle Weiterverkauf von failproofai selbst erfordert eine gesonderte Vereinbarung. Den vollständigen Text findest du unter [LICENSE](../../LICENSE).
 
 ---
 
 ## Mitwirken
 
-Siehe [CONTRIBUTING.md](../../CONTRIBUTING.md). Neue Richtlinien, Grenzfälle und Übersetzungen sind herzlich willkommen.
+Siehe [CONTRIBUTING.md](../../CONTRIBUTING.md). Neue Richtlinien, Randfälle und Übersetzungen sind willkommen.
 
-> **Vor dem Start bauen.** Führen Sie zuerst `bun install && bun run build` aus. Dieses Repository führt
-> failproofais eigene Hooks auf sich selbst aus, und sie lösen den `failproofai`-Import gegen das
-> kompilierte `dist/`-Bundle auf — ohne einen Build erhalten Sie `Cannot find package 'failproofai'`-
-> Hook-Fehler. Nach Änderungen an `src/` neu bauen. Siehe
+> **Vor dem Start bauen.** Führe zuerst `bun install && bun run build` aus. Dieses Repository verwendet
+> failproofai's eigene Hooks auf sich selbst, und diese lösen den `failproofai`-Import gegenüber dem
+> kompilierten `dist/`-Bundle auf — ohne einen Build erhältst du `Cannot find package 'failproofai'`
+> Hook-Fehler. Nach Änderungen in `src/` erneut bauen. Siehe
 > [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---

@@ -1,23 +1,23 @@
 ---
-title: "Observe"
-description: "Observe सर्फेस वह जगह हैं जहां आप अपने एजेंटों को अभी क्या कर रहे हैं यह देख सकते हैं और किसी भी एक रन में ड्रिल डाउन कर सकते हैं।"
+title: "निरीक्षण करें"
+description: "observe सर्फेस वह जगह हैं जहाँ आप देख सकते हैं कि आपके agents अभी क्या कर रहे हैं और किसी भी एकल run में विस्तार से जानकारी प्राप्त कर सकते हैं।"
 ---
 
 
-Observe सर्फेस वह जगह हैं जहां आप अपने एजेंटों को अभी क्या कर रहे हैं यह देख सकते हैं और किसी भी एक रन में ड्रिल डाउन कर सकते हैं। यहां सब कुछ लाइव है, आपके संगठन के स्कोप में है, और तारीख की रेंज, वातावरण, एजेंट, और सेशन के आधार पर फ़िल्टर किया जा सकता है, ताकि आप "कुछ गलत महसूस हो रहा है" से सटीक रन तक सेकंडों में पहुंच सकें।
+observe सर्फेस वह जगह हैं जहाँ आप देख सकते हैं कि आपके agents अभी क्या कर रहे हैं और किसी भी एकल run में विस्तार से जानकारी प्राप्त कर सकते हैं। यहाँ सब कुछ लाइव है, आपके संगठन के दायरे में है, और तारीख की सीमा, वातावरण, agent और सेशन द्वारा फ़िल्टर किया जा सकता है, इसलिए आप "कुछ गलत लग रहा है" से लेकर सटीक run तक कुछ ही सेकंड में पहुँच सकते हैं।
 
-![लाइव इवेंट स्ट्रीम, प्रकार के अनुसार रंग-कोडित और वातावरण, एजेंट, और सेशन के आधार पर फ़िल्टर किया जा सकता है](/agenteye/images/events-stream.png)
+![लाइव Event Stream, प्रकार के अनुसार रंग-कोडित और वातावरण, agent और सेशन द्वारा फ़िल्टर किया जा सकता है](/agenteye/images/events-stream.png)
 
-चार सर्फेस, प्रत्येक के साथ अपना-अपना पेज:
+चार सर्फेस, प्रत्येक का अपना पृष्ठ है:
 
-- **[Event stream](/hi/agenteye/event-stream)**: हर एजेंट भर में हर रन की लाइव, प्रति-चरण ट्रेल, सबसे नया पहले। आपका संगठन होम और ट्राइएज के लिए पहला स्टॉप।
-- **[Sessions and execution graph](/hi/agenteye/sessions)**: वे इवेंट प्रति रन एक पंक्ति में रोल अप किए गए, साथ ही एक git-शैली की तस्वीर कि हर रन कैसे सामने आया।
-- **[Performance metrics](/hi/agenteye/telemetry)**: विलंबता हीट-मैप और आपके मॉडल, टूल्स, और हुक के लिए p50/p95/p99 महत्वपूर्ण संकेत, ताकि एक टेल स्पाइक माध्यिका से अलग दिखाई दे।
-- **[Error tracking](/hi/agenteye/error-tracking)**: सब कुछ के लिए एक ट्राइएज सर्फेस जो गलत हुआ, एक फायरिंग अलर्ट से रन तक एक क्लिक दूर जो टूट गया।
+- **[Event stream](/hi/agenteye/event-stream)**: हर agent के across हर run का लाइव, प्रति-स्टेप ट्रेल, सबसे नया पहले। आपका संगठन होम और triage के लिए पहला पड़ाव।
+- **[Sessions और execution graph](/hi/agenteye/sessions)**: उन events को एक row में rolled up किया गया है प्रति run, साथ ही एक git-शैली की तस्वीर कि कैसे प्रत्येक run विकसित हुआ।
+- **[Performance metrics](/hi/agenteye/telemetry)**: latency heat-maps और आपके models, tools और hooks के लिए p50/p95/p99 vitals, ताकि एक tail spike माध्यिका से अलग दिखे।
+- **[Error tracking](/hi/agenteye/error-tracking)**: सब कुछ के लिए एक triage सर्फेस जो गलत हुआ, एक firing alert से broken run तक एक क्लिक की दूरी पर।
 
 ## संबंधित
 
-- [Evaluations](/hi/agenteye/evaluations): हर रन को गुणवत्ता के लिए स्कोर करें।
-- [Alerts](/hi/agenteye/alerts): किसी भी थ्रेशहोल्ड को एक पेजिंग नियम में बदलें।
-- [Audits](/hi/agenteye/audits): Failproof AI Observability को सेशन भर में विफलता पैटर्न खोजने दें।
-- [CLI and agents](/hi/agenteye/cli-and-agents): आपके टर्मिनल से समान अवलोकनशीलता।
+- [Evaluations](/hi/agenteye/evaluations): हर run को गुणवत्ता के लिए स्कोर करें।
+- [Alerts](/hi/agenteye/alerts): किसी भी threshold को paging rule में बदलें।
+- [Audits](/hi/agenteye/audits): Failproof AI Observability को आपके लिए sessions के across विफलता के पैटर्न खोजने दें।
+- [CLI और agents](/hi/agenteye/cli-and-agents): आपके terminal से समान observability।

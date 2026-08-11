@@ -223,6 +223,8 @@
                   "zh/cli/list-policies",
                   "zh/cli/hook",
                   "zh/cli/audit",
+                  "zh/cli/update",
+                  "zh/cli/migrate",
                   "zh/cli/version",
                   "zh/cli/environment-variables"
                 ]
@@ -334,6 +336,8 @@
                   "ja/cli/list-policies",
                   "ja/cli/hook",
                   "ja/cli/audit",
+                  "ja/cli/update",
+                  "ja/cli/migrate",
                   "ja/cli/version",
                   "ja/cli/environment-variables"
                 ]
@@ -445,6 +449,8 @@
                   "ko/cli/list-policies",
                   "ko/cli/hook",
                   "ko/cli/audit",
+                  "ko/cli/update",
+                  "ko/cli/migrate",
                   "ko/cli/version",
                   "ko/cli/environment-variables"
                 ]
@@ -556,6 +562,8 @@
                   "es/cli/list-policies",
                   "es/cli/hook",
                   "es/cli/audit",
+                  "es/cli/update",
+                  "es/cli/migrate",
                   "es/cli/version",
                   "es/cli/environment-variables"
                 ]
@@ -667,6 +675,8 @@
                   "pt-br/cli/list-policies",
                   "pt-br/cli/hook",
                   "pt-br/cli/audit",
+                  "pt-br/cli/update",
+                  "pt-br/cli/migrate",
                   "pt-br/cli/version",
                   "pt-br/cli/environment-variables"
                 ]
@@ -778,6 +788,8 @@
                   "de/cli/list-policies",
                   "de/cli/hook",
                   "de/cli/audit",
+                  "de/cli/update",
+                  "de/cli/migrate",
                   "de/cli/version",
                   "de/cli/environment-variables"
                 ]
@@ -889,6 +901,8 @@
                   "fr/cli/list-policies",
                   "fr/cli/hook",
                   "fr/cli/audit",
+                  "fr/cli/update",
+                  "fr/cli/migrate",
                   "fr/cli/version",
                   "fr/cli/environment-variables"
                 ]
@@ -1000,6 +1014,8 @@
                   "ru/cli/list-policies",
                   "ru/cli/hook",
                   "ru/cli/audit",
+                  "ru/cli/update",
+                  "ru/cli/migrate",
                   "ru/cli/version",
                   "ru/cli/environment-variables"
                 ]
@@ -1111,6 +1127,8 @@
                   "hi/cli/list-policies",
                   "hi/cli/hook",
                   "hi/cli/audit",
+                  "hi/cli/update",
+                  "hi/cli/migrate",
                   "hi/cli/version",
                   "hi/cli/environment-variables"
                 ]
@@ -1222,6 +1240,8 @@
                   "tr/cli/list-policies",
                   "tr/cli/hook",
                   "tr/cli/audit",
+                  "tr/cli/update",
+                  "tr/cli/migrate",
                   "tr/cli/version",
                   "tr/cli/environment-variables"
                 ]
@@ -1333,6 +1353,8 @@
                   "vi/cli/list-policies",
                   "vi/cli/hook",
                   "vi/cli/audit",
+                  "vi/cli/update",
+                  "vi/cli/migrate",
                   "vi/cli/version",
                   "vi/cli/environment-variables"
                 ]
@@ -1444,6 +1466,8 @@
                   "it/cli/list-policies",
                   "it/cli/hook",
                   "it/cli/audit",
+                  "it/cli/update",
+                  "it/cli/migrate",
                   "it/cli/version",
                   "it/cli/environment-variables"
                 ]
@@ -1555,6 +1579,8 @@
                   "ar/cli/list-policies",
                   "ar/cli/hook",
                   "ar/cli/audit",
+                  "ar/cli/update",
+                  "ar/cli/migrate",
                   "ar/cli/version",
                   "ar/cli/environment-variables"
                 ]
@@ -1666,6 +1692,8 @@
                   "he/cli/list-policies",
                   "he/cli/hook",
                   "he/cli/audit",
+                  "he/cli/update",
+                  "he/cli/migrate",
                   "he/cli/version",
                   "he/cli/environment-variables"
                 ]

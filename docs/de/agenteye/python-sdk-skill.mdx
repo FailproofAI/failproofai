@@ -1,57 +1,57 @@
 ---
 title: "Failproof AI Observability Python SDK Agent Skill"
-description: "Von einem nicht instrumentierten Agenten zu sichtbaren Events – Ihr Coding-Agent findet die Instrumentierungspunkte, implementiert sie und beweist, dass sie korrekt funktionieren."
+description: "Von einem nicht instrumentierten Agenten zu sichtbaren Events – Ihr Coding-Agent findet die Instrumentierungspunkte, schreibt sie und beweist, dass sie funktionieren."
 ---
 
-Sagen Sie Ihrem Coding-Agenten *„Füge Failproof AI Observability zu diesem Agenten hinzu"* und lassen Sie ihn Ihre Schleife lesen, die richtigen Instrumentierungspunkte ermitteln, den Code schreiben und die Events verifizieren – bevor er die Aufgabe als erledigt markiert.
+Sagen Sie Ihrem Coding-Agenten *„Füge Failproof AI Observability zu diesem Agenten hinzu"* und lassen Sie ihn Ihre Schleife lesen, die Instrumentierungspunkte herausarbeiten, den Code schreiben und die Events verifizieren, bevor er die Aufgabe als erledigt erklärt.
 
-Der **Python SDK Skill** (`agenteye-python-sdk`) ist ein *Agent Skill*: ein Ordner mit Anweisungen, den ein Coding-Agent wie Claude Code oder Codex bei Bedarf lädt, wenn eine Aufgabe dazu passt. Er bringt dem Agenten bei, das [Python SDK](/de/agenteye/python-sdk) zu verwenden – er ist keine Bibliothek und ändert nichts an der Funktionsweise des SDK.
+Der **Python SDK Skill** (`agenteye-python-sdk`) ist ein *Agent Skill*: ein Ordner mit Anweisungen, den ein Coding-Agent wie Claude Code oder Codex bei Bedarf lädt, wenn eine Aufgabe dazu passt. Er bringt dem Agenten bei, das [Python SDK](/de/agenteye/python-sdk) zu verwenden – er ist keine Bibliothek und ändert nichts daran, wie das SDK funktioniert.
 
 ## Instrumentierung ist leicht zu schreiben – und leicht still falsch zu machen
 
-Das SDK ist klein: dreizehn Event-Methoden, alle ausschließlich als Keyword-Argumente. Ein Coding-Agent kann die [Python SDK](/de/agenteye/python-sdk)-Referenz lesen und in einer Minute plausible Instrumentierung produzieren.
+Das SDK ist schlank: dreizehn Event-Methoden, alle keyword-only. Ein Coding-Agent kann die [Python SDK](/de/agenteye/python-sdk)-Referenz lesen und in einer Minute plausible Instrumentierung erzeugen.
 
-Das Problem ist, dass dieses SDK keinen Fehler wirft, wenn etwas falsch ist – und falsche Instrumentierung sieht genauso aus wie richtige Instrumentierung, bis jemand ein Dashboard öffnet und es leer vorfindet. Die Fehler, die wirklich Zeit kosten, sind allesamt stille:
+Das Problem: Dieses SDK wirft keine Ausnahmen, wenn etwas falsch gemacht wird, und falsche Instrumentierung sieht exakt wie richtige aus – bis jemand das Dashboard öffnet und es leer vorfindet. Die Fehler, die echte Zeit kosten, sind allesamt stille:
 
 | Der Fehler | Was Sie sehen |
 |---|---|
-| Kein `agent_start` | Alle Events landen. Null Sessions. |
+| Kein `agent_start` | Jedes Event landet. Null Sessions. |
 | Environment nie gesetzt | Alles funktioniert, wird unter `dev` abgelegt. |
-| `outcome="failure"` | Der Lauf zeigt grün – nur `failed`, `error`, `timeout`, `rejected` zählen. |
-| Tippfehler im Feldnamen | Akzeptiert und als neues Feld gespeichert. |
-| Events aus einem Thread-Pool emittiert | Werden still verworfen. |
+| `outcome="failure"` | Der Lauf erscheint grün – nur `failed`, `error`, `timeout`, `rejected` zählen. |
+| Ein vertippter Feldname | Wird akzeptiert und als neues Feld gespeichert. |
+| Events aus einem Thread-Pool emittiert | Werden stillschweigend verworfen. |
 
-Keiner davon wirft einen Fehler. Keiner taucht in Tests auf. Jeder einzelne ist im Skill dokumentiert – als Vertrag zusammen mit dem Check, der ihn erkennt.
+Keiner davon wirft eine Ausnahme. Keiner taucht in Tests auf. Jeder einzelne ist im Skill dokumentiert – als Vertrag mit dem zugehörigen Check, der ihn erkennt.
 
 ## Was der Skill tut – der Reihe nach
 
-Der Skill durchläuft dieselben drei Schritte, die ein sorgfältiger Entwickler gehen würde:
+Der Skill führt dieselben drei Schritte aus, die ein sorgfältiger Engineer durchführen würde:
 
-1. **Planen.** Er liest Ihre Agenten-Schleife und stellt die zwei Fragen, die nur Sie beantworten können: Was zählt als ein Lauf (Ihre `session_id`), und wer sind die unterscheidbaren Akteure (Ihre `agent_id`)? Das wird geklärt, bevor Code geschrieben wird – denn eine spätere Änderung spaltet Ihre Historie und bricht die Trends.
-2. **Schreiben.** Er bindet die Identität einmal pro Lauf statt sie durch jede Aufrufstelle durchzufädeln, und wählt eine nebenläufigkeitssichere Form – ein Detail, das wichtig ist, weil die naheliegende Abkürzung zwei überlappende Läufe stillschweigend in einer einzigen Session vermischt.
-3. **Verifizieren.** Er führt Ihren Agenten aus und liest die entstandenen Event-Dateien, prüft ob `agent_start` vorhanden ist, das Environment stimmt und ein Lauf genau eine Session erzeugt hat.
+1. **Planen.** Er liest Ihre Agentenschleife und stellt die zwei Fragen, die nur Sie beantworten können: Was zählt als ein Lauf (Ihre `session_id`), und wer sind die unterscheidbaren Akteure (Ihre `agent_id`)? Das wird geklärt, bevor Code geschrieben wird – weil eine spätere Umbenennung Ihre Historie aufteilt und Trends kaputt macht.
+2. **Schreiben.** Er bindet die Identität einmal pro Lauf, anstatt sie durch jede Aufrufstelle durchzureichen, und wählt eine nebenläufigkeitssichere Form – ein Detail, das wichtig ist, weil der naheliegende Shortcut zwei überlappende Läufe stillschweigend in eine Session mischt.
+3. **Verifizieren.** Er startet Ihren Agenten und liest die resultierenden Event-Dateien, prüft ob `agent_start` vorhanden ist, ob das Environment stimmt und ob ein Lauf genau eine Session erzeugt hat.
 
-Dieser dritte Schritt ist der, den die meisten überspringen. Das SDK schreibt Events in lokale Dateien, sodass eine vollständige Integration auf einem Laptop bewiesen werden kann – ohne Server, ohne API-Key, ohne Netzwerk. Genau deshalb besteht der Skill darauf, diesen Schritt durchzuführen.
+Den dritten Schritt überspringen die meisten. Das SDK schreibt Events in lokale Dateien, sodass eine vollständige Integration auf einem Laptop ohne Server, ohne API-Key und ohne Netzwerk bewiesen werden kann – genau deshalb besteht der Skill darauf, es zu tun.
 
 ## Verhältnis zu den anderen Skills
 
-Drei Skills, eine klare Aufteilung:
+Drei Skills, eine saubere Aufteilung:
 
-| Skill | Einsetzen wenn | Was er berührt |
+| Skill | Greifen Sie darauf zurück, wenn | Was er berührt |
 |---|---|---|
-| **Python SDK Skill** (diese Seite) | Sie möchten, dass Ihr Agent Telemetrie *emittiert* – „Observability hinzufügen", „Warum erscheint mein Agent nicht?" | Schreibt Code in Ihrem Agenten-Repo. Liest nichts. |
-| **[Evaluator Skill](/de/agenteye/evaluator-skill)** | Sie möchten Läufe *bewerten* – „Was sollen wir überhaupt messen?" | Schreibt Code in Ihrem Repo; liest Telemetrie |
-| **[CLI Skill](/de/agenteye/cli-skill)** | Sie möchten *nachlesen*, was passiert ist, oder Ihr Deployment betreiben | Steuert die CLI als Sie, inklusive Änderungen |
+| **Python SDK Skill** (diese Seite) | Sie möchten, dass Ihr Agent Telemetrie *emittiert* – „Observability hinzufügen", „Warum erscheint mein Agent nicht?" | Schreibt Code in das Repo Ihres Agenten. Liest nichts. |
+| **[Evaluator Skill](/de/agenteye/evaluator-skill)** | Sie möchten Läufe *bewerten* – „Was sollen wir überhaupt messen?" | Schreibt Code in Ihr Repo; liest Telemetrie |
+| **[CLI Skill](/de/agenteye/cli-skill)** | Sie möchten *lesen*, was passiert ist, oder Ihr Deployment betreiben | Steuert die CLI als Sie, einschließlich Änderungen |
 
-Die Übergabe erfolgt in dieser Reihenfolge: Dieser Skill bringt Events zum Fließen, der Evaluator bewertet sie, die CLI liest sie aus. Es gibt nichts zu bewerten und nichts zu lesen, bis Ihr Agent Sessions emittiert – wenn Sie von vorne beginnen, fangen Sie hier an.
+Sie greifen in dieser Reihenfolge ineinander: Dieser Skill bringt Events zum Fließen, der Evaluator bewertet sie, die CLI liest sie zurück. Es gibt nichts zu bewerten und nichts zu lesen, bis Ihr Agent Sessions emittiert – wenn Sie von null anfangen, beginnen Sie hier.
 
 ## Voraussetzungen
 
-1. **Python 3.10+** und die Agenten-Codebasis, die Sie instrumentieren möchten.
-2. **Das SDK.** Es wird an Kunden als privates Wheel ausgeliefert und nicht über einen öffentlichen Index – Ihr Onboarding erklärt, wie Sie es beziehen und installieren. Der Skill kennt den Installationspfad und fragt Sie, anstatt zu raten, falls er ihn nicht finden kann.
-3. **Nichts weiter.** Kein Dashboard-Login, kein API-Key, kein Netzwerk. Der Skill verifiziert anhand der Event-Dateien, die das SDK schreibt, und kann seine Arbeit offline abschließen und beweisen.
+1. **Python 3.10+** und die Codebasis des Agenten, den Sie instrumentieren möchten.
+2. **Das SDK.** Es wird an Kunden als privates Wheel verteilt und nicht über einen öffentlichen Index – Ihr Onboarding erklärt, wie Sie es erhalten und installieren. Der Skill kennt den Installationspfad und fragt Sie, anstatt zu raten, wenn er ihn nicht findet.
+3. **Nichts weiter.** Kein Dashboard-Login, kein API-Key, kein Netzwerk. Der Skill verifiziert anhand der Event-Dateien, die das SDK schreibt, und kann die Arbeit offline abschließen und nachweisen.
 
-## Bezugsquelle
+## Wo Sie den Skill erhalten
 
 Der Skill befindet sich in der öffentlichen [`FailproofAI/skills`](https://github.com/FailproofAI/skills)-Sammlung:
 
@@ -63,12 +63,12 @@ Fügen Sie `-g` hinzu, um ihn für alle Projekte statt nur das aktuelle zu insta
 
 ## Manuelle Installation
 
-Agent Skills sind Ordner, die eine `SKILL.md` plus Referenzen enthalten. Falls Sie den Installer nicht verwenden möchten:
+Agent Skills sind Ordner mit einer `SKILL.md` und Referenzen. Wenn Sie den Installer nicht verwenden möchten:
 
-- **Claude Code**: Kopieren Sie den Ordner `agenteye-python-sdk/` nach `~/.claude/skills/` (alle Projekte) oder `<Ihr-Repo>/.claude/skills/` (nur dieses Repo). Claude Code erkennt ihn automatisch – prüfen Sie die `/skills`-Liste oder fragen Sie einfach etwas, das dazu passt.
-- **Codex**: Codex liest dieselbe `SKILL.md`. Das mitgelieferte `agents/openai.yaml` setzt `allow_implicit_invocation: true`, sodass er automatisch gewählt wird, wenn eine Aufgabe passt; andernfalls rufen Sie ihn als `$agenteye-python-sdk` auf.
+- **Claude Code**: Kopieren Sie den Ordner `agenteye-python-sdk/` in `~/.claude/skills/` (alle Projekte) oder `<your-repo>/.claude/skills/` (nur dieses Repo). Claude Code erkennt ihn automatisch – prüfen Sie die `/skills`-Liste oder fragen Sie einfach etwas, das dazu passt.
+- **Codex**: Codex liest dieselbe `SKILL.md`. Die mitgelieferte `agents/openai.yaml` setzt `allow_implicit_invocation: true`, sodass er automatisch ausgewählt wird, wenn eine Aufgabe passt; andernfalls rufen Sie ihn als `$agenteye-python-sdk` auf.
 
-Führen Sie Ihren Agenten **im Repository mit dem Code aus, den Sie instrumentieren möchten** – der Skill liest Ihre Agenten-Schleife, bevor er etwas vorschlägt.
+Führen Sie Ihren Agenten **im Repository mit dem Code aus, den Sie instrumentieren möchten** – der Skill liest Ihre Agentenschleife, bevor er etwas vorschlägt.
 
 ## Wie eine Session aussieht
 
@@ -103,29 +103,29 @@ agent ▸ Done. Wrapped the dispatcher and the LLM client; agent_start and
         Want me to fix those too?
 ```
 
-Das Muster, das auffällt: Er hat den Code gelesen, bevor er etwas vorschlug, nur die Fragen gestellt, die Sie beantworten können, eine bereits vorhandene ID wiederverwendet, die nebenläufigkeitssichere Form gewählt *weil* er einen Thread-Pool sah, und **durch Lesen der tatsächlichen Events verifiziert** statt einfach Erfolg zu erklären – und dann die eine Stelle markiert, von der er wusste, dass sie still versagen würde.
+Das Muster, das man beachten sollte: Er hat den Code gelesen, bevor er Vorschläge machte, stellte nur die Fragen, die Sie beantworten können, wiederverwendete eine bereits vorhandene ID, wählte die nebenläufigkeitssichere Form *weil* er einen Thread-Pool sah, und **verifizierte durch Lesen der tatsächlichen Events** anstatt einfach Erfolg zu erklären – und markierte dann die eine Stelle, von der er wusste, dass sie still scheitern würde.
 
-## Was Sie ihn fragen können
+## Was Sie den Skill fragen können
 
-- *„Warum erscheint mein Agent nicht im Dashboard?"* → Geht die Leiter hinab: Werden Events geschrieben, ist `agent_start` vorhanden, stimmt das Environment, liest der Collector am richtigen Ort?
+- *„Warum erscheint mein Agent nicht im Dashboard?"* → Durchläuft die Checkliste: Werden Events geschrieben, ist `agent_start` vorhanden, stimmt das Environment, liest der Collector am richtigen Ort.
 - *„Alles landet unter dev."* → Das Environment wurde nie gesetzt oder durch einen späteren Aufruf zurückgesetzt.
-- *„Token-Tracking hinzufügen."* → Findet Ihren LLM-Wrapper und erfasst Modell, Stop-Grund und Nutzung.
-- *„Auch die Sub-Agenten instrumentieren."* → Eine Session, eindeutige Agenten-Labels, verschachtelt unter ihrem Elternteil.
-- *„Tests für die Instrumentierung schreiben."* → Zeigt das SDK auf ein temporäres Verzeichnis und macht Assertions auf die geschriebenen Events.
+- *„Token-Tracking hinzufügen."* → Findet Ihren LLM-Wrapper und zeichnet Modell, Stop-Grund und Nutzung auf.
+- *„Auch die Sub-Agenten instrumentieren."* → Eine Session, unterschiedliche Agenten-Labels, unter ihrem Elternteil verschachtelt.
+- *„Tests für die Instrumentierung schreiben."* → Richtet das SDK auf ein temporäres Verzeichnis aus und prüft die geschriebenen Events.
 
 ## Worauf Sie achten sollten
 
-**Lassen Sie ihn verifizieren.** Der Schritt, der diesen Skill wertvoll macht, ist der letzte – Ihren Agenten ausführen und die Events zurücklesen. Ein Agent, der Instrumentierung schreibt und dann aufhört, hat die einfache Hälfte erledigt; die Hälfte, die still versagt, ist die andere.
+**Lassen Sie ihn verifizieren.** Der Schritt, der diesen Skill wertvoll macht, ist der letzte – Ihren Agenten ausführen und die Events zurücklesen. Ein Agent, der Instrumentierung schreibt und dann stoppt, hat die einfache Hälfte erledigt; die Hälfte, die still scheitert, ist die andere.
 
-**Namen vereinbaren, bevor Code geschrieben wird.** `session_id` und `agent_id` sind die Achsen, nach denen jede Oberfläche gruppiert. Sie später umzubenennen spaltet die Historie: Alte Läufe behalten die alten Labels und Ihre Trends brechen. Der Skill wird fragen; die Antwort ist eine Minute Nachdenken wert.
+**Namen vor dem Code vereinbaren.** `session_id` und `agent_id` sind die Achsen, nach denen jede Ansicht gruppiert. Eine spätere Umbenennung teilt die Historie: Alte Läufe behalten die alten Labels, und Ihre Trends brechen. Der Skill wird fragen; die Antwort ist eine Minute Nachdenken wert.
 
 **Wenn Ihr Agent vorschlägt, das SDK von einem öffentlichen Index zu installieren, wurde der Skill nicht geladen.** Das SDK wird privat vertrieben. Dieser Vorschlag ist ein zuverlässiges Zeichen dafür, dass Ihr Coding-Agent rät statt dem Skill zu folgen – stoppen Sie ihn dort und prüfen Sie, ob der Skill installiert ist.
 
-Abgesehen davon ist der Wirkungsbereich überschaubar: Er schreibt Code in Ihrem Arbeitsverzeichnis und Event-Dateien dort, wo Sie es angeben. Er liest nichts aus Ihrem Deployment und ändert nichts daran.
+Abgesehen davon ist der Wirkungsbereich klein: Er schreibt Code in Ihrem Arbeitsverzeichnis und Event-Dateien dort, wo Sie es angeben. Er liest nichts aus Ihrem Deployment und ändert nichts daran.
 
 ## Nächste Schritte
 
 - **[Python SDK](/de/agenteye/python-sdk)**: Die vollständige Event-Referenz – jeder Event-Typ und jedes Feld – hinter dem, was dieser Skill automatisiert.
-- **[Sessions](/de/agenteye/sessions)**: Was Ihre Instrumentierung produziert, sobald Events ankommen.
+- **[Sessions](/de/agenteye/sessions)**: Was Ihre Instrumentierung erzeugt, sobald Events ankommen.
 - **[Evaluator Agent Skill](/de/agenteye/evaluator-skill)**: Der nächste Schritt, sobald Läufe ankommen – ihre Bewertung.
 - **[CLI Agent Skill](/de/agenteye/cli-skill)**: Ihre Telemetrie zurücklesen.

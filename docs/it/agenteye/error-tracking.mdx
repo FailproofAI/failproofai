@@ -1,41 +1,41 @@
 ---
 title: "Tracciamento degli errori"
-description: "Visualizza tutti gli errori prodotti dai tuoi agenti in un unico posto, raggruppati in modo che un picco caotico venga letto come un unico problema."
+description: "Visualizza tutti gli errori prodotti dai tuoi agenti in un'unica posizione, raggruppati in modo che una raffica di segnalazioni risulti come un singolo problema."
 ---
 
 
-Visualizza tutti gli errori prodotti dai tuoi agenti in un unico posto, raggruppati in modo che un picco caotico venga letto come un unico problema. Hai un percorso con un solo clic da "qualcosa è rosso" all'esatto run che ha causato il problema, senza scorrere un feed in tempo reale per trovarlo.
+Visualizza tutti gli errori prodotti dai tuoi agenti in un'unica posizione, raggruppati in modo che una raffica di segnalazioni risulti come un singolo problema. Ottieni un percorso con un clic da "qualcosa è rosso" all'esecuzione esatta che ha interrotto il sistema, senza dover scorrere un feed live per trovarlo.
 
-![La pagina Errori: un istogramma degli errori nel tempo sopra righe di errore rosse raggruppate, ciascuna con un pulsante "+ alert" con un solo clic](/agenteye/images/errors.png)
-*La pagina Errori: un istogramma degli errori nel tempo, con gli errori ripetuti compressi in una riga per incidente.*
+![La pagina Errori: un istogramma dei guasti nel tempo sopra righe di errore raggruppate in rosso, ciascuna con un pulsante "+ alert" attivabile con un clic](/agenteye/images/errors.png)
+*La pagina Errori: un istogramma dei guasti nel tempo, con i guasti ripetuti compressi in una riga per incidente.*
 
 ## Ogni errore, già raccolto per te
 
-Quando un agente si interrompe, non dovresti doversi scorrere un flusso di eventi in tempo reale sperando di catturare le righe rosse prima che scompaiano. La pagina **Errors** fa la raccolta per te. Riunisce tutto ciò che il dashboard mostrebbe in rosso in un'unica superficie di triage, in modo che la prima cosa che vedi sia cosa sta fallendo, non dove cercare.
+Quando un agente non funziona, non dovresti dover scorrere un flusso di eventi live nella speranza di catturare le righe rosse prima che scompaiano. La pagina **Errors** esegue la raccolta per te. Raccoglie tutto ciò che il dashboard potrebbe evidenziare in rosso in un'unica superficie di triage, in modo che la prima cosa che vedi sia cosa sta fallendo, non dove andare a cercarlo.
 
-E cattura più dei casi ovvi. Accanto agli eventi `error` espliciti, Failproof AI Observability evidenzia anche i fallimenti silenziosi: qualsiasi `tool_result`, `hook_completed` o `agent_end` il cui payload contiene un errore appare qui. Uno strumento che ha restituito un errore, o un hook che è uscito male, non sfugge più semplicemente perché nulla ha lanciato un'eccezione rumorosa.
+E rileva più di quelli ovvi. Accanto agli eventi `error` espliciti, Failproof AI Observability emerge anche i guasti silenziosi: qualsiasi `tool_result`, `hook_completed` o `agent_end` il cui payload contiene un errore appare qui. Uno strumento che ha restituito un errore, o un hook che è uscito male, non sfugge più solo perché nulla ha lanciato un'eccezione rumorosa.
 
-Nella parte superiore, un istogramma traccia gli errori nel tempo. Un'occhiata ti dice se si tratta di un flusso costante di fondo o di un picco iniziato pochi minuti fa, così sai subito se devi smettere quello che stai facendo.
+Nella parte superiore, un istogramma traccia gli errori nel tempo. Un'occhiata ti dice se si tratta di un flusso di fondo costante o di un picco iniziato pochi minuti fa, in modo che tu sappia subito se smettere quello che stai facendo.
 
-Come ogni superficie observe, la pagina Errors è limitata alla tua organizzazione e filtra per intervallo di date, ambiente, agente e sessione. Ciò significa che puoi prendere un elenco a livello di flotta e restringerlo all'agente o all'ambiente specifico di cui ti interessa.
+Come ogni superficie di osservazione, la pagina Errori è limitata alla tua organizzazione e filtra per intervallo di date, ambiente, agente e sessione. Questo significa che puoi prendere un elenco a livello di flotta e restringerlo all'agente o all'ambiente che effettivamente ti interessa.
 
 ## Un incidente, non cento righe identiche
 
-Una singola dipendenza interrotta può attivare lo stesso errore centinaia di volte al minuto. Lasciato così com'è, è una parete di linee quasi identiche che nasconde l'unica cosa che devi effettivamente vedere.
+Una singola dipendenza interrotta può attivare lo stesso errore centinaia di volte al minuto. Se lasciato così com'è, è una parete di righe quasi identiche che nasconde l'unica cosa che devi effettivamente vedere.
 
-Failproof AI Observability comprime i fallimenti ripetuti che condividono la stessa sessione e tipo di errore in un'unica riga. Un picco viene letto come un incidente. Finisci per contare i problemi, non le righe di log, e il segnale che conta rimane in primo piano invece di essere annegato dal suo stesso volume.
+Failproof AI Observability comprime gli errori ripetuti che condividono la stessa sessione e tipo di errore in una singola riga. Una raffica si legge come un incidente. Finisci per contare i problemi, non le righe di log, e il segnale che importa rimane in primo piano invece di essere annegato dal suo stesso volume.
 
 ## Da "qualcosa è rosso" all'evento esatto
 
-Fai clic su qualsiasi riga per arrivare direttamente all'interno della sessione di quel run, posizionato sull'evento esatto che ha fallito. Nessuna copia di ID sessione, nessuno scorrimento per cercare il momento in cui è andato male: arrivi direttamente lì, con il grafico di esecuzione completo a un'occhiata di distanza in modo da poter vedere cosa ha fatto l'agente nei momenti prima che si interrompesse.
+Fai clic su qualsiasi riga per accedere direttamente alla sessione di quell'esecuzione, posizionato sull'evento esatto che ha fallito. Nessuna copia di ID di sessione, nessuno scorrimento per cercare il momento in cui è andato storto: arrivi direttamente su di esso, con il grafico di esecuzione completo a un'occhiata di distanza in modo da poter vedere cosa ha fatto l'agente nei momenti prima che si interrompesse.
 
-Se hai `alerts:write`, ogni riga ha anche un pulsante **+ alert**. Fai clic e Observability apre una nuova regola di avviso già compilata per catturare lo stesso errore di nuovo. L'incidente che hai appena esaminato diventa quello che ti avviserà la prossima volta, invece di sorprenderti due volte.
+Se hai `alerts:write`, ogni riga include anche un pulsante **+ alert**. Fai clic e Observability apre una nuova regola di avviso già compilata per catturare lo stesso errore di nuovo. L'incidente appena triato diventa quello che ti avvisa la prossima volta, invece di sorprenderti due volte.
 
-**Dove trovarlo:** la pagina **Errors** si trova nella sezione observe del dashboard, a `/<org-slug>/errors`.
+**Dove trovarlo:** la pagina **Errors** si trova nella sezione observe del dashboard, all'indirizzo `/<org-slug>/errors`.
 
 ## Correlati
 
 - [Alerts](/it/agenteye/alerts): trasforma qualsiasi errore in una regola di paging.
-- [Incidents](/it/agenteye/incidents): monitora un avviso attivo da apertura a risoluzione.
-- [Sessions](/it/agenteye/sessions): apri il run completo dietro qualsiasi errore.
-- [Audits](/it/agenteye/audits): lascia che Observability trovi i pattern di errore nei tuoi run per te.
+- [Incidents](/it/agenteye/incidents): traccia un avviso attivato da aperto a risolto.
+- [Sessions](/it/agenteye/sessions): apri l'esecuzione completa dietro qualsiasi errore.
+- [Audits](/it/agenteye/audits): lascia che Observability trovi modelli di guasto tra le tue esecuzioni per te.

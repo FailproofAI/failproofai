@@ -18,8 +18,8 @@
 **अनुवाद:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **कोडिंग एजेंट्स के लिए रनटाइम विफलता समाधान।**
-Claude Code और Codex में हुक करता है। लूप्स, खतरनाक कार्यों और गोपनीय रिसाव को
-घटनाओं में बदलने से पहले पकड़ता है। शून्य विलंबता। स्थानीय रूप से चलता है।
+Claude Code और Codex में हुक करता है। लूप्स, खतरनाक कार्यों और गुप्त लीक को 
+पकड़ता है इससे पहले कि वे समस्या बन जाएं। शून्य लेटेंसी। स्थानीय रूप से चलता है।
 
 </div>
 
@@ -125,15 +125,15 @@ Claude Code और Codex में हुक करता है। लूप्
   </tr>
 </table>
 
-## स्थापना
+## इंस्टॉल करें
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # या बस `failproofai` चलाएँ और पहली बार के संकेत को स्वीकार करें
+failproofai policies --install   # या बस `failproofai` चलाएं और पहली बार के प्रॉम्प्ट को स्वीकार करें
 failproofai
 ```
 
-30 अंतर्निर्मित नीतियाँ तुरंत सक्रिय हो जाती हैं। डैशबोर्ड `localhost:8020` पर है। `FAILPROOFAI_NO_FIRST_RUN=1` के साथ पहली बार के संकेत को अक्षम करें।
+30 बिल्ट-इन नीतियां तुरंत सक्रिय हो जाती हैं। डैशबोर्ड `localhost:8020` पर। पहली बार के प्रॉम्प्ट को `FAILPROOFAI_NO_FIRST_RUN=1` से अक्षम करें।
 
 ---
 
@@ -141,20 +141,20 @@ failproofai
 
 | नीति | यह क्या ब्लॉक करता है |
 |---|---|
-| `block-push-master` | `main` / `master` के लिए प्रत्यक्ष पुश |
+| `block-push-master` | `main` / `master` को सीधे पुश |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | `main` / `master` पर कमिट्स, मर्ज, रीबेसेस |
-| `block-rm-rf` | पुनरावर्ती फ़ाइल विलोपन |
-| `sanitize-api-keys` | एजेंट संदर्भ में API कुंजी रिसाव |
+| `block-work-on-main` | `main` / `master` पर कमिट, मर्ज, रीबेस |
+| `block-rm-rf` | पुनरावर्ती फाइल डिलीशन |
+| `sanitize-api-keys` | API कुंजी एजेंट कंटेक्स्ट में लीक होना |
 
-→ [सभी 30 अंतर्निर्मित नीतियाँ](https://docs.befailproof.ai/built-in-policies)
+→ [सभी 30 बिल्ट-इन नीतियां](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## आपकी अपनी नीतियाँ
+## अपनी स्वयं की नीतियां
 
-`.failproofai/policies/` में एक फ़ाइल छोड़ें — यह स्वचालित रूप से लोड होती है, कोई फ़्लैग की आवश्यकता नहीं है।
-इसे कमिट करें और पूरी टीम को अगली पुल पर मिलेगी।
+`.failproofai/policies/` में एक फाइल डालें — यह स्वचालित रूप से लोड होती है, कोई फ्लैग की आवश्यकता नहीं।
+इसे कमिट करें और पूरी टीम को अगले पुल पर मिलेगा।
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -170,23 +170,22 @@ customPolicies.add({
 });
 ```
 
-प्रत्येक नीति के लिए तीन निर्णय उपलब्ध हैं:
+हर नीति के लिए तीन निर्णय उपलब्ध हैं:
 
 | निर्णय | प्रभाव |
 |---|---|
-| `allow()` | ऑपरेशन की अनुमति दें |
+| `allow()` | ऑपरेशन को अनुमति दें |
 | `deny(message)` | इसे ब्लॉक करें — संदेश एजेंट को वापस जाता है |
-| `instruct(message)` | इसे आगे बढ़ने दें, लेकिन एजेंट के अगले प्रॉम्प्ट में संदर्भ जोड़ें |
+| `instruct(message)` | इसे सक्षम करें, लेकिन एजेंट के अगले प्रॉम्प्ट में संदर्भ जोड़ें |
 
-→ [कस्टम नीतियाँ गाइड](https://docs.befailproof.ai/custom-policies)
+→ [कस्टम नीतियां गाइड](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## सेशन दृश्यता
+## सत्र दृश्यमानता
 
-आपका एजेंट जो भी टूल कॉल करता है वह स्थानीय रूप से लॉग किया जाता है। डैशबोर्ड दिखाता है कि क्या चला,
-क्या ब्लॉक किया गया, और नीति ने एजेंट को क्या बताया — इसलिए आप अनुमान नहीं लगा रहे हैं
-जब कुछ गलत हो जाता है। → [डैशबोर्ड गाइड](https://docs.befailproof.ai/dashboard)
+आपके एजेंट द्वारा किया जाने वाला हर उपकरण कॉल स्थानीय रूप से लॉग किया जाता है। डैशबोर्ड दिखाता है कि क्या चला,
+क्या ब्लॉक किया गया था, और नीति ने एजेंट को क्या बताया — इसलिए जब कुछ गलत हो तो आप अनुमान नहीं लगा रहे हैं। → [डैशबोर्ड गाइड](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -194,27 +193,26 @@ customPolicies.add({
 
 | | |
 |---|---|
-| [शुरुआत करें](https://docs.befailproof.ai/getting-started) | स्थापना और पहले कदम |
-| [अंतर्निर्मित नीतियाँ](https://docs.befailproof.ai/built-in-policies) | सभी 30 नीतियाँ पैरामीटर के साथ |
-| [कस्टम नीतियाँ](https://docs.befailproof.ai/custom-policies) | अपने स्वयं के लिखें |
-| [कॉन्फ़िगरेशन](https://docs.befailproof.ai/configuration) | कॉन्फ़िग स्कोप और मर्ज नियम |
-| [डैशबोर्ड](https://docs.befailproof.ai/dashboard) | सेशन मॉनिटर और नीति गतिविधि |
+| [शुरुआत करें](https://docs.befailproof.ai/getting-started) | इंस्टॉलेशन और पहले कदम |
+| [बिल्ट-इन नीतियां](https://docs.befailproof.ai/built-in-policies) | सभी 30 नीतियां पैरामीटर के साथ |
+| [कस्टम नीतियां](https://docs.befailproof.ai/custom-policies) | अपनी स्वयं की लिखें |
+| [कॉन्फ़िगरेशन](https://docs.befailproof.ai/configuration) | कॉन्फ़िगरेशन स्कोप और मर्ज नियम |
+| [डैशबोर्ड](https://docs.befailproof.ai/dashboard) | सत्र मॉनिटर और नीति गतिविधि |
 | [आर्किटेक्चर](https://docs.befailproof.ai/architecture) | हुक सिस्टम कैसे काम करता है |
 
 ---
 
 ## लाइसेंस
 
-MIT with [Commons Clause](https://commonsclause.com/) — आंतरिक और व्यक्तिगत उपयोग के लिए निःशुल्क; failproofai का वाणिज्यिक पुनर्विक्रय एक अलग समझौते की आवश्यकता है। पूर्ण पाठ के लिए [LICENSE](../../LICENSE) देखें।
+MIT with [Commons Clause](https://commonsclause.com/) — आंतरिक और व्यक्तिगत उपयोग के लिए मुक्त; failproofai को वाणिज्यिक पुनर्विक्रय के लिए एक अलग समझौते की आवश्यकता है। पूर्ण पाठ के लिए [LICENSE](../../LICENSE) देखें।
 
 ---
 
-## योगदान
+## योगदान देना
 
-[CONTRIBUTING.md](../../CONTRIBUTING.md) देखें। नई नीतियाँ, सीमांत मामले और अनुवाद सभी स्वागत हैं।
+[CONTRIBUTING.md](../../CONTRIBUTING.md) देखें। नई नीतियां, सीमांत मामले, और अनुवाद सभी का स्वागत है।
 
-> **बिल्ड करने से पहले शुरुआत करें।** पहले `bun install && bun run build` चलाएँ। यह रिपो स्वयं पर failproofai के हुक चलाता है, और वे संकलित `dist/` बंडल के विरुद्ध `failproofai` आयात को हल करते हैं — बिल्ड के बिना आपको `Cannot find package 'failproofai'` हुक त्रुटियों मिलेंगी। `src/` को बदलने के बाद फिर से बिल्ड करें। देखें
-> [इन-रिपो डेव हुक काम करने से पहले बिल्ड करें](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)।
+> **शुरू करने से पहले बिल्ड करें।** पहले `bun install && bun run build` चलाएं। यह रिपो failproofai की अपनी नीतियों को अपने आप पर चलाता है, और वे `failproofai` आयात को संकलित `dist/` बंडल के विरुद्ध हल करते हैं — बिल्ड के बिना आपको `Cannot find package 'failproofai'` हुक त्रुटियां मिलेंगी। `src/` बदलने के बाद फिर से बिल्ड करें। [इन-रिपो डेव हुक्स काम करने से पहले बिल्ड करें](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) देखें।
 
 ---
 

@@ -1,45 +1,44 @@
 ---
----
 title: الإعدادات
-description: "صيغة ملف التكوين، نظام النطاقات الثلاثة، وقواعد الدمج"
+description: "صيغة ملف الإعدادات وتجميع القوانين ونظام الدوائر الثلاث"
 icon: gear
 ---
 
-يستخدم failproofai ملفات تكوين JSON للتحكم في السياسات النشطة وكيفية عملها ومن أين يتم تحميل السياسات المخصصة. تم تصميم الإعدادات لسهولة المشاركة مع فريقك - قم بالالتزام بها في مستودعك وسيحصل كل مطور على نفس شبكة الأمان للعامل.
+يستخدم failproofai ملفات إعدادات JSON للتحكم في القوانين النشطة وكيفية عملها ومن أين يتم تحميل القوانين المخصصة. تم تصميم الإعدادات لتكون سهلة المشاركة مع فريقك - التزم بها في مستودعك وسيحصل كل مطور على نفس شبكة الأمان للوكيل.
 
 ---
 
 ## نطاقات الإعدادات
 
-هناك ثلاثة نطاقات للإعدادات، يتم تقييمها بترتيب الأولوية:
+هناك ثلاثة نطاقات إعدادات يتم تقييمها بالأولوية:
 
 | النطاق | مسار الملف | الغرض |
 |-------|-----------|---------|
-| **المشروع** | `.failproofai/policies-config.json` | إعدادات لكل مستودع، التزام في التحكم بالإصدارات |
-| **محلي** | `.failproofai/policies-config.local.json` | تجاوزات شخصية لكل مستودع، مُستثناة من git |
-| **عام** | `~/.failproofai/policies-config.json` | الإعدادات الافتراضية على مستوى المستخدم عبر جميع المشاريع |
+| **المشروع** | `.failproofai/policies-config.json` | إعدادات لكل مستودع، مرتكبة في التحكم بالإصدارات |
+| **محلي** | `.failproofai/policies-config.local.json` | تجاوزات شخصية لكل مستودع، مدرجة في gitignore |
+| **عام** | `~/.failproofai/policies-config.json` | قيم افتراضية على مستوى المستخدم عبر جميع المشاريع |
 
-عندما يتلقى failproofai حدث خطاف، يقوم بتحميل ودمج جميع الملفات الثلاثة الموجودة للمجلد الحالي.
+عندما يتلقى failproofai حدث hook، يقوم بتحميل ودمج جميع الملفات الثلاثة الموجودة للمجلد الحالي.
 
 ### قواعد الدمج
 
-**`enabledPolicies`** - اتحاد جميع النطاقات الثلاثة. السياسة المفعلة في أي مستوى تكون نشطة.
+**`enabledPolicies`** - اتحاد جميع النطاقات الثلاثة. القانون المُفعّل في أي مستوى يكون نشطًا.
 
 ```text
 project:  ["block-sudo"]
 local:    ["block-rm-rf"]
 global:   ["block-sudo", "sanitize-api-keys"]
 
-resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]  ← اتحاد مُلغى التكرار
+resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]  ← اتحاد منزوع التكرار
 ```
 
-**`policyParams`** - أول نطاق يحدد المعاملات لسياسة معينة يفوز بالكامل. لا يوجد دمج عميق للقيم داخل معاملات السياسة.
+**`policyParams`** - النطاق الأول الذي يحدد معاملات قانون معين يفوز بالكامل. لا يوجد دمج عميق للقيم ضمن معاملات القانون.
 
 ```text
 project:  block-sudo → { allowPatterns: ["sudo apt-get update"] }
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo apt-get update"] }   ← يفوز المشروع، يتم تجاهل النطاق العام
+resolved: { allowPatterns: ["sudo apt-get update"] }   ← المشروع يفوز، العام مُتجاهل
 ```
 
 ```text
@@ -47,14 +46,14 @@ project:  (no block-sudo entry)
 local:    (no block-sudo entry)
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo systemctl status"] }  ← يتم الرجوع للنطاق العام
+resolved: { allowPatterns: ["sudo systemctl status"] }  ← ينتقل إلى العام
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** - أول نطاق يحدد أي شكل يفوز.
+**`customPoliciesPaths` / `customPoliciesPath`** - النطاق الأول الذي يحدد أي منهما يفوز.
 
-**`disabledCustomPolicies`** - اتحاد عبر جميع النطاقات. لوحة المعلومات تكتب معرف مؤهل بالمصدر هنا عند إيقاف تشغيل سياسة فردية من ملف سياسة صريح أو حسب العرف. السياسات غير المدرجة تبقى مفعلة بشكل افتراضي؛ المعرفات تتضمن ملف المصدر بحيث يمكن التحكم في السياسات بنفس الاسم في ملفات متعددة بشكل مستقل.
+**`disabledCustomPolicies`** - اتحاد عبر جميع النطاقات. تكتب لوحة التحكم معرّفًا مؤهلاً بالمصدر هنا عندما تطفئ قانونًا فرديًا من ملف قانون صريح أو متطابق. البوالين غير مدرجة تبقى مُفعّلة بشكل افتراضي؛ تتضمن المعرّفات الملف المصدر لذا يمكن التحكم في الأسماء المتطابقة في ملفات متعددة بشكل مستقل.
 
-**`llm`** - أول نطاق يحددها يفوز.
+**`llm`** - النطاق الأول الذي يحدده يفوز.
 
 ---
 
@@ -105,33 +104,33 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← يتم الرجوع 
 
 النوع: `string[]`
 
-قائمة أسماء السياسات المراد تفعيلها. يجب أن تطابق الأسماء تماماً معرفات السياسات التي تظهرها `failproofai policies`. راجع [السياسات المدمجة](/ar/built-in-policies) للحصول على القائمة الكاملة.
+قائمة بأسماء القوانين المراد تفعيلها. يجب أن تطابق الأسماء بالضبط معرّفات القوانين الموضحة بواسطة `failproofai policies`. راجع [Built-in Policies](/ar/built-in-policies) للقائمة الكاملة.
 
-السياسات غير المدرجة في `enabledPolicies` غير نشطة، حتى لو كانت لديها إدخالات في `policyParams`.
+القوانين غير الموجودة في `enabledPolicies` غير نشطة، حتى لو كانت لها إدخالات في `policyParams`.
 
 ### `policyParams`
 
 النوع: `Record<string, Record<string, unknown>>`
 
-تجاوزات المعاملات لكل سياسة. المفتاح الخارجي هو اسم السياسة؛ المفاتيح الداخلية خاصة بكل سياسة. توثق كل سياسة معاملاتها المتاحة في [السياسات المدمجة](/ar/built-in-policies).
+تجاوزات معاملات لكل قانون. المفتاح الخارجي هو اسم القانون؛ المفاتيح الداخلية خاصة بكل قانون. يوثق كل قانون معاملاته المتاحة في [Built-in Policies](/ar/built-in-policies).
 
-إذا كان للسياسة معاملات لكنك لم تحددها، يتم استخدام القيم الافتراضية المدمجة للسياسة. المستخدمون الذين لا يقومون بتكوين `policyParams` على الإطلاق يحصلون على سلوك متطابق للإصدارات السابقة.
+إذا كان لقانون معاملات لكنك لم تحددها، يتم استخدام القيم الافتراضية المدمجة للقانون. المستخدمون الذين لا يقومون بتكوين `policyParams` على الإطلاق يحصلون على سلوك متطابق للإصدارات السابقة.
 
-المفاتيح غير المعروفة داخل كتلة معاملات السياسة يتم تجاهلها بصمت في وقت إطلاق الخطاف ولكن يتم وضع علم عليها كتحذيرات عند تشغيل `failproofai policies`.
+المفاتيح المجهولة داخل كتلة معاملات القانون يتم تجاهلها بصمت في وقت إطلاق hook لكن يتم وضع علامة عليها كتحذيرات عند تشغيل `failproofai policies`.
 
-#### `hint` (عبر الأنظمة)
+#### `hint` (عام)
 
 النوع: `string` (اختياري)
 
-رسالة مُلحقة بالسبب عندما تُرجع السياسة `deny` أو `instruct`. استخدمها لمنح Claude إرشادات قابلة للتنفيذ دون تعديل السياسة نفسها.
+رسالة ملحقة بالسبب عندما يُرجع قانون `deny` أو `instruct`. استخدمها لتوفير إرشادات قابلة للتنفيذ لـ Claude دون تعديل القانون نفسه.
 
-يعمل مع أي نوع سياسة — مدمجة أو مخصصة (`custom/`) أو اتفاقية المشروع (`.failproofai-project/`) أو اتفاقية المستخدم (`.failproofai-user/`).
+يعمل مع أي نوع قانون — مدمج أو مخصص (`custom/`) أو اتفاقية مشروع (`.failproofai-project/`) أو اتفاقية مستخدم (`.failproofai-user/`).
 
 ```json
 {
   "policyParams": {
     "block-force-push": {
-      "hint": "جرب إنشاء فرع جديد بدلاً من ذلك."
+      "hint": "حاول إنشاء فرع جديد بدلاً من ذلك."
     },
     "block-sudo": {
       "allowPatterns": ["sudo apt-get"],
@@ -144,47 +143,46 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← يتم الرجوع 
 }
 ```
 
-عند رفض `block-force-push`، يرى Claude: *"دفع القوة مُحظور. جرب إنشاء فرع جديد بدلاً من ذلك."*
+عندما يرفض `block-force-push`، يرى Claude: *"Force-pushing مختنق. حاول إنشاء فرع جديد بدلاً من ذلك."*
 
-القيم غير النصية والنصوص الفارغة يتم تجاهلها بصمت. إذا لم يتم تعيين `hint`، يبقى السلوك دون تغيير (متوافق مع الإصدارات السابقة).
+القيم غير النصية والنصوص الفارغة يتم تجاهلها بصمت. إذا لم يتم تعيين `hint`، السلوك لم يتغير (متوافق للخلف).
 
 ### `customPoliciesPath`
 
-النوع: `string` (المسار المطلق)
+النوع: `string` (مسار مطلق)
 
-المسار إلى ملف JavaScript يحتوي على سياسات خطاف مخصصة. يتم تعيينها تلقائياً بواسطة `failproofai policies --install --custom <path>` (يتم حل المسار إلى مطلق قبل تخزينه).
+مسار لملف JavaScript يحتوي على قوانين hook مخصصة. يتم تعيينه تلقائيًا بواسطة `failproofai policies --install --custom <path>` (يتم حل المسار إلى مسار مطلق قبل التخزين).
 
-يتم تحميل الملف بشكل جديد في كل حدث خطاف - لا يوجد تخزين مؤقت. راجع [السياسات المخصصة](/ar/custom-policies) لتفاصيل الإنشاء.
+يتم تحميل الملف مجددًا في كل حدث hook - لا يوجد تخزين مؤقت. راجع [Custom Policies](/ar/custom-policies) لتفاصيل الكتابة.
 
-### سياسات قائمة على الاتفاقية
+### القوانين القائمة على الاتفاقية
 
-بالإضافة إلى `customPoliciesPath` الصريح، يكتشف failproofai ويحمل ملفات السياسات تلقائياً من مجلدات `.failproofai/policies/`:
+بالإضافة إلى `customPoliciesPath` الصريح، يكتشف failproofai ويحمّل ملفات القوانين تلقائيًا من مجلدات `.failproofai/policies/`:
 
 | المستوى | المجلد | النطاق |
 |-------|-----------|-------|
-| المشروع | `.failproofai/policies/` | مشترك مع الفريق عبر التحكم بالإصدارات |
-| المستخدم | `~/.failproofai/policies/custom-policies/` | شخصي، ينطبق على جميع المشاريع |
+| المشروع | `.failproofai/policies/` | مشاركة مع الفريق عبر التحكم بالإصدارات |
+| المستخدم | `~/.failproofai/policies/` | شخصي، ينطبق على جميع المشاريع |
 
 <Note>
-  تم نقل مجلد مستوى المستخدم إلى أسفل مستوى واحد في إعادة تنظيم دليل المنزل.
-  الملفات المتبقية في المجلد القديم `~/.failproofai/policies/` يتم نقلها إلى
-  `custom-policies/` تلقائياً في المرة الأولى التي تقوم فيها بتشغيل أي أمر failproofai
-  بعد الترقية، والأمر يخبرك بالملفات التي تم نقلها.
+  ضع سياساتك مباشرة في `~/.failproofai/policies/`. مجلد `cloud-policies/` بجانبهم يحتفظ بالسياسات التي نشرتها منظمتك على هذا الجهاز — الاكتشاف لا ينحدر إلى المجلدات الفرعية، لذا لن يتم مسحه أبدًا، وليس هناك شيء تضعه في `policies/` يمكن أن يتضارب معه.
+
+  إذا كنت تترقي من نسخة استخدمت `~/.failproofai/policies/custom-policies/`، كل شيء في هذا المجلد — ملفات السياسة الخاصة بك وأي `lib/` من المساعدين التي تستوردها وأي ملفات بيانات تقرأها — يتم نقله تلقائيًا أثناء تشغيل أول أمر `failproofai`، والأمر يخبرك بما نقله.
 </Note>
 
-**مطابقة الملفات:** يتم تحميل الملفات المطابقة فقط `*policies.{js,mjs,ts}` (مثل `security-policies.mjs`، `workflow-policies.js`). يتم تجاهل الملفات الأخرى في المجلد.
+**مطابقة الملف:** يتم تحميل الملفات فقط المطابقة `*policies.{js,mjs,ts}` (مثل `security-policies.mjs`، `workflow-policies.js`). يتم تجاهل الملفات الأخرى في المجلد.
 
-**لا حاجة للتكوين:** سياسات الاتفاقية لا تتطلب إدخالات في `policies-config.json`. ما عليك سوى إسقاط الملفات في المجلد وسيتم التقاطها في حدث الخطاف التالي.
+**لا توجد إعدادات مطلوبة:** لا تتطلب قوانين الاتفاقية إدخالات في `policies-config.json`. فقط ضع الملفات في المجلد وسيتم اختيارها في حدث hook التالي.
 
-**تحميل الاتحاد:** يتم مسح كلا من مجلدات اتفاقية المشروع والمستخدم. يتم تحميل جميع الملفات المطابقة من كلا المستويين (بخلاف `customPoliciesPath` الذي يستخدم first-scope-wins).
+**تحميل الاتحاد:** يتم مسح مجلدات الاتفاقية للمشروع والمستخدم. يتم تحميل جميع الملفات المطابقة من كلا المستويين (بخلاف `customPoliciesPath` الذي يستخدم first-scope-wins).
 
-راجع [السياسات المخصصة](/ar/custom-policies) لمزيد من التفاصيل والأمثلة.
+راجع [Custom Policies](/ar/custom-policies) لمزيد من التفاصيل والأمثلة.
 
 ### `llm`
 
 النوع: `object` (اختياري)
 
-إعدادات عميل LLM للسياسات التي تقوم باستدعاءات AI. غير مطلوبة لمعظم الإعدادات.
+إعدادات عميل LLM للقوانين التي تجري استدعاءات AI. غير مطلوب لمعظم الإعدادات.
 
 ```json
 {
@@ -197,26 +195,26 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← يتم الرجوع 
 
 ---
 
-## إدارة الإعدادات من CLI
+## إدارة الإعدادات من واجهة سطر الأوامر
 
-تقوم أوامر `policies --install` و `policies --uninstall` بالكتابة إلى ملف إعدادات الخطاف لـ CLI العامل الخاص بك (نقاط دخول الخطاف)، بينما `policies-config.json` هو الملف الذي تديره مباشرة. كلاهما منفصل:
+تكتب أوامر `policies --install` و `policies --uninstall` إلى ملف إعدادات hook لـ CLI الوكيل الخاص بك (نقاط دخول hook)، بينما `policies-config.json` هو الملف الذي تديره مباشرة. الاثنان منفصلان:
 
-- **إعدادات Agent CLI** — تخبر العامل باستدعاء `failproofai --hook <event>` على كل استخدام أداة:
+- **إعدادات CLI الوكيل** — يخبر الوكيل باستدعاء `failproofai --hook <event>` على كل استخدام أداة:
   - **Claude Code**: `~/.claude/settings.json` (مستخدم)، `<cwd>/.claude/settings.json` (مشروع)، `<cwd>/.claude/settings.local.json` (محلي)
-  - **OpenAI Codex**: `~/.codex/hooks.json` (مستخدم)، `<cwd>/.codex/hooks.json` (مشروع) — Codex لا يوجد لديه نطاق محلي
-  - **GitHub Copilot CLI _(beta)_**: `~/.copilot/hooks/failproofai.json` (مستخدم)، `<cwd>/.github/hooks/failproofai.json` (مشروع) — Copilot لا يوجد لديه نطاق محلي. إدخالات الخطاف تستخدم حقول الأوامر الخاصة بـ Copilot المفتاحة بنظام التشغيل `bash`/`powershell` مع `timeoutSec`؛ الملف يحمل علامة `version: 1` على المستوى الأعلى. دعم Copilot CLI **بيتا** بينما نتحقق من مخطط سجل `events.jsonl` (التي لا توضحه المستندات العامة) مقابل المزيد من جلسات العالم الحقيقي. **وضع عامل VS Code Copilot Chat (معاينة)** يقرأ إعدادات الخطاف من `.github/hooks/*.json`، `~/.copilot/hooks/*.json`، و `~/.claude/settings.json` (يحكمها إعداد `chat.hookFilesLocations`) باستخدام نفس عقد Claude الشكلي `{hookSpecificOutput:{permissionDecision:"deny",…}}` — المسارات الدقيقة التي تكتبها تكامل `copilot` هذا وتكامل `claude` (`~/.claude/settings.json`) بالفعل، لذا فإن `failproofai policies --install --cli copilot` (أو `--cli claude`) **بالفعل يفرض في وضع VS Code agent** بدون الحاجة إلى تكامل منفصل `vscode` (مؤكد من سجلات اكتشاف VS Code).
-  - **Cursor Agent _(beta)_**: `~/.cursor/hooks.json` (مستخدم)، `<cwd>/.cursor/hooks.json` (مشروع) — Cursor لا يوجد لديه نطاق محلي. إدخالات الخطاف تستخدم شكل Claude الشكلي `{type, command, timeout}` (لا يوجد تقسيم `bash`/`powershell`)، لكن مخزنة تحت مفاتيح الأحداث camelCase (`preToolUse`، `beforeSubmitPrompt`، …) في مصفوفة مسطحة لكل [مخطط الخطافات](https://cursor.com/docs/hooks) الخاص بـ Cursor؛ الملف يحمل علامة `version: 1` على المستوى الأعلى. معالج يقوم بتحويل camelCase → PascalCase عبر `CURSOR_EVENT_MAP` لذا السياسات المدمجة الموجودة تطلق بدون تغيير. دعم Cursor Agent **بيتا** بينما نتحقق من نسخة Cursor على القرص (غير محددة في المستندات العامة) مقابل المزيد من الثبتات في العالم الحقيقي.
-  - **OpenCode _(beta)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (مستخدم)، `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (مشروع) — OpenCode لا يوجد لديه نطاق محلي. بخلاف الـ CLIs الخمسة الأخرى، OpenCode **لا يوجد لديه نظام خطاف أوامر خارجية**: يحمل في العملية JS/TS ملحقات مسجلة بشكل صريح عبر مصفوفة `plugin: []` في `opencode.json` (الاكتشاف التلقائي من `.opencode/plugins/` **ليس** كيفية تحميل الملحقات على opencode v1.14.33). التثبيت يضع shim ملحق صغير مولد يقوم باستدعاء ثنائي failproofai في عملية فرعية ويترجم استجابة JSON للثنائي مرة أخرى إلى دلالات الملحقات: `throw new Error()` لرفض حدث الأداة (يلغي استدعاء الأداة)، `client.session.prompt(...)` لـ `instruct` و `Stop` / `SubagentStop` رفع (يرسل سبب الرفض كرسالة المستخدم التالية — القناة الوحيدة لإعادة المحاولة القسرية منذ `session.idle` إخطار فقط وإرسال من خلالها لا تؤثر)، و no-op للسماح. shim يقوم بتحويل أسماء الأدوات (lowercase → PascalCase عبر `OPENCODE_TOOL_MAP`) وعناصر إدخال الأداة (camelCase → snake_case عبر `OPENCODE_TOOL_INPUT_MAP` لـ `Read` / `Write` / `Edit`، مثل `filePath` → `file_path`، `oldString` → `old_string`) قبل التوجيه إلى الثنائي، لذا فإن مدقق المسار المدمج مثل `block-read-outside-cwd`، `block-env-files`، و `block-secrets-write` طلقات تغيير على استدعاءات أداة OpenCode. الجلسات تعيش في قاعدة بيانات SQLite الخاصة بـ opencode في `~/.local/share/opencode/opencode.db`؛ عارض جلسات لوحة المعلومات يقرأها عبر `opencode db --format json` و `opencode export <id>`. دعم OpenCode **بيتا** بينما نتحقق من السلوك عبر الإصدارات والمزيد من جلسات العالم الحقيقي. راجع [مستندات ملحقات OpenCode](https://opencode.ai/docs/plugins/).
-  - **Pi _(beta)_**: `~/.pi/agent/settings.json` (مستخدم)، `<cwd>/.pi/settings.json` (مشروع) — Pi لا يوجد لديه نطاق محلي. Pi يحمل حزم امتدادات TypeScript عند بدء التشغيل؛ ملف الإعدادات هو مصفوفة نصوص مسطحة `{"packages": ["./relative/path", …]}`. failproofai يكتب إدخال مصفوفة packages واحد يشير إلى مجلد `pi-extension/` المجمع الخاص به. امتداد داخلي يشترك في أحداث Pi `tool_call` / `user_bash` / `input` / `session_start` ويشغل الأوامر إلى `failproofai --hook <Event> --cli pi`؛ معالج يقوم بتحويل underscore_lower_snake_case → PascalCase عبر `PI_EVENT_MAP` لذا السياسات المدمجة الموجودة تطلق بدون تغيير. وسيطات إدخال الأداة أيضاً مُعادة عبر `PI_TOOL_INPUT_MAP` (Pi's Read / Write / Edit توفر `path` بدلاً من `file_path`؛ تعيين المفتاح ذو المستوى الأعلى يترك `block-env-files` و `block-secrets-write` طلقات — `block-read-outside-cwd` كان بالفعل لديه fallback `path`). دعم Pi **بيتا** بينما امتدادات Pi API وتخطيط سجل الجلسة استقرار.
-  - **Hermes (hermes-agent)**: `~/.hermes/config.yaml` (**نطاق المستخدم فقط** — Hermes لا يوجد لديه تكوين مشروع/محلي). Hermes هو بوابة Slack/Telegram **، لذا يعترض تثبيت واحد استدعاءات الأداة من كل منصة (Slack/Telegram/cli/cron) **و** subagents داخلي. إدخالات الخطاف هي زوج `{command, timeout}` (timeout في **ثوان**) تحت خريطة `hooks:` مفتاحة بأحداث snake_case الخاصة بـ Hermes (`pre_tool_call` / `post_tool_call` / `on_session_start` / `on_session_end` / `subagent_stop`؛ معالج يقوم بتحويل الأحداث عبر `HERMES_EVENT_MAP` وأسماء الأدوات عبر `HERMES_TOOL_MAP` لذا السياسات المدمجة تطلق بدون تغيير. التكوين يتم تحريره من خلال جولة YAML `Document` حفاظ على التعليقات لذا إعدادات المشغل الأخرى تبقى، والتثبيت يعيين `hooks_auto_accept: true` لذا البوابة بدون رأس (بدون TTY) تشغيل الخطافات بدون موجه موافقة. evaluator ينبثق عقد `{"decision":"block","reason"}` stdout الخاص بـ Hermes (Hermes يتجاهل رموز الخروج). **القيود:** Hermes لا يوجد لديه حدث نهاية الدوران `Stop`، لذا المدمجات `require-*-before-stop` لا تطلق أبداً لها (غير قابلة للتطبيق، لا كسر)؛ `instruct` ينحط للسماح-مع-ملاحظة-مسجلة (لا قناة سياق إضافي)؛ وإخفاء الأسرار في الإخراج (`sanitize-*`) لا يمكنه كتابة إخراج الأداة فوق عقد الخطاف القذيفة. Hermes أيضاً مصدر تدقيق **غير محترق** — لوحة المعلومات تقرأ جلسات بوابة الخاص بها مباشرة من `~/.hermes/state.db`.
-  - **OpenClaw (openclaw gateway)**: `~/.openclaw/openclaw.json` (**نطاق المستخدم فقط** — OpenClaw لا يوجد لديه تكوين مشروع/محلي). مثل Hermes، OpenClaw هي بوابة multi-channel **ذاتية البناء، لذا يعترض تثبيت واحد استدعاءات الأداة من كل قناة وخوادم subagents داخليها. الإنفاذ يجري عبر **خطافات ملحقات في العملية** الخاصة بـ OpenClaw (خطافاتها المستندة إلى الملفات الداخلية هي ملاحظة فقط ولا يمكنها الحجب)، لذا — مثل OpenCode/Pi — failproofai تشحن حزمة `openclaw-plugin/` ثابتة تطلق بشكل غير متزامن الثنائي failproofai وتترجم الحكم. التثبيت يسجل مجلد الملحق المشحون في مصفوفة `plugins.load.paths[]` الخاصة بـ `openclaw.json` ويفعله تحت `plugins.entries.failproofai` (مع `hooks.allowConversationAccess: true`، مطلوب للخطافات الحوار الخام). evaluator ينبثق حكم مسطح `{permission, reason}` ويقوم shim بتعيينه إلى شكل إرجاع أصلي لكل خطاف: `before_tool_call → {block:true, blockReason}` (**PreToolUse**)، `before_agent_run → {outcome:"block", reason}` (**UserPromptSubmit**)، و `before_agent_finalize → {action:"revise", reason}` (**Stop** — بوابة turn-end حقيقية، لذا مدمجات `require-*-before-stop` **تفرض** على OpenClaw، بخلاف Hermes). الأحداث وأسماء الأدوات canonicalize ثنائي-جانب عبر `OPENCLAW_EVENT_MAP` / `OPENCLAW_TOOL_MAP` (`exec→Bash`، `read→Read`، …) لذا السياسات المدمجة تطلق بدون تغيير؛ shim يفشل مفتوح على أي spawn/parse/timeout خطأ. OpenClaw أيضاً مصدر تدقيق **غير محترق** — لوحة المعلومات تقرأ جلسات JSONL الخاصة بها في `~/.openclaw/agents/<agentId>/sessions/<uuid>.jsonl`.
-  - **Factory Droid (`droid`)**: `~/.factory/hooks.json` (مستخدم)، `<cwd>/.factory/hooks.json` (مشروع) — Factory لا يوجد لديه نطاق محلي. droid يشحن نظام خطاف أمر خارجي Claude-style، لكن مع نكتتين تحقق مباشر ضد droid v0.171.0: (1) أسماء الأحداث تعيش في **المستوى الأعلى** من `hooks.json` — لا يوجد **لا `"hooks"` غلاف** (droid يرفض واحد)؛ أحداث الأدوات (`PreToolUse`/`PostToolUse`) تحمل `"matcher": "*"`، الأحداث غير الأداة تحذفها. (2) يتم دفع الرفع برمز خروج الخطاف **2 + stderr**، وليس قرار JSON — فرع `factory` المُقيِّم يُرجع خروج 2 لأحداث أداة/موجه و `{decision:"block", reason}` فقط على حدث turn-end `Stop` (قناة إعادة القوة الوحيدة الخاصة بـ droid). الأحداث بالفعل PascalCase (لا خريطة أحداث) والحمولة هي snake_case Claude؛ فقط أسماء الأدوات مُعادة عبر `FACTORY_TOOL_MAP` (`Execute→Bash`، `Create→Write`، `FetchUrl→WebFetch`، …). Factory أيضاً مصدر تدقيق **غير محترق** — لوحة المعلومات تقرأ جلسات JSONL على القرص في `~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl`.
-  - **Devin CLI (`devin`, Cognition)**: `~/.config/devin/config.json` (مستخدم)، `<cwd>/.devin/config.json` (مشروع) — Devin لا يوجد لديه نطاق محلي. Devin هو **مستنسخ Claude نقي** تحقق مباشر ضد devin v3000.1.27: يستخدم مخطط Claude `"hooks"`-wrapper معياري (الكتابات محفوظة بحيث مفاتيح ملف الإعدادات الأخرى — `org_id`، `theme_mode`، … — تبقى)، أسماء أحداث بالفعل PascalCase (لا خريطة أحداث، لا فرع معالج)، و payload stdin Claude snake_case (لا تطبيع). فرع `devin` المُقيِّم يرفع مع JSON `{"decision":"block","reason"}` على stdout في خروج 0 لـ **كل** حدث (تحقق — أسقط الكتلة على `--permission-mode dangerous`)؛ على حدث turn-end `Stop` السبب يحمل وصياغة MANDATORY-ACTION إعادة القوة لذا مدمجات `require-*-before-stop` تفرض. فقط أسماء الأدوات مُعادة عبر `DEVIN_TOOL_MAP` (`exec→Bash`؛ `tool_input.command` بالفعل canonical). Devin أيضاً مصدر تدقيق **غير محترق** — لوحة المعلومات تقرأ جلسات SQLite في `~/.local/share/devin/cli/sessions.db` (كل صف `sessions` يحمل `working_directory` حقيقي، لذا جلسات المجموعة حسب مشروع cwd مثل Claude).
-  - **Antigravity CLI (`agy`)**: `~/.gemini/config/hooks.json` (مستخدم)، `<cwd>/.agents/hooks.json` (مشروع) — Antigravity لا يوجد لديه نطاق محلي. بخلاف Factory/Devin، Antigravity لديها عقدها **الخاص بها** (ليس مستنسخ Claude)، تحقق مباشر ضد agy v1.1.2. `hooks.json` يستخدم مخطط **named-hook**: المفتاح ذو المستوى الأعلى هو حمل *اسم* (`"failproofai"`) قيمته حدث→ خريطة معالجات — أحداث الأدوات (`PreToolUse`/`PostToolUse`) تلف معالجات في `{matcher:"*", hooks:[…]}`، بينما `PreInvocation`/`Stop` هي **مسطحة** مصفوفات معالج (الخطافات المسماة الأخرى محفوظة). payload stdin هو **camelCase protojson** (`toolCall:{name,args}`، `conversationId`، `workspacePaths`، `transcriptPath`) — failproofai يطبعه إلى snake_case قبل تشغيل السياسات، ويعيد أسماء PascalCase للأداة `run_command` (`CommandLine`/`Cwd`) عبر `ANTIGRAVITY_TOOL_INPUT_MAP`. فرع `antigravity` المُقيِّم يستخدم أشكال استجابة Antigravity **الخاصة بها**: `{decision:"deny", reason}` يحجب أداة/موجه (خروج 0)، `{decision:"continue", reason}` على turn-end `Stop` يعيد دخول الحلقة (لذا مدمجات `require-*-before-stop` تفرض)، و `{injectSteps:[{ephemeralMessage}]}` يحقن تعليمات على `PreInvocation` (→ `UserPromptSubmit`). أسماء الأدوات canonicalize عبر `ANTIGRAVITY_TOOL_MAP` (`run_command→Bash`، `view_file→Read`، …). Antigravity أيضاً مصدر تدقيق **غير محترق** — لوحة المعلومات تقرأ نصوص JSONL عادية في `~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` (مؤشر محادثة في `conversation_summaries.db`).
-  - **Goose (codename goose, Block)**: `~/.agents/plugins/failproofai/hooks/hooks.json` (مستخدم)، `<cwd>/.agents/plugins/failproofai/hooks/hooks.json` (مشروع) — Goose لا يوجد لديه نطاق محلي. الإنفاذ يستخدم نظام **خطافات** Goose، المواصفات **Open Plugins** عبر العامل: المثبِّت يترك فقط مجلد `failproofai` والمكتشفات Goose تلقائياً عند بدء التشغيل (تسجيل ذاتي في `~/.config/goose/config.yaml`). `hooks.json` يستخدم مخطط Open Plugins **مع** غلاف `"hooks"` ذو المستوى الأعلى، والمُطابق **يُحذف** على كل حدث — regex مسطح `"*"` غير صحيح يطابق لا شيء (تحقق مباشر ضد goose v1.43.0). أسماء الأحداث بالفعل PascalCase (لا خريطة أحداث)؛ payload stdin يستخدم `event`/`working_dir`، التي معالج يطبعها إلى `hook_event_name`/`cwd`. فرع `goose` المُقيِّم يرفع مع JSON `{"decision":"block","reason"}` على stdout في خروج 0، مشرف على حدث **`PreToolUse`** فقط (شحن في goose ≥ v1.37.0) — الذي يطلق للأداة shell **وداخل subagents مفوضة**، لذا يكون نقطة الرفع الوحيدة الكافية؛ أي خطأ خطاف آخر يفشل **مفتوح**. Goose لا يوجد لديه حدث **`Stop`**، لذا مدمجات `require-*-before-stop` لا تطبق (مثل Hermes). أسماء الأدوات canonicalize عبر `GOOSE_TOOL_MAP` (`shell→Bash`، `write→Write`، `todo__todo_write→TodoWrite`، …) ومفاتيح المسار عبر `GOOSE_TOOL_INPUT_MAP` (`path`/`source` → `file_path`). Goose أيضاً مصدر تدقيق **غير محترق** — لوحة المعلومات تقرأ جلسات SQLite في `~/.local/share/goose/sessions/sessions.db` (كل صف `sessions` يحمل `working_dir` حقيقي، لذا جلسات المجموعة حسب مشروع cwd مثل Devin؛ `--no-session` جلسات خدش يتم تصفيتها).
-- **`policies-config.json`** — تخبر failproofai بالسياسات المراد تقييمها وبأي معاملات (مشتركة عبر جميع agent CLIs)
+  - **OpenAI Codex**: `~/.codex/hooks.json` (مستخدم)، `<cwd>/.codex/hooks.json` (مشروع) — Codex لا يحتوي على نطاق `local`
+  - **GitHub Copilot CLI _(beta)_**: `~/.copilot/hooks/failproofai.json` (مستخدم)، `<cwd>/.github/hooks/failproofai.json` (مشروع) — لا يحتوي Copilot على نطاق `local`. إدخالات Hook تستخدم حقول أوامر Copilot المدفوعة بنظام التشغيل `bash`/`powershell` مع `timeoutSec`؛ يحمل الملف علامة `version: 1` على المستوى الأعلى. دعم Copilot CLI **بيتا** بينما نتحقق من مخطط سجل `events.jsonl` (الذي لا تحدده الوثائق العامة) مقابل المزيد من الجلسات الحقيقية. وضع عميل **VS Code Copilot Chat (معاينة)** يقرأ تكوينات hook من `.github/hooks/*.json`، `~/.copilot/hooks/*.json`، و `~/.claude/settings.json` (تحكمه إعدادات `chat.hookFilesLocations`) باستخدام نفس عقد Claude الشكلي `{hookSpecificOutput:{permissionDecision:"deny",…}}` — المسارات الدقيقة التي كتبتها بالفعل تكامل `copilot` و تكامل `claude` (`~/.claude/settings.json`)، لذا `failproofai policies --install --cli copilot` (أو `--cli claude`) **ينفذ بالفعل في وضع وكيل VS Code** بدون تكامل `vscode` منفصل مطلوب (تم التحقق الحي من سجلات اكتشاف VS Code).
+  - **Cursor Agent _(beta)_**: `~/.cursor/hooks.json` (مستخدم)، `<cwd>/.cursor/hooks.json` (مشروع) — لا يحتوي Cursor على نطاق `local`. إدخالات Hook تستخدم صيغة Claude الشكلية `{type, command, timeout}` (بدون تقسيم `bash`/`powershell`)، لكن مخزنة تحت مفاتيح الأحداث camelCase (`preToolUse`، `beforeSubmitPrompt`، ...) في مصفوفة مسطحة وفقًا لـ [hooks schema](https://cursor.com/docs/hooks) الخاص بـ Cursor؛ يحمل الملف علامة `version: 1` على المستوى الأعلى. المعالج يدون camelCase → PascalCase عبر `CURSOR_EVENT_MAP` لذا تطلق السياسات المدمجة الموجودة دون تغيير. دعم Cursor Agent **بيتا** بينما نتحقق من نص Cursor على الصيغة (غير محدد في الوثائق العامة) مقابل المزيد من التثبيتات الحقيقية.
+  - **OpenCode _(beta)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (مستخدم)، `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (مشروع) — لا يحتوي OpenCode على نطاق `local`. على عكس CLIs الخمسة الأخرى، لا يحتوي OpenCode على **نظام hooks خارجي الأوامر**: يحمل مكونات إضافية JS/TS في العملية مسجلة بشكل صريح عبر صفيف `plugin: []` في `opencode.json` (الاكتشاف التلقائي من `.opencode/plugins/` **ليس** كيفية تحميل المكونات الإضافية على opencode v1.14.33). التثبيت يسقط shim مكون إضافي صغير مُنشأ يطلق استدعاءات فرعية ثنائية failproofai ويترجم استجابة JSON الشكلية Claude الثنائية مرة أخرى إلى دلالات المكون الإضافي: `throw new Error()` لرفض حدث الأداة (يلغي استدعاء الأداة)، `client.session.prompt(...)` لـ instruct و **و** لـ `Stop` / `SubagentStop` رفض (يقدم سبب الرفض كرسالة المستخدم التالية — قناة إعادة المحاولة الوحيدة منذ `session.idle` عبارة عن إشعار فقط والرمي منها هو no-op)، و no-op للسماح. الـ shim يدون أسماء الأدوات (lowercase → PascalCase عبر `OPENCODE_TOOL_MAP`) ومفاتيح إدخال الأداة (camelCase → snake_case عبر `OPENCODE_TOOL_INPUT_MAP` لـ `Read` / `Write` / `Edit`، مثل `filePath` → `file_path`، `oldString` → `old_string`) قبل الإرسال الأمامي إلى البرنامج الثنائي، لذا تطلق builtins التحقق من المسار مثل `block-read-outside-cwd`، `block-env-files`، و `block-secrets-write` دون تغيير على استدعاءات أداة OpenCode. الجلسات تعيش في قاعدة بيانات SQLite لـ opencode في `~/.local/share/opencode/opencode.db`؛ عارض الجلسة في لوحة التحكم يقرأها عبر `opencode db --format json` و `opencode export <id>`. دعم OpenCode **بيتا** بينما نتحقق من السلوك عبر الإصدارات ومقابل جلسات حقيقية أخرى. راجع [OpenCode plugins docs](https://opencode.ai/docs/plugins/).
+  - **Pi _(beta)_**: `~/.pi/agent/settings.json` (مستخدم)، `<cwd>/.pi/settings.json` (مشروع) — لا يحتوي Pi على نطاق `local`. يحمل Pi حزم توسيع TypeScript عند البدء؛ ملف الإعدادات مصفوفة سلسلة مسطحة `{"packages": ["./relative/path", …]}`. يكتب failproofai إدخال مصفوفة packages واحد يشير إلى دليل `pi-extension/` المرفق. يشترك التوسيع داخليًا في أحداث Pi `tool_call` / `user_bash` / `input` / `session_start` وينفذ استدعاءات فرعية إلى `failproofai --hook <Event> --cli pi`؛ المعالج يدون underscore_lower_snake_case → PascalCase عبر `PI_EVENT_MAP` لذا تطلق السياسات المدمجة الموجودة دون تغيير. يتم أيضًا تدوين مفاتيح إدخال الأداة عبر `PI_TOOL_INPUT_MAP` (توصل Pi's Read / Write / Edit `path` بدلاً من `file_path`؛ تعيين المفتاح على المستوى الأعلى يسمح `block-env-files` و `block-secrets-write` بالإطلاق — `block-read-outside-cwd` كان لديه بالفعل fallback `path`). دعم Pi **بيتا** بينما تستقر Pi's extension API وتخطيط session-log.
+  - **Hermes (hermes-agent)**: `~/.hermes/config.yaml` (**نطاق المستخدم فقط** — لا يحتوي Hermes على تكوين project/local). Hermes **بوابة** Slack/Telegram، لذا ينقص تثبيت واحد استدعاءات الأدوات من كل منصة (Slack/Telegram/cli/cron) **و** الوكلاء الفرعيين الداخليين. إدخالات Hook هي زوج `{command, timeout}` (انتظار في **ثوان**) تحت خريطة `hooks:` مفتاح بأحداث Hermes snake_case (`pre_tool_call` / `post_tool_call` / `on_session_start` / `on_session_end` / `subagent_stop`)؛ المعالج يدون الأحداث عبر `HERMES_EVENT_MAP` وأسماء الأدوات عبر `HERMES_TOOL_MAP` لذا تطلق السياسات المدمجة دون تغيير. يتم تحرير التكوين عبر تجوال YAML `Document` الذي يحافظ على التعليقات بحيث تبقى الإعدادات الأخرى للمشغل، والتثبيت مجموعات `hooks_auto_accept: true` لذا تشغيل البوابة بدون رأس (بدون TTY) hooks دون موجه موافقة. المقيِّم ينبثق عقد Hermes الخاص `{"decision":"block","reason"}` stdout (يتجاهل Hermes أكواد الخروج). **القيود:** لا يحتوي Hermes على حدث `Stop` نهاية التحول، لذا builtins `require-*-before-stop` لم تطلق أبدًا لها (غير قابلة للتطبيق، ليست مكسورة)؛ تنحط `instruct` إلى allow-with-logged-note (بدون قناة سياق إضافية)؛ وإعادة تصحيح سر الإخراج (`sanitize-*`) لا تستطيع إعادة كتابة إخراج الأداة على عقد shell-hook. Hermes **هو أيضًا** مصدر **تدقيق** غير متصل — لوحة التحكم تقرأ جلسات البوابة الخاصة به مباشرة من `~/.hermes/state.db`.
+  - **OpenClaw (openclaw gateway)**: `~/.openclaw/openclaw.json` (**نطاق المستخدم فقط** — لا يحتوي OpenClaw على تكوين project/local). مثل Hermes، OpenClaw **بوابة** multi-channel ذاتية الاستضافة، لذا ينقص تثبيت واحد استدعاءات الأدوات من كل قناة والوكلاء الفرعيين الداخليين. ينفذ الإنفاذ عبر hooks **in-process** لـ OpenClaw (hooks القائمة على الملفات الداخلية هي ملاحظة فقط ولا يمكنها الحظر)، لذا — مثل OpenCode/Pi — يشحن failproofai دليل `openclaw-plugin/` ثابتًا ينفخ البرنامج الثنائي failproofai بشكل غير متزامن ويترجم الحكم. التثبيت يسجل دليل المكون الإضافي المشحون في `openclaw.json`'s `plugins.load.paths[]` ويمكنه تحت `plugins.entries.failproofai` (مع `hooks.allowConversationAccess: true`، مطلوب للأحداث الخطاف الخام). المقيِّم ينبثق حكم مسطح `{permission, reason}` والـ shim يعيِّنه إلى شكل الإرجاع الأصلي لكل hook: `before_tool_call → {block:true, blockReason}` (**PreToolUse**)، `before_agent_run → {outcome:"block", reason}` (**UserPromptSubmit**)، و `before_agent_finalize → {action:"revise", reason}` (**Stop** — بوابة turn-end حقيقية، لذا builtins `require-*-before-stop` **تنفذ** على OpenClaw، بخلاف Hermes). أحداث canonicalize وأسماء الأدوات binary-side عبر `OPENCLAW_EVENT_MAP` / `OPENCLAW_TOOL_MAP` (`exec→Bash`، `read→Read`، ...) لذا تطلق السياسات المدمجة دون تغيير؛ الـ shim يفشل مفتوح على أي spawn/parse/timeout خطأ. OpenClaw **هو أيضًا** مصدر **تدقيق** غير متصل — لوحة التحكم تقرأ جلسات JSONL الخاصة بها في `~/.openclaw/agents/<agentId>/sessions/<uuid>.jsonl`.
+  - **Factory Droid (`droid`)**: `~/.factory/hooks.json` (مستخدم)، `<cwd>/.factory/hooks.json` (مشروع) — لا يحتوي Factory على نطاق `local`. ينقل droid نظام hook خارجي الأوامر Claude-style، لكن مع دخلين يتم التحقق منهما حية مقابل droid v0.171.0: (1) أسماء الأحداث تعيش في **المستوى الأعلى** من `hooks.json` — هناك **لا يوجد wrapper `"hooks"`** (يرفضه droid)؛ أحداث الأداة (`PreToolUse`/`PostToolUse`) تحمل `"matcher": "*"`، أحداث غير أداة حذف منها. (2) الرفض مدفوع بـ hook **exit code 2 + stderr**، وليس قرار JSON — فرع البرنامج الثنائي `factory` في المقيِّم يعود خروج 2 لأحداث الأداة/موجه و `{decision:"block", reason}` فقط على حدث turn-end `Stop` (قناة إعادة محاولة droid الوحيدة). الأحداث بالفعل PascalCase (لا يوجد event map) و payload هو Claude snake_case؛ فقط أسماء الأدوات canonicalize عبر `FACTORY_TOOL_MAP` (`Execute→Bash`، `Create→Write`، `FetchUrl→WebFetch`، ...). Factory **هو أيضًا** مصدر **تدقيق** غير متصل — لوحة التحكم تقرأ جلسات JSONL على الصيغة في `~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl`.
+  - **Devin CLI (`devin`, Cognition)**: `~/.config/devin/config.json` (مستخدم)، `<cwd>/.devin/config.json` (مشروع) — لا يحتوي Devin على نطاق `local`. Devin **نسخة Claude نقية** تم التحقق الحي مقابل devin v3000.1.27: يستخدم مخطط Claude المعياري `"hooks"` wrapper (الكتابات هي merge-preserving بحيث يبقى مفاتيح الملف الآخر — `org_id`، `theme_mode`، ... — سليمة)، أسماء أحداث already-PascalCase (لا يوجد event map، لا يوجد فرع معالج)، و payload stdin الشكلي Claude snake_case (لا يوجد تطبيع). فرع البرنامج الثنائي `devin` في المقيِّم يرفض مع `{"decision":"block","reason"}` JSON على stdout في خروج 0 لـ **كل** حدث (تم التحقق — الكتلة تجاوزت `--permission-mode dangerous`); على حدث turn-end `Stop` السبب يحمل صيغة إعادة المحاولة الإجبارية الإلزامية بحيث builtins `require-*-before-stop` تنفذ. فقط أسماء الأدوات canonicalize عبر `DEVIN_TOOL_MAP` (`exec→Bash`؛ `tool_input.command` بالفعل قانوني). Devin **هو أيضًا** مصدر **تدقيق** غير متصل — لوحة التحكم تقرأ جلسات SQLite الخاصة بها في `~/.local/share/devin/cli/sessions.db` (كل صف `sessions` يحمل `working_directory` حقيقي، لذا تجميع الجلسات حسب project cwd مثل Claude).
+  - **Antigravity CLI (`agy`)**: `~/.gemini/config/hooks.json` (مستخدم)، `<cwd>/.agents/hooks.json` (مشروع) — لا يحتوي Antigravity على نطاق `local`. بخلاف Factory/Devin، Antigravity لديها **عقد خاص بها** (ليس نسخة Claude)، تم التحقق الحي مقابل agy v1.1.2. يستخدم `hooks.json` مخطط **named-hook**: المفتاح على المستوى الأعلى هو hook *name* (`"failproofai"`) قيمته خريطة حدث → معالجات — أحداث الأداة (`PreToolUse`/`PostToolUse`) تلتف معالجات في `{matcher:"*", hooks:[…]}`، بينما `PreInvocation`/`Stop` هي مصفوفات معالج **مسطحة** (hooks الأخرى المسماة يتم الاحتفاظ بها). payload stdin هو **camelCase protojson** (`toolCall:{name,args}`، `conversationId`، `workspacePaths`، `transcriptPath`) — يدون failproofai إلى snake_case قبل السياسات تشغيل، ويعيِّن وسائط PascalCase `run_command` (`CommandLine`/`Cwd`) عبر `ANTIGRAVITY_TOOL_INPUT_MAP`. فرع البرنامج الثنائي `antigravity` في المقيِّم يستخدم أشكال استجابة Antigravity **الخاصة به**: `{decision:"deny", reason}` كتل أداة/موجه (خروج 0)، `{decision:"continue", reason}` على حدث turn-end `Stop` تعاد إدخال الحلقة (بحيث builtins `require-*-before-stop` تنفذ)، و `{injectSteps:[{ephemeralMessage}]}` حقن تعليمات على `PreInvocation` (→ `UserPromptSubmit`). أسماء الأدوات canonicalize عبر `ANTIGRAVITY_TOOL_MAP` (`run_command→Bash`، `view_file→Read`، ...). Antigravity **هو أيضًا** مصدر **تدقيق** غير متصل — لوحة التحكم تقرأ نصوصها plain-JSONL في `~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` (فهرس conversation في `conversation_summaries.db`).
+  - **Goose (codename goose, Block)**: `~/.agents/plugins/failproofai/hooks/hooks.json` (مستخدم)، `<cwd>/.agents/plugins/failproofai/hooks/hooks.json` (مشروع) — لا يحتوي Goose على نطاق `local`. الإنفاذ يستخدم نظام **hooks** الخاص بـ Goose، مواصفة Open Plugins **عبر الوكلاء**: المثبِّت فقط يسقط دليل المكون الإضافي `failproofai` و Goose يكتشفه تلقائيًا عند البدء (تسجيل ذاتي في `~/.config/goose/config.yaml`). يستخدم `hooks.json` مخطط Open Plugins **مع** wrapper `"hooks"` على المستوى الأعلى، و matcher هو **محذوف** على كل حدث — `"*"` مجردة عبارة عن regex غير صالح لا يطابق أي شيء (تم التحقق الحي مقابل goose v1.43.0). أسماء الأحداث بالفعل PascalCase (لا يوجد event map)؛ payload stdin يستخدم `event`/`working_dir`، الذي يدون المعالج إلى `hook_event_name`/`cwd`. فرع البرنامج الثنائي `goose` في المقيِّم يرفض مع `{"decision":"block","reason"}` JSON على stdout في خروج 0، موقّر على حدث **`PreToolUse`** فقط (شحن في goose ≥ v1.37.0) — الذي يطلق لأداة shell **و داخل وكلاء فرعيين مفوضين**، لذا هو نقطة الرفض الكافي الوحيدة؛ أي خطأ hook آخر يفشل **مفتوح**. لا يحتوي Goose على حدث **`Stop`**، لذا builtins `require-*-before-stop` لا تنطبق (مثل Hermes). أسماء الأدوات canonicalize عبر `GOOSE_TOOL_MAP` (`shell→Bash`، `write→Write`، `todo__todo_write→TodoWrite`، ...) ومفاتيح المسار عبر `GOOSE_TOOL_INPUT_MAP` (`path`/`source` → `file_path`). Goose **هو أيضًا** مصدر **تدقيق** غير متصل — لوحة التحكم تقرأ جلسات SQLite الخاصة بها في `~/.local/share/goose/sessions/sessions.db` (كل صف `sessions` يحمل `working_dir` حقيقي، لذا تجميع الجلسات حسب project cwd مثل Devin؛ تصفية `--no-session` جريان scratch)
+- **`policies-config.json`** — يخبر failproofai أي السياسات يقيمها وبأي معاملات (مشترك عبر جميع CLIs الوكيل)
 
-مرر `--cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose` لاستهداف عامل معين (مفصول بمسافة أو مكرر لأي مجموعة فرعية):
+مرر `--cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose` لاستهداف وكيل محدد (مفصولة بمسافة أو مكررة لأي مجموعة جزئية):
 
 ```bash
 failproofai policies --install --cli codex --scope project
@@ -233,20 +231,38 @@ failproofai policies --install --cli goose --scope project
 failproofai policies --install --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose
 ```
 
-عندما يتم حذف `--cli`، يكتشف failproofai أي agent CLIs مثبتة (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw` / `which droid` / `which devin` / `which agy` / `which goose`):
+عندما يتم حذف `--cli`، يكتشف `failproofai` أي CLIs الوكيل مثبتة (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw` / `which droid` / `which devin` / `which agy` / `which goose`):
 
-- **تم اكتشاف CLI واحد** — تحديد تلقائي لهذا CLI بدون موجه.
-- **تم اكتشاف عدة CLIs** في محطة طرفية تفاعلية — يظهر موجه تحديد مفرد واحد محسوب إلى قسم `Detected (N)` (مع صف إجمالي `Install for all N detected` + كل CLI مكتشف على حدة) وقسم `Not installed (M) · install hooks ahead of time` يسرد كل CLI مدعوم غير مكتشف كخيار تثبيت forward (↑↓ للتحرك، Enter للتحديد، ^C للخروج). تدفق الإزالة يظهر فقط قسم Detected.
-- **تم اكتشاف عدة CLIs** في تشغيل non-interactive (CI، بدون TTY) — تثبيت لجميع CLIs المكتشفة بدون موجه.
-- **لم يتم اكتشاف أي منها** — fallback إلى `claude`، مع تحذير بأنه لم يتم العثور على ثنائي عامل في PATH؛ أمر الخطاف لا يزال مكتوب لذا يتم تنشيطه بمجرد تثبيت واحد.
+- **تم اكتشاف CLI واحد** — auto-selects هذا CLI بدون موجه.
+- **تم اكتشاف CLIs متعددة** في محطة طرفية تفاعلية — يظهر موجه اختيار واحد مفتاح السهم المجمع في قسم `Detected (N)` (مع صف إجمالي `Install for all N detected` + كل detected CLI على حدة) وقسم `Not installed (M) · install hooks ahead of time` يسرد كل CLI مدعوم غير مكتشف كخيار install مستقبلي (↑↓ للتحرك، Enter للاختيار، ^C للإنهاء). يظهر تدفق الإلغاء قسم Detected فقط.
+- **تم اكتشاف CLIs متعددة** في تشغيل غير تفاعلي (CI، بدون TTY) — تثبيت جميع detected CLIs بدون موجه.
+- **لم يتم اكتشاف أي منها** — ينسحب إلى `claude`، مع تحذير أنه لم يتم العثور على أي ثنائي وكيل في PATH؛ أمر hook لا يزال مكتوب لذا ينشط بمجرد ما تثبت واحد.
 
-يمكنك تحرير `policies-config.json` مباشرة في أي وقت؛ التغييرات تدخل حيز التنفيذ فوراً على حدث الخطاف التالي بدون الحاجة لإعادة تشغيل.
+يمكنك تعديل `policies-config.json` مباشرة في أي وقت؛ التغييرات تأخذ التأثير فوراً على حدث hook التالي بدون إعادة تشغيل مطلوبة.
+
+## الترقيات تحتفظ بإعداداتك
+
+قد تنظم نسخة جديدة من failproofai `~/.failproofai/` بشكل مختلف. عندما تفعل، الأمر الأول بعد الترقية ينقل المجلد، و **إعداداتك تُنقل، لا تُعاد تعيين**:
+
+| محتفظ بها | أعيد بناؤها |
+|---|---|
+| اختيار السياسة والمعاملات الخاصة بك (`policies-config.json`) | ذاكرة التدقيق |
+| إعداداتك، بما في ذلك `daemon.configured` ومسارات الالتقاط الإضافية (`config.json`) | نشرات السياسات المُدارة من السحابة — إعادة جلب والتحقق من الهضم على التصويت التالي |
+| تسجيل السحابة الخاص بك (`credentials.json`) | حالة خدش Daemon |
+| ملفات السياسة الخاصة بك في `policies/`، والمساعدين التي تستوردها | |
+| سجل القرار الذي تقرأه لوحة التحكم، والأحداث التي لم تُسلّم بعد | |
+
+المفاتيح المكتوبة بواسطة failproofai **الأحدث** يتم الاحتفاظ بها أيضًا، بدلاً من إسقاطها بواسطة قارئ أقدم — بحيث الانتقال بين الإصدارات لا يسقط بصمت الإعدادات في أي اتجاه.
+
+أنت **لا تحتاج** لإعادة تشغيل setup بعد ذلك: جهاز مهاجر ينفذ بالضبط كما كان من قبل، وهو ما يجعل ترقية آمنة على الآلات بدون أحد جالس عليها. يتم تسجيل كل هجرة في `~/.failproofai/migrations/applied.json`، و ملفات لا غنى عنها تُنسخ إلى `~/.failproofai/migrations/backup-layout<n>/` قبل أي شيء يشغل.
+
+راجع [`failproofai update`](/ar/cli/update) للترقية بخط واحد، و [`failproofai migrate`](/ar/cli/migrate) — بما فيها `--dry-run` — للتفاصيل.
 
 ---
 
-## مثال: إعدادات على مستوى المشروع مع إعدادات افتراضية الفريق
+## مثال: تكوين مستوى مشروع مع قيم افتراضية الفريق
 
-التزم `.failproofai/policies-config.json` إلى مستودعك:
+التزم `.failproofai/policies-config.json` لمستودعك:
 
 ```json
 {
@@ -265,4 +281,4 @@ failproofai policies --install --cli claude codex copilot cursor opencode pi her
 }
 ```
 
-يمكن لكل مطور بعد ذلك إنشاء `.failproofai/policies-config.local.json` (مُستثناة من git) لتجاوزات شخصية بدون التأثير على زملائهم.
+يمكن لكل مطور بعد ذلك إنشاء `.failproofai/policies-config.local.json` (gitignored) لتجاوزات شخصية دون التأثير على زملائهم.

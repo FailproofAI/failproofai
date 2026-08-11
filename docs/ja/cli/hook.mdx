@@ -1,30 +1,30 @@
 ---
 title: フックハンドラー（内部）
-description: "各ツールイベントで Claude Code が呼び出すサブプロセス"
+description: "各ツールイベント時に Claude Code が呼び出すサブプロセス"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-これは `failproofai policies --install` によって Claude Code の `settings.json` に登録されるコマンドです。通常、直接呼び出す必要はありません。
+これは `failproofai policies --install` によって Claude Code の `settings.json` に登録されるコマンドです。通常、直接呼び出すことはありません。
 
-stdin から JSON ペイロードを読み込み、有効なすべてのポリシーを評価し、判定結果を示す終了コードで終了します：
+stdin から JSON ペイロードを読み取り、有効なすべてのポリシーを評価し、判定結果を示す終了コードで終了します。
 
 | 終了コード | 判定 | 効果 |
 |-----------|----------|--------|
 | `0` | `allow` | アクションを許可する |
-| `1` | `deny` | アクションをブロックする — Claude は拒否理由を受け取る |
+| `1` | `deny` | アクションをブロックする — Claude には拒否理由が通知される |
 | `2` | `instruct` | Claude のコンテキストにガイダンスを注入する |
 
-### サポートされているイベントタイプ
+### サポートされるイベントタイプ
 
 | カテゴリ | イベント |
 |----------|--------|
 | **ツール実行** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **セッションライフサイクル** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **ユーザーインタラクション** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
-| **サブエージェント & タスク** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
+| **サブエージェント＆タスク** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **設定** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
 | **ファイルシステム** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
 | **コンテキスト** | `PreCompact`, `PostCompact` |

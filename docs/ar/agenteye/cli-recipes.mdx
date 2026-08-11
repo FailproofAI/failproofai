@@ -1,29 +1,29 @@
 ---
-title: "وصفات سطر الأوامر للوكلاء"
-description: "انسخ والصق أنماط الاستعلام ووصفات jq التي تحول بيانات الجلسة والأحداث والتقييم إلى شيء يمكن لسكريبت أو وكيل ترميز أن يؤتمتنه."
+title: "وصفات سطر الأوامر للعملاء الذكيين"
+description: "انسخ والصق أنماط الاستعلام ووصفات jq التي تحول بيانات الجلسات والأحداث والتقييمات إلى شيء يمكن لسكريبت أو عامل ترميز أن يقوم بأتمتته."
 ---
 
-اسحب بيانات الجلسة والأحداث والتقييم (وشغل إعادة التقييمات) مباشرة من سكريبت أو وكيل ترميز، مع JSON نظيف على stdout يتم توجيهه مباشرة إلى `jq`. هذه الوصفات تحول بيانات Failproof AI Observability إلى شيء يمكن لمستخدم المحطة الطرفية أو وكيل ترميز AI (Claude Code، Cursor) أن يستعلم عنه ويؤتمتنه، دون النقر عبر لوحة المعلومات.
+اسحب بيانات الجلسات والأحداث والتقييمات (وشغّل إعادة التقييمات) مباشرة من سكريبت أو عامل ترميز، مع JSON نظيف على stdout يتدفق مباشرة إلى `jq`. تحول هذه الوصفات بيانات Failproof AI Observability إلى شيء يمكن لمستخدم طرفية أو عامل ترميز ذكي (Claude Code، Cursor) أن يستعلم عنه ويقوم بأتمتته، دون الحاجة للنقر عبر لوحة التحكم.
 
-الأنماط أدناه جاهزة للنسخ واللصق في سطر أوامر Failproof AI Observability (`agenteye`). للتثبيت والمصادقة وقائمة الخيارات الكاملة، انظر [CLI](/ar/agenteye/cli)؛ شغّل `agenteye -h` أو `agenteye <command> -h` للحصول على المساعدة المدمجة.
+الأنماط أدناه جاهزة للنسخ واللصق لسطر أوامر Failproof AI Observability (`agenteye`). للتثبيت والمصادقة والقائمة الكاملة للخيارات، راجع [CLI](/ar/agenteye/cli)؛ شغّل `agenteye -h` أو `agenteye <command> -h` للمساعدة المدمجة.
 
 ## القواعد الذهبية
 
-1. **الخيارات العامة تأتي *قبل* الأمر.** `agenteye --json sessions` صحيح؛ `agenteye sessions --json` غير صحيح. الخيارات العامة هي `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`.
-2. **مرّر `--json` كلما قمت بتحليل المخرجات.** البيانات تذهب إلى **stdout** كـ JSON؛ حالة المستخدم والأخطاء تذهب إلى **stderr**، لذلك يبقى stdout نظيفاً للتوجيه إلى `jq`.
-3. **تفرع بناءً على رمز الخروج**، وليس على نص stderr: `0` موافق · `1` خطأ غير متوقع · `2` وسائط سيئة · `3` لا يمكن الوصول إلى لوحة المعلومات · `4` غير مسجل دخول أو انتهت صلاحية الجلسة · `5` إذن مفقود · `6` المورد غير موجود.
-4. **اكتشف باستخدام `-h`.** كل أمر يوثق عوامل التصفية وصيغ القيم وشكل JSON.
+1. **الخيارات العامة تأتي *قبل* الأمر.** `agenteye --json sessions` صحيح؛ `agenteye sessions --json` خاطئ. الخيارات العامة هي `--json`، `--base-url`، `--org`، `--token`، `--insecure`/`--secure`، `--timeout`، `--quiet`، `--no-color`.
+2. **مرر `--json` كلما قمت بتحليل الإخراج.** البيانات تذهب إلى **stdout** كـ JSON؛ حالة الإنسان والأخطاء تذهب إلى **stderr**، لذا يبقى stdout نظيفًا للأنابيب إلى `jq`.
+3. **افرع بناءً على رمز الخروج**، وليس نص stderr: `0` موافق · `1` خطأ غير متوقع · `2` حجج سيئة · `3` لا يمكن الوصول إلى لوحة التحكم · `4` لم تقم بتسجيل الدخول أو انتهت الجلسة · `5` صلاحية مفقودة · `6` المورد غير موجود.
+4. **اكتشف باستخدام `-h`.** كل أمر يوثق مرشحاته وصيغ القيم وشكل JSON.
 
 ## إعداد لمرة واحدة
 
 ```bash
-export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # كي لا تكرر --base-url
-agenteye login --email you@example.com                       # الصق الرمز المرسل بالبريد؛ صالح ~24 ساعة
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # حتى لا تكرر --base-url
+agenteye login --email you@example.com                       # الصق الكود المُرسل بالبريد الإلكتروني؛ صالح ~24 ساعة
 ```
 
-## تأكد المصادقة قبل القيام بالعمل
+## تأكد من المصادقة قبل القيام بالعمل
 
-`whoami` لا يخطئ على جلسة مفقودة أو منتهية الصلاحية؛ بدلاً من ذلك، يبلغ `logged_in:false`، لذا يمكن لوكيل أن يختبر حالة المصادقة بأمان. (قد يزال يخرج بقيمة غير صفرية إذا لم يتم تعيين عنوان URL أساسي أو كانت لوحة المعلومات غير قابلة للوصول.)
+`whoami` لا يرجع أخطاء على جلسة مفقودة أو منتهية الصلاحية؛ بدلاً من ذلك يُبلغ عن `logged_in:false`، لذا يمكن للعامل أن يفحص حالة المصادقة بأمان. (يمكنه أيضًا أن يخرج برمز غير صفري إذا لم يتم تعيين عنوان URL أساسي أو كانت لوحة التحكم غير قابلة للوصول.)
 
 ```bash
 if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
@@ -34,51 +34,51 @@ fi
 ## ابحث عن الجلسات الفاشلة أو منخفضة التصنيف
 
 ```bash
-# الجلسات في آخر 24 ساعة التي حدث فيها خطأ في التقييم
+# جلسات في آخر 24 ساعة حدث خطأ في تقييمها
 agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
 
-# التقييمات التي تسجل <= 0.5 في المساعدة، لوكيل واحد
+# التقييمات التي تسجل <= 0.5 على المساعدة، لعامل واحد
 agenteye --json evals --agent-id checkout-bot --score helpfulness:..0.5 \
   | jq '.evaluations[] | {session_id, scores}'
 ```
 
-تصفية التصنيف موجودة على **`evals`**، وليس `sessions`. `--score KEY:MIN..MAX` قابل للتكرار ويتم دمجه بـ AND؛ أي حد اختياري (`..0.5` يعني ≤ 0.5، `0.9..` يعني ≥ 0.9). يمكنك تمرير ما يصل إلى 20 مرشح تصنيف لكل طلب؛ المزيد يعيد HTTP 400. `sessions` يشارك مرشحات `--env`, `--status`, `--agent-id`, `--session-id`، ونطاق الوقت مع `evals`، لكنه لا يحتوي على `--score`.
+يعيش تصفية النقاط على **`evals`**، وليس `sessions`. `--score KEY:MIN..MAX` قابل للتكرار ومدمج بـ AND؛ أي حد اختياري (`..0.5` يعني ≤ 0.5، `0.9..` يعني ≥ 0.9). يمكنك تمرير ما يصل إلى 20 مرشح نقاط لكل طلب؛ أكثر من ذلك يرجع HTTP 400. يشارك `sessions` مرشحات `--env`، `--status`، `--agent-id`، `--session-id`، ونطاق الوقت مع `evals`، لكنه لا يحتوي على `--score`.
 
 ## اقرأ جلسة واحدة من البداية إلى النهاية
 
-لا يوجد أمر `session show` واحد. اجمع بين مسار الأحداث والتقييم الخاص بالجلسة:
+لا توجد أمر واحد `session show`. ادمج مسار الأحداث مع تقييم الجلسة:
 
 ```bash
-# آخر تقييم للجلسة (الحالة + التصنيفات)
+# أحدث تقييم للجلسة (الحالة + النقاط)
 agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scores}'
 
-# كل حدث في التشغيل (رفع --limit للمسح الكامل)
+# كل حدث في المشغل (رفع --limit للمسح الكامل)
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
 
-# فقط استدعاءات الأداة في جلسة (--full مطلوب للحصول على الحمل الخام)
+# فقط استدعاءات الأدوات في جلسة (--full مطلوب للحصول على payload الخام)
 agenteye --json events --full --session-id run-001 --event-type tool_use,tool_result --all \
   | jq '.events[].payload'
 ```
 
-> **ملاحظة:** بشكل افتراضي، `events` يقرأ موجز سريع بدون حمول. يحمل كل حدث `summary` محسوب على الخادم من سطر واحد بالإضافة إلى علامات مثل `is_error` وعدد الرموز، لكن `payload` يعود كـ `{}`. لسحب الحمل الخام، أضف `--full` (أو `--fields payload`). الموجز الكامل أبطأ بحجم كبير، لذا اجعله محدوداً: اجمع `--full` مع `--session-id` واحد.
+> **ملاحظة:** بشكل افتراضي، يقرأ `events` موجز سريع خالي من payload. كل حدث يحمل ملخص محسوب من الخادم بسطر واحد `summary` بالإضافة إلى أعلام مثل `is_error` وحسابات الرموز، لكن `payload` يعود كـ `{}`. لسحب payload الخام، أضف `--full` (أو `--fields payload`). موجز الكمال أبطأ في الحجم، لذا اجعله محدودًا: ادمج `--full` مع `--session-id` واحد.
 
-## جلب كل شيء (الترقيم)
+## اسحب كل شيء (الترقيم)
 
-النتائج هي الأحدث أولاً والمُرقمة بالمؤشر.
+النتائج الأحدث أولاً وقائمة على المؤشر.
 
 ```bash
-# دفعة واحدة: جلب ما يصل إلى 500 صف في صفحات 200 صف
+# لقطة واحدة: اسحب ما يصل إلى 500 صف في صفحات 200 صف
 agenteye --json events --session-id run-001 --limit 500 --all > events.json
 
-# الترقيم اليدوي: مرّر next_cursor مرة أخرى
+# ترقيم يدوي: غذي next_cursor مرة أخرى
 page=$(agenteye --json events --limit 100)
 cursor=$(echo "$page" | jq -r '.next_cursor // empty')
 [ -n "$cursor" ] && agenteye --json events --limit 100 --cursor "$cursor"
 ```
 
-## قلل المخرجات باستخدام --fields
+## نحّف الإخراج باستخدام --fields
 
-قصر المفاتيح (في الجدول و`--json`) لتقليل ما يجب على الوكيل قراءته.
+قيّد المفاتيح (في كل من الجدول و`--json`) لتقليل ما يجب على العامل قراءته.
 
 ```bash
 agenteye --json sessions --since 7d --fields session_id,status,scores | jq -c '.sessions[]'
@@ -87,42 +87,42 @@ agenteye --json events --session-id run-001 --fields ts,event_type --all
 
 أسماء الحقول غير المعروفة يتم رفضها (خروج `2`) مع القائمة الصحيحة، وهي طريقة رخيصة لاكتشاف أسماء الحقول.
 
-## اكتشف قيم المرشحات الصحيحة
+## اكتشف قيم المرشح الصحيحة
 
 ```bash
 agenteye --json list envs | jq -r '.values[]'           # قيم --env
-agenteye --json list tools | jq -r '.values[]'          # أسماء الأدوات؛ أيضاً وكلاء وموديلات وأنواع أحداث وغيرها
-agenteye --json list score_filters | jq -r '.values[]'  # KEY صحيح لـ --score KEY:MIN..MAX
+agenteye --json list tools | jq -r '.values[]'          # أسماء الأدوات؛ أيضًا agents و models و event_types وغيرها
+agenteye --json list score_filters | jq -r '.values[]'  # KEY الصحيح لـ --score KEY:MIN..MAX
 ```
 
-## اختر المنظمة الخاصة بك (الإيجار المتعدد)
+## اختر منظمتك (متعدد المستأجرين)
 
 إذا كنت تنتمي إلى أكثر من منظمة واحدة، اختر المستأجر النشط عند تسجيل الدخول (يتم حفظه):
 
 ```bash
-agenteye login --org acme --email you@corp.com   # عيّن المستأجر في نفس خطوة تسجيل الدخول
+agenteye login --org acme --email you@corp.com   # اضبط المستأجر في نفس خطوة تسجيل الدخول
 agenteye --json orgs list | jq -r '.orgs[].org_slug'
-agenteye --org globex --json sessions --since 24h   # اسحب لأمر واحد
+agenteye --org globex --json sessions --since 24h   # تجاوز لأمر واحد
 ```
 
-تسجيل دخول متعدد المنظمات بدون `--org` ينتج عنه خروج غير صفري ويطبع المنظمات للاختيار من بينها.
+تسجيل دخول متعدد المنظمات بدون `--org` يخرج برمز غير صفري ويطبع المنظمات للاختيار منها.
 
-## توفير مفتاح API لـ SDK/المجمع
+## مفتاح API للـ SDK/collector
 
 ```bash
-# السر يطبع مرة واحدة فقط، مع --json إنه حقل .key
+# يتم طباعة السر مرة واحدة، مع --json إنه حقل .key
 key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
-agenteye keys regenerate ci-bot --yes    # التدوير؛ agenteye keys disable ci-bot --yes للإلغاء
+agenteye keys regenerate ci-bot --yes    # دوّر؛ agenteye keys disable ci-bot --yes للإلغاء
 ```
 
-## شغّل استعلام محفوظ أو مخصص
+## شغّل استعلامًا محفوظًا أو حسب الطلب
 
 ```bash
 agenteye --json query run --sql "select count(*) from analytics.events" | jq '.rows'
-agenteye --json query run errs --arg prod | jq '.rows'   # استعلام محفوظ + وسيط موضعي $1
+agenteye --json query run errs --arg prod | jq '.rows'   # استعلام محفوظ + موضعي $1
 ```
 
-## فرز الحادثة بشكل غير تفاعلي
+## تصنيف حادثة بدون تفاعل
 
 ```bash
 id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
@@ -131,7 +131,7 @@ agenteye incidents assign "$id" --assignee you@corp.com
 agenteye incidents resolve "$id" --yes
 ```
 
-> **ملاحظة:** الطفرات تتخطى تلقائياً موجز التأكيد الخاص بها تحت `--json` أو عندما لا يكون stdin TTY، لذلك الوكلاء لا ينتظرون؛ مرّر `--yes`/`-y` للتخطي صراحة في مكان آخر.
+> **ملاحظة:** التحويرات تتخطى تلقائيًا موجز التأكيد الخاص بها تحت `--json` أو عندما لا يكون stdin TTY، لذا لن يتعلق العملاء؛ مرر `--yes`/`-y` لتخطيه بشكل صريح في مكان آخر.
 
 ## معالجة رمز الخروج في سكريبت
 
@@ -146,7 +146,7 @@ case "${code:-0}" in
 esac
 ```
 
-## أشكال مخرجات JSON
+## أشكال إخراج JSON
 
 | الأمر | stdout JSON (مع `--json`) |
 |---|---|
@@ -161,18 +161,18 @@ esac
 | `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
 | `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
 | `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
-| إنشاء/تحديث/حذف (أي) | كائن المورد، أو `{"deleted": true, "id"}` للحذف |
+| create/update/delete (أي) | كائن المورد، أو `{"deleted": true, "id"}` للحذف |
 | فشل (أي، مع `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` على stdout |
 
-- كل عنصر **الحدث** (`events`): `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`. لاحظ أن `payload` هو `{}` إلا إذا طلبت الموجز الكامل مع `--full` (أو `--fields payload`).
-- كل عنصر **التقييم** (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`.
-- كل عنصر **الجلسة** (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`.
+- كل عنصر **event** (`events`): `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`. لاحظ أن `payload` هو `{}` إلا إذا طلبت موجز الكمال مع `--full` (أو `--fields payload`).
+- كل عنصر **evaluation** (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`.
+- كل عنصر **session** (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`.
 
-كل أمر `--fields` يقبل أسماء الحقول الخاصة به بالضبط. تختلف المجموعة بين `sessions` و`evals`، لذا قد يتم رفض الاسم الصالح لأحدهما من قبل الآخر.
+يقبل كل أمر `--fields` بالضبط أسماء حقول عنصره الخاص. تختلف المجموعة بين `sessions` و `evals`، لذا قد يكون الاسم الصحيح لأحدهما مرفوضًا من الآخر.
 
 ## الخطوات التالية
 
-- [CLI](/ar/agenteye/cli): التثبيت والمصادقة ومرجع الخيارات الكامل لكل أمر.
-- [CLI agent skill](/ar/agenteye/cli-skill): احزم هذه الوصفات كمهارة يمكن لوكيل الترميز الخاص بك تحميلها.
-- [مفاتيح API](/ar/agenteye/api-keys): أنشئ وحدد نطاق المفاتيح التي يستخدمها CLI و SDK والمجمع للمصادقة.
-- [Python SDK](/ar/agenteye/python-sdk): أرسل الأحداث إلى Failproof AI Observability بحيث يكون هناك بيانات لهذه الوصفات للاستعلام عنها.
+- [CLI](/ar/agenteye/cli): التثبيت والمصادقة والمرجع الكامل للخيارات لكل أمر.
+- [مهارة عامل CLI](/ar/agenteye/cli-skill): احزم هذه الوصفات كمهارة يمكن لعامل الترميز الخاص بك تحميلها.
+- [مفاتيح API](/ar/agenteye/api-keys): أنشئ ومجال المفاتيح التي يتحقق معها CLI و SDK و collector.
+- [Python SDK](/ar/agenteye/python-sdk): أرسل الأحداث إلى Failproof AI Observability بحيث تكون هناك بيانات لهذه الوصفات للاستعلام عنها.

@@ -1,131 +1,135 @@
 ---
 title: "Failproof AI Observability Python SDK Agent Skill"
-description: "Go from an uninstrumented agent to events you can see, with your coding agent finding the instrumentation points, writing them, and proving they landed."
+description: "Từ một agent chưa được chỉ định đến các sự kiện bạn có thể nhìn thấy, với agent mã của bạn tìm thấy các điểm chỉ định, viết chúng và chứng minh chúng đã được đặt."
 ---
 
-Hãy bảo công cụ code agent của bạn *"add Failproof AI Observability to this agent"* và để nó đọc vòng lặp của bạn, tìm ra nơi cần thêm instrumentation, viết nó, và xác minh các sự kiện trước khi hoàn thành công việc.
+Hãy nói với agent mã của bạn *"thêm Failproof AI Observability vào agent này"* và để nó đọc vòng lặp của bạn, xác định vị trí chỉ định phù hợp, viết chúng và xác minh các sự kiện trước khi hoàn thành công việc.
 
-**Python SDK skill** (`agenteye-python-sdk`) là một *Agent Skill*: một thư mục chứa hướng dẫn mà công cụ code agent như Claude Code hoặc Codex tải theo yêu cầu khi một tác vụ phù hợp với nó. Nó dạy agent cách sử dụng [Python SDK](/vi/agenteye/python-sdk) — nó không phải là một thư viện, và nó không thay đổi bất cứ điều gì về cách SDK hoạt động.
+**Kỹ năng Python SDK** (`agenteye-python-sdk`) là một *Agent Skill*: một thư mục chứa các hướng dẫn mà một agent mã như Claude Code hoặc Codex tải theo yêu cầu khi một tác vụ phù hợp với nó. Nó hướng dẫn agent sử dụng [Python SDK](/vi/agenteye/python-sdk) — nó không phải là một thư viện và không thay đổi bất cứ điều gì về cách SDK hoạt động.
 
-## Instrumentation dễ viết nhưng dễ sai một cách câm lặng
+## Chỉ định rất dễ viết nhưng cũng rất dễ viết sai một cách âm thầm
 
-SDK rất nhỏ: mười ba phương thức sự kiện, tất cả đều chỉ nhận tham số theo từ khóa. Công cụ code agent có thể đọc tài liệu tham khảo [Python SDK](/vi/agenteye/python-sdk) và tạo ra instrumentation hợp lý trong một phút.
+SDK rất nhỏ: mười ba phương thức sự kiện, tất cả chỉ nhận từ khóa. Một agent mã có thể đọc tài liệu tham khảo [Python SDK](/vi/agenteye/python-sdk) và tạo ra chỉ định hợp lý trong một phút.
 
-Vấn đề là SDK này không phát sinh lỗi khi bạn làm sai, và instrumentation sai trông giống hệt như instrumentation đúng cho đến khi ai đó mở bảng điều khiển và thấy nó trống rỗng. Những lỗi tốn thời gian thực tế đều là những im lặng:
+Vấn đề là SDK này không phát sinh khi bạn làm sai, và chỉ định sai trông giống hệt như chỉ định đúng cho đến khi ai đó mở bảng điều khiển và thấy nó trống rỗng. Những lỗi tiêu tốn thời gian thực tế đều là những im lặng:
 
-| Lỗi | Bạn thấy gì |
+| Lỗi | Những gì bạn thấy |
 |---|---|
-| Không có `agent_start` | Mọi sự kiện được ghi nhận. Không có phiên làm việc. |
-| Môi trường không bao giờ được thiết lập | Mọi thứ hoạt động, được lưu dưới `dev`. |
-| `outcome="failure"` | Quá trình chạy hiển thị xanh — chỉ `failed`, `error`, `timeout`, `rejected` mới được tính. |
-| Tên trường bị gõ sai | Được chấp nhận và lưu trữ như một trường mới. |
-| Sự kiện phát ra từ thread pool | Bị loại bỏ âm thầm. |
+| Không có `agent_start` | Mọi sự kiện đều được ghi nhận. Không có session nào. |
+| Environment không bao giờ được đặt | Mọi thứ đều hoạt động, được phân loại dưới `dev`. |
+| `outcome="failure"` | Lần chạy hiển thị xanh — chỉ `failed`, `error`, `timeout`, `rejected` mới được tính. |
+| Tên trường bị viết sai | Được chấp nhận và lưu trữ dưới dạng trường mới. |
+| Sự kiện phát ra từ một thread pool | Bị loại bỏ âm thầm. |
 
-Không có cái nào trong số này phát sinh lỗi. Không cái nào hiển thị trong các bài kiểm tra. Mỗi cái đều nằm trong skill, được nêu ra như một hợp đồng với kiểm tra phát hiện nó.
+Không cái nào trong những cái này phát sinh. Không cái nào hiển thị trong các bài kiểm tra. Mỗi cái đều nằm trong kỹ năng, được nêu ra như một hợp đồng với kiểm tra bắt được nó.
 
 ## Nó làm gì, theo thứ tự
 
-Skill chạy ba bước giống như một kỹ sư cẩn thận sẽ làm:
+Kỹ năng chạy ba bước giống như một kỹ sư cẩn thận sẽ làm:
 
-1. **Lập kế hoạch.** Nó đọc vòng lặp agent của bạn và đặt hai câu hỏi chỉ bạn mới trả lời được: cái gì được coi là một lần chạy (của bạn `session_id`), và những tác nhân nào khác biệt (của bạn `agent_id`). Nó đạt được sự đồng ý trước khi viết mã, vì thay đổi chúng sau này sẽ chia tách lịch sử của bạn và phá vỡ xu hướng.
-2. **Viết.** Nó liên kết danh tính một lần mỗi lần chạy thay vì chuyển nó qua mỗi call site, và nó chọn một hình dạng an toàn đồng thời — một chi tiết quan trọng, vì cách tắt hiển nhiên sẽ âm thầm trộn hai lần chạy chồng chéo thành một phiên.
-3. **Xác minh.** Nó chạy agent của bạn và đọc các tệp sự kiện kết quả, kiểm tra xem `agent_start` có hiện diện, môi trường có đúng, và một lần chạy có tạo một phiên.
+1. **Lập kế hoạch.** Nó đọc vòng lặp agent của bạn và đặt hai câu hỏi mà chỉ bạn mới có thể trả lời: điều gì được tính là một lần chạy (của bạn `session_id`), và những tác nhân có thể phân biệt được là những gì (của bạn `agent_id`). Nó nhận được sự đồng ý trước khi viết mã, vì thay đổi chúng sau sẽ chia nhỏ lịch sử của bạn và phá vỡ xu hướng.
+2. **Viết.** Nó liên kết danh tính một lần cho mỗi lần chạy thay vì luồng nó qua mọi vị trí gọi, và nó chọn một hình dạng an toàn từ góc độ đồng thời — một chi tiết quan trọng, vì cách tắt rõ ràng sẽ yên tĩnh hỗn hợp hai lần chạy trùng lặp vào một session.
+3. **Xác minh.** Nó chạy agent của bạn và đọc các tệp sự kiện kết quả, kiểm tra xem `agent_start` có hiện diện không, môi trường có đúng không, và một lần chạy có tạo ra một session không.
 
-Bước thứ ba là bước mà mọi người bỏ qua. SDK viết các sự kiện vào tệp cục bộ, vì vậy một sự tích hợp hoàn chỉnh có thể được chứng minh trên máy tính xách tay mà không cần máy chủ, không cần khóa API, và không cần mạng — chính vì thế skill nhất định phải thực hiện nó.
+Bước thứ ba là bước mà mọi người bỏ qua. SDK viết các sự kiện vào các tệp cục bộ, vì vậy một tích hợp hoàn chỉnh có thể được chứng minh trên một máy tính xách tay mà không cần máy chủ, không cần khóa API và không cần mạng — đó chính xác là lý do tại sao kỹ năng này sử dụng nó.
 
-## Nó liên quan như thế nào với các skill khác
+## Nó liên quan đến các kỹ năng khác như thế nào
 
-Ba skill, một phân chia sạch sẽ:
+Ba kỹ năng, một phân chia rõ ràng:
 
-| Skill | Sử dụng khi | Nó chạm vào cái gì |
+| Kỹ năng | Sử dụng nó khi | Nó chạm đến cái gì |
 |---|---|---|
-| **Python SDK skill** (trang này) | Bạn muốn agent của bạn *phát ra* telemetry — "add observability", "tại sao agent của tôi không hiện lên?" | Viết mã trong repo của agent. Không đọc gì cả. |
-| **[Evaluator skill](/vi/agenteye/evaluator-skill)** | Bạn muốn *đánh điểm* các lần chạy — "chúng ta nên đo lường cái gì?" | Viết mã trong repo của bạn; đọc telemetry |
-| **[CLI skill](/vi/agenteye/cli-skill)** | Bạn muốn *đọc* những gì đã xảy ra, hoặc vận hành deployment | Điều khiển CLI như bạn, bao gồm các thay đổi |
+| **Python SDK skill** (trang này) | Bạn muốn agent của bạn *phát ra* telemetry — "thêm khả năng quan sát", "tại sao agent của tôi không hiển thị?" | Viết mã trong repo của agent của bạn. Không đọc gì. |
+| **[Evaluator skill](/vi/agenteye/evaluator-skill)** | Bạn muốn *ghi điểm* các lần chạy — "chúng ta thậm chí nên đo lường cái gì?" | Viết mã trong repo của bạn; đọc telemetry |
+| **[CLI skill](/vi/agenteye/cli-skill)** | Bạn muốn *đọc* những gì đã xảy ra hoặc vận hành triển khai của bạn | Điều khiển CLI như bạn, bao gồm các thay đổi |
 
-Chúng được chuyển giao theo thứ tự đó: skill này làm cho sự kiện chảy, evaluator đánh điểm chúng, CLI đọc chúng lại. Không có gì để đánh điểm và không có gì để đọc cho đến khi agent của bạn phát ra các phiên, vì vậy nếu bạn bắt đầu từ đầu, hãy bắt đầu từ đây.
+Chúng bàn giao theo thứ tự đó: kỹ năng này làm cho các sự kiện chảy, trình đánh giá ghi điểm chúng, CLI đọc chúng trở lại. Không có gì để đánh giá và không có gì để đọc cho đến khi agent của bạn phát ra các session, vì vậy nếu bạn bắt đầu từ đầu, hãy bắt đầu từ đây.
 
-## Điều kiện tiên quyết
+## Các yêu cầu
 
-1. **Python 3.10+** và codebase agent bạn muốn đặt instrumentation.
-2. **SDK.** Nó được phân phối cho khách hàng dưới dạng wheel riêng tư chứ không phải từ chỉ mục công cộng — onboarding của bạn sẽ bao gồm cách lấy và cài đặt nó. Skill biết đường dẫn cài đặt và sẽ hỏi bạn thay vì đoán nếu nó không thể tìm thấy nó.
-3. **Không gì khác.** Không cần đăng nhập bảng điều khiển, không cần khóa API, không cần mạng. Skill xác minh dựa trên các tệp sự kiện mà SDK viết, vì vậy nó có thể hoàn thành và chứng minh công việc của nó ngoại tuyến.
+1. **Python 3.10+** và cơ sở mã agent bạn muốn chỉ định.
+2. **SDK.** Nó được phân phối cho khách hàng dưới dạng wheel riêng tư thay vì từ một chỉ mục công khai — onboarding của bạn bao gồm cách lấy và cài đặt nó. Kỹ năng biết đường dẫn cài đặt và sẽ hỏi bạn thay vì đoán nếu nó không thể tìm thấy nó.
+3. **Không có gì khác.** Không cần đăng nhập bảng điều khiển, không cần khóa API, không cần mạng. Kỹ năng xác minh lại các tệp sự kiện mà SDK viết, vì vậy nó có thể hoàn thành và chứng minh công việc của nó ngoại tuyến.
 
-## Lấy nó ở đâu
+## Nơi để lấy nó
 
-Skill nằm trong bộ sưu tập công cộng [`FailproofAI/skills`](https://github.com/FailproofAI/skills):
+Kỹ năng nằm trong bộ sưu tập công khai [`FailproofAI/skills`](https://github.com/FailproofAI/skills):
 
 ```bash
 npx skills add FailproofAI/skills --skill agenteye-python-sdk -a claude-code
 ```
 
-Thêm `-g` để cài đặt nó cho mỗi dự án thay vì chỉ dự án hiện tại, và `--copy` nếu môi trường của bạn không hỗ trợ symlink. Đối với Codex, truyền `-a codex`.
+Thêm `-g` để cài đặt nó cho mọi dự án thay vì chỉ dự án hiện tại, và `--copy` nếu môi trường của bạn không tuân theo symlink. Đối với Codex, hãy chuyển `-a codex`.
 
 ## Cài đặt thủ công
 
 Agent Skills là các thư mục chứa `SKILL.md` cộng với các tham chiếu. Nếu bạn không muốn sử dụng trình cài đặt:
 
-- **Claude Code**: sao chép thư mục `agenteye-python-sdk/` vào `~/.claude/skills/` (mọi dự án) hoặc `<your-repo>/.claude/skills/` (chỉ repo đó). Claude Code tự động phát hiện nó — kiểm tra danh sách `/skills`, hoặc chỉ cần hỏi điều gì phù hợp với nó.
-- **Codex**: Codex đọc cùng một `SKILL.md`. `agents/openai.yaml` được đóng gói thiết lập `allow_implicit_invocation: true`, vì vậy nó được tự động chọn khi tác vụ phù hợp; nếu không thì gọi nó là `$agenteye-python-sdk`.
+- **Claude Code**: sao chép thư mục `agenteye-python-sdk/` vào `~/.claude/skills/` (mọi dự án) hoặc `<your-repo>/.claude/skills/` (chỉ repo đó). Claude Code phát hiện nó tự động — kiểm tra danh sách `/skills` hoặc chỉ cần yêu cầu thứ gì đó phù hợp với nó.
+- **Codex**: Codex đọc `SKILL.md` giống nhau. `agents/openai.yaml` đi kèm đặt `allow_implicit_invocation: true`, vì vậy nó được tự động chọn khi một tác vụ phù hợp; nếu không, hãy gọi nó là `$agenteye-python-sdk`.
 
-Chạy agent của bạn **trong repository chứa mã bạn muốn đặt instrumentation** — skill đọc vòng lặp agent của bạn trước khi nó đề xuất bất cứ điều gì.
+Chạy agent của bạn **trong repository chứa mã bạn muốn chỉ định** — kỹ năng đọc vòng lặp agent của bạn trước khi nó đề xuất bất cứ điều gì.
 
-## Một phiên trông như thế nào
+## Session trông như thế nào
 
 ```text
-you   ▸ Add Failproof AI Observability to this agent.
+bạn   ▸ Thêm Failproof AI Observability vào agent này.
 
-agent ▸ Read your loop — one tool dispatcher in tools.py, one Anthropic
-        wrapper in llm.py. Two questions before I write anything.
+agent ▸ Đọc vòng lặp của bạn — một dispatcher công cụ trong tools.py, 
+        một wrapper Anthropic trong llm.py. Hai câu hỏi trước khi tôi 
+        viết bất cứ điều gì.
 
-        What counts as one run? You handle requests concurrently, so I'd
-        use the request id you already have in ctx.request_id — then a
-        session here and a request in your logs are the same string.
+        Điều gì được tính là một lần chạy? Bạn xử lý các yêu cầu đồng 
+        thời, vì vậy tôi sẽ sử dụng id yêu cầu bạn đã có trong 
+        ctx.request_id — sau đó một session ở đây và một yêu cầu trong 
+        nhật ký của bạn là cùng một chuỗi.
 
-        And who are the actors? I see a planner path and a researcher
-        path. Label them separately, or is that one agent to you?
+        Và những tác nhân là những gì? Tôi thấy một đường dẫn planner 
+        và một đường dẫn researcher. Gắn nhãn chúng riêng biệt, hoặc 
+        đó là một agent cho bạn?
 
-you   ▸ Request id is right. They're one agent, call it "assistant".
+bạn   ▸ Request id là đúng. Chúng là một agent, gọi nó là "assistant".
 
-agent ▸ Done. Wrapped the dispatcher and the LLM client; agent_start and
-        agent_end bracket handle_request, including the error path. Used
-        a context-local for identity — your dispatcher runs tools in a
-        thread pool, and the simpler approach would have mixed concurrent
-        runs into one session without complaining.
+agent ▸ Xong. Đã bao bọc dispatcher và client LLM; agent_start và 
+        agent_end đặt ngoặc handle_request, bao gồm cả đường dẫn lỗi. 
+        Sử dụng context-local cho danh tính — dispatcher của bạn chạy 
+        các công cụ trong một thread pool, và cách tiếp cận đơn giản 
+        hơn sẽ đã hỗn hợp các lần chạy đồng thời vào một session mà 
+        không phàn nàn.
 
-        Verified against a real run: 11 events across 4 files —
-        agent_start, model_request/response, tool_use/tool_result x3,
-        agent_end (outcome=success). environment=production, one session
-        per request, durations paired.
+        Xác minh lại một lần chạy thực: 11 sự kiện trên 4 tệp — 
+        agent_start, model_request/response, tool_use/tool_result x3, 
+        agent_end (outcome=success). environment=production, một session 
+        cho mỗi yêu cầu, các thời lượng được ghép đôi.
 
-        One thing I did NOT do: your worker pool in batch.py submits
-        straight to the executor, so events from there would be dropped.
-        Want me to fix those too?
+        Một điều tôi KHÔNG làm: worker pool của bạn trong batch.py 
+        gửi thẳng đến executor, vì vậy các sự kiện từ đó sẽ bị loại 
+        bỏ. Bạn muốn tôi khắc phục những cái đó không?
 ```
 
-Mẫu cần lưu ý: nó đọc mã trước khi đề xuất, chỉ hỏi những câu hỏi bạn mới trả lời được, tái sử dụng một id bạn đã có, chọn hình dạng an toàn đồng thời *vì* nó thấy thread pool, và **xác minh bằng cách đọc các sự kiện thực tế** thay vì tuyên bố thành công — rồi cảnh báo về nơi duy nhất nó biết rằng sẽ thất bại âm thầm.
+Mô hình cần chú ý: nó đọc mã trước khi đề xuất, chỉ hỏi những câu hỏi bạn có thể trả lời, tái sử dụng một id bạn đã có, chọn hình dạng an toàn từ góc độ đồng thời *vì* nó thấy một thread pool, và **xác minh bằng cách đọc các sự kiện thực tế** thay vì khai báo thành công — sau đó đánh dấu cái duy nhất nó biết sẽ thất bại một cách yên tĩnh.
 
-## Bạn có thể yêu cầu nó làm gì
+## Bạn có thể hỏi nó cái gì
 
-- *"Tại sao agent của tôi không hiện lên trên bảng điều khiển?"* → đi theo từng bước: các sự kiện có được viết không, `agent_start` có ở đó không, môi trường có đúng không, collector có đang đọc cùng một nơi không.
-- *"Mọi thứ đang hạ cánh dưới dev."* → môi trường không bao giờ được thiết lập, hoặc được đặt lại bởi một lệnh gọi sau.
-- *"Thêm theo dõi token."* → tìm trình bao bọc LLM của bạn và ghi lại mô hình, lý do dừng, và cách sử dụng.
-- *"Đặt instrumentation cho các sub-agent."* → một phiên, nhãn agent riêng biệt, lồng dưới phần tử cha của chúng.
-- *"Viết bài kiểm tra cho instrumentation."* → chỉ SDK vào một thư mục tạm thời và khẳng định các sự kiện nó đã viết.
+- *"Tại sao agent của tôi không hiển thị trên bảng điều khiển?"* → đi theo cầu thang: các sự kiện có được viết không, `agent_start` có ở đó không, môi trường có đúng không, trình thu thập có đọc cùng một nơi không.
+- *"Mọi thứ đều được đặt dưới dev."* → môi trường không bao giờ được đặt, hoặc được đặt lại bởi một cuộc gọi sau này.
+- *"Thêm theo dõi token."* → tìm wrapper LLM của bạn và ghi mô hình, lý do dừng và mức sử dụng.
+- *"Chỉ định các sub-agent cũng."* → một session, nhãn agent riêng biệt, lồng nhau dưới parent của chúng.
+- *"Viết bài kiểm tra cho chỉ định."* → chỉ SDK vào một thư mục tạm thời và khẳng định các sự kiện mà nó viết.
 
-## Điều cần chú ý
+## Những gì cần cảnh báo
 
-**Để nó xác minh.** Bước cuối cùng làm cho skill này đáng sử dụng — chạy agent của bạn và đọc các sự kiện lại. Một agent viết instrumentation và dừng lại đã thực hiện nửa dễ dàng, và nửa thất bại âm thầm là nửa kia.
+**Cho phép nó xác minh.** Bước cuối cùng là bước làm cho kỹ năng này đáng sử dụng — chạy agent của bạn và đọc các sự kiện trở lại. Một agent viết chỉ định và dừng lại đã hoàn thành nửa dễ dàng, và nửa thất bại một cách yên tĩnh là cái khác.
 
-**Đồng ý tên trước mã.** `session_id` và `agent_id` là các trục mọi bề mặt nhóm theo. Đổi tên chúng sau chia tách lịch sử: các lần chạy cũ giữ các nhãn cũ và xu hướng của bạn sẽ phá vỡ. Skill sẽ hỏi; câu trả lời đáng tiêu tốn một phút suy nghĩ.
+**Đồng ý các tên trước mã.** `session_id` và `agent_id` là các trục mà mỗi bề mặt nhóm. Đổi tên chúng sau sẽ chia nhỏ lịch sử: các lần chạy cũ giữ nhãn cũ và xu hướng của bạn sẽ bị phá vỡ. Kỹ năng sẽ hỏi; câu trả lời đáng một phút suy nghĩ.
 
-**Nếu agent của bạn đề xuất cài đặt SDK từ chỉ mục công cộng, skill đã không tải.** SDK được phân phối riêng tư. Đề xuất đó là một dấu hiệu đáng tin cậy rằng công cụ code agent của bạn đang đoán thay vì tuân theo skill — dừng nó ở đó và kiểm tra skill có được cài đặt không.
+**Nếu agent của bạn đề xuất cài đặt SDK từ một chỉ mục công khai, kỹ năng đã không tải.** SDK được phân phối riêng tư. Đề xuất đó là một dấu hiệu đáng tin cậy rằng agent mã của bạn đang đoán thay vì tuân theo kỹ năng — dừng nó ở đó và kiểm tra kỹ năng đã cài đặt.
 
-Ngoài ra, bán kính ảnh hưởng của nó rất nhỏ: nó viết mã trong thư mục làm việc của bạn và các tệp sự kiện nơi bạn nói. Nó không đọc gì từ deployment của bạn và không thay đổi gì về nó.
+Ngoài ra, phạm vi nổ của nó rất nhỏ: nó viết mã trong thư mục làm việc của bạn và các tệp sự kiện ở nơi bạn nói. Nó không đọc bất cứ điều gì từ triển khai của bạn và không thay đổi bất cứ điều gì về nó.
 
-## Bước tiếp theo
+## Các bước tiếp theo
 
-- **[Python SDK](/vi/agenteye/python-sdk)**: tài liệu tham khảo sự kiện hoàn chỉnh — mỗi loại sự kiện và trường — đằng sau những gì skill này tự động hóa.
-- **[Sessions](/vi/agenteye/sessions)**: những gì instrumentation của bạn tạo ra khi các sự kiện hạ cánh.
-- **[Evaluator Agent Skill](/vi/agenteye/evaluator-skill)**: bước tiếp theo sau khi các lần chạy hạ cánh — đánh điểm chúng.
-- **[CLI Agent Skill](/vi/agenteye/cli-skill)**: đọc telemetry của bạn lại.
+- **[Python SDK](/vi/agenteye/python-sdk)**: tài liệu tham khảo sự kiện hoàn chỉnh — mỗi loại sự kiện và trường — đằng sau những gì kỹ năng này tự động hóa.
+- **[Sessions](/vi/agenteye/sessions)**: những gì chỉ định của bạn tạo ra sau khi các sự kiện được đặt.
+- **[Evaluator Agent Skill](/vi/agenteye/evaluator-skill)**: bước tiếp theo sau khi các lần chạy được đặt — ghi điểm chúng.
+- **[CLI Agent Skill](/vi/agenteye/cli-skill)**: đọc telemetry của bạn trở lại.

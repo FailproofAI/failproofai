@@ -1,167 +1,166 @@
 ---
-title: "Failproof AI Gözlemlenebilirlik Değerlendirici Ajan Becerisi"
-description: "\"Ajanımız bazen kötü performans gösteriyor\" düşüncesinden dağıtılmış bir puanlama hizmetine geçin; kodlama ajanınız hem kararı hem de oluşturmayı yapsın."
+title: "Failproof AI Observability Evaluator Agent Skill"
+description: "\"Ajanız bazen kötü\" düzeyinden dağıtılmış bir puanlama hizmetine kadar gidin; kodlama ajanız hem karar vermek hem de inşa etmek yapıyor."
 ---
 
-*"Ajanımız bazen kötü performans gösteriyor"* düşüncesinden dağıtılmış bir puanlama hizmetine geçin; kodlama ajanınız hem kararı hem de oluşturmayı yapsın. **Failproof AI Gözlemlenebilirlik değerlendirici becerisi** (`agenteye-evaluator`), bir *Ajan Becerisidir*: bir kodlama ajan (Claude Code veya Codex gibi) tarafından isteğe bağlı olarak yüklenen, bir klasör içinde barındırılan talimatlar. Ajanı, *sizin* ajan için izlenmeye değer olan kalite boyutlarını belirlemek, ardından [değerlendirici hizmetini](/tr/agenteye/evaluation-suite) yazıp, test edip ve dağıtmak öğretir.
 
-Bu sistem **değildir**: barındırılan bir puanlayıcı, yüklendiğiniz bir kayıt defteri veya bir eklenti sistemi. Değerlendiricileriniz, [Değerlendirme paketi](/tr/agenteye/evaluation-suite) kılavuzunda açıklandığı gibi, kendi altyapınızda çalışan kendi HTTP hizmetiniz olarak kalır. Beceri, ajanınızı bunu iyi inşa etmeyi öğretir; bu nedenle yaptığı her şey, aynı kodu yazarak siz de yapabilirsiniz.
+*"Ajanız bazen kötü"* düzeyinden dağıtılmış bir puanlama hizmetine kadar gidin; kodlama ajanız hem karar vermek hem de inşa etmek yapıyor. **Failproof AI Observability evaluator skill** (`agenteye-evaluator`), bir *Agent Skill*'dir: kodlama ajası olan Claude Code veya Codex gibi bir ajanın talep üzerine yüklediği küçük bir talimat klasörü. Ajanına *sizin* ajanız için hangi kalite boyutlarının izlenmeye değer olduğunu anlamayı, ardından [evaluator hizmetini](/tr/agenteye/evaluation-suite) yazmayı, test etmeyi ve dağıtmayı öğretir.
+
+Bu, barındırılan bir puanlayıcı, yüklediğiniz bir kayıt defteri veya eklenti sistemi **değildir**. Evaluator'unuz kendi HTTP hizmetiniz olarak kendi altyapınızda kalır, tam olarak [Evaluation suite](/tr/agenteye/evaluation-suite) kılavuzunda açıklandığı gibi. Skill sadece ajanınıza bunu iyi yapmasını öğretir; dolayısıyla yaptığı her şey, aynı kodu yazarak kendiniz yapabileceğiniz şeylerdir.
 
 ---
 
-## Zor kısım neyi puanlamak gerektiğine karar vermek
+## Zor kısım ne puanlanacağına karar vermektir
 
-SDK yüzeyi küçüktür — bir dekoratör ve iki model — ve bir ajan bunu [kontratı](/tr/agenteye/evaluation-suite#http-contract) tek başına yazabilir. Sorun burada değildir. Sorun, yanlış şeyi puanlamalarıdır; yanlış şeyi puanlayan bir değerlendirici hiç olmamasından daha kötüdür: herkesin görmezden gelmeyi öğrendiği bir pano üretir.
+SDK yüzeyi küçüktür — bir dekoratör ve iki model — ve bir ajan bunu [kontratından](/tr/agenteye/evaluation-suite#http-contract) yazabilir. Bu, evaluator'ların başarısız olduğu yer değildir. Yanlış şeyi puanladıkları için başarısız olurlar ve yanlış şeyi puanlayan bir evaluator hiçbir şeyden daha kötüdür: herkesin yok saymayı öğrendiği bir dashboard üretir.
 
-Bu nedenle becerinin çoğu, kod yazmadan önceki kısımdır. Ajanı sizi görüşmeye (*"iyi giden bir işlemi anlatın; şimdi kötü gideni"*), ardından [`agenteye` CLI](/tr/agenteye/cli) aracılığıyla gerçek seanslarınızı çekerek end-to-end okumaya alır. Bu iki yarı genellikle anlaşamaz ve arası fark önemlidir: ölçmeyi niyet ettiğiniz şey ile transkriplerinizin gerçekten destekleyebileceği şey arasındaki boşluk. Bir boyut ancak **olaylardan hesaplanabilir** ve **ayırıcı** ise hayatta kalır — eğer hem iyi çalışmanızda hem de kötü çalışmanızda 0.9 puan alırsa, hiçbir şey öğretmez ve kesilir.
+Bu nedenle skill'in çoğu, herhangi bir kod var olmadan önceki kısımdır. Ajan sizle röportaj yapar (*"iyi giden bir çalışmayı açıkla; şimdi kötü giden birini"*), sonra gerçek seanslarınızı [`agenteye` CLI](/tr/agenteye/cli) üzerinden çeker ve sondan sona okur. Bu iki yarı genellikle anlaşmaz ve boşluk noktadır: ölçmeyi hedeflediğiniz ile yazılı kayıtlarınızın gerçekten destekleyebileceği arasındaki fark. Bir boyut yalnızca olaylardan **hesaplanabilir** ve **ayırıcı** ise hayatta kalır — iyi çalışmanızda ve kötü çalışmanızda 0,9 puan alıyorsa, hiçbir şey öğretmez ve kesilir.
 
-Geri dönen şey, 2-4 boyutun bir teklifi ve ona ilişkin akıl yürütmedir; bir satır yazılmadan önce sizin onay vermeniz için.
+Geri gelenler, bir satır yazılmadan önce onaylamanız için akıl yürütme ile 2-4 boyutun bir önerisidir.
 
 ```mermaid
 flowchart TD
-    YOU["siz: 'Destek botum için evaluasyonlar istiyorum'"] --> AGENT["kodlama ajan (Claude Code / Codex)<br/>agenteye-evaluator becerisini yükler"]
-    AGENT -->|"görüşme: iyi vs kötü nasıl görünür?"| YOU
-    AGENT -->|"agenteye --json sessions / events"| DATA["gerçek seanslarınız<br/>aslında ne olur"]
-    DATA --> DIMS["2-4 boyut, siz onay verirsiniz"]
-    DIMS --> SVC["değerlendirici hizmetiniz<br/>agenteye-evaluator SDK"]
-    SVC --> SCORES["puanlar panoya<br/>ve agenteye evallere iner"]
+    YOU["siz: 'destek botumuz için eval istiyorum'"] --> AGENT["kodlama ajası (Claude Code / Codex)<br/>agenteye-evaluator skill'ini yükler"]
+    AGENT -->|"röportaj: iyi vs kötü nasıl görünüyor?"| YOU
+    AGENT -->|"agenteye --json sessions / events"| DATA["gerçek seanslarınız<br/>gerçekten ne oluyor"]
+    DATA --> DIMS["2-4 boyut, siz onaylarsınız"]
+    DIMS --> SVC["evaluator hizmetiniz<br/>agenteye-evaluator SDK"]
+    SVC --> SCORES["puanlar dashboard'a<br/>ve agenteye eval'lerine iniyor"]
 ```
 
 ---
 
-## Diğer değerlendirme bileşenleriyle ilişkisi
+## Diğer değerlendirme parçaları ile ilişkisi
 
-Dört belge puanlamayı kapsar ve sırayla birbirini devreye sokar:
+Dört belge puanlamayı kapsar ve sırayla birbirini ele verir:
 
-| Sayfa | Nedir | Ne zaman kullanın |
+| Sayfa | Ne olduğu | Ne zaman ulaşılır |
 |---|---|---|
-| **[Değerlendirmeler](/tr/agenteye/evaluations)** | Özellik: oturum ızgarasında puanlar, panolar, yeniden değerlendir | Otomatik puanlamanın ne getirdiğini bilmek istiyorsunuz |
-| **[Değerlendirme paketi](/tr/agenteye/evaluation-suite)** | HTTP kontratı, SDK, sunucu ortam değişkenleri | Değerlendiricinin kendisini uygulıyor veya debug ediyor |
-| **Değerlendirici becerisi** (bu belge) | Puanlaycı tasarlamada *ve* oluşturmada doğal dil giriş kapısı | "Evaluasyonlar istiyorum" ile çalışan bir hizmetin kapısında olmak istiyorsunuz |
-| **[CLI becerisi](/tr/agenteye/cli-skill)** | `agenteye` CLI'de doğal dil giriş kapısı | Zaten sahip olduğunuz puanları *okumak* istiyorsunuz |
-| **[Python SDK becerisi](/tr/agenteye/python-sdk-skill)** | Ajanınızı enstrümanter etmekte doğal dil giriş kapısı | Ajanınız henüz seanslar yaymıyor — puanlanacak hiçbir şey yok |
+| **[Evaluations](/tr/agenteye/evaluations)** | Özellik: oturum ızgarası, pano, yeniden değerlendirme üzerinde puanlar | Otomatik puanlamanın ne getirdiğini bilmek istiyorsunuz |
+| **[Evaluation suite](/tr/agenteye/evaluation-suite)** | HTTP kontratı, SDK, sunucu ortam değişkenleri | Evaluator'u kendiniz uyguluyorsunuz veya hata ayıklıyorsunuz |
+| **Evaluator skill** (bu belge) | Puanlayıcı *tasarlama ve* inşa etme konusunda doğal dil ön kapısı | "Eval istiyorum"dan çalışan bir hizmete gitmek istiyorsunuz |
+| **[CLI skill](/tr/agenteye/cli-skill)** | `agenteye` CLI'de doğal dil ön kapısı | Zaten sahip olduğunuz puanları *okumak* istiyorsunuz |
+| **[Python SDK skill](/tr/agenteye/python-sdk-skill)** | Ajanınızı enstrüman etme konusunda doğal dil ön kapısı | Ajanız henüz oturum göstermiyorsunuz — puanlanacak hiçbir şey yok |
 
-### CLI becerisi ile karşılaştırma: oluştur versus oku
+### CLI skill'e karşı: inşa etmek ve okumak
 
-İki beceri kasıtlı olarak örtüşmez ve her ikisini yüklemek normal kurulumudur — ajan ne sorduğunuza bağlı olarak aralarında seçim yapar:
+İki skill kasıtlı olarak çakışmaz ve her ikisini de yüklemek normal kurulumudur — ajan ne istediğinize göre ikisi arasında seçim yapar:
 
-- **`agenteye-evaluator`** (bu belge) puanları *üreten* şeyi oluşturur. İşi puanlar ilk kez inmesi sırasında biter.
-- **[`agenteye-cli`](/tr/agenteye/cli-skill)** zaten var olan puanları okur (`agenteye evals`). *"Bu hafta kalite düştü mü?"* onun sorusudur, bu becerinin değil.
+- **`agenteye-evaluator`** (bu belge) puanları *üretmeyi* sağlayan şeyi inşa eder. İş, puanlar ilk kez geldiğinde biter.
+- **[`agenteye-cli`](/tr/agenteye/cli-skill)** zaten var olan puanları okur (`agenteye evals`). *"Bu hafta kalite düştü mü?"* onun sorusudur, bu skill'in değil.
 
 ---
 
 ## Ön Koşullar
 
-1. **`agenteye` CLI yüklü ve oturum açmış** (`pipx install agenteye`, ardından `agenteye login`). Beceri bunu iki kez kullanır: tasarladığı gerçek seansları çekmek için ve seansların sonunda puanlarınızın geldiğini doğrulamak için. Oturumunuzun `events:read` gereksinimi vardır, ayrıca bu son kontrol için `evaluations:read`. CLI becerisi ile birlikte, e-posta ile gönderilen tek kullanımlık kod girişini **tamamlayamaz**.
-2. **Değerlendiricinin yaşayacağı bir yer.** Bir imaja yerleştirilir ve uzun süreli bir hizmet olarak çalıştırılır; bu nedenle gerçek bir repo'ya ihtiyaç vardır, geçici bir dosyaya değil. Değerlendiriciler sık sık kendi repo'sunda yaşar, puanlanan ajanından ayrı — beceri var olanı arar ve yeni bir tane oluşturmadan önce sorar.
-3. **`agenteye-evaluator` SDK tekerleği** — ajanınız `pip` komutlarını yazmaya başlamadan sonraki bölümü okuyun.
+1. **`agenteye` CLI yüklü ve oturum açılmış** (`pipx install agenteye`, sonra `agenteye login`). Skill bunu iki kez kullanır: tasarladığı gerçek seansları çekmek için ve puanlarınızın sonunda geldiğini doğrulamak için. Login'iniz `events:read` ve bu son kontrol için `evaluations:read` gerekir. CLI skill'te olduğu gibi, e-postayla gelen tek seferlik kod login'i sizin için **tamamlayamaz**.
+2. **Evaluator'un yaşayacağı bir yer.** Bir görüntüye inşa edilir ve uzun çalışan bir hizmet olarak çalıştırılır; bu nedenle gerçek bir depo gerekir, çizim dosyası değil. Evaluator'ler sıklıkla kendi deposunda, puanlanan ajanından ayrı şekilde yaşarlar — skill varolan birini arar ve yeni bir tane başlatmadan önce sorar.
+3. **`agenteye-evaluator` SDK wheel'ı** — ajanınız `pip` komutları yazmaya başlamadan önce sonraki bölümü okuyun.
 
 ---
 
-## Nereden alınır
+## Nereden alacağınız
 
-Beceri, Failproof AI'ın herkese açık beceri koleksiyonunda yayınlanır:
+Skill, Failproof AI'ın genel skills koleksiyonunda yayınlanmıştır:
 
 **[github.com/FailproofAI/skills](https://github.com/FailproofAI/skills)** → [`skills/agenteye-evaluator/`](https://github.com/FailproofAI/skills/tree/main/skills/agenteye-evaluator)
 
-Depo herkese açıktır ve becerinin kendi kimlik bilgisine ihtiyacı yoktur — yalnızca `agenteye` CLI'yi oturum açtığınız seansla çalıştırır ve kodunuzu *kendi* repo'nuzda yazar. Kendi klasörü olarak gönderilir ve `pipx install agenteye` paketi içinde **değildir**; bu nedenle onu orada aramayın.
+Depo genel ve skill'in kendi kimlik belgesi gerekli değildir — sadece oturum açtığınız `agenteye` CLI'yi kullanır ve *sizin* deponuzda kod yazar. Kendi klasörü olarak sevk edilir ve `pipx install agenteye` paketinin içinde **değildir**, bu nedenle orada aramayın.
 
-## Becerisini Kurma
+## Skill'i Yükleme
 
-En hızlı yol [`skills`](https://skills.sh) CLI'dir; bu klasörü getirir ve ajanınızın baktığı yere bırakır:
+En hızlı yol [`skills`](https://skills.sh) CLI'dir ve bu klasörü ajanınızın baktığı yere indirir:
 
 ```bash
 # Claude Code, yalnızca bu proje
 npx skills add FailproofAI/skills --skill agenteye-evaluator -a claude-code
 
-# her proje (~/.claude/skills/ dosyasına yükler)
+# tüm projeler (~/.claude/skills/ dosyasına yükler)
 npx skills add FailproofAI/skills --skill agenteye-evaluator -a claude-code -g --copy
 
-# Yerine Codex
+# Bunun yerine Codex
 npx skills add FailproofAI/skills --skill agenteye-evaluator -a codex
 ```
 
-Ardından diğer beceriler gibi yönetin:
+Sonra diğer skill'ler gibi yönetin:
 
 ```bash
-npx skills list -a claude-code           # ne yüklü
+npx skills list -a claude-code           # neyin yüklendiği
 npx skills update agenteye-evaluator     # en son sürümü çek
 npx skills remove agenteye-evaluator     # kaldır
 ```
 
-Elle yüklemek tercih misiniz? Bir Ajan Becerisi, `SKILL.md` içeren bir klasördür (artı isteğe bağlı referanslar); bu nedenle kopyalama işe yarar:
+Elle yüklemeyi tercih ediyor musunuz? Bir Agent Skill, `SKILL.md` içeren bir klasördür (artı isteğe bağlı referanslar), bu nedenle kopyalamak da işe yarar:
 
-- **Claude Code**: `agenteye-evaluator/` klasörünü `~/.claude/skills/` (her proje) veya `<your-repo>/.claude/skills/` (yalnızca bu repo) içine koyun. Claude Code bunu otomatik olarak bulur — `/skills` listesi ile doğrulayın veya sadece evaluasyonlar isteyin.
-- **Codex (OpenAI)**: Codex aynı `SKILL.md` dosyasını okur. Paketlenmiş `agents/openai.yaml`, `allow_implicit_invocation: true` ayarlar; bu nedenle bir görev eşleştiğinde Codex beceriyi otomatik seçer; aksi takdirde açıkça `$agenteye-evaluator` olarak çağırın.
-
----
-
-## SDK genel PyPI'de değildir
-
-> **Uyarı:** Bir ajanın SDK yüklemesine izin vermeden önce bunu okuyun.
-
-Beceri herkese açıktır; onu çalıştırdığı SDK değildir. `agenteye-evaluator` yalnızca özel bir sürüm yapı olarak gönderilir ve `agenteye` gibi farklı olarak, ad **genel PyPI'de açıklanmadıdır** — bu nedenle basit `pip install agenteye-evaluator` komutu, üretim transkriplerinizi okuyan hizmete başka bir kişinin paketini çekebilir. Bu bir yazım hatası değil, bir tedarik zinciri sorunudur.
-
-Beceri bunu bilir ve yerine bir yükleme merdiveninde aşağı doğru çalışır; ilk geçerli basamağında durur: AgentEye repo'sunun içindeyseniz monorepo kaynağı; aksi takdirde GitHub Releases'ten özel sürüm tekerleği (erişim gerekir); ikisi de erişilemezse **durur ve Failproof AI iletişim kişinizden tekerleği istemenizi söyler** uydurmak yerine.
-
-Eğer ajanınız genel PyPI'den basit `pip install agenteye-evaluator` önerirse, bu becerinin hiç yüklenmediğini gösterir. Orada durun ve yüklendiğini kontrol edin.
+- **Claude Code**: `agenteye-evaluator/` klasörünü `~/.claude/skills/` (tüm projeler) veya `<your-repo>/.claude/skills/` (sadece bu depo) içine yerleştirin. Claude Code otomatik olarak keşfeder — `/skills` listesi ile doğrulayın veya sadece eval'ler için sorun.
+- **Codex (OpenAI)**: Codex aynı `SKILL.md`'yi okur. Paketlenmiş `agents/openai.yaml`, `allow_implicit_invocation: true`'yu ayarlar; bu nedenle Codex bir görev eşleştiğinde skill'i otomatik seçer; aksi takdirde `$agenteye-evaluator` olarak açıkça çağırın.
 
 ---
 
-## Ona ne sorabilirsiniz
+## SDK Genel PyPI'de değildir
 
-Gerçek bir tur sonu, belirsiz bir sorudan imza faydalı bir tasarımla biter, kodla değil:
+> **Uyarı:** Bir ajanın SDK'yı yüklemesine izin vermeden önce bunu okuyun.
+
+Skill genel; onu kullandığı SDK değil. `agenteye-evaluator` sadece özel bir yayın artifakti olarak sevk edilir ve `agenteye`'den farklı olarak, ad genel PyPI'de **talep edilmemiştir** — bu nedenle açık bir `pip install agenteye-evaluator`, üretim yazılı kayıtlarınızı okuyan hizmete garip bir paketin çekilmesi anlamına gelebilir. Bu bir yazım hatası değil, bir tedarik zinciri problemidir.
+
+Skill bunu bilir ve bunun yerine yüklemeler merdiveniyle inerek geçerli olan ilk basamakta durur: AgentEye deposunun içindeyseniz monorepo kaynağı, aksi takdirde GitHub Releases'ten özel yayın wheel'ı (erişim gerektirir) ve ne de geçerli değilse **durur ve Failproof AI ilgili kişiden wheel almayı söylemek yerine** durur.
+
+Ajanınız genel PyPI'den açık bir `pip install agenteye-evaluator` öneriyorsa, bu skill'in hiçbir zaman yüklenmediğinin göstergesidir. Orada durun ve yüklü olup olmadığını kontrol edin.
+
+---
+
+## Ne isteyebilirsiniz
+
+Gerçek bir gidiş-dönüş belirsiz bir istekle başlar ve kodla değil, imzalı bir tasarımla biter:
 
 ```text
-siz   ▸ Destek botumuz için evaluasyonlar istiyorum. Bazen kötü 
-        olduğunu düşünüyorum.
+siz   ▸ Destek botumuz için eval istiyorum. Bazen kötü olduğunu düşünüyorum.
 
-ajan  ▸ Herhangi bir şey yazmadan önce: iyi giden bir işlemi anlatın,
-        ve kötü gideni.
+ajan ▸ Herhangi bir şey yazmadan önce: iyi giden bir çalışmayı ve
+        kötü giden birini açıkla.
 
-siz   ▸ İyi: dokümanlardan cevaplar. Kötü: yok sayıyor,
-        veya "destek ile iletişime geçin" diyor.
+siz   ▸ İyi: belgelerden cevap verir. Kötü: hayal uydurur veya
+        "destek ile iletişim kurun" diyerek bırakır.
 
-ajan  ▸ Çalışıyor: agenteye --json sessions --status error --since 7d
-        5 seansı okuyorum, ikisini kötü olarak yazıyorsunuz.
+ajan ▸ Çalışıyor: agenteye --json sessions --status error --since 7d
+        5 oturum okuyor, ikisi senin kötü olarak adlandırdığın oturum.
 
-        Söyledikleriniz gerçekçiliği ve sapıtmayı söylüyor. Transkripler
-        sapıtmada anlaşıyor (5'in 2'si destek devredimiyle bitiyor,
-        ve model_response.content'de açık), fakat gerçekçiliğin
-        olaylarda taşımadığı bir yer gerçeğine ihtiyacı vardır.
+        Sözlerin doğruluk ve sapma. Yazılı kayıtlar sapma konusunda
+        anlaşıyor (5 oturumun 2'si destek teslimi ile bitiriliyor,
+        model_response.content'te açık), ama doğruluk olaylarınızın
+        taşımadığı bir gerçeğe ihtiyaç duyuyor.
 
-        Yani üç şeyi puanlarım:
-          - sapıtma        kurallar, ucuz, iki işlemi ayırır
-          - araç_verimliği kurallar, işlemler arası döngüyü yakalar
-          - temelcilik      LLM hakim: aldığı doklarda her iddia var mı?
+        Yani üç şeyi puanlayacağım:
+          - deflection       kurallar, ucuz, çalışmalarınızı ayırıyor
+          - tool_efficiency  kurallar, çalışma-004'teki tekrar döngüsünü yakalar
+          - groundedness     LLM hakim: belgede aldığı her iddia var mı?
 
-        "gerçekçiliğin" olmayan yer gerçeğine ihtiyacı vardır; temelcilik
-        transkriplerinizin fiilen destekleyebildiği en yakın şey.
-        Bu üç adla iyi misiniz? Daha sonra yeniden adlandırma geçmişi böler.
+        "factuality" bizim olmayan gerçeğe ihtiyaç duyar; groundedness
+        yazılı kayıtlarınızın gerçekten destekleyebileceği en yakın şeydir.
+        Bu üç ad ile sorun var mı? Daha sonra yeniden adlandırmak geçmişi böler.
 
-siz   ▸ evet
+siz   ▸ yok
 
-ajan  ▸ Bu repo'da değerlendirici yok. Bir tane buraya kurmalı mıyım,
-        yoksa başka yerde varsa?
+ajan ▸ Bu depoda evaluator yok. Bunu burada başlatsam mı, yoksa başka yerde bir tane mi var?
 ```
 
-Buradan kurallar tabanlı boyutları ilk yazar (bedava, anında, belirleyici), bunları kilitlenmeler ve asla bitmeyenler de dahil gerçek yakalanmış seanslar aracılığıyla test eder, ve yalnızca öznel boyut için LLM hakime ulaşır. [Gönderici sınırlarını](/tr/agenteye/evaluation-suite#configuring-the-server) bilir — 30s istek zaman aşımı ve 8 eşzamanlı çağrı dağıtım genelinde — yani hakim güvenilir şekilde sığmazsa, `JobPending` ile eşzamansız gider, hakim iptal edilmiş ve beş kez yeniden denenmiş olmasına izin vermez.
+Oradan kurallar tabanlı boyutları önce yazar (ücretsiz, anında, deterministik), onları çöken boş ve hiçbir zaman bitmeyen gerçek bir yakalanan oturuma karşı test eder ve yalnızca öznel boyutta LLM hakim ulaşır. [Dispatcher'ın limitlerini](/tr/agenteye/evaluation-suite#configuring-the-server) biliyor — 30 saniyelik istek zaman aşımı ve 8 eşzamanlı çağrı dağıtım genelinde — yani hakim güvenilir bir şekilde uymazsa, judge'ın beş kez iptal edilmesi ve yeniden denenmesi yerine `JobPending` ile eşzamansız gider.
 
-Daha sonra dağıtır, iki sunucu ortam değişkenini ayarlar, ve `agenteye --json evals --session-id <id>` ile doğrular ki puanlar gerçekten indi. Puanlar inmek tek kanıttır.
+Sonra dağıtır, iki sunucu ortam değişkenini ayarlar ve `agenteye --json evals --session-id <id>` ile puanların gerçekten geldiğini doğrular. Puanlar gelmek tek kanıttır.
 
 ---
 
 ## Nelere dikkat edin
 
-- **Boyut adları neredeyse kalıcıdır.** Puan anahtarları keyfi dizeler ve platform gönderdiğiniz şeyi eğilimlendirir; bu nedenle aşağı akış hiçbir şey kötü seçimi düzeltmez. Daha sonra yeniden adlandırın ve geçmiş bölünür: eski seanslar eski anahtarı tutar ve eğilim kırılır. Bu, becerinin kod yazmadan önce açık onay aldığı nedeni — bu istem ciddiye alın.
-- **Sabitler gerçek üretim transkriplerileridir.** Gerçek seanslar aracılığıyla tasarlamak onları diske çekmek anlamına gelir ve müşteri verisi içerebilirler. Beceri git'e teslim etmeden önce sorar; şüphede, `fixtures/` repo dışında tutun ve her geliştirici kendi tarafını çeksin.
-- **Ajan her transkripti okuyan bir hizmet yazar ve dağıtır.** Sizin olarak davranır, CLI oturumunuzun izinleriyle sınırlı; fakat üretim verisine dokunulan diğer kodlar gibi değerlendiriciye bakın.
+- **Boyut adları neredeyse kalıcıdır.** Puan anahtarları keyfi dizelerdir ve platform gönderdiğiniz herhangi bir şeyi eğilimlendirir; bu da aşağı akışta kötü bir seçim düzeltilmez. Daha sonra yeniden adlandırın ve geçmiş bölünür: eski oturumlar eski anahtarı tutar ve eğilim kırılır. Bu, skill'in kod yazmadan önce açık onay almış olmasının nedenidir — bu istemi ciddiye alın.
+- **Fixtures gerçek üretim yazılı kayıtlarıdır.** Gerçek seanslar karşısında tasarlama, onları diske çekmeyi ve müşteri verilerini içerebilecekleri anlamına gelir. Skill git'e kaydetmeden önce sorar; şüpheye düşerseniz, `fixtures/` depodan çıkartın ve her geliştirici kendi dosyasını çeksin.
+- **Ajan, her yazılı kaydı okuyan bir hizmet yazar ve dağıtır.** Sizin adınıza hareket eder, CLI login'iniz izinleriyle sınırlı, ama evaluator'u üretim verisine dokunuşu olan başka herhangi bir kod gibi gözden geçirin.
 
 ---
 
-## Sonraki adımlar
+## Sonraki Adımlar
 
-- **[Değerlendirme paketi](/tr/agenteye/evaluation-suite)**: HTTP kontratı, SDK ve becerinin yapılandırdığı sunucu ortam değişkenleri.
-- **[Değerlendirmeler](/tr/agenteye/evaluations)**: puanlar indikten sonra nerede gösterildiği.
-- **[CLI becerisi](/tr/agenteye/cli-skill)**: puan oluşturmak yerine sonuçları okuyan kardeş beceri.
-- **[CLI](/tr/agenteye/cli)**: becerinin tasarladığı seanslar verilerinin arkasındaki komut referansı.
+- **[Evaluation suite](/tr/agenteye/evaluation-suite)**: HTTP kontratı, SDK ve skill'in yapılandırdığı sunucu ortam değişkenleri.
+- **[Evaluations](/tr/agenteye/evaluations)**: puanlar geldiğinde gösterilen yer.
+- **[CLI skill](/tr/agenteye/cli-skill)**: puanlayıcı oluşturmak yerine sonuçları okumak için kardeş skill.
+- **[CLI](/tr/agenteye/cli)**: skill'in tasarladığı oturum verisinin arkasındaki komut referansı.

@@ -1,0 +1,94 @@
+---
+title: Cập nhật sau khi nâng cấp
+description: "Hoàn thành nửa còn lại của quá trình nâng cấp mà npm không thể làm: di chuyển thư mục home và đồng bộ hóa daemon"
+---
+
+```bash
+npm install -g failproofai@latest && failproofai update
+```
+
+Đó là toàn bộ quá trình nâng cấp. `npm` thay thế CLI; `failproofai update` thực hiện
+phần còn lại.
+
+## Tại sao lại cần một lệnh thứ hai
+
+`npm install -g` chỉ thay thế một thứ — CLI. Hai phần khác của quá trình cài đặt failproofai
+nằm ngoài gói một cách cố ý, và không cái nào di chuyển khi npm chạy:
+
+- **`~/.failproofai/`**, các cài đặt của bạn, đăng ký đám mây, lựa chọn chính sách và
+  lịch sử. Một phiên bản mới có thể tổ chức nó khác nhau, và việc tổ chức lại phải
+  được thực hiện bởi mã biết cả hai cấu trúc.
+- **Tệp nhị phân daemon `failproofaid`**, tại
+  `~/.failproofai/bin/failproofaid-<version>`. Nó được cố ý *không* nằm trong
+  `node_modules`: một quá trình nâng cấp thay đổi tệp dưới một dịch vụ đang chạy sẽ
+  chỉ một daemon hoạt động tới tệp nhị phân được xây dựng từ mã nguồn khác nhau, và xóa gói
+  sẽ xóa nó khỏi dưới một dịch vụ sau đó bị lặp lại khởi động.
+
+Vì vậy sau `npm install -g` một mình, CLI là mới và daemon không phải. `failproofaid`
+từ chối bắt đầu chống lại bố cục home mà nó không hiểu — phiên bản lớn của
+sự không khớp đó hơn là phiên bản im lặng — vì vậy hai nửa cần được đưa lại với nhau.
+`failproofai update` là bước đó.
+
+## Nó làm gì
+
+<Steps>
+  <Step title="Chạy bất kỳ quá trình di chuyển bố cục nào đang chờ xử lý">
+    Đọc bố cục được ghi lại trong `~/.failproofai/VERSION` và chạy các bước
+    đưa nó tới bố cục mà phiên bản này hỗ trợ. Thường không có gì — xem
+    [`failproofai migrate`](/vi/cli/migrate).
+  </Step>
+  <Step title="Đặt tệp nhị phân daemon phù hợp vào vị trí">
+    Từ gói nền tảng mà npm đã tải xuống nếu có thể (không cần mạng),
+    nếu không từ tài sản bản phát hành cho phiên bản chính xác này, được xác minh SHA-256
+    trước khi nó được sử dụng.
+  </Step>
+  <Step title="Khởi động lại dịch vụ và xác nhận nó đã trở lại">
+    Được kiểm tra thay vì được giả định — một trình quản lý dịch vụ báo cáo một quy trình
+    hoạt động ngay khi nó tạo nhánh, điều này không giống như nó hoạt động.
+  </Step>
+</Steps>
+
+## Tùy chọn
+
+| Cờ | Tác dụng |
+|------|--------|
+| `--no-daemon` | Chỉ di chuyển thư mục home, để daemon ở phiên bản hiện tại của nó. |
+
+<Warning>
+  `--no-daemon` để lại một daemon chênh lệch phiên bản. Trên một máy được cấu hình
+  để yêu cầu daemon, mọi sự kiện hook **thất bại đóng** nếu daemon không thể
+  trả lời — và một daemon từ chối bắt đầu chống lại một thư mục home được di chuyển không thể
+  trả lời. Hãy để nửa daemon chạy.
+</Warning>
+
+## Nếu có sự cố
+
+Lệnh thoát không bằng không và cho biết nửa nào không thành công. Hai trường hợp đáng
+biết:
+
+- **Một bước di chuyển không hoàn thành.** Thư mục home được để lại được đánh dấu bằng bố cục *cũ*
+  của nó, vì vậy lệnh tiếp theo sẽ thử lại nó — thư mục home không bao giờ được đánh dấu là hiện tại
+  dựa trên quá trình di chuyển một phần. Các bản sao của cài đặt và đăng ký của bạn được
+  lưu trước khi bất cứ điều gì chạy, trong `~/.failproofai/migrations/backup-layout<n>/`.
+- **Daemon không thể được khởi động lại mà không cần mật khẩu.** `sudo -n` được sử dụng
+  cố ý, vì vậy không bao giờ có gì nhắc dưới màn hình tiến độ. Lệnh
+  in dòng chính xác để bạn tự chạy.
+
+<Note>
+  Không có gì ở đây cần trình hướng dẫn thiết lập tương tác. Cài đặt, đăng ký
+  đám mây và lựa chọn chính sách của bạn vượt qua quá trình nâng cấp, vì vậy một máy đã di chuyển
+  thực thi chính xác như trước đây — điều này quan trọng nhất trên những máy không ai
+  ngồi trên chúng: CI runner, fleet box, cổng không đầu.
+</Note>
+
+## Tự động hóa nó
+
+`failproofai update` không tương tác và an toàn để chạy khi không có gì để
+làm — nó báo cáo "không cần di chuyển" và thoát 0. Đặt nó sau mọi
+quá trình nâng cấp trong tập lệnh cấp phát hoặc Dockerfile là cách sử dụng dự định:
+
+```dockerfile
+RUN npm install -g failproofai@latest && failproofai update --no-daemon
+```
+
+(`--no-daemon` trong một bản dựng hình ảnh, nơi chưa có dịch vụ để khởi động lại.)

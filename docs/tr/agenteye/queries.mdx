@@ -1,55 +1,56 @@
 ---
 title: "Sorgular"
-description: "Agent verilerinize herhangi bir soru sorun ve saniyeler içinde cevap alın."
+description: "Ajan verilerinize herhangi bir soru sorun ve saniyeler içinde cevap alın."
 ---
 
-Agent verilerinize herhangi bir soru sorun ve saniyeler içinde cevap alın. Failproof AI Observability, etkinlikleriniz ve değerlendirmeleriniz üzerinde kaydedilmiş, hazır kullanıma sunulmuş sorguların bir kütüphanesini sunar; böylelikle boş bir SQL düzenleyicisinden başlamak yerine çalışan bir örnek üzerinden başlarsınız.
 
-![Kaydedilmiş sorgular kütüphanesi: yeniden kullanılabilir sorguların ızgarası, hem yerleşik ön ayarlar hem de özel olanlar](/agenteye/images/queries.png)
+Ajan verilerinize herhangi bir soru sorun ve saniyeler içinde cevap alın. Failproof AI Observability, etkinlikler ve değerlendirmeler üzerinde kaydedilmiş, çalıştırmaya hazır sorguların bir kitaplığını sunar. Böylece boş bir SQL editöründen başlamak yerine çalışan bir örnekten başlarsınız.
 
-*`/<org-slug>/queries` konumundaki kaydedilmiş sorgular kütüphanesi: yerleşik ön ayarlar ekibinizin kaydettiği sorgularla yan yana yer almakta.*
+![Kaydedilmiş sorgular kitaplığı: yerleşik hazır ayarlar ve özel sorgulardan oluşan yeniden kullanılabilir sorguların ızgarası](/agenteye/images/queries.png)
 
-## Boş bir sayfadan değil, bir ön ayardan başlayın
+*`/<org-slug>/queries` konumundaki kaydedilmiş sorgular kitaplığınız: yerleşik hazır ayarlar, takımınızın kaydettiği sorgularla birlikte.*
 
-Tablo adlarını hatırlamanız veya sıfırdan SQL yazmanız gerekmez. Kütüphane, ekiplerin en sık sorduğu sorulara yönelik yerleşik ön ayarlarla açılır ve bu ön ayarlar kendi ekibinizin kaydettiği ve adlandırdığı sorgularla yan yana yer alır. İstediğinize yakın birini seçin ve cevaba ulaşmak için gereken yolun çoğunu tamamlamış olursunuz.
+## Boş bir sayfadan değil, hazır ayardan başlayın
 
-Her kaydedilmiş sorgu kuruluş kapsamlıdır ve paylaşılıdır; bu nedenle ekip üyelerinizin yazdığı faydalı olanlar sizin de olur. Sorguyu bir kez adlandırıp bir açıklama ekleyin ve kuruluşunuzdaki herkes onu bulabilir, çalıştırabilir veya sonuçlarını daha sonra bir panoya sabitleyebilir.
+Tablo adlarını hatırlamanıza veya sıfırdan SQL yazmanıza gerek yok. Kitaplık, takımların en çok sorduğu sorular için yerleşik hazır ayarlarla açılır ve bunlar takımınızın kaydettiği ve adlandırdığı sorgularla yan yana yer alır. İstediğinize yakın bir tanesini seçin ve cevaba çoğu zaman ulaşmış olursunuz.
 
-`/<org-slug>/queries` konumunda bulabilirsiniz.
+Kaydedilmiş her sorgu kuruluş kapsamındadır ve paylaşılır. Böylece takım arkadaşlarınızın yazdığı faydalı sorgular sizin de sorgulanız olur. Bir sorguyu adlandırın ve bir kez açıklama verin; kuruluşunuzdaki herkes bunu bulabilir, çalıştırabilir veya sonuçlarını daha sonra bir panoya sabitleyebilir.
 
-## Düzenleyin ve SQL bestecisinde çalıştırın
+`/<org-slug>/queries` konumunda bulun.
 
-Herhangi bir sorguyu açın ve SQL bestecisine iner; burada sorguyu ayarlayabilir ve cevabı hemen görebilirsiniz: dışa aktarma yok, gidiş-dönüş yok, başkasının beklenmesi yok.
+## SQL bestecisinde ince ayar yapın ve çalıştırın
 
-![Kaydedilmiş sorguyu çalıştıran SQL sorgu bestecisi, şema kenar çubuğu ve canlı sonuç ızgarası](/agenteye/images/query-lab.png)
+Herhangi bir sorguyu açın ve SQL bestecisine iner. Burada sorguyu ayarlayabilir ve cevabı hemen görebilirsiniz: dışa aktarma yok, gidiş-dönüş yok, başkasını bekleme yok.
 
-*SQL bestecisi: sol tarafta sorgunuz, kolon adını asla tahmin etmeniz gerekmeyen şema kenar çubuğu ve altta canlı sonuç ızgarası.*
+![Kaydedilmiş bir sorguyu çalıştıran SQL sorgu bestecisi, şema kenar çubuğu ve canlı sonuç ızgarası](/agenteye/images/query-lab.png)
 
-- **Şema kenar çubuğu** analitik tabloları ve sütunlarını gösterir; böylelikle alan adlarını aramadan sorgu oluşturabilirsiniz.
-- **Canlı sonuç ızgarası** çalıştırdığınız anda satırları döndürür; bu nedenle tahmin etme ve yeniden tahmin etme yerine saniyeler içinde yineleme yaparsınız.
-- **Tasarım gereği salt okunurdur.** Sorgular olay deponunuza karşı çalıştırılır ve sunucuda doğrulanır: yalnızca `SELECT` ve `WITH` deyimleri, deyim zaman aşımı ve satır sınırıyla birlikte izin verilir. Keşifsel bir sorgu verilerinizi asla değiştiremez ve kaçan bir sorgu sizin için durdurulur.
+*SQL bestecisi: solda sorgunuz, alan adını asla tahmin etmemeniz için şema kenar çubuğu ve aşağıda canlı sonuç ızgarası.*
 
-Sonuçtan memnun musunuz? Bunu kütüphaneye geri kaydedin; böylelikle tüm ekip bundan faydalanır veya çıktısını bir panoya çizgi, çubuk, alan veya pasta döşemesi olarak sabitleyin.
+- **Bir şema kenar çubuğu**, analitik tabloları ve sütunlarını göstererek, alan adlarını aramadan bir sorgu şekillendirmenize yardımcı olur.
+- **Canlı sonuç ızgarası**, çalıştırır çalıştırmaz satırları döndürerek, tahmin edip yeniden tahmin etmek yerine saniyeler içinde yineleme yapmanızı sağlar.
+- **Tasarım gereği salt okunur.** Sorgular etkinlik deponuza karşı çalışır ve sunucuda doğrulanır: yalnızca `SELECT` ve `WITH` deyimlerine izin verilir; bir deyim zaman aşımı ve satır sınırı vardır. Keşifsel bir sorgu verilerinizi asla değiştiremez ve kontrolsüz olanlar sizin için durdurulur.
 
-## Terminal'den çalıştırın veya asistanın bunları yazmasına izin verin
+Sonuçtan memnun musunuz? Tüm takım tarafından devralınması için kitaplığa geri kaydedin veya çıktısını bir panoya satır, çubuk, alan veya pasta döşemesi olarak sabitleyin.
 
-Aynı kaydedilmiş sorgular çalışmakta olduğunuz her yerde sizi takip eder:
+## Terminalden çalıştırın veya asistanın bunları yazmasına izin verin
 
-- **Terminal'den.** `agenteye` CLI'ı tam da aynı sorguları listeler, çalıştırır ve kaydeder; böylelikle sonucu bir komut dosyasına bırakabilir, CI'ye bağlayabilir veya bir kodlama ajanına verebilirsiniz.
+Aynı kaydedilmiş sorgular nerede çalışırsanız çalışın sizinle birlikte gider:
+
+- **Terminalden.** `agenteye` CLI, tam olarak aynı sorguları listeler, çalıştırır ve kaydeder. Böylece sonuçları bir komut dosyasına bırakabilir, CI'e bağlayabilir veya kodlama ajanına verebilirsiniz.
 
 ```bash
-agenteye query list                 # terminal'deki aynı kaydedilmiş sorgular
-agenteye query run errs --arg prod  # birini çalıştırın ve satırları yazdırın (boru için --json ekleyin)
+agenteye query list                 # aynı kaydedilmiş sorgular, terminalinizden
+agenteye query run errs --arg prod  # birini çalıştırın ve satırları yazdırın (--json ekleyin, boru göndermek için)
 ```
 
-  Tam komut seti için [CLI ve ajanlar](/tr/agenteye/cli-and-agents) konusuna bakın.
+  Tam komut kümesi için [CLI ve ajanlar](/tr/agenteye/cli-and-agents) konusuna bakın.
 
-- **AI asistanından.** SQL'i nasıl ifade edeceğiniz konusunda emin değil misiniz? Panodaki [AI asistanına](/tr/agenteye/assistant) düz İngilizce sorun ve sorguyu taslak halinde oluşturup kütüphaneyinize kaydedecektir.
+- **AI asistanından.** SQL'i nasıl ifade edeceğinizden emin değil misiniz? Panoda [AI asistana](/tr/agenteye/assistant) düz İngilizce sorarak sorguyu taslaklaştırmasına ve kitaplığınıza kaydetmesine izin verin.
 
-Kaydedilmiş sorguyu çalıştırmak `queries:run` izni tarafından kontrol edilir; sorgu oluşturma veya silme izinlerinden ayrı tutulur; bu nedenle herkesin kütüphaneyi yeniden yazmasına izin vermeden okuma erişimi verebilirsiniz.
+Kaydedilmiş bir sorguyu çalıştırmak `queries:run` izni tarafından geçitlenir; bu, sorgu oluşturma veya silme izinlerinden ayrı tutulur. Böylece herkesin kitaplığı yeniden yazmasına izin vermeden okuma erişimi verebilirsiniz.
 
-## İlgili
+## İlişkili
 
-- [Panolar](/tr/agenteye/dashboards): sorgu sonuçlarını paylaşılan, kuruluş genelinde çizelgelere sabitleyin.
-- [AI asistanı](/tr/agenteye/assistant): sorulara düz İngilizce olarak sorun ve sorgu alın.
-- [CLI ve ajanlar](/tr/agenteye/cli-and-agents): terminal'den aynı sorguları çalıştırın ve kaydedin.
+- [Panolar](/tr/agenteye/dashboards): sorgu sonuçlarını paylaşılan, kuruluş genelinde grafiklere sabitleyin.
+- [AI asistanı](/tr/agenteye/assistant): düz İngilizce sorular sorun ve karşılığında bir sorgu alın.
+- [CLI ve ajanlar](/tr/agenteye/cli-and-agents): terminalinizden aynı sorguları çalıştırın ve kaydedin.

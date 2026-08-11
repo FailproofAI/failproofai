@@ -1,51 +1,51 @@
 ---
-title: "Đánh giá"
-description: "Các vấn đề chất lượng được phát hiện ngay bây giờ, thay vì bạn nghe về chúng từ khiếu nại của người dùng."
+title: "Đánh giá chất lượng"
+description: "Những vấn đề chất lượng được phát hiện ngay bây giờ, thay vì bạn nghe về chúng từ một khiếu nại của người dùng."
 ---
 
 
-Các vấn đề chất lượng được phát hiện ngay bây giờ, thay vì bạn nghe về chúng từ khiếu nại của người dùng. Kết nối dịch vụ chấm điểm của riêng bạn một lần và Failproof AI Observability tự động đánh giá mọi lần chạy hoàn tất, vì vậy một sự suy giảm trong hữu ích hoặc sự tăng đột biến trong ảo giác sẽ hiển thị trên chính nó, trước khi khách hàng cảm nhận được nó.
+Những vấn đề chất lượng được phát hiện ngay bây giờ, thay vì bạn nghe về chúng từ một khiếu nại của người dùng. Kết nối dịch vụ chấm điểm của riêng bạn một lần và Failproof AI Observability sẽ tự động đánh giá mỗi lần chạy hoàn tất, vì vậy sự sụt giảm trong khả năng hữu ích hoặc sự gia tăng trong ảo tưởng sẽ hiện lên một cách tự động, trước khi khách hàng nhận thấy nó.
 
-![Lưới phiên với cột điểm: mỗi lần chạy mang theo huy hiệu trạng thái đánh giá và huy hiệu có màu mã hữu ích, tính xác thực và hiệu quả công cụ](/agenteye/images/sessions-list.png)
+![Lưới Sessions với một cột điểm: mỗi lần chạy mang một huy hiệu trạng thái đánh giá và các huy hiệu được mã hóa màu sắc về độ hữu ích, độ chính xác và hiệu quả công cụ](/agenteye/images/sessions-list.png)
 
-*Mỗi lần chạy trên lưới phiên đều có điểm của nó; các huy hiệu đỏ, vàng và xanh làm cho những lần chạy yếu nổi bật mà không cần bạn mở một bảng điểm duy nhất.*
+*Mỗi lần chạy trên lưới sessions đều mang theo điểm số của nó; các huy hiệu đỏ, vàng và xanh làm cho những lần chạy yếu nổi bật mà không cần bạn mở một bản ghi duy nhất.*
 
 ## Dừng lấy mẫu các lần chạy bằng tay
 
-Bạn thường kiểm tra một số lần chạy và hy vọng phần còn lại đều ổn. Bây giờ mọi phiên hoàn tất đều được chấm điểm ngay khi hoàn tất, trên các chiều mà bạn quan tâm: hữu ích, hiệu quả công cụ, tính xác thực, an toàn, bất cứ tiêu chuẩn chất lượng nào của bạn. Bạn xác định các khóa điểm; Failproof AI Observability lưu trữ, theo dõi xu hướng và hiển thị bất cứ thứ gì bộ đánh giá của bạn gửi lại. Không có lần chạy nào bị bỏ qua mà không được chấm điểm, và bạn sẽ không còn biết về một sự suy thoái từ một vé hỗ trợ.
+Bạn thường kiểm tra một số ít lần chạy và hy vọng phần còn lại đều ổn. Bây giờ mỗi phiên hoàn tất được chấm điểm vào thời điểm nó kết thúc, trên những khía cạnh bạn quan tâm: độ hữu ích, hiệu quả công cụ, độ chính xác, an toàn, bất cứ điều gì là tiêu chuẩn chất lượng của bạn. Bạn xác định các khóa điểm; Failproof AI Observability lưu trữ, theo dõi xu hướng và hiển thị bất cứ điều gì người đánh giá của bạn gửi lại. Không có lần chạy nào trượt qua mà không được chấm điểm, và bạn sẽ không còn biết về sự hồi quy từ một vé hỗ trợ.
 
-Điểm được hiển thị trên lưới phiên tại **`/<org-slug>/sessions`** (thanh bên → *quan sát* → *phiên*), một cụm huy hiệu trên mỗi hàng. Chỉ muốn những lần chạy không đạt yêu cầu? Lọc lưới theo phạm vi điểm, ví dụ hữu ích dưới 0,5, và kéo lên chính xác những lần chạy đáng đọc. Xem điểm cần quyền `evaluations:read`.
+Các điểm xuất hiện trên lưới sessions tại **`/<org-slug>/sessions`** (thanh bên → *observe* → *sessions*), một nhóm huy hiệu trên mỗi hàng. Bạn chỉ muốn những lần chạy không đạt yêu cầu? Lọc lưới theo phạm vi điểm, ví dụ độ hữu ích dưới 0,5, và xem chính xác những lần chạy đáng đọc. Xem điểm cần có quyền `evaluations:read`.
 
-## Xem lý do tại sao một lần chạy được chấm điểm thấp
+## Xem tại sao một lần chạy có điểm thấp
 
-Một con số cho bạn biết một lần chạy là yếu; trang phiên cho bạn biết lý do tại sao. Mở bất kỳ lần chạy nào và thanh bên phải dẫn đầu với tóm tắt tiêu đề, sau đó hiển thị một thanh trên mỗi chiều với lý do của bộ đánh giá của bạn dưới mỗi chiều, vì vậy bạn chuyển từ lần chạy này được chấm điểm 0,4 về tính xác thực sang yêu cầu chính xác mà nó sai trong vài giây.
+Một con số cho bạn biết một lần chạy yếu; trang phiên cho bạn biết tại sao. Mở bất kỳ lần chạy nào và thanh bên phải bắt đầu bằng bản tóm tắt tiêu đề, sau đó hiển thị một thanh trên mỗi khía cạnh với lý do từ người đánh giá của bạn dưới mỗi thanh, vì vậy bạn chuyển từ "lần này có điểm 0,4 về độ chính xác" sang khiếu nại chính xác mà nó sai trong vài giây.
 
-![Thanh bên phải của phiên: tóm tắt đánh giá ở trên, sau đó là các thanh điểm trên mỗi chiều mỗi cái có một dòng lý do, bên cạnh dòng thời gian sự kiện đầy đủ](/agenteye/images/session-detail.png)
+![Thanh bên phải của một phiên: bản tóm tắt đánh giá ở trên, sau đó là các thanh điểm trên mỗi khía cạnh, mỗi thanh đều có một dòng lý do, bên cạnh toàn bộ dòng thời gian sự kiện](/agenteye/images/session-detail.png)
 
-*Chế độ xem chi tiết phiên: tóm tắt, các thanh điểm trên mỗi chiều và lý do đằng sau mỗi điểm, ngay cạnh dòng thời gian sự kiện của lần chạy.*
+*Chế độ xem chi tiết phiên: bản tóm tắt, các thanh điểm trên mỗi khía cạnh và lý do đằng sau mỗi điểm, ngay bên cạnh dòng thời gian sự kiện của lần chạy.*
 
-Đã triển khai một bộ đánh giá sắc sảo hơn, hoặc đang xem một lần chạy gặp sự cố trước khi nó có thể được chấm điểm? Nút **đánh giá lại** (được kiểm soát bởi `evaluations:trigger`) chấm điểm lại phiên tại chỗ và thêm kết quả mới vào dòng thời gian của nó, vì vậy các điểm trước đó vẫn hiển thị dưới dạng lịch sử. Bạn sẽ tìm thấy nó tại **`/<org-slug>/sessions/<session-id>`**.
+Đã triển khai một người đánh giá tốt hơn, hay xem một lần chạy bị sự cố trước khi nó có thể được chấm điểm? Một nút **re-evaluate** (được giới hạn bởi `evaluations:trigger`) sẽ chấm điểm lại phiên này tại chỗ và thêm kết quả mới vào dòng thời gian của nó, vì vậy các điểm trước đó vẫn hiển thị dưới dạng lịch sử. Bạn sẽ tìm thấy nó tại **`/<org-slug>/sessions/<session-id>`**.
 
 ## Theo dõi xu hướng chất lượng trên toàn bộ đội
 
-Một lần chạy được chấm điểm thấp là tiếng ồn; toàn bộ nhóm trượt là một tín hiệu. Các bảng điều khiển đã lưu biến điểm của bạn thành xu hướng mà bạn có thể theo dõi ngay: trung bình hữu ích tuần này so với tuần trước, trên mỗi đại lý, trên mỗi môi trường.
+Một lần chạy có điểm thấp là nhiễu; toàn bộ một nhóm trượt là tín hiệu. Các bảng điều khiển đã lưu sẽ chuyển điểm số của bạn thành xu hướng bạn có thể theo dõi một cách nhanh chóng: độ hữu ích trung bình tuần này so với tuần trước, theo agent, theo môi trường.
 
-![Bảng điều khiển chất lượng: các thanh điểm trung bình trên mỗi chiều bộ đánh giá cùng với xu hướng theo thời gian](/agenteye/images/dashboard-quality.png)
+![Bảng điều khiển chất lượng: các thanh điểm trung bình trên mỗi khía cạnh của người đánh giá cùng với xu hướng theo thời gian](/agenteye/images/dashboard-quality.png)
 
-*Một bảng điều khiển chất lượng đã lưu theo dõi xu hướng các khóa điểm mà bạn đặc trưng, vì vậy một sự trôi dạt chậm là rõ ràng lâu trước khi nó trở thành sự cố.*
+*Một bảng điều khiển chất lượng đã lưu theo dõi xu hướng các khóa điểm bạn nổi bật, vì vậy sự trôi dạt chậm là hiển nhiên lâu trước khi nó trở thành một sự cố.*
 
-Bảng điều khiển nằm tại **`/<org-slug>/dashboards`** (thanh bên → *phân tích* → *bảng điều khiển*), được chia sẻ trên toàn bộ tổ chức của bạn, và mỗi thẻ tổng hợp các phiên phù hợp: có bao nhiêu, trung bình của mỗi điểm đặc trưng, và một dòng xu hướng tia lửa. "Mở trong phiên" đưa bạn trực tiếp vào các lần chạy được lọc trước phía sau bất kỳ số nào. Xem cần `dashboards:read` cộng với `evaluations:read`.
+Bảng điều khiển nằm tại **`/<org-slug>/dashboards`** (thanh bên → *analyze* → *dashboards*), được chia sẻ trên toàn bộ tổ chức của bạn, và mỗi thẻ tổng hợp các phiên phù hợp: bao nhiêu, giá trị trung bình của mỗi điểm nổi bật và một đường xu hướng chớp nhoáng. "Open in sessions" đưa bạn trực tiếp vào các lần chạy được lọc trước đó phía sau bất kỳ con số nào. Xem cần có `dashboards:read` cộng với `evaluations:read`.
 
-## Kết nối một bộ đánh giá một lần
+## Kết nối một người đánh giá một lần
 
-Chấm điểm là tùy chọn và vẫn hoàn toàn tắt cho đến khi bạn chỉ Failproof AI Observability vào một công cụ ghi điểm. Bạn thiết lập một dịch vụ HTTP nhỏ (Observability gửi một tham chiếu hoạt động mà bạn có thể sao chép), đặt hai giá trị trên máy chủ của bạn, và mọi lần chạy từ đó trở đi đều được chấm điểm cho bạn. Toàn bộ hướng dẫn, hợp đồng chấm điểm và SDK nằm trong hướng dẫn sâu.
+Chấm điểm là tùy chọn và vẫn hoàn toàn tắt cho đến khi bạn trỏ Failproof AI Observability vào một máy chấm điểm. Bạn tạo một dịch vụ HTTP nhỏ (Observability cung cấp một tham chiếu hoạt động mà bạn có thể sao chép), đặt hai giá trị trên máy chủ của bạn, và từ đó trở đi, mỗi lần chạy được chấm điểm cho bạn. Hướng dẫn đầy đủ, hợp đồng chấm điểm và SDK nằm trong hướng dẫn sâu.
 
-Không chắc chắn những chiều nào đáng chấm điểm ngay từ đầu? [Kỹ năng đại lý đánh giá](/vi/agenteye/evaluator-skill) có đại lý mã hóa của bạn làm điều đó chống lại các phiên của riêng bạn, sau đó xây dựng và triển khai dịch vụ.
+Không chắc chắn những khía cạnh nào đáng được chấm điểm ngay từ đầu? [Kỹ năng agent đánh giá](/vi/agenteye/evaluator-skill) sẽ giúp agent mã hóa của bạn giải quyết vấn đề đó so với các phiên của bạn, sau đó xây dựng và triển khai dịch vụ.
 
 ## Liên quan
 
-- [Bộ đánh giá](/vi/agenteye/evaluation-suite): kết nối bộ đánh giá của bạn, hợp đồng chấm điểm và SDK.
-- [Kỹ năng đại lý đánh giá](/vi/agenteye/evaluator-skill): để đại lý mã hóa chọn các chiều điểm của bạn và xây dựng bộ đánh giá.
-- [Phiên](/vi/agenteye/sessions): lưới chạy từng lần nơi xuất hiện điểm.
-- [Bảng điều khiển](/vi/agenteye/dashboards): lưu và chia sẻ xu hướng chất lượng trên tổ chức của bạn.
-- [Kiểm tra](/vi/agenteye/audits): tính năng chất lượng tự động khác của Observability, để điều tra xuyên phiên.
+- [Bộ đánh giá](/vi/agenteye/evaluation-suite): kết nối người đánh giá của bạn, hợp đồng chấm điểm và SDK.
+- [Kỹ năng agent đánh giá](/vi/agenteye/evaluator-skill): để agent mã hóa chọn các khía cạnh điểm số của bạn và xây dựng người đánh giá.
+- [Phiên](/vi/agenteye/sessions): lưới từng lần chạy nơi điểm xuất hiện.
+- [Bảng điều khiển](/vi/agenteye/dashboards): lưu và chia sẻ xu hướng chất lượng trên toàn bộ tổ chức của bạn.
+- [Kiểm toán](/vi/agenteye/audits): tính năng chất lượng tự động khác của Observability, để điều tra liên phiên.

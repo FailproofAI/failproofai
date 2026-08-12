@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LANGUAGES, getLanguageByCode } from "./config";
@@ -220,7 +220,9 @@ export async function translateReadme(
   // Check cache — use provided cache object or read from disk
   if (!options.force && !options.dryRun) {
     const cache = options.cache ?? readCache();
-    if (isCached(cache, "README.md", lang, sourceContent)) {
+    // `&& existsSync(outputPath)` — see the MDX path. Cached records that a
+    // translation was produced, not that the file is there now.
+    if (isCached(cache, "README.md", lang, sourceContent) && existsSync(outputPath)) {
       return {
         lang,
         sourcePath: README_PATH,

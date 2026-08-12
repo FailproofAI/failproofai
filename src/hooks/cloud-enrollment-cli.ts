@@ -20,6 +20,7 @@ import {
   daemonVersionSkew,
 } from "./daemon-service";
 import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
 import { readVersionFile, readCredentials } from "./fp-config";
 import { version as cliVersion } from "../../package.json";
 import { daemonSocketPresent } from "./daemon-client";
@@ -428,7 +429,21 @@ export function connectionStatusLines(
   if (orgLine) lines.push(`  Org       ${orgLine}`);
 
   if (ingest) {
-    lines.push(`  Dashboard sending hook activity to ${ingest.url}.`);
+    // Everything above this line is read from the credential FILE, which
+    // records what was true at `--connect` time and is never revisited. A key
+    // that has since been revoked, expired, or had its org disabled leaves that
+    // file byte-for-byte correct while nothing arrives — which is how a machine
+    // reported "connected" for twenty minutes with 26 refused batches on disk
+    // (see `crates/failproofaid/src/main.rs`). The collector's own record of
+    // what the server actually said is the only thing here that describes NOW,
+    // so it overrides the cheerful line rather than being appended after it.
+    const health = deliveryHealth();
+    const rejection = deliveryHealthLine(health);
+    if (rejection) {
+      lines.push(`  Dashboard ${rejection}`);
+    } else {
+      lines.push(`  Dashboard sending hook activity to ${ingest.url}.`);
+    }
   } else {
     lines.push(`  Dashboard NOT sending — nothing from this machine appears in the dashboard.`);
     lines.push(`            Re-run: failproofai config --connect ${creds!.url} --token <key>`);

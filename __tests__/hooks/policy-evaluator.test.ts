@@ -64,6 +64,58 @@ describe("hooks/policy-evaluator", () => {
     expect(result.reason).toBe("JWT found");
   });
 
+  // codex and copilot read a TOP-LEVEL {decision:"block", reason} at PostToolUse
+  // and ignore hookSpecificOutput entirely, so the additionalContext shape above
+  // was inert on both: emitted, logged, counted as enforcement, dropped.
+  //
+  // codex 0.147.0 live A/B: {decision:"block"} -> `hook: PostToolUse Blocked`
+  // and the reason replaces the tool result; hookSpecificOutput -> `hook:
+  // PostToolUse Completed` and the model reads the real output verbatim.
+  // copilot 1.0.78 app.js: both postToolUse sites gate on
+  // vK = t => t?.decision === "block" && typeof t.reason === "string".
+  it.each(["codex", "copilot"] as const)(
+    "PostToolUse deny on %s emits the top-level {decision:'block', reason} shape",
+    async (cli) => {
+      registerPolicy("jwt-scrub", "desc", () => ({
+        decision: "deny",
+        reason: "JWT found",
+      }), { events: ["PostToolUse"] });
+
+      const result = await evaluatePolicies("PostToolUse", { tool_name: "Read" }, { cli });
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.decision).toBe("deny");
+
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(parsed.decision).toBe("block");
+      expect(parsed.reason).toBe(
+        "Blocked Read by failproofai because: JWT found, as per the policy configured by the user",
+      );
+      // copilot's vK predicate fails closed unless `reason` is a string, and it
+      // reads no nested shape — assert both halves of that contract.
+      expect(typeof parsed.reason).toBe("string");
+      expect(parsed.hookSpecificOutput).toBeUndefined();
+    },
+  );
+
+  it("PostToolUse deny on a CLI outside that pair still uses additionalContext", async () => {
+    // Guards the blast radius of the branch above: claude reads
+    // hookSpecificOutput here and has no top-level `decision` consumer, so
+    // widening the codex/copilot shape to every CLI would silently break it.
+    registerPolicy("jwt-scrub", "desc", () => ({
+      decision: "deny",
+      reason: "JWT found",
+    }), { events: ["PostToolUse"] });
+
+    const result = await evaluatePolicies("PostToolUse", { tool_name: "Read" }, { cli: "claude" });
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(parsed.decision).toBeUndefined();
+    expect(
+      (parsed.hookSpecificOutput as Record<string, unknown>).additionalContext,
+    ).toBe("Blocked Read by failproofai because: JWT found, as per the policy configured by the user");
+  });
+
   it("other event types use exit 2 for deny", async () => {
     registerPolicy("blocker", "desc", () => ({ decision: "deny", reason: "nope" }), {
       events: ["SessionStart"],

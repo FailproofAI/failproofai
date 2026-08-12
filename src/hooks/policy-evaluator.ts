@@ -497,6 +497,43 @@ export async function evaluatePolicies(
       }
 
       if (eventType === "PostToolUse") {
+        // codex and copilot both gate PostToolUse on a TOP-LEVEL
+        // {decision:"block", reason:<string>}. Neither reads the
+        // hookSpecificOutput shape below, so every PostToolUse deny on them was
+        // emitted, logged, counted as enforcement — and dropped on the floor.
+        //
+        // codex 0.147.0, live A/B probe (same prompt, same hook, only the shape
+        // differs): with {decision:"block"} the run prints `hook: PostToolUse
+        // Blocked`, routes the reason through codex_core::tools::router, and the
+        // reason REPLACES the tool result — the model never sees the real
+        // output. With hookSpecificOutput it prints `hook: PostToolUse
+        // Completed` and the model reads the output verbatim. NOTE the codex
+        // rows elsewhere cite output_parser.rs / hook_runtime.rs / tools
+        // registry.rs line numbers that no longer exist in 0.147.0 (its hook
+        // sources are hooks/src/{engine,events}/…); this row is re-grounded on
+        // the live probe rather than those paths.
+        //
+        // copilot 1.0.78: BOTH postToolUse call sites in the shipped
+        // @github/copilot-linux-x64 app.js gate on
+        //   vK = t => t?.decision === "block" && typeof t.reason === "string"
+        // -> "Tool result blocked". vK fails closed on a missing or non-string
+        // reason, so the reason must always be a non-empty string — do not
+        // "simplify" this to {decision:"block"} alone.
+        //
+        // The tool has already RUN in both cases. This replaces the result the
+        // model reads; it does not undo the side effect. That is the only
+        // semantic available at PostToolUse, and it is precisely what an
+        // output-scrubbing policy needs to keep a secret out of the context.
+        if (session?.cli === "codex" || session?.cli === "copilot") {
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
+            stderr: "",
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
         const response = {
           hookSpecificOutput: {
             hookEventName: eventType,

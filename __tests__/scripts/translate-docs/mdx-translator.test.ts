@@ -31,6 +31,7 @@ import {
   translateMdxPage,
 } from "@/scripts/translate-docs/mdx-translator";
 import type { TranslationCache } from "@/scripts/translate-docs/types";
+import { setCacheEntry } from "@/scripts/translate-docs/cache";
 
 /** Queue ONE `end_turn` translation response; call once per expected attempt. */
 function queueTranslation(text: string): void {
@@ -520,6 +521,43 @@ describe("translateMdxPage validation gate", () => {
     ).rejects.toThrow();
     expect(cache.translations).not.toHaveProperty(`${REL}::de`);
     expect(Object.keys(cache.translations)).toHaveLength(0);
+  });
+
+  // A cache entry says a page was TRANSLATED ONCE, never that the file is on
+  // disk now — and the two came apart in production. Translations land on an
+  // auto-translate PR branch; while that sits unmerged, `main` lacks the file
+  // and the cache still reports it done, so the page is never regenerated while
+  // `--update-nav` (which reads the ENGLISH tree) emits a nav entry pointing at
+  // it. `mintlify validate` then fails, and because the cache save sat
+  // downstream of that step, the day's cache was discarded — making a cache HIT
+  // the failing case and a full 120-minute MISS the only way to a green run.
+  // These two tests pin both directions of the fix.
+  it("re-translates a cached page whose output file is missing", async () => {
+    const cache = emptyCache();
+    setCacheEntry(cache, REL, "de", EN_SOURCE, 10, 20);
+    expect(existsSync(outputPath)).toBe(false);
+
+    queueTranslation(VALID_DE);
+    const result = await translateMdxPage(srcPath, "de", { docsDir, cache });
+
+    // Cache says done, disk says otherwise — disk wins.
+    expect(result.cached).toBe(false);
+    expect(streamMock).toHaveBeenCalledTimes(1);
+    expect(existsSync(outputPath)).toBe(true);
+  });
+
+  it("still skips a cached page when the output file is present", async () => {
+    const cache = emptyCache();
+    setCacheEntry(cache, REL, "de", EN_SOURCE, 10, 20);
+    mkdirSync(dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, VALID_DE);
+
+    const result = await translateMdxPage(srcPath, "de", { docsDir, cache });
+
+    // The whole point of the cache. If this regresses, every run is a full
+    // re-translation and the existsSync guard has become a cache bypass.
+    expect(result.cached).toBe(true);
+    expect(streamMock).not.toHaveBeenCalled();
   });
 
   it("validates the sanitized, link-rewritten bytes rather than the raw model output", async () => {

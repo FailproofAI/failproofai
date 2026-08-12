@@ -268,7 +268,18 @@ async function main() {
         if (
           !isForce &&
           !isDryRun &&
-          isCached(cache, relPath, lang, pageContents.get(page)!)
+          isCached(cache, relPath, lang, pageContents.get(page)!) &&
+          // The cache records that a translation was PRODUCED, never that it
+          // EXISTS. Output lands on an unmerged auto-translate PR branch, so
+          // until that merges the checked-out tree lacks the file while the
+          // cache still says "done" — the page is never regenerated, and
+          // `--update-nav` (which reads the ENGLISH tree) emits a nav entry
+          // pointing at a file that is not there, so `mintlify validate` fails.
+          // That is non-convergent: a cache hit fails validation, and only a
+          // full cache MISS — 120 runner-minutes — produces a green run.
+          // Statting the output makes the cache self-healing against any
+          // "translated once, never landed" gap, whatever opened it.
+          existsSync(join(DOCS_DIR, lang, relPath))
         ) {
           cachedTasks.push(task);
         } else {
@@ -345,7 +356,10 @@ async function main() {
       if (
         !isForce &&
         !isDryRun &&
-        isCached(cache, "README.md", lang, readmeSource)
+        isCached(cache, "README.md", lang, readmeSource) &&
+        // Same reason as the MDX branch above: cached means translated once,
+        // not present now.
+        existsSync(join(DOCS_DIR, "i18n", `README.${lang}.md`))
       ) {
         console.log(`  README.${lang}.md -> cached`);
         results.push({

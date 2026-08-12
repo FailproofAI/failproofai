@@ -80,12 +80,32 @@ jobs:
         # hook, which builds the full Next.js application once per language.
         run: bun install --frozen-lockfile --ignore-scripts
 
+      # The old primary key was
+      # `translation-cache-${{ hashFiles('scripts/translate-docs/.translation-cache.json') }}`,
+      # which ALWAYS evaluated to the bare literal `translation-cache-`: the file
+      # is gitignored (.gitignore:68), so it is absent at checkout and
+      # `hashFiles` returns "". Every restore that ever worked was a
+      # `restore-keys` prefix match, and a total miss is indistinguishable from a
+      # hit — nothing fails, nothing warns, the job just spends nine minutes and
+      # a full LLM pass. Hence the explicit warning step below: a miss is the
+      # expensive case and it should say so in the run summary.
       - name: Restore translation cache
+        id: restore-cache
         uses: actions/cache/restore@v6
         with:
           path: scripts/translate-docs/.translation-cache.json
-          key: translation-cache-${{ hashFiles('scripts/translate-docs/.translation-cache.json') }}
-          restore-keys: translation-cache-
+          # Per language, newest-first, falling back to the merged entry that
+          # `consolidate` still writes. `github.run_id` is monotonic, so the
+          # prefix match returns this language's most recent fragment.
+          key: translation-cache-${{ matrix.lang }}-${{ github.run_id }}
+          restore-keys: |
+            translation-cache-${{ matrix.lang }}-
+            translation-cache-
+
+      - name: Warn on translation cache miss
+        if: steps.restore-cache.outputs.cache-matched-key == ''
+        run: |
+          echo "::warning title=Translation cache MISS::${{ matrix.lang }} will re-translate every page (~9 runner-minutes and one full LLM pass)"
 
       - name: Translate ${{ matrix.lang }}
         run: bun run translate --languages ${{ matrix.lang }} ${{ inputs.force == true && '--force' || '' }}
@@ -99,6 +119,22 @@ jobs:
       - name: Validate translated pages parse and images resolve
         run: bun run validate:mdx
 
+      # Save HERE, per language, in the job that produced the work and directly
+      # after the step that proved it good.
+      #
+      # The only save used to be `consolidate`'s, downstream of BOTH the matrix
+      # gate (`if: needs.translate.result == 'success'`) and `mintlify validate`.
+      # So one page failing validation in one language threw away the cache for
+      # all fourteen — Aug 6 lost ~110 minutes of completed translation to a
+      # single `ko` page — and a nav mismatch in consolidate did the same on
+      # Aug 12. Each fragment is already authoritative for its own language, so
+      # there is nothing a merge has to happen first for.
+      - name: Save translation cache fragment
+        uses: actions/cache/save@v6
+        with:
+          path: scripts/translate-docs/.translation-cache.json
+          key: translation-cache-${{ matrix.lang }}-${{ github.run_id }}
+
       - name: Upload translated files
         uses: actions/upload-artifact@v7
         with:
@@ -106,7 +142,7 @@ jobs:
           path: |
             docs/${{ matrix.lang }}/
             docs/i18n/README.${{ matrix.lang }}.md
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
       - name: Upload cache fragment
@@ -114,7 +150,7 @@ jobs:
         with:
           name: cache-${{ matrix.lang }}
           path: scripts/translate-docs/.translation-cache.json
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
           include-hidden-files: true
 

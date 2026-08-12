@@ -184,7 +184,7 @@ describe("the scan stays on this machine", () => {
   it("uploads nothing, however much it finds", async () => {
     // The scheduled scan reads the CONTENTS of every session transcript on
     // disk — prompts, file contents, pasted credentials, command output. It
-    // once POSTed a counters-only projection of that to Failproof Cloud; that
+    // once POSTed a counters-only projection of that to FailproofAI Cloud; that
     // path is gone, and this pins that it does not come back by accident.
     //
     // `fetch` is the seam because it is the only way anything here reaches the

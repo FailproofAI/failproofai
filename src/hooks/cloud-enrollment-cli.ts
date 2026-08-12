@@ -282,7 +282,7 @@ export async function runRenameCommand(
     return {
       exitCode: 1,
       lines: [
-        "This machine is not connected to Failproof Cloud, so it has no name to change.",
+        "This machine is not connected to FailproofAI Cloud, so it has no name to change.",
         "Connect it first: failproofai config --connect <url> --token <key>",
       ],
     };
@@ -337,11 +337,11 @@ export function runDisconnectCommand(): CommandResult {
   updateConfig({ mode: "oss" });
 
   if (!removed && !existing && !hadIngest && !stoppedManaged) {
-    return { exitCode: 0, lines: ["This machine is not connected to Failproof Cloud."] };
+    return { exitCode: 0, lines: ["This machine is not connected to FailproofAI Cloud."] };
   }
 
   const lines = [
-    "Disconnected from Failproof Cloud.",
+    "Disconnected from FailproofAI Cloud.",
     "",
     stoppedManaged
       ? "  Cloud-managed policies stop being enforced and stop being refreshed.\n" +

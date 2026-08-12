@@ -215,5 +215,4 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md). New policies, edge cases, and translat
 
 ---
 
-Built by [Nivedit Jain](https://github.com/NiveditJain) and [Nikita Agarwal](https://github.com/nk-ag).
-[befailproof.ai](https://befailproof.ai)
+Built with ❤️ by [befailproof.ai](https://befailproof.ai) in SF and Bengaluru.

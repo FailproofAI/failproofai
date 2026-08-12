@@ -35,7 +35,7 @@
  *     drive it; the daemon derives and writes this file.
  *   - `next-audit.json` = an **email nudge to a signed-in human** ("come back
  *     and audit again"), set from the /audit "come back better" section,
- *     delivered by Failproof Cloud over SES via the api-server. It runs nothing
+ *     delivered by FailproofAI Cloud over SES via the api-server. It runs nothing
  *     locally; it is re-engagement, not a schedule.
  *
  * Collapsing them would merge "the box scans on a timer" with "email this person

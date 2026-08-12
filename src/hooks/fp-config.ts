@@ -212,7 +212,7 @@ export function writeVersionFile(
 // ── config.json ──────────────────────────────────────────────────────────────
 
 /**
- * How this machine relates to Failproof Cloud.
+ * How this machine relates to FailproofAI Cloud.
  *
  * `oss` is not merely "no credentials configured" — it is a hard gate. In OSS
  * mode nothing constructs a cloud URL, polls for policy, or spools an event

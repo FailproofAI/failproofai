@@ -1046,14 +1046,20 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   let daemonUnitStale = daemonAlreadyRunning && daemonServiceNeedsUpgrade();
 
   if (daemonWanted) {
+    // Say what is about to happen. Nothing else.
+    //
+    // This block explained the warm-worker architecture to somebody who is
+    // about to type a password — three lines of mechanism answering a question
+    // nobody had. The install is happening either way; what they need is what
+    // it is and that it costs one sudo.
+    //
+    // The BROKEN case keeps its consequence, and only that: "every tool call is
+    // denied" is the difference between a thirty-second fix and a support
+    // thread, so it survives any further trim of this block.
     stdout.write(
       daemonBroken
-        ? "failproofaid is installed and running but cannot evaluate policies — its worker\n" +
-            "process will not start, which on this machine denies every tool call. Rebuilding\n" +
-            "the service needs root once. Your password goes to sudo, never to us.\n\n"
-        : "failproofai runs a small background service (failproofaid) so policy checks\n" +
-            "stay warm — without it every tool call pays a fresh startup, about 15x slower.\n" +
-            "Installing it needs root once. Your password goes to sudo, never to us.\n\n",
+        ? "failproofaid can't evaluate — every tool call is denied. Rebuilding needs sudo.\n\n"
+        : "Installing failproofaid — needs sudo once.\n\n",
     );
     if (!primeElevation()) {
       // Required means required: write nothing at all, so a machine that could
@@ -1373,11 +1379,40 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
 
   {
     const choice = await selectOne<"key" | "local">({
-      message: "Connect this machine to Failproof Cloud?",
+      message: "Connect this machine to FailproofAI Cloud?",
+      // The hint says what you GET; the body says what LEAVES.
+      //
+      // Both have to be here and they are different jobs. "sends decisions +
+      // transcripts" described the plumbing, which reads like a data-collection
+      // notice rather than a feature — the reason anyone connects is to see
+      // what their agents did, so the option says that.
+      //
+      // The disclosure stays in the BODY rather than moving into the hint,
+      // which was the original design and is right: this screen is the only
+      // place it is ever made. `describeOutcome` prints "hook activity" after
+      // connecting and never mentions transcripts, so a person who does not
+      // read it here does not read it at all. One line, not three, and the
+      // specific nouns survive — "sessions" alone would not tell anyone their
+      // file contents leave the machine.
+      //
+      // The get-started page, not the dashboard host.
+      //
+      // `app.befailproof.ai` is only useful to somebody who already has an
+      // account: it is the product, and a person reading this line is telling
+      // you they have no key, which usually means no org either. The
+      // get-started route walks them through creating one and issuing a key, so
+      // it answers the question actually being asked.
+      //
+      // A marketing route rather than a dashboard one is also the safer thing
+      // to hard-code here — it is the URL the site is expected to keep stable,
+      // where an in-app path can be reorganised without anyone thinking to
+      // update a string compiled into a CLI.
+      //
+      // The scope is gone from this screen: it is enforced at paste time, where
+      // a wrong key is actually caught.
       body: [
-        "  Connecting reports this machine's policy decisions AND full session",
-        "  transcripts — prompts, file contents and command output — to your",
-        "  dashboard. Staying local sends nothing, anywhere, ever.",
+        "  Sessions include prompts, file contents and command output.",
+        "  No key? Create one at https://befailproof.ai/get-started/",
       ],
       // Cloud first, and therefore preselected: connecting is what most people
       // running this wizard came to do, and the local path stays one keystroke
@@ -1385,14 +1420,26 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       // moved, so "stay local" is still stated as plainly as it was.
       choices: [
         {
+          // What the cloud gives that this machine does not ALREADY have.
+          //
+          // "see what your agents did" was wrong: the local dashboard already
+          // shows that, so it described something the user gets either way and
+          // made connecting look redundant. The cloud's two jobs are a fleet
+          // seen in one place and policies deployed to it from there — which is
+          // also exactly what the key's two scopes buy (`events:add`,
+          // `policies:pull`).
           label: "Paste an API key",
           value: "key",
-          hint: "reports decisions and transcripts to your dashboard",
+          hint: "central monitoring · deploy policies from the dashboard",
         },
         {
+          // "re-run config", NOT "--connect". That flag exists for scripted,
+          // non-interactive setup; pointing a person who just declined at a
+          // flag they would have to look up is worse than naming the command
+          // they already ran.
           label: "Not now — stay local",
           value: "local",
-          hint: "policies still enforce · connect later with failproofai config --connect",
+          hint: "nothing leaves this machine · re-run config to add",
         },
       ],
       stdin,
@@ -1442,7 +1489,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         // reasonably types the dashboard's own address and gets a 404 from a
         // web app that is not the ingest endpoint. Both are real, both happened
         // within ten minutes of each other, and neither is a mistake the person
-        // making it can be expected to avoid: "Failproof Cloud URL" has no
+        // making it can be expected to avoid: "FailproofAI Cloud URL" has no
         // knowable answer other than the default it was already showing.
         //
         // The two audiences that genuinely need a different endpoint keep an

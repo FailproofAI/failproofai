@@ -2,7 +2,7 @@
 /**
  * Attribution on the activity row.
  *
- * The design doc's requirement is that Failproof Cloud can tie a decision to
+ * The design doc's requirement is that FailproofAI Cloud can tie a decision to
  * the exact rollout that produced it. Until now the only trace of a version
  * was a substring of a display name ("cloud/org-guard@7/…"), which nothing can
  * query and which re-parsing our own label would be the only way to read.

@@ -186,6 +186,14 @@ say "work dir   $WORK"
 say "logs       $WORK/logs/        (pruned after 14 days)"
 say "state      $WORK/state/       (which CLI was last green, at which version)"
 printf '\n'
+# The runner is root inside the container, so everything it creates under the
+# work dir is root-owned on the host. Harmless — the next run is root too — but
+# it surprises the first person who tries to read a log or delete the clone, so
+# say it here rather than let them find out with a permission error.
+say "Everything under the work dir except secrets.env is written by the container"
+say "as root, so reading a log or clearing the clone needs sudo:"
+say "  sudo tail -f $WORK/logs/\$(sudo ls -t $WORK/logs | head -1)"
+printf '\n'
 say "Run one now, in the foreground:"
 say "  $CMD"
 printf '\n'

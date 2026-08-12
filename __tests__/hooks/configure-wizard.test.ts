@@ -148,7 +148,7 @@ import {
   hasSeenLauncher,
   markLauncherSeen,
 } from "../../src/hooks/configure-wizard";
-import { resolvePreset, resolveEverything } from "../../src/hooks/policy-presets";
+import { resolvePreset, resolveEverything, RECOMMENDED_POLICIES } from "../../src/hooks/policy-presets";
 import { INTEGRATION_TYPES, type IntegrationType } from "../../src/hooks/types";
 import { getIntegration } from "../../src/hooks/integrations";
 import { runPostSetupAudit } from "../../src/audit/cli";
@@ -176,6 +176,14 @@ const ttyIO = () => ({ stdin: mkTtyStdin(), stdout: mkTtyStdout() });
  * `undefined` means "this step is not reached in this test".
  */
 function drive(answers: {
+  /**
+   * Recommended-vs-customize step, asked first on every run.
+   *
+   * Defaults to "customize" when omitted, so every test written against the
+   * four-question wizard keeps describing the flow it was written for. A test
+   * that wants the one-keystroke path says so explicitly.
+   */
+  mode?: "recommended" | "customize" | null;
   /** Scope step. Omitted when the run is expected to abort before it. */
   target?: "user" | "project" | "both" | null;
   policies?: string[] | null;
@@ -185,6 +193,7 @@ function drive(answers: {
 }) {
   const one = vi.mocked(selectOne);
   const many = vi.mocked(multiSelect);
+  one.mockResolvedValueOnce(("mode" in answers ? answers.mode : "customize") as never);
   if ("target" in answers) one.mockResolvedValueOnce(answers.target as never);
   if ("connect" in answers) one.mockResolvedValueOnce(answers.connect as never);
   if ("review" in answers) one.mockResolvedValueOnce(answers.review as never);
@@ -528,6 +537,31 @@ describe("configure-wizard orchestration", () => {
     expect(call[4]).toBe("configure-wizard"); // source tag
     expect(call[7]).toEqual(["claude"]); // clis
     expect(call[8]).toEqual({ replace: true, quiet: true }); // options
+  });
+
+  it("Recommended asks two questions and writes the 15-policy set globally", async () => {
+    // The whole point of the path: scope, bundles and harnesses are never
+    // asked. Only mode and connect are answered here, and the run still
+    // applies — if the wizard had reached the policy or harness prompt it
+    // would hang on an unmocked multiSelect rather than pass.
+    drive({ mode: "recommended", connect: "local", review: "apply" });
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(true);
+    const call = vi.mocked(installHooks).mock.calls[0];
+    const policies = call[0] as string[];
+    expect(new Set(policies)).toEqual(new Set(RECOMMENDED_POLICIES));
+    expect(call[1]).toBe("user"); // global, never the cwd's project
+    expect(call[7]).toEqual(["claude"]); // detected only — the mock detects claude
+    expect(call[8]).toEqual({ replace: true, quiet: true });
+  });
+
+  it("Recommended never asks the policy or harness prompts", async () => {
+    drive({ mode: "recommended", connect: "local", review: "apply" });
+    await runConfigureWizard(ttyIO());
+    // `multiSelect` is the primitive both skipped steps use.
+    expect(multiSelect).not.toHaveBeenCalled();
   });
 
   it("'Everything available' protects every supported CLI", async () => {
@@ -1345,8 +1379,11 @@ describe("connect step", () => {
 
   it("lets a bad key be skipped, and still applies everything else", async () => {
     vi.mocked(validateIngestKey).mockResolvedValue({ ok: false, reason: "401" });
-    // connect -> key, then the retry question -> skip, then review.
+    // mode -> customize, scope, connect -> key, then the retry question ->
+    // skip, then review. Queued positionally rather than through `drive()`
+    // because the retry prompt is conditional and has no name there.
     vi.mocked(selectOne)
+      .mockResolvedValueOnce("customize")
       .mockResolvedValueOnce("user")
       .mockResolvedValueOnce("key")
       .mockResolvedValueOnce("skip")

@@ -69,3 +69,67 @@ export function resolvePreset(id: string): string[] {
 export function resolveEverything(): string[] {
   return BUILTIN_POLICIES.filter((p) => !p.beta).map((p) => p.name);
 }
+
+/**
+ * What "Recommended" turns on — the set someone gets for pressing Enter once.
+ *
+ * WRITTEN OUT, not derived. `defaultEnabled` is the seed for the *policy list*
+ * prompt and answers a narrower question ("tick this by default in a list of
+ * 40"); this answers "what should guard a machine whose owner did not want to
+ * choose". They overlap heavily and are not the same promise, and deriving one
+ * from the other would silently change this set every time somebody flipped a
+ * flag on an unrelated policy. `recommendedCoversEveryDefault()` keeps them
+ * from drifting APART without anyone noticing.
+ *
+ * Nothing here needs configuring to be useful and nothing here has a common
+ * false positive — that is the bar for being in this list, because the person
+ * who chose Recommended is the person least equipped to debug a bad deny.
+ *
+ * Deliberately EXCLUDED, and why:
+ *   • Workflow (`require-*-before-stop`) — refuses to let the agent finish
+ *     until CI is green. A defensible choice, never a default one, and it does
+ *     not fire at all on hermes or goose (see enforcement-capability.ts).
+ *   • Infra Commands — blocking kubectl/terraform/aws breaks the day job of
+ *     anyone doing infra. That is what the "Cloud & infra" bundle is for.
+ *   • block-read-outside-cwd — agents legitimately read outside the repo.
+ *   • block-work-on-main — plenty of people work on main on purpose.
+ *   • the warn-* family — non-blocking and cheap, but ten warnings is noise,
+ *     and a warning nobody reads is worse than one that was never shown.
+ */
+export const RECOMMENDED_POLICIES: readonly string[] = [
+  // Secrets never reach the model, and never reach disk.
+  "sanitize-jwt",
+  "sanitize-api-keys",
+  "sanitize-connection-strings",
+  "sanitize-private-key-content",
+  "sanitize-bearer-tokens",
+  "protect-env-vars",
+  "block-env-files",
+  "block-secrets-write",
+  // The agent cannot disable its own guardrails.
+  "block-self-pause",
+  "block-failproofai-commands",
+  // Commands that are unrecoverable when they are wrong.
+  "block-sudo",
+  "block-curl-pipe-sh",
+  "block-rm-rf",
+  // Git history stays recoverable. `--force-with-lease` is still allowed.
+  "block-push-master",
+  "block-force-push",
+];
+
+/**
+ * Every `defaultEnabled` policy that Recommended does NOT include.
+ *
+ * Empty today, and a test asserts it stays that way. The point is the day
+ * someone adds a new default-on builtin: Recommended is a separate list and
+ * would silently not include it, so a machine set up by pressing Enter would
+ * be guarded LESS than one set up through the policy list — the kind of gap
+ * that is invisible until somebody is standing in it.
+ */
+export function defaultsMissingFromRecommended(): string[] {
+  const recommended = new Set(RECOMMENDED_POLICIES);
+  return BUILTIN_POLICIES.filter((p) => p.defaultEnabled && !p.beta && !recommended.has(p.name)).map(
+    (p) => p.name,
+  );
+}

@@ -55,7 +55,7 @@ import {
 import { INTEGRATION_TYPES, type IntegrationType, type HookScope } from "./types";
 import { installHooks } from "./manager";
 import { getConfigPathForScope, readHooksConfig, readScopedHooksConfig } from "./hooks-config";
-import { POLICY_PRESETS, resolvePreset, resolveEverything } from "./policy-presets";
+import { POLICY_PRESETS, resolvePreset, resolveEverything, RECOMMENDED_POLICIES } from "./policy-presets";
 import { discoverPolicyFiles, findSkippedPolicyFiles } from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
@@ -1056,6 +1056,46 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     );
   }
 
+  // 0 — Recommended, or choose everything yourself?
+  //
+  // Setup used to open by asking four questions — scope, policy bundles,
+  // harnesses, cloud — of somebody who has just installed the tool and does not
+  // yet know what any of them mean. Every one of those answers has a defensible
+  // default, so asking for all four up front is making the person least able to
+  // answer do the most work.
+  //
+  // Recommended is not a shortcut past the decisions; it IS a decision, taken
+  // once, here, on their behalf: global scope, the CLIs actually on this
+  // machine, and `RECOMMENDED_POLICIES` — which is written out in
+  // policy-presets.ts with the reasoning for every inclusion and every
+  // omission, because "what does Recommended do" has to be answerable without
+  // reading code.
+  //
+  // Customize is the wizard exactly as it was. Nothing is removed and nothing
+  // is hidden; it stops being the only way through.
+  const detectedNow = detectInstalledClis();
+  const recommendedClis = detectedNow.filter((id) => clisSupportingScope("user").includes(id));
+  const mode = await selectOne<"recommended" | "customize">({
+    message: "Set up failproofai",
+    choices: [
+      {
+        label: "Recommended",
+        value: "recommended",
+        hint: recommendedClis.length
+          ? `${recommendedClis.length} detected ${recommendedClis.length === 1 ? "CLI" : "CLIs"} · ${RECOMMENDED_POLICIES.length} policies · global`
+          : `${RECOMMENDED_POLICIES.length} policies · global`,
+      },
+      {
+        label: "Customize",
+        value: "customize",
+        hint: "choose scope, policies and harnesses",
+      },
+    ],
+    stdin,
+    stdout,
+  });
+  if (mode === null) return cancel();
+
   // 1 — Where? Inferred from cwd, then confirmed.
   //
   // Running from inside a project and running from a home directory are two
@@ -1067,7 +1107,13 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   const targetChoices = buildTargetChoices(setupState);
 
   let target: SetupTarget;
-  if (targetChoices.length === 1) {
+  if (mode === "recommended") {
+    // Global, always. A project-scoped install guards the one directory the
+    // command happened to be run from and silently leaves every other repo on
+    // the machine unguarded — which is the opposite of what somebody choosing
+    // "Recommended" is asking for.
+    target = "user";
+  } else if (targetChoices.length === 1) {
     // From a home directory there is no project to configure, so there is no
     // question to ask. Say what is about to happen rather than silently
     // deciding it.
@@ -1158,6 +1204,15 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
    * next iteration; this mirrors that, filled from the prompt's `onBack`.
    */
   const carried: { clis: string[] | null } = { clis: null };
+  // The recommended path answers both questions here, which is what SKIPS the
+  // loop below — its condition is `clisSel === null` and this fills it in.
+  // Written as a pre-fill rather than as an extra clause on the loop condition
+  // so the invariant the rest of the function depends on ("past this loop, both
+  // are assigned") stays provable by the compiler rather than by argument.
+  if (mode === "recommended") {
+    presets = [];
+    clisSel = recommendedClis;
+  }
   while (clisSel === null) {
     // Re-entering after a ← must show what was picked, not a blank slate.
     // Selection state lives on each choice, so carry it back in.
@@ -1220,12 +1275,30 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     if (picked === BACK) continue;
     clisSel = picked;
   }
-  // Non-null by construction: the loop only exits once both are assigned.
+  // Non-null by construction: the loop only exits once both are assigned, and
+  // the recommended path assigned both before it, which is why it never ran.
   const chosenPresets: string[] = presets ?? [];
-  const policies = resolvePresetSelection(chosenPresets, carriedIndividual);
+  const policies =
+    mode === "recommended"
+      ? // UNION with what is already enabled here, never a replacement for it.
+        // `installHooks` is called with `replace: true`, so writing the bare
+        // recommended list would silently switch OFF anything the user had
+        // added themselves — turning "give me the sensible defaults" into a
+        // reduction in protection, which is the one direction this must never
+        // move. On a fresh machine `enabledHere` is empty and this is exactly
+        // the 15.
+        [...new Set([...RECOMMENDED_POLICIES, ...enabledHere])]
+      : resolvePresetSelection(chosenPresets, carriedIndividual);
   // Only meaningful when there are files to switch off; with none, the row is
   // locked-unchecked and must not write a disabling flag.
-  const customEnabled = hasCustomFiles ? chosenPresets.includes(CUSTOM) : undefined;
+  //
+  // `undefined` on the recommended path, which means "leave the flag alone".
+  // The customize expression would read as `false` here — no bundle was ticked,
+  // so `chosenPresets.includes(CUSTOM)` is false — and would write
+  // `customPoliciesEnabled: false`, disabling every convention policy the user
+  // has on disk as a side effect of choosing the default setup.
+  const customEnabled =
+    mode === "recommended" ? undefined : hasCustomFiles ? chosenPresets.includes(CUSTOM) : undefined;
   // Filter to what the chosen scopes support in BOTH branches: "Everything
   // available" must not expand to CLIs that cannot take any selected scope,
   // and a locked row can't be ticked but belt-and-braces keeps the invariant

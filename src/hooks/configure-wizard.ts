@@ -1398,10 +1398,12 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       // The get-started page, not the dashboard host.
       //
       // `app.befailproof.ai` is only useful to somebody who already has an
-      // account: it is the product, and a person reading this line is telling
-      // you they have no key, which usually means no org either. The
-      // get-started route walks them through creating one and issuing a key, so
-      // it answers the question actually being asked.
+      // account, and this line addresses the person who has none — new to the
+      // product, so no org either, not merely missing a key. The get-started
+      // route walks them through creating both, so it answers the question
+      // actually being asked. Naming the product rather than the artefact is
+      // what makes it self-selecting: "No key?" reads as an error state to
+      // someone who simply has not signed up yet.
       //
       // A marketing route rather than a dashboard one is also the safer thing
       // to hard-code here — it is the URL the site is expected to keep stable,
@@ -1412,7 +1414,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       // a wrong key is actually caught.
       body: [
         "  Sessions include prompts, file contents and command output.",
-        "  No key? Create one at https://befailproof.ai/get-started/",
+        "  New to FailproofAI? Create a key at https://befailproof.ai/get-started/",
       ],
       // Cloud first, and therefore preselected: connecting is what most people
       // running this wizard came to do, and the local path stays one keystroke

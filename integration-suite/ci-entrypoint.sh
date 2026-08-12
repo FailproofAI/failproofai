@@ -99,7 +99,13 @@ else
   step "building failproofai under test (dist/index.js + dist/cli.mjs — no dashboard)"
   (
     cd "$REPO" || exit 1
-    bun install --frozen-lockfile || exit 1
+    # --ignore-scripts, or the package `prepare` hook runs `bun run build` —
+    # the FULL build, Next.js dashboard and all — before the two narrow builds
+    # below, on every leg of every run. The step above says "no dashboard"; this
+    # flag is what makes that true. Same guard translate-docs.yml carries, for
+    # the same reason. Caught by running the box end to end: the log showed
+    # `next build` compiling 3 static pages under a step that claims not to.
+    bun install --frozen-lockfile --ignore-scripts || exit 1
     bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts || exit 1
     bun run build:cli || exit 1
   ) || { echo "✗ build failed" >&2; exit 1; }

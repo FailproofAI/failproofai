@@ -1,0 +1,45 @@
+---
+title: "Dashboards"
+description: "Transforme os dados ao vivo do seu agente em uma visão compartilhada que toda a equipe acompanha."
+---
+
+Transforme os dados ao vivo do seu agente em uma visão compartilhada que toda a equipe acompanha. Fixe as consultas mais importantes como gráficos e todos têm acesso aos mesmos números de forma imediata, sem precisar executar uma única consulta novamente.
+
+![Um dashboard construído a partir de consultas salvas: uma linha de eventos por hora, uma barra de erros por tipo, um gráfico de área de latência e tokens por modelo](/cloud/images/dashboard-fleet.png)
+
+*Um painel, quatro consultas salvas: eventos por hora, erros por tipo, latência e tokens por modelo.*
+
+## Todos veem a mesma realidade
+
+Pare de colar capturas de tela no chat e de executar a mesma consulta cinco vezes por dia. Um dashboard é um painel compartilhado, visível para toda a organização, que qualquer membro da equipe pode abrir e ver exatamente a mesma visão. Quando os dados subjacentes mudam, os gráficos acompanham, então o painel está sempre atualizado e ninguém discute por causa de números desatualizados.
+
+O dashboard de frota acima é um bom ponto de partida para operações do dia a dia:
+
+- uma linha de **eventos por hora**, para acompanhar o throughput e detectar quedas repentinas
+- uma barra de **erros por tipo**, para que as principais categorias de falha fiquem evidentes
+- um gráfico de área de **latência**, para que lentidões apareçam antes que os usuários reclamem
+- uma divisão de **tokens por modelo**, para manter os custos sempre visíveis
+
+Você encontrará seus painéis em `/<org-slug>/dashboards`.
+
+## Fixe as consultas que você já salvou
+
+Cada tile começa como uma consulta salva. Crie e salve a consulta desejada na biblioteca de [Queries](/pt-br/cloud/queries) (presets integrados mais os seus próprios, sobre seus eventos e avaliações) e, em seguida, fixe-a em um dashboard como o gráfico que melhor representa os dados: uma **linha** para tendências ao longo do tempo, uma **barra** para comparar categorias, uma **área** para volume ou um **pizza** para mostrar distribuição percentual.
+
+Como um tile é apenas sua consulta salva renderizada como gráfico, não há nada para sincronizar manualmente. Atualize a consulta uma vez e todos os dashboards que a utilizam são atualizados automaticamente.
+
+## Monitore qualidade, não apenas volume
+
+Volume indica que os agentes estão ocupados. Qualidade indica que eles estão realmente fazendo o trabalho. Aponte um dashboard para suas [pontuações de avaliação](/pt-br/cloud/evaluations) e você terá um painel que acompanha o desempenho das execuções ao longo do tempo — assim, uma regressão de qualidade aparece como uma queda no gráfico, e não como uma surpresa vinda de um cliente.
+
+![Um dashboard focado em qualidade construído a partir de consultas de avaliação salvas](/cloud/images/dashboard-quality.png)
+
+*Um painel de qualidade mantém suas pontuações de avaliação em destaque, lado a lado com os números operacionais.*
+
+Mantenha um painel de operações e um painel de qualidade lado a lado e sua equipe terá um único lugar para responder tanto "está funcionando?" quanto "está sendo feito bem?" — sem que ninguém precise executar uma consulta novamente.
+
+## Relacionados
+
+- [Queries](/pt-br/cloud/queries): crie e salve as consultas que se tornarão seus tiles.
+- [Evaluations](/pt-br/cloud/evaluations): pontue suas execuções para poder visualizar a qualidade ao longo do tempo.
+- [Alerts](/pt-br/cloud/alerts): transforme um limite em qualquer uma dessas métricas em um alerta.

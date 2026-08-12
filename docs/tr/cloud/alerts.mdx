@@ -1,0 +1,63 @@
+---
+title: "Uyarılar"
+description: "Müşterinizden duyar duymaz, ekibinizin zaten izlediği kanala bir şey limitinizi aşan an da haberi alın."
+---
+
+
+Müşterinizden duyar duymaz, ekibinizin zaten izlediği kanala bir şey limitinizi aşan an da haberi alın. Kuralı bir kez ayarlayın ve FailproofAI Cloud bunu düzenli olarak kontrol etsin, sonra sizi e-posta, Slack, webhook veya doğrudan panoda bildirsin.
+
+![Uyarılar sayfası: her biri tetikleyicisini, değerlendirme penceresini, kanallarını ve bilgi, uyarı veya kritik öncelik rozetini gösteren uyarı kuralı kartlarının ızgarası](/cloud/images/alerts.png)
+*Her uyarı kuralı bir bakışta: neyi izliyor, ne sıklıkta, nereye bildiriyor ve ne kadar acil.*
+
+## Kullanıcılarınız bilmeden sorunları öğrenin
+
+Bir regresyonu yakalamak için panoyu sürekli yenilemeyi bırakın. Hiç kimse bakmıyorken bile duymanız gereken bir sinyal olduğunda bir uyarıya başvurun ve bunu zaten bulunduğunuz yere iletişim kurun:
+
+- **E-posta**, bilmesi gereken herkese.
+- **Slack**, olayın tam bulunduğu noktaya atlayan düğmeli zengin bir mesaj.
+- **Webhook**, PagerDuty, Opsgenie veya kendi uç noktanız için, alıcının buna güvenebilmesi için isteğe bağlı imzalı JSON POST.
+- **Panoda**, sessiz tasarımla, bir kuralı ayarlarken henüz kimseyi bildirmek istemediğiniz zamanlar için.
+
+Herhangi bir kombinasyonu tek bir kurala ekleyin ve önem derecesi (bilgi, uyarı veya kritik) o kuralla beraber gider, böylece acil olanlar acil görünür.
+
+## Kuralı JSON değil, formda oluşturun
+
+Bir formda "bozuk" demek ne anlama geldiğini açıklayın ve FailproofAI Cloud size altında yatan kuralı yazacak. JSON özellikleri sadece o formun altında ürettiği şeydir, bu nedenle onu okuyarak bir kuralı anlayabilirsiniz ama nadiren yazarsınız.
+
+![Yeni uyarı formu: ad ve açıklama, etkinleştirme geçişi ve metrik eşiği, özel SQL, değerlendirme puanı, bileşik değerlendirme ve etkinlik başına koşullar sunan tetikleyici seçici](/cloud/images/alert-new.png)
+*Bir tetikleyici seçin ve form doğru alanları değiştirir; Kaydet kuralı yazar.*
+
+Mutlu yol hızlıdır: adını verin, bir **tetikleyici** seçin (neyi izleyeceğiniz), **eşik ve pencereyi** ayarlayın (ne kadar kötü, ne kadar süre), en az bir **kanal** ekleyin, sonra **Kaydet** yapın ve her hedefin bağlı olduğunu doğrulamak için **Test** e tıklayarak sentetik bir bildirim gönderin. Altında buna benzer küçük bir spec üretir:
+
+```json
+{ "metric": "p95_latency_ms", "op": ">", "value": 5000, "window_secs": 900 }
+```
+
+Bir sinyal türüyle sınırlı değilsiniz. Hatayı nasıl düşündüğünüzle eşleşen tetikleyiciyi seçin:
+
+| Tetikleyici | Ateşlenir |
+|---|---|
+| **Metrik eşiği** | önceden ayarlanmış bir metrik (hata oranı, p95 veya p99 gecikmesi, olay veya hata sayıları, token harcaması) bir pencere üzerinde limitinizi aştığında |
+| **Özel SQL** | kendi salt okunur sorgunuz bir satır döndürdüğünde veya hesapladığı bir değer eşiği aştığında |
+| **Değerlendirme puanı** | bir değerlendirici puanının ortalaması (örneğin, halüsinasyon) eşiği aştığında |
+| **Bileşik değerlendirme** | birkaç puan kontrolü herhangi, tümü veya en az N mantığıyla birleştirilir, yalnızca puanlar arasında görünen bir regresyonu yakalaması için |
+| **Etkinlik başına** | eşleşen tek bir olay gelir: belirli bir ajan, belirli bir hata türü veya bir mesaj alt dizesi |
+
+Zaten [Hatalar sayfasında](/tr/cloud/errors) bir hataya bakıyor musunuz? Oradaki her satırın bu aynı formu tam olarak şu hatayı yakalamak için önceden doldurmuş bir **+ uyarı** düğmesi vardır, bu nedenle az önce triajladığınız olay bir sonraki seferde sizi bildiren olur.
+
+**Nerede bulunur:** Uyarılar `/<org-slug>/alerts` adresinde bulunur. Kurallar oluşturmak, düzenlemek, silmek ve test etmek **`alerts:write`** gerektirir; bakmak için `alerts:read` yeterlidir. Alıcı seçici kuruluşunuzun üyelerini ad ile listeler, bu nedenle formu bırakmadan bir kişiyi bildirebilirsiniz.
+
+## Beni sadece gerçek olduğunda bildirin
+
+Bir kötü ölçüm sizi uyandırmamalı. **M of N** gürültü filtresi, uyarının aslında sizi bildirmesinden önce son birkaç kontrolün kaçının başarısız olması gerektiğini denetler. Bunu **3 of 5** olarak ayarlayın ve kural sadece son beş kontrolünün üçünü ihlal ettikten sonra ateşlenir, bu nedenle titreşimli bir sinyal çığlık atmayı durdurur; ilk ihlali ateşlemek için varsayılan **1 of 1** de bırakın. Ayrıca kuralın ne sıklıkta çalışacağını da seçersiniz: 1m, 5m, 15m ve 1h ön ayarlarından, sinyalin gerçekten ne kadar hızlı hareket ettiğine göre eşleştirilmiştir.
+
+## Bir uyarı ateşlendiğinde ne olur
+
+Bir ihlal bir **olayı** açar ve kanallarınızı bir kez bildirir. Oradan ekibiniz bunu onaylar, sahibini atar, üzerinde tartışır ve temiz, atfedilmiş bir kayda karşı çözer. O triaj iş akışının kendi evi vardır: [Olaylar](/tr/cloud/incidents) konusuna bakın.
+
+## İlgili
+
+- [Olaylar](/tr/cloud/incidents): ateşlenen bir uyarıyı açıktan onaylanana çözüme kadar izleyin.
+- [Hata izleme](/tr/cloud/errors): ajan hatalarını gruplandırın ve bir tıkla birini uyarıya yükseltin.
+- [Panolar](/tr/cloud/dashboards): uyarıda bulunduğunuz eşiklerin geldiği paylaşılan panoları izleyin.
+- [CLI ve ajanlar](/tr/cloud/cli): terminalinizden uyarılar oluşturun ve olayları onaylayın veya CI'ye yazın.

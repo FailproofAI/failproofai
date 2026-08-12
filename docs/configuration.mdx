@@ -1,44 +1,55 @@
 ---
 title: Configuration
-description: "Config file format, three-scope system, and merge rules"
+description: "The config files, the three scopes, how they merge, and every field you can set."
 icon: gear
 ---
 
-failproofai uses JSON configuration files to control which policies are active, how they behave, and where custom policies are loaded from. Configuration is designed to be easy to share with your team - commit it to your repo and every developer gets the same agent safety net.
+FailproofAI keeps two kinds of configuration, and they answer different questions:
+
+| File | Question it answers | Who writes it |
+|---|---|---|
+| `policies-config.json` | **Which policies run, and how?** | You, the dashboard, or `failproofai policy add` |
+| Each agent CLI's own settings file | **When does FailproofAI get called at all?** | `failproofai config` / `policies --install` |
+
+You edit the first one freely. The second is managed for you — see [Supported
+agents](/agent-support) for what gets written where.
 
 ---
 
-## Configuration scopes
+## The three scopes
 
-There are three configuration scopes, evaluated in priority order:
+Policy configuration is loaded from three places and merged, in priority order:
 
-| Scope | File path | Purpose |
-|-------|-----------|---------|
+| Scope | Path | Purpose |
+|---|---|---|
 | **project** | `.failproofai/policies-config.json` | Per-repo settings, committed to version control |
 | **local** | `.failproofai/policies-config.local.json` | Personal per-repo overrides, gitignored |
-| **global** | `~/.failproofai/policies-config.json` | User-level defaults across all projects |
+| **global** | `~/.failproofai/policies-config.json` | Your defaults across every project |
 
-When failproofai receives a hook event, it loads and merges all three files that exist for the current working directory.
+All three that exist for the current working directory are read on every hook event.
+Changes take effect immediately — nothing to restart.
 
 ### Merge rules
 
-**`enabledPolicies`** - the union of all three scopes. A policy enabled at any level is active.
+**`enabledPolicies` — deduplicated union.** A policy enabled at any scope is on.
 
 ```text
 project:  ["block-sudo"]
 local:    ["block-rm-rf"]
 global:   ["block-sudo", "sanitize-api-keys"]
 
-resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]  ← deduplicated union
+resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]
 ```
 
-**`policyParams`** - first scope that defines params for a given policy wins entirely. There is no deep merging of values within a policy's params.
+**`policyParams` — first scope that defines a policy wins, entirely.** There is no deep
+merge inside one policy's parameter block, which keeps the resolved value something you
+can predict by reading one file rather than three.
 
 ```text
 project:  block-sudo → { allowPatterns: ["sudo apt-get update"] }
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo apt-get update"] }   ← project wins, global ignored
+resolved: { allowPatterns: ["sudo apt-get update"] }     ← project wins outright
 ```
 
 ```text
@@ -46,22 +57,21 @@ project:  (no block-sudo entry)
 local:    (no block-sudo entry)
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
-resolved: { allowPatterns: ["sudo systemctl status"] }  ← falls through to global
+resolved: { allowPatterns: ["sudo systemctl status"] }   ← falls through to global
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** - first scope that defines either form wins.
+**`customPoliciesPaths` / `customPoliciesPath` — first scope that defines either form wins.**
 
-**`disabledCustomPolicies`** - union across all scopes. The dashboard writes a
-source-qualified ID here when you switch off an individual policy from an
-explicit or convention policy file. Policies not listed remain enabled by
-default; IDs include the source file so same-named policies in multiple files
-can be controlled independently.
+**`disabledCustomPolicies` — union across all scopes.** The dashboard writes a
+source-qualified id here when you switch off an individual policy from a custom or
+convention file. Policies not listed stay enabled; the id includes its source file, so
+same-named policies in different files are controlled independently.
 
-**`llm`** - first scope that defines it wins.
+**`llm` — first scope that defines it wins.**
 
 ---
 
-## Config file format
+## File format
 
 ```json
 {
@@ -92,11 +102,9 @@ can be controlled independently.
         { "regex": "myco_[A-Za-z0-9]{32}", "label": "MyCo API key" }
       ]
     },
-    "warn-large-file-write": {
-      "thresholdKb": 512
-    }
+    "warn-large-file-write": { "thresholdKb": 512 }
   },
-  "customPoliciesPath": "/home/alice/myproject/my-policies.js"
+  "customPoliciesPaths": ["/home/alice/myproject/my-policies.js"]
 }
 ```
 
@@ -106,174 +114,139 @@ can be controlled independently.
 
 ### `enabledPolicies`
 
-Type: `string[]`
+`string[]` — the policy names to enable. Names must match exactly what `failproofai
+policies` prints. See [Built-in policies](/built-in-policies) for the catalogue.
 
-List of policy names to enable. Names must match exactly the policy identifiers shown by `failproofai policies`. See [Built-in Policies](/built-in-policies) for the full list.
-
-Policies not in `enabledPolicies` are inactive, even if they have entries in `policyParams`.
+A policy not listed here is inactive, even if it has an entry in `policyParams`.
 
 ### `policyParams`
 
-Type: `Record<string, Record<string, unknown>>`
+`Record<string, Record<string, unknown>>` — per-policy parameter overrides, keyed by policy
+name. Each policy documents its own parameters.
 
-Per-policy parameter overrides. The outer key is the policy name; the inner keys are policy-specific. Each policy documents its available parameters in [Built-in Policies](/built-in-policies).
+Omit a parameter and the policy's built-in default applies. Unknown keys inside a
+policy's block are ignored at evaluation time and flagged as warnings when you run
+`failproofai policies` — so a typo surfaces when you look, not never.
 
-If a policy has parameters but you don't specify them, the policy's built-in defaults are used. Users who do not configure `policyParams` at all get identical behavior to previous versions.
+#### `hint` — accepted by every policy
 
-Unknown keys inside a policy's params block are silently ignored at hook-fire time but flagged as warnings when you run `failproofai policies`.
-
-#### `hint` (cross-cutting)
-
-Type: `string` (optional)
-
-A message appended to the reason when a policy returns `deny` or `instruct`. Use it to give Claude actionable guidance without modifying the policy itself.
-
-Works with any policy type — built-in, custom (`custom/`), project convention (`.failproofai-project/`), or user convention (`.failproofai-user/`).
+`string` — appended to the reason whenever a policy denies or instructs. It is the
+zero-code way to make a generic rule speak your team's language:
 
 ```json
 {
   "policyParams": {
-    "block-force-push": {
-      "hint": "Try creating a fresh branch instead."
-    },
+    "block-force-push": { "hint": "Branch off and open a PR instead." },
     "block-sudo": {
       "allowPatterns": ["sudo apt-get"],
-      "hint": "Use apt-get directly without sudo."
+      "hint": "Use apt-get directly, without sudo."
     },
-    "custom/my-policy": {
-      "hint": "Ask the user for approval first."
-    }
+    "custom/my-policy": { "hint": "Ask the user for approval first." }
   }
 }
 ```
 
-When `block-force-push` denies, Claude sees: *"Force-pushing is blocked. Try creating a fresh branch instead."*
+The agent then reads *"Force-pushing is blocked. Branch off and open a PR instead."*
 
-Non-string values and empty strings are silently ignored. If `hint` is not set, behavior is unchanged (backward-compatible).
+Works on built-in, custom (`custom/…`), project-convention (`.failproofai-project/…`), and
+user-convention (`.failproofai-user/…`) policies. Non-string and empty values are ignored.
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
-Type: `string` (absolute path)
+`string[]` — absolute paths to your own policy files, loaded in order. Set for you by
+`failproofai policies --install --custom <path>` (repeat the flag for several files). The
+older single-value `customPoliciesPath` still works.
 
-Path to a JavaScript file containing custom hook policies. This is set automatically by `failproofai policies --install --custom <path>` (the path is resolved to absolute before being stored).
-
-The file is loaded fresh on every hook event - there is no caching. See [Custom Policies](/custom-policies) for authoring details.
-
-### Convention-based policies
-
-In addition to the explicit `customPoliciesPath`, failproofai automatically discovers and loads policy files from `.failproofai/policies/` directories:
-
-| Level | Directory | Scope |
-|-------|-----------|-------|
-| Project | `.failproofai/policies/` | Shared with team via version control |
-| User | `~/.failproofai/policies/` | Personal, applies to all projects |
-
-<Note>
-  Drop your policies straight into `~/.failproofai/policies/`. The
-  `cloud-policies/` folder beside them holds policies your organisation deployed
-  to this machine — discovery does not descend into subdirectories, so it is
-  never scanned, and nothing you put in `policies/` can collide with it.
-
-  If you are upgrading from a version that used
-  `~/.failproofai/policies/custom-policies/`, everything in that folder — your
-  policy files, any `lib/` of helpers they import, and any data files they read
-  — is moved back up automatically the first time you run a `failproofai`
-  command, and the command tells you what it moved.
-</Note>
-
-**File matching:** Only files matching `*policies.{js,mjs,ts}` are loaded (e.g. `security-policies.mjs`, `workflow-policies.js`). Other files in the directory are ignored.
-
-**No config needed:** Convention policies require no entries in `policies-config.json`. Just drop files into the directory and they're picked up on the next hook event.
-
-**Union loading:** Both project and user convention directories are scanned. All matching files from both levels are loaded (unlike `customPoliciesPath` which uses first-scope-wins).
-
-See [Custom Policies](/custom-policies) for more details and examples.
+Files are loaded fresh on every hook event — no caching, so editing a policy takes effect
+on the next tool call.
 
 ### `llm`
 
-Type: `object` (optional)
+`object`, optional — connection details for policies that make model calls. Not needed for
+most setups.
 
-LLM client configuration for policies that make AI calls. Not required for most setups.
+```json
+{ "llm": { "model": "claude-sonnet-4-6", "apiKey": "sk-ant-..." } }
+```
+
+---
+
+## Convention policies need no configuration at all
+
+Alongside the explicit paths above, FailproofAI discovers policy files by location:
+
+| Level | Directory | Shared how |
+|---|---|---|
+| Project | `.failproofai/policies/` | Committed to git — the whole team gets it |
+| User | `~/.failproofai/policies/` | Personal, applies to every project |
+
+- **Matching:** only files named `*policies.{js,mjs,ts}` are loaded. Everything else in the
+  directory is ignored.
+- **Union, not first-wins:** both directories are scanned and all matching files load.
+- **No config entry needed.** Drop the file in; it is picked up on the next hook event.
+
+<Note>
+  Put your own files directly in `~/.failproofai/policies/`. The `cloud-policies/` folder
+  beside them holds policies your organization deployed to this machine — discovery does
+  not descend into subdirectories, so the two can never collide.
+</Note>
+
+[Authoring guide →](/custom-policies)
+
+---
+
+## Machine settings
+
+Policy configuration is about rules. A second file — `~/.failproofai/config.json` — holds
+settings about *this machine*: whether the daemon is configured, what the collector sends,
+extra session-capture paths, telemetry, and the audit schedule.
+
+You rarely edit it by hand; `failproofai config`, `failproofai harness`, and the connect
+flow write it. Two blocks are worth knowing:
 
 ```json
 {
-  "llm": {
-    "model": "claude-sonnet-4-6",
-    "apiKey": "sk-ant-..."
-  }
+  "audit": { "auto": true, "interval_days": 7 },
+  "collector": { "sessions": true, "hooks": true, "environment": "production" }
 }
 ```
 
+| Key | Meaning |
+|---|---|
+| `audit.auto` | Run the [audit](/audit) on a schedule. Off unless you set it, because it reads the contents of every transcript on the machine. |
+| `audit.interval_days` | Days between scans. Clamped to 1–90; anything invalid falls back to 7. |
+| `collector.sessions` | Ship session transcripts to the cloud. Set by `--no-transcripts` at connect time. |
+| `collector.hooks` | Ship policy decisions to the cloud. |
+| `collector.environment` | The environment label stamped on everything this machine reports. |
+
+[Full file-layout reference →](/reference/files)
+
 ---
-
-## Managing configuration from the CLI
-
-The `policies --install` and `policies --uninstall` commands write to your agent CLI's hook settings file (the hook entry points), while `policies-config.json` is the file you manage directly. The two are separate:
-
-- **Agent CLI settings** — tells the agent to call `failproofai --hook <event>` on each tool use:
-  - **Claude Code**: `~/.claude/settings.json` (user), `<cwd>/.claude/settings.json` (project), `<cwd>/.claude/settings.local.json` (local)
-  - **OpenAI Codex**: `~/.codex/hooks.json` (user), `<cwd>/.codex/hooks.json` (project) — Codex doesn't have a `local` scope
-  - **GitHub Copilot CLI _(beta)_**: `~/.copilot/hooks/failproofai.json` (user), `<cwd>/.github/hooks/failproofai.json` (project) — Copilot has no `local` scope. Hook entries use Copilot's OS-keyed `bash`/`powershell` command fields with `timeoutSec`; the file carries a top-level `version: 1` marker. Copilot CLI support is **beta** while we verify the `events.jsonl` record schema (which the public docs do not specify) against more real-world sessions. **VS Code Copilot Chat agent mode (Preview)** reads hook configs from `.github/hooks/*.json`, `~/.copilot/hooks/*.json`, and `~/.claude/settings.json` (governed by the `chat.hookFilesLocations` setting) using the same Claude-shaped `{hookSpecificOutput:{permissionDecision:"deny",…}}` contract — the exact paths this `copilot` integration and the `claude` integration (`~/.claude/settings.json`) already write, so `failproofai policies --install --cli copilot` (or `--cli claude`) **already enforces in VS Code agent mode** with no separate `vscode` integration needed (confirmed live from VS Code's discovery logs).
-  - **Cursor Agent _(beta)_**: `~/.cursor/hooks.json` (user), `<cwd>/.cursor/hooks.json` (project) — Cursor has no `local` scope. Hook entries use the Claude-shaped `{type, command, timeout}` form (no `bash`/`powershell` split), but stored under camelCase event keys (`preToolUse`, `beforeSubmitPrompt`, …) in a flat array per Cursor's [hooks schema](https://cursor.com/docs/hooks); the file carries a top-level `version: 1` marker. The handler canonicalizes camelCase → PascalCase via `CURSOR_EVENT_MAP` so existing built-in policies fire unchanged. Cursor Agent support is **beta** while we verify Cursor's transcript on-disk format (not specified in the public docs) against more real-world installs.
-  - **OpenCode _(beta)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (user), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (project) — OpenCode has no `local` scope. Unlike the other five CLIs, OpenCode has **no external-command hook system**: it loads in-process JS/TS plugins explicitly registered via the `plugin: []` array in `opencode.json` (auto-discovery from `.opencode/plugins/` is **not** how plugins load on opencode v1.14.33). Install drops a small generated plugin shim that subprocess-calls the failproofai binary and translates the binary's Claude-shape JSON response back into plugin semantics: `throw new Error()` for tool-event deny (cancels the tool call), `client.session.prompt(...)` for instruct AND for `Stop` / `SubagentStop` deny (submits the deny reason as the next user message — the only force-retry channel since `session.idle` is notification-only and throwing from it is a no-op), and no-op for allow. The shim canonicalizes both tool names (lowercase → PascalCase via `OPENCODE_TOOL_MAP`) and tool-input arg keys (camelCase → snake_case via `OPENCODE_TOOL_INPUT_MAP` for `Read` / `Write` / `Edit`, e.g. `filePath` → `file_path`, `oldString` → `old_string`) before forwarding to the binary, so path-checking builtins like `block-read-outside-cwd`, `block-env-files`, and `block-secrets-write` fire unchanged on OpenCode tool calls. Sessions live in opencode's SQLite DB at `~/.local/share/opencode/opencode.db`; the dashboard's session viewer reads them via `opencode db --format json` and `opencode export <id>`. OpenCode support is **beta** while we verify behavior across versions and against more real-world sessions. See the [OpenCode plugins docs](https://opencode.ai/docs/plugins/).
-  - **Pi _(beta)_**: `~/.pi/agent/settings.json` (user), `<cwd>/.pi/settings.json` (project) — Pi has no `local` scope. Pi loads TypeScript extension packages at startup; the settings file is a flat string array `{"packages": ["./relative/path", …]}`. failproofai writes a single packages-array entry pointing at its bundled `pi-extension/` directory. The extension internally subscribes to Pi's `tool_call` / `user_bash` / `input` / `session_start` events and shells out to `failproofai --hook <Event> --cli pi`; the handler canonicalizes underscore_lower_snake_case → PascalCase via `PI_EVENT_MAP` so existing built-in policies fire unchanged. Tool input args are also canonicalized via `PI_TOOL_INPUT_MAP` (Pi's Read / Write / Edit deliver `path` rather than `file_path`; mapping the top-level key lets `block-env-files` and `block-secrets-write` fire — `block-read-outside-cwd` already had a `path` fallback). Pi support is **beta** while Pi's extension API and session-log layout stabilize.
-  - **Hermes (hermes-agent)**: `~/.hermes/config.yaml` (**user scope only** — Hermes has no project/local config). Hermes is a Slack/Telegram **gateway**, so one install intercepts tool calls from every platform (Slack/Telegram/cli/cron) **and** internal subagents. Hook entries are a `{command, timeout}` pair (timeout in **seconds**) under a `hooks:` map keyed by Hermes's snake_case events (`pre_tool_call` / `post_tool_call` / `on_session_start` / `on_session_end` / `subagent_stop`); the handler canonicalizes events via `HERMES_EVENT_MAP` and tool names via `HERMES_TOOL_MAP` so built-in policies fire unchanged. The config is edited through a comment-preserving YAML `Document` round-trip so the operator's other settings survive, and install sets `hooks_auto_accept: true` so the headless gateway (no TTY) runs the hooks without a consent prompt. The evaluator emits Hermes's `{"decision":"block","reason"}` stdout contract (Hermes ignores exit codes). **Limitations:** Hermes has no turn-end `Stop` event, so the `require-*-before-stop` builtins never fire for it (inapplicable, not broken); `instruct` degrades to allow-with-logged-note (no additional-context channel); and output-secret redaction (`sanitize-*`) can't rewrite tool output over the shell-hook contract. Hermes is **also** an offline **audit** source — the dashboard reads its gateway sessions directly from `~/.hermes/state.db`.
-  - **OpenClaw (openclaw gateway)**: `~/.openclaw/openclaw.json` (**user scope only** — OpenClaw has no project/local config). Like Hermes, OpenClaw is a self-hosted multi-channel **gateway**, so one install intercepts tool calls from every channel and its internal subagents. Enforcement runs through OpenClaw's **in-process plugin hooks** (its file-based internal hooks are observation-only and cannot block), so — like OpenCode/Pi — failproofai ships a static `openclaw-plugin/` package that async-spawns the failproofai binary and translates the verdict. Install registers the shipped plugin dir in `openclaw.json`'s `plugins.load.paths[]` and enables it under `plugins.entries.failproofai` (with `hooks.allowConversationAccess: true`, required for the raw-conversation hooks). The evaluator emits a flat `{permission, reason}` verdict and the shim maps it to each hook's native return shape: `before_tool_call → {block:true, blockReason}` (**PreToolUse**), `before_agent_run → {outcome:"block", reason}` (**UserPromptSubmit**), and `before_agent_finalize → {action:"revise", reason}` (**Stop** — a real turn-end gate, so the `require-*-before-stop` builtins **enforce** on OpenClaw, unlike Hermes). Events and tool names canonicalize binary-side via `OPENCLAW_EVENT_MAP` / `OPENCLAW_TOOL_MAP` (`exec→Bash`, `read→Read`, …) so built-in policies fire unchanged; the shim fails open on any spawn/parse/timeout error. OpenClaw is **also** an offline **audit** source — the dashboard reads its JSONL sessions at `~/.openclaw/agents/<agentId>/sessions/<uuid>.jsonl`.
-  - **Factory Droid (`droid`)**: `~/.factory/hooks.json` (user), `<cwd>/.factory/hooks.json` (project) — Factory has no `local` scope. droid ships a Claude-style external-command hook system, but with two quirks verified live against droid v0.171.0: (1) event names live at the **top level** of `hooks.json` — there is **no `"hooks"` wrapper** (droid rejects one); tool events (`PreToolUse`/`PostToolUse`) carry `"matcher": "*"`, non-tool events omit it. (2) Deny is driven by hook **exit code 2 + stderr**, not a JSON decision — the evaluator's `factory` branch returns exit 2 for tool/prompt events and `{decision:"block", reason}` only on the turn-end `Stop` event (droid's sole force-retry channel). Events are already PascalCase (no event map) and the payload is Claude snake_case; only tool names are canonicalized via `FACTORY_TOOL_MAP` (`Execute→Bash`, `Create→Write`, `FetchUrl→WebFetch`, …). Factory is **also** an offline **audit** source — the dashboard reads its on-disk JSONL sessions at `~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl`.
-  - **Devin CLI (`devin`, Cognition)**: `~/.config/devin/config.json` (user), `<cwd>/.devin/config.json` (project) — Devin has no `local` scope. Devin is a **pure Claude-clone** verified live against devin v3000.1.27: it uses the standard Claude `"hooks"`-wrapper schema (writes are merge-preserving so the config file's other keys — `org_id`, `theme_mode`, … — survive), already-PascalCase event names (no event map, no handler branch), and a Claude snake_case stdin payload (no normalization). The evaluator's `devin` branch denies with `{"decision":"block","reason"}` JSON on stdout at exit 0 for **every** event (verified — the block overrode `--permission-mode dangerous`); on the turn-end `Stop` event the reason carries the MANDATORY-ACTION force-retry wording so the `require-*-before-stop` builtins enforce. Only tool names are canonicalized via `DEVIN_TOOL_MAP` (`exec→Bash`; `tool_input.command` is already canonical). Devin is **also** an offline **audit** source — the dashboard reads its SQLite sessions at `~/.local/share/devin/cli/sessions.db` (each `sessions` row carries a real `working_directory`, so sessions group by project cwd like Claude).
-  - **Antigravity CLI (`agy`)**: `~/.gemini/config/hooks.json` (user), `<cwd>/.agents/hooks.json` (project) — Antigravity has no `local` scope. Unlike Factory/Devin, Antigravity has its **own** contract (not a Claude-clone), verified live against agy v1.1.2. `hooks.json` uses a **named-hook** schema: the top-level key is a hook *name* (`"failproofai"`) whose value is an event→handlers map — tool events (`PreToolUse`/`PostToolUse`) wrap handlers in `{matcher:"*", hooks:[…]}`, while `PreInvocation`/`Stop` are **flat** handler arrays (other named hooks are preserved). The stdin payload is **camelCase protojson** (`toolCall:{name,args}`, `conversationId`, `workspacePaths`, `transcriptPath`) — failproofai normalizes it to snake_case before policies run, and maps `run_command`'s PascalCase args (`CommandLine`/`Cwd`) via `ANTIGRAVITY_TOOL_INPUT_MAP`. The evaluator's `antigravity` branch uses Antigravity's **own** response shapes: `{decision:"deny", reason}` blocks a tool/prompt (exit 0), `{decision:"continue", reason}` on the turn-end `Stop` re-enters the loop (so the `require-*-before-stop` builtins enforce), and `{injectSteps:[{ephemeralMessage}]}` injects an instruction on `PreInvocation` (→ `UserPromptSubmit`). Tool names canonicalize via `ANTIGRAVITY_TOOL_MAP` (`run_command→Bash`, `view_file→Read`, …). Antigravity is **also** an offline **audit** source — the dashboard reads its plain-JSONL transcripts at `~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` (conversation index in `conversation_summaries.db`).
-  - **Goose (codename goose, Block)**: `~/.agents/plugins/failproofai/hooks/hooks.json` (user), `<cwd>/.agents/plugins/failproofai/hooks/hooks.json` (project) — Goose has no `local` scope. Enforcement uses Goose's **hooks** system, the cross-agent **Open Plugins** spec: the installer just drops the `failproofai` plugin dir and Goose auto-discovers it at startup (self-registering it into `~/.config/goose/config.yaml`). The `hooks.json` uses an Open Plugins schema **with** a top-level `"hooks"` wrapper, and the matcher is **omitted** on every event — a bare `"*"` is an invalid regex that matches nothing (verified live against goose v1.43.0). Event names are already PascalCase (no event map); the stdin payload uses `event`/`working_dir`, which the handler normalizes to `hook_event_name`/`cwd`. The evaluator's `goose` branch denies with `{"decision":"block","reason"}` JSON on stdout at exit 0, honored on the **`PreToolUse`** event only (shipped in goose ≥ v1.37.0) — which fires for the shell tool **and inside delegated subagents**, so it is the single sufficient deny point; any other hook error fails **open**. Goose has **no `Stop` event**, so the `require-*-before-stop` builtins don't apply (as with Hermes). Tool names canonicalize via `GOOSE_TOOL_MAP` (`shell→Bash`, `write→Write`, `todo__todo_write→TodoWrite`, …) and path keys via `GOOSE_TOOL_INPUT_MAP` (`path`/`source` → `file_path`). Goose is **also** an offline **audit** source — the dashboard reads its SQLite sessions at `~/.local/share/goose/sessions/sessions.db` (each `sessions` row carries a real `working_dir`, so sessions group by project cwd like Devin; `--no-session` scratch runs are filtered).
-- **`policies-config.json`** — tells failproofai which policies to evaluate and with what params (shared across all agent CLIs)
-
-Pass `--cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose` to target a specific agent (space-separated or repeated for any subset):
-
-```bash
-failproofai policies --install --cli codex --scope project
-failproofai policies --install --cli copilot --scope project
-failproofai policies --install --cli cursor --scope project
-failproofai policies --install --cli opencode --scope project
-failproofai policies --install --cli pi --scope project
-failproofai policies --install --cli hermes --scope user
-failproofai policies --install --cli openclaw --scope user
-failproofai policies --install --cli factory --scope project
-failproofai policies --install --cli devin --scope project
-failproofai policies --install --cli antigravity --scope project
-failproofai policies --install --cli goose --scope project
-failproofai policies --install --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose
-```
-
-When `--cli` is omitted, `failproofai` detects which agent CLIs are installed (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw` / `which droid` / `which devin` / `which agy` / `which goose`):
-
-- **One CLI detected** — auto-selects that CLI without prompting.
-- **Multiple CLIs detected** in an interactive terminal — shows an arrow-key single-select prompt grouped into a `Detected (N)` section (with an `Install for all N detected` aggregate row + each detected CLI individually) and a `Not installed (M) · install hooks ahead of time` section listing every undetected supported CLI as a forward-install option (↑↓ to move, Enter to select, ^C to quit). The uninstall flow shows only the Detected section.
-- **Multiple CLIs detected** in a non-interactive run (CI, no TTY) — installs for all detected CLIs without prompting.
-- **None detected** — falls back to `claude`, with a warning that no agent binary was found in PATH; the hook command is still written so it activates as soon as you install one.
-
-You can edit `policies-config.json` directly at any time; changes take effect immediately on the next hook event with no restart needed.
 
 ## Upgrades keep your configuration
 
-A new version of failproofai may organise `~/.failproofai/` differently. When it does, the first command after the upgrade migrates the directory, and **your configuration is carried across, not reset**:
+A new version may organize `~/.failproofai/` differently. When it does, the first command
+after the upgrade migrates the directory and **carries your configuration across**:
 
 | Kept | Rebuilt |
 |---|---|
-| Your policy selection and params (`policies-config.json`) | The audit cache |
-| Your settings, including `daemon.configured` and extra capture paths (`config.json`) | Cloud-managed policy deployments — re-fetched and digest-verified on the next poll |
-| Your cloud enrolment (`credentials.json`) | Daemon scratch state |
-| Your own policy files in `policies/`, and the helpers they import | |
-| The decision log the dashboard reads, and events not yet delivered | |
+| Your policy selection and parameters | The audit cache |
+| Your machine settings, including extra capture paths | Cloud-managed deployments — re-fetched and digest-verified on the next poll |
+| Your cloud connection | Daemon scratch state |
+| Your own policy files, and the helpers they import | |
+| The decision log, and anything not yet delivered | |
 
-Keys written by a *newer* failproofai are preserved as well, rather than being dropped by an older reader — so moving between versions does not silently discard settings either direction.
+Keys written by a *newer* version are preserved rather than dropped by an older reader, so
+moving between versions does not silently discard settings in either direction. You do not
+need to re-run setup: a migrated machine enforces exactly as it did before.
 
-You do **not** need to re-run setup afterwards: a migrated machine enforces exactly as it did before, which is what makes an upgrade safe on machines with nobody sitting at them. Every migration is recorded in `~/.failproofai/migrations/applied.json`, and the irreplaceable files are copied to `~/.failproofai/migrations/backup-layout<n>/` before anything runs.
-
-See [`failproofai update`](/cli/update) for the one-line upgrade, and [`failproofai migrate`](/cli/migrate) — including `--dry-run` — for the details.
+See [`failproofai update`](/cli/update) and [`failproofai migrate`](/cli/migrate).
 
 ---
 
-## Example: project-level config with team defaults
+## Example: a team standard, committed
 
-Commit `.failproofai/policies-config.json` to your repo:
+`.failproofai/policies-config.json`, checked in:
 
 ```json
 {
@@ -286,10 +259,15 @@ Commit `.failproofai/policies-config.json` to your repo:
   ],
   "policyParams": {
     "block-push-master": {
-      "protectedBranches": ["main", "release", "hotfix"]
+      "protectedBranches": ["main", "release", "hotfix"],
+      "hint": "Open a PR from a feature branch."
     }
   }
 }
 ```
 
-Each developer can then create `.failproofai/policies-config.local.json` (gitignored) for personal overrides without affecting teammates.
+Each developer can add `.failproofai/policies-config.local.json` (gitignored) for personal
+overrides without touching anyone else's setup.
+
+Running this across many machines? [Deploy it from the cloud](/cloud/managed-policies)
+instead and skip the git round-trip entirely.

@@ -1,0 +1,179 @@
+---
+title: "CLI recipes"
+description: "Copy-paste query patterns and jq recipes that turn session, event, and evaluation data into something a script or coding agent can automate."
+---
+
+
+Pull session, event, and evaluation data (and trigger re-evaluations) straight from a script or coding agent, with clean JSON on stdout that pipes directly into `jq`. These recipes turn FailproofAI Cloud's data into something a terminal user or an AI coding agent (Claude Code, Cursor) can query and automate, without clicking through the dashboard.
+
+The patterns below are copy-paste ready for the FailproofAI Cloud CLI (`agenteye`). For installation, authentication, and the full option list see [CLI](/cloud/cli); run `agenteye -h` or `agenteye <command> -h` for the built-in help.
+
+## Golden rules
+
+1. **Global options go *before* the command.** `agenteye --json sessions` is correct; `agenteye sessions --json` is not. The globals are `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`.
+2. **Pass `--json` whenever you parse output.** Data goes to **stdout** as JSON; human status and errors go to **stderr**, so stdout stays clean to pipe into `jq`.
+3. **Branch on the exit code**, not on stderr text: `0` ok · `1` unexpected error · `2` bad arguments · `3` cannot reach the dashboard · `4` not logged in or expired · `5` missing permission · `6` resource not found.
+4. **Discover with `-h`.** Every command documents its filters, value formats, and JSON shape.
+
+## One-time setup
+
+```bash
+export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com   # so you don't repeat --base-url
+agenteye login --email you@example.com                       # paste the emailed code; valid ~24h
+```
+
+## Confirm auth before doing work
+
+`whoami` never errors on a missing or expired session; it reports `logged_in:false` instead, so an agent can probe auth state safely. (It can still exit non-zero if no base URL is set or the dashboard is unreachable.)
+
+```bash
+if [ "$(agenteye --json whoami | jq -r .logged_in)" != "true" ]; then
+  echo "Not authenticated. Run: agenteye login" >&2; exit 1
+fi
+```
+
+## Find failing or low-scoring sessions
+
+```bash
+# sessions in the last 24h whose evaluation errored
+agenteye --json sessions --since 24h --status error | jq -r '.sessions[].session_id'
+
+# evaluations scoring <= 0.5 on helpfulness, for one agent
+agenteye --json evals --agent-id checkout-bot --score helpfulness:..0.5 \
+  | jq '.evaluations[] | {session_id, scores}'
+```
+
+Score filtering lives on **`evals`**, not `sessions`. `--score KEY:MIN..MAX` is repeatable and AND-combined; either bound is optional (`..0.5` means ≤ 0.5, `0.9..` means ≥ 0.9). You can pass up to 20 score filters per request; more returns HTTP 400. `sessions` shares the `--env`, `--status`, `--agent-id`, `--session-id`, and time-range filters with `evals`, but has no `--score`.
+
+## Read one session end-to-end
+
+There is no single `session show` command. Combine the event trail with the session's evaluation:
+
+```bash
+# the session's latest evaluation (status + scores)
+agenteye --json evals --session-id run-001 | jq '.evaluations[0] | {status, scores}'
+
+# every event in the run (raise --limit for a full sweep)
+agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
+
+# just the tool calls in a session (--full is required to get the raw payload)
+agenteye --json events --full --session-id run-001 --event-type tool_use,tool_result --all \
+  | jq '.events[].payload'
+```
+
+> **Note:** By default, `events` reads a fast, payload-free feed. Each event carries a server-computed one-line `summary` plus flags like `is_error` and token counts, but `payload` comes back as `{}`. To pull the raw payload, add `--full` (or `--fields payload`). The full feed is slower at scale, so keep it bounded: pair `--full` with a single `--session-id`.
+
+## Fetch everything (pagination)
+
+Results are newest-first and cursor-paginated.
+
+```bash
+# one shot: fetch up to 500 rows in 200-row pages
+agenteye --json events --session-id run-001 --limit 500 --all > events.json
+
+# manual paging: feed next_cursor back in
+page=$(agenteye --json events --limit 100)
+cursor=$(echo "$page" | jq -r '.next_cursor // empty')
+[ -n "$cursor" ] && agenteye --json events --limit 100 --cursor "$cursor"
+```
+
+## Slim the output with --fields
+
+Restrict the keys (in both the table and `--json`) to reduce what an agent must read.
+
+```bash
+agenteye --json sessions --since 7d --fields session_id,status,scores | jq -c '.sessions[]'
+agenteye --json events --session-id run-001 --fields ts,event_type --all
+```
+
+Unknown field names are rejected (exit `2`) with the valid list, a cheap way to discover field names.
+
+## Discover valid filter values
+
+```bash
+agenteye --json list envs | jq -r '.values[]'           # values for --env
+agenteye --json list tools | jq -r '.values[]'          # tool names; also agents, models, event_types, …
+agenteye --json list score_filters | jq -r '.values[]'  # valid KEY for --score KEY:MIN..MAX
+```
+
+## Pick your org (multi-tenant)
+
+If you belong to more than one org, choose the active tenant at login (it's saved):
+
+```bash
+agenteye login --org acme --email you@corp.com   # set the tenant in the same step as login
+agenteye --json orgs list | jq -r '.orgs[].org_slug'
+agenteye --org globex --json sessions --since 24h   # override for one command
+```
+
+A multi-org login without `--org` exits non-zero and prints the orgs to choose from.
+
+## Provision an API key for the SDK/collector
+
+```bash
+# the secret is printed ONCE, with --json it's the .key field
+key=$(agenteye --json keys create ci-bot --add events:read.add | jq -r '.key')
+agenteye keys regenerate ci-bot --yes    # rotate; agenteye keys disable ci-bot --yes to revoke
+```
+
+## Run a saved or ad-hoc query
+
+```bash
+agenteye --json query run --sql "select count(*) from analytics.events" | jq '.rows'
+agenteye --json query run errs --arg prod | jq '.rows'   # a saved query + a positional $1
+```
+
+## Triage an incident non-interactively
+
+```bash
+id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
+agenteye incidents ack "$id"
+agenteye incidents assign "$id" --assignee you@corp.com
+agenteye incidents resolve "$id" --yes
+```
+
+> **Note:** Mutations auto-skip their confirmation prompt under `--json` or when stdin isn't a TTY, so agents never hang; pass `--yes`/`-y` to skip it explicitly elsewhere.
+
+## Exit-code handling in a script
+
+```bash
+out=$(agenteye --json sessions --since 1h) || code=$?
+case "${code:-0}" in
+  0) echo "$out" | jq '.sessions | length' ;;
+  4) echo "Session expired - run 'agenteye login'." >&2 ;;
+  5) echo "Missing permission (ask an admin for evaluations:read)." >&2 ;;
+  3) echo "Dashboard unreachable - check the URL." >&2 ;;
+  *) echo "Unexpected error (exit ${code})." >&2 ;;
+esac
+```
+
+## JSON output shapes
+
+| Command | stdout JSON (with `--json`) |
+|---|---|
+| `whoami` | `{"logged_in": true, "id", "email", "is_instance_admin", "active_org", "permissions": [...], "memberships": [...]}` or `{"logged_in": false}` |
+| `orgs list` | `{"active_org", "orgs": [{"org_slug","org_name","permission_set","permissions"}]}` |
+| `events` | `{"events": [...], "next_cursor": <cursor or null>}` |
+| `evals` | `{"evaluations": [...], "next_cursor": <cursor or null>}` |
+| `sessions` | `{"sessions": [...], "next_cursor": <cursor or null>}` |
+| `errors` | `{"errors": [...], "next_cursor": <cursor or null>}` |
+| `list <kind>` | `{"kind", "values": [...]}` |
+| `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` shown once) |
+| `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
+| `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
+| `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
+| create/update/delete (any) | the resource object, or `{"deleted": true, "id"}` for deletes |
+| failure (any, with `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` on stdout |
+
+- Each **event** item (`events`): `id, session_id, agent_id, event_type, ts, payload, environment, summary, is_error, error_type, output_tokens, context_window, context_fill`. Note that `payload` is `{}` unless you request the full feed with `--full` (or `--fields payload`).
+- Each **evaluation** item (`evals`): `id, session_id, agent_id, environment, status, scores, reasoning, summary, error, attempt_count, duration_ms, completed_at, created_at`.
+- Each **session** item (`sessions`): `session_id, agent_id, environment, status, scores, event_count, started_at, last_event_at, first_event_id, last_event_id, latest_evaluation`.
+
+Each command's `--fields` accepts exactly its own item's field names. The set differs between `sessions` and `evals`, so a name valid for one may be rejected by the other.
+
+## Next steps
+
+- [CLI](/cloud/cli): installation, authentication, and the full option reference for every command.
+- [CLI agent skill](/cloud/agent-skills): package these recipes as a skill your coding agent can load.
+- [API keys](/cloud/access): create and scope the keys the CLI, SDK, and collector authenticate with.
+- [Python SDK](/cloud/sdk): send events into FailproofAI Cloud so there is data for these recipes to query.

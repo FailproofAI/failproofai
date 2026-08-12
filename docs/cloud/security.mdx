@@ -1,0 +1,187 @@
+---
+title: Security and data handling
+description: "What FailproofAI sees, where it is stored, who can reach it, and what stays on your machine — written for the person doing the review."
+icon: shield-check
+---
+
+FailproofAI sits close to your agents, which means it sees prompts, tool inputs, and
+outputs. This page is the straight answer to what that means, for the person who has to
+sign off on it.
+
+---
+
+## Nothing leaves a machine until you connect it
+
+The guardrails are local. Policy evaluation, the decision log, session replay, and the
+[audit](/audit) all run on the machine, against files already on it. There is no account to
+create and no network call on the enforcement path.
+
+That changes only when you run `failproofai config --connect`, and the CLI states plainly —
+at the moment you connect, not in a footnote — what starts flowing:
+
+| Stream | Contents | Turn it off |
+|---|---|---|
+| Policy decisions | Which policy fired, on which tool, in which session, with what verdict | Don't connect, or disconnect |
+| Session transcripts | The full session: prompts, model responses, file contents, command output | `--connect … --no-transcripts` |
+
+`failproofai config --status` always reports which mode is in effect.
+[Full detail →](/cloud/connect#what-leaves-this-machine)
+
+---
+
+## Where your data is stored
+
+FailproofAI Cloud runs two ways, and the choice is yours:
+
+- **Hosted**, at `app.befailproof.ai`. The fastest path: create a key, connect a machine,
+  done.
+- **Self-hosted**, inside your own infrastructure. Events, prompts, model responses, and
+  analytics live in your own databases, in your own environment, and nothing is sent to a
+  third party for storage.
+
+Regulated environment, data-residency requirement, or an air-gapped network? Self-hosting
+is the supported answer — [talk to
+us](https://cal.com/nikita-agarwal-exosphere/30-minute-chat-failproof-ai).
+
+---
+
+## Tenant isolation
+
+One deployment can host many organizations, and each is isolated **at the storage layer**,
+enforced by the database rather than only by the UI:
+
+- An organization's operational data — users, keys, machines, policies, dashboards, saved
+  queries — is scoped to that organization, and cross-organization reads are blocked
+  underneath the application.
+- Every ingested event is stamped with its owning organization, so one organization's
+  events can never be read by another.
+
+Every dashboard route is scoped under an organization slug (`/<org-slug>/…`).
+
+---
+
+## Sign-in
+
+Sign-in is **passwordless and email-based** — there is no password to phish, reuse, or
+leak. A user requests a one-time code (or a one-click link), which is emailed and expires
+quickly.
+
+Access is gated by an **allowlist**: only the email addresses or domains you permit can
+authenticate at all.
+
+![The FailproofAI Cloud sign-in screen, which sends a single-use code to your email](/cloud/images/login.png)
+
+---
+
+## Least-privilege API keys
+
+Every non-human client authenticates with a key that carries **granular permissions**, and
+the intended pattern is narrow keys per job:
+
+| Job | Permissions it actually needs |
+|---|---|
+| A machine that reports activity | `events:add` |
+| A machine that receives policy | `policies:pull` |
+| A read-only integration | `events:read` and nothing else |
+
+Destructive actions — disable, regenerate, delete — are **separate grants** you choose to
+include rather than side effects of a broad role. Keys are shown once at creation and
+stored only as a hash, so a leaked list of keys is not a leaked set of credentials.
+
+Two permissions can never be held by an API key at all — instance administration and
+editing another key's permissions. A bearer key may create keys; it may never re-scope
+existing ones.
+
+![The API keys page: each key's grants, colour-coded by read, write, and destructive scope](/cloud/images/api-keys.png)
+
+[Full permission catalogue →](/cloud/access)
+
+---
+
+## The AI assistant is constrained by construction
+
+The [in-dashboard assistant](/cloud/assistant) answers questions over your data, and its
+limits are structural rather than prompt-based:
+
+- **Read-only by default.** Its SQL runs through a guard that permits only `SELECT` /
+  `WITH`, single-statement, with a row cap and a timeout.
+- **It only sees what you can see.** Answers are scoped to your own read permissions — it
+  never widens your data surface.
+- **Every write waits for you.** A saved query or dashboard it drafts is created only after
+  your explicit approval click. There is no setting that turns that gate off.
+- **It can never delete.** No delete tool is exposed, and the assistant holds no delete
+  permission.
+- **It stays inside one organization** — the one you are currently viewing.
+- **Your questions stay yours.** Prompts and answers live in your own deployment's
+  database; product analytics records usage metadata only, never prompt text.
+
+<Note>
+  The [CLI agent skills](/cloud/agent-skills) are a different thing with a different blast
+  radius: they run on your workstation and drive the CLI **as you**, including writes and
+  deletes. Know which one you are handing to whom.
+</Note>
+
+---
+
+## In transit
+
+All traffic runs over HTTPS. On a self-hosted deployment you terminate TLS with your own
+certificates, so both machine-to-server and browser-to-server traffic are encrypted.
+
+The CLI refuses to send a machine token to a non-`https` host — the single exception being
+`localhost`, where there is no network to intercept.
+
+---
+
+## Credentials on a machine
+
+Cloud tokens live in an **owner-only** file (`0600`) inside `~/.failproofai/`, and the
+directory around it is tightened to match. They are deliberately **not** placed in the
+background service's definition file: that file is installed world-readable, so a token
+there would hand an organization-scoped key to every local user on the box.
+
+Practical consequences, all good ones: connecting, rotating a token, and disconnecting need
+no root, and an already-running service can be connected without reinstalling anything.
+
+---
+
+## Redaction is your choice, and it is honoured
+
+Two independent controls:
+
+- **Locally**, the [sanitize policies](/built-in-policies#secrets-sanitizers) scrub JWTs,
+  API keys, connection strings, private keys, and bearer tokens out of tool output *before
+  the model reads them*. On by default under Recommended.
+- **In the SDK**, only the fields you explicitly pass are recorded. Nothing is read from
+  your process or captured implicitly, and any field you leave unset is not written at all.
+  If a payload contains something you would rather not store, strip it before you pass it.
+
+<Warning>
+  Neither control makes a transcript safe by assumption. A transcript is the whole session
+  — treat it as sensitive, and use `--no-transcripts` on machines where centralizing that
+  content is not appropriate.
+</Warning>
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+
+<Card title="Access and permissions" icon="key" href="/cloud/access">
+  Every permission, what it gates, and the three keys most teams need.
+</Card>
+
+<Card title="Connect a machine" icon="plug" href="/cloud/connect">
+  Exactly what a connected machine sends and receives.
+</Card>
+
+<Card title="Session capture" icon="satellite-dish" href="/cloud/capture">
+  What is captured from your agent CLIs, and how to narrow it.
+</Card>
+
+<Card title="The daemon" icon="server" href="/daemon">
+  How enforcement fails closed, and how credentials are stored.
+</Card>
+
+</CardGroup>

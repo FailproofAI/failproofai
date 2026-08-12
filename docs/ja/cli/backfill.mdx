@@ -1,0 +1,75 @@
+---
+title: failproofai backfill
+description: "Re-send history the collector already read past — after connecting late, clearing a dashboard, or re-enrolling a machine."
+icon: clock-rotate-left
+---
+
+```bash
+failproofai backfill
+failproofai backfill --since 6m
+failproofai backfill --dry-run
+```
+
+A connected machine ships new agent activity as it happens and remembers how far it has
+read. `backfill` rewinds that mark so history is sent again.
+
+Reach for it when:
+
+- you **connected a machine after** the work you want to see happened
+- you **cleared a dashboard** and want the sessions back
+- you **re-enrolled** a machine and its history did not follow
+- you **added a [capture path](/cli/harness)** that already contained sessions
+
+---
+
+## Options
+
+| Flag | Meaning |
+|---|---|
+| `--since <when>` | How far back: `30d`, `6m`, `2y`, or an explicit `YYYY-MM-DD`. Default: 30 days. |
+| `--dry-run` | Report what would be re-read. Changes nothing. |
+
+```bash
+failproofai backfill --since 30d
+failproofai backfill --since 2026-01-01
+failproofai backfill --since 6m --dry-run
+```
+
+---
+
+## What it does and doesn't do
+
+- **It re-reads, it does not duplicate.** Sessions are shipped once, so running backfill
+  twice does not double anything up.
+- **It only covers what is still on disk.** Agent CLIs prune their own transcripts; anything
+  they have deleted is gone before FailproofAI ever sees it.
+- **It respects your transcript setting.** On a machine connected with `--no-transcripts`,
+  backfill re-sends decisions and not transcripts, exactly like live capture.
+- **It needs a connection.** On an unconnected machine there is nowhere to send anything.
+
+Start with `--dry-run` on a long window. A year of transcripts across a busy machine is a
+lot of data, and it is better to see the size before you send it.
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+
+<Card title="failproofai flush" icon="paper-plane" href="/cli/flush">
+  Deliver what is already spooled, right now.
+</Card>
+
+<Card title="Session capture" icon="satellite-dish" href="/cloud/capture">
+  What is captured, from which CLIs.
+</Card>
+
+<Card title="failproofai harness" icon="folder-tree" href="/cli/harness">
+  Capture from non-standard locations.
+</Card>
+
+<Card title="Connect a machine" icon="plug" href="/cloud/connect">
+  Getting a machine reporting in the first place.
+</Card>
+
+</CardGroup>

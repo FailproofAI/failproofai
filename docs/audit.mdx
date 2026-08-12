@@ -1,0 +1,136 @@
+---
+title: "Audit your agents"
+description: "Count how often the agent did wasteful or risky things across past transcripts"
+---
+
+<Note>
+  **Beta feature.** The audit ships as beta while we collect early feedback.
+  The detector catalog and report format may change before the next stable
+  cut. Please open an issue if anything looks off.
+</Note>
+
+The audit replays your past agent-CLI transcripts through failproofai's policy
+engine and renders a shareable, visual report on the **`/audit` dashboard
+page** — your agent's archetype, a 0–100 score, and exactly which policies
+would have caught what.
+
+## Run it
+
+Three ways in — all land on the same `/audit` report.
+
+<CodeGroup>
+
+```bash npx (no install)
+npx -y failproofai audit
+```
+
+```bash failproofai audit
+failproofai audit
+```
+
+```bash failproofai (dashboard)
+failproofai
+```
+
+</CodeGroup>
+
+<CardGroup cols={3}>
+  <Card title="No install" icon="bolt">
+    `npx -y failproofai audit` fetches failproofai, runs the scan, and opens the
+    dashboard for you — nothing to install first.
+  </Card>
+  <Card title="From the CLI" icon="terminal">
+    `failproofai audit` runs the scan in your terminal, then opens
+    `localhost:8020/audit` automatically when it finishes.
+  </Card>
+  <Card title="From the dashboard" icon="gauge">
+    Run `failproofai` and click **Audit** in the navbar (between Policies and
+    Projects), or open `/audit` directly.
+  </Card>
+</CardGroup>
+
+<Tip>
+  Run `failproofai audit -h` (or `--help`) to see usage. The audit runs **fully
+  offline** — no account or network required — and the dashboard keeps serving
+  until you stop it with `Ctrl+C`.
+</Tip>
+
+The dashboard scans past agent CLI transcripts on this machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) and reports how often the agent did things failproofai is built to stop — env-var checks, force pushes, redundant `cd <cwd>` prefixes, sleep-polling loops, re-reading files just edited, and more.
+
+For each transcript, every tool-use event is replayed through the 39 builtin policies **and** through 8 audit-only detectors that catch patterns not yet covered by runtime policies. Counts are aggregated per policy / detector across all sessions.
+
+## What you get
+
+The `/audit` page is a single-screen, shareable **poster** followed by four below-the-fold sections:
+
+1. **Poster** — your agent's identity at a glance: its **archetype** (one of 8 — `optimist`, `cowboy`, `explorer`, `goldfish`, `paranoid architect`, `precision builder`, `hammer`, `ghost`), its persona keywords, how rare that archetype is, and a **0–100 score** with a tier band (`S` down to `bottom tier`). Built to share — post to X or LinkedIn, or download it as a PNG.
+2. **`// strengths`** — what your agent already does well, as real numbers from the scan (e.g. clean-tool-call %, `0` push-to-main attempts), shown only where the relevant policy has a clean record.
+3. **`// quirks`** — what slipped through: a ranked table of behaviors failproofai would have caught — *when* it last happened, *what slipped* (and the builtin that would have blocked it), its *severity*, and how often it was *seen* (`new` / `recurring` / `N× seen`).
+4. **`// how to improve`** — the prescribed fix list: one row per policy with a copy-paste `failproofai policy add <slug>`, plus an **install all** button that enables every recommendation at once and shows your **projected score** if you did.
+5. **`// come back better`** — build the habit: set a re-audit email **reminder** (`3d` / `7d` / `14d` / `30d`) or re-audit now, and **invite a friend** to run their own audit (sent from failproof.ai, Cc'd to you). Reminders and invites require sign-in.
+
+## Scheduled audits
+
+If you run the **failproofaid daemon** (see [`failproofai config`](/cli/install-policies)),
+it can re-run the audit for you on a schedule and refresh the `/audit` report in
+the background. It is **off by default**, because the scan reads the *contents*
+of every agent session transcript on this machine — nothing scans on a timer
+until you ask for it.
+
+Turn it on in `~/.failproofai/config.json` — add the `audit` key alongside
+whatever else the file already holds:
+
+```json
+{
+  "audit": {
+    "auto": true,
+    "interval_days": 7
+  }
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `auto` | `true` enables the scheduled scan. Anything else — absent, `false`, `"yes"` — is off. |
+| `interval_days` | Days between scans. Clamped to 1–90; `0`, a negative or a non-number falls back to `7`. |
+
+- The schedule is **wall-clock**, so it survives suspend and reboots: a laptop
+  that was asleep past its due time runs **once** on wake, never a backlog.
+- Each run is a separate, low-priority (`nice 19`) process — never the daemon's
+  hook path, which stays free to answer tool calls.
+- A scan is skipped if `failproofai audit` or the dashboard's re-run is already
+  in flight; it is retried shortly afterwards rather than treated as a failure.
+- Progress is written to `~/.failproofai/state/audit-schedule.json` (last run,
+  next due). The daemon owns that file — change the cadence in `config.json`.
+
+<Note>
+If you enabled this on a machine set up by an older failproofai, run
+`failproofai config` once. The daemon's service definition needs one extra
+entry before it can launch the CLI, and the refresh is part of that command.
+</Note>
+
+## Audit-only detectors
+
+These detect "stupid behavior" patterns not (yet) enforced in real time. They run only during the audit and never block a live tool call.
+
+| Detector | What it counts |
+|---|---|
+| `redundant-cd-cwd` | Bash commands starting with `cd <cwd> && …` even though commands already run in `cwd`. |
+| `prefer-edit-over-read-cat` | `cat`/`head`/`tail`/`less`/`more` on a single source file — use the `Read` tool. |
+| `prefer-edit-over-sed-awk` | `sed -i` / `awk … > file` in-place edits — use the `Edit` tool. |
+| `prefer-write-over-heredoc` | Heredoc / multi-line `echo > file` writing files — use the `Write` tool. |
+| `sleep-polling-loop` | Long `sleep N` (≥ 30s) or `while …; sleep …; done` polling loops. |
+| `find-from-root` | `find /`, `find /home`, `find /usr`, etc. — scope to `cwd` instead. |
+| `git-commit-no-verify` | `git commit … --no-verify` / `-n`, skipping hooks. |
+| `reread-after-edit` | `Read` of a file that was just `Edit`/`Write` in the same session. |
+
+## Caches
+
+- **Per-transcript cache** at `~/.failproofai/cache/audit/<sha1>.json` keyed by `(mtime, size, engineVersion, detectorVersion)` — invalidates automatically when the transcript or the policy/detector code changes. Each entry also stores a `cachedAt` timestamp as **TTL metadata** (not part of the cache key); entries older than **7 days** are rejected on read so long-lived results don't outlive evolving detector intent.
+- **Whole-result cache** at `~/.failproofai/audit-dashboard.json` (mode 0600). Lets the dashboard render instantly on navigation without re-running. Also rejected on read past the **7-day TTL** — `/audit` then falls through to its empty state and prompts a fresh run. Click `[ re-audit now ]` near the bottom of the report to refresh — re-audit sends `noCache: true`, so it bypasses the per-transcript cache and re-scans every transcript instead of returning the cached result; the run streams progress via a sticky top strip and swaps the result in place on success (no page reload; a failed re-audit keeps the previous report).
+
+## Notes
+
+- **No mutation.** The audit replays in read-only mode. `warn-repeated-tool-calls` is skipped because its per-session sidecar would otherwise be modified.
+- **Workflow policies skipped.** `require-*-before-stop` policies fire only on `Stop` events and `execSync` against the live git state — they have no meaningful "what would have happened in 2025" interpretation, so they don't appear in audit counts.
+- **Custom policies skipped.** User-supplied custom hooks are not replayed (they may have changed since the original session).

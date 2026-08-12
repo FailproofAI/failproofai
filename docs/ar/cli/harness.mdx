@@ -1,0 +1,126 @@
+---
+title: failproofai harness
+description: "Capture agent sessions from paths outside a CLI's default location — containers, mounted volumes, second checkouts."
+icon: folder-tree
+---
+
+```bash
+failproofai harness list
+failproofai harness add-path <harness> <path>
+failproofai harness remove-path <harness> <path>
+```
+
+FailproofAI knows where each supported agent CLI keeps its sessions. `harness` is for when
+yours are somewhere else: a container mount, a second checkout, a shared volume, a VM disk
+you attached to inspect.
+
+---
+
+## Harness names
+
+One of the [12 supported CLIs](/agent-support):
+
+```text
+claude  codex  copilot  openclaw  pi  factory
+antigravity  cursor  goose  opencode  devin  hermes
+```
+
+A name that isn't in that list is rejected. That check exists because it is the one failure
+with no other detector — a typo'd harness produces a perfectly valid configuration file
+that captures absolutely nothing, silently.
+
+---
+
+## Adding a path
+
+```bash
+failproofai harness add-path claude ~/work/mirror/.claude/projects
+```
+
+`~` is expanded. From then on, sessions under that path are captured alongside the default
+location.
+
+### Labels
+
+```bash
+failproofai harness add-path codex "vm-a=/mnt/vm-a/.codex/sessions"
+failproofai harness add-path codex "vm-b=/mnt/vm-b/.codex/sessions"
+```
+
+The optional `label=` prefix namespaces the agent ids that come out of that path. Without a
+label, two copies of the same project collapse into one timeline that makes no sense; with
+one, `vm-a` and `vm-b` stay distinct everywhere you look.
+
+Omit the label and the folder name is used.
+
+### Two rejections, and why
+
+| Rejected | Because |
+|---|---|
+| A path that overlaps a default location | It would be collected **twice**, under two different agent ids — the same work appearing as two agents. |
+| Two entries sharing a label | They would share progress state, so **both** would re-read from the beginning after every restart. |
+
+Both failures are silent if allowed, which is exactly why they are refused up front.
+
+---
+
+## Listing and removing
+
+```bash
+failproofai harness list
+failproofai harness remove-path codex "vm-a=/mnt/vm-a/.codex/sessions"
+```
+
+`list` shows every configured extra path, grouped by harness.
+
+---
+
+## Containers
+
+Environment variables override the file, per source — useful when the config file is baked
+into an image but the mount points differ per run:
+
+```bash
+FAILPROOFAI_CLAUDE_EXTRA_PATHS=/mnt/a/.claude/projects,/mnt/b/.claude/projects
+FAILPROOFAI_CODEX_EXTRA_PATHS=vm-a=/mnt/vm-a/.codex/sessions
+```
+
+Comma-separated, same `label=path` grammar.
+
+---
+
+## What happens next
+
+Each accepted path becomes its own capture task with its own progress tracking, so one
+slow or unreadable path never stalls the others.
+
+New paths are read from the beginning on their first pass. To pull in older history from a
+path you added late:
+
+```bash
+failproofai backfill --since 6m
+```
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+
+<Card title="Session capture" icon="satellite-dish" href="/cloud/capture">
+  What gets captured, and how to narrow it.
+</Card>
+
+<Card title="failproofai backfill" icon="clock-rotate-left" href="/cli/backfill">
+  Re-read history the collector already passed.
+</Card>
+
+<Card title="Supported agents" icon="table" href="/agent-support">
+  Every harness name and where its sessions normally live.
+</Card>
+
+<Card title="Environment variables" icon="list" href="/cli/environment-variables">
+  Every variable, including the per-harness overrides.
+</Card>
+
+</CardGroup>

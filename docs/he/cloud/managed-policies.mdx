@@ -1,0 +1,182 @@
+---
+title: Managed policies
+description: "Write a guardrail once, assign it, and every connected machine enforces it — with an observe-only rollout so you can see what it would block before it blocks anything."
+icon: cloud-arrow-down
+---
+
+Committing a policy to `.failproofai/policies/` is the right answer for one repository and
+a team that all works in it. It stops being the answer the moment you have twelve machines,
+four repositories, and a contractor whose laptop you have never touched.
+
+Managed policies close that gap. You assign a policy in the dashboard; every connected
+machine fetches it, verifies it, and enforces it — with no git pull, no re-install, and no
+message in a channel asking everyone to please update.
+
+---
+
+## How a deployment reaches a machine
+
+<Steps>
+  <Step title="You assign policies in the dashboard">
+    The set of policies assigned to a machine (or a group of machines) is its **desired
+    state**. Changing that set produces a new, numbered **deployment**.
+  </Step>
+  <Step title="The machine polls for its desired state">
+    Each connected machine asks what it should be running. The answer names the deployment
+    and every policy artifact in it, with a digest for each.
+  </Step>
+  <Step title="It fetches only what it doesn't have">
+    Artifacts are content-addressed, so a deployment that changes one policy re-downloads
+    one policy. A machine that has been offline catches up in a single pass.
+  </Step>
+  <Step title="It verifies, then switches atomically">
+    Every artifact's SHA-256 is checked before the deployment goes live, **and again
+    immediately before each policy is loaded on the hook path**. A file that does not match
+    its digest is refused rather than executed — the machine keeps enforcing its previous
+    deployment rather than half-applying a new one.
+  </Step>
+</Steps>
+
+The result: a machine is always enforcing exactly one complete, verified deployment. There
+is no state where half a rollout is live.
+
+---
+
+## Roll out in observe mode first
+
+The risk with fleet-wide policy is not that a rule is wrong in theory. It is that a rule
+that looks obviously correct turns out to block something forty engineers do all day.
+
+Every assignment carries an **effect**:
+
+| Effect | What happens on the machine |
+|---|---|
+| `enforce` | The verdict is acted on. A deny blocks the action. |
+| `observe` | The policy is evaluated exactly as normal, then its verdict is **discarded**. Nothing is blocked; everything is recorded. |
+
+So the safe rollout is:
+
+<Steps>
+  <Step title="Deploy in observe mode">
+    Assign the policy with `observe` and let it run against real traffic.
+  </Step>
+  <Step title="Read what it would have done">
+    The decisions land in your dashboard like any other. Filter to that policy and look at
+    what it would have blocked — on real work, from real people, not from a test you wrote
+    to confirm your own assumption.
+  </Step>
+  <Step title="Tune, then flip to enforce">
+    Add the allowlist entry you now know you need, then switch the effect. The machines
+    pick up the change on their next poll.
+  </Step>
+</Steps>
+
+<Note>
+  `enforce` is the default when an assignment does not say. That is deliberate: a manifest
+  written before observe mode existed must not silently downgrade a machine to observation.
+  The default has to be the one that keeps enforcing.
+</Note>
+
+---
+
+## What a machine does when the cloud is unreachable
+
+It keeps enforcing the last deployment it successfully fetched.
+
+That is the behaviour you want in both directions. A network blip does not quietly disarm a
+fleet, and a machine that has been on a plane for six hours is not stuck on a policy set
+from last quarter — it catches up on its next successful poll.
+
+Two related guarantees worth knowing:
+
+- **A local [pause](/policies#pausing-enforcement) does not suspend managed policies.**
+  Someone can pause their own local rules for twenty minutes; they cannot pause what the
+  organization deployed.
+- **Disconnecting actually disconnects.** `failproofai config --disconnect` clears the
+  active deployment as well as the credentials, so a machine that leaves your organization
+  stops being governed by it. Artifacts already on disk are inert and left in place, which
+  makes reconnecting cheap.
+
+---
+
+## Where managed policies sit in evaluation
+
+They run **after** the built-ins and **before** anything local:
+
+1. Built-in policies
+2. **Cloud-managed policies**
+3. Explicit custom files
+4. Convention files (project, then user)
+
+The first `deny` wins and short-circuits the rest, so a managed policy that denies is final
+regardless of what a local file would have said. Instructions from every layer accumulate
+and are delivered together.
+
+[Full evaluation order →](/how-it-works#step-3-policies-run-in-order)
+
+---
+
+## What you can deploy
+
+Managed policies use the **same authoring API** as the ones you write locally — the same
+`allow` / `deny` / `instruct` helpers, the same context object, the same event matching. A
+policy that works in `.failproofai/policies/` works as a managed policy without changes.
+
+```js
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "no-prod-database-writes",
+  description: "Nobody's agent touches the production database, from any machine",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Bash") return allow();
+    const cmd = ctx.toolInput?.command ?? "";
+    if (/psql.*prod|mysql.*prod/.test(cmd)) {
+      return deny("Production database access is blocked. Use the read replica.");
+    }
+    return allow();
+  },
+});
+```
+
+[Authoring reference →](/custom-policies)
+
+---
+
+## Local policies still work
+
+Managed policies add a layer; they do not take one away. Teams keep using
+`.failproofai/policies/` for rules that belong to one repository, and reserve managed
+policies for rules that belong to the organization.
+
+A useful split:
+
+| Rule belongs in | When |
+|---|---|
+| **The repo** (`.failproofai/policies/`) | It is about this codebase — its conventions, its build, its deploy process. It should travel with a branch and be reviewed in a PR. |
+| **The cloud** (managed) | It is about the organization — credentials, production access, compliance. It must apply to machines whose repositories you do not control, and it must not be removable by editing a file locally. |
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+
+<Card title="Fleet" icon="server" href="/cloud/fleet">
+  Which machines are on which deployment, and which have no guardrails at all.
+</Card>
+
+<Card title="Connect a machine" icon="plug" href="/cloud/connect">
+  The `policies:pull` half of a connection.
+</Card>
+
+<Card title="Custom policies" icon="code" href="/custom-policies">
+  The authoring API shared by local and managed policies.
+</Card>
+
+<Card title="Built-in policies" icon="shield" href="/built-in-policies">
+  The 39 rules you can enable without writing anything.
+</Card>
+
+</CardGroup>

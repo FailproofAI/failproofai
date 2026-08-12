@@ -1,0 +1,58 @@
+---
+---
+title: "Sessions & Execution Graph"
+description: "כל event מ-run, מקופל לשורה אחת קריאה וממורה כגרף ביצוע בסגנון git שאתה יכול לקרוא בשניות."
+---
+
+
+תוך כדי שאתה מנחש למה run נכשל. FailproofAI Cloud מקפל כל event מ-run לשורה אחת קריאה, ואז מציירת את כל ה-run כתמונה בסגנון git שאתה יכול לקרוא בשניות, כך שאתה רואה בדיוק מה עשה ה-agent שלך, שלב אחר שלב.
+
+![רשימת ה-Sessions: שורה אחת לכל run, על פני environments ו-agents, עם status pills ו-evaluation score badges](/cloud/images/sessions-list.png)
+
+*שורה אחת לכל run: ה-status pill אומר לך איך הסתיים ה-run במבט אחד, ותגי score רכובים לצד זה ברגע שמעריך מחובר.*
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Agent tracing: עקוב אחרי run יחיד שלב אחר שלב, מיעד לכלים לתשובה סופית.*
+
+---
+
+## ראה כל run במבט אחד
+
+השביל event הגולמי הוא האמת של כל שלב, אבל כשיש לך אלפי צעדים על פני עשרות של runs, אתה צריך את ה-run, לא את השלב. דף ה-Sessions מקפל את כל ה-events של run לשורה אחת, כך שיום של פעילות הופך לרשימה סריקה במקום hosiery.
+
+כל שורה נושאת status pill, כך ש-run כושל בולט מ-run בריא לפני שאתה לוחץ על דבר כלשהו. סנן לפי טווח תאריכים, environment, agent, או session כדי לעבור מ-"הכל" ל-"ה-run שחשוב לי" בכמה קליקים.
+
+ברגע שאתה מחבר מעריך, כל run שהושלם מקבל ניקוד אוטומטי והציון האחרון שלו מופיע בשורה כתג. אתה יכול לסנן לפי כל טווח ציונים, כך ש-"הצג לי כל run בעל ציון נמוך של prod השבוע הזה" הוא סנן, לא ביקורת ידנית. עד שתגדיר אחד, sessions עדיין תופס את כל ה-run; הוא פשוט לא נושא ניקוד עדיין.
+
+---
+
+## קרא את כל ה-run כתמונה
+
+![גרף ביצוע בסגנון git של session לצד ציר הזמן של events שלו, עם פירוט של tool, model, ו-hook panel](/cloud/images/session-detail.png)
+
+*גרף הביצוע (שמאל) יושב ליד ציר הזמן של events; ה-rail הימני מפרק את ה-tools, models, hooks, ו-token spend של ה-run.*
+
+לחץ על כל session כדי לפתוח את גרף הביצוע שלו: תצוגה בסגנון git של איך agents, tools, hooks, ו-model calls התפתחו לאורך זמן. כל sub-agents במקביל מסתעפים לנתיב שלהם, כך שאתה יכול לראות איזה עבודה רצה זה לזה, איזה sub-agent עצר, ולאן ה-run הלך לא בכיוון, בלי להשמיע אותו שוב בראשך מקיר של logs.
+
+ה-rail הימני נותן לך את הפירוט per-run: אילו tools ו-models רצו, אילו hooks בעירו, ומה ה-run הוציא בתוקנים. זו התשובה ל-"למה ה-run הזה עלה כל כך הרבה?" או "איזה tool הוא ה-slow אחד?" יושבת ממש לצד הגרף שגרם לזה.
+
+Events בודדים ניתנים לפנייה, כך שאתה יכול לתת למישהו קישור לרגע אחד ולא "ה-session, בערך שתיים שלישים למטה". העתק את הקישור מכל event, או עקוב אחרי אחד מ-[audit](/he/cloud/audits) finding או שגיאה, והוא session נפתח עם אותו event נבחר וגלול אליו. זה מתקיים גם עבור runs ארוך מאוד: ציר הזמן טוען חלון מוגבל למען הדפדפן שלך, וקישור שמצביע מעבר לחלון זה עדיין מוצא את ה-event שלו ולא משליך אותך לתחילה. אם ה-event התיישן מחלון ה-retention שלך, הדף אומר לך את זה במקום לבחור בשקט כלום.
+
+---
+
+## איפה למצוא את זה
+
+כל דף dashboard מוגבל לארגון שלך (`/<org-slug>/…`). Sessions חי תחת **Observe** בסרגל הצד השמאלי, ליד Events, עם טווח התאריכים, environment, agent, ו-session filters על פני החלק העליון של הרשימה. כל שורה היא קליק אחד מגרף הביצוע המלא שלה.
+
+כדי להפעיל את תגי הציונים וסינון טווח ציונים, חבר מעריך: ראה [Evaluations](/he/cloud/evaluations).
+
+---
+
+## קשור
+
+- [Event stream](/he/cloud/event-stream): השביל הגולמי, per-step כל session מקופל ממנו.
+- [Evaluations](/he/cloud/evaluations): חבר מעריך כך שכל run יקבל תג ציון שאתה יכול לסנן לפיו.
+- [Telemetry](/he/cloud/performance): איך runs מגיעים מ-agent שלך אל sessions אלה.

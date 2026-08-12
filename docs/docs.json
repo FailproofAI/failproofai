@@ -32,109 +32,105 @@
         "language": "en",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "agenteye/overview",
-                  "agenteye/concepts",
-                  "agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "agenteye/event-stream",
-                  "agenteye/sessions",
-                  "agenteye/telemetry",
-                  "agenteye/error-tracking",
-                  "agenteye/evaluations",
-                  "agenteye/queries",
-                  "agenteye/dashboards",
-                  "agenteye/audits",
-                  "agenteye/alerts",
-                  "agenteye/incidents",
-                  "agenteye/assistant",
-                  "agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "agenteye/python-sdk",
-                  "agenteye/python-sdk-skill",
-                  "agenteye/codex-capture",
-                  "agenteye/openclaw-capture",
-                  "agenteye/hermes-capture",
-                  "agenteye/cli",
-                  "agenteye/cli-skill",
-                  "agenteye/cli-recipes",
-                  "agenteye/evaluation-suite",
-                  "agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "agenteye/api-keys",
-                  "agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "Getting Started",
+                "group": "Start here",
                 "pages": [
                   "introduction",
-                  "getting-started"
+                  "quickstart",
+                  "how-it-works",
+                  "concepts"
                 ]
               },
               {
-                "group": "Core Concepts",
+                "group": "Guardrails",
                 "pages": [
+                  "policies",
                   "built-in-policies",
                   "custom-policies",
-                  "configuration"
+                  "configuration",
+                  "agent-support",
+                  "daemon",
+                  "testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "cli/dashboard",
+                  "dashboard",
+                  "audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "cloud/overview",
+                  "cloud/connect",
+                  "cloud/fleet",
+                  "cloud/managed-policies",
+                  "cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "cloud/event-stream",
+                  "cloud/sessions",
+                  "cloud/performance",
+                  "cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "cloud/evaluations",
+                  "cloud/evaluators",
+                  "cloud/queries",
+                  "cloud/dashboards",
+                  "cloud/audits",
+                  "cloud/alerts",
+                  "cloud/incidents",
+                  "cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "cloud/sdk",
+                  "cloud/cli",
+                  "cloud/cli-recipes",
+                  "cloud/agent-skills",
+                  "cloud/access",
+                  "cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "cli/config",
                   "cli/install-policies",
                   "cli/remove-policies",
                   "cli/list-policies",
+                  "cli/harness",
+                  "cli/backfill",
+                  "cli/flush",
                   "cli/hook",
-                  "cli/audit",
+                  "cli/dashboard",
                   "cli/update",
                   "cli/migrate",
+                  "cli/uninstall",
                   "cli/version",
                   "cli/environment-variables"
                 ]
               },
               {
-                "group": "Tools",
+                "group": "Reference",
                 "pages": [
-                  "dashboard"
-                ]
-              },
-              {
-                "group": "Advanced",
-                "pages": [
-                  "architecture",
-                  "testing",
+                  "reference/files",
+                  "examples",
                   "package-aliases",
                   "for-agents"
-                ]
-              },
-              {
-                "group": "Examples",
-                "pages": [
-                  "examples"
                 ]
               }
             ]
@@ -145,107 +141,105 @@
         "language": "zh",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "zh/agenteye/overview",
-                  "zh/agenteye/concepts",
-                  "zh/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "zh/agenteye/event-stream",
-                  "zh/agenteye/sessions",
-                  "zh/agenteye/telemetry",
-                  "zh/agenteye/error-tracking",
-                  "zh/agenteye/evaluations",
-                  "zh/agenteye/queries",
-                  "zh/agenteye/dashboards",
-                  "zh/agenteye/audits",
-                  "zh/agenteye/alerts",
-                  "zh/agenteye/incidents",
-                  "zh/agenteye/assistant",
-                  "zh/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "zh/agenteye/python-sdk",
-                  "zh/agenteye/python-sdk-skill",
-                  "zh/agenteye/codex-capture",
-                  "zh/agenteye/openclaw-capture",
-                  "zh/agenteye/hermes-capture",
-                  "zh/agenteye/cli",
-                  "zh/agenteye/cli-skill",
-                  "zh/agenteye/cli-recipes",
-                  "zh/agenteye/evaluation-suite",
-                  "zh/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "zh/agenteye/api-keys",
-                  "zh/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "快速开始",
+                "group": "Start here",
                 "pages": [
                   "zh/introduction",
-                  "zh/getting-started"
+                  "zh/quickstart",
+                  "zh/how-it-works",
+                  "zh/concepts"
                 ]
               },
               {
-                "group": "核心概念",
+                "group": "Guardrails",
                 "pages": [
+                  "zh/policies",
                   "zh/built-in-policies",
                   "zh/custom-policies",
-                  "zh/configuration"
+                  "zh/configuration",
+                  "zh/agent-support",
+                  "zh/daemon",
+                  "zh/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "zh/cli/dashboard",
+                  "zh/dashboard",
+                  "zh/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "zh/cloud/overview",
+                  "zh/cloud/connect",
+                  "zh/cloud/fleet",
+                  "zh/cloud/managed-policies",
+                  "zh/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "zh/cloud/event-stream",
+                  "zh/cloud/sessions",
+                  "zh/cloud/performance",
+                  "zh/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "zh/cloud/evaluations",
+                  "zh/cloud/evaluators",
+                  "zh/cloud/queries",
+                  "zh/cloud/dashboards",
+                  "zh/cloud/audits",
+                  "zh/cloud/alerts",
+                  "zh/cloud/incidents",
+                  "zh/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "zh/cloud/sdk",
+                  "zh/cloud/cli",
+                  "zh/cloud/cli-recipes",
+                  "zh/cloud/agent-skills",
+                  "zh/cloud/access",
+                  "zh/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "zh/cli/config",
                   "zh/cli/install-policies",
                   "zh/cli/remove-policies",
                   "zh/cli/list-policies",
+                  "zh/cli/harness",
+                  "zh/cli/backfill",
+                  "zh/cli/flush",
                   "zh/cli/hook",
-                  "zh/cli/audit",
+                  "zh/cli/dashboard",
+                  "zh/cli/update",
+                  "zh/cli/migrate",
+                  "zh/cli/uninstall",
                   "zh/cli/version",
                   "zh/cli/environment-variables"
                 ]
               },
               {
-                "group": "工具",
+                "group": "Reference",
                 "pages": [
-                  "zh/dashboard"
-                ]
-              },
-              {
-                "group": "进阶",
-                "pages": [
-                  "zh/architecture",
-                  "zh/testing",
+                  "zh/reference/files",
+                  "zh/examples",
                   "zh/package-aliases",
                   "zh/for-agents"
-                ]
-              },
-              {
-                "group": "示例",
-                "pages": [
-                  "zh/examples"
                 ]
               }
             ]
@@ -256,107 +250,105 @@
         "language": "ja",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "ja/agenteye/overview",
-                  "ja/agenteye/concepts",
-                  "ja/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "ja/agenteye/event-stream",
-                  "ja/agenteye/sessions",
-                  "ja/agenteye/telemetry",
-                  "ja/agenteye/error-tracking",
-                  "ja/agenteye/evaluations",
-                  "ja/agenteye/queries",
-                  "ja/agenteye/dashboards",
-                  "ja/agenteye/audits",
-                  "ja/agenteye/alerts",
-                  "ja/agenteye/incidents",
-                  "ja/agenteye/assistant",
-                  "ja/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "ja/agenteye/python-sdk",
-                  "ja/agenteye/python-sdk-skill",
-                  "ja/agenteye/codex-capture",
-                  "ja/agenteye/openclaw-capture",
-                  "ja/agenteye/hermes-capture",
-                  "ja/agenteye/cli",
-                  "ja/agenteye/cli-skill",
-                  "ja/agenteye/cli-recipes",
-                  "ja/agenteye/evaluation-suite",
-                  "ja/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "ja/agenteye/api-keys",
-                  "ja/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "はじめに",
+                "group": "Start here",
                 "pages": [
                   "ja/introduction",
-                  "ja/getting-started"
+                  "ja/quickstart",
+                  "ja/how-it-works",
+                  "ja/concepts"
                 ]
               },
               {
-                "group": "基本概念",
+                "group": "Guardrails",
                 "pages": [
+                  "ja/policies",
                   "ja/built-in-policies",
                   "ja/custom-policies",
-                  "ja/configuration"
+                  "ja/configuration",
+                  "ja/agent-support",
+                  "ja/daemon",
+                  "ja/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "ja/cli/dashboard",
+                  "ja/dashboard",
+                  "ja/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "ja/cloud/overview",
+                  "ja/cloud/connect",
+                  "ja/cloud/fleet",
+                  "ja/cloud/managed-policies",
+                  "ja/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "ja/cloud/event-stream",
+                  "ja/cloud/sessions",
+                  "ja/cloud/performance",
+                  "ja/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "ja/cloud/evaluations",
+                  "ja/cloud/evaluators",
+                  "ja/cloud/queries",
+                  "ja/cloud/dashboards",
+                  "ja/cloud/audits",
+                  "ja/cloud/alerts",
+                  "ja/cloud/incidents",
+                  "ja/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "ja/cloud/sdk",
+                  "ja/cloud/cli",
+                  "ja/cloud/cli-recipes",
+                  "ja/cloud/agent-skills",
+                  "ja/cloud/access",
+                  "ja/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "ja/cli/config",
                   "ja/cli/install-policies",
                   "ja/cli/remove-policies",
                   "ja/cli/list-policies",
+                  "ja/cli/harness",
+                  "ja/cli/backfill",
+                  "ja/cli/flush",
                   "ja/cli/hook",
-                  "ja/cli/audit",
+                  "ja/cli/dashboard",
+                  "ja/cli/update",
+                  "ja/cli/migrate",
+                  "ja/cli/uninstall",
                   "ja/cli/version",
                   "ja/cli/environment-variables"
                 ]
               },
               {
-                "group": "ツール",
+                "group": "Reference",
                 "pages": [
-                  "ja/dashboard"
-                ]
-              },
-              {
-                "group": "上級",
-                "pages": [
-                  "ja/architecture",
-                  "ja/testing",
+                  "ja/reference/files",
+                  "ja/examples",
                   "ja/package-aliases",
                   "ja/for-agents"
-                ]
-              },
-              {
-                "group": "例",
-                "pages": [
-                  "ja/examples"
                 ]
               }
             ]
@@ -367,107 +359,105 @@
         "language": "ko",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "ko/agenteye/overview",
-                  "ko/agenteye/concepts",
-                  "ko/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "ko/agenteye/event-stream",
-                  "ko/agenteye/sessions",
-                  "ko/agenteye/telemetry",
-                  "ko/agenteye/error-tracking",
-                  "ko/agenteye/evaluations",
-                  "ko/agenteye/queries",
-                  "ko/agenteye/dashboards",
-                  "ko/agenteye/audits",
-                  "ko/agenteye/alerts",
-                  "ko/agenteye/incidents",
-                  "ko/agenteye/assistant",
-                  "ko/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "ko/agenteye/python-sdk",
-                  "ko/agenteye/python-sdk-skill",
-                  "ko/agenteye/codex-capture",
-                  "ko/agenteye/openclaw-capture",
-                  "ko/agenteye/hermes-capture",
-                  "ko/agenteye/cli",
-                  "ko/agenteye/cli-skill",
-                  "ko/agenteye/cli-recipes",
-                  "ko/agenteye/evaluation-suite",
-                  "ko/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "ko/agenteye/api-keys",
-                  "ko/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "시작하기",
+                "group": "Start here",
                 "pages": [
                   "ko/introduction",
-                  "ko/getting-started"
+                  "ko/quickstart",
+                  "ko/how-it-works",
+                  "ko/concepts"
                 ]
               },
               {
-                "group": "핵심 개념",
+                "group": "Guardrails",
                 "pages": [
+                  "ko/policies",
                   "ko/built-in-policies",
                   "ko/custom-policies",
-                  "ko/configuration"
+                  "ko/configuration",
+                  "ko/agent-support",
+                  "ko/daemon",
+                  "ko/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "ko/cli/dashboard",
+                  "ko/dashboard",
+                  "ko/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "ko/cloud/overview",
+                  "ko/cloud/connect",
+                  "ko/cloud/fleet",
+                  "ko/cloud/managed-policies",
+                  "ko/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "ko/cloud/event-stream",
+                  "ko/cloud/sessions",
+                  "ko/cloud/performance",
+                  "ko/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "ko/cloud/evaluations",
+                  "ko/cloud/evaluators",
+                  "ko/cloud/queries",
+                  "ko/cloud/dashboards",
+                  "ko/cloud/audits",
+                  "ko/cloud/alerts",
+                  "ko/cloud/incidents",
+                  "ko/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "ko/cloud/sdk",
+                  "ko/cloud/cli",
+                  "ko/cloud/cli-recipes",
+                  "ko/cloud/agent-skills",
+                  "ko/cloud/access",
+                  "ko/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "ko/cli/config",
                   "ko/cli/install-policies",
                   "ko/cli/remove-policies",
                   "ko/cli/list-policies",
+                  "ko/cli/harness",
+                  "ko/cli/backfill",
+                  "ko/cli/flush",
                   "ko/cli/hook",
-                  "ko/cli/audit",
+                  "ko/cli/dashboard",
+                  "ko/cli/update",
+                  "ko/cli/migrate",
+                  "ko/cli/uninstall",
                   "ko/cli/version",
                   "ko/cli/environment-variables"
                 ]
               },
               {
-                "group": "도구",
+                "group": "Reference",
                 "pages": [
-                  "ko/dashboard"
-                ]
-              },
-              {
-                "group": "고급",
-                "pages": [
-                  "ko/architecture",
-                  "ko/testing",
+                  "ko/reference/files",
+                  "ko/examples",
                   "ko/package-aliases",
                   "ko/for-agents"
-                ]
-              },
-              {
-                "group": "예제",
-                "pages": [
-                  "ko/examples"
                 ]
               }
             ]
@@ -478,107 +468,105 @@
         "language": "es",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "es/agenteye/overview",
-                  "es/agenteye/concepts",
-                  "es/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "es/agenteye/event-stream",
-                  "es/agenteye/sessions",
-                  "es/agenteye/telemetry",
-                  "es/agenteye/error-tracking",
-                  "es/agenteye/evaluations",
-                  "es/agenteye/queries",
-                  "es/agenteye/dashboards",
-                  "es/agenteye/audits",
-                  "es/agenteye/alerts",
-                  "es/agenteye/incidents",
-                  "es/agenteye/assistant",
-                  "es/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "es/agenteye/python-sdk",
-                  "es/agenteye/python-sdk-skill",
-                  "es/agenteye/codex-capture",
-                  "es/agenteye/openclaw-capture",
-                  "es/agenteye/hermes-capture",
-                  "es/agenteye/cli",
-                  "es/agenteye/cli-skill",
-                  "es/agenteye/cli-recipes",
-                  "es/agenteye/evaluation-suite",
-                  "es/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "es/agenteye/api-keys",
-                  "es/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "Primeros pasos",
+                "group": "Start here",
                 "pages": [
                   "es/introduction",
-                  "es/getting-started"
+                  "es/quickstart",
+                  "es/how-it-works",
+                  "es/concepts"
                 ]
               },
               {
-                "group": "Conceptos principales",
+                "group": "Guardrails",
                 "pages": [
+                  "es/policies",
                   "es/built-in-policies",
                   "es/custom-policies",
-                  "es/configuration"
+                  "es/configuration",
+                  "es/agent-support",
+                  "es/daemon",
+                  "es/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "es/cli/dashboard",
+                  "es/dashboard",
+                  "es/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "es/cloud/overview",
+                  "es/cloud/connect",
+                  "es/cloud/fleet",
+                  "es/cloud/managed-policies",
+                  "es/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "es/cloud/event-stream",
+                  "es/cloud/sessions",
+                  "es/cloud/performance",
+                  "es/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "es/cloud/evaluations",
+                  "es/cloud/evaluators",
+                  "es/cloud/queries",
+                  "es/cloud/dashboards",
+                  "es/cloud/audits",
+                  "es/cloud/alerts",
+                  "es/cloud/incidents",
+                  "es/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "es/cloud/sdk",
+                  "es/cloud/cli",
+                  "es/cloud/cli-recipes",
+                  "es/cloud/agent-skills",
+                  "es/cloud/access",
+                  "es/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "es/cli/config",
                   "es/cli/install-policies",
                   "es/cli/remove-policies",
                   "es/cli/list-policies",
+                  "es/cli/harness",
+                  "es/cli/backfill",
+                  "es/cli/flush",
                   "es/cli/hook",
-                  "es/cli/audit",
+                  "es/cli/dashboard",
+                  "es/cli/update",
+                  "es/cli/migrate",
+                  "es/cli/uninstall",
                   "es/cli/version",
                   "es/cli/environment-variables"
                 ]
               },
               {
-                "group": "Herramientas",
+                "group": "Reference",
                 "pages": [
-                  "es/dashboard"
-                ]
-              },
-              {
-                "group": "Avanzado",
-                "pages": [
-                  "es/architecture",
-                  "es/testing",
+                  "es/reference/files",
+                  "es/examples",
                   "es/package-aliases",
                   "es/for-agents"
-                ]
-              },
-              {
-                "group": "Ejemplos",
-                "pages": [
-                  "es/examples"
                 ]
               }
             ]
@@ -589,107 +577,105 @@
         "language": "pt-BR",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "pt-br/agenteye/overview",
-                  "pt-br/agenteye/concepts",
-                  "pt-br/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "pt-br/agenteye/event-stream",
-                  "pt-br/agenteye/sessions",
-                  "pt-br/agenteye/telemetry",
-                  "pt-br/agenteye/error-tracking",
-                  "pt-br/agenteye/evaluations",
-                  "pt-br/agenteye/queries",
-                  "pt-br/agenteye/dashboards",
-                  "pt-br/agenteye/audits",
-                  "pt-br/agenteye/alerts",
-                  "pt-br/agenteye/incidents",
-                  "pt-br/agenteye/assistant",
-                  "pt-br/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "pt-br/agenteye/python-sdk",
-                  "pt-br/agenteye/python-sdk-skill",
-                  "pt-br/agenteye/codex-capture",
-                  "pt-br/agenteye/openclaw-capture",
-                  "pt-br/agenteye/hermes-capture",
-                  "pt-br/agenteye/cli",
-                  "pt-br/agenteye/cli-skill",
-                  "pt-br/agenteye/cli-recipes",
-                  "pt-br/agenteye/evaluation-suite",
-                  "pt-br/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "pt-br/agenteye/api-keys",
-                  "pt-br/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "Começando",
+                "group": "Start here",
                 "pages": [
                   "pt-br/introduction",
-                  "pt-br/getting-started"
+                  "pt-br/quickstart",
+                  "pt-br/how-it-works",
+                  "pt-br/concepts"
                 ]
               },
               {
-                "group": "Conceitos principais",
+                "group": "Guardrails",
                 "pages": [
+                  "pt-br/policies",
                   "pt-br/built-in-policies",
                   "pt-br/custom-policies",
-                  "pt-br/configuration"
+                  "pt-br/configuration",
+                  "pt-br/agent-support",
+                  "pt-br/daemon",
+                  "pt-br/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "pt-br/cli/dashboard",
+                  "pt-br/dashboard",
+                  "pt-br/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "pt-br/cloud/overview",
+                  "pt-br/cloud/connect",
+                  "pt-br/cloud/fleet",
+                  "pt-br/cloud/managed-policies",
+                  "pt-br/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "pt-br/cloud/event-stream",
+                  "pt-br/cloud/sessions",
+                  "pt-br/cloud/performance",
+                  "pt-br/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "pt-br/cloud/evaluations",
+                  "pt-br/cloud/evaluators",
+                  "pt-br/cloud/queries",
+                  "pt-br/cloud/dashboards",
+                  "pt-br/cloud/audits",
+                  "pt-br/cloud/alerts",
+                  "pt-br/cloud/incidents",
+                  "pt-br/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "pt-br/cloud/sdk",
+                  "pt-br/cloud/cli",
+                  "pt-br/cloud/cli-recipes",
+                  "pt-br/cloud/agent-skills",
+                  "pt-br/cloud/access",
+                  "pt-br/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "pt-br/cli/config",
                   "pt-br/cli/install-policies",
                   "pt-br/cli/remove-policies",
                   "pt-br/cli/list-policies",
+                  "pt-br/cli/harness",
+                  "pt-br/cli/backfill",
+                  "pt-br/cli/flush",
                   "pt-br/cli/hook",
-                  "pt-br/cli/audit",
+                  "pt-br/cli/dashboard",
+                  "pt-br/cli/update",
+                  "pt-br/cli/migrate",
+                  "pt-br/cli/uninstall",
                   "pt-br/cli/version",
                   "pt-br/cli/environment-variables"
                 ]
               },
               {
-                "group": "Ferramentas",
+                "group": "Reference",
                 "pages": [
-                  "pt-br/dashboard"
-                ]
-              },
-              {
-                "group": "Avançado",
-                "pages": [
-                  "pt-br/architecture",
-                  "pt-br/testing",
+                  "pt-br/reference/files",
+                  "pt-br/examples",
                   "pt-br/package-aliases",
                   "pt-br/for-agents"
-                ]
-              },
-              {
-                "group": "Exemplos",
-                "pages": [
-                  "pt-br/examples"
                 ]
               }
             ]
@@ -700,107 +686,105 @@
         "language": "de",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "de/agenteye/overview",
-                  "de/agenteye/concepts",
-                  "de/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "de/agenteye/event-stream",
-                  "de/agenteye/sessions",
-                  "de/agenteye/telemetry",
-                  "de/agenteye/error-tracking",
-                  "de/agenteye/evaluations",
-                  "de/agenteye/queries",
-                  "de/agenteye/dashboards",
-                  "de/agenteye/audits",
-                  "de/agenteye/alerts",
-                  "de/agenteye/incidents",
-                  "de/agenteye/assistant",
-                  "de/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "de/agenteye/python-sdk",
-                  "de/agenteye/python-sdk-skill",
-                  "de/agenteye/codex-capture",
-                  "de/agenteye/openclaw-capture",
-                  "de/agenteye/hermes-capture",
-                  "de/agenteye/cli",
-                  "de/agenteye/cli-skill",
-                  "de/agenteye/cli-recipes",
-                  "de/agenteye/evaluation-suite",
-                  "de/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "de/agenteye/api-keys",
-                  "de/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "Erste Schritte",
+                "group": "Start here",
                 "pages": [
                   "de/introduction",
-                  "de/getting-started"
+                  "de/quickstart",
+                  "de/how-it-works",
+                  "de/concepts"
                 ]
               },
               {
-                "group": "Kernkonzepte",
+                "group": "Guardrails",
                 "pages": [
+                  "de/policies",
                   "de/built-in-policies",
                   "de/custom-policies",
-                  "de/configuration"
+                  "de/configuration",
+                  "de/agent-support",
+                  "de/daemon",
+                  "de/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "de/cli/dashboard",
+                  "de/dashboard",
+                  "de/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "de/cloud/overview",
+                  "de/cloud/connect",
+                  "de/cloud/fleet",
+                  "de/cloud/managed-policies",
+                  "de/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "de/cloud/event-stream",
+                  "de/cloud/sessions",
+                  "de/cloud/performance",
+                  "de/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "de/cloud/evaluations",
+                  "de/cloud/evaluators",
+                  "de/cloud/queries",
+                  "de/cloud/dashboards",
+                  "de/cloud/audits",
+                  "de/cloud/alerts",
+                  "de/cloud/incidents",
+                  "de/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "de/cloud/sdk",
+                  "de/cloud/cli",
+                  "de/cloud/cli-recipes",
+                  "de/cloud/agent-skills",
+                  "de/cloud/access",
+                  "de/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "de/cli/config",
                   "de/cli/install-policies",
                   "de/cli/remove-policies",
                   "de/cli/list-policies",
+                  "de/cli/harness",
+                  "de/cli/backfill",
+                  "de/cli/flush",
                   "de/cli/hook",
-                  "de/cli/audit",
+                  "de/cli/dashboard",
+                  "de/cli/update",
+                  "de/cli/migrate",
+                  "de/cli/uninstall",
                   "de/cli/version",
                   "de/cli/environment-variables"
                 ]
               },
               {
-                "group": "Werkzeuge",
+                "group": "Reference",
                 "pages": [
-                  "de/dashboard"
-                ]
-              },
-              {
-                "group": "Fortgeschritten",
-                "pages": [
-                  "de/architecture",
-                  "de/testing",
+                  "de/reference/files",
+                  "de/examples",
                   "de/package-aliases",
                   "de/for-agents"
-                ]
-              },
-              {
-                "group": "Beispiele",
-                "pages": [
-                  "de/examples"
                 ]
               }
             ]
@@ -811,107 +795,105 @@
         "language": "fr",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "fr/agenteye/overview",
-                  "fr/agenteye/concepts",
-                  "fr/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "fr/agenteye/event-stream",
-                  "fr/agenteye/sessions",
-                  "fr/agenteye/telemetry",
-                  "fr/agenteye/error-tracking",
-                  "fr/agenteye/evaluations",
-                  "fr/agenteye/queries",
-                  "fr/agenteye/dashboards",
-                  "fr/agenteye/audits",
-                  "fr/agenteye/alerts",
-                  "fr/agenteye/incidents",
-                  "fr/agenteye/assistant",
-                  "fr/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "fr/agenteye/python-sdk",
-                  "fr/agenteye/python-sdk-skill",
-                  "fr/agenteye/codex-capture",
-                  "fr/agenteye/openclaw-capture",
-                  "fr/agenteye/hermes-capture",
-                  "fr/agenteye/cli",
-                  "fr/agenteye/cli-skill",
-                  "fr/agenteye/cli-recipes",
-                  "fr/agenteye/evaluation-suite",
-                  "fr/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "fr/agenteye/api-keys",
-                  "fr/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "Démarrage",
+                "group": "Start here",
                 "pages": [
                   "fr/introduction",
-                  "fr/getting-started"
+                  "fr/quickstart",
+                  "fr/how-it-works",
+                  "fr/concepts"
                 ]
               },
               {
-                "group": "Concepts clés",
+                "group": "Guardrails",
                 "pages": [
+                  "fr/policies",
                   "fr/built-in-policies",
                   "fr/custom-policies",
-                  "fr/configuration"
+                  "fr/configuration",
+                  "fr/agent-support",
+                  "fr/daemon",
+                  "fr/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "fr/cli/dashboard",
+                  "fr/dashboard",
+                  "fr/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "fr/cloud/overview",
+                  "fr/cloud/connect",
+                  "fr/cloud/fleet",
+                  "fr/cloud/managed-policies",
+                  "fr/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "fr/cloud/event-stream",
+                  "fr/cloud/sessions",
+                  "fr/cloud/performance",
+                  "fr/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "fr/cloud/evaluations",
+                  "fr/cloud/evaluators",
+                  "fr/cloud/queries",
+                  "fr/cloud/dashboards",
+                  "fr/cloud/audits",
+                  "fr/cloud/alerts",
+                  "fr/cloud/incidents",
+                  "fr/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "fr/cloud/sdk",
+                  "fr/cloud/cli",
+                  "fr/cloud/cli-recipes",
+                  "fr/cloud/agent-skills",
+                  "fr/cloud/access",
+                  "fr/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "fr/cli/config",
                   "fr/cli/install-policies",
                   "fr/cli/remove-policies",
                   "fr/cli/list-policies",
+                  "fr/cli/harness",
+                  "fr/cli/backfill",
+                  "fr/cli/flush",
                   "fr/cli/hook",
-                  "fr/cli/audit",
+                  "fr/cli/dashboard",
+                  "fr/cli/update",
+                  "fr/cli/migrate",
+                  "fr/cli/uninstall",
                   "fr/cli/version",
                   "fr/cli/environment-variables"
                 ]
               },
               {
-                "group": "Outils",
+                "group": "Reference",
                 "pages": [
-                  "fr/dashboard"
-                ]
-              },
-              {
-                "group": "Avancé",
-                "pages": [
-                  "fr/architecture",
-                  "fr/testing",
+                  "fr/reference/files",
+                  "fr/examples",
                   "fr/package-aliases",
                   "fr/for-agents"
-                ]
-              },
-              {
-                "group": "Exemples",
-                "pages": [
-                  "fr/examples"
                 ]
               }
             ]
@@ -922,107 +904,105 @@
         "language": "ru",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "ru/agenteye/overview",
-                  "ru/agenteye/concepts",
-                  "ru/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "ru/agenteye/event-stream",
-                  "ru/agenteye/sessions",
-                  "ru/agenteye/telemetry",
-                  "ru/agenteye/error-tracking",
-                  "ru/agenteye/evaluations",
-                  "ru/agenteye/queries",
-                  "ru/agenteye/dashboards",
-                  "ru/agenteye/audits",
-                  "ru/agenteye/alerts",
-                  "ru/agenteye/incidents",
-                  "ru/agenteye/assistant",
-                  "ru/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "ru/agenteye/python-sdk",
-                  "ru/agenteye/python-sdk-skill",
-                  "ru/agenteye/codex-capture",
-                  "ru/agenteye/openclaw-capture",
-                  "ru/agenteye/hermes-capture",
-                  "ru/agenteye/cli",
-                  "ru/agenteye/cli-skill",
-                  "ru/agenteye/cli-recipes",
-                  "ru/agenteye/evaluation-suite",
-                  "ru/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "ru/agenteye/api-keys",
-                  "ru/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "Начало работы",
+                "group": "Start here",
                 "pages": [
                   "ru/introduction",
-                  "ru/getting-started"
+                  "ru/quickstart",
+                  "ru/how-it-works",
+                  "ru/concepts"
                 ]
               },
               {
-                "group": "Основные концепции",
+                "group": "Guardrails",
                 "pages": [
+                  "ru/policies",
                   "ru/built-in-policies",
                   "ru/custom-policies",
-                  "ru/configuration"
+                  "ru/configuration",
+                  "ru/agent-support",
+                  "ru/daemon",
+                  "ru/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "ru/cli/dashboard",
+                  "ru/dashboard",
+                  "ru/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "ru/cloud/overview",
+                  "ru/cloud/connect",
+                  "ru/cloud/fleet",
+                  "ru/cloud/managed-policies",
+                  "ru/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "ru/cloud/event-stream",
+                  "ru/cloud/sessions",
+                  "ru/cloud/performance",
+                  "ru/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "ru/cloud/evaluations",
+                  "ru/cloud/evaluators",
+                  "ru/cloud/queries",
+                  "ru/cloud/dashboards",
+                  "ru/cloud/audits",
+                  "ru/cloud/alerts",
+                  "ru/cloud/incidents",
+                  "ru/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "ru/cloud/sdk",
+                  "ru/cloud/cli",
+                  "ru/cloud/cli-recipes",
+                  "ru/cloud/agent-skills",
+                  "ru/cloud/access",
+                  "ru/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "ru/cli/config",
                   "ru/cli/install-policies",
                   "ru/cli/remove-policies",
                   "ru/cli/list-policies",
+                  "ru/cli/harness",
+                  "ru/cli/backfill",
+                  "ru/cli/flush",
                   "ru/cli/hook",
-                  "ru/cli/audit",
+                  "ru/cli/dashboard",
+                  "ru/cli/update",
+                  "ru/cli/migrate",
+                  "ru/cli/uninstall",
                   "ru/cli/version",
                   "ru/cli/environment-variables"
                 ]
               },
               {
-                "group": "Инструменты",
+                "group": "Reference",
                 "pages": [
-                  "ru/dashboard"
-                ]
-              },
-              {
-                "group": "Продвинутый",
-                "pages": [
-                  "ru/architecture",
-                  "ru/testing",
+                  "ru/reference/files",
+                  "ru/examples",
                   "ru/package-aliases",
                   "ru/for-agents"
-                ]
-              },
-              {
-                "group": "Примеры",
-                "pages": [
-                  "ru/examples"
                 ]
               }
             ]
@@ -1033,107 +1013,105 @@
         "language": "hi",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "hi/agenteye/overview",
-                  "hi/agenteye/concepts",
-                  "hi/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "hi/agenteye/event-stream",
-                  "hi/agenteye/sessions",
-                  "hi/agenteye/telemetry",
-                  "hi/agenteye/error-tracking",
-                  "hi/agenteye/evaluations",
-                  "hi/agenteye/queries",
-                  "hi/agenteye/dashboards",
-                  "hi/agenteye/audits",
-                  "hi/agenteye/alerts",
-                  "hi/agenteye/incidents",
-                  "hi/agenteye/assistant",
-                  "hi/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "hi/agenteye/python-sdk",
-                  "hi/agenteye/python-sdk-skill",
-                  "hi/agenteye/codex-capture",
-                  "hi/agenteye/openclaw-capture",
-                  "hi/agenteye/hermes-capture",
-                  "hi/agenteye/cli",
-                  "hi/agenteye/cli-skill",
-                  "hi/agenteye/cli-recipes",
-                  "hi/agenteye/evaluation-suite",
-                  "hi/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "hi/agenteye/api-keys",
-                  "hi/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "शुरू करें",
+                "group": "Start here",
                 "pages": [
                   "hi/introduction",
-                  "hi/getting-started"
+                  "hi/quickstart",
+                  "hi/how-it-works",
+                  "hi/concepts"
                 ]
               },
               {
-                "group": "मूल अवधारणाएँ",
+                "group": "Guardrails",
                 "pages": [
+                  "hi/policies",
                   "hi/built-in-policies",
                   "hi/custom-policies",
-                  "hi/configuration"
+                  "hi/configuration",
+                  "hi/agent-support",
+                  "hi/daemon",
+                  "hi/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "hi/cli/dashboard",
+                  "hi/dashboard",
+                  "hi/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "hi/cloud/overview",
+                  "hi/cloud/connect",
+                  "hi/cloud/fleet",
+                  "hi/cloud/managed-policies",
+                  "hi/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "hi/cloud/event-stream",
+                  "hi/cloud/sessions",
+                  "hi/cloud/performance",
+                  "hi/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "hi/cloud/evaluations",
+                  "hi/cloud/evaluators",
+                  "hi/cloud/queries",
+                  "hi/cloud/dashboards",
+                  "hi/cloud/audits",
+                  "hi/cloud/alerts",
+                  "hi/cloud/incidents",
+                  "hi/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "hi/cloud/sdk",
+                  "hi/cloud/cli",
+                  "hi/cloud/cli-recipes",
+                  "hi/cloud/agent-skills",
+                  "hi/cloud/access",
+                  "hi/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "hi/cli/config",
                   "hi/cli/install-policies",
                   "hi/cli/remove-policies",
                   "hi/cli/list-policies",
+                  "hi/cli/harness",
+                  "hi/cli/backfill",
+                  "hi/cli/flush",
                   "hi/cli/hook",
-                  "hi/cli/audit",
+                  "hi/cli/dashboard",
+                  "hi/cli/update",
+                  "hi/cli/migrate",
+                  "hi/cli/uninstall",
                   "hi/cli/version",
                   "hi/cli/environment-variables"
                 ]
               },
               {
-                "group": "उपकरण",
+                "group": "Reference",
                 "pages": [
-                  "hi/dashboard"
-                ]
-              },
-              {
-                "group": "उन्नत",
-                "pages": [
-                  "hi/architecture",
-                  "hi/testing",
+                  "hi/reference/files",
+                  "hi/examples",
                   "hi/package-aliases",
                   "hi/for-agents"
-                ]
-              },
-              {
-                "group": "उदाहरण",
-                "pages": [
-                  "hi/examples"
                 ]
               }
             ]
@@ -1144,107 +1122,105 @@
         "language": "tr",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "tr/agenteye/overview",
-                  "tr/agenteye/concepts",
-                  "tr/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "tr/agenteye/event-stream",
-                  "tr/agenteye/sessions",
-                  "tr/agenteye/telemetry",
-                  "tr/agenteye/error-tracking",
-                  "tr/agenteye/evaluations",
-                  "tr/agenteye/queries",
-                  "tr/agenteye/dashboards",
-                  "tr/agenteye/audits",
-                  "tr/agenteye/alerts",
-                  "tr/agenteye/incidents",
-                  "tr/agenteye/assistant",
-                  "tr/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "tr/agenteye/python-sdk",
-                  "tr/agenteye/python-sdk-skill",
-                  "tr/agenteye/codex-capture",
-                  "tr/agenteye/openclaw-capture",
-                  "tr/agenteye/hermes-capture",
-                  "tr/agenteye/cli",
-                  "tr/agenteye/cli-skill",
-                  "tr/agenteye/cli-recipes",
-                  "tr/agenteye/evaluation-suite",
-                  "tr/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "tr/agenteye/api-keys",
-                  "tr/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "Başlangıç",
+                "group": "Start here",
                 "pages": [
                   "tr/introduction",
-                  "tr/getting-started"
+                  "tr/quickstart",
+                  "tr/how-it-works",
+                  "tr/concepts"
                 ]
               },
               {
-                "group": "Temel Kavramlar",
+                "group": "Guardrails",
                 "pages": [
+                  "tr/policies",
                   "tr/built-in-policies",
                   "tr/custom-policies",
-                  "tr/configuration"
+                  "tr/configuration",
+                  "tr/agent-support",
+                  "tr/daemon",
+                  "tr/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "tr/cli/dashboard",
+                  "tr/dashboard",
+                  "tr/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "tr/cloud/overview",
+                  "tr/cloud/connect",
+                  "tr/cloud/fleet",
+                  "tr/cloud/managed-policies",
+                  "tr/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "tr/cloud/event-stream",
+                  "tr/cloud/sessions",
+                  "tr/cloud/performance",
+                  "tr/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "tr/cloud/evaluations",
+                  "tr/cloud/evaluators",
+                  "tr/cloud/queries",
+                  "tr/cloud/dashboards",
+                  "tr/cloud/audits",
+                  "tr/cloud/alerts",
+                  "tr/cloud/incidents",
+                  "tr/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "tr/cloud/sdk",
+                  "tr/cloud/cli",
+                  "tr/cloud/cli-recipes",
+                  "tr/cloud/agent-skills",
+                  "tr/cloud/access",
+                  "tr/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "tr/cli/config",
                   "tr/cli/install-policies",
                   "tr/cli/remove-policies",
                   "tr/cli/list-policies",
+                  "tr/cli/harness",
+                  "tr/cli/backfill",
+                  "tr/cli/flush",
                   "tr/cli/hook",
-                  "tr/cli/audit",
+                  "tr/cli/dashboard",
+                  "tr/cli/update",
+                  "tr/cli/migrate",
+                  "tr/cli/uninstall",
                   "tr/cli/version",
                   "tr/cli/environment-variables"
                 ]
               },
               {
-                "group": "Araçlar",
+                "group": "Reference",
                 "pages": [
-                  "tr/dashboard"
-                ]
-              },
-              {
-                "group": "Gelişmiş",
-                "pages": [
-                  "tr/architecture",
-                  "tr/testing",
+                  "tr/reference/files",
+                  "tr/examples",
                   "tr/package-aliases",
                   "tr/for-agents"
-                ]
-              },
-              {
-                "group": "Örnekler",
-                "pages": [
-                  "tr/examples"
                 ]
               }
             ]
@@ -1255,107 +1231,105 @@
         "language": "vi",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "vi/agenteye/overview",
-                  "vi/agenteye/concepts",
-                  "vi/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "vi/agenteye/event-stream",
-                  "vi/agenteye/sessions",
-                  "vi/agenteye/telemetry",
-                  "vi/agenteye/error-tracking",
-                  "vi/agenteye/evaluations",
-                  "vi/agenteye/queries",
-                  "vi/agenteye/dashboards",
-                  "vi/agenteye/audits",
-                  "vi/agenteye/alerts",
-                  "vi/agenteye/incidents",
-                  "vi/agenteye/assistant",
-                  "vi/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "vi/agenteye/python-sdk",
-                  "vi/agenteye/python-sdk-skill",
-                  "vi/agenteye/codex-capture",
-                  "vi/agenteye/openclaw-capture",
-                  "vi/agenteye/hermes-capture",
-                  "vi/agenteye/cli",
-                  "vi/agenteye/cli-skill",
-                  "vi/agenteye/cli-recipes",
-                  "vi/agenteye/evaluation-suite",
-                  "vi/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "vi/agenteye/api-keys",
-                  "vi/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "Bắt đầu",
+                "group": "Start here",
                 "pages": [
                   "vi/introduction",
-                  "vi/getting-started"
+                  "vi/quickstart",
+                  "vi/how-it-works",
+                  "vi/concepts"
                 ]
               },
               {
-                "group": "Khái niệm cốt lõi",
+                "group": "Guardrails",
                 "pages": [
+                  "vi/policies",
                   "vi/built-in-policies",
                   "vi/custom-policies",
-                  "vi/configuration"
+                  "vi/configuration",
+                  "vi/agent-support",
+                  "vi/daemon",
+                  "vi/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "vi/cli/dashboard",
+                  "vi/dashboard",
+                  "vi/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "vi/cloud/overview",
+                  "vi/cloud/connect",
+                  "vi/cloud/fleet",
+                  "vi/cloud/managed-policies",
+                  "vi/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "vi/cloud/event-stream",
+                  "vi/cloud/sessions",
+                  "vi/cloud/performance",
+                  "vi/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "vi/cloud/evaluations",
+                  "vi/cloud/evaluators",
+                  "vi/cloud/queries",
+                  "vi/cloud/dashboards",
+                  "vi/cloud/audits",
+                  "vi/cloud/alerts",
+                  "vi/cloud/incidents",
+                  "vi/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "vi/cloud/sdk",
+                  "vi/cloud/cli",
+                  "vi/cloud/cli-recipes",
+                  "vi/cloud/agent-skills",
+                  "vi/cloud/access",
+                  "vi/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "vi/cli/config",
                   "vi/cli/install-policies",
                   "vi/cli/remove-policies",
                   "vi/cli/list-policies",
+                  "vi/cli/harness",
+                  "vi/cli/backfill",
+                  "vi/cli/flush",
                   "vi/cli/hook",
-                  "vi/cli/audit",
+                  "vi/cli/dashboard",
+                  "vi/cli/update",
+                  "vi/cli/migrate",
+                  "vi/cli/uninstall",
                   "vi/cli/version",
                   "vi/cli/environment-variables"
                 ]
               },
               {
-                "group": "Công cụ",
+                "group": "Reference",
                 "pages": [
-                  "vi/dashboard"
-                ]
-              },
-              {
-                "group": "Nâng cao",
-                "pages": [
-                  "vi/architecture",
-                  "vi/testing",
+                  "vi/reference/files",
+                  "vi/examples",
                   "vi/package-aliases",
                   "vi/for-agents"
-                ]
-              },
-              {
-                "group": "Ví dụ",
-                "pages": [
-                  "vi/examples"
                 ]
               }
             ]
@@ -1366,107 +1340,105 @@
         "language": "it",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "it/agenteye/overview",
-                  "it/agenteye/concepts",
-                  "it/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "it/agenteye/event-stream",
-                  "it/agenteye/sessions",
-                  "it/agenteye/telemetry",
-                  "it/agenteye/error-tracking",
-                  "it/agenteye/evaluations",
-                  "it/agenteye/queries",
-                  "it/agenteye/dashboards",
-                  "it/agenteye/audits",
-                  "it/agenteye/alerts",
-                  "it/agenteye/incidents",
-                  "it/agenteye/assistant",
-                  "it/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "it/agenteye/python-sdk",
-                  "it/agenteye/python-sdk-skill",
-                  "it/agenteye/codex-capture",
-                  "it/agenteye/openclaw-capture",
-                  "it/agenteye/hermes-capture",
-                  "it/agenteye/cli",
-                  "it/agenteye/cli-skill",
-                  "it/agenteye/cli-recipes",
-                  "it/agenteye/evaluation-suite",
-                  "it/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "it/agenteye/api-keys",
-                  "it/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "Per iniziare",
+                "group": "Start here",
                 "pages": [
                   "it/introduction",
-                  "it/getting-started"
+                  "it/quickstart",
+                  "it/how-it-works",
+                  "it/concepts"
                 ]
               },
               {
-                "group": "Concetti chiave",
+                "group": "Guardrails",
                 "pages": [
+                  "it/policies",
                   "it/built-in-policies",
                   "it/custom-policies",
-                  "it/configuration"
+                  "it/configuration",
+                  "it/agent-support",
+                  "it/daemon",
+                  "it/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "it/cli/dashboard",
+                  "it/dashboard",
+                  "it/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "it/cloud/overview",
+                  "it/cloud/connect",
+                  "it/cloud/fleet",
+                  "it/cloud/managed-policies",
+                  "it/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "it/cloud/event-stream",
+                  "it/cloud/sessions",
+                  "it/cloud/performance",
+                  "it/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "it/cloud/evaluations",
+                  "it/cloud/evaluators",
+                  "it/cloud/queries",
+                  "it/cloud/dashboards",
+                  "it/cloud/audits",
+                  "it/cloud/alerts",
+                  "it/cloud/incidents",
+                  "it/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "it/cloud/sdk",
+                  "it/cloud/cli",
+                  "it/cloud/cli-recipes",
+                  "it/cloud/agent-skills",
+                  "it/cloud/access",
+                  "it/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "it/cli/config",
                   "it/cli/install-policies",
                   "it/cli/remove-policies",
                   "it/cli/list-policies",
+                  "it/cli/harness",
+                  "it/cli/backfill",
+                  "it/cli/flush",
                   "it/cli/hook",
-                  "it/cli/audit",
+                  "it/cli/dashboard",
+                  "it/cli/update",
+                  "it/cli/migrate",
+                  "it/cli/uninstall",
                   "it/cli/version",
                   "it/cli/environment-variables"
                 ]
               },
               {
-                "group": "Strumenti",
+                "group": "Reference",
                 "pages": [
-                  "it/dashboard"
-                ]
-              },
-              {
-                "group": "Avanzato",
-                "pages": [
-                  "it/architecture",
-                  "it/testing",
+                  "it/reference/files",
+                  "it/examples",
                   "it/package-aliases",
                   "it/for-agents"
-                ]
-              },
-              {
-                "group": "Esempi",
-                "pages": [
-                  "it/examples"
                 ]
               }
             ]
@@ -1477,107 +1449,105 @@
         "language": "ar",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "ar/agenteye/overview",
-                  "ar/agenteye/concepts",
-                  "ar/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "ar/agenteye/event-stream",
-                  "ar/agenteye/sessions",
-                  "ar/agenteye/telemetry",
-                  "ar/agenteye/error-tracking",
-                  "ar/agenteye/evaluations",
-                  "ar/agenteye/queries",
-                  "ar/agenteye/dashboards",
-                  "ar/agenteye/audits",
-                  "ar/agenteye/alerts",
-                  "ar/agenteye/incidents",
-                  "ar/agenteye/assistant",
-                  "ar/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "ar/agenteye/python-sdk",
-                  "ar/agenteye/python-sdk-skill",
-                  "ar/agenteye/codex-capture",
-                  "ar/agenteye/openclaw-capture",
-                  "ar/agenteye/hermes-capture",
-                  "ar/agenteye/cli",
-                  "ar/agenteye/cli-skill",
-                  "ar/agenteye/cli-recipes",
-                  "ar/agenteye/evaluation-suite",
-                  "ar/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "ar/agenteye/api-keys",
-                  "ar/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "البداية",
+                "group": "Start here",
                 "pages": [
                   "ar/introduction",
-                  "ar/getting-started"
+                  "ar/quickstart",
+                  "ar/how-it-works",
+                  "ar/concepts"
                 ]
               },
               {
-                "group": "المفاهيم الأساسية",
+                "group": "Guardrails",
                 "pages": [
+                  "ar/policies",
                   "ar/built-in-policies",
                   "ar/custom-policies",
-                  "ar/configuration"
+                  "ar/configuration",
+                  "ar/agent-support",
+                  "ar/daemon",
+                  "ar/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "ar/cli/dashboard",
+                  "ar/dashboard",
+                  "ar/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "ar/cloud/overview",
+                  "ar/cloud/connect",
+                  "ar/cloud/fleet",
+                  "ar/cloud/managed-policies",
+                  "ar/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "ar/cloud/event-stream",
+                  "ar/cloud/sessions",
+                  "ar/cloud/performance",
+                  "ar/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "ar/cloud/evaluations",
+                  "ar/cloud/evaluators",
+                  "ar/cloud/queries",
+                  "ar/cloud/dashboards",
+                  "ar/cloud/audits",
+                  "ar/cloud/alerts",
+                  "ar/cloud/incidents",
+                  "ar/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "ar/cloud/sdk",
+                  "ar/cloud/cli",
+                  "ar/cloud/cli-recipes",
+                  "ar/cloud/agent-skills",
+                  "ar/cloud/access",
+                  "ar/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "ar/cli/config",
                   "ar/cli/install-policies",
                   "ar/cli/remove-policies",
                   "ar/cli/list-policies",
+                  "ar/cli/harness",
+                  "ar/cli/backfill",
+                  "ar/cli/flush",
                   "ar/cli/hook",
-                  "ar/cli/audit",
+                  "ar/cli/dashboard",
+                  "ar/cli/update",
+                  "ar/cli/migrate",
+                  "ar/cli/uninstall",
                   "ar/cli/version",
                   "ar/cli/environment-variables"
                 ]
               },
               {
-                "group": "الأدوات",
+                "group": "Reference",
                 "pages": [
-                  "ar/dashboard"
-                ]
-              },
-              {
-                "group": "متقدم",
-                "pages": [
-                  "ar/architecture",
-                  "ar/testing",
+                  "ar/reference/files",
+                  "ar/examples",
                   "ar/package-aliases",
                   "ar/for-agents"
-                ]
-              },
-              {
-                "group": "أمثلة",
-                "pages": [
-                  "ar/examples"
                 ]
               }
             ]
@@ -1588,133 +1558,112 @@
         "language": "he",
         "tabs": [
           {
-            "tab": "Observability",
+            "tab": "Documentation",
             "groups": [
               {
-                "group": "Overview",
-                "pages": [
-                  "he/agenteye/overview",
-                  "he/agenteye/concepts",
-                  "he/agenteye/observability"
-                ]
-              },
-              {
-                "group": "Features",
-                "pages": [
-                  "he/agenteye/event-stream",
-                  "he/agenteye/sessions",
-                  "he/agenteye/telemetry",
-                  "he/agenteye/error-tracking",
-                  "he/agenteye/evaluations",
-                  "he/agenteye/queries",
-                  "he/agenteye/dashboards",
-                  "he/agenteye/audits",
-                  "he/agenteye/alerts",
-                  "he/agenteye/incidents",
-                  "he/agenteye/assistant",
-                  "he/agenteye/cli-and-agents"
-                ]
-              },
-              {
-                "group": "SDK and CLI",
-                "pages": [
-                  "he/agenteye/python-sdk",
-                  "he/agenteye/python-sdk-skill",
-                  "he/agenteye/codex-capture",
-                  "he/agenteye/openclaw-capture",
-                  "he/agenteye/hermes-capture",
-                  "he/agenteye/cli",
-                  "he/agenteye/cli-skill",
-                  "he/agenteye/cli-recipes",
-                  "he/agenteye/evaluation-suite",
-                  "he/agenteye/evaluator-skill"
-                ]
-              },
-              {
-                "group": "Administration",
-                "pages": [
-                  "he/agenteye/api-keys",
-                  "he/agenteye/security"
-                ]
-              }
-            ]
-          },
-          {
-            "tab": "Enforcement",
-            "groups": [
-              {
-                "group": "תחילת עבודה",
+                "group": "Start here",
                 "pages": [
                   "he/introduction",
-                  "he/getting-started"
+                  "he/quickstart",
+                  "he/how-it-works",
+                  "he/concepts"
                 ]
               },
               {
-                "group": "מושגי יסוד",
+                "group": "Guardrails",
                 "pages": [
+                  "he/policies",
                   "he/built-in-policies",
                   "he/custom-policies",
-                  "he/configuration"
+                  "he/configuration",
+                  "he/agent-support",
+                  "he/daemon",
+                  "he/testing"
                 ]
               },
               {
-                "group": "CLI",
+                "group": "See what happened",
                 "pages": [
-                  "he/cli/dashboard",
+                  "he/dashboard",
+                  "he/audit"
+                ]
+              },
+              {
+                "group": "FailproofAI Cloud",
+                "pages": [
+                  "he/cloud/overview",
+                  "he/cloud/connect",
+                  "he/cloud/fleet",
+                  "he/cloud/managed-policies",
+                  "he/cloud/capture"
+                ]
+              },
+              {
+                "group": "Observe your agents",
+                "pages": [
+                  "he/cloud/event-stream",
+                  "he/cloud/sessions",
+                  "he/cloud/performance",
+                  "he/cloud/errors"
+                ]
+              },
+              {
+                "group": "Analyze and act",
+                "pages": [
+                  "he/cloud/evaluations",
+                  "he/cloud/evaluators",
+                  "he/cloud/queries",
+                  "he/cloud/dashboards",
+                  "he/cloud/audits",
+                  "he/cloud/alerts",
+                  "he/cloud/incidents",
+                  "he/cloud/assistant"
+                ]
+              },
+              {
+                "group": "Build on it",
+                "pages": [
+                  "he/cloud/sdk",
+                  "he/cloud/cli",
+                  "he/cloud/cli-recipes",
+                  "he/cloud/agent-skills",
+                  "he/cloud/access",
+                  "he/cloud/security"
+                ]
+              },
+              {
+                "group": "CLI reference",
+                "pages": [
+                  "he/cli/config",
                   "he/cli/install-policies",
                   "he/cli/remove-policies",
                   "he/cli/list-policies",
+                  "he/cli/harness",
+                  "he/cli/backfill",
+                  "he/cli/flush",
                   "he/cli/hook",
-                  "he/cli/audit",
+                  "he/cli/dashboard",
+                  "he/cli/update",
+                  "he/cli/migrate",
+                  "he/cli/uninstall",
                   "he/cli/version",
                   "he/cli/environment-variables"
                 ]
               },
               {
-                "group": "כלים",
+                "group": "Reference",
                 "pages": [
-                  "he/dashboard"
-                ]
-              },
-              {
-                "group": "מתקדם",
-                "pages": [
-                  "he/architecture",
-                  "he/testing",
+                  "he/reference/files",
+                  "he/examples",
                   "he/package-aliases",
                   "he/for-agents"
-                ]
-              },
-              {
-                "group": "דוגמאות",
-                "pages": [
-                  "he/examples"
                 ]
               }
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "GitHub",
-          "href": "https://github.com/failproofai/failproofai",
-          "icon": "github"
-        },
-        {
-          "anchor": "npm",
-          "href": "https://www.npmjs.com/package/failproofai",
-          "icon": "npm"
-        },
-        {
-          "anchor": "Discord",
-          "href": "https://discord.befailproof.ai/",
-          "icon": "discord"
-        }
-      ]
-    }
+    ]
   },
   "navbar": {
     "links": [],
@@ -1770,56 +1719,232 @@
   },
   "redirects": [
     {
-      "source": "/agenteye/collector-installation",
-      "destination": "/agenteye/overview"
+      "source": "/agenteye/alerts",
+      "destination": "/cloud/alerts"
     },
     {
-      "source": "/agenteye/collector-migration",
-      "destination": "/agenteye/overview"
+      "source": "/agenteye/api-keys",
+      "destination": "/cloud/access"
     },
     {
-      "source": "/agenteye/deployment",
-      "destination": "/agenteye/overview"
+      "source": "/agenteye/assistant",
+      "destination": "/cloud/assistant"
     },
     {
-      "source": "/agenteye/deployment-options",
-      "destination": "/agenteye/overview"
+      "source": "/agenteye/audits",
+      "destination": "/cloud/audits"
     },
     {
-      "source": "/agenteye/faq",
-      "destination": "/agenteye/overview"
+      "source": "/agenteye/cli",
+      "destination": "/cloud/cli"
     },
     {
-      "source": "/agenteye/getting-started",
-      "destination": "/agenteye/overview"
+      "source": "/agenteye/cli-and-agents",
+      "destination": "/cloud/cli"
     },
     {
-      "source": "/agenteye/github-token",
-      "destination": "/agenteye/api-keys"
+      "source": "/agenteye/cli-recipes",
+      "destination": "/cloud/cli-recipes"
     },
     {
-      "source": "/agenteye/health-monitoring",
-      "destination": "/agenteye/observability"
+      "source": "/agenteye/cli-skill",
+      "destination": "/cloud/agent-skills"
     },
     {
-      "source": "/agenteye/kubernetes-deployment",
-      "destination": "/agenteye/overview"
+      "source": "/agenteye/codex-capture",
+      "destination": "/cloud/capture"
     },
     {
-      "source": "/agenteye/managed-deployment",
-      "destination": "/agenteye/overview"
+      "source": "/agenteye/concepts",
+      "destination": "/concepts"
     },
     {
-      "source": "/agenteye/single-pod-deployment",
-      "destination": "/agenteye/overview"
+      "source": "/agenteye/dashboards",
+      "destination": "/cloud/dashboards"
     },
     {
-      "source": "/agenteye/tenant-management",
-      "destination": "/agenteye/api-keys"
+      "source": "/agenteye/error-tracking",
+      "destination": "/cloud/errors"
     },
     {
-      "source": "/agenteye/troubleshooting",
-      "destination": "/agenteye/overview"
+      "source": "/agenteye/evaluation-suite",
+      "destination": "/cloud/evaluators"
+    },
+    {
+      "source": "/agenteye/evaluations",
+      "destination": "/cloud/evaluations"
+    },
+    {
+      "source": "/agenteye/evaluator-skill",
+      "destination": "/cloud/agent-skills"
+    },
+    {
+      "source": "/agenteye/event-stream",
+      "destination": "/cloud/event-stream"
+    },
+    {
+      "source": "/agenteye/hermes-capture",
+      "destination": "/cloud/capture"
+    },
+    {
+      "source": "/agenteye/incidents",
+      "destination": "/cloud/incidents"
+    },
+    {
+      "source": "/agenteye/observability",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/agenteye/openclaw-capture",
+      "destination": "/cloud/capture"
+    },
+    {
+      "source": "/agenteye/overview",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/agenteye/python-sdk",
+      "destination": "/cloud/sdk"
+    },
+    {
+      "source": "/agenteye/python-sdk-skill",
+      "destination": "/cloud/agent-skills"
+    },
+    {
+      "source": "/agenteye/queries",
+      "destination": "/cloud/queries"
+    },
+    {
+      "source": "/agenteye/security",
+      "destination": "/cloud/security"
+    },
+    {
+      "source": "/agenteye/sessions",
+      "destination": "/cloud/sessions"
+    },
+    {
+      "source": "/agenteye/telemetry",
+      "destination": "/cloud/performance"
+    },
+    {
+      "source": "/architecture",
+      "destination": "/how-it-works"
+    },
+    {
+      "source": "/cli/audit",
+      "destination": "/audit"
+    },
+    {
+      "source": "/cloud/api-keys",
+      "destination": "/cloud/access"
+    },
+    {
+      "source": "/cloud/cli-and-agents",
+      "destination": "/cloud/cli"
+    },
+    {
+      "source": "/cloud/cli-skill",
+      "destination": "/cloud/agent-skills"
+    },
+    {
+      "source": "/cloud/codex-capture",
+      "destination": "/cloud/capture"
+    },
+    {
+      "source": "/cloud/collector-installation",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/collector-migration",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/concepts",
+      "destination": "/concepts"
+    },
+    {
+      "source": "/cloud/deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/deployment-options",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/error-tracking",
+      "destination": "/cloud/errors"
+    },
+    {
+      "source": "/cloud/evaluation-suite",
+      "destination": "/cloud/evaluators"
+    },
+    {
+      "source": "/cloud/evaluator-skill",
+      "destination": "/cloud/agent-skills"
+    },
+    {
+      "source": "/cloud/faq",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/getting-started",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/github-token",
+      "destination": "/cloud/access"
+    },
+    {
+      "source": "/cloud/health-monitoring",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/hermes-capture",
+      "destination": "/cloud/capture"
+    },
+    {
+      "source": "/cloud/kubernetes-deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/managed-deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/observability",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/openclaw-capture",
+      "destination": "/cloud/capture"
+    },
+    {
+      "source": "/cloud/python-sdk",
+      "destination": "/cloud/sdk"
+    },
+    {
+      "source": "/cloud/python-sdk-skill",
+      "destination": "/cloud/agent-skills"
+    },
+    {
+      "source": "/cloud/single-pod-deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/telemetry",
+      "destination": "/cloud/performance"
+    },
+    {
+      "source": "/cloud/tenant-management",
+      "destination": "/cloud/access"
+    },
+    {
+      "source": "/cloud/troubleshooting",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/getting-started",
+      "destination": "/quickstart"
     }
   ],
   "integrations": {

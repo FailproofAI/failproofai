@@ -1,0 +1,55 @@
+---
+title: "Query"
+description: "Poni qualsiasi domanda sui dati del tuo agente e ottieni una risposta in pochi secondi."
+---
+
+Poni qualsiasi domanda sui dati del tuo agente e ottieni una risposta in pochi secondi. FailproofAI Cloud ti offre una libreria di query salvate e pronte all'uso sui tuoi eventi e valutazioni, così puoi partire da un esempio funzionante invece di un editor SQL vuoto.
+
+![La libreria delle query salvate: una griglia di query riutilizzabili, sia preset built-in che personalizzati](/cloud/images/queries.png)
+
+*La tua libreria di query salvate in `/<org-slug>/queries`: i preset built-in accanto alle query che il tuo team ha salvato.*
+
+## Parti da un preset, non da una pagina bianca
+
+Non devi ricordare i nomi delle tabelle o scrivere SQL da zero. La libreria si apre con preset built-in per le domande che i team pongono più frequentemente, accanto alle query che il tuo team ha salvato e denominato. Scegline una che si avvicina a quello che cerchi e sarai già a metà strada verso la risposta.
+
+Ogni query salvata ha ambito organizzativo e è condivisa, quindi le query utili che i tuoi colleghi scrivono diventano anche tue. Denominata una query e aggiunta una descrizione una volta, chiunque nella tua organizzazione può trovarla, eseguirla o fissarne i risultati in un dashboard in seguito.
+
+Trovalo in `/<org-slug>/queries`.
+
+## Regolala ed eseguila nel compositore SQL
+
+Apri qualsiasi query e arriverà nel compositore SQL, dove puoi modificarla e vedere la risposta immediatamente: nessuna esportazione, nessun andata e ritorno, nessuna attesa di qualcun altro.
+
+![Il compositore di query SQL che esegue una query salvata, con una barra laterale dello schema e una griglia di risultati live](/cloud/images/query-lab.png)
+
+*Il compositore SQL: la tua query a sinistra, una barra laterale dello schema per non dimenticare mai un nome di colonna, e una griglia di risultati live sotto.*
+
+- **Una barra laterale dello schema** illustra le tabelle analitiche e le loro colonne, così puoi strutturare una query senza cercare i nomi dei campi.
+- **Una griglia di risultati live** restituisce le righe nel momento in cui le esegui, così iteri in pochi secondi anziché indovinare e riindovinare.
+- **Progettato per sola lettura.** Le query vengono eseguite nel tuo event store e convalidate sul server: sono consentiti solo statement `SELECT` e `WITH`, con un timeout di statement e un limite di righe. Una query esplorativa non può mai modificare i tuoi dati e una che si impalla viene fermata per te.
+
+Soddisfatto del risultato? Salvalo nella libreria in modo che l'intero team lo erediti, oppure fissa il suo output in un dashboard come un tile lineare, a barre, ad area o a torta.
+
+## Eseguile dal terminale, o lascia che l'assistente le scriva
+
+Le stesse query salvate ti seguono ovunque lavori:
+
+- **Dal terminale.** La CLI `agenteye` elenca, esegue e salva le stesse identiche query, così puoi inserire un risultato in uno script, collegarlo in CI o passarlo a un agente di codifica.
+
+```bash
+agenteye query list                 # le stesse query salvate, dal tuo terminale
+agenteye query run errs --arg prod  # eseguine una e stampa le righe (aggiungi --json per usarla in pipe)
+```
+
+  Vedi [CLI e agenti](/it/cloud/cli) per l'insieme completo di comandi.
+
+- **Dall'assistente AI.** Non sei sicuro di come formulare l'SQL? Chiedi all'[assistente AI](/it/cloud/assistant) nel dashboard in inglese naturale e ti farà uno schema della query e la salverà nella tua libreria per te.
+
+L'esecuzione di una query salvata è controllata dal permesso `queries:run`, mantenuto separato dai permessi per creare o eliminare query, così puoi concedere accesso in lettura senza permettere a tutti di riscrivere la libreria.
+
+## Correlati
+
+- [Dashboard](/it/cloud/dashboards): fissa i risultati delle query in grafici condivisi a livello organizzativo.
+- [Assistente AI](/it/cloud/assistant): poni domande in inglese naturale e ottieni una query in cambio.
+- [CLI e agenti](/it/cloud/cli): esegui e salva le stesse query dal tuo terminale.

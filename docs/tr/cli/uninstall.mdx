@@ -1,0 +1,95 @@
+---
+title: failproofai uninstall
+description: "Remove FailproofAI from a machine completely — hook entries from every agent CLI, and the background service."
+icon: trash
+---
+
+```bash
+failproofai uninstall
+failproofai uninstall --dry-run
+failproofai uninstall --purge --yes
+```
+
+Removes the hook entries FailproofAI wrote into every agent CLI, and the
+[`failproofaid` service](/daemon).
+
+<Warning>
+  **Run this before `npm rm -g failproofai`.** npm runs no uninstall script, so removing
+  the package on its own leaves both the hook entries and the background service behind —
+  hooks pointing at a binary that no longer exists, and a service nobody remembers
+  installing.
+</Warning>
+
+---
+
+## Options
+
+| Flag | Meaning |
+|---|---|
+| `--purge` | Also delete `~/.failproofai` — settings, credentials, audit history, and the service binary. |
+| `--dry-run` | Show what would be removed. Changes nothing. |
+| `--yes`, `-y` | Skip the confirmation prompt. |
+
+Without `--purge`, your configuration survives. Reinstalling and running `failproofai
+config` puts you back exactly where you were.
+
+---
+
+## What it does, in order
+
+<Steps>
+  <Step title="Clears the daemon-configured flag first">
+    Unconditionally, and before anything else. Leaving that flag set with no service to
+    reach would **deny every hook event** on the machine, across all 12 CLIs — recoverable
+    only by hand-editing a config file.
+  </Step>
+  <Step title="Removes hook entries from every agent CLI">
+    Each CLI's own settings file is edited in place, keeping everything else in it.
+  </Step>
+  <Step title="Removes the service">
+    Including any older user-scope service left behind by a previous version.
+  </Step>
+  <Step title="Optionally purges the home directory">
+    Only with `--purge`.
+  </Step>
+</Steps>
+
+Run `--dry-run` first if you want the list before the action.
+
+---
+
+## Leaving your organization
+
+If the machine is [connected to the cloud](/cloud/connect) and you only want to stop that —
+not remove the guardrails — disconnect instead:
+
+```bash
+failproofai config --disconnect
+```
+
+That clears the credentials **and** stops enforcing the cloud-managed deployment, while
+local policies keep working exactly as before.
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+
+<Card title="failproofai config" icon="gear" href="/cli/config">
+  Setup, status, connect, disconnect.
+</Card>
+
+<Card title="The daemon" icon="server" href="/daemon">
+  What gets installed, and how it is supervised.
+</Card>
+
+<Card title="Remove policies" icon="minus" href="/cli/remove-policies">
+  Disable individual policies without uninstalling.
+</Card>
+
+<Card title="failproofai update" icon="arrows-rotate" href="/cli/update">
+  Upgrading rather than removing.
+</Card>
+
+</CardGroup>

@@ -1,10 +1,16 @@
 ---
-title: Custom Policies
+title: "Custom policies"
 description: "Write your own policies in JavaScript - enforce conventions, prevent drift, detect failures, integrate with external systems"
 icon: code
 ---
 
-Custom policies let you write rules for any agent behavior: enforce project conventions, prevent drift, gate destructive operations, detect stuck agents, or integrate with Slack, approval workflows, and more. They use the same hook event system and `allow`, `deny`, `instruct` decisions as built-in policies.
+Custom policies let you write rules for any agent behavior: enforce project conventions, prevent drift, gate destructive operations, detect stuck agents, or integrate with Slack, approval workflows, and more. They use the same hook event system and `allow`, `deny`, `instruct` decisions as [built-in policies](/built-in-policies).
+
+<Note>
+  New here? [Policies](/policies) covers the three decisions and where policies come from.
+  This page is the authoring reference. To roll your own rules out across a fleet without
+  a git round-trip, see [cloud-managed policies](/cloud/managed-policies).
+</Note>
 
 ---
 
@@ -198,9 +204,10 @@ customPolicies.add({
 Policies are evaluated in this order:
 
 1. Built-in policies (in definition order)
-2. Explicit custom policies from `customPoliciesPath` (in `.add()` order)
-3. Convention policies from project `.failproofai/policies/` (files alphabetical, `.add()` order within)
-4. Convention policies from user `~/.failproofai/policies/` (files alphabetical, `.add()` order within)
+2. [Cloud-managed policies](/cloud/managed-policies), if this machine is connected (digest-verified before each load)
+3. Explicit custom policies from `customPoliciesPaths` (in `.add()` order)
+4. Convention policies from project `.failproofai/policies/` (files alphabetical, `.add()` order within)
+5. Convention policies from user `~/.failproofai/policies/` (files alphabetical, `.add()` order within)
 
 <Note>
 The first `deny` short-circuits all subsequent policies. All `instruct` messages are accumulated and delivered together.

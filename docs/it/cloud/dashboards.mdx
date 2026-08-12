@@ -1,0 +1,46 @@
+---
+title: "Dashboard"
+description: "Trasforma i tuoi dati live degli agent in un'unica vista condivisa che tutto il team monitora."
+---
+
+
+Trasforma i tuoi dati live degli agent in un'unica vista condivisa che tutto il team monitora. Fissa le query che contano come grafici, e tutti vedono gli stessi numeri a colpo d'occhio, senza rieseguire una singola query.
+
+![Un dashboard creato da query salvate: una linea eventi-per-ora, un grafico a barre errori-per-tipo, un grafico ad area di latenza e token-per-modello](/cloud/images/dashboard-fleet.png)
+
+*Una sola board, quattro query salvate: eventi per ora, errori per tipo, latenza e token per modello.*
+
+## Tutti vedono la stessa realtà
+
+Smetti di incollare screenshot in chat e smetti di rieseguire la stessa query cinque volte al giorno. Un dashboard è una board condivisa a livello organizzativo che chiunque nel tuo team può aprire per vedere esattamente la stessa vista. Quando i dati sottostanti cambiano, i grafici si muovono con loro, quindi la board è sempre aggiornata e nessuno discute su numeri obsoleti.
+
+Il fleet dashboard qui sopra è una buona forma iniziale per le operazioni quotidiane:
+
+- una linea **eventi-per-ora**, così puoi monitorare il throughput e catturare un calo improvviso
+- un grafico a barre **errori-per-tipo**, così le tue maggiori categorie di fallimento spicchiano
+- un grafico ad area **latenza**, così i rallentamenti emergono prima che gli utenti se ne lamentino
+- una scomposizione **token-per-modello**, così i costi rimangono visibili
+
+Troverai i tuoi dashboard su `/<org-slug>/dashboards`.
+
+## Fissa le query che hai già salvato
+
+Ogni tile inizia come una query salvata. Costruisci e salva la query che ti interessa nella libreria [Query](/it/cloud/queries) (preset incorporati più i tuoi, sui tuoi eventi e valutazioni), quindi fissala a un dashboard come il grafico che si adatta ai dati: una **linea** per le tendenze nel tempo, un **grafico a barre** per confrontare categorie, un **grafico ad area** per il volume, o una **torta** per una scomposizione percentuale.
+
+Poiché una tile è solo la tua query salvata resa come grafico, non c'è nulla da sincronizzare manualmente. Aggiorna la query una volta e ogni dashboard che la utilizza si aggiorna automaticamente.
+
+## Monitora la qualità, non solo il volume
+
+Il volume ti dice che gli agent sono occupati. La qualità ti dice che stanno effettivamente svolgendo il lavoro. Punta un dashboard ai tuoi [punteggi di valutazione](/it/cloud/evaluations) e ottieni una board che traccia quanto bene stanno andando le esecuzioni nel tempo, così una regressione di qualità appare come un calo su un grafico invece di una sorpresa da un cliente.
+
+![Un dashboard focalizzato sulla qualità costruito da query di valutazione salvate](/cloud/images/dashboard-quality.png)
+
+*Una board di qualità mantiene i tuoi punteggi di valutazione in primo piano, proprio accanto ai numeri operativi.*
+
+Tieni una board di operazioni e una board di qualità affiancate e il tuo team ha un unico posto per rispondere sia a "sta funzionando?" che a "è buono?", senza che nessuno riesegua una query.
+
+## Correlati
+
+- [Query](/it/cloud/queries): costruisci e salva le query che diventano le tue tile.
+- [Valutazioni](/it/cloud/evaluations): valuta le tue esecuzioni così puoi tracciare la qualità nel tempo.
+- [Avvisi](/it/cloud/alerts): trasforma una soglia su una qualsiasi di queste metriche in un alert.

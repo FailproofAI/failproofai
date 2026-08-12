@@ -1,0 +1,55 @@
+---
+title: "Sorgular"
+description: "Agent verilerinize herhangi bir soru sorun ve saniyeler içinde cevap alın."
+---
+
+Agent verilerinize herhangi bir soru sorun ve saniyeler içinde cevap alın. FailproofAI Cloud, etkinlikleriniz ve değerlendirmeleriniz üzerinde kaydedilmiş, hazır kullanıma sunulmuş sorguların bir kütüphanesini sunar; böylelikle boş bir SQL düzenleyicisinden başlamak yerine çalışan bir örnek üzerinden başlarsınız.
+
+![Kaydedilmiş sorgular kütüphanesi: yeniden kullanılabilir sorguların ızgarası, hem yerleşik ön ayarlar hem de özel olanlar](/cloud/images/queries.png)
+
+*`/<org-slug>/queries` konumundaki kaydedilmiş sorgular kütüphanesi: yerleşik ön ayarlar ekibinizin kaydettiği sorgularla yan yana yer almakta.*
+
+## Boş bir sayfadan değil, bir ön ayardan başlayın
+
+Tablo adlarını hatırlamanız veya sıfırdan SQL yazmanız gerekmez. Kütüphane, ekiplerin en sık sorduğu sorulara yönelik yerleşik ön ayarlarla açılır ve bu ön ayarlar kendi ekibinizin kaydettiği ve adlandırdığı sorgularla yan yana yer alır. İstediğinize yakın birini seçin ve cevaba ulaşmak için gereken yolun çoğunu tamamlamış olursunuz.
+
+Her kaydedilmiş sorgu kuruluş kapsamlıdır ve paylaşılıdır; bu nedenle ekip üyelerinizin yazdığı faydalı olanlar sizin de olur. Sorguyu bir kez adlandırıp bir açıklama ekleyin ve kuruluşunuzdaki herkes onu bulabilir, çalıştırabilir veya sonuçlarını daha sonra bir panoya sabitleyebilir.
+
+`/<org-slug>/queries` konumunda bulabilirsiniz.
+
+## Düzenleyin ve SQL bestecisinde çalıştırın
+
+Herhangi bir sorguyu açın ve SQL bestecisine iner; burada sorguyu ayarlayabilir ve cevabı hemen görebilirsiniz: dışa aktarma yok, gidiş-dönüş yok, başkasının beklenmesi yok.
+
+![Kaydedilmiş sorguyu çalıştıran SQL sorgu bestecisi, şema kenar çubuğu ve canlı sonuç ızgarası](/cloud/images/query-lab.png)
+
+*SQL bestecisi: sol tarafta sorgunuz, kolon adını asla tahmin etmeniz gerekmeyen şema kenar çubuğu ve altta canlı sonuç ızgarası.*
+
+- **Şema kenar çubuğu** analitik tabloları ve sütunlarını gösterir; böylelikle alan adlarını aramadan sorgu oluşturabilirsiniz.
+- **Canlı sonuç ızgarası** çalıştırdığınız anda satırları döndürür; bu nedenle tahmin etme ve yeniden tahmin etme yerine saniyeler içinde yineleme yaparsınız.
+- **Tasarım gereği salt okunurdur.** Sorgular olay deponunuza karşı çalıştırılır ve sunucuda doğrulanır: yalnızca `SELECT` ve `WITH` deyimleri, deyim zaman aşımı ve satır sınırıyla birlikte izin verilir. Keşifsel bir sorgu verilerinizi asla değiştiremez ve kaçan bir sorgu sizin için durdurulur.
+
+Sonuçtan memnun musunuz? Bunu kütüphaneye geri kaydedin; böylelikle tüm ekip bundan faydalanır veya çıktısını bir panoya çizgi, çubuk, alan veya pasta döşemesi olarak sabitleyin.
+
+## Terminal'den çalıştırın veya asistanın bunları yazmasına izin verin
+
+Aynı kaydedilmiş sorgular çalışmakta olduğunuz her yerde sizi takip eder:
+
+- **Terminal'den.** `agenteye` CLI'ı tam da aynı sorguları listeler, çalıştırır ve kaydeder; böylelikle sonucu bir komut dosyasına bırakabilir, CI'ye bağlayabilir veya bir kodlama ajanına verebilirsiniz.
+
+```bash
+agenteye query list                 # terminal'deki aynı kaydedilmiş sorgular
+agenteye query run errs --arg prod  # birini çalıştırın ve satırları yazdırın (boru için --json ekleyin)
+```
+
+  Tam komut seti için [CLI ve ajanlar](/tr/cloud/cli) konusuna bakın.
+
+- **AI asistanından.** SQL'i nasıl ifade edeceğiniz konusunda emin değil misiniz? Panodaki [AI asistanına](/tr/cloud/assistant) düz İngilizce sorun ve sorguyu taslak halinde oluşturup kütüphaneyinize kaydedecektir.
+
+Kaydedilmiş sorguyu çalıştırmak `queries:run` izni tarafından kontrol edilir; sorgu oluşturma veya silme izinlerinden ayrı tutulur; bu nedenle herkesin kütüphaneyi yeniden yazmasına izin vermeden okuma erişimi verebilirsiniz.
+
+## İlgili
+
+- [Panolar](/tr/cloud/dashboards): sorgu sonuçlarını paylaşılan, kuruluş genelinde çizelgelere sabitleyin.
+- [AI asistanı](/tr/cloud/assistant): sorulara düz İngilizce olarak sorun ve sorgu alın.
+- [CLI ve ajanlar](/tr/cloud/cli): terminal'den aynı sorguları çalıştırın ve kaydedin.

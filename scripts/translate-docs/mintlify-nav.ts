@@ -85,8 +85,13 @@ export function buildLanguageNav(
 
   const groupNameMap: Record<string, string> = {
     "Getting Started": t.gettingStarted,
+    // The unified navigation renamed several groups. Only genuine synonyms are
+    // mapped onto an existing translation; the rest stay English until
+    // NAV_TRANSLATIONS gains a key for them, which is better than a wrong word.
+    "Start here": t.gettingStarted,
     "Core Concepts": t.coreConcepts,
     CLI: t.cli,
+    "CLI reference": t.cli,
     Tools: t.tools,
     Advanced: t.advanced,
     Examples: t.examples,

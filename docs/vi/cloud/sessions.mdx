@@ -1,0 +1,57 @@
+---
+title: "Sessions & Execution Graph"
+description: "Mỗi sự kiện từ một lần chạy được gộp thành một hàng dễ đọc và vẽ dưới dạng biểu đồ thực thi kiểu git mà bạn có thể hiểu trong vài giây."
+---
+
+
+Hãy dừng đoán tại sao một lần chạy bị lỗi. FailproofAI Cloud gộp mỗi sự kiện từ một lần chạy thành một hàng dễ đọc, sau đó vẽ toàn bộ lần chạy dưới dạng hình ảnh kiểu git mà bạn có thể hiểu trong vài giây, vì vậy bạn thấy chính xác agent của mình đã làm gì, từng bước một.
+
+![Danh sách Sessions: một hàng mỗi lần chạy, trên các môi trường và agent, với các badge trạng thái và điểm đánh giá](/cloud/images/sessions-list.png)
+
+*Một hàng mỗi lần chạy: badge trạng thái cho bạn biết cách kết thúc lần chạy ngay lập tức, và một badge điểm xuất hiện khi một evaluator được kết nối.*
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Theo dõi agent: theo dõi một lần chạy từng bước một, từ mục tiêu đến các tool cho đến câu trả lời cuối cùng.*
+
+---
+
+## Xem từng lần chạy ngay lập tức
+
+Dòng sự kiện thô là sự thật của từng bước, nhưng khi bạn có hàng nghìn bước trên nhiều lần chạy, bạn cần lần chạy, không phải bước. Trang Sessions gộp tất cả các sự kiện của một lần chạy thành một hàng, vì vậy một ngày hoạt động trở thành một danh sách có thể quét thay vì một lượng lớn dữ liệu.
+
+Mỗi hàng mang một badge trạng thái, vì vậy một lần chạy bị lỗi sẽ nổi bật so với một lần chạy khỏe mạnh trước khi bạn nhấp vào bất cứ thứ gì. Lọc theo phạm vi ngày, môi trường, agent, hoặc session để đi từ "mọi thứ" đến "lần chạy tôi quan tâm" trong một vài cú nhấp chuột.
+
+Sau khi bạn kết nối một evaluator, mỗi lần chạy hoàn tất sẽ được ghi điểm tự động và điểm mới nhất của nó sẽ hiển thị trên hàng dưới dạng badge. Bạn có thể lọc theo bất kỳ phạm vi điểm nào, vì vậy "hiển thị mỗi lần chạy prod có điểm thấp trong tuần này" là một bộ lọc, không phải là đánh giá thủ công. Cho đến khi bạn thiết lập một, các session vẫn ghi lại toàn bộ lần chạy; chúng chỉ chưa có điểm.
+
+---
+
+## Đọc toàn bộ lần chạy dưới dạng hình ảnh
+
+![Biểu đồ thực thi kiểu git của một session bên cạnh dòng thời gian sự kiện của nó, với bảng phân tích tool, model, và hook](/cloud/images/session-detail.png)
+
+*Biểu đồ thực thi (trái) nằm bên cạnh dòng thời gian sự kiện; thanh bên phải chia nhỏ các tool, model, hook, và chi phí token cho lần chạy.*
+
+Nhấp vào bất kỳ session nào để mở biểu đồ thực thi của nó: một chế độ xem kiểu git về cách agent, tool, hook, và các lệnh gọi model được triển khai theo thời gian. Mỗi sub-agent song song nhánh vào làn của riêng nó, vì vậy bạn có thể thấy công việc nào chạy cạnh nhau, sub-agent nào bị mắc kẹt, và nơi lần chạy sai hướng, mà không cần phải phát lại nó trong đầu từ một bức tường nhật ký.
+
+Thanh bên phải cho bạn biết chi tiết từng lần chạy: những tool và model nào đã chạy, những hook nào được kích hoạt, và lần chạy đã chi phí bao nhiêu token. Đó là câu trả lời cho "tại sao lần chạy này lại tốn nhiều tiền như vậy?" hoặc "tool nào là cái chậm?" nằm ngay bên cạnh biểu đồ đã gây ra nó.
+
+Các sự kiện riêng lẻ có thể được định địa chỉ, vì vậy bạn có thể trao cho ai đó một liên kết đến một thời điểm thay vì "session, khoảng hai phần ba xuống". Sao chép liên kết từ bất kỳ sự kiện nào, hoặc theo một liên kết từ kết quả [audit](/vi/cloud/audits) hoặc lỗi, và session sẽ mở với sự kiện đó được chọn và cuộn đến. Điều này cũng áp dụng cho các lần chạy rất dài: dòng thời gian tải một cửa sổ giới hạn vì lợi ích của trình duyệt của bạn, và một liên kết trỏ vào quá cửa sổ đó vẫn tìm thấy sự kiện của nó thay vì thả bạn ở đầu. Nếu sự kiện đã lỗi thời ngoài cửa sổ retention của bạn, trang sẽ cho bạn biết điều đó thay vì yên lặng không chọn gì.
+
+---
+
+## Nơi tìm nó
+
+Mỗi trang bảng điều khiển được phạm vi vào tổ chức của bạn (`/<org-slug>/…`). Sessions nằm dưới **Observe** ở thanh bên trái, bên cạnh Events, với các bộ lọc phạm vi ngày, môi trường, agent, và session trên đầu danh sách. Mỗi hàng là một cú nhấp chuột từ biểu đồ thực thi đầy đủ của nó.
+
+Để bật các badge điểm và lọc phạm vi điểm, hãy kết nối một evaluator: xem [Evaluations](/vi/cloud/evaluations).
+
+---
+
+## Liên quan
+
+- [Event stream](/vi/cloud/event-stream): dòng thô từng bước mà mỗi session được gộp lại từ đó.
+- [Evaluations](/vi/cloud/evaluations): kết nối một evaluator để mỗi lần chạy nhận được một badge điểm mà bạn có thể lọc.
+- [Telemetry](/vi/cloud/performance): cách các lần chạy đi từ agent của bạn vào các session này.

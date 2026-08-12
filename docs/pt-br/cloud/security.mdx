@@ -1,0 +1,68 @@
+---
+title: "Segurança"
+description: "O FailproofAI Cloud foi projetado para ficar próximo aos seus agentes em produção, o que significa que ele vê seus prompts, entradas de ferramentas e saídas."
+---
+
+
+O FailproofAI Cloud foi projetado para ficar próximo aos seus agentes em produção, o que significa que ele vê seus prompts, entradas de ferramentas e saídas. Esta página explica como esses dados são mantidos isolados, controlados e nas suas mãos. Se você está avaliando o FailproofAI Cloud para uma revisão de segurança, comece por aqui.
+
+---
+
+## Seus dados ficam no seu ambiente
+
+O FailproofAI Cloud é auto-hospedado. Eventos, prompts, respostas do modelo e análises são armazenados nos seus próprios bancos de dados, no seu próprio ambiente. Nada é enviado para um SaaS de terceiros para armazenamento, e seus dados permanecem na sua própria conta de nuvem.
+
+---
+
+## Isolamento de tenant
+
+Uma instância do FailproofAI Cloud pode hospedar várias organizações, e cada uma é isolada na camada de armazenamento — aplicado pelo banco de dados, não apenas pela interface:
+
+- Os dados operacionais de uma organização (usuários, chaves, dashboards, consultas salvas) são restritos àquela org, e leituras entre organizações são bloqueadas pelo próprio banco de dados.
+- Todo evento ingerido é marcado com a organização proprietária, de modo que os eventos de uma organização nunca podem ser lidos por outra.
+
+Cada rota de dashboard é delimitada por um slug de org (`/<org-slug>/…`).
+
+---
+
+## Login
+
+O FailproofAI Cloud utiliza login sem senha, baseado em e-mail. Não há senha para ser furtada ou vazada. Um usuário solicita um código de uso único (ou um magic link de clique único), que é enviado por e-mail e expira rapidamente. O login é controlado por uma **lista de permissões**: somente endereços de e-mail (ou domínios) que você autorizar podem se autenticar.
+
+![A tela de login do FailproofAI Cloud, que envia um código de uso único para seu e-mail](/cloud/images/login.png)
+
+---
+
+## Acesso restrito com chaves de API
+
+Cada cliente se autentica com uma chave de API que carrega permissões granulares e de menor privilégio. Um coletor precisa apenas de `events:add`; uma chave de dashboard ou assistente pode ser somente leitura; ações destrutivas (exclusão, regeneração) são concessões separadas que você escolhe incluir.
+
+![A página de chaves de API: as permissões de cada chave, com código de cores por escopo de leitura, escrita e destrutivo](/cloud/images/api-keys.png)
+
+Mantenha a chave de bootstrap de administrador para a configuração inicial e emita chaves restritas para todo o resto. Consulte [Chaves de API](/pt-br/cloud/access).
+
+---
+
+## Um assistente somente leitura com aprovação obrigatória
+
+O [assistente de IA](/pt-br/cloud/assistant) integrado ao dashboard responde perguntas sobre seus dados, mas é restrito por design:
+
+- É **somente leitura por padrão**: o SQL que ele executa passa por um guard que permite apenas consultas `SELECT`/`WITH`, instrução única, com limite de linhas.
+- Tudo que ele cria (uma consulta salva, um dashboard) **requer aprovação**: você revisa e aprova cada escrita antes que ela aconteça.
+- Ele **nunca pode excluir**.
+
+Assim, um colega de equipe pode perguntar "quais agentes tiveram mais erros esta semana?" e agir com base na resposta, sem que o assistente consiga alterar ou remover seus dados por conta própria.
+
+---
+
+## Em trânsito
+
+Todo o tráfego é transmitido via HTTPS. Você encerra o TLS com seus próprios certificados, de modo que o tráfego do coletor para o servidor e do navegador para o servidor é criptografado em trânsito.
+
+---
+
+## Próximos passos
+
+- [Visão geral](/pt-br/cloud/overview): como o FailproofAI Cloud se encaixa.
+- [Chaves de API](/pt-br/cloud/access): restrinja o acesso para o coletor, dashboard e assistente.
+- [Observabilidade](/pt-br/cloud/overview): o que o FailproofAI Cloud captura dos seus agentes.

@@ -1,0 +1,177 @@
+---
+title: Session capture
+description: "Bring the agent work your team already does — across all 12 supported CLIs — into the cloud as ordinary sessions, with no change to how anyone works."
+icon: satellite-dish
+---
+
+Your engineers already run coding agents every day. Session capture brings that work into
+FailproofAI Cloud as ordinary sessions and events, so you can search, replay, score, and
+alert on it next to everything else you observe.
+
+It complements the [Python SDK](/cloud/sdk): the SDK instruments agents *you write*, while
+capture covers the agent CLIs your team *already uses* — with no change to how they run
+them.
+
+---
+
+## Turning it on
+
+There is nothing extra to install. Capture is part of connecting a machine:
+
+```bash
+failproofai config --connect https://app.befailproof.ai --token <your-key>
+```
+
+That is it. The [background service](/daemon) already on the machine reads each agent CLI's
+own session files as they are written and ships them, alongside the policy decisions it is
+already reporting.
+
+```bash
+failproofai config --status     # is this machine connected, and what is it sending?
+failproofai flush --wait        # deliver everything spooled right now
+```
+
+On first run, the sessions already on the machine are backfilled once; new activity then
+streams within seconds.
+
+---
+
+## What gets captured
+
+Every one of the [12 supported agent CLIs](/agent-support) is a capture source:
+
+| | | |
+|---|---|---|
+| Claude Code | OpenAI Codex | GitHub Copilot CLI |
+| Cursor Agent | OpenCode | Pi |
+| Hermes | OpenClaw | Factory Droid |
+| Devin CLI | Antigravity CLI | Goose |
+
+One machine, one connection, every CLI on it. There is no per-CLI setup and no per-project
+step.
+
+Each session becomes a cloud [session](/cloud/sessions); its user and assistant messages,
+reasoning, tool calls, tool results, and token usage become the matching
+[events](/cloud/event-stream). Everything downstream then works on them —
+[replay](/cloud/sessions), [search](/cloud/queries), [evaluations](/cloud/evaluations),
+[audits](/cloud/audits), and [alerts](/cloud/alerts).
+
+Where a CLI records it, the **surface** a session came from is preserved too: whether a
+Codex session ran in the CLI, the IDE extension, or the desktop app; which channel a
+Hermes or OpenClaw session came in on (Slack, Telegram, terminal, or a scheduled run); and
+when a session spawned another, the link back to its parent.
+
+**Your files are only ever read.** Never modified, never moved, never deleted. Each session
+is shipped once, even across restarts.
+
+<Note>
+  **Cloud-executed sessions are not captured.** Some agent CLIs increasingly run sessions
+  on their vendor's own infrastructure and keep only metadata on the machine — there is no
+  local transcript to read. Only locally-executed sessions are captured.
+</Note>
+
+---
+
+## Transcripts in a non-standard place
+
+Containers, second checkouts, shared volumes, mounted VM disks — a transcript directory is
+not always where the CLI puts it by default. Point FailproofAI at it:
+
+```bash
+failproofai harness add-path claude ~/work/mirror/.claude/projects
+failproofai harness add-path codex "vm-a=/mnt/vm-a/.codex/sessions"
+failproofai harness list
+failproofai harness remove-path codex "vm-a=/mnt/vm-a/.codex/sessions"
+```
+
+The optional `label=` prefix namespaces the agent ids that come out of that path. Without
+it, two copies of the same project collapse into one confusing timeline; with it, they stay
+distinct.
+
+Two rejections that exist to prevent silent failures:
+
+- **A path overlapping a default location is refused.** It would be collected twice, under
+  two different agent ids.
+- **Two entries sharing a label are refused.** They would share progress state, and both
+  would re-read from the beginning after every restart.
+
+For containers, `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` (comma-separated) overrides the file
+per source. [Full command reference →](/cli/harness)
+
+---
+
+## Catching up on history
+
+Connected a machine after the work happened? Cleared a dashboard? Re-enrolled a host?
+
+```bash
+failproofai backfill --since 6m      # re-read the last six months
+failproofai backfill --since 30d     # or a shorter window
+failproofai backfill --dry-run       # report what would be re-read, change nothing
+```
+
+Backfill re-sends history the collector has already read past. Sessions are shipped once,
+so re-running it does not duplicate anything.
+
+---
+
+## Delivery you can trust
+
+`failproofai config --status` tells you whether what was captured actually **arrived** —
+not merely that a process is alive.
+
+If a batch cannot be delivered it is **kept and retried**, not discarded, and the machine
+reports as unhealthy while anything is still outstanding. "Healthy" means your data landed.
+
+---
+
+## Privacy
+
+<Warning>
+  Agent transcripts contain the **whole session** — prompts, model responses, file contents
+  the agent read or wrote, and command output. They can contain secrets. Captured sessions
+  are shipped as they are.
+
+  Enable capture only on machines and for teams where centralizing that content is
+  appropriate, and give each machine a key scoped to what it actually needs.
+</Warning>
+
+Want the fleet view without the transcripts?
+
+```bash
+failproofai config --connect <url> --token <key> --no-transcripts
+```
+
+Policy decisions still flow — which policy fired, on which tool, in which session, with
+what verdict — so you keep enforcement visibility across the fleet without centralizing
+file contents. `--status` always reports which mode is in effect.
+
+Note that the local [sanitize policies](/built-in-policies#secrets-sanitizers) redact
+secrets from tool output *before the model reads them*, which reduces (but does not
+eliminate) what a transcript can contain. Treat transcripts as sensitive regardless.
+
+[How your data is isolated →](/cloud/security)
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+
+<Card title="Connect a machine" icon="plug" href="/cloud/connect">
+  The command, the permissions, and what leaves the machine.
+</Card>
+
+<Card title="Sessions" icon="diagram-project" href="/cloud/sessions">
+  Where captured sessions land, and how to read them.
+</Card>
+
+<Card title="Python SDK" icon="python" href="/cloud/sdk">
+  Instrument agents you write yourself.
+</Card>
+
+<Card title="Supported agents" icon="table" href="/agent-support">
+  Every CLI, and what enforcement each supports.
+</Card>
+
+</CardGroup>

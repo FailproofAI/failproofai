@@ -1,0 +1,204 @@
+---
+title: Supported agents
+description: "All 12 agent CLIs FailproofAI protects — where it installs, what it can actually block on each, and where a rule would be silently inert."
+icon: table
+---
+
+FailproofAI installs into the agent CLIs you already run, and one policy set covers all of
+them. Event names, tool names, and tool-input keys are normalized before any policy
+executes, so a rule you write once fires identically everywhere.
+
+But the CLIs are not equally capable, and pretending otherwise is how a guardrail becomes
+theatre. A `deny` only means something if the CLI *reads* it at a point where the action
+can still be stopped. This page states, per CLI, exactly where that is true.
+
+---
+
+## Install command
+
+```bash
+failproofai config                                    # detects what's installed, sets it all up
+failproofai policies --install --cli <name> --scope project   # or target one explicitly
+```
+
+| CLI | `--cli` name | Binary | Scopes | Status |
+|---|---|---|---|---|
+| Claude Code | `claude` | `claude` | user · project · local | Stable |
+| OpenAI Codex | `codex` | `codex` | user · project | Stable |
+| GitHub Copilot CLI | `copilot` | `copilot` | user · project | Beta |
+| Cursor Agent | `cursor` | `cursor-agent` | user · project | Beta |
+| OpenCode | `opencode` | `opencode` | user · project | Beta |
+| Pi | `pi` | `pi` | user · project | Beta |
+| Hermes | `hermes` | `hermes` | user only | Stable |
+| OpenClaw | `openclaw` | `openclaw` | user only | Stable |
+| Factory Droid | `factory` | `droid` | user · project | Stable |
+| Devin CLI | `devin` | `devin` | user · project | Stable |
+| Antigravity CLI | `antigravity` | `agy` | user · project | Stable |
+| Goose | `goose` | `goose` | user · project | Stable |
+
+<Note>
+  **VS Code Copilot Chat agent mode** is covered for free. It reads hook configs from the
+  same paths the `copilot` and `claude` integrations already write, using the same
+  contract — so `failproofai policies --install --cli copilot` (or `--cli claude`) already
+  enforces inside VS Code agent-mode sessions. There is no separate `vscode` target.
+</Note>
+
+---
+
+## What can actually be blocked, per CLI
+
+Read this as: *if a policy denies here, does the agent stop?*
+
+- **Blocks** — the action is prevented, or the agent is forced to continue and fix it.
+- **Records only** — the verdict is logged and visible, but the action proceeds. Either
+  the CLI discards the answer, or the action had already happened.
+- **n/a** — the CLI does not fire that event at all.
+
+| CLI | Before a tool call | On a submitted prompt | After a tool call | At turn end | Sub-agent end |
+|---|---|---|---|---|---|
+| **Claude Code** | Blocks | Blocks | Records only | **Blocks** | **Blocks** |
+| **OpenAI Codex** | Blocks | Blocks | Blocks (rewrites the result the model reads) | **Blocks** | **Blocks** |
+| **GitHub Copilot CLI** | Blocks | Blocks | Blocks (rewrites the result the model reads) | **Blocks** | **Blocks** |
+| **Cursor Agent** | Blocks | Blocks | Records only | **Blocks** | not verified |
+| **OpenCode** | Blocks | Records only | Records only | not verified | — |
+| **Pi** | Blocks | Blocks | Records only | Instructs the *next* turn | — |
+| **Hermes** | Blocks | — | Records only | **n/a** | Records only |
+| **OpenClaw** | Blocks | Blocks | Records only | **Blocks** | Records only |
+| **Factory Droid** | Blocks | Blocks | Records only | **Blocks** | Records only |
+| **Devin CLI** | Blocks | Blocks | Records only | **Blocks** | — |
+| **Antigravity CLI** | Blocks | Records only (instructions still work) | Records only | **Blocks** | — |
+| **Goose** | Blocks | Records only | Records only | **n/a** | — |
+
+<Warning>
+  **The turn-end column is the one to read before you rely on it.** The five
+  `require-*-before-stop` policies — commit, push, PR, no-conflicts, CI-green — work by
+  refusing to let the agent finish. On Hermes and Goose there is no turn-end gate for
+  FailproofAI to attach to, so those policies never fire there. That is a platform
+  limit, stated here rather than left for you to discover from a rule that quietly did
+  nothing.
+</Warning>
+
+Every entry in this table is derived from the same machine-readable source the product
+itself uses, and a test asserts they agree. Rows that have not been verified against a
+real, shipping version of a CLI say "not verified" rather than guessing — an unverified
+claim about a guardrail is worse than no claim.
+
+---
+
+## Where the hooks get written
+
+Each CLI has its own settings file, and setup writes into it in that CLI's own schema,
+preserving whatever else is in the file.
+
+| CLI | User scope | Project scope |
+|---|---|---|
+| Claude Code | `~/.claude/settings.json` | `.claude/settings.json` (+ `.claude/settings.local.json`) |
+| OpenAI Codex | `~/.codex/hooks.json` | `.codex/hooks.json` |
+| GitHub Copilot CLI | `~/.copilot/hooks/failproofai.json` | `.github/hooks/failproofai.json` |
+| Cursor Agent | `~/.cursor/hooks.json` | `.cursor/hooks.json` |
+| OpenCode | `~/.config/opencode/opencode.json` + a generated plugin | `.opencode/opencode.json` + a generated plugin |
+| Pi | `~/.pi/agent/settings.json` | `.pi/settings.json` |
+| Hermes | `~/.hermes/config.yaml` | — |
+| OpenClaw | `~/.openclaw/openclaw.json` | — |
+| Factory Droid | `~/.factory/hooks.json` | `.factory/hooks.json` |
+| Devin CLI | `~/.config/devin/config.json` | `.devin/config.json` |
+| Antigravity CLI | `~/.gemini/config/hooks.json` | `.agents/hooks.json` |
+| Goose | `~/.agents/plugins/failproofai/` | `.agents/plugins/failproofai/` |
+
+Three CLIs need something other than a shell hook, because they have no external-command
+hook system at all:
+
+- **OpenCode** and **OpenClaw** load in-process plugins. Setup writes a small generated
+  shim that calls the FailproofAI binary and translates the answer into the plugin's own
+  return shape.
+- **Pi** loads extension packages. Setup registers the extension that ships inside the
+  FailproofAI package.
+- **Goose** auto-discovers plugin directories. Setup simply drops the directory; Goose
+  registers it itself at startup.
+
+---
+
+## Gateways behave differently from coding CLIs
+
+**Hermes** and **OpenClaw** are self-hosted assistants your team talks to from Slack,
+Telegram, a terminal, or a schedule. Two consequences worth knowing:
+
+- **One install covers every channel.** Hooks fire on the *tool event*, not on the source,
+  so a single user-scope install intercepts Slack, Telegram, CLI, and scheduled runs
+  uniformly — and internal sub-agents too. No per-channel configuration.
+- **There is no project scope**, because there is no project. Both are user-scope only.
+
+Because a gateway runs headless with no TTY, installing for Hermes also enables its
+automatic hook consent so the gateway can run hooks without a prompt nobody is there to
+answer.
+
+<Note>
+  **Blind spot worth naming:** a gateway that spawns a separate process (for example, via
+  a terminal tool) does not fire its hooks for the tool calls *inside* that process. Gate
+  the spawn at the tool event instead.
+</Note>
+
+---
+
+## Sessions from every CLI, in one place
+
+Enforcement is only half of it. FailproofAI also **reads** each CLI's session transcripts —
+never modifying, moving, or deleting them — which is what powers the [local
+dashboard](/dashboard), the [audit](/audit), and, on a connected machine, [everything the
+cloud shows you](/cloud/sessions).
+
+All 12 CLIs are supported as session sources. Formats vary — some write JSONL transcripts,
+some keep sessions in SQLite — and FailproofAI reads each one natively. Sessions from
+CLIs with a working directory group by project; gateway sessions with no working directory
+group by profile and channel instead.
+
+Keeping transcripts somewhere non-standard — a container mount, a second checkout, a
+shared volume? Point FailproofAI at it:
+
+```bash
+failproofai harness add-path claude ~/work/mirror/.claude/projects
+failproofai harness add-path codex "vm-a=/mnt/vm-a/.codex/sessions"
+failproofai harness list
+```
+
+The optional `label=` prefix namespaces the agent ids that come out of that path, so two
+copies of the same project stay distinct instead of merging into one confusing timeline.
+[Full command reference →](/cli/harness)
+
+---
+
+## Adding a CLI later
+
+Nothing about setup is one-shot. Install a new agent CLI next month and:
+
+```bash
+failproofai config
+```
+
+Re-running setup detects what is now on the machine and wires it up, keeping every policy
+choice you already made. You can also install ahead of time — the hook entries are written
+even for a CLI you have not installed yet, and activate the moment you do.
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+
+<Card title="How it works" icon="sitemap" href="/how-it-works">
+  What travels between the agent and the policy engine, and in which direction.
+</Card>
+
+<Card title="Built-in policies" icon="shield" href="/built-in-policies">
+  All 39, including which events each one listens to.
+</Card>
+
+<Card title="Configuration" icon="gear" href="/configuration">
+  Scopes, merge rules, and per-policy parameters.
+</Card>
+
+<Card title="failproofai policies --install" icon="terminal" href="/cli/install-policies">
+  Every flag on the install command.
+</Card>
+
+</CardGroup>

@@ -1,0 +1,261 @@
+---
+title: Quickstart
+description: "From nothing to a guarded machine in about two minutes — then connected to your fleet."
+icon: rocket
+---
+
+This page takes you from an empty machine to one where every agent tool call is checked,
+every decision is recorded, and (optionally) the whole thing reports into your
+organization's dashboard.
+
+## Requirements
+
+| | |
+|---|---|
+| **Node.js** | 20.9.0 or newer |
+| **Platform** | macOS or Linux. Windows is not supported yet — setup refuses rather than half-configuring the machine. See [why](/daemon#platform-support). |
+| **An agent CLI** | Any of the [12 supported ones](/agent-support). None installed yet? Setup still writes the hooks, and they activate the moment you install one. |
+
+---
+
+## 1. Install
+
+<CodeGroup>
+
+```bash npm
+npm install -g failproofai
+```
+
+```bash bun
+bun add -g failproofai
+```
+
+</CodeGroup>
+
+Prefer not to install anything? Every command works through `npx -y failproofai …` — but
+a guardrail you have to remember to invoke is not a guardrail, so for real use, install it.
+
+---
+
+## 2. Run setup
+
+```bash
+failproofai config
+```
+
+Setup asks **two questions**. Everything else it works out from what is already on the
+machine.
+
+<Steps>
+  <Step title="Recommended, or customize?">
+    **Recommended** turns on 16 policies globally for every agent CLI it finds on this
+    machine. It is the answer for almost everyone, and it is a decision, not a shortcut:
+
+    | What it covers | Policies |
+    |---|---|
+    | Secrets never reach the model or disk | `sanitize-jwt`, `sanitize-api-keys`, `sanitize-connection-strings`, `sanitize-private-key-content`, `sanitize-bearer-tokens`, `protect-env-vars`, `block-env-files`, `block-secrets-write` |
+    | The agent cannot switch off its own guardrails | `block-self-pause`, `block-failproofai-commands` |
+    | Commands that are unrecoverable when wrong | `block-sudo`, `block-curl-pipe-sh`, `block-rm-rf` |
+    | Git history stays recoverable | `block-push-master`, `block-force-push` |
+
+    **Customize** opens the full wizard: pick the scope (global or just this project),
+    combine [policy presets](/policies#presets), and choose exactly which agent CLIs to
+    wire up.
+  </Step>
+
+  <Step title="Connect to FailproofAI Cloud, or stay local?">
+    **Paste an API key** connects this machine to your organization: policy comes down
+    from the dashboard, and what your agents do goes up to it. Don't have a key yet?
+    Create one at [befailproof.ai/get-started](https://befailproof.ai/get-started/).
+
+    **Not now — stay local** keeps everything on this machine. Nothing is sent anywhere.
+    You can connect later by re-running `failproofai config`, and nothing you set up now
+    is lost.
+
+    <Warning>
+      Connecting sends both policy decisions **and** session transcripts. Transcripts
+      contain prompts, file contents, and command output. That is the point of connecting —
+      it is what makes a fleet dashboard worth having — but it is a real disclosure. Use
+      `--no-transcripts` if you want decisions only. See [what leaves this
+      machine](/cloud/connect#what-leaves-this-machine).
+    </Warning>
+  </Step>
+</Steps>
+
+Setup then writes the hook entries into each agent CLI's own settings file, installs the
+[`failproofaid` background service](/daemon), and confirms every file it touched before
+it touches it.
+
+<Note>
+  Installing the service needs root, and setup uses `sudo -n` — it never prompts for a
+  password from inside its own UI. If it cannot elevate, it writes nothing and prints the
+  exact commands for you to run. That is deliberate: a half-configured machine is worse
+  than an unconfigured one.
+</Note>
+
+---
+
+## 3. Check it
+
+```bash
+failproofai config --status
+```
+
+Tells you three things: whether this machine is connected to the cloud, whether the
+daemon is running, and whether enforcement is currently paused on any session.
+
+```bash
+failproofai policies
+```
+
+Lists every policy, whether it is on, and any parameters you have set.
+
+---
+
+## 4. Watch it work
+
+Start your agent exactly as you normally do. Then ask it to do something a policy blocks:
+
+```text
+you    Run `sudo apt-get install ripgrep` for me.
+
+agent  I tried to run that, but it was blocked:
+       "Blocked by failproofai: sudo command blocked"
+       I'll install it without elevated privileges instead.
+```
+
+That recovery is the whole design. A denial is not an error the agent hits and gives up
+on — it is a sentence the model can read and route around.
+
+---
+
+## 5. See what happened
+
+```bash
+failproofai
+```
+
+Opens the [local dashboard](/dashboard) at `http://localhost:8020`: every project, every
+session, every tool call with its input and output, and every policy decision that fired
+on it.
+
+While you are there, run the [audit](/audit):
+
+```bash
+failproofai audit
+```
+
+It replays the agent transcripts already on this machine through the policy engine and
+tells you what your agents have *actually* been doing — a score, your agent's archetype,
+a ranked list of what slipped through, and a copy-pasteable command for each fix.
+
+---
+
+## 6. Make it your team's standard
+
+The fastest way to turn one person's guardrails into a team's is the
+`.failproofai/policies/` convention. Drop a file in, commit it, done — no flags, no
+config, no per-developer setup.
+
+<Steps>
+  <Step title="Create the directory">
+    ```bash
+    mkdir -p .failproofai/policies
+    ```
+  </Step>
+  <Step title="Write a policy">
+    ```js
+    // .failproofai/policies/team-policies.mjs
+    import { customPolicies, allow, instruct } from "failproofai";
+
+    customPolicies.add({
+      name: "test-before-commit",
+      match: { events: ["PreToolUse"] },
+      fn: async (ctx) => {
+        if (ctx.toolName !== "Bash") return allow();
+        if (/git\s+commit/.test(ctx.toolInput?.command ?? "")) {
+          return instruct("Run the test suite before committing.");
+        }
+        return allow();
+      },
+    });
+    ```
+  </Step>
+  <Step title="Commit it">
+    ```bash
+    git add .failproofai/policies/
+    git commit -m "Add team quality policies"
+    ```
+
+    Every teammate with failproofai installed picks it up on their next pull.
+  </Step>
+</Steps>
+
+<Tip>
+  Treat `.failproofai/policies/` as a living quality standard. Every time your team finds
+  a new way an agent wastes an afternoon, add a policy and push. The standard compounds;
+  nobody has to remember it.
+</Tip>
+
+Running a fleet? Skip the git round-trip entirely — [deploy policy from the
+cloud](/cloud/managed-policies) and every connected machine picks it up on its next poll.
+
+---
+
+## Where your data lives
+
+Everything FailproofAI writes on a machine lives under `~/.failproofai/`, plus a
+`.failproofai/` directory in any project you configure. Nothing is written outside those
+two places except the hook entries in each agent CLI's own settings file.
+
+| Path | What it holds |
+|---|---|
+| `~/.failproofai/policies-config.json` | Which policies are on, and their parameters |
+| `~/.failproofai/policies/` | Your own policy files — drop `*policies.mjs` in, no config needed |
+| `~/.failproofai/policies/cloud-policies/` | Policies your organization deployed to this machine |
+| `~/.failproofai/config.json` | Machine settings: daemon, collector, audit schedule |
+| `~/.failproofai/credentials.toml` | Cloud tokens. Owner-only (`0600`) |
+| `~/.failproofai/hook-activity/` | The decision log the dashboard reads |
+| `.failproofai/policies-config.json` | Per-project config, committed |
+| `.failproofai/policies-config.local.json` | Personal overrides, gitignored |
+
+[Full file-layout reference →](/reference/files)
+
+---
+
+## Uninstalling
+
+```bash
+failproofai uninstall           # remove hooks from every agent CLI + the daemon service
+failproofai uninstall --purge   # …and delete ~/.failproofai entirely
+```
+
+<Warning>
+  Run `failproofai uninstall` **before** `npm rm -g failproofai`. npm runs no uninstall
+  script, so removing the package on its own leaves the hook entries and the background
+  service behind.
+</Warning>
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+
+<Card title="How it works" icon="sitemap" href="/how-it-works">
+  What actually happens between a tool call and a decision.
+</Card>
+
+<Card title="Built-in policies" icon="shield" href="/built-in-policies">
+  All 39 policies and what each one catches.
+</Card>
+
+<Card title="Configuration" icon="gear" href="/configuration">
+  Scopes, merge rules, and tuning a policy without code.
+</Card>
+
+<Card title="Connect to the cloud" icon="cloud" href="/cloud/connect">
+  One command, two capabilities, and exactly what gets sent.
+</Card>
+
+</CardGroup>

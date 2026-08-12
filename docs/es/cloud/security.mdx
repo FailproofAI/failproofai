@@ -1,0 +1,68 @@
+---
+title: "Seguridad"
+description: "FailproofAI Cloud está diseñado para situarse cerca de tus agentes en producción, lo que significa que tiene acceso a tus prompts, entradas de herramientas y salidas."
+---
+
+
+FailproofAI Cloud está diseñado para situarse cerca de tus agentes en producción, lo que significa que tiene acceso a tus prompts, entradas de herramientas y salidas. Esta página explica cómo mantiene esos datos aislados, bajo control y en tus manos. Si estás evaluando FailproofAI Cloud para una revisión de seguridad, comienza aquí.
+
+---
+
+## Tus datos permanecen en tu entorno
+
+FailproofAI Cloud es autoalojado. Los eventos, prompts, respuestas del modelo y las analíticas se almacenan en tus propias bases de datos, en tu propio entorno. Nada se envía a un SaaS de terceros para su almacenamiento, y tus datos permanecen en tu propia cuenta en la nube.
+
+---
+
+## Aislamiento de inquilinos
+
+Una sola instancia de FailproofAI Cloud puede alojar muchas organizaciones, y cada una está aislada a nivel de la capa de almacenamiento — aplicado por la base de datos, no solo por la interfaz de usuario:
+
+- Los datos operativos de una organización (usuarios, claves, paneles, consultas guardadas) están delimitados a esa organización, y las lecturas entre organizaciones están bloqueadas por la propia base de datos.
+- Cada evento ingestado lleva el sello de la organización propietaria, por lo que los eventos de una organización nunca pueden ser leídos por otra.
+
+Cada ruta del panel está delimitada bajo un slug de organización (`/<org-slug>/…`).
+
+---
+
+## Inicio de sesión
+
+FailproofAI Cloud utiliza inicio de sesión sin contraseña, basado en correo electrónico. No hay contraseña que pueda ser objeto de phishing o filtrarse. Un usuario solicita un código de un solo uso (o un enlace mágico de un clic), que se envía por correo electrónico y expira rápidamente. El inicio de sesión está controlado por una **lista de permitidos**: solo las direcciones de correo electrónico (o dominios) que tú autorices pueden autenticarse.
+
+![La pantalla de inicio de sesión de FailproofAI Cloud, que envía un código de uso único a tu correo electrónico](/cloud/images/login.png)
+
+---
+
+## Acceso delimitado con claves de API
+
+Cada cliente se autentica con una clave de API que lleva permisos granulares de mínimo privilegio. Un recopilador solo necesita `events:add`; una clave de panel o asistente puede ser de solo lectura; las acciones destructivas (eliminar, regenerar) son permisos separados que tú decides incluir.
+
+![La página de claves de API: los permisos de cada clave, codificados por color según el alcance de lectura, escritura y destructivo](/cloud/images/api-keys.png)
+
+Conserva la clave de arranque de administrador para la configuración, y emite claves con permisos reducidos para todo lo demás. Consulta [Claves de API](/es/cloud/access).
+
+---
+
+## Un asistente de solo lectura con aprobación previa
+
+El [asistente de IA](/es/cloud/assistant) del panel responde preguntas sobre tus datos, pero está restringido por diseño:
+
+- Es **de solo lectura por defecto**: su SQL se ejecuta a través de un guardián que solo permite consultas `SELECT`/`WITH`, de una sola instrucción, con un límite de filas.
+- Todo lo que crea (una consulta guardada, un panel) requiere **aprobación previa**: tú revisas y apruebas cada escritura antes de que ocurra.
+- **Nunca puede eliminar**.
+
+Así, un compañero de equipo puede preguntar "¿qué agentes tuvieron más errores esta semana?" y actuar sobre la respuesta, sin que el asistente pueda modificar o eliminar tus datos por su cuenta.
+
+---
+
+## En tránsito
+
+Todo el tráfico circula a través de HTTPS. Tú terminas el TLS con tus propios certificados, por lo que el tráfico entre el recopilador y el servidor, y entre el navegador y el servidor, está cifrado en tránsito.
+
+---
+
+## Próximos pasos
+
+- [Descripción general](/es/cloud/overview): cómo encaja FailproofAI Cloud en conjunto.
+- [Claves de API](/es/cloud/access): delimita el acceso para el recopilador, el panel y el asistente.
+- [Observabilidad](/es/cloud/overview): qué captura FailproofAI Cloud de tus agentes.

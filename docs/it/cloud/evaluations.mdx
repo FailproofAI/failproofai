@@ -1,0 +1,51 @@
+---
+title: "Valutazioni"
+description: "I problemi di qualità ti trovano adesso, invece di scoprirli da un reclamo utente."
+---
+
+
+I problemi di qualità ti trovano adesso, invece di scoprirli da un reclamo utente. Connetti il tuo servizio di scoring una volta e FailproofAI Cloud valuta automaticamente ogni esecuzione completata, così un calo di utilità o un picco di allucinazioni emerge da solo, prima che un cliente lo noti.
+
+![La griglia Sessioni con una colonna di score: ogni esecuzione ha un badge di stato di valutazione e badge con codice colore per utilità, fattualità ed efficienza dello strumento](/cloud/images/sessions-list.png)
+
+*Ogni esecuzione nella griglia di sessioni porta i suoi score; i badge rossi, ambra e verdi fanno risaltare le esecuzioni deboli senza dover aprire un singolo transcript.*
+
+## Smetti di campionare le esecuzioni manualmente
+
+Prima facevi controlli spot su una manciata di esecuzioni e speravi che il resto andasse bene. Adesso ogni sessione completata viene valutata nel momento in cui finisce, secondo le dimensioni che contano per te: utilità, efficienza dello strumento, fattualità, sicurezza, quello che è il tuo standard di qualità. Tu definisci le chiavi di score; FailproofAI Cloud memorizza, registra le tendenze e visualizza tutto quello che il tuo evaluator rimanda indietro. Nessuna esecuzione sfugge senza essere valutata, e smetti di scoprire una regressione da un ticket di supporto.
+
+Gli score compaiono sulla griglia di sessioni su **`/<org-slug>/sessions`** (sidebar → *observe* → *sessions*), un cluster di badge per riga. Vuoi solo le esecuzioni che non hanno raggiunto l'obiettivo? Filtra la griglia per range di score, ad esempio utilità sotto 0.5, e accedi esattamente alle esecuzioni che vale la pena leggere. La visualizzazione degli score richiede il permesso `evaluations:read`.
+
+## Scopri perché un'esecuzione ha ottenuto un basso score
+
+Un numero ti dice che un'esecuzione era debole; la pagina della sessione ti dice perché. Apri qualsiasi esecuzione e la barra laterale destra inizia con il riassunto principale, poi mostra una barra per ogni dimensione con il ragionamento del tuo evaluator sotto ciascuna, così passi da "questo ha ottenuto 0.4 sulla fattualità" all'affermazione esatta sbagliata in pochi secondi.
+
+![La barra laterale destra di una sessione: il riassunto della valutazione in alto, poi barre di score per dimensione ciascuna con una riga di ragionamento, accanto alla completa timeline degli eventi](/cloud/images/session-detail.png)
+
+*La vista dei dettagli della sessione: riassunto, barre di score per dimensione e il ragionamento dietro ogni score, proprio accanto alla timeline degli eventi dell'esecuzione.*
+
+Hai distribuito un evaluator più intelligente, o stai guardando un'esecuzione che si è arrestata prima di poter essere valutata? Un pulsante **re-evaluate** (protetto da `evaluations:trigger`) rivaluta la sessione in posizione e aggiunge il risultato fresco alla sua timeline, così gli score precedenti rimangono visibili come storico. Lo troverai su **`/<org-slug>/sessions/<session-id>`**.
+
+## Osserva la tendenza di qualità su tutta la flotta
+
+Un'esecuzione con basso score è rumore; una coorte intera che scivola è un segnale. Le dashboard salvate trasformano i tuoi score in una tendenza che puoi osservare a colpo d'occhio: utilità media questa settimana rispetto alla scorsa, per agent, per ambiente.
+
+![Una dashboard di qualità: barre di score medio per dimensione dell'evaluator accanto a una tendenza nel tempo](/cloud/images/dashboard-quality.png)
+
+*Una dashboard di qualità salvata registra le tendenze delle chiavi di score che presenti, così una deriva lenta è ovvia molto prima che diventi un incidente.*
+
+Le dashboard si trovano su **`/<org-slug>/dashboards`** (sidebar → *analyze* → *dashboards*), sono condivise su tutta l'organizzazione e ogni scheda raggruppa le sessioni corrispondenti: quante ce ne sono, la media di ogni score presentato e una sparkline di tendenza. "Apri nelle sessioni" ti porta direttamente alle esecuzioni pre-filtrate dietro qualsiasi numero. La visualizzazione richiede `dashboards:read` più `evaluations:read`.
+
+## Connetti un evaluator una volta
+
+Lo scoring è opt-in e rimane completamente disattivato finché non punti FailproofAI Cloud a uno scorer. Avvii un piccolo servizio HTTP (FailproofAI Cloud fornisce un riferimento funzionante che puoi copiare), imposti due valori sul tuo server e da allora ogni esecuzione viene valutata per te. La guida completa, il contratto di scoring e l'SDK si trovano nella guida approfondita.
+
+Non sei sicuro di quali dimensioni vale la pena valutare in primo luogo? L'[agent skill evaluator](/it/cloud/agent-skills) fa in modo che il tuo agent di codifica lo scopra sulle tue stesse sessioni, poi costruisci e distribuisci il servizio.
+
+## Correlati
+
+- [Evaluation suite](/it/cloud/evaluators): connetti il tuo evaluator, il contratto di scoring e l'SDK.
+- [Evaluator agent skill](/it/cloud/agent-skills): lascia che un agent di codifica scelga le tue dimensioni di score e costruisca l'evaluator.
+- [Sessions](/it/cloud/sessions): la griglia run-by-run dove compaiono gli score.
+- [Dashboards](/it/cloud/dashboards): salva e condividi le tendenze di qualità nella tua organizzazione.
+- [Audits](/it/cloud/audits): l'altra funzione di qualità automatica di FailproofAI Cloud, per investigazioni tra sessioni.

@@ -1,0 +1,145 @@
+---
+title: failproofai config
+description: "Setup, status, cloud connection, and time-boxed pauses — one command."
+icon: gear
+---
+
+```bash
+failproofai config          # guided setup
+failproofai configure       # alias
+failproofai setup           # alias
+```
+
+`config` is the front door. With no flags it runs the setup wizard; with flags it becomes
+the non-interactive surface for everything about this machine's state.
+
+---
+
+## Guided setup
+
+Two questions, then it writes everything:
+
+<Steps>
+  <Step title="Recommended, or Customize?">
+    **Recommended** applies 16 policies globally to every agent CLI detected on this
+    machine. **Customize** lets you pick the scope, combine [presets](/policies#presets),
+    and choose the CLIs yourself.
+  </Step>
+  <Step title="Connect to FailproofAI Cloud, or stay local?">
+    Paste an API key to connect, or stay local and connect later. Nothing is lost either
+    way — re-running `config` picks up where you left off.
+  </Step>
+</Steps>
+
+It then confirms the exact files it will change before changing them, installs the
+[`failproofaid` service](/daemon), and reports what it did.
+
+Re-run it any time — after installing a new agent CLI, after an upgrade, or to change your
+mind. It shows your current state rather than resetting it.
+
+<Note>
+  Setup needs root to install the service, and uses `sudo -n` rather than prompting. If it
+  cannot elevate it writes **nothing** and prints the commands for you to run. On an
+  unsupported platform it refuses outright rather than leaving a half-configured machine.
+</Note>
+
+---
+
+## Cloud connection
+
+```bash
+failproofai config --connect <url> --token <key>
+failproofai config --connect <url> --token <key> --no-transcripts
+failproofai config --machine-label "build-runner-3"
+failproofai config --disconnect
+failproofai config --status
+```
+
+| Flag | Meaning |
+|---|---|
+| `--connect <url>` | Cloud base URL — your dashboard origin. |
+| `--token <key>` | An API key for your organization. |
+| `--machine-id <id>` | Stable id for this machine. Defaults to the one already here, or a fresh random one. |
+| `--machine-label <name>` | Display name in the dashboard. **Used alone, it renames an already-connected machine.** |
+| `--no-transcripts` | Send policy decisions only, never session transcripts. |
+| `--disconnect` | Stop pulling policy and stop sending activity. |
+| `--status` | Connection, service, and pause state. |
+
+One connection configures **two capabilities**: this machine pulls centrally-managed
+policy (`policies:pull`) and reports what its hooks decided (`events:add`). Both are
+checked against the server *before* anything is written, and reported separately — a key
+carrying one and not the other connects for what it can and says exactly why the other
+half is missing.
+
+<Warning>
+  Connecting sends **both** policy decisions and full session transcripts. A transcript
+  carries prompts, file contents, and whatever was pasted into a terminal. That is the
+  point of connecting, and it is stated here rather than buried behind a flag. Use
+  `--no-transcripts` for decisions only; `--status` always says which is in effect.
+</Warning>
+
+Tokens are stored owner-only in `~/.failproofai/`, never in the service definition — that
+file is world-readable. Connecting, rotating, and disconnecting all need no `sudo`.
+
+[Full guide, including fleet provisioning →](/cloud/connect)
+
+---
+
+## Pausing enforcement
+
+```bash
+failproofai config --pause              # this directory's newest session, 30m
+failproofai config --pause 10m          # 10 minutes (s / m / h; a bare number means minutes)
+failproofai config --pause --session <id>
+failproofai config --resume
+failproofai config --resume --all       # end every active pause
+failproofai config --status             # what is paused, and when it lifts
+```
+
+A pause suspends **built-in, custom, and convention** policies for **one session**, and
+always expires on its own. Maximum 8 hours; renewing extends the same stretch rather than
+restarting the ceiling, so enforcement cannot be kept off indefinitely one legal command at
+a time.
+
+Two things a pause does **not** do:
+
+- It does not touch [cloud-managed policies](/cloud/managed-policies) — those keep
+  enforcing.
+- It is not configuration. Pause state is machine-local, so it can never be committed and
+  travel to everyone who checks out the branch.
+
+With `block-self-pause` enabled (it is, under Recommended), an agent cannot pause on its own
+behalf.
+
+---
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Success — including a user who cancelled the wizard. Cancelling is not a failure. |
+| `1` | Setup could not complete — for example the required service could not be installed. A fleet script can branch on this to tell "the user pressed Esc" from "this machine is unconfigured". |
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+
+<Card title="Quickstart" icon="rocket" href="/quickstart">
+  The whole setup path, start to finish.
+</Card>
+
+<Card title="Connect a machine" icon="plug" href="/cloud/connect">
+  Permissions, machine identity, and troubleshooting.
+</Card>
+
+<Card title="The daemon" icon="server" href="/daemon">
+  What gets installed, and why it needs root.
+</Card>
+
+<Card title="Policies" icon="shield-halved" href="/policies">
+  What Recommended turns on, and the presets behind Customize.
+</Card>
+
+</CardGroup>

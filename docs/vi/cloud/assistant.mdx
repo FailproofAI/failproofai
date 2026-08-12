@@ -1,0 +1,63 @@
+---
+title: "Trợ lý AI"
+description: "Đặt câu hỏi cho dữ liệu agent của bạn bằng tiếng Anh thuần túy và nhận được câu trả lời có liên kết trực tiếp đến bằng chứng."
+---
+
+
+Đặt câu hỏi cho dữ liệu agent của bạn bằng tiếng Anh thuần túy và nhận được câu trả lời có liên kết trực tiếp đến bằng chứng. Không cần viết SQL, không cần tìm kiếm trong các bảng điều khiển — trợ lý **FailproofAI Cloud** là cách nhanh nhất để bất kỳ ai trong nhóm của bạn có thể nhận được câu trả lời về các agent của bạn.
+
+![Trợ lý FailproofAI Cloud trả lời một câu hỏi bằng tiếng Anh thuần túy bên trong bảng điều khiển, hiển thị bảng Hoạt động Agent trực tiếp, phân tích sử dụng mô hình theo từng agent và các điểm chính, cùng với các truy vấn mà nó chạy được hiển thị inline](/cloud/images/assistant.png)
+*Đặt câu hỏi bằng tiếng Anh thuần túy và nhận được câu trả lời được xây dựng từ dữ liệu của riêng bạn. Ở đây nó phân tích những agent nào bận rộn nhất và những mô hình nào họ sử dụng, đồng thời hiển thị các truy vấn mà nó chạy để bạn có thể xác minh từng con số.*
+
+Không có gì phải học. Mở cuộc trò chuyện, gõ những gì bạn muốn biết, và theo dõi các liên kết mà nó cung cấp:
+
+```
+You:  which sessions errored today?
+AI:   5 sessions errored today, newest first. Each one is linked:
+      • checkout-agent   14:02   tool timeout
+      • billing-agent    11:47   unhandled error
+      • ...and 3 more
+
+You:  summarize this session          (asked while viewing a run)
+AI:   This run took 12 steps across 3 tools and failed near the end when a
+      payment tool returned an error. It scored low on your "resolved" eval.
+      Links: the session, the failing event, and that evaluation.
+```
+
+## Chỉ cần hỏi và nhảy thẳng đến bằng chứng
+
+Bạn không còn phải đoán và không cần phải viết truy vấn. Hỏi "chất lượng đang xu hướng như thế nào trong prod tuần này?", "phiên nào bị lỗi hôm nay?", hoặc "tóm tắt phiên này", và bạn sẽ nhận được câu trả lời rõ ràng trong vài giây thay vì phải xây dựng truy vấn và tự đọc kết quả.
+
+Mọi câu trả lời đều kèm theo bằng chứng của nó. Trợ lý liên kết đến các phiên chính xác, các truy vấn đã lưu và bảng điều khiển mà nó sử dụng để đưa ra câu trả lời, vì vậy bạn có thể nhấp để xác nhận thay vì chỉ tin tưởng theo lời nó. Nó cũng **nhận biết trang**: hỏi về "phiên này" khi bạn đang xem một phiên và nó đã biết bạn muốn nói về phiên chạy nào. Mở lại bất kỳ cuộc trò chuyện trước đó nào từ công tắc lịch sử và tiếp tục từ nơi bạn để dở.
+
+## Biến một câu trả lời tốt thành truy vấn đã lưu hoặc bảng điều khiển
+
+Khi một câu trả lời xứng đáng được giữ, yêu cầu trợ lý lưu nó. Nó soạn SQL cho một truy vấn đã lưu hoặc lắp ráp một bảng điều khiển từ các truy vấn đó, sau đó hiển thị cho bạn thẻ **Phê duyệt / Từ chối**. Không gì được ghi lại cho đến khi bạn nhấp Phê duyệt, vì vậy bạn có thể trải nghiệm tốc độ của "chỉ cần hỏi" với quyền quyết định cuối cùng luôn thuộc về bạn.
+
+Trên trang **Truy vấn** nó đi xa hơn một bước và trở thành tác giả SQL: mô tả truy vấn bạn muốn ("hiển thị tỷ lệ lỗi theo agent cho 7 ngày qua") và nó sẽ phát trực tiếp SQL vào trình chỉnh sửa, mở chế độ diff để bạn có thể **Chấp nhận** hoặc **Từ chối** thay đổi trước khi nó được áp dụng.
+
+![Trang Truy vấn FailproofAI Cloud và trình chỉnh sửa SQL của nó](/cloud/images/query-lab.png)
+*Trang Truy vấn: trình chỉnh sửa này là nơi trợ lý phát một bản nháp truy vấn chỉ đọc cho bạn chấp nhận hoặc từ chối.*
+
+Soạn SQL bằng cách hỏi ở đây sử dụng quyền `queries:run`, quyền giống như quyền đằng sau nút **Chạy** của trình chỉnh sửa. Chat ở mọi nơi khác cần `agent:use`.
+
+## An toàn để giao cho toàn bộ nhóm
+
+Bạn có thể mở trợ lý cho tất cả mọi người mà không lo lắng về những gì nó có thể chạm vào:
+
+- **Nó chỉ đọc những gì bạn đã có thể thấy.** Câu trả lời được giới hạn trong quyền đọc của riêng bạn, vì vậy nó không bao giờ mở rộng diện tích dữ liệu của bạn.
+- **Mọi lần ghi đều chờ bạn.** Các truy vấn và bảng điều khiển đã lưu chỉ được tạo sau khi bạn nhấp Phê duyệt một cách rõ ràng, và không có cài đặt nào tắt cổng này.
+- **Nó không bao giờ có thể xóa bất cứ điều gì.** Không có công cụ xóa nào được hiển thị và trợ lý không có quyền xóa. Các lần xóa vẫn nằm trong tay bạn, trên bảng điều khiển.
+- **Nó ở bên trong tổ chức của bạn.** Trợ lý chỉ khi nào cũng chỉ nhìn thấy tổ chức bạn đang xem hiện tại.
+- **Các câu hỏi của bạn vẫn là của bạn.** Lời nhắc và câu trả lời sống trong cơ sở dữ liệu FailproofAI Cloud riêng của bạn; phân tích sản phẩm chỉ ghi lại siêu dữ liệu sử dụng, không bao giờ văn bản lời nhắc của bạn.
+
+## Nơi tìm nó
+
+Trợ lý nằm dọc theo cạnh bên phải của mọi trang dưới tổ chức của bạn (`/<org-slug>/...`). Nhấp vào ray hoặc nhấn `⌘J` / `Ctrl+J` để mở rộng nó thành bảng trò chuyện đầy đủ, và kéo cạnh của nó để thay đổi kích thước; chiều rộng của bạn được lưu nhớ qua các lần tải lại. Bạn cần quyền **`agent:use`** để sử dụng nó, nếu không ray sẽ bị làm mờ. Nếu nó chưa được bật cho triển khai của bạn (nó cần kết nối LLM), bạn sẽ thấy ray bị làm mờ thay vì trò chuyện hoạt động.
+
+## Liên quan
+
+- [CLI and agents](/vi/cloud/cli)
+- [Queries](/vi/cloud/queries)
+- [Dashboards](/vi/cloud/dashboards)
+- [Evaluation suite](/vi/cloud/evaluators)

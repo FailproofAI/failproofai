@@ -1,0 +1,94 @@
+---
+title: Update after an upgrade
+description: "Finish the half of an upgrade npm cannot do: migrate the home and match the daemon"
+---
+
+```bash
+npm install -g failproofai@latest && failproofai update
+```
+
+That is the whole upgrade. `npm` replaces the CLI; `failproofai update` does the
+rest.
+
+## Why a second command exists
+
+`npm install -g` replaces one thing — the CLI. Two other pieces of a failproofai
+install live outside the package on purpose, and neither moves when npm runs:
+
+- **`~/.failproofai/`**, your settings, cloud enrolment, policy selection and
+  history. A new version may organise it differently, and the reorganisation has
+  to be done by code that knows both shapes.
+- **The `failproofaid` daemon binary**, at
+  `~/.failproofai/bin/failproofaid-<version>`. It is deliberately *not* inside
+  `node_modules`: an upgrade that swapped the file under a running service would
+  repoint a live daemon at a binary built from different source, and removing the
+  package would delete it out from under a service that then crash-loops at every
+  boot.
+
+So after `npm install -g` alone, the CLI is new and the daemon is not.
+`failproofaid` refuses to start against a home layout it does not speak — the loud
+version of that mismatch rather than the silent one — so the two halves need
+bringing together. `failproofai update` is that step.
+
+## What it does
+
+<Steps>
+  <Step title="Runs any pending layout migrations">
+    Reads the layout recorded in `~/.failproofai/VERSION` and runs the steps that
+    bring it to the one this version speaks. Usually none — see
+    [`failproofai migrate`](/cli/migrate).
+  </Step>
+  <Step title="Puts the matching daemon binary in place">
+    From the platform package npm already downloaded where possible (no network),
+    otherwise from the release asset for this exact version, SHA-256 verified
+    before it is used.
+  </Step>
+  <Step title="Restarts the service and confirms it came back">
+    Probed rather than assumed — a service manager reports a process active the
+    moment it forks, which is not the same as it working.
+  </Step>
+</Steps>
+
+## Options
+
+| Flag | Effect |
+|------|--------|
+| `--no-daemon` | Migrate the home only, leaving the daemon at its current version. |
+
+<Warning>
+  `--no-daemon` leaves a version-skewed daemon in place. On a machine configured
+  to require the daemon, every hook event **fails closed** if the daemon cannot
+  answer — and a daemon that refuses to start against a migrated home cannot
+  answer. Prefer letting the daemon half run.
+</Warning>
+
+## If something goes wrong
+
+The command exits non-zero and says which half failed. Two cases worth knowing:
+
+- **A migration step did not finish.** The home is left marked with its *old*
+  layout, so the next command retries it — no home is ever marked current on the
+  strength of a partial migration. Copies of your settings and enrolment were
+  saved before anything ran, in `~/.failproofai/migrations/backup-layout<n>/`.
+- **The daemon could not be restarted without a password.** `sudo -n` is used
+  deliberately, so nothing ever prompts from under a progress display. The
+  command prints the exact line to run yourself.
+
+<Note>
+  Nothing here needs the interactive setup wizard. Your settings, cloud
+  enrolment and policy selection survive an upgrade, so a migrated machine
+  enforces exactly as it did before — which matters most on the machines with
+  nobody sitting at them: a CI runner, a fleet box, a headless gateway.
+</Note>
+
+## Automating it
+
+`failproofai update` is non-interactive and safe to run when there is nothing to
+do — it reports "no migration was needed" and exits 0. Putting it after every
+upgrade in a provisioning script or Dockerfile is the intended use:
+
+```dockerfile
+RUN npm install -g failproofai@latest && failproofai update --no-daemon
+```
+
+(`--no-daemon` in an image build, where there is no service to restart yet.)

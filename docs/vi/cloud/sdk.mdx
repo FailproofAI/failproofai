@@ -1,0 +1,433 @@
+---
+title: "Python SDK"
+description: "Xem chính xác những gì các AI agents của bạn đã làm trong production: mọi agent run, tool call, model request, hook, và human intervention."
+---
+
+
+Xem chính xác những gì các AI agents của bạn đã làm trong production: mọi agent run, tool call, model request, hook, và human intervention. FailproofAI Cloud Python SDK ghi lại toàn bộ trail này từ bên trong code của agent để bạn có thể debug, audit, và đánh giá những gì đã xảy ra. Sử dụng nó bất cứ khi nào bạn muốn FailproofAI Cloud theo dõi các agents của mình.
+
+Bên dưới, SDK ghi các sự kiện có cấu trúc vào các file JSONL cục bộ, và daemon collector sẽ lấy chúng và gửi đến platform một cách tự động. Bạn không cần quản lý các file này.
+
+> **Tip:** Mới bắt đầu với FailproofAI Cloud? Trang này là tài liệu tham khảo SDK event hoàn chỉnh.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+---
+
+## Cài đặt
+
+SDK được phân phối cho khách hàng dưới dạng wheel riêng tư thay vì từ một public package index. Quá trình onboarding của bạn bao gồm cách lấy, cài đặt và pin nó — liên hệ với Failproof AI của bạn nếu bạn cần quyền truy cập.
+
+Sau khi cài đặt, hãy xác nhận bạn có nó:
+
+```bash
+python -c "import agenteye; print(agenteye.__version__)"
+```
+
+Thích để cho một coding agent thực hiện toàn bộ tích hợp? [Python SDK Agent Skill](/vi/cloud/agent-skills) biết đường dẫn cài đặt, lên kế hoạch các điểm instrumentation, viết chúng và xác minh các events đến.
+
+---
+
+## Bắt đầu nhanh
+
+```python
+import agenteye
+
+agenteye.configure(environment="production")
+
+agenteye.event.agent_start(session_id="run-001", agent_id="planner", goal="answer user query")
+
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    input={"query": "latest AI research"},
+)
+
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",
+    output={"results": ["..."]},
+)
+
+agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
+```
+
+### Instrumenting một cuộc gọi thực tế
+
+Trong thực tế, bạn sẽ bao quanh code agent hiện có của mình. Đặt một model call giữa `model_request` trước và `model_response` sau, để hai event này bao phủ yêu cầu thực tế và FailproofAI Cloud có thể ghép chúng lại:
+
+```python
+import anthropic
+import agenteye
+
+agenteye.configure(environment="production")
+client = anthropic.Anthropic()
+
+messages = [{"role": "user", "content": "Summarise today's incidents."}]
+
+agenteye.event.model_request(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6",
+    messages=messages,
+)
+
+reply = client.messages.create(
+    model="claude-sonnet-4-6",
+    max_tokens=512,
+    messages=messages,
+)
+
+agenteye.event.model_response(
+    session_id="run-001",
+    agent_id="planner",
+    model=reply.model,
+    stop_reason=reply.stop_reason,
+    input_tokens=reply.usage.input_tokens,
+    output_tokens=reply.usage.output_tokens,
+    content=[block.model_dump() for block in reply.content],
+)
+```
+
+Bao quanh tool calls một cách tương tự với `tool_use` và `tool_result`, sử dụng lại một `tool_call_id` trên toàn cặp.
+
+Đây là hình ảnh những events này khi chúng đến dashboard, được mã hóa màu theo loại và có thể lọc theo environment, agent, và session:
+
+![The live Events stream, colour-coded by event type and filterable by environment, agent, and session](/cloud/images/events-stream.png)
+
+---
+
+## configure()
+
+```python
+agenteye.configure(
+    base_dir=None,           # Path | str | None. Default: $AGENTEYE_HOME or ~/.agenteye
+    flush_interval=0.5,      # float, seconds between flush cycles
+    environment=None,        # str | None. Deployment environment label
+)
+```
+
+Gọi một lần trước bất kỳ lệnh gọi `event.*` nào. An toàn khi bỏ qua; các giá trị mặc định hoạt động ngay lập tức. Tất cả các argument là keyword-only; truyền chúng theo tên như hình trên.
+
+Khi `base_dir` là `None` (mặc định), SDK đọc `$AGENTEYE_HOME` nếu được đặt, nếu không sẽ quay lại `~/.agenteye`. Điều này phù hợp với cách phân giải của collector, vì vậy một biến env `AGENTEYE_HOME` duy nhất sẽ cấu hình event spool được chia sẻ cho cả SDK và collector.
+
+---
+
+## Environment
+
+Gắn nhãn mọi event với một environment deployment (`production`, `staging`, `qa`, `canary`, v.v.). Đặt nó một lần; SDK sẽ tự động gắn nó vào mọi event.
+
+**Tùy chọn 1: thông qua `configure()`:**
+
+```python
+agenteye.configure(environment="production")
+```
+
+**Tùy chọn 2: thông qua biến environment:**
+
+```bash
+export AGENTEYE_ENVIRONMENT=production
+```
+
+**Ưu tiên:** `configure(environment=...)` thắng biến environment. Nếu không có cái nào được đặt, mặc định là `"dev"`.
+
+Giá trị environment xuất hiện như một bộ lọc hạng nhất trong dashboard và được lưu trữ trên máy chủ để truy vấn nhanh.
+
+> **Warning:** Giá trị Environment không được chứa dấu phẩy `,` theo nghĩa đen. Bộ lọc dashboard sử dụng đa lựa chọn được phân tách bằng dấu phẩy trên dây (`?environment=prod,staging`), vì vậy một environment được đặt tên là `prod,blue` sẽ bị chia thành hai giá trị. Các events có environments chứa dấu phẩy bị từ chối vào thời điểm tiếp nhận.
+
+---
+
+## Data và quyền riêng tư
+
+SDK chỉ ghi lại các trường bạn truyền một cách rõ ràng. Các prompts, messages, tool inputs và outputs, và model content chỉ được capture vì bạn đã chuyển chúng tới một lệnh gọi `event.*`. Không có gì được đọc từ process hoặc captured ngầm. Bất kỳ trường nào bạn để trống đều bị bỏ qua khỏi event hoàn toàn; nó không được ghi vào disk.
+
+Điều đó làm cho redaction trở thành lựa chọn và trách nhiệm của bạn. Nếu một prompt hoặc tool payload chứa PII hoặc secrets mà bạn không muốn lưu trữ, hãy loại bỏ hoặc che mờ nó trước khi truyền nó tới phương thức event.
+
+---
+
+## Event Reference
+
+Hầu hết các events đến theo cặp start/end chia sẻ một correlation ID: `tool_use` và `tool_result` chia sẻ một `tool_call_id`, `hook_triggered` và `hook_completed` chia sẻ một `hook_id`, và `human_wait` và `human_input` chia sẻ một `input_id`. Phát event bắt đầu, thực hiện công việc, sau đó phát event kết thúc với cùng một ID. FailproofAI Cloud sẽ khớp cặp này và tính `duration_ms` cho bạn, vì vậy bạn không bao giờ truyền `duration_ms` chính mình.
+
+![A session's git-style execution graph beside its event timeline, reconstructed from the paired events, with the tool/model/hook breakdown panel](/cloud/images/session-detail.png)
+
+Tất cả các phương thức event đều yêu cầu hai trường này:
+
+| Field | Type | Description |
+|---|---|---|
+| `session_id` | `str` | Nhận dạng agent run cấp cao nhất |
+| `agent_id` | `str` | Nhận dạng agent nào trong session đã phát event |
+
+Tất cả các phương thức cũng chấp nhận `**kwargs` tùy ý cho metadata tùy chỉnh (xem [Custom Fields](#custom-fields)).
+
+---
+
+### `event.agent_start()`
+
+Phát khi một agent bắt đầu công việc.
+
+```python
+agenteye.event.agent_start(
+    session_id="run-001",
+    agent_id="planner",
+    goal="answer user query",   # str | None
+    parent_id=None,             # str | None - parent agent_id for nested agents
+)
+```
+
+---
+
+### `event.agent_end()`
+
+Phát khi một agent hoàn thành công việc.
+
+```python
+agenteye.event.agent_end(
+    session_id="run-001",
+    agent_id="planner",
+    outcome="success",          # str | None
+    summary="Answered query",   # str | None
+)
+```
+
+---
+
+### `event.tool_use()`
+
+Phát khi một agent gọi một tool. Cặp với `tool_result`; SDK tự động tính `duration_ms`.
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",     # str, required
+    tool_call_id="toolu_01",    # str, required - correlation key for the matching tool_result
+    input={"query": "..."},     # dict | None
+)
+```
+
+---
+
+### `event.tool_result()`
+
+Phát khi một tool trả về. Tương quan với `tool_use` thông qua `tool_call_id`.
+
+```python
+agenteye.event.tool_result(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="web_search",
+    tool_call_id="toolu_01",        # must match the prior tool_use
+    output={"results": ["..."]},    # Any | None
+    error=None,                     # str | None - set if the tool raised
+    # duration_ms is computed automatically - do not pass it
+)
+```
+
+---
+
+### `event.model_request()`
+
+Phát ngay trước khi gửi một prompt tới một LLM.
+
+```python
+agenteye.event.model_request(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
+    messages=[                   # list[dict] | None - conversation turns
+        {"role": "user", "content": "..."},
+    ],
+    system="You are helpful.",   # Any | None - str or list of content blocks
+    tools=[                      # list[dict] | None - tool schemas offered to the model
+        {"name": "search", "input_schema": {"type": "object"}},
+    ],
+)
+```
+
+Các mục `messages` chấp nhận cả content `content` thông thường hoặc Anthropic-style list-of-blocks `content`. Các sampling params (`temperature`, `max_tokens`, v.v.) có thể được truyền dưới dạng extra kwargs.
+
+---
+
+### `event.model_response()`
+
+Phát khi LLM trả về một response.
+
+```python
+agenteye.event.model_response(
+    session_id="run-001",
+    agent_id="planner",
+    model="claude-sonnet-4-6", # str | None - any provider/model string; not validated
+    stop_reason="end_turn",     # str | None
+    input_tokens=1024,          # int | None
+    output_tokens=256,          # int | None
+    content=[                    # Any | None - str, or list of content blocks
+        {"type": "text", "text": "..."},
+    ],
+    role="assistant",            # str | None
+)
+```
+
+`content` chấp nhận cả một string thông thường (generic providers) hoặc một danh sách các content blocks theo kiểu Anthropic. Tool calls sống bên trong `content` dưới dạng blocks `{"type": "tool_use", ...}`, không có trường `tool_calls` riêng.
+
+---
+
+### `event.hook_triggered()`
+
+Phát khi một hook kích hoạt. Cặp với `hook_completed`; SDK tự động tính `duration_ms`.
+
+```python
+agenteye.event.hook_triggered(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",   # str, required
+    hook_id="hook-abc",         # str, required - correlation key
+    trigger_event="tool_use",   # str | None
+    input={"tool": "search"},   # Any | None
+)
+```
+
+---
+
+### `event.hook_completed()`
+
+Phát khi một hook hoàn thành. Tương quan với `hook_triggered` thông qua `hook_id`.
+
+```python
+agenteye.event.hook_completed(
+    session_id="run-001",
+    agent_id="planner",
+    hook_name="pre_tool_use",
+    hook_id="hook-abc",         # must match the prior hook_triggered
+    outcome="allow",            # str | None
+    output=None,                # Any | None
+    error=None,                 # str | None
+    # duration_ms is computed automatically - do not pass it
+)
+```
+
+---
+
+### `event.error()`
+
+Phát khi một lỗi không được xử lý xảy ra.
+
+```python
+agenteye.event.error(
+    session_id="run-001",
+    agent_id="planner",
+    error_type="TimeoutError",  # str, required
+    message="timed out",        # str, required
+    traceback="Traceback...",   # str | None
+)
+```
+
+---
+
+## Human-in-the-Loop Events
+
+Các human-in-the-loop events mang lại sự giám sát trong những thời điểm một người bước vào quá trình thực thi của agent (chờ phê duyệt, cung cấp input, tạm dừng hoặc dừng agent). Chúng cho phép bạn đo lường con người mất bao lâu để phản hồi (SDK tự động tính `duration_ms` trên các paired events), audit người nào đã tạm dừng hoặc ngắt agent, và xây dựng các quy trình phê duyệt và giám sát hiển thị trong dashboard.
+
+### `event.human_wait()`
+
+Phát khi agent tạm dừng thực thi để chờ một con người cung cấp input. Cặp với `human_input`; SDK tự động tính `duration_ms` (con người mất bao lâu để phản hồi).
+
+```python
+agenteye.event.human_wait(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",                          # str, required - correlation key for the matching human_input
+    prompt="Do you approve this action?",        # str | None - the question shown to the human
+    options=["approve", "reject", "defer"],      # list[str] | None - choices presented to the human
+    reason="approval_required",                  # str | None - why the agent is waiting
+)
+```
+
+### `event.human_input()`
+
+Phát khi một con người cung cấp input và agent tiếp tục. Tương quan với `human_wait` thông qua `input_id`. `duration_ms` được tự động tính và không được truyền bởi người gọi.
+
+```python
+agenteye.event.human_input(
+    session_id="run-001",
+    agent_id="planner",
+    input_id="inp-abc",    # str, required - must match the prior human_wait
+    response="approve",    # str | None - the human's answer (free text or selected option)
+    # duration_ms is computed automatically - do not pass it
+)
+```
+
+### `event.human_pause()`
+
+Phát khi một con người chủ động tạm dừng agent (ví dụ: thông qua một điều khiển dashboard). Agent bị tạm dừng nhưng không bị chấm dứt.
+
+```python
+agenteye.event.human_pause(
+    session_id="run-001",
+    agent_id="planner",
+    reason="user_requested",  # str | None
+    user_id="usr_42",         # str | None - who paused the agent
+)
+```
+
+### `event.human_interrupt()`
+
+Phát khi một con người chủ động dừng agent giữa quá trình thực thi. Không giống như `human_pause`, công việc của agent bị chấm dứt thay vì tạm dừng.
+
+```python
+agenteye.event.human_interrupt(
+    session_id="run-001",
+    agent_id="planner",
+    reason="output_incorrect",       # str | None
+    user_id="usr_42",                # str | None - who interrupted the agent
+    at_step="tool_use:web_search",   # str | None - what the agent was doing when stopped
+)
+```
+
+---
+
+## Custom Fields
+
+Bất kỳ extra keyword argument nào được thêm vào event sau các trường tiêu chuẩn:
+
+```python
+agenteye.event.tool_use(
+    session_id="run-001",
+    agent_id="planner",
+    tool_name="db_query",
+    tool_call_id="toolu_02",
+    tenant_id="acme",           # custom field
+    region="us-east-1",         # custom field
+)
+```
+
+`timestamp`, `type`, và `environment` được dành riêng và sẽ tăng `ValueError` (`Reserved field names cannot be used as custom fields: [...]`) nếu được truyền dưới dạng custom fields. `session_id` và `agent_id` là các tham số bắt buộc trên mọi phương thức event và không thể được cung cấp lần thứ hai; Python sẽ tăng `TypeError` nếu bạn làm. Thay vào đó, hãy đặt environment với `configure(environment=...)` (hoặc biến `AGENTEYE_ENVIRONMENT`).
+
+Giữ payloads là structured JSON khi bạn muốn truy vấn các trường của chúng. Các giá trị mà JSON không hỗ trợ về mặt bản địa—như datetimes, UUIDs, decimals, sets, bytes, hoặc model objects—được chuyển đổi thành strings để ghi lại tiếp tục một cách an toàn.
+
+---
+
+## Cách Events Được Ghi
+
+Events được buffer trong process và flushed vào disk mỗi `flush_interval` giây (mặc định 500 ms). Mỗi flush ghi một file JSONL:
+
+```text
+~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
+```
+
+Collector theo dõi thư mục này và tải file lên tự động. Bạn không cần quản lý các file này trực tiếp.
+
+Mỗi file được ghi atomically: SDK ghi vào một temporary file và sau đó đổi tên nó, vì vậy collector không bao giờ thấy một file nửa viết. Một final flush cũng chạy khi process của bạn thoát, vì vậy các events được buffer trong interval cuối cùng không bị mất. Nếu collector offline, các events chỉ tích tụ dưới dạng các file trên disk và ship khi nó quay trở lại.
+
+---
+
+## Bước tiếp theo
+
+- [Event stream](/vi/cloud/event-stream): xem các events này đến live, được mã hóa màu và có thể lọc theo environment, agent, và session.
+- [Sessions](/vi/cloud/sessions): xem cách các paired events tái cấu trúc mỗi agent run dưới dạng một execution graph và timeline.

@@ -1,0 +1,108 @@
+---
+title: "Failproof AI: Agenten auf Fehler überwachen"
+description: "FailproofAI Cloud ist eine selbst gehostete Plattform zur Beobachtung, Bewertung und Verbesserung Ihrer KI-Agenten in der Produktion."
+---
+
+
+FailproofAI Cloud ist eine selbst gehostete Plattform zur Beobachtung, Bewertung und Verbesserung Ihrer KI-Agenten in der Produktion. Sie zeichnet alles auf, was Ihre Agenten tun (jeden Tool-Aufruf, jede Modellanfrage, jeden Hook und jeden Fehler), bewertet die Qualität jedes Durchlaufs und zeigt Ihnen die Fehler, nach denen Sie nicht aktiv gesucht haben – alles in einem Dashboard, das Sie in Ihrer eigenen Infrastruktur betreiben.
+
+Wenn Sie KI-Agenten einsetzen und es leid sind zu rätseln, warum ein Durchlauf schiefgelaufen ist, sind Sie hier genau richtig. Diese Seite erklärt, was FailproofAI Cloud Ihnen bietet und wie die einzelnen Teile zusammenpassen – noch bevor Sie irgendetwas installieren.
+
+> **FailproofAI Cloud ist ein Enterprise-Produkt von Failproof AI.** Sie möchten es in Aktion sehen? Fordern Sie eine Demo an: E-Mail an [nikita@befailproof.ai](mailto:nikita@befailproof.ai).
+
+![Eine FailproofAI Cloud-Sitzung als git-ähnlicher Ausführungsgraph neben der Ereigniszeitachse, mit einer Aufschlüsselung von Tools, Modellen und Hooks in der rechten Seitenleiste](/cloud/images/session-detail.png)
+
+*Jeder Agentendurchlauf wird als git-ähnlicher Ausführungsgraph (links) neben seiner Ereigniszeitachse dargestellt. Parallele Unteragenten erhalten jeweils ihre eigene Spur; die rechte Seitenleiste schlüsselt die Tools, Modelle, Hooks und den Token-Verbrauch des Durchlaufs auf.*
+
+---
+
+## In Aktion erleben
+
+Zwei kurze Videos zeigen die zwei Dinge, die Teams zuerst nutzen: einen Durchlauf nachverfolgen und Fehler automatisch erkennen.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Agenten-Tracing: Verfolgen Sie einen einzelnen Durchlauf Schritt für Schritt, vom Ziel über die Tools bis zur endgültigen Antwort.*
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Failproof Audit: Lassen Sie FailproofAI Cloud Ihre Logs sitzungsübergreifend durchsuchen und erfahren Sie, was behoben werden muss.*
+
+---
+
+## Warum Teams es nutzen
+
+- **Sehen Sie, was Ihr Agent wirklich getan hat.** Jeder Durchlauf wird zu einem lesbaren, git-ähnlichen Ausführungsgraphen: welche Tools parallel liefen, welche Unteragenten abgezweigt wurden, wo es ins Stocken geriet und was es gekostet hat.
+- **Qualitätsrückgänge automatisch erkennen.** Verbinden Sie einen kleinen Scoring-Dienst, und FailproofAI Cloud bewertet jeden abgeschlossenen Durchlauf – sodass ein Rückgang der Hilfsbereitschaft oder ein Anstieg von Halluzinationen von selbst sichtbar wird.
+- **Fehler finden, für die Sie keine Regel geschrieben haben.** Regelmäßige Audits durchsuchen Ihre Logs sitzungsübergreifend nach Fehlerclustern, Latenz-Ausreißern, niedrigen Bewertungen und hängenden Durchläufen und liefern Ihnen priorisierte, evidenzbasierte Erkenntnisse.
+- **Benachrichtigt werden, wenn es darauf ankommt.** Schwellenwertregeln reagieren auf Fehlerrate, Latenz, Kosten oder Evaluator-Scores und eröffnen Incidents, die Sie bestätigen, zuweisen und lösen können.
+- **Fragen in natürlicher Sprache stellen.** Ein KI-Assistent im Dashboard beantwortet Fragen wie „Wie entwickelt sich die Qualität in der Produktion diese Woche?" – auf Basis Ihrer eigenen Daten. Jede Änderung, die er vornimmt, ist genehmigungspflichtig.
+- **Ihre Daten behalten.** FailproofAI Cloud ist selbst gehostet: Ereignisse, Prompts und Analysen bleiben in der von Ihnen kontrollierten Infrastruktur.
+
+---
+
+## Was Sie erhalten
+
+FailproofAI Cloud ist um drei Ideen herum organisiert (**Beobachten**, **Analysieren** und **Verwalten**), die in der linken Seitenleiste des Dashboards gespiegelt werden.
+
+**Beobachten** (die unverfälschte Wahrheit dessen, was passiert ist):
+
+- **[Ereignis-Stream](/de/cloud/event-stream)**: die Live-Aufzeichnung jedes einzelnen Schritts jedes Durchlaufs (Tool-Aufrufe, Modellaufrufe, Hooks, Fehler).
+- **[Sitzungen](/de/cloud/sessions)**: diese Ereignisse zusammengefasst zu einer Zeile pro Durchlauf, jeweils bereit zur Bewertung, mit einem git-ähnlichen Ausführungsgraphen.
+- **[Performance-Metriken](/de/cloud/performance)**: Latenz-Heatmaps pro Oberfläche und p50/p95/p99-Werte für Modelle, Tools und Hooks, damit ein Ausreißer im langen Ende sofort auffällt.
+- **[Fehlerverfolgung](/de/cloud/errors)**: eine einzige Triage-Oberfläche für alles, was schiefgelaufen ist, einen Klick von einem ausgelösten Alert entfernt.
+
+![Die Tools-Beobachtungsseite: eine Latenz-Heatmap, ein Perzentil-Band und ein Tool-Verteilungsbalken über 24 Zeitabschnitte](/cloud/images/tools.png)
+
+*Jede Beobachtungsoberfläche kombiniert eine Sparkline und p50/p95/p99-Werte mit einer Latenz-Heatmap und einem Perzentil-Band. Hier gezeigt: Tools.*
+
+**Analysieren** (Aktivitäten in Erkenntnisse verwandeln):
+
+- **[Abfragen](/de/cloud/queries)** und **[Dashboards](/de/cloud/dashboards)**: gespeichertes SQL über Ihre Ereignisse und Evaluierungen, als geteilte, organisationsweite Dashboards visualisiert.
+- **[Evaluierungen](/de/cloud/evaluations)**: Qualitätsbewertungen, die von Ihrem eigenen Evaluator-Dienst erstellt werden, mit Begründung pro Bewertung.
+- **[Audits](/de/cloud/audits)**: wiederkehrende Untersuchungen, die Fehlermuster sitzungsübergreifend aufdecken.
+- **[Alerts](/de/cloud/alerts)** und **[Incidents](/de/cloud/incidents)**: Schwellenwertregeln, die Sie benachrichtigen, sowie ein Incident-Workflow zur Triage.
+
+**Schnittstellen** (auf Ihre Daten auf Ihre Weise zugreifen):
+
+- **[CLI](/de/cloud/cli)**: Steuern Sie Ihre gesamte Deployment vom Terminal oder einem Skript aus, und lassen Sie einen Coding-Agenten dies für Sie in natürlicher Sprache erledigen.
+- **[KI-Assistent](/de/cloud/assistant)**: Stellen Sie Fragen zu Ihren Agenten in natürlicher Sprache, direkt im Dashboard.
+- **REST API**: Alles, was Dashboard und CLI tun, wird durch eine REST API unterstützt, die Sie direkt mit einem bereichsbegrenzten [API-Schlüssel](/de/cloud/access) aufrufen können – Ereignisse erfassen, Sitzungen und Evaluierungen abfragen sowie Dashboards, Alerts, Audits, Benutzer und Schlüssel verwalten, sodass Sie FailproofAI Cloud in Ihr eigenes Tooling integrieren können.
+
+**Verwaltung** (für Ihr Team betreiben):
+
+- **[API-Schlüssel](/de/cloud/access)**: bereichsbegrenzte Token für den Collector, das Dashboard und den Assistenten.
+- **Benutzer**: passwortlose, E-Mail-basierte Anmeldung mit einer Zulassungsliste.
+- **Einstellungen**: organisationsweite Konfiguration, einschließlich Modell-Kontextfenster-Überschreibungen.
+
+---
+
+## Wie die Teile zusammenpassen
+
+Daten fließen in eine Richtung, von Ihrem Agenten-Code zum Dashboard: Ihr Agent sendet (über das Python-SDK) Ereignisse an den agenteye-collector, der sie an den Server weiterleitet, der das Dashboard bedient. Zwei optionale Dienste ergänzen das Ganze – ein Scoring-Dienst (Evaluierungen) und ein KI-Assistenten-Dienst (der In-Dashboard-Chat).
+
+- **Python SDK**: Sie fügen Ihrem Agenten einige `agenteye.event.*`-Aufrufe hinzu; Ereignisse werden lokal gepuffert.
+- **agenteye-collector**: ein schlanker Daemon auf jeder Agenten-Maschine, der Ereignisse bündelt und an den Server sendet.
+- **Server**: nimmt Ihre Ereignisse entgegen, verwaltet den Betriebszustand in Ihren eigenen Datenbanken und stellt die REST API bereit, die das Dashboard, die CLI und Ihre eigenen Integrationen verwenden.
+- **Dashboard**: wo Sie alles erkunden.
+- **Optionale Dienste**: ein Scoring-Dienst (Evaluierungen) und ein KI-Assistenten-Dienst (der In-Dashboard-Chat).
+
+Für das in der gesamten Dokumentation verwendete Vokabular (*Ereignis, Sitzung, Evaluierung, Audit, Befund, Incident*) siehe [Konzepte](/de/concepts).
+
+---
+
+## FailproofAI Cloud erhalten
+
+FailproofAI Cloud ist ein Enterprise-Produkt von Failproof AI und funktioniert zusammen mit FailproofAI guardrails – dem Richtlinien- und Guardrail-Produkt – unter der Failproof AI-Marke. Es läuft vollständig in Ihrer eigenen Umgebung. Wenn Sie noch keinen Zugang zu den Paketen haben, fordern Sie eine Demo an, und wir richten alles für Sie ein: E-Mail an [nikita@befailproof.ai](mailto:nikita@befailproof.ai).
+
+---
+
+## Nächste Schritte
+
+- [Konzepte](/de/concepts): das FailproofAI Cloud-Vokabular an einem Ort.
+- [FailproofAI Cloud](/de/cloud/overview): Verfolgen Sie, was Ihre Agenten tun, Durchlauf für Durchlauf.
+- [Sicherheit](/de/cloud/security): Wie FailproofAI Cloud Ihre Daten isoliert und unter Ihrer Kontrolle hält.

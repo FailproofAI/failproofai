@@ -1,0 +1,183 @@
+---
+title: "FailproofAI Cloud"
+description: "One place to govern every agent your organization runs — deploy policy to the whole fleet, replay any run, score quality automatically, and get paged when it breaks."
+---
+
+Guardrails on one laptop are useful. Guardrails across a company are a different problem:
+you cannot see whether the rule you wrote last week is actually running on the twelve
+machines that need it, you cannot tell which agent burned an afternoon on a loop, and you
+find out about the leaked key when someone mentions it in standup.
+
+**FailproofAI Cloud is the answer to that problem.** Connect a machine with one command and
+two things start flowing: policy comes *down* from a dashboard your team controls, and
+everything your agents did goes *up* to it.
+
+![A FailproofAI Cloud session drawn as a git-style execution graph beside its event timeline, with a per-run breakdown of tools, models, and hooks in the right rail](/cloud/images/session-detail.png)
+
+*Every agent run, drawn as a git-style execution graph beside its event timeline. Parallel
+sub-agents get their own lanes; the right rail breaks down tools, models, hooks, and token
+spend for the run.*
+
+---
+
+## What connecting gets you
+
+<CardGroup cols={2}>
+
+<Card title="Deploy policy to the fleet" icon="cloud-arrow-down" href="/cloud/managed-policies">
+  Write a rule once, assign it, and every connected machine picks it up on its next poll —
+  digest-verified before it runs. Roll it out in observe-only mode first and watch what it
+  *would* have blocked before it blocks anything.
+</Card>
+
+<Card title="See every machine at once" icon="server" href="/cloud/fleet">
+  Which hosts are connected, which deployment each is actually on, and which are running
+  agents with no guardrails at all. "Did it roll out?" becomes a page you look at, not a
+  question you ask in chat.
+</Card>
+
+<Card title="Replay any run, step by step" icon="diagram-project" href="/cloud/sessions">
+  Every session from every machine becomes a readable execution graph: what ran in
+  parallel, which sub-agent stalled, where it went off course, and what it spent.
+</Card>
+
+<Card title="Catch quality regressions automatically" icon="chart-line" href="/cloud/evaluations">
+  Connect your own scoring service and every finished run is graded. A drop in helpfulness
+  or a spike in hallucinations shows up on its own, before a customer feels it.
+</Card>
+
+<Card title="Find failures nobody wrote a rule for" icon="magnifying-glass" href="/cloud/audits">
+  Scheduled investigations mine your sessions across runs for error clusters, drift, tool
+  misuse, and goal failures — then hand you ranked findings with the evidence attached.
+</Card>
+
+<Card title="Get paged when it matters" icon="bell" href="/cloud/alerts">
+  Thresholds on error rate, latency, cost, or evaluator scores open incidents you can
+  acknowledge, assign, and resolve — with an attributed timeline your post-mortem writes
+  itself from.
+</Card>
+
+</CardGroup>
+
+---
+
+## See it in action
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Agent tracing: follow a single run step by step, from goal to tools to final answer.*
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Audits: let FailproofAI Cloud mine your sessions and tell you what to fix.*
+
+---
+
+## Connect in one command
+
+```bash
+failproofai config --connect https://app.befailproof.ai --token <your-key>
+```
+
+That is the whole integration for a machine already running FailproofAI. No second agent
+to install, no per-project setup, no code change. The [connect guide](/cloud/connect)
+covers machine ids, environments, what leaves the machine, and how to connect a fleet
+without a human at each keyboard.
+
+Don't have a key yet? Create one at
+[befailproof.ai/get-started](https://befailproof.ai/get-started/).
+
+<Note>
+  **Already writing your own agents in Python?** The [SDK](/cloud/sdk) instruments them
+  directly, so agents you build show up next to the coding sessions your team runs. The
+  two are complementary: the SDK covers agents you write, the machine connection covers
+  the agent CLIs your team already uses.
+</Note>
+
+---
+
+## What the dashboard gives you
+
+Organized around three ideas, mirroring the left sidebar.
+
+### Observe — the raw truth of what happened
+
+- **[Event stream](/cloud/event-stream)** — the live, per-step trail of every run, across
+  every machine, newest first. Your triage starting point.
+- **[Sessions](/cloud/sessions)** — those events rolled into one row per run, each with a
+  git-style execution graph.
+- **[Performance](/cloud/performance)** — latency heat-maps and p50/p95/p99 vitals for
+  models, tools, and hooks, so a tail spike stands out from the median.
+- **[Errors](/cloud/errors)** — one triage surface for everything that went wrong, grouped
+  so a noisy burst reads as a single problem.
+
+![The Tools page: a latency heat-map, a percentile band, and a tool-distribution bar over 24 time bins](/cloud/images/tools.png)
+
+### Analyze — turn activity into answers
+
+- **[Queries](/cloud/queries)** and **[dashboards](/cloud/dashboards)** — saved SQL over
+  your events and evaluations, charted into shared boards.
+- **[Evaluations](/cloud/evaluations)** — quality scores from your own evaluator, with
+  per-score reasoning.
+- **[Audits](/cloud/audits)** — recurring investigations that surface patterns across
+  sessions.
+- **[Alerts](/cloud/alerts)** and **[incidents](/cloud/incidents)** — thresholds that page
+  you, plus the workflow to triage what they open.
+
+### Govern and administer
+
+- **[Managed policies](/cloud/managed-policies)** — the guardrails your fleet enforces,
+  assigned from here.
+- **[Fleet](/cloud/fleet)** — every machine, its deployment, and its coverage.
+- **[Access](/cloud/access)** — scoped API keys, users, and permission sets.
+- **[Security](/cloud/security)** — isolation, sign-in, and what the assistant can and
+  cannot do.
+
+---
+
+## Reach it however you work
+
+- **[The dashboard](https://app.befailproof.ai)** — every page scoped to your organization.
+- **[The `agenteye` CLI](/cloud/cli)** — read your data and administer your org from a
+  terminal or a script. Every command takes `--json`.
+- **[The AI assistant](/cloud/assistant)** — ask questions about your agents in plain
+  English, inside the dashboard, with links to the evidence behind every answer.
+- **[Agent skills](/cloud/agent-skills)** — hand the CLI to a coding agent and let it
+  answer "is anything broken today?" for you.
+- **A REST API** — everything the dashboard and CLI do is backed by it. Call it with a
+  [scoped key](/cloud/access) to wire FailproofAI Cloud into your own tooling.
+
+---
+
+## Getting access
+
+FailproofAI Cloud is the commercial half of FailproofAI. The guardrails are open source and
+free forever; the cloud is what a team buys when one machine becomes twenty.
+
+Start at [befailproof.ai/get-started](https://befailproof.ai/get-started/), or
+[talk to us](https://cal.com/nikita-agarwal-exosphere/30-minute-chat-failproof-ai) about a
+self-hosted deployment inside your own infrastructure.
+
+---
+
+## Next steps
+
+<CardGroup cols={3}>
+
+<Card title="Connect a machine" icon="plug" href="/cloud/connect">
+  One command, two capabilities, and exactly what gets sent.
+</Card>
+
+<Card title="Concepts" icon="book" href="/concepts">
+  Every term in these docs, defined once.
+</Card>
+
+<Card title="Security" icon="shield" href="/cloud/security">
+  Isolation, sign-in, and data control.
+</Card>
+
+</CardGroup>

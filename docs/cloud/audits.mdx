@@ -1,0 +1,54 @@
+---
+title: "Audits"
+description: "FailproofAI Cloud goes looking for the failures you never wrote a rule for and hands you a ranked, evidence-backed to-do list of exactly what to fix."
+---
+
+
+FailproofAI Cloud goes looking for the failures you never wrote a rule for and hands you a ranked, evidence-backed to-do list of exactly what to fix. It is like having an analyst comb your logs every night, then leaving the short list on your desk by morning.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*A two-minute tour: from a scheduled run to a fix you can act on.*
+
+![The Audits page: recurring jobs that scan your sessions for failure patterns, each with a schedule and sensitivity](/cloud/images/audits.png)
+*Each audit is a recurring job that mines your sessions and writes up ranked, evidence-backed recommendations.*
+
+## Stop guessing what to fix next
+
+Alerts catch the problems you already know to watch for. Audits catch the ones you don't. On a schedule you set, an audit reads across all of your agent sessions and hunts for the patterns worth fixing, so you spend your time acting on findings instead of scrolling logs hoping to spot them yourself.
+
+A single run goes after the failure modes that actually break agents in production:
+
+- **Error clusters**: the same failure repeating under a shared root cause.
+- **Drift versus a baseline**: behaviour quietly sliding away from a known-good window.
+- **Goal failure in transcripts**: runs that technically finished but never did the job.
+- **Tool misuse**: the wrong tool, bad arguments, or loops that burn calls.
+- **Quality and cost trade-offs**: where you are overpaying for output you could get cheaper.
+- **Coverage gaps**: behaviour that no eval or alert is watching.
+
+You decide how hard it looks with a single **sensitivity** setting (low, medium, or high), so a noisy staging agent and a locked-down production one can each be tuned to the signal you want.
+
+## Every recommendation comes with receipts
+
+You never have to take a finding on faith. Each recommendation cites the exact sessions it came from and the SQL that surfaced it, so you can open the evidence and confirm the problem in a click instead of reverse-engineering a claim.
+
+When a finding is about a leaked credential, it goes one step further and links the individual events it matched. Click one and you land on that exact moment in the session, already selected — not the top of a long transcript to scroll through. The link names the event; it never copies the detected secret into the finding, so reading a finding is not a second place your credential is written down. If an event is no longer there because the session has passed your retention window, the page says so plainly rather than leaving you wondering whether you clicked the wrong thing.
+
+That is also what keeps audits honest. The server checks that every cited session actually exists and **discards any recommendation whose evidence does not hold up**, so the audit investigates but never invents. What lands on your list is real, reproducible, and ranked by how much it matters, with the biggest wins at the top.
+
+## Turn a fix into a guardrail
+
+Fixing an issue is only half the win. The other half is making sure it cannot quietly come back. Every finding carries a **one-click shortcut that drafts a recurrence alert**, prefilled with a sensible starting trigger you can tune. Close the finding, arm the alert, and the next time that pattern reappears you get paged instead of rediscovering it in a future audit.
+
+## Where to find it
+
+Audits live in the dashboard at **`/<org-slug>/audits`** (sidebar to *analyze* to *audits*). Viewing runs and findings needs **`audits:read`**; creating, editing, and triaging audits needs **`audits:write`**. Set an audit's scope and cadence, then hit **Run now** whenever you want results immediately instead of waiting for the next scheduled pass.
+
+## Related
+
+- [Alerts](/cloud/alerts): get paged the moment a threshold you already know about is crossed.
+- [Evaluations](/cloud/evaluations): score every run so quality regressions surface on their own.
+- [Error tracking](/cloud/errors): group and follow the errors your agents throw.
+- [Incidents](/cloud/incidents): track an issue an audit turns up through to its fix.

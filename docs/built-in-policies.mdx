@@ -1,10 +1,17 @@
 ---
-title: Built-in Policies
+title: "Built-in policies"
 description: "All 39 built-in policies that catch common agent failure modes"
 icon: shield
 ---
 
-failproofai ships with 39 built-in policies that catch common agent failure modes. Each policy fires on a specific hook event type and tool name. Nineteen policies accept parameters that let you tune their behavior without writing code. Five workflow policies enforce a commit → push → PR → CI pipeline before Claude stops.
+FailproofAI ships with 39 built-in policies that catch common agent failure modes. Each fires on a specific hook event and tool. Nineteen accept parameters, so you can tune them without writing code. Five workflow policies enforce a commit → push → PR → CI pipeline before the agent is allowed to finish.
+
+They work identically across all [12 supported agent CLIs](/agent-support) — event names, tool names, and tool inputs are normalized before any policy runs. Examples on this page say "Claude" where they quote a real message, but nothing here is Claude-specific.
+
+<Note>
+  Not sure which to turn on? `failproofai config` offers **Recommended** — 16 policies
+  chosen to cover the failures you cannot undo. See [Policies](/policies#turning-policies-on).
+</Note>
 
 ---
 
@@ -24,6 +31,11 @@ Policies are grouped into categories:
 | [Warnings](#warnings) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
 | [Package managers](#package-managers) | prefer-package-manager | PreToolUse |
 | [Workflow](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
+
+<Warning>
+  The five **Workflow** policies need a turn-end gate, and two CLIs do not have one —
+  they never fire on Hermes or Goose. [Which CLI supports what →](/agent-support#what-can-actually-be-blocked-per-cli)
+</Warning>
 
 - **`block-`** — stop the agent from proceeding.
 - **`warn-`** — give the agent additional context so it can self-correct.

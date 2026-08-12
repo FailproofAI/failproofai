@@ -1,0 +1,63 @@
+---
+title: "Asistente de IA"
+description: "Haz una pregunta en lenguaje natural sobre los datos de tu agente y obtén una respuesta vinculada directamente a la evidencia."
+---
+
+
+Haz una pregunta en lenguaje natural sobre los datos de tu agente y obtén una respuesta vinculada directamente a la evidencia. Sin SQL que escribir, sin dashboards que explorar — el asistente de **FailproofAI Cloud** es la forma más rápida para que cualquier miembro de tu equipo obtenga respuestas sobre sus agentes.
+
+![El asistente de FailproofAI Cloud respondiendo una pregunta en lenguaje natural dentro del dashboard, mostrando una tabla de actividad de agentes en vivo, un desglose de uso de modelos por agente y conclusiones escritas, con las consultas ejecutadas mostradas inline](/cloud/images/assistant.png)
+*Pregunta en lenguaje natural y obtén una respuesta construida a partir de tus propios datos. Aquí desglosa qué agentes están más activos y qué modelos usan, y muestra las consultas que ejecutó para que puedas verificar cada número.*
+
+No hay nada que aprender. Abre el chat, escribe lo que quieres saber y sigue los enlaces que te devuelve:
+
+```
+You:  which sessions errored today?
+AI:   5 sessions errored today, newest first. Each one is linked:
+      • checkout-agent   14:02   tool timeout
+      • billing-agent    11:47   unhandled error
+      • ...and 3 more
+
+You:  summarize this session          (asked while viewing a run)
+AI:   This run took 12 steps across 3 tools and failed near the end when a
+      payment tool returned an error. It scored low on your "resolved" eval.
+      Links: the session, the failing event, and that evaluation.
+```
+
+## Solo pregunta y ve directo a la prueba
+
+Dejas de adivinar y de escribir consultas. Pregunta "¿cómo está evolucionando la calidad en producción esta semana?", "¿qué sesiones dieron error hoy?" o "resume esta sesión", y obtienes una respuesta directa en segundos, en lugar de construir una consulta y leerla tú mismo.
+
+Cada respuesta viene con sus justificantes. El asistente enlaza las sesiones exactas, las consultas guardadas y los dashboards que utilizó para llegar a la respuesta, para que puedas hacer clic y confirmar en lugar de tomar su palabra como válida. También es **consciente del contexto de la página**: pregunta sobre "esta sesión" mientras la estás viendo y ya sabe a qué ejecución te refieres. Vuelve a abrir cualquier conversación anterior desde el selector de historial y retoma donde lo dejaste.
+
+## Convierte una buena respuesta en una consulta guardada o un dashboard
+
+Cuando una respuesta vale la pena conservar, pídele al asistente que la guarde. Redacta el SQL para una consulta guardada, o ensambla un dashboard a partir de esas consultas, y luego te muestra una tarjeta de **Aprobar / Rechazar**. Nada se escribe hasta que hagas clic en Aprobar, por lo que obtienes la velocidad de "solo pregunta" con la última decisión siempre en tus manos.
+
+En la página de **Queries** va un paso más allá y se convierte en autor de SQL: describe la consulta que quieres ("muestra la tasa de errores por agente durante los últimos 7 días") y transmite SQL directamente al editor, abriendo una vista de diferencias para que puedas **Aceptar** o **Rechazar** el cambio antes de que se aplique.
+
+![La página Queries de FailproofAI Cloud y su editor SQL](/cloud/images/query-lab.png)
+*La página Queries: este editor es donde el asistente transmite un borrador de consulta de solo lectura para que lo aceptes o rechaces.*
+
+Crear SQL mediante preguntas aquí usa el permiso `queries:run`, el mismo que hay detrás del botón **Run** del editor. El chat en cualquier otro lugar necesita `agent:use`.
+
+## Seguro para todo el equipo
+
+Puedes abrir el asistente a todos sin preocuparte por lo que podría tocar:
+
+- **Solo lee lo que tú ya puedes ver.** Las respuestas están limitadas a tus propios permisos de lectura, por lo que nunca amplía tu superficie de datos.
+- **Cada escritura espera tu confirmación.** Las consultas guardadas y los dashboards solo se crean tras tu clic explícito en Aprobar, y no existe ninguna configuración que desactive esa barrera.
+- **Nunca puede eliminar nada.** No hay ninguna herramienta de eliminación expuesta y el asistente no tiene permiso de eliminación. Las eliminaciones permanecen en tus manos, en el dashboard.
+- **Se mantiene dentro de tu organización.** El asistente solo ve la organización que estás visualizando en ese momento.
+- **Tus preguntas son tuyas.** Los prompts y las respuestas viven en tu propia base de datos de FailproofAI Cloud; los análisis del producto registran solo metadatos de uso, nunca el texto de tus prompts.
+
+## Dónde encontrarlo
+
+El asistente aparece en el borde derecho de cada página bajo tu organización (`/<org-slug>/...`). Haz clic en el rail, o pulsa `⌘J` / `Ctrl+J`, para expandirlo al panel de chat completo, y arrastra su borde para redimensionarlo; tu anchura se recuerda entre recargas. Necesitas el permiso **`agent:use`** para usarlo; de lo contrario, el rail aparece en gris. Si todavía no se ha activado para tu despliegue (requiere una conexión LLM), verás un rail atenuado en lugar de un chat funcional.
+
+## Relacionado
+
+- [CLI y agentes](/es/cloud/cli)
+- [Queries](/es/cloud/queries)
+- [Dashboards](/es/cloud/dashboards)
+- [Suite de evaluación](/es/cloud/evaluators)

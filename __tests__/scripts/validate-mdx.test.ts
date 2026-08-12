@@ -253,7 +253,7 @@ describe("findBrokenAssetRefs", () => {
   // Fixtures resolve against the real repo so the check is exercised with the
   // same two path conventions the docs actually use.
   const REPO = join(__dirname, "..", "..");
-  const DOCS_PAGE = join(REPO, "docs", "agenteye", "alerts.mdx");
+  const DOCS_PAGE = join(REPO, "docs", "cloud", "alerts.mdx");
   const I18N_PAGE = join(REPO, "docs", "i18n", "README.ja.md");
 
   it("flags the exact regression that broke every translated README", () => {
@@ -281,19 +281,19 @@ describe("findBrokenAssetRefs", () => {
   });
 
   it("resolves a leading slash against docs/, not the page directory", () => {
-    // Mintlify site-absolute form, used by every agenteye page.
+    // Mintlify site-absolute form, used by every cloud page.
     expect(
       findBrokenAssetRefs(
         DOCS_PAGE,
-        "![Alerts](/agenteye/images/alerts.png)\n",
+        "![Alerts](/cloud/images/alerts.png)\n",
       ),
     ).toEqual([]);
     const broken = findBrokenAssetRefs(
       DOCS_PAGE,
-      "![Nope](/agenteye/images/does-not-exist.png)\n",
+      "![Nope](/cloud/images/does-not-exist.png)\n",
     );
     expect(broken).toHaveLength(1);
-    expect(broken[0].resolved).toBe("docs/agenteye/images/does-not-exist.png");
+    expect(broken[0].resolved).toBe("docs/cloud/images/does-not-exist.png");
   });
 
   it("checks srcset candidates, not just src", () => {

@@ -1,0 +1,267 @@
+---
+title: The failproofaid service
+description: "The background service that makes enforcement fail closed, keeps evaluation fast, and connects a machine to your fleet."
+icon: server
+---
+
+`failproofaid` is the background service FailproofAI installs during setup. It does three
+jobs, and each one is the answer to a way guardrails fail quietly in the real world.
+
+<CardGroup cols={3}>
+
+<Card title="It evaluates policy" icon="shield-halved">
+  Every hook event on a configured machine is answered by the service — from a process
+  that is already warm, so nobody pays a cold start on a tool call.
+</Card>
+
+<Card title="It fails closed" icon="lock">
+  If the service cannot answer, the tool call is **denied**. Stopping it is a way to stop
+  working, not a way to work unguarded.
+</Card>
+
+<Card title="It talks to the cloud" icon="cloud-arrow-up">
+  Pulls your organization's policy down, ships what your agents did up, and keeps both
+  working across restarts and outages.
+</Card>
+
+</CardGroup>
+
+---
+
+## Fail closed
+
+This is the property everything else on this page exists to protect.
+
+On a machine that completed setup, **`failproofaid` is the only evaluator**. Every way of
+not getting an answer denies:
+
+| Situation | Result |
+|---|---|
+| The service is not running | Tool call denied |
+| The socket is unreachable | Tool call denied |
+| The service and the CLI disagree on the protocol version | Tool call denied, with a message naming the version and pointing at `failproofai config` |
+
+There is deliberately **no in-process fallback** on this path. A second policy engine you
+can reach by stopping the first is not a guarantee, and a machine where killing one service
+silently disables every guardrail is not a guarded machine.
+
+The version-mismatch case gets its own message because the remedy is different from "the
+service is down," and telling those two apart is the whole value of distinguishing them.
+The cost is real and worth stating: the first time the protocol changes, a machine whose
+CLI updated before its service did will deny until `failproofai config` runs. Both halves
+ship from the same release and every CLI command warns when it detects the skew, so the
+window is short and announces itself.
+
+### The two situations that do *not* use the service
+
+In-process evaluation still exists, and is reachable only when a machine was never
+configured for the daemon:
+
+1. **A machine that has not been set up.** No hooks are installed either, so nothing is
+   evaluating anything.
+2. **The FailproofAI repository's own development configs.** Contributors run the engine
+   in-process against the package they are editing — a flaky in-development service must
+   not block the tool calls of the people developing it.
+
+Neither is a configured user machine.
+
+---
+
+## Platform support
+
+`failproofaid` runs on **Linux and macOS**.
+
+On anything else — Windows, today — `failproofai config` **refuses to run**. It prints
+why and exits before drawing a single prompt: no hooks installed, no partial state, no
+machine that reads as configured while enforcing something weaker than every other
+configured machine.
+
+That is a deliberate change from earlier behaviour, which skipped the service requirement
+and let setup complete anyway. Refusing is the more honest failure: it says plainly that
+the platform is not supported yet, instead of shipping a quieter guarantee under the same
+name.
+
+---
+
+## How it is supervised
+
+The service is **system-scope, user-run**:
+
+| Platform | What is installed |
+|---|---|
+| Linux | `/etc/systemd/system/failproofaid@<user>.service`, with `User=<user>` and `WantedBy=multi-user.target` |
+| macOS | A `LaunchDaemon` plist in `/Library/LaunchDaemons` with `UserName` set |
+
+It starts at boot, needs no login, and survives logout.
+
+That last property is why it is a system service rather than a per-user one. A user-level
+service does not start at boot without extra configuration and stops with the last login
+session — so the daemon died on logout, and because a configured machine **fails closed**,
+anything running without a login session (a detached tmux, a cron job, a CI runner) then
+hit denials.
+
+Three consequences follow, each handled explicitly:
+
+- **Installing needs root.** Setup checks `sudo -n` *before* writing anything. If it
+  cannot elevate, it writes nothing and hands you the exact commands to run. Never an
+  interactive password prompt — one fired from underneath a full-screen wizard is
+  unreadable.
+- **A system service has no login environment.** The service is pointed at the exact Node
+  binary that ran setup, not a bare `node`. The most common Node install puts its binary
+  on no system PATH at all, which would resolve fine while you watch and then fail
+  silently inside the service.
+- **Any older user-scope service is removed first**, on every install and uninstall. It
+  holds the same lock the new one needs, so leaving one behind means the new service
+  starts, loses the race, and the machine sits failing closed against a daemon that never
+  came up.
+
+Checking on it needs no privileges:
+
+```bash
+systemctl status failproofaid@$USER     # Linux
+failproofai config --status             # either platform — connection, service, pause state
+```
+
+Install waits for the service to reach **and hold** a running state before reporting
+success. A service that reports "active" the instant it forks would otherwise pass a check
+even if it died at startup.
+
+---
+
+## How the binary reaches your machine
+
+The npm package carries no binary — one package serves every platform — so the binary
+arrives through one of two channels, tried in this order:
+
+<Steps>
+  <Step title="From npm, as an optional dependency">
+    Platform-specific packages are published alongside the CLI, so `npm install failproofai`
+    already downloaded the one matching your machine and skipped the others. Installing
+    from it involves **no network at all**, which makes it the channel that works
+    air-gapped or behind a proxy that blocks GitHub.
+  </Step>
+  <Step title="From the release asset">
+    A compressed binary plus a checksum manifest, fetched for this CLI's exact version and
+    **SHA-256 verified before it is decompressed**. This covers installs that skipped
+    optional dependencies, packages installed from disk, and standalone service installs.
+
+    The URL is *constructed* from the installed version, never discovered. No API call, no
+    "latest" redirect, no rate limit — and no way to end up running a service built from
+    different source than the CLI talking to it.
+  </Step>
+</Steps>
+
+Both land the file in `~/.failproofai/bin/`, under a versioned filename. The service is
+never pointed into `node_modules`: a global package upgrade would otherwise swap the file
+under a running service, and uninstalling the package would delete it out from under a
+service that then crash-loops at every boot.
+
+Two escape hatches:
+
+| Variable | Effect |
+|---|---|
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Never reach out to fetch a binary; fail with a reason instead. An already-installed binary keeps working, and the npm channel is unaffected — this gates *fetching*, not copying. |
+| `FAILPROOFAI_DAEMON_BASE_URL` | Point the download at an internal mirror. |
+
+Only the install path does any of this. The hook path is a pure disk check, so it can
+never block on the network.
+
+---
+
+## Upgrading
+
+```bash
+npm install -g failproofai@latest
+failproofai update
+```
+
+`failproofai update` finishes what npm cannot: it migrates `~/.failproofai` to the new
+layout if the layout changed, puts the matching service binary in place, and restarts the
+service.
+
+**Your configuration is carried across, not reset:**
+
+| Kept | Rebuilt |
+|---|---|
+| Your policy selection and parameters | The audit cache |
+| Your machine settings, including extra capture paths | Cloud-managed deployments — re-fetched and digest-verified on the next poll |
+| Your cloud connection | Service scratch state |
+| Your own policy files, and the helpers they import | |
+| The decision log, and anything not yet delivered to the cloud | |
+
+Settings written by a *newer* version are preserved rather than dropped by an older
+reader, so moving between versions does not silently discard anything in either direction.
+Every migration is recorded, and the irreplaceable files are copied to a backup directory
+before anything runs.
+
+You do **not** need to re-run setup after an upgrade. A migrated machine enforces exactly
+as it did before — which is what makes upgrading safe on machines with nobody sitting at
+them.
+
+See [`failproofai update`](/cli/update) and [`failproofai migrate --dry-run`](/cli/migrate).
+
+---
+
+## What it does for a connected machine
+
+On a machine [connected to FailproofAI Cloud](/cloud/connect), the same service handles
+both directions of traffic:
+
+- **Policy down.** Polls for this machine's desired state, downloads any policy artifact it
+  does not already have, verifies each one's digest, and switches deployments atomically. A
+  machine that loses its network keeps enforcing the last deployment it successfully
+  fetched.
+- **Activity up.** Reads the local decision log and — unless you connected with
+  `--no-transcripts` — your agent CLIs' session transcripts, spools them to disk, and
+  uploads in batches. If delivery fails, the spool is retained and retried; nothing is
+  dropped because the network blinked.
+
+```bash
+failproofai flush --wait        # deliver everything spooled, now
+failproofai backfill --since 6m # re-read history the collector already passed
+```
+
+---
+
+## Uninstalling
+
+```bash
+failproofai uninstall
+```
+
+Removes the hook entries from every agent CLI **and** the service. Add `--purge` to also
+delete `~/.failproofai` (settings, credentials, audit history, and the service binary).
+
+Uninstall clears the daemon-configured flag **first and unconditionally**. Leaving that
+flag set with no service to reach would deny every hook event on the machine, across all 12
+CLIs, recoverable only by hand-editing a config file.
+
+<Warning>
+  Run `failproofai uninstall` **before** `npm rm -g failproofai`. npm runs no uninstall
+  script, so removing the package on its own leaves both the hook entries and the service
+  behind.
+</Warning>
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+
+<Card title="How it works" icon="sitemap" href="/how-it-works">
+  The full path from a tool call to a decision.
+</Card>
+
+<Card title="Connect to the cloud" icon="cloud" href="/cloud/connect">
+  What the service sends, and what it receives.
+</Card>
+
+<Card title="failproofai config" icon="terminal" href="/cli/config">
+  Setup, status, connect, disconnect, pause.
+</Card>
+
+<Card title="Environment variables" icon="list" href="/cli/environment-variables">
+  Every variable, including the download escape hatches.
+</Card>
+
+</CardGroup>

@@ -15,13 +15,14 @@ npx skills add https://docs.befailproof.ai
 
 | Area | What's included |
 |------|----------------|
-| Policies | Built-in policy names, event types, parameters, enable/disable |
+| Policies | All 39 built-in policy names, event types, parameters, enable/disable |
 | Custom policies | `customPolicies.add()`, match filters, `allow`/`deny`/`instruct` API |
 | Context object | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
 | Configuration | `policies-config.json` structure, scope merging, `policyParams` |
-| CLI | `failproofai policies --install`, `--uninstall`, `--custom`, scopes |
-| Dashboard | Session viewer, policy activity, environment variables |
-| Architecture | Hook handler flow, exit codes, stdin/stdout contract |
+| CLI | Every `failproofai` command and flag, including `config`, `harness`, `backfill` |
+| Agent support | Which CLIs exist, and what a deny can actually block on each |
+| Cloud | Connecting a machine, managed policies, the observability surfaces |
+| Mechanics | Hook flow, the daemon, exit codes, the stdin/stdout contract |
 
 ## Is the skill complete?
 
@@ -36,3 +37,9 @@ npx skills add https://docs.befailproof.ai/custom-policies
 # Just the built-in policies
 npx skills add https://docs.befailproof.ai/built-in-policies
 ```
+
+<Note>
+  Looking for skills that let an agent *operate* FailproofAI Cloud, instrument your own
+  agents, or build an evaluator? Those are separate, purpose-built skills — see [Agent
+  skills](/cloud/agent-skills).
+</Note>

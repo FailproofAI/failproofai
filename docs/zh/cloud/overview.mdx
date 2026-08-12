@@ -1,0 +1,108 @@
+---
+title: "Failproof AI：监控 Agent 故障"
+description: "FailproofAI Cloud 是一个自托管平台，用于在生产环境中观测、评估和改进您的 AI agent。"
+---
+
+
+FailproofAI Cloud 是一个自托管平台，用于在生产环境中观测、评估和改进您的 AI agent。它记录 agent 的所有行为（每次工具调用、模型请求、hook 和错误），对每次运行的质量进行评分，并在您自己基础设施内运行的仪表板中呈现您未曾预料到的故障。
+
+如果您正在部署 AI agent，并且厌倦了猜测某次运行出错的原因，这就是您的起点。本文将介绍 FailproofAI Cloud 能为您提供什么，以及各模块如何协同工作——无需先安装任何东西。
+
+> **FailproofAI Cloud 是 Failproof AI 的企业级产品。** 想亲眼看看它的效果？申请演示，请发邮件至 [nikita@befailproof.ai](mailto:nikita@befailproof.ai)。
+
+![FailproofAI Cloud 会话以 git 风格的执行图呈现，旁边是事件时间线，右侧栏按运行维度展示工具、模型和 hook 的详细信息](/cloud/images/session-detail.png)
+
+*每次 agent 运行均以 git 风格的执行图（左）呈现，旁边配有事件时间线。并行子 agent 各占独立泳道；右侧栏按运行维度列出工具、模型、hook 及 token 消耗明细。*
+
+---
+
+## 实际效果演示
+
+以下两段简短视频展示了团队最常用的两项功能：追踪单次运行，以及自动发现故障。
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Agent 追踪：逐步跟踪单次运行，从目标到工具调用，直至最终答案。*
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Watch: Automatically find where your agent is failing (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Failproof Audit：让 FailproofAI Cloud 跨会话挖掘您的日志，并告诉您需要修复的问题。*
+
+---
+
+## 团队使用它的理由
+
+- **看清 agent 实际做了什么。** 每次运行都会生成一个可读的 git 风格执行图：哪些工具并行运行、哪些子 agent 分支启动、在哪里卡住，以及消耗了多少资源。
+- **自动捕获质量回归。** 接入一个小型评分服务后，FailproofAI Cloud 会对每次完成的运行进行评分，帮助性下降或幻觉激增时会自动浮现。
+- **发现您未曾定义规则的故障。** 周期性审计跨会话挖掘日志，查找错误聚类、延迟异常值、低分运行和卡死任务，并将按优先级排序、附有证据支撑的发现呈现给您。
+- **在关键时刻收到告警。** 基于错误率、延迟、成本或评估分数的阈值规则会触发告警，生成可确认、分配和解决的事件。
+- **用自然语言提问。** 仪表板内置 AI 助手，可以用中文直接询问「本周生产环境的质量趋势如何？」，基于您自己的数据作答。任何变更均需审批方可生效。
+- **数据完全归您所有。** FailproofAI Cloud 采用自托管方式：事件、提示词和分析数据始终保存在您掌控的基础设施中。
+
+---
+
+## 功能概览
+
+FailproofAI Cloud 围绕三个核心理念组织：**观测（observe）**、**分析（analyze）** 和 **管理（admin）**，并在仪表板左侧边栏中一一对应。
+
+**观测**（运行的原始真相）：
+
+- **[事件流](/zh/cloud/event-stream)**：每次运行的实时逐步记录（工具调用、模型调用、hook、错误）。
+- **[会话](/zh/cloud/sessions)**：将这些事件汇总为每次运行一行，每行均可评分，并附有 git 风格的执行图。
+- **[性能指标](/zh/cloud/performance)**：按维度划分的延迟热力图，以及模型、工具和 hook 的 p50/p95/p99 关键指标，让尾部延迟从中位数中一眼凸显。
+- **[错误追踪](/zh/cloud/errors)**：所有异常的统一分类界面，一键直达触发中的告警。
+
+![工具观测页：24 个时间段内的延迟热力图、百分位带和工具分布条形图](/cloud/images/tools.png)
+
+*每个观测界面均将 p50/p95/p99 关键指标与延迟热力图及百分位带配对展示。图中所示：工具页。*
+
+**分析**（将活动转化为洞察）：
+
+- **[查询](/zh/cloud/queries)** 和 **[仪表板](/zh/cloud/dashboards)**：基于事件和评估数据的已保存 SQL 查询，以图表形式呈现在团队共享的组织级仪表板中。
+- **[评估](/zh/cloud/evaluations)**：由您自己的评估服务产出的质量分数，附带每项评分的推理过程。
+- **[审计](/zh/cloud/audits)**：周期性调查，跨会话发现故障模式。
+- **[告警](/zh/cloud/alerts)** 和 **[事件](/zh/cloud/incidents)**：触发通知的阈值规则，以及用于分类处理的事件工作流。
+
+**接口**（以您喜欢的方式访问数据）：
+
+- **[CLI](/zh/cloud/cli)**：通过终端或脚本驱动整个部署，也可以让编码 agent 用自然语言替您完成操作。
+- **[AI 助手](/zh/cloud/assistant)**：直接在仪表板内用自然语言询问关于您 agent 的问题。
+- **REST API**：仪表板和 CLI 的所有功能均由 REST API 提供支持，您可以使用有权限范围限制的 [API 密钥](/zh/cloud/access) 直接调用——摄取事件、查询会话和评估数据、管理仪表板、告警、审计、用户和密钥，将 FailproofAI Cloud 接入您自己的工具链。
+
+**管理**（为您的团队运维）：
+
+- **[API 密钥](/zh/cloud/access)**：适用于采集器、仪表板和助手的范围化令牌。
+- **用户**：基于邮件的无密码登录，支持白名单管理。
+- **设置**：组织级配置，包括模型上下文窗口覆盖项。
+
+---
+
+## 各模块如何协同
+
+数据沿单一方向流动，从您的 agent 代码流向仪表板：您的 agent（通过 Python SDK）将事件发送至 agenteye-collector，后者将事件传输至服务器，服务器再提供仪表板所需的数据。另有两个可选服务作为补充——评分服务（评估）和 AI 助手服务（仪表板内聊天）。
+
+- **Python SDK**：您在 agent 中添加少量 `agenteye.event.*` 调用，事件会在本地缓冲。
+- **agenteye-collector**：部署在每台 agent 机器上的轻量级守护进程，负责批量打包事件并传输至服务器。
+- **服务器**：接收您的事件，在您自有数据库中维护运营状态，并提供仪表板、CLI 及您自定义集成所使用的 REST API。
+- **仪表板**：您浏览一切数据的地方。
+- **可选服务**：评分服务（评估）和 AI 助手服务（仪表板内聊天）。
+
+有关文档中使用的术语（*事件、会话、评估、审计、发现、事件*），请参阅[概念](/zh/concepts)。
+
+---
+
+## 获取 FailproofAI Cloud
+
+FailproofAI Cloud 是 Failproof AI 的企业级产品，与 FailproofAI guardrails（策略与护栏产品）同属 Failproof AI 品牌，并可协同使用。它完全运行在您自己的环境中。如果您尚未获得软件包访问权限，请申请演示，我们将为您完成配置：发送邮件至 [nikita@befailproof.ai](mailto:nikita@befailproof.ai)。
+
+---
+
+## 后续步骤
+
+- [概念](/zh/concepts)：FailproofAI Cloud 术语的集中说明。
+- [可观测性](/zh/cloud/overview)：逐次追踪您 agent 的行为。
+- [安全性](/zh/cloud/security)：FailproofAI Cloud 如何确保您的数据隔离并保持在您的掌控之下。

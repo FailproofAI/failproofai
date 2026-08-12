@@ -1,0 +1,46 @@
+---
+title: "Bảng điều khiển"
+description: "Biến dữ liệu agent trực tiếp của bạn thành một bức tranh chung mà toàn bộ team theo dõi."
+---
+
+
+Biến dữ liệu agent trực tiếp của bạn thành một bức tranh chung mà toàn bộ team theo dõi. Ghim các truy vấn quan trọng dưới dạng biểu đồ, và mọi người đều nhìn thấy cùng một bộ số liệu một cách rõ ràng, mà không cần chạy lại bất kỳ truy vấn nào.
+
+![A dashboard built from saved queries: an events-per-hour line, an errors-by-type bar, a latency area chart, and tokens-by-model](/cloud/images/dashboard-fleet.png)
+
+*Một bảng, bốn truy vấn đã lưu: sự kiện mỗi giờ, lỗi theo loại, độ trễ, và token theo mô hình.*
+
+## Mọi người đều nhìn thấy cùng một sự thật
+
+Ngừng dán ảnh chụp màn hình vào chat và ngừng chạy lại cùng một truy vấn năm lần mỗi ngày. Bảng điều khiển là một bảng chung, toàn công ty mà bất kỳ ai trong team của bạn đều có thể mở để xem chính xác cùng một view. Khi dữ liệu cơ bản thay đổi, biểu đồ cũng thay đổi theo, do đó bảng luôn được cập nhật và không ai phải tranh cãi về những con số cũ.
+
+Bảng fleet ở trên là một hình dạng tốt để bắt đầu cho hoạt động hàng ngày:
+
+- một dòng **events-per-hour**, để bạn có thể theo dõi thông lượng và phát hiện một sự giảm đột ngột
+- một biểu đồ cột **errors-by-type**, để các danh mục lỗi lớn nhất nổi bật
+- một biểu đồ khu vực **latency**, để các sự chậm lại được nhìn thấy trước khi người dùng phàn nàn
+- một bảng phân tích **tokens-by-model**, để chi phí luôn nằm trong tầm nhìn
+
+Bạn sẽ tìm thấy các bảng của mình tại `/<org-slug>/dashboards`.
+
+## Ghim các truy vấn bạn đã lưu
+
+Mỗi ô bắt đầu như một truy vấn đã lưu. Xây dựng và lưu truy vấn bạn quan tâm trong thư viện [Queries](/vi/cloud/queries) (các cài đặt sẵn tích hợp cộng với các truy vấn của riêng bạn, trên các sự kiện và đánh giá của bạn), sau đó ghim nó vào bảng điều khiển dưới dạng biểu đồ phù hợp với dữ liệu: một **line** cho xu hướng theo thời gian, một **bar** để so sánh các danh mục, một **area** cho khối lượng, hoặc một **pie** để chia nhỏ tỷ lệ.
+
+Vì một ô chỉ là truy vấn đã lưu của bạn được hiển thị dưới dạng biểu đồ, không có gì cần giữ đồng bộ bằng tay. Cập nhật truy vấn một lần và mỗi bảng điều khiển sử dụng nó sẽ được cập nhật.
+
+## Theo dõi chất lượng, không chỉ khối lượng
+
+Khối lượng cho bạn biết rằng các agent đang bận rộn. Chất lượng cho bạn biết rằng họ thực sự đang làm công việc. Hướng bảng điều khiển tới [điểm đánh giá](/vi/cloud/evaluations) của bạn và bạn sẽ nhận được một bảng theo dõi mức độ hoàn thành tốt của các lần chạy theo thời gian, do đó một sự suy giảm chất lượng sẽ hiển thị dưới dạng một dip trên biểu đồ thay vì một bất ngờ từ khách hàng.
+
+![A quality-focused dashboard built from saved evaluation queries](/cloud/images/dashboard-quality.png)
+
+*Một bảng chất lượng giữ điểm đánh giá của bạn ở vị trí trung tâm, ngay bên cạnh các con số hoạt động.*
+
+Giữ một bảng hoạt động và một bảng chất lượng cạnh nhau và team của bạn sẽ có một nơi duy nhất để trả lời cả "nó có hoạt động không?" và "nó có tốt không?", mà không ai cần chạy lại một truy vấn.
+
+## Liên quan
+
+- [Queries](/vi/cloud/queries): xây dựng và lưu các truy vấn trở thành các ô của bạn.
+- [Evaluations](/vi/cloud/evaluations): đánh giá các lần chạy của bạn để bạn có thể vẽ biểu đồ chất lượng theo thời gian.
+- [Alerts](/vi/cloud/alerts): biến một ngưỡng trên bất kỳ một trong những số liệu này thành một trang.

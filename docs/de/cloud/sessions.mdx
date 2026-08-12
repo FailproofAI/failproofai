@@ -1,0 +1,57 @@
+---
+title: "Sessions & Ausführungsgraph"
+description: "Alle Ereignisse eines Runs in einer übersichtlichen Zeile zusammengefasst und als Git-ähnlicher Ausführungsgraph dargestellt, den du in Sekunden erfassen kannst."
+---
+
+
+Schluss mit dem Rätseln, warum ein Run fehlgeschlagen ist. FailproofAI Cloud fasst alle Ereignisse eines Runs in einer lesbaren Zeile zusammen und zeichnet den gesamten Run als Git-ähnliches Diagramm, das du in Sekunden erfassen kannst – so siehst du genau, was dein Agent Schritt für Schritt getan hat.
+
+![Die Sessions-Liste: eine Zeile pro Run, über Umgebungen und Agents hinweg, mit Status-Pills und Bewertungsbadges](/cloud/images/sessions-list.png)
+
+*Eine Zeile pro Run: der Status-Pill zeigt auf einen Blick, wie der Run geendet hat, und ein Score-Badge erscheint, sobald ein Evaluator verbunden ist.*
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Agent-Tracing: einem einzelnen Run Schritt für Schritt folgen, vom Ziel über die Tools bis zur finalen Antwort.*
+
+---
+
+## Alle Runs auf einen Blick
+
+Der rohe Ereignisverlauf ist die Wahrheit hinter jedem Schritt – aber wenn du Tausende von Schritten über Dutzende von Runs hinweg hast, brauchst du den Run, nicht den einzelnen Schritt. Die Sessions-Seite fasst alle Ereignisse eines Runs in einer Zeile zusammen, sodass ein ganzer Tag an Aktivität zu einer übersichtlichen Liste wird, anstatt einem Datenstrom, der kaum zu verfolgen ist.
+
+Jede Zeile trägt einen Status-Pill, sodass ein fehlgeschlagener Run sofort ins Auge fällt, bevor du überhaupt klickst. Filtere nach Datumsbereich, Umgebung, Agent oder Session, um mit wenigen Klicks von „alles" zu „genau der Run, der mich interessiert" zu gelangen.
+
+Sobald du einen Evaluator verbindest, wird jeder abgeschlossene Run automatisch bewertet und sein aktueller Score erscheint als Badge in der Zeile. Du kannst nach jedem Score-Bereich filtern – „zeig mir alle niedrig bewerteten Prod-Runs dieser Woche" ist ein Filter, kein manueller Review-Prozess. Solange du noch keinen Evaluator eingerichtet hast, erfassen Sessions trotzdem den vollständigen Run, sie tragen nur noch keinen Score.
+
+---
+
+## Den gesamten Run als Diagramm lesen
+
+![Der Git-ähnliche Ausführungsgraph einer Session neben ihrer Ereigniszeitleiste, mit dem Panel für Tool-, Modell- und Hook-Aufschlüsselung](/cloud/images/session-detail.png)
+
+*Der Ausführungsgraph (links) liegt neben der Ereigniszeitleiste; die rechte Leiste schlüsselt Tools, Modelle, Hooks und Token-Verbrauch des Runs auf.*
+
+Klicke auf eine beliebige Session, um ihren Ausführungsgraph zu öffnen: eine Git-ähnliche Ansicht, die zeigt, wie Agents, Tools, Hooks und Modellaufrufe sich im Zeitverlauf entfaltet haben. Parallele Sub-Agents verzweigen sich jeweils auf ihre eigene Spur, sodass du siehst, welche Arbeit parallel lief, welcher Sub-Agent ins Stocken geraten ist und wo der Run vom Kurs abgekommen ist – ohne ihn gedanklich aus einem Wust von Logs rekonstruieren zu müssen.
+
+Die rechte Leiste liefert dir die Run-spezifische Aufschlüsselung: welche Tools und Modelle liefen, welche Hooks gefeuert haben und was der Run an Tokens gekostet hat. Das ist die Antwort auf „Warum hat dieser Run so viel gekostet?" oder „Welches Tool ist das langsame?" – direkt neben dem Graphen, der dazu geführt hat.
+
+Einzelne Ereignisse sind adressierbar, sodass du jemandem einen Link zu einem bestimmten Moment schicken kannst, anstatt „die Session, ungefähr zwei Drittel runter". Kopiere den Link aus einem beliebigen Ereignis, oder folge einem Link aus einem [Audit](/de/cloud/audits)-Fund oder einem Fehler – die Session öffnet sich dann mit dem ausgewählten und angezeigten Ereignis. Das gilt auch für sehr lange Runs: Die Zeitleiste lädt aus Rücksicht auf deinen Browser ein begrenztes Fenster, und ein Link, der über dieses Fenster hinausweist, findet sein Ereignis trotzdem, anstatt dich am Anfang abzusetzen. Wenn das Ereignis aus deinem Aufbewahrungsfenster herausgefallen ist, teilt dir die Seite das mit, anstatt stillschweigend nichts auszuwählen.
+
+---
+
+## Wo du es findest
+
+Jede Dashboard-Seite ist auf deine Org beschränkt (`/<org-slug>/…`). Sessions findest du unter **Observe** in der linken Seitenleiste, neben Events, mit den Filtern für Datumsbereich, Umgebung, Agent und Session am oberen Rand der Liste. Jede Zeile ist einen Klick von ihrem vollständigen Ausführungsgraph entfernt.
+
+Um die Score-Badges und die Score-Bereich-Filterung zu aktivieren, verbinde einen Evaluator: siehe [Evaluations](/de/cloud/evaluations).
+
+---
+
+## Verwandte Themen
+
+- [Event stream](/de/cloud/event-stream): der rohe, schrittweise Verlauf, aus dem jede Session zusammengesetzt wird.
+- [Evaluations](/de/cloud/evaluations): verbinde einen Evaluator, damit jeder Run einen Score-Badge erhält, nach dem du filtern kannst.
+- [Telemetry](/de/cloud/performance): wie Runs von deinem Agent in diese Sessions gelangen.

@@ -188,12 +188,14 @@ when something goes wrong. → [Dashboard guide](https://docs.befailproof.ai/das
 
 | | |
 |---|---|
-| [Getting Started](https://docs.befailproof.ai/getting-started) | Installation and first steps |
-| [Built-in Policies](https://docs.befailproof.ai/built-in-policies) | All 30 policies with parameters |
+| [Quickstart](https://docs.befailproof.ai/quickstart) | Installation and first steps |
+| [How it works](https://docs.befailproof.ai/how-it-works) | Tool call → decision → dashboard, end to end |
+| [Built-in Policies](https://docs.befailproof.ai/built-in-policies) | All 39 policies with parameters |
 | [Custom Policies](https://docs.befailproof.ai/custom-policies) | Write your own |
 | [Configuration](https://docs.befailproof.ai/configuration) | Config scopes and merge rules |
+| [Supported agents](https://docs.befailproof.ai/agent-support) | All 12 agent CLIs, and what each can block |
 | [Dashboard](https://docs.befailproof.ai/dashboard) | Session monitor and policy activity |
-| [Architecture](https://docs.befailproof.ai/architecture) | How the hook system works |
+| [FailproofAI Cloud](https://docs.befailproof.ai/cloud/overview) | Fleet-wide policy, observability, and evaluation |
 
 ---
 

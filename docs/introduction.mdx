@@ -1,57 +1,162 @@
 ---
-title: "Failproof AI"
-description: "FailproofAI gives AI agents 39 built-in failure policies that catch loops, secret leaks, destructive tool calls, and more in a single install."
+title: "FailproofAI"
+description: "Guardrails that stop AI agents from doing damage, on every machine — and one cloud that governs the whole fleet and shows you exactly what happened."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-Hooks and policies for **AI failure handling**, **error recovery**, and **LLM reliability**. Keep your AI agents reliable and running autonomously across **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI**, and the **Agents SDK**.
+AI coding agents fail in predictable ways. They run a destructive command, paste a
+credential into a model prompt, force-push over someone's work, wander off task, loop,
+or quietly stop three steps short of done. One engineer watching one terminal catches
+most of it. A team running agents on twenty machines, overnight, catches none of it.
 
-AI agents fail in predictable ways. They run destructive commands, leak secrets, drift off-task, get stuck in loops, or push directly to main. Left unattended, small failures cascade into outages, leaked credentials, and lost work.
-
-FailproofAI solves this with **policies**. These rules hook into every agent tool call to **detect failures**, **mitigate them** (block, instruct, sanitize), and **alert you** when something needs attention. A local dashboard lets you review every tool call, agent failure, and recovery action afterward.
-
-Transcripts and policy evaluation stay on your machine. Data is sent only when you explicitly use an online feature, such as authenticated audit reminders or invitations.
-
-## Get started
+**FailproofAI is the guardrail layer for that problem.** It hooks into the agent CLIs
+your team already uses, decides in real time whether each tool call is allowed, and
+records what happened. It is one product with two halves that work as one system:
 
 <CardGroup cols={2}>
 
-<Card title="39 built-in policies" icon="shield" href="/built-in-policies">
-  Block destructive commands, prevent secret leakage, keep agents inside project boundaries, and more. All out of the box.
+<Card title="Guardrails on every machine" icon="shield-halved" href="/policies">
+  A policy engine that runs *inside* the agent loop across **12 agent CLIs**. It blocks
+  what should never happen, redacts what should never be read, and refuses to let an
+  agent call itself done before the work actually is. Open source, local, fast enough to
+  sit on every tool call.
 </Card>
 
-<Card title="Custom policies" icon="code" href="/custom-policies">
-  Write your own rules in JavaScript with a simple allow / deny / instruct API.
-</Card>
-
-<Card title="Agent monitor" icon="chart-line" href="/dashboard">
-  See what your agents did while you were away. Browse sessions, inspect tool calls, review where policies fired.
-</Card>
-
-<Card title="Easy configuration" icon="gear" href="/configuration">
-  Tune any policy without code. Set allowlists, protected branches, or thresholds per-project or globally.
+<Card title="FailproofAI Cloud" icon="cloud" href="/cloud/overview">
+  One place to see every agent your organization runs, deploy policy to every machine
+  from a dashboard, replay any run step by step, score quality automatically, and get
+  paged when something breaks. Your fleet, governed centrally.
 </Card>
 
 </CardGroup>
 
-## Quick start
+---
 
-<CodeGroup>
+## What it actually does
 
-```bash npm
-npm install -g failproofai
-```
+Three things, in the order you will meet them.
 
-```bash bun
-bun add -g failproofai
-```
+### 1. It stops the failure before it lands
 
-</CodeGroup>
+Every tool call your agent makes passes through FailproofAI first. A policy returns one
+of three decisions:
 
-```bash
-failproofai policies --install   # enable policies (or skip — `failproofai` will offer to set them up on first run)
-failproofai                      # launch the dashboard
-```
+| Decision | Effect |
+|---|---|
+| **allow** | The agent proceeds. Optionally with a note back to the model ("CI is green"). |
+| **deny** | The call never runs. The agent is told why, in words it can act on. |
+| **instruct** | The call runs, and the agent gets extra context to keep it on track. |
 
-See the [Getting started](/getting-started) guide for the full walkthrough.
+**[39 built-in policies](/built-in-policies)** ship in the box — secret redaction,
+destructive-command blocking, branch protection, infrastructure guards, workflow gates.
+You enable the ones you want in a single command, tune them without writing code, and
+[write your own](/custom-policies) in JavaScript when your failure mode is specific to
+your codebase.
+
+### 2. It shows you what your agents did while you were away
+
+Every decision is recorded. The [local dashboard](/dashboard) replays any session as a
+readable timeline: every tool call, its input and output, and which policies fired on it.
+The [audit](/audit) reads back through your existing transcripts and tells you which
+failure modes your agents already have — with a score, a ranked fix list, and the exact
+command to close each gap.
+
+### 3. It scales from your laptop to your fleet
+
+Connect a machine to [FailproofAI Cloud](/cloud/overview) and two things start flowing:
+policy comes *down* from the dashboard, and activity goes *up* to it. You stop asking
+"did everyone install the new rule?" — you deploy it once and watch the fleet pick it up.
+
+---
+
+## Why teams pick it
+
+<CardGroup cols={2}>
+
+<Card title="It fails closed, not open" icon="lock">
+  On a configured machine, a guardrail that cannot answer **denies**. No silent
+  degradation into an unguarded state, no "the service was down so everything was
+  allowed." [How that guarantee works →](/daemon)
+</Card>
+
+<Card title="It works with the agents you already run" icon="plug">
+  Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory Droid,
+  Devin, Antigravity, and Goose. One install, one policy set, every CLI.
+  [Full support matrix →](/agent-support)
+</Card>
+
+<Card title="Policy is code your team owns" icon="code-branch">
+  Drop a file into `.failproofai/policies/`, commit it, and every teammate has the rule
+  on their next pull. No per-developer setup, no central approval queue.
+</Card>
+
+<Card title="Local stays local until you say otherwise" icon="eye-slash">
+  Policy evaluation and transcripts never leave the machine unless you connect to the
+  cloud — and when you do, the CLI tells you exactly what starts leaving before it does.
+  [What gets sent →](/cloud/connect#what-leaves-this-machine)
+</Card>
+
+</CardGroup>
+
+---
+
+## Start here
+
+<Steps>
+  <Step title="Install and set up — about two minutes">
+    ```bash
+    npm install -g failproofai
+    failproofai config
+    ```
+
+    Two questions: **Recommended or Customize**, and **connect to the cloud or stay
+    local**. Everything else is inferred from what is already on the machine.
+
+    [Full walkthrough →](/quickstart)
+  </Step>
+  <Step title="Run your agent as usual">
+    Nothing about how you work changes. When the agent tries something a policy catches,
+    the call is blocked and the agent is told why — and it recovers, because the denial
+    reads like instructions rather than an error.
+  </Step>
+  <Step title="Look at what happened">
+    ```bash
+    failproofai        # the local dashboard, on http://localhost:8020
+    ```
+
+    Or connect to the cloud and see every machine in one place.
+  </Step>
+</Steps>
+
+---
+
+## Where to go next
+
+<CardGroup cols={3}>
+
+<Card title="Quickstart" icon="rocket" href="/quickstart">
+  Installed and guarded, end to end.
+</Card>
+
+<Card title="How it works" icon="sitemap" href="/how-it-works">
+  The whole path, from a tool call to a decision to the dashboard.
+</Card>
+
+<Card title="Concepts" icon="book" href="/concepts">
+  Every term used in these docs, defined once.
+</Card>
+
+<Card title="Built-in policies" icon="shield" href="/built-in-policies">
+  All 39, with their parameters.
+</Card>
+
+<Card title="Custom policies" icon="code" href="/custom-policies">
+  Your own rules in JavaScript.
+</Card>
+
+<Card title="FailproofAI Cloud" icon="cloud" href="/cloud/overview">
+  Fleet-wide policy, observability, and evaluation.
+</Card>
+
+</CardGroup>

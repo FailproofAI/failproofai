@@ -1,0 +1,56 @@
+---
+title: "Abfragen"
+description: "Stellen Sie Ihren Agentendaten beliebige Fragen und erhalten Sie in Sekunden eine Antwort."
+---
+
+
+Stellen Sie Ihren Agentendaten beliebige Fragen und erhalten Sie in Sekunden eine Antwort. FailproofAI Cloud bietet Ihnen eine Bibliothek gespeicherter, sofort ausführbarer Abfragen über Ihre Events und Auswertungen – damit starten Sie mit einem funktionierenden Beispiel statt vor einem leeren SQL-Editor.
+
+![Die Bibliothek gespeicherter Abfragen: ein Raster wiederverwendbarer Abfragen, sowohl eingebaute Vorlagen als auch eigene](/cloud/images/queries.png)
+
+*Ihre Bibliothek gespeicherter Abfragen unter `/<org-slug>/queries`: eingebaute Vorlagen neben den Abfragen, die Ihr Team gespeichert hat.*
+
+## Mit einer Vorlage starten, nicht auf einer leeren Seite
+
+Sie müssen sich keine Tabellennamen merken oder SQL von Grund auf schreiben. Die Bibliothek öffnet sich mit eingebauten Vorlagen für die Fragen, die Teams am häufigsten stellen – direkt neben den Abfragen, die Ihr Team selbst gespeichert und benannt hat. Wählen Sie eine aus, die Ihrem Bedarf nahekommt, und Sie sind der Antwort schon einen großen Schritt näher.
+
+Jede gespeicherte Abfrage ist organisationsweit gültig und geteilt, sodass nützliche Abfragen Ihrer Teammitglieder auch Ihnen zur Verfügung stehen. Geben Sie einer Abfrage einmalig einen Namen und eine Beschreibung, und jede Person in Ihrer Organisation kann sie finden, ausführen oder ihre Ergebnisse später in ein Dashboard einbinden.
+
+Sie finden die Bibliothek unter `/<org-slug>/queries`.
+
+## Im SQL-Composer anpassen und ausführen
+
+Öffnen Sie eine beliebige Abfrage, und sie wird im SQL-Composer angezeigt, wo Sie sie anpassen und die Antwort sofort sehen können – kein Export, kein Umweg, kein Warten auf jemand anderen.
+
+![Der SQL-Abfrage-Composer mit einer gespeicherten Abfrage, einer Schema-Seitenleiste und einem Live-Ergebnisraster](/cloud/images/query-lab.png)
+
+*Der SQL-Composer: Ihre Abfrage auf der linken Seite, eine Schema-Seitenleiste damit Sie nie einen Spaltennamen erraten müssen, und ein Live-Ergebnisraster darunter.*
+
+- **Eine Schema-Seitenleiste** zeigt die Analysetabellen und ihre Spalten übersichtlich an, sodass Sie eine Abfrage formulieren können, ohne nach Feldnamen suchen zu müssen.
+- **Ein Live-Ergebnisraster** liefert Zeilen sofort nach der Ausführung, sodass Sie in Sekunden iterieren können, anstatt zu raten und erneut zu raten.
+- **Nur-Lese-Design.** Abfragen werden gegen Ihren Event-Store ausgeführt und serverseitig validiert: Nur `SELECT`- und `WITH`-Anweisungen sind erlaubt, mit einem Anweisungs-Timeout und einer Zeilenbegrenzung. Eine explorative Abfrage kann Ihre Daten niemals verändern, und eine unkontrolliert laufende wird automatisch gestoppt.
+
+Zufrieden mit dem Ergebnis? Speichern Sie es in der Bibliothek, damit das gesamte Team davon profitiert, oder binden Sie die Ausgabe als Linien-, Balken-, Flächen- oder Kreisdiagramm-Kachel in ein Dashboard ein.
+
+## Über das Terminal ausführen oder vom Assistenten schreiben lassen
+
+Dieselben gespeicherten Abfragen folgen Ihnen überall hin:
+
+- **Über das Terminal.** Die `agenteye`-CLI listet, führt aus und speichert dieselben Abfragen, sodass Sie ein Ergebnis in ein Skript einfügen, in CI einbinden oder an einen Coding-Agenten weitergeben können.
+
+```bash
+agenteye query list                 # die gleichen gespeicherten Abfragen, aus Ihrem Terminal
+agenteye query run errs --arg prod  # eine ausführen und die Zeilen ausgeben (--json zum Weiterleiten hinzufügen)
+```
+
+  Siehe [CLI und Agenten](/de/cloud/cli) für den vollständigen Befehlssatz.
+
+- **Über den KI-Assistenten.** Sie sind unsicher, wie Sie das SQL formulieren sollen? Fragen Sie den [KI-Assistenten](/de/cloud/assistant) im Dashboard auf normalem Deutsch, und er wird die Abfrage entwerfen und für Sie in Ihrer Bibliothek speichern.
+
+Das Ausführen einer gespeicherten Abfrage ist durch die Berechtigung `queries:run` geschützt, die getrennt von den Berechtigungen zum Erstellen oder Löschen von Abfragen verwaltet wird. So können Sie Lesezugriff erteilen, ohne allen zu erlauben, die Bibliothek umzuschreiben.
+
+## Verwandte Themen
+
+- [Dashboards](/de/cloud/dashboards): Abfrageergebnisse in geteilte, organisationsweite Diagramme einbinden.
+- [KI-Assistent](/de/cloud/assistant): Fragen auf normalem Deutsch stellen und eine fertige Abfrage erhalten.
+- [CLI und Agenten](/de/cloud/cli): Dieselben Abfragen über das Terminal ausführen und speichern.

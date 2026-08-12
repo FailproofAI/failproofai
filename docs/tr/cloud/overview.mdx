@@ -1,0 +1,107 @@
+---
+title: "Failproof AI: Ajanlarınızdaki Hataları Gözlemleyin"
+description: "FailproofAI Cloud, üretim ortamında AI ajanlarınızı gözlemlemek, değerlendirmek ve geliştirmek için kendi sunucunuzda çalışan bir platformdur."
+---
+
+FailproofAI Cloud, üretim ortamında AI ajanlarınızı gözlemlemek, değerlendirmek ve geliştirmek için kendi sunucunuzda çalışan bir platformdur. Ajanlarınızın yaptığı her şeyi kaydeder (her araç çağrısı, model isteği, hook ve hata), her çalıştırmanın kalitesini puanlandırır ve bilmediğiniz hataları ortaya çıkarır — tamamı kendi altyapınızda çalıştırdığınız bir panoda.
+
+AI ajanları yayınladıysanız ve bir çalıştırmanın neden başarısız olduğunu tahmin etmekten bıktıysanız, burası başlamanız gereken sayfa. FailproofAI Cloud'nin size ne sunduğunu ve parçaların nasıl bir araya geldiğini açıklar; herhangi bir şey yüklemeden önce okuyun.
+
+> **FailproofAI Cloud, Failproof AI'dan bir kurumsal üründür.** Canlı olarak görmek ister misiniz? Bir demo talep edin: [nikita@befailproof.ai](mailto:nikita@befailproof.ai) adresine e-posta gönderin.
+
+![FailproofAI Cloud oturumu, git tarzı bir yürütme grafiği olarak çizilmiş, yanında olay zaman çizelgesi ve sağ panelde araçlar, modeller ve hooklar ayrıntısı](/cloud/images/session-detail.png)
+
+*Her ajan çalıştırması, git tarzı bir yürütme grafiği (sol) olarak çizilmiş ve yanında olay zaman çizelgesi vardır. Paralel alt ajanların her birinin kendi şeridi vardır; sağ panel, çalıştırmanın araçlarını, modellerini, hooklarını ve token harcamasını ayrıntılarıyla gösterir.*
+
+---
+
+## Canlı olarak görmek
+
+İki kısa video, ekiplerin ilk başta yaptığı iki şeyi gösterir: bir çalıştırmayı izlemek ve hataları otomatik olarak bulma.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="İzleyin: Failproof AI tarafından Ajan İzleme (2 dk)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Ajan izleme: hedeften araçlara ve son cevaba kadar tek bir çalıştırmayı adım adım izleyin.*
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="İzleyin: Ajanınızın nerede başarısız olduğunu otomatik olarak bulun (2 dk)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+*Failproof Audit: FailproofAI Cloud'nin günlüklerinizi oturumlar arasında analiz etmesine izin verin ve ne düzeltmesi gerektiğini öğrenin.*
+
+---
+
+## Ekipler neden kullanıyor
+
+- **Ajanınızın gerçekte ne yaptığını görün.** Her çalıştırma okunabilir bir git tarzı yürütme grafiğine dönüşür: hangi araçlar paralel çalıştı, hangi alt ajanlar dallandı, nerede durdu ve ne harcadı.
+- **Kalite gerilemeşini otomatik olarak yakalayın.** Küçük bir puanlama hizmetini bağlayın ve FailproofAI Cloud her tamamlanan çalıştırmayı puanlandırır; böylece yardımcılıkta düşüş veya halüsinasyonlarda artış kendi kendine ortaya çıkar.
+- **Kuralı yazacağınızı bilmediğiniz hataları bulun.** Yinelenen denetimler, günlüklerinizi oturumlar arasında hata kümeleri, gecikme aykırı değerleri, düşük puanlar ve takılı çalıştırmalar açısından analiz eder, ardından size sıralanmış, kanıtla desteklenmiş bulgular sunar.
+- **Önemli olduğunda sayfa alın.** Eşik kuralları hata oranı, gecikme, maliyet veya değerlendirici puanlarında çalışır ve yanıtlayabileceğiniz, atayabileceğiniz ve çözebileceğiniz olaylar açar.
+- **Düz İngilizcede sorular sorun.** Panoda yer alan bir AI asistanı, kendi verileriniz üzerinde „bu hafta üretimde kalite nasıl gelişiyor?" gibi soruları yanıtlar. Yaptığı her değişiklik onay geçidir.
+- **Verilerinizi tutun.** FailproofAI Cloud kendi sunucunuzda çalışır: olaylar, istemler ve analizler kontrol ettiğiniz altyapıda kalır.
+
+---
+
+## Ne alıyorsunuz
+
+FailproofAI Cloud, üç fikir etrafında organize edilmiştir (**gözlemle**, **analiz et** ve **yönet**), panelin sol kenar çubuğuna yansıtılır.
+
+**Gözlemle** (ne olduğunun ham gerçeği):
+
+- **[Olay akışı](/tr/cloud/event-stream)**: her çalıştırmanın canlı, adım adım izi (araç çağrıları, model çağrıları, hooklar, hatalar).
+- **[Oturumlar](/tr/cloud/sessions)**: bu olaylar, çalıştırma başına bir satır halinde, her biri puanlandırılmaya hazır, git tarzı bir yürütme grafiği ile birlikte sunulur.
+- **[Performans metrikleri](/tr/cloud/performance)**: yüzey başına gecikme harita grafikleri ve modeller, araçlar ve hooklar için p50/p95/p99 vitalleri; böylece kuyruk artışı ortalamanın dışında görünür.
+- **[Hata izleme](/tr/cloud/errors)**: her şeyin ters gittiği tek bir işlem yüzeyinde; bir uyarının ateşlenmesinden tek bir tıkla uzak.
+
+![Tools gözlemle sayfası: gecikme harita grafiği, yüzdelik dilim bandı ve 24 zaman kutusu üzerinde araç dağılım çubuğu](/cloud/images/tools.png)
+
+*Her gözlemle yüzeyi, bir kıvılcım çizgisi ve p50/p95/p99 vitalleriyle bir gecikme harita grafiği ve yüzdelik dilim bandını eşleştirir. Gösterilen: Araçlar.*
+
+**Analiz et** (etkinliği cevaplara dönüştürün):
+
+- **[Sorgular](/tr/cloud/queries)** ve **[panolar](/tr/cloud/dashboards)**: olaylarınız ve değerlendirmeleriniz üzerinde kaydedilmiş SQL, paylaşılan, kurum kapsamı panolara çizilmiştir.
+- **[Değerlendirmeler](/tr/cloud/evaluations)**: kendi değerlendirici hizmetiniz tarafından üretilen kalite puanları, puan başına akıl yürütmesi ile.
+- **[Denetimler](/tr/cloud/audits)**: oturumlar arasında hata modellerini ortaya çıkaran yinelenen araştırmalar.
+- **[Uyarılar](/tr/cloud/alerts)** ve **[olaylar](/tr/cloud/incidents)**: sizi sayfaya alan eşik kuralları, artı bunları işlemek için bir olay iş akışı.
+
+**Arayüzler** (verilerinize kendi yolunuzla ulaşın):
+
+- **[CLI](/tr/cloud/cli)**: tüm dağıtımınızı terminalden veya bir betikten çalıştırın ve bir kodlama ajanının bunu düz İngilizcede yapmasına izin verin.
+- **[AI asistanı](/tr/cloud/assistant)**: ajanlarınız hakkında düz İngilizcede soru sorun, doğrudan panoda.
+- **REST API**: panelin ve CLI'nin yaptığı her şey, kapsamlı bir [API anahtarı](/tr/cloud/access) ile doğrudan çağırabileceğiniz bir REST API tarafından desteklenir — olayları alın, oturumları ve değerlendirmeleri sorgulayın ve panoları, uyarıları, denetimleri, kullanıcıları ve anahtarları yönetin; böylece FailproofAI Cloud'yi kendi araçlarınızla entegre edin.
+
+**Yönet** (ekibiniz için çalıştırın):
+
+- **[API anahtarları](/tr/cloud/access)**: toplayıcı, pano ve asistan için kapsamlı jetonlar.
+- **Kullanıcılar**: şifresiz, e-posta tabanlı oturum açma ve izin listesiyle.
+- **Ayarlar**: kurum başına yapılandırma, model bağlam penceresi geçersiz kılmalar dahil.
+
+---
+
+## Parçalar nasıl bir araya gelir
+
+Veri bir yönde akar, ajan kodunuzdan panoya: ajanınız (Python SDK aracılığıyla) agenteye-toplayıcıya olaylar yayınlar; bu olaylar sunucuya gönderilir ve sunucu panoyu sunar. İki isteğe bağlı hizmet bunu tamamlar — bir puanlama hizmet (değerlendirmeler) ve bir AI asistan hizmet (panoda sohbet).
+
+- **Python SDK**: ajanınıza birkaç `agenteye.event.*` çağrısı eklersiniz; olaylar yerel olarak arabelleğe alınır.
+- **agenteye-toplayıcı**: her ajan makinesinde, olayları toplu olarak işleyen ve sunucuya gönderen hafif bir daemon.
+- **Sunucu**: olaylarınızı alır, operasyonel durumu kendi veritabanlarınızda tutar ve pano, CLI ve kendi entegrasyonlarınızın hepsinin kullandığı REST API'yi sunar.
+- **Pano**: her şeyi keşfettiğiniz yer.
+- **İsteğe bağlı hizmetler**: bir puanlama hizmet (değerlendirmeler) ve bir AI asistan hizmet (panoda sohbet).
+
+Belgeler genelinde kullanılan kelime dağarcığı (*olay, oturum, değerlendirme, denetim, bulgu, olay*) için bkz. [Kavramlar](/tr/concepts).
+
+---
+
+## FailproofAI Cloud'yi Almak
+
+FailproofAI Cloud, Failproof AI'dan bir kurumsal üründür ve FailproofAI guardrails — politika ve korkuluk ürünü — ile Failproof AI markası altında birlikte çalışır. Tamamen kendi ortamınızda çalışır. Paketlere henüz erişiminiz yoksa, bir demo talep edin ve sizi hazırlayacağız: [nikita@befailproof.ai](mailto:nikita@befailproof.ai) adresine e-posta gönderin.
+
+---
+
+## Sonraki adımlar
+
+- [Kavramlar](/tr/concepts): FailproofAI Cloud kelime dağarcığı bir yerde.
+- [Observabilite](/tr/cloud/overview): ajanlarınızın ne yaptığını, çalıştırmayı izleyin.
+- [Güvenlik](/tr/cloud/security): FailproofAI Cloud verilerinizi nasıl izole tuttuğu ve kontrol altında tuttuğu.

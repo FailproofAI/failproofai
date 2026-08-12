@@ -1,0 +1,117 @@
+---
+title: Migrate the home directory
+description: "Bring ~/.failproofai up to the layout this version speaks, and see what would happen first"
+---
+
+```bash
+failproofai migrate --dry-run   # print the plan, change nothing
+failproofai migrate             # run it
+```
+
+Most people never type this. It runs by itself on the first command after an
+upgrade, and [`failproofai update`](/cli/update) includes it. Reach for it
+directly when you want to see the plan before it happens, or to run the migration
+on its own.
+
+## Keyed on the layout, not the version
+
+`~/.failproofai/VERSION` records a **layout** number — the shape of the directory,
+not the release that wrote it. Migrations are keyed on that number, which is what
+makes a long gap cheap:
+
+- npm versions change on every release, dozens of them between two layouts.
+- So a machine that skips thirty releases with **no layout change** runs **zero**
+  migrations, not thirty no-ops.
+- And a machine that skips several layouts at once runs each step in order, each
+  step knowing only its own two ends.
+
+That matters because npm cannot update an installed package on its own. A machine
+sitting on one version for months and then jumping several layouts is the normal
+case, not the exotic one.
+
+## The dry run
+
+`--dry-run` prints the exact chain and the files that would be saved first, and
+changes nothing at all — no migration, no backup, no ledger entry:
+
+```
+Layout 2 on disk; this build speaks 3.
+1 step(s) would run:
+  2 → 3  layout 2 → 3: carry config.toml and credentials.toml into JSON, move
+         custom-policies/ back up into policies/, nest the policy config at the root
+
+These would be copied to ~/.failproofai/migrations/backup-layout2 first:
+  VERSION
+  config.toml
+  credentials.toml
+```
+
+## What is carried, and what is rebuilt
+
+Every path in the home declares what kind of data it holds, and that decides
+whether a migration may throw it away. The rule: **derived and re-fetchable may be
+dropped; anything you typed, anything not yet delivered, and anything that
+identifies the machine is carried.**
+
+| Carried | Rebuilt or re-fetched |
+|---|---|
+| `config.json` — settings, `daemon.configured`, extra capture paths | The audit cache |
+| `credentials.json` — your cloud enrolment | Cloud-managed deployments (re-fetched and digest-verified on the next poll) |
+| `policies-config.json` — your policy selection and params | Daemon scratch state |
+| `policies/` — your own policy files and the helpers they import | |
+| `hook-activity/` — the decision log the dashboard reads | |
+| Undelivered events still queued for upload | |
+| `cursors/` — collector watermarks | |
+| The daemon binary in `bin/` | |
+
+<Note>
+  Undelivered events are carried rather than dropped because the loss would be
+  permanent, not slow: the collector's watermark has already advanced past
+  anything sitting in the spool, so nothing would ever read that range of a
+  transcript again. The migration also asks the daemon to deliver what is spooled
+  as soon as it finishes, so the usual outcome is that there is nothing left to
+  carry.
+</Note>
+
+Keys a *newer* version wrote into `config.json`, `credentials.json` or
+`policies-config.json` are preserved too, rather than dropped by an older reader.
+
+## The record it leaves
+
+```
+~/.failproofai/migrations/
+  applied.json                 one entry per step: layout, CLI, timestamp, duration, result
+  backup-layout<n>/            copies of the irreplaceable files, taken before the first step
+```
+
+`applied.json` is what answers "what has this machine actually been through" — the
+first question worth asking when something looks wrong after an upgrade. Attach it
+to a bug report.
+
+The backup is deliberately small rather than a copy of the whole directory: the
+migration no longer deletes anything irreplaceable by design, so what is worth
+insuring against is a *defect in a step*, and these few files are where such a
+defect would hurt.
+
+## If a step fails
+
+The chain stops there. `VERSION` is stamped only by a step that completed, so the
+home stays marked with its old layout and the next command retries it — a home is
+never marked current on the strength of a partial migration. The step is recorded
+in `applied.json` with `"ok": false`, and the backup is where it was taken.
+
+## A newer home is refused, not migrated
+
+If `~/.failproofai/` was written by a **newer** failproofai than the one you are
+running, the command stops and tells you to upgrade instead. That data is fine and
+a newer CLI reads it; migrating "forward" from it is not a thing that exists, and
+resetting it would destroy something recoverable.
+
+```
+This machine's failproofai directory was written by a newer version (layout 4;
+this build speaks 3). Upgrade rather than migrate:
+  npm install -g failproofai@latest
+```
+
+The daemon applies the same rule: `failproofaid` refuses to start against a layout
+it does not speak, rather than reading and writing paths that have moved.

@@ -1,0 +1,46 @@
+---
+title: "Panolar"
+description: "Canlı aracı verilerinizi tüm ekibinizin izlediği tek bir görüntüye dönüştürün."
+---
+
+
+Canlı aracı verilerinizi tüm ekibinizin izlediği tek bir görüntüye dönüştürün. Önemli sorgularını grafikler olarak sabitleyin ve herkes bir bakışta aynı sayıları görür—hiç bir sorguyu yeniden çalıştırmaya gerek kalmaz.
+
+![Kaydedilmiş sorgulardan oluşturulmuş bir pano: saatlik olayların satırı, türe göre hatalar çubuğu, gecikme alan grafiği ve modele göre tokenler](/cloud/images/dashboard-fleet.png)
+
+*Bir pano, dört kaydedilmiş sorgu: saatlik olaylar, türe göre hatalar, gecikme ve modele göre tokenler.*
+
+## Herkes aynı gerçeği görür
+
+Ekran görüntülerini sohbete yapıştırmayı ve aynı sorguyu günde beş kez çalıştırmayı bırakın. Pano, ekibinizdeki herkesin tam olarak aynı görünümü açabileceği paylaşılan, kuruluş genelinde bir tahta olur. Alttaki veriler değiştiğinde, grafikler bununla birlikte hareket eder, bu nedenle pano her zaman günceldir ve kimse eski sayılar üzerinde tartışmaz.
+
+Yukarıdaki filo panosu günlük işlemler için iyi bir başlangıç şeklidir:
+
+- bir **saatlik olayları** satırı, böylece verimliliği izleyebilir ve ani bir düşüşü yakalayabilirsiniz
+- bir **türe göre hatalar** çubuğu, böylece en büyük başarısızlık kategorileriniz hemen göze çarpar
+- bir **gecikme** alan grafiği, böylece yavaşlamalar kullanıcılar şikayetçi olmadan görülür
+- bir **modele göre tokenler** dökümü, böylece maliyet göz önünde tutulur
+
+Panolarınızı `/<org-slug>/dashboards` adresinde bulacaksınız.
+
+## Zaten kaydettiğiniz sorguları sabitleyin
+
+Her karo kaydedilmiş bir sorguyla başlar. [Sorguları](/tr/cloud/queries) kütüphanesinde (yerleşik ön ayarlar artı kendi öğeleriniz, olaylarınız ve değerlendirmeleriniz üzerinde) önemsediğiniz sorguyu oluşturun ve kaydedin, ardından bunu veriye uygun grafik olarak bir panoya sabitleyin: trend için bir **satır**, kategorileri karşılaştırmak için bir **çubuk**, hacim için bir **alan** veya hisse dökümü için bir **pasta**.
+
+Bir karo sadece kaydedilmiş sorgunuz grafik olarak gösterildiğinden, elimiz tarafından senkronizasyonda tutulacak bir şey yoktur. Sorguyu bir kez güncelleyin ve onu kullanan her pano da güncellenir.
+
+## Sadece hacmi değil, kaliteyi izleyin
+
+Hacim, aracıların meşgul olduğunu gösterir. Kalite, aslında işi yaptıklarını gösterir. Bir panoları [değerlendirme puanlarınıza](/tr/cloud/evaluations) yönlendirin ve zamanla çalıştırmaların ne kadar iyi gittiğini izleyen bir pano alırsınız, bu nedenle kalite gerilemeleri bir müşteriden sürpriz yerine bir grafikte düşüş olarak görülür.
+
+![Kaydedilmiş değerlendirme sorgularından oluşturulmuş, kaliteye odaklanan bir pano](/cloud/images/dashboard-quality.png)
+
+*Bir kalite panosu, değerlendirme puanlarınızı ön plana ve merkeze alır, işletimsel sayıların hemen yanında.*
+
+Operasyon panolarını ve kalite panolarını yan yana tutun ve ekibinizin "çalışıyor mu?" ve "iyi mi?" soruların her ikisine de cevap vermek için bir yeri vardır, hiç kimse bir sorguyu yeniden çalıştırmaz.
+
+## İlgili
+
+- [Sorgular](/tr/cloud/queries): karolar haline gelen sorguları oluşturun ve kaydedin.
+- [Değerlendirmeler](/tr/cloud/evaluations): zamanla kaliteyi grafiklendirmek için çalıştırmalarınız puanlayın.
+- [Uyarılar](/tr/cloud/alerts): bu ölçümlerden herhangi birine bir eşik dönüştürün.

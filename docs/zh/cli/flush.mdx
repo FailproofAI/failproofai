@@ -1,0 +1,64 @@
+---
+title: failproofai flush
+description: "Deliver everything already spooled, now, instead of waiting for the next sweep."
+icon: paper-plane
+---
+
+```bash
+failproofai flush
+failproofai flush --wait
+failproofai flush --wait --timeout 120
+```
+
+A connected machine batches what it collects and uploads on its own schedule. `flush`
+delivers everything waiting immediately.
+
+Use it when you are standing in front of the dashboard wondering whether something arrived
+— which is exactly the moment a background sweep interval feels longest.
+
+---
+
+## Options
+
+| Flag | Meaning |
+|---|---|
+| `--wait` | Block until the spool drains, or the timeout expires. |
+| `--timeout <secs>` | How long to wait with `--wait`. Default: 60. |
+
+Without `--wait` the command asks for a delivery and returns immediately. With `--wait` it
+returns only once there is nothing left outstanding — which makes it useful at the end of a
+CI job, or as the last line of a provisioning script.
+
+---
+
+## Why the spool exists
+
+Delivery failures do not discard data. A batch that cannot be delivered is **kept and
+retried**, and the machine reports as unhealthy while anything is still outstanding.
+
+That is what makes "healthy" mean *your data arrived*, rather than merely *the process is
+alive*. `failproofai config --status` reports it.
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+
+<Card title="failproofai backfill" icon="clock-rotate-left" href="/cli/backfill">
+  Re-send history the collector already passed.
+</Card>
+
+<Card title="failproofai config --status" icon="gear" href="/cli/config">
+  Connection, service, and delivery state.
+</Card>
+
+<Card title="Session capture" icon="satellite-dish" href="/cloud/capture">
+  What gets collected in the first place.
+</Card>
+
+<Card title="The daemon" icon="server" href="/daemon">
+  What does the collecting and uploading.
+</Card>
+
+</CardGroup>

@@ -1,0 +1,68 @@
+---
+title: "Sicherheit"
+description: "FailproofAI Cloud ist darauf ausgelegt, nah an Ihren Produktions-Agents zu laufen – das bedeutet, es sieht Ihre Prompts, Tool-Eingaben und Ausgaben."
+---
+
+
+FailproofAI Cloud ist darauf ausgelegt, nah an Ihren Produktions-Agents zu laufen – das bedeutet, es sieht Ihre Prompts, Tool-Eingaben und Ausgaben. Diese Seite erklärt, wie die Daten isoliert, kontrolliert und in Ihren Händen bleiben. Wenn Sie FailproofAI Cloud im Rahmen einer Sicherheitsprüfung evaluieren, beginnen Sie hier.
+
+---
+
+## Ihre Daten bleiben in Ihrer Umgebung
+
+FailproofAI Cloud wird selbst gehostet. Events, Prompts, Modellantworten und Analysen werden in Ihren eigenen Datenbanken, in Ihrer eigenen Umgebung gespeichert. Es werden keine Daten zur Speicherung an einen Drittanbieter-SaaS übermittelt – Ihre Daten verbleiben in Ihrem eigenen Cloud-Account.
+
+---
+
+## Mandantenisolierung
+
+Eine FailproofAI Cloud-Instanz kann viele Organisationen beherbergen, und jede ist auf Speicherebene isoliert – durchgesetzt von der Datenbank, nicht nur von der Benutzeroberfläche:
+
+- Die operativen Daten einer Organisation (Benutzer, Schlüssel, Dashboards, gespeicherte Abfragen) sind auf diese Organisation beschränkt, und organisationsübergreifende Lesezugriffe werden von der Datenbank selbst blockiert.
+- Jedes aufgenommene Event wird mit der zugehörigen Organisation gestempelt, sodass die Events einer Organisation niemals von einer anderen gelesen werden können.
+
+Jede Dashboard-Route ist unter einem Org-Slug (`/<org-slug>/…`) eingeschränkt.
+
+---
+
+## Anmeldung
+
+FailproofAI Cloud verwendet passwortlose, E-Mail-basierte Anmeldung. Es gibt kein Passwort, das abgephisht oder geleakt werden könnte. Ein Benutzer fordert einen Einmalcode (oder einen Magic Link zum einmaligen Klicken) an, der per E-Mail zugestellt wird und schnell abläuft. Die Anmeldung ist durch eine **Allowlist** gesichert: Nur E-Mail-Adressen (oder Domains), die Sie freigeben, können sich authentifizieren.
+
+![Der Anmeldebildschirm von FailproofAI Cloud, der einen Einmalcode an Ihre E-Mail-Adresse sendet](/cloud/images/login.png)
+
+---
+
+## Eingeschränkter Zugriff mit API-Schlüsseln
+
+Jeder Client authentifiziert sich mit einem API-Schlüssel, der granulare, minimal privilegierte Berechtigungen trägt. Ein Collector benötigt lediglich `events:add`; ein Dashboard- oder Assistenten-Schlüssel kann schreibgeschützt sein; destruktive Aktionen (Löschen, Neugenerieren) sind separate Berechtigungen, die Sie gezielt vergeben.
+
+![Die API-Schlüssel-Seite: Berechtigungen jedes Schlüssels, farblich nach Lese-, Schreib- und destruktivem Umfang kodiert](/cloud/images/api-keys.png)
+
+Behalten Sie den Admin-Bootstrap-Schlüssel für die Einrichtung, und vergeben Sie eingeschränkte Schlüssel für alles andere. Siehe [API-Schlüssel](/de/cloud/access).
+
+---
+
+## Ein schreibgeschützter, genehmigungspflichtiger Assistent
+
+Der [KI-Assistent](/de/cloud/assistant) im Dashboard beantwortet Fragen über Ihre Daten, ist aber bewusst eingeschränkt:
+
+- Er ist **standardmäßig schreibgeschützt**: Sein SQL wird durch einen Guard geleitet, der nur `SELECT`/`WITH`-Abfragen, einzelne Anweisungen und eine Zeilenbegrenzung erlaubt.
+- Alles, was er erstellt (eine gespeicherte Abfrage, ein Dashboard), ist **genehmigungspflichtig**: Sie prüfen und genehmigen jeden Schreibvorgang, bevor er ausgeführt wird.
+- Er **kann niemals löschen**.
+
+So kann ein Teammitglied fragen „Welche Agents haben diese Woche am häufigsten Fehler gemeldet?" und auf die Antwort reagieren – ohne dass der Assistent Ihre Daten eigenständig ändern oder entfernen kann.
+
+---
+
+## Daten in Übertragung
+
+Der gesamte Datenverkehr läuft über HTTPS. Sie terminieren TLS mit Ihren eigenen Zertifikaten, sodass der Datenverkehr zwischen Collector und Server sowie zwischen Browser und Server verschlüsselt übertragen wird.
+
+---
+
+## Nächste Schritte
+
+- [Übersicht](/de/cloud/overview): Wie FailproofAI Cloud zusammenarbeitet.
+- [API-Schlüssel](/de/cloud/access): Zugriff für Collector, Dashboard und Assistent einschränken.
+- [FailproofAI Cloud](/de/cloud/overview): Was FailproofAI Cloud von Ihren Agents erfasst.

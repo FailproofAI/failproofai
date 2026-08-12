@@ -4,7 +4,7 @@ import { summarize,
   BACK,
 } from "../../src/hooks/tui";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
 
 // The interactive prompts, the install manager, telemetry and CLI detection are
 // mocked so we can drive the wizard head-lessly and assert the exact side effect
@@ -143,12 +143,13 @@ import {
   clisSupportingScope,
   resolvePresetSelection,
   reviewLines,
+  policyNamesLine,
   runConfigureWizard,
   maybeFirstRunConfigure,
   hasSeenLauncher,
   markLauncherSeen,
 } from "../../src/hooks/configure-wizard";
-import { resolvePreset, resolveEverything } from "../../src/hooks/policy-presets";
+import { resolvePreset, resolveEverything, RECOMMENDED_POLICIES } from "../../src/hooks/policy-presets";
 import { INTEGRATION_TYPES, type IntegrationType } from "../../src/hooks/types";
 import { getIntegration } from "../../src/hooks/integrations";
 import { runPostSetupAudit } from "../../src/audit/cli";
@@ -176,6 +177,14 @@ const ttyIO = () => ({ stdin: mkTtyStdin(), stdout: mkTtyStdout() });
  * `undefined` means "this step is not reached in this test".
  */
 function drive(answers: {
+  /**
+   * Recommended-vs-customize step, asked first on every run.
+   *
+   * Defaults to "customize" when omitted, so every test written against the
+   * four-question wizard keeps describing the flow it was written for. A test
+   * that wants the one-keystroke path says so explicitly.
+   */
+  mode?: "recommended" | "customize" | null;
   /** Scope step. Omitted when the run is expected to abort before it. */
   target?: "user" | "project" | "both" | null;
   policies?: string[] | null;
@@ -185,6 +194,7 @@ function drive(answers: {
 }) {
   const one = vi.mocked(selectOne);
   const many = vi.mocked(multiSelect);
+  one.mockResolvedValueOnce(("mode" in answers ? answers.mode : "customize") as never);
   if ("target" in answers) one.mockResolvedValueOnce(answers.target as never);
   if ("connect" in answers) one.mockResolvedValueOnce(answers.connect as never);
   if ("review" in answers) one.mockResolvedValueOnce(answers.review as never);
@@ -407,6 +417,68 @@ describe("configure-wizard pure builders", () => {
     expect(lines).toContain("settings.json");
   });
 
+  it("reviewLines gives a taste of the policies without listing them all", () => {
+    // Two names say what KIND of thing these are; naming all fifteen turned a
+    // four-line review into a thirteen-line one, and a screen nobody reads to
+    // the bottom conveys less than a short one.
+    const lines = reviewLines({
+      target: "user",
+      clis: ["claude"],
+      policies: [...RECOMMENDED_POLICIES],
+      cwd: "/tmp/proj",
+    });
+    const joined = lines.join("\n");
+    expect(joined).toContain("15 enabled");
+    expect(joined).toContain("block-curl-pipe-sh, block-env-files +13");
+    // The other thirteen are NOT on screen.
+    expect(joined).not.toContain("sanitize-private-key-content");
+    // One line for the count, one for the taste — never a paragraph.
+    expect(lines.filter((l) => l.includes("block-curl-pipe-sh"))).toHaveLength(1);
+  });
+
+  it("reviewLines keeps every line inside the 80-column budget", () => {
+    // `writeLines` truncates with a hard cut and no ellipsis, so an over-long
+    // line does not visibly lose its tail — it ends mid-slug and reads as a
+    // policy name that does not exist.
+    for (const line of reviewLines({
+      target: "both",
+      clis: ["claude"],
+      policies: [...RECOMMENDED_POLICIES],
+      cwd: "/tmp/proj",
+    })) {
+      expect(line.length, `too wide: ${line}`).toBeLessThanOrEqual(80);
+    }
+  });
+
+  it("the taste scales to Everything without growing", () => {
+    const everything = resolveEverything();
+    const lines = reviewLines({
+      target: "user",
+      clis: ["claude"],
+      policies: everything,
+      cwd: "/tmp/proj",
+    }).join("\n");
+    expect(lines).toContain(`${everything.length} enabled`);
+    expect(lines).toContain(`+${everything.length - 2}`);
+  });
+
+  it("policyNamesLine drops names rather than overflowing the budget", () => {
+    // Degrading by dropping a name is recoverable; overflowing is not, because
+    // the hard cut makes the tail look like a policy name that does not exist.
+    const long = [
+      "sanitize-private-key-content",
+      "sanitize-connection-strings",
+      "block-failproofai-commands",
+    ];
+    for (const line of policyNamesLine(long)) {
+      expect(line.startsWith(" ".repeat(15))).toBe(true);
+      expect(line.length).toBeLessThanOrEqual(77);
+    }
+    expect(policyNamesLine([])).toEqual([]);
+    // A single policy needs no "+N" at all.
+    expect(policyNamesLine(["block-sudo"])[0].trim()).toBe("block-sudo");
+  });
+
   it("reviewLines reports an empty policy set as a choice, not a count of zero", () => {
     const lines = reviewLines({
       target: "user",
@@ -528,6 +600,57 @@ describe("configure-wizard orchestration", () => {
     expect(call[4]).toBe("configure-wizard"); // source tag
     expect(call[7]).toEqual(["claude"]); // clis
     expect(call[8]).toEqual({ replace: true, quiet: true }); // options
+  });
+
+  it("Recommended asks two questions and writes the 15-policy set globally", async () => {
+    // The whole point of the path: scope, bundles and harnesses are never
+    // asked. Only mode and connect are answered here, and the run still
+    // applies — if the wizard had reached the policy or harness prompt it
+    // would hang on an unmocked multiSelect rather than pass.
+    drive({ mode: "recommended", connect: "local", review: "apply" });
+
+    const result = await runConfigureWizard(ttyIO());
+
+    expect(result.applied).toBe(true);
+    const call = vi.mocked(installHooks).mock.calls[0];
+    const policies = call[0] as string[];
+    expect(new Set(policies)).toEqual(new Set(RECOMMENDED_POLICIES));
+    expect(call[1]).toBe("user"); // global, never the cwd's project
+    expect(call[7]).toEqual(["claude"]); // detected only — the mock detects claude
+    expect(call[8]).toEqual({ replace: true, quiet: true });
+  });
+
+  it("Recommended never asks the policy or harness prompts", async () => {
+    drive({ mode: "recommended", connect: "local", review: "apply" });
+    await runConfigureWizard(ttyIO());
+    // `multiSelect` is the primitive both skipped steps use.
+    expect(multiSelect).not.toHaveBeenCalled();
+  });
+
+  it("Recommended adds to what was already enabled, never replaces it", async () => {
+    // `installHooks` runs with `replace: true`, so writing the bare recommended
+    // list would switch OFF anything the user had enabled by hand — turning
+    // "give me the sensible defaults" into a REDUCTION in protection, which is
+    // the one direction setup must never move someone.
+    //
+    // Seeded as a real file rather than a mock: `readScopedHooksConfig` is the
+    // genuine implementation in this suite, and it reads user scope out of the
+    // HOME this file isolates.
+    const cfgPath = resolve(fileHome, ".failproofai", "policies-config.json");
+    mkdirSync(dirname(cfgPath), { recursive: true });
+    writeFileSync(cfgPath, JSON.stringify({ enabledPolicies: ["block-kubectl"] }));
+    try {
+      drive({ mode: "recommended", connect: "local", review: "apply" });
+
+      await runConfigureWizard(ttyIO());
+
+      const policies = vi.mocked(installHooks).mock.calls[0][0] as string[];
+      expect(policies).toContain("block-kubectl"); // theirs, kept
+      expect(policies).toContain("block-rm-rf"); // ours, added
+      expect(new Set(policies).size).toBe(policies.length);
+    } finally {
+      rmSync(cfgPath, { force: true });
+    }
   });
 
   it("'Everything available' protects every supported CLI", async () => {
@@ -1345,8 +1468,11 @@ describe("connect step", () => {
 
   it("lets a bad key be skipped, and still applies everything else", async () => {
     vi.mocked(validateIngestKey).mockResolvedValue({ ok: false, reason: "401" });
-    // connect -> key, then the retry question -> skip, then review.
+    // mode -> customize, scope, connect -> key, then the retry question ->
+    // skip, then review. Queued positionally rather than through `drive()`
+    // because the retry prompt is conditional and has no name there.
     vi.mocked(selectOne)
+      .mockResolvedValueOnce("customize")
       .mockResolvedValueOnce("user")
       .mockResolvedValueOnce("key")
       .mockResolvedValueOnce("skip")

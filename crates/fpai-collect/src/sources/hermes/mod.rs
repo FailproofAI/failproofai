@@ -294,6 +294,59 @@ pub fn default_db_paths() -> Vec<PathBuf> {
 
 /// [`default_db_paths`] against an explicit root. Split out so it is testable
 /// without mutating the process environment.
+/// The agent id for one Hermes database: the base for the root, `<base>-<name>`
+/// for a named profile.
+///
+/// IDENTITY COMES FROM WHICH DATABASE THIS IS, and deliberately not from
+/// anything inside it. Sessions were previously named from their own `cwd` or
+/// `source` columns, which Hermes rewrites throughout a run (`hermes_state.py`
+/// carries ~20 `UPDATE sessions SET …`). Because the id was re-derived on every
+/// poll, a session whose `cwd` was written or cleared between two polls had its
+/// rows split across two agent ids — observed live: one session under
+/// `hermes-kratos` and `hermes-telegram`, another under `hermes-cron` and the
+/// bare fallback. A file path cannot change under us mid-poll, so this is stable
+/// by construction rather than by remembering anything.
+///
+/// It also keeps the poll function PURE, which the format contract requires:
+/// re-reading the same rows must produce the same bytes or the server's
+/// content-hash dedup stores them twice instead of collapsing them. Deriving
+/// from a mutable column broke that; deriving from the request does not.
+///
+/// Nothing is lost by moving `source` and `cwd` out of the NAME — both are
+/// already emitted in the payload as `hermes_source` and `hermes_cwd`, so
+/// "show me Telegram traffic" or "group by project" stay answerable as filters,
+/// which is what they should have been. They are attributes of a session, not
+/// the identity of an agent.
+///
+/// The root profile stays on the bare base rather than `hermes-default`: it is
+/// the id every existing deployment already ships under, and prefixing it would
+/// split each one's history across two agent ids for no gain. This matches the
+/// standalone collector's `agent_id_for`, so machines migrating from it keep
+/// their names.
+pub fn agent_id_for(base: &str, profile: Option<&str>) -> String {
+    match profile {
+        None => base.to_string(),
+        Some(name) => format!("{base}-{name}"),
+    }
+}
+
+/// The profile name for a database returned by [`db_paths_under`], or `None`
+/// for the root.
+///
+/// Keyed on the path shape that function produces — `<root>/state.db` for the
+/// root and `<root>/profiles/<name>/state.db` for the rest — rather than on an
+/// index, so a caller cannot silently mis-name a profile by iterating in a
+/// different order.
+pub fn profile_of(db: &Path) -> Option<String> {
+    let parent = db.parent()?;
+    let name = parent.file_name()?.to_str()?;
+    let is_profile = parent
+        .parent()
+        .and_then(|p| p.file_name())
+        .is_some_and(|d| d == PROFILES_DIR);
+    is_profile.then(|| name.to_string())
+}
+
 pub fn db_paths_under(root: &Path) -> Vec<PathBuf> {
     let mut out = vec![root.join(STATE_DB)];
     let Ok(entries) = std::fs::read_dir(root.join(PROFILES_DIR)) else {

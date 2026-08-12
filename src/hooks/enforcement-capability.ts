@@ -26,11 +26,19 @@
 //   ABSENT    — NOT VERIFIED. The UI must stay silent, never assume "block".
 //
 // Only SOURCE / VENDOR_DOCS / LIVE_PROBE rows appear here. Every line carries
-// its evidence. Versions probed: claude 2.1.220 · codex fe01054a · copilot
-// 1.0.71 (some sites re-read in 1.0.68) · cursor-agent 2026.07.16-899851b ·
-// opencode 7565e035 (v1.18.9, re-checked at v1.14.33) · pi 0.80.10 (source
-// 0.82.1) · hermes-agent 5771a6e · openclaw f8ed8ecf (v2026.7.2) · droid
-// 0.175.1 · devin 3000.2.17 · agy 1.1.8 · goose 1.43.0.
+// its evidence. Versions probed: claude 2.1.220 · codex fe01054a (PostToolUse
+// re-probed LIVE at 0.147.0) · copilot 1.0.71, some sites re-read in 1.0.68
+// (PostToolUse re-read in the shipped 1.0.78 bundle) · cursor-agent
+// 2026.07.16-899851b · opencode 7565e035 (v1.18.9, re-checked at v1.14.33) ·
+// pi 0.80.10 (source 0.82.1) · hermes-agent 5771a6e · openclaw f8ed8ecf
+// (v2026.7.2) · droid 0.175.1 · devin 3000.2.17 · agy 1.1.8 · goose 1.43.0.
+//
+// A VERSION HERE IS PART OF THE CLAIM, NOT A FOOTNOTE. Re-probing codex for the
+// PostToolUse row surfaced that its hook sources were restructured after
+// fe01054a — output_parser.rs, hook_runtime.rs and tools/registry.rs, cited by
+// name and line in several codex rows below, no longer exist at those paths in
+// 0.147.0. Those rows are not known-wrong, they are unverified against any
+// shipping codex; treat them as due for a re-probe rather than as evidence.
 import type { HookEventType, IntegrationType } from "./types";
 
 export type EnforcementCapability = "block" | "observe";
@@ -87,7 +95,7 @@ export const ENFORCEMENT_CAPABILITY: Record<
     UserPromptSubmit: "block",     // events/user_prompt_submit.rs:226 Some(2)+stderr -> should_stop; turn.rs:588 skips record_pending_input, turn.rs:237 returns. CAVEAT turn.rs:603 — a co-submitted accepted message lets the turn proceed
     Stop: "block",                 // events/stop.rs:303 Some(2) -> should_block + continuation_prompt; turn.rs:473-489 records it and `continue`s. CAVEAT turn.rs:490 a block with no prompt is warned + ignored
     SubagentStop: "block",         // shared parse_completed (stop.rs:202) + same consumer turn.rs:473. CAVEAT hook_runtime.rs:345 — only ThreadSpawn subagents dispatch it; all other SubAgent sources never run the hook
-    PostToolUse: "observe",        // codex CAN block here (registry.rs:678) but we emit hookSpecificOutput.additionalContext with no top-level `decision`, and output_parser.rs:215 needs decision==="block". Inert by our choice; tool already ran regardless
+    PostToolUse: "block",          // FIXED: we now emit top-level {decision:"block",reason}. LIVE_PROBE codex 0.147.0 A/B (identical prompt+hook, only the shape differs): block shape -> `hook: PostToolUse Blocked` + codex_core::tools::router error=<reason>, and the reason REPLACES the tool result (the model never saw the real stdout); hookSpecificOutput -> `hook: PostToolUse Completed`, model read stdout verbatim. Result-replacement, not prevention — the tool already ran. NOTE the other codex rows below cite output_parser.rs / hook_runtime.rs / tools/registry.rs paths that DO NOT EXIST in 0.147.0 (hooks live at hooks/src/{engine,events}/…); they are unre-verified since fe01054a
     SessionStart: "observe",       // events/session_start.rs:243-322 has NO Some(2) arm — our exit-2 deny is logged as HookRunStatus::Failed. CLI blocks only on exit 0 + {"continue":false} (session_start.rs:273 -> turn.rs:233)
     SubagentStart: "observe",      // permanently unblockable: session_start.rs:273 guard excludes it, output schema has no `decision`, vendor doc says continue:false does not stop it
     PreCompact: "observe",         // compact.rs:246-260 no Some(2) arm; latent block needs {"continue":false} (-> core/src/compact.rs:190 TurnAborted). Inert as we emit
@@ -105,7 +113,7 @@ export const ENFORCEMENT_CAPABILITY: Record<
     SubagentStop: "block",         // 1.0.71 app.js@1074101 subagentStop: decision==="block" && reason -> `continue` re-runs the subagent turn. CAVEAT skipped entirely for isSidekick subagents
     UserPromptSubmit: "block",     // FIXED: we now emit {decision:"block",reason} at exit 0 (gate V$t @2547438, consumer @2823018). Was inert — we sent exit 2 + stderr, which copilot logs as a warning for EVERY event and never treats as a deny
     PermissionRequest: "block",    // FIXED: we now emit the FLAT {behavior,message} copilot parses (normalizer CMn @179042 -> mapper h4t @2686538). Was inert — the Codex-shaped nested hookSpecificOutput.decision normalized to {}
-    PostToolUse: "observe",        // OVERTURNED. Gate vK @173853 needs top-level decision==="block"; we emit hookSpecificOutput.additionalContext. Post-hoc anyway (result-rewrite only). Vendor docs: "Can block? No"
+    PostToolUse: "block",          // FIXED: we now emit top-level {decision:"block",reason}. Re-read in the SHIPPED 1.0.78 app.js: BOTH postToolUse call sites gate on vK = t => t?.decision==="block" && typeof t.reason==="string" -> "Tool result blocked by {policy hook|hook}" / `Tool result blocked: ${reason}`. vK fails closed on a missing or non-string reason. Result-rewrite, not prevention — the tool already ran (vendor docs still say "Can block? No", which is true of the SIDE EFFECT, not of the result the model reads)
     SessionStart: "observe",       // 1.0.71 app.js@2836633 reads ONLY additionalContext
     SessionEnd: "observe",         // 1.0.71 app.js@2627263 `.then(()=>{})` — return explicitly thrown away
     PostToolUseFailure: "observe", // 1.0.68 app.js@2883424 and @3038111 destructure only additionalContext

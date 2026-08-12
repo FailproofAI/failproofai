@@ -107,6 +107,26 @@ export function assertPostToolUseDeny(result: HookRunResult): void {
   expect(output?.additionalContext).toMatch(/Blocked/i);
 }
 
+/**
+ * PostToolUse deny on codex and copilot: a TOP-LEVEL `{decision, reason}`.
+ *
+ * Deliberately a second assertion rather than widening `assertPostToolUseDeny`
+ * to accept either shape. The two shapes are the entire substance of the
+ * change — codex and copilot read the top-level object and ignore the nested
+ * one, every other CLI does the reverse — so a helper that passed on whichever
+ * arrived would go green if a CLI were wired to the wrong one, in either
+ * direction, which is precisely the regression these tests exist to catch.
+ */
+export function assertPostToolUseBlockDecision(result: HookRunResult): void {
+  expect(result.exitCode).toBe(0);
+  expect(result.parsed?.decision).toBe("block");
+  expect(result.parsed?.reason).toMatch(/Blocked/i);
+  // The nested shape must be ABSENT, not merely ignored: copilot's shipped
+  // guard reads only the top level, so emitting both would leave the file
+  // asserting a contract no consumer actually exercises.
+  expect(result.parsed?.hookSpecificOutput).toBeUndefined();
+}
+
 export function assertInstruct(result: HookRunResult): void {
   expect(result.exitCode).toBe(0);
   const output = result.parsed?.hookSpecificOutput as Record<string, unknown> | undefined;

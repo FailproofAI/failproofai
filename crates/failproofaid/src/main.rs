@@ -1086,6 +1086,11 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         for (i, db) in hermes_dbs.iter().enumerate() {
             let profile = profile_dir_name(db, i);
             let state = cursors.join("hermes").join(&profile);
+            // Bound outside the call: the id is borrowed for the whole
+            // `sqlite_source` invocation, and a temporary would be dropped at
+            // the end of the argument expression.
+            let hermes_agent_id =
+                hermes::agent_id_for(hermes::DEFAULT_AGENT_ID, hermes::profile_of(db).as_deref());
             // ...and its own health key, for the same reason it gets its own
             // cursor directory. Every profile reporting under the bare string
             // "hermes" made two profiles overwrite each other's record five
@@ -1097,7 +1102,15 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
                 "hermes",
                 hermes::FORMAT,
                 db.clone(),
-                hermes::DEFAULT_AGENT_ID,
+                // The DATABASE's id, not a bare constant. Every profile used to
+                // pass `hermes` and let the transform re-derive a name from each
+                // session's own mutable columns — which is what split one
+                // session across two agent ids. `agent_id_for` keys on the path:
+                // the root keeps the bare `hermes` every deployment already
+                // ships under, and `profiles/<name>/state.db` becomes
+                // `hermes-<name>`, matching the standalone collector so a
+                // machine migrating off it is not renamed.
+                &hermes_agent_id,
                 &spool,
                 state,
                 &env,
@@ -1198,7 +1211,7 @@ fn file_source(
     format: fpai_collect::filetail::Format,
     roots: Vec<std::path::PathBuf>,
     extra: &[fpai_collect::ExtraPath],
-    default_agent_id: &'static str,
+    default_agent_id: &str,
     spool_dir: &std::path::Path,
     cursor_root: &std::path::Path,
     environment: &str,
@@ -1258,7 +1271,7 @@ fn file_source_instance(
     label: Option<String>,
     state_dir: std::path::PathBuf,
     health_key: Option<String>,
-    default_agent_id: &'static str,
+    default_agent_id: &str,
     spool_dir: &std::path::Path,
     environment: &str,
     machine_id: Option<&str>,
@@ -1269,6 +1282,11 @@ fn file_source_instance(
     let environment = environment.to_string();
     let machine_id = machine_id.map(str::to_string);
     let user = user.map(str::to_string);
+    // Owned before the task closure captures it. This was `&'static str` while
+    // every caller passed a literal; a per-database id is computed at startup,
+    // so it has to be cloned here rather than borrowed into a closure that
+    // outlives this frame.
+    let default_agent_id = default_agent_id.to_string();
     // The task name carries the label so `/workflows`-style task listings and
     // the supervisor's own logs name the instance, not just the source.
     let task_name: String = match &label {
@@ -1327,7 +1345,7 @@ fn sqlite_harness(
     format: fpai_collect::sqlitepoll::SqliteFormat,
     db_path: std::path::PathBuf,
     extra: &[fpai_collect::ExtraPath],
-    default_agent_id: &'static str,
+    default_agent_id: &str,
     spool_dir: &std::path::Path,
     cursor_root: &std::path::Path,
     environment: &str,
@@ -1376,7 +1394,7 @@ fn sqlite_source(
     name: &'static str,
     format: fpai_collect::sqlitepoll::SqliteFormat,
     db_path: std::path::PathBuf,
-    default_agent_id: &'static str,
+    default_agent_id: &str,
     spool_dir: &std::path::Path,
     state_dir: std::path::PathBuf,
     environment: &str,
@@ -1394,6 +1412,11 @@ fn sqlite_source(
     let environment = environment.to_string();
     let machine_id = machine_id.map(str::to_string);
     let user = user.map(str::to_string);
+    // Owned before the task closure captures it. This was `&'static str` while
+    // every caller passed a literal; a per-database id is computed at startup,
+    // so it has to be cloned here rather than borrowed into a closure that
+    // outlives this frame.
+    let default_agent_id = default_agent_id.to_string();
     let task_name: String = match &label {
         Some(l) => format!("{name}:{l}"),
         None => name.to_string(),

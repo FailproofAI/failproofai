@@ -57,6 +57,52 @@ fn legacy_credentials_path() -> Option<std::path::PathBuf> {
         .map(|home| home.join("cloud.json"))
 }
 
+/// Has the operator explicitly put this machine back on OSS?
+///
+/// `config --disconnect` writes `mode: "oss"` and its own comment states the
+/// rule this function exists to make true: "every cloud code path keys off this
+/// flag rather than off 'is a token lying around' precisely so that a
+/// disconnected machine is provably silent instead of silent-by-happenstance."
+/// That was true of the TypeScript CLI and false HERE — the daemon holds the
+/// socket and had never read the flag. So a `mode: "oss"` machine whose
+/// credential file survived (a restore, a copied home, a reinstall, a partial
+/// cleanup, or simply the layout-1 `cloud.json` fallback below) went on polling
+/// and shipping while the CLI reported it as disconnected.
+///
+/// ONLY an explicit `"oss"` vetoes. Absent, unreadable, malformed and any other
+/// value all fall through to the credential files, because `mode` postdates the
+/// enrolments already in the field: reading "absent" as "oss" would silently
+/// disconnect every machine enrolled by an older CLI, which is the same class of
+/// silent divergence with the sign flipped. The safe direction here is that a
+/// machine only goes quiet when someone said so.
+fn disconnected_by_config() -> bool {
+    let Ok(home) = crate::paths::failproofai_home() else {
+        return false;
+    };
+    let Ok(text) = std::fs::read_to_string(home.join("config.json")) else {
+        return false;
+    };
+    let Ok(root) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    // `{"mode":{"kind":"oss"}}` — an OBJECT, not a string.
+    //
+    // This read `mode` as a string and therefore never fired: `as_str()` on an
+    // object is `None`, so a machine put back on OSS kept polling exactly as it
+    // had before the veto existed. The unit tests passed because their fixtures
+    // were written from the same wrong assumption as the code — a test that
+    // encodes the bug it is meant to catch is worth less than no test, because
+    // it also reports that the case is covered.
+    //
+    // The shape is `fp-config.ts`'s: `mode: { kind: config.mode }` on write
+    // (line 567) and `parsed.mode?.kind` on read (line 423). There is no flat
+    // form to fall back to — the TS has never written one.
+    root.get("mode")
+        .and_then(|m| m.get("kind"))
+        .and_then(|k| k.as_str())
+        == Some("oss")
+}
+
 /// The `cloud` object of `credentials.json`. Snake_case keys, because that is
 /// what `fp-config.ts`'s `writeCredentials` emits.
 #[derive(serde::Deserialize)]
@@ -137,6 +183,21 @@ impl CloudClient {
     /// the daemon never looked at, and the daemon logged "cloud-managed policy
     /// polling disabled" as though the machine had simply never enrolled.
     pub fn from_file() -> Result<Option<Self>, String> {
+        // `mode: "oss"` outranks every credential file below it. Checked HERE
+        // rather than at the call site because `from_file` has three exits (the
+        // override, `credentials.json`, and the layout-1 fallback) and a veto
+        // that guards only some of them is not a veto.
+        //
+        // Deliberately NOT applied to `from_env()`: `FAILPROOFAI_CLOUD_URL` is
+        // an explicit, per-process act by whoever launched the daemon, and the
+        // env path exists so CI, containers and tests work with no files at all.
+        // Letting a file on disk veto that would break exactly the callers the
+        // env path was added for, and an operator who exports the variable has
+        // said what they want more recently than the config did.
+        if disconnected_by_config() {
+            return Ok(None);
+        }
+
         // An explicitly-named file is the whole configuration: if it is absent,
         // this machine is not enrolled. Falling through to the default location
         // would quietly enrol it against a DIFFERENT credential than the one the
@@ -252,13 +313,38 @@ impl CloudClient {
         })
     }
 
-    pub fn desired_state(&self) -> Result<DesiredState, String> {
+    /// `applied` is the deployment this machine is ACTUALLY enforcing right now,
+    /// read from `active.json`.
+    ///
+    /// The server has never been able to tell "assigned" from "applied". It
+    /// infers delivery by comparing the machine's last poll against the
+    /// deployment's `updated_at` — so a machine that polled and then failed to
+    /// materialise the artifacts reads as delivered, and the dashboard shows
+    /// `applied` for a deployment that is provably not in force. The machine has
+    /// always known the true answer and had no way to say it; this is that way.
+    ///
+    /// It rides the poll that already happens every 30s rather than a new
+    /// endpoint or a second connection, so it costs one query parameter and no
+    /// extra request. Additive on purpose: a server that does not read the
+    /// parameter is unaffected, which is the ordering #590 asks for — the daemon
+    /// may ship before the server without a coordinated release.
+    ///
+    /// `None` when nothing is active yet (never polled successfully, or the
+    /// manifest is unreadable). The parameter is then OMITTED rather than sent
+    /// as 0: a machine that cannot say what it is enforcing must not be recorded
+    /// as enforcing deployment zero, and absent has to stay distinguishable from
+    /// "reported nothing" on the far side.
+    pub fn desired_state(&self, applied: Option<u64>) -> Result<DesiredState, String> {
         let mut url = self
             .base_url
             .join("enforcement/v1/desired-state")
             .map_err(|err| format!("failed to build desired-state URL: {err}"))?;
         url.query_pairs_mut()
             .append_pair("machineId", &self.machine_id);
+        if let Some(deployment) = applied {
+            url.query_pairs_mut()
+                .append_pair("appliedDeployment", &deployment.to_string());
+        }
         self.client
             .get(url)
             .bearer_auth(&self.token)
@@ -388,7 +474,23 @@ pub fn spawn_maintenance(
 }
 
 fn poll_once(store: &PolicyStore, cloud: &CloudClient) {
-    match cloud.desired_state() {
+    // Read BEFORE the request, so what we report is what was in force when we
+    // asked. Reading after would race this poll's own reconcile and could claim
+    // a deployment the server is about to be told about anyway — reporting the
+    // future rather than the present.
+    //
+    // An unreadable manifest reports nothing rather than guessing: `read_active`
+    // already distinguishes "no deployment" from "cannot tell", and collapsing
+    // the second into the first is how a machine ends up recorded as enforcing
+    // something it is not.
+    let applied = match store.read_active() {
+        Ok(active) => active.map(|a| a.deployment),
+        Err(err) => {
+            eprintln!("[failproofaid] could not read the active deployment to report it: {err}");
+            None
+        }
+    };
+    match cloud.desired_state(applied) {
         Ok(desired) => {
             match store.reconcile(&desired, &|policy: &DesiredPolicy| cloud.artifact(policy)) {
                 Ok(outcome)
@@ -470,6 +572,17 @@ mod tests {
         }
         unsafe {
             std::env::set_var("FAILPROOFAI_CLOUD_CREDENTIALS", &path);
+            // Point HOME at the scratch dir too.
+            //
+            // Without this the suite reads the DEVELOPER'S real
+            // ~/.failproofai/config.json, and `from_file` consults it now that
+            // the `mode` veto works. Five tests here failed the moment the veto
+            // started firing — not because the veto was wrong, but because a
+            // machine that had run `--disconnect` (or, as here, was simply set
+            // up in OSS mode) made them fail while the same commit passed on a
+            // machine that had not. A unit test whose result depends on the
+            // config of the laptop running it is not testing what it says.
+            std::env::set_var("FAILPROOFAI_HOME", &dir);
             std::env::remove_var("FAILPROOFAI_CLOUD_URL");
             std::env::remove_var("FAILPROOFAI_CLOUD_TOKEN");
             std::env::remove_var("FAILPROOFAI_MACHINE_ID");
@@ -605,7 +718,7 @@ mod tests {
         )
         .expect("client");
         let err = client
-            .desired_state()
+            .desired_state(None)
             .expect_err("a v1 response must be refused");
 
         assert!(
@@ -613,6 +726,59 @@ mod tests {
             "the error must name both versions so the operator knows which half is behind, got: {err}"
         );
         server.join().unwrap();
+    }
+
+    /// The machine's own answer has to reach the wire, and "cannot say" has to
+    /// stay distinguishable from "deployment 0" once it gets there.
+    #[test]
+    fn reports_the_applied_deployment_on_the_poll_it_already_makes() {
+        for (applied, expected) in [(Some(7_u64), true), (None, false)] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let captured = Arc::new(std::sync::Mutex::new(String::new()));
+            let sink = captured.clone();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0_u8; 4096];
+                let read = stream.read(&mut request).unwrap();
+                *sink.lock().unwrap() = String::from_utf8_lossy(&request[..read]).to_string();
+                let body = br#"{"schemaVersion":2,"deployment":7,"policies":[]}"#;
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n",
+                    body.len()
+                )
+                .unwrap();
+                stream.write_all(body).unwrap();
+            });
+
+            let cloud = CloudClient::new(
+                &format!("http://{address}"),
+                "test-token".into(),
+                "machine-1".into(),
+            )
+            .unwrap();
+            cloud.desired_state(applied).unwrap();
+            server.join().unwrap();
+
+            let request = captured.lock().unwrap().clone();
+            assert!(
+                request.contains("machineId=machine-1"),
+                "the existing parameter must survive: {request}"
+            );
+            if expected {
+                assert!(
+                    request.contains("appliedDeployment=7"),
+                    "the applied deployment must reach the server: {request}"
+                );
+            } else {
+                assert!(
+                    !request.contains("appliedDeployment"),
+                    "a machine that cannot say what it is enforcing must OMIT the \
+                     parameter, not report deployment 0: {request}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -665,7 +831,7 @@ mod tests {
             "machine-1".into(),
         )
         .unwrap();
-        let desired = cloud.desired_state().unwrap();
+        let desired = cloud.desired_state(None).unwrap();
         let root =
             std::env::temp_dir().join(format!("failproofaid-http-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
@@ -809,6 +975,102 @@ mod tests {
         let client = CloudClient::from_file().unwrap().expect("enrolled");
         assert_eq!(client.machine_id, "m-1");
         unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    #[test]
+    fn mode_oss_vetoes_a_surviving_credentials_file() {
+        // The reported bug: switch back to OSS, and the machine keeps talking to
+        // the cloud because the credential outlived the decision to leave.
+        let _lock = lock_env();
+        let _guard = with_home(&[
+            ("credentials.json", FILE_CREDS),
+            ("config.json", r#"{"mode":{"kind":"oss"}}"#),
+        ]);
+        assert!(CloudClient::from_file().unwrap().is_none());
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    #[test]
+    fn mode_oss_vetoes_the_layout_1_fallback_too() {
+        // The fallback is the easiest of the three exits to leave unguarded, and
+        // the one most likely to be the file that survived a cleanup.
+        let _lock = lock_env();
+        let _guard = with_home(&[
+            ("cloud.json", GOOD),
+            ("config.json", r#"{"mode":{"kind":"oss"}}"#),
+        ]);
+        assert!(CloudClient::from_file().unwrap().is_none());
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    #[test]
+    fn mode_cloud_still_enrols() {
+        let _lock = lock_env();
+        let _guard = with_home(&[
+            ("credentials.json", FILE_CREDS),
+            ("config.json", r#"{"mode":{"kind":"cloud"}}"#),
+        ]);
+        let client = CloudClient::from_file().unwrap().expect("enrolled");
+        assert_eq!(client.machine_id, "m-json");
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    #[test]
+    fn an_absent_or_unreadable_mode_does_not_disconnect_anyone() {
+        // `mode` postdates the enrolments already in the field. Reading absent,
+        // malformed or unexpected as "oss" would silently disconnect every
+        // machine enrolled by an older CLI — the same silent divergence this
+        // veto exists to close, with the sign flipped.
+        let _lock = lock_env();
+        for config in [
+            None,
+            Some(r#"{}"#),
+            Some(r#"{ not json"#),
+            Some(r#"{"mode":"OSS"}"#),
+            Some(r#"{"mode":true}"#),
+            // The shape this function USED to read. The TS has never written a
+            // flat string — `fp-config.ts` writes `mode: { kind }` — so a bare
+            // string is malformed for this schema and must not veto. Kept as a
+            // fixture because it is precisely what the original fixtures said,
+            // which is how the veto shipped never firing.
+            Some(r#"{"mode":"oss"}"#),
+            // Nested but not the value we act on.
+            Some(r#"{"mode":{"kind":"cloud"}}"#),
+            Some(r#"{"mode":{}}"#),
+        ] {
+            let mut files = vec![("credentials.json", FILE_CREDS)];
+            if let Some(c) = config {
+                files.push(("config.json", c));
+            }
+            let _guard = with_home(&files);
+            assert!(
+                CloudClient::from_file().unwrap().is_some(),
+                "config {config:?} must not disconnect a machine nobody disconnected",
+            );
+        }
+        unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
+    }
+
+    #[test]
+    fn env_configuration_outranks_mode_oss() {
+        // `FAILPROOFAI_CLOUD_URL` is an explicit act by whoever launched the
+        // daemon, and the env path exists so CI/containers work with no files.
+        // A file on disk must not veto it.
+        let _lock = lock_env();
+        let _guard = with_home(&[("config.json", r#"{"mode":{"kind":"oss"}}"#)]);
+        unsafe {
+            std::env::set_var("FAILPROOFAI_CLOUD_URL", "https://cloud.example");
+            std::env::set_var("FAILPROOFAI_CLOUD_TOKEN", "t");
+            std::env::set_var("FAILPROOFAI_MACHINE_ID", "m-env");
+        }
+        let client = CloudClient::from_env_or_file().unwrap().expect("enrolled");
+        assert_eq!(client.machine_id, "m-env");
+        unsafe {
+            std::env::remove_var("FAILPROOFAI_CLOUD_URL");
+            std::env::remove_var("FAILPROOFAI_CLOUD_TOKEN");
+            std::env::remove_var("FAILPROOFAI_MACHINE_ID");
+            std::env::remove_var("FAILPROOFAI_HOME");
+        }
     }
 
     #[test]

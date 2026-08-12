@@ -15,7 +15,7 @@ import {
   runHook,
   assertAllow,
   assertPreToolUseDeny,
-  assertPostToolUseDeny,
+  assertPostToolUseBlockDecision,
   assertPermissionRequestDeny,
 } from "../helpers/hook-runner";
 import { CodexPayloads } from "../helpers/payloads";
@@ -95,7 +95,7 @@ describe("E2E: Codex integration — hook protocol", () => {
     }
   });
 
-  it("PostToolUse: deny emits additionalContext (Claude-compatible JSON shape)", () => {
+  it("PostToolUse: deny emits a top-level {decision:\"block\"}, not additionalContext", () => {
     const env = createCodexEnv();
     try {
       writeConfig(env.cwd, ["sanitize-jwt"]);
@@ -108,7 +108,7 @@ describe("E2E: Codex integration — hook protocol", () => {
         ),
         { homeDir: env.home, cli: "codex" },
       );
-      assertPostToolUseDeny(result);
+      assertPostToolUseBlockDecision(result);
     } finally {
       env.cleanup();
     }

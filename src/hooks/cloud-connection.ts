@@ -1,5 +1,5 @@
 /**
- * One connection to Failproof Cloud, with two capabilities.
+ * One connection to FailproofAI Cloud, with two capabilities.
  *
  * # Why this exists
  *

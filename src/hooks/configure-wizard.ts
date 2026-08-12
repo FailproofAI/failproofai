@@ -55,7 +55,7 @@ import {
 import { INTEGRATION_TYPES, type IntegrationType, type HookScope } from "./types";
 import { installHooks } from "./manager";
 import { getConfigPathForScope, readHooksConfig, readScopedHooksConfig } from "./hooks-config";
-import { POLICY_PRESETS, resolvePreset, resolveEverything } from "./policy-presets";
+import { POLICY_PRESETS, resolvePreset, resolveEverything, RECOMMENDED_POLICIES } from "./policy-presets";
 import { discoverPolicyFiles, findSkippedPolicyFiles } from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
@@ -569,6 +569,40 @@ export function buildCompletionSummary(
  */
 const MAX_SUMMARY_COLUMNS = 77;
 
+/** The column this line aligns under, matching `  Policies   : `. */
+const POLICY_LIST_INDENT = " ".repeat(15);
+
+/**
+ * A taste of the set, not the set: two names and a count of the rest.
+ *
+ * The same shape `describeSelection` uses for bundles, for the same reason —
+ * naming everything turned a four-line review screen into a fifteen-line one,
+ * and a screen nobody reads to the bottom is worse at conveying what is about
+ * to happen than a short one. Two names say what KIND of thing these are;
+ * `failproofai policies list` says the rest, for the person who wants it.
+ *
+ * The whole review body is rendered dim by the prompt (`tui.ts`), so this
+ * reads as a subtitle to the count above it rather than competing with it.
+ *
+ * Degrades by dropping names rather than by overflowing: `writeLines`
+ * truncates with a hard cut and no ellipsis, so a line that runs over ends
+ * mid-slug and reads as a policy name that does not exist. Two long names
+ * (`sanitize-private-key-content` is 28) plus the prefix is within budget, but
+ * the guard is here rather than argued about, because a future rename is
+ * exactly the kind of change nobody re-measures.
+ */
+export function policyNamesLine(names: string[]): string[] {
+  if (names.length === 0) return [];
+  const budget = MAX_SUMMARY_COLUMNS - POLICY_LIST_INDENT.length;
+  for (const take of [2, 1]) {
+    const shown = names.slice(0, take);
+    const rest = names.length - shown.length;
+    const text = rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
+    if (text.length <= budget) return [`${POLICY_LIST_INDENT}${text}`];
+  }
+  return [];
+}
+
 /**
  * Name the bundles rather than counting the policies inside them.
  *
@@ -643,6 +677,12 @@ export function reviewLines(state: {
       ? "  Policies   : none enabled (add later: failproofai policies --install)"
       : `  Policies   : ${policies.length} enabled`,
   );
+  // A taste of what they are, under the count. "15 enabled" alone is a number
+  // the user cannot check and, on the recommended path, did not choose; two
+  // names say what kind of thing it is without turning the review into a page.
+  if (policies.length > 0) {
+    lines.push(...policyNamesLine([...policies].sort()));
+  }
   if (installDaemon && isDaemonSupportedPlatform()) {
     lines.push(
       `  Daemon     : failproofaid, installed as a system service running as you`,
@@ -1006,14 +1046,20 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   let daemonUnitStale = daemonAlreadyRunning && daemonServiceNeedsUpgrade();
 
   if (daemonWanted) {
+    // Say what is about to happen. Nothing else.
+    //
+    // This block explained the warm-worker architecture to somebody who is
+    // about to type a password — three lines of mechanism answering a question
+    // nobody had. The install is happening either way; what they need is what
+    // it is and that it costs one sudo.
+    //
+    // The BROKEN case keeps its consequence, and only that: "every tool call is
+    // denied" is the difference between a thirty-second fix and a support
+    // thread, so it survives any further trim of this block.
     stdout.write(
       daemonBroken
-        ? "failproofaid is installed and running but cannot evaluate policies — its worker\n" +
-            "process will not start, which on this machine denies every tool call. Rebuilding\n" +
-            "the service needs root once. Your password goes to sudo, never to us.\n\n"
-        : "failproofai runs a small background service (failproofaid) so policy checks\n" +
-            "stay warm — without it every tool call pays a fresh startup, about 15x slower.\n" +
-            "Installing it needs root once. Your password goes to sudo, never to us.\n\n",
+        ? "failproofaid can't evaluate — every tool call is denied. Rebuilding needs sudo.\n\n"
+        : "Installing failproofaid — needs sudo once.\n\n",
     );
     if (!primeElevation()) {
       // Required means required: write nothing at all, so a machine that could
@@ -1056,6 +1102,46 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     );
   }
 
+  // 0 — Recommended, or choose everything yourself?
+  //
+  // Setup used to open by asking four questions — scope, policy bundles,
+  // harnesses, cloud — of somebody who has just installed the tool and does not
+  // yet know what any of them mean. Every one of those answers has a defensible
+  // default, so asking for all four up front is making the person least able to
+  // answer do the most work.
+  //
+  // Recommended is not a shortcut past the decisions; it IS a decision, taken
+  // once, here, on their behalf: global scope, the CLIs actually on this
+  // machine, and `RECOMMENDED_POLICIES` — which is written out in
+  // policy-presets.ts with the reasoning for every inclusion and every
+  // omission, because "what does Recommended do" has to be answerable without
+  // reading code.
+  //
+  // Customize is the wizard exactly as it was. Nothing is removed and nothing
+  // is hidden; it stops being the only way through.
+  const detectedNow = detectInstalledClis();
+  const recommendedClis = detectedNow.filter((id) => clisSupportingScope("user").includes(id));
+  const mode = await selectOne<"recommended" | "customize">({
+    message: "Set up failproofai",
+    choices: [
+      {
+        label: "Recommended",
+        value: "recommended",
+        hint: recommendedClis.length
+          ? `${recommendedClis.length} detected ${recommendedClis.length === 1 ? "CLI" : "CLIs"} · ${RECOMMENDED_POLICIES.length} policies · global`
+          : `${RECOMMENDED_POLICIES.length} policies · global`,
+      },
+      {
+        label: "Customize",
+        value: "customize",
+        hint: "choose scope, policies and harnesses",
+      },
+    ],
+    stdin,
+    stdout,
+  });
+  if (mode === null) return cancel();
+
   // 1 — Where? Inferred from cwd, then confirmed.
   //
   // Running from inside a project and running from a home directory are two
@@ -1067,7 +1153,13 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   const targetChoices = buildTargetChoices(setupState);
 
   let target: SetupTarget;
-  if (targetChoices.length === 1) {
+  if (mode === "recommended") {
+    // Global, always. A project-scoped install guards the one directory the
+    // command happened to be run from and silently leaves every other repo on
+    // the machine unguarded — which is the opposite of what somebody choosing
+    // "Recommended" is asking for.
+    target = "user";
+  } else if (targetChoices.length === 1) {
     // From a home directory there is no project to configure, so there is no
     // question to ask. Say what is about to happen rather than silently
     // deciding it.
@@ -1158,6 +1250,15 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
    * next iteration; this mirrors that, filled from the prompt's `onBack`.
    */
   const carried: { clis: string[] | null } = { clis: null };
+  // The recommended path answers both questions here, which is what SKIPS the
+  // loop below — its condition is `clisSel === null` and this fills it in.
+  // Written as a pre-fill rather than as an extra clause on the loop condition
+  // so the invariant the rest of the function depends on ("past this loop, both
+  // are assigned") stays provable by the compiler rather than by argument.
+  if (mode === "recommended") {
+    presets = [];
+    clisSel = recommendedClis;
+  }
   while (clisSel === null) {
     // Re-entering after a ← must show what was picked, not a blank slate.
     // Selection state lives on each choice, so carry it back in.
@@ -1220,12 +1321,30 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     if (picked === BACK) continue;
     clisSel = picked;
   }
-  // Non-null by construction: the loop only exits once both are assigned.
+  // Non-null by construction: the loop only exits once both are assigned, and
+  // the recommended path assigned both before it, which is why it never ran.
   const chosenPresets: string[] = presets ?? [];
-  const policies = resolvePresetSelection(chosenPresets, carriedIndividual);
+  const policies =
+    mode === "recommended"
+      ? // UNION with what is already enabled here, never a replacement for it.
+        // `installHooks` is called with `replace: true`, so writing the bare
+        // recommended list would silently switch OFF anything the user had
+        // added themselves — turning "give me the sensible defaults" into a
+        // reduction in protection, which is the one direction this must never
+        // move. On a fresh machine `enabledHere` is empty and this is exactly
+        // the 15.
+        [...new Set([...RECOMMENDED_POLICIES, ...enabledHere])]
+      : resolvePresetSelection(chosenPresets, carriedIndividual);
   // Only meaningful when there are files to switch off; with none, the row is
   // locked-unchecked and must not write a disabling flag.
-  const customEnabled = hasCustomFiles ? chosenPresets.includes(CUSTOM) : undefined;
+  //
+  // `undefined` on the recommended path, which means "leave the flag alone".
+  // The customize expression would read as `false` here — no bundle was ticked,
+  // so `chosenPresets.includes(CUSTOM)` is false — and would write
+  // `customPoliciesEnabled: false`, disabling every convention policy the user
+  // has on disk as a side effect of choosing the default setup.
+  const customEnabled =
+    mode === "recommended" ? undefined : hasCustomFiles ? chosenPresets.includes(CUSTOM) : undefined;
   // Filter to what the chosen scopes support in BOTH branches: "Everything
   // available" must not expand to CLIs that cannot take any selected scope,
   // and a locked row can't be ticked but belt-and-braces keeps the invariant
@@ -1260,11 +1379,42 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
 
   {
     const choice = await selectOne<"key" | "local">({
-      message: "Connect this machine to Failproof Cloud?",
+      message: "Connect this machine to FailproofAI Cloud?",
+      // The hint says what you GET; the body says what LEAVES.
+      //
+      // Both have to be here and they are different jobs. "sends decisions +
+      // transcripts" described the plumbing, which reads like a data-collection
+      // notice rather than a feature — the reason anyone connects is to see
+      // what their agents did, so the option says that.
+      //
+      // The disclosure stays in the BODY rather than moving into the hint,
+      // which was the original design and is right: this screen is the only
+      // place it is ever made. `describeOutcome` prints "hook activity" after
+      // connecting and never mentions transcripts, so a person who does not
+      // read it here does not read it at all. One line, not three, and the
+      // specific nouns survive — "sessions" alone would not tell anyone their
+      // file contents leave the machine.
+      //
+      // The get-started page, not the dashboard host.
+      //
+      // `app.befailproof.ai` is only useful to somebody who already has an
+      // account, and this line addresses the person who has none — new to the
+      // product, so no org either, not merely missing a key. The get-started
+      // route walks them through creating both, so it answers the question
+      // actually being asked. Naming the product rather than the artefact is
+      // what makes it self-selecting: "No key?" reads as an error state to
+      // someone who simply has not signed up yet.
+      //
+      // A marketing route rather than a dashboard one is also the safer thing
+      // to hard-code here — it is the URL the site is expected to keep stable,
+      // where an in-app path can be reorganised without anyone thinking to
+      // update a string compiled into a CLI.
+      //
+      // The scope is gone from this screen: it is enforced at paste time, where
+      // a wrong key is actually caught.
       body: [
-        "  Connecting reports this machine's policy decisions AND full session",
-        "  transcripts — prompts, file contents and command output — to your",
-        "  dashboard. Staying local sends nothing, anywhere, ever.",
+        "  Sessions include prompts, file contents and command output.",
+        "  New to FailproofAI? Create a key at https://befailproof.ai/get-started/",
       ],
       // Cloud first, and therefore preselected: connecting is what most people
       // running this wizard came to do, and the local path stays one keystroke
@@ -1272,14 +1422,26 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       // moved, so "stay local" is still stated as plainly as it was.
       choices: [
         {
+          // What the cloud gives that this machine does not ALREADY have.
+          //
+          // "see what your agents did" was wrong: the local dashboard already
+          // shows that, so it described something the user gets either way and
+          // made connecting look redundant. The cloud's two jobs are a fleet
+          // seen in one place and policies deployed to it from there — which is
+          // also exactly what the key's two scopes buy (`events:add`,
+          // `policies:pull`).
           label: "Paste an API key",
           value: "key",
-          hint: "reports decisions and transcripts to your dashboard",
+          hint: "central monitoring · deploy policies from the dashboard",
         },
         {
+          // "re-run config", NOT "--connect". That flag exists for scripted,
+          // non-interactive setup; pointing a person who just declined at a
+          // flag they would have to look up is worse than naming the command
+          // they already ran.
           label: "Not now — stay local",
           value: "local",
-          hint: "policies still enforce · connect later with failproofai config --connect",
+          hint: "nothing leaves this machine · re-run config to add",
         },
       ],
       stdin,
@@ -1329,7 +1491,7 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         // reasonably types the dashboard's own address and gets a 404 from a
         // web app that is not the ingest endpoint. Both are real, both happened
         // within ten minutes of each other, and neither is a mistake the person
-        // making it can be expected to avoid: "Failproof Cloud URL" has no
+        // making it can be expected to avoid: "FailproofAI Cloud URL" has no
         // knowable answer other than the default it was already showing.
         //
         // The two audiences that genuinely need a different endpoint keep an

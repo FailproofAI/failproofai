@@ -144,49 +144,42 @@ pub fn sanitize_id_part(s: &str) -> String {
         .collect()
 }
 
-/// Last path component of a working directory, sanitized.
-fn project_name(cwd: &str) -> Option<String> {
-    let last = cwd
-        .trim_end_matches('/')
-        .rsplit('/')
-        .find(|p| !p.is_empty())?;
-    let cleaned = sanitize_id_part(last);
-    (!cleaned.is_empty()).then_some(cleaned)
-}
-
-/// The agent id a session's events are filed under.
+/// The agent id a session's events are filed under: the DATABASE's, always.
 ///
-/// Hermes has BOTH shapes and each needs its own answer:
+/// Hermes has two session shapes — a CLI session with a real `cwd`, and a
+/// gateway session (Slack, Telegram, cron) whose `cwd` is NULL — and this used
+/// to give each its own agent id, derived from those columns. That is what broke:
+/// Hermes rewrites `sessions` throughout a run, the id was re-derived on every
+/// poll, and a session split across two agent ids as soon as a column changed
+/// between passes.
 ///
-/// * A **CLI** session has a real `cwd` (5/5 in the probe capture, alongside
-///   `git_branch` and `git_repo_root`), so it groups by project exactly like
-///   Claude and the hook source do — which is the whole point: hook events and
-///   session events for one run must land under a single agent rather than two
-///   that look unrelated.
-/// * A **gateway** session (Slack, Telegram, cron) genuinely has NULL `cwd`.
-///   There is no project to group by, so it falls back to the transport in
-///   `source`. Grouping every gateway session under one bare `hermes` would
-///   merge Slack and Telegram traffic into an agent nobody can act on.
+/// Both shapes are still distinguishable, as `hermes_source` and `hermes_cwd`
+/// on every event — which is where "which transport" and "which project" belong:
+/// filters over one agent's sessions, not separate agents.
 ///
-/// `fallback` — the collector's configured default — is used only when the
-/// session row itself is missing, which means a message referencing a deleted
-/// session.
-pub fn agent_id(meta: Option<&SessionMeta>, fallback: &str) -> String {
-    let Some(meta) = meta else {
-        return fallback.to_string();
-    };
-    if let Some(project) = meta.cwd.as_deref().and_then(project_name) {
-        return format!("hermes-{project}");
-    }
-    if let Some(source) = meta
-        .source
-        .as_deref()
-        .map(sanitize_id_part)
-        .filter(|s| !s.is_empty())
-    {
-        return format!("hermes-{source}");
-    }
-    fallback.to_string()
+pub fn agent_id(_meta: Option<&SessionMeta>, profile_agent_id: &str) -> String {
+    // The database's id, unconditionally.
+    //
+    // This used to prefer the session's own `cwd` (as a project name) and then
+    // its `source`, falling back to the caller's id. Both of those columns are
+    // rewritten by Hermes DURING a run, and the id was re-derived on every poll
+    // — so a session split across two agent ids the moment one of them changed
+    // between polls. Live evidence: `20260812_133702_31ca19f0` arrived under
+    // both `hermes-kratos` and `hermes-telegram`, and `cron_bec543608ab8_…`
+    // under both `hermes-cron` and the bare fallback, from a single collector.
+    //
+    // The caller's id is derived from the database path (`agent_id_for`), which
+    // cannot change while a poll is running. That makes identity stable by
+    // construction and keeps this function pure with respect to
+    // `(connection contents, request)` — the property the format contract
+    // requires so re-read rows dedup instead of duplicating.
+    //
+    // `meta` is still taken so the signature does not churn at every call site,
+    // and because the session's attributes remain worth carrying: they are
+    // emitted in the payload as `hermes_source` and `hermes_cwd`, which is where
+    // "which channel" and "which project" belong — as filters over an agent's
+    // sessions, not as separate agents.
+    profile_agent_id.to_string()
 }
 
 /// The row's timestamp as epoch milliseconds, or `None` when it is implausible.

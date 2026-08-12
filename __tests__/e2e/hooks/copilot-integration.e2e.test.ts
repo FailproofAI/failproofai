@@ -15,7 +15,7 @@ import {
   runHook,
   assertAllow,
   assertPreToolUseDeny,
-  assertPostToolUseDeny,
+  assertPostToolUseBlockDecision,
   assertCopilotStopBlock,
 } from "../helpers/hook-runner";
 import { CopilotPayloads } from "../helpers/payloads";
@@ -93,7 +93,7 @@ describe("E2E: Copilot integration — hook protocol", () => {
     }
   });
 
-  it("PostToolUse: deny emits additionalContext (Claude-compatible JSON shape)", () => {
+  it("PostToolUse: deny emits a top-level {decision:\"block\"}, not additionalContext", () => {
     const env = createCopilotEnv();
     try {
       writeConfig(env.cwd, ["sanitize-jwt"]);
@@ -116,7 +116,7 @@ describe("E2E: Copilot integration — hook protocol", () => {
         ),
         { homeDir: env.home, cli: "copilot" },
       );
-      assertPostToolUseDeny(result);
+      assertPostToolUseBlockDecision(result);
     } finally {
       env.cleanup();
     }

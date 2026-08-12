@@ -4,6 +4,8 @@ import {
   POLICY_PRESETS,
   resolvePreset,
   resolveEverything,
+  RECOMMENDED_POLICIES,
+  defaultsMissingFromRecommended,
 } from "../../src/hooks/policy-presets";
 
 describe("policy-presets", () => {
@@ -57,5 +59,63 @@ describe("policy-presets", () => {
 
   it("unknown preset id resolves to empty", () => {
     expect(resolvePreset("does-not-exist")).toEqual([]);
+  });
+});
+
+describe("RECOMMENDED_POLICIES", () => {
+  it("names 15 policies and every one of them is a real non-beta builtin", () => {
+    // The count is asserted because it is a product promise the wizard PRINTS
+    // ("15 policies · global"). Changing the set is fine; changing it without
+    // noticing that the screen now advertises a different number is not.
+    expect(RECOMMENDED_POLICIES).toHaveLength(15);
+    for (const name of RECOMMENDED_POLICIES) {
+      const policy = BUILTIN_POLICIES.find((p) => p.name === name);
+      expect(policy, `${name} is not a builtin policy`).toBeDefined();
+      expect(policy!.beta, `${name} is beta and cannot be recommended`).toBeFalsy();
+    }
+  });
+
+  it("contains no duplicates", () => {
+    expect(new Set(RECOMMENDED_POLICIES).size).toBe(RECOMMENDED_POLICIES.length);
+  });
+
+  it("covers every default-enabled builtin", () => {
+    // The drift guard. Recommended is written out by hand rather than derived,
+    // so the day somebody adds a new `defaultEnabled` policy it would silently
+    // NOT be in the recommended set — and a machine set up by pressing Enter
+    // would be guarded less than one set up through the policy list. The
+    // failure is invisible from either screen; this is the only thing looking.
+    expect(defaultsMissingFromRecommended()).toEqual([]);
+  });
+
+  it("excludes the policy families that must never be a default", () => {
+    // Each of these has a specific reason recorded next to the list:
+    // require-*-before-stop refuses to let the agent finish and does not fire
+    // at all on hermes/goose; infra blocking breaks the day job of anyone who
+    // runs kubectl; block-read-outside-cwd false-positives constantly.
+    const excludedCategories = new Set(["Workflow", "Infra Commands"]);
+    for (const name of RECOMMENDED_POLICIES) {
+      const policy = BUILTIN_POLICIES.find((p) => p.name === name)!;
+      expect(
+        excludedCategories.has(policy.category),
+        `${name} is in ${policy.category}, which is deliberately not recommended`,
+      ).toBe(false);
+    }
+    expect(RECOMMENDED_POLICIES).not.toContain("block-read-outside-cwd");
+    expect(RECOMMENDED_POLICIES).not.toContain("block-work-on-main");
+  });
+
+  it("recommends no warn-only policy", () => {
+    // Ten warnings is noise, and a warning nobody reads is worse than one that
+    // was never shown. Everything recommended actually prevents something.
+    expect(RECOMMENDED_POLICIES.filter((n) => n.startsWith("warn-"))).toEqual([]);
+  });
+
+  it("includes the three that were off by default and should not have been", () => {
+    // The gap that prompted this list: a "recommended" setup that omits
+    // catastrophic deletion and force-push is not recommendable.
+    expect(RECOMMENDED_POLICIES).toContain("block-rm-rf");
+    expect(RECOMMENDED_POLICIES).toContain("block-force-push");
+    expect(RECOMMENDED_POLICIES).toContain("block-secrets-write");
   });
 });

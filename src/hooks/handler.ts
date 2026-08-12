@@ -34,6 +34,7 @@ import { clearPolicies, registerPolicy, getPoliciesForEvent } from "./policy-reg
 import { loadAllCustomHooks } from "./custom-hooks-loader";
 import type { CustomHook } from "./policy-types";
 import { persistHookActivity } from "./hook-activity-store";
+import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
 import { trackHookEvent, flushHookTelemetry } from "./hook-telemetry";
 import { resolveCwd } from "./resolve-cwd";
 import { resolvePermissionMode } from "./resolve-permission-mode";
@@ -610,6 +611,31 @@ export async function handleHookEvent(eventType: string, cli: IntegrationType = 
   }
 
   const result = await evaluateHookEvent(eventType, cli, stdinRead.payload);
+
+  // Say it out loud, once a session, when the collector is holding batches the
+  // server definitively refused.
+  //
+  // Everything `--status` prints about the connection comes from the credential
+  // file, which records what was true at `--connect` time and is never
+  // revisited — so a revoked or expired key, or an org that was disabled,
+  // leaves that file correct while nothing arrives. `--status` also only speaks
+  // when someone runs it, and the whole failure mode here is that nobody knows
+  // there is anything to ask about. SessionStart is the one place failproofai
+  // is already invoked, on every CLI, exactly once per session, with a person
+  // watching — so this costs one directory read per session and needs no flag,
+  // no daemon channel and no user action.
+  //
+  // Never allowed to affect the outcome: the read swallows its own errors, the
+  // verdict goes to stderr (SessionStart is `observe` everywhere — a stderr
+  // write there cannot block a session), and `result.exitCode` is untouched.
+  try {
+    if (canonicalizeEventType(eventType, cli) === "SessionStart") {
+      const rejection = deliveryHealthLine(deliveryHealth());
+      if (rejection) hookLogWarn(rejection);
+    }
+  } catch {
+    // A status notice must never be the reason a hook misbehaves.
+  }
 
   if (result.stdout) {
     process.stdout.write(result.stdout);

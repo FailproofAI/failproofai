@@ -1,5 +1,5 @@
 /**
- * Connecting a machine to Failproof Cloud.
+ * Connecting a machine to FailproofAI Cloud.
  *
  * The credential lives in a file the daemon reads, NOT in the service unit.
  * `daemon-service.ts` installs that unit at mode 0644 into
@@ -278,7 +278,7 @@ export async function verifyCloudCredentials(creds: CloudCredentials): Promise<V
   } catch {
     return {
       ok: false,
-      reason: `${creds.url} answered, but not with a desired-state document. Is this a Failproof Cloud URL?`,
+      reason: `${creds.url} answered, but not with a desired-state document. Is this a FailproofAI Cloud URL?`,
     };
   }
 }

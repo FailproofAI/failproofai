@@ -286,7 +286,7 @@ USAGE
 COMMANDS
   (no args)                      Launch the policy dashboard
   config                         Interactive setup — pick scope, agents & policies
-    --connect <url> --token <key>  Connect to Failproof Cloud non-interactively
+    --connect <url> --token <key>  Connect to FailproofAI Cloud non-interactively
     --machine-id <id>              Stable id for this machine
     --machine-label <name>         Human-readable name in the dashboard
     --no-transcripts               Report decisions only, never transcripts
@@ -1566,7 +1566,7 @@ WHAT IT DOES
 
 FAILPROOF CLOUD
   failproofai config --connect <url> --token <key> [--machine-id <id>]
-                                    Connect this machine to Failproof Cloud
+                                    Connect this machine to FailproofAI Cloud
                                     [--no-transcripts] decisions only, no transcripts
   failproofai config --disconnect   Stop pulling policy and sending activity
   failproofai config --status       Show connection, daemon and pause state

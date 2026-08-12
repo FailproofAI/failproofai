@@ -540,10 +540,14 @@ fn a_non_zero_exit_code_is_not_treated_as_a_tool_error() {
 // ── agent id: both session shapes ────────────────────────────────────────
 
 #[test]
-fn a_cli_session_is_grouped_by_its_working_directory() {
-    // `cwd` IS populated for CLI sessions (5/5 on the probe), so they group by
-    // project exactly like the hook source does — which is what makes hook
-    // events and session events for one run land under a single agent.
+fn a_cli_session_keeps_the_databases_agent_id_and_carries_its_cwd() {
+    // `cwd` IS populated for CLI sessions (5/5 on the probe) and is still
+    // shipped — as a FIELD. It is no longer the agent's name.
+    //
+    // Naming the agent from it meant identity was re-derived from a column
+    // Hermes rewrites mid-run, on every poll, so one session split across two
+    // agent ids the moment it changed. Grouping by project stays available as a
+    // filter over `hermes_cwd`, which is what it should have been.
     let dir = tmpdir("cwd");
     let (db, conn) = make_db(&dir);
     insert_session(
@@ -561,7 +565,7 @@ fn a_cli_session_is_grouped_by_its_working_directory() {
     let ev = poll_all(&db);
     assert!(!ev.is_empty());
     for e in &ev {
-        assert_eq!(e["agent_id"], "hermes-openclaw-local");
+        assert_eq!(e["agent_id"], "hermes");
         assert_eq!(e["hermes_cwd"], "/home/u/src/openclaw-local");
     }
 
@@ -569,10 +573,11 @@ fn a_cli_session_is_grouped_by_its_working_directory() {
 }
 
 #[test]
-fn a_gateway_session_with_no_cwd_falls_back_to_its_source() {
-    // Slack/Telegram sessions genuinely have NULL cwd. Falling all the way back
-    // to a bare `hermes` would merge every transport into one agent nobody can
-    // act on, so the transport is the grouping axis instead.
+fn a_gateway_session_keeps_the_databases_agent_id_and_carries_its_source() {
+    // Slack/Telegram sessions genuinely have NULL cwd, and their transport is
+    // still shipped as `hermes_source` — again as a field, not as the name.
+    // Transport remains the grouping axis; it is applied by filtering rather
+    // than by fragmenting one database into several agents.
     let dir = tmpdir("gateway");
     let (db, conn) = make_db(&dir);
     insert_session(
@@ -590,7 +595,7 @@ fn a_gateway_session_with_no_cwd_falls_back_to_its_source() {
     let ev = poll_all(&db);
     assert!(!ev.is_empty());
     for e in &ev {
-        assert_eq!(e["agent_id"], "hermes-slack");
+        assert_eq!(e["agent_id"], "hermes");
         assert_eq!(e["hermes_source"], "slack");
         assert!(
             e.get("hermes_cwd").is_none(),
@@ -881,7 +886,7 @@ fn the_fts_shadow_tables_are_populated_but_never_read() {
 }
 
 #[test]
-fn several_sessions_in_one_batch_keep_their_own_agent_ids() {
+fn several_sessions_in_one_batch_share_the_databases_agent_id() {
     // One database holds every session on the machine, CLI and gateway alike.
     // A poll that resolved the session once and reused it would file a Slack
     // turn under the last CLI project it happened to see.
@@ -912,8 +917,77 @@ fn several_sessions_in_one_batch_keep_their_own_agent_ids() {
 
     let ev = poll_all(&db);
     let reqs = of_type(&ev, "model_request");
-    assert_eq!(reqs[0]["agent_id"], "hermes-work");
-    assert_eq!(reqs[1]["agent_id"], "hermes-telegram");
+    // One database, one agent — whatever the sessions inside it are doing.
+    assert_eq!(reqs[0]["agent_id"], "hermes");
+    assert_eq!(reqs[1]["agent_id"], "hermes");
+    // The distinction between them is preserved where it belongs: on the rows.
+    assert_eq!(reqs[0]["hermes_cwd"], "/work");
+    assert_eq!(reqs[1]["hermes_source"], "telegram");
+
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_session_keeps_one_agent_id_when_hermes_rewrites_its_cwd_mid_run() {
+    // THE REGRESSION THIS EXISTS FOR.
+    //
+    // Hermes rewrites `sessions` throughout a run (`hermes_state.py` carries
+    // ~20 `UPDATE sessions SET …`), and the agent id used to be re-derived from
+    // those columns on EVERY poll. So a session whose `cwd` was written or
+    // cleared between two polls had its rows split across two agent ids, from a
+    // single collector. Observed live on a customer org: one session arrived
+    // under both `hermes-kratos` and `hermes-telegram`, another under
+    // `hermes-cron` and the bare fallback.
+    //
+    // Polling twice with the column changed in between is the only way to catch
+    // it — every existing test polls once, which is why a bug that had been
+    // shipping was invisible to a green suite.
+    let dir = tmpdir("stable-id");
+    let (db, conn) = make_db(&dir);
+    insert_session(
+        &conn,
+        CLI_SESSION,
+        "telegram",
+        None,
+        1_785_744_251.6,
+        None,
+        None,
+        None,
+    );
+    user(&conn, CLI_SESSION, "first turn", 1_785_744_251.7);
+
+    let before = poll_at(&db, 0, 1000);
+    let watermark = before.watermark;
+    assert!(!before.events.is_empty());
+
+    // Hermes sets a working directory partway through the run.
+    conn.execute(
+        "UPDATE sessions SET cwd = ?1 WHERE id = ?2",
+        rusqlite::params!["/home/u/src/kratos", CLI_SESSION],
+    )
+    .unwrap();
+    user(&conn, CLI_SESSION, "second turn", 1_785_744_252.9);
+
+    let after = poll_at(&db, watermark, 1000);
+    assert!(
+        !after.events.is_empty(),
+        "the second turn must be collected"
+    );
+
+    for e in before.events.iter().chain(after.events.iter()) {
+        assert_eq!(
+            e["agent_id"], "hermes",
+            "one session must never span two agent ids: {e:?}"
+        );
+    }
+    // The new cwd is still REPORTED — it just is not the agent's name.
+    assert!(
+        after
+            .events
+            .iter()
+            .any(|e| e["hermes_cwd"] == "/home/u/src/kratos"),
+        "the updated cwd must still reach the payload"
+    );
 
     fs::remove_dir_all(&dir).ok();
 }
@@ -1066,7 +1140,7 @@ async fn a_session_is_spooled_once_and_a_resumed_run_ships_nothing() {
     }
     for e in &ev {
         assert_eq!(e["session_id"], CLI_SESSION);
-        assert_eq!(e["agent_id"], "hermes-work");
+        assert_eq!(e["agent_id"], "hermes");
         assert_eq!(e["environment"], "local");
     }
 

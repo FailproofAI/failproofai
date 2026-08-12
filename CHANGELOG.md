@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1-beta.0 — 2026-08-12
+
+### Fixes
+
+- Make the canary box a one-command install. Setting it up was four commands, and three of them fail SILENTLY for a day — the wrong property for the thing whose whole job is noticing silent failures. A work dir mounted at a different path inside the container than out leaves the sibling-container `-v` sources resolving against the host to nothing; a `CANARY_REF` left at the shipped `origin/failproofaid` points the box at a branch that merged in #632, so it would test a frozen tree forever and never say so; and a filled-in env file with no Slack webhook produces a run that works perfectly and reports nowhere, which is worse than no canary because it looks like coverage. `integration-suite/local/install.sh` refuses each at install time, in front of a person, rather than at 06:17 tomorrow in front of nobody — the webhook is required for that reason, not because the run needs it. It builds the runner image straight from the git URL (Docker takes `<repo>#<ref>:<subdir>` as a build context) so the box never clones, installs the env file at mode 600, and REWRITES rather than appends its cron line — it carries a `# failproofai-canary` marker and strips any previous line first, so re-running upgrades the schedule instead of scheduling a second job. The stale `CANARY_REF` default is corrected in `secrets.env.example` too, leaving the installer's check as a backstop rather than the only thing between a wrong default and a year of green runs against a dead ref. `--dry-run` distinguishes what it CHECKED (the preflight really runs; it keeps its ✓) from what it would CHANGE, because a script reporting success for work it did not do is the same defect class this canary exists to find. (#686)
+
 ## 1.0.0 — 2026-08-12
 
 The first stable release. Everything below this heading shipped across the

@@ -38,7 +38,28 @@ inside a self-contained runner image that drives the host's Docker through the
 mounted socket (sibling containers — the sandbox image, volumes and probe
 containers are the exact ones CI runs).
 
-Box setup, in full:
+Box setup is **one command**. Whoever holds the credentials fills in a
+`secrets.env` and sends it; the person with the machine runs:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/FailproofAI/failproofai/main/integration-suite/local/install.sh) ~/secrets.env
+```
+
+That builds the runner image straight from the git URL (no clone on the box),
+creates `~/fp-canary`, installs the env file at mode 600, and writes the cron
+line. It is idempotent — re-running upgrades the image and *rewrites* the cron
+line rather than adding a second one. `--now` also runs one canary immediately,
+`--dry-run` prints what it would do, `--at "M H"` picks the hour.
+
+**The installer exists because three of the four manual steps fail silently for
+a day.** A work dir mounted at a different path inside than out, a `CANARY_REF`
+left at the pre-merge default, and a filled-in env file with no Slack webhook all
+produce a job that runs and reports nothing — which looks exactly like coverage.
+Each is now refused at install time, in front of a person. The webhook is
+required for that reason and not because the run needs it.
+
+<details>
+<summary>The same thing by hand, if you would rather see every step</summary>
 
 ```bash
 # 1. one-time: build the runner image (from a clone, or straight from GitHub)
@@ -53,6 +74,8 @@ chmod 600 ~/fp-canary/secrets.env    # then fill it in
 # 3. cron (pick any quiet hour; overlapping fires share a lock and no-op)
 17 6 * * * docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/fp-canary:$HOME/fp-canary" --env-file "$HOME/fp-canary/secrets.env" failproofai-canary-runner >/dev/null 2>&1
 ```
+
+</details>
 
 The work dir is mounted at an **identical path** inside and out — that is
 load-bearing, not style: paths under it are used both for in-container file

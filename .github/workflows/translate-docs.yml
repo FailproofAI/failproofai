@@ -129,7 +129,14 @@ jobs:
       # single `ko` page — and a nav mismatch in consolidate did the same on
       # Aug 12. Each fragment is already authoritative for its own language, so
       # there is nothing a merge has to happen first for.
+      #
+      # The `cache-hit` guard is the same one `build-daemon.yml:137` carries, and
+      # it is load-bearing here for a specific reason: the key embeds
+      # `github.run_id`, which is REUSED when someone re-runs a failed job. On
+      # that second attempt the primary key already exists, so the restore above
+      # scores an exact hit and this save would collide with itself.
       - name: Save translation cache fragment
+        if: steps.restore-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: scripts/translate-docs/.translation-cache.json

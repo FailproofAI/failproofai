@@ -569,6 +569,40 @@ export function buildCompletionSummary(
  */
 const MAX_SUMMARY_COLUMNS = 77;
 
+/** The column this line aligns under, matching `  Policies   : `. */
+const POLICY_LIST_INDENT = " ".repeat(15);
+
+/**
+ * A taste of the set, not the set: two names and a count of the rest.
+ *
+ * The same shape `describeSelection` uses for bundles, for the same reason —
+ * naming everything turned a four-line review screen into a fifteen-line one,
+ * and a screen nobody reads to the bottom is worse at conveying what is about
+ * to happen than a short one. Two names say what KIND of thing these are;
+ * `failproofai policies list` says the rest, for the person who wants it.
+ *
+ * The whole review body is rendered dim by the prompt (`tui.ts`), so this
+ * reads as a subtitle to the count above it rather than competing with it.
+ *
+ * Degrades by dropping names rather than by overflowing: `writeLines`
+ * truncates with a hard cut and no ellipsis, so a line that runs over ends
+ * mid-slug and reads as a policy name that does not exist. Two long names
+ * (`sanitize-private-key-content` is 28) plus the prefix is within budget, but
+ * the guard is here rather than argued about, because a future rename is
+ * exactly the kind of change nobody re-measures.
+ */
+export function policyNamesLine(names: string[]): string[] {
+  if (names.length === 0) return [];
+  const budget = MAX_SUMMARY_COLUMNS - POLICY_LIST_INDENT.length;
+  for (const take of [2, 1]) {
+    const shown = names.slice(0, take);
+    const rest = names.length - shown.length;
+    const text = rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
+    if (text.length <= budget) return [`${POLICY_LIST_INDENT}${text}`];
+  }
+  return [];
+}
+
 /**
  * Name the bundles rather than counting the policies inside them.
  *
@@ -643,6 +677,12 @@ export function reviewLines(state: {
       ? "  Policies   : none enabled (add later: failproofai policies --install)"
       : `  Policies   : ${policies.length} enabled`,
   );
+  // A taste of what they are, under the count. "15 enabled" alone is a number
+  // the user cannot check and, on the recommended path, did not choose; two
+  // names say what kind of thing it is without turning the review into a page.
+  if (policies.length > 0) {
+    lines.push(...policyNamesLine([...policies].sort()));
+  }
   if (installDaemon && isDaemonSupportedPlatform()) {
     lines.push(
       `  Daemon     : failproofaid, installed as a system service running as you`,

@@ -550,6 +550,57 @@ describe("hooks/manager", () => {
       );
     });
 
+    it("replace: true rewrites the policy set without touching custom or convention policies", async () => {
+      // What the configure wizard's Recommended path relies on. `replace: true`
+      // makes the given list the whole enabled set — which is the point, since
+      // unticking a policy has to remove it — but it must NOT reach the two
+      // things a user configured separately:
+      //
+      //   • customPoliciesPaths — explicit `-c` files. Wiping them would stop
+      //     policies loading that the user never touched in this run.
+      //   • customPoliciesEnabled — the convention-discovery flag for
+      //     `.failproofai/policies/*.mjs`. Writing `false` here would disable
+      //     every one of those files as a side effect of choosing a preset.
+      //
+      // Both survive because the wizard passes no `customPoliciesPath` and
+      // `removeCustomHooks: false`, so neither branch that rewrites them runs
+      // and `{...previousConfig}` carries them through. That is load-bearing
+      // rather than incidental, so it is asserted.
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+      const { readScopedHooksConfig, writeScopedHooksConfig } = await import("../../src/hooks/hooks-config");
+      vi.mocked(readScopedHooksConfig).mockReturnValue({
+        enabledPolicies: ["block-kubectl"],
+        customPoliciesPaths: [resolve("/tmp/mine.js")],
+        customPoliciesEnabled: true,
+      });
+
+      const { installHooks } = await import("../../src/hooks/manager");
+      await installHooks(
+        ["block-sudo", "block-rm-rf"],
+        "user",
+        undefined,
+        false,
+        "configure-wizard",
+        undefined,
+        false,
+        ["claude"],
+        { replace: true, quiet: true },
+      );
+
+      expect(writeScopedHooksConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          // Replaced, as asked — block-kubectl is gone.
+          enabledPolicies: ["block-sudo", "block-rm-rf"],
+          // Preserved, untouched.
+          customPoliciesPaths: [resolve("/tmp/mine.js")],
+          customPoliciesEnabled: true,
+        }),
+        "user",
+        undefined,
+      );
+    });
+
     it("does not duplicate a path that is already configured", async () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue("{}");

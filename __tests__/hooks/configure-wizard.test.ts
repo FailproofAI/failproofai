@@ -4,7 +4,7 @@ import { summarize,
   BACK,
 } from "../../src/hooks/tui";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
 
 // The interactive prompts, the install manager, telemetry and CLI detection are
 // mocked so we can drive the wizard head-lessly and assert the exact side effect
@@ -143,6 +143,7 @@ import {
   clisSupportingScope,
   resolvePresetSelection,
   reviewLines,
+  policyNamesLine,
   runConfigureWizard,
   maybeFirstRunConfigure,
   hasSeenLauncher,
@@ -416,6 +417,68 @@ describe("configure-wizard pure builders", () => {
     expect(lines).toContain("settings.json");
   });
 
+  it("reviewLines gives a taste of the policies without listing them all", () => {
+    // Two names say what KIND of thing these are; naming all fifteen turned a
+    // four-line review into a thirteen-line one, and a screen nobody reads to
+    // the bottom conveys less than a short one.
+    const lines = reviewLines({
+      target: "user",
+      clis: ["claude"],
+      policies: [...RECOMMENDED_POLICIES],
+      cwd: "/tmp/proj",
+    });
+    const joined = lines.join("\n");
+    expect(joined).toContain("15 enabled");
+    expect(joined).toContain("block-curl-pipe-sh, block-env-files +13");
+    // The other thirteen are NOT on screen.
+    expect(joined).not.toContain("sanitize-private-key-content");
+    // One line for the count, one for the taste — never a paragraph.
+    expect(lines.filter((l) => l.includes("block-curl-pipe-sh"))).toHaveLength(1);
+  });
+
+  it("reviewLines keeps every line inside the 80-column budget", () => {
+    // `writeLines` truncates with a hard cut and no ellipsis, so an over-long
+    // line does not visibly lose its tail — it ends mid-slug and reads as a
+    // policy name that does not exist.
+    for (const line of reviewLines({
+      target: "both",
+      clis: ["claude"],
+      policies: [...RECOMMENDED_POLICIES],
+      cwd: "/tmp/proj",
+    })) {
+      expect(line.length, `too wide: ${line}`).toBeLessThanOrEqual(80);
+    }
+  });
+
+  it("the taste scales to Everything without growing", () => {
+    const everything = resolveEverything();
+    const lines = reviewLines({
+      target: "user",
+      clis: ["claude"],
+      policies: everything,
+      cwd: "/tmp/proj",
+    }).join("\n");
+    expect(lines).toContain(`${everything.length} enabled`);
+    expect(lines).toContain(`+${everything.length - 2}`);
+  });
+
+  it("policyNamesLine drops names rather than overflowing the budget", () => {
+    // Degrading by dropping a name is recoverable; overflowing is not, because
+    // the hard cut makes the tail look like a policy name that does not exist.
+    const long = [
+      "sanitize-private-key-content",
+      "sanitize-connection-strings",
+      "block-failproofai-commands",
+    ];
+    for (const line of policyNamesLine(long)) {
+      expect(line.startsWith(" ".repeat(15))).toBe(true);
+      expect(line.length).toBeLessThanOrEqual(77);
+    }
+    expect(policyNamesLine([])).toEqual([]);
+    // A single policy needs no "+N" at all.
+    expect(policyNamesLine(["block-sudo"])[0].trim()).toBe("block-sudo");
+  });
+
   it("reviewLines reports an empty policy set as a choice, not a count of zero", () => {
     const lines = reviewLines({
       target: "user",
@@ -562,6 +625,32 @@ describe("configure-wizard orchestration", () => {
     await runConfigureWizard(ttyIO());
     // `multiSelect` is the primitive both skipped steps use.
     expect(multiSelect).not.toHaveBeenCalled();
+  });
+
+  it("Recommended adds to what was already enabled, never replaces it", async () => {
+    // `installHooks` runs with `replace: true`, so writing the bare recommended
+    // list would switch OFF anything the user had enabled by hand — turning
+    // "give me the sensible defaults" into a REDUCTION in protection, which is
+    // the one direction setup must never move someone.
+    //
+    // Seeded as a real file rather than a mock: `readScopedHooksConfig` is the
+    // genuine implementation in this suite, and it reads user scope out of the
+    // HOME this file isolates.
+    const cfgPath = resolve(fileHome, ".failproofai", "policies-config.json");
+    mkdirSync(dirname(cfgPath), { recursive: true });
+    writeFileSync(cfgPath, JSON.stringify({ enabledPolicies: ["block-kubectl"] }));
+    try {
+      drive({ mode: "recommended", connect: "local", review: "apply" });
+
+      await runConfigureWizard(ttyIO());
+
+      const policies = vi.mocked(installHooks).mock.calls[0][0] as string[];
+      expect(policies).toContain("block-kubectl"); // theirs, kept
+      expect(policies).toContain("block-rm-rf"); // ours, added
+      expect(new Set(policies).size).toBe(policies.length);
+    } finally {
+      rmSync(cfgPath, { force: true });
+    }
   });
 
   it("'Everything available' protects every supported CLI", async () => {

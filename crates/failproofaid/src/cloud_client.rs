@@ -85,7 +85,22 @@ fn disconnected_by_config() -> bool {
     let Ok(root) = serde_json::from_str::<serde_json::Value>(&text) else {
         return false;
     };
-    root.get("mode").and_then(|m| m.as_str()) == Some("oss")
+    // `{"mode":{"kind":"oss"}}` — an OBJECT, not a string.
+    //
+    // This read `mode` as a string and therefore never fired: `as_str()` on an
+    // object is `None`, so a machine put back on OSS kept polling exactly as it
+    // had before the veto existed. The unit tests passed because their fixtures
+    // were written from the same wrong assumption as the code — a test that
+    // encodes the bug it is meant to catch is worth less than no test, because
+    // it also reports that the case is covered.
+    //
+    // The shape is `fp-config.ts`'s: `mode: { kind: config.mode }` on write
+    // (line 567) and `parsed.mode?.kind` on read (line 423). There is no flat
+    // form to fall back to — the TS has never written one.
+    root.get("mode")
+        .and_then(|m| m.get("kind"))
+        .and_then(|k| k.as_str())
+        == Some("oss")
 }
 
 /// The `cloud` object of `credentials.json`. Snake_case keys, because that is
@@ -557,6 +572,17 @@ mod tests {
         }
         unsafe {
             std::env::set_var("FAILPROOFAI_CLOUD_CREDENTIALS", &path);
+            // Point HOME at the scratch dir too.
+            //
+            // Without this the suite reads the DEVELOPER'S real
+            // ~/.failproofai/config.json, and `from_file` consults it now that
+            // the `mode` veto works. Five tests here failed the moment the veto
+            // started firing — not because the veto was wrong, but because a
+            // machine that had run `--disconnect` (or, as here, was simply set
+            // up in OSS mode) made them fail while the same commit passed on a
+            // machine that had not. A unit test whose result depends on the
+            // config of the laptop running it is not testing what it says.
+            std::env::set_var("FAILPROOFAI_HOME", &dir);
             std::env::remove_var("FAILPROOFAI_CLOUD_URL");
             std::env::remove_var("FAILPROOFAI_CLOUD_TOKEN");
             std::env::remove_var("FAILPROOFAI_MACHINE_ID");
@@ -958,7 +984,7 @@ mod tests {
         let _lock = lock_env();
         let _guard = with_home(&[
             ("credentials.json", FILE_CREDS),
-            ("config.json", r#"{"mode":"oss"}"#),
+            ("config.json", r#"{"mode":{"kind":"oss"}}"#),
         ]);
         assert!(CloudClient::from_file().unwrap().is_none());
         unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
@@ -969,7 +995,10 @@ mod tests {
         // The fallback is the easiest of the three exits to leave unguarded, and
         // the one most likely to be the file that survived a cleanup.
         let _lock = lock_env();
-        let _guard = with_home(&[("cloud.json", GOOD), ("config.json", r#"{"mode":"oss"}"#)]);
+        let _guard = with_home(&[
+            ("cloud.json", GOOD),
+            ("config.json", r#"{"mode":{"kind":"oss"}}"#),
+        ]);
         assert!(CloudClient::from_file().unwrap().is_none());
         unsafe { std::env::remove_var("FAILPROOFAI_HOME") };
     }
@@ -979,7 +1008,7 @@ mod tests {
         let _lock = lock_env();
         let _guard = with_home(&[
             ("credentials.json", FILE_CREDS),
-            ("config.json", r#"{"mode":"cloud"}"#),
+            ("config.json", r#"{"mode":{"kind":"cloud"}}"#),
         ]);
         let client = CloudClient::from_file().unwrap().expect("enrolled");
         assert_eq!(client.machine_id, "m-json");
@@ -999,6 +1028,15 @@ mod tests {
             Some(r#"{ not json"#),
             Some(r#"{"mode":"OSS"}"#),
             Some(r#"{"mode":true}"#),
+            // The shape this function USED to read. The TS has never written a
+            // flat string — `fp-config.ts` writes `mode: { kind }` — so a bare
+            // string is malformed for this schema and must not veto. Kept as a
+            // fixture because it is precisely what the original fixtures said,
+            // which is how the veto shipped never firing.
+            Some(r#"{"mode":"oss"}"#),
+            // Nested but not the value we act on.
+            Some(r#"{"mode":{"kind":"cloud"}}"#),
+            Some(r#"{"mode":{}}"#),
         ] {
             let mut files = vec![("credentials.json", FILE_CREDS)];
             if let Some(c) = config {
@@ -1019,7 +1057,7 @@ mod tests {
         // daemon, and the env path exists so CI/containers work with no files.
         // A file on disk must not veto it.
         let _lock = lock_env();
-        let _guard = with_home(&[("config.json", r#"{"mode":"oss"}"#)]);
+        let _guard = with_home(&[("config.json", r#"{"mode":{"kind":"oss"}}"#)]);
         unsafe {
             std::env::set_var("FAILPROOFAI_CLOUD_URL", "https://cloud.example");
             std::env::set_var("FAILPROOFAI_CLOUD_TOKEN", "t");

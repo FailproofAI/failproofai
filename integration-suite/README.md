@@ -94,6 +94,10 @@ matrix.
 Everything lands under the work dir: version-gate state in `state/` (instead
 of the Actions cache — the gate logic is unchanged), run + per-leg logs in
 `logs/` (pruned after 14 days), the clone, and the daemon build's cargo cache.
+All of it except `secrets.env` is written by the container **as root**, so
+reading a log or clearing the clone from the host needs `sudo`. Harmless — the
+next run is root too — but it is the first thing that surprises anyone poking
+at the box by hand.
 Verdict reports POST to Slack exactly as before; a leg that dies *before*
 reporting gets a distinct crash-note with the log tail (that's the replacement
 for GHA's red-job email — cron's own output can go to `/dev/null`). Token

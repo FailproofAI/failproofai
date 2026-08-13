@@ -580,3 +580,13 @@ describe("a job's ref must still exist on the remote", () => {
     expect(installSh).toMatch(/not origin\/main — deliberate for a one-off/);
   });
 });
+
+describe("the missing-credentials message", () => {
+  it("explains the webhook only when the webhook is what is missing", () => {
+    // translate deliberately needs no webhook — it reports by opening a pull
+    // request. Printing the webhook rationale under a list that does not
+    // contain it reads as though the job wants one it does not.
+    expect(installSh).toMatch(/case " \$missing " in \*" CANARY_SLACK_WEBHOOK "\*\)/);
+    expect(installSh).toMatch(/die "the \$j job needs these[^"]*\$missing\$why/);
+  });
+});

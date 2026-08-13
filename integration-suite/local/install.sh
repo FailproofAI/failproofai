@@ -211,11 +211,22 @@ if [ "$DRY" = 0 ]; then
     for v in $required; do
       [ -n "$(getvar "$v")" ] || missing="$missing $v"
     done
-    [ -z "$missing" ] || die "the $j job needs these, and they are empty in $WORK/secrets.env:$missing
+    if [ -n "$missing" ]; then
+      # Only explain the webhook when the webhook is what is missing. Printing
+      # that rationale under a list that does not contain it reads as though
+      # the job wants a webhook it does not — and `translate` deliberately
+      # does not, since it reports by opening a pull request.
+      why=""
+      case " $missing " in *" CANARY_SLACK_WEBHOOK "*)
+        why="
 
        CANARY_SLACK_WEBHOOK is required on purpose — a job that runs and
-       reports nowhere is worse than no job, because it looks like coverage.
+       reports nowhere is worse than no job, because it looks like coverage." ;;
+      esac
+      die "the $j job needs these, and they are empty in $WORK/secrets.env:$missing$why
+
        To install without this job:  --jobs $(echo "$JOBS" | tr ' ' '\n' | grep -v "^$j\$" | paste -sd, -)"
+    fi
     ok "$j: credentials complete"
   done
 

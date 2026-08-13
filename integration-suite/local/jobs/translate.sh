@@ -66,6 +66,11 @@ slack_note() { # $1 = text; best-effort, never fails the run
 STEP="startup"
 REF_DESC="${TRANSLATE_REF:-origin/$BASE_BRANCH}"
 die() { # $1 = human summary
+  # Printed AS WELL AS posted. Slack is the channel for the person who is not
+  # watching; the log is the one for the person who is, and a run that fails
+  # with an empty console because no webhook happened to be set is the same
+  # silent-failure class this box exists to catch.
+  echo "✗ $STEP: $1" >&2
   slack_note "🔥 docs translation FAILED at *$STEP* — \`$REF_DESC\` @ \`$FP_SHA\`
 $1
 \`\`\`

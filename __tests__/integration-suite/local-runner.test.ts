@@ -446,3 +446,17 @@ describe("installer schedules every job it validated", () => {
     }
   });
 });
+
+describe("translate job failures are never silent", () => {
+  it("prints the reason as well as posting it", () => {
+    // Slack is for the person not watching; the console/log is for the one who
+    // is. A run that fails with an empty console because no webhook happened
+    // to be set is the silent-failure class this box exists to catch.
+    const dieBody = translateSh.slice(
+      translateSh.indexOf("die() {"),
+      translateSh.indexOf("step() {"),
+    );
+    expect(dieBody).toMatch(/echo "✗ \$STEP: \$1" >&2/);
+    expect(dieBody).toMatch(/slack_note/);
+  });
+});

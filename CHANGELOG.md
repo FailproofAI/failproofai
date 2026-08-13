@@ -2,6 +2,10 @@
 
 ## 1.0.1-beta.0 — 2026-08-14
 
+### Dependencies
+
+- Pin `nanoid` to 3.3.18 through `overrides`, closing GHSA-2v37-7h3g-55p8 (CVSS 8.2 — custom generators can loop indefinitely when size is zero). Not introduced here: the lockfile is untouched by this branch, `main` passed the same scan at 04:57 and this branch failed at 16:21, because the advisory's affected range was published in between. It arrives transitively through `postcss`, which asks for `^3.3.17`, so the pin satisfies it without moving anything else — two lines of lockfile, 657 entries before and after. An `overrides` pin rather than an `osv-scanner.toml` ignore because that file's own rule is to prefer fixing, and there is a fix. (#694)
+
 ### Fixes
 
 - Delete eight dead files a repo survey confirmed unreachable, each verified by an exhaustive reference search rather than a missing import. `src/audit/report.ts` (348 lines) rendered the `--report`/`--json`/`--limit`/`--show-examples` output for flags `runAuditCli()` has rejected since the dashboard flow replaced it — and `package.json` `files[]` ships `src/`, so it was published in every tarball. `lib/claude-config.ts` was a re-export wrapper around `lib/paths.ts` whose only mention anywhere was its own JSDoc example. `lib/extract-subagent-ids.ts` was imported by nothing but its own test; the live path re-implements the regex inline in `log-entries.ts`, whose comment now describes the id format instead of pointing at a module that no longer exists. `.github/smoke-test/expected/` held two placeholder fixtures naming a workflow that does not exist. `crates/.gitkeep` landed in the same commit as the crates it was meant to hold open. (#PR)

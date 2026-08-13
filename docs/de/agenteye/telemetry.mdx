@@ -4,49 +4,49 @@ description: "Erkenne sofort, wenn deine Modelle, Tools oder Hooks langsamer wer
 ---
 
 
-Erkenne sofort, wenn deine Modelle, Tools oder Hooks langsamer werden oder Kosten verursachen, und fange Tail-Latency-Spitzen ab, bevor deine Nutzer sie überhaupt bemerken. Drei dedizierte Seiten verwandeln rohe Laufzeiten in p50, p95 und p99, die du auf einen Blick ablesen kannst.
+Erkenne sofort, wenn deine Modelle, Tools oder Hooks langsamer werden oder Kosten verursachen, und fange Tail-Latency-Spitzen ab, bevor deine Nutzer sie überhaupt bemerken. Drei dedizierte Seiten verwandeln rohe Zeitwerte in p50, p95 und p99, die du auf einen Blick ablesen kannst.
 
-![Die Models-Seite mit einer Latency-Heatmap, einem Percentile-Band und modellspezifischen Token-, Kosten- und Kontextfenster-Werten](/agenteye/images/models.png)
-*Die Models-Seite: eine Latency-Heatmap, ein Percentile-Band sowie modellspezifische Token-Zahlen, geschätzte Kosten und die Kontextfenster-Auslastung.*
+![Die Models-Seite mit einer Latenz-Heatmap, einem Perzentilband sowie modellspezifischen Token-, Kosten- und Kontextfenster-Angaben](/agenteye/images/models.png)
+*Die Models-Seite: eine Latenz-Heatmap, ein Perzentilband sowie modellspezifische Token-Anzahl, geschätzte Kosten und Kontextfenster-Auslastung.*
 
 ## Lass Durchschnittswerte nicht mehr deine schlechtesten Läufe verbergen
 
-Eine durchschnittliche Latenzangabe klingt beruhigend – und ist gleichzeitig nutzlos: Sie glättet genau jenen einen Aufruf unter fünfzig, der ins Stocken gerät und deinen Bereitschaftsdienst um 2 Uhr nachts weckt. Die Seiten Models, Tools und Hooks machen das nicht mit. Alle drei haben denselben Aufbau, den du nur einmal lernen musst:
+Ein durchschnittlicher Latenzwert ist beruhigend und nutzlos zugleich: Er glättet genau den einen Aufruf von fünfzig, der ins Stocken gerät und deinen Bereitschaftsdienst um 2 Uhr nachts weckt. Die Seiten Models, Tools und Hooks tun das nicht. Jede folgt demselben Aufbau, den du einmal lernst und überall wiederfindest:
 
 - Ein **24-Bin-Sparkline** für den Trend auf einen Blick: Wird es schlechter?
-- Ein **Vitals-Streifen** mit p50, p95 und p99 Latenz, damit der typische Lauf und der Ausreißer nebeneinander stehen.
-- Eine **Latency-Heatmap** – 24 Zeitabschnitte gegen Latenz-Buckets –, die zeigt, *wann* sich die langsamen Aufrufe gehäuft haben.
-- Ein **Percentile-Band**: eine p50-Linie mit schraffierten Bändern für p25–p75 und p10–p90 sowie p99-Punkte, sodass die Streuung sichtbar bleibt, anstatt weggemittelt zu werden.
+- Ein **Vitals-Streifen** mit p50, p95 und p99 Latenz, sodass typischer Lauf und Tail nebeneinander sichtbar sind.
+- Eine **Latenz-Heatmap** mit 24 Zeitbins und Latenz-Buckets, die zeigt, *wann* sich die langsamen Aufrufe häuften.
+- Ein **Perzentilband**: eine p50-Linie mit schraffierten Bändern für p25 bis p75 sowie p10 bis p90 und p99-Punkten, sodass die Streuung sichtbar bleibt statt weggemittelt zu werden.
 
-Ein gemeinsames Hover-Fadenkreuz verknüpft Heatmap und Band zeitlich miteinander, sodass ein Tail-Spike in beiden Ansichten an derselben Stelle erscheint, statt hinter einer einzigen Mittellinie zu verschwinden. Alle drei Seiten findest du im Bereich **observe** deines Dashboards – gefiltert nach Organisation und einschränkbar nach Datumsbereich, Umgebung, Agent und Session.
+Ein gemeinsamer Hover-Crosshair verbindet Heatmap und Band, sodass eine Tail-Spitze zeitlich in beiden Ansichten übereinstimmt, anstatt hinter einer einzigen Mittellinie zu verschwinden. Alle drei Seiten befinden sich im Bereich **observe** deines Dashboards und können nach Datumsbereich, Umgebung, Agent und Session gefiltert werden.
 
-## Models: sieh genau, was jedes Modell dich kostet
+## Models: Sieh genau, was jedes Modell kostet
 
-Die Models-Seite (oben abgebildet) beantwortet die zwei Fragen, die eine Rechnung immer aufwirft: Welches Modell, und wie viel? Zusätzlich zur gemeinsamen Latenzansicht zeigt sie **modellspezifischen Token-Verbrauch**, **geschätzte Kosten** und die **Kontextfenster-Auslastung** – damit unkontrolliertes Prompt-Wachstum und eine bevorstehende Kompaktierung sichtbar werden, bevor sie dich überraschen.
+Die Models-Seite (oben abgebildet) beantwortet die zwei Fragen, die eine Rechnung immer aufwirft: Welches Modell, und wie viel? Zusätzlich zur gemeinsamen Latenzansicht zeigt sie **modellspezifischen Token-Verbrauch**, **geschätzte Kosten** und **Kontextfenster-Auslastung**, sodass unkontrolliertes Prompt-Wachstum und eine bevorstehende Kompaktierung sichtbar werden, bevor sie dich überraschen.
 
-Failproof AI Observability erkennt gängige Modell-IDs automatisch. Falls ein Fenster falsch aussieht oder du ein eigenes privates Modell betreibst, korrigiere es oder füge eines unter **Settings** bei **model context windows** hinzu – die Auslastungsanzeigen passen sich entsprechend an.
+Failproof AI Observability erkennt gängige Modell-IDs automatisch. Sollte ein Fenster falsch aussehen oder du ein eigenes privates Modell betreiben, korrigiere es oder füge eines unter **Settings** im Bereich **model context windows** hinzu – die Auslastungsanzeigen passen sich entsprechend an.
 
-## Tools: unterscheide langsam von defekt
+## Tools: Trenne Langsamkeit von Fehlern
 
-Ein Tool-Aufruf kann langsam sein oder stillschweigend fehlschlagen – und du möchtest das in Sekunden wissen, nicht erst nach stundenlangem Log-Wühlen.
+Ein Tool-Aufruf kann langsam sein oder still versagen – und du möchtest binnen Sekunden wissen, was zutrifft, statt erst durch Logs wühlen zu müssen.
 
-![Die Tools-Seite mit der gemeinsamen Latency-Heatmap und dem Percentile-Band neben einer Erfolgs- und Fehleraufschlüsselung sowie einem Tool-Verteilungsbalken](/agenteye/images/tools.png)
-*Die Tools-Seite: dieselbe Heatmap und dasselbe Percentile-Band, ergänzt um eine Erfolgs- und Fehleraufschlüsselung sowie einen Tool-Verteilungsbalken.*
+![Die Tools-Seite mit der gemeinsamen Latenz-Heatmap und dem Perzentilband neben einer Aufschlüsselung nach Erfolg und Fehler sowie einem Tool-Verteilungsbalken](/agenteye/images/tools.png)
+*Die Tools-Seite: dieselbe Heatmap und dasselbe Perzentilband, ergänzt durch eine Aufschlüsselung nach Erfolg und Fehler sowie einen Tool-Verteilungsbalken.*
 
-Neben der gemeinsamen Latenzansicht fügt die Tools-Seite eine **Erfolgs- und Fehleraufschlüsselung** sowie einen **Tool-Verteilungsbalken** hinzu, sodass du auf einen Blick siehst, welche Tools du am häufigsten verwendest und welche dein Fehlerbudget auffressen.
+Neben der gemeinsamen Latenzansicht fügt die Tools-Seite eine **Aufschlüsselung nach Erfolg und Fehler** sowie einen **Tool-Verteilungsbalken** hinzu, sodass du auf einen Blick siehst, welche Tools du am häufigsten nutzt und welche dein Fehlerbudget aufbrauchen.
 
-## Hooks: den genauen Hook und Trigger ermitteln
+## Hooks: Den genauen Hook und Trigger identifizieren
 
-Wenn ein Lifecycle-Hook einen Lauf verlangsamt, kannst du mit der Aussage „Hooks sind langsam" nichts anfangen. Die Hooks-Seite führt dich direkt zu dem einen, der das Problem verursacht.
+Wenn ein Lifecycle-Hook einen Lauf verlangsamt, ist „Hooks sind langsam" keine handlungsfähige Information. Die Hooks-Seite führt dich direkt zum entscheidenden Hook.
 
-![Die Hooks-Seite mit nach Hook-Name und Trigger-Event aufgeschlüsselter Latenz über der gemeinsamen Heatmap und dem Percentile-Band](/agenteye/images/hooks.png)
+![Die Hooks-Seite mit nach Hook-Name und Trigger-Event aufgeschlüsselter Latenz über der gemeinsamen Heatmap und dem Perzentilband](/agenteye/images/hooks.png)
 *Die Hooks-Seite: Latenz aufgeschlüsselt nach Hook-Name und Trigger-Event.*
 
-Über derselben Latency-Heatmap und demselben Percentile-Band schlüsselt die Hooks-Seite die Aktivität nach **Hook-Name** und **Trigger-Event** auf, sodass du direkt bei dem einen Hook und dem einen Event landest, der Aufmerksamkeit erfordert.
+Über derselben Latenz-Heatmap und demselben Perzentilband schlüsselt die Hooks-Seite die Aktivität nach **Hook-Name** und **Trigger-Event** auf, sodass du direkt zu dem einen Hook und dem einen Event gelangst, die Aufmerksamkeit erfordern.
 
-## Verwandte Seiten
+## Verwandte Themen
 
-- [Event-Stream](/de/agenteye/event-stream): der Live-Feed aller Events, farblich kodiert.
-- [Sessions](/de/agenteye/sessions): Events zu einer Zeile pro Lauf zusammenfassen und den Ausführungsgraphen öffnen.
-- [Fehlerverfolgung](/de/agenteye/error-tracking): eine zentrale Triage-Oberfläche für alles, was das Dashboard rot einfärbt.
-- [Dashboards](/de/agenteye/dashboards): Übersichtsansichten über deine gesamte Flotte.
+- [Event stream](/de/agenteye/event-stream): der Live-Verlauf jedes Events in Farbe.
+- [Sessions](/de/agenteye/sessions): Events zu einer Zeile pro Lauf zusammenfassen und den Ausführungsgraph öffnen.
+- [Error tracking](/de/agenteye/error-tracking): eine zentrale Triage-Oberfläche für alles, was das Dashboard rot markiert.
+- [Dashboards](/de/agenteye/dashboards): übergreifende Übersichten für deine gesamte Flotte.

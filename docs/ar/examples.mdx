@@ -4,13 +4,13 @@ description: "كيفية إعداد hooks لـ Claude Code و Agents SDK"
 icon: book-open
 ---
 
-أمثلة جاهزة للاستخدام لسيناريوهات شائعة. كل واحد يوضح كيفية التثبيت وما يمكن توقعه.
+أمثلة جاهزة للاستخدام لسيناريوهات شائعة. يوضح كل منها كيفية التثبيت وما يمكن توقعه.
 
 ---
 
 ## إعداد hooks لـ Claude Code
 
-يتكامل Failproof AI مع Claude Code عبر [نظام hooks الخاص به](https://docs.anthropic.com/en/docs/claude-code/hooks). عند تشغيل `failproofai policies --install`، يسجل أوامر hook في ملف `settings.json` الخاص بـ Claude Code التي تعمل عند كل استدعاء أداة.
+يتكامل Failproof AI مع Claude Code عبر [نظام hooks](https://docs.anthropic.com/en/docs/claude-code/hooks). عند تشغيل `failproofai policies --install`، يسجل أوامر hook في `settings.json` الخاص بـ Claude Code التي تعمل على كل استدعاء أداة.
 
 <Steps>
   <Step title="تثبيت failproofai">
@@ -28,14 +28,14 @@ icon: book-open
     cat ~/.claude/settings.json | grep failproofai
     ```
 
-    يجب أن ترى إدخالات hook لأحداث `PreToolUse` و `PostToolUse` و `Notification` و `Stop`.
+    يجب أن ترى مدخلات hook لأحداث `PreToolUse` و `PostToolUse` و `Notification` و `Stop`.
   </Step>
   <Step title="تشغيل Claude Code">
     ```bash
     claude
     ```
 
-    تعمل السياسات تلقائياً عند كل استدعاء أداة. حاول طلب من Claude تشغيل `sudo rm -rf /` - سيتم حظره.
+    تعمل السياسات تلقائياً على كل استدعاء أداة. حاول طلب Claude لتشغيل `sudo rm -rf /` - سيتم حظره.
   </Step>
 </Steps>
 
@@ -43,7 +43,7 @@ icon: book-open
 
 ## إعداد hooks لـ Agents SDK
 
-إذا كنت تبني باستخدام [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk)، يمكنك استخدام نفس نظام hooks برمجياً.
+إذا كنت تبني باستخدام [Agents SDK](https://docs.anthropic.com/en/docs/agents-sdk)، يمكنك استخدام نظام hooks نفسه برمجياً.
 
 <Steps>
   <Step title="تثبيت failproofai في مشروعك">
@@ -52,14 +52,14 @@ icon: book-open
     ```
   </Step>
   <Step title="تكوين hooks في وكيلك">
-    مرر أوامر hook عند إنشاء عملية الوكيل الخاص بك. تعمل hooks بنفس الطريقة كما في Claude Code - عبر JSON في stdin/stdout:
+    مرر أوامر hook عند إنشاء عملية وكيلك. تعمل hooks بنفس الطريقة كما في Claude Code - عبر JSON في stdin/stdout:
 
     ```bash
-    failproofai --hook PreToolUse   # يُستدعى قبل كل أداة
-    failproofai --hook PostToolUse  # يُستدعى بعد كل أداة
+    failproofai --hook PreToolUse   # called before each tool
+    failproofai --hook PostToolUse  # called after each tool
     ```
   </Step>
-  <Step title="اكتب سياسة مخصصة لوكيلك">
+  <Step title="كتابة سياسة مخصصة لوكيلك">
     ```javascript
     import { customPolicies, allow, deny } from "failproofai";
 
@@ -88,33 +88,33 @@ icon: book-open
 
 ## حظر الأوامر المدمرة
 
-الإعداد الأكثر شيوعاً - منع الوكلاء من إلحاق الضرر الذي لا يمكن التراجع عنه.
+الإعداد الأكثر شيوعاً - منع الوكلاء من إحداث أضرار لا يمكن إرجاعها.
 
 ```bash
 failproofai policies --install block-sudo block-rm-rf block-force-push block-curl-pipe-sh
 ```
 
 ما تفعله:
-- `block-sudo` - يحظر جميع أوامر `sudo`
-- `block-rm-rf` - يحظر حذف الملفات العودية
-- `block-force-push` - يحظر `git push --force`
-- `block-curl-pipe-sh` - يحظر نقل البرامج النصية البعيدة إلى shell
+- `block-sudo` - حظر جميع أوامر `sudo`
+- `block-rm-rf` - حظر حذف الملفات بشكل متكرر
+- `block-force-push` - حظر `git push --force`
+- `block-curl-pipe-sh` - حظر توجيه البرامج النصية البعيدة إلى shell
 
 ---
 
-## منع تسريب الأسرار
+## منع تسرب الأسرار
 
-منع الوكلاء من رؤية أو تسريب بيانات الاعتماد في مخرجات الأداة.
+منع الوكلاء من رؤية أو تسرب بيانات اعتماد في مخرجات الأداة.
 
 ```bash
 failproofai policies --install sanitize-api-keys sanitize-jwt sanitize-connection-strings sanitize-bearer-tokens
 ```
 
-تعمل هذه على `PostToolUse` - بعد تشغيل أداة، تنظف المخرجات قبل أن يراها الوكيل.
+تعمل هذه على `PostToolUse` - بعد تشغيل الأداة، تزيل البيانات الحساسة من المخرجات قبل أن يراها الوكيل.
 
 ---
 
-## احصل على تنبيهات Slack عندما يحتاج الوكلاء إلى الانتباه
+## الحصول على تنبيهات Slack عندما تحتاج الوكلاء إلى الاهتمام
 
 استخدم notification hook لإعادة توجيه تنبيهات الخمول إلى Slack.
 
@@ -150,7 +150,7 @@ customPolicies.add({
 });
 ```
 
-ثبتها:
+ثبّته:
 
 ```bash
 SLACK_WEBHOOK_URL=https://hooks.slack.com/... failproofai policies --install --custom ./slack-alerts.js
@@ -158,7 +158,7 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/... failproofai policies --install --c
 
 ---
 
-## اجعل الوكلاء على فرع واحد
+## إبقاء الوكلاء على فرع واحد
 
 منع الوكلاء من تبديل الفروع أو الدفع إلى الفروع المحمية.
 
@@ -182,9 +182,9 @@ customPolicies.add({
 
 ---
 
-## طلب الاختبارات قبل الالتزام
+## الطلب بإجراء الاختبارات قبل الالتزام
 
-ذكّر الوكلاء بتشغيل الاختبارات قبل الالتزام.
+تذكير الوكلاء بتشغيل الاختبارات قبل الالتزام.
 
 ```javascript
 import { customPolicies, allow, instruct } from "failproofai";
@@ -231,23 +231,23 @@ customPolicies.add({
 }
 ```
 
-ثم التزم بها:
+ثم التزم به:
 
 ```bash
 git add .failproofai/policies-config.json
 git commit -m "Add failproofai team policies"
 ```
 
-كل عضو في الفريق لديه failproofai مثبت سيختار هذه القواعد تلقائياً.
+كل عضو فريق لديه failproofai مثبت سيلتقط هذه القواعد تلقائياً.
 
 ---
 
 ## بناء معيار جودة على مستوى المنظمة باستخدام سياسات الاتفاقية
 
-الإعداد الأكثر تأثيراً: التزم بـ `.failproofai/policies/` في مستودعك مع سياسات مصممة لمشروعك. يحصل كل عضو في الفريق عليها تلقائياً — بدون أوامر تثبيت، بدون تغييرات في الإعدادات.
+الإعداد الأكثر تأثيراً: التزم بـ `.failproofai/policies/` في مستودعك مع سياسات مخصصة لمشروعك. يحصل كل عضو فريق عليها تلقائياً - بدون أوامر تثبيت، بدون تغييرات إعدادات.
 
 <Steps>
-  <Step title="أنشئ الدليل وأضف السياسات">
+  <Step title="إنشاء الدليل وإضافة السياسات">
     ```bash
     mkdir -p .failproofai/policies
     ```
@@ -283,25 +283,25 @@ git commit -m "Add failproofai team policies"
     });
     ```
   </Step>
-  <Step title="التزم بـ git">
+  <Step title="الالتزام برمز git">
     ```bash
     git add .failproofai/policies/
     git commit -m "Add team quality policies"
     ```
   </Step>
-  <Step title="استمر في التحسن">
-    عندما يواجه فريقك أنماط فشل جديدة، أضف سياسات وادفع. يحصل الجميع على التحديث في `git pull` التالي. تصبح هذه السياسات معيار جودة حي ينمو مع فريقك.
+  <Step title="مواصلة التحسين">
+    عندما يواجه فريقك أنماط فشل جديدة، أضف سياسات وادفع. يحصل الجميع على التحديث عند `git pull` التالي. تصبح هذه السياسات معيار جودة حي ينمو مع فريقك.
   </Step>
 </Steps>
 
 ---
 
-## أمثلة أخرى
+## أمثلة إضافية
 
 يحتوي دليل [`examples/`](https://github.com/failproofai/failproofai/tree/main/examples) في المستودع على:
 
-| الملف | ما يظهره |
+| الملف | ما يوضحه |
 |------|----------|
-| `policies-basic.js` | سياسات البدء - حظر كتابات الإنتاج والدفع القسري والبرامج النصية الموجهة |
-| `policies-notification.js` | تنبيهات Slack لإخطارات الخمول ونهاية الجلسة |
-| `policies-advanced/index.js` | الاستيرادات الانتقالية والخطافات غير المتزامنة وتنظيف مخرجات PostToolUse ومعالجة حدث Stop |
+| `policies-basic.js` | سياسات مبتدئة - حظر عمليات الكتابة في الإنتاج، فرض الدفع، البرامج النصية الموجهة |
+| `policies-notification.js` | تنبيهات Slack للإشعارات الخاملة ونهاية الجلسة |
+| `policies-advanced/index.js` | الاستيرادات الانتقالية، hooks غير متزامنة، تنظيف مخرجات PostToolUse، معالجة حدث Stop |

@@ -15,7 +15,7 @@ Aliases: `failproofai p -i`
 
 | Flag | Descrição |
 |------|-----------|
-| `--cli claude\|codex\|copilot` | CLI(s) do agente para instalação; separados por espaço (ex.: `--cli claude codex copilot`) ou repetidos. Omita para detectar os CLIs instalados e exibir um prompt. |
+| `--cli claude\|codex\|copilot` | CLI(s) do agente para instalar; separados por espaço (ex.: `--cli claude codex copilot`) ou repetidos. Omita para detectar os CLIs instalados e exibir um prompt. |
 | `--scope user` | Instala no arquivo de configurações com escopo de usuário (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). Padrão. |
 | `--scope project` | Instala no arquivo de configurações com escopo de projeto (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
 | `--scope local` | Apenas Claude — instala em `<cwd>/.claude/settings.local.json`. Codex e Copilot não possuem escopo `local`. |
@@ -24,7 +24,7 @@ Aliases: `failproofai p -i`
 ## Comportamento
 
 - **Sem nomes de política** — abre um prompt interativo para selecionar políticas
-- **Nomes específicos** — habilita essas políticas (adicionadas às que já estiverem habilitadas)
+- **Nomes específicos** — habilita essas políticas (adicionadas às que já estão habilitadas)
 - **`all`** — habilita todas as políticas disponíveis
 
 A instalação é aditiva: executar `--install` novamente adiciona novas políticas sem remover as existentes.
@@ -44,10 +44,10 @@ failproofai policies --install all
 # Instalar com um arquivo de políticas personalizado
 failproofai policies --install --custom ./my-policies.js
 
-# Instalar para OpenAI Codex (escopo de projeto)
+# Instalar para o OpenAI Codex (escopo de projeto)
 failproofai policies --install --cli codex --scope project
 
-# Instalar para GitHub Copilot CLI (beta) no projeto atual
+# Instalar para o GitHub Copilot CLI (beta) no projeto atual
 failproofai policies --install --cli copilot --scope project
 
 # Instalar para os três CLIs de uma vez

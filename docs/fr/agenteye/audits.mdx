@@ -1,54 +1,54 @@
 ---
 title: "Audits : votre analyste de fiabilité automatique"
-description: "Failproof AI Observability détecte les défaillances pour lesquelles vous n'avez jamais défini de règle et vous remet une liste de priorités classées, étayées par des preuves, indiquant précisément quoi corriger."
+description: "Failproof AI Observability part à la recherche des défaillances pour lesquelles vous n'avez jamais écrit de règle et vous remet une liste de tâches classées par priorité, étayées par des preuves, avec exactement ce qu'il faut corriger."
 ---
 
 
-Failproof AI Observability détecte les défaillances pour lesquelles vous n'avez jamais défini de règle et vous remet une liste de priorités classées, étayées par des preuves, indiquant précisément quoi corriger. C'est comme avoir un analyste qui parcourt vos logs chaque nuit et vous dépose un résumé sur le bureau chaque matin.
+Failproof AI Observability part à la recherche des défaillances pour lesquelles vous n'avez jamais écrit de règle et vous remet une liste de tâches classées par priorité, étayées par des preuves, avec exactement ce qu'il faut corriger. C'est comme avoir un analyste qui passe vos logs en revue chaque nuit et vous laisse la synthèse sur votre bureau au matin.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Voir : Identifiez automatiquement où votre agent échoue (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Regarder : Trouvez automatiquement où votre agent échoue (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Un tour d'horizon en deux minutes : d'une exécution planifiée à une correction sur laquelle vous pouvez agir.*
+*Un tour d'horizon de deux minutes : d'une exécution planifiée à un correctif sur lequel vous pouvez agir.*
 
 ![La page Audits : des tâches récurrentes qui analysent vos sessions à la recherche de schémas d'échec, chacune avec une planification et une sensibilité](/agenteye/images/audits.png)
-*Chaque audit est une tâche récurrente qui fouille vos sessions et rédige des recommandations classées et étayées par des preuves.*
+*Chaque audit est une tâche récurrente qui explore vos sessions et rédige des recommandations classées par priorité, étayées par des preuves.*
 
-## Arrêtez de deviner quoi corriger ensuite
+## Arrêtez de deviner ce qu'il faut corriger en premier
 
-Les alertes détectent les problèmes que vous savez déjà surveiller. Les audits détectent ceux que vous ne connaissez pas encore. Selon un calendrier que vous définissez, un audit parcourt l'ensemble de vos sessions d'agent pour identifier les schémas qui méritent d'être corrigés — vous passez ainsi votre temps à agir sur les résultats plutôt qu'à faire défiler des logs en espérant les repérer vous-même.
+Les alertes détectent les problèmes que vous savez déjà surveiller. Les audits détectent ceux que vous ne connaissez pas encore. Selon la planification que vous définissez, un audit parcourt l'ensemble de vos sessions d'agent et traque les schémas qui méritent d'être corrigés — vous passez ainsi votre temps à agir sur les résultats plutôt qu'à faire défiler des logs en espérant les repérer vous-même.
 
 Une seule exécution s'attaque aux modes de défaillance qui brisent réellement les agents en production :
 
-- **Clusters d'erreurs** : la même défaillance qui se répète sous une cause racine commune.
-- **Dérive par rapport à une référence** : un comportement qui s'écarte discrètement d'une fenêtre connue comme saine.
-- **Échec d'objectif dans les transcriptions** : des exécutions techniquement terminées mais qui n'ont jamais accompli la tâche.
-- **Mauvaise utilisation des outils** : le mauvais outil, de mauvais arguments, ou des boucles qui consomment des appels inutilement.
-- **Compromis qualité/coût** : là où vous surpayez pour des résultats que vous pourriez obtenir moins cher.
+- **Clusters d'erreurs** : la même défaillance se répétant sous une cause racine commune.
+- **Dérive par rapport à une référence** : un comportement qui s'éloigne discrètement d'une fenêtre connue comme saine.
+- **Échec d'objectif dans les transcriptions** : des exécutions qui se sont techniquement terminées sans jamais accomplir la tâche.
+- **Mauvaise utilisation des outils** : le mauvais outil, des arguments incorrects, ou des boucles qui consomment des appels inutilement.
+- **Compromis qualité/coût** : là où vous surpayez pour un résultat que vous pourriez obtenir moins cher.
 - **Lacunes de couverture** : des comportements qu'aucune évaluation ni alerte ne surveille.
 
-Vous choisissez l'intensité de l'analyse avec un simple paramètre de **sensibilité** (faible, moyenne ou élevée), de sorte qu'un agent de staging bruyant et un agent de production verrouillé peuvent chacun être calibrés sur le signal souhaité.
+Vous décidez de l'intensité de la recherche avec un seul paramètre de **sensibilité** (faible, moyenne ou élevée), de sorte qu'un agent de staging bruyant et un agent de production verrouillé peuvent chacun être réglés sur le signal souhaité.
 
-## Chaque recommandation est accompagnée de preuves
+## Chaque recommandation vient avec ses preuves
 
-Vous n'avez jamais à accepter un résultat sur parole. Chaque recommandation cite les sessions exactes dont elle provient ainsi que le SQL qui l'a fait remonter, afin que vous puissiez consulter les preuves et confirmer le problème en un clic plutôt que de reconstituer une affirmation à rebours.
+Vous n'avez jamais à accepter un résultat sur parole. Chaque recommandation cite les sessions exactes dont elle est issue ainsi que la requête SQL qui l'a mise en évidence — vous pouvez ouvrir les preuves et confirmer le problème en un clic plutôt que de devoir décortiquer une affirmation.
 
-Lorsqu'un résultat concerne un identifiant secret exposé, il va encore plus loin en reliant les événements individuels qu'il a détectés. Cliquez sur l'un d'eux et vous atterrissez sur ce moment précis dans la session, déjà sélectionné — et non en haut d'une longue transcription à faire défiler. Le lien nomme l'événement ; il ne copie jamais le secret détecté dans le résultat, de sorte que la lecture d'un résultat n'est pas un second endroit où votre identifiant est consigné. Si un événement n'est plus disponible parce que la session a dépassé votre fenêtre de rétention, la page l'indique clairement plutôt que de vous laisser vous demander si vous avez cliqué au mauvais endroit.
+Lorsqu'un résultat concerne un identifiant divulgué, il va encore plus loin et renvoie vers les événements individuels correspondants. Cliquez sur l'un d'eux et vous atterrissez sur ce moment précis dans la session, déjà sélectionné — pas en haut d'une longue transcription à faire défiler. Le lien nomme l'événement ; il ne copie jamais le secret détecté dans le résultat, de sorte que la lecture d'un résultat ne constitue pas un second endroit où votre identifiant est consigné. Si un événement n'est plus disponible parce que la session a dépassé votre fenêtre de rétention, la page l'indique clairement plutôt que de vous laisser vous demander si vous avez cliqué au mauvais endroit.
 
-C'est aussi ce qui garantit l'honnêteté des audits. Le serveur vérifie que chaque session citée existe réellement et **rejette toute recommandation dont les preuves ne tiennent pas**, de sorte que l'audit enquête sans jamais inventer. Ce qui figure sur votre liste est réel, reproductible et classé par importance, avec les gains les plus significatifs en tête.
+C'est aussi ce qui garantit l'honnêteté des audits. Le serveur vérifie que chaque session citée existe réellement et **rejette toute recommandation dont les preuves ne tiennent pas**, de sorte que l'audit enquête sans jamais inventer. Ce qui figure sur votre liste est réel, reproductible et classé selon son importance, avec les gains les plus significatifs en tête.
 
-## Transformer une correction en garde-fou
+## Transformez un correctif en garde-fou
 
-Corriger un problème ne représente que la moitié du bénéfice. L'autre moitié consiste à s'assurer qu'il ne peut pas revenir discrètement. Chaque résultat comporte **un raccourci en un clic qui crée une alerte de récurrence**, préremplie avec un déclencheur de départ raisonnable que vous pouvez ajuster. Fermez le résultat, activez l'alerte, et la prochaine fois que ce schéma réapparaît, vous êtes notifié au lieu de le redécouvrir lors d'un futur audit.
+Corriger un problème ne représente que la moitié du bénéfice. L'autre moitié consiste à s'assurer qu'il ne puisse pas revenir discrètement. Chaque résultat comporte un **raccourci en un clic qui ébauche une alerte de récurrence**, préremplie avec un déclencheur de départ raisonnable que vous pouvez affiner. Fermez le résultat, activez l'alerte, et la prochaine fois que ce schéma réapparaît, vous êtes averti au lieu de le redécouvrir lors d'un futur audit.
 
 ## Où le trouver
 
-Les audits se trouvent dans le tableau de bord à **`/<org-slug>/audits`** (barre latérale vers *analyze* puis *audits*). La consultation des exécutions et des résultats nécessite **`audits:read`** ; la création, la modification et le triage des audits nécessitent **`audits:write`**. Définissez la portée et la cadence d'un audit, puis cliquez sur **Run now** si vous souhaitez obtenir des résultats immédiatement sans attendre le prochain passage planifié.
+Les audits se trouvent dans le tableau de bord à **`/<org-slug>/audits`** (barre latérale vers *analyze* puis *audits*). La consultation des exécutions et des résultats nécessite **`audits:read`** ; la création, la modification et le tri des audits nécessitent **`audits:write`**. Définissez la portée et la cadence d'un audit, puis cliquez sur **Run now** chaque fois que vous souhaitez obtenir des résultats immédiatement sans attendre la prochaine exécution planifiée.
 
 ## Voir aussi
 
-- [Alerts](/fr/agenteye/alerts) : soyez notifié dès qu'un seuil que vous connaissez déjà est franchi.
-- [Evaluations](/fr/agenteye/evaluations) : notez chaque exécution afin que les régressions de qualité remontent d'elles-mêmes.
+- [Alerts](/fr/agenteye/alerts) : soyez averti dès qu'un seuil que vous connaissez déjà est franchi.
+- [Evaluations](/fr/agenteye/evaluations) : notez chaque exécution pour que les régressions de qualité remontent d'elles-mêmes.
 - [Error tracking](/fr/agenteye/error-tracking) : regroupez et suivez les erreurs que vos agents génèrent.
 - [Incidents](/fr/agenteye/incidents) : suivez un problème détecté par un audit jusqu'à sa résolution.

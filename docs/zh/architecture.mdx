@@ -1,21 +1,21 @@
 ---
 title: 架构
-description: "Hook 处理器、配置加载和策略评估的内部工作原理"
+description: "Hook 处理器、配置加载及策略评估的内部工作原理"
 icon: sitemap
 ---
 
-本文档介绍 failproofai 的内部工作机制：Hook 系统如何拦截 Agent 工具调用、配置如何加载与合并、策略如何评估，以及仪表盘如何监控 Agent 活动。
+本文档介绍 failproofai 的内部工作原理：hook 系统如何拦截代理工具调用、如何加载和合并配置、如何评估策略，以及仪表板如何监控代理活动。
 
 ---
 
-## 概述
+## 概览
 
 failproofai 包含两个独立的子系统：
 
-1. **Hook 处理器** - 一个快速的 CLI 子进程，Claude Code 在每次 Agent 工具调用时都会调用它。负责评估策略并返回决策结果。
-2. **Agent 监控器（仪表盘）** - 一个用于监控 Agent 会话和管理策略的 Next.js Web 应用。
+1. **Hook 处理器** - 一个轻量级 CLI 子进程，由 Claude Code 在每次代理工具调用时触发，负责评估策略并返回决策结果。
+2. **Agent Monitor（仪表板）** - 一个 Next.js Web 应用，用于监控代理会话和管理策略。
 
-两个子系统共享 `~/.failproofai/` 和项目 `.failproofai/` 目录中的配置文件，但它们作为独立进程运行，仅通过文件系统进行通信。
+两个子系统共享 `~/.failproofai/` 和项目 `.failproofai/` 目录中的配置文件，但作为独立进程运行，仅通过文件系统进行通信。
 
 ---
 
@@ -23,7 +23,7 @@ failproofai 包含两个独立的子系统：
 
 ### 与 Claude Code 的集成
 
-运行 `failproofai policies --install` 后，它会在 `~/.claude/settings.json` 中写入如下配置：
+运行 `failproofai policies --install` 后，它会将如下条目写入 `~/.claude/settings.json`：
 
 ```json
 {
@@ -44,7 +44,7 @@ failproofai 包含两个独立的子系统：
 }
 ```
 
-Claude Code 随后会在每次工具调用前将 `failproofai --hook PreToolUse` 作为子进程调用，并通过 stdin 传入 JSON 数据。
+随后，Claude Code 会在每次工具调用前将 `failproofai --hook PreToolUse` 作为子进程调用，并通过 stdin 传入 JSON 数据。
 
 ### 数据格式
 
@@ -60,9 +60,9 @@ Claude Code 随后会在每次工具调用前将 `failproofai --hook PreToolUse`
 }
 ```
 
-对于 `PostToolUse` 事件，数据中还包含 `tool_result` 字段，内容为工具的输出。
+对于 `PostToolUse` 事件，数据中还包含 `tool_result` 字段，内含工具的输出内容。
 
-处理器对 stdin 强制执行 1 MB 的大小限制。超出限制的数据将被丢弃，所有策略默认隐式允许。
+处理器对 stdin 限制最大 1 MB。超出此限制的数据将被丢弃，所有策略默认隐式允许。
 
 ### 响应格式
 
@@ -85,7 +85,7 @@ Claude Code 随后会在每次工具调用前将 `failproofai --hook PreToolUse`
 }
 ```
 
-**指令（除 Stop 事件外的任意事件）：**
+**指令（除 Stop 事件外的所有事件）：**
 ```json
 {
   "hookSpecificOutput": {
@@ -94,7 +94,7 @@ Claude Code 随后会在每次工具调用前将 `failproofai --hook PreToolUse`
 }
 ```
 
-**Stop 事件的指令：**
+**Stop 事件指令：**
 - 退出码：`2`
 - 原因写入 stderr（而非 stdout）
 
@@ -102,9 +102,9 @@ Claude Code 随后会在每次工具调用前将 `failproofai --hook PreToolUse`
 - 退出码：`0`
 - stdout 为空
 
-**携带消息的允许：**
+**允许并附带消息：**
 
-`allow(message)` 允许策略在操作被许可时仍向 Claude 发送信息性上下文。Hook 处理器将以下 JSON 写入 **stdout**（这不是配置文件——这是处理器对 Claude Code 的响应，与上述拒绝和指令响应格式相同）：
+`allow(message)` 允许策略在操作被允许时仍向 Claude 发送信息性上下文。Hook 处理器将以下 JSON 写入 **stdout**（这不是配置文件——这是处理器向 Claude Code 返回的响应，与 deny 和 instruct 响应的方式相同）：
 
 ```json
 // 由 hook 处理器进程写入 stdout
@@ -115,8 +115,8 @@ Claude Code 随后会在每次工具调用前将 `failproofai --hook PreToolUse`
 }
 ```
 - 退出码：`0`（操作被允许）
-- 当多个策略返回携带消息的 `allow` 时，消息将以换行符拼接为单个 `additionalContext` 字符串
-- 如果没有策略提供消息，stdout 为空（与之前相同）
+- 若多个策略均返回带消息的 `allow`，其消息将以换行符连接，合并为单个 `additionalContext` 字符串
+- 若没有策略提供消息，stdout 为空（与原来相同）
 
 ### 处理流程
 
@@ -128,18 +128,18 @@ stdin JSON
   → 提取会话元数据（session_id、cwd、tool_name、tool_input 等）
   → readMergedHooksConfig(cwd)    ← 合并项目 + 本地 + 全局配置
   → 注册已启用的内置策略及其解析后的参数
-  → 从 customPoliciesPath 加载自定义策略（如已设置）
+  → 从 customPoliciesPath 加载自定义策略（若已设置）
   → 将自定义策略注册到策略注册表
-  → 评估所有策略（先内置策略，再自定义策略）
-      → 首个 deny 触发短路
-      → instruct 决策累积
-      → allow 消息累积
+  → 评估所有策略（先内置策略，后自定义策略）
+      → 首个 deny 会短路后续评估
+      → instruct 决策持续累积
+      → allow 消息持续累积
   → 将 JSON 决策写入 stdout
   → 将事件持久化到 ~/.failproofai/hook-activity/current.jsonl
   → 退出
 ```
 
-对于典型数据，整个过程在 100ms 内完成，无需任何 LLM 调用。
+对于典型数据且无 LLM 调用的情况，整个处理过程在 100ms 以内完成。
 
 ---
 
@@ -154,39 +154,39 @@ stdin JSON
 ```
 
 合并逻辑：
-- `enabledPolicies` - 对三个文件取去重并集
-- `policyParams` - 按策略键，以第一个定义它的文件为准
-- `customPoliciesPath` - 以第一个定义它的文件为准
-- `llm` - 以第一个定义它的文件为准
+- `enabledPolicies` - 对三个文件进行去重并集
+- `policyParams` - 按策略键，第一个定义该键的文件完全优先
+- `customPoliciesPath` - 第一个定义它的文件优先
+- `llm` - 第一个定义它的文件优先
 
-Web 仪表盘使用 `readHooksConfig()`（仅全局）进行读写，因为它不以项目 cwd 调用。
+由于 Web 仪表板在调用时没有项目 cwd，因此它使用 `readHooksConfig()`（仅全局）进行读写。
 
 ---
 
 ## 策略评估
 
-`src/hooks/policy-evaluator.ts` 按顺序运行策略。
+`src/hooks/policy-evaluator.ts` 按顺序执行策略。
 
-对每个策略：
+对每条策略：
 
-1. 查找策略的 `params` 模式（如有）。
-2. 从合并配置中读取 `policyParams[policy.name]`。
-3. 将用户提供的值与模式默认值合并，生成 `ctx.params`。
+1. 查找该策略的 `params` schema（如有）。
+2. 从合并后的配置中读取 `policyParams[policy.name]`。
+3. 将用户提供的值覆盖 schema 默认值，生成 `ctx.params`。
 4. 以解析后的上下文调用 `policy.fn(ctx)`。
 5. 若结果为 `deny`，立即停止并返回该决策。
 6. 若结果为 `instruct`，累积消息并继续。
-7. 若结果为 `allow`，继续处理下一个策略。
+7. 若结果为 `allow`，继续评估下一条策略。
 
-所有策略运行完毕后：
-- 若有任何 `deny` 被返回，则发出拒绝响应。
-- 若收集到任何 `instruct` 返回，则将所有消息合并后发出单个指令响应。
-- 否则，发出允许响应（stdout 为空，退出码为 0）。
+所有策略执行完毕后：
+- 若有任何 `deny` 被返回，输出 deny 响应。
+- 若收集到任何 `instruct` 返回，将所有消息合并后输出单个 instruct 响应。
+- 否则，输出 allow 响应（stdout 为空，退出码 0）。
 
 ---
 
 ## 内置策略
 
-`src/hooks/builtin-policies.ts` 将全部 39 个内置策略定义为 `BuiltinPolicyDefinition` 对象：
+`src/hooks/builtin-policies.ts` 将全部 39 条内置策略定义为 `BuiltinPolicyDefinition` 对象：
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -204,15 +204,15 @@ interface BuiltinPolicyDefinition {
 }
 ```
 
-接受 `params` 的策略会声明一个 `PolicyParamsSchema`，其中包含每个参数的类型和默认值。策略评估器在调用 `fn` 之前会将解析后的值注入 `ctx.params`。策略函数读取 `ctx.params` 时无需空值守护，因为默认值始终会被优先应用。
+接受 `params` 的策略会声明一个 `PolicyParamsSchema`，为每个参数定义类型和默认值。策略评估器在调用 `fn` 前会将解析后的值注入 `ctx.params`。由于默认值始终会先被应用，策略函数读取 `ctx.params` 时无需进行空值检查。
 
-策略内部的模式匹配使用解析后的命令标记（argv），而非原始字符串匹配。这可以防止通过 shell 运算符注入绕过策略（例如，`sudo systemctl status *` 的匹配模式无法通过在命令末尾追加 `; rm -rf /` 来绕过）。
+策略内部的模式匹配使用已解析的命令 token（argv），而非原始字符串匹配。这可防止通过 shell 操作符注入绕过规则（例如，针对 `sudo systemctl status *` 的模式无法通过在命令后追加 `; rm -rf /` 来绕过）。
 
 ---
 
 ## 自定义策略
 
-`src/hooks/custom-hooks-registry.ts` 实现了一个基于 `globalThis` 的注册表：
+`src/hooks/custom-hooks-registry.ts` 实现了基于 `globalThis` 的注册表：
 
 ```typescript
 const REGISTRY_KEY = "__failproofai_custom_hooks__";
@@ -229,21 +229,21 @@ export function clearCustomHooks(): void { ... }  // 用于测试
 
 1. 从配置中读取 `customPoliciesPath`；若不存在则跳过。
 2. 解析为绝对路径；检查文件是否存在。
-3. 将所有 `from "failproofai"` 导入重写为实际的 dist 路径，使 `customPolicies` 解析到同一个 `globalThis` 注册表。
-4. 递归重写传递的本地导入，以确保 ESM 兼容性。
-5. 写入临时 `.mjs` 文件并 `import()` 入口文件。
-6. 调用 `getCustomHooks()` 获取已注册的 Hook。
+3. 将所有 `from "failproofai"` 的导入重写为实际的 dist 路径，使 `customPolicies` 能解析到同一个 `globalThis` 注册表。
+4. 递归重写可传递的本地导入，以确保 ESM 兼容性。
+5. 写入临时 `.mjs` 文件并通过 `import()` 加载入口文件。
+6. 调用 `getCustomHooks()` 获取已注册的 hook。
 7. 在 `finally` 块中清理所有临时文件。
 
-发生任何错误（文件未找到、语法错误、导入失败）时，错误将被记录到 `~/.failproofai/hook.log`，加载器返回空数组。内置策略不受影响。
+任何错误（文件未找到、语法错误、导入失败）都会被记录到 `~/.failproofai/hook.log`，加载器返回空数组，内置策略不受影响。
 
-自定义策略在所有内置策略之后评估。自定义策略的 `deny` 仍会短路后续自定义策略（但此时所有内置策略已运行完毕）。
+自定义策略在所有内置策略执行完毕后才进行评估。自定义策略的 `deny` 仍会短路后续自定义策略的评估（但此时所有内置策略均已运行完毕）。
 
 ---
 
 ## 活动日志
 
-每次 Hook 事件后，处理器会向 `~/.failproofai/hook-activity/current.jsonl` 追加一行 JSONL 记录，当该文件达到分页大小时，会轮转为 `page-<timestamp>-<seq>.jsonl`：
+每次 hook 事件结束后，处理器会向 `~/.failproofai/hook-activity/current.jsonl` 追加一行 JSONL 记录，当该文件达到分页大小时，会轮转为 `page-<timestamp>-<seq>.jsonl`：
 
 ```json
 {
@@ -258,44 +258,44 @@ export function clearCustomHooks(): void { ... }  // 用于测试
 }
 ```
 
-每行对应一个做出非允许决策的策略。允许决策不会被记录（以保持文件精简）。
+每行记录一条非 allow 决策。Allow 决策不记录（以保持文件体积精简）。
 
 ---
 
-## 仪表盘架构
+## 仪表板架构
 
-仪表盘是一个 **Next.js 16** 应用，使用 App Router，并结合了 React 服务端组件和服务端 Actions。
+仪表板是一个使用 App Router 的 **Next.js 16** 应用，采用 React Server Components 和 Server Actions。
 
 ```text
 app/
   layout.tsx                  ← 根布局（主题、遥测、导航）
-  projects/page.tsx           ← 服务端组件：列出所有 Claude 项目
-  project/[name]/page.tsx     ← 服务端组件：列出项目中的会话
+  projects/page.tsx           ← Server component：列出所有 Claude 项目
+  project/[name]/page.tsx     ← Server component：列出项目内的会话
   project/[name]/session/
-    [sessionId]/page.tsx      ← 服务端组件：渲染会话查看器
-  policies/page.tsx           ← 客户端组件：策略管理 + 活动日志
+    [sessionId]/page.tsx      ← Server component：渲染会话查看器
+  policies/page.tsx           ← Client component：策略管理 + 活动日志
   actions/
-    get-hooks-config.ts       ← 读取配置和策略列表
+    get-hooks-config.ts       ← 读取配置及策略列表
     update-hooks-config.ts    ← 启用/禁用策略
     update-policy-params.ts   ← 更新策略参数
     get-hook-activity.ts      ← 分页/搜索活动日志
-    install-hooks-web.ts      ← 从浏览器安装/移除 Hook
+    install-hooks-web.ts      ← 通过浏览器安装/移除 hook
   api/
     download/[project]/[session]/route.ts   ← 单个 CLI 会话导出（JSONL 或 JSON）
 ```
 
 **数据流：**
 
-- 页面组件调用 `lib/projects.ts` 和 `lib/log-entries.ts` 直接从文件系统读取项目/会话数据（读操作无需 API 层）。
-- 策略页面使用服务端 Actions 处理所有数据变更（切换、参数更新、安装/移除）。
-- 会话查看器解析 Claude 的 JSONL 转录格式，并渲染消息和工具调用的时间线。
+- 页面组件调用 `lib/projects.ts` 和 `lib/log-entries.ts`，直接从文件系统读取项目/会话数据（读取操作无需 API 层）。
+- Policies 页面使用 Server Actions 处理所有变更操作（切换、参数更新、安装/移除）。
+- 会话查看器解析 Claude 的 JSONL 转录格式，并以时间线方式渲染消息和工具调用。
 
 **关键设计决策：**
 
-- 无数据库——所有持久化状态均存储在纯文本文件中（`~/.failproofai/`、`~/.claude/projects/`）。
-- 数据变更使用服务端 Actions——CRUD 操作无需 REST API。
-- 读取页面使用 React 服务端组件——首次加载更快，无需客户端数据获取 bundle。
-- 仅在需要交互的地方使用客户端组件（策略切换、活动搜索、日志查看器）。
+- 无数据库——所有持久状态均存储在普通文件中（`~/.failproofai/`、`~/.claude/projects/`）。
+- 使用 Server Actions 处理变更——无需为 CRUD 操作构建 REST API。
+- 读取页面使用 React Server Components——更快的首屏加载，数据获取无需客户端 bundle。
+- 仅在需要交互的地方使用 Client Components（策略切换、活动搜索、日志查看器）。
 
 ---
 
@@ -307,26 +307,26 @@ failproofai/
 │   └── failproofai.mjs           # CLI 路由器（hook / dashboard / install 等）
 ├── src/hooks/
 │   ├── handler.ts                # Hook 事件处理流程
-│   ├── builtin-policies.ts       # 39 个策略定义
+│   ├── builtin-policies.ts       # 39 条策略定义
 │   ├── policy-evaluator.ts       # 策略执行引擎
 │   ├── policy-registry.ts        # 策略注册与查找
-│   ├── policy-types.ts           # TypeScript 接口
-│   ├── hooks-config.ts           # 多作用域配置加载
-│   ├── custom-hooks-registry.ts  # 基于 globalThis 的 Hook 注册表
-│   ├── custom-hooks-loader.ts    # 用户 JS Hook 的 ESM 加载器
+│   ├── policy-types.ts           # TypeScript 接口定义
+│   ├── hooks-config.ts           # 多级作用域配置加载
+│   ├── custom-hooks-registry.ts  # 基于 globalThis 的 hook 注册表
+│   ├── custom-hooks-loader.ts    # 用户 JS hook 的 ESM 加载器
 │   ├── manager.ts                # 安装/移除/列出操作
 │   ├── install-prompt.ts         # 交互式策略选择提示
-│   ├── hook-logger.ts            # 日志写入 hook.log
+│   ├── hook-logger.ts            # 写入 hook.log 的日志记录
 │   ├── hook-activity-store.ts    # 将活动持久化到 hook-activity/
 │   └── llm-client.ts             # LLM API 客户端（用于 AI 驱动的策略）
-├── app/                          # Next.js 仪表盘（页面 + 服务端 Actions）
-├── lib/                          # 共享工具函数
+├── app/                          # Next.js 仪表板（页面 + Server Actions）
+├── lib/                          # 共享工具库
 │   ├── projects.ts               # 从文件系统枚举 Claude 项目
 │   ├── log-entries.ts            # 解析 Claude 转录 JSONL 格式
 │   ├── paths.ts                  # 解析系统路径
 │   └── ...
 ├── components/                   # 共享 React UI 组件
-├── contexts/                     # React 上下文提供者（主题、自动刷新、遥测）
-├── examples/                     # 自定义 Hook 示例文件
-└── __tests__/                    # 单元测试和端到端测试
+├── contexts/                     # React context providers（主题、自动刷新、遥测）
+├── examples/                     # 自定义 hook 示例文件
+└── __tests__/                    # 单元测试与端到端测试
 ```

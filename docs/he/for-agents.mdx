@@ -1,33 +1,33 @@
 ---
-title: "לסוכנים"
-description: "הוסף ידע של Failproof AI לסוכן הקוד שלך בפקודה אחת. עובד עם Claude Code, Cursor, Windsurf ועוד."
+title: "עבור agents"
+description: "הוסף ידע Failproof AI לכל coding agent שלך בפקודה אחת. עובד עם Claude Code, Cursor, Windsurf ועוד."
 ---
 
-הוסף את ההפניה המלאה של Failproof AI לסוכן הקוד שלך בפקודה אחת. עובד עם Claude Code, Cursor, Windsurf וכל סוכן אחר התומך ב-skills.
+הוסף את ההתייחסות המלאה של Failproof AI ל-agent קידוד שלך בפקודה אחת. עובד עם Claude Code, Cursor, Windsurf וכל agent אחר התומך ב-skills.
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` מזהה אילו סוכנים יש לך מותקנים ומוסיף את ה-skill בפורמט הנכון לכל אחד מהם באופן אוטומטי.
+`npx skills` מגלה אילו agents יש לך מותקנים ומוסיף את ה-skill בפורמט הנכון לכל אחד מהם באופן אוטומטי.
 
 ## מה ה-skill מכסה
 
-| אזור | מה כלול |
+| תחום | מה כלול |
 |------|---------|
-| Policies | שמות policy מובנים, סוגי אירועים, פרמטרים, הפעלה/השבתה |
-| Custom policies | `customPolicies.add()`, match filters, `allow`/`deny`/`instruct` API |
+| Policies | שמות policy מובנים, סוגי אירועים, פרמטרים, הפעלה/כיבוי |
+| Custom policies | `customPolicies.add()`, match filters, API של `allow`/`deny`/`instruct` |
 | Context object | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
 | Configuration | מבנה `policies-config.json`, scope merging, `policyParams` |
 | CLI | `failproofai policies --install`, `--uninstall`, `--custom`, scopes |
 | Dashboard | Session viewer, policy activity, משתני סביבה |
-| Architecture | Hook handler flow, exit codes, stdin/stdout contract |
+| Architecture | Hook handler flow, exit codes, חוזה stdin/stdout |
 
 ## האם ה-skill שלם?
 
-Mintlify יוצר `llms.txt` מכל הדפים בניווט. המסמכים של Failproof AI מכסים את ה-API המלא - כל policy, אפשרות וכל דוגמה כלולות. אם אתה מגלה משהו חסר, המקור נמצא ב-`https://docs.befailproof.ai/llms-full.txt`.
+Mintlify יוצר `llms.txt` מכל העמודים בניווט. ה-docs של Failproof AI מכסים את כל ה-API - כל policy, אפשרות וקוד לדוגמה כלולים. אם אתה מגלה משהו חסר, המקור נמצא ב-`https://docs.befailproof.ai/llms-full.txt`.
 
-לקונטקסט ממוקד, קישור ישירות לדף ספציפי:
+לתוכן מטרה, קשר ישירות לעמוד ספציפי:
 
 ```bash
 # רק ה-custom policies API

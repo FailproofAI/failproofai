@@ -1,20 +1,20 @@
 ---
 title: 테스트
-description: "유닛 테스트, E2E 테스트, 테스트 헬퍼"
+description: "단위 테스트, E2E 테스트, 테스트 헬퍼"
 icon: flask-vial
 ---
 
-failproofai에는 두 가지 테스트 스위트가 있습니다: **유닛 테스트** (빠름, 모킹 사용)와 **엔드투엔드 테스트** (실제 서브프로세스 호출).
+failproofai에는 두 가지 테스트 스위트가 있습니다: **단위 테스트** (빠르고 모킹 사용)와 **엔드-투-엔드 테스트** (실제 서브프로세스 호출).
 
 ---
 
 ## 테스트 실행
 
 ```bash
-# 유닛 테스트 한 번 실행
+# 단위 테스트 한 번 실행
 bun run test:run
 
-# 유닛 테스트 워치 모드로 실행
+# 단위 테스트 watch 모드 실행
 bun run test
 
 # E2E 테스트 실행 (사전 설정 필요 - 아래 참고)
@@ -29,9 +29,9 @@ bun run lint
 
 ---
 
-## 유닛 테스트
+## 단위 테스트
 
-유닛 테스트는 `__tests__/` 디렉토리에 위치하며 `jsdom`과 함께 [Vitest](https://vitest.dev)를 사용합니다.
+단위 테스트는 `__tests__/` 디렉토리에 위치하며, `jsdom`과 함께 [Vitest](https://vitest.dev)를 사용합니다.
 
 ```text
 __tests__/
@@ -41,7 +41,7 @@ __tests__/
     policy-evaluator.test.ts      # 파라미터 주입 및 평가 순서
     custom-hooks-registry.test.ts # globalThis 레지스트리 추가/조회/초기화
     custom-hooks-loader.test.ts   # ESM 로더, 전이적 임포트, 에러 처리
-    manager.test.ts               # install/remove/list 작업
+    manager.test.ts               # 설치/제거/목록 조회 작업
   components/
     sessions-list.test.tsx        # 세션 목록 컴포넌트
     project-list.test.tsx         # 프로젝트 목록 컴포넌트
@@ -61,7 +61,7 @@ __tests__/
     AutoRefreshContext.test.tsx
 ```
 
-### 정책 유닛 테스트 작성하기
+### 정책 단위 테스트 작성하기
 
 ```typescript
 import { describe, it, expect, beforeEach } from "vitest";
@@ -108,39 +108,39 @@ describe("block-sudo", () => {
 
 ---
 
-## 엔드투엔드 테스트
+## 엔드-투-엔드 테스트
 
-E2E 테스트는 실제 `failproofai` 바이너리를 서브프로세스로 호출하고, JSON 페이로드를 stdin으로 파이프한 뒤, stdout 출력과 종료 코드를 검증합니다. 이를 통해 Claude Code가 사용하는 전체 통합 경로를 테스트합니다.
+E2E 테스트는 실제 `failproofai` 바이너리를 서브프로세스로 호출하고, JSON 페이로드를 stdin에 전달한 뒤, stdout 출력과 종료 코드를 검증합니다. 이를 통해 Claude Code가 사용하는 전체 통합 경로를 테스트합니다.
 
 ### 설정
 
-E2E 테스트는 레포지토리 소스에서 직접 바이너리를 실행합니다. 최초 실행 전에, 커스텀 훅 파일이 `'failproofai'`에서 임포트할 때 사용하는 CJS 번들을 빌드하세요:
+E2E 테스트는 저장소 소스에서 바이너리를 직접 실행합니다. 첫 실행 전에, 커스텀 훅 파일이 `'failproofai'`에서 임포트할 때 사용하는 CJS 번들을 빌드하세요:
 
 ```bash
 bun build src/index.ts --outdir dist --target node --format cjs
 ```
 
-이후 테스트를 실행합니다:
+그 다음 테스트를 실행합니다:
 
 ```bash
 bun run test:e2e
 ```
 
-공개 훅 API (`src/hooks/custom-hooks-registry.ts`, `src/hooks/policy-helpers.ts`, `src/hooks/policy-types.ts`)를 수정할 때마다 `dist/`를 다시 빌드하세요.
+공개 훅 API(`src/hooks/custom-hooks-registry.ts`, `src/hooks/policy-helpers.ts`, 또는 `src/hooks/policy-types.ts`)를 변경할 때마다 `dist/`를 다시 빌드하세요.
 
 ### E2E 테스트 구조
 
 ```text
 __tests__/e2e/
   helpers/
-    hook-runner.ts      # 바이너리 실행, 페이로드 JSON 파이프, 종료 코드 + stdout + stderr 캡처
+    hook-runner.ts      # 바이너리 실행, 페이로드 JSON 전달, 종료 코드 + stdout + stderr 캡처
     fixture-env.ts      # 테스트별 격리된 임시 디렉토리 및 설정 파일
-    payloads.ts         # 각 이벤트 타입별 Claude 호환 페이로드 팩토리
+    payloads.ts         # 각 이벤트 타입에 대한 Claude 정확도 높은 페이로드 팩토리
   hooks/
     builtin-policies.e2e.test.ts   # 실제 서브프로세스로 각 빌트인 정책 테스트
     custom-hooks.e2e.test.ts       # 커스텀 훅 로딩 및 평가
-    config-scopes.e2e.test.ts      # 프로젝트/로컬/전역 간 설정 병합
-    policy-params.e2e.test.ts      # 파라미터화된 정책별 파라미터 주입
+    config-scopes.e2e.test.ts      # 프로젝트/로컬/글로벌 간 설정 병합
+    policy-params.e2e.test.ts      # 파라미터화된 각 정책에 대한 파라미터 주입
 ```
 
 ### E2E 헬퍼 사용하기
@@ -151,8 +151,8 @@ __tests__/e2e/
 import { createFixtureEnv } from "../helpers/fixture-env";
 
 const env = createFixtureEnv();
-// env.cwd    - 임시 디렉토리; .failproofai/policies-config.json 을 인식하려면 payload.cwd로 전달
-// env.home   - 격리된 홈 디렉토리; 실제 ~/.failproofai 가 유입되지 않음
+// env.cwd    - 임시 디렉토리; .failproofai/policies-config.json을 로드하려면 payload.cwd로 전달
+// env.home   - 격리된 홈 디렉토리; 실제 ~/.failproofai가 유입되지 않음
 
 env.writeConfig({
   enabledPolicies: ["block-sudo"],
@@ -180,7 +180,7 @@ expect(result.exitCode).toBe(0);
 expect(result.parsed?.hookSpecificOutput?.permissionDecision).toBe("deny");
 ```
 
-**`Payloads`** - 미리 만들어진 페이로드 팩토리:
+**`Payloads`** - 미리 준비된 페이로드 팩토리:
 
 ```typescript
 Payloads.preToolUse.bash(command, cwd)
@@ -237,8 +237,8 @@ describe("block-rm-rf (E2E)", () => {
 |----------|-----------|--------|
 | `PreToolUse` deny | `0` | `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"..."}}` |
 | `PostToolUse` deny | `0` | `{"hookSpecificOutput":{"additionalContext":"Blocked ... because: ..."}}` |
-| Instruct (Stop 제외) | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
-| Stop instruct | `2` | stdout 비어 있음; 이유는 stderr에 출력 |
+| Instruct (Stop 아님) | `0` | `{"hookSpecificOutput":{"additionalContext":"Instruction from failproofai: ..."}}` |
+| Stop instruct | `2` | 빈 stdout; 이유는 stderr에 출력 |
 | Allow | `0` | 빈 문자열 |
 
 ### Vitest 설정
@@ -246,15 +246,15 @@ describe("block-rm-rf (E2E)", () => {
 E2E 테스트는 `vitest.config.e2e.mts`를 사용하며 다음과 같이 구성됩니다:
 
 - `environment: "node"` - 브라우저 전역 변수 불필요
-- `pool: "forks"` - 진정한 프로세스 격리 (테스트가 서브프로세스를 생성)
+- `pool: "forks"` - 진정한 프로세스 격리 (테스트가 서브프로세스를 생성함)
 - `testTimeout: 20_000` - 테스트당 20초 (바이너리 시작 + 훅 평가)
 
-`forks` 풀은 중요합니다: 스레드 기반 워커는 `globalThis`를 공유하므로 서브프로세스를 생성하는 테스트에 간섭이 발생할 수 있습니다. 프로세스 기반 포크는 이 문제를 방지합니다.
+`forks` 풀이 중요한 이유: 스레드 기반 워커는 `globalThis`를 공유하기 때문에 서브프로세스를 생성하는 테스트에 영향을 줄 수 있습니다. 프로세스 기반 포크는 이를 방지합니다.
 
 ---
 
 ## CI
 
-머지 전에 전체 CI 실행 (`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`)이 통과되어야 합니다. E2E 스위트는 별도의 CI 작업으로 병렬 실행됩니다.
+머지 전에 전체 CI 실행(`bun run lint && bunx tsc --noEmit && bun run test:run && bun run build`)이 통과해야 합니다. E2E 스위트는 별도의 CI 작업으로 병렬 실행됩니다.
 
-완전한 머지 전 체크리스트는 [Contributing](../CONTRIBUTING.md)을 참고하세요.
+전체 머지 전 체크리스트는 [Contributing](../CONTRIBUTING.md)을 참고하세요.

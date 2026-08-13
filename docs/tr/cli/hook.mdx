@@ -1,7 +1,6 @@
 ---
----
-title: Hook işleyicisi (dahili)
-description: "Claude Code'un her araç olayında çağırdığı alt işlem"
+title: Hook handler (iç kullanım)
+description: "Her tool olayında Claude Code'un çağırdığı subprocess"
 ---
 
 ```bash
@@ -10,22 +9,22 @@ failproofai --hook <EventType>
 
 Bu, `failproofai policies --install` tarafından Claude Code'un `settings.json` dosyasına kaydedilen komuttur. Normalde bunu doğrudan çağırmazsınız.
 
-stdin'den bir JSON yükü okur, tüm etkin politikaları değerlendirir ve kararı gösteren bir çıkış kodu ile sonlanır:
+stdin'den bir JSON payload'ı okur, etkinleştirilmiş tüm politikaları değerlendirir ve kararı belirten bir çıkış kodu ile sonlandırır:
 
 | Çıkış kodu | Karar | Etki |
-|-----------|-------|------|
-| `0` | `allow` | Eylemi izin ver |
-| `1` | `deny` | Eylemi engelle - Claude reddetme nedenini görür |
+|-----------|--------|--------|
+| `0` | `allow` | İşleme izin ver |
+| `1` | `deny` | İşlemi engelle - Claude ret nedenini görür |
 | `2` | `instruct` | Claude'un bağlamına rehberlik ekle |
 
-### Desteklenen olay türleri
+### Desteklenen event türleri
 
-| Kategori | Olaylar |
-|----------|---------|
-| **Araç yürütme** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
+| Kategori | Event'ler |
+|----------|--------|
+| **Tool yürütme** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **Oturum yaşam döngüsü** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **Kullanıcı etkileşimi** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
-| **Alt ajanlar ve görevler** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
+| **Subagent'ler ve görevler** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **Yapılandırma** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
 | **Dosya sistemi** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
 | **Bağlam** | `PreCompact`, `PostCompact` |

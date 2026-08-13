@@ -1,14 +1,14 @@
 ---
 title: "Python SDK"
-description: "AIエージェントが本番環境で何をしたかを正確に把握する: すべてのエージェント実行、ツール呼び出し、モデルリクエスト、フック、および人間の介入。"
+description: "AIエージェントが本番環境で何をしたかを正確に把握する：すべてのエージェント実行、ツール呼び出し、モデルリクエスト、フック、人間の介入を記録します。"
 ---
 
 
-AIエージェントが本番環境で何をしたかを正確に把握する: すべてのエージェント実行、ツール呼び出し、モデルリクエスト、フック、および人間の介入。Failproof AI Observability Python SDKは、エージェントコードの内側からその実行履歴を記録し、何が起きたかをデバッグ・監査・評価できるようにします。Failproof AI Observabilityでエージェントを観測したい場合にご利用ください。
+AIエージェントが本番環境で何をしたかを正確に把握できます：すべてのエージェント実行、ツール呼び出し、モデルリクエスト、フック、人間の介入を網羅します。Failproof AI ObservabilityのPython SDKは、エージェントコードの内側からその記録を残し、何が起きたかをデバッグ・監査・評価できるようにします。Failproof AI Observabilityでエージェントを観測したいときにご利用ください。
 
-内部では、SDKが構造化イベントをローカルのJSONLファイルに書き込み、コレクターデーモンがそれらを自動的に収集してプラットフォームに送信します。これらのファイルを自分で管理する必要はありません。
+SDKの内部では、構造化されたイベントをローカルのJSONLファイルに書き込み、コレクターデーモンがそれらを自動的に収集してプラットフォームへ送信します。これらのファイルをご自身で管理する必要はありません。
 
-> **ヒント:** Failproof AI Observabilityを初めてお使いですか？このページはSDKイベントの完全なリファレンスです。
+> **ヒント:** Failproof AI Observabilityを初めてお使いの方へ：このページはSDKイベントの完全なリファレンスです。
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
@@ -18,15 +18,15 @@ AIエージェントが本番環境で何をしたかを正確に把握する: �
 
 ## インストール
 
-SDKは公開パッケージインデックスではなく、プライベートホイールとしてお客様に配布されます。取得・インストール・バージョン固定の方法はオンボーディングで説明しています。アクセスが必要な場合は Failproof AI の担当者にお問い合わせください。
+SDKは、公開パッケージインデックスではなく、プライベートホイールとしてお客様に配布されます。取得方法・インストール方法・バージョン固定方法はオンボーディング時にご案内します。アクセスが必要な場合は Failproof AI の担当者にお問い合わせください。
 
-インストール後、以下で確認してください:
+インストール後、以下のコマンドで確認してください：
 
 ```bash
 python -c "import agenteye; print(agenteye.__version__)"
 ```
 
-コーディングエージェントに統合作業をすべて任せたい場合は、[Python SDK Agent Skill](/ja/agenteye/python-sdk-skill) をご利用ください。インストールパスを把握し、計装ポイントを計画・実装して、イベントが正しく届いているか検証します。
+コーディングエージェントにインテグレーション全体を任せたい場合は、[Python SDK Agent Skill](/ja/agenteye/python-sdk-skill) をご利用ください。インストールパスの把握、計装ポイントの計画・実装、イベント到達の検証まで対応します。
 
 ---
 
@@ -60,7 +60,7 @@ agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="succ
 
 ### 実際の呼び出しへの計装
 
-実際には、既存のエージェントコードをラップします。モデル呼び出しの前に `model_request`、後に `model_response` を配置することで、2つのイベントが実際のリクエストをまたぎ、Failproof AI Observabilityがペアとして関連付けられるようになります:
+実際には、既存のエージェントコードをラップします。モデル呼び出しの前後をそれぞれ `model_request` と `model_response` で囲むことで、2つのイベントが実際のリクエストをまたぎ、Failproof AI Observability がそれらを対応付けられるようになります：
 
 ```python
 import anthropic
@@ -97,9 +97,9 @@ agenteye.event.model_response(
 
 ツール呼び出しも同様に `tool_use` と `tool_result` でラップし、ペア間で同じ `tool_call_id` を使い回します。
 
-ダッシュボードに届いたイベントは、タイプ別に色分けされ、環境・エージェント・セッションでフィルタリングできます:
+これらのイベントがダッシュボードに届いたときの表示例です。イベントタイプごとに色分けされ、環境・エージェント・セッションでフィルタリングできます：
 
-![ライブイベントストリーム。イベントタイプ別に色分けされ、環境・エージェント・セッションでフィルタリング可能](/agenteye/images/events-stream.png)
+![イベントタイプごとに色分けされ、環境・エージェント・セッションでフィルタリング可能なライブイベントストリーム](/agenteye/images/events-stream.png)
 
 ---
 
@@ -108,69 +108,69 @@ agenteye.event.model_response(
 ```python
 agenteye.configure(
     base_dir=None,           # Path | str | None. デフォルト: $AGENTEYE_HOME または ~/.agenteye
-    flush_interval=0.5,      # float, フラッシュサイクルの間隔（秒）
+    flush_interval=0.5,      # float、フラッシュ間隔（秒）
     environment=None,        # str | None. デプロイ環境ラベル
 )
 ```
 
-`event.*` を呼び出す前に一度だけ呼び出してください。省略しても問題ありません。デフォルト設定でそのまま動作します。すべての引数はキーワード専用です。上記のように名前で渡してください。
+`event.*` を呼び出す前に一度だけ実行してください。省略しても問題ありません。デフォルト値でそのまま動作します。すべての引数はキーワード専用です。上記のように名前を指定して渡してください。
 
-`base_dir` が `None`（デフォルト）の場合、SDKは `$AGENTEYE_HOME` が設定されていればそれを使用し、未設定の場合は `~/.agenteye` にフォールバックします。これはコレクター自身の解決方法と一致しているため、`AGENTEYE_ENVIRONMENT` 環境変数ひとつで SDK とコレクター両方のイベントスプールを共有設定できます。
+`base_dir` が `None`（デフォルト）の場合、`$AGENTEYE_HOME` が設定されていればそれを参照し、設定されていなければ `~/.agenteye` にフォールバックします。これはコレクター自身の解決ロジックと一致するため、`AGENTEYE_HOME` 環境変数を1つ設定するだけで、SDKとコレクター両方の共有イベントスプールを設定できます。
 
 ---
 
 ## 環境
 
-すべてのイベントにデプロイ環境のラベルを付けます（`production`、`staging`、`qa`、`canary` など）。一度設定するだけで、SDKがすべてのイベントに自動的に付加します。
+すべてのイベントにデプロイ環境（`production`、`staging`、`qa`、`canary` など）のラベルを付けます。一度設定すれば、SDKがすべてのイベントに自動的に付与します。
 
-**オプション1: `configure()` 経由:**
+**オプション1：`configure()` 経由：**
 
 ```python
 agenteye.configure(environment="production")
 ```
 
-**オプション2: 環境変数経由:**
+**オプション2：環境変数経由：**
 
 ```bash
 export AGENTEYE_ENVIRONMENT=production
 ```
 
-**優先順位:** `configure(environment=...)` が環境変数より優先されます。どちらも設定されていない場合、デフォルトは `"dev"` です。
+**優先順位：** `configure(environment=...)` が環境変数より優先されます。どちらも設定されていない場合、デフォルトは `"dev"` です。
 
-環境の値はダッシュボードのファーストクラスフィルターとして表示され、高速クエリのためサーバーに保存されます。
+環境の値はダッシュボードのファーストクラスフィルターとして表示され、高速クエリのためにサーバーに保存されます。
 
-> **警告:** 環境の値にリテラルのカンマ `,` を含めることはできません。ダッシュボードのフィルターはワイヤー上でカンマ区切りのマルチセレクトを使用するため（`?environment=prod,staging`）、`prod,blue` という名前の環境は2つの値に分割されます。カンマを含む環境名のイベントはインジェスト時に拒否されます。
+> **警告:** 環境の値にリテラルのカンマ `,` を含めてはいけません。ダッシュボードのフィルターは通信上でカンマ区切りのマルチセレクトを使用するため（`?environment=prod,staging`）、`prod,blue` という名前の環境は2つの値に分割されます。カンマを含む環境のイベントは取り込み時に拒否されます。
 
 ---
 
 ## データとプライバシー
 
-SDKは明示的に渡したフィールドのみを記録します。プロンプト、メッセージ、ツールの入出力、モデルのコンテンツは、`event.*` 呼び出しに渡した場合にのみキャプチャされます。プロセスからの暗黙的な読み取りやキャプチャは一切行いません。未設定のフィールドはイベントから完全に省略され、ディスクに書き込まれません。
+SDKは明示的に渡したフィールドのみを記録します。プロンプト・メッセージ・ツールの入出力・モデルコンテンツは、`event.*` 呼び出しに渡したときのみキャプチャされます。プロセスからの暗黙的な読み取りやキャプチャは一切行いません。設定しなかったフィールドはイベントから完全に省略され、ディスクに書き込まれません。
 
-そのため、データのマスキングはお客様の判断と責任で行ってください。プロンプトやツールのペイロードに保存したくないPIIや機密情報が含まれている場合は、イベントメソッドに渡す前にそれらを除去またはマスクしてください。
+そのため、データの秘匿化はご自身の判断と責任で行ってください。プロンプトやツールのペイロードに保存したくないPIIや機密情報が含まれている場合は、イベントメソッドに渡す前にマスクまたは除去してください。
 
 ---
 
 ## イベントリファレンス
 
-ほとんどのイベントは相関IDを共有する開始/終了ペアで構成されています: `tool_use` と `tool_result` は `tool_call_id` を共有し、`hook_triggered` と `hook_completed` は `hook_id` を共有し、`human_wait` と `human_input` は `input_id` を共有します。開始イベントを発行し、処理を実行してから、同じIDで終了イベントを発行してください。Failproof AI Observabilityがペアを照合し `duration_ms` を自動計算するため、`duration_ms` を自分で渡す必要はありません。
+ほとんどのイベントは、相関IDを共有する開始/終了のペアで構成されています：`tool_use` と `tool_result` は `tool_call_id` を共有し、`hook_triggered` と `hook_completed` は `hook_id` を共有し、`human_wait` と `human_input` は `input_id` を共有します。開始イベントを発行し、処理を実行してから、同じIDで終了イベントを発行してください。Failproof AI Observability がペアを照合し、`duration_ms` を自動計算します。`duration_ms` を手動で渡す必要はありません。
 
-![セッションのgit形式の実行グラフとイベントタイムライン。ペアイベントから再構築され、ツール・モデル・フックの内訳パネルを表示](/agenteye/images/session-detail.png)
+![ペアイベントから再構築された、セッションのgitスタイルの実行グラフとイベントタイムライン。ツール/モデル/フックの内訳パネル付き](/agenteye/images/session-detail.png)
 
-すべてのイベントメソッドに以下の2フィールドが必須です:
+すべてのイベントメソッドに必須の2つのフィールドです：
 
 | フィールド | 型 | 説明 |
 |---|---|---|
-| `session_id` | `str` | トップレベルのエージェント実行を識別する |
-| `agent_id` | `str` | セッション内でイベントを発行したエージェントを識別する |
+| `session_id` | `str` | トップレベルのエージェント実行を識別します |
+| `agent_id` | `str` | セッション内でイベントを発行したエージェントを識別します |
 
-すべてのメソッドはカスタムメタデータ用の任意の `**kwargs` も受け付けます（[カスタムフィールド](#custom-fields) 参照）。
+すべてのメソッドはカスタムメタデータ用の任意の `**kwargs` も受け付けます（[カスタムフィールド](#custom-fields) を参照）。
 
 ---
 
 ### `event.agent_start()`
 
-エージェントが作業を開始したときに発行されます。
+エージェントが処理を開始したときに発行されます。
 
 ```python
 agenteye.event.agent_start(
@@ -185,7 +185,7 @@ agenteye.event.agent_start(
 
 ### `event.agent_end()`
 
-エージェントが作業を完了したときに発行されます。
+エージェントが処理を完了したときに発行されます。
 
 ```python
 agenteye.event.agent_end(
@@ -206,8 +206,8 @@ agenteye.event.agent_end(
 agenteye.event.tool_use(
     session_id="run-001",
     agent_id="planner",
-    tool_name="web_search",     # str, 必須
-    tool_call_id="toolu_01",    # str, 必須 - 対応する tool_result との相関キー
+    tool_name="web_search",     # str、必須
+    tool_call_id="toolu_01",    # str、必須 - 対応する tool_result との相関キー
     input={"query": "..."},     # dict | None
 )
 ```
@@ -216,17 +216,17 @@ agenteye.event.tool_use(
 
 ### `event.tool_result()`
 
-ツールが返答したときに発行されます。`tool_call_id` を通じて `tool_use` と関連付けられます。
+ツールが結果を返したときに発行されます。`tool_call_id` を通じて `tool_use` と対応付けられます。
 
 ```python
 agenteye.event.tool_result(
     session_id="run-001",
     agent_id="planner",
     tool_name="web_search",
-    tool_call_id="toolu_01",        # 対応する tool_use と一致させる必要があります
+    tool_call_id="toolu_01",        # 対応する tool_use と一致させること
     output={"results": ["..."]},    # Any | None
     error=None,                     # str | None - ツールが例外を発生させた場合に設定
-    # duration_ms は自動計算されます - 渡さないでください
+    # duration_ms は自動計算されます。渡さないでください
 )
 ```
 
@@ -251,7 +251,7 @@ agenteye.event.model_request(
 )
 ```
 
-`messages` のエントリはプレーン文字列の `content` でも、Anthropic形式のブロックリストの `content` でも受け付けます。サンプリングパラメータ（`temperature`、`max_tokens` など）は追加のkwargsとして渡せます。
+`messages` のエントリは、プレーン文字列の `content` または Anthropic スタイルのブロックリスト形式の `content` を受け付けます。サンプリングパラメータ（`temperature`、`max_tokens` など）は追加の kwargs として渡せます。
 
 ---
 
@@ -274,20 +274,20 @@ agenteye.event.model_response(
 )
 ```
 
-`content` はプレーン文字列（汎用プロバイダー）またはAnthropic形式のコンテンツブロックのリストを受け付けます。ツール呼び出しは `{"type": "tool_use", ...}` ブロックとして `content` 内に含まれます。別途 `tool_calls` フィールドはありません。
+`content` はプレーン文字列（汎用プロバイダー向け）または Anthropic スタイルのコンテンツブロックのリストを受け付けます。ツール呼び出しは `{"type": "tool_use", ...}` ブロックとして `content` 内に含まれます。`tool_calls` フィールドは別途存在しません。
 
 ---
 
 ### `event.hook_triggered()`
 
-フックが発火したときに発行されます。`hook_completed` とペアにしてください。SDKが `duration_ms` を自動計算します。
+フックが起動したときに発行されます。`hook_completed` とペアにしてください。SDKが `duration_ms` を自動計算します。
 
 ```python
 agenteye.event.hook_triggered(
     session_id="run-001",
     agent_id="planner",
-    hook_name="pre_tool_use",   # str, 必須
-    hook_id="hook-abc",         # str, 必須 - 相関キー
+    hook_name="pre_tool_use",   # str、必須
+    hook_id="hook-abc",         # str、必須 - 相関キー
     trigger_event="tool_use",   # str | None
     input={"tool": "search"},   # Any | None
 )
@@ -297,18 +297,18 @@ agenteye.event.hook_triggered(
 
 ### `event.hook_completed()`
 
-フックが完了したときに発行されます。`hook_id` を通じて `hook_triggered` と関連付けられます。
+フックが完了したときに発行されます。`hook_id` を通じて `hook_triggered` と対応付けられます。
 
 ```python
 agenteye.event.hook_completed(
     session_id="run-001",
     agent_id="planner",
     hook_name="pre_tool_use",
-    hook_id="hook-abc",         # 対応する hook_triggered と一致させる必要があります
+    hook_id="hook-abc",         # 対応する hook_triggered と一致させること
     outcome="allow",            # str | None
     output=None,                # Any | None
     error=None,                 # str | None
-    # duration_ms は自動計算されます - 渡さないでください
+    # duration_ms は自動計算されます。渡さないでください
 )
 ```
 
@@ -322,71 +322,71 @@ agenteye.event.hook_completed(
 agenteye.event.error(
     session_id="run-001",
     agent_id="planner",
-    error_type="TimeoutError",  # str, 必須
-    message="timed out",        # str, 必須
+    error_type="TimeoutError",  # str、必須
+    message="timed out",        # str、必須
     traceback="Traceback...",   # str | None
 )
 ```
 
 ---
 
-## ヒューマン・イン・ザ・ループ イベント
+## ヒューマン・イン・ザ・ループイベント
 
-ヒューマン・イン・ザ・ループイベントは、エージェントの実行に人間が介入する瞬間（承認待ち、入力提供、一時停止、またはエージェントの停止）を監視するためのものです。これらのイベントにより、人間が応答するまでの時間を計測し（SDKがペアイベントの `duration_ms` を自動計算します）、誰がエージェントを一時停止または中断したかを監査し、ダッシュボードに表示される承認・監視ワークフローを構築できます。
+ヒューマン・イン・ザ・ループイベントは、人間がエージェントの実行に介入する瞬間（承認待ち、入力提供、一時停止、エージェント停止）を監視するための機能です。人間の応答にかかった時間の計測（SDKがペアイベントの `duration_ms` を自動計算）、誰がエージェントを一時停止または中断したかの監査、ダッシュボードに表示される承認・監視ワークフローの構築が可能になります。
 
 ### `event.human_wait()`
 
-エージェントが人間からの入力を待つために実行を一時停止したときに発行されます。`human_input` とペアにしてください。SDKが `duration_ms`（人間が応答するまでの時間）を自動計算します。
+エージェントが実行を一時停止して人間からの入力を待つときに発行されます。`human_input` とペアにしてください。SDKが `duration_ms`（人間が応答するまでの時間）を自動計算します。
 
 ```python
 agenteye.event.human_wait(
     session_id="run-001",
     agent_id="planner",
-    input_id="inp-abc",                          # str, 必須 - 対応する human_input との相関キー
+    input_id="inp-abc",                          # str、必須 - 対応する human_input との相関キー
     prompt="Do you approve this action?",        # str | None - 人間に表示される質問
     options=["approve", "reject", "defer"],      # list[str] | None - 人間に提示される選択肢
-    reason="approval_required",                  # str | None - 待機している理由
+    reason="approval_required",                  # str | None - エージェントが待機している理由
 )
 ```
 
 ### `event.human_input()`
 
-人間が入力を提供してエージェントが再開したときに発行されます。`input_id` を通じて `human_wait` と関連付けられます。`duration_ms` は自動計算されるため、呼び出し元から渡してはいけません。
+人間が入力を提供してエージェントが再開するときに発行されます。`input_id` を通じて `human_wait` と対応付けられます。`duration_ms` は自動計算されるため、呼び出し元から渡さないでください。
 
 ```python
 agenteye.event.human_input(
     session_id="run-001",
     agent_id="planner",
-    input_id="inp-abc",    # str, 必須 - 対応する human_wait と一致させる必要があります
+    input_id="inp-abc",    # str、必須 - 対応する human_wait と一致させること
     response="approve",    # str | None - 人間の回答（自由テキストまたは選択肢）
-    # duration_ms は自動計算されます - 渡さないでください
+    # duration_ms は自動計算されます。渡さないでください
 )
 ```
 
 ### `event.human_pause()`
 
-人間がエージェントを能動的に一時停止したとき（例: ダッシュボードのコントロール経由）に発行されます。エージェントは中断されますが、終了はしません。
+人間がエージェントを能動的に一時停止したとき（ダッシュボードのコントロールなど）に発行されます。エージェントは停止ではなく中断状態になります。
 
 ```python
 agenteye.event.human_pause(
     session_id="run-001",
     agent_id="planner",
     reason="user_requested",  # str | None
-    user_id="usr_42",         # str | None - エージェントを一時停止した人
+    user_id="usr_42",         # str | None - エージェントを一時停止したユーザー
 )
 ```
 
 ### `event.human_interrupt()`
 
-人間がエージェントの実行中に能動的に停止させたときに発行されます。`human_pause` とは異なり、エージェントの作業は中断ではなく終了します。
+人間がエージェントの実行中に能動的に停止したときに発行されます。`human_pause` と異なり、エージェントの処理は中断ではなく終了されます。
 
 ```python
 agenteye.event.human_interrupt(
     session_id="run-001",
     agent_id="planner",
     reason="output_incorrect",       # str | None
-    user_id="usr_42",                # str | None - エージェントを中断した人
-    at_step="tool_use:web_search",   # str | None - 停止時にエージェントが実行していた処理
+    user_id="usr_42",                # str | None - エージェントを中断したユーザー
+    at_step="tool_use:web_search",   # str | None - 停止時にエージェントが行っていた処理
 )
 ```
 
@@ -394,7 +394,7 @@ agenteye.event.human_interrupt(
 
 ## カスタムフィールド
 
-追加のキーワード引数は、標準フィールドの後にイベントへ付加されます:
+追加のキーワード引数は、標準フィールドの後にイベントへ追加されます：
 
 ```python
 agenteye.event.tool_use(
@@ -407,15 +407,15 @@ agenteye.event.tool_use(
 )
 ```
 
-`timestamp`、`type`、`environment` は予約済みであり、カスタムフィールドとして渡すと `ValueError`（`Reserved field names cannot be used as custom fields: [...]`）が発生します。`session_id` と `agent_id` はすべてのイベントメソッドの必須パラメータであり、2回渡すことはできません。その場合、Pythonは `TypeError` を発生させます。環境の設定には `configure(environment=...)` または `AGENTEYE_ENVIRONMENT` 変数を使用してください。
+`timestamp`、`type`、`environment` は予約済みです。カスタムフィールドとして渡すと `ValueError`（`Reserved field names cannot be used as custom fields: [...]`）が発生します。`session_id` と `agent_id` はすべてのイベントメソッドで必須パラメータであり、2度渡すことはできません。渡した場合はPythonが `TypeError` を発生させます。環境の設定は `configure(environment=...)` または `AGENTEYE_ENVIRONMENT` 変数で行ってください。
 
-ペイロードのフィールドをクエリしたい場合は、構造化JSONで保持してください。JSON がネイティブにサポートしない値（日時、UUID、Decimal、セット、バイト、モデルオブジェクトなど）は文字列に変換されるため、記録は安全に続行されます。
+フィールドを後からクエリしたい場合は、構造化JSON形式でペイロードを保持してください。JSONがネイティブにサポートしない値（datetime、UUID、decimal、セット、bytes、モデルオブジェクトなど）は、安全に記録を継続できるよう文字列に変換されます。
 
 ---
 
 ## イベントの書き込み方法
 
-イベントはプロセス内でバッファリングされ、`flush_interval` 秒ごと（デフォルト500ms）にディスクにフラッシュされます。各フラッシュは1つのJSONLファイルを書き込みます:
+イベントはプロセス内にバッファリングされ、`flush_interval` 秒ごと（デフォルト500ミリ秒）にディスクへフラッシュされます。フラッシュごとに1つのJSONLファイルが書き込まれます：
 
 ```text
 ~/.agenteye/events/event-2026-04-01T12-00-00-000Z.jsonl
@@ -423,11 +423,11 @@ agenteye.event.tool_use(
 
 コレクターはこのディレクトリを監視し、ファイルを自動的にアップロードします。これらのファイルを直接管理する必要はありません。
 
-各ファイルはアトミックに書き込まれます: SDKは一時ファイルに書き込んだ後、所定の場所にリネームするため、コレクターが書きかけのファイルを読み取ることはありません。プロセス終了時にも最終フラッシュが実行されるため、最後のインターバルでバッファリングされたイベントが失われることはありません。コレクターがオフラインの場合、イベントはディスク上にファイルとして蓄積され、コレクターが復帰次第送信されます。
+各ファイルはアトミックに書き込まれます：SDKは一時ファイルに書き込んでからリネームするため、コレクターが途中まで書き込まれたファイルを読むことはありません。プロセス終了時にも最終フラッシュが実行されるため、最後のインターバルでバッファリングされたイベントが失われることはありません。コレクターがオフラインの場合でも、イベントはディスク上にファイルとして蓄積され、コレクターが復帰次第送信されます。
 
 ---
 
 ## 次のステップ
 
-- [イベントストリーム](/ja/agenteye/event-stream): これらのイベントがリアルタイムで届く様子を、タイプ別の色分けと環境・エージェント・セッションによるフィルタリングで確認できます。
-- [セッション](/ja/agenteye/sessions): ペアイベントが各エージェント実行を実行グラフとタイムラインとしてどのように再構築するかを確認できます。
+- [イベントストリーム](/ja/agenteye/event-stream)：これらのイベントがリアルタイムで届く様子を、イベントタイプごとの色分けと環境・エージェント・セッションによるフィルタリングで確認できます。
+- [セッション](/ja/agenteye/sessions)：ペアイベントから各エージェント実行が実行グラフとタイムラインとしてどのように再構築されるかを確認できます。

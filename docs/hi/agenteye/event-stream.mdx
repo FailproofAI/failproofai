@@ -1,49 +1,50 @@
 ---
 title: "Event Stream"
-description: "जिस पल आपका agent कुछ करता है, आप उसे देखते हैं।"
+description: "जिस क्षण आपका agent कुछ करता है, आप इसे देखते हैं।"
 ---
 
-जिस पल आपका agent कुछ करता है, आप उसे देखते हैं। Event Stream production में हर agent की live pulse है: कोई इंतज़ार नहीं, logs को grep करने की ज़रूरत नहीं, कोई अनुमान नहीं कि अभी क्या हुआ।
 
-![Live Event Stream: color-coded event rows जो real time में tail करते हैं, environment, agent, session, event type, और free text से filterable](/agenteye/images/events-stream.png)
+जिस क्षण आपका agent कुछ करता है, आप इसे देखते हैं। Event Stream आपका production में हर agent पर live pulse है: कोई इंतज़ार नहीं, कोई logs grep करना नहीं, कोई अनुमान नहीं कि अभी क्या हुआ।
 
-*आपके org के हर agent से हर event, सबसे नया पहले, जैसे-जैसे यह होता है अपडेट होता है।*
+![Live Event Stream: colour-coded event rows जो real time में tail हो रहे हैं, environment, agent, session, event type, और free text के आधार पर filterable](/agenteye/images/events-stream.png)
 
-## हर agent पर आपकी live pulse
+*आपके org के हर agent से हर event, सबसे नए पहले, जैसा ही होता है update होता है।*
 
-जब agent एक run शुरू करता है, model को call करता है, tool fire करता है, hook चलाता है, या error में फँसता है, तो row stream के top पर ठीक उसी पल दिखाई देता है। यह आपके संपूर्ण organization के हर agent से हर event को tail करता है, सबसे नया पहले, ताकि आपके पास हमेशा एक current picture हो, stale नहीं।
+## हर agent पर आपका live pulse
 
-इसका मतलब है कि कहीं log files को tail करने की ज़रूरत नहीं, machines के across grep करने की ज़रूरत नहीं, timestamps को हाथ से एक साथ जोड़ने की ज़रूरत नहीं। आप एक page खोलते हैं और आप पहले से ही production देख रहे हैं।
+जब कोई agent एक run शुरू करता है, एक model को call करता है, एक tool fire करता है, एक hook run करता है, या एक error से टकराता है, तो row stream के top पर वही पल दिखाई देती है। यह आपके पूरे organization के हर agent में हर event को tail करता है, सबसे नए पहले, ताकि आपके पास हमेशा एक current picture हो, stale नहीं।
 
-Rows को type के अनुसार color-coded किया गया है, ताकि आप stream को एक नज़र में पढ़ सकें, हर line को parse करने की बजाय। एक नज़र में, हर row आपको यह दिखाता है:
+इसका मतलब है कि कहीं एक box पर log files को tail करना नहीं, machines के बीच grep करना नहीं, timestamps को हाथ से एक साथ जोड़ना नहीं। आप एक page खोलते हैं और आप पहले से ही production को देख रहे हैं।
 
-- **इसका type**, color-coded: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error`, और अधिक।
-- **एक-line summary** कि क्या हुआ, ताकि आपको शायद ही कभी सिर्फ gist पाने के लिए कुछ खोलने की ज़रूरत हो।
+Rows को type के अनुसार colour-code किया जाता है, ताकि आप हर line को parse करने के बजाय stream को एक नज़र में पढ़ सकें। एक नज़र में, हर row आपको दिखाता है:
+
+- **इसका type**, colour-coded: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error`, और भी बहुत कुछ।
+- **एक one-line summary** कि क्या हुआ, ताकि आपको शायद ही कभी किसी चीज़ को खोलने की ज़रूरत हो।
 - **Token counts** step के लिए।
-- **Context-window fill badge** जहाँ लागू हो, ताकि prompt growth और approaching compaction visible हों, वे काटने से पहले।
+- **एक context-window fill badge** जहाँ applicable है, ताकि prompt growth और एक approaching compaction visible हों।
 
-इसे live देखने का मतलब है कि आप एक bad deploy, एक runaway loop, या errors का एक burst को तब पकड़ते हैं जब यह होता है, कल के log review में नहीं।
+इसे live देखने का मतलब है कि आप एक bad deploy, एक runaway loop, या errors का burst catch करते हैं जैसा ही होता है, कल के log review में नहीं।
 
 ## वह एक run खोजें जो मायने रखता है
 
-जब कुछ गलत दिखता है, तो आप firehose नहीं चाहते। आप वह single run चाहते हैं जो टूटा। Stream तेज़ी से filter होता है: environment द्वारा, agent द्वारा, session द्वारा, event type द्वारा, या free text द्वारा।
+जब कुछ गलत दिखता है, तो आप firehose नहीं चाहते। आप वह single run चाहते हैं जो टूटा। Stream तेज़ी से filter हो जाता है: environment के अनुसार, agent के अनुसार, session के अनुसार, event type के अनुसार, या free text के अनुसार।
 
-Session id या agent id द्वारा filter करें अपने पहले event से अपने last event तक एक run को follow करने के लिए। Event type द्वारा filter करें एक single kind of activity को isolate करने के लिए, उदाहरण के लिए पूरे org में हर `error` एक view में। Filters को stack करें "everything, everywhere" से "this agent, in prod, erroring" तक कुछ clicks में narrow करने के लिए, फिर जो आप खोजते हैं उस पर act करें।
+Session id या agent id के अनुसार filter करें ताकि एक run को उसकी पहली event से लेकर आखिरी तक follow कर सकें। Event type के अनुसार filter करें एक single kind की activity को isolate करने के लिए, उदाहरण के लिए पूरे org में हर `error` एक view में। Filters को stack करें "everything, everywhere" से "this agent, in prod, erroring" तक कुछ clicks में narrow करने के लिए, फिर जो आप पाते हैं उस पर कार्य करें।
 
-Free-text search सीधे एक message, एक tool name, या एक id की ओर जाता है जो आपके पास पहले से है, इसलिए एक customer report seconds में exact run में बदल जाता है।
+Free-text search सीधे एक message, एक tool name, या एक id तक पहुँचता है जो आपके पास पहले से है, इसलिए एक customer report seconds में exact run में बदल जाता है।
 
 ## इसे कहाँ खोजें
 
-Event Stream आपका org home है। Sign in करें और यह पहली surface है जहाँ आप land करते हैं, `/<org-slug>/` पर, ताकि triage दूसरे पल से शुरू हो जाए जब आप पहुँचते हैं।
+Event Stream आपका org home है। साइन इन करें और यह आपके landing करने वाली पहली surface है, `/<org-slug>/` पर, इसलिए triage आपके आते ही शुरू हो जाता है।
 
-इसके पीछे, आपके agents SDK के through events emit करते हैं, collector उन्हें आपके Failproof AI Observability server को ship करता है, और stream उन्हें tail करता है जैसे वे infrastructure में arrive करते हैं जो आप control करते हैं। जब आप raw trail की बजाय rolled-up view चाहते हैं, तो हर run के events Sessions पर एक single row में collapse हो जाते हैं, एक click दूर।
+इसके पीछे, आपके agents SDK के माध्यम से events emit करते हैं, collector उन्हें आपके failproofai Observability server को भेजता है, और stream उन्हें आपके control करने वाले infrastructure में arrive करते ही tail करता है। जब आप raw trail के बजाय rolled-up view चाहते हैं, तो हर run की events एक single row में Sessions पर collapse हो जाती है, एक click दूर।
 
-यह raw source of truth है जिस पर हर दूसरी observe surface build होती है, इसलिए जब एक number कहीं और गलत दिखता है, तो stream वह जगह है जहाँ आप confirm करते हैं कि वास्तव में क्या हुआ।
+यह raw source of truth है कि हर दूसरी observe surface इस पर build करती है, इसलिए जब एक number कहीं और गलत दिखता है, तो stream वह जगह है जहाँ आप confirm करते हैं कि वास्तव में क्या हुआ।
 
-## संबंधित
+## Related
 
-- [Sessions](/hi/agenteye/sessions): वही events हर run के लिए एक row में rolled up, एक git-style execution graph के साथ।
-- [Telemetry](/hi/agenteye/telemetry): आपके agents क्या send करते हैं और कैसे events stream तक पहुँचते हैं।
-- [Error tracking](/hi/agenteye/error-tracking): एक triage surface सब कुछ के लिए जो गलत हुआ।
-- [Alerts](/hi/agenteye/alerts): किसी भी threshold को paging rule में बदलें।
-- [CLI and agents](/hi/agenteye/cli-and-agents): आपके terminal से एक ही live trail।
+- [Sessions](/hi/agenteye/sessions): same events rolled up एक row में हर run के लिए, एक git-style execution graph के साथ।
+- [Telemetry](/hi/agenteye/telemetry): आपके agents क्या भेजते हैं और कैसे events stream तक पहुँचते हैं।
+- [Error tracking](/hi/agenteye/error-tracking): हर चीज़ के लिए एक triage surface जो गलत हुई।
+- [Alerts](/hi/agenteye/alerts): किसी भी threshold को एक paging rule में बदलें।
+- [CLI and agents](/hi/agenteye/cli-and-agents): आपके terminal से same live trail।

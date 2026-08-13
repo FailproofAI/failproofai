@@ -1,50 +1,49 @@
 ---
 title: "Event Stream"
-description: "Ngay khi agent của bạn làm gì đó, bạn sẽ thấy nó."
+description: "Khoảnh khắc agent của bạn thực hiện hành động gì đó, bạn sẽ thấy nó."
 ---
 
+Khoảnh khắc agent của bạn thực hiện hành động gì đó, bạn sẽ thấy nó. Event Stream là mạch nhịp trực tiếp của bạn trên mọi agent trong production: không chờ đợi, không phải tìm kiếm trong log, không phải đoán xem điều gì vừa xảy ra.
 
-Ngay khi agent của bạn làm gì đó, bạn sẽ thấy nó. Event Stream là nhịp đập trực tiếp của bạn trên mọi agent trong production: không chờ đợi, không cần grep log, không cần đoán xem vừa xảy ra điều gì.
-
-![Event Stream trực tiếp: các dòng sự kiện được mã hóa màu sắc hiển thị theo thời gian thực, có thể lọc theo môi trường, agent, phiên, loại sự kiện và tìm kiếm tự do](/agenteye/images/events-stream.png)
+![Event Stream trực tiếp: các hàng sự kiện được tô màu, cập nhật theo thời gian thực, có thể lọc theo môi trường, agent, phiên, loại sự kiện và văn bản tự do](/agenteye/images/events-stream.png)
 
 *Mọi sự kiện từ mọi agent trong tổ chức của bạn, sự kiện mới nhất trước, cập nhật khi nó xảy ra.*
 
-## Nhịp đập trực tiếp trên mọi agent
+## Mạch nhịp trực tiếp trên mọi agent
 
-Khi một agent bắt đầu chạy, gọi một mô hình, kích hoạt một tool, chạy một hook, hoặc gặp lỗi, dòng đó xuất hiện ở đầu stream vào thời điểm nó xảy ra. Nó theo dõi mọi sự kiện trên mọi agent trong tổ chức của bạn, sự kiện mới nhất trước, để bạn luôn có một hình ảnh hiện tại thay vì một hình ảnh cũ.
+Khi một agent bắt đầu chạy, gọi một mô hình, kích hoạt một công cụ, chạy một hook, hoặc gặp lỗi, hàng này sẽ xuất hiện ở đầu luồng ngay khi nó xảy ra. Nó theo dõi mọi sự kiện trên mọi agent trong tổ chức của bạn, sự kiện mới nhất trước, để bạn luôn có hình ảnh hiện tại thay vì một hình ảnh cũ.
 
-Điều đó có nghĩa là không cần tail log files trên một máy ở đâu đó, không cần grep trên các máy, không cần ghép các dấu thời gian lại với nhau bằng tay. Bạn mở một trang và bạn đã bắt đầu xem production.
+Điều đó có nghĩa là không phải tìm kiếm các tập tin log trên một máy nào đó, không phải tìm kiếm trên các máy, không phải ghép các dấu thời gian lại với nhau bằng tay. Bạn mở một trang và bạn đã đang theo dõi production.
 
-Các dòng được mã hóa màu sắc theo loại, để bạn có thể đọc stream một cách nhanh chóng thay vì phải phân tích từng dòng. Nhìn nhanh, mỗi dòng cho bạn thấy:
+Các hàng được tô màu theo loại, để bạn có thể đọc luồng một cách nhanh chóng thay vì phân tích từng dòng. Lập tức, mỗi hàng cho bạn thấy:
 
-- **Loại của nó**, được mã hóa màu sắc: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error`, và nhiều loại khác.
-- **Tóm tắt một dòng** về những gì đã xảy ra, vì vậy bạn hiếm khi cần mở bất cứ điều gì chỉ để hiểu ý chính.
-- **Số lượng token** cho bước đó.
-- **Huy hiệu tính toán context-window** khi áp dụng, để tăng trưởng prompt và sự nén gần kề được nhìn thấy trước khi chúng gây ra vấn đề.
+- **Loại của nó**, được tô màu: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error`, và nhiều hơn nữa.
+- **Tóm tắt một dòng** về những gì đã xảy ra, để bạn hiếm khi cần mở bất kỳ thứ gì chỉ để hiểu được ý chính.
+- **Số lượng token** cho bước này.
+- **Huy hiệu tình trạng cửa sổ ngữ cảnh** nếu có, để bạn có thể thấy sự tăng trưởng prompt và sự nén sắp tới trước khi nó trở thành vấn đề.
 
-Xem nó trực tiếp có nghĩa là bạn bắt được một deployment xấu, một vòng lặp không kiểm soát, hoặc một lượt lỗi khi nó xảy ra, chứ không phải trong đánh giá log ngày mai.
+Theo dõi trực tiếp có nghĩa là bạn bắt được một bản triển khai tồi, một vòng lặp chạy quá mức, hoặc một loạt lỗi khi nó xảy ra, không phải trong bài xem xét log ngày hôm sau.
 
-## Tìm ra run duy nhất quan trọng
+## Tìm chính xác cuộc chạy mà bạn cần
 
-Khi có gì đó trông không ổn, bạn không muốn dòng chảy liên tục. Bạn muốn run duy nhất đã bị hỏng. Stream lọc xuống nhanh chóng: theo môi trường, theo agent, theo phiên, theo loại sự kiện, hoặc theo tìm kiếm tự do.
+Khi có gì đó không ổn, bạn không muốn toàn bộ luồng dữ liệu. Bạn muốn cuộc chạy duy nhất bị lỗi. Luồng này lọc xuống nhanh chóng: theo môi trường, theo agent, theo phiên, theo loại sự kiện, hoặc theo văn bản tự do.
 
-Lọc theo session id hoặc agent id để theo dõi một run từ sự kiện đầu tiên đến sự kiện cuối cùng. Lọc theo loại sự kiện để cách ly một loại hoạt động duy nhất, ví dụ mọi `error` trên toàn tổ chức trong một chế độ xem. Xếp chồng các bộ lọc để thu hẹp từ "mọi thứ, ở mọi nơi" thành "agent này, trong prod, gặp lỗi" chỉ trong vài cú nhấp chuột, sau đó hành động dựa trên những gì bạn tìm thấy.
+Lọc theo session id hoặc agent id để theo dõi một cuộc chạy từ sự kiện đầu tiên đến sự kiện cuối cùng. Lọc theo loại sự kiện để tách riêng một loạt hoạt động, ví dụ mọi `error` trên toàn org trong một chế độ xem. Xếp chồng các bộ lọc để thu hẹp từ "mọi thứ, ở mọi nơi" xuống "agent này, trong prod, có lỗi" chỉ trong vài cú nhấp chuột, sau đó hành động dựa trên những gì bạn tìm thấy.
 
-Tìm kiếm văn bản tự do đi thẳng đến một tin nhắn, tên tool, hoặc id mà bạn đã có trong tay, vì vậy báo cáo khách hàng biến thành run chính xác trong vài giây.
+Tìm kiếm văn bản tự do cắt ngay đến một thông báo, tên công cụ, hoặc id mà bạn đã có sẵn, để một báo cáo từ khách hàng biến thành chính xác cuộc chạy đó chỉ trong vài giây.
 
-## Nơi tìm nó
+## Nơi tìm thấy nó
 
-Event Stream là trang chủ tổ chức của bạn. Đăng nhập và nó là bề mặt đầu tiên bạn hạ cánh, tại `/<org-slug>/`, vì vậy phân loại bắt đầu ngay khi bạn đến.
+Event Stream là trang chủ tổ chức của bạn. Đăng nhập và đó là bề mặt đầu tiên bạn đến, tại `/<org-slug>/`, để bạn bắt đầu phân loại ngay khi bạn tới.
 
-Phía sau nó, các agent của bạn phát ra các sự kiện thông qua SDK, bộ sưu tập gửi chúng đến máy chủ Failproof AI Observability của bạn, và stream theo dõi chúng khi chúng đến trong cơ sở hạ tầng bạn kiểm soát. Khi bạn muốn chế độ xem tóm tắt thay vì dấu vết thô, các sự kiện của mỗi run sụp đổ thành một dòng duy nhất trên Sessions, chỉ cách một cú nhấp chuột.
+Ở phía sau, các agent của bạn phát ra sự kiện thông qua SDK, bộ thu thập gửi chúng đến máy chủ Failproof AI Observability của bạn, và luồng theo dõi chúng khi chúng đến trong cơ sở hạ tầng mà bạn kiểm soát. Khi bạn muốn chế độ xem tổng hợp thay vì dấu vết thô, các sự kiện của mỗi cuộc chạy sẽ thu gọn thành một hàng trên Sessions, chỉ cách một cú nhấp chuột.
 
-Đây là nguồn sự thật thô của tất cả các bề mặt quan sát khác được xây dựng, vì vậy khi một số liệu trông sai ở nơi khác, stream là nơi bạn xác nhận những gì thực sự xảy ra.
+Đây là nguồn sự thật thô ban đầu mà mọi bề mặt quan sát khác xây dựng trên đó, vì vậy khi một con số trông không đúng ở nơi khác, luồng này là nơi bạn xác nhận những gì thực sự đã xảy ra.
 
 ## Liên quan
 
-- [Sessions](/vi/agenteye/sessions): các sự kiện tương tự tóm tắt thành một dòng cho mỗi run, với một đồ thị thực thi kiểu git.
-- [Telemetry](/vi/agenteye/telemetry): những gì các agent của bạn gửi và cách các sự kiện đến stream.
+- [Sessions](/vi/agenteye/sessions): cùng các sự kiện được tổng hợp thành một hàng trên mỗi lần chạy, với biểu đồ thực thi kiểu git.
+- [Telemetry](/vi/agenteye/telemetry): những gì các agent của bạn gửi và cách các sự kiện đến luồng.
 - [Error tracking](/vi/agenteye/error-tracking): một bề mặt phân loại cho mọi thứ đã xảy ra sai.
-- [Alerts](/vi/agenteye/alerts): biến bất kỳ ngưỡng nào thành quy tắc tìm kiếm.
-- [CLI and agents](/vi/agenteye/cli-and-agents): dấu vết trực tiếp tương tự từ terminal của bạn.
+- [Alerts](/vi/agenteye/alerts): biến bất kỳ ngưỡng nào thành một quy tắc paging.
+- [CLI and agents](/vi/agenteye/cli-and-agents): cùng dấu vết trực tiếp từ terminal của bạn.

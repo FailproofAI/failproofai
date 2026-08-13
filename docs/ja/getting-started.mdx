@@ -1,13 +1,13 @@
 ---
 title: はじめに
-description: "failproofai をインストールし、ポリシーを有効にして、エージェントを安定稼働させましょう"
+description: "failproofai をインストールし、ポリシーを有効化して、エージェントを安定して動作させましょう"
 icon: rocket
 ---
 
 ## 必要要件
 
 - **Node.js** >= 20.9.0
-- **Bun** >= 1.3.0 (オプション - ソースからビルドする場合のみ必要)
+- **Bun** >= 1.3.0（オプション — ソースからビルドする場合のみ必要）
 
 ---
 
@@ -30,16 +30,16 @@ bun add -g failproofai
 ## クイックスタート
 
 <Steps>
-  <Step title="ポリシーを有効にする">
-    ポリシーとは、エージェントのツール呼び出しの前後に実行されるルールです。破壊的なコマンド、シークレットの漏洩、その他の障害モードを、被害が発生する前に検出します。
+  <Step title="ポリシーを有効化する">
+    ポリシーとは、エージェントのツール呼び出しの前後に実行されるルールです。破壊的なコマンド、シークレットの漏洩、その他の障害パターンを、実害が出る前に検知します。
 
     ```bash
     failproofai policies --install
     ```
 
-    このコマンドは、インストール済みのエージェント CLI にフックエントリを書き込みます（Claude Code の `~/.claude/settings.json`、OpenAI Codex の `~/.codex/hooks.json`、GitHub Copilot CLI の `~/.copilot/hooks/failproofai.json`、Cursor Agent の `~/.cursor/hooks.json`、OpenCode の `~/.config/opencode/plugins/failproofai.mjs` と `~/.config/opencode/opencode.json` の `plugin` 配列へのエントリ、Pi の `~/.pi/agent/settings.json`、Hermes の `~/.hermes/config.yaml`、OpenClaw の `~/.openclaw/openclaw.json`、Factory Droid の `~/.factory/hooks.json`、Devin CLI の `~/.config/devin/config.json`、Antigravity CLI の `~/.gemini/config/hooks.json`、または Goose の自動検出プラグインディレクトリ `~/.agents/plugins/failproofai/hooks/hooks.json`）。複数がインストールされている場合は選択を促すプロンプトが表示されます。`--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`（任意のサブセット）を指定するとプロンプトをスキップできます。
+    このコマンドは、インストール済みのエージェント CLI にフックエントリを書き込みます（Claude Code の `~/.claude/settings.json`、OpenAI Codex の `~/.codex/hooks.json`、GitHub Copilot CLI の `~/.copilot/hooks/failproofai.json`、Cursor Agent の `~/.cursor/hooks.json`、OpenCode の `~/.config/opencode/plugins/failproofai.mjs` へ生成されるプラグインシムおよび `~/.config/opencode/opencode.json` の `plugin` 配列への登録エントリ、Pi の `~/.pi/agent/settings.json`、Hermes の `~/.hermes/config.yaml`、OpenClaw の `~/.openclaw/openclaw.json`、Factory Droid の `~/.factory/hooks.json`、Devin CLI の `~/.config/devin/config.json`、Antigravity CLI の `~/.gemini/config/hooks.json`、または Goose の自動検出プラグインディレクトリ `~/.agents/plugins/failproofai/hooks/hooks.json`）。複数がインストールされている場合はプロンプトが表示されます。`--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose`（任意のサブセット）を渡すとプロンプトをスキップできます。
 
-    GitHub Copilot CLI、Cursor Agent、OpenCode、Pi のサポートは**ベータ版**です。それぞれ `--cli copilot`、`--cli cursor`、`--cli opencode`、`--cli pi` でインストールしてください。Hermes（hermes-agent、Slack/Telegram ゲートウェイ）は `--cli hermes` でユーザースコープにインストールされ、**オフライン監査ソース**としても機能します。OpenClaw（openclaw ゲートウェイ、セルフホスト型マルチチャンネルアシスタント）は `--cli openclaw` でユーザースコープにインストールされ、インプロセスのプラグインフック（`before_agent_finalize` は実際のターン終了ゲートとして機能するため、`require-*-before-stop` 組み込みポリシーが有効）を通じてポリシーが適用されます。また**オフライン監査ソース**としても機能します。Factory Droid（`droid`）は `--cli factory`（ユーザー + プロジェクトスコープ）でインストールされ、**オフライン監査ソース**としても機能します。Devin CLI（`devin`、Cognition）は `--cli devin`（ユーザー + プロジェクトスコープ）でインストールされ、**オフライン監査ソース**としても機能します。Antigravity CLI（`agy`）は `--cli antigravity`（ユーザー + プロジェクトスコープ）でインストールされ、**オフライン監査ソース**としても機能します。Goose（コードネーム goose、Block）は `--cli goose`（ユーザー + プロジェクトスコープ）でインストールされます。インストーラーは `~/.agents/plugins/failproofai/` にプラグインディレクトリを作成するだけで、Goose が自動検出します。また**オフライン監査ソース**としても機能します。
+    GitHub Copilot CLI、Cursor Agent、OpenCode、Pi のサポートは **ベータ版** です — それぞれ `--cli copilot`、`--cli cursor`、`--cli opencode`、`--cli pi` を指定してインストールしてください。Hermes（hermes-agent、Slack/Telegram ゲートウェイ）は `--cli hermes` でユーザースコープにインストールされ、**オフライン監査ソースでもあります**。OpenClaw（openclaw ゲートウェイ、セルフホスト型マルチチャンネルアシスタント）は `--cli openclaw` でユーザースコープにインストールされ、インプロセスのプラグインフック（`before_agent_finalize` はターン終了の実際のゲートとして機能するため、`require-*-before-stop` の組み込みポリシーが適用されます）を通じてポリシーが実行され、**オフライン監査ソースでもあります**。Factory Droid（`droid`）は `--cli factory`（ユーザー + プロジェクトスコープ）でインストールされ、**オフライン監査ソースでもあります**。Devin CLI（`devin`、Cognition）は `--cli devin`（ユーザー + プロジェクトスコープ）でインストールされ、**オフライン監査ソースでもあります**。Antigravity CLI（`agy`）は `--cli antigravity`（ユーザー + プロジェクトスコープ）でインストールされ、**オフライン監査ソースでもあります**。Goose（コードネーム goose、Block）は `--cli goose`（ユーザー + プロジェクトスコープ）でインストールされます — インストーラーは `~/.agents/plugins/failproofai/` にプラグインディレクトリを配置するだけで Goose が自動検出します。**オフライン監査ソースでもあります**。
 
     ```bash
     failproofai policies --install --scope project
@@ -62,17 +62,17 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    すべてのポリシー、その有効/無効の状態、設定済みのパラメーターが一覧表示されます。
+    すべてのポリシー、有効かどうか、設定済みのパラメーターが表示されます。
   </Step>
   <Step title="ダッシュボードを起動する">
     ```bash
     failproofai
     ```
 
-    `http://localhost:8020` にローカルダッシュボードが開き、セッションの閲覧、ツール呼び出しの検査、ポリシーの管理ができます。
+    `http://localhost:8020` にローカルダッシュボードが開き、セッションの閲覧、ツール呼び出しの確認、ポリシーの管理が行えます。
   </Step>
   <Step title="エージェントを実行する">
-    通常通り Claude Code を起動してください。エージェントが危険な操作を試みた場合、failproofai が自動的に介入します。エージェントを無人で動作させたまま、ダッシュボードで後から内容を確認できます。
+    Claude Code を通常どおり起動してください。エージェントがリスクのある操作を試みた場合、failproofai が自動的に介入します。放置したまま実行し、あとでダッシュボードで何が起きたかを確認できます。
   </Step>
 </Steps>
 
@@ -88,21 +88,21 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
                                                  writes decision to stdout
 ```
 
-各ポリシーは次の 3 つのいずれかの判定を返します。
+各ポリシーは次の3つの決定のいずれかを返します。
 
-- **allow** - エージェントは通常通り処理を続行する
-- **deny** - アクションがブロックされ、エージェントに理由が通知される
-- **instruct** - エージェントのプロンプトに追加のコンテキストが付加される
+- **allow** — エージェントは通常どおり処理を続行する
+- **deny** — アクションがブロックされ、エージェントに理由が通知される
+- **instruct** — エージェントのプロンプトに追加のコンテキストが付加される
 
 <Note>
-ポリシーはローカルプロセス上で実行されます。リモートサービスへのデータ送信は一切行われません。
+ポリシーはローカルプロセス内で実行されます。リモートサービスへのデータ送信は一切行われません。
 </Note>
 
 ---
 
-## コンベンションベースのポリシーでチームポリシーを設定する
+## 規約ベースのポリシーでチームポリシーを設定する
 
-チーム全体で品質基準を確立する最も手軽な方法は、`.failproofai/policies/` コンベンションを使うことです。このディレクトリにポリシーファイルを置くだけで自動的に読み込まれます。フラグや設定変更、インストールコマンドは一切不要です。
+チーム全体に品質標準を素早く展開する最善の方法は、`.failproofai/policies/` の規約です。このディレクトリにポリシーファイルを置くだけで自動的に読み込まれます — フラグも、設定変更も、インストールコマンドも不要です。
 
 <Steps>
   <Step title="ポリシーディレクトリを作成する">
@@ -111,13 +111,13 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
     ```
   </Step>
   <Step title="ポリシーファイルを追加する">
-    スターターサンプルをコピーするか、独自のポリシーを作成してください。
+    サンプルファイルをコピーするか、独自のものを作成してください。
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
     ```
 
-    または新しいポリシーを作成します。
+    または新しいファイルを作成します。
 
     ```js
     // .failproofai/policies/team-policies.mjs
@@ -142,23 +142,25 @@ Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
     git commit -m "Add team quality policies"
     ```
 
-    failproofai をインストール済みのチームメンバー全員が、これらのポリシーを自動的に受け取ります。開発者ごとのセットアップは不要です。
+    failproofai をインストールしているすべてのチームメンバーがこれらのポリシーを自動的に取得します。開発者ごとのセットアップは不要です。
   </Step>
 </Steps>
 
 <Tip>
-`.failproofai/policies/` をリポジトリにコミットして、チーム全体で同じ基準を共有しましょう。新たな障害モードを発見したらポリシーを追加してプッシュするだけで、全員が次回の `git pull` 時にアップデートを受け取れます。こうしたポリシーは、継続的に改善されていく生きた品質基準となっていきます。
+`.failproofai/policies/` をリポジトリにコミットすることで、チーム全体が同じ標準を共有できます。新たな障害パターンが見つかったらポリシーを追加してプッシュするだけで、全員が次回の `git pull` 時にアップデートを受け取れます。ポリシーは時間とともに成長し続ける品質基準となっていきます。
 </Tip>
 
 ---
 
 ## データの保存場所
 
-すべての設定とログはお使いのマシン上に保存されます。
+すべての設定とログはマシン上に保存されます。
 
-| パス | 保存される内容 |
+| パス | 保存内容 |
 |------|----------------|
-| `~/.failproofai/policies/local-policies/policies-config.json` | グローバルポリシー設定 |
+| `~/.failproofai/policies-config.json` | グローバルポリシー設定 |
+| `~/.failproofai/policies/` | 独自ポリシー — `*-policies.mjs` を置くだけで設定不要 |
+| `~/.failproofai/policies/cloud-policies/` | 組織からこのマシンにデプロイされたポリシー |
 | `~/.failproofai/hook-activity/` | フック実行履歴（ページ付き JSONL） |
 | `~/.failproofai/logs/` | カスタムフックエラーのデバッグログ |
 | `.failproofai/policies-config.json` | プロジェクト単位の設定（コミット対象） |
@@ -185,15 +187,15 @@ failproofai policies --uninstall
 </Card>
 
 <Card title="組み込みポリシー" icon="shield" href="/ja/built-in-policies">
-  パラメーター付き全 26 ポリシー
+  パラメーター付き全26ポリシー
 </Card>
 
 <Card title="カスタムポリシー" icon="code" href="/ja/custom-policies">
-  JavaScript で独自のポリシーを作成する
+  JavaScript で独自のポリシーを記述する
 </Card>
 
 <Card title="エージェントモニター" icon="chart-line" href="/ja/dashboard">
-  セッションの監視とポリシー活動の確認
+  セッションの監視とポリシーアクティビティの確認
 </Card>
 
 </CardGroup>

@@ -1,31 +1,31 @@
 ---
-title: "Für Agenten"
-description: "Failproof AI-Wissen in einem Befehl zu deinem Coding-Agenten hinzufügen. Funktioniert mit Claude Code, Cursor, Windsurf und mehr."
+title: "Für Agents"
+description: "Füge Failproof AI-Wissen in einem Befehl zu deinem Coding-Agent hinzu. Funktioniert mit Claude Code, Cursor, Windsurf und mehr."
 ---
 
-Füge die vollständige Failproof AI-Referenz in einem Befehl zu deinem Coding-Agenten hinzu. Funktioniert mit Claude Code, Cursor, Windsurf und jedem anderen Agenten, der Skills unterstützt.
+Füge die vollständige Failproof AI-Referenz in einem Befehl zu deinem Coding-Agent hinzu. Funktioniert mit Claude Code, Cursor, Windsurf und jedem anderen Agent, der Skills unterstützt.
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` erkennt automatisch, welche Agenten du installiert hast, und fügt den Skill im jeweils passenden Format hinzu.
+`npx skills` erkennt automatisch, welche Agents du installiert hast, und fügt den Skill im jeweils passenden Format hinzu.
 
 ## Was der Skill abdeckt
 
-| Bereich | Inhalt |
-|---------|--------|
+| Bereich | Inhalte |
+|---------|---------|
 | Policies | Integrierte Policy-Namen, Event-Typen, Parameter, aktivieren/deaktivieren |
 | Custom policies | `customPolicies.add()`, Match-Filter, `allow`/`deny`/`instruct`-API |
 | Context-Objekt | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
 | Konfiguration | `policies-config.json`-Struktur, Scope-Zusammenführung, `policyParams` |
 | CLI | `failproofai policies --install`, `--uninstall`, `--custom`, Scopes |
 | Dashboard | Session-Viewer, Policy-Aktivität, Umgebungsvariablen |
-| Architektur | Hook-Handler-Flow, Exit-Codes, stdin/stdout-Vertrag |
+| Architektur | Hook-Handler-Ablauf, Exit-Codes, stdin/stdout-Vertrag |
 
 ## Ist der Skill vollständig?
 
-Mintlify generiert `llms.txt` aus allen Seiten der Navigation. Die Failproof AI-Dokumentation deckt die vollständige API ab – jede Policy, Option und jedes Beispiel ist enthalten. Falls dir etwas fehlt, findest du die Quelle unter `https://docs.befailproof.ai/llms-full.txt`.
+Mintlify generiert `llms.txt` aus allen Seiten der Navigation. Die Failproof AI-Dokumentation deckt die vollständige API ab – jede Policy, jede Option und jedes Beispiel ist enthalten. Falls du etwas vermisst, findest du die Quelle unter `https://docs.befailproof.ai/llms-full.txt`.
 
 Für gezielten Kontext kannst du direkt auf eine bestimmte Seite verlinken:
 

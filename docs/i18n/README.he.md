@@ -19,9 +19,9 @@
 
 **תרגומים:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
-**פתרון כישלונות בזמן ריצה עבור סוכנים קידוד.**
-מתחבר לתוך Claude Code ו-Codex. תופס לולאות, פעולות מסוכנות וגדילות סודות
-לפני שהם הופכים לתקלות. חביון אפס. פועל locally.
+**פתרון כשלים בזמן ריצה עבור סוכני קודינג.**
+משתלב עם Claude Code ו-Codex. תופס לולאות, פעולות מסוכנות, וזליגת סודות
+לפני שהם הופכים לתקלות. אפס זיהוי. פועל באופן מקומי.
 
 </div>
 
@@ -31,7 +31,7 @@
 
 ---
 
-## CLIs סוכנים נתמכים
+## ממשקי CLI של סוכנים נתמכים
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -131,32 +131,32 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # או פשוט הרץ `failproofai` וקבל את הבקשה בהרצה ראשונה
+failproofai policies --install   # או הפעל `failproofai` וקבל את הנושא בהפעלה ראשונה
 failproofai
 ```
 
-30 מדיניויות מובנות מופעלות מיד. לוח בקרה ב-`localhost:8020`. השבת את בקשת ההרצה הראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 מדיניות מובנות מופעלות מיד. לוח בקרה ב-`localhost:8020`. בטל את הנושא בהפעלה ראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
 ## מה זה עוצר
 
-| מדיניות | מה זה חוסם |
+| מדיניות | מה היא חוסמת |
 |---|---|
 | `block-push-master` | דחיפות ישירות ל-`main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | commits, merges, rebases על `main` / `master` |
+| `block-work-on-main` | Commits, merges, rebases ב-`main` / `master` |
 | `block-rm-rf` | מחיקת קבצים רקורסיבית |
-| `sanitize-api-keys` | מפתחות API שנדלפים לתוך תיאום הסוכן |
+| `sanitize-api-keys` | מפתחות API שדולפים להקשר הסוכן |
 
-→ [כל 30 המדיניויות המובנות](https://docs.befailproof.ai/built-in-policies)
+→ [כל 30 המדיניות המובנות](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## המדיניויות שלך שלך
+## המדיניויות שלך
 
-הטלה קובץ ל-`.failproofai/policies/` — הוא טוען באופן אוטומטי, ללא דגלים נדרשים.
-התחייב בו והצוות כולו מקבל אותו ב-pull הבא.
+שחרר קובץ ל-`.failproofai/policies/` — הוא נטען באופן אוטומטי, ללא דגלים נדרשים.
+בצע commit אליו וכל הצוות שלך יקבל אותו בהשלכה הבאה.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -178,17 +178,17 @@ customPolicies.add({
 |---|---|
 | `allow()` | אפשר את הפעולה |
 | `deny(message)` | חסום אותה — ההודעה חוזרת לסוכן |
-| `instruct(message)` | תן לזה לעבור, אך הוסף הקשר להנחיה הבאה של הסוכן |
+| `instruct(message)` | תן לה לעבור, אך הוסף הקשר להנחיה הבאה של הסוכן |
 
-→ [מדריך מדיניויות מותאמות](https://docs.befailproof.ai/custom-policies)
+→ [מדריך מדיניות מותאמות](https://docs.befailproof.ai/custom-policies)
 
 ---
 
-## ראות session
+## ראות הפגישה
 
-כל קריאת כלי שהסוכן שלך עושה היא נרשמת locally. לוח הבקרה מציג מה רץ,
-מה נחסם, והודעה שהמדיניות אמרה לסוכן — כך שאתה לא מנחש
-כשמשהו משתבש. → [מדריך לוח הבקרה](https://docs.befailproof.ai/dashboard)
+כל קריאת כלי שהסוכן שלך עושה מתועדת באופן מקומי. לוח הבקרה מציג מה רץ,
+מה נחסם, ומה המדיניות אמרה לסוכן — כך שאתה לא מנחש
+כאשר משהו לא הולך כמו צפוי. → [מדריך לוח הבקרה](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -196,35 +196,34 @@ customPolicies.add({
 
 | | |
 |---|---|
-| [התחל](https://docs.befailproof.ai/getting-started) | התקנה וצעדים ראשונים |
+| [התחלה מהר](https://docs.befailproof.ai/getting-started) | התקנה וצעדים ראשוניים |
 | [מדיניויות מובנות](https://docs.befailproof.ai/built-in-policies) | כל 30 המדיניויות עם פרמטרים |
 | [מדיניויות מותאמות](https://docs.befailproof.ai/custom-policies) | כתוב שלך |
-| [תצורה](https://docs.befailproof.ai/configuration) | זימוני תצורה וכללי merge |
-| [לוח בקרה](https://docs.befailproof.ai/dashboard) | מעקב session ופעילות מדיניות |
-| [ארכיטקטורה](https://docs.befailproof.ai/architecture) | איך מערכת ה-hook עובדת |
+| [תצורה](https://docs.befailproof.ai/configuration) | היקפי תצורה וכללי מיזוג |
+| [לוח בקרה](https://docs.befailproof.ai/dashboard) | מוניטור הפגישה ופעילות המדיניות |
+| [ארכיטקטורה](https://docs.befailproof.ai/architecture) | כיצד מערכת ה-hook עובדת |
 
 ---
 
 ## רישיון
 
-MIT עם [Commons Clause](https://commonsclause.com/) — חינם לשימוש פנימי ואישי; מכירה מסחרית מחדש של failproofai עצמו דורשת הסכם נפרד. ראה [LICENSE](../../LICENSE) לטקסט המלא.
+MIT עם [Commons Clause](https://commonsclause.com/) — חינם לשימוש פנימי ואישי; מכירה מחדש מסחרית של failproofai עצמו דורשת הסכם נפרד. ראה [LICENSE](../../LICENSE) לטקסט המלא.
 
 ---
 
 ## תרומה
 
-ראה [CONTRIBUTING.md](../../CONTRIBUTING.md). מדיניויות חדשות, edge cases, ותרגומים כולם מוזמנים.
+ראה [CONTRIBUTING.md](../../CONTRIBUTING.md). מדיניויות חדשות, מקרים קצה, ותרגומים כולם בברכה.
 
-> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` ראשון. repo זה מריץ
-> את hook ה-failproofai של עצמו, והם פותרים את יבוא ה-`failproofai` כנגד
-> ה-bundle `dist/` המהודר — ללא build אתה תפגע בשגיאות hook `Cannot find package 'failproofai'`.
+> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` תחילה. מאגר זה מריץ
+> את ה-hooks שלו בעצמו, והם פותרים את ה-`failproofai` import כנגד
+> ה-bundle `dist/` המחובר — ללא build תקבל שגיאות hook של `Cannot find package 'failproofai'`.
 > בנה מחדש לאחר שינוי `src/`. ראה
-> [בנה לפני שה-hook פיתוח in-repo יעבדו](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-בנוי על ידי [Nivedit Jain](https://github.com/NiveditJain) ו-[Nikita Agarwal](https://github.com/nk-ag).
-[befailproof.ai](https://befailproof.ai)
+בנוי עם ❤️ על ידי [befailproof.ai](https://befailproof.ai) בסן פרנסיסקו וב-Bengaluru.
 
 
 </div>

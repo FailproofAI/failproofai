@@ -4,7 +4,7 @@ description: "Failproof AI Observability busca los fallos para los que nunca esc
 ---
 
 
-Failproof AI Observability busca los fallos para los que nunca escribiste una regla y te entrega una lista priorizada de exactamente qué corregir, respaldada por evidencias. Es como tener un analista que revisa tus logs cada noche y te deja la lista corta sobre el escritorio antes de que empiece el día.
+Failproof AI Observability busca los fallos para los que nunca escribiste una regla y te entrega una lista priorizada de exactamente qué corregir, respaldada por evidencias. Es como tener un analista que revisa tus logs cada noche y deja el resumen sobre tu escritorio por la mañana.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Ver: Encuentra automáticamente dónde falla tu agente (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
@@ -12,43 +12,43 @@ Failproof AI Observability busca los fallos para los que nunca escribiste una re
 
 *Un recorrido de dos minutos: desde una ejecución programada hasta una corrección sobre la que puedes actuar.*
 
-![La página de Auditorías: trabajos recurrentes que analizan tus sesiones en busca de patrones de fallo, cada uno con una programación y sensibilidad](/agenteye/images/audits.png)
-*Cada auditoría es un trabajo recurrente que examina tus sesiones y elabora recomendaciones priorizadas respaldadas por evidencias.*
+![La página de Auditorías: tareas recurrentes que analizan tus sesiones en busca de patrones de fallo, cada una con un horario y una sensibilidad](/agenteye/images/audits.png)
+*Cada auditoría es una tarea recurrente que analiza tus sesiones y elabora recomendaciones priorizadas y respaldadas por evidencias.*
 
 ## Deja de adivinar qué corregir a continuación
 
-Las alertas detectan los problemas que ya sabías que debías vigilar. Las auditorías detectan los que no sabías. Según una cadencia que tú defines, una auditoría lee todas tus sesiones de agente y busca los patrones que vale la pena corregir, para que dediques tu tiempo a actuar sobre los hallazgos en lugar de desplazarte por los logs esperando detectarlos tú mismo.
+Las alertas detectan los problemas que ya sabes que debes vigilar. Las auditorías detectan los que no. Con la cadencia que tú definas, una auditoría analiza todas tus sesiones de agente y busca los patrones que vale la pena corregir, para que dediques tu tiempo a actuar sobre los hallazgos en lugar de desplazarte por los logs con la esperanza de encontrarlos por tu cuenta.
 
-Una sola ejecución ataca los modos de fallo que realmente rompen agentes en producción:
+Una sola ejecución va tras los modos de fallo que realmente rompen los agentes en producción:
 
-- **Clusters de errores**: el mismo fallo repitiéndose bajo una causa raíz común.
-- **Deriva respecto a una línea base**: comportamiento que se aleja silenciosamente de una ventana conocida como buena.
-- **Fallo de objetivo en transcripciones**: ejecuciones que técnicamente terminaron pero nunca cumplieron el objetivo.
+- **Clústeres de errores**: el mismo fallo repitiéndose bajo una causa raíz común.
+- **Deriva respecto a una línea base**: un comportamiento que se aleja silenciosamente de una ventana conocida y estable.
+- **Fallo de objetivo en transcripciones**: ejecuciones que técnicamente terminaron pero nunca realizaron el trabajo.
 - **Uso incorrecto de herramientas**: la herramienta equivocada, argumentos incorrectos o bucles que consumen llamadas.
-- **Equilibrio entre calidad y coste**: dónde estás pagando de más por una salida que podrías obtener más barato.
-- **Brechas de cobertura**: comportamiento que ninguna evaluación ni alerta está vigilando.
+- **Compensaciones entre calidad y coste**: dónde estás pagando de más por una salida que podrías obtener más barato.
+- **Brechas de cobertura**: comportamientos que ninguna evaluación ni alerta está vigilando.
 
-Tú decides con qué intensidad busca mediante un único ajuste de **sensibilidad** (baja, media o alta), para que tanto un agente de staging ruidoso como uno de producción bien controlado puedan sintonizarse a la señal que deseas.
+Tú decides con qué profundidad analiza mediante un único ajuste de **sensibilidad** (baja, media o alta), para que tanto un agente de staging ruidoso como uno de producción bien controlado puedan ajustarse a la señal que deseas.
 
-## Cada recomendación viene con pruebas
+## Cada recomendación viene con sus pruebas
 
-Nunca tendrás que aceptar un hallazgo por fe. Cada recomendación cita las sesiones exactas de las que proviene y el SQL que la descubrió, para que puedas abrir la evidencia y confirmar el problema con un clic en lugar de tener que reconstruir una afirmación.
+Nunca tienes que aceptar un hallazgo por fe. Cada recomendación cita las sesiones exactas de las que proviene y el SQL que lo reveló, de modo que puedes abrir la evidencia y confirmar el problema con un clic en lugar de tener que desmenuzar una afirmación.
 
-Cuando un hallazgo trata sobre una credencial filtrada, va un paso más allá y vincula los eventos individuales que coincidieron. Haz clic en uno y llegas a ese momento exacto en la sesión, ya seleccionado — no al inicio de una larga transcripción que desplazar. El enlace nombra el evento; nunca copia el secreto detectado en el hallazgo, de modo que leer un hallazgo no sea un segundo lugar donde tu credencial queda escrita. Si un evento ya no existe porque la sesión ha superado tu ventana de retención, la página lo indica claramente en lugar de dejarte preguntándote si hiciste clic en lo incorrecto.
+Cuando un hallazgo trata sobre una credencial filtrada, va un paso más allá y enlaza los eventos individuales que coincidieron. Haz clic en uno y llegas a ese momento exacto en la sesión, ya seleccionado, no al comienzo de una larga transcripción por la que desplazarte. El enlace identifica el evento; nunca copia el secreto detectado en el hallazgo, así que leer un hallazgo no es otro lugar donde tu credencial queda registrada. Si un evento ya no existe porque la sesión ha superado tu ventana de retención, la página lo indica claramente en lugar de dejarte preguntándote si hiciste clic en algo incorrecto.
 
-Eso es también lo que mantiene las auditorías honestas. El servidor verifica que cada sesión citada realmente existe y **descarta cualquier recomendación cuya evidencia no se sostenga**, de modo que la auditoría investiga pero nunca inventa. Lo que llega a tu lista es real, reproducible y está ordenado por impacto, con las ganancias más grandes al principio.
+Esto es también lo que mantiene las auditorías honestas. El servidor verifica que cada sesión citada realmente existe y **descarta cualquier recomendación cuya evidencia no se sostenga**, de modo que la auditoría investiga pero nunca inventa. Lo que aparece en tu lista es real, reproducible y está priorizado por su importancia, con las mejoras más significativas al principio.
 
 ## Convierte una corrección en una salvaguarda
 
-Corregir un problema es solo la mitad de la victoria. La otra mitad es asegurarse de que no pueda volver silenciosamente. Cada hallazgo incluye un **acceso directo con un clic que crea una alerta de recurrencia**, prellenada con un activador inicial sensato que puedes ajustar. Cierra el hallazgo, activa la alerta y la próxima vez que ese patrón reaparezca recibirás una notificación en lugar de redescubrirlo en una auditoría futura.
+Corregir un problema es solo la mitad del trabajo. La otra mitad es asegurarse de que no pueda regresar silenciosamente. Cada hallazgo incluye un **acceso directo de un clic que crea un borrador de alerta de recurrencia**, prellenado con un disparador de inicio razonable que puedes ajustar. Cierra el hallazgo, activa la alerta, y la próxima vez que ese patrón reaparezca recibirás una notificación en lugar de redescubrirlo en una futura auditoría.
 
 ## Dónde encontrarlo
 
-Las auditorías se encuentran en el panel de control en **`/<org-slug>/audits`** (barra lateral en *analyze* → *audits*). Ver ejecuciones y hallazgos requiere **`audits:read`**; crear, editar y gestionar auditorías requiere **`audits:write`**. Define el alcance y la cadencia de una auditoría y pulsa **Run now** cuando quieras resultados inmediatos en lugar de esperar al siguiente ciclo programado.
+Las auditorías se encuentran en el panel de control en **`/<org-slug>/audits`** (barra lateral → *analyze* → *audits*). Ver ejecuciones y hallazgos requiere **`audits:read`**; crear, editar y clasificar auditorías requiere **`audits:write`**. Configura el alcance y la cadencia de una auditoría y, a continuación, pulsa **Run now** cuando quieras resultados de inmediato en lugar de esperar al siguiente pase programado.
 
 ## Relacionado
 
 - [Alertas](/es/agenteye/alerts): recibe una notificación en el momento en que se supera un umbral que ya conoces.
-- [Evaluaciones](/es/agenteye/evaluations): puntúa cada ejecución para que las regresiones de calidad se detecten por sí solas.
+- [Evaluaciones](/es/agenteye/evaluations): puntúa cada ejecución para que las regresiones de calidad salgan a la superficie por sí solas.
 - [Seguimiento de errores](/es/agenteye/error-tracking): agrupa y sigue los errores que lanzan tus agentes.
-- [Incidentes](/es/agenteye/incidents): rastrea un problema que detecta una auditoría hasta su corrección.
+- [Incidentes](/es/agenteye/incidents): realiza el seguimiento de un problema que una auditoría descubre hasta su corrección.

@@ -1,69 +1,70 @@
 ---
-title: משתנים סביבתיים
-description: "הגדר את התנהגות failproofai באמצעות משתנים סביבתיים"
+---
+title: משתנים סביבה
+description: "הגדר את התנהגות failproofai באמצעות משתנים סביבה"
 ---
 
-## לוח בקרה
+## Dashboard
 
-| משתנה | תיאור |
+| Variable | Description |
 |----------|-------------|
-| `PORT` | פורט לוח הבקרה (ברירת מחדל: `8020`) |
-| `CLAUDE_PROJECTS_PATH` | שנה את המיקום שבו נמצאים תיקיות פרויקט Claude Code |
-| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | דפי לוח בקרה מופרדים בפסיקים להסתרה |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | hosts/IPs המורשים לגשת למשאבי פיתוח. זהה ל-`--allowed-origins`. |
+| `PORT` | יציאת ה-Dashboard (ברירת מחדל: `8020`) |
+| `CLAUDE_PROJECTS_PATH` | השתק את המיקום שבו נמצאים תיקיות פרויקטי Claude Code |
+| `FAILPROOFAI_DISABLE_PAGES=policies,projects` | דפי Dashboard המופרדים בפסיקים להסתרה |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hosts/IPs המורשים לגישה למשאבי dev. זהה ל-`--allowed-origins`. |
 
-## רישום ביומן
+## Logging
 
-| משתנה | תיאור |
+| Variable | Description |
 |----------|-------------|
-| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | רמת רישום השרת (ברירת מחדל: `warn`) |
-| `FAILPROOFAI_HOOK_LOG_FILE` | נתיב קובץ רישום hook מותאם אישית, או `true` לברירת מחדל (`~/.failproofai/logs/hooks.log`) |
+| `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | רמת יומן השרת (ברירת מחדל: `warn`) |
+| `FAILPROOFAI_HOOK_LOG_FILE` | נתיב קובץ יומן hook מותאם אישית, או `true` לברירת המחדל (`~/.failproofai/logs/hooks.log`) |
 
-## טלמטריה
+## Telemetry
 
-failproofai מדווח על טלמטריית שימוש אנונימית כברירת מחדל. יש שתי דרכים
-להשבית זאת, והן מפתרות לפי מה שהוא מגביל יותר — משתנה סביבתי לא יכול
-לעולם להפעיל מחדש משהו שקובץ קונפיגורציה השבית.
+failproofai משדר טלמטריה שימוש אנונימית כברירת מחדל. יש שתי דרכים כדי
+לכבות זאת, והן מתפרשות לפי המגביל יותר — משתנה סביבה לא יכול לעולם להפעיל מחדש משהו שקובץ התצורה כיבה.
 
-| משתנה | תיאור |
+| Variable | Description |
 |----------|-------------|
-| `FAILPROOFAI_TELEMETRY_DISABLED=1` | השבת טלמטריית שימוש אנונימית לתהליך זה |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | בטל טלמטריה שימוש אנונימית לתהליך זה |
 
-כדי להשבית זאת באופן קבוע עבור המכונה, הוסף זאת ל-`~/.failproofai/config.toml`:
+כדי להשבית זאת באופן קבוע עבור המכונה, הוסף זאת ל-`~/.failproofai/config.json`:
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
-קובץ הקונפיגורציה הוא האפשרות להשתמש אם אתה מריץ את **שרת failproofaid**.
-השרת הוא שירות בסקופ מערכת, וסביבתו אינה כוללת משתנים שיוצאו מהשל שלך — אז `FAILPROOFAI_TELEMETRY_DISABLED` לא יכול
-להגיע אליו. `[telemetry] enabled = false` נקרא גם על ידי CLI וגם על ידי השרת.
+קובץ התצורה הוא האפשרות לשימוש אם אתה מריץ את ה-**failproofaid daemon**.
+ה-daemon הוא שירות בהיקף מערכת, והסביבה שלו אינה כוללת
+משתנים המיוצאים מה-shell שלך — כך ש-`FAILPROOFAI_TELEMETRY_DISABLED` לא יכול
+להגיע אליו. `[telemetry] enabled = false` נקרא הן על ידי ה-CLI והן על ידי ה-daemon.
 </Note>
 
-השרת מדווח על **מחזור חיים** משלו בלבד: שהוא התחיל (ואם ההפעלה הקודמת סיימה בצורה נקייה), שהוא עצר, כאשר סדן הערכה שלו
-נוצר או הופעל מחדש, כאשר משימת אוסף נכשלה, ותוצאה של
-משיכת מדיניות ענן. אלה נושאים ערכים בעלי קרדינליות נמוכה וספירות — לעולם לא נתיב קובץ, פקודה, מדיניות, הנמקה, או משהו
-שנקרא מתוך תמלול. אין אירוע לכל קריאת כלי.
+ה-daemon משדר את **lifecycle** שלו בלבד: שהוא התחיל (ואם ההרצה הקודמת יצאה בנקיון), שהוא עצר, מתי ה-evaluation worker שלו נוצר או הופעל מחדש, מתי משימת collector נכשלה, וההשלכה של pull של cloud-policy. אלה נושאים ערכים בעלי cardinality נמוך וספירות — לעולם לא נתיב קובץ, פקודה, מדיניות, prompt, או כל דבר שנקרא מתוך שנייה. אין אירוע לכל קריאת כלי.
 
-## אימות
+## Authentication
 
-| משתנה | תיאור |
+| Variable | Description |
 |----------|-------------|
-| `FAILPROOF_API_URL` | שנה את URL הבסיס של שרת ה-API שבו משתמש דיאלוג אימות לוח הבקרה. ברירת מחדל היא `https://api.befailproof.ai`; הגדר ל-`http://localhost:8080` (או למקום אחר) בעת הפעלת שרת api מקומי. |
-| `FAILPROOFAI_AUTH_DIR` | שנה היכן מאוחסן `auth.json` (ברירת מחדל: `~/.failproofai`). שימושי בעיקר לבדיקות מבודדות. |
+| `FAILPROOF_API_URL` | השתק את כתובת URL הבסיס של api-server בה השתמש דיאלוג auth של ה-Dashboard. ברירת מחדל ל-`https://api.befailproof.ai`; הגדר ל-`http://localhost:8080` (או במקום אחר) בעת הרצת api-server מקומי. |
+| `FAILPROOFAI_AUTH_DIR` | השתק את המיקום שבו מאוחסן `auth.json` (ברירת מחדל: `~/.failproofai`). שימושי בעיקר לבדיקות מבודדות. |
 
-## הנמקה בהפעלה ראשונה
+## First-run prompt
 
-| משתנה | תיאור |
+| Variable | Description |
 |----------|-------------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | דלג על ההנמקה המציעה להתקין מדיניויות בהזעקה ראשונה של failproofai |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | דלג על ה-prompt המציע להתקין מדיניויות בהפעלה הראשונה של `failproofai` בלבד |
 
-## LLM (לצורך הערכת מדיניות)
+## LLM (for policy evaluation)
 
-| משתנה | תיאור |
+| Variable | Description |
 |----------|-------------|
-| `FAILPROOFAI_LLM_BASE_URL` | נקודת קצה API של LLM (ברירת מחדל: `https://api.openai.com/v1`) |
-| `FAILPROOFAI_LLM_API_KEY` | מפתח API למדיניויות מופעלות LLM |
-| `FAILPROOFAI_LLM_MODEL` | שם המודל (ברירת מחדל: `gpt-4o-mini`) |
+| `FAILPROOFAI_LLM_BASE_URL` | נקודת קצה של LLM API (ברירת מחדל: `https://api.openai.com/v1`) |
+| `FAILPROOFAI_LLM_API_KEY` | מפתח API עבור מדיניויות מופעלות LLM |
+| `FAILPROOFAI_LLM_MODEL` | שם מודל (ברירת מחדל: `gpt-4o-mini`) |

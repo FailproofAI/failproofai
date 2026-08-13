@@ -1,0 +1,112 @@
+---
+title: Di chuyển thư mục home
+description: "Nâng cấp ~/.failproofai lên cấu trúc của phiên bản này, và xem trước những gì sẽ xảy ra"
+---
+
+```bash
+failproofai migrate --dry-run   # in ra kế hoạch, không thay đổi gì
+failproofai migrate             # chạy nó
+```
+
+Hầu hết mọi người không bao giờ gõ lệnh này. Nó tự chạy trên lệnh đầu tiên sau khi nâng cấp,
+và [`failproofai update`](/vi/cli/update) bao gồm nó. Hãy sử dụng nó trực tiếp khi bạn muốn
+xem kế hoạch trước khi nó xảy ra, hoặc để chạy quá trình di chuyển một mình.
+
+## Dựa trên cấu trúc, không phải phiên bản
+
+`~/.failproofai/VERSION` ghi lại một số **cấu trúc** — hình dạng của thư mục,
+không phải bản phát hành đã viết nó. Các quá trình di chuyển được khóa trên số đó,
+điều này làm cho một khoảng cách lớn trở nên rẻ:
+
+- Các phiên bản npm thay đổi trên mỗi bản phát hành, có hàng chục phiên bản giữa hai cấu trúc.
+- Vì vậy, một máy bỏ qua ba mươi bản phát hành với **không có thay đổi cấu trúc** sẽ chạy **không có**
+  quá trình di chuyển, không phải ba mươi hoạt động vô ích.
+- Và một máy bỏ qua nhiều cấu trúc cùng một lúc sẽ chạy từng bước theo thứ tự,
+  mỗi bước chỉ biết hai đầu của chính nó.
+
+Điều này quan trọng vì npm không thể tự cập nhật một gói đã cài đặt. Một máy
+nằm trên một phiên bản trong nhiều tháng và sau đó nhảy qua nhiều cấu trúc là trường hợp bình thường,
+không phải trường hợp lạ.
+
+## Quá trình chạy thử
+
+`--dry-run` in ra chuỗi chính xác và các tệp sẽ được lưu trước,
+và không thay đổi gì cả — không có quá trình di chuyển, không có sao lưu, không có mục nhập sổ cái:
+
+```
+Layout 2 trên đĩa; phiên bản này nói 3.
+1 bước sẽ chạy:
+  2 → 3  layout 2 → 3: mang config.toml và credentials.toml vào JSON, di chuyển
+         custom-policies/ trở lại vào policies/, lồng cấu hình chính sách ở gốc
+
+Những điều này sẽ được sao chép đến ~/.failproofai/migrations/backup-layout2 trước:
+  VERSION
+  config.toml
+  credentials.toml
+```
+
+## Điều gì được mang theo, và điều gì được xây dựng lại
+
+Mỗi đường dẫn trong thư mục khai báo loại dữ liệu nó chứa, và điều đó quyết định
+liệu quá trình di chuyển có thể loại bỏ nó hay không. Quy tắc: **những gì có thể suy dẫn và có thể tìm lại được có thể bị xóa;
+bất cứ thứ gì bạn gõ, bất cứ thứ gì chưa được gửi, và bất cứ thứ gì xác định máy sẽ được mang theo.**
+
+| Được mang theo | Được xây dựng lại hoặc tìm lại |
+|---|---|
+| `config.json` — cài đặt, `daemon.configured`, các đường dẫn capture thêm | Bộ đệm kiểm toán |
+| `credentials.json` — quá trình đăng ký đám mây của bạn | Các triển khai được quản lý bởi đám mây (được tìm lại và xác minh được tóm tắt trên lần bình chọn tiếp theo) |
+| `policies-config.json` — lựa chọn chính sách và tham số của bạn | Trạng thái công việc daemon |
+| `policies/` — các tệp chính sách của riêng bạn và các trợ giúp mà chúng nhập | |
+| `hook-activity/` — nhật ký quyết định mà bảng điều khiển đọc | |
+| Các sự kiện chưa được gửi vẫn đang chờ trong hàng để tải lên | |
+| `cursors/` — dấu nước của bộ thu thập | |
+| Nhị phân daemon trong `bin/` | |
+
+<Note>
+  Các sự kiện chưa được gửi được mang theo chứ không bị xóa vì mất mát sẽ là vĩnh viễn,
+  không phải chậm: dấu nước của bộ thu thập đã tiến vượt quá bất cứ thứ gì đang nằm trong spool,
+  vì vậy không có gì bao giờ sẽ đọc lại phạm vi đó của một bản ghi. Quá trình di chuyển cũng yêu cầu daemon
+  gửi những gì đang nằm trong spool ngay khi nó kết thúc, vì vậy kết quả thông thường là không có gì còn lại để mang theo.
+</Note>
+
+Các khóa mà phiên bản **mới hơn** đã viết vào `config.json`, `credentials.json` hoặc
+`policies-config.json` cũng được bảo toàn, thay vì bị xóa bởi một trình đọc cũ hơn.
+
+## Bản ghi nó để lại
+
+```
+~/.failproofai/migrations/
+  applied.json                 một mục nhập cho mỗi bước: layout, CLI, dấu thời gian, thời lượng, kết quả
+  backup-layout<n>/            bản sao của các tệp không thể thay thế được, được lấy trước bước đầu tiên
+```
+
+`applied.json` là những gì trả lời "máy này thực sự đã trải qua những gì" — câu hỏi
+đầu tiên đáng hỏi khi có gì đó trông sai sau khi nâng cấp. Đính kèm nó
+vào báo cáo lỗi.
+
+Bản sao được thiết kế có kích thước nhỏ một cách cố ý chứ không phải bản sao của toàn bộ thư mục:
+quá trình di chuyển không còn xóa bất cứ thứ gì không thể thay thế được theo thiết kế,
+vì vậy điều đáng bảo hiểm là một **khiếm khuyết trong một bước**, và những tệp này là những nơi
+mà khiếm khuyết như vậy sẽ gây tổn thương.
+
+## Nếu một bước không thành công
+
+Chuỗi dừng ở đó. `VERSION` chỉ được đóng dấu bởi một bước đã hoàn thành,
+vì vậy thư mục ở lại được đánh dấu bằng cấu trúc cũ của nó và lệnh tiếp theo sẽ thử lại nó —
+một thư mục không bao giờ được đánh dấu hiện tại dựa trên quá trình di chuyển một phần.
+Bước được ghi trong `applied.json` với `"ok": false`, và bản sao lưu là nơi nó được lấy.
+
+## Một thư mục mới hơn bị từ chối, không được di chuyển
+
+Nếu `~/.failproofai/` được viết bởi một **phiên bản failproofai mới hơn** so với phiên bản bạn đang chạy,
+lệnh dừng lại và yêu cầu bạn nâng cấp thay thế. Dữ liệu đó ổn và một CLI mới hơn đọc nó;
+di chuyển "tiến lên" từ nó không phải là điều tồn tại, và đặt lại nó sẽ phá hủy thứ gì đó có thể khôi phục.
+
+```
+Thư mục failproofai của máy này được viết bởi một phiên bản mới hơn (layout 4;
+phiên bản này nói 3). Nâng cấp thay vì di chuyển:
+  npm install -g failproofai@latest
+```
+
+Daemon áp dụng cùng một quy tắc: `failproofaid` từ chối khởi động so với một cấu trúc
+nó không nói, thay vì đọc và viết các đường dẫn đã di chuyển.

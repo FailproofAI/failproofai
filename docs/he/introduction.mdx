@@ -1,37 +1,36 @@
 ---
----
 title: "Failproof AI"
-description: "FailproofAI מספקת לסוכני AI 39 מדיניויות כישל מובנות שתופסות לולאות, דליפות סודות, קריאות כלי הרסניות ועוד בהתקנה אחת."
+description: "FailproofAI מספק לסוכנים AI 39 מדיניות כישלון מובנות המתפסות לולאות, דליפות סודות, קריאות כלי הרסניות ועוד בהתקנה יחידה."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
 
-ווקים ומדיניויות ל**טיפול בכישלונות AI**, **התאוששות מ-שגיאות**, ו**אמינות LLM**. שמור על סוכני AI שלך אמינים וריצה אוטונומית ב**Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI**, ו**Agents SDK**.
+Hooks ומדיניות עבור **טיפול בכישלונות AI**, **התאוששות משגיאות**, ו**אמינות LLM**. שמור על סוכנים AI אמינים ורצים באופן אוטונומי על פני **Claude Code**, **OpenAI Codex**, **GitHub Copilot**, **Cursor Agent**, **OpenCode**, **Pi**, **Hermes**, **OpenClaw**, **Factory Droid**, **Devin CLI**, **Antigravity CLI**, וה-**Agents SDK**.
 
-סוכני AI כושלים בדרכים צפויות. הם מריצים פקודות הרסניות, מדליפים סודות, סוטים מהמשימה, נתקעים בלולאות, או דוחפים ישירות ל-main. אם משאירים זאת ללא פיקוח, כישלונות קטנים עלולים להיות לתאונות קטסטרופליות, דליפות אישורים עבודה, ואובדן עבודה.
+סוכנים AI נכשלים בדרכים צפויות. הם מריצים פקודות הרסניות, דולפים סודות, סוטים מהמטלה, תקועים בלולאות, או דוחפים ישירות ל-main. אם משאירים אותם ללא פיקוח, כישלונות קטנים מתגברים להפסקות שירות, דלפות אישורים, ועבודה אבודה.
 
-FailproofAI פותרת זאת באמצעות **מדיניויות**. כללים אלו משתלבים בכל קריאת כלי סוכן כדי **לגלות כישלונות**, **להפחית אותם** (לחסום, להנחות, לנקות), ו**להתריע עליך** כאשר משהו זקוק לתשומת לב. לוח מחוונים מקומי מאפשר לך לעיין בכל קריאת כלי, כישלון סוכן ופעולת התאוששות לאחר מכן.
+FailproofAI פותר זאת עם **מדיניות**. כללים אלה מוכנסים לכל קריאת כלי סוכן כדי **לגלות כישלונות**, **להקל עליהם** (חסימה, הנחיה, sanitize), ו**להתריע אליך** כאשר משהו דורש תשומת לב. לוח מחוונים מקומי מאפשר לך לסקור כל קריאת כלי, כישלון סוכן וביצוע התאוששות לאחר מכן.
 
-תמליל וה-evaluation של מדיניות נשארים במחשב שלך. נתונים נשלחים רק כאשר אתה משתמש באופן מפורש בתכונה מקוונת, כגון תזכורות ביקורת מאומתות או הזמנות.
+עמלות והערכת מדיניות נשארות במכונה שלך. נתונים נשלחים רק כאשר אתה משתמש במפורש בתכונה מקוונת, כגון תזכורות ביקורת מאומתות או הזמנות.
 
-## התחלה מהירה
+## התחל
 
 <CardGroup cols={2}>
 
-<Card title="39 מדיניויות מובנות" icon="shield" href="/he/built-in-policies">
-  חסום פקודות הרסניות, מנע דליפות סודות, שמור על סוכנים בתוך גבולות הפרויקט, ועוד. הכל מתוך הקופסה.
+<Card title="39 מדיניות מובנות" icon="shield" href="/he/built-in-policies">
+  חסום פקודות הרסניות, מנע דלפות סודות, שמור על סוכנים בתוך גבולות פרויקט, ועוד. הכל מהקופסה.
 </Card>
 
-<Card title="מדיניויות מותאמות אישית" icon="code" href="/he/custom-policies">
-  כתוב כללים משלך ב-JavaScript באמצעות API פשוט של allow / deny / instruct.
+<Card title="מדיניות מותאמת" icon="code" href="/he/custom-policies">
+  כתוב את הכללים שלך ב-JavaScript עם API פשוט של allow / deny / instruct.
 </Card>
 
-<Card title="Agent monitor" icon="chart-line" href="/he/dashboard">
-  ראה מה סוכניך עשו כשלא היית שם. עיין בסשנים, בדוק קריאות כלים, סקור היכן מדיניויות הופעלו.
+<Card title="מוניטור סוכן" icon="chart-line" href="/he/dashboard">
+  ראה מה עשו הסוכנים שלך בזמן שלא היית. עיין בהפעלות, בדוק קריאות כלים, סקור היכן מדיניות הוציאה דיווחים.
 </Card>
 
-<Card title="קונפיגורציה קלה" icon="gear" href="/he/configuration">
-  כייל כל מדיניות ללא קוד. הגדר allowlists, ענפים מוגנים, או ערכי סף לכל-פרויקט או בעולם.
+<Card title="הגדרה קלה" icon="gear" href="/he/configuration">
+  כוונן כל מדיניות ללא קוד. הגדר רשימות אישור, ענפים מוגנים, או סף לכל פרויקט או גלובלית.
 </Card>
 
 </CardGroup>
@@ -51,8 +50,8 @@ bun add -g failproofai
 </CodeGroup>
 
 ```bash
-failproofai policies --install   # enable policies (or skip — `failproofai` will offer to set them up on first run)
-failproofai                      # launch the dashboard
+failproofai policies --install   # הפוך מדיניות לזמינות (או דלג — `failproofai` יציע להגדיר אותן בהרצה הראשונה)
+failproofai                      # הפעל את לוח המחוונים
 ```
 
-ראה את [Starting](/he/getting-started) guide להסבר המלא.
+ראה את מדריך [התחלה](/he/getting-started) לקבלת סיור מלא.

@@ -13,24 +13,24 @@ npx skills add https://docs.befailproof.ai
 
 ## ما الذي تغطيه المهارة
 
-| المجال | ما يُتضمن |
+| المجال | ما هو المتضمن |
 |------|----------------|
 | السياسات | أسماء السياسات المدمجة وأنواع الأحداث والمعاملات والتفعيل/التعطيل |
-| السياسات المخصصة | `customPolicies.add()`ومرشحات المطابقة و API `allow`/`deny`/`instruct` |
+| السياسات المخصصة | `customPolicies.add()` ومرشحات المطابقة و API `allow`/`deny`/`instruct` |
 | كائن السياق | `ctx.eventType` و `ctx.toolName` و `ctx.toolInput` و `ctx.session` |
-| الإعدادات | بنية `policies-config.json` ودمج النطاقات و `policyParams` |
-| سطر الأوامر | `failproofai policies --install` و `--uninstall` و `--custom` والنطاقات |
-| لوحة التحكم | عارض الجلسات وأنشطة السياسة والمتغيرات البيئية |
-| البنية المعمارية | تدفق معالج الخطاف وأكواد الخروج واتفاقية stdin/stdout |
+| الإعدادات | هيكل `policies-config.json` ودمج الأنطقة و `policyParams` |
+| واجهة سطر الأوامر | `failproofai policies --install` و `--uninstall` و `--custom` والأنطقة |
+| لوحة التحكم | عارض الجلسات ونشاط السياسة ومتغيرات البيئة |
+| العمارة | تدفق معالج الخطاف وأكواد الخروج وعقد stdin/stdout |
 
 ## هل المهارة كاملة؟
 
-يقوم Mintlify بإنشاء `llms.txt` من جميع الصفحات في التنقل. تغطي مستندات Failproof AI واجهة برمجية التطبيقات الكاملة - كل سياسة وخيار ومثال مُدرج. إذا وجدت شيئاً مفقوداً، فإن المصدر موجود في `https://docs.befailproof.ai/llms-full.txt`.
+ينتج Mintlify `llms.txt` من جميع الصفحات في التنقل. توثيق Failproof AI يغطي واجهة برمجية التطبيقات الكاملة - كل سياسة وخيار ومثال مدرج. إذا وجدت شيئاً ناقصاً، المصدر موجود في `https://docs.befailproof.ai/llms-full.txt`.
 
-للحصول على سياق موجه، قم بالربط مباشرة إلى صفحة معينة:
+للحصول على سياق موجه، ارتبط مباشرة بصفحة محددة:
 
 ```bash
-# API السياسات المخصصة فقط
+# واجهة برمجية السياسات المخصصة فقط
 npx skills add https://docs.befailproof.ai/custom-policies
 
 # السياسات المدمجة فقط

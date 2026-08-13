@@ -1,50 +1,50 @@
 ---
 title: "Évaluations"
-description: "Les problèmes de qualité viennent à vous, au lieu d'en entendre parler dans une réclamation utilisateur."
+description: "Les problèmes de qualité viennent à vous, au lieu de les découvrir dans une plainte utilisateur."
 ---
 
-Les problèmes de qualité viennent à vous, au lieu d'en entendre parler dans une réclamation utilisateur. Connectez votre propre service de scoring une seule fois et Failproof AI Observability note chaque exécution terminée automatiquement — ainsi, une baisse d'utilité ou une hausse des hallucinations apparaît d'elle-même, avant qu'un client ne le ressente.
+Les problèmes de qualité viennent à vous, au lieu de les découvrir dans une plainte utilisateur. Connectez votre propre service de scoring une fois, et Failproof AI Observability note automatiquement chaque exécution terminée — ainsi, une baisse d'utilité ou une hausse des hallucinations apparaît d'elle-même, avant qu'un client ne le ressente.
 
-![La grille des sessions avec une colonne de scores : chaque exécution porte un badge d'état d'évaluation et des indicateurs codés par couleur pour l'utilité, la factualité et l'efficacité des outils](/agenteye/images/sessions-list.png)
+![La grille Sessions avec une colonne de score : chaque exécution porte un badge de statut d'évaluation et des badges codés par couleur pour l'utilité, la factualité et l'efficacité des outils](/agenteye/images/sessions-list.png)
 
-*Chaque exécution dans la grille des sessions affiche ses scores ; les badges rouges, ambrés et verts font ressortir les exécutions faibles sans que vous ayez à ouvrir une seule transcription.*
+*Chaque exécution dans la grille des sessions affiche ses scores ; des badges rouge, orange et vert font ressortir les exécutions faibles sans que vous n'ayez à ouvrir une seule transcription.*
 
-## Arrêtez de contrôler manuellement les exécutions
+## Arrêtez de vérifier les exécutions manuellement
 
-Vous vérifiez encore quelques exécutions au hasard en espérant que le reste est correct. Désormais, chaque session terminée est scorée au moment où elle se termine, selon les dimensions qui vous importent : utilité, efficacité des outils, factualité, sécurité, quel que soit votre seuil de qualité. Vous définissez les clés de score ; Failproof AI Observability stocke, suit les tendances et affiche tout ce que votre évaluateur renvoie. Aucune exécution ne passe sans être scorée, et vous n'apprendrez plus une régression via un ticket de support.
+Auparavant, vous contrôliez quelques exécutions au hasard en espérant que les autres étaient correctes. Désormais, chaque session terminée est notée dès qu'elle se termine, selon les dimensions qui vous importent : utilité, efficacité des outils, factualité, sécurité — quel que soit votre critère de qualité. Vous définissez les clés de score ; Failproof AI Observability stocke, suit les tendances et affiche tout ce que votre évaluateur renvoie. Aucune exécution n'échappe à l'évaluation, et vous ne découvrez plus une régression via un ticket de support.
 
-Les scores apparaissent dans la grille des sessions à **`/<org-slug>/sessions`** (barre latérale → *observe* → *sessions*), avec un groupe de badges par ligne. Vous voulez uniquement les exécutions en dessous du seuil ? Filtrez la grille par plage de scores — par exemple, une utilité inférieure à 0,5 — pour afficher exactement les exécutions qui méritent d'être lues. La consultation des scores nécessite la permission `evaluations:read`.
+Les scores s'affichent dans la grille des sessions à **`/<org-slug>/sessions`** (barre latérale → *observer* → *sessions*), avec un groupe de badges par ligne. Vous voulez uniquement les exécutions insuffisantes ? Filtrez la grille par plage de score — par exemple utilité en dessous de 0,5 — et obtenez exactement les exécutions qui méritent d'être lues. La consultation des scores nécessite la permission `evaluations:read`.
 
 ## Comprendre pourquoi une exécution a obtenu un score faible
 
-Un chiffre vous indique qu'une exécution était faible ; la page de session vous explique pourquoi. Ouvrez n'importe quelle exécution et le panneau de droite commence par le résumé principal, puis affiche une barre par dimension avec le raisonnement de votre évaluateur sous chacune — ainsi, vous passez de « cette exécution a obtenu 0,4 en factualité » à l'affirmation exacte qui était incorrecte en quelques secondes.
+Un chiffre vous indique qu'une exécution était faible ; la page de session vous dit pourquoi. Ouvrez n'importe quelle exécution : le panneau de droite commence par le résumé général, puis affiche une barre par dimension avec le raisonnement de votre évaluateur sous chacune, vous permettant de passer de « score de 0,4 en factualité » à l'affirmation exacte qui posait problème en quelques secondes.
 
-![Le panneau droit d'une session : le résumé de l'évaluation en haut, puis des barres de score par dimension avec une ligne de raisonnement pour chacune, à côté de la chronologie complète des événements](/agenteye/images/session-detail.png)
+![Le panneau droit d'une session : le résumé d'évaluation en haut, puis des barres de score par dimension avec une ligne de raisonnement chacune, à côté de la chronologie complète des événements](/agenteye/images/session-detail.png)
 
-*La vue détaillée d'une session : résumé, barres de score par dimension et le raisonnement derrière chaque score, juste à côté de la chronologie des événements de l'exécution.*
+*La vue détail d'une session : résumé, barres de score par dimension et raisonnement derrière chaque score, directement à côté de la chronologie des événements.*
 
-Vous avez déployé un évaluateur plus précis, ou vous regardez une exécution qui a planté avant d'être scorée ? Un bouton **re-evaluate** (conditionné par `evaluations:trigger`) rescote la session sur place et ajoute le nouveau résultat à sa chronologie, de sorte que les scores antérieurs restent visibles comme historique. Vous le trouverez à **`/<org-slug>/sessions/<session-id>`**.
+Vous avez déployé un évaluateur plus précis, ou vous consultez une exécution qui a planté avant d'être notée ? Un bouton **re-evaluate** (soumis à `evaluations:trigger`) re-note la session sur place et ajoute le nouveau résultat à sa chronologie, tout en conservant les scores précédents comme historique. Vous le trouverez à **`/<org-slug>/sessions/<session-id>`**.
 
-## Suivre l'évolution de la qualité sur l'ensemble du parc
+## Suivre la tendance qualité sur l'ensemble du parc
 
-Une exécution avec un score faible est du bruit ; toute une cohorte qui glisse est un signal. Les tableaux de bord sauvegardés transforment vos scores en une tendance que vous pouvez surveiller d'un coup d'œil : utilité moyenne cette semaine par rapport à la semaine dernière, par agent, par environnement.
+Une seule exécution avec un score faible, c'est du bruit ; toute une cohorte en baisse, c'est un signal. Les tableaux de bord enregistrés transforment vos scores en une tendance observable d'un coup d'œil : utilité moyenne cette semaine par rapport à la semaine dernière, par agent, par environnement.
 
-![Un tableau de bord qualité : barres de score moyen par dimension d'évaluation accompagnées d'une tendance dans le temps](/agenteye/images/dashboard-quality.png)
+![Un tableau de bord qualité : barres de score moyen par dimension d'évaluation et tendance dans le temps](/agenteye/images/dashboard-quality.png)
 
-*Un tableau de bord qualité sauvegardé suit les clés de score que vous mettez en avant, afin qu'une dérive progressive soit évidente bien avant de devenir un incident.*
+*Un tableau de bord qualité enregistré suit les clés de score que vous mettez en avant, rendant une dérive progressive évidente bien avant qu'elle ne devienne un incident.*
 
-Les tableaux de bord se trouvent à **`/<org-slug>/dashboards`** (barre latérale → *analyze* → *dashboards*), sont partagés dans toute votre organisation, et chaque carte regroupe les sessions correspondantes : leur nombre, la moyenne de chaque score mis en avant et un graphique sparkline de tendance. « Open in sessions » vous amène directement aux exécutions pré-filtrées derrière n'importe quel chiffre. La consultation nécessite `dashboards:read` ainsi que `evaluations:read`.
+Les tableaux de bord sont accessibles à **`/<org-slug>/dashboards`** (barre latérale → *analyser* → *dashboards*), sont partagés dans toute votre organisation, et chaque carte agrège les sessions correspondantes : leur nombre, la moyenne de chaque score mis en avant, et une sparkline de tendance. « Ouvrir dans les sessions » vous amène directement aux exécutions pré-filtrées derrière n'importe quel chiffre. La consultation nécessite `dashboards:read` ainsi que `evaluations:read`.
 
 ## Connecter un évaluateur une seule fois
 
-Le scoring est optionnel et reste complètement désactivé jusqu'à ce que vous pointiez Failproof AI Observability vers un scorer. Vous déployez un petit service HTTP (Observability fournit une référence fonctionnelle que vous pouvez copier), définissez deux valeurs sur votre serveur, et chaque exécution à partir de ce moment est scorée pour vous. Le guide complet, le contrat de scoring et le SDK se trouvent dans le guide approfondi.
+Le scoring est optionnel et reste totalement désactivé jusqu'à ce que vous indiquiez à Failproof AI Observability où se trouve un scorer. Vous déployez un petit service HTTP (Observability fournit une référence fonctionnelle que vous pouvez copier), configurez deux valeurs sur votre serveur, et chaque exécution est ensuite notée automatiquement. Le guide complet, le contrat de scoring et le SDK se trouvent dans le guide approfondi.
 
-Vous ne savez pas quelles dimensions valent la peine d'être scorées ? La [compétence d'agent évaluateur](/fr/agenteye/evaluator-skill) fait travailler votre agent de code pour les déterminer à partir de vos propres sessions, puis construire et déployer le service.
+Vous ne savez pas quelles dimensions valent la peine d'être évaluées en premier lieu ? La [compétence d'agent évaluateur](/fr/agenteye/evaluator-skill) permet à votre agent de développement de les déterminer à partir de vos propres sessions, puis de construire et déployer le service.
 
-## Liens connexes
+## Voir aussi
 
 - [Suite d'évaluation](/fr/agenteye/evaluation-suite) : connecter votre évaluateur, le contrat de scoring et le SDK.
-- [Compétence d'agent évaluateur](/fr/agenteye/evaluator-skill) : laissez un agent de code choisir vos dimensions de score et construire l'évaluateur.
+- [Compétence d'agent évaluateur](/fr/agenteye/evaluator-skill) : laisser un agent de développement choisir vos dimensions de score et construire l'évaluateur.
 - [Sessions](/fr/agenteye/sessions) : la grille exécution par exécution où les scores apparaissent.
-- [Tableaux de bord](/fr/agenteye/dashboards) : sauvegardez et partagez les tendances de qualité dans votre organisation.
+- [Dashboards](/fr/agenteye/dashboards) : enregistrer et partager les tendances qualité dans votre organisation.
 - [Audits](/fr/agenteye/audits) : l'autre fonctionnalité de qualité automatique d'Observability, pour les investigations inter-sessions.

@@ -1,25 +1,24 @@
 ---
----
-title: Konfigürasyon
-description: "Konfigürasyon dosyası formatı, üç kapsamlı sistem ve birleştirme kuralları"
+title: Yapılandırma
+description: "Config dosya formatı, üç kapsamlı sistem ve birleştirme kuralları"
 icon: gear
 ---
 
-failproofai, hangi politikaların aktif olduğunu, nasıl davrandıklarını ve özel politikaların nereden yükleneceğini kontrol etmek için JSON konfigürasyon dosyalarını kullanır. Konfigürasyon, takımınızla paylaşmak için tasarlanmıştır - bunu deponuza gönderin ve her geliştirici aynı aracı güvenlik ağını alır.
+failproofai, hangi politikaların aktif olduğunu, nasıl davrandıklarını ve özel politikaların nereden yüklendiğini kontrol etmek için JSON yapılandırma dosyalarını kullanır. Yapılandırma, ekibinizle paylaşmak için tasarlanmıştır - bunu deponuza işleyin ve her geliştirici aynı aracı güvenliğine sahip olur.
 
 ---
 
-## Konfigürasyon kapsamları
+## Yapılandırma kapsamları
 
-Üç konfigürasyon kapsamı vardır ve öncelik sırasına göre değerlendirilir:
+Öncelik sırasına göre değerlendirilen üç yapılandırma kapsamı vardır:
 
 | Kapsam | Dosya yolu | Amaç |
 |-------|-----------|---------|
-| **project** | `.failproofai/policies-config.json` | Depo başına ayarlar, sürüm denetimine kaydedilir |
-| **local** | `.failproofai/policies-config.local.json` | Kişisel depo başına geçersiz kılmalar, gitignored |
-| **global** | `~/.failproofai/policies-config.json` | Tüm projeler arasında kullanıcı düzeyinde varsayılanlar |
+| **project** | `.failproofai/policies-config.json` | Depo başına ayarlar, sürüm kontrolüne işlenir |
+| **local** | `.failproofai/policies-config.local.json` | Kişisel depo başına geçersiz kılmalar, gitignore'lanmış |
+| **global** | `~/.failproofai/policies-config.json` | Tüm projeler arasında kullanıcı düzeyi varsayılanları |
 
-failproofai bir kanca olayı aldığında, geçerli çalışma dizini için var olan üç dosyayı yükler ve birleştirir.
+failproofai bir hook olayı aldığında, geçerli çalışma dizini için var olan üç dosyanın tümünü yükler ve birleştirir.
 
 ### Birleştirme kuralları
 
@@ -30,7 +29,7 @@ project:  ["block-sudo"]
 local:    ["block-rm-rf"]
 global:   ["block-sudo", "sanitize-api-keys"]
 
-resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]  ← tekilleştirilmiş birleşim
+resolved: ["block-sudo", "block-rm-rf", "sanitize-api-keys"]  ← çoğaltmalar kaldırılmış birleşim
 ```
 
 **`policyParams`** - belirli bir politika için parametreleri tanımlayan ilk kapsam tamamen kazanır. Bir politikanın parametreleri içinde derin birleştirme yoktur.
@@ -43,22 +42,22 @@ resolved: { allowPatterns: ["sudo apt-get update"] }   ← project kazanır, glo
 ```
 
 ```text
-project:  (block-sudo girdisi yok)
-local:    (block-sudo girdisi yok)
+project:  (block-sudo girişi yok)
+local:    (block-sudo girişi yok)
 global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← global'e düşer
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** - her iki formu tanımlayan ilk kapsam kazanır.
+**`customPoliciesPaths` / `customPoliciesPath`** - her iki formu da tanımlayan ilk kapsam kazanır.
 
-**`disabledCustomPolicies`** - tüm kapsamlar arasında birleşim. Pano, bir bireysel politikayı açık veya kural politikası dosyasından kapatırken burada kaynakla nitelendirilen bir kimlik yazar. Listelenmemiş politikalar varsayılan olarak etkindir; kimlikler kaynak dosyasını içerir, böylece birden fazla dosyada aynı adlı politikalar bağımsız olarak kontrol edilebilir.
+**`disabledCustomPolicies`** - tüm kapsamlara göre birleşim. Pano, bir politikayı açık veya uyum politikası dosyasından kapatırken buraya kaynak nitelemeli bir kimlik yazar. Listelenmemiş politikalar varsayılan olarak etkindir; kimlikler kaynak dosyayı içerir, bu nedenle birden çok dosyadaki aynı adlı politikalar bağımsız olarak kontrol edilebilir.
 
-**`llm`** - tanımlayan ilk kapsam kazanır.
+**`llm`** - bunu tanımlayan ilk kapsam kazanır.
 
 ---
 
-## Konfigürasyon dosyası formatı
+## Config dosya formatı
 
 ```json
 {
@@ -105,37 +104,37 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global'e düşer
 
 Tür: `string[]`
 
-Etkinleştirilecek politika adlarının listesi. Adlar, `failproofai policies` tarafından gösterilen politika tanımlayıcılarına tam olarak eşleşmelidir. Tam liste için [Yerleşik Politikalar](/tr/built-in-policies) sayfasına bakın.
+Etkinleştirilecek politika adlarının listesi. Adlar, `failproofai policies` tarafından gösterilen politika tanımlayıcılarıyla tam olarak eşleşmelidir. Tam liste için [Built-in Policies](/tr/built-in-policies) bölümüne bakın.
 
-`enabledPolicies` içinde olmayan politikalar, `policyParams` içinde girdileri olsa bile, etkin değildir.
+`enabledPolicies` içinde olmayan politikalar, `policyParams` içinde girdileri olsa bile, deaktif kalır.
 
 ### `policyParams`
 
 Tür: `Record<string, Record<string, unknown>>`
 
-Politika başına parametre geçersiz kılmaları. Dış anahtar politika adıdır; iç anahtarlar politikaya özeldir. Her politika, [Yerleşik Politikalar](/tr/built-in-policies) sayfasında mevcut parametrelerini belgeler.
+Politika başına parametre geçersiz kılmaları. Dış anahtar politika adıdır; iç anahtarlar politikaya özgüdür. Her politika, [Built-in Policies](/tr/built-in-policies) içinde mevcut parametrelerini belgelemektedir.
 
-Bir politikanın parametreleri varsa ancak bunları belirtmezseniz, politikanın yerleşik varsayılanları kullanılır. `policyParams` yapılandırmayan kullanıcılar, önceki sürümlerle özdeş davranış alırlar.
+Bir politikanın parametreleri varsa ancak siz onları belirtmezseniz, politikanın yerleşik varsayılanları kullanılır. `policyParams` hiç yapılandırmayan kullanıcılar önceki sürümlerle aynı davranışı alır.
 
-Bir politikanın parametreler bloğu içindeki bilinmeyen anahtarlar, kanca ateşlemesi sırasında sessizce yoksayılır, ancak `failproofai policies` komutunu çalıştırdığınızda uyarı olarak işaretlenir.
+Bir politikanın parametre bloğu içindeki bilinmeyen anahtarlar, hook ateşlemesinde sessizce yoksayılır ancak `failproofai policies` çalıştırdığınızda uyarı olarak işaretlenir.
 
-#### `hint` (kesişen alan)
+#### `hint` (çapraz kesme)
 
 Tür: `string` (isteğe bağlı)
 
-Bir politika `deny` veya `instruct` döndürdüğünde nedene eklenen bir ileti. Politikanın kendisini değiştirmeden Claude'a işlem yapılabilir rehberlik vermek için kullanın.
+Bir politika `deny` veya `instruct` döndürdüğünde nedene eklenen bir ileti. Bunu, politikanın kendisini değiştirmeden Claude'a işlem yapılabilir rehberlik vermek için kullanın.
 
-Herhangi bir politika türüyle çalışır — yerleşik, özel (`custom/`), proje kuralı (`.failproofai-project/`) veya kullanıcı kuralı (`.failproofai-user/`).
+Her politika türü ile çalışır — yerleşik, özel (`custom/`), proje kuralı (`.failproofai-project/`) veya kullanıcı kuralı (`.failproofai-user/`).
 
 ```json
 {
   "policyParams": {
     "block-force-push": {
-      "hint": "Bunun yerine yeni bir dal oluşturmayı deneyin."
+      "hint": "Bunun yerine yeni bir branch oluşturmayı deneyin."
     },
     "block-sudo": {
       "allowPatterns": ["sudo apt-get"],
-      "hint": "sudo olmadan doğrudan apt-get kullanın."
+      "hint": "Sudo olmadan apt-get'i doğrudan kullanın."
     },
     "custom/my-policy": {
       "hint": "İlk olarak kullanıcıdan onay isteyin."
@@ -144,47 +143,46 @@ Herhangi bir politika türüyle çalışır — yerleşik, özel (`custom/`), pr
 }
 ```
 
-`block-force-push` reddettiğinde, Claude şunu görür: *"Force-push engellenmiştir. Bunun yerine yeni bir dal oluşturmayı deneyin."*
+`block-force-push` reddedildiğinde, Claude şu mesajı görür: *"Force-push engellenmektedir. Bunun yerine yeni bir branch oluşturmayı deneyin."*
 
-Dize olmayan değerler ve boş dizeler sessizce yoksayılır. `hint` ayarlanmamışsa, davranış değişmez (geriye doğru uyumlu).
+Dize olmayan değerler ve boş dizeler sessizce yoksayılır. `hint` ayarlanmamışsa, davranış değişmez (geriye dönük uyumlu).
 
 ### `customPoliciesPath`
 
 Tür: `string` (mutlak yol)
 
-Özel kanca politikaları içeren bir JavaScript dosyasının yolu. Bu, `failproofai policies --install --custom <path>` tarafından otomatik olarak ayarlanır (yol depolanmadan önce mutlak olarak çözümlenir).
+Özel hook politikaları içeren bir JavaScript dosyasına giden yol. Bu, `failproofai policies --install --custom <path>` tarafından otomatik olarak ayarlanır (yol depolanmadan önce mutlak değere çözülür).
 
-Dosya her kanca olayında taze yüklenir - önbelleğe alma yoktur. Yazarlık ayrıntıları için [Özel Politikalar](/tr/custom-policies) sayfasına bakın.
+Dosya, her hook olayında yeni yüklenir - hiçbir önbellek yoktur. Yazım ayrıntıları için [Custom Policies](/tr/custom-policies) bölümüne bakın.
 
-### Kural tabanlı politikalar
+### Uyum tabanlı politikalar
 
 Açık `customPoliciesPath` ek olarak, failproofai `.failproofai/policies/` dizinlerinden politika dosyalarını otomatik olarak keşfeder ve yükler:
 
 | Düzey | Dizin | Kapsam |
 |-------|-----------|-------|
-| Proje | `.failproofai/policies/` | Sürüm denetimi yoluyla takımla paylaşılır |
-| Kullanıcı | `~/.failproofai/policies/custom-policies/` | Kişisel, tüm projeler için geçerlidir |
+| Proje | `.failproofai/policies/` | Sürüm kontrolü aracılığıyla takımla paylaşılmış |
+| Kullanıcı | `~/.failproofai/policies/` | Kişisel, tüm projelere uygulanır |
 
 <Note>
-  Kullanıcı düzeyinde dizin, ev dizini yeniden organizasyonunda bir seviye aşağı taşındı. 
-  Eski `~/.failproofai/policies/` yolunda bırakılan dosyalar, yükseltmeden sonra herhangi bir `failproofai` 
-  komutunu çalıştırdığınızda `custom-policies/` içine otomatik olarak taşınır ve komut hangi dosyaları 
-  taşıdığını söyler.
+  Politikalarınızı doğrudan `~/.failproofai/policies/` içine yerleştirin. Yanlarında bulunan `cloud-policies/` klasörü, kuruluşunuzun bu makineye dağıttığı politikaları içerir — keşif alt dizinlere inmez, bu nedenle hiçbir zaman taranmaz ve `policies/` içine koyduğunuz hiçbir şey onunla çakışamaz.
+
+  `~/.failproofai/policies/custom-policies/` kullanan bir sürümden yükseltiyorsanız, o klasördeki her şey — politika dosyalarınız, içe aktardıkları `lib/` yardımcıları ve okudukları veri dosyaları — bir `failproofai` komutunu ilk kez çalıştırdığınızda otomatik olarak geri taşınır ve komut neyi taşıdığını söyler.
 </Note>
 
 **Dosya eşleştirmesi:** Yalnızca `*policies.{js,mjs,ts}` ile eşleşen dosyalar yüklenir (örn. `security-policies.mjs`, `workflow-policies.js`). Dizindeki diğer dosyalar yoksayılır.
 
-**Konfigürasyon gerekmez:** Kural politikaları `policies-config.json` içinde girdiler gerektirmez. Dosyaları dizine bırakın ve sonraki kanca olayında alınırlar.
+**Config gerekmez:** Uyum politikaları `policies-config.json` içinde herhangi bir giriş gerektirmez. Dosyaları dizine bırakın ve sonraki hook olayında toplanırlar.
 
-**Birleşim yüklemesi:** Hem proje hem de kullanıcı kural dizinleri taranır. Her iki düzeyden tüm eşleşen dosyalar yüklenir (`customPoliciesPath` ilk-kapsam-kazanır kullanan aksine).
+**Birleşim yüklemesi:** Hem proje hem de kullanıcı uyum dizinleri taranır. Her iki düzeyden eşleşen tüm dosyalar yüklenir (`customPoliciesPath` ilk kapsamı kazanan kullandığından farklı).
 
-Daha fazla ayrıntı ve örnekler için [Özel Politikalar](/tr/custom-policies) sayfasına bakın.
+Daha fazla ayrıntı ve örnekler için [Custom Policies](/tr/custom-policies) bölümüne bakın.
 
 ### `llm`
 
 Tür: `object` (isteğe bağlı)
 
-AI çağrıları yapan politikalar için LLM istemci konfigürasyonu. Çoğu kurulum için gerekli değildir.
+AI çağrıları yapan politikalar için LLM istemci yapılandırması. Çoğu kurulum için gerekli değildir.
 
 ```json
 {
@@ -197,26 +195,26 @@ AI çağrıları yapan politikalar için LLM istemci konfigürasyonu. Çoğu kur
 
 ---
 
-## CLI'den konfigürasyonu yönetme
+## CLI'dan yapılandırmayı yönetme
 
-`policies --install` ve `policies --uninstall` komutları aracı CLI'nizin kanca ayarları dosyasına yazarken (kanca giriş noktaları), `policies-config.json` doğrudan yönettiğiniz dosyadır. İkisi ayrıdır:
+`policies --install` ve `policies --uninstall` komutları, aracı CLI'nızın hook ayarları dosyasına (hook giriş noktaları) yazarken, `policies-config.json` doğrudan yönettiğiniz dosyadır. İkisi ayrıdır:
 
-- **Aracı CLI ayarları** — aracıya her araç kullanımında `failproofai --hook <event>` çağırmasını söyler:
+- **Aracı CLI ayarları** — aracıya her araç kullanımında `failproofai --hook <event>` çağrısını söyler:
   - **Claude Code**: `~/.claude/settings.json` (kullanıcı), `<cwd>/.claude/settings.json` (proje), `<cwd>/.claude/settings.local.json` (yerel)
-  - **OpenAI Codex**: `~/.codex/hooks.json` (kullanıcı), `<cwd>/.codex/hooks.json` (proje) — Codex yerel kapsama sahip değildir
-  - **GitHub Copilot CLI _(beta)_**: `~/.copilot/hooks/failproofai.json` (kullanıcı), `<cwd>/.github/hooks/failproofai.json` (proje) — Copilot yerel kapsama sahip değildir. Kanca girdileri Copilot'un OS tarafından anahtarlanan `bash`/`powershell` komut alanlarını `timeoutSec` ile kullanır; dosya üst düzey `version: 1` işaretleyicisini taşır. Copilot CLI desteği, halk belgeleri belirtmeyen `events.jsonl` kayıt şemasını (pano) daha gerçek dünya oturumlarına karşı doğrularken **beta**'dır. **VS Code Copilot Chat aracı modu (Önizleme)**, `.github/hooks/*.json`, `~/.copilot/hooks/*.json` ve `~/.claude/settings.json` (tarafından yönetilen `chat.hookFilesLocations` ayarı tarafından) kanca yapılandırmalarını aynı Claude şekilli `{hookSpecificOutput:{permissionDecision:"deny",…}}` sözleşmesini kullanarak okur — tam olarak bu `copilot` entegrasyonunun ve `claude` entegrasyonunun (`~/.claude/settings.json`) yazması gereken yollar, bu nedenle `failproofai policies --install --cli copilot` (veya `--cli claude`) **VS Code aracı modunda zaten uygular** ayrı `vscode` entegrasyonu gerekmeden (VS Code'un keşif günlüklerinden canlı olarak onaylandı).
-  - **Cursor Agent _(beta)_**: `~/.cursor/hooks.json` (kullanıcı), `<cwd>/.cursor/hooks.json` (proje) — Cursor yerel kapsama sahip değildir. Kanca girdileri Claude şekilli `{type, command, timeout}` formunu kullanır (`bash`/`powershell` bölünümü yoktur), ancak Cursor'un [kancalar şemasına](https://cursor.com/docs/hooks) göre düz bir dizi başına camelCase olay anahtarları (`preToolUse`, `beforeSubmitPrompt`, …) altında saklanır; dosya üst düzey `version: 1` işaretleyicisini taşır. İşleyici camelCase → PascalCase'i `CURSOR_EVENT_MAP` aracılığıyla normalleştirir; bu nedenle mevcut yerleşik politikalar değişmeden ateşlenir. Cursor Agent desteği, Cursor'un disk üzerindeki transkript formatını (halk belgelerde belirtilmeyen) daha gerçek dünya yüklemelerine karşı doğrularken **beta**'dır.
-  - **OpenCode _(beta)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (kullanıcı), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (proje) — OpenCode yerel kapsama sahip değildir. Diğer beş CLI'den farklı olarak, OpenCode **harici komut kanca sistemi yok**: `plugin: []` dizisine açıkça kayıtlı olan işlem içi JS/TS eklentileri yükler `opencode.json` içinde (`.opencode/plugins/` otomatik keşfi eklentilerin opencode v1.14.33'te nasıl yükleneceği **değildir**). Yükleme, failproofai ikili dosyasını alt işlem çağıran ve ikili dosyanın Claude şekilli JSON yanıtını eklenti semantiğine çeviren küçük bir oluşturulan eklenti parçası bırakır: araç olayı reddi için `throw new Error()` (araç çağrısını iptal eder), `client.session.prompt(...)` `instruct` ve sıra sonu `Stop` / `SubagentStop` reddi için (`session.idle` bildir yapısı olduğu ve bundan atma yapısı bir işlemi için — `instruct` için (reddi nedeni bir sonraki kullanıcı iletisi olarak gönderilir — tek zorla yeniden deneme kanalı) ve izin vermeyi allow için no-op (`OPENCODE_TOOL_INPUT_MAP` aracılığıyla `filePath` → `file_path`, `oldString` → `old_string` gibi) normalleştirir, böylece `block-read-outside-cwd`, `block-env-files` ve `block-secrets-write` gibi yol denetimi yerleşik öğeleri OpenCode araç çağrılarında değişmeden ateşlenir. Oturumlar opencode'un SQLite DB'sinde `~/.local/share/opencode/opencode.db` adında yaşar; panonun oturum görüntüleyeni bunları `opencode db --format json` ve `opencode export <id>` aracılığıyla okur. OpenCode desteği davranış sürümler arasında ve daha gerçek dünya oturumlarına karşı doğrulanırken **beta**'dır. [OpenCode eklentileri belgelerine](https://opencode.ai/docs/plugins/) bakın.
-  - **Pi _(beta)_**: `~/.pi/agent/settings.json` (kullanıcı), `<cwd>/.pi/settings.json` (proje) — Pi yerel kapsama sahip değildir. Pi başlangıçta TypeScript uzantı paketlerini yükler; ayarlar dosyası düz bir dize dizisidir `{"packages": ["./relative/path", …]}`. failproofai, paketlenen `pi-extension/` dizinine işaret eden tek bir paketler-dizisi girdisi yazar. Uzantı dahili olarak Pi'nin `tool_call` / `user_bash` / `input` / `session_start` olaylarına abone olur ve `failproofai --hook <Event> --cli pi` öğesine çıkar; işleyici alt çizgi_alt_snek_kasa → PascalCase'i `PI_EVENT_MAP` aracılığıyla normalleştirir, böylece mevcut yerleşik politikalar değişmeden ateşlenir. Araç giriş argümanları da `PI_TOOL_INPUT_MAP` aracılığıyla normalleştirilir (Pi'nin Read / Write / Edit, `file_path` yerine `path` teslim eder; üst düzey anahtarı eşlemek `block-env-files` ve `block-secrets-write` ateşlemesine izin verir — `block-read-outside-cwd` zaten bir `path` geri dönüşüne sahipti). Pi desteği Pi'nin uzantı API'si ve oturum günlüğü düzeni stabilize olurken **beta**'dır.
-  - **Hermes (hermes-agent)**: `~/.hermes/config.yaml` (**yalnızca kullanıcı kapsamı** — Hermes proje/yerel yapılandırmaya sahip değildir). Hermes bir Slack/Telegram **ağ geçidi**dir, bu nedenle bir yükleme her platformdan (Slack/Telegram/cli/cron) araç çağrılarını **ve** iç alt aracıları keser. Kanca girdileri, Hermes'in snek_kasa olayları (`pre_tool_call` / `post_tool_call` / `on_session_start` / `on_session_end` / `subagent_stop`) tarafından anahtarlanan `hooks:` haritası altında bir `{command, timeout}` çiftidir; işleyici olayları `HERMES_EVENT_MAP` aracılığıyla ve araç adlarını `HERMES_TOOL_MAP` aracılığıyla normalleştirir, böylece yerleşik politikalar değişmeden ateşlenir. Yapılandırma, yorum koruyan bir YAML `Document` gidiş dönüş yapılarak düzenlenir, bu nedenle operatörün diğer ayarları kalır ve yükleme `hooks_auto_accept: true` ayarlar, böylece başsız ağ geçidi (TTY yok) kancaları izin istemi olmadan çalıştırır. Değerlendirici Hermes'in `{"decision":"block","reason"}` stdout sözleşmesini yayar (Hermes çıkış kodlarını yoksayar). **Sınırlamalar:** Hermes sıra sonu `Stop` olayına sahip değildir, bu nedenle `require-*-before-stop` yerleşik öğeleri hiçbir zaman onun için ateşlenmez (inapplicable, kırılmış değil); `instruct` günlüğe kaydedilen notla allow öğesine düşer (ek içerik kanalı yoktur); ve çıkış sırrı redaksiyonu (`sanitize-*`) kabuk kanca sözleşmesi üzerinde araç çıkışını yeniden yazamaz. Hermes, çevrimdışı bir **denetim** kaynağıdır — pano oturumlarını doğrudan `~/.hermes/state.db` adresinden okur.
-  - **OpenClaw (openclaw ağ geçidi)**: `~/.openclaw/openclaw.json` (**yalnızca kullanıcı kapsamı** — OpenClaw proje/yerel yapılandırmaya sahip değildir). Hermes gibi, OpenClaw kendi kendine barındırılan çok kanallı bir **ağ geçidi**dir, bu nedenle bir yükleme her kanaldan araç çağrılarını ve iç alt aracılarını keser. Uygulama OpenClaw'un **işlem içi eklenti kancastları** aracılığıyla çalışır (dosya tabanlı iç kancastları yalnızca gözlem amaçlıdır ve engelleyemez), bu nedenle — OpenCode/Pi gibi — failproofai statik bir `openclaw-plugin/` paketi gönderir; bu, failproofai ikili dosyasını eş zamansız olarak çıkarır ve kararı çevirir. Yükleme, gönderilen eklenti dizinini `openclaw.json`'nin `plugins.load.paths[]` içinde kaydeder ve `plugins.entries.failproofai` altında etkinleştirir (`hooks.allowConversationAccess: true` ile, ham konuşma kancastları için gereklidir). Değerlendirici düz bir `{permission, reason}` kararı yayar ve şim bunu her kancanın yerel dönüş şekline eşler: `before_tool_call → {block:true, blockReason}` (**PreToolUse**), `before_agent_run → {outcome:"block", reason}` (**UserPromptSubmit**), ve `before_agent_finalize → {action:"revise", reason}` (**Stop** — gerçek bir sıra sonu kapısı, bu nedenle `require-*-before-stop` yerleşik öğeleri **uygular**, Hermes'in aksine). Olaylar ve araç adları ikili tarafında `OPENCLAW_EVENT_MAP` / `OPENCLAW_TOOL_MAP` (`exec→Bash`, `read→Read`, …) aracılığıyla normalleştirilir, böylece yerleşik politikalar değişmeden ateşlenir; şim herhangi bir çıkarma/ayrıştırma/zaman aşımı hatasında açık başarısız olur. OpenClaw, çevrimdışı bir **denetim** kaynağıdır — pano JSONL oturumlarını `~/.openclaw/agents/<agentId>/sessions/<uuid>.jsonl` adresinden okur.
-  - **Factory Droid (`droid`)**: `~/.factory/hooks.json` (kullanıcı), `<cwd>/.factory/hooks.json` (proje) — Factory yerel kapsama sahip değildir. droid, Claude stilinde harici komut kanca sistemini gönderir, ancak droid v0.171.0'a karşı canlı olarak doğrulanmış iki tuhaflık vardır: (1) olay adları `hooks.json` **üst düzeyinde** yaşar — **bir `"hooks"` sarıcı yoktur** (droid birini reddeder); araç olayları (`PreToolUse`/`PostToolUse`) `"matcher": "*"` taşır, araç olmayan olaylar bunu atlar. (2) Reddi, kanca **çıkış kodu 2 + stderr** tarafından yapılır, JSON kararı değil — değerlendirici'nin `factory` dalı araç/istem olayları için çıkış 2 ve sıra sonu `Stop` olayında `{decision:"block", reason}` döndürür (droid'in tek zorla yeniden deneme kanalı). Olaylar zaten PascalCase'dir (olay eşlemesi yoktur) ve yük Claude snek_kasa'dır; yalnızca araç adları `FACTORY_TOOL_MAP` (`Execute→Bash`, `Create→Write`, `FetchUrl→WebFetch`, …) aracılığıyla normalleştirilir. Factory, çevrimdışı bir **denetim** kaynağıdır — pano disk üzerindeki JSONL oturumlarını `~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl` adresinden okur.
-  - **Devin CLI (`devin`, Cognition)**: `~/.config/devin/config.json` (kullanıcı), `<cwd>/.devin/config.json` (proje) — Devin yerel kapsama sahip değildir. Devin bir **saf Claude klonudur** devin v3000.1.27'ye karşı canlı olarak doğrulanmıştır: standart Claude `"hooks"` sarıcısı şemasını kullanır (yazma işlemleri korunan yollar, bu nedenle yapılandırma dosyasının diğer anahtarları — `org_id`, `theme_mode`, … — kalır), zaten PascalCase olay adları (olay eşlemesi, işleyici dalı yoktur) ve Claude snek_kasa stdin yükü (normalleştirme yoktur). Değerlendirici'nin `devin` dalı **her** olay için çıkış 0'da `{"decision":"block","reason"}` JSON ile reddeder; sıra sonu `Stop` olayında neden, `require-*-before-stop` yerleşik öğelerinin uygulanması için ZORUNLU İŞLEM zorla yeniden deneme ifadesini taşır. Yalnızca araç adları `DEVIN_TOOL_MAP` (`exec→Bash`; `tool_input.command` zaten Canonical'dir) aracılığıyla normalleştirilir. Devin, çevrimdışı bir **denetim** kaynağıdır — pano SQLite oturumlarını `~/.local/share/devin/cli/sessions.db` adresinden okur (her `sessions` satırı gerçek bir `working_directory` taşır, bu nedenle oturumlar proje cwd tarafından gruplandırılır; Claude gibi).
-  - **Antigravity CLI (`agy`)**: `~/.gemini/config/hooks.json` (kullanıcı), `<cwd>/.agents/hooks.json` (proje) — Antigravity yerel kapsama sahip değildir. Factory/Devin'in aksine, Antigravity agy v1.1.2'ye karşı canlı olarak doğrulanan **kendi** sözleşmesine sahiptir. `hooks.json`, **adlandırılmış kanca** şemasını kullanır: üst düzey anahtar bir kanca *adıdır* (`"failproofai"`), değeri olay→işleyiciler haritasıdır — araç olayları (`PreToolUse`/`PostToolUse`) işleyicileri `{matcher:"*", hooks:[…]}` içine sarmalanır, `PreInvocation`/`Stop` **düz** işleyici dizileridir (diğer adlandırılmış kancalar korunur). stdin yükü **camelCase protojson**'dur (`toolCall:{name,args}`, `conversationId`, `workspacePaths`, `transcriptPath`) — failproofai bunu politikalar çalışmadan önce snek_kasa'ya normalleştirir ve `run_command`'in PascalCase argümanlarını (`CommandLine`/`Cwd`) `ANTIGRAVITY_TOOL_INPUT_MAP` aracılığıyla eşler. Değerlendirici'nin `antigravity` dalı Antigravity'nin **kendi** yanıt şekillerini kullanır: `{decision:"deny", reason}` araç/istemi engeller (çıkış 0), sıra sonu `Stop` olayında `{decision:"continue", reason}` döngüyü yeniden girer (bu nedenle `require-*-before-stop` yerleşik öğeleri uygularlar) ve `{injectSteps:[{ephemeralMessage}]}` `PreInvocation` (→ `UserPromptSubmit`) üzerine bir talimat enjekte eder. Araç adları `ANTIGRAVITY_TOOL_MAP` (`run_command→Bash`, `view_file→Read`, …) aracılığıyla normalleştirilir. Antigravity, çevrimdışı bir **denetim** kaynağıdır — pano düz JSONL transkriptlerini `~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` adresinden okur (konuşma dizini `conversation_summaries.db`'de).
-  - **Goose (kod adı goose, Block)**: `~/.agents/plugins/failproofai/hooks/hooks.json` (kullanıcı), `<cwd>/.agents/plugins/failproofai/hooks/hooks.json` (proje) — Goose yerel kapsama sahip değildir. Uygulama Goose'un **kancalar** sistemini, çapraz aracı **Açık Eklentiler** spesifikasyonunu kullanır: yükleyici sadece `failproofai` eklenti dizinini bırakır ve Goose başlangıçta onu otomatik keşfeder (bunu `~/.config/goose/config.yaml`'ye kendi kendine kaydeder). `hooks.json`, üst düzey `"hooks"` sarıcı **içeren** Açık Eklentiler şemasını kullanır ve eşleyici **her olay için atlanır** — çıplak `"*"` hiçbir şeyinle eşleşmeyen geçersiz bir regex'tir (goose v1.43.0'ye karşı canlı olarak doğrulanan). Olay adları zaten PascalCase'dir (olay eşlemesi yoktur); stdin yükü `event`/`working_dir` kullanır; işleyici bunu `hook_event_name`/`cwd` için normalleştirir. Değerlendirici'nin `goose` dalı çıkış 0'da `{"decision":"block","reason"}` JSON ile reddeder, **`PreToolUse`** olayında onurlanır (goose ≥ v1.37.0'de gönderilen) — bu, kabuk aracı **ve temsilci seçilen alt aracılar içinde** ateşlenir, bu nedenle tek yeterli reddi noktasıdır; diğer herhangi bir kanca hatası **açık başarısız** olur. Goose, **`Stop` olayına sahip değildir**, bu nedenle `require-*-before-stop` yerleşik öğeleri uygulanmaz (Hermes'te olduğu gibi). Araç adları `GOOSE_TOOL_MAP` (`shell→Bash`, `write→Write`, `todo__todo_write→TodoWrite`, …) ve yol anahtarları `GOOSE_TOOL_INPUT_MAP` (`path`/`source` → `file_path`) aracılığıyla normalleştirilir. Goose, çevrimdışı bir **denetim** kaynağıdır — pano SQLite oturumlarını `~/.local/share/goose/sessions/sessions.db` adresinden okur (her `sessions` satırı gerçek bir `working_dir` taşır, bu nedenle oturumlar proje cwd tarafından gruplandırılır; Devin gibi; `--no-session` karalama çalıştırmaları filtrelenir).
-- **`policies-config.json`** — failproofai'ya hangi politikaları değerlendireceğini ve hangi parametrelerle (tüm aracı CLI'leri arasında paylaşılan) söyler
+  - **OpenAI Codex**: `~/.codex/hooks.json` (kullanıcı), `<cwd>/.codex/hooks.json` (proje) — Codex'in yerel kapsamı yoktur
+  - **GitHub Copilot CLI _(beta)_**: `~/.copilot/hooks/failproofai.json` (kullanıcı), `<cwd>/.github/hooks/failproofai.json` (proje) — Copilot'un yerel kapsamı yoktur. Hook girdileri `timeoutSec` ile Copilot'un işletim sistemi anahtarlı `bash`/`powershell` komut alanlarını kullanır; dosya üst düzey `version: 1` belirtecini taşır. Copilot CLI desteği **beta** aşamasındadır, `events.jsonl` kayıt şemasını (genel belgeler belirtmez) daha fazla gerçek dünya oturumuna karşı doğruladığımız sürece. **VS Code Copilot Chat aracı modu (Önizleme)** hook yapılandırmaları `.github/hooks/*.json`, `~/.copilot/hooks/*.json` ve `~/.claude/settings.json` adreslerinden okur (`chat.hookFilesLocations` ayarı tarafından yönetilir) ve `claude` entegrasyonu (`~/.claude/settings.json`) tarafından yazılan tam yolları (doğrudan koddan doğrulanmıştır) kullanırken aynı Claude şeklindeki `{hookSpecificOutput:{permissionDecision:"deny",…}}` sözleşmesini kullanır, bu nedenle `failproofai policies --install --cli copilot` (veya `--cli claude`) **zaten VS Code aracı modunda** ek `vscode` entegrasyonuna ihtiyaç olmaksızın **uygulanır** (VS Code keşif günlüklerinden doğrulanmıştır).
+  - **Cursor Agent _(beta)_**: `~/.cursor/hooks.json` (kullanıcı), `<cwd>/.cursor/hooks.json` (proje) — Cursor'un yerel kapsamı yoktur. Hook girdileri Claude şeklindeki `{type, command, timeout}` formunu kullanır (`bash`/`powershell` bölünmesi yoktur) ancak Cursor'un [hooks şemasına](https://cursor.com/docs/hooks) göre düz bir dizi başına camelCase olay anahtarları altında depolanır (`preToolUse`, `beforeSubmitPrompt`, …); dosya üst düzey `version: 1` belirtecini taşır. İşleyici, `CURSOR_EVENT_MAP` aracılığıyla camelCase → PascalCase'i kanonik hale getirir, böylece mevcut yerleşik politikalar değişmeden ateşlenir. Cursor Agent desteği **beta** aşamasındadır, Cursor'un disk üzerindeki transkript formatını (genel belgeler belirtmez) daha fazla gerçek dünya yüklemesine karşı doğruladığımız sürece.
+  - **OpenCode _(beta)_**: `~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/failproofai.mjs` (kullanıcı), `<cwd>/.opencode/opencode.json` + `<cwd>/.opencode/plugins/failproofai.mjs` (proje) — OpenCode'un yerel kapsamı yoktur. Diğer beş CLI'nın aksine, OpenCode **harici komut hook sistemi yoktur**: açıkça `opencode.json` içindeki `plugin: []` dizisi aracılığıyla kaydedilen işlem içi JS/TS eklentilerini yükler (`.opencode/plugins/` adresinden otomatik keşif, opencode v1.14.33'te eklentilerin nasıl yüklendiği **değildir**). Yükleme, failproofai ikilisini alt işlemde çağıran ve ikili'nin Claude şekli JSON yanıtını eklenti semantiğine geri çeviren küçük bir oluşturulmuş eklenti parçası bırakır: araç olayı reddetme için `throw new Error()` (araç çağrısını iptal eder), `client.session.prompt(...)` hem `instruct` hem de `Stop` / `SubagentStop` reddetme (reddetme nedenini sonraki kullanıcı iletisi olarak gönderir — `session.idle` bildirim yalnızca ve ondan atılan istisna hiçbir işlem yapmadığından — tek zorla yeniden deneme kanalı), ve izin için no-op. Parçalama, hem araç adlarını (küçük harf → PascalCase `OPENCODE_TOOL_MAP` aracılığıyla) hem de araç giriş bağımsız değişkeni anahtarlarını (camelCase → snake_case `OPENCODE_TOOL_INPUT_MAP` aracılığıyla `Read` / `Write` / `Edit` için, örn. `filePath` → `file_path`, `oldString` → `old_string`) ikiliye iletilmeden önce kanonik hale getirir, böylece `block-read-outside-cwd`, `block-env-files` ve `block-secrets-write` gibi yol kontrol yapılanları OpenCode araç çağrılarında değişmeden ateşlenir. Oturumlar opencode'un SQLite DB'sinde `~/.local/share/opencode/opencode.db` adresinde yaşar; pano oturumu görüntüleyicisi `opencode db --format json` ve `opencode export <id>` aracılığıyla onları okur. OpenCode desteği **beta** aşamasındadır, sürümler arasında ve daha fazla gerçek dünya oturumuna karşı davranışı doğruladığımız sürece. [OpenCode eklentileri belgelerine](https://opencode.ai/docs/plugins/) bakın.
+  - **Pi _(beta)_**: `~/.pi/agent/settings.json` (kullanıcı), `<cwd>/.pi/settings.json` (proje) — Pi'nin yerel kapsamı yoktur. Pi, başlangıçta TypeScript uzantı paketlerini yükler; ayarlar dosyası düz bir dize dizisidir `{"packages": ["./relative/path", …]}`. failproofai, paketleri dizisine işlenmiş `pi-extension/` dizinine işaret eden tek bir giriş yazar. Uzantı dahili olarak Pi'nin `tool_call` / `user_bash` / `input` / `session_start` olaylarına abone olur ve `failproofai --hook <Event> --cli pi` adresine kabuğu çıkarır; işleyici underscore_lower_snake_case → PascalCase'i `PI_EVENT_MAP` aracılığıyla kanonik hale getirir, böylece mevcut yerleşik politikalar değişmeden ateşlenir. Araç giriş bağımsız değişkenleri de `PI_TOOL_INPUT_MAP` aracılığıyla kanonik hale getirir (Pi'nin Read / Write / Edit, `file_path` yerine `path` iletir; üst düzey anahtarı eşleştirmek `block-env-files` ve `block-secrets-write` adlarının ateşlenmesine izin verir — `block-read-outside-cwd` zaten bir `path` geri dönüşüne sahipti). Pi desteği **beta** aşamasındadır, Pi'nin uzantı API'si ve oturum günlüğü düzeni istikrar kazanır.
+  - **Hermes (hermes-agent)**: `~/.hermes/config.yaml` (**sadece kullanıcı kapsamı** — Hermes'in proje/yerel yapılandırması yoktur). Hermes bir Slack/Telegram **ağ geçididir**, bu nedenle bir yükleme **her platformdan** (Slack/Telegram/cli/cron) araç çağrılarını **ve** dahili alt aracıları yakalar. Hook girdileri, Hermes'in snake_case olayları (`pre_tool_call` / `post_tool_call` / `on_session_start` / `on_session_end` / `subagent_stop`) tarafından anahtarlanan `hooks:` haritası altında `{command, timeout}` çiftidir; işleyici olayları `HERMES_EVENT_MAP` aracılığıyla ve araç adlarını `HERMES_TOOL_MAP` aracılığıyla kanonik hale getirir, böylece yerleşik politikalar değişmeden ateşlenir. Yapılandırma, yorum koruyan YAML `Document` turası aracılığıyla düzenlenmiştir, böylece operatörün diğer ayarları hayatta kalır ve yükleme, başsız ağ geçidinin (TTY yok) onay istemi olmadan hook'ları çalıştırması için `hooks_auto_accept: true` ayarını yapar. Değerlendirici, Hermes'in `{"decision":"block","reason"}` stdout sözleşmesini yayar (Hermes çıkış kodlarını yoksayar). **Sınırlamalar:** Hermes'in hiçbir `Stop` olayı yok, bu nedenle `require-*-before-stop` yapılanları hiçbir zaman onun için ateşlenmez (uygulanamaz, bozuk değil); `instruct`, izinle-günlüğe-not'a indirir (ek bağlam kanalı yoktur); ve çıkış gizli dizi redaksiyonu (`sanitize-*`) kabuk hook sözleşmesinde araç çıkışını yeniden yazamaz. Hermes aynı zamanda çevrimdışı **denetim** kaynağıdır — pano, ağ geçidi oturumlarını doğrudan `~/.hermes/state.db` adresinden okur.
+  - **OpenClaw (openclaw gateway)**: `~/.openclaw/openclaw.json` (**sadece kullanıcı kapsamı** — OpenClaw'un proje/yerel yapılandırması yoktur). Hermes gibi, OpenClaw de kendi kendini barındıran çok kanallı **ağ geçididir**, bu nedenle bir yükleme her kanaldan ve dahili alt aracılardan araç çağrılarını yakalar. Uygulamadan OpenClaw'un **işlem içi eklenti hook'ları** aracılığıyla çalışır (dosya tabanlı dahili hook'ları yalnızca gözlemdir ve bloke edemez), bu nedenle — OpenCode/Pi gibi — failproofai, failproofai ikilisini zaman uyumsuz olarak üretir ve kararı çeviren statik `openclaw-plugin/` paketi gönderir. Yükleme, gönderilen eklenti dizinini `openclaw.json`'in `plugins.load.paths[]` içine kaydeder ve `plugins.entries.failproofai` altında etkinleştirir (`hooks.allowConversationAccess: true`, ham konuşma hook'ları için gerekli). Değerlendirici, düz `{permission, reason}` kararını yayar ve parçalama bunu her hook'un yerel dönüş şekline eşler: `before_tool_call → {block:true, blockReason}` (**PreToolUse**), `before_agent_run → {outcome:"block", reason}` (**UserPromptSubmit**), ve `before_agent_finalize → {action:"revise", reason}` (**Stop** — gerçek bir dönüş sonu kapısı, bu nedenle `require-*-before-stop` yapılanları **uygulanır** OpenClaw'da, Hermes'ten farklı). Olaylar ve araç adları, ikili tarafı `OPENCLAW_EVENT_MAP` / `OPENCLAW_TOOL_MAP` (`exec→Bash`, `read→Read`, …) aracılığıyla kanonik hale getirir, böylece yerleşik politikalar değişmeden ateşlenir; parçalama, herhangi bir üretim/ayrıştırma/zaman aşımı hatasında açık olarak başarısız olur. OpenClaw aynı zamanda çevrimdışı **denetim** kaynağıdır — pano, JSONL oturumlarını `~/.openclaw/agents/<agentId>/sessions/<uuid>.jsonl` adresinden okur.
+  - **Factory Droid (`droid`)**: `~/.factory/hooks.json` (kullanıcı), `<cwd>/.factory/hooks.json` (proje) — Factory'nin yerel kapsamı yoktur. droid, droid v0.171.0 canlı olarak doğrulanmış iki tuhaflık ile Claude stili harici komut hook sistemini gönderir: (1) olay adları `hooks.json` **üst düzeyinde** yaşar — **hiçbir `"hooks"` sarmalayıcı yok** (droid bir taneyi reddeder); araç olayları (`PreToolUse`/`PostToolUse`) `"matcher": "*"` taşır, araç olmayan olaylar bunu atlar. (2) Reddetme, hook **çıkış kodu 2 + stderr** tarafından yönlendirilir, JSON kararı değil — değerlendirici'nin `factory` dalı araç/istem olayları için çıkış 2 döndürür ve dönüş sonu `Stop` olayında (`{decision:"block", reason}` döndürür (droid'in tek zorla yeniden deneme kanalı). Olaylar zaten PascalCase'dir (olay haritası yok) ve yük Claude snake_case'idir; yalnızca araç adları `FACTORY_TOOL_MAP` (`Execute→Bash`, `Create→Write`, `FetchUrl→WebFetch`, …) aracılığıyla kanonik hale getirilir. Factory aynı zamanda çevrimdışı **denetim** kaynağıdır — pano, disk üzerindeki JSONL oturumlarını `~/.factory/sessions/<encoded-cwd>/<sessionId>.jsonl` adresinden okur.
+  - **Devin CLI (`devin`, Cognition)**: `~/.config/devin/config.json` (kullanıcı), `<cwd>/.devin/config.json` (proje) — Devin'in yerel kapsamı yoktur. Devin, devin v3000.1.27'ye karşı doğrulanmış **saf Claude klonudur**: standart Claude `"hooks"` sarmalayıcı şemasını kullanır (yazılar, yapılandırma dosyasının diğer anahtarlarını — `org_id`, `theme_mode`, … — koruduğundan koruma sağlıyor), zaten PascalCase olay adlarını (olay haritası yok, işleyici dalı yok) ve Claude snake_case stdin yükünü (normalleştirme yok). Değerlendirici'nin `devin` dalı, **her** olay için stdout'ta `{"decision":"block","reason"}` JSON ile çıkış 0'da reddeder (doğrulanmıştır — block, `--permission-mode dangerous` adresini geçersiz kıldı); dönüş sonu `Stop` olayında neden, zorunlu aksiyonlu zorla yeniden deneme sözcüğünü taşır, bu nedenle `require-*-before-stop` yapılanları uygulanır. Yalnızca araç adları `DEVIN_TOOL_MAP` (`exec→Bash`; `tool_input.command` zaten kanonik) aracılığıyla kanonik hale getirilir. Devin aynı zamanda çevrimdışı **denetim** kaynağıdır — pano, SQLite oturumlarını `~/.local/share/devin/cli/sessions.db` adresinden okur (her `sessions` satırı gerçek bir `working_directory` taşır, bu nedenle oturumlar Claude gibi proje cwd tarafından gruplandırılır).
+  - **Antigravity CLI (`agy`)**: `~/.gemini/config/hooks.json` (kullanıcı), `<cwd>/.agents/hooks.json` (proje) — Antigravity'nin yerel kapsamı yoktur. Factory/Devin'in aksine, Antigravity agy v1.1.2 canlı olarak doğrulanan **kendi** sözleşmesine sahiptir. `hooks.json` **adlandırılmış hook** şemasını kullanır: üst düzey anahtar bir hook *adıdır* (`"failproofai"`) değeri bir olay→işleyicileri haritasıdır — araç olayları (`PreToolUse`/`PostToolUse`) işleyicileri `{matcher:"*", hooks:[…]}` içine sardığında, `PreInvocation`/`Stop` **düz** işleyici dizileridir (diğer adlandırılmış hook'lar korunur). stdin yükü **camelCase protojson'dur** (`toolCall:{name,args}`, `conversationId`, `workspacePaths`, `transcriptPath`) — failproofai bunu politikalar çalışmadan önce snake_case'e normalleştirir ve `run_command`'ın PascalCase bağımsız değişkenlerini (`CommandLine`/`Cwd`) `ANTIGRAVITY_TOOL_INPUT_MAP` aracılığıyla eşler. Değerlendirici'nin `antigravity` dalı Antigravity'nin **kendi** tepki şekillerini kullanır: `{decision:"deny", reason}` araç/istemi bloke eder (çıkış 0), dönüş sonu `Stop` olayında `{decision:"continue", reason}` döngüye yeniden girer (bu nedenle `require-*-before-stop` yapılanları uygulanır) ve `PreInvocation` (→ `UserPromptSubmit`) üzerine bir talimat enjekte etmek için `{injectSteps:[{ephemeralMessage}]}`. Araç adları `ANTIGRAVITY_TOOL_MAP` (`run_command→Bash`, `view_file→Read`, …) aracılığıyla kanonik hale getirilir. Antigravity aynı zamanda çevrimdışı **denetim** kaynağıdır — pano, düz JSONL transkriptlerini `~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl` adresinden okur (konuşma dizini `conversation_summaries.db` içinde).
+  - **Goose (codename goose, Block)**: `~/.agents/plugins/failproofai/hooks/hooks.json` (kullanıcı), `<cwd>/.agents/plugins/failproofai/hooks/hooks.json` (proje) — Goose'un yerel kapsamı yoktur. Uygulamadan Goose'un **hooks** sistemini, çapraz aracı **Open Plugins** belirtimini kullanır: yükleyici sadece `failproofai` eklenti dizinini bırakır ve Goose başlangıçta onu otomatik olarak keşfeder (kendi kendini `~/.config/goose/config.yaml` içine kaydeder). `hooks.json`, üst düzey `"hooks"` sarmalayıcıya **sahip** Open Plugins şemasını kullanır ve eşleştirici **her olay üzerinde atlanır** — düz `"*"` hiçbir şeyle eşleşmeyen geçersiz bir regex'tir (goose v1.43.0 canlı olarak doğrulanmıştır). Olay adları zaten PascalCase'dir (olay haritası yok); stdin yükü `event`/`working_dir` kullanır, işleyici bunu `hook_event_name`/`cwd` adresine normalleştirir. Değerlendirici'nin `goose` dalı, çıkış 0'da `{"decision":"block","reason"}` JSON ile reddeder, **`PreToolUse`** olayında yalnızca onurlandırılır (goose ≥ v1.37.0 içinde gönderilen) — hangisi kabuk aracı **için ve temsilci alt aracılar içinde** ateşlenir, bu nedenle tek yeterli reddetme noktasıdır; diğer hook hataları **açık** olarak başarısız olur. Goose'un **`Stop` olayı yoktur**, bu nedenle `require-*-before-stop` yapılanları uygulanmaz (Hermes gibi). Araç adları `GOOSE_TOOL_MAP` (`shell→Bash`, `write→Write`, `todo__todo_write→TodoWrite`, …) aracılığıyla ve yol anahtarları `GOOSE_TOOL_INPUT_MAP` (`path`/`source` → `file_path`) aracılığıyla kanonik hale getirilir. Goose aynı zamanda çevrimdışı **denetim** kaynağıdır — pano, SQLite oturumlarını `~/.local/share/goose/sessions/sessions.db` adresinden okur (her `sessions` satırı gerçek bir `working_dir` taşır, bu nedenle oturumlar Devin gibi proje cwd tarafından gruplandırılır; `--no-session` kazı çalışmaları filtrelenir).
+- **`policies-config.json`** — failproofai'ye hangi politikaları değerlendireceğini ve hangi parametrelerle yapılacağını söyler (tüm aracı CLI'ları arasında paylaşılır)
 
-Belirli bir aracıyı hedeflemek için `--cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose` geçirin (boşlukla ayrılmış veya herhangi bir alt küme için tekrarlanan):
+Belirli bir aracıyı hedeflemek için `--cli claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose` adresini geçin (boşlukla ayrılmış veya herhangi bir alt küme için tekrarlanmış):
 
 ```bash
 failproofai policies --install --cli codex --scope project
@@ -233,20 +231,38 @@ failproofai policies --install --cli goose --scope project
 failproofai policies --install --cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose
 ```
 
-`--cli` atlandığında, `failproofai` hangi aracı CLI'lerinin kurulu olduğunu algılar (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw` / `which droid` / `which devin` / `which agy` / `which goose`):
+`--cli` omit olduğunda, `failproofai` hangi aracı CLI'larının yüklü olduğunu algılar (`which claude` / `which codex` / `which copilot` / `which cursor-agent` / `which opencode` / `which pi` / `which hermes` / `which openclaw` / `which droid` / `which devin` / `which agy` / `which goose`):
 
-- **Bir CLI algılandı** — onay istemeksizin o CLI'yi otomatik seçer.
-- **Çok sayıda CLI algılandı** etkileşimli terminalde — `Detected (N)` bölümüne gruplandırılmış ok tuşu tek seçim istemi gösterir (`Install for all N detected` toplam satırı + her algılanan CLI ayrı ayrı) ve `Not installed (M) · install hooks ahead of time` bölümü her desteklenen CLI'yi ileriye dönük yükleme seçeneği olarak listeler (↑↓ taşı, Enter seç, ^C çık). Kaldırma akışı yalnızca Algılanan bölümü gösterir.
-- **Çok sayıda CLI algılandı** etkileşimsiz çalıştırmada (CI, TTY yoktur) — onay istemeksizin tüm algılanan CLI'ler için yüklenir.
-- **Hiç algılanmadı** — `claude` olarak geri döner ve PATH'de aracı ikili bulunmadığını uyarır; kanca komutu yine yazılır, bu nedenle bir tanesi yükler yüklenmez etkinleşir.
+- **Bir CLI algılanmış** — istem göstermeden bu CLI'yı otomatik olarak seçer.
+- **Etkileşimli bir terminalde birden fazla CLI algılanmış** — `Detected (N)` bölümünde gruplanmış (toplam `Install for all N detected` satırı + her algılanan CLI ayrı ayrı) ve `Not installed (M) · install hooks ahead of time` bölümünde desteklenen her algılanmamış CLI'yı listeleme ok tuşu tek seçim istemi gösterir (↑↓ taşı, Enter seç, ^C çık). Kaldırma akışı yalnızca Algılanan bölümü gösterir.
+- **Etkileşimli olmayan bir çalışma (CI, TTY yok) adresinde birden fazla CLI algılanmış** — istem göstermeden algılanan tüm CLI'lar için yükler.
+- **Hiçbiri algılanmadı** — `claude` adresine geri döner, PATH'de hiçbir aracı ikilisinin bulunmadığını söyleyen bir uyarı ile; hook komutu yine yazılır, böylece biri yüklenir yüklemez etkinleşir.
 
-`policies-config.json` öğesini dilediğiniz zaman doğrudan düzenleyebilir; değişiklikler yeniden başlama gerekmeksizin sonraki kanca olayında etkili olur.
+`policies-config.json` adresini doğrudan herhangi bir zamanda düzenleyebilirsiniz; değişiklikler yeniden başlatma gerekmeksizin sonraki hook olayında etkili olur.
+
+## Yükseltmeler yapılandırmanızı tutar
+
+failproofai'nin yeni bir sürümü `~/.failproofai/` adresini farklı şekilde düzenleyebilir. Bunu yaptığında, yükseltmeden sonra ilk komut dizini geçirir ve **yapılandırmanız taşınır, sıfırlanmaz**:
+
+| Tutulan | Yeniden oluşturulan |
+|---|---|
+| Politika seçiminiz ve parametreleriniz (`policies-config.json`) | Denetim önbelleği |
+| `daemon.configured` ve ek yakalama yolları (`config.json`) dahil ayarlarınız | Bulut tarafından yönetilen politika dağıtımları — sonraki anketde yeniden getirilir ve özet doğrulanır |
+| Bulut kaydınız (`credentials.json`) | Daemon çizik durumu |
+| `policies/` içindeki kendi politika dosyalarınız ve içe aktardıkları yardımcılar | |
+| Panonun okuduğu karar günlüğü ve henüz iletilmemiş olaylar | |
+
+Daha *yeni* bir failproofai tarafından yazılan anahtarlar da korunur, eski bir okuyucu tarafından bırakılmış yerine — bu nedenle sürümler arasında hareket etmek, her iki yönde de ayarları sessizce atmaz.
+
+Sonrasında kurulumu yeniden çalıştırmanız **gerekmez**: geçirilmiş bir makine, önceden yaptığı gibi tam olarak uygulanır, bu da yükseltmeyi, kimsenin oturduğu makinelerde güvenli kılan şeydir. Her geçiş `~/.failproofai/migrations/applied.json` adresinde kaydedilir ve yerine geçemez dosyalar, herhangi bir şey çalışmadan önce `~/.failproofai/migrations/backup-layout<n>/` adresine kopyalanır.
+
+Tek satırlık yükseltme için [`failproofai update`](/tr/cli/update) bölümüne ve ayrıntılar için [`failproofai migrate`](/tr/cli/migrate) — `--dry-run` dahil — bölümüne bakın.
 
 ---
 
-## Örnek: takım varsayılanları olan proje düzeyinde konfigürasyon
+## Örnek: ekip varsayılanları ile proje düzeyi yapılandırma
 
-`.failproofai/policies-config.json` öğesini deponuza gönderin:
+`.failproofai/policies-config.json` adresini deponuza işleyin:
 
 ```json
 {
@@ -265,4 +281,4 @@ failproofai policies --install --cli claude codex copilot cursor opencode pi her
 }
 ```
 
-Her geliştirici daha sonra `.failproofai/policies-config.local.json` (gitignored) oluşturabilir; takım arkadaşlarını etkilemeden kişisel geçersiz kılmalar için.
+Her geliştirici daha sonra kişisel geçersiz kılmalar için (gitignore'lanmış) `.failproofai/policies-config.local.json` oluşturabilir, takım arkadaşlarını etkilemeksizin.

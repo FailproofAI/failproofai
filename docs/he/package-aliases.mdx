@@ -1,12 +1,13 @@
 ---
-title: כנויים של חבילה
-description: "כנויים למניעת טעויות הקלדה רשומים וכיצד הם פועלים"
+---
+title: Package Aliases
+description: "Registered typosquat-prevention aliases and how they work"
 icon: copy
 ---
 
-## החבילה הרשמית
+## Official package
 
-החבילה npm קנונית היא **`failproofai`**:
+The canonical npm package is **`failproofai`**:
 
 ```bash
 npm install -g failproofai
@@ -16,67 +17,67 @@ bun add -g failproofai
 
 ---
 
-## למה אנחנו בעלים של שמות הכנויים
+## Why we own the alias names
 
-Typosquatting היא התקפת שרשרת אספקה נפוצה שבה שחקן זדוני רושם שם חבילה שנמצא במרחק הקשה אחת מחבילה פופולרית. משתמשים שלא מודעים שטעו בהקלדת פקודת ההתקנה בסופו של דבר מריצים קוד הנשלט על ידי התוקף עם גישה מלאה למערכת - בדיוק סוג האיום שFailproof AI תוכנן להגן עליו.
+Typosquatting is a common supply-chain attack where a malicious actor registers a package name that is one keystroke away from a popular package. Unsuspecting users who mistype the install command end up running attacker-controlled code with full system access - exactly the kind of threat Failproof AI is designed to defend against.
 
-כדי לבטל את פני השטח הזה, **אנחנו בעלים לפעוט של כל האיות השגויים והגרסאות העיצוביות הנפוצות** של `failproofai` ב-npm. שום אחד מהשמות הללו לא יכול להיות רשום על ידי צד שלישי. כל אחד מהם הוא פרוקסי דק המתקין ומוקד את החבילה האמיתית `failproofai`.
+To eliminate this surface, **we pre-emptively own all common misspellings and formatting variants** of `failproofai` on npm. None of these names can be registered by a third party. Each one is a thin proxy that installs and delegates to the real `failproofai` package.
 
 ---
 
-## כנויים רשומים
+## Registered aliases
 
-**גרסאות עיצוביות** - דרכים שונות לכתוב "failproof ai":
+**Formatting variants** - different ways to write "failproof ai":
 
-| חבילה | סטטוס |
+| Package | Status |
 |---------|--------|
-| `failproof` | ✅ פורסם |
-| `failproof-ai` | ⏳ ממתין לתמיכת npm |
-| `fail-proof-ai` | ⏳ ממתין לתמיכת npm |
-| `failproof_ai` | ⏳ ממתין לתמיכת npm |
-| `fail_proof_ai` | ⏳ ממתין לתמיכת npm |
-| `fail-proofai` | ⏳ ממתין לתמיכת npm |
+| `failproof` | ✅ Published |
+| `failproof-ai` | ⏳ Pending npm support |
+| `fail-proof-ai` | ⏳ Pending npm support |
+| `failproof_ai` | ⏳ Pending npm support |
+| `fail_proof_ai` | ⏳ Pending npm support |
+| `fail-proofai` | ⏳ Pending npm support |
 
-**טעויות `failprof*`** - חסר o אחד מ-"proof":
+**`failprof*` typos** - missing one `o` from "proof":
 
-| חבילה | סטטוס |
+| Package | Status |
 |---------|--------|
-| `failprof` | ✅ פורסם |
-| `failprof-ai` | ✅ פורסם |
-| `failprofai` | ⏳ ממתין לתמיכת npm |
-| `fail-prof-ai` | ⏳ ממתין לתמיכת npm |
-| `failprof_ai` | ⏳ ממתין לתמיכת npm |
+| `failprof` | ✅ Published |
+| `failprof-ai` | ✅ Published |
+| `failprofai` | ⏳ Pending npm support |
+| `fail-prof-ai` | ⏳ Pending npm support |
+| `failprof_ai` | ⏳ Pending npm support |
 
-**טעויות `faliproof*`** - a ו-i בעמדה הפוכה:
+**`faliproof*` typos** - transposed `a` and `i`:
 
-| חבילה | סטטוס |
+| Package | Status |
 |---------|--------|
-| `faliproof` | ✅ פורסם |
-| `faliproof-ai` | ✅ פורסם |
-| `faliproofai` | ⏳ ממתין לתמיכת npm |
+| `faliproof` | ✅ Published |
+| `faliproof-ai` | ✅ Published |
+| `faliproofai` | ⏳ Pending npm support |
 
-> **למה ממתין?** מדיניות מניעת הספאם של npm חוסמת שמות שמנורמלים לאותו מחרוזת כחבילה קיימת לאחר הסרת פיסוק וביצוע בדיקות דמיון. יצרנו קשר עם תמיכת npm כדי להזמין שמות אלה למטרות אנטי-טיפוס. הם יופעלו לאחר אישור.
+> **Why pending?** npm's spam-prevention policy blocks names that normalize to the same string as an existing package after stripping punctuation and running similarity checks. We have contacted npm support to reserve these names for anti-squatting purposes. They will be activated once approved.
 
-ניתן לאמת שכל כינוי שפורסם הוא בבעלותנו:
+You can verify any published alias is owned by us:
 
 ```bash
 npm info failproof
-# חפש: "ExosphereHost Inc." בשדה ה-maintainers
+# Look for: "ExosphereHost Inc." in the maintainers field
 ```
 
 ---
 
-## איך הכנויים פועלים
+## How the aliases work
 
-כל חבילת כינוי:
+Each alias package:
 
-1. רשום את `failproofai` כתלות - אז החבילה האמיתית מותקנת והקובץ הבינארי שלה זמין
-2. חושף קובץ בינארי התואם לשם שלו (למשל `failprof-ai`) שמעביר את כל הארגומנטים לקובץ `failproofai` הבינארי
+1. Lists `failproofai` as a dependency - so the real package is installed and its binary becomes available
+2. Exposes a binary matching its own name (e.g. `failprof-ai`) that proxies all arguments to the `failproofai` binary
 
-הפרוקסי הוא סקריפט Node דו-שורתי; אין לוגיקה, אין קריאות רשת, ואין איסוף נתונים מעבר למה ש-`failproofai` עצמו עושה.
+The proxy is a two-line Node script; there is no logic, no network calls, and no data collection beyond what `failproofai` itself does.
 
 ---
 
-## אם מצאת שם שהחמצנו
+## If you find a name we missed
 
-פתח בעיה ב-[failproofai/failproofai](https://github.com/failproofai/failproofai/issues) ואנחנו נרשום אותו.
+Open an issue at [failproofai/failproofai](https://github.com/failproofai/failproofai/issues) and we will register it.

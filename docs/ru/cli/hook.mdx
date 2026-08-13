@@ -7,9 +7,9 @@ description: "Подпроцесс, который Claude Code вызывает 
 failproofai --hook <EventType>
 ```
 
-Это команда, зарегистрированная в `settings.json` Claude Code командой `failproofai policies --install`. Вы обычно не вызываете это напрямую.
+Это команда, зарегистрированная в `settings.json` Claude Code командой `failproofai policies --install`. Обычно вы не вызываете её напрямую.
 
-Читает JSON-полезную нагрузку из stdin, оценивает все включённые политики и завершается с кодом, указывающим решение:
+Читает JSON-полезную нагрузку из stdin, оценивает все включённые политики и завершает работу с кодом, указывающим на решение:
 
 | Код выхода | Решение | Эффект |
 |-----------|---------|--------|
@@ -20,7 +20,7 @@ failproofai --hook <EventType>
 ### Поддерживаемые типы событий
 
 | Категория | События |
-|----------|---------|
+|-----------|---------|
 | **Выполнение инструментов** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **Жизненный цикл сессии** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **Взаимодействие пользователя** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |

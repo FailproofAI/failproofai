@@ -6,7 +6,7 @@ icon: copy
 
 ## 官方包
 
-npm 的正式包名为 **`failproofai`**：
+npm 的标准包名为 **`failproofai`**：
 
 ```bash
 npm install -g failproofai
@@ -16,15 +16,15 @@ bun add -g failproofai
 
 ---
 
-## 为什么我们持有这些别名
+## 为什么我们拥有这些别名
 
-错字抢注是一种常见的供应链攻击手段——恶意行为者注册与热门包名仅差一个按键的包名，毫无防备的用户在安装时一旦拼错命令，就会以完整系统权限运行攻击者控制的代码。这正是 Failproof AI 所要防范的威胁类型。
+错字抢注（Typosquatting）是一种常见的供应链攻击手段——恶意攻击者注册一个与热门包名仅差一个按键的包名。粗心的用户一旦在安装命令中打错字，就会在不知情的情况下以完整的系统权限运行攻击者控制的代码。这正是 Failproof AI 所要防范的威胁。
 
-为了消除这一攻击面，**我们在 npm 上抢先注册了 `failproofai` 的所有常见拼写错误及格式变体**。这些名称均无法被第三方注册。每个别名都是一个轻量代理，安装后会委托给真正的 `failproofai` 包。
+为了彻底消除这一攻击面，**我们在 npm 上预先注册了 `failproofai` 的所有常见拼写错误和格式变体**。这些包名均无法被第三方注册。每一个别名都是一个轻量级代理，会安装并委托给真正的 `failproofai` 包。
 
 ---
 
-## 已注册别名
+## 已注册的别名
 
 **格式变体** — "failproof ai" 的不同书写方式：
 
@@ -37,7 +37,7 @@ bun add -g failproofai
 | `fail_proof_ai` | ⏳ 等待 npm 审核 |
 | `fail-proofai` | ⏳ 等待 npm 审核 |
 
-**`failprof*` 错字** — "proof" 中少了一个 `o`：
+**`failprof*` 错字** — "proof" 中漏掉一个 `o`：
 
 | 包名 | 状态 |
 |---------|--------|
@@ -47,7 +47,7 @@ bun add -g failproofai
 | `fail-prof-ai` | ⏳ 等待 npm 审核 |
 | `failprof_ai` | ⏳ 等待 npm 审核 |
 
-**`faliproof*` 错字** — `a` 和 `i` 互换位置：
+**`faliproof*` 错字** — `a` 和 `i` 顺序颠倒：
 
 | 包名 | 状态 |
 |---------|--------|
@@ -55,9 +55,9 @@ bun add -g failproofai
 | `faliproof-ai` | ✅ 已发布 |
 | `faliproofai` | ⏳ 等待 npm 审核 |
 
-> **为何处于等待状态？** npm 的垃圾内容防范策略会屏蔽在去除标点并经过相似度检测后与已有包名归一化结果相同的包名。我们已联系 npm 支持团队，申请以反抢注为目的保留这些名称，审批通过后将予以激活。
+> **为什么显示"等待审核"？** npm 的防垃圾政策会屏蔽那些在去除标点符号并进行相似度检查后，与已有包名规范化结果相同的包名。我们已联系 npm 支持团队，申请以反抢注为目的保留这些名称，待审批通过后即可激活。
 
-您可以验证任何已发布的别名是否由我们持有：
+你可以验证任何已发布别名均由我们所有：
 
 ```bash
 npm info failproof
@@ -70,13 +70,13 @@ npm info failproof
 
 每个别名包：
 
-1. 将 `failproofai` 列为依赖项——因此真正的包会被安装，其二进制文件也会随之可用
-2. 暴露一个与自身同名的二进制文件（例如 `failprof-ai`），将所有参数代理转发给 `failproofai` 二进制文件
+1. 将 `failproofai` 列为依赖项——这样真正的包会被安装，其二进制文件也随之可用
+2. 暴露一个与自身包名匹配的二进制文件（例如 `failprof-ai`），将所有参数代理转发给 `failproofai` 二进制文件
 
-代理脚本仅有两行 Node 代码，不含任何逻辑处理、网络请求或超出 `failproofai` 本身的数据收集行为。
+代理逻辑仅为两行 Node 脚本，没有任何业务逻辑、网络请求，也不会在 `failproofai` 本身行为之外进行任何数据收集。
 
 ---
 
-## 如果您发现我们遗漏的包名
+## 如果你发现我们遗漏了某个名称
 
-请在 [failproofai/failproofai](https://github.com/failproofai/failproofai/issues) 提交 Issue，我们会及时注册。
+请在 [failproofai/failproofai](https://github.com/failproofai/failproofai/issues) 提交 issue，我们会及时注册。

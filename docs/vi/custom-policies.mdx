@@ -1,10 +1,10 @@
 ---
 title: Chính sách tùy chỉnh
-description: "Viết quy tắc của riêng bạn bằng JavaScript - thực thi các quy ước, ngăn chặn sự thay đổi, phát hiện lỗi, tích hợp với các hệ thống bên ngoài"
+description: "Viết các quy tắc riêng của bạn bằng JavaScript - thực thi các quy ước, ngăn chặn sự trôi dạt, phát hiện lỗi, tích hợp với các hệ thống bên ngoài"
 icon: code
 ---
 
-Chính sách tùy chỉnh cho phép bạn viết các quy tắc cho bất kỳ hành vi agent nào: thực thi các quy ước dự án, ngăn chặn sự thay đổi không mong muốn, kiểm soát các hoạt động phá hoại, phát hiện agent bị kẹt, hoặc tích hợp với Slack, quy trình phê duyệt, v.v. Chúng sử dụng cùng hệ thống sự kiện hook và các quyết định `allow`, `deny`, `instruct` như các chính sách được tích hợp sẵn.
+Chính sách tùy chỉnh cho phép bạn viết các quy tắc cho bất kỳ hành vi agent nào: thực thi các quy ước dự án, ngăn chặn sự trôi dạt, kiểm soát các hoạt động phá hoại, phát hiện các agent bị kẹt, hoặc tích hợp với Slack, quy trình phê duyệt, v.v. Chúng sử dụng cùng một hệ thống sự kiện hook và các quyết định `allow`, `deny`, `instruct` như các chính sách tích hợp sẵn.
 
 ---
 
@@ -39,28 +39,28 @@ failproofai policies --install --custom ./my-policies.js
 
 ## Hai cách để tải chính sách tùy chỉnh
 
-### Tùy chọn 1: Dựa trên quy ước (khuyến nghị)
+### Tùy chọn 1: Dựa trên quy ước (được khuyến nghị)
 
-Thả các tệp `*policies.{js,mjs,ts}` vào `.failproofai/policies/` và chúng sẽ được tải tự động — không cần cờ hoặc thay đổi cấu hình. Điều này hoạt động giống như git hooks: thả một tệp, nó chỉ hoạt động.
+Đặt các tệp `*policies.{js,mjs,ts}` vào `.failproofai/policies/` và chúng sẽ được tải tự động — không cần cờ hay thay đổi cấu hình. Cách này hoạt động như git hooks: đặt một tệp, nó sẽ hoạt động.
 
 ```
-# Cấp độ dự án — được commit vào git, chia sẻ với nhóm
+# Mức dự án — được cam kết vào git, chia sẻ với đội
 .failproofai/policies/security-policies.mjs
 .failproofai/policies/workflow-policies.mjs
 
-# Cấp độ người dùng — cá nhân, áp dụng cho tất cả các dự án
+# Mức cá nhân — tùy chỉnh, áp dụng cho tất cả các dự án
 ~/.failproofai/policies/my-policies.mjs
 ```
 
 **Cách hoạt động:**
-- Cả hai thư mục dự án và người dùng được quét (hợp lệnh — không phải phạm vi đầu tiên thắng)
-- Các tệp được tải theo thứ tự bảng chữ cái trong mỗi thư mục. Đặt tiền tố `01-`, `02-` để kiểm soát thứ tự
-- Chỉ các tệp khớp với `*policies.{js,mjs,ts}` được tải; các tệp khác bị bỏ qua
-- Mỗi tệp được tải độc lập (fail-open trên mỗi tệp)
-- Hoạt động cùng với các chính sách `--custom` rõ ràng và các chính sách được tích hợp sẵn
+- Cả hai thư mục dự án và người dùng đều được quét (hợp nhất — không phải theo quy tắc phạm vi đầu tiên)
+- Các tệp được tải theo thứ tự chữ cái trong mỗi thư mục. Thêm tiền tố `01-`, `02-` để kiểm soát thứ tự
+- Chỉ các tệp khớp với `*policies.{js,mjs,ts}` mới được tải; các tệp khác bị bỏ qua
+- Mỗi tệp được tải độc lập (mở rộng mỗi tệp)
+- Hoạt động cùng với `--custom` rõ ràng và các chính sách tích hợp sẵn
 
 <Tip>
-Chính sách quy ước là cách dễ nhất để xây dựng một tiêu chuẩn chất lượng cho tổ chức của bạn. Commit `.failproofai/policies/` vào git và mỗi thành viên nhóm sẽ tự động nhận được các quy tắc giống nhau — không cần thiết lập cho từng nhà phát triển. Khi nhóm của bạn khám phá các chế độ lỗi mới, hãy thêm một chính sách và đẩy lên. Theo thời gian, những chính sách này trở thành một tiêu chuẩn chất lượng sống động không ngừng cải thiện với mỗi đóng góp.
+Chính sách quy ước là cách dễ nhất để xây dựng tiêu chuẩn chất lượng cho tổ chức của bạn. Cam kết `.failproofai/policies/` vào git và mỗi thành viên trong nhóm sẽ tự động nhận được cùng các quy tắc — không cần thiết lập cho từng nhà phát triển. Khi đội của bạn khám phá ra các chế độ lỗi mới, hãy thêm một chính sách và đẩy lên. Theo thời gian, những chính sách này trở thành tiêu chuẩn chất lượng sống động và tiếp tục cải thiện với mỗi đóng góp.
 </Tip>
 
 ### Tùy chọn 2: Đường dẫn tệp rõ ràng
@@ -69,33 +69,33 @@ Chính sách quy ước là cách dễ nhất để xây dựng một tiêu chu�
 # Cài đặt với tệp chính sách tùy chỉnh
 failproofai policies --install --custom ./my-policies.js
 
-# Thay thế đường dẫn chính sách tùy chỉnh
+# Thay thế các đường dẫn chính sách tùy chỉnh
 failproofai policies --install --custom ./new-policies.js
 
 # Cấu hình nhiều tệp rõ ràng (được tải theo thứ tự cờ)
 failproofai policies --install --custom ./security.js --custom ./workflow.js
 
-# Xóa tất cả đường dẫn chính sách tùy chỉnh rõ ràng khỏi cấu hình
+# Xóa tất cả các đường dẫn chính sách tùy chỉnh rõ ràng khỏi cấu hình
 failproofai policies --uninstall --custom
 ```
 
-Các đường dẫn tuyệt đối được phân giải được lưu trữ trong `policies-config.json` dưới dạng `customPoliciesPaths`. Lặp lại `--custom` để cấu hình nhiều tệp. Các cấu hình hiện có sử dụng trường `customPoliciesPath` cũ tiếp tục hoạt động. Các tệp được tải mới trên mỗi sự kiện hook - không có bộ nhớ đệm giữa các sự kiện.
+Các đường dẫn tuyệt đối được phân giải được lưu trữ trong `policies-config.json` dưới dạng `customPoliciesPaths`. Lặp lại `--custom` để cấu hình nhiều tệp. Các cấu hình hiện có sử dụng trường `customPoliciesPath` kế thừa tiếp tục hoạt động. Các tệp được tải mới trên mỗi sự kiện hook — không có bộ nhớ cache giữa các sự kiện.
 
-Mỗi chính sách được đăng ký xuất hiện với bộ chuyển đổi riêng trong bảng điều khiển. Tắt chính sách sẽ ghi ID được xác định bằng nguồn của nó vào `disabledCustomPolicies`; tệp và các chính sách khác của nó tiếp tục được tải, trong khi chính sách bị tắt bị loại trừ trước khi khớp sự kiện. Tên chính sách trùng lặp trên các tệp có các bộ chuyển đổi độc lập.
+Mỗi chính sách được đăng ký xuất hiện với bộ chuyển đổi riêng của nó trong bảng điều khiển. Tắt một chính sách sẽ ghi lại ID được xác định theo nguồn của nó trong `disabledCustomPolicies`; tệp và các chính sách khác của nó tiếp tục tải, trong khi chính sách bị tắt bị loại trừ trước khi khớp sự kiện. Tên chính sách trùng lặp trên các tệp có các bộ chuyển đổi độc lập.
 
-### Sử dụng cả hai cùng nhau
+### Sử dụng cả hai cách
 
-Chính sách quy ước và các tệp `--custom` rõ ràng có thể coexist. Thứ tự tải:
+Chính sách quy ước và các tệp `--custom` rõ ràng có thể cùng tồn tại. Thứ tự tải:
 
 1. Các tệp `customPoliciesPaths` rõ ràng (theo thứ tự được cấu hình)
-2. Tệp quy ước dự án (`{cwd}/.failproofai/policies/`, theo thứ tự bảng chữ cái)
-3. Tệp quy ước người dùng (`~/.failproofai/policies/`, theo thứ tự bảng chữ cái)
+2. Các tệp quy ước dự án (`{cwd}/.failproofai/policies/`, theo thứ tự chữ cái)
+3. Các tệp quy ước người dùng (`~/.failproofai/policies/`, theo thứ tự chữ cái)
 
 ---
 
 ## API
 
-### Import
+### Nhập
 
 ```js
 import { customPolicies, allow, deny, instruct } from "failproofai";
@@ -103,45 +103,45 @@ import { customPolicies, allow, deny, instruct } from "failproofai";
 
 ### `customPolicies.add(hook)`
 
-Đăng ký một chính sách. Gọi điều này nhiều lần khi cần cho nhiều chính sách trong cùng một tệp.
+Đăng ký một chính sách. Gọi điều này bao nhiêu lần cần thiết cho nhiều chính sách trong cùng một tệp.
 
 ```ts
 customPolicies.add({
-  name: string;                         // required - unique identifier
-  description?: string;                 // shown in `failproofai policies` output
-  match?: { events?: HookEventType[] }; // filter by event type; omit to match all
+  name: string;                         // bắt buộc - định danh duy nhất
+  description?: string;                 // hiển thị trong đầu ra `failproofai policies`
+  match?: { events?: HookEventType[] }; // lọc theo loại sự kiện; bỏ qua để khớp tất cả
   fn: (ctx: PolicyContext) => PolicyResult | Promise<PolicyResult>;
 });
 ```
 
-### Trợ giúp quyết định
+### Trình hỗ trợ quyết định
 
-| Hàm | Hiệu ứng | Sử dụng khi |
+| Hàm | Hiệu quả | Sử dụng khi |
 |----------|--------|----------|
-| `allow()` | Cho phép hoạt động im lặng | Hành động là an toàn, không cần thông báo |
+| `allow()` | Cho phép hoạt động im lặng | Hành động này an toàn, không cần thông báo |
 | `deny(message)` | Chặn hoạt động | Agent không nên thực hiện hành động này |
-| `instruct(message)` | Thêm ngữ cảnh mà không chặn | Cung cấp ngữ cảnh bổ sung để agent không mất hướng |
+| `instruct(message)` | Thêm ngữ cảnh mà không chặn | Cung cấp ngữ cảnh bổ sung cho agent để duy trì theo dõi |
 
-`deny(message)` - thông báo xuất hiện trước Claude với tiền tố `"Blocked by failproofai:"`. Một `deny` duy nhất sẽ ngắt tất cả các đánh giá tiếp theo.
+`deny(message)` - thông báo xuất hiện cho Claude với tiền tố `"Blocked by failproofai:"`. Một lần `deny` duy nhất sẽ làm ngắn mạch tất cả việc đánh giá tiếp theo.
 
 `instruct(message)` - thông báo được thêm vào ngữ cảnh của Claude cho lệnh gọi công cụ hiện tại. Tất cả các thông báo `instruct` được tích lũy và gửi cùng nhau.
 
 <Tip>
-Bạn có thể thêm hướng dẫn bổ sung vào bất kỳ thông báo `deny` hoặc `instruct` nào bằng cách thêm trường `hint` trong `policyParams` — không cần thay đổi mã. Điều này hoạt động cho các chính sách tùy chỉnh (`custom/`), quy ước dự án (`.failproofai-project/`), và quy ước người dùng (`.failproofai-user/`) cũng như nhau. Xem [Cấu hình → hint](/vi/configuration#hint-cross-cutting) để biết chi tiết.
+Bạn có thể thêm hướng dẫn bổ sung vào bất kỳ thông báo `deny` hay `instruct` nào bằng cách thêm trường `hint` trong `policyParams` — không cần thay đổi mã. Điều này hoạt động cho các chính sách tùy chỉnh (`custom/`), quy ước dự án (`.failproofai-project/`), và quy ước người dùng (`.failproofai-user/`) cũng vậy. Xem [Configuration → hint](/vi/configuration#hint-cross-cutting) để biết chi tiết.
 </Tip>
 
-### Thông báo allow thông tin
+### Thông báo cho phép thông tin
 
-`allow(message)` cho phép hoạt động **và** gửi một thông báo thông tin trở lại Claude. Thông báo được gửi dưới dạng `additionalContext` trong phản hồi stdout của trình xử lý hook — cơ chế tương tự như `instruct`, nhưng có ý nghĩa khác: đó là một bản cập nhật trạng thái, không phải cảnh báo.
+`allow(message)` cho phép hoạt động **và** gửi một thông báo thông tin quay lại Claude. Thông báo được gửi dưới dạng `additionalContext` trong phản hồi stdout của trình xử lý hook — cơ chế tương tự được sử dụng bởi `instruct`, nhưng theo nghĩa khác: đó là một cập nhật trạng thái, không phải là cảnh báo.
 
-| Hàm | Hiệu ứng | Sử dụng khi |
+| Hàm | Hiệu quả | Sử dụng khi |
 |----------|--------|----------|
-| `allow(message)` | Cho phép và gửi ngữ cảnh tới Claude | Xác nhận một kiểm tra đã vượt qua, hoặc giải thích tại sao kiểm tra bị bỏ qua |
+| `allow(message)` | Cho phép và gửi ngữ cảnh cho Claude | Xác nhận một kiểm tra đã vượt qua, hoặc giải thích tại sao kiểm tra bị bỏ qua |
 
 Các trường hợp sử dụng:
-- **Xác nhận trạng thái:** `allow("All CI checks passed.")` — cho Claude biết mọi thứ là xanh lá cây
-- **Giải thích fail-open:** `allow("GitHub CLI not installed, skipping CI check.")` — cho Claude biết tại sao kiểm tra bị bỏ qua để nó có ngữ cảnh đầy đủ
-- **Nhiều thông báo tích lũy:** nếu nhiều chính sách mỗi thông báo trả về `allow(message)`, tất cả thông báo được nối với dòng mới và gửi cùng nhau
+- **Xác nhận trạng thái:** `allow("All CI checks passed.")` — cho Claude biết mọi thứ đều ổn
+- **Giải thích mở rộng thất bại:** `allow("GitHub CLI not installed, skipping CI check.")` — cho Claude biết tại sao kiểm tra bị bỏ qua để nó có toàn bộ ngữ cảnh
+- **Nhiều thông báo tích lũy:** nếu một số chính sách trả về `allow(message)`, tất cả các thông báo sẽ được nối với các dòng mới và gửi cùng nhau
 
 ```js
 customPolicies.add({
@@ -151,7 +151,7 @@ customPolicies.add({
     const cwd = ctx.session?.cwd;
     if (!cwd) return allow("No working directory, skipping branch check.");
 
-    // ... check branch status ...
+    // ... kiểm tra trạng thái nhánh ...
     if (allPushed) {
       return allow("Branch is up to date with remote.");
     }
@@ -167,7 +167,7 @@ customPolicies.add({
 | `eventType` | `string` | `"PreToolUse"`, `"PostToolUse"`, `"Notification"`, `"Stop"` |
 | `toolName` | `string \| undefined` | Công cụ được gọi (ví dụ: `"Bash"`, `"Write"`, `"Read"`) |
 | `toolInput` | `Record<string, unknown> \| undefined` | Các tham số đầu vào của công cụ |
-| `payload` | `Record<string, unknown>` | Trọng tải sự kiện thô đầy đủ từ Claude Code |
+| `payload` | `Record<string, unknown>` | Toàn bộ tải trọng sự kiện thô từ Claude Code |
 | `session` | `SessionMetadata \| undefined` | Ngữ cảnh phiên (xem bên dưới) |
 
 ### Các trường `SessionMetadata`
@@ -176,16 +176,16 @@ customPolicies.add({
 |-------|------|-------------|
 | `sessionId` | `string` | Định danh phiên Claude Code |
 | `cwd` | `string` | Thư mục làm việc của phiên Claude Code |
-| `transcriptPath` | `string` | Đường dẫn tệp bản ghi JSONL của phiên |
+| `transcriptPath` | `string` | Đường dẫn tới tệp bản ghi JSONL của phiên |
 
 ### Các loại sự kiện
 
-| Sự kiện | Khi nó xảy ra | Nội dung `toolInput` |
+| Sự kiện | Khi nó kích hoạt | Nội dung `toolInput` |
 |-------|--------------|----------------------|
 | `PreToolUse` | Trước khi Claude chạy một công cụ | Đầu vào của công cụ (ví dụ: `{ command: "..." }` cho Bash) |
-| `PostToolUse` | Sau khi công cụ hoàn thành | Đầu vào của công cụ + `tool_result` (đầu ra) |
-| `Notification` | Khi Claude gửi một thông báo | `{ message: "...", notification_type: "idle" \| "permission_prompt" \| ... }` - hooks phải luôn trả về `allow()`, chúng không thể chặn thông báo |
-| `Stop` | Khi phiên Claude kết thúc | Rỗng |
+| `PostToolUse` | Sau khi công cụ hoàn tất | Đầu vào của công cụ + `tool_result` (đầu ra) |
+| `Notification` | Khi Claude gửi một thông báo | `{ message: "...", notification_type: "idle" \| "permission_prompt" \| ... }` - hook phải luôn trả về `allow()`, chúng không thể chặn thông báo |
+| `Stop` | Khi phiên Claude kết thúc | Trống |
 
 ---
 
@@ -193,20 +193,20 @@ customPolicies.add({
 
 Chính sách được đánh giá theo thứ tự này:
 
-1. Chính sách được tích hợp sẵn (theo thứ tự định nghĩa)
+1. Chính sách tích hợp sẵn (theo thứ tự định nghĩa)
 2. Chính sách tùy chỉnh rõ ràng từ `customPoliciesPath` (theo thứ tự `.add()`)
-3. Chính sách quy ước từ dự án `.failproofai/policies/` (tệp theo thứ tự bảng chữ cái, `.add()` thứ tự trong)
-4. Chính sách quy ước từ người dùng `~/.failproofai/policies/` (tệp theo thứ tự bảng chữ cái, `.add()` thứ tự trong)
+3. Chính sách quy ước từ `.failproofai/policies/` dự án (các tệp theo thứ tự chữ cái, thứ tự `.add()` bên trong)
+4. Chính sách quy ước từ `~/.failproofai/policies/` người dùng (các tệp theo thứ tự chữ cái, thứ tự `.add()` bên trong)
 
 <Note>
-Lệnh `deny` đầu tiên sẽ ngắt tất cả các chính sách tiếp theo. Tất cả các thông báo `instruct` được tích lũy và gửi cùng nhau.
+Lần `deny` đầu tiên sẽ làm ngắn mạch tất cả các chính sách tiếp theo. Tất cả các thông báo `instruct` được tích lũy và gửi cùng nhau.
 </Note>
 
 ---
 
 ## Nhập bắc cầu
 
-Các tệp chính sách tùy chỉnh có thể nhập các mô-đun cục bộ bằng đường dẫn tương đối:
+Các tệp chính sách tùy chỉnh có thể nhập các mô-đun cục bộ bằng cách sử dụng các đường dẫn tương đối:
 
 ```js
 // my-policies.js
@@ -223,21 +223,21 @@ customPolicies.add({
 });
 ```
 
-Tất cả các nhập tương đối có thể truy cập được từ tệp mục nhập được phân giải. Điều này được thực hiện bằng cách viết lại các nhập `from "failproofai"` thành đường dẫn dist thực tế và tạo các tệp `.mjs` tạm thời để đảm bảo tính tương thích ESM.
+Tất cả các nhập tương đối có thể truy cập từ tệp đầu vào được phân giải. Điều này được thực hiện bằng cách viết lại các nhập `from "failproofai"` thành đường dẫn dist thực tế và tạo các tệp `.mjs` tạm thời để đảm bảo khả năng tương thích ESM.
 
 ---
 
 ## Lọc loại sự kiện
 
-Sử dụng `match.events` để giới hạn khi nào chính sách được kích hoạt:
+Sử dụng `match.events` để giới hạn khi một chính sách kích hoạt:
 
 ```js
 customPolicies.add({
   name: "require-summary-on-stop",
   match: { events: ["Stop"] },
   fn: async (ctx) => {
-    // Only fires when the session ends
-    // ctx.session.transcriptPath contains the full session log
+    // Chỉ kích hoạt khi phiên kết thúc
+    // ctx.session.transcriptPath chứa toàn bộ nhật ký phiên
     return allow();
   },
 });
@@ -249,20 +249,20 @@ Bỏ qua `match` hoàn toàn để kích hoạt trên mọi loại sự kiện.
 
 ## Xử lý lỗi và chế độ lỗi
 
-Chính sách tùy chỉnh là **fail-open**: các lỗi không bao giờ chặn các chính sách được tích hợp sẵn hoặc làm hỏng trình xử lý hook.
+Chính sách tùy chỉnh **mở rộng thất bại**: lỗi không bao giờ chặn các chính sách tích hợp sẵn hay làm hỏng trình xử lý hook.
 
 | Lỗi | Hành vi |
 |---------|----------|
-| `customPoliciesPath` không được đặt | Không có chính sách tùy chỉnh rõ ràng chạy; chính sách quy ước và các chính sách được tích hợp sẵn tiếp tục bình thường |
-| Tệp không tìm thấy | Cảnh báo được ghi vào `~/.failproofai/hook.log`; các chính sách được tích hợp sẵn tiếp tục |
+| `customPoliciesPath` không được đặt | Không có chính sách tùy chỉnh rõ ràng nào chạy; chính sách quy ước và tích hợp sẵn tiếp tục bình thường |
+| Tệp không tìm thấy | Cảnh báo được ghi vào `~/.failproofai/hook.log`; tích hợp sẵn tiếp tục |
 | Lỗi cú pháp/nhập (rõ ràng) | Lỗi được ghi vào `~/.failproofai/hook.log`; chính sách tùy chỉnh rõ ràng bị bỏ qua |
 | Lỗi cú pháp/nhập (quy ước) | Lỗi được ghi; tệp đó bị bỏ qua, các tệp quy ước khác vẫn tải |
-| `fn` ném ở runtime | Lỗi được ghi; hook đó được coi là `allow`; các hook khác tiếp tục |
-| `fn` mất nhiều hơn 10 giây | Timeout được ghi; được coi là `allow` |
-| Thư mục quy ước bị thiếu | Không có chính sách quy ước chạy; không có lỗi |
+| `fn` ném lỗi khi chạy | Lỗi được ghi; hook đó được coi là `allow`; các hook khác tiếp tục |
+| `fn` mất thời gian lâu hơn 10 giây | Hết thời gian được ghi; được coi là `allow` |
+| Thư mục quy ước bị mất | Không có chính sách quy ước nào chạy; không có lỗi |
 
 <Tip>
-Để gỡ lỗi các lỗi chính sách tùy chỉnh, hãy xem tệp nhật ký:
+Để gỡ lỗi lỗi chính sách tùy chỉnh, hãy theo dõi tệp nhật ký:
 
 ```bash
 tail -f ~/.failproofai/hook.log
@@ -277,7 +277,7 @@ tail -f ~/.failproofai/hook.log
 // my-policies.js
 import { customPolicies, allow, deny, instruct } from "failproofai";
 
-// Prevent agent from writing to secrets/ directory
+// Ngăn agent viết vào thư mục secrets/
 customPolicies.add({
   name: "block-secrets-dir",
   description: "Prevent agent from writing to secrets/ directory",
@@ -290,7 +290,7 @@ customPolicies.add({
   },
 });
 
-// Keep the agent on track: verify tests before committing
+// Giữ agent trên theo dõi: xác minh các bài kiểm tra trước khi cam kết
 customPolicies.add({
   name: "remind-test-before-commit",
   description: "Keep the agent on track: verify tests pass before committing",
@@ -305,7 +305,7 @@ customPolicies.add({
   },
 });
 
-// Prevent unplanned dependency changes during freeze
+// Ngăn chặn những thay đổi phụ thuộc không có kế hoạch trong thời gian đóng băng
 customPolicies.add({
   name: "dependency-freeze",
   description: "Prevent unplanned dependency changes during freeze period",
@@ -332,9 +332,9 @@ Thư mục `examples/` chứa các tệp chính sách sẵn sàng chạy:
 
 | Tệp | Nội dung |
 |------|----------|
-| `examples/policies-basic.js` | Năm chính sách khởi đầu bao gồm các chế độ lỗi agent phổ biến |
-| `examples/policies-advanced/index.js` | Các mẫu nâng cao: nhập bắc cầu, cuộc gọi async, loại bỏ đầu ra, và hooks kết thúc phiên |
-| `examples/convention-policies/security-policies.mjs` | Chính sách bảo mật dựa trên quy ước (chặn ghi .env, ngăn viết lại lịch sử git) |
+| `examples/policies-basic.js` | Năm chính sách khởi động bao gồm các chế độ lỗi agent phổ biến |
+| `examples/policies-advanced/index.js` | Các mẫu nâng cao: nhập bắc cầu, lệnh gọi không đồng bộ, làm sạch đầu ra và hook kết thúc phiên |
+| `examples/convention-policies/security-policies.mjs` | Chính sách bảo mật dựa trên quy ước (chặn ghi .env, ngăn chặn viết lại lịch sử git) |
 | `examples/convention-policies/workflow-policies.mjs` | Chính sách quy trình làm việc dựa trên quy ước (nhắc nhở kiểm tra, tệp ghi kiểm tra) |
 
 ### Sử dụng các ví dụ tệp rõ ràng
@@ -346,13 +346,13 @@ failproofai policies --install --custom ./examples/policies-basic.js
 ### Sử dụng các ví dụ dựa trên quy ước
 
 ```bash
-# Copy to project level
+# Sao chép đến mức dự án
 mkdir -p .failproofai/policies
 cp examples/convention-policies/*.mjs .failproofai/policies/
 
-# Or copy to user level
+# Hoặc sao chép đến mức người dùng
 mkdir -p ~/.failproofai/policies
 cp examples/convention-policies/*.mjs ~/.failproofai/policies/
 ```
 
-Không cần lệnh cài đặt — các tệp được tải tự động trên sự kiện hook tiếp theo.
+Không cần lệnh cài đặt — các tệp được chọn tự động trên sự kiện hook tiếp theo.

@@ -1,27 +1,27 @@
 ---
 title: アーキテクチャ
-description: "フックハンドラー、設定読み込み、ポリシー評価の内部動作"
+description: "フックハンドラー、設定の読み込み、ポリシー評価の内部動作について"
 icon: sitemap
 ---
 
-このドキュメントでは、failproofai の内部動作について説明します。フックシステムがエージェントのツール呼び出しをどのようにインターセプトするか、設定がどのように読み込まれマージされるか、ポリシーがどのように評価されるか、そしてダッシュボードがエージェントのアクティビティをどのように監視するかについて解説します。
+このドキュメントでは、failproofai の内部動作を説明します。フックシステムがエージェントのツール呼び出しをどのようにインターセプトするか、設定がどのように読み込まれてマージされるか、ポリシーがどのように評価されるか、そしてダッシュボードがエージェントのアクティビティをどのように監視するかについて解説します。
 
 ---
 
 ## 概要
 
-failproofai は独立した 2 つのサブシステムで構成されています。
+failproofai には独立した2つのサブシステムがあります。
 
-1. **フックハンドラー** - Claude Code がすべてのエージェントツール呼び出しに対して起動する高速な CLI サブプロセスです。ポリシーを評価して判定結果を返します。
-2. **エージェントモニター（ダッシュボード）** - エージェントセッションの監視とポリシー管理のための Next.js Web アプリケーションです。
+1. **フックハンドラー** — Claude Code がエージェントのツール呼び出しごとに起動する高速な CLI サブプロセス。ポリシーを評価して決定を返します。
+2. **エージェントモニター（ダッシュボード）** — エージェントセッションの監視とポリシー管理のための Next.js ウェブアプリケーション。
 
-両サブシステムは `~/.failproofai/` およびプロジェクトの `.failproofai/` ディレクトリにある設定ファイルを共有しますが、それぞれ別プロセスとして動作し、ファイルシステムを通じてのみ通信します。
+両方のサブシステムは `~/.failproofai/` およびプロジェクトの `.failproofai/` ディレクトリにある設定ファイルを共有していますが、別々のプロセスとして実行され、ファイルシステムを通じてのみ通信します。
 
 ---
 
 ## フックハンドラー
 
-### Claude Code との連携
+### Claude Code との統合
 
 `failproofai policies --install` を実行すると、`~/.claude/settings.json` に次のようなエントリが書き込まれます。
 
@@ -44,9 +44,9 @@ failproofai は独立した 2 つのサブシステムで構成されていま�
 }
 ```
 
-Claude Code は各ツール呼び出しの前に `failproofai --hook PreToolUse` をサブプロセスとして起動し、JSON ペイロードを stdin 経由で渡します。
+Claude Code は各ツール呼び出しの前に `failproofai --hook PreToolUse` をサブプロセスとして起動し、stdin に JSON ペイロードを渡します。
 
-### ペイロード形式
+### ペイロードの形式
 
 ```json
 {
@@ -62,9 +62,9 @@ Claude Code は各ツール呼び出しの前に `failproofai --hook PreToolUse`
 
 `PostToolUse` イベントの場合、ペイロードにはツールの出力を含む `tool_result` も含まれます。
 
-ハンドラーは stdin の上限を 1 MB に制限しています。この上限を超えるペイロードは破棄され、すべてのポリシーは暗黙的に allow となります。
+ハンドラーは stdin の上限を 1 MB に制限しています。この制限を超えるペイロードは破棄され、すべてのポリシーが暗黙的に allow となります。
 
-### レスポンス形式
+### レスポンスの形式
 
 **Deny（PreToolUse）:**
 ```json
@@ -104,19 +104,19 @@ Claude Code は各ツール呼び出しの前に `failproofai --hook PreToolUse`
 
 **メッセージ付き Allow:**
 
-`allow(message)` を使うと、操作が許可された場合でもポリシーから Claude に情報コンテキストを送り返せます。フックハンドラーは次の JSON を **stdout** に書き込みます（設定ファイルではなく、上記の deny・instruct レスポンスと同様に、Claude Code へのハンドラーのレスポンスです）。
+`allow(message)` を使用すると、操作が許可されている場合でも、ポリシーが情報コンテキストを Claude に送り返すことができます。フックハンドラーは以下の JSON を **stdout** に書き込みます（設定ファイルではありません — これは上記の deny や instruct レスポンスと同様に、フックハンドラープロセスが Claude Code に返すレスポンスです）。
 
 ```json
-// フックハンドラープロセスが stdout に書き込む内容
+// フックハンドラープロセスによって stdout に書き込まれます
 {
   "hookSpecificOutput": {
     "additionalContext": "All CI checks passed on branch 'feat/my-feature'."
   }
 }
 ```
-- 終了コード: `0`（操作は許可される）
+- 終了コード: `0`（操作は許可されます）
 - 複数のポリシーがメッセージ付きの `allow` を返した場合、それらのメッセージは改行で結合されて単一の `additionalContext` 文字列になります
-- ポリシーがメッセージを返さない場合、stdout は空になります（従来と同様）
+- どのポリシーもメッセージを提供しない場合、stdout は空になります（従来と同じ）
 
 ### 処理パイプライン
 
@@ -126,26 +126,26 @@ Claude Code は各ツール呼び出しの前に `failproofai --hook PreToolUse`
 stdin JSON
   → ペイロードのパース（最大 1 MB）
   → セッションメタデータの抽出（session_id、cwd、tool_name、tool_input など）
-  → readMergedHooksConfig(cwd)    ← プロジェクト・ローカル・グローバル設定をマージ
-  → 有効な組み込みポリシーを解決済みパラメーターで登録
+  → readMergedHooksConfig(cwd)    ← プロジェクト + ローカル + グローバル設定をマージ
+  → 解決済みパラメーターで有効な組み込みポリシーを登録
   → customPoliciesPath からカスタムポリシーを読み込み（設定されている場合）
   → カスタムポリシーをポリシーレジストリに登録
-  → すべてのポリシーを評価（組み込みが先、次にカスタム）
-      → 最初の deny で短絡評価
-      → instruct の判定を蓄積
-      → allow のメッセージを蓄積
-  → JSON 判定結果を stdout に書き込み
-  → イベントを ~/.failproofai/hook-activity/current.jsonl に永続化
+  → すべてのポリシーを評価（組み込みを先に、次にカスタム）
+      → 最初の deny で即時短絡
+      → instruct の決定は蓄積
+      → allow メッセージは蓄積
+  → JSON の決定を stdout に書き込み
+  → イベントを ~/.failproofai/hook-activity/current.jsonl に保存
   → 終了
 ```
 
-LLM 呼び出しなしで、一般的なペイロードに対して全体が 100ms 未満で完了します。
+プロセス全体は、LLM 呼び出しなしで一般的なペイロードに対して 100ms 以内で完了します。
 
 ---
 
 ## 設定の読み込み
 
-`src/hooks/hooks-config.ts` が 3 スコープの設定読み込みを実装しています。
+`src/hooks/hooks-config.ts` が3スコープの設定読み込みを実装しています。
 
 ```text
 [1] {cwd}/.failproofai/policies-config.json        ← プロジェクト（最高優先度）
@@ -153,13 +153,13 @@ LLM 呼び出しなしで、一般的なペイロードに対して全体が 100
 [3] ~/.failproofai/policies-config.json             ← グローバル（最低優先度）
 ```
 
-マージのロジック:
-- `enabledPolicies` - 3 つのファイルにわたって重複排除したユニオン
-- `policyParams` - ポリシーごとのキーで、最初に定義したファイルが全体として優先
-- `customPoliciesPath` - 最初に定義したファイルが優先
-- `llm` - 最初に定義したファイルが優先
+マージロジック:
+- `enabledPolicies` — 3つのファイル全体で重複を除いた和集合
+- `policyParams` — ポリシーごとのキーで、最初に定義したファイルが全体に優先
+- `customPoliciesPath` — 最初に定義したファイルが優先
+- `llm` — 最初に定義したファイルが優先
 
-Web ダッシュボードはプロジェクトの cwd なしで起動されるため、読み書きに `readHooksConfig()`（グローバルのみ）を使用します。
+ウェブダッシュボードはプロジェクトの cwd を指定して呼び出されないため、読み取りと書き込みに `readHooksConfig()`（グローバルのみ）を使用します。
 
 ---
 
@@ -169,24 +169,24 @@ Web ダッシュボードはプロジェクトの cwd なしで起動される�
 
 各ポリシーに対して:
 
-1. ポリシーの `params` スキーマを参照します（存在する場合）。
-2. マージ済み設定から `policyParams[policy.name]` を読み取ります。
-3. ユーザー指定の値をスキーマのデフォルト値に上書きして `ctx.params` を生成します。
-4. 解決済みコンテキストで `policy.fn(ctx)` を呼び出します。
-5. 結果が `deny` の場合、即座に停止してその判定を返します。
-6. 結果が `instruct` の場合、メッセージを蓄積して処理を継続します。
-7. 結果が `allow` の場合、次のポリシーに進みます。
+1. ポリシーの `params` スキーマを検索します（存在する場合）。
+2. マージされた設定から `policyParams[policy.name]` を読み取ります。
+3. ユーザー指定の値をスキーマのデフォルト値にマージして `ctx.params` を生成します。
+4. 解決されたコンテキストで `policy.fn(ctx)` を呼び出します。
+5. 結果が `deny` であれば即座に停止し、その決定を返します。
+6. 結果が `instruct` であれば、メッセージを蓄積して続行します。
+7. 結果が `allow` であれば、次のポリシーに進みます。
 
 すべてのポリシーが実行された後:
-- `deny` が返された場合、deny レスポンスを出力します。
-- `instruct` の結果が収集された場合、すべてのメッセージを結合した単一の instruct レスポンスを出力します。
-- それ以外の場合、allow レスポンスを出力します（stdout は空、終了コードは 0）。
+- `deny` が返された場合は deny レスポンスを出力します。
+- `instruct` の返答が収集された場合は、すべてのメッセージを結合した単一の instruct レスポンスを出力します。
+- それ以外の場合は allow レスポンスを出力します（stdout は空、終了コード 0）。
 
 ---
 
 ## 組み込みポリシー
 
-`src/hooks/builtin-policies.ts` は 39 個の組み込みポリシーを `BuiltinPolicyDefinition` オブジェクトとして定義しています。
+`src/hooks/builtin-policies.ts` が39個の組み込みポリシーを `BuiltinPolicyDefinition` オブジェクトとして定義しています。
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -204,15 +204,15 @@ interface BuiltinPolicyDefinition {
 }
 ```
 
-`params` を受け取るポリシーは、各パラメーターの型とデフォルト値を持つ `PolicyParamsSchema` を宣言します。ポリシーエバリュエーターは `fn` を呼び出す前に解決済みの値を `ctx.params` に注入します。デフォルト値は常に先に適用されるため、ポリシー関数は null チェックなしで `ctx.params` を読み取れます。
+`params` を受け付けるポリシーは、各パラメーターの型とデフォルト値を含む `PolicyParamsSchema` を宣言します。ポリシーエバリュエーターは `fn` を呼び出す前に、解決済みの値を `ctx.params` に注入します。デフォルト値は常に最初に適用されるため、ポリシー関数は null チェックなしで `ctx.params` を読み取ることができます。
 
-ポリシー内のパターンマッチングは、生の文字列マッチングではなくパース済みのコマンドトークン（argv）を使用します。これにより、シェル演算子のインジェクションによるバイパスを防ぎます（例: `sudo systemctl status *` というパターンは、コマンドに `; rm -rf /` を追記しても回避できません）。
+ポリシー内部のパターンマッチングは、生の文字列マッチングではなく、パースされたコマンドトークン（argv）を使用します。これにより、シェル演算子インジェクションによるバイパスを防止します（例：`sudo systemctl status *` のパターンは、コマンドに `; rm -rf /` を追加してもバイパスできません）。
 
 ---
 
 ## カスタムポリシー
 
-`src/hooks/custom-hooks-registry.ts` は `globalThis` ベースのレジストリを実装しています。
+`src/hooks/custom-hooks-registry.ts` が `globalThis` ベースのレジストリを実装しています。
 
 ```typescript
 const REGISTRY_KEY = "__failproofai_custom_hooks__";
@@ -225,25 +225,25 @@ export function getCustomHooks(): CustomHook[] { ... }
 export function clearCustomHooks(): void { ... }  // テストで使用
 ```
 
-`src/hooks/custom-hooks-loader.ts` はユーザーのポリシーファイルを読み込みます。
+`src/hooks/custom-hooks-loader.ts` がユーザーのポリシーファイルを読み込みます。
 
-1. 設定から `customPoliciesPath` を読み取り、存在しない場合はスキップします。
-2. 絶対パスに解決してファイルの存在を確認します。
-3. `from "failproofai"` のすべてのインポートを実際の dist パスに書き換え、`customPolicies` が同じ `globalThis` レジストリを参照するようにします。
-4. ESM 互換性を確保するため、推移的なローカルインポートを再帰的に書き換えます。
-5. 一時的な `.mjs` ファイルを書き出し、エントリファイルを `import()` します。
+1. 設定から `customPoliciesPath` を読み取ります。存在しない場合はスキップします。
+2. 絶対パスに解決し、ファイルの存在を確認します。
+3. `from "failproofai"` のすべてのインポートを実際の dist パスに書き換え、`customPolicies` が同じ `globalThis` レジストリに解決されるようにします。
+4. ESM との互換性を確保するため、推移的なローカルインポートを再帰的に書き換えます。
+5. 一時的な `.mjs` ファイルを書き込み、エントリファイルを `import()` します。
 6. `getCustomHooks()` を呼び出して登録済みフックを取得します。
-7. `finally` ブロックですべての一時ファイルを削除します。
+7. `finally` ブロックですべての一時ファイルをクリーンアップします。
 
-エラー（ファイルが見つからない、構文エラー、インポート失敗）が発生した場合、エラーは `~/.failproofai/hook.log` に記録され、ローダーは空の配列を返します。組み込みポリシーへの影響はありません。
+エラーが発生した場合（ファイルが見つからない、構文エラー、インポート失敗）、エラーは `~/.failproofai/hook.log` に記録され、ローダーは空の配列を返します。組み込みポリシーは影響を受けません。
 
-カスタムポリシーはすべての組み込みポリシーの後に評価されます。カスタムポリシーが `deny` を返した場合、以降のカスタムポリシーの評価は短絡されますが、その時点ですべての組み込みポリシーはすでに実行済みです。
+カスタムポリシーはすべての組み込みポリシーの後に評価されます。カスタムポリシーの `deny` は後続のカスタムポリシーを短絡しますが（その時点ですべての組み込みポリシーはすでに実行済みです）。
 
 ---
 
 ## アクティビティログ
 
-各フックイベントの後、ハンドラーは JSONL の 1 行を `~/.failproofai/hook-activity/current.jsonl` に追記します。このファイルはページサイズに達すると `page-<timestamp>-<seq>.jsonl` にローテーションされます。
+各フックイベントの後、ハンドラーは `~/.failproofai/hook-activity/current.jsonl` に JSONL の1行を追記します。このファイルはページサイズに達すると `page-<timestamp>-<seq>.jsonl` にローテーションされます。
 
 ```json
 {
@@ -258,70 +258,70 @@ export function clearCustomHooks(): void { ... }  // テストで使用
 }
 ```
 
-allow 以外の判定をしたポリシーごとに 1 行記録されます。allow の判定はファイルサイズを小さく保つためにログに記録されません。
+非 allow の決定を下したポリシーごとに1行記録されます。ファイルサイズを小さく保つため、allow の決定はログに記録されません。
 
 ---
 
 ## ダッシュボードのアーキテクチャ
 
-ダッシュボードは App Router を使用した **Next.js 16** アプリケーションで、React Server Components と Server Actions を活用しています。
+ダッシュボードは、React Server Components と Server Actions を使用したApp Routerを採用した **Next.js 16** アプリケーションです。
 
 ```text
 app/
   layout.tsx                  ← ルートレイアウト（テーマ、テレメトリー、ナビゲーション）
-  projects/page.tsx           ← サーバーコンポーネント: すべての Claude プロジェクトを一覧表示
-  project/[name]/page.tsx     ← サーバーコンポーネント: プロジェクト内のセッションを一覧表示
+  projects/page.tsx           ← サーバーコンポーネント: すべての Claude プロジェクトの一覧
+  project/[name]/page.tsx     ← サーバーコンポーネント: プロジェクト内のセッション一覧
   project/[name]/session/
-    [sessionId]/page.tsx      ← サーバーコンポーネント: セッションビューアーのレンダリング
+    [sessionId]/page.tsx      ← サーバーコンポーネント: セッションビューアーの表示
   policies/page.tsx           ← クライアントコンポーネント: ポリシー管理 + アクティビティログ
   actions/
-    get-hooks-config.ts       ← 設定 + ポリシーリストの読み取り
-    update-hooks-config.ts    ← ポリシーの有効/無効の切り替え
+    get-hooks-config.ts       ← 設定 + ポリシー一覧の読み取り
+    update-hooks-config.ts    ← ポリシーのオン/オフ切り替え
     update-policy-params.ts   ← ポリシーパラメーターの更新
     get-hook-activity.ts      ← アクティビティログのページネーション/検索
     install-hooks-web.ts      ← ブラウザからのフックのインストール/削除
   api/
-    download/[project]/[session]/route.ts   ← CLI セッションごとのエクスポート（JSONL または JSON）
+    download/[project]/[session]/route.ts   ← CLIセッションごとのエクスポート（JSONL または JSON）
 ```
 
 **データフロー:**
 
 - ページコンポーネントは `lib/projects.ts` と `lib/log-entries.ts` を呼び出し、ファイルシステムから直接プロジェクト/セッションデータを読み取ります（読み取りに API レイヤーは不要）。
-- Policies ページはすべての変更操作（切り替え、パラメーター更新、インストール/削除）に Server Actions を使用します。
+- ポリシーページはすべての変更操作（切り替え、パラメーター更新、インストール/削除）に Server Actions を使用します。
 - セッションビューアーは Claude の JSONL トランスクリプト形式をパースし、メッセージとツール呼び出しのタイムラインをレンダリングします。
 
-**主要な設計判断:**
+**主要な設計上の決定事項:**
 
-- データベースなし - すべての永続的な状態はプレーンファイル（`~/.failproofai/`、`~/.claude/projects/`）に保存します。
-- 変更操作には Server Actions を使用 - CRUD 操作に REST API は不要です。
-- 読み取りページには React Server Components を使用 - 初期ロードが高速で、データフェッチのクライアントバンドルが不要です。
-- クライアントコンポーネントはインタラクティブ性が必要な場合のみ使用します（ポリシーの切り替え、アクティビティ検索、ログビューアー）。
+- データベースなし — すべての永続的な状態はプレーンファイル（`~/.failproofai/`、`~/.claude/projects/`）に保存されます。
+- 変更操作には Server Actions を使用 — CRUD 操作に REST API は不要。
+- 読み取りページには React Server Components を使用 — 初期読み込みが速く、データフェッチのクライアントバンドルが不要。
+- クライアントコンポーネントはインタラクティビティが必要な箇所のみ（ポリシーの切り替え、アクティビティ検索、ログビューアー）。
 
 ---
 
-## ファイル構成
+## ファイルレイアウト
 
 ```text
 failproofai/
 ├── bin/
-│   └── failproofai.mjs           # CLI ルーター（hook / dashboard / install など）
+│   └── failproofai.mjs           # CLI ルーター（フック / ダッシュボード / インストール など）
 ├── src/hooks/
 │   ├── handler.ts                # フックイベントパイプライン
-│   ├── builtin-policies.ts       # 39 個のポリシー定義
+│   ├── builtin-policies.ts       # 39個のポリシー定義
 │   ├── policy-evaluator.ts       # ポリシー実行エンジン
-│   ├── policy-registry.ts        # ポリシーの登録と参照
+│   ├── policy-registry.ts        # ポリシーの登録と検索
 │   ├── policy-types.ts           # TypeScript インターフェース
-│   ├── hooks-config.ts           # マルチスコープ設定読み込み
+│   ├── hooks-config.ts           # マルチスコープ設定の読み込み
 │   ├── custom-hooks-registry.ts  # globalThis ベースのフックレジストリ
 │   ├── custom-hooks-loader.ts    # ユーザー JS フック用の ESM ローダー
-│   ├── manager.ts                # インストール/削除/一覧操作
+│   ├── manager.ts                # インストール / 削除 / 一覧表示の操作
 │   ├── install-prompt.ts         # インタラクティブなポリシー選択プロンプト
 │   ├── hook-logger.ts            # hook.log へのログ記録
-│   ├── hook-activity-store.ts    # hook-activity/ へのアクティビティ永続化
+│   ├── hook-activity-store.ts    # hook-activity/ へのアクティビティ保存
 │   └── llm-client.ts             # LLM API クライアント（AI 駆動ポリシー用）
 ├── app/                          # Next.js ダッシュボード（ページ + サーバーアクション）
 ├── lib/                          # 共有ユーティリティ
-│   ├── projects.ts               # ファイルシステムから Claude プロジェクトを列挙
+│   ├── projects.ts               # ファイルシステムからの Claude プロジェクトの列挙
 │   ├── log-entries.ts            # Claude トランスクリプト JSONL 形式のパース
 │   ├── paths.ts                  # システムパスの解決
 │   └── ...

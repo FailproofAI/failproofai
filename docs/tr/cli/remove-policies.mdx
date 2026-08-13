@@ -1,5 +1,5 @@
 ---
-title: Politikaları kaldır
+title: Politikaları kaldırma
 description: "Claude Code'un ayarlarından hook girdilerini kaldırın"
 ---
 
@@ -15,29 +15,29 @@ Takma adlar: `failproofai p -u`
 
 | Bayrak | Açıklama |
 |------|-------------|
-| `--scope user` | Genel ayarlardan kaldırın (varsayılan) |
-| `--scope project` | Proje ayarlarından kaldırın |
-| `--scope local` | Yerel ayarlardan kaldırın |
-| `--scope all` | Tüm kapsamlardan aynı anda kaldırın |
-| `--custom` / `-c` | Yapılandırmadaki `customPoliciesPath` öğesini temizleyin |
+| `--scope user` | Genel ayarlardan kaldırır (varsayılan) |
+| `--scope project` | Proje ayarlarından kaldırır |
+| `--scope local` | Yerel ayarlardan kaldırır |
+| `--scope all` | Tüm kapsamlardan aynı anda kaldırır |
+| `--custom` / `-c` | Konfigürasyondan `customPoliciesPath` öğesini temizler |
 
 ## Davranış
 
 - **Politika adı yok** - ayarlar dosyasından tüm failproofai hook girdilerini kaldırır
-- **Belirli adlar** - bu politikaları devre dışı bırakır ancak hookları yüklü tutar
+- **Belirli adlar** - bu politikaları devre dışı bırakır ancak hook'ları yüklü tutar
 
 ## Örnekler
 
 ```bash
-# Tüm hookları genel olarak kaldırın
+# Tüm hook'ları genel olarak kaldırır
 failproofai policies --uninstall
 
-# Belirli bir politikayı devre dışı bırakın (hookları yüklü tutar)
+# Belirli bir politikayı devre dışı bırakır (hook'ları yüklü tutar)
 failproofai policies --uninstall block-sudo
 
-# Hookları her kapsamdan kaldırın
+# Hook'ları her kapsamdan kaldırır
 failproofai policies --uninstall --scope all
 
-# Özel politikalar yolunu temizleyin
+# Özel politikalar yolunu temizler
 failproofai policies --uninstall --custom
 ```

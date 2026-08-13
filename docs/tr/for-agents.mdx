@@ -3,36 +3,36 @@ title: "Ajanlar için"
 description: "Failproof AI bilgisini kodlama ajanınıza tek komutla ekleyin. Claude Code, Cursor, Windsurf ve daha fazlasıyla çalışır."
 ---
 
-Failproof AI başvuru rehberinin tamamını kodlama ajanınıza tek komutla ekleyin. Claude Code, Cursor, Windsurf ve beceri desteği olan diğer tüm ajanlarla çalışır.
+Failproof AI başvuru belgelerinin tamamını kodlama ajanınıza tek komutla ekleyin. Claude Code, Cursor, Windsurf ve beceri destekleyen diğer tüm ajanlarla çalışır.
 
 ```bash
 npx skills add https://docs.befailproof.ai
 ```
 
-`npx skills` hangi ajanları yüklü olduğunu tespit eder ve beceriyi her biri için doğru biçimde otomatik olarak ekler.
+`npx skills`, hangi ajanların yüklü olduğunu algılar ve beceriyi her biri için otomatik olarak doğru biçimde ekler.
 
-## Beceri neyi kapsar
+## Beceri neleri kapsar?
 
-| Alan | İçindekiler |
-|------|------------|
-| Politikalar | Yerleşik politika adları, olay türleri, parametreler, etkinleştirme/devre dışı bırakma |
-| Özel politikalar | `customPolicies.add()`, eşleşme filtreleri, `allow`/`deny`/`instruct` API |
-| Context nesnesi | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
+| Alan | İçeriği |
+|------|---------|
+| İlkeler | Yerleşik ilke adları, olay türleri, parametreler, etkinleştir/devre dışı bırak |
+| Özel ilkeler | `customPolicies.add()`, eşleştirme filtreleri, `allow`/`deny`/`instruct` API |
+| İçerik nesnesi | `ctx.eventType`, `ctx.toolName`, `ctx.toolInput`, `ctx.session` |
 | Yapılandırma | `policies-config.json` yapısı, kapsam birleştirme, `policyParams` |
 | CLI | `failproofai policies --install`, `--uninstall`, `--custom`, kapsamlar |
-| Dashboard | Oturum görüntüleyicisi, politika aktivitesi, ortam değişkenleri |
-| Mimari | Hook işleyici akışı, çıkış kodları, stdin/stdout sözleşmesi |
+| Pano | Oturum görüntüleyicisi, ilke etkinliği, ortam değişkenleri |
+| Mimari | Hook işleyicisi akışı, çıkış kodları, stdin/stdout sözleşmesi |
 
 ## Beceri tam mı?
 
-Mintlify, `llms.txt` dosyasını gezintideki tüm sayfalardan oluşturur. Failproof AI dokümanları tam API'yi kapsar - her politika, seçenek ve örnek dahil edilmiştir. Eksik bir şey bulursanız, kaynak `https://docs.befailproof.ai/llms-full.txt` konumundadır.
+Mintlify, `llms.txt` dosyasını gezinti menüsündeki tüm sayfalardan oluşturur. Failproof AI belgeleri tam API'yi kapsar - her ilke, seçenek ve örnek dahildir. Eksik bir şey bulursanız, kaynak `https://docs.befailproof.ai/llms-full.txt` adresindedir.
 
-Hedeflenen içerik için doğrudan belirli bir sayfaya bağlantı verin:
+Hedefli içerik için doğrudan belirli bir sayfaya bağlantı verin:
 
 ```bash
-# Yalnızca özel politikalar API'si
+# Yalnızca özel ilkeler API'si
 npx skills add https://docs.befailproof.ai/custom-policies
 
-# Yalnızca yerleşik politikalar
+# Yalnızca yerleşik ilkeler
 npx skills add https://docs.befailproof.ai/built-in-policies
 ```

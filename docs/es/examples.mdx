@@ -4,7 +4,7 @@ description: "Cómo configurar hooks para Claude Code y el Agents SDK"
 icon: book-open
 ---
 
-Ejemplos listos para usar en escenarios comunes. Cada uno muestra cómo instalar y qué esperar.
+Ejemplos listos para usar en escenarios comunes. Cada uno muestra cómo instalarlo y qué esperar.
 
 ---
 
@@ -55,8 +55,8 @@ Si estás desarrollando con el [Agents SDK](https://docs.anthropic.com/en/docs/a
     Pasa comandos de hook al crear el proceso de tu agente. Los hooks se activan de la misma manera que en Claude Code — mediante JSON por stdin/stdout:
 
     ```bash
-    failproofai --hook PreToolUse   # se llama antes de cada herramienta
-    failproofai --hook PostToolUse  # se llama después de cada herramienta
+    failproofai --hook PreToolUse   # called before each tool
+    failproofai --hook PostToolUse  # called after each tool
     ```
   </Step>
   <Step title="Escribir una política personalizada para tu agente">
@@ -98,13 +98,13 @@ Qué hace esto:
 - `block-sudo` — bloquea todos los comandos `sudo`
 - `block-rm-rf` — bloquea la eliminación recursiva de archivos
 - `block-force-push` — bloquea `git push --force`
-- `block-curl-pipe-sh` — bloquea la ejecución de scripts remotos canalizados al shell
+- `block-curl-pipe-sh` — bloquea el piping de scripts remotos a la shell
 
 ---
 
 ## Prevenir la filtración de secretos
 
-Impide que los agentes vean o filtren credenciales en la salida de las herramientas.
+Evita que los agentes vean o filtren credenciales en la salida de las herramientas.
 
 ```bash
 failproofai policies --install sanitize-api-keys sanitize-jwt sanitize-connection-strings sanitize-bearer-tokens
@@ -142,7 +142,7 @@ customPolicies.add({
         signal: AbortSignal.timeout(5000),
       });
     } catch {
-      // nunca bloquear al agente si Slack no está disponible
+      // never block the agent if Slack is unreachable
     }
 
     return allow();
@@ -182,7 +182,7 @@ customPolicies.add({
 
 ---
 
-## Exigir pruebas antes de hacer commit
+## Exigir pruebas antes de los commits
 
 Recuerda a los agentes que ejecuten las pruebas antes de hacer commit.
 
@@ -206,9 +206,9 @@ customPolicies.add({
 
 ---
 
-## Proteger un repositorio de producción
+## Bloquear un repositorio de producción
 
-Guarda una configuración a nivel de proyecto para que todos los desarrolladores de tu equipo apliquen las mismas políticas.
+Haz commit de una configuración a nivel de proyecto para que todos los desarrolladores de tu equipo obtengan las mismas políticas.
 
 Crea `.failproofai/policies-config.json` en tu repositorio:
 
@@ -238,13 +238,13 @@ git add .failproofai/policies-config.json
 git commit -m "Add failproofai team policies"
 ```
 
-Todos los miembros del equipo que tengan failproofai instalado aplicarán estas reglas automáticamente.
+Todos los miembros del equipo que tengan failproofai instalado adoptarán estas reglas automáticamente.
 
 ---
 
-## Construir un estándar de calidad para toda la organización con políticas de convención
+## Construir un estándar de calidad organizacional con políticas de convención
 
-La configuración más efectiva: guarda `.failproofai/policies/` en tu repositorio con políticas adaptadas a tu proyecto. Todos los miembros del equipo las obtienen automáticamente — sin comandos de instalación, sin cambios de configuración.
+La configuración más impactante: haz commit de `.failproofai/policies/` en tu repositorio con políticas adaptadas a tu proyecto. Todos los miembros del equipo las obtienen automáticamente — sin comandos de instalación, sin cambios de configuración.
 
 <Steps>
   <Step title="Crear el directorio y añadir políticas">
@@ -256,8 +256,8 @@ La configuración más efectiva: guarda `.failproofai/policies/` en tu repositor
     // .failproofai/policies/team-policies.mjs
     import { customPolicies, allow, deny, instruct } from "failproofai";
 
-    // Imponer el gestor de paquetes preferido del equipo
-    // (o habilitar la política integrada prefer-package-manager en su lugar)
+    // Enforce your team's preferred package manager
+    // (or enable the built-in prefer-package-manager policy instead)
     customPolicies.add({
       name: "enforce-bun",
       match: { events: ["PreToolUse"] },
@@ -269,7 +269,7 @@ La configuración más efectiva: guarda `.failproofai/policies/` en tu repositor
       },
     });
 
-    // Recordar al agente que ejecute las pruebas antes de hacer commit
+    // Remind the agent to run tests before committing
     customPolicies.add({
       name: "test-before-commit",
       match: { events: ["PreToolUse"] },
@@ -283,14 +283,14 @@ La configuración más efectiva: guarda `.failproofai/policies/` en tu repositor
     });
     ```
   </Step>
-  <Step title="Hacer commit a git">
+  <Step title="Hacer commit en git">
     ```bash
     git add .failproofai/policies/
     git commit -m "Add team quality policies"
     ```
   </Step>
   <Step title="Seguir mejorando">
-    A medida que tu equipo encuentre nuevos tipos de fallos, añade políticas y publícalas. Todos reciben la actualización en su próximo `git pull`. Estas políticas se convierten en un estándar de calidad vivo que crece con tu equipo.
+    A medida que tu equipo encuentre nuevos tipos de fallos, añade políticas y haz push. Todos recibirán la actualización en su próximo `git pull`. Estas políticas se convierten en un estándar de calidad vivo que crece junto con tu equipo.
   </Step>
 </Steps>
 
@@ -302,6 +302,6 @@ El directorio [`examples/`](https://github.com/failproofai/failproofai/tree/main
 
 | Archivo | Qué muestra |
 |---------|-------------|
-| `policies-basic.js` | Políticas iniciales: bloquear escrituras en producción, force-push y scripts canalizados |
+| `policies-basic.js` | Políticas básicas — bloquear escrituras en producción, force-push y scripts con pipe |
 | `policies-notification.js` | Alertas de Slack para notificaciones de inactividad y fin de sesión |
-| `policies-advanced/index.js` | Importaciones transitivas, hooks asíncronos, limpieza de salida en PostToolUse y manejo del evento Stop |
+| `policies-advanced/index.js` | Importaciones transitivas, hooks asíncronos, limpieza de salida en PostToolUse y gestión del evento Stop |

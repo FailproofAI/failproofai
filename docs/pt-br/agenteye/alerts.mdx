@@ -1,63 +1,63 @@
 ---
 title: "Alertas"
-description: "Saiba no momento em que algo ultrapassa seu limite, no canal que sua equipe já monitora, em vez de ficar sabendo pelo cliente."
+description: "Saiba no momento em que algo ultrapassa seus limites, no canal que seu time já usa, em vez de ficar sabendo pelo cliente."
 ---
 
 
-Saiba no momento em que algo ultrapassa seu limite, no canal que sua equipe já monitora, em vez de ficar sabendo pelo cliente. Configure uma regra uma vez e a Observabilidade do Failproof AI verifica ela periodicamente, depois te notifica por e-mail, Slack, webhook ou direto no dashboard.
+Saiba no momento em que algo ultrapassa seus limites, no canal que seu time já usa, em vez de ficar sabendo pelo cliente. Configure uma regra uma vez e o Failproof AI Observability a verifica periodicamente, notificando você por e-mail, Slack, webhook ou direto no dashboard.
 
-![A página de Alertas: uma grade de cartões de regras de alerta, cada um mostrando seu gatilho, janela de avaliação, canais e um selo de severidade informativo, de aviso ou crítico](/agenteye/images/alerts.png)
-*Todas as regras de alerta de relance: o que monitoram, com que frequência, onde notificam e qual a urgência.*
+![A página de Alertas: uma grade de cards de regras de alerta, cada um mostrando seu gatilho, janela de avaliação, canais e um badge de severidade informativo, de aviso ou crítico](/agenteye/images/alerts.png)
+*Todas as regras de alerta de um relance: o que monitora, com que frequência, onde notifica e qual a urgência.*
 
 ## Saiba dos problemas antes dos seus usuários
 
-Pare de ficar atualizando um dashboard na esperança de capturar uma regressão. Use um alerta sempre que houver um sinal que você precisaria saber mesmo quando ninguém está olhando, e receba-o onde você já está:
+Pare de ficar atualizando um dashboard na esperança de pegar uma regressão. Crie um alerta sempre que houver um sinal que você vai querer receber mesmo quando ninguém estiver olhando, e faça ele chegar onde você já está:
 
 - **E-mail**, para quem precisa saber.
-- **Slack**, uma mensagem rica com um botão que vai direto ao incidente.
-- **Webhook**, um POST JSON para PagerDuty, Opsgenie ou seu próprio endpoint, com uma assinatura opcional para que o receptor possa confiar nele.
+- **Slack**, uma mensagem rica com um botão que vai direto para o incidente.
+- **Webhook**, um POST JSON para PagerDuty, Opsgenie ou seu próprio endpoint, com uma assinatura opcional para que o receptor possa confiar nela.
 - **No dashboard**, discreto por design, para quando você está ajustando uma regra e ainda não quer notificar ninguém.
 
-Combine qualquer combinação em uma única regra, e a severidade (informativo, aviso ou crítico) é incluída para que os urgentes pareçam urgentes.
+Combine qualquer um desses canais em uma única regra, e a severidade (informativo, aviso ou crítico) vai junto para que os urgentes pareçam urgentes.
 
 ## Monte a regra em um formulário, não em JSON
 
-Você descreve o que "quebrado" significa em um formulário, e a Observabilidade do Failproof AI escreve a regra subjacente para você. A especificação JSON é apenas o que esse formulário produz nos bastidores, então você pode lê-la para entender uma regra, mas raramente precisa digitá-la.
+Você descreve o que significa "quebrado" em um formulário, e o Failproof AI Observability escreve a regra por baixo dos panos. A especificação JSON é apenas o que o formulário produz internamente, então você pode lê-la para entender uma regra, mas raramente precisará digitá-la.
 
-![O formulário de novo alerta: nome e descrição, um botão de ativar/desativar, e um seletor de gatilho oferecendo limite de métrica, SQL personalizado, pontuação de avaliação, avaliação composta e condições por evento](/agenteye/images/alert-new.png)
-*Escolha um gatilho e o formulário exibe os campos corretos; Salvar grava a regra.*
+![O formulário de novo alerta: nome e descrição, um toggle de ativação e um seletor de gatilho oferecendo limiar de métrica, SQL customizado, pontuação de avaliação, avaliação composta e condições por evento](/agenteye/images/alert-new.png)
+*Escolha um gatilho e o formulário mostra os campos certos; Salvar grava a regra.*
 
-O caminho feliz é rápido: dê um nome, escolha um **gatilho** (o que monitorar), defina o **limite e a janela** (quão grave, por quanto tempo), adicione pelo menos um **canal**, depois **Salve** e clique em **Testar** para disparar uma notificação sintética e confirmar que cada destino está configurado. Por baixo dos panos, isso produz uma pequena especificação como:
+O caminho feliz é rápido: dê um nome, escolha um **gatilho** (o que monitorar), defina o **limite e a janela** (quão grave, ao longo de quanto tempo), adicione pelo menos um **canal**, depois **Salve** e clique em **Testar** para disparar uma notificação sintética e confirmar que cada destino está configurado corretamente. Por baixo dos panos, isso gera uma especificação pequena como:
 
 ```json
 { "metric": "p95_latency_ms", "op": ">", "value": 5000, "window_secs": 900 }
 ```
 
-Você não está limitado a um tipo de sinal. Escolha o gatilho que corresponde à forma como você pensa sobre a falha:
+Você não está limitado a um único tipo de sinal. Escolha o gatilho que corresponde a como você pensa sobre a falha:
 
 | Gatilho | Dispara quando |
 |---|---|
-| **Limite de métrica** | uma métrica predefinida (taxa de erros, latência p95 ou p99, contagens de eventos ou erros, gasto com tokens) ultrapassa seu limite em uma janela |
-| **SQL personalizado** | sua própria consulta somente leitura retorna uma linha, ou um valor calculado ultrapassa um limite |
+| **Limiar de métrica** | uma métrica predefinida (taxa de erros, latência p95 ou p99, contagens de eventos ou erros, gasto com tokens) ultrapassa seu limite em uma janela |
+| **SQL customizado** | sua própria consulta somente leitura retorna uma linha, ou um valor calculado ultrapassa um limite |
 | **Pontuação de avaliação** | a média da pontuação de um avaliador (por exemplo, alucinação) ultrapassa um limite |
-| **Avaliação composta** | várias verificações de pontuação se combinam com lógica any, all ou pelo-menos-N, para capturar uma regressão que só aparece entre pontuações |
+| **Avaliação composta** | várias verificações de pontuação combinadas com lógica any, all ou pelo-menos-N, para detectar uma regressão que só aparece entre pontuações |
 | **Por evento** | um único evento correspondente ocorre: um agente específico, um tipo de erro específico ou uma substring de mensagem |
 
-Já está olhando para uma falha na [página de Erros](/pt-br/agenteye/error-tracking)? Cada linha lá tem um botão **+ alerta** que abre esse mesmo formulário preenchido para capturar exatamente aquela falha novamente, de modo que o incidente que você acabou de triar se torna o próximo a te notificar.
+Já está analisando uma falha na [página de Erros](/pt-br/agenteye/error-tracking)? Cada linha lá tem um botão **+ alerta** que abre esse mesmo formulário preenchido para capturar exatamente aquela falha novamente, de modo que o incidente que você acabou de triar se torna o que vai te notificar da próxima vez.
 
-**Onde encontrar:** Os alertas ficam em `/<org-slug>/alerts`. Criar, editar, excluir e testar regras requer **`alerts:write`**; `alerts:read` é suficiente para visualizar. O seletor de destinatários lista os membros da sua organização por nome, para que você possa notificar uma pessoa sem sair do formulário.
+**Onde encontrar:** Alertas ficam em `/<org-slug>/alerts`. Criar, editar, excluir e testar regras requer **`alerts:write`**; `alerts:read` é suficiente para visualizar. O seletor de destinatários lista os membros da sua organização pelo nome, então você pode notificar uma pessoa sem sair do formulário.
 
-## Notifique-me apenas quando for real
+## Notifique-me só quando for real
 
-Uma medição ruim não deveria te acordar. O filtro de ruído **M de N** controla quantas das últimas verificações precisam falhar antes que o alerta realmente te notifique. Defina como **3 de 5** e a regra só dispara após ter ultrapassado o limite em três das últimas cinco verificações, evitando que um sinal instável gere alarmes falsos; deixe no padrão **1 de 1** para disparar na primeira violação. Você também escolhe com que frequência a regra é executada, a partir de predefinições de 1m, 5m, 15m e 1h, adequadas à velocidade com que o sinal realmente se move.
+Uma medição ruim não deve te acordar. O filtro de ruído **M de N** controla quantas das últimas verificações precisam falhar antes que o alerta realmente te notifique. Configure como **3 de 5** e a regra dispara somente após violar três das últimas cinco verificações, evitando que um sinal instável gere alarmes falsos; deixe no padrão **1 de 1** para disparar na primeira violação. Você também escolhe com que frequência a regra é executada, entre predefinições de 1m, 5m, 15m e 1h, adequadas à velocidade real do sinal.
 
 ## O que acontece quando um alerta dispara
 
-Uma violação abre um **incidente** e notifica seus canais uma vez. A partir daí, sua equipe confirma o recebimento, atribui um responsável, discute o problema e o resolve, tudo contra um registro limpo e atribuído. Esse fluxo de triagem tem seu próprio espaço: veja [Incidentes](/pt-br/agenteye/incidents).
+Uma violação abre um **incidente** e notifica seus canais uma vez. A partir daí, seu time reconhece, atribui um responsável, discute e resolve, tudo contra um registro limpo e atribuído. Esse fluxo de triagem tem seu próprio espaço: veja [Incidentes](/pt-br/agenteye/incidents).
 
 ## Relacionados
 
-- [Incidentes](/pt-br/agenteye/incidents): acompanhe um alerta disparado do estado aberto ao confirmado e ao resolvido.
+- [Incidentes](/pt-br/agenteye/incidents): acompanhe um alerta disparado do aberto ao reconhecido e ao resolvido.
 - [Rastreamento de erros](/pt-br/agenteye/error-tracking): agrupe falhas de agentes e promova uma delas a um alerta com um clique.
 - [Dashboards](/pt-br/agenteye/dashboards): monitore os painéis compartilhados de onde vêm os limites que você alerta.
-- [CLI e agentes](/pt-br/agenteye/cli-and-agents): crie alertas e confirme incidentes pelo terminal, ou automatize-os no CI.
+- [CLI e agentes](/pt-br/agenteye/cli-and-agents): crie alertas e reconheça incidentes pelo terminal, ou automatize no CI.

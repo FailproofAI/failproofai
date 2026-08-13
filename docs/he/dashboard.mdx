@@ -1,110 +1,110 @@
 ---
 title: לוח בקרה
-description: "מעקב אחר הפעלות של agents, ביקורת קריאות כלים וניהול מדיניות"
+description: "עיקוב הסעות וכלי של סוכנים, בדיקת קריאות לכלים וניהול מדיניות"
 icon: chart-line
 ---
 
-לוח הבקרה של failproofai היא אפליקציית ווב מקומית לניטור הפעלות ה-AI agents שלך וניהול מדיניות. תראה מה עשו ה-agents שלך בזמן שהיית הרחק.
+לוח הבקרה של failproofai היא יישומון ווב מקומי לעיקוב הסעות של סוכני AI שלך וניהול מדיניות. בדוק מה עשו הסוכנים שלך בזמן שלא היית שם.
 
 ---
 
-## הפעלת לוח הבקרה
+## התחלת לוח הבקרה
 
 ```bash
 failproofai
 ```
 
-נפתח ב-`http://localhost:8020`.
+נפתח בכתובת `http://localhost:8020`.
 
-לוח הבקרה קורא את נתוני הפרויקט, ההפעלה וקונפיגורציית failproofai המקומיים ישירות מקובץ המערכת. תכונות עם אימות אופציוני, כגון תזכורות ביקורת והזמנות, שולחות את המידע הנדרש לבקשות אלה (כולל כתובות דוא״ל) לממשקי API מרוחקים.
+לוח הבקרה קורא נתוני פרויקט מקומי, הסעות וקונפיגורציה של failproofai ישירות מקובץ המערכת. תכונות מאומתות אופציונליות, כגון תזכורות ביקורת והזמנות, שולחות את המידע הנדרש לבקשות אלה (כולל כתובות דוא"ל) לממשקי API מרוחקים.
 
 ---
 
 ## דפים
 
-### Projects
+### Projects (פרויקטים)
 
-מפרטת את כל פרויקטי Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, Hermes, OpenClaw, Factory Droid, Devin, Antigravity ו-Goose שנמצאו במכונה שלך. פרויקטי Claude מגולים מ-`~/.claude/projects/` (או הנתיב שנקבע על ידי `CLAUDE_PROJECTS_PATH`); פרויקטי Codex מגולים על ידי סריקת כל תמליל תחת `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` וקיבוץ לפי ה-`cwd` שנרשם ברשומה הראשונה של כל הפעלה; פרויקטי Copilot CLI מגולים על ידי סריקת כל `~/.copilot/session-state/<sessionId>/workspace.yaml` (הניתן להגדרה דרך `COPILOT_HOME`) וקיבוץ לפי שדה ה-`cwd` שלו; פרויקטי Cursor Agent מגולים על ידי סריקת מטא-נתונים לכל הפעלה תחת `~/.cursor/agent-sessions/<sessionId>/` (הניתן להגדרה דרך `CURSOR_HOME`, עם `conversations/` ו-`sessions/` כגישה לחילופין) עבור סקלר `cwd` ב-`meta.json` / `session.json` / `workspace.yaml`; פרויקטי OpenCode מגולים על ידי שאילתת ה-SQLite DB שלו ב-`~/.local/share/opencode/opencode.db` דרך `opencode db --format json` (אנו קוראים את טבלאות ה-`session` ו-`project` וקיבוץ לפי `project_id`); פרויקטי Pi מגולים על ידי סריקת תמליל JSONL לכל הפעלה תחת `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (הניתן להגדרה דרך `PI_SESSIONS_DIR`) וקבלת ה-`cwd` מרשומה הראשונה של כל הפעלה; הפעלות שער של Hermes נקראות ישירות מחנות SQLite של כל פרופיל — `~/.hermes/state.db` בתוספת `~/.hermes/profiles/<name>/state.db` (ניתן להחזקה בחזרה דרך `HERMES_HOME`, או `HERMES_DB_PATH` עבור מסד נתונים יחיד) — וקיבוצות לפרויקטים `hermes-<profile>-<source>` לפי פרופיל ו-`source` (Slack/Telegram/cli/cron — להפעלות שער אין cwd); הפעלות שער של OpenClaw נקראות מ-`~/.openclaw/agents/<agentId>/sessions/*.jsonl` וקיבוצות לפרויקטים `openclaw-<agentId>-<channel>` לפי agent וערוץ (גם ללא cwd); פרויקטי Factory Droid מגולים מתמליל JSONL ב-`~/.factory/sessions/<encoded-cwd>/*.jsonl` וקיבוץ לפי cwd; פרויקטי Devin מה-SQLite DB שלו ב-`~/.local/share/devin/cli/sessions.db` (קיבוץ לפי `working_directory` של כל הפעלה); פרויקטי Antigravity מתמליל JSONL ב-`~/.gemini/antigravity-cli/brain/<conversationId>/…/transcript_full.jsonl` וקיבוץ לפי cwd; ופרויקטי Goose מה-SQLite DB שלו ב-`~/.local/share/goose/sessions/sessions.db` (קיבוץ לפי `working_dir` של כל הפעלה). פרויקט שהשתמשה בו CLIs מרובות מוצג כשורה יחידה עם כל התגים התואמים. השתמש בתפריט הנפתח של **CLI** מעל הטבלה לסינון לפי agent CLI ספציפי; ה-URL שומר את הבחירה שלך כ-`?cli=claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose`.
+רשימת כל פרויקטי Claude Code, OpenAI Codex, GitHub Copilot CLI _(beta)_, Cursor Agent _(beta)_, OpenCode _(beta)_, Pi _(beta)_, Hermes, OpenClaw, Factory Droid, Devin, Antigravity ו-Goose המצויים במחשב שלך. פרויקטי Claude מתגלים מתוך `~/.claude/projects/` (או הנתיב שנקבע על ידי `CLAUDE_PROJECTS_PATH`); פרויקטי Codex מתגלים על ידי סריקת כל תמלול תחת `~/.codex/sessions/<YYYY>/<MM>/<DD>/*.jsonl` וקיבוץ לפי ה-`cwd` המוקלט בתיעוד הראשון של כל הסעה; פרויקטי Copilot CLI מתגלים על ידי סריקת כל `~/.copilot/session-state/<sessionId>/workspace.yaml` (ניתן להגדרה דרך `COPILOT_HOME`) וקיבוץ לפי שדה ה-`cwd` שלהם; פרויקטי Cursor Agent מתגלים על ידי סריקת מטא-נתונים לפי הסעה תחת `~/.cursor/agent-sessions/<sessionId>/` (ניתן להגדרה דרך `CURSOR_HOME`, כשהתיקיות `conversations/` ו-`sessions/` נבדקות כחלופות) לחיפוש אחר ערך סקלרי של `cwd` ב-`meta.json` / `session.json` / `workspace.yaml`; פרויקטי OpenCode מתגלים על ידי שאילתה של ה-SQLite DB שלהו ב-`~/.local/share/opencode/opencode.db` דרך `opencode db --format json` (אנו קוראים את טבלאות ה-`session` וה-`project` וקיבוץ לפי `project_id`); פרויקטי Pi מתגלים על ידי סריקת תמלולי JSONL לפי הסעה תחת `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl` (ניתן להגדרה דרך `PI_SESSIONS_DIR`) וה-`cwd` נלקח מתיעוד הראשון של כל הסעה; הסעות שער של Hermes נקראות ישירות מחנות ה-SQLite של כל פרופיל — `~/.hermes/state.db` בתוספת `~/.hermes/profiles/<name>/state.db` (ניתן לעקוף דרך `HERMES_HOME`, או `HERMES_DB_PATH` עבור בסיס נתונים יחיד) — וקובצו לפרויקטים `hermes-<profile>-<source>` לפי פרופיל ו-`source` (Slack/Telegram/cli/cron — הסעות שער אין להן cwd); הסעות שער של OpenClaw נקראות מתוך `~/.openclaw/agents/<agentId>/sessions/*.jsonl` וקובצו לפרויקטים `openclaw-<agentId>-<channel>` לפי סוכן וערוץ (גם ללא cwd); פרויקטי Factory Droid מתגלים מתוך התמלולים של JSONL ב-`~/.factory/sessions/<encoded-cwd>/*.jsonl` וקובצו לפי cwd; פרויקטי Devin מתוך ה-SQLite DB שלו ב-`~/.local/share/devin/cli/sessions.db` (קובצו לפי `working_directory` של כל הסעה); פרויקטי Antigravity מתוך התמלולים של JSONL ב-`~/.gemini/antigravity-cli/brain/<conversationId>/…/transcript_full.jsonl` וקובצו לפי cwd; ופרויקטי Goose מתוך ה-SQLite DB שלו ב-`~/.local/share/goose/sessions/sessions.db` (קובצו לפי `working_dir` של כל הסעה). פרויקט ששימש בו כמה ממשקי CLI מוצג כשורה יחידה עם כל התגים התואמים. השתמש בתפריט הנפתח של **CLI** מעל הטבלה כדי לסנן לפי ממשק CLI מסוים; ה-URL משמר את הבחירה שלך כ-`?cli=claude|codex|copilot|cursor|opencode|pi|hermes|openclaw|factory|devin|antigravity|goose`.
 
-Hermes ו-OpenClaw הם במתחם משתמש ואין להם ספריית עבודה לקיבוץ, כך שהם מוצגים כ-**עץ תיקיה שניתן להתמוטט** — פרופיל (או agent) ברמה העליונה, הערוצים שלו תחתיו — בעוד שכל CLI מבוסס-cwd נשאר שורה שטוחה. שורות תיקיה מגבשות את ספירת ההפעלה וההפעילות האחרונה ביותר של כל מה שנמצא תחתיהן, תיקיות מכווצות זוכרות בין ביקורים, וחיפוש מילות מפתח מרחיב כל מה שהוא תואם.
+Hermes ו-OpenClaw הם בתחום משתמש ואין להם ספריית עבודה לקיבוץ לפיה, כך שהם מוצגים כ-**עץ תיקייה מתקפל** — פרופיל (או סוכן) ברמה הראשונה, הערוצים שלו מתחתיה — בעוד שכל ממשק CLI מבוסס-cwd נשאר שורה שטוחה. שורות תיקייה מצרפות את מספר ההסעות וההפעילות האחרונה ביותר של הכל תחתיהן, התיקיות המקופלות נזכרות בין ביקורים, וחיפוש מילות מפתח מרחיב כל מה שהוא תואם.
 
 כל פרויקט מציג:
-- שם פרויקט (מתקבל מנתיב התיקיה)
-- תג CLI — `Claude Code` (כתום), `OpenAI Codex` (סגול), `GitHub Copilot` (כחול), `Cursor Agent` (אזמרגד), `OpenCode` (ענבר), `Pi` (ורוד), ו/או `Hermes` (אינדיגו)
-- תאריך של הפעילות ההפעלה המאוחרת ביותר
+- שם הפרויקט (מקור מנתיב התיקייה)
+- תג CLI — `Claude Code` (כתום), `OpenAI Codex` (סגול), `GitHub Copilot` (כחול), `Cursor Agent` (ירוק-כחול), `OpenCode` (amber), `Pi` (ורוד), ו/או `Hermes` (אינדיגו)
+- תאריך של הפעילות בהסעה האחרונה ביותר
 
-לחץ על פרויקט כדי לראות את ההפעלות שלו.
+לחץ על פרויקט כדי לראות את הסעותיו.
 
-### Sessions
+### Sessions (הסעות)
 
-מפרטת את כל ההפעלות בתוך פרויקט. כל הפעלה מציגה:
-- מזהה הפעלה
-- חתימות התחלה וסיום
-- מספר קריאות כלים
-- ספירת פעילות hook (מדיניות שירו)
+רשימת כל ההסעות בתוך פרויקט. כל הסעה מציגה:
+- מזהה הסעה
+- חותמות זמן של התחלה וסיום
+- מספר קריאות לכלים
+- ספירת פעילות ווי (מדיניות שהופעלו)
 
-השתמש בסנן טווח התאריכים וחיפוש מזהה הפעלה כדי לצמצם את הרשימה. הפעלות מדדיות.
+השתמש בפילטר טווח התאריخים וחיפוש מזהה הסעה כדי לצמצם את הרשימה. ההסעות מחולקות לעמודים.
 
-לחץ על הפעלה כדי לפתוח את כלי הצפיה של הפעלה.
+לחץ על הסעה כדי לפתוח את מציין ההסעה.
 
-### Session viewer
+### מציין הסעה
 
-כלי הצפיה של הפעלה עונה על השאלה העיקרית עבור agents עצמאיים: מה עשה ה-agent, והאם הוא נשאר על הפסים? תג CLI ליד הכותרת מציין אם ההפעלה היא תמליל Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin, Antigravity או Goose. הוא מציג ציר זמן של כל מה שקרה בהפעלה:
+מציין ההסעה משיב על השאלה החזקה ביותר עבור סוכנים אוטונומיים: מה עשה הסוכן, והאם הוא נשאר על השביל? תג CLI ליד הכותרת מציין האם ההסעה היא תמלול של Claude Code, OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin, Antigravity או Goose. הוא מציג ציר זמן של כל מה שקרה בהסעה:
 
-- **Messages** - תגובות טקסט של Claude והנחיות משתמש
-- **Tool calls** - כל כלי שהדור Claude, עם הקלט והפלט שלו
-- **Policy activity** - לכל קריאת כלי, אילו מדיניות ירו ואיזה החלטה הן החזירו
+- **Messages (הודעות)** - תגובות טקסט של Claude והנושאים של משתמשים
+- **Tool calls (קריאות לכלים)** - כל כלי שהחל Claude, עם הקלט והפלט שלו
+- **Policy activity (פעילות מדיניות)** - עבור כל קריאה לכלי, אילו מדיניות הופעלו ואילו החלטה החזירו
 
-פס הסטטיסטיקה בחלק העליון מציג משך הפעלה, סך הכל קריאות כלים וסיכום של החלטות hook (ספירות allow / deny / instruct).
+סרגל הנתונים בחלק העליון מציג משך הסעה, סך הקריאות לכלים וסיכום ההחלטות של ווי (counts של allow / deny / instruct).
 
-לחץ על כפתור **Download Logs** כדי לייצא את ההפעלה. עבור הפעלות Claude Code, Codex, Copilot, Cursor ו-Pi אתה מקבל את התמליל JSONL המקורי בדיסק byte-for-byte; עבור OpenCode (שההפעלות שלו חיות ב-SQLite, לא בדיסק) אתה מקבל מסמך JSON המשקף את טבלאות `session` / `messages` / `parts` הבסיסיות.
+לחץ על כפתור **Download Logs** (הורדת יומנים) כדי לייצא את ההסעה. עבור הסעות Claude Code, Codex, Copilot, Cursor ו-Pi אתה מקבל את תמלול JSONL המקורי ממש כפי שהוא נשמר בדיסק; עבור OpenCode (שהסעותיו נמצאות ב-SQLite ולא על הדיסק) אתה מקבל מסמך JSON המשקף את טבלאות `session` / `messages` / `parts` הבסיסיות.
 
-### Audit
+### Audit (ביקורת)
 
-דוח מונע אישיות כיצד ה-agent שלך התנהג בפועל על פני הפעלות קודמות. מפעיל את אותה סריקה כמו CLI `failproofai audit` אך עוצב אותה כפוסטר בעמוד יחיד ניתן לשיתוף + ארבעה חלקים מתחת לקיפול:
+דוח מונע אישיות כיצד הסוכן שלך התנהג בפועל במהלך הסעות קודמות. מפעיל את אותה סריקה כמו CLI של `failproofai audit` אך מוצג אותה כפוסטר ניתן לשיתוף של מסך יחיד + ארבע חלקים מתחת לקפל:
 
-1. **Poster** — ממלא את כלל התצוגה הראשונה. אזור capture בעצמו עם תו failproof_ai + תווית audit · אינדקס ארכיטיפ (`№ NN of 08`) + תאריך audit · ניקוד מספרי (0–100) + דירוג אחוזון דוהר (`top 15%`) · שם הארכיטיפ (אחד מ-`the optimist`, `the cowboy`, `the explorer`, `the goldfish`, `the paranoid architect`, `the precision builder`, `the hammer`, `the ghost`) + פס 3 מילות מפתח · `// only N% of agents are this archetype` קו נדירות · כרית חותמת פיקסל 8×8 · `audit yours → failproof.ai` footer. שלושה כפתורי שיתוף יושבים ממש מחוץ לתיבת ה-capture: `post your archetype` (כוונת X), `share on linkedin`, `download poster`. ה-Capture עובר דרך `html-to-image` כך ש-PNG משחקת את הרינדור על המסך pixel-for-pixel (גבולות מקופלים, מסכה לוגו SVG, שיפועים, מטרי גופן — הכל שמור).
+1. **Poster (פוסטר)** — מלא את בחלון ההצגה הראשון. אזור ערימת PNG העצמאי עם סימן ה-failproof_ai + תווית ביקורת · אינדקס אבטיפוס (`№ NN of 08`) + תאריך ביקורת · ניקוד מספרי (0–100) + כדור דרגת אחוזון (`top 15%`) · שם האבטיפוס (אחד מהבאים: `the optimist`, `the cowboy`, `the explorer`, `the goldfish`, `the paranoid architect`, `the precision builder`, `the hammer`, `the ghost`) + רצועה של 3 מילות מפתח · `// only N% of agents are this archetype` שורת נדירות · רעפת סיגיל של 8×8 פיקסל · `audit yours → failproof.ai` כותרת. שלושה כפתורי שיתוף יושבים ממש מחוץ לקופסה: `post your archetype` (כוונת X), `share on linkedin`, `download poster`. הערימה פועלת דרך `html-to-image` כך שה-PNG תואם את העיבוד על המסך פיקסל לפיקסל (גבולות מקוקוקים, מסיכת לוגו SVG, gradients, מדדי גופן — הכל נשמר).
 
-2. **Strengths** — רשימת שורה רגועה ✓ של התנהגויות שה-agent שלך כבר עושה נכון, הנגזרות מנתוני הביקורת החיים (קצב קריאה כלים נקי, ללא דחיפות ישירות לראשיים, אפס דליפות אישורים, אפס סערות ניסיון שוב) — כל אחד מופץ רק כאשר למדיניות הרלוונטית יש רקורד נקי על פני חלון הביקורת.
+2. **Strengths (נקודות חוזק)** — רשימת שורות שקט ✓ התנהגויות שהסוכן שלך כבר עושה נכון, בנויות מנתוני הביקורת החי (קצב קריאות לכלים נקי, לא דחפים ישירים לראשי, דווח אפס של דלף אישורים, אין סערות ניסיון) — כל אחת מוצגת רק כאשר למדיניות הרלוונטית יש רקורד נקי על כל חלון הביקורת.
 
-3. **Quirks** — טבלת מה חמק דרך, דורגת לפי חומרה: `when · what slipped + the policy that would've caught it · severity pill · seen`, כאשר חזרת הקורים קוראת `new` (פעם אחת), `N× seen` (2–9 פעמים), או `recurring` (10+).
+3. **Quirks (מוזרויות)** — טבלה של מה שחמק, מדורג לפי חומרה: `when · what slipped + the policy that would've caught it · severity pill · seen`, שם ההישנות קורא `new` (פעם אחת), `N× seen` (2–9 פעמים), או `recurring` (10+).
 
-4. **How to improve** — רשימת שורה רגועה, אחת לכל מדיניות מסומנת: שם מדיניות בלבן, תיאור בשורה אחת, הוראת התקנה + כפתור עותק בצד ימין. כותרת הקטע קוראת `enable all N → projected <score> · <tier>` (הניקוד שהיית מגיע עם כל התיקון החל), וה-`[install all]` שלה מעתיק את הפקודה המשולבת `failproofai policy add a b c …` לכל מדיניות מסומנת.
+4. **How to improve (כיצד להשתפר)** — רשימת שורות שקט, אחת לכל מדיניות קבועה: שם מדיניות בלבן, תיאור בשורה אחת, פקודת התקנה + כפתור העתקה בצד ימין. כותרת החלק קורא `enable all N → projected <score> · <tier>` (הניקוד שהייתם מגיעים אליו עם כל התיקייה החלה), והכפתור `[install all]` שלה מעתיק את פקודת ה-`failproofai policy add a b c …` המשולבת עבור כל מדיניות קבועה.
 
-5. **Come back better** — שתי כרטיסיות זה לצד זה. שמאל: קבע תזכורת (`3d` / `7d` / `14d` / `30d` בחיר קדנציה; נשמר דרך `/api/auth/reminder` לאחר אימות). ימין: בטל את הצפיפויות failproof — `invite a friend` פותח מודל שלוקח רשימה מופרדת בפסיקים/רווח/שורה חדשה של דוא״ל חברים (מקסימום 10 לשליחה), POSTs אותם ל-`/api/audit/invite`, אשר מעביר ל-`POST /v0/invite` של ה-api-server. ה-api-server שולח דוא״ל אחד לכל נמען מ-`invite@failproof.ai` עם Cc של השולח ו-`Reply-To` מוגדר, כך שהנמען רואה מי הזמין אותו והשולח מקבל עותק בתיבת הדואר שלו. משתמשים אנונימיים מנותבים דרך ה-`AuthDialog` תחילה כך שדוא״ל השולח ידוע לפני שהזמנות יוצאות. זכאות / מילוי הטבות הוא מעקב.
+5. **Come back better (חוזרים עם תיקייה)** — שתי כרטיסיות זו לצד זו. שמאל: הגדר תזכורת (בוחר קצב `3d` / `7d` / `14d` / `30d`; נשמר דרך `/api/auth/reminder` ברגע שהאימות בוצע). ימין: בטל את תכניות failproof — `invite a friend` פותח דו-שיח שלוקח רשימה של כתובות דוא"ל של חברים בהפרדת פסיק/רווח/שורה חדשה (מקס 10 לשליחה), POST אותן ל-`/api/audit/invite`, שמעביר ל-`POST /v0/invite` של API-server. ה-API-server שולח דוא"ל אחד לכל נמען מתוך `invite@failproof.ai` עם ה-Cc של השולח וה-`Reply-To` מוגדר, כך שהנמען רואה מי הזמין אותו והשולח מקבל עותק בקופסת הדוא"ל שלו. משתמשים אנונימיים מנותבים דרך `AuthDialog` קודם לכן כדי שהדוא"ל של השולח ידוע לפני שההזמנות יוצאות. התאמה של זכויות / ביצוע הטבות היא עדכון נוסף.
 
-מונע על ידי ריצת `failproofai audit` — ראה [Audit CLI](/he/cli/audit) לעניין סריקת המנוע הבסיסי, הדגלים הנתמכים, ואי-שונות במטמון לכל תמליל. לוח הבקרה מטמן את התוצאה האחרונה ב-`~/.failproofai/audit-dashboard.json` (מצב `0600`, משבצת יחידה, הריצות החדשות משכתבות) כך שביקורים חוזרים מיידיים; **גם המטמון לכל-תמליל וכל-תוצאה דחויים בקריאה ברגע שהם מעבר לתגובת TTL 7 ימים** כך שלוח הבקרה לעולם לא משרת בשקט תוצאה בן שבוע — עבר ה-TTL `/audit` נופל דרך למצב הריק שלו ומעודד ריצה חדשה. לחיצה על `[ re-audit now ]` ליד החלק התחתון של הדוח POSTs `/api/audit/run` עם `noCache: true` — ביקורת חוזרת עוקפת את המטמון לכל-תמליל וסורקת מחדש כל תמליל מאפס ולא משרתת בשקט את התוצאה המטומנת — ולוח הבקרה סוקר `/api/audit/status` ב-1Hz עד שהריצה מסתיימת; רצועת התקדמות ורודה ודבוקה מנעוצה בחלק העליון של התצוגה במהלך הריצה עם טיימר שחלף, והתוצאה הטרייה מחליפה במקום בהצלחה (ללא טעינה מחדש של דף מלא; אי-ביקורת כושלת משאירה את הדוח הקודם שלם). בכשל הרצועה הופכת לאדום עם עותק מפתוח מהסוג `RerunError.kind` (`timeout` / `network` / `post_failed`). מצב ריק (אין מטמון או פג) ומצב אפס-הפעלות (המטמון קיים אך הסריקה לא מצאה תמליל) משטחים בנפרד.
+מונע על ידי זמן ההרצה של `failproofai audit` — ראה [Audit CLI](/he/cli/audit) לעבור הסריקה הבסיסי, דגלים נתמכים וחרוזי קאש לכל-תמלול. לוח הבקרה מטמון את התוצאה האחרונה ב-`~/.failproofai/audit-dashboard.json` (מצב `0600`, חריץ יחיד, ריצות חדשות דורסות) כך שביקורות חוזרות הן מיידיות; **גם קאש לכל-תמלול וקאש התוצאה-כל משולבים בקריאה ברגע שהם מבוגרים יותר מ-7 ימים** כדי שלוח הבקרה לעולם לא יעזור שקט תוצאה בת שבוע — עבור ה-TTL `/audit` נופל דרך מצבו הריק שלו ודוחה ריצה טרייה. לחיצה על `[ re-audit now ]` קרוב לתחתית הדוח POST `/api/audit/run` עם `noCache: true` — ריצה מחדש מחסום את קאש לכל-תמלול וסורק כל תמלול מ-0 במקום שקט להחזיר את התוצאה המוטמנת — ולוח הבקרה בודק את `/api/audit/status` ב-1Hz עד שהריצה מסתיימת; רצועת התקדמות ורודה דביקה מצודדת בחלק העליון של בחלון ההצגה במהלך הריצה עם טיימר עלוי, והתוצאה טרייה מחליפה במקומה בעת הצלחה (אין טעינה מחדש של עמוד שלם; ריצה מחדש שנכשלה משאירה את הדוח הקודם ללא נגיעה). בכשל הרצועה הופכת אדומה עם העתקה מפתחות מ-`RerunError.kind` (`timeout` / `network` / `post_failed`). מצב ריק (אין קאש או מוגבל) ומצב אפס-הסעות (קאש קיים אך הסריקה לא מצאה תמלולים) מוצגים בנפרד.
 
-### Policies
+### Policies (מדיניויות)
 
-דף שתי-לשוניות לניהול מדיניות וביקורת פעילות.
+דף בעל שתי לשוניות לניהול מדיניויות ובדיקת פעילות.
 
 <Tabs>
-  <Tab title="Policies tab">
-  - רב-בחר אילו agent CLIs failproofai מגנה מלוח יחיד — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi ו-Hermes כולם בעלי שורה עם מצב התקנה (`Active` / `Detected` / `Inactive`), נתיב הגדרות היקף המשתמש, ודגש צבע מותג. בדוק או בטל את בדיקת ה-CLIs שברצונך והקלק `Apply changes` כדי התקנה/הסרה של ההפרש בשלב אחד. CLIs שקובץ הבינאום שלה מוגדר בנתיב הם קבוע מראש.
-  - הפוך מדיניות אישית על או כבויה עם לחיצה יחידה (כתב ל-`~/.failproofai/policies-config.json` — משותף בכל CLI מותקן)
-  - הרחב מדיניות כדי להגדיר את הפרמטרים שלה (למדיניות התומכת בـ `policyParams`)
-  - קבע נתיב קובץ מדיניות מותאם
+  <Tab title="לשונית Policies">
+  - בחר ריבוי ממשקי CLI שה-failproofai מגן עליהם מלוח יחיד — Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi ו-Hermes כולם בעלי שורה עם מצב התקנה (`Active` / `Detected` / `Inactive`), נתיב הגדרות בתחום המשתמש, ודגש בעל צבע מותג. סמן או בטל סימון של ממשקי CLI שאתה רוצה ולחץ על `Apply changes` כדי להתקין/להסיר את ההבדל בשלב אחד. ממשקי CLI שהקובץ הבינארי שלהם מתגלה ב-PATH מסומנים מראש.
+  - הדלק מדיניויות בודדות או כבה אותן בלחיצה יחידה (כותב ל-`~/.failproofai/policies-config.json` — משותף על פני כל ממשק CLI מותקן)
+  - הרחב מדיניות כדי להגדיר את הפרמטרים שלה (עבור מדיניויות התומכות ב-`policyParams`)
+  - הגדר נתיב קובץ מדיניויות מותאם אישית
   </Tab>
-  <Tab title="Activity tab">
-  - היסטוריה דפדופית מלא של כל אירוע hook שירה על פני כל ההפעלות
-  - סנן לפי החלטה, סוג אירוע, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Hermes / OpenClaw / Factory Droid / Devin / Antigravity / Goose), שם מדיניות, או מזהה הפעלה
-  - כל שורה מציגה: חותמת זמן, שם מדיניות, החלטה, תג CLI (כתום = Claude Code, סגול = OpenAI Codex, כחול = GitHub Copilot, אזמרגד = Cursor Agent, ענבר = OpenCode, ורוד = Pi, אינדיגו = Hermes, טירקיז = OpenClaw, ורד = Factory Droid, סגול = Devin, ציאן = Antigravity, לימון = Goose), שם כלי, מזהה הפעלה, והסיבה להחלטות deny/instruct
-  - לחץ על מזהה הפעלה כדי לפתוח את התמליל שלו — כלי הצפיה מגלה אוטומטית אילו CLI ירה את ה-hook (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Hermes `~/.hermes/state.db`, OpenClaw `~/.openclaw/agents/<id>/sessions/*.jsonl`, Factory Droid `~/.factory/sessions/<encoded-cwd>/<id>.jsonl`, Devin `~/.local/share/devin/cli/sessions.db`, Antigravity `~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`, Goose `~/.local/share/goose/sessions/sessions.db`) וצג את תג ה-CLI התואם בכותרת
+  <Tab title="לשונית Activity">
+  - היסטוריית מלאה מחולקת לעמודים של כל אירוע ווי שהופעל על כל הסעות
+  - סנן לפי החלטה, סוג אירוע, CLI (Claude Code / OpenAI Codex / GitHub Copilot _(beta)_ / Cursor Agent _(beta)_ / OpenCode _(beta)_ / Pi _(beta)_ / Hermes / OpenClaw / Factory Droid / Devin / Antigravity / Goose), שם מדיניות, או מזהה הסעה
+  - כל שורה מציגה: חותמת זמן, שם מדיניות, החלטה, תג CLI (כתום = Claude Code, סגול = OpenAI Codex, כחול = GitHub Copilot, ירוק-כחול = Cursor Agent, amber = OpenCode, ורוד = Pi, אינדיגו = Hermes, טיל = OpenClaw, ורד = Factory Droid, סגול = Devin, ציאן = Antigravity, ליים = Goose), שם כלי, מזהה הסעה, והסיבה להחלטות deny/instruct
+  - לחץ על מזהה הסעה כדי לפתוח את התמלול שלה — מציין הביקורת מגלה אוטומטית איזה CLI הפעיל את הווי (Claude `~/.claude/projects/…`, Codex `~/.codex/sessions/…`, Copilot CLI `~/.copilot/session-state/<id>/events.jsonl`, Cursor Agent `~/.cursor/agent-sessions/<id>/events.jsonl`, OpenCode `~/.local/share/opencode/opencode.db`, Pi `~/.pi/agent/sessions/<encoded-cwd>/<id>.jsonl`, Hermes `~/.hermes/state.db`, OpenClaw `~/.openclaw/agents/<id>/sessions/*.jsonl`, Factory Droid `~/.factory/sessions/<encoded-cwd>/<id>.jsonl`, Devin `~/.local/share/devin/cli/sessions.db`, Antigravity `~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl`, Goose `~/.local/share/goose/sessions/sessions.db`) ומוצג את תג ה-CLI התואם בכותרת
   </Tab>
 </Tabs>
 
 ---
 
-## auto-refresh
+## עדכון אוטומטי
 
-לוח הבקרה יש קלט auto-refresh בניווט העליון. כאשר מופעל, הדף הנוכחי רענן מעת לעת כדי להציג הפעלות חדשות ופעילות מדיניות בעת שהן מופיעות. חיוני לניטור הפעלות agent עצמאיות ארוכות.
+לוח הבקרה יש כפתור עדכון אוטומטי בניווט העליון. כאשר מופעל, העמוד הנוכחי מתרענן מעת לעת כדי להציג הסעות חדשות ופעילות מדיניות כשהן מופיעות. חיוני לעיקוב הסעות סוכן אוטונומיות ארוכות.
 
 ---
 
 ## השבתת דפים
 
-אם אתה צריך רק חלקים מסוימים מלוח הבקרה, קבע `FAILPROOFAI_DISABLE_PAGES` לרשימה מופרדת בפסיקים של שמות דפים:
+אם אתה זקוק רק לחלקים מסוימים של לוח הבקרה, הגדר את `FAILPROOFAI_DISABLE_PAGES` לרשימה מופרדת בפסיקים של שמות דפים:
 
 ```bash
 FAILPROOFAI_DISABLE_PAGES=policies failproofai
@@ -116,7 +116,7 @@ FAILPROOFAI_DISABLE_PAGES=policies failproofai
 
 ## הגדרת נתיב הפרויקטים
 
-כברירת מחדל, לוח הבקרה קורא מספריית הפרויקטים הסטנדרטית של Claude Code. החזקה בחזרה עבור הגדרות מותאם אישית:
+כברירת מחדל, לוח הבקרה קורא מספריית הפרויקטים של Claude Code הסטנדרטית. עקוף אותה עבור הגדרות מותאמות אישית:
 
 ```bash
 CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
@@ -124,32 +124,32 @@ CLAUDE_PROJECTS_PATH=/custom/path/to/projects failproofai
 
 ---
 
-## גישה מאירח non-localhost
+## גישה מכונסת שאינו localhost
 
-כאשר מפעיל את לוח הבקרה ב-**dev mode** (`npm run dev`) וגישה אליו מ-hostname אחר מ-`localhost` - לדוגמה, דומיין מותאם אישית, IP מרוחק, או URL דרוך — אתה עלול לראות אזהרה כמו:
+כאשר מפעילים את לוח הבקרה ב-**מצב פיתוח** (`npm run dev`) וגישה אליו מכונסת שאינו `localhost` - למשל, דומיין מותאם אישית, IP מרוחק או כתובת URL מנהרה - אולי תראה התראה כגון:
 
 ```text
 ⚠ Blocked cross-origin request to Next.js dev resource /_next/webpack-hmr from "dashboard.example.com".
 ```
 
-זה Next.js חוסם גישה חוצת מוצא להתקן HMR (טעינה מחדש מודול חם) שלו, שהוא תכונה ב-dev בלבד. כדי לאפשר למארח שלך, השתמש בדגל `--allowed-origins`:
+זה Next.js חוסם גישה חוצת מקור לווקסוקט HMR (hot module reload) שלו, שהוא תכונת dev-only. כדי לאפשר את ההוסט שלך, השתמש בדגל `--allowed-origins`:
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com
 ```
 
-עבור אירוחים או IPs מרובים, העבר רשימה מופרדת בפסיקים:
+עבור מכשירים או כתובות IP מרובות, העבר רשימה מופרדת בפסיקים:
 
 ```bash
 npm run dev -- --allowed-origins dashboard.example.com,192.168.1.5
 ```
 
-אתה יכול גם להגדיר את משתנה הסביבה `FAILPROOFAI_ALLOWED_DEV_ORIGINS` במקום זאת:
+ניתן גם להגדיר את משתנה הסביבה `FAILPROOFAI_ALLOWED_DEV_ORIGINS` במקום זאת:
 
 ```bash
 FAILPROOFAI_ALLOWED_DEV_ORIGINS=dashboard.example.com npm run dev
 ```
 
 <Note>
-זה חל רק על dev mode. כאשר פועל `failproofai` (מצב ייצור), אין WebSocket HMR ואין בעיית משאב dev חוצת מוצא.
+זה חל רק על מצב פיתוח. כאשר מפעילים `failproofai` (מצב ייצור), אין ווקסוקט HMR ואין בעיית משאב dev חוצת מקור.
 </Note>

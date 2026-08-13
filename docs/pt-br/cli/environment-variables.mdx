@@ -6,67 +6,70 @@ description: "Configure o comportamento do failproofai com variáveis de ambient
 ## Dashboard
 
 | Variável | Descrição |
-|----------|-----------|
+|----------|-------------|
 | `PORT` | Porta do dashboard (padrão: `8020`) |
 | `CLAUDE_PROJECTS_PATH` | Substitui o local onde as pastas de projetos do Claude Code são encontradas |
 | `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Páginas do dashboard a ocultar, separadas por vírgula |
 | `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hosts/IPs com permissão para acessar recursos de desenvolvimento. Equivalente a `--allowed-origins`. |
 
-## Logs
+## Logging
 
 | Variável | Descrição |
-|----------|-----------|
+|----------|-------------|
 | `FAILPROOFAI_LOG_LEVEL=info\|warn\|error` | Nível de log do servidor (padrão: `warn`) |
 | `FAILPROOFAI_HOOK_LOG_FILE` | Caminho personalizado para o arquivo de log de hooks, ou `true` para o padrão (`~/.failproofai/logs/hooks.log`) |
 
 ## Telemetria
 
 O failproofai envia telemetria de uso anônima por padrão. Há duas formas de
-desativá-la, e prevalece sempre a mais restritiva — uma variável de ambiente
-nunca pode reativar algo que o arquivo de configuração desligou.
+desativá-la, e prevalece sempre a opção mais restritiva — uma variável de
+ambiente nunca pode reativar algo que o arquivo de configuração desativou.
 
 | Variável | Descrição |
-|----------|-----------|
+|----------|-------------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | Desativa a telemetria de uso anônima para este processo |
 
-Para desativar permanentemente na máquina, adicione o seguinte ao `~/.failproofai/config.toml`:
+Para desativá-la permanentemente na máquina, adicione o seguinte ao `~/.failproofai/config.json`:
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
-O arquivo de configuração é a opção recomendada se você executa o **daemon failproofaid**.
-O daemon é um serviço de escopo do sistema, e seu ambiente não inclui
-variáveis exportadas pelo seu shell — portanto, `FAILPROOFAI_TELEMETRY_DISABLED` não
-chega até ele. `[telemetry] enabled = false` é lido tanto pela CLI quanto pelo daemon.
+O arquivo de configuração é a opção recomendada caso você execute o **daemon failproofaid**.
+O daemon é um serviço com escopo de sistema e seu ambiente não inclui
+variáveis exportadas do seu shell — portanto, `FAILPROOFAI_TELEMETRY_DISABLED` não
+chegará até ele. `[telemetry] enabled = false` é lido tanto pela CLI quanto pelo daemon.
 </Note>
 
-O daemon reporta apenas seu próprio **ciclo de vida**: quando iniciou (e se a
-execução anterior encerrou corretamente), quando parou, quando seu worker de avaliação
-foi iniciado ou reiniciado, quando uma tarefa de coleta falhou e o resultado de uma
-sincronização de políticas da nuvem. Esses eventos carregam valores de baixa cardinalidade
-e contagens — nunca um caminho de arquivo, um comando, uma política, um prompt ou
-qualquer conteúdo lido de uma transcrição. Não há evento por chamada de ferramenta.
+O daemon reporta apenas seu próprio **ciclo de vida**: que foi iniciado (e se a
+execução anterior encerrou normalmente), que foi parado, quando seu worker de avaliação
+foi criado ou reiniciado, quando uma tarefa de coleta falhou e o resultado de uma
+sincronização de políticas na nuvem. Esses eventos carregam valores e contagens de baixa
+cardinalidade — nunca um caminho de arquivo, um comando, uma política, um prompt ou
+qualquer dado lido de uma transcrição. Não existe evento por chamada de ferramenta.
 
 ## Autenticação
 
 | Variável | Descrição |
-|----------|-----------|
+|----------|-------------|
 | `FAILPROOF_API_URL` | Substitui a URL base do servidor de API usada pelo diálogo de autenticação do dashboard. O padrão é `https://api.befailproof.ai`; defina como `http://localhost:8080` (ou outro endereço) ao executar um servidor de API local. |
 | `FAILPROOFAI_AUTH_DIR` | Substitui o local onde `auth.json` é armazenado (padrão: `~/.failproofai`). Útil principalmente para testes isolados. |
 
 ## Prompt de primeira execução
 
 | Variável | Descrição |
-|----------|-----------|
-| `FAILPROOFAI_NO_FIRST_RUN=1` | Ignora o prompt que oferece a instalação de políticas na primeira invocação simples do `failproofai` |
+|----------|-------------|
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Ignora o prompt que oferece a instalação de políticas na primeira execução simples do `failproofai` |
 
 ## LLM (para avaliação de políticas)
 
 | Variável | Descrição |
-|----------|-----------|
+|----------|-------------|
 | `FAILPROOFAI_LLM_BASE_URL` | Endpoint da API do LLM (padrão: `https://api.openai.com/v1`) |
 | `FAILPROOFAI_LLM_API_KEY` | Chave de API para políticas baseadas em LLM |
 | `FAILPROOFAI_LLM_MODEL` | Nome do modelo (padrão: `gpt-4o-mini`) |

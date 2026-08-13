@@ -1,54 +1,54 @@
 ---
-title: "Auditorias: seu analista de confiabilidade automático"
-description: "O Failproof AI Observability vai atrás das falhas para as quais você nunca criou uma regra e entrega uma lista de tarefas priorizadas, com evidências, mostrando exatamente o que corrigir."
+title: "Audits: seu analista de confiabilidade automático"
+description: "O Failproof AI Observability vasculha suas falhas — inclusive as que você nunca escreveu uma regra para detectar — e entrega uma lista priorizada de exatamente o que corrigir, com evidências."
 ---
 
 
-O Failproof AI Observability vai atrás das falhas para as quais você nunca criou uma regra e entrega uma lista de tarefas priorizadas, com evidências, mostrando exatamente o que corrigir. É como ter um analista vasculhando seus logs toda noite e deixando o resumo na sua mesa de manhã.
+O Failproof AI Observability vasculha suas falhas — inclusive as que você nunca escreveu uma regra para detectar — e entrega uma lista priorizada de exatamente o que corrigir, com evidências. É como ter um analista passando pente-fino nos seus logs toda noite e deixando um resumo objetivo na sua mesa pela manhã.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?autoplay=1&mute=1&loop=1&playlist=C5nHKGQIqZQ&rel=0&playsinline=1" title="Assista: Encontre automaticamente onde seu agente está falhando (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Um tour de dois minutos: de uma execução agendada a uma correção que você pode tomar como ação.*
+*Um tour de dois minutos: de uma execução agendada a uma correção que você pode agir imediatamente.*
 
-![A página de Auditorias: jobs recorrentes que analisam suas sessões em busca de padrões de falha, cada um com um cronograma e sensibilidade](/agenteye/images/audits.png)
-*Cada auditoria é um job recorrente que minera suas sessões e gera recomendações priorizadas com base em evidências.*
+![A página de Audits: jobs recorrentes que varrem suas sessões em busca de padrões de falha, cada um com um agendamento e uma sensibilidade](/agenteye/images/audits.png)
+*Cada audit é um job recorrente que minera suas sessões e produz recomendações priorizadas e embasadas em evidências.*
 
 ## Pare de adivinhar o que corrigir a seguir
 
-Alertas detectam os problemas que você já sabe monitorar. Auditorias detectam os que você não sabe. Em um cronograma que você define, uma auditoria percorre todas as suas sessões de agente e caça os padrões que valem a pena corrigir — para que você gaste seu tempo agindo sobre os achados em vez de rolar logs esperando encontrá-los sozinho.
+Alertas capturam os problemas que você já sabe que precisa monitorar. Audits capturam os que você ainda não sabe. Em um agendamento que você define, um audit lê todas as suas sessões de agente e caça os padrões que valem a pena corrigir — para que você gaste seu tempo agindo sobre os resultados, e não rolando logs na esperança de encontrar algo sozinho.
 
 Uma única execução vai atrás dos modos de falha que realmente quebram agentes em produção:
 
-- **Clusters de erros**: a mesma falha se repetindo com uma causa raiz comum.
-- **Desvio em relação a uma linha de base**: comportamento deslizando silenciosamente para fora de uma janela conhecida como boa.
-- **Falha de objetivo em transcrições**: execuções que tecnicamente terminaram, mas nunca cumpriram o objetivo.
-- **Uso incorreto de ferramentas**: a ferramenta errada, argumentos inválidos ou loops que desperdiçam chamadas.
-- **Trade-offs de qualidade e custo**: onde você está pagando caro por uma saída que poderia obter mais barato.
-- **Lacunas de cobertura**: comportamento que nenhuma avaliação ou alerta está monitorando.
+- **Clusters de erros**: a mesma falha se repetindo sob uma causa raiz comum.
+- **Desvio em relação a uma baseline**: comportamento se afastando silenciosamente de uma janela conhecida e saudável.
+- **Falha de objetivo em transcrições**: execuções que tecnicamente terminaram, mas nunca cumpriram o que precisavam.
+- **Uso incorreto de ferramentas**: ferramenta errada, argumentos ruins ou loops que desperdiçam chamadas.
+- **Trade-offs de qualidade e custo**: onde você está pagando mais do que deveria por um resultado que poderia ser mais barato.
+- **Lacunas de cobertura**: comportamentos que nenhum eval ou alerta está monitorando.
 
-Você decide com que intensidade a auditoria analisa usando uma única configuração de **sensibilidade** (baixa, média ou alta), para que um agente barulhento de staging e um de produção mais restrito possam ser ajustados ao sinal que você deseja.
+Você define a intensidade da análise com uma única configuração de **sensibilidade** (baixa, média ou alta), para que um agente barulhento de staging e um de produção bem controlado possam ser ajustados ao sinal que você quer receber.
 
 ## Cada recomendação vem com evidências
 
-Você nunca precisa aceitar um achado por fé. Cada recomendação cita as sessões exatas de onde veio e o SQL que a trouxe à tona, para que você possa abrir as evidências e confirmar o problema com um clique em vez de ter que reverter uma afirmação.
+Você nunca precisa aceitar um resultado pela fé. Cada recomendação cita as sessões exatas de onde veio e o SQL que a originou, para que você possa abrir a evidência e confirmar o problema com um clique, em vez de tentar reconstruir uma afirmação do zero.
 
-Quando um achado é sobre uma credencial vazada, ele vai um passo além e vincula os eventos individuais que corresponderam. Clique em um e você cai naquele momento exato da sessão, já selecionado — não no topo de uma longa transcrição para rolar. O link nomeia o evento; ele nunca copia o segredo detectado para o achado, então ler um achado não é um segundo lugar onde sua credencial está escrita. Se um evento não estiver mais lá porque a sessão passou da sua janela de retenção, a página informa isso claramente em vez de deixá-lo se perguntando se clicou na coisa errada.
+Quando um resultado é sobre uma credencial vazada, vai um passo além e vincula os eventos individuais que foram identificados. Clique em um e você vai direto para aquele momento exato na sessão, já selecionado — não para o topo de uma longa transcrição para rolar. O link identifica o evento; ele nunca copia o segredo detectado para dentro do resultado, então ler um resultado não é um segundo lugar onde sua credencial fica registrada. Se um evento não estiver mais lá porque a sessão ultrapassou sua janela de retenção, a página informa isso claramente, em vez de deixar você se perguntando se clicou na coisa errada.
 
-É também o que mantém as auditorias honestas. O servidor verifica se cada sessão citada realmente existe e **descarta qualquer recomendação cujas evidências não se sustentem**, então a auditoria investiga, mas nunca inventa. O que aparece na sua lista é real, reproduzível e classificado por importância, com os maiores ganhos no topo.
+Isso também é o que mantém os audits honestos. O servidor verifica que cada sessão citada realmente existe e **descarta qualquer recomendação cujas evidências não se sustentam** — então o audit investiga, mas nunca inventa. O que chega à sua lista é real, reproduzível e priorizado por relevância, com os maiores ganhos no topo.
 
 ## Transforme uma correção em uma proteção
 
-Corrigir um problema é apenas metade da vitória. A outra metade é garantir que ele não volte silenciosamente. Cada achado traz um **atalho de um clique que cria um rascunho de alerta de recorrência**, pré-preenchido com um gatilho inicial razoável que você pode ajustar. Feche o achado, ative o alerta e, na próxima vez que esse padrão aparecer, você será notificado em vez de redescobri-lo em uma auditoria futura.
+Corrigir um problema é só metade da vitória. A outra metade é garantir que ele não volte silenciosamente. Cada resultado traz um **atalho de um clique que cria um alerta de recorrência**, já preenchido com um gatilho inicial razoável que você pode ajustar. Feche o resultado, ative o alerta e, na próxima vez que aquele padrão aparecer, você é notificado em vez de redescobri-lo em um audit futuro.
 
 ## Onde encontrar
 
-As auditorias ficam no dashboard em **`/<org-slug>/audits`** (barra lateral em *analyze* > *audits*). Visualizar execuções e achados requer **`audits:read`**; criar, editar e triar auditorias requer **`audits:write`**. Defina o escopo e a cadência de uma auditoria e clique em **Run now** sempre que quiser resultados imediatamente em vez de esperar pela próxima execução agendada.
+Os Audits ficam no dashboard em **`/<org-slug>/audits`** (barra lateral em *analyze* → *audits*). Visualizar execuções e resultados requer **`audits:read`**; criar, editar e triar audits requer **`audits:write`**. Defina o escopo e a cadência de um audit, depois clique em **Run now** sempre que quiser resultados imediatamente, sem esperar o próximo ciclo agendado.
 
 ## Relacionados
 
-- [Alertas](/pt-br/agenteye/alerts): seja notificado no momento em que um limite que você já conhece for ultrapassado.
-- [Avaliações](/pt-br/agenteye/evaluations): pontue cada execução para que regressões de qualidade apareçam por conta própria.
-- [Rastreamento de erros](/pt-br/agenteye/error-tracking): agrupe e acompanhe os erros que seus agentes lançam.
-- [Incidentes](/pt-br/agenteye/incidents): acompanhe um problema encontrado por uma auditoria até a sua correção.
+- [Alerts](/pt-br/agenteye/alerts): seja notificado no momento em que um limite que você já conhece for ultrapassado.
+- [Evaluations](/pt-br/agenteye/evaluations): pontue cada execução para que regressões de qualidade apareçam por conta própria.
+- [Error tracking](/pt-br/agenteye/error-tracking): agrupe e acompanhe os erros que seus agentes lançam.
+- [Incidents](/pt-br/agenteye/incidents): acompanhe um problema identificado por um audit até a sua correção.

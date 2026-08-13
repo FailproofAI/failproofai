@@ -18,8 +18,8 @@
 **翻訳:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **コーディングエージェントのランタイム障害解決ツール。**
-Claude Code や Codex にフックし、ループ・危険な操作・シークレット漏洩を
-インシデントになる前に検知・阻止します。レイテンシーゼロ。ローカルで動作。
+Claude Code および Codex にフックし、ループ・危険な操作・シークレットの漏洩を
+インシデントになる前に検出・防止します。レイテンシーゼロ。ローカル実行。
 
 </div>
 
@@ -133,7 +133,7 @@ failproofai policies --install   # または `failproofai` を実行して初回
 failproofai
 ```
 
-30 個の組み込みポリシーが即座に有効化されます。ダッシュボードは `localhost:8020` で確認できます。初回起動プロンプトを無効にするには `FAILPROOFAI_NO_FIRST_RUN=1` を設定してください。
+30 個の組み込みポリシーが即座に有効になります。ダッシュボードは `localhost:8020` で確認できます。初回起動プロンプトを無効にするには `FAILPROOFAI_NO_FIRST_RUN=1` を設定してください。
 
 ---
 
@@ -145,16 +145,16 @@ failproofai
 | `block-force-push` | `git push --force` |
 | `block-work-on-main` | `main` / `master` へのコミット・マージ・リベース |
 | `block-rm-rf` | 再帰的なファイル削除 |
-| `sanitize-api-keys` | エージェントのコンテキストへの API キー漏洩 |
+| `sanitize-api-keys` | エージェントコンテキストへの API キー漏洩 |
 
 → [組み込みポリシー全 30 件](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
-## 独自ポリシーの作成
+## カスタムポリシー
 
-`.failproofai/policies/` にファイルを配置するだけで自動的に読み込まれます。フラグは不要です。
-コミットしておけば、次回 pull 時にチーム全員に適用されます。
+`.failproofai/policies/` にファイルを置くだけで自動的に読み込まれます。フラグは不要です。
+コミットすれば、次回プル時にチーム全員に適用されます。
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -170,13 +170,13 @@ customPolicies.add({
 });
 ```
 
-すべてのポリシーで使用できる 3 つの判定:
+各ポリシーで使用できる判定は 3 種類です：
 
-| 判定 | 効果 |
+| 判定 | 動作 |
 |---|---|
 | `allow()` | 操作を許可する |
-| `deny(message)` | ブロックする — メッセージはエージェントに返される |
-| `instruct(message)` | 操作を通過させつつ、エージェントの次のプロンプトにコンテキストを追加する |
+| `deny(message)` | ブロックする — メッセージがエージェントに返される |
+| `instruct(message)` | 通過させるが、エージェントの次のプロンプトにコンテキストを追加する |
 
 → [カスタムポリシーガイド](https://docs.befailproof.ai/custom-policies)
 
@@ -184,7 +184,7 @@ customPolicies.add({
 
 ## セッションの可視化
 
-エージェントが行ったすべてのツール呼び出しはローカルにログとして記録されます。ダッシュボードでは実行内容・ブロックされた操作・ポリシーがエージェントに伝えた内容を確認できるため、問題が発生しても推測で対応する必要がありません。→ [ダッシュボードガイド](https://docs.befailproof.ai/dashboard)
+エージェントが行ったすべてのツール呼び出しはローカルに記録されます。ダッシュボードでは、実行された内容・ブロックされた内容・ポリシーがエージェントに伝えた内容を確認できるため、問題が発生しても推測に頼る必要がありません。→ [ダッシュボードガイド](https://docs.befailproof.ai/dashboard)
 
 ---
 
@@ -203,17 +203,16 @@ customPolicies.add({
 
 ## ライセンス
 
-MIT に [Commons Clause](https://commonsclause.com/) を付加したライセンス — 社内利用および個人利用は無料。failproofai 自体の商業的な再販には別途契約が必要です。全文は [LICENSE](../../LICENSE) をご覧ください。
+[Commons Clause](https://commonsclause.com/) 付き MIT ライセンス — 社内利用・個人利用は無料。failproofai 自体の商業的な再販には別途契約が必要です。全文は [LICENSE](../../LICENSE) をご覧ください。
 
 ---
 
 ## コントリビューション
 
-[CONTRIBUTING.md](../../CONTRIBUTING.md) をご参照ください。新しいポリシー、エッジケースの対応、翻訳など、あらゆる貢献を歓迎します。
+[CONTRIBUTING.md](../../CONTRIBUTING.md) をご参照ください。新しいポリシー、エッジケースの対応、翻訳のいずれも歓迎しています。
 
-> **開始前にビルドしてください。** 最初に `bun install && bun run build` を実行してください。このリポジトリは failproofai 自身のフックを自身に適用しており、フックは `failproofai` のインポートをコンパイル済みの `dist/` バンドルに対して解決します。ビルドなしで実行すると `Cannot find package 'failproofai'` というフックエラーが発生します。`src/` を変更した後は再ビルドしてください。詳細は [リポジトリ内の開発フックを動作させるためのビルド手順](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) をご参照ください。
+> **作業前にビルドを実行してください。** まず `bun install && bun run build` を実行してください。このリポジトリは failproofai 自身のフックを自身に適用しており、`failproofai` のインポートはコンパイル済みの `dist/` バンドルに対して解決されます。ビルドなしに実行すると `Cannot find package 'failproofai'` というフックエラーが発生します。`src/` を変更した後は再ビルドしてください。詳細は [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) をご覧ください。
 
 ---
 
-[Nivedit Jain](https://github.com/NiveditJain) と [Nikita Agarwal](https://github.com/nk-ag) が開発。
-[befailproof.ai](https://befailproof.ai)
+SF とベンガルールのチームが ❤️ を込めて開発。[befailproof.ai](https://befailproof.ai)

@@ -1,7 +1,7 @@
 ---
 ---
 title: Bắt đầu
-description: "Cài đặt failproofai, bật các chính sách và cho phép các agent của bạn chạy một cách đáng tin cậy"
+description: "Cài đặt failproofai, bật các chính sách, và để các agent của bạn hoạt động một cách đáng tin cậy"
 icon: rocket
 ---
 
@@ -32,15 +32,15 @@ bun add -g failproofai
 
 <Steps>
   <Step title="Bật các chính sách">
-    Các chính sách là các quy tắc chạy trước và sau mỗi lần agent gọi tool. Chúng bắt các lệnh huỷ diệt, rò rỉ bí mật và các chế độ lỗi khác trước khi chúng gây thiệt hại.
+    Chính sách là các quy tắc chạy trước và sau mỗi lần gọi công cụ của agent. Chúng bắt các lệnh phá hoại, rò rỉ bí mật, và các chế độ lỗi khác trước khi chúng gây ra thiệt hại.
 
     ```bash
     failproofai policies --install
     ```
 
-    Lệnh này ghi các hook entries vào các CLI agent đã cài đặt (Claude Code's `~/.claude/settings.json`, OpenAI Codex's `~/.codex/hooks.json`, GitHub Copilot CLI's `~/.copilot/hooks/failproofai.json`, Cursor Agent's `~/.cursor/hooks.json`, OpenCode's generated plugin shim at `~/.config/opencode/plugins/failproofai.mjs` plus a registration entry in `~/.config/opencode/opencode.json`'s `plugin` array, Pi's `~/.pi/agent/settings.json`, Hermes's `~/.hermes/config.yaml`, OpenClaw's `~/.openclaw/openclaw.json`, Factory Droid's `~/.factory/hooks.json`, Devin CLI's `~/.config/devin/config.json`, Antigravity CLI's `~/.gemini/config/hooks.json`, hoặc Goose's auto-discovered plugin dir at `~/.agents/plugins/failproofai/hooks/hooks.json`). Khi có nhiều hơn một CLI, bạn sẽ được nhắc; hãy truyền `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose` (bất kỳ tập con nào) để bỏ qua câu nhắc.
+    Điều này ghi các mục hook vào các CLI agent được cài đặt của bạn (Claude Code's `~/.claude/settings.json`, OpenAI Codex's `~/.codex/hooks.json`, GitHub Copilot CLI's `~/.copilot/hooks/failproofai.json`, Cursor Agent's `~/.cursor/hooks.json`, OpenCode's generated plugin shim at `~/.config/opencode/plugins/failproofai.mjs` cộng với một mục đăng ký trong `~/.config/opencode/opencode.json`'s `plugin` array, Pi's `~/.pi/agent/settings.json`, Hermes's `~/.hermes/config.yaml`, OpenClaw's `~/.openclaw/openclaw.json`, Factory Droid's `~/.factory/hooks.json`, Devin CLI's `~/.config/devin/config.json`, Antigravity CLI's `~/.gemini/config/hooks.json`, hoặc Goose's auto-discovered plugin dir at `~/.agents/plugins/failproofai/hooks/hooks.json`). Khi có nhiều hơn một cái hiện diện, bạn sẽ được nhắc nhở; chuyển `--cli claude codex copilot cursor opencode pi hermes openclaw factory devin antigravity goose` (bất kỳ tập con nào) để bỏ qua lời nhắc.
 
-    GitHub Copilot CLI, Cursor Agent, OpenCode và Pi support là **beta** — cài đặt với `--cli copilot`, `--cli cursor`, `--cli opencode`, hoặc `--cli pi`. Hermes (hermes-agent, một gateway Slack/Telegram) cài đặt user-scope với `--cli hermes` và cũng là **offline audit source**. OpenClaw (openclaw gateway, một multi-channel assistant tự lưu trữ) cài đặt user-scope với `--cli openclaw` — enforcement chạy thông qua in-process plugin hooks của nó (`before_agent_finalize` là một real turn-end gate, vì vậy `require-*-before-stop` builtins enforce) — và cũng là **offline audit source**. Factory Droid (`droid`) cài đặt với `--cli factory` (user + project scope) và cũng là **offline audit source**. Devin CLI (`devin`, Cognition) cài đặt với `--cli devin` (user + project scope) và cũng là **offline audit source**. Antigravity CLI (`agy`) cài đặt với `--cli antigravity` (user + project scope) và cũng là **offline audit source**. Goose (codename goose, Block) cài đặt với `--cli goose` (user + project scope) — trình cài đặt chỉ tạo một plugin dir at `~/.agents/plugins/failproofai/` mà Goose tự động khám phá, và nó cũng là **offline audit source**.
+    Hỗ trợ GitHub Copilot CLI, Cursor Agent, OpenCode, và Pi ở chế độ **beta** — cài đặt bằng `--cli copilot`, `--cli cursor`, `--cli opencode`, hoặc `--cli pi`. Hermes (hermes-agent, một cổng Slack/Telegram) cài đặt phạm vi người dùng bằng `--cli hermes` và **cũng** là một nguồn kiểm toán ngoại tuyến. OpenClaw (cổng openclaw, một trợ lý đa kênh tự lưu trữ) cài đặt phạm vi người dùng bằng `--cli openclaw` — thực thi chạy qua các hook plugin trong quy trình của nó (`before_agent_finalize` là một cổng kết thúc lượt thực, vì vậy các built-in `require-*-before-stop` thực thi) — và **cũng** là một nguồn kiểm toán ngoại tuyến. Factory Droid (`droid`) cài đặt bằng `--cli factory` (phạm vi người dùng + dự án) và **cũng** là một nguồn kiểm toán ngoại tuyến. Devin CLI (`devin`, Cognition) cài đặt bằng `--cli devin` (phạm vi người dùng + dự án) và **cũng** là một nguồn kiểm toán ngoại tuyến. Antigravity CLI (`agy`) cài đặt bằng `--cli antigravity` (phạm vi người dùng + dự án) và **cũng** là một nguồn kiểm toán ngoại tuyến. Goose (tên mã goose, Block) cài đặt bằng `--cli goose` (phạm vi người dùng + dự án) — trình cài đặt chỉ đặt một thư mục plugin tại `~/.agents/plugins/failproofai/` mà Goose tự động phát hiện, và nó **cũng** là một nguồn kiểm toán ngoại tuyến.
 
     ```bash
     failproofai policies --install --scope project
@@ -63,25 +63,25 @@ bun add -g failproofai
     failproofai policies
     ```
 
-    Hiển thị mỗi chính sách, liệu nó có được bật hay không, và bất kỳ tham số cấu hình nào.
+    Hiển thị mỗi chính sách, cho dù nó có được bật hay không, và bất kỳ tham số được cấu hình nào.
   </Step>
   <Step title="Khởi chạy bảng điều khiển">
     ```bash
     failproofai
     ```
 
-    Mở bảng điều khiển cục bộ tại `http://localhost:8020` nơi bạn có thể duyệt các phiên, kiểm tra các lệnh gọi tool và quản lý các chính sách.
+    Mở một bảng điều khiển cục bộ tại `http://localhost:8020` nơi bạn có thể duyệt qua các phiên, kiểm tra các lệnh gọi công cụ, và quản lý các chính sách.
   </Step>
   <Step title="Chạy agent của bạn">
-    Khởi chạy Claude Code như bình thường. Nếu agent cố gắng làm điều gì đó rủi ro, failproofai sẽ chặn nó tự động. Để nó chạy mà không cần giám sát và xem lại những gì đã xảy ra trong bảng điều khiển.
+    Khởi động Claude Code như bình thường. Nếu agent cố gắng làm điều gì đó rủi ro, failproofai sẽ ngăn chặn nó tự động. Để nó chạy mà không được giám sát và xem xét những gì đã xảy ra trong bảng điều khiển.
   </Step>
 </Steps>
 
 ---
 
-## Cách thức hoạt động của các chính sách
+## Cách các chính sách hoạt động
 
-Mỗi lần một agent chạy một tool, Claude Code gọi failproofai như một subprocess:
+Mỗi khi một agent chạy một công cụ, Claude Code gọi failproofai như một tiến trình con:
 
 ```text
 Claude Code  →  failproofai --hook PreToolUse  →  reads stdin JSON
@@ -93,17 +93,17 @@ Mỗi chính sách trả về một trong ba quyết định:
 
 - **allow** - agent tiếp tục bình thường
 - **deny** - hành động bị chặn, agent được thông báo lý do
-- **instruct** - thêm context vào prompt của agent
+- **instruct** - ngữ cảnh bổ sung được thêm vào lời nhắc của agent
 
 <Note>
-Các chính sách chạy trong quá trình cục bộ của bạn. Không có gì được gửi đến dịch vụ từ xa.
+Các chính sách chạy trong quy trình cục bộ của bạn. Không có gì được gửi đến dịch vụ từ xa.
 </Note>
 
 ---
 
-## Thiết lập chính sách nhóm với chính sách dựa trên quy ước
+## Thiết lập các chính sách nhóm với các chính sách dựa trên quy ước
 
-Cách nhanh nhất để thiết lập các tiêu chuẩn chất lượng trên toàn nhóm là quy ước `.failproofai/policies/`. Thả các tệp chính sách vào thư mục này và chúng sẽ được tải tự động — không có cờ, không có thay đổi config, không có lệnh cài đặt.
+Cách nhanh nhất để thiết lập các tiêu chuẩn chất lượng trên toàn bộ nhóm của bạn là quy ước `.failproofai/policies/`. Thả các tệp chính sách vào thư mục này và chúng được tải tự động — không có cờ, không có thay đổi cấu hình, không có lệnh cài đặt.
 
 <Steps>
   <Step title="Tạo thư mục chính sách">
@@ -111,14 +111,14 @@ Cách nhanh nhất để thiết lập các tiêu chuẩn chất lượng trên 
     mkdir -p .failproofai/policies
     ```
   </Step>
-  <Step title="Thêm tệp chính sách">
-    Sao chép các ví dụ khởi động hoặc viết chính sách của riêng bạn:
+  <Step title="Thêm các tệp chính sách">
+    Sao chép các ví dụ khởi động hoặc viết của riêng bạn:
 
     ```bash
     cp node_modules/failproofai/examples/convention-policies/*.mjs .failproofai/policies/
     ```
 
-    Hoặc tạo một tệp mới:
+    Hoặc tạo một cái mới:
 
     ```js
     // .failproofai/policies/team-policies.mjs
@@ -137,33 +137,35 @@ Cách nhanh nhất để thiết lập các tiêu chuẩn chất lượng trên 
     });
     ```
   </Step>
-  <Step title="Commit vào git">
+  <Step title="Cam kết vào git">
     ```bash
     git add .failproofai/policies/
     git commit -m "Add team quality policies"
     ```
 
-    Mỗi thành viên nhóm có failproofai cài đặt sẽ nhận các chính sách này tự động. Không cần thiết lập cho từng nhà phát triển.
+    Mỗi thành viên nhóm có cài đặt failproofai sẽ nhận các chính sách này tự động. Không cần thiết lập cho mỗi nhà phát triển.
   </Step>
 </Steps>
 
 <Tip>
-Commit `.failproofai/policies/` vào repo của bạn để toàn bộ nhóm chia sẻ các tiêu chuẩn giống nhau. Khi nhóm của bạn phát hiện ra các chế độ lỗi mới, hãy thêm chính sách và push — mọi người sẽ nhận được bản cập nhật trên `git pull` tiếp theo của họ. Theo thời gian, các chính sách này trở thành một tiêu chuẩn chất lượng sống được cải thiện liên tục.
+Cam kết `.failproofai/policies/` vào repo của bạn để toàn bộ nhóm chia sẻ các tiêu chuẩn giống nhau. Khi nhóm của bạn phát hiện các chế độ lỗi mới, thêm các chính sách và đẩy — mọi người nhận được bản cập nhật trên `git pull` tiếp theo của họ. Theo thời gian, các chính sách này trở thành một tiêu chuẩn chất lượng sống và không ngừng cải thiện.
 </Tip>
 
 ---
 
 ## Lưu trữ dữ liệu
 
-Tất cả cấu hình và nhật ký vẫn ở trên máy của bạn:
+Tất cả cấu hình và nhật ký vẫn trên máy của bạn:
 
-| Đường dẫn | Nó lưu trữ gì |
+| Đường dẫn | Nó lưu trữ cái gì |
 |------|----------------|
-| `~/.failproofai/policies/local-policies/policies-config.json` | Cấu hình chính sách toàn cục |
-| `~/.failproofai/hook-activity/` | Lịch sử thực thi hook (paged JSONL) |
+| `~/.failproofai/policies-config.json` | Cấu hình chính sách toàn cầu |
+| `~/.failproofai/policies/` | Các chính sách của bạn — thả `*-policies.mjs`, không cần cấu hình |
+| `~/.failproofai/policies/cloud-policies/` | Chính sách được triển khai cho máy này bởi tổ chức của bạn |
+| `~/.failproofai/hook-activity/` | Lịch sử thực thi hook (JSONL được phân trang) |
 | `~/.failproofai/logs/` | Nhật ký gỡ lỗi cho các lỗi hook tùy chỉnh |
-| `.failproofai/policies-config.json` | Cấu hình cho mỗi dự án (được commit) |
-| `.failproofai/policies-config.local.json` | Ghi đè cá nhân (gitignored) |
+| `.failproofai/policies-config.json` | Cấu hình cho mỗi dự án (được cam kết) |
+| `.failproofai/policies-config.local.json` | Ghi đè cá nhân (được gitignore) |
 
 ---
 
@@ -173,7 +175,7 @@ Tất cả cấu hình và nhật ký vẫn ở trên máy của bạn:
 failproofai policies --uninstall
 ```
 
-Xóa hook entries từ `~/.claude/settings.json`. Các tệp cấu hình trong `~/.failproofai/` được giữ lại.
+Loại bỏ các mục hook từ `~/.claude/settings.json`. Các tệp cấu hình trong `~/.failproofai/` được giữ lại.
 
 ---
 
@@ -182,7 +184,7 @@ Xóa hook entries từ `~/.claude/settings.json`. Các tệp cấu hình trong `
 <CardGroup cols={2}>
 
 <Card title="Cấu hình" icon="gear" href="/vi/configuration">
-  Các scopes và định dạng tệp cấu hình
+  Phạm vi và định dạng tệp cấu hình
 </Card>
 
 <Card title="Chính sách tích hợp" icon="shield" href="/vi/built-in-policies">
@@ -190,11 +192,11 @@ Xóa hook entries từ `~/.claude/settings.json`. Các tệp cấu hình trong `
 </Card>
 
 <Card title="Chính sách tùy chỉnh" icon="code" href="/vi/custom-policies">
-  Viết các chính sách của riêng bạn bằng JavaScript
+  Viết các chính sách riêng của bạn trong JavaScript
 </Card>
 
-<Card title="Giám sát agent" icon="chart-line" href="/vi/dashboard">
-  Giám sát các phiên và xem lại hoạt động chính sách
+<Card title="Trình theo dõi agent" icon="chart-line" href="/vi/dashboard">
+  Theo dõi các phiên và xem xét hoạt động chính sách
 </Card>
 
 </CardGroup>

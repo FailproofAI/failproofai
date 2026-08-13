@@ -1,30 +1,31 @@
 ---
-title: Hook handler (internal)
-description: "Subprocess mà Claude Code gọi trên mỗi sự kiện tool"
+---
+title: Hook handler (nội bộ)
+description: "Tiến trình con mà Claude Code gọi trên mỗi sự kiện công cụ"
 ---
 
 ```bash
 failproofai --hook <EventType>
 ```
 
-Đây là lệnh được đăng ký trong `settings.json` của Claude Code bởi `failproofai policies --install`. Bạn thường không gọi lệnh này trực tiếp.
+Đây là lệnh được đăng ký trong `settings.json` của Claude Code bởi `failproofai policies --install`. Thường bạn không gọi trực tiếp lệnh này.
 
-Đọc một payload JSON từ stdin, đánh giá tất cả các chính sách được bật, và thoát với một mã chỉ ra quyết định:
+Đọc một payload JSON từ stdin, đánh giá tất cả các chính sách được bật, và thoát với mã code chỉ ra quyết định:
 
-| Mã thoát | Quyết định | Hiệu ứng |
-|-----------|-----------|---------|
+| Mã thoát | Quyết định | Tác dụng |
+|---------|-----------|---------|
 | `0` | `allow` | Cho phép hành động |
 | `1` | `deny` | Chặn hành động - Claude sẽ thấy lý do từ chối |
-| `2` | `instruct` | Chèn hướng dẫn vào ngữ cảnh của Claude |
+| `2` | `instruct` | Tiêm hướng dẫn vào ngữ cảnh của Claude |
 
 ### Các loại sự kiện được hỗ trợ
 
 | Danh mục | Sự kiện |
-|----------|---------|
-| **Thực thi tool** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
+|---------|--------|
+| **Thực thi công cụ** | `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied` |
 | **Vòng đời phiên** | `SessionStart`, `SessionEnd`, `Stop`, `StopFailure` |
 | **Tương tác người dùng** | `UserPromptSubmit`, `Notification`, `Elicitation`, `ElicitationResult` |
-| **Subagents & tasks** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
+| **Các đại lý con & tác vụ** | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` |
 | **Cấu hình** | `InstructionsLoaded`, `ConfigChange`, `CwdChanged` |
 | **Hệ thống tệp** | `FileChanged`, `WorktreeCreate`, `WorktreeRemove` |
 | **Ngữ cảnh** | `PreCompact`, `PostCompact` |

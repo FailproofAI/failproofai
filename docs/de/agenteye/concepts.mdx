@@ -4,84 +4,84 @@ description: "Das Vokabular hinter Failproof AI Observability — Events, Sessio
 ---
 
 
-Diese Seite definiert das Vokabular, das Failproof AI Observability verwendet. Wenn ein Begriff in einem anderen Leitfaden unbekannt ist, wird er hier erklärt. Sie müssen ihn nicht von Anfang bis Ende lesen: Überfliegen Sie ihn, oder kehren Sie zurück, wenn Sie ein Wort genauer nachschlagen möchten.
+Diese Seite definiert das Vokabular, das Failproof AI Observability verwendet. Wenn ein Begriff in einer anderen Anleitung unbekannt ist, wird er hier erklärt. Sie müssen die Seite nicht von Anfang bis Ende lesen: Überfliegen Sie sie, oder springen Sie zurück, wenn Sie einen Begriff nachschlagen möchten.
 
 ---
 
 ## Das Datenmodell
 
 **Event**
-Die kleinste Dateneinheit. Ein Event zeichnet einen einzelnen Schritt auf, den Ihr Agent ausgeführt hat: ein `tool_use`, ein `model_request`, ein `hook_completed`, ein `error` usw. Ihr Agent gibt Events über das [Python SDK](/de/agenteye/python-sdk) aus; sie erscheinen in Echtzeit auf der **Events**-Seite.
+Die kleinste Dateneinheit. Ein Event zeichnet einen einzelnen Schritt auf, den Ihr Agent ausgeführt hat: ein `tool_use`, ein `model_request`, ein `hook_completed`, ein `error` und so weiter. Ihr Agent sendet Events über das [Python SDK](/de/agenteye/python-sdk); sie erscheinen live auf der **Events**-Seite.
 
 **Session**
-Ein einzelner Agent-Lauf, identifiziert durch eine `session_id`. Eine Session umfasst alle Events, die diese ID teilen, zusammengefasst in einer einzelnen Zeile auf der **Sessions**-Seite und als Ausführungsgraph auf ihrer Detailseite dargestellt. Eine Session beginnt üblicherweise mit `agent_start` und endet mit `agent_end`.
+Ein einzelner Agent-Lauf, identifiziert durch eine `session_id`. Eine Session umfasst alle Events, die dieselbe ID teilen, zusammengefasst in einer einzelnen Zeile auf der **Sessions**-Seite und als Ausführungsgraph auf der Detailseite dargestellt. Eine Session beginnt üblicherweise mit `agent_start` und endet mit `agent_end`.
 
 **Agent**
-Ein benannter Akteur innerhalb eines Laufs, identifiziert durch eine `agent_id`. Ein Lauf kann mehrere Agents umfassen: zum Beispiel einen Planer, der einen Zusammenfassungs-Sub-Agenten startet. Sub-Agents tragen eine `parent_id`, die es Failproof AI Observability ermöglicht, sie in eigenen Spuren im Ausführungsgraph darzustellen.
+Ein benannter Akteur innerhalb eines Laufs, identifiziert durch eine `agent_id`. Ein Lauf kann mehrere Agents umfassen: zum Beispiel ein Planer, der einen Zusammenfassungs-Sub-Agent erzeugt. Sub-Agents tragen eine `parent_id`, die es Failproof AI Observability ermöglicht, sie in eigenen Spuren im Ausführungsgraph darzustellen.
 
 **Environment**
-Eine Bezeichnung für den Ort, an dem der Lauf stattgefunden hat: `production`, `staging`, `dev`. Sie legen sie einmalig bei der Konfiguration des SDK fest. Fast jede Dashboard-Seite kann nach Environment gefiltert werden.
+Eine Bezeichnung dafür, wo der Lauf stattgefunden hat: `production`, `staging`, `dev`. Sie wird einmalig bei der SDK-Konfiguration festgelegt. Nahezu jede Dashboard-Seite lässt sich nach Environment filtern.
 
 **Context-Window-Auslastung**
-Der prozentuale Anteil des Context-Windows eines Modells, den eine Antwort verbraucht hat. Failproof AI Observability versieht `model_response`-Events bei erkannten Modellen mit diesem Wert, sodass das Wachstum von Prompts und bevorstehende Kompaktierungen direkt im Event-Stream sichtbar sind.
+Der Prozentsatz des Kontextfensters eines Modells, den eine Antwort verbraucht hat. Failproof AI Observability stempelt diesen Wert auf `model_response`-Events für bekannte Modelle, sodass das Wachstum von Prompts und eine bevorstehende Kompaktierung direkt im Event-Stream sichtbar sind.
 
 ---
 
 ## Qualität
 
 **Evaluation**
-Eine Qualitätsbewertung für eine abgeschlossene Session, die von einem Scoring-Dienst erstellt wird, den Sie selbst betreiben. Evaluierungen sind optional: Bis Sie einen Evaluator anschließen, werden Sessions aufgezeichnet, aber nicht bewertet. Jede Evaluierung kann mehrere benannte Scores enthalten (zum Beispiel `helpfulness`, `factuality`, `tool_efficiency`), jeweils mit einer kurzen Begründungsnotiz. Siehe [Evaluation suite](/de/agenteye/evaluation-suite).
+Ein Qualitätswert für eine abgeschlossene Session, erstellt von einem Scoring-Service, den Sie betreiben. Evaluierungen sind optional: Solange Sie keinen Evaluator angebunden haben, werden Sessions aufgezeichnet, aber nicht bewertet. Jede Evaluation kann mehrere benannte Scores enthalten (z. B. `helpfulness`, `factuality`, `tool_efficiency`), jeweils mit einer kurzen Begründungsnotiz. Siehe [Evaluation suite](/de/agenteye/evaluation-suite).
 
-**Score-Key**
-Der Name einer Dimension, über die ein Evaluator berichtet, z. B. `helpfulness`. Alerts und Audits können einen bestimmten Score-Key im Zeitverlauf beobachten.
+**Score Key**
+Der Name einer Dimension, die ein Evaluator meldet, z. B. `helpfulness`. Alerts und Audits können einen bestimmten Score Key im Zeitverlauf beobachten.
 
 **Evaluator**
-Ihr Scoring-Dienst. Failproof AI Observability übermittelt das Transkript eines abgeschlossenen Laufs per POST an ihn und speichert die zurückgegebenen Scores. Ein Standard-Evaluator wird nicht mitgeliefert; die Bewertungslogik liegt bei Ihnen.
+Ihr Scoring-Service. Failproof AI Observability sendet das Transkript eines abgeschlossenen Laufs per POST an diesen Service und speichert die zurückgegebenen Scores. Es wird kein Standard-Evaluator mitgeliefert; die Scoring-Logik liegt bei Ihnen.
 
 ---
 
 ## Fehler finden und beheben
 
 **Hook**
-Eine Sicherheitsvorkehrung oder ein Nebeneffekt, den Ihr Agent-Framework um einen Schritt herum ausführt: eine Inhaltssicherheitsprüfung, PII-Schwärzung oder eine Budget-Überwachung. Hooks geben `hook_triggered`- / `hook_completed`-Events mit einem `outcome` (allow, deny, modify) aus und haben eine eigene Observe-Seite.
+Eine Schutzmaßnahme oder ein Nebeneffekt, den Ihr Agent-Framework rund um einen Schritt ausführt: eine Inhaltssicherheitsprüfung, PII-Redaktion, ein Budget-Guard. Hooks senden `hook_triggered`/`hook_completed`-Events mit einem `outcome` (allow, deny, modify) und haben eine eigene Beobachtungsseite.
 
 **Alert-Regel**
 Eine Regel, die ausgelöst wird, wenn eine Metrik einen von Ihnen festgelegten Schwellenwert überschreitet: Fehlerrate, p95-Latenz, Token-Kosten oder ein Evaluator-Score. Wenn eine Regel ausgelöst wird, öffnet sie einen Incident und benachrichtigt Ihre gewählten Kanäle (E-Mail, Slack, Webhook, im Dashboard). Siehe [Alerts](/de/agenteye/alerts).
 
 **Incident**
-Ein offenes Problem, das entsteht, wenn eine Alert-Regel ausgelöst wird. Incidents haben einen Lebenszyklus (bestätigen, zuweisen, lösen) und eine Aktivitäts-Timeline, die jede Aktion aufzeichnet. Sie können auch manuell einen öffnen.
+Ein offenes Problem, das entsteht, wenn eine Alert-Regel ausgelöst wird. Incidents haben einen Lebenszyklus (bestätigen, zuweisen, lösen) und eine Aktivitätszeitachse, die jede Aktion aufzeichnet. Sie können einen Incident auch manuell öffnen.
 
 **Audit**
-Eine wiederkehrende Untersuchung (stündlich bis wöchentlich), die Ihre Logs *sitzungsübergreifend* nach Fehlermustern durchsucht, für die Sie noch keine Regel geschrieben haben: Fehler-Cluster, niedrige Scores, Latenz-Ausreißer, Tool-Call-Schleifen und Läufe, die nie abgeschlossen wurden. Während ein Alert eine Metrik überwacht, die Sie bereits kennen, zeigt Ihnen ein Audit, worauf Sie als Nächstes achten sollten. Siehe [Audits](/de/agenteye/audits).
+Eine wiederkehrende Untersuchung (stündlich bis wöchentlich), die Ihre Logs *sitzungsübergreifend* nach Fehlermustern durchsucht, für die Sie noch keine Regel geschrieben haben: Fehler-Cluster, niedrige Scores, Latenz-Ausreißer, Tool-Call-Schleifen und Läufe, die nie abgeschlossen wurden. Während ein Alert eine Ihnen bereits bekannte Metrik überwacht, zeigt Ihnen ein Audit, worauf Sie als Nächstes achten sollten. Siehe [Audits](/de/agenteye/audits).
 
 **Finding**
-Ein priorisiertes, evidenzbasiertes Ergebnis eines Audit-Laufs. Ein Finding benennt ein Muster, verlinkt auf die genauen Sessions dahinter und trägt einen Triage-Lebenszyklus (bestätigen, lösen, stummschalten, verwerfen). Failproof AI Observability dedupliziert Findings laufübergreifend, sodass ein bekanntes Muster aktualisiert wird, anstatt sich anzuhäufen.
+Ein priorisiertes, evidenzgestütztes Ergebnis eines Audit-Laufs. Ein Finding benennt ein Muster, verlinkt auf die genauen Sessions dahinter und hat einen Triage-Lebenszyklus (bestätigen, lösen, stummschalten, verwerfen). Failproof AI Observability dedupliziert Findings laufübergreifend, sodass ein bekanntes Muster aktualisiert wird, anstatt sich anzuhäufen.
 
 **Der KI-Assistent**
-Der im Dashboard integrierte Chat, der auf Englisch Fragen zu Ihren Agents beantwortet — basierend auf Ihren eigenen Daten. Er ist standardmäßig schreibgeschützt; alles, was er erstellt (eine gespeicherte Abfrage, ein Dashboard), erfordert eine Genehmigung, und er kann niemals löschen. Siehe [AI assistant](/de/agenteye/assistant).
+Der Dashboard-interne Chat, der Fragen zu Ihren Agents auf natürlichem Deutsch über Ihre eigenen Daten beantwortet. Er ist standardmäßig schreibgeschützt; alles, was er erstellt (eine gespeicherte Abfrage, ein Dashboard), erfordert eine Genehmigung, und er kann niemals löschen. Siehe [AI assistant](/de/agenteye/assistant).
 
 ---
 
 ## Betrieb
 
 **Organisation (Tenant)**
-Ein isolierter Arbeitsbereich. Eine Failproof AI Observability-Instanz kann viele Organisationen hosten, jede mit eigenen Benutzern, Schlüsseln und Daten. Jede Dashboard-URL ist unter Ihrem Org-Slug (`/<org-slug>/…`) eingeschränkt.
+Ein isolierter Arbeitsbereich. Eine Failproof AI Observability-Instanz kann viele Organisationen hosten, jede mit ihren eigenen Nutzern, Schlüsseln und Daten. Jede Dashboard-URL ist unter Ihrem Org-Slug (`/<org-slug>/…`) eingeschränkt.
 
 **Collector**
-`agenteye-collector`, der schlanke Daemon, der auf jedem Agent-Rechner läuft, die Events bündelt, die das SDK auf die Festplatte schreibt, und sie an den Server übermittelt.
+`agenteye-collector`, der schlanke Daemon, der auf jedem Agent-Rechner läuft, die vom SDK auf die Festplatte geschriebenen Events bündelt und an den Server sendet.
 
-**API-Key**
-Ein bereichsbeschränktes Token, das einen Client gegenüber dem Server authentifiziert. Keys tragen granulare Berechtigungen (zum Beispiel `events:add` für den Collector, schreibgeschützte Bereiche für einen Dashboard-Key). Siehe [API keys](/de/agenteye/api-keys).
+**API-Schlüssel**
+Ein bereichsbegrenztes Token, das einen Client gegenüber dem Server authentifiziert. Schlüssel tragen granulare Berechtigungen (z. B. `events:add` für den Collector, schreibgeschützte Bereiche für einen Dashboard-Schlüssel). Siehe [API keys](/de/agenteye/api-keys).
 
 **Server**
-Der Ingest- und API-Dienst. Er nimmt Events entgegen, speichert den Betriebszustand in Ihren Datenbanken und stellt das Dashboard und die CLI bereit.
+Der Ingest- und API-Service. Er nimmt Events entgegen, speichert den Betriebszustand in Ihren Datenbanken und bedient das Dashboard und die CLI.
 
 **Dashboard**
-Die Web-Oberfläche. Jede Seite ist auf eine Organisation beschränkt und liest über die API des Servers.
+Die Web-Benutzeroberfläche. Jede Seite ist auf eine Organisation beschränkt und liest über die API des Servers.
 
 ---
 
 ## Nächste Schritte
 
-- [Overview](/de/agenteye/overview): Wie diese Teile zusammenpassen.
-- [Observability](/de/agenteye/observability): Die Observe-Oberflächen (Events, Sessions, Models, Tools, Hooks, Errors).
+- [Overview](/de/agenteye/overview): wie diese Bausteine zusammenpassen.
+- [Observability](/de/agenteye/observability): die Beobachtungsoberflächen (Events, Sessions, Models, Tools, Hooks, Errors).

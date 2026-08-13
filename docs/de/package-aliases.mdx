@@ -18,9 +18,9 @@ bun add -g failproofai
 
 ## Warum wir die Aliasnamen besitzen
 
-Typosquatting ist ein verbreiteter Supply-Chain-Angriff, bei dem ein böswilliger Akteur einen Paketnamen registriert, der sich nur um einen Tastendruck vom Namen eines verbreiteten Pakets unterscheidet. Ahnungslose Nutzer, die den Installationsbefehl vertippen, führen dadurch angreifer-kontrollierten Code mit vollem Systemzugriff aus – genau die Art von Bedrohung, gegen die Failproof AI schützen soll.
+Typosquatting ist ein verbreiteter Supply-Chain-Angriff, bei dem ein böswilliger Akteur einen Paketnamen registriert, der sich nur um einen Tastendruck vom Namen eines populären Pakets unterscheidet. Ahnungslose Nutzer, die beim Installationsbefehl einen Tippfehler machen, führen dadurch Code unter der Kontrolle des Angreifers mit vollem Systemzugriff aus – genau die Art von Bedrohung, gegen die Failproof AI entwickelt wurde.
 
-Um diese Angriffsfläche zu eliminieren, **registrieren wir vorbeugend alle gängigen Schreibfehler und Formatierungsvarianten** von `failproofai` auf npm. Keiner dieser Namen kann von Dritten registriert werden. Jeder ist ein schlanker Proxy, der das echte `failproofai`-Paket installiert und an dieses delegiert.
+Um diese Angriffsfläche zu eliminieren, **besitzen wir präventiv alle gängigen Schreibfehler und Formatierungsvarianten** von `failproofai` auf npm. Keiner dieser Namen kann von Dritten registriert werden. Jeder ist ein schlanker Proxy, der das echte `failproofai`-Paket installiert und an dieses delegiert.
 
 ---
 
@@ -37,7 +37,7 @@ Um diese Angriffsfläche zu eliminieren, **registrieren wir vorbeugend alle gän
 | `fail_proof_ai` | ⏳ Ausstehend (npm-Freigabe) |
 | `fail-proofai` | ⏳ Ausstehend (npm-Freigabe) |
 
-**`failprof*`-Tippfehler** – fehlendes „o" in „proof":
+**`failprof*`-Tippfehler** – fehlendes `o` in „proof":
 
 | Paket | Status |
 |-------|--------|
@@ -47,7 +47,7 @@ Um diese Angriffsfläche zu eliminieren, **registrieren wir vorbeugend alle gän
 | `fail-prof-ai` | ⏳ Ausstehend (npm-Freigabe) |
 | `failprof_ai` | ⏳ Ausstehend (npm-Freigabe) |
 
-**`faliproof*`-Tippfehler** – vertauschtes „a" und „i":
+**`faliproof*`-Tippfehler** – vertauschte Buchstaben `a` und `i`:
 
 | Paket | Status |
 |-------|--------|
@@ -55,9 +55,9 @@ Um diese Angriffsfläche zu eliminieren, **registrieren wir vorbeugend alle gän
 | `faliproof-ai` | ✅ Veröffentlicht |
 | `faliproofai` | ⏳ Ausstehend (npm-Freigabe) |
 
-> **Warum ausstehend?** Die Spam-Prävention von npm blockiert Namen, die nach dem Entfernen von Satzzeichen und dem Ausführen von Ähnlichkeitsprüfungen auf denselben String wie ein bestehendes Paket normalisiert werden. Wir haben den npm-Support kontaktiert, um diese Namen für Anti-Squatting-Zwecke zu reservieren. Sie werden nach der Genehmigung aktiviert.
+> **Warum ausstehend?** Die Spam-Schutzrichtlinie von npm blockiert Namen, die nach dem Entfernen von Satzzeichen und dem Durchführen von Ähnlichkeitsprüfungen auf denselben String wie ein bestehendes Paket normalisiert werden. Wir haben den npm-Support kontaktiert, um diese Namen für Anti-Squatting-Zwecke zu reservieren. Sie werden nach Genehmigung freigeschaltet.
 
-Sie können prüfen, ob ein veröffentlichter Alias uns gehört:
+Sie können überprüfen, ob ein veröffentlichter Alias uns gehört:
 
 ```bash
 npm info failproof
@@ -70,13 +70,13 @@ npm info failproof
 
 Jedes Alias-Paket:
 
-1. Listet `failproofai` als Abhängigkeit auf – damit wird das eigentliche Paket installiert und sein Binary verfügbar
-2. Stellt ein Binary bereit, das dem eigenen Namen entspricht (z. B. `failprof-ai`) und alle Argumente an das `failproofai`-Binary weiterleitet
+1. Listet `failproofai` als Abhängigkeit auf – dadurch wird das echte Paket installiert und seine Binary verfügbar
+2. Stellt eine Binary bereit, die dem eigenen Namen entspricht (z. B. `failprof-ai`) und alle Argumente an die `failproofai`-Binary weiterleitet
 
 Der Proxy ist ein zweizeiliges Node-Skript; es enthält keine Logik, keine Netzwerkaufrufe und keine Datenerfassung über das hinaus, was `failproofai` selbst tut.
 
 ---
 
-## Falls Sie einen fehlenden Namen entdecken
+## Wenn Sie einen Namen finden, den wir übersehen haben
 
-Erstellen Sie ein Issue unter [failproofai/failproofai](https://github.com/failproofai/failproofai/issues), und wir werden ihn registrieren.
+Öffnen Sie ein Issue unter [failproofai/failproofai](https://github.com/failproofai/failproofai/issues) und wir werden ihn registrieren.

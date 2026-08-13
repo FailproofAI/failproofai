@@ -1,0 +1,64 @@
+---
+title: Cập nhật sau khi nâng cấp
+description: "Hoàn thành phần còn lại của quá trình nâng cấp mà npm không thể thực hiện: di chuyển home và đồng bộ hóa daemon"
+---
+
+```bash
+npm install -g failproofai@latest && failproofai update
+```
+
+Đó là toàn bộ quá trình nâng cấp. `npm` thay thế CLI; `failproofai update` thực hiện phần còn lại.
+
+## Tại sao cần một lệnh thứ hai
+
+`npm install -g` thay thế một thứ — CLI. Hai phần khác của bản cài đặt failproofai nằm bên ngoài package có mục đích, và chúng không di chuyển khi npm chạy:
+
+- **`~/.failproofai/`**, cài đặt, đăng ký cloud, lựa chọn policy và lịch sử của bạn. Một phiên bản mới có thể tổ chức nó khác nhau, và sự tổ chức lại phải được thực hiện bởi code biết cả hai cấu trúc.
+- **Binary daemon `failproofaid`**, tại `~/.failproofai/bin/failproofaid-<version>`. Nó được cố ý *không* nằm trong `node_modules`: một quá trình nâng cấp trao đổi file dưới một service đang chạy sẽ trỏ một daemon trực tiếp đến binary được xây dựng từ mã nguồn khác nhau, và xóa package sẽ xóa nó từ dưới một service mà sau đó sẽ bị crash-loop ở mỗi lần khởi động.
+
+Vì vậy sau `npm install -g` một mình, CLI là mới nhưng daemon thì không. `failproofaid` từ chối khởi động đối với bố cục home mà nó không hiểu — phiên bản lớn của sự không khớp đó thay vì phiên bản im lặng — vì vậy hai phần cần được đưa lại với nhau. `failproofai update` là bước đó.
+
+## Nó làm gì
+
+<Steps>
+  <Step title="Chạy bất kỳ migration bố cục nào đang chờ xử lý">
+    Đọc bố cục được ghi lại trong `~/.failproofai/VERSION` và chạy các bước đưa nó đến bố cục mà phiên bản này hiểu. Thường là không có — xem [`failproofai migrate`](/vi/cli/migrate).
+  </Step>
+  <Step title="Đặt binary daemon phù hợp vào vị trí">
+    Từ gói platform mà npm đã tải xuống khi có thể (không có mạng), nếu không thì từ asset phát hành cho phiên bản chính xác này, được xác minh SHA-256 trước khi sử dụng.
+  </Step>
+  <Step title="Khởi động lại service và xác nhận nó quay trở lại">
+    Được khảo sát thay vì giả định — một service manager báo cáo một process hoạt động ngay khi nó fork, đó không phải là điều tương tự như nó hoạt động.
+  </Step>
+</Steps>
+
+## Tùy chọn
+
+| Flag | Hiệu ứng |
+|------|---------|
+| `--no-daemon` | Chỉ di chuyển home, để daemon ở phiên bản hiện tại của nó. |
+
+<Warning>
+  `--no-daemon` để lại một daemon bị lệch phiên bản tại chỗ. Trên một máy được cấu hình yêu cầu daemon, mỗi sự kiện hook **thất bại đóng** nếu daemon không thể trả lời — và daemon từ chối khởi động đối với home đã di chuyển không thể trả lời. Nên để cho phần daemon chạy.
+</Warning>
+
+## Nếu có sự cố
+
+Lệnh thoát với mã khác 0 và nói phần nào thất bại. Hai trường hợp đáng biết:
+
+- **Một bước migration không hoàn thành.** Home được để lại được đánh dấu với bố cục *cũ* của nó, vì vậy lệnh tiếp theo sẽ thử lại — không home nào được đánh dấu hiện tại dựa trên một phần migration không hoàn thành. Bản sao cài đặt và đăng ký của bạn đã được lưu trước khi bất cứ điều gì chạy, trong `~/.failproofai/migrations/backup-layout<n>/`.
+- **Daemon không thể được khởi động lại mà không cần mật khẩu.** `sudo -n` được sử dụng cố ý, vì vậy không gì bao giờ nhắc từ dưới màn hình tiến trình. Lệnh in dòng chính xác để bạn tự chạy.
+
+<Note>
+  Không có gì ở đây cần trình hướng dẫn thiết lập tương tác. Cài đặt, đăng ký cloud và lựa chọn policy của bạn tồn tại qua một quá trình nâng cấp, vì vậy một máy đã di chuyển thực thi chính xác như trước — điều này quan trọng nhất trên các máy không có ai ngồi ở đó: một CI runner, một hộp fleet, một gateway headless.
+</Note>
+
+## Tự động hóa nó
+
+`failproofai update` là không tương tác và an toàn khi chạy khi không có gì để làm — nó báo cáo "không cần migration" và thoát 0. Đưa nó vào sau mỗi quá trình nâng cấp trong script provisioning hoặc Dockerfile là cách sử dụng dự định:
+
+```dockerfile
+RUN npm install -g failproofai@latest && failproofai update --no-daemon
+```
+
+(`--no-daemon` trong xây dựng image, nơi chưa có service để khởi động lại.)

@@ -1,25 +1,25 @@
 ---
 title: "CLI"
-description: "Failproof AI Observability'nin tüm işlevlerini terminalden veya bir betikten yönetin: pano gezintisine gerek yoktur."
+description: "Failproof AI Observability'nin tüm özelliklerini terminalden veya bir betikten kullanın: pano ziyaretlerine gerek yok."
 ---
 
 
-Failproof AI Observability'nin tüm işlevlerini terminalden veya bir betikten yönetin: pano gezintisine gerek yoktur. `agenteye` CLI'si verilerinizi sorgular (oturumlar, olay günlükleri, değerlendirmeler) ve kuruluşunuzu yönetir (API anahtarları, kullanıcılar, ayarlar, uyarılar, olaylar, kaydedilmiş sorgular), bu nedenle bir denetimi otomatikleştirmek, Gözlenebilirliği CI'ye bağlamak veya bir kodlama ajanına üretim incelemesi yapmasını istediğinizde buraya başvurun. Her komut `--json` bayrağını destekler, bu nedenle hem siz bir istemde hem de bir kodlama ajanı (Claude Code, Cursor) çıkış ayrıştırırken eşit şekilde çalışır.
+Failproof AI Observability'nin tüm özelliklerini terminalden veya bir betikten kullanın: pano ziyaretlerine gerek yok. `agenteye` CLI verilerinizi (oturumlar, etkinlik günlükleri, değerlendirmeler) sorgular ve kuruluşunuzu yönetir (API anahtarları, kullanıcılar, ayarlar, uyarılar, olaylar, kaydedilmiş sorgular), bu nedenle bir denetimi otomatikleştirmek, Observability'yi CI'ye entegre etmek veya bir kodlama aracısının üretim ortamını incelemesine olanak vermek istediğinizde kullanın. Her komut `--json` bayrağını destekler, bu nedenle komut isteminizde sizin için veya bir kodlama aracısı (Claude Code, Cursor) sonuçları alıp ayrıştırırken eşit derecede iyi çalışır.
 
 Bir tek ikili dosya ile şunları yapabilirsiniz:
 
-- **Verilerinizi okuyun**: `sessions`, `events`, `evals`, `errors` (zamana, ajanaya, ortama, puana göre filtreleyin).
+- **Verilerinizi okuyun**: `sessions`, `events`, `evals`, `errors` (zaman, aracı, env, puan ile filtreleyin).
 - **Kuruluşunuzu yönetin**: `keys`, `users`, `settings`, `alerts`, `incidents`.
-- **Analitik çalıştırın**: kaydedilmiş SQL ve geçici sorgu çalıştırıcısı (`query`).
-- **AI asistanına sorun**: panoda sohbet ettiğiniz aynı salt-okunur analist (`agent`).
+- **Analitik çalıştırın**: kaydedilmiş SQL ve geçici sorgu çalıştırıcı (`query`).
+- **AI asistanına sorun**: panoda sohbet ettiğiniz aynı salt okunur analist (`agent`).
 
-> **Not:** Bu `agenteye` CLI'si, toplayıcı daemon'ından (`agenteye-collector`) farklı bir araçtır. CLI panonuzla konuşur; toplayıcı olayları sunucuya gönderir.
+> **Not:** Bu `agenteye` CLI'si, toplayıcı daemon'u (`agenteye-collector`) ile farklı bir araçtır. CLI panonuzla konuşur; toplayıcı etkinlikleri sunucuya gönderir.
 
 ---
 
 ## Hızlı Başlangıç
 
-Hiçbir şeyden ilk sonuca dört satırda ulaşın. CLI'yi panonuza yönlendirin, oturum açın, kim olduğunuzu onaylayın, ardından son günün çalıştırmalarını çekin:
+Sıfırdan ilk sonuca dört satırda. CLI'yi panonuza işaret edin, oturum açın, kimliğinizi doğrulayın ve ardından son bir günün çalıştırmalarını çekin:
 
 ```bash
 pipx install agenteye
@@ -28,7 +28,7 @@ agenteye whoami                                                                 
 agenteye --json sessions --since 24h                                             # one row per agent run, last 24h
 ```
 
-Bu son komut en son oturumların bir JSON nesnesi yazdırır (en yeniden itibaren, varsayılan olarak 50 ile sınırlı). Bunu `jq`'ye yönlendirerek dilimleyin veya `--json`'i bırakıp kutulanmış, renklendirilmiş bir tablo alın. Her satır çalıştırmanın durumunu ve varsa bir değerlendirici tarafından puanlandırıldıysa metrik puanlarını (burada kısaltılmış) taşır:
+Bu son komut, en son oturumların JSON nesnesini yazdırır (yeniden itibaren, varsayılan olarak 50 ile sınırlı). Bunu `jq`'ye yönlendirerek dilimleme yapın veya düzenli bir tablo için `--json` seçeneğini kaldırın. Her satır çalıştırmanın durumunu ve varsa bir değerlendirici bunu puanlamışsa metrik puanlarını içerir (burada kısaltılmış):
 
 ```json
 {
@@ -48,13 +48,13 @@ Bu son komut en son oturumların bir JSON nesnesi yazdırır (en yeniden itibare
 }
 ```
 
-Bu sayfanın geri kalanı her parçayı açıklar: izole ortamda [kurulum](#installation), [oturum açma](#authentication), [yapılandırma](#configuration), her komutun paylaştığı [genel kurallar](#global-options--conventions) ve [tam komut başvurusu](#command-reference).
+Bu sayfanın geri kalanı her birini açıklar: [yükleme](#installation) izole ortamda, [oturum açma](#authentication), [yapılandırma](#configuration), her komutun paylaştığı [genel kurallar](#global-options--conventions) ve [tam komut başvurusu](#command-reference).
 
 ---
 
-## Kurulum
+## Yükleme
 
-CLI, **`agenteye`** adlı genel bir PyPI paketidir. Her zaman kendi bağımlılıklarına sahip olması için bunu izole bir ortamda kurun:
+CLI, **`agenteye`** adlı halka açık PyPI paketidir. Her zaman kendi bağımlılıklarına sahip olması için izole bir ortama yükleyin:
 
 ```bash
 pipx install agenteye
@@ -62,42 +62,42 @@ pipx install agenteye
 uv tool install agenteye
 ```
 
-Python 3.10+ gerektirir. Yüklü komut **`agenteye`**'dir:
+Python 3.10+ gerektirir. Yüklenen komut **`agenteye`** olmaktadır:
 
 ```bash
 agenteye --version
 agenteye --help
 ```
 
-> **Not:** Failproof AI Observability Python SDK de `agenteye` dağıtım adını kullanır. CLI'yi `pipx` veya `uv tool` ile kurulumla (paylaşılan bir virtualenv'e `pip install` yerine) ikisinin çakışmasını önlersiniz. Düz `pip install agenteye` yalnızca SDK aynı ortamda yüklü değilse sorun değildir.
+> **Not:** Failproof AI Observability Python SDK de `agenteye` dağıtım adını kullanır. CLI'yi `pipx` veya `uv tool` ile yüklemek (paylaşılan bir virtualenv'e `pip install` yerine) ikisinin çarpışmasını önler. Düz bir `pip install agenteye`, SDK aynı ortamda yüklü değilse iyidir.
 
 ---
 
-## Kimlik Doğrulaması
+## Kimlik Doğrulama
 
-CLI, **pano** ile e-postayla gönderilen bir kerelik kodla kimlik doğrulaması yapar:
+CLI, **pano** ile e-posta gönderilen tek kullanımlık kod kullanılarak kimlik doğrulaması yapar:
 
 ```bash
 agenteye login --email you@example.com
 # A 6-digit code is emailed to you; paste it at the prompt.
 ```
 
-Oturum belirteci `~/.agenteye/cli.json`'de (yalnızca sizin tarafınızdan okunur, mod `0600`) depolanır ve varsayılan olarak 24 saat geçerlidir. Süresi dolduğunda `agenteye login` komutunu tekrar çalıştırın.
+Oturum belirteci `~/.agenteye/cli.json` dosyasında saklanır (yalnızca sizde okunabilir, mod `0600`) ve varsayılan olarak 24 saat geçerlidir. Süresi dolduğunda `agenteye login` komutunu yeniden çalıştırın.
 
 ```bash
 agenteye whoami     # show the current user, active org, and permissions
 agenteye logout     # revoke the session and clear the stored token
 ```
 
-`whoami` hiçbir zaman eksik veya süresi dolmuş oturum hatasını vermez; bunun yerine `logged_in: false` raporlar, bu nedenle bir betik veya ajan kimlik doğrulama durumunu güvenle araştırabilir (pano belirtilen bir temel URL yoksa veya erişilemezse yine de sıfır olmayan çıkabilir).
+`whoami` eksik veya süresi dolmuş bir oturumda hiçbir zaman hata vermez; bunun yerine `logged_in: false` bildirir, böylece bir betik veya aracı kimlik doğrulama durumunu güvenli bir şekilde inceleyebilir (temel URL ayarlanmadıysa veya pano erişilemezse hala sıfır olmayan bir çıkış kodu çıkabilir).
 
-**Gereksinimler:** e-postanız panoya oturum açmaya izin verilen (Failproof AI Observability yöneticinize sorun) olmalı ve pano temel URL'sinde erişilebilir olmalıdır (bkz. [Yapılandırma](#configuration)). Bir kod talep eder ve hiçbiri gelmezse, e-postanız muhtemelen henüz pano erişimi için etkinleştirilmemiştir.
+**Gereksinimler:** e-postanız pano oturumu açmak için izne sahip olmalıdır (Failproof AI Observability yöneticinize sorun) ve pano temel URL'sinde erişilebilir olmalıdır (bkz. [Yapılandırma](#configuration)). Bir kod talep eder ve hiçbiri gelmezse, e-postanız muhtemelen henüz pano erişimi için etkinleştirilmemiştir.
 
 ---
 
-## Kuruluşunuzu Seçme (çok kiracılı)
+## Kuruluşunuzu Seçme (çok kiracı)
 
-Hesabınız birden fazla kuruluşa aitse, **oturum açarken** etkin olanı seçin; kaydedilir ve sonraki her komut için kullanılır:
+Hesabınız birden fazla kuruluşa aitse, **oturum açma sırasında** etkin olanı seçin; kaydedilir ve daha sonra her komut için kullanılır:
 
 ```bash
 agenteye login --org acme           # authenticate and set the active tenant in one step
@@ -106,7 +106,7 @@ agenteye orgs switch globex         # change the saved default
 agenteye --org globex sessions      # override for a single command
 ```
 
-Tam olarak bir kuruluşa aitse otomatik olarak seçilir ve `--org`'yi tamamen görmezden gelebilirsiniz. Çeşitli kuruluşa ait iseniz ve birini seçmezseniz, CLI bunları listeler ve `--org <slug>` ile yeniden çalıştırmanızı ister. Etkin kuruluş her istekte panoya gönderilir ve izinleriniz **kuruluş başına** çözülür; `agenteye whoami` etkin kuruluşu, içindeki izinlerinizi ve tüm üyeliklerinizi gösterir.
+Tam olarak bir kuruluşa ait olursanız, otomatik olarak seçilir ve `--org` seçeneğini tamamen göz ardı edebilirsiniz. Birden fazla kuruluşa ait olursanız ve bir tane seçmezseniz, CLI bunları listeler ve `--org <slug>` ile yeniden çalıştırmanızı ister. Etkin kuruluş panoya yapılan her istekte gönderilir ve izinleriniz **kuruluş başına** çözülür; `agenteye whoami` etkin kuruluşu, içindeki izinlerinizi ve tüm üyeliklerinizi gösterir.
 
 ---
 
@@ -114,43 +114,43 @@ Tam olarak bir kuruluşa aitse otomatik olarak seçilir ve `--org`'yi tamamen g�
 
 | Ayar | Bayrak | Ortam değişkeni | Varsayılan |
 |---|---|---|---|
-| Pano temel URL'si | `--base-url` | `AGENTEYE_DASHBOARD_URL` | **gerekli** (varsayılan yok) |
-| Etkin kuruluş/kiracı | `--org` | `AGENTEYE_ORG` | oturum açmada seçilir; `~/.agenteye/cli.json`'de kaydedilir |
-| Oturum belirteci | `--token` | `AGENTEYE_CLI_TOKEN` | `~/.agenteye/cli.json`'den |
-| JSON çıktısı | `--json` | `AGENTEYE_CLI_JSON` | kapalı |
-| TLS doğrulamasını atla | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | kapalı (oturum açmada kaydedilir) |
-| İstek zaman aşımı (saniye) | `--timeout` | _(yok)_ | 30 |
-| Kullanım telemetrisi devre dışı | _(yok)_ | `AGENTEYE_ANALYTICS_DISABLED` (veya `DO_NOT_TRACK`) | telemetri şu anda devre dışı; hiçbir şey gönderilmez |
+| Pano temel URL | `--base-url` | `AGENTEYE_DASHBOARD_URL` | **gerekli** (varsayılan yok) |
+| Etkin kuruluş/kiracı | `--org` | `AGENTEYE_ORG` | oturum açmada seçilen; `~/.agenteye/cli.json` dosyasında kaydedilen |
+| Oturum belirteci | `--token` | `AGENTEYE_CLI_TOKEN` | `~/.agenteye/cli.json` dosyasından |
+| JSON çıkışı | `--json` | `AGENTEYE_CLI_JSON` | kapalı |
+| TLS doğrulamasını atla | `--insecure` / `--secure` | `AGENTEYE_INSECURE` | kapalı (oturum açmada kaydedilen) |
+| İstek zaman aşımı (saniye) | `--timeout` | _(none)_ | 30 |
+| Kullanım telemetrisini devre dışı bırak | _(none)_ | `AGENTEYE_ANALYTICS_DISABLED` (veya `DO_NOT_TRACK`) | telemetri şu anda devre dışı; hiçbir şey gönderilmez |
 
-Çözüm sırası **bayrak → ortam değişkeni → yapılandırma dosyası**'dır. Varsayılan yoktur; CLI'yi panonuza işaret etmelisiniz, komut başına (`--base-url https://agenteye.example.com`) veya ortam üzerinden bir kez (ilk `login`'den sonra kaydedilir):
+Çözüm sırası **bayrak → ortam değişkeni → yapılandırma dosyası**. Varsayılan değer yoktur; CLI'yi panonuza işaret etmelisiniz, komut başına (`--base-url https://agenteye.example.com`) veya ortam yoluyla bir kez (ilk `login`'den sonra da kaydedilir):
 
 ```bash
 export AGENTEYE_DASHBOARD_URL=https://agenteye.example.com
 ```
 
-Yapılandırma dizini `AGENTEYE_HOME`'u onurlandırır (SDK ve toplayıcı tarafından kullanılan aynı kural); ayarlanırsa, `cli.json` `$AGENTEYE_HOME/cli.json`'de bulunur.
+Yapılandırma dizini `AGENTEYE_HOME`'u dikkate alır (SDK ve toplayıcı tarafından kullanılan aynı kural); ayarlanmışsa `cli.json` `$AGENTEYE_HOME/cli.json`'da bulunur.
 
 ### Kendi imzalı veya dahili TLS
 
-Panonuz kendi imzalı veya dahili sertifika ile HTTPS üzerinden sunuluyorsa (örneğin, ham yük dengeleyici ana bilgisayar adı), TLS doğrulaması bunu `CERTIFICATE_VERIFY_FAILED` hatası ile reddeder. Sertifika doğrulamasını atlamak için `--insecure` geçirin:
+Panonuz kendi imzalı veya dahili bir sertifika ile HTTPS üzerinden sunuluyorsa (örneğin, ham bir yük dengeleyici ana adı), TLS doğrulaması bunu `CERTIFICATE_VERIFY_FAILED` hatası ile reddeder. Sertifika doğrulamasını atlamak için `--insecure` seçeneğini geçin:
 
 ```bash
 agenteye --base-url https://agenteye.internal --insecure login
 ```
 
-`--insecure` **oturum açarken `cli.json`'de kaydedilir**, bu nedenle sonraki komutlar doğrulamayı otomatik olarak atlar; bayrağı tekrarlamanız gerekmez. Tek seferlik doğrulanmış bir çağrı için `--secure`'ü geçirin veya bir sonraki oturum açmada doğrulamayı geri açmak için kullanın. CLI pano ile iletişim kuran her komuttan önce stderr'e doğrulama devre dışı bırakıldığında bir uyarı yazdırır. Doğrulamayı atlamak, ortadaki adam saldırılarına karşı korumayı kaldırır; panonuza olan ağ yoluna güvenmeden önce buna güvendiğinizden emin olun (VPN, özel alt ağ vb.).
+`--insecure` **oturum açarken `cli.json`'a kaydedilir**, bu nedenle daha sonraki komutlar doğrulamayı otomatik olarak atlar; bayrağı tekrarlamanıza gerek yok. Tek seferlik doğrulanmış bir çağrı için `--secure` seçeneğini geçin veya bir sonraki oturum açmada doğrulamayı geri açın. CLI, doğrulama devre dışı bırakılmışken pano ile iletişim kuran herhangi bir komuttan önce stderr'ye bir uyarı yazdırır. Doğrulamayı atlamak ortadaki adam saldırılarına karşı korumayı kaldırır; panonuza olan ağ yoluna (VPN, özel alt ağ, vb.) güvenmeden önce buna dayanmayın.
 
 ---
 
 ## Telemetri ve Gizlilik
 
-> **Not:** Gönderilen CLI **bugün hiçbir kullanım telemetrisi göndermez.** Ana bir kill switch açık olduğundan ortamınız ne olursa olsun hiçbir şey iletilmez. Aşağıdaki bölüm telemetri hiç etkinleştirilirse çıkış yapma yeteneğini açıklar.
+> **Not:** Sevk edilen CLI **bugün hiçbir kullanım telemetrisi göndermiyor.** Ana bir kill anahtarı açık, bu nedenle ortamınız ne olursa olsun hiçbir şey iletilmez. Aşağıdaki bölümde telemetri etkinleştirilirse devre dışı bırakma yeteneği açıklanmaktadır.
 
-Etkinleştirildiğinde bile telemetri **yalnızca anonim kullanım analitikleri** olurdu, asla ajanınız, oturum veya olay verileriniz değil:
+Etkin olsa bile, telemetri **yalnızca anonim kullanım analitikleri** olacak, hiçbir zaman aracı, oturum veya etkinlik verileriniz değil:
 
-- **Ajan, oturum veya olay verisi hiçbir zaman altyapınızı bırakmaz.** Yalnızca CLI kullanımı raporlanacaktır: komut ve alt komut adı (örneğin `keys create`), kullandığınız bayrakların **adları** (hiçbir zaman değerleri), başarı/çıkış durumu ve süresi, artı mutasyonlar için eylem başına etkinlik (örneğin `api_key_created`, `query_run`) yalnızca statik adlar/enum ve kaba sayılar taşıyan. Pano URL'niz, oturum belirteci, e-posta, kuruluş slug'ı, kaynak kimlikleri, SQL, anahtar gizli anahtarları ve sorgu filtreleri **asla** gönderilmez. Operatörler yalnızca opak dahili kimlikle tanımlanacak, asla e-postaya göre değil.
-- **Zaman içinde önceden çıkış yapın** ortamda `AGENTEYE_ANALYTICS_DISABLED=1` ayarlayarak (CLI de çapraz araç `DO_NOT_TRACK=1` kuralına uyar). Bu telemetri hiç etkinleştirilir etkinleştirilmez devreye girer, bu nedenle gizlilik bilincine sahip bir ortam kalıcı olarak çıkış yapabilir.
-- Telemetri etkinleştirilirse, CLI doğrudan PostHog'a gönderecektir (`https://us.i.posthog.com`); o ana bilgisayar bloklanan bir makine sessizce hiçbir şey göndermez ve CLI etkilenmez.
+- **Aracı, oturum veya etkinlik verileriniz hiçbir zaman altyapınızdan dışarı çıkmaz.** Yalnızca CLI kullanımı rapor edilir: komut ve alt komut adı (ör. `keys create`), kullandığınız bayrakların **adları** (asla değerleri değil), başarı/çıkış durumu ve süresi, artı mutasyonlar için eylem başına etkinlik (ör. `api_key_created`, `query_run`) yalnızca statik adlar/numaralandırmalar ve kaba sayılar taşıyan. Pano URL'niz, oturum belirteci, e-postanız, kuruluş slugu, kaynak kimlikleri, SQL, anahtar sırları ve sorgu filtreleri **hiçbir zaman** gönderilmez. Operatörler yalnızca opak bir dahili id ile tanımlanır, asla e-posta ile değil.
+- **`AGENTEYE_ANALYTICS_DISABLED=1` ortam değişkenini CLI ortamında ayarlayarak önceden devre dışı bırakın** (CLI aynı zamanda araçlar arası `DO_NOT_TRACK=1` kuralını da dikkate alır). Bu, telemetri etkinleştirildiği anda yürürlüğe girer, bu nedenle gizlilik bilincine sahip bir ortam kalıcı olarak devre dışı kalabilir.
+- Telemetri etkinleştirilirse, CLI doğrudan PostHog'a (`https://us.i.posthog.com`) gönderecektir; bu ana adres engellenerek bir makine sessizce hiçbir şey göndermez ve CLI etkilenmez.
 
 ---
 
@@ -158,35 +158,35 @@ Etkinleştirildiğinde bile telemetri **yalnızca anonim kullanım analitikleri*
 
 Bunu bir kez okuyun; her komuta uygulanır.
 
-- **Genel seçenekler komuttan ÖNCE gider.** `agenteye --json sessions` doğrudur; `agenteye sessions --json` bir kullanım hatasıdır. Globaller `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet` ve `--no-color`'dir.
-- **`--json` saf JSON'u stdout'a ve başka bir şeye yazdırır.** İnsan durum satırları, uyarılar ve hatalar **stderr**'e gider, bu nedenle `--json` stdout yakalaması bir durum satırı gösterildiğinde bile `jq`'ye borulama için temiz kalır. `--json` olmadan insan gözleri için kutulanmış, renklendirilmiş bir görünüm alırsınız.
-- **`--help` ile keşfet.** Her komut ve alt komutun `--help` (ve `-h` takma adı) vardır: `agenteye -h`, `agenteye sessions -h`, `agenteye keys create -h`. Üst düzey yardım ayrıca çıkış kodlarını ve genel seçenekleri listeler. Genel makine tarafından okunabilir yüzey dökümü yoktur; komut başına `--help` artı `agenteye query schema` ve `agenteye settings schema` bu iki kayıt defteri için kullanın.
-- **Onaylar etkileşimli olmayan ortamlarda otomatik olarak atlanır.** Oluştur/güncelle/sil komutları etkileşimli terminalde "emin misiniz?" ister, ancak **`--json` altında veya stdin bir TTY olmadığında otomatik olarak bu istemi atlar** (TTY etkileşimli bir terminal oturumudur; bir boru veya CI çalıştırıcısı değil), bu nedenle betikler ve ajanlar asla beklemez. Bunu açık olarak atlamak için `--yes`/`-y` geçirin. İstem bir ajan için çalışmayacağından, ajan yıkıcı işlemleri insanla önceden onaylamalıdır.
-- **Sayfalandırma:** sonuçlar en yeniden itibaren ve imleç sayfalandırılır (her sayfa sonraki sayfayı getirmek için kullandığınız bir belirteç döndürür). `--limit N` (takma ad `-n`) satırları kapaklar ve **varsayılan olarak 50**; `--all` otomatik sayfalandırır (**200 satırlık parçalarda**) **`--limit`'e kadar**, bu nedenle çıplak `--all` yine 50'de durur. Tam bir tarama için yüksek açık bir kapak geçirin: `--all --limit 1000`. `--page-size N` istek başına parçayı kontrol eder (max 200); `--cursor <id>` önceki sayfanın `next_cursor`'ından devam eder.
-- **Zaman filtreleri:** `--since` göreli bir pencere alır: `15m`, `1h`, `6h`, `24h`, `7d` veya `all` (panonun ön ayarları). Daha uzun veya özel bir aralık için (örneğin son 30 gün), `--from`/`--to`'yu kullanın: açık ISO-8601 UTC zaman damgaları **`T` ve saat dilimi ile** (örneğin `2026-06-01T00:00:00Z`) `--since`'i geçersiz kılır. Boşluk ayrılmış veya saat dilimi olmayan bir değer bir kullanım hatasıdır.
-- **`--fields a,b,c`** (`events`, `sessions`, `evals`, `errors` üzerinde) çıktıyı bu anahtarlara kısıtlar, hem tablo hem de `--json` için. Bilinmeyen adlar geçerli liste ile reddedilir, alan adlarını keşfetmek için ucuz bir yol.
-- **`--file payload.json`** (veya stdin'i okumak için `--file -`) bir kaynak karmaşık bir şekle sahipse tam bir JSON istek gövdesini sağlar (`alerts create/update`, `settings set` ve `users create/update` üzerinde). Kaydedilmiş sorgu SQL'i bunun yerine `--sql @file.sql` kullanır.
-- **Çoklu değer filtreleri** virgülle ayrılır → küme olarak eşleştirilir (bir filtre içinde birleşim, filtreler arasında VE): `--event-type tool_use,tool_result`. Tıklama seçenekleri varyabilir değildir, bu nedenle `--add a b` kopar. `--add a,b` kullanın, bayrağı tekrarlayın (`--add a --add b`) veya alıntı yapın (`--add "a b"`).
+- **Genel seçenekler komuttan ÖNCEsine gider.** `agenteye --json sessions` doğru; `agenteye sessions --json` kullanım hatasıdır. Genel seçenekler `--json`, `--base-url`, `--org`, `--token`, `--insecure`/`--secure`, `--timeout`, `--quiet` ve `--no-color` seçenekleridir.
+- **`--json` stdout'a saf JSON yazdırır ve başka hiçbir şey yazdırmaz.** İnsan durum satırları, uyarılar ve hatalar **stderr**'e gider, bu nedenle `--json` stdout yaklaması `jq`'ye borulanmış halde temiz kalır, bir durum satırı gösterilse bile. `--json` olmadan, insan gözleri için kutulanmış, renklendirilmiş bir görünüm elde edersiniz.
+- **`--help` ile keşfet.** Her komut ve alt komutun `--help` seçeneği (ve `-h` takma adı) vardır: `agenteye -h`, `agenteye sessions -h`, `agenteye keys create -h`. Üst düzey yardım aynı zamanda çıkış kodlarını ve genel seçenekleri de listeler. Genel makine tarafından okunabilir bir yüzey dökümü yoktur; komut başına `--help` kullanın, artı bu iki kayıt için etki alanına özgü `agenteye query schema` ve `agenteye settings schema` seçenekleri.
+- **Onaylar betikler ve aracılar için otomatik olarak atlanır.** Oluştur/güncelle/sil komutları etkileşimli bir terminalde "emin misiniz?" isteminde sorulur, ancak **`--json` altında veya stdin TTY olmadığında otomatik olarak bu istemi atlar** (TTY etkileşimli bir terminal oturumudur; bir boru veya CI çalıştırıcısı değildir), bu nedenle betikler ve aracılar asla askıda kalmazlar. Açıkça atlamak için `--yes`/`-y` seçeneğini geçin. Aracı için istem ateşlenmeyeceğinden, bir aracı yıkıcı işlemleri önce insan ile doğrulamalıdır.
+- **Sayfalandırma:** sonuçlar yeniye ilk, imleç sayfalandırılmış (her sayfa bir sonraki getirmek için kullandığınız bir belirteç döndürür). `--limit N` (takma ad `-n`) satırları sınırlar ve **varsayılan olarak 50**; `--all` otomatik sayfalandırır (200 satır öbeklerinde) **`--limit`'e kadar**, bu nedenle yalın bir `--all` hala 50'de durur. Tam bir tarama için yüksek bir açık sınır geçin: `--all --limit 1000`. `--page-size N` istekteki öbek boyutunu kontrol eder (maks 200); `--cursor <id>` bir önceki sayfanın `next_cursor`'undan devam eder.
+- **Zaman filtreleri:** `--since` bağıl bir pencere alır: `15m`, `1h`, `6h`, `24h`, `7d` veya `all` (panonun ön ayarları). Daha uzun veya özel bir aralık için (örneğin son 30 gün), `--from`/`--to` seçeneğini kullanın: `T` ve bir saat dilimi (ör. `2026-06-01T00:00:00Z`) ile açık ISO-8601 UTC zaman damgaları `--since` seçeneğini geçersiz kılar. Boşluk ile ayrılmış veya saat dilimi olmayan bir değer kullanım hatasıdır.
+- **`--fields a,b,c`** (`events`, `sessions`, `evals`, `errors` üzerinde) çıkışı bu anahtarlarla kısıtlar, hem tablo hem de `--json` için. Bilinmeyen adlar geçerli liste ile reddedilir, alan adlarını keşfetmek için ucuz bir yol.
+- **`--file payload.json`** (veya stdin okumak için `--file -`) bir kaynağın karmaşık bir şekle sahip olduğu durumlarda tam bir JSON istek gövdesini sağlar (`alerts create/update`, `settings set` ve `users create/update` üzerinde). Kaydedilmiş sorgu SQL yerine `--sql @file.sql` seçeneğini kullanır.
+- **Çok değerli filtreler** virgülle ayrılmış → bir küme olarak eşleştirilir (bir filtre içinde birlik, filtreler arasında AND): `--event-type tool_use,tool_result`. Tıkla seçenekleri varyatik değildir, bu nedenle `--add a b` kırılır. `--add a,b` seçeneğini kullanın, bayrağı tekrarla (`--add a --add b`) veya tırnak alın (`--add "a b"`).
 
 ---
 
 ## Komut Başvurusu
 
-### Bu 5 komutu en çok kullanacaksınız
+### En Çok Kullanacağınız 5 Komut
 
-Çoğu günlük çalışma bir avuç okuma komutu aracılığıyla çalışır. Buradan başlayın, ardından daha fazla yüzeye ihtiyacınız olduğunda aşağıdakine ulaşın:
+Günlük çalışmalarının çoğu birkaç okuma komutu aracılığıyla çalışır. Buradan başlayın, ardından ihtiyacınız olduğunda aşağıdaki tam yüzeyi kullanın:
 
 | Komut | Ne yaptığı | Deneyin |
 |---|---|---|
-| `sessions` | Ajan çalıştırması başına bir satır: zaman, ortam, ajan, durum, en son puan. | `agenteye --json sessions --since 24h --status error` |
+| `sessions` | Aracı çalıştırma başına bir satır: zaman, env, aracı, durum, en son puan. | `agenteye --json sessions --since 24h --status error` |
 | `events` | Bir çalıştırmanın içindeki ham adım adım izi (yükler için `--full` ekleyin). | `agenteye --json events --session-id run-001 --all` |
-| `evals` | Değerlendirme sonuçları ve puanları; `--aggregate` bunları topla. | `agenteye --json evals --aggregate --since 7d --env prod` |
-| `errors` | Sadece hata alan olaylar; `--aggregate` türe göre sayımlar için. | `agenteye --json errors --since 24h --aggregate` |
-| `list` | Geçerli filtre değerlerini keşfet (ajanlar, ortamlar, modeller, …). | `agenteye list agents` |
+| `evals` | Değerlendirme sonuçları ve puanları; `--aggregate` bunları yukarı kaydırır. | `agenteye --json evals --aggregate --since 7d --env prod` |
+| `errors` | Sadece hatalı etkinlikler; `--aggregate` tür başına sayımlar için. | `agenteye --json errors --since 24h --aggregate` |
+| `list` | Geçerli filtre değerlerini keşfet (aracılar, envs, modeller, …). | `agenteye list agents` |
 
-### CLI'nin yapabileceği her şey
+### CLI'nin Yapabileceği Herşey
 
-Tam yüzey takip eder. CLI'nin **18 üst düzey komutu** vardır. Tüm okuma komutları `--json` ve yukarıdaki genel seçenekleri kabul eder; herhangi birinin kapsamlı bayrak listesi ve JSON şekli için `agenteye <command> -h` (veya `<command> <subcommand> -h`) çalıştırın.
+Tam yüzey aşağıdadır. CLI'nin **18 üst düzey komutu** vardır. Tüm okuma komutları `--json` ve yukarıdaki genel seçenekleri kabul eder; herhangi birinin ayrıntılı bayrak listesini ve JSON şeklini görmek için `agenteye <command> -h` (veya `<command> <subcommand> -h`) seçeneğini çalıştırın.
 
 ### Kimlik: `login` · `logout` · `whoami` · `orgs` · `version` · `help`
 
@@ -207,9 +207,9 @@ agenteye orgs current     # identity card for the active org
 agenteye orgs perms       # your permissions in the active org, grouped by resource
 ```
 
-### Gözlem (salt okunur): `events` · `sessions` · `evals` · `errors` · `list`
+### Gözlemle (salt okunur): `events` · `sessions` · `evals` · `errors` · `list`
 
-Bunların hiçbiri bir onay gerektirmez. Paylaşılan filtreler: `--session-id`, `--agent-id`, `--env` (**not** `--environment`), ve zaman aralığı (`--since` / `--from` / `--to`).
+Bunların hiçbiri onay gerektirmez. Paylaşılan filtreler: `--session-id`, `--agent-id`, `--env` (**not** `--environment`), ve zaman aralığı (`--since` / `--from` / `--to`).
 
 ```bash
 # events (alias: the raw per-step trail), newest first
@@ -232,16 +232,16 @@ agenteye --json errors --since 24h --error-type timeout --all --limit 1000
 agenteye list envs        # also: agents event_types score_filters models hooks tools error_types
 ```
 
-`--score KEY:MIN..MAX` (**`evals`** üzerinde, `sessions` değil) tekrarlanabilir ve VE-birleşik; her iki sınır isteğe bağlıdır (`..0.5` ≤ 0.5 anlamında, `0.9..` ≥ 0.9 anlamında). İstek başına 20'ye kadar puan filtresi. `evals --scores-full` **yalnızca insan tablosu için** bir görüntü bayrağıdır; ilk birkaçın yerine her puan çiftini artı `+N` sayısını gösterir. `--json` altında hiçbir etkisi yoktur, bu her zaman tam puan nesnesini döndürür. **Bir oturumu uçtan uca** okumak için olay izini değerlendirmesi ile birleştirin:
+**`evals`** (değil `sessions`) üzerinde `--score KEY:MIN..MAX` tekrarlanabilir ve AND-birleşik; her iki sınır da isteğe bağlı (`..0.5` ≤ 0.5 anlamına gelir, `0.9..` ≥ 0.9 anlamına gelir). İstek başına en fazla 20 puan filtresi. `evals --scores-full` **yalnızca insan tablosu için** görüntü bayrağıdır; ilk kaçtan sonra `+N` sayımı yerine her puan çiftini gösterir. `--json` altında etkisi yoktur, bu her zaman tam puan nesnesini döndürür. **Bir oturumun uçtan uca okumak için** etkinlik izini değerlendirmesi ile birleştirin:
 
 ```bash
 agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] | {ts, event_type}'
 agenteye --json evals  --session-id run-001                       # its scores + status
 ```
 
-### Yönet (izin kapılı): `keys` · `users` · `settings` · `alerts` · `incidents`
+### Yönet (izin geçidi): `keys` · `users` · `settings` · `alerts` · `incidents`
 
-**`keys`**: API anahtarları. Gizli dizi yerel olarak oluşturulur, sunucuya gönderilir (yalnızca bir karması depolar) ve oluşturma/yeniden oluşturma sırasında **bir kez gösterilir**; o zaman yakala. `--json` ile yalnızca `key` alanında görünür. **Ad** tarafından referans alınır.
+**`keys`**: API anahtarları. Gizli dizi yerel olarak oluşturulur, sunucuya gönderilir (sunucu yalnızca bir hash depolar) ve oluştur/yeniden oluştur sırasında **bir kez gösterilir**; o zaman yakala. `--json` altında yalnızca `key` alanında görünür. **Ad** ile başvurulur.
 
 ```bash
 agenteye keys list                                   # active keys first, then revoked
@@ -253,9 +253,9 @@ agenteye keys regenerate ci-bot --yes                # rotate the secret (the ol
 agenteye keys disable ci-bot --yes                   # revoke
 ```
 
-İzinler `(permission-set ∪ --add) − --remove` olarak çalışır. Belirteçleri `slug:action` (örneğin `events:read`) veya bir kaynak üzerinde birkaçını genişletmek için `slug:action.action` (`events:read.add` → `events:read`, `events:add`). Ön ayarlar: `read-only`, `standard`, `admin`. İnsan yalnızca izinler (`keys:update`) bir anahtara verilemez.
+İzinler `(permission-set ∪ --add) − --remove` olarak çalışır. Belirteçler `slug:action` (ör. `events:read`) veya bir kaynakta birden fazla `slug:action.action` seçeneğini genişletmek içindir (`events:read.add` → `events:read`, `events:add`). Ön ayarlar: `read-only`, `standard`, `admin`. İnsan tarafından yapılabilecek izinler (`keys:update`) bir anahtara verilemez.
 
-**`users`**: kuruluş üyeleri, **e-posta** tarafından referans alınır (UUID kimliği de kabul edilir).
+**`users`**: kuruluş üyeleri, **e-posta** ile başvurulur (UUID id de kabul edilir).
 
 ```bash
 agenteye users list [--active-only]
@@ -266,7 +266,7 @@ agenteye users disable dev@corp.com --yes            # has protected/self guards
 agenteye users enable dev@corp.com
 ```
 
-**`settings`**: sabit bir kayıt defteri (varolan anahtarları okuyup değiştirirsiniz; yenileri oluşturamazsınız).
+**`settings`**: sabit bir kayıt (var olan anahtarları okur ve değiştirir; yeni olanlar oluşturamazsınız).
 
 ```bash
 agenteye settings list                               # key · value · type · updated (secrets masked)
@@ -274,7 +274,7 @@ agenteye settings schema                             # what each key accepts (ty
 agenteye settings set session_ttl_secs --value 86400 --yes
 ```
 
-**`alerts`**: uyarı tanımları, **ad** tarafından referans alınır. `create` konumsal BİR AD artı bayrakları veya `--file` aracılığıyla tam JSON gövdesini alır.
+**`alerts`**: uyarı tanımları, **ad** ile başvurulur. `create` konumsal bir NAME artı bayrakları veya `--file` aracılığıyla tam bir JSON gövdesini alır.
 
 ```bash
 agenteye alerts list
@@ -285,7 +285,7 @@ agenteye alerts test high-errors --yes                        # fire a test noti
 agenteye alerts delete high-errors --yes
 ```
 
-**`incidents`**: uyarı olayları, kimlikle referans alınır (kısa kimlikler kabul edilir). `show` tam etkinlik günlüğünü yazdırır; davranmadan önce okuyun.
+**`incidents`**: uyarı olayları, id ile başvurulur (kısa id'ler kabul edilir). `show` tam etkinlik günlüğünü yazdırır; hareket etmeden önce okuyun.
 
 ```bash
 agenteye incidents list --state firing                # also: acknowledged, resolved
@@ -300,9 +300,9 @@ agenteye incidents comment-list <id> ; agenteye incidents comment-delete <id> <c
 agenteye incidents subscribe <id> ; agenteye incidents unsubscribe <id> ; agenteye incidents subscribers <id>
 ```
 
-### Analitik ve asistan: `query` · `agent`
+### Analitik ve Asistan: `query` · `agent`
 
-**`query`**: analitik deponuza karşı kaydedilmiş SQL artı geçici çalıştırıcı. Kaydedilmiş sorgular **ad** tarafından referans alınır; SQL sunucu tarafı tarafından doğrulanır (SEÇME/İLE yalnızca, deyim zaman aşımı, satır kapakları).
+**`query`**: analitik mağazanıza karşı kaydedilmiş SQL artı geçici bir çalıştırıcı. Kaydedilmiş sorgular **ad** ile başvurulur; SQL sunucu tarafında doğrulanır (yalnızca SELECT/WITH, deyim zaman aşımı, satır sınırı).
 
 ```bash
 agenteye query schema [TABLE]                         # column layout of the analytics views
@@ -313,7 +313,7 @@ agenteye query create errs --sql @errs.sql --description "errored events (24h)"
 agenteye query update errs --sql @errs.sql --yes ; agenteye query delete errs --yes
 ```
 
-**`agent`**: yerleşik **AI asistanı** ile konuşur (panoda sohbet edebileceğiniz aynı salt-okunur analist). Sohbetler kısa bir sohbet kimliğine göre referans alınır (ön ek çözümlenmiş).
+**`agent`**: yerleşik **AI asistanı** ile konuşur (panoda sohbet edebileceğiniz aynı salt okunur analist). Sohbetler kısa bir sohbet-id tarafından başvurulur (ön ek çözümlü).
 
 ```bash
 agenteye agent health                                 # is the AI assistant configured/reachable
@@ -326,25 +326,25 @@ agenteye agent rename <short-id> --title "error triage" ; agenteye agent delete 
 
 ---
 
-## Çıkış kodları
+## Çıkış Kodları
 
-| Kod | Anlamı |
+| Kod | Anlam |
 |---|---|
 | 0 | Başarı |
-| 1 | Beklenmeyen hata (örneğin pano 5xx döndürdü) |
-| 2 | Kullanım hatası (geçersiz argümanlar, bilinmeyen komut/bayrak, ad çakışması) |
-| 3 | Panoya ulaşılamıyor |
-| 4 | Oturum açmamış veya süresi dolmuş; `agenteye login` komutunu çalıştırın |
-| 5 | Kimlik doğrulaması yapıldı, ancak hesabınız gerekli izne sahip değil (ileti adlandırır) |
-| 6 | İstenen kaynak bulunamadı (örneğin bilinmeyen oturum veya olay kimliği) |
+| 1 | Beklenmeyen hata (ör. pano 5xx döndürdü) |
+| 2 | Kullanım hatası (geçersiz argümanlar, bilinmeyen komut/bayrak, ad çarpışması) |
+| 3 | Panoya ulaşılamaz |
+| 4 | Oturum açılmamış veya oturum süresi dolmuş; `agenteye login` seçeneğini çalıştırın |
+| 5 | Kimlik doğrulandı, ancak hesabınız gerekli izne sahip değil (ileti bunu adlandırır) |
+| 6 | İstenen kaynak bulunamadı (ör. bilinmeyen oturum veya olay id'si) |
 
-Bunlar CLI'yi betiklemek için güvenli hale getirir: bir kodlama ajanı yeniden kimlik doğrulama istemek için bir `4`'e veya eksik izni yüzeyle çıkarmak için bir `5`'e dallanabilir. Ajanlar için çıkış kodu işleme desenleri ve JSON çıkış şekilleri için [Ajanlar için CLI Tarifleri](/tr/agenteye/cli-recipes) bölümüne bakın.
+Bunlar CLI'yi betiklemek için güvenli kılar: bir kodlama aracısı yeniden kimlik doğrulaması istemek için 4 üzerinde dallanabilir veya eksik izni yüzeye çıkarmak için 5 üzerinde dallanabilir. Çıkış kodu işleme desenleri ve JSON çıkış şekilleri için [Aracılar için CLI Tarifleri](/tr/agenteye/cli-recipes) seçeneğine bakın.
 
 ---
 
-## Sonraki adımlar
+## Sonraki Adımlar
 
-- **[Ajanlar için CLI Tarifleri](/tr/agenteye/cli-recipes)**: kopyala-yapıştır sorgu desenleri, `jq` tek satırlıkları, `--fields` projeksiyonları, çıkış kodu işleme ve JSON çıkış şekilleri, kodlama ajanları CLI'yi sürüyor için yazılmış.
-- **[CLI ajan becerisi](/tr/agenteye/cli-skill)**: bu CLI'yi bir kurulabilir Claude Code / Codex *becerisi* olarak paketleyin ve bir kodlama ajanı düz İngilizce isteklerinden Failproof AI Observability'yi sürsün.
-- **[API anahtarları](/tr/agenteye/api-keys)**: `keys create --add …`'ın arkasındaki izin modeli.
-- **[AI asistanı](/tr/agenteye/assistant)**: `agent ask`'ın konuştuğu asistanı etkinleştirme.
+- **[Aracılar için CLI Tarifleri](/tr/agenteye/cli-recipes)**: copy-paste sorgu desenleri, `jq` tek satırlıkları, `--fields` projeksiyonları, çıkış kodu işleme ve JSON çıkış şekilleri, kodlama aracıları CLI'yi sürüyor.
+- **[CLI aracı becerisi](/tr/agenteye/cli-skill)**: bu CLI'yi yüklenebilir Claude Code / Codex *becerisi* olarak paketleyin, böylece bir kodlama aracısı Failproof AI Observability'yi düz İngilizce isteklerden çalıştırır.
+- **[API anahtarları](/tr/agenteye/api-keys)**: `keys create --add …`'nin arkasındaki izin modeli.
+- **[AI asistanı](/tr/agenteye/assistant)**: `agent ask` ile konuşan asistanı etkinleştirme.

@@ -7,7 +7,7 @@ description: "Bật policies để chúng chạy trên mọi lần gọi tool c�
 failproofai policies --install [policy-names...] [options]
 ```
 
-Ghi các mục hook vào tệp cài đặt của CLI agent đã cài đặt (Claude Code, OpenAI Codex, hoặc GitHub Copilot CLI _(beta)_) để failproofai có thể chặn các lệnh gọi tool.
+Ghi các mục hook vào tệp cài đặt của CLI agent đã cài đặt của bạn (Claude Code, OpenAI Codex, hoặc GitHub Copilot CLI _(beta)_) để failproofai có thể chặn các lệnh gọi tool.
 
 Bí danh: `failproofai p -i`
 
@@ -15,43 +15,43 @@ Bí danh: `failproofai p -i`
 
 | Cờ | Mô tả |
 |------|-------------|
-| `--cli claude\|codex\|copilot` | CLI agent để cài đặt; cách nhau bằng khoảng trắng (ví dụ: `--cli claude codex copilot`) hoặc lặp lại. Bỏ qua để phát hiện CLI đã cài đặt và nhắc. |
+| `--cli claude\|codex\|copilot` | CLI agent để cài đặt; được phân tách bằng dấu cách (ví dụ: `--cli claude codex copilot`) hoặc lặp lại. Bỏ qua để phát hiện CLI đã cài đặt và nhắc. |
 | `--scope user` | Cài đặt vào tệp cài đặt phạm vi người dùng (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). Mặc định. |
 | `--scope project` | Cài đặt vào tệp cài đặt phạm vi dự án (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
 | `--scope local` | Chỉ Claude — cài đặt vào `<cwd>/.claude/settings.local.json`. Codex và Copilot không có phạm vi `local`. |
-| `--custom <path>` / `-c` | Đường dẫn đến tệp JS chứa các policies hook tùy chỉnh |
+| `--custom <path>` / `-c` | Đường dẫn đến tệp JS chứa custom hook policies |
 
-## Hành động
+## Hành vi
 
-- **Không có tên policy** - mở lời nhắc tương tác để chọn policies
-- **Tên cụ thể** - bật các policies đó (thêm vào bất kỳ policies nào đã được bật)
+- **Không có tên policy** - mở một lời nhắc tương tác để chọn policies
+- **Các tên cụ thể** - bật các policies đó (thêm vào bất kỳ policies nào đã được bật)
 - **`all`** - bật mọi policy có sẵn
 
-Cài đặt là cộng dồn: chạy `--install` lại sẽ thêm các policies mới mà không xóa các policies hiện có.
+Cài đặt là bổ sung: chạy `--install` lại sẽ thêm các policies mới mà không loại bỏ các policies hiện có.
 
 ## Ví dụ
 
 ```bash
-# Cài đặt tất cả các policies mặc định toàn cầu (tương tác)
+# Install all default policies globally (interactive)
 failproofai policies --install
 
-# Cài đặt các policies cụ thể cho dự án hiện tại
+# Install specific policies for the current project
 failproofai policies --install block-sudo sanitize-api-keys --scope project
 
-# Bật tất cả các policies cùng một lúc
+# Enable all policies at once
 failproofai policies --install all
 
-# Cài đặt với tệp policies tùy chỉnh
+# Install with a custom policies file
 failproofai policies --install --custom ./my-policies.js
 
-# Cài đặt cho OpenAI Codex (phạm vi dự án)
+# Install for OpenAI Codex (project scope)
 failproofai policies --install --cli codex --scope project
 
-# Cài đặt cho GitHub Copilot CLI (beta) cho dự án hiện tại
+# Install for GitHub Copilot CLI (beta) for the current project
 failproofai policies --install --cli copilot --scope project
 
-# Cài đặt cho cả ba CLI cùng một lúc
+# Install for all three CLIs at once
 failproofai policies --install --cli claude codex copilot
 ```
 
-Khi `--custom <path>` được cung cấp, tệp được xác thực ngay lập tức - nó phải gọi `customPolicies.add()` ít nhất một lần. Đường dẫn được giải quyết được lưu vào `policies-config.json` dưới dạng `customPoliciesPath`.
+Khi `--custom <path>` được cung cấp, tệp sẽ được xác thực ngay lập tức - nó phải gọi `customPolicies.add()` ít nhất một lần. Đường dẫn đã được giải quyết được lưu vào `policies-config.json` dưới dạng `customPoliciesPath`.

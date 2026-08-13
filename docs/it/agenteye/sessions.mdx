@@ -1,57 +1,57 @@
 ---
-title: "Sessioni e Grafico di Esecuzione"
-description: "Ogni evento da un'esecuzione, tutto in una riga leggibile e visualizzato come un grafico di esecuzione in stile git che puoi leggere in pochi secondi."
+title: "Sessioni & Grafo di Esecuzione"
+description: "Ogni evento di un'esecuzione, compattato in una riga leggibile e visualizzato come un grafo di esecuzione in stile git che puoi capire in secondi."
 ---
 
 
-Smetti di indovinare perché un'esecuzione è fallita. Failproof AI Observability raggruppa ogni evento da un'esecuzione in una riga leggibile, poi disegna l'intera esecuzione come un'immagine in stile git che puoi leggere in pochi secondi, così vedi esattamente cosa ha fatto il tuo agent, passo dopo passo.
+Smetti di indovinare perché un'esecuzione è fallita. Failproof AI Observability compatta ogni evento di un'esecuzione in una riga leggibile, poi disegna l'intera esecuzione come un diagramma in stile git che puoi leggere in secondi, così vedi esattamente cosa ha fatto il tuo agente, passo dopo passo.
 
-![L'elenco delle Sessioni: una riga per esecuzione, tra ambienti e agent, con badge di stato e valutazione](/agenteye/images/sessions-list.png)
+![L'elenco delle sessioni: una riga per esecuzione, tra ambienti e agenti diversi, con badge di stato e punteggi di valutazione](/agenteye/images/sessions-list.png)
 
-*Una riga per esecuzione: il badge di stato ti dice come è terminata l'esecuzione a prima vista, e un badge di punteggio appare quando è collegato un valutatore.*
+*Una riga per esecuzione: il badge di stato ti dice come è terminata l'esecuzione a prima vista, e un badge di punteggio appare una volta connesso un valutatore.*
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?autoplay=1&mute=1&loop=1&playlist=VWxukZc5k7s&rel=0&playsinline=1" title="Watch: Agent Tracing by Failproof AI (2 min)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-*Tracciamento dell'agent: segui una singola esecuzione passo dopo passo, dal goal agli strumenti alla risposta finale.*
+*Tracciamento dell'agente: segui una singola esecuzione passo dopo passo, dall'obiettivo ai tool alla risposta finale.*
 
 ---
 
-## Vedi ogni esecuzione a prima vista
+## Visualizza ogni esecuzione a prima vista
 
-Il percorso degli eventi grezzi è la verità di ogni passo, ma quando hai migliaia di passi su dozzine di esecuzioni, ti serve l'esecuzione, non il passo. La pagina Sessions raggruppa tutti gli eventi di un'esecuzione in una riga, così un giorno di attività diventa un elenco scansionabile invece di un diluvio di informazioni.
+La traccia grezza degli eventi è la verità di ogni passaggio, ma quando hai migliaia di passaggi su dozzine di esecuzioni, ti serve l'esecuzione, non il singolo passaggio. La pagina delle Sessioni compatta tutti gli eventi di un'esecuzione in una riga, così un giorno di attività diventa un elenco scorrevole invece di una valanga di informazioni.
 
-Ogni riga ha un badge di stato, quindi un'esecuzione fallita si distingue da una sana prima ancora di fare clic. Filtra per intervallo di date, ambiente, agent o sessione per passare da "tutto" a "l'esecuzione che mi interessa" in un paio di clic.
+Ogni riga ha un badge di stato, così un'esecuzione fallita si distingue da una sana prima ancora di fare un click. Filtra per intervallo di date, ambiente, agente o sessione per passare da "tutto" a "l'esecuzione che mi interessa" in un paio di click.
 
-Una volta collegato un valutatore, ogni esecuzione completata viene valutata automaticamente e il suo punteggio più recente appare sulla riga come badge. Puoi filtrare per qualsiasi intervallo di punteggio, così "mostrami ogni esecuzione prod con punteggio basso questa settimana" è un filtro, non una revisione manuale. Finché non ne configuri uno, le sessioni continuano a catturare l'esecuzione completa; semplicemente non hanno ancora un punteggio.
+Una volta connesso un valutatore, ogni esecuzione completata viene valutata automaticamente e il suo punteggio più recente appare nella riga come badge. Puoi filtrare per qualsiasi intervallo di punteggio, così "mostrami ogni esecuzione in produzione con punteggio basso questa settimana" diventa un filtro, non una revisione manuale. Finché non ne configuri uno, le sessioni catturano comunque l'esecuzione completa; semplicemente non hanno ancora un punteggio.
 
 ---
 
-## Leggi l'intera esecuzione come un'immagine
+## Leggi l'intera esecuzione come un diagramma
 
-![Un grafico di esecuzione in stile git della sessione accanto alla sua timeline di eventi, con il pannello di scomposizione di strumenti, modelli e hook](/agenteye/images/session-detail.png)
+![Un grafo di esecuzione in stile git di una sessione accanto alla sua timeline degli eventi, con il pannello di breakdown di tool, modello e hook](/agenteye/images/session-detail.png)
 
-*Il grafico di esecuzione (a sinistra) si siede accanto alla timeline degli eventi; il pannello di destra scompone gli strumenti, i modelli, gli hook e la spesa in token per l'esecuzione.*
+*Il grafo di esecuzione (sinistra) si trova accanto alla timeline degli eventi; il pannello di destra suddivide i tool, i modelli, gli hook e i token spesi per l'esecuzione.*
 
-Fai clic su qualsiasi sessione per aprire il suo grafico di esecuzione: una visualizzazione in stile git di come agent, strumenti, hook e chiamate ai modelli si sono svolti nel tempo. I sub-agent paralleli si diramano ognuno nella propria corsia, così puoi vedere quale lavoro è stato eseguito affiancato, quale sub-agent si è bloccato e dove l'esecuzione è andata fuori strada, senza riprenderla mentalmente da un muro di log.
+Fai click su una qualsiasi sessione per aprire il suo grafo di esecuzione: una visualizzazione in stile git di come agenti, tool, hook e chiamate ai modelli si sono susseguiti nel tempo. Ogni sub-agente parallelo si dirama sulla propria corsia, così puoi vedere quale lavoro è stato eseguito in parallelo, quale sub-agente si è bloccato e dove l'esecuzione è andata fuori rotta, senza doverla ripetere mentalmente da una montagna di log.
 
-Il pannello di destra ti dà la scomposizione per esecuzione: quali strumenti e modelli sono stati eseguiti, quali hook sono stati attivati e cosa l'esecuzione ha speso in token. Questa è la risposta a "perché questa esecuzione è costata così tanto?" o "quale strumento è quello lento?" seduta proprio accanto al grafico che l'ha causata.
+Il pannello di destra ti dà il breakdown per-esecuzione: quali tool e modelli hanno girato, quali hook si sono attivati e quanto l'esecuzione ha speso in token. Questa è la risposta a "perché questa esecuzione è costata così tanto?" o "quale tool è quello lento?" seduta accanto al grafo che l'ha causata.
 
-I singoli eventi sono indirizzabili, così puoi dare a qualcuno un link a un momento specifico piuttosto che "la sessione, circa due terzi più in giù". Copia il link da qualsiasi evento o segui uno da un risultato di [audit](/it/agenteye/audits) o un errore, e la sessione si apre con quell'evento selezionato e fatto scorrere in vista. Questo vale anche per esecuzioni molto lunghe: la timeline carica una finestra limitata per il bene del tuo browser, e un link che punta oltre quella finestra comunque trova il suo evento piuttosto che lasciarti all'inizio. Se l'evento è invecchiato oltre la tua finestra di conservazione, la pagina te lo dice invece di selezionare silenziosamente nulla.
+I singoli eventi sono indirizzabili, così puoi passare a qualcuno un link a un momento specifico piuttosto che "la sessione, più o meno due terzi giù". Copia il link da qualsiasi evento, o segui uno da un risultato di [audit](/it/agenteye/audits) o da un errore, e la sessione si apre con quell'evento selezionato e scorso a quella posizione. Questo vale anche per le esecuzioni molto lunghe: la timeline carica una finestra limitata per il bene del tuo browser, e un link che punta oltre quella finestra trova comunque il suo evento piuttosto che lasciarti all'inizio. Se l'evento è più vecchio della tua finestra di retention, la pagina te lo comunica invece di selezionare silenziosamente nulla.
 
 ---
 
 ## Dove trovarla
 
-Ogni pagina della dashboard è scoped alla tua org (`/<org-slug>/…`). Sessions si trova sotto **Observe** nella barra laterale sinistra, accanto a Events, con i filtri di intervallo di date, ambiente, agent e sessione nella parte superiore dell'elenco. Ogni riga è a un clic dal suo grafico di esecuzione completo.
+Ogni pagina del dashboard è limitata alla tua organizzazione (`/<org-slug>/…`). Le Sessioni si trovano sotto **Observe** nella barra laterale sinistra, accanto agli Eventi, con i filtri di intervallo di date, ambiente, agente e sessione in cima all'elenco. Ogni riga è a un click dal suo grafo di esecuzione completo.
 
-Per attivare i badge di punteggio e il filtraggio per intervallo di punteggio, collega un valutatore: vedi [Evaluations](/it/agenteye/evaluations).
+Per attivare i badge di punteggio e il filtro per intervallo di punteggio, connetti un valutatore: vedi [Evaluations](/it/agenteye/evaluations).
 
 ---
 
-## Correlati
+## Correlato
 
-- [Event stream](/it/agenteye/event-stream): il percorso grezzo e per-passo da cui ogni sessione è stata raggruppata.
-- [Evaluations](/it/agenteye/evaluations): collega un valutatore in modo che ogni esecuzione ottenga un badge di punteggio per cui puoi filtrare.
-- [Telemetry](/it/agenteye/telemetry): come le esecuzioni vanno dal tuo agent in queste sessioni.
+- [Event stream](/it/agenteye/event-stream): la traccia grezza, per-passaggio, da cui viene compattata ogni sessione.
+- [Evaluations](/it/agenteye/evaluations): connetti un valutatore così ogni esecuzione ottiene un badge di punteggio che puoi filtrare.
+- [Telemetry](/it/agenteye/telemetry): come le esecuzioni vanno dal tuo agente a queste sessioni.

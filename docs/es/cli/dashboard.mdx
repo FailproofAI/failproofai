@@ -7,16 +7,16 @@ description: "Inicia el panel de control para explorar sesiones de agentes y ges
 failproofai
 ```
 
-Inicia el panel de control web en `http://localhost:8020`.
+Inicia el panel web en `http://localhost:8020`.
 
 ## Opciones
 
 | Indicador | Descripción |
 |-----------|-------------|
-| `--port <number>` | Puerto en el que escuchar (por defecto: `8020`) |
-| `--allowed-origins <origins>` | Hosts/IPs separados por comas con permiso para acceder a los recursos de desarrollo |
+| `--port <number>` | Puerto en el que escuchar (predeterminado: `8020`) |
+| `--allowed-origins <origins>` | Hosts/IPs separados por comas con acceso permitido a recursos de desarrollo |
 
-Para apuntar el panel de control a una carpeta de proyecto de Claude distinta a la predeterminada, establece la variable de entorno `CLAUDE_PROJECTS_PATH` al iniciarlo.
+Para apuntar el panel a una carpeta de proyecto Claude distinta a la predeterminada, establece la variable de entorno `CLAUDE_PROJECTS_PATH` al iniciarlo.
 
 ## Ejemplos
 
@@ -24,6 +24,6 @@ Para apuntar el panel de control a una carpeta de proyecto de Claude distinta a 
 # Iniciar en un puerto diferente
 failproofai --port 9000
 
-# Usar una ruta de proyectos de Claude personalizada mediante variable de entorno
+# Usar una ruta de proyectos Claude personalizada mediante variable de entorno
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai
 ```

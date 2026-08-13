@@ -1,51 +1,51 @@
 ---
 title: "Değerlendirmeler"
-description: "Kalite sorunları artık sizin bulduğunuz yer, müşteri şikayeti olarak duymak yerine."
+description: "Kalite sorunları sizi bulur; müşteri şikayetinden haberdar olmak yerine."
 ---
 
 
-Kalite sorunları artık sizin bulduğunuz yer, müşteri şikayeti olarak duymak yerine. Kendi puanlama hizmetinizi bir kez bağlayın ve Failproof AI Observability, tamamlanan her çalışmayı otomatik olarak değerlendirerek, yardımcılıkta bir düşüş veya halüsinasyonlarda bir yükseliş, müşteri bunu hissetmeden kendi kendine ortaya çıkar.
+Kalite sorunları sizi bulur; müşteri şikayetinden haberdar olmak yerine. Failproof AI Observability'ye bir kez puanlama hizmetinizi bağlayın ve her tamamlanan çalıştırma otomatik olarak derecelendirilir. Yararlılık düşüşü veya halüsinasyonlarda bir artış, müşteri bunu hissetmeden kendi kendine ortaya çıkar.
 
-![Puan sütunlu Oturumlar ızgarası: her çalışma bir değerlendirme durumu rozeti ve renk kodlu yardımcılık, doğruluk ve araç verimlilik rozetleri taşır](/agenteye/images/sessions-list.png)
+![Skor sütunu olan Oturumlar ızgarası: her çalıştırma bir değerlendirme durumu rozeti ve renk kodlu yararlılık, gerçekçilik ve araç-verimlilik rozetleri taşır](/agenteye/images/sessions-list.png)
 
-*Oturumlar ızgarasındaki her çalışma puanlarını taşır; kırmızı, sarı ve yeşil rozetler, tek bir transkrip açmadan zayıf çalışmaları hemen ortaya çıkarır.*
+*Oturumlar ızgarasındaki her çalıştırma puanlarını taşır; kırmızı, turuncu ve yeşil rozetler zayıf çalıştırmaları tek bir transkripti bile açmadan öne çıkarır.*
 
-## El ile çalışmaları örneklemeyi durdurun
+## El ile çalıştırmaları örnekleme işini durdurun
 
-Eskiden bir avuç çalışmayı spot kontrol etmeniz ve geri kalanın iyi olacağını ummanız gerekiyordu. Artık tamamlanan her oturum, sizin önemsediğiniz boyutlarda anlık olarak puanlanıyor: yardımcılık, araç verimliliği, doğruluk, güvenlik, ne olursa olsun kalite standardınız. Siz puan anahtarlarını tanımlarsınız; Failproof AI Observability, değerlendiricinin geri gönderdiği her şeyi saklayıp, trend gösterir ve görüntüler. Hiçbir çalışma puanlanmadan kaçmaz ve destek talebinden regresyon hakkında öğrenmeyi bırakırsınız.
+Daha önce bir avuç çalıştırmayı spot-check yapardınız ve geri kalanının iyi olduğunu umardınız. Artık her tamamlanan oturum, önemli olduğunuz boyutlarda bitişi olmamış puanlanır: yararlılık, araç verimliliği, gerçekçilik, güvenlik, sizin kalite standardınız ne olursa olsun. Siz skor anahtarlarını tanımlarsınız; Failproof AI Observability, değerlendiricinizin geri gönderdiği her şeyi depolar, trendi oluşturur ve görüntüler. Hiçbir çalıştırma puanlandırılmadan kaçmaz ve bir destek biletinden regresyon hakkında bilgi almayı durdurursunuz.
 
-Puanlar **`/<org-slug>/sessions`** adresindeki oturumlar ızgarasında yer alır (kenar çubuğu → *observe* → *sessions*), satır başına bir rozet kümesi. Sadece başarısız olan çalışmaları mı istiyorsunuz? Izgarayı puan aralığına göre filtreleyin, diyelim ki 0,5'in altında yardımcılık ve tam olarak okunmaya değer çalışmaları açın. Puanları görüntülemek için `evaluations:read` iznine ihtiyaç duyarsınız.
+Puanlar **`/<org-slug>/sessions`** adresindeki oturumlar ızgarasında (kenar çubuğu → *observe* → *sessions*) bulunur; her satırda bir rozet kümesi. Yalnızca yetersiz kalan çalıştırmaları mı istiyorsunuz? Izgarayı skor aralığına göre filtreleyebilirsiniz; örneğin yararlılık 0,5'in altında, ve okumaya değer tam çalıştırmaları görebilirsiniz. Puanları görüntülemek `evaluations:read` izni gerektirir.
 
-## Bir çalışmanın neden düşük puan aldığını görün
+## Bir çalıştırmanın neden düşük puan aldığını görün
 
-Bir sayı size bir çalışmanın zayıf olduğunu söyler; oturum sayfası sana neden olduğunu söyler. Herhangi bir çalışmayı açın ve sağ panel başlık özeti ile başlar, sonra her boyut başına sizin değerlendiricinin kendi muhakemesi ile bir bar gösterir; böylece "bu, doğrulukta 0,4 aldı" ila yanlış yaptığı kesin iddianın saniyeler içinde olursunuz.
+Bir sayı size bir çalıştırmanın zayıf olduğunu söyler; oturum sayfası size neden olduğunu gösterir. Herhangi bir çalıştırmayı açın ve sağ panel başlık özeti ile başlar, ardından her boyut için bir çubuk ve değerlendiricinizin her birinin altında kendi akıl yürütmesini gösterir. Böylece "bu gerçekçilikte 0,4 puan aldı" yerine tam olarak saniye cinsinde yanlış anlaşıldığı iddiayı görürsünüz.
 
-![Bir oturumun sağ paneli: üstteki değerlendirme özeti, sonra her boyut puan barı ve her birinin altında gerekçelendirme, tam çalışma etkinliği zaman çizelgesi yanında](/agenteye/images/session-detail.png)
+![Bir oturumun sağ paneli: üstte değerlendirme özeti, sonra her boyut başına skor çubukları ve her birinin altında akıl yürütme, tam olay zaman çizelgesinin yanında](/agenteye/images/session-detail.png)
 
-*Oturum detay görünümü: özet, boyut başına puan barları ve her puanın ardındaki gerekçelendirme, çalışmanın etkinlik zaman çizelgesi yanında.*
+*Oturum ayrıntı görünümü: özet, boyut başına skor çubukları ve her puanın gerekçesi, çalıştırmanın etkinlik zaman çizelgesiyle yanyana.*
 
-Daha keskin bir değerlendirici yayınladınız mı veya puanlanmadan önce çöken bir çalışmaya mı bakıyorsunuz? Bir **re-evaluate** (yeniden değerlendir) düğmesi (`evaluations:trigger` tarafından kısıtlanmış) oturumu yerinde yeniden puanlar ve taze sonucu zaman çizelgesine ekler; böylece eski puanlar geçmiş olarak görünür kalır. **`/<org-slug>/sessions/<session-id>`** adresinde bulacaksınız.
+Daha keskin bir değerlendirici mi gönderdiz, yoksa çalıştırılmadan önce kilitlenmemiş bir çalıştırmaya mı bakıyorsunuz? Bir **re-evaluate** düğmesi (`evaluations:trigger` tarafından kontrol edilen) oturumu yerinde yeniden puanlar ve yeni sonucu zaman çizelgesine ekler, böylece önceki puanlar geçmiş olarak görünür kalır. Bunu **`/<org-slug>/sessions/<session-id>`** adresinde bulacaksınız.
 
-## Kaliteyi filo genelinde izleyin
+## Kalite eğilimini filodaki tüm birimler arasında izleyin
 
-Bir çalışmanın düşük puanlaması gürültüdür; bütün bir kohort kayıyorsa bu sinyaldir. Kaydedilmiş panolar puanlarınızı bir bakışta izleyebileceğiniz bir eğilime dönüştürür: bu hafta ortalama yardımcılık, geçen hafta ile karşılaştırılır, aracı başına, ortam başına.
+Bir çalıştırma düşük puan almak gürültüdür; bütün bir kohortin kayması bir sinyal. Kaydedilmiş panolar puanlarınızı bir bakışta izleyebileceğiniz bir trende dönüştürür: bu hafta ortalama yararlılık geçen haftaya kıyasla, aracı başına, ortam başına.
 
-![Bir kalite panosu: değerlendirici boyutu başına ortalama puan barları ve zaman içinde bir trend](/agenteye/images/dashboard-quality.png)
+![Kalite panosu: değerlendirici boyutu başına ortalama puan çubukları zaman içinde bir trendi ile birlikte](/agenteye/images/dashboard-quality.png)
 
-*Kaydedilmiş bir kalite panosu, öne çıkardığınız puan anahtarlarını trendler; böylece yavaş bir sürükleme, olay haline gelmeden çok önce açık hale gelir.*
+*Kaydedilmiş kalite panosu, öne sürdüğünüz skor anahtarlarını trendi oluşturur, böylece yavaş kayış olay haline gelmeden çok önce açıkça görülür.*
 
-Panolar **`/<org-slug>/dashboards`** adresinde yaşarlar (kenar çubuğu → *analyze* → *dashboards*), tüm kuruluşunuz genelinde paylaşılır ve her kart eşleşen oturumları toplar: kaç tane, her öne çıkan puanın ortalaması ve trend kıvılcım çizgisi. "Oturumlarda aç", sizi doğrudan herhangi bir numaranın arkasındaki önceden filtrelenmiş çalışmalara bırakır. Görüntülemek için `dashboards:read` artı `evaluations:read` gerekir.
+Panolar **`/<org-slug>/dashboards`** adresinde bulunur (kenar çubuğu → *analyze* → *dashboards*), tüm kuruluşunuz genelinde paylaşılır ve her kart eşleşen oturumları toplar: kaç tane, her öne sürülen skorun ortalaması ve bir eğilim kıvılcımı. "Oturumlarda aç" sizi herhangi bir sayının arkasındaki önceden filtrelenmiş çalıştırmalara doğrudan bırakır. Görüntülemek `dashboards:read` artı `evaluations:read` gerektirir.
 
-## Bir kez değerlendiriciye bağlanın
+## Bir değerlendiriciyi bir kez bağlayın
 
-Puanlama gönüllü ve Failproof AI Observability'yi bir puanlayıcıya işaret edene kadar tamamen kapalı kalır. Bir küçük HTTP hizmeti (Observability, kopyalayabileceğiniz çalışan bir referans seviyesiyle birlikte gelir), sunucunuzda iki değer ayarlarsınız ve o zamandan sonraki her çalışma sizin için puanlanır. Tam gözden geçirme, puanlama kontratı ve SDK derin kılavuzda yaşıyor.
+Puanlama opsiyonel'dir ve Failproof AI Observability'yi bir puanlamacıya işaret edene kadar tamamen kapalı kalır. Bir küçük HTTP hizmeti ayarlarsınız (Observability kopyalayabileceğiniz çalışan bir referans ile gelir), sunucunuzda iki değer belirlersiniz ve o andan itibaren her çalıştırma sizin için puanlanır. Tam kılavuz, puanlama sözleşmesi ve SDK, derinlemesine kılavuzda bulunur.
 
-Hangi boyutların başlangıçta puanlamaya değer olduğundan emin misiniz? [Değerlendirici aracı yeteneği](/tr/agenteye/evaluator-skill), kodlama aracınızın kendi oturumlarınıza karşı bunu belirlemesini sağlar, ardından hizmeti kurar ve dağıtır.
+Hangi boyutların ilk etapta puanlanmaya değer olduğundan emin misiniz? [Değerlendirici aracı becerisi](/tr/agenteye/evaluator-skill) kodlama aracınızın bunu kendi oturumlarınıza karşı işlemesini sağlar, ardından hizmeti derler ve dağıtır.
 
-## İlişkili
+## İlgili
 
-- [Değerlendirme paketi](/tr/agenteye/evaluation-suite): değerlendiriciye, puanlama kontratına ve SDK'ya bağlanın.
-- [Değerlendirici aracı yeteneği](/tr/agenteye/evaluator-skill): bir kodlama aracının puan boyutlarınızı seçmesine ve değerlendiriciye oluşturmasına izin verin.
-- [Oturumlar](/tr/agenteye/sessions): puanların göründüğü çalışma başına ızgara.
+- [Değerlendirme paketi](/tr/agenteye/evaluation-suite): değerlendiricinizi, puanlama sözleşmesini ve SDK'yı bağlayın.
+- [Değerlendirici aracı becerisi](/tr/agenteye/evaluator-skill): kodlama aracınızın skor boyutlarınızı seçip değerlendiricisini derlemesini sağlayın.
+- [Oturumlar](/tr/agenteye/sessions): puanların göründüğü çalıştırma başına ızgara.
 - [Panolar](/tr/agenteye/dashboards): kuruluşunuz genelinde kalite eğilimlerini kaydedin ve paylaşın.
-- [Denetimler](/tr/agenteye/audits): Observability'nin diğer otomatik kalite özelliği, oturum arası araştırmalar için.
+- [Denetimler](/tr/agenteye/audits): Observability'nin diğer otomatik kalite özelliği; oturum öncesi araştırmalar için.

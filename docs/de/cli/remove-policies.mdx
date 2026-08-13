@@ -1,30 +1,30 @@
 ---
 title: Richtlinien deinstallieren
-description: "Hook-Einträge aus den Einstellungen von Claude Code entfernen"
+description: "Hook-Einträge aus den Claude Code-Einstellungen entfernen"
 ---
 
 ```bash
 failproofai policies --uninstall [policy-names...] [options]
 ```
 
-Entfernt failproofai Hook-Einträge aus der `settings.json` von Claude Code.
+Entfernt failproofai-Hook-Einträge aus der `settings.json` von Claude Code.
 
-Aliasse: `failproofai p -u`
+Aliases: `failproofai p -u`
 
 ## Optionen
 
 | Flag | Beschreibung |
 |------|-------------|
-| `--scope user` | Aus globalen Einstellungen entfernen (Standard) |
-| `--scope project` | Aus Projekteinstellungen entfernen |
-| `--scope local` | Aus lokalen Einstellungen entfernen |
+| `--scope user` | Aus den globalen Einstellungen entfernen (Standard) |
+| `--scope project` | Aus den Projekteinstellungen entfernen |
+| `--scope local` | Aus den lokalen Einstellungen entfernen |
 | `--scope all` | Aus allen Geltungsbereichen gleichzeitig entfernen |
 | `--custom` / `-c` | Den `customPoliciesPath` aus der Konfiguration löschen |
 
 ## Verhalten
 
-- **Keine Richtliniennamen** – entfernt alle failproofai Hook-Einträge aus der Einstellungsdatei
-- **Bestimmte Namen** – deaktiviert diese Richtlinien, behält aber die installierten Hooks bei
+- **Keine Richtliniennamen** – entfernt alle failproofai-Hook-Einträge aus der Einstellungsdatei
+- **Bestimmte Namen** – deaktiviert die angegebenen Richtlinien, lässt die Hooks aber installiert
 
 ## Beispiele
 

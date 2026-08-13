@@ -18,8 +18,8 @@
 **번역:** [简体中文](../../docs/i18n/README.zh.md) · [日本語](../../docs/i18n/README.ja.md) · [한국어](../../docs/i18n/README.ko.md) · [Español](../../docs/i18n/README.es.md) · [Português](../../docs/i18n/README.pt-br.md) · [Deutsch](../../docs/i18n/README.de.md) · [Français](../../docs/i18n/README.fr.md) · [Русский](../../docs/i18n/README.ru.md) · [हिन्दी](../../docs/i18n/README.hi.md) · [Türkçe](../../docs/i18n/README.tr.md) · [Tiếng Việt](../../docs/i18n/README.vi.md) · [Italiano](../../docs/i18n/README.it.md) · [العربية](../../docs/i18n/README.ar.md) · [עברית](../../docs/i18n/README.he.md)
 
 **코딩 에이전트를 위한 런타임 장애 해결 도구.**
-Claude Code 및 Codex에 연결됩니다. 루프, 위험한 동작, 시크릿 누출을
-인시던트가 되기 전에 차단합니다. 지연 시간 제로. 로컬에서 실행.
+Claude Code 및 Codex에 연결됩니다. 루프, 위험한 작업, 시크릿 유출을
+인시던트가 되기 전에 차단합니다. 레이턴시 제로. 로컬에서 실행.
 
 </div>
 
@@ -129,32 +129,32 @@ Claude Code 및 Codex에 연결됩니다. 루프, 위험한 동작, 시크릿 �
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # 또는 `failproofai`를 실행하고 최초 실행 프롬프트에서 수락
+failproofai policies --install   # 또는 그냥 `failproofai`를 실행하고 첫 실행 프롬프트에서 수락
 failproofai
 ```
 
-30개의 기본 제공 정책이 즉시 활성화됩니다. 대시보드는 `localhost:8020`에서 확인할 수 있습니다. `FAILPROOFAI_NO_FIRST_RUN=1`로 최초 실행 프롬프트를 비활성화할 수 있습니다.
+30개의 내장 정책이 즉시 활성화됩니다. 대시보드는 `localhost:8020`에서 확인할 수 있습니다. 첫 실행 프롬프트를 비활성화하려면 `FAILPROOFAI_NO_FIRST_RUN=1`을 사용하세요.
 
 ---
 
-## 차단 항목
+## 차단하는 항목
 
-| 정책 | 차단 내용 |
+| 정책 | 차단 대상 |
 |---|---|
-| `block-push-master` | `main` / `master` 브랜치에 직접 푸시 |
+| `block-push-master` | `main` / `master`로의 직접 푸시 |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | `main` / `master` 브랜치에서의 커밋, 머지, 리베이스 |
+| `block-work-on-main` | `main` / `master`에서의 커밋, 머지, 리베이스 |
 | `block-rm-rf` | 재귀적 파일 삭제 |
-| `sanitize-api-keys` | 에이전트 컨텍스트로 누출되는 API 키 |
+| `sanitize-api-keys` | 에이전트 컨텍스트로 유출되는 API 키 |
 
-→ [30개 기본 제공 정책 전체 목록](https://docs.befailproof.ai/built-in-policies)
+→ [30개 내장 정책 전체 목록](https://docs.befailproof.ai/built-in-policies)
 
 ---
 
 ## 커스텀 정책
 
-`.failproofai/policies/` 디렉터리에 파일을 추가하면 자동으로 로드됩니다 — 별도 플래그 불필요.
-커밋하면 팀 전체가 다음 풀 때 적용됩니다.
+`.failproofai/policies/` 에 파일을 추가하면 자동으로 로드됩니다 — 별도의 플래그 설정이 필요 없습니다.
+커밋하면 팀 전체가 다음 풀 시점에 적용받습니다.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -175,8 +175,8 @@ customPolicies.add({
 | 결정 | 효과 |
 |---|---|
 | `allow()` | 작업 허용 |
-| `deny(message)` | 차단 — 메시지가 에이전트에게 반환됨 |
-| `instruct(message)` | 통과 허용, 단 에이전트의 다음 프롬프트에 컨텍스트 추가 |
+| `deny(message)` | 차단 — 메시지가 에이전트로 반환됨 |
+| `instruct(message)` | 통과 허용하되, 에이전트의 다음 프롬프트에 컨텍스트 추가 |
 
 → [커스텀 정책 가이드](https://docs.befailproof.ai/custom-policies)
 
@@ -184,8 +184,8 @@ customPolicies.add({
 
 ## 세션 가시성
 
-에이전트가 수행하는 모든 도구 호출은 로컬에 기록됩니다. 대시보드에서 실행된 내용,
-차단된 내용, 정책이 에이전트에게 전달한 내용을 확인할 수 있어 — 문제가 발생했을 때
+에이전트가 수행하는 모든 도구 호출은 로컬에 기록됩니다. 대시보드는 실행된 내용,
+차단된 내용, 정책이 에이전트에 전달한 내용을 보여줍니다 — 문제가 발생했을 때
 추측할 필요가 없습니다. → [대시보드 가이드](https://docs.befailproof.ai/dashboard)
 
 ---
@@ -195,17 +195,17 @@ customPolicies.add({
 | | |
 |---|---|
 | [시작하기](https://docs.befailproof.ai/getting-started) | 설치 및 첫 번째 단계 |
-| [기본 제공 정책](https://docs.befailproof.ai/built-in-policies) | 매개변수를 포함한 30개 전체 정책 |
+| [내장 정책](https://docs.befailproof.ai/built-in-policies) | 파라미터를 포함한 30개 정책 전체 |
 | [커스텀 정책](https://docs.befailproof.ai/custom-policies) | 직접 작성하기 |
 | [설정](https://docs.befailproof.ai/configuration) | 설정 범위 및 병합 규칙 |
 | [대시보드](https://docs.befailproof.ai/dashboard) | 세션 모니터 및 정책 활동 |
-| [아키텍처](https://docs.befailproof.ai/architecture) | 훅 시스템 작동 방식 |
+| [아키텍처](https://docs.befailproof.ai/architecture) | 훅 시스템의 동작 방식 |
 
 ---
 
 ## 라이선스
 
-[Commons Clause](https://commonsclause.com/)가 적용된 MIT 라이선스 — 내부 및 개인 사용은 무료이며, failproofai 자체의 상업적 재판매는 별도 계약이 필요합니다. 전체 내용은 [LICENSE](../../LICENSE)를 참조하세요.
+[Commons Clause](https://commonsclause.com/)가 포함된 MIT 라이선스 — 내부 및 개인 사용은 무료이며, failproofai 자체의 상업적 재판매는 별도의 계약이 필요합니다. 전문은 [LICENSE](../../LICENSE)를 참조하세요.
 
 ---
 
@@ -214,12 +214,11 @@ customPolicies.add({
 [CONTRIBUTING.md](../../CONTRIBUTING.md)를 참조하세요. 새로운 정책, 엣지 케이스, 번역 모두 환영합니다.
 
 > **시작 전에 빌드하세요.** 먼저 `bun install && bun run build`를 실행하세요. 이 저장소는
-> failproofai 자체의 훅을 자신에게 적용하며, 컴파일된 `dist/` 번들에 대해 `failproofai` 임포트를
+> failproofai 자체 훅을 자신에게 적용하며, 훅은 컴파일된 `dist/` 번들에서 `failproofai` 임포트를
 > 해석합니다 — 빌드 없이는 `Cannot find package 'failproofai'` 훅 오류가 발생합니다.
-> `src/`를 변경한 후에는 다시 빌드하세요.
-> [저장소 내 개발 훅이 동작하기 위한 빌드 방법](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)을 참조하세요.
+> `src/` 변경 후에는 재빌드하세요. 자세한 내용은
+> [저장소 내 개발 훅 사용 전 빌드 필수](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)를 참조하세요.
 
 ---
 
-[Nivedit Jain](https://github.com/NiveditJain)과 [Nikita Agarwal](https://github.com/nk-ag)이 만들었습니다.
-[befailproof.ai](https://befailproof.ai)
+SF와 벵갈루루에서 ❤️ 를 담아 [befailproof.ai](https://befailproof.ai)가 만들었습니다.

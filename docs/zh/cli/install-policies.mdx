@@ -13,21 +13,21 @@ failproofai policies --install [policy-names...] [options]
 
 ## 选项
 
-| 参数 | 描述 |
-|------|------|
-| `--cli claude\|codex\|copilot` | 要安装的代理 CLI，以空格分隔（例如 `--cli claude codex copilot`）或重复使用。省略时将自动检测已安装的 CLI 并提示选择。 |
-| `--scope user` | 安装到用户级设置文件（Claude：`~/.claude/settings.json`；Codex：`~/.codex/hooks.json`；Copilot：`~/.copilot/hooks/failproofai.json`）。默认值。 |
-| `--scope project` | 安装到项目级设置文件（Claude：`<cwd>/.claude/settings.json`；Codex：`<cwd>/.codex/hooks.json`；Copilot：`<cwd>/.github/hooks/failproofai.json`）。 |
-| `--scope local` | 仅限 Claude — 安装到 `<cwd>/.claude/settings.local.json`。Codex 和 Copilot 不支持 `local` 作用域。 |
+| 标志 | 说明 |
+|------|-------------|
+| `--cli claude\|codex\|copilot` | 要安装的代理 CLI，以空格分隔（例如 `--cli claude codex copilot`）或重复使用。省略则自动检测已安装的 CLI 并进行提示。 |
+| `--scope user` | 安装至用户级设置文件（Claude：`~/.claude/settings.json`；Codex：`~/.codex/hooks.json`；Copilot：`~/.copilot/hooks/failproofai.json`）。默认值。 |
+| `--scope project` | 安装至项目级设置文件（Claude：`<cwd>/.claude/settings.json`；Codex：`<cwd>/.codex/hooks.json`；Copilot：`<cwd>/.github/hooks/failproofai.json`）。 |
+| `--scope local` | 仅限 Claude — 安装至 `<cwd>/.claude/settings.local.json`。Codex 和 Copilot 不支持 `local` 作用域。 |
 | `--custom <path>` / `-c` | 包含自定义 hook 策略的 JS 文件路径 |
 
-## 行为
+## 行为说明
 
-- **不指定策略名称** - 打开交互式提示以选择策略
-- **指定具体名称** - 启用这些策略（追加到已启用的策略中）
-- **`all`** - 启用所有可用策略
+- **不指定策略名称** — 打开交互式提示以选择策略
+- **指定名称** — 启用对应策略（追加到已启用的策略中）
+- **`all`** — 启用所有可用策略
 
-安装为追加模式：再次运行 `--install` 只会添加新策略，不会移除已有策略。
+安装操作为增量式：再次运行 `--install` 只会添加新策略，不会移除已有策略。
 
 ## 示例
 
@@ -41,7 +41,7 @@ failproofai policies --install block-sudo sanitize-api-keys --scope project
 # 一次性启用所有策略
 failproofai policies --install all
 
-# 使用自定义策略文件安装
+# 使用自定义策略文件进行安装
 failproofai policies --install --custom ./my-policies.js
 
 # 为 OpenAI Codex 安装（项目作用域）
@@ -54,4 +54,4 @@ failproofai policies --install --cli copilot --scope project
 failproofai policies --install --cli claude codex copilot
 ```
 
-当提供 `--custom <path>` 时，文件将立即进行验证——至少需要调用一次 `customPolicies.add()`。解析后的路径将作为 `customPoliciesPath` 保存到 `policies-config.json` 中。
+提供 `--custom <path>` 时，文件会立即进行验证——其中必须至少调用一次 `customPolicies.add()`。解析后的路径将以 `customPoliciesPath` 的形式保存至 `policies-config.json`。

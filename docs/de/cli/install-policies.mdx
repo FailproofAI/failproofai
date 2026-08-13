@@ -7,18 +7,18 @@ description: "Richtlinien aktivieren, damit sie bei jedem Agenten-Tool-Aufruf au
 failproofai policies --install [policy-names...] [options]
 ```
 
-Schreibt Hook-Einträge in die Einstellungsdatei der installierten Agenten-CLI (Claude Code, OpenAI Codex oder GitHub Copilot CLI _(Beta)_), damit failproofai Tool-Aufrufe abfängt.
+Schreibt Hook-Einträge in die Einstellungsdatei der installierten Agenten-CLI (Claude Code, OpenAI Codex oder GitHub Copilot CLI _(Beta)_), sodass failproofai Tool-Aufrufe abfängt.
 
 Aliase: `failproofai p -i`
 
 ## Optionen
 
 | Flag | Beschreibung |
-|------|--------------|
-| `--cli claude\|codex\|copilot` | Agenten-CLI(s), für die installiert werden soll; durch Leerzeichen getrennt (z. B. `--cli claude codex copilot`) oder wiederholt angegeben. Weglassen, um installierte CLIs zu erkennen und eine Auswahl anzuzeigen. |
-| `--scope user` | Installiert in die benutzerweite Einstellungsdatei (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). Standard. |
-| `--scope project` | Installiert in die projektweite Einstellungsdatei (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
-| `--scope local` | Nur Claude — installiert in `<cwd>/.claude/settings.local.json`. Codex und Copilot verfügen nicht über einen `local`-Bereich. |
+|------|-------------|
+| `--cli claude\|codex\|copilot` | Agenten-CLI(s), für die installiert werden soll; durch Leerzeichen getrennt (z. B. `--cli claude codex copilot`) oder mehrfach angegeben. Weglassen, um installierte CLIs automatisch zu erkennen und eine Auswahl anzuzeigen. |
+| `--scope user` | In die benutzerweite Einstellungsdatei installieren (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). Standard. |
+| `--scope project` | In die projektweite Einstellungsdatei installieren (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
+| `--scope local` | Nur Claude — installiert in `<cwd>/.claude/settings.local.json`. Codex und Copilot unterstützen keinen `local`-Scope. |
 | `--custom <path>` / `-c` | Pfad zu einer JS-Datei mit benutzerdefinierten Hook-Richtlinien |
 
 ## Verhalten
@@ -44,7 +44,7 @@ failproofai policies --install all
 # Mit einer benutzerdefinierten Richtliniendatei installieren
 failproofai policies --install --custom ./my-policies.js
 
-# Für OpenAI Codex installieren (Projektbereich)
+# Für OpenAI Codex installieren (Projekt-Scope)
 failproofai policies --install --cli codex --scope project
 
 # Für GitHub Copilot CLI (Beta) für das aktuelle Projekt installieren
@@ -54,4 +54,4 @@ failproofai policies --install --cli copilot --scope project
 failproofai policies --install --cli claude codex copilot
 ```
 
-Wenn `--custom <path>` angegeben wird, wird die Datei sofort validiert – sie muss `customPolicies.add()` mindestens einmal aufrufen. Der aufgelöste Pfad wird als `customPoliciesPath` in `policies-config.json` gespeichert.
+Wenn `--custom <path>` angegeben wird, wird die Datei sofort validiert – sie muss mindestens einmal `customPolicies.add()` aufrufen. Der aufgelöste Pfad wird als `customPoliciesPath` in `policies-config.json` gespeichert.

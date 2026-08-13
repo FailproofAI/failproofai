@@ -1,0 +1,86 @@
+---
+title: 迁移主目录
+description: "将 ~/.failproofai 升级至当前版本所需的目录结构，并可预览迁移计划"
+---
+
+```bash
+failproofai migrate --dry-run   # 打印迁移计划，不做任何更改
+failproofai migrate             # 执行迁移
+```
+
+大多数用户无需手动执行此命令。升级后首次运行任意命令时，迁移会自动触发，[`failproofai update`](/zh/cli/update) 也会自动包含此步骤。仅在需要提前预览迁移计划，或希望单独执行迁移时，才需手动调用此命令。
+
+## 基于目录结构版本，而非发布版本
+
+`~/.failproofai/VERSION` 记录的是**目录结构**编号——即目录的形态，而非写入该文件的发布版本。迁移操作以此编号为依据，这使得跨越多个版本的迁移代价极低：
+
+- npm 版本每次发布都会更新，两次目录结构变更之间可能有数十个版本。
+- 因此，一台跳过了三十个发布版本但**目录结构未发生变化**的机器，执行的迁移步骤为**零**，而非三十次空操作。
+- 而一台跨越了多个目录结构版本的机器，则会按顺序逐步执行每个迁移，每一步只需关注自身的起止状态。
+
+这一设计至关重要，因为 npm 无法自动更新已安装的包。一台长期停留在某个版本、随后一次性跨越多个目录结构版本的机器，才是常态，而非例外。
+
+## 预览模式（Dry Run）
+
+`--dry-run` 会打印完整的迁移链及迁移前将备份的文件列表，但不做任何实际更改——不执行迁移、不创建备份、不写入日志：
+
+```
+Layout 2 on disk; this build speaks 3.
+1 step(s) would run:
+  2 → 3  layout 2 → 3: carry config.toml and credentials.toml into JSON, move
+         custom-policies/ back up into policies/, nest the policy config at the root
+
+These would be copied to ~/.failproofai/migrations/backup-layout2 first:
+  VERSION
+  config.toml
+  credentials.toml
+```
+
+## 哪些数据会被保留，哪些会被重建
+
+主目录中的每个路径都声明了其所存储的数据类型，这决定了迁移是否可以丢弃该数据。规则如下：**可派生或可重新获取的数据可被丢弃；凡是由用户手动输入的、尚未投递的，以及用于标识机器身份的数据，均须保留。**
+
+| 保留 | 重建或重新获取 |
+|---|---|
+| `config.json` — 设置项、`daemon.configured`、额外的采集路径 | 审计缓存 |
+| `credentials.json` — 云端注册凭证 | 云端管理的部署（在下次轮询时重新获取并验证摘要） |
+| `policies-config.json` — 策略选择及参数配置 | 守护进程临时状态 |
+| `policies/` — 用户自定义策略文件及其引用的辅助模块 | |
+| `hook-activity/` — 仪表板读取的决策日志 | |
+| 队列中尚未上传的事件 | |
+| `cursors/` — 采集器水位标记 | |
+| `bin/` 中的守护进程二进制文件 | |
+
+<Note>
+  未投递的事件会被保留而非丢弃，原因在于丢失是永久性的，而非仅仅造成延迟：采集器的水位标记已经推进，超过了缓冲池中所有待处理的内容，因此没有任何机制能够再次读取转录文件的那段区间。迁移完成后，守护进程也会立即投递缓冲池中的内容，因此通常不会有任何剩余数据需要保留。
+</Note>
+
+较**新**版本写入 `config.json`、`credentials.json` 或 `policies-config.json` 的键也会被保留，而不会被旧版读取器丢弃。
+
+## 迁移留下的记录
+
+```
+~/.failproofai/migrations/
+  applied.json                 每步迁移一条记录：目录结构版本、CLI 版本、时间戳、耗时、结果
+  backup-layout<n>/            执行第一步前，对不可替换文件的备份副本
+```
+
+`applied.json` 记录了「此机器究竟经历了哪些迁移」——这是升级后出现异常时首先应查阅的信息。提交 Bug 报告时请附上此文件。
+
+备份故意保持精简，而非复制整个目录：迁移设计上不会删除任何不可替换的内容，因此真正需要防范的是**某个步骤存在缺陷**，而这几个文件正是此类缺陷可能造成损害的地方。
+
+## 若某步骤失败
+
+迁移链会在该步骤处停止。只有成功完成的步骤才会更新 `VERSION`，因此主目录仍会保持旧的目录结构编号，下次执行命令时会重试——主目录绝不会因部分迁移完成而被标记为最新状态。该步骤会以 `"ok": false` 的形式记录在 `applied.json` 中，备份也保留在原处。
+
+## 较新的主目录会被拒绝，而非迁移
+
+若 `~/.failproofai/` 是由比当前运行版本**更新**的 failproofai 写入的，命令会停止并提示您升级，而非执行迁移。该数据本身没有问题，更新的 CLI 可以正常读取；所谓向前「迁移」并不存在，而重置数据则会销毁本可恢复的内容。
+
+```
+This machine's failproofai directory was written by a newer version (layout 4;
+this build speaks 3). Upgrade rather than migrate:
+  npm install -g failproofai@latest
+```
+
+守护进程遵循相同规则：`failproofaid` 会拒绝以不兼容的目录结构启动，而非尝试读写已变更路径的数据。

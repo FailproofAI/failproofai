@@ -1,55 +1,55 @@
 ---
 title: "Codex 会话捕获"
-description: "将团队本地 OpenAI Codex 会话以普通会话和事件的形式导入 AgentEye，无需改变现有的 Codex 使用方式。"
+description: "将团队本地的 OpenAI Codex 会话以普通会话和事件的形式传送至 AgentEye，无需改变任何运行方式。"
 ---
 
-您的工程师每天都在使用 OpenAI Codex。Codex 会话捕获功能将这些编码会话以普通会话和事件的形式引入 AgentEye，让您可以对其进行搜索、回放，并与其他所有观测数据放在一起进行评估。它与 [Python SDK](/zh/agenteye/python-sdk) 相辅相成：SDK 用于对您自己编写的 Agent 进行埋点，而此功能则捕获团队日常使用 Codex 产生的会话数据——无需任何改动。
+您的工程师每天都在使用 OpenAI Codex。Codex 会话捕获功能将这些编码会话以普通会话和事件的形式引入 AgentEye，让您可以像查看其他所有被观测内容一样，对其进行搜索、回放和评估。它与 [Python SDK](/zh/agenteye/python-sdk) 相辅相成：SDK 用于对您自行编写的 Agent 进行埋点，而此功能则捕获团队日常使用 Codex 的工作内容——无需改变任何运行方式。
 
-一个轻量级的后台采集器会在 Codex 本地会话记录写入时实时读取，并将其上报至 AgentEye。每台机器只需部署一个采集器，即可同时捕获所有本地 Codex 界面的数据，无需逐一配置。
+一个轻量级的后台采集器会在 Codex 写入本地会话记录时实时读取并传送至 AgentEye。每台机器只需一个采集器，即可同时捕获所有本地 Codex 界面，无需逐一配置。
 
-同一采集器还支持其他 Agent 的捕获——详见 [OpenClaw](/zh/agenteye/openclaw-capture) 和 [Hermes](/zh/agenteye/hermes-capture)。您可以按需启用，单个采集器能够同时捕获多个来源。
+同一采集器还可捕获其他 Agent——参见 [OpenClaw](/zh/agenteye/openclaw-capture) 和 [Hermes](/zh/agenteye/hermes-capture)。按需启用各项功能；单个采集器可同时捕获多个来源。
 
 ---
 
 ## 捕获内容
 
-所有**本地**运行的 Codex 界面都会生成相同的磁盘会话记录，采集器会统一采集以下来源：
+所有**本地**运行的 Codex 界面均会生成相同的磁盘会话记录，采集器会捕获其中的全部内容：
 
 - Codex **CLI** 及 `codex exec`
 - **VS Code / IDE 扩展**
-- **桌面应用**（仅限本地执行的会话）
+- **桌面应用**（本地运行会话时）
 
-每个 Codex 会话都会成为 AgentEye 中的一个[会话](/zh/agenteye/sessions)；其中的用户消息、助手消息、推理过程、工具调用、工具结果以及 Token 用量将转化为对应的[事件](/zh/agenteye/event-stream)。每个会话的来源界面（CLI、IDE 或桌面应用）均会被记录，便于您加以区分。
+每个 Codex 会话将成为 AgentEye 中的一个[会话](/zh/agenteye/sessions)；其用户和助手消息、推理过程、工具调用、工具结果及 token 用量将转化为对应的[事件](/zh/agenteye/event-stream)。每个会话的来源界面（CLI、IDE 或桌面）均会被记录，方便您加以区分。
 
-> **云端会话不在捕获范围内。** 桌面应用越来越多地将会话运行在 Codex 云端，本地仅保留元数据，没有可供读取的本地记录。只有本地执行的会话才会被捕获。
+> **云端会话不会被捕获。** 桌面应用越来越多地在 Codex 云端运行会话，本机仅保留其元数据，本地没有可读取的会话记录。仅本地执行的会话会被捕获。
 
 ---
 
-## 启用捕获
+## 开启捕获
 
-捕获功能默认关闭，需手动启用。请使用具有 `events:add` 权限的 API 密钥（参见 [API 密钥](/zh/agenteye/api-keys)）安装采集器，并开启 Codex 捕获：
+捕获功能默认关闭，需手动启用。请使用拥有 `events:add` 权限的 API 密钥（参见 [API keys](/zh/agenteye/api-keys)）安装采集器，并开启 Codex 捕获：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
   | sh -s -- --key <YOUR_API_KEY> --codex-enabled
 ```
 
-该命令将安装采集器、将其注册为后台服务并立即开始捕获。运行以下命令确认服务正常运行：
+该命令将安装采集器、将其注册为后台服务并启动捕获。确认服务正在运行：
 
 ```bash
 agenteye-collector health
 ```
 
-首次运行时，现有的 Codex 会话将被一次性回填，此后的新活动将在数秒内实时上报。采集器对 Codex 的本地文件仅执行读取操作，不会对其进行修改、移动或删除，且每个会话只会上报一次，重启后亦然。
+首次运行时，系统会对已有的 Codex 会话进行一次性回填，此后新产生的活动将在数秒内实时传输。采集器仅读取 Codex 的文件，不会对其进行修改、移动或删除；即使服务重启，每个会话也只会被传送一次。
 
 ---
 
-## 数据展示
+## 查看位置
 
-捕获的会话将出现在 **Sessions** 中，其事件将出现在 **Events** 流中，与您观测的其他 Agent 数据完全一致——因此[会话回放](/zh/agenteye/sessions)、[搜索](/zh/agenteye/queries)、[评估](/zh/agenteye/evaluations)和[告警](/zh/agenteye/alerts)均可正常使用。通过筛选 Codex Agent，可单独查看其数据。
+捕获的会话会显示在**Sessions** 中，其事件显示在 **Events** 流中，与您观测的其他任何 Agent 完全一致——因此[会话回放](/zh/agenteye/sessions)、[搜索](/zh/agenteye/queries)、[评估](/zh/agenteye/evaluations)和[告警](/zh/agenteye/alerts)均可正常使用。通过筛选 Codex Agent 可单独查看这些会话。
 
 ---
 
 ## 隐私说明
 
-Codex 会话记录包含完整的会话内容——包括命令输出、文件内容以及 Codex 读写的所有信息——可能涉及敏感数据。捕获的会话将原样上报，因此请仅在适合将相关内容集中存储至 AgentEye 的机器和团队中启用此功能，并为采集器配置仅限 `events:add` 权限的密钥。数据隔离机制详见[安全说明](/zh/agenteye/security)。
+Codex 会话记录包含完整的会话内容——包括命令输出、文件内容以及 Codex 读取或写入的所有信息——其中可能包含敏感凭证。捕获的会话将原样传送，因此请仅在适合将这些内容集中存储至 AgentEye 的机器和团队中启用捕获功能，并为采集器提供仅限 `events:add` 权限的密钥。有关数据隔离保护的详细信息，请参见 [Security](/zh/agenteye/security)。

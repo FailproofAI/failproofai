@@ -421,7 +421,12 @@ describe("installer schedules every job it validated", () => {
   });
 
   it("passes the job through to the container", () => {
-    expect(installSh).toMatch(/-e CANARY_JOB=%s/);
+    // The docker invocation moved into run.sh so a crontab entry could be one
+    // short line; the installer now passes the job name to that.
+    expect(installSh).toMatch(/printf '%s\/run\.sh %s' "\$WORK" "\$1"/);
+    expect(readFileSync(path.join(LOCAL, "run-job.sh"), "utf8")).toMatch(
+      /-e CANARY_JOB="\$JOB"/,
+    );
   });
 
   it("checks credentials per job, for the jobs it is about to schedule", () => {
@@ -762,18 +767,12 @@ describe("published image, and the socket only where it is used", () => {
     expect(publishWf).toMatch(/continue-on-error: true/);
   });
 
-  it("hands the docker socket to the canary alone", () => {
-    // It is the only job that spawns sibling containers. Granting the host
-    // daemon to jobs that never call it is scope for nothing.
-    const cmd = installSh.slice(installSh.indexOf("job_cmd() {"), installSh.indexOf("if [ \"$DO_CRON\""));
-    expect(cmd).toMatch(/canary\)\s+sock='-v \/var\/run\/docker\.sock/);
-    expect(cmd).toMatch(/translate\)\s+tmo=/);
-    expect(cmd).not.toMatch(/translate\)[^\n]*docker\.sock/);
-  });
-
   it("re-pulls on every run and bounds every job", () => {
-    expect(installSh).toMatch(/--pull=always/);
-    expect(installSh).toMatch(/timeout %s docker run/);
+    // Both moved into run.sh with the docker invocation. The socket-scoping
+    // assertion lives in the cron-wrapper block below.
+    const runJobSh = readFileSync(path.join(LOCAL, "run-job.sh"), "utf8");
+    expect(runJobSh).toMatch(/--pull=always/);
+    expect(runJobSh).toMatch(/exec timeout "\$TMO" docker run/);
   });
 
   it("requires the socket only where it is actually used", () => {
@@ -816,5 +815,43 @@ describe("GitHub lookups fail closed", () => {
       );
       expect(sh, `${name}: no subshell-scoped status variable`).not.toMatch(/API_STATUS/);
     }
+  });
+});
+
+describe("the cron wrapper", () => {
+  const runJobSh = readFileSync(path.join(LOCAL, "run-job.sh"), "utf8");
+
+  it("exists so a crontab entry can be short", () => {
+    // A crontab entry must be a SINGLE line — the format has no continuation —
+    // so the docker invocation cannot be wrapped. Inline, that was a ~350-char
+    // line per job: unreadable in a crontab, and mangled by every chat client
+    // it was pasted through on the way to whoever sets the box up.
+    expect(installSh).toMatch(/printf '%s\/run\.sh %s' "\$WORK" "\$1"/);
+    expect(installSh).toMatch(/cp "\$WRAPPER_SRC" "\$WORK\/run\.sh"/);
+  });
+
+  it("owns its own log, so a missing logs/ cannot swallow the job", () => {
+    // cron evaluates a `>>` redirect BEFORE the command runs, so a missing
+    // directory meant the job silently never started — and the container could
+    // not create the directory its own redirect needed. mkdir then redirect,
+    // in that order, closes it.
+    const mk = runJobSh.indexOf('mkdir -p "$W/logs"');
+    const rd = runJobSh.indexOf('exec >> "$W/logs/cron-$JOB.log"');
+    expect(mk).toBeGreaterThan(-1);
+    expect(rd).toBeGreaterThan(-1);
+    expect(mk).toBeLessThan(rd);
+    // and the cron line itself must carry no redirect any more
+    expect(installSh).not.toMatch(/LINE=.*cron-\$j\.log/);
+  });
+
+  it("hands the docker socket to the canary alone", () => {
+    expect(runJobSh).toMatch(/canary\)\s+SOCK=\(-v \/var\/run\/docker\.sock/);
+    expect(runJobSh).toMatch(/translate\)\s+SOCK=\(\);/);
+    expect(runJobSh).toMatch(/docs-audit\)\s+SOCK=\(\);/);
+  });
+
+  it("refuses an unknown job and a missing credentials file", () => {
+    expect(runJobSh).toMatch(/usage: \$0 canary\|translate\|docs-audit/);
+    expect(runJobSh).toMatch(/\[ -f "\$W\/secrets\.env" \] \|\|/);
   });
 });

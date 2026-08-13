@@ -285,6 +285,21 @@ else
   CANARY_REF="origin/main"
 fi
 
+# ── 4b. the cron wrapper ─────────────────────────────────────────────────────
+# It owns its own log, which closes a real trap: cron evaluates a `>>` redirect
+# BEFORE the command runs, so a missing logs/ directory meant the job silently
+# never started — and the container could not create the directory its own
+# redirect needed.
+step "Installing the runner script"
+WRAPPER_SRC="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)/run-job.sh"
+if [ -f "$WRAPPER_SRC" ]; then
+  run cp "$WRAPPER_SRC" "$WORK/run.sh"
+else
+  run curl -fsSL "https://raw.githubusercontent.com/FailproofAI/failproofai/main/integration-suite/local/run-job.sh" -o "$WORK/run.sh"
+fi
+run chmod +x "$WORK/run.sh"
+did "$WORK/run.sh"
+
 # ── 5. the runner image ──────────────────────────────────────────────────────
 # Normally there is nothing to build: the image is published to GHCR and every
 # cron line carries `--pull=always`, so the box tracks it without anyone
@@ -315,21 +330,11 @@ fi
 # load-bearing: paths under it are used both for in-container file ops and as
 # sibling-container `-v` sources, which the HOST daemon resolves against the
 # host filesystem. Change either side and the sandbox mounts nothing.
-job_cmd() { # $1 = job
-  # --pull=always: the box tracks the published image with nothing to re-run.
-  # The docker socket goes ONLY to the canary — it is the one job that spawns
-  # sibling containers (the sandbox image, the 12 probes). Handing it to the
-  # other two would grant the host daemon to jobs that never call it.
-  # timeout: an hour past the slowest observed first run, so a wedged vendor CLI
-  # cannot still be holding the lock at tomorrow's fire.
-  local sock="" tmo
-  case "$1" in
-    canary)     sock='-v /var/run/docker.sock:/var/run/docker.sock '; tmo=9000 ;;
-    translate)  tmo=16200 ;;
-    *)          tmo=1800 ;;
-  esac
-  printf 'timeout %s docker run --rm --pull=always --name fp-%s -e CANARY_JOB=%s -e CANARY_WORK="%s" %s-v "%s:%s" --env-file "%s/secrets.env" %s' \
-    "$tmo" "$1" "$1" "$WORK" "$sock" "$WORK" "$WORK" "$WORK" "$IMAGE"
+job_cmd() { # $1 = job — what the crontab line runs
+  # A crontab entry must be ONE line, so the docker invocation lives in
+  # run.sh instead: readable here, readable there, and it survives being pasted
+  # through a chat client on the way to whoever sets the box up.
+  printf '%s/run.sh %s' "$WORK" "$1"
 }
 
 if [ "$DO_CRON" = 1 ]; then
@@ -342,7 +347,7 @@ if [ "$DO_CRON" = 1 ]; then
     eval "at=\$AT_$(vn "$j")"
     at="$(normalize_cron "$at")"
     marker="$CRON_MARKER_BASE-$j"
-    LINE="$at $(job_cmd "$j") >> \"$WORK/logs/cron-$j.log\" 2>&1 $marker"
+    LINE="$at $(job_cmd "$j") $marker"
     if [ "$DRY" = 1 ]; then
       say "would install cron line:"; say "$LINE"
     else

@@ -165,7 +165,10 @@ api() { # $1 = method, $2 = path, $3 = body (optional)
     -H "X-GitHub-Api-Version: 2022-11-28"
   )
   [ $# -ge 3 ] && args+=(--data "$3")
-  curl "${args[@]}" "https://api.github.com/repos/$REPO$path"
+  # Overridable so this can be pointed at a GitHub Enterprise host, and so the
+  # publish path can be exercised end-to-end against a stand-in API without
+  # opening real pull requests to prove it works.
+  curl "${args[@]}" "${TRANSLATE_API_BASE:-https://api.github.com}/repos/$REPO$path"
 }
 
 # Push onto an already-open auto-translation PR rather than dropping this run's

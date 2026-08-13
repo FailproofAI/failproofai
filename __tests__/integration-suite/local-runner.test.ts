@@ -390,11 +390,8 @@ describe("translate job", () => {
     expect(translateSh).not.toMatch(/https:\/\/[^\s"]*\$TRANSLATE_GITHUB_TOKEN@/);
   });
 
-  it("reports to Slack even when it changes nothing", () => {
-    // Silence must mean "the box did not run", never "all was well" — there
-    // is no red-job email out here.
-    const noop = translateSh.slice(translateSh.indexOf("no changes — every language is current"));
-    expect(noop.slice(0, 300)).toMatch(/slack_note/);
+  it("posts nothing to Slack — the pull request is the report", () => {
+    expect(translateSh).not.toMatch(/slack_note|CANARY_SLACK_WEBHOOK/);
   });
 
   it("never claims success for a step it did not reach", () => {
@@ -423,15 +420,18 @@ describe("installer schedules every job it validated", () => {
     expect(installSh).toMatch(/eval "required=\\\$REQUIRED_\$\(vn "\$j"\)"/);
   });
 
-  it("requires the webhook for every job", () => {
-    // A job that runs and reports nowhere is worse than no job.
-    for (const j of ["canary", "translate", "docs_audit"]) {
+  it("requires the webhook for the jobs whose only output IS the report", () => {
+    // canary and docs-audit report to Slack and nowhere else, so a missing
+    // webhook makes them look like coverage while producing none. translate is
+    // the exception: it opens a pull request, which says everything a chat
+    // message would.
+    for (const j of ["canary", "docs_audit"]) {
       const req = new RegExp(`REQUIRED_${j}="([^"]+)"`).exec(installSh)![1];
       expect(req, `${j} must require the webhook`).toContain("CANARY_SLACK_WEBHOOK");
     }
-    expect(/REQUIRED_translate="([^"]+)"/.exec(installSh)![1]).toContain(
-      "TRANSLATE_GITHUB_TOKEN",
-    );
+    const translateReq = /REQUIRED_translate="([^"]+)"/.exec(installSh)![1];
+    expect(translateReq).toContain("TRANSLATE_GITHUB_TOKEN");
+    expect(translateReq).not.toContain("CANARY_SLACK_WEBHOOK");
   });
 
   it("names the timezone cron will actually fire in", () => {
@@ -452,16 +452,17 @@ describe("installer schedules every job it validated", () => {
 });
 
 describe("translate job failures are never silent", () => {
-  it("prints the reason as well as posting it", () => {
-    // Slack is for the person not watching; the console/log is for the one who
-    // is. A run that fails with an empty console because no webhook happened
-    // to be set is the silent-failure class this box exists to catch.
+  it("names the step it died at, in the run log", () => {
+    // This job posts nowhere, so the log and the exit code ARE the report —
+    // which makes the printing here load-bearing rather than a convenience.
+    // An earlier cut posted and did not print, and a run with no webhook set
+    // failed to a completely empty console.
     const dieBody = translateSh.slice(
       translateSh.indexOf("die() {"),
       translateSh.indexOf("step() {"),
     );
     expect(dieBody).toMatch(/echo "✗ \$STEP: \$1" >&2/);
-    expect(dieBody).toMatch(/slack_note/);
+    expect(dieBody).toMatch(/exit 1/);
   });
 });
 
@@ -556,7 +557,26 @@ describe("an open PR whose branch is gone", () => {
     expect(translateSh.match(/git checkout -b "\$BRANCH"/g)).toHaveLength(1);
   });
 
-  it("says so in Slack rather than silently opening a second PR", () => {
-    expect(translateSh).toMatch(/no longer exists — opening a new PR\. Close the stale one\./);
+  it("says so on stderr rather than silently opening a second PR", () => {
+    expect(translateSh).toMatch(/no longer exists —/);
+    expect(translateSh).toMatch(/close the stale one at \$REPO\/pull\/\$PR_NUMBER/);
+  });
+});
+
+describe("a job's ref must still exist on the remote", () => {
+  it("asks the remote rather than matching one known-stale branch name", () => {
+    // Checking the NAME against `origin/failproofaid` only ever caught that one
+    // branch. A merged-and-deleted feature branch sailed through — which is
+    // exactly what was sitting in a real secrets.env: CANARY_REF pointed at
+    // origin/feat/canary-local-runner, so the box would have tested a frozen
+    // tree forever and never said so.
+    expect(installSh).toMatch(/git ls-remote --heads "\$GIT_URL" "\$branch"/);
+    expect(installSh).toMatch(/does not exist on the remote/);
+    expect(installSh).not.toMatch(/origin\/failproofaid\)/);
+  });
+
+  it("warns, without refusing, when a ref is not main", () => {
+    // Legitimate for a one-off; rarely right for a cron line.
+    expect(installSh).toMatch(/not origin\/main — deliberate for a one-off/);
   });
 });

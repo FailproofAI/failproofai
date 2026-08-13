@@ -156,9 +156,11 @@ next run is root too — but it is the first thing that surprises anyone poking
 at the box by hand.
 Verdict reports POST to Slack exactly as before; a leg that dies *before*
 reporting gets a distinct crash-note with the log tail (that's the replacement
-for GHA's red-job email — cron's own output can go to `/dev/null`). The
-translate job reports the same way, **including on nights it changes nothing**,
-so silence means the box did not run rather than that all was well. Token
+for GHA's red-job email — cron's own output can go to `/dev/null`). The weekly
+docs audit posts the same way, **including on quiet weeks**, so silence there
+means the box did not run rather than that all was well. **`translate` posts
+nothing** — its output is the pull request it opens, which the PR list already
+says; its failures land in the run log and the exit code. Token
 tarballs still come from `capture-tokens.sh` on a logged-in machine.
 
 One thing to know before touching the translation cache: on Actions it was

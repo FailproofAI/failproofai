@@ -66,13 +66,16 @@ ALL_JOBS="canary translate docs-audit"
 # variable is looked up, rather than a rule to remember at each site.
 vn() { printf '%s' "${1//-/_}"; }
 
-# Every variable each job cannot run without. The webhook is in EVERY list on
-# purpose — a job that runs and reports nowhere is worse than no job, because
-# it looks like coverage. docs-audit needs nothing else: it reads the tree and
-# git history and posts what it found, so it is the one job that can be
-# installed on a machine holding no credentials at all.
+# Every variable each job cannot run without. The webhook is required by the
+# jobs whose only output IS the report — a job that runs and reports nowhere is
+# worse than no job, because it looks like coverage. docs-audit needs nothing
+# else: it reads the tree and git history and posts what it found, so it is the
+# one job installable on a machine holding no credentials at all.
 REQUIRED_canary="CANARY_REF CANARY_LLM_API_KEY COPILOT_GITHUB_TOKEN CANARY_SLACK_WEBHOOK"
-REQUIRED_translate="TRANSLATE_REF TRANSLATE_LLM_API_KEY TRANSLATE_LLM_BASE_URL TRANSLATE_GITHUB_TOKEN CANARY_SLACK_WEBHOOK"
+# translate is the exception: it does NOT post to Slack. Its output is the pull
+# request it opens, so there is nothing a chat message would add that the PR
+# list does not already say.
+REQUIRED_translate="TRANSLATE_REF TRANSLATE_LLM_API_KEY TRANSLATE_LLM_BASE_URL TRANSLATE_GITHUB_TOKEN"
 REQUIRED_docs_audit="DOCS_AUDIT_REF CANARY_SLACK_WEBHOOK"
 
 SECRETS_SRC="" ; RUN_NOW="" ; DO_CRON=1 ; DRY=0
@@ -216,17 +219,28 @@ if [ "$DRY" = 0 ]; then
     ok "$j: credentials complete"
   done
 
-  CANARY_REF="$(getvar CANARY_REF)"
-  # The shipped template said origin/failproofaid before that branch merged.
-  # Left alone it points the box at a ref that no longer moves, so a job would
-  # run against a frozen tree forever and never say so.
-  for v in CANARY_REF TRANSLATE_REF DOCS_AUDIT_REF; do
-    case "$(getvar "$v")" in
-      origin/failproofaid)
-        die "$v is still origin/failproofaid — that branch has merged.
-       Set it to:  $v=origin/main" ;;
-    esac
+  # A ref that no longer moves is the whole silent-failure class this installer
+  # exists for: the box runs happily against a frozen tree forever and says
+  # nothing. Checking the NAME against one known-stale branch only ever caught
+  # that one branch — a merged feature branch (`origin/feat/…`) sailed through.
+  # So ask the REMOTE whether the branch still exists, which catches every
+  # deleted branch without naming any of them, and warn on anything that is not
+  # main, which is a legitimate choice for a one-off but not for a cron line.
+  for j in $JOBS; do
+    v="$(printf '%s' "$(vn "$j")" | tr 'a-z' 'A-Z')_REF"
+    ref="$(getvar "$v")"
+    [ -n "$ref" ] || continue
+    branch="${ref#origin/}"
+    if ! git ls-remote --heads "$GIT_URL" "$branch" 2>/dev/null | grep -q .; then
+      die "$v is $ref, and $branch does not exist on the remote.
+       It was probably merged and deleted, so the box would run against a
+       frozen tree forever and never say so.
+       Set it to:  $v=origin/main"
+    fi
+    [ "$ref" = "origin/main" ] \
+      || say "⚠ $v is $ref, not origin/main — deliberate for a one-off, rarely right for a cron line"
   done
+  CANARY_REF="$(getvar CANARY_REF)"
   [ -n "$CANARY_REF" ] || CANARY_REF="origin/main"
 else
   CANARY_REF="origin/main"
@@ -299,17 +313,20 @@ printf '\n'
 say "Run one now, in the foreground:"
 for j in $JOBS; do say "  $(job_cmd "$j")"; done
 printf '\n'
-say "FIRST RUNS ARE LONG, both of them, and only the first:"
-say "  canary     ~1h  — the version gate is empty, so it probes all 12 CLIs."
-say "                    After that only a CLI whose version CHANGED is"
-say "                    re-probed, so normal days are minutes."
-say "  translate  ~2h  — the cache is empty, so it translates the whole corpus"
-say "                    in 14 languages. After that only pages whose ENGLISH"
-say "                    source changed are re-translated, so normal nights"
-say "                    are minutes, and quiet ones do nothing at all."
+say "FIRST RUNS ARE LONG, and only the first:"
+say "  canary      ~1h  — the version gate is empty, so it probes all 12 CLIs."
+say "                     After that only a CLI whose version CHANGED is"
+say "                     re-probed, so normal days are minutes."
+say "  translate   ~2h  — the cache is empty, so it translates the whole corpus"
+say "                     in 14 languages. After that only pages whose ENGLISH"
+say "                     source changed are re-translated, so normal nights"
+say "                     are minutes, and quiet ones do nothing at all."
+say "  docs-audit  ~1min every week."
 printf '\n'
-say "Both post to Slack every run, including the quiet ones — so silence means"
-say "the box did not run, not that everything was fine."
+say "canary and docs-audit post to Slack on EVERY run, including the quiet ones,"
+say "so silence from them means the box did not run rather than that all was"
+say "well. translate posts nothing: its output is the pull request it opens, and"
+say "its failures land in $WORK/logs/."
 
 if [ -n "$RUN_NOW" ]; then
   step "Running $RUN_NOW now"

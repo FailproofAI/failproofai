@@ -53,29 +53,16 @@ FP_SHA="$(git -C "$CLONE" rev-parse --short HEAD)"
 export TRANSLATE_MAX_CONCURRENT="${TRANSLATE_MAX_CONCURRENT:-16}"
 export FAILPROOFAI_TELEMETRY_DISABLED=1
 
-slack_note() { # $1 = text; best-effort, never fails the run
-  [ -n "${CANARY_SLACK_WEBHOOK:-}" ] || return 0
-  local payload
-  payload="$(printf '%s' "$1" | node -e 'const t=require("fs").readFileSync(0,"utf8");process.stdout.write(JSON.stringify({text:t}))')"
-  curl -sS --connect-timeout 10 --max-time 30 -o /dev/null -X POST \
-    -H 'Content-type: application/json' --data "$payload" "$CANARY_SLACK_WEBHOOK" 2>/dev/null || true
-}
-
 # Every exit through here, so the box can never fail silently. GHA gave a
 # red-job email for free; a cron line redirected to /dev/null gives nothing.
 STEP="startup"
 REF_DESC="${TRANSLATE_REF:-origin/$BASE_BRANCH}"
+# This job does NOT post to Slack. Its output IS the pull request — a run that
+# did something leaves one, and a run that did nothing leaves the previous one
+# untouched, so there is nothing a chat message would add that the PR list does
+# not already say. Failures go to the run log ($CANARY_LOG) and the exit code.
 die() { # $1 = human summary
-  # Printed AS WELL AS posted. Slack is the channel for the person who is not
-  # watching; the log is the one for the person who is, and a run that fails
-  # with an empty console because no webhook happened to be set is the same
-  # silent-failure class this box exists to catch.
   echo "✗ $STEP: $1" >&2
-  slack_note "🔥 docs translation FAILED at *$STEP* — \`$REF_DESC\` @ \`$FP_SHA\`
-$1
-\`\`\`
-$(tail -15 "${CANARY_LOG:-/dev/null}" 2>/dev/null || echo '(no log)')
-\`\`\`"
   exit 1
 }
 step() { STEP="$1"; echo "── $1 ──"; }
@@ -139,15 +126,14 @@ step "publish"
 git config user.name "failproofai-canary[bot]"
 git config user.email "canary@befailproof.ai"
 # Credential helper rather than a token in the remote URL: git prints the
-# remote back on any push error, and a URL-embedded token would land in the log
-# and in the Slack tail above.
+# remote back on any push error, and a URL-embedded token would land in the
+# run log.
 git config credential.helper '!f() { echo username=x-access-token; echo "password=$TRANSLATE_GITHUB_TOKEN"; }; f'
 export TRANSLATE_GITHUB_TOKEN
 
 git add -A
 if git diff --cached --quiet; then
-  echo "no changes — every language is current"
-  slack_note "📘 docs translation: nothing to do — all 14 languages current at \`$FP_SHA\`"
+  echo "no changes — every language is current at $FP_SHA"
   exit 0
 fi
 CHANGED="$(git diff --cached --name-only | wc -l | tr -d ' ')"
@@ -195,8 +181,8 @@ if [ -n "$EXISTING" ]; then
   if [ "$ls_rc" -ne 0 ]; then
     die "PR #$PR_NUMBER is open but the remote could not be reached to check its branch"
   elif [ -z "$remote_refs" ]; then
-    echo "PR #$PR_NUMBER is open but its branch $BRANCH is gone — starting a fresh one"
-    slack_note "⚠️ docs translation: PR <https://github.com/$REPO/pull/$PR_NUMBER|#$PR_NUMBER> is open but its branch \`$BRANCH\` no longer exists — opening a new PR. Close the stale one."
+    echo "⚠ PR #$PR_NUMBER is open but its branch $BRANCH no longer exists —" >&2
+    echo "  opening a new PR; close the stale one at $REPO/pull/$PR_NUMBER" >&2
     PR_NUMBER=""; BRANCH=""
   fi
 fi
@@ -222,7 +208,6 @@ fi
 git add -A
 if git diff --cached --quiet; then
   echo "nothing new relative to $BRANCH"
-  slack_note "📘 docs translation: no new changes beyond the open PR (\`$BRANCH\`)"
   exit 0
 fi
 git commit -m "docs: update translations for changed English sources" || die "commit failed"
@@ -239,9 +224,9 @@ if [ -z "$PR_NUMBER" ]; then
     | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const p=JSON.parse(s);process.stdout.write(p.number?String(p.number):"")}catch{process.stdout.write("")}})')"
   [ -n "$CREATED" ] || die "pushed $BRANCH but could not open the PR — check the PAT's pull-requests:write scope"
   PR_NUMBER="$CREATED"
-  slack_note "📘 docs translation: $CHANGED files updated → opened <https://github.com/$REPO/pull/$PR_NUMBER|#$PR_NUMBER>"
+  echo "opened https://github.com/$REPO/pull/$PR_NUMBER with $CHANGED files"
 else
-  slack_note "📘 docs translation: $CHANGED files updated → pushed to <https://github.com/$REPO/pull/$PR_NUMBER|#$PR_NUMBER>"
+  echo "pushed $CHANGED files to https://github.com/$REPO/pull/$PR_NUMBER"
 fi
 
 echo "── done: PR #$PR_NUMBER on $BRANCH ──"

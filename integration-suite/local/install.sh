@@ -2,6 +2,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # install.sh — set the box up in ONE command, for every scheduled job.
 #
+#   git clone https://github.com/FailproofAI/failproofai.git
+#   cd failproofai
+#   bash integration-suite/local/install.sh ~/secrets.env
+#
+# There is also a no-clone form for a box you touch once:
 #   bash <(curl -fsSL https://raw.githubusercontent.com/FailproofAI/failproofai/main/integration-suite/local/install.sh) ~/secrets.env
 #
 # Builds the runner image, creates the work dir, installs the env file, and
@@ -57,7 +62,6 @@ set -euo pipefail
 IMAGE="failproofai-canary-runner"
 WORK="${CANARY_WORK:-$HOME/fp-canary}"
 GIT_URL="${CANARY_GIT_URL:-https://github.com/FailproofAI/failproofai.git}"
-RAW_BASE="https://raw.githubusercontent.com/FailproofAI/failproofai/main/integration-suite/local"
 # Marker, not the whole command: cron lines are rewritten on every install, so
 # they have to be findable even after the command they contain changes. Per job,
 # or installing one would strip the other's line.
@@ -95,7 +99,7 @@ while [ $# -gt 0 ]; do
     --at-canary)     AT_canary="${2:?--at-canary needs a value, e.g. --at-canary \"0 11\"}"; shift ;;
     --at-translate)  AT_translate="${2:?--at-translate needs a value, e.g. --at-translate \"0 2\"}"; shift ;;
     --at-docs-audit) AT_docs_audit="${2:?--at-docs-audit needs a value, e.g. --at-docs-audit \"0 4 * * 1\"}"; shift ;;
-    -h|--help)       sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)       sed -n '2,58p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*)              echo "unknown flag: $1" >&2; exit 2 ;;
     *)               SECRETS_SRC="$1" ;;
   esac
@@ -184,16 +188,33 @@ elif [ -f "$WORK/secrets.env" ]; then
   run chmod 600 "$WORK/secrets.env"
   did "using the existing $WORK/secrets.env"
 else
-  say "no secrets file given and none installed — fetching the template"
-  if [ "$DRY" = 0 ]; then
-    curl -fsSL "$RAW_BASE/secrets.env.example" -o "$WORK/secrets.env" \
-      || die "could not download the template from $RAW_BASE"
-    chmod 600 "$WORK/secrets.env"
-  fi
-  die "Fill in $WORK/secrets.env, then re-run this installer.
-       Ask whoever set up the gateway for: CANARY_LLM_API_KEY,
-       COPILOT_GITHUB_TOKEN, TRANSLATE_LLM_API_KEY, TRANSLATE_LLM_BASE_URL,
-       TRANSLATE_GITHUB_TOKEN and CANARY_SLACK_WEBHOOK."
+  # No template file ships in this repo, and none is fetched. A file that LOOKS
+  # like a credentials file is one `git add -A` from being committed by whoever
+  # fills it in, so the variable list is printed instead — derived from the same
+  # REQUIRED_ lists the checks below use, which means it cannot drift out of
+  # date the way a checked-in example silently does.
+  say "no credentials file given, and none installed at $WORK/secrets.env"
+  printf '\n'
+  say "Create one — plain KEY=value lines, no quotes — with:"
+  printf '\n'
+  for j in $JOBS; do
+    eval "required=\$REQUIRED_$(vn "$j")"
+    printf '    \033[2m# %s\033[0m\n' "$j"
+    for v in $required; do
+      case "$v" in
+        *_REF) printf '    %s=origin/main\n' "$v" ;;
+        *)     printf '    %s=\n' "$v" ;;
+      esac
+    done
+  done
+  printf '\n'
+  die "Then re-run this installer with the path to it:
+         bash \$0 ~/secrets.env
+
+       Whoever set up the gateway has the LLM values; the GitHub tokens are
+       fine-grained PATs on this repo (translate needs Contents + Pull requests,
+       docs-audit needs Issues). Keep the file at mode 600 and OUT of any
+       checkout."
 fi
 
 # ── 4. validate the env file ─────────────────────────────────────────────────

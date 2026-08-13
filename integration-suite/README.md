@@ -123,6 +123,11 @@ a full five-field cron expression, which is how weekly is said
 (`--at docs-audit "0 4 * * 1"`). Cron fires in the **host's** timezone; the
 installer prints which one it resolved.
 
+No credentials template ships in this repo. A file that looks like a
+credentials file is one `git add -A` away from being committed by whoever fills
+it in, so `install.sh` run with no arguments prints the variable list instead —
+generated from the same checks it enforces, so it cannot go stale.
+
 **The installer exists because most of the manual steps fail silently for a
 day.** A work dir mounted at a different path inside than out, a ref left at a
 merged branch, and a filled-in env file with no Slack webhook all produce a job
@@ -142,7 +147,10 @@ docker build -t failproofai-canary-runner \
 
 # 2. one-time: work dir + secrets
 mkdir -p ~/fp-canary
-cp integration-suite/local/secrets.env.example ~/fp-canary/secrets.env
+# no template ships in this repo on purpose — an env-shaped file in a checkout
+# is one `git add -A` from being committed. Run install.sh with no arguments and
+# it prints exactly which variables to put in this file.
+touch ~/fp-canary/secrets.env
 chmod 600 ~/fp-canary/secrets.env    # then fill it in
 
 # 3. cron, one line per job (overlapping fires of the SAME job share a lock
@@ -331,7 +339,6 @@ local/                the box: runner image, installer, and one script per job
   Dockerfile.runner   the runner image, shared by every job
   install.sh          one-command setup: image + work dir + env file + cron
   runner-entrypoint.sh  baked, thin: lock -> checkout -> exec jobs/$CANARY_JOB.sh
-  secrets.env.example   every variable both jobs read
   jobs/canary.sh      the integration suite (stable + beta legs)
   jobs/translate.sh   the nightly doc translation
   jobs/docs-audit.sh  the weekly docs sweep (analysis: scripts/docs-audit.ts)

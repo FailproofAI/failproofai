@@ -16,7 +16,7 @@
  * channel-refs.test.ts, and for the same reason: the alternative is a second
  * copy of each contract to drift against.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -29,7 +29,6 @@ const dailySh = readFileSync(path.join(LOCAL, "jobs/canary.sh"), "utf8");
 const translateSh = readFileSync(path.join(LOCAL, "jobs/translate.sh"), "utf8");
 const installSh = readFileSync(path.join(LOCAL, "install.sh"), "utf8");
 const docsAuditSh = readFileSync(path.join(LOCAL, "jobs/docs-audit.sh"), "utf8");
-const secretsExample = readFileSync(path.join(LOCAL, "secrets.env.example"), "utf8");
 const workflow = readFileSync(
   path.join(ROOT, ".github/workflows/integration-suite.yml"),
   "utf8",
@@ -131,34 +130,46 @@ describe("canary job (in-repo, evolves with the harness)", () => {
   });
 });
 
-describe("secrets.env.example (the one file the boss edits)", () => {
-  it("offers every secret-fed env var the workflow maps", () => {
-    // The box's env file and the GHA Environment must stay interchangeable.
-    // A secret added to the workflow but not the example means the box runs
-    // without it and that CLI quietly reports ERROR forever.
+describe("credentials: no example file ships, by design", () => {
+  it("keeps every env-file-shaped file out of the repo", () => {
+    // A file that LOOKS like a credentials file is one `git add -A` away from
+    // being committed by whoever fills it in. The installer prints the variable
+    // list instead, so there is nothing in the tree to fill in by mistake.
+    const stray = readdirSync(LOCAL).filter((f) => /(^|\.)env(\.|$)|secrets/.test(f));
+    expect(stray, `no env-shaped file may ship: ${stray.join(", ")}`).toEqual([]);
+    expect(installSh).not.toMatch(/secrets\.env\.example/);
+  });
+
+  it("prints the required variables instead of downloading a template", () => {
+    // Derived from the same REQUIRED_ lists the checks use, so the printed list
+    // cannot drift out of date the way a checked-in example silently does.
+    expect(installSh).toMatch(/no credentials file given/);
+    expect(installSh).toMatch(/eval "required=\\\$REQUIRED_\$\(vn "\$j"\)"/);
+    expect(installSh).toMatch(/\*_REF\) printf '    %s=origin\/main/);
+    // no download of a credentials template — the usage comment may still
+    // show the curl one-liner that fetches the INSTALLER itself
+    expect(installSh).not.toMatch(/curl[^\n]*-o[^\n]*secrets/);
+  });
+
+  it("tells the person to keep the file out of a checkout", () => {
+    expect(installSh).toMatch(/OUT of any[\s\S]{0,12}checkout/);
+    expect(installSh).toMatch(/chmod 600 "\$WORK\/secrets\.env"/);
+  });
+
+  it("every secret the workflow feeds is still read somewhere on the box", () => {
+    // The box's env file and the GHA Environment must stay interchangeable. A
+    // secret added to the workflow that nothing on the box reads means the box
+    // runs without it and that CLI quietly reports ERROR forever. With no
+    // example file to compare against, the real consumers are the check.
+    const consumers = ["ci-entrypoint.sh", "run.sh", "probe-cli.sh", "install-clis.sh", "inject-tokens.sh"]
+      .map((f) => readFileSync(path.join(SUITE, f), "utf8"))
+      .join("\n");
     const envNames = [...workflow.matchAll(/^\s+([A-Z0-9_]+):\s+\$\{\{\s*secrets\./gm)].map(
       (m) => m[1],
     );
     expect(envNames.length).toBeGreaterThanOrEqual(10);
     for (const name of envNames) {
-      expect(secretsExample, `secrets.env.example is missing ${name}`).toContain(name);
-    }
-  });
-
-  it("states both jobs' refs uncommented (the runner refuses to start without one)", () => {
-    expect(secretsExample).toMatch(/^CANARY_REF=\S+$/m);
-    expect(secretsExample).toMatch(/^TRANSLATE_REF=\S+$/m);
-  });
-
-  it("is valid docker --env-file material: no shell expansion on value lines", () => {
-    // docker --env-file is literal KEY=value — a $HOME in a value would reach
-    // the container as the four characters "$HOM"+"E". Comments may mention
-    // $HOME freely; value lines must not.
-    const valueLines = secretsExample
-      .split("\n")
-      .filter((l) => l.trim() && !l.trim().startsWith("#"));
-    for (const line of valueLines) {
-      expect(line, `value line must not rely on shell expansion: ${line}`).not.toContain("$");
+      expect(consumers, `nothing on the box reads ${name}`).toContain(name);
     }
   });
 });
@@ -446,7 +457,7 @@ describe("installer schedules every job it validated", () => {
       (j) => new RegExp(`REQUIRED_${j}="([^"]+)"`).exec(installSh)![1].split(" "),
     );
     for (const v of required) {
-      expect(secretsExample, `secrets.env.example is missing ${v}`).toContain(v);
+      expect(installSh, `install.sh never mentions ${v}`).toContain(v);
     }
   });
 });
@@ -522,7 +533,7 @@ describe("per-job variable lookup survives a dashed job name", () => {
     // entrypoint: tr 'a-z-' 'A-Z_' turns docs-audit into DOCS_AUDIT_REF, which
     // is the name the env template must carry.
     expect(entrypointSh).toMatch(/tr 'a-z-' 'A-Z_'/);
-    expect(secretsExample).toMatch(/^DOCS_AUDIT_REF=\S+$/m);
+    expect(installSh).toContain("DOCS_AUDIT_REF");
   });
 });
 
@@ -677,8 +688,8 @@ describe("docs-audit tracking issue", () => {
   it("asks for an issues-only token, never Contents or Pull requests", () => {
     // The audit never changes a file, so a stronger token would be scope it
     // cannot justify holding on someone's machine.
-    expect(secretsExample).toMatch(/DOCS_AUDIT_GITHUB_TOKEN=/);
-    expect(secretsExample).toMatch(/Issues: read\+write\. That is\s*\n# ALL it needs/);
+    expect(installSh).toContain("DOCS_AUDIT_GITHUB_TOKEN");
+    expect(installSh).toMatch(/docs-audit needs Issues/);
     const required = /REQUIRED_docs_audit="([^"]+)"/.exec(installSh)![1].split(" ");
     expect(required).toContain("DOCS_AUDIT_GITHUB_TOKEN");
     expect(required).not.toContain("TRANSLATE_GITHUB_TOKEN");

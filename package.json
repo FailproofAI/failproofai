@@ -40,7 +40,8 @@
     "translate:docs": "bun scripts/translate-docs/cli.ts --docs-only",
     "translate:dry-run": "bun scripts/translate-docs/cli.ts --dry-run",
     "translate:validate": "bun scripts/translate-docs/cli.ts --validate",
-    "validate:mdx": "bun scripts/validate-mdx.ts"
+    "validate:mdx": "bun scripts/validate-mdx.ts",
+    "docs:audit": "bun scripts/docs-audit.ts"
   },
   "keywords": [
     "claude",

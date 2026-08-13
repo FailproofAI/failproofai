@@ -28,6 +28,7 @@ const entrypointSh = readFileSync(path.join(LOCAL, "runner-entrypoint.sh"), "utf
 const dailySh = readFileSync(path.join(LOCAL, "jobs/canary.sh"), "utf8");
 const translateSh = readFileSync(path.join(LOCAL, "jobs/translate.sh"), "utf8");
 const installSh = readFileSync(path.join(LOCAL, "install.sh"), "utf8");
+const docsAuditSh = readFileSync(path.join(LOCAL, "jobs/docs-audit.sh"), "utf8");
 const secretsExample = readFileSync(path.join(LOCAL, "secrets.env.example"), "utf8");
 const workflow = readFileSync(
   path.join(ROOT, ".github/workflows/integration-suite.yml"),
@@ -90,6 +91,7 @@ describe("runner image (the boss's one container)", () => {
     expect(entrypointSh).toMatch(/exec bash "\$JOB_SCRIPT"/);
     expect(existsSync(path.join(LOCAL, "jobs/canary.sh"))).toBe(true);
     expect(existsSync(path.join(LOCAL, "jobs/translate.sh"))).toBe(true);
+    expect(existsSync(path.join(LOCAL, "jobs/docs-audit.sh"))).toBe(true);
   });
 
   it("entrypoint explains the identical-path work-dir mount when it is missing", () => {
@@ -418,29 +420,31 @@ describe("installer schedules every job it validated", () => {
     // Installing only the canary must not demand a translation PAT.
     expect(installSh).toMatch(/REQUIRED_canary="/);
     expect(installSh).toMatch(/REQUIRED_translate="/);
-    expect(installSh).toMatch(/eval "required=\\\$REQUIRED_\$j"/);
+    expect(installSh).toMatch(/eval "required=\\\$REQUIRED_\$\(vn "\$j"\)"/);
   });
 
-  it("requires the webhook for both jobs", () => {
-    const canaryReq = /REQUIRED_canary="([^"]+)"/.exec(installSh)![1];
-    const translateReq = /REQUIRED_translate="([^"]+)"/.exec(installSh)![1];
-    expect(canaryReq).toContain("CANARY_SLACK_WEBHOOK");
-    expect(translateReq).toContain("CANARY_SLACK_WEBHOOK");
-    expect(translateReq).toContain("TRANSLATE_GITHUB_TOKEN");
+  it("requires the webhook for every job", () => {
+    // A job that runs and reports nowhere is worse than no job.
+    for (const j of ["canary", "translate", "docs_audit"]) {
+      const req = new RegExp(`REQUIRED_${j}="([^"]+)"`).exec(installSh)![1];
+      expect(req, `${j} must require the webhook`).toContain("CANARY_SLACK_WEBHOOK");
+    }
+    expect(/REQUIRED_translate="([^"]+)"/.exec(installSh)![1]).toContain(
+      "TRANSLATE_GITHUB_TOKEN",
+    );
   });
 
   it("names the timezone cron will actually fire in", () => {
     // "02:00" read as UTC on an IST box is 07:30, and the person reading the
     // installer's output is the one who would be surprised.
     expect(installSh).toMatch(/TZ_NAME=/);
-    expect(installSh).toMatch(/did "\$j — daily at .*\$TZ_NAME"/);
+    expect(installSh).toMatch(/did "\$j — \$\(describe_cron "\$at"\) \$TZ_NAME"/);
   });
 
-  it("offers every box variable the two jobs require", () => {
-    const required = [
-      ...(/REQUIRED_canary="([^"]+)"/.exec(installSh)![1].split(" ")),
-      ...(/REQUIRED_translate="([^"]+)"/.exec(installSh)![1].split(" ")),
-    ];
+  it("offers every box variable the jobs require", () => {
+    const required = ["canary", "translate", "docs_audit"].flatMap(
+      (j) => new RegExp(`REQUIRED_${j}="([^"]+)"`).exec(installSh)![1].split(" "),
+    );
     for (const v of required) {
       expect(secretsExample, `secrets.env.example is missing ${v}`).toContain(v);
     }
@@ -458,5 +462,60 @@ describe("translate job failures are never silent", () => {
     );
     expect(dieBody).toMatch(/echo "✗ \$STEP: \$1" >&2/);
     expect(dieBody).toMatch(/slack_note/);
+  });
+});
+
+describe("docs-audit job", () => {
+  it("needs no credential beyond the webhook", () => {
+    // The point of this job is that it can be installed on a machine holding
+    // nothing: it reads the tree and git history and reports. If it ever grows
+    // a gateway key or a push token, that is a different job with a different
+    // risk profile, and this test is where that gets noticed.
+    const required = /REQUIRED_docs_audit="([^"]+)"/.exec(installSh)![1].split(" ");
+    expect(required.sort()).toEqual(["CANARY_SLACK_WEBHOOK", "DOCS_AUDIT_REF"]);
+    expect(docsAuditSh).not.toMatch(/TRANSLATE_GITHUB_TOKEN|LLM_API_KEY/);
+    expect(docsAuditSh).not.toMatch(/git push|api POST/);
+  });
+
+  it("defaults to weekly, which needs a five-field cron expression", () => {
+    expect(installSh).toMatch(/AT_docs_audit="0 4 \* \* 1"/);
+  });
+
+  it("reads the same translation cache the nightly job writes", () => {
+    // Without the link every page reads as never-translated every week — a
+    // 672-line finding that is an artefact of where the file lives.
+    expect(docsAuditSh).toMatch(/CACHE_HOME="\$WORK\/translate"/);
+    expect(docsAuditSh).toMatch(/ln -sfn "\$CACHE_HOME\/\.translation-cache\.json"/);
+  });
+
+  it("delegates the analysis to the unit-tested script", () => {
+    // The shell is box wiring; the judgement lives in TypeScript where it can
+    // be tested without a repo, a docs tree or a clock.
+    expect(docsAuditSh).toMatch(/bun run docs:audit/);
+    expect(existsSync(path.join(ROOT, "scripts/docs-audit.ts"))).toBe(true);
+  });
+
+  it("posts what it found, and says so when it cannot post", () => {
+    expect(docsAuditSh).toMatch(/slack_note "\$REPORT"/);
+    expect(docsAuditSh).toMatch(/no webhook set/);
+  });
+});
+
+describe("per-job variable lookup survives a dashed job name", () => {
+  it("converts the name once, in one place", () => {
+    // `docs-audit` is a valid path component and an invalid shell variable
+    // name. Every per-job lookup goes through vn() rather than each site
+    // remembering — AT_docs-audit would expand to nothing and schedule the
+    // job at whatever `normalize_cron ""` did next.
+    expect(installSh).toMatch(/vn\(\) \{ printf '%s' "\$\{1\/\/-\/_\}"; \}/);
+    expect(installSh).toMatch(/eval "required=\\\$REQUIRED_\$\(vn "\$j"\)"/);
+    expect(installSh).toMatch(/eval "at=\\\$AT_\$\(vn "\$j"\)"/);
+  });
+
+  it("derives the ref var the same way the entrypoint does", () => {
+    // entrypoint: tr 'a-z-' 'A-Z_' turns docs-audit into DOCS_AUDIT_REF, which
+    // is the name the env template must carry.
+    expect(entrypointSh).toMatch(/tr 'a-z-' 'A-Z_'/);
+    expect(secretsExample).toMatch(/^DOCS_AUDIT_REF=\S+$/m);
   });
 });

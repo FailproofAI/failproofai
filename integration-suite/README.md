@@ -39,16 +39,45 @@ self-contained runner image that drives the host's Docker through the mounted
 socket (sibling containers — the sandbox image, volumes and probe containers
 are the exact ones CI runs).
 
-**Two jobs share the box**, one image and one env file between them:
+**Three jobs share the box**, one image and one env file between them:
 
 | `CANARY_JOB` | What it is | Default | First run | Steady state |
 |---|---|---|---|---|
 | `canary` | this integration suite | 11:00 local | ~1h (empty version gate) | minutes |
 | `translate` | the nightly doc translation, replacing `translate-docs.yml`'s cron | 02:00 local | ~2h (empty cache) | minutes, often nothing |
+| `docs-audit` | a weekly sweep of the docs — see below | Mondays 04:00 | ~1 min | ~1 min |
 
-They hold **separate locks** and are scheduled far apart, so neither can
-swallow the other — a canary wedged on a vendor CLI must not silently cost a
-night of translation, and a skipped run's `exit 0` reports nowhere.
+They hold **separate locks** and are scheduled far apart, so none can swallow
+another — a canary wedged on a vendor CLI must not silently cost a night of
+translation, and a skipped run's `exit 0` reports nowhere.
+
+### The weekly docs audit
+
+`mintlify validate` and `validate:mdx` answer *does this build*, per PR, on the
+pages a PR touches. They pass happily on a corpus that builds perfectly and is
+quietly wrong. `docs-audit` is the periodic sweep for what a per-PR gate
+structurally cannot see:
+
+| Finding | Why no gate catches it |
+|---|---|
+| Pages untouched for > 180 days | Age is not a build error |
+| In the nav, not on disk | `mintlify validate` *does* catch this — kept for one report |
+| On disk, in no nav | Nothing is broken; the page is just unreachable |
+| Links to pages that do not exist | Only nav links are validated, not in-body ones |
+| Images that do not resolve | Valid MDX, valid YAML — the reader just sees a broken image |
+| Translations behind their English source | The nightly job fixes these; the count is the coverage signal |
+
+It is the cheapest job on the box: **no gateway key, no push token, no sibling
+containers** — it reads the docs tree and git history and posts what it found.
+That is deliberate. An audit that could also *fix* what it finds would need
+write access and a much longer argument about what it may change unattended.
+
+It **reports and exits 0 by design**. `--fail-on-findings` exists for a future
+caller that wants a gate, off by default: a docs audit that turns the build red
+the day a page crosses an age threshold gets switched off within a week, and
+then there is neither a gate nor a report. The analysis lives in
+`scripts/docs-audit.ts` (unit-tested, no repo or clock needed) and runs by hand
+as `bun run docs:audit` — add `--json` for the raw findings.
 
 Box setup is **one command**. Whoever holds the credentials fills in a
 `secrets.env` and sends it; the person with the machine runs:
@@ -63,17 +92,20 @@ line per job**. It is idempotent — re-running upgrades the image and *rewrites
 those lines rather than adding a second set, and each line carries its own
 marker so installing one job never strips the other's.
 
-Flags: `--jobs canary,translate` picks which to install (default both),
+Flags: `--jobs canary,translate,docs-audit` picks which to install (default all),
 `--now <job>` runs one immediately in the foreground, `--dry-run` prints what it
-would do, and `--at-canary "M H"` / `--at-translate "M H"` pick the hours. Cron
-fires in the **host's** timezone; the installer prints which one it resolved.
+would do, and `--at <job> "<spec>"` picks when — a spec is `"M H"` for daily or
+a full five-field cron expression, which is how weekly is said
+(`--at docs-audit "0 4 * * 1"`). Cron fires in the **host's** timezone; the
+installer prints which one it resolved.
 
 **The installer exists because most of the manual steps fail silently for a
 day.** A work dir mounted at a different path inside than out, a ref left at a
 merged branch, and a filled-in env file with no Slack webhook all produce a job
 that runs and reports nothing — which looks exactly like coverage. Each is
 refused at install time, in front of a person, and the credential check is **per
-job**, so installing only the canary never asks for a translation PAT. The
+job**, so installing only the canary never asks for a translation PAT — and
+`--jobs docs-audit` installs on a machine holding no credentials at all. The
 webhook is required for that reason and not because the runs need it.
 
 <details>
@@ -93,6 +125,7 @@ chmod 600 ~/fp-canary/secrets.env    # then fill it in
 #    and no-op; different jobs have different locks and may overlap)
 0 11 * * * docker run --rm -e CANARY_JOB=canary    -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/fp-canary:$HOME/fp-canary" --env-file "$HOME/fp-canary/secrets.env" failproofai-canary-runner >/dev/null 2>&1
 0  2 * * * docker run --rm -e CANARY_JOB=translate -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/fp-canary:$HOME/fp-canary" --env-file "$HOME/fp-canary/secrets.env" failproofai-canary-runner >/dev/null 2>&1
+0  4 * * 1 docker run --rm -e CANARY_JOB=docs-audit -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/fp-canary:$HOME/fp-canary" --env-file "$HOME/fp-canary/secrets.env" failproofai-canary-runner >/dev/null 2>&1
 ```
 
 </details>
@@ -271,4 +304,5 @@ local/                the box: runner image, installer, and one script per job
   secrets.env.example   every variable both jobs read
   jobs/canary.sh      the integration suite (stable + beta legs)
   jobs/translate.sh   the nightly doc translation
+  jobs/docs-audit.sh  the weekly docs sweep (analysis: scripts/docs-audit.ts)
 ```

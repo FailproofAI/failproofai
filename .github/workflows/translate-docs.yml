@@ -1,17 +1,24 @@
 name: Translate Docs
 
 on:
-  # Auto-translation used to run on every push to main that touched a
-  # translatable source, fanning out the full 14-language matrix per doc
-  # commit — expensive. We batch instead: one daily run at 11:05 IST
-  # (05:35 UTC — GitHub Actions cron is always UTC) coalesces a day's
-  # English-source edits. The content-hash cache
-  # (scripts/translate-docs/.translation-cache.json) still limits token spend to
-  # the documents whose source actually changed since the last successful run,
-  # so most days translate only a handful of pages (or none). Use the manual
-  # workflow_dispatch below for an on-demand or forced re-translation.
-  schedule:
-    - cron: "35 10 * * *" # 11:05 IST (05:35 UTC)
+  # ON-DEMAND FALLBACK. The NIGHTLY translation moved off Actions to the local
+  # box for cost — runner minutes were its entire expense, and the LLM spend is
+  # identical wherever it runs. integration-suite/local/jobs/translate.sh is the
+  # job that replaced the schedule that used to live here; the box runs it at
+  # 02:00 local, and integration-suite/local/install.sh sets it up.
+  #
+  # This workflow stays dispatch-only: the cloud escape hatch for when the box
+  # is down, or when a clean cloud reproduction is wanted. Note that its
+  # Actions-cache state is SEPARATE from the box's cache file, so a dispatch
+  # may re-translate pages the box already has (costing a full pass, not a
+  # wrong result).
+  #
+  # History, since it explains the shape below: auto-translation once ran on
+  # every push to main that touched a translatable source, fanning the full
+  # 14-language matrix out per doc commit. Batching to one daily run coalesced
+  # a day's English-source edits, and the content-hash cache
+  # (scripts/translate-docs/.translation-cache.json) limits token spend to the
+  # documents whose source actually changed.
   workflow_dispatch:
     inputs:
       force:

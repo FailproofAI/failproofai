@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# The daily driver, invoked by the runner image's baked entrypoint AFTER it has
-# locked, cloned and checked out $CANARY_REF into $CANARY_WORK/clone. It plays
+# The integration-suite job (CANARY_JOB=canary, the default), invoked by the
+# runner image's baked entrypoint AFTER it has locked, cloned and checked out
+# $CANARY_REF into $CANARY_WORK/clone-canary. It plays
 # the role the GHA workflow YAML played — env → state paths → leg fan-out —
 # then hands each leg to ci-entrypoint.sh, exactly as CI does.
 #
@@ -17,7 +18,7 @@
 set -u
 
 WORK="${CANARY_WORK:?CANARY_WORK missing — runner-entrypoint.sh sets it}"
-CLONE="${CANARY_CLONE:-$WORK/clone}"
+CLONE="${CANARY_CLONE:-$WORK/clone-canary}"
 STATE_DIR="$WORK/state"
 LOGS="$WORK/logs"
 mkdir -p "$STATE_DIR" "$LOGS"
@@ -81,8 +82,6 @@ overall=0
 for channel in ${CANARY_LEGS:-stable beta}; do
   run_leg "$channel" || overall=1
 done
-
-find "$LOGS" -name '*.log' -mtime +14 -delete 2>/dev/null || true
 
 echo "── done (overall rc=$overall) ──"
 exit "$overall"

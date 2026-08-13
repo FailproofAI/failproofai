@@ -4,8 +4,9 @@ A daily **live-enforcement integration test** for failproofai. It answers one
 question the unit/e2e suites can't: *does failproofai still enforce against every
 supported agent CLI, at the versions users actually install today?*
 
-Every day (a systemd user timer on the canary box — see **Local runner** below;
-`.github/workflows/integration-suite.yml` is the on-demand cloud fallback) it
+Every day (a cron-driven container on the canary box — see **Local runner**
+below; `.github/workflows/integration-suite.yml` is the on-demand cloud
+fallback) it
 installs all 12 agent CLIs **@latest** into an isolated Docker sandbox, drives
 each one against failproofai's own policies (built from the ref under test), and
 confirms the hook log shows a **DENY**. A *silent-allow* — a blocked action that
@@ -28,15 +29,26 @@ It drives **real vendor CLIs against real gateway models** — it needs network,
 Docker, credentials, and ~7-10 min, none of which belong in the fast in-process
 vitest suites. So it's a scheduled run, not a PR gate.
 
-## Local runner (the daily driver)
+## Local runner (the box)
 
-Daily runs live on a **local canary box**, not GH Actions — runner minutes were
-the entire cost of the old daily cron; the LLM spend is identical either way.
-The box needs exactly **Docker + one cron line + one env file**; there is no
-host toolchain, no installed scripts, no systemd. Everything else happens
-inside a self-contained runner image that drives the host's Docker through the
-mounted socket (sibling containers — the sandbox image, volumes and probe
-containers are the exact ones CI runs).
+Scheduled runs live on a **local box**, not GH Actions — runner minutes were
+the entire cost of the old crons; the LLM spend is identical either way. The
+box needs exactly **Docker + cron + one env file**; there is no host toolchain,
+no installed scripts, no systemd. Everything else happens inside a
+self-contained runner image that drives the host's Docker through the mounted
+socket (sibling containers — the sandbox image, volumes and probe containers
+are the exact ones CI runs).
+
+**Two jobs share the box**, one image and one env file between them:
+
+| `CANARY_JOB` | What it is | Default | First run | Steady state |
+|---|---|---|---|---|
+| `canary` | this integration suite | 11:00 local | ~1h (empty version gate) | minutes |
+| `translate` | the nightly doc translation, replacing `translate-docs.yml`'s cron | 02:00 local | ~2h (empty cache) | minutes, often nothing |
+
+They hold **separate locks** and are scheduled far apart, so neither can
+swallow the other — a canary wedged on a vendor CLI must not silently cost a
+night of translation, and a skipped run's `exit 0` reports nowhere.
 
 Box setup is **one command**. Whoever holds the credentials fills in a
 `secrets.env` and sends it; the person with the machine runs:
@@ -46,17 +58,23 @@ bash <(curl -fsSL https://raw.githubusercontent.com/FailproofAI/failproofai/main
 ```
 
 That builds the runner image straight from the git URL (no clone on the box),
-creates `~/fp-canary`, installs the env file at mode 600, and writes the cron
-line. It is idempotent — re-running upgrades the image and *rewrites* the cron
-line rather than adding a second one. `--now` also runs one canary immediately,
-`--dry-run` prints what it would do, `--at "M H"` picks the hour.
+creates `~/fp-canary`, installs the env file at mode 600, and writes **one cron
+line per job**. It is idempotent — re-running upgrades the image and *rewrites*
+those lines rather than adding a second set, and each line carries its own
+marker so installing one job never strips the other's.
 
-**The installer exists because three of the four manual steps fail silently for
-a day.** A work dir mounted at a different path inside than out, a `CANARY_REF`
-left at the pre-merge default, and a filled-in env file with no Slack webhook all
-produce a job that runs and reports nothing — which looks exactly like coverage.
-Each is now refused at install time, in front of a person. The webhook is
-required for that reason and not because the run needs it.
+Flags: `--jobs canary,translate` picks which to install (default both),
+`--now <job>` runs one immediately in the foreground, `--dry-run` prints what it
+would do, and `--at-canary "M H"` / `--at-translate "M H"` pick the hours. Cron
+fires in the **host's** timezone; the installer prints which one it resolved.
+
+**The installer exists because most of the manual steps fail silently for a
+day.** A work dir mounted at a different path inside than out, a ref left at a
+merged branch, and a filled-in env file with no Slack webhook all produce a job
+that runs and reports nothing — which looks exactly like coverage. Each is
+refused at install time, in front of a person, and the credential check is **per
+job**, so installing only the canary never asks for a translation PAT. The
+webhook is required for that reason and not because the runs need it.
 
 <details>
 <summary>The same thing by hand, if you would rather see every step</summary>
@@ -71,8 +89,10 @@ mkdir -p ~/fp-canary
 cp integration-suite/local/secrets.env.example ~/fp-canary/secrets.env
 chmod 600 ~/fp-canary/secrets.env    # then fill it in
 
-# 3. cron (pick any quiet hour; overlapping fires share a lock and no-op)
-17 6 * * * docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/fp-canary:$HOME/fp-canary" --env-file "$HOME/fp-canary/secrets.env" failproofai-canary-runner >/dev/null 2>&1
+# 3. cron, one line per job (overlapping fires of the SAME job share a lock
+#    and no-op; different jobs have different locks and may overlap)
+0 11 * * * docker run --rm -e CANARY_JOB=canary    -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/fp-canary:$HOME/fp-canary" --env-file "$HOME/fp-canary/secrets.env" failproofai-canary-runner >/dev/null 2>&1
+0  2 * * * docker run --rm -e CANARY_JOB=translate -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/fp-canary:$HOME/fp-canary" --env-file "$HOME/fp-canary/secrets.env" failproofai-canary-runner >/dev/null 2>&1
 ```
 
 </details>
@@ -84,29 +104,42 @@ against the host filesystem. The entrypoint auto-detects it (and says exactly
 what to mount if it can't).
 
 At each run the image's baked entrypoint (`runner-entrypoint.sh` — thin on
-purpose) locks, clones/fetches `CANARY_REF` into `~/fp-canary/clone`, and
-hands off to `runner-daily.sh` **from that checkout** — so harness changes
-reach the box through git, and the image only needs a rebuild when the
-entrypoint itself changes. The daily driver runs the stable leg
-(daemon-configured) then the beta leg (in-process), exactly like the old GHA
-matrix.
+purpose) locks *that job*, clones/fetches `<JOB>_REF` into
+`~/fp-canary/clone-<job>`, and hands off to `jobs/<job>.sh` **from that
+checkout** — so harness changes, and whole new jobs, reach the box through git,
+and the image only needs a rebuild when the entrypoint itself changes. The
+canary job runs the stable leg (daemon-configured) then the beta leg
+(in-process), exactly like the old GHA matrix; the translate job runs the whole
+14-language corpus in one process and opens or updates the auto-translation PR.
 
 Everything lands under the work dir: version-gate state in `state/` (instead
-of the Actions cache — the gate logic is unchanged), run + per-leg logs in
-`logs/` (pruned after 14 days), the clone, and the daemon build's cargo cache.
+of the Actions cache — the gate logic is unchanged), the translation cache in
+`translate/` (a 13 KB file, symlinked into the checkout), per-job logs in
+`logs/` (pruned after 14 days), the per-job clones, and the daemon build's
+cargo cache.
 All of it except `secrets.env` is written by the container **as root**, so
 reading a log or clearing the clone from the host needs `sudo`. Harmless — the
 next run is root too — but it is the first thing that surprises anyone poking
 at the box by hand.
 Verdict reports POST to Slack exactly as before; a leg that dies *before*
 reporting gets a distinct crash-note with the log tail (that's the replacement
-for GHA's red-job email — cron's own output can go to `/dev/null`). Token
-tarballs still come from `capture-tokens.sh` on a logged-in machine; the first
-run probes all 12 CLIs (~1h, empty gate) and steady-state runs are short.
+for GHA's red-job email — cron's own output can go to `/dev/null`). The
+translate job reports the same way, **including on nights it changes nothing**,
+so silence means the box did not run rather than that all was well. Token
+tarballs still come from `capture-tokens.sh` on a logged-in machine.
+
+One thing to know before touching the translation cache: on Actions it was
+being evicted between runs, and that eviction was accidentally load-bearing. A
+"translated once" entry whose output only exists on an unmerged PR branch makes
+`--update-nav` emit nav entries for files that are not there and `mintlify
+validate` fail, while the cache hit means nothing is regenerated — non-convergent
+until an eviction forced a full miss. Nothing evicts the box's cache, so the
+`existsSync` guard in `cli.ts` / `mdx-translator.ts` / `readme-translator.ts` is
+now the only thing keeping the job convergent.
 
 ## How a run works
 
-The trigger (box: `local/run-local.sh`; cloud: the workflow) is thin;
+The trigger (box: `local/jobs/canary.sh`; cloud: the workflow) is thin;
 `ci-entrypoint.sh` is the front door and does everything below except state
 restore/save.
 
@@ -184,9 +217,8 @@ able to overwrite the stable leg's gating record.
 Because this repo is public, all credentials live in a scoped **GitHub
 Environment** (`cli-integration`) — only this workflow's job can read them — and
 the workflow triggers on `workflow_dispatch` **only**, so fork PRs can never
-reach them. (The canary box keeps its own copy of the same variables in
-`~/.config/failproofai-canary/secrets.env`, chmod 600 — updating one does not
-update the other.)
+reach them. (The box keeps its own copy of the same variables in `~/fp-canary/secrets.env`,
+chmod 600 — updating one does not update the other.)
 
 | Auth | CLIs | Secret(s) |
 |------|------|-----------|
@@ -194,6 +226,23 @@ update the other.)
 | Env-var (PAT) | copilot | `COPILOT_GITHUB_TOKEN` |
 | Injected token file | cursor, devin, antigravity | `CURSOR_/DEVIN_/ANTIGRAVITY_TOKEN_TGZ_B64` |
 | Delivery | — | `SLACK_WEBHOOK_URL` |
+
+The **translate** job on the box needs three more, which the workflow got from
+repo secrets and from Actions itself:
+
+| Purpose | Box variable | Where it came from on Actions |
+|---|---|---|
+| Gateway key | `TRANSLATE_LLM_API_KEY` | secret `ANTHROPIC_AUTH_TOKEN` |
+| Gateway URL | `TRANSLATE_LLM_BASE_URL` | secret `ANTHROPIC_BASE_URL` |
+| Push + open the PR | `TRANSLATE_GITHUB_TOKEN` | `secrets.GITHUB_TOKEN`, free and job-scoped |
+
+That last one is the only genuinely new credential in the move. Actions minted
+a repo-scoped token that died with the job; a box needs a **fine-grained PAT**
+on `FailproofAI/failproofai` with *Contents: read+write* and *Pull requests:
+read+write* — long-lived, on someone's machine, which is why `secrets.env` is
+chmod 600 and why the job puts it in a credential helper rather than in the
+remote URL (git echoes the remote back on a push error, and the Slack crash-note
+carries the log tail).
 
 The injected-token CLIs carry OAuth session tokens captured from a logged-in
 machine (see `capture-tokens.sh`). They authenticate on a fresh runner, but may
@@ -215,5 +264,11 @@ canary-policies.mjs   benign-marker custom policies the probe trips
 run.sh                orchestrator (gate → probe → report → Slack)
 report.js             build the Slack report + diff state (broke/recovered)
 capture-tokens.sh     (run on a logged-in machine) refresh the OAuth token secrets
-local/                the daily driver: box wrapper + systemd units (see above)
+local/                the box: runner image, installer, and one script per job
+  Dockerfile.runner   the runner image, shared by every job
+  install.sh          one-command setup: image + work dir + env file + cron
+  runner-entrypoint.sh  baked, thin: lock -> checkout -> exec jobs/$CANARY_JOB.sh
+  secrets.env.example   every variable both jobs read
+  jobs/canary.sh      the integration suite (stable + beta legs)
+  jobs/translate.sh   the nightly doc translation
 ```

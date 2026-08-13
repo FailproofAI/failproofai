@@ -9,6 +9,8 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  countActionable,
+  formatMarkdownReport,
   daysBetween,
   findAgedPages,
   findBrokenInternalLinks,
@@ -259,5 +261,75 @@ describe("formatSlackReport", () => {
     expect(formatSlackReport(empty, { ref: "origin/main", sha: "abc1234" })).toContain(
       "origin/main @ abc1234",
     );
+  });
+});
+
+describe("countActionable", () => {
+  const base: DocsAuditReport = {
+    pages: 48, maxAgeDays: 180, aged: [], navOrphans: [], navDangling: [],
+    brokenLinks: [], brokenAssets: [],
+    drift: [{ lang: "zh", stale: [], missing: [], untranslated: [] }],
+  };
+
+  it("counts the structural findings", () => {
+    expect(countActionable({ ...base, navOrphans: ["a.mdx"], aged: [age("b.mdx", 400)] })).toBe(2);
+  });
+
+  it("counts a translation the cache claims but disk lacks", () => {
+    // The non-convergent state the existsSync guard exists for — a non-zero
+    // count means that guard regressed or the nightly job has not run.
+    expect(countActionable({
+      ...base,
+      drift: [{ lang: "zh", stale: [], missing: ["a.mdx"], untranslated: [] }],
+    })).toBe(1);
+  });
+
+  it("does NOT count stale or never-translated", () => {
+    // The nightly translation closes both by itself. Counting them would hold
+    // the tracking issue open forever, which is the only way it can fail.
+    expect(countActionable({
+      ...base,
+      drift: [{ lang: "zh", stale: ["a.mdx"], missing: [], untranslated: ["b.mdx", "c.mdx"] }],
+    })).toBe(0);
+  });
+});
+
+describe("formatMarkdownReport", () => {
+  const base: DocsAuditReport = {
+    pages: 48, maxAgeDays: 180, aged: [], navOrphans: [], navDangling: [],
+    brokenLinks: [], brokenAssets: [],
+    drift: [{ lang: "zh", stale: [], missing: [], untranslated: [] }],
+  };
+
+  it("says plainly when there is nothing to report", () => {
+    const md = formatMarkdownReport(base);
+    expect(md).toContain("Nothing to report");
+  });
+
+  it("renders findings as markdown, not Slack mrkdwn", () => {
+    const md = formatMarkdownReport({ ...base, navOrphans: ["cli/x.mdx"] });
+    expect(md).toContain("### On disk, in no nav");
+    expect(md).toContain("- `cli/x.mdx`");
+    expect(md).not.toContain("•");
+  });
+
+  it("flags cache-claims-but-absent separately from stale", () => {
+    const md = formatMarkdownReport({
+      ...base,
+      drift: [{ lang: "zh", stale: ["s.mdx"], missing: ["m.mdx"], untranslated: [] }],
+    });
+    expect(md).toContain("Claimed by the translation cache but absent from disk");
+    expect(md).toContain("`zh/m.mdx`");
+    // stale is mentioned only as a footnote, never as an action item
+    expect(md).toMatch(/<sub>Translations across 1 languages: 1 stale/);
+  });
+
+  it("caps long lists so the issue body stays readable", () => {
+    const md = formatMarkdownReport({
+      ...base,
+      navOrphans: Array.from({ length: 40 }, (_, i) => `p${i}.mdx`),
+    });
+    expect(md).toContain("(40)");
+    expect(md).toContain("…and 15 more");
   });
 });

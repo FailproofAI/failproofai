@@ -27,6 +27,8 @@ set -u
 WORK="${CANARY_WORK:?CANARY_WORK missing — runner-entrypoint.sh sets it}"
 CLONE="${CANARY_CLONE:-$WORK/clone-docs-audit}"
 CACHE_HOME="$WORK/translate"
+REPO="${DOCS_AUDIT_REPO:-FailproofAI/failproofai}"
+ISSUE_TITLE="[auto] docs audit"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 FP_SHA="$(git -C "$CLONE" rev-parse --short HEAD)"
 REF_DESC="${DOCS_AUDIT_REF:-origin/main}"
@@ -78,4 +80,80 @@ echo "$REPORT"
 
 step "report"
 slack_note "$REPORT"
+
+# ── tracking issue ───────────────────────────────────────────────────────────
+# Optional: with no token the job is exactly what it was, a Slack post. The
+# issue is a SECOND channel, not a replacement — Slack is read the morning it
+# arrives, an issue is what someone finds three weeks later while wondering why
+# a page is unreachable.
+#
+# An ISSUE and not a PR, deliberately. A report is not a change: a weekly PR
+# would either sit open forever or auto-merge a file nobody reads. And an audit
+# that opened a FIXING PR would have almost nothing safe to put in it — a
+# dangling nav entry might mean "delete the entry" or "restore the page", an
+# orphan page might be deliberately unlisted, and a broken link has no
+# inferable target. Every one of those is a judgement this job cannot make.
+if [ -z "${DOCS_AUDIT_GITHUB_TOKEN:-}" ]; then
+  echo "no DOCS_AUDIT_GITHUB_TOKEN — Slack only, no tracking issue"
+  echo "── done ──"
+  exit 0
+fi
+
+step "issue"
+export DOCS_AUDIT_AT="$TS"
+COUNT="$(bun scripts/docs-audit.ts --count)" || die "could not count findings"
+BODY="$(bun scripts/docs-audit.ts --markdown)" || die "could not render the report"
+echo "actionable findings: $COUNT"
+
+api() { # $1 = method, $2 = path, $3 = body (optional)
+  # The body is passed as ONE argument, never spliced in — a JSON body
+  # word-splits on its spaces and the request silently becomes a different one.
+  local method="$1" path="$2"
+  local -a args=(
+    -sS --connect-timeout 10 --max-time 60 -X "$method"
+    -H "Authorization: Bearer $DOCS_AUDIT_GITHUB_TOKEN"
+    -H "Accept: application/vnd.github+json"
+    -H "X-GitHub-Api-Version: 2022-11-28"
+  )
+  [ $# -ge 3 ] && args+=(--data "$3")
+  curl "${args[@]}" "${DOCS_AUDIT_API_BASE:-https://api.github.com}/repos/$REPO$path"
+}
+json() { node -e 'process.stdout.write(JSON.stringify(JSON.parse(require("fs").readFileSync(0,"utf8"))))' 2>/dev/null; }
+
+# /issues returns PULL REQUESTS too — every PR is an issue to this endpoint —
+# so entries carrying a `pull_request` key are filtered out. Without that, an
+# open PR that happened to share the title would be updated instead.
+EXISTING="$(api GET "/issues?state=open&per_page=100" \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
+      const a=JSON.parse(s);
+      const m=(Array.isArray(a)?a:[]).find(x=>!x.pull_request && x.title===process.argv[1]);
+      process.stdout.write(m?String(m.number):"");
+    }catch{process.stdout.write("")}})' "$ISSUE_TITLE")"
+
+mkbody() { node -e 'process.stdout.write(JSON.stringify({title:process.argv[1],body:process.argv[2]}))' "$ISSUE_TITLE" "$BODY"; }
+
+if [ "$COUNT" -gt 0 ]; then
+  if [ -n "$EXISTING" ]; then
+    api PATCH "/issues/$EXISTING" "$(mkbody)" >/dev/null || die "could not update issue #$EXISTING"
+    echo "updated https://github.com/$REPO/issues/$EXISTING"
+  else
+    NUM="$(api POST /issues "$(mkbody)" \
+      | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);process.stdout.write(j.number?String(j.number):"")}catch{process.stdout.write("")}})')"
+    [ -n "$NUM" ] || die "could not open the tracking issue — check the PAT's issues:write scope"
+    echo "opened https://github.com/$REPO/issues/$NUM"
+  fi
+elif [ -n "$EXISTING" ]; then
+  # Clean week: say so on the issue and close it, so an open issue always means
+  # "there is something to do" rather than "this ran once, months ago".
+  api POST "/issues/$EXISTING/comments" \
+    "$(node -e 'process.stdout.write(JSON.stringify({body:process.argv[1]}))' \
+      "Clean as of \`$FP_SHA\` — closing. The weekly audit will reopen this if anything returns.")" \
+    >/dev/null || true
+  api PATCH "/issues/$EXISTING" '{"state":"closed"}' >/dev/null \
+    || die "could not close issue #$EXISTING"
+  echo "closed https://github.com/$REPO/issues/$EXISTING (nothing to report)"
+else
+  echo "nothing to report, and no open issue — no GitHub action taken"
+fi
+
 echo "── done ──"

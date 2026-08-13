@@ -350,6 +350,103 @@ export function formatSlackReport(
   return `${head}\n\n${sections.join("\n\n")}`;
 }
 
+/**
+ * Does this report warrant a tracking issue staying open?
+ *
+ * The five structural findings do. So does a translation the cache claims but
+ * disk lacks — that is the non-convergent state the `existsSync` guard exists
+ * for, and a non-zero count means either that guard regressed or the nightly
+ * job has not run since those pages landed.
+ *
+ * STALE and NEVER-TRANSLATED deliberately do NOT count. The nightly translation
+ * closes both by itself, so counting them would hold the issue open forever and
+ * teach everyone to ignore it — which is the only way a tracking issue can
+ * actually fail.
+ */
+export function countActionable(report: DocsAuditReport): number {
+  return (
+    report.aged.length +
+    report.navOrphans.length +
+    report.navDangling.length +
+    report.brokenLinks.length +
+    report.brokenAssets.length +
+    report.drift.reduce((n, d) => n + d.missing.length, 0)
+  );
+}
+
+/** The tracking issue's body. Markdown, unlike the Slack post's mrkdwn. */
+export function formatMarkdownReport(
+  report: DocsAuditReport,
+  opts: { ref?: string; sha?: string; at?: string } = {},
+): string {
+  const lines: string[] = [];
+  lines.push(`_${report.pages} English pages audited`
+    + `${opts.ref ? ` at \`${opts.ref}\`` : ""}`
+    + `${opts.sha ? ` @ \`${opts.sha}\`` : ""}`
+    + `${opts.at ? ` — ${opts.at}` : ""}._`);
+  lines.push("");
+
+  const section = (title: string, items: string[], render: (s: string) => string) => {
+    if (!items.length) return;
+    lines.push(`### ${title} (${items.length})`, "");
+    for (const i of items.slice(0, 25)) lines.push(`- ${render(i)}`);
+    if (items.length > 25) lines.push(`- _…and ${items.length - 25} more_`);
+    lines.push("");
+  };
+
+  section("In the nav, not on disk", report.navDangling, (p) => `\`${p}\``);
+  section("On disk, in no nav — unreachable by a reader", report.navOrphans, (p) => `\`${p}\``);
+  if (report.brokenLinks.length) {
+    lines.push(`### Links to pages that do not exist (${report.brokenLinks.length})`, "");
+    for (const l of report.brokenLinks.slice(0, 25)) {
+      lines.push(`- \`${l.relPath}:${l.line}\` → \`${l.target}\``);
+    }
+    lines.push("");
+  }
+  if (report.brokenAssets.length) {
+    lines.push(`### Images that do not resolve (${report.brokenAssets.length})`, "");
+    for (const l of report.brokenAssets.slice(0, 25)) {
+      lines.push(`- \`${l.relPath}:${l.line}\` → \`${l.target}\``);
+    }
+    lines.push("");
+  }
+  if (report.aged.length) {
+    lines.push(`### Not touched in over ${report.maxAgeDays} days (${report.aged.length})`, "");
+    for (const a of report.aged.slice(0, 25)) {
+      lines.push(`- \`${a.relPath}\` — ${a.ageDays} days (last changed ${a.lastChanged.slice(0, 10)})`);
+    }
+    lines.push("");
+  }
+
+  const missing = report.drift.flatMap((d) => d.missing.map((p) => `${d.lang}/${p}`));
+  if (missing.length) {
+    lines.push(`### Claimed by the translation cache but absent from disk (${missing.length})`, "");
+    lines.push(
+      "_Non-convergent if it persists: the cache says these are done, so they are never regenerated._",
+      "",
+    );
+    for (const p of missing.slice(0, 25)) lines.push(`- \`${p}\``);
+    lines.push("");
+  }
+
+  const stale = report.drift.reduce((n, d) => n + d.stale.length, 0);
+  const untranslated = report.drift.reduce((n, d) => n + d.untranslated.length, 0);
+  if (stale || untranslated) {
+    lines.push(
+      `<sub>Translations across ${report.drift.length} languages: ${stale} stale, `
+        + `${untranslated} never translated. Not listed above — the nightly translation `
+        + `closes both by itself.</sub>`,
+      "",
+    );
+  }
+
+  if (!countActionable(report)) {
+    lines.push("Nothing to report. :tada:", "");
+  }
+  lines.push("<sub>Opened and maintained by the weekly `docs-audit` job on the canary box.</sub>");
+  return lines.join("\n");
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const maxAgeDays = Number.parseInt(
@@ -364,6 +461,18 @@ async function main(): Promise<void> {
 
   if (args.includes("--json")) {
     console.log(JSON.stringify(report, null, 2));
+  } else if (args.includes("--markdown")) {
+    console.log(
+      formatMarkdownReport(report, {
+        ref: process.env.DOCS_AUDIT_REF,
+        sha: process.env.DOCS_AUDIT_SHA,
+        at: process.env.DOCS_AUDIT_AT,
+      }),
+    );
+  } else if (args.includes("--count")) {
+    // For the box job's clean/not-clean decision, so it never has to re-derive
+    // "actionable" from prose and drift from what the report itself counts.
+    console.log(String(countActionable(report)));
   } else {
     console.log(
       formatSlackReport(report, {
@@ -373,12 +482,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const findings =
-    report.aged.length +
-    report.navOrphans.length +
-    report.navDangling.length +
-    report.brokenLinks.length +
-    report.brokenAssets.length;
+  const findings = countActionable(report);
   // Exit 0 with findings BY DESIGN — see the header. The flag is for a future
   // caller that wants a gate, never for the weekly report.
   process.exit(args.includes("--fail-on-findings") && findings > 0 ? 1 : 0);

@@ -13,14 +13,17 @@
 #   canary      the daily CLI integration suite  (default 11:00, ~1h first run)
 #   translate   the nightly doc translation      (default 02:00, ~2h first run)
 #   docs-audit  a weekly sweep of the docs       (default Mondays 04:00, ~1 min)
+#               Posts to Slack AND keeps one "[auto] docs audit" tracking issue
+#               current — opened when there is something to do, closed when a
+#               week comes back clean.
 #
 # The first two moved off GitHub Actions, where runner minutes were their entire
 # cost. They are scheduled far apart and hold SEPARATE locks, so none can
 # swallow another: a canary wedged on a vendor CLI must not silently cost a
 # night of translation.
 #
-# docs-audit is the cheap one — no gateway, no push credential, no sibling
-# containers. It reads the docs tree and git history and posts what it found:
+# docs-audit is the cheap one — no gateway, no sibling containers, and an
+# issues-only token. It reads the docs tree and git history and posts what it found:
 # pages nobody has touched in months, pages in the nav that are gone, pages in
 # no nav at all, links to things that were renamed, translations behind their
 # English source. None of that fails a build, which is why a per-PR gate never
@@ -76,7 +79,7 @@ REQUIRED_canary="CANARY_REF CANARY_LLM_API_KEY COPILOT_GITHUB_TOKEN CANARY_SLACK
 # request it opens, so there is nothing a chat message would add that the PR
 # list does not already say.
 REQUIRED_translate="TRANSLATE_REF TRANSLATE_LLM_API_KEY TRANSLATE_LLM_BASE_URL TRANSLATE_GITHUB_TOKEN"
-REQUIRED_docs_audit="DOCS_AUDIT_REF CANARY_SLACK_WEBHOOK"
+REQUIRED_docs_audit="DOCS_AUDIT_REF CANARY_SLACK_WEBHOOK DOCS_AUDIT_GITHUB_TOKEN"
 
 SECRETS_SRC="" ; RUN_NOW="" ; DO_CRON=1 ; DRY=0
 JOBS="$ALL_JOBS" ; AT_canary="0 11" ; AT_translate="0 2" ; AT_docs_audit="0 4 * * 1"

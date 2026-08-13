@@ -467,15 +467,20 @@ describe("translate job failures are never silent", () => {
 });
 
 describe("docs-audit job", () => {
-  it("needs no credential beyond the webhook", () => {
-    // The point of this job is that it can be installed on a machine holding
-    // nothing: it reads the tree and git history and reports. If it ever grows
-    // a gateway key or a push token, that is a different job with a different
-    // risk profile, and this test is where that gets noticed.
-    const required = /REQUIRED_docs_audit="([^"]+)"/.exec(installSh)![1].split(" ");
-    expect(required.sort()).toEqual(["CANARY_SLACK_WEBHOOK", "DOCS_AUDIT_REF"]);
-    expect(docsAuditSh).not.toMatch(/TRANSLATE_GITHUB_TOKEN|LLM_API_KEY/);
-    expect(docsAuditSh).not.toMatch(/git push|api POST/);
+  it("never grows a gateway key or write access to the repo", () => {
+    // This job READS the tree and git history. It may hold an issues-only token
+    // for its tracking issue, and nothing heavier: no gateway key (it calls no
+    // model) and no Contents/Pull-requests scope (it changes no file). If that
+    // ever changes it is a different job with a different risk profile, and
+    // this test is where it gets noticed.
+    const required = /REQUIRED_docs_audit="([^"]+)"/.exec(installSh)![1].split(" ").sort();
+    expect(required).toEqual([
+      "CANARY_SLACK_WEBHOOK",
+      "DOCS_AUDIT_GITHUB_TOKEN",
+      "DOCS_AUDIT_REF",
+    ]);
+    expect(docsAuditSh).not.toMatch(/TRANSLATE_GITHUB_TOKEN|LLM_API_KEY|ANTHROPIC_/);
+    expect(docsAuditSh).not.toMatch(/git (push|commit|checkout -b)/);
   });
 
   it("defaults to weekly, which needs a five-field cron expression", () => {
@@ -631,5 +636,51 @@ describe("probe B tells a route-around apart from a silent-allow", () => {
     expect(probeSh).toMatch(
       /if shell_route_attempted "\$LOGB\/hooks\.log"; then VB=INCONCLUSIVE; else VB=FAIL; fi/,
     );
+  });
+});
+
+describe("docs-audit tracking issue", () => {
+  it("keeps an ISSUE, not a PR — and says why", () => {
+    // A report is not a change: a weekly PR would sit open forever or auto-merge
+    // a file nobody reads. And a FIXING PR has almost nothing safe to put in it,
+    // since every finding needs a judgement this job cannot make.
+    expect(docsAuditSh).toMatch(/ISSUE_TITLE="\[auto\] docs audit"/);
+    expect(docsAuditSh).toMatch(/api POST \/issues/);
+    expect(docsAuditSh).not.toMatch(/\/pulls/);
+    expect(docsAuditSh).not.toMatch(/git (push|commit|checkout)/);
+  });
+
+  it("filters pull requests out of the /issues listing", () => {
+    // Every PR is an issue to that endpoint. Without the filter, an open PR
+    // sharing the title would be updated instead of the tracking issue.
+    expect(docsAuditSh).toMatch(/!x\.pull_request/);
+  });
+
+  it("closes the issue on a clean week and opens one only when there is work", () => {
+    // An open issue must always mean "there is something to do", never "this
+    // ran once, months ago".
+    expect(docsAuditSh).toMatch(/api PATCH "\/issues\/\$EXISTING" '\{"state":"closed"\}'/);
+    expect(docsAuditSh).toMatch(/if \[ "\$COUNT" -gt 0 \]/);
+  });
+
+  it("still runs, and still reports to Slack, with no token", () => {
+    // The issue is a SECOND channel, not a replacement. A box that never got a
+    // token must degrade to what it did before, not fail.
+    expect(docsAuditSh).toMatch(/if \[ -z "\$\{DOCS_AUDIT_GITHUB_TOKEN:-\}" \]/);
+    const gate = docsAuditSh.slice(docsAuditSh.indexOf('if [ -z "${DOCS_AUDIT_GITHUB_TOKEN'));
+    expect(gate.slice(0, 260)).toMatch(/exit 0/);
+    expect(docsAuditSh.indexOf("slack_note \"$REPORT\"")).toBeLessThan(
+      docsAuditSh.indexOf("DOCS_AUDIT_GITHUB_TOKEN:-"),
+    );
+  });
+
+  it("asks for an issues-only token, never Contents or Pull requests", () => {
+    // The audit never changes a file, so a stronger token would be scope it
+    // cannot justify holding on someone's machine.
+    expect(secretsExample).toMatch(/DOCS_AUDIT_GITHUB_TOKEN=/);
+    expect(secretsExample).toMatch(/Issues: read\+write\. That is\s*\n# ALL it needs/);
+    const required = /REQUIRED_docs_audit="([^"]+)"/.exec(installSh)![1].split(" ");
+    expect(required).toContain("DOCS_AUDIT_GITHUB_TOKEN");
+    expect(required).not.toContain("TRANSLATE_GITHUB_TOKEN");
   });
 });

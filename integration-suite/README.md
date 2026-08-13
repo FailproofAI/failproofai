@@ -67,10 +67,23 @@ structurally cannot see:
 | Images that do not resolve | Valid MDX, valid YAML — the reader just sees a broken image |
 | Translations behind their English source | The nightly job fixes these; the count is the coverage signal |
 
-It is the cheapest job on the box: **no gateway key, no push token, no sibling
-containers** — it reads the docs tree and git history and posts what it found.
-That is deliberate. An audit that could also *fix* what it finds would need
-write access and a much longer argument about what it may change unattended.
+It reports two ways: a Slack post every week, and one **`[auto] docs audit`
+tracking issue** kept current on GitHub — opened when there is something to do,
+its body refreshed each week, and **closed when a week comes back clean**, so an
+open issue always means "there is something to do" rather than "this ran once,
+months ago". Slack is read the morning it arrives; the issue is what someone
+finds three weeks later wondering why a page is unreachable.
+
+An issue and not a PR, deliberately. A report is not a change — a weekly PR
+would either sit open forever or auto-merge a file nobody reads. And an audit
+that opened a *fixing* PR would have almost nothing safe to put in it: a
+dangling nav entry might mean "delete the entry" or "restore the page", an
+orphan page might be deliberately unlisted, a broken link has no inferable
+target. Every one is a judgement this job cannot make.
+
+So it stays cheap: **no gateway key, no sibling containers, and an issues-only
+token** — no Contents, no Pull requests, because it never changes a file. Leave
+`DOCS_AUDIT_GITHUB_TOKEN` empty and it degrades to Slack alone.
 
 It **reports and exits 0 by design**. `--fail-on-findings` exists for a future
 caller that wants a gate, off by default: a docs audit that turns the build red
@@ -271,7 +284,11 @@ repo secrets and from Actions itself:
 | Gateway URL | `TRANSLATE_LLM_BASE_URL` | secret `ANTHROPIC_BASE_URL` |
 | Push + open the PR | `TRANSLATE_GITHUB_TOKEN` | `secrets.GITHUB_TOKEN`, free and job-scoped |
 
-That last one is the only genuinely new credential in the move. Actions minted
+The **docs-audit** job additionally takes `DOCS_AUDIT_GITHUB_TOKEN` — a
+fine-grained PAT with *Issues: read+write* and nothing else, for its tracking
+issue. Optional: without it the job runs and posts to Slack as before.
+
+That translate token is the only genuinely new credential in the move. Actions minted
 a repo-scoped token that died with the job; a box needs a **fine-grained PAT**
 on `FailproofAI/failproofai` with *Contents: read+write* and *Pull requests:
 read+write* — long-lived, on someone's machine, which is why `secrets.env` is

@@ -531,3 +531,32 @@ describe("the GitHub API host is overridable", () => {
     );
   });
 });
+
+describe("an open PR whose branch is gone", () => {
+  it("tells a missing branch apart from an unreachable remote", () => {
+    // Found by running the job, not by reading it. Dying on a missing branch
+    // dies again every night, because the branch never comes back. But falling
+    // through to a NEW branch on an unreachable remote would open a second PR
+    // on a transient network error — and two open auto-translation PRs is what
+    // reusing one exists to prevent, since the next run picks one and the pages
+    // only the other carries read as cached-but-absent forever.
+    const block = translateSh.slice(
+      translateSh.indexOf('if [ -n "$EXISTING" ]'),
+      translateSh.indexOf('if [ -n "$PR_NUMBER" ]'),
+    );
+    expect(block).toMatch(/git ls-remote --heads origin "\$BRANCH"/);
+    // unreachable -> die; genuinely absent -> fresh branch
+    expect(block).toMatch(/\[ "\$ls_rc" -ne 0 \][\s\S]*?die /);
+    expect(block).toMatch(/elif \[ -z "\$remote_refs" \][\s\S]*?PR_NUMBER=""/);
+  });
+
+  it("creates the fresh branch in exactly one place", () => {
+    // The recovery path and the no-PR path must not BOTH run `checkout -b`, or
+    // the second fails on a branch that already exists.
+    expect(translateSh.match(/git checkout -b "\$BRANCH"/g)).toHaveLength(1);
+  });
+
+  it("says so in Slack rather than silently opening a second PR", () => {
+    expect(translateSh).toMatch(/no longer exists — opening a new PR\. Close the stale one\./);
+  });
+});

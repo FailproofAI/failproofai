@@ -92,8 +92,19 @@ then there is neither a gate nor a report. The analysis lives in
 `scripts/docs-audit.ts` (unit-tested, no repo or clock needed) and runs by hand
 as `bun run docs:audit` — add `--json` for the raw findings.
 
-Box setup is **one command**. Whoever holds the credentials fills in a
-`secrets.env` and sends it; the person with the machine runs:
+Box setup is **one command**, and it schedules all three jobs. Whoever holds
+the credentials fills in a `secrets.env` and sends it; the person with the
+machine clones and runs:
+
+```bash
+git clone https://github.com/FailproofAI/failproofai.git
+cd failproofai
+bash integration-suite/local/install.sh ~/secrets.env
+```
+
+From a checkout the image builds from that checkout — no network for the build,
+and the image provably matches the tree in front of you. There is also a
+no-clone form for a box you only ever touch once:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/FailproofAI/failproofai/main/integration-suite/local/install.sh) ~/secrets.env

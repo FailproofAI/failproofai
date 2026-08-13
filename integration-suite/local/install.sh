@@ -261,14 +261,29 @@ else
 fi
 
 # ── 5. build the runner image ────────────────────────────────────────────────
-# Straight from the git URL — no clone on this machine. Docker takes
-# `<repo>#<ref>:<subdir>` as a build context, and the runner re-clones the repo
-# itself on every run anyway, so a checkout here would only go stale.
+# Two ways in, and the right one is whichever way this script was reached.
+#
+# Run from a CHECKOUT (`git clone` then `bash integration-suite/local/install.sh`)
+# the build context is the directory this file sits in. That is the honest
+# choice there: it needs no network, and it guarantees the image matches the
+# tree the operator is looking at — building from the git URL instead could
+# hand them an image from a DIFFERENT commit than their checkout while both
+# printed the same branch name.
+#
+# Run as a one-liner (`bash <(curl …)`) there is no checkout, so the context is
+# the git URL — docker takes `<repo>#<ref>:<subdir>` directly. The runner
+# re-clones the repo itself on every run either way, so nothing here goes stale.
 step "Building the runner image"
 BUILD_REF="${CANARY_REF#origin/}"
-run docker build -t "$IMAGE" \
-  -f Dockerfile.runner "$GIT_URL#$BUILD_REF:integration-suite/local"
-did "image $IMAGE built from $BUILD_REF"
+HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
+if [ -n "$HERE" ] && [ -f "$HERE/Dockerfile.runner" ] && [ -f "$HERE/runner-entrypoint.sh" ]; then
+  run docker build -t "$IMAGE" -f "$HERE/Dockerfile.runner" "$HERE"
+  did "image $IMAGE built from this checkout ($HERE)"
+else
+  run docker build -t "$IMAGE" \
+    -f Dockerfile.runner "$GIT_URL#$BUILD_REF:integration-suite/local"
+  did "image $IMAGE built from $BUILD_REF"
+fi
 
 # ── 6. cron ──────────────────────────────────────────────────────────────────
 # The work dir is mounted at an IDENTICAL path inside and out. That is

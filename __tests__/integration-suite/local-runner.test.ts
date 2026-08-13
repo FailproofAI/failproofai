@@ -684,3 +684,26 @@ describe("docs-audit tracking issue", () => {
     expect(required).not.toContain("TRANSLATE_GITHUB_TOKEN");
   });
 });
+
+describe("installer works from a clone as well as from curl", () => {
+  it("builds from the checkout when run inside one", () => {
+    // `git clone` then `bash integration-suite/local/install.sh` needs no
+    // network for the build, and guarantees the image matches the tree the
+    // operator is looking at — building from the git URL there could hand them
+    // an image from a DIFFERENT commit while both printed the same branch name.
+    expect(installSh).toMatch(/HERE="\$\(cd "\$\(dirname "\$0"\)"/);
+    expect(installSh).toMatch(/\[ -f "\$HERE\/Dockerfile\.runner" \]/);
+    expect(installSh).toMatch(/docker build -t "\$IMAGE" -f "\$HERE\/Dockerfile\.runner" "\$HERE"/);
+  });
+
+  it("still falls back to the git URL for the curl one-liner", () => {
+    // There is no checkout on that path, so the context has to be remote.
+    expect(installSh).toMatch(/"\$GIT_URL#\$BUILD_REF:integration-suite\/local"/);
+  });
+
+  it("schedules every job by default", () => {
+    // One command, three cron lines. --jobs narrows it; nothing widens it.
+    expect(installSh).toMatch(/ALL_JOBS="canary translate docs-audit"/);
+    expect(installSh).toMatch(/JOBS="\$ALL_JOBS"/);
+  });
+});

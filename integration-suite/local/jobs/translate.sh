@@ -178,8 +178,30 @@ api() { # $1 = method, $2 = path, $3 = body (optional)
 EXISTING="$(api GET "/pulls?state=open&base=$BASE_BRANCH&per_page=100" \
   | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const p=JSON.parse(s);const m=(Array.isArray(p)?p:[]).find(x=>x.title===process.argv[1]);process.stdout.write(m?m.number+" "+m.head.ref:"")}catch{process.stdout.write("")}})' "$PR_TITLE")"
 
+PR_NUMBER=""; BRANCH=""
 if [ -n "$EXISTING" ]; then
   PR_NUMBER="${EXISTING%% *}"; BRANCH="${EXISTING#* }"
+  # An open PR whose BRANCH is gone is a real state — someone deleted the
+  # branch without closing the PR. Dying here would die again every night,
+  # because the branch never comes back: non-convergent, and it costs a night
+  # of translation each time.
+  #
+  # It has to be told apart from a remote we simply could not REACH, which must
+  # NOT fall through to a new branch. That would open a second PR on a
+  # transient network error, and two open auto-translation PRs is precisely
+  # what reusing one exists to prevent: the next run picks one, and the pages
+  # only the other carries read as cached-but-absent forever.
+  remote_refs="$(git ls-remote --heads origin "$BRANCH" 2>/dev/null)"; ls_rc=$?
+  if [ "$ls_rc" -ne 0 ]; then
+    die "PR #$PR_NUMBER is open but the remote could not be reached to check its branch"
+  elif [ -z "$remote_refs" ]; then
+    echo "PR #$PR_NUMBER is open but its branch $BRANCH is gone — starting a fresh one"
+    slack_note "⚠️ docs translation: PR <https://github.com/$REPO/pull/$PR_NUMBER|#$PR_NUMBER> is open but its branch \`$BRANCH\` no longer exists — opening a new PR. Close the stale one."
+    PR_NUMBER=""; BRANCH=""
+  fi
+fi
+
+if [ -n "$PR_NUMBER" ]; then
   echo "updating open PR #$PR_NUMBER on $BRANCH"
   # Snapshot this run's output, move onto the PR branch, replay on top — newer
   # English source wins over whatever that branch already had.
@@ -193,7 +215,6 @@ if [ -n "$EXISTING" ]; then
   (cd docs && mintlify validate) || die "mintlify validate failed after overlaying $BRANCH"
   bun run validate:mdx || die "page validation failed after overlaying $BRANCH"
 else
-  PR_NUMBER=""
   BRANCH="auto/translate-docs-$(date -u +%Y%m%d-%H%M)"
   git checkout -b "$BRANCH" || die "could not create $BRANCH"
 fi

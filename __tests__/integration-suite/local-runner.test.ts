@@ -519,3 +519,15 @@ describe("per-job variable lookup survives a dashed job name", () => {
     expect(secretsExample).toMatch(/^DOCS_AUDIT_REF=\S+$/m);
   });
 });
+
+describe("the GitHub API host is overridable", () => {
+  it("defaults to api.github.com and can be pointed elsewhere", () => {
+    // GHES needs this, and it is what let the publish path be proven
+    // end-to-end against a stand-in API without opening real pull requests.
+    // A hardcoded host would make that verification impossible, which is how
+    // a publish path ends up shipped never having been run.
+    expect(translateSh).toMatch(
+      /\$\{TRANSLATE_API_BASE:-https:\/\/api\.github\.com\}\/repos\/\$REPO\$path/,
+    );
+  });
+});

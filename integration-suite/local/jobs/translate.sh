@@ -140,12 +140,21 @@ CHANGED="$(git diff --cached --name-only | wc -l | tr -d ' ')"
 echo "$CHANGED files changed"
 
 api() { # $1 = method, $2 = path, $3 = body (optional)
+  # Prints the response body and RETURNS NON-ZERO on anything that is not 2xx,
+  # or on a transport failure. That matters most for the lookup below: piping
+  # curl straight into a parser that swallows its own errors makes a 401, a 5xx
+  # and a timeout indistinguishable from "no open PR" — and the caller answers
+  # that by opening ANOTHER one. Two open auto-translation PRs split the
+  # generated files while the shared cache marks them done, so the next run
+  # validates an incomplete checkout. Exactly the duplicate this reuse exists
+  # to prevent, reached by the one path the ls-remote guard cannot cover.
+  #
   # The body is passed as ONE argument, never spliced in through `${3:+...}` —
   # a JSON body word-splits on its spaces there and the request silently
   # becomes a different one.
-  local method="$1" path="$2"
+  local method="$1" path="$2" raw status
   local -a args=(
-    -sS --connect-timeout 10 --max-time 60 -X "$method"
+    -sS --connect-timeout 10 --max-time 60 -X "$method" -w '\n%{http_code}'
     -H "Authorization: Bearer $TRANSLATE_GITHUB_TOKEN"
     -H "Accept: application/vnd.github+json"
     -H "X-GitHub-Api-Version: 2022-11-28"
@@ -154,14 +163,29 @@ api() { # $1 = method, $2 = path, $3 = body (optional)
   # Overridable so this can be pointed at a GitHub Enterprise host, and so the
   # publish path can be exercised end-to-end against a stand-in API without
   # opening real pull requests to prove it works.
-  curl "${args[@]}" "${TRANSLATE_API_BASE:-https://api.github.com}/repos/$REPO$path"
+  raw="$(curl "${args[@]}" "${TRANSLATE_API_BASE:-https://api.github.com}/repos/$REPO$path")" || return 1
+  status="${raw##*$'\n'}"          # -w appended it on its own line
+  printf '%s' "${raw%$'\n'*}"
+  # NOT a variable: api() is always called inside $( ), and an assignment there
+  # dies with the subshell. stderr reaches the run log, which is where whoever
+  # is reading the failure already is.
+  case "$status" in
+    2??) return 0 ;;
+    *)   echo "  api $method $path → HTTP $status" >&2; return 1 ;;
+  esac
 }
 
 # Push onto an already-open auto-translation PR rather than dropping this run's
 # work beside it. Two runs landing on two branches means the second's cache
 # says "done" for pages only the first branch carries — the deadlock described
 # in the header, self-inflicted.
-EXISTING="$(api GET "/pulls?state=open&base=$BASE_BRANCH&per_page=100" \
+# Two statements, not one pipeline: the lookup has to be able to FAIL. Piped
+# straight into the parser a 401 or a 5xx becomes an empty string and reads as
+# "no open PR" — see api() above for why that is the worst possible answer.
+PR_LIST="$(api GET "/pulls?state=open&base=$BASE_BRANCH&per_page=100")" \
+  || die "could not list open pull requests — refusing to open
+       a second one on a lookup failure. Nothing was pushed; a re-run is safe."
+EXISTING="$(printf '%s' "$PR_LIST" \
   | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const p=JSON.parse(s);const m=(Array.isArray(p)?p:[]).find(x=>x.title===process.argv[1]);process.stdout.write(m?m.number+" "+m.head.ref:"")}catch{process.stdout.write("")}})' "$PR_TITLE")"
 
 PR_NUMBER=""; BRANCH=""
@@ -219,7 +243,7 @@ if [ -z "$PR_NUMBER" ]; then
 - Only changed pages were re-translated (content-hash cache)
 - All 14 languages across 3 tiers
 - Box run \`$TS\` against \`$REF_DESC\` @ \`$FP_SHA\`"
-  CREATED="$(api POST /pulls "$(node -e 'process.stdout.write(JSON.stringify({title:process.argv[1],body:process.argv[2],base:process.argv[3],head:process.argv[4]}))' \
+    CREATED="$(api POST /pulls "$(node -e 'process.stdout.write(JSON.stringify({title:process.argv[1],body:process.argv[2],base:process.argv[3],head:process.argv[4]}))' \
     "$PR_TITLE" "$BODY" "$BASE_BRANCH" "$BRANCH")" \
     | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const p=JSON.parse(s);process.stdout.write(p.number?String(p.number):"")}catch{process.stdout.write("")}})')"
   [ -n "$CREATED" ] || die "pushed $BRANCH but could not open the PR — check the PAT's pull-requests:write scope"

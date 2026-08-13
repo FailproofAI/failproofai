@@ -108,22 +108,37 @@ echo "actionable findings: $COUNT"
 api() { # $1 = method, $2 = path, $3 = body (optional)
   # The body is passed as ONE argument, never spliced in — a JSON body
   # word-splits on its spaces and the request silently becomes a different one.
-  local method="$1" path="$2"
+  # Prints the body and RETURNS NON-ZERO on anything that is not 2xx. Without
+  # that, the lookup below cannot tell a 401 or a 5xx from "no open issue" — and
+  # the answer to "no open issue" is to open one, so a bad token would file a
+  # duplicate every week until somebody noticed the pile.
+  local method="$1" path="$2" raw status
   local -a args=(
-    -sS --connect-timeout 10 --max-time 60 -X "$method"
+    -sS --connect-timeout 10 --max-time 60 -X "$method" -w '\n%{http_code}'
     -H "Authorization: Bearer $DOCS_AUDIT_GITHUB_TOKEN"
     -H "Accept: application/vnd.github+json"
     -H "X-GitHub-Api-Version: 2022-11-28"
   )
   [ $# -ge 3 ] && args+=(--data "$3")
-  curl "${args[@]}" "${DOCS_AUDIT_API_BASE:-https://api.github.com}/repos/$REPO$path"
+  raw="$(curl "${args[@]}" "${DOCS_AUDIT_API_BASE:-https://api.github.com}/repos/$REPO$path")" || return 1
+  status="${raw##*$'\n'}"
+  printf '%s' "${raw%$'\n'*}"
+  # NOT a variable: api() is always called inside $( ), and an assignment there
+  # dies with the subshell. stderr reaches the run log, which is where whoever
+  # is reading the failure already is.
+  case "$status" in
+    2??) return 0 ;;
+    *)   echo "  api $method $path → HTTP $status" >&2; return 1 ;;
+  esac
 }
-json() { node -e 'process.stdout.write(JSON.stringify(JSON.parse(require("fs").readFileSync(0,"utf8"))))' 2>/dev/null; }
 
 # /issues returns PULL REQUESTS too — every PR is an issue to this endpoint —
 # so entries carrying a `pull_request` key are filtered out. Without that, an
 # open PR that happened to share the title would be updated instead.
-EXISTING="$(api GET "/issues?state=open&per_page=100" \
+ISSUE_LIST="$(api GET "/issues?state=open&per_page=100")" \
+  || die "could not list open issues — refusing to open a
+       duplicate on a lookup failure. The Slack report above still went out."
+EXISTING="$(printf '%s' "$ISSUE_LIST" \
   | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{
       const a=JSON.parse(s);
       const m=(Array.isArray(a)?a:[]).find(x=>!x.pull_request && x.title===process.argv[1]);

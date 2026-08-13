@@ -680,9 +680,14 @@ describe("docs-audit tracking issue", () => {
     expect(docsAuditSh).toMatch(/if \[ -z "\$\{DOCS_AUDIT_GITHUB_TOKEN:-\}" \]/);
     const gate = docsAuditSh.slice(docsAuditSh.indexOf('if [ -z "${DOCS_AUDIT_GITHUB_TOKEN'));
     expect(gate.slice(0, 260)).toMatch(/exit 0/);
-    expect(docsAuditSh.indexOf("slack_note \"$REPORT\"")).toBeLessThan(
-      docsAuditSh.indexOf("DOCS_AUDIT_GITHUB_TOKEN:-"),
-    );
+    // indexOf returns -1 for a missing marker, and -1 < any index — so without
+    // these two guards the ordering assertion would PASS for the wrong reason
+    // the day someone deletes the Slack post.
+    const slackAt = docsAuditSh.indexOf('slack_note "$REPORT"');
+    const tokenAt = docsAuditSh.indexOf("DOCS_AUDIT_GITHUB_TOKEN:-");
+    expect(slackAt).toBeGreaterThan(-1);
+    expect(tokenAt).toBeGreaterThan(-1);
+    expect(slackAt).toBeLessThan(tokenAt);
   });
 
   it("asks for an issues-only token, never Contents or Pull requests", () => {
@@ -780,5 +785,36 @@ describe("published image, and the socket only where it is used", () => {
     expect(dailySh).toMatch(/the canary drives the host's docker/);
     expect(translateSh).not.toMatch(/docker\.sock/);
     expect(docsAuditSh).not.toMatch(/docker\.sock/);
+  });
+});
+
+describe("GitHub lookups fail closed", () => {
+  it("neither job can read a failed lookup as 'nothing is open'", () => {
+    // curl piped straight into a parser that swallows its own errors makes a
+    // 401, a 5xx and a timeout indistinguishable from an empty list — and the
+    // answer to an empty list is to CREATE one. That is a duplicate PR whose
+    // generated files split against a cache that marks them done, and a
+    // duplicate issue filed every week until someone notices the pile.
+    for (const [name, sh] of [["translate", translateSh], ["docs-audit", docsAuditSh]] as const) {
+      expect(sh, `${name}: api() must capture the HTTP status`).toMatch(/-w '\\n%\{http_code\}'/);
+      expect(sh, `${name}: api() must reject non-2xx`).toMatch(
+        /case "\$status" in[\s\S]{0,40}2\?\?\) return 0 ;;[\s\S]{0,80}return 1 ;;/,
+      );
+      // the lookup is two statements, so it can fail — never one pipeline
+      expect(sh, `${name}: the lookup must be able to fail`).toMatch(/\|\| die "could not list open/);
+    }
+  });
+
+  it("reports the HTTP status on STDERR, not through a variable", () => {
+    // api() is always called inside $( ), so a variable set there dies with the
+    // subshell and the status never reaches the message. stderr reaches the run
+    // log, which is where whoever is reading the failure already is. An earlier
+    // cut of this fix used a variable and silently printed nothing.
+    for (const [name, sh] of [["translate", translateSh], ["docs-audit", docsAuditSh]] as const) {
+      expect(sh, `${name}: status must go to stderr`).toMatch(
+        /echo "  api \$method \$path → HTTP \$status" >&2/,
+      );
+      expect(sh, `${name}: no subshell-scoped status variable`).not.toMatch(/API_STATUS/);
+    }
   });
 });

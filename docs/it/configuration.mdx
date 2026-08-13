@@ -50,7 +50,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← ricade su global
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** - il primo ambito che definisce una delle due forme vince.
+**`customPoliciesPaths` / `customPoliciesPaths`** - il primo ambito che definisce una delle due forme vince.
 
 **`disabledCustomPolicies`** - unione tra tutti gli ambiti. Il dashboard scrive un ID qualificato di origine qui quando disattivi una politica individuale da un file di politiche esplicite o per convenzione. Le politiche non elencate rimangono abilitate per impostazione predefinita; gli ID includono il file di origine in modo che politiche con lo stesso nome in più file possano essere controllate indipendentemente.
 
@@ -148,7 +148,7 @@ Quando `block-force-push` nega, Claude vede: *"Il force-push è bloccato. Prova 
 
 I valori non stringa e le stringhe vuote vengono silenziosamente ignorate. Se `hint` non è impostato, il comportamento è invariato (retrocompatibile).
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
 Tipo: `string` (percorso assoluto)
 
@@ -158,7 +158,7 @@ Il file viene caricato di nuovo su ogni evento hook - non c'è caching. Vedi [Cu
 
 ### Politiche basate su convenzione
 
-Oltre a `customPoliciesPath` esplicito, failproofai scopre e carica automaticamente file di politiche dalle directory `.failproofai/policies/`:
+Oltre a `customPoliciesPaths` esplicito, failproofai scopre e carica automaticamente file di politiche dalle directory `.failproofai/policies/`:
 
 | Livello | Directory | Ambito |
 |-------|-----------|-------|
@@ -177,7 +177,7 @@ Oltre a `customPoliciesPath` esplicito, failproofai scopre e carica automaticame
 
 **Nessuna configurazione necessaria:** Le politiche per convenzione non richiedono voci in `policies-config.json`. Basta rilasciare file nella directory e verranno ripresi sul prossimo evento hook.
 
-**Caricamento unione:** Entrambe le directory di convenzione di progetto e utente vengono scansionate. Tutti i file corrispondenti da entrambi i livelli vengono caricati (a differenza di `customPoliciesPath` che utilizza il primo ambito che vince).
+**Caricamento unione:** Entrambe le directory di convenzione di progetto e utente vengono scansionate. Tutti i file corrispondenti da entrambi i livelli vengono caricati (a differenza di `customPoliciesPaths` che utilizza il primo ambito che vince).
 
 Vedi [Custom Policies](/it/custom-policies) per ulteriori dettagli ed esempi.
 

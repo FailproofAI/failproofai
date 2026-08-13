@@ -50,7 +50,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← rơi xuống toàn cục
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** - phạm vi đầu tiên xác định bất kỳ dạng nào sẽ thắng.
+**`customPoliciesPaths` / `customPoliciesPaths`** - phạm vi đầu tiên xác định bất kỳ dạng nào sẽ thắng.
 
 **`disabledCustomPolicies`** - sự hợp nhất trên tất cả các phạm vi. Bảng điều khiển ghi một ID được xác định nguồn ở đây khi bạn tắt một chính sách riêng lẻ từ một tệp chính sách rõ ràng hoặc quy ước. Các chính sách không được liệt kê vẫn được bật theo mặc định; ID bao gồm tệp nguồn để các chính sách cùng tên trong nhiều tệp có thể được kiểm soát độc lập.
 
@@ -148,7 +148,7 @@ Khi `block-force-push` từ chối, Claude sẽ thấy: *"Force-pushing is block
 
 Các giá trị không phải chuỗi và chuỗi trống được bỏ qua im lặng. Nếu `hint` không được đặt, hành vi không thay đổi (tương thích ngược).
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
 Loại: `string` (đường dẫn tuyệt đối)
 
@@ -158,7 +158,7 @@ Tệp được tải mới trên mỗi sự kiện hook - không có bộ nhớ 
 
 ### Chính sách dựa trên quy ước
 
-Ngoài `customPoliciesPath` rõ ràng, failproofai sẽ tự động khám phá và tải các tệp chính sách từ các thư mục `.failproofai/policies/`:
+Ngoài `customPoliciesPaths` rõ ràng, failproofai sẽ tự động khám phá và tải các tệp chính sách từ các thư mục `.failproofai/policies/`:
 
 | Mức | Thư mục | Phạm vi |
 |-----|---------|--------|
@@ -176,7 +176,7 @@ Ngoài `customPoliciesPath` rõ ràng, failproofai sẽ tự động khám phá 
 
 **Không cần cấu hình:** Các chính sách quy ước không yêu cầu bất kỳ mục nào trong `policies-config.json`. Chỉ cần thả các tệp vào thư mục và chúng sẽ được nhặt trên sự kiện hook tiếp theo.
 
-**Tải kết hợp:** Cả thư mục quy ước dự án và người dùng đều được quét. Tất cả các tệp khớp từ cả hai mức đều được tải (không giống `customPoliciesPath` sử dụng phạm vi thắng đầu tiên).
+**Tải kết hợp:** Cả thư mục quy ước dự án và người dùng đều được quét. Tất cả các tệp khớp từ cả hai mức đều được tải (không giống `customPoliciesPaths` sử dụng phạm vi thắng đầu tiên).
 
 Xem [Custom Policies](/vi/custom-policies) để biết thêm chi tiết và ví dụ.
 

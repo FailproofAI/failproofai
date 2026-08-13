@@ -47,9 +47,9 @@ failproofai
   运行 `failproofai audit -h`（或 `--help`）查看使用方法。审计 **完全离线运行** — 无需账户或网络 — 仪表板将一直提供服务，直到您用 `Ctrl+C` 停止它。
 </Tip>
 
-仪表板扫描这台机器上的过去代理 CLI 文字记录（Claude Code、Codex、Copilot、Cursor、OpenCode、Pi），并报告代理执行 failproofai 被构建用来阻止的操作的频率 — 环境变量检查、强制推送、冗余的 `cd <cwd>` 前缀、睡眠轮询循环、重新读取刚编辑的文件等。
+仪表板扫描这台机器上的过去代理 CLI 文字记录（Claude Code、Codex、Copilot、Cursor、OpenCode、Pi、Antigravity、Devin、Factory、Goose、Hermes、OpenClaw），并报告代理执行 failproofai 被构建用来阻止的操作的频率 — 环境变量检查、强制推送、冗余的 `cd <cwd>` 前缀、睡眠轮询循环、重新读取刚编辑的文件等。
 
-对于每个文字记录，每个工具使用事件都会通过 39 个内置策略 **以及** 8 个仅审计检测器重放，这些检测器捕获运行时策略尚未覆盖的模式。计数会跨所有会话按策略/检测器聚合。
+对于每个文字记录，每个工具使用事件都会通过 40 个内置策略 **以及** 8 个仅审计检测器重放，这些检测器捕获运行时策略尚未覆盖的模式。计数会跨所有会话按策略/检测器聚合。
 
 ## 您获得什么
 
@@ -63,16 +63,19 @@ failproofai
 
 ## 计划审计
 
-如果您运行 **failproofaid 守护进程**（请参阅 [`failproofai config`](/he/cli/install-policies)），
+如果您运行 **failproofaid 守护进程**（请参阅 [`failproofai config`](/he/cli/config)），
 它可以为您按计划重新运行审计，并在后台刷新 `/audit` 报告。
 它 **默认关闭**，因为扫描会读取这台机器上每个代理会话文字记录的 *内容* — 在您要求之前，没有任何内容在计时器上扫描。
 
-在 `~/.failproofai/config.toml` 中将其打开：
+在 `~/.failproofai/config.json` 中将其打开：
 
-```toml
-[audit]
-auto = true
-interval_days = 7
+```json
+{
+  "audit": {
+    "auto": true,
+    "interval_days": 7
+  }
+}
 ```
 
 | 键 | 含义 |
@@ -83,7 +86,7 @@ interval_days = 7
 - 计划是 **挂钟时间**，所以它能在暂停和重启后继续：睡眠时间超过到期时间的笔记本电脑在唤醒时 **运行一次**，永远不会出现积压。
 - 每次运行都是一个独立的低优先级（`nice 19`）进程 — 永远不是守护进程的钩子路径，该路径保持空闲以响应工具调用。
 - 如果 `failproofai audit` 或仪表板的重新运行已在进行中，则会跳过扫描；此后不久会重试，而不是被视为失败。
-- 进度被写入 `~/.failproofai/state/audit-schedule.json`（上次运行、下次到期）。守护进程拥有该文件 — 在 `config.toml` 中更改节奏。
+- 进度被写入 `~/.failproofai/state/audit-schedule.json`（上次运行、下次到期）。守护进程拥有该文件 — 在 `config.json` 中更改节奏。
 
 <Note>
 如果您在由较早版本的 failproofai 设置的机器上启用了此功能，请运行一次 `failproofai config`。守护进程的服务定义在启动 CLI 之前需要一个额外的条目，该刷新是该命令的一部分。

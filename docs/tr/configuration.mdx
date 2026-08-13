@@ -50,7 +50,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← global'e düşer
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** - her iki formu tanımlayan ilk kapsam kazanır.
+**`customPoliciesPaths` / `customPoliciesPaths`** - her iki formu tanımlayan ilk kapsam kazanır.
 
 **`disabledCustomPolicies`** - tüm kapsamlar arasında birleşim. Pano, bir bireysel politikayı açık veya kural politikası dosyasından kapatırken burada kaynakla nitelendirilen bir kimlik yazar. Listelenmemiş politikalar varsayılan olarak etkindir; kimlikler kaynak dosyasını içerir, böylece birden fazla dosyada aynı adlı politikalar bağımsız olarak kontrol edilebilir.
 
@@ -148,7 +148,7 @@ Herhangi bir politika türüyle çalışır — yerleşik, özel (`custom/`), pr
 
 Dize olmayan değerler ve boş dizeler sessizce yoksayılır. `hint` ayarlanmamışsa, davranış değişmez (geriye doğru uyumlu).
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
 Tür: `string` (mutlak yol)
 
@@ -158,7 +158,7 @@ Dosya her kanca olayında taze yüklenir - önbelleğe alma yoktur. Yazarlık ay
 
 ### Kural tabanlı politikalar
 
-Açık `customPoliciesPath` ek olarak, failproofai `.failproofai/policies/` dizinlerinden politika dosyalarını otomatik olarak keşfeder ve yükler:
+Açık `customPoliciesPaths` ek olarak, failproofai `.failproofai/policies/` dizinlerinden politika dosyalarını otomatik olarak keşfeder ve yükler:
 
 | Düzey | Dizin | Kapsam |
 |-------|-----------|-------|
@@ -176,7 +176,7 @@ Açık `customPoliciesPath` ek olarak, failproofai `.failproofai/policies/` dizi
 
 **Konfigürasyon gerekmez:** Kural politikaları `policies-config.json` içinde girdiler gerektirmez. Dosyaları dizine bırakın ve sonraki kanca olayında alınırlar.
 
-**Birleşim yüklemesi:** Hem proje hem de kullanıcı kural dizinleri taranır. Her iki düzeyden tüm eşleşen dosyalar yüklenir (`customPoliciesPath` ilk-kapsam-kazanır kullanan aksine).
+**Birleşim yüklemesi:** Hem proje hem de kullanıcı kural dizinleri taranır. Her iki düzeyden tüm eşleşen dosyalar yüklenir (`customPoliciesPaths` ilk-kapsam-kazanır kullanan aksine).
 
 Daha fazla ayrıntı ve örnekler için [Özel Politikalar](/tr/custom-policies) sayfasına bakın.
 

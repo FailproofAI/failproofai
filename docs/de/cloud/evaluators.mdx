@@ -10,7 +10,7 @@ FailproofAI Cloud kann jeden abgeschlossenen Agenten-Lauf automatisch auf Qualit
 
 ## Auf einen Blick
 
-1. **Schreiben Sie einen Scorer.** Starten Sie einen kleinen HTTP-Dienst, der ein Sitzungsprotokoll liest und Scores zurückgibt. FailproofAI Cloud liefert ein funktionsfähiges Referenzbeispiel, das Sie kopieren können. Siehe [Evaluator mit dem SDK schreiben](#writing-an-evaluator-with-the-sdk).
+1. **Schreiben Sie einen Scorer.** Starten Sie einen kleinen HTTP-Dienst, der ein Sitzungsprotokoll liest und Scores zurückgibt. FailproofAI Cloud liefert ein funktionsfähiges Referenzbeispiel, das Sie kopieren können. Siehe [Evaluator mit dem SDK schreiben](/de/cloud/evaluators).
 2. **Richten Sie FailproofAI Cloud darauf aus.** Setzen Sie `EVALUATOR_ENDPOINT` (und ein gemeinsames `EVALUATOR_TOKEN`) auf dem Serverprozess.
 3. **Beobachten Sie die eingehenden Scores.** Jede abgeschlossene Sitzung wird automatisch bewertet; die Ergebnisse erscheinen auf der Sitzungsdetailseite, im Sitzungsraster und in gespeicherten Dashboards.
 
@@ -157,7 +157,7 @@ Die vollständige API-Referenz, das asynchrone Muster und das Ereignisschema sin
 
 ## Ihren Evaluator betreiben
 
-Der Evaluator ist **Ihr Dienst** – FailproofAI Cloud liefert keinen Standard-Evaluator, daher erstellen und betreiben Sie ihn dort, wo Sie Ihre eigenen Dienste betreiben. Er läuft unter jedem ASGI-Server (zum Beispiel `uvicorn my_evaluator:app`); stellen Sie die Routen `/health`, `/config` und `/evaluate` gemäß dem [HTTP-Vertrag](#http-contract) bereit, und verweisen Sie den Server darauf (siehe [Server konfigurieren](#configuring-the-server)).
+Der Evaluator ist **Ihr Dienst** – FailproofAI Cloud liefert keinen Standard-Evaluator, daher erstellen und betreiben Sie ihn dort, wo Sie Ihre eigenen Dienste betreiben. Er läuft unter jedem ASGI-Server (zum Beispiel `uvicorn my_evaluator:app`); stellen Sie die Routen `/health`, `/config` und `/evaluate` gemäß dem [HTTP-Vertrag](/de/cloud/evaluators) bereit, und verweisen Sie den Server darauf (siehe [Server konfigurieren](/de/cloud/evaluators)).
 
 Sobald der Evaluator erreichbar ist, gibt `GET /health` `{"status":"ok"}` zurück. Nachdem ein Agent vollständig durchgelaufen ist, gibt `GET /evaluations` auf dem Server eine Zeile mit `status: "done"` und den von Ihrem Evaluator erzeugten Scores zurück.
 

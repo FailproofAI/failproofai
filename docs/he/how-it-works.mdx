@@ -71,7 +71,7 @@ Claude Code אז משדר את `failproofai --hook PreToolUse` כתת-תהליך
 {
   "hookSpecificOutput": {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Blocked by failproofai: sudo command blocked"
+    "permissionDecisionReason": "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
   }
 }
 ```
@@ -156,7 +156,7 @@ stdin JSON
 לוגיקת merge:
 - `enabledPolicies` - איחוד מבודד בכל שלושת הקבצים
 - `policyParams` - לכל מדיניות, הקובץ הראשון שמגדיר אותו מנצח לחלוטין
-- `customPoliciesPath` - הקובץ הראשון שמגדיר אותו מנצח
+- `customPoliciesPaths` - הקובץ הראשון שמגדיר אותו מנצח
 - `llm` - הקובץ הראשון שמגדיר אותו מנצח
 
 ה-dashboard של האינטרנט משתמש ב-`readHooksConfig()` (global only) לקריאה וכתיבה, מכיוון שהוא לא משדר עם project cwd.
@@ -186,7 +186,7 @@ stdin JSON
 
 ## מדיניות מובנית
 
-`src/hooks/builtin-policies.ts` מגדיר את כל 39 המדיניות המובנות כאובייקטי `BuiltinPolicyDefinition`:
+`src/hooks/builtin-policies.ts` מגדיר את כל 40 המדיניות המובנות כאובייקטי `BuiltinPolicyDefinition`:
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -227,7 +227,7 @@ export function clearCustomHooks(): void { ... }  // used in tests
 
 `src/hooks/custom-hooks-loader.ts` טוען את קובץ המדיניות של המשתמש:
 
-1. קרא את `customPoliciesPath` מההגדרות; דלג אם חסר.
+1. קרא את `customPoliciesPaths` מההגדרות; דלג אם חסר.
 2. פתור לנתיב מוחלט; בדוק שהקובץ קיים.
 3. כתוב מחדש את כל ה-`from "failproofai"` imports לנתיב dist בפועל כך `customPolicies` מתחזר לרג'יסטרי `globalThis` זהה.
 4. כתוב מחדש transitive local imports רקורסיבי כדי להבטיח תאימות ESM.
@@ -247,7 +247,7 @@ export function clearCustomHooks(): void { ... }  // used in tests
 
 ```json
 {
-  "timestamp": "2026-04-06T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",
@@ -307,7 +307,7 @@ failproofai/
 │   └── failproofai.mjs           # CLI router (hook / dashboard / install / etc.)
 ├── src/hooks/
 │   ├── handler.ts                # Hook event pipeline
-│   ├── builtin-policies.ts       # 39 policy definitions
+│   ├── builtin-policies.ts       # 40 policy definitions
 │   ├── policy-evaluator.ts       # Policy execution engine
 │   ├── policy-registry.ts        # Policy registration and lookup
 │   ├── policy-types.ts           # TypeScript interfaces

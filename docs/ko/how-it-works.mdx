@@ -71,7 +71,7 @@ failproofai는 두 개의 독립적인 서브시스템으로 구성됩니다:
 {
   "hookSpecificOutput": {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Blocked by failproofai: sudo command blocked"
+    "permissionDecisionReason": "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
   }
 }
 ```
@@ -156,7 +156,7 @@ LLM 호출 없이 일반적인 페이로드를 100ms 이내에 처리합니다.
 병합 로직:
 - `enabledPolicies` - 세 파일 전체에서 중복 제거 후 합집합
 - `policyParams` - 정책별 키, 가장 먼저 정의한 파일이 완전히 우선됩니다
-- `customPoliciesPath` - 가장 먼저 정의한 파일이 우선됩니다
+- `customPoliciesPaths` - 가장 먼저 정의한 파일이 우선됩니다
 - `llm` - 가장 먼저 정의한 파일이 우선됩니다
 
 웹 대시보드는 프로젝트 cwd 없이 실행되므로 읽기 및 쓰기에 `readHooksConfig()`(전역만 해당)를 사용합니다.
@@ -227,7 +227,7 @@ export function clearCustomHooks(): void { ... }  // 테스트에서 사용
 
 `src/hooks/custom-hooks-loader.ts`는 사용자의 정책 파일을 로드합니다:
 
-1. 설정에서 `customPoliciesPath`를 읽습니다. 없으면 건너뜁니다.
+1. 설정에서 `customPoliciesPaths`를 읽습니다. 없으면 건너뜁니다.
 2. 절대 경로로 변환하고 파일 존재를 확인합니다.
 3. 모든 `from "failproofai"` 임포트를 실제 dist 경로로 재작성하여 `customPolicies`가 동일한 `globalThis` 레지스트리로 해결되도록 합니다.
 4. ESM 호환성을 위해 전이적인 로컬 임포트를 재귀적으로 재작성합니다.
@@ -247,7 +247,7 @@ export function clearCustomHooks(): void { ... }  // 테스트에서 사용
 
 ```json
 {
-  "timestamp": "2026-04-06T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",

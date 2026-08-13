@@ -5,7 +5,7 @@ icon: server
 ---
 
 `failproofaid` is the background service FailproofAI installs during setup. It does three
-jobs, and each one is the answer to a way guardrails fail quietly in the real world.
+jobs, and each one is the answer to a way policies fail quietly in the real world.
 
 <CardGroup cols={3}>
 
@@ -43,7 +43,7 @@ not getting an answer denies:
 
 There is deliberately **no in-process fallback** on this path. A second policy engine you
 can reach by stopping the first is not a guarantee, and a machine where killing one service
-silently disables every guardrail is not a guarded machine.
+silently disables every policy is not a guarded machine.
 
 The version-mismatch case gets its own message because the remedy is different from "the
 service is down," and telling those two apart is the whole value of distinguishing them.
@@ -103,8 +103,9 @@ hit denials.
 Three consequences follow, each handled explicitly:
 
 - **Installing needs root.** Setup checks `sudo -n` *before* writing anything. If it
-  cannot elevate, it writes nothing and hands you the exact commands to run. Never an
-  interactive password prompt — one fired from underneath a full-screen wizard is
+  cannot elevate, it installs no service files and hands you the exact commands to run (the
+  daemon binary itself may already have been downloaded to `~/.failproofai/bin/` by then).
+  Never an interactive password prompt — one fired from underneath a full-screen wizard is
   unreadable.
 - **A system service has no login environment.** The service is pointed at the exact Node
   binary that ran setup, not a bare `node`. The most common Node install puts its binary
@@ -198,13 +199,13 @@ You do **not** need to re-run setup after an upgrade. A migrated machine enforce
 as it did before — which is what makes upgrading safe on machines with nobody sitting at
 them.
 
-See [`failproofai update`](/cli/update) and [`failproofai migrate --dry-run`](/cli/migrate).
+See [`failproofai update`](/vi/cli/update) and [`failproofai migrate --dry-run`](/vi/cli/migrate).
 
 ---
 
 ## What it does for a connected machine
 
-On a machine [connected to FailproofAI Cloud](/cloud/connect), the same service handles
+On a machine [connected to FailproofAI Cloud](/vi/cloud/connect), the same service handles
 both directions of traffic:
 
 - **Policy down.** Polls for this machine's desired state, downloads any policy artifact it
@@ -248,19 +249,19 @@ CLIs, recoverable only by hand-editing a config file.
 
 <CardGroup cols={2}>
 
-<Card title="How it works" icon="sitemap" href="/how-it-works">
+<Card title="How it works" icon="sitemap" href="/vi/how-it-works">
   The full path from a tool call to a decision.
 </Card>
 
-<Card title="Connect to the cloud" icon="cloud" href="/cloud/connect">
+<Card title="Connect to the cloud" icon="cloud" href="/vi/cloud/connect">
   What the service sends, and what it receives.
 </Card>
 
-<Card title="failproofai config" icon="terminal" href="/cli/config">
+<Card title="failproofai config" icon="terminal" href="/vi/cli/config">
   Setup, status, connect, disconnect, pause.
 </Card>
 
-<Card title="Environment variables" icon="list" href="/cli/environment-variables">
+<Card title="Environment variables" icon="list" href="/vi/cli/environment-variables">
   Every variable, including the download escape hatches.
 </Card>
 

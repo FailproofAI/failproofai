@@ -8,7 +8,7 @@ Your engineers already run coding agents every day. Session capture brings that 
 FailproofAI Cloud as ordinary sessions and events, so you can search, replay, score, and
 alert on it next to everything else you observe.
 
-It complements the [Python SDK](/cloud/sdk): the SDK instruments agents *you write*, while
+It complements the [Python SDK](/pt-br/cloud/sdk): the SDK instruments agents *you write*, while
 capture covers the agent CLIs your team *already uses* — with no change to how they run
 them.
 
@@ -22,7 +22,7 @@ There is nothing extra to install. Capture is part of connecting a machine:
 failproofai config --connect https://app.befailproof.ai --token <your-key>
 ```
 
-That is it. The [background service](/daemon) already on the machine reads each agent CLI's
+That is it. The [background service](/pt-br/daemon) already on the machine reads each agent CLI's
 own session files as they are written and ships them, alongside the policy decisions it is
 already reporting.
 
@@ -32,13 +32,16 @@ failproofai flush --wait        # deliver everything spooled right now
 ```
 
 On first run, the sessions already on the machine are backfilled once; new activity then
-streams within seconds.
+streams within seconds. How far back depends on the CLI: the ones read from session *files*
+pick up files modified in the last 7 days (and read those in full), while goose, opencode,
+devin and hermes are read from SQLite and pick up their whole history. For anything older
+than that window, run [`failproofai backfill --since`](/pt-br/cli/backfill).
 
 ---
 
 ## What gets captured
 
-Every one of the [12 supported agent CLIs](/agent-support) is a capture source:
+Every one of the [12 supported agent CLIs](/pt-br/agent-support) is a capture source:
 
 | | | |
 |---|---|---|
@@ -50,11 +53,11 @@ Every one of the [12 supported agent CLIs](/agent-support) is a capture source:
 One machine, one connection, every CLI on it. There is no per-CLI setup and no per-project
 step.
 
-Each session becomes a cloud [session](/cloud/sessions); its user and assistant messages,
+Each session becomes a cloud [session](/pt-br/cloud/sessions); its user and assistant messages,
 reasoning, tool calls, tool results, and token usage become the matching
-[events](/cloud/event-stream). Everything downstream then works on them —
-[replay](/cloud/sessions), [search](/cloud/queries), [evaluations](/cloud/evaluations),
-[audits](/cloud/audits), and [alerts](/cloud/alerts).
+[events](/pt-br/cloud/event-stream). Everything downstream then works on them —
+[replay](/pt-br/cloud/sessions), [search](/pt-br/cloud/queries), [evaluations](/pt-br/cloud/evaluations),
+[audits](/pt-br/cloud/audits), and [alerts](/pt-br/cloud/alerts).
 
 Where a CLI records it, the **surface** a session came from is preserved too: whether a
 Codex session ran in the CLI, the IDE extension, or the desktop app; which channel a
@@ -96,7 +99,7 @@ Two rejections that exist to prevent silent failures:
   would re-read from the beginning after every restart.
 
 For containers, `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` (comma-separated) overrides the file
-per source. [Full command reference →](/cli/harness)
+per source. [Full command reference →](/pt-br/cli/harness)
 
 ---
 
@@ -144,13 +147,14 @@ failproofai config --connect <url> --token <key> --no-transcripts
 
 Policy decisions still flow — which policy fired, on which tool, in which session, with
 what verdict — so you keep enforcement visibility across the fleet without centralizing
-file contents. `--status` always reports which mode is in effect.
+file contents. The mode is recorded as `collector.sessions` in `~/.failproofai/config.json`.
 
-Note that the local [sanitize policies](/built-in-policies#secrets-sanitizers) redact
-secrets from tool output *before the model reads them*, which reduces (but does not
-eliminate) what a transcript can contain. Treat transcripts as sensitive regardless.
+Note that the local sanitize policies *detect* secrets in tool output but do not remove
+them, so a transcript can still contain anything the agent read. The `PreToolUse` policies
+`block-env-files`, `protect-env-vars` and `block-secrets-write` are what actually keep a
+secret out. Treat transcripts as sensitive regardless.
 
-[How your data is isolated →](/cloud/security)
+[How your data is isolated →](/pt-br/cloud/security)
 
 ---
 
@@ -158,19 +162,19 @@ eliminate) what a transcript can contain. Treat transcripts as sensitive regardl
 
 <CardGroup cols={2}>
 
-<Card title="Connect a machine" icon="plug" href="/cloud/connect">
+<Card title="Connect a machine" icon="plug" href="/pt-br/cloud/connect">
   The command, the permissions, and what leaves the machine.
 </Card>
 
-<Card title="Sessions" icon="diagram-project" href="/cloud/sessions">
+<Card title="Sessions" icon="diagram-project" href="/pt-br/cloud/sessions">
   Where captured sessions land, and how to read them.
 </Card>
 
-<Card title="Python SDK" icon="python" href="/cloud/sdk">
+<Card title="Python SDK" icon="python" href="/pt-br/cloud/sdk">
   Instrument agents you write yourself.
 </Card>
 
-<Card title="Supported agents" icon="table" href="/agent-support">
+<Card title="Supported agents" icon="table" href="/pt-br/agent-support">
   Every CLI, and what enforcement each supports.
 </Card>
 

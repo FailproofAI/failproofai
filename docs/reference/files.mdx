@@ -12,20 +12,33 @@ CLI's own settings file, so that CLI knows to call it.
 
 ## `~/.failproofai/` — the machine
 
-| Path | Holds | Safe to delete? |
-|---|---|---|
-| `policies-config.json` | Your global policy selection and parameters | Only if you want to lose your setup |
-| `policies/` | **Your own policy files.** Drop `*policies.mjs` in; no config needed | No — this is your code |
-| `policies/cloud-policies/` | Policies your organization deployed here | Yes — re-fetched and verified on the next poll |
-| `config.json` | Machine settings: daemon, collector, capture paths, audit schedule | Only if you want to re-run setup |
-| `credentials.toml` | Cloud tokens. **Owner-only (`0600`)** | Yes — you will need to reconnect |
-| `hook-activity/` | The decision log the dashboard reads | Yes — you lose local history |
-| `bin/` | The downloaded service binary, versioned | Yes — reinstalled by `failproofai config` |
-| `run/` | The service's runtime socket and lock | Yes — recreated at start |
-| `state/` | Pause state and scheduler progress | Yes — pauses end, schedules restart |
-| `cache/` | The audit's per-transcript cache | Yes — the next audit is just slower |
-| `logs/`, `hook.log` | Debug output from custom policy errors | Yes |
-| `migrations/` | Applied-migration records and pre-migration backups | Keep until you are sure an upgrade went well |
+A fresh install creates only what it needs. Most of the rows below are **conditional** — if
+you have never connected to the cloud, never run an audit, or never upgraded across a layout
+change, those paths simply do not exist. That is normal, not a broken install.
+
+| Path | Holds | When it appears | Safe to delete? |
+|---|---|---|---|
+| `VERSION` | Layout version, CLI version, daemon version | Always | No — it is how upgrades know what to migrate |
+| `config.json` | Machine settings: daemon, collector, capture paths, audit schedule | Always | Only if you want to re-run setup |
+| `policies-config.json` | Your global policy selection and parameters | Always | Only if you want to lose your setup |
+| `run/` | The service's runtime socket and lock | While the daemon is set up | Yes — recreated at start |
+| `state/` | Launcher marker, last-seen version, telemetry id, shims, daemon run record — plus the upload spool for events not yet delivered | Always | **No** — deleting it discards undelivered events |
+| `hook-activity/` | The decision log the dashboard reads | After the first hook fires | Yes — you lose local history |
+| `bin/` | The daemon binary, versioned | After `failproofai config` installs the daemon | Yes — reinstalled by `failproofai config` |
+| `policies/` | **Your own policy files.** Drop `*policies.mjs` in; no config needed | Only if you create it | No — this is your code |
+| `policies/cloud-policies/` | Policies your organization deployed here | Only when connected to a deployment | Yes — re-fetched and verified on the next poll |
+| `credentials.json` | Cloud tokens. **Owner-only (`0600`)** | Only after `failproofai config --connect` | Yes — you will need to reconnect |
+| `audit/` | `dashboard.json` (the report) and `cache/` (per-transcript cache) | Only after an audit runs | Cache yes — the next audit is just slower. The report is your results |
+| `logs/hooks.log` | Debug output from custom policy errors | Only when `FAILPROOFAI_HOOK_LOG_FILE` is set | Yes |
+| `migrations/` | `applied.json` and pre-migration backups | Only after a migration actually runs | Keep until you are sure an upgrade went well |
+| `custom-agents/` | Events from agents you instrumented yourself | Only if you use the SDK spool | **No** — may hold undelivered events |
+
+<Note>
+  **A fresh, cloud-free machine has seven entries** — `VERSION`, `config.json`,
+  `policies-config.json`, `bin/`, `run/`, `state/`, `hook-activity/`. Everything else is
+  created on demand. `migrations/` in particular only appears once a migration has run: the
+  steps are *layout* steps, so installing at the current layout runs none at all.
+</Note>
 
 <Note>
   Put your own policy files **directly** in `policies/`. The `cloud-policies/` folder
@@ -71,7 +84,7 @@ non-standard, [`failproofai harness add-path`](/cli/harness) points at them.
 
 ## Permissions
 
-- `credentials.toml` is written `0600`, and the directory around it is tightened to match. A
+- `credentials.json` is written `0600`, and the directory around it is tightened to match. A
   `0600` file inside a world-readable directory is still reachable by every local user.
 - Cloud tokens are deliberately **not** placed in the service definition file, which is
   installed world-readable. That is also why connecting, rotating a token, and disconnecting

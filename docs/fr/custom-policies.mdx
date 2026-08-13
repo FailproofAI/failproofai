@@ -79,7 +79,7 @@ failproofai policies --install --custom ./security.js --custom ./workflow.js
 failproofai policies --uninstall --custom
 ```
 
-Les chemins absolus résolus sont stockés dans `policies-config.json` sous `customPoliciesPaths`. Répétez `--custom` pour configurer plusieurs fichiers. Les configurations existantes utilisant le champ hérité `customPoliciesPath` continuent de fonctionner. Les fichiers sont rechargés à chaque événement de hook - il n'y a pas de mise en cache entre les événements.
+Les chemins absolus résolus sont stockés dans `policies-config.json` sous `customPoliciesPaths`. Répétez `--custom` pour configurer plusieurs fichiers. Les configurations existantes utilisant le champ hérité `customPoliciesPaths` continuent de fonctionner. Les fichiers sont rechargés à chaque événement de hook - il n'y a pas de mise en cache entre les événements.
 
 Chaque politique enregistrée apparaît avec son propre bouton de bascule dans le tableau de bord. Désactiver une politique enregistre son ID qualifié par la source dans `disabledCustomPolicies` ; le fichier et ses autres politiques continuent de se charger, tandis que la politique désactivée est exclue avant la correspondance d'événement. Les noms de politiques dupliqués entre fichiers ont des boutons de bascule indépendants.
 
@@ -122,12 +122,12 @@ customPolicies.add({
 | `deny(message)` | Bloque l'opération | L'agent ne devrait pas effectuer cette action |
 | `instruct(message)` | Ajoute du contexte sans bloquer | Donner à l'agent un contexte supplémentaire pour rester sur la bonne voie |
 
-`deny(message)` - le message apparaît à Claude préfixé par `"Blocked by failproofai:"`. Un seul `deny` court-circuite toute évaluation ultérieure.
+`deny(message)` - le message apparaît à Claude préfixé par `Blocked <tool> by failproofai because: <message>, as per the policy configured by the user`. Un seul `deny` court-circuite toute évaluation ultérieure.
 
 `instruct(message)` - le message est ajouté au contexte de Claude pour l'appel d'outil en cours. Tous les messages `instruct` sont accumulés et délivrés ensemble.
 
 <Tip>
-Vous pouvez ajouter des indications supplémentaires à n'importe quel message `deny` ou `instruct` en ajoutant un champ `hint` dans `policyParams` — aucune modification de code nécessaire. Cela fonctionne également pour les politiques personnalisées (`custom/`), les conventions de projet (`.failproofai-project/`) et les conventions utilisateur (`.failproofai-user/`). Consultez [Configuration → hint](/fr/configuration#hint-cross-cutting) pour plus de détails.
+Vous pouvez ajouter des indications supplémentaires à n'importe quel message `deny` ou `instruct` en ajoutant un champ `hint` dans `policyParams` — aucune modification de code nécessaire. Cela fonctionne également pour les politiques personnalisées (`custom/`), les conventions de projet (`.failproofai-project/`) et les conventions utilisateur (`.failproofai-user/`). Consultez [Configuration → hint](/fr/configuration) pour plus de détails.
 </Tip>
 
 ### Messages d'autorisation informatifs
@@ -194,7 +194,7 @@ customPolicies.add({
 Les politiques sont évaluées dans cet ordre :
 
 1. Politiques intégrées (dans l'ordre de définition)
-2. Politiques personnalisées explicites de `customPoliciesPath` (dans l'ordre `.add()`)
+2. Politiques personnalisées explicites de `customPoliciesPaths` (dans l'ordre `.add()`)
 3. Politiques de convention du projet `.failproofai/policies/` (fichiers par ordre alphabétique, ordre `.add()` à l'intérieur)
 4. Politiques de convention utilisateur `~/.failproofai/policies/` (fichiers par ordre alphabétique, ordre `.add()` à l'intérieur)
 
@@ -253,7 +253,7 @@ Les politiques personnalisées sont **fail-open** : les erreurs ne bloquent jama
 
 | Échec | Comportement |
 |---------|----------|
-| `customPoliciesPath` non défini | Aucune politique personnalisée explicite ne s'exécute ; les politiques de convention et les intégrées continuent normalement |
+| `customPoliciesPaths` non défini | Aucune politique personnalisée explicite ne s'exécute ; les politiques de convention et les intégrées continuent normalement |
 | Fichier introuvable | Avertissement journalisé dans `~/.failproofai/hook.log` ; les politiques intégrées continuent |
 | Erreur de syntaxe/import (explicite) | Erreur journalisée dans `~/.failproofai/hook.log` ; politiques personnalisées explicites ignorées |
 | Erreur de syntaxe/import (convention) | Erreur journalisée ; ce fichier ignoré, les autres fichiers de convention se chargent quand même |

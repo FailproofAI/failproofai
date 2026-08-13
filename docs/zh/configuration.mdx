@@ -49,7 +49,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← 回退至 global
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** — 最先定义任意一种形式的作用域优先。
+**`customPoliciesPaths` / `customPoliciesPaths`** — 最先定义任意一种形式的作用域优先。
 
 **`disabledCustomPolicies`** — 取所有作用域的并集。当你在仪表板中关闭来自显式或约定策略文件中的某个策略时，仪表板会将带来源限定符的 ID 写入此处。未列出的策略默认保持启用；ID 包含来源文件信息，因此多个文件中同名的策略可以独立控制。
 
@@ -147,7 +147,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← 回退至 global
 
 非字符串值和空字符串会被静默忽略。若未设置 `hint`，行为保持不变（向后兼容）。
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
 类型：`string`（绝对路径）
 
@@ -157,7 +157,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← 回退至 global
 
 ### 基于约定的策略
 
-除显式的 `customPoliciesPath` 外，failproofai 还会自动发现并加载 `.failproofai/policies/` 目录中的策略文件：
+除显式的 `customPoliciesPaths` 外，failproofai 还会自动发现并加载 `.failproofai/policies/` 目录中的策略文件：
 
 | 级别 | 目录 | 作用域 |
 |-------|-----------|-------|
@@ -174,7 +174,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← 回退至 global
 
 **无需配置：** 约定策略无需在 `policies-config.json` 中添加任何条目。只需将文件放入目录，下次钩子事件触发时即会自动加载。
 
-**联合加载：** 项目级和用户级约定目录均会被扫描，两个级别的所有匹配文件都会被加载（与 `customPoliciesPath` 使用首个作用域优先的规则不同）。
+**联合加载：** 项目级和用户级约定目录均会被扫描，两个级别的所有匹配文件都会被加载（与 `customPoliciesPaths` 使用首个作用域优先的规则不同）。
 
 更多详情和示例请参见[自定义策略](/zh/custom-policies)。
 

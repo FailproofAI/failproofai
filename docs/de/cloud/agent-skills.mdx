@@ -1,30 +1,39 @@
 ---
 title: Agent skills
-description: "Three installable skills that let your coding agent operate FailproofAI Cloud, instrument your own agents, and build your evaluator — from plain-English requests."
+description: "Installable skills that let your coding agent operate FailproofAI Cloud, instrument your own agents, build your evaluator, and write enforcement policies — from plain-English requests."
 icon: wand-magic-sparkles
 ---
 
 You should not have to memorize a flag to ask *"is anything broken today?"*
 
-FailproofAI publishes three **Agent Skills** — small folders of instructions that a coding
+FailproofAI publishes four **Agent Skills** — small folders of instructions that a coding
 agent like Claude Code or Codex loads on demand when a task matches. They are not services,
 libraries, or plugins. Each one teaches your agent to drive something you already have,
 using credentials you already hold.
 
+Three of them cover FailproofAI Cloud. The fourth, `failproofai-policy-author`, covers the
+open-source half — turning a recurring agent mistake into a policy that blocks it.
+
 | Skill | Ask it to | What it touches |
 |---|---|---|
-| **`agenteye-cli`** | Read your data and run your organization — *"which sessions errored today?"*, *"give CI a key that can only push events"* | Drives the [CLI](/cloud/cli) as you |
+| **`agenteye-cli`** | Read your data and run your organization — *"which sessions errored today?"*, *"give CI a key that can only push events"* | Drives the [CLI](/de/cloud/cli) as you |
 | **`agenteye-python-sdk`** | Instrument your own agent so it reports at all — *"add observability to this agent"* | Writes code in your agent's repo |
 | **`agenteye-evaluator`** | Decide what quality means for you, then build the scorer | Writes code in your repo; reads your sessions |
+| **`failproofai-policy-author`** | Turn what an agent keeps doing wrong into enforcement — *"my agent keeps force-pushing"* | Writes policy files; reads your audit results |
 
-They hand off in that order: the SDK skill gets events flowing, the evaluator skill scores
-them, the CLI skill reads them back. Starting from scratch? Start at the top of that list.
+The first three hand off in that order: the SDK skill gets events flowing, the evaluator
+skill scores them, the CLI skill reads them back. Starting from scratch? Start at the top of
+that list.
+
+`failproofai-policy-author` is a separate entry point. It needs no cloud account and no
+connected machine — it works against the policies on your own machine, and it is the one to
+reach for after [`failproofai audit`](/de/audit) shows you what your agents actually do.
 
 ---
 
 ## Getting them
 
-All three live in FailproofAI's **public** skills collection:
+All four live in FailproofAI's **public** skills collection:
 **[github.com/FailproofAI/skills](https://github.com/FailproofAI/skills)**
 
 Nothing is gated. None of them carries a credential of its own — each only drives a tool
@@ -33,6 +42,9 @@ you have already installed, with the session you logged in with.
 ```bash
 # Claude Code, this project only
 npx skills add FailproofAI/skills --skill agenteye-cli -a claude-code
+
+# the policy-authoring skill — no cloud account needed
+npx skills add FailproofAI/skills --skill failproofai-policy-author -a claude-code
 
 # every project (installs to ~/.claude/skills/)
 npx skills add FailproofAI/skills --skill agenteye-cli -a claude-code -g --copy
@@ -44,8 +56,9 @@ npx skills add FailproofAI/skills --skill agenteye-cli -a codex
 npx skills list -a claude-code
 ```
 
-Swap the `--skill` value for `agenteye-python-sdk` or `agenteye-evaluator`. Installing
-several is the normal setup — the agent picks between them from what you ask.
+The four `--skill` values are `agenteye-cli`, `agenteye-python-sdk`, `agenteye-evaluator`
+and `failproofai-policy-author`. Installing several is the normal setup — the agent picks
+between them from what you ask.
 
 <Note>
   The skills ship as their own folders and are **not** inside the `pipx install agenteye`
@@ -77,7 +90,7 @@ you    yes
 agent  Done. Key "ci" created with events:add only. The secret is shown once — store it now.
 ```
 
-**Prerequisites:** the [`agenteye` CLI](/cloud/cli) installed and on `PATH`, your dashboard
+**Prerequisites:** the [`agenteye` CLI](/de/cloud/cli) installed and on `PATH`, your dashboard
 URL set, and a logged-in session (`agenteye login`). The skill **cannot** complete the
 emailed one-time-code login for you — it will tell you to run `agenteye login` when the
 session is missing or expired.
@@ -89,7 +102,7 @@ session is missing or expired.
   non-interactive caller, so the skill is written to state the exact command and wait for
   your OK before any change. **You are the confirmation step.**
 
-  This is a different blast radius from the [in-dashboard assistant](/cloud/assistant),
+  This is a different blast radius from the [in-dashboard assistant](/de/cloud/assistant),
   which is read-only with approval-gated authoring and can never delete.
 </Warning>
 
@@ -97,7 +110,7 @@ session is missing or expired.
 
 ## `agenteye-python-sdk` — instrument an agent, correctly
 
-The [SDK](/cloud/sdk) is small — thirteen event methods, all keyword-only — and a coding
+The [SDK](/de/cloud/sdk) is small — thirteen event methods, all keyword-only — and a coding
 agent can produce plausible instrumentation from the reference in a minute.
 
 The catch is that wrong instrumentation looks exactly like right instrumentation until
@@ -145,7 +158,7 @@ dashboard login, no key.
 
 ## `agenteye-evaluator` — decide what to score, then build the scorer
 
-The hard part of evaluation is not the code. The [HTTP contract](/cloud/evaluators) is
+The hard part of evaluation is not the code. The [HTTP contract](/de/cloud/evaluators) is
 small enough that an agent can implement it from the spec alone. Evaluators fail because
 they **score the wrong thing** — and an evaluator that scores the wrong thing is worse than
 none, because it produces a dashboard everyone learns to ignore.
@@ -180,11 +193,68 @@ asks before scaffolding.
 
 ---
 
+## `failproofai-policy-author` — turn a recurring mistake into enforcement
+
+The other three skills are about seeing what your agents did. This one is about stopping it
+happening again — and it is the only skill that works entirely on the open-source half, with
+no cloud account and no connected machine.
+
+```text
+you    my agent keeps force-pushing over my branch
+
+agent  Loading failproofai-policy-author.
+       `block-force-push` already ships as a builtin — no custom policy needed.
+       Checking whether it is enabled here, and for which agent CLIs.
+       If it is not, enabling it is one command:
+
+         failproofai policy add block-force-push
+
+       Want me to enable it?
+```
+
+It checks the builtins before writing anything, because the usual right answer is a rule
+that already exists. Only when nothing fits does it author a policy file, pick the event and
+tool to match on, and then **verify the policy actually fires** rather than assuming it did.
+
+Three things it is good at:
+
+<CardGroup cols={1}>
+
+<Card title="Acting on an audit" icon="list-check">
+  Run [`failproofai audit`](/de/audit), and it sorts the findings into what a policy can
+  actually prevent, what needs a different fix, and what is noise — then presents that
+  triage before changing anything.
+</Card>
+
+<Card title="Plain-English complaints" icon="comment">
+  *"it deleted my files again"* is enough. You do not have to know which event or tool the
+  policy should match on, or that a policy is what you want.
+</Card>
+
+<Card title="Making a rules file real" icon="file-shield">
+  A `CLAUDE.md` or `AGENTS.md` is advisory — the agent can ignore it. The skill extracts the
+  rules that are mechanically checkable and turns those into policies that fire on every
+  tool call.
+</Card>
+
+</CardGroup>
+
+**Prerequisites:** the `failproofai` CLI installed, and policies installed for at least one
+agent CLI ([`failproofai config`](/de/cli/config)). No cloud account, no login.
+
+<Note>
+  It deliberately stays in its lane: it will not read your cloud telemetry (that is
+  `agenteye-cli`), design evaluator scoring (`agenteye-evaluator`), fix the bug an agent
+  introduced, or write a repo invariant that belongs in a test.
+</Note>
+
+---
+
 ## How these compare to the in-dashboard assistant
 
 Two natural-language front doors, very different blast radii:
 
-| | Agent skills | [In-dashboard assistant](/cloud/assistant) |
+| | Agent skills | [In-dashboard assistant](/de/cloud/assistant) |
 |---|---|---|
 | Runs | On your workstation, in your coding agent | Server-side, in the dashboard |
 | Authenticates as | You, via your CLI session | Your dashboard session, scoped to your read permissions |
@@ -200,20 +270,28 @@ Both are useful, and most teams run both. Just know which one you are talking to
 
 <CardGroup cols={2}>
 
-<Card title="CLI reference" icon="terminal" href="/cloud/cli">
+<Card title="CLI reference" icon="terminal" href="/de/cloud/cli">
   Every command, flag, and JSON shape the CLI skill drives.
 </Card>
 
-<Card title="CLI recipes" icon="code" href="/cloud/cli-recipes">
+<Card title="CLI recipes" icon="code" href="/de/cloud/cli-recipes">
   `jq` patterns and exit-code handling for scripts and agents.
 </Card>
 
-<Card title="Python SDK" icon="python" href="/cloud/sdk">
+<Card title="Python SDK" icon="python" href="/de/cloud/sdk">
   The event reference the SDK skill writes against.
 </Card>
 
-<Card title="Evaluators" icon="ruler" href="/cloud/evaluators">
+<Card title="Evaluators" icon="ruler" href="/de/cloud/evaluators">
   The scoring contract the evaluator skill implements.
+</Card>
+
+<Card title="Built-in policies" icon="shield" href="/de/built-in-policies">
+  The 40 rules the policy-author skill checks before writing anything new.
+</Card>
+
+<Card title="Custom policies" icon="pen-to-square" href="/de/custom-policies">
+  The policy file format that skill writes against.
 </Card>
 
 </CardGroup>

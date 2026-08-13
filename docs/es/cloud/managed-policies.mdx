@@ -1,6 +1,6 @@
 ---
 title: Managed policies
-description: "Write a guardrail once, assign it, and every connected machine enforces it — with an observe-only rollout so you can see what it would block before it blocks anything."
+description: "Write a policy once, assign it, and every connected machine enforces it — with an observe-only rollout so you can see what it would block before it blocks anything."
 icon: cloud-arrow-down
 ---
 
@@ -89,7 +89,7 @@ from last quarter — it catches up on its next successful poll.
 
 Two related guarantees worth knowing:
 
-- **A local [pause](/policies#pausing-enforcement) does not suspend managed policies.**
+- **A local [pause](/es/policies#pausing-enforcement) does not suspend managed policies.**
   Someone can pause their own local rules for twenty minutes; they cannot pause what the
   organization deployed.
 - **Disconnecting actually disconnects.** `failproofai config --disconnect` clears the
@@ -112,7 +112,7 @@ The first `deny` wins and short-circuits the rest, so a managed policy that deni
 regardless of what a local file would have said. Instructions from every layer accumulate
 and are delivered together.
 
-[Full evaluation order →](/how-it-works#step-3-policies-run-in-order)
+[Full evaluation order →](/es/how-it-works)
 
 ---
 
@@ -140,7 +140,7 @@ customPolicies.add({
 });
 ```
 
-[Authoring reference →](/custom-policies)
+[Authoring reference →](/es/custom-policies)
 
 ---
 
@@ -163,20 +163,20 @@ A useful split:
 
 <CardGroup cols={2}>
 
-<Card title="Fleet" icon="server" href="/cloud/fleet">
-  Which machines are on which deployment, and which have no guardrails at all.
+<Card title="Fleet" icon="server" href="/es/cloud/fleet">
+  Which machines are on which deployment, and which have no policies at all.
 </Card>
 
-<Card title="Connect a machine" icon="plug" href="/cloud/connect">
+<Card title="Connect a machine" icon="plug" href="/es/cloud/connect">
   The `policies:pull` half of a connection.
 </Card>
 
-<Card title="Custom policies" icon="code" href="/custom-policies">
+<Card title="Custom policies" icon="code" href="/es/custom-policies">
   The authoring API shared by local and managed policies.
 </Card>
 
-<Card title="Built-in policies" icon="shield" href="/built-in-policies">
-  The 39 rules you can enable without writing anything.
+<Card title="Built-in policies" icon="shield" href="/es/built-in-policies">
+  The 40 rules you can enable without writing anything.
 </Card>
 
 </CardGroup>

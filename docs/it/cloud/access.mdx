@@ -109,7 +109,7 @@ Questi permessi supportano la pagina **Utenti** del dashboard, dove gli ambiti c
 | `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Visualizzazione delle definizioni di audit, della cronologia di esecuzione e dei risultati. |
 | `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Creazione, modifica, eliminazione ed esecuzione di audit; triage dei risultati (riconoscimento / silenziamento / dismissione / risoluzione / riapertura / assegnazione). |
 
-> **Nota:** Per concedere a una chiave la superficie di audit, assegna esplicitamente `audits:*` a essa. Vedi [Note di aggiornamento e compatibilità all'indietro](#note-di-aggiornamento-e-compatibilità-allindietro) per come i beneficiari esistenti sono stati migrati al rilascio di Audits.
+> **Nota:** Per concedere a una chiave la superficie di audit, assegna esplicitamente `audits:*` a essa. Vedi [Note di aggiornamento e compatibilità all'indietro](/it/cloud/access) per come i beneficiari esistenti sono stati migrati al rilascio di Audits.
 
 > L'endpoint del selettore dei destinatari `GET /alerts/recipients` (che elenca le email dei membri che un editor di avvisi può notificare) è raggiungibile da un titolare di **uno qualsiasi** tra `alerts:read` **o** `alerts:write`, così gli editor di avvisi possono popolare il selettore senza essere assegnati a `users:read`.
 

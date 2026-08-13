@@ -1,6 +1,6 @@
 ---
 title: "FailproofAI"
-description: "Guardrails that stop AI agents from doing damage, on every machine — and one cloud that governs the whole fleet and shows you exactly what happened."
+description: "Policies that stop AI agents from doing damage, on every machine — and one cloud that governs the whole fleet and shows you exactly what happened."
 ---
 
 [![npm weekly downloads](https://img.shields.io/npm/dw/failproofai?style=flat-square&color=2ea44f)](https://www.npmjs.com/package/failproofai)
@@ -10,15 +10,15 @@ credential into a model prompt, force-push over someone's work, wander off task,
 or quietly stop three steps short of done. One engineer watching one terminal catches
 most of it. A team running agents on twenty machines, overnight, catches none of it.
 
-**FailproofAI is the guardrail layer for that problem.** It hooks into the agent CLIs
+**FailproofAI is the policy layer for that problem.** It hooks into the agent CLIs
 your team already uses, decides in real time whether each tool call is allowed, and
 records what happened. It is one product with two halves that work as one system:
 
 <CardGroup cols={2}>
 
-<Card title="Guardrails on every machine" icon="shield-halved" href="/policies">
+<Card title="Policies on every machine" icon="shield-halved" href="/policies">
   A policy engine that runs *inside* the agent loop across **12 agent CLIs**. It blocks
-  what should never happen, redacts what should never be read, and refuses to let an
+  what should never happen, keeps secrets out of what the agent can read, and refuses to let an
   agent call itself done before the work actually is. Open source, local, fast enough to
   sit on every tool call.
 </Card>
@@ -48,7 +48,7 @@ of three decisions:
 | **deny** | The call never runs. The agent is told why, in words it can act on. |
 | **instruct** | The call runs, and the agent gets extra context to keep it on track. |
 
-**[39 built-in policies](/built-in-policies)** ship in the box — secret redaction,
+**[40 built-in policies](/built-in-policies)** ship in the box — secret detection,
 destructive-command blocking, branch protection, infrastructure guards, workflow gates.
 You enable the ones you want in a single command, tune them without writing code, and
 [write your own](/custom-policies) in JavaScript when your failure mode is specific to
@@ -75,7 +75,7 @@ policy comes *down* from the dashboard, and activity goes *up* to it. You stop a
 <CardGroup cols={2}>
 
 <Card title="It fails closed, not open" icon="lock">
-  On a configured machine, a guardrail that cannot answer **denies**. No silent
+  On a configured machine, a policy that cannot answer **denies**. No silent
   degradation into an unguarded state, no "the service was down so everything was
   allowed." [How that guarantee works →](/daemon)
 </Card>
@@ -148,7 +148,7 @@ policy comes *down* from the dashboard, and activity goes *up* to it. You stop a
 </Card>
 
 <Card title="Built-in policies" icon="shield" href="/built-in-policies">
-  All 39, with their parameters.
+  All 40, with their parameters.
 </Card>
 
 <Card title="Custom policies" icon="code" href="/custom-policies">

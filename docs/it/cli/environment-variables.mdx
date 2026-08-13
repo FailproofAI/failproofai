@@ -27,18 +27,21 @@ failproofai invia telemetria di utilizzo anonima per impostazione predefinita. E
 |----------|-------------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | Disabilita la telemetria di utilizzo anonima per questo processo |
 
-Per disattivarla permanentemente per la macchina, aggiungi questo a `~/.failproofai/config.toml`:
+Per disattivarla permanentemente per la macchina, aggiungi questo a `~/.failproofai/config.json`:
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
 Il file di configurazione è l'opzione da usare se esegui il **daemon failproofaid**.
 Il daemon è un servizio a livello di sistema, e il suo ambiente non include
 variabili esportate dalla tua shell — quindi `FAILPROOFAI_TELEMETRY_DISABLED` non
-può raggiungerlo. `[telemetry] enabled = false` viene letto sia dalla CLI che dal daemon.
+può raggiungerlo. `"telemetry": { "enabled": false }` viene letto sia dalla CLI che dal daemon.
 </Note>
 
 Il daemon invia solo il proprio **ciclo di vita**: che sia stato avviato (e se l'esecuzione precedente è terminata correttamente), che sia stato interrotto, quando il suo worker di valutazione è stato generato o riavviato, quando un'attività di raccolta ha avuto esito negativo, e l'esito di un pull di policy cloud. Questi portano valori e conteggi a bassa cardinalità — mai un percorso di file, un comando, una policy, un prompt, o qualcosa letto da una trascrizione. Non esiste alcun evento per ogni tool call.

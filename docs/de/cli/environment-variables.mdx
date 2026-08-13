@@ -29,18 +29,21 @@ kann niemals etwas wieder aktivieren, das in der Konfigurationsdatei deaktiviert
 |----------|-------------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | Anonyme Nutzungstelemetrie für diesen Prozess deaktivieren |
 
-Um die Telemetrie dauerhaft für das gesamte System zu deaktivieren, fügen Sie Folgendes zu `~/.failproofai/config.toml` hinzu:
+Um die Telemetrie dauerhaft für das gesamte System zu deaktivieren, fügen Sie Folgendes zu `~/.failproofai/config.json` hinzu:
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
 Die Konfigurationsdatei ist die richtige Option, wenn Sie den **failproofaid-Daemon** betreiben.
 Der Daemon ist ein systemweiter Dienst, dessen Umgebung keine aus Ihrer Shell exportierten
 Variablen enthält – `FAILPROOFAI_TELEMETRY_DISABLED` kann ihn daher nicht erreichen.
-`[telemetry] enabled = false` wird sowohl von der CLI als auch vom Daemon gelesen.
+`"telemetry": { "enabled": false }` wird sowohl von der CLI als auch vom Daemon gelesen.
 </Note>
 
 Der Daemon meldet ausschließlich seinen eigenen **Lebenszyklus**: ob er gestartet wurde (und ob der

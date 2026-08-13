@@ -65,7 +65,7 @@ Connecting turns on **both** streams by default:
 
 | Stream | Contents |
 |---|---|
-| **Policy decisions** | Which policy fired, on which tool, in which session, with what verdict and reason. Tool *names*, never file contents. |
+| **Policy decisions** | Which policy fired, on which tool, in which session, with what verdict and reason. Tool *names*, never file contents — plus the working-directory path and the OS username the daemon runs as. |
 | **Session transcripts** | The full agent session — prompts, model responses, file contents the agent read or wrote, and command output. |
 
 Transcripts are the point. A dashboard that shows only decisions is the empty-dashboard
@@ -79,8 +79,8 @@ buried behind a flag nobody finds.
 failproofai config --connect <url> --token <key> --no-transcripts
 ```
 
-Decisions still flow, transcripts never do. `failproofai config --status` always reports
-which mode is in effect, so nobody has to guess.
+Decisions still flow, transcripts never do. The mode is recorded in
+`~/.failproofai/config.json` under `collector.sessions` — read it there to confirm.
 
 Whichever you choose, the machine keeps enforcing locally either way — connecting adds
 visibility and central policy, it never removes protection.
@@ -197,7 +197,7 @@ A few things that make this safe to run unattended:
 - **Exit codes mean something.** A failed connect exits non-zero with the reason on stderr.
 
 <Tip>
-  Bake the guardrails into your machine image and connect at boot. A machine that has
+  Bake the policies into your machine image and connect at boot. A machine that has
   FailproofAI but is not connected still enforces locally — it just does not appear in your
   fleet view, which is the one gap the [fleet page](/cloud/fleet) is built to make obvious.
 </Tip>
@@ -257,7 +257,7 @@ it was ever connected.
 
 <Accordion title="Every tool call is being denied">
   That is the [fail-closed guarantee](/daemon#fail-closed) doing its job: on a configured
-  machine, a guardrail that cannot answer denies. Check the service is running with
+  machine, a policy that cannot answer denies. Check the service is running with
   `failproofai config --status`. If it reports a protocol-version mismatch, run
   `failproofai config` to bring both halves back into step.
 </Accordion>

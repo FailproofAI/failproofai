@@ -55,7 +55,7 @@ failproofai
   até você encerrá-lo com `Ctrl+C`.
 </Tip>
 
-O dashboard varre transcrições passadas da CLI do agente nesta máquina (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) e relata com que frequência o agente fez coisas que o failproofai foi criado para prevenir — verificações de variáveis de ambiente, force pushes, prefixos redundantes `cd <cwd>`, loops de polling com sleep, releitura de arquivos recém-editados, e mais.
+O dashboard varre transcrições passadas da CLI do agente nesta máquina (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Antigravity, Devin, Factory, Goose, Hermes, OpenClaw) e relata com que frequência o agente fez coisas que o failproofai foi criado para prevenir — verificações de variáveis de ambiente, force pushes, prefixos redundantes `cd <cwd>`, loops de polling com sleep, releitura de arquivos recém-editados, e mais.
 
 Para cada transcrição, cada evento de uso de ferramenta é reproduzido pelas 39 políticas embutidas **e** pelos 8 detectores exclusivos de auditoria que identificam padrões ainda não cobertos por políticas em tempo real. As contagens são agregadas por política/detector em todas as sessões.
 
@@ -71,18 +71,21 @@ A página `/audit` é um **pôster** de tela única e compartilhável seguido po
 
 ## Auditorias agendadas
 
-Se você executa o **daemon failproofaid** (veja [`failproofai config`](/pt-br/cli/install-policies)),
+Se você executa o **daemon failproofaid** (veja [`failproofai config`](/pt-br/cli/config)),
 ele pode re-executar a auditoria para você em um agendamento e atualizar o relatório `/audit`
 em segundo plano. Está **desativado por padrão**, pois a varredura lê o *conteúdo*
 de cada transcrição de sessão do agente nesta máquina — nada é varrido por um timer
 até que você solicite.
 
-Ative em `~/.failproofai/config.toml`:
+Ative em `~/.failproofai/config.json`:
 
-```toml
-[audit]
-auto = true
-interval_days = 7
+```json
+{
+  "audit": {
+    "auto": true,
+    "interval_days": 7
+  }
+}
 ```
 
 | Chave | Significado |
@@ -97,7 +100,7 @@ interval_days = 7
 - Uma varredura é ignorada se `failproofai audit` ou o re-run do dashboard já estiver em andamento; ela é
   repetida logo depois em vez de ser tratada como falha.
 - O progresso é gravado em `~/.failproofai/state/audit-schedule.json` (última execução,
-  próximo prazo). O daemon é o responsável por esse arquivo — altere a cadência em `config.toml`.
+  próximo prazo). O daemon é o responsável por esse arquivo — altere a cadência em `config.json`.
 
 <Note>
 Se você habilitou isso em uma máquina configurada com uma versão mais antiga do failproofai, execute

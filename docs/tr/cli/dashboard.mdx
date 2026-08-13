@@ -11,18 +11,14 @@ Web panosunu `http://localhost:8020` adresinde başlatır.
 
 ## Seçenekler
 
-| Bayrak | Açıklama |
-|------|-------------|
-| `--port <number>` | Dinlenecek port (varsayılan: `8020`) |
-| `--allowed-origins <origins>` | Geliştirme kaynaklarına erişime izin verilen virgülle ayrılmış konaklar/IP'ler |
+The dashboard takes no flags — `failproofai` rejects any it does not recognize. The port is fixed at `8020`.
 
 Panoyu varsayılan olmayan bir Claude proje klasörüne yönlendirmek için başlatırken `CLAUDE_PROJECTS_PATH` ortam değişkenini ayarlayın.
 
 ## Örnekler
 
 ```bash
-# Farklı bir portta başlatın
-failproofai --port 9000
+failproofai
 
 # Ortam değişkeni aracılığıyla özel bir Claude projeleri yolu kullanın
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai

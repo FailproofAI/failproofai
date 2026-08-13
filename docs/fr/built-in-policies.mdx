@@ -14,15 +14,15 @@ Les politiques sont regroupées par catégories :
 
 | Catégorie | Politiques | Type de hook |
 |----------|----------|-----------|
-| [Commandes dangereuses](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
-| [Commandes infra](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
+| [Commandes dangereuses](/fr/built-in-policies) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
+| [Commandes infra](/fr/built-in-policies) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
 | [Secrets (sanitizers)](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
-| [Environnement](#environment) | block-env-files, protect-env-vars | PreToolUse |
-| [Accès aux fichiers](#file-access) | block-read-outside-cwd, block-secrets-write | PreToolUse |
+| [Environnement](/fr/built-in-policies) | block-env-files, protect-env-vars | PreToolUse |
+| [Accès aux fichiers](/fr/built-in-policies) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
-| [Base de données](#database) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
-| [Avertissements](#warnings) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
-| [Gestionnaires de paquets](#package-managers) | prefer-package-manager | PreToolUse |
+| [Base de données](/fr/built-in-policies) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
+| [Avertissements](/fr/built-in-policies) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
+| [Gestionnaires de paquets](/fr/built-in-policies) | prefer-package-manager | PreToolUse |
 | [Workflow](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
 - **`block-`** — empêche l'agent de continuer.
@@ -50,7 +50,7 @@ Si un nom ne contient pas de `/`, failproofai le considère comme appartenant à
 ---
 
 <Tip>
-Toutes les politiques acceptent un champ optionnel `hint` dans `policyParams`. Le hint est ajouté au message deny ou instruct que Claude reçoit, fournissant des indications concrètes sans modifier le code de la politique. Fonctionne avec les politiques intégrées, personnalisées et de convention. Voir [Configuration → hint](/fr/configuration#hint-cross-cutting) pour plus de détails.
+Toutes les politiques acceptent un champ optionnel `hint` dans `policyParams`. Le hint est ajouté au message deny ou instruct que Claude reçoit, fournissant des indications concrètes sans modifier le code de la politique. Fonctionne avec les politiques intégrées, personnalisées et de convention. Voir [Configuration → hint](/fr/configuration) pour plus de détails.
 </Tip>
 
 ---
@@ -69,7 +69,7 @@ Bloque une commande qui exécute un binaire d'élévation **en position de comma
 Parce qu'elle s'ancre sur la position de commande plutôt que sur l'apparition du mot n'importe où, elle ne se déclenche **pas** sur des commandes qui le mentionnent simplement — `grep -r sudo /etc`, `cat /etc/sudoers`, `git commit -m "fix sudo handling"`, ou une alternance `grep` contenant le mot s'exécutent normalement.
 
 <Warning>
-Cela arrête la tentative évidente ; cela ne ferme pas toute la classe. Un agent capable d'exécuter un shell arbitraire peut encore atteindre l'élévation indirectement — via une variable (`S=sudo; $S …`), un pipe base64 décodé, ou un script wrapper sur le disque — car aucune inspection d'une seule chaîne de commande ne peut les suivre. Considérez ceci comme un garde-fou contre les erreurs et les escalades non intentionnelles, pas comme une frontière de sécurité contre un agent déterminé. Une vraie frontière doit être imposée en dessous du shell.
+Cela arrête la tentative évidente ; cela ne ferme pas toute la classe. Un agent capable d'exécuter un shell arbitraire peut encore atteindre l'élévation indirectement — via une variable (`S=sudo; $S …`), un pipe base64 décodé, ou un script wrapper sur le disque — car aucune inspection d'une seule chaîne de commande ne peut les suivre. Considérez ceci comme un politique contre les erreurs et les escalades non intentionnelles, pas comme une frontière de sécurité contre un agent déterminé. Une vraie frontière doit être imposée en dessous du shell.
 </Warning>
 
 **Paramètres :**
@@ -543,7 +543,7 @@ Pour autoriser le push vers toutes les branches (désactivant ainsi cette politi
 **Événement :** PreToolUse (Bash)  
 **Comportement par défaut :** Refuse `git push --force` et `git push -f`.
 
-Aucun paramètre spécifique à la politique. Utilisez le [`hint`](/fr/configuration#hint-cross-cutting) transversal pour suggérer des alternatives :
+Aucun paramètre spécifique à la politique. Utilisez le [`hint`](/fr/configuration) transversal pour suggérer des alternatives :
 
 ```json
 {

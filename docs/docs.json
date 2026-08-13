@@ -44,7 +44,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "policies",
                   "built-in-policies",
@@ -153,7 +153,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "zh/policies",
                   "zh/built-in-policies",
@@ -262,7 +262,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "ja/policies",
                   "ja/built-in-policies",
@@ -371,7 +371,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "ko/policies",
                   "ko/built-in-policies",
@@ -480,7 +480,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "es/policies",
                   "es/built-in-policies",
@@ -589,7 +589,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "pt-br/policies",
                   "pt-br/built-in-policies",
@@ -698,7 +698,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "de/policies",
                   "de/built-in-policies",
@@ -807,7 +807,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "fr/policies",
                   "fr/built-in-policies",
@@ -916,7 +916,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "ru/policies",
                   "ru/built-in-policies",
@@ -1025,7 +1025,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "hi/policies",
                   "hi/built-in-policies",
@@ -1134,7 +1134,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "tr/policies",
                   "tr/built-in-policies",
@@ -1243,7 +1243,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "vi/policies",
                   "vi/built-in-policies",
@@ -1352,7 +1352,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "it/policies",
                   "it/built-in-policies",
@@ -1461,7 +1461,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "ar/policies",
                   "ar/built-in-policies",
@@ -1570,7 +1570,7 @@
                 ]
               },
               {
-                "group": "Guardrails",
+                "group": "Policies",
                 "pages": [
                   "he/policies",
                   "he/built-in-policies",
@@ -1851,11 +1851,11 @@
       "destination": "/cloud/capture"
     },
     {
-      "source": "/cloud/collector-installation",
+      "source": "/agenteye/collector-installation",
       "destination": "/cloud/overview"
     },
     {
-      "source": "/cloud/collector-migration",
+      "source": "/agenteye/collector-migration",
       "destination": "/cloud/overview"
     },
     {
@@ -1863,11 +1863,11 @@
       "destination": "/concepts"
     },
     {
-      "source": "/cloud/deployment",
+      "source": "/agenteye/deployment",
       "destination": "/cloud/overview"
     },
     {
-      "source": "/cloud/deployment-options",
+      "source": "/agenteye/deployment-options",
       "destination": "/cloud/overview"
     },
     {
@@ -1883,19 +1883,19 @@
       "destination": "/cloud/agent-skills"
     },
     {
-      "source": "/cloud/faq",
+      "source": "/agenteye/faq",
       "destination": "/cloud/overview"
     },
     {
-      "source": "/cloud/getting-started",
+      "source": "/agenteye/getting-started",
       "destination": "/cloud/overview"
     },
     {
-      "source": "/cloud/github-token",
+      "source": "/agenteye/github-token",
       "destination": "/cloud/access"
     },
     {
-      "source": "/cloud/health-monitoring",
+      "source": "/agenteye/health-monitoring",
       "destination": "/cloud/overview"
     },
     {
@@ -1903,11 +1903,11 @@
       "destination": "/cloud/capture"
     },
     {
-      "source": "/cloud/kubernetes-deployment",
+      "source": "/agenteye/kubernetes-deployment",
       "destination": "/cloud/overview"
     },
     {
-      "source": "/cloud/managed-deployment",
+      "source": "/agenteye/managed-deployment",
       "destination": "/cloud/overview"
     },
     {
@@ -1927,12 +1927,1748 @@
       "destination": "/cloud/agent-skills"
     },
     {
-      "source": "/cloud/single-pod-deployment",
+      "source": "/agenteye/single-pod-deployment",
       "destination": "/cloud/overview"
     },
     {
       "source": "/cloud/telemetry",
       "destination": "/cloud/performance"
+    },
+    {
+      "source": "/agenteye/tenant-management",
+      "destination": "/cloud/access"
+    },
+    {
+      "source": "/agenteye/troubleshooting",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/getting-started",
+      "destination": "/quickstart"
+    },
+    {
+      "source": "/ar/agenteye/alerts",
+      "destination": "/ar/cloud/alerts"
+    },
+    {
+      "source": "/ar/agenteye/api-keys",
+      "destination": "/ar/cloud/access"
+    },
+    {
+      "source": "/ar/agenteye/assistant",
+      "destination": "/ar/cloud/assistant"
+    },
+    {
+      "source": "/ar/agenteye/audits",
+      "destination": "/ar/cloud/audits"
+    },
+    {
+      "source": "/ar/agenteye/cli",
+      "destination": "/ar/cloud/cli"
+    },
+    {
+      "source": "/ar/agenteye/cli-and-agents",
+      "destination": "/ar/cloud/cli"
+    },
+    {
+      "source": "/ar/agenteye/cli-recipes",
+      "destination": "/ar/cloud/cli-recipes"
+    },
+    {
+      "source": "/ar/agenteye/cli-skill",
+      "destination": "/ar/cloud/agent-skills"
+    },
+    {
+      "source": "/ar/agenteye/codex-capture",
+      "destination": "/ar/cloud/capture"
+    },
+    {
+      "source": "/ar/agenteye/concepts",
+      "destination": "/ar/concepts"
+    },
+    {
+      "source": "/ar/agenteye/dashboards",
+      "destination": "/ar/cloud/dashboards"
+    },
+    {
+      "source": "/ar/agenteye/error-tracking",
+      "destination": "/ar/cloud/errors"
+    },
+    {
+      "source": "/ar/agenteye/evaluation-suite",
+      "destination": "/ar/cloud/evaluators"
+    },
+    {
+      "source": "/ar/agenteye/evaluations",
+      "destination": "/ar/cloud/evaluations"
+    },
+    {
+      "source": "/ar/agenteye/evaluator-skill",
+      "destination": "/ar/cloud/agent-skills"
+    },
+    {
+      "source": "/ar/agenteye/event-stream",
+      "destination": "/ar/cloud/event-stream"
+    },
+    {
+      "source": "/ar/agenteye/hermes-capture",
+      "destination": "/ar/cloud/capture"
+    },
+    {
+      "source": "/ar/agenteye/incidents",
+      "destination": "/ar/cloud/incidents"
+    },
+    {
+      "source": "/ar/agenteye/observability",
+      "destination": "/ar/cloud/overview"
+    },
+    {
+      "source": "/ar/agenteye/openclaw-capture",
+      "destination": "/ar/cloud/capture"
+    },
+    {
+      "source": "/ar/agenteye/overview",
+      "destination": "/ar/cloud/overview"
+    },
+    {
+      "source": "/ar/agenteye/python-sdk",
+      "destination": "/ar/cloud/sdk"
+    },
+    {
+      "source": "/ar/agenteye/python-sdk-skill",
+      "destination": "/ar/cloud/agent-skills"
+    },
+    {
+      "source": "/ar/agenteye/queries",
+      "destination": "/ar/cloud/queries"
+    },
+    {
+      "source": "/ar/agenteye/security",
+      "destination": "/ar/cloud/security"
+    },
+    {
+      "source": "/ar/agenteye/sessions",
+      "destination": "/ar/cloud/sessions"
+    },
+    {
+      "source": "/ar/agenteye/telemetry",
+      "destination": "/ar/cloud/performance"
+    },
+    {
+      "source": "/ar/architecture",
+      "destination": "/ar/how-it-works"
+    },
+    {
+      "source": "/ar/cli/audit",
+      "destination": "/ar/audit"
+    },
+    {
+      "source": "/ar/getting-started",
+      "destination": "/ar/quickstart"
+    },
+    {
+      "source": "/de/agenteye/alerts",
+      "destination": "/de/cloud/alerts"
+    },
+    {
+      "source": "/de/agenteye/api-keys",
+      "destination": "/de/cloud/access"
+    },
+    {
+      "source": "/de/agenteye/assistant",
+      "destination": "/de/cloud/assistant"
+    },
+    {
+      "source": "/de/agenteye/audits",
+      "destination": "/de/cloud/audits"
+    },
+    {
+      "source": "/de/agenteye/cli",
+      "destination": "/de/cloud/cli"
+    },
+    {
+      "source": "/de/agenteye/cli-and-agents",
+      "destination": "/de/cloud/cli"
+    },
+    {
+      "source": "/de/agenteye/cli-recipes",
+      "destination": "/de/cloud/cli-recipes"
+    },
+    {
+      "source": "/de/agenteye/cli-skill",
+      "destination": "/de/cloud/agent-skills"
+    },
+    {
+      "source": "/de/agenteye/codex-capture",
+      "destination": "/de/cloud/capture"
+    },
+    {
+      "source": "/de/agenteye/concepts",
+      "destination": "/de/concepts"
+    },
+    {
+      "source": "/de/agenteye/dashboards",
+      "destination": "/de/cloud/dashboards"
+    },
+    {
+      "source": "/de/agenteye/error-tracking",
+      "destination": "/de/cloud/errors"
+    },
+    {
+      "source": "/de/agenteye/evaluation-suite",
+      "destination": "/de/cloud/evaluators"
+    },
+    {
+      "source": "/de/agenteye/evaluations",
+      "destination": "/de/cloud/evaluations"
+    },
+    {
+      "source": "/de/agenteye/evaluator-skill",
+      "destination": "/de/cloud/agent-skills"
+    },
+    {
+      "source": "/de/agenteye/event-stream",
+      "destination": "/de/cloud/event-stream"
+    },
+    {
+      "source": "/de/agenteye/hermes-capture",
+      "destination": "/de/cloud/capture"
+    },
+    {
+      "source": "/de/agenteye/incidents",
+      "destination": "/de/cloud/incidents"
+    },
+    {
+      "source": "/de/agenteye/observability",
+      "destination": "/de/cloud/overview"
+    },
+    {
+      "source": "/de/agenteye/openclaw-capture",
+      "destination": "/de/cloud/capture"
+    },
+    {
+      "source": "/de/agenteye/overview",
+      "destination": "/de/cloud/overview"
+    },
+    {
+      "source": "/de/agenteye/python-sdk",
+      "destination": "/de/cloud/sdk"
+    },
+    {
+      "source": "/de/agenteye/python-sdk-skill",
+      "destination": "/de/cloud/agent-skills"
+    },
+    {
+      "source": "/de/agenteye/queries",
+      "destination": "/de/cloud/queries"
+    },
+    {
+      "source": "/de/agenteye/security",
+      "destination": "/de/cloud/security"
+    },
+    {
+      "source": "/de/agenteye/sessions",
+      "destination": "/de/cloud/sessions"
+    },
+    {
+      "source": "/de/agenteye/telemetry",
+      "destination": "/de/cloud/performance"
+    },
+    {
+      "source": "/de/architecture",
+      "destination": "/de/how-it-works"
+    },
+    {
+      "source": "/de/cli/audit",
+      "destination": "/de/audit"
+    },
+    {
+      "source": "/de/getting-started",
+      "destination": "/de/quickstart"
+    },
+    {
+      "source": "/es/agenteye/alerts",
+      "destination": "/es/cloud/alerts"
+    },
+    {
+      "source": "/es/agenteye/api-keys",
+      "destination": "/es/cloud/access"
+    },
+    {
+      "source": "/es/agenteye/assistant",
+      "destination": "/es/cloud/assistant"
+    },
+    {
+      "source": "/es/agenteye/audits",
+      "destination": "/es/cloud/audits"
+    },
+    {
+      "source": "/es/agenteye/cli",
+      "destination": "/es/cloud/cli"
+    },
+    {
+      "source": "/es/agenteye/cli-and-agents",
+      "destination": "/es/cloud/cli"
+    },
+    {
+      "source": "/es/agenteye/cli-recipes",
+      "destination": "/es/cloud/cli-recipes"
+    },
+    {
+      "source": "/es/agenteye/cli-skill",
+      "destination": "/es/cloud/agent-skills"
+    },
+    {
+      "source": "/es/agenteye/codex-capture",
+      "destination": "/es/cloud/capture"
+    },
+    {
+      "source": "/es/agenteye/concepts",
+      "destination": "/es/concepts"
+    },
+    {
+      "source": "/es/agenteye/dashboards",
+      "destination": "/es/cloud/dashboards"
+    },
+    {
+      "source": "/es/agenteye/error-tracking",
+      "destination": "/es/cloud/errors"
+    },
+    {
+      "source": "/es/agenteye/evaluation-suite",
+      "destination": "/es/cloud/evaluators"
+    },
+    {
+      "source": "/es/agenteye/evaluations",
+      "destination": "/es/cloud/evaluations"
+    },
+    {
+      "source": "/es/agenteye/evaluator-skill",
+      "destination": "/es/cloud/agent-skills"
+    },
+    {
+      "source": "/es/agenteye/event-stream",
+      "destination": "/es/cloud/event-stream"
+    },
+    {
+      "source": "/es/agenteye/hermes-capture",
+      "destination": "/es/cloud/capture"
+    },
+    {
+      "source": "/es/agenteye/incidents",
+      "destination": "/es/cloud/incidents"
+    },
+    {
+      "source": "/es/agenteye/observability",
+      "destination": "/es/cloud/overview"
+    },
+    {
+      "source": "/es/agenteye/openclaw-capture",
+      "destination": "/es/cloud/capture"
+    },
+    {
+      "source": "/es/agenteye/overview",
+      "destination": "/es/cloud/overview"
+    },
+    {
+      "source": "/es/agenteye/python-sdk",
+      "destination": "/es/cloud/sdk"
+    },
+    {
+      "source": "/es/agenteye/python-sdk-skill",
+      "destination": "/es/cloud/agent-skills"
+    },
+    {
+      "source": "/es/agenteye/queries",
+      "destination": "/es/cloud/queries"
+    },
+    {
+      "source": "/es/agenteye/security",
+      "destination": "/es/cloud/security"
+    },
+    {
+      "source": "/es/agenteye/sessions",
+      "destination": "/es/cloud/sessions"
+    },
+    {
+      "source": "/es/agenteye/telemetry",
+      "destination": "/es/cloud/performance"
+    },
+    {
+      "source": "/es/architecture",
+      "destination": "/es/how-it-works"
+    },
+    {
+      "source": "/es/cli/audit",
+      "destination": "/es/audit"
+    },
+    {
+      "source": "/es/getting-started",
+      "destination": "/es/quickstart"
+    },
+    {
+      "source": "/fr/agenteye/alerts",
+      "destination": "/fr/cloud/alerts"
+    },
+    {
+      "source": "/fr/agenteye/api-keys",
+      "destination": "/fr/cloud/access"
+    },
+    {
+      "source": "/fr/agenteye/assistant",
+      "destination": "/fr/cloud/assistant"
+    },
+    {
+      "source": "/fr/agenteye/audits",
+      "destination": "/fr/cloud/audits"
+    },
+    {
+      "source": "/fr/agenteye/cli",
+      "destination": "/fr/cloud/cli"
+    },
+    {
+      "source": "/fr/agenteye/cli-and-agents",
+      "destination": "/fr/cloud/cli"
+    },
+    {
+      "source": "/fr/agenteye/cli-recipes",
+      "destination": "/fr/cloud/cli-recipes"
+    },
+    {
+      "source": "/fr/agenteye/cli-skill",
+      "destination": "/fr/cloud/agent-skills"
+    },
+    {
+      "source": "/fr/agenteye/codex-capture",
+      "destination": "/fr/cloud/capture"
+    },
+    {
+      "source": "/fr/agenteye/concepts",
+      "destination": "/fr/concepts"
+    },
+    {
+      "source": "/fr/agenteye/dashboards",
+      "destination": "/fr/cloud/dashboards"
+    },
+    {
+      "source": "/fr/agenteye/error-tracking",
+      "destination": "/fr/cloud/errors"
+    },
+    {
+      "source": "/fr/agenteye/evaluation-suite",
+      "destination": "/fr/cloud/evaluators"
+    },
+    {
+      "source": "/fr/agenteye/evaluations",
+      "destination": "/fr/cloud/evaluations"
+    },
+    {
+      "source": "/fr/agenteye/evaluator-skill",
+      "destination": "/fr/cloud/agent-skills"
+    },
+    {
+      "source": "/fr/agenteye/event-stream",
+      "destination": "/fr/cloud/event-stream"
+    },
+    {
+      "source": "/fr/agenteye/hermes-capture",
+      "destination": "/fr/cloud/capture"
+    },
+    {
+      "source": "/fr/agenteye/incidents",
+      "destination": "/fr/cloud/incidents"
+    },
+    {
+      "source": "/fr/agenteye/observability",
+      "destination": "/fr/cloud/overview"
+    },
+    {
+      "source": "/fr/agenteye/openclaw-capture",
+      "destination": "/fr/cloud/capture"
+    },
+    {
+      "source": "/fr/agenteye/overview",
+      "destination": "/fr/cloud/overview"
+    },
+    {
+      "source": "/fr/agenteye/python-sdk",
+      "destination": "/fr/cloud/sdk"
+    },
+    {
+      "source": "/fr/agenteye/python-sdk-skill",
+      "destination": "/fr/cloud/agent-skills"
+    },
+    {
+      "source": "/fr/agenteye/queries",
+      "destination": "/fr/cloud/queries"
+    },
+    {
+      "source": "/fr/agenteye/security",
+      "destination": "/fr/cloud/security"
+    },
+    {
+      "source": "/fr/agenteye/sessions",
+      "destination": "/fr/cloud/sessions"
+    },
+    {
+      "source": "/fr/agenteye/telemetry",
+      "destination": "/fr/cloud/performance"
+    },
+    {
+      "source": "/fr/architecture",
+      "destination": "/fr/how-it-works"
+    },
+    {
+      "source": "/fr/cli/audit",
+      "destination": "/fr/audit"
+    },
+    {
+      "source": "/fr/getting-started",
+      "destination": "/fr/quickstart"
+    },
+    {
+      "source": "/he/agenteye/alerts",
+      "destination": "/he/cloud/alerts"
+    },
+    {
+      "source": "/he/agenteye/api-keys",
+      "destination": "/he/cloud/access"
+    },
+    {
+      "source": "/he/agenteye/assistant",
+      "destination": "/he/cloud/assistant"
+    },
+    {
+      "source": "/he/agenteye/audits",
+      "destination": "/he/cloud/audits"
+    },
+    {
+      "source": "/he/agenteye/cli",
+      "destination": "/he/cloud/cli"
+    },
+    {
+      "source": "/he/agenteye/cli-and-agents",
+      "destination": "/he/cloud/cli"
+    },
+    {
+      "source": "/he/agenteye/cli-recipes",
+      "destination": "/he/cloud/cli-recipes"
+    },
+    {
+      "source": "/he/agenteye/cli-skill",
+      "destination": "/he/cloud/agent-skills"
+    },
+    {
+      "source": "/he/agenteye/codex-capture",
+      "destination": "/he/cloud/capture"
+    },
+    {
+      "source": "/he/agenteye/concepts",
+      "destination": "/he/concepts"
+    },
+    {
+      "source": "/he/agenteye/dashboards",
+      "destination": "/he/cloud/dashboards"
+    },
+    {
+      "source": "/he/agenteye/error-tracking",
+      "destination": "/he/cloud/errors"
+    },
+    {
+      "source": "/he/agenteye/evaluation-suite",
+      "destination": "/he/cloud/evaluators"
+    },
+    {
+      "source": "/he/agenteye/evaluations",
+      "destination": "/he/cloud/evaluations"
+    },
+    {
+      "source": "/he/agenteye/evaluator-skill",
+      "destination": "/he/cloud/agent-skills"
+    },
+    {
+      "source": "/he/agenteye/event-stream",
+      "destination": "/he/cloud/event-stream"
+    },
+    {
+      "source": "/he/agenteye/hermes-capture",
+      "destination": "/he/cloud/capture"
+    },
+    {
+      "source": "/he/agenteye/incidents",
+      "destination": "/he/cloud/incidents"
+    },
+    {
+      "source": "/he/agenteye/observability",
+      "destination": "/he/cloud/overview"
+    },
+    {
+      "source": "/he/agenteye/openclaw-capture",
+      "destination": "/he/cloud/capture"
+    },
+    {
+      "source": "/he/agenteye/overview",
+      "destination": "/he/cloud/overview"
+    },
+    {
+      "source": "/he/agenteye/python-sdk",
+      "destination": "/he/cloud/sdk"
+    },
+    {
+      "source": "/he/agenteye/python-sdk-skill",
+      "destination": "/he/cloud/agent-skills"
+    },
+    {
+      "source": "/he/agenteye/queries",
+      "destination": "/he/cloud/queries"
+    },
+    {
+      "source": "/he/agenteye/security",
+      "destination": "/he/cloud/security"
+    },
+    {
+      "source": "/he/agenteye/sessions",
+      "destination": "/he/cloud/sessions"
+    },
+    {
+      "source": "/he/agenteye/telemetry",
+      "destination": "/he/cloud/performance"
+    },
+    {
+      "source": "/he/architecture",
+      "destination": "/he/how-it-works"
+    },
+    {
+      "source": "/he/cli/audit",
+      "destination": "/he/audit"
+    },
+    {
+      "source": "/he/getting-started",
+      "destination": "/he/quickstart"
+    },
+    {
+      "source": "/hi/agenteye/alerts",
+      "destination": "/hi/cloud/alerts"
+    },
+    {
+      "source": "/hi/agenteye/api-keys",
+      "destination": "/hi/cloud/access"
+    },
+    {
+      "source": "/hi/agenteye/assistant",
+      "destination": "/hi/cloud/assistant"
+    },
+    {
+      "source": "/hi/agenteye/audits",
+      "destination": "/hi/cloud/audits"
+    },
+    {
+      "source": "/hi/agenteye/cli",
+      "destination": "/hi/cloud/cli"
+    },
+    {
+      "source": "/hi/agenteye/cli-and-agents",
+      "destination": "/hi/cloud/cli"
+    },
+    {
+      "source": "/hi/agenteye/cli-recipes",
+      "destination": "/hi/cloud/cli-recipes"
+    },
+    {
+      "source": "/hi/agenteye/cli-skill",
+      "destination": "/hi/cloud/agent-skills"
+    },
+    {
+      "source": "/hi/agenteye/codex-capture",
+      "destination": "/hi/cloud/capture"
+    },
+    {
+      "source": "/hi/agenteye/concepts",
+      "destination": "/hi/concepts"
+    },
+    {
+      "source": "/hi/agenteye/dashboards",
+      "destination": "/hi/cloud/dashboards"
+    },
+    {
+      "source": "/hi/agenteye/error-tracking",
+      "destination": "/hi/cloud/errors"
+    },
+    {
+      "source": "/hi/agenteye/evaluation-suite",
+      "destination": "/hi/cloud/evaluators"
+    },
+    {
+      "source": "/hi/agenteye/evaluations",
+      "destination": "/hi/cloud/evaluations"
+    },
+    {
+      "source": "/hi/agenteye/evaluator-skill",
+      "destination": "/hi/cloud/agent-skills"
+    },
+    {
+      "source": "/hi/agenteye/event-stream",
+      "destination": "/hi/cloud/event-stream"
+    },
+    {
+      "source": "/hi/agenteye/hermes-capture",
+      "destination": "/hi/cloud/capture"
+    },
+    {
+      "source": "/hi/agenteye/incidents",
+      "destination": "/hi/cloud/incidents"
+    },
+    {
+      "source": "/hi/agenteye/observability",
+      "destination": "/hi/cloud/overview"
+    },
+    {
+      "source": "/hi/agenteye/openclaw-capture",
+      "destination": "/hi/cloud/capture"
+    },
+    {
+      "source": "/hi/agenteye/overview",
+      "destination": "/hi/cloud/overview"
+    },
+    {
+      "source": "/hi/agenteye/python-sdk",
+      "destination": "/hi/cloud/sdk"
+    },
+    {
+      "source": "/hi/agenteye/python-sdk-skill",
+      "destination": "/hi/cloud/agent-skills"
+    },
+    {
+      "source": "/hi/agenteye/queries",
+      "destination": "/hi/cloud/queries"
+    },
+    {
+      "source": "/hi/agenteye/security",
+      "destination": "/hi/cloud/security"
+    },
+    {
+      "source": "/hi/agenteye/sessions",
+      "destination": "/hi/cloud/sessions"
+    },
+    {
+      "source": "/hi/agenteye/telemetry",
+      "destination": "/hi/cloud/performance"
+    },
+    {
+      "source": "/hi/architecture",
+      "destination": "/hi/how-it-works"
+    },
+    {
+      "source": "/hi/cli/audit",
+      "destination": "/hi/audit"
+    },
+    {
+      "source": "/hi/getting-started",
+      "destination": "/hi/quickstart"
+    },
+    {
+      "source": "/it/agenteye/alerts",
+      "destination": "/it/cloud/alerts"
+    },
+    {
+      "source": "/it/agenteye/api-keys",
+      "destination": "/it/cloud/access"
+    },
+    {
+      "source": "/it/agenteye/assistant",
+      "destination": "/it/cloud/assistant"
+    },
+    {
+      "source": "/it/agenteye/audits",
+      "destination": "/it/cloud/audits"
+    },
+    {
+      "source": "/it/agenteye/cli",
+      "destination": "/it/cloud/cli"
+    },
+    {
+      "source": "/it/agenteye/cli-and-agents",
+      "destination": "/it/cloud/cli"
+    },
+    {
+      "source": "/it/agenteye/cli-recipes",
+      "destination": "/it/cloud/cli-recipes"
+    },
+    {
+      "source": "/it/agenteye/cli-skill",
+      "destination": "/it/cloud/agent-skills"
+    },
+    {
+      "source": "/it/agenteye/codex-capture",
+      "destination": "/it/cloud/capture"
+    },
+    {
+      "source": "/it/agenteye/concepts",
+      "destination": "/it/concepts"
+    },
+    {
+      "source": "/it/agenteye/dashboards",
+      "destination": "/it/cloud/dashboards"
+    },
+    {
+      "source": "/it/agenteye/error-tracking",
+      "destination": "/it/cloud/errors"
+    },
+    {
+      "source": "/it/agenteye/evaluation-suite",
+      "destination": "/it/cloud/evaluators"
+    },
+    {
+      "source": "/it/agenteye/evaluations",
+      "destination": "/it/cloud/evaluations"
+    },
+    {
+      "source": "/it/agenteye/evaluator-skill",
+      "destination": "/it/cloud/agent-skills"
+    },
+    {
+      "source": "/it/agenteye/event-stream",
+      "destination": "/it/cloud/event-stream"
+    },
+    {
+      "source": "/it/agenteye/hermes-capture",
+      "destination": "/it/cloud/capture"
+    },
+    {
+      "source": "/it/agenteye/incidents",
+      "destination": "/it/cloud/incidents"
+    },
+    {
+      "source": "/it/agenteye/observability",
+      "destination": "/it/cloud/overview"
+    },
+    {
+      "source": "/it/agenteye/openclaw-capture",
+      "destination": "/it/cloud/capture"
+    },
+    {
+      "source": "/it/agenteye/overview",
+      "destination": "/it/cloud/overview"
+    },
+    {
+      "source": "/it/agenteye/python-sdk",
+      "destination": "/it/cloud/sdk"
+    },
+    {
+      "source": "/it/agenteye/python-sdk-skill",
+      "destination": "/it/cloud/agent-skills"
+    },
+    {
+      "source": "/it/agenteye/queries",
+      "destination": "/it/cloud/queries"
+    },
+    {
+      "source": "/it/agenteye/security",
+      "destination": "/it/cloud/security"
+    },
+    {
+      "source": "/it/agenteye/sessions",
+      "destination": "/it/cloud/sessions"
+    },
+    {
+      "source": "/it/agenteye/telemetry",
+      "destination": "/it/cloud/performance"
+    },
+    {
+      "source": "/it/architecture",
+      "destination": "/it/how-it-works"
+    },
+    {
+      "source": "/it/cli/audit",
+      "destination": "/it/audit"
+    },
+    {
+      "source": "/it/getting-started",
+      "destination": "/it/quickstart"
+    },
+    {
+      "source": "/ja/agenteye/alerts",
+      "destination": "/ja/cloud/alerts"
+    },
+    {
+      "source": "/ja/agenteye/api-keys",
+      "destination": "/ja/cloud/access"
+    },
+    {
+      "source": "/ja/agenteye/assistant",
+      "destination": "/ja/cloud/assistant"
+    },
+    {
+      "source": "/ja/agenteye/audits",
+      "destination": "/ja/cloud/audits"
+    },
+    {
+      "source": "/ja/agenteye/cli",
+      "destination": "/ja/cloud/cli"
+    },
+    {
+      "source": "/ja/agenteye/cli-and-agents",
+      "destination": "/ja/cloud/cli"
+    },
+    {
+      "source": "/ja/agenteye/cli-recipes",
+      "destination": "/ja/cloud/cli-recipes"
+    },
+    {
+      "source": "/ja/agenteye/cli-skill",
+      "destination": "/ja/cloud/agent-skills"
+    },
+    {
+      "source": "/ja/agenteye/codex-capture",
+      "destination": "/ja/cloud/capture"
+    },
+    {
+      "source": "/ja/agenteye/concepts",
+      "destination": "/ja/concepts"
+    },
+    {
+      "source": "/ja/agenteye/dashboards",
+      "destination": "/ja/cloud/dashboards"
+    },
+    {
+      "source": "/ja/agenteye/error-tracking",
+      "destination": "/ja/cloud/errors"
+    },
+    {
+      "source": "/ja/agenteye/evaluation-suite",
+      "destination": "/ja/cloud/evaluators"
+    },
+    {
+      "source": "/ja/agenteye/evaluations",
+      "destination": "/ja/cloud/evaluations"
+    },
+    {
+      "source": "/ja/agenteye/evaluator-skill",
+      "destination": "/ja/cloud/agent-skills"
+    },
+    {
+      "source": "/ja/agenteye/event-stream",
+      "destination": "/ja/cloud/event-stream"
+    },
+    {
+      "source": "/ja/agenteye/hermes-capture",
+      "destination": "/ja/cloud/capture"
+    },
+    {
+      "source": "/ja/agenteye/incidents",
+      "destination": "/ja/cloud/incidents"
+    },
+    {
+      "source": "/ja/agenteye/observability",
+      "destination": "/ja/cloud/overview"
+    },
+    {
+      "source": "/ja/agenteye/openclaw-capture",
+      "destination": "/ja/cloud/capture"
+    },
+    {
+      "source": "/ja/agenteye/overview",
+      "destination": "/ja/cloud/overview"
+    },
+    {
+      "source": "/ja/agenteye/python-sdk",
+      "destination": "/ja/cloud/sdk"
+    },
+    {
+      "source": "/ja/agenteye/python-sdk-skill",
+      "destination": "/ja/cloud/agent-skills"
+    },
+    {
+      "source": "/ja/agenteye/queries",
+      "destination": "/ja/cloud/queries"
+    },
+    {
+      "source": "/ja/agenteye/security",
+      "destination": "/ja/cloud/security"
+    },
+    {
+      "source": "/ja/agenteye/sessions",
+      "destination": "/ja/cloud/sessions"
+    },
+    {
+      "source": "/ja/agenteye/telemetry",
+      "destination": "/ja/cloud/performance"
+    },
+    {
+      "source": "/ja/architecture",
+      "destination": "/ja/how-it-works"
+    },
+    {
+      "source": "/ja/cli/audit",
+      "destination": "/ja/audit"
+    },
+    {
+      "source": "/ja/getting-started",
+      "destination": "/ja/quickstart"
+    },
+    {
+      "source": "/ko/agenteye/alerts",
+      "destination": "/ko/cloud/alerts"
+    },
+    {
+      "source": "/ko/agenteye/api-keys",
+      "destination": "/ko/cloud/access"
+    },
+    {
+      "source": "/ko/agenteye/assistant",
+      "destination": "/ko/cloud/assistant"
+    },
+    {
+      "source": "/ko/agenteye/audits",
+      "destination": "/ko/cloud/audits"
+    },
+    {
+      "source": "/ko/agenteye/cli",
+      "destination": "/ko/cloud/cli"
+    },
+    {
+      "source": "/ko/agenteye/cli-and-agents",
+      "destination": "/ko/cloud/cli"
+    },
+    {
+      "source": "/ko/agenteye/cli-recipes",
+      "destination": "/ko/cloud/cli-recipes"
+    },
+    {
+      "source": "/ko/agenteye/cli-skill",
+      "destination": "/ko/cloud/agent-skills"
+    },
+    {
+      "source": "/ko/agenteye/codex-capture",
+      "destination": "/ko/cloud/capture"
+    },
+    {
+      "source": "/ko/agenteye/concepts",
+      "destination": "/ko/concepts"
+    },
+    {
+      "source": "/ko/agenteye/dashboards",
+      "destination": "/ko/cloud/dashboards"
+    },
+    {
+      "source": "/ko/agenteye/error-tracking",
+      "destination": "/ko/cloud/errors"
+    },
+    {
+      "source": "/ko/agenteye/evaluation-suite",
+      "destination": "/ko/cloud/evaluators"
+    },
+    {
+      "source": "/ko/agenteye/evaluations",
+      "destination": "/ko/cloud/evaluations"
+    },
+    {
+      "source": "/ko/agenteye/evaluator-skill",
+      "destination": "/ko/cloud/agent-skills"
+    },
+    {
+      "source": "/ko/agenteye/event-stream",
+      "destination": "/ko/cloud/event-stream"
+    },
+    {
+      "source": "/ko/agenteye/hermes-capture",
+      "destination": "/ko/cloud/capture"
+    },
+    {
+      "source": "/ko/agenteye/incidents",
+      "destination": "/ko/cloud/incidents"
+    },
+    {
+      "source": "/ko/agenteye/observability",
+      "destination": "/ko/cloud/overview"
+    },
+    {
+      "source": "/ko/agenteye/openclaw-capture",
+      "destination": "/ko/cloud/capture"
+    },
+    {
+      "source": "/ko/agenteye/overview",
+      "destination": "/ko/cloud/overview"
+    },
+    {
+      "source": "/ko/agenteye/python-sdk",
+      "destination": "/ko/cloud/sdk"
+    },
+    {
+      "source": "/ko/agenteye/python-sdk-skill",
+      "destination": "/ko/cloud/agent-skills"
+    },
+    {
+      "source": "/ko/agenteye/queries",
+      "destination": "/ko/cloud/queries"
+    },
+    {
+      "source": "/ko/agenteye/security",
+      "destination": "/ko/cloud/security"
+    },
+    {
+      "source": "/ko/agenteye/sessions",
+      "destination": "/ko/cloud/sessions"
+    },
+    {
+      "source": "/ko/agenteye/telemetry",
+      "destination": "/ko/cloud/performance"
+    },
+    {
+      "source": "/ko/architecture",
+      "destination": "/ko/how-it-works"
+    },
+    {
+      "source": "/ko/cli/audit",
+      "destination": "/ko/audit"
+    },
+    {
+      "source": "/ko/getting-started",
+      "destination": "/ko/quickstart"
+    },
+    {
+      "source": "/pt-br/agenteye/alerts",
+      "destination": "/pt-br/cloud/alerts"
+    },
+    {
+      "source": "/pt-br/agenteye/api-keys",
+      "destination": "/pt-br/cloud/access"
+    },
+    {
+      "source": "/pt-br/agenteye/assistant",
+      "destination": "/pt-br/cloud/assistant"
+    },
+    {
+      "source": "/pt-br/agenteye/audits",
+      "destination": "/pt-br/cloud/audits"
+    },
+    {
+      "source": "/pt-br/agenteye/cli",
+      "destination": "/pt-br/cloud/cli"
+    },
+    {
+      "source": "/pt-br/agenteye/cli-and-agents",
+      "destination": "/pt-br/cloud/cli"
+    },
+    {
+      "source": "/pt-br/agenteye/cli-recipes",
+      "destination": "/pt-br/cloud/cli-recipes"
+    },
+    {
+      "source": "/pt-br/agenteye/cli-skill",
+      "destination": "/pt-br/cloud/agent-skills"
+    },
+    {
+      "source": "/pt-br/agenteye/codex-capture",
+      "destination": "/pt-br/cloud/capture"
+    },
+    {
+      "source": "/pt-br/agenteye/concepts",
+      "destination": "/pt-br/concepts"
+    },
+    {
+      "source": "/pt-br/agenteye/dashboards",
+      "destination": "/pt-br/cloud/dashboards"
+    },
+    {
+      "source": "/pt-br/agenteye/error-tracking",
+      "destination": "/pt-br/cloud/errors"
+    },
+    {
+      "source": "/pt-br/agenteye/evaluation-suite",
+      "destination": "/pt-br/cloud/evaluators"
+    },
+    {
+      "source": "/pt-br/agenteye/evaluations",
+      "destination": "/pt-br/cloud/evaluations"
+    },
+    {
+      "source": "/pt-br/agenteye/evaluator-skill",
+      "destination": "/pt-br/cloud/agent-skills"
+    },
+    {
+      "source": "/pt-br/agenteye/event-stream",
+      "destination": "/pt-br/cloud/event-stream"
+    },
+    {
+      "source": "/pt-br/agenteye/hermes-capture",
+      "destination": "/pt-br/cloud/capture"
+    },
+    {
+      "source": "/pt-br/agenteye/incidents",
+      "destination": "/pt-br/cloud/incidents"
+    },
+    {
+      "source": "/pt-br/agenteye/observability",
+      "destination": "/pt-br/cloud/overview"
+    },
+    {
+      "source": "/pt-br/agenteye/openclaw-capture",
+      "destination": "/pt-br/cloud/capture"
+    },
+    {
+      "source": "/pt-br/agenteye/overview",
+      "destination": "/pt-br/cloud/overview"
+    },
+    {
+      "source": "/pt-br/agenteye/python-sdk",
+      "destination": "/pt-br/cloud/sdk"
+    },
+    {
+      "source": "/pt-br/agenteye/python-sdk-skill",
+      "destination": "/pt-br/cloud/agent-skills"
+    },
+    {
+      "source": "/pt-br/agenteye/queries",
+      "destination": "/pt-br/cloud/queries"
+    },
+    {
+      "source": "/pt-br/agenteye/security",
+      "destination": "/pt-br/cloud/security"
+    },
+    {
+      "source": "/pt-br/agenteye/sessions",
+      "destination": "/pt-br/cloud/sessions"
+    },
+    {
+      "source": "/pt-br/agenteye/telemetry",
+      "destination": "/pt-br/cloud/performance"
+    },
+    {
+      "source": "/pt-br/architecture",
+      "destination": "/pt-br/how-it-works"
+    },
+    {
+      "source": "/pt-br/cli/audit",
+      "destination": "/pt-br/audit"
+    },
+    {
+      "source": "/pt-br/getting-started",
+      "destination": "/pt-br/quickstart"
+    },
+    {
+      "source": "/ru/agenteye/alerts",
+      "destination": "/ru/cloud/alerts"
+    },
+    {
+      "source": "/ru/agenteye/api-keys",
+      "destination": "/ru/cloud/access"
+    },
+    {
+      "source": "/ru/agenteye/assistant",
+      "destination": "/ru/cloud/assistant"
+    },
+    {
+      "source": "/ru/agenteye/audits",
+      "destination": "/ru/cloud/audits"
+    },
+    {
+      "source": "/ru/agenteye/cli",
+      "destination": "/ru/cloud/cli"
+    },
+    {
+      "source": "/ru/agenteye/cli-and-agents",
+      "destination": "/ru/cloud/cli"
+    },
+    {
+      "source": "/ru/agenteye/cli-recipes",
+      "destination": "/ru/cloud/cli-recipes"
+    },
+    {
+      "source": "/ru/agenteye/cli-skill",
+      "destination": "/ru/cloud/agent-skills"
+    },
+    {
+      "source": "/ru/agenteye/codex-capture",
+      "destination": "/ru/cloud/capture"
+    },
+    {
+      "source": "/ru/agenteye/concepts",
+      "destination": "/ru/concepts"
+    },
+    {
+      "source": "/ru/agenteye/dashboards",
+      "destination": "/ru/cloud/dashboards"
+    },
+    {
+      "source": "/ru/agenteye/error-tracking",
+      "destination": "/ru/cloud/errors"
+    },
+    {
+      "source": "/ru/agenteye/evaluation-suite",
+      "destination": "/ru/cloud/evaluators"
+    },
+    {
+      "source": "/ru/agenteye/evaluations",
+      "destination": "/ru/cloud/evaluations"
+    },
+    {
+      "source": "/ru/agenteye/evaluator-skill",
+      "destination": "/ru/cloud/agent-skills"
+    },
+    {
+      "source": "/ru/agenteye/event-stream",
+      "destination": "/ru/cloud/event-stream"
+    },
+    {
+      "source": "/ru/agenteye/hermes-capture",
+      "destination": "/ru/cloud/capture"
+    },
+    {
+      "source": "/ru/agenteye/incidents",
+      "destination": "/ru/cloud/incidents"
+    },
+    {
+      "source": "/ru/agenteye/observability",
+      "destination": "/ru/cloud/overview"
+    },
+    {
+      "source": "/ru/agenteye/openclaw-capture",
+      "destination": "/ru/cloud/capture"
+    },
+    {
+      "source": "/ru/agenteye/overview",
+      "destination": "/ru/cloud/overview"
+    },
+    {
+      "source": "/ru/agenteye/python-sdk",
+      "destination": "/ru/cloud/sdk"
+    },
+    {
+      "source": "/ru/agenteye/python-sdk-skill",
+      "destination": "/ru/cloud/agent-skills"
+    },
+    {
+      "source": "/ru/agenteye/queries",
+      "destination": "/ru/cloud/queries"
+    },
+    {
+      "source": "/ru/agenteye/security",
+      "destination": "/ru/cloud/security"
+    },
+    {
+      "source": "/ru/agenteye/sessions",
+      "destination": "/ru/cloud/sessions"
+    },
+    {
+      "source": "/ru/agenteye/telemetry",
+      "destination": "/ru/cloud/performance"
+    },
+    {
+      "source": "/ru/architecture",
+      "destination": "/ru/how-it-works"
+    },
+    {
+      "source": "/ru/cli/audit",
+      "destination": "/ru/audit"
+    },
+    {
+      "source": "/ru/getting-started",
+      "destination": "/ru/quickstart"
+    },
+    {
+      "source": "/tr/agenteye/alerts",
+      "destination": "/tr/cloud/alerts"
+    },
+    {
+      "source": "/tr/agenteye/api-keys",
+      "destination": "/tr/cloud/access"
+    },
+    {
+      "source": "/tr/agenteye/assistant",
+      "destination": "/tr/cloud/assistant"
+    },
+    {
+      "source": "/tr/agenteye/audits",
+      "destination": "/tr/cloud/audits"
+    },
+    {
+      "source": "/tr/agenteye/cli",
+      "destination": "/tr/cloud/cli"
+    },
+    {
+      "source": "/tr/agenteye/cli-and-agents",
+      "destination": "/tr/cloud/cli"
+    },
+    {
+      "source": "/tr/agenteye/cli-recipes",
+      "destination": "/tr/cloud/cli-recipes"
+    },
+    {
+      "source": "/tr/agenteye/cli-skill",
+      "destination": "/tr/cloud/agent-skills"
+    },
+    {
+      "source": "/tr/agenteye/codex-capture",
+      "destination": "/tr/cloud/capture"
+    },
+    {
+      "source": "/tr/agenteye/concepts",
+      "destination": "/tr/concepts"
+    },
+    {
+      "source": "/tr/agenteye/dashboards",
+      "destination": "/tr/cloud/dashboards"
+    },
+    {
+      "source": "/tr/agenteye/error-tracking",
+      "destination": "/tr/cloud/errors"
+    },
+    {
+      "source": "/tr/agenteye/evaluation-suite",
+      "destination": "/tr/cloud/evaluators"
+    },
+    {
+      "source": "/tr/agenteye/evaluations",
+      "destination": "/tr/cloud/evaluations"
+    },
+    {
+      "source": "/tr/agenteye/evaluator-skill",
+      "destination": "/tr/cloud/agent-skills"
+    },
+    {
+      "source": "/tr/agenteye/event-stream",
+      "destination": "/tr/cloud/event-stream"
+    },
+    {
+      "source": "/tr/agenteye/hermes-capture",
+      "destination": "/tr/cloud/capture"
+    },
+    {
+      "source": "/tr/agenteye/incidents",
+      "destination": "/tr/cloud/incidents"
+    },
+    {
+      "source": "/tr/agenteye/observability",
+      "destination": "/tr/cloud/overview"
+    },
+    {
+      "source": "/tr/agenteye/openclaw-capture",
+      "destination": "/tr/cloud/capture"
+    },
+    {
+      "source": "/tr/agenteye/overview",
+      "destination": "/tr/cloud/overview"
+    },
+    {
+      "source": "/tr/agenteye/python-sdk",
+      "destination": "/tr/cloud/sdk"
+    },
+    {
+      "source": "/tr/agenteye/python-sdk-skill",
+      "destination": "/tr/cloud/agent-skills"
+    },
+    {
+      "source": "/tr/agenteye/queries",
+      "destination": "/tr/cloud/queries"
+    },
+    {
+      "source": "/tr/agenteye/security",
+      "destination": "/tr/cloud/security"
+    },
+    {
+      "source": "/tr/agenteye/sessions",
+      "destination": "/tr/cloud/sessions"
+    },
+    {
+      "source": "/tr/agenteye/telemetry",
+      "destination": "/tr/cloud/performance"
+    },
+    {
+      "source": "/tr/architecture",
+      "destination": "/tr/how-it-works"
+    },
+    {
+      "source": "/tr/cli/audit",
+      "destination": "/tr/audit"
+    },
+    {
+      "source": "/tr/getting-started",
+      "destination": "/tr/quickstart"
+    },
+    {
+      "source": "/vi/agenteye/alerts",
+      "destination": "/vi/cloud/alerts"
+    },
+    {
+      "source": "/vi/agenteye/api-keys",
+      "destination": "/vi/cloud/access"
+    },
+    {
+      "source": "/vi/agenteye/assistant",
+      "destination": "/vi/cloud/assistant"
+    },
+    {
+      "source": "/vi/agenteye/audits",
+      "destination": "/vi/cloud/audits"
+    },
+    {
+      "source": "/vi/agenteye/cli",
+      "destination": "/vi/cloud/cli"
+    },
+    {
+      "source": "/vi/agenteye/cli-and-agents",
+      "destination": "/vi/cloud/cli"
+    },
+    {
+      "source": "/vi/agenteye/cli-recipes",
+      "destination": "/vi/cloud/cli-recipes"
+    },
+    {
+      "source": "/vi/agenteye/cli-skill",
+      "destination": "/vi/cloud/agent-skills"
+    },
+    {
+      "source": "/vi/agenteye/codex-capture",
+      "destination": "/vi/cloud/capture"
+    },
+    {
+      "source": "/vi/agenteye/concepts",
+      "destination": "/vi/concepts"
+    },
+    {
+      "source": "/vi/agenteye/dashboards",
+      "destination": "/vi/cloud/dashboards"
+    },
+    {
+      "source": "/vi/agenteye/error-tracking",
+      "destination": "/vi/cloud/errors"
+    },
+    {
+      "source": "/vi/agenteye/evaluation-suite",
+      "destination": "/vi/cloud/evaluators"
+    },
+    {
+      "source": "/vi/agenteye/evaluations",
+      "destination": "/vi/cloud/evaluations"
+    },
+    {
+      "source": "/vi/agenteye/evaluator-skill",
+      "destination": "/vi/cloud/agent-skills"
+    },
+    {
+      "source": "/vi/agenteye/event-stream",
+      "destination": "/vi/cloud/event-stream"
+    },
+    {
+      "source": "/vi/agenteye/hermes-capture",
+      "destination": "/vi/cloud/capture"
+    },
+    {
+      "source": "/vi/agenteye/incidents",
+      "destination": "/vi/cloud/incidents"
+    },
+    {
+      "source": "/vi/agenteye/observability",
+      "destination": "/vi/cloud/overview"
+    },
+    {
+      "source": "/vi/agenteye/openclaw-capture",
+      "destination": "/vi/cloud/capture"
+    },
+    {
+      "source": "/vi/agenteye/overview",
+      "destination": "/vi/cloud/overview"
+    },
+    {
+      "source": "/vi/agenteye/python-sdk",
+      "destination": "/vi/cloud/sdk"
+    },
+    {
+      "source": "/vi/agenteye/python-sdk-skill",
+      "destination": "/vi/cloud/agent-skills"
+    },
+    {
+      "source": "/vi/agenteye/queries",
+      "destination": "/vi/cloud/queries"
+    },
+    {
+      "source": "/vi/agenteye/security",
+      "destination": "/vi/cloud/security"
+    },
+    {
+      "source": "/vi/agenteye/sessions",
+      "destination": "/vi/cloud/sessions"
+    },
+    {
+      "source": "/vi/agenteye/telemetry",
+      "destination": "/vi/cloud/performance"
+    },
+    {
+      "source": "/vi/architecture",
+      "destination": "/vi/how-it-works"
+    },
+    {
+      "source": "/vi/cli/audit",
+      "destination": "/vi/audit"
+    },
+    {
+      "source": "/vi/getting-started",
+      "destination": "/vi/quickstart"
+    },
+    {
+      "source": "/zh/agenteye/alerts",
+      "destination": "/zh/cloud/alerts"
+    },
+    {
+      "source": "/zh/agenteye/api-keys",
+      "destination": "/zh/cloud/access"
+    },
+    {
+      "source": "/zh/agenteye/assistant",
+      "destination": "/zh/cloud/assistant"
+    },
+    {
+      "source": "/zh/agenteye/audits",
+      "destination": "/zh/cloud/audits"
+    },
+    {
+      "source": "/zh/agenteye/cli",
+      "destination": "/zh/cloud/cli"
+    },
+    {
+      "source": "/zh/agenteye/cli-and-agents",
+      "destination": "/zh/cloud/cli"
+    },
+    {
+      "source": "/zh/agenteye/cli-recipes",
+      "destination": "/zh/cloud/cli-recipes"
+    },
+    {
+      "source": "/zh/agenteye/cli-skill",
+      "destination": "/zh/cloud/agent-skills"
+    },
+    {
+      "source": "/zh/agenteye/codex-capture",
+      "destination": "/zh/cloud/capture"
+    },
+    {
+      "source": "/zh/agenteye/concepts",
+      "destination": "/zh/concepts"
+    },
+    {
+      "source": "/zh/agenteye/dashboards",
+      "destination": "/zh/cloud/dashboards"
+    },
+    {
+      "source": "/zh/agenteye/error-tracking",
+      "destination": "/zh/cloud/errors"
+    },
+    {
+      "source": "/zh/agenteye/evaluation-suite",
+      "destination": "/zh/cloud/evaluators"
+    },
+    {
+      "source": "/zh/agenteye/evaluations",
+      "destination": "/zh/cloud/evaluations"
+    },
+    {
+      "source": "/zh/agenteye/evaluator-skill",
+      "destination": "/zh/cloud/agent-skills"
+    },
+    {
+      "source": "/zh/agenteye/event-stream",
+      "destination": "/zh/cloud/event-stream"
+    },
+    {
+      "source": "/zh/agenteye/hermes-capture",
+      "destination": "/zh/cloud/capture"
+    },
+    {
+      "source": "/zh/agenteye/incidents",
+      "destination": "/zh/cloud/incidents"
+    },
+    {
+      "source": "/zh/agenteye/observability",
+      "destination": "/zh/cloud/overview"
+    },
+    {
+      "source": "/zh/agenteye/openclaw-capture",
+      "destination": "/zh/cloud/capture"
+    },
+    {
+      "source": "/zh/agenteye/overview",
+      "destination": "/zh/cloud/overview"
+    },
+    {
+      "source": "/zh/agenteye/python-sdk",
+      "destination": "/zh/cloud/sdk"
+    },
+    {
+      "source": "/zh/agenteye/python-sdk-skill",
+      "destination": "/zh/cloud/agent-skills"
+    },
+    {
+      "source": "/zh/agenteye/queries",
+      "destination": "/zh/cloud/queries"
+    },
+    {
+      "source": "/zh/agenteye/security",
+      "destination": "/zh/cloud/security"
+    },
+    {
+      "source": "/zh/agenteye/sessions",
+      "destination": "/zh/cloud/sessions"
+    },
+    {
+      "source": "/zh/agenteye/telemetry",
+      "destination": "/zh/cloud/performance"
+    },
+    {
+      "source": "/zh/architecture",
+      "destination": "/zh/how-it-works"
+    },
+    {
+      "source": "/zh/cli/audit",
+      "destination": "/zh/audit"
+    },
+    {
+      "source": "/zh/getting-started",
+      "destination": "/zh/quickstart"
+    },
+    {
+      "source": "/cloud/collector-installation",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/collector-migration",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/deployment-options",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/faq",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/getting-started",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/github-token",
+      "destination": "/cloud/access"
+    },
+    {
+      "source": "/cloud/health-monitoring",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/kubernetes-deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/managed-deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/single-pod-deployment",
+      "destination": "/cloud/overview"
     },
     {
       "source": "/cloud/tenant-management",
@@ -1941,10 +3677,6 @@
     {
       "source": "/cloud/troubleshooting",
       "destination": "/cloud/overview"
-    },
-    {
-      "source": "/getting-started",
-      "destination": "/quickstart"
     }
   ],
   "integrations": {

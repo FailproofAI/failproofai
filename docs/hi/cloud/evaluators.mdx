@@ -9,7 +9,7 @@ FailproofAI Cloud प्रत्येक पूर्ण agent run को ग�
 
 ## एक नज़र में
 
-1. **एक scorer लिखें।** एक छोटी HTTP सेवा स्थापित करें जो एक session transcript पढ़ता है और scores return करता है। FailproofAI Cloud एक कार्यशील reference ships करता है जिसे आप copy कर सकते हैं। [SDK के साथ एक evaluator लिखना](#writing-an-evaluator-with-the-sdk) देखें।
+1. **एक scorer लिखें।** एक छोटी HTTP सेवा स्थापित करें जो एक session transcript पढ़ता है और scores return करता है। FailproofAI Cloud एक कार्यशील reference ships करता है जिसे आप copy कर सकते हैं। [SDK के साथ एक evaluator लिखना](/hi/cloud/evaluators) देखें।
 2. **FailproofAI Cloud को इसकी ओर निर्देशित करें।** Server process पर `EVALUATOR_ENDPOINT` (और एक साझा `EVALUATOR_TOKEN`) सेट करें।
 3. **Scores को उतरते देखें।** प्रत्येक पूर्ण session स्वचालित रूप से स्कोर किया जाता है; results session detail page, sessions grid, और saved dashboards पर दिखाई देते हैं।
 
@@ -156,7 +156,7 @@ Full API reference, async pattern, और event schema को `agenteye-evaluato
 
 ## अपने evaluator को चलाना
 
-Evaluator **आपकी सेवा** है — FailproofAI Cloud एक default evaluator ship नहीं करता है, इसलिए आप इसे जहां अपनी सेवाओं को चलाते हैं वहां build और run करते हैं। यह किसी भी ASGI server के अंतर्गत चलता है (उदाहरण के लिए `uvicorn my_evaluator:app`); [HTTP contract](#http-contract) से `/health`, `/config`, और `/evaluate` routes को serve करें, फिर server को इसकी ओर निर्देशित करें (देखें [Server को configure करना](#configuring-the-server))।
+Evaluator **आपकी सेवा** है — FailproofAI Cloud एक default evaluator ship नहीं करता है, इसलिए आप इसे जहां अपनी सेवाओं को चलाते हैं वहां build और run करते हैं। यह किसी भी ASGI server के अंतर्गत चलता है (उदाहरण के लिए `uvicorn my_evaluator:app`); [HTTP contract](#http-contract) से `/health`, `/config`, और `/evaluate` routes को serve करें, फिर server को इसकी ओर निर्देशित करें (देखें [Server को configure करना](/hi/cloud/evaluators))।
 
 एक बार evaluator reachable हो जाने के बाद, `GET /health` `{"status":"ok"}` return करता है। एक agent को end-to-end चलाने के बाद, server पर `GET /evaluations` एक row return करता है `status: "done"` के साथ और scores जो आपका evaluator produce किया।
 

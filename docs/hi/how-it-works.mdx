@@ -71,7 +71,7 @@ Claude Code फिर हर टूल कॉल से पहले `failproofa
 {
   "hookSpecificOutput": {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Blocked by failproofai: sudo command blocked"
+    "permissionDecisionReason": "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
   }
 }
 ```
@@ -156,7 +156,7 @@ stdin JSON
 Merge logic:
 - `enabledPolicies` - सभी तीनों फाइलों में deduplicated union
 - `policyParams` - प्रति-पॉलिसी key, पहली फाइल जो इसे परिभाषित करती है पूरी तरह जीतती है
-- `customPoliciesPath` - पहली फाइल जो इसे परिभाषित करती है जीतती है
+- `customPoliciesPaths` - पहली फाइल जो इसे परिभाषित करती है जीतती है
 - `llm` - पहली फाइल जो इसे परिभाषित करती है जीतती है
 
 वेब डैशबोर्ड `readHooksConfig()` (केवल global) का उपयोग पढ़ने और लिखने के लिए करता है, क्योंकि यह प्रोजेक्ट cwd के साथ शुरू नहीं होता है।
@@ -186,7 +186,7 @@ Merge logic:
 
 ## Builtin पॉलिसीज़
 
-`src/hooks/builtin-policies.ts` सभी 39 built-in पॉलिसीज़ को `BuiltinPolicyDefinition` objects के रूप में परिभाषित करता है:
+`src/hooks/builtin-policies.ts` सभी 40 built-in पॉलिसीज़ को `BuiltinPolicyDefinition` objects के रूप में परिभाषित करता है:
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -227,7 +227,7 @@ export function clearCustomHooks(): void { ... }  // tests में उपय�
 
 `src/hooks/custom-hooks-loader.ts` user की policy फाइल लोड करता है:
 
-1. कॉन्फ़िग से `customPoliciesPath` पढ़ें; यदि अनुपस्थित है तो छोड़ दें।
+1. कॉन्फ़िग से `customPoliciesPaths` पढ़ें; यदि अनुपस्थित है तो छोड़ दें।
 2. Absolute path को resolve करें; फाइल की मौजूदगी की जांच करें।
 3. सभी `from "failproofai"` imports को actual dist path पर फिर से लिखें ताकि `customPolicies` same `globalThis` registry को resolve करे।
 4. ESM compatibility सुनिश्चित करने के लिए transitive local imports को recursively फिर से लिखें।
@@ -247,7 +247,7 @@ Custom पॉलिसीज़ सभी built-in पॉलिसीज़ क�
 
 ```json
 {
-  "timestamp": "2026-04-06T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",
@@ -258,7 +258,7 @@ Custom पॉलिसीज़ सभी built-in पॉलिसीज़ क�
 }
 ```
 
-एक line प्रत्येक पॉलिसी के लिए जिसने non-allow निर्णय लिया। Allow निर्णय log नहीं होते हैं (फाइल को छोटा रखने के लिए)।
+एक line प्रत्येक मूल्यांकित निर्णय के लिए। Allow निर्णय भी log होते हैं।
 
 ---
 
@@ -307,7 +307,7 @@ failproofai/
 │   └── failproofai.mjs           # CLI router (hook / dashboard / install / आदि)
 ├── src/hooks/
 │   ├── handler.ts                # Hook event pipeline
-│   ├── builtin-policies.ts       # 39 policy definitions
+│   ├── builtin-policies.ts       # 40 policy definitions
 │   ├── policy-evaluator.ts       # Policy execution engine
 │   ├── policy-registry.ts        # Policy registration और lookup
 │   ├── policy-types.ts           # TypeScript interfaces

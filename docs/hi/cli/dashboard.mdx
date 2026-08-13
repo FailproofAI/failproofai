@@ -11,18 +11,14 @@ failproofai
 
 ## विकल्प
 
-| फ़्लैग | विवरण |
-|------|-------------|
-| `--port <number>` | सुनने के लिए पोर्ट (डिफ़ॉल्ट: `8020`) |
-| `--allowed-origins <origins>` | कॉमा-अलग होस्ट/IP जिन्हें dev संसाधनों तक पहुंचने की अनुमति है |
+The dashboard takes no flags — `failproofai` rejects any it does not recognize. The port is fixed at `8020`.
 
 डैशबोर्ड को एक गैर-डिफ़ॉल्ट Claude प्रोजेक्ट फ़ोल्डर की ओर इंगित करने के लिए, लॉन्च करते समय `CLAUDE_PROJECTS_PATH` पर्यावरण चर सेट करें।
 
 ## उदाहरण
 
 ```bash
-# एक अलग पोर्ट पर लॉन्च करें
-failproofai --port 9000
+failproofai
 
 # पर्यावरण चर के माध्यम से कस्टम Claude प्रोजेक्ट पथ का उपयोग करें
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai

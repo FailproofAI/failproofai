@@ -9,7 +9,7 @@ description: "يمكن لـ FailproofAI Cloud تسجيل كل جلسة وكيل 
 
 ## لمحة سريعة
 
-1. **اكتب مُسجّل.** أنشئ خدمة HTTP صغيرة تقرأ نسخة من جلسة وترجع نقاط. تشحن FailproofAI Cloud مرجعاً يعمل يمكنك نسخه. انظر [كتابة مُقيّم مع SDK](#writing-an-evaluator-with-the-sdk).
+1. **اكتب مُسجّل.** أنشئ خدمة HTTP صغيرة تقرأ نسخة من جلسة وترجع نقاط. تشحن FailproofAI Cloud مرجعاً يعمل يمكنك نسخه. انظر [كتابة مُقيّم مع SDK](/ar/cloud/evaluators).
 2. **وجّه FailproofAI Cloud إليه.** عيّن `EVALUATOR_ENDPOINT` (و`EVALUATOR_TOKEN` مشترك) على عملية الخادم.
 3. **راقب النقاط تصل.** كل جلسة مكتملة يتم تسجيلها تلقائياً؛ تظهر النتائج على صفحة تفاصيل الجلسة، شبكة الجلسات، والقوائم المحفوظة.
 
@@ -156,7 +156,7 @@ def run(req: EvalRequest) -> EvalResponse:
 
 ## تشغيل مُقيّمك
 
-المُقيّم هو **خدمتك** — لا تشحن FailproofAI Cloud مُقيّماً افتراضياً، لذا تبني وتشغل أينما تشغل خدماتك. يعمل تحت أي خادم ASGI (على سبيل المثال `uvicorn my_evaluator:app`؛ خدم المسارات `/health` و `/config` و `/evaluate` من [عقد HTTP](#http-contract)، ثم وجّه الخادم إليه (انظر [تكوين الخادم](#configuring-the-server)).
+المُقيّم هو **خدمتك** — لا تشحن FailproofAI Cloud مُقيّماً افتراضياً، لذا تبني وتشغل أينما تشغل خدماتك. يعمل تحت أي خادم ASGI (على سبيل المثال `uvicorn my_evaluator:app`؛ خدم المسارات `/health` و `/config` و `/evaluate` من [عقد HTTP](/ar/cloud/evaluators)، ثم وجّه الخادم إليه (انظر [تكوين الخادم](/ar/cloud/evaluators)).
 
 بمجرد وصول المُقيّم، `GET /health` يُرجع `{"status":"ok"}`. بعد انتهاء الوكيل من البداية إلى النهاية، `GET /evaluations` على الخادم يُرجع صفاً مع `status: "done"` والنقاط التي أنتجها مُقيّمك.
 
@@ -252,7 +252,7 @@ GET /evaluations?score_filters=helpfulness:0.5..,factuality:0.9..
 
 - **`/sessions/<id>`**: جدول زمني للأحداث + شريط أيمن يعرض نقاط الجلسة وأي خطأ من محاولة الإرسال. إذا كان مفتاحك يملك `evaluations:trigger`، يظهر زر **إعادة تقييم** بجانب زر التصدير، مفيد للجلسات التي لم تُصدر أبداً `agent_end`، أو لتحديث النقاط بعد نشر مُقيّم جديد. تستقصي القوائس النتيجة الجديدة وتحدّث الشريط الأيمن عند وصولها.
 - **`/sessions`**: شبكة جلسات قابلة للتصفية؛ عمود النقاط يعرض حالة تقييم كل جلسة ونقاطها في لمحة.
-- **`/dashboards`**: عروض صحة تقييم محفوظة (انظر [القوائس](#dashboards) أدناه).
+- **`/dashboards`**: عروض صحة تقييم محفوظة (انظر [القوائس](/ar/cloud/evaluators) أدناه).
 
 ![شبكة الجلسات مع حبوب حالة تقييم لكل جلسة وشارات نقاط ملونة (helpfulness، factuality، tool_efficiency، safety، coherence)](/cloud/images/sessions-list.png)
 

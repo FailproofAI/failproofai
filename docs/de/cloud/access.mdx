@@ -14,7 +14,7 @@ API keys steuern, wer und was Ihren FailproofAI Cloud-Server erreichen kann – 
 | Dashboard-Leseschlüssel | `events:read`, `keys:read` | Einem Read-only-Operator oder einer Integration, die Daten abfragt, ohne sie zu verändern. |
 | Bootstrap-Admin-Key | alle Berechtigungen | Dem Operator, der die Instanz erstmals einrichtet (zusammen mit dem Dashboard). Wird aus der Umgebungsvariable `ADMIN_KEY` befüllt. Siehe [Bootstrap-Admin-Key](#bootstrap-admin-key). |
 
-Beginnen Sie hier. Den vollständigen Berechtigungskatalog weiter unten benötigen Sie nur, wenn Sie einen enger gefassten, benutzerdefiniert abgegrenzten Key brauchen. Siehe auch [Empfohlenes Key-Layout](#recommended-key-layout) und [Keys erstellen](#creating-keys).
+Beginnen Sie hier. Den vollständigen Berechtigungskatalog weiter unten benötigen Sie nur, wenn Sie einen enger gefassten, benutzerdefiniert abgegrenzten Key brauchen. Siehe auch [Empfohlenes Key-Layout](/de/cloud/access) und [Keys erstellen](/de/cloud/access).
 
 ---
 
@@ -110,7 +110,7 @@ Diese Berechtigungen unterstützen die **Users**-Seite im Dashboard, auf der die
 | `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Audit-Definitionen, Ausführungsverlauf und Befunde anzeigen. |
 | `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Audits erstellen, bearbeiten, löschen und ausführen; Befunde triagieren (bestätigen / stummschalten / verwerfen / lösen / erneut öffnen / zuweisen). |
 
-> **Hinweis:** Um einem Key die Audit-Oberfläche zu geben, vergeben Sie `audits:*` explizit. Wie bestehende Berechtigungsinhaber migriert wurden, als Audits eingeführt wurden, erfahren Sie unter [Upgrade- und Abwärtskompatibilitätshinweise](#upgrade-and-backward-compatibility-notes).
+> **Hinweis:** Um einem Key die Audit-Oberfläche zu geben, vergeben Sie `audits:*` explizit. Wie bestehende Berechtigungsinhaber migriert wurden, als Audits eingeführt wurden, erfahren Sie unter [Upgrade- und Abwärtskompatibilitätshinweise](/de/cloud/access).
 
 > Der Empfänger-Auswahl-Endpunkt `GET /alerts/recipients` (der die Mitglieds-E-Mail-Adressen auflistet, die ein Alarm-Editor benachrichtigen kann) ist für Inhaber von **entweder** `alerts:read` **oder** `alerts:write` erreichbar, sodass Alarm-Editoren die Auswahl befüllen können, ohne `users:read` zu benötigen.
 
@@ -193,7 +193,7 @@ curl -s -X POST http://your-server/keys \
   }'
 ```
 
-Wenn Sie einen Key über die HTTP-API erstellen, geben Sie den `key`-Wert selbst an; wählen Sie ein starkes Secret und speichern Sie es sicher. (Im Dashboard funktioniert es umgekehrt: Es generiert ein starkes Secret für Sie und zeigt es einmalig bei der Erstellung an; siehe [Key-Verwaltung im Dashboard](#key-management-in-the-dashboard).) Die Antwort bestätigt, dass der Key erstellt wurde:
+Wenn Sie einen Key über die HTTP-API erstellen, geben Sie den `key`-Wert selbst an; wählen Sie ein starkes Secret und speichern Sie es sicher. (Im Dashboard funktioniert es umgekehrt: Es generiert ein starkes Secret für Sie und zeigt es einmalig bei der Erstellung an; siehe [Key-Verwaltung im Dashboard](/de/cloud/access).) Die Antwort bestätigt, dass der Key erstellt wurde:
 
 ```json
 {

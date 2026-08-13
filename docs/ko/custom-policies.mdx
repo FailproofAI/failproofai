@@ -79,7 +79,7 @@ failproofai policies --install --custom ./security.js --custom ./workflow.js
 failproofai policies --uninstall --custom
 ```
 
-해석된 절대 경로는 `policies-config.json`에 `customPoliciesPaths`로 저장됩니다. 여러 파일을 설정하려면 `--custom`을 반복해서 사용하세요. 레거시 `customPoliciesPath` 필드를 사용하는 기존 설정도 계속 동작합니다. 파일은 훅 이벤트마다 새로 로드되며 — 이벤트 간 캐싱은 없습니다.
+해석된 절대 경로는 `policies-config.json`에 `customPoliciesPaths`로 저장됩니다. 여러 파일을 설정하려면 `--custom`을 반복해서 사용하세요. 레거시 `customPoliciesPaths` 필드를 사용하는 기존 설정도 계속 동작합니다. 파일은 훅 이벤트마다 새로 로드되며 — 이벤트 간 캐싱은 없습니다.
 
 등록된 각 정책은 대시보드에서 개별 토글로 표시됩니다. 정책을 비활성화하면 소스 한정 ID가 `disabledCustomPolicies`에 기록되고, 해당 파일과 다른 정책들은 계속 로드되지만 비활성화된 정책은 이벤트 매칭 전에 제외됩니다. 파일이 달라도 같은 이름의 정책은 각각 독립적인 토글을 갖습니다.
 
@@ -122,12 +122,12 @@ customPolicies.add({
 | `deny(message)` | 작업 차단 | 에이전트가 이 작업을 수행하지 않아야 할 때 |
 | `instruct(message)` | 차단 없이 컨텍스트 추가 | 에이전트가 올바른 방향을 유지하도록 추가 컨텍스트를 제공할 때 |
 
-`deny(message)` — 메시지는 `"Blocked by failproofai:"` 접두사와 함께 Claude에 표시됩니다. 하나의 `deny`가 발생하면 이후 모든 평가가 단락됩니다.
+`deny(message)` — 메시지는 `Blocked <tool> by failproofai because: <message>, as per the policy configured by the user` 접두사와 함께 Claude에 표시됩니다. 하나의 `deny`가 발생하면 이후 모든 평가가 단락됩니다.
 
 `instruct(message)` — 메시지는 현재 툴 호출에 대한 Claude의 컨텍스트에 추가됩니다. 모든 `instruct` 메시지는 누적되어 함께 전달됩니다.
 
 <Tip>
-`policyParams`의 `hint` 필드를 추가하면 코드 변경 없이 `deny` 또는 `instruct` 메시지에 추가 안내를 덧붙일 수 있습니다. 커스텀(`custom/`), 프로젝트 컨벤션(`.failproofai-project/`), 사용자 컨벤션(`.failproofai-user/`) 정책 모두에서 동작합니다. 자세한 내용은 [Configuration → hint](/ko/configuration#hint-cross-cutting)를 참고하세요.
+`policyParams`의 `hint` 필드를 추가하면 코드 변경 없이 `deny` 또는 `instruct` 메시지에 추가 안내를 덧붙일 수 있습니다. 커스텀(`custom/`), 프로젝트 컨벤션(`.failproofai-project/`), 사용자 컨벤션(`.failproofai-user/`) 정책 모두에서 동작합니다. 자세한 내용은 [Configuration → hint](/ko/configuration)를 참고하세요.
 </Tip>
 
 ### 정보성 allow 메시지
@@ -194,7 +194,7 @@ customPolicies.add({
 정책은 다음 순서로 평가됩니다:
 
 1. 내장 정책 (정의 순서)
-2. `customPoliciesPath`의 명시적 커스텀 정책 (`.add()` 순서)
+2. `customPoliciesPaths`의 명시적 커스텀 정책 (`.add()` 순서)
 3. 프로젝트 `.failproofai/policies/`의 컨벤션 정책 (파일 알파벳 순, 파일 내 `.add()` 순서)
 4. 사용자 `~/.failproofai/policies/`의 컨벤션 정책 (파일 알파벳 순, 파일 내 `.add()` 순서)
 
@@ -253,7 +253,7 @@ customPolicies.add({
 
 | 실패 원인 | 동작 |
 |---------|----------|
-| `customPoliciesPath` 미설정 | 명시적 커스텀 정책 미실행; 컨벤션 정책 및 내장 정책은 정상 계속 |
+| `customPoliciesPaths` 미설정 | 명시적 커스텀 정책 미실행; 컨벤션 정책 및 내장 정책은 정상 계속 |
 | 파일을 찾을 수 없음 | `~/.failproofai/hook.log`에 경고 기록; 내장 정책 계속 |
 | 구문/가져오기 오류 (명시적) | `~/.failproofai/hook.log`에 오류 기록; 명시적 커스텀 정책 건너뜀 |
 | 구문/가져오기 오류 (컨벤션) | 오류 기록; 해당 파일 건너뜀, 다른 컨벤션 파일은 계속 로드 |

@@ -1,11 +1,11 @@
 ---
 ---
 title: السياسات المدمجة
-description: "جميع 39 سياسة مدمجة تلتقط أنماط فشل الوكيل الشائعة"
+description: "جميع 40 سياسة مدمجة تلتقط أنماط فشل الوكيل الشائعة"
 icon: shield
 ---
 
-يأتي failproofai مع 39 سياسة مدمجة تلتقط أنماط فشل الوكيل الشائعة. كل سياسة تُطلق على نوع حدث hook معين واسم أداة معينة. تقبل تسع عشرة سياسة معاملات تتيح لك ضبط سلوكها دون كتابة أي كود. تفرض خمس سياسات سير عمل خط أنابيب commit → push → PR → CI قبل أن يتوقف Claude.
+يأتي failproofai مع 40 سياسة مدمجة تلتقط أنماط فشل الوكيل الشائعة. كل سياسة تُطلق على نوع حدث hook معين واسم أداة معينة. تقبل تسع عشرة سياسة معاملات تتيح لك ضبط سلوكها دون كتابة أي كود. تفرض خمس سياسات سير عمل خط أنابيب commit → push → PR → CI قبل أن يتوقف Claude.
 
 ---
 
@@ -15,16 +15,16 @@ icon: shield
 
 | الفئة | السياسات | نوع Hook |
 |----------|----------|-----------|
-| [الأوامر الخطرة](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
-| [أوامر البنية التحتية](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
-| [الأسرار (المعالجات)](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
-| [البيئة](#environment) | block-env-files, protect-env-vars | PreToolUse |
-| [الوصول إلى الملفات](#file-access) | block-read-outside-cwd, block-secrets-write | PreToolUse |
+| [الأوامر الخطرة](/ar/built-in-policies) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
+| [أوامر البنية التحتية](/ar/built-in-policies) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
+| [الأسرار (المعالجات)](/ar/built-in-policies) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
+| [البيئة](/ar/built-in-policies) | block-env-files, protect-env-vars | PreToolUse |
+| [الوصول إلى الملفات](/ar/built-in-policies) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
-| [قاعدة البيانات](#database) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
-| [التحذيرات](#warnings) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
-| [مديري الحزم](#package-managers) | prefer-package-manager | PreToolUse |
-| [سير العمل](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
+| [قاعدة البيانات](/ar/built-in-policies) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
+| [التحذيرات](/ar/built-in-policies) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
+| [مديري الحزم](/ar/built-in-policies) | prefer-package-manager | PreToolUse |
+| [سير العمل](/ar/built-in-policies) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
 - **`block-`** — منع الوكيل من المتابعة.
 - **`warn-`** — إعطاء الوكيل سياق إضافي حتى يتمكن من تصحيح نفسه.
@@ -57,7 +57,7 @@ icon: shield
 ---
 
 <Tip>
-تدعم كل سياسة حقل اختياري `hint` في `policyParams`. يُضاف التلميح إلى رسالة deny أو instruct التي يراها Claude، مما يوفر توجيهات قابلة للتنفيذ دون تعديل كود السياسة. يعمل مع السياسات المدمجة والمخصصة والاتفاقية. انظر [التكوين → hint](/ar/configuration#hint-cross-cutting) للتفاصيل.
+تدعم كل سياسة حقل اختياري `hint` في `policyParams`. يُضاف التلميح إلى رسالة deny أو instruct التي يراها Claude، مما يوفر توجيهات قابلة للتنفيذ دون تعديل كود السياسة. يعمل مع السياسات المدمجة والمخصصة والاتفاقية. انظر [التكوين → hint](/ar/configuration) للتفاصيل.
 </Tip>
 
 ---
@@ -550,7 +550,7 @@ icon: shield
 **الحدث:** PreToolUse (Bash)  
 **الافتراضي:** يرفض `git push --force` و `git push -f`.
 
-بدون معاملات خاصة بالسياسة. استخدم [`hint`](/ar/configuration#hint-cross-cutting) عابر المقاطع للاقتراح بدائل:
+بدون معاملات خاصة بالسياسة. استخدم [`hint`](/ar/configuration) عابر المقاطع للاقتراح بدائل:
 
 ```json
 {

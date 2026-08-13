@@ -29,17 +29,20 @@ failproofai는 기본적으로 익명 사용 텔레메트리를 전송합니다.
 |----------|-------------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | 현재 프로세스에서 익명 사용 텔레메트리 비활성화 |
 
-머신에서 영구적으로 비활성화하려면 `~/.failproofai/config.toml`에 다음을 추가하세요:
+머신에서 영구적으로 비활성화하려면 `~/.failproofai/config.json`에 다음을 추가하세요:
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
 **failproofaid 데몬**을 실행 중이라면 설정 파일 방식을 사용해야 합니다.
 데몬은 시스템 범위 서비스이며, 셸에서 내보낸 환경 변수를 포함하지 않으므로
-`FAILPROOFAI_TELEMETRY_DISABLED`가 데몬에 전달되지 않습니다. `[telemetry] enabled = false`는 CLI와 데몬 모두에서 읽힙니다.
+`FAILPROOFAI_TELEMETRY_DISABLED`가 데몬에 전달되지 않습니다. `"telemetry": { "enabled": false }`는 CLI와 데몬 모두에서 읽힙니다.
 </Note>
 
 데몬은 자체적인 **라이프사이클** 이벤트만 보고합니다. 시작 여부(이전 실행이 정상 종료되었는지 포함), 중지, 평가 워커의 생성 또는 재시작, 수집기 작업 실패, 클라우드 정책 가져오기 결과 등입니다. 이 데이터는 낮은 카디널리티 값과 카운트만 포함하며, 파일 경로, 명령어, 정책, 프롬프트, 또는 트랜스크립트에서 읽은 내용은 절대 포함되지 않습니다. 도구 호출별 이벤트는 존재하지 않습니다.

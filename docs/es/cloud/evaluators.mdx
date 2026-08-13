@@ -10,7 +10,7 @@ FailproofAI Cloud puede puntuar automáticamente cada ejecución de agente final
 
 ## Resumen rápido
 
-1. **Escribe un evaluador.** Levanta un pequeño servicio HTTP que lea la transcripción de una sesión y devuelva puntuaciones. FailproofAI Cloud incluye una referencia funcional que puedes copiar. Consulta [Escribir un evaluador con el SDK](#writing-an-evaluator-with-the-sdk).
+1. **Escribe un evaluador.** Levanta un pequeño servicio HTTP que lea la transcripción de una sesión y devuelva puntuaciones. FailproofAI Cloud incluye una referencia funcional que puedes copiar. Consulta [Escribir un evaluador con el SDK](/es/cloud/evaluators).
 2. **Apunta FailproofAI Cloud hacia él.** Configura `EVALUATOR_ENDPOINT` (y un `EVALUATOR_TOKEN` compartido) en el proceso del servidor.
 3. **Observa cómo llegan las puntuaciones.** Cada sesión completada se puntúa automáticamente; los resultados aparecen en la página de detalle de sesión, la cuadrícula de sesiones y los dashboards guardados.
 
@@ -157,7 +157,7 @@ La referencia completa de la API, el patrón asíncrono y el esquema de eventos 
 
 ## Ejecutar tu evaluador
 
-El evaluador es **tu servicio** — FailproofAI Cloud no incluye un evaluador por defecto, así que lo construyes y ejecutas donde ejecutas tus propios servicios. Se ejecuta bajo cualquier servidor ASGI (por ejemplo `uvicorn my_evaluator:app`); sirve las rutas `/health`, `/config` y `/evaluate` del [contrato HTTP](#http-contract) y luego apunta el servidor hacia él (consulta [Configurar el servidor](#configuring-the-server)).
+El evaluador es **tu servicio** — FailproofAI Cloud no incluye un evaluador por defecto, así que lo construyes y ejecutas donde ejecutas tus propios servicios. Se ejecuta bajo cualquier servidor ASGI (por ejemplo `uvicorn my_evaluator:app`); sirve las rutas `/health`, `/config` y `/evaluate` del [contrato HTTP](/es/cloud/evaluators) y luego apunta el servidor hacia él (consulta [Configurar el servidor](/es/cloud/evaluators)).
 
 Una vez que el evaluador sea accesible, `GET /health` devuelve `{"status":"ok"}`. Después de que un agente se ejecute de principio a fin, `GET /evaluations` en el servidor devuelve una fila con `status: "done"` y las puntuaciones que produjo tu evaluador.
 

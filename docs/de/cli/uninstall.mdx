@@ -11,7 +11,7 @@ failproofai uninstall --purge --yes
 ```
 
 Removes the hook entries FailproofAI wrote into every agent CLI, and the
-[`failproofaid` service](/daemon).
+[`failproofaid` service](/de/daemon).
 
 <Warning>
   **Run this before `npm rm -g failproofai`.** npm runs no uninstall script, so removing
@@ -60,8 +60,8 @@ Run `--dry-run` first if you want the list before the action.
 
 ## Leaving your organization
 
-If the machine is [connected to the cloud](/cloud/connect) and you only want to stop that —
-not remove the guardrails — disconnect instead:
+If the machine is [connected to the cloud](/de/cloud/connect) and you only want to stop that —
+not remove the policies — disconnect instead:
 
 ```bash
 failproofai config --disconnect
@@ -76,19 +76,19 @@ local policies keep working exactly as before.
 
 <CardGroup cols={2}>
 
-<Card title="failproofai config" icon="gear" href="/cli/config">
+<Card title="failproofai config" icon="gear" href="/de/cli/config">
   Setup, status, connect, disconnect.
 </Card>
 
-<Card title="The daemon" icon="server" href="/daemon">
+<Card title="The daemon" icon="server" href="/de/daemon">
   What gets installed, and how it is supervised.
 </Card>
 
-<Card title="Remove policies" icon="minus" href="/cli/remove-policies">
+<Card title="Remove policies" icon="minus" href="/de/cli/remove-policies">
   Disable individual policies without uninstalling.
 </Card>
 
-<Card title="failproofai update" icon="arrows-rotate" href="/cli/update">
+<Card title="failproofai update" icon="arrows-rotate" href="/de/cli/update">
   Upgrading rather than removing.
 </Card>
 

@@ -79,7 +79,7 @@ failproofai policies --install --custom ./security.js --custom ./workflow.js
 failproofai policies --uninstall --custom
 ```
 
-Các đường dẫn tuyệt đối được phân giải được lưu trữ trong `policies-config.json` dưới dạng `customPoliciesPaths`. Lặp lại `--custom` để cấu hình nhiều tệp. Các cấu hình hiện có sử dụng trường `customPoliciesPath` cũ tiếp tục hoạt động. Các tệp được tải mới trên mỗi sự kiện hook - không có bộ nhớ đệm giữa các sự kiện.
+Các đường dẫn tuyệt đối được phân giải được lưu trữ trong `policies-config.json` dưới dạng `customPoliciesPaths`. Lặp lại `--custom` để cấu hình nhiều tệp. Các cấu hình hiện có sử dụng trường `customPoliciesPaths` cũ tiếp tục hoạt động. Các tệp được tải mới trên mỗi sự kiện hook - không có bộ nhớ đệm giữa các sự kiện.
 
 Mỗi chính sách được đăng ký xuất hiện với bộ chuyển đổi riêng trong bảng điều khiển. Tắt chính sách sẽ ghi ID được xác định bằng nguồn của nó vào `disabledCustomPolicies`; tệp và các chính sách khác của nó tiếp tục được tải, trong khi chính sách bị tắt bị loại trừ trước khi khớp sự kiện. Tên chính sách trùng lặp trên các tệp có các bộ chuyển đổi độc lập.
 
@@ -122,12 +122,12 @@ customPolicies.add({
 | `deny(message)` | Chặn hoạt động | Agent không nên thực hiện hành động này |
 | `instruct(message)` | Thêm ngữ cảnh mà không chặn | Cung cấp ngữ cảnh bổ sung để agent không mất hướng |
 
-`deny(message)` - thông báo xuất hiện trước Claude với tiền tố `"Blocked by failproofai:"`. Một `deny` duy nhất sẽ ngắt tất cả các đánh giá tiếp theo.
+`deny(message)` - thông báo xuất hiện trước Claude với tiền tố `Blocked <tool> by failproofai because: <message>, as per the policy configured by the user`. Một `deny` duy nhất sẽ ngắt tất cả các đánh giá tiếp theo.
 
 `instruct(message)` - thông báo được thêm vào ngữ cảnh của Claude cho lệnh gọi công cụ hiện tại. Tất cả các thông báo `instruct` được tích lũy và gửi cùng nhau.
 
 <Tip>
-Bạn có thể thêm hướng dẫn bổ sung vào bất kỳ thông báo `deny` hoặc `instruct` nào bằng cách thêm trường `hint` trong `policyParams` — không cần thay đổi mã. Điều này hoạt động cho các chính sách tùy chỉnh (`custom/`), quy ước dự án (`.failproofai-project/`), và quy ước người dùng (`.failproofai-user/`) cũng như nhau. Xem [Cấu hình → hint](/vi/configuration#hint-cross-cutting) để biết chi tiết.
+Bạn có thể thêm hướng dẫn bổ sung vào bất kỳ thông báo `deny` hoặc `instruct` nào bằng cách thêm trường `hint` trong `policyParams` — không cần thay đổi mã. Điều này hoạt động cho các chính sách tùy chỉnh (`custom/`), quy ước dự án (`.failproofai-project/`), và quy ước người dùng (`.failproofai-user/`) cũng như nhau. Xem [Cấu hình → hint](/vi/configuration) để biết chi tiết.
 </Tip>
 
 ### Thông báo allow thông tin
@@ -194,7 +194,7 @@ customPolicies.add({
 Chính sách được đánh giá theo thứ tự này:
 
 1. Chính sách được tích hợp sẵn (theo thứ tự định nghĩa)
-2. Chính sách tùy chỉnh rõ ràng từ `customPoliciesPath` (theo thứ tự `.add()`)
+2. Chính sách tùy chỉnh rõ ràng từ `customPoliciesPaths` (theo thứ tự `.add()`)
 3. Chính sách quy ước từ dự án `.failproofai/policies/` (tệp theo thứ tự bảng chữ cái, `.add()` thứ tự trong)
 4. Chính sách quy ước từ người dùng `~/.failproofai/policies/` (tệp theo thứ tự bảng chữ cái, `.add()` thứ tự trong)
 
@@ -253,7 +253,7 @@ Chính sách tùy chỉnh là **fail-open**: các lỗi không bao giờ chặn 
 
 | Lỗi | Hành vi |
 |---------|----------|
-| `customPoliciesPath` không được đặt | Không có chính sách tùy chỉnh rõ ràng chạy; chính sách quy ước và các chính sách được tích hợp sẵn tiếp tục bình thường |
+| `customPoliciesPaths` không được đặt | Không có chính sách tùy chỉnh rõ ràng chạy; chính sách quy ước và các chính sách được tích hợp sẵn tiếp tục bình thường |
 | Tệp không tìm thấy | Cảnh báo được ghi vào `~/.failproofai/hook.log`; các chính sách được tích hợp sẵn tiếp tục |
 | Lỗi cú pháp/nhập (rõ ràng) | Lỗi được ghi vào `~/.failproofai/hook.log`; chính sách tùy chỉnh rõ ràng bị bỏ qua |
 | Lỗi cú pháp/nhập (quy ước) | Lỗi được ghi; tệp đó bị bỏ qua, các tệp quy ước khác vẫn tải |

@@ -92,7 +92,7 @@ Two separate budgets apply, and the split matters:
 **If the daemon cannot answer, the tool call is denied.** Not allowed — denied. There is
 no in-process fallback on this path, and that is the entire point: a second policy engine
 reachable by stopping the first is not a guarantee, and a machine where killing a service
-silently disables every guardrail is not a guarded machine. A protocol-version mismatch
+silently disables every policy is not a guarded machine. A protocol-version mismatch
 denies too, with a message naming the version and telling you to run `failproofai config`,
 because the fix is different from "the daemon is down."
 
@@ -165,7 +165,7 @@ real block and a warning nobody reads. FailproofAI emits the right one per CLI a
 The one that surprises people is the **turn-end gate**. Policies like
 `require-commit-before-stop` do not block a tool — they refuse to let the agent *finish*.
 Where a CLI supports it, a deny at turn end forces another turn with the reason as the
-prompt, so the agent goes back and finishes the job. Where a CLI has no turn-end event
+prompt, so the agent goes back and finishes the job. Where failproofai does not subscribe to a turn-end event
 (Hermes, Goose), those policies simply do not apply — [the support
 matrix](/agent-support) says exactly which is which, per CLI, rather than leaving you to
 find out from a rule that quietly never fired.
@@ -174,12 +174,12 @@ find out from a rule that quietly never fired.
 
 ## Step 5 — Everything is recorded
 
-After each event, one line per non-allow decision is appended to
+After each event, one line per evaluated decision — allows included — is appended to
 `~/.failproofai/hook-activity/`:
 
 ```json
 {
-  "timestamp": "2026-08-12T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",
@@ -190,7 +190,8 @@ After each event, one line per non-allow decision is appended to
 }
 ```
 
-Plain allows are not logged — that keeps the file small enough to stay honest. This log is
+Every evaluated event is logged, including allows — an allow row is what distinguishes
+"a policy ran and permitted this" from "no policy covered this event". This log is
 what the [local dashboard's activity view](/dashboard) reads, and what the daemon ships to
 the cloud when a machine is connected.
 
@@ -260,7 +261,7 @@ Changes take effect on the next hook event. Nothing to restart.
 
 ## Failure modes, in one table
 
-The useful thing about a guardrail is knowing what it does when *it* breaks.
+The useful thing about a policy is knowing what it does when *it* breaks.
 
 | What breaks | What happens |
 |---|---|
@@ -270,7 +271,7 @@ The useful thing about a guardrail is knowing what it does when *it* breaks.
 | The payload exceeds 1 MB | Discarded; every policy implicitly allows. |
 | A cloud-managed artifact fails its digest check | The deployment is **refused** rather than partially applied. |
 | The cloud is unreachable | Enforcement continues on the last deployment. Activity spools locally and uploads when the network returns. |
-| The agent CLI has no turn-end event | `require-*-before-stop` policies do not apply there. Stated per CLI in [the matrix](/agent-support). |
+| failproofai does not subscribe to a turn-end event on that CLI | `require-*-before-stop` policies do not fire there. Stated per CLI in [the matrix](/agent-support). |
 
 ---
 

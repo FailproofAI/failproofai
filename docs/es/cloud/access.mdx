@@ -12,9 +12,9 @@ Las API keys controlan quién y qué puede acceder a tu servidor de Observabilid
 |---|---|---|
 | Clave de collector | `events:add` | El `agenteye-collector` en cada máquina agente, para enviar eventos. |
 | Clave de lectura del dashboard | `events:read`, `keys:read` | Un operador o integración de solo lectura que consulta datos sin modificarlos. |
-| Clave admin de bootstrap | todos los permisos | El operador que levanta la instancia por primera vez (junto con el dashboard). Se inicializa desde la variable de entorno `ADMIN_KEY`. Ver [Clave admin de bootstrap](#bootstrap-admin-key). |
+| Clave admin de bootstrap | todos los permisos | El operador que levanta la instancia por primera vez (junto con el dashboard). Se inicializa desde la variable de entorno `ADMIN_KEY`. Ver [Clave admin de bootstrap](/es/cloud/access). |
 
-Empieza aquí. Consulta el catálogo completo de permisos a continuación solo cuando necesites una clave con un ámbito más estrecho y personalizado. Ver también [Distribución recomendada de claves](#recommended-key-layout) y [Crear claves](#creating-keys).
+Empieza aquí. Consulta el catálogo completo de permisos a continuación solo cuando necesites una clave con un ámbito más estrecho y personalizado. Ver también [Distribución recomendada de claves](/es/cloud/access) y [Crear claves](/es/cloud/access).
 
 ---
 
@@ -110,7 +110,7 @@ Estos permisos respaldan la página **Users** del dashboard, donde los ámbitos 
 | `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Ver definiciones de auditorías, historial de ejecuciones y hallazgos. |
 | `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Crear, editar, eliminar y ejecutar auditorías; triar hallazgos (reconocer / silenciar / descartar / resolver / reabrir / asignar). |
 
-> **Nota:** Para dar a una clave acceso a la superficie de auditorías, otórgale `audits:*` explícitamente. Ver [Notas de actualización y compatibilidad con versiones anteriores](#upgrade-and-backward-compatibility-notes) para saber cómo se migraron los titulares existentes cuando se lanzó Audits.
+> **Nota:** Para dar a una clave acceso a la superficie de auditorías, otórgale `audits:*` explícitamente. Ver [Notas de actualización y compatibilidad con versiones anteriores](/es/cloud/access) para saber cómo se migraron los titulares existentes cuando se lanzó Audits.
 
 > El endpoint del selector de destinatarios `GET /alerts/recipients` (que lista los emails de los miembros a los que puede notificar un editor de alertas) es accesible por un titular de **`alerts:read`** **o** `alerts:write`, de modo que los editores de alertas pueden llenar el selector sin necesitar `users:read`.
 
@@ -193,7 +193,7 @@ curl -s -X POST http://your-server/keys \
   }'
 ```
 
-Cuando creas una clave a través de la API HTTP, tú mismo proporcionas el valor de `key`; elige un secreto robusto y guárdalo de forma segura. (El dashboard funciona al revés: genera un secreto robusto por ti y lo muestra una sola vez al crearlo; ver [Gestión de claves en el dashboard](#key-management-in-the-dashboard).) La respuesta confirma que la clave fue creada:
+Cuando creas una clave a través de la API HTTP, tú mismo proporcionas el valor de `key`; elige un secreto robusto y guárdalo de forma segura. (El dashboard funciona al revés: genera un secreto robusto por ti y lo muestra una sola vez al crearlo; ver [Gestión de claves en el dashboard](/es/cloud/access).) La respuesta confirma que la clave fue creada:
 
 ```json
 {

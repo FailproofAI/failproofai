@@ -8,7 +8,7 @@ FailproofAI installs into the agent CLIs you already run, and one policy set cov
 them. Event names, tool names, and tool-input keys are normalized before any policy
 executes, so a rule you write once fires identically everywhere.
 
-But the CLIs are not equally capable, and pretending otherwise is how a guardrail becomes
+But the CLIs are not equally capable, and pretending otherwise is how a policy becomes
 theatre. A `deny` only means something if the CLI *reads* it at a point where the action
 can still be stopped. This page states, per CLI, exactly where that is true.
 
@@ -52,7 +52,7 @@ Read this as: *if a policy denies here, does the agent stop?*
 - **Blocks** — the action is prevented, or the agent is forced to continue and fix it.
 - **Records only** — the verdict is logged and visible, but the action proceeds. Either
   the CLI discards the answer, or the action had already happened.
-- **n/a** — the CLI does not fire that event at all.
+- **n/a** — failproofai does not subscribe to that event on this CLI, so nothing evaluates there.
 
 | CLI | Before a tool call | On a submitted prompt | After a tool call | At turn end | Sub-agent end |
 |---|---|---|---|---|---|
@@ -72,16 +72,16 @@ Read this as: *if a policy denies here, does the agent stop?*
 <Warning>
   **The turn-end column is the one to read before you rely on it.** The five
   `require-*-before-stop` policies — commit, push, PR, no-conflicts, CI-green — work by
-  refusing to let the agent finish. On Hermes and Goose there is no turn-end gate for
-  FailproofAI to attach to, so those policies never fire there. That is a platform
-  limit, stated here rather than left for you to discover from a rule that quietly did
-  nothing.
+  refusing to let the agent finish. On Hermes and Goose, failproofai does not subscribe to a
+  turn-end event, so those policies never fire there. Both CLIs do expose one upstream —
+  Hermes `pre_verify`, Goose's blocking stop hook — so this is a deliberate scope decision,
+  not a platform limit. Either way the effect is the same: do not rely on those five there.
 </Warning>
 
 Every entry in this table is derived from the same machine-readable source the product
-itself uses, and a test asserts they agree. Rows that have not been verified against a
+itself uses (`src/hooks/enforcement-capability.ts`). Rows that have not been verified against a
 real, shipping version of a CLI say "not verified" rather than guessing — an unverified
-claim about a guardrail is worse than no claim.
+claim about a policy is worse than no claim.
 
 ---
 
@@ -190,7 +190,7 @@ even for a CLI you have not installed yet, and activate the moment you do.
 </Card>
 
 <Card title="Built-in policies" icon="shield" href="/built-in-policies">
-  All 39, including which events each one listens to.
+  All 40, including which events each one listens to.
 </Card>
 
 <Card title="Configuration" icon="gear" href="/configuration">

@@ -29,18 +29,21 @@ nunca pode reativar algo que o arquivo de configuração desligou.
 |----------|-----------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | Desativa a telemetria de uso anônima para este processo |
 
-Para desativar permanentemente na máquina, adicione o seguinte ao `~/.failproofai/config.toml`:
+Para desativar permanentemente na máquina, adicione o seguinte ao `~/.failproofai/config.json`:
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
 O arquivo de configuração é a opção recomendada se você executa o **daemon failproofaid**.
 O daemon é um serviço de escopo do sistema, e seu ambiente não inclui
 variáveis exportadas pelo seu shell — portanto, `FAILPROOFAI_TELEMETRY_DISABLED` não
-chega até ele. `[telemetry] enabled = false` é lido tanto pela CLI quanto pelo daemon.
+chega até ele. `"telemetry": { "enabled": false }` é lido tanto pela CLI quanto pelo daemon.
 </Note>
 
 O daemon reporta apenas seu próprio **ciclo de vida**: quando iniciou (e se a

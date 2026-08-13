@@ -12,9 +12,9 @@ Les clés API contrôlent qui et ce qui peut atteindre votre serveur d'observabi
 |---|---|---|
 | Clé collecteur | `events:add` | L'`agenteye-collector` sur chaque machine agent, pour envoyer des événements. |
 | Clé de lecture tableau de bord | `events:read`, `keys:read` | Un opérateur en lecture seule ou une intégration qui interroge les données sans les modifier. |
-| Clé admin d'amorçage | toutes les permissions | L'opérateur qui démarre l'instance pour la première fois (et le tableau de bord). Initialisée depuis la variable d'environnement `ADMIN_KEY`. Voir [Clé admin d'amorçage](#bootstrap-admin-key). |
+| Clé admin d'amorçage | toutes les permissions | L'opérateur qui démarre l'instance pour la première fois (et le tableau de bord). Initialisée depuis la variable d'environnement `ADMIN_KEY`. Voir [Clé admin d'amorçage](/fr/cloud/access). |
 
-Commencez ici. Ne consultez le catalogue complet des permissions ci-dessous que lorsque vous avez besoin d'une clé personnalisée à portée restreinte. Voir aussi [Disposition recommandée des clés](#recommended-key-layout) et [Créer des clés](#creating-keys).
+Commencez ici. Ne consultez le catalogue complet des permissions ci-dessous que lorsque vous avez besoin d'une clé personnalisée à portée restreinte. Voir aussi [Disposition recommandée des clés](/fr/cloud/access) et [Créer des clés](/fr/cloud/access).
 
 ---
 
@@ -110,7 +110,7 @@ Ces permissions alimentent la page **Utilisateurs** du tableau de bord, où les 
 | `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | Afficher les définitions d'audit, l'historique d'exécution et les résultats. |
 | `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | Créer, modifier, supprimer et exécuter des audits ; trier les résultats (acquitter / mettre en sourdine / ignorer / résoudre / rouvrir / assigner). |
 
-> **Remarque :** Pour donner à une clé l'accès à la surface d'audit, accordez-lui explicitement `audits:*`. Voir [Notes de mise à jour et de compatibilité ascendante](#upgrade-and-backward-compatibility-notes) pour savoir comment les bénéficiaires existants ont été migrés lors du déploiement des Audits.
+> **Remarque :** Pour donner à une clé l'accès à la surface d'audit, accordez-lui explicitement `audits:*`. Voir [Notes de mise à jour et de compatibilité ascendante](/fr/cloud/access) pour savoir comment les bénéficiaires existants ont été migrés lors du déploiement des Audits.
 
 > L'endpoint du sélecteur de destinataires `GET /alerts/recipients` (qui liste les e-mails des membres qu'un éditeur d'alertes peut notifier) est accessible par un détenteur de **soit** `alerts:read` **soit** `alerts:write`, de sorte que les éditeurs d'alertes peuvent remplir le sélecteur sans se voir accorder `users:read`.
 
@@ -193,7 +193,7 @@ curl -s -X POST http://your-server/keys \
   }'
 ```
 
-Lorsque vous créez une clé via l'API HTTP, vous fournissez vous-même la valeur `key` ; choisissez un secret fort et stockez-le de manière sécurisée. (Le tableau de bord fonctionne différemment : il génère un secret fort pour vous et le montre une seule fois à la création ; voir [Gestion des clés dans le tableau de bord](#key-management-in-the-dashboard).) La réponse confirme que la clé a été créée :
+Lorsque vous créez une clé via l'API HTTP, vous fournissez vous-même la valeur `key` ; choisissez un secret fort et stockez-le de manière sécurisée. (Le tableau de bord fonctionne différemment : il génère un secret fort pour vous et le montre une seule fois à la création ; voir [Gestion des clés dans le tableau de bord](/fr/cloud/access).) La réponse confirme que la clé a été créée :
 
 ```json
 {

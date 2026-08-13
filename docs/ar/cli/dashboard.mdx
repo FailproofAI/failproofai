@@ -12,18 +12,14 @@ failproofai
 
 ## الخيارات
 
-| العلم | الوصف |
-|------|-------------|
-| `--port <number>` | المنفذ المراد الاستماع عليه (الافتراضي: `8020`) |
-| `--allowed-origins <origins>` | المضيفون/عناوين IP المفصولة بفواصل المسموح لها بالوصول إلى موارد التطوير |
+The dashboard takes no flags — `failproofai` rejects any it does not recognize. The port is fixed at `8020`.
 
 لتوجيه لوحة التحكم إلى مجلد مشروع Claude غير الافتراضي، قم بتعيين متغير البيئة `CLAUDE_PROJECTS_PATH` عند التشغيل.
 
 ## أمثلة
 
 ```bash
-# قم بالتشغيل على منفذ مختلف
-failproofai --port 9000
+failproofai
 
 # استخدم مسار مشاريع Claude مخصص عبر متغير البيئة
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai

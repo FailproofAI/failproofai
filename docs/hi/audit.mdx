@@ -47,9 +47,9 @@ failproofai
   उपयोग देखने के लिए `failproofai audit -h` (या `--help`) चलाएं। ऑडिट **पूरी तरह ऑफलाइन** चलता है — कोई खाता या नेटवर्क आवश्यक नहीं — और डैशबोर्ड तब तक सेवा प्रदान करता रहता है जब तक आप इसे `Ctrl+C` से बंद न करें।
 </Tip>
 
-डैशबोर्ड इस मशीन पर पिछले एजेंट CLI ट्रांसक्रिप्ट को स्कैन करता है (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) और रिपोर्ट करता है कि एजेंट ने कितनी बार वे काम किए जो failproofai रोकने के लिए बनाया गया है — env-var चेक, force pushes, redundant `cd <cwd>` prefixes, sleep-polling loops, अभी-अभी edited files को फिर से पढ़ना, और अधिक।
+डैशबोर्ड इस मशीन पर पिछले एजेंट CLI ट्रांसक्रिप्ट को स्कैन करता है (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Antigravity, Devin, Factory, Goose, Hermes, OpenClaw) और रिपोर्ट करता है कि एजेंट ने कितनी बार वे काम किए जो failproofai रोकने के लिए बनाया गया है — env-var चेक, force pushes, redundant `cd <cwd>` prefixes, sleep-polling loops, अभी-अभी edited files को फिर से पढ़ना, और अधिक।
 
-प्रत्येक ट्रांसक्रिप्ट के लिए, हर tool-use इवेंट को 39 builtin policies **और** 8 audit-only detectors के माध्यम से फिर से चलाया जाता है जो उन पैटर्न को पकड़ते हैं जो अभी तक runtime policies द्वारा कवर नहीं किए गए हैं। काउंट्स सभी सत्रों में प्रति policy / detector को एकत्रित किए जाते हैं।
+प्रत्येक ट्रांसक्रिप्ट के लिए, हर tool-use इवेंट को 40 builtin policies **और** 8 audit-only detectors के माध्यम से फिर से चलाया जाता है जो उन पैटर्न को पकड़ते हैं जो अभी तक runtime policies द्वारा कवर नहीं किए गए हैं। काउंट्स सभी सत्रों में प्रति policy / detector को एकत्रित किए जाते हैं।
 
 ## आपको क्या मिलता है
 
@@ -63,15 +63,18 @@ failproofai
 
 ## Scheduled audits
 
-यदि आप **failproofaid daemon** चलाते हैं (देखें [`failproofai config`](/hi/cli/install-policies)),
+यदि आप **failproofaid daemon** चलाते हैं (देखें [`failproofai config`](/hi/cli/config)),
 यह आपके लिए schedule पर ऑडिट को फिर से चला सकता है और background में `/audit` रिपोर्ट को refresh कर सकता है। यह **डिफ़ॉल्ट रूप से बंद** है, क्योंकि स्कैन इस मशीन पर हर एजेंट सत्र ट्रांसक्रिप्ट की *सामग्री* को पढ़ता है — जब तक आप इसके लिए न कहें, कोई भी timer पर स्कैन नहीं करता।
 
-इसे `~/.failproofai/config.toml` में चालू करें:
+इसे `~/.failproofai/config.json` में चालू करें:
 
-```toml
-[audit]
-auto = true
-interval_days = 7
+```json
+{
+  "audit": {
+    "auto": true,
+    "interval_days": 7
+  }
+}
 ```
 
 | Key | अर्थ |
@@ -82,7 +85,7 @@ interval_days = 7
 - शेड्यूल **wall-clock** है, इसलिए यह suspend और reboots को survive करता है: एक लैपटॉप जो अपने due समय के बाद सो रहा था **एक बार** wake पर चलता है, कभी backlog नहीं।
 - प्रत्येक run एक अलग, low-priority (`nice 19`) प्रक्रिया है — कभी भी daemon के hook path नहीं, जो tool calls का जवाब देने के लिए free रहता है।
 - एक स्कैन को छोड़ दिया जाता है यदि `failproofai audit` या डैशबोर्ड की re-run पहले से ही flight में है; यह failure के रूप में treat किए जाने के बजाय शीघ्र ही फिर से try किया जाता है।
-- Progress को `~/.failproofai/state/audit-schedule.json` में लिखा जाता है (last run, next due)। Daemon उस फ़ाइल का मालिक है — `config.toml` में cadence बदलें।
+- Progress को `~/.failproofai/state/audit-schedule.json` में लिखा जाता है (last run, next due)। Daemon उस फ़ाइल का मालिक है — `config.json` में cadence बदलें।
 
 <Note>
 यदि आपने इसे एक पुराने failproofai द्वारा सेट किए गए मशीन पर सक्षम किया है, तो

@@ -71,7 +71,7 @@ Le gestionnaire applique une limite de 1 Mo sur stdin. Les charges utiles dépas
 {
   "hookSpecificOutput": {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Blocked by failproofai: sudo command blocked"
+    "permissionDecisionReason": "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
   }
 }
 ```
@@ -156,7 +156,7 @@ L'ensemble du processus s'exécute en moins de 100 ms pour des charges utiles cl
 Logique de fusion :
 - `enabledPolicies` - union dédupliquée des trois fichiers
 - `policyParams` - par clé de politique, le premier fichier qui la définit l'emporte entièrement
-- `customPoliciesPath` - le premier fichier qui la définit l'emporte
+- `customPoliciesPaths` - le premier fichier qui la définit l'emporte
 - `llm` - le premier fichier qui la définit l'emporte
 
 Le tableau de bord web utilise `readHooksConfig()` (portée globale uniquement) pour la lecture et l'écriture, car il n'est pas invoqué avec un répertoire de travail de projet.
@@ -186,7 +186,7 @@ Après exécution de toutes les politiques :
 
 ## Politiques intégrées
 
-`src/hooks/builtin-policies.ts` définit les 39 politiques intégrées sous forme d'objets `BuiltinPolicyDefinition` :
+`src/hooks/builtin-policies.ts` définit les 40 politiques intégrées sous forme d'objets `BuiltinPolicyDefinition` :
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -227,7 +227,7 @@ export function clearCustomHooks(): void { ... }  // used in tests
 
 `src/hooks/custom-hooks-loader.ts` charge le fichier de politique de l'utilisateur :
 
-1. Lecture de `customPoliciesPath` depuis la configuration ; ignoré s'il est absent.
+1. Lecture de `customPoliciesPaths` depuis la configuration ; ignoré s'il est absent.
 2. Résolution vers un chemin absolu ; vérification de l'existence du fichier.
 3. Réécriture de toutes les importations `from "failproofai"` vers le chemin dist réel, afin que `customPolicies` se résolve vers le même registre `globalThis`.
 4. Réécriture récursive des imports locaux transitifs pour garantir la compatibilité ESM.
@@ -247,7 +247,7 @@ Après chaque événement de hook, le gestionnaire ajoute une ligne JSONL à `~/
 
 ```json
 {
-  "timestamp": "2026-04-06T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",
@@ -307,7 +307,7 @@ failproofai/
 │   └── failproofai.mjs           # Routeur CLI (hook / dashboard / install / etc.)
 ├── src/hooks/
 │   ├── handler.ts                # Pipeline des événements de hook
-│   ├── builtin-policies.ts       # 39 définitions de politiques
+│   ├── builtin-policies.ts       # 40 définitions de politiques
 │   ├── policy-evaluator.ts       # Moteur d'exécution des politiques
 │   ├── policy-registry.ts        # Enregistrement et recherche des politiques
 │   ├── policy-types.ts           # Interfaces TypeScript

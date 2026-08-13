@@ -5,7 +5,7 @@ icon: shield-halved
 ---
 
 A policy is one rule, evaluated against one thing an agent is about to do. It is the unit
-of everything FailproofAI enforces — the 39 built-in rules, the ones you write, and the
+of everything FailproofAI enforces — the 40 built-in rules, the ones you write, and the
 ones your organization deploys from the cloud all use the same shape and the same three
 answers.
 
@@ -23,7 +23,7 @@ instruct("Run tests first.")  // proceed, with extra context to stay on track
 | Decision | What the agent experiences |
 |---|---|
 | **allow** | Nothing. The tool call runs as normal. With a message, the model also receives that line as context. |
-| **deny** | The call never runs. The model is told `Blocked by failproofai: <your reason>` and typically routes around it on its own. |
+| **deny** | The call never runs. The model is told `Blocked <tool> by failproofai because: <your reason>, as per the policy configured by the user` and typically routes around it on its own. |
 | **instruct** | The call runs. The model receives your message alongside the result. |
 
 The reason text matters more than it looks. A denial is not an error the agent hits and
@@ -45,22 +45,22 @@ Four sources, all evaluated together, each with a different reason to exist.
 
 <CardGroup cols={2}>
 
-<Card title="Built in" icon="shield" href="/built-in-policies">
-  39 rules covering the failure modes every team hits. Enable by name, tune by parameter,
+<Card title="Built in" icon="shield" href="/fr/built-in-policies">
+  40 rules covering the failure modes every team hits. Enable by name, tune by parameter,
   no code.
 </Card>
 
-<Card title="Written by you" icon="code" href="/custom-policies">
+<Card title="Written by you" icon="code" href="/fr/custom-policies">
   JavaScript, with the same `allow` / `deny` / `instruct` API. For failure modes specific
   to your codebase.
 </Card>
 
-<Card title="Convention" icon="folder-open" href="/custom-policies#option-1-convention-based-recommended">
+<Card title="Convention" icon="folder-open" href="/fr/custom-policies">
   Any `*policies.mjs` file in `.failproofai/policies/`, discovered automatically. Commit
   it and the whole team has it.
 </Card>
 
-<Card title="Deployed from the cloud" icon="cloud-arrow-down" href="/cloud/managed-policies">
+<Card title="Deployed from the cloud" icon="cloud-arrow-down" href="/fr/cloud/managed-policies">
   Policy your organization assigns centrally. Digest-verified on this machine, and
   deployable in observe-only mode first.
 </Card>
@@ -100,7 +100,7 @@ Then:
 
 ## Turning policies on
 
-The fastest path is setup, which offers **Recommended** — 16 policies, globally, for every
+The fastest path is setup, which offers **Recommended** — 15 policies, globally, for every
 agent CLI on the machine:
 
 ```bash
@@ -110,8 +110,8 @@ failproofai config
 <Accordion title="What Recommended turns on, and why">
 | Group | Policies | Why |
 |---|---|---|
-| Secrets never reach the model or disk | `sanitize-jwt`, `sanitize-api-keys`, `sanitize-connection-strings`, `sanitize-private-key-content`, `sanitize-bearer-tokens`, `protect-env-vars`, `block-env-files`, `block-secrets-write` | A leaked credential is the one failure you cannot undo by reverting a commit. |
-| The agent cannot disable its own guardrails | `block-self-pause`, `block-failproofai-commands` | An agent that can turn off enforcement has no enforcement. |
+| Secrets are blocked at the read, and flagged in output | `sanitize-jwt`, `sanitize-api-keys`, `sanitize-connection-strings`, `sanitize-private-key-content`, `sanitize-bearer-tokens`, `protect-env-vars`, `block-env-files`, `block-secrets-write` | A leaked credential is the one failure you cannot undo by reverting a commit. |
+| The agent cannot disable its own policies | `block-self-pause`, `block-failproofai-commands` | An agent that can turn off enforcement has no enforcement. |
 | Commands that are unrecoverable when wrong | `block-sudo`, `block-curl-pipe-sh`, `block-rm-rf` | Everything here destroys state that no undo brings back. |
 | Git history stays recoverable | `block-push-master`, `block-force-push` | `--force-with-lease` still works; blind clobbering does not. |
 
@@ -127,7 +127,7 @@ and you get the union.
 
 | Preset | What it covers |
 |---|---|
-| **Secrets & data** | Redact secrets in tool output, block `.env` and secret-file writes, keep reads inside the repo |
+| **Secrets & data** | Block `.env` and secret-file reads and writes, flag secrets in tool output, keep reads inside the repo |
 | **Git safety** | Block force-push and pushes to main, warn on history-rewriting git operations |
 | **Ship discipline** | Don't let the agent finish until changes are committed, pushed, PR'd, and CI is green |
 | **Cloud & infra** | Block `kubectl` / `terraform` / `aws` / `gcloud` / `az` / `helm` / `gh` pipeline commands |
@@ -140,7 +140,7 @@ failproofai policy remove warn-git-amend
 failproofai policies                     # list everything, with status and parameters
 ```
 
-Or toggle any policy from the [local dashboard's](/dashboard) Policies page.
+Or toggle any policy from the [local dashboard's](/fr/dashboard) Policies page.
 
 ---
 
@@ -182,7 +182,7 @@ Every policy accepts a `hint`, appended to whatever reason it gives:
 The agent then sees: *"Force-pushing is blocked. Branch off and open a PR instead."* Works
 on built-in, custom, and convention policies alike — no code change.
 
-[Full configuration reference →](/configuration)
+[Full configuration reference →](/fr/configuration)
 
 ---
 
@@ -240,7 +240,7 @@ Custom policies are **fail-open**: a syntax error, a thrown exception, or a func
 runs longer than 10 seconds is logged and treated as allow. Your own broken rule never
 takes the built-ins down with it.
 
-[Full authoring guide →](/custom-policies) · [Testing your policies →](/testing)
+[Full authoring guide →](/fr/custom-policies) · [Testing your policies →](/fr/testing)
 
 ---
 
@@ -248,19 +248,19 @@ takes the built-ins down with it.
 
 <CardGroup cols={2}>
 
-<Card title="All 39 built-in policies" icon="shield" href="/built-in-policies">
+<Card title="All 40 built-in policies" icon="shield" href="/fr/built-in-policies">
   Every rule, what it catches, and its parameters.
 </Card>
 
-<Card title="Supported agents" icon="table" href="/agent-support">
+<Card title="Supported agents" icon="table" href="/fr/agent-support">
   Which decisions actually block, per CLI.
 </Card>
 
-<Card title="Configuration" icon="gear" href="/configuration">
+<Card title="Configuration" icon="gear" href="/fr/configuration">
   Scopes, merge rules, and the config file format.
 </Card>
 
-<Card title="Deploy policy centrally" icon="cloud" href="/cloud/managed-policies">
+<Card title="Deploy policy centrally" icon="cloud" href="/fr/cloud/managed-policies">
   One deployment, every machine, with an observe-only rollout.
 </Card>
 

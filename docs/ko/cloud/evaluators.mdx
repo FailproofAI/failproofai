@@ -10,7 +10,7 @@ FailproofAI Cloud는 완료된 모든 에이전트 실행을 자동으로 품질
 
 ## 개요
 
-1. **점수화 서비스를 작성합니다.** 세션 트랜스크립트를 읽고 점수를 반환하는 소규모 HTTP 서비스를 구축합니다. Observability에는 복사하여 사용할 수 있는 참조 구현이 포함되어 있습니다. [SDK를 이용한 평가자 작성](#writing-an-evaluator-with-the-sdk)을 참조하세요.
+1. **점수화 서비스를 작성합니다.** 세션 트랜스크립트를 읽고 점수를 반환하는 소규모 HTTP 서비스를 구축합니다. Observability에는 복사하여 사용할 수 있는 참조 구현이 포함되어 있습니다. [SDK를 이용한 평가자 작성](/ko/cloud/evaluators)을 참조하세요.
 2. **Observability가 해당 서비스를 가리키도록 설정합니다.** 서버 프로세스에 `EVALUATOR_ENDPOINT`(및 공유 `EVALUATOR_TOKEN`)를 설정합니다.
 3. **점수가 기록되는 것을 확인합니다.** 완료된 모든 세션은 자동으로 점수화되며, 결과는 세션 상세 페이지, 세션 그리드, 저장된 대시보드에 표시됩니다.
 
@@ -160,7 +160,7 @@ def run(req: EvalRequest) -> EvalResponse:
 
 ## 평가자 실행
 
-평가자는 **사용자의 서비스**입니다 — FailproofAI Cloud는 기본 평가자를 제공하지 않으므로, 자체 서비스를 실행하는 곳에서 구축하고 실행해야 합니다. 모든 ASGI 서버에서 실행됩니다(예: `uvicorn my_evaluator:app`); [HTTP 계약](#http-contract)의 `/health`, `/config`, `/evaluate` 라우트를 제공한 다음 서버가 해당 서비스를 가리키도록 설정합니다([서버 구성](#configuring-the-server) 참조).
+평가자는 **사용자의 서비스**입니다 — FailproofAI Cloud는 기본 평가자를 제공하지 않으므로, 자체 서비스를 실행하는 곳에서 구축하고 실행해야 합니다. 모든 ASGI 서버에서 실행됩니다(예: `uvicorn my_evaluator:app`); [HTTP 계약](/ko/cloud/evaluators)의 `/health`, `/config`, `/evaluate` 라우트를 제공한 다음 서버가 해당 서비스를 가리키도록 설정합니다([서버 구성](/ko/cloud/evaluators) 참조).
 
 평가자에 접근할 수 있으면 `GET /health`는 `{"status":"ok"}`를 반환합니다. 에이전트가 엔드-투-엔드 실행을 완료한 후, 서버의 `GET /evaluations`는 `status: "done"` 및 평가자가 생성한 점수가 포함된 행을 반환합니다.
 
@@ -256,7 +256,7 @@ GET /evaluations?score_filters=helpfulness:0.5..,factuality:0.9..
 
 - **`/sessions/<id>`**: 이벤트 타임라인 + 세션의 점수와 디스패치 시도 오류를 보여주는 오른쪽 패널. 키에 `evaluations:trigger` 권한이 있으면 내보내기 버튼 옆에 **재평가** 버튼이 나타나며, `agent_end`를 전송하지 않은 세션이나 새 평가자를 배포한 후 점수를 새로 고칠 때 유용합니다. 대시보드는 새 결과를 폴링하고 결과가 도착하면 오른쪽 패널을 업데이트합니다.
 - **`/sessions`**: 필터링 가능한 세션 그리드; 점수 열에는 각 세션의 평가 상태와 점수가 한눈에 표시됩니다.
-- **`/dashboards`**: 저장된 평가 상태 뷰(아래 [대시보드](#dashboards) 참조).
+- **`/dashboards`**: 저장된 평가 상태 뷰(아래 [대시보드](/ko/cloud/evaluators) 참조).
 
 ![세션별 평가 상태 필과 색상으로 구분된 점수 배지(helpfulness, factuality, tool_efficiency, safety, coherence)가 있는 세션 그리드](/cloud/images/sessions-list.png)
 

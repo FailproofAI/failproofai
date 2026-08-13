@@ -79,7 +79,7 @@ failproofai policies --install --custom ./security.js --custom ./workflow.js
 failproofai policies --uninstall --custom
 ```
 
-Las rutas absolutas resueltas se almacenan en `policies-config.json` como `customPoliciesPaths`. Repite `--custom` para configurar múltiples archivos. Las configuraciones existentes que usen el campo heredado `customPoliciesPath` siguen funcionando. Los archivos se cargan de nuevo en cada evento de hook; no hay caché entre eventos.
+Las rutas absolutas resueltas se almacenan en `policies-config.json` como `customPoliciesPaths`. Repite `--custom` para configurar múltiples archivos. Las configuraciones existentes que usen el campo heredado `customPoliciesPaths` siguen funcionando. Los archivos se cargan de nuevo en cada evento de hook; no hay caché entre eventos.
 
 Cada política registrada aparece con su propio interruptor en el panel. Desactivar una política registra su ID calificado por fuente en `disabledCustomPolicies`; el archivo y sus demás políticas continúan cargándose, mientras que la política desactivada se excluye antes de la coincidencia de eventos. Los nombres de políticas duplicados entre archivos tienen interruptores independientes.
 
@@ -122,12 +122,12 @@ customPolicies.add({
 | `deny(message)` | Bloquea la operación | El agente no debería realizar esta acción |
 | `instruct(message)` | Añade contexto sin bloquear | Proporciona contexto adicional al agente para que no se desvíe |
 
-`deny(message)` — el mensaje aparece para Claude con el prefijo `"Blocked by failproofai:"`. Un único `deny` cortocircuita toda evaluación posterior.
+`deny(message)` — el mensaje aparece para Claude con el prefijo `Blocked <tool> by failproofai because: <message>, as per the policy configured by the user`. Un único `deny` cortocircuita toda evaluación posterior.
 
 `instruct(message)` — el mensaje se añade al contexto de Claude para la llamada de herramienta actual. Todos los mensajes `instruct` se acumulan y se entregan juntos.
 
 <Tip>
-Puedes añadir orientación adicional a cualquier mensaje `deny` o `instruct` incluyendo un campo `hint` en `policyParams`, sin necesidad de cambiar el código. Esto funciona también para políticas personalizadas (`custom/`), de convención del proyecto (`.failproofai-project/`) y de convención del usuario (`.failproofai-user/`). Consulta [Configuración → hint](/es/configuration#hint-cross-cutting) para más detalles.
+Puedes añadir orientación adicional a cualquier mensaje `deny` o `instruct` incluyendo un campo `hint` en `policyParams`, sin necesidad de cambiar el código. Esto funciona también para políticas personalizadas (`custom/`), de convención del proyecto (`.failproofai-project/`) y de convención del usuario (`.failproofai-user/`). Consulta [Configuración → hint](/es/configuration) para más detalles.
 </Tip>
 
 ### Mensajes allow informativos
@@ -194,7 +194,7 @@ customPolicies.add({
 Las políticas se evalúan en este orden:
 
 1. Políticas integradas (en orden de definición)
-2. Políticas personalizadas explícitas de `customPoliciesPath` (en orden de `.add()`)
+2. Políticas personalizadas explícitas de `customPoliciesPaths` (en orden de `.add()`)
 3. Políticas de convención del proyecto en `.failproofai/policies/` (archivos en orden alfabético, orden de `.add()` dentro de cada uno)
 4. Políticas de convención del usuario en `~/.failproofai/policies/` (archivos en orden alfabético, orden de `.add()` dentro de cada uno)
 
@@ -253,7 +253,7 @@ Las políticas personalizadas son **fail-open**: los errores nunca bloquean las 
 
 | Fallo | Comportamiento |
 |---------|----------|
-| `customPoliciesPath` no configurado | No se ejecutan políticas personalizadas explícitas; las políticas de convención y las integradas continúan con normalidad |
+| `customPoliciesPaths` no configurado | No se ejecutan políticas personalizadas explícitas; las políticas de convención y las integradas continúan con normalidad |
 | Archivo no encontrado | Se registra una advertencia en `~/.failproofai/hook.log`; las integradas continúan |
 | Error de sintaxis/importación (explícito) | Se registra el error en `~/.failproofai/hook.log`; se omiten las políticas personalizadas explícitas |
 | Error de sintaxis/importación (por convención) | Se registra el error; ese archivo se omite, los demás archivos de convención continúan cargándose |

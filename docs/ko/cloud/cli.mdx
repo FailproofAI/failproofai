@@ -48,7 +48,7 @@ agenteye --json sessions --since 24h                                            
 }
 ```
 
-이 페이지의 나머지 부분에서 각 구성 요소를 설명합니다: [설치](#installation), [로그인](#authentication), [설정](#configuration), 모든 커맨드에 공통으로 적용되는 [전역 규칙](#global-options--conventions), 그리고 [전체 커맨드 참조](#command-reference).
+이 페이지의 나머지 부분에서 각 구성 요소를 설명합니다: [설치](/ko/cloud/cli), [로그인](/ko/cloud/cli), [설정](/ko/cloud/cli), 모든 커맨드에 공통으로 적용되는 [전역 규칙](/ko/cloud/cli), 그리고 [전체 커맨드 참조](/ko/cloud/cli).
 
 ---
 
@@ -91,7 +91,7 @@ agenteye logout     # 세션을 취소하고 저장된 토큰 삭제
 
 `whoami`는 세션이 없거나 만료된 경우에도 오류를 발생시키지 않으며, 대신 `logged_in: false`를 반환합니다. 스크립트나 에이전트가 인증 상태를 안전하게 확인할 수 있습니다(다만 base URL이 설정되지 않았거나 대시보드에 접근할 수 없으면 여전히 비정상 종료될 수 있습니다).
 
-**요구 사항:** 이메일이 대시보드 로그인 허용 목록에 있어야 하며(FailproofAI Cloud 관리자에게 문의), 대시보드가 base URL에서 접근 가능해야 합니다([설정](#configuration) 참조). 코드를 요청했는데 도착하지 않는다면 이메일이 아직 대시보드 접근 권한이 없는 것일 수 있습니다.
+**요구 사항:** 이메일이 대시보드 로그인 허용 목록에 있어야 하며(FailproofAI Cloud 관리자에게 문의), 대시보드가 base URL에서 접근 가능해야 합니다([설정](/ko/cloud/cli) 참조). 코드를 요청했는데 도착하지 않는다면 이메일이 아직 대시보드 접근 권한이 없는 것일 수 있습니다.
 
 ---
 

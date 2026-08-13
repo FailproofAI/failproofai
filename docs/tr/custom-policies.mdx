@@ -79,7 +79,7 @@ failproofai policies --install --custom ./security.js --custom ./workflow.js
 failproofai policies --uninstall --custom
 ```
 
-Çözümlenen mutlak yollar `policies-config.json` dosyasında `customPoliciesPaths` olarak depolanır. Birden fazla dosyayı yapılandırmak için `--custom` öğesini yineleyin. Eski `customPoliciesPath` alanını kullanan mevcut yapılandırmalar çalışmaya devam eder. Dosyalar her kanca olayında yeni yüklenir — olaylar arasında önbelleğe alma yoktur.
+Çözümlenen mutlak yollar `policies-config.json` dosyasında `customPoliciesPaths` olarak depolanır. Birden fazla dosyayı yapılandırmak için `--custom` öğesini yineleyin. Eski `customPoliciesPaths` alanını kullanan mevcut yapılandırmalar çalışmaya devam eder. Dosyalar her kanca olayında yeni yüklenir — olaylar arasında önbelleğe alma yoktur.
 
 Her kayıtlı ilke, panodan kendi geçişiyle görünür. Bir ilkeyi kapatmak, kaynaktan nitelendirilmiş kimliğini `disabledCustomPolicies` içinde kaydeder; dosya ve diğer ilkeleri yüklenmeye devam eder, devre dışı bırakılan ilke olay eşleştirmesinden önce hariç tutulur. Dosyalar arasında yinelenen ilke adlarının bağımsız geçişleri vardır.
 
@@ -122,12 +122,12 @@ customPolicies.add({
 | `deny(message)` | İşlemi engelle | Aracı bu işlemi gerçekleştirmemelidir |
 | `instruct(message)` | Engellememeden bağlam ekle | Aracıya yolunda kalması için ek bağlam ver |
 
-`deny(message)` - mesaj Claude'a `"Blocked by failproofai:"` ön ekiyle görünür. Tek bir `deny` tüm sonraki değerlendirmeleri kısa devre yapar.
+`deny(message)` - mesaj Claude'a `Blocked <tool> by failproofai because: <message>, as per the policy configured by the user` ön ekiyle görünür. Tek bir `deny` tüm sonraki değerlendirmeleri kısa devre yapar.
 
 `instruct(message)` - mesaj mevcut araç çağrısı için Claude'un bağlamına eklenir. Tüm `instruct` mesajları biriktirilir ve birlikte iletilir.
 
 <Tip>
-`policyParams` içine bir `hint` alanı ekleyerek herhangi bir `deny` veya `instruct` mesajına ekstra rehberlik ekleyebilirsiniz — kod değişikliğine gerek yok. Bu, özel (`custom/`), proje kurala dayalı (`.failproofai-project/`), ve kullanıcı kurala dayalı (`.failproofai-user/`) ilkeleri için de çalışır. Ayrıntılar için [Yapılandırma → hint](/tr/configuration#hint-cross-cutting) bölümüne bakın.
+`policyParams` içine bir `hint` alanı ekleyerek herhangi bir `deny` veya `instruct` mesajına ekstra rehberlik ekleyebilirsiniz — kod değişikliğine gerek yok. Bu, özel (`custom/`), proje kurala dayalı (`.failproofai-project/`), ve kullanıcı kurala dayalı (`.failproofai-user/`) ilkeleri için de çalışır. Ayrıntılar için [Yapılandırma → hint](/tr/configuration) bölümüne bakın.
 </Tip>
 
 ### Bilgilendirici izin mesajları
@@ -194,7 +194,7 @@ customPolicies.add({
 İlkeler şu sırada değerlendirilir:
 
 1. Yerleşik ilkeler (tanım sırasında)
-2. `customPoliciesPath` öğesinden açık özel ilkeler (`.add()` sırasında)
+2. `customPoliciesPaths` öğesinden açık özel ilkeler (`.add()` sırasında)
 3. Proje `.failproofai/policies/` öğesinden kurala dayalı ilkeler (dosyalar alfabetik, içinde `.add()` sırası)
 4. Kullanıcı `~/.failproofai/policies/` öğesinden kurala dayalı ilkeler (dosyalar alfabetik, içinde `.add()` sırası)
 
@@ -253,7 +253,7 @@ Her olay türünde ateşlemek için `match` öğesini tamamen atla.
 
 | Başarısızlık | Davranış |
 |---------|----------|
-| `customPoliciesPath` ayarlanmadı | Açık özel ilkeler çalışmaz; kurala dayalı ilkeler ve yerleşik olanlar normal olarak devam eder |
+| `customPoliciesPaths` ayarlanmadı | Açık özel ilkeler çalışmaz; kurala dayalı ilkeler ve yerleşik olanlar normal olarak devam eder |
 | Dosya bulunamadı | Uyarı `~/.failproofai/hook.log` öğesine kaydedilir; yerleşik olanlar devam eder |
 | Sözdizimi/içe aktarma hatası (açık) | Hata `~/.failproofai/hook.log` öğesine kaydedilir; açık özel ilkeler atlanır |
 | Sözdizimi/içe aktarma hatası (kurala dayalı) | Hata kaydedilir; bu dosya atlanır, diğer kurala dayalı dosyalar hala yüklenir |

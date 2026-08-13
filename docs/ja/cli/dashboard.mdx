@@ -11,18 +11,14 @@ failproofai
 
 ## オプション
 
-| フラグ | 説明 |
-|--------|------|
-| `--port <number>` | リッスンするポート番号（デフォルト: `8020`） |
-| `--allowed-origins <origins>` | 開発リソースへのアクセスを許可するホスト/IPのカンマ区切りリスト |
+The dashboard takes no flags — `failproofai` rejects any it does not recognize. The port is fixed at `8020`.
 
 デフォルト以外の Claude プロジェクトフォルダをダッシュボードに指定する場合は、起動時に `CLAUDE_PROJECTS_PATH` 環境変数を設定してください。
 
 ## 使用例
 
 ```bash
-# 別のポートで起動する
-failproofai --port 9000
+failproofai
 
 # 環境変数でカスタムの Claude プロジェクトパスを指定する
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai

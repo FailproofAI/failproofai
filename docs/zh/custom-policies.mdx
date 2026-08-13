@@ -79,7 +79,7 @@ failproofai policies --install --custom ./security.js --custom ./workflow.js
 failproofai policies --uninstall --custom
 ```
 
-解析后的绝对路径以 `customPoliciesPaths` 字段存储在 `policies-config.json` 中。重复使用 `--custom` 可配置多个文件。使用旧版 `customPoliciesPath` 字段的现有配置仍可正常工作。文件在每次 Hook 事件时重新加载，事件之间不存在缓存。
+解析后的绝对路径以 `customPoliciesPaths` 字段存储在 `policies-config.json` 中。重复使用 `--custom` 可配置多个文件。使用旧版 `customPoliciesPaths` 字段的现有配置仍可正常工作。文件在每次 Hook 事件时重新加载，事件之间不存在缓存。
 
 每个已注册的策略都会在控制台中显示独立的开关。关闭某个策略时，其含源文件限定的 ID 会被记录到 `disabledCustomPolicies`；对应文件及其他策略仍会继续加载，仅禁用的策略会在事件匹配前被排除。跨文件重名的策略拥有独立的开关。
 
@@ -122,12 +122,12 @@ customPolicies.add({
 | `deny(message)` | 拦截该操作 | Agent 不应执行此操作 |
 | `instruct(message)` | 添加上下文但不拦截 | 为 Agent 提供额外上下文以保持正轨 |
 
-`deny(message)` —— 消息会以 `"Blocked by failproofai:"` 为前缀呈现给 Claude。单次 `deny` 会短路所有后续评估。
+`deny(message)` —— 消息会以 `Blocked <tool> by failproofai because: <message>, as per the policy configured by the user` 为前缀呈现给 Claude。单次 `deny` 会短路所有后续评估。
 
 `instruct(message)` —— 消息会附加到 Claude 当前工具调用的上下文中。所有 `instruct` 消息会被累积后统一传递。
 
 <Tip>
-你可以通过在 `policyParams` 中添加 `hint` 字段，为任意 `deny` 或 `instruct` 消息追加额外指引——无需修改代码。这对自定义（`custom/`）、项目约定（`.failproofai-project/`）和用户约定（`.failproofai-user/`）策略同样适用。详见[配置 → hint](/zh/configuration#hint-cross-cutting)。
+你可以通过在 `policyParams` 中添加 `hint` 字段，为任意 `deny` 或 `instruct` 消息追加额外指引——无需修改代码。这对自定义（`custom/`）、项目约定（`.failproofai-project/`）和用户约定（`.failproofai-user/`）策略同样适用。详见[配置 → hint](/zh/configuration)。
 </Tip>
 
 ### 信息性 allow 消息
@@ -194,7 +194,7 @@ customPolicies.add({
 策略按以下顺序进行评估：
 
 1. 内置策略（按定义顺序）
-2. 来自 `customPoliciesPath` 的显式自定义策略（按 `.add()` 调用顺序）
+2. 来自 `customPoliciesPaths` 的显式自定义策略（按 `.add()` 调用顺序）
 3. 项目 `.failproofai/policies/` 中的约定策略（文件按字母顺序，文件内按 `.add()` 顺序）
 4. 用户 `~/.failproofai/policies/` 中的约定策略（文件按字母顺序，文件内按 `.add()` 顺序）
 
@@ -253,7 +253,7 @@ customPolicies.add({
 
 | 失败情况 | 行为 |
 |---------|----------|
-| `customPoliciesPath` 未设置 | 不运行显式自定义策略；约定策略和内置策略照常继续 |
+| `customPoliciesPaths` 未设置 | 不运行显式自定义策略；约定策略和内置策略照常继续 |
 | 文件未找到 | 警告记录到 `~/.failproofai/hook.log`；内置策略继续运行 |
 | 语法/导入错误（显式） | 错误记录到 `~/.failproofai/hook.log`；显式自定义策略跳过 |
 | 语法/导入错误（约定） | 错误记录；该文件跳过，其他约定文件仍正常加载 |

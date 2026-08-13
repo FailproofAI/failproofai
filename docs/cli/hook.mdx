@@ -14,8 +14,8 @@ Reads a JSON payload from stdin, evaluates all enabled policies, and exits with 
 | Exit code | Decision | Effect |
 |-----------|----------|--------|
 | `0` | `allow` | Permit the action |
-| `1` | `deny` | Block the action - Claude sees the denial reason |
-| `2` | `instruct` | Inject guidance into Claude's context |
+| `2` | `deny` | Block the action - Claude sees the denial reason |
+| `0` | `instruct` | Inject guidance into Claude's context (JSON on stdout) |
 
 ### Supported event types
 

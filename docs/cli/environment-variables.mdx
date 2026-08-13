@@ -7,10 +7,10 @@ description: "Configure failproofai behavior with environment variables"
 
 | Variable | Description |
 |----------|-------------|
-| `PORT` | Dashboard port (default: `8020`) |
+| `PORT` | Set *by* the dashboard when it launches, not read from your environment — setting it has no effect |
 | `CLAUDE_PROJECTS_PATH` | Override where Claude Code project folders are found |
 | `FAILPROOFAI_DISABLE_PAGES=policies,projects` | Comma-separated dashboard pages to hide |
-| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hosts/IPs allowed to access dev resources. Same as `--allowed-origins`. |
+| `FAILPROOFAI_ALLOWED_DEV_ORIGINS` | Hosts/IPs allowed to access dev resources (development only). |
 
 ## Logging
 
@@ -43,7 +43,7 @@ To disable it permanently for the machine, add this to `~/.failproofai/config.js
 The config file is the option to use if you run the **failproofaid daemon**.
 The daemon is a system-scope service, and its environment does not include
 variables exported from your shell — so `FAILPROOFAI_TELEMETRY_DISABLED` cannot
-reach it. `[telemetry] enabled = false` is read by both the CLI and the daemon.
+reach it. `"telemetry": { "enabled": false }` is read by both the CLI and the daemon.
 </Note>
 
 The daemon reports its own **lifecycle** only: that it started (and whether the

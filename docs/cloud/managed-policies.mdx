@@ -1,6 +1,6 @@
 ---
 title: Managed policies
-description: "Write a guardrail once, assign it, and every connected machine enforces it — with an observe-only rollout so you can see what it would block before it blocks anything."
+description: "Write a policy once, assign it, and every connected machine enforces it — with an observe-only rollout so you can see what it would block before it blocks anything."
 icon: cloud-arrow-down
 ---
 
@@ -112,7 +112,7 @@ The first `deny` wins and short-circuits the rest, so a managed policy that deni
 regardless of what a local file would have said. Instructions from every layer accumulate
 and are delivered together.
 
-[Full evaluation order →](/how-it-works#step-3-policies-run-in-order)
+[Full evaluation order →](/how-it-works#step-3-—-policies-run-in-order)
 
 ---
 
@@ -164,7 +164,7 @@ A useful split:
 <CardGroup cols={2}>
 
 <Card title="Fleet" icon="server" href="/cloud/fleet">
-  Which machines are on which deployment, and which have no guardrails at all.
+  Which machines are on which deployment, and which have no policies at all.
 </Card>
 
 <Card title="Connect a machine" icon="plug" href="/cloud/connect">
@@ -176,7 +176,7 @@ A useful split:
 </Card>
 
 <Card title="Built-in policies" icon="shield" href="/built-in-policies">
-  The 39 rules you can enable without writing anything.
+  The 40 rules you can enable without writing anything.
 </Card>
 
 </CardGroup>

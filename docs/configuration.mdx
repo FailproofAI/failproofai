@@ -60,7 +60,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }   ← falls through to global
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath` — first scope that defines either form wins.**
+**`customPoliciesPaths` / `customPoliciesPaths` — first scope that defines either form wins.**
 
 **`disabledCustomPolicies` — union across all scopes.** The dashboard writes a
 source-qualified id here when you switch off an individual policy from a custom or
@@ -155,7 +155,7 @@ user-convention (`.failproofai-user/…`) policies. Non-string and empty values 
 
 `string[]` — absolute paths to your own policy files, loaded in order. Set for you by
 `failproofai policies --install --custom <path>` (repeat the flag for several files). The
-older single-value `customPoliciesPath` still works.
+older single-value `customPoliciesPaths` still works.
 
 Files are loaded fresh on every hook event — no caching, so editing a policy takes effect
 on the next tool call.

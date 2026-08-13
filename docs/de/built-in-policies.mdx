@@ -14,15 +14,15 @@ Richtlinien sind in Kategorien gruppiert:
 
 | Kategorie | Richtlinien | Hook-Typ |
 |----------|----------|-----------|
-| [Gefährliche Befehle](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
-| [Infra-Befehle](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
-| [Secrets (Sanitizer)](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
-| [Umgebung](#environment) | block-env-files, protect-env-vars | PreToolUse |
-| [Dateizugriff](#file-access) | block-read-outside-cwd, block-secrets-write | PreToolUse |
+| [Gefährliche Befehle](/de/built-in-policies) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
+| [Infra-Befehle](/de/built-in-policies) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
+| [Secrets (Sanitizer)](/de/built-in-policies) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
+| [Umgebung](/de/built-in-policies) | block-env-files, protect-env-vars | PreToolUse |
+| [Dateizugriff](/de/built-in-policies) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
-| [Datenbank](#database) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
-| [Warnungen](#warnings) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
-| [Paketmanager](#package-managers) | prefer-package-manager | PreToolUse |
+| [Datenbank](/de/built-in-policies) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
+| [Warnungen](/de/built-in-policies) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
+| [Paketmanager](/de/built-in-policies) | prefer-package-manager | PreToolUse |
 | [Workflow](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
 - **`block-`** — verhindert, dass der Agent fortfährt.
@@ -56,7 +56,7 @@ Wenn ein Name kein `/` enthält, behandelt failproofai ihn als zum Standard-Name
 ---
 
 <Tip>
-Jede Richtlinie unterstützt ein optionales `hint`-Feld in `policyParams`. Der Hinweis wird an die deny- oder instruct-Nachricht angehängt, die Claude sieht, und gibt umsetzbare Anweisungen, ohne den Richtliniencode zu ändern. Funktioniert mit integrierten, benutzerdefinierten und konventionsbasierten Richtlinien. Siehe [Konfiguration → hint](/de/configuration#hint-cross-cutting) für Details.
+Jede Richtlinie unterstützt ein optionales `hint`-Feld in `policyParams`. Der Hinweis wird an die deny- oder instruct-Nachricht angehängt, die Claude sieht, und gibt umsetzbare Anweisungen, ohne den Richtliniencode zu ändern. Funktioniert mit integrierten, benutzerdefinierten und konventionsbasierten Richtlinien. Siehe [Konfiguration → hint](/de/configuration) für Details.
 </Tip>
 
 ---
@@ -549,7 +549,7 @@ Um das Pushen auf alle Branches zu erlauben (was diese Richtlinie effektiv deakt
 **Ereignis:** PreToolUse (Bash)  
 **Standard:** Verweigert `git push --force` und `git push -f`.
 
-Keine richtlinienspezifischen Parameter. Verwenden Sie das übergreifende [`hint`](/de/configuration#hint-cross-cutting), um Alternativen vorzuschlagen:
+Keine richtlinienspezifischen Parameter. Verwenden Sie das übergreifende [`hint`](/de/configuration), um Alternativen vorzuschlagen:
 
 ```json
 {

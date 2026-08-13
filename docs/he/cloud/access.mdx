@@ -11,9 +11,9 @@ description: "מפתחות API שולטים על מי ומה יכול להגיע
 |---|---|---|
 | מפתח קולקטור | `events:add` | ה-`agenteye-collector` על כל מכונת אג'נט, כדי לשלוח אירועים. |
 | מפתח קריאה Dashboard | `events:read`, `keys:read` | אופרטור קריאה בלבד או אינטגרציה החוקרת נתונים מבלי לשנות אותם. |
-| מפתח admin Bootstrap | כל ההרשאות | האופרטור שמעלה את ההופעה לראשונה (ו-Dashboard). זרוע מתוך משתנה הסביבה `ADMIN_KEY`. ראה [מפתח admin Bootstrap](#bootstrap-admin-key). |
+| מפתח admin Bootstrap | כל ההרשאות | האופרטור שמעלה את ההופעה לראשונה (ו-Dashboard). זרוע מתוך משתנה הסביבה `ADMIN_KEY`. ראה [מפתח admin Bootstrap](/he/cloud/access). |
 
-התחל כאן. פנה לקטלוג ההרשאה המלא למטה רק כשאתה צריך מפתח בהיקף מותאם וצר יותר. ראה גם [פריסת מפתחות מומלצת](#recommended-key-layout) ו[יצירת מפתחות](#creating-keys).
+התחל כאן. פנה לקטלוג ההרשאה המלא למטה רק כשאתה צריך מפתח בהיקף מותאם וצר יותר. ראה גם [פריסת מפתחות מומלצת](/he/cloud/access) ו[יצירת מפתחות](/he/cloud/access).
 
 ---
 
@@ -109,7 +109,7 @@ description: "מפתחות API שולטים על מי ומה יכול להגיע
 | `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | צפה בהגדרות audit, היסטוריית run, וממצאים. |
 | `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | יצירה, עריכה, מחיקה, וריצת audits; triage findings (acknowledge / mute / dismiss / resolve / reopen / assign). |
 
-> **הערה:** כדי להעניק למפתח את משטח audit, הענק `audits:*` לו באופן מפורש. ראה [הערות upgrade וחוזרים לאחור](#upgrade-and-backward-compatibility-notes) לאופן כיצד grantees קיימים הומיגרו כאשר Audits הושלח.
+> **הערה:** כדי להעניק למפתח את משטח audit, הענק `audits:*` לו באופן מפורש. ראה [הערות upgrade וחוזרים לאחור](/he/cloud/access) לאופן כיצד grantees קיימים הומיגרו כאשר Audits הושלח.
 
 > נקודת קצה של recipient-picker `GET /alerts/recipients` (המפרטת את אימיילי החברים שעורך alert יכול להודיע) ניתנת להשגה על ידי בעל **או** `alerts:read` **או** `alerts:write`, כך שעורכי alert יכולים למלא את הpicker ללא הענקת `users:read`.
 
@@ -192,7 +192,7 @@ curl -s -X POST http://your-server/keys \
   }'
 ```
 
-כשאתה יוצר מפתח דרך HTTP API, אתה מספק את ערך `key` בעצמך; בחר בסוד חזק ואחסן אותו בבטחה. (ה-dashboard עובד בדרך אחרת: הוא יוצר סוד חזק עבורך ומראה אותו פעם אחת ביצירה; ראה [Key Management in the Dashboard](#key-management-in-the-dashboard).) התגובה מאשרת שהמפתח נוצר:
+כשאתה יוצר מפתח דרך HTTP API, אתה מספק את ערך `key` בעצמך; בחר בסוד חזק ואחסן אותו בבטחה. (ה-dashboard עובד בדרך אחרת: הוא יוצר סוד חזק עבורך ומראה אותו פעם אחת ביצירה; ראה [Key Management in the Dashboard](/he/cloud/access).) התגובה מאשרת שהמפתח נוצר:
 
 ```json
 {

@@ -11,18 +11,14 @@ Inicia el panel de control web en `http://localhost:8020`.
 
 ## Opciones
 
-| Indicador | Descripción |
-|-----------|-------------|
-| `--port <number>` | Puerto en el que escuchar (por defecto: `8020`) |
-| `--allowed-origins <origins>` | Hosts/IPs separados por comas con permiso para acceder a los recursos de desarrollo |
+The dashboard takes no flags — `failproofai` rejects any it does not recognize. The port is fixed at `8020`.
 
 Para apuntar el panel de control a una carpeta de proyecto de Claude distinta a la predeterminada, establece la variable de entorno `CLAUDE_PROJECTS_PATH` al iniciarlo.
 
 ## Ejemplos
 
 ```bash
-# Iniciar en un puerto diferente
-failproofai --port 9000
+failproofai
 
 # Usar una ruta de proyectos de Claude personalizada mediante variable de entorno
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai

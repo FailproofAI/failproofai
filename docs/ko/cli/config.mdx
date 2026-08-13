@@ -21,8 +21,8 @@ Two questions, then it writes everything:
 
 <Steps>
   <Step title="Recommended, or Customize?">
-    **Recommended** applies 16 policies globally to every agent CLI detected on this
-    machine. **Customize** lets you pick the scope, combine [presets](/policies#presets),
+    **Recommended** applies 15 policies globally to every agent CLI detected on this
+    machine. **Customize** lets you pick the scope, combine [presets](/ko/policies#presets),
     and choose the CLIs yourself.
   </Step>
   <Step title="Connect to FailproofAI Cloud, or stay local?">
@@ -32,7 +32,7 @@ Two questions, then it writes everything:
 </Steps>
 
 It then confirms the exact files it will change before changing them, installs the
-[`failproofaid` service](/daemon), and reports what it did.
+[`failproofaid` service](/ko/daemon), and reports what it did.
 
 Re-run it any time — after installing a new agent CLI, after an upgrade, or to change your
 mind. It shows your current state rather than resetting it.
@@ -81,7 +81,7 @@ half is missing.
 Tokens are stored owner-only in `~/.failproofai/`, never in the service definition — that
 file is world-readable. Connecting, rotating, and disconnecting all need no `sudo`.
 
-[Full guide, including fleet provisioning →](/cloud/connect)
+[Full guide, including fleet provisioning →](/ko/cloud/connect)
 
 ---
 
@@ -103,7 +103,7 @@ a time.
 
 Two things a pause does **not** do:
 
-- It does not touch [cloud-managed policies](/cloud/managed-policies) — those keep
+- It does not touch [cloud-managed policies](/ko/cloud/managed-policies) — those keep
   enforcing.
 - It is not configuration. Pause state is machine-local, so it can never be committed and
   travel to everyone who checks out the branch.
@@ -126,19 +126,19 @@ behalf.
 
 <CardGroup cols={2}>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
+<Card title="Quickstart" icon="rocket" href="/ko/quickstart">
   The whole setup path, start to finish.
 </Card>
 
-<Card title="Connect a machine" icon="plug" href="/cloud/connect">
+<Card title="Connect a machine" icon="plug" href="/ko/cloud/connect">
   Permissions, machine identity, and troubleshooting.
 </Card>
 
-<Card title="The daemon" icon="server" href="/daemon">
+<Card title="The daemon" icon="server" href="/ko/daemon">
   What gets installed, and why it needs root.
 </Card>
 
-<Card title="Policies" icon="shield-halved" href="/policies">
+<Card title="Policies" icon="shield-halved" href="/ko/policies">
   What Recommended turns on, and the presets behind Customize.
 </Card>
 

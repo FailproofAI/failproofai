@@ -27,15 +27,18 @@ failproofai 默认会上报匿名使用遥测数据。有两种方式可以关�
 |----------|-------------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | 为当前进程禁用匿名使用遥测 |
 
-若要在机器上永久禁用遥测，请将以下内容添加到 `~/.failproofai/config.toml`：
+若要在机器上永久禁用遥测，请将以下内容添加到 `~/.failproofai/config.json`：
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
-如果你运行的是 **failproofaid 守护进程**，推荐使用配置文件的方式。守护进程是系统级服务，其运行环境不包含从 shell 导出的变量，因此 `FAILPROOFAI_TELEMETRY_DISABLED` 对它无效。`[telemetry] enabled = false` 对 CLI 和守护进程均有效。
+如果你运行的是 **failproofaid 守护进程**，推荐使用配置文件的方式。守护进程是系统级服务，其运行环境不包含从 shell 导出的变量，因此 `FAILPROOFAI_TELEMETRY_DISABLED` 对它无效。`"telemetry": { "enabled": false }` 对 CLI 和守护进程均有效。
 </Note>
 
 守护进程仅上报自身的**生命周期**事件：启动时（以及上次运行是否正常退出）、停止时、评估 worker 被启动或重启时、采集任务失败时，以及云端策略拉取的结果。这些事件只携带低基数的值和计数——不包含任何文件路径、命令、策略、提示词，或从记录中读取的任何内容，也不存在每次工具调用的事件。

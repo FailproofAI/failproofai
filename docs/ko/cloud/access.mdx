@@ -12,9 +12,9 @@ API keys는 FailproofAI Cloud 서버에 접근할 수 있는 대상을 제어하
 |---|---|---|
 | 컬렉터 키 | `events:add` | 각 에이전트 머신의 `agenteye-collector`로, 이벤트를 전송하는 데 사용합니다. |
 | 대시보드 읽기 키 | `events:read`, `keys:read` | 데이터를 변경하지 않고 조회만 하는 읽기 전용 운영자 또는 통합 시스템. |
-| 부트스트랩 관리자 키 | 모든 권한 | 인스턴스와 대시보드를 처음 구동하는 운영자. `ADMIN_KEY` 환경 변수로 시드됩니다. [부트스트랩 관리자 키](#bootstrap-admin-key)를 참조하세요. |
+| 부트스트랩 관리자 키 | 모든 권한 | 인스턴스와 대시보드를 처음 구동하는 운영자. `ADMIN_KEY` 환경 변수로 시드됩니다. [부트스트랩 관리자 키](/ko/cloud/access)를 참조하세요. |
 
-여기서 시작하세요. 더 세분화된 커스텀 스코프 키가 필요한 경우에만 아래의 전체 권한 목록을 참조하세요. [권장 키 구성](#recommended-key-layout) 및 [키 생성](#creating-keys)도 참조하세요.
+여기서 시작하세요. 더 세분화된 커스텀 스코프 키가 필요한 경우에만 아래의 전체 권한 목록을 참조하세요. [권장 키 구성](/ko/cloud/access) 및 [키 생성](/ko/cloud/access)도 참조하세요.
 
 ---
 
@@ -110,7 +110,7 @@ API keys는 FailproofAI Cloud 서버에 접근할 수 있는 대상을 제어하
 | `audits:read` | `GET /audits`, `GET /audits/:id`, `GET /audits/:id/runs`, `GET /audits/findings`, `GET /audits/findings/:fid` | 감사 정의, 실행 기록, 결과 보기. |
 | `audits:write` | `POST /audits`, `PUT /audits/:id`, `DELETE /audits/:id`, `POST /audits/:id/run`, `POST /audits/findings/:fid/status` | 감사 생성, 편집, 삭제, 실행, 결과 트리아지(확인/음소거/해제/해결/재개/담당자 지정). |
 
-> **참고:** 키에 감사 기능을 부여하려면 `audits:*`를 명시적으로 부여하세요. Audits 출시 시 기존 권한 보유자가 어떻게 마이그레이션되었는지는 [업그레이드 및 하위 호환성 참고사항](#upgrade-and-backward-compatibility-notes)을 참조하세요.
+> **참고:** 키에 감사 기능을 부여하려면 `audits:*`를 명시적으로 부여하세요. Audits 출시 시 기존 권한 보유자가 어떻게 마이그레이션되었는지는 [업그레이드 및 하위 호환성 참고사항](/ko/cloud/access)을 참조하세요.
 
 > 수신자 선택기 엔드포인트 `GET /alerts/recipients`(알림 편집자가 알림을 보낼 수 있는 멤버 이메일 목록)는 `alerts:read` **또는** `alerts:write` 중 하나를 보유한 사용자가 접근 가능하므로, 알림 편집자는 `users:read` 없이도 선택기를 사용할 수 있습니다.
 
@@ -193,7 +193,7 @@ curl -s -X POST http://your-server/keys \
   }'
 ```
 
-HTTP API로 키를 생성할 때는 `key` 값을 직접 제공합니다. 강력한 시크릿을 선택하고 안전하게 보관하세요. (대시보드는 반대 방식으로 동작합니다: 강력한 시크릿을 생성하여 생성 시 한 번만 표시합니다. [대시보드의 키 관리](#key-management-in-the-dashboard)를 참조하세요.) 응답은 키가 생성되었음을 확인합니다:
+HTTP API로 키를 생성할 때는 `key` 값을 직접 제공합니다. 강력한 시크릿을 선택하고 안전하게 보관하세요. (대시보드는 반대 방식으로 동작합니다: 강력한 시크릿을 생성하여 생성 시 한 번만 표시합니다. [대시보드의 키 관리](/ko/cloud/access)를 참조하세요.) 응답은 키가 생성되었음을 확인합니다:
 
 ```json
 {

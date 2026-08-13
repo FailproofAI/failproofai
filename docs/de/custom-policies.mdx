@@ -79,7 +79,7 @@ failproofai policies --install --custom ./security.js --custom ./workflow.js
 failproofai policies --uninstall --custom
 ```
 
-Aufgelöste absolute Pfade werden in `policies-config.json` als `customPoliciesPaths` gespeichert. Wiederholen Sie `--custom`, um mehrere Dateien zu konfigurieren. Bestehende Konfigurationen mit dem veralteten Feld `customPoliciesPath` funktionieren weiterhin. Dateien werden bei jedem Hook-Event neu geladen – es gibt kein Caching zwischen Events.
+Aufgelöste absolute Pfade werden in `policies-config.json` als `customPoliciesPaths` gespeichert. Wiederholen Sie `--custom`, um mehrere Dateien zu konfigurieren. Bestehende Konfigurationen mit dem veralteten Feld `customPoliciesPaths` funktionieren weiterhin. Dateien werden bei jedem Hook-Event neu geladen – es gibt kein Caching zwischen Events.
 
 Jede registrierte Richtlinie erscheint mit einem eigenen Umschalter im Dashboard. Das Deaktivieren einer Richtlinie speichert ihre quellenqualifizierte ID in `disabledCustomPolicies`; die Datei und ihre anderen Richtlinien werden weiterhin geladen, während die deaktivierte Richtlinie vor dem Event-Matching ausgeschlossen wird. Richtliniennamen, die über mehrere Dateien hinweg doppelt vorkommen, haben unabhängige Umschalter.
 
@@ -122,12 +122,12 @@ customPolicies.add({
 | `deny(message)` | Operation blockieren | Der Agent sollte diese Aktion nicht ausführen |
 | `instruct(message)` | Kontext hinzufügen, ohne zu blockieren | Dem Agenten zusätzlichen Kontext geben, um ihn auf Kurs zu halten |
 
-`deny(message)` – die Nachricht erscheint für Claude mit dem Präfix `"Blocked by failproofai:"`. Ein einzelnes `deny` bricht alle weiteren Auswertungen ab.
+`deny(message)` – die Nachricht erscheint für Claude mit dem Präfix `Blocked <tool> by failproofai because: <message>, as per the policy configured by the user`. Ein einzelnes `deny` bricht alle weiteren Auswertungen ab.
 
 `instruct(message)` – die Nachricht wird dem Kontext von Claude für den aktuellen Tool-Aufruf hinzugefügt. Alle `instruct`-Nachrichten werden gesammelt und gemeinsam übermittelt.
 
 <Tip>
-Sie können jedem `deny`- oder `instruct`-Message zusätzliche Hinweise anfügen, indem Sie ein `hint`-Feld in `policyParams` angeben – ohne Codeänderungen. Dies funktioniert auch für benutzerdefinierte (`custom/`), Projektkonventions- (`.failproofai-project/`) und Benutzerkonventionsrichtlinien (`.failproofai-user/`). Weitere Details finden Sie unter [Konfiguration → hint](/de/configuration#hint-cross-cutting).
+Sie können jedem `deny`- oder `instruct`-Message zusätzliche Hinweise anfügen, indem Sie ein `hint`-Feld in `policyParams` angeben – ohne Codeänderungen. Dies funktioniert auch für benutzerdefinierte (`custom/`), Projektkonventions- (`.failproofai-project/`) und Benutzerkonventionsrichtlinien (`.failproofai-user/`). Weitere Details finden Sie unter [Konfiguration → hint](/de/configuration).
 </Tip>
 
 ### Informative Allow-Nachrichten
@@ -194,7 +194,7 @@ customPolicies.add({
 Richtlinien werden in dieser Reihenfolge ausgewertet:
 
 1. Integrierte Richtlinien (in Definitionsreihenfolge)
-2. Explizite benutzerdefinierte Richtlinien aus `customPoliciesPath` (in `.add()`-Reihenfolge)
+2. Explizite benutzerdefinierte Richtlinien aus `customPoliciesPaths` (in `.add()`-Reihenfolge)
 3. Konventionsrichtlinien aus dem Projekt `.failproofai/policies/` (Dateien alphabetisch, `.add()`-Reihenfolge innerhalb)
 4. Konventionsrichtlinien aus dem Benutzerverzeichnis `~/.failproofai/policies/` (Dateien alphabetisch, `.add()`-Reihenfolge innerhalb)
 
@@ -253,7 +253,7 @@ Benutzerdefinierte Richtlinien sind **fail-open**: Fehler blockieren niemals int
 
 | Fehler | Verhalten |
 |---------|----------|
-| `customPoliciesPath` nicht gesetzt | Keine expliziten benutzerdefinierten Richtlinien werden ausgeführt; Konventionsrichtlinien und integrierte Richtlinien laufen normal weiter |
+| `customPoliciesPaths` nicht gesetzt | Keine expliziten benutzerdefinierten Richtlinien werden ausgeführt; Konventionsrichtlinien und integrierte Richtlinien laufen normal weiter |
 | Datei nicht gefunden | Warnung in `~/.failproofai/hook.log` protokolliert; integrierte Richtlinien laufen weiter |
 | Syntax-/Importfehler (explizit) | Fehler in `~/.failproofai/hook.log` protokolliert; explizite benutzerdefinierte Richtlinien werden übersprungen |
 | Syntax-/Importfehler (Konvention) | Fehler protokolliert; diese Datei wird übersprungen, andere Konventionsdateien werden weiterhin geladen |

@@ -33,7 +33,7 @@ bun add -g failproofai
 </CodeGroup>
 
 Prefer not to install anything? Every command works through `npx -y failproofai …` — but
-a guardrail you have to remember to invoke is not a guardrail, so for real use, install it.
+a policy you have to remember to invoke is not a policy, so for real use, install it.
 
 ---
 
@@ -48,13 +48,13 @@ machine.
 
 <Steps>
   <Step title="Recommended, or customize?">
-    **Recommended** turns on 16 policies globally for every agent CLI it finds on this
+    **Recommended** turns on 15 policies globally for every agent CLI it finds on this
     machine. It is the answer for almost everyone, and it is a decision, not a shortcut:
 
     | What it covers | Policies |
     |---|---|
-    | Secrets never reach the model or disk | `sanitize-jwt`, `sanitize-api-keys`, `sanitize-connection-strings`, `sanitize-private-key-content`, `sanitize-bearer-tokens`, `protect-env-vars`, `block-env-files`, `block-secrets-write` |
-    | The agent cannot switch off its own guardrails | `block-self-pause`, `block-failproofai-commands` |
+    | Secrets are blocked at the read, and flagged in output | `sanitize-jwt`, `sanitize-api-keys`, `sanitize-connection-strings`, `sanitize-private-key-content`, `sanitize-bearer-tokens`, `protect-env-vars`, `block-env-files`, `block-secrets-write` |
+    | The agent cannot switch off its own policies | `block-self-pause`, `block-failproofai-commands` |
     | Commands that are unrecoverable when wrong | `block-sudo`, `block-curl-pipe-sh`, `block-rm-rf` |
     | Git history stays recoverable | `block-push-master`, `block-force-push` |
 
@@ -88,7 +88,7 @@ it touches it.
 
 <Note>
   Installing the service needs root, and setup uses `sudo -n` — it never prompts for a
-  password from inside its own UI. If it cannot elevate, it writes nothing and prints the
+  password from inside its own UI. If it cannot elevate, it installs no service files and prints the
   exact commands for you to run. That is deliberate: a half-configured machine is worse
   than an unconfigured one.
 </Note>
@@ -120,7 +120,7 @@ Start your agent exactly as you normally do. Then ask it to do something a polic
 you    Run `sudo apt-get install ripgrep` for me.
 
 agent  I tried to run that, but it was blocked:
-       "Blocked by failproofai: sudo command blocked"
+       "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
        I'll install it without elevated privileges instead.
 ```
 
@@ -153,7 +153,7 @@ a ranked list of what slipped through, and a copy-pasteable command for each fix
 
 ## 6. Make it your team's standard
 
-The fastest way to turn one person's guardrails into a team's is the
+The fastest way to turn one person's policies into a team's is the
 `.failproofai/policies/` convention. Drop a file in, commit it, done — no flags, no
 config, no per-developer setup.
 
@@ -214,7 +214,7 @@ two places except the hook entries in each agent CLI's own settings file.
 | `~/.failproofai/policies/` | Your own policy files — drop `*policies.mjs` in, no config needed |
 | `~/.failproofai/policies/cloud-policies/` | Policies your organization deployed to this machine |
 | `~/.failproofai/config.json` | Machine settings: daemon, collector, audit schedule |
-| `~/.failproofai/credentials.toml` | Cloud tokens. Owner-only (`0600`) |
+| `~/.failproofai/credentials.json` | Cloud tokens. Owner-only (`0600`) |
 | `~/.failproofai/hook-activity/` | The decision log the dashboard reads |
 | `.failproofai/policies-config.json` | Per-project config, committed |
 | `.failproofai/policies-config.local.json` | Personal overrides, gitignored |
@@ -247,7 +247,7 @@ failproofai uninstall --purge   # …and delete ~/.failproofai entirely
 </Card>
 
 <Card title="Built-in policies" icon="shield" href="/built-in-policies">
-  All 39 policies and what each one catches.
+  All 40 policies and what each one catches.
 </Card>
 
 <Card title="Configuration" icon="gear" href="/configuration">

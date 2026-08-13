@@ -65,7 +65,7 @@ Connecting turns on **both** streams by default:
 
 | Stream | Contents |
 |---|---|
-| **Policy decisions** | Which policy fired, on which tool, in which session, with what verdict and reason. Tool *names*, never file contents. |
+| **Policy decisions** | Which policy fired, on which tool, in which session, with what verdict and reason. Tool *names*, never file contents — plus the working-directory path and the OS username the daemon runs as. |
 | **Session transcripts** | The full agent session — prompts, model responses, file contents the agent read or wrote, and command output. |
 
 Transcripts are the point. A dashboard that shows only decisions is the empty-dashboard
@@ -79,8 +79,8 @@ buried behind a flag nobody finds.
 failproofai config --connect <url> --token <key> --no-transcripts
 ```
 
-Decisions still flow, transcripts never do. `failproofai config --status` always reports
-which mode is in effect, so nobody has to guess.
+Decisions still flow, transcripts never do. The mode is recorded in
+`~/.failproofai/config.json` under `collector.sessions` — read it there to confirm.
 
 Whichever you choose, the machine keeps enforcing locally either way — connecting adds
 visibility and central policy, it never removes protection.
@@ -110,7 +110,7 @@ The organization the key belongs to is named on every outcome, including the par
 A key pasted from the wrong organization authenticates perfectly and reports somewhere
 nobody is looking — naming the org on screen is what makes that visible immediately.
 
-[Creating scoped keys →](/cloud/access)
+[Creating scoped keys →](/de/cloud/access)
 
 ---
 
@@ -197,9 +197,9 @@ A few things that make this safe to run unattended:
 - **Exit codes mean something.** A failed connect exits non-zero with the reason on stderr.
 
 <Tip>
-  Bake the guardrails into your machine image and connect at boot. A machine that has
+  Bake the policies into your machine image and connect at boot. A machine that has
   FailproofAI but is not connected still enforces locally — it just does not appear in your
-  fleet view, which is the one gap the [fleet page](/cloud/fleet) is built to make obvious.
+  fleet view, which is the one gap the [fleet page](/de/cloud/fleet) is built to make obvious.
 </Tip>
 
 ---
@@ -233,7 +233,7 @@ it was ever connected.
 
 <Accordion title="This key lacks the policies:pull permission (403)">
   The key is valid but too narrow. Create one with the permission you need, or add it to
-  the existing key. See [Access](/cloud/access).
+  the existing key. See [Access](/de/cloud/access).
 </Accordion>
 
 <Accordion title="That URL redirects rather than accepting events">
@@ -256,8 +256,8 @@ it was ever connected.
 </Accordion>
 
 <Accordion title="Every tool call is being denied">
-  That is the [fail-closed guarantee](/daemon#fail-closed) doing its job: on a configured
-  machine, a guardrail that cannot answer denies. Check the service is running with
+  That is the [fail-closed guarantee](/de/daemon#fail-closed) doing its job: on a configured
+  machine, a policy that cannot answer denies. Check the service is running with
   `failproofai config --status`. If it reports a protocol-version mismatch, run
   `failproofai config` to bring both halves back into step.
 </Accordion>
@@ -270,19 +270,19 @@ it was ever connected.
 
 <CardGroup cols={2}>
 
-<Card title="Managed policies" icon="cloud-arrow-down" href="/cloud/managed-policies">
+<Card title="Managed policies" icon="cloud-arrow-down" href="/de/cloud/managed-policies">
   What comes down the policy stream, and how to roll it out safely.
 </Card>
 
-<Card title="Fleet" icon="server" href="/cloud/fleet">
+<Card title="Fleet" icon="server" href="/de/cloud/fleet">
   Every machine, its deployment, and its coverage.
 </Card>
 
-<Card title="Access and permissions" icon="key" href="/cloud/access">
+<Card title="Access and permissions" icon="key" href="/de/cloud/access">
   Creating a key with exactly the two permissions this needs.
 </Card>
 
-<Card title="The daemon" icon="gear" href="/daemon">
+<Card title="The daemon" icon="gear" href="/de/daemon">
   What actually moves the data, and what happens when it can't.
 </Card>
 

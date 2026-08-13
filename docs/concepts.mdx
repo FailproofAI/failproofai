@@ -9,7 +9,7 @@ another guide isn't pinned down.
 
 ---
 
-## Guardrails
+## Policies
 
 **Policy**
 One rule, evaluated against one agent action. A policy has a name, the events it listens
@@ -57,7 +57,7 @@ enforcing through a pause, and agents cannot pause on their own behalf while
 `block-self-pause` is on. See [`failproofai config --pause`](/cli/config#pausing-enforcement).
 
 **Fail closed**
-The property that a guardrail which cannot answer denies rather than allows. On a
+The property that a policy which cannot answer denies rather than allows. On a
 configured machine, that is what makes stopping the service a way to stop working, not a
 way to work unguarded. See [the daemon](/daemon#fail-closed).
 
@@ -100,7 +100,7 @@ lets you measure a new rule against real traffic before it can block anyone.
 ## What gets recorded
 
 **Hook activity**
-The local decision log: one entry per non-allow decision, with the policy, the tool, the
+The local decision log: one entry per evaluated decision, allows included, with the policy, the tool, the
 session, the reason, and how long it took. Read by the local dashboard, and shipped to the
 cloud on a connected machine.
 

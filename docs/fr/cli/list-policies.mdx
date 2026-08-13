@@ -20,7 +20,7 @@ Failproof AI Hook Policies (user)
             allowPatterns: ["sudo systemctl status"]
   ✓       block-rm-rf                   Block recursive deletions
   ✗       block-curl-pipe-sh            Block curl|bash patterns
-  ✓       sanitize-api-keys             Redact API keys from output
+  ✓       sanitize-api-keys             Detect API keys in output
             additionalPatterns: [{ regex: "MY_TOKEN_...", label: "..." }]
 
   ── Custom Policies (/home/alice/myproject/my-policies.js) ──────────────

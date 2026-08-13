@@ -71,7 +71,7 @@ Claude Code daha sonra her araç çağrısından önce `failproofai --hook PreTo
 {
   "hookSpecificOutput": {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Blocked by failproofai: sudo command blocked"
+    "permissionDecisionReason": "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
   }
 }
 ```
@@ -156,7 +156,7 @@ Tüm işlem LLM çağrıları olmayan tipik yükler için 100ms'den kısa sürer
 Birleştirme mantığı:
 - `enabledPolicies` - üç dosya arasında çoğaltılmamış birleşim
 - `policyParams` - politika başına anahtar, onu tanımlayan ilk dosya tamamen kazanır
-- `customPoliciesPath` - onu tanımlayan ilk dosya kazanır
+- `customPoliciesPaths` - onu tanımlayan ilk dosya kazanır
 - `llm` - onu tanımlayan ilk dosya kazanır
 
 Web dashboard, bir proje cwd ile çağrılmadığından, okuma ve yazma için `readHooksConfig()` (yalnızca genel) kullanır.
@@ -186,7 +186,7 @@ Tüm politikalar çalıştıktan sonra:
 
 ## Yerleşik politikalar
 
-`src/hooks/builtin-policies.ts` tüm 39 yerleşik politikayı `BuiltinPolicyDefinition` nesneleri olarak tanımlar:
+`src/hooks/builtin-policies.ts` tüm 40 yerleşik politikayı `BuiltinPolicyDefinition` nesneleri olarak tanımlar:
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -227,7 +227,7 @@ export function clearCustomHooks(): void { ... }  // testlerde kullanılır
 
 `src/hooks/custom-hooks-loader.ts` kullanıcının politika dosyasını yükler:
 
-1. Config'den `customPoliciesPath` okuyun; yoksa atla.
+1. Config'den `customPoliciesPaths` okuyun; yoksa atla.
 2. Mutlak yola çözün; dosya varlığını kontrol edin.
 3. Tüm `from "failproofai"` importlarını gerçek dist yoluna yeniden yazın, böylece `customPolicies` aynı `globalThis` kayıt defterine çözülür.
 4. ESM uyumluluğunu sağlamak için transitif yerel importları özyinelemeli olarak yeniden yazın.
@@ -247,7 +247,7 @@ Her hook olayından sonra, işleyici `~/.failproofai/hook-activity/current.jsonl
 
 ```json
 {
-  "timestamp": "2026-04-06T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",
@@ -307,7 +307,7 @@ failproofai/
 │   └── failproofai.mjs           # CLI yönlendirici (hook / dashboard / install / vb.)
 ├── src/hooks/
 │   ├── handler.ts                # Hook olayı ardışık düzeni
-│   ├── builtin-policies.ts       # 39 politika tanımı
+│   ├── builtin-policies.ts       # 40 politika tanımı
 │   ├── policy-evaluator.ts       # Politika yürütme motoru
 │   ├── policy-registry.ts        # Politika kaydı ve arama
 │   ├── policy-types.ts           # TypeScript arayüzleri

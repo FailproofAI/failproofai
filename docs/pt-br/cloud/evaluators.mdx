@@ -10,7 +10,7 @@ O FailproofAI Cloud pode pontuar automaticamente cada execução de agente concl
 
 ## Resumo
 
-1. **Escreva um avaliador.** Suba um pequeno serviço HTTP que leia a transcrição de uma sessão e retorne pontuações. O FailproofAI Cloud inclui um exemplo funcional que você pode copiar. Veja [Escrevendo um avaliador com o SDK](#writing-an-evaluator-with-the-sdk).
+1. **Escreva um avaliador.** Suba um pequeno serviço HTTP que leia a transcrição de uma sessão e retorne pontuações. O FailproofAI Cloud inclui um exemplo funcional que você pode copiar. Veja [Escrevendo um avaliador com o SDK](/pt-br/cloud/evaluators).
 2. **Aponte o FailproofAI Cloud para ele.** Defina `EVALUATOR_ENDPOINT` (e um `EVALUATOR_TOKEN` compartilhado) no processo do servidor.
 3. **Acompanhe as pontuações.** Cada sessão concluída é pontuada automaticamente; os resultados aparecem na página de detalhes da sessão, na grade de sessões e nos dashboards salvos.
 
@@ -211,8 +211,8 @@ O avaliador é **seu serviço** — o FailproofAI Cloud não inclui um
 avaliador padrão, então você o constrói e executa onde preferir.
 Ele roda sob qualquer servidor ASGI (por exemplo, `uvicorn my_evaluator:app`); sirva
 as rotas `/health`, `/config` e `/evaluate` conforme o
-[contrato HTTP](#http-contract) e então aponte o servidor para ele (veja
-[Configurando o servidor](#configuring-the-server)).
+[contrato HTTP](/pt-br/cloud/evaluators) e então aponte o servidor para ele (veja
+[Configurando o servidor](/pt-br/cloud/evaluators)).
 
 Quando o avaliador estiver acessível, `GET /health` retorna `{"status":"ok"}`. Após
 uma execução completa do agente, `GET /evaluations` no servidor retorna uma linha com

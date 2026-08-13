@@ -15,10 +15,10 @@ Aliases: `failproofai p -i`
 
 | Flag | Description |
 |------|-------------|
-| `--cli claude\|codex\|copilot` | Agent CLI(s) to install for; space-separated (e.g. `--cli claude codex copilot`) or repeated. Omit to detect installed CLIs and prompt. |
+| `--cli <name>` | Agent CLI(s) to install for — any of the 12 supported CLIs (see [agent support](/agent-support)); space-separated (e.g. `--cli claude codex copilot`) or repeated. Omit to detect installed CLIs and prompt. |
 | `--scope user` | Install into the user-scope settings file (Claude: `~/.claude/settings.json`; Codex: `~/.codex/hooks.json`; Copilot: `~/.copilot/hooks/failproofai.json`). Default. |
 | `--scope project` | Install into the project-scope settings file (Claude: `<cwd>/.claude/settings.json`; Codex: `<cwd>/.codex/hooks.json`; Copilot: `<cwd>/.github/hooks/failproofai.json`). |
-| `--scope local` | Claude only — installs into `<cwd>/.claude/settings.local.json`. Codex and Copilot do not have a `local` scope. |
+| `--scope local` | Claude only — installs into `<cwd>/.claude/settings.local.json`. No other CLI has a `local` scope. |
 | `--custom <path>` / `-c` | Path to a JS file containing custom hook policies |
 
 ## Behavior
@@ -54,4 +54,4 @@ failproofai policies --install --cli copilot --scope project
 failproofai policies --install --cli claude codex copilot
 ```
 
-When `--custom <path>` is provided, the file is validated immediately - it must call `customPolicies.add()` at least once. The resolved path is saved to `policies-config.json` as `customPoliciesPath`.
+When `--custom <path>` is provided, the file is validated immediately - it must call `customPolicies.add()` at least once. The resolved path is saved to `policies-config.json` as `customPoliciesPaths`.

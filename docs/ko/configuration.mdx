@@ -49,7 +49,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← global까지 내려감
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** — 두 형태 중 어느 하나를 먼저 정의한 스코프가 우선합니다.
+**`customPoliciesPaths` / `customPoliciesPaths`** — 두 형태 중 어느 하나를 먼저 정의한 스코프가 우선합니다.
 
 **`disabledCustomPolicies`** — 모든 스코프의 합집합입니다. 명시적 또는 컨벤션 정책 파일에서 개별 정책을 비활성화하면 대시보드가 소스가 포함된 ID를 여기에 기록합니다. 목록에 없는 정책은 기본적으로 활성화 상태를 유지합니다. ID에는 소스 파일이 포함되어 있어, 여러 파일에 동일한 이름의 정책이 있더라도 독립적으로 제어할 수 있습니다.
 
@@ -147,7 +147,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global까지 내려�
 
 문자열이 아닌 값과 빈 문자열은 자동으로 무시됩니다. `hint`를 설정하지 않으면 동작은 변경되지 않습니다(하위 호환).
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
 타입: `string` (절대 경로)
 
@@ -157,7 +157,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global까지 내려�
 
 ### 컨벤션 기반 정책
 
-명시적인 `customPoliciesPath` 외에도, failproofai는 `.failproofai/policies/` 디렉터리에서 정책 파일을 자동으로 탐색하고 불러옵니다:
+명시적인 `customPoliciesPaths` 외에도, failproofai는 `.failproofai/policies/` 디렉터리에서 정책 파일을 자동으로 탐색하고 불러옵니다:
 
 | 레벨 | 디렉터리 | 스코프 |
 |-------|-----------|-------|
@@ -175,7 +175,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global까지 내려�
 
 **설정 불필요:** 컨벤션 정책은 `policies-config.json`에 항목을 추가할 필요가 없습니다. 디렉터리에 파일을 넣기만 하면 다음 훅 이벤트 시 자동으로 인식됩니다.
 
-**합집합 로딩:** 프로젝트와 사용자 컨벤션 디렉터리가 모두 스캔됩니다. 두 레벨의 일치하는 파일이 모두 불러와집니다(`customPoliciesPath`는 첫 번째 스코프 우선이지만, 컨벤션 정책은 그렇지 않습니다).
+**합집합 로딩:** 프로젝트와 사용자 컨벤션 디렉터리가 모두 스캔됩니다. 두 레벨의 일치하는 파일이 모두 불러와집니다(`customPoliciesPaths`는 첫 번째 스코프 우선이지만, 컨벤션 정책은 그렇지 않습니다).
 
 자세한 내용과 예시는 [커스텀 정책](/ko/custom-policies)을 참조하세요.
 

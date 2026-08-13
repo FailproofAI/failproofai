@@ -12,18 +12,14 @@ failproofai
 
 ## אפשרויות
 
-| דגל | תיאור |
-|------|-------------|
-| `--port <number>` | היציאה להאזנה (ברירת מחדל: `8020`) |
-| `--allowed-origins <origins>` | מארחים/כתובות IP מופרדות בפסיקים המורשות לגשת למשאבי פיתוח |
+The dashboard takes no flags — `failproofai` rejects any it does not recognize. The port is fixed at `8020`.
 
 כדי להצביע על לוח הבקרה לתיקיית פרויקט Claude שאינה ברירת המחדל, הגדר את משתנה הסביבה `CLAUDE_PROJECTS_PATH` בעת ההפעלה.
 
 ## דוגמאות
 
 ```bash
-# הפעל ביציאה אחרת
-failproofai --port 9000
+failproofai
 
 # השתמש בנתיב פרויקטים Claude מותאם אישית דרך משתנה סביבה
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai

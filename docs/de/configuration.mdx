@@ -49,7 +49,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← fällt auf global zurück
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** – die erste Ebene, die eine der beiden Formen definiert, gewinnt.
+**`customPoliciesPaths` / `customPoliciesPaths`** – die erste Ebene, die eine der beiden Formen definiert, gewinnt.
 
 **`disabledCustomPolicies`** – Vereinigung über alle Ebenen. Das Dashboard schreibt hier eine
 quellenqualifizierte ID, wenn Sie eine einzelne Richtlinie aus einer expliziten oder konventionsbasierten
@@ -151,7 +151,7 @@ Wenn `block-force-push` ablehnt, sieht Claude: *„Force-Pushing ist blockiert. 
 
 Nicht-String-Werte und leere Zeichenketten werden stillschweigend ignoriert. Wenn `hint` nicht gesetzt ist, bleibt das Verhalten unverändert (abwärtskompatibel).
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
 Typ: `string` (absoluter Pfad)
 
@@ -161,7 +161,7 @@ Die Datei wird bei jedem Hook-Ereignis neu geladen – es gibt kein Caching. Det
 
 ### Konventionsbasierte Richtlinien
 
-Zusätzlich zum expliziten `customPoliciesPath` erkennt und lädt failproofai automatisch Richtliniendateien aus `.failproofai/policies/`-Verzeichnissen:
+Zusätzlich zum expliziten `customPoliciesPaths` erkennt und lädt failproofai automatisch Richtliniendateien aus `.failproofai/policies/`-Verzeichnissen:
 
 | Ebene | Verzeichnis | Geltungsbereich |
 |-------|-------------|-----------------|
@@ -180,7 +180,7 @@ Zusätzlich zum expliziten `customPoliciesPath` erkennt und lädt failproofai au
 
 **Keine Konfiguration erforderlich:** Konventionsbasierte Richtlinien benötigen keine Einträge in `policies-config.json`. Legen Sie die Dateien einfach im Verzeichnis ab und sie werden beim nächsten Hook-Ereignis aufgegriffen.
 
-**Gemeinsames Laden:** Sowohl Projekt- als auch Benutzer-Konventionsverzeichnisse werden durchsucht. Alle übereinstimmenden Dateien aus beiden Ebenen werden geladen (im Gegensatz zu `customPoliciesPath`, das die Regel „erste Ebene gewinnt" verwendet).
+**Gemeinsames Laden:** Sowohl Projekt- als auch Benutzer-Konventionsverzeichnisse werden durchsucht. Alle übereinstimmenden Dateien aus beiden Ebenen werden geladen (im Gegensatz zu `customPoliciesPaths`, das die Regel „erste Ebene gewinnt" verwendet).
 
 Weitere Details und Beispiele finden Sie unter [Benutzerdefinierte Richtlinien](/de/custom-policies).
 

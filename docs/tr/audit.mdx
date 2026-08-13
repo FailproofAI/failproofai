@@ -47,7 +47,7 @@ failproofai
   Kullanım bilgilerini görmek için `failproofai audit -h` (veya `--help`) komutunu çalıştırın. Denetim **tamamen çevrimdışı** çalışır — hesap veya ağ bağlantısı gerekli değildir — ve pano `Ctrl+C` ile durdurana kadar sunmaya devam eder.
 </Tip>
 
-Pano, bu makinedeki geçmiş agent CLI transkriptlerini tarar (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) ve aracının failproofai'nin durdurmak için inşa edildiği şeyleri ne sıklıkta yaptığını raporlar — ortam değişkeni kontrolleri, güç şeklinde push'lar, gereksiz `cd <cwd>` önekleri, uyku-yoklama döngüleri, yeni düzenlenen dosyaları yeniden okuma ve daha fazlası.
+Pano, bu makinedeki geçmiş agent CLI transkriptlerini tarar (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Antigravity, Devin, Factory, Goose, Hermes, OpenClaw) ve aracının failproofai'nin durdurmak için inşa edildiği şeyleri ne sıklıkta yaptığını raporlar — ortam değişkeni kontrolleri, güç şeklinde push'lar, gereksiz `cd <cwd>` önekleri, uyku-yoklama döngüleri, yeni düzenlenen dosyaları yeniden okuma ve daha fazlası.
 
 Her transkript için, her araç-kullanım olayı 39 yerleşik politika **ve** runtime politikaları tarafından henüz kapsanmayan desenleri yakalayan 8 denetim-yalnızca dedektörü üzerinden yeniden oynatılır. Sayılar tüm oturumlar arasında politika/dedektör başına toplanır.
 
@@ -63,15 +63,18 @@ Her transkript için, her araç-kullanım olayı 39 yerleşik politika **ve** ru
 
 ## Planlanan denetimler
 
-**failproofaid daemon** komutunu çalıştırırsanız (bkz. [`failproofai config`](/tr/cli/install-policies)),
+**failproofaid daemon** komutunu çalıştırırsanız (bkz. [`failproofai config`](/tr/cli/config)),
 bu, denetimi sizin için bir programa göre yeniden çalıştırabilir ve `/audit` raporunu arka planda yenileyebilir. **Varsayılan olarak kapalıdır**, çünkü tarama, bu makinedeki her agent oturumu transkriptinin *içeriğini* okur — bir zamanlayıcıda hiçbir şey taranamaz, siz bunu istemediğiniz sürece.
 
-Bunu `~/.failproofai/config.toml` dosyasında açın:
+Bunu `~/.failproofai/config.json` dosyasında açın:
 
-```toml
-[audit]
-auto = true
-interval_days = 7
+```json
+{
+  "audit": {
+    "auto": true,
+    "interval_days": 7
+  }
+}
 ```
 
 | Anahtar | Anlam |
@@ -82,7 +85,7 @@ interval_days = 7
 - Zamanlama **duvar saati** tabanlıdır, bu nedenle askı ve yeniden başlatmayı ayakta tutar: zamanı geçmiş bir dizüstü bilgisayar **bir kez** uyandığında çalışır, hiçbir zaman bir yedek değildir.
 - Her çalıştırma ayrı, düşük öncelikli (`nice 19`) bir işlemdir — hiçbir zaman daemon'un hook yolu değildir, bu da araç çağrılarını cevaplamaya boş kalır.
 - `failproofai audit` veya pano yeniden çalıştırması zaten uçuştaysa bir tarama atlanır; başarısızlık olarak değil de kısa bir süre sonra yeniden denenir.
-- İlerleme `~/.failproofai/state/audit-schedule.json` dosyasına yazılır (son çalıştırma, sonraki gözlemle). Daemon bu dosyaya sahiptir — kadansı `config.toml` dosyasında değiştirin.
+- İlerleme `~/.failproofai/state/audit-schedule.json` dosyasına yazılır (son çalıştırma, sonraki gözlemle). Daemon bu dosyaya sahiptir — kadansı `config.json` dosyasında değiştirin.
 
 <Note>
 Bunu daha eski failproofai tarafından kurulan bir makinede etkinleştirdiyseniz,

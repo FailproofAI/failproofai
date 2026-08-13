@@ -10,7 +10,7 @@ FailproofAI Cloud peut noter automatiquement chaque exécution d'agent terminée
 
 ## En bref
 
-1. **Écrivez un évaluateur.** Déployez un petit service HTTP qui lit la transcription d'une session et retourne des scores. FailproofAI Cloud inclut une référence fonctionnelle que vous pouvez copier. Voir [Écrire un évaluateur avec le SDK](#writing-an-evaluator-with-the-sdk).
+1. **Écrivez un évaluateur.** Déployez un petit service HTTP qui lit la transcription d'une session et retourne des scores. FailproofAI Cloud inclut une référence fonctionnelle que vous pouvez copier. Voir [Écrire un évaluateur avec le SDK](/fr/cloud/evaluators).
 2. **Pointez FailproofAI Cloud vers ce service.** Définissez `EVALUATOR_ENDPOINT` (et un `EVALUATOR_TOKEN` partagé) sur le processus serveur.
 3. **Regardez les scores arriver.** Chaque session terminée est notée automatiquement ; les résultats apparaissent sur la page de détail de la session, la grille des sessions et les tableaux de bord sauvegardés.
 
@@ -212,8 +212,8 @@ L'évaluateur est **votre service** — FailproofAI Cloud ne fournit pas d'éval
 par défaut, vous devez donc le créer et l'exécuter là où vous déployez vos propres services.
 Il s'exécute sous n'importe quel serveur ASGI (par exemple `uvicorn my_evaluator:app`) ; exposez
 les routes `/health`, `/config` et `/evaluate` du
-[contrat HTTP](#http-contract), puis pointez le serveur vers ce service (voir
-[Configurer le serveur](#configuring-the-server)).
+[contrat HTTP](/fr/cloud/evaluators), puis pointez le serveur vers ce service (voir
+[Configurer le serveur](/fr/cloud/evaluators)).
 
 Une fois l'évaluateur accessible, `GET /health` retourne `{"status":"ok"}`. Après
 l'exécution complète d'un agent, `GET /evaluations` sur le serveur retourne une ligne avec
@@ -325,7 +325,7 @@ L'administrateur bootstrap (`ADMIN_KEY`, `ADMIN_EMAIL`) reçoit automatiquement 
   le nouveau résultat et met à jour le rail droit à son arrivée.
 - **`/sessions`** : grille de sessions filtrables ; la colonne de score montre le statut
   d'évaluation et les scores de chaque session en un coup d'œil.
-- **`/dashboards`** : vues de santé d'évaluation sauvegardées (voir [Tableaux de bord](#dashboards) ci-dessous).
+- **`/dashboards`** : vues de santé d'évaluation sauvegardées (voir [Tableaux de bord](/fr/cloud/evaluators) ci-dessous).
 
 ![La grille Sessions avec des pastilles de statut d'évaluation par session et des badges de score colorés (helpfulness, factuality, tool_efficiency, safety, coherence)](/cloud/images/sessions-list.png)
 

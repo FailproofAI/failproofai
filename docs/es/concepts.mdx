@@ -9,14 +9,14 @@ another guide isn't pinned down.
 
 ---
 
-## Guardrails
+## Policies
 
 **Policy**
 One rule, evaluated against one agent action. A policy has a name, the events it listens
 to, and a function that returns a decision. Policies come from four places — [built
-in](/built-in-policies), [written by you](/custom-policies), dropped into a
+in](/es/built-in-policies), [written by you](/es/custom-policies), dropped into a
 `.failproofai/policies/` directory by convention, or [deployed from the
-cloud](/cloud/managed-policies).
+cloud](/es/cloud/managed-policies).
 
 **Decision**
 What a policy returns: **allow** (proceed), **deny** (block the action and tell the agent
@@ -27,18 +27,18 @@ carry a message too — useful for confirming a check passed rather than staying
 The moment a policy runs. `PreToolUse` (before a tool call), `PostToolUse` (after it),
 `UserPromptSubmit`, `Stop` (the agent is about to finish its turn), `SubagentStop`,
 `SessionStart`, `SessionEnd`, `Notification`, `PreCompact`. Not every agent CLI fires
-every event — see [the support matrix](/agent-support).
+every event — see [the support matrix](/es/agent-support).
 
 **Agent CLI (harness)**
 One of the 12 coding agents FailproofAI hooks into: Claude Code, OpenAI Codex, GitHub
 Copilot CLI, Cursor Agent, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin CLI,
 Antigravity CLI, and Goose. "Harness" is the word used where the distinction matters —
-for example [`failproofai harness add-path`](/cli/harness).
+for example [`failproofai harness add-path`](/es/cli/harness).
 
 **Scope**
 Where a piece of configuration lives: **project** (`.failproofai/`, committed), **local**
 (`.failproofai/*.local.json`, gitignored), or **global** (`~/.failproofai/`). Policies
-merge across all three; see [Configuration](/configuration#merge-rules).
+merge across all three; see [Configuration](/es/configuration).
 
 **Preset**
 A themed bundle of built-in policies the setup wizard offers — *Secrets & data*, *Git
@@ -54,12 +54,12 @@ all. Any file matching `*policies.{js,mjs,ts}` in `.failproofai/policies/` (proj
 A time-boxed suspension of local enforcement for **one session**. Always expires on its
 own — 30 minutes by default, 8 hours maximum, never unbounded. Cloud-managed policies keep
 enforcing through a pause, and agents cannot pause on their own behalf while
-`block-self-pause` is on. See [`failproofai config --pause`](/cli/config#pausing-enforcement).
+`block-self-pause` is on. See [`failproofai config --pause`](/es/cli/config#pausing-enforcement).
 
 **Fail closed**
-The property that a guardrail which cannot answer denies rather than allows. On a
+The property that a policy which cannot answer denies rather than allows. On a
 configured machine, that is what makes stopping the service a way to stop working, not a
-way to work unguarded. See [the daemon](/daemon#fail-closed).
+way to work unguarded. See [the daemon](/es/daemon#fail-closed).
 
 ---
 
@@ -72,7 +72,7 @@ audit, and connects the machine to the cloud.
 **`failproofaid`**
 The background service that evaluates policy on a configured machine, collects what your
 agents did, and exchanges it with the cloud. Installed by setup as a system service that
-starts at boot and survives logout. See [the daemon](/daemon).
+starts at boot and survives logout. See [the daemon](/es/daemon).
 
 **Machine**
 One host, identified to the cloud by a stable **machine id** and shown under a
@@ -100,7 +100,7 @@ lets you measure a new rule against real traffic before it can block anyone.
 ## What gets recorded
 
 **Hook activity**
-The local decision log: one entry per non-allow decision, with the policy, the tool, the
+The local decision log: one entry per evaluated decision, allows included, with the policy, the tool, the
 session, the reason, and how long it took. Read by the local dashboard, and shipped to the
 cloud on a connected machine.
 
@@ -146,7 +146,7 @@ and displays whatever you send.
 **Evaluator**
 Your scoring service. The cloud POSTs a finished run's transcript to it and stores what
 comes back. FailproofAI ships no default evaluator — the scoring logic is yours. See
-[Evaluators](/cloud/evaluators).
+[Evaluators](/es/cloud/evaluators).
 
 **Saved query**
 A named, shared SQL query over your events and evaluations. Read-only by construction —
@@ -154,7 +154,7 @@ only `SELECT` and `WITH`, with a statement timeout and a row cap.
 
 **Dashboard (cloud)**
 A shared, org-wide board built from saved queries rendered as charts. Not to be confused
-with the [local dashboard](/dashboard), which runs on your own machine.
+with the [local dashboard](/es/dashboard), which runs on your own machine.
 
 **Alert rule**
 A rule that fires when something crosses a threshold you set — error rate, p95 latency,
@@ -183,14 +183,14 @@ to exactly one. Every dashboard URL is scoped under its slug (`/<org-slug>/…`)
 **API key**
 A scoped token that authenticates a client. Keys carry granular permissions — `events:add`
 for a machine that only reports, `policies:pull` for one that only receives policy,
-read-only scopes for a dashboard integration. See [Access and permissions](/cloud/access).
+read-only scopes for a dashboard integration. See [Access and permissions](/es/cloud/access).
 
 ---
 
 <Note>
   Two things share the word **audit**, and they are different features. The [local
-  audit](/audit) replays the transcripts already on your machine through the policy engine
-  and scores your agent's habits. The [cloud audit](/cloud/audits) is a scheduled
+  audit](/es/audit) replays the transcripts already on your machine through the policy engine
+  and scores your agent's habits. The [cloud audit](/es/cloud/audits) is a scheduled
   investigation across your organization's sessions that produces ranked findings. The
   local one needs no account; the cloud one needs a connected fleet.
 </Note>

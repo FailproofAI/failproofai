@@ -71,7 +71,7 @@ Der Handler erzwingt ein stdin-Limit von 1 MB. Payloads, die dieses Limit übers
 {
   "hookSpecificOutput": {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Blocked by failproofai: sudo command blocked"
+    "permissionDecisionReason": "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
   }
 }
 ```
@@ -156,7 +156,7 @@ Der gesamte Prozess läuft bei typischen Payloads ohne LLM-Aufrufe in unter 100 
 Zusammenführungslogik:
 - `enabledPolicies` – deduplizierte Vereinigung aus allen drei Dateien
 - `policyParams` – pro Policy-Schlüssel gewinnt die erste Datei, die ihn definiert, vollständig
-- `customPoliciesPath` – die erste Datei, die ihn definiert, gewinnt
+- `customPoliciesPaths` – die erste Datei, die ihn definiert, gewinnt
 - `llm` – die erste Datei, die ihn definiert, gewinnt
 
 Das Web-Dashboard verwendet `readHooksConfig()` (nur global) zum Lesen und Schreiben, da es nicht mit einem Projekt-cwd aufgerufen wird.
@@ -186,7 +186,7 @@ Nachdem alle Policies ausgeführt wurden:
 
 ## Eingebaute Policies
 
-`src/hooks/builtin-policies.ts` definiert alle 39 eingebauten Policies als `BuiltinPolicyDefinition`-Objekte:
+`src/hooks/builtin-policies.ts` definiert alle 40 eingebauten Policies als `BuiltinPolicyDefinition`-Objekte:
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -227,7 +227,7 @@ export function clearCustomHooks(): void { ... }  // used in tests
 
 `src/hooks/custom-hooks-loader.ts` lädt die Policy-Datei des Benutzers:
 
-1. `customPoliciesPath` aus der Konfiguration lesen; überspringen, falls nicht vorhanden.
+1. `customPoliciesPaths` aus der Konfiguration lesen; überspringen, falls nicht vorhanden.
 2. Zu absolutem Pfad auflösen; prüfen, ob die Datei existiert.
 3. Alle `from "failproofai"`-Importe zum tatsächlichen dist-Pfad umschreiben, damit `customPolicies` auf dieselbe `globalThis`-Registry verweist.
 4. Transitive lokale Importe rekursiv umschreiben, um ESM-Kompatibilität sicherzustellen.
@@ -247,7 +247,7 @@ Nach jedem Hook-Ereignis hängt der Handler eine JSONL-Zeile an `~/.failproofai/
 
 ```json
 {
-  "timestamp": "2026-04-06T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",
@@ -307,7 +307,7 @@ failproofai/
 │   └── failproofai.mjs           # CLI-Router (hook / dashboard / install / etc.)
 ├── src/hooks/
 │   ├── handler.ts                # Hook-Ereignis-Pipeline
-│   ├── builtin-policies.ts       # 39 Policy-Definitionen
+│   ├── builtin-policies.ts       # 40 Policy-Definitionen
 │   ├── policy-evaluator.ts       # Policy-Ausführungs-Engine
 │   ├── policy-registry.ts        # Policy-Registrierung und -Suche
 │   ├── policy-types.ts           # TypeScript-Interfaces

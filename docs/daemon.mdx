@@ -5,7 +5,7 @@ icon: server
 ---
 
 `failproofaid` is the background service FailproofAI installs during setup. It does three
-jobs, and each one is the answer to a way guardrails fail quietly in the real world.
+jobs, and each one is the answer to a way policies fail quietly in the real world.
 
 <CardGroup cols={3}>
 
@@ -43,7 +43,7 @@ not getting an answer denies:
 
 There is deliberately **no in-process fallback** on this path. A second policy engine you
 can reach by stopping the first is not a guarantee, and a machine where killing one service
-silently disables every guardrail is not a guarded machine.
+silently disables every policy is not a guarded machine.
 
 The version-mismatch case gets its own message because the remedy is different from "the
 service is down," and telling those two apart is the whole value of distinguishing them.
@@ -103,8 +103,9 @@ hit denials.
 Three consequences follow, each handled explicitly:
 
 - **Installing needs root.** Setup checks `sudo -n` *before* writing anything. If it
-  cannot elevate, it writes nothing and hands you the exact commands to run. Never an
-  interactive password prompt — one fired from underneath a full-screen wizard is
+  cannot elevate, it installs no service files and hands you the exact commands to run (the
+  daemon binary itself may already have been downloaded to `~/.failproofai/bin/` by then).
+  Never an interactive password prompt — one fired from underneath a full-screen wizard is
   unreadable.
 - **A system service has no login environment.** The service is pointed at the exact Node
   binary that ran setup, not a bare `node`. The most common Node install puts its binary

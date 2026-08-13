@@ -49,7 +49,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← נופל דרך ל-global
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** - ההיקף הראשון שמגדיר כל אחת מהצורות מנצח.
+**`customPoliciesPaths` / `customPoliciesPaths`** - ההיקף הראשון שמגדיר כל אחת מהצורות מנצח.
 
 **`disabledCustomPolicies`** - איחוד בכל ההיקפים. לוח המחוונים כותב כאן מזהה תו-מועד כאשר אתה כובה מדיניות בודדת מקובץ מדיניות מפורשי או מוסכמה. מדיניות שאינה רשומה נשארת מופעלת כברירת מחדל; המזהים כוללים את קובץ המקור כך שמדיניות בעלות אותו שם בקבצים מרובים יכולות להיות מנוהלות בהתאמה.
 
@@ -147,7 +147,7 @@ Type: `string` (optional)
 
 ערכים שאינם מחרוזות ומחרוזות ריקות מתעלמות בשקט. אם `hint` לא מוגדר, ההתנהגות נשארת ללא שינוי (תאומה לאחור).
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
 Type: `string` (absolute path)
 
@@ -157,7 +157,7 @@ Type: `string` (absolute path)
 
 ### מדיניות מבוססת מוסכמה
 
-בנוסף ל-`customPoliciesPath` המפורשת, failproofai גוקם ובטוען קבצי מדיניות מספריות `.failproofai/policies/` באופן אוטומטי:
+בנוסף ל-`customPoliciesPaths` המפורשת, failproofai גוקם ובטוען קבצי מדיניות מספריות `.failproofai/policies/` באופן אוטומטי:
 
 | רמה | ספרייה | היקף |
 |-------|-----------|-------|
@@ -172,7 +172,7 @@ Type: `string` (absolute path)
 
 **אין צורך בהגדרה:** מדיניות מוסכמה אינה דורשת ערכים ב-`policies-config.json`. פשוט שחרר קבצים לתוך הספרייה והם נוסקפו באירוע ה-hook הבא.
 
-**טעינת איחוד:** שתי ספריות מוסכמה של פרויקט ומשתמש סרוקות. כל הקבצים המתאימים משתי הרמות נטענים (בשונה מ-`customPoliciesPath` שמשתמש בה-first-scope-wins).
+**טעינת איחוד:** שתי ספריות מוסכמה של פרויקט ומשתמש סרוקות. כל הקבצים המתאימים משתי הרמות נטענים (בשונה מ-`customPoliciesPaths` שמשתמש בה-first-scope-wins).
 
 ראה [Custom Policies](/he/custom-policies) לפרטים ודוגמאות נוספים.
 

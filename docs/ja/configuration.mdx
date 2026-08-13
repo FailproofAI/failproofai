@@ -49,7 +49,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← global にフォールスルー
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** — いずれかの形式を最初に定義したスコープが優先されます。
+**`customPoliciesPaths` / `customPoliciesPaths`** — いずれかの形式を最初に定義したスコープが優先されます。
 
 **`disabledCustomPolicies`** — 全スコープの和集合。ダッシュボードが個別ポリシーをオフにすると、ソース修飾IDがここに書き込まれます（明示的なポリシーファイルまたは規約ポリシーファイルから）。未記載のポリシーはデフォルトで有効のままです。IDにはソースファイルが含まれるため、複数ファイルに同名のポリシーが存在する場合でも個別に制御できます。
 
@@ -147,7 +147,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global にフォー�
 
 文字列以外の値や空文字列は静かに無視されます。`hint` が設定されていない場合は動作が変わらず（後方互換性あり）。
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
 型: `string`（絶対パス）
 
@@ -157,7 +157,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global にフォー�
 
 ### 規約ベースのポリシー
 
-明示的な `customPoliciesPath` に加えて、failproofai は `.failproofai/policies/` ディレクトリからポリシーファイルを自動検出して読み込みます。
+明示的な `customPoliciesPaths` に加えて、failproofai は `.failproofai/policies/` ディレクトリからポリシーファイルを自動検出して読み込みます。
 
 | レベル | ディレクトリ | スコープ |
 |-------|-----------|-------|
@@ -172,7 +172,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← global にフォー�
 
 **設定不要:** 規約ポリシーは `policies-config.json` へのエントリが不要です。ディレクトリにファイルを置くだけで、次のフックイベント時に自動的に読み込まれます。
 
-**ユニオン読み込み:** プロジェクトとユーザーの両方の規約ディレクトリがスキャンされます。両レベルのマッチするファイルがすべて読み込まれます（`customPoliciesPath` の先着スコープ優先とは異なります）。
+**ユニオン読み込み:** プロジェクトとユーザーの両方の規約ディレクトリがスキャンされます。両レベルのマッチするファイルがすべて読み込まれます（`customPoliciesPaths` の先着スコープ優先とは異なります）。
 
 詳細と例については[カスタムポリシー](/ja/custom-policies)を参照してください。
 

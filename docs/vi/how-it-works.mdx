@@ -71,7 +71,7 @@ Handler áp dụng giới hạn stdin 1 MB. Các payload vượt quá giới h�
 {
   "hookSpecificOutput": {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Blocked by failproofai: sudo command blocked"
+    "permissionDecisionReason": "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
   }
 }
 ```
@@ -156,7 +156,7 @@ Toàn bộ quy trình chạy dưới 100ms đối với các payload điển hì
 Lôgic hợp nhất:
 - `enabledPolicies` - hợp nhất loại bỏ trùng lặp trên cả ba tệp
 - `policyParams` - mỗi policy là một khóa, tệp đầu tiên định nghĩa nó sẽ thắng hoàn toàn
-- `customPoliciesPath` - tệp đầu tiên định nghĩa nó sẽ thắng
+- `customPoliciesPaths` - tệp đầu tiên định nghĩa nó sẽ thắng
 - `llm` - tệp đầu tiên định nghĩa nó sẽ thắng
 
 Dashboard web sử dụng `readHooksConfig()` (toàn cầu chỉ) để đọc và ghi, vì nó không được gọi với project cwd.
@@ -186,7 +186,7 @@ Sau khi tất cả các policy chạy:
 
 ## Các policy tích hợp
 
-`src/hooks/builtin-policies.ts` định nghĩa tất cả 39 policy tích hợp như các đối tượng `BuiltinPolicyDefinition`:
+`src/hooks/builtin-policies.ts` định nghĩa tất cả 40 policy tích hợp như các đối tượng `BuiltinPolicyDefinition`:
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -227,7 +227,7 @@ export function clearCustomHooks(): void { ... }  // used in tests
 
 `src/hooks/custom-hooks-loader.ts` tải tệp policy của người dùng:
 
-1. Đọc `customPoliciesPath` từ cấu hình; bỏ qua nếu không có.
+1. Đọc `customPoliciesPaths` từ cấu hình; bỏ qua nếu không có.
 2. Giải quyết đến đường dẫn tuyệt đối; kiểm tra tệp tồn tại.
 3. Viết lại tất cả các import `from "failproofai"` thành đường dẫn dist thực tế để `customPolicies` được giải quyết thành cùng một sổ đăng ký `globalThis`.
 4. Viết lại một cách đệ quy các import cục bộ chuyển tiếp để đảm bảo tương thích ESM.
@@ -247,7 +247,7 @@ Sau mỗi sự kiện hook, handler thêm một dòng JSONL vào `~/.failproofai
 
 ```json
 {
-  "timestamp": "2026-04-06T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",
@@ -307,7 +307,7 @@ failproofai/
 │   └── failproofai.mjs           # CLI router (hook / dashboard / install / etc.)
 ├── src/hooks/
 │   ├── handler.ts                # Hook event pipeline
-│   ├── builtin-policies.ts       # 39 policy definitions
+│   ├── builtin-policies.ts       # 40 policy definitions
 │   ├── policy-evaluator.ts       # Policy execution engine
 │   ├── policy-registry.ts        # Policy registration and lookup
 │   ├── policy-types.ts           # TypeScript interfaces

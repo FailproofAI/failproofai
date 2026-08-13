@@ -11,18 +11,14 @@ Lance le tableau de bord web sur `http://localhost:8020`.
 
 ## Options
 
-| Indicateur | Description |
-|------------|-------------|
-| `--port <number>` | Port d'écoute (par défaut : `8020`) |
-| `--allowed-origins <origins>` | Hôtes/IPs séparés par des virgules autorisés à accéder aux ressources de développement |
+The dashboard takes no flags — `failproofai` rejects any it does not recognize. The port is fixed at `8020`.
 
 Pour pointer le tableau de bord vers un dossier de projet Claude non par défaut, définissez la variable d'environnement `CLAUDE_PROJECTS_PATH` au lancement.
 
 ## Exemples
 
 ```bash
-# Lancer sur un port différent
-failproofai --port 9000
+failproofai
 
 # Utiliser un chemin de projets Claude personnalisé via une variable d'environnement
 CLAUDE_PROJECTS_PATH=~/my-claude-projects failproofai

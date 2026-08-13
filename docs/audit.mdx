@@ -47,6 +47,12 @@ failproofai
     Run `failproofai` and click **Audit** in the navbar (between Policies and
     Projects), or open `/audit` directly.
   </Card>
+
+<Card title="Write policies by asking" icon="wand-magic-sparkles" href="/cloud/agent-skills#failproofai-policy-author-—-turn-a-recurring-mistake-into-enforcement">
+  The `failproofai-policy-author` skill turns *"my agent keeps force-pushing"* into a policy
+  that blocks it.
+</Card>
+
 </CardGroup>
 
 <Tip>
@@ -55,9 +61,9 @@ failproofai
   until you stop it with `Ctrl+C`.
 </Tip>
 
-The dashboard scans past agent CLI transcripts on this machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) and reports how often the agent did things failproofai is built to stop — env-var checks, force pushes, redundant `cd <cwd>` prefixes, sleep-polling loops, re-reading files just edited, and more.
+The dashboard scans past agent CLI transcripts on this machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Antigravity, Devin, Factory, Goose, Hermes, OpenClaw) and reports how often the agent did things failproofai is built to stop — env-var checks, force pushes, redundant `cd <cwd>` prefixes, sleep-polling loops, re-reading files just edited, and more.
 
-For each transcript, every tool-use event is replayed through the 39 builtin policies **and** through 8 audit-only detectors that catch patterns not yet covered by runtime policies. Counts are aggregated per policy / detector across all sessions.
+For each transcript, every tool-use event is replayed through the 40 builtin policies **and** through 8 audit-only detectors that catch patterns not yet covered by runtime policies. Counts are aggregated per policy / detector across all sessions.
 
 ## What you get
 
@@ -71,7 +77,7 @@ The `/audit` page is a single-screen, shareable **poster** followed by four belo
 
 ## Scheduled audits
 
-If you run the **failproofaid daemon** (see [`failproofai config`](/cli/install-policies)),
+If you run the **failproofaid daemon** (see [`failproofai config`](/cli/config)),
 it can re-run the audit for you on a schedule and refresh the `/audit` report in
 the background. It is **off by default**, because the scan reads the *contents*
 of every agent session transcript on this machine — nothing scans on a timer

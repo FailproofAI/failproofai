@@ -14,16 +14,16 @@ failproofai 39 बिल्ट-इन पॉलिसीज़ के साथ 
 
 | श्रेणी | पॉलिसीज़ | हुक प्रकार |
 |----------|----------|-----------|
-| [खतरनाक कमांड](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
-| [इन्फ्रा कमांड](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
-| [सीक्रेट्स (सैनिटाइज़र)](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
-| [पर्यावरण](#environment) | block-env-files, protect-env-vars | PreToolUse |
-| [फ़ाइल एक्सेस](#file-access) | block-read-outside-cwd, block-secrets-write | PreToolUse |
+| [खतरनाक कमांड](/hi/built-in-policies) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
+| [इन्फ्रा कमांड](/hi/built-in-policies) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
+| [सीक्रेट्स (सैनिटाइज़र)](/hi/built-in-policies) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
+| [पर्यावरण](/hi/built-in-policies) | block-env-files, protect-env-vars | PreToolUse |
+| [फ़ाइल एक्सेस](/hi/built-in-policies) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
-| [डेटाबेस](#database) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
-| [चेतावनियाँ](#warnings) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
-| [पैकेज मैनेजर](#package-managers) | prefer-package-manager | PreToolUse |
-| [वर्कफ़्लो](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
+| [डेटाबेस](/hi/built-in-policies) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
+| [चेतावनियाँ](/hi/built-in-policies) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
+| [पैकेज मैनेजर](/hi/built-in-policies) | prefer-package-manager | PreToolUse |
+| [वर्कफ़्लो](/hi/built-in-policies) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
 - **`block-`** — एजेंट को आगे बढ़ने से रोकता है।
 - **`warn-`** — एजेंट को अतिरिक्त संदर्भ देता है ताकि यह स्व-सुधार कर सके।
@@ -50,7 +50,7 @@ failproofai 39 बिल्ट-इन पॉलिसीज़ के साथ 
 ---
 
 <Tip>
-प्रत्येक पॉलिसी `policyParams` में एक वैकल्पिक `hint` फील्ड का समर्थन करती है। hint को deny या instruct संदेश में जोड़ा जाता है जो Claude देखता है, पॉलिसी कोड में संशोधन किए बिना कार्रवाई योग्य मार्गदर्शन देता है। बिल्ट-इन, कस्टम और कन्वेंशन पॉलिसीज़ के साथ काम करता है। विवरण के लिए [कॉन्फ़िगरेशन → hint](/hi/configuration#hint-cross-cutting) देखें।
+प्रत्येक पॉलिसी `policyParams` में एक वैकल्पिक `hint` फील्ड का समर्थन करती है। hint को deny या instruct संदेश में जोड़ा जाता है जो Claude देखता है, पॉलिसी कोड में संशोधन किए बिना कार्रवाई योग्य मार्गदर्शन देता है। बिल्ट-इन, कस्टम और कन्वेंशन पॉलिसीज़ के साथ काम करता है। विवरण के लिए [कॉन्फ़िगरेशन → hint](/hi/configuration) देखें।
 </Tip>
 
 ---
@@ -543,7 +543,7 @@ failproofai 39 बिल्ट-इन पॉलिसीज़ के साथ 
 **इवेंट:** PreToolUse (Bash)  
 **डिफ़ॉल्ट:** `git push --force` और `git push -f` को नकारता है।
 
-कोई policy-विशिष्ट पैरामीटर नहीं। विकल्प सुझाने के लिए cross-cutting [`hint`](/hi/configuration#hint-cross-cutting) का उपयोग करें:
+कोई policy-विशिष्ट पैरामीटर नहीं। विकल्प सुझाने के लिए cross-cutting [`hint`](/hi/configuration) का उपयोग करें:
 
 ```json
 {

@@ -29,18 +29,21 @@ không bao giờ có thể bật lại cái gì mà tệp cấu hình đã tắt
 |----------|-------------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | Vô hiệu hóa dữ liệu kỹ thuật sử dụng ẩn danh cho quy trình này |
 
-Để vô hiệu hóa nó vĩnh viễn cho máy, hãy thêm điều này vào `~/.failproofai/config.toml`:
+Để vô hiệu hóa nó vĩnh viễn cho máy, hãy thêm điều này vào `~/.failproofai/config.json`:
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
 Tệp cấu hình là tùy chọn được sử dụng nếu bạn chạy **daemon failproofaid**.
 Daemon là một dịch vụ phạm vi hệ thống, và môi trường của nó không bao gồm
 các biến được xuất từ shell của bạn — vì vậy `FAILPROOFAI_TELEMETRY_DISABLED` không thể
-đến được nó. `[telemetry] enabled = false` được đọc bởi cả CLI và daemon.
+đến được nó. `"telemetry": { "enabled": false }` được đọc bởi cả CLI và daemon.
 </Note>
 
 Daemon chỉ báo cáo **vòng đời** của nó: rằng nó đã khởi động (và liệu lần chạy trước có thoát sạch), rằng nó đã dừng, khi công nhân đánh giá của nó được

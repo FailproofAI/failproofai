@@ -10,7 +10,7 @@ FailproofAI Cloud 可以自动对每次已完成的 Agent 运行进行质量评�
 
 ## 概览
 
-1. **编写评分器。** 搭建一个小型 HTTP 服务，读取会话转录并返回评分。FailproofAI Cloud 附带一个可直接复制使用的参考实现。请参阅[使用 SDK 编写评估器](#writing-an-evaluator-with-the-sdk)。
+1. **编写评分器。** 搭建一个小型 HTTP 服务，读取会话转录并返回评分。FailproofAI Cloud 附带一个可直接复制使用的参考实现。请参阅[使用 SDK 编写评估器](/zh/cloud/evaluators)。
 2. **将 FailproofAI Cloud 指向该服务。** 在服务器进程上设置 `EVALUATOR_ENDPOINT`（以及共享的 `EVALUATOR_TOKEN`）。
 3. **查看评分结果。** 每个已完成的会话都会被自动评分；结果显示在会话详情页、会话列表和已保存的仪表盘上。
 
@@ -157,7 +157,7 @@ def run(req: EvalRequest) -> EvalResponse:
 
 ## 运行您的评估器
 
-评估器是**您自己的服务** —— FailproofAI Cloud 不提供默认评估器，因此您需要在自己的服务基础设施中构建并运行它。它可在任何 ASGI 服务器下运行（例如 `uvicorn my_evaluator:app`）；按照 [HTTP 协议规范](#http-contract) 提供 `/health`、`/config` 和 `/evaluate` 路由，然后将服务器指向该地址（参见[配置服务器](#configuring-the-server)）。
+评估器是**您自己的服务** —— FailproofAI Cloud 不提供默认评估器，因此您需要在自己的服务基础设施中构建并运行它。它可在任何 ASGI 服务器下运行（例如 `uvicorn my_evaluator:app`）；按照 [HTTP 协议规范](/zh/cloud/evaluators) 提供 `/health`、`/config` 和 `/evaluate` 路由，然后将服务器指向该地址（参见[配置服务器](/zh/cloud/evaluators)）。
 
 评估器可访问后，`GET /health` 将返回 `{"status":"ok"}`。Agent 完整运行结束后，在服务器上执行 `GET /evaluations` 将返回一条 `status: "done"` 的记录及您的评估器产生的评分。
 
@@ -253,7 +253,7 @@ GET /evaluations?score_filters=helpfulness:0.5..,factuality:0.9..
 
 - **`/sessions/<id>`**：事件时间线 + 右侧边栏，显示会话的评分及分发尝试中的任何错误。如果您的密钥具有 `evaluations:trigger` 权限，导出按钮旁会出现**重新评估**按钮，适用于从未发出 `agent_end` 的会话，或部署新评估器后刷新评分。仪表盘会轮询新结果，并在结果就绪时更新右侧边栏。
 - **`/sessions`**：可过滤的会话列表；评分列一眼显示每个会话的评估状态和评分。
-- **`/dashboards`**：已保存的评估健康视图（参见下方[仪表盘](#dashboards)）。
+- **`/dashboards`**：已保存的评估健康视图（参见下方[仪表盘](/zh/cloud/evaluators)）。
 
 ![会话列表，显示每个会话的评估状态标签和颜色编码的评分徽章（helpfulness、factuality、tool_efficiency、safety、coherence）](/cloud/images/sessions-list.png)
 

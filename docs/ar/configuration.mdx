@@ -50,7 +50,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← يتم الرجوع للنطاق العام
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** - أول نطاق يحدد أي شكل يفوز.
+**`customPoliciesPaths` / `customPoliciesPaths`** - أول نطاق يحدد أي شكل يفوز.
 
 **`disabledCustomPolicies`** - اتحاد عبر جميع النطاقات. لوحة المعلومات تكتب معرف مؤهل بالمصدر هنا عند إيقاف تشغيل سياسة فردية من ملف سياسة صريح أو حسب العرف. السياسات غير المدرجة تبقى مفعلة بشكل افتراضي؛ المعرفات تتضمن ملف المصدر بحيث يمكن التحكم في السياسات بنفس الاسم في ملفات متعددة بشكل مستقل.
 
@@ -148,7 +148,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← يتم الرجوع 
 
 القيم غير النصية والنصوص الفارغة يتم تجاهلها بصمت. إذا لم يتم تعيين `hint`، يبقى السلوك دون تغيير (متوافق مع الإصدارات السابقة).
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
 النوع: `string` (المسار المطلق)
 
@@ -158,7 +158,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← يتم الرجوع 
 
 ### سياسات قائمة على الاتفاقية
 
-بالإضافة إلى `customPoliciesPath` الصريح، يكتشف failproofai ويحمل ملفات السياسات تلقائياً من مجلدات `.failproofai/policies/`:
+بالإضافة إلى `customPoliciesPaths` الصريح، يكتشف failproofai ويحمل ملفات السياسات تلقائياً من مجلدات `.failproofai/policies/`:
 
 | المستوى | المجلد | النطاق |
 |-------|-----------|-------|
@@ -176,7 +176,7 @@ resolved: { allowPatterns: ["sudo systemctl status"] }  ← يتم الرجوع 
 
 **لا حاجة للتكوين:** سياسات الاتفاقية لا تتطلب إدخالات في `policies-config.json`. ما عليك سوى إسقاط الملفات في المجلد وسيتم التقاطها في حدث الخطاف التالي.
 
-**تحميل الاتحاد:** يتم مسح كلا من مجلدات اتفاقية المشروع والمستخدم. يتم تحميل جميع الملفات المطابقة من كلا المستويين (بخلاف `customPoliciesPath` الذي يستخدم first-scope-wins).
+**تحميل الاتحاد:** يتم مسح كلا من مجلدات اتفاقية المشروع والمستخدم. يتم تحميل جميع الملفات المطابقة من كلا المستويين (بخلاف `customPoliciesPaths` الذي يستخدم first-scope-wins).
 
 راجع [السياسات المخصصة](/ar/custom-policies) لمزيد من التفاصيل والأمثلة.
 

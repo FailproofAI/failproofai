@@ -10,7 +10,7 @@ FailproofAI Cloud có thể tự động chấm điểm mọi phiên chạy agen
 
 ## Tóm tắt nhanh
 
-1. **Viết một bộ chấm điểm.** Thiết lập một dịch vụ HTTP nhỏ đọc bản ghi phiên và trả về điểm số. FailproofAI Cloud cung cấp một bản tham khảo hoạt động mà bạn có thể sao chép. Xem [Viết bộ đánh giá với SDK](#writing-an-evaluator-with-the-sdk).
+1. **Viết một bộ chấm điểm.** Thiết lập một dịch vụ HTTP nhỏ đọc bản ghi phiên và trả về điểm số. FailproofAI Cloud cung cấp một bản tham khảo hoạt động mà bạn có thể sao chép. Xem [Viết bộ đánh giá với SDK](/vi/cloud/evaluators).
 2. **Chỉ đến nó với FailproofAI Cloud.** Đặt `EVALUATOR_ENDPOINT` (và một `EVALUATOR_TOKEN` được chia sẻ) trên quy trình máy chủ.
 3. **Theo dõi điểm số.** Mọi phiên hoàn thành được chấm điểm tự động; kết quả hiển thị trên trang chi tiết phiên, lưới phiên và bảng điều khiển đã lưu.
 
@@ -157,7 +157,7 @@ Tài liệu tham khảo API đầy đủ, mô hình không đồng bộ và lư�
 
 ## Chạy bộ đánh giá của bạn
 
-Bộ đánh giá là **dịch vụ của bạn** — FailproofAI Cloud không cung cấp bộ đánh giá mặc định, vì vậy bạn xây dựng và chạy nó ở bất cứ nơi nào bạn chạy các dịch vụ riêng của mình. Nó chạy dưới bất kỳ máy chủ ASGI nào (ví dụ `uvicorn my_evaluator:app`); phục vụ các tuyến `/health`, `/config` và `/evaluate` từ [hợp đồng HTTP](#http-contract), sau đó chỉ máy chủ tới nó (xem [Định cấu hình máy chủ](#configuring-the-server)).
+Bộ đánh giá là **dịch vụ của bạn** — FailproofAI Cloud không cung cấp bộ đánh giá mặc định, vì vậy bạn xây dựng và chạy nó ở bất cứ nơi nào bạn chạy các dịch vụ riêng của mình. Nó chạy dưới bất kỳ máy chủ ASGI nào (ví dụ `uvicorn my_evaluator:app`); phục vụ các tuyến `/health`, `/config` và `/evaluate` từ [hợp đồng HTTP](/vi/cloud/evaluators), sau đó chỉ máy chủ tới nó (xem [Định cấu hình máy chủ](/vi/cloud/evaluators)).
 
 Sau khi bộ đánh giá có thể truy cập được, `GET /health` trả về `{"status":"ok"}`. Sau khi một agent chạy từ đầu đến cuối, `GET /evaluations` trên máy chủ trả về một hàng có `status: "done"` và điểm số bộ đánh giá của bạn tạo ra.
 
@@ -253,7 +253,7 @@ Admin bootstrap (`ADMIN_KEY`, `ADMIN_EMAIL`) tự động nhận những cái n�
 
 - **`/sessions/<id>`**: dòng thời gian sự kiện + thanh bên phải hiển thị điểm số của phiên và bất kỳ lỗi nào từ nỗ lực gửi. Nếu khóa của bạn có `evaluations:trigger`, một nút **đánh giá lại** xuất hiện bên cạnh nút xuất bản, hữu ích cho các phiên không bao giờ phát ra `agent_end` hoặc để làm mới điểm số sau khi triển khai bộ đánh giá mới. Bảng điều khiển thăm dò kết quả mới và cập nhật thanh bên phải khi nó xuất hiện.
 - **`/sessions`**: lưới phiên có thể lọc; cột điểm số hiển thị trạng thái đánh giá và điểm số của mỗi phiên một cách nhanh chóng.
-- **`/dashboards`**: chế độ xem sức khỏe eval được lưu (xem [Bảng điều khiển](#dashboards) dưới đây).
+- **`/dashboards`**: chế độ xem sức khỏe eval được lưu (xem [Bảng điều khiển](/vi/cloud/evaluators) dưới đây).
 
 ![Lưới Sessions với viên thuốc trạng thái đánh giá trên mỗi phiên và huy hiệu điểm được mã hóa màu (helpfulness, factuality, tool_efficiency, safety, coherence)](/cloud/images/sessions-list.png)
 

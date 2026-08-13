@@ -71,7 +71,7 @@ Claude Code 随后会在每次工具调用前将 `failproofai --hook PreToolUse`
 {
   "hookSpecificOutput": {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Blocked by failproofai: sudo command blocked"
+    "permissionDecisionReason": "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
   }
 }
 ```
@@ -156,7 +156,7 @@ stdin JSON
 合并逻辑：
 - `enabledPolicies` - 对三个文件取去重并集
 - `policyParams` - 按策略键，以第一个定义它的文件为准
-- `customPoliciesPath` - 以第一个定义它的文件为准
+- `customPoliciesPaths` - 以第一个定义它的文件为准
 - `llm` - 以第一个定义它的文件为准
 
 Web 仪表盘使用 `readHooksConfig()`（仅全局）进行读写，因为它不以项目 cwd 调用。
@@ -186,7 +186,7 @@ Web 仪表盘使用 `readHooksConfig()`（仅全局）进行读写，因为它�
 
 ## 内置策略
 
-`src/hooks/builtin-policies.ts` 将全部 39 个内置策略定义为 `BuiltinPolicyDefinition` 对象：
+`src/hooks/builtin-policies.ts` 将全部 40 个内置策略定义为 `BuiltinPolicyDefinition` 对象：
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -227,7 +227,7 @@ export function clearCustomHooks(): void { ... }  // 用于测试
 
 `src/hooks/custom-hooks-loader.ts` 负责加载用户的策略文件：
 
-1. 从配置中读取 `customPoliciesPath`；若不存在则跳过。
+1. 从配置中读取 `customPoliciesPaths`；若不存在则跳过。
 2. 解析为绝对路径；检查文件是否存在。
 3. 将所有 `from "failproofai"` 导入重写为实际的 dist 路径，使 `customPolicies` 解析到同一个 `globalThis` 注册表。
 4. 递归重写传递的本地导入，以确保 ESM 兼容性。
@@ -247,7 +247,7 @@ export function clearCustomHooks(): void { ... }  // 用于测试
 
 ```json
 {
-  "timestamp": "2026-04-06T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",
@@ -307,7 +307,7 @@ failproofai/
 │   └── failproofai.mjs           # CLI 路由器（hook / dashboard / install 等）
 ├── src/hooks/
 │   ├── handler.ts                # Hook 事件处理流程
-│   ├── builtin-policies.ts       # 39 个策略定义
+│   ├── builtin-policies.ts       # 40 个策略定义
 │   ├── policy-evaluator.ts       # 策略执行引擎
 │   ├── policy-registry.ts        # 策略注册与查找
 │   ├── policy-types.ts           # TypeScript 接口

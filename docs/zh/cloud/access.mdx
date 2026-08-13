@@ -12,9 +12,9 @@ API 密钥控制谁以及什么可以访问您的 FailproofAI Cloud 服务器，
 |---|---|---|
 | 采集器密钥 | `events:add` | 每台 Agent 机器上的 `agenteye-collector`，用于发送事件。 |
 | 仪表板读取密钥 | `events:read`、`keys:read` | 查询数据但不修改数据的只读操作员或集成。 |
-| 引导管理员密钥 | 所有权限 | 首次启动实例（及仪表板）的操作员。由 `ADMIN_KEY` 环境变量初始化。参见[引导管理员密钥](#bootstrap-admin-key)。 |
+| 引导管理员密钥 | 所有权限 | 首次启动实例（及仪表板）的操作员。由 `ADMIN_KEY` 环境变量初始化。参见[引导管理员密钥](/zh/cloud/access)。 |
 
-从这里开始。仅在需要更窄的自定义作用域密钥时，才参考下方的完整权限目录。另请参阅[推荐密钥布局](#recommended-key-layout)和[创建密钥](#creating-keys)。
+从这里开始。仅在需要更窄的自定义作用域密钥时，才参考下方的完整权限目录。另请参阅[推荐密钥布局](/zh/cloud/access)和[创建密钥](/zh/cloud/access)。
 
 ---
 
@@ -110,7 +110,7 @@ API 密钥控制谁以及什么可以访问您的 FailproofAI Cloud 服务器，
 | `audits:read` | `GET /audits`、`GET /audits/:id`、`GET /audits/:id/runs`、`GET /audits/findings`、`GET /audits/findings/:fid` | 查看审计定义、运行历史和发现结果。 |
 | `audits:write` | `POST /audits`、`PUT /audits/:id`、`DELETE /audits/:id`、`POST /audits/:id/run`、`POST /audits/findings/:fid/status` | 创建、编辑、删除和运行审计；对发现结果进行分类（确认/静默/忽略/解决/重新开启/分配）。 |
 
-> **注意：** 要为密钥授予审计权限，请显式授予 `audits:*`。有关审计功能上线时现有授权者的迁移方式，请参阅[升级和向后兼容性说明](#upgrade-and-backward-compatibility-notes)。
+> **注意：** 要为密钥授予审计权限，请显式授予 `audits:*`。有关审计功能上线时现有授权者的迁移方式，请参阅[升级和向后兼容性说明](/zh/cloud/access)。
 
 > 收件人选择器端点 `GET /alerts/recipients`（列出告警编辑器可通知的成员邮箱）可由持有 `alerts:read` **或** `alerts:write` 任一权限的用户访问，因此告警编辑器无需被授予 `users:read` 即可填充选择器。
 
@@ -193,7 +193,7 @@ curl -s -X POST http://your-server/keys \
   }'
 ```
 
-通过 HTTP API 创建密钥时，您需要自行提供 `key` 值；请选择强密文并安全存储。（仪表板的方式相反：它会为您生成强密文，并在创建时仅显示一次；参见[仪表板中的密钥管理](#key-management-in-the-dashboard)。）响应确认密钥已创建：
+通过 HTTP API 创建密钥时，您需要自行提供 `key` 值；请选择强密文并安全存储。（仪表板的方式相反：它会为您生成强密文，并在创建时仅显示一次；参见[仪表板中的密钥管理](/zh/cloud/access)。）响应确认密钥已创建：
 
 ```json
 {

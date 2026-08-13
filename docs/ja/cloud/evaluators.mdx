@@ -10,7 +10,7 @@ FailproofAI Cloud は、完了したすべてのエージェント実行を自�
 
 ## 概要
 
-1. **スコアラーを作成する。** セッションのトランスクリプトを読み込んでスコアを返す小さな HTTP サービスを立ち上げます。FailproofAI Cloud には動作するリファレンス実装が含まれているのでコピーして使えます。[SDK を使った評価器の作成](#writing-an-evaluator-with-the-sdk) を参照してください。
+1. **スコアラーを作成する。** セッションのトランスクリプトを読み込んでスコアを返す小さな HTTP サービスを立ち上げます。FailproofAI Cloud には動作するリファレンス実装が含まれているのでコピーして使えます。[SDK を使った評価器の作成](/ja/cloud/evaluators) を参照してください。
 2. **FailproofAI Cloud にエンドポイントを設定する。** サーバープロセスに `EVALUATOR_ENDPOINT`（および共有の `EVALUATOR_TOKEN`）を設定します。
 3. **スコアを確認する。** 完了したセッションはすべて自動的にスコアリングされ、セッション詳細ページ・セッション一覧グリッド・保存済みダッシュボードに結果が表示されます。
 
@@ -157,7 +157,7 @@ def run(req: EvalRequest) -> EvalResponse:
 
 ## 評価器の実行
 
-評価器は**ご自身のサービス**です。FailproofAI Cloud はデフォルトの評価器を提供しないため、ご自身のサービスを実行している場所でビルドして実行してください。任意の ASGI サーバー（例: `uvicorn my_evaluator:app`）で動作します。[HTTP コントラクト](#http-contract) の `/health`、`/config`、`/evaluate` ルートを提供し、サーバーからアクセスできるように設定してください（[サーバーの設定](#configuring-the-server) を参照）。
+評価器は**ご自身のサービス**です。FailproofAI Cloud はデフォルトの評価器を提供しないため、ご自身のサービスを実行している場所でビルドして実行してください。任意の ASGI サーバー（例: `uvicorn my_evaluator:app`）で動作します。[HTTP コントラクト](/ja/cloud/evaluators) の `/health`、`/config`、`/evaluate` ルートを提供し、サーバーからアクセスできるように設定してください（[サーバーの設定](/ja/cloud/evaluators) を参照）。
 
 評価器に到達できるようになると、`GET /health` が `{"status":"ok"}` を返します。エージェントがエンドツーエンドで実行された後、サーバーの `GET /evaluations` は `status: "done"` と評価器が生成したスコアを含む行を返します。
 
@@ -253,7 +253,7 @@ GET /evaluations?score_filters=helpfulness:0.5..,factuality:0.9..
 
 - **`/sessions/<id>`**: イベントタイムラインと、セッションのスコアおよびディスパッチ試行からのエラーを表示する右ペイン。キーに `evaluations:trigger` 権限がある場合、エクスポートボタンの横に**再評価**ボタンが表示されます。`agent_end` を送出しなかったセッションや、新しい評価器をデプロイした後にスコアを更新する際に便利です。ダッシュボードは新しい結果をポーリングし、届いた時点で右ペインを更新します。
 - **`/sessions`**: フィルタリング可能なセッション一覧グリッド。スコア列で各セッションの評価ステータスとスコアを一目で確認できます。
-- **`/dashboards`**: 保存済みの評価ヘルスビュー（以下の[ダッシュボード](#dashboards)を参照）。
+- **`/dashboards`**: 保存済みの評価ヘルスビュー（以下の[ダッシュボード](/ja/cloud/evaluators)を参照）。
 
 ![セッションごとの評価ステータスバッジとカラーコードのスコアバッジ（helpfulness、factuality、tool_efficiency、safety、coherence）が表示されたセッション一覧グリッド](/cloud/images/sessions-list.png)
 

@@ -50,9 +50,9 @@ failproofai
   Esegui `failproofai audit -h` (o `--help`) per vedere l'utilizzo. L'audit viene eseguito **completamente offline** — non è necessario alcun account o connessione di rete — e il dashboard continua a servire finché non lo arresti con `Ctrl+C`.
 </Tip>
 
-Il dashboard scansiona i transcript CLI dell'agente passati su questa macchina (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) e segnala con quale frequenza l'agente ha fatto cose che failproofai è costruito per fermare — controlli di variabili d'ambiente, push forzati, prefissi ridondanti `cd <cwd>`, loop di sleep-polling, ri-letture di file appena modificati, e altro ancora.
+Il dashboard scansiona i transcript CLI dell'agente passati su questa macchina (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Antigravity, Devin, Factory, Goose, Hermes, OpenClaw) e segnala con quale frequenza l'agente ha fatto cose che failproofai è costruito per fermare — controlli di variabili d'ambiente, push forzati, prefissi ridondanti `cd <cwd>`, loop di sleep-polling, ri-letture di file appena modificati, e altro ancora.
 
-Per ogni transcript, ogni evento di tool-use viene riprodotto attraverso le 39 policy builtin **e** attraverso 8 rilevatori audit-only che catturano pattern non ancora coperti dalle policy di runtime. I conteggi vengono aggregati per policy / rilevatore su tutte le sessioni.
+Per ogni transcript, ogni evento di tool-use viene riprodotto attraverso le 40 policy builtin **e** attraverso 8 rilevatori audit-only che catturano pattern non ancora coperti dalle policy di runtime. I conteggi vengono aggregati per policy / rilevatore su tutte le sessioni.
 
 ## Cosa ottieni
 
@@ -66,18 +66,21 @@ La pagina `/audit` è un singolo **poster** su schermo seguito da quattro sezion
 
 ## Audit programmati
 
-Se esegui il **daemon failproofaid** (vedi [`failproofai config`](/it/cli/install-policies)),
+Se esegui il **daemon failproofaid** (vedi [`failproofai config`](/it/cli/config)),
 può rieseguire l'audit per te secondo una pianificazione e aggiornare il report `/audit` in
 background. È **disattivato per impostazione predefinita**, perché la scansione legge il *contenuto*
 di ogni transcript di sessione dell'agente su questa macchina — nulla viene scansionato su un timer
 finché non lo richiedi.
 
-Attivalo in `~/.failproofai/config.toml`:
+Attivalo in `~/.failproofai/config.json`:
 
-```toml
-[audit]
-auto = true
-interval_days = 7
+```json
+{
+  "audit": {
+    "auto": true,
+    "interval_days": 7
+  }
+}
 ```
 
 | Chiave | Significato |
@@ -91,7 +94,7 @@ interval_days = 7
 - Una scansione viene saltata se `failproofai audit` o il re-run del dashboard è già
   in corso; viene riprovat poco dopo invece di essere trattata come un fallimento.
 - Il progresso viene scritto in `~/.failproofai/state/audit-schedule.json` (ultima esecuzione,
-  prossima scadenza). Il daemon possiede quel file — cambia la cadenza in `config.toml`.
+  prossima scadenza). Il daemon possiede quel file — cambia la cadenza in `config.json`.
 
 <Note>
 Se hai abilitato questa funzione su una macchina configurata da un failproofai più vecchio, esegui

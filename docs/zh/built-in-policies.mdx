@@ -1,10 +1,10 @@
 ---
 title: 内置策略
-description: "涵盖常见 Agent 故障模式的全部 39 条内置策略"
+description: "涵盖常见 Agent 故障模式的全部 40 条内置策略"
 icon: shield
 ---
 
-failproofai 附带 39 条内置策略，用于捕获常见的 Agent 故障模式。每条策略会在特定的钩子事件类型和工具名称上触发。其中 19 条策略支持参数配置，让你无需编写代码即可调整其行为。5 条工作流策略会在 Claude 停止前强制执行提交 → 推送 → PR → CI 的流水线。
+failproofai 附带 40 条内置策略，用于捕获常见的 Agent 故障模式。每条策略会在特定的钩子事件类型和工具名称上触发。其中 19 条策略支持参数配置，让你无需编写代码即可调整其行为。5 条工作流策略会在 Claude 停止前强制执行提交 → 推送 → PR → CI 的流水线。
 
 ---
 
@@ -14,16 +14,16 @@ failproofai 附带 39 条内置策略，用于捕获常见的 Agent 故障模式
 
 | 类别 | 策略 | 钩子类型 |
 |----------|----------|-----------|
-| [危险命令](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
-| [基础设施命令](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
-| [密钥（清洗器）](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
-| [环境](#environment) | block-env-files, protect-env-vars | PreToolUse |
-| [文件访问](#file-access) | block-read-outside-cwd, block-secrets-write | PreToolUse |
+| [危险命令](/zh/built-in-policies) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
+| [基础设施命令](/zh/built-in-policies) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
+| [密钥（清洗器）](/zh/built-in-policies) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
+| [环境](/zh/built-in-policies) | block-env-files, protect-env-vars | PreToolUse |
+| [文件访问](/zh/built-in-policies) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
-| [数据库](#database) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
-| [警告](#warnings) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
-| [包管理器](#package-managers) | prefer-package-manager | PreToolUse |
-| [工作流](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
+| [数据库](/zh/built-in-policies) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
+| [警告](/zh/built-in-policies) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
+| [包管理器](/zh/built-in-policies) | prefer-package-manager | PreToolUse |
+| [工作流](/zh/built-in-policies) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
 - **`block-`** — 阻止 Agent 继续执行。
 - **`warn-`** — 为 Agent 提供额外上下文，使其能够自我纠正。
@@ -52,7 +52,7 @@ failproofai 附带 39 条内置策略，用于捕获常见的 Agent 故障模式
 ---
 
 <Tip>
-每条策略在 `policyParams` 中都支持可选的 `hint` 字段。该提示会附加到 Claude 看到的 deny 或 instruct 消息中，提供可操作的指导，而无需修改策略代码。适用于内置、自定义和约定策略。详见[配置 → hint](/zh/configuration#hint-cross-cutting)。
+每条策略在 `policyParams` 中都支持可选的 `hint` 字段。该提示会附加到 Claude 看到的 deny 或 instruct 消息中，提供可操作的指导，而无需修改策略代码。适用于内置、自定义和约定策略。详见[配置 → hint](/zh/configuration)。
 </Tip>
 
 ---
@@ -71,7 +71,7 @@ failproofai 附带 39 条内置策略，用于捕获常见的 Agent 故障模式
 由于它锚定在命令位置而非单词出现在任何地方，因此**不会**在仅提及该词的命令上触发——`grep -r sudo /etc`、`cat /etc/sudoers`、`git commit -m "fix sudo handling"` 或包含该词的 `grep` 交替模式都可以正常运行。
 
 <Warning>
-这只能阻止显而易见的尝试，并不能关闭所有攻击路径。能够运行任意 shell 的 Agent 仍然可以间接实现提权——通过变量（`S=sudo; $S …`）、base64 解码管道或磁盘上的包装脚本——因为对单个命令字符串的检查无法追踪这些路径。请将此视为防止误操作和随意提权的护栏，而非针对蓄意 Agent 的安全边界。真正的安全边界必须在 shell 层之下强制执行。
+这只能阻止显而易见的尝试，并不能关闭所有攻击路径。能够运行任意 shell 的 Agent 仍然可以间接实现提权——通过变量（`S=sudo; $S …`）、base64 解码管道或磁盘上的包装脚本——因为对单个命令字符串的检查无法追踪这些路径。请将此视为防止误操作和随意提权的策略，而非针对蓄意 Agent 的安全边界。真正的安全边界必须在 shell 层之下强制执行。
 </Warning>
 
 **参数：**
@@ -545,7 +545,7 @@ failproofai 附带 39 条内置策略，用于捕获常见的 Agent 故障模式
 **事件：** PreToolUse（Bash）
 **默认行为：** 拒绝 `git push --force` 和 `git push -f`。
 
-无策略专属参数。可使用通用的 [`hint`](/zh/configuration#hint-cross-cutting) 建议替代方案：
+无策略专属参数。可使用通用的 [`hint`](/zh/configuration) 建议替代方案：
 
 ```json
 {

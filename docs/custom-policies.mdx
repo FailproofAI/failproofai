@@ -85,7 +85,7 @@ failproofai policies --install --custom ./security.js --custom ./workflow.js
 failproofai policies --uninstall --custom
 ```
 
-Resolved absolute paths are stored in `policies-config.json` as `customPoliciesPaths`. Repeat `--custom` to configure multiple files. Existing configs using the legacy `customPoliciesPath` field continue to work. Files are loaded fresh on every hook event - there is no caching between events.
+Resolved absolute paths are stored in `policies-config.json` as `customPoliciesPaths`. Repeat `--custom` to configure multiple files. Existing configs using the legacy `customPoliciesPaths` field continue to work. Files are loaded fresh on every hook event - there is no caching between events.
 
 Each registered policy appears with its own toggle in the dashboard. Switching
 a policy off records its source-qualified ID in `disabledCustomPolicies`; the
@@ -132,12 +132,12 @@ customPolicies.add({
 | `deny(message)` | Block the operation | The agent should not take this action |
 | `instruct(message)` | Add context without blocking | Give the agent extra context to stay on track |
 
-`deny(message)` - the message appears to Claude prefixed with `"Blocked by failproofai:"`. A single `deny` short-circuits all further evaluation.
+`deny(message)` - the message reaches Claude as `Blocked <tool> by failproofai because: <message>, as per the policy configured by the user`. A single `deny` short-circuits all further evaluation.
 
 `instruct(message)` - the message is appended to Claude's context for the current tool call. All `instruct` messages are accumulated and delivered together.
 
 <Tip>
-You can append extra guidance to any `deny` or `instruct` message by adding a `hint` field in `policyParams` — no code change needed. This works for custom (`custom/`), project convention (`.failproofai-project/`), and user convention (`.failproofai-user/`) policies too. See [Configuration → hint](/configuration#hint-cross-cutting) for details.
+You can append extra guidance to any `deny` or `instruct` message by adding a `hint` field in `policyParams` — no code change needed. This works for custom (`custom/`), project convention (`.failproofai-project/`), and user convention (`.failproofai-user/`) policies too. See [Configuration → hint](/configuration#hint-—-accepted-by-every-policy) for details.
 </Tip>
 
 ### Informational allow messages
@@ -264,7 +264,7 @@ Custom policies are **fail-open**: errors never block built-in policies or crash
 
 | Failure | Behavior |
 |---------|----------|
-| `customPoliciesPath` not set | No explicit custom policies run; convention policies and built-ins continue normally |
+| `customPoliciesPaths` not set | No explicit custom policies run; convention policies and built-ins continue normally |
 | File not found | Warning logged to `~/.failproofai/hook.log`; built-ins continue |
 | Syntax/import error (explicit) | Error logged to `~/.failproofai/hook.log`; explicit custom policies skipped |
 | Syntax/import error (convention) | Error logged; that file skipped, other convention files still load |

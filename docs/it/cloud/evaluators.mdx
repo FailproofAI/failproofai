@@ -9,7 +9,7 @@ FailproofAI Cloud può valutare automaticamente ogni esecuzione di agent complet
 
 ## In sintesi
 
-1. **Scrivi uno scorer.** Crea un piccolo servizio HTTP che legge una trascrizione della sessione e restituisce i punteggi. FailproofAI Cloud fornisce un riferimento funzionante che puoi copiare. Vedi [Scrivere un valutatore con l'SDK](#writing-an-evaluator-with-the-sdk).
+1. **Scrivi uno scorer.** Crea un piccolo servizio HTTP che legge una trascrizione della sessione e restituisce i punteggi. FailproofAI Cloud fornisce un riferimento funzionante che puoi copiare. Vedi [Scrivere un valutatore con l'SDK](/it/cloud/evaluators).
 2. **Punta FailproofAI Cloud su di esso.** Imposta `EVALUATOR_ENDPOINT` (e un `EVALUATOR_TOKEN` condiviso) sul processo server.
 3. **Guarda i punteggi arrivare.** Ogni sessione completata viene valutata automaticamente; i risultati appaiono nella pagina dei dettagli della sessione, nella griglia delle sessioni e nei dashboard salvati.
 
@@ -156,7 +156,7 @@ Il riferimento API completo, il modello asincrono e lo schema degli eventi sono 
 
 ## Eseguire il tuo valutatore
 
-Il valutatore è **il tuo servizio** — FailproofAI Cloud non fornisce un valutatore predefinito, quindi lo crei e lo esegui dove esegui i tuoi servizi. Viene eseguito sotto qualsiasi server ASGI (ad esempio `uvicorn my_evaluator:app`); servi le rotte `/health`, `/config` e `/evaluate` dal [contratto HTTP](#http-contract), poi punta il server su di esso (vedi [Configurare il server](#configuring-the-server)).
+Il valutatore è **il tuo servizio** — FailproofAI Cloud non fornisce un valutatore predefinito, quindi lo crei e lo esegui dove esegui i tuoi servizi. Viene eseguito sotto qualsiasi server ASGI (ad esempio `uvicorn my_evaluator:app`); servi le rotte `/health`, `/config` e `/evaluate` dal [contratto HTTP](/it/cloud/evaluators), poi punta il server su di esso (vedi [Configurare il server](/it/cloud/evaluators)).
 
 Una volta che il valutatore è raggiungibile, `GET /health` restituisce `{"status":"ok"}`. Dopo che un agent viene eseguito end-to-end, `GET /evaluations` sul server restituisce una riga con `status: "done"` e i punteggi prodotti dal tuo valutatore.
 
@@ -252,7 +252,7 @@ L'admin bootstrap (`ADMIN_KEY`, `ADMIN_EMAIL`) riceve automaticamente questi.
 
 - **`/sessions/<id>`**: timeline degli eventi + una barra laterale destra che mostra i punteggi della sessione e qualsiasi errore dal tentativo di invio. Se la tua chiave ha `evaluations:trigger`, appare un pulsante **re-evaluate** accanto al pulsante di esportazione, utile per sessioni che non hanno mai emesso `agent_end`, o per aggiornare i punteggi dopo aver distribuito un nuovo valutatore. Il dashboard effettua il poll per il nuovo risultato e aggiorna la barra laterale destra quando arriva.
 - **`/sessions`**: griglia di sessione filtrabile; la colonna dei punteggi mostra lo stato di valutazione e i punteggi di ogni sessione a colpo d'occhio.
-- **`/dashboards`**: viste di salute eval salvate (vedi [Dashboard](#dashboards) sotto).
+- **`/dashboards`**: viste di salute eval salvate (vedi [Dashboard](/it/cloud/evaluators) sotto).
 
 ![La griglia di sessioni con pillole di stato di valutazione per sessione e badge di punteggio codificati per colore (helpfulness, factuality, tool_efficiency, safety, coherence)](/cloud/images/sessions-list.png)
 

@@ -32,7 +32,10 @@ failproofai flush --wait        # deliver everything spooled right now
 ```
 
 On first run, the sessions already on the machine are backfilled once; new activity then
-streams within seconds.
+streams within seconds. How far back depends on the CLI: the ones read from session *files*
+pick up files modified in the last 7 days (and read those in full), while goose, opencode,
+devin and hermes are read from SQLite and pick up their whole history. For anything older
+than that window, run [`failproofai backfill --since`](/cli/backfill).
 
 ---
 
@@ -144,11 +147,12 @@ failproofai config --connect <url> --token <key> --no-transcripts
 
 Policy decisions still flow — which policy fired, on which tool, in which session, with
 what verdict — so you keep enforcement visibility across the fleet without centralizing
-file contents. `--status` always reports which mode is in effect.
+file contents. The mode is recorded as `collector.sessions` in `~/.failproofai/config.json`.
 
-Note that the local [sanitize policies](/built-in-policies#secrets-sanitizers) redact
-secrets from tool output *before the model reads them*, which reduces (but does not
-eliminate) what a transcript can contain. Treat transcripts as sensitive regardless.
+Note that the local sanitize policies *detect* secrets in tool output but do not remove
+them, so a transcript can still contain anything the agent read. The `PreToolUse` policies
+`block-env-files`, `protect-env-vars` and `block-secrets-write` are what actually keep a
+secret out. Treat transcripts as sensitive regardless.
 
 [How your data is isolated →](/cloud/security)
 

@@ -29,18 +29,21 @@ description: "تكوين سلوك failproofai باستخدام متغيرات ا
 |----------|-------------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | تعطيل قياس الاستخدام المجهول الهوية لهذه العملية |
 
-لتعطيله بشكل دائم على الجهاز، أضف هذا إلى `~/.failproofai/config.toml`:
+لتعطيله بشكل دائم على الجهاز، أضف هذا إلى `~/.failproofai/config.json`:
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
 ملف التكوين هو الخيار المراد استخدامه إذا كنت تشغل **failproofaid daemon**.
 daemon هي خدمة على مستوى النظام، وبيئتها لا تتضمن
 المتغيرات المُصدَّرة من الـ shell الخاص بك — لذا لا يمكن لـ `FAILPROOFAI_TELEMETRY_DISABLED`
-الوصول إليها. `[telemetry] enabled = false` تقرأها كل من CLI و daemon.
+الوصول إليها. `"telemetry": { "enabled": false }` تقرأها كل من CLI و daemon.
 </Note>
 
 يقدم daemon **دورة الحياة** الخاصة به فقط: أنها بدأت (وما إذا كان الـ run السابق أُغلق بنظافة)،

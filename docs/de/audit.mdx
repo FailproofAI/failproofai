@@ -55,9 +55,9 @@ failproofai
   bis du es mit `Ctrl+C` beendest.
 </Tip>
 
-Das Dashboard scannt vergangene Agent-CLI-Transkripte auf diesem Rechner (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) und zeigt an, wie oft der Agent Dinge getan hat, die failproofai verhindern soll — Umgebungsvariablen-Prüfungen, Force-Pushes, redundante `cd <cwd>`-Präfixe, Sleep-Polling-Schleifen, erneutes Lesen gerade bearbeiteter Dateien und mehr.
+Das Dashboard scannt vergangene Agent-CLI-Transkripte auf diesem Rechner (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Antigravity, Devin, Factory, Goose, Hermes, OpenClaw) und zeigt an, wie oft der Agent Dinge getan hat, die failproofai verhindern soll — Umgebungsvariablen-Prüfungen, Force-Pushes, redundante `cd <cwd>`-Präfixe, Sleep-Polling-Schleifen, erneutes Lesen gerade bearbeiteter Dateien und mehr.
 
-Für jedes Transkript wird jedes Tool-Use-Ereignis durch die 39 integrierten Policies **und** durch 8 audit-exklusive Detektoren wiedergegeben, die Muster erkennen, die noch nicht durch Laufzeit-Policies abgedeckt sind. Die Zählungen werden pro Policy/Detektor über alle Sitzungen hinweg aggregiert.
+Für jedes Transkript wird jedes Tool-Use-Ereignis durch die 40 integrierten Policies **und** durch 8 audit-exklusive Detektoren wiedergegeben, die Muster erkennen, die noch nicht durch Laufzeit-Policies abgedeckt sind. Die Zählungen werden pro Policy/Detektor über alle Sitzungen hinweg aggregiert.
 
 ## Was du erhältst
 
@@ -71,18 +71,21 @@ Die `/audit`-Seite ist ein einseitiges, teilbares **Poster** gefolgt von vier we
 
 ## Geplante Audits
 
-Wenn du den **failproofaid-Daemon** ausführst (siehe [`failproofai config`](/de/cli/install-policies)),
+Wenn du den **failproofaid-Daemon** ausführst (siehe [`failproofai config`](/de/cli/config)),
 kann er das Audit nach einem Zeitplan für dich wiederholen und den `/audit`-Bericht im
 Hintergrund aktualisieren. Er ist **standardmäßig deaktiviert**, da der Scan den *Inhalt*
 jedes Agent-Sitzungstranskripts auf diesem Rechner liest — nichts scannt nach einem Timer,
 bis du es anforderst.
 
-Aktiviere es in `~/.failproofai/config.toml`:
+Aktiviere es in `~/.failproofai/config.json`:
 
-```toml
-[audit]
-auto = true
-interval_days = 7
+```json
+{
+  "audit": {
+    "auto": true,
+    "interval_days": 7
+  }
+}
 ```
 
 | Schlüssel | Bedeutung |
@@ -96,7 +99,7 @@ interval_days = 7
   der frei bleibt, um Tool-Aufrufe zu beantworten.
 - Ein Scan wird übersprungen, wenn `failproofai audit` oder der erneute Durchlauf des Dashboards bereits läuft; er wird kurz danach wiederholt, anstatt als Fehler behandelt zu werden.
 - Der Fortschritt wird in `~/.failproofai/state/audit-schedule.json` gespeichert (letzter Durchlauf,
-  nächste Fälligkeit). Der Daemon besitzt diese Datei — ändere den Rhythmus in `config.toml`.
+  nächste Fälligkeit). Der Daemon besitzt diese Datei — ändere den Rhythmus in `config.json`.
 
 <Note>
 Wenn du dies auf einem Rechner aktiviert hast, der mit einer älteren Version von failproofai eingerichtet wurde, führe

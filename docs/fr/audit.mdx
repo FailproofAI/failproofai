@@ -53,7 +53,7 @@ failproofai
   jusqu'à ce que vous l'arrêtiez avec `Ctrl+C`.
 </Tip>
 
-Le tableau de bord analyse les transcriptions passées de l'agent CLI sur cette machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) et indique la fréquence à laquelle l'agent a effectué des actions que failproofai est conçu pour bloquer — vérifications de variables d'environnement, push forcés, préfixes `cd <cwd>` redondants, boucles de polling par sleep, re-lecture de fichiers venants d'être modifiés, et bien plus.
+Le tableau de bord analyse les transcriptions passées de l'agent CLI sur cette machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Antigravity, Devin, Factory, Goose, Hermes, OpenClaw) et indique la fréquence à laquelle l'agent a effectué des actions que failproofai est conçu pour bloquer — vérifications de variables d'environnement, push forcés, préfixes `cd <cwd>` redondants, boucles de polling par sleep, re-lecture de fichiers venants d'être modifiés, et bien plus.
 
 Pour chaque transcription, chaque événement d'utilisation d'outil est rejoué à travers les 39 politiques intégrées **et** à travers 8 détecteurs propres à l'audit qui repèrent des patterns non encore couverts par les politiques en temps réel. Les comptages sont agrégés par politique / détecteur sur l'ensemble des sessions.
 
@@ -69,18 +69,21 @@ La page `/audit` est une **affiche** pleine page et partageable, suivie de quatr
 
 ## Audits planifiés
 
-Si vous faites tourner le **démon failproofaid** (voir [`failproofai config`](/fr/cli/install-policies)),
+Si vous faites tourner le **démon failproofaid** (voir [`failproofai config`](/fr/cli/config)),
 il peut relancer l'audit selon un calendrier et rafraîchir le rapport `/audit` en
 arrière-plan. Cette option est **désactivée par défaut**, car le scan lit le *contenu*
 de chaque transcription de session de l'agent sur cette machine — rien ne scanne de façon planifiée
 tant que vous ne le demandez pas.
 
-Activez-la dans `~/.failproofai/config.toml` :
+Activez-la dans `~/.failproofai/config.json` :
 
-```toml
-[audit]
-auto = true
-interval_days = 7
+```json
+{
+  "audit": {
+    "auto": true,
+    "interval_days": 7
+  }
+}
 ```
 
 | Clé | Signification |
@@ -91,7 +94,7 @@ interval_days = 7
 - Le calendrier est basé sur **l'horloge murale**, ce qui lui permet de survivre aux suspensions et redémarrages : un ordinateur portable qui était en veille au-delà de son heure prévue s'exécute **une seule fois** au réveil, sans rattrapage en file.
 - Chaque exécution est un processus distinct à faible priorité (`nice 19`) — jamais sur le chemin des hooks du démon, qui reste libre pour répondre aux appels d'outils.
 - Un scan est ignoré si `failproofai audit` ou la relance depuis le tableau de bord est déjà en cours ; il est retenté peu après plutôt que traité comme un échec.
-- La progression est écrite dans `~/.failproofai/state/audit-schedule.json` (dernière exécution, prochaine échéance). Ce fichier appartient au démon — modifiez la cadence dans `config.toml`.
+- La progression est écrite dans `~/.failproofai/state/audit-schedule.json` (dernière exécution, prochaine échéance). Ce fichier appartient au démon — modifiez la cadence dans `config.json`.
 
 <Note>
 Si vous avez activé cette option sur une machine configurée avec une ancienne version de failproofai, exécutez

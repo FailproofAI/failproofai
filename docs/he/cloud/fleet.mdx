@@ -1,6 +1,6 @@
 ---
 title: Fleet
-description: "Every machine running agents in your organization, which deployment it is actually on, and which ones have no guardrails at all."
+description: "Every machine running agents in your organization, which deployment it is actually on, and which ones have no policies at all."
 icon: server
 ---
 
@@ -22,7 +22,7 @@ Each connected machine appears with:
 |---|---|
 | **Label** | The human-readable name — the hostname by default, renameable at any time. |
 | **Machine id** | The stable identity everything is keyed on. Two hosts that share a hostname stay distinct. |
-| **Deployment** | The numbered [policy deployment](/cloud/managed-policies) this machine has actually fetched and verified — not the one you assigned, the one it is running. |
+| **Deployment** | The numbered [policy deployment](/he/cloud/managed-policies) this machine has actually fetched and verified — not the one you assigned, the one it is running. |
 | **Environment** | `production`, `staging`, `dev` — whatever you labelled it. |
 | **Last seen** | When it last reported in. |
 | **What it sends** | Decisions only, or decisions and transcripts. |
@@ -53,7 +53,7 @@ The fix is one command on the machine, with a key that carries both permissions:
 failproofai config --connect https://app.befailproof.ai --token <key-with-both>
 ```
 
-[Which permissions a key needs →](/cloud/connect#what-the-key-needs)
+[Which permissions a key needs →](/he/cloud/connect#what-the-key-needs)
 
 ---
 
@@ -63,7 +63,7 @@ Three levels, easy to conflate:
 
 | Level | What it is |
 |---|---|
-| **Machine** | One host. Guardrails are installed and enforced here. |
+| **Machine** | One host. Policies are installed and enforced here. |
 | **Agent** | A named actor inside a run — a coding CLI, a planner, a sub-agent. Several per machine is normal. |
 | **Session** | One run, from start to finish. Many per agent. |
 
@@ -101,19 +101,19 @@ Re-running it is safe: the machine keeps its existing id rather than appearing t
 
 <CardGroup cols={2}>
 
-<Card title="Managed policies" icon="cloud-arrow-down" href="/cloud/managed-policies">
+<Card title="Managed policies" icon="cloud-arrow-down" href="/he/cloud/managed-policies">
   What a deployment is, and how to roll one out safely.
 </Card>
 
-<Card title="Connect a machine" icon="plug" href="/cloud/connect">
+<Card title="Connect a machine" icon="plug" href="/he/cloud/connect">
   The command, the permissions, and what gets sent.
 </Card>
 
-<Card title="Sessions" icon="diagram-project" href="/cloud/sessions">
+<Card title="Sessions" icon="diagram-project" href="/he/cloud/sessions">
   What those machines' agents actually did.
 </Card>
 
-<Card title="Access" icon="key" href="/cloud/access">
+<Card title="Access" icon="key" href="/he/cloud/access">
   Scoped keys, per provisioning path.
 </Card>
 

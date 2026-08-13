@@ -14,16 +14,16 @@ As políticas são agrupadas em categorias:
 
 | Categoria | Políticas | Tipo de hook |
 |----------|----------|-----------|
-| [Comandos perigosos](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
-| [Comandos de infraestrutura](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
-| [Segredos (sanitizadores)](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
-| [Ambiente](#environment) | block-env-files, protect-env-vars | PreToolUse |
-| [Acesso a arquivos](#file-access) | block-read-outside-cwd, block-secrets-write | PreToolUse |
+| [Comandos perigosos](/pt-br/built-in-policies) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
+| [Comandos de infraestrutura](/pt-br/built-in-policies) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
+| [Segredos (sanitizadores)](/pt-br/built-in-policies) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
+| [Ambiente](/pt-br/built-in-policies) | block-env-files, protect-env-vars | PreToolUse |
+| [Acesso a arquivos](/pt-br/built-in-policies) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
-| [Banco de dados](#database) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
-| [Avisos](#warnings) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
-| [Gerenciadores de pacotes](#package-managers) | prefer-package-manager | PreToolUse |
-| [Fluxo de trabalho](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
+| [Banco de dados](/pt-br/built-in-policies) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
+| [Avisos](/pt-br/built-in-policies) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
+| [Gerenciadores de pacotes](/pt-br/built-in-policies) | prefer-package-manager | PreToolUse |
+| [Fluxo de trabalho](/pt-br/built-in-policies) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
 - **`block-`** — impede o agente de prosseguir.
 - **`warn-`** — fornece ao agente contexto adicional para que ele possa se autocorrigir.
@@ -55,7 +55,7 @@ Se um nome não contém `/`, failproofai o trata como pertencente ao namespace p
 ---
 
 <Tip>
-Toda política suporta um campo opcional `hint` em `policyParams`. O hint é adicionado à mensagem de deny ou instruct que Claude vê, fornecendo orientação acionável sem modificar o código da política. Funciona com políticas integradas, personalizadas e de convenção. Veja [Configuração → hint](/pt-br/configuration#hint-cross-cutting) para detalhes.
+Toda política suporta um campo opcional `hint` em `policyParams`. O hint é adicionado à mensagem de deny ou instruct que Claude vê, fornecendo orientação acionável sem modificar o código da política. Funciona com políticas integradas, personalizadas e de convenção. Veja [Configuração → hint](/pt-br/configuration) para detalhes.
 </Tip>
 
 ---
@@ -548,7 +548,7 @@ Para permitir push para todos os branches (efetivamente desativando esta políti
 **Evento:** PreToolUse (Bash)  
 **Padrão:** Nega `git push --force` e `git push -f`.
 
-Sem parâmetros específicos de política. Use o [`hint`](/pt-br/configuration#hint-cross-cutting) transversal para sugerir alternativas:
+Sem parâmetros específicos de política. Use o [`hint`](/pt-br/configuration) transversal para sugerir alternativas:
 
 ```json
 {

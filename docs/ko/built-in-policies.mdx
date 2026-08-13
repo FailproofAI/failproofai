@@ -14,16 +14,16 @@ failproofai에는 일반적인 에이전트 오류 패턴을 감지하는 39개�
 
 | 카테고리 | 정책 | 훅 유형 |
 |----------|----------|-----------|
-| [위험한 명령어](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
-| [인프라 명령어](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
-| [시크릿 (새니타이저)](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
-| [환경](#environment) | block-env-files, protect-env-vars | PreToolUse |
-| [파일 접근](#file-access) | block-read-outside-cwd, block-secrets-write | PreToolUse |
+| [위험한 명령어](/ko/built-in-policies) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
+| [인프라 명령어](/ko/built-in-policies) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
+| [시크릿 (새니타이저)](/ko/built-in-policies) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
+| [환경](/ko/built-in-policies) | block-env-files, protect-env-vars | PreToolUse |
+| [파일 접근](/ko/built-in-policies) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
-| [데이터베이스](#database) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
-| [경고](#warnings) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
-| [패키지 매니저](#package-managers) | prefer-package-manager | PreToolUse |
-| [워크플로](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
+| [데이터베이스](/ko/built-in-policies) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
+| [경고](/ko/built-in-policies) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
+| [패키지 매니저](/ko/built-in-policies) | prefer-package-manager | PreToolUse |
+| [워크플로](/ko/built-in-policies) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
 - **`block-`** — 에이전트의 진행을 차단합니다.
 - **`warn-`** — 에이전트가 스스로 수정할 수 있도록 추가 컨텍스트를 제공합니다.
@@ -56,7 +56,7 @@ failproofai에는 일반적인 에이전트 오류 패턴을 감지하는 39개�
 ---
 
 <Tip>
-모든 정책은 `policyParams`에서 선택적 `hint` 필드를 지원합니다. hint는 Claude가 받는 deny 또는 instruct 메시지에 추가되어, 정책 코드를 수정하지 않고도 실행 가능한 안내를 제공합니다. 기본 제공, 커스텀, 컨벤션 정책 모두에서 동작합니다. 자세한 내용은 [구성 → hint](/ko/configuration#hint-cross-cutting)를 참조하세요.
+모든 정책은 `policyParams`에서 선택적 `hint` 필드를 지원합니다. hint는 Claude가 받는 deny 또는 instruct 메시지에 추가되어, 정책 코드를 수정하지 않고도 실행 가능한 안내를 제공합니다. 기본 제공, 커스텀, 컨벤션 정책 모두에서 동작합니다. 자세한 내용은 [구성 → hint](/ko/configuration)를 참조하세요.
 </Tip>
 
 ---
@@ -75,7 +75,7 @@ failproofai에는 일반적인 에이전트 오류 패턴을 감지하는 39개�
 명령어 위치를 기준으로 하므로, 단순히 해당 단어가 포함된 명령어에는 **작동하지 않습니다** — `grep -r sudo /etc`, `cat /etc/sudoers`, `git commit -m "fix sudo handling"`, 또는 해당 단어를 포함한 `grep` 교차 표현은 정상적으로 실행됩니다.
 
 <Warning>
-이 정책은 명백한 시도를 차단하지만 모든 경우를 막지는 않습니다. 임의의 쉘 명령을 실행할 수 있는 에이전트는 변수(`S=sudo; $S …`), base64 디코딩 파이프, 또는 디스크의 래퍼 스크립트를 통해 간접적으로 권한 상승에 도달할 수 있습니다 — 단일 명령 문자열 검사로는 이러한 경로를 추적할 수 없기 때문입니다. 이 정책은 실수와 우발적인 권한 상승에 대한 가드레일로 취급하세요. 결정적인 에이전트에 대한 보안 경계로는 적합하지 않습니다. 실제 경계는 쉘 아래 레벨에서 강제되어야 합니다.
+이 정책은 명백한 시도를 차단하지만 모든 경우를 막지는 않습니다. 임의의 쉘 명령을 실행할 수 있는 에이전트는 변수(`S=sudo; $S …`), base64 디코딩 파이프, 또는 디스크의 래퍼 스크립트를 통해 간접적으로 권한 상승에 도달할 수 있습니다 — 단일 명령 문자열 검사로는 이러한 경로를 추적할 수 없기 때문입니다. 이 정책은 실수와 우발적인 권한 상승에 대한 정책로 취급하세요. 결정적인 에이전트에 대한 보안 경계로는 적합하지 않습니다. 실제 경계는 쉘 아래 레벨에서 강제되어야 합니다.
 </Warning>
 
 **매개변수:**
@@ -549,7 +549,7 @@ failproofai에는 일반적인 에이전트 오류 패턴을 감지하는 39개�
 **이벤트:** PreToolUse (Bash)  
 **기본값:** `git push --force` 및 `git push -f`를 거부합니다.
 
-정책 전용 매개변수 없음. 대안을 제안하려면 범용 [`hint`](/ko/configuration#hint-cross-cutting)를 사용하세요:
+정책 전용 매개변수 없음. 대안을 제안하려면 범용 [`hint`](/ko/configuration)를 사용하세요:
 
 ```json
 {

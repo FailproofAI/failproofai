@@ -27,17 +27,20 @@ failproofai डिफ़ॉल्ट रूप से anonymous usage telemetry 
 |----------|-------------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | इस प्रक्रिया के लिए anonymous usage telemetry को अक्षम करें |
 
-इसे मशीन के लिए स्थायी रूप से अक्षम करने के लिए, इसे `~/.failproofai/config.toml` में जोड़ें:
+इसे मशीन के लिए स्थायी रूप से अक्षम करने के लिए, इसे `~/.failproofai/config.json` में जोड़ें:
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
 कॉन्फ़िग फ़ाइल यह विकल्प है यदि आप **failproofaid daemon** चलाते हैं।
 daemon एक system-scope सेवा है, और इसके environment में
-आपके shell से export किए गए variables शामिल नहीं होते — इसलिए `FAILPROOFAI_TELEMETRY_DISABLED` इसतक नहीं पहुंच सकता। `[telemetry] enabled = false` को CLI और daemon दोनों द्वारा पढ़ा जाता है।
+आपके shell से export किए गए variables शामिल नहीं होते — इसलिए `FAILPROOFAI_TELEMETRY_DISABLED` इसतक नहीं पहुंच सकता। `"telemetry": { "enabled": false }` को CLI और daemon दोनों द्वारा पढ़ा जाता है।
 </Note>
 
 daemon केवल अपना **lifecycle** रिपोर्ट करता है: कि यह शुरू हुआ (और क्या पिछला रन स्वच्छता से बंद हुआ), कि यह बंद हुआ, जब इसका evaluation worker स्पॉन या पुनः शुरू किया गया था, जब एक collector task विफल हुआ, और एक cloud-policy pull का परिणाम। ये कम-cardinality values और counts ले जाते हैं — कभी एक फ़ाइल पथ, एक कमांड, एक policy, एक prompt, या transcript से कुछ भी नहीं पढ़ा जाता। कोई per-tool-call event नहीं है।

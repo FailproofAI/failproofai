@@ -1,15 +1,15 @@
 ---
 title: "Built-in policies"
-description: "All 39 built-in policies that catch common agent failure modes"
+description: "All 40 built-in policies that catch common agent failure modes"
 icon: shield
 ---
 
-FailproofAI ships with 39 built-in policies that catch common agent failure modes. Each fires on a specific hook event and tool. Nineteen accept parameters, so you can tune them without writing code. Five workflow policies enforce a commit → push → PR → CI pipeline before the agent is allowed to finish.
+FailproofAI ships with 40 built-in policies that catch common agent failure modes. Each fires on a specific hook event and tool. Nineteen accept parameters, so you can tune them without writing code. Five workflow policies enforce a commit → push → PR → CI pipeline before the agent is allowed to finish.
 
 They work identically across all [12 supported agent CLIs](/agent-support) — event names, tool names, and tool inputs are normalized before any policy runs. Examples on this page say "Claude" where they quote a real message, but nothing here is Claude-specific.
 
 <Note>
-  Not sure which to turn on? `failproofai config` offers **Recommended** — 16 policies
+  Not sure which to turn on? `failproofai config` offers **Recommended** — 15 policies
   chosen to cover the failures you cannot undo. See [Policies](/policies#turning-policies-on).
 </Note>
 
@@ -33,7 +33,7 @@ Policies are grouped into categories:
 | [Workflow](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
 <Warning>
-  The five **Workflow** policies need a turn-end gate, and two CLIs do not have one —
+  The five **Workflow** policies need a turn-end gate, and on two CLIs failproofai does not subscribe to one —
   they never fire on Hermes or Goose. [Which CLI supports what →](/agent-support#what-can-actually-be-blocked-per-cli)
 </Warning>
 
@@ -68,7 +68,7 @@ namespace `failproofai`. Names that already contain a `/` (e.g. `myorg/foo`,
 ---
 
 <Tip>
-Every policy supports an optional `hint` field in `policyParams`. The hint is appended to the deny or instruct message Claude sees, giving actionable guidance without modifying policy code. Works with built-in, custom, and convention policies. See [Configuration → hint](/configuration#hint-cross-cutting) for details.
+Every policy supports an optional `hint` field in `policyParams`. The hint is appended to the deny or instruct message Claude sees, giving actionable guidance without modifying policy code. Works with built-in, custom, and convention policies. See [Configuration → hint](/configuration#hint-—-accepted-by-every-policy) for details.
 </Tip>
 
 ---
@@ -87,7 +87,7 @@ Blocks a command that runs an elevation binary **in command position**. Matching
 Because it anchors on command position rather than on the word appearing anywhere, it does **not** fire on commands that merely mention it — `grep -r sudo /etc`, `cat /etc/sudoers`, `git commit -m "fix sudo handling"`, or a `grep` alternation containing the word all run normally.
 
 <Warning>
-This stops the obvious attempt; it does not close the class. An agent that can run arbitrary shell can still reach elevation indirectly — through a variable (`S=sudo; $S …`), a base64-decoded pipe, or a wrapper script on disk — because no inspection of a single command string can follow those. Treat this as a guardrail against mistakes and casual escalation, not as a security boundary against a determined agent. A real boundary has to be enforced below the shell.
+This stops the obvious attempt; it does not close the class. An agent that can run arbitrary shell can still reach elevation indirectly — through a variable (`S=sudo; $S …`), a base64-decoded pipe, or a wrapper script on disk — because no inspection of a single command string can follow those. Treat this as a policy against mistakes and casual escalation, not as a security boundary against a determined agent. A real boundary has to be enforced below the shell.
 </Warning>
 
 **Parameters:**
@@ -366,12 +366,14 @@ Read-only `gh` subcommands such as `gh pr view`, `gh pr list`, `gh run list`, `g
 
 ## Secrets (sanitizers)
 
-Stop agents from leaking credentials into their context or output. Sanitizer policies fire on **PostToolUse** events. When Claude runs a Bash command, reads a file, or calls any tool, these policies inspect the output before it is returned to Claude. If a secret pattern is detected, the policy returns a deny decision that prevents the output from being passed back.
+Detect credentials in tool output. Sanitizer policies fire on **PostToolUse** — after the tool has run. When a secret pattern matches, the policy raises a decision naming what was found.
+
+What that decision does depends on the CLI. On Codex and Copilot it replaces the tool result the model reads. On the other ten, `PostToolUse` is observation-only: the model still reads the original output, with a note appended that a secret was detected. These policies do not edit the output in place, and the tool has already run either way — so treat them as detection, not prevention. To stop a secret being read at all, use the `PreToolUse` policies `block-env-files`, `protect-env-vars` and `block-secrets-write`.
 
 ### `sanitize-jwt`
 
 **Event:** PostToolUse (all tools)  
-**Default:** Redacts JWT tokens (three base64url segments separated by `.`).
+**Default:** Detects JWT tokens (three base64url segments separated by `.`).
 
 No parameters.
 
@@ -380,7 +382,7 @@ No parameters.
 ### `sanitize-api-keys`
 
 **Event:** PostToolUse (all tools)  
-**Default:** Redacts common API key formats: Anthropic (`sk-ant-`), OpenAI (`sk-`), GitHub PATs (`ghp_`), AWS access keys (`AKIA`), Stripe keys (`sk_live_`, `sk_test_`), and Google API keys (`AIza`).
+**Default:** Detects common API key formats: Anthropic (`sk-ant-`), OpenAI (`sk-`), GitHub PATs (`ghp_`), AWS access keys (`AKIA`), Stripe keys (`sk_live_`, `sk_test_`), and Google API keys (`AIza`).
 
 **Parameters:**
 
@@ -408,7 +410,7 @@ No parameters.
 ### `sanitize-connection-strings`
 
 **Event:** PostToolUse (all tools)  
-**Default:** Redacts database connection strings that contain embedded credentials (e.g. `postgresql://user:password@host/db`).
+**Default:** Detects database connection strings that contain embedded credentials (e.g. `postgresql://user:password@host/db`).
 
 No parameters.
 
@@ -417,7 +419,7 @@ No parameters.
 ### `sanitize-private-key-content`
 
 **Event:** PostToolUse (all tools)  
-**Default:** Redacts PEM blocks (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN RSA PRIVATE KEY-----`, etc.).
+**Default:** Detects PEM blocks (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN RSA PRIVATE KEY-----`, etc.).
 
 No parameters.
 
@@ -426,7 +428,7 @@ No parameters.
 ### `sanitize-bearer-tokens`
 
 **Event:** PostToolUse (all tools)  
-**Default:** Redacts `Authorization: Bearer <token>` headers where the token is 20 or more characters.
+**Default:** Detects `Authorization: Bearer <token>` headers where the token is 20 or more characters.
 
 No parameters.
 
@@ -561,7 +563,7 @@ To allow pushing to all branches (effectively disabling this policy without remo
 **Event:** PreToolUse (Bash)  
 **Default:** Denies `git push --force` and `git push -f`.
 
-No policy-specific parameters. Use the cross-cutting [`hint`](/configuration#hint-cross-cutting) to suggest alternatives:
+No policy-specific parameters. Use the cross-cutting [`hint`](/configuration#hint-—-accepted-by-every-policy) to suggest alternatives:
 
 ```json
 {

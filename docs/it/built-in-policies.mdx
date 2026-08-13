@@ -50,7 +50,7 @@ Se un nome non contiene `/`, failproofai lo tratta come appartenente allo spazio
 ---
 
 <Tip>
-Ogni politica supporta un campo `hint` facoltativo in `policyParams`. L'hint viene aggiunto al messaggio di deny o instruct che Claude vede, fornendo indicazioni pratiche senza modificare il codice della politica. Funziona con politiche integrate, personalizzate e per convenzione. Consulta [Configurazione → hint](/it/configuration#hint-cross-cutting) per i dettagli.
+Ogni politica supporta un campo `hint` facoltativo in `policyParams`. L'hint viene aggiunto al messaggio di deny o instruct che Claude vede, fornendo indicazioni pratiche senza modificare il codice della politica. Funziona con politiche integrate, personalizzate e per convenzione. Consulta [Configurazione → hint](/it/configuration) per i dettagli.
 </Tip>
 
 ---
@@ -543,7 +543,7 @@ Per consentire il push su tutti i branch (disabilitando efficacemente questa pol
 **Evento:** PreToolUse (Bash)  
 **Predefinito:** Nega `git push --force` e `git push -f`.
 
-Nessun parametro specifico della politica. Usa il [`hint`](/it/configuration#hint-cross-cutting) trasversale per suggerire alternative:
+Nessun parametro specifico della politica. Usa il [`hint`](/it/configuration) trasversale per suggerire alternative:
 
 ```json
 {

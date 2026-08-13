@@ -72,7 +72,7 @@ Claude Code затем вызывает `failproofai --hook PreToolUse` как �
 {
   "hookSpecificOutput": {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Blocked by failproofai: sudo command blocked"
+    "permissionDecisionReason": "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
   }
 }
 ```
@@ -157,7 +157,7 @@ stdin JSON
 Логика объединения:
 - `enabledPolicies` — дедублицированное объединение всех трех файлов
 - `policyParams` — ключ для каждой политики, первый файл, который определяет его, побеждает полностью
-- `customPoliciesPath` — первый файл, который определяет его, побеждает
+- `customPoliciesPaths` — первый файл, который определяет его, побеждает
 - `llm` — первый файл, который определяет его, побеждает
 
 Веб-приборная панель использует `readHooksConfig()` (только глобальная) для чтения и записи, так как она не вызывается с cwd проекта.
@@ -187,7 +187,7 @@ stdin JSON
 
 ## Встроенные политики
 
-`src/hooks/builtin-policies.ts` определяет все 39 встроенных политик как объекты `BuiltinPolicyDefinition`:
+`src/hooks/builtin-policies.ts` определяет все 40 встроенных политик как объекты `BuiltinPolicyDefinition`:
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -228,7 +228,7 @@ export function clearCustomHooks(): void { ... }  // используется в
 
 `src/hooks/custom-hooks-loader.ts` загружает файл политики пользователя:
 
-1. Чтение `customPoliciesPath` из конфигурации; пропуск если отсутствует.
+1. Чтение `customPoliciesPaths` из конфигурации; пропуск если отсутствует.
 2. Преобразование в абсолютный путь; проверка существования файла.
 3. Переписывание всех импортов `from "failproofai"` на фактический путь dist, чтобы `customPolicies` разрешалось на тот же реестр `globalThis`.
 4. Рекурсивное переписывание транзитивных локальных импортов для обеспечения совместимости ESM.
@@ -248,7 +248,7 @@ export function clearCustomHooks(): void { ... }  // используется в
 
 ```json
 {
-  "timestamp": "2026-04-06T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",
@@ -308,7 +308,7 @@ failproofai/
 │   └── failproofai.mjs           # CLI маршрутизатор (hook / dashboard / install / и т.д.)
 ├── src/hooks/
 │   ├── handler.ts                # Конвейер события хука
-│   ├── builtin-policies.ts       # 39 определений политик
+│   ├── builtin-policies.ts       # 40 определений политик
 │   ├── policy-evaluator.ts       # Двигатель выполнения политик
 │   ├── policy-registry.ts        # Регистрация и поиск политик
 │   ├── policy-types.ts           # Интерфейсы TypeScript

@@ -14,16 +14,16 @@ failproofai には、エージェントの一般的な障害モードを検出�
 
 | カテゴリ | ポリシー | フックタイプ |
 |----------|----------|-----------|
-| [危険なコマンド](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
-| [インフラコマンド](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
-| [シークレット（サニタイザー）](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
-| [環境](#environment) | block-env-files, protect-env-vars | PreToolUse |
-| [ファイルアクセス](#file-access) | block-read-outside-cwd, block-secrets-write | PreToolUse |
+| [危険なコマンド](/ja/built-in-policies) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
+| [インフラコマンド](/ja/built-in-policies) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
+| [シークレット（サニタイザー）](/ja/built-in-policies) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
+| [環境](/ja/built-in-policies) | block-env-files, protect-env-vars | PreToolUse |
+| [ファイルアクセス](/ja/built-in-policies) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
-| [データベース](#database) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
-| [警告](#warnings) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
-| [パッケージマネージャー](#package-managers) | prefer-package-manager | PreToolUse |
-| [ワークフロー](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
+| [データベース](/ja/built-in-policies) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
+| [警告](/ja/built-in-policies) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
+| [パッケージマネージャー](/ja/built-in-policies) | prefer-package-manager | PreToolUse |
+| [ワークフロー](/ja/built-in-policies) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
 - **`block-`** — エージェントの処理を停止します。
 - **`warn-`** — エージェントが自己修正できるよう追加のコンテキストを提供します。
@@ -50,7 +50,7 @@ failproofai には、エージェントの一般的な障害モードを検出�
 ---
 
 <Tip>
-すべてのポリシーは `policyParams` でオプションの `hint` フィールドをサポートしています。ヒントは Claude が受け取る deny または instruct メッセージに追記され、ポリシーコードを変更せずに実行可能なガイダンスを提供します。組み込み、カスタム、コンベンションポリシーで動作します。詳細は [設定 → hint](/ja/configuration#hint-cross-cutting) を参照してください。
+すべてのポリシーは `policyParams` でオプションの `hint` フィールドをサポートしています。ヒントは Claude が受け取る deny または instruct メッセージに追記され、ポリシーコードを変更せずに実行可能なガイダンスを提供します。組み込み、カスタム、コンベンションポリシーで動作します。詳細は [設定 → hint](/ja/configuration) を参照してください。
 </Tip>
 
 ---
@@ -69,7 +69,7 @@ failproofai には、エージェントの一般的な障害モードを検出�
 コマンドポジションにアンカーしているため、単に言及されているだけのコマンドには反応しません。`grep -r sudo /etc`、`cat /etc/sudoers`、`git commit -m "fix sudo handling"`、または単語を含む `grep` の代替はすべて正常に実行されます。
 
 <Warning>
-これは明白な試みを止めますが、そのクラス全体を網羅するわけではありません。任意のシェルを実行できるエージェントは、変数（`S=sudo; $S …`）、base64デコードされたパイプ、またはディスク上のラッパースクリプトを通じて間接的に昇格に到達できます。単一のコマンド文字列の検査ではそれらを追跡できないためです。これはミスや軽率なエスカレーションに対するガードレールとして扱ってください。意図的なエージェントに対するセキュリティ境界としては機能しません。本物の境界はシェルの下のレイヤーで強制する必要があります。
+これは明白な試みを止めますが、そのクラス全体を網羅するわけではありません。任意のシェルを実行できるエージェントは、変数（`S=sudo; $S …`）、base64デコードされたパイプ、またはディスク上のラッパースクリプトを通じて間接的に昇格に到達できます。単一のコマンド文字列の検査ではそれらを追跡できないためです。これはミスや軽率なエスカレーションに対するポリシーとして扱ってください。意図的なエージェントに対するセキュリティ境界としては機能しません。本物の境界はシェルの下のレイヤーで強制する必要があります。
 </Warning>
 
 **パラメーター:**
@@ -543,7 +543,7 @@ failproofai には、エージェントの一般的な障害モードを検出�
 **イベント:** PreToolUse (Bash)  
 **デフォルト:** `git push --force` および `git push -f` を拒否します。
 
-ポリシー固有のパラメーターはありません。代替手段を提案するにはクロスカッティングの [`hint`](/ja/configuration#hint-cross-cutting) を使用します：
+ポリシー固有のパラメーターはありません。代替手段を提案するにはクロスカッティングの [`hint`](/ja/configuration) を使用します：
 
 ```json
 {

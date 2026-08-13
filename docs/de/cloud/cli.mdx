@@ -48,7 +48,7 @@ Der letzte Befehl gibt ein JSON-Objekt mit den neuesten Sessions aus (neueste zu
 }
 ```
 
-Der Rest dieser Seite erläutert die einzelnen Bestandteile: [Installation](#installation) in einer isolierten Umgebung, [Anmeldung](#authentication), [Konfiguration](#configuration), die [globalen Konventionen](#global-options--conventions), die alle Befehle teilen, sowie die [vollständige Befehlsreferenz](#command-reference).
+Der Rest dieser Seite erläutert die einzelnen Bestandteile: [Installation](#installation) in einer isolierten Umgebung, [Anmeldung](/de/cloud/cli), [Konfiguration](/de/cloud/cli), die [globalen Konventionen](/de/cloud/cli), die alle Befehle teilen, sowie die [vollständige Befehlsreferenz](/de/cloud/cli).
 
 ---
 
@@ -91,7 +91,7 @@ agenteye logout     # revoke the session and clear the stored token
 
 `whoami` schlägt bei einer fehlenden oder abgelaufenen Session nie fehl; stattdessen meldet es `logged_in: false`, sodass ein Skript oder Agent den Auth-Status sicher abfragen kann (es kann dennoch mit einem Nicht-Null-Wert enden, wenn keine Basis-URL gesetzt oder das Dashboard nicht erreichbar ist).
 
-**Voraussetzungen:** Deine E-Mail-Adresse muss für die Anmeldung am Dashboard berechtigt sein (frage deinen FailproofAI Cloud-Administrator), und das Dashboard muss über seine Basis-URL erreichbar sein (siehe [Konfiguration](#configuration)). Wenn du einen Code anforderst und keiner eintrifft, ist deine E-Mail-Adresse wahrscheinlich noch nicht für den Dashboard-Zugang freigeschalten.
+**Voraussetzungen:** Deine E-Mail-Adresse muss für die Anmeldung am Dashboard berechtigt sein (frage deinen FailproofAI Cloud-Administrator), und das Dashboard muss über seine Basis-URL erreichbar sein (siehe [Konfiguration](/de/cloud/cli)). Wenn du einen Code anforderst und keiner eintrifft, ist deine E-Mail-Adresse wahrscheinlich noch nicht für den Dashboard-Zugang freigeschalten.
 
 ---
 

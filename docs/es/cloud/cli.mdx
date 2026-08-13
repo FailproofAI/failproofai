@@ -48,7 +48,7 @@ Ese último comando imprime un objeto JSON con las sesiones más recientes (más
 }
 ```
 
-El resto de esta página explica cada parte: [instalación](#installation) en aislamiento, [inicio de sesión](#authentication), [configuración](#configuration), las [convenciones globales](#global-options--conventions) que comparten todos los comandos, y la [referencia completa de comandos](#command-reference).
+El resto de esta página explica cada parte: [instalación](/es/cloud/cli) en aislamiento, [inicio de sesión](/es/cloud/cli), [configuración](/es/cloud/cli), las [convenciones globales](/es/cloud/cli) que comparten todos los comandos, y la [referencia completa de comandos](/es/cloud/cli).
 
 ---
 
@@ -91,7 +91,7 @@ agenteye logout     # revoca la sesión y elimina el token almacenado
 
 `whoami` nunca falla por una sesión ausente o expirada; en su lugar reporta `logged_in: false`, por lo que un script o agente puede verificar el estado de autenticación de forma segura (igual puede salir con código distinto de cero si no hay URL base configurada o el dashboard no está disponible).
 
-**Requisitos:** tu email debe tener permiso para iniciar sesión en el dashboard (consulta a tu administrador de Observabilidad de Failproof AI), y el dashboard debe ser accesible en su URL base (ver [Configuración](#configuration)). Si solicitas un código y no llega, probablemente tu email todavía no tiene acceso habilitado al dashboard.
+**Requisitos:** tu email debe tener permiso para iniciar sesión en el dashboard (consulta a tu administrador de Observabilidad de Failproof AI), y el dashboard debe ser accesible en su URL base (ver [Configuración](/es/cloud/cli)). Si solicitas un código y no llega, probablemente tu email todavía no tiene acceso habilitado al dashboard.
 
 ---
 

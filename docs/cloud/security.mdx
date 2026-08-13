@@ -12,9 +12,14 @@ sign off on it.
 
 ## Nothing leaves a machine until you connect it
 
-The guardrails are local. Policy evaluation, the decision log, session replay, and the
+The policies are local. Policy evaluation, the decision log, session replay, and the
 [audit](/audit) all run on the machine, against files already on it. There is no account to
-create and no network call on the enforcement path.
+create, and no tool call, file content or transcript is sent anywhere.
+
+One exception, so it is not a surprise: anonymous usage telemetry (policy name, tool name,
+CLI, decision — never content) is reported on deny and instruct, and is on by default.
+Turn it off with `FAILPROOFAI_TELEMETRY_DISABLED=1` or `"telemetry": { "enabled": false }`
+in `~/.failproofai/config.json`. See [environment variables](/cli/environment-variables).
 
 That changes only when you run `failproofai config --connect`, and the CLI states plainly —
 at the moment you connect, not in a footnote — what starts flowing:
@@ -24,7 +29,7 @@ at the moment you connect, not in a footnote — what starts flowing:
 | Policy decisions | Which policy fired, on which tool, in which session, with what verdict | Don't connect, or disconnect |
 | Session transcripts | The full session: prompts, model responses, file contents, command output | `--connect … --no-transcripts` |
 
-`failproofai config --status` always reports which mode is in effect.
+The mode is recorded as `collector.sessions` in `~/.failproofai/config.json`.
 [Full detail →](/cloud/connect#what-leaves-this-machine)
 
 ---
@@ -149,9 +154,11 @@ no root, and an already-running service can be connected without reinstalling an
 
 Two independent controls:
 
-- **Locally**, the [sanitize policies](/built-in-policies#secrets-sanitizers) scrub JWTs,
-  API keys, connection strings, private keys, and bearer tokens out of tool output *before
-  the model reads them*. On by default under Recommended.
+- **Locally**, the [`PreToolUse` policies](/built-in-policies) `block-env-files`,
+  `protect-env-vars` and `block-secrets-write` stop the agent reading or writing secrets in
+  the first place. The sanitize policies additionally *detect* JWTs, API keys, connection
+  strings, private keys and bearer tokens in tool output — detection, not removal. On by
+  default under Recommended.
 - **In the SDK**, only the fields you explicitly pass are recorded. Nothing is read from
   your process or captured implicitly, and any field you leave unset is not written at all.
   If a payload contains something you would rather not store, strip it before you pass it.

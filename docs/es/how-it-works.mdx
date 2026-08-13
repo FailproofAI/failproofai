@@ -71,7 +71,7 @@ El manejador aplica un límite de 1 MB en stdin. Los payloads que superen este l
 {
   "hookSpecificOutput": {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Blocked by failproofai: sudo command blocked"
+    "permissionDecisionReason": "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
   }
 }
 ```
@@ -156,7 +156,7 @@ Todo el proceso se ejecuta en menos de 100ms para payloads típicos sin llamadas
 Lógica de combinación:
 - `enabledPolicies` - unión deduplicada de los tres archivos
 - `policyParams` - por clave de política, gana íntegramente el primer archivo que la defina
-- `customPoliciesPath` - gana el primer archivo que lo defina
+- `customPoliciesPaths` - gana el primer archivo que lo defina
 - `llm` - gana el primer archivo que lo defina
 
 El panel de control web usa `readHooksConfig()` (solo global) para lectura y escritura, ya que no se invoca con un cwd de proyecto.
@@ -186,7 +186,7 @@ Después de que todas las políticas se ejecutan:
 
 ## Políticas integradas
 
-`src/hooks/builtin-policies.ts` define las 39 políticas integradas como objetos `BuiltinPolicyDefinition`:
+`src/hooks/builtin-policies.ts` define las 40 políticas integradas como objetos `BuiltinPolicyDefinition`:
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -227,7 +227,7 @@ export function clearCustomHooks(): void { ... }  // used in tests
 
 `src/hooks/custom-hooks-loader.ts` carga el archivo de política del usuario:
 
-1. Lee `customPoliciesPath` de la configuración; omite si está ausente.
+1. Lee `customPoliciesPaths` de la configuración; omite si está ausente.
 2. Resuelve a ruta absoluta; verifica que el archivo exista.
 3. Reescribe todas las importaciones `from "failproofai"` a la ruta dist real para que `customPolicies` resuelva al mismo registro `globalThis`.
 4. Reescribe recursivamente las importaciones locales transitivas para garantizar la compatibilidad con ESM.
@@ -247,7 +247,7 @@ Después de cada evento de hook, el manejador añade una línea JSONL a `~/.fail
 
 ```json
 {
-  "timestamp": "2026-04-06T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",
@@ -307,7 +307,7 @@ failproofai/
 │   └── failproofai.mjs           # Enrutador CLI (hook / dashboard / install / etc.)
 ├── src/hooks/
 │   ├── handler.ts                # Pipeline de eventos de hook
-│   ├── builtin-policies.ts       # 39 definiciones de políticas
+│   ├── builtin-policies.ts       # 40 definiciones de políticas
 │   ├── policy-evaluator.ts       # Motor de ejecución de políticas
 │   ├── policy-registry.ts        # Registro y búsqueda de políticas
 │   ├── policy-types.ts           # Interfaces TypeScript

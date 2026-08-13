@@ -27,18 +27,21 @@ failproofai varsayılan olarak anonim kullanım telemetrisi gönderir. Bunu kapa
 |----------|----------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | Bu işlem için anonim kullanım telemetrisi devre dışı bırak |
 
-Makine için kalıcı olarak devre dışı bırakmak için bunu `~/.failproofai/config.toml` dosyasına ekleyin:
+Makine için kalıcı olarak devre dışı bırakmak için bunu `~/.failproofai/config.json` dosyasına ekleyin:
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
 Yapılandırma dosyası, **failproofaid daemon** çalıştırıyorsanız kullanılacak seçenektir.
 Daemon sistem kapsamında bir hizmettir ve ortamı kabuğunuzdan dışarı aktarılan
 değişkenleri içermez — bu nedenle `FAILPROOFAI_TELEMETRY_DISABLED` ona ulaşamaz.
-`[telemetry] enabled = false` hem CLI hem de daemon tarafından okunur.
+`"telemetry": { "enabled": false }` hem CLI hem de daemon tarafından okunur.
 </Note>
 
 Daemon yalnızca kendi **yaşam döngüsünü** raportar: başladığı (ve önceki çalışmanın temiz bir şekilde çıkıp çıkmadığı), durduğu, değerlendirme çalışanı oluşturulduğu veya yeniden başlatıldığı, bir toplayıcı görev başarısız olduğunda ve bulut-ilkesi çekme sonucu. Bunlar düşük kardinaliteli değerler ve sayıları taşır — asla dosya yolu, komut, ilke, istem veya transkriptten okunan hiçbir şey taşımaz. Araç başına çağrı olayı yoktur.

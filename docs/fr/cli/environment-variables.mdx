@@ -29,18 +29,21 @@ ne peut jamais réactiver ce que le fichier de configuration a désactivé.
 |----------|-------------|
 | `FAILPROOFAI_TELEMETRY_DISABLED=1` | Désactive la télémétrie d'utilisation anonyme pour ce processus |
 
-Pour la désactiver définitivement sur la machine, ajoutez ceci dans `~/.failproofai/config.toml` :
+Pour la désactiver définitivement sur la machine, ajoutez ceci dans `~/.failproofai/config.json` :
 
-```toml
-[telemetry]
-enabled = false
+```json
+{
+  "telemetry": {
+    "enabled": false
+  }
+}
 ```
 
 <Note>
 Le fichier de configuration est l'option à utiliser si vous exécutez le **démon failproofaid**.
 Le démon est un service à portée système, et son environnement n'inclut pas
 les variables exportées depuis votre shell — `FAILPROOFAI_TELEMETRY_DISABLED` ne peut donc pas
-l'atteindre. `[telemetry] enabled = false` est lu aussi bien par le CLI que par le démon.
+l'atteindre. `"telemetry": { "enabled": false }` est lu aussi bien par le CLI que par le démon.
 </Note>
 
 Le démon ne rapporte que son propre **cycle de vie** : le fait qu'il a démarré (et si

@@ -80,7 +80,7 @@ failproofai policies --install --custom ./security.js --custom ./workflow.js
 failproofai policies --uninstall --custom
 ```
 
-נתיבים מוחלטים מורכבים מאוחסנים ב-`policies-config.json` כ-`customPoliciesPaths`. חזור על `--custom` כדי לקבוע תצורה של קבצים מרובים. תצורות קיימות המשתמשות בשדה `customPoliciesPath` של העבר ממשיכות לעבוד. קבצים נטענים מחדש בכל אירוע hook - אין קאשינג בין אירועים.
+נתיבים מוחלטים מורכבים מאוחסנים ב-`policies-config.json` כ-`customPoliciesPaths`. חזור על `--custom` כדי לקבוע תצורה של קבצים מרובים. תצורות קיימות המשתמשות בשדה `customPoliciesPaths` של העבר ממשיכות לעבוד. קבצים נטענים מחדש בכל אירוע hook - אין קאשינג בין אירועים.
 
 כל מדיניות רשומה מופיעה עם ההפעלה/כיבוי שלה בלוח הבקרה. החלפת מדיניות כיבה מתעדת את ה-ID המיומן בקובץ שלה ב-`disabledCustomPolicies`; הקובץ והמדיניות האחרות שלו ממשיכים להטען, בעוד המדיניות המבוטלת מחוצה לחוץ לפני תאימות אירוע. שמות מדיניות משוכפלים בקבצים שונים הם בעלי הפעלה/כיבוי בלתי תלוי.
 
@@ -123,12 +123,12 @@ customPolicies.add({
 | `deny(message)` | חסום את הפעולה | ה-agent לא צריך לבצע פעולה זו |
 | `instruct(message)` | הוסף הקשר ללא חסימה | תן ל-agent הקשר נוסף להישאר על המסלול |
 
-`deny(message)` - ההודעה מופיעה ל-Claude עם קידומת `"Blocked by failproofai:"`. `deny` אחד מקצר את כל ההערכה הנוספת.
+`deny(message)` - ההודעה מופיעה ל-Claude עם קידומת `Blocked <tool> by failproofai because: <message>, as per the policy configured by the user`. `deny` אחד מקצר את כל ההערכה הנוספת.
 
 `instruct(message)` - ההודעה מוצמדת להקשר של Claude עבור קריאת הכלי הנוכחית. כל הודעות `instruct` מצטברות ומסופקות ביחד.
 
 <Tip>
-אתה יכול להוסיף הנחיות נוספות לכל הודעת `deny` או `instruct` על ידי הוספת שדה `hint` ב-`policyParams` — אין צורך בשינוי קוד. זה עובד גם עבור מדיניות מותאמת אישית (`custom/`), כללי כתיבה של פרויקט (`.failproofai-project/`), וכללי כתיבה של משתמש (`.failproofai-user/`). ראה [Configuration → hint](/he/configuration#hint-cross-cutting) לפרטים.
+אתה יכול להוסיף הנחיות נוספות לכל הודעת `deny` או `instruct` על ידי הוספת שדה `hint` ב-`policyParams` — אין צורך בשינוי קוד. זה עובד גם עבור מדיניות מותאמת אישית (`custom/`), כללי כתיבה של פרויקט (`.failproofai-project/`), וכללי כתיבה של משתמש (`.failproofai-user/`). ראה [Configuration → hint](/he/configuration) לפרטים.
 </Tip>
 
 ### הודעות allow מידע
@@ -195,7 +195,7 @@ customPolicies.add({
 מדיניות מוערכת בסדר זה:
 
 1. מדיניות מובנית (בסדר הגדרה)
-2. מדיניות מותאמת אישית מפורשת מ-`customPoliciesPath` (בסדר `.add()`)
+2. מדיניות מותאמת אישית מפורשת מ-`customPoliciesPaths` (בסדר `.add()`)
 3. מדיניות כללי כתיבה מפרויקט `.failproofai/policies/` (קבצים אלפביתיים, סדר `.add()` בתוך)
 4. מדיניות כללי כתיבה ממשתמש `~/.failproofai/policies/` (קבצים אלפביתיים, סדר `.add()` בתוך)
 
@@ -254,7 +254,7 @@ customPolicies.add({
 
 | כשל | התנהגות |
 |---------|----------|
-| `customPoliciesPath` לא הוגדרה | אין מדיניות מותאמת אישית מפורשת פועלת; מדיניות כללי כתיבה ומובנית ממשיכות בדרך כלל |
+| `customPoliciesPaths` לא הוגדרה | אין מדיניות מותאמת אישית מפורשת פועלת; מדיניות כללי כתיבה ומובנית ממשיכות בדרך כלל |
 | קובץ לא נמצא | אזהרה נרשמת ל-`~/.failproofai/hook.log`; מובנית ממשיכה |
 | שגיאת תחביר/ייבוא (מפורשת) | שגיאה נרשמת ל-`~/.failproofai/hook.log`; מדיניות מותאמת אישית מפורשת דילגה |
 | שגיאת תחביר/ייבוא (כללי כתיבה) | שגיאה נרשמת; הקובץ הזה דילג, קבצי כללי כתיבה אחרים עדיין טוענים |

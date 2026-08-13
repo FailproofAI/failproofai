@@ -50,7 +50,7 @@ Nếu tên không có `/`, failproofai coi nó thuộc không gian tên mặc đ
 ---
 
 <Tip>
-Mỗi chính sách hỗ trợ một trường `hint` tùy chọn trong `policyParams`. Gợi ý được nối thêm vào thông báo từ chối hoặc hướng dẫn mà Claude nhìn thấy, cung cấp hướng dẫn có thể thực hiện được mà không cần sửa đổi code chính sách. Hoạt động với các chính sách tích hợp sẵn, tùy chỉnh và quy ước. Xem [Cấu hình → hint](/vi/configuration#hint-cross-cutting) để biết chi tiết.
+Mỗi chính sách hỗ trợ một trường `hint` tùy chọn trong `policyParams`. Gợi ý được nối thêm vào thông báo từ chối hoặc hướng dẫn mà Claude nhìn thấy, cung cấp hướng dẫn có thể thực hiện được mà không cần sửa đổi code chính sách. Hoạt động với các chính sách tích hợp sẵn, tùy chỉnh và quy ước. Xem [Cấu hình → hint](/vi/configuration) để biết chi tiết.
 </Tip>
 
 ---
@@ -543,7 +543,7 @@ Ngăn chặn đẩy ngẫu nhiên, force-push và lỗi nhánh khó hoàn tác.
 **Sự kiện:** PreToolUse (Bash)  
 **Mặc định:** Từ chối `git push --force` và `git push -f`.
 
-Không có tham số riêng của chính sách. Sử dụng [`hint`](/vi/configuration#hint-cross-cutting) cross-cutting để gợi ý thay thế:
+Không có tham số riêng của chính sách. Sử dụng [`hint`](/vi/configuration) cross-cutting để gợi ý thay thế:
 
 ```json
 {

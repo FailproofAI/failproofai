@@ -49,7 +49,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← cai para o global
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** — o primeiro escopo que define qualquer uma das formas vence.
+**`customPoliciesPaths` / `customPoliciesPaths`** — o primeiro escopo que define qualquer uma das formas vence.
 
 **`disabledCustomPolicies`** — união entre todos os escopos. O painel escreve um ID qualificado pela fonte aqui quando você desativa uma política individual de um arquivo de políticas explícito ou de convenção. Políticas não listadas permanecem habilitadas por padrão; os IDs incluem o arquivo de origem para que políticas com o mesmo nome em múltiplos arquivos possam ser controladas de forma independente.
 
@@ -147,7 +147,7 @@ Quando `block-force-push` bloqueia, Claude vê: *"Force-pushing is blocked. Try 
 
 Valores não-string e strings vazias são silenciosamente ignorados. Se `hint` não estiver definido, o comportamento permanece inalterado (compatível com versões anteriores).
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
 Tipo: `string` (caminho absoluto)
 
@@ -157,7 +157,7 @@ O arquivo é carregado novamente a cada evento de hook — não há cache. Consu
 
 ### Políticas baseadas em convenção
 
-Além do `customPoliciesPath` explícito, failproofai descobre e carrega automaticamente arquivos de políticas de diretórios `.failproofai/policies/`:
+Além do `customPoliciesPaths` explícito, failproofai descobre e carrega automaticamente arquivos de políticas de diretórios `.failproofai/policies/`:
 
 | Nível | Diretório | Escopo |
 |-------|-----------|-------|
@@ -176,7 +176,7 @@ Além do `customPoliciesPath` explícito, failproofai descobre e carrega automat
 
 **Sem necessidade de configuração:** Políticas de convenção não requerem entradas em `policies-config.json`. Basta colocar os arquivos no diretório e eles serão detectados no próximo evento de hook.
 
-**Carregamento em união:** Tanto o projeto quanto os diretórios de convenção do usuário são verificados. Todos os arquivos correspondentes de ambos os níveis são carregados (ao contrário de `customPoliciesPath`, que usa o primeiro escopo que vence).
+**Carregamento em união:** Tanto o projeto quanto os diretórios de convenção do usuário são verificados. Todos os arquivos correspondentes de ambos os níveis são carregados (ao contrário de `customPoliciesPaths`, que usa o primeiro escopo que vence).
 
 Consulte [Políticas Personalizadas](/pt-br/custom-policies) para mais detalhes e exemplos.
 

@@ -49,7 +49,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← cae al global
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** — el primer ámbito que defina cualquiera de las dos formas prevalece.
+**`customPoliciesPaths` / `customPoliciesPaths`** — el primer ámbito que defina cualquiera de las dos formas prevalece.
 
 **`disabledCustomPolicies`** — unión de todos los ámbitos. El panel escribe un
 ID cualificado por fuente aquí cuando desactivas una política individual desde un
@@ -151,7 +151,7 @@ Cuando `block-force-push` deniega, Claude ve: *"Force-pushing is blocked. Try cr
 
 Los valores que no son cadenas de texto y las cadenas vacías se ignoran silenciosamente. Si `hint` no está definido, el comportamiento no cambia (compatible con versiones anteriores).
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
 Tipo: `string` (ruta absoluta)
 
@@ -161,7 +161,7 @@ El archivo se carga de nuevo en cada evento de hook; no hay caché. Consulta [Po
 
 ### Políticas basadas en convención
 
-Además del `customPoliciesPath` explícito, failproofai descubre y carga automáticamente archivos de políticas desde los directorios `.failproofai/policies/`:
+Además del `customPoliciesPaths` explícito, failproofai descubre y carga automáticamente archivos de políticas desde los directorios `.failproofai/policies/`:
 
 | Nivel | Directorio | Ámbito |
 |-------|-----------|--------|
@@ -179,7 +179,7 @@ Además del `customPoliciesPath` explícito, failproofai descubre y carga autom�
 
 **Sin configuración necesaria:** Las políticas de convención no requieren ninguna entrada en `policies-config.json`. Solo coloca los archivos en el directorio y se detectarán en el siguiente evento de hook.
 
-**Carga por unión:** Se analizan tanto el directorio de convención del proyecto como el del usuario. Se cargan todos los archivos coincidentes de ambos niveles (a diferencia de `customPoliciesPath`, que usa el principio de primer ámbito ganador).
+**Carga por unión:** Se analizan tanto el directorio de convención del proyecto como el del usuario. Se cargan todos los archivos coincidentes de ambos niveles (a diferencia de `customPoliciesPaths`, que usa el principio de primer ámbito ganador).
 
 Consulta [Políticas personalizadas](/es/custom-policies) para más detalles y ejemplos.
 

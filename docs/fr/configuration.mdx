@@ -49,7 +49,7 @@ global:   block-sudo → { allowPatterns: ["sudo systemctl status"] }
 resolved: { allowPatterns: ["sudo systemctl status"] }  ← remonte jusqu'au global
 ```
 
-**`customPoliciesPaths` / `customPoliciesPath`** — le premier niveau qui définit l'une ou l'autre forme l'emporte.
+**`customPoliciesPaths` / `customPoliciesPaths`** — le premier niveau qui définit l'une ou l'autre forme l'emporte.
 
 **`disabledCustomPolicies`** — union entre tous les niveaux. Le tableau de bord écrit un
 identifiant qualifié par la source ici lorsque vous désactivez une politique individuelle depuis
@@ -151,7 +151,7 @@ Lorsque `block-force-push` refuse, Claude voit : *« Les push forcés sont bloqu
 
 Les valeurs non-chaînes et les chaînes vides sont silencieusement ignorées. Si `hint` n'est pas défini, le comportement est inchangé (rétrocompatible).
 
-### `customPoliciesPath`
+### `customPoliciesPaths`
 
 Type : `string` (chemin absolu)
 
@@ -161,7 +161,7 @@ Le fichier est rechargé à chaque événement de hook — il n'y a pas de mise 
 
 ### Politiques basées sur les conventions
 
-En plus du `customPoliciesPath` explicite, failproofai découvre et charge automatiquement les fichiers de politiques depuis les répertoires `.failproofai/policies/` :
+En plus du `customPoliciesPaths` explicite, failproofai découvre et charge automatiquement les fichiers de politiques depuis les répertoires `.failproofai/policies/` :
 
 | Niveau | Répertoire | Portée |
 |--------|------------|--------|
@@ -179,7 +179,7 @@ En plus du `customPoliciesPath` explicite, failproofai découvre et charge autom
 
 **Aucune configuration requise :** Les politiques de convention ne nécessitent aucune entrée dans `policies-config.json`. Déposez simplement des fichiers dans le répertoire et ils seront pris en compte au prochain événement de hook.
 
-**Chargement par union :** Les répertoires de convention du projet et de l'utilisateur sont tous deux analysés. Tous les fichiers correspondants des deux niveaux sont chargés (contrairement à `customPoliciesPath` qui utilise le premier niveau gagnant).
+**Chargement par union :** Les répertoires de convention du projet et de l'utilisateur sont tous deux analysés. Tous les fichiers correspondants des deux niveaux sont chargés (contrairement à `customPoliciesPaths` qui utilise le premier niveau gagnant).
 
 Consultez [Politiques personnalisées](/fr/custom-policies) pour plus de détails et d'exemples.
 

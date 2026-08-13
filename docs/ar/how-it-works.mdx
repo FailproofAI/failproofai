@@ -72,7 +72,7 @@ icon: sitemap
 {
   "hookSpecificOutput": {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Blocked by failproofai: sudo command blocked"
+    "permissionDecisionReason": "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
   }
 }
 ```
@@ -157,7 +157,7 @@ stdin JSON
 منطق الدمج:
 - `enabledPolicies` - اتحاد مزيل للتكرار عبر الملفات الثلاثة
 - `policyParams` - لكل سياسة، الملف الأول الذي يعرّفها يفوز بالكامل
-- `customPoliciesPath` - الملف الأول الذي يعرّفه يفوز
+- `customPoliciesPaths` - الملف الأول الذي يعرّفه يفوز
 - `llm` - الملف الأول الذي يعرّفه يفوز
 
 تستخدم لوحة معلومات الويب `readHooksConfig()` (عام فقط) للقراءة والكتابة، لأنها لا تُستدعى مع cwd للمشروع.
@@ -187,7 +187,7 @@ stdin JSON
 
 ## السياسات المدمجة
 
-يُعرّف `src/hooks/builtin-policies.ts` جميع 39 سياسة مدمجة كائنات `BuiltinPolicyDefinition`:
+يُعرّف `src/hooks/builtin-policies.ts` جميع 40 سياسة مدمجة كائنات `BuiltinPolicyDefinition`:
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -228,7 +228,7 @@ export function clearCustomHooks(): void { ... }  // used in tests
 
 يحمّل `src/hooks/custom-hooks-loader.ts` ملف السياسة الخاص بالمستخدم:
 
-1. اقرأ `customPoliciesPath` من الإعدادات؛ تخطَّ إذا كان غائبًا.
+1. اقرأ `customPoliciesPaths` من الإعدادات؛ تخطَّ إذا كان غائبًا.
 2. حلّ المسار المطلق؛ تحقق من وجود الملف.
 3. أعد كتابة جميع واردات `from "failproofai"` إلى مسار dist الفعلي بحيث ينحل `customPolicies` إلى سجل `globalThis` نفسه.
 4. أعد كتابة الواردات المحلية العابرة بشكل متكرر لضمان التوافق مع ESM.
@@ -248,7 +248,7 @@ export function clearCustomHooks(): void { ... }  // used in tests
 
 ```json
 {
-  "timestamp": "2026-04-06T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",
@@ -308,7 +308,7 @@ failproofai/
 │   └── failproofai.mjs           # CLI router (hook / dashboard / install / etc.)
 ├── src/hooks/
 │   ├── handler.ts                # Hook event pipeline
-│   ├── builtin-policies.ts       # 39 policy definitions
+│   ├── builtin-policies.ts       # 40 policy definitions
 │   ├── policy-evaluator.ts       # Policy execution engine
 │   ├── policy-registry.ts        # Policy registration and lookup
 │   ├── policy-types.ts           # TypeScript interfaces

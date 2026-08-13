@@ -15,16 +15,16 @@ failproofai מגיע עם 39 מדיניות מובנות שתופסות מצבי
 
 | קטגוריה | מדיניות | סוג Hook |
 |----------|---------|-----------|
-| [פקודות מסוכנות](#dangerous-commands) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
-| [פקודות Infrastructure](#infra-commands) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
-| [סודות (sanitizers)](#secrets-sanitizers) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
-| [סביבה](#environment) | block-env-files, protect-env-vars | PreToolUse |
-| [גישת קבצים](#file-access) | block-read-outside-cwd, block-secrets-write | PreToolUse |
+| [פקודות מסוכנות](/he/built-in-policies) | block-sudo, block-rm-rf, block-curl-pipe-sh, block-failproofai-commands, block-self-pause | PreToolUse |
+| [פקודות Infrastructure](/he/built-in-policies) | block-kubectl, block-terraform, block-aws-cli, block-gcloud, block-az-cli, block-helm, block-gh-pipeline | PreToolUse |
+| [סודות (sanitizers)](/he/built-in-policies) | sanitize-jwt, sanitize-api-keys, sanitize-connection-strings, sanitize-private-key-content, sanitize-bearer-tokens | PostToolUse |
+| [סביבה](/he/built-in-policies) | block-env-files, protect-env-vars | PreToolUse |
+| [גישת קבצים](/he/built-in-policies) | block-read-outside-cwd, block-secrets-write | PreToolUse |
 | [Git](#git) | block-push-master, block-work-on-main, block-force-push, warn-git-amend, warn-git-stash-drop, warn-all-files-staged | PreToolUse |
-| [מסד נתונים](#database) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
-| [אזהרות](#warnings) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
-| [מנהלי חבילות](#package-managers) | prefer-package-manager | PreToolUse |
-| [זרימת עבודה](#workflow) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
+| [מסד נתונים](/he/built-in-policies) | warn-destructive-sql, warn-schema-alteration | PreToolUse |
+| [אזהרות](/he/built-in-policies) | warn-large-file-write, warn-package-publish, warn-background-process, warn-global-package-install | PreToolUse |
+| [מנהלי חבילות](/he/built-in-policies) | prefer-package-manager | PreToolUse |
+| [זרימת עבודה](/he/built-in-policies) | require-commit-before-stop, require-push-before-stop, require-pr-before-stop, require-no-conflicts-before-stop, require-ci-green-before-stop | Stop |
 
 - **`block-`** — עצור את הסוכן מההמשך.
 - **`warn-`** — תן לסוכן הקשר נוסף כדי שיוכל להתקן את עצמו.
@@ -54,7 +54,7 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 ---
 
 <Tip>
-כל מדיניות תומכת בשדה `hint` אופציונלי ב-`policyParams`. ה-hint מצורף להודעת ה-deny או ה-instruct שClaude רואה, מה שנותן הנחיות שימושיות ללא שינוי קוד מדיניות. עובד עם מדיניות מובנות, מותאמות, וקונווקציה. ראה [Configuration → hint](/he/configuration#hint-cross-cutting) לפרטים.
+כל מדיניות תומכת בשדה `hint` אופציונלי ב-`policyParams`. ה-hint מצורף להודעת ה-deny או ה-instruct שClaude רואה, מה שנותן הנחיות שימושיות ללא שינוי קוד מדיניות. עובד עם מדיניות מובנות, מותאמות, וקונווקציה. ראה [Configuration → hint](/he/configuration) לפרטים.
 </Tip>
 
 ---
@@ -357,7 +357,7 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 ### `sanitize-jwt`
 
 **Event:** PostToolUse (כל כלים)  
-**Default:** Redacts JWT tokens (שלוש קטעים base64url מופרדים ב-`.`).
+**Default:** Detects JWT tokens (שלוש קטעים base64url מופרדים ב-`.`).
 
 אין פרמטרים.
 
@@ -366,7 +366,7 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 ### `sanitize-api-keys`
 
 **Event:** PostToolUse (כל כלים)  
-**Default:** Redacts תבניות מפתח API נפוצות: Anthropic (`sk-ant-`), OpenAI (`sk-`), GitHub PATs (`ghp_`), AWS access keys (`AKIA`), Stripe keys (`sk_live_`, `sk_test_`), ומפתחות Google API (`AIza`).
+**Default:** Detects תבניות מפתח API נפוצות: Anthropic (`sk-ant-`), OpenAI (`sk-`), GitHub PATs (`ghp_`), AWS access keys (`AKIA`), Stripe keys (`sk_live_`, `sk_test_`), ומפתחות Google API (`AIza`).
 
 **Parameters:**
 
@@ -394,7 +394,7 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 ### `sanitize-connection-strings`
 
 **Event:** PostToolUse (כל כלים)  
-**Default:** Redacts connection strings של מסד נתונים המכילות אישורים משובצים (למשל `postgresql://user:password@host/db`).
+**Default:** Detects connection strings של מסד נתונים המכילות אישורים משובצים (למשל `postgresql://user:password@host/db`).
 
 אין פרמטרים.
 
@@ -403,7 +403,7 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 ### `sanitize-private-key-content`
 
 **Event:** PostToolUse (כל כלים)  
-**Default:** Redacts PEM blocks (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN RSA PRIVATE KEY-----`, וכו').
+**Default:** Detects PEM blocks (`-----BEGIN PRIVATE KEY-----`, `-----BEGIN RSA PRIVATE KEY-----`, וכו').
 
 אין פרמטרים.
 
@@ -412,7 +412,7 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 ### `sanitize-bearer-tokens`
 
 **Event:** PostToolUse (כל כלים)  
-**Default:** Redacts headers `Authorization: Bearer <token>` כאשר הטוקן הוא 20 תווים או יותר.
+**Default:** Detects headers `Authorization: Bearer <token>` כאשר הטוקן הוא 20 תווים או יותר.
 
 אין פרמטרים.
 
@@ -547,7 +547,7 @@ namespace **`failproofai/`** — למשל, `failproofai/sanitize-jwt`. ה-namesp
 **Event:** PreToolUse (Bash)  
 **Default:** מחסום `git push --force` ו-`git push -f`.
 
-אין פרמטרים ספציפיים למדיניות. השתמש ב-[`hint`](/he/configuration#hint-cross-cutting) חוצה-גזירה להציע חלופות:
+אין פרמטרים ספציפיים למדיניות. השתמש ב-[`hint`](/he/configuration) חוצה-גזירה להציע חלופות:
 
 ```json
 {

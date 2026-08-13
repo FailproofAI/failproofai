@@ -71,7 +71,7 @@ Claude Code は各ツール呼び出しの前に `failproofai --hook PreToolUse`
 {
   "hookSpecificOutput": {
     "permissionDecision": "deny",
-    "permissionDecisionReason": "Blocked by failproofai: sudo command blocked"
+    "permissionDecisionReason": "Blocked Bash by failproofai because: sudo commands are blocked, as per the policy configured by the user"
   }
 }
 ```
@@ -156,7 +156,7 @@ LLM 呼び出しなしで、一般的なペイロードに対して全体が 100
 マージのロジック:
 - `enabledPolicies` - 3 つのファイルにわたって重複排除したユニオン
 - `policyParams` - ポリシーごとのキーで、最初に定義したファイルが全体として優先
-- `customPoliciesPath` - 最初に定義したファイルが優先
+- `customPoliciesPaths` - 最初に定義したファイルが優先
 - `llm` - 最初に定義したファイルが優先
 
 Web ダッシュボードはプロジェクトの cwd なしで起動されるため、読み書きに `readHooksConfig()`（グローバルのみ）を使用します。
@@ -186,7 +186,7 @@ Web ダッシュボードはプロジェクトの cwd なしで起動される�
 
 ## 組み込みポリシー
 
-`src/hooks/builtin-policies.ts` は 39 個の組み込みポリシーを `BuiltinPolicyDefinition` オブジェクトとして定義しています。
+`src/hooks/builtin-policies.ts` は 40 個の組み込みポリシーを `BuiltinPolicyDefinition` オブジェクトとして定義しています。
 
 ```typescript
 interface BuiltinPolicyDefinition {
@@ -227,7 +227,7 @@ export function clearCustomHooks(): void { ... }  // テストで使用
 
 `src/hooks/custom-hooks-loader.ts` はユーザーのポリシーファイルを読み込みます。
 
-1. 設定から `customPoliciesPath` を読み取り、存在しない場合はスキップします。
+1. 設定から `customPoliciesPaths` を読み取り、存在しない場合はスキップします。
 2. 絶対パスに解決してファイルの存在を確認します。
 3. `from "failproofai"` のすべてのインポートを実際の dist パスに書き換え、`customPolicies` が同じ `globalThis` レジストリを参照するようにします。
 4. ESM 互換性を確保するため、推移的なローカルインポートを再帰的に書き換えます。
@@ -247,7 +247,7 @@ export function clearCustomHooks(): void { ... }  // テストで使用
 
 ```json
 {
-  "timestamp": "2026-04-06T12:34:56.789Z",
+  "timestamp": 1786538096789,
   "sessionId": "abc123",
   "eventType": "PreToolUse",
   "toolName": "Bash",
@@ -307,7 +307,7 @@ failproofai/
 │   └── failproofai.mjs           # CLI ルーター（hook / dashboard / install など）
 ├── src/hooks/
 │   ├── handler.ts                # フックイベントパイプライン
-│   ├── builtin-policies.ts       # 39 個のポリシー定義
+│   ├── builtin-policies.ts       # 40 個のポリシー定義
 │   ├── policy-evaluator.ts       # ポリシー実行エンジン
 │   ├── policy-registry.ts        # ポリシーの登録と参照
 │   ├── policy-types.ts           # TypeScript インターフェース

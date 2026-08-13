@@ -48,7 +48,7 @@ agenteye --json sessions --since 24h                                            
 }
 ```
 
-本页其余部分将逐一说明各个环节：[安装](#installation)（隔离安装）、[登录](#authentication)、[配置](#configuration)、所有命令共用的[全局约定](#global-options--conventions)，以及[完整命令参考](#command-reference)。
+本页其余部分将逐一说明各个环节：[安装](/zh/cloud/cli)（隔离安装）、[登录](/zh/cloud/cli)、[配置](/zh/cloud/cli)、所有命令共用的[全局约定](/zh/cloud/cli)，以及[完整命令参考](/zh/cloud/cli)。
 
 ---
 
@@ -91,7 +91,7 @@ agenteye logout     # 吊销会话并清除存储的令牌
 
 `whoami` 在会话缺失或过期时不会报错，而是返回 `logged_in: false`，因此脚本或智能体可以安全地探测认证状态（如果未设置 base URL 或控制台不可达，仍可能以非零状态退出）。
 
-**要求：** 您的邮箱必须获准登录控制台（请联系您的 FailproofAI Cloud 管理员），且控制台必须可通过其 base URL 访问（参见[配置](#configuration)）。如果申请了验证码但未收到，您的邮箱可能尚未开通控制台访问权限。
+**要求：** 您的邮箱必须获准登录控制台（请联系您的 FailproofAI Cloud 管理员），且控制台必须可通过其 base URL 访问（参见[配置](/zh/cloud/cli)）。如果申请了验证码但未收到，您的邮箱可能尚未开通控制台访问权限。
 
 ---
 

@@ -54,7 +54,7 @@ failproofai
   `Ctrl+C`로 중단할 때까지 대시보드가 계속 서비스됩니다.
 </Tip>
 
-대시보드는 이 기기의 과거 에이전트 CLI 트랜스크립트(Claude Code, Codex, Copilot, Cursor, OpenCode, Pi)를 스캔하고, 에이전트가 failproofai가 차단하도록 설계된 동작을 얼마나 자주 했는지 리포트합니다 — 환경 변수 체크, 강제 푸시, 불필요한 `cd <cwd>` 접두사, sleep 폴링 루프, 방금 편집한 파일 재읽기 등.
+대시보드는 이 기기의 과거 에이전트 CLI 트랜스크립트(Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Antigravity, Devin, Factory, Goose, Hermes, OpenClaw)를 스캔하고, 에이전트가 failproofai가 차단하도록 설계된 동작을 얼마나 자주 했는지 리포트합니다 — 환경 변수 체크, 강제 푸시, 불필요한 `cd <cwd>` 접두사, sleep 폴링 루프, 방금 편집한 파일 재읽기 등.
 
 각 트랜스크립트에서 모든 도구 사용 이벤트는 39개의 내장 정책과 런타임 정책으로는 아직 커버되지 않는 패턴을 감지하는 8개의 감사 전용 디텍터를 통해 재실행됩니다. 모든 세션에서 정책/디텍터별 카운트가 집계됩니다.
 
@@ -70,17 +70,20 @@ failproofai
 
 ## 예약 감사
 
-**failproofaid 데몬**을 실행 중이라면 ([`failproofai config`](/ko/cli/install-policies) 참조),
+**failproofaid 데몬**을 실행 중이라면 ([`failproofai config`](/ko/cli/config) 참조),
 일정에 따라 감사를 자동으로 재실행하고 백그라운드에서 `/audit` 리포트를 갱신할 수 있습니다.
 기본적으로 **비활성화**되어 있습니다. 이 기기의 모든 에이전트 세션 트랜스크립트 *내용*을
 읽기 때문에 — 명시적으로 요청하기 전까지는 타이머로 스캔이 실행되지 않습니다.
 
-`~/.failproofai/config.toml`에서 활성화하세요:
+`~/.failproofai/config.json`에서 활성화하세요:
 
-```toml
-[audit]
-auto = true
-interval_days = 7
+```json
+{
+  "audit": {
+    "auto": true,
+    "interval_days": 7
+  }
+}
 ```
 
 | 키 | 의미 |
@@ -95,7 +98,7 @@ interval_days = 7
 - `failproofai audit` 또는 대시보드의 재실행이 이미 진행 중인 경우 스캔을 건너뛰며,
   실패로 처리하는 대신 잠시 후 재시도합니다.
 - 진행 상황은 `~/.failproofai/state/audit-schedule.json`에 기록됩니다 (마지막 실행,
-  다음 예정). 해당 파일은 데몬이 관리하며 — 주기는 `config.toml`에서 변경하세요.
+  다음 예정). 해당 파일은 데몬이 관리하며 — 주기는 `config.json`에서 변경하세요.
 
 <Note>
 이전 버전의 failproofai로 설정된 기기에서 이 기능을 활성화했다면,

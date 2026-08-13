@@ -47,7 +47,7 @@ failproofai
   Chạy `failproofai audit -h` (hoặc `--help`) để xem cách sử dụng. Kiểm toàn chạy **hoàn toàn ngoại tuyến** — không cần tài khoản hoặc mạng — và bảng điều khiển tiếp tục phục vụ cho đến khi bạn dừng nó bằng `Ctrl+C`.
 </Tip>
 
-Bảng điều khiển quét các phiên ghi âm agent CLI trong quá khứ trên máy này (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) và báo cáo tần suất agent thực hiện những điều mà failproofai được xây dựng để dừng — kiểm tra biến môi trường, force push, tiền tố `cd <cwd>` dư thừa, vòng lặp sleep-polling, đọc lại các tệp vừa được chỉnh sửa, và hơn thế nữa.
+Bảng điều khiển quét các phiên ghi âm agent CLI trong quá khứ trên máy này (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Antigravity, Devin, Factory, Goose, Hermes, OpenClaw) và báo cáo tần suất agent thực hiện những điều mà failproofai được xây dựng để dừng — kiểm tra biến môi trường, force push, tiền tố `cd <cwd>` dư thừa, vòng lặp sleep-polling, đọc lại các tệp vừa được chỉnh sửa, và hơn thế nữa.
 
 Đối với mỗi phiên ghi âm, mọi sự kiện sử dụng công cụ được phát lại thông qua 39 chính sách tích hợp **và** thông qua 8 detector chỉ dành cho kiểm toàn bắt các mẫu chưa được bao gồm bởi các chính sách thời gian chạy. Số lượng được tổng hợp trên mỗi chính sách/detector trên tất cả các phiên.
 
@@ -63,17 +63,20 @@ Trang `/audit` là một **poster** trên một màn hình có thể chia sẻ, 
 
 ## Kiểm toàn được lên lịch
 
-Nếu bạn chạy **daemon failproofaid** (xem [`failproofai config`](/vi/cli/install-policies)),
+Nếu bạn chạy **daemon failproofaid** (xem [`failproofai config`](/vi/cli/config)),
 nó có thể chạy lại kiểm toàn cho bạn theo lịch trình và làm mới báo cáo `/audit` ở chế độ nền. Nó **tắt theo mặc định**, vì quét đọc *nội dung*
 của mọi phiên ghi âm agent session trên máy này — không có gì quét theo bộ hẹn giờ
 cho đến khi bạn yêu cầu.
 
-Bật nó trong `~/.failproofai/config.toml`:
+Bật nó trong `~/.failproofai/config.json`:
 
-```toml
-[audit]
-auto = true
-interval_days = 7
+```json
+{
+  "audit": {
+    "auto": true,
+    "interval_days": 7
+  }
+}
 ```
 
 | Khóa | Ý nghĩa |
@@ -85,7 +88,7 @@ interval_days = 7
   đã ngủ quá thời gian đến hạn chạy **một lần** trên thức dậy, không bao giờ một khối lượng công việc dữ liệu.
 - Mỗi lần chạy là một quá trình riêng biệt, mức độ ưu tiên thấp (`nice 19`) — không bao giờ đường dẫn hook của daemon, vốn luôn sẵn sàng để trả lời các lệnh gọi công cụ.
 - Quét bị bỏ qua nếu `failproofai audit` hoặc re-run của bảng điều khiển đã đang hoạt động; nó được thử lại trong thời gian ngắn sau thay vì được coi là một thất bại.
-- Tiến độ được ghi vào `~/.failproofai/state/audit-schedule.json` (lần chạy cuối cùng, tiếp theo đến hạn). Daemon sở hữu tệp đó — thay đổi tốc độ trong `config.toml`.
+- Tiến độ được ghi vào `~/.failproofai/state/audit-schedule.json` (lần chạy cuối cùng, tiếp theo đến hạn). Daemon sở hữu tệp đó — thay đổi tốc độ trong `config.json`.
 
 <Note>
 Nếu bạn kích hoạt điều này trên máy được thiết lập bởi failproofai cũ hơn, hãy chạy

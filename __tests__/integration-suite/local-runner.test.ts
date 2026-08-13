@@ -590,3 +590,46 @@ describe("the missing-credentials message", () => {
     expect(installSh).toMatch(/die "the \$j job needs these[^"]*\$missing\$why/);
   });
 });
+
+describe("probe B tells a route-around apart from a silent-allow", () => {
+  const policies = readFileSync(path.join(SUITE, "canary-policies.mjs"), "utf8");
+
+  it("only fires the shell detector inside the READ probe", () => {
+    // probe-cli.sh points FAILPROOFAI_HOOK_LOG_FILE at log-bash / log-read per
+    // probe. Firing during probe A would deny `touch CANARY_PROBE_ran` under
+    // the wrong policy name, keeping canary-bash out of the hook log and
+    // turning probe A inconclusive while looking like a fix.
+    expect(policies).toMatch(/endsWith\("log-read"\)/);
+    expect(policies).toMatch(/if \(!inReadProbe\(\)\) return allow\(\);/);
+  });
+
+  it("leaves navigation alone so CLIs that locate before reading still pass", () => {
+    // Denying `ls`/`pwd` would push currently-green CLIs into INCONCLUSIVE.
+    expect(policies).toMatch(/READ_UTIL\.test\(cmd\)/);
+    const readUtil = /const READ_UTIL = (\/.*\/);/.exec(policies)![1];
+    const re = new RegExp(readUtil.slice(1, readUtil.lastIndexOf("/")));
+    expect(re.test("ls -la")).toBe(false);
+    expect(re.test("pwd && ls -la")).toBe(false);
+    expect(re.test("find . -type f -exec cat {} +")).toBe(true);
+    expect(re.test("grep -r . .")).toBe(true);
+  });
+
+  it("keeps the shell deny out of read_denied, so it can never score a PASS", () => {
+    // The trailing space is the whole mechanism: without it `canary-read` also
+    // matches the `canary-read-shell` line, and probe B goes green on a run
+    // where the READ tool was never exercised.
+    expect(probeSh).toMatch(
+      /read_denied\(\) \{ grep -qE "result=deny policy=\(failproofai\/\|custom\/\)\?\(canary-read\|block-read-outside-cwd\) "/,
+    );
+    expect(probeSh).toMatch(/shell_route_attempted\(\) \{ grep -q "result=deny policy=custom\/canary-read-shell "/);
+  });
+
+  it("downgrades a leak to INCONCLUSIVE only when the shell was being denied", () => {
+    // A leak with NO shell attempt stays FAIL — that is what a CLI ignoring our
+    // deny looks like (copilot 1.0.70), and blurring the two would blind this
+    // suite to the silent-allow it exists to catch.
+    expect(probeSh).toMatch(
+      /if shell_route_attempted "\$LOGB\/hooks\.log"; then VB=INCONCLUSIVE; else VB=FAIL; fi/,
+    );
+  });
+});

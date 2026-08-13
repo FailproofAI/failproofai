@@ -29,6 +29,18 @@ LEG_TIMEOUT="${CANARY_LEG_TIMEOUT:-5400}"   # per leg, seconds — mirrors GHA's
 # the only harness default rooted elsewhere ($HOME), so pin it here.
 export CANARY_CARGO_CACHE="${CANARY_CARGO_CACHE:-$WORK/cargo}"
 
+# This is the one job that drives the HOST's docker — it builds the sandbox
+# image and runs the 12 probe containers as siblings. The entrypoint no longer
+# demands a socket on every job's behalf (two of three never spawn anything),
+# so the requirement is asserted here, where it is true, and BEFORE an hour of
+# setup rather than at the first sibling container.
+[ -S /var/run/docker.sock ] || {
+  echo "✗ the canary drives the host's docker and the socket is not mounted." >&2
+  echo "  Add:  -v /var/run/docker.sock:/var/run/docker.sock" >&2
+  exit 1; }
+docker info >/dev/null 2>&1 || {
+  echo "✗ the docker socket is mounted but the daemon does not answer." >&2; exit 1; }
+
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 FP_SHA="$(git -C "$CLONE" rev-parse --short HEAD)"
 echo "── canary run $TS: ${CANARY_REF:-?} @ $FP_SHA ──"

@@ -27,16 +27,26 @@ case "$JOB" in
 esac
 
 SOCK=/var/run/docker.sock
-[ -S "$SOCK" ] || { echo "✗ docker socket not mounted — add: -v /var/run/docker.sock:/var/run/docker.sock" >&2; exit 1; }
-docker info >/dev/null 2>&1 || { echo "✗ cannot talk to the host docker daemon through $SOCK" >&2; exit 1; }
 
 # The ONE host work dir, mounted at an IDENTICAL path inside and out
-# (-v "$HOME/fp-canary:$HOME/fp-canary"). Identical is load-bearing: paths
-# under it are used both for in-container file ops AND as sibling-container
-# `-v` sources, which the HOST daemon resolves against the host filesystem.
-# Auto-detected from this container's own mounts; CANARY_WORK settles it if
-# more than one identical-path mount is present.
+# (-v "$HOME/fp-canary:$HOME/fp-canary"). Identical is load-bearing FOR THE
+# CANARY: paths under it are used both for in-container file ops AND as
+# sibling-container `-v` sources, which the HOST daemon resolves against the
+# host filesystem.
+#
+# THE SOCKET IS REQUIRED EXACTLY WHERE IT IS USED, not on principle. Only the
+# canary spawns sibling containers; translate and docs-audit are plain
+# containers, and demanding a docker socket from them would turn two of three
+# cron lines into the long form for nothing. What the socket buys HERE is the
+# work-dir recovery below — so it is needed only when CANARY_WORK was not
+# passed. A job that genuinely needs docker asserts that for itself
+# (jobs/canary.sh), which is where job knowledge belongs.
 if [ -z "${CANARY_WORK:-}" ]; then
+  [ -S "$SOCK" ] || {
+    echo "✗ CANARY_WORK is not set and $SOCK is not mounted, so the work dir cannot be discovered." >&2
+    echo "  Pass it:  -e CANARY_WORK=\"\$HOME/fp-canary\" -v \"\$HOME/fp-canary:\$HOME/fp-canary\"" >&2
+    exit 1; }
+  docker info >/dev/null 2>&1 || { echo "✗ cannot talk to the host docker daemon through $SOCK" >&2; exit 1; }
   parity="$(docker inspect "$(cat /etc/hostname)" \
       --format '{{range .Mounts}}{{if eq .Source .Destination}}{{.Destination}}{{"\n"}}{{end}}{{end}}' 2>/dev/null \
     | grep -v '^/var/run/docker.sock$' | grep -v '^$' || true)"
@@ -47,6 +57,7 @@ if [ -z "${CANARY_WORK:-}" ]; then
        printf '%s\n' "$parity" >&2; exit 1 ;;
   esac
 fi
+[ -d "$CANARY_WORK" ] || { echo "✗ CANARY_WORK=$CANARY_WORK is not a directory in this container — mount it: -v \"$CANARY_WORK:$CANARY_WORK\"" >&2; exit 1; }
 export CANARY_WORK CANARY_JOB="$JOB"
 mkdir -p "$CANARY_WORK/logs"
 

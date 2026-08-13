@@ -49,6 +49,7 @@
 #   --jobs a,b        which jobs to install (default: all three)
 #   --now <job>       run that job immediately after installing (foreground)
 #   --no-cron         set everything up but do not touch the crontab
+#   --build-local     build the image from this checkout instead of pulling it
 #   --dry-run         print what would happen; touch nothing
 #   --at <job> <spec> when that job runs. A spec is "M H" (daily) or a full
 #                     five-field cron expression, which is how weekly is said.
@@ -59,7 +60,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-IMAGE="failproofai-canary-runner"
+# The published image. `--pull=always` in every cron line means the box tracks
+# it with nothing to re-run — no clone, no rebuild, no installer second visit.
+IMAGE="${CANARY_IMAGE:-ghcr.io/failproofai/failproofai-canary-runner:latest}"
 WORK="${CANARY_WORK:-$HOME/fp-canary}"
 GIT_URL="${CANARY_GIT_URL:-https://github.com/FailproofAI/failproofai.git}"
 # Marker, not the whole command: cron lines are rewritten on every install, so
@@ -85,13 +88,14 @@ REQUIRED_canary="CANARY_REF CANARY_LLM_API_KEY COPILOT_GITHUB_TOKEN CANARY_SLACK
 REQUIRED_translate="TRANSLATE_REF TRANSLATE_LLM_API_KEY TRANSLATE_LLM_BASE_URL TRANSLATE_GITHUB_TOKEN"
 REQUIRED_docs_audit="DOCS_AUDIT_REF CANARY_SLACK_WEBHOOK DOCS_AUDIT_GITHUB_TOKEN"
 
-SECRETS_SRC="" ; RUN_NOW="" ; DO_CRON=1 ; DRY=0
+SECRETS_SRC="" ; RUN_NOW="" ; DO_CRON=1 ; DRY=0 ; BUILD_LOCAL=0
 JOBS="$ALL_JOBS" ; AT_canary="0 11" ; AT_translate="0 2" ; AT_docs_audit="0 4 * * 1"
 while [ $# -gt 0 ]; do
   case "$1" in
     --jobs)          JOBS="$(echo "${2:?--jobs needs a value, e.g. --jobs canary,translate}" | tr ',' ' ')"; shift ;;
     --now)           RUN_NOW="${2:?--now needs a job name, e.g. --now canary}"; shift ;;
     --no-cron)       DO_CRON=0 ;;
+    --build-local)   BUILD_LOCAL=1 ;;
     --dry-run)       DRY=1 ;;
     --at)            # --at <job> <spec>
                      at_job="$(vn "${2:?--at needs a job and a spec, e.g. --at canary \"0 11\"}")"
@@ -281,29 +285,29 @@ else
   CANARY_REF="origin/main"
 fi
 
-# ── 5. build the runner image ────────────────────────────────────────────────
-# Two ways in, and the right one is whichever way this script was reached.
-#
-# Run from a CHECKOUT (`git clone` then `bash integration-suite/local/install.sh`)
-# the build context is the directory this file sits in. That is the honest
-# choice there: it needs no network, and it guarantees the image matches the
-# tree the operator is looking at — building from the git URL instead could
-# hand them an image from a DIFFERENT commit than their checkout while both
-# printed the same branch name.
-#
-# Run as a one-liner (`bash <(curl …)`) there is no checkout, so the context is
-# the git URL — docker takes `<repo>#<ref>:<subdir>` directly. The runner
-# re-clones the repo itself on every run either way, so nothing here goes stale.
-step "Building the runner image"
-BUILD_REF="${CANARY_REF#origin/}"
-HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
-if [ -n "$HERE" ] && [ -f "$HERE/Dockerfile.runner" ] && [ -f "$HERE/runner-entrypoint.sh" ]; then
+# ── 5. the runner image ──────────────────────────────────────────────────────
+# Normally there is nothing to build: the image is published to GHCR and every
+# cron line carries `--pull=always`, so the box tracks it without anyone
+# re-running anything. `--build-local` builds from this checkout instead, for
+# testing a change to the baked entrypoint before it is published.
+step "Runner image"
+if [ "${BUILD_LOCAL:-0}" = 1 ]; then
+  HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
+  [ -n "$HERE" ] && [ -f "$HERE/Dockerfile.runner" ] \
+    || die "--build-local needs to run from a checkout; $0 is not inside one"
+  IMAGE="${CANARY_LOCAL_IMAGE:-failproofai-canary-runner:local}"
   run docker build -t "$IMAGE" -f "$HERE/Dockerfile.runner" "$HERE"
-  did "image $IMAGE built from this checkout ($HERE)"
+  did "built $IMAGE from this checkout"
 else
-  run docker build -t "$IMAGE" \
-    -f Dockerfile.runner "$GIT_URL#$BUILD_REF:integration-suite/local"
-  did "image $IMAGE built from $BUILD_REF"
+  # Pulled now rather than at 02:00, so a bad tag or a private package is a
+  # problem in front of a person instead of a silent missed run.
+  run docker pull -q "$IMAGE" >/dev/null 2>&1 || true
+  if [ "$DRY" = 0 ] && ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    die "could not pull $IMAGE.
+       If the package is private the box needs:  docker login ghcr.io
+       To build from this checkout instead:      --build-local"
+  fi
+  did "using $IMAGE (each run re-pulls it)"
 fi
 
 # ── 6. cron ──────────────────────────────────────────────────────────────────
@@ -312,8 +316,20 @@ fi
 # sibling-container `-v` sources, which the HOST daemon resolves against the
 # host filesystem. Change either side and the sandbox mounts nothing.
 job_cmd() { # $1 = job
-  printf 'docker run --rm -e CANARY_JOB=%s -v /var/run/docker.sock:/var/run/docker.sock -v "%s:%s" --env-file "%s/secrets.env" %s' \
-    "$1" "$WORK" "$WORK" "$WORK" "$IMAGE"
+  # --pull=always: the box tracks the published image with nothing to re-run.
+  # The docker socket goes ONLY to the canary — it is the one job that spawns
+  # sibling containers (the sandbox image, the 12 probes). Handing it to the
+  # other two would grant the host daemon to jobs that never call it.
+  # timeout: an hour past the slowest observed first run, so a wedged vendor CLI
+  # cannot still be holding the lock at tomorrow's fire.
+  local sock="" tmo
+  case "$1" in
+    canary)     sock='-v /var/run/docker.sock:/var/run/docker.sock '; tmo=9000 ;;
+    translate)  tmo=16200 ;;
+    *)          tmo=1800 ;;
+  esac
+  printf 'timeout %s docker run --rm --pull=always --name fp-%s -e CANARY_JOB=%s -e CANARY_WORK="%s" %s-v "%s:%s" --env-file "%s/secrets.env" %s' \
+    "$tmo" "$1" "$1" "$WORK" "$sock" "$WORK" "$WORK" "$WORK" "$IMAGE"
 }
 
 if [ "$DO_CRON" = 1 ]; then
@@ -326,7 +342,7 @@ if [ "$DO_CRON" = 1 ]; then
     eval "at=\$AT_$(vn "$j")"
     at="$(normalize_cron "$at")"
     marker="$CRON_MARKER_BASE-$j"
-    LINE="$at $(job_cmd "$j") >/dev/null 2>&1 $marker"
+    LINE="$at $(job_cmd "$j") >> \"$WORK/logs/cron-$j.log\" 2>&1 $marker"
     if [ "$DRY" = 1 ]; then
       say "would install cron line:"; say "$LINE"
     else
@@ -383,9 +399,8 @@ if [ -n "$RUN_NOW" ]; then
   # Spelled out rather than reusing job_cmd: that one emits a line for a HUMAN
   # to paste into a shell, so its paths carry literal quotes. Word-splitting it
   # back apart here would hand docker a path with quote characters in it.
-  run docker run --rm -e "CANARY_JOB=$RUN_NOW" \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v "$WORK:$WORK" \
-    --env-file "$WORK/secrets.env" \
-    "$IMAGE"
+  sock_args=()
+  [ "$RUN_NOW" = canary ] && sock_args=(-v /var/run/docker.sock:/var/run/docker.sock)
+  run docker run --rm --pull=always -e "CANARY_JOB=$RUN_NOW" -e "CANARY_WORK=$WORK" \
+    "${sock_args[@]}" -v "$WORK:$WORK" --env-file "$WORK/secrets.env" "$IMAGE"
 fi

@@ -696,25 +696,89 @@ describe("docs-audit tracking issue", () => {
   });
 });
 
-describe("installer works from a clone as well as from curl", () => {
-  it("builds from the checkout when run inside one", () => {
-    // `git clone` then `bash integration-suite/local/install.sh` needs no
-    // network for the build, and guarantees the image matches the tree the
-    // operator is looking at — building from the git URL there could hand them
-    // an image from a DIFFERENT commit while both printed the same branch name.
-    expect(installSh).toMatch(/HERE="\$\(cd "\$\(dirname "\$0"\)"/);
-    expect(installSh).toMatch(/\[ -f "\$HERE\/Dockerfile\.runner" \]/);
-    expect(installSh).toMatch(/docker build -t "\$IMAGE" -f "\$HERE\/Dockerfile\.runner" "\$HERE"/);
+describe("the installer pulls rather than builds", () => {
+  it("defaults to the published image", () => {
+    // Nothing is built on the box. That is what lets an operator set it up with
+    // Docker and a credentials file alone — no clone, no build, no second visit.
+    expect(installSh).toMatch(
+      /IMAGE="\$\{CANARY_IMAGE:-ghcr\.io\/failproofai\/failproofai-canary-runner:latest\}"/,
+    );
+    expect(installSh).not.toMatch(/GIT_URL#\$BUILD_REF/);
   });
 
-  it("still falls back to the git URL for the curl one-liner", () => {
-    // There is no checkout on that path, so the context has to be remote.
-    expect(installSh).toMatch(/"\$GIT_URL#\$BUILD_REF:integration-suite\/local"/);
+  it("pulls at install time, so a bad tag is caught in front of a person", () => {
+    // Discovering a private package or a typo'd tag at 02:00 means a missed run
+    // nobody sees — the failure class this installer exists to move earlier.
+    expect(installSh).toMatch(/docker pull -q "\$IMAGE"/);
+    expect(installSh).toMatch(/could not pull \$IMAGE/);
+    expect(installSh).toMatch(/docker login ghcr\.io/);
+  });
+
+  it("keeps a local build for testing the baked layer", () => {
+    // The entrypoint is the one thing a job script cannot change, so there has
+    // to be a way to try a change to it before publishing.
+    expect(installSh).toMatch(/--build-local\)\s+BUILD_LOCAL=1/);
+    expect(installSh).toMatch(/docker build -t "\$IMAGE" -f "\$HERE\/Dockerfile\.runner" "\$HERE"/);
   });
 
   it("schedules every job by default", () => {
     // One command, three cron lines. --jobs narrows it; nothing widens it.
     expect(installSh).toMatch(/ALL_JOBS="canary translate docs-audit"/);
     expect(installSh).toMatch(/JOBS="\$ALL_JOBS"/);
+  });
+});
+
+describe("published image, and the socket only where it is used", () => {
+  const publishWf = readFileSync(
+    path.join(ROOT, ".github/workflows/build-canary-runner.yml"),
+    "utf8",
+  );
+
+  it("publishes the runner image to GHCR with a stable and a pinned tag", () => {
+    expect(publishWf).toMatch(/ghcr\.io\/failproofai\/failproofai-canary-runner:latest/);
+    expect(publishWf).toMatch(/ghcr\.io\/failproofai\/failproofai-canary-runner:sha-\$\{short_sha\}/);
+    expect(publishWf).toMatch(/packages: write/);
+  });
+
+  it("rebuilds ONLY when the baked layer changes", () => {
+    // Job scripts reach the box through the run-time clone. If they triggered a
+    // publish, every harness tweak would wait on an image build — losing the
+    // split that lets a job change reach the box without touching it.
+    const paths = /paths:\n([\s\S]*?)\n  workflow_dispatch:/.exec(publishWf)![1];
+    expect(paths).toMatch(/Dockerfile\.runner/);
+    expect(paths).toMatch(/runner-entrypoint\.sh/);
+    expect(paths).not.toMatch(/jobs\//);
+  });
+
+  it("makes the package public, so no box needs a docker login", () => {
+    // A private package turns the one-line cron into a login plus a fourth
+    // credential that expires and silently breaks every job when it does.
+    expect(publishWf).toMatch(/visibility=public/);
+    expect(publishWf).toMatch(/continue-on-error: true/);
+  });
+
+  it("hands the docker socket to the canary alone", () => {
+    // It is the only job that spawns sibling containers. Granting the host
+    // daemon to jobs that never call it is scope for nothing.
+    const cmd = installSh.slice(installSh.indexOf("job_cmd() {"), installSh.indexOf("if [ \"$DO_CRON\""));
+    expect(cmd).toMatch(/canary\)\s+sock='-v \/var\/run\/docker\.sock/);
+    expect(cmd).toMatch(/translate\)\s+tmo=/);
+    expect(cmd).not.toMatch(/translate\)[^\n]*docker\.sock/);
+  });
+
+  it("re-pulls on every run and bounds every job", () => {
+    expect(installSh).toMatch(/--pull=always/);
+    expect(installSh).toMatch(/timeout %s docker run/);
+  });
+
+  it("requires the socket only where it is actually used", () => {
+    // The entrypoint needs it solely to RECOVER the work dir, so it is required
+    // only when CANARY_WORK was not passed. The canary asserts its own need,
+    // up front, rather than failing an hour in at the first sibling container.
+    expect(entrypointSh).toMatch(/if \[ -z "\$\{CANARY_WORK:-\}" \]; then\n\s*\[ -S "\$SOCK" \]/);
+    expect(dailySh).toMatch(/\[ -S \/var\/run\/docker\.sock \] \|\|/);
+    expect(dailySh).toMatch(/the canary drives the host's docker/);
+    expect(translateSh).not.toMatch(/docker\.sock/);
+    expect(docsAuditSh).not.toMatch(/docker\.sock/);
   });
 });

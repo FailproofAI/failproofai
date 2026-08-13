@@ -92,9 +92,24 @@ then there is neither a gate nor a report. The analysis lives in
 `scripts/docs-audit.ts` (unit-tested, no repo or clock needed) and runs by hand
 as `bun run docs:audit` — add `--json` for the raw findings.
 
-Box setup is **one command**, and it schedules all three jobs. Whoever holds
-the credentials fills in a `secrets.env` and sends it; the person with the
-machine clones and runs:
+Box setup needs **Docker and a credentials file**. Nothing is built on the box
+and nothing is cloned: the runner image is published to GHCR and every cron line
+carries `--pull=always`, so the box tracks it with nothing to re-run.
+
+```bash
+0 11 * * * timeout 9000 docker run --rm --pull=always --name fp-canary \
+  -e CANARY_JOB=canary -e CANARY_WORK="$HOME/fp-canary" \
+  -v /var/run/docker.sock:/var/run/docker.sock -v "$HOME/fp-canary:$HOME/fp-canary" \
+  --env-file "$HOME/fp-canary/secrets.env" \
+  ghcr.io/failproofai/failproofai-canary-runner:latest >> "$HOME/fp-canary/logs/cron-canary.log" 2>&1
+```
+
+`translate` and `docs-audit` take the same line **without the docker socket** —
+the canary is the only job that spawns sibling containers, so it is the only one
+that needs the host daemon.
+
+`install.sh` writes those three lines for you, and checks the credentials and
+refs in front of a person first:
 
 ```bash
 git clone https://github.com/FailproofAI/failproofai.git
@@ -102,30 +117,13 @@ cd failproofai
 bash integration-suite/local/install.sh ~/secrets.env
 ```
 
-From a checkout the image builds from that checkout — no network for the build,
-and the image provably matches the tree in front of you. There is also a
-no-clone form for a box you only ever touch once:
+It pulls the image at install time rather than at 02:00, so a private package or
+a typo'd tag is a problem someone is watching. `--build-local` builds from the
+checkout instead, for trying a change to the baked entrypoint before publishing.
 
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/FailproofAI/failproofai/main/integration-suite/local/install.sh) ~/secrets.env
-```
-
-That builds the runner image straight from the git URL (no clone on the box),
-creates `~/fp-canary`, installs the env file at mode 600, and writes **one cron
-line per job**. It is idempotent — re-running upgrades the image and *rewrites*
-those lines rather than adding a second set, and each line carries its own
-marker so installing one job never strips the other's.
-
-Flags: `--jobs canary,translate,docs-audit` picks which to install (default all),
-`--now <job>` runs one immediately in the foreground, `--dry-run` prints what it
-would do, and `--at <job> "<spec>"` picks when — a spec is `"M H"` for daily or
-a full five-field cron expression, which is how weekly is said
-(`--at docs-audit "0 4 * * 1"`). Cron fires in the **host's** timezone; the
-installer prints which one it resolved.
-
-No credentials template ships in this repo. A file that looks like a
-credentials file is one `git add -A` away from being committed by whoever fills
-it in, so `install.sh` run with no arguments prints the variable list instead —
+No credentials template ships in this repo. A file that looks like a credentials
+file is one `git add -A` away from being committed by whoever fills it in, so
+running the installer with no arguments prints the variable list instead —
 generated from the same checks it enforces, so it cannot go stale.
 
 **The installer exists because most of the manual steps fail silently for a

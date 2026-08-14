@@ -10,8 +10,9 @@
  *   - `setAutoAuditAction(enabled)`  ⟷ `[audit] auto`
  *   - `setAuditIntervalAction(days)` ⟷ `[audit] interval_days`
  *
- * Both go through the same `updateConfig` the CLI uses, so a value set on
- * either side is byte-identical. That is the whole mechanism behind "the two
+ * Both go through the same `updateConfig` the CLI uses — `failproofai audit
+ * --schedule` / `--no-schedule` call it too — so a value set on either side is
+ * byte-identical. That is the whole mechanism behind "the two
  * surfaces are always in sync": there is one file, one writer function, and no
  * second copy of the state to drift.
  */

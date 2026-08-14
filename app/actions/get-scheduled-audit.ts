@@ -9,7 +9,8 @@
  *
  * Every field this returns is the same `config.toml` / state the CLI reads:
  *   - `auto`         ⟷ `config.json [audit] auto` (readConfig / updateConfig —
- *                       the same call the CLI makes, so the two cannot diverge)
+ *                       the same call `failproofai audit --schedule` makes, so
+ *                       the two cannot diverge)
  *   - `intervalDays` ⟷ `config.json [audit] interval_days` (readConfig owns the
  *                       1..90 clamp — see fp-config.readIntervalDays)
  *   - `daemon`       ⟷ `systemctl status failproofaid@<user>` (daemonServiceStatus)

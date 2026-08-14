@@ -72,14 +72,31 @@ USAGE
                              server. This is what a scheduled audit runs; exit
                              75 means another audit already had the lock.
 
+SCHEDULING
+  failproofai audit --schedule [days]
+                             Scan on a timer in the background (default 7 days,
+                             1-90), and email you when a scan finds something
+                             harmful. Asks for your email the first time — the
+                             report has to go somewhere.
+  failproofai audit --no-schedule
+                             Stop scanning on a timer. Leaves you signed in.
+  failproofai audit --status
+                             What this machine is doing: whether scheduling is
+                             on, where reports go, the daemon's state, and when
+                             the next scan is due.
+
+  These write the same ~/.failproofai/config.json the dashboard's settings page
+  writes, through the same function — so the two are always in step.
+
 WHAT IT DOES
   1. Scans past sessions from every installed agent CLI (Claude, Codex, Cursor,
      Copilot, OpenCode, Pi) — entirely on your machine.
   2. Starts the local dashboard and opens
      http://localhost:${DASHBOARD_PORT}/audit with your results.
 
-  Runs fully offline — no account or network required. Press Ctrl+C to stop the
-  dashboard server when you're done.
+  A bare "failproofai audit" runs fully offline — no account or network
+  required. Scheduling is the exception: it emails you what it finds, so it
+  needs an address. Press Ctrl+C to stop the dashboard server when you're done.
 `.trimStart();
 
 // ── ANSI helpers ────────────────────────────────────────────────────────────
@@ -484,19 +501,67 @@ export async function runAuditCli(args: string[]): Promise<void> {
   // The headless path, spawned rather than typed. Handled ahead of the
   // rejection below so that adding it costs the interactive path nothing: it
   // still refuses every argument it has always refused.
+  //
+  // `--scheduled` (run one now, headlessly) and `--schedule` (put runs on a
+  // timer) differ by one letter and do completely different things, so this
+  // is checked FIRST and exactly: a `--schedule` typo must not silently start
+  // a 100-second scan, and `--scheduled` must never be read as configuration.
   if (args.includes("--scheduled")) {
     const extra = args.find((a) => a !== "--scheduled");
     if (extra) die(`\`audit --scheduled\` takes no other arguments (got: ${extra}).`);
     process.exit(await runScheduledAudit());
   }
 
-  // No arguments supported yet — reject typos rather than silently doing a bare
-  // audit, so a future `failproofai audit --since 7d` doesn't quietly no-op.
+  // The scheduling controls. These write config and exit; none of them scan.
+  if (args.includes("--status")) {
+    const extra = args.find((a) => a !== "--status");
+    if (extra) die(`\`audit --status\` takes no other arguments (got: ${extra}).`);
+    const { runScheduleStatus } = await import("./schedule-cli");
+    runScheduleStatus();
+    process.exit(0);
+  }
+
+  if (args.includes("--no-schedule")) {
+    const extra = args.find((a) => a !== "--no-schedule");
+    if (extra) die(`\`audit --no-schedule\` takes no other arguments (got: ${extra}).`);
+    const { runScheduleOff } = await import("./schedule-cli");
+    runScheduleOff();
+    process.exit(0);
+  }
+
+  const scheduleAt = args.indexOf("--schedule");
+  if (scheduleAt !== -1) {
+    // `--schedule` takes an OPTIONAL day count, so the next token is only an
+    // argument when it is not itself a flag — `--schedule --status` must not
+    // read "--status" as a number of days.
+    const maybeDays = args[scheduleAt + 1];
+    const days = maybeDays !== undefined && !maybeDays.startsWith("-") ? maybeDays : undefined;
+    const consumed = new Set(["--schedule", ...(days !== undefined ? [days] : [])]);
+    const extra = args.find((a) => !consumed.has(a));
+    if (extra) die(`\`audit --schedule\` takes only a number of days (got: ${extra}).`);
+
+    const { runScheduleOn, ScheduleCliError } = await import("./schedule-cli");
+    const { LoginError } = await import("./cli-login");
+    try {
+      await runScheduleOn(days);
+    } catch (err) {
+      // Both are "the user needs to read one sentence and try again", not a
+      // stack trace: a wrong day count, a cancelled prompt, an api-server that
+      // is not running.
+      if (err instanceof ScheduleCliError || err instanceof LoginError) die(err.message);
+      throw err;
+    }
+    process.exit(0);
+  }
+
+  // Anything else is rejected rather than silently doing a bare audit, so a
+  // typo like `--sched` does not quietly scan and exit 0 looking like it worked.
   const stray = args.find((a) => a !== "--help" && a !== "-h");
   if (stray) {
     die(
-      `\`audit\` takes no arguments yet (got: ${stray}).\n` +
-        `Run \`failproofai audit\` to scan your history and open the dashboard.`,
+      `\`audit\` does not take ${stray}.\n` +
+        `Run \`failproofai audit\` to scan your history and open the dashboard,\n` +
+        `or \`failproofai audit --help\` for the scheduling commands.`,
     );
   }
 

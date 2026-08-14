@@ -37,11 +37,23 @@
  * than counting. A chain from 1 today is one step; when layout 4 lands it becomes
  * `1 → 3` then `3 → 4`, and only the second has to be written.
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { version as cliVersion } from "../../package.json";
 import {
   LAYOUT_VERSION,
+  auditReminderFile,
+  auditScheduleFile,
+  auditSessionFile,
   configFile,
   credentialsFile,
   failproofaiHome,
@@ -52,6 +64,7 @@ import {
   migrationsDir,
   versionFile,
 } from "./fp-home";
+import { writeVersionFile } from "./fp-config";
 import { resetHome, type ResetOutcome } from "./fp-reset";
 
 export interface Migration {
@@ -87,7 +100,86 @@ export const MIGRATIONS: readonly Migration[] = [
       "layout 2 → 3: carry config.toml and credentials.toml into JSON, move custom-policies/ back up into policies/, nest the policy config at the root",
     run: () => resetHome(2),
   },
+  {
+    from: 3,
+    to: 4,
+    describe:
+      "layout 3 → 4: gather the audit's files under audit/ — auth.json becomes audit/session.json, next-audit.json becomes audit/reminder.json, state/audit-schedule.json becomes audit/schedule.json",
+    run: migrateToLayout4,
+  },
 ];
+
+/**
+ * Layout 3 → 4. The first step written against this registry rather than
+ * delegating to `resetHome`, which is what the header promised: additive.
+ *
+ * Three moves, no deletions. Each is a rename with a copy fallback, because
+ * `audit/` and the home root can sit on different filesystems once `$HOME` is a
+ * network mount or the home has been assembled by a container bind — `rename(2)`
+ * returns `EXDEV` there, and a step that threw on it would strand the machine at
+ * layout 3 forever.
+ *
+ * **A missing source is success, not failure.** Most homes have never signed in,
+ * so `auth.json` and `next-audit.json` are absent on the majority of machines,
+ * and a scheduled scan that has never run leaves no `audit-schedule.json`. Only
+ * a source that EXISTS and could not be moved is an error worth stopping for.
+ *
+ * **A destination that already exists wins.** Re-running the step — which is
+ * exactly what happens when a later step in the same chain throws and the user
+ * retries — must not copy a stale layout-3 file back over the layout-4 one that
+ * has since been written to.
+ */
+function migrateToLayout4(): ResetOutcome {
+  const moves: { from: string; to: string }[] = [
+    { from: legacy.authJson(), to: auditSessionFile() },
+    { from: legacy.nextAudit(), to: auditReminderFile() },
+    { from: legacy.auditSchedule(), to: auditScheduleFile() },
+  ];
+
+  const migrated: string[] = [];
+  for (const { from, to } of moves) {
+    if (!existsSync(from)) continue;
+    if (existsSync(to)) {
+      // The layout-4 file is already authoritative. Drop the stale original
+      // rather than leaving a second copy of a credential lying at the root.
+      try {
+        rmSync(from, { force: true });
+      } catch {
+        // Reported by its continued presence; not worth failing the chain.
+      }
+      continue;
+    }
+    mkdirSync(dirname(to), { recursive: true });
+    try {
+      renameSync(from, to);
+    } catch {
+      // EXDEV, or a rename racing something holding the file open on Windows.
+      copyFileSync(from, to);
+      rmSync(from, { force: true });
+    }
+    migrated.push(`${basename(from)} → audit/${basename(to)}`);
+  }
+
+  // `session.json` carries tokens and `auth.json` was written 0600 by
+  // `writeJsonAtomically`. A rename preserves the mode, but a copy fallback
+  // inherits the process umask — so reassert it rather than assume which branch
+  // ran. Belt and braces on a file whose whole content is a bearer credential.
+  for (const secret of [auditSessionFile()]) {
+    if (!existsSync(secret)) continue;
+    try {
+      chmodSync(secret, 0o600);
+    } catch {
+      // Best effort, exactly as `writeJsonAtomically` treats it.
+    }
+  }
+
+  // The same stamper every other write of this file goes through. Hand-rolling
+  // the JSON here would drop `daemon`, which nothing on this path touches and
+  // which `daemonVersionSkew()` reads on every CLI command.
+  writeVersionFile();
+
+  return { removed: [], migrated, activity: [], policyConfig: [], spooled: [], from: 3 };
+}
 
 /**
  * The steps that take `from` to {@link LAYOUT_VERSION}.
@@ -256,6 +348,14 @@ const BACKED_UP_LEGACY: BackedUpFile[] = [
   // most incomplete exactly where it mattered most.
   { at: legacy.cloudCredentials },
   { at: legacy.ingestCredentials },
+  // The three files the layout-4 step MOVES. `auth.json` is the one that
+  // matters: it is a live bearer credential, and unlike every other entry here
+  // it was never on a delete list — so it has never had a copy taken before a
+  // migration touched it. A move is not a deletion, but a move with a bug in it
+  // is, and this is the only insurance against that.
+  { at: legacy.authJson },
+  { at: legacy.nextAudit },
+  { at: legacy.auditSchedule },
 ];
 
 /** The name a file is saved under inside `backup-layout<n>/`. */

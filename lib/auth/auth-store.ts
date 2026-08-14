@@ -10,7 +10,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { writeJsonAtomically } from "../atomic-write";
-import { failproofaiHome } from "../../src/hooks/fp-home";
+import { auditDir, auditReminderFile, auditSessionFile } from "../../src/hooks/fp-home";
 import {
   AuthApiError,
   decodeJwt,
@@ -27,20 +27,31 @@ export interface StoredAuth {
   user: { id: string; email: string };
 }
 
+/**
+ * Where the session and reminder files live.
+ *
+ * `FAILPROOFAI_AUTH_DIR` overrides it OUTRIGHT — the override names the
+ * directory the two files sit in directly, with no `audit/` beneath it, which is
+ * the contract it has always had and what every test using it expects. Without
+ * the override the paths come from `fp-home.ts`, which as of layout 4 puts them
+ * under `audit/` with the rest of what the audit owns.
+ */
 export function getAuthDir(): string {
   const override = process.env.FAILPROOFAI_AUTH_DIR;
   if (override) return override;
-  return failproofaiHome();
+  return auditDir();
 }
 
 export function getAuthFilePath(): string {
-  return join(getAuthDir(), "auth.json");
+  const override = process.env.FAILPROOFAI_AUTH_DIR;
+  return override ? join(override, "session.json") : auditSessionFile();
 }
 
-/** Location of the persisted re-audit reminder (separate from auth.json so
- *  the reminder survives unrelated session refreshes). */
+/** Location of the persisted re-audit reminder — a separate file from the
+ *  session so the reminder survives a token refresh, and a sign-out. */
 export function getReminderFilePath(): string {
-  return join(getAuthDir(), "next-audit.json");
+  const override = process.env.FAILPROOFAI_AUTH_DIR;
+  return override ? join(override, "reminder.json") : auditReminderFile();
 }
 
 export interface StoredReminder {

@@ -102,6 +102,20 @@ export function detectLayout(): LayoutState {
   // went missing is the exact failure this module exists to prevent, and it
   // announced itself as a routine "reorganised your home" message.
   if (existsSync(configFile())) {
+    // `config.json` proves layout 3 OR LATER — it cannot tell them apart, since
+    // layout 4 changed nothing about it. What separates the two is solely WHERE
+    // the audit's files sit, so ask that directly: any of layout 3's three
+    // root-level positions still occupied means the 3 → 4 move has not run.
+    //
+    // When none of them exist the two layouts are IDENTICAL on disk (the step
+    // would move nothing), and "current" is the correct, non-destructive answer.
+    const layoutThreePositions = [
+      legacy.authJson(),
+      legacy.nextAudit(),
+      legacy.auditSchedule(),
+    ];
+    if (layoutThreePositions.some((p) => existsSync(p))) return { kind: "stale", found: 3 };
+
     // `inferred`: the layout is right but the MARKER is missing, and nothing
     // else rewrites it — so every later command re-derives it from a landmark,
     // and the daemon version recorded in that file is gone for good
@@ -112,7 +126,16 @@ export function detectLayout(): LayoutState {
 
   // `config.toml` and no `config.json` is genuinely layout 2, and a reset is
   // right: its files are the ones being replaced.
-  if (existsSync(legacy.configToml())) return { kind: "stale", found: LAYOUT_VERSION - 1 };
+  //
+  // The literal 2, NOT `LAYOUT_VERSION - 1`. That expression was correct while
+  // current was 3 and became a data-loss bug the moment layout 4 landed: it
+  // reported a real layout-2 home as layout 3, so `planMigration` ran only the
+  // 3 → 4 step — which finds none of layout 3's files, moves nothing, and stamps
+  // the home as current. `config.toml` and `credentials.toml` would never be
+  // carried into JSON, orphaning the cloud token and `daemon.configured` on a
+  // machine that now reads as fully migrated. A landmark identifies ONE layout;
+  // it is never relative to whatever this build happens to speak.
+  if (existsSync(legacy.configToml())) return { kind: "stale", found: 2 };
 
   // Layout 1 if any of its landmarks are present, otherwise this is simply a
   // home that has not been set up yet.

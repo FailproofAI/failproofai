@@ -66,7 +66,7 @@ describe("fp-home layout", () => {
     // writes — and an absent file is indistinguishable from a lane that has
     // never run. Kept next to the Rust literal so the pair has to be changed
     // together.
-    expect(H.auditScheduleFile()).toBe(resolve(home, "state", "audit-schedule.json"));
+    expect(H.auditScheduleFile()).toBe(resolve(home, "audit", "schedule.json"));
   });
 
   it("keeps run/ shallow — sockets must fit in SUN_LEN", () => {
@@ -188,8 +188,13 @@ describe("HOME_CLASSES", () => {
     customPoliciesDir: "policiesDir",
     customAgentsEventsDir: "customAgentsDir",
     customAgentsFailedDir: "customAgentsDir",
-    auditDashboardFile: "auditDir",
-    auditCacheDir: "auditDir",
+    // `auditDir` maps to ITSELF, the second entry to do so after `stateDir` and
+    // for the same reason: layout 4 made it MIXED. It holds `session.json` (a
+    // credential) and `machine.json` (an identity) alongside three derived
+    // caches, so it is classified per-file and the parent is deliberately absent
+    // from `HOME_CLASSES`. Its children are therefore classified directly and no
+    // longer appear here.
+    auditDir: "auditDir",
     daemonSocket: "runDir",
     workerSocket: "runDir",
     daemonLock: "runDir",
@@ -235,10 +240,12 @@ describe("HOME_CLASSES", () => {
     const classified = new Set(H.HOME_CLASSES.map((e) => e.path()));
     for (const [child, parent] of Object.entries(COVERED_BY_PARENT)) {
       const parentFn = H[parent] as (h?: string) => string;
-      // `stateDir` is the one entry that maps to itself: it is deliberately NOT
-      // classified, because it is MIXED — `spool/` and `telemetry-id` must never
-      // be dropped while a dozen scratch files under it should be. Listing the
-      // parent is exactly how a reset came to delete undelivered events.
+      // `stateDir` and `auditDir` map to themselves: both are deliberately NOT
+      // classified, because both are MIXED — `spool/` and `telemetry-id` must
+      // never be dropped while a dozen scratch files under `state/` should be,
+      // and `audit/` holds a session token and a machine identity next to two
+      // caches. Listing the parent is exactly how a reset came to delete
+      // undelivered events, and is what would have deleted the token here.
       if (child === parent) {
         expect(classified.has(parentFn())).toBe(false);
         continue;
@@ -363,6 +370,41 @@ describe("detectLayout", () => {
     const state = detectLayout();
     expect(state.kind).toBe("stale");
     if (state.kind === "stale") expect(state.found).toBe(2);
+  });
+
+  it("reports a layout-2 home as 2, never as 'one behind whatever this build is'", () => {
+    // The landmark identifies ONE layout. `found: LAYOUT_VERSION - 1` read
+    // correctly while current was 3 and silently became data loss at 4: a real
+    // layout-2 home was reported as 3, so only the 3 → 4 step ran — which finds
+    // none of layout 3's files, moves nothing, and stamps the home current.
+    // config.toml and credentials.toml would never be carried into JSON, leaving
+    // the cloud token and `daemon.configured` orphaned on a machine that now
+    // reads as fully migrated.
+    writeFileSync(H.legacy.configToml(), 'mode = "oss"\n');
+    const state = detectLayout();
+    expect(state.kind).toBe("stale");
+    if (state.kind === "stale") expect(state.found).toBe(2);
+  });
+
+  it("calls a config.json home with layout-3 audit files still at the root stale, not current", () => {
+    // `config.json` proves "3 or later" and cannot separate them, so the audit
+    // files' POSITION is the discriminator. Getting this wrong skips the 3 → 4
+    // move: auth.json stays at the root, `audit/session.json` never appears, and
+    // the user is silently signed out with the file still sitting on disk.
+    writeFileSync(H.configFile(), "{}");
+    writeFileSync(H.legacy.authJson(), "{}");
+    const state = detectLayout();
+    expect(state.kind).toBe("stale");
+    if (state.kind === "stale") expect(state.found).toBe(3);
+  });
+
+  it("calls a config.json home with no layout-3 audit files current", () => {
+    // The other direction: with none of those three present the two layouts are
+    // identical on disk — the step would move nothing — so reporting stale would
+    // run a migration to achieve exactly nothing, on the commonest home there is
+    // (one that has never signed in).
+    writeFileSync(H.configFile(), "{}");
+    expect(detectLayout().kind).toBe("current");
   });
 
   it("distinguishes a FUTURE layout from a stale one", () => {

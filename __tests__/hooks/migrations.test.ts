@@ -8,11 +8,23 @@
  * layout change runs nothing at all.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import {
   LAYOUT_VERSION,
+  auditDir,
+  auditReminderFile,
+  auditScheduleFile,
+  auditSessionFile,
   configFile,
   credentialsFile,
   globalPolicyConfigFile,
@@ -332,6 +344,96 @@ describe("the backup taken before a migration", () => {
   });
 });
 
+describe("layout 3 → 4", () => {
+  /** A layout-3 home that has signed in, set a reminder, and been scanned. */
+  function seedLayoutThree() {
+    mkdirSync(home, { recursive: true });
+    mkdirSync(resolve(home, "state"), { recursive: true });
+    writeFileSync(configFile(), '{"mode":{"kind":"oss"}}');
+    writeFileSync(legacy.authJson(), '{"access_token":"at","refresh_token":"rt"}', { mode: 0o600 });
+    writeFileSync(legacy.nextAudit(), '{"next_audit_at":123,"user_email":"a@b.c"}');
+    writeFileSync(legacy.auditSchedule(), '{"schema":1,"next_due_at_ms":999}');
+    writeFileSync(versionFile(), JSON.stringify({ layout: 3, cli: "1.0.0", daemon: "1.0.0" }));
+  }
+
+  it("moves all three files under audit/ and leaves nothing at the root", () => {
+    seedLayoutThree();
+
+    runMigrations(3);
+
+    expect(JSON.parse(readFileSync(auditSessionFile(), "utf8")).access_token).toBe("at");
+    expect(JSON.parse(readFileSync(auditReminderFile(), "utf8")).user_email).toBe("a@b.c");
+    expect(JSON.parse(readFileSync(auditScheduleFile(), "utf8")).next_due_at_ms).toBe(999);
+
+    expect(existsSync(legacy.authJson())).toBe(false);
+    expect(existsSync(legacy.nextAudit())).toBe(false);
+    expect(existsSync(legacy.auditSchedule())).toBe(false);
+    expect(readVersionFile()?.layout).toBe(LAYOUT_VERSION);
+  });
+
+  it("keeps the daemon version, which nothing on this path touches", () => {
+    // The step stamps VERSION through `writeVersionFile()` rather than writing
+    // the JSON by hand. Hand-rolling it drops `daemon`, which `daemonVersionSkew()`
+    // reads on every CLI command — so the machine would silently stop being told
+    // its daemon is behind.
+    seedLayoutThree();
+    runMigrations(3);
+    expect(readVersionFile()?.daemon).toBe("1.0.0");
+  });
+
+  it("keeps the session file owner-only", () => {
+    // A rename preserves the mode and the copy fallback does not, so the step
+    // reasserts it either way. This file's entire content is a bearer credential.
+    seedLayoutThree();
+    runMigrations(3);
+    expect(statSync(auditSessionFile()).mode & 0o777).toBe(0o600);
+  });
+
+  it("treats a home that never signed in as a clean no-op", () => {
+    // The commonest home there is: `auth.json` and `next-audit.json` are absent
+    // on every machine that never logged in, and a scan that never ran leaves no
+    // schedule. A missing source is success, not an error to stop the chain on.
+    mkdirSync(home, { recursive: true });
+    writeFileSync(configFile(), '{"mode":{"kind":"oss"}}');
+    writeFileSync(versionFile(), JSON.stringify({ layout: 3, cli: "1.0.0" }));
+
+    const run = runMigrations(3);
+
+    expect(run.failed).toBeUndefined();
+    expect(existsSync(auditSessionFile())).toBe(false);
+    expect(readVersionFile()?.layout).toBe(LAYOUT_VERSION);
+  });
+
+  it("does not copy a stale root file back over a layout-4 one", () => {
+    // Re-running the step is exactly what happens when a later step in the same
+    // chain throws and the user retries. The layout-4 file is authoritative by
+    // then, and clobbering it would restore a session that has since been
+    // refreshed — or, worse, one the user had signed out of.
+    seedLayoutThree();
+    mkdirSync(auditDir(), { recursive: true });
+    writeFileSync(auditSessionFile(), '{"access_token":"NEWER"}');
+
+    runMigrations(3);
+
+    expect(JSON.parse(readFileSync(auditSessionFile(), "utf8")).access_token).toBe("NEWER");
+    // The stale original is dropped rather than left lying at the root — it is a
+    // credential, and a second copy of one is a liability.
+    expect(existsSync(legacy.authJson())).toBe(false);
+  });
+
+  it("backs the three up before moving them", () => {
+    // `auth.json` is a live bearer credential that, unlike every other backed-up
+    // file, was never on a delete list — so it has never had a copy taken before
+    // a migration touched it. A move is not a deletion, but a move with a bug in
+    // it is.
+    seedLayoutThree();
+    const saved = backupBeforeMigrating(3);
+    expect(saved).toContain("auth.json");
+    expect(saved).toContain("next-audit.json");
+    expect(saved).toContain("audit-schedule.json");
+  });
+});
+
 describe("runMigrations", () => {
   function seedLayoutTwo() {
     mkdirSync(home, { recursive: true });
@@ -351,24 +453,46 @@ describe("runMigrations", () => {
 
     const run = runMigrations(2);
 
-    expect(run.steps).toEqual([{ from: 2, to: LAYOUT_VERSION, ok: true }]);
+    // Asserted as the SHAPE of a chain rather than a fixed step count: the chain
+    // from 2 was one hop at layout 3 and is two at layout 4, and a hardcoded
+    // count turns every future layout bump into a test edit that says nothing.
+    // What must hold is that the recorded chain starts where the home was, ends
+    // where this build speaks, and links end to end with no gap.
+    expect(run.steps.length).toBeGreaterThan(0);
+    expect(run.steps.every((s) => s.ok)).toBe(true);
+    expect(run.steps[0].from).toBe(2);
+    expect(run.steps.at(-1)?.to).toBe(LAYOUT_VERSION);
+    for (let i = 1; i < run.steps.length; i += 1) {
+      expect(run.steps[i].from).toBe(run.steps[i - 1].to);
+    }
+
     const ledger = readLedger();
-    expect(ledger).toHaveLength(1);
+    expect(ledger).toHaveLength(run.steps.length);
     expect(ledger[0].from).toBe(2);
-    expect(ledger[0].to).toBe(LAYOUT_VERSION);
-    expect(ledger[0].ok).toBe(true);
-    expect(ledger[0].cli).toMatch(/\d+\.\d+\.\d+/);
-    expect(ledger[0].at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(ledger.at(-1)?.to).toBe(LAYOUT_VERSION);
+    for (const entry of ledger) {
+      expect(entry.ok).toBe(true);
+      expect(entry.cli).toMatch(/\d+\.\d+\.\d+/);
+      expect(entry.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    }
   });
 
   it("appends rather than replacing, so the history survives a second migration", () => {
     seedLayoutTwo();
     runMigrations(2);
+    const afterFirst = readLedger().length;
+    expect(afterFirst).toBeGreaterThan(0);
+
     // A later layout bump on the same machine.
     writeFileSync(versionFile(), 'layout = 1\n');
     runMigrations(1);
 
-    expect(readLedger()).toHaveLength(2);
+    // Grew rather than being replaced. Comparing against the first run's own
+    // count instead of a literal keeps this about APPENDING, which is the
+    // property under test, rather than about how many hops a chain happens to
+    // take in the current layout.
+    expect(readLedger().length).toBeGreaterThan(afterFirst);
+    expect(readLedger().slice(0, afterFirst).every((e) => e.from === 2 || e.from === 3)).toBe(true);
   });
 
   it("backs up BEFORE the first step, against the layout actually found", () => {
@@ -486,7 +610,10 @@ describe("describePlan", () => {
     const lines = describePlan(2).join("\n");
 
     expect(lines).toContain(`Layout 2 on disk; this build speaks ${LAYOUT_VERSION}`);
-    expect(lines).toContain("1 step(s) would run");
+    // Derived from the plan rather than hardcoded: the dry run's job is to state
+    // the real chain, so asserting a literal count would only pin the test to
+    // today's layout while proving nothing about the report being accurate.
+    expect(lines).toContain(`${planMigration(2).length} step(s) would run`);
     expect(lines).toContain("config.toml");
     // The promise a dry run makes.
     expect(existsSync(migrationLedgerFile())).toBe(false);

@@ -3,143 +3,119 @@
  * Drift guard for what users actually RECEIVE.
  *
  * Every other test in this repo checks what the repo contains. This one checks
- * the npm tarball, which is a different thing and drifts independently: the
- * package.json "files" array ships whole directories (`src/`, `lib/`,
- * `scripts/`), and Next's file tracer sweeps arbitrary repo content into
- * `.next/standalone`. Both are how dead weight reaches users without any test
- * noticing.
+ * the shipped surface, which drifts independently: `package.json` "files" ships
+ * whole directories (`src/`, `lib/`, `scripts/`), and Next's tracer sweeps
+ * arbitrary repo content into `.next/standalone`. Both are how dead weight
+ * reaches users with nothing failing.
  *
- * Two real cases this would have caught:
- *   - `src/audit/report.ts` was 348 lines of renderer for CLI flags that
- *     `runAuditCli()` rejects. Unreachable since the dashboard flow replaced
- *     it, and published in every tarball because "files" ships `src/`.
- *   - `assets/` was traced into `.next/standalone` and shipped — 612 KB of
- *     design lab the dashboard never imports. Moving the 11 MB
- *     `readme-arch-hq.gif` in there would have put it in front of every
- *     `npm install` with nothing to stop it.
+ * Two real cases this exists for:
+ *   - `src/audit/report.ts` was 348 lines of renderer for CLI flags
+ *     `runAuditCli()` rejects. Unreachable since the dashboard flow replaced it,
+ *     and published in every tarball because "files" ships `src/`.
+ *   - Five dogfood hook-config directories and the `skills` submodule were
+ *     traced into `.next/standalone` and published — configuration pointing at
+ *     `scripts/dev-hook.mjs`, which exists only in a checkout.
  *
- * The assertions are deliberately shaped as invariants, not a file-list
- * snapshot: a snapshot of ~1,775 paths would be updated reflexively on every
- * legitimate addition, which is how a tripwire stops working.
+ * DELIBERATELY STATIC. The first version of this file shelled out to
+ * `npm pack --dry-run --json`, and that was a mistake twice over. npm does not
+ * guarantee stdout is only json — the runner's npm interleaves file-list
+ * notices, and those paths contain `[project]` (Turbopack chunk names), so
+ * every attempt to locate the array by bracket found a notice instead. And
+ * packing a 12 MB / 54 MB-unpacked tarball on three matrix legs at once starved
+ * the runner enough that a neighbouring test spawning `node dist/cli.mjs` blew
+ * its 30s timeout. A guard that fails for reasons unrelated to what it guards
+ * is worse than no guard, so this now reads the manifest instead of invoking
+ * the packer. `__tests__/ci/standalone-prune.test.ts` covers the bundle side by
+ * the same principle.
  */
-import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 
 const ROOT = resolve(import.meta.dirname, "..", "..");
-
-/** `dist/` is build output, not source. It exists in CI only because the `test`
- *  job's `bun install` runs the `prepare` script — which is incidental, not a
- *  guarantee, and is absent entirely in a fresh clone or under
- *  `--ignore-scripts`. The MUST_SHIP assertions are meaningless without it, so
- *  they skip rather than fail; the leak assertions below need no build and
- *  always run, because those are the ones that catch a regression. */
-const DIST_BUILT = existsSync(join(ROOT, "dist", "cli.mjs"));
-
-/** Directories that are traced into `.next/standalone` by Next and then removed
- *  by scripts/prune-standalone.mjs. The dashboard reads none of them at
- *  runtime; each one is repo content that a tracer over-collected. */
-const MUST_NOT_SHIP_UNDER_STANDALONE = [
-  "assets",
-  "crates",
-  "target",
-  "docs",
-  "examples",
-  "__tests__",
-  "integration-suite",
-  "docker-hook-sync",
-  "src",
-  "scripts",
-  "bin",
-];
+const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
+  files: string[];
+  bin: Record<string, string>;
+};
 
 /** Load-bearing paths. Each is depended on by an INSTALLED user, so dropping it
- *  from "files" breaks them and nothing in this repo would fail. */
+ *  from "files" breaks them and nothing else in this repo would fail. Every
+ *  entry is checked two ways: covered by a `files` entry, and present on disk
+ *  when it is a source file rather than build output. */
 const MUST_SHIP = [
-  "dist/cli.mjs", // package.json "bin".failproofai
-  "dist/index.js", // what `import ... from 'failproofai'` resolves to in a user policy
-  "dist/worker.mjs", // spawned by the Rust daemon
-  "bin/failproofaid-shim.mjs", // package.json "bin".failproofaid
-  "bin/failproofai.mjs", // the pi/openclaw source-fallback path imports out of this
-  "package.json",
-  "README.md",
+  { path: "bin/failproofaid-shim.mjs", built: false }, // package.json bin.failproofaid
+  { path: "bin/failproofai.mjs", built: false }, // pi/openclaw source-fallback imports out of this
+  { path: "pi-extension/index.ts", built: false }, // directory name frozen by installed users' settings
+  { path: "openclaw-plugin/index.js", built: false }, // same
+  { path: "dist/cli.mjs", built: true }, // package.json bin.failproofai
+  { path: "dist/index.js", built: true }, // what `from 'failproofai'` resolves to in a user policy
+  { path: "dist/worker.mjs", built: true }, // spawned by the Rust daemon
 ];
 
-let files: string[];
+/** Files removed as unreachable. `files` ships `src/` and `lib/` wholesale, so
+ *  each of these was published before it was deleted — if one comes back, it
+ *  ships again silently. */
+const MUST_NOT_EXIST = [
+  "src/audit/report.ts",
+  "lib/claude-config.ts",
+  "lib/extract-subagent-ids.ts",
+];
 
-beforeAll(() => {
-  // --ignore-scripts: `prepare` runs a full Next build, which is not this
-  // test's business and would make it minutes long.
-  const raw = execFileSync(
-    "npm",
-    ["pack", "--dry-run", "--json", "--ignore-scripts", "--loglevel=error"],
-    { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-  );
-
-  // `--json` does not guarantee that stdout is ONLY json. The npm on this
-  // machine (11.x) emits a clean array; the one on the CI runner prefixes it
-  // with a `Bundled 3 …` notice, which made `JSON.parse(raw)` throw
-  // "Unexpected token 'B'" — green locally, red in CI, for a reason that has
-  // nothing to do with the tarball. Slice from the opening bracket instead of
-  // trusting the whole stream, so this test reports on packaging and not on
-  // whichever npm the runner happens to ship.
-  const start = raw.indexOf("[");
-  if (start === -1) {
-    throw new Error(
-      `npm pack --json produced no JSON array. Raw output:\n${raw.slice(0, 500)}`,
-    );
-  }
-  files = JSON.parse(raw.slice(start))[0].files.map(
-    (f: { path: string }) => f.path,
-  );
-}, 300_000);
+const coveredByFiles = (p: string): boolean =>
+  pkg.files.some((entry) => {
+    const e = entry.replace(/\/$/, "");
+    return p === e || p.startsWith(`${e}/`);
+  });
 
 describe("npm tarball surface", () => {
-  it.skipIf(!DIST_BUILT)("ships every path an installed user depends on", () => {
-    for (const p of MUST_SHIP) {
-      expect(files, `${p} is missing from the tarball`).toContain(p);
-    }
-  });
-
-  it("does not ship repo content that only the tracer pulled in", () => {
-    for (const dir of MUST_NOT_SHIP_UNDER_STANDALONE) {
-      const leaked = files.filter((f) =>
-        f.startsWith(`.next/standalone/${dir}/`),
-      );
+  it("ships every path an installed user depends on", () => {
+    for (const { path } of MUST_SHIP) {
       expect(
-        leaked,
-        `.next/standalone/${dir}/ reached the tarball — add "${dir}" to ` +
-          `STANDALONE_ROOT_PRUNE in scripts/prune-standalone.mjs`,
-      ).toEqual([]);
-    }
-  });
-
-  it.skipIf(!DIST_BUILT)("ships the plugin packages from the package root, not the bundle", () => {
-    // Both directory names are frozen: already-installed users have these
-    // absolute paths written into their own settings files, and
-    // integrations.ts resolves them via FAILPROOFAI_PACKAGE_ROOT.
-    for (const pkg of ["pi-extension", "openclaw-plugin"]) {
-      expect(
-        files.some((f) => f.startsWith(`${pkg}/`)),
-        `${pkg}/ must ship from the package root`,
+        coveredByFiles(path),
+        `${path} is not covered by any package.json "files" entry`,
       ).toBe(true);
-      expect(
-        files.filter((f) => f.startsWith(`.next/standalone/${pkg}/`)),
-        `${pkg}/ must not ALSO ship inside the standalone bundle`,
-      ).toEqual([]);
     }
   });
 
-  it("ships no file deleted as unreachable", () => {
-    // Regression pins. Each was confirmed dead by an exhaustive reference
-    // search, and each was published before it was removed.
-    for (const gone of [
-      "src/audit/report.ts",
-      "lib/claude-config.ts",
-      "lib/extract-subagent-ids.ts",
-    ]) {
-      expect(files, `${gone} is back in the tarball`).not.toContain(gone);
+  it("has those paths on disk, so the entry is not covering a hole", () => {
+    for (const { path, built } of MUST_SHIP) {
+      // Build output only exists after `bun run build`. In CI's test job it
+      // does, because `bun install` runs `prepare` — but that is incidental,
+      // and a missing dist/ is not this test's finding to report.
+      if (built && !existsSync(join(ROOT, "dist"))) continue;
+      expect(existsSync(join(ROOT, path)), `${path} is missing on disk`).toBe(
+        true,
+      );
+    }
+  });
+
+  it("keeps both frozen plugin-package directories in files", () => {
+    // Already-installed users have these absolute paths written into their own
+    // settings files, and integrations.ts resolves them from
+    // FAILPROOFAI_PACKAGE_ROOT. Renaming either orphans their uninstall path.
+    for (const dir of ["pi-extension/", "openclaw-plugin/"]) {
+      expect(pkg.files, `${dir} must stay in package.json "files"`).toContain(
+        dir,
+      );
+    }
+  });
+
+  it("declares both bin entries against shipped paths", () => {
+    for (const [name, target] of Object.entries(pkg.bin)) {
+      const rel = target.replace(/^\.\//, "");
+      expect(
+        coveredByFiles(rel),
+        `bin.${name} -> ${target} is not covered by "files"`,
+      ).toBe(true);
+    }
+  });
+
+  it("has not resurrected a file deleted as unreachable", () => {
+    for (const gone of MUST_NOT_EXIST) {
+      expect(
+        existsSync(join(ROOT, gone)),
+        `${gone} is back — it would ship again, since "files" covers its directory`,
+      ).toBe(false);
     }
   });
 });

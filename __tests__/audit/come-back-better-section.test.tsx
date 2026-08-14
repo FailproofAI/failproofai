@@ -88,6 +88,42 @@ describe("section 05 is only the share", () => {
   });
 });
 
+describe("the impression event", () => {
+  it("reports the signed-in state the probe actually found", async () => {
+    // It used to report `signed_in: false` for every view ever recorded. The
+    // event fires on the FIRST commit and `signedIn` is only filled by the
+    // /api/auth/status probe, which resolves later — and since null doubles as
+    // "signed out" there was nothing to tell "not yet asked" from "asked and
+    // no". A signed-in reader was indistinguishable from a signed-out one in
+    // the one number this event exists to carry.
+    stubFetch(true);
+    render(<ComeBackBetterSection />);
+    await waitFor(() =>
+      expect(captureMock).toHaveBeenCalledWith("audit_share_section_shown", { signed_in: true }),
+    );
+    // Once per view, not once per state change.
+    expect(
+      captureMock.mock.calls.filter(([name]) => name === "audit_share_section_shown"),
+    ).toHaveLength(1);
+  });
+
+  it("still reports the view when the probe fails outright", async () => {
+    // A probe that never answers must not swallow the impression — losing the
+    // view entirely is a worse answer than the one it has.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes("/api/auth/status")) throw new Error("network down");
+        return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+      }),
+    );
+    render(<ComeBackBetterSection />);
+    await waitFor(() =>
+      expect(captureMock).toHaveBeenCalledWith("audit_share_section_shown", { signed_in: false }),
+    );
+  });
+});
+
 describe("the invite", () => {
   it("asks an unauthed user to sign in, then opens the invite dialog", async () => {
     stubFetch(false);

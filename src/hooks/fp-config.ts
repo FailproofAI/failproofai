@@ -210,12 +210,23 @@ export function readVersionFile(): VersionFile | null {
   }
 }
 
+/**
+ * Stamp `VERSION`.
+ *
+ * `layout` defaults to {@link LAYOUT_VERSION} — every ordinary caller is saying
+ * "this home now speaks what this build speaks". It is honoured when passed
+ * ONLY so a failed migration can put the marker back where the home actually
+ * is: the signature has always accepted `layout` (it is part of `VersionFile`)
+ * and the body used to ignore it, so a caller asking for 3 silently got 4, and
+ * the one place that needs to ask is the one place where being wrong strands a
+ * half-migrated home as "current" forever. See `runMigrations`.
+ */
 export function writeVersionFile(
   v: Partial<VersionFile> & { /** Erase the daemon version rather than keeping it. */ clearDaemon?: boolean } = {},
 ): void {
   const existing = readVersionFile();
   const next: VersionFile = {
-    layout: LAYOUT_VERSION,
+    layout: v.layout ?? LAYOUT_VERSION,
     cli: v.cli ?? cliVersion,
     // `undefined` means "leave whatever is there" — a CLI-only rewrite must not
     // drop a daemon version it never touched. Erasing it is therefore an

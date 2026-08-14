@@ -32,7 +32,7 @@ import {
   migrationLedgerFile,
   versionFile,
 } from "../../src/hooks/fp-home";
-import { readVersionFile } from "../../src/hooks/fp-config";
+import { detectLayout, readVersionFile } from "../../src/hooks/fp-config";
 import {
   MIGRATIONS,
   backupBeforeMigrating,
@@ -606,6 +606,35 @@ describe("runMigrations", () => {
     expect(readLedger().map((e) => e.ok)).toEqual([true, false]);
     // These steps are stubs that never stamp, so the marker is still layout 2.
     expect(readVersionFile()?.layout).toBe(2);
+  });
+
+  it("does not leave a home marked current when a LATER step in the chain throws", () => {
+    // The multi-step version of the test above, with the real registry rather
+    // than stubs — and the reason it needs the real one. Every step ends at
+    // `writeVersionFile()`, which stamps LAYOUT_VERSION rather than the step's
+    // own `to`, so on a `2 → 3 → 4` chain the FIRST step already claims the home
+    // is current. A `3 → 4` that then throws used to leave exactly that claim
+    // standing: `detectLayout()` said `current`, nothing ever retried, and
+    // `auth.json` stayed at the root while layout 4 read `audit/session.json` —
+    // the machine silently signed out with its own session still on disk.
+    seedLayoutTwo();
+    writeFileSync(legacy.authJson(), '{"access_token":"at"}', { mode: 0o600 });
+    // Make the 3 → 4 step fail for a real reason: the destination already
+    // exists, so it deletes the layout-3 original — and a DIRECTORY there makes
+    // that delete throw EISDIR (`rmSync(force)` suppresses ENOENT and nothing
+    // else).
+    mkdirSync(auditDir(), { recursive: true });
+    writeFileSync(auditSessionFile(), '{"access_token":"already-here"}', { mode: 0o600 });
+    rmSync(legacy.authJson(), { force: true });
+    mkdirSync(legacy.authJson(), { recursive: true });
+    writeFileSync(resolve(legacy.authJson(), "trapped"), "x");
+
+    const run = runMigrations(2);
+
+    expect(run.failed?.from).toBe(3);
+    // Behind this build, so the next command plans the chain again.
+    expect(readVersionFile()!.layout).toBeLessThan(LAYOUT_VERSION);
+    expect(detectLayout().kind).toBe("stale");
   });
 
   it("does not run any step after the failing one", () => {

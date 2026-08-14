@@ -129,6 +129,33 @@ describe("selectHarmful — the window", () => {
     expect(p.examples).toHaveLength(2);
   });
 
+  it("still reports a straddling policy whose kept examples are all older than the window", () => {
+    // The mature-machine case, and the one that made the feature go quiet on
+    // exactly the boxes with the most to say. The audit keeps three examples per
+    // policy, picked in whatever order the transcripts were walked, so on a
+    // machine months into its history all three are routinely old. The
+    // straddling branch counts in-window EXAMPLES, that came out at zero, and
+    // the row was dropped — even though `lastSeen` says the policy fired inside
+    // the window. `firstSeen` never moves back, so it was dropped from every
+    // later report too.
+    const r = result([
+      count({
+        name: "failproofai/block-rm-rf",
+        severity: "deny",
+        hits: 50,
+        firstSeen: "2026-01-01T00:00:00.000Z",
+        lastSeen: AUG_14,
+        examples: [example(AUG_01), example(AUG_01), example(AUG_01)],
+      }),
+    ]);
+    const [p] = selectHarmful(r, new Date(AUG_07), new Date(AUG_14));
+    expect(p).toBeDefined();
+    // One is what `lastSeen` proves and no more — the row exists without
+    // inventing a hit, and it carries no example it cannot place in the window.
+    expect(p.hits).toBe(1);
+    expect(p.examples).toEqual([]);
+  });
+
   it("undercounts rather than overcounts, so it can delay a digest but never invent one", () => {
     const r = result([
       count({

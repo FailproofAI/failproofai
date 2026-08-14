@@ -89,7 +89,20 @@ export async function runLogin(): Promise<SignedIn> {
     const code = await promptText({
       message: "the code",
       hint: "123456",
-      validate: (v) => (v.trim().length >= 4 ? null : "codes are at least 4 characters"),
+      // Bounded at BOTH ends, and the upper one is not cosmetic. The api-server
+      // validates the code as 4..12 characters, and a longer one fails
+      // validation rather than verification — it comes back as
+      // `validation_error`, not `invalid_code`, so the retry below does not
+      // recognise it and the whole sign-in aborts. Pasting the sentence around
+      // the code out of the email, rather than just the digits, is the ordinary
+      // way to hit that, and losing the login to it would send a second code
+      // for a first one that was never wrong.
+      validate: (v) => {
+        const trimmed = v.trim();
+        if (trimmed.length < 4) return "codes are at least 4 characters";
+        if (trimmed.length > 12) return "that's longer than a code — paste just the code itself";
+        return null;
+      },
     });
     if (code === null) throw new LoginError("Cancelled.");
 

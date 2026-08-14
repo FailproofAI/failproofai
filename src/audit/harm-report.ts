@@ -165,7 +165,21 @@ export function selectHarmful(
     const afterLowerEdge = fromMs === null || (first !== null && first > fromMs);
     const beforeUpperEdge = last !== null && last <= toMs;
     const wholly = unplaceable || (afterLowerEdge && beforeUpperEdge);
-    const hits = wholly ? count.hits : inWindow.length;
+    // A straddling policy falls back to its in-window EXAMPLES, and the audit
+    // keeps at most three of them per policy, chosen in whatever order the
+    // transcripts happened to be walked. On a machine that has been running
+    // agents for months those three are routinely all old — so a policy that
+    // fired an hour ago scored zero and was dropped, and because `firstSeen`
+    // stays before the watermark forever, it was dropped from every later report
+    // too. Not a delayed digest: a feature that goes quiet on exactly the
+    // machines with the most to report.
+    //
+    // `beforeUpperEdge` having survived the `last <= fromMs` skip above means
+    // `lastSeen` itself sits inside the window, and that timestamp IS a real
+    // event. One is the floor it proves, which keeps the "never invent a hit"
+    // rule intact while making the row exist.
+    const floor = beforeUpperEdge ? 1 : 0;
+    const hits = wholly ? count.hits : Math.max(inWindow.length, floor);
     if (hits <= 0) continue;
 
     out.push({

@@ -228,6 +228,20 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
    */
   const [nowMs, setNowMs] = useState(0);
   const mounted = useRef(true);
+  /**
+   * Whether anything is on screen to protect, readable from a stable callback.
+   *
+   * `reload` has an empty dep list on purpose (see below), so the `view` it
+   * closes over is frozen at the FIRST render forever. Testing that state
+   * directly therefore answered a question about page load, not about now: a
+   * page seeded with `initial === null` — the case `page.tsx` builds for when
+   * the server read fails — kept reading `!view` as true even after the client
+   * had successfully loaded, so the next transient failure (the focus listener
+   * below fires on every `visibilitychange`, including a tab hide) replaced a
+   * working console with "could not read this machine's settings". A ref is
+   * read at call time, which is when the question is being asked.
+   */
+  const hasView = useRef(initial !== null);
 
   const reload = useCallback(async () => {
     try {
@@ -238,19 +252,22 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
       // Fetching them separately is how a page ends up showing a fresh
       // timestamp beside a stale count.
       setView(next);
+      hasView.current = true;
       setAuto(next.auto);
       setIntervalDays(next.intervalDays);
       setNowMs(Date.now());
       setLoadError(false);
     } catch {
-      if (mounted.current && !view) setLoadError(true);
+      if (mounted.current && !hasView.current) setLoadError(true);
       // An existing view is LEFT ALONE on a failed refresh: it describes real
       // machine state, and blanking it would report something less true than
       // what is already on screen.
     }
-    // `view` is deliberately not a dep — including it would rebuild this on
-    // every load and re-fire the focus listener below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Empty on purpose, and now honestly so: reading `view` here would rebuild
+    // this callback on every load and re-fire the focus listener below, which is
+    // why the "is anything on screen" question goes through the ref above
+    // instead. Nothing reactive is left to declare, so the rule no longer needs
+    // suppressing — and the suppression had been hiding the stale read.
   }, []);
 
   useEffect(() => {
@@ -354,6 +371,15 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
         // re-read has not changed yet either, since the daemon recomputes the
         // next due time on its own tick rather than when the interval is saved.
         setIntervalDays(res.intervalDays);
+        // `view` is this page's mirror of what is ON DISK, and the write just
+        // changed disk — so it has to be told, even though nothing is re-read.
+        // The blur handler below skips the write when the typed value already
+        // equals `view.intervalDays`, and with the mirror left stale that guard
+        // compared against a number two edits old: type 14, blur, then type the
+        // original 7 back and the second blur was silently dropped. The input
+        // read 7, the config still said 14, and nothing said so until the next
+        // focus refresh flipped the field back.
+        setView((v) => (v ? { ...v, intervalDays: res.intervalDays } : v));
         toast(`scanning every ${res.intervalDays} day${res.intervalDays === 1 ? "" : "s"}.`);
       } catch {
         setIntervalDays(view?.intervalDays ?? 7);

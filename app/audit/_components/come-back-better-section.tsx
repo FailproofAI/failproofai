@@ -35,6 +35,17 @@ const INVITE_AUTH_COPY = {
 export function ComeBackBetterSection({ score }: Props) {
   const { capture } = usePostHog();
   const [signedIn, setSignedIn] = useState<{ id: string; email: string } | null>(null);
+  /**
+   * Whether the sign-in probe below has come back yet.
+   *
+   * `signedIn` starts null and null also means "signed out", so on its own it
+   * cannot say whether the answer has arrived — and the impression event fires
+   * on the first commit, which is always before the fetch resolves. It
+   * therefore reported `signed_in: false` for every view ever recorded,
+   * including a signed-in one. A separate flag restores the tri-state the
+   * previous version of this section carried for the same reason.
+   */
+  const [probed, setProbed] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const shownRef = useRef(false);
@@ -57,6 +68,12 @@ export function ComeBackBetterSection({ score }: Props) {
         // Leave whatever we last knew. A failed probe is not evidence of a
         // signed-out user, and downgrading on one would prompt for a login the
         // person already completed.
+      } finally {
+        // In `finally`, so a route that 404s or a fetch that throws still
+        // releases the impression event. A failed probe genuinely does not know
+        // whether anyone is signed in, and never reporting the view at all is a
+        // worse answer than reporting the one it has.
+        if (!cancelled) setProbed(true);
       }
     })();
     return () => {
@@ -65,10 +82,10 @@ export function ComeBackBetterSection({ score }: Props) {
   }, []);
 
   useEffect(() => {
-    if (shownRef.current) return;
+    if (!probed || shownRef.current) return;
     shownRef.current = true;
     capture("audit_share_section_shown", { signed_in: signedIn !== null });
-  }, [capture, signedIn]);
+  }, [capture, probed, signedIn]);
 
   const handleInvite = useCallback(() => {
     capture("audit_perks_invite_clicked", { signed_in: signedIn !== null });

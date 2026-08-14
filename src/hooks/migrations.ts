@@ -63,7 +63,7 @@ import {
   migrationsDir,
   versionFile,
 } from "./fp-home";
-import { writeVersionFile } from "./fp-config";
+import { readVersionFile, writeVersionFile } from "./fp-config";
 import { resetHome, type ResetOutcome } from "./fp-reset";
 
 export interface Migration {
@@ -517,6 +517,31 @@ export function runMigrations(
       });
     } catch (err) {
       steps.push({ from: step.from, to: step.to, ok: false });
+      // Undo an EARLIER step's over-stamp, if there was one.
+      //
+      // A step ends by stamping `VERSION`, and `writeVersionFile()` writes
+      // {@link LAYOUT_VERSION} rather than the step's own `to`. That was harmless
+      // while every chain was one hop and became a trap the moment one was two:
+      // on `2 → 3 → 4` the FIRST step stamps 4, so a `3 → 4` that then throws
+      // leaves a home marked CURRENT that was never migrated. `detectLayout()`
+      // reports `current`, no later command ever retries, and `auth.json` stays
+      // at the root while layout 4 reads `audit/session.json` — a machine
+      // silently signed out, with its session sitting on disk and nothing left
+      // that would ever move it.
+      //
+      // Only touched when the marker already claims the home is current, so a
+      // chain whose steps never got that far keeps whatever they left. `step.from`
+      // is where this one actually got to: every earlier step succeeded, and a
+      // failing step is documented not to roll back — which is exactly the state
+      // the next command should try to migrate again.
+      try {
+        const marker = readVersionFile();
+        if (marker && marker.layout >= LAYOUT_VERSION) writeVersionFile({ layout: step.from });
+      } catch {
+        // A marker we cannot rewrite leaves the home reading as whatever the last
+        // successful step claimed. Nothing further can be done about it here, and
+        // failing the run a second way would only hide the real error below.
+      }
       failed = {
         from: step.from,
         to: step.to,

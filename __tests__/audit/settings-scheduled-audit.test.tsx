@@ -172,11 +172,22 @@ describe("the switch", () => {
     // An expired session must never trap somebody into keeping a feature they
     // are trying to disable.
     lastView = view({ auto: true, signedInAs: null });
-    getViewMock.mockResolvedValue(lastView);
-    setAutoMock.mockResolvedValue({ auto: false });
+    // Mount reads the real state; the refresh AFTER the write is failed on
+    // purpose, so the only thing that can move the switch is the action's own
+    // answer. Without that the reload would flip it regardless and this would
+    // assert nothing about how the result is read.
+    getViewMock.mockResolvedValueOnce(lastView).mockRejectedValue(new Error("gone"));
+    // The FULL discriminated shape. `{ auto: false }` alone is a value the
+    // action can no longer return, and the component narrows on `res.ok` before
+    // touching `auto` — so a mock missing it left the "did the switch actually
+    // move" half of this test asserting nothing at all.
+    setAutoMock.mockResolvedValue({ ok: true, auto: false });
     renderSettings();
     fireEvent.click(await screen.findByRole("switch", { name: "turn off scheduled audits" }));
     await waitFor(() => expect(setAutoMock).toHaveBeenCalledWith(false));
+    expect(
+      await screen.findByRole("switch", { name: "turn on scheduled audits" }),
+    ).toHaveAttribute("aria-checked", "false");
   });
 
   it("reverts the toggle when the write fails", async () => {
@@ -223,6 +234,64 @@ describe("the interval", () => {
     fireEvent.change(input, { target: { value: "3650" } });
     fireEvent.blur(input);
     await waitFor(() => expect(input).toHaveValue(90));
+  });
+
+  it("saves a change back to the value the page was first loaded with", async () => {
+    // The blur handler skips the write when the typed value already matches
+    // what is on disk, and `commitInterval` deliberately does not re-read — so
+    // the on-disk mirror it compares against has to be updated by the commit
+    // itself. Left stale, it lagged two edits behind: 7 → 14 saved, then 14 → 7
+    // compared 7 against the ORIGINAL 7, decided nothing had changed, and
+    // dropped the write. The input read 7 while the config still said 14.
+    lastView = view({ signedInAs: { id: "u", email: "a@b.c" } });
+    getViewMock.mockResolvedValue(lastView);
+    setIntervalMock.mockImplementation(async (days: number) => ({ intervalDays: days }));
+    renderSettings();
+    const input = await screen.findByLabelText("days between scheduled scans");
+
+    fireEvent.change(input, { target: { value: "14" } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(setIntervalMock).toHaveBeenCalledWith(14));
+
+    fireEvent.change(input, { target: { value: "7" } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(setIntervalMock).toHaveBeenCalledWith(7));
+  });
+});
+
+describe("a refresh that fails", () => {
+  it("keeps a console the client has already loaded", async () => {
+    // `reload` has an empty dep list, so the `view` it closed over was frozen at
+    // the first render — and on a page the SERVER could not seed (`initial` is
+    // null, which `page.tsx` handles by leaving the client to load it) that
+    // frozen value stayed null even after the client succeeded. The next
+    // transient failure then read "there is nothing on screen" and replaced a
+    // working console with the unreadable-settings message. The focus listener
+    // fires on every visibilitychange, including a tab hide, so "next" is soon.
+    // `lastView` is what `renderSettings` falls back to, so it has to be
+    // cleared for `initial` to actually arrive as null — which is the whole
+    // premise of this test.
+    lastView = null;
+    getViewMock.mockResolvedValue(view({ auto: true, signedInAs: { id: "u", email: "a@b.c" } }));
+    renderSettings(null);
+    expect(await screen.findByText("a@b.c")).toBeInTheDocument();
+
+    getViewMock.mockRejectedValue(new Error("api down"));
+    fireEvent.focus(window);
+
+    await waitFor(() => expect(getViewMock).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/could not read this machine/i)).not.toBeInTheDocument();
+    expect(screen.getByText("a@b.c")).toBeInTheDocument();
+  });
+
+  it("still reports a machine it has never managed to read", async () => {
+    // The other direction, which the guard exists for: nothing was ever loaded,
+    // so there is no truth on screen to protect and the page must say so rather
+    // than render an empty console.
+    lastView = null;
+    getViewMock.mockRejectedValue(new Error("api down"));
+    renderSettings(null);
+    expect(await screen.findByText(/could not read this machine/i)).toBeInTheDocument();
   });
 });
 

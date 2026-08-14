@@ -74,7 +74,7 @@ let lastView: ReturnType<typeof view> | null = null;
 beforeEach(() => {
   lastView = view();
   getViewMock.mockReset().mockResolvedValue(view());
-  setAutoMock.mockReset().mockResolvedValue({ auto: true });
+  setAutoMock.mockReset().mockResolvedValue({ ok: true, auto: true });
   setIntervalMock.mockReset().mockResolvedValue({ intervalDays: 7 });
   triggerRunMock.mockReset().mockResolvedValue(undefined);
   toastMock.mockReset();
@@ -143,6 +143,29 @@ describe("the switch", () => {
     fireEvent.click(await screen.findByRole("switch", { name: "turn on scheduled audits" }));
     await waitFor(() => expect(setAutoMock).toHaveBeenCalledWith(true));
     expect(screen.queryByText("where should the report go?")).toBeNull();
+  });
+
+  it("opens the sign-in dialog when the server rejects the stored session", async () => {
+    // The page reads "reports go to …" from the LOCAL session file, so it takes
+    // the signed-in path and calls the action directly. When the api-server has
+    // since rejected that session — expired, or minted against a different
+    // server — the click used to dead-end on "could not turn that on." with no
+    // way forward. The one failure with an obvious next step now offers it.
+    lastView = view({ signedInAs: { id: "u", email: "stale@exosphere.host" } });
+    getViewMock.mockResolvedValue(lastView);
+    setAutoMock.mockResolvedValue({ ok: false, reason: "signed-out" });
+
+    renderSettings();
+    fireEvent.click(await screen.findByRole("switch", { name: "turn on scheduled audits" }));
+
+    expect(await screen.findByText("where should the report go?")).toBeInTheDocument();
+    // And the switch does not sit there claiming to be on.
+    await waitFor(() =>
+      expect(screen.getByRole("switch", { name: "turn on scheduled audits" })).toHaveAttribute(
+        "aria-checked",
+        "false",
+      ),
+    );
   });
 
   it("turns OFF without asking anything", async () => {

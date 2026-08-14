@@ -183,8 +183,17 @@ function Toggle({
   );
 }
 
-/** What the scan does, as three labelled lines. This is the old footer
- *  paragraph restructured — same claims, scannable instead of a wall. */
+/**
+ * What the scan does, as three labelled lines. This is the old footer paragraph
+ * restructured — same claims, scannable instead of a wall.
+ *
+ * "sends" ENUMERATES rather than saying "only counts and redacted examples".
+ * That was very nearly true, and very nearly true is the worse kind: the report
+ * carries the machine's name too — its hostname, which routinely carries its
+ * owner's. A list a person can check beats a stronger claim they cannot, and
+ * this panel is the one place they would come to check. The digest email states
+ * the same three, in the same order.
+ */
 const HOW_IT_WORKS: ReadonlyArray<{ label: string; body: string }> = [
   {
     label: "reads",
@@ -193,7 +202,7 @@ const HOW_IT_WORKS: ReadonlyArray<{ label: string; body: string }> = [
   { label: "runs", body: "entirely on this machine. the transcripts never leave it." },
   {
     label: "sends",
-    body: "only counts and redacted examples, and only when a scan finds something harmful.",
+    body: "counts, redacted examples, and this machine's name — and only when a scan finds something harmful.",
   },
 ];
 
@@ -286,6 +295,18 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
     setBusy(true);
     try {
       const res = await setAutoAuditAction(true);
+      if (!res.ok) {
+        // The server rejected the session this page had been showing an address
+        // for — expired, or minted against a different api-server. The local
+        // file is the only thing that said "signed in", and `whoAmI` has since
+        // cleared it, so re-read before opening the dialog: otherwise the page
+        // asks for an email while still displaying one.
+        setAuto(false);
+        await reload();
+        setAuthOpen(true);
+        toast("that sign-in expired. one more code and it's on.");
+        return;
+      }
       setAuto(res.auto);
       toast("scheduled audits on.");
       await reload();
@@ -302,7 +323,9 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
       setBusy(true);
       try {
         const res = await setAutoAuditAction(false);
-        setAuto(res.auto);
+        // Turning it OFF is never refused, so `ok` is always true here — the
+        // narrowing is the type system's, not a case that can happen.
+        if (res.ok) setAuto(res.auto);
         toast("scheduled audits off.");
         await reload();
       } catch {

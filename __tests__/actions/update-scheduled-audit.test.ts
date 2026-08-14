@@ -57,7 +57,7 @@ describe("scheduled-audit write actions", () => {
   it("setAutoAuditAction toggles [audit] auto and reflects what the config stored", async () => {
     expect(readConfig().audit.auto).toBe(false);
     const res = await setAutoAuditAction(true);
-    expect(res.auto).toBe(true);
+    expect(res).toEqual({ ok: true, auto: true });
     expect(readConfig().audit.auto).toBe(true);
   });
 
@@ -108,5 +108,38 @@ describe("scheduled-audit write actions", () => {
     expect(after.mode).toBe("cloud");
     expect(after.collector.machineId).toBe("machine-abc");
     expect(after.audit.auto).toBe(true);
+  });
+});
+
+describe("a session the server rejects", () => {
+  it("is REPORTED, not thrown, so the caller can act on it", async () => {
+    // Next masks a thrown server-action error before the browser sees it — the
+    // client gets an opaque digest and never the message. A caller matching on
+    // the text works in development and silently degrades to a generic failure
+    // in production, which is what shipped: the page showed an address read
+    // from the local session file, the toggle took the signed-in path, and the
+    // click dead-ended on "could not turn that on."
+    whoAmIMock.mockResolvedValue(null);
+
+    const res = await setAutoAuditAction(true);
+
+    expect(res).toEqual({ ok: false, reason: "signed-out" });
+    // And nothing was written: a timer with nobody to tell reads as on and
+    // produces nothing.
+    expect(readConfig().audit.auto).toBe(false);
+  });
+
+  it("still lets somebody turn scheduling OFF", async () => {
+    // The refusal is one-directional on purpose. An expired session must not
+    // trap a person into keeping a feature they are trying to disable.
+    whoAmIMock.mockResolvedValue({ me: { id: "u", email: "a@b.c" } });
+    await setAutoAuditAction(true);
+    expect(readConfig().audit.auto).toBe(true);
+
+    whoAmIMock.mockResolvedValue(null);
+    const res = await setAutoAuditAction(false);
+
+    expect(res).toEqual({ ok: true, auto: false });
+    expect(readConfig().audit.auto).toBe(false);
   });
 });

@@ -119,7 +119,7 @@ describe("harness extra paths", () => {
         redact: "off",
       },
       telemetry: { enabled: false },
-      audit: { auto: true, intervalDays: 14, emailEnabled: false },
+      audit: { auto: true, intervalDays: 14 },
     });
     addPath("codex", "alt=/mnt/other/.codex/sessions");
 
@@ -131,7 +131,7 @@ describe("harness extra paths", () => {
     expect(cfg.collector.machineId).toBe("m-123");
     expect(cfg.collector.redact).toBe("off");
     expect(cfg.telemetry.enabled).toBe(false);
-    expect(cfg.audit).toEqual({ auto: true, intervalDays: 14, emailEnabled: false });
+    expect(cfg.audit).toEqual({ auto: true, intervalDays: 14 });
     expect(cfg.collector.sources?.codex.extraPaths).toEqual(["alt=/mnt/other/.codex/sessions"]);
   });
 

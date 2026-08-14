@@ -68,7 +68,8 @@ function result(): AuditResult {
 }
 
 function enableEmail(on: boolean) {
-  readConfigMock.mockReturnValue({ audit: { auto: true, intervalDays: 7, emailEnabled: on } });
+  // ONE switch now: `auto` means "scan on a timer AND tell me".
+  readConfigMock.mockReturnValue({ audit: { auto: on, intervalDays: 7 } });
 }
 
 beforeEach(() => {
@@ -95,7 +96,7 @@ afterEach(() => {
 });
 
 describe("reportHarm — the opt-in", () => {
-  it("does nothing at all when emailed reports are off", async () => {
+  it("does nothing at all when scheduled audits are off", async () => {
     // The majority case. No token read, no machine id minted, no request.
     enableEmail(false);
     expect(await reportHarm(result())).toEqual({ kind: "disabled" });

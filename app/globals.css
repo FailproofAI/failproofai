@@ -245,6 +245,39 @@ input[type="date"] { color-scheme: dark; }
 }
 .h-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 
+/* Icon-only chrome control (settings). Sized to sit level with the refresh
+   group beside it, and dim until touched so the bar stays text-forward — the
+   icon is an affordance, not a highlight. */
+.h-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: var(--ink-2);
+  border: 1px solid transparent;
+  transition:
+    color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.h-icon-btn:hover {
+  color: var(--ink);
+  border-color: var(--line-2);
+  background: rgba(255, 255, 255, 0.03);
+}
+.h-icon-btn.is-active {
+  color: var(--accent-pink);
+  border-color: var(--accent-pink);
+}
+.h-icon-btn:focus-visible {
+  outline: 2px solid var(--accent-pink);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .h-icon-btn { transition: none; }
+}
+
 /* header meta cluster (version + section label) — never wrap mid-token */
 .h-meta { display: flex; align-items: center; gap: 6px; white-space: nowrap; flex: none; }
 .h-version {

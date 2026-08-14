@@ -297,7 +297,22 @@ export interface FpConfig {
   };
   audit: {
     /**
-     * Scan this machine's agent history on a schedule.
+     * Scan this machine on a schedule, and mail a digest when a scan finds
+     * something harmful.
+     *
+     * ONE switch, not two. An earlier revision split this into `auto` (scan
+     * locally, no account) and `email_enabled` (mail me, sign in), and the two
+     * could only ever disagree — a machine scanning on a timer with nothing to
+     * report it to is a feature that looks on and does nothing visible. The
+     * reason to put a scan on a timer is to be TOLD, so scheduling and mailing
+     * are the same decision and take the same switch.
+     *
+     * A signed-out machine with this on is therefore a real, expected state
+     * rather than a contradiction: it keeps scanning and keeps its local
+     * dashboard current, and the UI says "signed out" until somebody signs back
+     * in. Auth gates SETTING it up, never the machine's ongoing work — a
+     * refresh token expiring must not silently switch off a background feature
+     * somebody configured months ago.
      *
      * OFF by default, and the asymmetry with `telemetry.enabled` above is
      * deliberate: the audit reads the CONTENTS of every session transcript on
@@ -307,21 +322,6 @@ export interface FpConfig {
     auto: boolean;
     /** Days between scheduled runs. Wall clock, so it survives suspend. */
     intervalDays: number;
-    /**
-     * Send a harm digest when a scheduled scan finds something.
-     *
-     * A SEPARATE switch from `auto`, and separate on purpose. `auto` scans this
-     * machine on a timer and needs no account — `failproofai audit --help` says
-     * the audit "runs fully offline — no account or network required", and that
-     * must stay true for anyone who wants scheduled scanning and nothing else.
-     * This is the opt-in that makes anything leave the box, and it is the only
-     * one of the two that requires a sign-in.
-     *
-     * OFF by default, like `auto` above and for a stronger version of the same
-     * reason: the failure direction is a machine mailing an account nobody
-     * pointed it at.
-     */
-    emailEnabled: boolean;
   };
 }
 
@@ -369,7 +369,7 @@ export const DEFAULT_CONFIG: FpConfig = {
     environment: "local",
   },
   telemetry: { enabled: true },
-  audit: { auto: false, intervalDays: DEFAULT_AUDIT_INTERVAL_DAYS, emailEnabled: false },
+  audit: { auto: false, intervalDays: DEFAULT_AUDIT_INTERVAL_DAYS },
 };
 
 /**
@@ -496,14 +496,7 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
       // scheduled scan on. Absent, misspelled, or `"yes"` all read as off,
       // because the failure direction here is a machine that starts reading
       // every transcript it can find on a timer nobody set.
-      audit: {
-        auto: audit.auto === true,
-        intervalDays: readIntervalDays(audit.interval_days),
-        // Same shape as `auto`, and for a stronger version of the same reason:
-        // only an explicit `true` opts in, because the failure direction here is
-        // a machine mailing an account nobody pointed it at.
-        emailEnabled: audit.email_enabled === true,
-      },
+      audit: { auto: audit.auto === true, intervalDays: readIntervalDays(audit.interval_days) },
       // Same shape as `audit.auto` above and for the same reason: only an
       // explicit `true` opts in. Anything else — absent, misspelled, `"yes"` —
       // reads as off, because the failure direction is a machine that starts
@@ -549,7 +542,6 @@ const OWNED_CONFIG_KEYS: readonly (readonly string[])[] = [
   ["telemetry", "enabled"],
   ["audit", "auto"],
   ["audit", "interval_days"],
-  ["audit", "email_enabled"],
 ];
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
@@ -650,11 +642,7 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
     // nobody can see is the same as a switch that does not exist. Emitting both
     // keys unconditionally also makes "a user's setting survives a rewrite"
     // total rather than conditional.
-    audit: {
-      auto: config.audit.auto,
-      interval_days: config.audit.intervalDays,
-      email_enabled: config.audit.emailEnabled,
-    },
+    audit: { auto: config.audit.auto, interval_days: config.audit.intervalDays },
   };
   // Start from the previous bytes, strip the keys this build owns — so an
   // omission above really removes — then lay the projection on top. What is left

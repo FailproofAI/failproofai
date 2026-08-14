@@ -8,9 +8,9 @@
  * ## CLI ⟷ dashboard parity (state it here so the two cannot silently diverge)
  *
  * Every field this returns is the same `config.toml` / state the CLI reads:
- *   - `auto`         ⟷ `config.toml [audit] auto`         (readConfig / updateConfig;
- *                       the same key the `failproofai config` wizard sets)
- *   - `intervalDays` ⟷ `config.toml [audit] interval_days` (readConfig owns the
+ *   - `auto`         ⟷ `config.json [audit] auto` (readConfig / updateConfig —
+ *                       the same call the CLI makes, so the two cannot diverge)
+ *   - `intervalDays` ⟷ `config.json [audit] interval_days` (readConfig owns the
  *                       1..90 clamp — see fp-config.readIntervalDays)
  *   - `daemon`       ⟷ `systemctl status failproofaid@<user>` (daemonServiceStatus)
  *   - `schedule`     ⟷ `state/audit-schedule.json` (daemon-written; readAuditSchedule)
@@ -37,8 +37,6 @@ export interface ScheduledAuditView {
   auto: boolean;
   /** `[audit] interval_days`, already clamped to 1..90 by readConfig. */
   intervalDays: number;
-  /** `[audit] email_enabled` — whether a scan that finds harm mails a digest. */
-  emailEnabled: boolean;
   /**
    * Who this machine would mail, or null when signed out.
    *
@@ -69,7 +67,6 @@ export async function getScheduledAuditAction(): Promise<ScheduledAuditView> {
   return {
     auto: config.audit.auto,
     intervalDays: config.audit.intervalDays,
-    emailEnabled: config.audit.emailEnabled,
     signedInAs: auth ? { id: auth.user.id, email: auth.user.email } : null,
     daemon: daemonServiceStatus(),
     schedule: schedule

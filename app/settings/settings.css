@@ -1,0 +1,281 @@
+/* /settings — scheduled audits.
+ *
+ * Every colour is an existing token from globals.css. No new hue, no third
+ * accent: pink is the control that acts, mint is the thing that is alive, and
+ * everything else is the charcoal stack and the ink ramp. The chunky pixel
+ * shadow comes from `.btn-press`, which already exists — this file adds one to
+ * the panel and nothing else.
+ *
+ * The tape is the only drawn element on the page. That is the budget.
+ */
+
+.set-sec {
+  max-width: 720px;
+}
+
+/* ── masthead ─────────────────────────────────────────────────────────────── */
+
+.set-mast {
+  margin-bottom: 28px;
+}
+.set-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent-pink);
+  margin-bottom: 14px;
+}
+.set-title {
+  /* The pixel display face, used once on the page and nowhere else. */
+  font-family: var(--font-display);
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  margin: 0 0 10px;
+  text-transform: lowercase;
+}
+.set-lede {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 0;
+  max-width: 52ch;
+}
+
+/* ── the panel ────────────────────────────────────────────────────────────── */
+
+.set-panel {
+  /* Print-register depth, matching `.btn-press`. Hard offset, never a blur. */
+  box-shadow: 6px 6px 0 0 var(--accent-pink-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.set-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.set-card-title {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  margin: 0 0 6px;
+}
+.set-card-sub {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 0;
+  max-width: 46ch;
+}
+
+.set-pill {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  padding: 5px 9px;
+  white-space: nowrap;
+  border: 1px solid var(--line-2);
+  color: var(--dim);
+  flex: none;
+}
+.set-pill.on {
+  border-color: var(--accent-green-shadow);
+  color: var(--accent-green);
+}
+
+/* ── rows ─────────────────────────────────────────────────────────────────── */
+
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink);
+}
+.set-row-main {
+  align-items: flex-start;
+}
+.set-row-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  line-height: 1.5;
+}
+.set-row-interval {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.set-row-identity {
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.set-strong { color: var(--ink); }
+.set-dim { color: var(--ink-2); }
+.set-hint { color: var(--dim); font-size: 11px; }
+.set-email { color: var(--accent-green); }
+
+.set-num {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  width: 62px;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  color: var(--ink);
+  border-radius: 0;
+}
+.set-num:focus-visible {
+  outline: 2px solid var(--accent-pink);
+  outline-offset: 1px;
+}
+
+.set-link {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--dim);
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.set-link:hover:not(:disabled) { color: var(--ink); }
+.set-link:disabled { opacity: 0.5; cursor: not-allowed; }
+.set-link:focus-visible { outline: 2px solid var(--accent-pink); outline-offset: 2px; }
+
+.set-warn {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--accent-pink);
+  margin: 0;
+}
+.set-warn-inline { color: var(--accent-pink); }
+
+.set-rule {
+  height: 1px;
+  background: var(--line);
+  margin: 2px 0;
+}
+
+/* ── the switch ───────────────────────────────────────────────────────────── */
+
+.sw {
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 20px;
+  border-radius: 10px;
+  border: none;
+  background: var(--line-2);
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sw[data-on="true"] { background: var(--accent-pink); }
+.sw:disabled { opacity: 0.5; cursor: not-allowed; }
+.sw:focus-visible { outline: 2px solid var(--accent-pink); outline-offset: 3px; }
+.sw-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg);
+  transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sw[data-on="true"] .sw-knob { transform: translateX(18px); }
+
+/* ── the schedule tape — the one drawn element ────────────────────────────── */
+
+.tape {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tape-rail {
+  position: relative;
+  height: 3px;
+  background: var(--line-2);
+}
+.tape-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent-green);
+  opacity: 0.55;
+}
+.tape-now {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 11px;
+  background: var(--accent-pink);
+  /* Centre the marker on its position rather than hanging it to the right. */
+  transform: translateX(-1px);
+}
+.tape-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+}
+.tape-next { color: var(--ink-2); }
+
+/* ── footer ───────────────────────────────────────────────────────────────── */
+
+.set-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-top: 1px dashed var(--line);
+  padding-top: 16px;
+}
+.set-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+.set-note {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--dim);
+  margin: 20px 0 0;
+  max-width: 62ch;
+}
+
+@media (max-width: 640px) {
+  .set-title { font-size: 32px; }
+  .set-panel { box-shadow: 4px 4px 0 0 var(--accent-pink-shadow); }
+  .set-foot { align-items: stretch; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sw,
+  .sw-knob { transition: none; }
+}

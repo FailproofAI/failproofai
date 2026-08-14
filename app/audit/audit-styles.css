@@ -1145,3 +1145,11 @@
   }
   .quirks-thead { display: none; }
 }
+/* ── Section 05: the share card, now alone ───────────────────────────────────
+   The scheduled-audit panel moved to /settings, so this is the only card in
+   the section. Capped rather than left full-bleed: a single card stretched
+   across the report width reads as an empty row with something in the corner,
+   and the invite is a small ask that should look like one. */
+.share-card {
+  max-width: 420px;
+}

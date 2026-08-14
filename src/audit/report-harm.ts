@@ -55,15 +55,14 @@ export type HarmReportOutcome =
  * that called that an error would train people to ignore the line.
  */
 export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome> {
-  // Two switches, not one. `auto` schedules the local scan and needs no account;
-  // `emailEnabled` is the separate opt-in that sends anything anywhere. A
-  // machine with the first and not the second scans on a timer and stays silent,
-  // which is what keeps "runs fully offline" true for everyone who wants it.
-  let emailEnabled = false;
+  // ONE switch. `auto` means "scan on a timer AND tell me", because the reason
+  // to put a scan on a timer is to be told — a machine scanning quietly with
+  // nothing to report to is a feature that looks on and does nothing visible.
+  let auto = false;
   let intervalDays = 7;
   try {
     const config = readConfig();
-    emailEnabled = config.audit.emailEnabled;
+    auto = config.audit.auto;
     // Also the width of a FIRST report's window, so a new machine's opening
     // digest covers the same period every later one will.
     intervalDays = config.audit.intervalDays;
@@ -71,13 +70,16 @@ export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome
     // An unreadable config reads as off — the direction that sends nothing.
     return { kind: "disabled" };
   }
-  if (!emailEnabled) return { kind: "disabled" };
+  if (!auto) return { kind: "disabled" };
 
   const auth = await getValidAccessToken();
   if (!auth) {
-    // Expired, revoked, or never signed in. The scan already succeeded and its
-    // result is on the dashboard; the only thing lost is the email, and the
-    // remedy is a sign-in the user has to be present for anyway.
+    // Expired, revoked, or signed out. NOT an error and NOT a reason to stop
+    // scheduling: auth gates setting the timer up, never the machine's ongoing
+    // work. The scan already succeeded and its result is on the local
+    // dashboard; only the digest is lost, and the remedy needs a human present
+    // anyway. A refresh token quietly expiring must never switch off a
+    // background feature somebody configured months ago.
     return { kind: "signed-out" };
   }
 

@@ -446,7 +446,7 @@ describe("config.toml", () => {
         redact: "off" as const, environment: "prod", machineId: "box-1",
       },
       telemetry: { enabled: true },
-      audit: { auto: true, intervalDays: 14, emailEnabled: false },
+      audit: { auto: true, intervalDays: 14 },
     };
     writeConfig(cfg);
     expect(readConfig()).toEqual(cfg);
@@ -485,29 +485,29 @@ describe("config.toml", () => {
     // The opposite posture to telemetry directly above: off, and deliberately
     // visible, because it is a switch the user is meant to find and flip. It is
     // off because the scan reads the contents of every transcript on disk.
-    expect(DEFAULT_CONFIG.audit).toEqual({ auto: false, intervalDays: 7, emailEnabled: false });
+    expect(DEFAULT_CONFIG.audit).toEqual({ auto: false, intervalDays: 7 });
     writeConfig(DEFAULT_CONFIG);
     // Both keys on disk, unconditionally. The layout-2 file made this visible
     // with a comment block; JSON cannot carry one, so what survives is the
     // weaker but still real guarantee: every field the struct holds is written,
     // so no later regeneration can silently drop one.
     const written = JSON.parse(readFileSync(H.configFile(), "utf8"));
-    expect(written.audit).toEqual({ auto: false, interval_days: 7, email_enabled: false });
+    expect(written.audit).toEqual({ auto: false, interval_days: 7 });
   });
 
   it("an enabled auto-audit SURVIVES a rewrite", () => {
     // writeConfig regenerates the whole file, so a key it does not emit is a key
     // it silently deletes — the failure that would turn somebody's weekly audit
     // off the next time any unrelated setting changed.
-    writeConfig({ ...DEFAULT_CONFIG, audit: { auto: true, intervalDays: 30, emailEnabled: true } });
-    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 30, emailEnabled: true });
+    writeConfig({ ...DEFAULT_CONFIG, audit: { auto: true, intervalDays: 30 } });
+    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 30 });
 
     writeConfig({ ...readConfig(), collector: { ...DEFAULT_CONFIG.collector, environment: "ci" } });
     // `emailEnabled` is asserted alongside `auto` deliberately: it is the switch
     // that makes anything leave the machine, so a rewrite silently dropping it
     // would turn emailed reports off with no notice — the same class of failure
     // this test was written for, on the newer of the two keys.
-    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 30, emailEnabled: true });
+    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 30 });
   });
 
   it("only an explicit true switches the auto-audit on", () => {
@@ -539,7 +539,7 @@ describe("config.toml", () => {
     writeConfig({ ...DEFAULT_CONFIG, telemetry: { enabled: false } });
     updateConfig({ audit: { auto: true } });
     const after = readConfig();
-    expect(after.audit).toEqual({ auto: true, intervalDays: 7, emailEnabled: false });
+    expect(after.audit).toEqual({ auto: true, intervalDays: 7 });
     expect(after.telemetry.enabled).toBe(false); // untouched
   });
 
@@ -561,7 +561,7 @@ describe("config.toml", () => {
       mode: "cloud" as const,
       daemon: { configured: true },
       telemetry: { enabled: false },
-      audit: { auto: true, intervalDays: 30, emailEnabled: false },
+      audit: { auto: true, intervalDays: 30 },
       collector: { ...DEFAULT_CONFIG.collector, environment: "ci", machineId: "m-1" },
     };
     writeConfig(config);

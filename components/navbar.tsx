@@ -1,16 +1,22 @@
-/** Top navigation bar — wordmark, primary nav, refresh + reach-developers controls.
+/** Top navigation bar — wordmark, primary nav, refresh + settings + reach-us.
  *
  * Restyled to the audit / brutalist-pixel-craft system: the wordmark uses the
  * same pixel pink mark + Bitcount Prop Single lowercase name as the audit
  * report, and each nav link is a `.tab` with a sharp pink underline on the
- * active route. No lucide icons in the bar itself — the chrome stays text-
- * forward to match the rest of the design system.
+ * active route.
+ *
+ * The bar was text-forward with no icons. Settings is the one exception, and
+ * deliberately so: the tabs are VIEWS OF DATA (projects, policies, audit) and
+ * settings is machine configuration, so putting it in that row would have
+ * claimed it was another place to look at results. As an icon among the other
+ * chrome controls it reads as what it is.
  */
 "use client";
 
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Settings } from "lucide-react";
 import { ReachDevelopers } from "@/components/reach-developers";
 import { RefreshButton } from "@/app/components/refresh-button";
 import { usePostHog } from "@/contexts/PostHogContext";
@@ -59,6 +65,7 @@ export const Navbar: React.FC<{
   const sectionLabel = (() => {
     if (pathname.startsWith("/policies")) return "policies";
     if (pathname.startsWith("/audit")) return "audit";
+    if (pathname.startsWith("/settings")) return "settings";
     if (pathname.startsWith("/projects") || pathname.startsWith("/project/")) return "projects";
     return "";
   })();
@@ -128,6 +135,20 @@ export const Navbar: React.FC<{
 
       <div className="h-actions">
         <RefreshButton />
+        <span style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px" }} />
+        {/* Settings sits between the refresh controls and reach-us as an ICON,
+            not a nav tab: it is machine configuration rather than a view of the
+            data, so it belongs with the other chrome controls rather than
+            beside projects / policies / audit. */}
+        <Link
+          href="/settings"
+          className={`h-icon-btn${pathname.startsWith("/settings") ? " is-active" : ""}`}
+          aria-label="settings"
+          aria-current={pathname.startsWith("/settings") ? "page" : undefined}
+          title="settings"
+        >
+          <Settings className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden="true" />
+        </Link>
         <span style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px" }} />
         <ReachDevelopers />
       </div>

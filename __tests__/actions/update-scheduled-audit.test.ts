@@ -14,7 +14,15 @@
  * server actions the dashboard calls (not a reimplementation), so CLI/dashboard
  * parity is real: both write through the same `updateConfig`.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+// `setAutoAuditAction(true)` now refuses without a session — scheduling and
+// mailing are one decision, so a timer with nobody to tell is a switch that
+// reads as on and produces nothing. These tests are about the CONFIG WRITE, so
+// the session check is stubbed to "signed in"; the refusal itself is covered in
+// the settings component tests.
+const { whoAmIMock } = vi.hoisted(() => ({ whoAmIMock: vi.fn() }));
+vi.mock("../../lib/auth/auth-store", () => ({ whoAmI: whoAmIMock }));
 import { mkdtempSync, readFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -33,6 +41,10 @@ beforeEach(() => {
   home = mkdtempSync(resolve(tmpdir(), "fpai-settings-write-"));
   process.env.FAILPROOFAI_HOME = home;
   mkdirSync(home, { recursive: true });
+  whoAmIMock.mockReset().mockResolvedValue({
+    me: { id: "u1", email: "sidd@exosphere.host", status: "active", created_at: "" },
+    auth: { user: { id: "u1", email: "sidd@exosphere.host" } },
+  });
 });
 
 afterEach(() => {
@@ -79,7 +91,7 @@ describe("scheduled-audit write actions", () => {
     expect(readConfig().telemetry.enabled).toBe(false);
     expect(JSON.parse(readFileSync(configFile(), "utf8")).telemetry).toEqual({ enabled: false });
     // And the audit write actually landed alongside it.
-    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 14, emailEnabled: false });
+    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 14 });
   });
 
   it("preserves an unrelated cloud/collector setting across a scan write", async () => {

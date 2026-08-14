@@ -38,6 +38,14 @@
 #   CANARY_VERSION_GATED   "all" (default) | comma-sep list | "none" to force-probe
 #   CANARY_CLIS            space-separated CLI subset (empty = all 12)
 #   CANARY_SKIP_BUILD      set to 1 to reuse an existing dist/ (local iteration)
+#   CANARY_DAEMON          set to 1 to probe the daemon-configured (failproofaid)
+#                          hook path: builds the Rust daemon and routes every
+#                          probe's hooks through it, fail-closed (see probe-cli.sh)
+#   CANARY_DAEMON_DEAD     set to 1 for the fail-closed leg: daemon-configured
+#                          but the daemon is never started — every CLI must
+#                          DENY. Implies CANARY_DAEMON=1; skips the Rust build.
+#   CANARY_CARGO_CACHE     cargo home+target cache dir for the daemon build
+#                          (default ~/.cache/failproofai-canary/cargo)
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
@@ -91,7 +99,13 @@ else
   step "building failproofai under test (dist/index.js + dist/cli.mjs — no dashboard)"
   (
     cd "$REPO" || exit 1
-    bun install --frozen-lockfile || exit 1
+    # --ignore-scripts, or the package `prepare` hook runs `bun run build` —
+    # the FULL build, Next.js dashboard and all — before the two narrow builds
+    # below, on every leg of every run. The step above says "no dashboard"; this
+    # flag is what makes that true. Same guard translate-docs.yml carries, for
+    # the same reason. Caught by running the box end to end: the log showed
+    # `next build` compiling 3 static pages under a step that claims not to.
+    bun install --frozen-lockfile --ignore-scripts || exit 1
     bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts || exit 1
     bun run build:cli || exit 1
   ) || { echo "✗ build failed" >&2; exit 1; }
@@ -99,6 +113,30 @@ fi
 if [ ! -s "$REPO/dist/index.js" ] || [ ! -s "$REPO/dist/cli.mjs" ]; then
   echo "✗ dist/index.js and dist/cli.mjs must both be non-empty" >&2
   exit 1
+fi
+
+# ── 1b. build failproofaid under test (daemon mode only) ────────────────────
+# Built in a rust:1-bookworm container, NOT on the host: the sandbox image is
+# node:22-bookworm-slim (glibc 2.36), and a binary linked against a newer host
+# glibc would fail to load inside it. The repo mounts read-only — cargo writes
+# only to the mounted cache (registry + target), so the checkout stays clean.
+# The DEAD (fail-closed) leg needs no binary — the daemon is never started.
+[ "${CANARY_DAEMON_DEAD:-0}" = 1 ] && CANARY_DAEMON=1
+if [ "${CANARY_DAEMON:-0}" = 1 ] && [ "${CANARY_DAEMON_DEAD:-0}" != 1 ]; then
+  step "building failproofaid (daemon) under test"
+  if [ ! -f "$REPO/crates/failproofaid/Cargo.toml" ]; then
+    echo "✗ CANARY_DAEMON=1 but $REPO has no crates/failproofaid — this ref predates the daemon; unset CANARY_DAEMON or pick a ref that carries it" >&2
+    exit 1
+  fi
+  CARGO_CACHE="${CANARY_CARGO_CACHE:-$HOME/.cache/failproofai-canary/cargo}"
+  mkdir -p "$CARGO_CACHE/home" "$CARGO_CACHE/target"
+  docker run --rm -u "$(id -u):$(id -g)" \
+    -e HOME=/cargo/home -e CARGO_HOME=/cargo/home -e CARGO_TARGET_DIR=/cargo/target \
+    -v "$CARGO_CACHE:/cargo" -v "$REPO:/src:ro" -w /src \
+    rust:1-bookworm cargo build --release --locked -p failproofaid \
+    || { echo "✗ failproofaid build failed" >&2; exit 1; }
+  export CANARY_DAEMON_BIN="$CARGO_CACHE/target/release/failproofaid"
+  [ -x "$CANARY_DAEMON_BIN" ] || { echo "✗ built failproofaid missing at $CANARY_DAEMON_BIN" >&2; exit 1; }
 fi
 
 # ── 2. decode OAuth token secrets ───────────────────────────────────────────
@@ -176,4 +214,7 @@ CANARY_STATE="$STATE" \
 CANARY_ENVFILE="$ENVFILE" \
 CANARY_CHANNEL="$CHANNEL" \
 CANARY_PEER_STATE="$PEER_STATE" \
+CANARY_DAEMON="${CANARY_DAEMON:-0}" \
+CANARY_DAEMON_DEAD="${CANARY_DAEMON_DEAD:-0}" \
+CANARY_DAEMON_BIN="${CANARY_DAEMON_BIN:-}" \
   bash "$HERE/run.sh" ${CANARY_CLIS:-}

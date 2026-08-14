@@ -149,8 +149,30 @@ jobs:
         name: Install worker dependencies
         run: bun install --frozen-lockfile --ignore-scripts
 
+      # Restore on every run, SAVE ONLY ON MAIN — the split `build-daemon.yml`
+      # already uses, for a second reason that turned out to matter more.
+      #
+      # A combined `actions/cache@v6` writes a ref-scoped copy from every branch
+      # that misses the exact key, and this entry carries `target/`, so each copy
+      # is 1.5-2.3 GiB. Five PR refs held one at once (677, 679, 680, 681 and
+      # main) — ~10.7 GiB of a repo cache that GitHub caps at 10 GiB, which puts
+      # the store permanently in LRU eviction.
+      #
+      # What that evicted was not another cargo build. It was the 13 KB
+      # translation cache, touched once every 24 hours by the nightly
+      # `translate-docs` run and therefore always the least-recently-used thing
+      # in the store. Losing it re-translated all 48 pages into all 14 languages
+      # the next morning: ~125 runner-minutes and a full LLM pass per language,
+      # against a 4-minute baseline when the cache survives. Six consecutive days
+      # of it, Aug 6-11, cost ~750 runner-minutes and six full translation passes
+      # through the gateway.
+      #
+      # Restoring without saving costs a PR whose `Cargo.lock` moved a rebuild
+      # from a stale-but-close main cache — which is already what `restore-keys`
+      # hands it today.
       - if: steps.crates.outputs.present == 'true'
-        uses: actions/cache@v6
+        id: cargo-cache
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -171,6 +193,25 @@ jobs:
       - name: cargo test
         if: steps.crates.outputs.present == 'true'
         run: cargo test --workspace
+
+      # Paired with the restore above. `cache-hit != 'true'` skips the write when
+      # the exact key already exists, so a run that changed nothing does not
+      # re-upload 2 GiB; a push to main whose Cargo.lock moved is the only thing
+      # that writes here.
+      - name: Save cargo cache
+        if: >-
+          steps.crates.outputs.present == 'true'
+          && github.event_name == 'push'
+          && github.ref == 'refs/heads/main'
+          && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'crates/*/Cargo.toml') }}
 
   test:
     runs-on: ubuntu-latest

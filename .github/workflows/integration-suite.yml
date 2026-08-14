@@ -1,17 +1,25 @@
 name: Integration Suite
 
-# Daily integration test: does failproofai still ENFORCE against every supported
-# agent CLI @latest? Installs all 12 CLIs into an isolated Docker sandbox, drives
-# each one against failproofai's OWN policies (built from THIS repo's HEAD), and
-# asserts the hook log shows a DENY. A silent-allow — a blocked action that ran
-# with no deny — means enforcement broke against that CLI (e.g. a vendor changed
-# their hook schema out from under us), and turns the run red. Reports only
-# CHANGES (broke/recovered) plus a daily heartbeat to Slack.
+# ON-DEMAND FALLBACK for the integration suite: does failproofai still ENFORCE
+# against every supported agent CLI @latest? Installs all 12 CLIs into an
+# isolated Docker sandbox, drives each one against failproofai's OWN policies
+# (built from THIS repo's HEAD), and asserts the hook log shows a DENY. A
+# silent-allow — a blocked action that ran with no deny — means enforcement
+# broke against that CLI (e.g. a vendor changed their hook schema out from
+# under us), and turns the run red. Reports only CHANGES (broke/recovered)
+# plus a heartbeat to Slack.
+#
+# The DAILY runs moved off Actions to a local canary box for cost —
+# integration-suite/local/ carries the systemd timer + wrapper that replaced
+# the cron that used to live here (same 06:17 UTC slot). This workflow stays
+# dispatch-only: the cloud escape hatch for when the box is down or a clean
+# cloud reproduction is wanted. Its Actions-cache state is separate from the
+# box's state dir, so a dispatch may re-probe CLIs the box already gated.
 #
 # Unlike the unit/e2e suites, this drives REAL vendor CLIs against real gateway
 # models, so it needs credentials. They live in the `cli-integration` Environment
-# and the workflow runs ONLY on schedule / manual dispatch — never on pull_request
-# — so fork PRs can never reach the secrets.
+# and the workflow runs ONLY on manual dispatch — never on pull_request — so
+# fork PRs can never reach the secrets.
 #
 # This file is a THIN TRIGGER on purpose. Everything beyond the GitHub-specific
 # wiring (checkout, bun, cache, secret->env mapping) lives in
@@ -19,8 +27,6 @@ name: Integration Suite
 # without opening this YAML. See integration-suite/README.md.
 
 on:
-  schedule:
-    - cron: "17 6 * * *" # ~06:17 UTC daily
   workflow_dispatch:
     inputs:
       clis:

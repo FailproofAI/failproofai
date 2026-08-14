@@ -209,7 +209,12 @@ export async function translateMdxPage(
   // Check cache — use provided cache object or read from disk
   if (!options.force && !options.dryRun) {
     const cache = options.cache ?? readCache();
-    if (isCached(cache, relPath, lang, sourceContent)) {
+    // `&& existsSync(outputPath)` for the same reason as the batch path in
+    // cli.ts: a cache entry says a translation was produced once, not that the
+    // file is on disk now. This branch is the single-page path — the batch run
+    // never reaches it for a cached page — so it is guarded separately or the
+    // two disagree about what "cached" means.
+    if (isCached(cache, relPath, lang, sourceContent) && existsSync(outputPath)) {
       return {
         lang,
         sourcePath,

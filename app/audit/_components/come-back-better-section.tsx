@@ -45,6 +45,25 @@ const INVITE_AUTH_COPY = {
   subhead: "What's your email?",
 } as const;
 
+/**
+ * What the user was trying to do when the AuthDialog opened.
+ *
+ * `null` means the dialog is closed. Every other value is a thing to RESUME
+ * once auth succeeds — which is the point: the dialog is shared, so the only
+ * safe way for it to finish is to be told what it was opened for.
+ */
+type PendingAction =
+  | null
+  /** Set a reminder at the cadence the user clicked. */
+  | { kind: "reminder"; cadence: Cadence }
+  /** Open the invite dialog. */
+  | { kind: "invite" };
+
+/** The dialog's copy for a given intent. Derived, never stored separately. */
+function authCopyFor(action: PendingAction): { headline?: string; subhead?: string } {
+  return action?.kind === "invite" ? INVITE_AUTH_COPY : {};
+}
+
 type AuthStatus =
   | { kind: "unknown" }
   | { kind: "anon" }
@@ -78,10 +97,23 @@ export function ComeBackBetterSection({ isRunning, onRerun, score }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [reminderBusy, setReminderBusy] = useState(false);
-  // Copy for the shared AuthDialog: {} keeps the reminder defaults,
-  // INVITE_AUTH_COPY shows the invite variant. Set by whichever CTA opens the
-  // dialog — content selection only, no effect on the auth flow.
-  const [authCopy, setAuthCopy] = useState<{ headline?: string; subhead?: string }>({});
+  /**
+   * WHICH CTA opened the AuthDialog, and therefore what to do once it succeeds.
+   *
+   * This used to be tracked only as `authCopy` — the headline and subhead to
+   * show — while `handleAuthed` unconditionally called `persistReminder`. So the
+   * dialog knew which button had been pressed for the purpose of its own COPY
+   * and not for the purpose of its own EFFECT, and the invite path did the
+   * reminder path's work: a user who clicked "invite a friend", read "Oops!
+   * Login required", and signed in got a 7-day reminder they never asked for,
+   * and no invite dialog. Their actual intent was dropped on the floor.
+   *
+   * Modelling the intent instead of the copy is what stops that recurring. The
+   * copy is now DERIVED from it, so the two cannot disagree, and adding a third
+   * CTA means adding a case here rather than remembering to branch in a handler
+   * that has no idea it is shared.
+   */
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const ctaShownRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
 
@@ -210,23 +242,48 @@ export function ComeBackBetterSection({ isRunning, onRerun, score }: Props) {
         return;
       }
       if (authStatus.kind === "anon") {
-        setAuthCopy({}); // reminder context → keep the dialog's default copy
+        setPendingAction({ kind: "reminder", cadence: next });
         setDialogOpen(true);
       }
     },
     [authStatus, capture, persistReminder, reminder],
   );
 
+  /**
+   * Resume whatever the user was doing before they were asked to sign in.
+   *
+   * Reads `pendingAction` rather than assuming. Assuming is what it did before,
+   * and because the reminder CTA happened to be written first, "assume" meant
+   * "set a reminder" for every caller — including the invite button, which
+   * wanted something else entirely and got nothing.
+   *
+   * The cadence is carried IN the action rather than read from `cadence` state,
+   * so the reminder that lands is the one whose button was actually pressed,
+   * even if something re-rendered in between.
+   */
   const handleAuthed = useCallback(
     async (user: AuthedUser) => {
       setAuthStatus({ kind: "authed", user });
+      const action = pendingAction;
       capture("audit_auth_completed", {
         source: "come_back_better_section",
+        pending_action: action?.kind ?? "none",
       });
-      const saved = await persistReminder(cadence);
-      if (saved) setReminder(saved);
+      setPendingAction(null);
+
+      if (action?.kind === "reminder") {
+        const saved = await persistReminder(action.cadence);
+        if (saved) setReminder(saved);
+        return;
+      }
+      if (action?.kind === "invite") {
+        setInviteDialogOpen(true);
+      }
+      // No pending action: the dialog was dismissed and reopened, or opened by
+      // something that wants nothing but the sign-in. Doing nothing is correct
+      // — it is the case the old code had no way to express.
     },
-    [cadence, capture, persistReminder],
+    [capture, pendingAction, persistReminder],
   );
 
   const handleInvite = useCallback(() => {
@@ -235,9 +292,10 @@ export function ComeBackBetterSection({ isRunning, onRerun, score }: Props) {
       auth_state: authStatus.kind,
     });
     // Unauthed users go through the AuthDialog first so we have a sender
-    // identity to Cc on the invite email.
+    // identity to Cc on the invite email — and `pendingAction` is what brings
+    // them back HERE afterwards instead of somewhere else.
     if (authStatus.kind !== "authed") {
-      setAuthCopy(INVITE_AUTH_COPY); // invite context → "Oops! Login required"
+      setPendingAction({ kind: "invite" });
       setDialogOpen(true);
       return;
     }
@@ -311,11 +369,13 @@ export function ComeBackBetterSection({ isRunning, onRerun, score }: Props) {
         score={score}
         onClose={() => setInviteDialogOpen(false)}
         onUnauthorized={() => {
-          // Session expired between probe and submit — flip back to anon
-          // and bounce through the AuthDialog so the user re-auths.
+          // Session expired between probe and submit — flip back to anon and
+          // bounce through the AuthDialog so the user re-auths. Still the invite
+          // intent, so re-authing reopens THIS dialog rather than dropping them
+          // back on the page having achieved nothing.
           setAuthStatus({ kind: "anon" });
           setReminder(null);
-          setAuthCopy(INVITE_AUTH_COPY); // still the invite context
+          setPendingAction({ kind: "invite" });
           setDialogOpen(true);
         }}
       />
@@ -323,9 +383,15 @@ export function ComeBackBetterSection({ isRunning, onRerun, score }: Props) {
       <AuthDialog
         open={dialogOpen}
         source="return_section"
-        headline={authCopy.headline}
-        subhead={authCopy.subhead}
-        onClose={() => setDialogOpen(false)}
+        headline={authCopyFor(pendingAction).headline}
+        subhead={authCopyFor(pendingAction).subhead}
+        onClose={() => {
+          // Dismissing is abandoning the intent. Leaving it set would make the
+          // NEXT sign-in — from any other CTA — resume something the user
+          // walked away from.
+          setPendingAction(null);
+          setDialogOpen(false);
+        }}
         onAuthed={(u) => {
           setDialogOpen(false);
           void handleAuthed(u);

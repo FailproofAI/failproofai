@@ -55,7 +55,7 @@ export function RunProgress() {
       <div className="section-mast">
         <div className="section-label">
           <span className="glyph">━━</span> audit{" "}
-          <span style={{ color: "var(--dim)" }}>·</span> in progress
+          <span className="sep">·</span> in progress
         </div>
         <div className="section-meta">
           <span style={{ color: "var(--accent-pink)" }}>●</span> scanning

@@ -438,11 +438,8 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
     <main className="report">
       <section className="section set-sec">
         <div className="set-mast">
-          <div className="set-eyebrow">━━ this machine ━━</div>
           <h1 className="set-title">settings</h1>
-          <p className="set-lede">
-            what failproof does on its own, while you are not looking.
-          </p>
+          <p className="set-lede">keeping watch, so you don&apos;t have to.</p>
         </div>
 
         {loadError ? (

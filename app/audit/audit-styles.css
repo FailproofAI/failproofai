@@ -211,7 +211,11 @@
   color: var(--accent-green);
   display: inline-flex; align-items: baseline; gap: 10px;
 }
-.section-label .glyph { color: var(--accent-pink); letter-spacing: -2px; }
+/* Kept in step with globals.css, which declares the same selector: this file
+ * loads after it, so a value left behind here silently wins. The leader and
+ * separator inherit the label's colour — one label, one colour. */
+.section-label .glyph { color: inherit; letter-spacing: -2px; }
+.section-label .sep { color: inherit; }
 .section-meta {
   font-family: var(--font-mono);
   font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;

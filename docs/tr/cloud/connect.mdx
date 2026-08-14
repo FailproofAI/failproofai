@@ -110,7 +110,7 @@ The organization the key belongs to is named on every outcome, including the par
 A key pasted from the wrong organization authenticates perfectly and reports somewhere
 nobody is looking — naming the org on screen is what makes that visible immediately.
 
-[Creating scoped keys →](/tr/cloud/access)
+[Creating scoped keys →](/tr/cloud/admin)
 
 ---
 
@@ -199,7 +199,7 @@ A few things that make this safe to run unattended:
 <Tip>
   Bake the policies into your machine image and connect at boot. A machine that has
   FailproofAI but is not connected still enforces locally — it just does not appear in your
-  fleet view, which is the one gap the [fleet page](/tr/cloud/fleet) is built to make obvious.
+  fleet view, which is the one gap the [fleet page](/tr/cloud/deploy-policies) is built to make obvious.
 </Tip>
 
 ---
@@ -233,7 +233,7 @@ it was ever connected.
 
 <Accordion title="This key lacks the policies:pull permission (403)">
   The key is valid but too narrow. Create one with the permission you need, or add it to
-  the existing key. See [Access](/tr/cloud/access).
+  the existing key. See [Access](/tr/cloud/admin).
 </Accordion>
 
 <Accordion title="That URL redirects rather than accepting events">
@@ -270,15 +270,15 @@ it was ever connected.
 
 <CardGroup cols={2}>
 
-<Card title="Managed policies" icon="cloud-arrow-down" href="/tr/cloud/managed-policies">
+<Card title="Managed policies" icon="cloud-arrow-down" href="/tr/cloud/policy-editor">
   What comes down the policy stream, and how to roll it out safely.
 </Card>
 
-<Card title="Fleet" icon="server" href="/tr/cloud/fleet">
+<Card title="Fleet" icon="server" href="/tr/cloud/deploy-policies">
   Every machine, its deployment, and its coverage.
 </Card>
 
-<Card title="Access and permissions" icon="key" href="/tr/cloud/access">
+<Card title="Access and permissions" icon="key" href="/tr/cloud/admin">
   Creating a key with exactly the two permissions this needs.
 </Card>
 

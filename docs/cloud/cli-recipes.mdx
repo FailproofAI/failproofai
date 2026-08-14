@@ -123,13 +123,13 @@ agenteye --json query run --sql "select count(*) from analytics.events" | jq '.r
 agenteye --json query run errs --arg prod | jq '.rows'   # a saved query + a positional $1
 ```
 
-## Triage an incident non-interactively
+## Triage an issue non-interactively
 
 ```bash
-id=$(agenteye --json incidents list --state firing | jq -r '.incidents[0].id')
-agenteye incidents ack "$id"
-agenteye incidents assign "$id" --assignee you@corp.com
-agenteye incidents resolve "$id" --yes
+id=$(agenteye --json issues list --state firing | jq -r '.issues[0].id')
+agenteye issues ack "$id"
+agenteye issues assign "$id" --assignee you@corp.com
+agenteye issues resolve "$id" --yes
 ```
 
 > **Note:** Mutations auto-skip their confirmation prompt under `--json` or when stdin isn't a TTY, so agents never hang; pass `--yes`/`-y` to skip it explicitly elsewhere.
@@ -161,7 +161,7 @@ esac
 | `keys list` / `keys create` | `{"keys": [...]}` / `{id, name, permissions, created_at, key}` (`key` shown once) |
 | `query run` | `{columns: [{name,type}], rows: [[...]], truncated, elapsed_ms}` |
 | `users list` / `settings list` | `{"users": [...]}` / `{"settings": [...]}` |
-| `alerts list` / `incidents list` | `{"alerts": [...]}` / `{"incidents": [...]}` |
+| `alerts list` / `issues list` | `{"alerts": [...]}` / `{"issues": [...]}` |
 | create/update/delete (any) | the resource object, or `{"deleted": true, "id"}` for deletes |
 | failure (any, with `--json`) | `{"error": "...", "exit_code": <n>, "status"?: <http>, "hint"?: "..."}` on stdout |
 
@@ -175,5 +175,5 @@ Each command's `--fields` accepts exactly its own item's field names. The set di
 
 - [CLI](/cloud/cli): installation, authentication, and the full option reference for every command.
 - [CLI agent skill](/cloud/agent-skills): package these recipes as a skill your coding agent can load.
-- [API keys](/cloud/access): create and scope the keys the CLI, SDK, and collector authenticate with.
+- [API keys](/cloud/admin): create and scope the keys the CLI, SDK, and collector authenticate with.
 - [Python SDK](/cloud/sdk): send events into FailproofAI Cloud so there is data for these recipes to query.

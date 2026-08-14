@@ -38,75 +38,95 @@
                 "group": "Start here",
                 "pages": [
                   "introduction",
-                  "quickstart",
                   "how-it-works",
                   "concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "Get started",
+                "pages": [
+                  "start/sign-up",
+                  "start/first-trace",
+                  "start/history",
+                  "start/first-audit",
+                  "start/first-policy",
+                  "quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "agent-support",
+                  "cloud/connect",
+                  "cloud/capture",
+                  "cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "cloud/overview",
+                  "cloud/sessions",
+                  "cloud/event-stream",
+                  "cloud/errors",
+                  "cloud/performance",
+                  "cloud/dashboards",
+                  "cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "cloud/evaluations",
+                  "cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "cloud/audits",
+                  "cloud/issues",
+                  "cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "policies",
                   "built-in-policies",
                   "custom-policies",
-                  "configuration",
-                  "agent-support",
-                  "daemon",
+                  "cloud/policy-editor",
+                  "cloud/deploy-policies",
                   "testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "dashboard",
-                  "audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "cloud/overview",
-                  "cloud/connect",
-                  "cloud/fleet",
-                  "cloud/managed-policies",
-                  "cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "cloud/event-stream",
-                  "cloud/sessions",
-                  "cloud/performance",
-                  "cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "cloud/evaluations",
-                  "cloud/evaluators",
-                  "cloud/queries",
-                  "cloud/dashboards",
-                  "cloud/audits",
-                  "cloud/alerts",
-                  "cloud/incidents",
-                  "cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "cloud/sdk",
+                  "cloud/admin",
+                  "cloud/security",
+                  "cloud/assistant",
                   "cloud/cli",
                   "cloud/cli-recipes",
-                  "cloud/agent-skills",
-                  "cloud/access",
-                  "cloud/security"
+                  "cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "dashboard",
+                  "audit",
+                  "daemon",
+                  "configuration"
+                ]
+              },
+              {
+                "group": "CLI commands",
                 "pages": [
                   "cli/config",
                   "cli/install-policies",
@@ -125,7 +145,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "reference/files",
                   "examples",
@@ -144,78 +164,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "快速开始",
                 "pages": [
                   "zh/introduction",
-                  "zh/quickstart",
                   "zh/how-it-works",
                   "zh/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "快速开始",
+                "pages": [
+                  "zh/start/sign-up",
+                  "zh/start/first-trace",
+                  "zh/start/history",
+                  "zh/start/first-audit",
+                  "zh/start/first-policy",
+                  "zh/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "zh/agent-support",
+                  "zh/cloud/connect",
+                  "zh/cloud/capture",
+                  "zh/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "zh/cloud/overview",
+                  "zh/cloud/sessions",
+                  "zh/cloud/event-stream",
+                  "zh/cloud/errors",
+                  "zh/cloud/performance",
+                  "zh/cloud/dashboards",
+                  "zh/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "zh/cloud/evaluations",
+                  "zh/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "zh/cloud/audits",
+                  "zh/cloud/issues",
+                  "zh/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "zh/policies",
                   "zh/built-in-policies",
                   "zh/custom-policies",
-                  "zh/configuration",
-                  "zh/agent-support",
-                  "zh/daemon",
+                  "zh/cloud/policy-editor",
+                  "zh/cloud/deploy-policies",
                   "zh/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "zh/dashboard",
-                  "zh/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "zh/cloud/overview",
-                  "zh/cloud/connect",
-                  "zh/cloud/fleet",
-                  "zh/cloud/managed-policies",
-                  "zh/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "zh/cloud/event-stream",
-                  "zh/cloud/sessions",
-                  "zh/cloud/performance",
-                  "zh/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "zh/cloud/evaluations",
-                  "zh/cloud/evaluators",
-                  "zh/cloud/queries",
-                  "zh/cloud/dashboards",
-                  "zh/cloud/audits",
-                  "zh/cloud/alerts",
-                  "zh/cloud/incidents",
-                  "zh/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "zh/cloud/sdk",
+                  "zh/cloud/admin",
+                  "zh/cloud/security",
+                  "zh/cloud/assistant",
                   "zh/cloud/cli",
                   "zh/cloud/cli-recipes",
-                  "zh/cloud/agent-skills",
-                  "zh/cloud/access",
-                  "zh/cloud/security"
+                  "zh/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "zh/dashboard",
+                  "zh/audit",
+                  "zh/daemon",
+                  "zh/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "zh/cli/config",
                   "zh/cli/install-policies",
@@ -234,7 +274,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "zh/reference/files",
                   "zh/examples",
@@ -253,78 +293,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "はじめに",
                 "pages": [
                   "ja/introduction",
-                  "ja/quickstart",
                   "ja/how-it-works",
                   "ja/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "はじめに",
+                "pages": [
+                  "ja/start/sign-up",
+                  "ja/start/first-trace",
+                  "ja/start/history",
+                  "ja/start/first-audit",
+                  "ja/start/first-policy",
+                  "ja/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "ja/agent-support",
+                  "ja/cloud/connect",
+                  "ja/cloud/capture",
+                  "ja/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "ja/cloud/overview",
+                  "ja/cloud/sessions",
+                  "ja/cloud/event-stream",
+                  "ja/cloud/errors",
+                  "ja/cloud/performance",
+                  "ja/cloud/dashboards",
+                  "ja/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "ja/cloud/evaluations",
+                  "ja/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "ja/cloud/audits",
+                  "ja/cloud/issues",
+                  "ja/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "ja/policies",
                   "ja/built-in-policies",
                   "ja/custom-policies",
-                  "ja/configuration",
-                  "ja/agent-support",
-                  "ja/daemon",
+                  "ja/cloud/policy-editor",
+                  "ja/cloud/deploy-policies",
                   "ja/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "ja/dashboard",
-                  "ja/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "ja/cloud/overview",
-                  "ja/cloud/connect",
-                  "ja/cloud/fleet",
-                  "ja/cloud/managed-policies",
-                  "ja/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "ja/cloud/event-stream",
-                  "ja/cloud/sessions",
-                  "ja/cloud/performance",
-                  "ja/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "ja/cloud/evaluations",
-                  "ja/cloud/evaluators",
-                  "ja/cloud/queries",
-                  "ja/cloud/dashboards",
-                  "ja/cloud/audits",
-                  "ja/cloud/alerts",
-                  "ja/cloud/incidents",
-                  "ja/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "ja/cloud/sdk",
+                  "ja/cloud/admin",
+                  "ja/cloud/security",
+                  "ja/cloud/assistant",
                   "ja/cloud/cli",
                   "ja/cloud/cli-recipes",
-                  "ja/cloud/agent-skills",
-                  "ja/cloud/access",
-                  "ja/cloud/security"
+                  "ja/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "ja/dashboard",
+                  "ja/audit",
+                  "ja/daemon",
+                  "ja/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "ja/cli/config",
                   "ja/cli/install-policies",
@@ -343,7 +403,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "ja/reference/files",
                   "ja/examples",
@@ -362,78 +422,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "시작하기",
                 "pages": [
                   "ko/introduction",
-                  "ko/quickstart",
                   "ko/how-it-works",
                   "ko/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "시작하기",
+                "pages": [
+                  "ko/start/sign-up",
+                  "ko/start/first-trace",
+                  "ko/start/history",
+                  "ko/start/first-audit",
+                  "ko/start/first-policy",
+                  "ko/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "ko/agent-support",
+                  "ko/cloud/connect",
+                  "ko/cloud/capture",
+                  "ko/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "ko/cloud/overview",
+                  "ko/cloud/sessions",
+                  "ko/cloud/event-stream",
+                  "ko/cloud/errors",
+                  "ko/cloud/performance",
+                  "ko/cloud/dashboards",
+                  "ko/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "ko/cloud/evaluations",
+                  "ko/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "ko/cloud/audits",
+                  "ko/cloud/issues",
+                  "ko/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "ko/policies",
                   "ko/built-in-policies",
                   "ko/custom-policies",
-                  "ko/configuration",
-                  "ko/agent-support",
-                  "ko/daemon",
+                  "ko/cloud/policy-editor",
+                  "ko/cloud/deploy-policies",
                   "ko/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "ko/dashboard",
-                  "ko/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "ko/cloud/overview",
-                  "ko/cloud/connect",
-                  "ko/cloud/fleet",
-                  "ko/cloud/managed-policies",
-                  "ko/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "ko/cloud/event-stream",
-                  "ko/cloud/sessions",
-                  "ko/cloud/performance",
-                  "ko/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "ko/cloud/evaluations",
-                  "ko/cloud/evaluators",
-                  "ko/cloud/queries",
-                  "ko/cloud/dashboards",
-                  "ko/cloud/audits",
-                  "ko/cloud/alerts",
-                  "ko/cloud/incidents",
-                  "ko/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "ko/cloud/sdk",
+                  "ko/cloud/admin",
+                  "ko/cloud/security",
+                  "ko/cloud/assistant",
                   "ko/cloud/cli",
                   "ko/cloud/cli-recipes",
-                  "ko/cloud/agent-skills",
-                  "ko/cloud/access",
-                  "ko/cloud/security"
+                  "ko/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "ko/dashboard",
+                  "ko/audit",
+                  "ko/daemon",
+                  "ko/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "ko/cli/config",
                   "ko/cli/install-policies",
@@ -452,7 +532,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "ko/reference/files",
                   "ko/examples",
@@ -471,78 +551,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "Primeros pasos",
                 "pages": [
                   "es/introduction",
-                  "es/quickstart",
                   "es/how-it-works",
                   "es/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "Primeros pasos",
+                "pages": [
+                  "es/start/sign-up",
+                  "es/start/first-trace",
+                  "es/start/history",
+                  "es/start/first-audit",
+                  "es/start/first-policy",
+                  "es/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "es/agent-support",
+                  "es/cloud/connect",
+                  "es/cloud/capture",
+                  "es/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "es/cloud/overview",
+                  "es/cloud/sessions",
+                  "es/cloud/event-stream",
+                  "es/cloud/errors",
+                  "es/cloud/performance",
+                  "es/cloud/dashboards",
+                  "es/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "es/cloud/evaluations",
+                  "es/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "es/cloud/audits",
+                  "es/cloud/issues",
+                  "es/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "es/policies",
                   "es/built-in-policies",
                   "es/custom-policies",
-                  "es/configuration",
-                  "es/agent-support",
-                  "es/daemon",
+                  "es/cloud/policy-editor",
+                  "es/cloud/deploy-policies",
                   "es/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "es/dashboard",
-                  "es/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "es/cloud/overview",
-                  "es/cloud/connect",
-                  "es/cloud/fleet",
-                  "es/cloud/managed-policies",
-                  "es/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "es/cloud/event-stream",
-                  "es/cloud/sessions",
-                  "es/cloud/performance",
-                  "es/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "es/cloud/evaluations",
-                  "es/cloud/evaluators",
-                  "es/cloud/queries",
-                  "es/cloud/dashboards",
-                  "es/cloud/audits",
-                  "es/cloud/alerts",
-                  "es/cloud/incidents",
-                  "es/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "es/cloud/sdk",
+                  "es/cloud/admin",
+                  "es/cloud/security",
+                  "es/cloud/assistant",
                   "es/cloud/cli",
                   "es/cloud/cli-recipes",
-                  "es/cloud/agent-skills",
-                  "es/cloud/access",
-                  "es/cloud/security"
+                  "es/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "es/dashboard",
+                  "es/audit",
+                  "es/daemon",
+                  "es/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "es/cli/config",
                   "es/cli/install-policies",
@@ -561,7 +661,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "es/reference/files",
                   "es/examples",
@@ -580,78 +680,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "Começando",
                 "pages": [
                   "pt-br/introduction",
-                  "pt-br/quickstart",
                   "pt-br/how-it-works",
                   "pt-br/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "Começando",
+                "pages": [
+                  "pt-br/start/sign-up",
+                  "pt-br/start/first-trace",
+                  "pt-br/start/history",
+                  "pt-br/start/first-audit",
+                  "pt-br/start/first-policy",
+                  "pt-br/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "pt-br/agent-support",
+                  "pt-br/cloud/connect",
+                  "pt-br/cloud/capture",
+                  "pt-br/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "pt-br/cloud/overview",
+                  "pt-br/cloud/sessions",
+                  "pt-br/cloud/event-stream",
+                  "pt-br/cloud/errors",
+                  "pt-br/cloud/performance",
+                  "pt-br/cloud/dashboards",
+                  "pt-br/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "pt-br/cloud/evaluations",
+                  "pt-br/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "pt-br/cloud/audits",
+                  "pt-br/cloud/issues",
+                  "pt-br/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "pt-br/policies",
                   "pt-br/built-in-policies",
                   "pt-br/custom-policies",
-                  "pt-br/configuration",
-                  "pt-br/agent-support",
-                  "pt-br/daemon",
+                  "pt-br/cloud/policy-editor",
+                  "pt-br/cloud/deploy-policies",
                   "pt-br/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "pt-br/dashboard",
-                  "pt-br/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "pt-br/cloud/overview",
-                  "pt-br/cloud/connect",
-                  "pt-br/cloud/fleet",
-                  "pt-br/cloud/managed-policies",
-                  "pt-br/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "pt-br/cloud/event-stream",
-                  "pt-br/cloud/sessions",
-                  "pt-br/cloud/performance",
-                  "pt-br/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "pt-br/cloud/evaluations",
-                  "pt-br/cloud/evaluators",
-                  "pt-br/cloud/queries",
-                  "pt-br/cloud/dashboards",
-                  "pt-br/cloud/audits",
-                  "pt-br/cloud/alerts",
-                  "pt-br/cloud/incidents",
-                  "pt-br/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "pt-br/cloud/sdk",
+                  "pt-br/cloud/admin",
+                  "pt-br/cloud/security",
+                  "pt-br/cloud/assistant",
                   "pt-br/cloud/cli",
                   "pt-br/cloud/cli-recipes",
-                  "pt-br/cloud/agent-skills",
-                  "pt-br/cloud/access",
-                  "pt-br/cloud/security"
+                  "pt-br/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "pt-br/dashboard",
+                  "pt-br/audit",
+                  "pt-br/daemon",
+                  "pt-br/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "pt-br/cli/config",
                   "pt-br/cli/install-policies",
@@ -670,7 +790,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "pt-br/reference/files",
                   "pt-br/examples",
@@ -689,78 +809,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "Erste Schritte",
                 "pages": [
                   "de/introduction",
-                  "de/quickstart",
                   "de/how-it-works",
                   "de/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "Erste Schritte",
+                "pages": [
+                  "de/start/sign-up",
+                  "de/start/first-trace",
+                  "de/start/history",
+                  "de/start/first-audit",
+                  "de/start/first-policy",
+                  "de/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "de/agent-support",
+                  "de/cloud/connect",
+                  "de/cloud/capture",
+                  "de/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "de/cloud/overview",
+                  "de/cloud/sessions",
+                  "de/cloud/event-stream",
+                  "de/cloud/errors",
+                  "de/cloud/performance",
+                  "de/cloud/dashboards",
+                  "de/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "de/cloud/evaluations",
+                  "de/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "de/cloud/audits",
+                  "de/cloud/issues",
+                  "de/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "de/policies",
                   "de/built-in-policies",
                   "de/custom-policies",
-                  "de/configuration",
-                  "de/agent-support",
-                  "de/daemon",
+                  "de/cloud/policy-editor",
+                  "de/cloud/deploy-policies",
                   "de/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "de/dashboard",
-                  "de/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "de/cloud/overview",
-                  "de/cloud/connect",
-                  "de/cloud/fleet",
-                  "de/cloud/managed-policies",
-                  "de/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "de/cloud/event-stream",
-                  "de/cloud/sessions",
-                  "de/cloud/performance",
-                  "de/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "de/cloud/evaluations",
-                  "de/cloud/evaluators",
-                  "de/cloud/queries",
-                  "de/cloud/dashboards",
-                  "de/cloud/audits",
-                  "de/cloud/alerts",
-                  "de/cloud/incidents",
-                  "de/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "de/cloud/sdk",
+                  "de/cloud/admin",
+                  "de/cloud/security",
+                  "de/cloud/assistant",
                   "de/cloud/cli",
                   "de/cloud/cli-recipes",
-                  "de/cloud/agent-skills",
-                  "de/cloud/access",
-                  "de/cloud/security"
+                  "de/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "de/dashboard",
+                  "de/audit",
+                  "de/daemon",
+                  "de/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "de/cli/config",
                   "de/cli/install-policies",
@@ -779,7 +919,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "de/reference/files",
                   "de/examples",
@@ -798,78 +938,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "Démarrage",
                 "pages": [
                   "fr/introduction",
-                  "fr/quickstart",
                   "fr/how-it-works",
                   "fr/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "Démarrage",
+                "pages": [
+                  "fr/start/sign-up",
+                  "fr/start/first-trace",
+                  "fr/start/history",
+                  "fr/start/first-audit",
+                  "fr/start/first-policy",
+                  "fr/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "fr/agent-support",
+                  "fr/cloud/connect",
+                  "fr/cloud/capture",
+                  "fr/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "fr/cloud/overview",
+                  "fr/cloud/sessions",
+                  "fr/cloud/event-stream",
+                  "fr/cloud/errors",
+                  "fr/cloud/performance",
+                  "fr/cloud/dashboards",
+                  "fr/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "fr/cloud/evaluations",
+                  "fr/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "fr/cloud/audits",
+                  "fr/cloud/issues",
+                  "fr/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "fr/policies",
                   "fr/built-in-policies",
                   "fr/custom-policies",
-                  "fr/configuration",
-                  "fr/agent-support",
-                  "fr/daemon",
+                  "fr/cloud/policy-editor",
+                  "fr/cloud/deploy-policies",
                   "fr/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "fr/dashboard",
-                  "fr/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "fr/cloud/overview",
-                  "fr/cloud/connect",
-                  "fr/cloud/fleet",
-                  "fr/cloud/managed-policies",
-                  "fr/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "fr/cloud/event-stream",
-                  "fr/cloud/sessions",
-                  "fr/cloud/performance",
-                  "fr/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "fr/cloud/evaluations",
-                  "fr/cloud/evaluators",
-                  "fr/cloud/queries",
-                  "fr/cloud/dashboards",
-                  "fr/cloud/audits",
-                  "fr/cloud/alerts",
-                  "fr/cloud/incidents",
-                  "fr/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "fr/cloud/sdk",
+                  "fr/cloud/admin",
+                  "fr/cloud/security",
+                  "fr/cloud/assistant",
                   "fr/cloud/cli",
                   "fr/cloud/cli-recipes",
-                  "fr/cloud/agent-skills",
-                  "fr/cloud/access",
-                  "fr/cloud/security"
+                  "fr/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "fr/dashboard",
+                  "fr/audit",
+                  "fr/daemon",
+                  "fr/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "fr/cli/config",
                   "fr/cli/install-policies",
@@ -888,7 +1048,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "fr/reference/files",
                   "fr/examples",
@@ -907,78 +1067,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "Начало работы",
                 "pages": [
                   "ru/introduction",
-                  "ru/quickstart",
                   "ru/how-it-works",
                   "ru/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "Начало работы",
+                "pages": [
+                  "ru/start/sign-up",
+                  "ru/start/first-trace",
+                  "ru/start/history",
+                  "ru/start/first-audit",
+                  "ru/start/first-policy",
+                  "ru/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "ru/agent-support",
+                  "ru/cloud/connect",
+                  "ru/cloud/capture",
+                  "ru/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "ru/cloud/overview",
+                  "ru/cloud/sessions",
+                  "ru/cloud/event-stream",
+                  "ru/cloud/errors",
+                  "ru/cloud/performance",
+                  "ru/cloud/dashboards",
+                  "ru/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "ru/cloud/evaluations",
+                  "ru/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "ru/cloud/audits",
+                  "ru/cloud/issues",
+                  "ru/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "ru/policies",
                   "ru/built-in-policies",
                   "ru/custom-policies",
-                  "ru/configuration",
-                  "ru/agent-support",
-                  "ru/daemon",
+                  "ru/cloud/policy-editor",
+                  "ru/cloud/deploy-policies",
                   "ru/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "ru/dashboard",
-                  "ru/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "ru/cloud/overview",
-                  "ru/cloud/connect",
-                  "ru/cloud/fleet",
-                  "ru/cloud/managed-policies",
-                  "ru/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "ru/cloud/event-stream",
-                  "ru/cloud/sessions",
-                  "ru/cloud/performance",
-                  "ru/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "ru/cloud/evaluations",
-                  "ru/cloud/evaluators",
-                  "ru/cloud/queries",
-                  "ru/cloud/dashboards",
-                  "ru/cloud/audits",
-                  "ru/cloud/alerts",
-                  "ru/cloud/incidents",
-                  "ru/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "ru/cloud/sdk",
+                  "ru/cloud/admin",
+                  "ru/cloud/security",
+                  "ru/cloud/assistant",
                   "ru/cloud/cli",
                   "ru/cloud/cli-recipes",
-                  "ru/cloud/agent-skills",
-                  "ru/cloud/access",
-                  "ru/cloud/security"
+                  "ru/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "ru/dashboard",
+                  "ru/audit",
+                  "ru/daemon",
+                  "ru/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "ru/cli/config",
                   "ru/cli/install-policies",
@@ -997,7 +1177,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "ru/reference/files",
                   "ru/examples",
@@ -1016,78 +1196,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "शुरू करें",
                 "pages": [
                   "hi/introduction",
-                  "hi/quickstart",
                   "hi/how-it-works",
                   "hi/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "शुरू करें",
+                "pages": [
+                  "hi/start/sign-up",
+                  "hi/start/first-trace",
+                  "hi/start/history",
+                  "hi/start/first-audit",
+                  "hi/start/first-policy",
+                  "hi/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "hi/agent-support",
+                  "hi/cloud/connect",
+                  "hi/cloud/capture",
+                  "hi/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "hi/cloud/overview",
+                  "hi/cloud/sessions",
+                  "hi/cloud/event-stream",
+                  "hi/cloud/errors",
+                  "hi/cloud/performance",
+                  "hi/cloud/dashboards",
+                  "hi/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "hi/cloud/evaluations",
+                  "hi/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "hi/cloud/audits",
+                  "hi/cloud/issues",
+                  "hi/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "hi/policies",
                   "hi/built-in-policies",
                   "hi/custom-policies",
-                  "hi/configuration",
-                  "hi/agent-support",
-                  "hi/daemon",
+                  "hi/cloud/policy-editor",
+                  "hi/cloud/deploy-policies",
                   "hi/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "hi/dashboard",
-                  "hi/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "hi/cloud/overview",
-                  "hi/cloud/connect",
-                  "hi/cloud/fleet",
-                  "hi/cloud/managed-policies",
-                  "hi/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "hi/cloud/event-stream",
-                  "hi/cloud/sessions",
-                  "hi/cloud/performance",
-                  "hi/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "hi/cloud/evaluations",
-                  "hi/cloud/evaluators",
-                  "hi/cloud/queries",
-                  "hi/cloud/dashboards",
-                  "hi/cloud/audits",
-                  "hi/cloud/alerts",
-                  "hi/cloud/incidents",
-                  "hi/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "hi/cloud/sdk",
+                  "hi/cloud/admin",
+                  "hi/cloud/security",
+                  "hi/cloud/assistant",
                   "hi/cloud/cli",
                   "hi/cloud/cli-recipes",
-                  "hi/cloud/agent-skills",
-                  "hi/cloud/access",
-                  "hi/cloud/security"
+                  "hi/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "hi/dashboard",
+                  "hi/audit",
+                  "hi/daemon",
+                  "hi/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "hi/cli/config",
                   "hi/cli/install-policies",
@@ -1106,7 +1306,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "hi/reference/files",
                   "hi/examples",
@@ -1125,78 +1325,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "Başlangıç",
                 "pages": [
                   "tr/introduction",
-                  "tr/quickstart",
                   "tr/how-it-works",
                   "tr/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "Başlangıç",
+                "pages": [
+                  "tr/start/sign-up",
+                  "tr/start/first-trace",
+                  "tr/start/history",
+                  "tr/start/first-audit",
+                  "tr/start/first-policy",
+                  "tr/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "tr/agent-support",
+                  "tr/cloud/connect",
+                  "tr/cloud/capture",
+                  "tr/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "tr/cloud/overview",
+                  "tr/cloud/sessions",
+                  "tr/cloud/event-stream",
+                  "tr/cloud/errors",
+                  "tr/cloud/performance",
+                  "tr/cloud/dashboards",
+                  "tr/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "tr/cloud/evaluations",
+                  "tr/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "tr/cloud/audits",
+                  "tr/cloud/issues",
+                  "tr/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "tr/policies",
                   "tr/built-in-policies",
                   "tr/custom-policies",
-                  "tr/configuration",
-                  "tr/agent-support",
-                  "tr/daemon",
+                  "tr/cloud/policy-editor",
+                  "tr/cloud/deploy-policies",
                   "tr/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "tr/dashboard",
-                  "tr/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "tr/cloud/overview",
-                  "tr/cloud/connect",
-                  "tr/cloud/fleet",
-                  "tr/cloud/managed-policies",
-                  "tr/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "tr/cloud/event-stream",
-                  "tr/cloud/sessions",
-                  "tr/cloud/performance",
-                  "tr/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "tr/cloud/evaluations",
-                  "tr/cloud/evaluators",
-                  "tr/cloud/queries",
-                  "tr/cloud/dashboards",
-                  "tr/cloud/audits",
-                  "tr/cloud/alerts",
-                  "tr/cloud/incidents",
-                  "tr/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "tr/cloud/sdk",
+                  "tr/cloud/admin",
+                  "tr/cloud/security",
+                  "tr/cloud/assistant",
                   "tr/cloud/cli",
                   "tr/cloud/cli-recipes",
-                  "tr/cloud/agent-skills",
-                  "tr/cloud/access",
-                  "tr/cloud/security"
+                  "tr/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "tr/dashboard",
+                  "tr/audit",
+                  "tr/daemon",
+                  "tr/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "tr/cli/config",
                   "tr/cli/install-policies",
@@ -1215,7 +1435,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "tr/reference/files",
                   "tr/examples",
@@ -1234,78 +1454,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "Bắt đầu",
                 "pages": [
                   "vi/introduction",
-                  "vi/quickstart",
                   "vi/how-it-works",
                   "vi/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "Bắt đầu",
+                "pages": [
+                  "vi/start/sign-up",
+                  "vi/start/first-trace",
+                  "vi/start/history",
+                  "vi/start/first-audit",
+                  "vi/start/first-policy",
+                  "vi/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "vi/agent-support",
+                  "vi/cloud/connect",
+                  "vi/cloud/capture",
+                  "vi/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "vi/cloud/overview",
+                  "vi/cloud/sessions",
+                  "vi/cloud/event-stream",
+                  "vi/cloud/errors",
+                  "vi/cloud/performance",
+                  "vi/cloud/dashboards",
+                  "vi/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "vi/cloud/evaluations",
+                  "vi/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "vi/cloud/audits",
+                  "vi/cloud/issues",
+                  "vi/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "vi/policies",
                   "vi/built-in-policies",
                   "vi/custom-policies",
-                  "vi/configuration",
-                  "vi/agent-support",
-                  "vi/daemon",
+                  "vi/cloud/policy-editor",
+                  "vi/cloud/deploy-policies",
                   "vi/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "vi/dashboard",
-                  "vi/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "vi/cloud/overview",
-                  "vi/cloud/connect",
-                  "vi/cloud/fleet",
-                  "vi/cloud/managed-policies",
-                  "vi/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "vi/cloud/event-stream",
-                  "vi/cloud/sessions",
-                  "vi/cloud/performance",
-                  "vi/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "vi/cloud/evaluations",
-                  "vi/cloud/evaluators",
-                  "vi/cloud/queries",
-                  "vi/cloud/dashboards",
-                  "vi/cloud/audits",
-                  "vi/cloud/alerts",
-                  "vi/cloud/incidents",
-                  "vi/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "vi/cloud/sdk",
+                  "vi/cloud/admin",
+                  "vi/cloud/security",
+                  "vi/cloud/assistant",
                   "vi/cloud/cli",
                   "vi/cloud/cli-recipes",
-                  "vi/cloud/agent-skills",
-                  "vi/cloud/access",
-                  "vi/cloud/security"
+                  "vi/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "vi/dashboard",
+                  "vi/audit",
+                  "vi/daemon",
+                  "vi/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "vi/cli/config",
                   "vi/cli/install-policies",
@@ -1324,7 +1564,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "vi/reference/files",
                   "vi/examples",
@@ -1343,78 +1583,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "Per iniziare",
                 "pages": [
                   "it/introduction",
-                  "it/quickstart",
                   "it/how-it-works",
                   "it/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "Per iniziare",
+                "pages": [
+                  "it/start/sign-up",
+                  "it/start/first-trace",
+                  "it/start/history",
+                  "it/start/first-audit",
+                  "it/start/first-policy",
+                  "it/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "it/agent-support",
+                  "it/cloud/connect",
+                  "it/cloud/capture",
+                  "it/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "it/cloud/overview",
+                  "it/cloud/sessions",
+                  "it/cloud/event-stream",
+                  "it/cloud/errors",
+                  "it/cloud/performance",
+                  "it/cloud/dashboards",
+                  "it/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "it/cloud/evaluations",
+                  "it/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "it/cloud/audits",
+                  "it/cloud/issues",
+                  "it/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "it/policies",
                   "it/built-in-policies",
                   "it/custom-policies",
-                  "it/configuration",
-                  "it/agent-support",
-                  "it/daemon",
+                  "it/cloud/policy-editor",
+                  "it/cloud/deploy-policies",
                   "it/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "it/dashboard",
-                  "it/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "it/cloud/overview",
-                  "it/cloud/connect",
-                  "it/cloud/fleet",
-                  "it/cloud/managed-policies",
-                  "it/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "it/cloud/event-stream",
-                  "it/cloud/sessions",
-                  "it/cloud/performance",
-                  "it/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "it/cloud/evaluations",
-                  "it/cloud/evaluators",
-                  "it/cloud/queries",
-                  "it/cloud/dashboards",
-                  "it/cloud/audits",
-                  "it/cloud/alerts",
-                  "it/cloud/incidents",
-                  "it/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "it/cloud/sdk",
+                  "it/cloud/admin",
+                  "it/cloud/security",
+                  "it/cloud/assistant",
                   "it/cloud/cli",
                   "it/cloud/cli-recipes",
-                  "it/cloud/agent-skills",
-                  "it/cloud/access",
-                  "it/cloud/security"
+                  "it/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "it/dashboard",
+                  "it/audit",
+                  "it/daemon",
+                  "it/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "it/cli/config",
                   "it/cli/install-policies",
@@ -1433,7 +1693,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "it/reference/files",
                   "it/examples",
@@ -1452,78 +1712,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "البداية",
                 "pages": [
                   "ar/introduction",
-                  "ar/quickstart",
                   "ar/how-it-works",
                   "ar/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "البداية",
+                "pages": [
+                  "ar/start/sign-up",
+                  "ar/start/first-trace",
+                  "ar/start/history",
+                  "ar/start/first-audit",
+                  "ar/start/first-policy",
+                  "ar/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "ar/agent-support",
+                  "ar/cloud/connect",
+                  "ar/cloud/capture",
+                  "ar/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "ar/cloud/overview",
+                  "ar/cloud/sessions",
+                  "ar/cloud/event-stream",
+                  "ar/cloud/errors",
+                  "ar/cloud/performance",
+                  "ar/cloud/dashboards",
+                  "ar/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "ar/cloud/evaluations",
+                  "ar/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "ar/cloud/audits",
+                  "ar/cloud/issues",
+                  "ar/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "ar/policies",
                   "ar/built-in-policies",
                   "ar/custom-policies",
-                  "ar/configuration",
-                  "ar/agent-support",
-                  "ar/daemon",
+                  "ar/cloud/policy-editor",
+                  "ar/cloud/deploy-policies",
                   "ar/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "ar/dashboard",
-                  "ar/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "ar/cloud/overview",
-                  "ar/cloud/connect",
-                  "ar/cloud/fleet",
-                  "ar/cloud/managed-policies",
-                  "ar/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "ar/cloud/event-stream",
-                  "ar/cloud/sessions",
-                  "ar/cloud/performance",
-                  "ar/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "ar/cloud/evaluations",
-                  "ar/cloud/evaluators",
-                  "ar/cloud/queries",
-                  "ar/cloud/dashboards",
-                  "ar/cloud/audits",
-                  "ar/cloud/alerts",
-                  "ar/cloud/incidents",
-                  "ar/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "ar/cloud/sdk",
+                  "ar/cloud/admin",
+                  "ar/cloud/security",
+                  "ar/cloud/assistant",
                   "ar/cloud/cli",
                   "ar/cloud/cli-recipes",
-                  "ar/cloud/agent-skills",
-                  "ar/cloud/access",
-                  "ar/cloud/security"
+                  "ar/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "ar/dashboard",
+                  "ar/audit",
+                  "ar/daemon",
+                  "ar/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "ar/cli/config",
                   "ar/cli/install-policies",
@@ -1542,7 +1822,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "ar/reference/files",
                   "ar/examples",
@@ -1561,78 +1841,98 @@
             "tab": "Documentation",
             "groups": [
               {
-                "group": "Start here",
+                "group": "תחילת עבודה",
                 "pages": [
                   "he/introduction",
-                  "he/quickstart",
                   "he/how-it-works",
                   "he/concepts"
                 ]
               },
               {
-                "group": "Policies",
+                "group": "תחילת עבודה",
+                "pages": [
+                  "he/start/sign-up",
+                  "he/start/first-trace",
+                  "he/start/history",
+                  "he/start/first-audit",
+                  "he/start/first-policy",
+                  "he/quickstart"
+                ]
+              },
+              {
+                "group": "Connect your agents",
+                "pages": [
+                  "he/agent-support",
+                  "he/cloud/connect",
+                  "he/cloud/capture",
+                  "he/cloud/sdk"
+                ]
+              },
+              {
+                "group": "Observe",
+                "pages": [
+                  "he/cloud/overview",
+                  "he/cloud/sessions",
+                  "he/cloud/event-stream",
+                  "he/cloud/errors",
+                  "he/cloud/performance",
+                  "he/cloud/dashboards",
+                  "he/cloud/queries"
+                ]
+              },
+              {
+                "group": "Evaluate",
+                "pages": [
+                  "he/cloud/evaluations",
+                  "he/cloud/evaluators"
+                ]
+              },
+              {
+                "group": "Find failures",
+                "pages": [
+                  "he/cloud/audits",
+                  "he/cloud/issues",
+                  "he/cloud/alerts"
+                ]
+              },
+              {
+                "group": "Prevent failures",
                 "pages": [
                   "he/policies",
                   "he/built-in-policies",
                   "he/custom-policies",
-                  "he/configuration",
-                  "he/agent-support",
-                  "he/daemon",
+                  "he/cloud/policy-editor",
+                  "he/cloud/deploy-policies",
                   "he/testing"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
               {
-                "group": "See what happened",
+                "group": "Cloud",
                 "pages": [
-                  "he/dashboard",
-                  "he/audit"
-                ]
-              },
-              {
-                "group": "FailproofAI Cloud",
-                "pages": [
-                  "he/cloud/overview",
-                  "he/cloud/connect",
-                  "he/cloud/fleet",
-                  "he/cloud/managed-policies",
-                  "he/cloud/capture"
-                ]
-              },
-              {
-                "group": "Observe your agents",
-                "pages": [
-                  "he/cloud/event-stream",
-                  "he/cloud/sessions",
-                  "he/cloud/performance",
-                  "he/cloud/errors"
-                ]
-              },
-              {
-                "group": "Analyze and act",
-                "pages": [
-                  "he/cloud/evaluations",
-                  "he/cloud/evaluators",
-                  "he/cloud/queries",
-                  "he/cloud/dashboards",
-                  "he/cloud/audits",
-                  "he/cloud/alerts",
-                  "he/cloud/incidents",
-                  "he/cloud/assistant"
-                ]
-              },
-              {
-                "group": "Build on it",
-                "pages": [
-                  "he/cloud/sdk",
+                  "he/cloud/admin",
+                  "he/cloud/security",
+                  "he/cloud/assistant",
                   "he/cloud/cli",
                   "he/cloud/cli-recipes",
-                  "he/cloud/agent-skills",
-                  "he/cloud/access",
-                  "he/cloud/security"
+                  "he/cloud/agent-skills"
                 ]
               },
               {
-                "group": "CLI reference",
+                "group": "On your machine",
+                "pages": [
+                  "he/dashboard",
+                  "he/audit",
+                  "he/daemon",
+                  "he/configuration"
+                ]
+              },
+              {
+                "group": "CLI",
                 "pages": [
                   "he/cli/config",
                   "he/cli/install-policies",
@@ -1651,7 +1951,7 @@
                 ]
               },
               {
-                "group": "Reference",
+                "group": "More",
                 "pages": [
                   "he/reference/files",
                   "he/examples",
@@ -1724,7 +2024,7 @@
     },
     {
       "source": "/agenteye/api-keys",
-      "destination": "/cloud/access"
+      "destination": "/cloud/admin"
     },
     {
       "source": "/agenteye/assistant",
@@ -1755,12 +2055,28 @@
       "destination": "/cloud/capture"
     },
     {
+      "source": "/agenteye/collector-installation",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/agenteye/collector-migration",
+      "destination": "/cloud/overview"
+    },
+    {
       "source": "/agenteye/concepts",
       "destination": "/concepts"
     },
     {
       "source": "/agenteye/dashboards",
       "destination": "/cloud/dashboards"
+    },
+    {
+      "source": "/agenteye/deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/agenteye/deployment-options",
+      "destination": "/cloud/overview"
     },
     {
       "source": "/agenteye/error-tracking",
@@ -1783,12 +2099,36 @@
       "destination": "/cloud/event-stream"
     },
     {
+      "source": "/agenteye/faq",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/agenteye/getting-started",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/agenteye/github-token",
+      "destination": "/cloud/admin"
+    },
+    {
+      "source": "/agenteye/health-monitoring",
+      "destination": "/cloud/overview"
+    },
+    {
       "source": "/agenteye/hermes-capture",
       "destination": "/cloud/capture"
     },
     {
       "source": "/agenteye/incidents",
-      "destination": "/cloud/incidents"
+      "destination": "/cloud/issues"
+    },
+    {
+      "source": "/agenteye/kubernetes-deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/agenteye/managed-deployment",
+      "destination": "/cloud/overview"
     },
     {
       "source": "/agenteye/observability",
@@ -1823,128 +2163,20 @@
       "destination": "/cloud/sessions"
     },
     {
-      "source": "/agenteye/telemetry",
-      "destination": "/cloud/performance"
-    },
-    {
-      "source": "/architecture",
-      "destination": "/how-it-works"
-    },
-    {
-      "source": "/cli/audit",
-      "destination": "/audit"
-    },
-    {
-      "source": "/cloud/api-keys",
-      "destination": "/cloud/access"
-    },
-    {
-      "source": "/cloud/cli-and-agents",
-      "destination": "/cloud/cli"
-    },
-    {
-      "source": "/cloud/cli-skill",
-      "destination": "/cloud/agent-skills"
-    },
-    {
-      "source": "/cloud/codex-capture",
-      "destination": "/cloud/capture"
-    },
-    {
-      "source": "/agenteye/collector-installation",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/agenteye/collector-migration",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/concepts",
-      "destination": "/concepts"
-    },
-    {
-      "source": "/agenteye/deployment",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/agenteye/deployment-options",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/error-tracking",
-      "destination": "/cloud/errors"
-    },
-    {
-      "source": "/cloud/evaluation-suite",
-      "destination": "/cloud/evaluators"
-    },
-    {
-      "source": "/cloud/evaluator-skill",
-      "destination": "/cloud/agent-skills"
-    },
-    {
-      "source": "/agenteye/faq",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/agenteye/getting-started",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/agenteye/github-token",
-      "destination": "/cloud/access"
-    },
-    {
-      "source": "/agenteye/health-monitoring",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/hermes-capture",
-      "destination": "/cloud/capture"
-    },
-    {
-      "source": "/agenteye/kubernetes-deployment",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/agenteye/managed-deployment",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/observability",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/openclaw-capture",
-      "destination": "/cloud/capture"
-    },
-    {
-      "source": "/cloud/python-sdk",
-      "destination": "/cloud/sdk"
-    },
-    {
-      "source": "/cloud/python-sdk-skill",
-      "destination": "/cloud/agent-skills"
-    },
-    {
       "source": "/agenteye/single-pod-deployment",
       "destination": "/cloud/overview"
     },
     {
-      "source": "/cloud/telemetry",
+      "source": "/agenteye/telemetry",
       "destination": "/cloud/performance"
     },
     {
       "source": "/agenteye/tenant-management",
-      "destination": "/cloud/access"
+      "destination": "/cloud/admin"
     },
     {
       "source": "/agenteye/troubleshooting",
       "destination": "/cloud/overview"
-    },
-    {
-      "source": "/getting-started",
-      "destination": "/quickstart"
     },
     {
       "source": "/ar/agenteye/alerts",
@@ -1952,7 +2184,7 @@
     },
     {
       "source": "/ar/agenteye/api-keys",
-      "destination": "/ar/cloud/access"
+      "destination": "/ar/cloud/admin"
     },
     {
       "source": "/ar/agenteye/assistant",
@@ -2016,7 +2248,7 @@
     },
     {
       "source": "/ar/agenteye/incidents",
-      "destination": "/ar/cloud/incidents"
+      "destination": "/ar/cloud/issues"
     },
     {
       "source": "/ar/agenteye/observability",
@@ -2063,8 +2295,156 @@
       "destination": "/ar/audit"
     },
     {
+      "source": "/ar/cloud/access",
+      "destination": "/ar/cloud/admin"
+    },
+    {
+      "source": "/ar/cloud/fleet",
+      "destination": "/ar/cloud/deploy-policies"
+    },
+    {
+      "source": "/ar/cloud/incidents",
+      "destination": "/ar/cloud/issues"
+    },
+    {
+      "source": "/ar/cloud/managed-policies",
+      "destination": "/ar/cloud/policy-editor"
+    },
+    {
       "source": "/ar/getting-started",
       "destination": "/ar/quickstart"
+    },
+    {
+      "source": "/architecture",
+      "destination": "/how-it-works"
+    },
+    {
+      "source": "/cli/audit",
+      "destination": "/audit"
+    },
+    {
+      "source": "/cloud/access",
+      "destination": "/cloud/admin"
+    },
+    {
+      "source": "/cloud/api-keys",
+      "destination": "/cloud/admin"
+    },
+    {
+      "source": "/cloud/cli-and-agents",
+      "destination": "/cloud/cli"
+    },
+    {
+      "source": "/cloud/cli-skill",
+      "destination": "/cloud/agent-skills"
+    },
+    {
+      "source": "/cloud/codex-capture",
+      "destination": "/cloud/capture"
+    },
+    {
+      "source": "/cloud/collector-installation",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/collector-migration",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/concepts",
+      "destination": "/concepts"
+    },
+    {
+      "source": "/cloud/deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/deployment-options",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/error-tracking",
+      "destination": "/cloud/errors"
+    },
+    {
+      "source": "/cloud/evaluation-suite",
+      "destination": "/cloud/evaluators"
+    },
+    {
+      "source": "/cloud/evaluator-skill",
+      "destination": "/cloud/agent-skills"
+    },
+    {
+      "source": "/cloud/faq",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/fleet",
+      "destination": "/cloud/deploy-policies"
+    },
+    {
+      "source": "/cloud/getting-started",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/github-token",
+      "destination": "/cloud/admin"
+    },
+    {
+      "source": "/cloud/health-monitoring",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/hermes-capture",
+      "destination": "/cloud/capture"
+    },
+    {
+      "source": "/cloud/incidents",
+      "destination": "/cloud/issues"
+    },
+    {
+      "source": "/cloud/kubernetes-deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/managed-deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/managed-policies",
+      "destination": "/cloud/policy-editor"
+    },
+    {
+      "source": "/cloud/observability",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/openclaw-capture",
+      "destination": "/cloud/capture"
+    },
+    {
+      "source": "/cloud/python-sdk",
+      "destination": "/cloud/sdk"
+    },
+    {
+      "source": "/cloud/python-sdk-skill",
+      "destination": "/cloud/agent-skills"
+    },
+    {
+      "source": "/cloud/single-pod-deployment",
+      "destination": "/cloud/overview"
+    },
+    {
+      "source": "/cloud/telemetry",
+      "destination": "/cloud/performance"
+    },
+    {
+      "source": "/cloud/tenant-management",
+      "destination": "/cloud/admin"
+    },
+    {
+      "source": "/cloud/troubleshooting",
+      "destination": "/cloud/overview"
     },
     {
       "source": "/de/agenteye/alerts",
@@ -2072,7 +2452,7 @@
     },
     {
       "source": "/de/agenteye/api-keys",
-      "destination": "/de/cloud/access"
+      "destination": "/de/cloud/admin"
     },
     {
       "source": "/de/agenteye/assistant",
@@ -2136,7 +2516,7 @@
     },
     {
       "source": "/de/agenteye/incidents",
-      "destination": "/de/cloud/incidents"
+      "destination": "/de/cloud/issues"
     },
     {
       "source": "/de/agenteye/observability",
@@ -2183,6 +2563,22 @@
       "destination": "/de/audit"
     },
     {
+      "source": "/de/cloud/access",
+      "destination": "/de/cloud/admin"
+    },
+    {
+      "source": "/de/cloud/fleet",
+      "destination": "/de/cloud/deploy-policies"
+    },
+    {
+      "source": "/de/cloud/incidents",
+      "destination": "/de/cloud/issues"
+    },
+    {
+      "source": "/de/cloud/managed-policies",
+      "destination": "/de/cloud/policy-editor"
+    },
+    {
       "source": "/de/getting-started",
       "destination": "/de/quickstart"
     },
@@ -2192,7 +2588,7 @@
     },
     {
       "source": "/es/agenteye/api-keys",
-      "destination": "/es/cloud/access"
+      "destination": "/es/cloud/admin"
     },
     {
       "source": "/es/agenteye/assistant",
@@ -2256,7 +2652,7 @@
     },
     {
       "source": "/es/agenteye/incidents",
-      "destination": "/es/cloud/incidents"
+      "destination": "/es/cloud/issues"
     },
     {
       "source": "/es/agenteye/observability",
@@ -2303,6 +2699,22 @@
       "destination": "/es/audit"
     },
     {
+      "source": "/es/cloud/access",
+      "destination": "/es/cloud/admin"
+    },
+    {
+      "source": "/es/cloud/fleet",
+      "destination": "/es/cloud/deploy-policies"
+    },
+    {
+      "source": "/es/cloud/incidents",
+      "destination": "/es/cloud/issues"
+    },
+    {
+      "source": "/es/cloud/managed-policies",
+      "destination": "/es/cloud/policy-editor"
+    },
+    {
       "source": "/es/getting-started",
       "destination": "/es/quickstart"
     },
@@ -2312,7 +2724,7 @@
     },
     {
       "source": "/fr/agenteye/api-keys",
-      "destination": "/fr/cloud/access"
+      "destination": "/fr/cloud/admin"
     },
     {
       "source": "/fr/agenteye/assistant",
@@ -2376,7 +2788,7 @@
     },
     {
       "source": "/fr/agenteye/incidents",
-      "destination": "/fr/cloud/incidents"
+      "destination": "/fr/cloud/issues"
     },
     {
       "source": "/fr/agenteye/observability",
@@ -2423,8 +2835,28 @@
       "destination": "/fr/audit"
     },
     {
+      "source": "/fr/cloud/access",
+      "destination": "/fr/cloud/admin"
+    },
+    {
+      "source": "/fr/cloud/fleet",
+      "destination": "/fr/cloud/deploy-policies"
+    },
+    {
+      "source": "/fr/cloud/incidents",
+      "destination": "/fr/cloud/issues"
+    },
+    {
+      "source": "/fr/cloud/managed-policies",
+      "destination": "/fr/cloud/policy-editor"
+    },
+    {
       "source": "/fr/getting-started",
       "destination": "/fr/quickstart"
+    },
+    {
+      "source": "/getting-started",
+      "destination": "/quickstart"
     },
     {
       "source": "/he/agenteye/alerts",
@@ -2432,7 +2864,7 @@
     },
     {
       "source": "/he/agenteye/api-keys",
-      "destination": "/he/cloud/access"
+      "destination": "/he/cloud/admin"
     },
     {
       "source": "/he/agenteye/assistant",
@@ -2496,7 +2928,7 @@
     },
     {
       "source": "/he/agenteye/incidents",
-      "destination": "/he/cloud/incidents"
+      "destination": "/he/cloud/issues"
     },
     {
       "source": "/he/agenteye/observability",
@@ -2543,6 +2975,22 @@
       "destination": "/he/audit"
     },
     {
+      "source": "/he/cloud/access",
+      "destination": "/he/cloud/admin"
+    },
+    {
+      "source": "/he/cloud/fleet",
+      "destination": "/he/cloud/deploy-policies"
+    },
+    {
+      "source": "/he/cloud/incidents",
+      "destination": "/he/cloud/issues"
+    },
+    {
+      "source": "/he/cloud/managed-policies",
+      "destination": "/he/cloud/policy-editor"
+    },
+    {
       "source": "/he/getting-started",
       "destination": "/he/quickstart"
     },
@@ -2552,7 +3000,7 @@
     },
     {
       "source": "/hi/agenteye/api-keys",
-      "destination": "/hi/cloud/access"
+      "destination": "/hi/cloud/admin"
     },
     {
       "source": "/hi/agenteye/assistant",
@@ -2616,7 +3064,7 @@
     },
     {
       "source": "/hi/agenteye/incidents",
-      "destination": "/hi/cloud/incidents"
+      "destination": "/hi/cloud/issues"
     },
     {
       "source": "/hi/agenteye/observability",
@@ -2663,6 +3111,22 @@
       "destination": "/hi/audit"
     },
     {
+      "source": "/hi/cloud/access",
+      "destination": "/hi/cloud/admin"
+    },
+    {
+      "source": "/hi/cloud/fleet",
+      "destination": "/hi/cloud/deploy-policies"
+    },
+    {
+      "source": "/hi/cloud/incidents",
+      "destination": "/hi/cloud/issues"
+    },
+    {
+      "source": "/hi/cloud/managed-policies",
+      "destination": "/hi/cloud/policy-editor"
+    },
+    {
       "source": "/hi/getting-started",
       "destination": "/hi/quickstart"
     },
@@ -2672,7 +3136,7 @@
     },
     {
       "source": "/it/agenteye/api-keys",
-      "destination": "/it/cloud/access"
+      "destination": "/it/cloud/admin"
     },
     {
       "source": "/it/agenteye/assistant",
@@ -2736,7 +3200,7 @@
     },
     {
       "source": "/it/agenteye/incidents",
-      "destination": "/it/cloud/incidents"
+      "destination": "/it/cloud/issues"
     },
     {
       "source": "/it/agenteye/observability",
@@ -2783,6 +3247,22 @@
       "destination": "/it/audit"
     },
     {
+      "source": "/it/cloud/access",
+      "destination": "/it/cloud/admin"
+    },
+    {
+      "source": "/it/cloud/fleet",
+      "destination": "/it/cloud/deploy-policies"
+    },
+    {
+      "source": "/it/cloud/incidents",
+      "destination": "/it/cloud/issues"
+    },
+    {
+      "source": "/it/cloud/managed-policies",
+      "destination": "/it/cloud/policy-editor"
+    },
+    {
       "source": "/it/getting-started",
       "destination": "/it/quickstart"
     },
@@ -2792,7 +3272,7 @@
     },
     {
       "source": "/ja/agenteye/api-keys",
-      "destination": "/ja/cloud/access"
+      "destination": "/ja/cloud/admin"
     },
     {
       "source": "/ja/agenteye/assistant",
@@ -2856,7 +3336,7 @@
     },
     {
       "source": "/ja/agenteye/incidents",
-      "destination": "/ja/cloud/incidents"
+      "destination": "/ja/cloud/issues"
     },
     {
       "source": "/ja/agenteye/observability",
@@ -2903,6 +3383,22 @@
       "destination": "/ja/audit"
     },
     {
+      "source": "/ja/cloud/access",
+      "destination": "/ja/cloud/admin"
+    },
+    {
+      "source": "/ja/cloud/fleet",
+      "destination": "/ja/cloud/deploy-policies"
+    },
+    {
+      "source": "/ja/cloud/incidents",
+      "destination": "/ja/cloud/issues"
+    },
+    {
+      "source": "/ja/cloud/managed-policies",
+      "destination": "/ja/cloud/policy-editor"
+    },
+    {
       "source": "/ja/getting-started",
       "destination": "/ja/quickstart"
     },
@@ -2912,7 +3408,7 @@
     },
     {
       "source": "/ko/agenteye/api-keys",
-      "destination": "/ko/cloud/access"
+      "destination": "/ko/cloud/admin"
     },
     {
       "source": "/ko/agenteye/assistant",
@@ -2976,7 +3472,7 @@
     },
     {
       "source": "/ko/agenteye/incidents",
-      "destination": "/ko/cloud/incidents"
+      "destination": "/ko/cloud/issues"
     },
     {
       "source": "/ko/agenteye/observability",
@@ -3023,6 +3519,22 @@
       "destination": "/ko/audit"
     },
     {
+      "source": "/ko/cloud/access",
+      "destination": "/ko/cloud/admin"
+    },
+    {
+      "source": "/ko/cloud/fleet",
+      "destination": "/ko/cloud/deploy-policies"
+    },
+    {
+      "source": "/ko/cloud/incidents",
+      "destination": "/ko/cloud/issues"
+    },
+    {
+      "source": "/ko/cloud/managed-policies",
+      "destination": "/ko/cloud/policy-editor"
+    },
+    {
       "source": "/ko/getting-started",
       "destination": "/ko/quickstart"
     },
@@ -3032,7 +3544,7 @@
     },
     {
       "source": "/pt-br/agenteye/api-keys",
-      "destination": "/pt-br/cloud/access"
+      "destination": "/pt-br/cloud/admin"
     },
     {
       "source": "/pt-br/agenteye/assistant",
@@ -3096,7 +3608,7 @@
     },
     {
       "source": "/pt-br/agenteye/incidents",
-      "destination": "/pt-br/cloud/incidents"
+      "destination": "/pt-br/cloud/issues"
     },
     {
       "source": "/pt-br/agenteye/observability",
@@ -3143,6 +3655,22 @@
       "destination": "/pt-br/audit"
     },
     {
+      "source": "/pt-br/cloud/access",
+      "destination": "/pt-br/cloud/admin"
+    },
+    {
+      "source": "/pt-br/cloud/fleet",
+      "destination": "/pt-br/cloud/deploy-policies"
+    },
+    {
+      "source": "/pt-br/cloud/incidents",
+      "destination": "/pt-br/cloud/issues"
+    },
+    {
+      "source": "/pt-br/cloud/managed-policies",
+      "destination": "/pt-br/cloud/policy-editor"
+    },
+    {
       "source": "/pt-br/getting-started",
       "destination": "/pt-br/quickstart"
     },
@@ -3152,7 +3680,7 @@
     },
     {
       "source": "/ru/agenteye/api-keys",
-      "destination": "/ru/cloud/access"
+      "destination": "/ru/cloud/admin"
     },
     {
       "source": "/ru/agenteye/assistant",
@@ -3216,7 +3744,7 @@
     },
     {
       "source": "/ru/agenteye/incidents",
-      "destination": "/ru/cloud/incidents"
+      "destination": "/ru/cloud/issues"
     },
     {
       "source": "/ru/agenteye/observability",
@@ -3263,6 +3791,22 @@
       "destination": "/ru/audit"
     },
     {
+      "source": "/ru/cloud/access",
+      "destination": "/ru/cloud/admin"
+    },
+    {
+      "source": "/ru/cloud/fleet",
+      "destination": "/ru/cloud/deploy-policies"
+    },
+    {
+      "source": "/ru/cloud/incidents",
+      "destination": "/ru/cloud/issues"
+    },
+    {
+      "source": "/ru/cloud/managed-policies",
+      "destination": "/ru/cloud/policy-editor"
+    },
+    {
       "source": "/ru/getting-started",
       "destination": "/ru/quickstart"
     },
@@ -3272,7 +3816,7 @@
     },
     {
       "source": "/tr/agenteye/api-keys",
-      "destination": "/tr/cloud/access"
+      "destination": "/tr/cloud/admin"
     },
     {
       "source": "/tr/agenteye/assistant",
@@ -3336,7 +3880,7 @@
     },
     {
       "source": "/tr/agenteye/incidents",
-      "destination": "/tr/cloud/incidents"
+      "destination": "/tr/cloud/issues"
     },
     {
       "source": "/tr/agenteye/observability",
@@ -3383,6 +3927,22 @@
       "destination": "/tr/audit"
     },
     {
+      "source": "/tr/cloud/access",
+      "destination": "/tr/cloud/admin"
+    },
+    {
+      "source": "/tr/cloud/fleet",
+      "destination": "/tr/cloud/deploy-policies"
+    },
+    {
+      "source": "/tr/cloud/incidents",
+      "destination": "/tr/cloud/issues"
+    },
+    {
+      "source": "/tr/cloud/managed-policies",
+      "destination": "/tr/cloud/policy-editor"
+    },
+    {
       "source": "/tr/getting-started",
       "destination": "/tr/quickstart"
     },
@@ -3392,7 +3952,7 @@
     },
     {
       "source": "/vi/agenteye/api-keys",
-      "destination": "/vi/cloud/access"
+      "destination": "/vi/cloud/admin"
     },
     {
       "source": "/vi/agenteye/assistant",
@@ -3456,7 +4016,7 @@
     },
     {
       "source": "/vi/agenteye/incidents",
-      "destination": "/vi/cloud/incidents"
+      "destination": "/vi/cloud/issues"
     },
     {
       "source": "/vi/agenteye/observability",
@@ -3503,6 +4063,22 @@
       "destination": "/vi/audit"
     },
     {
+      "source": "/vi/cloud/access",
+      "destination": "/vi/cloud/admin"
+    },
+    {
+      "source": "/vi/cloud/fleet",
+      "destination": "/vi/cloud/deploy-policies"
+    },
+    {
+      "source": "/vi/cloud/incidents",
+      "destination": "/vi/cloud/issues"
+    },
+    {
+      "source": "/vi/cloud/managed-policies",
+      "destination": "/vi/cloud/policy-editor"
+    },
+    {
       "source": "/vi/getting-started",
       "destination": "/vi/quickstart"
     },
@@ -3512,7 +4088,7 @@
     },
     {
       "source": "/zh/agenteye/api-keys",
-      "destination": "/zh/cloud/access"
+      "destination": "/zh/cloud/admin"
     },
     {
       "source": "/zh/agenteye/assistant",
@@ -3576,7 +4152,7 @@
     },
     {
       "source": "/zh/agenteye/incidents",
-      "destination": "/zh/cloud/incidents"
+      "destination": "/zh/cloud/issues"
     },
     {
       "source": "/zh/agenteye/observability",
@@ -3623,60 +4199,24 @@
       "destination": "/zh/audit"
     },
     {
+      "source": "/zh/cloud/access",
+      "destination": "/zh/cloud/admin"
+    },
+    {
+      "source": "/zh/cloud/fleet",
+      "destination": "/zh/cloud/deploy-policies"
+    },
+    {
+      "source": "/zh/cloud/incidents",
+      "destination": "/zh/cloud/issues"
+    },
+    {
+      "source": "/zh/cloud/managed-policies",
+      "destination": "/zh/cloud/policy-editor"
+    },
+    {
       "source": "/zh/getting-started",
       "destination": "/zh/quickstart"
-    },
-    {
-      "source": "/cloud/collector-installation",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/collector-migration",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/deployment",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/deployment-options",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/faq",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/getting-started",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/github-token",
-      "destination": "/cloud/access"
-    },
-    {
-      "source": "/cloud/health-monitoring",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/kubernetes-deployment",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/managed-deployment",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/single-pod-deployment",
-      "destination": "/cloud/overview"
-    },
-    {
-      "source": "/cloud/tenant-management",
-      "destination": "/cloud/access"
-    },
-    {
-      "source": "/cloud/troubleshooting",
-      "destination": "/cloud/overview"
     }
   ],
   "integrations": {

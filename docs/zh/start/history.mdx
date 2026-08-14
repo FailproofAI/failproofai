@@ -1,0 +1,99 @@
+---
+title: "Bring in the history you already have"
+description: "Step 3 of 5 — your agents have been running for months. Load that history so your first audit has real failures to find."
+icon: clock-rotate-left
+---
+
+An audit is only as good as what it can read. A machine connected this morning has one
+afternoon of sessions, and a pattern that shows up once a week is invisible in it. This step
+loads the history that is already sitting on disk.
+
+<Note>
+  This step is for the **harness path**. Custom agents instrumented with the Python SDK
+  produce events from the moment you deploy the instrumentation — there is no prior history
+  on disk to recover.
+</Note>
+
+---
+
+## What arrived on its own
+
+Connecting already backfilled some history. How much depends on how the harness stores its
+sessions:
+
+| Harness storage | Picked up on first connect |
+|---|---|
+| Session **files** — Claude Code, Codex, Copilot, Cursor, Pi, OpenClaw, Factory, Antigravity | Files modified in the **last 7 days**, read in full |
+| **SQLite** — Goose, OpenCode, Devin, Hermes | Their **whole history** |
+
+So on most machines you already have a week. Everything below is about going further back.
+
+---
+
+## Reach further back
+
+```bash
+failproofai backfill --since 6m       # re-read the last six months
+failproofai backfill --since 2026-01-01
+failproofai backfill --dry-run        # report what would be re-read, change nothing
+```
+
+Two properties worth knowing before you run it on a busy machine:
+
+- **It re-reads, it does not duplicate.** Sessions ship once, so running backfill twice
+  changes nothing the second time.
+- **It only covers what is still on disk.** Agent CLIs prune their own transcripts.
+  Anything they deleted is gone before FailproofAI ever sees it — which is the argument for
+  connecting your machines sooner rather than later.
+
+Start with `--dry-run` on the first machine so you know the size of what is coming.
+
+---
+
+## Sessions somewhere non-standard
+
+Containers, mounted VM disks, a second checkout, a shared volume — transcripts are not
+always where the harness puts them by default. Register the extra path, then backfill it:
+
+```bash
+failproofai harness add-path claude ~/work/mirror/.claude/projects
+failproofai harness add-path codex "vm-a=/mnt/vm-a/.codex/sessions"
+failproofai harness list
+failproofai backfill --since 6m
+```
+
+The optional `label=` prefix namespaces the agent ids from that path. Without it, two copies
+of the same project collapse into one confusing timeline.
+
+Two rejections exist specifically to stop silent failures: a path that **overlaps a default
+location** is refused (it would be collected twice under two ids), and **two entries sharing
+a label** are refused (they would share progress state and both re-read from zero after
+every restart).
+
+For containers, `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` — comma-separated — overrides the file
+per source. [Full command reference →](/zh/cli/harness)
+
+---
+
+## Do this on every machine that matters
+
+History lives per machine. A pattern that only appears on your CI runner will not surface
+from your laptop's transcripts. Connect and backfill the machines where the interesting
+work actually happens — the overnight runners, the shared boxes, the ones nobody watches.
+
+Unattended, that is two commands:
+
+```bash
+npm install -g failproofai
+failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY" \
+  --machine-label "ci-runner-01"
+```
+
+**analyse → Policies → the fleet view** lists every machine that has reported in, so you can
+see which ones are missing. [Deploy policies](/zh/cloud/deploy-policies) covers reading it.
+
+---
+
+<Card title="Next — Find your first failures" icon="arrow-right" href="/zh/start/first-audit">
+  Point an audit at all that history and let it tell you what is actually going wrong.
+</Card>

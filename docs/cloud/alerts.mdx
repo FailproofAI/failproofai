@@ -14,7 +14,7 @@ Find out the moment something crosses your line, on the channel your team alread
 Stop refreshing a dashboard hoping to catch a regression. Reach for an alert whenever there is a signal you would want to hear about even when nobody is looking, and have it land where you already are:
 
 - **Email**, to whoever should know.
-- **Slack**, a rich message with a button that jumps straight to the incident.
+- **Slack**, a rich message with a button that jumps straight to the issue.
 - **Webhook**, a JSON POST for PagerDuty, Opsgenie, or your own endpoint, with an optional signature so the receiver can trust it.
 - **In-dashboard**, quiet by design, for when you are tuning a rule and do not want to page anyone yet.
 
@@ -43,7 +43,7 @@ You are not limited to one kind of signal. Pick the trigger that matches how you
 | **Compound eval** | several score checks combine with any, all, or at-least-N logic, to catch a regression that only shows across scores |
 | **Per event** | a single matching event lands: a specific agent, a specific error type, or a message substring |
 
-Already staring at a failure on the [Errors page](/cloud/errors)? Every row there has a **+ alert** button that opens this same form prefilled to catch that exact failure again, so the incident you just triaged becomes the one that pages you next time.
+Already staring at a failure on the [Errors page](/cloud/errors)? Every row there has a **+ alert** button that opens this same form prefilled to catch that exact failure again, so the issue you just triaged becomes the one that pages you next time.
 
 **Where to find it:** Alerts live at `/<org-slug>/alerts`. Creating, editing, deleting, and testing rules needs **`alerts:write`**; `alerts:read` is enough to look. The recipient picker lists your org's members by name, so you can page a person without leaving the form.
 
@@ -53,11 +53,11 @@ One bad measurement should not wake you. The **M of N** noise filter controls ho
 
 ## What happens when an alert fires
 
-A breach opens an **incident** and pages your channels once. From there your team acknowledges it, assigns an owner, talks it through, and resolves it, all against a clean, attributed record. That triage workflow has its own home: see [Incidents](/cloud/incidents).
+A breach opens an **issue** and pages your channels once. From there your team acknowledges it, assigns an owner, talks it through, and resolves it, all against a clean, attributed record. That triage workflow has its own home: see [Issues](/cloud/issues).
 
 ## Related
 
-- [Incidents](/cloud/incidents): track a firing alert from open to acknowledged to resolved.
-- [Error tracking](/cloud/errors): group agent failures and promote one to an alert in a click.
-- [Dashboards](/cloud/dashboards): watch the shared boards the thresholds you alert on come from.
-- [CLI and agents](/cloud/cli): create alerts and ack incidents from your terminal, or script them into CI.
+- [Issues](/cloud/issues): track a firing alert from open to acknowledged to resolved.
+- [Errors](/cloud/errors): group agent failures and promote one to an alert in a click.
+- [Charts and boards](/cloud/dashboards): watch the shared boards the thresholds you alert on come from.
+- [Cloud CLI](/cloud/cli): create alerts and ack issues from your terminal, or script them into CI.

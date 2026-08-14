@@ -1,0 +1,160 @@
+---
+title: "Prevent it happening again"
+description: "Step 5 of 5 — turn the finding at the top of your list into a rule that runs inside the agent loop, on every machine, and verify it worked."
+icon: shield-halved
+---
+
+This is the step that closes the loop. A finding tells you what went wrong; a **policy**
+makes sure it cannot go wrong the same way again.
+
+A policy runs *inside* the agent loop. Every tool call passes through it first, and it
+returns one of three decisions:
+
+| Decision | Effect |
+|---|---|
+| **allow** | The call proceeds. |
+| **deny** | The call never runs. The agent is told why, in words it can act on. |
+| **instruct** | The call runs, and the agent gets extra context to stay on track. |
+
+---
+
+## Check whether one already exists
+
+Before writing anything: **40 policies ship in the box** — secret detection,
+destructive-command blocking, branch protection, infrastructure guards, workflow gates. A
+good share of first findings are covered by one you have not switched on.
+
+```bash
+failproofai policies              # what is enabled here
+```
+
+If the catalogue has it, enabling it is the whole step —
+[Built-in policies](/ja/built-in-policies) lists all 40 with their parameters. Come back here
+when your failure mode is specific to your codebase.
+
+---
+
+## Write it
+
+<Steps>
+
+<Step title="Draft the rule">
+  Open **fix → Policy editor** and write the source. It is a JavaScript editor: the source
+  is continuously parsed and **Publish version** stays disabled while it reports an error —
+  a version is immutable, so a source that cannot parse would mint a permanent version
+  number that only fails later, on the machine that pulls it.
+
+  ```js
+  import { customPolicies, allow, deny } from "failproofai";
+
+  customPolicies.add({
+    name: "no-production-writes",
+    description: "Block writes to paths containing 'production'",
+    match: { events: ["PreToolUse"] },
+    fn: async (ctx) => {
+      if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+      const path = ctx.toolInput?.file_path ?? "";
+      if (path.includes("production")) {
+        return deny("Writes to production paths are blocked — open a PR instead");
+      }
+      return allow();
+    },
+  });
+  ```
+
+  The box above the editor also drafts a policy from a plain-English description. It returns
+  source into a side-by-side diff; nothing changes until you select **use this**.
+</Step>
+
+<Step title="Make the denial readable">
+  This matters more than it looks. `deny("Don't do that")` gets you a retry loop.
+  `deny("Pushes to main are blocked — open a PR from a feature branch instead")` gets you a
+  pull request. The agent reads the reason and acts on it, so write it as instructions, not
+  as an error.
+</Step>
+
+<Step title="Publish a version">
+  **Publish version** mints an immutable version. Reusing an id creates the next version of
+  that policy rather than a new policy.
+</Step>
+
+</Steps>
+
+---
+
+## Roll it out in observe mode first
+
+<Steps>
+
+<Step title="Pin it to one machine">
+  Open **fix → Deploy Policies**. The page is your fleet — one row per machine, showing what
+  it enforces, when it last asked for policy, and which deployment it is actually on.
+
+  Click a machine, select **edit this machine**, add your policy, pin the version, and set
+  the effect to **observe**.
+</Step>
+
+<Step title="Apply">
+  Changes are **staged**, not applied as you click. The panel states exactly what applying
+  will write, including any policy being dropped. One visit lands as one deployment.
+</Step>
+
+<Step title="Wait, then read what it would have blocked">
+  The daemon polls every 30 seconds, verifies the SHA-256 of every artifact, and activates
+  the set atomically. In observe mode nothing is blocked — every decision is recorded.
+
+  This is the step people skip and regret. The risk is not that a rule is wrong in theory.
+  It is that a rule that looks obviously correct turns out to block something forty
+  engineers do all day.
+</Step>
+
+<Step title="Switch to enforce, then widen">
+  Once the observed decisions look right, flip the effect to **enforce** on that machine.
+  Then add the rest of the fleet.
+</Step>
+
+</Steps>
+
+<Note>
+  Policy evaluation never makes a network request. Hooks read only the daemon's last
+  verified local deployment, so a machine that loses its connection keeps enforcing what it
+  last pulled. [How that works →](/ja/daemon)
+</Note>
+
+---
+
+## Verify the loop actually closed
+
+Go back to the finding in **analyse → Issues** and close it. Then let the next audit run.
+
+If the pattern is gone, the finding does not come back — that is your confirmation, and it
+is the whole point of running audits on a schedule rather than once. If it comes back, the
+policy is not catching the real case, and the finding's evidence tells you which case you
+missed.
+
+That is one full pass of the loop: **observe → evaluate → find → prevent → observe again**.
+Each pass leaves the agent measurably more reliable than the last.
+
+---
+
+## Where to go from here
+
+<CardGroup cols={2}>
+
+<Card title="Built-in policies" icon="shield" href="/ja/built-in-policies">
+  All 40, with their parameters. Cheaper than writing your own.
+</Card>
+
+<Card title="Custom policies" icon="code" href="/ja/custom-policies">
+  The full authoring API — `PolicyContext`, event filtering, error handling.
+</Card>
+
+<Card title="Repo policies vs cloud policies" icon="code-branch" href="/ja/cloud/policy-editor#local-policies-still-work">
+  When to commit a policy to `.failproofai/policies/` instead of deploying it centrally.
+</Card>
+
+<Card title="Test it" icon="flask" href="/ja/testing">
+  Unit and end-to-end tests for a policy, before it reaches a machine.
+</Card>
+
+</CardGroup>

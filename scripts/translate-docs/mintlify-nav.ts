@@ -89,9 +89,11 @@ export function buildLanguageNav(
     // mapped onto an existing translation; the rest stay English until
     // NAV_TRANSLATIONS gains a key for them, which is better than a wrong word.
     "Start here": t.gettingStarted,
+    "Get started": t.gettingStarted,
     "Core Concepts": t.coreConcepts,
     CLI: t.cli,
     "CLI reference": t.cli,
+    "CLI commands": t.cli,
     Tools: t.tools,
     Advanced: t.advanced,
     Examples: t.examples,

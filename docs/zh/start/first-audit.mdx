@@ -1,0 +1,123 @@
+---
+title: "Find your first failures"
+description: "Step 4 of 5 — let an audit read across every session you just loaded and hand you a ranked, evidence-backed list of what is actually going wrong."
+icon: magnifying-glass
+---
+
+You now have history in the dashboard. This step turns it into a to-do list.
+
+An **audit** is a recurring investigation that reads *across* your sessions — not one run at
+a time — hunting for patterns worth fixing. Alerts catch the problems you already knew to
+watch for. Audits catch the ones you didn't.
+
+---
+
+## Set one up
+
+<Steps>
+
+<Step title="Create it">
+  Open **analyse → Audits** and create one. Give it a scope (which agents, which
+  environment) and a cadence.
+
+  From the terminal instead:
+
+  ```bash
+  agenteye audits create nightly-review --schedule-interval-secs 86400 \
+                                        --schedule-anchor 2026-08-15T02:00:00Z
+  ```
+</Step>
+
+<Step title="Pick a sensitivity">
+  One dial — **low**, **medium**, or **high** — decides how hard it looks. A noisy staging
+  agent and a locked-down production one want different settings. Start at **medium**.
+</Step>
+
+<Step title="Set the schedule anchor, and know it is UTC">
+  An audit runs at a fixed wall-clock time: `anchor + N × interval`. A daily audit anchored
+  at 09:00 runs at 09:00 every day, permanently — a slow run cannot push the schedule later,
+  and **Run now** does not re-anchor the cadence.
+
+  There is **no timezone support**. An anchor of 09:00 means 09:00 UTC wherever your team
+  sits, and it does not follow daylight saving.
+
+  <Tip>
+    Spread anchors across the working day, not across an hour. One audit occupies an agent
+    pod for up to 22 minutes, so identical anchors queue rather than run together.
+  </Tip>
+</Step>
+
+<Step title="Run it now">
+  Do not wait for the schedule. **Run now** is extra, not a reset.
+</Step>
+
+</Steps>
+
+---
+
+## Read what it found
+
+A run goes after the failure modes that actually break agents in production:
+
+| It looks for | Which shows up as |
+|---|---|
+| **Error clusters** | the same failure repeating under one root cause |
+| **Drift** | behaviour sliding away from a known-good window |
+| **Goal failure** | runs that finished cleanly and never did the job |
+| **Tool misuse** | the wrong tool, bad arguments, loops that burn calls |
+| **Cost/quality trade-offs** | where you are overpaying for output you could get cheaper |
+| **Coverage gaps** | behaviour no eval or alert is watching |
+
+Findings are ranked, biggest win first. **Every one cites its evidence** — the exact
+sessions it came from and the SQL that surfaced it — and the server discards any
+recommendation whose cited sessions do not resolve. The audit investigates; it never
+invents.
+
+Open the top finding and click through to a cited session. If you cannot see the problem in
+the evidence, the finding is not worth acting on — which is exactly what the evidence link
+is there to let you decide.
+
+---
+
+## Turn a finding into work
+
+A finding is not a ticket until someone owns it. Graduate it into an **issue** and it lands
+in the shared inbox at **analyse → Issues**, with a state, an assignee, and an append-only
+timeline that your post-mortem writes itself from. The finding and the issue stay in sync:
+triage closes the issue, and a recurrence of the finding reopens it.
+
+Every finding also carries a one-click shortcut that drafts a **recurrence alert**,
+prefilled with a sensible trigger. Close the finding, arm the alert, and the next time the
+pattern reappears you get paged instead of rediscovering it in a future audit.
+
+<Note>
+  Set the org's default alert recipients (**admin → Settings**) before you rely on this. A
+  *failed* audit run mails that list even when the audit has no email channel of its own —
+  an audit that has quietly stopped producing findings is precisely the thing nobody
+  notices.
+</Note>
+
+---
+
+## No account yet? Score this machine in one command
+
+There is a free, local version of the same idea. It replays the agent transcripts already
+on your machine through the policy engine and scores them:
+
+```bash
+npx -y failproofai audit
+```
+
+You get a 0–100 score, an agent archetype, and a ranked list of which policies would have
+caught what — rendered at `http://localhost:8020/audit`. Nothing is uploaded.
+
+It is one-shot and one-machine, where a cloud audit is recurring and reads across your whole
+fleet with an LLM investigating the patterns. Good way to see the shape of the thing before
+you connect anything. [Local audit →](/zh/audit)
+
+---
+
+<Card title="Next — Prevent it happening again" icon="arrow-right" href="/zh/start/first-policy">
+  Take the finding at the top of your list and turn it into a rule that stops it, on every
+  machine.
+</Card>

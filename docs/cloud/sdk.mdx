@@ -31,6 +31,14 @@ This page is the complete event reference.
 
 The SDK is distributed to customers as a private wheel rather than from a public package index. Your onboarding covers how to obtain it, install it, and pin it — talk to your Failproof AI contact if you need access.
 
+<Note>
+  **The SDK ships under the package name `agenteye`** — the product's former name, kept as
+  the distribution name so existing installs keep working. Everything it reports to is
+  FailproofAI Cloud. The same name on public PyPI is the [cloud CLI](/cloud/cli), a
+  different tool: install that one with `pipx` or `uv tool`, never with `pip` into the
+  environment your agent runs in.
+</Note>
+
 Once it is installed, confirm you have it:
 
 ```bash

@@ -1,0 +1,63 @@
+---
+title: "Create your workspace"
+description: "Step 1 of 5 — get an organization, sign in, and mint the one key everything else in this guide uses."
+icon: door-open
+---
+
+This is the first of five steps that take you from nothing to a deployed policy. Nothing
+here needs a sales call, and the whole path takes about ten minutes.
+
+<Steps>
+
+<Step title="Create your organization">
+  Go to **[befailproof.ai/get-started](https://befailproof.ai/get-started/)** and create an
+  organization. You get an **org slug** — every URL in the dashboard is scoped to it, like
+  `app.befailproof.ai/<org-slug>/sessions`.
+</Step>
+
+<Step title="Sign in">
+  Sign-in is passwordless. Enter your email, and the dashboard mails you a six-digit
+  one-time passcode. There is no password to store, rotate, or leak.
+
+  Membership decides who gets in. Once you are in, invite the rest of your team from
+  **admin → Users**, which mails them the same one-time passcode.
+</Step>
+
+<Step title="Create your first key">
+  Open **admin → Keys** and create a key with two permissions:
+
+  | Permission | What it lets the key do |
+  |---|---|
+  | `events:add` | Send what your agents did **up** to your organization |
+  | `policies:pull` | Receive centrally-managed policy **down** onto a machine |
+
+  Those two are the whole [machine key](/ja/cloud/admin#the-three-keys-most-teams-need).
+  Every step that follows uses it.
+
+  <Warning>
+    The secret is displayed **once**, at creation. Copy it now and put it somewhere your
+    team can find it. If you lose it, regenerate the key — you cannot read it back.
+  </Warning>
+</Step>
+
+</Steps>
+
+---
+
+## Why those two permissions and no others
+
+A key that can report activity does not need to read anything, and a key that receives
+policy does not need to change it. Scoping to exactly `events:add` + `policies:pull` means
+a key sitting on a laptop or a CI runner cannot read your organization's data, mint more
+keys, or edit a policy — even if it leaks.
+
+The two halves are also verified independently at connect time, so a key carrying one and
+not the other fails with a precise reason instead of half-working. The full catalogue, and
+the read-only and admin keys you will want later, are on
+[Access and permissions](/ja/cloud/admin).
+
+---
+
+<Card title="Next — Send your first session" icon="arrow-right" href="/ja/start/first-trace">
+  Connect a machine or instrument an agent, and watch the first run land in the dashboard.
+</Card>

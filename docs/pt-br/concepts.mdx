@@ -16,7 +16,7 @@ One rule, evaluated against one agent action. A policy has a name, the events it
 to, and a function that returns a decision. Policies come from four places — [built
 in](/pt-br/built-in-policies), [written by you](/pt-br/custom-policies), dropped into a
 `.failproofai/policies/` directory by convention, or [deployed from the
-cloud](/pt-br/cloud/managed-policies).
+cloud](/pt-br/cloud/policy-editor).
 
 **Decision**
 What a policy returns: **allow** (proceed), **deny** (block the action and tell the agent
@@ -183,7 +183,7 @@ to exactly one. Every dashboard URL is scoped under its slug (`/<org-slug>/…`)
 **API key**
 A scoped token that authenticates a client. Keys carry granular permissions — `events:add`
 for a machine that only reports, `policies:pull` for one that only receives policy,
-read-only scopes for a dashboard integration. See [Access and permissions](/pt-br/cloud/access).
+read-only scopes for a dashboard integration. See [Access and permissions](/pt-br/cloud/admin).
 
 ---
 

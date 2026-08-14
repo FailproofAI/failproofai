@@ -1,6 +1,6 @@
 ---
-title: "Evaluations"
-description: "Quality problems find you now, instead of you hearing about them in a user complaint."
+title: "Online evals"
+description: "Every finished run scored as it lands, so quality problems find you instead of a user complaint doing it."
 ---
 
 
@@ -14,7 +14,7 @@ Quality problems find you now, instead of you hearing about them in a user compl
 
 You used to spot-check a handful of runs and hope the rest were fine. Now every completed session is scored the moment it finishes, on the dimensions you care about: helpfulness, tool efficiency, factuality, safety, whatever your quality bar is. You define the score keys; FailproofAI Cloud stores, trends, and displays whatever your evaluator sends back. No run slips through unscored, and you stop learning about a regression from a support ticket.
 
-The scores ride along on the sessions grid at **`/<org-slug>/sessions`** (sidebar → *observe* → *sessions*), one badge cluster per row. Want just the runs that fell short? Filter the grid by score range, say helpfulness below 0.5, and pull up exactly the runs worth reading. Viewing scores needs the `evaluations:read` permission.
+The scores ride along on the sessions grid at **`/<org-slug>/sessions`** (sidebar → **analyse** → **Sessions**), one badge cluster per row. Want just the runs that fell short? Filter the grid by score range, say helpfulness below 0.5, and pull up exactly the runs worth reading. Viewing scores needs the `evaluations:read` permission.
 
 ## See why a run scored low
 
@@ -34,7 +34,7 @@ One run scoring low is noise; a whole cohort sliding is a signal. Saved dashboar
 
 *A saved quality dashboard trends the score keys you feature, so a slow drift is obvious long before it becomes an incident.*
 
-Dashboards live at **`/<org-slug>/dashboards`** (sidebar → *analyze* → *dashboards*), are shared across your whole organization, and each card rolls up the matching sessions: how many, the average of each featured score, and a trend sparkline. "Open in sessions" drops you straight into the pre-filtered runs behind any number. Viewing needs `dashboards:read` plus `evaluations:read`.
+The Evals tab lives at **`/<org-slug>/dashboards`** (sidebar → **analyse** → **Dashboards**), are shared across your whole organization, and each card rolls up the matching sessions: how many, the average of each featured score, and a trend sparkline. "Open in sessions" drops you straight into the pre-filtered runs behind any number. Viewing needs `dashboards:read` plus `evaluations:read`.
 
 ## Connect an evaluator once
 
@@ -47,5 +47,5 @@ Not sure which dimensions are worth scoring in the first place? The [evaluator a
 - [Evaluation suite](/cloud/evaluators): connect your evaluator, the scoring contract, and the SDK.
 - [Evaluator agent skill](/cloud/agent-skills): let a coding agent pick your score dimensions and build the evaluator.
 - [Sessions](/cloud/sessions): the run-by-run grid where scores appear.
-- [Dashboards](/cloud/dashboards): save and share quality trends across your org.
+- [Charts and boards](/cloud/dashboards): save and share quality trends across your org.
 - [Audits](/cloud/audits): FailproofAI Cloud's other automatic quality feature, for cross-session investigations.

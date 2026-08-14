@@ -4,16 +4,21 @@ description: "Drive all of FailproofAI Cloud from the terminal or a script: no d
 ---
 
 
-Drive all of FailproofAI Cloud from the terminal or a script: no dashboard round-trips. The `agenteye` CLI queries your data (sessions, event logs, evaluations) and administers your org (API keys, users, settings, alerts, incidents, saved queries), so reach for it when you want to automate a check, wire FailproofAI Cloud into CI, or let a coding agent inspect production. Every command supports a `--json` flag, so it works equally well for you at a prompt or for a coding agent (Claude Code, Cursor) shelling out and parsing the result.
+Drive all of FailproofAI Cloud from the terminal or a script: no dashboard round-trips. The `agenteye` CLI queries your data (sessions, event logs, evaluations) and administers your org (API keys, users, settings, usage, alerts, audits, issues, saved queries), so reach for it when you want to automate a check, wire FailproofAI Cloud into CI, or let a coding agent inspect production. Every command supports a `--json` flag, so it works equally well for you at a prompt or for a coding agent (Claude Code, Cursor) shelling out and parsing the result.
 
 With one binary you can:
 
 - **Read your data**: `sessions`, `events`, `evals`, `errors` (filter by time, agent, env, score).
-- **Manage your org**: `keys`, `users`, `settings`, `alerts`, `incidents`.
+- **Find failures**: `audits` (recurring investigations and their findings), `issues` (the triage inbox).
+- **Manage your org**: `keys`, `users`, `settings`, `usage`, `alerts`.
 - **Run analytics**: saved SQL and an ad-hoc query runner (`query`).
 - **Ask the AI assistant**: the same read-only analyst you chat with in the dashboard (`agent`).
 
 <Note>
+  **The cloud CLI ships under the package name `agenteye`** — the product's former name,
+  kept as the distribution name so existing installs keep working. Everything it talks to is
+  FailproofAI Cloud.
+
   Two CLIs, two jobs. **`failproofai`** configures and enforces policies on a machine
   ([reference](/cli/config)). **`agenteye`** — this page — reads and administers your cloud
   organization. You do not need it to connect a machine or to enforce policy.
@@ -190,7 +195,7 @@ Most day-to-day work runs through a handful of read commands. Start here, then r
 
 ### Everything the CLI can do
 
-The full surface follows. The CLI has **18 top-level commands**. All read commands accept `--json` and the global options above; run `agenteye <command> -h` (or `<command> <subcommand> -h`) for the exhaustive flag list and JSON shape of any one.
+The full surface follows. The CLI has **20 top-level commands**. All read commands accept `--json` and the global options above; run `agenteye <command> -h` (or `<command> <subcommand> -h`) for the exhaustive flag list and JSON shape of any one.
 
 ### Identity: `login` · `logout` · `whoami` · `orgs` · `version` · `help`
 
@@ -243,7 +248,43 @@ agenteye --json events --session-id run-001 --all --limit 1000 | jq '.events[] |
 agenteye --json evals  --session-id run-001                       # its scores + status
 ```
 
-### Manage (permission-gated): `keys` · `users` · `settings` · `alerts` · `incidents`
+### Find failures: `audits` · `issues`
+
+**`audits`**: recurring investigations and the findings they produce, referenced by **name**. `--schedule-anchor` takes an ISO 8601 instant and is **UTC** — there is no timezone support.
+
+```bash
+agenteye audits list
+agenteye audits show nightly-review
+agenteye audits create nightly-review --schedule-interval-secs 86400 \
+                                      --schedule-anchor 2026-08-15T02:00:00Z
+agenteye audits edit nightly-review --sensitivity high --yes
+agenteye audits run nightly-review                   # extra, not a reset — the cadence stays anchored
+agenteye audits runs nightly-review
+agenteye audits findings nightly-review ; agenteye audits finding <finding-id>
+agenteye audits ack <id> ; agenteye audits mute <id> ; agenteye audits dismiss <id>
+agenteye audits resolve <id> ; agenteye audits reopen <id> ; agenteye audits assign <id> you@corp.com
+agenteye audits context-show nightly-review ; agenteye audits context-set … ; agenteye audits context-refresh …
+agenteye audits delete nightly-review --yes
+```
+
+**`issues`**: the triage inbox, referenced by id (short ids accepted). `show` prints the full activity log; read it before acting.
+
+```bash
+agenteye issues list --state firing                   # also: acknowledged, resolved
+agenteye issues count
+agenteye issues show <id>
+agenteye issues ack <id>
+agenteye issues assign <id> you@corp.com              # assignee must be an operator
+agenteye issues resolve <id> --yes
+agenteye issues open --title "checkout latency regression" --severity critical
+agenteye issues comment-add <id> "root cause: upstream 5xx"
+agenteye issues comment-list <id> ; agenteye issues comment-delete <id> <comment-id>
+agenteye issues subscribe <id> ; agenteye issues unsubscribe <id> ; agenteye issues subscribers <id>
+```
+
+`--title` is required when you open a standalone issue and optional with `--alert-id`, where it defaults to the alert's name. The group was called `incidents`; the old spelling and the `incidents:*` permission tokens are still accepted.
+
+### Manage (permission-gated): `keys` · `users` · `settings` · `usage` · `alerts`
 
 **`keys`**: API keys. The secret is generated locally, sent to the server (which stores only a hash), and **shown once** on create/regenerate; capture it then. With `--json` it appears only in the `key` field. Referenced by **name**.
 
@@ -278,6 +319,13 @@ agenteye settings schema                             # what each key accepts (ty
 agenteye settings set session_ttl_secs --value 86400 --yes
 ```
 
+**`usage`**: what this org consumed in its current fixed 30-day metering window — telemetry, evaluations, workspace objects, audits, keys, and members. Read-only; it reports consumption and does not apply or display limits. Needs `usage:read`.
+
+```bash
+agenteye usage
+agenteye --json usage | jq '.usage.events_ingested'
+```
+
 **`alerts`**: alert definitions, referenced by **name**. `create` takes a positional NAME plus flags or a full JSON body via `--file`.
 
 ```bash
@@ -287,21 +335,6 @@ agenteye alerts create high-errors --file alert.json          # NAME is required
 agenteye alerts update high-errors --severity critical --yes
 agenteye alerts test high-errors --yes                        # fire a test notification
 agenteye alerts delete high-errors --yes
-```
-
-**`incidents`**: alert incidents, referenced by id (short ids accepted). `show` prints the full activity log; read it before acting.
-
-```bash
-agenteye incidents list --state firing                # also: acknowledged, resolved
-agenteye incidents count
-agenteye incidents show <id>
-agenteye incidents ack <id>
-agenteye incidents assign <id> you@corp.com           # assignee must be an operator
-agenteye incidents resolve <id> --yes
-agenteye incidents open --alert-id <id> --severity critical    # open one manually against an alert
-agenteye incidents comment-add <id> "root cause: upstream 5xx"
-agenteye incidents comment-list <id> ; agenteye incidents comment-delete <id> <comment-id>
-agenteye incidents subscribe <id> ; agenteye incidents unsubscribe <id> ; agenteye incidents subscribers <id>
 ```
 
 ### Analytics & assistant: `query` · `agent`
@@ -350,5 +383,5 @@ These make the CLI safe to script: a coding agent can branch on a `4` to prompt 
 
 - **[CLI recipes for agents](/cloud/cli-recipes)**: copy-paste query patterns, `jq` one-liners, `--fields` projections, exit-code handling, and JSON output shapes, written for coding agents driving the CLI.
 - **[CLI agent skill](/cloud/agent-skills)**: package this CLI as an installable Claude Code / Codex *skill* so a coding agent drives FailproofAI Cloud from plain-English requests.
-- **[API keys](/cloud/access)**: the permission model behind `keys create --add …`.
+- **[API keys](/cloud/admin)**: the permission model behind `keys create --add …`.
 - **[AI assistant](/cloud/assistant)**: enabling the assistant that `agent ask` talks to.

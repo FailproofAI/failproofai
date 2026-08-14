@@ -1564,7 +1564,7 @@ WHAT IT DOES
     3. Policies   — presets (combine any), Everything, or a custom pick
     4. Review     — confirms the exact files it will change, then applies
 
-FAILPROOF CLOUD
+FAILPROOFAI CLOUD
   failproofai config --connect <url> --token <key> [--machine-id <id>]
                                     Connect this machine to FailproofAI Cloud
                                     [--no-transcripts] decisions only, no transcripts

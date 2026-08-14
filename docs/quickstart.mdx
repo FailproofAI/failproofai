@@ -49,14 +49,10 @@ machine.
 <Steps>
   <Step title="Recommended, or customize?">
     **Recommended** turns on 15 policies globally for every agent CLI it finds on this
-    machine. It is the answer for almost everyone, and it is a decision, not a shortcut:
-
-    | What it covers | Policies |
-    |---|---|
-    | Secrets are blocked at the read, and flagged in output | `sanitize-jwt`, `sanitize-api-keys`, `sanitize-connection-strings`, `sanitize-private-key-content`, `sanitize-bearer-tokens`, `protect-env-vars`, `block-env-files`, `block-secrets-write` |
-    | The agent cannot switch off its own policies | `block-self-pause`, `block-failproofai-commands` |
-    | Commands that are unrecoverable when wrong | `block-sudo`, `block-curl-pipe-sh`, `block-rm-rf` |
-    | Git history stays recoverable | `block-push-master`, `block-force-push` |
+    machine. It is the answer for almost everyone, and it is a decision, not a shortcut: it
+    keeps secrets out of what the agent reads, stops the agent switching off its own
+    policies, blocks commands that are unrecoverable when wrong, and keeps git history
+    recoverable. [The 15, by name →](/policies#the-recommended-set)
 
     **Customize** opens the full wizard: pick the scope (global or just this project),
     combine [policy presets](/policies#presets), and choose exactly which agent CLIs to
@@ -198,7 +194,7 @@ config, no per-developer setup.
 </Tip>
 
 Running a fleet? Skip the git round-trip entirely — [deploy policy from the
-cloud](/cloud/managed-policies) and every connected machine picks it up on its next poll.
+cloud](/cloud/policy-editor) and every connected machine picks it up on its next poll.
 
 ---
 

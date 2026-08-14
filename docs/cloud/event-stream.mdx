@@ -35,7 +35,7 @@ Free-text search cuts straight to a message, a tool name, or an id you already h
 
 ## Where to find it
 
-The Event Stream is your org home. Sign in and it is the first surface you land on, at `/<org-slug>/`, so triage starts the second you arrive.
+The event stream is the live tail behind **analyse → Sessions**, at `/<org-slug>/`. Where a session is one finished run, this is every step from every run as it happens — which is where triage starts when you do not yet know which run went wrong.
 
 Behind it, your agents emit events through the SDK, the collector ships them to your FailproofAI Cloud server, and the stream tails them as they arrive in infrastructure you control. When you want the rolled-up view instead of the raw trail, each run's events collapse into a single row on Sessions, one click away.
 
@@ -44,7 +44,7 @@ This is the raw source of truth that every other observe surface builds on, so w
 ## Related
 
 - [Sessions](/cloud/sessions): the same events rolled up into one row per run, with a git-style execution graph.
-- [Telemetry](/cloud/performance): what your agents send and how events reach the stream.
-- [Error tracking](/cloud/errors): one triage surface for everything that went wrong.
+- [Performance](/cloud/performance): what your agents send and how events reach the stream.
+- [Errors](/cloud/errors): one triage surface for everything that went wrong.
 - [Alerts](/cloud/alerts): turn any threshold into a paging rule.
-- [CLI and agents](/cloud/cli): the same live trail from your terminal.
+- [Cloud CLI](/cloud/cli): the same live trail from your terminal.

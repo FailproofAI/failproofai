@@ -1,22 +1,163 @@
 ---
 title: Concepts
-description: "Every term these docs use — policy, decision, session, machine, deployment, finding, incident — defined once, in one place."
+description: "Every term these docs use — session, evaluation, finding, issue, policy, deployment — defined once, in the order you meet them."
 icon: book
 ---
 
 You don't need to read this page end to end. Skim it once, then come back when a word in
-another guide isn't pinned down.
+another guide isn't pinned down. It is ordered the way the loop runs, not alphabetically.
 
 ---
 
-## Policies
+## The loop
+
+**Observe → Evaluate → Find → Prevent**, then round again. Each term below belongs to one of
+those stages.
+
+| Stage | You are asking | The surface |
+|---|---|---|
+| **Observe** | What did this run actually do? | Sessions, events, errors |
+| **Evaluate** | Was it any good? | Evaluations, evaluators |
+| **Find** | What keeps going wrong? | Audits, findings, issues, alerts |
+| **Prevent** | How do I stop it? | Policies, deployments |
+
+---
+
+## Getting activity in
+
+**Agent CLI (harness)**
+One of the 12 coding agents FailproofAI plugs into without any code change: Claude Code,
+OpenAI Codex, GitHub Copilot CLI, Cursor Agent, OpenCode, Pi, Hermes, OpenClaw, Factory
+Droid, Devin CLI, Antigravity CLI, and Goose. "Harness" is the word used where the
+distinction matters — for example [`failproofai harness add-path`](/cli/harness).
+
+**Custom agent**
+An agent you wrote yourself. It reaches FailproofAI through the [Python SDK](/cloud/sdk)
+rather than by being read off disk. The two paths are complementary and most teams run both.
+
+**Machine**
+One host, identified to the cloud by a stable **machine id** and shown under a
+human-readable **machine label** (the hostname, by default). The id is what your fleet
+history is keyed on; the label is only for reading. Two hosts that happen to share a
+hostname stay distinct.
+
+**Environment**
+A label for what a machine or run belongs to: `production`, `staging`, `dev`, `local`. Set
+once, attached to everything, and available as a filter almost everywhere in the dashboard.
+
+**Transcript**
+The agent CLI's own record of a session, in its own format, in its own location.
+FailproofAI reads transcripts; it never writes to them. They contain prompts, file contents,
+and command output — which is why sending them to the cloud is an explicit, disclosed
+choice.
+
+**Backfill**
+Re-reading history the collector has already read past — after connecting a machine late,
+adding a capture path, or re-enrolling a host. Sessions ship once, so backfilling twice
+duplicates nothing. See [`failproofai backfill`](/cli/backfill).
+
+---
+
+## Observe
+
+**Session**
+One agent run, identified by a `session_id` — the trace of everything it did from first
+prompt to final answer. In the cloud, a session is every event sharing that id, rolled into
+one row and drawn as an execution graph.
+
+**Event**
+The smallest unit of recorded data: one step an agent took. `tool_use`, `tool_result`,
+`model_request`, `model_response`, `hook_triggered`, `hook_completed`, `error`,
+`agent_start`, `agent_end`, and the human-in-the-loop events.
+
+**Agent**
+A named actor inside a run, identified by an `agent_id`. One run can involve several — a
+planner that spawns a summarizer, for example. Sub-agents carry a `parent_id`, which is what
+puts them on their own lane in the execution graph.
+
+**Context-window fill**
+How much of a model's context window a response consumed, stamped on `model_response` events
+for recognized models. Makes prompt growth and an approaching compaction visible before they
+bite.
+
+**Hook activity**
+The local decision log: one entry per evaluated decision, allows included, with the policy,
+the tool, the session, the reason, and how long it took. Read by the
+[local dashboard](/dashboard), and shipped to the cloud on a connected machine.
+
+---
+
+## Evaluate
+
+**Evaluation**
+A quality score for a finished run, produced by a scoring service **you** run. Opt-in: until
+you connect one, runs are recorded but not scored. Each evaluation can carry several named
+scores, each with a line of reasoning.
+
+**Score key**
+The name of one dimension your evaluator reports — `helpfulness`, `factuality`,
+`tool_efficiency`, whatever your quality bar is. You define them; the cloud stores, trends,
+and displays whatever you send.
+
+**Evaluator**
+Your scoring service. The cloud POSTs a finished run's transcript to it and stores what comes
+back. FailproofAI ships no default evaluator — the scoring logic is yours. See
+[Build an evaluator](/cloud/evaluators).
+
+**Saved query**
+A named, shared SQL query over your events and evaluations. Read-only by construction — only
+`SELECT` and `WITH`, with a statement timeout and a row cap.
+
+**Board**
+A shared, org-wide set of saved queries rendered as charts, under **analyse → Dashboards**.
+Not to be confused with the [local dashboard](/dashboard), which runs on your own machine
+and has nothing to do with the cloud.
+
+---
+
+## Find failures
+
+**Audit (cloud)**
+A recurring investigation that mines your sessions *across* runs for failure patterns nobody
+wrote a rule for: error clusters, drift, goal failures, tool misuse, coverage gaps. Where an
+alert watches something you already know about, an audit tells you what to look at next.
+
+**Audit (local)**
+A different feature that shares the word. [`failproofai audit`](/audit) replays the
+transcripts already on *this* machine through the policy engine and scores your agent's
+habits — one-shot, offline, no account. The cloud audit is scheduled, fleet-wide, and
+LLM-driven.
+
+**Sensitivity**
+One dial — low, medium, or high — deciding how hard a cloud audit looks. A noisy staging
+agent and a locked-down production one want different settings.
+
+**Finding**
+One ranked, evidence-backed result from an audit run. Names a pattern, links the exact
+sessions and events behind it, and carries its own triage lifecycle. A finding whose cited
+evidence does not resolve is discarded by the server rather than shown to you.
+
+**Alert rule**
+A rule that fires when something crosses a threshold you set — error rate, p95 latency, token
+spend, an evaluator score, a custom SQL result, or a single matching event. When it fires it
+opens an issue and notifies your channels.
+
+**Issue**
+An open item of work, with a lifecycle (acknowledge → assign → resolve) and an append-only,
+attributed activity timeline. It is opened by an alert breach, by an audit finding, or by a
+person. One alert holds at most one open issue at a time, so a flapping rule cannot bury
+you. Previously called an *incident*; the old URLs and permission names still work.
+
+---
+
+## Prevent
 
 **Policy**
-One rule, evaluated against one agent action. A policy has a name, the events it listens
-to, and a function that returns a decision. Policies come from four places — [built
-in](/built-in-policies), [written by you](/custom-policies), dropped into a
-`.failproofai/policies/` directory by convention, or [deployed from the
-cloud](/cloud/managed-policies).
+One rule, evaluated against one agent action. A policy has a name, the events it listens to,
+and a function that returns a decision. Policies come from four places —
+[built in](/built-in-policies), [written by you](/custom-policies), dropped into a
+`.failproofai/policies/` directory by convention, or
+[published in the cloud](/cloud/policy-editor).
 
 **Decision**
 What a policy returns: **allow** (proceed), **deny** (block the action and tell the agent
@@ -26,24 +167,33 @@ carry a message too — useful for confirming a check passed rather than staying
 **Hook event**
 The moment a policy runs. `PreToolUse` (before a tool call), `PostToolUse` (after it),
 `UserPromptSubmit`, `Stop` (the agent is about to finish its turn), `SubagentStop`,
-`SessionStart`, `SessionEnd`, `Notification`, `PreCompact`. Not every agent CLI fires
-every event — see [the support matrix](/agent-support).
+`SessionStart`, `SessionEnd`, `Notification`, `PreCompact`. Not every agent CLI fires every
+event — see [the support matrix](/agent-support).
 
-**Agent CLI (harness)**
-One of the 12 coding agents FailproofAI hooks into: Claude Code, OpenAI Codex, GitHub
-Copilot CLI, Cursor Agent, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin CLI,
-Antigravity CLI, and Goose. "Harness" is the word used where the distinction matters —
-for example [`failproofai harness add-path`](/cli/harness).
+**Version**
+An immutable snapshot of one policy's source, published from the policy editor. Reusing a
+policy id mints the next version rather than a new policy, so what a machine ran last Tuesday
+can always be read back.
+
+**Deployment**
+A numbered, immutable snapshot of the whole policy set assigned to a machine. The daemon
+fetches a deployment, verifies each artifact's digest, and switches to it atomically.
+`--status` and the dashboard both report which deployment a machine is *actually* on — which
+is how you tell "rolled out" from "rolled out everywhere."
+
+**Effect (`enforce` / `observe`)**
+Whether a cloud-managed policy's verdict is acted on or recorded and discarded. `observe`
+lets you measure a new rule against real traffic before it can block anyone.
 
 **Scope**
 Where a piece of configuration lives: **project** (`.failproofai/`, committed), **local**
-(`.failproofai/*.local.json`, gitignored), or **global** (`~/.failproofai/`). Policies
-merge across all three; see [Configuration](/configuration#merge-rules).
+(`.failproofai/*.local.json`, gitignored), or **global** (`~/.failproofai/`). Policies merge
+across all three; see [Configuration](/configuration#merge-rules).
 
 **Preset**
 A themed bundle of built-in policies the setup wizard offers — *Secrets & data*, *Git
-safety*, *Ship discipline*, *Cloud & infra*. Presets are additive: tick several and you
-get the union.
+safety*, *Ship discipline*, *Cloud & infra*. Presets are additive: tick several and you get
+the union.
 
 **Convention policy**
 A policy file discovered automatically because of where it sits, with no configuration at
@@ -51,146 +201,40 @@ all. Any file matching `*policies.{js,mjs,ts}` in `.failproofai/policies/` (proj
 `~/.failproofai/policies/` (user) is loaded on the next hook event.
 
 **Pause**
-A time-boxed suspension of local enforcement for **one session**. Always expires on its
-own — 30 minutes by default, 8 hours maximum, never unbounded. Cloud-managed policies keep
-enforcing through a pause, and agents cannot pause on their own behalf while
-`block-self-pause` is on. See [`failproofai config --pause`](/cli/config#pausing-enforcement).
+A time-boxed suspension of local enforcement for **one session**. Always expires on its own —
+30 minutes by default, 8 hours maximum, never unbounded. Cloud-managed policies keep enforcing
+through a pause, and agents cannot pause on their own behalf while `block-self-pause` is on.
+See [`failproofai config --pause`](/cli/config#pausing-enforcement).
 
 **Fail closed**
-The property that a policy which cannot answer denies rather than allows. On a
-configured machine, that is what makes stopping the service a way to stop working, not a
-way to work unguarded. See [the daemon](/daemon#fail-closed).
+The property that a policy which cannot answer denies rather than allows. On a configured
+machine, that is what makes stopping the service a way to stop working, not a way to work
+unguarded. See [the daemon](/daemon#fail-closed).
 
 ---
 
-## What runs on a machine
+## What runs where
 
 **`failproofai`**
 The CLI. Runs setup, installs and lists policies, launches the local dashboard, runs the
-audit, and connects the machine to the cloud.
+local audit, and connects the machine to the cloud.
 
 **`failproofaid`**
 The background service that evaluates policy on a configured machine, collects what your
 agents did, and exchanges it with the cloud. Installed by setup as a system service that
 starts at boot and survives logout. See [the daemon](/daemon).
 
-**Machine**
-One host, identified to the cloud by a stable **machine id** and shown under a
-human-readable **machine label** (the hostname, by default). The id is what your fleet
-history is keyed on; the label is only for reading. Two hosts that happen to share a
-hostname stay distinct.
-
-**Environment**
-A label for what a machine or run belongs to: `production`, `staging`, `dev`, `local`.
-Set once, attached to everything, and available as a filter almost everywhere in the cloud
-dashboard.
-
-**Deployment**
-A numbered, immutable snapshot of the policy set assigned to a machine. The daemon fetches
-a deployment, verifies each artifact's digest, and switches to it atomically. `--status`
-and the cloud dashboard both report which deployment a machine is actually on — which is
-how you tell "rolled out" from "rolled out everywhere."
-
-**Effect (`enforce` / `observe`)**
-Whether a cloud-managed policy's verdict is acted on or recorded and discarded. `observe`
-lets you measure a new rule against real traffic before it can block anyone.
-
----
-
-## What gets recorded
-
-**Hook activity**
-The local decision log: one entry per evaluated decision, allows included, with the policy, the tool, the
-session, the reason, and how long it took. Read by the local dashboard, and shipped to the
-cloud on a connected machine.
-
-**Transcript**
-The agent CLI's own record of a session, in its own format, in its own location.
-FailproofAI reads transcripts; it never writes to them. They contain prompts, file
-contents, and command output — which is why sending them to the cloud is an explicit,
-disclosed choice.
-
-**Session**
-One agent run, identified by a `session_id`. In the cloud, a session is every event
-sharing that id, rolled into one row and drawn as an execution graph.
-
-**Event**
-The smallest unit of recorded data: one step an agent took. `tool_use`, `tool_result`,
-`model_request`, `model_response`, `hook_triggered`, `hook_completed`, `error`,
-`agent_start`, `agent_end`, and the human-in-the-loop events.
-
-**Agent**
-A named actor inside a run, identified by an `agent_id`. One run can involve several — a
-planner that spawns a summarizer, for example. Sub-agents carry a `parent_id`, which is
-what puts them on their own lane in the execution graph.
-
-**Context-window fill**
-How much of a model's context window a response consumed, stamped on `model_response`
-events for recognized models. Makes prompt growth and an approaching compaction visible
-before they bite.
-
----
-
-## Quality and operations, in the cloud
-
-**Evaluation**
-A quality score for a finished run, produced by a scoring service **you** run. Opt-in:
-until you connect one, runs are recorded but not scored. Each evaluation can carry several
-named scores, each with a line of reasoning.
-
-**Score key**
-The name of one dimension your evaluator reports — `helpfulness`, `factuality`,
-`tool_efficiency`, whatever your quality bar is. You define them; the cloud stores, trends,
-and displays whatever you send.
-
-**Evaluator**
-Your scoring service. The cloud POSTs a finished run's transcript to it and stores what
-comes back. FailproofAI ships no default evaluator — the scoring logic is yours. See
-[Evaluators](/cloud/evaluators).
-
-**Saved query**
-A named, shared SQL query over your events and evaluations. Read-only by construction —
-only `SELECT` and `WITH`, with a statement timeout and a row cap.
-
-**Dashboard (cloud)**
-A shared, org-wide board built from saved queries rendered as charts. Not to be confused
-with the [local dashboard](/dashboard), which runs on your own machine.
-
-**Alert rule**
-A rule that fires when something crosses a threshold you set — error rate, p95 latency,
-token spend, an evaluator score, a custom SQL result, or a single matching event. When it
-fires it opens an incident and notifies your channels.
-
-**Incident**
-An open issue created when an alert fires, with a lifecycle (acknowledge → assign →
-resolve) and an append-only, attributed activity timeline. One alert holds at most one open
-incident at a time, so a flapping rule cannot bury you.
-
-**Audit (cloud)**
-A recurring investigation that mines your sessions *across* runs for failure patterns
-nobody wrote a rule for: error clusters, drift, goal failures, tool misuse, coverage gaps.
-Where an alert watches something you already know about, an audit tells you what to look at
-next.
-
-**Finding**
-One ranked, evidence-backed result from an audit run. Names a pattern, links the exact
-sessions and events behind it, and carries its own triage lifecycle.
-
 **Organization**
-Your isolated workspace in the cloud. Users, keys, machines, policies, and data all belong
-to exactly one. Every dashboard URL is scoped under its slug (`/<org-slug>/…`).
+Your isolated workspace in the cloud. Users, keys, machines, policies, and data all belong to
+exactly one. Every dashboard URL is scoped under its slug (`/<org-slug>/…`).
 
 **API key**
 A scoped token that authenticates a client. Keys carry granular permissions — `events:add`
-for a machine that only reports, `policies:pull` for one that only receives policy,
-read-only scopes for a dashboard integration. See [Access and permissions](/cloud/access).
+for a machine that only reports, `policies:pull` for one that only receives policy, read-only
+scopes for a dashboard integration. See [Admin](/cloud/admin).
 
 ---
 
-<Note>
-  Two things share the word **audit**, and they are different features. The [local
-  audit](/audit) replays the transcripts already on your machine through the policy engine
-  and scores your agent's habits. The [cloud audit](/cloud/audits) is a scheduled
-  investigation across your organization's sessions that produces ranked findings. The
-  local one needs no account; the cloud one needs a connected fleet.
-</Note>
+<Card title="Next — Create your workspace" icon="arrow-right" href="/start/sign-up">
+  Enough vocabulary. Five steps to a deployed policy.
+</Card>

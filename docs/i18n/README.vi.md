@@ -24,7 +24,7 @@ trước khi chúng trở thành sự cố. Không độ trễ. Chạy cục b�
 </div>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ---

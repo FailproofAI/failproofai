@@ -33,8 +33,8 @@ const ASSET_RE = /\.(?:png|jpe?g|gif|svg|webp|ico|mp4|webm)$/i;
  * Re-point the root README's repo-root-relative paths so they still resolve
  * from `docs/i18n/README.<lang>.md`, two directories deeper.
  *
- * The root README lives AT the repo root, so it writes `readme-arch-hq.gif` and
- * `assets/logos/claude.svg` — correct there. The translator is prompt-forbidden
+ * The root README lives AT the repo root, so it writes repo-root-relative paths
+ * like `assets/readme-arch-hq.gif` and `assets/logos/claude.svg` — correct there. The translator is prompt-forbidden
  * from touching paths ("Preserve all URLs and paths", translator.ts), and
  * rightly so, but that means every translated copy inherited those paths
  * verbatim into a directory two levels down, where they resolve against

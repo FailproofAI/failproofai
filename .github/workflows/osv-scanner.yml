@@ -18,8 +18,10 @@
 # without needing a second channel. Posting is itself optional: it silently
 # no-ops when the SLACK_WEBHOOK_URL repository secret isn't set.
 #
-# Triage / allow-listing unfixable advisories: see SECURITY.md and osv-scanner.toml
-# (auto-loaded from the repo root by OSV-Scanner).
+# Triage / allow-listing unfixable advisories: see .github/SECURITY.md and
+# .github/osv-scanner.toml. OSV-Scanner only auto-discovers a config sitting in
+# the SCANNED file's own directory — it does not walk parents — so the config
+# lives next to this workflow and is passed explicitly via `--config` below.
 #
 # Third-party actions are pinned to a commit SHA (we're a supply-chain tool —
 # practice what we preach).
@@ -59,6 +61,7 @@ jobs:
         uses: google/osv-scanner-action/osv-scanner-action@f4cfcc01edc9c8b756a9b873b7a623ca674da51e # v2.3.8
         with:
           scan-args: |-
+            --config=.github/osv-scanner.toml
             --lockfile=bun.lock
             --lockfile=Cargo.lock
       # Only the schedule run notifies — nothing on main touched the lockfile,

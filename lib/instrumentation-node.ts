@@ -1,19 +1,19 @@
 /**
  * Node.js-only instrumentation logic.
- * Dynamically imported from instrumentation.ts only when NEXT_RUNTIME === 'nodejs',
+ * Dynamically imported from the root instrumentation.ts only when NEXT_RUNTIME === 'nodejs',
  * so that Turbopack/Edge compilation never sees Node.js APIs like process.arch or node:os.
  */
 export async function registerNode() {
   const os = await import("node:os");
 
-  const { initLogger } = await import("./lib/logger");
+  const { initLogger } = await import("./logger");
   initLogger();
 
-  const { initTelemetry, trackEvent, flushTelemetry } = await import("./lib/telemetry");
+  const { initTelemetry, trackEvent, flushTelemetry } = await import("./telemetry");
   await initTelemetry();
 
-  const { hashToId } = await import("./lib/telemetry-id");
-  const { version } = await import("./package.json");
+  const { hashToId } = await import("./telemetry-id");
+  const { version } = await import("../package.json");
 
   trackEvent("app_started", {
     version,

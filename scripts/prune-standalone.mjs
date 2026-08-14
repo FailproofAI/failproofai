@@ -119,21 +119,25 @@ const STANDALONE_ROOT_PRUNE = [
   // plugin/extension dirs are shipped from the package root by `files`, not
   // from inside the standalone bundle.
   "integration-suite", "pi-extension", "openclaw-plugin", "docker-hook-sync",
+  // Brand/reference material: the audit design lab, the CLI logo SVGs, and the
+  // 11 MB README animation that moved in here out of the repo root. The
+  // dashboard serves its own icons from public/ and imports nothing from
+  // assets/, so every byte of this was dead weight in the tarball.
+  "assets", "templates",
 ];
 const STANDALONE_ROOT_PRUNE_FILES = [
-  // Top-level markdown / licenses / docs
-  "README.md", "CHANGELOG.md", "CLAUDE.md", "AGENTS.md", "CONTRIBUTING.md",
-  "LICENSE", "Dockerfile.docs",
+  // Top-level markdown / licenses / docs. CONTRIBUTING.md and SECURITY.md now
+  // live under .github/ and Dockerfile.docs under docs/ — both directories are
+  // pruned wholesale above, so they need no entry here.
+  "README.md", "CHANGELOG.md", "CLAUDE.md", "AGENTS.md", "LICENSE",
   // Build / lint / test config (applied at build time, not runtime)
-  "tsconfig.json", "eslint.config.mjs", "tailwind.config.ts", "components.json",
+  "tsconfig.json", "eslint.config.mjs",
   "vitest.config.mts", "vitest.config.e2e.mts",
   // Lockfiles
   "bun.lock", "bun.lockb", "package-lock.json", "yarn.lock",
   // Rust workspace manifests, siblings of the `target`/`crates` prune above.
-  "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "osv-scanner.toml",
-  // 11 MB README animation. Traced because it sits in the repo root and is
-  // referenced from README.md; the running dashboard never serves it.
-  "readme-arch-hq.gif",
+  // osv-scanner.toml moved to .github/, pruned with that directory.
+  "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
   // Incremental typechecker state — regenerated on every build, read by nothing
   // at runtime, and routinely a few hundred KB.
   "tsconfig.tsbuildinfo", "next-env.d.ts", "postcss.config.mjs",

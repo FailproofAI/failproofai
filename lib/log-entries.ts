@@ -242,7 +242,8 @@ async function parseFileContent(fileContent: string, source: LogSource): Promise
           const toolUseResult = raw.toolUseResult as Record<string, unknown> | undefined;
           const agentId = (typeof toolUseResult?.agentId === "string") ? toolUseResult.agentId : undefined;
 
-          // Detect subagent IDs (mirrors extractSubagentIds)
+          // Detect subagent IDs — hex-only, matching the id format Claude Code
+          // writes into toolUseResult.agentId.
           if (agentId && /^[a-f0-9]+$/.test(agentId)) {
             subagentIdSet.add(agentId);
           }

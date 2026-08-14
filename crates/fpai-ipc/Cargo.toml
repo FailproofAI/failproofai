@@ -11,6 +11,3 @@ publish = false
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 libc = "0.2"
-
-[dev-dependencies]
-proptest = "1"

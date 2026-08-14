@@ -24,7 +24,7 @@ Claude Code 및 Codex에 연결됩니다. 루프, 위험한 동작, 시크릿 �
 </div>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ---

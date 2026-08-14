@@ -56,8 +56,8 @@ describe("rebaseReadmePaths", () => {
     expect(
       rebaseReadmePaths('<img src="assets/logos/claude.svg" width="56" />'),
     ).toBe(`<img src="${RAW}/assets/logos/claude.svg" width="56" />`);
-    expect(rebaseReadmePaths("![demo](readme-arch-hq.gif)")).toBe(
-      `![demo](${RAW}/readme-arch-hq.gif)`,
+    expect(rebaseReadmePaths("![demo](assets/readme-arch-hq.gif)")).toBe(
+      `![demo](${RAW}/assets/readme-arch-hq.gif)`,
     );
   });
 
@@ -151,14 +151,14 @@ describe("rebaseReadmePaths", () => {
     // the later src/srcset passes reading stale offsets and rewriting the
     // literal sample paths inside the block.
     const fenced =
-      "![arch](readme-arch-hq.gif)\n" +
+      "![arch](assets/readme-arch-hq.gif)\n" +
       "\n" +
       "```html\n" +
       '<img src="assets/logos/claude.svg" />\n' +
       '<source srcset="assets/logos/claude-dark.svg" />\n' +
       "```";
     expect(rebaseReadmePaths(fenced)).toBe(
-      `![arch](${RAW}/readme-arch-hq.gif)\n` +
+      `![arch](${RAW}/assets/readme-arch-hq.gif)\n` +
         "\n" +
         "```html\n" +
         '<img src="assets/logos/claude.svg" />\n' +

@@ -24,7 +24,7 @@ prima che diventino incidenti. Zero latenza. Eseguito localmente.
 </div>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/assets/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ---

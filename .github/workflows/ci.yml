@@ -48,13 +48,6 @@ jobs:
               MISMATCH=1
             fi
           done
-          # Check optionalDependencies in wrapper
-          for dep_version in $(jq -r '.optionalDependencies // {} | values[]' packages/wrapper/package.json 2>/dev/null || true); do
-            if [ "$dep_version" != "$ROOT_VERSION" ]; then
-              echo "::error file=packages/wrapper/package.json::Dependency version mismatch: $dep_version, expected $ROOT_VERSION"
-              MISMATCH=1
-            fi
-          done
           # The daemon binaries DO ship as npm platform packages
           # (@failproofai/failproofaid-<os>-<arch>), but their pins are injected
           # into package.json at publish time by

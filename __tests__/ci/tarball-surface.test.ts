@@ -73,10 +73,26 @@ beforeAll(() => {
   // test's business and would make it minutes long.
   const raw = execFileSync(
     "npm",
-    ["pack", "--dry-run", "--json", "--ignore-scripts"],
+    ["pack", "--dry-run", "--json", "--ignore-scripts", "--loglevel=error"],
     { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   );
-  files = JSON.parse(raw)[0].files.map((f: { path: string }) => f.path);
+
+  // `--json` does not guarantee that stdout is ONLY json. The npm on this
+  // machine (11.x) emits a clean array; the one on the CI runner prefixes it
+  // with a `Bundled 3 …` notice, which made `JSON.parse(raw)` throw
+  // "Unexpected token 'B'" — green locally, red in CI, for a reason that has
+  // nothing to do with the tarball. Slice from the opening bracket instead of
+  // trusting the whole stream, so this test reports on packaging and not on
+  // whichever npm the runner happens to ship.
+  const start = raw.indexOf("[");
+  if (start === -1) {
+    throw new Error(
+      `npm pack --json produced no JSON array. Raw output:\n${raw.slice(0, 500)}`,
+    );
+  }
+  files = JSON.parse(raw.slice(start))[0].files.map(
+    (f: { path: string }) => f.path,
+  );
 }, 300_000);
 
 describe("npm tarball surface", () => {

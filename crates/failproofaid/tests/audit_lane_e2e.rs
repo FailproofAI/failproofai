@@ -124,8 +124,12 @@ fn wait_for(path: &Path, within: Duration) -> bool {
     false
 }
 
+/// Spelled out rather than calling `paths::audit_schedule_path()`, so this
+/// asserts the LOCATION as well as the round trip: a test that derived the path
+/// from the code under test would keep passing if the daemon moved the file
+/// somewhere the dashboard never reads. Layout 4 moved it out of `state/`.
 fn schedule_path(home: &Path) -> PathBuf {
-    home.join("state").join("audit-schedule.json")
+    home.join("audit").join("schedule.json")
 }
 
 fn write_schedule(home: &Path, body: &str) {
@@ -312,9 +316,12 @@ fn a_schedule_that_cannot_be_written_is_reported_once_not_once_a_tick() {
         r#"{"audit":{"auto":true,"interval_days":7}}"#,
     )
     .unwrap();
-    // `state` as a regular file: create_dir_all fails with EEXIST, which is the
-    // same shape as a read-only mount or a full disk and needs no root to set up.
-    std::fs::write(home.join("state"), "not a directory").unwrap();
+    // `audit` as a regular file: create_dir_all fails with EEXIST, which is the
+    // same shape as a read-only mount or a full disk and needs no root to set
+    // up. It was `state` until layout 4 moved the schedule into `audit/` — and
+    // blocking the wrong directory does not fail loudly here, it just lets the
+    // write succeed and the test assert against a complaint that never comes.
+    std::fs::write(home.join("audit"), "not a directory").unwrap();
 
     let marker = home.join("ran");
     let daemon = spawn_daemon(&home, &stub_cli(&marker, 0));

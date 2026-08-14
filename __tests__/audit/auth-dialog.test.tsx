@@ -13,7 +13,7 @@ import { render, screen, cleanup } from "@testing-library/react";
 // useEffect dep array, so a fresh fn each render would re-fire the effect and
 // loop forever (the real usePostHog returns a useCallback-stable fn).
 const { captureMock } = vi.hoisted(() => ({ captureMock: vi.fn() }));
-vi.mock("@/contexts/PostHogContext", () => ({
+vi.mock("@/app/contexts/PostHogContext", () => ({
   usePostHog: () => ({ capture: captureMock }),
 }));
 

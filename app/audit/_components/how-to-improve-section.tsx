@@ -13,7 +13,7 @@
 import { useMemo, useState } from "react";
 import type { AuditResult } from "@/src/audit/types";
 import { type Grade, tierName } from "@/src/audit/scoring";
-import { usePostHog } from "@/contexts/PostHogContext";
+import { usePostHog } from "@/app/contexts/PostHogContext";
 
 interface Props {
   result: AuditResult;

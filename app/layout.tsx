@@ -5,10 +5,10 @@
  * `<html>` so there's no theme indeterminacy and no inline script is needed.
  */
 import type { Metadata } from "next";
-import { PostHogProvider } from "@/contexts/PostHogContext";
+import { PostHogProvider } from "@/app/contexts/PostHogContext";
 import { GlobalErrorListeners } from "@/app/components/global-error-listeners";
-import { AutoRefreshProvider } from "@/contexts/AutoRefreshContext";
-import { Navbar } from "@/components/navbar";
+import { AutoRefreshProvider } from "@/app/contexts/AutoRefreshContext";
+import { Navbar } from "@/app/components/navbar";
 import { Toaster } from "@/app/components/toast";
 import "./globals.css";
 

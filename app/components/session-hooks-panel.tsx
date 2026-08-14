@@ -11,7 +11,7 @@ import {
 import PaginationControls from "@/app/components/pagination-controls";
 import { searchHookActivityAction } from "@/app/actions/get-hook-activity";
 import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
-import { useAutoRefresh } from "@/contexts/AutoRefreshContext";
+import { useAutoRefresh } from "@/app/contexts/AutoRefreshContext";
 import { formatRelativeTime } from "@/lib/format-duration";
 import { CopyButton } from "@/app/components/copy-button";
 

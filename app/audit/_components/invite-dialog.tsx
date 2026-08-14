@@ -11,7 +11,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePostHog } from "@/contexts/PostHogContext";
+import { usePostHog } from "@/app/contexts/PostHogContext";
 import { toast } from "@/app/components/toast";
 
 interface Props {

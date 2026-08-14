@@ -21,7 +21,7 @@ import { classifyAgent } from "@/src/audit/archetypes";
 import { deriveScore, gradeFor, projectedScore } from "@/src/audit/scoring";
 import { deriveStrengths } from "@/src/audit/strengths";
 import { deriveFindings } from "@/src/audit/findings";
-import { usePostHog } from "@/contexts/PostHogContext";
+import { usePostHog } from "@/app/contexts/PostHogContext";
 
 import { AuditPoster } from "./audit-poster";
 import { StrengthsSection } from "./strengths-section";

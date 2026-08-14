@@ -11,9 +11,9 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ReachDevelopers } from "@/components/reach-developers";
+import { ReachDevelopers } from "@/app/components/reach-developers";
 import { RefreshButton } from "@/app/components/refresh-button";
-import { usePostHog } from "@/contexts/PostHogContext";
+import { usePostHog } from "@/app/contexts/PostHogContext";
 
 const NAV_LINKS = [
   { href: "/projects", label: "projects" },

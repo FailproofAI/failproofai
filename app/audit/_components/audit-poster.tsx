@@ -27,7 +27,7 @@ import { type Grade } from "@/src/audit/scoring";
 import { getArchetypeRarityPct } from "@/src/audit/social-proof";
 import { copyOrDownloadCard, downloadCard, shareCardNative, shareCardToastMessage } from "@/lib/share-card";
 import { toast } from "@/app/components/toast";
-import { usePostHog } from "@/contexts/PostHogContext";
+import { usePostHog } from "@/app/contexts/PostHogContext";
 import { Sigil } from "./sigil";
 import { X_TEMPLATES, LI_TEMPLATES, pickTemplate, type ShareCtx } from "./share-templates";
 

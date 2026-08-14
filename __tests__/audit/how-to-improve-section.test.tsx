@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 
 const { captureMock } = vi.hoisted(() => ({ captureMock: vi.fn() }));
-vi.mock("@/contexts/PostHogContext", () => ({
+vi.mock("@/app/contexts/PostHogContext", () => ({
   usePostHog: () => ({ capture: captureMock }),
 }));
 

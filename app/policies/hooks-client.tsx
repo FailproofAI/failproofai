@@ -17,14 +17,14 @@ import type { IntegrationType } from "@/src/hooks/types";
 import { toggleCustomPolicyAction, togglePolicyAction } from "@/app/actions/update-hooks-config";
 import { installHooksWebAction, removeHooksWebAction } from "@/app/actions/install-hooks-web";
 import { updatePolicyParamsAction } from "@/app/actions/update-policy-params";
-import { useAutoRefresh } from "@/contexts/AutoRefreshContext";
-import { usePostHog } from "@/contexts/PostHogContext";
+import { useAutoRefresh } from "@/app/contexts/AutoRefreshContext";
+import { usePostHog } from "@/app/contexts/PostHogContext";
 import { useUrlParams } from "@/lib/use-url-params";
 import { pageToParam, paramToPage } from "@/lib/url-filter-serializers";
 import { getCliLabel, getCliBadgeClasses, KNOWN_CLI_IDS, isKnownCli, type CliId } from "@/lib/cli-registry";
 import { enforcementFor } from "@/src/hooks/enforcement-capability";
 import { formatRelativeTime } from "@/lib/format-duration";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/app/components/ui/button";
 
 function formatAbsoluteTime(ts: number): string {
   return new Date(ts).toLocaleString(undefined, {

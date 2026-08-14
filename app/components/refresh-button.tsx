@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useCallback, useTransition } from "react";
 import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAutoRefresh } from "@/contexts/AutoRefreshContext";
+import { useAutoRefresh } from "@/app/contexts/AutoRefreshContext";
 
 const AUTO_REFRESH_OPTIONS = [
   { label: "Off", value: 0 },

@@ -19,7 +19,7 @@ vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
 }));
 
-import { PostHogProvider, usePostHog } from "@/contexts/PostHogContext";
+import { PostHogProvider, usePostHog } from "@/app/contexts/PostHogContext";
 
 const enabledConfig = {
   enabled: true,

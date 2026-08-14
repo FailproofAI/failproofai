@@ -19,7 +19,7 @@
  * dominating the layout.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePostHog } from "@/contexts/PostHogContext";
+import { usePostHog } from "@/app/contexts/PostHogContext";
 import { isAbortError } from "@/lib/fetch-with-timeout";
 import { AuthDialog, type AuthedUser } from "./auth-dialog";
 import { InviteDialog } from "./invite-dialog";

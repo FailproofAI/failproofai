@@ -14,7 +14,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { usePostHog } from "@/contexts/PostHogContext";
+import { usePostHog } from "@/app/contexts/PostHogContext";
 import { fetchWithTimeout, isAbortError } from "@/lib/fetch-with-timeout";
 // Co-located so the dialog is styled on EVERY route that renders it (/audit and
 // /settings), not only the one route stylesheet these rules used to live in.

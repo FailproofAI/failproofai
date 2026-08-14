@@ -98,7 +98,16 @@ if (exists(NM)) prune(NM);
 const STANDALONE_ROOT_PRUNE = [
   // Doc / dev directories
   "docs", "examples", "design-docs", "__tests__",
-  ".claude", ".failproofai", ".github", ".vscode", ".idea",
+  ".vscode", ".idea",
+  // Every dogfood hook config. These are THIS repo enforcing its own policies
+  // on itself; each one points at `scripts/dev-hook.mjs`, a path that exists
+  // only in a checkout. Five of them (.codex .cursor .factory .opencode .pi)
+  // were being traced in and published to npm users, who have no dev-hook.mjs
+  // and no business receiving our dogfood configuration. Keep this list in
+  // step with the dot-directories at the repo root —
+  // __tests__/ci/standalone-prune.test.ts fails if a new one appears.
+  ".agents", ".claude", ".codex", ".cursor", ".devin", ".factory",
+  ".failproofai", ".github", ".opencode", ".pi",
   // Failproofai CLI artifacts — the dashboard never loads these
   "bin", "dist", "scripts", "src",
   // Release-pipeline scratch: the daemon binaries downloaded from the build
@@ -107,6 +116,12 @@ const STANDALONE_ROOT_PRUNE = [
   // RUNNER_TEMP precisely so this cannot happen), and 16 MB of `.gz` shipped
   // inside the CLI tarball once already because nothing pruned them.
   "release-assets", ".daemon-packages",
+  // The skills submodule: agent skill definitions for a separate repo, traced
+  // in because the gitlink sits at the repo root. 544 KB the dashboard never
+  // reads. A submodule is a gitlink, not a directory, so `git ls-files` does
+  // not surface it the way it surfaces every other top-level dir — which is
+  // exactly why this shipped unnoticed.
+  "skills",
   // The Rust workspace. `target/` is the big one: on any machine that has run
   // `cargo build`, NFT traces it into the standalone output and it is FIFTEEN
   // GIGABYTES of compiled artifacts — `npm pack` then hangs trying to tar it,
@@ -123,7 +138,7 @@ const STANDALONE_ROOT_PRUNE = [
   // 11 MB README animation that moved in here out of the repo root. The
   // dashboard serves its own icons from public/ and imports nothing from
   // assets/, so every byte of this was dead weight in the tarball.
-  "assets", "templates",
+  "assets",
 ];
 const STANDALONE_ROOT_PRUNE_FILES = [
   // Top-level markdown / licenses / docs. CONTRIBUTING.md and SECURITY.md now
@@ -141,6 +156,7 @@ const STANDALONE_ROOT_PRUNE_FILES = [
   // Incremental typechecker state — regenerated on every build, read by nothing
   // at runtime, and routinely a few hundred KB.
   "tsconfig.tsbuildinfo", "next-env.d.ts", "postcss.config.mjs",
+  "skills-lock.json", ".gitattributes",
 ];
 for (const d of STANDALONE_ROOT_PRUNE) {
   rmSync(join(STANDALONE, d), { recursive: true, force: true });

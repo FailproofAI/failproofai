@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   LANGUAGES,
@@ -106,6 +108,40 @@ describe("DO_NOT_TRANSLATE", () => {
   it("includes policy names", () => {
     expect(DO_NOT_TRANSLATE).toContain("block-sudo");
     expect(DO_NOT_TRANSLATE).toContain("sanitize-api-keys");
+  });
+});
+
+describe(".gitattributes", () => {
+  // The translated docs are 46% of this repo's tracked files. `.gitattributes`
+  // marks them linguist-generated so they collapse in every diff and drop out
+  // of the language bar. That list is hand-maintained, so adding a language to
+  // LANGUAGES without adding it here would silently un-collapse the new locale
+  // — a regression nobody would notice until a PR diff blew up months later.
+  const gitattributes = readFileSync(
+    join(import.meta.dirname, "..", "..", "..", ".gitattributes"),
+    "utf8",
+  );
+
+  it("marks every translated docs directory as generated", () => {
+    for (const { code } of LANGUAGES) {
+      expect(
+        gitattributes,
+        `docs/${code}/** is missing a linguist-generated rule in .gitattributes`,
+      ).toContain(`docs/${code}/**`);
+    }
+  });
+
+  it("marks no directory that is not a real language", () => {
+    const marked = [...gitattributes.matchAll(/^docs\/([^/*\s]+)\/\*\*/gm)].map(
+      (m) => m[1],
+    );
+    expect(marked.sort()).toEqual(LANGUAGES.map((l) => l.code).sort());
+  });
+
+  it("marks the translated READMEs and both lockfiles", () => {
+    expect(gitattributes).toContain("docs/i18n/README.*.md");
+    expect(gitattributes).toContain("bun.lock");
+    expect(gitattributes).toContain("Cargo.lock");
   });
 });
 

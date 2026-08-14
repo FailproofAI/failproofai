@@ -13,7 +13,7 @@
  * space as the loaded dashboard does on its hero — no more cramped popover.
  */
 import { triggerRun } from "./rerun-button";
-import { usePostHog } from "@/contexts/PostHogContext";
+import { usePostHog } from "@/app/contexts/PostHogContext";
 
 interface Props {
   mode: "no-cache" | "zero-sessions";

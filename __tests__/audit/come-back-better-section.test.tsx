@@ -9,7 +9,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/re
 
 // Stable capture (see auth-dialog.test.tsx for why identity must not change).
 const { captureMock } = vi.hoisted(() => ({ captureMock: vi.fn() }));
-vi.mock("@/contexts/PostHogContext", () => ({
+vi.mock("@/app/contexts/PostHogContext", () => ({
   usePostHog: () => ({ capture: captureMock }),
 }));
 

@@ -3,7 +3,7 @@
 
 import React, { useState, useCallback } from "react";
 import { GitBranch, ChevronDown, Star, BookOpen, MessageCircle, MessageSquareWarning } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/app/components/ui/button";
 
 const CONTACT_EMAIL = "failproofai@exosphere.host";
 

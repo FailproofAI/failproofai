@@ -174,3 +174,36 @@ describe("shortenPaths — public roots", () => {
     expect(shortenPaths("/etc/ssl/private/server.key", HOME)).toBe("/…/server.key");
   });
 });
+
+describe("the home directory itself", () => {
+  it("is `~`, never `~/…/<username>`", () => {
+    // The one path guaranteed to name a person was the one the redactor spelled
+    // out: `/home/sidd` came back as `~/…/sidd`, keeping the username as the
+    // basename immediately after the `~` whose whole job is to stand in for it.
+    // It shipped to the api-server in `harmful[].examples` and into the digest.
+    expect(redactExample("cd /home/sidd", "/home/sidd")).toBe("cd ~");
+    expect(redactExample("du -sh /home/sidd", "/home/sidd")).toBe("du -sh ~");
+    // macOS shape, same defect.
+    expect(redactExample("cd /Users/sidd", "/Users/sidd")).toBe("cd ~");
+  });
+
+  it("keeps the trailing slash, so a directory still reads as one", () => {
+    expect(redactExample("ls /home/sidd/", "/home/sidd")).toBe("ls ~/");
+  });
+
+  it("tolerates a home path that itself ends in a slash", () => {
+    expect(redactExample("cd /home/sidd", "/home/sidd/")).toBe("cd ~");
+  });
+
+  it("still shortens paths BELOW home, which is the ordinary case", () => {
+    expect(redactExample("cat /home/sidd/.env", "/home/sidd")).toBe("cat ~/…/.env");
+    expect(redactExample("cd /home/sidd/projects/api", "/home/sidd")).toBe("cd ~/…/api");
+  });
+
+  it("never emits the username for a sibling home either", () => {
+    // `/home/sidd2` starts with `/home/sidd` as a STRING but is a different
+    // directory — it must not be mistaken for the home itself.
+    const out = redactExample("cat /home/sidd2/notes.txt", "/home/sidd");
+    expect(out).not.toContain("sidd2");
+  });
+});

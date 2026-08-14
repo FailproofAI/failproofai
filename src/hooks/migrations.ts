@@ -47,7 +47,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { version as cliVersion } from "../../package.json";
 import {
   LAYOUT_VERSION,
@@ -142,17 +142,43 @@ function migrateToLayout4(): ResetOutcome {
     { from: legacy.auditSchedule(), to: auditScheduleFile() },
   ];
 
+  // `FAILPROOFAI_AUTH_DIR` names a directory OUTSIDE the managed home — a
+  // documented env var, not a test hook — and `auth-store` resolves the session
+  // relative to it. Every path above comes from `FAILPROOFAI_HOME`, so without
+  // this the override directory is never visited: the file stays `auth.json`,
+  // layout 4 reads `session.json`, and the upgrade signs the user out silently.
+  // Their scans keep running and their digests stop, which is the failure this
+  // whole area is built to avoid.
+  //
+  // The same two moves, in their directory, so one naming scheme holds
+  // everywhere rather than the file having a different name depending on how
+  // the process was configured.
+  const authDirOverride = process.env.FAILPROOFAI_AUTH_DIR;
+  if (authDirOverride) {
+    moves.push(
+      { from: join(authDirOverride, "auth.json"), to: join(authDirOverride, "session.json") },
+      {
+        from: join(authDirOverride, "next-audit.json"),
+        to: join(authDirOverride, "reminder.json"),
+      },
+    );
+  }
+
   const migrated: string[] = [];
   for (const { from, to } of moves) {
     if (!existsSync(from)) continue;
     if (existsSync(to)) {
       // The layout-4 file is already authoritative. Drop the stale original
       // rather than leaving a second copy of a credential lying at the root.
-      try {
-        rmSync(from, { force: true });
-      } catch {
-        // Reported by its continued presence; not worth failing the chain.
-      }
+      //
+      // A failure here PROPAGATES. Swallowing it continued to `writeVersionFile`
+      // and stamped the home as layout 4 with `auth.json` — a live bearer token
+      // — still sitting at the root, where nothing would ever look at it again
+      // and nothing would ever clean it up. Throwing leaves the home at layout 3
+      // and the next command retries, which is exactly what `runMigrations`
+      // documents a failed step to mean; the destination is already
+      // authoritative, so the retry is a no-op plus one more delete attempt.
+      rmSync(from, { force: true });
       continue;
     }
     mkdirSync(dirname(to), { recursive: true });

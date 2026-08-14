@@ -139,6 +139,11 @@ export function maskSecrets(input: string): string {
  * under `/build` as often as anywhere.
  */
 export function shortenPaths(input: string, home = homedir()): string {
+  // Normalised ONCE, not per match: `startsWith` against a home carrying a
+  // trailing slash fails for the home directory itself (`/home/u` does not start
+  // with `/home/u/`), which silently turned off home detection for the one path
+  // that most needed it.
+  const homeRoot = home.replace(/\/+$/, "");
   return input.replace(ABSOLUTE_PATH_RE, (match) => {
     // Kernel/device paths are the same on every machine and identify nobody.
     if (PUBLIC_PATH_ROOTS.some((root) => match.startsWith(root))) return match;
@@ -150,7 +155,22 @@ export function shortenPaths(input: string, home = homedir()): string {
       Math.max(0, segments.length - 1 - KEPT_PARENT_SEGMENTS),
       segments.length - 1,
     );
-    const underHome = home.length > 0 && match.startsWith(home);
+    // `/home/u2` starts with `/home/u` as a string and is a different directory,
+    // so the boundary is checked rather than the prefix alone.
+    const matchRoot = match.replace(/\/+$/, "");
+    const underHome =
+      homeRoot.length > 0 && (matchRoot === homeRoot || matchRoot.startsWith(`${homeRoot}/`));
+
+    // The home directory ITSELF is `~`, and nothing more.
+    //
+    // Without this, `/home/sidd` shortened to `~/…/sidd` — the username kept as
+    // the basename, immediately after the `~` whose entire job is to stand in
+    // for it. The one path guaranteed to name a person was the one the redactor
+    // spelled out, and it shipped to the server and into the digest. `~/` for a
+    // trailing slash, so `cd /home/sidd/` still reads as a directory.
+    if (matchRoot === homeRoot && homeRoot.length > 0) {
+      return trailingSlash ? "~/" : "~";
+    }
     const root = underHome ? "~" : "";
     // `…` rather than `...` so the elision cannot be mistaken for a relative
     // path component, and reads as one glyph in a monospace digest.

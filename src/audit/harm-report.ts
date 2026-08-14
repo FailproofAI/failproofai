@@ -145,15 +145,26 @@ export function selectHarmful(
     const unplaceable = last === null && first === null;
     if (unplaceable && !includeUnplaceable) continue;
 
-    // Wholly inside the window → the real total. Straddling it → the examples
-    // that actually fall inside, which undercounts but never invents.
+    // Wholly inside the window → the real total. Straddling EITHER edge → the
+    // examples that actually fall inside, which undercounts but never invents.
+    //
+    // Both edges, and the upper one is not symmetry for its own sake. This used
+    // to test the lower bound alone, so a policy that started inside the window
+    // and was still firing after it closed reported `count.hits` — every hit,
+    // including the ones after `to`, while its examples were filtered to the
+    // window. Those hits then fell inside the NEXT report's window too, since
+    // the watermark advances to `to`, and were counted a second time. A digest
+    // that reports tomorrow's findings today and again tomorrow is worse than
+    // one that is late.
     //
     // An UNPLACEABLE policy that survived the check above reports its full
     // count: there is nothing to narrow it with, and having decided to include
     // it, reporting zero would be a row claiming nothing happened. It is only
     // reachable on a first report, where over-reporting is the direction that
     // was chosen deliberately.
-    const wholly = fromMs === null || unplaceable || (first !== null && first > fromMs);
+    const afterLowerEdge = fromMs === null || (first !== null && first > fromMs);
+    const beforeUpperEdge = last !== null && last <= toMs;
+    const wholly = unplaceable || (afterLowerEdge && beforeUpperEdge);
     const hits = wholly ? count.hits : inWindow.length;
     if (hits <= 0) continue;
 

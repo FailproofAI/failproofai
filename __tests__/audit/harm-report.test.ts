@@ -268,3 +268,73 @@ describe("buildHarmReport", () => {
     expect(buildHarmReport(result([]), AUG_07, 7).harmful).toEqual([]);
   });
 });
+
+describe("the upper edge of the window", () => {
+  const AUG_20 = "2026-08-20T12:00:00.000Z";
+
+  it("does not report hits that happened after `to`", () => {
+    // The straddle test above covers the LOWER edge — activity that began
+    // before the window. This is the other one: a policy that started inside
+    // the window and was still firing after it closed. `wholly` tested only the
+    // lower bound, so this reported `hits: 40` — every hit, including the ones
+    // after `to` — while its examples were correctly filtered to the window.
+    const r = result(
+      [
+        count({
+          name: "failproofai/block-env-files",
+          severity: "deny",
+          hits: 40,
+          firstSeen: AUG_10,
+          lastSeen: AUG_20,
+          examples: [example(AUG_10), example(AUG_14), example(AUG_20)],
+        }),
+      ],
+      AUG_20,
+    );
+
+    const [p] = selectHarmful(r, new Date(AUG_07), new Date(AUG_14));
+    expect(p.hits).toBe(2);
+    expect(p.examples).toHaveLength(2);
+  });
+
+  it("would otherwise count the same hits again in the next window", () => {
+    // Why the early report is worse than a late one: the watermark advances to
+    // `to`, so the next window STARTS where this one ended and those same
+    // post-window hits fall inside it. Reported twice, from one occurrence.
+    const r = result(
+      [
+        count({
+          name: "failproofai/block-env-files",
+          severity: "deny",
+          hits: 40,
+          firstSeen: AUG_10,
+          lastSeen: AUG_20,
+          examples: [example(AUG_10), example(AUG_14), example(AUG_20)],
+        }),
+      ],
+      AUG_20,
+    );
+
+    const [first] = selectHarmful(r, new Date(AUG_07), new Date(AUG_14));
+    const [second] = selectHarmful(r, new Date(AUG_14), new Date(AUG_20));
+    expect(first.hits + second.hits).toBeLessThanOrEqual(3);
+  });
+
+  it("still reports the real total when the policy fits inside both edges", () => {
+    // The fix must not turn every row into an example count — a policy wholly
+    // inside the window still reports `hits`, which is larger than the handful
+    // of examples the audit kept.
+    const r = result([
+      count({
+        name: "failproofai/block-env-files",
+        severity: "deny",
+        hits: 40,
+        firstSeen: AUG_10,
+        lastSeen: AUG_14,
+        examples: [example(AUG_10)],
+      }),
+    ]);
+    const [p] = selectHarmful(r, new Date(AUG_07), new Date(AUG_14));
+    expect(p.hits).toBe(40);
+  });
+});

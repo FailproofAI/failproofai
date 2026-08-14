@@ -370,6 +370,69 @@ describe("layout 3 → 4", () => {
     expect(readVersionFile()?.layout).toBe(LAYOUT_VERSION);
   });
 
+  it("migrates a FAILPROOFAI_AUTH_DIR home too, instead of signing that user out", () => {
+    // The override names a directory OUTSIDE the managed home, and it is a
+    // documented env var rather than a test hook. Every other path in the step
+    // comes from FAILPROOFAI_HOME, so the override directory was never visited:
+    // the file stayed `auth.json`, layout 4 read `session.json`, and the upgrade
+    // signed the user out without saying so — scans still running, digests
+    // silently stopped.
+    seedLayoutThree();
+    const override = mkdtempSync(resolve(tmpdir(), "fpai-authdir-"));
+    const prev = process.env.FAILPROOFAI_AUTH_DIR;
+    process.env.FAILPROOFAI_AUTH_DIR = override;
+    try {
+      writeFileSync(resolve(override, "auth.json"), '{"access_token":"override-at"}', {
+        mode: 0o600,
+      });
+      writeFileSync(resolve(override, "next-audit.json"), '{"user_email":"o@b.c"}');
+
+      runMigrations(3);
+
+      expect(JSON.parse(readFileSync(resolve(override, "session.json"), "utf8")).access_token).toBe(
+        "override-at",
+      );
+      expect(JSON.parse(readFileSync(resolve(override, "reminder.json"), "utf8")).user_email).toBe(
+        "o@b.c",
+      );
+      // And the old names are gone — a second copy of a bearer credential is
+      // the thing this step exists to avoid leaving behind.
+      expect(existsSync(resolve(override, "auth.json"))).toBe(false);
+      expect(existsSync(resolve(override, "next-audit.json"))).toBe(false);
+    } finally {
+      if (prev === undefined) delete process.env.FAILPROOFAI_AUTH_DIR;
+      else process.env.FAILPROOFAI_AUTH_DIR = prev;
+      rmSync(override, { recursive: true, force: true });
+    }
+  });
+
+  it("does not stamp layout 4 when a stale credential could not be deleted", () => {
+    // The destination already exists, so the step drops the layout-3 original.
+    // Swallowing a failure there continued to `writeVersionFile()` and marked
+    // the home migrated with `auth.json` — a live bearer token — still at the
+    // root, where nothing would look at it again and nothing would clean it up.
+    // Failing leaves the home at layout 3, which `runMigrations` documents as
+    // "the next command retries", and the retry is a no-op plus one more delete.
+    seedLayoutThree();
+    mkdirSync(resolve(home, "audit"), { recursive: true });
+    writeFileSync(auditSessionFile(), '{"access_token":"already-here"}', { mode: 0o600 });
+
+    // A DIRECTORY where the credential file should be: `rmSync(from, {force})`
+    // suppresses ENOENT and nothing else, so it throws EISDIR here. A real
+    // failure from the real call, rather than a mock of it — the ESM import is
+    // bound at load time and a spy on the namespace would never be seen.
+    rmSync(legacy.authJson(), { force: true });
+    mkdirSync(legacy.authJson(), { recursive: true });
+    writeFileSync(resolve(legacy.authJson(), "trapped"), "x");
+
+    const run = runMigrations(3);
+
+    expect(run.failed).toBeDefined();
+    expect(readVersionFile()?.layout).toBe(3);
+    // The layout-4 file was never clobbered by the failed step.
+    expect(JSON.parse(readFileSync(auditSessionFile(), "utf8")).access_token).toBe("already-here");
+  });
+
   it("keeps the daemon version, which nothing on this path touches", () => {
     // The step stamps VERSION through `writeVersionFile()` rather than writing
     // the JSON by hand. Hand-rolling it drops `daemon`, which `daemonVersionSkew()`

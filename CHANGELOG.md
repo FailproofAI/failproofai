@@ -2,10 +2,6 @@
 
 ## 1.0.1-beta.0 — 2026-08-14
 
-### Dependencies
-
-- Pin `nanoid` to 3.3.18 through `overrides`, closing GHSA-2v37-7h3g-55p8 (CVSS 8.2 — custom generators can loop indefinitely when size is zero). Not introduced here: the lockfile is untouched by this branch, `main` passed the same scan at 04:57 and this branch failed at 16:21, because the advisory's affected range was published in between. It arrives transitively through `postcss`, which asks for `^3.3.17`, so the pin satisfies it without moving anything else — two lines of lockfile, 657 entries before and after. An `overrides` pin rather than an `osv-scanner.toml` ignore because that file's own rule is to prefer fixing, and there is a fix. (#694)
-
 ### Fixes
 
 - Delete eight dead files a repo survey confirmed unreachable, each verified by an exhaustive reference search rather than a missing import. `src/audit/report.ts` (348 lines) rendered the `--report`/`--json`/`--limit`/`--show-examples` output for flags `runAuditCli()` has rejected since the dashboard flow replaced it — and `package.json` `files[]` ships `src/`, so it was published in every tarball. `lib/claude-config.ts` was a re-export wrapper around `lib/paths.ts` whose only mention anywhere was its own JSDoc example. `lib/extract-subagent-ids.ts` was imported by nothing but its own test; the live path re-implements the regex inline in `log-entries.ts`, whose comment now describes the id format instead of pointing at a module that no longer exists. `.github/smoke-test/expected/` held two placeholder fixtures naming a workflow that does not exist. `crates/.gitkeep` landed in the same commit as the crates it was meant to hold open. (#PR)
@@ -13,7 +9,6 @@
 - Delete `.bunfig.toml`, which bun has never read. Bun's config file is `bunfig.toml` — the dot-prefixed name is ignored entirely, verified by A/B: with `bunfig.toml` present `bun add` writes `"3.0.1"`, with `.bunfig.toml` it writes `"^3.0.1"`, identical to no config at all. Its `[install] exact = true` and the comment "Use exact versions for reproducibility" have had no effect since the file was added, which is why `package.json` carries caret ranges throughout. Deleting it preserves today's behaviour; **renaming** it would switch every future install to exact resolution and is deliberately left as a separate decision. (#PR)
 - Stop shipping `assets/` inside the standalone bundle. Next's tracer pulled the 612 KB audit design lab and CLI logo set into `.next/standalone`, from where `files[]` published it to every npm user; the dashboard serves its own icons out of `public/` and imports nothing from `assets/`. This also makes the `readme-arch-hq.gif` move below free rather than an 11 MB regression. `templates/` is pruned alongside it for the same reason. (#PR)
 - Remove a dead version-consistency branch in `ci.yml` that read `packages/wrapper/package.json` behind `2>/dev/null || true` — a check that has been passing by doing nothing since the `packages/` workspace layout was abandoned. The two `packages/*` entries left in `.gitignore` are deliberately kept as a pre-flight warning: anything that recreates that layout must delete them first, or git silently drops the CLI's own entrypoint. (#PR)
-
 - Stop publishing this repo's own dogfood hook configs to npm. Next's file tracer was sweeping `.codex/`, `.cursor/`, `.factory/`, `.opencode/` and `.pi/` into `.next/standalone`, from where `files[]` shipped them — eight files of configuration pointing at `scripts/dev-hook.mjs`, a launcher that exists only in a checkout. The `skills` submodule was riding along too (544 KB), traced in because a gitlink sits at the repo root and a directory-shaped filter walks straight past it. All ten dogfood directories plus `skills` are now pruned, and `__tests__/ci/standalone-prune.test.ts` reads `git ls-files --stage` so a submodule cannot slip through the same gap twice. (#PR)
 
 ### Features
@@ -31,6 +26,7 @@
 ### Dependencies
 
 - Drop the unused `proptest` dev-dependency from `fpai-ipc`, which was declared and never referenced. Regenerating `Cargo.lock` removes it and 13 transitive crates (`rand`, `rustix`, `tempfile`, `rusty-fork`, `zerocopy` and friends) — 237 lines of lockfile. (#PR)
+- Pin `nanoid` to 3.3.18 through `overrides`, closing GHSA-2v37-7h3g-55p8 (CVSS 8.2 — custom generators can loop indefinitely when size is zero). Not introduced here: the lockfile is untouched by this branch, `main` passed the same scan at 04:57 and this branch failed at 16:21, because the advisory's affected range was published in between. It arrives transitively through `postcss`, which asks for `^3.3.17`, so the pin satisfies it without moving anything else — two lines of lockfile, 657 entries before and after. An `overrides` pin rather than an `osv-scanner.toml` ignore because that file's own rule is to prefer fixing, and there is a fix. (#694)
 
 ## 1.0.0 — 2026-08-12
 

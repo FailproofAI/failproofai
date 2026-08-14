@@ -60,8 +60,13 @@ export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome
   // machine with the first and not the second scans on a timer and stays silent,
   // which is what keeps "runs fully offline" true for everyone who wants it.
   let emailEnabled = false;
+  let intervalDays = 7;
   try {
-    emailEnabled = readConfig().audit.emailEnabled;
+    const config = readConfig();
+    emailEnabled = config.audit.emailEnabled;
+    // Also the width of a FIRST report's window, so a new machine's opening
+    // digest covers the same period every later one will.
+    intervalDays = config.audit.intervalDays;
   } catch {
     // An unreadable config reads as off — the direction that sends nothing.
     return { kind: "disabled" };
@@ -83,7 +88,7 @@ export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome
     return { kind: "failed", error: err instanceof Error ? err.message : String(err) };
   }
 
-  const report = buildHarmReport(result, identity.last_reported_at);
+  const report = buildHarmReport(result, identity.last_reported_at, intervalDays);
   const hits = report.harmful.reduce((n, p) => n + p.hits, 0);
 
   try {

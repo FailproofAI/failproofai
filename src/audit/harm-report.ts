@@ -100,21 +100,24 @@ function ts(value: string | undefined): number | null {
 /**
  * Select the harmful policies whose activity falls inside `[from, to]`.
  *
- * `from` undefined means "everything up to `to`" — a machine's first report,
- * the only time it legitimately has no watermark.
+ * `from` undefined means "everything up to `to`", which is now only reachable
+ * by an explicit caller — `buildHarmReport` always supplies a bound. See the
+ * note there for why.
  *
- * A policy with NO usable timestamps is included when there is no lower bound
- * and excluded when there is. It cannot be placed, and the two failure
- * directions are not equal: on a first report, dropping it loses a real finding;
- * on a later one, including it re-reports something already covered. Silence
- * about something new is the worse of the two, and repetition is the more
- * annoying, so each window gets the answer that fails the way it can afford to.
+ * `includeUnplaceable` decides what happens to a policy with NO usable
+ * timestamps. It cannot be placed, and the two failure directions are not
+ * equal: on a first report, dropping it loses a real finding; on a later one,
+ * including it re-reports something already covered. Silence about something
+ * new is the worse of the two and repetition is merely annoying, so each window
+ * gets the answer that fails the way it can afford to.
  */
 export function selectHarmful(
   result: AuditResult,
   from: Date | undefined,
   to: Date,
+  opts: { includeUnplaceable?: boolean } = {},
 ): ReportedPolicy[] {
+  const includeUnplaceable = opts.includeUnplaceable ?? from === undefined;
   const fromMs = from ? from.getTime() : null;
   const toMs = to.getTime();
   const out: ReportedPolicy[] = [];
@@ -134,16 +137,23 @@ export function selectHarmful(
 
     const inWindow = count.examples.filter((e) => {
       const at = ts(e.timestamp);
-      if (at === null) return fromMs === null;
+      if (at === null) return includeUnplaceable;
       if (fromMs !== null && at <= fromMs) return false;
       return at <= toMs;
     });
 
-    if (last === null && first === null && fromMs !== null) continue;
+    const unplaceable = last === null && first === null;
+    if (unplaceable && !includeUnplaceable) continue;
 
     // Wholly inside the window → the real total. Straddling it → the examples
     // that actually fall inside, which undercounts but never invents.
-    const wholly = fromMs === null || (first !== null && first > fromMs);
+    //
+    // An UNPLACEABLE policy that survived the check above reports its full
+    // count: there is nothing to narrow it with, and having decided to include
+    // it, reporting zero would be a row claiming nothing happened. It is only
+    // reachable on a first report, where over-reporting is the direction that
+    // was chosen deliberately.
+    const wholly = fromMs === null || unplaceable || (first !== null && first > fromMs);
     const hits = wholly ? count.hits : inWindow.length;
     if (hits <= 0) continue;
 
@@ -171,19 +181,43 @@ export function selectHarmful(
  * the evidence was gathered, and using a later clock reading would advance the
  * watermark past events that happened while the scan was still running — events
  * no report would ever cover.
+ *
+ * ## A first report is bounded to one interval, not to all of history
+ *
+ * With no watermark the obvious window is "everything", and that is what this
+ * did until it was run against a real machine: the first report covered 230
+ * sessions and 22,059 tool calls and came out at **5,815 findings**. Every
+ * number in it was true and the digest was still wrong — somebody's first email
+ * would describe their agent's entire recorded history as though it were this
+ * week's news, and would trip the critical bypass on day one for essentially
+ * everyone.
+ *
+ * A digest is a statement about RECENT behaviour, so the first one covers the
+ * same period every later one does: `interval_days` back from the scan. The
+ * older findings are not lost, they are simply not news — they are on the
+ * dashboard, which is where a full history belongs.
+ *
+ * `includeUnplaceable` still follows "is this the first report", not "is there a
+ * lower bound", so a policy carrying no usable timestamps is reported once on a
+ * new machine rather than silently dropped by the bound this now always sets.
  */
 export function buildHarmReport(
   result: AuditResult,
   lastReportedAt: string | undefined,
+  intervalDays: number,
 ): HarmReport {
   const to = new Date(Date.parse(result.scannedAt));
   const windowTo = Number.isFinite(to.getTime()) ? to : new Date();
-  const fromMs = ts(lastReportedAt);
-  const from = fromMs === null ? undefined : new Date(fromMs);
+  const watermark = ts(lastReportedAt);
+  const isFirstReport = watermark === null;
+
+  const from = isFirstReport
+    ? new Date(windowTo.getTime() - Math.max(1, intervalDays) * 86_400_000)
+    : new Date(watermark);
 
   return {
-    window_from: from?.toISOString(),
+    window_from: from.toISOString(),
     window_to: windowTo.toISOString(),
-    harmful: selectHarmful(result, from, windowTo),
+    harmful: selectHarmful(result, from, windowTo, { includeUnplaceable: isFirstReport }),
   };
 }

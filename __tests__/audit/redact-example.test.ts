@@ -119,3 +119,58 @@ describe("redactExample", () => {
     expect(out).not.toContain("sk-ant-abcdefghijklmnopqrstuvwxyz");
   });
 });
+
+describe("maskTruncatedSecret — the fragment case", () => {
+  it("masks a secret that was cut short before it reached us", () => {
+    // Found by running a real digest, which came back containing
+    // `authorization: Bearer s` — the first character of a live token. The
+    // audit truncates examples to 80 chars at CAPTURE time, so a command
+    // ending in a credential arrives with the credential's tail already gone
+    // and the full pattern no longer matches it. One character is not a usable
+    // secret; the point is that the number is set by where the truncation
+    // landed, not by anything we control.
+    const out = redactExample('curl "https://x.test/v1/models" -H "authorization: Bearer s', HOME);
+    expect(out).toContain("[REDACTED: bearer token]");
+    expect(out).not.toMatch(/Bearer s$/);
+  });
+
+  it("masks every truncated key prefix we know how to start", () => {
+    for (const [frag, label] of [
+      ["export KEY=sk-ant-abc", "Anthropic API key"],
+      ["gh auth --token ghp_abc", "GitHub personal access token"],
+      ["aws_access_key_id = AKIAIOS", "AWS access key ID"],
+      ["stripe --key sk_live_abc", "Stripe live secret key"],
+      ["google AIzaSyA", "Google API key"],
+      ["cat key.pem -----BEGIN RSA", "private key"],
+    ] as const) {
+      expect(redactExample(frag, HOME), frag).toContain(`[REDACTED: ${label}]`);
+    }
+  });
+
+  it("only fires at the END, where a truncation can be", () => {
+    // A prefix in the middle with text after it was not cut — it either
+    // matched a full pattern already or was never a secret. Masking it would
+    // eat the rest of a legitimate command.
+    const out = redactExample("sk-short && git status", HOME);
+    expect(out).toContain("git status");
+  });
+
+  it("leaves an ordinary command ending in a word alone", () => {
+    expect(redactExample("git commit -m fixup", HOME)).toBe("git commit -m fixup");
+  });
+});
+
+describe("shortenPaths — public roots", () => {
+  it("leaves /dev, /proc and /sys intact", () => {
+    // A real digest came back with `2>/…/null`, which reads as though
+    // something was hidden when nothing was. These are identical on every
+    // machine and identify nobody.
+    expect(shortenPaths("cmd 2>/dev/null", HOME)).toBe("cmd 2>/dev/null");
+    expect(shortenPaths("cat /proc/cpuinfo", HOME)).toBe("cat /proc/cpuinfo");
+    expect(shortenPaths("cat /sys/class/net", HOME)).toBe("cat /sys/class/net");
+  });
+
+  it("still shortens everything else outside home", () => {
+    expect(shortenPaths("/etc/ssl/private/server.key", HOME)).toBe("/…/server.key");
+  });
+});

@@ -143,7 +143,7 @@ describe("selectHarmful — the window", () => {
     expect(p.hits).toBeLessThan(500);
   });
 
-  it("takes everything up to `to` on a first report, where there is no watermark", () => {
+  it("takes everything up to `to` when given no lower bound", () => {
     const r = result([
       count({
         name: "failproofai/block-rm-rf",
@@ -175,9 +175,12 @@ describe("selectHarmful — the window", () => {
   it("keeps an unplaceable policy on a first report and drops it on a later one", () => {
     // No usable timestamps, so it cannot be placed. Silence about something new
     // is worse than repeating something old, so each window fails the way it
-    // can afford to.
+    // can afford to. Keyed on "is this the first report", NOT on "is there a
+    // lower bound" — a first report now always has one.
     const r = result([count({ name: "failproofai/block-sudo", severity: "deny", hits: 2 })]);
-    expect(selectHarmful(r, undefined, new Date(AUG_14))).toHaveLength(1);
+    expect(
+      selectHarmful(r, new Date(AUG_07), new Date(AUG_14), { includeUnplaceable: true }),
+    ).toHaveLength(1);
     expect(selectHarmful(r, new Date(AUG_07), new Date(AUG_14))).toEqual([]);
   });
 
@@ -211,18 +214,51 @@ describe("buildHarmReport", () => {
     // The instant the evidence was gathered. A later reading would advance the
     // watermark past events that happened while the scan was still running —
     // events no report would ever cover.
-    const r = buildHarmReport(result([], AUG_10), AUG_07);
+    const r = buildHarmReport(result([], AUG_10), AUG_07, 7);
     expect(r.window_to).toBe(AUG_10);
     expect(r.window_from).toBe(AUG_07);
   });
 
-  it("omits window_from on a first report", () => {
-    expect(buildHarmReport(result([]), undefined).window_from).toBeUndefined();
+  it("bounds a FIRST report to one interval rather than all of history", () => {
+    // Found by running it: against a real machine the unbounded first window
+    // covered 230 sessions and 22,059 tool calls and produced 5,815 findings.
+    // Every number was true and the digest was still wrong — an opening email
+    // describing an agent's entire recorded history as though it were this
+    // week's news, tripping the critical bypass on day one for everyone.
+    const r = buildHarmReport(result([], AUG_14), undefined, 7);
+    expect(r.window_from).toBe(AUG_07);
+    expect(r.window_to).toBe(AUG_14);
+  });
+
+  it("honours the configured interval for that first window", () => {
+    const r = buildHarmReport(result([], AUG_14), undefined, 4);
+    expect(r.window_from).toBe(AUG_10);
+  });
+
+  it("drops history older than the first window", () => {
+    const r = buildHarmReport(
+      result(
+        [
+          count({
+            name: "failproofai/block-env-files",
+            severity: "deny",
+            hits: 500,
+            firstSeen: "2026-01-01T00:00:00.000Z",
+            lastSeen: AUG_01,
+            examples: [example(AUG_01)],
+          }),
+        ],
+        AUG_14,
+      ),
+      undefined,
+      7,
+    );
+    expect(r.harmful).toEqual([]);
   });
 
   it("produces an empty harmful list rather than nothing at all", () => {
     // A quiet report is still a report — it is what keeps "scanned and found
     // nothing" distinguishable from "stopped reporting".
-    expect(buildHarmReport(result([]), AUG_07).harmful).toEqual([]);
+    expect(buildHarmReport(result([]), AUG_07, 7).harmful).toEqual([]);
   });
 });

@@ -12,7 +12,11 @@
  *  1. **Secrets are masked**, against `SECRET_PATTERNS` — the same list the
  *     `sanitize-*` policies block on. One definition of "secret", used for both
  *     blocking and redacting, rather than a second pattern list beside it that
- *     eventually disagrees.
+ *     eventually disagrees. A second pass then catches a secret that arrived
+ *     ALREADY CUT: the audit truncates examples to 80 characters at capture
+ *     time, so a command ending in a credential reaches this module with the
+ *     credential's tail missing and the full pattern no longer matching. See
+ *     `maskTruncatedSecret`.
  *  2. **Home paths are shortened**, so `/home/sidd/work/acme/src/db.ts` becomes
  *     `~/…/db.ts`. The basename is what makes a finding recognisable; the
  *     directory chain is a map of someone's disk and their employer's project
@@ -51,6 +55,64 @@ const KEPT_PARENT_SEGMENTS = 0;
 const ABSOLUTE_PATH_RE = /(?:\/[\w.\-@+]+){2,}\/?/g;
 
 /**
+ * Roots whose paths are left intact.
+ *
+ * These are kernel and device paths — the same on every machine, identifying
+ * nobody, and shortening them actively costs readability: a real digest came
+ * back with `2>/…/null`, which reads as though something was hidden when
+ * nothing was. Everything else is shortened, including paths outside home,
+ * because "not under home" is not the same as "safe to send".
+ */
+const PUBLIC_PATH_ROOTS = ["/dev/", "/proc/", "/sys/"];
+
+/**
+ * Prefixes that BEGIN a secret, for catching one that arrives already cut.
+ *
+ * The audit truncates every example to 80 characters at capture time, long
+ * before this module sees it — so a command ending in a credential arrives with
+ * the credential's tail already gone, and the full patterns in
+ * `SECRET_PATTERNS` no longer match it. A real digest came back containing
+ * `authorization: Bearer s`, which is the first character of a live token.
+ *
+ * One character is not a usable secret. The point is that the number is set by
+ * where the truncation happened to land rather than by anything here, and the
+ * same shape with a longer prefix ships more. So a known prefix sitting at the
+ * END of the string — with nothing after it, or too little to have matched — is
+ * masked on the assumption it was cut, which costs a few characters of context
+ * in the rare case it was not.
+ */
+const SECRET_PREFIXES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/(?:Authorization:\s*)?Bearer\s+\S*$/i, "bearer token"],
+  [/sk-ant-\S*$/, "Anthropic API key"],
+  [/sk-proj-\S*$/, "OpenAI project API key"],
+  [/sk-\S*$/, "OpenAI API key"],
+  [/ghp_\S*$/, "GitHub personal access token"],
+  [/github_pat_\S*$/, "GitHub fine-grained token"],
+  [/AKIA\S*$/, "AWS access key ID"],
+  [/sk_live_\S*$/, "Stripe live secret key"],
+  [/sk_test_\S*$/, "Stripe test secret key"],
+  [/AIza\S*$/, "Google API key"],
+  [/-----BEGIN\s[A-Z ]*$/, "private key"],
+];
+
+/**
+ * Mask a secret that was cut short before it reached us.
+ *
+ * Runs AFTER `maskSecrets`, so a complete secret is already gone and this only
+ * ever sees a genuine fragment. Anchored to the end of the string, because a
+ * prefix in the MIDDLE with text after it was not truncated — it either matched
+ * a full pattern already or was never a secret.
+ */
+export function maskTruncatedSecret(input: string): string {
+  for (const [pattern, label] of SECRET_PREFIXES) {
+    if (pattern.test(input)) {
+      return input.replace(pattern, `[REDACTED: ${label}]`);
+    }
+  }
+  return input;
+}
+
+/**
  * Mask anything matching a known secret shape.
  *
  * A fresh `RegExp` is built per pattern per call rather than reusing the shared
@@ -78,6 +140,8 @@ export function maskSecrets(input: string): string {
  */
 export function shortenPaths(input: string, home = homedir()): string {
   return input.replace(ABSOLUTE_PATH_RE, (match) => {
+    // Kernel/device paths are the same on every machine and identify nobody.
+    if (PUBLIC_PATH_ROOTS.some((root) => match.startsWith(root))) return match;
     const trailingSlash = match.endsWith("/");
     const segments = match.split("/").filter(Boolean);
     if (segments.length === 0) return match;
@@ -104,7 +168,7 @@ export function shortenPaths(input: string, home = homedir()): string {
  * saying nothing the single line does not.
  */
 export function redactExample(input: string, home = homedir()): string {
-  const masked = maskSecrets(input);
+  const masked = maskTruncatedSecret(maskSecrets(input));
   const shortened = shortenPaths(masked, home);
   const collapsed = shortened.replace(/\s+/g, " ").trim();
   return collapsed.length > REDACTED_EXAMPLE_MAX_CHARS

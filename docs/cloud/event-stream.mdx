@@ -4,7 +4,7 @@ description: "The moment your agent does something, you see it."
 ---
 
 
-The moment your agent does something, you see it. The Event Stream is your live pulse on every agent in production: no waiting, no grepping logs, no guessing what just happened.
+The Event Stream shows agent events as they arrive.
 
 ![The live Event Stream: colour-coded event rows tailing in real time, filterable by environment, agent, session, event type, and free text](/cloud/images/events-stream.png)
 
@@ -16,10 +16,10 @@ When an agent starts a run, calls a model, fires a tool, runs a hook, or hits an
 
 That means no tailing log files on a box somewhere, no grepping across machines, no stitching timestamps together by hand. You open one page and you are already watching production.
 
-Rows are colour-coded by type, so you can read the stream at a glance instead of parsing every line. At a glance, each row shows you:
+Rows are color-coded by event type. Each row shows:
 
 - **Its type**, colour-coded: `agent_start`, `model_response`, `tool_use`, `hook_completed`, `error`, and more.
-- **A one-line summary** of what happened, so you rarely need to open anything just to get the gist.
+- **A one-line summary** of the event.
 - **Token counts** for the step.
 - **A context-window fill badge** where it applies, so prompt growth and an approaching compaction are visible before they bite.
 
@@ -39,7 +39,7 @@ The event stream is the live tail behind **analyse → Sessions**, at `/<org-slu
 
 Behind it, your agents emit events through the SDK, the collector ships them to your FailproofAI Cloud server, and the stream tails them as they arrive in infrastructure you control. When you want the rolled-up view instead of the raw trail, each run's events collapse into a single row on Sessions, one click away.
 
-This is the raw source of truth that every other observe surface builds on, so when a number looks wrong elsewhere, the stream is where you confirm what actually happened.
+Use the stream to verify data shown on other observability pages.
 
 ## Related
 

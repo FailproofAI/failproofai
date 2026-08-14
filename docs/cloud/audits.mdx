@@ -19,10 +19,10 @@ FailproofAI Cloud goes looking for the failures you never wrote a rule for and h
 
 Alerts catch the problems you already know to watch for. Audits catch the ones you don't. On a schedule you set, an audit reads across all of your agent sessions and hunts for the patterns worth fixing, so you spend your time acting on findings instead of scrolling logs hoping to spot them yourself.
 
-A single run goes after the failure modes that actually break agents in production:
+A run checks for these failure classes:
 
 - **Error clusters**: the same failure repeating under a shared root cause.
-- **Drift versus a baseline**: behaviour quietly sliding away from a known-good window.
+- **Drift versus a baseline**: behavior moving away from a known-good window.
 - **Goal failure in transcripts**: runs that technically finished but never did the job.
 - **Tool misuse**: the wrong tool, bad arguments, or loops that burn calls.
 - **Quality and cost trade-offs**: where you are overpaying for output you could get cheaper.
@@ -30,17 +30,19 @@ A single run goes after the failure modes that actually break agents in producti
 
 You decide how hard it looks with a single **sensitivity** setting (low, medium, or high), so a noisy staging agent and a locked-down production one can each be tuned to the signal you want.
 
-## Every recommendation comes with receipts
+## Review the evidence
 
 You never have to take a finding on faith. Each recommendation cites the exact sessions it came from and the SQL that surfaced it, so you can open the evidence and confirm the problem in a click instead of reverse-engineering a claim.
 
-When a finding is about a leaked credential, it goes one step further and links the individual events it matched. Click one and you land on that exact moment in the session, already selected — not the top of a long transcript to scroll through. The link names the event; it never copies the detected secret into the finding, so reading a finding is not a second place your credential is written down. If an event is no longer there because the session has passed your retention window, the page says so plainly rather than leaving you wondering whether you clicked the wrong thing.
+Credential findings link to matched events without copying the secret into the finding. If
+retention removed an event, the page reports that it is unavailable.
 
-That is also what keeps audits honest. The server checks that every cited session actually exists and **discards any recommendation whose evidence does not hold up**, so the audit investigates but never invents. What lands on your list is real, reproducible, and ranked by how much it matters, with the biggest wins at the top.
+The server discards recommendations whose cited sessions do not resolve. Remaining findings
+are ranked by impact.
 
 ## Turn a fix into a policy
 
-Fixing an issue is only half the win. The other half is making sure it cannot quietly come back. Every finding carries a **one-click shortcut that drafts a recurrence alert**, prefilled with a sensible starting trigger you can tune. Close the finding, arm the alert, and the next time that pattern reappears you get paged instead of rediscovering it in a future audit.
+Create a prefilled recurrence alert from any finding to detect the pattern again.
 
 ## Where to find it
 

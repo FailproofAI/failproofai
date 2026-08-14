@@ -1,17 +1,14 @@
 ---
 title: "Bring in the history you already have"
-description: "Step 3 of 5 — your agents have been running for months. Load that history so your first audit has real failures to find."
+description: "Step 3 of 5: backfill existing agent sessions."
 icon: clock-rotate-left
 ---
 
-An audit is only as good as what it can read. A machine connected this morning has one
-afternoon of sessions, and a pattern that shows up once a week is invisible in it. This step
-loads the history that is already sitting on disk.
+Backfill sessions already stored on the machine so audits can detect longer-term patterns.
 
 <Note>
-  This step is for the **harness path**. Custom agents instrumented with the Python SDK
-  produce events from the moment you deploy the instrumentation — there is no prior history
-  on disk to recover.
+  This step applies to supported CLIs. The Python SDK records events only after you add
+  instrumentation.
 </Note>
 
 ---
@@ -26,7 +23,7 @@ sessions:
 | Session **files** — Claude Code, Codex, Copilot, Cursor, Pi, OpenClaw, Factory, Antigravity | Files modified in the **last 7 days**, read in full |
 | **SQLite** — Goose, OpenCode, Devin, Hermes | Their **whole history** |
 
-So on most machines you already have a week. Everything below is about going further back.
+Use `backfill` to import older files.
 
 ---
 
@@ -38,22 +35,18 @@ failproofai backfill --since 2026-01-01
 failproofai backfill --dry-run        # report what would be re-read, change nothing
 ```
 
-Two properties worth knowing before you run it on a busy machine:
+Before running it:
 
-- **It re-reads, it does not duplicate.** Sessions ship once, so running backfill twice
-  changes nothing the second time.
-- **It only covers what is still on disk.** Agent CLIs prune their own transcripts.
-  Anything they deleted is gone before FailproofAI ever sees it — which is the argument for
-  connecting your machines sooner rather than later.
+- Backfill is idempotent. Re-running it does not duplicate sessions.
+- It can only read transcripts that remain on disk.
 
-Start with `--dry-run` on the first machine so you know the size of what is coming.
+Run `--dry-run` first to estimate the import.
 
 ---
 
 ## Sessions somewhere non-standard
 
-Containers, mounted VM disks, a second checkout, a shared volume — transcripts are not
-always where the harness puts them by default. Register the extra path, then backfill it:
+Register non-standard transcript paths before backfilling:
 
 ```bash
 failproofai harness add-path claude ~/work/mirror/.claude/projects
@@ -62,13 +55,9 @@ failproofai harness list
 failproofai backfill --since 6m
 ```
 
-The optional `label=` prefix namespaces the agent ids from that path. Without it, two copies
-of the same project collapse into one confusing timeline.
+The optional `label=` prefix namespaces agent IDs from that path.
 
-Two rejections exist specifically to stop silent failures: a path that **overlaps a default
-location** is refused (it would be collected twice under two ids), and **two entries sharing
-a label** are refused (they would share progress state and both re-read from zero after
-every restart).
+FailproofAI rejects paths that overlap a default location and entries that reuse a label.
 
 For containers, `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` — comma-separated — overrides the file
 per source. [Full command reference →](/cli/harness)
@@ -77,9 +66,7 @@ per source. [Full command reference →](/cli/harness)
 
 ## Do this on every machine that matters
 
-History lives per machine. A pattern that only appears on your CI runner will not surface
-from your laptop's transcripts. Connect and backfill the machines where the interesting
-work actually happens — the overnight runners, the shared boxes, the ones nobody watches.
+Connect and backfill each machine whose history you need, including CI and shared runners.
 
 Unattended, that is two commands:
 

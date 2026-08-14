@@ -1,11 +1,10 @@
 ---
 title: "Prevent it happening again"
-description: "Step 5 of 5 — turn the finding at the top of your list into a rule that runs inside the agent loop, on every machine, and verify it worked."
+description: "Step 5 of 5: create, deploy, and verify a policy."
 icon: shield-halved
 ---
 
-This is the step that closes the loop. A finding tells you what went wrong; a **policy**
-makes sure it cannot go wrong the same way again.
+A **policy** evaluates agent actions and returns one of three decisions:
 
 A policy runs *inside* the agent loop. Every tool call passes through it first, and it
 returns one of three decisions:
@@ -20,17 +19,15 @@ returns one of three decisions:
 
 ## Check whether one already exists
 
-Before writing anything: **40 policies ship in the box** — secret detection,
-destructive-command blocking, branch protection, infrastructure guards, workflow gates. A
-good share of first findings are covered by one you have not switched on.
+Check the built-in catalog before writing a policy. It includes secret detection,
+destructive-command blocking, branch protection, infrastructure guards, and workflow gates.
 
 ```bash
 failproofai policies              # what is enabled here
 ```
 
-If the catalogue has it, enabling it is the whole step —
-[Built-in policies](/built-in-policies) lists all 40 with their parameters. Come back here
-when your failure mode is specific to your codebase.
+If a built-in policy matches, enable and configure it. See
+[Built-in policies](/built-in-policies).
 
 ---
 
@@ -39,10 +36,8 @@ when your failure mode is specific to your codebase.
 <Steps>
 
 <Step title="Draft the rule">
-  Open **fix → Policy editor** and write the source. It is a JavaScript editor: the source
-  is continuously parsed and **Publish version** stays disabled while it reports an error —
-  a version is immutable, so a source that cannot parse would mint a permanent version
-  number that only fails later, on the machine that pulls it.
+  Open **fix → Policy editor** and write the JavaScript source. **Publish version** remains
+  disabled until the source parses.
 
   ```js
   import { customPolicies, allow, deny } from "failproofai";
@@ -62,20 +57,18 @@ when your failure mode is specific to your codebase.
   });
   ```
 
-  The box above the editor also drafts a policy from a plain-English description. It returns
-  source into a side-by-side diff; nothing changes until you select **use this**.
+  The editor can draft a policy from a description. Review the diff before selecting
+  **use this**.
 </Step>
 
 <Step title="Make the denial readable">
-  This matters more than it looks. `deny("Don't do that")` gets you a retry loop.
-  `deny("Pushes to main are blocked — open a PR from a feature branch instead")` gets you a
-  pull request. The agent reads the reason and acts on it, so write it as instructions, not
-  as an error.
+  State what was blocked and what the agent should do next. Actionable reasons reduce
+  repeated attempts.
 </Step>
 
 <Step title="Publish a version">
-  **Publish version** mints an immutable version. Reusing an id creates the next version of
-  that policy rather than a new policy.
+  Publishing creates an immutable version. Publishing the same policy ID creates its next
+  version.
 </Step>
 
 </Steps>
@@ -87,30 +80,23 @@ when your failure mode is specific to your codebase.
 <Steps>
 
 <Step title="Pin it to one machine">
-  Open **fix → Deploy Policies**. The page is your fleet — one row per machine, showing what
-  it enforces, when it last asked for policy, and which deployment it is actually on.
+  Open **fix → Deploy Policies** and select a machine.
 
   Click a machine, select **edit this machine**, add your policy, pin the version, and set
   the effect to **observe**.
 </Step>
 
 <Step title="Apply">
-  Changes are **staged**, not applied as you click. The panel states exactly what applying
-  will write, including any policy being dropped. One visit lands as one deployment.
+  Changes remain staged until you apply them. Review policies added and removed.
 </Step>
 
 <Step title="Wait, then read what it would have blocked">
-  The daemon polls every 30 seconds, verifies the SHA-256 of every artifact, and activates
-  the set atomically. In observe mode nothing is blocked — every decision is recorded.
-
-  This is the step people skip and regret. The risk is not that a rule is wrong in theory.
-  It is that a rule that looks obviously correct turns out to block something forty
-  engineers do all day.
+  The daemon polls every 30 seconds and verifies each artifact. Observe mode records
+  decisions without blocking actions. Review those decisions for false positives.
 </Step>
 
 <Step title="Switch to enforce, then widen">
-  Once the observed decisions look right, flip the effect to **enforce** on that machine.
-  Then add the rest of the fleet.
+  Switch the test machine to **enforce**, then deploy to additional machines.
 </Step>
 
 </Steps>
@@ -125,15 +111,9 @@ when your failure mode is specific to your codebase.
 
 ## Verify the loop actually closed
 
-Go back to the finding in **analyse → Issues** and close it. Then let the next audit run.
-
-If the pattern is gone, the finding does not come back — that is your confirmation, and it
-is the whole point of running audits on a schedule rather than once. If it comes back, the
-policy is not catching the real case, and the finding's evidence tells you which case you
-missed.
-
-That is one full pass of the loop: **observe → evaluate → find → prevent → observe again**.
-Each pass leaves the agent measurably more reliable than the last.
+Close the issue and review the next audit. If the finding returns, use its evidence to
+adjust the policy. This completes the loop: **observe → evaluate → find → prevent →
+observe again**.
 
 ---
 
@@ -142,11 +122,11 @@ Each pass leaves the agent measurably more reliable than the last.
 <CardGroup cols={2}>
 
 <Card title="Built-in policies" icon="shield" href="/built-in-policies">
-  All 40, with their parameters. Cheaper than writing your own.
+  Review available policies and parameters.
 </Card>
 
 <Card title="Custom policies" icon="code" href="/custom-policies">
-  The full authoring API — `PolicyContext`, event filtering, error handling.
+  Use `PolicyContext`, event filters, and decision helpers.
 </Card>
 
 <Card title="Repo policies vs cloud policies" icon="code-branch" href="/cloud/policy-editor#local-policies-still-work">

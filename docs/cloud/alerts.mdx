@@ -1,28 +1,28 @@
 ---
 title: "Alerts"
-description: "Find out the moment something crosses your line, on the channel your team already watches, instead of hearing about it from a customer."
+description: "Notify your team when an agent metric or event crosses a threshold."
 ---
 
 
-Find out the moment something crosses your line, on the channel your team already watches, instead of hearing about it from a customer. Set a rule once and FailproofAI Cloud checks it on a schedule, then pages you by email, Slack, webhook, or right in the dashboard.
+Alerts evaluate rules on a schedule and notify email, Slack, webhook, or the dashboard.
 
 ![The Alerts page: a grid of alert-rule cards, each showing its trigger, evaluation window, channels, and an info, warning, or critical severity badge](/cloud/images/alerts.png)
-*Every alert rule at a glance: what it watches, how often, where it pages, and how urgent.*
+*Each rule shows its condition, interval, destination, and severity.*
 
-## Hear about problems before your users do
+## Choose notification channels
 
-Stop refreshing a dashboard hoping to catch a regression. Reach for an alert whenever there is a signal you would want to hear about even when nobody is looking, and have it land where you already are:
+Attach one or more channels to a rule:
 
 - **Email**, to whoever should know.
 - **Slack**, a rich message with a button that jumps straight to the issue.
 - **Webhook**, a JSON POST for PagerDuty, Opsgenie, or your own endpoint, with an optional signature so the receiver can trust it.
 - **In-dashboard**, quiet by design, for when you are tuning a rule and do not want to page anyone yet.
 
-Attach any combination to a single rule, and its severity (info, warning, or critical) rides along so the urgent ones look urgent.
+Set the severity to info, warning, or critical.
 
-## Build the rule in a form, not JSON
+## Create a rule
 
-You describe what "broken" means in a form, and FailproofAI Cloud writes the underlying rule for you. The JSON spec is just what that form produces under the hood, so you can read it to understand a rule but you rarely type it.
+Create rules in the dashboard form. The generated JSON is available for API use.
 
 ![The new-alert form: name and description, an enabled toggle, and a trigger picker offering metric threshold, custom SQL, evaluation score, compound eval, and per-event conditions](/cloud/images/alert-new.png)
 *Pick a trigger and the form swaps in the right fields; Save writes the rule.*
@@ -43,13 +43,15 @@ You are not limited to one kind of signal. Pick the trigger that matches how you
 | **Compound eval** | several score checks combine with any, all, or at-least-N logic, to catch a regression that only shows across scores |
 | **Per event** | a single matching event lands: a specific agent, a specific error type, or a message substring |
 
-Already staring at a failure on the [Errors page](/cloud/errors)? Every row there has a **+ alert** button that opens this same form prefilled to catch that exact failure again, so the issue you just triaged becomes the one that pages you next time.
+On the [Errors page](/cloud/errors), select **+ alert** to open a prefilled rule.
 
 **Where to find it:** Alerts live at `/<org-slug>/alerts`. Creating, editing, deleting, and testing rules needs **`alerts:write`**; `alerts:read` is enough to look. The recipient picker lists your org's members by name, so you can page a person without leaving the form.
 
 ## Page me only when it is real
 
-One bad measurement should not wake you. The **M of N** noise filter controls how many of the last few checks must fail before the alert actually pages you. Set it to **3 of 5** and the rule fires only after it has breached three of its last five checks, so a jittery signal stops crying wolf; leave it at the default **1 of 1** to fire on the first breach. You also choose how often the rule runs, from presets of 1m, 5m, 15m, and 1h, matched to how fast the signal really moves.
+The **M of N** filter requires a set number of recent checks to fail. For example, **3 of
+5** fires after three breaches in five checks. The default **1 of 1** fires on the first
+breach. Available intervals are 1m, 5m, 15m, and 1h.
 
 ## What happens when an alert fires
 

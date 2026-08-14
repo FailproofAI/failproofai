@@ -4,7 +4,8 @@ description: "See the instant your models, tools, or hooks slow down or run up a
 ---
 
 
-See the instant your models, tools, or hooks slow down or run up a bill, and catch a tail-latency spike before your users ever feel it. Three tabs under **analyse → Dashboards** turn raw timings into p50, p95, and p99 you can read at a glance.
+Use the Models, Tools, and Hooks tabs under **analyse → Dashboards** to track latency,
+errors, and usage.
 
 ![The Models tab showing a latency heat-map, a percentile band, and per-model token, cost, and context-window figures](/cloud/images/models.png)
 *The Models tab: a latency heat-map, a percentile band, and per-model tokens, estimated cost, and context-window fill.*
@@ -13,7 +14,7 @@ See the instant your models, tools, or hooks slow down or run up a bill, and cat
 
 An average latency number is comforting and useless: it smooths over the one call in fifty that stalls and pages your on-call at 2am. The Models, Tools, and Hooks tabs refuse to do that. Each shares the same shape, so you learn it once:
 
-- A **24-bin sparkline** for the trend at a glance: is this getting worse?
+- A **24-bin sparkline** for the trend.
 - A **vitals strip** with p50, p95, and p99 latency, so the typical run and the tail sit side by side.
 - A **latency heat-map**, 24 time bins by latency buckets, that shows *when* the slow calls clustered.
 - A **percentile band**: a p50 line with p25 to p75 and p10 to p90 shaded ribbons and p99 dots, so the spread stays visible instead of averaged away.
@@ -28,12 +29,12 @@ FailproofAI Cloud recognizes common model IDs automatically. If a window looks w
 
 ## Tools: tell the slow apart from the broken
 
-A tool call can be slow, or it can be quietly failing, and you want to know which one in seconds, not after digging through logs.
+The Tools tab separates latency from failures.
 
 ![The Tools tab showing the shared latency heat-map and percentile band beside a success and failure breakdown and a tool-distribution bar](/cloud/images/tools.png)
 *The Tools tab: the same heat-map and percentile band, plus a success and failure breakdown and a tool-distribution bar.*
 
-Alongside the shared latency view, the Tools tab adds a **success and failure breakdown** and a **tool-distribution bar**, so you see at a glance which tools you lean on most and which are eating your error budget.
+It also shows success and failure counts and a tool-distribution chart.
 
 ## Hooks: pinpoint the exact hook and trigger
 

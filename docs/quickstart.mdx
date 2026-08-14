@@ -1,12 +1,10 @@
 ---
 title: Quickstart
-description: "From nothing to a guarded machine in about two minutes — then connected to your fleet."
+description: "Install FailproofAI, enable policies, and optionally connect to Cloud."
 icon: rocket
 ---
 
-This page takes you from an empty machine to one where every agent tool call is checked,
-every decision is recorded, and (optionally) the whole thing reports into your
-organization's dashboard.
+Install FailproofAI, enable local policies, and optionally connect the machine to Cloud.
 
 ## Requirements
 
@@ -32,8 +30,7 @@ bun add -g failproofai
 
 </CodeGroup>
 
-Prefer not to install anything? Every command works through `npx -y failproofai …` — but
-a policy you have to remember to invoke is not a policy, so for real use, install it.
+You can try commands with `npx -y failproofai …`. Install the package for ongoing use.
 
 ---
 
@@ -49,7 +46,7 @@ machine.
 <Steps>
   <Step title="Recommended, or customize?">
     **Recommended** turns on 15 policies globally for every agent CLI it finds on this
-    machine. It is the answer for almost everyone, and it is a decision, not a shortcut: it
+    machine. This is the default option. It
     keeps secrets out of what the agent reads, stops the agent switching off its own
     policies, blocks commands that are unrecoverable when wrong, and keeps git history
     recoverable. [The 15, by name →](/policies#the-recommended-set)

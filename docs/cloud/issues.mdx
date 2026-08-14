@@ -1,28 +1,30 @@
 ---
 title: "Issues"
-description: "When something breaks, everyone can see the issue is open, who owns it, and what has happened so far — on one attributed timeline."
+description: "Track active problems, ownership, and response history."
 ---
 
 
-When an alert fires, the first question is always "who's on it?" Incidents answer it: the moment something breaches, everyone can see the incident is open, who owns it, and exactly what has happened so far, with a clean, attributed record you can hand straight to a post-mortem.
+Issues track alert breaches and manually reported problems, including ownership and history.
 
-![The Incidents inbox: alert-linked and manually opened incident cards, grouped by state, each with a severity badge and an assignee](/cloud/images/incidents.png)
-*The inbox groups open incidents by state and filters by severity and assignee, so you see what needs a human now.*
+![The Issues inbox: alert-linked and manually opened issue cards, grouped by state, each with a severity badge and an assignee](/cloud/images/incidents.png)
+*The inbox groups open issues by state and filters by severity and assignee.*
 
-## Know who has it, at a glance
+## Track ownership
 
-No more "is anyone looking at this?" in a chat thread. A breach opens an incident automatically and drops it into a shared inbox, grouped by state. Acknowledge it and your name is on it, so the rest of the team knows it is handled. Acknowledgement is shared: several operators can ack the same incident and each is recorded on its own, so a full war room shows up by name instead of stepping on each other. Assign one owner for triage, and filter the inbox by severity or assignee to cut it down to what is yours.
+A breach opens an issue in the shared inbox. Operators can acknowledge it, assign an owner,
+and filter by severity or assignee. Multiple acknowledgements are recorded separately.
 
-## The whole story, in one timeline
+## Review the timeline
 
-When the incident is over, you already have the write-up. Open any incident and you get the breach evidence, its assignees and subscribers, a comment thread for coordinating in place, and an append-only activity timeline.
+Each issue includes breach evidence, assignees, subscribers, comments, and an append-only
+activity timeline.
 
-![An incident detail view: the parent alert and breach summary, assignees and subscribers, an attributed activity timeline, and a comment thread](/cloud/images/incident-detail.png)
+![An issue detail view: the parent alert and breach summary, assignees and subscribers, an attributed activity timeline, and a comment thread](/cloud/images/incident-detail.png)
 *Everything that happened, in order, each line signed by whoever did it.*
 
-Every action (opened, acknowledged, resolved, and so on) is written to that timeline and never edited away. Each entry is attributed: to the operator who took it, by email, or to **automated** for anything FailproofAI Cloud did on its own, like opening the incident on the breach. Nothing is anonymous and nothing is lost, so the post-mortem more or less writes itself.
+Each entry identifies the operator or **automated** actor that created it.
 
-## How an incident moves
+## Issue states
 
 ```mermaid
 stateDiagram-v2
@@ -33,18 +35,23 @@ stateDiagram-v2
     resolved --> [*]
 ```
 
-- **Open (firing):** the breach opens the incident and pages your channels once. Repeated breaches fold into the same incident and refresh its evidence instead of paging you again and again.
-- **Acknowledged:** an operator picks it up. It stays open, and later breaches update the evidence quietly.
-- **Resolved:** an operator closes it out. Automatic resolution when the condition clears is planned but not yet enabled, so an incident stays open until a human resolves it, which keeps everyone honest about what has actually cleared. A fresh incident can open on the same alert later.
+- **Open (firing):** a breach opens the issue and notifies its channels. Repeated breaches
+  update the same issue.
+- **Acknowledged:** an operator owns it. Later breaches update its evidence.
+- **Resolved:** an operator closes it. Issues do not resolve automatically. The same alert
+  can open another issue later.
 
-One alert holds at most one open incident at a time, so a flapping rule cannot bury you in duplicates. You can also open an incident by hand: a standalone one for something no alert caught, or one attached to an existing alert, if you have `incidents:write`.
+One alert can have one open issue at a time. You can also open a standalone issue or attach
+one to an alert with `incidents:write`.
 
 ## Where to find it
 
-Incidents live at `/<org-slug>/incidents`. Viewing needs **`incidents:read`**; opening a manual incident needs **`incidents:write`**; acknowledging, assigning, commenting, and resolving need **`incidents:ack`**. Older keys granted the retired `alerts:ack` keep working, since it is honored as `incidents:ack`, so your on-call rotation does not need re-issuing.
+Issues live at `/<org-slug>/issues`. Viewing requires **`incidents:read`**; opening an issue
+requires **`incidents:write`**; acknowledging, assigning, commenting, and resolving require
+**`incidents:ack`**. Older keys with `alerts:ack` remain compatible.
 
 ## Related
 
-- [Alerts](/cloud/alerts): the rules that open these incidents when a threshold breaches.
+- [Alerts](/cloud/alerts): rules that open issues when a threshold breaches.
 - [Errors](/cloud/errors): see every failure in one place and promote one to an alert.
 - [Audits](/cloud/audits): the scheduled analyst that finds the failures no rule was watching.

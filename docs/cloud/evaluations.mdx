@@ -4,7 +4,7 @@ description: "Every finished run scored as it lands, so quality problems find yo
 ---
 
 
-Quality problems find you now, instead of you hearing about them in a user complaint. Connect your own scoring service once and FailproofAI Cloud grades every finished run automatically, so a drop in helpfulness or a spike in hallucinations shows up on its own, before a customer feels it.
+Connect a scoring service to evaluate completed runs automatically.
 
 ![The Sessions grid with a score column: each run carries an evaluation status pill and colour-coded helpfulness, factuality, and tool-efficiency badges](/cloud/images/sessions-list.png)
 
@@ -14,7 +14,8 @@ Quality problems find you now, instead of you hearing about them in a user compl
 
 You used to spot-check a handful of runs and hope the rest were fine. Now every completed session is scored the moment it finishes, on the dimensions you care about: helpfulness, tool efficiency, factuality, safety, whatever your quality bar is. You define the score keys; FailproofAI Cloud stores, trends, and displays whatever your evaluator sends back. No run slips through unscored, and you stop learning about a regression from a support ticket.
 
-The scores ride along on the sessions grid at **`/<org-slug>/sessions`** (sidebar → **analyse** → **Sessions**), one badge cluster per row. Want just the runs that fell short? Filter the grid by score range, say helpfulness below 0.5, and pull up exactly the runs worth reading. Viewing scores needs the `evaluations:read` permission.
+Scores appear on the Sessions grid. Filter by score range to find runs that need review.
+Viewing scores requires `evaluations:read`.
 
 ## See why a run scored low
 
@@ -28,7 +29,7 @@ Shipped a sharper evaluator, or looking at a run that crashed before it could be
 
 ## Watch quality trend across the fleet
 
-One run scoring low is noise; a whole cohort sliding is a signal. Saved dashboards turn your scores into a trend you can watch at a glance: average helpfulness this week against last, per agent, per environment.
+Use saved dashboards to compare score trends by time, agent, or environment.
 
 ![A quality dashboard: average-score bars per evaluator dimension alongside a trend over time](/cloud/images/dashboard-quality.png)
 

@@ -1,24 +1,20 @@
 ---
 title: "Send your first session"
-description: "Step 2 of 5 — two ways to plug in, depending on whether your agents run on a supported harness or you wrote them yourself."
+description: "Step 2 of 5: connect a supported CLI or instrument a custom agent."
 icon: signal-stream
 ---
 
-A **session** is the trace of one agent run: every tool call, model request, hook, and error
-it produced, from the first prompt to the final answer. Getting sessions flowing is the
-whole of step 2 — everything later in this guide reads them.
+A **session** records one agent run, including its tool calls, model requests, hooks, and
+errors. Choose one connection method below.
 
 ## Which way do you plug in?
-
-There are exactly two, and which one you need depends on where your agents run.
 
 | Your agents… | You connect with | Code changes |
 |---|---|---|
 | run on a **supported harness** — Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin, Antigravity, Goose | `failproofai config --connect` | none |
 | are **custom agents you wrote** | the Python SDK | a few `agenteye.event.*` calls |
 
-Teams routinely run both. Pick the one that matches what you want to see first; you can add
-the other later without redoing anything.
+You can use both methods in one organization.
 
 ---
 
@@ -26,7 +22,7 @@ the other later without redoing anything.
 
 <Tab title="Supported harness">
 
-Nothing to instrument. Install the CLI and point it at your organization.
+Install the CLI and connect the machine.
 
 <Steps>
 
@@ -35,8 +31,7 @@ Nothing to instrument. Install the CLI and point it at your organization.
   npm install -g failproofai
   ```
 
-  Needs Node 20.9+ on Linux or macOS. Windows is not supported yet — setup refuses rather
-  than half-configuring the machine.
+  Requires Node 20.9+ on Linux or macOS. Windows is not supported.
 </Step>
 
 <Step title="Connect">
@@ -44,16 +39,13 @@ Nothing to instrument. Install the CLI and point it at your organization.
   failproofai config --connect https://app.befailproof.ai --token <your-key>
   ```
 
-  That is the key you made in [step 1](/start/sign-up). One command opens both streams:
-  sessions go up, policy comes down. Connecting needs no root.
+  Use the key from [step 1](/start/sign-up). Connecting does not require root.
 
-  Prefer to be asked? Run `failproofai config` and choose **Paste an API key**. Both paths
-  write byte-identical state.
+  For interactive setup, run `failproofai config` and choose **Paste an API key**.
 </Step>
 
 <Step title="Run an agent, as you normally would">
-  Open Claude Code, Codex, or whichever harness you use, and do something small — ask it to
-  read a file. Nothing about how you work changes.
+  Start a short run in a supported CLI, such as asking it to read a file.
 </Step>
 
 <Step title="Push it now instead of waiting">
@@ -61,8 +53,7 @@ Nothing to instrument. Install the CLI and point it at your organization.
   failproofai flush --wait
   ```
 
-  Sessions ship on their own within about a minute. `flush` skips the wait so you are not
-  staring at an empty dashboard wondering whether it worked.
+  Sessions upload automatically. `flush` sends queued data immediately.
 </Step>
 
 </Steps>
@@ -74,9 +65,7 @@ Nothing to instrument. Install the CLI and point it at your organization.
 For agents you wrote yourself, the SDK emits events from inside your code.
 
 <Note>
-  The SDK ships as a private wheel rather than from a public package index — ask your
-  Failproof AI contact for access. The harness path on the other tab needs no such step, so
-  if you also run a supported harness, start there while access is sorted out.
+  The SDK is distributed as a private wheel. Ask your FailproofAI contact for access.
 </Note>
 
 <Steps>
@@ -111,19 +100,16 @@ For agents you wrote yourself, the SDK emits events from inside your code.
   agenteye.event.agent_end(session_id="run-001", agent_id="planner", outcome="success")
   ```
 
-  Pair every start with its end and reuse the same correlation id (`tool_call_id` here) on
-  both — that pairing is what turns a flat event list into a readable run.
+  Pair each start with an end. Reuse `tool_call_id` for a tool call and its result.
 </Step>
 
 <Step title="Let the collector ship it">
-  The SDK writes JSONL under `~/.agenteye/events/`; the collector daemon picks those files
-  up and uploads them. You never manage the files yourself.
+  The SDK writes JSONL under `~/.agenteye/events/`. The collector uploads those files.
 </Step>
 
 </Steps>
 
-The full event reference — all 13 methods, custom fields, and the on-disk format — is on
-[Python SDK](/cloud/sdk).
+See [Python SDK](/cloud/sdk) for the event reference and file format.
 
 </Tab>
 
@@ -133,9 +119,8 @@ The full event reference — all 13 methods, custom fields, and the on-disk form
 
 ## Confirm it landed
 
-Open **analyse → Sessions** in the dashboard. Your run is one row: the goal, how long it
-took, what it spent, and a green or red outcome. Click it and you get the execution graph —
-what ran in parallel, which sub-agent branched off, where it stalled.
+Open **analyse → Sessions**. The run should appear as a row. Open it to view the execution
+graph and event timeline.
 
 If the row is not there:
 
@@ -146,13 +131,11 @@ If the row is not there:
   failproofai config --status
   ```
 
-  Check the key carries `events:add`. A key with `policies:pull` only receives policy and
-  sends nothing — a supported state, and a common reason for an empty dashboard.
+  Check that the key has `events:add`. A key with only `policies:pull` sends no events.
 </Accordion>
 
 <Accordion title="The machine connected but the agent ran before you connected">
-  Expected. A machine ships what happens after it connects. [Step 3](/start/history) rewinds
-  it.
+  Use [step 3](/start/history) to backfill earlier runs.
 </Accordion>
 
 <Accordion title="You do not want transcripts leaving the machine">

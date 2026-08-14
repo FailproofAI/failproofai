@@ -4,13 +4,13 @@ description: "Pin saved queries as charts and build the one shared picture your 
 ---
 
 
-Turn your live agent data into one shared picture your whole team watches. Pin the queries that matter as charts, and everyone opens the same numbers at a glance, without re-running a single query.
+Dashboards display saved queries as shared charts.
 
 ![A dashboard built from saved queries: an events-per-hour line, an errors-by-type bar, a latency area chart, and tokens-by-model](/cloud/images/dashboard-fleet.png)
 
 *One board, four saved queries: events per hour, errors by type, latency, and tokens by model.*
 
-## Everyone sees the same truth
+## Share query results
 
 Stop pasting screenshots into chat and stop re-running the same query five times a day. A dashboard is a shared, org-wide board anyone on your team can open to the exact same view. When the underlying data moves, the charts move with it, so the board is always current and nobody is arguing over stale numbers.
 
@@ -27,17 +27,18 @@ You'll find your boards at `/<org-slug>/dashboards`.
 
 Every tile starts as a saved query. Build and save the query you care about in the [Queries](/cloud/queries) library (built-in presets plus your own, over your events and evaluations), then pin it to a dashboard as the chart that fits the data: a **line** for trends over time, a **bar** for comparing categories, an **area** for volume, or a **pie** for a share breakdown.
 
-Because a tile is just your saved query rendered as a chart, there's nothing to keep in sync by hand. Update the query once and every dashboard that uses it updates too.
+Updating a saved query updates every dashboard tile that uses it.
 
-## Watch quality, not just volume
+## Track quality
 
-Volume tells you the agents are busy. Quality tells you they're actually doing the job. Point a dashboard at your [evaluation scores](/cloud/evaluations) and you get a board that tracks how well runs are going over time, so a quality regression shows up as a dip on a chart instead of a surprise from a customer.
+Chart [evaluation scores](/cloud/evaluations) to track quality over time by agent or
+environment.
 
 ![A quality-focused dashboard built from saved evaluation queries](/cloud/images/dashboard-quality.png)
 
 *A quality board keeps your evaluation scores front and center, right beside the operational numbers.*
 
-Keep an operations board and a quality board side by side and your team has one place to answer both "is it working?" and "is it good?", without anyone re-running a query.
+Separate operational and quality metrics when they serve different readers.
 
 ## Related
 

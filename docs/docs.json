@@ -39,7 +39,8 @@
                 "pages": [
                   "introduction",
                   "how-it-works",
-                  "concepts"
+                  "concepts",
+                "quickstart"
                 ]
               },
               {
@@ -49,8 +50,7 @@
                   "start/first-trace",
                   "start/history",
                   "start/first-audit",
-                  "start/first-policy",
-                  "quickstart"
+                  "start/first-policy"
                 ]
               },
               {
@@ -168,7 +168,8 @@
                 "pages": [
                   "zh/introduction",
                   "zh/how-it-works",
-                  "zh/concepts"
+                  "zh/concepts",
+                "zh/quickstart"
                 ]
               },
               {
@@ -178,8 +179,7 @@
                   "zh/start/first-trace",
                   "zh/start/history",
                   "zh/start/first-audit",
-                  "zh/start/first-policy",
-                  "zh/quickstart"
+                  "zh/start/first-policy"
                 ]
               },
               {
@@ -297,7 +297,8 @@
                 "pages": [
                   "ja/introduction",
                   "ja/how-it-works",
-                  "ja/concepts"
+                  "ja/concepts",
+                "ja/quickstart"
                 ]
               },
               {
@@ -307,8 +308,7 @@
                   "ja/start/first-trace",
                   "ja/start/history",
                   "ja/start/first-audit",
-                  "ja/start/first-policy",
-                  "ja/quickstart"
+                  "ja/start/first-policy"
                 ]
               },
               {
@@ -426,7 +426,8 @@
                 "pages": [
                   "ko/introduction",
                   "ko/how-it-works",
-                  "ko/concepts"
+                  "ko/concepts",
+                "ko/quickstart"
                 ]
               },
               {
@@ -436,8 +437,7 @@
                   "ko/start/first-trace",
                   "ko/start/history",
                   "ko/start/first-audit",
-                  "ko/start/first-policy",
-                  "ko/quickstart"
+                  "ko/start/first-policy"
                 ]
               },
               {
@@ -555,7 +555,8 @@
                 "pages": [
                   "es/introduction",
                   "es/how-it-works",
-                  "es/concepts"
+                  "es/concepts",
+                "es/quickstart"
                 ]
               },
               {
@@ -565,8 +566,7 @@
                   "es/start/first-trace",
                   "es/start/history",
                   "es/start/first-audit",
-                  "es/start/first-policy",
-                  "es/quickstart"
+                  "es/start/first-policy"
                 ]
               },
               {
@@ -684,7 +684,8 @@
                 "pages": [
                   "pt-br/introduction",
                   "pt-br/how-it-works",
-                  "pt-br/concepts"
+                  "pt-br/concepts",
+                "pt-br/quickstart"
                 ]
               },
               {
@@ -694,8 +695,7 @@
                   "pt-br/start/first-trace",
                   "pt-br/start/history",
                   "pt-br/start/first-audit",
-                  "pt-br/start/first-policy",
-                  "pt-br/quickstart"
+                  "pt-br/start/first-policy"
                 ]
               },
               {
@@ -813,7 +813,8 @@
                 "pages": [
                   "de/introduction",
                   "de/how-it-works",
-                  "de/concepts"
+                  "de/concepts",
+                "de/quickstart"
                 ]
               },
               {
@@ -823,8 +824,7 @@
                   "de/start/first-trace",
                   "de/start/history",
                   "de/start/first-audit",
-                  "de/start/first-policy",
-                  "de/quickstart"
+                  "de/start/first-policy"
                 ]
               },
               {
@@ -942,7 +942,8 @@
                 "pages": [
                   "fr/introduction",
                   "fr/how-it-works",
-                  "fr/concepts"
+                  "fr/concepts",
+                "fr/quickstart"
                 ]
               },
               {
@@ -952,8 +953,7 @@
                   "fr/start/first-trace",
                   "fr/start/history",
                   "fr/start/first-audit",
-                  "fr/start/first-policy",
-                  "fr/quickstart"
+                  "fr/start/first-policy"
                 ]
               },
               {
@@ -1071,7 +1071,8 @@
                 "pages": [
                   "ru/introduction",
                   "ru/how-it-works",
-                  "ru/concepts"
+                  "ru/concepts",
+                "ru/quickstart"
                 ]
               },
               {
@@ -1081,8 +1082,7 @@
                   "ru/start/first-trace",
                   "ru/start/history",
                   "ru/start/first-audit",
-                  "ru/start/first-policy",
-                  "ru/quickstart"
+                  "ru/start/first-policy"
                 ]
               },
               {
@@ -1200,7 +1200,8 @@
                 "pages": [
                   "hi/introduction",
                   "hi/how-it-works",
-                  "hi/concepts"
+                  "hi/concepts",
+                "hi/quickstart"
                 ]
               },
               {
@@ -1210,8 +1211,7 @@
                   "hi/start/first-trace",
                   "hi/start/history",
                   "hi/start/first-audit",
-                  "hi/start/first-policy",
-                  "hi/quickstart"
+                  "hi/start/first-policy"
                 ]
               },
               {
@@ -1329,7 +1329,8 @@
                 "pages": [
                   "tr/introduction",
                   "tr/how-it-works",
-                  "tr/concepts"
+                  "tr/concepts",
+                "tr/quickstart"
                 ]
               },
               {
@@ -1339,8 +1340,7 @@
                   "tr/start/first-trace",
                   "tr/start/history",
                   "tr/start/first-audit",
-                  "tr/start/first-policy",
-                  "tr/quickstart"
+                  "tr/start/first-policy"
                 ]
               },
               {
@@ -1458,7 +1458,8 @@
                 "pages": [
                   "vi/introduction",
                   "vi/how-it-works",
-                  "vi/concepts"
+                  "vi/concepts",
+                "vi/quickstart"
                 ]
               },
               {
@@ -1468,8 +1469,7 @@
                   "vi/start/first-trace",
                   "vi/start/history",
                   "vi/start/first-audit",
-                  "vi/start/first-policy",
-                  "vi/quickstart"
+                  "vi/start/first-policy"
                 ]
               },
               {
@@ -1587,7 +1587,8 @@
                 "pages": [
                   "it/introduction",
                   "it/how-it-works",
-                  "it/concepts"
+                  "it/concepts",
+                "it/quickstart"
                 ]
               },
               {
@@ -1597,8 +1598,7 @@
                   "it/start/first-trace",
                   "it/start/history",
                   "it/start/first-audit",
-                  "it/start/first-policy",
-                  "it/quickstart"
+                  "it/start/first-policy"
                 ]
               },
               {
@@ -1716,7 +1716,8 @@
                 "pages": [
                   "ar/introduction",
                   "ar/how-it-works",
-                  "ar/concepts"
+                  "ar/concepts",
+                "ar/quickstart"
                 ]
               },
               {
@@ -1726,8 +1727,7 @@
                   "ar/start/first-trace",
                   "ar/start/history",
                   "ar/start/first-audit",
-                  "ar/start/first-policy",
-                  "ar/quickstart"
+                  "ar/start/first-policy"
                 ]
               },
               {
@@ -1845,7 +1845,8 @@
                 "pages": [
                   "he/introduction",
                   "he/how-it-works",
-                  "he/concepts"
+                  "he/concepts",
+                "he/quickstart"
                 ]
               },
               {
@@ -1855,8 +1856,7 @@
                   "he/start/first-trace",
                   "he/start/history",
                   "he/start/first-audit",
-                  "he/start/first-policy",
-                  "he/quickstart"
+                  "he/start/first-policy"
                 ]
               },
               {

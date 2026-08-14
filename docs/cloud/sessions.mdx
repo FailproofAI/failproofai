@@ -4,7 +4,7 @@ description: "Every event from a run, rolled into one readable row and drawn as 
 ---
 
 
-Stop guessing why a run failed. FailproofAI Cloud rolls every event from a run into one readable row, then draws the whole run as a git-style picture you can read in seconds, so you see exactly what your agent did, step by step.
+Sessions group the events from each agent run and display them as an execution graph.
 
 ![The Sessions list: one row per run, across environments and agents, with status pills and evaluation score badges](/cloud/images/sessions-list.png)
 
@@ -18,17 +18,18 @@ Stop guessing why a run failed. FailproofAI Cloud rolls every event from a run i
 
 ---
 
-## See every run at a glance
+## List and filter runs
 
-The raw event trail is the truth of every step, but when you have thousands of steps across dozens of runs, you need the run, not the step. The Sessions page rolls all of a run's events up into one row, so a day of activity becomes a scannable list instead of a firehose.
+Each row summarizes a run. Filter by time, environment, agent, status, or score.
 
 Each row carries a status pill, so a failed run stands out from a healthy one before you click anything. Filter by date range, environment, agent, or session to go from "everything" to "the run I care about" in a couple of clicks.
 
-Once you connect an evaluator, every completed run is scored automatically and its latest score shows up on the row as a badge. You can filter by any score range, so "show me every low-scoring prod run this week" is a filter, not a manual review. Until you set one up, sessions still capture the full run; they just don't carry a score yet.
+When an evaluator is connected, each row shows the latest score. Score filters can isolate
+low-scoring runs. Sessions remain available without an evaluator.
 
 ---
 
-## Read the whole run as a picture
+## Inspect a run
 
 ![A session's git-style execution graph beside its event timeline, with the tool, model, and hook breakdown panel](/cloud/images/session-detail.png)
 
@@ -36,9 +37,10 @@ Once you connect an evaluator, every completed run is scored automatically and i
 
 Click any session to open its execution graph: a git-style view of how agents, tools, hooks, and model calls unfolded over time. Parallel sub-agents each branch onto their own lane, so you can see which work ran side by side, which sub-agent stalled, and where the run went off course, without replaying it in your head from a wall of logs.
 
-The right rail gives you the per-run breakdown: which tools and models ran, which hooks fired, and what the run spent in tokens. That is the answer to "why did this run cost so much?" or "which tool is the slow one?" sitting right next to the graph that caused it.
+The right rail summarizes tools, models, hooks, and token use.
 
-Individual events are addressable, so you can hand someone a link to one moment rather than "the session, about two thirds down". Copy the link from any event, or follow one from an [audit](/cloud/audits) finding or an error, and the session opens with that event selected and scrolled to. This holds for very long runs too: the timeline loads a bounded window for the sake of your browser, and a link pointing past that window still finds its event rather than dropping you at the start. If the event has aged out of your retention window, the page tells you that instead of quietly selecting nothing.
+Each event has a direct link. Opening it selects the event, including events outside the
+initial timeline window. The page reports when retention has removed an event.
 
 ---
 

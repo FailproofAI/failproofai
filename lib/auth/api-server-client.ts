@@ -266,6 +266,56 @@ export async function sendInvites(
   );
 }
 
+export interface AuditReportBody {
+  machine_id: string;
+  label?: string;
+  platform?: string;
+  window_from?: string;
+  window_to: string;
+  harmful: {
+    policy: string;
+    category: string;
+    title: string;
+    hits: number;
+    first_seen?: string;
+    last_seen?: string;
+    examples: string[];
+  }[];
+}
+
+export interface AuditReportResult {
+  report_id: string;
+  /** Whether this report produced an email. */
+  emailed: boolean;
+  /** `below_threshold`, `cooldown`, `send_failed`, or null when mail went out. */
+  reason: string | null;
+  /**
+   * Where the next window starts, per the SERVER.
+   *
+   * Persisted verbatim rather than computed locally. The server anchors it on
+   * the last DELIVERED digest, so a report held by the cooldown — or one whose
+   * send failed — correctly leaves the watermark where it was, and its findings
+   * turn up in the next digest instead of falling into a gap. A machine that
+   * lost `machine.json` also resyncs here rather than re-reporting from the
+   * beginning of time.
+   */
+  next_window_from: string;
+}
+
+/**
+ * Submit one scheduled scan's harmful findings.
+ *
+ * Called only by the audit child, and only on `--scheduled`. The destination
+ * address is never sent: the api-server takes it from the access-token claims,
+ * so a report cannot name where its digest goes.
+ */
+export async function submitAuditReport(
+  accessToken: string,
+  body: AuditReportBody,
+): Promise<AuditReportResult> {
+  return postJson<AuditReportResult>("/v0/audit-reports", body, { accessToken });
+}
+
 interface JwtClaims {
   sub: string;
   email: string;

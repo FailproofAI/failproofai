@@ -28,6 +28,7 @@ import { trackHookEvent } from "../hooks/hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { sanitizeErrorMessage } from "../../lib/telemetry-sanitize";
 import { openWhenReady } from "./open-browser";
+import { describeOutcome, reportHarm } from "./report-harm";
 import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM } from "../hooks/tui";
 
 /** Port the bundled dashboard binds to. Matches `scripts/launch.ts`'s default
@@ -364,6 +365,29 @@ export async function runScheduledAudit(): Promise<number> {
       `failproofai: audit complete — ${num(result.eventsScanned)} tool calls across ` +
         `${num(result.transcripts.scanned)} sessions, ${num(result.totals.hits)} hits\n`,
     );
+
+    // Report harmful findings upstream, if the user switched emailed reports on.
+    //
+    // AFTER the dashboard cache is written and AFTER the success line, because
+    // the scan is the product and this is an optional extra on top of it.
+    // `reportHarm` never throws — every failure inside it is an outcome — so a
+    // dead network, an expired session or an api-server having a bad day cannot
+    // turn a successful scan into exit 1. A machine that never opted in prints
+    // nothing at all and does no work here.
+    //
+    // Scheduled runs ONLY. An interactive `failproofai audit` has a person
+    // sitting in front of the result, so mailing it to them is noise, and it
+    // would also make the manual command do a network call that
+    // `audit --help` promises it does not.
+    const outcome = await reportHarm(result);
+    const line = describeOutcome(outcome);
+    if (line) {
+      // Anything other than a successful send goes to stderr: on a scheduled run
+      // the journal is the only reader, and "the email did not go out" is the
+      // half worth finding with a grep.
+      const stream = outcome.kind === "sent" ? process.stdout : process.stderr;
+      stream.write(`${line}\n`);
+    }
 
     return 0;
   } finally {

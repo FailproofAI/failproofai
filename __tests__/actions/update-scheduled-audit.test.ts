@@ -79,7 +79,7 @@ describe("scheduled-audit write actions", () => {
     expect(readConfig().telemetry.enabled).toBe(false);
     expect(JSON.parse(readFileSync(configFile(), "utf8")).telemetry).toEqual({ enabled: false });
     // And the audit write actually landed alongside it.
-    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 14 });
+    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 14, emailEnabled: false });
   });
 
   it("preserves an unrelated cloud/collector setting across a scan write", async () => {

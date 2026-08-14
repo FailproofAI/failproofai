@@ -140,6 +140,32 @@ const PRIVATE_KEY_RE = /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/;
 // sanitizeBearerTokens
 const BEARER_TOKEN_RE = /Authorization:\s*Bearer\s+[A-Za-z0-9\-._~+/]{20,}/i;
 
+/**
+ * Every pattern the `sanitize-*` policies treat as a secret, as one list.
+ *
+ * Exported so the audit's harm reporter can redact against the SAME definition
+ * of "secret" that the engine blocks on, rather than growing a second pattern
+ * list beside this one. Two lists is the shape that eventually disagrees, and
+ * the direction it disagrees in here is a live credential leaving a machine.
+ *
+ * The `sanitize-*` FUNCTIONS cannot be reused for this — they are detectors that
+ * return a `deny` with a message, not transforms that return scrubbed text. The
+ * patterns are the reusable part, so the patterns are what is shared.
+ *
+ * Ordered most-specific first, which is load-bearing for the API keys: a
+ * generic `sk-[A-Za-z0-9]{20,}` placed before `sk-ant-…` would label an
+ * Anthropic key as an OpenAI one. (It does not currently MATCH one — the
+ * hyphens in `sk-ant-` break the character class — but the ordering is what
+ * makes that a design rather than a coincidence.)
+ */
+export const SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  [PRIVATE_KEY_RE, "private key"],
+  [JWT_RE, "JWT"],
+  [BEARER_TOKEN_RE, "bearer token"],
+  [CONNECTION_STRING_RE, "database credentials"],
+  ...API_KEY_PATTERNS,
+];
+
 // warnDestructiveSql / warnSchemaAlteration
 const SQL_TOOL_RE = /\b(?:psql|mysql|sqlite3|pgcli|clickhouse-client)\b/;
 const DESTRUCTIVE_SQL_RE = /\b(?:DROP\s+(?:TABLE|DATABASE|SCHEMA)|TRUNCATE\b)/i;

@@ -1,16 +1,154 @@
-/* /settings — scheduled audits.
+/* /settings — a console for the service running on this machine.
  *
  * Every colour is an existing token from globals.css. No new hue, no third
- * accent: pink is the control that acts, mint is the thing that is alive, and
- * everything else is the charcoal stack and the ink ramp. The chunky pixel
- * shadow comes from `.btn-press`, which already exists — this file adds one to
- * the panel and nothing else.
+ * accent: pink is the control that acts and anything that needs a person, mint
+ * is the thing that is alive, everything else is the charcoal stack and the ink
+ * ramp. The chunky pixel shadow comes from `.btn-press`, which already exists —
+ * this file puts one on the console and nothing else.
+ *
+ * ## The hairline grid
+ *
+ * Every rule between cells is a `gap: 1px` over a line-coloured background, not
+ * a border on each cell. Borders double where two cells meet and go missing at
+ * the edges; a gap over a background cannot do either, so the grid is exactly
+ * one pixel everywhere by construction rather than by arithmetic.
  *
  * The tape is the only drawn element on the page. That is the budget.
  */
 
 .set-sec {
-  max-width: 720px;
+  max-width: 940px;
+}
+
+/* ── the console: stat row over panel row, one hairline grid ──────────────── */
+
+.set-console {
+  display: flex;
+  flex-direction: column;
+  /* The gap IS the grid — see the note above. */
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  /* Print-register depth, matching `.btn-press`. Hard offset, never a blur. */
+  box-shadow: 6px 6px 0 0 var(--accent-pink-shadow);
+}
+
+.set-cell {
+  background: var(--bg-2);
+  padding: 20px 22px;
+}
+
+.set-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--line);
+}
+
+.set-stat {
+  background: var(--bg-2);
+  padding: 16px 18px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.set-stat-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.set-stat-value {
+  /* The pixel display face, on the page title and these four numbers only. */
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  text-transform: lowercase;
+  /* Four cells of digits should line up as a row, not drift per glyph width. */
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.set-stat-value.ok { color: var(--accent-green); }
+.set-stat-value.warn { color: var(--accent-pink); }
+.set-stat-sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  /* Reserve the line even when empty, so cells with and without a sub-line
+   * keep the same height and the row's baselines stay level. */
+  min-height: 1.5em;
+}
+
+/* ── panel row: controls, then what the scan does ─────────────────────────── */
+
+.set-cols {
+  display: grid;
+  /* ~56/44 — the controls carry more, so they get more. */
+  grid-template-columns: 1.28fr 1fr;
+  gap: 1px;
+  background: var(--line);
+}
+
+.set-config {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.set-cell-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0;
+}
+
+.set-actions {
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+/* ── how it works ─────────────────────────────────────────────────────────── */
+
+.set-how {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.set-how-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+}
+.set-how-row {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 12px;
+  align-items: baseline;
+}
+.set-how-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-pink);
+}
+.set-how-body {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--ink-2);
+  margin: 0;
 }
 
 /* ── masthead ─────────────────────────────────────────────────────────────── */
@@ -43,57 +181,12 @@
   line-height: 1.6;
   color: var(--ink-2);
   margin: 0;
-  max-width: 52ch;
+  /* Wide enough to hold the sentence on one line at desktop width — 52ch broke
+   * it after "not", which reads as a typo rather than a line. */
+  max-width: 64ch;
 }
 
 /* ── the panel ────────────────────────────────────────────────────────────── */
-
-.set-panel {
-  /* Print-register depth, matching `.btn-press`. Hard offset, never a blur. */
-  box-shadow: 6px 6px 0 0 var(--accent-pink-shadow);
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.set-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-.set-card-title {
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink);
-  margin: 0 0 6px;
-}
-.set-card-sub {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--ink-2);
-  margin: 0;
-  max-width: 46ch;
-}
-
-.set-pill {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  letter-spacing: 0.12em;
-  padding: 5px 9px;
-  white-space: nowrap;
-  border: 1px solid var(--line-2);
-  color: var(--dim);
-  flex: none;
-}
-.set-pill.on {
-  border-color: var(--accent-green-shadow);
-  color: var(--accent-green);
-}
 
 /* ── rows ─────────────────────────────────────────────────────────────────── */
 
@@ -208,6 +301,8 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Clears the console's 6px pixel shadow rather than sitting on it. */
+  margin-top: 26px;
 }
 .tape-rail {
   position: relative;
@@ -240,39 +335,26 @@
 }
 .tape-next { color: var(--ink-2); }
 
-/* ── footer ───────────────────────────────────────────────────────────────── */
+/* ── narrow ───────────────────────────────────────────────────────────────── */
 
-.set-foot {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  border-top: 1px dashed var(--line);
-  padding-top: 16px;
-}
-.set-facts {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-2);
-}
-
-.set-note {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  line-height: 1.7;
-  color: var(--dim);
-  margin: 20px 0 0;
-  max-width: 62ch;
+/* The stat row folds 4 → 2 before it folds 2 → 1: four cells at phone width
+ * would each be too narrow for a display-face number, and a single column
+ * makes four facts into a list you scroll rather than a row you scan. */
+@media (max-width: 860px) {
+  .set-stats { grid-template-columns: repeat(2, 1fr); }
+  .set-cols { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {
   .set-title { font-size: 32px; }
-  .set-panel { box-shadow: 4px 4px 0 0 var(--accent-pink-shadow); }
-  .set-foot { align-items: stretch; }
+  .set-console { box-shadow: 4px 4px 0 0 var(--accent-pink-shadow); }
+  .set-stat-value { font-size: 22px; }
+  .set-cell { padding: 18px; }
+}
+
+@media (max-width: 420px) {
+  .set-stats { grid-template-columns: 1fr; }
+  .set-how-row { grid-template-columns: 1fr; gap: 4px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

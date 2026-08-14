@@ -145,7 +145,51 @@ describe("dashboard cache", () => {
       "utf-8",
     );
     expect(readDashboardCache()).toBeNull();
-    expect(readDashboardCacheMeta()).toEqual({ cachedAt: eightDaysAgo });
+    // The counts ride along with the timestamp, past the TTL. That separation
+    // is the point: `readDashboardCache` dropping an aged entry is right for
+    // rendering results and exactly backwards for /settings' LAST SCAN and
+    // FINDINGS stats, whose whole subject is that the scan was a while ago.
+    expect(readDashboardCacheMeta()).toEqual({
+      cachedAt: eightDaysAgo,
+      findings: 0,
+      sessionsScanned: 5,
+      eventsScanned: 42,
+    });
+  });
+
+  it("readDashboardCacheMeta reads the counts off the cached result", () => {
+    writeDashboardCache(
+      { since: "all" },
+      { ...FAKE_RESULT, totals: { hits: 17, projectsWithHits: 3 } },
+    );
+    const meta = readDashboardCacheMeta();
+    expect(meta?.findings).toBe(17);
+    expect(meta?.sessionsScanned).toBe(5);
+    expect(meta?.eventsScanned).toBe(42);
+  });
+
+  it("readDashboardCacheMeta reports an unreadable count as null, never as zero", () => {
+    // 0 means "scanned, found nothing"; null means "we could not read it".
+    // Collapsing them would report a clean machine on a file that failed to
+    // parse, which is the one direction this must never fail in.
+    const dir = auditDir(tmpHome);
+    mkdirSync(dir, { recursive: true });
+    const { totals: _totals, ...withoutTotals } = FAKE_RESULT;
+    writeFileSync(
+      auditDashboardFile(tmpHome),
+      JSON.stringify({
+        schemaVersion: DASHBOARD_CACHE_SCHEMA_VERSION,
+        cachedAt: new Date().toISOString(),
+        params: { since: "7d" },
+        result: withoutTotals,
+      }),
+      "utf-8",
+    );
+    const meta = readDashboardCacheMeta();
+    expect(meta).not.toBeNull();
+    expect(meta?.findings).toBeNull();
+    // The fields that ARE present still read.
+    expect(meta?.sessionsScanned).toBe(5);
   });
 
   it("readDashboardCacheMeta returns null when the file is missing", () => {

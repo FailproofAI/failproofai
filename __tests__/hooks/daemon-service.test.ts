@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir, userInfo } from "node:os";
 import { resolve } from "node:path";
 import { binDir } from "../../src/hooks/fp-home";
-import { waitForDaemonRunning } from "../../src/hooks/daemon-service";
+import { startedAtFromMonotonic, waitForDaemonRunning } from "../../src/hooks/daemon-service";
 import * as svc from "../../src/hooks/daemon-service";
 
 vi.mock("../../src/hooks/hook-logger", () => ({
@@ -1115,5 +1115,45 @@ describe("refreshDaemonToCliVersion", () => {
     // it did not is the difference between a known-stale collector and a silent one.
     expect(result.lines.join("\n")).not.toContain("restarted and holding");
     expect(result.lines.join("\n")).toContain("previous daemon is untouched");
+  });
+});
+
+/**
+ * `startedAtFromMonotonic` — the arithmetic behind /settings' "up 11d".
+ *
+ * Split out of `daemonStartedAtMs` precisely so it can be tested on a machine
+ * with no systemd, and because the two ways it can be wrong are both silent:
+ * a stamp from a unit that never started, and one that would place the daemon's
+ * start in the future. Either produces a confident, false uptime.
+ */
+describe("startedAtFromMonotonic", () => {
+  const NOW = 1_800_000_000_000;
+
+  it("converts a monotonic activation stamp into an epoch start time", () => {
+    // Host up 100_000s; unit activated at 90_000s since boot ⇒ active 10_000s.
+    expect(startedAtFromMonotonic(90_000 * 1_000_000, 100_000, NOW)).toBe(NOW - 10_000_000);
+  });
+
+  it("returns null for a unit systemd has never activated", () => {
+    // systemd writes 0 there. Treated as an absent answer, not as "started at
+    // boot" — which is what a naive conversion would report.
+    expect(startedAtFromMonotonic(0, 100_000, NOW)).toBeNull();
+  });
+
+  it("returns null when the stamp is ahead of the host's uptime", () => {
+    // Cannot be true, so it is not rendered. A wrong uptime is indistinguishable
+    // from a right one to whoever reads it, which makes silence the safer answer.
+    expect(startedAtFromMonotonic(200_000 * 1_000_000, 100_000, NOW)).toBeNull();
+  });
+
+  it("returns null on unparseable input rather than NaN", () => {
+    // `Number("")` is 0 and `Number("x")` is NaN — both reachable from a
+    // `systemctl show --value` that printed nothing useful.
+    expect(startedAtFromMonotonic(Number.NaN, 100_000, NOW)).toBeNull();
+    expect(startedAtFromMonotonic(90_000 * 1_000_000, Number.NaN, NOW)).toBeNull();
+  });
+
+  it("reports a just-started unit as now, not as a negative age", () => {
+    expect(startedAtFromMonotonic(100_000 * 1_000_000, 100_000, NOW)).toBe(NOW);
   });
 });

@@ -51,6 +51,8 @@ function view(over: Record<string, unknown> = {}) {
     daemon: "running",
     schedule: null,
     lastResultAt: null,
+    lastScan: null,
+    daemonStartedAtMs: null,
     ...over,
   };
 }
@@ -87,7 +89,25 @@ afterEach(() => {
 describe("daemon state", () => {
   it("shows the service as running", async () => {
     renderSettings();
-    expect(await screen.findByText("DAEMON RUNNING")).toBeInTheDocument();
+    expect(await screen.findByText("running")).toBeInTheDocument();
+  });
+
+  it("shows how long it has been up, counted from the start time", async () => {
+    // An ABSOLUTE start time is what the action returns, so the page keeps
+    // counting without re-fetching. Three days back reads as "up 3d".
+    lastView = view({ daemonStartedAtMs: Date.now() - 3 * DAY });
+    getViewMock.mockResolvedValue(lastView);
+    renderSettings();
+    expect(await screen.findByText("up 3d")).toBeInTheDocument();
+  });
+
+  it("says nothing about uptime when the platform cannot answer", async () => {
+    // macOS returns null rather than a guess. The cell still reports the state.
+    lastView = view({ daemon: "running", daemonStartedAtMs: null });
+    getViewMock.mockResolvedValue(lastView);
+    renderSettings();
+    expect(await screen.findByText("running")).toBeInTheDocument();
+    expect(screen.queryByText(/^up /)).not.toBeInTheDocument();
   });
 
   it("says plainly when scanning is on but nothing will run", async () => {
@@ -97,7 +117,7 @@ describe("daemon state", () => {
     getViewMock.mockResolvedValue(lastView);
     renderSettings();
     expect(await screen.findByText(/isn't installed/)).toBeInTheDocument();
-    expect(screen.getByText("NOT INSTALLED")).toBeInTheDocument();
+    expect(screen.getByText("not installed")).toBeInTheDocument();
   });
 
   it("explains an unsupported platform rather than blaming the service", async () => {
@@ -234,5 +254,111 @@ describe("run a scan now", () => {
     renderSettings();
     fireEvent.click(await screen.findByRole("button", { name: /run a scan now/ }));
     await waitFor(() => expect(triggerRunMock).toHaveBeenCalled());
+  });
+});
+
+describe("the stat row", () => {
+  it("reports the last scan and what it found, from one read", async () => {
+    // Both cells come from the SAME action call, so they cannot disagree about
+    // whether a result exists — the bug this shape prevents is a fresh
+    // timestamp beside a blank count.
+    lastView = view({
+      lastResultAt: new Date(Date.now() - 2 * DAY).toISOString(),
+      lastScan: {
+        finishedAt: new Date(Date.now() - 2 * DAY).toISOString(),
+        findings: 17,
+        sessionsScanned: 230,
+        eventsScanned: 22_074,
+      },
+    });
+    getViewMock.mockResolvedValue(lastView);
+    renderSettings();
+
+    expect(await screen.findByText("17")).toBeInTheDocument();
+    expect(screen.getByText("230 sessions")).toBeInTheDocument();
+    expect(screen.getByText("this scan")).toBeInTheDocument();
+  });
+
+  it("tells apart a clean scan from a result it could not read", async () => {
+    // 0 means "scanned, found nothing". "—" means "we do not know". Collapsing
+    // them would report a clean machine on a file that failed to parse.
+    lastView = view({
+      lastScan: {
+        finishedAt: new Date(Date.now() - DAY).toISOString(),
+        findings: 0,
+        sessionsScanned: 12,
+        eventsScanned: 40,
+      },
+    });
+    getViewMock.mockResolvedValue(lastView);
+    const { unmount } = renderSettings();
+    expect(await screen.findByText("0")).toBeInTheDocument();
+    unmount();
+    cleanup();
+
+    lastView = view({
+      lastScan: {
+        finishedAt: new Date(Date.now() - DAY).toISOString(),
+        findings: null,
+        sessionsScanned: null,
+        eventsScanned: null,
+      },
+    });
+    getViewMock.mockResolvedValue(lastView);
+    renderSettings();
+    expect(await screen.findByText("unreadable")).toBeInTheDocument();
+  });
+
+  it("says a scan has never run rather than showing a zero", async () => {
+    renderSettings();
+    expect(await screen.findByText("none yet")).toBeInTheDocument();
+    expect(screen.getByText("no scan yet")).toBeInTheDocument();
+  });
+
+  it("shows the next scan as off when scheduling is off", async () => {
+    // A countdown on a machine that is not scheduled would be fiction.
+    renderSettings();
+    expect(await screen.findByText("off")).toBeInTheDocument();
+    expect(screen.getByText("nothing scheduled")).toBeInTheDocument();
+  });
+
+  it("counts down to the daemon's own next-due time, not one it recomputes", async () => {
+    // The daemon writes next_due_at_ms; deriving it from last-run + interval
+    // drifts the moment somebody changes the interval mid-cycle.
+    lastView = view({
+      auto: true,
+      signedInAs: { id: "u", email: "a@b.c" },
+      schedule: {
+        // A minute of slack: the page stamps its own `now` a few ms after this
+        // fixture is built, and the readout floors — without it the assertion
+        // races between "3d 4h" and "3d 3h".
+        nextDueAtMs: Date.now() + 3 * DAY + 4 * 3_600_000 + 60_000,
+        lastAttemptAtMs: null,
+        lastRunAtMs: Date.now() - 4 * DAY,
+        lastExitCode: 0,
+        schemaAhead: false,
+      },
+    });
+    getViewMock.mockResolvedValue(lastView);
+    renderSettings();
+    expect(await screen.findByText("3d 4h")).toBeInTheDocument();
+  });
+
+  it("says the next run is pending when the daemon has not scheduled one yet", async () => {
+    lastView = view({ auto: true, signedInAs: { id: "u", email: "a@b.c" }, schedule: null });
+    getViewMock.mockResolvedValue(lastView);
+    renderSettings();
+    expect(await screen.findByText("pending")).toBeInTheDocument();
+  });
+});
+
+describe("how it works", () => {
+  it("states what the scan reads, where it runs, and what leaves the machine", async () => {
+    renderSettings();
+    expect(await screen.findByText("reads")).toBeInTheDocument();
+    expect(screen.getByText("runs")).toBeInTheDocument();
+    expect(screen.getByText("sends")).toBeInTheDocument();
+    expect(screen.getByText(/never leave/)).toBeInTheDocument();
+    expect(screen.getByText(/redacted examples/)).toBeInTheDocument();
   });
 });

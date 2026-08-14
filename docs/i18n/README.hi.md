@@ -211,10 +211,10 @@ MIT with [Commons Clause](https://commonsclause.com/) — आंतरिक औ
 
 ## योगदान
 
-[CONTRIBUTING.md](../../CONTRIBUTING.md) देखें। नई नीतियाँ, सीमांत मामले और अनुवाद सभी स्वागत हैं।
+[CONTRIBUTING.md](../../.github/CONTRIBUTING.md) देखें। नई नीतियाँ, सीमांत मामले और अनुवाद सभी स्वागत हैं।
 
 > **बिल्ड करने से पहले शुरुआत करें।** पहले `bun install && bun run build` चलाएँ। यह रिपो स्वयं पर failproofai के हुक चलाता है, और वे संकलित `dist/` बंडल के विरुद्ध `failproofai` आयात को हल करते हैं — बिल्ड के बिना आपको `Cannot find package 'failproofai'` हुक त्रुटियों मिलेंगी। `src/` को बदलने के बाद फिर से बिल्ड करें। देखें
-> [इन-रिपो डेव हुक काम करने से पहले बिल्ड करें](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)।
+> [इन-रिपो डेव हुक काम करने से पहले बिल्ड करें](../../.github/CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)।
 
 ---
 

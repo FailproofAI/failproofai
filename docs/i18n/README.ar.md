@@ -213,13 +213,13 @@ MIT مع [Commons Clause](https://commonsclause.com/) - مجاني للاستخ�
 
 ## المساهمة
 
-انظر [CONTRIBUTING.md](../../CONTRIBUTING.md). السياسات الجديدة وحالات الحافة والترجمات كلها مرحب بها.
+انظر [CONTRIBUTING.md](../../.github/CONTRIBUTING.md). السياسات الجديدة وحالات الحافة والترجمات كلها مرحب بها.
 
 > **بناء قبل أن تبدأ.** قم بتشغيل `bun install && bun run build` أولاً. يعمل هذا المستودع
 > خطاطيف failproofai الخاصة بها على نفسها، وهي تحل استيراد `failproofai` ضد
 > حزمة `dist/` المترجمة - بدون بناء ستصاب بأخطاء خطاف `Cannot find package 'failproofai'`. 
 > أعد البناء بعد تغيير `src/`. انظر
-> [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> [Build before the in-repo dev hooks will work](../../.github/CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

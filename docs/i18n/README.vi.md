@@ -211,13 +211,13 @@ MIT với [Commons Clause](https://commonsclause.com/) — miễn phí để s�
 
 ## Đóng góp
 
-Xem [CONTRIBUTING.md](../../CONTRIBUTING.md). Chính sách mới, trường hợp biên và bản dịch đều được chào đón.
+Xem [CONTRIBUTING.md](../../.github/CONTRIBUTING.md). Chính sách mới, trường hợp biên và bản dịch đều được chào đón.
 
 > **Xây dựng trước khi bắt đầu.** Chạy `bun install && bun run build` trước. Repo này chạy
 > các hook của failproofai trên chính nó, và chúng giải quyết nhập `failproofai` so với
 > bộ bundle `dist/` được biên dịch — mà không cần xây dựng bạn sẽ gặp `Cannot find package 'failproofai'`
 > lỗi hook. Xây dựng lại sau khi thay đổi `src/`. Xem
-> [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> [Build before the in-repo dev hooks will work](../../.github/CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

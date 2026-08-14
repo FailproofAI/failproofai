@@ -209,9 +209,9 @@ MIT に [Commons Clause](https://commonsclause.com/) を付加したライセン
 
 ## コントリビューション
 
-[CONTRIBUTING.md](../../CONTRIBUTING.md) をご参照ください。新しいポリシー、エッジケースの対応、翻訳など、あらゆる貢献を歓迎します。
+[CONTRIBUTING.md](../../.github/CONTRIBUTING.md) をご参照ください。新しいポリシー、エッジケースの対応、翻訳など、あらゆる貢献を歓迎します。
 
-> **開始前にビルドしてください。** 最初に `bun install && bun run build` を実行してください。このリポジトリは failproofai 自身のフックを自身に適用しており、フックは `failproofai` のインポートをコンパイル済みの `dist/` バンドルに対して解決します。ビルドなしで実行すると `Cannot find package 'failproofai'` というフックエラーが発生します。`src/` を変更した後は再ビルドしてください。詳細は [リポジトリ内の開発フックを動作させるためのビルド手順](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) をご参照ください。
+> **開始前にビルドしてください。** 最初に `bun install && bun run build` を実行してください。このリポジトリは failproofai 自身のフックを自身に適用しており、フックは `failproofai` のインポートをコンパイル済みの `dist/` バンドルに対して解決します。ビルドなしで実行すると `Cannot find package 'failproofai'` というフックエラーが発生します。`src/` を変更した後は再ビルドしてください。詳細は [リポジトリ内の開発フックを動作させるためのビルド手順](../../.github/CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work) をご参照ください。
 
 ---
 

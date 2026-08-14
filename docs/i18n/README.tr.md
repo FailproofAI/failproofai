@@ -211,9 +211,9 @@ bir şey ters gittiğinde tahmin yapmak zorunda kalmazsınız. → [Kontrol pane
 
 ## Katkıda Bulunmak
 
-[CONTRIBUTING.md](../../CONTRIBUTING.md) dosyasına bakın. Yeni politikalar, sınır durumları ve çeviriler hepsi memnuniyetle karşılanır.
+[CONTRIBUTING.md](../../.github/CONTRIBUTING.md) dosyasına bakın. Yeni politikalar, sınır durumları ve çeviriler hepsi memnuniyetle karşılanır.
 
-> **Başlamadan önce derleyin.** Önce `bun install && bun run build` komutunu çalıştırın. Bu depo, failproofai'nin kendi hook'larını kendisinde çalıştırır ve `failproofai` ithalatını derlenmiş `dist/` paketine göre çözerler — derleme yapılmadan `Cannot find package 'failproofai'` hook hataları alırsınız. `src/` değiştirdikten sonra yeniden derleyin. Bkz. [Hook'lar çalışmadan önce derleme](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **Başlamadan önce derleyin.** Önce `bun install && bun run build` komutunu çalıştırın. Bu depo, failproofai'nin kendi hook'larını kendisinde çalıştırır ve `failproofai` ithalatını derlenmiş `dist/` paketine göre çözerler — derleme yapılmadan `Cannot find package 'failproofai'` hook hataları alırsınız. `src/` değiştirdikten sonra yeniden derleyin. Bkz. [Hook'lar çalışmadan önce derleme](../../.github/CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

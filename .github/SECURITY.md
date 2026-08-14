@@ -26,7 +26,7 @@ for supply-chain threats before it can merge, via two complementary layers.
 
 ### 1. OSV-Scanner — the blocking CI gate
 
-[`.github/workflows/osv-scanner.yml`](.github/workflows/osv-scanner.yml) runs
+[`.github/workflows/osv-scanner.yml`](workflows/osv-scanner.yml) runs
 [OSV-Scanner](https://google.github.io/osv-scanner/) against the resolved
 dependency tree (`bun.lock`). It checks every direct and transitive package
 against [OSV.dev](https://osv.dev), which aggregates GitHub/npm security
@@ -55,7 +55,7 @@ When the OSV-Scanner gate fails on a PR:
 
 1. **Prefer fixing it.** Bump the affected dependency to a patched version. For a
    transitive dependency that a parent pins to a vulnerable version, add a minimal
-   [`overrides`](package.json) entry (as we do for `postcss`) and let CI validate
+   [`overrides`](../package.json) entry (as we do for `postcss`) and let CI validate
    the build.
 2. **Only if there is no fix**, add a justified, time-boxed entry to
    [`osv-scanner.toml`](osv-scanner.toml) (`id`, `reason`, `ignoreUntil`). Never

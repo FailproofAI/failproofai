@@ -213,13 +213,13 @@ MIT עם [Commons Clause](https://commonsclause.com/) — חינם לשימוש 
 
 ## תרומה
 
-ראה [CONTRIBUTING.md](../../CONTRIBUTING.md). מדיניויות חדשות, edge cases, ותרגומים כולם מוזמנים.
+ראה [CONTRIBUTING.md](../../.github/CONTRIBUTING.md). מדיניויות חדשות, edge cases, ותרגומים כולם מוזמנים.
 
 > **בנה לפני שתתחיל.** הרץ `bun install && bun run build` ראשון. repo זה מריץ
 > את hook ה-failproofai של עצמו, והם פותרים את יבוא ה-`failproofai` כנגד
 > ה-bundle `dist/` המהודר — ללא build אתה תפגע בשגיאות hook `Cannot find package 'failproofai'`.
 > בנה מחדש לאחר שינוי `src/`. ראה
-> [בנה לפני שה-hook פיתוח in-repo יעבדו](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> [בנה לפני שה-hook פיתוח in-repo יעבדו](../../.github/CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

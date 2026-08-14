@@ -211,13 +211,13 @@ MIT con [Commons Clause](https://commonsclause.com/) — libre para uso interno 
 
 ## Contribuciones
 
-Consulta [CONTRIBUTING.md](../../CONTRIBUTING.md). Se aceptan nuevas políticas, casos límite y traducciones.
+Consulta [CONTRIBUTING.md](../../.github/CONTRIBUTING.md). Se aceptan nuevas políticas, casos límite y traducciones.
 
 > **Compila antes de comenzar.** Ejecuta primero `bun install && bun run build`. Este repositorio ejecuta
 > sus propios hooks de failproofai sobre sí mismo, y estos resuelven la importación de `failproofai` contra el
 > bundle compilado de `dist/` — sin una compilación previa obtendrás errores de hook `Cannot find package 'failproofai'`.
 > Vuelve a compilar tras modificar `src/`. Consulta
-> [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> [Build before the in-repo dev hooks will work](../../.github/CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 

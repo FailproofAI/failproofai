@@ -8,7 +8,7 @@ the CLI, the dashboard and CI drive. Read `CLAUDE.md` for the architecture each 
 |---|---|---|
 | Dashboard launch | `dev.ts`, `start.ts` → `launch.ts` (+ `parse-script-args.ts`, `skew-log-filter.ts`, `install-diagnosis.mjs`) | `bun run dev` / `bun run start` |
 | Release | `build-daemon-packages.mjs`, `publish-aliases.mjs` (+ `alias-proxy.js`, `daemon-platforms.mjs`), `prune-standalone.mjs` | `.github/workflows/publish.yml`, `ci.yml`, `bun run build` |
-| Docs | `translate-docs/` (9 files, entry `cli.ts`), `validate-mdx.ts` | `.github/workflows/translate-docs.yml`, `bun run translate*`, `bun run validate:mdx` |
+| Docs | `translate-docs/` (9 files, entry `cli.ts`), `validate-mdx.ts`, `docs-audit.ts` | `bun run translate*`, `bun run validate:mdx`, `bun run docs:audit`; the nightly translation and the weekly docs audit both run on the canary box (`integration-suite/local/jobs/`) |
 | Dogfood | `dev-hook.mjs` | all 10 committed dogfood hook configs |
 | Container / prompts | `repro-npm-install.sh`, `sync-agent-cli-harnesses-prompt.md` | run by hand; the prompt is the `build-image.yml` sync agent's brief |
 

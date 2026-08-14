@@ -12,7 +12,7 @@ standalone design lab of `.jsx`/`.html` files opened directly in a browser by a 
 ## Who consumes it
 
 Humans and GitHub, not code. `README.md` at the repo root embeds `assets/readme-arch-hq.gif` and
-the twelve `assets/logos/*.svg` files; `scripts/translate-docs/readme-translator.ts` rewrites
+the twenty `assets/logos/*` CLI logo files (18 SVG, 2 PNG); `scripts/translate-docs/readme-translator.ts` rewrites
 those same paths to absolute `raw.githubusercontent` URLs for the 14 translated copies under
 `docs/i18n/`, because a relative `assets/` path resolves nowhere from two directories down and
 Mintlify has no `assets/` tree at all. `assets/audit/*.jsx` is a prototype for the audit report —

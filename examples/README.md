@@ -9,7 +9,7 @@ points for users, not code the product runs on its own.
 
 | File | Demonstrates |
 |------|--------------|
-| `policies-basic.js` | Five starter policies: production-path writes, `git push --force`, `curl \| bash`, bare `npm install` |
+| `policies-basic.js` | Four starter policies: production-path writes, `git push --force`, `curl \| bash`, bare `npm install` |
 | `policies-advanced/index.js` + `utils.js` | Transitive local import (the loader rewrites `./utils.js`), async `fn`, `ctx.session`, PostToolUse, Stop |
 | `policies-stop.js` | A Stop gate that blocks finishing with uncommitted git changes |
 | `policies-notification.js` | Notification + SessionEnd forwarded to a Slack webhook (`SLACK_WEBHOOK_URL`) |

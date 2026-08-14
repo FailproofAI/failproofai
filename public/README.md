@@ -1,8 +1,8 @@
 # public/
 
 Part of **the dashboard** (the Next.js 16 app). Everything here is served verbatim at the site
-root by Next's static handler — `public/logo.svg` is reachable as `/logo.svg`. It holds three
-files only: the brand mark, the favicon, and the one self-hosted webfont the audit pages need.
+root by Next's static handler — `public/logo.svg` is reachable as `/logo.svg`. It holds three served
+files: the brand mark, the favicon, and the one self-hosted webfont the audit pages need.
 
 Do not confuse it with `assets/`, which is brand/reference material (the audit design lab, the
 per-CLI logo SVGs, `readme-arch-hq.gif`) that is **not** served and is explicitly deleted from the
@@ -33,6 +33,6 @@ navbar logo, and an audit page that silently falls back to a system font.
 
 ## Where its tests live
 
-No test targets this directory directly. The nearest coverage is the packaging assertions in
-`__tests__/ci/release-pipeline.test.ts`, which guard what ends up inside `.next/standalone`; run
-them with `bun run test:run`.
+No test targets this directory directly. The nearest coverage is `__tests__/ci/tarball-surface.test.ts` (its `MUST_SHIP` /
+`MUST_NOT_SHIP_UNDER_STANDALONE` lists) and `__tests__/ci/standalone-prune.test.ts`, which assert
+what reaches the published tarball. Run them with `bun run test:run`.

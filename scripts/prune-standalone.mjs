@@ -96,8 +96,9 @@ if (exists(NM)) prune(NM);
 // node_modules/, package.json, public/, and the compiled app code — the rest
 // is source/dev/docs that the runtime never reads.
 const STANDALONE_ROOT_PRUNE = [
-  // Doc / dev directories
-  "docs", "examples", "design-docs", "__tests__",
+  // Doc / dev directories. `internals` is the engineering manual — contributor
+  // documentation, never product documentation and never shipped.
+  "docs", "examples", "design-docs", "__tests__", "internals",
   ".vscode", ".idea",
   // Every dogfood hook config. These are THIS repo enforcing its own policies
   // on itself; each one points at `scripts/dev-hook.mjs`, a path that exists
@@ -157,6 +158,11 @@ const STANDALONE_ROOT_PRUNE_FILES = [
   // at runtime, and routinely a few hundred KB.
   "tsconfig.tsbuildinfo", "next-env.d.ts", "postcss.config.mjs",
   "skills-lock.json", ".gitattributes",
+  // Contributor READMEs that Next traces into the two directories the bundle
+  // must keep. public/README.md is the pointed one: everything under public/ is
+  // served verbatim at the site root, so leaving it there publishes a page
+  // explaining this repo's layout at https://<user's dashboard>/README.md.
+  "public/README.md", "app/README.md", "lib/README.md",
 ];
 for (const d of STANDALONE_ROOT_PRUNE) {
   rmSync(join(STANDALONE, d), { recursive: true, force: true });

@@ -5,7 +5,7 @@
 Of the five products in this package.json, `src/` is **the CLI**. `src/hooks/` (53 flat files,
 no subdirectories) is enforcement plus install — it writes hook configs into 12 agent CLIs and
 evaluates policies when those hooks fire. `src/audit/` is the separate audit product: 13 per-CLI
-transcript adapters under `cli-adapters/` feeding detectors, scoring and findings. `src/index.ts`
+12 transcript adapters under `cli-adapters/` feeding detectors, scoring and findings. `src/index.ts`
 is the public API (`customPolicies`, `allow`/`deny`/`instruct`) that user policy files import as
 `from 'failproofai'`.
 

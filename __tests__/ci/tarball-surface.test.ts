@@ -23,10 +23,19 @@
  * legitimate addition, which is how a tripwire stops working.
  */
 import { execFileSync } from "node:child_process";
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { resolve, join } from "node:path";
 import { describe, it, expect, beforeAll } from "vitest";
 
 const ROOT = resolve(import.meta.dirname, "..", "..");
+
+/** `dist/` is build output, not source. It exists in CI only because the `test`
+ *  job's `bun install` runs the `prepare` script — which is incidental, not a
+ *  guarantee, and is absent entirely in a fresh clone or under
+ *  `--ignore-scripts`. The MUST_SHIP assertions are meaningless without it, so
+ *  they skip rather than fail; the leak assertions below need no build and
+ *  always run, because those are the ones that catch a regression. */
+const DIST_BUILT = existsSync(join(ROOT, "dist", "cli.mjs"));
 
 /** Directories that are traced into `.next/standalone` by Next and then removed
  *  by scripts/prune-standalone.mjs. The dashboard reads none of them at
@@ -71,7 +80,7 @@ beforeAll(() => {
 }, 300_000);
 
 describe("npm tarball surface", () => {
-  it("ships every path an installed user depends on", () => {
+  it.skipIf(!DIST_BUILT)("ships every path an installed user depends on", () => {
     for (const p of MUST_SHIP) {
       expect(files, `${p} is missing from the tarball`).toContain(p);
     }
@@ -90,7 +99,7 @@ describe("npm tarball surface", () => {
     }
   });
 
-  it("ships the plugin packages from the package root, not the bundle", () => {
+  it.skipIf(!DIST_BUILT)("ships the plugin packages from the package root, not the bundle", () => {
     // Both directory names are frozen: already-installed users have these
     // absolute paths written into their own settings files, and
     // integrations.ts resolves them via FAILPROOFAI_PACKAGE_ROOT.

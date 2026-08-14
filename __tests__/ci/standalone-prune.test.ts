@@ -19,7 +19,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { describe, it, expect } from "vitest";
 
 const ROOT = resolve(import.meta.dirname, "..", "..");
@@ -78,12 +78,27 @@ describe("prune-standalone denylist", () => {
 
   it("names no directory that no longer exists", () => {
     // A stale entry is harmless at runtime but rots the list into noise, which
-    // is how the real gaps stay hidden. `.vscode`/`.idea` are editor dirs that
-    // are legitimately absent from a clean checkout.
+    // is how the real gaps stay hidden.
+    //
+    // ABSENT BY DESIGN. Most of the prune list is build output that does not
+    // exist in a fresh checkout — `target/` only after `cargo build`, `dist/`
+    // only after `bun run build` — while the CI `test` job runs just
+    // `bun install --frozen-lockfile && bun run test:run`. Hardcoding those
+    // names is how this assertion ends up passing on a developer's machine and
+    // failing in CI, so ask GIT instead: anything it ignores is generated, and
+    // its absence proves nothing. Only the editor dirs need naming, since they
+    // are neither tracked nor ignored.
+    const ignored = (d: string) =>
+      spawnSync("git", ["check-ignore", "-q", d], { cwd: ROOT }).status === 0;
     const editorDirs = new Set([".vscode", ".idea", "design-docs"]);
     const present = new Set(readdirSync(ROOT));
     const stale = prunedDirs.filter(
-      (d) => !present.has(d) && !editorDirs.has(d) && !d.startsWith("release-") && !d.startsWith("."),
+      (d) =>
+        !present.has(d) &&
+        !editorDirs.has(d) &&
+        !ignored(d) &&
+        !d.startsWith("release-") &&
+        !d.startsWith("."),
     );
     expect(stale, "prune list names directories that do not exist").toEqual([]);
   });

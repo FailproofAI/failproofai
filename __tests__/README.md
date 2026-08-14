@@ -2,7 +2,7 @@
 
 The Vitest suite for every product in this repo except the Rust daemon: the CLI (`__tests__/hooks/`,
 `__tests__/audit/`, `__tests__/scripts/`), the Next.js dashboard (`__tests__/app`-facing dirs
-`actions/`, `api/`, `components/`, `contexts/`), and the shared `lib/`. 194 unit files and 16 e2e
+`actions/`, `api/`, `components/`, `contexts/`), and the shared `lib/`. 196 unit files and 16 e2e
 files. The daemon's own tests live in Rust, under `crates/*/tests/`.
 
 ## What this is

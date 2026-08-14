@@ -20,10 +20,15 @@ has no authentication and can uninstall hooks from every CLI.
 
 ## Does it ship
 
-Not as source: `app/` is absent from package.json `"files"`. What ships is its **build
-output**, `.next/standalone/` (produced by `bun run build`, then trimmed by
-`scripts/prune-standalone.mjs`). So renaming a route directory changes the installed
-dashboard's URLs, but no installed user's file references `app/` by path.
+Yes, and more literally than you would expect. `app/` is absent from package.json
+`"files"`, but `.next/standalone/` is in it — and Next's file tracer copies the raw App
+Router sources into that bundle, so **82 `.ts`/`.tsx` files under `app/` ship verbatim**
+alongside the compiled output. `scripts/prune-standalone.mjs` trims the bundle but
+deliberately keeps `app`, because the standalone server reads from it.
+
+Practical consequence: renaming a route directory changes the installed dashboard's URLs,
+and anything you add under `app/` reaches every npm user. Verify with
+`npm pack --dry-run --json | jq -r '.[0].files[].path' | grep standalone/app`.
 
 ## Where its tests live
 

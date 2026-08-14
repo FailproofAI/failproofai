@@ -148,7 +148,7 @@ Use Mintlify tabs as the root navigation. This separates learning, implementatio
 ### Tab: Prevent failures
 
 1. **Policies overview**
-2. **Built-in policies**
+2. **Builtin policies**
 3. **Write a custom policy**
 4. **Test a policy locally**
 5. **Observe before enforcing**
@@ -202,7 +202,7 @@ Use Mintlify tabs as the root navigation. This separates learning, implementatio
    - Assistant
 8. **Changelog**
 
-Keep Pricing, Status, GitHub, and Support as global anchors.
+Keep Pricing, Status, GitHub, and Support as global anchors. The Pricing anchor should point to the internal `/start/pricing-and-usage` page, which links to `https://befailproof.ai/pricing/` as the canonical source for current prices and purchase decisions.
 
 ## 5. First-release page set
 
@@ -214,6 +214,7 @@ Ship a focused first release before documenting every endpoint.
 - Quickstart: find and prevent one failure
 - Choose your setup
 - Core concepts
+- Pricing and usage
 - Capture agent runs overview
 - Python SDK quickstart
 - Collector quickstart
@@ -361,7 +362,7 @@ The documentation should explain limits that affect implementation, then link to
 
 | Plan | Included usage relevant to docs |
 |---|---|
-| Free Forever + Open Source | 5,000 runs/month, 100 evals/month, 3 failure audits/month, deep tracing, built-in dashboards, 30-day retention, 7-day backfill, unlimited local policy enforcement |
+| Free Forever + Open Source | 5,000 runs/month, 100 evals/month, 3 failure audits/month, deep tracing, builtin dashboards, 30-day retention, 7-day backfill, unlimited local policy enforcement |
 | Team — $99/month | 50,000 runs/month, 2,000 evals/month, unlimited audits up to 1/day, 90-day backfill, 5 users, CLI, MCP, agent, custom queries |
 | Scale — $599/month | 500,000 runs/month, 20,000 evals/month, unlimited audits up to 4/day, 90-day retention, unlimited backfill/users/agents, auto policy authoring, multi-tenant logging, RBAC and SSO/SAML |
 | Enterprise — custom | Custom usage and retention, multi-tenant policy enforcement, governance, on-premises deployment, compliance reporting, and FDE support |

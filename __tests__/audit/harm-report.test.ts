@@ -8,6 +8,7 @@
  * done as though it happened that week.
  */
 import { describe, it, expect } from "vitest";
+import { homedir } from "node:os";
 
 import { buildHarmReport, isHarmful, selectHarmful } from "../../src/audit/harm-report";
 import type { AuditCount, AuditResult } from "../../src/audit/types";
@@ -185,13 +186,18 @@ describe("selectHarmful — the window", () => {
   });
 
   it("redacts every example it sends", () => {
+    // Built from the REAL homedir rather than a hardcoded /home/sidd. The
+    // redactor resolves `homedir()` to decide whether a path earns the `~`
+    // prefix, so a literal path only tildes on the machine that wrote the test
+    // — this passed locally and failed on CI, where HOME is /home/runner.
+    const secretPath = `${homedir()}/clients/big-bank/.env`;
     const r = result([
       count({
         name: "failproofai/block-env-files",
         severity: "deny",
         firstSeen: AUG_10,
         lastSeen: AUG_10,
-        examples: [example(AUG_10, "cat /home/sidd/clients/big-bank/.env")],
+        examples: [example(AUG_10, `cat ${secretPath}`)],
       }),
     ]);
     const [p] = selectHarmful(r, undefined, new Date(AUG_14));

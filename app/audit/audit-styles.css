@@ -904,8 +904,12 @@
    ============================================================ */
 .cbb-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   gap: 14px;
+  align-items: stretch;
+}
+@media (max-width: 720px) {
+  .cbb-grid { grid-template-columns: 1fr; }
 }
 .cbb-card {
   border: 1px solid var(--line-2);
@@ -927,42 +931,150 @@
   line-height: 1.55;
 }
 
-.cadence-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
-.cadence-btn {
+/* ── Section 05: scheduled audit panel ───────────────────────────────────────
+   The mock puts the scan controls at 1.3fr against the share card's 1fr, with
+   a pink rail on the panel that acts. Colours are the design-system tokens the
+   rest of the app already uses (--accent-pink #e4587c, --accent-green #66d1b5);
+   the mock's #ff2d78 / #35d07f were approximations of them. */
+.cbb-card-primary {
+  border-left: 2px solid var(--accent-pink);
+}
+.cbb-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.cbb-pill {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  padding: 4px 8px;
+  white-space: nowrap;
+  border: 1px solid var(--line-2);
+  color: var(--dim);
+}
+.cbb-pill.on {
+  border-color: var(--accent-green-shadow);
+  color: var(--accent-green);
+}
+
+.cbb-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+.cbb-row-interval { gap: 9px; flex-wrap: wrap; }
+.cbb-muted { color: var(--ink-2); }
+.cbb-hint { color: var(--dim); font-size: 10.5px; }
+.cbb-strong { color: var(--ink); }
+
+.cbb-num {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  width: 58px;
+  padding: 5px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  color: var(--ink);
+  border-radius: 0;
+}
+.cbb-num:focus-visible {
+  outline: 2px solid var(--accent-pink);
+  outline-offset: 1px;
+}
+
+/* The switch /policies uses — copied shape, not a new control. */
+.cbb-toggle {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 18px;
+  border-radius: 9px;
+  border: none;
+  background: var(--line-2);
+  cursor: pointer;
+  padding: 0;
+  transition: background 120ms ease;
+}
+.cbb-toggle[data-on="true"] { background: var(--accent-pink); }
+.cbb-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
+.cbb-toggle:focus-visible { outline: 2px solid var(--accent-pink); outline-offset: 2px; }
+.cbb-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg);
+  transition: transform 120ms ease;
+}
+.cbb-toggle[data-on="true"] .cbb-toggle-knob { transform: translateX(16px); }
+
+.cbb-identity {
   font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cbb-email { color: var(--accent-green); }
+.cbb-link-inline {
+  font-size: 11px;
+  color: var(--dim);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cbb-link-inline:hover { color: var(--ink); }
+
+.cbb-warn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--accent-pink);
+}
+.cbb-warn-inline { color: var(--accent-pink); }
+
+.cbb-foot-block {
+  border-top: 1px dashed var(--line);
+  padding-top: 12px;
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.cbb-run-btn {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: center;
+  padding: 8px 12px;
   border: 1px solid var(--line-2);
   background: transparent;
   color: var(--ink);
-  padding: 6px 12px;
   cursor: pointer;
-  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease;
 }
-.cadence-btn:hover {
-  border-color: var(--accent-pink);
-  color: var(--accent-pink);
-}
-.cadence-btn.on {
-  border-color: var(--accent-pink);
-  background: var(--accent-pink-bg);
-  color: var(--accent-pink);
-}
-.cadence-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.cbb-run-btn:hover:not(:disabled) { border-color: var(--accent-pink); color: var(--accent-pink); }
+.cbb-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.cbb-run-btn:focus-visible { outline: 2px solid var(--accent-pink); outline-offset: 2px; }
 
-.cbb-link {
-  align-self: flex-start;
-  background: transparent;
-  border: none;
-  color: var(--accent-green);
+.cbb-note {
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  padding: 0;
+  font-size: 10.5px;
+  color: var(--dim);
+  line-height: 1.55;
+  margin-top: 14px;
 }
-.cbb-link:hover { color: var(--accent-pink); }
-.cbb-link:disabled { opacity: 0.55; cursor: wait; }
 
 .perks-progress {
   height: 6px;

@@ -51,7 +51,6 @@ import { basename, dirname, resolve } from "node:path";
 import { version as cliVersion } from "../../package.json";
 import {
   LAYOUT_VERSION,
-  auditReminderFile,
   auditScheduleFile,
   auditSessionFile,
   configFile,
@@ -119,6 +118,13 @@ export const MIGRATIONS: readonly Migration[] = [
  * returns `EXDEV` there, and a step that threw on it would strand the machine at
  * layout 3 forever.
  *
+ * The reminder's destination is `legacy.auditReminder()`, a RETIRED path. The
+ * feature it belonged to is deleted in this same release, so nothing will ever
+ * read the file again — but a migration that DESTROYS something a person chose
+ * is a different act from one that moves it, and the difference matters even
+ * when the thing is obsolete. It is moved here and cleared by the next reset,
+ * via `retiredLayoutPaths()`.
+ *
  * **A missing source is success, not failure.** Most homes have never signed in,
  * so `auth.json` and `next-audit.json` are absent on the majority of machines,
  * and a scheduled scan that has never run leaves no `audit-schedule.json`. Only
@@ -132,7 +138,7 @@ export const MIGRATIONS: readonly Migration[] = [
 function migrateToLayout4(): ResetOutcome {
   const moves: { from: string; to: string }[] = [
     { from: legacy.authJson(), to: auditSessionFile() },
-    { from: legacy.nextAudit(), to: auditReminderFile() },
+    { from: legacy.nextAudit(), to: legacy.auditReminder() },
     { from: legacy.auditSchedule(), to: auditScheduleFile() },
   ];
 

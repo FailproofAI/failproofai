@@ -14,6 +14,7 @@
  */
 
 import { readConfig, updateConfig } from "@/src/hooks/fp-config";
+import { whoAmI } from "@/lib/auth/auth-store";
 
 /**
  * Turn the scheduled scan on or off.
@@ -41,4 +42,32 @@ export async function setAuditIntervalAction(days: number): Promise<{ intervalDa
   // Re-read through readConfig so the returned value carries the config's own
   // clamp, not the raw input.
   return { intervalDays: readConfig().audit.intervalDays };
+}
+
+/**
+ * Turn emailed harm digests on or off.
+ *
+ * A SEPARATE switch from `auto`, which is the point: `auto` scans this machine
+ * locally and needs no account, and `audit --help` promises that scan "runs
+ * fully offline — no account or network required". This is the one that makes
+ * anything leave the box.
+ *
+ * Turning it ON is refused without a session rather than silently accepted. The
+ * config would take the value happily, and the machine would then scan on a
+ * timer, find something, and have nothing to send it with — a switch that reads
+ * as on while doing nothing, discoverable only by noticing that no email ever
+ * arrives. The caller signs the user in first and retries.
+ *
+ * Turning it OFF never checks, because an expired session must not be able to
+ * trap someone into keeping a feature they want to disable.
+ */
+export async function setAuditEmailAction(enabled: boolean): Promise<{ emailEnabled: boolean }> {
+  if (enabled) {
+    const who = await whoAmI();
+    if (!who) {
+      throw new Error("sign in before enabling emailed reports");
+    }
+  }
+  const next = updateConfig({ audit: { emailEnabled: enabled } });
+  return { emailEnabled: next.audit.emailEnabled };
 }

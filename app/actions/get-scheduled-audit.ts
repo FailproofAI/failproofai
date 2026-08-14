@@ -22,6 +22,7 @@ import { readConfig } from "@/src/hooks/fp-config";
 import { readAuditSchedule } from "@/src/audit/audit-schedule";
 import { daemonServiceStatus, type DaemonServiceStatus } from "@/src/hooks/daemon-service";
 import { readDashboardCacheMeta } from "@/src/audit/dashboard-cache";
+import { readAuth } from "@/lib/auth/auth-store";
 
 export interface ScheduledAuditSchedule {
   nextDueAtMs: number | null;
@@ -36,6 +37,17 @@ export interface ScheduledAuditView {
   auto: boolean;
   /** `[audit] interval_days`, already clamped to 1..90 by readConfig. */
   intervalDays: number;
+  /** `[audit] email_enabled` — whether a scan that finds harm mails a digest. */
+  emailEnabled: boolean;
+  /**
+   * Who this machine would mail, or null when signed out.
+   *
+   * Read from the local session file rather than round-tripped to the
+   * api-server: the file is the source of truth for who is signed in on this
+   * machine, and a settings panel that went blank because the network was down
+   * would be reporting on the wrong thing.
+   */
+  signedInAs: { id: string; email: string } | null;
   /** The systemd/launchd service state. The scheduler cannot run without a
    *  running daemon, so a settings page that hides this reads "on but silent". */
   daemon: DaemonServiceStatus;
@@ -52,9 +64,13 @@ export async function getScheduledAuditAction(): Promise<ScheduledAuditView> {
   const schedule = readAuditSchedule();
   const meta = readDashboardCacheMeta();
 
+  const auth = readAuth();
+
   return {
     auto: config.audit.auto,
     intervalDays: config.audit.intervalDays,
+    emailEnabled: config.audit.emailEnabled,
+    signedInAs: auth ? { id: auth.user.id, email: auth.user.email } : null,
     daemon: daemonServiceStatus(),
     schedule: schedule
       ? {

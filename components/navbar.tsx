@@ -19,7 +19,6 @@ const NAV_LINKS = [
   { href: "/projects", label: "projects" },
   { href: "/policies", label: "policies" },
   { href: "/audit", label: "audit" },
-  { href: "/settings", label: "settings" },
 ];
 
 const REMOTE_LOGO_URL =
@@ -60,7 +59,6 @@ export const Navbar: React.FC<{
   const sectionLabel = (() => {
     if (pathname.startsWith("/policies")) return "policies";
     if (pathname.startsWith("/audit")) return "audit";
-    if (pathname.startsWith("/settings")) return "settings";
     if (pathname.startsWith("/projects") || pathname.startsWith("/project/")) return "projects";
     return "";
   })();

@@ -62,7 +62,6 @@
  *     schedule.json          daemon's scan timer  (derived)
  *     session.json    0600   the signed-in user   (user-typed)
  *     machine.json           this machine's report identity (identity)
- *     reminder.json          the re-audit nudge   (user-typed)
  *   hook-activity/           decision log the dashboard reads
  *   custom-agents/           SDK spool (events/ + failed/)
  *   run/                     sockets + flock  — MUST stay shallow, see below
@@ -97,10 +96,12 @@ import { resolve } from "node:path";
  * 2 — `config.toml` / `credentials.toml`, policies nested two levels down.
  * 3 — JSON config + credentials, policies flattened back up.
  * 4 — everything the audit owns moved under `audit/`: the signed-in session
- *     (from `auth.json`), the re-audit reminder (from `next-audit.json`) and
- *     the daemon's scan timer (from `state/audit-schedule.json`). The point is
- *     that one directory now answers "what does the audit know about this
- *     machine", the way `policies/` answers it for enforcement.
+ *     (from `auth.json`), the daemon's scan timer (from
+ *     `state/audit-schedule.json`), and the re-audit reminder (from
+ *     `next-audit.json`, parked at `audit/reminder.json` and retired in the
+ *     same release — see `legacy.auditReminder`). The point is that one
+ *     directory now answers "what does the audit know about this machine", the
+ *     way `policies/` answers it for enforcement.
  */
 export const LAYOUT_VERSION = 4;
 
@@ -271,15 +272,6 @@ export const auditSessionFile = (home?: string) => resolve(auditDir(home), "sess
  */
 export const auditMachineFile = (home?: string) => resolve(auditDir(home), "machine.json");
 
-/**
- * The re-audit reminder a signed-in user set.
- *
- * Layout 3's `next-audit.json`, at the home root and likewise unclassified.
- * Moved rather than retired: the scheduled-audit work that replaces reminders
- * lands separately, and a migration that deleted this before that landed would
- * drop a setting a person chose, with no way back if the follow-up slipped.
- */
-export const auditReminderFile = (home?: string) => resolve(auditDir(home), "reminder.json");
 
 // ── Hook activity ────────────────────────────────────────────────────────────
 
@@ -506,8 +498,6 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // with no notice, and the machine only finds out the next time it tries to
   // report.
   { path: auditSessionFile, class: "user-typed" },
-  // Layout 3's `next-audit.json`, same story: a cadence a person chose.
-  { path: auditReminderFile, class: "user-typed" },
 
   // ── Never deleted: recorded and not yet shipped ──
   // Batches read out of transcripts and queued for upload. The reason losing
@@ -660,6 +650,16 @@ export const legacy = {
    */
   authJson: () => at("auth.json"),
   nextAudit: () => at("next-audit.json"),
+  /**
+   * Layout 4's `audit/reminder.json`, retired before it was ever written to.
+   *
+   * The layout-4 step MOVES `next-audit.json` here rather than deleting it,
+   * because the scheduled-audit work that replaces reminders had not landed yet
+   * and dropping a cadence someone chose would have been unrecoverable if it
+   * slipped. It has landed; the reminder concept is gone, and this is the
+   * position the file was parked in. Listed so a reset clears it.
+   */
+  auditReminder: () => at("audit", "reminder.json"),
   auditSchedule: () => at("state", "audit-schedule.json"),
   cacheDir: () => at("cache"),
   hookActivityDir: () => at("cache", "hook-activity"),
@@ -746,6 +746,10 @@ function retiredLayoutPaths(): string[] {
     // `migrateHookActivity()`, and everything else in `cache/` still goes —
     // both remaining entries are re-derived on demand.
     legacy.auditCacheDir(),
+    // The reminder, at the position layout 4 parked it in. It is on this list
+    // rather than in `HOME_CLASSES` because the path is RETIRED: nothing writes
+    // it any more, so it has no class to carry — only a location to clear.
+    legacy.auditReminder(),
     legacy.codexSessionPaths(),
     legacy.spoolDir(),
     legacy.failedDir(),

@@ -107,7 +107,7 @@ async function parseError(res: Response): Promise<AuthApiError> {
   return new AuthApiError(res.status, code, message, retryAfterSecs);
 }
 
-/** Hard cap on every auth/reminder HTTP call. Without this, a wedged DNS
+/** Hard cap on every auth/report HTTP call. Without this, a wedged DNS
  *  resolver or a hung server keeps the CLI / dashboard route stuck forever. */
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -208,34 +208,6 @@ export async function logoutSession(accessToken: string, refreshToken: string): 
 
 export async function fetchMe(accessToken: string): Promise<MeResponse> {
   return getJson<MeResponse>("/v0/auth/me", accessToken);
-}
-
-export interface ServerReminder {
-  user_id: string;
-  email: string;
-  fire_at: number; // unix seconds
-  set_at: number;  // unix seconds
-}
-
-export async function scheduleReminder(
-  accessToken: string,
-  body: { in_days?: number; at?: number },
-): Promise<ServerReminder> {
-  const res = await postJson<{ reminder: ServerReminder }>(
-    "/v0/reminders",
-    body,
-    { accessToken },
-  );
-  return res.reminder;
-}
-
-export async function cancelReminder(accessToken: string): Promise<void> {
-  const res = await fetchWithTimeout(`${getApiBase()}/v0/reminders`, {
-    method: "DELETE",
-    headers: { authorization: `Bearer ${accessToken}` },
-  });
-  if (res.status === 204 || res.ok) return;
-  throw await parseError(res);
 }
 
 export interface InviteSendResult {

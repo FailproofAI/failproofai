@@ -22,7 +22,6 @@ import { resolve } from "node:path";
 import {
   LAYOUT_VERSION,
   auditDir,
-  auditReminderFile,
   auditScheduleFile,
   auditSessionFile,
   configFile,
@@ -362,7 +361,7 @@ describe("layout 3 → 4", () => {
     runMigrations(3);
 
     expect(JSON.parse(readFileSync(auditSessionFile(), "utf8")).access_token).toBe("at");
-    expect(JSON.parse(readFileSync(auditReminderFile(), "utf8")).user_email).toBe("a@b.c");
+    expect(JSON.parse(readFileSync(legacy.auditReminder(), "utf8")).user_email).toBe("a@b.c");
     expect(JSON.parse(readFileSync(auditScheduleFile(), "utf8")).next_due_at_ms).toBe(999);
 
     expect(existsSync(legacy.authJson())).toBe(false);

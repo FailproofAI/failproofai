@@ -1,0 +1,59 @@
+---
+title: "Deploy policy"
+description: "Deploy a published policy in observe mode, then enforce it."
+icon: cloud-arrow-down
+---
+
+Deploy a published policy to one machine first. Observe its decisions before enforcing it
+across the fleet.
+
+## Test rollout
+
+<Steps>
+
+<Step title="Select machine">
+  Open **fix → Deploy Policies** and select a machine.
+</Step>
+
+<Step title="Assign policy">
+  Select **edit this machine**, add the policy, pin its version, and set the effect to
+  **observe**.
+</Step>
+
+<Step title="Apply changes">
+  Review the staged additions and removals, then apply the deployment.
+</Step>
+
+<Step title="Review decisions">
+  The daemon polls every 30 seconds. Observe mode records decisions without blocking
+  actions. Check for false positives.
+</Step>
+
+</Steps>
+
+## Enforce policy
+
+Switch the test machine to **enforce** after the observed decisions look correct. Then
+deploy the same version to additional machines.
+
+<Note>
+  Policy evaluation uses the daemon's last verified local deployment. Losing the network
+  connection does not disable the active policy. [Daemon behavior →](/daemon)
+</Note>
+
+## Verify fix
+
+Close the related issue and review the next audit. If the finding returns, use its evidence
+to update the policy.
+
+<CardGroup cols={2}>
+
+<Card title="Deployments" icon="server" href="/cloud/deploy-policies">
+  Manage machine assignments and deployment status.
+</Card>
+
+<Card title="Policy editor" icon="code" href="/cloud/policy-editor">
+  Publish another immutable version.
+</Card>
+
+</CardGroup>

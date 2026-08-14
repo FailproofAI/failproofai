@@ -1,13 +1,13 @@
 ---
-title: "Send your first session"
-description: "Step 2 of 5: connect a supported CLI or instrument a custom agent."
+title: "First trace"
+description: "Send a session from a supported agent or the Python SDK, then backfill history."
 icon: signal-stream
 ---
 
 A **session** records one agent run, including its tool calls, model requests, hooks, and
 errors. Choose one connection method below.
 
-## Which way do you plug in?
+## Choose source
 
 | Your agents… | You connect with | Code changes |
 |---|---|---|
@@ -44,11 +44,11 @@ Install the CLI and connect the machine.
   For interactive setup, run `failproofai config` and choose **Paste an API key**.
 </Step>
 
-<Step title="Run an agent, as you normally would">
+<Step title="Run agent">
   Start a short run in a supported CLI, such as asking it to read a file.
 </Step>
 
-<Step title="Push it now instead of waiting">
+<Step title="Send now">
   ```bash
   failproofai flush --wait
   ```
@@ -70,7 +70,7 @@ For agents you wrote yourself, the SDK emits events from inside your code.
 
 <Steps>
 
-<Step title="Configure once, at startup">
+<Step title="Configure SDK">
   ```python
   import agenteye
 
@@ -80,7 +80,7 @@ For agents you wrote yourself, the SDK emits events from inside your code.
   The package is named `agenteye`; the product it reports to is FailproofAI Cloud.
 </Step>
 
-<Step title="Bracket a run">
+<Step title="Record run">
   ```python
   agenteye.event.agent_start(
       session_id="run-001", agent_id="planner", goal="answer user query"
@@ -103,7 +103,7 @@ For agents you wrote yourself, the SDK emits events from inside your code.
   Pair each start with an end. Reuse `tool_call_id` for a tool call and its result.
 </Step>
 
-<Step title="Let the collector ship it">
+<Step title="Upload events">
   The SDK writes JSONL under `~/.agenteye/events/`. The collector uploads those files.
 </Step>
 
@@ -117,7 +117,7 @@ See [Python SDK](/cloud/sdk) for the event reference and file format.
 
 ---
 
-## Confirm it landed
+## Confirm trace
 
 Open **analyse → Sessions**. The run should appear as a row. Open it to view the execution
 graph and event timeline.
@@ -126,7 +126,7 @@ If the row is not there:
 
 <AccordionGroup>
 
-<Accordion title="Nothing at all, and the CLI says it is connected">
+<Accordion title="No session">
   ```bash
   failproofai config --status
   ```
@@ -134,11 +134,7 @@ If the row is not there:
   Check that the key has `events:add`. A key with only `policies:pull` sends no events.
 </Accordion>
 
-<Accordion title="The machine connected but the agent ran before you connected">
-  Use [step 3](/start/history) to backfill earlier runs.
-</Accordion>
-
-<Accordion title="You do not want transcripts leaving the machine">
+<Accordion title="No transcripts">
   Reconnect with `--no-transcripts` and only policy decisions are sent. What each mode does
   and does not send is spelled out in
   [What leaves this machine](/cloud/connect#what-leaves-this-machine).
@@ -148,7 +144,25 @@ If the row is not there:
 
 ---
 
-<Card title="Next — Bring in the history you already have" icon="arrow-right" href="/start/history">
-  Your agents have been running for months. Load that history so your first audit has
-  something to find.
+## Backfill history
+
+Import earlier sessions that remain on disk:
+
+```bash
+failproofai backfill --since 6m
+failproofai backfill --dry-run
+```
+
+Backfill is idempotent and cannot recover transcripts the agent CLI has deleted. Register
+non-standard transcript locations before running it:
+
+```bash
+failproofai harness add-path claude ~/work/mirror/.claude/projects
+failproofai harness add-path codex "vm-a=/mnt/vm-a/.codex/sessions"
+```
+
+See [Backfill](/cli/backfill) and [Harness paths](/cli/harness) for all options.
+
+<Card title="First audit" icon="arrow-right" href="/start/first-audit">
+  Analyze the sessions you collected.
 </Card>

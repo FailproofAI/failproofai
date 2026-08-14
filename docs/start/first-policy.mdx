@@ -1,10 +1,8 @@
 ---
-title: "Prevent it happening again"
-description: "Step 5 of 5: create, deploy, and verify a policy."
+title: "Author policy"
+description: "Create and publish a policy from an audit finding."
 icon: shield-halved
 ---
-
-A **policy** evaluates agent actions and returns one of three decisions:
 
 A policy runs *inside* the agent loop. Every tool call passes through it first, and it
 returns one of three decisions:
@@ -17,7 +15,7 @@ returns one of three decisions:
 
 ---
 
-## Check whether one already exists
+## Check catalog
 
 Check the built-in catalog before writing a policy. It includes secret detection,
 destructive-command blocking, branch protection, infrastructure guards, and workflow gates.
@@ -31,11 +29,11 @@ If a built-in policy matches, enable and configure it. See
 
 ---
 
-## Write it
+## Write policy
 
 <Steps>
 
-<Step title="Draft the rule">
+<Step title="Draft rule">
   Open **fix → Policy editor** and write the JavaScript source. **Publish version** remains
   disabled until the source parses.
 
@@ -61,12 +59,12 @@ If a built-in policy matches, enable and configure it. See
   **use this**.
 </Step>
 
-<Step title="Make the denial readable">
+<Step title="Write guidance">
   State what was blocked and what the agent should do next. Actionable reasons reduce
   repeated attempts.
 </Step>
 
-<Step title="Publish a version">
+<Step title="Publish version">
   Publishing creates an immutable version. Publishing the same policy ID creates its next
   version.
 </Step>
@@ -75,49 +73,7 @@ If a built-in policy matches, enable and configure it. See
 
 ---
 
-## Roll it out in observe mode first
-
-<Steps>
-
-<Step title="Pin it to one machine">
-  Open **fix → Deploy Policies** and select a machine.
-
-  Click a machine, select **edit this machine**, add your policy, pin the version, and set
-  the effect to **observe**.
-</Step>
-
-<Step title="Apply">
-  Changes remain staged until you apply them. Review policies added and removed.
-</Step>
-
-<Step title="Wait, then read what it would have blocked">
-  The daemon polls every 30 seconds and verifies each artifact. Observe mode records
-  decisions without blocking actions. Review those decisions for false positives.
-</Step>
-
-<Step title="Switch to enforce, then widen">
-  Switch the test machine to **enforce**, then deploy to additional machines.
-</Step>
-
-</Steps>
-
-<Note>
-  Policy evaluation never makes a network request. Hooks read only the daemon's last
-  verified local deployment, so a machine that loses its connection keeps enforcing what it
-  last pulled. [How that works →](/daemon)
-</Note>
-
----
-
-## Verify the loop actually closed
-
-Close the issue and review the next audit. If the finding returns, use its evidence to
-adjust the policy. This completes the loop: **observe → evaluate → find → prevent →
-observe again**.
-
----
-
-## Where to go from here
+## Next steps
 
 <CardGroup cols={2}>
 
@@ -129,7 +85,7 @@ observe again**.
   Use `PolicyContext`, event filters, and decision helpers.
 </Card>
 
-<Card title="Repo policies vs cloud policies" icon="code-branch" href="/cloud/policy-editor#local-policies-still-work">
+<Card title="Policy location" icon="code-branch" href="/cloud/policy-editor#local-policies-still-work">
   When to commit a policy to `.failproofai/policies/` instead of deploying it centrally.
 </Card>
 
@@ -138,3 +94,7 @@ observe again**.
 </Card>
 
 </CardGroup>
+
+<Card title="Deploy policy" icon="arrow-right" href="/start/deploy-policy">
+  Test the published version, then enforce it.
+</Card>

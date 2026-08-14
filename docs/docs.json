@@ -46,19 +46,16 @@
               {
                 "group": "Get started",
                 "pages": [
-                  "start/sign-up",
                   "start/first-trace",
-                  "start/history",
                   "start/first-audit",
-                  "start/first-policy"
+                  "start/first-policy",
+                  "start/deploy-policy"
                 ]
               },
               {
                 "group": "Connect your agents",
                 "pages": [
                   "agent-support",
-                  "cloud/connect",
-                  "cloud/capture",
                   "cloud/sdk"
                 ]
               },

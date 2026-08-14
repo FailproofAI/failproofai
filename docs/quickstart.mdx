@@ -34,7 +34,7 @@ You can try commands with `npx -y failproofai …`. Install the package for ongo
 
 ---
 
-## 2. Run setup
+## 2. Configure
 
 ```bash
 failproofai config
@@ -44,7 +44,7 @@ Setup asks **two questions**. Everything else it works out from what is already 
 machine.
 
 <Steps>
-  <Step title="Recommended, or customize?">
+  <Step title="Choose policies">
     **Recommended** turns on 15 policies globally for every agent CLI it finds on this
     machine. This is the default option. It
     keeps secrets out of what the agent reads, stops the agent switching off its own
@@ -56,7 +56,7 @@ machine.
     wire up.
   </Step>
 
-  <Step title="Connect to FailproofAI Cloud, or stay local?">
+  <Step title="Choose mode">
     **Paste an API key** connects this machine to your organization: policy comes down
     from the dashboard, and what your agents do goes up to it. Don't have a key yet?
     Create one at [befailproof.ai/get-started](https://befailproof.ai/get-started/).
@@ -88,7 +88,7 @@ it touches it.
 
 ---
 
-## 3. Check it
+## 3. Verify
 
 ```bash
 failproofai config --status
@@ -105,7 +105,7 @@ Lists every policy, whether it is on, and any parameters you have set.
 
 ---
 
-## 4. Watch it work
+## 4. Test
 
 Start your agent exactly as you normally do. Then ask it to do something a policy blocks:
 
@@ -117,12 +117,11 @@ agent  I tried to run that, but it was blocked:
        I'll install it without elevated privileges instead.
 ```
 
-That recovery is the whole design. A denial is not an error the agent hits and gives up
-on — it is a sentence the model can read and route around.
+The agent receives the denial reason and can choose a safer action.
 
 ---
 
-## 5. See what happened
+## 5. Inspect
 
 ```bash
 failproofai
@@ -144,11 +143,9 @@ a ranked list of what slipped through, and a copy-pasteable command for each fix
 
 ---
 
-## 6. Make it your team's standard
+## 6. Share
 
-The fastest way to turn one person's policies into a team's is the
-`.failproofai/policies/` convention. Drop a file in, commit it, done — no flags, no
-config, no per-developer setup.
+Commit policies under `.failproofai/policies/` to share them with the team.
 
 <Steps>
   <Step title="Create the directory">
@@ -184,18 +181,11 @@ config, no per-developer setup.
   </Step>
 </Steps>
 
-<Tip>
-  Treat `.failproofai/policies/` as a living quality standard. Every time your team finds
-  a new way an agent wastes an afternoon, add a policy and push. The standard compounds;
-  nobody has to remember it.
-</Tip>
-
-Running a fleet? Skip the git round-trip entirely — [deploy policy from the
-cloud](/cloud/policy-editor) and every connected machine picks it up on its next poll.
+For fleet deployment, use the [Policy editor](/cloud/policy-editor).
 
 ---
 
-## Where your data lives
+## Local files
 
 Everything FailproofAI writes on a machine lives under `~/.failproofai/`, plus a
 `.failproofai/` directory in any project you configure. Nothing is written outside those
@@ -216,7 +206,7 @@ two places except the hook entries in each agent CLI's own settings file.
 
 ---
 
-## Uninstalling
+## Uninstall
 
 ```bash
 failproofai uninstall           # remove hooks from every agent CLI + the daemon service
@@ -231,24 +221,24 @@ failproofai uninstall --purge   # …and delete ~/.failproofai entirely
 
 ---
 
-## Next steps
+## Cloud setup
 
 <CardGroup cols={2}>
 
-<Card title="How it works" icon="sitemap" href="/how-it-works">
-  What actually happens between a tool call and a decision.
+<Card title="First trace" icon="signal-stream" href="/start/first-trace">
+  Send a session and backfill earlier runs.
 </Card>
 
-<Card title="Built-in policies" icon="shield" href="/built-in-policies">
-  All 40 policies and what each one catches.
+<Card title="First audit" icon="magnifying-glass" href="/start/first-audit">
+  Analyze sessions and review findings.
 </Card>
 
-<Card title="Configuration" icon="gear" href="/configuration">
-  Scopes, merge rules, and tuning a policy without code.
+<Card title="Author policy" icon="code" href="/start/first-policy">
+  Turn a finding into a policy.
 </Card>
 
-<Card title="Connect to the cloud" icon="cloud" href="/cloud/connect">
-  One command, two capabilities, and exactly what gets sent.
+<Card title="Deploy policy" icon="cloud-arrow-down" href="/start/deploy-policy">
+  Test in observe mode, then enforce.
 </Card>
 
 </CardGroup>

@@ -1,6 +1,6 @@
 ---
-title: "Find your first failures"
-description: "Step 4 of 5: run an audit and review its findings."
+title: "First audit"
+description: "Run an audit and review its findings."
 icon: magnifying-glass
 ---
 
@@ -9,7 +9,7 @@ audits search for patterns you have not configured in advance.
 
 ---
 
-## Set one up
+## Create audit
 
 <Steps>
 
@@ -25,11 +25,11 @@ audits search for patterns you have not configured in advance.
   ```
 </Step>
 
-<Step title="Pick a sensitivity">
+<Step title="Set sensitivity">
   Choose **low**, **medium**, or **high**. Start with **medium**.
 </Step>
 
-<Step title="Set the schedule anchor, and know it is UTC">
+<Step title="Set schedule">
   The schedule is `anchor + N × interval`. **Run now** does not change it.
 
   Anchors use UTC and do not adjust for daylight saving time.
@@ -39,7 +39,7 @@ audits search for patterns you have not configured in advance.
   </Tip>
 </Step>
 
-<Step title="Run it now">
+<Step title="Run now">
   Use **Run now** to start an additional run.
 </Step>
 
@@ -47,7 +47,7 @@ audits search for patterns you have not configured in advance.
 
 ---
 
-## Read what it found
+## Review findings
 
 A run checks for these failure classes:
 
@@ -65,7 +65,7 @@ before acting on a finding.
 
 ---
 
-## Turn a finding into work
+## Create issue
 
 A finding can become an **issue** with a state, assignee, and timeline. Recurrence reopens
 the issue.
@@ -79,7 +79,7 @@ You can also create a prefilled recurrence alert from a finding.
 
 ---
 
-## No account yet? Score this machine in one command
+## Local audit
 
 To audit local transcripts without an account, run:
 
@@ -92,7 +92,6 @@ Unlike Cloud audits, it is one-shot and limited to one machine. [Local audit →
 
 ---
 
-<Card title="Next — Prevent it happening again" icon="arrow-right" href="/start/first-policy">
-  Take the finding at the top of your list and turn it into a rule that stops it, on every
-  machine.
+<Card title="Author policy" icon="arrow-right" href="/start/first-policy">
+  Turn a finding into a rule.
 </Card>

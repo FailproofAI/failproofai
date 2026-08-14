@@ -1,15 +1,37 @@
 ---
-title: "What is FailproofAI"
+title: "FailproofAI"
 description: "Observe agent runs, detect failures, and prevent them with policies."
 ---
+
+## Get started
+
+Create a [workspace and machine key](/start/sign-up), then follow these steps.
+
+<CardGroup cols={2}>
+
+<Card title="First trace" icon="signal-stream" href="/start/first-trace">
+  Send a session and backfill earlier runs.
+</Card>
+
+<Card title="First audit" icon="magnifying-glass" href="/start/first-audit">
+  Analyze sessions and review findings.
+</Card>
+
+<Card title="Author policy" icon="code" href="/start/first-policy">
+  Turn a finding into a policy.
+</Card>
+
+<Card title="Deploy policy" icon="cloud-arrow-down" href="/start/deploy-policy">
+  Test the policy in observe mode, then enforce it.
+</Card>
+
+</CardGroup>
 
 Agents can complete a run while using the wrong tool, leaking a secret, looping, or missing
 the goal. FailproofAI records each run, scores it, finds recurring failures, and enforces
 policies inside the agent loop.
 
----
-
-## The reliability loop
+## Reliability loop
 
 ```mermaid
 flowchart LR
@@ -21,7 +43,7 @@ flowchart LR
 
 <CardGroup cols={2}>
 
-<Card title="Deep observability" icon="diagram-project" href="/cloud/sessions">
+<Card title="Observe runs" icon="diagram-project" href="/cloud/sessions">
   View each run as an execution graph with parallel work, errors, tools, and cost.
 </Card>
 
@@ -29,11 +51,11 @@ flowchart LR
   Score completed runs on dimensions you define, such as correctness or helpfulness.
 </Card>
 
-<Card title="Failure identification" icon="magnifying-glass" href="/cloud/audits">
+<Card title="Find failures" icon="magnifying-glass" href="/cloud/audits">
   Find error clusters, drift, tool misuse, and goal failures across sessions.
 </Card>
 
-<Card title="Policy authoring" icon="shield-halved" href="/policies">
+<Card title="Prevent failures" icon="shield-halved" href="/policies">
   Allow, deny, or guide tool calls. Use a built-in policy or write one in JavaScript.
 </Card>
 
@@ -43,64 +65,34 @@ Turn an audit finding into a policy, then use the next audit to verify the fix.
 
 ---
 
-## Two ways to plug in
+## Agent support
 
-Choose based on where the agent runs. You can use both methods in one organization.
+FailproofAI supports major agent harnesses without application code changes.
+
+<div style={{ display: "flex", gap: "1.5rem", alignItems: "center", flexWrap: "wrap", margin: "1rem 0 1.5rem" }}>
+  <img src="https://cdn.simpleicons.org/anthropic" alt="Claude" width="32" height="32" />
+  <img src="https://cdn.simpleicons.org/openai" alt="OpenAI Codex" width="32" height="32" />
+  <img src="https://cdn.simpleicons.org/githubcopilot" alt="GitHub Copilot" width="32" height="32" />
+  <img src="https://cdn.simpleicons.org/cursor" alt="Cursor" width="32" height="32" />
+</div>
 
 <CardGroup cols={2}>
 
-<Card title="Agents on a supported harness" icon="plug">
-  Connect a supported CLI with one command. No application code changes are required.
+<Card title="Supported agents" icon="plug" href="/agent-support">
+  Connect Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory
+  Droid, Devin, Antigravity, or Goose.
 
   ```bash
   failproofai config --connect <url> --token <key>
   ```
-
-  [Supported agents →](/agent-support)
 </Card>
 
-<Card title="Custom agents you wrote" icon="code">
+<Card title="Custom agents" icon="code" href="/cloud/sdk">
   Emit run and tool events from your agent with the Python SDK.
 
   ```python
   agenteye.event.agent_start(session_id="run-001", ...)
   ```
-
-  [Python SDK →](/cloud/sdk)
-</Card>
-
-</CardGroup>
-
----
-
-## Open source and Cloud
-
-Local policies are open source. FailproofAI Cloud adds fleet deployment, centralized
-sessions, evaluations, audits, and alerts.
-
-Nothing leaves a machine until you connect it. Policy decisions remain local and use the
-last verified deployment.
-[What gets sent →](/cloud/connect#what-leaves-this-machine)
-
----
-
-## Start here
-
-<Card title="Create your workspace" icon="rocket" href="/start/sign-up" horizontal>
-  Create a key, send a session, load history, run an audit, and deploy a policy.
-</Card>
-
-For a local trial with no account, audit the transcripts already on this machine.
-[Run it locally →](/quickstart)
-
-<CardGroup cols={2}>
-
-<Card title="How it works" icon="sitemap" href="/how-it-works">
-  Follow a tool call from policy evaluation to the dashboard.
-</Card>
-
-<Card title="Concepts" icon="book" href="/concepts">
-  Definitions for the terms used in these docs.
 </Card>
 
 </CardGroup>

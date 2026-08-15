@@ -95,9 +95,11 @@ WHAT IT DOES
   2. Starts the local dashboard and opens
      http://localhost:${DASHBOARD_PORT}/audit with your results.
 
-  A bare "failproofai audit" runs fully offline — no account or network
-  required. Scheduling is the exception: it emails you what it finds, so it
-  needs an address. Press Ctrl+C to stop the dashboard server when you're done.
+  A bare "failproofai audit" needs no account, and nothing from your sessions
+  leaves this machine — anonymous usage counts still apply unless you set
+  FAILPROOFAI_TELEMETRY_DISABLED=1. Scheduling is the exception: it emails you
+  what it finds, so it needs an address.
+  Press Ctrl+C to stop the dashboard server when you're done.
 `.trimStart();
 
 // ── ANSI helpers ────────────────────────────────────────────────────────────

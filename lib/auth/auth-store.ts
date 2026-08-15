@@ -7,11 +7,11 @@
  * across dashboard runs and is the same one a scheduled report uses.
  */
 
-import { existsSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 import { writeJsonAtomically } from "../atomic-write";
-import { auditDir, auditSessionFile } from "../../src/hooks/fp-home";
+import { auditDir, auditSessionFile, migrationsDir } from "../../src/hooks/fp-home";
 import {
   AuthApiError,
   decodeJwt,
@@ -90,6 +90,28 @@ export function writeAuth(auth: StoredAuth): void {
 export function deleteAuth(): void {
   const p = getAuthFilePath();
   if (existsSync(p)) rmSync(p, { force: true });
+
+  // Also any copy a migration took and could not clean up.
+  //
+  // The layout-4 step backs `auth.json` up before moving it, and a chain that
+  // FAILED deliberately keeps that copy — it is the only insurance against a
+  // half-moved credential. But "sign me out" has to mean the token is off this
+  // machine, and `migrationsDir` is classed `identity`, so nothing else will
+  // ever remove it: without this sweep a dashboard sign-out, a 401 auto-delete
+  // and `failproofai reset` all left a live bearer and refresh token on disk,
+  // to be carried into every dotfile backup and container image after it.
+  try {
+    const root = migrationsDir();
+    if (!existsSync(root)) return;
+    for (const entry of readdirSync(root)) {
+      if (!entry.startsWith("backup-layout")) continue;
+      const copy = resolve(root, entry, "auth.json");
+      if (existsSync(copy)) rmSync(copy, { force: true });
+    }
+  } catch {
+    // Sign-out must succeed even if the sweep cannot. The live token — the one
+    // that actually authenticates a request — is already gone above.
+  }
 }
 
 /** Convert verify/refresh response into the on-disk shape. */

@@ -32,13 +32,14 @@ import {
   migrationLedgerFile,
   versionFile,
 } from "../../src/hooks/fp-home";
-import { detectLayout, readVersionFile } from "../../src/hooks/fp-config";
+import { detectLayout, readVersionFile, writeVersionFile } from "../../src/hooks/fp-config";
 import {
   MIGRATIONS,
   backupBeforeMigrating,
   describePlan,
   migrationCoverageGap,
   planMigration,
+  pruneMigratedCredentials,
   readLedger,
   restoreBackup,
   runMigrations,
@@ -340,6 +341,59 @@ describe("the backup taken before a migration", () => {
         readFileSync(resolve(legacy.localPoliciesDir(), "policies-config.json"), "utf8"),
       ).enabledPolicies,
     ).toEqual(["nested-one"]);
+  });
+
+  // The backup insures a migration that goes wrong. Kept forever on a live
+  // credential it stops being insurance and becomes a second copy of the
+  // token — one no reset class removes (`migrationsDir` is classed `identity`)
+  // and that `deleteAuth()` did not know about, so a dashboard sign-out, a 401
+  // auto-delete and `failproofai reset` all left a working bearer and refresh
+  // token on disk to be carried into every backup and container image after it.
+  describe("the session copy is not kept after a clean migration", () => {
+    function seedLayoutThreeWithSession() {
+      mkdirSync(home, { recursive: true });
+      writeVersionFile({ layout: 3 });
+      writeFileSync(
+        legacy.authJson(),
+        JSON.stringify({ access_token: "at", refresh_token: "rt" }),
+      );
+    }
+
+    it("removes it once the chain has finished", () => {
+      seedLayoutThreeWithSession();
+
+      const run = runMigrations(3);
+
+      expect(run.failed).toBeUndefined();
+      // It really was backed up — this is not passing because nothing happened.
+      expect(run.backedUp).toContain("auth.json");
+      // The session landed where layout 4 reads it…
+      expect(existsSync(auditSessionFile())).toBe(true);
+      // …and the copy is gone.
+      expect(existsSync(resolve(migrationBackupDir(3), "auth.json"))).toBe(false);
+    });
+
+    it("KEEPS it when the chain failed, which is what a backup is for", () => {
+      seedLayoutThreeWithSession();
+      // Make the destination directory un-creatable so the move throws.
+      writeFileSync(auditDir(), "not a directory");
+
+      const run = runMigrations(3);
+
+      expect(run.failed).toBeDefined();
+      expect(existsSync(resolve(migrationBackupDir(3), "auth.json"))).toBe(true);
+    });
+
+    it("prunes nothing when the session never arrived at its new home", () => {
+      // Guarded on the destination rather than assumed: dropping the only
+      // readable copy of a credential is the loss the backup exists to prevent.
+      mkdirSync(migrationBackupDir(3), { recursive: true });
+      writeFileSync(resolve(migrationBackupDir(3), "auth.json"), "{}");
+
+      pruneMigratedCredentials(3);
+
+      expect(existsSync(resolve(migrationBackupDir(3), "auth.json"))).toBe(true);
+    });
   });
 });
 

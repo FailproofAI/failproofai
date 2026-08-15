@@ -14,7 +14,12 @@
  * out there ends the session the scheduled audit was going to report under.
  */
 import { AuthApiError, requestLoginCode, verifyLoginCode } from "../../lib/auth/api-server-client";
-import { authFromTokenResponse, readAuth, writeAuth } from "../../lib/auth/auth-store";
+import {
+  authFromTokenResponse,
+  readAuth,
+  writeAuth,
+  type StoredAuth,
+} from "../../lib/auth/auth-store";
 import {
   ANSI_RESET,
   BAR,
@@ -98,6 +103,33 @@ export function canPrompt(): boolean {
 }
 
 /**
+ * The stored session, unless its refresh token has already expired.
+ *
+ * The check is a comparison against a number that is already in the file, so it
+ * keeps the offline-friendly property the doc below argues for: no request, no
+ * network failure mode, nothing new that a dropped wifi connection can break.
+ * What it removes is the case where every one of those is fine and the session
+ * is simply dead — revoked from another machine, or past its refresh window.
+ *
+ * Without it `--schedule` printed `reports to <email>` and exited 0 on a
+ * session that cannot mint another access token, so the user configured
+ * digests, was shown the destination, and then heard nothing for up to a full
+ * interval (90 days at the maximum) with the only signal a line in the journal.
+ * The dashboard already refuses this exact state in `setAutoAuditAction`, so
+ * the two surfaces disagreed on the one thing this feature claims is in sync.
+ *
+ * Expiry is treated as "sign in again", not as an error: the OTP prompt below
+ * is the remedy, and falling through to it is what makes this recoverable in
+ * one command instead of needing the file removed by hand.
+ */
+function sessionStillValid(auth: StoredAuth | null): StoredAuth | null {
+  if (!auth) return null;
+  // Seconds, per StoredAuth. A file whose value is missing was normalised to
+  // `access_expires_at` by `readAuth`, so this is always a real number.
+  return auth.refresh_expires_at * 1000 > Date.now() ? auth : null;
+}
+
+/**
  * Return the current session, or run the OTP flow to create one.
  *
  * Deliberately NOT `whoAmI()`: that round-trips to `/v0/auth/me` and returns
@@ -108,7 +140,7 @@ export function canPrompt(): boolean {
  * rather than failing.
  */
 export async function ensureSignedIn(preset?: string): Promise<EnsureSignedIn> {
-  const existing = readAuth();
+  const existing = sessionStillValid(readAuth());
   if (existing) {
     // A machine already reports as somebody. An `--email` naming a DIFFERENT
     // address is refused rather than honoured: silently re-pointing where a

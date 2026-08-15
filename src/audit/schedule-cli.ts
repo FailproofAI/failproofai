@@ -145,9 +145,17 @@ export async function runScheduleOn(
 
   // Two rows rather than one long one: at 80 columns the combined sentence
   // wrapped, and a wrapped summary loses the spine on its second row.
+  // The third row enumerates what leaves the machine, and it is not optional.
+  // This is the ONLY opt-in path on the headless boxes the whole feature was
+  // built for — the settings panel says "sends: counts, redacted examples, and
+  // this machine's name" and argues in its own comment that a checkable list
+  // beats a stronger claim, and that reasoning applies here at least as much.
+  // The list is the real payload from `report-harm.ts`: machine id, hostname,
+  // platform, the window bounds and the redacted examples.
   const summary = [
     `every ${interval} day${interval === 1 ? "" : "s"} · reports to ${user.email}`,
     "you only hear from it when a scan finds something harmful",
+    "each report sends: finding counts, redacted example commands, this machine's name",
   ];
 
   if (prompted) {
@@ -222,12 +230,25 @@ export function runScheduleStatus(): void {
   );
   out.push(rail());
 
-  out.push(row("reports to", auth ? auth.user.email : dim("— signed out")));
-  if (on && !auth) {
+  // A session whose refresh window has closed cannot mint another access token,
+  // so it is a destination in name only. Showing the address for one would tell
+  // somebody their digests are going somewhere they are not.
+  const live = auth && auth.refresh_expires_at * 1000 > Date.now() ? auth : null;
+  out.push(row("reports to", live ? live.user.email : dim("— signed out")));
+  if (on && !live) {
     // The state the reporter surfaces as "signed-out". Named here for the same
     // reason the settings panel names it: the scans keep running, so silence
     // about the digests would look like the feature failing.
     out.push(row("", pink("scans continue; digests are paused until you sign in")));
+  } else if (on && config.audit.reportsConsentedAt === undefined) {
+    // Signed in, scheduled, and still not sending: this machine set `audit.auto`
+    // when it only meant "scan locally", so nothing has consented to the digest
+    // leaving the box. Without this row the status screen would show a healthy
+    // schedule and a live address and still mail nothing, with no explanation
+    // anywhere the user can see.
+    out.push(
+      row("", pink("scans continue; digests need a fresh opt-in — run `--schedule` to turn them on")),
+    );
   }
 
   out.push(row("daemon", describeDaemon(daemon)));

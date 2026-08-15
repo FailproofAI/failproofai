@@ -396,6 +396,57 @@ function backupNameOf(f: BackedUpFile): string {
 }
 
 /**
+ * Backup copies deleted once the whole chain has succeeded.
+ *
+ * The backup above is insurance against a migration that goes wrong. Insurance
+ * you keep forever on a live credential is not insurance, it is a second copy
+ * of the credential — and this one is worse than the original, because
+ * `migrationsDir` is classed `identity` in `HOME_CLASSES`, so no reset class
+ * ever removes it, and `deleteAuth()` only ever knew about the live path.
+ * Signing out of the dashboard, a 401 auto-delete and `failproofai reset` all
+ * left a working bearer and refresh token sitting at
+ * `migrations/backup-layout3/auth.json`, where every dotfile backup, container
+ * image, snapshot and handed-over machine would carry it. There is no CLI
+ * sign-out at all, so the headless boxes this feature targets had no supported
+ * way to remove it. A stale refresh token is also exactly the input
+ * `auth-store.ts` documents as triggering server-side replay revocation.
+ *
+ * Only entries whose source was MOVED are prunable, never ones that were
+ * DELETED: for `credentials.json` the backup is the only remaining copy, so
+ * removing it would be the data loss the backup exists to prevent. `landsAt` is
+ * checked rather than assumed, so a copy is dropped only once the file is
+ * provably readable at its new home.
+ */
+const PRUNED_AFTER_SUCCESS: ReadonlyArray<{ as: string; landsAt: () => string }> = [
+  { as: basename(legacy.authJson()), landsAt: auditSessionFile },
+];
+
+/**
+ * Remove the credential copies a completed chain no longer needs.
+ *
+ * Never throws: a chain that migrated correctly must not be reported as failed
+ * because a cleanup could not delete a file.
+ */
+export function pruneMigratedCredentials(from: number): string[] {
+  const pruned: string[] = [];
+  for (let layout = from; layout < LAYOUT_VERSION; layout++) {
+    for (const { as, landsAt } of PRUNED_AFTER_SUCCESS) {
+      try {
+        if (!existsSync(landsAt())) continue;
+        const copy = resolve(migrationBackupDir(layout), as);
+        if (!existsSync(copy)) continue;
+        rmSync(copy, { force: true });
+        pruned.push(as);
+      } catch {
+        // Best effort. `deleteAuth()` sweeps these too, so a copy that survives
+        // here is still removed the next time somebody signs out.
+      }
+    }
+  }
+  return pruned;
+}
+
+/**
  * The files that exist right now and would be backed up, each exactly once.
  *
  * ONE function, because there were two: `backupBeforeMigrating` deduped by path
@@ -558,6 +609,10 @@ export function runMigrations(
       break;
     }
   }
+
+  // Only on a clean chain. A run that failed still needs its copies: the whole
+  // point of the backup is the state this branch is in.
+  if (!failed) pruneMigratedCredentials(from);
 
   return { from, steps, backedUp, outcome, failed };
 }

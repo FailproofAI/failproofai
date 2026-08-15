@@ -10,11 +10,12 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { promptTextMock, requestMock, verifyMock, writeAuthMock } = vi.hoisted(() => ({
+const { promptTextMock, requestMock, verifyMock, writeAuthMock, readAuthMock } = vi.hoisted(() => ({
   promptTextMock: vi.fn(),
   requestMock: vi.fn(),
   verifyMock: vi.fn(),
   writeAuthMock: vi.fn(),
+  readAuthMock: vi.fn(),
 }));
 
 // PARTIAL: the flow draws its frame with the real `intro`/`step`/`outro`, and
@@ -33,9 +34,10 @@ vi.mock("../../lib/auth/api-server-client", async (orig) => ({
 vi.mock("../../lib/auth/auth-store", async (orig) => ({
   ...(await orig<typeof import("../../lib/auth/auth-store")>()),
   writeAuth: writeAuthMock,
+  readAuth: readAuthMock,
 }));
 
-import { runLogin, extractCode } from "../../src/audit/cli-login";
+import { runLogin, extractCode, ensureSignedIn } from "../../src/audit/cli-login";
 import { AuthApiError } from "../../lib/auth/api-server-client";
 
 /** The `validate` the code prompt was handed, so it can be exercised directly. */
@@ -66,6 +68,8 @@ beforeEach(() => {
   });
   verifyMock.mockReset().mockResolvedValue(TOKENS);
   writeAuthMock.mockReset();
+  // No session on disk unless a test says otherwise.
+  readAuthMock.mockReset().mockReturnValue(null);
   vi.spyOn(process.stdout, "write").mockImplementation(() => true);
   vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 });
@@ -189,5 +193,64 @@ describe("a preset address", () => {
     await runLogin("preset@example.com");
 
     expect(requestMock).toHaveBeenCalledBefore(verifyMock);
+  });
+});
+
+describe("an existing session that has already expired", () => {
+  // `--schedule` printed `reports to <email>` and exited 0 for ANY session file
+  // on disk, expiry unread — so somebody whose refresh token lapsed or was
+  // revoked elsewhere configured digests, was shown the destination, and then
+  // heard nothing for up to a full interval (90 days at the maximum). The
+  // dashboard already refuses this exact state, so the two surfaces disagreed
+  // on the one thing this feature claims is in sync.
+  const live = { ...TOKENS.user };
+
+  function storedSession(refreshExpiresAt: number) {
+    return {
+      access_token: "at",
+      refresh_token: "rt",
+      access_expires_at: refreshExpiresAt,
+      refresh_expires_at: refreshExpiresAt,
+      user: live,
+    };
+  }
+
+  it("is treated as signed out, and the sign-in runs again", async () => {
+    // The OTP path needs a terminal, which the test runner is not. `isTTY` is
+    // absent rather than false on a pipe, so it is assigned, not spied.
+    const stdin = process.stdin as { isTTY?: boolean };
+    const stdout = process.stdout as { isTTY?: boolean };
+    const prevIn = stdin.isTTY;
+    const prevOut = stdout.isTTY;
+    stdin.isTTY = true;
+    stdout.isTTY = true;
+    try {
+      readAuthMock.mockReturnValue(storedSession(Math.floor(Date.now() / 1000) - 60));
+      promptTextMock.mockResolvedValueOnce("you@example.com").mockResolvedValueOnce("123456");
+
+      const out = await ensureSignedIn();
+
+      // It went through the OTP flow rather than trusting the dead file.
+      expect(out.prompted).toBe(true);
+      expect(requestMock).toHaveBeenCalled();
+      expect(out.user.email).toBe(live.email);
+    } finally {
+      if (prevIn === undefined) delete stdin.isTTY;
+      else stdin.isTTY = prevIn;
+      if (prevOut === undefined) delete stdout.isTTY;
+      else stdout.isTTY = prevOut;
+    }
+  });
+
+  it("still trusts a session inside its refresh window, with no request at all", async () => {
+    // The offline property this check must not cost: a signed-in machine with
+    // no network must not be re-prompted for a code because its wifi dropped.
+    readAuthMock.mockReturnValue(storedSession(Math.floor(Date.now() / 1000) + 86_400));
+
+    const out = await ensureSignedIn();
+
+    expect(out.prompted).toBe(false);
+    expect(requestMock).not.toHaveBeenCalled();
+    expect(promptTextMock).not.toHaveBeenCalled();
   });
 });

@@ -1094,6 +1094,10 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
     // After, not before — see the function's own note for why the intuitive
     // order cannot work.
     const pending = await drainSpoolAfterMigrating();
+    // Read AFTER the migration: on a machine coming from layout 1 or 2 the
+    // config this reads is the one the migration just carried across, so asking
+    // any earlier would read a file that is about to move.
+    const daemonHint = staleDaemonHint();
     return {
       state,
       fatal: false,
@@ -1160,6 +1164,14 @@ export async function checkLayoutForCli(): Promise<LayoutCheck> {
         // so the machine enforces exactly as it did before this command ran. A
         // home that genuinely never finished setup reaches the wizard through
         // `shouldOfferFirstRun`, which reads `isConfigured()` — see `didReset`.
+        //
+        // The daemon hint belongs HERE above all, and was missing. This branch
+        // is the one that moves the home and stamps the new layout marker — it
+        // is the command that CREATES the incompatibility with an unrefreshed
+        // daemon, and it was the one command saying nothing about it. Every
+        // later command reached the non-stale return below and got the hint;
+        // the one where the user is watching the reorganisation happen did not.
+        ...(daemonHint.length > 0 ? ["", ...daemonHint] : []),
       ],
     };
   }
@@ -1269,20 +1281,58 @@ async function healDaemonFlag(): Promise<string[]> {
 }
 
 /**
- * One line when the daemon is older than the CLI.
+ * What to say when the daemon's version does not match the CLI's.
  *
- * Deliberately NOT on the hook path. A stale daemon still enforces every policy
- * correctly — it is slower to notice an upgrade, not broken — so a warning once
- * per tool call would be noise about something that is working. CLI commands
- * are where a person is present to act on it.
+ * Deliberately NOT on the hook path. CLI commands are where a person is present
+ * to act on it, and once per tool call would be noise.
+ *
+ * Two messages, because the stakes are not the same on both kinds of machine.
+ *
+ * On a machine that does NOT require the daemon, a stale one is what it looks
+ * like: slower to notice an upgrade, still enforcing correctly.
+ *
+ * On a machine that DOES — `daemon.configured` — it is a scheduled outage.
+ * failproofaid calls `refuse_foreign_layout()` before it binds its socket and
+ * exits when the home's layout marker is not the one its binary was built
+ * against, and a release that moves `~/.failproofai` therefore strands every
+ * daemon that has not been refreshed. Nothing looks wrong in the meantime: the
+ * running process read the marker once at startup and keeps serving from
+ * memory. The failure lands at the next restart — a reboot, a crash,
+ * `systemctl restart` — where the unit exits nonzero, `Restart=on-failure`
+ * trips the start limit, and the service latches `failed`. From there the
+ * machine fails closed and denies every tool call across all 11 CLIs, and
+ * `healDaemonFlag()` will not rescue it because a layout-refusing unit reads as
+ * `stopped`, which it deliberately excludes.
+ *
+ * This used to say a stale daemon "is slower to notice an upgrade, not broken"
+ * to everybody, and pointed at `failproofai config`. Across a layout bump that
+ * is the wrong sentence and the wrong command.
  */
 function staleDaemonHint(): string[] {
   try {
     const skew = daemonVersionSkew();
     if (!skew) return [];
+    let requiresDaemon = false;
+    try {
+      requiresDaemon = readConfig().daemon.configured;
+    } catch {
+      // Unreadable config: fall through to the mild message rather than
+      // frightening somebody whose machine may not require the daemon at all.
+    }
+    if (requiresDaemon) {
+      return [
+        `[failproofai] daemon is ${skew.installed}, CLI is ${skew.expected}.`,
+        `This machine is configured to REQUIRE the daemon. A daemon built against a`,
+        `different on-disk layout refuses to start, and this version moved it — so the`,
+        `next reboot or restart can leave the service down, which denies every tool`,
+        `call until it is fixed.`,
+        `Run \`failproofai update\` now to bring the daemon in line.`,
+        ``,
+      ];
+    }
     return [
       `[failproofai] daemon is ${skew.installed}, CLI is ${skew.expected} — ` +
-        `run \`failproofai config\` to update it.`,
+        `run \`failproofai update\` to update it.`,
       ``,
     ];
   } catch {

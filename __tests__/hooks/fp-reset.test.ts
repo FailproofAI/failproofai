@@ -28,6 +28,7 @@ import {
   readConfig,
   readCredentials,
   readVersionFile,
+  updateConfig,
   writeVersionFile,
 } from "../../src/hooks/fp-config";
 import {
@@ -529,6 +530,61 @@ describe("checkLayoutForCli", () => {
     writeVersionFile();
     mkdirSync(hookActivityDir(), { recursive: true });
     expect((await checkLayoutForCli()).lines).toEqual([]);
+  });
+
+  // The command that MOVES the home is the command that strands an unrefreshed
+  // daemon against it — failproofaid refuses to start when the layout marker is
+  // not the one its binary was built against — and it was the one command that
+  // said nothing about the daemon. Nothing looks wrong in the meantime, because
+  // the running process read the marker once at startup; the machine fails at
+  // its next reboot, and a daemon-configured machine that cannot reach its
+  // daemon denies every tool call.
+  describe("the daemon warning on the branch that migrates", () => {
+    /** A managed install of `ver`, which is what `daemonVersionSkew()` reads. */
+    function installedDaemon(ver: string) {
+      mkdirSync(binDir(), { recursive: true });
+      writeFileSync(resolve(binDir(), `failproofaid-${ver}`), "ELF");
+    }
+
+    it("warns hard when the machine REQUIRES a daemon that will not start", async () => {
+      seedLayoutOne();
+      installedDaemon("0.0.1-old");
+      writeVersionFile({ daemon: "0.0.1-old" });
+      updateConfig({ daemon: { configured: true } });
+
+      const text = (await checkLayoutForCli()).lines.join("\n");
+
+      expect(text).toContain("0.0.1-old");
+      // Must name the consequence, not just the mismatch: the reason to act now
+      // rather than at the next reboot is that the next reboot is the failure.
+      expect(text).toMatch(/denies every tool call/i);
+      // And the command that actually fixes it. `failproofai config` was the
+      // old advice and rebuilds the service rather than updating the binary.
+      expect(text).toContain("failproofai update");
+    });
+
+    it("stays mild when the machine does not require the daemon", async () => {
+      // In-process evaluation: a stale daemon here really is just stale, and a
+      // paragraph about denied tool calls would be false alarm.
+      seedLayoutOne();
+      installedDaemon("0.0.1-old");
+      writeVersionFile({ daemon: "0.0.1-old" });
+      updateConfig({ daemon: { configured: false } });
+
+      const text = (await checkLayoutForCli()).lines.join("\n");
+
+      expect(text).toContain("0.0.1-old");
+      expect(text).not.toMatch(/denies every tool call/i);
+    });
+
+    it("says nothing about the daemon when there is no skew", async () => {
+      seedLayoutOne();
+      updateConfig({ daemon: { configured: true } });
+
+      const text = (await checkLayoutForCli()).lines.join("\n");
+
+      expect(text).not.toContain("failproofai update");
+    });
   });
 });
 

@@ -15,13 +15,74 @@
  */
 import { AuthApiError, requestLoginCode, verifyLoginCode } from "../../lib/auth/api-server-client";
 import { authFromTokenResponse, readAuth, writeAuth } from "../../lib/auth/auth-store";
-import { promptText } from "../hooks/tui";
+import {
+  ANSI_RESET,
+  BAR,
+  colorsEnabled,
+  intro,
+  outro,
+  promptText,
+  step,
+  stepOpen,
+} from "../hooks/tui";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * The api-server's own bound on a submitted code (`auth/models.rs`). Matched
+ * here so a paste that is obviously too long is rejected at the prompt, where
+ * it can be retyped, rather than by the server — which answers
+ * `validation_error` rather than `invalid_code`, a distinction the retry loop
+ * below treats as fatal.
+ */
+const CODE_MIN = 4;
+const CODE_MAX = 12;
+
+/**
+ * The spine a prompt hangs off, so the two questions sit inside the same frame
+ * `intro`/`outro` draw. Empty when colour is off or output is piped: the frame
+ * is decoration, and a log file should not collect box-drawing characters.
+ */
+function spine(): string {
+  return colorsEnabled(process.stdout)
+    ? `${ANSI_DIM_BAR}${BAR}${ANSI_RESET}  `
+    : "";
+}
+const ANSI_DIM_BAR = "\x1B[2m";
+
+/**
+ * Codes are numeric (`auth/otp.rs` generates digits only), so anything else in
+ * the field is packaging: "Your failproof code is 123456", a copied "123 456",
+ * a stray trailing space from a double-click selection. Keeping the digits is
+ * the difference between a paste that works and one that costs a fresh email.
+ *
+ * Applied only when the input HAS digits and something else — a field of pure
+ * digits passes through untouched, so a genuinely wrong code is still reported
+ * as wrong rather than silently rewritten into a different one.
+ */
+export function extractCode(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^\d+$/.test(trimmed)) return trimmed;
+  const digits = trimmed.replace(/\D+/g, "");
+  return digits.length > 0 ? digits : trimmed;
+}
 
 export interface SignedIn {
   id: string;
   email: string;
+}
+
+/**
+ * Whether a sign-in flow actually ran.
+ *
+ * The caller uses it to decide whether its confirmation continues an open frame
+ * or stands on its own: the `│` spine means "a flow is happening", so printing
+ * one under a command that answered instantly from the session file would be a
+ * frame with no beginning.
+ */
+export interface EnsureSignedIn {
+  user: SignedIn;
+  prompted: boolean;
 }
 
 export class LoginError extends Error {}
@@ -46,9 +107,9 @@ export function canPrompt(): boolean {
  * the reporting path's problem, and it already handles that by pausing digests
  * rather than failing.
  */
-export async function ensureSignedIn(): Promise<SignedIn> {
+export async function ensureSignedIn(): Promise<EnsureSignedIn> {
   const existing = readAuth();
-  if (existing) return existing.user;
+  if (existing) return { user: existing.user, prompted: false };
 
   if (!canPrompt()) {
     throw new LoginError(
@@ -58,68 +119,99 @@ export async function ensureSignedIn(): Promise<SignedIn> {
     );
   }
 
-  return runLogin();
+  return { user: await runLogin(), prompted: true };
 }
 
-/** The two prompts. Exported so a test can drive it without the caller. */
+/**
+ * The two prompts, inside the frame `failproofai config` uses.
+ *
+ * Same logo, same `│` spine, same `◆ / ◇` step glyphs, same pink `└` close —
+ * because this is the same product asking, and a sign-in that looked like a
+ * different tool would be the one moment the seam showed. It is also the only
+ * moment this command asks for something personal, which is the moment worth
+ * spending the frame on.
+ *
+ * Exported so a test can drive it without the caller.
+ */
 export async function runLogin(): Promise<SignedIn> {
-  process.stdout.write("\nScheduled audits email you when a scan finds something,\nso this needs an address to send to.\n\n");
+  intro("scheduled audits need somewhere to send the report");
 
   const email = await promptText({
+    prefix: spine(),
     message: "your email",
     hint: "you@yourdomain.com",
     validate: (v) => (EMAIL_RE.test(v.trim()) ? null : "that doesn't look like an email"),
   });
-  if (email === null) throw new LoginError("Cancelled.");
+  if (email === null) {
+    outro("Cancelled — nothing was changed.", { ok: false });
+    throw new LoginError("Cancelled.");
+  }
 
   const address = email.trim().toLowerCase();
+  let expiresInMin = 10;
   try {
     const sent = await requestLoginCode(address);
-    process.stdout.write(
-      `\nCode sent to ${address}. It expires in ${Math.ceil(sent.expires_in / 60)} minutes.\n\n`,
-    );
+    expiresInMin = Math.max(1, Math.ceil(sent.expires_in / 60));
   } catch (err) {
+    outro("Could not send a login code.", { ok: false });
     throw new LoginError(describeAuthError(err, "Could not send a login code"));
   }
+
+  // The address is echoed back on the settled step rather than left to memory:
+  // a typo in it is the single most likely reason no code arrives, and this is
+  // the last place it can be noticed before somebody starts waiting.
+  step("code sent", `to ${address} · expires in ${expiresInMin} min`);
 
   // Three attempts, matching the server's own per-code cap. Looping forever
   // would keep a person typing at a code the server stopped accepting after
   // the fifth try, and one attempt would punish a typo with a fresh email.
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const code = await promptText({
-      message: "the code",
-      hint: "123456",
-      // Bounded at BOTH ends, and the upper one is not cosmetic. The api-server
-      // validates the code as 4..12 characters, and a longer one fails
-      // validation rather than verification — it comes back as
-      // `validation_error`, not `invalid_code`, so the retry below does not
-      // recognise it and the whole sign-in aborts. Pasting the sentence around
-      // the code out of the email, rather than just the digits, is the ordinary
-      // way to hit that, and losing the login to it would send a second code
-      // for a first one that was never wrong.
+  const ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
+    stepOpen(attempt === 1 ? "the code from that email" : "try that code again");
+    const typed = await promptText({
+      prefix: spine(),
+      message: "code",
+      // Unmasked on purpose. A login code is single-use and expires in minutes,
+      // so hiding it protects nothing and costs the one thing that matters at
+      // this prompt: seeing your own typo before pressing enter.
+      hint:
+        attempt === 1
+          ? "123456 · paste the whole line if you like"
+          : `attempt ${attempt} of ${ATTEMPTS}`,
       validate: (v) => {
-        const trimmed = v.trim();
-        if (trimmed.length < 4) return "codes are at least 4 characters";
-        if (trimmed.length > 12) return "that's longer than a code — paste just the code itself";
+        // No digits at all is not a mistyped code, it is not a code — caught
+        // here rather than spent as one of the server's five attempts.
+        if (!/\d/.test(v)) return "a code is digits — paste the line from the email";
+        const code = extractCode(v);
+        if (code.length < CODE_MIN) return "that looks too short to be the code";
+        if (code.length > CODE_MAX) return "that looks too long — paste just the code";
         return null;
       },
     });
-    if (code === null) throw new LoginError("Cancelled.");
+    if (typed === null) {
+      outro("Cancelled — nothing was changed.", { ok: false });
+      throw new LoginError("Cancelled.");
+    }
 
     try {
-      const tokens = await verifyLoginCode(address, code.trim());
+      const tokens = await verifyLoginCode(address, extractCode(typed));
       writeAuth(authFromTokenResponse(tokens));
-      process.stdout.write(`\nSigned in as ${tokens.user.email}.\n`);
+      step("signed in", tokens.user.email);
       return { id: tokens.user.id, email: tokens.user.email };
     } catch (err) {
       const wrongCode = err instanceof AuthApiError && err.code === "invalid_code";
-      if (wrongCode && attempt < 3) {
-        process.stderr.write("That code is wrong or expired. Try again.\n\n");
+      if (wrongCode && attempt < ATTEMPTS) {
+        step(
+          "that code was wrong or expired",
+          `${ATTEMPTS - attempt} more ${ATTEMPTS - attempt === 1 ? "try" : "tries"} before it asks for a new one`,
+        );
         continue;
       }
+      outro("Could not verify that code.", { ok: false });
       throw new LoginError(describeAuthError(err, "Could not verify that code"));
     }
   }
+  outro("Too many wrong codes.", { ok: false });
   throw new LoginError("Too many wrong codes. Run the command again for a fresh one.");
 }
 

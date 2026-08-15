@@ -17,7 +17,14 @@ const { promptTextMock, requestMock, verifyMock, writeAuthMock } = vi.hoisted(()
   writeAuthMock: vi.fn(),
 }));
 
-vi.mock("../../src/hooks/tui", () => ({ promptText: promptTextMock }));
+// PARTIAL: the flow draws its frame with the real `intro`/`step`/`outro`, and
+// only the prompt is stood in for. A wholesale mock had to be extended every
+// time the flow used one more thing from the toolkit, and each time it failed
+// as "no export is defined" rather than as anything about the login.
+vi.mock("../../src/hooks/tui", async (orig) => ({
+  ...(await orig<typeof import("../../src/hooks/tui")>()),
+  promptText: promptTextMock,
+}));
 vi.mock("../../lib/auth/api-server-client", async (orig) => ({
   ...(await orig<typeof import("../../lib/auth/api-server-client")>()),
   requestLoginCode: requestMock,
@@ -28,12 +35,15 @@ vi.mock("../../lib/auth/auth-store", async (orig) => ({
   writeAuth: writeAuthMock,
 }));
 
-import { runLogin } from "../../src/audit/cli-login";
+import { runLogin, extractCode } from "../../src/audit/cli-login";
 import { AuthApiError } from "../../lib/auth/api-server-client";
 
 /** The `validate` the code prompt was handed, so it can be exercised directly. */
 function codeValidator(): (v: string) => string | null {
-  const call = promptTextMock.mock.calls.find(([opts]) => opts.message === "the code");
+  // The prompt's own label is just "code" — the question it answers lives on
+  // the step heading above it ("the code from that email"), so the input line
+  // stays short enough to sit beside a pasted value at 80 columns.
+  const call = promptTextMock.mock.calls.find(([opts]) => opts.message === "code");
   expect(call, "the code prompt was never reached").toBeDefined();
   return call![0].validate;
 }
@@ -74,13 +84,25 @@ describe("the code prompt", () => {
     await runLogin();
 
     const validate = codeValidator();
-    expect(validate("Your code is 123456")).toMatch(/paste just the code/i);
-    expect(validate("1234567890123")).toBeTruthy();
-    // And the ordinary six digits still pass, plus the boundary either side.
+
+    // A pasted line is ACCEPTED now — the digits are pulled out of it. This
+    // used to be rejected for length, which is what made pasting the message
+    // out of the email cost a fresh code.
+    expect(validate("Your code is 123456")).toBeNull();
+    expect(validate("code: 123 456")).toBeNull();
+
+    // What is still refused is a digit run the server would answer with
+    // `validation_error` rather than `invalid_code` — a distinction the retry
+    // loop treats as fatal, so it is caught here where it can be retyped.
+    expect(validate("1234567890123")).toMatch(/too long/i);
+    expect(validate("123")).toMatch(/too short/i);
+    // And no digits at all is not a code, so it never spends an attempt.
+    expect(validate("where is it")).toMatch(/digits/i);
+
+    // The ordinary six, and the boundary either side.
     expect(validate("123456")).toBeNull();
     expect(validate("1234")).toBeNull();
     expect(validate("123456789012")).toBeNull();
-    expect(validate("123")).toBeTruthy();
   });
 });
 
@@ -115,5 +137,33 @@ describe("the retry loop", () => {
     await expect(runLogin()).rejects.toThrow(/too many attempts/i);
     expect(verifyMock).toHaveBeenCalledTimes(1);
     expect(writeAuthMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("extractCode", () => {
+  it("takes the digits out of a pasted line", () => {
+    // The code is numeric (`auth/otp.rs` generates digits only), so anything
+    // else in the field is packaging. Rejecting it cost a fresh email.
+    expect(extractCode("Your failproof code is 123456")).toBe("123456");
+    expect(extractCode("code: 123456")).toBe("123456");
+    expect(extractCode("123 456")).toBe("123456");
+    expect(extractCode("  123456  ")).toBe("123456");
+    expect(extractCode("123456 ")).toBe("123456");
+  });
+
+  it("passes a clean code through untouched", () => {
+    expect(extractCode("123456")).toBe("123456");
+    expect(extractCode("0000")).toBe("0000");
+  });
+
+  it("does not rewrite a digit-less string into something else", () => {
+    // A field with no digits is not a mistyped code; it is returned as typed so
+    // the caller can reject it rather than sending an invented one.
+    expect(extractCode("hunter2".replace(/\d/g, ""))).toBe("hunter");
+    expect(extractCode("   ")).toBe("");
+  });
+
+  it("keeps leading zeros, which a numeric parse would eat", () => {
+    expect(extractCode("code 007123")).toBe("007123");
   });
 });

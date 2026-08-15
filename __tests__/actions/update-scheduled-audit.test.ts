@@ -91,7 +91,10 @@ describe("scheduled-audit write actions", () => {
     expect(readConfig().telemetry.enabled).toBe(false);
     expect(JSON.parse(readFileSync(configFile(), "utf8")).telemetry).toEqual({ enabled: false });
     // And the audit write actually landed alongside it.
-    expect(readConfig().audit).toEqual({ auto: true, intervalDays: 14 });
+    expect(readConfig().audit).toMatchObject({ auto: true, intervalDays: 14 });
+    // Enabling from the dashboard also records consent to send, in the same
+    // write — that stamp, not `auto`, is what `reportHarm` gates on.
+    expect(typeof readConfig().audit.reportsConsentedAt).toBe("number");
   });
 
   it("preserves an unrelated cloud/collector setting across a scan write", async () => {

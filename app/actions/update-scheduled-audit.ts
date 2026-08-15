@@ -70,7 +70,18 @@ export async function setAutoAuditAction(enabled: boolean): Promise<SetAutoAudit
       return { ok: false, reason: "signed-out" };
     }
   }
-  const next = updateConfig({ audit: { auto: enabled } });
+  // Enabling stamps consent in the same write, because the `whoAmI()` above is
+  // exactly what makes this a consent record rather than a guess: a person was
+  // present, signed in, and looking at the panel that enumerates what gets
+  // sent. `reportHarm` gates sending on the stamp, not on `auto`, so a machine
+  // that inherited `auto` from a release where it meant "scan locally on a
+  // timer" mails nothing until somebody passes through here or the CLI.
+  //
+  // Disabling leaves the stamp alone. It is a record of something that did
+  // happen, and it grants nothing on its own — sending needs `auto` too.
+  const next = updateConfig({
+    audit: enabled ? { auto: true, reportsConsentedAt: Date.now() } : { auto: false },
+  });
   return { ok: true, auto: next.audit.auto };
 }
 

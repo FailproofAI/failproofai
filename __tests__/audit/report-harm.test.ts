@@ -68,8 +68,21 @@ function result(): AuditResult {
 }
 
 function enableEmail(on: boolean) {
-  // ONE switch now: `auto` means "scan on a timer AND tell me".
-  readConfigMock.mockReturnValue({ audit: { auto: on, intervalDays: 7 } });
+  // ONE switch — `auto` means "scan on a timer AND tell me" — plus the consent
+  // stamp that says the person who set it was shown what "tell me" sends. Both
+  // are written by the same call in every opt-in path, so a machine with `auto`
+  // and no stamp is specifically one that inherited the key from a release
+  // where it meant "scan locally", and `grandfatheredAuto()` below covers it.
+  readConfigMock.mockReturnValue({
+    audit: { auto: on, intervalDays: 7, reportsConsentedAt: on ? 1_700_000_000_000 : undefined },
+  });
+}
+
+/** `auto` set under the OLD meaning: scheduled locally, never consented to send. */
+function grandfatheredAuto() {
+  readConfigMock.mockReturnValue({
+    audit: { auto: true, intervalDays: 7, reportsConsentedAt: undefined },
+  });
 }
 
 beforeEach(() => {
@@ -111,6 +124,33 @@ describe("reportHarm — the opt-in", () => {
     });
     expect(await reportHarm(result())).toEqual({ kind: "disabled" });
     expect(submitMock).not.toHaveBeenCalled();
+  });
+
+  it("sends NOTHING for a machine that set `auto` before it meant sending", async () => {
+    // The upgrade case, and the whole reason the consent stamp exists. Through
+    // 1.0.0 `auto` meant "scan this machine locally on a timer": it needed no
+    // account, the server action that wrote it had no auth check, and the
+    // toggle's own copy said nothing leaves the machine. Reading that stored
+    // bit as consent to upload transcript excerpts would have mailed a digest
+    // from every such machine on its first scheduled run after the upgrade,
+    // with the only notice a line in the systemd journal.
+    grandfatheredAuto();
+    expect(await reportHarm(result())).toEqual({ kind: "consent-required" });
+    expect(submitMock).not.toHaveBeenCalled();
+    // Not even a token is read: the decision is made before anything touches
+    // the session, so this cannot depend on whether one happens to be present.
+    expect(getTokenMock).not.toHaveBeenCalled();
+    // And no machine identity is minted, so the machine stays unregistered.
+    expect(existsSync(auditMachineFile())).toBe(false);
+  });
+
+  it("sends once the same machine opts in again", async () => {
+    // The other half: consent-required is a pause, not a dead end. The CLI and
+    // the settings toggle both stamp `reportsConsentedAt` in the same write
+    // that sets `auto`, and that is all this needs to resume.
+    enableEmail(true);
+    expect((await reportHarm(result())).kind).toBe("sent");
+    expect(submitMock).toHaveBeenCalledTimes(1);
   });
 
   it("reports signed-out rather than failing when there is no session", async () => {
@@ -212,7 +252,21 @@ describe("describeOutcome", () => {
   it("tells a signed-out machine how to resume", () => {
     const line = describeOutcome({ kind: "signed-out" });
     expect(line).toContain("signed out");
-    expect(line).toContain("audit page");
+    // Names the two surfaces that can actually fix it. It used to say "sign in
+    // from the audit page" — which stopped being true when this release moved
+    // that dialog behind "invite a friend".
+    expect(line).toContain("--schedule");
+    expect(line).toContain("/settings");
+    expect(line).not.toContain("audit page");
+  });
+
+  it("tells a grandfathered machine how to turn digests on", () => {
+    // Must be actionable, not just a refusal: this machine's owner asked for
+    // scheduled scans and is still getting them, and the line is the only place
+    // that says why no email arrived.
+    const line = describeOutcome({ kind: "consent-required" });
+    expect(line).toContain("--schedule");
+    expect(line).toContain("/settings");
   });
 
   it("does not call a held digest an error", () => {

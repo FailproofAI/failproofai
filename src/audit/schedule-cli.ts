@@ -130,7 +130,16 @@ export async function runScheduleOn(
   const { user, prompted } = await ensureSignedIn(emailArg);
 
   const next = updateConfig({
-    audit: { auto: true, ...(days !== undefined ? { intervalDays: days } : {}) },
+    // Stamped in the SAME call that sets `auto`, never separately: this records
+    // that a person completed a sign-in and read the disclosure printed below,
+    // and it is what `reportHarm` gates sending on. A machine that inherited
+    // `auto` from a release where it meant "scan locally" has no stamp and
+    // sends nothing until it comes through here.
+    audit: {
+      auto: true,
+      reportsConsentedAt: Date.now(),
+      ...(days !== undefined ? { intervalDays: days } : {}),
+    },
   });
   const interval = next.audit.intervalDays;
 

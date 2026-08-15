@@ -331,6 +331,28 @@ export interface FpConfig {
      * timer until somebody asks for it.
      */
     auto: boolean;
+    /**
+     * When this machine's owner agreed that a scheduled scan may send what it
+     * finds off the box, as epoch ms. Absent means they never did.
+     *
+     * This does NOT reintroduce the second switch the comment above rejects,
+     * and it is never drawn as one. `auto` is what a person sets; this is a
+     * record of the disclosure they were shown when they set it. The two cannot
+     * drift, because every path that turns `auto` on stamps this in the same
+     * call and nothing stamps it alone.
+     *
+     * It exists because `auto` CHANGED MEANING. Through 1.0.0 it meant "scan
+     * this machine on a timer" and nothing more — no account, no network, and
+     * the toggle that wrote it said as much in as many words. Harm digests gave
+     * the same stored bit a second job: uploading redacted transcript excerpts
+     * to the api-server and mailing them. Without a separate record, every
+     * machine that opted into the old meaning would have started sending on
+     * upgrade, having agreed to nothing of the kind, with the only notice a
+     * line in the journal. Gating on the stamp rather than the switch is what
+     * keeps that upgrade silent in the safe direction: those machines keep
+     * scanning locally and send nothing until somebody opts in again.
+     */
+    reportsConsentedAt?: number;
     /** Days between scheduled runs. Wall clock, so it survives suspend. */
     intervalDays: number;
   };
@@ -507,7 +529,17 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
       // scheduled scan on. Absent, misspelled, or `"yes"` all read as off,
       // because the failure direction here is a machine that starts reading
       // every transcript it can find on a timer nobody set.
-      audit: { auto: audit.auto === true, intervalDays: readIntervalDays(audit.interval_days) },
+      audit: {
+        auto: audit.auto === true,
+        intervalDays: readIntervalDays(audit.interval_days),
+        // A finite number or nothing. A garbage value reads as absent, which is
+        // the direction that sends nothing.
+        reportsConsentedAt:
+          typeof audit.reports_consented_at === "number" &&
+          Number.isFinite(audit.reports_consented_at)
+            ? audit.reports_consented_at
+            : undefined,
+      },
       // Same shape as `audit.auto` above and for the same reason: only an
       // explicit `true` opts in. Anything else — absent, misspelled, `"yes"` —
       // reads as off, because the failure direction is a machine that starts
@@ -553,6 +585,7 @@ const OWNED_CONFIG_KEYS: readonly (readonly string[])[] = [
   ["telemetry", "enabled"],
   ["audit", "auto"],
   ["audit", "interval_days"],
+  ["audit", "reports_consented_at"],
 ];
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
@@ -653,7 +686,16 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
     // nobody can see is the same as a switch that does not exist. Emitting both
     // keys unconditionally also makes "a user's setting survives a rewrite"
     // total rather than conditional.
-    audit: { auto: config.audit.auto, interval_days: config.audit.intervalDays },
+    audit: {
+      auto: config.audit.auto,
+      interval_days: config.audit.intervalDays,
+      // Written only once there IS consent, so an untouched machine's config
+      // does not grow a key implying it was asked. It is in
+      // `OWNED_CONFIG_KEYS`, so omitting it here really removes it.
+      ...(config.audit.reportsConsentedAt === undefined
+        ? {}
+        : { reports_consented_at: config.audit.reportsConsentedAt }),
+    },
   };
   // Start from the previous bytes, strip the keys this build owns — so an
   // omission above really removes — then lay the projection on top. What is left

@@ -41,6 +41,7 @@ import type { AuditResult } from "./types";
 /** What happened, for the one line the scheduled run prints. */
 export type HarmReportOutcome =
   | { kind: "disabled" }
+  | { kind: "consent-required" }
   | { kind: "signed-out" }
   | { kind: "sent"; hits: number }
   | { kind: "held"; hits: number; reason: string }
@@ -59,10 +60,12 @@ export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome
   // to put a scan on a timer is to be told — a machine scanning quietly with
   // nothing to report to is a feature that looks on and does nothing visible.
   let auto = false;
+  let consentedAt: number | undefined;
   let intervalDays = 7;
   try {
     const config = readConfig();
     auto = config.audit.auto;
+    consentedAt = config.audit.reportsConsentedAt;
     // Also the width of a FIRST report's window, so a new machine's opening
     // digest covers the same period every later one will.
     intervalDays = config.audit.intervalDays;
@@ -71,6 +74,14 @@ export async function reportHarm(result: AuditResult): Promise<HarmReportOutcome
     return { kind: "disabled" };
   }
   if (!auto) return { kind: "disabled" };
+
+  // `auto` alone is not consent to SEND, on a machine that set it before this
+  // existed. Through 1.0.0 that key meant "scan locally on a timer" — no
+  // account, no network, and the toggle that wrote it said so. Sending is
+  // gated on the separate stamp every current opt-in path writes, so a
+  // machine upgrading into this release keeps scanning and mails nothing until
+  // a person opts in again and sees what that sends. See `audit.reportsConsentedAt`.
+  if (consentedAt === undefined) return { kind: "consent-required" };
 
   const auth = await getValidAccessToken();
   if (!auth) {
@@ -139,8 +150,13 @@ export function describeOutcome(outcome: HarmReportOutcome): string | null {
   switch (outcome.kind) {
     case "disabled":
       return null; // Say nothing at all to the majority who never opted in.
+    case "consent-required":
+      return "failproofai: scheduled scans are on, but emailing what they find needs a fresh opt-in — run `failproofai audit --schedule` (or visit /settings) to turn digests on";
     case "signed-out":
-      return "failproofai: emailed reports are on but this machine is signed out — sign in from the audit page to resume them";
+      // Names the two places that can actually fix it. It used to say "sign in
+      // from the audit page", which stopped being true when this release moved
+      // that dialog behind "invite a friend".
+      return "failproofai: emailed reports are on but this machine is signed out — run `failproofai audit --schedule` or visit /settings to resume them";
     case "sent":
       return `failproofai: emailed a harm digest (${outcome.hits} finding${outcome.hits === 1 ? "" : "s"})`;
     case "held":

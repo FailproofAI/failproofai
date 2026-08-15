@@ -250,3 +250,49 @@ describe("daemon reporting", () => {
     }
   });
 });
+
+describe("--email", () => {
+  it("signs in without asking for the address", async () => {
+    // The point of the flag: one command, then the only thing left to do is
+    // read the code out of the email and type it.
+    writeAuth(SESSION);
+    await runScheduleOn("7", "you@example.com");
+
+    expect(readConfig().audit.auto).toBe(true);
+    expect(readConfig().audit.intervalDays).toBe(7);
+  });
+
+  it("matches the stored address case-insensitively, as a mail server would", async () => {
+    writeAuth(SESSION);
+    await expect(runScheduleOn("7", "YOU@Example.COM")).resolves.toBeUndefined();
+    expect(readConfig().audit.auto).toBe(true);
+  });
+
+  it("refuses a DIFFERENT address rather than silently re-pointing the machine", async () => {
+    // Where a machine's digests go is not something a flag should change
+    // quietly — that is a thing nobody notices until they stop arriving.
+    writeAuth(SESSION);
+
+    await expect(runScheduleOn("7", "someone.else@example.com")).rejects.toThrow(
+      /already signed in as you@example\.com/i,
+    );
+    // And nothing was written on the way to refusing.
+    expect(readConfig().audit.auto).toBe(false);
+  });
+
+  it("rejects an address that is not one, before anything is sent", async () => {
+    // No session on disk: reaching the sign-in would throw about a
+    // non-interactive terminal instead, which is how we know this failed at the
+    // flag rather than after a code had already gone out.
+    for (const bad of ["nope", "a@b", "@example.com", ""]) {
+      await expect(runScheduleOn("7", bad)).rejects.toThrow(/--email/);
+    }
+    expect(readConfig().audit.auto).toBe(false);
+  });
+
+  it("still requires a terminal for the code itself", async () => {
+    // The flag answers the first question, not the second. vitest has no TTY,
+    // which is the same position a cron line is in.
+    await expect(runScheduleOn("7", "new@example.com")).rejects.toThrow(/interactive terminal/i);
+  });
+});

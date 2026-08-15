@@ -73,11 +73,12 @@ USAGE
                              75 means another audit already had the lock.
 
 SCHEDULING
-  failproofai audit --schedule [days]
+  failproofai audit --schedule [days] [--email you@yourdomain.com]
                              Scan on a timer in the background (default 7 days,
                              1-90), and email you when a scan finds something
-                             harmful. Asks for your email the first time — the
-                             report has to go somewhere.
+                             harmful. Signs you in the first time — the report
+                             has to go somewhere. Pass --email to answer that
+                             up front and go straight to entering the code.
   failproofai audit --no-schedule
                              Stop scanning on a timer. Leaves you signed in.
   failproofai audit --status
@@ -531,19 +532,45 @@ export async function runAuditCli(args: string[]): Promise<void> {
 
   const scheduleAt = args.indexOf("--schedule");
   if (scheduleAt !== -1) {
-    // `--schedule` takes an OPTIONAL day count, so the next token is only an
-    // argument when it is not itself a flag — `--schedule --status` must not
-    // read "--status" as a number of days.
-    const maybeDays = args[scheduleAt + 1];
-    const days = maybeDays !== undefined && !maybeDays.startsWith("-") ? maybeDays : undefined;
-    const consumed = new Set(["--schedule", ...(days !== undefined ? [days] : [])]);
-    const extra = args.find((a) => !consumed.has(a));
-    if (extra) die(`\`audit --schedule\` takes only a number of days (got: ${extra}).`);
+    // Parsed POSITIONALLY rather than by matching values against a set: an
+    // address and a day count are both just strings, and "have I already seen
+    // this string" cannot tell the argument of one flag from the argument of
+    // another.
+    let days: string | undefined;
+    let email: string | undefined;
+    for (let i = 0; i < args.length; i += 1) {
+      const a = args[i];
+      if (a === "--schedule") {
+        // The day count is OPTIONAL, so the next token counts only when it is
+        // not itself a flag — `--schedule --email x` must not read "--email"
+        // as a number of days.
+        const next = args[i + 1];
+        if (next !== undefined && !next.startsWith("-")) {
+          days = next;
+          i += 1;
+        }
+        continue;
+      }
+      if (a === "--email" || a.startsWith("--email=")) {
+        // Both forms, because both are what people type.
+        if (a.startsWith("--email=")) {
+          email = a.slice("--email=".length);
+        } else {
+          email = args[i + 1];
+          i += 1;
+        }
+        if (email === undefined || email.length === 0 || email.startsWith("-")) {
+          die("`--email` needs an address, e.g. `--email you@yourdomain.com`.");
+        }
+        continue;
+      }
+      die(`\`audit --schedule\` does not take ${a}.`);
+    }
 
     const { runScheduleOn, ScheduleCliError } = await import("./schedule-cli");
     const { LoginError } = await import("./cli-login");
     try {
-      await runScheduleOn(days);
+      await runScheduleOn(days, email);
     } catch (err) {
       // Both are "the user needs to read one sentence and try again", not a
       // stack trace: a wrong day count, a cancelled prompt, an api-server that

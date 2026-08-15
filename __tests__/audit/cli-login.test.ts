@@ -167,3 +167,27 @@ describe("extractCode", () => {
     expect(extractCode("code 007123")).toBe("007123");
   });
 });
+
+describe("a preset address", () => {
+  it("asks only for the code", async () => {
+    // One prompt, not two — the flag already answered the first question.
+    promptTextMock.mockResolvedValueOnce("123456");
+
+    const user = await runLogin("Preset@Example.com");
+
+    expect(user.email).toBe(TOKENS.user.email);
+    expect(promptTextMock).toHaveBeenCalledTimes(1);
+    expect(promptTextMock.mock.calls[0]![0].message).toBe("code");
+    // Normalised before it goes anywhere, the same as a typed address.
+    expect(requestMock).toHaveBeenCalledWith("preset@example.com");
+  });
+
+  it("still sends the code to that address before asking for it", async () => {
+    // The order matters: a flag that skipped the request would leave somebody
+    // waiting at a code prompt for a mail that was never sent.
+    promptTextMock.mockResolvedValueOnce("123456");
+    await runLogin("preset@example.com");
+
+    expect(requestMock).toHaveBeenCalledBefore(verifyMock);
+  });
+});

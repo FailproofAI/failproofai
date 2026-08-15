@@ -107,9 +107,22 @@ export function canPrompt(): boolean {
  * the reporting path's problem, and it already handles that by pausing digests
  * rather than failing.
  */
-export async function ensureSignedIn(): Promise<EnsureSignedIn> {
+export async function ensureSignedIn(preset?: string): Promise<EnsureSignedIn> {
   const existing = readAuth();
-  if (existing) return { user: existing.user, prompted: false };
+  if (existing) {
+    // A machine already reports as somebody. An `--email` naming a DIFFERENT
+    // address is refused rather than honoured: silently re-pointing where a
+    // machine's digests go is the kind of change nobody notices until they
+    // stop arriving, and the flag reads as "sign me in", not "switch accounts".
+    if (preset && !sameAddress(preset, existing.user.email)) {
+      throw new LoginError(
+        `This machine is already signed in as ${existing.user.email}.\n` +
+          `To report as ${preset.trim().toLowerCase()} instead, sign out first — ` +
+          `from the dashboard, or by removing ~/.failproofai/audit/session.json.`,
+      );
+    }
+    return { user: existing.user, prompted: false };
+  }
 
   if (!canPrompt()) {
     throw new LoginError(
@@ -119,7 +132,25 @@ export async function ensureSignedIn(): Promise<EnsureSignedIn> {
     );
   }
 
-  return { user: await runLogin(), prompted: true };
+  return { user: await runLogin(preset), prompted: true };
+}
+
+/** Addresses compare case-insensitively, because a mail server does. */
+function sameAddress(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/**
+ * Reject an address the flag supplied before anything is drawn or sent.
+ *
+ * Returned as a message rather than thrown so the caller can fail at the CLI
+ * boundary, next to where the day count is checked — a typo'd flag should look
+ * like a usage error, not like a sign-in that opened a frame and gave up.
+ */
+export function invalidEmail(address: string): string | null {
+  return EMAIL_RE.test(address.trim())
+    ? null
+    : `\`--email\` needs an email address (got: ${address}).`;
 }
 
 /**
@@ -133,21 +164,29 @@ export async function ensureSignedIn(): Promise<EnsureSignedIn> {
  *
  * Exported so a test can drive it without the caller.
  */
-export async function runLogin(): Promise<SignedIn> {
+export async function runLogin(preset?: string): Promise<SignedIn> {
   intro("scheduled audits need somewhere to send the report");
 
-  const email = await promptText({
-    prefix: spine(),
-    message: "your email",
-    hint: "you@yourdomain.com",
-    validate: (v) => (EMAIL_RE.test(v.trim()) ? null : "that doesn't look like an email"),
-  });
-  if (email === null) {
-    outro("Cancelled — nothing was changed.", { ok: false });
-    throw new LoginError("Cancelled.");
+  let address: string;
+  if (preset) {
+    // Supplied on the command line, so the question is already answered — but
+    // it is still SHOWN, as a settled step, because it is the address a code is
+    // about to be sent to and the flag is exactly where a typo hides.
+    address = preset.trim().toLowerCase();
+    step("your email", address);
+  } else {
+    const email = await promptText({
+      prefix: spine(),
+      message: "your email",
+      hint: "you@yourdomain.com",
+      validate: (v) => (EMAIL_RE.test(v.trim()) ? null : "that doesn't look like an email"),
+    });
+    if (email === null) {
+      outro("Cancelled — nothing was changed.", { ok: false });
+      throw new LoginError("Cancelled.");
+    }
+    address = email.trim().toLowerCase();
   }
-
-  const address = email.trim().toLowerCase();
   let expiresInMin = 10;
   try {
     const sent = await requestLoginCode(address);

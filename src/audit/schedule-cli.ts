@@ -30,7 +30,7 @@ import { readAuth } from "../../lib/auth/auth-store";
 import { readAuditSchedule } from "./audit-schedule";
 import { readDashboardCacheMeta } from "./dashboard-cache";
 import { readMachineIdentity } from "./machine-store";
-import { ensureSignedIn, LoginError } from "./cli-login";
+import { ensureSignedIn, invalidEmail, LoginError } from "./cli-login";
 import {
   ANSI_BOLD,
   ANSI_DIM,
@@ -99,7 +99,10 @@ function row(label: string, value: string, note?: string): string {
  * config actually kept — `readIntervalDays` owns the 1..90 clamp and a second
  * copy of those bounds here would be one more thing to drift.
  */
-export async function runScheduleOn(daysArg: string | undefined): Promise<void> {
+export async function runScheduleOn(
+  daysArg: string | undefined,
+  emailArg?: string,
+): Promise<void> {
   let days: number | undefined;
   if (daysArg !== undefined) {
     const parsed = Number(daysArg);
@@ -116,7 +119,15 @@ export async function runScheduleOn(daysArg: string | undefined): Promise<void> 
     days = parsed;
   }
 
-  const { user, prompted } = await ensureSignedIn();
+  // Checked here, beside the day count and before anything is drawn or sent: a
+  // typo'd flag should read as a usage error, not as a sign-in that opened a
+  // frame and then gave up.
+  if (emailArg !== undefined) {
+    const bad = invalidEmail(emailArg);
+    if (bad) throw new ScheduleCliError(bad);
+  }
+
+  const { user, prompted } = await ensureSignedIn(emailArg);
 
   const next = updateConfig({
     audit: { auto: true, ...(days !== undefined ? { intervalDays: days } : {}) },

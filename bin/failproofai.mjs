@@ -330,7 +330,8 @@ COMMANDS
   audit                          Audit your agent's behavior, then open the
                                  dashboard at http://localhost:8020/audit
   audit --schedule [days]        Audit on a timer (default 7 days) and email you
-                                 what it finds. Signs you in the first time.
+                                 what it finds. Signs you in the first time;
+                                 --email <address> skips that question
   audit --no-schedule            Stop auditing on a timer
   audit --status                 Whether scheduling is on, where reports go, and
                                  when the next scan is due

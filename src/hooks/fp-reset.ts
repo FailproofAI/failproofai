@@ -910,7 +910,12 @@ export function readCarriedLegacyCredentials(): FpCredentials | null {
   return Object.keys(creds).length > 0 ? creds : null;
 }
 
-export function resetHome(from: number): ResetOutcome {
+/**
+ * @param to The layout this step LANDS on, which is not always the current one.
+ *   Defaults to `LAYOUT_VERSION` for a direct call, but the registry passes the
+ *   step's own `to` — see the stamp at the end of this function.
+ */
+export function resetHome(from: number, to: number = LAYOUT_VERSION): ResetOutcome {
   // BEFORE the deletions, so a file that is mid-move is never one the reset
   // then walks over.
   const migrated = migrateConventionPolicies();
@@ -959,7 +964,22 @@ export function resetHome(from: number): ResetOutcome {
   // straight out of the same file. Both paths end at the same key, and only one
   // of them represents something a person typed.
   if (telemetryOptOut) updateConfig({ telemetry: { enabled: false } });
-  writeVersionFile();
+  // The step's OWN target, not LAYOUT_VERSION.
+  //
+  // Every step used to end stamping the current layout, which was harmless
+  // while every chain was one hop. On `1 → 3 → 4` it means the first step
+  // marks the home layout 4 with its files still at layout 3, and the window
+  // between that stamp and the next step completing is a real one: a SIGKILL,
+  // an OOM or a power loss inside it leaves a home that reads as `current`
+  // forever. `detectLayout()` short-circuits on the marker, so no later
+  // command re-examines the landmarks, and `auth.json` sits at the root while
+  // layout 4 reads `audit/session.json` — a machine silently signed out with
+  // its session on disk and nothing that would ever move it.
+  //
+  // `runMigrations` also repairs an over-stamp in its `catch`, but a killed
+  // process runs no catch. Stamping the truth in the first place is what makes
+  // that repair a second line of defence rather than the only one.
+  writeVersionFile({ layout: to });
   return { removed, migrated, activity, policyConfig, spooled, from };
 }
 

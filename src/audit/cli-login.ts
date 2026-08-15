@@ -68,8 +68,21 @@ const ANSI_DIM_BAR = "\x1B[2m";
 export function extractCode(raw: string): string {
   const trimmed = raw.trim();
   if (/^\d+$/.test(trimmed)) return trimmed;
-  const digits = trimmed.replace(/\D+/g, "");
-  return digits.length > 0 ? digits : trimmed;
+  const runs = trimmed.match(/\d+/g) ?? [];
+  if (runs.length === 0) return trimmed;
+  // A run long enough to BE a code wins outright.
+  //
+  // Joining every digit in the line was the whole rule, and the prompt's own
+  // hint ("paste the whole line if you like") walks straight into it: the real
+  // message reads `Your failproof code is 123456 (expires in 10 minutes)`, so
+  // the join produced `12345610` — eight digits, which passes the 4–12
+  // validator, reaches the server, and burns an attempt on a code nobody typed.
+  // Anything the sentence adds after the code is short; the code is not.
+  const whole = runs.find((run) => run.length >= CODE_MIN);
+  if (whole) return whole;
+  // Otherwise the digits really are split — a copied `123 456` — and joining
+  // them is the reconstruction that was always intended.
+  return runs.join("");
 }
 
 export interface SignedIn {

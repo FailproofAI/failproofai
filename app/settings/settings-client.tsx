@@ -313,12 +313,20 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
     try {
       const res = await setAutoAuditAction(true);
       if (!res.ok) {
+        setAuto(false);
+        if (res.reason === "unreachable") {
+          // The session is fine and the network is not. Offering a code prompt
+          // here would name a failure the user does not have and hand them a
+          // flow that cannot succeed either — and abandoning it mid-way is how
+          // a working session gets replaced with none at all.
+          toast("could not reach the server. check your connection and try again.");
+          return;
+        }
         // The server rejected the session this page had been showing an address
         // for — expired, or minted against a different api-server. The local
         // file is the only thing that said "signed in", and `whoAmI` has since
         // cleared it, so re-read before opening the dialog: otherwise the page
         // asks for an email while still displaying one.
-        setAuto(false);
         await reload();
         setAuthOpen(true);
         toast("that sign-in expired. one more code and it's on.");
@@ -575,10 +583,27 @@ export default function SettingsClient({ initial }: { initial: ScheduledAuditVie
                       </button>
                     </>
                   ) : auto ? (
-                    <span className="set-warn">
-                      signed out — scans continue, digests are paused. sign in to
-                      resume them.
-                    </span>
+                    // A control, not just a sentence. This state told the user
+                    // to sign in and gave them nothing to sign in WITH: the
+                    // dialog opened only from the off→on toggle and from
+                    // `enable()`'s rejection path, so somebody whose session
+                    // died while the timer stayed on had to guess that toggling
+                    // off and back on was the way through. The CLI recovers
+                    // from this in one command; the dashboard could not recover
+                    // from it at all.
+                    <>
+                      <span className="set-warn">
+                        signed out — scans continue, digests are paused.
+                      </span>
+                      <button
+                        type="button"
+                        className="set-link"
+                        disabled={busy}
+                        onClick={() => setAuthOpen(true)}
+                      >
+                        sign in to resume
+                      </button>
+                    </>
                   ) : (
                     <span className="set-dim">
                       turning this on asks for an email, so there is somewhere to

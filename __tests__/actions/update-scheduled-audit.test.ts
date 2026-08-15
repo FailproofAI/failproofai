@@ -21,8 +21,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 // reads as on and produces nothing. These tests are about the CONFIG WRITE, so
 // the session check is stubbed to "signed in"; the refusal itself is covered in
 // the settings component tests.
-const { whoAmIMock } = vi.hoisted(() => ({ whoAmIMock: vi.fn() }));
-vi.mock("../../lib/auth/auth-store", () => ({ whoAmI: whoAmIMock }));
+const { whoAmIMock, readAuthMock } = vi.hoisted(() => ({
+  whoAmIMock: vi.fn(),
+  readAuthMock: vi.fn(),
+}));
+vi.mock("../../lib/auth/auth-store", () => ({ whoAmI: whoAmIMock, readAuth: readAuthMock }));
 import { mkdtempSync, readFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -123,6 +126,8 @@ describe("a session the server rejects", () => {
     // from the local session file, the toggle took the signed-in path, and the
     // click dead-ended on "could not turn that on."
     whoAmIMock.mockResolvedValue(null);
+    // `whoAmI()` deletes the session on a 401, so nothing is left on disk.
+    readAuthMock.mockReturnValue(null);
 
     const res = await setAutoAuditAction(true);
 
@@ -130,6 +135,44 @@ describe("a session the server rejects", () => {
     // And nothing was written: a timer with nobody to tell reads as on and
     // produces nothing.
     expect(readConfig().audit.auto).toBe(false);
+  });
+
+  it("tells an OFFLINE machine apart from an expired one", async () => {
+    // `whoAmI()` collapses them: null for a 401 and null for every transport
+    // failure. The client discriminated on `res.ok` alone, so a machine behind
+    // a proxy or with the wifi down hit the 10s timeout, watched the switch
+    // snap back, and was told "that sign-in expired" — then handed a code
+    // prompt that cannot succeed either, which is how a working session gets
+    // abandoned. What is left ON DISK tells them apart: a 401 wipes it, a
+    // network failure leaves it.
+    whoAmIMock.mockResolvedValue(null);
+    readAuthMock.mockReturnValue({
+      access_token: "at",
+      refresh_token: "rt",
+      access_expires_at: Math.floor(Date.now() / 1000) + 900,
+      refresh_expires_at: Math.floor(Date.now() / 1000) + 86_400,
+      user: { id: "u1", email: "sidd@exosphere.host" },
+    });
+
+    const res = await setAutoAuditAction(true);
+
+    expect(res).toEqual({ ok: false, reason: "unreachable" });
+    expect(readConfig().audit.auto).toBe(false);
+  });
+
+  it("calls a session past its refresh window signed-out, not unreachable", async () => {
+    // The file being present is not the test — a lapsed refresh token cannot
+    // mint anything, so the code prompt really is the remedy here.
+    whoAmIMock.mockResolvedValue(null);
+    readAuthMock.mockReturnValue({
+      access_token: "at",
+      refresh_token: "rt",
+      access_expires_at: Math.floor(Date.now() / 1000) - 7200,
+      refresh_expires_at: Math.floor(Date.now() / 1000) - 3600,
+      user: { id: "u1", email: "sidd@exosphere.host" },
+    });
+
+    expect(await setAutoAuditAction(true)).toEqual({ ok: false, reason: "signed-out" });
   });
 
   it("still lets somebody turn scheduling OFF", async () => {

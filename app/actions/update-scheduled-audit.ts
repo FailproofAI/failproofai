@@ -18,7 +18,7 @@
  */
 
 import { readConfig, updateConfig } from "@/src/hooks/fp-config";
-import { whoAmI } from "@/lib/auth/auth-store";
+import { readAuth, whoAmI } from "@/lib/auth/auth-store";
 
 /**
  * The outcome of trying to turn scheduling on.
@@ -36,7 +36,18 @@ import { whoAmI } from "@/lib/auth/auth-store";
  */
 export type SetAutoAuditResult =
   | { ok: true; auto: boolean }
-  | { ok: false; reason: "signed-out" };
+  | { ok: false; reason: "signed-out" }
+  /**
+   * The session is intact locally and the api-server could not be reached.
+   *
+   * Separated from `signed-out` because `whoAmI()` collapses them: it returns
+   * null for a 401 AND for every transport failure, so an offline machine, a
+   * proxy that blocks the host, and a genuinely expired token were one answer.
+   * The user was told "that sign-in expired" and handed a code prompt that
+   * cannot succeed either — the failure it names is not the failure they have,
+   * and following its advice costs them a real, working session.
+   */
+  | { ok: false; reason: "unreachable" };
 
 /**
  * Turn the scheduled scan on or off.
@@ -67,7 +78,12 @@ export async function setAutoAuditAction(enabled: boolean): Promise<SetAutoAudit
   if (enabled) {
     const who = await whoAmI();
     if (!who) {
-      return { ok: false, reason: "signed-out" };
+      // `whoAmI()` deletes the session on a 401 and leaves it alone on a
+      // transport failure, so what is left ON DISK is the one thing that tells
+      // the two apart — no extra request, and nothing new that can fail.
+      const local = readAuth();
+      const stillWithinWindow = local && local.refresh_expires_at * 1000 > Date.now();
+      return { ok: false, reason: stillWithinWindow ? "unreachable" : "signed-out" };
     }
   }
   // Enabling stamps consent in the same write, because the `whoAmI()` above is

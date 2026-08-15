@@ -90,14 +90,14 @@ export const MIGRATIONS: readonly Migration[] = [
     to: 3,
     describe:
       "layout 1 → 3: carry the decision log out of cache/, keep the policy config in place, drop the layout-1 credential files",
-    run: () => resetHome(1),
+    run: () => resetHome(1, 3),
   },
   {
     from: 2,
     to: 3,
     describe:
       "layout 2 → 3: carry config.toml and credentials.toml into JSON, move custom-policies/ back up into policies/, nest the policy config at the root",
-    run: () => resetHome(2),
+    run: () => resetHome(2, 3),
   },
   {
     from: 3,
@@ -186,7 +186,27 @@ function migrateToLayout4(): ResetOutcome {
       renameSync(from, to);
     } catch {
       // EXDEV, or a rename racing something holding the file open on Windows.
-      copyFileSync(from, to);
+      try {
+        copyFileSync(from, to);
+      } catch (err) {
+        // Remove the PARTIAL destination before giving up.
+        //
+        // `copyFileSync` is not atomic: ENOSPC or a kill part-way through
+        // leaves a truncated `to` on disk. The source is still intact at this
+        // point, so nothing is lost yet — but the next attempt takes the
+        // `existsSync(to)` branch above, reads that fragment as the
+        // authoritative layout-4 file, and deletes the good original. A
+        // half-written session file is not a session, so the retry would have
+        // signed the machine out using the very branch that exists to protect
+        // the credential.
+        try {
+          rmSync(to, { force: true });
+        } catch {
+          // Nothing better to do. The throw below still leaves the home at
+          // layout 3, so `deleteAuth`'s sweep and the backup both still apply.
+        }
+        throw err;
+      }
       rmSync(from, { force: true });
     }
     migrated.push(`${basename(from)} → audit/${basename(to)}`);
@@ -208,7 +228,12 @@ function migrateToLayout4(): ResetOutcome {
   // The same stamper every other write of this file goes through. Hand-rolling
   // the JSON here would drop `daemon`, which nothing on this path touches and
   // which `daemonVersionSkew()` reads on every CLI command.
-  writeVersionFile();
+  //
+  // This step's own `to`, spelled out for the same reason `resetHome` takes
+  // one: a step must never mark the home as a layout it did not reach. Here
+  // they happen to be equal, and writing the literal is what keeps them equal
+  // by intent rather than by coincidence when layout 5 arrives.
+  writeVersionFile({ layout: 4 });
 
   return { removed: [], migrated, activity: [], policyConfig: [], spooled: [], from: 3 };
 }

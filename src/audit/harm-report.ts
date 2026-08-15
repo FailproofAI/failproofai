@@ -236,9 +236,21 @@ export function buildHarmReport(
   const watermark = ts(lastReportedAt);
   const isFirstReport = watermark === null;
 
-  const from = isFirstReport
-    ? new Date(windowTo.getTime() - Math.max(1, intervalDays) * 86_400_000)
-    : new Date(watermark);
+  const oneInterval = Math.max(1, intervalDays) * 86_400_000;
+  const fallbackFrom = windowTo.getTime() - oneInterval;
+
+  // The watermark is the SERVER's clock; `windowTo` is this machine's. A
+  // backwards jump between them — NTP correcting a fast RTC, a VM restored from
+  // a snapshot, a dual-boot machine that wrote localtime to the hardware clock
+  // — leaves `from` LATER than `to`, and `selectHarmful` then matches nothing
+  // at all. That drops every finding silently and permanently: the watermark
+  // only ever moves forward, so the window never re-opens, while the run's
+  // outcome line still reads normal. The scheduling lane already repairs this
+  // class of jump; the reporting half did not. One interval back is a digest
+  // that is narrower than it should be, rather than one that is empty forever.
+  const from = new Date(
+    isFirstReport || watermark >= windowTo.getTime() ? fallbackFrom : watermark,
+  );
 
   return {
     window_from: from.toISOString(),

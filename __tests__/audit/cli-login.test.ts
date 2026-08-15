@@ -170,6 +170,24 @@ describe("extractCode", () => {
   it("keeps leading zeros, which a numeric parse would eat", () => {
     expect(extractCode("code 007123")).toBe("007123");
   });
+
+  it("ignores digits the SENTENCE contributes, not just the code's", () => {
+    // The prompt invites pasting the whole line, and the real message is
+    // `Your failproof code is 123456 (expires in 10 minutes)`. Joining every
+    // digit made that `12345610` — eight digits, which passes the 4–12
+    // validator, reaches the server, and burns an attempt on a code nobody
+    // typed. A run long enough to be a code wins outright.
+    expect(extractCode("Your failproof code is 123456 (expires in 10 minutes)")).toBe("123456");
+    expect(extractCode("code 123456 — expires in 10 min")).toBe("123456");
+    expect(extractCode("[failproof] 987654 is your code, valid for 5 minutes")).toBe("987654");
+  });
+
+  it("still joins a code that was genuinely split", () => {
+    // No run reaches the minimum on its own, so these really are one code the
+    // copy broke apart — which is the case the join was written for.
+    expect(extractCode("123 456")).toBe("123456");
+    expect(extractCode("12-34")).toBe("1234");
+  });
 });
 
 describe("a preset address", () => {

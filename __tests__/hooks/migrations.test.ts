@@ -382,6 +382,11 @@ describe("the backup taken before a migration", () => {
 
       expect(run.failed).toBeDefined();
       expect(existsSync(resolve(migrationBackupDir(3), "auth.json"))).toBe(true);
+      // The source survives a failed move — the step is documented not to roll
+      // back, so the next command retries from exactly this state.
+      expect(existsSync(legacy.authJson())).toBe(true);
+      // And the home is NOT marked current, or nothing would ever retry.
+      expect(readVersionFile()?.layout).toBe(3);
     });
 
     it("prunes nothing when the session never arrived at its new home", () => {
@@ -560,6 +565,38 @@ describe("runMigrations", () => {
     );
     writeFileSync(versionFile(), 'layout = 2\ncli = "1.0.0-beta.5"\n');
   }
+
+  it("marks the home with each step's OWN target, never the current layout", () => {
+    // Every step used to end stamping LAYOUT_VERSION, which was harmless while
+    // each chain was one hop. On `2 → 3 → 4` the first step marks the home
+    // layout 4 with its files still at layout 3, and the gap between that stamp
+    // and the second step completing is a real window: a SIGKILL, an OOM or a
+    // power loss inside it leaves a home reading `current` forever, because
+    // `detectLayout()` short-circuits on the marker and never re-examines the
+    // landmarks. The session then sits at the old path, unread, for good.
+    //
+    // `runMigrations`' catch repairs an over-stamp, but a killed process runs
+    // no catch — so the stamp has to be right as it is written, and this pins
+    // the first step's value rather than only the chain's end state.
+    seedLayoutTwo();
+    const stamps: number[] = [];
+    const chain = planMigration(2).map((step) => ({
+      ...step,
+      run: () => {
+        const out = step.run();
+        stamps.push(readVersionFile()?.layout ?? -1);
+        return out;
+      },
+    }));
+
+    const run = runMigrations(2, chain);
+
+    expect(run.failed).toBeUndefined();
+    // One entry per step, each naming where that step actually landed.
+    expect(stamps).toEqual(chain.map((s) => s.to));
+    expect(stamps[0]).toBe(3);
+    expect(readVersionFile()?.layout).toBe(LAYOUT_VERSION);
+  });
 
   it("records every step in the ledger with the CLI that ran it", () => {
     // The ledger answers "what has this machine actually been through", which is

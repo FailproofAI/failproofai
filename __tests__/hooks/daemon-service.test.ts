@@ -1128,32 +1128,47 @@ describe("refreshDaemonToCliVersion", () => {
  */
 describe("startedAtFromMonotonic", () => {
   const NOW = 1_800_000_000_000;
+  /** Both arguments are microseconds on ONE clock — see the function's note. */
+  const us = (secs: number) => secs * 1_000_000;
 
   it("converts a monotonic activation stamp into an epoch start time", () => {
-    // Host up 100_000s; unit activated at 90_000s since boot ⇒ active 10_000s.
-    expect(startedAtFromMonotonic(90_000 * 1_000_000, 100_000, NOW)).toBe(NOW - 10_000_000);
+    // Clock now at 100_000s; unit activated at 90_000s ⇒ active 10_000s.
+    expect(startedAtFromMonotonic(us(90_000), us(100_000), NOW)).toBe(NOW - 10_000_000);
   });
 
   it("returns null for a unit systemd has never activated", () => {
     // systemd writes 0 there. Treated as an absent answer, not as "started at
     // boot" — which is what a naive conversion would report.
-    expect(startedAtFromMonotonic(0, 100_000, NOW)).toBeNull();
+    expect(startedAtFromMonotonic(0, us(100_000), NOW)).toBeNull();
   });
 
-  it("returns null when the stamp is ahead of the host's uptime", () => {
+  it("returns null when the stamp is ahead of the current reading", () => {
     // Cannot be true, so it is not rendered. A wrong uptime is indistinguishable
     // from a right one to whoever reads it, which makes silence the safer answer.
-    expect(startedAtFromMonotonic(200_000 * 1_000_000, 100_000, NOW)).toBeNull();
+    expect(startedAtFromMonotonic(us(200_000), us(100_000), NOW)).toBeNull();
   });
 
   it("returns null on unparseable input rather than NaN", () => {
     // `Number("")` is 0 and `Number("x")` is NaN — both reachable from a
     // `systemctl show --value` that printed nothing useful.
-    expect(startedAtFromMonotonic(Number.NaN, 100_000, NOW)).toBeNull();
-    expect(startedAtFromMonotonic(90_000 * 1_000_000, Number.NaN, NOW)).toBeNull();
+    expect(startedAtFromMonotonic(Number.NaN, us(100_000), NOW)).toBeNull();
+    expect(startedAtFromMonotonic(us(90_000), Number.NaN, NOW)).toBeNull();
   });
 
   it("reports a just-started unit as now, not as a negative age", () => {
-    expect(startedAtFromMonotonic(100_000 * 1_000_000, 100_000, NOW)).toBe(NOW);
+    expect(startedAtFromMonotonic(us(100_000), us(100_000), NOW)).toBe(NOW);
+  });
+
+  it("does not add suspended time to the daemon's age", () => {
+    // The bug this signature change fixes. systemd's stamp is CLOCK_MONOTONIC,
+    // which STOPS during suspend; `os.uptime()` keeps counting through it. A
+    // laptop asleep 29 of the last 30 days reads 2_592_000s of uptime while the
+    // monotonic clock has only advanced 86_400s — so pairing them reported a
+    // daemon started 30 days ago that in fact started an hour into today.
+    //
+    // Same clock on both sides, so the answer is the hour, not the month.
+    const monotonicNow = us(86_400);
+    const activatedAt = us(82_800); // one hour of monotonic time ago
+    expect(startedAtFromMonotonic(activatedAt, monotonicNow, NOW)).toBe(NOW - 3_600_000);
   });
 });

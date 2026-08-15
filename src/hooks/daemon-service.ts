@@ -16,7 +16,7 @@ import {
   unlinkSync,
   rmSync,
 } from "node:fs";
-import { homedir, tmpdir, uptime, userInfo } from "node:os";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { hookLogWarn } from "./hook-logger";
@@ -1808,7 +1808,8 @@ export function daemonServiceStatus(): DaemonServiceStatus {
  * worse, silently mis-parses on the few it recognises — a settings page
  * claiming the daemon started three hours in the future is a worse failure than
  * one that says nothing. `ActiveEnterTimestampMonotonic` is microseconds since
- * boot, locale-free, and pairs with `os.uptime()` to give the epoch time back.
+ * boot, locale-free, and pairs with a reading of the SAME clock to give the
+ * epoch time back.
  *
  * An EPOCH time rather than a duration, so the page keeps counting without
  * re-fetching: a duration computed on the server is wrong the moment it renders.
@@ -1830,7 +1831,10 @@ export function daemonStartedAtMs(): number | null {
     )
       .toString()
       .trim();
-    return startedAtFromMonotonic(Number(raw), uptime(), Date.now());
+    // `process.hrtime.bigint()`, not `os.uptime()`. See the note on the
+    // function below: the two count suspend differently, and mixing them is
+    // what produced "up 30d" for a daemon started yesterday.
+    return startedAtFromMonotonic(Number(raw), Math.floor(Number(process.hrtime.bigint()) / 1000), Date.now());
   } catch {
     return null;
   }
@@ -1840,20 +1844,32 @@ export function daemonStartedAtMs(): number | null {
  * The arithmetic behind `daemonStartedAtMs`, split out so it can be tested
  * without a systemd on the machine running the tests.
  *
- * `activeEnterMonotonicUs` is microseconds since boot; `hostUptimeSecs` is
- * `os.uptime()`. systemd writes 0 for a unit that has never been activated, and
- * a stamp AHEAD of the host's uptime cannot be true — both mean "no answer"
- * rather than a number, because a wrong uptime is indistinguishable from a right
- * one to the person reading it.
+ * BOTH arguments must be readings of the SAME clock. systemd's
+ * `ActiveEnterTimestampMonotonic` is `CLOCK_MONOTONIC`, which on Linux STOPS
+ * while the machine is suspended; `os.uptime()` reads `/proc/uptime`, which
+ * KEEPS COUNTING through suspend. Subtracting one from the other therefore adds
+ * every second the laptop ever spent asleep to the daemon's apparent age — a
+ * machine that suspends nightly read "up 30d" for a service started yesterday.
+ * The old `< 0` guard caught only the impossible direction; this error is
+ * always positive, so nothing rejected it.
+ *
+ * `process.hrtime.bigint()` is `CLOCK_MONOTONIC` on Linux (libuv's `uv_hrtime`),
+ * the same clock systemd stamped with, so the subtraction is between two points
+ * on one timeline.
+ *
+ * systemd writes 0 for a unit that has never been activated, and a stamp ahead
+ * of the current reading cannot be true — both mean "no answer" rather than a
+ * number, because a wrong uptime is indistinguishable from a right one to the
+ * person reading it.
  */
 export function startedAtFromMonotonic(
   activeEnterMonotonicUs: number,
-  hostUptimeSecs: number,
+  monotonicNowUs: number,
   nowMs: number,
 ): number | null {
   if (!Number.isFinite(activeEnterMonotonicUs) || activeEnterMonotonicUs <= 0) return null;
-  if (!Number.isFinite(hostUptimeSecs) || hostUptimeSecs <= 0) return null;
-  const activeForMs = hostUptimeSecs * 1000 - activeEnterMonotonicUs / 1000;
+  if (!Number.isFinite(monotonicNowUs) || monotonicNowUs <= 0) return null;
+  const activeForMs = (monotonicNowUs - activeEnterMonotonicUs) / 1000;
   if (activeForMs < 0) return null;
   return Math.round(nowMs - activeForMs);
 }

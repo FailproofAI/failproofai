@@ -268,6 +268,29 @@ describe("buildHarmReport", () => {
     expect(r.window_from).toBe(AUG_10);
   });
 
+  it("never lets the watermark sit AFTER the window it opens", () => {
+    // The watermark is the server's clock and `scannedAt` is this machine's, so
+    // a backwards jump between them — NTP correcting a fast RTC, a snapshot
+    // restore, a dual-boot machine writing localtime to the hardware clock —
+    // put `from` after `to`. Nothing matches such a window, so every finding
+    // was dropped: silently, and permanently, because the watermark only moves
+    // forward so the window never re-opens, while the run's outcome line still
+    // read normal.
+    const r = buildHarmReport(result([], AUG_07), AUG_14, 7);
+
+    expect(Date.parse(r.window_from!)).toBeLessThan(Date.parse(r.window_to));
+    // One interval back from the scan, so the digest is merely narrow.
+    expect(r.window_to).toBe(AUG_07);
+    expect(r.window_from).toBe("2026-07-31T12:00:00.000Z");
+  });
+
+  it("still trusts a watermark that is genuinely inside the window", () => {
+    // The clamp must not fire on the ordinary case, where it would silently
+    // widen every window to a full interval and re-report old findings.
+    const r = buildHarmReport(result([], AUG_14), AUG_10, 7);
+    expect(r.window_from).toBe(AUG_10);
+  });
+
   it("drops history older than the first window", () => {
     const r = buildHarmReport(
       result(

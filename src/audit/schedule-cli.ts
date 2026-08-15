@@ -298,6 +298,14 @@ function describeDaemon(status: ReturnType<typeof daemonServiceStatus>): string 
 function warnIfDaemonWontRun(): void {
   const status = daemonServiceStatus();
   if (status === "running") return;
+  // "unknown" is not "broken", and on macOS it is the ORDINARY reading.
+  // `daemonServiceStatus` needs `sudo -n` to interrogate a LaunchDaemon, and a
+  // Mac with no cached sudo credential — the overwhelmingly common state —
+  // answers "unknown" for a service that is running perfectly. Treating every
+  // non-`running` value as a fault told those users "nothing will run on the
+  // timer yet" in the same breath as confirming their schedule was on. The
+  // dashboard already special-cases it; this is the same call.
+  if (status === "unknown") return;
   if (!isDaemonSupportedPlatform()) {
     process.stderr.write(
       `\n  ${pink("!")} The background service is not available on this platform,\n` +

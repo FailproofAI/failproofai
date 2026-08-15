@@ -49,7 +49,7 @@ export function EmptyState({ mode, running, onStarted, onCompleted }: Props) {
         <div className="section-mast">
           <div className="section-label">
             <span className="glyph">━━</span> audit{" "}
-            <span style={{ color: "var(--dim)" }}>·</span> first run
+            <span className="sep">·</span> first run
           </div>
           <div className="section-meta">
             <span style={{ color: "var(--dim)" }}>○</span> no cache yet
@@ -101,7 +101,7 @@ export function EmptyState({ mode, running, onStarted, onCompleted }: Props) {
       <div className="section-mast">
         <div className="section-label">
           <span className="glyph">━━</span> audit{" "}
-          <span style={{ color: "var(--dim)" }}>·</span> zero transcripts
+          <span className="sep">·</span> zero transcripts
         </div>
         <div className="section-meta">
           <span style={{ color: "var(--amber)" }}>●</span> hooks not installed

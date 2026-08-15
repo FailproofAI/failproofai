@@ -361,6 +361,48 @@ export function renderLaunchBanner(version: string, stdout: TTYOut = process.std
   ];
 }
 
+/**
+ * Print a step that is already SETTLED — the `◇ / message / summary` block
+ * `selectOne` leaves behind when it resolves.
+ *
+ * Extracted because a flow assembled out of `promptText` had no way to show its
+ * own history: `intro` opens the spine and `outro` closes it, and everything in
+ * between was bare lines that made the frame look like it belonged to a
+ * different command. `summary` is the answer, dimmed under the question, which
+ * is what makes a completed step readable at a glance rather than a heading
+ * with nothing under it.
+ */
+export function step(
+  message: string,
+  summary?: string | string[],
+  stdout: TTYOut = process.stdout,
+): void {
+  const c = paint(colorsEnabled(stdout));
+  const rows = summary === undefined ? [] : Array.isArray(summary) ? summary : [summary];
+  if (!stdout.isTTY) {
+    if (rows.length) stdout.write(`${message}: ${rows.join(" ")}\n`);
+    return;
+  }
+  // Truncated to the terminal, because a summary that wraps loses the spine on
+  // its second row and the block stops reading as one step.
+  const cols = stdout.columns || 80;
+  const lines = [c.dim(BAR), truncate(`${c.dim(STEP_DONE)}  ${message}`, cols - 1)];
+  for (const r of rows) lines.push(truncate(`${c.dim(BAR)}  ${c.dim(r)}`, cols - 1));
+  writeLines(stdout, lines);
+}
+
+/**
+ * Open a step and leave the cursor on it, for a prompt that draws its own line.
+ *
+ * The counterpart to {@link step}: `◆` in teal with the question in bold, then
+ * a spine row the prompt is expected to hang off via `PromptTextOptions.prefix`.
+ */
+export function stepOpen(message: string, stdout: TTYOut = process.stdout): void {
+  const c = paint(colorsEnabled(stdout));
+  if (!stdout.isTTY) return;
+  writeLines(stdout, [c.dim(BAR), `${c.guide(STEP_ACTIVE)}  ${c.bold(message)}`]);
+}
+
 /** Close the flow with a terminating └ line — pink on success, dim on cancel. */
 export function outro(
   message: string,
@@ -724,6 +766,16 @@ export function multiSelect<T>(opts: MultiSelectOptions<T>): Promise<T[] | null 
 
 export interface PromptTextOptions {
   message: string;
+  /**
+   * Printed before the message on the prompt's own line — the `│` spine, for a
+   * prompt inside an `intro`/`outro` flow.
+   *
+   * Part of the line rather than a separate write because the prompt redraws
+   * itself with `\r\x1b[2K` on every keystroke, which erases the row the cursor
+   * is on: anything written to that row beforehand is gone by the first
+   * character typed. Counted in the truncation, which is already ANSI-aware.
+   */
+  prefix?: string;
   /** Shown dimmed under the prompt. */
   hint?: string;
   /** Used when the user submits an empty line. */
@@ -783,7 +835,11 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
     const draw = (error?: string) => {
       const cols = stdout.columns || 80;
       const shown = opts.mask ? "•".repeat(value.length) : value;
-      const hint = opts.hint ? `  ${c.dim(opts.hint)}` : "";
+      // The hint is a PLACEHOLDER — an example of what belongs here — so it
+      // steps aside as soon as there is a real answer to look at. Keeping both
+      // on one line put the example and the input side by side, which is the
+      // arrangement most likely to make somebody wonder which one is theirs.
+      const hint = opts.hint && value.length === 0 ? `  ${c.dim(opts.hint)}` : "";
       // Truncate to ONE physical row. `\r\x1b[2K` erases the row the cursor is
       // on and nothing above it — so a line wider than the terminal wraps, the
       // erase reaches only its last row, and every keystroke leaves the earlier
@@ -791,8 +847,10 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
       // stacked copies of the prompt: `API key for <host>` plus the masked
       // value plus the `needs events:add · policies:pull …` hint is past 80
       // columns before the key is even half typed.
-      const line = truncate(`${c.bold(opts.message)} ${shown}${hint}`, cols - 1);
-      const err = error ? `\n  ${truncate(c.warn(error), cols - 3)}` : "";
+      const line = truncate(`${opts.prefix ?? ""}${c.bold(opts.message)} ${shown}${hint}`, cols - 1);
+      const err = error
+        ? `\n${opts.prefix ?? "  "}${truncate(c.warn(error), cols - 3)}`
+        : "";
       stdout.write(`\r\x1b[2K${line}${err}`);
       if (err) stdout.write("\x1b[1A");
     };

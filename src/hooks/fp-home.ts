@@ -56,7 +56,12 @@
  *   policies/                every policy: the user's *.mjs sit directly here
  *     cloud-policies/        the fleet's — flat: active.json, desired-state.json, artifacts/
  *   cursors/<source>/        per-source collector watermarks
- *   audit/                   audit report + per-session cache
+ *   audit/                   MIXED — see the classification note below
+ *     dashboard.json         last result          (derived)
+ *     cache/                 per-transcript cache (derived)
+ *     schedule.json          daemon's scan timer  (derived)
+ *     session.json    0600   the signed-in user   (user-typed)
+ *     machine.json           this machine's report identity (identity)
  *   hook-activity/           decision log the dashboard reads
  *   custom-agents/           SDK spool (events/ + failed/)
  *   run/                     sockets + flock  — MUST stay shallow, see below
@@ -88,9 +93,17 @@ import { resolve } from "node:path";
  * yields "no data" instead of an error.
  *
  * 1 — the original flat/`cache`-based layout, through 1.0.0-beta.5.
- * 2 — this file.
+ * 2 — `config.toml` / `credentials.toml`, policies nested two levels down.
+ * 3 — JSON config + credentials, policies flattened back up.
+ * 4 — everything the audit owns moved under `audit/`: the signed-in session
+ *     (from `auth.json`), the daemon's scan timer (from
+ *     `state/audit-schedule.json`), and the re-audit reminder (from
+ *     `next-audit.json`, parked at `audit/reminder.json` and retired in the
+ *     same release — see `legacy.auditReminder`). The point is that one
+ *     directory now answers "what does the audit know about this machine", the
+ *     way `policies/` answers it for enforcement.
  */
-export const LAYOUT_VERSION = 3;
+export const LAYOUT_VERSION = 4;
 
 /**
  * `~/.failproofai`, or `FAILPROOFAI_HOME`.
@@ -212,9 +225,53 @@ export const customAgentsFailedDir = (home?: string) => resolve(customAgentsDir(
 
 // ── Audit ────────────────────────────────────────────────────────────────────
 
+/**
+ * Everything the audit owns, and a MIXED directory as of layout 4.
+ *
+ * `auditDir` is deliberately NOT classified in `HOME_CLASSES`, for exactly the
+ * reason `stateDir` is not: it now holds a credential and a machine identity
+ * alongside two caches, so one class cannot be right for all of it. Before
+ * layout 4 the whole directory was `derived` — correct then, and the trap the
+ * moment `session.json` moved in, because `resettablePaths()` is a filter over
+ * that table and would have deleted the user's tokens on every reset and every
+ * future migration. Classify the CHILDREN; never the parent.
+ */
 export const auditDir = (home?: string) => atHome(home, "audit");
 export const auditDashboardFile = (home?: string) => resolve(auditDir(home), "dashboard.json");
 export const auditCacheDir = (home?: string) => resolve(auditDir(home), "cache");
+
+/**
+ * The signed-in user's tokens. `0600`, written only by the dashboard's auth
+ * routes and the audit child (`lib/auth/auth-store.ts`).
+ *
+ * Layout 3 kept this at the home root as `auth.json`, where it was invisible to
+ * `HOME_CLASSES` altogether — neither classified nor deleted, safe by accident
+ * rather than by decision. It is `user-typed`: nothing regenerates a session,
+ * and dropping it silently signs the machine out.
+ *
+ * TS-only, so it is absent from `paths.rs` by design: the daemon never opens
+ * it. The audit child does the reporting precisely so the daemon holds no human
+ * credential — see `audit_lane.rs`.
+ */
+export const auditSessionFile = (home?: string) => resolve(auditDir(home), "session.json");
+
+/**
+ * This machine's report identity: the id the api-server keys reports on, and
+ * the watermark saying how far the last digest reached.
+ *
+ * SEPARATE from `auditSessionFile` on purpose, and the separation is the whole
+ * design. Both fields have to outlive a sign-out: regenerate the id and the
+ * server sees a brand-new machine and burns a slot off the account's cap on
+ * every logout; reset the watermark and the next digest re-reports months of
+ * history as though it just happened. So this is `identity` — never deleted,
+ * like `cursors/` and `telemetryIdFile` — while the tokens beside it come and
+ * go with the session.
+ *
+ * Minted fresh rather than reusing `telemetryIdFile`, so opting into emailed
+ * reports never links the anonymous telemetry person to a verified address.
+ */
+export const auditMachineFile = (home?: string) => resolve(auditDir(home), "machine.json");
+
 
 // ── Hook activity ────────────────────────────────────────────────────────────
 
@@ -270,10 +327,17 @@ export const sessionPauseDir = () => resolve(stateDir(), "sessions");
  * mirrors this path in `paths.rs`) — it owns the schedule, and a second writer
  * racing it could hand a machine two full scans back to back. Everything on this
  * side reads it: the interval itself lives in `config.json`'s `audit` object,
- * which a human edits, while this file is derived state a human never opens,
- * which is why it sits under `state/` rather than beside the audit results.
+ * which a human edits, while this file is derived state a human never opens.
+ *
+ * Layout 4 moved it out of `state/` and in beside the audit results. It stays
+ * `derived` — losing it costs one rescheduled scan, nothing more — but it now
+ * sits with the rest of what the audit owns rather than in the daemon's scratch
+ * drawer, which is what makes `audit/` answerable as one directory.
+ *
+ * Declared here, below `stateDir`, only because the section order of this file
+ * is historical; the path itself is under `auditDir`.
  */
-export const auditScheduleFile = (home?: string) => resolve(stateDir(home), "audit-schedule.json");
+export const auditScheduleFile = (home?: string) => resolve(auditDir(home), "schedule.json");
 /**
  * The anonymous instance id this machine reports telemetry under.
  *
@@ -427,6 +491,13 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // source destroyed, while `isConfigured()` still read true so the wizard never
   // re-asked and hooks kept firing against an empty policy set.
   { path: policiesDir, class: "user-typed" },
+  // The signed-in session. `auth.json` at the home root through layout 3, where
+  // it was in NEITHER this table nor the delete list — undeleted by oversight
+  // rather than by decision, which is the state this table exists to make
+  // impossible. Nothing regenerates a session; losing it signs the machine out
+  // with no notice, and the machine only finds out the next time it tries to
+  // report.
+  { path: auditSessionFile, class: "user-typed" },
 
   // ── Never deleted: recorded and not yet shipped ──
   // Batches read out of transcripts and queued for upload. The reason losing
@@ -471,10 +542,23 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // deleting the backup is deleting the undo for the step that just ran.
   { path: migrationsDir, class: "identity" },
 
+  // This machine's report identity + digest watermark. `identity` for the same
+  // reason `cursorsDir` is: a new id is a new machine to the api-server, which
+  // burns a slot off the account's machine cap, and a reset watermark re-reports
+  // history the user was already told about. Kept OUT of `auditSessionFile`
+  // precisely so both survive a sign-out.
+  { path: auditMachineFile, class: "identity" },
+
   // ── May be dropped: rebuilt on demand ──
-  { path: auditDir, class: "derived" },
-  { path: collectorHealthFile, class: "derived" },
+  // NOTE: `auditDir` itself is deliberately absent. Layout 4 made it MIXED — it
+  // holds the session and the machine identity above alongside these three — so
+  // it is classified per-file, exactly like `stateDir`. Listing the parent here
+  // (which layout 3 did, correctly for what it then held) would put the token on
+  // the delete list.
+  { path: auditDashboardFile, class: "derived" },
+  { path: auditCacheDir, class: "derived" },
   { path: auditScheduleFile, class: "derived" },
+  { path: collectorHealthFile, class: "derived" },
   { path: codexSessionPathsFile, class: "derived" },
   { path: shimsDir, class: "derived" },
   { path: sessionPauseDir, class: "derived" },
@@ -555,6 +639,28 @@ export const legacy = {
   launcherMarker: () => at(".launcher-configured"),
   lastVersion: () => at("last-version"),
   auditDashboard: () => at("audit-dashboard.json"),
+  /**
+   * Layout 3's audit-owned files, before layout 4 gathered them under `audit/`.
+   *
+   * The first two were never classified in `HOME_CLASSES`, so unlike every other
+   * entry in this map they were not on any delete list — the layout-4 step MOVES
+   * them and there is no older copy to prune. They are here so that step can
+   * find them, and so `filesToBackUp()` copies them aside first: a bug in the
+   * move would otherwise take a live session with it.
+   */
+  authJson: () => at("auth.json"),
+  nextAudit: () => at("next-audit.json"),
+  /**
+   * Layout 4's `audit/reminder.json`, retired before it was ever written to.
+   *
+   * The layout-4 step MOVES `next-audit.json` here rather than deleting it,
+   * because the scheduled-audit work that replaces reminders had not landed yet
+   * and dropping a cadence someone chose would have been unrecoverable if it
+   * slipped. It has landed; the reminder concept is gone, and this is the
+   * position the file was parked in. Listed so a reset clears it.
+   */
+  auditReminder: () => at("audit", "reminder.json"),
+  auditSchedule: () => at("state", "audit-schedule.json"),
   cacheDir: () => at("cache"),
   hookActivityDir: () => at("cache", "hook-activity"),
   auditCacheDir: () => at("cache", "audit"),
@@ -640,6 +746,10 @@ function retiredLayoutPaths(): string[] {
     // `migrateHookActivity()`, and everything else in `cache/` still goes —
     // both remaining entries are re-derived on demand.
     legacy.auditCacheDir(),
+    // The reminder, at the position layout 4 parked it in. It is on this list
+    // rather than in `HOME_CLASSES` because the path is RETIRED: nothing writes
+    // it any more, so it has no class to carry — only a location to clear.
+    legacy.auditReminder(),
     legacy.codexSessionPaths(),
     legacy.spoolDir(),
     legacy.failedDir(),

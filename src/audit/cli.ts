@@ -28,6 +28,7 @@ import { trackHookEvent } from "../hooks/hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
 import { sanitizeErrorMessage } from "../../lib/telemetry-sanitize";
 import { openWhenReady } from "./open-browser";
+import { describeOutcome, reportHarm } from "./report-harm";
 import { brandAnsi, ANSI_RESET, ANSI_BOLD, ANSI_DIM } from "../hooks/tui";
 
 /** Port the bundled dashboard binds to. Matches `scripts/launch.ts`'s default
@@ -71,14 +72,34 @@ USAGE
                              server. This is what a scheduled audit runs; exit
                              75 means another audit already had the lock.
 
+SCHEDULING
+  failproofai audit --schedule [days] [--email you@yourdomain.com]
+                             Scan on a timer in the background (default 7 days,
+                             1-90), and email you when a scan finds something
+                             harmful. Signs you in the first time — the report
+                             has to go somewhere. Pass --email to answer that
+                             up front and go straight to entering the code.
+  failproofai audit --no-schedule
+                             Stop scanning on a timer. Leaves you signed in.
+  failproofai audit --status
+                             What this machine is doing: whether scheduling is
+                             on, where reports go, the daemon's state, and when
+                             the next scan is due.
+
+  These write the same ~/.failproofai/config.json the dashboard's settings page
+  writes, through the same function — so the two are always in step.
+
 WHAT IT DOES
   1. Scans past sessions from every installed agent CLI (Claude, Codex, Cursor,
      Copilot, OpenCode, Pi) — entirely on your machine.
   2. Starts the local dashboard and opens
      http://localhost:${DASHBOARD_PORT}/audit with your results.
 
-  Runs fully offline — no account or network required. Press Ctrl+C to stop the
-  dashboard server when you're done.
+  A bare "failproofai audit" needs no account, and nothing from your sessions
+  leaves this machine — anonymous usage counts still apply unless you set
+  FAILPROOFAI_TELEMETRY_DISABLED=1. Scheduling is the exception: it emails you
+  what it finds, so it needs an address.
+  Press Ctrl+C to stop the dashboard server when you're done.
 `.trimStart();
 
 // ── ANSI helpers ────────────────────────────────────────────────────────────
@@ -365,6 +386,29 @@ export async function runScheduledAudit(): Promise<number> {
         `${num(result.transcripts.scanned)} sessions, ${num(result.totals.hits)} hits\n`,
     );
 
+    // Report harmful findings upstream, if the user switched emailed reports on.
+    //
+    // AFTER the dashboard cache is written and AFTER the success line, because
+    // the scan is the product and this is an optional extra on top of it.
+    // `reportHarm` never throws — every failure inside it is an outcome — so a
+    // dead network, an expired session or an api-server having a bad day cannot
+    // turn a successful scan into exit 1. A machine that never opted in prints
+    // nothing at all and does no work here.
+    //
+    // Scheduled runs ONLY. An interactive `failproofai audit` has a person
+    // sitting in front of the result, so mailing it to them is noise, and it
+    // would also make the manual command do a network call that
+    // `audit --help` promises it does not.
+    const outcome = await reportHarm(result);
+    const line = describeOutcome(outcome);
+    if (line) {
+      // Anything other than a successful send goes to stderr: on a scheduled run
+      // the journal is the only reader, and "the email did not go out" is the
+      // half worth finding with a grep.
+      const stream = outcome.kind === "sent" ? process.stdout : process.stderr;
+      stream.write(`${line}\n`);
+    }
+
     return 0;
   } finally {
     attempt.lock.release();
@@ -460,19 +504,93 @@ export async function runAuditCli(args: string[]): Promise<void> {
   // The headless path, spawned rather than typed. Handled ahead of the
   // rejection below so that adding it costs the interactive path nothing: it
   // still refuses every argument it has always refused.
+  //
+  // `--scheduled` (run one now, headlessly) and `--schedule` (put runs on a
+  // timer) differ by one letter and do completely different things, so this
+  // is checked FIRST and exactly: a `--schedule` typo must not silently start
+  // a 100-second scan, and `--scheduled` must never be read as configuration.
   if (args.includes("--scheduled")) {
     const extra = args.find((a) => a !== "--scheduled");
     if (extra) die(`\`audit --scheduled\` takes no other arguments (got: ${extra}).`);
     process.exit(await runScheduledAudit());
   }
 
-  // No arguments supported yet — reject typos rather than silently doing a bare
-  // audit, so a future `failproofai audit --since 7d` doesn't quietly no-op.
+  // The scheduling controls. These write config and exit; none of them scan.
+  if (args.includes("--status")) {
+    const extra = args.find((a) => a !== "--status");
+    if (extra) die(`\`audit --status\` takes no other arguments (got: ${extra}).`);
+    const { runScheduleStatus } = await import("./schedule-cli");
+    runScheduleStatus();
+    process.exit(0);
+  }
+
+  if (args.includes("--no-schedule")) {
+    const extra = args.find((a) => a !== "--no-schedule");
+    if (extra) die(`\`audit --no-schedule\` takes no other arguments (got: ${extra}).`);
+    const { runScheduleOff } = await import("./schedule-cli");
+    runScheduleOff();
+    process.exit(0);
+  }
+
+  const scheduleAt = args.indexOf("--schedule");
+  if (scheduleAt !== -1) {
+    // Parsed POSITIONALLY rather than by matching values against a set: an
+    // address and a day count are both just strings, and "have I already seen
+    // this string" cannot tell the argument of one flag from the argument of
+    // another.
+    let days: string | undefined;
+    let email: string | undefined;
+    for (let i = 0; i < args.length; i += 1) {
+      const a = args[i];
+      if (a === "--schedule") {
+        // The day count is OPTIONAL, so the next token counts only when it is
+        // not itself a flag — `--schedule --email x` must not read "--email"
+        // as a number of days.
+        const next = args[i + 1];
+        if (next !== undefined && !next.startsWith("-")) {
+          days = next;
+          i += 1;
+        }
+        continue;
+      }
+      if (a === "--email" || a.startsWith("--email=")) {
+        // Both forms, because both are what people type.
+        if (a.startsWith("--email=")) {
+          email = a.slice("--email=".length);
+        } else {
+          email = args[i + 1];
+          i += 1;
+        }
+        if (email === undefined || email.length === 0 || email.startsWith("-")) {
+          die("`--email` needs an address, e.g. `--email you@yourdomain.com`.");
+        }
+        continue;
+      }
+      die(`\`audit --schedule\` does not take ${a}.`);
+    }
+
+    const { runScheduleOn, ScheduleCliError } = await import("./schedule-cli");
+    const { LoginError } = await import("./cli-login");
+    try {
+      await runScheduleOn(days, email);
+    } catch (err) {
+      // Both are "the user needs to read one sentence and try again", not a
+      // stack trace: a wrong day count, a cancelled prompt, an api-server that
+      // is not running.
+      if (err instanceof ScheduleCliError || err instanceof LoginError) die(err.message);
+      throw err;
+    }
+    process.exit(0);
+  }
+
+  // Anything else is rejected rather than silently doing a bare audit, so a
+  // typo like `--sched` does not quietly scan and exit 0 looking like it worked.
   const stray = args.find((a) => a !== "--help" && a !== "-h");
   if (stray) {
     die(
-      `\`audit\` takes no arguments yet (got: ${stray}).\n` +
-        `Run \`failproofai audit\` to scan your history and open the dashboard.`,
+      `\`audit\` does not take ${stray}.\n` +
+        `Run \`failproofai audit\` to scan your history and open the dashboard,\n` +
+        `or \`failproofai audit --help\` for the scheduling commands.`,
     );
   }
 

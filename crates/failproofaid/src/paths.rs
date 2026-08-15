@@ -138,10 +138,17 @@ pub fn flush_request_path() -> io::Result<PathBuf> {
     Ok(failproofai_home()?.join("state").join("flush-request.json"))
 }
 
+/// `~/.failproofai/audit/schedule.json` — when the scheduled audit last ran and
+/// when the next one is due.
+///
+/// Layout 4 moved it out of `state/` and in beside the audit results it belongs
+/// with. Still daemon-sole-writer, still `derived` on the CLI side; only the
+/// directory changed. `every_mirrored_path_agrees_with_fp_home_ts` is what makes
+/// the two halves of that move land together — a home where the daemon writes
+/// the old path and the dashboard reads the new one does not fail, it just shows
+/// "no scheduled scan has run yet" forever.
 pub fn audit_schedule_path() -> io::Result<PathBuf> {
-    Ok(failproofai_home()?
-        .join("state")
-        .join("audit-schedule.json"))
+    Ok(failproofai_home()?.join("audit").join("schedule.json"))
 }
 
 /// `~/.failproofai/state/telemetry-id` — the anonymous instance id the CLI
@@ -187,7 +194,7 @@ pub fn failproofai_home() -> io::Result<PathBuf> {
 /// `src/hooks/fp-home.ts`, and the parity test below asserts the two agree —
 /// every path in this file is only correct for one layout, so a mismatch here is
 /// a daemon reading and writing somewhere nothing else looks.
-pub const LAYOUT_VERSION: u32 = 3;
+pub const LAYOUT_VERSION: u32 = 4;
 
 /// `~/.failproofai/VERSION` — the layout marker the CLI stamps.
 pub fn version_file_path(home: &std::path::Path) -> PathBuf {

@@ -37,11 +37,22 @@
  * than counting. A chain from 1 today is one step; when layout 4 lands it becomes
  * `1 → 3` then `3 → 4`, and only the second has to be written.
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { version as cliVersion } from "../../package.json";
 import {
   LAYOUT_VERSION,
+  auditScheduleFile,
+  auditSessionFile,
   configFile,
   credentialsFile,
   failproofaiHome,
@@ -52,6 +63,7 @@ import {
   migrationsDir,
   versionFile,
 } from "./fp-home";
+import { readVersionFile, writeVersionFile } from "./fp-config";
 import { resetHome, type ResetOutcome } from "./fp-reset";
 
 export interface Migration {
@@ -78,16 +90,153 @@ export const MIGRATIONS: readonly Migration[] = [
     to: 3,
     describe:
       "layout 1 → 3: carry the decision log out of cache/, keep the policy config in place, drop the layout-1 credential files",
-    run: () => resetHome(1),
+    run: () => resetHome(1, 3),
   },
   {
     from: 2,
     to: 3,
     describe:
       "layout 2 → 3: carry config.toml and credentials.toml into JSON, move custom-policies/ back up into policies/, nest the policy config at the root",
-    run: () => resetHome(2),
+    run: () => resetHome(2, 3),
+  },
+  {
+    from: 3,
+    to: 4,
+    describe:
+      "layout 3 → 4: gather the audit's files under audit/ — auth.json becomes audit/session.json, next-audit.json becomes audit/reminder.json, state/audit-schedule.json becomes audit/schedule.json",
+    run: migrateToLayout4,
   },
 ];
+
+/**
+ * Layout 3 → 4. The first step written against this registry rather than
+ * delegating to `resetHome`, which is what the header promised: additive.
+ *
+ * Three moves, no deletions. Each is a rename with a copy fallback, because
+ * `audit/` and the home root can sit on different filesystems once `$HOME` is a
+ * network mount or the home has been assembled by a container bind — `rename(2)`
+ * returns `EXDEV` there, and a step that threw on it would strand the machine at
+ * layout 3 forever.
+ *
+ * The reminder's destination is `legacy.auditReminder()`, a RETIRED path. The
+ * feature it belonged to is deleted in this same release, so nothing will ever
+ * read the file again — but a migration that DESTROYS something a person chose
+ * is a different act from one that moves it, and the difference matters even
+ * when the thing is obsolete. It is moved here and cleared by the next reset,
+ * via `retiredLayoutPaths()`.
+ *
+ * **A missing source is success, not failure.** Most homes have never signed in,
+ * so `auth.json` and `next-audit.json` are absent on the majority of machines,
+ * and a scheduled scan that has never run leaves no `audit-schedule.json`. Only
+ * a source that EXISTS and could not be moved is an error worth stopping for.
+ *
+ * **A destination that already exists wins.** Re-running the step — which is
+ * exactly what happens when a later step in the same chain throws and the user
+ * retries — must not copy a stale layout-3 file back over the layout-4 one that
+ * has since been written to.
+ */
+function migrateToLayout4(): ResetOutcome {
+  const moves: { from: string; to: string }[] = [
+    { from: legacy.authJson(), to: auditSessionFile() },
+    { from: legacy.nextAudit(), to: legacy.auditReminder() },
+    { from: legacy.auditSchedule(), to: auditScheduleFile() },
+  ];
+
+  // `FAILPROOFAI_AUTH_DIR` names a directory OUTSIDE the managed home — a
+  // documented env var, not a test hook — and `auth-store` resolves the session
+  // relative to it. Every path above comes from `FAILPROOFAI_HOME`, so without
+  // this the override directory is never visited: the file stays `auth.json`,
+  // layout 4 reads `session.json`, and the upgrade signs the user out silently.
+  // Their scans keep running and their digests stop, which is the failure this
+  // whole area is built to avoid.
+  //
+  // The same two moves, in their directory, so one naming scheme holds
+  // everywhere rather than the file having a different name depending on how
+  // the process was configured.
+  const authDirOverride = process.env.FAILPROOFAI_AUTH_DIR;
+  if (authDirOverride) {
+    moves.push(
+      { from: join(authDirOverride, "auth.json"), to: join(authDirOverride, "session.json") },
+      {
+        from: join(authDirOverride, "next-audit.json"),
+        to: join(authDirOverride, "reminder.json"),
+      },
+    );
+  }
+
+  const migrated: string[] = [];
+  for (const { from, to } of moves) {
+    if (!existsSync(from)) continue;
+    if (existsSync(to)) {
+      // The layout-4 file is already authoritative. Drop the stale original
+      // rather than leaving a second copy of a credential lying at the root.
+      //
+      // A failure here PROPAGATES. Swallowing it continued to `writeVersionFile`
+      // and stamped the home as layout 4 with `auth.json` — a live bearer token
+      // — still sitting at the root, where nothing would ever look at it again
+      // and nothing would ever clean it up. Throwing leaves the home at layout 3
+      // and the next command retries, which is exactly what `runMigrations`
+      // documents a failed step to mean; the destination is already
+      // authoritative, so the retry is a no-op plus one more delete attempt.
+      rmSync(from, { force: true });
+      continue;
+    }
+    mkdirSync(dirname(to), { recursive: true });
+    try {
+      renameSync(from, to);
+    } catch {
+      // EXDEV, or a rename racing something holding the file open on Windows.
+      try {
+        copyFileSync(from, to);
+      } catch (err) {
+        // Remove the PARTIAL destination before giving up.
+        //
+        // `copyFileSync` is not atomic: ENOSPC or a kill part-way through
+        // leaves a truncated `to` on disk. The source is still intact at this
+        // point, so nothing is lost yet — but the next attempt takes the
+        // `existsSync(to)` branch above, reads that fragment as the
+        // authoritative layout-4 file, and deletes the good original. A
+        // half-written session file is not a session, so the retry would have
+        // signed the machine out using the very branch that exists to protect
+        // the credential.
+        try {
+          rmSync(to, { force: true });
+        } catch {
+          // Nothing better to do. The throw below still leaves the home at
+          // layout 3, so `deleteAuth`'s sweep and the backup both still apply.
+        }
+        throw err;
+      }
+      rmSync(from, { force: true });
+    }
+    migrated.push(`${basename(from)} → audit/${basename(to)}`);
+  }
+
+  // `session.json` carries tokens and `auth.json` was written 0600 by
+  // `writeJsonAtomically`. A rename preserves the mode, but a copy fallback
+  // inherits the process umask — so reassert it rather than assume which branch
+  // ran. Belt and braces on a file whose whole content is a bearer credential.
+  for (const secret of [auditSessionFile()]) {
+    if (!existsSync(secret)) continue;
+    try {
+      chmodSync(secret, 0o600);
+    } catch {
+      // Best effort, exactly as `writeJsonAtomically` treats it.
+    }
+  }
+
+  // The same stamper every other write of this file goes through. Hand-rolling
+  // the JSON here would drop `daemon`, which nothing on this path touches and
+  // which `daemonVersionSkew()` reads on every CLI command.
+  //
+  // This step's own `to`, spelled out for the same reason `resetHome` takes
+  // one: a step must never mark the home as a layout it did not reach. Here
+  // they happen to be equal, and writing the literal is what keeps them equal
+  // by intent rather than by coincidence when layout 5 arrives.
+  writeVersionFile({ layout: 4 });
+
+  return { removed: [], migrated, activity: [], policyConfig: [], spooled: [], from: 3 };
+}
 
 /**
  * The steps that take `from` to {@link LAYOUT_VERSION}.
@@ -256,11 +405,70 @@ const BACKED_UP_LEGACY: BackedUpFile[] = [
   // most incomplete exactly where it mattered most.
   { at: legacy.cloudCredentials },
   { at: legacy.ingestCredentials },
+  // The three files the layout-4 step MOVES. `auth.json` is the one that
+  // matters: it is a live bearer credential, and unlike every other entry here
+  // it was never on a delete list — so it has never had a copy taken before a
+  // migration touched it. A move is not a deletion, but a move with a bug in it
+  // is, and this is the only insurance against that.
+  { at: legacy.authJson },
+  { at: legacy.nextAudit },
+  { at: legacy.auditSchedule },
 ];
 
 /** The name a file is saved under inside `backup-layout<n>/`. */
 function backupNameOf(f: BackedUpFile): string {
   return f.as ?? basename(f.at());
+}
+
+/**
+ * Backup copies deleted once the whole chain has succeeded.
+ *
+ * The backup above is insurance against a migration that goes wrong. Insurance
+ * you keep forever on a live credential is not insurance, it is a second copy
+ * of the credential — and this one is worse than the original, because
+ * `migrationsDir` is classed `identity` in `HOME_CLASSES`, so no reset class
+ * ever removes it, and `deleteAuth()` only ever knew about the live path.
+ * Signing out of the dashboard, a 401 auto-delete and `failproofai reset` all
+ * left a working bearer and refresh token sitting at
+ * `migrations/backup-layout3/auth.json`, where every dotfile backup, container
+ * image, snapshot and handed-over machine would carry it. There is no CLI
+ * sign-out at all, so the headless boxes this feature targets had no supported
+ * way to remove it. A stale refresh token is also exactly the input
+ * `auth-store.ts` documents as triggering server-side replay revocation.
+ *
+ * Only entries whose source was MOVED are prunable, never ones that were
+ * DELETED: for `credentials.json` the backup is the only remaining copy, so
+ * removing it would be the data loss the backup exists to prevent. `landsAt` is
+ * checked rather than assumed, so a copy is dropped only once the file is
+ * provably readable at its new home.
+ */
+const PRUNED_AFTER_SUCCESS: ReadonlyArray<{ as: string; landsAt: () => string }> = [
+  { as: basename(legacy.authJson()), landsAt: auditSessionFile },
+];
+
+/**
+ * Remove the credential copies a completed chain no longer needs.
+ *
+ * Never throws: a chain that migrated correctly must not be reported as failed
+ * because a cleanup could not delete a file.
+ */
+export function pruneMigratedCredentials(from: number): string[] {
+  const pruned: string[] = [];
+  for (let layout = from; layout < LAYOUT_VERSION; layout++) {
+    for (const { as, landsAt } of PRUNED_AFTER_SUCCESS) {
+      try {
+        if (!existsSync(landsAt())) continue;
+        const copy = resolve(migrationBackupDir(layout), as);
+        if (!existsSync(copy)) continue;
+        rmSync(copy, { force: true });
+        pruned.push(as);
+      } catch {
+        // Best effort. `deleteAuth()` sweeps these too, so a copy that survives
+        // here is still removed the next time somebody signs out.
+      }
+    }
+  }
+  return pruned;
 }
 
 /**
@@ -385,6 +593,31 @@ export function runMigrations(
       });
     } catch (err) {
       steps.push({ from: step.from, to: step.to, ok: false });
+      // Undo an EARLIER step's over-stamp, if there was one.
+      //
+      // A step ends by stamping `VERSION`, and `writeVersionFile()` writes
+      // {@link LAYOUT_VERSION} rather than the step's own `to`. That was harmless
+      // while every chain was one hop and became a trap the moment one was two:
+      // on `2 → 3 → 4` the FIRST step stamps 4, so a `3 → 4` that then throws
+      // leaves a home marked CURRENT that was never migrated. `detectLayout()`
+      // reports `current`, no later command ever retries, and `auth.json` stays
+      // at the root while layout 4 reads `audit/session.json` — a machine
+      // silently signed out, with its session sitting on disk and nothing left
+      // that would ever move it.
+      //
+      // Only touched when the marker already claims the home is current, so a
+      // chain whose steps never got that far keeps whatever they left. `step.from`
+      // is where this one actually got to: every earlier step succeeded, and a
+      // failing step is documented not to roll back — which is exactly the state
+      // the next command should try to migrate again.
+      try {
+        const marker = readVersionFile();
+        if (marker && marker.layout >= LAYOUT_VERSION) writeVersionFile({ layout: step.from });
+      } catch {
+        // A marker we cannot rewrite leaves the home reading as whatever the last
+        // successful step claimed. Nothing further can be done about it here, and
+        // failing the run a second way would only hide the real error below.
+      }
       failed = {
         from: step.from,
         to: step.to,
@@ -401,6 +634,10 @@ export function runMigrations(
       break;
     }
   }
+
+  // Only on a clean chain. A run that failed still needs its copies: the whole
+  // point of the backup is the state this branch is in.
+  if (!failed) pruneMigratedCredentials(from);
 
   return { from, steps, backedUp, outcome, failed };
 }

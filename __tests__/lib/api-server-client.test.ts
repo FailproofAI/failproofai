@@ -9,10 +9,8 @@ vi.mock("@/lib/telemetry", () => ({
 
 import {
   AuthApiError,
-  cancelReminder,
   decodeJwt,
   requestLoginCode,
-  scheduleReminder,
   sendInvites,
 } from "@/lib/auth/api-server-client";
 
@@ -72,62 +70,6 @@ describe("api-server-client fetchWithTimeout telemetry", () => {
     const out = await requestLoginCode("a@b.co");
     expect(out.status).toBe("code_sent");
     expect(trackEventMock).not.toHaveBeenCalled();
-  });
-});
-
-describe("scheduleReminder", () => {
-  const originalFetch = globalThis.fetch;
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-    trackEventMock.mockClear();
-  });
-
-  it("POSTs /v0/reminders with the access token and returns the unwrapped reminder", async () => {
-    const reminder = { user_id: "u", email: "a@b.co", fire_at: 1, set_at: 0 };
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ reminder }), { status: 200 }),
-    ) as unknown as typeof fetch;
-    globalThis.fetch = fetchMock;
-
-    const out = await scheduleReminder("at-1", { in_days: 7 });
-    expect(out).toEqual(reminder);
-    const [, init] = (fetchMock as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0];
-    expect(init.method).toBe("POST");
-    expect((init.headers as Record<string, string>).authorization).toBe("Bearer at-1");
-  });
-
-  it("throws AuthApiError on non-OK responses", async () => {
-    globalThis.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ code: "rate_limited", message: "slow down" }), { status: 429 }),
-    ) as unknown as typeof fetch;
-    await expect(scheduleReminder("at-1", { in_days: 7 })).rejects.toBeInstanceOf(AuthApiError);
-  });
-});
-
-describe("cancelReminder", () => {
-  const originalFetch = globalThis.fetch;
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-    trackEventMock.mockClear();
-  });
-
-  it("DELETEs /v0/reminders with the access token and resolves on 204", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(null, { status: 204 }),
-    ) as unknown as typeof fetch;
-    globalThis.fetch = fetchMock;
-
-    await expect(cancelReminder("at-1")).resolves.toBeUndefined();
-    const [, init] = (fetchMock as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0];
-    expect(init.method).toBe("DELETE");
-    expect((init.headers as Record<string, string>).authorization).toBe("Bearer at-1");
-  });
-
-  it("throws AuthApiError on non-OK responses", async () => {
-    globalThis.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ code: "unauthorized", message: "no" }), { status: 401 }),
-    ) as unknown as typeof fetch;
-    await expect(cancelReminder("at-1")).rejects.toBeInstanceOf(AuthApiError);
   });
 });
 

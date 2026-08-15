@@ -126,14 +126,38 @@ export function isCacheStale(cachedAt: string, maxAgeMinutes: number = DEFAULT_M
 }
 
 /**
- * Read just the `cachedAt` timestamp from the dashboard cache file,
- * **bypassing** the TTL check. Used by the empty-state path to tell apart
- * "no audit has ever run" from "your last audit aged out". A non-null
- * return whose age exceeds `DASHBOARD_CACHE_TTL_MINUTES` means the cache
- * was rejected by `readDashboardCache()` for being expired (rather than
- * missing or schema-incompatible).
+ * What the last audit on this machine found, **bypassing** the TTL check.
+ *
+ * Used by the empty-state path to tell apart "no audit has ever run" from
+ * "your last audit aged out" — a non-null return whose age exceeds
+ * `DASHBOARD_CACHE_TTL_MINUTES` means `readDashboardCache()` rejected it for
+ * being expired rather than missing or schema-incompatible — and by /settings
+ * to draw its LAST SCAN and FINDINGS stats.
+ *
+ * Those stats deliberately read from HERE and not from `readDashboardCache()`.
+ * That reader drops an entry once it passes the TTL, which is right for a
+ * dashboard rendering results and exactly backwards for a stat whose subject is
+ * how long ago the scan was: a page that answers "when did this last run" must
+ * not lose the answer for the crime of it having been a while. Reading the
+ * timestamp from one function and the counts from the other is the specific bug
+ * this shape prevents — "6 days ago" beside a blank findings cell, because the
+ * two disagreed about whether the same file existed.
+ *
+ * The counts come from the same object the /audit page renders, so they cannot
+ * drift from it: `totals.hits` is the headline finding count and
+ * `transcripts.scanned` the sessions behind it.
  */
-export function readDashboardCacheMeta(): { cachedAt: string } | null {
+export interface DashboardCacheSummary {
+  cachedAt: string;
+  /** `AuditResult.totals.hits` — total policy hits in that scan. */
+  findings: number | null;
+  /** `AuditResult.transcripts.scanned` — session transcripts walked. */
+  sessionsScanned: number | null;
+  /** `AuditResult.eventsScanned` — normalized tool-use events walked. */
+  eventsScanned: number | null;
+}
+
+export function readDashboardCacheMeta(): DashboardCacheSummary | null {
   const cachePath = getCachePath();
   if (!existsSync(cachePath)) return null;
   try {
@@ -150,7 +174,19 @@ export function readDashboardCacheMeta(): { cachedAt: string } | null {
       || typeof entry.cachedAt !== "string"
       || Number.isNaN(new Date(entry.cachedAt).getTime())
     ) return null;
-    return { cachedAt: entry.cachedAt };
+    // The counts are read defensively rather than assumed: `schemaVersion`
+    // guards the ENTRY's shape, and a torn or hand-edited `result` can still
+    // arrive with a missing field. A null count renders as "—" (unknown), which
+    // is a different claim from 0 (scanned, found nothing) — collapsing the two
+    // would report a clean machine on a file we failed to read.
+    const result = entry.result;
+    const count = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    return {
+      cachedAt: entry.cachedAt,
+      findings: count(result?.totals?.hits),
+      sessionsScanned: count(result?.transcripts?.scanned),
+      eventsScanned: count(result?.eventsScanned),
+    };
   } catch {
     return null;
   }

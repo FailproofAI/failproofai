@@ -5,15 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   deleteAuth,
-  deleteReminder,
   getAuthFilePath,
-  getReminderFilePath,
   readAuth,
-  readReminder,
   writeAuth,
-  writeReminder,
   type StoredAuth,
-  type StoredReminder,
 } from "../../lib/auth/auth-store";
 
 function fakeAuth(overrides: Partial<StoredAuth> = {}): StoredAuth {
@@ -24,15 +19,6 @@ function fakeAuth(overrides: Partial<StoredAuth> = {}): StoredAuth {
     access_expires_at: now + 3600,
     refresh_expires_at: now + 86400,
     user: { id: "user-1", email: "alice@example.com" },
-    ...overrides,
-  };
-}
-
-function fakeReminder(overrides: Partial<StoredReminder> = {}): StoredReminder {
-  return {
-    next_audit_at: Math.floor(Date.now() / 1000) + 7 * 86400,
-    user_email: "alice@example.com",
-    set_at: Math.floor(Date.now() / 1000),
     ...overrides,
   };
 }
@@ -113,55 +99,4 @@ describe("auth-store", () => {
     });
   });
 
-  describe("reminder", () => {
-    it("returns null when no reminder file exists", () => {
-      expect(readReminder()).toBeNull();
-    });
-
-    it("round-trips a written reminder", () => {
-      const r = fakeReminder();
-      writeReminder(r);
-      const out = readReminder();
-      expect(out).toEqual(r);
-    });
-
-    it("scopes by user_email — the consumer enforces this", () => {
-      writeReminder(fakeReminder({ user_email: "bob@example.com" }));
-      const out = readReminder();
-      expect(out?.user_email).toBe("bob@example.com");
-    });
-
-    it("rejects shape mismatches as null", () => {
-      writeFileSync(getReminderFilePath(), JSON.stringify({ next_audit_at: "string" }), "utf-8");
-      expect(readReminder()).toBeNull();
-    });
-
-    it("deleteReminder removes the file", () => {
-      writeReminder(fakeReminder());
-      expect(existsSync(getReminderFilePath())).toBe(true);
-      deleteReminder();
-      expect(existsSync(getReminderFilePath())).toBe(false);
-    });
-
-    it("overwrites the existing reminder atomically", () => {
-      writeReminder(fakeReminder({ next_audit_at: 1 }));
-      writeReminder(fakeReminder({ next_audit_at: 2 }));
-      expect(readReminder()?.next_audit_at).toBe(2);
-    });
-
-    it("writes mode 0600 on the reminder file", () => {
-      writeReminder(fakeReminder());
-      const mode = statSync(getReminderFilePath()).mode & 0o777;
-      // World- and group-read bits must be cleared — next-audit.json stores
-      // the user_email scoping key and gets the same hardening as auth.json.
-      expect(mode & 0o004).toBe(0);
-      expect(mode & 0o040).toBe(0);
-    });
-
-    it("atomic write leaves no .tmp siblings behind on success", () => {
-      writeReminder(fakeReminder());
-      const leftover = readdirSync(dir).filter((f) => f.includes(".tmp"));
-      expect(leftover).toEqual([]);
-    });
-  });
 });

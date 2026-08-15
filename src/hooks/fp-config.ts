@@ -102,6 +102,20 @@ export function detectLayout(): LayoutState {
   // went missing is the exact failure this module exists to prevent, and it
   // announced itself as a routine "reorganised your home" message.
   if (existsSync(configFile())) {
+    // `config.json` proves layout 3 OR LATER — it cannot tell them apart, since
+    // layout 4 changed nothing about it. What separates the two is solely WHERE
+    // the audit's files sit, so ask that directly: any of layout 3's three
+    // root-level positions still occupied means the 3 → 4 move has not run.
+    //
+    // When none of them exist the two layouts are IDENTICAL on disk (the step
+    // would move nothing), and "current" is the correct, non-destructive answer.
+    const layoutThreePositions = [
+      legacy.authJson(),
+      legacy.nextAudit(),
+      legacy.auditSchedule(),
+    ];
+    if (layoutThreePositions.some((p) => existsSync(p))) return { kind: "stale", found: 3 };
+
     // `inferred`: the layout is right but the MARKER is missing, and nothing
     // else rewrites it — so every later command re-derives it from a landmark,
     // and the daemon version recorded in that file is gone for good
@@ -112,7 +126,16 @@ export function detectLayout(): LayoutState {
 
   // `config.toml` and no `config.json` is genuinely layout 2, and a reset is
   // right: its files are the ones being replaced.
-  if (existsSync(legacy.configToml())) return { kind: "stale", found: LAYOUT_VERSION - 1 };
+  //
+  // The literal 2, NOT `LAYOUT_VERSION - 1`. That expression was correct while
+  // current was 3 and became a data-loss bug the moment layout 4 landed: it
+  // reported a real layout-2 home as layout 3, so `planMigration` ran only the
+  // 3 → 4 step — which finds none of layout 3's files, moves nothing, and stamps
+  // the home as current. `config.toml` and `credentials.toml` would never be
+  // carried into JSON, orphaning the cloud token and `daemon.configured` on a
+  // machine that now reads as fully migrated. A landmark identifies ONE layout;
+  // it is never relative to whatever this build happens to speak.
+  if (existsSync(legacy.configToml())) return { kind: "stale", found: 2 };
 
   // Layout 1 if any of its landmarks are present, otherwise this is simply a
   // home that has not been set up yet.
@@ -187,12 +210,23 @@ export function readVersionFile(): VersionFile | null {
   }
 }
 
+/**
+ * Stamp `VERSION`.
+ *
+ * `layout` defaults to {@link LAYOUT_VERSION} — every ordinary caller is saying
+ * "this home now speaks what this build speaks". It is honoured when passed
+ * ONLY so a failed migration can put the marker back where the home actually
+ * is: the signature has always accepted `layout` (it is part of `VersionFile`)
+ * and the body used to ignore it, so a caller asking for 3 silently got 4, and
+ * the one place that needs to ask is the one place where being wrong strands a
+ * half-migrated home as "current" forever. See `runMigrations`.
+ */
 export function writeVersionFile(
   v: Partial<VersionFile> & { /** Erase the daemon version rather than keeping it. */ clearDaemon?: boolean } = {},
 ): void {
   const existing = readVersionFile();
   const next: VersionFile = {
-    layout: LAYOUT_VERSION,
+    layout: v.layout ?? LAYOUT_VERSION,
     cli: v.cli ?? cliVersion,
     // `undefined` means "leave whatever is there" — a CLI-only rewrite must not
     // drop a daemon version it never touched. Erasing it is therefore an
@@ -274,7 +308,22 @@ export interface FpConfig {
   };
   audit: {
     /**
-     * Scan this machine's agent history on a schedule.
+     * Scan this machine on a schedule, and mail a digest when a scan finds
+     * something harmful.
+     *
+     * ONE switch, not two. An earlier revision split this into `auto` (scan
+     * locally, no account) and `email_enabled` (mail me, sign in), and the two
+     * could only ever disagree — a machine scanning on a timer with nothing to
+     * report it to is a feature that looks on and does nothing visible. The
+     * reason to put a scan on a timer is to be TOLD, so scheduling and mailing
+     * are the same decision and take the same switch.
+     *
+     * A signed-out machine with this on is therefore a real, expected state
+     * rather than a contradiction: it keeps scanning and keeps its local
+     * dashboard current, and the UI says "signed out" until somebody signs back
+     * in. Auth gates SETTING it up, never the machine's ongoing work — a
+     * refresh token expiring must not silently switch off a background feature
+     * somebody configured months ago.
      *
      * OFF by default, and the asymmetry with `telemetry.enabled` above is
      * deliberate: the audit reads the CONTENTS of every session transcript on
@@ -282,6 +331,28 @@ export interface FpConfig {
      * timer until somebody asks for it.
      */
     auto: boolean;
+    /**
+     * When this machine's owner agreed that a scheduled scan may send what it
+     * finds off the box, as epoch ms. Absent means they never did.
+     *
+     * This does NOT reintroduce the second switch the comment above rejects,
+     * and it is never drawn as one. `auto` is what a person sets; this is a
+     * record of the disclosure they were shown when they set it. The two cannot
+     * drift, because every path that turns `auto` on stamps this in the same
+     * call and nothing stamps it alone.
+     *
+     * It exists because `auto` CHANGED MEANING. Through 1.0.0 it meant "scan
+     * this machine on a timer" and nothing more — no account, no network, and
+     * the toggle that wrote it said as much in as many words. Harm digests gave
+     * the same stored bit a second job: uploading redacted transcript excerpts
+     * to the api-server and mailing them. Without a separate record, every
+     * machine that opted into the old meaning would have started sending on
+     * upgrade, having agreed to nothing of the kind, with the only notice a
+     * line in the journal. Gating on the stamp rather than the switch is what
+     * keeps that upgrade silent in the safe direction: those machines keep
+     * scanning locally and send nothing until somebody opts in again.
+     */
+    reportsConsentedAt?: number;
     /** Days between scheduled runs. Wall clock, so it survives suspend. */
     intervalDays: number;
   };
@@ -458,7 +529,17 @@ export function projectConfig(parsed: Record<string, unknown>): FpConfig {
       // scheduled scan on. Absent, misspelled, or `"yes"` all read as off,
       // because the failure direction here is a machine that starts reading
       // every transcript it can find on a timer nobody set.
-      audit: { auto: audit.auto === true, intervalDays: readIntervalDays(audit.interval_days) },
+      audit: {
+        auto: audit.auto === true,
+        intervalDays: readIntervalDays(audit.interval_days),
+        // A finite number or nothing. A garbage value reads as absent, which is
+        // the direction that sends nothing.
+        reportsConsentedAt:
+          typeof audit.reports_consented_at === "number" &&
+          Number.isFinite(audit.reports_consented_at)
+            ? audit.reports_consented_at
+            : undefined,
+      },
       // Same shape as `audit.auto` above and for the same reason: only an
       // explicit `true` opts in. Anything else — absent, misspelled, `"yes"` —
       // reads as off, because the failure direction is a machine that starts
@@ -504,6 +585,7 @@ const OWNED_CONFIG_KEYS: readonly (readonly string[])[] = [
   ["telemetry", "enabled"],
   ["audit", "auto"],
   ["audit", "interval_days"],
+  ["audit", "reports_consented_at"],
 ];
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
@@ -604,7 +686,16 @@ export function writeConfig(config: FpConfig, raw?: Record<string, unknown>): vo
     // nobody can see is the same as a switch that does not exist. Emitting both
     // keys unconditionally also makes "a user's setting survives a rewrite"
     // total rather than conditional.
-    audit: { auto: config.audit.auto, interval_days: config.audit.intervalDays },
+    audit: {
+      auto: config.audit.auto,
+      interval_days: config.audit.intervalDays,
+      // Written only once there IS consent, so an untouched machine's config
+      // does not grow a key implying it was asked. It is in
+      // `OWNED_CONFIG_KEYS`, so omitting it here really removes it.
+      ...(config.audit.reportsConsentedAt === undefined
+        ? {}
+        : { reports_consented_at: config.audit.reportsConsentedAt }),
+    },
   };
   // Start from the previous bytes, strip the keys this build owns — so an
   // omission above really removes — then lay the projection on top. What is left

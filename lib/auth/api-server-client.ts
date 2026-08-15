@@ -107,7 +107,7 @@ async function parseError(res: Response): Promise<AuthApiError> {
   return new AuthApiError(res.status, code, message, retryAfterSecs);
 }
 
-/** Hard cap on every auth/reminder HTTP call. Without this, a wedged DNS
+/** Hard cap on every auth/report HTTP call. Without this, a wedged DNS
  *  resolver or a hung server keeps the CLI / dashboard route stuck forever. */
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -210,34 +210,6 @@ export async function fetchMe(accessToken: string): Promise<MeResponse> {
   return getJson<MeResponse>("/v0/auth/me", accessToken);
 }
 
-export interface ServerReminder {
-  user_id: string;
-  email: string;
-  fire_at: number; // unix seconds
-  set_at: number;  // unix seconds
-}
-
-export async function scheduleReminder(
-  accessToken: string,
-  body: { in_days?: number; at?: number },
-): Promise<ServerReminder> {
-  const res = await postJson<{ reminder: ServerReminder }>(
-    "/v0/reminders",
-    body,
-    { accessToken },
-  );
-  return res.reminder;
-}
-
-export async function cancelReminder(accessToken: string): Promise<void> {
-  const res = await fetchWithTimeout(`${getApiBase()}/v0/reminders`, {
-    method: "DELETE",
-    headers: { authorization: `Bearer ${accessToken}` },
-  });
-  if (res.status === 204 || res.ok) return;
-  throw await parseError(res);
-}
-
 export interface InviteSendResult {
   /** Recipients that were dispatched successfully. */
   sent: string[];
@@ -264,6 +236,56 @@ export async function sendInvites(
     score === undefined ? { to } : { to, score },
     { accessToken },
   );
+}
+
+export interface AuditReportBody {
+  machine_id: string;
+  label?: string;
+  platform?: string;
+  window_from?: string;
+  window_to: string;
+  harmful: {
+    policy: string;
+    category: string;
+    title: string;
+    hits: number;
+    first_seen?: string;
+    last_seen?: string;
+    examples: string[];
+  }[];
+}
+
+export interface AuditReportResult {
+  report_id: string;
+  /** Whether this report produced an email. */
+  emailed: boolean;
+  /** `below_threshold`, `cooldown`, `send_failed`, or null when mail went out. */
+  reason: string | null;
+  /**
+   * Where the next window starts, per the SERVER.
+   *
+   * Persisted verbatim rather than computed locally. The server anchors it on
+   * the last DELIVERED digest, so a report held by the cooldown — or one whose
+   * send failed — correctly leaves the watermark where it was, and its findings
+   * turn up in the next digest instead of falling into a gap. A machine that
+   * lost `machine.json` also resyncs here rather than re-reporting from the
+   * beginning of time.
+   */
+  next_window_from: string;
+}
+
+/**
+ * Submit one scheduled scan's harmful findings.
+ *
+ * Called only by the audit child, and only on `--scheduled`. The destination
+ * address is never sent: the api-server takes it from the access-token claims,
+ * so a report cannot name where its digest goes.
+ */
+export async function submitAuditReport(
+  accessToken: string,
+  body: AuditReportBody,
+): Promise<AuditReportResult> {
+  return postJson<AuditReportResult>("/v0/audit-reports", body, { accessToken });
 }
 
 interface JwtClaims {

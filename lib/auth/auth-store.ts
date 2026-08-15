@@ -1,16 +1,17 @@
 /**
- * Persistence layer for the FailproofAI auth.json file.
+ * Persistence layer for the signed-in session.
  *
- * Tokens live at ~/.failproofai/auth.json with mode 0600. The dashboard's
- * Next.js API routes read and write through here, so a session survives across
- * dashboard runs.
+ * Tokens live at `~/.failproofai/audit/session.json` with mode 0600 (layout 4;
+ * `auth.json` at the home root before that). The dashboard's Next.js API routes
+ * and the audit child both read and write through here, so a session survives
+ * across dashboard runs and is the same one a scheduled report uses.
  */
 
-import { existsSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 import { writeJsonAtomically } from "../atomic-write";
-import { failproofaiHome } from "../../src/hooks/fp-home";
+import { auditDir, auditSessionFile, migrationsDir } from "../../src/hooks/fp-home";
 import {
   AuthApiError,
   decodeJwt,
@@ -27,62 +28,24 @@ export interface StoredAuth {
   user: { id: string; email: string };
 }
 
+/**
+ * Where the session file lives.
+ *
+ * `FAILPROOFAI_AUTH_DIR` overrides it OUTRIGHT — the override names the
+ * directory the two files sit in directly, with no `audit/` beneath it, which is
+ * the contract it has always had and what every test using it expects. Without
+ * the override the paths come from `fp-home.ts`, which as of layout 4 puts them
+ * under `audit/` with the rest of what the audit owns.
+ */
 export function getAuthDir(): string {
   const override = process.env.FAILPROOFAI_AUTH_DIR;
   if (override) return override;
-  return failproofaiHome();
+  return auditDir();
 }
 
 export function getAuthFilePath(): string {
-  return join(getAuthDir(), "auth.json");
-}
-
-/** Location of the persisted re-audit reminder (separate from auth.json so
- *  the reminder survives unrelated session refreshes). */
-export function getReminderFilePath(): string {
-  return join(getAuthDir(), "next-audit.json");
-}
-
-export interface StoredReminder {
-  /** Unix seconds. */
-  next_audit_at: number;
-  /** Email the reminder was set for. Used to invalidate the reminder if the
-   *  active session belongs to a different user. */
-  user_email: string;
-  /** Unix seconds. */
-  set_at: number;
-}
-
-export function readReminder(): StoredReminder | null {
-  const p = getReminderFilePath();
-  if (!existsSync(p)) return null;
-  try {
-    const raw = readFileSync(p, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<StoredReminder>;
-    if (
-      typeof parsed.next_audit_at !== "number" ||
-      typeof parsed.user_email !== "string" ||
-      typeof parsed.set_at !== "number"
-    ) {
-      return null;
-    }
-    return {
-      next_audit_at: parsed.next_audit_at,
-      user_email: parsed.user_email,
-      set_at: parsed.set_at,
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function writeReminder(reminder: StoredReminder): void {
-  writeJsonAtomically(getReminderFilePath(), reminder);
-}
-
-export function deleteReminder(): void {
-  const p = getReminderFilePath();
-  if (existsSync(p)) rmSync(p, { force: true });
+  const override = process.env.FAILPROOFAI_AUTH_DIR;
+  return override ? join(override, "session.json") : auditSessionFile();
 }
 
 export function readAuth(): StoredAuth | null {
@@ -127,6 +90,28 @@ export function writeAuth(auth: StoredAuth): void {
 export function deleteAuth(): void {
   const p = getAuthFilePath();
   if (existsSync(p)) rmSync(p, { force: true });
+
+  // Also any copy a migration took and could not clean up.
+  //
+  // The layout-4 step backs `auth.json` up before moving it, and a chain that
+  // FAILED deliberately keeps that copy — it is the only insurance against a
+  // half-moved credential. But "sign me out" has to mean the token is off this
+  // machine, and `migrationsDir` is classed `identity`, so nothing else will
+  // ever remove it: without this sweep a dashboard sign-out, a 401 auto-delete
+  // and `failproofai reset` all left a live bearer and refresh token on disk,
+  // to be carried into every dotfile backup and container image after it.
+  try {
+    const root = migrationsDir();
+    if (!existsSync(root)) return;
+    for (const entry of readdirSync(root)) {
+      if (!entry.startsWith("backup-layout")) continue;
+      const copy = resolve(root, entry, "auth.json");
+      if (existsSync(copy)) rmSync(copy, { force: true });
+    }
+  } catch {
+    // Sign-out must succeed even if the sweep cannot. The live token — the one
+    // that actually authenticates a request — is already gone above.
+  }
 }
 
 /** Convert verify/refresh response into the on-disk shape. */
@@ -161,8 +146,8 @@ const REFRESH_LEEWAY_SECS = 60;
 
 /**
  * In-flight refresh dedup. Without this, two concurrent callers (e.g.
- * the dashboard's `/api/auth/status` poll and a `/api/auth/reminder`
- * POST in flight) both observe the same expired access token, both call
+ * the dashboard's `/api/auth/status` poll and a scheduled audit's report
+ * in flight) both observe the same expired access token, both call
  * `refreshAccessToken(auth.refresh_token)` with the same refresh token,
  * and the api-server treats the second call as token-replay and revokes
  * every session for that user — a silent logout. Keying on the refresh

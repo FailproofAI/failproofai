@@ -10,7 +10,7 @@
  *   02 StrengthsSection — what it's great at
  *   03 QuirksSection — what slipped through
  *   04 HowToImproveSection — install / configure
- *   05 ComeBackBetterSection — reminder + perks
+ *   05 ComeBackBetterSection — spread the audit (invite)
  *
  * Empty / running states fall back to EmptyState and RunProgress.
  */
@@ -355,11 +355,7 @@ function MainReport({
             projected={projected}
             projectedGrade={projectedGrade}
           />
-          <ComeBackBetterSection
-            isRunning={isRunning}
-            onRerun={() => onRerun("return_section")}
-            score={score}
-          />
+          <ComeBackBetterSection score={score} />
         </div>
         <ReportFooter cachedAt={cachedAt} />
       </div>

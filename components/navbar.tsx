@@ -139,17 +139,27 @@ export const Navbar: React.FC<{
         {/* Settings sits between the refresh controls and reach-us as an ICON,
             not a nav tab: it is machine configuration rather than a view of the
             data, so it belongs with the other chrome controls rather than
-            beside projects / policies / audit. */}
-        <Link
-          href="/settings"
-          className={`h-icon-btn${pathname.startsWith("/settings") ? " is-active" : ""}`}
-          aria-label="settings"
-          aria-current={pathname.startsWith("/settings") ? "page" : undefined}
-          title="settings"
-        >
-          <Settings className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden="true" />
-        </Link>
-        <span style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px" }} />
+            beside projects / policies / audit.
+
+            Being chrome rather than a tab is what put it OUTSIDE the filter
+            above, so `FAILPROOFAI_DISABLE_PAGES=settings` hid nothing and the
+            gear kept pointing at a page the operator had turned off. The tabs
+            and the icon are different placements of the same idea, and the
+            filter applies to both. */}
+        {!disabledPages.includes("settings") && (
+          <>
+            <Link
+              href="/settings"
+              className={`h-icon-btn${pathname.startsWith("/settings") ? " is-active" : ""}`}
+              aria-label="settings"
+              aria-current={pathname.startsWith("/settings") ? "page" : undefined}
+              title="settings"
+            >
+              <Settings className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden="true" />
+            </Link>
+            <span style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px" }} />
+          </>
+        )}
         <ReachDevelopers />
       </div>
     </header>

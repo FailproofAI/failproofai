@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import {
   getScheduledAuditAction,
   type ScheduledAuditView,
@@ -27,6 +28,14 @@ export const dynamic = "force-dynamic";
  * daemon's status — a cached render would show a stale machine.
  */
 export default async function SettingsPage() {
+  // Same gate the audit, policies and projects pages carry. It was dropped in
+  // the rewrite, and this is the page that least deserves to lose it: it shows
+  // the address digests go to and can sign the machine out, on a dashboard an
+  // operator may deliberately be exposing beyond localhost.
+  const disabled = (process.env.FAILPROOFAI_DISABLE_PAGES ?? "")
+    .split(",").map((s) => s.trim()).filter(Boolean);
+  if (disabled.includes("settings")) notFound();
+
   let initial: ScheduledAuditView | null = null;
   try {
     initial = await getScheduledAuditAction();

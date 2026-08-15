@@ -16,7 +16,7 @@ failproofai
 
 Opens at `http://localhost:8020`.
 
-The dashboard reads local project, session, and failproofai configuration data directly from the filesystem. Optional authenticated features, such as audit reminders and invitations, send the information needed for those requests (including email addresses) to remote APIs.
+The dashboard reads local project, session, and failproofai configuration data directly from the filesystem. Optional authenticated features — invitations, and the [emailed harm digest](/cli/audit#what-a-digest-sends) from a scheduled audit — send the information needed for those requests (including email addresses) to remote APIs. Nothing else leaves the machine.
 
 ---
 
@@ -67,7 +67,9 @@ A personality-driven report of how your agent has actually been behaving across 
 2. **Strengths** — calm ✓ row list of behaviors your agent already does right, derived from the live audit data (clean tool-call rate, no direct pushes to main, zero credential leaks, zero retry storms) — each surfaced only when the relevant policy has a clean record across the audit window.
 3. **Quirks** — table of what slipped through, ranked by severity: `when · what slipped + the policy that would've caught it · severity pill · seen`, where the recurrence reads `new` (once), `N× seen` (2–9 times), or `recurring` (10+).
 4. **How to improve** — calm row list, one per prescribed policy: policy name in white, one-line description, install command + copy button on the right side. The section header reads `enable all N → projected <score> · <tier>` (the score you'd reach with every fix applied), and its `[install all]` button copies the combined `failproofai policy add a b c …` command for every prescribed policy.
-5. **Come back better** — two side-by-side cards. Left: set a reminder (`3d` / `7d` / `14d` / `30d` cadence picker; persists through `/api/auth/reminder` once authed). Right: unlock failproof perks — `invite a friend` opens a modal that takes a comma/space/newline-separated list of friend emails (max 10 per send), POSTs them to `/api/audit/invite`, which forwards to the api-server's `POST /v0/invite`. The api-server sends one email per recipient from `invite@failproof.ai` with the sender Cc'd and `Reply-To` set, so the recipient sees who invited them and the sender gets a copy in their inbox. Anonymous users get routed through the `AuthDialog` first so the sender's email is known before invites go out. Entitlement / perks fulfillment is a follow-up.
+5. **Spread the audit** — `invite a friend` opens a modal that takes a comma/space/newline-separated list of friend emails (max 10 per send), POSTs them to `/api/audit/invite`, which forwards to the api-server's `POST /v0/invite`. The api-server sends one email per recipient from `invite@failproof.ai` with the sender Cc'd and `Reply-To` set, so the recipient sees who invited them and the sender gets a copy in their inbox. Anonymous users get routed through the `AuthDialog` first so the sender's email is known before invites go out. Entitlement / perks fulfillment is a follow-up.
+
+   The re-audit **reminder** cadence picker that used to sit beside it is gone, along with its `/api/auth/reminder` route. Recurring scans are a machine setting rather than the end of a report, so they live on **[/settings](#settings)** (the gear in the header) and in `failproofai audit --schedule` — where the same control also runs the scan, rather than only mailing you a nudge to run it yourself. See [scheduled audits](/cli/audit#scheduled-audits).
 
 Driven by the `failproofai audit` runtime — see [Audit CLI](/cli/audit) for the underlying scan engine, supported flags, and per-transcript cache invariants. The dashboard caches the latest result at `~/.failproofai/audit-dashboard.json` (mode `0600`, single slot, new runs overwrite) so revisits are instant; **both the per-transcript and whole-result caches are rejected on read once they're older than 7 days** so the dashboard never silently serves a week-old result — past the TTL `/audit` falls through to its empty state and prompts a fresh run. Clicking `[ re-audit now ]` near the bottom of the report POSTs `/api/audit/run` with `noCache: true` — re-audit bypasses the per-transcript cache and re-scans every transcript from scratch rather than silently returning the cached result — and the dashboard polls `/api/audit/status` at 1Hz until the run finishes; a sticky pink progress strip pins to the top of the viewport during the run with an elapsed timer, and the fresh result swaps in place on success (no full-page reload; a failed re-audit leaves the prior report intact). On failure the strip turns red with copy keyed off the `RerunError.kind` (`timeout` / `network` / `post_failed`). Empty state (no cache or expired) and zero-sessions state (cache exists but the scan found no transcripts) are surfaced separately.
 
@@ -90,6 +92,24 @@ A two-tab page for managing policies and reviewing activity.
   </Tab>
 </Tabs>
 
+### Settings
+
+Reached from the **gear** in the header, at `/settings`. A console for the
+background service rather than a preferences page — it opens with a stat row
+reading the daemon's state, when the next scan is due, when the last one ran,
+and how many findings it turned up, over the controls that change them.
+
+- **Scheduled audits** — turn the timer on or off and set the interval. Turning
+  it on requires a signed-in session, because the digest needs a destination;
+  the panel enumerates exactly what a digest sends before you enable it.
+- The countdown reads the daemon's own `next_due_at_ms` rather than deriving one
+  from the interval, so changing the cadence mid-cycle does not leave the page
+  reporting a due time the daemon does not agree with.
+- Every write goes through the same `updateConfig` that
+  [`failproofai audit --schedule`](/cli/audit#scheduled-audits) calls, so the
+  terminal and the dashboard are always in step. Use whichever is in front of
+  you — the CLI is the one that works on a headless box.
+
 ---
 
 ## Auto-refresh
@@ -106,7 +126,12 @@ If you only need some parts of the dashboard, set `FAILPROOFAI_DISABLE_PAGES` to
 FAILPROOFAI_DISABLE_PAGES=policies failproofai
 ```
 
-Valid values: `policies`, `projects`, `audit`.
+Valid values: `policies`, `projects`, `audit`, `settings`.
+
+Disabling `settings` also removes the gear from the header, so the page is
+neither reachable nor advertised. Worth doing on a dashboard you have exposed
+beyond localhost: that page shows the address digests are mailed to and can
+sign the machine out.
 
 ---
 

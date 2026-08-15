@@ -50,9 +50,12 @@ failproofai
 </CardGroup>
 
 <Tip>
-  Run `failproofai audit -h` (or `--help`) to see usage. The audit runs **fully
-  offline** — no account or network required — and the dashboard keeps serving
-  until you stop it with `Ctrl+C`.
+  Run `failproofai audit -h` (or `--help`) to see usage. A bare `failproofai
+  audit` needs **no account**, and **nothing from your sessions leaves this
+  machine** — anonymous usage counts still apply unless you set
+  `FAILPROOFAI_TELEMETRY_DISABLED=1`. The dashboard keeps serving until you stop
+  it with `Ctrl+C`. [Scheduled audits](#scheduled-audits) are the one exception:
+  they can email you what a scan finds, and you opt into that explicitly.
 </Tip>
 
 The dashboard scans past agent CLI transcripts on this machine (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi) and reports how often the agent did things failproofai is built to stop — env-var checks, force pushes, redundant `cd <cwd>` prefixes, sleep-polling loops, re-reading files just edited, and more.
@@ -77,8 +80,47 @@ the background. It is **off by default**, because the scan reads the *contents*
 of every agent session transcript on this machine — nothing scans on a timer
 until you ask for it.
 
-Turn it on in `~/.failproofai/config.json` — add the `audit` key alongside
-whatever else the file already holds:
+Turn it on from the terminal — this works on a headless box, and it is the
+only path that also sets up the email digest:
+
+```bash
+failproofai audit --schedule 7 --email you@yourdomain.com
+```
+
+| Command | What it does |
+|---|---|
+| `failproofai audit --schedule [days]` | Scan on a timer (default 7, clamped 1–90). Signs you in the first time, because the digest needs somewhere to go. |
+| `failproofai audit --schedule [days] --email you@yourdomain.com` | Same, answering the address up front so you go straight to entering the emailed code. |
+| `failproofai audit --no-schedule` | Stop scanning on a timer. Leaves you signed in. |
+| `failproofai audit --status` | Whether scheduling is on, where reports go, the daemon's state, and when the next scan is due. |
+
+The same controls live on the dashboard's **/settings** page. Both write the
+same `~/.failproofai/config.json` through the same function, so the two are
+always in step.
+
+### What a digest sends
+
+A scheduled scan can email you when it finds something harmful. That email is
+the **only** thing that leaves your machine, and it carries:
+
+- **finding counts** per builtin policy,
+- **redacted example commands** — real command lines with secrets masked and
+  home paths shortened to `~/…/<file>`,
+- **this machine's name** (its hostname) and platform, so a digest from a
+  fleet says which box it came from.
+
+Custom-policy names and examples are never included, and an example never
+carries tool output or file contents.
+
+<Warning>
+  Redaction is pattern-based: it masks known credential shapes and `KEY=value`
+  assignments whose name says credential, but it reduces exposure rather than
+  eliminating it. If a machine's transcripts must never leave it, leave
+  scheduled digests off — the local scan and its dashboard work exactly the
+  same without them.
+</Warning>
+
+You can also set the keys directly in `~/.failproofai/config.json`:
 
 ```json
 {
@@ -93,6 +135,15 @@ whatever else the file already holds:
 |---|---|
 | `auto` | `true` enables the scheduled scan. Anything else — absent, `false`, `"yes"` — is off. |
 | `interval_days` | Days between scans. Clamped to 1–90; `0`, a negative or a non-number falls back to `7`. |
+| `reports_consented_at` | Written **only** by `--schedule` or the settings toggle, when you sign in and are shown the list above. Emails are sent only if it is present, so hand-editing `auto` on its own gives you the local timer and no digest. |
+
+<Note>
+  Upgrading from a release before digests existed? `auto` used to mean "scan
+  locally on a timer" and nothing more. Machines that already had it keep
+  scanning and send **nothing** until you opt in again with
+  `failproofai audit --schedule` or the settings toggle — your old setting is
+  not read as consent to email.
+</Note>
 
 - The schedule is **wall-clock**, so it survives suspend and reboots: a laptop
   that was asleep past its due time runs **once** on wake, never a backlog.
@@ -100,8 +151,9 @@ whatever else the file already holds:
   hook path, which stays free to answer tool calls.
 - A scan is skipped if `failproofai audit` or the dashboard's re-run is already
   in flight; it is retried shortly afterwards rather than treated as a failure.
-- Progress is written to `~/.failproofai/state/audit-schedule.json` (last run,
-  next due). The daemon owns that file — change the cadence in `config.json`.
+- Progress is written to `~/.failproofai/audit/schedule.json` (last run, next
+  due). The daemon owns that file — change the cadence with
+  `failproofai audit --schedule <days>`, on /settings, or in `config.json`.
 
 <Note>
 If you enabled this on a machine set up by an older failproofai, run

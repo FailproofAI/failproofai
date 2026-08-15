@@ -503,11 +503,34 @@ describe("config.toml", () => {
     expect(readConfig().audit).toEqual({ auto: true, intervalDays: 30 });
 
     writeConfig({ ...readConfig(), collector: { ...DEFAULT_CONFIG.collector, environment: "ci" } });
-    // `emailEnabled` is asserted alongside `auto` deliberately: it is the switch
-    // that makes anything leave the machine, so a rewrite silently dropping it
-    // would turn emailed reports off with no notice — the same class of failure
-    // this test was written for, on the newer of the two keys.
     expect(readConfig().audit).toEqual({ auto: true, intervalDays: 30 });
+  });
+
+  it("carries the consent stamp through an unrelated rewrite too", () => {
+    // Same class of failure as the test above, on the key that decides whether
+    // anything leaves the machine: `reportHarm` gates sending on
+    // `reports_consented_at`, so a rewrite that dropped it would silently stop
+    // a machine's digests the next time any unrelated setting changed — and
+    // leave the user with a schedule that reads as on and mails nothing.
+    writeConfig({
+      ...DEFAULT_CONFIG,
+      audit: { auto: true, intervalDays: 30, reportsConsentedAt: 1_700_000_000_000 },
+    });
+
+    writeConfig({ ...readConfig(), collector: { ...DEFAULT_CONFIG.collector, environment: "ci" } });
+
+    expect(readConfig().audit.reportsConsentedAt).toBe(1_700_000_000_000);
+  });
+
+  it("does not invent a consent stamp for a machine that never gave one", () => {
+    // The other direction, and the one that matters more: a default-shaped
+    // write must not put a key on disk implying somebody was asked.
+    writeConfig({ ...DEFAULT_CONFIG, audit: { auto: true, intervalDays: 30 } });
+
+    expect(readConfig().audit.reportsConsentedAt).toBeUndefined();
+    expect(JSON.parse(readFileSync(H.configFile(), "utf8")).audit).not.toHaveProperty(
+      "reports_consented_at",
+    );
   });
 
   it("only an explicit true switches the auto-audit on", () => {

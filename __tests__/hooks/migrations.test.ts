@@ -792,10 +792,16 @@ describe("describePlan", () => {
     const lines = describePlan(2).join("\n");
 
     expect(lines).toContain(`Layout 2 on disk; this build speaks ${LAYOUT_VERSION}`);
-    // Derived from the plan rather than hardcoded: the dry run's job is to state
-    // the real chain, so asserting a literal count would only pin the test to
-    // today's layout while proving nothing about the report being accurate.
-    expect(lines).toContain(`${planMigration(2).length} step(s) would run`);
+    // The COUNT was derived from `planMigration(2)`, which is the function whose
+    // output the report describes — so the assertion held for whatever chain
+    // that returned, including an empty one, and proved nothing about the dry
+    // run being accurate. A dry run's entire job is to state the real chain
+    // before anything is touched, so the steps are named literally here: this
+    // has to fail when layout 5 lands, because that is exactly the moment the
+    // report starts describing a chain nobody checked.
+    expect(lines).toContain("2 step(s) would run");
+    expect(lines).toContain("layout 2 → 3");
+    expect(lines).toContain("layout 3 → 4");
     expect(lines).toContain("config.toml");
     // The promise a dry run makes.
     expect(existsSync(migrationLedgerFile())).toBe(false);

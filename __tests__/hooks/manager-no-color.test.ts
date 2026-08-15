@@ -65,9 +65,20 @@ describe("listHooks — NO_COLOR / --no-color gating", () => {
   });
 
   it("emits ANSI escapes on a color TTY", async () => {
-    delete process.env.NO_COLOR;
+    // Register NO_COLOR with vi.stubEnv (empty = unset) so afterEach's
+    // vi.unstubAllEnvs() restores the worker's original value instead of
+    // leaving it deleted for later tests.
+    vi.stubEnv("NO_COLOR", "");
     await listHooks(tmp);
-    expect(lines.join("\n")).toContain(ESC);
+    const out = lines.join("\n");
+    // The convention-policy section renders a colored status for the seeded
+    // team-policies.mjs (a green "✓ ON" when its `import "failproofai"` resolves,
+    // or a red "✗ failed to load" when the bare specifier can't resolve in this
+    // env). Either way manager.ts wraps that span in an ANSI escape — assert on
+    // the row so the test measures manager.ts's own gated output, not incidental
+    // color from elsewhere.
+    expect(out).toContain("team-policies.mjs");
+    expect(out).toMatch(/\x1B\[3[0-9]m/); // a foreground-color span from the status row
   });
 
   it("emits zero ESC bytes when NO_COLOR is set", async () => {
@@ -75,8 +86,8 @@ describe("listHooks — NO_COLOR / --no-color gating", () => {
     await listHooks(tmp);
     const out = lines.join("\n");
     expect(out).not.toContain(ESC);
-    // The plain text still renders — header and the convention section's
-    // filename column are printed regardless of whether the policy loads.
+    // The same rows still render as plain text — the header and the convention
+    // section's status/filename — proving only the color wrapping was dropped.
     expect(out).toContain("Failproof AI");
     expect(out).toContain("team-policies.mjs");
   });

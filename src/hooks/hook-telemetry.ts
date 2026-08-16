@@ -59,8 +59,9 @@ export async function trackHookEvent(
   properties?: Record<string, unknown>,
 ): Promise<void> {
   // Honours the config file as well as the env var — the env var alone cannot
-  // reach a system-scope daemon. Memoised, so this stays off the hook path's
-  // latency budget. See lib/telemetry-enabled.ts.
+  // reach a system-scope daemon. Resolved fresh on every call, NOT memoised:
+  // an opt-out a long-lived process ignores until restart is not an opt-out.
+  // See lib/telemetry-enabled.ts for why that cost is affordable here.
   if (!isTelemetryEnabled()) return;
 
   const p = sendEvent(distinctId, event, properties);

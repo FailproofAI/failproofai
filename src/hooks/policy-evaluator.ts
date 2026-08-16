@@ -505,6 +505,70 @@ export async function evaluatePolicies(
         };
       }
 
+      // grok: deny is `{decision:"deny", reason}` on stdout at exit 0 — verified
+      // live against grok 1.0.3, and it beat `--yolo` (bypassPermissions). grok
+      // does NOT read Claude's hookSpecificOutput shape: the same hook emitting
+      // Claude's shape let the command run, emitting this one blocked it.
+      //
+      // Stop takes `{decision:"block", reason}` instead (Claude's turn-end
+      // vocabulary, which grok shares) — but ONLY on a real turn end. grok fires
+      // Stop a second time at session shutdown (`reason: "shutdown"`) and
+      // explicitly discards that decision, so blocking there would record
+      // enforcement that cannot happen. Falling through to allow is correct:
+      // the turn is already over. grok caps continuations at 8 per turn.
+      if (session?.cli === "grok") {
+        if (eventType === "Stop" || eventType === "SubagentStop") {
+          const grokStopReason = typeof payload.reason === "string" ? payload.reason : undefined;
+          if (eventType === "Stop" && grokStopReason && grokStopReason !== "end_turn") {
+            return {
+              exitCode: 0,
+              stdout: "",
+              stderr: "",
+              policyName: policy.name,
+              reason,
+              decision: "allow",
+            };
+          }
+          const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify({ decision: "block", reason: reasonText }),
+            stderr: "",
+            policyName: policy.name,
+            reason,
+            decision: "deny",
+          };
+        }
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "deny", reason: blockedMessage }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
+      // qwen: PreToolUse honors Claude's own
+      // `hookSpecificOutput.permissionDecision` shape (verified live — it beat
+      // `-y`), so that event deliberately falls through to the generic Claude
+      // branch below rather than being duplicated here. Stop is the divergence:
+      // it reads the top-level `{decision:"block", reason}` instead, which is
+      // what forces another turn (verified live — the agent ran the required
+      // command and only then finished). Unlike grok there is no session-end
+      // Stop fire to filter out.
+      if (session?.cli === "qwen" && (eventType === "Stop" || eventType === "SubagentStop")) {
+        const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "block", reason: reasonText }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
       if (eventType === "PreToolUse") {
         const response = {
           hookSpecificOutput: {
@@ -1094,6 +1158,53 @@ export async function evaluatePolicies(
           permission: "allow",
           reason: `Note from failproofai: ${combined}`,
         }),
+        stderr: stderrMsg + "\n",
+        policyName: policyNames[0],
+        policyNames,
+        reason: combined,
+        decision: "allow",
+      };
+    }
+
+    // grok: instruct has a channel only at the turn boundary. On Stop we reuse
+    // the verified `{decision:"block", reason}` force-retry shape so the
+    // instruction actually reaches the model (grok also documents a softer
+    // `hookSpecificOutput.additionalContext` for Stop, but that path is not
+    // verified and "block" is). The `end_turn` guard is the same one the deny
+    // branch uses — the session-shutdown fire has no turn left to instruct.
+    // On every other event grok has no additional-context channel, so instruct
+    // degrades to allow + a stderr note (like Hermes/Goose/Factory); emitting
+    // Claude's hookSpecificOutput there would be a shape grok discards.
+    //
+    // qwen deliberately has NO branch here: it honors Claude's
+    // `hookSpecificOutput.additionalContext` on PreToolUse/PostToolUse/
+    // UserPromptSubmit (wrapping it in a `<qwen:user-prompt-submit-context>`
+    // provenance tag), so the generic path below is already correct for it.
+    if (session?.cli === "grok") {
+      const stderrMsg = allowEntries
+        .map((e) => `[failproofai] ${e.policyName}: ${e.reason}`)
+        .join("\n");
+      const grokStopReason = typeof payload.reason === "string" ? payload.reason : undefined;
+      const atRealTurnEnd =
+        eventType === "SubagentStop" ||
+        (eventType === "Stop" && (!grokStopReason || grokStopReason === "end_turn"));
+      if (atRealTurnEnd) {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            decision: "block",
+            reason: `Instruction from failproofai: ${combined}`,
+          }),
+          stderr: stderrMsg + "\n",
+          policyName: policyNames[0],
+          policyNames,
+          reason: combined,
+          decision: "instruct",
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout: "",
         stderr: stderrMsg + "\n",
         policyName: policyNames[0],
         policyNames,

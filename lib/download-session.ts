@@ -125,6 +125,21 @@ export async function resolveDownloadSource(
     return path ? { kind: "file", path } : null;
   }
 
+  if (cli === "grok") {
+    // grok writes a real chat_history.jsonl per session directory — stream it
+    // verbatim (no synthesis, like Factory).
+    const { findGrokTranscript } = await import("./grok-sessions");
+    const path = findGrokTranscript(sessionId);
+    return path ? { kind: "file", path } : null;
+  }
+
+  if (cli === "qwen") {
+    // qwen writes a real JSONL transcript per session — stream it verbatim.
+    const { findQwenTranscript } = await import("./qwen-sessions");
+    const path = findQwenTranscript(sessionId);
+    return path ? { kind: "file", path } : null;
+  }
+
   if (cli === "devin") {
     // Devin keeps sessions in SQLite (~/.local/share/devin/cli/sessions.db).
     // Synthesize a JSONL export of the session's raw chat_message rows.

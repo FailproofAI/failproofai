@@ -82,7 +82,7 @@ afterEach(() => {
 describe("integrations registry", () => {
   it("listIntegrations returns claude, codex, copilot, cursor, opencode, pi, hermes, and openclaw in declared order", () => {
     const ids = listIntegrations().map((i) => i.id);
-    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
+    expect(ids).toEqual(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen"]);
   });
 
   it("getIntegration('claude') returns claudeCode", () => {

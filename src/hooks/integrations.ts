@@ -38,6 +38,10 @@ import {
   ANTIGRAVITY_HOOK_EVENT_TYPES,
   ANTIGRAVITY_HOOK_SCOPES,
   GOOSE_HOOK_EVENT_TYPES,
+  GROK_HOOK_EVENT_TYPES,
+  GROK_HOOK_SCOPES,
+  QWEN_HOOK_EVENT_TYPES,
+  QWEN_HOOK_SCOPES,
   GOOSE_HOOK_SCOPES,
   FAILPROOFAI_HOOK_MARKER,
   INTEGRATION_TYPES,
@@ -2282,6 +2286,279 @@ export const goose: Integration = {
 // type error. `hermes` now has BOTH an audit adapter
 // (src/audit/cli-adapters/hermes.ts) AND live-hook install support, so it is
 // registered here.
+// ── grok (xAI grok CLI) integration ─────────────────────────────────────────
+//
+// grok reads Claude's NESTED hook schema out of its own directory: every
+// `*.json` under `~/.grok/hooks/` (user, always trusted) or
+// `<repo>/.grok/hooks/` (project). We own one file, `failproofai.json`, so the
+// install never has to merge with a user's other hook files — the same
+// arrangement as Copilot's `.github/hooks/failproofai.json`.
+//
+// `timeout` is in SECONDS (grok's default is 5, which is too tight for a cold
+// `npx` start; 30 matches what the other second-based CLIs use here).
+//
+// TWO project-scope conditions that are NOT in grok's docs and were found by
+// probing grok 1.0.3 — both silently produce a config that never fires:
+//   • the directory must be a GIT REPO (a trusted non-git dir logs
+//     `project_sources=0`), and
+//   • the folder must be TRUSTED (`grok --trust` or `/hooks-trust`).
+// `projectScopeWarning()` below reports the first; the second is surfaced in
+// the install output, since neither has any other detector.
+//
+// Deny/instruct semantics live in policy-evaluator.ts's `cli === "grok"` branch
+// (grok's OWN `{decision:"deny"}` / `{decision:"block"}` shapes — it ignores
+// Claude's hookSpecificOutput deny, verified by A/B on a live session).
+const grok: Integration = {
+  id: "grok",
+  displayName: "grok CLI",
+  scopes: GROK_HOOK_SCOPES,
+  eventTypes: GROK_HOOK_EVENT_TYPES,
+
+  getSettingsPath(scope, cwd) {
+    const base = cwd ? resolve(cwd) : process.cwd();
+    switch (scope) {
+      case "user":
+        return resolve(homedir(), ".grok", "hooks", "failproofai.json");
+      case "project":
+      case "local":
+        // grok has no "local" scope; fall back to project so callers don't crash.
+        return resolve(base, ".grok", "hooks", "failproofai.json");
+    }
+  },
+
+  readSettings(settingsPath) {
+    return readJsonFile(settingsPath);
+  },
+
+  writeSettings(settingsPath, settings) {
+    writeJsonFile(settingsPath, settings);
+  },
+
+  buildHookEntry(binaryPath, eventType, scope) {
+    const command =
+      scope === "project"
+        ? `npx -y failproofai --hook ${eventType} --cli grok`
+        : `"${binaryPath}" --hook ${eventType} --cli grok`;
+    return {
+      type: "command",
+      command,
+      // grok reads `timeout` in SECONDS. Its own default is 5s (600s for
+      // Stop/SubagentStop); 30 leaves room for a cold `npx` start without
+      // stalling the UI, and a timed-out hook fails OPEN on grok.
+      timeout: 30,
+      [FAILPROOFAI_HOOK_MARKER]: true,
+    };
+  },
+
+  isFailproofaiHook: isMarkedHook,
+
+  writeHookEntries(settings, binaryPath, scope) {
+    const s = settings as ClaudeSettings;
+    if (!s.hooks) s.hooks = {};
+
+    for (const eventType of GROK_HOOK_EVENT_TYPES) {
+      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
+      if (!s.hooks[eventType]) s.hooks[eventType] = [];
+      const matchers: ClaudeHookMatcher[] = s.hooks[eventType];
+
+      let found = false;
+      for (const matcher of matchers) {
+        if (!matcher.hooks) continue;
+        const idx = matcher.hooks.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
+        if (idx >= 0) {
+          matcher.hooks[idx] = hookEntry;
+          found = true;
+          break;
+        }
+      }
+      // No `matcher` key: an omitted matcher matches every tool. Do NOT write
+      // `"*"` here — grok treats a matcher as a REGEX, and the same bare `"*"`
+      // is an invalid pattern that matches nothing on Goose.
+      if (!found) matchers.push({ hooks: [hookEntry] });
+    }
+  },
+
+  removeHooksFromFile(settingsPath) {
+    const settings = this.readSettings(settingsPath) as ClaudeSettings;
+    if (!settings.hooks) return 0;
+
+    let removed = 0;
+    for (const eventType of Object.keys(settings.hooks)) {
+      const matchers = settings.hooks[eventType];
+      if (!Array.isArray(matchers)) continue;
+      for (let i = matchers.length - 1; i >= 0; i--) {
+        const matcher = matchers[i];
+        if (!matcher.hooks) continue;
+        const before = matcher.hooks.length;
+        matcher.hooks = matcher.hooks.filter((h) => !isMarkedHook(h as Record<string, unknown>));
+        removed += before - matcher.hooks.length;
+        if (matcher.hooks.length === 0) matchers.splice(i, 1);
+      }
+      if (matchers.length === 0) delete settings.hooks[eventType];
+    }
+    if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+
+    this.writeSettings(settingsPath, settings as Record<string, unknown>);
+    return removed;
+  },
+
+  hooksInstalledInSettings(scope, cwd) {
+    const settingsPath = this.getSettingsPath(scope, cwd);
+    if (!existsSync(settingsPath)) return false;
+    try {
+      const settings = this.readSettings(settingsPath) as ClaudeSettings;
+      if (!settings.hooks) return false;
+      for (const matchers of Object.values(settings.hooks)) {
+        if (!Array.isArray(matchers)) continue;
+        for (const matcher of matchers) {
+          if (!matcher.hooks) continue;
+          if (matcher.hooks.some((h) => isMarkedHook(h as Record<string, unknown>))) return true;
+        }
+      }
+    } catch {
+      // Corrupt settings — treat as not installed
+    }
+    return false;
+  },
+
+  detectInstalled() {
+    return binaryExists("grok");
+  },
+};
+
+// ── qwen (Qwen Code) integration ────────────────────────────────────────────
+//
+// qwen keeps hooks under a Claude-style `"hooks"` key inside its normal
+// settings file, which also holds `model`, `modelProviders`, auth, etc. — so
+// reads/writes go through the merge-preserving readJsonFile/writeJsonFile
+// helpers (like Claude/Copilot/Devin), never a whole-file replace.
+//   user    → ~/.qwen/settings.json
+//   project → <cwd>/.qwen/settings.json
+//
+// The one shape difference from every other integration: `timeout` is in
+// MILLISECONDS (qwen's default is 60000). Do not "unify" it with the
+// seconds-based CLIs — 30 would mean 30ms and every hook would time out.
+//
+// Deny is Claude's own `hookSpecificOutput.permissionDecision` on PreToolUse
+// (so no evaluator branch is needed for it); only Stop diverges. See the
+// `cli === "qwen"` branch in policy-evaluator.ts.
+const qwen: Integration = {
+  id: "qwen",
+  displayName: "Qwen Code",
+  scopes: QWEN_HOOK_SCOPES,
+  eventTypes: QWEN_HOOK_EVENT_TYPES,
+
+  getSettingsPath(scope, cwd) {
+    const base = cwd ? resolve(cwd) : process.cwd();
+    switch (scope) {
+      case "user":
+        return resolve(homedir(), ".qwen", "settings.json");
+      case "project":
+      case "local":
+        // qwen has no "local" scope; fall back to project so callers don't crash.
+        return resolve(base, ".qwen", "settings.json");
+    }
+  },
+
+  readSettings(settingsPath) {
+    return readJsonFile(settingsPath);
+  },
+
+  writeSettings(settingsPath, settings) {
+    writeJsonFile(settingsPath, settings);
+  },
+
+  buildHookEntry(binaryPath, eventType, scope) {
+    const command =
+      scope === "project"
+        ? `npx -y failproofai --hook ${eventType} --cli qwen`
+        : `"${binaryPath}" --hook ${eventType} --cli qwen`;
+    return {
+      type: "command",
+      command,
+      name: `failproofai-${eventType}`,
+      // MILLISECONDS — qwen is the only integration that is not seconds-based.
+      // 30000 = 30s, matching the wall-clock budget the others use.
+      timeout: 30000,
+      [FAILPROOFAI_HOOK_MARKER]: true,
+    };
+  },
+
+  isFailproofaiHook: isMarkedHook,
+
+  writeHookEntries(settings, binaryPath, scope) {
+    const s = settings as ClaudeSettings;
+    if (!s.hooks) s.hooks = {};
+
+    for (const eventType of QWEN_HOOK_EVENT_TYPES) {
+      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
+      if (!s.hooks[eventType]) s.hooks[eventType] = [];
+      const matchers: ClaudeHookMatcher[] = s.hooks[eventType];
+
+      let found = false;
+      for (const matcher of matchers) {
+        if (!matcher.hooks) continue;
+        const idx = matcher.hooks.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
+        if (idx >= 0) {
+          matcher.hooks[idx] = hookEntry;
+          found = true;
+          break;
+        }
+      }
+      // Matcher omitted = match every tool. qwen also accepts `""`/`"*"`, but an
+      // omitted key is the one form that is unambiguous across all of them.
+      if (!found) matchers.push({ hooks: [hookEntry] });
+    }
+  },
+
+  removeHooksFromFile(settingsPath) {
+    const settings = this.readSettings(settingsPath) as ClaudeSettings;
+    if (!settings.hooks) return 0;
+
+    let removed = 0;
+    for (const eventType of Object.keys(settings.hooks)) {
+      const matchers = settings.hooks[eventType];
+      if (!Array.isArray(matchers)) continue;
+      for (let i = matchers.length - 1; i >= 0; i--) {
+        const matcher = matchers[i];
+        if (!matcher.hooks) continue;
+        const before = matcher.hooks.length;
+        matcher.hooks = matcher.hooks.filter((h) => !isMarkedHook(h as Record<string, unknown>));
+        removed += before - matcher.hooks.length;
+        if (matcher.hooks.length === 0) matchers.splice(i, 1);
+      }
+      if (matchers.length === 0) delete settings.hooks[eventType];
+    }
+    if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+
+    this.writeSettings(settingsPath, settings as Record<string, unknown>);
+    return removed;
+  },
+
+  hooksInstalledInSettings(scope, cwd) {
+    const settingsPath = this.getSettingsPath(scope, cwd);
+    if (!existsSync(settingsPath)) return false;
+    try {
+      const settings = this.readSettings(settingsPath) as ClaudeSettings;
+      if (!settings.hooks) return false;
+      for (const matchers of Object.values(settings.hooks)) {
+        if (!Array.isArray(matchers)) continue;
+        for (const matcher of matchers) {
+          if (!matcher.hooks) continue;
+          if (matcher.hooks.some((h) => isMarkedHook(h as Record<string, unknown>))) return true;
+        }
+      }
+    } catch {
+      // Corrupt settings — treat as not installed
+    }
+    return false;
+  },
+
+  detectInstalled() {
+    return binaryExists("qwen");
+  },
+};
+
 const INTEGRATIONS: Partial<Record<IntegrationType, Integration>> = {
   claude: claudeCode,
   codex,
@@ -2295,6 +2572,8 @@ const INTEGRATIONS: Partial<Record<IntegrationType, Integration>> = {
   devin,
   antigravity,
   goose,
+  grok,
+  qwen,
 };
 
 export function getIntegration(id: IntegrationType): Integration {

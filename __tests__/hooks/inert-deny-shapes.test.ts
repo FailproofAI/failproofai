@@ -86,4 +86,56 @@ describe("deny shapes the CLI actually reads", () => {
     expect(stdout.decision).toBe("block");
     expect(stdout.reason).not.toContain("MANDATORY ACTION REQUIRED");
   });
+
+  // ── grok ──────────────────────────────────────────────────────────────────
+  // Verified live against grok 1.0.3 by A/B on one hook: emitting Claude's
+  // hookSpecificOutput shape let `echo` run; emitting {decision:"deny"} blocked
+  // it, overriding --yolo. This is the shape that made the difference.
+  it("grok PreToolUse uses {decision:'deny'}, NOT Claude's hookSpecificOutput", async () => {
+    const { result, stdout } = await denyOn("grok", "PreToolUse", { tool_name: "Bash" });
+    expect(result.exitCode).toBe(0);
+    expect(stdout.decision).toBe("deny");
+    expect(typeof stdout.reason).toBe("string");
+    // The shape grok ignores must NOT be what we send.
+    expect(stdout.hookSpecificOutput).toBeUndefined();
+  });
+
+  it("grok Stop forces a retry on a real turn end", async () => {
+    const { stdout } = await denyOn("grok", "Stop", { reason: "end_turn" });
+    expect(stdout.decision).toBe("block");
+    expect(stdout.reason).toContain("MANDATORY ACTION REQUIRED");
+  });
+
+  it("grok Stop does NOT block the session-shutdown fire", async () => {
+    // grok fires Stop a second time at shutdown and discards the decision.
+    // Emitting a block there would record enforcement that cannot happen, so
+    // the branch must fall through to allow instead.
+    const { result } = await denyOn("grok", "Stop", { reason: "shutdown" });
+    expect(result.decision).toBe("allow");
+    expect(result.stdout).toBe("");
+  });
+
+  it("grok Stop still blocks when no reason is present", async () => {
+    // Fail toward enforcement: an unlabelled Stop is treated as a real one.
+    const { stdout } = await denyOn("grok", "Stop");
+    expect(stdout.decision).toBe("block");
+  });
+
+  // ── qwen ──────────────────────────────────────────────────────────────────
+  it("qwen PreToolUse keeps Claude's permissionDecision shape", async () => {
+    // qwen honors Claude's own PreToolUse contract (verified live — it beat
+    // -y), so it must fall through to the generic branch, not grow a copy.
+    const { stdout } = await denyOn("qwen", "PreToolUse", { tool_name: "Bash" });
+    expect(stdout.hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(typeof stdout.hookSpecificOutput.permissionDecisionReason).toBe("string");
+  });
+
+  it("qwen Stop uses the top-level block shape, not permissionDecision", async () => {
+    const { stdout } = await denyOn("qwen", "Stop", { stop_hook_active: true });
+    expect(stdout.decision).toBe("block");
+    expect(stdout.reason).toContain("MANDATORY ACTION REQUIRED");
+    // Note stop_hook_active is true on qwen's FIRST fire, so it must not be
+    // used as an "already retrying" guard here.
+    expect(stdout.hookSpecificOutput).toBeUndefined();
+  });
 });

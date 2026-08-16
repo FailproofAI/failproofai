@@ -25,6 +25,9 @@ import {
   ANTIGRAVITY_TOOL_INPUT_MAP,
   GOOSE_TOOL_MAP,
   GOOSE_TOOL_INPUT_MAP,
+  GROK_TOOL_MAP,
+  GROK_TOOL_INPUT_MAP,
+  QWEN_TOOL_MAP,
 } from "./types";
 
 /**
@@ -56,6 +59,12 @@ export function canonicalizeToolName(
   // Goose: shell→Bash, write/edit/view→file ops, todo__todo_write→TodoWrite, …
   // (verified live against goose v1.43.0). Handles bare + `<ext>__<tool>` names.
   if (cli === "goose") return GOOSE_TOOL_MAP[raw] ?? raw;
+  // grok: run_terminal_command→Bash, write/read_file/search_replace→file ops, …
+  // (every entry observed on the wire against grok 1.0.3).
+  if (cli === "grok") return GROK_TOOL_MAP[raw] ?? raw;
+  // qwen: run_shell_command→Bash, write_file/read_file/edit→file ops, …
+  // (verified live against qwen-code 0.21.12).
+  if (cli === "qwen") return QWEN_TOOL_MAP[raw] ?? raw;
   return raw;
 }
 
@@ -95,6 +104,11 @@ export function canonicalizeToolInput(
   // Goose file tools (write/edit/view) deliver the path as `path`, read_image as
   // `source`; map to `file_path` so path builtins fire (verified goose v1.43.0).
   else if (cli === "goose") perToolMap = GOOSE_TOOL_INPUT_MAP[toolName];
+  // grok's read_file delivers `target_file` and list_dir `target_directory`;
+  // every other grok tool is already canonical. Without the Read entry a live
+  // `.env` read walks past block-env-files (verified grok 1.0.3). qwen needs no
+  // entry at all — all six of its tools deliver canonical keys.
+  else if (cli === "grok") perToolMap = GROK_TOOL_INPUT_MAP[toolName];
   if (!perToolMap) return rawInput;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rawInput as Record<string, unknown>)) {

@@ -64,6 +64,8 @@ const CONFIGS = [
   { file: ".devin/config.json", cli: "devin", count: 7 },
   { file: ".agents/hooks.json", cli: "antigravity", count: 4 },
   { file: ".agents/plugins/failproofai/hooks/hooks.json", cli: "goose", count: 5 },
+  { file: ".grok/hooks/failproofai.json", cli: "grok", count: 8 },
+  { file: ".qwen/settings.json", cli: "qwen", count: 12 },
 ];
 
 describe.each(CONFIGS)("$file", ({ file, cli, count }) => {

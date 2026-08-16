@@ -819,10 +819,186 @@ For production users the recommended Goose install is:
 failproofai policies --install --cli goose --scope project
 ```
 
-### Dogfood configs for Factory / Devin / Antigravity / Goose
+### grok hooks (`~/.grok/hooks/failproofai.json` / `.grok/hooks/failproofai.json`)
+
+xAI's **grok** CLI is the 13th integration — **dual-pillar** (live hooks + audit),
+**user + project** scope, Claude/Codex-style external shell hooks. The whole contract
+below was **verified live against grok 1.0.3 (1a29d5bc12)** with a recorder hook on all
+14 events plus deny and stop-gate probes. Binary probe: `grok`.
+
+**Schema is Claude's nested form**, in its own directory — grok loads every `*.json`
+under `~/.grok/hooks/` (user, always trusted) or `<repo>/.grok/hooks/` (project). We own
+one file, `failproofai.json`, so install never merges with the user's other hook files
+(same arrangement as Copilot's `.github/hooks/failproofai.json`). `timeout` is in
+**seconds** (grok's default 5; 600 for Stop/SubagentStop). The matcher is **omitted** —
+grok treats it as a regex, and an omitted matcher matches every tool.
+
+**`grok` READS OTHER CLIS' HOOK CONFIGS — this is the most important fact here.**
+Discovery scans, by default (`[compat.claude] hooks = true`):
+
+```
+global : ~/.grok/hooks/  ~/.claude/settings.json  ~/.claude/settings.local.json  ~/.cursor/hooks.json
+project: <cwd>/.claude/settings.json  <cwd>/.claude/settings.local.json  <cwd>/.grok/hooks/  <cwd>/.cursor/hooks.json
+```
+
+`<cwd>/.claude/settings.json` is exactly what `policies --install --cli claude --scope
+project` writes, so **grok executes our Claude hooks**, passing `--cli claude` while
+piping its own camelCase payload. That made every such hook **inert**: `tool_name` and
+`tool_input` arrived `undefined`, so every content/path builtin allowed — and a deny
+would not have landed anyway, since grok ignores Claude's `hookSpecificOutput` shape
+(A/B verified on one live hook). `resolveEffectiveCli()` in `normalize-cli-payload.ts`
+detects grok's envelope **from the payload shape only** (`hookEventName` +
+`workspaceRoot`, no `hook_event_name` — a shape Claude never sends; never an env var,
+which could misread a real Claude event) and re-routes onto grok's contract. Note the
+mirror case is **not** true: a Cursor-schema `~/.cursor/hooks.json` loads `count=0` —
+grok accepts Cursor's event *names* but expects the nested Claude *structure*.
+
+Consequence worth knowing: in a repo carrying **both** `.claude/settings.json` and
+`.grok/hooks/failproofai.json` (this repo does), a grok session fires **both**, so every
+tool call is evaluated twice. Harmless — identical verdicts, deny wins — but it doubles
+hook latency.
+
+**Two undocumented project-scope conditions, each a silent no-op:**
+
+| Condition | Symptom |
+|---|---|
+| The directory must be a **git repo** | A *trusted* non-git dir with a valid `.grok/hooks/*.json` logs `project_sources=0`; the hook never fires |
+| The folder must be **trusted** | `grok --trust` or `/hooks-trust`; until then project hooks are silently skipped |
+
+Neither is in grok's hooks doc. Verified by A/B: the only change between
+`project_sources=0` and `project_sources=4` was `git init`. User scope
+(`~/.grok/hooks/`) needs neither.
+
+**Wire format — camelCase envelope, snake_case event *value*.** `hookEventName`
+(`"pre_tool_use"`), `sessionId`, `cwd`, `workspaceRoot`, `transcriptPath`,
+`permissionMode`, `toolName`, `toolInput`, `toolUseId`. `normalizeCliPayload`'s `grok`
+branch maps these to snake_case, including `toolResult` → `tool_response` (grok does
+**not** use Claude's key) and `workspaceRoot` → `cwd`. `hookEventName` is deliberately
+**not** mapped — its value is snake_case while the canonical set is PascalCase, and the
+`--hook` arg already carries the right name, so there is **no `GROK_EVENT_MAP`**.
+
+**Tool surface** (`GROK_TOOL_MAP`, every entry observed on the wire):
+`run_terminal_command→Bash`, `write→Write`, `read_file→Read`, `search_replace→Edit`,
+`grep→Grep`, `list_dir→LS`. grok's own docs disagree on the shell tool —
+the hooks doc says `run_terminal_command` (what the wire sends), the headless doc says
+`run_terminal_cmd`; both are mapped. **`GROK_TOOL_INPUT_MAP` has exactly two entries**:
+`read_file` delivers the path as **`target_file`** and `list_dir` as
+**`target_directory`**. The first is load-bearing — without it a live `.env` read passes
+`block-env-files`, the identical bug `COPILOT_TOOL_INPUT_MAP` was added to fix.
+
+**Response shapes** (`policy-evaluator.ts`, `cli === "grok"`):
+
+| Case | Shape (exit 0) |
+|------|----------------|
+| Deny on tool/prompt events | `{decision:"deny", reason}` — VERIFIED, beat `--yolo` |
+| Deny on `Stop`/`SubagentStop` | `{decision:"block", reason: <MANDATORY ACTION text>}` — VERIFIED force-retry |
+| Instruct on `Stop` | the same block shape (grok also documents `hookSpecificOutput.additionalContext` there; unverified, so we use the proven one) |
+| Instruct on other events | stderr note only (degrade like Hermes/Goose) |
+
+**`Stop` fires TWICE per session** and only the first is actionable: once per real turn
+end (`reason: "end_turn"`) and once at shutdown (`reason: "shutdown"`), whose decision
+grok parses and then **discards**. The Stop branch gates on `reason === "end_turn"`;
+blocking on the shutdown fire would log and count a deny that can never be acted on. An
+unlabelled Stop is treated as real, so the failure mode leans toward enforcement.
+Captured sequence for one turn: `end_turn`/`stopHookActive=false` (we blocked) → the
+agent ran the required command → `end_turn`/`stopHookActive=true` (allowed) →
+`shutdown`. grok caps continuations at **8 per turn**.
+
+Env injected on every hook: `GROK_HOOK_EVENT`, `GROK_HOOK_NAME`, `GROK_SESSION_ID`,
+`GROK_WORKSPACE_ROOT`, and **`CLAUDE_PROJECT_DIR`** (a Claude-compatible alias).
+
+**Audit pillar.** `~/.grok/sessions/<percent-encoded-cwd>/<sessionId>/` — **percent**
+encoding (`%2Fhome%2Fyou%2Frepo`), NOT the dash style Claude/Factory/Qwen use, so
+`lib/grok-sessions.ts` decodes with `decodeURIComponent` and grok project folders do not
+merge with Claude's by slug (cwd filtering still works). Each session dir holds
+`chat_history.jsonl` (the turns), `events.jsonl`, and `summary.json` (`info.cwd`,
+`session_summary`, `created_at`, `num_messages`). Two parser consequences:
+`chat_history.jsonl` carries **no timestamps**, so `grokLinesToLogEntries` takes an
+explicit `startMs` (summary.json's `created_at`) and lays turns 1ms apart — ordering
+exact, per-turn wall-clock honestly synthesized; and `tool_calls[].arguments` is a JSON
+**string**, parsed on the way in. Only `user` lines carrying `prompt_index` are real
+operator turns (grok also writes its environment preamble and `synthetic_reason`
+reminders as `user` lines). `GROK_HOME` overrides the home dir for tests.
+
+For production users the recommended grok install is:
+```bash
+failproofai policies --install --cli grok --scope project
+```
+
+### Qwen Code hooks (`~/.qwen/settings.json` / `.qwen/settings.json`)
+
+**Qwen Code** (`qwen`, Alibaba) is the 14th integration — **dual-pillar**, **user +
+project** scope, and the **cheapest integration in the codebase**: it is a near-pure
+Claude clone on the wire, so it needs **no event map, no payload normalization, and no
+tool-input map**. Verified live against **@qwen-code/qwen-code 0.21.12**.
+
+Hooks live under a Claude-style `"hooks"` key inside qwen's normal settings file, which
+also holds `model`, `modelProviders` and auth — so reads/writes go through the
+merge-preserving `readJsonFile`/`writeJsonFile` helpers, never a whole-file replace.
+
+| Scope   | Path                        |
+|---------|-----------------------------|
+| user    | `~/.qwen/settings.json`     |
+| project | `<cwd>/.qwen/settings.json` |
+
+**`timeout` is in MILLISECONDS** (qwen's default 60000) — the only integration that is
+not seconds-based. Do not unify it with the others: `30` would mean 30ms and every hook
+would time out. `disableAllHooks: true` and `--safe-mode` each disable every hook.
+
+**Wire format is pure Claude snake_case**: `hook_event_name` (PascalCase *value*, unlike
+grok), `session_id`, `transcript_path`, `cwd`, `permission_mode`, `tool_name`,
+`tool_input`, `tool_response`, `stop_hook_active`.
+
+**Tool surface** (`QWEN_TOOL_MAP`): `run_shell_command→Bash`, `read_file→Read`,
+`write_file→Write`, `edit→Edit`, `grep_search→Grep`, `list_directory→LS` (plus qwen's
+legacy `ReadFile`/`WriteFile` matcher aliases). There is deliberately **no
+`QWEN_TOOL_INPUT_MAP`** — all six deliver canonical keys already.
+
+**Response shapes.** PreToolUse honours Claude's own
+`hookSpecificOutput.permissionDecision` (`allow`/`deny`/`ask`), VERIFIED live beating
+`-y`, so it falls through to the generic Claude branch rather than being duplicated;
+`"ask"` degrades to deny in headless runs and background subagents. Only **`Stop`**
+diverges — it reads the top-level `{decision:"block", reason}`, VERIFIED forcing another
+turn — which is all the `cli === "qwen"` branch in `policy-evaluator.ts` handles.
+**Instruct is a real channel** here (`hookSpecificOutput.additionalContext` on
+PreToolUse/PostToolUse/UserPromptSubmit, wrapped in a
+`<qwen:user-prompt-submit-context>` provenance tag), putting qwen ahead of
+Hermes/Goose/Factory, which all degrade instruct to a stderr note.
+
+**Two behaviours that will bite a policy author:**
+
+- **`stop_hook_active` is `true` on the FIRST Stop fire**, before anything has blocked
+  (verified live). It is NOT a usable "already retrying" signal on qwen, and no
+  failproofai loop guard may depend on it. Unlike grok there is no session-end Stop fire.
+- **`UserPromptSubmit` fires per MODEL INVOCATION, not per user prompt** — one observed
+  turn produced **four**, one per tool-result continuation. qwen's docs confirm it covers
+  UserQuery/ToolResult/Hook sends and warn that `prompt` is not necessarily user input.
+  `submitted_prompt` is present only for interactive-TUI submissions (absent in headless,
+  ACP, `serve`, SDK), so it identifies real submissions but cannot be a general filter.
+
+**Audit pillar.** `~/.qwen/projects/<dash-encoded-cwd>/chats/<sessionId>.jsonl` —
+Claude-style encoded-cwd folders, but note the extra `chats/` level. Every line carries
+`{uuid, parentUuid, sessionId, cwd, timestamp, type}`, and a real per-line `cwd` means
+audit groups by project like Claude/Devin/Goose. The message body is **Gemini-shaped,
+not Claude-shaped**: `message.parts[]` of `{text}` / `{functionCall:{id,name,args}}` /
+`{functionResponse:{id,name,response}}`, with the assistant role spelled `"model"` — so
+`lib/qwen-sessions.ts` is NOT a clone of `factory-sessions.ts` despite the similar
+layout. A `toolCallResult` sidecar carries the rendered `resultDisplay`, preferred over
+the raw response blob. `QWEN_HOME` overrides the home dir for tests.
+
+**Not failproofai's bug, but worth knowing:** qwen exports the provider API key from its
+settings `env` block into **every hook process's environment**, so any hook a user
+installs can read it.
+
+For production users the recommended Qwen install is:
+```bash
+failproofai policies --install --cli qwen --scope project
+```
+
+### Dogfood configs for Factory / Devin / Antigravity / Goose / grok / Qwen
 
 Like the Codex / Cursor / OpenCode / Pi setups above, this repo ships
-**project-scope dogfood configs** for the four newest CLIs so failproofai
+**project-scope dogfood configs** for the six newest CLIs so failproofai
 enforces on itself when you drive this repo with them. Each uses the dev
 `node scripts/dev-hook.mjs --hook <event> --cli <cli>` command (never the `npx`
 production form — same self-reference caveat as the others):
@@ -833,6 +1009,8 @@ production form — same self-reference caveat as the others):
 | Devin | `.devin/config.json` | Claude `"hooks"` wrapper |
 | Antigravity (`agy`) | `.agents/hooks.json` | named-hook schema under the `failproofai` key |
 | Goose | `.agents/plugins/failproofai/hooks/hooks.json` | Open Plugins (auto-discovered; matcher omitted — a bare `*` matches nothing) |
+| grok | `.grok/hooks/failproofai.json` | Claude nested schema, seconds timeout (matcher omitted; needs `grok --trust` once, and only works because this repo is a git repo) |
+| Qwen (`qwen`) | `.qwen/settings.json` | Claude `"hooks"` wrapper, **milliseconds** timeout |
 
 These were generated from each integration's own `writeHookEntries`, so they
 track the live schema. See each CLI's architecture section above for the full

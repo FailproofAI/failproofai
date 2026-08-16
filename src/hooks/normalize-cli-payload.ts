@@ -10,6 +10,56 @@
  */
 import type { IntegrationType } from "./types";
 
+/**
+ * True when `parsed` carries grok's camelCase envelope.
+ *
+ * This exists because grok EXECUTES OTHER CLIS' HOOK CONFIGS. Its discovery
+ * scans `~/.claude/settings.json`, `~/.claude/settings.local.json`,
+ * `<cwd>/.claude/settings.json` and the `.cursor` equivalents by default
+ * (`[compat.claude] hooks = true`) — and `<cwd>/.claude/settings.json` is
+ * exactly the file `policies --install --cli claude --scope project` writes. So
+ * on any machine with both tools, grok runs OUR hooks and hands them `--cli
+ * claude` on the command line while piping ITS OWN camelCase payload.
+ *
+ * Verified live against grok 1.0.3: the hook fired, `tool_name` and
+ * `tool_input` were both undefined, and every builtin that reads either —
+ * block-sudo, block-env-files, block-secrets-write, block-force-push — allowed.
+ * Installed, running, costing latency, enforcing nothing; strictly worse than
+ * no coverage, because the install reports success. Detecting the envelope lets
+ * handler.ts re-route the event onto grok's path (tool maps AND response
+ * shapes — grok ignores Claude's `hookSpecificOutput.permissionDecision`, also
+ * verified by A/B).
+ *
+ * The test is on the PAYLOAD, never on an env var: `GROK_HOOK_EVENT` is set by
+ * grok's runner but is still just an env var, and mistaking a real Claude event
+ * for a grok one would break Claude's own enforcement. `workspaceRoot` +
+ * `hookEventName` with no `hook_event_name` is a shape Claude never sends.
+ */
+export function isGrokEnvelope(parsed: Record<string, unknown>): boolean {
+  return (
+    typeof parsed.hookEventName === "string" &&
+    typeof parsed.workspaceRoot === "string" &&
+    parsed.hook_event_name === undefined
+  );
+}
+
+/**
+ * The CLI whose contract actually governs this event.
+ *
+ * Identical to the declared `--cli` for every integration except the grok
+ * cross-execution case above, where the flag says `claude` and the wire says
+ * grok. Returning "grok" there routes the rest of the pipeline — tool-name and
+ * tool-input canonicalization, and the response shape policy-evaluator emits —
+ * onto the contract that will actually be honored.
+ */
+export function resolveEffectiveCli(
+  cli: IntegrationType,
+  parsed: Record<string, unknown>,
+): IntegrationType {
+  if (cli === "claude" && isGrokEnvelope(parsed)) return "grok";
+  return cli;
+}
+
 export function normalizeCliPayload(cli: IntegrationType, parsed: Record<string, unknown>): void {
   // Antigravity (agy) pipes a camelCase protojson payload; normalize the fields
   // the handler downstream reads to canonical snake_case BEFORE any
@@ -44,6 +94,33 @@ export function normalizeCliPayload(cli: IntegrationType, parsed: Record<string,
     }
     if (typeof parsed.sessionId === "string" && parsed.session_id === undefined) {
       parsed.session_id = parsed.sessionId;
+    }
+  }
+
+  // grok pipes a camelCase envelope (verified live against grok 1.0.3 with a
+  // recorder hook on all 14 events). Normalize the fields the handler reads to
+  // snake_case BEFORE any canonicalization runs. Note `workspaceRoot` → `cwd`:
+  // grok sends BOTH, they were identical in every capture, and `cwd` is what
+  // resolveCwd + block-read-outside-cwd need. `toolResult` is grok's PostToolUse
+  // output key — it is NOT Claude's `tool_response`, so a sanitize policy
+  // reading the documented Claude key would see nothing without this line.
+  // `hookEventName` is deliberately NOT mapped: its value is snake_case
+  // ("pre_tool_use") whereas the canonical set is PascalCase, and the `--hook`
+  // arg already carries the PascalCase name.
+  if (cli === "grok") {
+    if (typeof parsed.toolName === "string") parsed.tool_name = parsed.toolName;
+    if (parsed.toolInput !== undefined) parsed.tool_input = parsed.toolInput;
+    if (parsed.toolResult !== undefined && parsed.tool_response === undefined) {
+      parsed.tool_response = parsed.toolResult;
+    }
+    if (typeof parsed.sessionId === "string") parsed.session_id = parsed.sessionId;
+    if (typeof parsed.transcriptPath === "string") parsed.transcript_path = parsed.transcriptPath;
+    if (typeof parsed.workspaceRoot === "string" && parsed.cwd === undefined) {
+      parsed.cwd = parsed.workspaceRoot;
+    }
+    if (typeof parsed.permissionMode === "string") parsed.permission_mode = parsed.permissionMode;
+    if (typeof parsed.stopHookActive === "boolean") {
+      parsed.stop_hook_active = parsed.stopHookActive;
     }
   }
 

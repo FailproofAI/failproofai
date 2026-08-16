@@ -31,6 +31,8 @@ import { findCodexTranscript } from "../../lib/codex-sessions";
 import { findCopilotTranscript } from "../../lib/copilot-sessions";
 import { findCursorTranscript } from "../../lib/cursor-sessions";
 import { findPiTranscript } from "../../lib/pi-sessions";
+import { findGrokTranscript } from "../../lib/grok-sessions";
+import { findQwenTranscript } from "../../lib/qwen-sessions";
 import { findFactoryTranscript } from "../../lib/factory-sessions";
 import { findAntigravityTranscript } from "../../lib/antigravity-sessions";
 import type { IntegrationType } from "./types";
@@ -74,6 +76,14 @@ export function resolveTranscriptPath(
       // its live-hook payload carries no transcript file, so hand back a virtual
       // path (like devin) — audit/download read the DB directly.
       return `goose-db://${sessionId}`;
+    case "grok":
+      // grok writes real JSONL at ~/.grok/sessions/<percent-encoded-cwd>/
+      // <sessionId>/chat_history.jsonl.
+      return findGrokTranscript(sessionId) ?? undefined;
+    case "qwen":
+      // qwen writes real JSONL at ~/.qwen/projects/<encoded-cwd>/chats/
+      // <sessionId>.jsonl (note the extra `chats/` level vs Claude/Factory).
+      return findQwenTranscript(sessionId) ?? undefined;
     case "opencode":
       return `opencode-db://${sessionId}`;
     case "hermes":

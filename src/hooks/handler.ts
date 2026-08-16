@@ -25,7 +25,7 @@ import {
   ANTIGRAVITY_EVENT_MAP,
 } from "./types";
 import { canonicalizeToolName, canonicalizeToolInput } from "./tool-name-canonicalize";
-import { normalizeCliPayload } from "./normalize-cli-payload";
+import { normalizeCliPayload, resolveEffectiveCli } from "./normalize-cli-payload";
 import type { PolicyFunction, PolicyResult, HooksConfig } from "./policy-types";
 import { readMergedHooksConfig } from "./hooks-config";
 import { registerBuiltinPolicies } from "./builtin-policies";
@@ -181,7 +181,7 @@ async function runObserved(
  */
 export async function evaluateHookEvent(
   eventType: string,
-  cli: IntegrationType = "claude",
+  declaredCli: IntegrationType = "claude",
   stdinPayload: string,
   opts?: EvaluateHookEventOptions,
 ): Promise<HookEventOutcome> {
@@ -202,10 +202,26 @@ export async function evaluateHookEvent(
         hookLogWarn(`payload parse failed for ${eventType} (${stdinPayload.length} bytes)`);
         void trackHookEvent(getInstanceId(), "hook_payload_parse_error", {
           event_type: eventType,
-          cli,
+          cli: declaredCli,
           payload_size: stdinPayload.length,
         });
       }
+    }
+
+    // grok executes other CLIs' hook configs — including the
+    // `<cwd>/.claude/settings.json` our own claude install writes — passing
+    // `--cli claude` while piping ITS camelCase payload. Resolve the CLI whose
+    // contract actually governs this event BEFORE anything reads `cli`, so both
+    // halves land on grok's path: the tool maps (without which every builtin
+    // reads undefined) and the response shape (grok ignores Claude's
+    // hookSpecificOutput deny — verified by A/B against a live session).
+    // No-op for every other CLI. See normalize-cli-payload.ts:isGrokEnvelope.
+    const cli = resolveEffectiveCli(declaredCli, parsed);
+    if (cli !== declaredCli) {
+      hookLogWarn(
+        `payload for ${eventType} is a ${cli} envelope but --cli says ${declaredCli}; ` +
+          `evaluating with the ${cli} contract`,
+      );
     }
 
     normalizeCliPayload(cli, parsed);

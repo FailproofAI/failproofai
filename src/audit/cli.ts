@@ -2,8 +2,11 @@
  * `failproofai audit` — run a local audit of your agent-CLI history, then open
  * the dashboard to view it.
  *
- *   failproofai audit          Scan, then launch the dashboard at /audit.
- *   failproofai audit --help   Show usage.
+ *   failproofai audit                Scan, then launch the dashboard at /audit.
+ *   failproofai audit --schedule     Put scans on a timer and mail the findings.
+ *   failproofai audit --no-schedule  Stop the timer.
+ *   failproofai audit --status       What this machine is scheduled to do.
+ *   failproofai audit -h, --help     Show usage.
  *
  * `runAudit()` is a pure local function (no network, no account). We run it,
  * render the same four progress stages the dashboard's RunProgress shows,
@@ -11,9 +14,10 @@
  * the bundled dashboard server and open the browser to /audit — which renders
  * instantly from that cache.
  *
- * No arguments yet — a bare `failproofai audit` does a full scan (all CLIs, all
- * history). Flags (--since, --cli, --project, --port, --no-open) are easy
- * follow-ups against `RunAuditOptions`.
+ * A bare `failproofai audit` does a full scan (all CLIs, all history); the
+ * scheduling flags above write config and never scan. Scan-shaping flags
+ * (--since, --cli, --project, --port, --no-open) are easy follow-ups against
+ * `RunAuditOptions`.
  *
  * `--scheduled` is the one exception, and it is not a flag on the interactive
  * command so much as a second entry point sharing its name: it runs the same
@@ -58,49 +62,60 @@ export const AUDIT_STAGES: ReadonlyArray<{ label: string; detail: string }> = [
   { label: "aggregating results", detail: "counting hits, ranking by frequency" },
 ];
 
-const HELP = `
-failproofai audit — audit your AI agent's behavior, then open the dashboard
+/** Column the description text starts at. The widest command line is 37 wide. */
+const HELP_DESC_COL = 40;
 
-USAGE
-  failproofai audit          Scan your agent-CLI session history for risky and
-                             wasteful patterns, then open the audit dashboard.
-  failproofai audit --help   Show this help.
+/**
+ * `audit --help`.
+ *
+ * A function rather than a module-level string because the command names are
+ * coloured through `c()`, which reads `colorOn()` at CALL time — a const would
+ * bake in whatever the TTY looked like at import, and this module is imported
+ * by the bundled CLI long before anyone asks for help.
+ *
+ * `--scheduled` is deliberately absent: it is not a flag a person types but a
+ * second entry point the daemon spawns (see the module header), and listing a
+ * machine-facing flag one letter away from `--schedule` in the same block is
+ * how somebody ends up running a 100-second scan when they meant to configure
+ * one. It still works, and still refuses every argument it always refused.
+ */
+export function helpText(): string {
+  const row = (command: string, lines: string[]): string => {
+    // Padding is measured on the RAW command — `c()` adds escape bytes that
+    // occupy no columns, so colouring first would misalign every row.
+    const pad = " ".repeat(Math.max(1, HELP_DESC_COL - 2 - command.length));
+    return lines
+      .map((line, i) =>
+        i === 0 ? `  ${c(CYAN, command)}${pad}${line}` : `${" ".repeat(HELP_DESC_COL)}${line}`,
+      )
+      .join("\n");
+  };
 
-  failproofai audit --scheduled
-                             Headless run: scan, refresh the dashboard's cached
-                             result, print one line, exit. No browser, no
-                             server. This is what a scheduled audit runs; exit
-                             75 means another audit already had the lock.
-
-SCHEDULING
-  failproofai audit --schedule [days] [--email you@yourdomain.com]
-                             Scan on a timer in the background (default 7 days,
-                             1-90), and email you when a scan finds something
-                             harmful. Signs you in the first time — the report
-                             has to go somewhere. Pass --email to answer that
-                             up front and go straight to entering the code.
-  failproofai audit --no-schedule
-                             Stop scanning on a timer. Leaves you signed in.
-  failproofai audit --status
-                             What this machine is doing: whether scheduling is
-                             on, where reports go, the daemon's state, and when
-                             the next scan is due.
-
-  These write the same ~/.failproofai/config.json the dashboard's settings page
-  writes, through the same function — so the two are always in step.
-
-WHAT IT DOES
-  1. Scans past sessions from every installed agent CLI (Claude, Codex, Cursor,
-     Copilot, OpenCode, Pi) — entirely on your machine.
-  2. Starts the local dashboard and opens
-     http://localhost:${DASHBOARD_PORT}/audit with your results.
-
-  A bare "failproofai audit" needs no account, and nothing from your sessions
-  leaves this machine — anonymous usage counts still apply unless you set
-  FAILPROOFAI_TELEMETRY_DISABLED=1. Scheduling is the exception: it emails you
-  what it finds, so it needs an address.
-  Press Ctrl+C to stop the dashboard server when you're done.
-`.trimStart();
+  return [
+    `${c(BOLD, "failproofai audit")} — review your agent CLIs for risky and wasteful patterns.`,
+    c(DIM, "Everything runs on this machine; only a scheduled digest ever leaves it."),
+    "",
+    c(BOLD, "USAGE"),
+    row("failproofai audit", [
+      "Scan your session history, then open",
+      `http://localhost:${DASHBOARD_PORT}/audit`,
+    ]),
+    row("failproofai audit --schedule [days]", [
+      "Scan on a timer and email the findings.",
+      "Default 7 days, range 1-90.",
+      "Signs you in the first time; add",
+      "--email <address> to skip a prompt.",
+    ]),
+    row("failproofai audit --no-schedule", ["Stop the timer. Leaves you signed in."]),
+    row("failproofai audit --status", [
+      "Whether scheduling is on, where reports",
+      "go, the daemon's state, and when the",
+      "next scan is due.",
+    ]),
+    row("failproofai audit -h, --help", ["Show this help."]),
+    "",
+  ].join("\n");
+}
 
 // ── ANSI helpers ────────────────────────────────────────────────────────────
 // Colours come from the shared brand palette in hooks/tui.ts, so `audit` reads
@@ -498,7 +513,7 @@ export async function runPostSetupAudit(): Promise<void> {
 
 export async function runAuditCli(args: string[]): Promise<void> {
   if (args.includes("--help") || args.includes("-h")) {
-    process.stdout.write(HELP);
+    process.stdout.write(helpText());
     process.exit(0);
   }
   // The headless path, spawned rather than typed. Handled ahead of the

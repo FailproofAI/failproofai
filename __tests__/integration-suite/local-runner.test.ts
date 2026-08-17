@@ -192,7 +192,10 @@ describe("canary job (in-repo, evolves with the harness)", () => {
   it("copies once per published image, not once per run", () => {
     // 849 MB of tree (node_modules is most of it). Keyed by the baked SHA, so a
     // daily run of an unchanged image skips it entirely.
-    expect(dailySh).toMatch(/cat "\$HOST_REPO\/\.baked-sha" 2>\/dev\/null \|\| echo none.*!=/s);
+    // [\s\S] rather than . with the /s flag — this repo's tsc target predates
+    // dotAll, and vitest does not typecheck, so the flag passed locally and
+    // failed the build.
+    expect(dailySh).toMatch(/cat "\$HOST_REPO\/\.baked-sha" 2>\/dev\/null \|\| echo none[\s\S]*!=/);
     expect(dailySh).toMatch(/reusing the materialised tree/);
   });
 

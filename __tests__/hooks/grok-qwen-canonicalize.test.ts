@@ -22,8 +22,10 @@ import {
   GROK_HOOK_EVENT_TYPES,
   GROK_TOOL_INPUT_MAP,
   QWEN_HOOK_EVENT_TYPES,
+  QWEN_EVENT_MAP,
   HOOK_EVENT_TYPES,
 } from "@/src/hooks/types";
+import { canonicalizeEventType } from "@/src/hooks/handler";
 
 /** A PreToolUse payload exactly as grok 1.0.3 pipes it (captured verbatim). */
 function grokPreToolUsePayload(): Record<string, unknown> {
@@ -45,8 +47,14 @@ function grokPreToolUsePayload(): Record<string, unknown> {
 describe("grok + qwen event types", () => {
   it("are all already-canonical PascalCase HookEventTypes (no event map needed)", () => {
     const canonical = new Set<string>(HOOK_EVENT_TYPES);
-    for (const ev of [...GROK_HOOK_EVENT_TYPES, ...QWEN_HOOK_EVENT_TYPES]) {
+    for (const ev of GROK_HOOK_EVENT_TYPES) {
       expect(canonical.has(ev), `${ev} must be a HookEventType`).toBe(true);
+    }
+    // qwen is canonical too, EXCEPT its two Todo names, which QWEN_EVENT_MAP
+    // translates to TaskCreated/TaskCompleted.
+    for (const ev of QWEN_HOOK_EVENT_TYPES) {
+      const mapped = QWEN_EVENT_MAP[ev];
+      expect(canonical.has(mapped), `${ev} must map to a HookEventType`).toBe(true);
     }
   });
 
@@ -55,6 +63,53 @@ describe("grok + qwen event types", () => {
     // require-*-before-stop builtins are applicable and Stop must be installed.
     expect(GROK_HOOK_EVENT_TYPES).toContain("Stop");
     expect(QWEN_HOOK_EVENT_TYPES).toContain("Stop");
+  });
+
+  it("grok subscribes to its ENTIRE event surface", () => {
+    // A live grok 1.0.3 accepted all 14 (`hook_count=14`, no unknown-key
+    // warning). grok silently skips names it doesn't recognize, so this list
+    // drifting out of sync would cost coverage with no error anywhere.
+    expect(GROK_HOOK_EVENT_TYPES).toHaveLength(14);
+    for (const e of ["PermissionDenied", "StopFailure", "Notification", "SubagentStart", "PreCompact", "PostCompact"]) {
+      expect(GROK_HOOK_EVENT_TYPES, `${e} must be installed`).toContain(e);
+    }
+  });
+
+  it("qwen omits the two events that would cost more than they return", () => {
+    // MessageDisplay fires per streaming chunk — a hook process per chunk.
+    // PostToolBatch fired 6× where PostToolUse fired 5, carrying the same tool
+    // calls in batch form, and no builtin reads it. Both are deliberate.
+    expect(QWEN_HOOK_EVENT_TYPES).not.toContain("MessageDisplay");
+    expect(QWEN_HOOK_EVENT_TYPES).not.toContain("PostToolBatch");
+    expect(QWEN_HOOK_EVENT_TYPES).not.toContain("SessionDelete");
+  });
+
+  it("qwen's Todo events canonicalize onto the Task events", () => {
+    // qwen calls its task list "todos"; mapping them means a policy written
+    // against TaskCreated fires on qwen and Claude alike.
+    expect(canonicalizeEventType("TodoCreated", "qwen")).toBe("TaskCreated");
+    expect(canonicalizeEventType("TodoCompleted", "qwen")).toBe("TaskCompleted");
+  });
+
+  it("qwen's other 17 events canonicalize to themselves", () => {
+    for (const e of QWEN_HOOK_EVENT_TYPES) {
+      if (e === "TodoCreated" || e === "TodoCompleted") continue;
+      expect(canonicalizeEventType(e, "qwen"), e).toBe(e);
+    }
+  });
+
+  it("the qwen event map covers every installed event", () => {
+    // Exhaustive at the type level; assert it at runtime too, since a missing
+    // entry would write an `undefined` event key into a user's settings.json.
+    for (const e of QWEN_HOOK_EVENT_TYPES) {
+      expect(QWEN_EVENT_MAP[e], `${e} needs a canonical mapping`).toBeTruthy();
+    }
+  });
+
+  it("grok needs no event map — its names are canonical already", () => {
+    for (const e of GROK_HOOK_EVENT_TYPES) {
+      expect(canonicalizeEventType(e, "grok"), e).toBe(e);
+    }
   });
 });
 

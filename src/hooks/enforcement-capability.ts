@@ -272,6 +272,15 @@ export const ENFORCEMENT_CAPABILITY: Record<
     PostToolUseFailure: "observe",
     SessionStart: "observe",       // fired live
     SessionEnd: "observe",         // fired live
+    // The six below are the widened set. All OBSERVE by construction, not by
+    // caution: blockingEvents lists exactly three events, so grok cannot honour
+    // a deny on any of these no matter what we send.
+    StopFailure: "observe",        // VERIFIED firing (a 429 turn): {error:"rate_limit", errorDetails, lastAssistantMessage}
+    Notification: "observe",       // VERIFIED firing: notificationType "agent_error" — a type grok's own docs do not list
+    PermissionDenied: "observe",   // config key accepted (count=14); firing not exercised — needs a real permission denial
+    SubagentStart: "observe",      // config key accepted; firing not exercised — needs a subagent
+    PreCompact: "observe",         // config key accepted; firing not exercised — needs compaction
+    PostCompact: "observe",        // config key accepted; firing not exercised — needs compaction
   },
 
   // qwen-code 0.21.12. A near-pure Claude clone on the wire, so most rows
@@ -289,6 +298,15 @@ export const ENFORCEMENT_CAPABILITY: Record<
     PreCompact: "observe",
     SessionStart: "observe",       // fired live
     SessionEnd: "observe",
+    // Widened set. Every one has a real executeHooks() dispatch site in the
+    // shipped bundle; the three marked VERIFIED were also observed firing.
+    TaskCreated: "block",          // qwen's TodoCreated. VERIFIED firing ×4 with phase:"validation", where upstream docs state a {decision:"block"} PREVENTS the write and returns the reason to the model
+    TaskCompleted: "block",        // qwen's TodoCompleted. VERIFIED firing ×4, same validation-phase contract
+    InstructionsLoaded: "observe", // VERIFIED firing: {file_path, memory_type, load_reason}
+    Notification: "observe",       // VERIFIED firing: notification_type "auth_success"
+    StopFailure: "observe",        // upstream documents it fire-and-forget — output and exit code ignored
+    PostCompact: "observe",
+    UserPromptExpansion: "observe",
   },
 };
 

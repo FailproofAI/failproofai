@@ -130,6 +130,22 @@ describe("deny shapes the CLI actually reads", () => {
     expect(typeof stdout.hookSpecificOutput.permissionDecisionReason).toBe("string");
   });
 
+  it("qwen TaskCreated/TaskCompleted deny with the top-level block shape", async () => {
+    // qwen's todo hooks are the only events in the widened set that can veto:
+    // in their `validation` phase a {decision:"block"} prevents the write.
+    // They do NOT read Claude's permissionDecision, so the generic PreToolUse
+    // branch would have been silently inert here.
+    for (const ev of ["TaskCreated", "TaskCompleted"]) {
+      const { result, stdout } = await denyOn("qwen", ev, { phase: "validation" });
+      expect(result.exitCode, ev).toBe(0);
+      expect(stdout.decision, ev).toBe("block");
+      expect(typeof stdout.reason, ev).toBe("string");
+      expect(stdout.hookSpecificOutput, ev).toBeUndefined();
+      // Plain blocked message here — the MANDATORY-ACTION wording is Stop's.
+      expect(stdout.reason, ev).not.toContain("MANDATORY ACTION REQUIRED");
+    }
+  });
+
   it("qwen Stop uses the top-level block shape, not permissionDecision", async () => {
     const { stdout } = await denyOn("qwen", "Stop", { stop_hook_active: true });
     expect(stdout.decision).toBe("block");

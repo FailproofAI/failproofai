@@ -104,6 +104,19 @@
         ]
       }
     ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 1; }; node scripts/dev-hook.mjs --hook StopFailure --cli qwen",
+            "name": "failproofai-StopFailure",
+            "timeout": 30000,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
     "SubagentStart": [
       {
         "hooks": [
@@ -137,6 +150,84 @@
             "type": "command",
             "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PreCompact --cli qwen",
             "name": "failproofai-PreCompact",
+            "timeout": 30000,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook PostCompact --cli qwen",
+            "name": "failproofai-PostCompact",
+            "timeout": 30000,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook Notification --cli qwen",
+            "name": "failproofai-Notification",
+            "timeout": 30000,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook InstructionsLoaded --cli qwen",
+            "name": "failproofai-InstructionsLoaded",
+            "timeout": 30000,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook UserPromptExpansion --cli qwen",
+            "name": "failproofai-UserPromptExpansion",
+            "timeout": 30000,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "TodoCreated": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook TodoCreated --cli qwen",
+            "name": "failproofai-TodoCreated",
+            "timeout": 30000,
+            "__failproofai_hook__": true
+          }
+        ]
+      }
+    ],
+    "TodoCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 || { echo '[failproofai] node not found; install Node >=20.9' >&2; exit 2; }; node scripts/dev-hook.mjs --hook TodoCompleted --cli qwen",
+            "name": "failproofai-TodoCompleted",
             "timeout": 30000,
             "__failproofai_hook__": true
           }

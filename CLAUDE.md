@@ -886,6 +886,18 @@ the hooks doc says `run_terminal_command` (what the wire sends), the headless do
 **`target_directory`**. The first is load-bearing — without it a live `.env` read passes
 `block-env-files`, the identical bug `COPILOT_TOOL_INPUT_MAP` was added to fix.
 
+**Event surface: all 14, which is grok's entire surface.** `GROK_HOOK_EVENT_TYPES`
+covers `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
+`PostToolUseFailure`, `PermissionDenied`, `Stop`, `StopFailure`, `Notification`,
+`SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact`, `SessionEnd`. A live grok
+accepted every key (`hooks: loaded from global source … count=14`, `loaded hooks
+hook_count=14`, no unknown-key warning) — worth checking rather than assuming, because
+**grok silently SKIPS event keys it does not recognize**, so a typo costs coverage with no
+error anywhere. `Notification` (type `agent_error` — a type grok's own docs omit) and
+`StopFailure` (`{error:"rate_limit", errorDetails, lastAssistantMessage}`) were both
+observed firing. Everything beyond `PreToolUse`/`Stop`/`SubagentStop` is **observation by
+construction, not by caution** — the ACP handshake above is the complete blocking list.
+
 **Response shapes** (`policy-evaluator.ts`, `cli === "grok"`):
 
 | Case | Shape (exit 0) |
@@ -965,6 +977,28 @@ PreToolUse/PostToolUse/UserPromptSubmit, wrapped in a
 `<qwen:user-prompt-submit-context>` provenance tag), putting qwen ahead of
 Hermes/Goose/Factory, which all degrade instruct to a stderr note.
 
+**Event surface: 19 subscribed.** Every event failproofai installs has a real
+`executeHooks("<Event>")` dispatch site in the shipped bundle — checked by reading it,
+which is also how `InstructionsLoaded`, `UserPromptExpansion` and `PostToolBatch` turned
+up: all three are dispatched and **absent from qwen's documented event table**.
+`QWEN_EVENT_MAP` exists for exactly two of the nineteen: qwen calls its task list "todos",
+so `TodoCreated`/`TodoCompleted` canonicalize onto `TaskCreated`/`TaskCompleted`.
+
+**qwen's todo hooks are a real veto point, not observation.** They run in two phases and
+the payload says which: during `phase: "validation"` a top-level `{decision:"block",
+reason}` prevents the write and the reason goes back to the model; during `postWrite` the
+todo is already persisted and the block is ignored. `policy-evaluator.ts` emits that shape
+unconditionally for `TaskCreated`/`TaskCompleted` — it enforces where it can and is inert
+where it cannot, and the phase is upstream's to decide. Verified live: a policy denying a
+todo that planned to skip the tests blocked the `todo_write` outright. Note the block
+prevents the **whole write**, not the single offending item.
+
+**Three events are deliberately NOT subscribed:** `MessageDisplay` fires per streaming
+chunk (a hook process per chunk), `PostToolBatch` fired 6× in a task where `PostToolUse`
+fired 5 while carrying the same tool calls in batch form (+76% hook invocations, no
+builtin reads it), and `SessionDelete` has no canonical equivalent. Each is one line to
+add if a custom policy ever needs it.
+
 **Two behaviours that will bite a policy author:**
 
 - **`stop_hook_active` is `true` on the FIRST Stop fire**, before anything has blocked
@@ -1009,8 +1043,8 @@ production form — same self-reference caveat as the others):
 | Devin | `.devin/config.json` | Claude `"hooks"` wrapper |
 | Antigravity (`agy`) | `.agents/hooks.json` | named-hook schema under the `failproofai` key |
 | Goose | `.agents/plugins/failproofai/hooks/hooks.json` | Open Plugins (auto-discovered; matcher omitted — a bare `*` matches nothing) |
-| grok | `.grok/hooks/failproofai.json` | Claude nested schema, seconds timeout (matcher omitted; needs `grok --trust` once, and only works because this repo is a git repo) |
-| Qwen (`qwen`) | `.qwen/settings.json` | Claude `"hooks"` wrapper, **milliseconds** timeout |
+| grok | `.grok/hooks/failproofai.json` | Claude nested schema, seconds timeout, all 14 events (matcher omitted; needs `grok --trust` once, and only works because this repo is a git repo) |
+| Qwen (`qwen`) | `.qwen/settings.json` | Claude `"hooks"` wrapper, **milliseconds** timeout, 19 events |
 
 These were generated from each integration's own `writeHookEntries`, so they
 track the live schema. See each CLI's architecture section above for the full

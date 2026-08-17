@@ -557,6 +557,27 @@ export async function evaluatePolicies(
       // what forces another turn (verified live — the agent ran the required
       // command and only then finished). Unlike grok there is no session-end
       // Stop fire to filter out.
+      // qwen's todo hooks (canonical TaskCreated / TaskCompleted) are the only
+      // events in the widened set that can actually veto. They read the
+      // top-level `{decision:"block", reason}` — NOT Claude's permissionDecision
+      // — and only during their `validation` phase; in `postWrite` the todo is
+      // already persisted and upstream ignores the block. Emitting it
+      // unconditionally is right: it enforces where it can and is inert where it
+      // cannot, and the phase is upstream's to decide, not ours to guess.
+      if (
+        session?.cli === "qwen" &&
+        (eventType === "TaskCreated" || eventType === "TaskCompleted")
+      ) {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
+          stderr: "",
+          policyName: policy.name,
+          reason,
+          decision: "deny",
+        };
+      }
+
       if (session?.cli === "qwen" && (eventType === "Stop" || eventType === "SubagentStop")) {
         const reasonText = `MANDATORY ACTION REQUIRED from failproofai (policy: ${policy.name}): ${reason}\n\nYou MUST complete the above action NOW. Do NOT ask the user for confirmation — execute the required action, then attempt to finish your task again.`;
         return {

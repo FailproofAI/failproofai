@@ -1055,14 +1055,31 @@ export const GOOSE_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
 export const GROK_HOOK_SCOPES = ["user", "project"] as const;
 export type GrokHookScope = (typeof GROK_HOOK_SCOPES)[number];
 
+// All 14 of grok's events, which is its entire surface. Every name here was
+// accepted by a live grok 1.0.3 (`hooks: loaded from global source … count=14`,
+// `loaded hooks hook_count=14`, no unknown-key warning) — grok silently SKIPS
+// unrecognized event keys, so acceptance is the thing to verify, and it was.
+// `Notification` and `StopFailure` were additionally observed firing.
+//
+// The six beyond the original eight are all OBSERVATION — grok's own ACP
+// handshake advertises `blockingEvents: ["pre_tool_use","stop","subagent_stop"]`
+// and that is the complete list, so nothing added here can ever deny. They are
+// installed for custom-policy surface and audit signal, and because the cost of
+// an event that never fires is zero.
 export const GROK_HOOK_EVENT_TYPES = [
   "SessionStart",
   "UserPromptSubmit",
   "PreToolUse",
   "PostToolUse",
   "PostToolUseFailure",
+  "PermissionDenied",
   "Stop",
+  "StopFailure",
+  "Notification",
+  "SubagentStart",
   "SubagentStop",
+  "PreCompact",
+  "PostCompact",
   "SessionEnd",
 ] as const;
 export type GrokHookEventType = (typeof GROK_HOOK_EVENT_TYPES)[number];
@@ -1155,6 +1172,21 @@ export const GROK_TOOL_INPUT_MAP: Record<string, Record<string, string>> = {
 export const QWEN_HOOK_SCOPES = ["user", "project"] as const;
 export type QwenHookScope = (typeof QWEN_HOOK_SCOPES)[number];
 
+// Every event below has a real `executeHooks("<Event>")` dispatch site in the
+// shipped qwen bundle (verified by reading it, not the docs — which is also how
+// `InstructionsLoaded`, `UserPromptExpansion` and `PostToolBatch` turned up:
+// all three are dispatched but absent from qwen's documented event table).
+// TodoCreated/TodoCompleted/PostToolBatch/InstructionsLoaded/Notification were
+// additionally observed firing in a live 0.21.12 session.
+//
+// Deliberately NOT subscribed:
+//   • `MessageDisplay` — fires per streaming chunk, i.e. a hook process per
+//     chunk. The one entry here that could make hooks feel slow.
+//   • `PostToolBatch` — fired 6× in the same task PostToolUse fired 5×, and
+//     carries the same tool calls in batch form. Measured at +76% hook
+//     invocations for a task, against no builtin that reads it. One line to add
+//     later if a custom policy ever wants batch granularity.
+//   • `SessionDelete` — no canonical equivalent, and little to enforce on.
 export const QWEN_HOOK_EVENT_TYPES = [
   "SessionStart",
   "UserPromptSubmit",
@@ -1164,12 +1196,60 @@ export const QWEN_HOOK_EVENT_TYPES = [
   "PermissionRequest",
   "PermissionDenied",
   "Stop",
+  "StopFailure",
   "SubagentStart",
   "SubagentStop",
   "PreCompact",
+  "PostCompact",
+  "Notification",
+  "InstructionsLoaded",
+  "UserPromptExpansion",
+  "TodoCreated",
+  "TodoCompleted",
   "SessionEnd",
 ] as const;
 export type QwenHookEventType = (typeof QWEN_HOOK_EVENT_TYPES)[number];
+
+/**
+ * qwen event name → canonical HookEventType.
+ *
+ * Seventeen of nineteen are already canonical and map to themselves; this map
+ * exists for the two that are not. qwen calls its task list "todos", so
+ * `TodoCreated`/`TodoCompleted` are the same concept failproofai and Claude
+ * call `TaskCreated`/`TaskCompleted`, and mapping them lets a policy written
+ * once fire on both.
+ *
+ * These two are also the only ADDED events on either CLI that can actually
+ * block. qwen runs todo hooks in two phases and the payload says which:
+ * during `phase: "validation"` a `{decision:"block"|"deny", reason}` prevents
+ * the write and the reason goes back to the model; during `phase: "postWrite"`
+ * the todo is already persisted and a block is ignored. Both phases were
+ * observed live (`phase: "validation"` on every capture).
+ *
+ * Exhaustive `Record<QwenHookEventType, HookEventType>` so tsc fails the build
+ * if an event is added here without deciding what it canonicalizes to.
+ */
+export const QWEN_EVENT_MAP: Record<QwenHookEventType, HookEventType> = {
+  SessionStart: "SessionStart",
+  UserPromptSubmit: "UserPromptSubmit",
+  PreToolUse: "PreToolUse",
+  PostToolUse: "PostToolUse",
+  PostToolUseFailure: "PostToolUseFailure",
+  PermissionRequest: "PermissionRequest",
+  PermissionDenied: "PermissionDenied",
+  Stop: "Stop",
+  StopFailure: "StopFailure",
+  SubagentStart: "SubagentStart",
+  SubagentStop: "SubagentStop",
+  PreCompact: "PreCompact",
+  PostCompact: "PostCompact",
+  Notification: "Notification",
+  InstructionsLoaded: "InstructionsLoaded",
+  UserPromptExpansion: "UserPromptExpansion",
+  TodoCreated: "TaskCreated",
+  TodoCompleted: "TaskCompleted",
+  SessionEnd: "SessionEnd",
+};
 
 /**
  * qwen's runtime tool ids → Claude PascalCase canonical names. All six were

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# The integration-suite job (CANARY_JOB=canary, the default), invoked by the
-# runner image's baked entrypoint AFTER it has locked, cloned and checked out
-# $CANARY_REF into $CANARY_WORK/clone-canary. It plays
+# The integration-suite job (CANARY_JOB=canary), invoked by the canary image's
+# baked entrypoint AFTER it has locked and reported which commit the image
+# carries. The checkout is baked in at $CANARY_CLONE rather than cloned. It plays
 # the role the GHA workflow YAML played — env → state paths → leg fan-out —
 # then hands each leg to ci-entrypoint.sh, exactly as CI does.
 #
@@ -17,7 +17,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
-WORK="${CANARY_WORK:?CANARY_WORK missing — runner-entrypoint.sh sets it}"
+WORK="${CANARY_WORK:?CANARY_WORK missing — job-entrypoint.sh sets it}"
 CLONE="${CANARY_CLONE:-$WORK/clone-canary}"
 STATE_DIR="$WORK/state"
 LOGS="$WORK/logs"
@@ -42,7 +42,10 @@ docker info >/dev/null 2>&1 || {
   echo "✗ the docker socket is mounted but the daemon does not answer." >&2; exit 1; }
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
-FP_SHA="$(git -C "$CLONE" rev-parse --short HEAD)"
+# The image is the commit, so the SHA comes from the baked value the entrypoint
+# exported. The git fallback keeps this working when a job is run by hand from a
+# real checkout, which is how it is developed.
+FP_SHA="${CANARY_FP_SHA:-$(git -C "$CLONE" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 echo "── canary run $TS: ${CANARY_REF:-?} @ $FP_SHA ──"
 
 slack_note() { # $1 = text; best-effort, never fails the run

@@ -1,0 +1,41 @@
+# The canary box's WEEKLY DOCS-AUDIT image — the cheapest of the three.
+#
+#   docker build -t failproofai-docs-audit -f integration-suite/local/Dockerfile.docs-audit \
+#     --build-arg FP_SHA=$(git rev-parse --short HEAD) .
+#
+# No gateway, no docker client, no socket, no mintlify: this job reads the docs
+# tree and the translation cache and posts what it found. It never changes a file,
+# which is why its credential is an issues-only token and why it is the one image
+# with nothing in it but node, bun, git and the checkout.
+FROM node:22-bookworm-slim
+
+COPY --from=oven/bun:latest /usr/local/bin/bun /usr/local/bin/bun
+
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends git ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/failproofai
+COPY . .
+
+RUN set -e; \
+    for p in tokens tokens-beta canary.env canary-beta.env secrets.env .env; do \
+      if [ -e "$p" ]; then echo "REFUSING TO BUILD: $p reached the build context" >&2; exit 1; fi; \
+    done
+
+RUN bun install --frozen-lockfile --ignore-scripts
+
+ARG FP_SHA=unknown
+# RFC3339, passed by CI. The entrypoint turns it into an age and refuses to call
+# an image fresh when it cannot parse one.
+ARG BUILT_AT=unknown
+ENV CANARY_BAKED_AT=${BUILT_AT} \
+    CANARY_BAKED_SHA=${FP_SHA} \
+    CANARY_JOB=docs-audit \
+    CANARY_CLONE=/opt/failproofai
+
+COPY integration-suite/local/job-entrypoint.sh /usr/local/bin/job-entrypoint.sh
+RUN chmod +x /usr/local/bin/job-entrypoint.sh \
+ && bun --version && node --version && git --version
+
+ENTRYPOINT ["/usr/local/bin/job-entrypoint.sh"]

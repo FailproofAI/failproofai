@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# The nightly doc-translation job (CANARY_JOB=translate), invoked by the runner
-# image's baked entrypoint AFTER it has locked, cloned and checked out
-# $TRANSLATE_REF into $CANARY_WORK/clone-translate.
+# The nightly doc-translation job (CANARY_JOB=translate), invoked by the translate
+# image's baked entrypoint AFTER it has locked. The checkout is baked in at
+# $CANARY_CLONE; this job reconstitutes the one commit it needs to push (below).
 #
 # It replaces the `prepare` / `translate` / `consolidate` jobs of
 # .github/workflows/translate-docs.yml, which keeps only its workflow_dispatch
@@ -32,7 +32,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
-WORK="${CANARY_WORK:?CANARY_WORK missing — runner-entrypoint.sh sets it}"
+WORK="${CANARY_WORK:?CANARY_WORK missing — job-entrypoint.sh sets it}"
 CLONE="${CANARY_CLONE:-$WORK/clone-translate}"
 LOGS="$WORK/logs"
 CACHE_HOME="$WORK/translate"
@@ -43,7 +43,10 @@ BASE_BRANCH="${TRANSLATE_BASE:-main}"
 PR_TITLE="[auto] update translations"
 LANGS="${TRANSLATE_LANGUAGES:-zh,ja,ko,es,pt-br,de,fr,ru,hi,tr,vi,it,ar,he}"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
-FP_SHA="$(git -C "$CLONE" rev-parse --short HEAD)"
+# The image is the commit, so the SHA comes from the baked value the entrypoint
+# exported. The git fallback keeps this working when a job is run by hand from a
+# real checkout, which is how it is developed.
+FP_SHA="${CANARY_FP_SHA:-$(git -C "$CLONE" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 
 # The gateway saturated past ~2 in flight pre-scale (#300, #305) and CI settled
 # on a peak of 16: `max-parallel: 4` jobs x cli.ts's default of 4. One process
@@ -113,6 +116,27 @@ export ANTHROPIC_API_KEY="$TRANSLATE_LLM_API_KEY"
 export ANTHROPIC_BASE_URL="$TRANSLATE_LLM_BASE_URL"
 
 cd "$CLONE" || die "cannot enter $CLONE"
+
+# ── a git identity for exactly one commit ───────────────────────────────────
+# The image bakes the tree and not the history — 100+ MB of packfile to make one
+# commit is not a trade — so when there is no .git this builds the minimum this
+# job needs: the ONE commit the image was built from, fetched shallow, with the
+# baked tree sitting on top of it as uncommitted changes.
+#
+# Fetching the baked SHA rather than origin/main is the whole point. reset --soft
+# onto a NEWER main would leave HEAD claiming commits this tree does not carry,
+# and the `git add -A` below would then stage the REVERSAL of everything that
+# landed since the image was built — an auto-PR that quietly deletes other
+# people's work. Against the baked SHA, HEAD and the tree agree by construction.
+if [ ! -d "$CLONE/.git" ]; then
+  step "git"
+  [ "$FP_SHA" != unknown ] || die "no baked SHA to anchor the commit to"
+  git init -q . || die "git init failed"
+  git remote add origin "https://github.com/$REPO.git" 2>/dev/null || true
+  git fetch --depth 1 origin "$FP_SHA" || die "could not fetch the baked commit $FP_SHA"
+  git reset --soft FETCH_HEAD || die "could not anchor HEAD at $FP_SHA"
+  echo "anchored at $FP_SHA (shallow, one commit)"
+fi
 
 # ── the cache lives in the work dir, not the checkout ────────────────────────
 # A symlink rather than a copy-in/copy-out pair, so there is no "where do we

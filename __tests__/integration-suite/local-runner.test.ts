@@ -23,8 +23,13 @@ import { describe, expect, it } from "vitest";
 const ROOT = path.join(__dirname, "../..");
 const SUITE = path.join(ROOT, "integration-suite");
 const LOCAL = path.join(SUITE, "local");
-const dockerfile = readFileSync(path.join(LOCAL, "Dockerfile.runner"), "utf8");
-const entrypointSh = readFileSync(path.join(LOCAL, "runner-entrypoint.sh"), "utf8");
+const JOB_IMAGES = ["canary", "translate", "docs-audit"] as const;
+const dockerfiles = Object.fromEntries(
+  JOB_IMAGES.map((j) => [j, readFileSync(path.join(LOCAL, `Dockerfile.${j}`), "utf8")]),
+) as Record<(typeof JOB_IMAGES)[number], string>;
+const dockerignore = readFileSync(path.join(ROOT, ".dockerignore"), "utf8");
+const entrypointSh = readFileSync(path.join(LOCAL, "job-entrypoint.sh"), "utf8");
+const runJobSh = readFileSync(path.join(LOCAL, "run-job.sh"), "utf8");
 const dailySh = readFileSync(path.join(LOCAL, "jobs/canary.sh"), "utf8");
 const translateSh = readFileSync(path.join(LOCAL, "jobs/translate.sh"), "utf8");
 const installSh = readFileSync(path.join(LOCAL, "install.sh"), "utf8");
@@ -55,42 +60,80 @@ describe("GHA workflow is dispatch-only", () => {
   });
 });
 
-describe("runner image (the boss's one container)", () => {
-  it("bakes the thin entrypoint and nothing else of the harness", () => {
-    // The image must stay rebuild-free across harness changes: it may carry
-    // runner-entrypoint.sh (thin, stable) but must NOT bake any job script —
-    // those are executed from the checkout, which is what lets a NEW job ship
-    // without anyone rebuilding the boss's image.
-    expect(dockerfile).toMatch(/^COPY runner-entrypoint\.sh /m);
-    expect(dockerfile).toMatch(/^ENTRYPOINT \["\/usr\/local\/bin\/runner-entrypoint\.sh"\]$/m);
-    // (comments may mention the job scripts; COPY lines must not)
-    expect(dockerfile).not.toMatch(/^COPY .*jobs\//m);
-    expect(dockerfile).not.toMatch(/^COPY .*runner-daily/m);
+describe("three job images, each baking the commit it runs", () => {
+  it("bakes the checkout, the deps and the build products", () => {
+    // The image IS the commit. What used to happen at 02:00 or 11:00 in front of
+    // nobody — clone, fetch, checkout, install, build — happens in CI now, where
+    // a failure is a red build rather than a night with no report.
+    for (const [job, df] of Object.entries(dockerfiles)) {
+      expect(df, job).toMatch(/^COPY \. \.$/m);
+      expect(df, job).toMatch(/bun install --frozen-lockfile --ignore-scripts/);
+      expect(df, job).toMatch(/^ENTRYPOINT \["\/usr\/local\/bin\/job-entrypoint\.sh"\]$/m);
+      expect(df, job).toMatch(/ARG FP_SHA=/);
+      expect(df, job).toMatch(/ARG BUILT_AT=/);
+    }
   });
 
-  it("ships the docker CLIENT for the mounted host socket", () => {
-    expect(dockerfile).toMatch(/download\.docker\.com\/linux\/static/);
+  it("gives ONLY the canary a docker client, and the daemon it used to compile", () => {
+    // The socket is the reason for three images rather than one: an image with
+    // no docker client cannot be talked into reaching the host daemon.
+    expect(dockerfiles.canary).toMatch(/download\.docker\.com\/linux\/static/);
+    expect(dockerfiles.translate).not.toMatch(/download\.docker\.com/);
+    expect(dockerfiles["docs-audit"]).not.toMatch(/download\.docker\.com/);
+    // failproofaid is compiled at build time against the same Debian the probe
+    // sandbox runs, instead of once per run in a sibling rust container.
+    expect(dockerfiles.canary).toMatch(/FROM rust:1-bookworm AS daemon/);
+    expect(dockerfiles.canary).toMatch(/CANARY_DAEMON_BIN=\/opt\/failproofaid\/failproofaid/);
+    // And the run must not rebuild what the image already carries.
+    expect(dockerfiles.canary).toMatch(/CANARY_SKIP_BUILD=1/);
   });
 
-  it("entrypoint refuses to run without the socket and without the job's ref", () => {
-    // A baked-in default ref would silently keep running against a stale
-    // branch forever — the env file states what each job runs against. The
-    // var is derived from the job name (CANARY_REF, TRANSLATE_REF) so the
-    // baked layer never learns which jobs exist.
-    expect(entrypointSh).toContain("/var/run/docker.sock");
-    expect(entrypointSh).toMatch(/REF_VAR=.*tr 'a-z-' 'A-Z_'.*_REF/);
-    expect(entrypointSh).toMatch(/\[ -n "\$REF" \] \|\|/);
+  it("mintlify belongs to translate alone", () => {
+    expect(dockerfiles.translate).toMatch(/mintlify@/);
+    expect(dockerfiles.canary).not.toMatch(/mintlify@/);
+    expect(dockerfiles["docs-audit"]).not.toMatch(/mintlify@/);
   });
 
-  it("entrypoint serializes runs and hands off to the in-repo job script", () => {
-    // The lock file lives on the host work dir so overlapping cron fires
-    // share one lock across separate containers.
-    expect(entrypointSh).toMatch(/flock -n/);
+  it("refuses to build if a credential reached the context, and ignores them twice over", () => {
+    // These images are PUBLIC and their context is the repo root — which the
+    // canary writes real credentials into at run time. .dockerignore is the
+    // boundary; the in-Dockerfile assertion is what catches the day a name
+    // changes on the writing side and silently stops matching.
+    for (const f of ["tokens", "canary.env", "secrets.env", ".env"]) {
+      expect(dockerignore, f).toContain(f);
+    }
+    expect(dockerignore).toMatch(/^\.git\/$/m);
+    for (const [job, df] of Object.entries(dockerfiles)) {
+      expect(df, job).toMatch(/REFUSING TO BUILD/);
+    }
+  });
+
+  it("entrypoint runs the baked tree instead of cloning, and never bakes a ref", () => {
+    // A run-time clone was how the box tracked main; it now tracks main by
+    // pulling. Nothing here may fetch — that is the property that makes the
+    // image reproducible.
+    expect(entrypointSh).not.toMatch(/git clone|git fetch|git checkout/);
+    expect(entrypointSh).toMatch(/CLONE="\$\{CANARY_CLONE:-\/opt\/failproofai\}"/);
     expect(entrypointSh).toMatch(/JOB_SCRIPT="\$CLONE\/integration-suite\/local\/jobs\/\$JOB\.sh"/);
     expect(entrypointSh).toMatch(/exec bash "\$JOB_SCRIPT"/);
-    expect(existsSync(path.join(LOCAL, "jobs/canary.sh"))).toBe(true);
-    expect(existsSync(path.join(LOCAL, "jobs/translate.sh"))).toBe(true);
-    expect(existsSync(path.join(LOCAL, "jobs/docs-audit.sh"))).toBe(true);
+    for (const j of JOB_IMAGES) expect(existsSync(path.join(LOCAL, `jobs/${j}.sh`))).toBe(true);
+  });
+
+  it("reports how old the baked commit is, and treats an unreadable date as stale", () => {
+    // The failure the old clone-per-run shape could not have: a broken image
+    // build leaves the last good image in place and every report goes green
+    // against week-old code. It has to announce itself.
+    expect(entrypointSh).toMatch(/CANARY_BAKED_SHA/);
+    expect(entrypointSh).toMatch(/CANARY_BAKED_AT/);
+    expect(entrypointSh).toMatch(/CANARY_IMAGE_STALE=1/);
+    expect(entrypointSh).toMatch(/AGE_DAYS" = "\?"/);
+    const report = readFileSync(path.join(SUITE, "report.js"), "utf8");
+    expect(report).toMatch(/CANARY_IMAGE_STALE/);
+  });
+
+  it("serializes runs per job on the host work dir", () => {
+    expect(entrypointSh).toMatch(/flock -n/);
+    expect(entrypointSh).toMatch(/\.lock-\$JOB/);
   });
 
   it("entrypoint explains the identical-path work-dir mount when it is missing", () => {
@@ -98,6 +141,14 @@ describe("runner image (the boss's one container)", () => {
     // the work dir serve as sibling-container -v sources, resolved by the
     // HOST daemon. The failure message must teach the fix.
     expect(entrypointSh).toMatch(/-v \\"\\\$HOME\/fp-canary:\\\$HOME\/fp-canary\\"/);
+  });
+
+  it("the cron wrapper picks the image per job, and only the canary gets the socket", () => {
+    expect(runJobSh).toMatch(/ghcr\.io\/failproofai\/failproofai-\$JOB:latest/);
+    expect(runJobSh).toMatch(/IMAGE_VAR="CANARY_IMAGE_/);
+    expect(runJobSh).toMatch(/canary\)\s+SOCK=\(-v \/var\/run\/docker\.sock/);
+    expect(runJobSh).toMatch(/translate\)\s+SOCK=\(\)/);
+    expect(runJobSh).toMatch(/--pull=always/);
   });
 });
 
@@ -305,8 +356,11 @@ describe("one image, several jobs", () => {
     // swallow is a clean `exit 0` that reports nowhere. A shared CLONE is
     // worse — translate commits and switches branches in its checkout.
     expect(entrypointSh).toMatch(/exec 9>"\$CANARY_WORK\/\.lock-\$JOB"/);
-    expect(entrypointSh).toMatch(/CLONE="\$CANARY_WORK\/clone-\$JOB"/);
     expect(entrypointSh).toMatch(/CANARY_LOG="\$CANARY_WORK\/logs\/\$JOB-\$TS\.log"/);
+    // The clone is no longer per job because there is no clone: each image
+    // carries its own baked tree, so two jobs cannot share a checkout even by
+    // accident. The per-job lock and log still matter for the same reasons.
+    expect(entrypointSh).not.toMatch(/clone-\$JOB/);
   });
 
   it("lists the jobs that exist when asked for one that does not", () => {
@@ -314,13 +368,14 @@ describe("one image, several jobs", () => {
     expect(entrypointSh).toMatch(/ls -1 "\$CLONE\/integration-suite\/local\/jobs\//);
   });
 
-  it("cleans untracked files after checkout, but never ignored ones", () => {
-    // `reset --hard` leaves last run's untracked output behind — for translate
-    // that is pages whose English source has since been deleted, re-committed
-    // forever. `-x` would take node_modules AND the symlinked translation
-    // cache with it, which are exactly what must survive.
-    expect(entrypointSh).toMatch(/git -C "\$CLONE" clean -fd\b/);
-    expect(entrypointSh).not.toMatch(/git -C "\$CLONE" clean -fdx/);
+  it("needs no post-checkout cleanup, because there is no checkout", () => {
+    // The entrypoint used to `reset --hard` and `clean -fd` a reused clone,
+    // because last run's untracked output would otherwise be re-committed
+    // forever. Each run now starts from a fresh container over a baked tree,
+    // which is the same guarantee without the footgun (`clean -fdx` there would
+    // have taken node_modules and the symlinked translation cache with it).
+    expect(entrypointSh).not.toMatch(/git -C "\$CLONE" clean/);
+    expect(entrypointSh).not.toMatch(/reset --hard/);
   });
 
   it("prunes logs once, centrally, rather than per job", () => {
@@ -745,25 +800,27 @@ describe("the installer pulls rather than builds", () => {
   it("defaults to the published image", () => {
     // Nothing is built on the box. That is what lets an operator set it up with
     // Docker and a credentials file alone — no clone, no build, no second visit.
-    expect(installSh).toMatch(
-      /IMAGE="\$\{CANARY_IMAGE:-ghcr\.io\/failproofai\/failproofai-canary-runner:latest\}"/,
-    );
+    expect(installSh).toMatch(/IMAGE_PREFIX="\$\{CANARY_IMAGE_PREFIX:-ghcr\.io\/failproofai\/failproofai-\}"/);
+    expect(installSh).toMatch(/image_for\(\) \{/);
     expect(installSh).not.toMatch(/GIT_URL#\$BUILD_REF/);
   });
 
   it("pulls at install time, so a bad tag is caught in front of a person", () => {
     // Discovering a private package or a typo'd tag at 02:00 means a missed run
     // nobody sees — the failure class this installer exists to move earlier.
-    expect(installSh).toMatch(/docker pull -q "\$IMAGE"/);
-    expect(installSh).toMatch(/could not pull \$IMAGE/);
+    expect(installSh).toMatch(/docker pull -q "\$img"/);
+    expect(installSh).toMatch(/could not pull \$img/);
     expect(installSh).toMatch(/docker login ghcr\.io/);
   });
 
-  it("keeps a local build for testing the baked layer", () => {
-    // The entrypoint is the one thing a job script cannot change, so there has
-    // to be a way to try a change to it before publishing.
+  it("keeps a local build for trying an image before it is published", () => {
+    // Everything is baked now, so this is the only way to try any change to a
+    // job before it reaches GHCR. Its context is the REPO ROOT — the operator's
+    // working tree — which is precisely why .dockerignore and the Dockerfiles'
+    // own credential assertion have to hold on this path too.
     expect(installSh).toMatch(/--build-local\)\s+BUILD_LOCAL=1/);
-    expect(installSh).toMatch(/docker build -t "\$IMAGE" -f "\$HERE\/Dockerfile\.runner" "\$HERE"/);
+    expect(installSh).toMatch(/docker build -t "\$img" -f "\$HERE\/Dockerfile\.\$j"/);
+    expect(installSh).toMatch(/--build-arg "FP_SHA=/);
   });
 
   it("schedules every job by default", () => {
@@ -773,39 +830,56 @@ describe("the installer pulls rather than builds", () => {
   });
 });
 
-describe("published image, and the socket only where it is used", () => {
+describe("published images, and the socket only where it is used", () => {
   const publishWf = readFileSync(
-    path.join(ROOT, ".github/workflows/build-canary-runner.yml"),
+    path.join(ROOT, ".github/workflows/build-canary-images.yml"),
     "utf8",
   );
 
-  it("publishes the runner image to GHCR with a stable and a pinned tag", () => {
-    expect(publishWf).toMatch(/ghcr\.io\/failproofai\/failproofai-canary-runner:latest/);
-    expect(publishWf).toMatch(/ghcr\.io\/failproofai\/failproofai-canary-runner:sha-\$\{short_sha\}/);
+  it("publishes one image per job, with a stable and a pinned tag", () => {
+    for (const image of ["failproofai-canary", "failproofai-translate", "failproofai-docs-audit"]) {
+      expect(publishWf, image).toContain(image);
+    }
+    expect(publishWf).toMatch(/\$\{IMAGE\}:latest/);
+    expect(publishWf).toMatch(/\$\{IMAGE\}:sha-\$\{short_sha\}/);
     expect(publishWf).toMatch(/packages: write/);
   });
 
-  it("rebuilds ONLY when the baked layer changes", () => {
-    // Job scripts reach the box through the run-time clone. If they triggered a
-    // publish, every harness tweak would wait on an image build — losing the
-    // split that lets a job change reach the box without touching it.
-    const paths = /paths:\n([\s\S]*?)\n  workflow_dispatch:/.exec(publishWf)![1];
-    expect(paths).toMatch(/Dockerfile\.runner/);
-    expect(paths).toMatch(/runner-entrypoint\.sh/);
-    expect(paths).not.toMatch(/jobs\//);
+  it("rebuilds on EVERY push to main, with no path filter", () => {
+    // The inverse of the old rule, and for the same reason it existed. Job
+    // scripts used to reach the box through a run-time clone, so only the baked
+    // layer needed a rebuild. The tree is baked now: any commit changes what
+    // these images should contain, and a path filter would leave the box
+    // running last week's code with nothing saying so.
+    const trigger = /on:\n([\s\S]*?)\npermissions:/.exec(publishWf)![1];
+    expect(trigger).toMatch(/branches: \[main\]/);
+    expect(trigger).not.toMatch(/paths:/);
   });
 
-  it("makes the package public, so no box needs a docker login", () => {
-    // A private package turns the one-line cron into a login plus a fourth
-    // credential that expires and silently breaks every job when it does.
+  it("passes the commit and the build time into every image", () => {
+    expect(publishWf).toMatch(/FP_SHA=\$\{\{ steps\.meta\.outputs\.sha \}\}/);
+    expect(publishWf).toMatch(/BUILT_AT=\$\{\{ steps\.meta\.outputs\.built_at \}\}/);
+  });
+
+  it("builds from the repo root, which is why .dockerignore exists", () => {
+    expect(publishWf).toMatch(/context: \./);
+    expect(publishWf).toMatch(/file: integration-suite\/local\/Dockerfile\.\$\{\{ matrix\.job \}\}/);
+  });
+
+  it("lets one image fail without taking the other two down", () => {
+    // A box with a fresh canary and a stale translate beats a box where one
+    // broken Dockerfile stopped all three from publishing.
+    expect(publishWf).toMatch(/fail-fast: false/);
+  });
+
+  it("makes each package public, so no box needs a docker login", () => {
+    // A private package turns the one-line cron into a login plus a credential
+    // that expires and silently breaks the job when it does.
     expect(publishWf).toMatch(/visibility=public/);
     expect(publishWf).toMatch(/continue-on-error: true/);
   });
 
   it("re-pulls on every run and bounds every job", () => {
-    // Both moved into run.sh with the docker invocation. The socket-scoping
-    // assertion lives in the cron-wrapper block below.
-    const runJobSh = readFileSync(path.join(LOCAL, "run-job.sh"), "utf8");
     expect(runJobSh).toMatch(/--pull=always/);
     expect(runJobSh).toMatch(/exec timeout "\$TMO" docker run/);
   });

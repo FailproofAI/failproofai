@@ -59,8 +59,17 @@ CHANNEL="${CANARY_CHANNEL:-stable}"
 SUFFIX=""; [ "$CHANNEL" != stable ] && SUFFIX="-$CHANNEL"
 VOL="${CANARY_VOL:-integration-suite$SUFFIX}"
 IMAGE="${CANARY_IMAGE:-failproofai-integration-suite:base}"
-ENVFILE="${CANARY_ENVFILE:-$REPO/canary$SUFFIX.env}"
-TOKENS_DIR="${CANARY_TOKENS_DIR:-$REPO/tokens$SUFFIX}"
+# Credentials do NOT go in the checkout. These used to default under $REPO,
+# which was harmless while no image had a repo-root build context — and stopped
+# being harmless the moment the job images started baking the tree in. A killed
+# run (the normal case, not the exotic one) leaves them behind, and
+# `install.sh --build-local` builds from the operator's own checkout.
+# /run is tmpfs in a container and cleared on the host between boots either way.
+CRED_DIR="${CANARY_CRED_DIR:-${XDG_RUNTIME_DIR:-/tmp}/failproofai-canary}"
+mkdir -p "$CRED_DIR" 2>/dev/null || CRED_DIR="$REPO"
+chmod 700 "$CRED_DIR" 2>/dev/null || true
+ENVFILE="${CANARY_ENVFILE:-$CRED_DIR/canary$SUFFIX.env}"
+TOKENS_DIR="${CANARY_TOKENS_DIR:-$CRED_DIR/tokens$SUFFIX}"
 STATE="${CANARY_STATE:-$REPO/integration-suite-state$SUFFIX.json}"
 # The stable leg's state, so the beta leg can tell "about to break" from
 # "already broken" (see report.js). Unset on the stable leg.
@@ -122,7 +131,10 @@ fi
 # only to the mounted cache (registry + target), so the checkout stays clean.
 # The DEAD (fail-closed) leg needs no binary — the daemon is never started.
 [ "${CANARY_DAEMON_DEAD:-0}" = 1 ] && CANARY_DAEMON=1
-if [ "${CANARY_DAEMON:-0}" = 1 ] && [ "${CANARY_DAEMON_DEAD:-0}" != 1 ]; then
+if [ "${CANARY_DAEMON:-0}" = 1 ] && [ "${CANARY_DAEMON_DEAD:-0}" != 1 ] \
+   && [ -x "${CANARY_DAEMON_BIN:-}" ]; then
+  step "using the baked failproofaid at $CANARY_DAEMON_BIN"
+elif [ "${CANARY_DAEMON:-0}" = 1 ] && [ "${CANARY_DAEMON_DEAD:-0}" != 1 ]; then
   step "building failproofaid (daemon) under test"
   if [ ! -f "$REPO/crates/failproofaid/Cargo.toml" ]; then
     echo "✗ CANARY_DAEMON=1 but $REPO has no crates/failproofaid — this ref predates the daemon; unset CANARY_DAEMON or pick a ref that carries it" >&2

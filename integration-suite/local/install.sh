@@ -60,9 +60,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-# The published image. `--pull=always` in every cron line means the box tracks
-# it with nothing to re-run — no clone, no rebuild, no installer second visit.
-IMAGE="${CANARY_IMAGE:-ghcr.io/failproofai/failproofai-canary-runner:latest}"
+# The published images — ONE PER JOB. `--pull=always` in every cron line means
+# the box tracks them with nothing to re-run: no clone, no rebuild, no installer
+# second visit. They replaced a single shared toolchain image when the repo
+# started being baked in, which is also what lets only the canary carry a docker
+# client while the other two cannot reach the host daemon at all.
+IMAGE_PREFIX="${CANARY_IMAGE_PREFIX:-ghcr.io/failproofai/failproofai-}"
+image_for() { printf '%s%s:%s' "$IMAGE_PREFIX" "$1" "${CANARY_IMAGE_TAG:-latest}"; }
 WORK="${CANARY_WORK:-$HOME/fp-canary}"
 GIT_URL="${CANARY_GIT_URL:-https://github.com/FailproofAI/failproofai.git}"
 # Marker, not the whole command: cron lines are rewritten on every install, so
@@ -185,7 +189,14 @@ did "work dir ready"
 step "Installing credentials"
 if [ -n "$SECRETS_SRC" ]; then
   [ -f "$SECRETS_SRC" ] || die "no such file: $SECRETS_SRC"
-  run cp "$SECRETS_SRC" "$WORK/secrets.env"
+  # Re-running the installer on a box that is already set up is the UPGRADE
+  # path, and the obvious way to type it names the file already in place —
+  # `cp x x` fails, and a failed install here is a box left half-migrated.
+  if [ "$SECRETS_SRC" -ef "$WORK/secrets.env" ]; then
+    say "credentials already at $WORK/secrets.env — leaving them alone"
+  else
+    run cp "$SECRETS_SRC" "$WORK/secrets.env"
+  fi
   run chmod 600 "$WORK/secrets.env"
   did "installed from $SECRETS_SRC (mode 600)"
 elif [ -f "$WORK/secrets.env" ]; then
@@ -305,25 +316,36 @@ did "$WORK/run.sh"
 # cron line carries `--pull=always`, so the box tracks it without anyone
 # re-running anything. `--build-local` builds from this checkout instead, for
 # testing a change to the baked entrypoint before it is published.
-step "Runner image"
-if [ "${BUILD_LOCAL:-0}" = 1 ]; then
-  HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
-  [ -n "$HERE" ] && [ -f "$HERE/Dockerfile.runner" ] \
-    || die "--build-local needs to run from a checkout; $0 is not inside one"
-  IMAGE="${CANARY_LOCAL_IMAGE:-failproofai-canary-runner:local}"
-  run docker build -t "$IMAGE" -f "$HERE/Dockerfile.runner" "$HERE"
-  did "built $IMAGE from this checkout"
-else
-  # Pulled now rather than at 02:00, so a bad tag or a private package is a
-  # problem in front of a person instead of a silent missed run.
-  run docker pull -q "$IMAGE" >/dev/null 2>&1 || true
-  if [ "$DRY" = 0 ] && ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-    die "could not pull $IMAGE.
+step "Job images"
+for j in $JOBS; do
+  img="$(image_for "$j")"
+  if [ "${BUILD_LOCAL:-0}" = 1 ]; then
+    HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
+    ROOT="$(cd "$HERE/../.." 2>/dev/null && pwd || true)"
+    [ -n "$HERE" ] && [ -f "$HERE/Dockerfile.$j" ] \
+      || die "--build-local needs to run from a checkout; $0 is not inside one"
+    # The build context is the REPO ROOT, because the image bakes the checkout.
+    # That is also why this path is for testing only: the repo's .dockerignore
+    # and each Dockerfile's own assertion keep run-time credential files out of
+    # a context that, unlike CI's, is somebody's working tree.
+    img="${CANARY_LOCAL_IMAGE_PREFIX:-failproofai-}$j:local"
+    run docker build -t "$img" -f "$HERE/Dockerfile.$j" \
+      --build-arg "FP_SHA=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo local)" \
+      --build-arg "BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ROOT"
+    eval "export CANARY_IMAGE_$(vn "$j" | tr 'a-z' 'A-Z')=\"$img\""
+    did "built $img from this checkout"
+  else
+    # Pulled now rather than at 02:00, so a bad tag or a private package is a
+    # problem in front of a person instead of a silent missed run.
+    run docker pull -q "$img" >/dev/null 2>&1 || true
+    if [ "$DRY" = 0 ] && ! docker image inspect "$img" >/dev/null 2>&1; then
+      die "could not pull $img.
        If the package is private the box needs:  docker login ghcr.io
        To build from this checkout instead:      --build-local"
+    fi
+    did "using $img (each run re-pulls it)"
   fi
-  did "using $IMAGE (each run re-pulls it)"
-fi
+done
 
 # ── 6. cron ──────────────────────────────────────────────────────────────────
 # The work dir is mounted at an IDENTICAL path inside and out. That is
@@ -396,8 +418,10 @@ say "  docs-audit  ~1min every week."
 printf '\n'
 say "canary and docs-audit post to Slack on EVERY run, including the quiet ones,"
 say "so silence from them means the box did not run rather than that all was"
-say "well. translate posts nothing: its output is the pull request it opens, and"
-say "its failures land in $WORK/logs/."
+say "well. translate is quiet when it succeeds — its output is the pull request"
+say "it opens — but it POSTS ON FAILURE, and stamps translate/last-run.json on"
+say "every exit, whose age the weekly docs audit reports. Silence from all three"
+say "at once means the box itself stopped."
 
 if [ -n "$RUN_NOW" ]; then
   step "Running $RUN_NOW now"
@@ -406,6 +430,9 @@ if [ -n "$RUN_NOW" ]; then
   # back apart here would hand docker a path with quote characters in it.
   sock_args=()
   [ "$RUN_NOW" = canary ] && sock_args=(-v /var/run/docker.sock:/var/run/docker.sock)
+  now_img="$(image_for "$RUN_NOW")"
+  eval "override=\${CANARY_IMAGE_$(vn "$RUN_NOW" | tr 'a-z' 'A-Z'):-}"
+  [ -n "$override" ] && now_img="$override"
   run docker run --rm --pull=always -e "CANARY_JOB=$RUN_NOW" -e "CANARY_WORK=$WORK" \
-    "${sock_args[@]}" -v "$WORK:$WORK" --env-file "$WORK/secrets.env" "$IMAGE"
+    "${sock_args[@]}" -v "$WORK:$WORK" --env-file "$WORK/secrets.env" "$now_img"
 fi

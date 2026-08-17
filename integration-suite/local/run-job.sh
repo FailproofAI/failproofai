@@ -21,7 +21,6 @@ set -u
 
 JOB="${1:-}"
 W="${CANARY_WORK:-$HOME/fp-canary}"
-IMAGE="${CANARY_IMAGE:-ghcr.io/failproofai/failproofai-canary-runner:latest}"
 
 case "$JOB" in
   # Only the canary reaches the host's docker — it builds the sandbox image and
@@ -34,6 +33,16 @@ case "$JOB" in
   docs-audit) SOCK=();                                             TMO=1800 ;;
   *) echo "usage: $0 canary|translate|docs-audit" >&2; exit 2 ;;
 esac
+
+# ONE IMAGE PER JOB. They used to share a toolchain image that cloned the repo at
+# run time; each now bakes the commit it runs, so they version independently —
+# and only this one carries a docker client to go with the socket above.
+#
+# CANARY_IMAGE still overrides, for pinning a box to :sha-<short> after a bad
+# publish or pointing a test box at a locally built tag. It is read per job so a
+# pin cannot silently redirect the other two at the same image.
+IMAGE_VAR="CANARY_IMAGE_$(printf '%s' "$JOB" | tr 'a-z-' 'A-Z_')"
+IMAGE="${!IMAGE_VAR:-${CANARY_IMAGE:-ghcr.io/failproofai/failproofai-$JOB:latest}}"
 
 [ -f "$W/secrets.env" ] || { echo "✗ no credentials at $W/secrets.env" >&2; exit 1; }
 

@@ -139,9 +139,11 @@ webhook is required for that reason and not because the runs need it.
 <summary>The same thing by hand, if you would rather see every step</summary>
 
 ```bash
-# 1. one-time: build the runner image (from a clone, or straight from GitHub)
-docker build -t failproofai-canary-runner \
-  -f integration-suite/local/Dockerfile.runner integration-suite/local/
+# 1. one-time: nothing to build — the three images are published. Pull the ones
+#    you intend to schedule, so a bad tag surfaces now rather than at 02:00:
+for j in canary translate docs-audit; do
+  docker pull ghcr.io/failproofai/failproofai-$j:latest
+done
 
 # 2. one-time: work dir + secrets
 mkdir -p ~/fp-canary
@@ -166,20 +168,39 @@ ops and as sibling-container `-v` sources, which the host daemon resolves
 against the host filesystem. The entrypoint auto-detects it (and says exactly
 what to mount if it can't).
 
-At each run the image's baked entrypoint (`runner-entrypoint.sh` — thin on
-purpose) locks *that job*, clones/fetches `<JOB>_REF` into
-`~/fp-canary/clone-<job>`, and hands off to `jobs/<job>.sh` **from that
-checkout** — so harness changes, and whole new jobs, reach the box through git,
-and the image only needs a rebuild when the entrypoint itself changes. The
-canary job runs the stable leg (daemon-configured) then the beta leg
+**One image per job, and the image IS the commit.** `failproofai-canary`,
+`failproofai-translate` and `failproofai-docs-audit` each bake the checkout, its
+dependencies and its build products — the canary also carries a compiled
+`failproofaid`. At each run the baked entrypoint (`job-entrypoint.sh` — thin on
+purpose) locks *that job*, prints which commit the image carries and how old it
+is, and hands off to `jobs/<job>.sh` from `/opt/failproofai`. Nothing is cloned,
+installed or compiled on the box.
+
+This reverses the earlier split, where job scripts reached the box through a
+run-time clone so the image rarely needed rebuilding. CI now publishes all three
+on **every** push to main and every cron line carries `--pull=always`, so the box
+tracks main by pulling. The failure that trade introduces — a broken image build
+leaving the box testing week-old code — is answered rather than prevented: the
+baked SHA and its age are printed at the top of every run and carried into every
+Slack report, and an unreadable build date counts as stale.
+
+Only the canary gets the docker socket: it builds the probe sandbox and runs the
+probe containers as siblings. The other two spawn nothing and carry no docker
+client. The canary job runs the stable leg (daemon-configured) then the beta leg
 (in-process), exactly like the old GHA matrix; the translate job runs the whole
 14-language corpus in one process and opens or updates the auto-translation PR.
+Because the images carry no `.git`, `translate` reconstitutes the single commit
+it needs to push (`git fetch --depth 1 origin <baked sha>`) — against the baked
+SHA rather than the branch tip, or `git add -A` would stage the reversal of
+everything that landed since the image was built.
 
 Everything lands under the work dir: version-gate state in `state/` (instead
-of the Actions cache — the gate logic is unchanged), the translation cache in
-`translate/` (a 13 KB file, symlinked into the checkout), per-job logs in
-`logs/` (pruned after 14 days), the per-job clones, and the daemon build's
-cargo cache.
+of the Actions cache — the gate logic is unchanged), the translation cache and
+the nightly run stamp in `translate/`, and per-job logs in `logs/` (pruned after
+14 days). The per-job clones and the cargo cache are gone with the run-time
+build. Vendor OAuth tarballs and the gateway env-file are written to a run-scoped
+directory, never into the checkout — the images bake the tree, so a credential in
+the working tree is a credential in a public image.
 All of it except `secrets.env` is written by the container **as root**, so
 reading a log or clearing the clone from the host needs `sudo`. Harmless — the
 next run is root too — but it is the first thing that surprises anyone poking
@@ -188,9 +209,14 @@ Verdict reports POST to Slack exactly as before; a leg that dies *before*
 reporting gets a distinct crash-note with the log tail (that's the replacement
 for GHA's red-job email — cron's own output can go to `/dev/null`). The weekly
 docs audit posts the same way, **including on quiet weeks**, so silence there
-means the box did not run rather than that all was well. **`translate` posts
-nothing** — its output is the pull request it opens, which the PR list already
-says; its failures land in the run log and the exit code. Token
+means the box did not run rather than that all was well. **`translate` stays quiet on success** — its output is the pull request it
+opens, which the PR list already says — but it POSTS ON FAILURE, and stamps
+`translate/last-run.json` on every exit. Both exist because a run that dies also
+leaves no PR, so failing and idling used to produce the identical signal: it
+opened nothing for six days in August 2026 while 28 pages sat missing from 14
+locales, and the weekly docs audit is what noticed. That audit now reports the
+stamp's age, which is the only way to see the failure no error handler can catch
+— the job never starting. Token
 tarballs still come from `capture-tokens.sh` on a logged-in machine.
 
 One thing to know before touching the translation cache: on Actions it was
@@ -333,10 +359,13 @@ canary-policies.mjs   benign-marker custom policies the probe trips
 run.sh                orchestrator (gate → probe → report → Slack)
 report.js             build the Slack report + diff state (broke/recovered)
 capture-tokens.sh     (run on a logged-in machine) refresh the OAuth token secrets
-local/                the box: runner image, installer, and one script per job
-  Dockerfile.runner   the runner image, shared by every job
-  install.sh          one-command setup: image + work dir + env file + cron
-  runner-entrypoint.sh  baked, thin: lock -> checkout -> exec jobs/$CANARY_JOB.sh
+local/                the box: one image per job, installer, one script per job
+  Dockerfile.canary   the integration suite (docker client + baked failproofaid)
+  Dockerfile.translate    the nightly translation (mintlify, no docker client)
+  Dockerfile.docs-audit   the weekly sweep (node + bun + the checkout, nothing else)
+  install.sh          one-command setup: images + work dir + env file + cron
+  job-entrypoint.sh   baked, thin: lock -> staleness -> exec jobs/$CANARY_JOB.sh
+  run-job.sh          the one line cron calls (picks the image, scopes the socket)
   jobs/canary.sh      the integration suite (stable + beta legs)
   jobs/translate.sh   the nightly doc translation
   jobs/docs-audit.sh  the weekly docs sweep (analysis: scripts/docs-audit.ts)

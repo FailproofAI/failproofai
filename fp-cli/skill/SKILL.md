@@ -52,11 +52,29 @@ Throughout this skill, `fp` means "whichever form you resolved."
   | **API key** | `--api-key <key>`, or `FP_API_KEY` in the environment | a scoped **credential**, carrying exactly the permissions it was granted |
 
   A key is what you want in CI or any other non-interactive context: no browser, no
-  emailed code, nothing to expire mid-run. `FP_API_KEY` takes precedence
-  over `FP_TOKEN`; supplying both `--api-key` and `--token` is a usage
-  error (exit 2) rather than a silent guess about which you meant. **A key is never
-  written to the CLI's saved config** — pass it every time, from the environment.
-  `--api-key ""` means "no override" and does **not** fall back to a saved session.
+  emailed code, nothing to expire mid-run.
+
+  **Credential precedence, in full** (`resolve_auth`, `fp_cli/_context.py`). Read it
+  as a ladder — the first rung that applies wins, and an explicit flag outranks
+  *every* environment variable, not just its own:
+
+  0. `--api-key` **and** `--token` together → usage error, exit 2. A silent guess
+     about which you meant is the one outcome worth refusing.
+  1. `--api-key <key>` → key mode
+  2. `--token <tok>` → session mode. **This beats an ambient `FP_API_KEY`** — the
+     flag is checked before the environment value, so "`FP_API_KEY` wins" is only
+     true between the two env vars.
+  3. `FP_API_KEY` → key mode
+  4. `FP_TOKEN` → session mode
+  5. the saved session from `fp login` → session mode
+
+  The rung that catches people is 2: exporting `FP_API_KEY` in CI and *also*
+  passing `--token` runs as that user's saved session, with their org memberships,
+  rather than under the scoped key you meant to audit.
+
+  **A key is never written to the CLI's saved config** — pass it every time, from
+  the environment. `--api-key ""` means "no override" and does **not** fall back to
+  a saved session (Click treats an empty env var as unset, so it falls to rung 4).
 
 - **Some commands need a signed-in user.** `login`, `logout`, `orgs *` and the
   whole `agent` group refuse a key with a usage error (**exit 2**) and make **no

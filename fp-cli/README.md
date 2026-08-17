@@ -152,13 +152,26 @@ against man-in-the-middle attacks — prefer a valid certificate outside interna
 
 ## Telemetry
 
-The CLI sends anonymous usage analytics — which command ran (including its subcommand,
-e.g. `keys create`), success/exit status and duration, the **names** of flags used, and a
-per-action event for mutations (e.g. `api_key_created`, `query_run`) carrying only static
-names/enums and coarse counts. **No data, URLs, tokens, emails, ids, SQL, key secrets, or query
-values are ever sent**, and operators are identified only by an opaque id. It's on by default —
-disable it with `FP_ANALYTICS_DISABLED=1` (or the cross-tool `DO_NOT_TRACK=1`). Sending is
-time-bounded, so it never delays a command. See <https://docs.befailproof.ai/agenteye/cli> for the full privacy details.
+**Telemetry is currently disabled and this build sends nothing.**
+`TELEMETRY_DISABLED` is `True` in `fp_cli/analytics_config.py`: when the analytics
+host is unreachable the send path stalls every command for ~5s — the shutdown flush
+is bounded, but the client build and first connect attempt are not — so it stays off
+until that path is fully non-blocking. Nothing was removed; re-enabling is one
+constant.
+
+The rest of this section describes what it collects **if** it is re-enabled, so you
+can review it in advance rather than discover it in a release note:
+
+- which command ran (including its subcommand, e.g. `keys create`), success/exit
+  status and duration, the **names** of flags used, and a per-action event for
+  mutations (e.g. `api_key_created`, `query_run`) carrying only static names/enums
+  and coarse counts;
+- **no data, URLs, tokens, emails, ids, SQL, key secrets, or query values are ever
+  sent**, and operators are identified only by an opaque id.
+
+`FP_ANALYTICS_DISABLED=1` (or the cross-tool `DO_NOT_TRACK=1`) opts out, and keeps
+working as an opt-out if it is ever switched back on. See
+<https://docs.befailproof.ai/agenteye/cli> for the full privacy details.
 
 ## Exit codes
 

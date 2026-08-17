@@ -76,6 +76,19 @@ let lastSubcommand = null;
 // with the right event name. Mirrors the cli_install_failure / cli_uninstall_failure
 // pattern below for parity. Cleared back to null after the success track.
 let lastPolicyAction = null;
+/**
+ * Every CLI `policies --install/--uninstall/list --cli` accepts.
+ *
+ * ONE list, referenced from all three flag parsers below. It used to be three
+ * hardcoded copies, and they drifted: grok and qwen were added to the `--hook
+ * --cli` validation and to INTEGRATION_TYPES, but not here, so a real
+ * `policies --install --cli grok` was rejected outright while every unit test
+ * passed. __tests__/hooks/integrations.test.ts asserts this equals
+ * INTEGRATION_TYPES so the next CLI cannot repeat it.
+ */
+const INSTALLABLE_CLIS = ["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose", "grok", "qwen"];
+const VALID_CLIS_USAGE = `Missing value(s) for --cli. Usage: --cli ${INSTALLABLE_CLIS.join(" ")} (or any subset)`;
+
 async function track(name, props) {
   try {
     if (!_telemetry) {
@@ -1873,7 +1886,7 @@ async function runCli() {
       //   --cli claude codex copilot
       //   --cli claude --cli codex
       // Values are consumed greedily until the next flag or end of argv.
-      const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
+      const VALID_CLIS = new Set(INSTALLABLE_CLIS);
       const cliFlagValues = [];
       const cliConsumedIdxs = new Set();
       const cliFlagIdxs = subArgs.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
@@ -1890,7 +1903,7 @@ async function runCli() {
           consumed++;
         }
         if (consumed === 0) {
-          throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi hermes openclaw (or any subset)");
+          throw new CliError(VALID_CLIS_USAGE);
         }
       }
 
@@ -1962,7 +1975,7 @@ async function runCli() {
       }
 
       // --cli accepts one or more space-separated values; same parser as install.
-      const VALID_CLIS = new Set(["claude", "codex", "copilot", "cursor", "opencode", "pi", "hermes", "openclaw", "factory", "devin", "antigravity", "goose"]);
+      const VALID_CLIS = new Set(INSTALLABLE_CLIS);
       const cliFlagValues = [];
       const cliConsumedIdxs = new Set();
       const cliFlagIdxs = subArgs.map((a, i) => (a === "--cli" ? i : -1)).filter((i) => i >= 0);
@@ -1979,7 +1992,7 @@ async function runCli() {
           consumed++;
         }
         if (consumed === 0) {
-          throw new CliError("Missing value(s) for --cli. Usage: --cli claude codex copilot cursor opencode pi hermes openclaw (or any subset)");
+          throw new CliError(VALID_CLIS_USAGE);
         }
       }
 

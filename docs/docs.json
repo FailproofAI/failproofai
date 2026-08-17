@@ -52,6 +52,7 @@
             "pages": [
               "index",
               "start/quickstart",
+              "sessions/assistant",
               "start/first-audit",
               "start/first-policy",
               "start/setup",
@@ -78,8 +79,7 @@
               "sessions/evaluations",
               "sessions/metrics",
               "sessions/dashboards",
-              "sessions/queries",
-              "sessions/assistant"
+              "sessions/queries"
             ]
           }
         ]

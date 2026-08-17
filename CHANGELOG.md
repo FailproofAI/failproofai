@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1-beta.2 — 2026-08-17
+
+### Features
+
+- Open-source the Cloud CLI as `fp-cli` (command `fp`), moved out of the private AgentEye monorepo into `fp-cli/`. The distribution and the command differ because `fp` was taken on PyPI, and neither is the `failproofai` CLI this repo already builds — that one enforces inside the agent loop, this one reads back what the loop did. It is a hard cut, matching the collector binary's rename: no `agenteye` alias, no retired env-var fallback, no config migration, so scripts calling `agenteye ...` break on upgrade and users run `fp login` once. Env vars move to `FP_*` and the config to `~/.fp/cli.json`. The `X-AgentEye-Org` / `X-AgentEye-Client` headers and the `ae_session` cookie are deliberately unchanged — they are a contract with the dashboard and the Rust server, and renaming them from one side would misroute tenants with a 200 rather than an error. Brings the first Python into the repo: a matrixed `fp-cli` CI job, a Trusted-Publishing PyPI workflow, a `uv` dependabot ecosystem and the lockfile in the osv-scanner gate. Also fixes a README that documented a command renamed long ago and a default it claimed did not exist, a test fixture that ran the suite with TLS verification disabled, and a repo-root probe that would have resolved to the wrong repo here. (#702)
+
 ## 1.0.1-beta.1 — 2026-08-16
 
 ### Fixes

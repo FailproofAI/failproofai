@@ -7,7 +7,18 @@
  * is agent-agnostic — only install/uninstall plumbing varies.
  */
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  unlinkSync,
+  renameSync,
+  chmodSync,
+  statSync,
+  rmSync,
+} from "node:fs";
+import { randomBytes } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -58,24 +69,44 @@ function readJsonFile(path: string): Record<string, unknown> {
 }
 
 /**
- * NOT atomic, and that is a known gap rather than an oversight.
+ * Write a settings file atomically: temp beside it, then rename.
  *
- * A bare `writeFileSync` truncates before it rewrites, so a crash or a full
- * disk mid-write leaves a user's `settings.json` empty or half-written — the
- * vendor then rejects it and the session runs with NO enforcement, silently.
- * Tolerable while every write follows a human typing `policies --install` and
- * reading the output; NOT tolerable for an unattended repair on a headless box.
+ * These are files the USER owns and the VENDOR reads. `~/.claude/settings.json`
+ * holds their permissions, env and model settings, and it is also the only
+ * thing telling their CLI to call us at all. A bare `writeFileSync` truncates
+ * before it rewrites, so a crash, a full disk or a killed process mid-write
+ * leaves the file empty or half-written; the vendor then rejects it and the
+ * session runs with NO enforcement, silently — the Copilot 1.0.71 outcome,
+ * self-inflicted.
  *
- * Making it atomic (temp + rename, preserving mode) is ~15 lines, but it
- * changes what the install path observably calls: eight assertions in
- * `manager.test.ts` check `writeFileSync` received the settings path, and with
- * a rename they must check the rename destination instead. That is a
- * deliberate change to the install path and belongs with the repair work that
- * needs it, not smuggled in beside a read-only detector.
+ * That was survivable while every write followed a human typing
+ * `policies --install` and reading the output. Repair runs unattended on
+ * headless boxes, so the guarantee belongs here rather than in each caller.
+ *
+ * `rename(2)` is atomic within a filesystem, and the temp file is created in
+ * the same directory precisely so it never crosses one. The existing mode is
+ * preserved: these files are not ours to re-permission.
  */
 function writeJsonFile(path: string, data: Record<string, unknown>): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(data, null, 2) + "\n", "utf8");
+  const body = JSON.stringify(data, null, 2) + "\n";
+  const tmp = `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  try {
+    writeFileSync(tmp, body, "utf8");
+    try {
+      chmodSync(tmp, statSync(path).mode & 0o7777);
+    } catch {
+      // No existing file, or an unreadable mode — the default is correct.
+    }
+    renameSync(tmp, path);
+  } catch (err) {
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+      // A stray temp file beats masking the real error.
+    }
+    throw err;
+  }
 }
 
 /** Read a YAML file as a `Document` so writes round-trip the user's other keys +

@@ -37,10 +37,15 @@
  * This module answers a narrower question honestly rather than the whole one
  * badly.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { getIntegration, settingsPathsFor } from "./integrations";
 import { resolveFailproofaiBinary } from "./manager";
-import { INTEGRATION_TYPES, type HookScope, type IntegrationType } from "./types";
+import {
+  FAILPROOFAI_HOOK_MARKER,
+  INTEGRATION_TYPES,
+  type HookScope,
+  type IntegrationType,
+} from "./types";
 
 /** What we found for one (cli, scope, settings file). */
 export type DriftStatus =
@@ -110,6 +115,26 @@ export function isDogfoodCommand(command: string): boolean {
   return command.includes("dev-hook.mjs");
 }
 
+/**
+ * Is there any sign of us in this file, whatever shape it is in?
+ *
+ * `hooksInstalledInSettings` looks for our entry in the shape we EXPECT, so a
+ * vendor that changes its config format makes it answer "not installed" for a
+ * file that plainly contains our hook. That is the difference between
+ * "you never installed here" — leave it alone — and "your entry is here and we
+ * no longer recognise the shape around it", which is the strongest drift signal
+ * available and precisely the Copilot 1.0.71 case: `hooks` went from an array
+ * to an object, older files were rejected wholesale, and the session ran
+ * unhooked in silence.
+ *
+ * Deliberately a raw-text check rather than a structural one: the whole premise
+ * is that we can no longer parse the structure the way we thought.
+ */
+function hasFailproofaiTrace(raw: string): boolean {
+  if (raw.includes(FAILPROOFAI_HOOK_MARKER)) return true;
+  return raw.includes("failproofai") && raw.includes("--hook");
+}
+
 function containsDogfood(value: unknown, depth = 0): boolean {
   if (depth > 8) return false;
   if (typeof value === "string") return isDogfoodCommand(value);
@@ -160,7 +185,17 @@ function inspectOne(
   } catch {
     installedHere = false;
   }
-  if (!installedHere) return { ...base, status: "absent" };
+  if (!installedHere) {
+    let raw = "";
+    try {
+      raw = readFileSync(settingsPath, "utf8");
+    } catch {
+      return { ...base, status: "unreadable", detail: "read" };
+    }
+    // Our entry is in there; we just cannot see it through the shape we expect.
+    if (hasFailproofaiTrace(raw)) return { ...base, status: "stale", detail: "unrecognised-shape" };
+    return { ...base, status: "absent" };
+  }
 
   try {
     integration.writeHookEntries(regenerated, binaryPath, scope);

@@ -290,6 +290,17 @@ export const hookActivityDir = (home?: string) => atHome(home, "hook-activity");
 export const contractTableFile = (home?: string) =>
   atHome(home, "contracts", "observed.json");
 
+/**
+ * Copies of a CLI's hook config taken immediately before we repaired it.
+ *
+ * Repair rewrites a file the USER owns and the VENDOR reads, unattended, on
+ * machines with no operator. The backup is the only thing that makes that
+ * reversible: if the rewritten file does not verify, the previous bytes go
+ * back. Retained per (cli, scope) and pruned, because a machine that repairs
+ * often must not accumulate copies forever.
+ */
+export const configBackupsDir = (home?: string) => atHome(home, "config-backups");
+
 // ── Runtime ──────────────────────────────────────────────────────────────────
 
 /** Sockets and the singleton flock. Shallow on purpose — see the header note. */
@@ -579,6 +590,10 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   { path: launcherMarker, class: "derived" },
   { path: onboardingLockFile, class: "derived" },
   { path: onboardingAttemptFile, class: "derived" },
+  // The bytes of a user's own CLI config, taken before we rewrote it. Nothing
+  // regenerates these — they are the only route back from a repair that made
+  // things worse, which is exactly when the live file is no longer a source.
+  { path: configBackupsDir, class: "user-typed" },
   // Observed vendor payload shapes. Derived rather than undelivered on purpose:
   // it is a picture of what the CLIs on THIS machine are currently sending, and
   // live traffic rebuilds it within a day. Dropping it costs a day of

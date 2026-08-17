@@ -1,16 +1,24 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import { homedir } from "node:os";
 import { globalPolicyConfigFile } from "../../src/hooks/fp-home";
 
+// `writeJsonFile` writes to a temp file and renames it into place, so the
+// bytes land via `writeFileSync` (temp path) and the DESTINATION arrives via
+// `renameSync`. Assertions about *where* we wrote read the rename; assertions
+// about *what* we wrote still read the write.
 vi.mock("node:fs", () => ({
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
   existsSync: vi.fn(),
   mkdirSync: vi.fn(),
+  renameSync: vi.fn(),
+  statSync: vi.fn(() => ({ mode: 0o644 })),
+  chmodSync: vi.fn(),
+  rmSync: vi.fn(),
 }));
 
 vi.mock("node:child_process", () => ({
@@ -83,7 +91,8 @@ describe("hooks/manager", () => {
       await installHooks();
 
       expect(writeFileSync).toHaveBeenCalledOnce();
-      const [path, content] = vi.mocked(writeFileSync).mock.calls[0];
+      const path = vi.mocked(renameSync).mock.calls[0][1];
+      const [, content] = vi.mocked(writeFileSync).mock.calls[0];
       expect(path).toBe(USER_SETTINGS_PATH);
 
       const written = JSON.parse(content as string);
@@ -281,7 +290,7 @@ describe("hooks/manager", () => {
       const { installHooks } = await import("../../src/hooks/manager");
       await installHooks(["all"]);
 
-      const [path] = vi.mocked(writeFileSync).mock.calls[0];
+      const path = vi.mocked(renameSync).mock.calls[0][1];
       expect(path).toBe(USER_SETTINGS_PATH);
     });
 
@@ -292,7 +301,7 @@ describe("hooks/manager", () => {
       const { installHooks } = await import("../../src/hooks/manager");
       await installHooks(["all"], "project");
 
-      const [path] = vi.mocked(writeFileSync).mock.calls[0];
+      const path = vi.mocked(renameSync).mock.calls[0][1];
       expect(path).toBe(PROJECT_SETTINGS_PATH);
     });
 
@@ -410,7 +419,7 @@ describe("hooks/manager", () => {
       const { installHooks } = await import("../../src/hooks/manager");
       await installHooks(["all"], "local");
 
-      const [path] = vi.mocked(writeFileSync).mock.calls[0];
+      const path = vi.mocked(renameSync).mock.calls[0][1];
       expect(path).toBe(LOCAL_SETTINGS_PATH);
     });
 
@@ -421,7 +430,7 @@ describe("hooks/manager", () => {
       const { installHooks } = await import("../../src/hooks/manager");
       await installHooks(["all"], "project", "/tmp/my-project");
 
-      const [path] = vi.mocked(writeFileSync).mock.calls[0];
+      const path = vi.mocked(renameSync).mock.calls[0][1];
       expect(path).toBe(resolve("/tmp/my-project", ".claude", "settings.json"));
     });
 
@@ -432,7 +441,7 @@ describe("hooks/manager", () => {
       const { installHooks } = await import("../../src/hooks/manager");
       await installHooks(["all"], "local", "/tmp/my-project");
 
-      const [path] = vi.mocked(writeFileSync).mock.calls[0];
+      const path = vi.mocked(renameSync).mock.calls[0][1];
       expect(path).toBe(resolve("/tmp/my-project", ".claude", "settings.local.json"));
     });
 
@@ -443,7 +452,7 @@ describe("hooks/manager", () => {
       const { installHooks } = await import("../../src/hooks/manager");
       await installHooks(["all"], "user", "/tmp/my-project");
 
-      const [path] = vi.mocked(writeFileSync).mock.calls[0];
+      const path = vi.mocked(renameSync).mock.calls[0][1];
       expect(path).toBe(USER_SETTINGS_PATH);
     });
 
@@ -978,7 +987,7 @@ describe("hooks/manager", () => {
       await removeHooks(undefined, "project", "/tmp/my-project");
 
       expect(writeFileSync).toHaveBeenCalledOnce();
-      const [path] = vi.mocked(writeFileSync).mock.calls[0];
+      const path = vi.mocked(renameSync).mock.calls[0][1];
       expect(path).toBe(customProjectPath);
     });
 

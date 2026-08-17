@@ -1,0 +1,64 @@
+---
+title: Yükseltmeden sonra güncelleştir
+description: "Yükseltmenin npm'nin yapamadığı yarısını tamamla: ev dizinini taşı ve daemonu eşleştir"
+---
+
+```bash
+npm install -g failproofai@latest && failproofai update
+```
+
+Tüm yükseltme bu kadar. `npm` CLI'yi değiştirir; `failproofai update` geri kalanını yapar.
+
+## İkinci bir komutun neden var olduğu
+
+`npm install -g` bir şeyi değiştirir — CLI'yi. failproofai kurulumunun diğer iki parçası paket dışında kalıcı olarak bulunur ve npm çalıştığında hiçbiri hareket etmez:
+
+- **`~/.failproofai/`**, ayarlarınız, bulut kaydı, politika seçimi ve geçmiş. Yeni bir sürüm bunu farklı şekilde düzenleyebilir ve yeniden düzenleme her iki durumu da bilen kod tarafından yapılmalıdır.
+- **`failproofaid` daemon binary'si**, `~/.failproofai/bin/failproofaid-<version>` konumunda. Kasıtlı olarak `node_modules` içinde *değildir*: çalışan bir hizmet altındaki dosyayı değiştiren bir yükseltme, canlı bir daemonu farklı kaynaktan inşa edilen bir binary'ye yeniden yönlendirir ve paketi kaldırmak, ardından her önyüklemede çökme döngüsü yapan bir hizmeti silmiş olur.
+
+Yani sadece `npm install -g` yapıldıktan sonra, CLI yeni ancak daemon değildir. `failproofaid` konuşmadığı bir ev düzeni karşısında başlamayı reddeder — o uyumsuzluğun sessiz sürümü yerine gürültülü sürümü — bu nedenle iki yarı bir araya getirilmesi gerekir. `failproofai update` o adımdır.
+
+## Ne yaptığı
+
+<Steps>
+  <Step title="Bekleyen tüm düzen taşınmalarını çalıştırır">
+    `~/.failproofai/VERSION` içinde kaydedilen düzeni okur ve onu bu sürümün konuştuğu düzene getiren adımları çalıştırır. Genellikle hiçbiri — bkz. [`failproofai migrate`](/tr/cli/migrate).
+  </Step>
+  <Step title="Eşleşen daemon binary'sini yerleştirir">
+    Mümkün olduğunda npm'nin önceden indirdiği platform paketinden (ağ yok), aksi takdirde bu tam sürüm için yayın varlığından, kullanılmadan önce SHA-256 doğrulaması yapılır.
+  </Step>
+  <Step title="Hizmeti yeniden başlatır ve geri geldiğini doğrular">
+    Varsayılan yerine araştırılır — bir hizmet yöneticisi bir işlemi çatallandığı anda etkin olarak bildirir, bu da çalıştığı anlamına gelmez.
+  </Step>
+</Steps>
+
+## Seçenekler
+
+| Bayrak | Etki |
+|--------|------|
+| `--no-daemon` | Sadece ev dizinini taşı, daemonu mevcut sürümünde bırak. |
+
+<Warning>
+  `--no-daemon` sürüm uyumsuzluğu olan bir daemon bırakır. Daemonun gerekli olacak şekilde yapılandırılmış bir makinede, daemon cevap veremezse her hook olayı **kapalı başarısız** olur — ve taşınmış bir ev dizinine karşı başlamayı reddeden bir daemon cevap veremez. Daemon yarısının çalışmasına izin vermeyi tercih edin.
+</Warning>
+
+## Birşey yanlış giderse
+
+Komut sıfır olmayan bir değerle çıkar ve hangı yarısının başarısız olduğunu söyler. Bilmekte değer iki durum:
+
+- **Bir taşıma adımı bitmedi.** Ev dizini *eski* düzeni ile işaretlenmiş olarak bırakılır, bu nedenle sonraki komut onu yeniden dener — hiçbir ev dizini kısmi taşımanın gücüne dayanarak asla geçerli olarak işaretlenmez. Ayarlarınız ve kaydınızın kopyaları her şey çalıştırılmadan önce `~/.failproofai/migrations/backup-layout<n>/` içine kaydedilir.
+- **Daemon parola olmadan yeniden başlatılamadı.** `sudo -n` kasıtlı olarak kullanılır, bu nedenle hiçbir şey ilerleme görüntüsü altında hiçbir zaman istemi yapmaz. Komut kendiniz çalıştırmanız için tam satırı yazdırır.
+
+<Note>
+  Burası hiçbir şey etkileşimli kurulum sihirbazına ihtiyaç duymaz. Ayarlarınız, bulut kaydınız ve politika seçiminiz yükseltmeyi hayatta kalırlar, bu nedenle taşınmış bir makine tam olarak önceki gibi uygulanır — bu en çok kimsenin oturduğu makinelerde önemli: CI çalışanı, filo kutusu, başsız ağ geçidi.
+</Note>
+
+## Otomatikleştirme
+
+`failproofai update` etkileşimsiz ve yapılacak bir şey olmadığında çalıştırmak için güvenlidir — "taşıma gerekmedi" bildirir ve 0 ile çıkar. Bir sağlama betiğinde veya Dockerfile'da her yükseltmeden sonra bunu koymak amaçlanan kullanımdır:
+
+```dockerfile
+RUN npm install -g failproofai@latest && failproofai update --no-daemon
+```
+
+(Henüz yeniden başlatılacak bir hizmet olmayan bir görüntü derlemesinde `--no-daemon`.)

@@ -1,0 +1,94 @@
+---
+title: Actualizar tras una actualización
+description: "Completa la mitad de una actualización que npm no puede hacer: migrar el directorio raíz y sincronizar el daemon"
+---
+
+```bash
+npm install -g failproofai@latest && failproofai update
+```
+
+Eso es todo lo que implica la actualización. `npm` reemplaza la CLI; `failproofai update` hace
+el resto.
+
+## Por qué existe un segundo comando
+
+`npm install -g` reemplaza una sola cosa: la CLI. Otras dos partes de una instalación de failproofai
+viven fuera del paquete a propósito, y ninguna se mueve cuando npm se ejecuta:
+
+- **`~/.failproofai/`**, tus ajustes, inscripción en la nube, selección de políticas e
+  historial. Una nueva versión puede organizarlo de manera diferente, y esa reorganización
+  debe realizarla código que conozca ambas estructuras.
+- **El binario del daemon `failproofaid`**, en
+  `~/.failproofai/bin/failproofaid-<version>`. Deliberadamente *no* está dentro de
+  `node_modules`: una actualización que reemplazara el archivo bajo un servicio en ejecución
+  redirigiría un daemon activo a un binario compilado desde una fuente diferente, y eliminar
+  el paquete lo borraría de debajo de un servicio que luego entraría en bucle de fallos en cada
+  arranque.
+
+Así que tras ejecutar solo `npm install -g`, la CLI es nueva y el daemon no lo es.
+`failproofaid` se niega a iniciarse con una estructura de directorio raíz que no reconoce —
+la versión ruidosa de ese desajuste, no la silenciosa — por lo que las dos mitades deben
+ponerse en sincronía. `failproofai update` es ese paso.
+
+## Qué hace
+
+<Steps>
+  <Step title="Ejecuta las migraciones de estructura pendientes">
+    Lee la estructura registrada en `~/.failproofai/VERSION` y ejecuta los pasos que
+    la llevan a la que habla esta versión. Normalmente ninguno — consulta
+    [`failproofai migrate`](/es/cli/migrate).
+  </Step>
+  <Step title="Coloca el binario del daemon correspondiente">
+    Desde el paquete de plataforma que npm ya descargó cuando es posible (sin red),
+    de lo contrario desde el recurso de la versión exacta, verificado con SHA-256
+    antes de usarse.
+  </Step>
+  <Step title="Reinicia el servicio y confirma que volvió a funcionar">
+    Verificado mediante sondeo, no asumido: un gestor de servicios reporta un proceso activo
+    en el momento en que se bifurca, lo cual no es lo mismo que estar funcionando.
+  </Step>
+</Steps>
+
+## Opciones
+
+| Indicador | Efecto |
+|-----------|--------|
+| `--no-daemon` | Migra solo el directorio raíz, dejando el daemon en su versión actual. |
+
+<Warning>
+  `--no-daemon` deja un daemon con versión desajustada en su lugar. En una máquina configurada
+  para requerir el daemon, cada evento de hook **falla de forma cerrada** si el daemon no puede
+  responder — y un daemon que se niega a iniciarse con un directorio raíz migrado no puede
+  responder. Es preferible dejar que se ejecute la mitad del daemon.
+</Warning>
+
+## Si algo sale mal
+
+El comando termina con un valor distinto de cero e indica qué mitad falló. Dos casos que vale la pena conocer:
+
+- **Un paso de migración no terminó.** El directorio raíz se deja marcado con su estructura
+  *anterior*, de modo que el siguiente comando lo reintenta — ningún directorio raíz se marca
+  como actual a partir de una migración parcial. Se guardaron copias de tus ajustes e inscripción
+  antes de que se ejecutara nada, en `~/.failproofai/migrations/backup-layout<n>/`.
+- **El daemon no pudo reiniciarse sin contraseña.** Se usa `sudo -n` deliberadamente, para que
+  nada solicite credenciales desde debajo de un indicador de progreso. El comando imprime la
+  línea exacta para que la ejecutes tú mismo.
+
+<Note>
+  Nada de esto requiere el asistente de configuración interactivo. Tus ajustes, inscripción en
+  la nube y selección de políticas sobreviven a una actualización, por lo que una máquina
+  migrada aplica las mismas políticas que antes — lo que más importa en las máquinas en las
+  que no hay nadie: un runner de CI, un servidor en flota, una pasarela sin cabeza.
+</Note>
+
+## Automatización
+
+`failproofai update` no es interactivo y es seguro ejecutarlo cuando no hay nada que hacer
+— reporta "no fue necesaria ninguna migración" y termina con 0. Colocarlo después de cada
+actualización en un script de aprovisionamiento o un Dockerfile es el uso previsto:
+
+```dockerfile
+RUN npm install -g failproofai@latest && failproofai update --no-daemon
+```
+
+(`--no-daemon` en la construcción de una imagen, donde aún no hay ningún servicio que reiniciar.)

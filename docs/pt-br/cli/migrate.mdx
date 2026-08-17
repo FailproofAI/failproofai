@@ -1,0 +1,120 @@
+---
+title: Migrar o diretório home
+description: "Atualizar ~/.failproofai para o layout desta versão, e visualizar o que aconteceria antes de executar"
+---
+
+```bash
+failproofai migrate --dry-run   # exibe o plano, sem alterar nada
+failproofai migrate             # executa a migração
+```
+
+A maioria das pessoas nunca precisa digitar isso. O comando é executado
+automaticamente no primeiro uso após uma atualização, e [`failproofai update`](/pt-br/cli/update)
+já o inclui. Use-o diretamente quando quiser ver o plano antes de executá-lo, ou
+para rodar a migração de forma isolada.
+
+## Baseado no layout, não na versão
+
+`~/.failproofai/VERSION` registra um número de **layout** — a estrutura do
+diretório, não a release que o criou. As migrações são indexadas por esse número,
+o que torna pulos grandes de versão baratos:
+
+- As versões do npm mudam a cada release, podendo haver dezenas delas entre dois layouts.
+- Portanto, uma máquina que pula trinta releases **sem alteração de layout** executa
+  **zero** migrações, e não trinta operações desnecessárias.
+- E uma máquina que pula vários layouts de uma vez executa cada etapa em ordem,
+  sendo que cada etapa conhece apenas seus dois extremos.
+
+Isso importa porque o npm não consegue atualizar um pacote instalado por conta
+própria. Uma máquina que fica parada em uma versão por meses e depois avança vários
+layouts é o caso normal, não o excepcional.
+
+## O dry run
+
+`--dry-run` exibe a cadeia exata e os arquivos que seriam salvos antes da execução,
+sem alterar absolutamente nada — nenhuma migração, nenhum backup, nenhum registro
+no histórico:
+
+```
+Layout 2 on disk; this build speaks 3.
+1 step(s) would run:
+  2 → 3  layout 2 → 3: carry config.toml and credentials.toml into JSON, move
+         custom-policies/ back up into policies/, nest the policy config at the root
+
+These would be copied to ~/.failproofai/migrations/backup-layout2 first:
+  VERSION
+  config.toml
+  credentials.toml
+```
+
+## O que é preservado e o que é recriado
+
+Cada caminho no diretório home declara o tipo de dado que contém, e isso determina
+se uma migração pode descartá-lo. A regra: **dados derivados e que podem ser
+baixados novamente podem ser descartados; qualquer coisa que você digitou, qualquer
+coisa ainda não entregue e qualquer coisa que identifique a máquina é preservada.**
+
+| Preservado | Recriado ou baixado novamente |
+|---|---|
+| `config.json` — configurações, `daemon.configured`, caminhos de captura extras | O cache de auditoria |
+| `credentials.json` — seu registro em nuvem | Implantações gerenciadas pela nuvem (baixadas novamente e verificadas por digest na próxima consulta) |
+| `policies-config.json` — sua seleção de políticas e parâmetros | Estado temporário do daemon |
+| `policies/` — seus próprios arquivos de política e os helpers que eles importam | |
+| `hook-activity/` — o log de decisões lido pelo dashboard | |
+| Eventos ainda aguardando na fila para upload | |
+| `cursors/` — marcadores de posição do coletor | |
+| O binário do daemon em `bin/` | |
+
+<Note>
+  Eventos não entregues são preservados em vez de descartados porque a perda seria
+  permanente, não apenas lenta: o marcador do coletor já avançou além de tudo que
+  está no spool, portanto nada leria aquele intervalo de uma transcrição novamente.
+  A migração também solicita ao daemon que entregue o que está no spool assim que
+  terminar, de modo que o resultado habitual é que não resta nada a preservar.
+</Note>
+
+Chaves que uma versão *mais recente* gravou em `config.json`, `credentials.json` ou
+`policies-config.json` também são preservadas, em vez de descartadas por um leitor
+mais antigo.
+
+## O registro que fica
+
+```
+~/.failproofai/migrations/
+  applied.json                 uma entrada por etapa: layout, CLI, timestamp, duração, resultado
+  backup-layout<n>/            cópias dos arquivos insubstituíveis, tiradas antes da primeira etapa
+```
+
+`applied.json` é o que responde à pergunta "o que esta máquina realmente passou" —
+a primeira coisa a verificar quando algo parece errado após uma atualização. Anexe-o
+a um relatório de bug.
+
+O backup é deliberadamente pequeno em vez de ser uma cópia do diretório inteiro: a
+migração não exclui mais nada insubstituível por design, portanto o que vale a pena
+proteger é um *defeito em uma etapa*, e esses poucos arquivos são onde tal defeito
+causaria dano.
+
+## Se uma etapa falhar
+
+A cadeia para nesse ponto. `VERSION` só é atualizado por uma etapa que foi
+concluída com sucesso, portanto o diretório home permanece marcado com seu layout
+antigo e o próximo comando tenta novamente — um diretório home nunca é marcado como
+atual com base em uma migração parcial. A etapa é registrada em `applied.json` com
+`"ok": false`, e o backup permanece onde foi criado.
+
+## Um diretório home mais recente é recusado, não migrado
+
+Se `~/.failproofai/` foi gravado por uma versão do failproofai **mais recente** do
+que a que você está executando, o comando para e solicita que você faça uma
+atualização. Esses dados estão corretos e uma CLI mais recente os lê normalmente;
+migrar "para frente" a partir deles não é algo que existe, e redefinir esses dados
+destruiria algo que pode ser recuperado.
+
+```
+This machine's failproofai directory was written by a newer version (layout 4;
+this build speaks 3). Upgrade rather than migrate:
+  npm install -g failproofai@latest
+```
+
+O daemon aplica a mesma regra: `failproofaid` se recusa a iniciar com um layout que
+não reconhece, em vez de ler e gravar caminhos que foram movidos.

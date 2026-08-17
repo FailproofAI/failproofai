@@ -130,12 +130,26 @@ cd "$CLONE" || die "cannot enter $CLONE"
 # people's work. Against the baked SHA, HEAD and the tree agree by construction.
 if [ ! -d "$CLONE/.git" ]; then
   step "git"
-  [ "$FP_SHA" != unknown ] || die "no baked SHA to anchor the commit to"
+  # The FULL object id: `git fetch origin <short sha>` is rejected outright
+  # ("couldn't find remote ref"), and the failure would land at 02:00.
+  ANCHOR="${CANARY_BAKED_SHA_FULL:-$FP_SHA}"
+  [ "$ANCHOR" != unknown ] || die "no baked SHA to anchor the commit to"
   git init -q . || die "git init failed"
   git remote add origin "https://github.com/$REPO.git" 2>/dev/null || true
-  git fetch --depth 1 origin "$FP_SHA" || die "could not fetch the baked commit $FP_SHA"
-  git reset --soft FETCH_HEAD || die "could not anchor HEAD at $FP_SHA"
-  echo "anchored at $FP_SHA (shallow, one commit)"
+  git fetch -q --depth 1 origin "$ANCHOR" || die "could not fetch the baked commit $ANCHOR"
+  # MIXED, never --soft. `git init` leaves an EMPTY index, and --soft does not
+  # touch the index — so every tracked file would read as a staged deletion and
+  # the `git add -A` below would commit the repository being emptied. A mixed
+  # reset sets the index to the commit and leaves the baked tree alone, which is
+  # how "0 changed paths" is the correct starting state.
+  git reset -q FETCH_HEAD || die "could not anchor the index at $ANCHOR"
+  drift="$(git status --short | wc -l | tr -d ' ')"
+  echo "anchored at ${ANCHOR:0:7} (shallow, one commit; $drift paths differ from it)"
+  # The baked tree IS that commit, so anything here is the build context having
+  # dropped a tracked file — which `git add -A` would turn into a deletion in an
+  # auto-merged PR. Refuse rather than publish that.
+  [ "$drift" = 0 ] || die "the baked tree differs from $ANCHOR in $drift tracked paths — refusing to
+       open a PR that would commit those differences. Check .dockerignore."
 fi
 
 # ── the cache lives in the work dir, not the checkout ────────────────────────

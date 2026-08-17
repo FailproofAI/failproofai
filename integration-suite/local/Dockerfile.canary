@@ -69,7 +69,12 @@ ARG FP_SHA=unknown
 # RFC3339, passed by CI. The entrypoint turns it into an age and refuses to call
 # an image fresh when it cannot parse one.
 ARG BUILT_AT=unknown
+# The FULL object id as well as the short one. `git fetch origin <sha>` rejects an
+# abbreviated id ("couldn't find remote ref"), and translate fetches its own
+# baked commit to get a git identity — verified against github.com, both forms.
+ARG FP_SHA_FULL=unknown
 ENV CANARY_BAKED_AT=${BUILT_AT} \
+    CANARY_BAKED_SHA_FULL=${FP_SHA_FULL} \
     CANARY_BAKED_SHA=${FP_SHA} \
     CANARY_JOB=canary \
     CANARY_CLONE=/opt/failproofai \

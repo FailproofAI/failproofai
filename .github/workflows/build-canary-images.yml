@@ -123,6 +123,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             FP_SHA=${{ steps.meta.outputs.sha }}
+            FP_SHA_FULL=${{ github.sha }}
             BUILT_AT=${{ steps.meta.outputs.built_at }}
           cache-from: type=gha,scope=${{ matrix.job }}
           cache-to: type=gha,mode=max,scope=${{ matrix.job }}

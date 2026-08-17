@@ -153,6 +153,49 @@ describe("three job images, each baking the commit it runs", () => {
 });
 
 describe("canary job (in-repo, evolves with the harness)", () => {
+  it("hands the decoded tokens to the uid that actually reads them", () => {
+    // inject-tokens.sh runs in a sibling as the sandbox's unprivileged user
+    // (uid 1001). A 0700 dir owned by root reads to it as an EMPTY directory,
+    // and "token dir present but empty" looks downstream like three CLIs that
+    // are simply not logged in. chown, not chmod 755 — the box may have other
+    // users on it.
+    const ci = readFileSync(path.join(SUITE, "ci-entrypoint.sh"), "utf8");
+    expect(ci).toMatch(/chown -R 1001:1001 "\$TOKENS_DIR"/);
+  });
+
+  it("keeps decoded credentials host-visible, because they are a sibling mount", () => {
+    // Two constraints at once, and the first cut satisfied only one: OUT of the
+    // checkout (the images bake it) and ON the host (inject-tokens.sh runs in
+    // its own container, so the daemon resolves the path host-side). A
+    // container-local /tmp mounted empty and three CLIs read as logged out.
+    const ci = readFileSync(path.join(SUITE, "ci-entrypoint.sh"), "utf8");
+    expect(ci).toMatch(/CRED_DIR="\$\{CANARY_CRED_DIR:-\$\{CANARY_WORK:\+\$CANARY_WORK\/run\}\}"/);
+    expect(ci).toMatch(/TOKENS_DIR="\$\{CANARY_TOKENS_DIR:-\$CRED_DIR\/tokens\$SUFFIX\}"/);
+    expect(ci).not.toMatch(/TOKENS_DIR="\$\{CANARY_TOKENS_DIR:-\$REPO/);
+  });
+
+  it("materialises the baked tree where SIBLING containers can reach it", () => {
+    // Everything this job spawns is a sibling: the HOST daemon resolves its -v
+    // sources against the HOST filesystem. The image's checkout lives at
+    // /opt/failproofai, which exists only inside the canary container, so a
+    // probe container would mount an empty directory — found by running the real
+    // image, which died on `bash: /opt/canary/install-clis.sh: No such file`.
+    // The work dir is the one path that means the same thing on both sides.
+    expect(dailySh).toMatch(/if \[ -n "\$\{CANARY_BAKED_SHA:-\}" \]; then/);
+    expect(dailySh).toMatch(/HOST_REPO="\$WORK\/repo"/);
+    expect(dailySh).toMatch(/\.baked-sha/);
+    expect(dailySh).toMatch(/CLONE="\$HOST_REPO"/);
+    // The daemon binary has the same problem and needs the same answer.
+    expect(dailySh).toMatch(/CANARY_DAEMON_BIN="\$HOST_REPO\/\.bin\/failproofaid"/);
+  });
+
+  it("copies once per published image, not once per run", () => {
+    // 849 MB of tree (node_modules is most of it). Keyed by the baked SHA, so a
+    // daily run of an unchanged image skips it entirely.
+    expect(dailySh).toMatch(/cat "\$HOST_REPO\/\.baked-sha" 2>\/dev\/null \|\| echo none.*!=/s);
+    expect(dailySh).toMatch(/reusing the materialised tree/);
+  });
+
   it("drives the same front door CI does, one leg per channel", () => {
     expect(dailySh).toContain("integration-suite/ci-entrypoint.sh");
     expect(dailySh).toMatch(/\$\{CANARY_LEGS:-stable beta\}/);
@@ -473,6 +516,31 @@ describe("translate job", () => {
     for (const m of translateSh.matchAll(/stamp ok[^\n]*\n/g)) {
       expect(m[0]).not.toMatch(/slack_note/);
     }
+  });
+
+  it("anchors its commit on the FULL baked sha, with a mixed reset", () => {
+    // Two bugs found by running the real image, either of which would have
+    // opened a destructive PR at 02:00:
+    //
+    //   `git fetch origin <short sha>` is rejected outright by github
+    //   ("couldn't find remote ref"), so the anchor has to be the full object id.
+    //
+    //   `git init` leaves an EMPTY index and `reset --soft` does not touch the
+    //   index — so all ~1500 tracked files read as staged deletions and the
+    //   `git add -A` below would commit the repository being emptied. A MIXED
+    //   reset sets the index to the commit and leaves the baked tree alone.
+    expect(translateSh).toMatch(/ANCHOR="\$\{CANARY_BAKED_SHA_FULL:-\$FP_SHA\}"/);
+    expect(translateSh).toMatch(/git fetch -q --depth 1 origin "\$ANCHOR"/);
+    expect(translateSh).toMatch(/git reset -q FETCH_HEAD/);
+    expect(translateSh).not.toMatch(/git reset --soft/);
+  });
+
+  it("refuses to publish when the baked tree differs from the commit it claims", () => {
+    // The baked tree IS that commit, so any difference is the build context
+    // having dropped a tracked file — which `git add -A` turns into a deletion
+    // in a PR that is meant to only touch translations.
+    expect(translateSh).toMatch(/drift="\$\(git status --short \| wc -l/);
+    expect(translateSh).toMatch(/\[ "\$drift" = 0 \] \|\| die/);
   });
 
   it("stamps every exit so 'never ran' is detectable from outside", () => {

@@ -65,7 +65,14 @@ IMAGE="${CANARY_IMAGE:-failproofai-integration-suite:base}"
 # run (the normal case, not the exotic one) leaves them behind, and
 # `install.sh --build-local` builds from the operator's own checkout.
 # /run is tmpfs in a container and cleared on the host between boots either way.
-CRED_DIR="${CANARY_CRED_DIR:-${XDG_RUNTIME_DIR:-/tmp}/failproofai-canary}"
+# It has to be HOST-VISIBLE, not merely outside the checkout: $TOKENS_DIR is a
+# SIBLING mount source (inject-tokens.sh runs in its own container), and the host
+# daemon resolves it against the host filesystem. A container-local /tmp path
+# mounts empty, and the tokens land nowhere — which reads downstream as three
+# CLIs that are simply not logged in. The work dir is the one path that means the
+# same thing on both sides; it is 0700 and it is not a build context.
+CRED_DIR="${CANARY_CRED_DIR:-${CANARY_WORK:+$CANARY_WORK/run}}"
+CRED_DIR="${CRED_DIR:-${XDG_RUNTIME_DIR:-/tmp}/failproofai-canary}"
 mkdir -p "$CRED_DIR" 2>/dev/null || CRED_DIR="$REPO"
 chmod 700 "$CRED_DIR" 2>/dev/null || true
 ENVFILE="${CANARY_ENVFILE:-$CRED_DIR/canary$SUFFIX.env}"
@@ -173,6 +180,13 @@ decode_token() {
 decode_token cursor      "${CURSOR_TOKEN_TGZ_B64:-}"
 decode_token devin       "${DEVIN_TOKEN_TGZ_B64:-}"
 decode_token antigravity "${ANTIGRAVITY_TOKEN_TGZ_B64:-}"
+# inject-tokens.sh reads these from a SIBLING container running as the sandbox's
+# unprivileged `canary` user (uid 1001), and a 0700 dir owned by root reads to it
+# as an EMPTY directory — "token dir present but empty", which then looks
+# downstream like three CLIs that are simply not logged in. Hand it to that uid
+# rather than widening the mode: 0700 for uid 1001 keeps every other user on the
+# box out, which loosening to 0755 would not.
+chown -R 1001:1001 "$TOKENS_DIR" 2>/dev/null || chmod -R a+rX "$TOKENS_DIR" 2>/dev/null || true
 
 # ── 3. sandbox image + per-run volume ───────────────────────────────────────
 step "building sandbox image ($IMAGE)"

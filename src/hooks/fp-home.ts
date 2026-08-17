@@ -278,6 +278,18 @@ export const auditMachineFile = (home?: string) => resolve(auditDir(home), "mach
 /** The decision log: page-sized JSONL the dashboard's activity tab reads. */
 export const hookActivityDir = (home?: string) => atHome(home, "hook-activity");
 
+// ── Observed vendor contracts ────────────────────────────────────────────────
+
+/**
+ * What the agent CLIs actually send: per-CLI version and per-hook payload key
+ * names, accumulated by `contract-observer.ts`.
+ *
+ * Key names only, never values — see that module's header for why that is a
+ * structural property of the recorder rather than a convention.
+ */
+export const contractTableFile = (home?: string) =>
+  atHome(home, "contracts", "observed.json");
+
 // ── Runtime ──────────────────────────────────────────────────────────────────
 
 /** Sockets and the singleton flock. Shallow on purpose — see the header note. */
@@ -567,6 +579,11 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   { path: launcherMarker, class: "derived" },
   { path: onboardingLockFile, class: "derived" },
   { path: onboardingAttemptFile, class: "derived" },
+  // Observed vendor payload shapes. Derived rather than undelivered on purpose:
+  // it is a picture of what the CLIs on THIS machine are currently sending, and
+  // live traffic rebuilds it within a day. Dropping it costs a day of
+  // observation, never a fact nothing else holds.
+  { path: contractTableFile, class: "derived" },
 
   // ── May be dropped: the server has it ──
   // Re-fetched and digest-verified on the next daemon poll. This is the whole

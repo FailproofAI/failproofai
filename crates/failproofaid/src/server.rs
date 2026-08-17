@@ -511,7 +511,19 @@ mod tests {
         .unwrap();
 
         let socket_path = temp_socket_path("hook-real-worker");
-        let worker_cmd = WorkerCommand::shell(format!("bun {}", worker_script.display()));
+        // Point the worker at a throwaway home. It writes there on every hook
+        // — the decision log, and `contracts/observed.json` — and the observer
+        // resolves CLI versions by forking vendor binaries when it sees a
+        // worker socket. Without this, `cargo test` records into the
+        // developer's (or the CI runner's) own `~/.failproofai` and execs
+        // whatever agent CLIs happen to be installed on the box.
+        let worker_home = project_dir.join("fpai-home");
+        std::fs::create_dir_all(&worker_home).unwrap();
+        let worker_cmd = WorkerCommand::shell(format!(
+            "FAILPROOFAI_HOME={} bun {}",
+            worker_home.display(),
+            worker_script.display()
+        ));
         let _guard = start_test_server_with_worker(socket_path.clone(), worker_cmd);
 
         let stdin = serde_json::json!({

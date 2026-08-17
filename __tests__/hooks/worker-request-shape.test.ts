@@ -61,6 +61,11 @@ describe("the worker accepts what the daemon sends", () => {
 
   async function serve() {
     dir = mkdtempSync(resolve(tmpdir(), "fpai-wsock-"));
+    // Isolate the home. Driving the real hook path writes to `~/.failproofai`
+    // — the decision log, and now `contracts/observed.json` — so without this
+    // the suite records into the DEVELOPER'S own home, exactly as
+    // `worker-server.test.ts` documents finding for hook-activity.
+    process.env.FAILPROOFAI_HOME = resolve(dir, "home");
     sock = resolve(dir, "worker.sock");
     server = startWorkerServer(sock);
     // `listen` is async; wait for the socket to exist before dialling it.
@@ -73,6 +78,7 @@ describe("the worker accepts what the daemon sends", () => {
   async function shutdown() {
     await new Promise<void>((res) => (server ? server.close(() => res()) : res()));
     server = null;
+    delete process.env.FAILPROOFAI_HOME;
   }
 
   it("accepts `cwd: null` — what serde renders an absent Option as", async () => {

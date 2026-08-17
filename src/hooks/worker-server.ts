@@ -24,6 +24,7 @@ import { existsSync, unlinkSync } from "node:fs";
 import { evaluateHookEvent } from "./handler";
 import type { IntegrationType } from "./types";
 import { hookLogWarn } from "./hook-logger";
+import { recordHookShape } from "./contract-observer";
 
 const MAX_FRAME_LEN = 16 * 1024 * 1024;
 
@@ -180,6 +181,19 @@ function handleConnection(socket: Socket, shutdown: () => void): void {
 
       enqueue(async () => {
         try {
+          // Diagnostic only, and guarded twice on purpose. The inner catch is
+          // the load-bearing one: without it a throw would reach the outer
+          // catch below, which answers the client with `{type:"error"}` — and
+          // daemon-client.ts treats that identically to an unreachable daemon,
+          // so a bug in a recorder would fail-closed DENY a legitimate tool
+          // call. Above the enqueue callback's `try` it would be worse still:
+          // no frame is written at all and the client burns its full 30s
+          // budget before denying.
+          try {
+            recordHookShape(request.cli, request.hookEvent, request.stdin);
+          } catch {
+            // Never let observation affect enforcement.
+          }
           const result = await evaluateHookEvent(request.hookEvent, request.cli, request.stdin, {
             awaitTelemetryFlush: false,
             // Normalised here so no consumer has to know the wire spells

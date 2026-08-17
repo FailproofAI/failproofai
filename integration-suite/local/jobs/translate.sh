@@ -57,12 +57,42 @@ export FAILPROOFAI_TELEMETRY_DISABLED=1
 # red-job email for free; a cron line redirected to /dev/null gives nothing.
 STEP="startup"
 REF_DESC="${TRANSLATE_REF:-origin/$BASE_BRANCH}"
-# This job does NOT post to Slack. Its output IS the pull request — a run that
-# did something leaves one, and a run that did nothing leaves the previous one
-# untouched, so there is nothing a chat message would add that the PR list does
-# not already say. Failures go to the run log ($CANARY_LOG) and the exit code.
+# Success stays quiet: a run that did something leaves a pull request and a run
+# that did nothing leaves the previous one untouched, so a nightly "all good"
+# would be pure noise.
+#
+# FAILURE DOES NOT. That was the original reading of this and it was wrong: a run
+# that dies also leaves no PR, so failing and idling produced the identical
+# signal — none. Between 2026-08-11 and 2026-08-17 this job opened nothing while
+# 28 pages sat missing from 14 locales, and the only way anyone found out was a
+# finding in the WEEKLY docs audit. The exit code was right there in
+# ~/fp-canary/logs/ and a cron line reports to nobody.
+#
+# So: loud on failure, quiet on success, plus a status stamp (below) that makes
+# "never ran at all" — the one failure no error handler can catch, because the
+# handler never runs — visible to the weekly audit.
+slack_note() { # $1 = text; best-effort, never fails the run
+  [ -n "${CANARY_SLACK_WEBHOOK:-}" ] || return 0
+  local payload
+  payload="$(printf '%s' "$1" | node -e 'const t=require("fs").readFileSync(0,"utf8");process.stdout.write(JSON.stringify({text:t}))')"
+  curl -sS --connect-timeout 10 --max-time 30 -o /dev/null -X POST \
+    -H 'Content-type: application/json' --data "$payload" "$CANARY_SLACK_WEBHOOK" 2>/dev/null || true
+}
+# Written on EVERY exit, success or failure, so the file's own age answers "did
+# this job run last night?" — a question no in-run check can answer for itself.
+stamp() { # $1 = outcome, $2 = detail
+  mkdir -p "$CACHE_HOME"
+  node -e 'require("fs").writeFileSync(process.argv[1],JSON.stringify({at:new Date().toISOString(),outcome:process.argv[2],step:process.argv[3],detail:process.argv[4],sha:process.argv[5]},null,1))' \
+    "$CACHE_HOME/last-run.json" "$1" "$STEP" "${2:-}" "$FP_SHA" 2>/dev/null || true
+}
 die() { # $1 = human summary
   echo "✗ $STEP: $1" >&2
+  stamp failed "$1"
+  slack_note "🔥 *nightly translation FAILED at \`$STEP\`* — \`$REF_DESC\` @ \`$FP_SHA\`
+$1
+\`\`\`
+$(tail -15 "${CANARY_LOG:-/dev/null}" 2>/dev/null || echo '(no log)')
+\`\`\`"
   exit 1
 }
 step() { STEP="$1"; echo "── $1 ──"; }
@@ -134,6 +164,7 @@ export TRANSLATE_GITHUB_TOKEN
 git add -A
 if git diff --cached --quiet; then
   echo "no changes — every language is current at $FP_SHA"
+  stamp ok "no changes"
   exit 0
 fi
 CHANGED="$(git diff --cached --name-only | wc -l | tr -d ' ')"
@@ -232,6 +263,7 @@ fi
 git add -A
 if git diff --cached --quiet; then
   echo "nothing new relative to $BRANCH"
+  stamp ok "nothing new relative to $BRANCH"
   exit 0
 fi
 git commit -m "docs: update translations for changed English sources" || die "commit failed"
@@ -253,4 +285,5 @@ else
   echo "pushed $CHANGED files to https://github.com/$REPO/pull/$PR_NUMBER"
 fi
 
+stamp ok "PR #$PR_NUMBER on $BRANCH"
 echo "── done: PR #$PR_NUMBER on $BRANCH ──"

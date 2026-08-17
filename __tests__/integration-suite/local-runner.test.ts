@@ -401,8 +401,32 @@ describe("translate job", () => {
     expect(translateSh).not.toMatch(/https:\/\/[^\s"]*\$TRANSLATE_GITHUB_TOKEN@/);
   });
 
-  it("posts nothing to Slack — the pull request is the report", () => {
-    expect(translateSh).not.toMatch(/slack_note|CANARY_SLACK_WEBHOOK/);
+  it("stays quiet on success but posts on failure", () => {
+    // This used to assert the job posted NOTHING, on the reasoning that its
+    // output is the pull request. That held for the two SUCCESS shapes and
+    // failed for the third: a run that dies also leaves no PR, so failing and
+    // idling were the same signal. It failed for six days in August 2026 while
+    // 28 pages sat missing from 14 locales, and the weekly docs audit — not
+    // this job — is what noticed.
+    //
+    // So the invariant is no longer "silent"; it is "silent unless something
+    // went wrong". Only die() may post.
+    expect(translateSh).toMatch(/slack_note/);
+    const die = translateSh.slice(translateSh.indexOf("die() {"));
+    expect(die.slice(0, 400)).toMatch(/slack_note/);
+    // Nothing on the success paths: every `stamp ok` site stays post-free.
+    for (const m of translateSh.matchAll(/stamp ok[^\n]*\n/g)) {
+      expect(m[0]).not.toMatch(/slack_note/);
+    }
+  });
+
+  it("stamps every exit so 'never ran' is detectable from outside", () => {
+    // The one failure no error handler can report is the job not starting, so
+    // the signal has to be a file whose AGE another job can read.
+    expect(translateSh).toMatch(/stamp\(\) \{/);
+    expect(translateSh).toMatch(/last-run\.json/);
+    expect(translateSh).toMatch(/stamp failed/);
+    expect(translateSh.match(/stamp ok/g)?.length).toBeGreaterThanOrEqual(3);
   });
 
   it("never claims success for a step it did not reach", () => {
@@ -518,8 +542,19 @@ describe("docs-audit job", () => {
   });
 
   it("posts what it found, and says so when it cannot post", () => {
-    expect(docsAuditSh).toMatch(/slack_note "\$REPORT"/);
+    // The posted text is the report, optionally followed by the nightly
+    // translation's health line — so this matches the call, not the exact
+    // argument, which now carries that suffix.
+    expect(docsAuditSh).toMatch(/slack_note "\$REPORT/);
     expect(docsAuditSh).toMatch(/no webhook set/);
+  });
+
+  it("reports whether the nightly translation is still running", () => {
+    // translate is quiet on success, so nothing else on the box can tell
+    // "idle" from "not scheduled". This job already runs weekly and already
+    // reports on translations, so the staleness check belongs here.
+    expect(docsAuditSh).toMatch(/last-run\.json/);
+    expect(docsAuditSh).toMatch(/TRANSLATE_HEALTH/);
   });
 });
 
@@ -688,7 +723,7 @@ describe("docs-audit tracking issue", () => {
     // indexOf returns -1 for a missing marker, and -1 < any index — so without
     // these two guards the ordering assertion would PASS for the wrong reason
     // the day someone deletes the Slack post.
-    const slackAt = docsAuditSh.indexOf('slack_note "$REPORT"');
+    const slackAt = docsAuditSh.indexOf('slack_note "$REPORT');
     const tokenAt = docsAuditSh.indexOf("DOCS_AUDIT_GITHUB_TOKEN:-");
     expect(slackAt).toBeGreaterThan(-1);
     expect(tokenAt).toBeGreaterThan(-1);

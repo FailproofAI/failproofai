@@ -78,8 +78,31 @@ step "audit"
 REPORT="$(bun run docs:audit)" || die "the audit itself failed to run"
 echo "$REPORT"
 
+# ── did the nightly translation actually run? ────────────────────────────────
+# The translate job is quiet on success by design, which made "failing every
+# night" and "idle every night" the same signal — six days of neither PR nor
+# error went unnoticed until this audit reported 28 cached-but-absent pages.
+# It now stamps every exit; this reads the stamp's AGE, which is the only thing
+# that can catch the failure mode no error handler sees: the job never started.
+step "translate-health"
+TRANSLATE_HEALTH="$(node -e '
+  const fs = require("fs");
+  const p = process.argv[1];
+  let s;
+  try { s = JSON.parse(fs.readFileSync(p, "utf8")); }
+  catch { process.stdout.write("⚠️ *Nightly translation*: no run stamp at all — the job has not run since this check shipped, or is not scheduled"); process.exit(0); }
+  const ageH = (Date.now() - Date.parse(s.at)) / 3.6e6;
+  const age = ageH < 48 ? `${Math.round(ageH)}h ago` : `${Math.round(ageH / 24)} days ago`;
+  if (s.outcome !== "ok") { process.stdout.write(`🔥 *Nightly translation*: last run ${age} FAILED at \`${s.step}\` — ${s.detail || ""}`); process.exit(0); }
+  if (ageH > 48) { process.stdout.write(`⚠️ *Nightly translation*: last successful run was ${age} — it runs daily, so it is not running`); process.exit(0); }
+  process.stdout.write(`✅ *Nightly translation*: last ran ${age} (${s.detail || "ok"})`);
+' "$CACHE_HOME/last-run.json" 2>/dev/null || echo "")"
+[ -n "$TRANSLATE_HEALTH" ] && echo "$TRANSLATE_HEALTH"
+
 step "report"
-slack_note "$REPORT"
+slack_note "$REPORT${TRANSLATE_HEALTH:+
+
+$TRANSLATE_HEALTH}"
 
 # ── tracking issue ───────────────────────────────────────────────────────────
 # Optional: with no token the job is exactly what it was, a Slack post. The

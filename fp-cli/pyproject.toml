@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fp-cli"
+dynamic = ["version"]
+requires-python = ">=3.10"
+description = "Command line client for FailproofAI Cloud — sessions, events, evaluations and audits from your terminal"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Failproof AI", email = "failproofai@exosphere.host" }]
+keywords = ["agents", "observability", "ai", "monitoring", "failproofai", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.27",
+    # This range spans typer's Click split: 0.26 vendored Click into `typer/_click` and
+    # dropped the `click` dependency, so Typer's command runner catches ITS Click's
+    # exceptions, not the pip `click` ones. `fp_cli/_click_compat` resolves whichever
+    # Click the installed typer is running, and everything raises, subclasses and inspects
+    # through that — which is what makes both sides of the split work. Import Click from
+    # there and nowhere else; `tests/test_click_compat.py` enforces it, because every way
+    # this breaks is silent (typed errors collapse to exit 1 with an empty stderr, and the
+    # telemetry flag catalog empties). Suite verified against 0.25.1 and 0.27.0.
+    "typer>=0.12,<0.28",
+    # `click` is what `_click_compat` falls back to when typer is < 0.26 (0.26+ brings its
+    # own), and `pygments` is imported directly. Both are declared rather than relied on
+    # transitively: modern `typer` no longer installs `click`, and `rich` could likewise
+    # drop `pygments`.
+    "click>=8.1",
+    "rich>=13",
+    "pygments>=2.13",
+    "posthog>=3.5,<8",
+]
+
+# The distribution is `fp-cli`; the command is `fp`. They differ on purpose — `fp` is what
+# you type, `fp-cli` is what pip resolves, and `fp` was already taken on PyPI.
+[project.scripts]
+fp = "fp_cli.app:main_entry"
+
+[project.urls]
+Homepage = "https://befailproof.ai"
+Documentation = "https://docs.befailproof.ai/cloud/cli"
+Source = "https://github.com/FailproofAI/failproofai"
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "respx>=0.21"]
+
+[tool.setuptools.dynamic]
+version = { attr = "fp_cli._version.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["fp_cli*"]
+
+[tool.setuptools.package-data]
+fp_cli = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

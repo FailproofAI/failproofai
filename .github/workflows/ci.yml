@@ -213,6 +213,64 @@ jobs:
             target
           key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'crates/*/Cargo.toml') }}
 
+  # The `fp` CLI (PyPI: fp-cli). The only Python in this repo, and the only job that
+  # tests it — none of the bun/cargo jobs above look at fp-cli/ at all. It is matrixed
+  # across the Python versions pyproject.toml's requires-python advertises, because
+  # claiming >=3.10 and testing only one of them is how a 3.10 user finds the break.
+  fp-cli:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fp-cli
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: fp-cli/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --extra dev --python ${{ matrix.python-version }}
+
+      - name: Test
+        run: uv run pytest tests/ -q
+
+      - name: Build the distribution
+        run: uv build
+
+      # A stale `include = [...]` in [tool.setuptools.packages.find] builds a
+      # SUCCESSFUL but EMPTY wheel — pip installs it and the console script then
+      # ImportErrors. Nothing else in this job would notice, so assert the payload.
+      - name: Verify the wheel actually contains the package
+        run: |
+          python3 - <<'PY'
+          import glob, sys, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          modules = [n for n in names if n.startswith("fp_cli/") and n.endswith(".py")]
+          print(f"{wheel}: {len(modules)} modules")
+          if len(modules) < 20:
+              sys.exit(f"wheel looks empty — only {len(modules)} modules under fp_cli/")
+          PY
+
+      # `fp` is the contract users type. Prove the entry point resolves from a clean
+      # install of the built artifact, not from the source tree.
+      - name: Smoke-test the installed console script
+        run: |
+          uv venv /tmp/fp-smoke
+          VIRTUAL_ENV=/tmp/fp-smoke uv pip install dist/*.whl
+          /tmp/fp-smoke/bin/fp --version
+          /tmp/fp-smoke/bin/fp help > /tmp/fp-help.txt
+          if grep -qi agenteye /tmp/fp-help.txt; then
+            echo '::error::retired product name present in the fp help output'
+            exit 1
+          fi
+
   test:
     runs-on: ubuntu-latest
     strategy:

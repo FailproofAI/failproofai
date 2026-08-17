@@ -39,3 +39,19 @@ updates:
       rust-dependencies:
         patterns:
           - "*"
+
+  # The `fp` CLI (PyPI: fp-cli) — the only Python in the repo. Its lockfile is
+  # `fp-cli/uv.lock`, so the ecosystem is `uv`, and the directory is the package
+  # root rather than `/`. Grouped for the same reason as the Rust tree: the whole
+  # dependency set is verified together by one pytest run, and separate PRs each
+  # rebuild the lockfile the others just changed.
+  - package-ecosystem: uv
+    directory: /fp-cli
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"

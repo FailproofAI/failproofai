@@ -1208,7 +1208,22 @@ crates/failproofaid/           The daemon binary — socket server + service lif
                               @failproofai/failproofaid-<os>-<arch> npm packages and as
                               GitHub Release assets — see "How the daemon binary reaches
                               users")
-__tests__/                   Unit + e2e tests (vitest)
+fp-cli/                      The `fp` CLI for FailproofAI Cloud (Python, uv, pytest).
+                              PyPI dist `fp-cli`; the installed command is `fp` —
+                              they differ because `fp` was taken on PyPI. Talks only
+                              to the Cloud dashboard's /api surface, never to the
+                              Rust server directly. NOT the same thing as the
+                              `failproofai` CLI this repo builds from bin/ + src/:
+                              that one enforces inside the agent loop, this one
+                              reads back what the loop did.
+  fp_cli/client.py            Pure query layer (no printing, no Typer) — the surface
+                              an MCP server would wrap
+  fp_cli/output.py            All rendering, incl. `_TOP_LEVEL_GROUPS`, the
+                              HAND-MAINTAINED top-level help table. A command missing
+                              from it is invisible in `fp help` forever; guarded by
+                              tests/test_help_table_coverage.py
+__tests__/                   Unit + e2e tests (vitest) — TypeScript only; fp-cli's
+                              tests live in fp-cli/tests/ and run under pytest
 examples/                    Sample custom policy files
 ```
 

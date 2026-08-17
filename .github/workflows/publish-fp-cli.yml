@@ -1,0 +1,84 @@
+name: Publish fp-cli to PyPI
+
+# The `fp` CLI (PyPI project: fp-cli) ships on its own cadence, separate from the npm
+# package and the daemon binaries in publish.yml. It is a pure-Python wheel with no
+# platform matrix and no release assets, so it has nothing to share with that pipeline
+# beyond the registry credentials it does not use.
+#
+# AUTHENTICATION IS PyPI TRUSTED PUBLISHING (OIDC) — there is no PYPI_API_TOKEN secret.
+# This requires a one-time, out-of-band setup on PyPI that CANNOT be done from a PR:
+#
+#   PyPI project `fp-cli` -> Manage -> Publishing -> Add a new pending publisher
+#     Owner:            FailproofAI
+#     Repository:       failproofai
+#     Workflow name:    publish-fp-cli.yml
+#     Environment:      (leave blank)
+#
+# Until that publisher exists the `publish` job fails at the upload step with an OIDC
+# error. Configure it BEFORE the first release, not after.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and verify, but do not upload to PyPI
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-fp-cli
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fp-cli
+    permissions:
+      # Required for Trusted Publishing. `contents` stays at the default read.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: fp-cli/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      # Never publish a version whose tests do not pass. This duplicates the ci job on
+      # purpose: a workflow_dispatch can target any ref, including one CI never ran.
+      - name: Test
+        run: uv run pytest tests/ -q
+
+      - name: Build
+        run: uv build
+
+      - name: Verify the artifacts before uploading
+        run: |
+          python3 - <<'PY'
+          import glob, sys, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          modules = [n for n in names if n.startswith("fp_cli/") and n.endswith(".py")]
+          if len(modules) < 20:
+              sys.exit(f"refusing to publish an empty wheel ({len(modules)} modules)")
+          if not any(n.endswith("LICENSE") for n in names):
+              sys.exit("refusing to publish without a LICENSE in the wheel")
+          print(f"{wheel}: {len(modules)} modules, licence present")
+          PY
+
+      - name: Report the version being published
+        run: |
+          VERSION=$(uv run python -c 'from fp_cli._version import __version__; print(__version__)')
+          echo "fp-cli version: ${VERSION}"
+          echo "### Publishing \`fp-cli\` ${VERSION}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Publish to PyPI
+        if: ${{ !inputs.dry_run }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: fp-cli/dist/

@@ -61,6 +61,7 @@ jobs:
           scan-args: |-
             --lockfile=bun.lock
             --lockfile=Cargo.lock
+            --lockfile=fp-cli/uv.lock
       # Only the schedule run notifies — nothing on main touched the lockfile,
       # so nobody is watching it the way a PR author watches their own checks
       # or a push failure shows up against the commit they just merged. Same

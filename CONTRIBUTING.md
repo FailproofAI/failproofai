@@ -76,8 +76,15 @@ failproofai/
 ├── scripts/        # Dev/start/build helper scripts
 ├── __tests__/      # Test files
 ├── examples/       # Example custom hook policies
+├── fp-cli/         # The `fp` CLI for FailproofAI Cloud (Python; PyPI: fp-cli)
 └── public/         # Static assets
 ```
+
+> `fp-cli/` is the one Python component in an otherwise TypeScript + Rust repo. It
+> is self-contained: its own `pyproject.toml`, its own `uv.lock`, its own pytest
+> suite, and its own CI job (`fp-cli` in `ci.yml`). It is not part of the npm
+> package, the Next.js build, or the Cargo workspace, and it versions independently
+> of the root `package.json` — see CLAUDE.md.
 
 ### Key Subsystems
 

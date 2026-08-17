@@ -45,7 +45,7 @@ function scopeLabel(scope: HookScope): string {
   }
 }
 
-function resolveFailproofaiBinary(): string {
+export function resolveFailproofaiBinary(): string {
   // Test/CI override: lets E2E tests point at the in-tree bin/failproofai.mjs
   // without requiring `npm install -g` or `bun link`.
   const override = process.env.FAILPROOFAI_BINARY_OVERRIDE;

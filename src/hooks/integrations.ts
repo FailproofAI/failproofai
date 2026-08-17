@@ -57,6 +57,22 @@ function readJsonFile(path: string): Record<string, unknown> {
   return JSON.parse(raw) as Record<string, unknown>;
 }
 
+/**
+ * NOT atomic, and that is a known gap rather than an oversight.
+ *
+ * A bare `writeFileSync` truncates before it rewrites, so a crash or a full
+ * disk mid-write leaves a user's `settings.json` empty or half-written — the
+ * vendor then rejects it and the session runs with NO enforcement, silently.
+ * Tolerable while every write follows a human typing `policies --install` and
+ * reading the output; NOT tolerable for an unattended repair on a headless box.
+ *
+ * Making it atomic (temp + rename, preserving mode) is ~15 lines, but it
+ * changes what the install path observably calls: eight assertions in
+ * `manager.test.ts` check `writeFileSync` received the settings path, and with
+ * a rename they must check the rename destination instead. That is a
+ * deliberate change to the install path and belongs with the repair work that
+ * needs it, not smuggled in beside a read-only detector.
+ */
 function writeJsonFile(path: string, data: Record<string, unknown>): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(data, null, 2) + "\n", "utf8");

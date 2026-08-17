@@ -44,7 +44,7 @@
  */
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { getIntegration } from "./integrations";
+import { getIntegration, resetMistypedContainers } from "./integrations";
 import { configBackupsDir } from "./fp-home";
 import { detectConfigDrift, type ConfigDriftReport } from "./config-drift";
 import type { HookScope, IntegrationType } from "./types";
@@ -114,47 +114,6 @@ function prune(dir: string): void {
   }
 }
 
-/**
- * Drop our own top-level containers whose TYPE no longer matches what this
- * build writes, so the rewrite starts from something it can populate.
- *
- * Found while testing the exact case repair exists for. Copilot's
- * `writeHookEntries` does `settings.hooks ??= {}`; when `hooks` is already an
- * ARRAY — the 1.0.70 shape 1.0.71 rejected — the `??=` keeps the array, and
- * `hooks["PreToolUse"] = …` then sets a non-index property that
- * `JSON.stringify` silently drops. Our entries disappear and the file stays
- * broken. That is not a repair bug: it means a plain
- * `failproofai policies --install` cannot fix an old-shape config either.
- *
- * The expected container type is learned rather than hardcoded — we run the
- * integration's own writer against an empty object and look at what it built,
- * so this stays correct for all twelve without a table to maintain.
- *
- * Only keys the probe itself defines are touched, and only when the container
- * TYPE differs. Whatever the old container held is discarded, which is the
- * deliberate part: it is in a format the vendor already rejects, and the backup
- * taken moments earlier is the way back.
- */
-function coerceContainers(
-  settings: Record<string, unknown>,
-  probe: Record<string, unknown>,
-): string[] {
-  const dropped: string[] = [];
-  for (const key of Object.keys(probe)) {
-    if (!(key in settings)) continue;
-    const live = settings[key];
-    const want = probe[key];
-    const liveIsArray = Array.isArray(live);
-    const wantIsArray = Array.isArray(want);
-    const bothObjects = typeof live === "object" && live !== null && typeof want === "object";
-    if (bothObjects && liveIsArray !== wantIsArray) {
-      delete settings[key];
-      dropped.push(key);
-    }
-  }
-  return dropped;
-}
-
 /** Re-run detection for exactly one file. The only honest "did it work". */
 function statusAfter(
   cli: IntegrationType,
@@ -196,14 +155,9 @@ function repairOne(report: ConfigDriftReport, cwd: string, dryRun: boolean): Rep
     const binaryPath = resolveFailproofaiBinary();
     const settings = integration.readSettings(settingsPath);
 
-    try {
-      const probe: Record<string, unknown> = {};
-      integration.writeHookEntries(probe, binaryPath, scope);
-      coerced = coerceContainers(settings, probe);
-    } catch {
-      // A writer that will not run against an empty object tells us nothing
-      // about the expected shape. Proceed without coercing rather than guess.
-    }
+    // Shared with the install path: a container whose type the vendor changed
+    // cannot be written into, and reinstalling hits the same wall every time.
+    coerced = resetMistypedContainers(integration, settings, binaryPath, scope);
 
     integration.writeHookEntries(settings, binaryPath, scope);
     integration.writeSettings(settingsPath, settings);

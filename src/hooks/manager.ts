@@ -14,7 +14,12 @@ import {
   type HookScope,
   type IntegrationType,
 } from "./types";
-import { claudeCode, getIntegration, settingsPathsFor } from "./integrations";
+import {
+  claudeCode,
+  getIntegration,
+  resetMistypedContainers,
+  settingsPathsFor,
+} from "./integrations";
 import { promptPolicySelection } from "./install-prompt";
 import { configuredCustomPolicyPaths, readMergedHooksConfig, readScopedHooksConfig, writeScopedHooksConfig, syncConventionPolicies, findProjectConfigDir } from "./hooks-config";
 import type { HooksConfig, ConventionPolicyRecord } from "./policy-types";
@@ -308,6 +313,16 @@ async function installHooksImpl(
     try {
       for (const settingsPath of settingsPaths) {
         const settings = integration.readSettings(settingsPath);
+        // A container whose TYPE the vendor changed cannot be written into —
+        // and reinstalling would hit the same wall every time, leaving the user
+        // unenforced while every command reported success. See
+        // `resetMistypedContainers`.
+        const reset = resetMistypedContainers(integration, settings, binaryPath, scope);
+        if (reset.length > 0) {
+          console.log(
+            `  ${cliId}: replaced ${reset.join(", ")} — the previous value was the wrong shape for this CLI version`,
+          );
+        }
         integration.writeHookEntries(settings, binaryPath, scope);
         integration.writeSettings(settingsPath, settings);
         writtenSettingsPaths.push({ cli: cliId, path: settingsPath });

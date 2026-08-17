@@ -32,6 +32,10 @@ vi.mock("../../src/hooks/install-prompt", async () => {
 
 vi.mock("../../src/hooks/integrations", () => ({
   detectInstalledClis: vi.fn(() => ["claude"]),
+  // The install path resets a container whose TYPE the vendor changed before
+  // writing into it — see `resetMistypedContainers`. Nothing here exercises
+  // that, but the mock has to export it or the install throws.
+  resetMistypedContainers: vi.fn(() => []),
   getIntegration: vi.fn((id: string) => ({
     displayName: id,
     scopes: id === "codex" ? ["user", "project"] : ["user", "project", "local"],

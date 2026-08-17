@@ -126,6 +126,61 @@ function writeYamlDoc(path: string, doc: Document): void {
   writeFileSync(path, doc.toString(), "utf8");
 }
 
+/**
+ * Reset our own top-level containers whose TYPE no longer matches what this
+ * build writes, so `writeHookEntries` starts from something it can populate.
+ *
+ * Every `writeHookEntries` reaches for its container with `??=` or equivalent,
+ * which accepts whatever is already there. When a vendor changes the container
+ * TYPE that is silently catastrophic: copilot's `settings.hooks ??= {}` keeps a
+ * pre-existing ARRAY — the 1.0.70 shape 1.0.71 rejected — and the following
+ * `hooks["PreToolUse"] = …` sets a non-index property on it, which
+ * `JSON.stringify` drops. Our entries vanish, the file stays broken, and
+ * INSTALLING AGAIN does not fix it: the second run hits the same array and
+ * drops them again. A user whose vendor changed format could reinstall forever
+ * and stay unenforced, with every command reporting success.
+ *
+ * The expected type is learned rather than hardcoded: run the integration's own
+ * writer against an empty object and look at what it built. That stays correct
+ * for all twelve without a table to maintain, and cannot disagree with the
+ * writer because it asks the writer.
+ *
+ * Only keys the probe itself defines are considered, and only when the
+ * container type differs — a user's unrelated settings are never in scope.
+ * Whatever the mismatched container held is discarded, which is the deliberate
+ * part: it is in a shape the vendor already rejects. Returns the keys reset, so
+ * a caller can say so rather than doing it silently.
+ */
+export function resetMistypedContainers(
+  integration: Integration,
+  settings: Record<string, unknown>,
+  binaryPath: string,
+  scope: HookScope,
+): string[] {
+  let probe: Record<string, unknown>;
+  try {
+    probe = {};
+    integration.writeHookEntries(probe, binaryPath, scope);
+  } catch {
+    // A writer that will not run against an empty object tells us nothing
+    // about the shape it wants. Proceed without resetting rather than guess.
+    return [];
+  }
+
+  const reset: string[] = [];
+  for (const key of Object.keys(probe)) {
+    if (!(key in settings)) continue;
+    const live = settings[key];
+    const want = probe[key];
+    if (typeof live !== "object" || live === null) continue;
+    if (typeof want !== "object" || want === null) continue;
+    if (Array.isArray(live) === Array.isArray(want)) continue;
+    delete settings[key];
+    reset.push(key);
+  }
+  return reset;
+}
+
 function isMarkedHook(hook: unknown): boolean {
   if (!hook || typeof hook !== "object") return false;
   const h = hook as Record<string, unknown>;

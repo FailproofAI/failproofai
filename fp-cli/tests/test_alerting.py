@@ -7,7 +7,9 @@ import json
 import httpx
 import respx
 
+from fp_cli import output
 from fp_cli.app import app
+from fp_cli.commands import _write
 
 BASE = "http://dash.test"
 
@@ -496,6 +498,36 @@ def test_incidents_resolve_human_yes(logged_in, runner):
     result = runner.invoke(app, ["issues", "resolve", "i1", "--yes"])
     assert result.exit_code == 0, result.output
     assert "resolved issue" in result.stderr
+
+
+@respx.mock
+def test_incidents_resolve_declined_emits_the_json_cancel_envelope(logged_in, runner, monkeypatch):
+    # Both docstrings promise `{cancelled: true}` under --json on a declined prompt, and
+    # every other write command emits it. `should_prompt` is forced here because --json
+    # normally auto-proceeds, which is what let these two paths drift to a stderr line
+    # only: a caller reading stdout would have got an empty document at exit 0.
+    monkeypatch.setattr(_write, "should_prompt", lambda *a, **k: True)
+    monkeypatch.setattr(output, "confirm_incident_resolve", lambda *a, **k: False)
+    respx.get(f"{BASE}/api/issues/i1").mock(  # the prompt names the alert, so it reads first
+        return_value=httpx.Response(200, json={"id": "i1", "alert_name": "p95", "status": "open"}))
+    resolve = respx.post(f"{BASE}/api/issues/i1/resolve").mock(return_value=httpx.Response(200, json={}))
+    result = runner.invoke(app, ["--json", "issues", "resolve", "i1"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"cancelled": True}
+    assert not resolve.called
+
+
+@respx.mock
+def test_incidents_comment_delete_declined_emits_the_json_cancel_envelope(logged_in, runner, monkeypatch):
+    monkeypatch.setattr(_write, "should_prompt", lambda *a, **k: True)
+    monkeypatch.setattr(output, "confirm_incident_comment_delete", lambda *a, **k: False)
+    respx.get(f"{BASE}/api/issues/i1/comments").mock(return_value=httpx.Response(200, json=[
+        {"id": "c1", "incident_id": "i1", "author_email": "me@test", "body": "typo", "created_at": "t"}]))
+    delete = respx.delete(f"{BASE}/api/issues/i1/comments/c1").mock(return_value=httpx.Response(204))
+    result = runner.invoke(app, ["--json", "issues", "comment-delete", "i1", "c1"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"cancelled": True}
+    assert not delete.called
 
 
 @respx.mock

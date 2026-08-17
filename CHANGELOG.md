@@ -6,6 +6,22 @@
 
 - Open-source the Cloud CLI as `fp-cli` (command `fp`), moved out of the private AgentEye monorepo into `fp-cli/`. The distribution and the command differ because `fp` was taken on PyPI, and neither is the `failproofai` CLI this repo already builds — that one enforces inside the agent loop, this one reads back what the loop did. It is a hard cut, matching the collector binary's rename: no `agenteye` alias, no retired env-var fallback, no config migration, so scripts calling `agenteye ...` break on upgrade and users run `fp login` once. Env vars move to `FP_*` and the config to `~/.fp/cli.json`. The `X-AgentEye-Org` / `X-AgentEye-Client` headers and the `ae_session` cookie are deliberately unchanged — they are a contract with the dashboard and the Rust server, and renaming them from one side would misroute tenants with a 200 rather than an error. Brings the first Python into the repo: a matrixed `fp-cli` CI job, a Trusted-Publishing PyPI workflow, a `uv` dependabot ecosystem and the lockfile in the osv-scanner gate. Also fixes a README that documented a command renamed long ago and a default it claimed did not exist, a test fixture that ran the suite with TLS verification disabled, and a repo-root probe that would have resolved to the wrong repo here. (#702)
 
+### Fixes
+
+- **`fp query update --sql @-` no longer saves an empty query.** `@-` is stdin, and stdin drains on the first read — the command read it twice, once to decide which fields changed and once to build the request body, so change detection compared the real text while the save wrote `""`. Exit 0, green card, query emptied. Read once into a local instead. (#702)
+
+- Emit the documented `{"cancelled": true}` envelope when `fp issues resolve` and `fp issues comment-delete` are declined under `--json`. Both docstrings promise it and the other ten write commands emit it; these two printed only the human stderr line, so a script reading stdout got an empty document at exit 0. (#702)
+
+- **Keep the customer's name out of the tripwire that exists to keep the customer's name out.** `test_no_customer_identifiers.py` spelled out the real tenant slug it denies, in a public repo, in a file that ships in the sdist — and excluded itself from its own scan, so nothing reported it. The customer entries are SHA-256 digests now, matched over token substrings so both the slug and the longer company name built from it still trip, and a failure names the file, the line and what class of identifier it is, never the identifier. Our own org names stay in the clear: they are in `LICENSE`, `SECURITY.md` and `package.json` already, and a contributor who trips over one needs to see which it was. (#702)
+
+- Grant `contents: read` in `publish-fp-cli.yml`. Naming any scope in a `permissions` block sets every unnamed one to `none` rather than leaving it at the default, so the job that only asked for `id-token: write` handed `actions/checkout` a token that cannot read this repository — and a comment two lines up asserted the opposite. (#702)
+
+- Bind the fp-cli PyPI publish to a `pypi-fp-cli` GitHub environment, since every guard in that workflow lives on the ref being dispatched — a writer could delete the actor allowlist and the `main` check on a branch and click Run, and OIDC mints a publishing token for whatever the workflow asks. The environment's deployment-branch rule lives in repo settings and its name in PyPI's publisher config; neither is reachable from a branch, and deleting the `environment:` line now fails the upload on a claim mismatch. Documented as required setup, because GitHub creates a missing environment implicitly and *without* protection rules. (#702)
+
+- Stop `sync-fp-cli-skill.yml` writing its PAT into `$WORKDIR/.git/config`. The credentialed clone URL persisted a token holding Contents write + Pull requests write on `FailproofAI/skills` into a workspace where the very next step runs `validate-skills.py` — a script fetched from that same repo. Both the clone and the push now authenticate through `git -c http.extraheader` (before the subcommand, so it is not persisted into the new repo's config) with the secret coming from `env:` rather than interpolated into the script body. (#702)
+
+- Add `__tests__/ci/fp-cli-workflows.test.ts`, the drift guard for all four workflow invariants above — the two that look redundant (`contents: read`, the environment name matching the header) are the two a cleanup would delete. (#702)
+
 ## 1.0.1-beta.1 — 2026-08-16
 
 ### Fixes

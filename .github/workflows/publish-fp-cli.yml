@@ -12,10 +12,25 @@ name: Publish fp-cli to PyPI
 #     Owner:            FailproofAI
 #     Repository:       failproofai
 #     Workflow name:    publish-fp-cli.yml
-#     Environment:      (leave blank)
+#     Environment:      pypi-fp-cli        <- REQUIRED, do not leave blank
 #
 # Until that publisher exists the `publish` job fails at the upload step with an OIDC
 # error. Configure it BEFORE the first release, not after.
+#
+# The environment is load-bearing, not decoration. Every check in this file lives on the
+# ref being dispatched, so a writer can delete them on a branch and click Run — the OIDC
+# token is minted for whatever the workflow then asks for. Two settings OUTSIDE this file
+# are what a branch edit cannot reach:
+#
+#   1. Repo -> Settings -> Environments -> `pypi-fp-cli`:
+#        Deployment branches: `main` only (and add required reviewers if you want a
+#        second pair of eyes on every release).
+#      A job referencing this environment from any other ref is refused before it starts.
+#      NOTE: GitHub creates a missing environment implicitly, WITHOUT protection rules —
+#      so this is not self-configuring; set it up by hand.
+#   2. The `Environment: pypi-fp-cli` field above. PyPI then rejects a token whose
+#      `environment` claim is missing or different, which is what stops someone from
+#      simply deleting the `environment:` line below.
 
 on:
   workflow_dispatch:
@@ -32,12 +47,18 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Gates this job on the repo-level environment rules described in the header, and puts
+    # the environment name in the OIDC token PyPI checks. Both halves are outside this file.
+    environment: pypi-fp-cli
     defaults:
       run:
         working-directory: fp-cli
     permissions:
-      # Required for Trusted Publishing. `contents` stays at the default read.
-      id-token: write
+      # Naming ANY scope sets every unnamed one to `none` — it is not an addition to the
+      # defaults. `contents: read` is therefore not redundant: without it `actions/checkout`
+      # gets a token that cannot read this repository.
+      contents: read
+      id-token: write    # required for Trusted Publishing
     steps:
       # Authentication is OIDC, so there is no token to withhold: repo write access IS
       # publish access, and `workflow_dispatch` can target ANY ref. Without these two
@@ -46,6 +67,10 @@ jobs:
       # (PyPI versions cannot be reused). The workflow this replaced
       # (release-cli.yml in FailproofAI/agenteye) carried both; they were dropped in
       # the move and are restored here.
+      #
+      # These are the readable guard, not the enforcement: they live on the ref being
+      # dispatched, so a writer could delete them on a branch. The `environment:` above
+      # plus its two out-of-file settings (see the header) are what actually hold.
       - name: Authorize actor and branch
         env:
           ACTOR: ${{ github.actor }}

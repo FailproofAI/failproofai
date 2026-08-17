@@ -216,7 +216,10 @@ def incidents_resolve(
         except (ApiError, ForbiddenError):
             alert_name = None
         if not output.confirm_incident_resolve(incident_id, alert_name):
-            output.cancelled_plain("nothing changed")
+            if state.json:
+                output.emit_json({"cancelled": True})
+            else:
+                output.cancelled_plain("nothing changed")
             return
     try:
         api.resolve_incident(cctx, incident_id)
@@ -305,7 +308,10 @@ def incidents_comment_delete(
     if _write.should_prompt(state, yes):
         output.render_incident_comment_delete_preview(match)
         if not output.confirm_incident_comment_delete():
-            output.cancelled_plain("nothing deleted")
+            if state.json:
+                output.emit_json({"cancelled": True})
+            else:
+                output.cancelled_plain("nothing deleted")
             return
     try:
         api.delete_incident_comment(cctx, incident_id, comment_id)

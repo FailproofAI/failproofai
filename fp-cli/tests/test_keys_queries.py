@@ -464,6 +464,21 @@ def test_query_update_noop_rejected(logged_in, runner):
 
 
 @respx.mock
+def test_query_update_sql_from_stdin_reads_it_once(logged_in, runner):
+    # `--sql @-` is stdin, which drains on the first read. Reading it a second time for
+    # the request body would send "" — a query silently emptied at exit 0, while the
+    # change detection had compared the real text.
+    respx.get(f"{BASE}/api/queries").mock(return_value=httpx.Response(200, json={"queries": [
+        {"id": "q1", "name": "errs", "description": "d", "sql_text": "select 1", "params": []}]}))
+    route = respx.put(f"{BASE}/api/queries/q1").mock(
+        return_value=httpx.Response(200, json={"id": "q1", "name": "errs", "sql_text": "select 2"}))
+    result = runner.invoke(app, ["--json", "query", "update", "errs", "--sql", "@-", "--yes"],
+                          input="select 2 from analytics.events")
+    assert result.exit_code == 0, result.output
+    assert json.loads(route.calls.last.request.content)["sql_text"] == "select 2 from analytics.events"
+
+
+@respx.mock
 def test_query_delete_by_name(logged_in, runner):
     respx.get(f"{BASE}/api/queries").mock(return_value=httpx.Response(200, json={"queries": [{"id": "q1", "name": "errs"}]}))
     route = respx.delete(f"{BASE}/api/queries/q1").mock(return_value=httpx.Response(200, json={"deleted": True}))

@@ -181,11 +181,16 @@ def query_update(
     if new_name is not None and new_name != q.name and any(o.name == new_name for o in queries):
         raise click.UsageError(f'a query named "{new_name}" already exists')
 
+    # Read `--sql` exactly ONCE. `@-` is stdin, and stdin can only be drained once: a
+    # second `_read_sql(sql)` for the request body returns "", so change detection would
+    # compare the real text while the save wrote an empty query — silently, exit 0.
+    new_sql = _read_sql(sql) if sql is not None else None
+
     # Which fields actually change → the confirm consequence (and no-op detection).
     changed: List[str] = []
     if new_name is not None and new_name != q.name:
         changed.append("name")
-    if sql is not None and _read_sql(sql) != q.sql_text:
+    if new_sql is not None and new_sql != q.sql_text:
         changed.append("sql")
     if description is not None and description != q.description:
         changed.append("description")
@@ -208,7 +213,7 @@ def query_update(
     result = api.update_saved_query(
         cctx, q.id,
         name=new_name if new_name is not None else q.name,
-        sql_text=_read_sql(sql) if sql is not None else q.sql_text,
+        sql_text=new_sql if new_sql is not None else q.sql_text,
         description=description if description is not None else q.description,
         params=q.params,
     )

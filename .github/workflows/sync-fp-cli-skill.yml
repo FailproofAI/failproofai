@@ -68,10 +68,20 @@ jobs:
       - name: Checkout (source of truth)
         uses: actions/checkout@v7.0.1
 
+      # The PAT holds Contents write + Pull requests write on the mirror repo, and the
+      # NEXT step runs a script fetched FROM that repo, inside this workspace. So the
+      # token must not land where that script can read it: a credentialed clone URL is
+      # written into $WORKDIR/.git/config verbatim and stays there for the rest of the
+      # job. `-c http.extraheader` (before the subcommand, so it is not persisted into
+      # the new repo's config) keeps it in this process only, and it comes from `env:`
+      # rather than being interpolated into the script body.
       - name: Clone FailproofAI/skills
+        env:
+          SKILLS_SYNC_PAT: ${{ secrets.SKILLS_SYNC_PAT }}
         run: |
-          git clone --depth=1 \
-            "https://x:${{ secrets.SKILLS_SYNC_PAT }}@github.com/${DEST_REPO}.git" "$WORKDIR"
+          AUTH="$(printf 'x:%s' "$SKILLS_SYNC_PAT" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic ${AUTH}" \
+            clone --depth=1 "https://github.com/${DEST_REPO}.git" "$WORKDIR"
 
       - name: Mirror fp-cli/skill/ → skills/fp-cli/
         run: |
@@ -84,6 +94,7 @@ jobs:
       - name: Commit, push branch, open/refresh PR
         env:
           GH_TOKEN: ${{ secrets.SKILLS_SYNC_PAT }}
+          SKILLS_SYNC_PAT: ${{ secrets.SKILLS_SYNC_PAT }}
         run: |
           cd "$WORKDIR"
           git config user.name  "fp-cli-skill-sync"
@@ -104,7 +115,11 @@ jobs:
           git add "$DEST_SUBDIR"
           git commit -m "Sync fp-cli skill from failproofai@${SHORT_SHA}" \
                      -m "Automated mirror of fp-cli/skill/. Source of truth: FailproofAI/failproofai — do not hand-edit."
-          git push --force origin "$BRANCH"
+          # The clone left no credentials on disk (see the clone step), so the push
+          # carries the same in-process header.
+          AUTH="$(printf 'x:%s' "$SKILLS_SYNC_PAT" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic ${AUTH}" \
+            push --force origin "$BRANCH"
 
           BODY="Automated mirror — **do not hand-edit this folder**.
 

@@ -1,0 +1,127 @@
+name: Sync fp-cli skill
+
+# One-directional mirror — MUST be run from `main`:
+#   FailproofAI/failproofai  fp-cli/skill/   ──▶   FailproofAI/skills  skills/fp-cli/
+#
+# This replaces `sync-skill.yml` in the private FailproofAI/agenteye repo, which
+# mirrored the same skill from `cli/skill/` to `skills/agenteye-cli/` before the CLI
+# moved here. That workflow was deleted with the CLI.
+#
+# The skills repo is pull-only — never hand-edit skills/fp-cli/ there; edit
+# fp-cli/skill/ here and let this run. It force-pushes ONE stable branch and reuses
+# ONE PR (no pileup, no merge conflicts: every run rebuilds off latest main).
+#
+# One-time setup on FailproofAI/skills (admin):
+#   • create the label this workflow applies:
+#       gh label create skill-sync-fp-cli --repo FailproofAI/skills \
+#         --color 8A63D2 --description "Automated fp-cli skill mirror PRs from FailproofAI/failproofai"
+#   • delete the now-orphaned skills/agenteye-cli/ folder, which teaches the retired
+#     `agenteye` command and is no longer synced by anything
+# One-time setup on THIS repo (admin):
+#   • add Actions secret SKILLS_SYNC_PAT — a fine-grained PAT scoped to
+#     FailproofAI/skills, Contents: Read and write + Pull requests: Read and write.
+#     The agenteye repo has a secret of the same name; this repo needs its own.
+#     Until it exists this workflow fails at the clone step.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'fp-cli/skill/**'
+  workflow_dispatch:
+
+concurrency:
+  group: sync-fp-cli-skill
+  cancel-in-progress: false
+
+permissions:
+  contents: read          # GITHUB_TOKEN only reads this repo; all writes use the PAT
+
+env:
+  SRC: fp-cli/skill                    # source of truth (this repo)
+  DEST_REPO: FailproofAI/skills        # mirror target
+  DEST_SUBDIR: skills/fp-cli           # folder overwritten in the mirror
+  BRANCH: sync/fp-cli                  # stable bot branch (force-pushed each run)
+  LABEL: skill-sync-fp-cli
+  REVIEWERS: NiveditJain,SiddarthAA
+  WORKDIR: /tmp/skills
+
+jobs:
+  sync:
+    name: Mirror skill and open PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce run-from-main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::This workflow must be run from main (got $GITHUB_REF)."
+            exit 1
+          fi
+
+      - name: Checkout (source of truth)
+        uses: actions/checkout@v7.0.1
+
+      - name: Clone FailproofAI/skills
+        run: |
+          git clone --depth=1 \
+            "https://x:${{ secrets.SKILLS_SYNC_PAT }}@github.com/${DEST_REPO}.git" "$WORKDIR"
+
+      - name: Mirror fp-cli/skill/ → skills/fp-cli/
+        run: |
+          mkdir -p "$WORKDIR/$DEST_SUBDIR"
+          rsync -a --delete --exclude '.git' "$SRC"/ "$WORKDIR/$DEST_SUBDIR"/
+
+      - name: Validate (skills repo's own gate)
+        run: python3 "$WORKDIR/scripts/validate-skills.py"
+
+      - name: Commit, push branch, open/refresh PR
+        env:
+          GH_TOKEN: ${{ secrets.SKILLS_SYNC_PAT }}
+        run: |
+          cd "$WORKDIR"
+          git config user.name  "fp-cli-skill-sync"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # `git status --porcelain`, NOT `git diff`: on the first sync of a new skill the
+          # destination folder does not exist yet, so every mirrored file is UNTRACKED —
+          # and `git diff` only ever looks at tracked files. It would report clean here and
+          # skip the publish, passing the run green having shipped nothing. This matters
+          # immediately: skills/fp-cli/ does not exist yet.
+          if [ -z "$(git status --porcelain -- "$DEST_SUBDIR")" ]; then
+            echo "Already in sync — nothing to publish."
+            exit 0
+          fi
+
+          SHORT_SHA="${GITHUB_SHA::7}"
+          git switch -c "$BRANCH"
+          git add "$DEST_SUBDIR"
+          git commit -m "Sync fp-cli skill from failproofai@${SHORT_SHA}" \
+                     -m "Automated mirror of fp-cli/skill/. Source of truth: FailproofAI/failproofai — do not hand-edit."
+          git push --force origin "$BRANCH"
+
+          BODY="Automated mirror — **do not hand-edit this folder**.
+
+          | | |
+          |---|---|
+          | Source of truth | [\`FailproofAI/failproofai\`](https://github.com/${GITHUB_REPOSITORY}) → \`${SRC}/\` |
+          | Target | \`${DEST_SUBDIR}/\` |
+          | Triggered from | \`main\` @ [\`${SHORT_SHA}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}) |
+
+          This replaces \`skills/agenteye-cli/\`, which mirrored the same skill from the private agenteye repo before the CLI moved here and was renamed to \`fp\`. **That folder is now orphaned and should be deleted** — nothing syncs it, and it teaches the retired \`agenteye\` command.
+
+          The skills repo's \`validate-skills.py\` passed. To change the skill, edit \`${SRC}/\` and re-run the **Sync fp-cli skill** workflow — this same PR refreshes."
+
+          if gh pr view "$BRANCH" --repo "$DEST_REPO" --json state --jq .state 2>/dev/null | grep -q OPEN; then
+            echo "PR already open for $BRANCH — branch force-pushed, PR refreshed."
+          else
+            gh pr create --repo "$DEST_REPO" --base main --head "$BRANCH" \
+              --title "Sync fp-cli skill (failproofai@${SHORT_SHA})" \
+              --body "$BODY" \
+              --label "$LABEL"
+          fi
+
+          # Reviewers are tolerant: the PR author (PAT owner) can't review their own
+          # PR, so a failure here must not fail the sync.
+          gh pr edit "$BRANCH" --repo "$DEST_REPO" --add-reviewer "$REVIEWERS" \
+            || echo "::warning::could not request reviewers $REVIEWERS (self-review or missing access?)"

@@ -24,7 +24,7 @@ Resolve this once, then reuse it for every call:
 
 1. If `fp` is on `PATH` (`command -v fp`) → use **`fp`** (it's
    installed via pipx / uv tool / pip). This is the normal case.
-2. Else, if you're in (or under) a repo with a `cli/` directory containing the
+2. Else, if you're in (or under) a repo with an `fp-cli/` directory containing the
    `fp_cli` package → run it from there with **`uv run fp`** (a local dev
    build). The first run after a code change prints `Building…`/`Installed…` on
    stderr — that's `uv`, not CLI output; ignore it.

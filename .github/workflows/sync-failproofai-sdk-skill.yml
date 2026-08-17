@@ -1,0 +1,162 @@
+name: Sync failproofai-sdk skill
+
+# One-directional mirror — MUST be run from `main`:
+#   FailproofAI/failproofai  sdk/python/skill/   ──▶   FailproofAI/skills  skills/failproofai-sdk/
+#
+# This replaces `sync-python-sdk-skill.yml` in the private FailproofAI/agenteye repo,
+# which mirrored the same skill from `python-sdk/skill/` to `skills/agenteye-python-sdk/`
+# before the SDK moved here. That workflow was deleted with the SDK.
+#
+# Sibling of sync-fp-cli-skill.yml. The two are deliberately independent: every shared
+# identifier below (SRC, DEST_SUBDIR, BRANCH, LABEL, concurrency group) differs, because
+# BRANCH is force-pushed on every run — reusing the other skill's branch would overwrite
+# its open PR with this skill's contents.
+#
+# The skills repo is pull-only — never hand-edit skills/failproofai-sdk/ there; edit
+# sdk/python/skill/ here and let this run. It force-pushes ONE stable branch and reuses
+# ONE PR (no pileup, no merge conflicts: every run rebuilds off latest main).
+#
+# One-time setup on FailproofAI/skills (admin) — REQUIRED BEFORE THE FIRST RUN:
+#   • create the label this workflow applies. `gh pr create --label` fails hard on an
+#     unknown label, so the first dispatch WILL fail without this:
+#       gh label create skill-sync-failproofai-sdk --repo FailproofAI/skills \
+#         --color 1D76DB --description "Automated failproofai-sdk skill mirror PRs from FailproofAI/failproofai"
+#   • add the skill's row to the skills repo README "Skills in this collection" table and
+#     the CONTRIBUTING.md sync map. The rsync below only ever touches
+#     skills/failproofai-sdk/, so a green run still leaves the skill invisible on that
+#     repo's front page.
+#   • eventually delete the orphaned skills/agenteye-python-sdk/ folder, which teaches
+#     `import agenteye` and is no longer synced by anything.
+#
+#     ⚠ NOT YET, and for the same reason as its fp-cli sibling: check the live public
+#     docs first. `docs/agenteye/python-sdk-skill.mdx` tells readers to run
+#     `npx skills add FailproofAI/skills --skill agenteye-python-sdk`. Deleting the
+#     folder before that page is repointed turns a documented install command into a
+#     not-found error. Order: land the docs change, THEN delete the folder.
+# One-time setup on THIS repo (admin):
+#   • Actions secret SKILLS_SYNC_PAT — shared with sync-fp-cli-skill.yml, so it already
+#     exists if that one is set up. Fine-grained PAT scoped to FailproofAI/skills,
+#     Contents: Read and write + Pull requests: Read and write. The agenteye repo has a
+#     secret of the same name; this repo needs its own.
+#
+# Note: the validate step runs the skills repo's validate-skills.py with no path argument,
+# so it validates the WHOLE skills repo. An unrelated broken skill there fails this run;
+# that's a destination-repo problem, not a problem with this skill.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'sdk/python/skill/**'
+  workflow_dispatch:
+
+concurrency:
+  group: sync-failproofai-sdk-skill
+  cancel-in-progress: false
+
+permissions:
+  contents: read          # GITHUB_TOKEN only reads this repo; all writes use the PAT
+
+env:
+  SRC: sdk/python/skill                    # source of truth (this repo)
+  DEST_REPO: FailproofAI/skills            # mirror target
+  DEST_SUBDIR: skills/failproofai-sdk      # folder overwritten in the mirror
+  BRANCH: sync/failproofai-sdk             # stable bot branch (force-pushed each run)
+  LABEL: skill-sync-failproofai-sdk
+  REVIEWERS: NiveditJain,SiddarthAA
+  WORKDIR: /tmp/skills
+
+jobs:
+  sync:
+    name: Mirror skill and open PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce run-from-main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::This workflow must be run from main (got $GITHUB_REF)."
+            exit 1
+          fi
+
+      - name: Checkout (source of truth)
+        uses: actions/checkout@v7.0.1
+
+      # The PAT holds Contents write + Pull requests write on the mirror repo, and the
+      # NEXT step runs a script fetched FROM that repo, inside this workspace. So the
+      # token must not land where that script can read it: a credentialed clone URL is
+      # written into $WORKDIR/.git/config verbatim and stays there for the rest of the
+      # job. `-c http.extraheader` (before the subcommand, so it is not persisted into
+      # the new repo's config) keeps it in this process only, and it comes from `env:`
+      # rather than being interpolated into the script body.
+      - name: Clone FailproofAI/skills
+        env:
+          SKILLS_SYNC_PAT: ${{ secrets.SKILLS_SYNC_PAT }}
+        run: |
+          AUTH="$(printf 'x:%s' "$SKILLS_SYNC_PAT" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic ${AUTH}" \
+            clone --depth=1 "https://github.com/${DEST_REPO}.git" "$WORKDIR"
+
+      - name: Mirror sdk/python/skill/ → skills/failproofai-sdk/
+        run: |
+          mkdir -p "$WORKDIR/$DEST_SUBDIR"
+          rsync -a --delete --exclude '.git' "$SRC"/ "$WORKDIR/$DEST_SUBDIR"/
+
+      - name: Validate (skills repo's own gate)
+        run: python3 "$WORKDIR/scripts/validate-skills.py"
+
+      - name: Commit, push branch, open/refresh PR
+        env:
+          GH_TOKEN: ${{ secrets.SKILLS_SYNC_PAT }}
+          SKILLS_SYNC_PAT: ${{ secrets.SKILLS_SYNC_PAT }}
+        run: |
+          cd "$WORKDIR"
+          git config user.name  "failproofai-sdk-skill-sync"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # `git status --porcelain`, NOT `git diff`: on the first sync of a new skill the
+          # destination folder does not exist yet, so every mirrored file is UNTRACKED —
+          # and `git diff` only ever looks at tracked files. It would report clean here and
+          # skip the publish, passing the run green having shipped nothing. This matters
+          # immediately: skills/failproofai-sdk/ does not exist yet.
+          if [ -z "$(git status --porcelain -- "$DEST_SUBDIR")" ]; then
+            echo "Already in sync — nothing to publish."
+            exit 0
+          fi
+
+          SHORT_SHA="${GITHUB_SHA::7}"
+          git switch -c "$BRANCH"
+          git add "$DEST_SUBDIR"
+          git commit -m "Sync failproofai-sdk skill from failproofai@${SHORT_SHA}" \
+                     -m "Automated mirror of sdk/python/skill/. Source of truth: FailproofAI/failproofai — do not hand-edit."
+          # The clone left no credentials on disk (see the clone step), so the push
+          # carries the same in-process header.
+          AUTH="$(printf 'x:%s' "$SKILLS_SYNC_PAT" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic ${AUTH}" \
+            push --force origin "$BRANCH"
+
+          BODY="Automated mirror — **do not hand-edit this folder**.
+
+          | | |
+          |---|---|
+          | Source of truth | [\`FailproofAI/failproofai\`](https://github.com/${GITHUB_REPOSITORY}) → \`${SRC}/\` |
+          | Target | \`${DEST_SUBDIR}/\` |
+          | Triggered from | \`main\` @ [\`${SHORT_SHA}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}) |
+
+          This replaces \`skills/agenteye-python-sdk/\`, which mirrored the same skill from the private agenteye repo before the SDK moved here and was renamed to \`failproofai-sdk\`. **That folder is now orphaned and should be deleted** — nothing syncs it, and it teaches \`import agenteye\`, which now installs a stranded CLI build instead.
+
+          The skills repo's \`validate-skills.py\` passed. To change the skill, edit \`${SRC}/\` and re-run the **Sync failproofai-sdk skill** workflow — this same PR refreshes."
+
+          if gh pr view "$BRANCH" --repo "$DEST_REPO" --json state --jq .state 2>/dev/null | grep -q OPEN; then
+            echo "PR already open for $BRANCH — branch force-pushed, PR refreshed."
+          else
+            gh pr create --repo "$DEST_REPO" --base main --head "$BRANCH" \
+              --title "Sync failproofai-sdk skill (failproofai@${SHORT_SHA})" \
+              --body "$BODY" \
+              --label "$LABEL"
+          fi
+
+          # Reviewers are tolerant: the PR author (PAT owner) can't review their own
+          # PR, so a failure here must not fail the sync.
+          gh pr edit "$BRANCH" --repo "$DEST_REPO" --add-reviewer "$REVIEWERS" \
+            || echo "::warning::could not request reviewers $REVIEWERS (self-review or missing access?)"

@@ -271,6 +271,99 @@ jobs:
             exit 1
           fi
 
+  # The telemetry SDK (PyPI: failproofai-sdk, import failproofai_sdk). Second Python
+  # component, sibling of fp-cli above, and deliberately its own job: it shares no
+  # lockfile, no dependencies and no release cadence with the CLI.
+  #
+  # The matrix is wider than fp-cli's two versions on purpose. This package declares
+  # no dependencies at all, so it has no third-party floor quietly constraining which
+  # interpreters it is really exercised on — and it is installed into other people's
+  # agent processes, whose Python version we do not choose. Every version
+  # requires-python advertises is tested.
+  failproofai-sdk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/python
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: sdk/python/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
+
+      # FAILPROOFAI_SDK_REQUIRE_CONTRACT makes test_spool_contract.py FAIL rather than
+      # skip when it cannot find crates/fpai-collect or src/hooks/fp-home.ts. Those
+      # assertions are the only check that this SDK writes where the daemon reads, and
+      # a guard that can silently degrade to a skip is not a guard — its predecessor in
+      # the agenteye repo skipped in every CI run for exactly this reason.
+      - name: Test
+        env:
+          FAILPROOFAI_SDK_REQUIRE_CONTRACT: "1"
+        run: uv run pytest tests/ -q
+
+      - name: Build the distribution
+        run: uv build
+
+      # A stale `include = [...]` in [tool.setuptools.packages.find] builds a
+      # SUCCESSFUL but EMPTY wheel — pip installs it and the import then fails.
+      # py.typed goes the same way if package-data stops naming it, and nothing
+      # else in this job would notice either. Assert the payload.
+      - name: Verify the wheel actually contains the package
+        run: |
+          python3 - <<'PY'
+          import glob, sys, zipfile
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          modules = [n for n in names if n.startswith("failproofai_sdk/") and n.endswith(".py")]
+          print(f"{wheel}: {len(modules)} modules")
+          if len(modules) < 7:
+              sys.exit(f"wheel looks empty — only {len(modules)} modules under failproofai_sdk/")
+          if not any(n.endswith("py.typed") for n in names):
+              sys.exit("py.typed is missing from the wheel — the type hints do not count without it")
+          if not any(n.endswith("LICENSE") for n in names):
+              sys.exit("LICENSE is missing from the wheel")
+          PY
+
+      # `--no-deps` is the assertion, not an optimisation. "Zero dependencies" is the
+      # reason this package is safe to drop into someone else's agent, so prove it
+      # against the built artifact rather than the source tree: install it with nothing
+      # else present, emit real events, and read them back off disk.
+      - name: Smoke-test the installed package with no dependencies
+        run: |
+          uv venv /tmp/sdk-smoke
+          VIRTUAL_ENV=/tmp/sdk-smoke uv pip install --no-deps dist/*.whl
+          AGENTEYE_HOME=/tmp/sdk-spool /tmp/sdk-smoke/bin/python -c "
+          import failproofai_sdk as s
+          print(s.__version__)
+          s.event.agent_start(session_id='smoke', agent_id='a', goal='ci')
+          s.event.tool_use(session_id='smoke', agent_id='a', tool_name='t', tool_call_id='c')
+          s.event.tool_result(session_id='smoke', agent_id='a', tool_name='t', tool_call_id='c', output='ok')
+          "
+          python3 - <<'PY'
+          import glob, json, sys
+          batches = glob.glob("/tmp/sdk-spool/events/*.jsonl")
+          if not batches:
+              sys.exit("the installed wheel wrote no event batch")
+          events = [json.loads(line) for p in batches for line in open(p) if line.strip()]
+          types = {e["type"] for e in events}
+          if types != {"agent_start", "tool_use", "tool_result"}:
+              sys.exit(f"unexpected events from the installed wheel: {sorted(types)}")
+          # Emitted by the artifact, so this also proves the wire format survived
+          # packaging rather than only surviving an in-tree import.
+          if not all("environment" in e for e in events):
+              sys.exit("an event reached disk without the `environment` field")
+          print(f"{len(events)} events written by the installed artifact")
+          PY
+
   test:
     runs-on: ubuntu-latest
     strategy:

@@ -77,14 +77,21 @@ failproofai/
 ├── __tests__/      # Test files
 ├── examples/       # Example custom hook policies
 ├── fp-cli/         # The `fp` CLI for FailproofAI Cloud (Python; PyPI: fp-cli)
+├── sdk/            # Client SDKs, one directory per language
+│   └── python/     # PyPI: failproofai-sdk, imported as `failproofai_sdk`
 └── public/         # Static assets
 ```
 
-> `fp-cli/` is the one Python component in an otherwise TypeScript + Rust repo. It
-> is self-contained: its own `pyproject.toml`, its own `uv.lock`, its own pytest
-> suite, and its own CI job (`fp-cli` in `ci.yml`). It is not part of the npm
-> package, the Next.js build, or the Cargo workspace, and it versions independently
-> of the root `package.json` — see CLAUDE.md.
+> `fp-cli/` and `sdk/python/` are the Python components in an otherwise
+> TypeScript + Rust repo. Each is self-contained: its own `pyproject.toml`, its own
+> `uv.lock`, its own pytest suite, its own CI job in `ci.yml`, and its own PyPI
+> project. Neither is part of the npm package, the Next.js build, or the Cargo
+> workspace, and both version independently of the root `package.json` — see
+> CLAUDE.md.
+>
+> `sdk/` is a directory rather than a flat `failproofai-sdk/` because more
+> languages are expected to land beside `python/`. They will be siblings, not
+> nested inside it.
 
 ### Key Subsystems
 

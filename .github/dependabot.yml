@@ -55,3 +55,19 @@ updates:
       python-dependencies:
         patterns:
           - "*"
+
+  # The telemetry SDK (PyPI: failproofai-sdk). Its own lockfile and its own uv
+  # ecosystem entry — dependabot resolves per directory, so fp-cli's entry above
+  # does not see this tree at all. The only things in the lockfile are the test
+  # runner and its transitive deps: the package itself declares NO runtime
+  # dependencies, and `tests/test_zero_dependencies.py` fails if that changes.
+  - package-ecosystem: uv
+    directory: /sdk/python
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"

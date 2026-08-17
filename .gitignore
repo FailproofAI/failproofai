@@ -139,6 +139,9 @@ COMMIT_MSG.tmp
 fp-cli/dist/
 fp-cli/.venv/
 fp-cli/.pytest_cache/
+sdk/python/dist/
+sdk/python/.venv/
+sdk/python/.pytest_cache/
 **/__pycache__/
 *.py[cod]
 *.egg-info/

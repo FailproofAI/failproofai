@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "failproofai-sdk"
+dynamic = ["version"]
+requires-python = ">=3.10"
+description = "Emit agent telemetry to FailproofAI Cloud — zero-dependency, stdlib only"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Failproof AI", email = "failproofai@exosphere.host" }]
+keywords = ["agents", "observability", "ai", "monitoring", "failproofai", "telemetry", "sdk"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+
+# There is deliberately NO `dependencies` key. This SDK imports nothing outside the
+# standard library, and that is a load-bearing property rather than a happy accident:
+# it is installed into other people's agent processes, where any dependency of ours is
+# a version constraint on their application. `tests/test_zero_dependencies.py` fails if
+# a runtime dependency is ever declared or imported, and the CI job installs the built
+# wheel with `--no-deps` to prove the claim against the artifact.
+
+# No [project.scripts] either — this is a library, not a command. The command is `fp`,
+# which ships from ../../fp-cli.
+
+[project.urls]
+Homepage = "https://befailproof.ai"
+Documentation = "https://docs.befailproof.ai/agenteye/python-sdk"
+Source = "https://github.com/FailproofAI/failproofai"
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.setuptools.dynamic]
+version = { attr = "failproofai_sdk._version.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["failproofai_sdk*"]
+
+[tool.setuptools.package-data]
+failproofai_sdk = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

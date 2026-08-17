@@ -1,0 +1,44 @@
+---
+title: "Failure behavior"
+description: "Understand what happens when policy evaluation or the local daemon is unavailable."
+icon: "shield-alert"
+---
+
+Failproof AI is designed so an enforcement failure is visible rather than silently allowing risky work.
+
+## Diagnose a failure-closed block
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Administration → Deploy policies** and open the machine.
+    2. Check its last check-in, assigned deployment, and reported deployment.
+    3. Go to **Observe → Policy** and open the denied decision's session.
+    4. Confirm whether the reason reports daemon reachability, version skew, or the policy itself.
+
+    <Info>Screenshot placeholder: Machine check-in state and failure-closed policy decision.</Info>
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    npm install -g failproofai@latest
+    failproofai config
+    ```
+
+    Rerunning `failproofai config` updates and restarts the daemon after a package upgrade.
+  </Tab>
+</Tabs>
+
+On a machine configured to use `failproofaid`, the daemon is the only evaluator. If it is unreachable or its protocol version does not match the CLI, hook evaluation fails closed. The action is denied with a reason that directs the operator to check or update the daemon.
+
+Before daemon configuration, hooks evaluate policies in process. Once daemon configuration is recorded, Failproof AI does not silently fall back to a second evaluator when the daemon fails.
+
+## Respond to a failure-closed decision
+
+1. Run `failproofai config --status`.
+2. If versions differ, rerun `failproofai config` after updating the package.
+3. If the daemon is unreachable, inspect its service state and local logs.
+4. Resume agent work only after a known policy evaluation path is healthy.
+
+<Warning>
+  Do not repeatedly retry the blocked action. A failure-closed response means the system could not establish that the action was safe.
+</Warning>

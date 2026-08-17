@@ -1,0 +1,68 @@
+---
+title: "Integrations and reference"
+description: "Connect supported agent harnesses, SDKs, the collector, CLIs, and the HTTP API."
+icon: "braces"
+---
+
+Choose the integration closest to where your agent already runs.
+
+<Columns cols={2}>
+  <Card title="Agent harnesses" icon="plug-zap" href="/reference/harnesses">
+    Install hooks for supported coding and autonomous agent CLIs.
+  </Card>
+  <Card title="Python tracing SDK" icon="file-code-2" href="/reference/python-sdk">
+    Emit lifecycle, model, tool, human, hook, and error events from custom agents.
+  </Card>
+  <Card title="Collector" icon="server-cog" href="/reference/collector">
+    Deliver locally spooled events to Failproof AI Cloud.
+  </Card>
+  <Card title="Local dashboard" icon="monitor-cog" href="/reference/local-dashboard">
+    Review local projects, sessions, policy activity, and offline audits.
+  </Card>
+  <Card title="Evaluator SDK" icon="gauge" href="/reference/evaluator-sdk">
+    Score complete or inactive sessions with a FastAPI service.
+  </Card>
+  <Card title="Policy SDK" icon="shield-code" href="/reference/policy-sdk">
+    Write workflow-specific allow, instruct, and deny decisions.
+  </Card>
+  <Card title="Self-hosting" icon="cloud-cog" href="/reference/self-hosting">
+    Deploy the Cloud control plane on a customer-managed Kubernetes cluster.
+  </Card>
+</Columns>
+
+The generated [HTTP API reference](/reference/http-api) covers the public `/v1` surface. Hand-written pages explain workflows that span multiple endpoints or use administrative interfaces outside that public surface.
+
+## Connect an agent and verify data
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Open **Administration → Keys** and select **Create key**.
+    2. Enable both the **collector** and **policies** presets, name the key after its environment, and copy the secret when it is shown. Use only **collector** when the integration will never pull enforcement policies.
+    3. Configure the integration using the matching page above.
+    4. Open **Observe → Events** to confirm individual events arrive, then **Observe → Sessions** to confirm they are grouped into complete runs.
+    5. Filter to the integration's environment and open one session. Check that model calls, tools, errors, and policy decisions contain the fields you need for audits.
+
+    ![The Sessions list used to verify that a newly connected integration is reporting complete agent runs.](/images/dashboard/sessions-list.png)
+
+    <Info>Screenshot placeholder: Administration → Keys with the collector and policies presets.</Info>
+  </Tab>
+  <Tab title="CLI">
+    Create a collector key, configure the local runtime, and verify the first session.
+
+    ```bash
+    fp keys create collector-production \
+      --add events:add \
+      --add policies:pull
+
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <collector-key>
+
+    failproofai flush --wait
+    fp sessions --since 1h --env production
+    fp events --since 1h --env production --limit 20
+    ```
+
+    Use `fp --json sessions ...` when another tool will consume the result. Global flags such as `--json`, `--org`, and `--base-url` must come before the command.
+  </Tab>
+</Tabs>

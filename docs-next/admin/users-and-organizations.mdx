@@ -1,0 +1,44 @@
+---
+title: "Users and organizations"
+description: "Control membership and keep each organization's data and actions scoped."
+icon: "users"
+---
+
+Organizations isolate sessions, evaluations, audits, issues, alerts, queries, dashboards, users, and keys. Confirm the active organization before changing administrative resources.
+
+## Manage members and organizations
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Use the organization switcher at the top of the Cloud sidebar to change organizations.
+    2. Go to **Administration → Users** to search members or filter by active state and role.
+    3. Select **new user**, enter the email, choose a permission set, and adjust overrides if needed.
+    4. Open a user later to update grants, disable sign-in, or enable the account again.
+
+    ![The Users page showing member email addresses, permission sets, and edit and disable controls.](/images/dashboard/users.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+
+    fp users create engineer@example.com --permission-set standard
+    fp users show engineer@example.com
+    fp users update engineer@example.com --add audits:write
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+    ```
+  </Tab>
+</Tabs>
+
+Administrators can create, update, disable, and re-enable users, then assign the permission set appropriate for their role. The API uses a delete operation for disabling, but it does not remove the account or its membership record.
+
+<Warning>
+  Disabling a user blocks that identity from signing in to every organization, not only the organization currently selected. Re-enabling restores global sign-in and the member's permissions in this organization.
+</Warning>
+
+<Tip>
+  Give service accounts descriptive names tied to a workload and owner. Avoid sharing keys between organizations or between people and machines.
+</Tip>

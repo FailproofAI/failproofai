@@ -1,0 +1,71 @@
+---
+title: "Audit local agent history"
+description: "Scan supported agent CLI histories offline and review risky or wasteful behavior locally."
+icon: "laptop-minimal-check"
+---
+
+Use a local audit for an immediate, private review before connecting a machine to Failproof AI Cloud. It scans the agent histories already stored on your machine, replays tool activity through builtin policies, and opens a local results dashboard.
+
+## Run an interactive audit
+
+<Tabs>
+  <Tab title="Dashboard">
+    The local audit starts from the CLI because it must discover histories on the current machine. Run `failproofai audit`; after the scan, Failproof AI starts the bundled dashboard and opens **http://localhost:8020/audit**.
+
+    In the audit view, review the number of sessions, tool calls, projects, and policy hits. Start with frequent findings, then inspect the affected project and agent history before enabling enforcement.
+
+    <Info>The local audit dashboard is separate from **Analyze → Audits** in Failproof AI Cloud. Local audits remain on the machine and require no account or network connection.</Info>
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    npm install -g failproofai
+    failproofai audit
+    ```
+
+    The command performs a full scan of every supported history it finds. The current command does not accept filters such as `--since`, `--cli`, `--project`, `--port`, or `--no-open`.
+
+    Keep the process running while using the local dashboard. Press <kbd>Ctrl</kbd>+<kbd>C</kbd> when you are finished.
+  </Tab>
+</Tabs>
+
+The current audit adapters can read histories from Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity, and Goose. Only locally available histories are scanned.
+
+## Run a scheduled headless audit
+
+<Tabs>
+  <Tab title="Dashboard">
+    A scheduled run refreshes the cached result used by the local audit dashboard. Open the dashboard later with `failproofai` and select the local audit view to review the latest completed scan.
+
+    Scheduled mode does not start a server or open a browser. Use your operating system's scheduler or automation runner to invoke it at the cadence you need.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai audit --scheduled
+    ```
+
+    Scheduled mode prints a one-line result and exits. It accepts no additional arguments.
+
+    | Exit code | Meaning |
+    | --- | --- |
+    | `0` | Audit completed and refreshed the local cache |
+    | `75` | Another audit already holds the single-run lock; retry later |
+    | Other non-zero value | The audit failed; inspect stderr and local logs |
+  </Tab>
+</Tabs>
+
+## Move from local evidence to Cloud operations
+
+A local audit is a fast baseline. Connect the machine to Failproof AI Cloud when you need shared traces, recurring population audits, findings and issues, alerts, organization-wide policy deployment, or fleet health.
+
+<CardGroup cols={2}>
+  <Card title="Create a Cloud audit" icon="scan-search" href="/audits/setup">
+    Define a recurring goal, population, evidence window, and response channels.
+  </Card>
+  <Card title="Enable a policy" icon="shield-check" href="/start/first-policy">
+    Validate locally, publish deliberately, and deploy to a narrow machine group first.
+  </Card>
+</CardGroup>
+
+<Warning>
+  Audit output is evidence for review, not proof that every flagged action is unsafe. Confirm context before turning a finding into blocking enforcement.
+</Warning>

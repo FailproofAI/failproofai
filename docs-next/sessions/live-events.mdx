@@ -1,0 +1,43 @@
+---
+title: "Live events"
+description: "Watch agent activity arrive while a session is running."
+icon: "radio"
+---
+
+Live events help you confirm instrumentation and watch a risky run without waiting for the session to finish.
+
+## Watch activity
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Observe → Events**.
+    2. Start with the current time window and no filters to confirm data is arriving.
+    3. Filter by environment, event type, agent, or session. Use search for payload text.
+    4. Select an event to inspect its summary and details. Follow its session link for the full trace.
+
+    ![The live Events stream with time, environment, event type, agent, model, context, session, and text filters.](/images/dashboard/events-stream-current.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --env production --event-type tool_use,error --limit 100
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    The default feed omits raw payloads. Use `--full` only for a bounded session investigation.
+  </Tab>
+</Tabs>
+
+Use the event stream to answer three immediate questions:
+
+- Is the expected agent reporting to the correct environment?
+- Are model calls, tool calls, and policy decisions arriving in order?
+- Has the session stopped making progress or started repeating an action?
+
+Event types include agent lifecycle events, model requests and responses, tool use and results, hook execution, human waits and interrupts, and explicit errors. Correlation IDs join paired events such as a tool call and its result.
+
+<Tip>
+  Keep the live view broad while verifying a new integration. Add filters only after you see the first event; an incorrect filter can look like failed ingestion.
+</Tip>
+
+If no events appear, run `failproofai config --status`, then [troubleshoot ingestion](/reference/troubleshooting).

@@ -1,0 +1,76 @@
+---
+title: "HTTP API"
+description: "Authenticate to the public Failproof AI Cloud `/v1` API and use the generated endpoint reference."
+icon: "braces"
+---
+
+The public API is served under `/v1` on your Failproof AI dashboard origin.
+
+## Create a key and make a request
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Open **Administration → Keys**.
+    2. Select **Create key**, choose the narrowest permission preset that covers the integration, and add individual grants only when needed.
+    3. Copy the secret when it is displayed. It cannot be recovered later.
+    4. Make a test request to `/v1/sessions`.
+    5. Return to Keys to confirm the key is active. Rotate or disable it from the key's action menu when the integration changes ownership.
+
+    ![The API Keys page showing scoped credentials and their rotate and disable controls.](/images/dashboard/api-keys.png)
+
+    <Info>Screenshot placeholder: Create key drawer and one-time secret.</Info>
+  </Tab>
+  <Tab title="CLI">
+    Create a read key and use it directly with either `fp` or `curl`:
+
+    ```bash
+    fp keys create reliability-reader \
+      --permission-set read-only
+
+    fp --api-key <key> sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY"
+    ```
+  </Tab>
+</Tabs>
+
+Keys are scoped to an organization and permission set. A request without the endpoint's required permission returns `403` and identifies the missing permission.
+
+## Organization selection
+
+An organization key acts on its organization automatically. An instance-scoped key can select an organization per request:
+
+<Tabs>
+  <Tab title="Dashboard">
+    Use the organization switcher in the dashboard header before opening **Administration → Keys**. Keys created there belong to the selected organization. Confirm the organization slug in the URL and key detail before copying the credential into automation.
+
+    <Info>Screenshot placeholder: organization switcher and the selected organization's Keys page.</Info>
+  </Tab>
+  <Tab title="CLI">
+    Use `--org` before the command, or send the organization header for an instance-scoped API key.
+
+    ```bash
+    fp orgs list
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+Use the generated endpoint pages in this section for current paths, parameters, permission requirements, and status codes. The specification is generated from the server route annotations and checked against the `/v1` router.
+
+The current specification has complete route, method, parameter, permission, and status-code coverage. Some response bodies remain intentionally untyped because the server still constructs them as dynamic JSON. Inspect a real response before generating a strongly typed client around an endpoint without a response schema.
+
+Use `Content-Type: application/json` for JSON writes. Treat `401` as missing or invalid authentication, `403` as a valid identity without the required permission, `404` as a missing or organization-inaccessible resource, `409` as a state conflict, and `422` as an invalid field or permission value. Error responses include a human-readable message; permission failures also name the required grant.
+
+<Warning>
+  Policy enforcement deployment is intentionally managed outside the ordinary public `/v1` surface. Use the supported Cloud deployment workflow.
+</Warning>

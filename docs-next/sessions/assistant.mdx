@@ -1,0 +1,44 @@
+---
+title: "Cloud assistant"
+description: "Investigate Failproof AI data in plain language and keep the supporting queries."
+icon: "message-square-text"
+---
+
+The Cloud assistant can inspect sessions, events, evaluations, alerts, keys, and saved queries in the active organization. Use it to accelerate an investigation, then verify its evidence before taking action.
+
+## Ask an investigation question
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Select **Open agent chat** in the application shell.
+    2. Ask a bounded question with a time range, environment, and workflow, such as “Which production checkout agents had the most tool errors in the last 24 hours?”
+    3. Review the assistant's tool calls, tables, and query results while it works.
+    4. Open the cited session, alert, or query to verify the result against source data.
+    5. Start a new chat for a different investigation, or use chat history to continue the same line of analysis.
+
+    ![The Cloud assistant answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Open representative sessions" --chat <chat-id>
+    ```
+
+    Use `fp agent rename <chat-id> --title <title>` to keep an investigation recognizable and `fp agent delete <chat-id>` to remove it.
+  </Tab>
+</Tabs>
+
+## Use assistant output safely
+
+- Treat generated SQL and summaries as an investigation aid, not final evidence.
+- Open representative sessions before creating an audit, issue, alert, or policy.
+- Keep organization, environment, and time filters explicit.
+- Save useful SQL as a query so another operator can reproduce the result.
+
+<Warning>
+  The assistant can read only what your current user can access. Do not broaden permissions to make a question work; ask an authorized operator to run the investigation instead.
+</Warning>

@@ -1,0 +1,26 @@
+---
+title: "Core concepts"
+description: "The small set of concepts used throughout Failproof AI."
+icon: "boxes"
+---
+
+| Concept | What it means | What you can achieve |
+| --- | --- | --- |
+| Session | One agent task or run | Reconstruct an individual outcome |
+| Event | One recorded action in a session | Inspect a model call, tool use, error, human action, or policy decision |
+| Trace | The ordered and nested session view | Understand causality instead of reading disconnected logs |
+| Evaluation | A score or judgment on a session | Track quality, compliance, cost, or latency continuously |
+| Audit | A review of a selected session population | Search for failure patterns with a stated goal and cadence |
+| Finding | An evidence-backed failure discovered by an audit | See the failure mode, severity, and affected sessions |
+| Issue | A durable response record | Assign, discuss, and resolve a finding or alert incident |
+| Alert | A rule that detects recurrence | Notify responders when a known condition returns |
+| Policy | A rule evaluated during agent activity | Observe, block, or redirect risky behavior |
+| Deployment | A versioned policy rollout to machines | Control where a policy runs and roll it back safely |
+
+## The reliability loop
+
+Start from evidence. A session shows what happened. An audit determines whether it is an isolated mistake or a pattern. A finding identifies the failure mode; an issue owns the response. A policy prevents the same behavior, while alerts tell you if the condition returns.
+
+<Warning>
+  A local `failproofai audit` scans local agent history. A recurring Cloud audit reviews sessions stored in Failproof AI Cloud. They are separate workflows with different scope and scheduling.
+</Warning>

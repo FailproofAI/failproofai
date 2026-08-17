@@ -1,0 +1,80 @@
+---
+title: "Events and configuration"
+description: "Reference the event model, environments, local storage, and configuration boundaries."
+icon: "list-tree"
+---
+
+## Event families
+
+- Agent start, end, pause, and resume
+- Model request and response
+- Tool use and result
+- Hook triggered and completed
+- Human wait, input, pause, and interrupt
+- Explicit errors
+
+Every event carries a timestamp, session ID, agent ID, event type, and environment. Event-specific fields contain model, tool, correlation, outcome, content, duration, or error data.
+
+## Inspect an event contract
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Open **Observe → Events**.
+    2. Set a short time window and filter by environment, agent, and event type.
+    3. Select an event to inspect its normalized fields and raw payload.
+    4. Copy the session ID and open **Observe → Sessions** to see the event in execution context.
+    5. If a paired duration is missing, verify that the start and completion events use the same correlation ID.
+
+    ![The live Events stream with filters for environment, agent, session, and event type.](/images/dashboard/events-stream.png)
+
+    ![The linked session trace used to inspect the event in execution context.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    Discover valid filter values, then fetch full event payloads for one session:
+
+    ```bash
+    fp list event_types
+    fp list envs
+    fp events --since 1h \
+      --env production \
+      --event-type tool_use,tool_result \
+      --session-id <session-id> \
+      --full
+    ```
+
+    Use `fp --json events ... --fields ts,event_type,session_id,payload` for machine-readable inspection.
+  </Tab>
+</Tabs>
+
+## Reserved SDK fields
+
+Do not use `timestamp`, `session_id`, `agent_id`, `type`, or `environment` as custom Python SDK fields. Paired event durations such as tool result duration are calculated by the SDK and cannot be supplied manually.
+
+## Local boundaries
+
+- Failproof AI state lives under `~/.failproofai` unless explicitly configured otherwise.
+- The Python tracing SDK uses `AGENTEYE_HOME` for its legacy base-directory override.
+- Environment labels can be set through SDK configuration or `AGENTEYE_ENVIRONMENT`.
+- Collector secrets are stored separately from non-secret settings.
+
+Use stable, low-cardinality environment names. Commas are not supported in collector environment labels.
+
+## Change an environment label
+
+<Tabs>
+  <Tab title="Dashboard">
+    Environment labels are assigned by the emitting SDK or collector. After changing one, open **Observe → Sessions** and use the environment filter to confirm new sessions carry the new value. Existing sessions retain their original environment.
+
+    <Info>Screenshot placeholder: Sessions environment filter showing old and new deployment labels.</Info>
+  </Tab>
+  <Tab title="CLI">
+    For the Python SDK, configure the environment in code or with its legacy environment variable. For the local collector, rerun interactive configuration and verify the result.
+
+    ```bash
+    export AGENTEYE_ENVIRONMENT=production-us-east
+    failproofai config
+    failproofai config --status
+    fp sessions --since 1h --env production-us-east
+    ```
+  </Tab>
+</Tabs>

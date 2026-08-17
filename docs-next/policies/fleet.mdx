@@ -1,0 +1,54 @@
+---
+title: "Deploy policies to machines"
+description: "Know which machines are enrolled, current, and enforcing the intended policy versions."
+icon: "network"
+---
+
+Fleet coverage answers whether a policy exists where the risk exists. Track machines by stable ID and a human-readable label, then compare their assigned and reported deployment state.
+
+## Check coverage
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Administration → Deploy policies**.
+    2. Review the enforcing and observing totals.
+    3. Search for a machine by ID or label, or filter for machines missing a policy.
+    4. Expand a row to compare assigned policies, reported deployment, last check-in, and history.
+    5. Refresh after the machine's polling interval when an applied deployment remains pending.
+
+    <Info>Screenshot placeholder: Fleet summary, missing-policy filter, and expanded machine coverage row.</Info>
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai config --machine-label checkout-runner-03
+    failproofai flush --wait
+    ```
+
+    Use `fp events --agent-id <agent-id> --since 24h` to confirm the machine's agent activity reaches Cloud.
+  </Tab>
+</Tabs>
+
+Use coverage views to find:
+
+- Machines that never pulled the latest deployment
+- Enrolled machines that stopped reporting activity
+- A policy assigned to the wrong environment or cohort
+- Version drift after an interrupted update
+- A machine where enforcement is paused
+
+Rename a machine without reconnecting it:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
+
+Check local state:
+
+```bash
+failproofai config --status
+```
+
+<Tip>
+  Use labels that identify workload and environment. Hostnames alone are often insufficient after autoscaling or machine replacement.
+</Tip>

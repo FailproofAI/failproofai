@@ -1,0 +1,69 @@
+---
+title: "Settings and security"
+description: "Configure operational settings and make deliberate choices about agent data."
+icon: "lock-keyhole"
+---
+
+Use Settings for deployment-specific operational values and model context-window overrides. Inspect the settings schema before changing a value through the API or CLI.
+
+## Change an organization setting
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Administration → Settings**.
+    2. Find the setting group and read its description and current source.
+    3. Change the value and save it.
+    4. For model context windows, add or update the model override and confirm the effective limit.
+    5. Recheck sessions and metrics that depend on the changed value.
+
+    ![The Settings page showing organization authentication and operational settings.](/images/dashboard/settings.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp settings list
+    fp settings schema
+    fp settings set <key> --value <scalar>
+    fp settings set alerts.email_default_recipients \
+      --json-value '["oncall@example.com"]'
+    ```
+
+    Run `fp settings set --help` for the value type and confirmation flags used by the installed CLI.
+  </Tab>
+</Tabs>
+
+## Data handling choices
+
+Connecting the Failproof AI CLI sends transcripts by default because traces and audits depend on their content. Use `--no-transcripts` when prompts, file contents, or terminal input must remain local; hook activity and policy decisions can still be reported.
+
+Local ingest credentials are stored separately from non-secret collector settings and written with restrictive permissions. API keys should still be managed as production secrets.
+
+## Organization setting reference
+
+All dashboard-editable settings are organization-scoped. Deployment-wide behavior remains server environment configuration.
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `allowed_sign_ins` | `[]` | Restrict existing members to exact emails or `*@domain`; an empty list means no additional restriction. |
+| `session_ttl_secs` | `86400` | Dashboard session lifetime; accepted range is 60 seconds to 30 days. |
+| `otp_ttl_secs` | `600` | OTP and magic-link lifetime; accepted range is 60–1800 seconds. |
+| `alerts.email_default_recipients` | `[]` | Default recipients when an alert email channel does not override them. |
+| `alerts.slack_default_webhook` | empty | Default Slack incoming-webhook URL. |
+| `alerts.webhook_default_url` | empty | Default generic JSON webhook URL. |
+| `alerts.webhook_signing_secret` | empty | HMAC-SHA256 key used for the `X-AgentEye-Signature` header; reads are masked. |
+| `alerts.enabled_channels` | email, Slack, webhook | Organization-wide channel kinds that alert rules may dispatch. |
+| `default_user_permissions` | `standard` | Named permission set preselected for new invitations. |
+
+`allowed_sign_ins` is a filter, not a grant: a person must already be an organization member. Use an empty list to allow every member; the bare value `*` is rejected. Alert URLs must use HTTPS except for loopback development addresses.
+
+## Security checklist
+
+- Use HTTPS for Cloud connections.
+- Scope keys to the smallest permission set.
+- Separate production and non-production environments.
+- Review transcript and redaction settings before rollout.
+- Audit user, key, and organization changes.
+- Test backup, retention, and incident response requirements for your deployment.
+
+<Warning>
+  Turning transcript capture off changes what audits and investigations can prove. Record the decision and its expected limitations.
+</Warning>

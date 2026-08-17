@@ -1,0 +1,47 @@
+---
+title: "Policy editor"
+description: "Create and revise versioned policies from a confirmed failure mode."
+icon: "file-pen-line"
+---
+
+Use the policy editor to turn a finding or issue into a deployable rule. Keep authoring separate from deployment so a draft cannot silently change live behavior.
+
+## Publish a policy version
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Administration → Policy editor**.
+    2. In **compose**, describe the failure mode or paste the JavaScript policy source.
+    3. Validate the source and fix every reported error.
+    4. Enter the policy identity and publish it.
+    5. In **library**, open the policy to compare versions or disable a version from future selection.
+    6. Select **enforcement** when the version is ready for a machine rollout.
+
+    <Info>Screenshot placeholder: Compose panel, validation result, publish control, and version library.</Info>
+  </Tab>
+  <Tab title="CLI">
+    The Cloud CLI does not publish policy versions. Validate the source locally before copying it into the editor:
+
+    ```bash
+    failproofai policies --install --custom ./checkout.policies.ts \
+      --cli claude --scope project
+    ```
+
+    Publish the reviewed version from **Administration → Policy editor**.
+  </Tab>
+</Tabs>
+
+## Authoring checklist
+
+1. Name the failure mode in operational language.
+2. Select the hook events and tools that contain enough evidence to decide.
+3. Write the narrowest condition that matches unsafe behavior.
+4. Return a reason that tells the agent or operator what to do next.
+5. Add examples that should match and examples that must remain allowed.
+6. Save a new version and request review.
+
+Use `instruct` when the agent can safely correct course. Use `deny` when allowing the action would create unacceptable or irreversible risk.
+
+<Info>
+  Policy versions are immutable deployment inputs. Editing a draft creates a new version; it should not rewrite the version already assigned to machines.
+</Info>

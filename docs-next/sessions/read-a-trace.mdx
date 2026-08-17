@@ -1,0 +1,52 @@
+---
+title: "Read a trace"
+description: "Find the event that changed the course of an agent session."
+icon: "route"
+---
+
+A trace turns a flat event stream into the causal story of the run. Read it from the first divergence, not backward from the last error.
+
+## Open the trace
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Observe → Sessions** and open a session.
+    2. Use the profile summary to check outcome, timing, errors, and evaluation scores.
+    3. Scan the timeline and minimap. Filter event types or time when the session is large.
+    4. Select an event to open the detail panel. Use **export** to download evaluator JSON.
+    5. Copy the page URL after selecting an event to share a deep link to that evidence.
+
+    ![A session detail view with its execution graph, event timeline, evaluation panel, and tool, model, and hook breakdown.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp --json sessions --session-id <session-id>
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    Use the light event feed first. Request full payloads only when the event summaries do not contain enough evidence.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Check the session header">
+    Confirm the agent, environment, start and end time, outcome, and overall duration.
+  </Step>
+  <Step title="Scan the event spine">
+    Look for errors, unusually long spans, repeated tool names, human waits, and denied policy decisions.
+  </Step>
+  <Step title="Expand the first suspicious event">
+    Inspect its request, response, tool input, output, and correlation ID. Sensitive content is visible only when transcript capture is enabled and your permissions allow it.
+  </Step>
+  <Step title="Inspect the preceding context">
+    The cause often sits one event earlier: an incorrect model response, missing tool result, or stale assumption.
+  </Step>
+  <Step title="Turn the evidence into action">
+    Add the session to an audit scope, link it to an issue, or use the failure mode to author a policy.
+  </Step>
+</Steps>
+
+<Warning>
+  Long duration does not always mean model latency. Separate model, tool, hook, and human-wait time before deciding what to fix.
+</Warning>

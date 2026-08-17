@@ -1,0 +1,5498 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Failproof AI Cloud API",
+    "description": "The Failproof AI observability API.\n\nEvery path below is relative to `/v1` on your deployment's dashboard origin — e.g. `https://app.example.com/v1/sessions`. Authenticate with a scoped API key as a bearer token.\n\nOrganization scoping: a key belongs to one organization and acts on it automatically. An instance-scoped key selects one per request with the `X-AgentEye-Org` header; without it, such a key resolves to the default organization, so set it explicitly on a multi-org deployment.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    },
+    "version": "0.0.1-beta.76"
+  },
+  "servers": [
+    {
+      "url": "/v1",
+      "description": "This deployment"
+    }
+  ],
+  "paths": {
+    "/access-granters": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "List who can grant you a permission.",
+        "description": "ANY valid key may call this — it is the one authenticated endpoint that\nrequires no particular permission, deliberately, because the caller who needs\nit is by definition the one who lacks access. Only active members of the\ncalling organization holding `users:update` are listed, at most 50 of them,\nand emails are the only field returned.",
+        "operationId": "list_access_granters",
+        "responses": {
+          "200": {
+            "description": "Up to 50 `{ email }` objects: who can widen your permissions."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "`X-AgentEye-Org` named an organization this key may not act for. No permission of its own is required."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/alerts": {
+      "get": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "List this organization's alert rules.",
+        "description": "Newest first. Each entry carries the rule itself plus two derived fields:\n`open_incidents`, the number of its issues that are not yet resolved, and\n`last_attempted_at`, when the dispatcher last evaluated it (`null` if it\nnever has). The list is cached for 60 seconds per organization, so a rule\nyou just created or edited can take that long to appear here.",
+        "operationId": "list_alerts",
+        "responses": {
+          "200": {
+            "description": "The organization's alert rules, newest first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `alerts:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Create an alert rule.",
+        "description": "`trigger_kind` picks how the rule is evaluated — `metric_threshold`,\n`custom_sql`, `evaluation_score`, `eval_compound` or `per_event` — and\n`trigger_spec` is the free-form JSON that kind expects.\n\nThe scheduling fields work together: the dispatcher evaluates the rule every\n`eval_interval_secs` (default 300, must be between 30 and 86400) and only\nopens an issue once `min_breaches` of the last `eval_window` evaluations\nbreached (both default to 1, and `min_breaches` may not exceed\n`eval_window`). Every entry in `channels` needs a `kind` of `email`, `slack`,\n`webhook` or `dashboard`; omitting `channels` creates a rule that opens\nissues but notifies nobody.\n\nReturns the new alert's `id` and `created_at`. When the request came through\nthe dashboard, `created_by` records the human; a direct API call records the\nAPI key's id instead.",
+        "operationId": "create_alert",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Alert created."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `alerts:write`."
+          },
+          "422": {
+            "description": "Validation failed — `error` names the offending field."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/alerts/recipients": {
+      "get": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "List the member emails an alert can notify.",
+        "description": "Returns `[{ \"email\": … }]` for your organization — active members only,\nalphabetised. Gated on `alerts:read` OR `alerts:write` rather than\n`users:read`, so whoever views or edits alerts can fill in the recipient\npicker without being able to read user records; only emails come back, never\nthe permissions and ids `/users` returns. Alert channels can also be pointed\nat external addresses that are not members — this is the convenience list,\nnot the set of addresses you are allowed to use.",
+        "operationId": "list_alert_recipients",
+        "responses": {
+          "200": {
+            "description": "Active member emails, alphabetised."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks both `alerts:read` and `alerts:write` — either one is enough."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/alerts/{id}": {
+      "get": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Fetch one alert rule.",
+        "description": "Same shape as an entry in `GET /alerts`, `open_incidents` and\n`last_attempted_at` included, and cached for 60 seconds in the same way. An\nalert belonging to another organization reads as 404, not 403.",
+        "operationId": "get_alert",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The alert's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The alert rule."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `alerts:read`."
+          },
+          "404": {
+            "description": "No such alert in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Replace an alert rule.",
+        "description": "A whole-object replace, not a patch: any field you leave out reverts to its\ndefault rather than keeping its current value — `enabled` to `true`,\n`severity` to `warning`, `channels` to empty, which silently stops the rule\nnotifying anyone. Read the alert first and send the full object back.\nValidation is identical to `POST /alerts`.",
+        "operationId": "update_alert",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The alert's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Alert replaced; returns `id` and `updated_at`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `alerts:write`."
+          },
+          "404": {
+            "description": "No such alert in this organization."
+          },
+          "422": {
+            "description": "Validation failed — `error` names the offending field."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Delete an alert rule.",
+        "description": "This also deletes every issue the rule ever opened — the issue rows cascade\noff the definition, taking their comments, subscribers and activity history\nwith them. If you only want the rule to stop firing, `PUT` it back with\n`enabled: false` instead. Returns 204 with no body.",
+        "operationId": "delete_alert",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The alert's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Alert deleted, along with its issues."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `alerts:write`."
+          },
+          "404": {
+            "description": "No such alert in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/alerts/{id}/issues": {
+      "get": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "List one alert's issues.",
+        "description": "The same rows as `GET /issues`, restricted to this alert. The default\n`state` differs: this returns the alert's full history —\n`firing,acknowledged,resolved` — because it backs the per-alert page rather\nthan the board. An `alert_id` in the query string is ignored; the path wins.",
+        "operationId": "list_incidents_for_alert",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The alert's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Comma-separated states from `firing`, `acknowledged`, `resolved`. Default: all three.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 200, capped at 1000.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The alert's issues, newest first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Open an issue against an existing alert, by hand.",
+        "description": "`summary` is required and capped at 2000 characters; `title` is optional and\ndefaults to the alert's own name.\n\nAn alert can have only one open issue at a time, so this does NOT always\ncreate a row: if one is already open, your summary folds into it and the\nresponse is **200** with `newly_opened: false`. **201** means a new issue was\nreally opened. Read that field rather than assuming. `source` in the response\nis the value actually stored — re-posting against an issue the dispatcher or\nan audit opened leaves its provenance alone.",
+        "operationId": "create_incident",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The alert's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIncidentBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The alert already had an open issue; this folded into it (`newly_opened: false`)."
+          },
+          "201": {
+            "description": "A new issue was opened."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:create`."
+          },
+          "404": {
+            "description": "No such alert in this organization."
+          },
+          "422": {
+            "description": "`summary` is missing or exceeds 2000 characters, or `title` exceeds 200 characters."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/alerts/{id}/test": {
+      "post": {
+        "tags": [
+          "Alerts"
+        ],
+        "summary": "Send a test notification through an alert's channels.",
+        "description": "Fires one synthetic notification so you can check a channel is actually\nwired up. It touches no state: nothing is opened or resolved, no issue is\nstored, and the `synthetic_incident_id` in the response belongs to no row —\ndo not try to fetch it.\n\nPost the editor's current `channels` to test edits you have not saved yet;\nwith no body, the alert's saved channels are used. An empty email channel\nfalls back to the organization's default recipients, exactly as a real\nnotification would. Delivery is best-effort: 200 means the fan-out ran, not\nthat every channel accepted it.",
+        "operationId": "test_alert",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The alert's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Optional. Omit the body to use the alert's saved channels.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestAlertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Fan-out ran; returns `ok` and a throwaway `synthetic_incident_id`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `alerts:write`."
+          },
+          "404": {
+            "description": "No such alert in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/audits": {
+      "get": {
+        "tags": [
+          "Audits"
+        ],
+        "summary": "List this organization's audits, newest first.",
+        "description": "Each entry is the full definition plus its schedule state\n(`next_attempt_at`, `last_attempted_at`, `last_error`), its open finding\ncount, and the status of its most recent run. Edits made through this API\nshow up immediately, but the response is cached for 60 seconds, so schedule\nstate advanced by the dispatcher can lag by that much.",
+        "operationId": "list_audits",
+        "responses": {
+          "200": {
+            "description": "The organization's audit definitions."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Audits"
+        ],
+        "summary": "Create a recurring audit.",
+        "description": "An audit sweeps a window of your events on a schedule and files findings for\nthe failure patterns it sees. `schedule_interval_secs` must be between 3600\n(1h) and 604800 (7d) and defaults to daily; `lookback_window_secs` must be\nbetween 3600 (1h) and 7776000 (90d) and defaults to 7d. `schedule_anchor`\nfixes the phase — runs land on `anchor + N * interval` — and defaults to the\nnext 09:00 UTC; an anchor more than 365 days out is rejected. The first run\nis queued immediately on create regardless of the anchor.",
+        "operationId": "create_audit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Audit created. Returns `id` and `created_at`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:write`."
+          },
+          "422": {
+            "description": "The payload failed validation; `error` names the problem."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/audits/findings": {
+      "get": {
+        "tags": [
+          "Audits"
+        ],
+        "summary": "List findings across every audit in the organization, highest priority\nfirst.",
+        "description": "This is the triage queue. Without a `status` filter it shows only the live\nset — `open` and `recurring` — so triaged findings disappear from it; pass\n`status` explicitly to see them. Narrow to one audit with `audit_id`, or to\nthe findings one run produced or touched with `run_id`. Each finding's\n`issue_id` is the issue it graduated into, or null if it never did.",
+        "operationId": "list_findings",
+        "parameters": [
+          {
+            "name": "audit_id",
+            "in": "query",
+            "description": "Restrict to one audit.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "description": "Restrict to findings first or last seen by one run.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Comma-separated: `open`, `recurring`, `resolved`, `dismissed`, `muted`. Defaults to `open,recurring`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 100, clamped to 1–500.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Default 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of findings, highest priority first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:read`."
+          },
+          "422": {
+            "description": "`status` names a status that does not exist."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/audits/findings/{fid}": {
+      "get": {
+        "tags": [
+          "Audits"
+        ],
+        "summary": "Fetch one finding in full.",
+        "description": "The same shape the list returns — evidence, priority factors,\nrecommendation, suggested alert, and the issue it graduated into.",
+        "operationId": "get_finding",
+        "parameters": [
+          {
+            "name": "fid",
+            "in": "path",
+            "description": "The finding's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The finding."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:read`."
+          },
+          "404": {
+            "description": "No such finding in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/audits/findings/{fid}/status": {
+      "post": {
+        "tags": [
+          "Audits"
+        ],
+        "summary": "Triage a finding.",
+        "description": "`action` is one of `ack`, `mute`, `dismiss`, `resolve`, `reopen` or\n`assign`; `assign` additionally requires `assigned_to`, and any action may\ncarry a free-text `reason`.\n\n`mute` and `dismiss` record durable feedback keyed on the finding's\nfingerprint, which suppresses that pattern across EVERY audit in the\norganization — not just the one you are looking at. `reopen` clears that\nsuppression. `resolve` records none, so a pattern that comes back is filed\nagain as new. `ack` keeps the finding visible but deprioritized.\n\nSet `X-AgentEye-Actor` to attribute the action to a person; without it the\nAPI key's id is recorded instead. If the finding graduated into an issue,\nthe issue is updated to match on a best-effort basis — a failure there is\nlogged and does not fail the triage, which has already committed.",
+        "operationId": "update_finding_status",
+        "parameters": [
+          {
+            "name": "fid",
+            "in": "path",
+            "description": "The finding's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The action was applied."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:write`."
+          },
+          "404": {
+            "description": "No such finding in this organization."
+          },
+          "422": {
+            "description": "Unknown `action`, or `assign` without `assigned_to`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/audits/{id}": {
+      "get": {
+        "tags": [
+          "Audits"
+        ],
+        "summary": "Fetch one audit definition.",
+        "description": "Same shape as an entry in the list, read straight from the database rather\nthan the 60-second list cache — schedule state and the last-run summary are\ncurrent as of the request.",
+        "operationId": "get_audit",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The audit's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The audit definition."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:read`."
+          },
+          "404": {
+            "description": "No such audit in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Audits"
+        ],
+        "summary": "Update an audit definition.",
+        "description": "`name` is required and always overwritten; every other field is optional and\nan omitted one keeps its current value — there is no way to clear a field\nback to NULL here. The same ranges as create apply. A changed\n`schedule_interval_secs` or `schedule_anchor` takes effect at the next\nreschedule, not on the run already queued.",
+        "operationId": "update_audit",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The audit's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Audit updated."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:write`."
+          },
+          "404": {
+            "description": "No such audit in this organization."
+          },
+          "422": {
+            "description": "The payload failed validation; `error` names the problem."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Audits"
+        ],
+        "summary": "Delete an audit.",
+        "description": "Cascades: the audit's queue row, its run history and all of its findings go\nwith it, and this cannot be undone. Muting feedback survives — it is keyed on\nthe fingerprint, not the audit. Requires `audits:write`; there is no separate\ndelete permission.",
+        "operationId": "delete_audit",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The audit's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Audit deleted."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:write`."
+          },
+          "404": {
+            "description": "No such audit in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/audits/{id}/context": {
+      "get": {
+        "tags": [
+          "Audits"
+        ],
+        "description": "Read an audit's extra context: the operator's written brief, plus the reference URLs it draws on and the state of each one's stored snapshot. Snapshot text is returned as a bounded preview rather than in full.",
+        "operationId": "get_context",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The audit's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The audit's brief and its reference sources."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:read`."
+          },
+          "404": {
+            "description": "No such audit in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Audits"
+        ],
+        "description": "Replace an audit's extra context. This is a full replacement, not a merge: the brief and the reference URL list are both set to exactly what you send, so send an empty value to clear one. Context is edited here rather than through the audit itself, so an ordinary unrelated edit to the audit can never overwrite it.",
+        "operationId": "put_context",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The audit's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContextBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Context replaced. Returns the stored brief and sources."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:write`."
+          },
+          "404": {
+            "description": "No such audit in this organization."
+          },
+          "422": {
+            "description": "The brief is too long, or a URL is invalid, duplicated, or over the limit."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/audits/{id}/context/refresh": {
+      "post": {
+        "tags": [
+          "Audits"
+        ],
+        "description": "Queue a re-fetch of this audit's reference URLs. Returns as soon as the work is queued, not when it finishes. Sources whose URL was refused are left alone, since nothing about them can change until the URL is edited, and a source that already has usable text keeps serving it while the re-fetch runs.",
+        "operationId": "refresh_context",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The audit's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Re-fetch queued. Reports how many sources were queued."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:write`."
+          },
+          "404": {
+            "description": "No such audit in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/audits/{id}/run": {
+      "post": {
+        "tags": [
+          "Audits"
+        ],
+        "summary": "Run an audit now.",
+        "description": "Makes the audit's queue row due immediately; the dispatcher claims it on its\nnext tick, so the 202 means \"queued\", not \"finished\" — poll\n`GET /audits/{id}/runs` for the result. Three cases all answer 409 and are\ndistinguished by the `error` field: the audit is unknown or belongs to\nanother organization, it is disabled (a disabled audit has no queue row), or\na run is already in progress, which must finish before another can be queued.",
+        "operationId": "run_now",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The audit's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "The run is queued."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:write`."
+          },
+          "409": {
+            "description": "Not found, disabled, or already running; `error` says which."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/audits/{id}/runs": {
+      "get": {
+        "tags": [
+          "Audits"
+        ],
+        "summary": "List an audit's runs, newest first.",
+        "description": "Each run carries its status, the window it covered, its finding counts and\nthe LLM report when there is one. An unknown audit id — or one in another\norganization — returns an empty list rather than 404.",
+        "operationId": "list_runs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The audit's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Runs per page. Defaults to 50, clamped to 1-200.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Rows to skip. Defaults to 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of runs, newest first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/auth/introspect": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "description": "Describe the API key making this request: the organization it belongs to and the permissions it holds. Requires no permission of its own — any valid key may describe itself, and only itself. Intended to be called once when provisioning a machine, so a bad key, a missing permission and a wrong organization can be told apart before anything is sent. A key that has just been revoked or has just expired may still be reported as valid for up to a minute.",
+        "operationId": "handler",
+        "responses": {
+          "200": {
+            "description": "The key is valid. Reports its organization and effective permissions."
+          },
+          "401": {
+            "description": "Missing, unknown, revoked, or expired key."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/dashboards": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "List the organization's dashboards, newest first.",
+        "description": "Dashboards belong to the organization, not to whoever created them —\neveryone with `dashboards:read` sees the same list. Each entry carries a\n`tile_count` but not the tiles themselves; fetch a single dashboard for\nthose. The list is cached for up to 30 seconds, so a dashboard created a\nmoment ago may not appear on the very next call.",
+        "operationId": "list_dashboards",
+        "responses": {
+          "200": {
+            "description": "The organization's dashboards, newest first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `dashboards:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Create a dashboard.",
+        "description": "`definition` is an opaque JSON object owned by the dashboard UI (filters and\ndisplay settings) — it is stored and returned verbatim and the server never\nlooks inside it. A new dashboard has no tiles; add them with\n`POST /dashboards/{id}/tiles`.",
+        "operationId": "create_dashboard",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertDashboardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The created dashboard."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `dashboards:write`."
+          },
+          "422": {
+            "description": "`name` is blank, or `definition` is not a JSON object."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/dashboards/{id}": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Fetch one dashboard together with its tiles.",
+        "description": "The response is the dashboard record plus a `tiles` array, ordered by grid\nposition (top to bottom, then left to right) — the same order the UI draws\nthem in.",
+        "operationId": "get_dashboard",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Dashboard id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The dashboard and its tiles."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `dashboards:read`."
+          },
+          "404": {
+            "description": "No dashboard with that id in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Replace a dashboard's name, description and definition.",
+        "description": "A full replacement, not a patch: send every field you want to keep, because\nan omitted `description` is written back as empty. Tiles and their layout\nare not touched — change those through the tile endpoints.",
+        "operationId": "update_dashboard",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Dashboard id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertDashboardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated dashboard."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `dashboards:write`."
+          },
+          "404": {
+            "description": "No dashboard with that id in this organization."
+          },
+          "422": {
+            "description": "`name` is blank, or `definition` is not a JSON object."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Delete a dashboard and every tile on it.",
+        "description": "This is the one dashboards route that needs `dashboards:delete`; editing a\ndashboard — including adding and removing its tiles — needs only\n`dashboards:write`, so a key that can author dashboards cannot necessarily\ndestroy one. The tiles go with the dashboard; the saved queries they render\nare left alone.",
+        "operationId": "delete_dashboard",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Dashboard id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `dashboards:delete`."
+          },
+          "404": {
+            "description": "No dashboard with that id in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/dashboards/{id}/tiles": {
+      "get": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "List a dashboard's tiles, ordered by grid position.",
+        "description": "A dashboard id that does not exist in this organization returns an empty\n`tiles` array rather than a 404 — check the dashboard itself if you need to\ntell \"no tiles\" from \"no dashboard\".",
+        "operationId": "list_tiles",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Dashboard id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The dashboard's tiles, in grid order."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `dashboards:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Add a tile to a dashboard.",
+        "description": "A tile renders exactly one saved query: `query_id` names it, `chart_type`\nis one of `line`, `area`, `bar`, `stacked_bar`, `pie`, `kpi` or `table`, and\n`pos_x` / `pos_y` / `pos_w` / `pos_h` place it on the grid (origin\ntop-left, width and height in grid cells). `chart_config` and\n`param_bindings` are opaque JSON objects the dashboard UI owns; both\ndefault to `{}`.\n\nThe saved query must be one of your organization's — a `query_id` from\nanywhere else reads as \"does not exist\".",
+        "operationId": "create_tile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Dashboard the tile is added to.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertTileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The created tile."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `dashboards:write`."
+          },
+          "404": {
+            "description": "The dashboard or the referenced saved query does not exist in this organization."
+          },
+          "422": {
+            "description": "Unknown `chart_type`, `chart_config`/`param_bindings` is not a JSON object, or the position is negative / the size is not positive."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/dashboards/{id}/tiles/layout": {
+      "put": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Reposition a dashboard's tiles in one request.",
+        "description": "Send `{\"tiles\": [{id, pos_x, pos_y, pos_w, pos_h}, …]}`; every entry is\napplied in a single transaction, so a whole drag-and-resize rearrangement\nis one round-trip. Only geometry changes — the query, title and config on\neach tile are left as they are.\n\nPositions are validated before anything is written, so a bad entry rejects\nthe request without applying any of it. But `updated` echoes how many\nentries you SENT, not how many rows actually changed: an id that is not a\ntile on this dashboard is silently skipped. Send only ids you read back\nfrom the dashboard.",
+        "operationId": "update_tiles_layout",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Dashboard whose tiles are being repositioned.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LayoutUpdateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "`updated` is the number of entries submitted."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `dashboards:write`."
+          },
+          "422": {
+            "description": "A tile's position is negative or its size is not positive; nothing was applied."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/dashboards/{id}/tiles/{tile_id}": {
+      "put": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Replace a tile.",
+        "description": "A full replacement, not a patch — every field is written, so send the ones\nyou want to keep. The tile must live on the dashboard named in the path;\notherwise it reads as not found.",
+        "operationId": "update_tile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Dashboard the tile belongs to.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "tile_id",
+            "in": "path",
+            "description": "Tile id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertTileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated tile."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `dashboards:write`."
+          },
+          "404": {
+            "description": "No such tile on that dashboard in this organization."
+          },
+          "422": {
+            "description": "Unknown `chart_type`, `chart_config`/`param_bindings` is not a JSON object, or the position is negative / the size is not positive."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Dashboards"
+        ],
+        "summary": "Remove a tile from a dashboard.",
+        "description": "Needs `dashboards:write`, NOT `dashboards:delete` — taking a chart off a\ndashboard is an edit; only deleting the whole dashboard needs the delete\ngrant. The saved query the tile rendered is untouched.",
+        "operationId": "delete_tile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Dashboard the tile belongs to.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "tile_id",
+            "in": "path",
+            "description": "Tile id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `dashboards:write`."
+          },
+          "404": {
+            "description": "No such tile on that dashboard in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/evaluation-jobs": {
+      "get": {
+        "tags": [
+          "Evaluations"
+        ],
+        "summary": "List the evaluations that are queued or in flight, newest enqueue first.",
+        "description": "This is the queue, not the results — a job leaves this list once it finishes,\nat which point its scores appear on `/evaluations`. Each row carries the\nattempt count, the next retry time, and the last error, so a session stuck\nbehind a failing evaluator is visible here rather than merely absent from\n`/evaluations`.",
+        "operationId": "list_jobs",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "One of `pending` or `polling` — the only two states a job has while it exists. Anything else is a 400.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 100, capped at 500.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's queued and in-flight evaluation jobs."
+          },
+          "400": {
+            "description": "`status` is neither `pending` nor `polling`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `evaluations:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/evaluations": {
+      "get": {
+        "tags": [
+          "Evaluations"
+        ],
+        "summary": "List completed evaluations, newest first.",
+        "description": "Cursor-paginated: read a page, then pass its `next_cursor` back as `cursor`.\n`next_cursor` is null on the final page. Every filter below AND-composes.\n\n`latest_per_session=true` collapses the page to one row per session — that\nsession's most recent evaluation — which is what the sessions list shows.\nWithout it you get the full evaluation history, so a re-evaluated session\nappears more than once.",
+        "operationId": "list_evaluations",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Exact session id.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Exact agent id.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Comma-separated environments.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "One of `done`, `error`, `timeout`. Anything else is a 400.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_from",
+            "in": "query",
+            "description": "RFC 3339 lower bound on `completed_at` (inclusive).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_to",
+            "in": "query",
+            "description": "RFC 3339 upper bound on `completed_at` (inclusive).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from the previous page.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 50, capped at 200 — asking for more silently gets you 200.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "score_filters",
+            "in": "query",
+            "description": "Comma-separated `key:min..max` ranges over the top-level numeric `scores` keys. Either bound may be omitted: `factuality:0.9..`, `cost:..0.3`. At most 20 entries; more is a 400. Entries that do not parse are dropped silently.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metric_filters",
+            "in": "query",
+            "description": "Same grammar and 20-entry cap as `score_filters`, but matched against the nested magnitude metrics at `scores.metrics.<key>` (cost, latency, tokens).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "latest_per_session",
+            "in": "query",
+            "description": "Return only the most recent evaluation per session. Default false.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of evaluations plus `next_cursor`."
+          },
+          "400": {
+            "description": "Unknown `status`, or more than 20 `score_filters` / `metric_filters` entries."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `evaluations:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/evaluations/aggregate": {
+      "get": {
+        "tags": [
+          "Evaluations"
+        ],
+        "summary": "Rolled-up evaluation health for a filtered slice.",
+        "description": "Takes the same filters as `/evaluations` and returns totals, a status\nbreakdown, per-score-key stats, and a time-bucketed timeline — computed over\nthe whole matching set, not a sample of it.\n\n`bucket` is a request, not a guarantee: a fine bucket over a long range is\nstepped up until the timeline fits 1500 points, and `timeline.bucket_unit`\nreports the granularity actually used. `series` is opt-in and capped at 24\nseries; when the cap bites, `series_truncated` comes back true rather than\nthe response quietly containing fewer lines than you asked for.",
+        "operationId": "aggregate_evaluations",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Exact session id.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Exact agent id.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Comma-separated environments.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "One of `done`, `error`, `timeout`. Anything else is a 400.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_from",
+            "in": "query",
+            "description": "RFC 3339 lower bound on `completed_at` (inclusive). Also sets the default bucket width.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_to",
+            "in": "query",
+            "description": "RFC 3339 upper bound on `completed_at` (inclusive). Defaults to now.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "score_filters",
+            "in": "query",
+            "description": "Comma-separated `key:min..max` ranges over the top-level numeric `scores` keys, at most 20. Same grammar as on `/evaluations`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metric_filters",
+            "in": "query",
+            "description": "Same grammar and 20-entry cap, matched against the nested metrics at `scores.metrics.<key>`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "latest_per_session",
+            "in": "query",
+            "description": "Aggregate only the most recent evaluation per session. Default false.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "featured_keys",
+            "in": "query",
+            "description": "Comma-separated score keys whose per-bucket average the timeline should carry. De-duplicated and capped at 6; keys past the sixth are dropped.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "series",
+            "in": "query",
+            "description": "Opt-in chart series, as a JSON array of `[agent_id, environment, key, agg]` quads — e.g. `[[\"*\",\"*\",\"helpfulness\",\"p90\"]]`. `\"*\"` in the agent or environment slot means all of them combined. `agg` is one of `avg`, `min`, `max`, `p50`, `p75`, `p90`, `p95`, `p99`, `stddev`, `mode`. Malformed entries and unknown aggregations are dropped rather than failing the request; at most 24 survive.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "series_source",
+            "in": "query",
+            "description": "Where `series` reads from: `scores` (default, the 0-1 rate scores) or `metrics` (the nested magnitude metrics).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "description": "Timeline granularity: `minute`, `5m`, `15m`, `hour`, `6h`, `day`, `week`, or `auto` (default, derived from the range). Coarsened when it would exceed 1500 buckets — read `timeline.bucket_unit` for what was used.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Totals, status counts, per-score-key stats and the timeline. `series` and `series_truncated` are present only when `series` was supplied."
+          },
+          "400": {
+            "description": "Unknown `status`, or more than 20 `score_filters` / `metric_filters` entries."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `evaluations:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/evaluations/environments": {
+      "get": {
+        "tags": [
+          "Evaluations"
+        ],
+        "summary": "The distinct environment names seen in this organization's evaluations.",
+        "description": "Returns a bare JSON array of strings, suitable for an environment filter.\nRead from the evaluations dataset rather than the event store, so a key with\n`evaluations:read` but not `events:read` can still populate the filter.\nCached per organization for 60 seconds, so a brand-new environment can take\nup to a minute to show up here.",
+        "operationId": "list_environments",
+        "responses": {
+          "200": {
+            "description": "A JSON array of environment names, sorted."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `evaluations:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/evaluations/metric_keys": {
+      "get": {
+        "tags": [
+          "Evaluations"
+        ],
+        "summary": "The magnitude-metric names under `scores.metrics`, each with its unit.",
+        "description": "Returns a JSON array of `{name, unit, count}` objects. Kept separate from\n`score_keys` because the two are on different scales: score keys are 0-1\nrates that share one axis, metrics carry units (ms, USD, tokens) and must not\nbe plotted against each other. `unit` is an empty string for metrics recorded\nbefore units existed. Cached per organization for 60 seconds.\n\nNote the underscore: the path is `/evaluations/metric_keys`.",
+        "operationId": "list_metric_keys",
+        "responses": {
+          "200": {
+            "description": "A JSON array of `{name, unit, count}` objects, sorted by name."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `evaluations:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/evaluations/score_keys": {
+      "get": {
+        "tags": [
+          "Evaluations"
+        ],
+        "summary": "The numeric score keys present across this organization's evaluations.",
+        "description": "Returns a bare JSON array of strings. Score keys are emergent — whatever your\nevaluators emit — so this is the complete all-time catalog rather than a\nsample of recent rows. Only NUMERIC keys are listed, which is exactly the set\n`score_filters` can range-filter on; string and boolean score values are\nomitted. Cached per organization for 60 seconds.\n\nNote the underscore: the path is `/evaluations/score_keys`.",
+        "operationId": "list_score_keys",
+        "responses": {
+          "200": {
+            "description": "A JSON array of numeric score keys, sorted."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `evaluations:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List raw events, including each event's full payload.",
+        "description": "Cursor-paginated: read a page, then pass its `next_cursor` back as `cursor`.\n`next_cursor` is null on the final page. For the dashboard's lighter feed\nwithout payloads, use `/events/summary`.",
+        "operationId": "list_events",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Comma-separated session ids.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Comma-separated agent ids.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "description": "Comma-separated event types.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Comma-separated environments.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_from",
+            "in": "query",
+            "description": "RFC 3339 lower bound (inclusive).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_to",
+            "in": "query",
+            "description": "RFC 3339 upper bound (exclusive).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "description": "`desc` (default) or `asc`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 50, capped at 1000.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of events plus `next_cursor`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Ingest a batch of events.",
+        "description": "The body is newline-delimited JSON — one event object per line, not a JSON\narray. Malformed lines are SKIPPED, not rejected: the response reports\n`accepted` and `skipped` counts and the status is 200 even when every line\nwas bad. A 5xx means \"retry the whole batch\"; duplicate events are collapsed\nserver-side, so retrying is safe.",
+        "operationId": "handler",
+        "requestBody": {
+          "description": "One JSON event object per line.",
+          "content": {
+            "application/x-ndjson": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Batch processed. Reports `accepted` and `skipped` counts."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:add`."
+          },
+          "500": {
+            "description": "Storage write failed — retry the batch."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/agent_ids": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List the agent ids this organization has sent events for, most-used first.",
+        "description": "A JSON array of strings — the values accepted by the `agent_id` filter on\n`/events`, `/events/summary` and `/sessions`. Capped at the 500 busiest agent\nids and cached for up to a minute.\n\nEither `events:read` or `evaluations:read` grants this, so session-only keys\ncan populate the same filter.",
+        "operationId": "list_agent_ids",
+        "responses": {
+          "200": {
+            "description": "Up to 500 agent ids, most-used first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks both `events:read` and `evaluations:read` — either one is enough."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/environments": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List the environment names this organization has actually sent events from.",
+        "description": "A JSON array of strings, alphabetically sorted — the values accepted by the\n`environment` filter on `/events`, `/events/summary` and `/sessions`. Derived\nfrom stored events, so an environment appears only once something has been\ningested under it, and results are cached for up to a minute: a brand-new\nenvironment can take that long to show up.\n\nEither `events:read` or `evaluations:read` grants this, so session-only keys\ncan populate the same filter.",
+        "operationId": "list_environments",
+        "responses": {
+          "200": {
+            "description": "The organization's environment names, sorted."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks both `events:read` and `evaluations:read` — either one is enough."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/error_summary": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Summarise the errors matching a filter, across the whole window.",
+        "description": "Returns `total`, the number of distinct `sessions` and `agents` involved,\n`last_ts` (null when nothing matched), a `bins` array of exactly 24 counts,\nand the `bounds` in epoch milliseconds that those bins span.\n\nTwo things to know. The result is ALWAYS restricted to errored events, so it\nis not a general event rollup — the same filters here and on\n`/events/summary?errored=true` describe the same set, which is what keeps a\nchart and its rows in agreement. And when `ts_from`/`ts_to` are omitted, the\nbins span the matched data's own first and last event rather than a fixed\nwindow, so `bounds` is the only reliable way to turn a bin index back into a\ntime range. Counts are computed over the entire window, not the current page,\nand are cached for about ten seconds.",
+        "operationId": "list_error_summary",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Comma-separated session ids.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Comma-separated agent ids.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "description": "Comma-separated event types.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error_type",
+            "in": "query",
+            "description": "Comma-separated error types.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Comma-separated environments.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_from",
+            "in": "query",
+            "description": "RFC 3339 lower bound (inclusive). Also the histogram's start.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_to",
+            "in": "query",
+            "description": "RFC 3339 upper bound (inclusive). Also the histogram's end.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Free-text match against the event payload. Repeat the parameter to match any of several terms.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search_exclude",
+            "in": "query",
+            "description": "Comma-separated payload keys the free-text search should ignore, e.g. `agent_id,environment`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Error totals, a 24-bin histogram, and the bounds it spans."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/error_types": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List the error types seen in this organization's events, most-used first.",
+        "description": "A JSON array of strings — the values accepted by the `error_type` filter.\nOnly events that carry a classified error type are counted, which is a\nnarrower set than `errored=true`: a failed tool result that reports an error\nmessage without a type contributes to that filter but not to this list.\nCapped at 500 values, cached for a couple of minutes.",
+        "operationId": "list_error_types",
+        "responses": {
+          "200": {
+            "description": "Up to 500 error types, most-used first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/event_types": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List the event types this organization has actually sent, alphabetically.",
+        "description": "A JSON array of strings — the values accepted by the `event_type` filter.\nThis is the observed set, not the full catalogue the SDKs can emit: a type\nyou have never ingested is absent. Cached for up to five minutes, the longest\nof the facet endpoints.",
+        "operationId": "list_event_types",
+        "responses": {
+          "200": {
+            "description": "The event types seen for this organization, sorted."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/hook_names": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List the hook names seen in this organization's events, most-used first.",
+        "description": "A JSON array of strings — the values accepted by the `hook_name` filter.\nCounted from `hook_triggered` events only (the start leg of a hook), capped\nat 500 names, cached for a couple of minutes.",
+        "operationId": "list_hook_names",
+        "responses": {
+          "200": {
+            "description": "Up to 500 hook names, most-used first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/latency_aggregate": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Roll up the latency between two event types into a chart-ready summary.",
+        "description": "Pairs each `start_event_type` event with its matching `end_event_type` event\nand reports the duration between them: `bins` (a time series over the\nwindow), `heatmap` (time against latency band), `summary` (pair count with\np50/p95/p99 and max), `events` (window totals), and, when\n`distribution_key_paths` is given, a `distribution` broken down by that key.\nThis is how the tools, models and hooks pages are drawn.\n\n`start_event_type` and `end_event_type` are required and must differ;\nanything else returns 400. `ts_to` defaults to now, and omitting `ts_from`\nspans back to the oldest matching event rather than a fixed window — check\n`bounds` in the response for what was actually covered. `bin_count` defaults\nto 24 and is clamped to 1–168. The distribution names the top 10 keys and\nrolls the rest into a single `(other)` entry, so it still sums to the window\ntotal.\n\nTwo behaviours worth knowing. `payload_sum_paths` can only sum `duration_ms`,\n`input_tokens` and `output_tokens` — any other path is ignored silently and\nits `sums` entry stays 0. And sums count only the closing event of each pair,\nso token usage reported on both legs is not double-counted.",
+        "operationId": "latency_aggregate",
+        "parameters": [
+          {
+            "name": "start_event_type",
+            "in": "query",
+            "description": "Required. The event type that opens a span, e.g. `tool_use`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "end_event_type",
+            "in": "query",
+            "description": "Required. The event type that closes it, e.g. `tool_result`. Must differ from `start_event_type`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Comma-separated session ids.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Comma-separated agent ids.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Comma-separated environments.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_from",
+            "in": "query",
+            "description": "RFC 3339 lower bound. Omit to span back to the oldest matching event.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_to",
+            "in": "query",
+            "description": "RFC 3339 upper bound. Defaults to now.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bin_count",
+            "in": "query",
+            "description": "Time bins on the X axis. Default 24, clamped to 1–168.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "description": "`success`, `error`, or `all` (the default, and the fallback for an unrecognized value).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "description": "Comma-separated exact model names. Applies to both legs of a pair.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tool_name",
+            "in": "query",
+            "description": "Comma-separated exact tool names. Applies to both legs of a pair.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hook_name",
+            "in": "query",
+            "description": "Comma-separated exact hook names. Applies to both legs of a pair.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trigger_event",
+            "in": "query",
+            "description": "Comma-separated exact trigger events. Selects pairs whose opening event carries one of them.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "distribution_key_paths",
+            "in": "query",
+            "description": "Comma-separated payload keys to group the distribution by, first one present wins, e.g. `tool_name,tool`. Omit to skip the distribution.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pair_key_paths",
+            "in": "query",
+            "description": "Comma-separated payload keys used to match a start event to its end event, first one present wins. Defaults to `tool_call_id,request_id,hook_id,id`; events carrying none of them pair in order within their session.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "payload_contains",
+            "in": "query",
+            "description": "Case-insensitive substring filter on a payload field, written `<key>:<text>`. Applies to both legs of a pair.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "payload_sum_paths",
+            "in": "query",
+            "description": "Comma-separated `<name>:<field>` pairs adding totals under `sums`. Only `duration_ms`, `input_tokens` and `output_tokens` can be summed.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The latency rollup: bounds, bins, heatmap, summary, events, and optionally distribution."
+          },
+          "400": {
+            "description": "A required or malformed parameter. The body's `error` field says which."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/models": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List the model names seen in this organization's events, most-used first.",
+        "description": "A JSON array of strings — the values accepted by the `model` filter. Capped\nat the 500 most-used models and cached for up to a minute. Every event that\nnames a model contributes, not just model responses, so both legs of a model\ncall count towards the ordering.",
+        "operationId": "list_models",
+        "responses": {
+          "200": {
+            "description": "Up to 500 model names, most-used first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/summary": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List events WITHOUT their payloads — the light feed the dashboard tails.",
+        "description": "Same filters and cursor semantics as `/events`; each row carries a derived\none-line summary instead of the full payload, so a page is far smaller.",
+        "operationId": "list_event_summaries",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Comma-separated session ids.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Comma-separated agent ids.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "description": "Comma-separated event types.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Comma-separated environments.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_from",
+            "in": "query",
+            "description": "RFC 3339 lower bound (inclusive).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_to",
+            "in": "query",
+            "description": "RFC 3339 upper bound (exclusive).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "description": "`desc` (default) or `asc`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 50, capped at 1000.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of event summaries plus `next_cursor`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/tool_names": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List the tool names seen in this organization's events, most-used first.",
+        "description": "A JSON array of strings — the values accepted by the `tool_name` filter.\nCounted from `tool_use` and `tool_result` events only, capped at 500 names,\ncached for a couple of minutes.",
+        "operationId": "list_tool_names",
+        "responses": {
+          "200": {
+            "description": "Up to 500 tool names, most-used first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/events/trigger_events": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List the trigger events that fired hooks recently, most-used first.",
+        "description": "A JSON array of strings — the values accepted by the `trigger_event` filter.\nOnly the last 90 days are scanned, so a trigger that has not fired in that\nwindow is absent even though older events still carry it. Capped at 500\nvalues and cached for up to a minute.",
+        "operationId": "list_trigger_events",
+        "responses": {
+          "200": {
+            "description": "Up to 500 trigger-event names from the last 90 days, most-used first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Liveness probe.",
+        "description": "The only endpoint on `/v1` that needs no credential — it reports that the\nprocess is answering, nothing about your data.",
+        "operationId": "handler",
+        "responses": {
+          "200": {
+            "description": "The server is answering."
+          }
+        },
+        "security": []
+      }
+    },
+    "/issues": {
+      "get": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "List issues.",
+        "description": "The whole issues board in one feed: issues opened by an alert rule, issues\ngraduated from an audit finding, and issues opened by hand. Newest first.\n\n`state` defaults to `firing,acknowledged`, so resolved issues are hidden\nuntil you ask for them. Unrecognised states are dropped rather than\nrejected — `?state=closed` returns `[]`, not an error. `limit` defaults to\n200 and is capped at 1000; there is no cursor, so narrow with `state` or\n`alert_id` instead of paging. Cached for 10 seconds.",
+        "operationId": "list_incidents",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Comma-separated states from `firing`, `acknowledged`, `resolved`. Default `firing,acknowledged`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "alert_id",
+            "in": "query",
+            "description": "Only issues belonging to this alert.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 200, capped at 1000.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching issues, newest first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Open an issue by hand, with no parent alert.",
+        "description": "For a failure that doesn't map to any configured rule. `summary` is required\nand capped at 2000 characters; `title` is optional and falls back to the\nsummary's first 200 characters; `severity` is `info`, `warning` (the default)\nor `critical`.\n\nAn issue opened this way never fans out through alert channels — there is no\nparent whose channels it could inherit — so it is a triage thread and\nnothing more. You are subscribed to it automatically.",
+        "operationId": "create_orphan_incident",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrphanIncidentBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Issue opened."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:create`."
+          },
+          "422": {
+            "description": "`summary` is missing or too long, `title` exceeds 200 characters, or `severity` is not one of `info`, `warning`, `critical`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/issues/count": {
+      "get": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Count issues without fetching them.",
+        "description": "Returns `{ \"count\": n }` for the same `state` filter `GET /issues` takes\n(default `firing,acknowledged`). This is what the sidebar badge polls, so a\ndashboard does not pull 200 rows to render one number. Cached for 15 seconds,\nso it can trail a state change by that long.",
+        "operationId": "count_incidents",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Comma-separated states from `firing`, `acknowledged`, `resolved`. Default `firing,acknowledged`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "`{ \"count\": n }` for the requested states."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/issues/{iid}": {
+      "get": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Fetch one issue, with its whole thread.",
+        "description": "Beyond the issue's own fields this returns `notifications` (the last 100\ndelivery attempts, newest first, each with its channel and status),\n`subscribers`, `comments` (oldest first — deleted ones appear as tombstones\nwith `body: null`) and `activity`, the append-only log of who did what. An\nissue that graduated from an audit finding also carries `finding`, a snapshot\nof that finding refreshed on every audit run; other issues omit the field\nentirely. Cached for 30 seconds.",
+        "operationId": "get_incident",
+        "parameters": [
+          {
+            "name": "iid",
+            "in": "path",
+            "description": "The issue's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The issue, its thread, and its notification log."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:read`."
+          },
+          "404": {
+            "description": "No such issue in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/issues/{iid}/ack": {
+      "post": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Acknowledge an issue — \"I'm looking at this\".",
+        "description": "Needs only `issues:read`, deliberately: signalling that you have picked\nsomething up must not require write authority. It does not change who is\naccountable — `POST /issues/{iid}/assign` does that.\n\nMore than one person may ack, and each one lands an attributed row on the\nactivity log, but `acknowledged_at` / `acknowledged_by` keep recording the\nFIRST ack, so a retry or a double-click cannot inflate time-to-acknowledge.\nAcking also subscribes you to the thread.",
+        "operationId": "ack_incident",
+        "parameters": [
+          {
+            "name": "iid",
+            "in": "path",
+            "description": "The issue's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acknowledged; returns the issue's `state` and `acknowledged_at`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:read`."
+          },
+          "404": {
+            "description": "No such issue in this organization."
+          },
+          "409": {
+            "description": "The issue is already resolved."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/issues/{iid}/assign": {
+      "post": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Replace an issue's assignees.",
+        "description": "A whole-list replace, not an add: `{\"assignees\": []}` clears everyone. (The\nolder single `assigned_to` string is still accepted — a string becomes a\none-element list, `null` clears — and is ignored when `assignees` is\npresent.) Every address must belong to an active member of your\norganization; a typo or an outsider is rejected 422 before anything is\nwritten, so the call never half-applies.\n\nThe permission check is on the DIFF, not on the request. With `issues:read`\nyou may take YOURSELF off the list, or send a no-op; adding anybody, or\nremoving somebody else, needs `issues:create` and is otherwise 403. Everyone\nleft on the list, plus you, is subscribed to the thread.",
+        "operationId": "assign_incident",
+        "parameters": [
+          {
+            "name": "iid",
+            "in": "path",
+            "description": "The issue's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Assignees replaced; returns the stored list."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:read`, or lacks `issues:create` for a change that adds an assignee or removes someone other than you."
+          },
+          "404": {
+            "description": "No such issue in this organization."
+          },
+          "422": {
+            "description": "An assignee is malformed or is not an active member of this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/issues/{iid}/comments": {
+      "get": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "List an issue's comments.",
+        "description": "Oldest first. Deleted comments are still returned, as tombstones with\n`body: null`, so the thread keeps its shape and reply order.",
+        "operationId": "list_comments",
+        "parameters": [
+          {
+            "name": "iid",
+            "in": "path",
+            "description": "The issue's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The comment thread, oldest first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:read`."
+          },
+          "404": {
+            "description": "No such issue in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Comment on an issue.",
+        "description": "`body` is required and capped at 8000 characters after trimming. Needs only\n`issues:read`: a responder who can see the issue can talk on its thread —\nputting discussion behind a write grant would make read-only reviewers silent\nobservers. Commenting subscribes you to the thread and emails the other\nsubscribers.",
+        "operationId": "create_comment",
+        "parameters": [
+          {
+            "name": "iid",
+            "in": "path",
+            "description": "The issue's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommentBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Comment created."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:read`."
+          },
+          "404": {
+            "description": "No such issue in this organization."
+          },
+          "422": {
+            "description": "`body` is empty or exceeds 8000 characters."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/issues/{iid}/comments/{cid}": {
+      "delete": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Delete a comment.",
+        "description": "Authorship, not permission tier, is the gate: you may delete your own\ncomment, and holders of `issues:close` may moderate anyone's — someone has to\nbe able to remove a departed colleague's. A bare API-key call carries no\nhuman identity and so cannot prove authorship; it needs `issues:close`.\n\nThe delete is soft. The comment stays in the thread as a tombstone with\n`body: null` rather than vanishing. Returns 204 with no body.",
+        "operationId": "delete_comment",
+        "parameters": [
+          {
+            "name": "iid",
+            "in": "path",
+            "description": "The issue's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cid",
+            "in": "path",
+            "description": "The comment's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Comment tombstoned."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:read`, or you are not the comment's author and lack `issues:close`."
+          },
+          "404": {
+            "description": "No such issue or comment in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/issues/{iid}/resolve": {
+      "post": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Resolve an issue.",
+        "description": "The one triage action with its own permission — `issues:close`, not the\n`issues:read` the rest of the thread runs on — because closing is what\nsilences the thread and takes the issue off the board.\n\nFor an issue that graduated from an audit finding, the finding is resolved in\nthe SAME transaction, so a later audit run cannot quietly reopen it.\nResolving an already-resolved issue is a 409, not a no-op.",
+        "operationId": "resolve_incident",
+        "parameters": [
+          {
+            "name": "iid",
+            "in": "path",
+            "description": "The issue's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resolved; returns the issue's `state` and `resolved_at`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:close`."
+          },
+          "404": {
+            "description": "No such issue in this organization."
+          },
+          "409": {
+            "description": "The issue is already resolved."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/issues/{iid}/subscribe": {
+      "post": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Subscribe to an issue's activity emails.",
+        "description": "With no body you subscribe yourself, using the email your dashboard session\nforwards. Passing `{\"email\": …}` for SOMEONE ELSE is a create-tier action: it\nneeds `issues:create`, and that address must belong to an active member of\nyour organization. Subscribing yourself works at `issues:read`, so a\nread-only responder who acked can always manage their own notifications.\n\nIdempotent — re-subscribing clears any earlier unsubscribe.",
+        "operationId": "subscribe_incident",
+        "parameters": [
+          {
+            "name": "iid",
+            "in": "path",
+            "description": "The issue's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Optional. Omit the body to subscribe yourself.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscribeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Subscribed; echoes the email."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:read`, or lacks `issues:create` when subscribing someone other than you."
+          },
+          "404": {
+            "description": "No such issue in this organization."
+          },
+          "422": {
+            "description": "No usable email, or the address is not an active member of this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/issues/{iid}/subscribers": {
+      "get": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "List who gets an issue's activity emails.",
+        "description": "Active subscribers only — anyone who unsubscribed is omitted. Note that\npeople are subscribed automatically when they ack, comment, are assigned, or\nopen the issue, so this is not just the list of manual subscribes.",
+        "operationId": "list_subscribers",
+        "parameters": [
+          {
+            "name": "iid",
+            "in": "path",
+            "description": "The issue's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active subscribers."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:read`."
+          },
+          "404": {
+            "description": "No such issue in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/issues/{iid}/unsubscribe": {
+      "post": {
+        "tags": [
+          "Issues"
+        ],
+        "summary": "Stop an issue's activity emails.",
+        "description": "The mirror of subscribe. Removing YOURSELF — the default with no body — works\nat `issues:read`, so nobody can be trapped on a thread; passing another\nperson's `email` takes them off it and needs `issues:create`.",
+        "operationId": "unsubscribe_incident",
+        "parameters": [
+          {
+            "name": "iid",
+            "in": "path",
+            "description": "The issue's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Optional. Omit the body to unsubscribe yourself.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscribeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Unsubscribed; echoes the email."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `issues:read`, or lacks `issues:create` when unsubscribing someone other than you."
+          },
+          "404": {
+            "description": "No such issue in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/keys": {
+      "get": {
+        "tags": [
+          "Keys"
+        ],
+        "summary": "List this organization's API keys.",
+        "description": "Secrets are never returned — only metadata. A key's secret is shown once, at\ncreation, and cannot be recovered afterwards.",
+        "operationId": "list_keys",
+        "responses": {
+          "200": {
+            "description": "The organization's keys, without secrets."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `keys:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Keys"
+        ],
+        "summary": "Mint a scoped API key.",
+        "description": "You supply the secret in `key`; the server stores only its hash and never\nreturns it again. Generate it with a cryptographically secure random source.\n`permissions` defaults to `[\"events:add\"]` — an ingest-only key.",
+        "operationId": "create_key",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Key created."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `keys:create`, or a requested permission is one the caller does not itself hold."
+          },
+          "409": {
+            "description": "That name is already taken."
+          },
+          "422": {
+            "description": "A requested permission is unknown or cannot be granted to a key."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/keys/{id}": {
+      "patch": {
+        "tags": [
+          "Keys"
+        ],
+        "summary": "Replace a key's permissions.",
+        "description": "No API key can call this. `keys:update` is deliberately not grantable to any\nkey — editing keys is a human, dashboard-only action — so a bearer token\nalways gets 403 here, permanently and by design. Use the dashboard's key\neditor instead. The list you send replaces the key's grants outright rather\nthan adding to them, and keys seeded from configuration cannot be edited.",
+        "operationId": "update_key",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The key's id, as returned by `GET /keys`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The key's metadata with its new permissions."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `keys:update` — which no API key may hold, so this is the response every key gets — or the target key is seeded from configuration and is protected."
+          },
+          "404": {
+            "description": "No such key in this organization."
+          },
+          "409": {
+            "description": "The key is revoked and cannot be edited."
+          },
+          "422": {
+            "description": "Empty permission list, an unknown permission, or one that cannot be granted to a key."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/keys/{id}/disable": {
+      "post": {
+        "tags": [
+          "Keys"
+        ],
+        "summary": "Revoke an API key.",
+        "description": "Revocation is permanent — there is no re-enable, so mint a replacement rather\nthan expecting to undo this. It takes effect immediately on the replica\nhandling the request and within 5 seconds on every other replica. Keys seeded\nfrom configuration (the bootstrap admin, the dashboard assistant) are\nprotected and cannot be revoked over the API.",
+        "operationId": "disable_key",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The key's id, as returned by `GET /keys`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The key is revoked."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `keys:disable`, or the target key is seeded from configuration and is protected."
+          },
+          "404": {
+            "description": "No such key in this organization."
+          },
+          "409": {
+            "description": "The key is already revoked."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/keys/{id}/regenerate": {
+      "post": {
+        "tags": [
+          "Keys"
+        ],
+        "summary": "Rotate a key's secret.",
+        "description": "The server generates the new secret and returns it in `key`; this is the only\ntime it is shown. The old secret stops working immediately on this replica and\nwithin 5 seconds elsewhere, so anything still using it starts failing as soon\nas you rotate. The key's id, name and permissions are unchanged. Revoked keys\ncannot be rotated, and keys seeded from configuration are protected.",
+        "operationId": "regenerate_key",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The key's id, as returned by `GET /keys`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The new secret, in `key` — shown once and not recoverable."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `keys:regenerate`, or the target key is seeded from configuration and is protected."
+          },
+          "404": {
+            "description": "No such key in this organization."
+          },
+          "409": {
+            "description": "The key is revoked and cannot be rotated."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/permission-sets": {
+      "get": {
+        "tags": [
+          "Permission sets"
+        ],
+        "summary": "The permission sets defined for your organization.",
+        "description": "Each entry carries its grants and a `user_count` of the enabled members\ncurrently assigned to it, so a UI can show \"applied to N users\". Builtins\n(`read-only`, `standard`, `admin`) sort first and are marked `is_builtin`.\n\nReading a set needs `users:read`, NOT `settings:read` — the create-user form\nis open to anyone with `users:create` and has to populate its picker, and\nlisting carries no privilege beyond seeing names. Creating or changing a set\nis the asymmetric half: that needs `settings:write`.",
+        "operationId": "list_permission_sets",
+        "responses": {
+          "200": {
+            "description": "The organization's permission sets."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `users:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Permission sets"
+        ],
+        "summary": "Define a new permission set.",
+        "description": "`permissions` is the list of grants the set confers; every entry must be a\nknown permission and the list may not repeat one. Names are trimmed, capped\nat 64 characters, and unique within the organization. The set is created\nwith no members — assign it to users through `/users`.\n\nNote the asymmetry: writing a set needs `settings:write`, while reading one\nneeds `users:read`.",
+        "operationId": "create_permission_set",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePermissionSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The set was created."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `settings:write`."
+          },
+          "409": {
+            "description": "A set with that name already exists in this organization."
+          },
+          "422": {
+            "description": "The name is empty or over 64 characters, or a permission is unknown or duplicated."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/permission-sets/{name}": {
+      "get": {
+        "tags": [
+          "Permission sets"
+        ],
+        "summary": "One permission set, with its grants.",
+        "description": "Reuses the list's gate (`users:read`) for the same reason: the create-user\nform needs it and reading a set exposes nothing beyond its name and grants.\nWriting one, by contrast, needs `settings:write`.",
+        "operationId": "get_permission_set",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The permission set's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The permission set."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `users:read`."
+          },
+          "404": {
+            "description": "No set by that name in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Permission sets"
+        ],
+        "summary": "Replace a permission set's grants and description.",
+        "description": "`permissions` is the complete new list, not a delta — anything you omit is\nremoved. Every member of this organization assigned to the set has their\neffective permissions re-materialised as part of the request, so the change\ntakes effect on those users' next call rather than after a cache expiry.\n\nBuiltin sets (`read-only`, `standard`, `admin`) are immutable and refuse the\nwrite with 409, so those names always mean the same thing.\n\nNote the asymmetry: writing a set needs `settings:write`, while reading one\nneeds `users:read`.",
+        "operationId": "update_permission_set",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The permission set's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePermissionSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated set."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `settings:write`."
+          },
+          "404": {
+            "description": "No set by that name in this organization."
+          },
+          "409": {
+            "description": "Builtin permission sets are immutable."
+          },
+          "422": {
+            "description": "The name is empty or over 64 characters, or a permission is unknown or duplicated."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Permission sets"
+        ],
+        "summary": "Delete a permission set.",
+        "description": "Members assigned to it keep the permissions they already have — they simply\nstop being linked to a set — and the response reports how many were\nunlinked as `affected_users`.\n\nTwo sets refuse deletion with 409: a builtin, and whichever set is currently\nnamed by this organization's `default_user_permissions` setting. Point that\nsetting at another set before deleting this one.\n\nNote the asymmetry: writing a set needs `settings:write`, while reading one\nneeds `users:read`.",
+        "operationId": "delete_permission_set",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "The permission set's name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted; `affected_users` counts the members unlinked."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `settings:write`."
+          },
+          "404": {
+            "description": "No set by that name in this organization."
+          },
+          "409": {
+            "description": "The set is a builtin, or is the organization's default for new users."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/queries": {
+      "get": {
+        "tags": [
+          "Queries"
+        ],
+        "summary": "List the organization's saved queries, alphabetically by name.",
+        "description": "Saved queries belong to the organization, not to whoever wrote them. Each\nentry includes its full `sql_text` and declared `params`. The list is cached\nfor up to 30 seconds, so a query saved a moment ago may not appear on the\nvery next call.",
+        "operationId": "list_queries",
+        "responses": {
+          "200": {
+            "description": "The organization's saved queries, by name."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `queries:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Queries"
+        ],
+        "summary": "Save a query.",
+        "description": "`sql_text` is stored exactly as written and is NOT checked here — the\nrestrictions on what may run are applied at execution time, so SQL that\nsaves cleanly can still be refused by `POST /queries/run`. Names must be\nunique within the organization.\n\n`params` is a JSON array declaring the query's positional parameters for the\neditor; the server stores it verbatim and never interprets it.",
+        "operationId": "create_query",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The created saved query."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `queries:write`."
+          },
+          "409": {
+            "description": "A saved query with that name already exists in this organization."
+          },
+          "422": {
+            "description": "`name` or `sql_text` is blank, or `params` is not a JSON array."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/queries/run": {
+      "post": {
+        "tags": [
+          "Queries"
+        ],
+        "summary": "Run SQL and get rows back.",
+        "description": "Send either `sql` (free-form) or `query_id` (a saved query to execute); if\nboth are present `sql` wins and `query_id` is recorded only as the run's\norigin. `params` is a JSON array of positional values substituted for\n`$1`…`$N` in the statement.\n\nResults are scoped to your organization no matter how the SQL is written —\nthere is no way to phrase a query that reads another organization's data.\n\nOne read-only statement is accepted and nothing else:\n\n* it must start with `SELECT` or `WITH`;\n* a `;` outside a string literal is rejected — no multi-statement bodies;\n* 8000 characters maximum;\n* a single statement may not join the analytics tables (`events`,\n  `evaluations`, `agent_sessions`) to the operational ones (`dashboards`,\n  `saved_queries`, `api_keys`, `users`, …) — split it into two queries.\n\nUse `GET /queries/schema` for the tables and columns you can read.\n\nA successful run returns `{columns, rows, truncated, elapsed_ms}`, where\neach entry in `rows` is an array of values positionally matching `columns`.\nAt most 10 000 rows come back; `truncated` is `true` when there were more,\nso page with `LIMIT`/`OFFSET` in your own SQL rather than relying on the\ncap. A run is cut off after 10 seconds.\n\nA `NUMERIC` column comes back as `null` — cast it in the SELECT\n(`avg(x)::float8`).\n\nEvery run, including a rejected or failed one, is recorded in the query\naudit log with its SQL, parameters, duration and outcome.",
+        "operationId": "run_query",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "`columns`, `rows`, `truncated` and `elapsed_ms`."
+          },
+          "400": {
+            "description": "The statement failed to execute, or a `$N` parameter could not be substituted."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `queries:run`, or the statement referenced something it is not allowed to read."
+          },
+          "404": {
+            "description": "`query_id` names no saved query in this organization."
+          },
+          "422": {
+            "description": "Neither `sql` nor `query_id` was sent, the statement is not a single `SELECT`/`WITH` under 8000 characters, or it tried to write."
+          },
+          "504": {
+            "description": "The query exceeded the 10-second statement timeout."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/queries/schema": {
+      "get": {
+        "tags": [
+          "Queries"
+        ],
+        "summary": "Describe the tables a query may read.",
+        "description": "Returns `{schema, tables: [{name, columns: [{name, type}]}]}` — the same\nlisting the query editor's autocomplete and schema browser are built on.\nTypes are normalised display names (`string`, `int`, `float`, `timestamp`,\n`uuid`, `bool`), with a trailing `?` when the column is nullable.\n\nThe shape is the same for every organization; only the rows a query over\nthese tables returns are yours.",
+        "operationId": "get_schema",
+        "responses": {
+          "200": {
+            "description": "The queryable tables and their columns."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `queries:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/queries/{id}": {
+      "get": {
+        "tags": [
+          "Queries"
+        ],
+        "summary": "Fetch one saved query, including its SQL.",
+        "operationId": "get_query",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Saved query id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The saved query."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `queries:read`."
+          },
+          "404": {
+            "description": "No saved query with that id in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Queries"
+        ],
+        "summary": "Replace a saved query's name, description, SQL and params.",
+        "description": "A full replacement, not a patch: send every field you want to keep, because\nan omitted `description` is written back as empty. Dashboard tiles that\nrender this query pick up the new SQL the next time they are run — editing\na query changes every chart built on it.",
+        "operationId": "update_query",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Saved query id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated saved query."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `queries:write`."
+          },
+          "404": {
+            "description": "No saved query with that id in this organization."
+          },
+          "422": {
+            "description": "`name` or `sql_text` is blank, or `params` is not a JSON array."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Queries"
+        ],
+        "summary": "Delete a saved query.",
+        "description": "Needs `queries:delete`, a separate grant from the `queries:write` used to\nauthor one. Refused with 409 while any dashboard tile still renders it —\nremove those tiles first.",
+        "operationId": "delete_query",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Saved query id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `queries:delete`."
+          },
+          "404": {
+            "description": "No saved query with that id in this organization."
+          },
+          "409": {
+            "description": "The query is still referenced by one or more dashboard tiles."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/sessions": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "List agent sessions with their latest evaluation headline.",
+        "description": "Requires `evaluations:read` rather than `events:read` — the row a session\nreturns is its evaluation summary, not its events.",
+        "operationId": "list_sessions",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Comma-separated session ids.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Comma-separated agent ids.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "description": "Comma-separated environments.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_from",
+            "in": "query",
+            "description": "RFC 3339 lower bound (inclusive).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ts_to",
+            "in": "query",
+            "description": "RFC 3339 upper bound (exclusive).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque cursor from the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 50, capped at 200.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of sessions plus `next_cursor`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `evaluations:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/sessions/{session_id}/export": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Download one session's full event log as a file.",
+        "description": "The response is a single JSON object — session metadata plus every event in\nthe session, oldest first, each with its full payload — served as an\nattachment (`Content-Disposition: attachment; filename=\"session-<id>.json\"`).\nThese are the exact bytes an evaluator receives for the session, so a\ndownloaded file can be replayed through an evaluator unchanged.\n\nThere is no pagination and no size cap: a long session downloads in full, in\none response. `session_id` is scoped to your organization — a session\nbelonging to another organization reads as unknown and returns 404.",
+        "operationId": "export_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "The session to export.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The session and its events, as a downloadable JSON file.",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `events:read`."
+          },
+          "404": {
+            "description": "No such session in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/sessions/{session_id}/re-evaluate": {
+      "post": {
+        "tags": [
+          "Evaluations"
+        ],
+        "summary": "Enqueue a fresh evaluation job for a session. Used by the dashboard's\nre-evaluate button when a session was missed by the automatic pipeline\n(e.g. no agent_end ever arrived) or when the user wants fresh scores\nafter deploying a new evaluator.",
+        "description": "The `eval_enqueued` guard on `agent_sessions` only gates ingest-driven\nenqueue (so duplicate `agent_end` events can't re-evaluate). Manual\nre-eval bypasses it: we insert directly into `evaluation_jobs`. The\ndispatcher's terminal-result writer already upserts on `session_id`,\nso the new run naturally overwrites the previous `evaluations` row.\nRe-run the evaluation for one session.\n\nEnqueues a job and returns 202 immediately — the scores are NOT ready when\nthis returns. Poll `/evaluation-jobs` for progress, `/evaluations` for the\nresult. The new run overwrites the session's previous evaluation.\n\nRequires `evaluations:trigger`, not `evaluations:read` — a read-only key\ncannot start work.\n\nOne job per session at a time: if an evaluation for this session is already\nqueued or in flight, this is a 409. Wait for it to finish, then trigger again.",
+        "operationId": "trigger_evaluation",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "The session to re-evaluate.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Job queued. Returns the `session_id` and `status: \"queued\"`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `evaluations:trigger`, OR this deployment does not evaluate your organization at all — that gate is checked before the session is looked up, so an excluded organization gets 403 whether or not the session exists."
+          },
+          "404": {
+            "description": "No such session in this organization."
+          },
+          "409": {
+            "description": "An evaluation for this session is already queued or in flight."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/settings": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Every registered setting, with your organization's current value.",
+        "description": "Settings are per-organization: each entry is this org's stored value, or the\nregistry default for a key the org has never set. Every entry carries the\nsetting's `schema`, so a UI can render a typed input without re-declaring the\ncatalogue. Secrets never leave the server in the clear — their `value` comes\nback empty and a `value_set` flag says whether one is stored.",
+        "operationId": "list_settings",
+        "responses": {
+          "200": {
+            "description": "This organization's settings, under `settings`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `settings:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/settings/model-context-windows": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "The context-window overrides configured for your organization.",
+        "description": "One entry per model id this org has overridden; models left on Failproof AI's\nbuilt-in defaults do not appear here. To see what a specific model actually\nresolves to, override or not, use `/settings/model-context-windows/resolve`.\n\nListing, setting and deleting all share this one path and differ only by\nmethod, because the model id travels in the body or the query string rather\nthan the path.",
+        "operationId": "list_overrides",
+        "responses": {
+          "200": {
+            "description": "This organization's overrides, under `model_context_windows`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `settings:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Set the context window for one model, for your organization.",
+        "description": "Body: `{ \"model_id\": \"...\", \"context_window\": N }`. Creates the override or\nreplaces the one already stored for that model id. `context_window` is in\ntokens and must be between 0 and 1000000; 0 means \"unknown\", so no\ncontext-fill percentage is computed for that model. The new value applies\nfrom the next ingested event.\n\nThe model id travels in the BODY, not the path — which is why ids containing\n`/` need no percent-encoding, and why this shares its path with the list and\ndelete operations.",
+        "operationId": "put_override",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The stored override."
+          },
+          "400": {
+            "description": "`model_id` is missing, empty, or longer than 256 characters."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `settings:write`."
+          },
+          "422": {
+            "description": "`context_window` is missing, or outside 0…1000000."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Remove one model's context-window override.",
+        "description": "The model falls back to Failproof AI's built-in default from the next ingested\nevent. 404 if this organization has no override for that model.\n\nThe model id travels in the `model` QUERY parameter, not the path, so ids\ncontaining `/` need no percent-encoding.",
+        "operationId": "delete_override",
+        "parameters": [
+          {
+            "name": "model",
+            "in": "query",
+            "description": "The model id whose override to remove.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Override removed."
+          },
+          "400": {
+            "description": "`model` is missing or empty."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `settings:write`."
+          },
+          "404": {
+            "description": "This organization has no override for that model."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/settings/model-context-windows/resolve": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Preview the context window a model resolves to.",
+        "description": "Returns the effective limit and its authoritative `source`: `override` (this\norg configured it), `default` (Failproof AI's built-in table), or `unknown` (no\nlimit known, so no context-fill percentage is computed). Deliberately does\nnot consult the cache, so it reports the true source rather than a cache hit.\n\nThe model id travels in the `model` QUERY parameter, not the path, so ids\ncontaining `/` need no percent-encoding.",
+        "operationId": "resolve_model",
+        "parameters": [
+          {
+            "name": "model",
+            "in": "query",
+            "description": "The model id to resolve, e.g. `anthropic/claude-sonnet-4`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The effective `context_window` and its `source`."
+          },
+          "400": {
+            "description": "`model` is missing or empty."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `settings:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/settings/schema": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "The setting catalogue — key, type, and constraints, with no values.",
+        "description": "Registry metadata only, so it reads nothing per-organization and returns the\nsame document for every caller. Use it to render typed inputs without\nre-declaring the catalogue; use `GET /settings` when you also need values.",
+        "operationId": "get_schema",
+        "responses": {
+          "200": {
+            "description": "The setting definitions, under `settings`."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `settings:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/settings/{key}": {
+      "put": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Change one setting for your organization.",
+        "description": "Send either `{\"value\": ...}` or the bare value — both are accepted. The\nvalue is validated against the setting's schema before it is stored, and the\nupdated row is returned. The change applies only to your organization.\n\nTwo keys carry an extra check and reject with 422:\n`default_user_permissions` must name a permission set that exists in this\norg, and `allowed_sign_ins` may not be saved as a list that excludes the\noperator making the change — that list filters who may sign in, and the\nsettings page is behind that sign-in, so there would be no way back in.",
+        "operationId": "update_setting",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "The setting key, as listed by `GET /settings/schema`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The updated setting."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `settings:write`."
+          },
+          "404": {
+            "description": "No such setting key."
+          },
+          "422": {
+            "description": "The value failed the setting's validation, names a permission set that does not exist, or would lock the caller out of sign-in."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/usage": {
+      "get": {
+        "tags": [
+          "Usage"
+        ],
+        "summary": "Usage totals for the organization's current billing window.",
+        "description": "Defaults to the window containing now; pass `window_start` to read a\nspecific one. Window boundaries follow the organization's own billing\nanchor, so they are not calendar months.",
+        "operationId": "get_usage",
+        "parameters": [
+          {
+            "name": "window_start",
+            "in": "query",
+            "description": "RFC 3339 start of the window to read. Defaults to the current one.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage totals for the window."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `usage:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/usage/windows": {
+      "get": {
+        "tags": [
+          "Usage"
+        ],
+        "summary": "Historical billing windows, most recent first.",
+        "description": "One entry per completed window plus the one in progress, so a caller can\nchart usage over time without knowing the organization's billing anchor.",
+        "operationId": "list_windows",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "How many windows to return, most recent first.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A list of billing windows with their totals."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `usage:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "List this organization's members.",
+        "description": "The `permissions` on each row are that member's grants in THIS organization,\nalongside the `permission_set` / `permission_added` / `permission_removed`\nthey were resolved from. `disabled_at` is global rather than per-org: a member\nshowing as disabled cannot sign in to any organization. Responses are cached\nfor 60 seconds, so a grant changed a moment ago may not appear yet.",
+        "operationId": "list_users",
+        "responses": {
+          "200": {
+            "description": "The organization's members, newest membership first."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `users:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Add a member to this organization.",
+        "description": "Send `permission_set` plus optional `permission_added` / `permission_removed`\noverrides; the server resolves them and returns the effective grants in\n`permissions`. The older flat `permissions` array still works and is read as\n`permission_added` against no set. The address is trimmed and lowercased.\n\nAccounts are global, membership is per-organization: inviting someone who\nalready has an account elsewhere reuses it, so a 409 means they are already a\nmember *here* — `error` is `user_exists`, or `user_disabled` if the account is\ndisabled globally and should be re-enabled instead. Being added does not by\nitself guarantee sign-in: the organization's `allowed_sign_ins` list is\napplied separately, at sign-in. The welcome email is best-effort — the member\nexists even if it fails to send.",
+        "operationId": "create_user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Member added, with their resolved permissions."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `users:create`."
+          },
+          "409": {
+            "description": "Already a member of this organization; `error` is `user_exists` or `user_disabled`."
+          },
+          "422": {
+            "description": "Invalid email, an unknown permission, or a `permission_set` that does not exist."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/users/defaults": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "The permissions a new member starts with.",
+        "description": "`GET /users/defaults` — returns the dashboard-configured starting\npermission set used to seed the new-user invite form. Gated on\n`users:create` so an invite-capable operator who lacks `settings:read`\ncan still load the form without going through the locked /settings\nsurface. If the configured set has since been deleted, `permissions` comes\nback empty rather than failing, so the form still opens.",
+        "operationId": "get_user_defaults",
+        "responses": {
+          "200": {
+            "description": "The default `permission_set` and the `permissions` it resolves to."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `users:create`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Fetch one member of this organization.",
+        "description": "Permissions are the member's grants in THIS organization. Someone who has an\naccount but no membership here reads as 404 — the same as an id that does not\nexist, so one organization can't probe another's membership. Cached for 60\nseconds.",
+        "operationId": "get_user",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The user's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The member and their grants in this organization."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `users:read`."
+          },
+          "404": {
+            "description": "No such member in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Replace a member's permissions in this organization.",
+        "description": "The set/added/removed triple replaces what was stored — send the whole\npicture, not a delta. Two guards apply: a protected member (the bootstrap\nadmin, or an org admin designated with `agenteye-orgctl`) can never be edited\nhere, and a disabled member is read-only until re-enabled, which is a 409\nrather than a 403. When the effective grants actually change the member is\nemailed about it; that send is best-effort and never fails the request.",
+        "operationId": "update_user",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The user's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The member with their new resolved permissions."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `users:update`, or the target is a protected member."
+          },
+          "404": {
+            "description": "No such member in this organization."
+          },
+          "409": {
+            "description": "The member is disabled; re-enable them before editing."
+          },
+          "422": {
+            "description": "An unknown permission, or a `permission_set` that does not exist."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Disable a member.",
+        "description": "Despite the verb, nothing is deleted: the account is stamped `disabled_at`,\nthe membership and all history stay, and the change is reversible with\n`POST /users/{id}/enable`. The flag is GLOBAL — a user disabled here can no\nlonger sign in to ANY organization they belong to, not only this one — so\ntreat it as offboarding rather than removal from a team. Protected members\n(the bootstrap admin, or an org admin designated with `agenteye-orgctl`)\ncannot be disabled.",
+        "operationId": "delete_user",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The user's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The user is disabled."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `users:delete`, or the target is a protected member."
+          },
+          "404": {
+            "description": "No such member in this organization."
+          },
+          "409": {
+            "description": "The user is already disabled."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/users/{id}/enable": {
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Re-enable a disabled member.",
+        "description": "Requires `users:delete`, NOT `users:create`. Enabling and disabling are two\nhalves of the same lifecycle action and share one permission, so a key that\ncan invite members cannot bring a disabled one back — that takes the same\ngrant as offboarding. Clearing `disabled_at` restores sign-in across every\norganization the user belongs to, but only a member of the calling\norganization can be enabled.\n\n`POST /users/:id/enable` — flip `disabled_at` back to NULL so the user can sign in again.\nReuses `users:delete` permission because enable is the inverse of the same lifecycle action.\n\nAtomic: the UPDATE filters on `disabled_at IS NOT NULL` so two concurrent\nenables can't both report success (only the first will return a row; the\nsecond sees no row and falls back to a follow-up SELECT to distinguish\n\"user is not disabled\" (409) from \"user does not exist\" (404).",
+        "operationId": "enable_user",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The user's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The user is enabled, with their grants in this organization."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `users:delete` — enabling is gated on the delete permission, not `users:create`."
+          },
+          "404": {
+            "description": "No such member in this organization."
+          },
+          "409": {
+            "description": "The user is not disabled."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AlertBody": {
+        "type": "object",
+        "required": [
+          "name",
+          "trigger_kind",
+          "trigger_spec"
+        ],
+        "properties": {
+          "channels": {},
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "eval_interval_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "eval_window": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "min_breaches": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "severity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trigger_kind": {
+            "type": "string"
+          },
+          "trigger_spec": {}
+        }
+      },
+      "AssignBody": {
+        "type": "object",
+        "properties": {
+          "assigned_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Legacy single-assignee shape. Kept so older API callers (the\nPR-1 collector hook + any external scripts) don't break the day\nthe dashboard rolls forward. `null` clears, a string is treated\nas a one-element list. Ignored when `assignees` is present."
+          },
+          "assignees": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Replacement assignee list. Empty array (or omitted) clears\neveryone. Preferred shape going forward."
+          }
+        }
+      },
+      "AuditBody": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "additional_context": {
+            "description": "NOT writable here — see `PUT /audits/{id}/context`.\n\nPresent ONLY so a client that sends it gets a loud 422 instead of serde's\ndefault of silently ignoring an unknown field, which is how a whole\nfeature goes missing with a green test suite."
+          },
+          "channels": {},
+          "context": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ContextBody",
+                "description": "Reference context to store WITH the definition. **Create only** — an\nupdate sending it gets the same 422 as the two fields above.\n\nIt lives here for one reason, and the reason is a race, not convenience:\nthe insert trigger queues an eval job whose `next_attempt_at` defaults to\n`now()`, so a new enabled audit is due the instant its row commits. A\nclient that created the audit and then wrote its context in a second\nrequest could be overtaken by the dispatcher, and the first run — the one\nan operator watches — would argue without the brief they just typed.\nWriting both in one transaction removes the window rather than narrowing\nit: the job row and the context rows become visible together.\n\nWhy an update must NOT accept it: `_audit_to_body` (CLI) and\n`auditToInput` (dashboard) rebuild this whole body from an allowlist\nbefore every save, so a context field on the update path would be wiped\nby any unrelated edit — 200 OK, no error, brief gone. Create has no\nread-merge step and therefore no such hazard. See the module comment in\n`routes/audit_context.rs`."
+              }
+            ]
+          },
+          "control_sample_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "ignore_error_types": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "llm_budget": {},
+          "llm_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "llm_spec": {},
+          "lookback_window_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "min_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "min_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reference_urls": {
+            "description": "NOT writable here — see `PUT /audits/{id}/context`."
+          },
+          "schedule_anchor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Fixed phase for the schedule: runs land on `anchor + N * interval`.\nOmitted on create → `default_schedule_anchor()` (next 09:00 UTC, matching\nthe 09:00 backfill in 20260721000200). Omitted on update → unchanged.\nNULL in the DB is still tolerated by the dispatcher (legacy drift path)\nbut nothing this route writes can produce it any more."
+          },
+          "schedule_interval_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "scope": {},
+          "sensitivity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "signals": {},
+          "top_k": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "window_mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ContextBody": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The audit's written brief. Replaced wholesale — send an empty string to\nclear it. Limited to 8192 characters."
+          },
+          "urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Reference URLs this audit draws on. Replaced wholesale — send an empty\narray to remove every source and the text stored for it. The order you\nsend is the order they are used. At most 5."
+          }
+        }
+      },
+      "CreateCommentBody": {
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateIncidentBody": {
+        "type": "object",
+        "required": [
+          "summary"
+        ],
+        "properties": {
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional short title. Omitted/blank falls back to the parent alert's\nname, which is the line the UI used to synthesize at read time."
+          }
+        }
+      },
+      "CreateKeyRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "key"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the key stops working, RFC 3339. Omit for a key that never expires,\nwhich is every key minted through the normal flow.\n\nOnly ever restrictive: an expiring key is strictly weaker than a\npermanent one, so accepting this from any `keys:create` holder grants\nnothing. Enforcement is in the auth lookup, with up to 60s of cache lag\n(see the migration and `crate::auth`)."
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Defaults to `[\"events:add\"]` if omitted."
+          }
+        }
+      },
+      "CreateOrphanIncidentBody": {
+        "type": "object",
+        "required": [
+          "summary"
+        ],
+        "properties": {
+          "severity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional severity for the orphan incident. Defaults to `warning`\nwhen omitted; values outside `info | warning | critical` are\nrejected with 422."
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "REQUIRED here, but deserialized as an `Option` on purpose: a bare\n`String` makes a title-less body fail inside the axum extractor, which\nanswers with a raw serde message (\"missing field `title`\") and makes\nthe handler's own friendly check below unreachable. Accepting `None`\nat the deserialization layer moves the rejection into the handler,\nwhere it becomes an explainable 422. The requirement itself is\nunchanged — see the `title is required` branch in\n`create_orphan_incident`."
+          }
+        }
+      },
+      "CreatePermissionSetRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "permissions"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Unique within the organization; trimmed, max 64 characters."
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The grants the set confers, e.g. `[\"events:read\", \"users:read\"]`. Every\nentry must be a known permission, with no duplicates."
+          }
+        }
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "permission_added": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Grants added on top of the set."
+          },
+          "permission_removed": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Grants removed from the set."
+          },
+          "permission_set": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New shape: name of the permission set this user is linked to."
+          },
+          "permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Legacy shape: explicit permission list. When set, it's treated as\n`permission_added` against no set. The dashboard's new code path\nsends `permission_set` + `permission_added` + `permission_removed`\ninstead; this field exists only for backwards compatibility with\ncallers that haven't been upgraded."
+          }
+        }
+      },
+      "LayoutItem": {
+        "type": "object",
+        "description": "Bulk layout update: takes `[{id, pos_x, pos_y, pos_w, pos_h}, ...]` and\napplies them in a single transaction. Used by the drag/resize handler so\nevery move is one round-trip instead of one per tile.",
+        "required": [
+          "id",
+          "pos_x",
+          "pos_y",
+          "pos_w",
+          "pos_h"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pos_h": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pos_w": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pos_x": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pos_y": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "LayoutUpdateBody": {
+        "type": "object",
+        "required": [
+          "tiles"
+        ],
+        "properties": {
+          "tiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LayoutItem"
+            }
+          }
+        }
+      },
+      "PutBody": {
+        "type": "object",
+        "properties": {
+          "context_window": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The context-window size in tokens. Constrained to `[0, 1_000_000]`\n(0 = unknown → no fill); fits ClickHouse's UInt32 `context_window` column."
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model id to override, e.g. `anthropic/claude-sonnet-4`. 1–256\ncharacters; a `/` in the id needs no encoding because it never touches\nthe path."
+          }
+        }
+      },
+      "RunQueryRequest": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "description": "Positional or named parameter values. For positional ($1..$N) pass an\narray; for named pass an object. Only string/number/bool/null/array\nJSON leaves are bound — anything else is sent as text."
+          },
+          "query_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Saved query id — sql_text is fetched and substituted in."
+          },
+          "sql": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free-form SQL — wins over `query_id` if both are present."
+          }
+        }
+      },
+      "StatusBody": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "ack | mute | dismiss | resolve | reopen | assign"
+          },
+          "assigned_to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SubscribeBody": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional override; defaults to the actor's forwarded email so a\ndashboard user can subscribe themselves with a bare POST."
+          }
+        }
+      },
+      "TestAlertRequest": {
+        "type": "object",
+        "properties": {
+          "channels": {
+            "description": "The editor's CURRENT (possibly-unsaved) channels. When present and a\nJSON array, the test fans out to these instead of the alert's saved\nchannels, so \"test\" matches what the operator has selected/entered and\nresolves recipients identically to a save (an empty email channel still\nfalls back to the org default recipients). Same shape as\n`alert_definitions.channels`."
+          }
+        }
+      },
+      "UpdateKeyRequest": {
+        "type": "object",
+        "required": [
+          "permissions"
+        ],
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The key's complete new permission list — it REPLACES the old one."
+          }
+        }
+      },
+      "UpdatePermissionSetRequest": {
+        "type": "object",
+        "required": [
+          "permissions"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The full new list of grants — this replaces the set's permissions, it is\nnot a delta. Every entry must be a known permission, with no duplicates."
+          }
+        }
+      },
+      "UpdateUserRequest": {
+        "type": "object",
+        "properties": {
+          "permission_added": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "permission_removed": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "permission_set": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Legacy shape — same backwards-compat semantics as on create."
+          }
+        }
+      },
+      "UpsertDashboardRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "definition"
+        ],
+        "properties": {
+          "definition": {
+            "description": "Opaque blob owned by the dashboard UI: `{ filters, display }`. Stored\nand returned verbatim; the server never interprets its contents."
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "UpsertQueryRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "sql_text"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "params": {},
+          "sql_text": {
+            "type": "string"
+          }
+        }
+      },
+      "UpsertTileRequest": {
+        "type": "object",
+        "required": [
+          "query_id",
+          "chart_type",
+          "pos_x",
+          "pos_y",
+          "pos_w",
+          "pos_h"
+        ],
+        "properties": {
+          "chart_config": {},
+          "chart_type": {
+            "type": "string"
+          },
+          "param_bindings": {},
+          "pos_h": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pos_w": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pos_x": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pos_y": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "query_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "api_key": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "A scoped Failproof AI API key. Mint one in the dashboard under Settings → API keys, or with `POST /v1/keys`. Each endpoint names the permission it requires; a key without it gets 403 and a `required_permission` field naming what was missing."
+      }
+    }
+  },
+  "security": [
+    {
+      "api_key": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Events",
+      "description": "Ingest and query the event store."
+    },
+    {
+      "name": "Sessions",
+      "description": "Agent sessions and their evaluations."
+    },
+    {
+      "name": "Evaluations",
+      "description": "Evaluation results and re-runs."
+    },
+    {
+      "name": "Dashboards",
+      "description": "Dashboards and their tiles."
+    },
+    {
+      "name": "Queries",
+      "description": "Saved SQL and ad-hoc query execution."
+    },
+    {
+      "name": "Keys",
+      "description": "Mint and manage scoped API keys."
+    },
+    {
+      "name": "Users",
+      "description": "Dashboard members and access."
+    },
+    {
+      "name": "Settings",
+      "description": "Operational settings and context-window overrides."
+    },
+    {
+      "name": "Permission sets",
+      "description": "Named permission roles."
+    },
+    {
+      "name": "Alerts",
+      "description": "Alert rules and their recipients."
+    },
+    {
+      "name": "Issues",
+      "description": "Open, triage, assign and resolve issues."
+    },
+    {
+      "name": "Audits",
+      "description": "Recurring audits and their findings."
+    },
+    {
+      "name": "Usage",
+      "description": "Organization usage and billing windows."
+    },
+    {
+      "name": "Health",
+      "description": "Liveness."
+    },
+    {
+      "name": "Auth",
+      "description": "Describe the key you are calling with."
+    }
+  ]
+}

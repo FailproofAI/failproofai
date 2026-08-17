@@ -1,0 +1,65 @@
+---
+title: "Findings and issues"
+description: "Turn audit evidence into owned, trackable remediation work."
+icon: "clipboard-check"
+---
+
+A finding is the audit's evidence-backed statement about a failure. An issue is the durable workflow for responding to it.
+
+## Triage and assign the work
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Open **Analyze → Audits**, choose an audit, and open a completed run.
+    2. Select a finding to inspect analysis, root cause, recommendation, scope, sessions, and evidence queries.
+    3. Acknowledge, assign, dismiss, mute, resolve, or reopen the finding.
+    4. Go to **Analyze → Issues** for the durable inbox. Filter by tab, severity, or assignee.
+    5. Open the issue to assign it, add comments or subscribers, and resolve it after the fix is verified.
+
+    ![An audit finding with severity, occurrence count, root-cause analysis, recommended action, ranking factors, and evidence.](/images/dashboard/audit-finding.png)
+
+    ![The evidence section of an audit finding showing sample errors, supporting queries, and affected sessions.](/images/dashboard/audit-evidence.png)
+
+    ![A session linked from an audit finding, opened at the relevant error with its event metadata and raw payload.](/images/dashboard/audit-linked-session.png)
+
+    ![The Issues inbox showing firing, acknowledged, and resolved work with severity and ownership.](/images/dashboard/incidents.png)
+
+    ![An issue detail view with its source, breach evidence, assignees, subscribers, timeline, and comments.](/images/dashboard/incident-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits findings --audit checkout-reliability --status open
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+
+    fp issues list
+    fp issues show <issue-id>
+    fp issues assign <issue-id> --assignee engineer@example.com
+    fp issues comment-add <issue-id> --body "policy is in observe mode"
+    fp issues resolve <issue-id> --yes
+    ```
+
+    Use `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>`, and `fp issues subscribers <issue-id>` to manage watchers.
+  </Tab>
+</Tabs>
+
+## Review a finding
+
+Confirm that it contains:
+
+- A stable failure mode, not only a one-off title
+- Severity and operational impact
+- Affected session IDs or supporting queries
+- Enough context to reproduce the behavior
+- A proposed response that matches the evidence
+
+## Use an issue to manage the response
+
+Create or link an issue when the finding needs assignment, discussion, status changes, comments, or subscribers. Issues can also represent alert incidents and manually reported problems, which is why they live under audit response rather than in the primary navigation.
+
+Resolve the issue when remediation is deployed and verified. Resolve the finding when the failure mode has been addressed for the audit population. Those moments may differ.
+
+<Card title="Author a policy" icon="shield-plus" href="/policies/editor">
+  Convert a confirmed, repeatable action pattern into a policy version.
+</Card>

@@ -1,0 +1,309 @@
+---
+title: "Failproof Cloud CLI"
+description: "Query and administer Failproof AI Cloud with the fp command."
+icon: "cloud-cog"
+---
+
+Cloud CLI examples use the forthcoming `fp` command. `fp` operates Cloud resources; `failproofai` manages local capture, hooks, enforcement, and machine enrollment.
+
+The currently released Cloud CLI is installed from public PyPI as `agenteye` and invoked as `agenteye`. Install it in an isolated tool environment so it cannot replace the private Python tracing SDK, which currently shares the same distribution name:
+
+```bash
+pipx install agenteye
+# current command: agenteye whoami
+# documented future command: fp whoami
+```
+
+## Sign in and select an organization
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Open the Failproof AI Cloud sign-in page and enter your email.
+    2. Complete the one-time-code flow.
+    3. Use the organization switcher in the dashboard header to choose the organization you intend to operate.
+    4. Open **Administration → Users** to confirm your role and permissions if a page is unavailable.
+
+    ![The Failproof AI Cloud sign-in screen for the email one-time-code flow.](/images/dashboard/login.png)
+
+    <Info>Screenshot placeholder: organization switcher and the current user's permission detail.</Info>
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp login
+    fp whoami
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+    ```
+
+    Use `fp logout` to remove the saved session. For a different deployment, put the global option before the command: `fp --base-url https://failproof.example.com login`.
+  </Tab>
+</Tabs>
+
+## Global options
+
+Global options must appear before the command. For example, use `fp --json sessions --since 24h`, not `fp sessions --json`.
+
+| Option | Use |
+| --- | --- |
+| `--json` | Return machine-readable output |
+| `--base-url <url>` | Use a self-hosted or development dashboard |
+| `--org <slug>` | Select an organization for this command |
+| `--token <token>` | Use an existing human session token |
+| `--api-key <key>` | Authenticate automation with an API key |
+| `--insecure` / `--secure` | Control TLS certificate verification |
+| `--timeout <seconds>` | Set the request timeout |
+| `--quiet`, `--no-color` | Reduce terminal formatting |
+
+`--api-key` is intended for automation. `login`, organization switching/inspection, and Cloud assistant commands require a signed-in user session.
+
+## Configuration and environment variables
+
+The current CLI stores its session in `$AGENTEYE_HOME/cli.json`, otherwise `~/.agenteye/cli.json`, with owner-only permissions. Logout removes identity and organization state but retains the selected base URL and TLS preference.
+
+| Variable | Equivalent |
+| --- | --- |
+| `AGENTEYE_DASHBOARD_URL` | `--base-url` |
+| `AGENTEYE_ORG` | `--org` |
+| `AGENTEYE_CLI_TOKEN` | `--token` |
+| `AGENTEYE_CLI_API_KEY` | `--api-key` |
+| `AGENTEYE_CLI_JSON` | `--json` |
+| `AGENTEYE_INSECURE` | `--insecure` |
+| `AGENTEYE_HOME` | Relocate CLI configuration |
+| `AGENTEYE_ANALYTICS_DISABLED` or `DO_NOT_TRACK` | Disable anonymous CLI analytics |
+
+An explicit flag wins over its environment variable, which wins over saved configuration. In API-key mode, always select the intended tenant explicitly with `--org` or `AGENTEYE_ORG`; saved human-session organization state is not reused.
+
+## Observe sessions and failures
+
+<Tabs>
+  <Tab title="Dashboard">
+    Use the **Observe** navigation for the same datasets:
+
+    - **Events** for individual normalized records
+    - **Sessions** for complete agent runs
+    - **Evaluations** and **Metrics** for online evaluation results
+    - **Errors** for explicit failures
+    - **Models**, **Hooks**, **Tools**, and **Policy** for grouped behavior
+
+    Set the time range first, then apply environment and agent filters. Open a session when you need the full trace behind a row or aggregate.
+
+    ![The Observe navigation and live event stream with time, environment, event type, agent, model, context, session, and text filters.](/images/dashboard/events-stream-current.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp sessions --since 24h --env production --status error,timeout
+    fp events --since 1h --session-id <session-id> --full
+    fp evals --since 7d --score correctness:0..0.7
+    fp evals --since 7d --aggregate
+    fp errors --since 24h --error-type TimeoutError --aggregate
+    fp usage
+    ```
+
+    Discover valid filter values with:
+
+    ```bash
+    fp list envs
+    fp list agents
+    fp list event_types
+    fp list score_filters
+    fp list models
+    fp list hooks
+    fp list tools
+    fp list error_types
+    ```
+  </Tab>
+</Tabs>
+
+## Analyze with queries and the Cloud assistant
+
+<Tabs>
+  <Tab title="Dashboard">
+    Open **Analyze → Queries** to inspect the schema, write SQL, run it, and save a named query. Use the Cloud assistant from the dashboard when you want a conversational investigation grounded in your organization's sessions, events, evaluations, alerts, keys, and saved queries.
+
+    ![The Cloud assistant answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
+
+    ![The Query editor and schema browser used to inspect and save the assistant's SQL.](/images/dashboard/query-lab.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp query schema
+    fp query schema events
+    fp query create failed-checkouts \
+      --sql @failed-checkouts.sql \
+      --description "Checkout sessions with explicit errors"
+    fp query run failed-checkouts --arg production
+    fp query show failed-checkouts
+    fp query update failed-checkouts --sql @failed-checkouts-v2.sql
+    fp query list
+    fp query delete failed-checkouts
+    ```
+
+    Ask and manage Cloud assistant chats:
+
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production agents failed most in the last day?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Which tools caused those failures?" --chat <chat-id>
+    fp agent rename <chat-id> --title "Production failures"
+    fp agent delete <chat-id>
+    ```
+  </Tab>
+</Tabs>
+
+## Run audits and respond to findings
+
+<Tabs>
+  <Tab title="Dashboard">
+    Open **Analyze → Audits** to create, schedule, run, and inspect audits. Open an audit to manage its context, run history, and findings. Findings that require ongoing operational response appear under **Analyze → Issues**, where you can acknowledge, assign, comment, subscribe, and resolve them.
+
+    ![An audit detail page showing its run controls, schedule state, context, and ranked findings.](/images/dashboard/audit-detail.png)
+
+    ![An audit finding with its failure analysis, recommendation, ranking, evidence, and affected sessions.](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --scope '{"environments":["production"]}' \
+      --schedule-interval-secs 86400 \
+      --text-file ./brief.txt
+    fp audits list --enabled-only
+    fp audits show checkout-reliability
+    fp audits edit checkout-reliability --sensitivity high
+    fp audits run checkout-reliability
+    fp audits runs checkout-reliability
+    fp audits context-show checkout-reliability
+    fp audits context-set checkout-reliability --url https://runbooks.example.com/checkout
+    fp audits context-refresh checkout-reliability
+    fp audits findings --audit checkout-reliability
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "Investigating"
+    fp audits mute <finding-id> --reason "Expected test traffic"
+    fp audits dismiss <finding-id> --reason "Not actionable"
+    fp audits resolve <finding-id>
+    fp audits reopen <finding-id>
+    fp audits assign <finding-id> --to engineer@example.com
+    fp audits delete checkout-reliability
+    ```
+
+    Manage issues:
+
+    ```bash
+    fp issues list --state firing,acknowledged
+    fp issues count --state firing
+    fp issues show <issue-id>
+    fp issues open \
+      --title "Checkout degradation" \
+      --summary "Payment retries exceed the expected limit" \
+      --severity critical
+    fp issues ack <issue-id>
+    fp issues assign <issue-id> --assignee engineer@example.com
+    fp issues comment-list <issue-id>
+    fp issues comment-add <issue-id> --body "Mitigation deployed"
+    fp issues subscribers <issue-id>
+    fp issues subscribe <issue-id> --email oncall@example.com
+    fp issues unsubscribe <issue-id> --email oncall@example.com
+    fp issues comment-delete <issue-id> <comment-id>
+    fp issues resolve <issue-id>
+    ```
+  </Tab>
+</Tabs>
+
+## Configure alerts
+
+<Tabs>
+  <Tab title="Dashboard">
+    Open **Analyze → Alerts** to create a rule. Choose its trigger type, condition, evaluation interval, required breaches, severity, and delivery channels. Save the rule, use its test action, then monitor generated issues from the same page or under **Analyze → Issues**.
+
+    ![The alert trigger form with rule identity, enabled state, and supported trigger types.](/images/dashboard/alert-new-trigger.png)
+
+    ![The alert routing form with breach logic, evaluation schedule, severity, and delivery channels.](/images/dashboard/alert-new-routing.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp alerts create checkout-errors \
+      --severity critical \
+      --trigger-kind metric_threshold \
+      --trigger-spec '{"metric":"error_rate","filter":{"environment":"production"},"window_secs":900,"op":">","value":0.05}' \
+      --channels '[{"kind":"email"}]' \
+      --eval-interval-secs 300 \
+      --min-breaches 2 \
+      --eval-window 3
+    fp alerts list
+    fp alerts show checkout-errors
+    fp alerts test checkout-errors
+    fp alerts update checkout-errors --min-breaches 3
+    fp alerts delete checkout-errors
+    ```
+
+    Use `--file alert.json` for a complete alert body when the trigger schema is easier to manage as code.
+  </Tab>
+</Tabs>
+
+## Administer keys, users, and settings
+
+<Tabs>
+  <Tab title="Dashboard">
+    Use **Administration → Keys** for machine credentials, **Users** for membership and roles, **Usage** for metering, and **Settings** for organization defaults. Use the organization switcher before making changes. Rotate credentials before disabling old ones so collectors do not stop sending data.
+
+    ![The Administration navigation with policy editor, enforcement, usage, keys, users, and settings.](/images/dashboard/admin-navigation.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp keys list
+    fp keys show collector-production
+    fp keys create collector-production \
+      --add events:add \
+      --add policies:pull
+    fp keys update collector-production --add events:read
+    fp keys regenerate collector-production
+    fp keys disable collector-production
+
+    fp users list --active-only
+    fp users show engineer@example.com
+    fp users create engineer@example.com --permission-set standard
+    fp users update engineer@example.com --add audits:read
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+
+    fp usage
+    fp settings list
+    fp settings schema
+    fp settings set session_ttl_secs --value 86400
+    fp settings set alerts.email_default_recipients \
+      --json-value '["oncall@example.com"]'
+    ```
+  </Tab>
+</Tabs>
+
+## Complete command index
+
+| Command | Subcommands or capability |
+| --- | --- |
+| `version`, `help` | CLI information and command discovery |
+| `login`, `logout`, `whoami` | Interactive authentication and current identity |
+| `events` | List event records; supports time, environment, event, agent, session, search, paging, field, and full-payload controls |
+| `sessions` | List session records; supports time, environment, status, agent, session, paging, field, and multi-agent controls |
+| `evals` | List or aggregate evaluations; supports time, status, score, environment, agent, session, paging, and display controls |
+| `errors` | List or aggregate errors; supports time, type, text, environment, agent, session, paging, and display controls |
+| `usage` | Show the current metering window |
+| `orgs` | `list`, `switch`, `current`, `perms` |
+| `keys` | `list`, `show`, `create`, `update`, `disable`, `regenerate` |
+| `users` | `list`, `show`, `create`, `update`, `disable`, `enable` |
+| `query` | `list`, `show`, `create`, `update`, `delete`, `run`, `schema` |
+| `alerts` | `list`, `show`, `create`, `update`, `delete`, `test` |
+| `audits` | `list`, `show`, `create`, `edit`, `delete`, `run`, `runs`, `context-show`, `context-set`, `context-refresh`, `findings`, `finding`, `ack`, `mute`, `dismiss`, `resolve`, `reopen`, `assign` |
+| `issues` | `list`, `count`, `show`, `open`, `ack`, `assign`, `resolve`, `comment-list`, `comment-add`, `comment-delete`, `subscribers`, `subscribe`, `unsubscribe` |
+| `settings` | `list`, `schema`, `set` |
+| `list` | `envs`, `agents`, `event_types`, `score_filters`, `models`, `hooks`, `tools`, `error_types` |
+| `agent` | `health`, `models`, `chats`, `ask`, `show`, `rename`, `delete` |
+
+Run `fp <command> --help` or `fp <group> <subcommand> --help` for every available flag, accepted value, and required permission.
+
+<Warning>
+  Destructive commands prompt by default. Inspect the target first and omit `--yes` until the workflow is proven in the intended organization.
+</Warning>

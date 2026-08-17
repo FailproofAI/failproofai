@@ -1,0 +1,166 @@
+---
+title: "Evaluator SDK"
+description: "Build a service that scores Failproof AI sessions synchronously or asynchronously."
+icon: "gauge"
+---
+
+Install the evaluator helper and create an ASGI application.
+
+## Connect a custom evaluator
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Deploy the evaluator service where Failproof AI Cloud can reach its HTTPS endpoint.
+    2. Have the Failproof AI server operator set `EVALUATOR_ENDPOINT` and, when authentication is enabled, the matching `EVALUATOR_TOKEN`. Hosted Cloud does not currently expose this configuration in the dashboard.
+    3. Open **Observe → Sessions** and select a completed session.
+    4. Use **Run evaluation** in the session detail view if the session has not been scored automatically.
+    5. Open the session's **Evaluation** panel and confirm status, scores, reasoning, and summary.
+    6. Open **Observe → Evaluations** to chart a score across agents or environments. Use **Observe → Metrics** for magnitude values such as latency, cost, or token use.
+
+    ![A session detail view showing evaluation scores and reasoning beside its trace.](/images/dashboard/session-detail.png)
+
+    ![A quality dashboard charting evaluator scores over time.](/images/dashboard/dashboard-quality.png)
+  </Tab>
+  <Tab title="CLI">
+    Install the evaluator SDK and application server:
+
+    ```bash
+    pip install agenteye-evaluator uvicorn
+    ```
+
+    ```python
+    import os
+    from agenteye_evaluator import Evaluator, EvalResponse
+
+    app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
+
+    @app.config
+    def config():
+        return {"inactivity_timeout_secs": 1800}
+
+    @app.evaluator
+    def evaluate(req):
+        tool_errors = sum(
+            1 for item in req.events
+            if item.event_type == "tool_result" and item.payload.get("error")
+        )
+        return EvalResponse(
+            scores={"tool_reliability": 1.0 if tool_errors == 0 else 0.0},
+            reasoning={"tool_reliability": f"{tool_errors} tool errors"},
+        )
+    ```
+
+    ```bash
+    export EVALUATOR_TOKEN=<shared-token>
+    uvicorn evaluator:app --host 0.0.0.0 --port 8080
+    ```
+
+    Check the service and then verify that Cloud receives scores:
+
+    ```bash
+    curl http://127.0.0.1:8080/health
+    fp evals --since 1h --score tool_reliability:0..1
+    fp evals --since 24h --aggregate
+    ```
+  </Tab>
+</Tabs>
+
+For a self-hosted Cloud instance, automatic evaluation is disabled until `EVALUATOR_ENDPOINT` is set on the server process. Restart the server after changing evaluator environment variables.
+
+The service exposes `GET /health`, `GET /config`, `POST /evaluate`, and optionally `GET /evaluate/{job_id}`. Return `JobPending` for asynchronous work and register `@app.job_lookup` so Failproof AI can poll it.
+
+When a token is configured, all routes except health require the same bearer token that Failproof AI sends as `EVALUATOR_TOKEN`.
+
+## SDK types
+
+| Type | Fields |
+| --- | --- |
+| `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
+| `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
+| `EvalResponse` | `scores`, `reasoning`, `summary` |
+| `JobPending` | `job_id`, `next_poll_secs` |
+| `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
+
+## Decorators and routes
+
+| Decorator | Route | Required |
+| --- | --- | --- |
+| `@app.evaluator` | `POST /evaluate` | Yes |
+| `@app.job_lookup` | `GET /evaluate/{job_id}` | When returning `JobPending` |
+| `@app.config` | `GET /config` | No |
+
+The SDK caps evaluation request bodies at 25 MiB. Unknown request fields are ignored so services remain compatible as the event contract grows.
+
+## Return asynchronous work
+
+Use `JobPending` when evaluation cannot finish inside one request. The job ID is opaque to Failproof AI and must remain resolvable by your service until the result is collected or the server timeout expires.
+
+```python
+from agenteye_evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
+
+app = Evaluator(token="shared-secret")
+
+@app.evaluator
+def start(req: EvalRequest) -> JobPending:
+    job_id = enqueue(req)
+    return JobPending(job_id=job_id, next_poll_secs=30)
+
+@app.job_lookup
+def lookup(job_id: str):
+    result = get_result(job_id)
+    if result is None:
+        return JobPending(job_id=job_id, next_poll_secs=30)
+    return EvalResponse(
+        scores=result.scores,
+        reasoning=result.reasoning,
+        summary=result.summary,
+    )
+```
+
+Polling cadence is selected in this order: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, then the server's `EVALUATOR_POLLING_INTERVAL_SECS`. Values are clamped between 1 second and 1 hour. The server's default wall-clock polling cap is one hour.
+
+## Request and response fields
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `EvalRequest.schema_version` | `str` | Currently `"1"`. |
+| `session_id`, `agent_id`, `environment` | `str` | Session identity and environment. |
+| `started_at` | `datetime` | Timestamp of the first event. |
+| `ended_at` | `datetime \| None` | Present when the session emitted an end event. |
+| `events` | `list[AgentEvent]` | Full ordered event stream. |
+| `AgentEvent.id` | `int` | Backend event row identifier. |
+| `AgentEvent.ts` | `datetime` | Event timestamp. |
+| `AgentEvent.event_type` | `str` | Event family such as `tool_use`. |
+| `AgentEvent.payload` | `dict[str, Any]` | Complete event payload. |
+| `EvalResponse.scores` | `dict[str, float] \| None` | Numeric dimensions charted in evaluations. |
+| `EvalResponse.reasoning` | `dict[str, str] \| None` | Per-score explanations; keys should mirror `scores`. |
+| `EvalResponse.summary` | `str \| None` | Overall evaluation narrative. |
+
+## Server operator settings
+
+Automatic evaluation is deployment-wide and remains disabled when `EVALUATOR_ENDPOINT` is absent.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `EVALUATOR_ENDPOINT` | unset | Base URL of the evaluator service. |
+| `EVALUATOR_TOKEN` | unset | Bearer token shared with `Evaluator(token=...)`. |
+| `EVALUATOR_WORKERS` | `2` | Concurrent dispatcher workers. |
+| `EVALUATOR_CLAIM_BATCH` | `4` | Sessions claimed per dispatcher pass. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | Fallback async polling cadence. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | Per-request evaluator timeout. |
+| `EVALUATOR_MAX_ATTEMPTS` | `5` | Delivery attempts before terminal failure. |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | Refresh cadence for `/config`. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | Maximum wall-clock async polling time. |
+
+The server can also constrain which organizations use the deployment-global evaluator. Treat endpoint, token, retry, and organization-gate changes as operator configuration and restart or roll the server after changing them.
+
+## Security and operations
+
+- Put the evaluator behind HTTPS when traffic crosses a trusted network boundary.
+- Configure a non-empty bearer token and keep it identical on both services.
+- Do not log the token or full sensitive prompts from request payloads.
+- Make synchronous handlers idempotent; retries may repeat a request.
+- Persist asynchronous job state outside process memory in production.
+- Return stable score keys. Renaming a key creates a new chart series rather than changing the old one.
+
+The SDK emits structured lifecycle logs such as `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected`, and handler exceptions. It does not configure logging handlers; use the host application's logging configuration.

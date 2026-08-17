@@ -1,0 +1,58 @@
+---
+title: "Set up an audit"
+description: "Define an audit goal, session population, and evidence context."
+icon: "sliders-horizontal"
+---
+
+The quality of an audit starts with its scope. A broad request such as “find problems” produces less useful results than a concrete failure question.
+
+## Configure the audit
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Analyze → Audits → New audit**.
+    2. Enter the name and description.
+    3. Set the interval, anchor time, sweep window, lookback, agent/environment scope, ignored errors, sensitivity, and maximum findings.
+    4. Add the operator brief and up to five public HTTPS reference URLs.
+    5. Choose notification channels and select **create audit**. The first run queues immediately.
+
+    ![The new audit form with name, description, cadence, window, environment and agent scope, ignored errors, analysis settings, brief, reference pages, and notification channels.](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last_run \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://example.com/checkout-runbook
+    ```
+
+    Use `--file audit.json` when the full definition is already versioned as JSON.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="State the failure goal">
+    Describe observable behavior and impact. Example: “Find production sessions where the agent retries a failed payment tool without changing input or escalating.”
+  </Step>
+  <Step title="Choose the population">
+    Filter by environment, agent, time window, model, evaluation result, policy hit, or a saved query.
+  </Step>
+  <Step title="Add reference context">
+    Provide expected workflow, constraints, runbooks, or acceptance criteria. Keep instructions specific to the audit.
+  </Step>
+  <Step title="Choose a cadence">
+    Run once for an investigation or schedule the audit for a failure mode that could return.
+  </Step>
+</Steps>
+
+<Tip>
+  Start with a known failed session and several normal sessions. This gives the audit both a positive example and a comparison set.
+</Tip>
+
+<Info>
+  Audit context is stored as its own resource so editing an audit does not accidentally remove the reference material.
+</Info>

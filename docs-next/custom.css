@@ -1,0 +1,36 @@
+h1, h2, h3 {
+  letter-spacing: -0.025em;
+}
+
+#content blockquote {
+  position: relative;
+  margin: 1.5rem 0;
+  padding: 1.25rem 1.5rem 1.25rem 3.75rem !important;
+  border-left: 4px solid #e4587d !important;
+  border-radius: 0 14px 14px 0;
+  background: #f3f4f6 !important;
+  color: inherit !important;
+}
+
+#content blockquote::before {
+  content: "“";
+  position: absolute;
+  top: 0.35rem;
+  left: 1rem;
+  color: #e4587d;
+  font-size: 3rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+#content blockquote p:first-child {
+  margin-top: 0;
+}
+
+#content blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.dark #content blockquote {
+  background: rgba(148, 163, 184, 0.12) !important;
+}

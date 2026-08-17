@@ -1,0 +1,127 @@
+---
+title: "Self-host Failproof AI Cloud"
+description: "Deploy the Failproof AI control plane on a customer-managed Kubernetes cluster."
+icon: "cloud-cog"
+---
+
+Self-hosting is an Enterprise deployment. The current distribution uses Kustomize, private container images, PostgreSQL for control-plane metadata, ClickHouse for canonical event storage, Redis as an optional shared cache, and separate dashboard, server, assistant, and audit-agent workloads.
+
+Contact Failproof AI before deployment to obtain the enterprise release repository, container-registry credentials, supported version matrix, and an upgrade plan.
+
+## Prerequisites
+
+- Kubernetes 1.27 or newer with cluster-admin access
+- `kubectl` with Kustomize support
+- Helm 3
+- Access to the private `ghcr.io/agenteye-enterprise` images
+- Two DNS names: one for the dashboard and one for ingest
+- Persistent storage for PostgreSQL and ClickHouse
+- cert-manager and Traefik, or equivalent ingress and certificate infrastructure adapted into your overlay
+- SMTP for production OTP login and notifications
+
+The source tree provides an AWS/EKS-oriented overlay and a separate GCP/GKE overlay. Do not combine their certificate, load-balancer, or backup instructions: GKE uses its own DNS-01, GCS, and autoscaling configuration.
+
+## Deployment sequence
+
+<Steps>
+  <Step title="Install cluster dependencies">
+    Install cert-manager and the public/dashboard ingress controllers. Verify their load balancers before applying the application.
+  </Step>
+  <Step title="Create the namespace and secrets">
+    Create image-pull credentials, PostgreSQL credentials, a strong bootstrap admin key, and authentication/SMTP settings. Store generated credentials in your organization's secret manager.
+  </Step>
+  <Step title="Configure public domains">
+    Set `INGEST_DOMAIN` and `DASHBOARD_DOMAIN` in the overlay's generated domain environment file and create DNS records pointing to the matching load balancers.
+  </Step>
+  <Step title="Apply one platform overlay">
+    Use the customer/EKS overlay or the GCP overlay. Inspect the rendered Kustomize output before applying it to production.
+  </Step>
+  <Step title="Verify workloads and certificates">
+    Confirm server, dashboard, PostgreSQL, ClickHouse, Redis, assistant, and audit-agent workloads reach their intended state. Certificates must report ready before collectors are enrolled.
+  </Step>
+  <Step title="Bootstrap access and ingestion">
+    Sign in as the protected admin, create an organization-scoped collector key, and send a small test session through the public ingest endpoint.
+  </Step>
+</Steps>
+
+## Required and optional services
+
+| Component | Requirement |
+| --- | --- |
+| ClickHouse | Required. The server refuses to start without its canonical event store. |
+| PostgreSQL | Required for users, organizations, saved objects, and control-plane state. |
+| Redis | Optional. Server and dashboard degrade to database-backed behavior when unavailable. |
+| SMTP | Optional for development, required for production email OTP and notification delivery. |
+| Evaluator | Optional. Automatic evaluation remains disabled without `EVALUATOR_ENDPOINT`. |
+| Assistant/audit LLM | Optional. Assistant and LLM-backed audit features remain inert until an LLM connection is configured. |
+| Object storage backup | Strongly recommended for PostgreSQL and ClickHouse backup archives. |
+
+## Verify the deployment
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Open the configured dashboard domain and complete the admin OTP flow.
+    2. Confirm the organization name and slug.
+    3. Go to **Administration → Keys** and create a narrowly scoped collector key.
+    4. Send a test session, then confirm it in **Observe → Events** and **Observe → Sessions**.
+    5. Test an alert channel and, when configured, a manual evaluation and audit.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    kubectl get pods -n agenteye
+    kubectl get certificates -n agenteye
+    kubectl logs -n agenteye deploy/server --tail=100
+
+    fp --base-url https://failproof.example.com login
+    fp --base-url https://failproof.example.com whoami
+    fp --base-url https://failproof.example.com usage
+    ```
+
+    Verify the public health endpoint and one authenticated `/v1` request before enrolling production collectors.
+  </Tab>
+</Tabs>
+
+## Authentication and email
+
+The dashboard uses email and one-time codes. With SMTP absent, development deployments log OTP codes to server output. When `SMTP_HOST` is set, username, password, and sender are required as a group or the server refuses to start.
+
+`SMTP_TLS` is a boolean. The supported encrypted transport is STARTTLS, normally on port 587; implicit SMTPS on port 465 is not supported by the current server transport.
+
+Set the public dashboard URL correctly because OTP, alert, incident, and audit emails use it for deep links. Organization membership controls who may request a code; each organization can further restrict its own member sign-ins in **Administration → Settings**.
+
+## Multi-tenant requirements
+
+Before creating a second organization, configure a strong, stable organization ClickHouse derivation secret and keep it identical across all server replicas. Rotating it without a coordinated migration can orphan organization-specific ClickHouse users.
+
+Keep the instance-admin listener internal. The provided operator console is opt-in and is designed for `kubectl port-forward`, not public ingress. Enabling it requires its own strong API key, a super-admin mailbox, and working SMTP second-factor delivery.
+
+### Break-glass organization CLI
+
+`agenteye-orgctl` ships inside the server image and talks directly to PostgreSQL and ClickHouse. It remains available when the public server or operator console is unhealthy.
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org create --slug acme --name "Acme Corp"
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email ops@acme.com --set admin --protected
+```
+
+Supported organization operations include create, list, rename, soft-delete, restore, ClickHouse-user reprovisioning, billing-date management, feature flags, and irreversible purge. Member operations include add, list, update, remove, permission overrides, and protected-admin state.
+
+Use soft-delete before purge. `org purge` is irreversible and requires the organization to be deleted first. Protected members cannot be removed or demoted through the organization's ordinary Users page until an operator explicitly unprotects them.
+
+## Production readiness checklist
+
+- Ingest and dashboard DNS resolve to different intended ingress paths.
+- TLS is valid; use mutual TLS on ingest where your deployment requires it.
+- PostgreSQL and ClickHouse volumes have capacity alerts.
+- Backups include both datastores and have a tested restore procedure.
+- Health checks alert on ingest silence, failed workloads, certificate expiry, storage pressure, and stale backups.
+- Structured logs are collected without duplicating an existing cluster log pipeline.
+- Evaluator, audit, and alert worker concurrency has not been changed without measured queue evidence.
+- A pinned application release and rollback procedure are recorded before upgrades.
+
+<Warning>
+  The deployment manifests contain platform-specific security and availability assumptions. Review rendered resources, network policies, ingress exposure, secret references, storage classes, disruption budgets, and backup destinations with your platform team before applying them.
+</Warning>

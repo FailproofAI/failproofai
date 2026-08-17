@@ -1,0 +1,54 @@
+---
+title: "Quickstart"
+description: "Capture an agent session, find a failure, and start preventing it."
+icon: "zap"
+---
+
+This quickstart gets one machine reporting sessions, runs an audit, and deploys a policy. You need Node.js 20.9 or later and a Failproof AI Cloud API key.
+
+## Install
+
+<Steps>
+  <Step title="Install Failproof AI">
+    ```bash
+    npm install -g failproofai
+    ```
+  </Step>
+  <Step title="Connect the machine">
+    Use the dashboard origin and a key with `events:add` and `policies:pull`.
+
+    ```bash
+    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    ```
+
+    Session transcripts are sent by default. Add `--no-transcripts` to report hook activity and policy decisions without transcript content.
+  </Step>
+  <Step title="Backfill existing sessions (optional)">
+    If this machine already has agent history, preview and import the last seven days, then wait for delivery to finish. Skip this step on a new machine.
+
+    ```bash
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    failproofai flush --wait
+    ```
+
+    Open **Sessions** in Failproof AI and select an imported session.
+  </Step>
+  <Step title="Install agent hooks">
+    Let the installer detect your agent CLI, or name one explicitly.
+
+    ```bash
+    failproofai policies --install --cli claude --scope user
+    ```
+  </Step>
+  <Step title="Audit the behavior">
+    Follow [Run your first audit](/start/first-audit). Use a concrete goal such as “find sessions where the agent retried a failing tool without changing its approach.”
+  </Step>
+  <Step title="Turn the failure into prevention">
+    Follow [Deploy your first policy](/start/first-policy). Start in observe mode, inspect matches, then enforce the reviewed version.
+  </Step>
+</Steps>
+
+<Check>
+  Run `failproofai config --status`. A healthy setup reports the cloud connection, daemon state, and whether enforcement is paused.
+</Check>

@@ -1,0 +1,46 @@
+---
+title: "Run and review an audit"
+description: "Run an audit, verify its coverage, and inspect the resulting findings."
+icon: "play"
+---
+
+Run an audit after its goal and population are specific enough that another operator would know what a valid finding looks like.
+
+## Run and inspect it
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Analyze → Audits** and open the audit.
+    2. Select **run now**. A queued response means the dispatcher will start it shortly.
+    3. Open the new run to see status, window, duration, finding counts, and report.
+    4. Select an evidence session to open the exact trace.
+    5. Return to the audit page to edit settings, disable the schedule, or inspect older runs.
+
+    ![An audit detail page with open findings, last and next run state, sweep window, context, run-now control, and ranked findings.](/images/dashboard/audit-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits run checkout-reliability
+    fp audits runs checkout-reliability --limit 10
+    fp --json audits runs checkout-reliability
+    fp audits findings --audit checkout-reliability
+    ```
+  </Tab>
+</Tabs>
+
+## Before you run
+
+- Confirm sessions exist in the selected time window.
+- Verify the environment and agent filters.
+- Check that reference context is current.
+- Make sure the goal describes a failure mode, not a desired conclusion.
+
+## Review the run
+
+Start with run status and session coverage. A completed audit with zero findings can mean the population is healthy, but it can also mean the scope matched no useful sessions. Then inspect each finding's severity, description, evidence sessions, supporting queries, and suggested prevention path.
+
+Use finding status to acknowledge, mute, dismiss, resolve, reopen, or assign work. Preserve the evidence even when the finding is dismissed; it explains why the decision was made.
+
+<Warning>
+  Do not deploy a blocking policy directly from an unverified finding. Open the cited traces and confirm the rule separates unsafe behavior from legitimate work.
+</Warning>

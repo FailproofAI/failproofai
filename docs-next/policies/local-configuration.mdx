@@ -1,0 +1,86 @@
+---
+title: "Local configuration"
+description: "Control policy scope, parameters, custom files, and machine-level Failproof AI settings."
+icon: "file-cog"
+---
+
+Failproof AI separates policy selection from machine and collector settings. This keeps repository policy choices reviewable while credentials and daemon state stay outside the repository.
+
+## Choose a policy scope
+
+<Tabs>
+  <Tab title="Dashboard">
+    Run `failproofai` without arguments to open the local policy dashboard. Choose the user, project, or local scope before enabling a policy so the change is written to the intended configuration file.
+
+    - **User** applies across projects on this machine.
+    - **Project** belongs to the repository and can be committed.
+    - **Local** overrides one project for one user and should remain gitignored.
+
+    <Info>Screenshot placeholder: local policy dashboard with scope selector and enabled policy list.</Info>
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policy add block-rm-rf --scope user
+    failproofai policy add block-force-push --scope project
+    failproofai policy add warn-large-file-write --scope local
+    failproofai policies
+    ```
+
+    Not every harness supports local scope. The CLI rejects a scope that the selected harness cannot represent.
+  </Tab>
+</Tabs>
+
+| Scope | Policy configuration file |
+| --- | --- |
+| Project | `<project>/.failproofai/policies-config.json` |
+| Local | `<project>/.failproofai/policies-config.local.json` |
+| User | `~/.failproofai/policies-config.json` |
+
+Enabled policies are merged as a union. Policy parameters use the first scope that defines parameters for that policy, in project → local → user order. Explicit custom policy paths use the first scope that defines them.
+
+## Configure policy parameters
+
+<Tabs>
+  <Tab title="Dashboard">
+    Open the policy in the local dashboard, edit its supported parameters, and save in the selected scope. Run a matching and non-matching agent action, then inspect the decision in **Observe → Policy**.
+
+    <Info>Screenshot placeholder: local policy parameter editor and the resulting Cloud decision.</Info>
+  </Tab>
+  <Tab title="CLI">
+    Edit the selected scope's `policies-config.json`, then run `failproofai policies` to surface unknown policy names or parameter keys.
+
+    ```json
+    {
+      "enabledPolicies": ["block-rm-rf", "block-force-push"],
+      "policyParams": {
+        "block-rm-rf": {
+          "allowPaths": ["/tmp/build-output"]
+        }
+      }
+    }
+    ```
+
+    ```bash
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+## Understand the machine files
+
+`~/.failproofai` contains separate files for separate trust boundaries:
+
+| Path | Purpose |
+| --- | --- |
+| `config.json` | Non-secret daemon, collector, audit, and telemetry settings |
+| `credentials.json` | Cloud credentials; stored with owner-only permissions |
+| `policies-config.json` | User-scope builtin selection, parameters, and explicit custom paths |
+| `policies/` | User convention policies and Cloud-managed policy artifacts |
+| `hook-activity/` | Local policy decision log |
+| `state/` | Daemon spool, health, pause, and runtime state |
+
+Use `FAILPROOFAI_HOME` to relocate the complete machine layout for a container or isolated test. Do not relocate individual state directories independently.
+
+<Warning>
+  Never commit `credentials.json`. Commit project policy configuration and project convention policies only after reviewing them as enforcement code.
+</Warning>

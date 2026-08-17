@@ -1,0 +1,223 @@
+---
+title: "Python tracing SDK"
+description: "Install the Python SDK, instrument custom agents, and deliver structured traces to Failproof AI."
+icon: "file-code-2"
+---
+
+The current tracing package imports as `agenteye`. It requires Python 3.10 or newer and writes structured JSONL batches locally; a collector delivers those batches to Failproof AI Cloud.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with the Failproof AI Python SDK" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+## Install the correct package
+
+<Warning>
+  Do not run `pip install agenteye` from public PyPI inside your agent environment. The public distribution is the Cloud CLI and exposes `agenteye_cli`, not this tracing SDK. It can replace a working SDK installation because both currently use the same distribution name.
+</Warning>
+
+The tracing SDK is currently distributed as a private wheel from GitHub Releases. Ask your Failproof AI contact for the current version and a token that can read `agenteye-enterprise/releases`.
+
+```bash
+VERSION=<sdk-version>
+GITHUB_TOKEN="$AGENTEYE_TOKEN" gh release download "python-sdk/v${VERSION}" \
+  --repo agenteye-enterprise/releases \
+  --pattern 'agenteye-*.whl'
+pip install "./agenteye-${VERSION}-py3-none-any.whl"
+python -c "import agenteye; print(agenteye.__version__)"
+```
+
+With `uv`, download the wheel first and then run `uv add ./agenteye-${VERSION}-py3-none-any.whl`. Pin the wheel in a private artifact repository or dependency lock; an unpinned `agenteye` requirement resolves to the unrelated public CLI.
+
+## Choose the delivery path
+
+| Runtime | SDK spool | Delivery command |
+| --- | --- | --- |
+| Standalone AgentEye collector | `$AGENTEYE_HOME/events`, otherwise `~/.agenteye/events` | `agenteye-collector flush` |
+| Failproof AI daemon | `$FAILPROOFAI_HOME/custom-agents/events`, otherwise `~/.failproofai/custom-agents/events` | `failproofai flush --wait` |
+
+The standalone path is the safe default. To use the Failproof AI daemon, its `custom-agents` directory must already exist and `AGENTEYE_SPOOL_TO_FAILPROOFAI` must be set to `1`, `true`, `yes`, or `on` in the agent process.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Administration → Keys** and create a key with `events:add` permission or the **collector** preset.
+    2. Configure either the Failproof AI daemon or the standalone collector on the agent machine.
+    3. Run one instrumented agent session.
+    4. Go to **Observe → Events** and search the exact session ID.
+    5. Go to **Observe → Sessions**, select the same environment, and open the reconstructed trace.
+
+    ![A custom Python agent session reconstructed as an execution graph and ordered event trace.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    For the standalone collector:
+
+    ```bash
+    agenteye-collector service install \
+      --url https://app.befailproof.ai/v1/events \
+      --key <events-add-key>
+    agenteye-collector health
+    ```
+
+    For the Failproof AI daemon:
+
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <events-add-key>
+    export AGENTEYE_SPOOL_TO_FAILPROOFAI=1
+    failproofai config --status
+    ```
+  </Tab>
+</Tabs>
+
+## Instrument a complete run
+
+Call `configure()` once during process startup. Every event call is keyword-only and requires a stable `session_id` and `agent_id`.
+
+```python
+import traceback
+import uuid
+
+import agenteye
+
+agenteye.configure(environment="production")
+
+session_id = uuid.uuid4().hex
+agent_id = "checkout-agent"
+
+agenteye.event.agent_start(
+    session_id=session_id,
+    agent_id=agent_id,
+    goal="Resolve a failed checkout",
+)
+
+try:
+    tool_call_id = uuid.uuid4().hex
+    agenteye.event.tool_use(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        input={"order_id": "ord_8421"},
+    )
+    result = {"status": "payment_failed"}
+    agenteye.event.tool_result(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        output=result,
+    )
+except Exception as exc:
+    agenteye.event.error(
+        session_id=session_id,
+        agent_id=agent_id,
+        error_type=type(exc).__name__,
+        message=str(exc),
+        traceback=traceback.format_exc(),
+    )
+    agenteye.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="failed",
+    )
+    raise
+else:
+    agenteye.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="success",
+        summary="Escalated the failed payment",
+    )
+```
+
+Emit `agent_start` once per actor. For sub-agents, reuse the parent's `session_id`, give each actor a distinct `agent_id`, and set `parent_id` to the parent **agent ID**, not the session ID.
+
+## Configuration reference
+
+```python
+agenteye.configure(
+    base_dir=None,
+    flush_interval=0.5,
+    environment="production",
+)
+```
+
+| Setting | Behavior |
+| --- | --- |
+| `base_dir` | Explicit spool root. Takes precedence over all environment variables. |
+| `flush_interval` | Seconds between background writes from memory to JSONL. Default: `0.5`. |
+| `environment` | Deployment label on every event. Defaults to `AGENTEYE_ENVIRONMENT`, then `dev`. |
+| `AGENTEYE_HOME` | Overrides the default `~/.agenteye` root. |
+| `AGENTEYE_SPOOL_TO_FAILPROOFAI` | Opts into the Failproof AI daemon spool when its `custom-agents` directory exists. |
+| `FAILPROOFAI_HOME` | Changes the Failproof AI root used by the opt-in path. |
+
+Resolution order for the spool is explicit `base_dir`, `AGENTEYE_HOME`, opted-in Failproof AI `custom-agents`, then `~/.agenteye`.
+
+The SDK queues calls in memory and writes batches on a background thread. It also attempts a final flush through Python's `atexit` handling. For short-lived workers, allow normal interpreter shutdown; hard process termination can lose events still in memory.
+
+## Event catalog
+
+All methods return `None`. Fields left as `None` are omitted rather than written as JSON `null`.
+
+| Method | Required fields beyond identity | Optional fields |
+| --- | --- | --- |
+| `agent_start` | — | `goal`, `parent_id` |
+| `agent_end` | — | `outcome`, `summary` |
+| `agent_pause` | `pause_id` | `reason`, `user_id` |
+| `agent_resume` | `pause_id` | `reason`, `user_id` |
+| `model_request` | — | `model`, `messages`, `system`, `tools` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role` |
+| `tool_use` | `tool_name`, `tool_call_id` | `input` |
+| `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
+| `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
+| `hook_completed` | `hook_name`, `hook_id` | `outcome`, `output`, `error` |
+| `error` | `error_type`, `message` | `traceback` |
+| `human_wait` | `input_id` | `prompt`, `options`, `reason` |
+| `human_input` | `input_id` | `response` |
+| `human_pause` | — | `reason`, `user_id` |
+| `human_interrupt` | — | `reason`, `user_id`, `at_step` |
+
+Use `outcome="failed"`, `"error"`, `"timeout"`, or `"rejected"` when a completion should count as a failure. Other values, including `"failure"`, are not classified as failures by the current backend.
+
+## Correlation and duration rules
+
+- Reuse the same `tool_call_id`, `hook_id`, `pause_id`, or `input_id` for the matching completion event.
+- The SDK computes `duration_ms` for `tool_result`, `hook_completed`, `agent_resume`, and `human_input`. Passing it yourself to those methods raises `ValueError`.
+- Tool and hook IDs share one process-wide pending map. Make them globally unique across concurrent sessions and across both namespaces; provider IDs or UUIDs are safest.
+- A pair split across processes still correlates downstream, but the SDK cannot compute its in-process duration.
+- The pending map holds at most 10,000 starts and evicts the oldest entry when full.
+
+## Custom fields and payloads
+
+Every event accepts extra keyword fields. Use JSON-compatible values when downstream queries need structure. Unsupported leaves such as UUIDs, datetimes, decimals, sets, bytes, and model objects are stringified by the writer.
+
+Reserved custom names are `timestamp`, `session_id`, `agent_id`, `type`, and `environment`. Optional-field typos are accepted as new custom fields, so review emitted JSON when a standard field does not appear in Cloud.
+
+## Deliver and verify
+
+<Tabs>
+  <Tab title="Dashboard">
+    In **Observe → Events**, verify `agent_start` exists first and `agent_end` exists last. Then open **Observe → Sessions** and confirm model, tool, human, hook, and error events appear in the intended order. Use the session ID as the primary troubleshooting key.
+  </Tab>
+  <Tab title="CLI">
+    Standalone collector:
+
+    ```bash
+    agenteye-collector flush
+    agenteye-collector health --json
+    fp sessions --since 1h --env production --session-id <session-id>
+    fp events --since 1h --session-id <session-id> --full
+    ```
+
+    Failproof AI daemon spool:
+
+    ```bash
+    failproofai flush --wait --timeout 60
+    failproofai config --status
+    fp events --since 1h --session-id <session-id> --full
+    ```
+  </Tab>
+</Tabs>
+
+If Cloud is empty, inspect the matching local directory first. JSONL files prove SDK emission; a growing spool points to collector configuration or delivery, while an empty spool points to instrumentation, process lifetime, or the selected base directory.

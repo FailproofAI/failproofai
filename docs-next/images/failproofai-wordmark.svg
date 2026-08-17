@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 40" role="img" aria-label="Failproof AI">
+  <rect width="40" height="40" rx="10" fill="#665CF6"/>
+  <path d="M11 9h19v6H17v5h10v6H17v9h-6z" fill="#fff"/>
+  <text x="52" y="27" fill="#111322" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700">Failproof AI</text>
+</svg>

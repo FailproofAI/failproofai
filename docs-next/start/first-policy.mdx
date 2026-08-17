@@ -1,0 +1,43 @@
+---
+title: "Deploy your first policy"
+description: "Author a policy version, deploy it in observe mode, and then enforce it."
+icon: "shield-check"
+---
+
+Use a policy only after you can describe the unsafe action and the legitimate actions that must remain allowed.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Author the policy">
+        Go to **Administration → Policy editor**, open the demo policy, and select **deploy**.
+      </Step>
+      <Step title="Deploy it to a machine">
+        Go to **Administration → Deploy policies**, select your machine, add the demo policy, and deploy it in **observe** mode.
+      </Step>
+      <Step title="Verify the policy">
+        Run a new agent session on that machine, then open **Observe → Policies**. You should see the demo policy triggered for the session.
+      </Step>
+    </Steps>
+
+    <Info>Screenshot placeholder: policy editor compose panel, published version, and enforcement machine row.</Info>
+  </Tab>
+  <Tab title="CLI">
+    Cloud policy authoring and fleet deployment are administrative workflows. Use the local CLI to validate the same policy before publishing it:
+
+    ```bash
+    failproofai policies --install --custom ./payment-retry.policies.ts \
+      --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Use `fp` to inspect Cloud-visible policy decisions:
+
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp sessions --env production --since 24h
+    ```
+
+    The Cloud CLI does not expose root-only enforcement deployment routes. Publish and deploy versions from **Administration → Policy editor** and **Administration → Deploy policies**.
+  </Tab>
+</Tabs>

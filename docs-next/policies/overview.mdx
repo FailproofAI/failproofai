@@ -1,0 +1,51 @@
+---
+title: "Policies"
+description: "Observe, guide, or block agent actions before a known failure repeats."
+icon: "shield-check"
+---
+
+A policy evaluates an agent hook event and returns one of three decisions:
+
+- `allow` lets the action continue.
+- `instruct` gives the agent corrective guidance.
+- `deny` blocks the action with a reason.
+
+## Use the three policy surfaces
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Observe → Policy** to filter and inspect policy decisions from sessions.
+    2. Go to **Administration → Policy editor** to compose, validate, publish, disable, or inspect immutable versions.
+    3. Go to **Administration → Deploy policies** to assign versions and effects to machines.
+
+    <Info>Screenshot placeholder: Observe policy decisions, policy editor, and enforcement fleet.</Info>
+  </Tab>
+  <Tab title="CLI">
+    Use `failproofai` for local policy installation and validation:
+
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --scope project
+    failproofai config --status
+    ```
+
+    Use `fp` to find the Cloud sessions and events containing policy decisions. Cloud authoring and fleet deployment remain dashboard workflows.
+  </Tab>
+</Tabs>
+
+Policies have three distinct surfaces in Failproof AI:
+
+1. **Analyze decisions** in sessions, dashboards, and audits.
+2. **Author versions** with builtin rules, code, or the policy editor.
+3. **Deploy and enforce** versions across selected machines.
+
+Start from a confirmed failure mode. Define the smallest event and tool match that identifies it, test legitimate and unsafe examples, then observe before enforcing.
+
+<Columns cols={2}>
+  <Card title="Use a builtin policy" icon="library" href="/policies/builtin">
+    Enable a reviewed rule for common secret, shell, Git, cloud, and workflow risks.
+  </Card>
+  <Card title="Write a custom policy" icon="code-2" href="/policies/custom">
+    Express a workflow-specific decision in JavaScript or TypeScript.
+  </Card>
+</Columns>

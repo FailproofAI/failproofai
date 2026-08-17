@@ -1,0 +1,52 @@
+---
+title: "Run your first audit"
+description: "Create an audit from the Cloud dashboard or the fp CLI and review its first findings."
+icon: "scan-search"
+---
+
+An audit turns a set of sessions into ranked, evidence-backed failure findings. Start with one narrow failure question.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Open Audits">
+        In the Cloud sidebar, go to **Analyze → Audits**. Select **new audit**.
+      </Step>
+      <Step title="Set up the audit">
+        Enter a name and a direct failure goal, such as “find production sessions that retry the same failed payment call without changing input or escalating.” Select the agent, environment, time window, and schedule. Add a short brief and reference URLs when the auditor needs your workflow rules.
+      </Step>
+      <Step title="Create and wait for the run">
+        Select **create audit**. The first run is queued immediately. Open the audit card to watch it move from queued to running to complete.
+      </Step>
+    </Steps>
+
+    After the run completes, open a finding and review its session evidence. You can then acknowledge, assign, dismiss, mute, or resolve it.
+
+    ![A completed audit finding showing its failure description, recommended action, supporting evidence, and affected sessions.](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create payment-retry-failures \
+      --description "Find production sessions that retry a failed payment call without changing input or escalating" \
+      --scope '{"environments":["production"]}' \
+      --text "Escalate after two unchanged payment failures"
+
+    fp audits list
+    fp audits runs payment-retry-failures
+    fp audits findings --audit payment-retry-failures
+    fp audits finding <finding-id>
+    ```
+
+    Add reference context, then refresh it when the source changes:
+
+    ```bash
+    fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
+    fp audits context-refresh payment-retry-failures
+    fp audits run payment-retry-failures
+    ```
+
+    Use `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, or `fp audits reopen <finding-id>` to move a finding through triage.
+  </Tab>
+</Tabs>
+
+Next, [deploy your first policy](/start/first-policy) for a confirmed repeatable action.

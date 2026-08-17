@@ -1,0 +1,165 @@
+---
+title: "Collectors and delivery"
+description: "Choose a collector, configure session capture, deliver spooled events, and repair failed uploads."
+icon: "server-cog"
+---
+
+Collectors separate local event production from network delivery. Failproof AI currently supports two delivery paths:
+
+| Collector | Best fit | Default root |
+| --- | --- | --- |
+| Failproof AI daemon | Policy enforcement plus capture across all supported harnesses | `~/.failproofai` |
+| Standalone `agenteye-collector` | Python SDK delivery or read-only capture for Claude, Codex, OpenClaw, and Hermes | `~/.agenteye` |
+
+Do not mix their flush commands. `failproofai flush` drains the Failproof AI daemon spool; `agenteye-collector flush` drains `~/.agenteye/events`.
+
+## Use the Failproof AI daemon
+
+The local CLI configures one connection that can pull Cloud policies and send hook decisions or session transcripts. Transcript capture is sensitive because prompts, file contents, and terminal output can be included.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Administration → Keys** and create a key with `events:add`; add `policies:pull` when the machine will receive Cloud policies.
+    2. Connect the target machine and choose whether full session transcripts may leave it.
+    3. Go to **Observe → Events** and select the configured environment.
+    4. Generate a new agent run and verify the latest timestamp advances.
+    5. Go to **Observe → Sessions** and confirm those events form a complete session.
+
+    ![The Events stream filtered to a collector environment.](/images/dashboard/events-stream.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <events-add-key> \
+      --machine-label checkout-prod-01
+    failproofai config --status
+    failproofai flush --wait --timeout 60
+    ```
+
+    Add `--no-transcripts` when only hook activity and policy decisions may be sent. The credential is stored separately from non-secret settings with owner-only permissions.
+  </Tab>
+</Tabs>
+
+The daemon collector settings include:
+
+| Setting | Meaning |
+| --- | --- |
+| `sessions` | Send transcript-derived session events. This is a separate opt-in because transcripts can contain sensitive content. |
+| `hooks` | Send hook activity and policy decisions. |
+| `hooksVerbosity` | `all`, `decisions`, or `off`. `decisions` preserves denies/instructions and aggregates routine allows. |
+| `redact` | `minimal` or `off`. |
+| `environment` | Label stamped on every event; commas are not supported. |
+
+## Use the standalone collector
+
+The public installer supports Linux and macOS on x86_64 and arm64. Windows binaries are available for manual operation, but the shell installer and managed service are Linux/macOS only.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FailproofAI/agenteye-collector/main/install.sh \
+  | sh -s -- \
+    --url https://app.befailproof.ai/v1/events \
+    --key <events-add-key> \
+    --claude-enabled \
+    --codex-enabled
+```
+
+Capture is disabled per source until explicitly enabled. Available installer switches are `--claude-enabled`, `--codex-enabled`, `--openclaw-enabled`, and `--hermes-enabled`.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Create a collector key in **Administration → Keys**, install the service on the source machine, and then verify the machine's environment in **Observe → Events** and **Observe → Sessions**.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    agenteye-collector service status
+    agenteye-collector health
+    agenteye-collector health --json
+    agenteye-collector flush
+    ```
+
+    If you installed only the binary, create the service later:
+
+    ```bash
+    agenteye-collector service install \
+      --url https://app.befailproof.ai/v1/events \
+      --key <events-add-key> \
+      --claude-enabled \
+      --codex-enabled
+    ```
+  </Tab>
+</Tabs>
+
+The standalone collector reads `AGENTEYE_HOME`, otherwise `~/.agenteye`. Its `config.json`, `events/`, `failed/`, and source cursor directories live under that root.
+
+## Understand delivery and retries
+
+Fresh JSONL batches are uploaded immediately by the watcher. A periodic sweeper also processes batches left behind after a restart or transient failure.
+
+| Result | Behavior |
+| --- | --- |
+| Success | Remove the delivered file. |
+| Transient network or 5xx failure | Retry with exponential backoff, then preserve the file for a later sweep. |
+| Definitive 4xx | Move the batch to `failed/`; correct the key, URL, or payload before retrying. |
+| Oversized batch | Split it to the configured maximum upload size. |
+
+The standalone defaults include 64 concurrent uploads, a 60-second sweep interval, a 120-second minimum sweep age, 64 files per sweep, five upload attempts, a 120-second read timeout, and an 8 MiB maximum request body. Override them through matching `AGENTEYE_*` environment variables or command flags only after measuring a real backlog.
+
+## Repair failed delivery
+
+<Tabs>
+  <Tab title="Dashboard">
+    Compare the newest event timestamp in **Observe → Events** with the source machine clock. After retrying a failed spool, search the exact session ID and confirm the batch appears once with the expected environment.
+  </Tab>
+  <Tab title="CLI">
+    Preview and retry stranded standalone batches:
+
+    ```bash
+    agenteye-collector flush --retry-failed --dry-run
+    agenteye-collector flush --retry-failed
+    ```
+
+    Include definitive 4xx or exhausted poison batches only after fixing their cause:
+
+    ```bash
+    agenteye-collector flush --retry-failed --include-4xx
+    agenteye-collector flush --retry-failed --include-poison
+    ```
+
+    For the Failproof AI daemon:
+
+    ```bash
+    failproofai config --status
+    failproofai flush --wait --timeout 120
+    ```
+  </Tab>
+</Tabs>
+
+## Backfill history
+
+The Failproof AI daemon can re-read captured harness history over a time window:
+
+```bash
+failproofai backfill --since 30d --dry-run
+failproofai backfill --since 30d
+failproofai flush --wait
+```
+
+The standalone collector currently exposes surgical backfill only for Hermes. Always dry-run first:
+
+```bash
+agenteye-collector backfill --source hermes --session <session-id> --dry-run
+agenteye-collector backfill --source hermes --session <session-id> --flush --yes
+```
+
+## Update or remove the standalone service
+
+```bash
+agenteye-collector update --check
+agenteye-collector update
+agenteye-collector update --beta
+agenteye-collector update --rollback
+agenteye-collector service uninstall
+```
+
+System-wide Linux services require the matching `--system` flag and usually root privileges. Container deployments should update the image instead of using self-update.

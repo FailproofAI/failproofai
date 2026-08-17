@@ -1,0 +1,198 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "palm",
+  "name": "Failproof AI",
+  "description": "Trace agent behavior, find failures with audits, and prevent repeat failures with deployed policies.",
+  "colors": {
+    "primary": "#002CA7",
+    "light": "#e4587d",
+    "dark": "#e4587d"
+  },
+  "icons": { "library": "lucide" },
+  "logo": {
+    "light": "/logo/Failproof_AI_logo_light.png",
+    "dark": "/logo/Failproof_AI_logo.png",
+    "href": "https://befailproof.ai"
+  },
+  "favicon": "/favicon.ico",
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "assistant",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
+  },
+  "search": { "prompt": "Search Failproof AI docs" },
+  "navbar": {
+    "links": [
+      { "label": "Discord", "href": "https://discord.befailproof.ai" },
+      { "label": "Star on GitHub", "href": "https://github.com/FailproofAI/failproofai" }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Dashboard",
+      "href": "https://app.befailproof.ai"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Start",
+        "icon": "rocket",
+        "groups": [
+          {
+            "group": "Start here",
+            "pages": [
+              "index",
+              "start/quickstart",
+              "start/first-audit",
+              "start/first-policy",
+              "start/setup",
+              "start/concepts",
+              "start/pricing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Sessions and tracing",
+        "icon": "route",
+        "groups": [
+          {
+            "group": "Understand every run",
+            "pages": [
+              "sessions/overview",
+              "sessions/live-events",
+              "sessions/read-a-trace",
+              "sessions/models",
+              "sessions/hooks",
+              "sessions/policy-decisions",
+              "sessions/tools",
+              "sessions/errors",
+              "sessions/evaluations",
+              "sessions/metrics",
+              "sessions/dashboards",
+              "sessions/queries",
+              "sessions/assistant"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Audits and response",
+        "icon": "scan-search",
+        "groups": [
+          {
+            "group": "Find and manage failures",
+            "pages": [
+              "audits/overview",
+              "audits/local-audit",
+              "audits/setup",
+              "audits/run",
+              "audits/cadence",
+              "audits/findings-and-issues",
+              "audits/alerts",
+              "audits/recipes"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Policies and deployment",
+        "icon": "shield-check",
+        "groups": [
+          {
+            "group": "Prevent repeat failures",
+            "pages": [
+              "policies/overview",
+              "policies/builtin",
+              "policies/builtin-catalog",
+              "policies/custom",
+              "policies/local-configuration",
+              "policies/editor",
+              "policies/deploy",
+              "policies/fleet",
+              "policies/rollback",
+              "policies/failure-behavior"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Administration",
+        "icon": "settings-2",
+        "groups": [
+          {
+            "group": "Operate Failproof AI",
+            "pages": [
+              "admin/overview",
+              "admin/usage",
+              "admin/keys-and-permissions",
+              "admin/users-and-organizations",
+              "admin/settings-and-security"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Integrations and reference",
+        "icon": "braces",
+        "groups": [
+          {
+            "group": "Connect your agents",
+            "pages": [
+              "reference/overview",
+              "reference/harnesses",
+              "reference/collector",
+              "reference/python-sdk",
+              "reference/evaluator-sdk",
+              "reference/policy-sdk",
+              "reference/self-hosting"
+            ]
+          },
+          {
+            "group": "Reference",
+            "expanded": false,
+            "pages": [
+              "reference/failproof-cli",
+              "reference/local-dashboard",
+              "reference/cloud-cli",
+              "reference/http-api",
+              "reference/events-and-configuration",
+              "reference/troubleshooting"
+            ]
+          },
+          {
+            "group": "HTTP API",
+            "expanded": false,
+            "openapi": "reference/openapi.json"
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        { "anchor": "Status", "href": "https://status.befailproof.ai", "icon": "activity" },
+        { "anchor": "Support", "href": "mailto:support@befailproof.ai", "icon": "mail" }
+      ]
+    }
+  },
+  "api": {
+    "openapi": "reference/openapi.json",
+    "playground": { "display": "simple" },
+    "examples": { "languages": ["curl", "python", "javascript"] }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/FailproofAI/failproofai",
+      "x": "https://x.com/failproofai"
+    }
+  },
+  "seo": { "indexing": "navigable" }
+}

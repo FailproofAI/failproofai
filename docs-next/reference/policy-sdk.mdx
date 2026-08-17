@@ -1,0 +1,134 @@
+---
+title: "Policy SDK"
+description: "Reference the JavaScript and TypeScript API for custom Failproof AI policies."
+icon: "shield-code"
+---
+
+Import the policy API from the `failproofai` package.
+
+```ts
+import { customPolicies, allow, deny, instruct } from "failproofai";
+```
+
+## Build and validate a custom policy
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Open **Administration → Policy editor**.
+    2. Create or select a policy and use the editor to define its match conditions and decision behavior.
+    3. Save a draft, review its validation output, and publish an immutable version when it is ready.
+    4. Open **Administration → Deploy policies**, choose a small machine scope, and deploy that version.
+    5. Run a representative agent action, then open **Observe → Policy** to inspect the decision, matched policy, machine, and reason.
+
+    <Info>Screenshot placeholder: Policy editor draft, published version, deployment target, and resulting decision.</Info>
+  </Tab>
+  <Tab title="CLI">
+    Create a local policy file and validate it through the real loader:
+
+    ```ts
+    import { customPolicies, allow, deny } from "failproofai";
+
+    customPolicies.add({
+      name: "protect-production-deletes",
+      description: "Block destructive production commands",
+      match: { events: ["PreToolUse"] },
+      fn: async ({ toolName, toolInput }) => {
+        const command = String(toolInput?.command ?? "");
+        if (toolName === "Bash" && /kubectl\s+delete/.test(command)) {
+          return deny("Production deletes require human review");
+        }
+        return allow();
+      },
+    });
+    ```
+
+    ```bash
+    failproofai policies --install \
+      --custom ./checkout.policies.ts \
+      --scope project
+    failproofai policies
+    ```
+
+    Cloud policy publishing and fleet deployment do not currently have `fp` commands. Use the Dashboard tab for those actions; use `failproofai` to validate and run local policy code.
+  </Tab>
+</Tabs>
+
+## Exports
+
+| Export | Use |
+| --- | --- |
+| `customPolicies.add(policy)` | Register a policy when the module loads |
+| `allow(reason?)` | Permit the action |
+| `deny(reason)` | Block the action |
+| `instruct(reason)` | Let the harness guide the agent away from the risky action |
+| `getCustomHooks()` | Return registered custom policies |
+| `clearCustomHooks()` | Clear the registry, mainly for tests and loaders |
+
+TypeScript also exports `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, and `PolicyFunction`.
+
+## Policy shape
+
+```ts
+customPolicies.add({
+  name: "policy-name",
+  description: "What this policy prevents",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => allow(),
+});
+```
+
+`name` and `fn` are required. `description` and `match.events` are optional. Custom-policy matchers currently support event names only; inspect `ctx.toolName` inside the function when a policy applies to selected tools.
+
+## Decisions
+
+| Helper | Result | Typical harness behavior |
+| --- | --- | --- |
+| `allow(reason?)` | `{ decision: "allow" }` | Continue normally. |
+| `deny(reason)` | `{ decision: "deny", reason }` | Block the action when the harness supports blocking. |
+| `instruct(reason)` | `{ decision: "instruct", reason }` | Return guidance that lets the agent choose a safer action. |
+
+A raw `PolicyResult` may also include `message`. Prefer the helpers unless you need that lower-level field.
+
+## Context
+
+| Field | Meaning |
+| --- | --- |
+| `eventType` | Normalized hook event being evaluated |
+| `payload` | Complete normalized event payload |
+| `toolName` | Tool name when the event concerns a tool |
+| `toolInput` | Parsed tool input when available |
+| `session` | Session metadata supplied by the harness |
+| `params` | Configured policy parameters |
+| `cli` | Source harness such as `claude` or `codex` |
+
+A policy function may return a decision directly or as a promise. Missing optional fields must be treated as normal input, not as an exceptional state.
+
+## Loader behavior
+
+- Explicit policy paths are resolved against the session working directory unless absolute.
+- Convention files must end in `policies.js`, `policies.mjs`, or `policies.ts`.
+- Project convention files load before user convention files in stable filename order.
+- ESM imports, CommonJS `require()`, and transitive relative imports are supported.
+- Imports from `failproofai` are rewritten to the installed package's public API.
+- Module initialization and each policy evaluation have a 10-second safety deadline.
+- A convention policy that fails to load is skipped and logged; builtin policies continue. Explicit CLI validation is strict and exits non-zero.
+
+Keep top-level policy modules deterministic and fast. Do not start servers, wait for network calls, or perform unbounded work while the module is loading.
+
+## Validate both module systems
+
+```bash
+failproofai policies --install --custom ./security.policies.mjs --scope project
+failproofai policies --install --custom ./security.policies.js --scope project
+```
+
+Local imports are permitted:
+
+```ts
+import { protectedProductionPath } from "./policy-rules.js";
+import { customPolicies, deny, allow } from "failproofai";
+```
+
+<Card title="Write a custom policy" icon="code-2" href="/policies/custom">
+  Follow the workflow for creating, validating, and installing a policy file.
+</Card>

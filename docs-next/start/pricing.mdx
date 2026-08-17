@@ -1,0 +1,40 @@
+---
+title: "Pricing and usage"
+description: "Understand how to evaluate a Failproof AI plan and monitor usage."
+icon: "badge-dollar-sign"
+---
+
+Choose a plan based on run volume, evaluation volume, audit cadence, and administration needs.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Go to **Administration → Usage** to compare your current metering window with the included runs, evaluations, and audit cadence below.
+
+    ![The Usage page showing the active metering window and consumption across events, sessions, evaluations, audits, workspace resources, members, and keys.](/images/dashboard/usage-overview.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp usage
+    fp --json usage
+    ```
+
+    Use the pricing page linked below for current overage rates and purchase options.
+  </Tab>
+</Tabs>
+
+| Plan | Price | Included usage and fit |
+| --- | --- | --- |
+| Free Forever + Open Source | $0 | 5,000 runs, 100 evaluations, and 3 failure audits each month; 30-day retention and 7-day backfill; local enforcement and builtin policies |
+| Team | $99/month | 50,000 runs, 2,000 evaluations, and one failure audit per day; additional usage at $1 per 1,000 runs and $0.05 per evaluation |
+| Scale | $599/month | 500,000 runs, 20,000 evaluations, and four failure audits per day; additional usage at $0.60 per 1,000 runs and $0.04 per evaluation; auto policy authoring, RBAC, and SSO/SAML |
+| Enterprise | Custom | Multi-tenant governance, on-premises options, and deployment-specific support |
+
+<Card title="View current pricing" icon="external-link" href="https://befailproof.ai/pricing/">
+  The pricing page is the canonical source for current limits, overage rates, features, and purchase options.
+</Card>
+
+Use **Administration → Usage** to inspect the active billing window and the consumption reported for your organization. Before expanding a rollout, estimate volume from a representative production period rather than a short development run.
+
+<Tip>
+  Separate environments such as `development`, `staging`, and `production`. This makes dashboards, audits, and usage investigations easier to scope.
+</Tip>

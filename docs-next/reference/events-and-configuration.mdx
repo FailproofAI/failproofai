@@ -21,13 +21,18 @@ Every event carries a timestamp, session ID, agent ID, event type, and environme
   <Tab title="Dashboard">
     1. Open **Observe → Events**.
     2. Set a short time window and filter by environment, agent, and event type.
-    3. Select an event to inspect its normalized fields and raw payload.
-    4. Copy the session ID and open **Observe → Sessions** to see the event in execution context.
-    5. If a paired duration is missing, verify that the start and completion events use the same correlation ID.
+    3. Select an event to inspect its normalized fields and raw payload, then open its session to see the execution context.
+    4. If a paired duration is missing, verify that the start and completion events use the same correlation ID.
+
+    Use the Events stream to narrow the data to one agent run and inspect the normalized event fields.
 
     ![The live Events stream with filters for environment, agent, session, and event type.](/images/dashboard/events-stream.png)
 
+    Then follow the event into its session. The trace shows what happened immediately before and after it, which is necessary when the payload alone is ambiguous.
+
     ![The linked session trace used to inspect the event in execution context.](/images/dashboard/session-detail.png)
+
+    Compare correlation IDs and timestamps across both views when a paired event or duration is missing.
   </Tab>
   <Tab title="CLI">
     Discover valid filter values, then fetch full event payloads for one session:
@@ -53,22 +58,21 @@ Do not use `timestamp`, `session_id`, `agent_id`, `type`, or `environment` as cu
 ## Local boundaries
 
 - Failproof AI state lives under `~/.failproofai` unless explicitly configured otherwise.
-- The Python tracing SDK uses `AGENTEYE_HOME` for its legacy base-directory override.
+- `failproofai-sdk` uses `AGENTEYE_HOME` for its legacy base-directory override.
 - Environment labels can be set through SDK configuration or `AGENTEYE_ENVIRONMENT`.
-- Collector secrets are stored separately from non-secret settings.
+- Daemon credentials are stored separately from non-secret settings.
 
-Use stable, low-cardinality environment names. Commas are not supported in collector environment labels.
+Use stable, low-cardinality environment names. Commas are not supported in daemon environment labels.
 
 ## Change an environment label
 
 <Tabs>
   <Tab title="Dashboard">
-    Environment labels are assigned by the emitting SDK or collector. After changing one, open **Observe → Sessions** and use the environment filter to confirm new sessions carry the new value. Existing sessions retain their original environment.
+    Environment labels are assigned by the emitting SDK or Failproof daemon. After changing one, open **Observe → Sessions** and use the environment filter to confirm new sessions carry the new value. Existing sessions retain their original environment.
 
-    <Info>Screenshot placeholder: Sessions environment filter showing old and new deployment labels.</Info>
   </Tab>
   <Tab title="CLI">
-    For the Python SDK, configure the environment in code or with its legacy environment variable. For the local collector, rerun interactive configuration and verify the result.
+    For `failproofai-sdk`, configure the environment in code or with its legacy environment variable. Rerun daemon configuration when changing machine-level settings.
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east

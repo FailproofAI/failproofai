@@ -13,8 +13,7 @@ A trace turns a flat event stream into the causal story of the run. Read it from
     1. Go to **Observe → Sessions** and open a session.
     2. Use the profile summary to check outcome, timing, errors, and evaluation scores.
     3. Scan the timeline and minimap. Filter event types or time when the session is large.
-    4. Select an event to open the detail panel. Use **export** to download evaluator JSON.
-    5. Copy the page URL after selecting an event to share a deep link to that evidence.
+    4. Select an event to inspect it. Use **export** for evaluator JSON, or copy the page URL to share a deep link to the selected evidence.
 
     ![A session detail view with its execution graph, event timeline, evaluation panel, and tool, model, and hook breakdown.](/images/dashboard/session-detail.png)
   </Tab>
@@ -30,11 +29,8 @@ A trace turns a flat event stream into the causal story of the run. Read it from
 </Tabs>
 
 <Steps>
-  <Step title="Check the session header">
-    Confirm the agent, environment, start and end time, outcome, and overall duration.
-  </Step>
-  <Step title="Scan the event spine">
-    Look for errors, unusually long spans, repeated tool names, human waits, and denied policy decisions.
+  <Step title="Orient yourself">
+    Confirm the agent, environment, timing, outcome, and duration, then scan for errors, long spans, repeated tools, human waits, and denied policy decisions.
   </Step>
   <Step title="Expand the first suspicious event">
     Inspect its request, response, tool input, output, and correlation ID. Sensitive content is visible only when transcript capture is enabled and your permissions allow it.

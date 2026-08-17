@@ -10,19 +10,24 @@ A finding is the audit's evidence-backed statement about a failure. An issue is 
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open **Analyze → Audits**, choose an audit, and open a completed run.
-    2. Select a finding to inspect analysis, root cause, recommendation, scope, sessions, and evidence queries.
-    3. Acknowledge, assign, dismiss, mute, resolve, or reopen the finding.
-    4. Go to **Analyze → Issues** for the durable inbox. Filter by tab, severity, or assignee.
-    5. Open the issue to assign it, add comments or subscribers, and resolve it after the fix is verified.
+    1. Open **Analyze → Audits**, choose a completed run, and select a finding to inspect its analysis, recommendation, sessions, and evidence queries.
+    2. Acknowledge, assign, dismiss, mute, resolve, or reopen the finding after checking its evidence.
+    3. Go to **Analyze → Issues** and filter the durable inbox by status, severity, or assignee.
+    4. Open the issue to assign it, add comments or subscribers, and resolve it after the fix is verified.
+
+    Start with the finding summary. Confirm that the failure description, recommended response, severity, and ranking agree with the sessions you expected the audit to examine.
 
     ![An audit finding with severity, occurrence count, root-cause analysis, recommended action, ranking factors, and evidence.](/images/dashboard/audit-finding.png)
 
-    ![The evidence section of an audit finding showing sample errors, supporting queries, and affected sessions.](/images/dashboard/audit-evidence.png)
+    Next, open an affected session rather than deciding from the summary alone. The linked trace should show the exact event and payload that support the finding.
 
     ![A session linked from an audit finding, opened at the relevant error with its event metadata and raw payload.](/images/dashboard/audit-linked-session.png)
 
+    After verifying the evidence, use Issues to give the response an owner and track it independently of future audit runs.
+
     ![The Issues inbox showing firing, acknowledged, and resolved work with severity and ownership.](/images/dashboard/incidents.png)
+
+    Open the issue to record investigation notes, notify subscribers, and preserve the response history. Resolve it only after the remediation is deployed and verified.
 
     ![An issue detail view with its source, breach evidence, assignees, subscribers, timeline, and comments.](/images/dashboard/incident-detail.png)
   </Tab>
@@ -41,6 +46,8 @@ A finding is the audit's evidence-backed statement about a failure. An issue is 
     ```
 
     Use `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>`, and `fp issues subscribers <issue-id>` to manage watchers.
+
+    See the [Cloud CLI audit and issue reference](/reference/cloud-cli#audits) for audit findings and [`fp issues`](/reference/cloud-cli#issues) for issue management.
   </Tab>
 </Tabs>
 
@@ -59,6 +66,30 @@ Confirm that it contains:
 Create or link an issue when the finding needs assignment, discussion, status changes, comments, or subscribers. Issues can also represent alert incidents and manually reported problems, which is why they live under audit response rather than in the primary navigation.
 
 Resolve the issue when remediation is deployed and verified. Resolve the finding when the failure mode has been addressed for the audit population. Those moments may differ.
+
+## Turn an issue into a policy draft
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Open the issue and verify its finding, cited sessions, root cause, and recommendation.
+    2. Select **generate policy** and review the candidacy result and proposed enforcement intent. A **no policy** result means the behavior may require an alert, workflow change, or human response instead.
+    3. Select **write this policy**, then review and test the generated source in **Admin → policy editor** before selecting **publish version**. Use **open the editor anyway** when you disagree with the candidacy check.
+    4. Go to **Admin → enforcement**, deploy the version in **observe** mode, and verify its decisions under **Observe → policy** before enforcing it.
+
+    The issue title, finding description, root cause, recommendation, and candidacy intent help compose the draft. Nothing is published or deployed automatically.
+  </Tab>
+  <Tab title="CLI">
+    Use the CLI to inspect the evidence before opening the issue in the dashboard:
+
+    ```bash
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp events --session-id <session-id> --full --all
+    ```
+
+    Policy candidacy, Cloud publication, and fleet deployment are dashboard workflows. Use `failproofai policies --install --custom <file>` when you want to validate equivalent policy source locally first.
+  </Tab>
+</Tabs>
 
 <Card title="Author a policy" icon="shield-plus" href="/policies/editor">
   Convert a confirmed, repeatable action pattern into a policy version.

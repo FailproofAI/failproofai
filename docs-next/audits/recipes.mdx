@@ -10,9 +10,15 @@ Use these as starting goals, then add your agent, environment, and expected work
   <Tab title="Dashboard">
     Go to **Analyze → Audits → New audit**, copy one recipe into the description or brief, then add the relevant environment, agent, lookback, and reference URLs. Create the audit and inspect the first run before scheduling it.
 
-    ![The Audits page where a workflow-specific audit recipe appears after creation.](/images/dashboard/audits.png)
+    The new audit form turns a recipe into an executable failure check by adding scope, context, cadence, and notifications.
 
     ![The new audit form configured with a focused goal, schedule, agent and environment scope, context, and notification channels.](/images/dashboard/audit-new.png)
+
+    After creation, confirm the audit appears in the list with the expected status and schedule before relying on recurring runs.
+
+    ![The Audits page where a workflow-specific audit recipe appears after creation.](/images/dashboard/audits.png)
+
+    Open the first run and refine the recipe if its findings are broader or narrower than the intended failure mode.
   </Tab>
   <Tab title="CLI">
     Save a recipe as a text file and attach it during creation:

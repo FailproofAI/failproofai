@@ -10,13 +10,20 @@ API keys belong to an organization and carry explicit permissions. Use separate 
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Administration → Keys** and select **new key**.
-    2. Enter a workload name and choose a permission set.
-    3. Add or remove individual permissions only when the preset is not sufficient.
-    4. Create the key and copy the secret immediately; it is shown once.
-    5. Open the key later to update grants, disable it, or regenerate the secret.
+    1. Go to **Administration → Keys**, select **new key**, and enter a workload name.
+    2. Choose a permission set and adjust individual permissions only when the preset is insufficient.
+    3. Create the key and copy its one-time secret immediately.
+    4. Open the key later to update grants, disable it, or regenerate the secret.
+
+    The creation drawer is where you choose the narrowest grants required by the workload.
+
+    ![The new API key drawer with permission presets and individual grants.](/images/dashboard/key-create.png)
+
+    After creation, the Keys page shows the persistent metadata and management actions. The one-time secret is not shown again.
 
     ![The API Keys page showing key permissions, creation time, and regenerate and disable actions.](/images/dashboard/api-keys.png)
+
+    Use this list to review grants regularly and disable keys that no longer map to an active workload.
   </Tab>
   <Tab title="CLI">
     ```bash

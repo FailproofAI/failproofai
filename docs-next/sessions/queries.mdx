@@ -13,12 +13,17 @@ Queries are the flexible layer beneath dashboards, audits, and investigations. U
     1. Go to **Analyze → Queries** and select **new query**.
     2. Open the schema browser and choose fields from the event, session, or evaluation data.
     3. Write SQL, add parameters when needed, and run the query.
-    4. Save it with a clear name and description.
-    5. From the query list, use **add to dashboard** when the result should be monitored.
+    4. Save it with a clear name and description, then use **add to dashboard** when the result should be monitored.
+
+    The query editor combines the event schema, SQL, parameters, and a result preview so you can validate the question before saving it.
+
+    ![The SQL query editor with a schema browser and live result grid.](/images/dashboard/query-lab.png)
+
+    Saved queries then appear in the shared library, where teammates can rerun them or add their results to dashboards.
 
     ![The saved Queries library containing reusable built-in and custom queries.](/images/dashboard/queries.png)
 
-    ![The SQL query editor with a schema browser and live result grid.](/images/dashboard/query-lab.png)
+    Use a clear name and description so the result remains understandable without reopening its SQL.
   </Tab>
   <Tab title="CLI">
     ```bash

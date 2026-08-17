@@ -30,28 +30,31 @@ Use a local audit for an immediate, private review before connecting a machine t
 
 The current audit adapters can read histories from Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity, and Goose. Only locally available histories are scanned.
 
-## Run a scheduled headless audit
+## Schedule recurring local audits
 
 <Tabs>
   <Tab title="Dashboard">
-    A scheduled run refreshes the cached result used by the local audit dashboard. Open the dashboard later with `failproofai` and select the local audit view to review the latest completed scan.
-
-    Scheduled mode does not start a server or open a browser. Use your operating system's scheduler or automation runner to invoke it at the cadence you need.
+    Open **Settings** in the local dashboard, enable scheduled audits, choose the interval, and set the email address that should receive findings. The dashboard and CLI update the same machine configuration.
   </Tab>
   <Tab title="CLI">
+    Enable a weekly audit and send findings to the named address:
+
     ```bash
-    failproofai audit --scheduled
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
     ```
 
-    Scheduled mode prints a one-line result and exits. It accepts no additional arguments.
+    The interval accepts 1–90 days and defaults to 7 when omitted. The first setup signs you in when needed; `--email` supplies the report address without prompting.
 
-    | Exit code | Meaning |
-    | --- | --- |
-    | `0` | Audit completed and refreshed the local cache |
-    | `75` | Another audit already holds the single-run lock; retry later |
-    | Other non-zero value | The audit failed; inspect stderr and local logs |
+    Stop the schedule without deleting local audit history:
+
+    ```bash
+    failproofai audit --no-schedule
+    ```
   </Tab>
 </Tabs>
+
+The daemon runs scheduled scans in the background, refreshes the cached result used by the local dashboard, and emails the configured report. Use `failproofai audit` when you want to run an interactive scan immediately.
 
 ## Move from local evidence to Cloud operations
 

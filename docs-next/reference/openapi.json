@@ -1,13 +1,13 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Failproof AI Cloud API",
-    "description": "The Failproof AI observability API.\n\nEvery path below is relative to `/v1` on your deployment's dashboard origin — e.g. `https://app.example.com/v1/sessions`. Authenticate with a scoped API key as a bearer token.\n\nOrganization scoping: a key belongs to one organization and acts on it automatically. An instance-scoped key selects one per request with the `X-AgentEye-Org` header; without it, such a key resolves to the default organization, so set it explicitly on a multi-org deployment.",
+    "title": "AgentEye API",
+    "description": "The AgentEye observability API.\n\nEvery path below is relative to `/v1` on your deployment's dashboard origin — e.g. `https://app.example.com/v1/sessions`. Authenticate with a scoped API key as a bearer token.\n\nOrganization scoping: a key belongs to one organization and acts on it automatically. An instance-scoped key selects one per request with the `X-AgentEye-Org` header; without it, such a key resolves to the default organization, so set it explicitly on a multi-org deployment.",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "0.0.1-beta.76"
+    "version": "0.0.1-beta.77"
   },
   "servers": [
     {
@@ -481,6 +481,202 @@
           },
           "422": {
             "description": "The payload failed validation; `error` names the problem."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/audits/contracts": {
+      "get": {
+        "tags": [
+          "Audits"
+        ],
+        "description": "List this organization's agent contracts. A contract states what one agent is for — what it must produce, how often it should run, what it must never do — and audits grade that agent against it. Contracts are organization-wide: there is one per agent, shared by every audit that covers it. Contract text is omitted here; read a single contract to get it. `last_matched` is when that agent last produced anything an audit could grade, and a contract that has never matched usually names an agent that does not exist.",
+        "operationId": "list_contracts",
+        "responses": {
+          "200": {
+            "description": "The organization's contracts, without their text."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:read`."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Audits"
+        ],
+        "description": "Write a contract for one agent. `agent_id` must match the agent id in your telemetry exactly — take it from the agent list rather than typing it, because a name that matches nothing is not rejected and the contract simply never applies. Case and surrounding whitespace are ignored when matching. One contract per agent: writing a second for the same agent is a conflict, not a replacement. The body is Markdown and is stored as written; the response reports which sections were recognised.",
+        "operationId": "create_contract",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The contract as stored."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:write`."
+          },
+          "409": {
+            "description": "This agent already has a contract."
+          },
+          "422": {
+            "description": "The agent id or body is missing, malformed, or too long."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/audits/contracts/{cid}": {
+      "get": {
+        "tags": [
+          "Audits"
+        ],
+        "description": "Read one agent contract, including its full text. `sections` lists the parts of the document that were recognised, so a heading that was not understood is visible rather than silently having no effect.",
+        "operationId": "get_contract",
+        "parameters": [
+          {
+            "name": "cid",
+            "in": "path",
+            "description": "The contract's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The contract."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks the required permission."
+          },
+          "404": {
+            "description": "No such contract in this organization."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Audits"
+        ],
+        "description": "Replace a contract. This is a full replacement, not a merge: the agent id and body are set to exactly what you send. Editing a contract changes what future audits expect; findings already raised keep referring to the text that was in force when they were raised.",
+        "operationId": "update_contract",
+        "parameters": [
+          {
+            "name": "cid",
+            "in": "path",
+            "description": "The contract's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The contract as stored."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:write`."
+          },
+          "404": {
+            "description": "No such contract in this organization."
+          },
+          "409": {
+            "description": "Another contract already covers that agent."
+          },
+          "422": {
+            "description": "The agent id or body is missing, malformed, or too long."
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Audits"
+        ],
+        "description": "Delete a contract. The agent is audited from then on as though one had never been written. Audits that already ran keep their record of what they graded against.",
+        "operationId": "delete_contract",
+        "parameters": [
+          {
+            "name": "cid",
+            "in": "path",
+            "description": "The contract's id.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The contract was deleted."
+          },
+          "401": {
+            "description": "Missing, unknown, or disabled key."
+          },
+          "403": {
+            "description": "The key lacks `audits:write`."
+          },
+          "404": {
+            "description": "No such contract in this organization."
           }
         },
         "security": [
@@ -4184,7 +4380,7 @@
           "Settings"
         ],
         "summary": "The context-window overrides configured for your organization.",
-        "description": "One entry per model id this org has overridden; models left on Failproof AI's\nbuilt-in defaults do not appear here. To see what a specific model actually\nresolves to, override or not, use `/settings/model-context-windows/resolve`.\n\nListing, setting and deleting all share this one path and differ only by\nmethod, because the model id travels in the body or the query string rather\nthan the path.",
+        "description": "One entry per model id this org has overridden; models left on AgentEye's\nbuilt-in defaults do not appear here. To see what a specific model actually\nresolves to, override or not, use `/settings/model-context-windows/resolve`.\n\nListing, setting and deleting all share this one path and differ only by\nmethod, because the model id travels in the body or the query string rather\nthan the path.",
         "operationId": "list_overrides",
         "responses": {
           "200": {
@@ -4248,7 +4444,7 @@
           "Settings"
         ],
         "summary": "Remove one model's context-window override.",
-        "description": "The model falls back to Failproof AI's built-in default from the next ingested\nevent. 404 if this organization has no override for that model.\n\nThe model id travels in the `model` QUERY parameter, not the path, so ids\ncontaining `/` need no percent-encoding.",
+        "description": "The model falls back to AgentEye's built-in default from the next ingested\nevent. 404 if this organization has no override for that model.\n\nThe model id travels in the `model` QUERY parameter, not the path, so ids\ncontaining `/` need no percent-encoding.",
         "operationId": "delete_override",
         "parameters": [
           {
@@ -4291,7 +4487,7 @@
           "Settings"
         ],
         "summary": "Preview the context window a model resolves to.",
-        "description": "Returns the effective limit and its authoritative `source`: `override` (this\norg configured it), `default` (Failproof AI's built-in table), or `unknown` (no\nlimit known, so no context-fill percentage is computed). Deliberately does\nnot consult the cache, so it reports the true source rather than a cache hit.\n\nThe model id travels in the `model` QUERY parameter, not the path, so ids\ncontaining `/` need no percent-encoding.",
+        "description": "Returns the effective limit and its authoritative `source`: `override` (this\norg configured it), `default` (AgentEye's built-in table), or `unknown` (no\nlimit known, so no context-fill percentage is computed). Deliberately does\nnot consult the cache, so it reports the true source rather than a cache hit.\n\nThe model id travels in the `model` QUERY parameter, not the path, so ids\ncontaining `/` need no percent-encoding.",
         "operationId": "resolve_model",
         "parameters": [
           {
@@ -4971,6 +5167,30 @@
           }
         }
       },
+      "ContractBody": {
+        "type": "object",
+        "required": [
+          "agent_id",
+          "body"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "The agent this contract governs, exactly as it appears in your telemetry.\nCase and surrounding whitespace are ignored when matching. A name that\nmatches no agent is accepted, so take it from your agent list rather than\ntyping it — otherwise the contract silently never applies."
+          },
+          "body": {
+            "type": "string",
+            "description": "The contract itself, as Markdown. Stored as written. Optional `---`\nfrontmatter may set `purpose` and `cadence`; `## Outputs`, `## Done when`\nand `## Must not` headings are recognised as sections. Anything else is\nkept and shown to the analysis rather than rejected. Maximum 5,000\ncharacters — a contract is a page stating one agent's job, not a\ndocument."
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether audits should grade against this contract. Defaults to true on\ncreation, and is left unchanged when omitted on update."
+          }
+        }
+      },
       "CreateCommentBody": {
         "type": "object",
         "required": [
@@ -5424,7 +5644,7 @@
       "api_key": {
         "type": "http",
         "scheme": "bearer",
-        "description": "A scoped Failproof AI API key. Mint one in the dashboard under Settings → API keys, or with `POST /v1/keys`. Each endpoint names the permission it requires; a key without it gets 403 and a `required_permission` field naming what was missing."
+        "description": "A scoped AgentEye API key. Mint one in the dashboard under Settings → API keys, or with `POST /v1/keys`. Each endpoint names the permission it requires; a key without it gets 403 and a `required_permission` field naming what was missing."
       }
     }
   },

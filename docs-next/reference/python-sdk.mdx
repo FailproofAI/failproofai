@@ -1,70 +1,51 @@
 ---
-title: "Python tracing SDK"
-description: "Install the Python SDK, instrument custom agents, and deliver structured traces to Failproof AI."
-icon: "file-code-2"
+title: "Custom agents"
+description: "Instrument traces from custom agents so Failproof AI can reconstruct runs and find failures."
+icon: "python"
 ---
 
-The current tracing package imports as `agenteye`. It requires Python 3.10 or newer and writes structured JSONL batches locally; a collector delivers those batches to Failproof AI Cloud.
+Instrument traces from a custom agent with `failproofai-sdk` so Failproof AI can reconstruct each run, audit its behavior, and find evidence-backed failures. The SDK writes structured events for the Failproof daemon to deliver to Cloud. It requires Python 3.10 or newer.
+
+Tracing makes custom agents observable and auditable. Preventing an unsafe action before it executes also requires an enforcement hook in your runtime.
+
+<Info>
+  To enforce policies in a custom agent setup, [contact Failproof AI](mailto:support@befailproof.ai). We will help map your runtime's model, tool, and lifecycle boundaries to policy hooks.
+</Info>
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with the Failproof AI Python SDK" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-## Install the correct package
+## Install `failproofai-sdk`
 
-<Warning>
-  Do not run `pip install agenteye` from public PyPI inside your agent environment. The public distribution is the Cloud CLI and exposes `agenteye_cli`, not this tracing SDK. It can replace a working SDK installation because both currently use the same distribution name.
-</Warning>
-
-The tracing SDK is currently distributed as a private wheel from GitHub Releases. Ask your Failproof AI contact for the current version and a token that can read `agenteye-enterprise/releases`.
+The SDK is currently distributed as a private wheel. Ask your Failproof AI contact for the current version and download access.
 
 ```bash
 VERSION=<sdk-version>
-GITHUB_TOKEN="$AGENTEYE_TOKEN" gh release download "python-sdk/v${VERSION}" \
-  --repo agenteye-enterprise/releases \
-  --pattern 'agenteye-*.whl'
-pip install "./agenteye-${VERSION}-py3-none-any.whl"
-python -c "import agenteye; print(agenteye.__version__)"
+pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
+python -c "import failproofai; print(failproofai.__version__)"
 ```
 
-With `uv`, download the wheel first and then run `uv add ./agenteye-${VERSION}-py3-none-any.whl`. Pin the wheel in a private artifact repository or dependency lock; an unpinned `agenteye` requirement resolves to the unrelated public CLI.
+With `uv`, download the wheel first and run `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`. Pin the wheel in a private artifact repository or dependency lock.
 
-## Choose the delivery path
+The package is installed as `failproofai-sdk` and imported in Python as `failproofai`.
 
-| Runtime | SDK spool | Delivery command |
-| --- | --- | --- |
-| Standalone AgentEye collector | `$AGENTEYE_HOME/events`, otherwise `~/.agenteye/events` | `agenteye-collector flush` |
-| Failproof AI daemon | `$FAILPROOFAI_HOME/custom-agents/events`, otherwise `~/.failproofai/custom-agents/events` | `failproofai flush --wait` |
-
-The standalone path is the safe default. To use the Failproof AI daemon, its `custom-agents` directory must already exist and `AGENTEYE_SPOOL_TO_FAILPROOFAI` must be set to `1`, `true`, `yes`, or `on` in the agent process.
+## Connect the Failproof daemon
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Administration → Keys** and create a key with `events:add` permission or the **collector** preset.
-    2. Configure either the Failproof AI daemon or the standalone collector on the agent machine.
-    3. Run one instrumented agent session.
-    4. Go to **Observe → Events** and search the exact session ID.
-    5. Go to **Observe → Sessions**, select the same environment, and open the reconstructed trace.
+    1. Go to **Admin → Keys** and create a key with `events:add`.
+    2. [Connect the Failproof daemon to Cloud](/start/setup#connect-a-machine-to-cloud) on the agent machine.
+    3. Run one instrumented session, then find its exact ID under **Observe → Events**.
+    4. Go to **Observe → Sessions**, select the same environment, and open the reconstructed trace.
 
     ![A custom Python agent session reconstructed as an execution graph and ordered event trace.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
-    For the standalone collector:
-
-    ```bash
-    agenteye-collector service install \
-      --url https://app.befailproof.ai/v1/events \
-      --key <events-add-key>
-    agenteye-collector health
-    ```
-
-    For the Failproof AI daemon:
-
     ```bash
     failproofai config \
       --connect https://app.befailproof.ai \
       --token <events-add-key>
-    export AGENTEYE_SPOOL_TO_FAILPROOFAI=1
     failproofai config --status
     ```
   </Tab>
@@ -78,14 +59,14 @@ Call `configure()` once during process startup. Every event call is keyword-only
 import traceback
 import uuid
 
-import agenteye
+import failproofai
 
-agenteye.configure(environment="production")
+failproofai.configure(environment="production")
 
 session_id = uuid.uuid4().hex
 agent_id = "checkout-agent"
 
-agenteye.event.agent_start(
+failproofai.event.agent_start(
     session_id=session_id,
     agent_id=agent_id,
     goal="Resolve a failed checkout",
@@ -93,7 +74,7 @@ agenteye.event.agent_start(
 
 try:
     tool_call_id = uuid.uuid4().hex
-    agenteye.event.tool_use(
+    failproofai.event.tool_use(
         session_id=session_id,
         agent_id=agent_id,
         tool_name="lookup_order",
@@ -101,7 +82,7 @@ try:
         input={"order_id": "ord_8421"},
     )
     result = {"status": "payment_failed"}
-    agenteye.event.tool_result(
+    failproofai.event.tool_result(
         session_id=session_id,
         agent_id=agent_id,
         tool_name="lookup_order",
@@ -109,21 +90,21 @@ try:
         output=result,
     )
 except Exception as exc:
-    agenteye.event.error(
+    failproofai.event.error(
         session_id=session_id,
         agent_id=agent_id,
         error_type=type(exc).__name__,
         message=str(exc),
         traceback=traceback.format_exc(),
     )
-    agenteye.event.agent_end(
+    failproofai.event.agent_end(
         session_id=session_id,
         agent_id=agent_id,
         outcome="failed",
     )
     raise
 else:
-    agenteye.event.agent_end(
+    failproofai.event.agent_end(
         session_id=session_id,
         agent_id=agent_id,
         outcome="success",
@@ -136,7 +117,7 @@ Emit `agent_start` once per actor. For sub-agents, reuse the parent's `session_i
 ## Configuration reference
 
 ```python
-agenteye.configure(
+failproofai.configure(
     base_dir=None,
     flush_interval=0.5,
     environment="production",
@@ -147,12 +128,10 @@ agenteye.configure(
 | --- | --- |
 | `base_dir` | Explicit spool root. Takes precedence over all environment variables. |
 | `flush_interval` | Seconds between background writes from memory to JSONL. Default: `0.5`. |
-| `environment` | Deployment label on every event. Defaults to `AGENTEYE_ENVIRONMENT`, then `dev`. |
-| `AGENTEYE_HOME` | Overrides the default `~/.agenteye` root. |
-| `AGENTEYE_SPOOL_TO_FAILPROOFAI` | Opts into the Failproof AI daemon spool when its `custom-agents` directory exists. |
-| `FAILPROOFAI_HOME` | Changes the Failproof AI root used by the opt-in path. |
+| `environment` | Deployment label on every event. Defaults to `dev`. |
+| `FAILPROOFAI_HOME` | Changes the Failproof AI root that contains the `custom-agents` spool. |
 
-Resolution order for the spool is explicit `base_dir`, `AGENTEYE_HOME`, opted-in Failproof AI `custom-agents`, then `~/.agenteye`.
+The SDK writes to the explicit `base_dir` when set. Otherwise, it uses the Failproof daemon's `custom-agents` spool under `FAILPROOFAI_HOME` or `~/.failproofai`.
 
 The SDK queues calls in memory and writes batches on a background thread. It also attempts a final flush through Python's `atexit` handling. For short-lived workers, allow normal interpreter shutdown; hard process termination can lose events still in memory.
 
@@ -201,23 +180,19 @@ Reserved custom names are `timestamp`, `session_id`, `agent_id`, `type`, and `en
     In **Observe → Events**, verify `agent_start` exists first and `agent_end` exists last. Then open **Observe → Sessions** and confirm model, tool, human, hook, and error events appear in the intended order. Use the session ID as the primary troubleshooting key.
   </Tab>
   <Tab title="CLI">
-    Standalone collector:
-
-    ```bash
-    agenteye-collector flush
-    agenteye-collector health --json
-    fp sessions --since 1h --env production --session-id <session-id>
-    fp events --since 1h --session-id <session-id> --full
-    ```
-
-    Failproof AI daemon spool:
-
     ```bash
     failproofai flush --wait --timeout 60
     failproofai config --status
+    fp sessions --since 1h --env production --session-id <session-id>
     fp events --since 1h --session-id <session-id> --full
     ```
   </Tab>
 </Tabs>
 
-If Cloud is empty, inspect the matching local directory first. JSONL files prove SDK emission; a growing spool points to collector configuration or delivery, while an empty spool points to instrumentation, process lifetime, or the selected base directory.
+If Cloud is empty, inspect `$FAILPROOFAI_HOME/custom-agents/events`, otherwise `~/.failproofai/custom-agents/events`. JSONL files prove SDK emission; a growing spool points to daemon configuration or delivery, while an empty spool points to instrumentation or process lifetime.
+
+## Prevent failures in a custom runtime
+
+Use audit findings and linked traces to define the unsafe action, required evidence, and intended response. A custom enforcement integration must expose the action before execution, pass its structured input to the policy engine, and apply the resulting allow, instruct, or deny decision.
+
+Email [support@befailproof.ai](mailto:support@befailproof.ai) to design and validate this integration for your runtime.

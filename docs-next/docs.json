@@ -31,8 +31,9 @@
   "search": { "prompt": "Search Failproof AI docs" },
   "navbar": {
     "links": [
-      { "label": "Discord", "href": "https://discord.befailproof.ai" },
-      { "label": "Star on GitHub", "href": "https://github.com/FailproofAI/failproofai" }
+      { "label": "", "href": "https://discord.befailproof.ai", "icon": "discord" },
+      { "label": "", "href": "https://x.com/failproofai", "icon": "x-twitter" },
+      { "label": "⭐ 1.1k", "href": "https://github.com/FailproofAI/failproofai", "icon": "github" }
     ],
     "primary": {
       "type": "button",
@@ -54,14 +55,13 @@
               "start/first-audit",
               "start/first-policy",
               "start/setup",
-              "start/concepts",
-              "start/pricing"
+              "start/concepts"
             ]
           }
         ]
       },
       {
-        "tab": "Sessions and tracing",
+        "tab": "Trace Agents",
         "icon": "route",
         "groups": [
           {
@@ -85,7 +85,7 @@
         ]
       },
       {
-        "tab": "Audits and response",
+        "tab": "Find failures",
         "icon": "scan-search",
         "groups": [
           {
@@ -94,6 +94,7 @@
               "audits/overview",
               "audits/local-audit",
               "audits/setup",
+              "audits/agent-contracts",
               "audits/run",
               "audits/cadence",
               "audits/findings-and-issues",
@@ -104,7 +105,7 @@
         ]
       },
       {
-        "tab": "Policies and deployment",
+        "tab": "Prevent failures",
         "icon": "shield-check",
         "groups": [
           {
@@ -125,7 +126,7 @@
         ]
       },
       {
-        "tab": "Administration",
+        "tab": "Admin",
         "icon": "settings-2",
         "groups": [
           {
@@ -149,7 +150,6 @@
             "pages": [
               "reference/overview",
               "reference/harnesses",
-              "reference/collector",
               "reference/python-sdk",
               "reference/evaluator-sdk",
               "reference/policy-sdk",

@@ -14,11 +14,23 @@ A policy evaluates an agent hook event and returns one of three decisions:
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Observe → Policy** to filter and inspect policy decisions from sessions.
-    2. Go to **Administration → Policy editor** to compose, validate, publish, disable, or inspect immutable versions.
-    3. Go to **Administration → Deploy policies** to assign versions and effects to machines.
+    1. Go to **Observe → policy** to filter and inspect policy decisions from sessions.
+    2. Go to **Admin → policy editor** to compose, validate, publish, disable, or inspect immutable versions.
+    3. Go to **Admin → enforcement** to assign versions and effects to machines.
 
-    <Info>Screenshot placeholder: Observe policy decisions, policy editor, and enforcement fleet.</Info>
+    Use the Policy page to understand what is already matching before authoring or changing enforcement.
+
+    ![The Policy page showing decision totals and local and Cloud-managed policy mappings.](/images/dashboard/policy-observe.png)
+
+    The editor is where you turn a failure condition into source, validate it, and publish an immutable version.
+
+    ![The Policy editor used to compose and publish an immutable policy version.](/images/dashboard/policy-editor.png)
+
+    Enforcement then assigns that published version and its observe or enforce effect to machines.
+
+    ![The Enforcement fleet showing machine coverage and assigned policy versions.](/images/dashboard/enforcement-fleet.png)
+
+    Verify decisions back on the Policy page after deployment so the authoring and fleet views are tied to real agent activity.
   </Tab>
   <Tab title="CLI">
     Use `failproofai` for local policy installation and validation:

@@ -4,9 +4,9 @@ description: "Deploy the Failproof AI control plane on a customer-managed Kubern
 icon: "cloud-cog"
 ---
 
-Self-hosting is an Enterprise deployment. The current distribution uses Kustomize, private container images, PostgreSQL for control-plane metadata, ClickHouse for canonical event storage, Redis as an optional shared cache, and separate dashboard, server, assistant, and audit-agent workloads.
-
-Contact Failproof AI before deployment to obtain the enterprise release repository, container-registry credentials, supported version matrix, and an upgrade plan.
+<Note>
+  Self-hosting is an Enterprise deployment. [Contact Failproof AI](mailto:support@befailproof.ai) to obtain an enterprise license.
+</Note>
 
 ## Prerequisites
 
@@ -24,23 +24,17 @@ The source tree provides an AWS/EKS-oriented overlay and a separate GCP/GKE over
 ## Deployment sequence
 
 <Steps>
-  <Step title="Install cluster dependencies">
-    Install cert-manager and the public/dashboard ingress controllers. Verify their load balancers before applying the application.
-  </Step>
-  <Step title="Create the namespace and secrets">
-    Create image-pull credentials, PostgreSQL credentials, a strong bootstrap admin key, and authentication/SMTP settings. Store generated credentials in your organization's secret manager.
+  <Step title="Prepare the cluster">
+    Install cert-manager and the public/dashboard ingress controllers, verify their load balancers, then create the namespace, image-pull credentials, database credentials, bootstrap admin key, and authentication/SMTP secrets.
   </Step>
   <Step title="Configure public domains">
     Set `INGEST_DOMAIN` and `DASHBOARD_DOMAIN` in the overlay's generated domain environment file and create DNS records pointing to the matching load balancers.
   </Step>
-  <Step title="Apply one platform overlay">
-    Use the customer/EKS overlay or the GCP overlay. Inspect the rendered Kustomize output before applying it to production.
-  </Step>
-  <Step title="Verify workloads and certificates">
-    Confirm server, dashboard, PostgreSQL, ClickHouse, Redis, assistant, and audit-agent workloads reach their intended state. Certificates must report ready before collectors are enrolled.
+  <Step title="Apply and verify one platform overlay">
+    Use the customer/EKS or GCP overlay. Inspect the rendered Kustomize output, apply it, and confirm all workloads and certificates reach their intended state before enrolling machines.
   </Step>
   <Step title="Bootstrap access and ingestion">
-    Sign in as the protected admin, create an organization-scoped collector key, and send a small test session through the public ingest endpoint.
+    Sign in as the protected admin, create an organization-scoped machine key, and send a small test session through the public ingest endpoint.
   </Step>
 </Steps>
 
@@ -56,15 +50,22 @@ The source tree provides an AWS/EKS-oriented overlay and a separate GCP/GKE over
 | Assistant/audit LLM | Optional. Assistant and LLM-backed audit features remain inert until an LLM connection is configured. |
 | Object storage backup | Strongly recommended for PostgreSQL and ClickHouse backup archives. |
 
+### Audit capacity and failure delivery
+
+Run audits on the dedicated audit-agent deployment when available. Each audit-agent pod accepts one investigation by default; scale throughput with replicas rather than raising per-pod concurrency without also increasing memory. The server can dispatch `server replicas × AUDIT_WORKERS` audits concurrently, so dispatcher capacity should be large enough to fill the audit-agent fleet.
+
+When every audit-agent slot is busy, an audit waits and retries for up to one quarter of its cadence, capped at six hours. If no slot becomes available, the run completes without findings and sends a failure email. Repeated “busy” failures call for more audit-agent replicas or more widely separated schedule anchors. Repeated “shutting down” failures indicate unstable pods or a looping rollout instead of insufficient capacity.
+
+Failure notifications require an enabled email channel and SMTP. They use the audit's recipients, then fall back to `alerts.email_default_recipients` when the audit has no email channel.
+
 ## Verify the deployment
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open the configured dashboard domain and complete the admin OTP flow.
-    2. Confirm the organization name and slug.
-    3. Go to **Administration → Keys** and create a narrowly scoped collector key.
-    4. Send a test session, then confirm it in **Observe → Events** and **Observe → Sessions**.
-    5. Test an alert channel and, when configured, a manual evaluation and audit.
+    1. Open the configured dashboard domain, complete the admin OTP flow, and confirm the organization name and slug.
+    2. Go to **Administration → Keys** and create a narrowly scoped machine key.
+    3. Send a test session, then confirm it in **Observe → Events** and **Observe → Sessions**.
+    4. Test an alert channel and, when configured, a manual evaluation and audit.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -77,7 +78,7 @@ The source tree provides an AWS/EKS-oriented overlay and a separate GCP/GKE over
     fp --base-url https://failproof.example.com usage
     ```
 
-    Verify the public health endpoint and one authenticated `/v1` request before enrolling production collectors.
+    Verify the public health endpoint and one authenticated `/v1` request before enrolling production machines.
   </Tab>
 </Tabs>
 

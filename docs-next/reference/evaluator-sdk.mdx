@@ -4,33 +4,25 @@ description: "Build a service that scores Failproof AI sessions synchronously or
 icon: "gauge"
 ---
 
-Install the evaluator helper and create an ASGI application.
+An evaluator receives a completed agent session and returns the quality signals you care about: numeric scores, an explanation for each score, and an optional summary. Failproof AI stores these results beside the trace and charts them across agents and environments.
 
-## Connect a custom evaluator
+## Set up an evaluator
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Deploy the evaluator service where Failproof AI Cloud can reach its HTTPS endpoint.
-    2. Have the Failproof AI server operator set `EVALUATOR_ENDPOINT` and, when authentication is enabled, the matching `EVALUATOR_TOKEN`. Hosted Cloud does not currently expose this configuration in the dashboard.
-    3. Open **Observe → Sessions** and select a completed session.
-    4. Use **Run evaluation** in the session detail view if the session has not been scored automatically.
-    5. Open the session's **Evaluation** panel and confirm status, scores, reasoning, and summary.
-    6. Open **Observe → Evaluations** to chart a score across agents or environments. Use **Observe → Metrics** for magnitude values such as latency, cost, or token use.
-
-    ![A session detail view showing evaluation scores and reasoning beside its trace.](/images/dashboard/session-detail.png)
-
-    ![A quality dashboard charting evaluator scores over time.](/images/dashboard/dashboard-quality.png)
-  </Tab>
-  <Tab title="CLI">
-    Install the evaluator SDK and application server:
+<Steps>
+  <Step title="Install the evaluator SDK">
+    Install the SDK and the server used to run it.
 
     ```bash
-    pip install agenteye-evaluator uvicorn
+    pip install failproofai-sdk uvicorn
     ```
+  </Step>
+
+  <Step title="Define what to score">
+    Create `evaluator.py`. This example checks whether a session contains any failed tool calls.
 
     ```python
     import os
-    from agenteye_evaluator import Evaluator, EvalResponse
+    from failproofai.evaluator import Evaluator, EvalResponse
 
     app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
 
@@ -49,16 +41,48 @@ Install the evaluator helper and create an ASGI application.
             reasoning={"tool_reliability": f"{tool_errors} tool errors"},
         )
     ```
+  </Step>
+
+  <Step title="Run and test it locally">
+    Set a shared token, start the evaluator, and confirm its health endpoint responds.
 
     ```bash
     export EVALUATOR_TOKEN=<shared-token>
     uvicorn evaluator:app --host 0.0.0.0 --port 8080
     ```
 
-    Check the service and then verify that Cloud receives scores:
+    In another terminal:
 
     ```bash
     curl http://127.0.0.1:8080/health
+    ```
+  </Step>
+</Steps>
+
+## Connect the evaluator to Failproof AI
+
+1. Deploy the evaluator at an HTTPS URL reachable by Failproof AI Cloud.
+2. Configure `EVALUATOR_ENDPOINT` with that URL and set `EVALUATOR_TOKEN` to the same token used by the evaluator. For managed Cloud, contact [support@befailproof.ai](mailto:support@befailproof.ai) to configure the connection.
+3. Run an evaluation and confirm its scores appear in Failproof AI.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Open a completed session under **Observe → Sessions** and select **Run evaluation** if it was not evaluated automatically. Review the status, scores, reasoning, and summary in the session's **Evaluation** panel.
+
+    Use **Observe → Evaluations** to compare scores across agents or environments. Use **Observe → Metrics** for latency, cost, token, and other numeric measurements.
+
+    Start with one session to confirm that the evaluator returned the expected score keys and useful reasoning for that specific run.
+
+    ![A session detail view showing evaluation scores and reasoning beside its trace.](/images/dashboard/session-detail.png)
+
+    Once individual results look correct, use the evaluation dashboard to compare those scores over time and across agents or environments.
+
+    ![A quality dashboard charting evaluator scores over time.](/images/dashboard/dashboard-quality.png)
+
+    A healthy chart should use stable score names; changing a key creates a separate series.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
     fp evals --since 1h --score tool_reliability:0..1
     fp evals --since 24h --aggregate
     ```
@@ -96,7 +120,7 @@ The SDK caps evaluation request bodies at 25 MiB. Unknown request fields are ign
 Use `JobPending` when evaluation cannot finish inside one request. The job ID is opaque to Failproof AI and must remain resolvable by your service until the result is collected or the server timeout expires.
 
 ```python
-from agenteye_evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
+from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
 
 app = Evaluator(token="shared-secret")
 

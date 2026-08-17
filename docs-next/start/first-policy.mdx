@@ -1,5 +1,5 @@
 ---
-title: "Deploy your first policy"
+title: "Prevent your first failure with a policy"
 description: "Author a policy version, deploy it in observe mode, and then enforce it."
 icon: "shield-check"
 ---
@@ -10,17 +10,21 @@ Use a policy only after you can describe the unsafe action and the legitimate ac
   <Tab title="Dashboard">
     <Steps>
       <Step title="Author the policy">
-        Go to **Administration → Policy editor**, open the demo policy, and select **deploy**.
+        Go to **Admin → policy editor**. Start with the demo policy, review or edit its source, then select **publish version**. Publishing creates the immutable version that you can deploy to machines.
+
+        ![The Policy editor compose view with a demo policy ready to publish as an immutable version.](/images/dashboard/policy-editor.png)
       </Step>
       <Step title="Deploy it to a machine">
-        Go to **Administration → Deploy policies**, select your machine, add the demo policy, and deploy it in **observe** mode.
+        Go to **Admin → enforcement**, expand the target machine, and select **edit this machine**. Add the published demo policy, pin its version, choose **observe**, and apply the deployment.
+
+        ![The machine deployment editor with a published policy version selected in observe mode before applying the deployment.](/images/dashboard/enforcement-editor.png)
       </Step>
       <Step title="Verify the policy">
-        Run a new agent session on that machine, then open **Observe → Policies**. You should see the demo policy triggered for the session.
+        Run a new agent session on that machine, then open **Observe → policy**. Select the machine and confirm that the demo policy appears in the policy mapping and decision timeline. Observe mode records what the policy would do without blocking the action.
+
+        ![The Policy page showing decision totals, enforcement activity over time, and local and Cloud-managed policy mappings.](/images/dashboard/policy-observe.png)
       </Step>
     </Steps>
-
-    <Info>Screenshot placeholder: policy editor compose panel, published version, and enforcement machine row.</Info>
   </Tab>
   <Tab title="CLI">
     Cloud policy authoring and fleet deployment are administrative workflows. Use the local CLI to validate the same policy before publishing it:
@@ -38,6 +42,6 @@ Use a policy only after you can describe the unsafe action and the legitimate ac
     fp sessions --env production --since 24h
     ```
 
-    The Cloud CLI does not expose root-only enforcement deployment routes. Publish and deploy versions from **Administration → Policy editor** and **Administration → Deploy policies**.
+    The Cloud CLI does not expose root-only enforcement deployment routes. Publish versions from **Admin → policy editor** and deploy them from **Admin → enforcement**.
   </Tab>
 </Tabs>

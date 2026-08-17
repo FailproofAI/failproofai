@@ -4,7 +4,7 @@ description: "Control policy scope, parameters, custom files, and machine-level 
 icon: "file-cog"
 ---
 
-Failproof AI separates policy selection from machine and collector settings. This keeps repository policy choices reviewable while credentials and daemon state stay outside the repository.
+Failproof AI separates policy selection from machine and daemon settings. This keeps repository policy choices reviewable while credentials and daemon state stay outside the repository.
 
 ## Choose a policy scope
 
@@ -16,7 +16,6 @@ Failproof AI separates policy selection from machine and collector settings. Thi
     - **Project** belongs to the repository and can be committed.
     - **Local** overrides one project for one user and should remain gitignored.
 
-    <Info>Screenshot placeholder: local policy dashboard with scope selector and enabled policy list.</Info>
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -42,9 +41,8 @@ Enabled policies are merged as a union. Policy parameters use the first scope th
 
 <Tabs>
   <Tab title="Dashboard">
-    Open the policy in the local dashboard, edit its supported parameters, and save in the selected scope. Run a matching and non-matching agent action, then inspect the decision in **Observe → Policy**.
+    Open the policy in the local dashboard, edit its supported parameters, and save in the selected scope. Run a matching and non-matching agent action, then inspect the decision in **Observe → policy**.
 
-    <Info>Screenshot placeholder: local policy parameter editor and the resulting Cloud decision.</Info>
   </Tab>
   <Tab title="CLI">
     Edit the selected scope's `policies-config.json`, then run `failproofai policies` to surface unknown policy names or parameter keys.
@@ -72,7 +70,7 @@ Enabled policies are merged as a union. Policy parameters use the first scope th
 
 | Path | Purpose |
 | --- | --- |
-| `config.json` | Non-secret daemon, collector, audit, and telemetry settings |
+| `config.json` | Non-secret daemon, audit, and telemetry settings |
 | `credentials.json` | Cloud credentials; stored with owner-only permissions |
 | `policies-config.json` | User-scope builtin selection, parameters, and explicit custom paths |
 | `policies/` | User convention policies and Cloud-managed policy artifacts |

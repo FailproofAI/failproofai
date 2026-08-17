@@ -15,11 +15,19 @@ Alerts watch a measurable condition and create an incident when it triggers. Use
     3. Save the alert, open its detail page, and run **test**.
     4. Go to **Analyze → Issues** to acknowledge, assign, discuss, subscribe to, and resolve incidents created by the alert.
 
-    ![The Alerts page showing alert rules with their triggers, evaluation windows, channels, and severity.](/images/dashboard/alerts.png)
+    The first part of the form identifies the alert and the signal that should trigger it.
 
     ![The first part of the new-alert form with its name, description, enabled state, and trigger type.](/images/dashboard/alert-new-trigger.png)
 
+    The second part controls how long the condition must persist, how often it is evaluated, and where notifications are sent.
+
     ![The second part of the new-alert form with breach logic, schedule, severity, delivery channels, and create action.](/images/dashboard/alert-new-routing.png)
+
+    After saving, use the Alerts list to confirm the rule is enabled and that its trigger, window, severity, and channels match what you intended.
+
+    ![The Alerts page showing alert rules with their triggers, evaluation windows, channels, and severity.](/images/dashboard/alerts.png)
+
+    Test the alert before depending on it for production response.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -34,6 +42,8 @@ Alerts watch a measurable condition and create an incident when it triggers. Use
     ```
 
     Use `fp alerts list` to review rules and `fp alerts delete <name>` to remove one.
+
+    See the [`fp alerts` reference](/reference/cloud-cli#alerts) for the complete alert command set.
   </Tab>
 </Tabs>
 

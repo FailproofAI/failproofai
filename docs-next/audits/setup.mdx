@@ -10,11 +10,10 @@ The quality of an audit starts with its scope. A broad request such as “find p
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Analyze → Audits → New audit**.
-    2. Enter the name and description.
-    3. Set the interval, anchor time, sweep window, lookback, agent/environment scope, ignored errors, sensitivity, and maximum findings.
-    4. Add the operator brief and up to five public HTTPS reference URLs.
-    5. Choose notification channels and select **create audit**. The first run queues immediately.
+    1. Go to **Analyze → Audits → New audit** and enter the name and description.
+    2. Set the cadence, time window, agent/environment scope, ignored errors, sensitivity, and maximum findings.
+    3. In **agents**, add or review agent context, then add the operator brief and any public HTTPS reference URLs.
+    4. Choose notification channels and select **create audit**. The first run queues immediately.
 
     ![The new audit form with name, description, cadence, window, environment and agent scope, ignored errors, analysis settings, brief, reference pages, and notification channels.](/images/dashboard/audit-new.png)
   </Tab>
@@ -24,30 +23,17 @@ The quality of an audit starts with its scope. A broad request such as “find p
       --description "Find checkout failures that agents do not recover from" \
       --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
       --schedule-interval-secs 86400 \
-      --window-mode since_last_run \
+      --window-mode since_last \
       --sensitivity medium \
       --text-file ./checkout-audit-brief.txt \
-      --url https://example.com/checkout-runbook
+      --url https://runbooks.example.com/checkout
     ```
 
-    Use `--file audit.json` when the full definition is already versioned as JSON.
+    The first run queues immediately. Include the brief and reference URLs during creation so that run receives them.
+
+    See the complete [`fp audits create` reference](/reference/cloud-cli#audits).
   </Tab>
 </Tabs>
-
-<Steps>
-  <Step title="State the failure goal">
-    Describe observable behavior and impact. Example: “Find production sessions where the agent retries a failed payment tool without changing input or escalating.”
-  </Step>
-  <Step title="Choose the population">
-    Filter by environment, agent, time window, model, evaluation result, policy hit, or a saved query.
-  </Step>
-  <Step title="Add reference context">
-    Provide expected workflow, constraints, runbooks, or acceptance criteria. Keep instructions specific to the audit.
-  </Step>
-  <Step title="Choose a cadence">
-    Run once for an investigation or schedule the audit for a failure mode that could return.
-  </Step>
-</Steps>
 
 <Tip>
   Start with a known failed session and several normal sessions. This gives the audit both a positive example and a comparison set.

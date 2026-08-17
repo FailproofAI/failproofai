@@ -10,30 +10,17 @@ The package requires Node.js 20.9 or newer. Bun 1.3 or newer is supported for de
 
 ## Set up a machine
 
-<Tabs>
-  <Tab title="Dashboard">
-    1. Open **Administration → Keys** and create a key with both the **collector** and **policies** presets.
-    2. Copy the secret and connect the machine with `failproofai config`.
-    3. Open **Administration → Deploy policies** and confirm the machine appears with its expected label.
-    4. Deploy a policy version to that machine.
-    5. Open **Observe → Policy** after a test session and confirm the machine reports its decisions.
+```bash
+npm install -g failproofai
+failproofai config \
+  --connect https://app.befailproof.ai \
+  --token <machine-key> \
+  --machine-label checkout-prod-01
+failproofai policies --install
+failproofai config --status
+```
 
-    <Info>Screenshot placeholder: collector and policies key presets, the enrolled machine in Deploy policies, and its policy decisions.</Info>
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    npm install -g failproofai
-    failproofai config \
-      --connect https://app.befailproof.ai \
-      --token <collector-key> \
-      --machine-label checkout-prod-01
-    failproofai policies --install
-    failproofai config --status
-    ```
-
-    Run `failproofai` without arguments to open the local policy dashboard.
-  </Tab>
-</Tabs>
+Run `failproofai` without arguments to open the local policy dashboard.
 
 | Command | Outcome |
 | --- | --- |
@@ -46,6 +33,9 @@ The package requires Node.js 20.9 or newer. Bun 1.3 or newer is supported for de
 | `failproofai policy remove <name>` | Disable one builtin policy |
 | `failproofai policies --uninstall` | Disable policies or remove harness hooks |
 | `failproofai audit` | Scan local agent history and open the local audit view |
+| `failproofai audit --schedule [days] --email <address>` | Schedule recurring local scans and email their findings |
+| `failproofai audit --status` | Show the report address, interval, and next scheduled scan |
+| `failproofai audit --no-schedule` | Stop recurring scans without deleting audit history |
 | `failproofai harness list` | List extra capture paths |
 | `failproofai flush --wait` | Deliver the current event spool |
 | `failproofai backfill --since 30d` | Re-read previously passed history |
@@ -115,8 +105,6 @@ Container environments can replace file-configured extra paths with a comma-sepa
 export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
 ```
 
-`failproofai audit --scheduled` runs the local audit headlessly. Exit code `75` means another audit already holds the single-run lock.
-
 ## Environment variables
 
 Use configuration files for persistent machine behavior. Environment variables are most useful for containers, tests, and one process.
@@ -140,28 +128,21 @@ Agent-specific home variables such as `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HE
 
 ## Pause or remove a machine safely
 
-<Tabs>
-  <Tab title="Dashboard">
-    For a policy rollout problem, first open **Administration → Deploy policies** and roll the affected machines back to a known version. Use the local pause only when the deployment cannot be corrected quickly. After recovery, confirm the machine's version and health in the deployment view.
+```bash
+failproofai config --pause
+failproofai config --status
+failproofai config --resume
+```
 
-    <Info>Screenshot placeholder: machine deployment detail showing current version, prior version, and health.</Info>
-  </Tab>
-  <Tab title="CLI">
-    ```bash
-    failproofai config --pause
-    failproofai config --status
-    failproofai config --resume
-    ```
+A local session pause does not disable Cloud-managed policies. Restore Cloud deployments through the Cloud enforcement workflow when the rollout itself is the problem.
 
-    Before removing the npm package, remove installed hooks and the daemon:
+Before removing the npm package, remove installed hooks and the daemon:
 
-    ```bash
-    failproofai uninstall --dry-run
-    failproofai uninstall --yes
-    npm rm -g failproofai
-    ```
-  </Tab>
-</Tabs>
+```bash
+failproofai uninstall --dry-run
+failproofai uninstall --yes
+npm rm -g failproofai
+```
 
 Run `failproofai <command> --help` for version-specific details.
 

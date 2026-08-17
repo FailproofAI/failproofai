@@ -46,6 +46,11 @@ Session → Audit → Finding → Issue → Policy
 
 A finding should name the failure mode and point to evidence. An issue owns the remediation. A policy prevents a known action pattern; an alert detects recurrence when prevention is not possible or needs monitoring.
 
-<Card title="Set up an audit" icon="sliders-horizontal" href="/audits/setup">
-  Define the goal, population, and reference context before the first run.
-</Card>
+<Columns cols={2}>
+  <Card title="Set up an audit" icon="sliders-horizontal" href="/audits/setup">
+    Define the goal, population, and reference context before the first run.
+  </Card>
+  <Card title="Add agent context" icon="bot" href="/audits/agent-contracts">
+    State what each agent must produce and what it must never do.
+  </Card>
+</Columns>

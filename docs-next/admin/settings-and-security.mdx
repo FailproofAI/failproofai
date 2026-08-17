@@ -10,11 +10,10 @@ Use Settings for deployment-specific operational values and model context-window
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Administration → Settings**.
-    2. Find the setting group and read its description and current source.
-    3. Change the value and save it.
-    4. For model context windows, add or update the model override and confirm the effective limit.
-    5. Recheck sessions and metrics that depend on the changed value.
+    1. Go to **Administration → Settings**, find the setting group, and read its description and current source.
+    2. Change the value and save it.
+    3. For model context windows, add or update the model override and confirm the effective limit.
+    4. Recheck sessions and metrics that depend on the changed value.
 
     ![The Settings page showing organization authentication and operational settings.](/images/dashboard/settings.png)
   </Tab>
@@ -35,7 +34,7 @@ Use Settings for deployment-specific operational values and model context-window
 
 Connecting the Failproof AI CLI sends transcripts by default because traces and audits depend on their content. Use `--no-transcripts` when prompts, file contents, or terminal input must remain local; hook activity and policy decisions can still be reported.
 
-Local ingest credentials are stored separately from non-secret collector settings and written with restrictive permissions. API keys should still be managed as production secrets.
+Local ingest credentials are stored separately from non-secret daemon settings and written with restrictive permissions. API keys should still be managed as production secrets.
 
 ## Organization setting reference
 

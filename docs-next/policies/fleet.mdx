@@ -10,13 +10,12 @@ Fleet coverage answers whether a policy exists where the risk exists. Track mach
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Administration → Deploy policies**.
-    2. Review the enforcing and observing totals.
-    3. Search for a machine by ID or label, or filter for machines missing a policy.
-    4. Expand a row to compare assigned policies, reported deployment, last check-in, and history.
-    5. Refresh after the machine's polling interval when an applied deployment remains pending.
+    1. Go to **Admin → enforcement** and review the enforcing and observing totals.
+    2. Search for a machine by ID or label, or filter for machines missing a policy.
+    3. Expand a row to compare assigned policies, reported deployment, last check-in, and history.
+    4. Refresh after the machine's polling interval when an applied deployment remains pending.
 
-    <Info>Screenshot placeholder: Fleet summary, missing-policy filter, and expanded machine coverage row.</Info>
+    ![The Enforcement fleet showing policy coverage, machine deployment state, and observe and enforce assignments.](/images/dashboard/enforcement-fleet.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -35,7 +34,6 @@ Use coverage views to find:
 - Enrolled machines that stopped reporting activity
 - A policy assigned to the wrong environment or cohort
 - Version drift after an interrupted update
-- A machine where enforcement is paused
 
 Rename a machine without reconnecting it:
 

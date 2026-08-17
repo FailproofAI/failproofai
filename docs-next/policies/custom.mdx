@@ -1,7 +1,7 @@
 ---
 title: "Custom policies"
 description: "Write a policy for a failure mode unique to your agent workflow."
-icon: "code-2"
+icon: "shield-plus"
 ---
 
 Create a file ending in `policies.js`, `policies.mjs`, or `policies.ts` under `.failproofai/policies/`. Convention files load automatically at project and user scope.
@@ -10,13 +10,11 @@ Create a file ending in `policies.js`, `policies.mjs`, or `policies.ts` under `.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Install the custom policy on one test machine.
-    2. Trigger both a matching action and a legitimate non-match.
-    3. Go to **Observe → Policy** and compare the two decisions.
-    4. Open each linked session and verify the event payload contains enough evidence for the rule.
-    5. When the behavior is correct, move the reviewed source into **Administration → Policy editor** and publish a version.
+    1. Install the custom policy on one test machine and trigger both a matching action and a legitimate non-match.
+    2. Go to **Observe → policy** and compare the two decisions.
+    3. Open each linked session and verify the event payload contains enough evidence for the rule.
+    4. When the behavior is correct, move the reviewed source into **Admin → policy editor** and publish a version.
 
-    <Info>Screenshot placeholder: Custom policy decisions and linked session evidence.</Info>
   </Tab>
   <Tab title="CLI">
     ```bash

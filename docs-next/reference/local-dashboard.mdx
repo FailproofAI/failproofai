@@ -23,11 +23,10 @@ The local dashboard is separate from Failproof AI Cloud. It works without a Clou
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open **Policies → Activity**.
-    2. Set the decision and source filters first.
-    3. Narrow by event, harness, tool, or policy name.
-    4. Expand a row to inspect the reason, matched policies, source, execution mode, duration, and session link.
-    5. Follow the session link to place the decision in transcript context.
+    1. Open **Policies → Activity** and set the decision and source filters.
+    2. Narrow by event, harness, tool, or policy name.
+    3. Expand a row to inspect its reason, matched policies, source, execution mode, and duration.
+    4. Follow the session link to place the decision in transcript context.
 
     A denied-looking row can still be observational on a harness/event pair that does not consume blocking verdicts. The detail view calls out verified enforcement capability.
   </Tab>
@@ -46,11 +45,10 @@ The local dashboard is separate from Failproof AI Cloud. It works without a Clou
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open **Policies → Configure**.
-    2. Choose the harnesses and intended configuration scope.
-    3. Enable a builtin or discovered custom policy.
-    4. For a parameterized builtin, open its configuration control and save supported values.
-    5. Return to Activity and run matching and non-matching actions.
+    1. Open **Policies → Configure** and choose the harnesses and configuration scope.
+    2. Enable a builtin or discovered custom policy.
+    3. For a parameterized builtin, open its configuration control and save supported values.
+    4. Return to Activity and run matching and non-matching actions.
 
     Convention policies show their project or user source. Explicit custom-path changes may require rerunning CLI configuration so the selected path is recorded.
   </Tab>
@@ -76,13 +74,12 @@ If a project or session is missing, confirm the harness uses its default history
     Open **Settings**, enable scheduled scanning, choose its supported interval, and configure report delivery when available. The page reports the next run, last run, exit code, and whether the background daemon is supported on the platform.
   </Tab>
   <Tab title="CLI">
-    Test the same headless path manually before scheduling it:
-
     ```bash
-    failproofai audit --scheduled
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
     ```
 
-    Exit code `75` means another audit currently holds the lock. Other non-zero values require investigation.
+    Change the number of days to set a different 1–90 day interval. Disable recurring scans with `failproofai audit --no-schedule`; run `failproofai audit` for an immediate interactive scan.
   </Tab>
 </Tabs>
 

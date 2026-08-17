@@ -10,14 +10,12 @@ A deployment connects one or more policy versions to a target set of enrolled ma
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Administration → Deploy policies**.
-    2. Search by machine ID or display label. Expand the machine row.
-    3. Select **edit**. Add the reviewed policy version and choose **observe** or its enforcing effect.
-    4. Apply the change. The full selected set becomes one new deployment for that machine.
-    5. Wait for the machine's next check-in and confirm the applied deployment and coverage state.
-    6. Go to **Observe → Policy** to inspect live decisions.
+    1. Go to **Admin → enforcement**, find the machine, and expand its row.
+    2. Select **edit**, add the reviewed policy version, and choose **observe** or its enforcing effect.
+    3. Apply the change, then wait for the machine's next check-in and confirm its deployment and coverage state.
+    4. Go to **Observe → policy** to inspect live decisions.
 
-    <Info>Screenshot placeholder: Expanded machine row, policy selector, effect selector, and applied deployment.</Info>
+    ![The machine deployment editor with policy versions, enforce and observe effects, and the apply deployment action.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
     Cloud deployment endpoints are intentionally not exposed as ordinary `fp` commands. Check the machine locally, then deploy through the dashboard:
@@ -31,20 +29,14 @@ A deployment connects one or more policy versions to a target set of enrolled ma
 </Tabs>
 
 <Steps>
-  <Step title="Select a version">
-    Deploy the reviewed version, not the mutable draft you happen to have open.
-  </Step>
-  <Step title="Choose targets">
-    Start with a non-production machine or a small cohort whose sessions you can inspect.
+  <Step title="Choose the version and targets">
+    Deploy a reviewed version, not a mutable draft, starting with a non-production machine or small cohort whose sessions you can inspect.
   </Step>
   <Step title="Observe decisions">
     Review matches, reasons, affected tools, and false positives without blocking work.
   </Step>
-  <Step title="Enforce">
-    Promote after the observed matches separate unsafe actions from valid ones.
-  </Step>
-  <Step title="Verify coverage">
-    Confirm every intended machine has pulled the deployment and is reporting decisions.
+  <Step title="Enforce and verify coverage">
+    Promote after observed matches separate unsafe actions from valid ones, then confirm every intended machine has pulled the deployment and is reporting decisions.
   </Step>
 </Steps>
 

@@ -40,16 +40,22 @@ Capabilities are version-sensitive. Re-test after upgrading an agent CLI, especi
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open **Administration → Keys** and create a key with both the **collector** and **policies** presets.
-    2. Name it for the machine or environment that will run the harness, such as `checkout-devs`.
-    3. On the target machine, connect the local CLI with the displayed key and install the harness hooks.
-    4. Start one new agent session.
-    5. Open **Observe → Events**, filter by environment, and confirm hook and session events are arriving.
-    6. Open **Observe → Policy**, select the same time window, and confirm at least one policy decision is attributed to the machine.
+    1. Open **Administration → Keys** and create a key with `events:add` and `policies:pull`, named for the machine or environment.
+    2. On the target machine, connect the local CLI with the displayed key and install the harness hooks.
+    3. Start a new agent session, then confirm its hook and session events under **Observe → Events**.
+    4. Open **Observe → policy** for the same time window and confirm a policy decision is attributed to the machine.
+
+    The connection starts with a machine key. Confirm that it includes both ingestion and policy-delivery permissions before copying its secret.
+
+    ![The new API key drawer used to grant event ingestion and policy delivery permissions.](/images/dashboard/key-create.png)
+
+    After installing the hooks, the Events stream should show new events from the machine and environment you connected.
 
     ![The live Events stream used to confirm a newly installed harness is reporting.](/images/dashboard/events-stream.png)
 
-    <Info>Screenshot placeholder: collector and policies key presets and the Policy decision list.</Info>
+    Finally, verify that policy decisions are attributed to the same machine. This confirms the harness is reporting policy activity as well as trace events.
+
+    ![The Policy page used to verify policy decisions from a newly connected harness.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     Install hooks for every detected harness:
@@ -57,7 +63,7 @@ Capabilities are version-sensitive. Re-test after upgrading an agent CLI, especi
     ```bash
     failproofai config \
       --connect https://app.befailproof.ai \
-      --token <collector-key>
+      --token <machine-key>
     failproofai policies --install
     ```
 

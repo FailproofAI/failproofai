@@ -6,18 +6,18 @@ icon: "file-pen-line"
 
 Use the policy editor to turn a finding or issue into a deployable rule. Keep authoring separate from deployment so a draft cannot silently change live behavior.
 
+When an issue has a repeatable action pattern, open it under **Analyze → issues** and select **generate policy**. Failproof AI first explains whether a policy can express the problem, then carries the reviewed intent and finding context into the editor. The generated source remains a draft until you publish it.
+
 ## Publish a policy version
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Administration → Policy editor**.
-    2. In **compose**, describe the failure mode or paste the JavaScript policy source.
-    3. Validate the source and fix every reported error.
-    4. Enter the policy identity and publish it.
-    5. In **library**, open the policy to compare versions or disable a version from future selection.
-    6. Select **enforcement** when the version is ready for a machine rollout.
+    1. Go to **Admin → policy editor** and, in **compose**, describe the failure mode or paste the JavaScript policy source.
+    2. Validate the source and fix every reported error.
+    3. Enter the policy identity and publish it, then use **library** to compare or disable versions.
+    4. Select **enforcement** when the version is ready for a machine rollout.
 
-    <Info>Screenshot placeholder: Compose panel, validation result, publish control, and version library.</Info>
+    ![The Policy editor compose view with policy identity, AI-assisted drafting, source validation, and publishing controls.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
     The Cloud CLI does not publish policy versions. Validate the source locally before copying it into the editor:
@@ -27,7 +27,7 @@ Use the policy editor to turn a finding or issue into a deployable rule. Keep au
       --cli claude --scope project
     ```
 
-    Publish the reviewed version from **Administration → Policy editor**.
+    Publish the reviewed version from **Admin → policy editor**.
   </Tab>
 </Tabs>
 

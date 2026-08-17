@@ -10,22 +10,20 @@ Rollback changes the deployed version or removes a policy assignment; it does no
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Go to **Administration → Deploy policies** and expand the affected machine.
-    2. Review deployment history and identify the last known-good policy set.
-    3. Select **edit**, restore those versions and effects, and apply the new deployment.
-    4. Wait for machine check-in, then verify the reported deployment.
-    5. Open **Observe → Policy** and the affected sessions to confirm valid work is no longer blocked.
+    1. Go to **Admin → enforcement**, expand the affected machine, and identify its last known-good policy set.
+    2. Select **edit**, restore those versions and effects, and apply the new deployment.
+    3. Wait for machine check-in, then verify the reported deployment.
+    4. Open **Observe → policy** and the affected sessions to confirm valid work is no longer blocked.
 
-    <Info>Screenshot placeholder: Deployment history and restored machine policy set.</Info>
   </Tab>
   <Tab title="CLI">
-    Fleet rollback is a dashboard workflow. Use local status to verify recovery:
+    Cloud deployment rollback is a dashboard workflow. Use local status to confirm that the corrected deployment has reached the machine:
 
     ```bash
     failproofai config --status
     ```
 
-    If the incident requires a temporary local pause, use `failproofai config --pause`, record why, and resume with `failproofai config --resume` after the corrected deployment arrives.
+    `failproofai config --pause` pauses builtin, custom, and convention policies for one local session. It does not pause Cloud-managed policies, so it is not a workaround for a bad Cloud deployment.
   </Tab>
 </Tabs>
 

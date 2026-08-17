@@ -16,16 +16,36 @@ icon: "waypoints"
   </Card>
 </CardGroup>
 
+## Recommended production path
+
+1. Connect a non-production machine with transcript capture enabled.
+2. Verify sessions and evaluations in Cloud.
+3. Create an audit for a known failure mode.
+4. Deploy the first policy in observe mode.
+5. Expand to production after reviewing matches and false positives.
+
 ## Connect a machine to Cloud
 
 <Tabs>
   <Tab title="Dashboard">
     1. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`.
     2. Copy the one-time secret to the target machine.
-    3. After running the CLI connection command, go to **Administration → Deploy policies** and confirm the machine appears.
+    3. After running the CLI connection command, go to **Admin → enforcement** and confirm the machine appears.
     4. Go to **Observe → Events** and confirm its first event arrives.
 
-    <Info>Screenshot placeholder: Key creation, new machine in enforcement, and first live event.</Info>
+    The key drawer shows the two grants needed by a connected machine: event ingestion and policy delivery.
+
+    ![The new API key drawer used to grant event ingestion and policy delivery permissions.](/images/dashboard/key-create.png)
+
+    After connection, the machine should appear in enforcement with its desired and reported policy state.
+
+    ![The Enforcement fleet with an enrolled machine expanded to show its desired policy state and deployment status.](/images/dashboard/enforcement-fleet.png)
+
+    The first arriving event confirms that the daemon can deliver data to Cloud, independently of policy deployment.
+
+    ![The live event stream showing recent agent, model, and tool events.](/images/dashboard/events-stream-current.png)
+
+    Continue only after both the machine and its first event are visible.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -40,14 +60,6 @@ icon: "waypoints"
     Add `--no-transcripts` when transcript content must remain local.
   </Tab>
 </Tabs>
-
-## Recommended production path
-
-1. Connect a non-production machine with transcript capture enabled.
-2. Verify sessions and evaluations in Cloud.
-3. Create an audit for a known failure mode.
-4. Deploy the first policy in observe mode.
-5. Expand to production after reviewing matches and false positives.
 
 Connecting to Cloud verifies event ingestion and policy delivery independently. A key may therefore be valid but missing one required permission. Use `failproofai config --status` to see which capability is configured.
 

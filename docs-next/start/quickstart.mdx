@@ -4,26 +4,29 @@ description: "Capture an agent session, find a failure, and start preventing it.
 icon: "zap"
 ---
 
-This quickstart gets one machine reporting sessions, runs an audit, and deploys a policy. You need Node.js 20.9 or later and a Failproof AI Cloud API key.
+This quickstart gets one machine reporting sessions, runs an audit, and deploys a policy. You need Node.js 20.9 or later.
+
+## Before you start
+
+1. Open the [Failproof AI dashboard](https://app.befailproof.ai) and create an account or sign in with your work email.
+2. Go to **Administration → Keys** and create a key with `events:add` and `policies:pull`.
+3. Copy the one-time secret and store it on the target machine:
+
+```bash
+export FAILPROOFAI_KEY="<one-time-secret>"
+```
 
 ## Install
 
 <Steps>
-  <Step title="Install Failproof AI">
+  <Step title="Install and connect Failproof AI">
     ```bash
     npm install -g failproofai
-    ```
-  </Step>
-  <Step title="Connect the machine">
-    Use the dashboard origin and a key with `events:add` and `policies:pull`.
-
-    ```bash
     failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
     ```
 
     Session transcripts are sent by default. Add `--no-transcripts` to report hook activity and policy decisions without transcript content.
-  </Step>
-  <Step title="Backfill existing sessions (optional)">
+
     If this machine already has agent history, preview and import the last seven days, then wait for delivery to finish. Skip this step on a new machine.
 
     ```bash
@@ -34,7 +37,9 @@ This quickstart gets one machine reporting sessions, runs an audit, and deploys 
 
     Open **Sessions** in Failproof AI and select an imported session.
   </Step>
-  <Step title="Install agent hooks">
+  <Step title="Install agent hooks and policies">
+    This attaches Failproof AI to your agent CLI and installs the built-in policies. Use them to see local policy decisions and try enforcement before Failproof AI audits your sessions and writes policies for your agents.
+
     Let the installer detect your agent CLI, or name one explicitly.
 
     ```bash
@@ -42,10 +47,10 @@ This quickstart gets one machine reporting sessions, runs an audit, and deploys 
     ```
   </Step>
   <Step title="Audit the behavior">
-    Follow [Run your first audit](/start/first-audit). Use a concrete goal such as “find sessions where the agent retried a failing tool without changing its approach.”
+    Follow [Run your first failure check](/start/first-audit). Use a concrete goal such as “find sessions where the agent retried a failing tool without changing its approach.”
   </Step>
-  <Step title="Turn the failure into prevention">
-    Follow [Deploy your first policy](/start/first-policy). Start in observe mode, inspect matches, then enforce the reviewed version.
+  <Step title="Prevent the failure">
+    Follow [Prevent your first failure with a policy](/start/first-policy). Start in observe mode, inspect matches, then enforce the reviewed version.
   </Step>
 </Steps>
 

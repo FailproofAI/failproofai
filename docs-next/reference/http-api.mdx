@@ -10,15 +10,14 @@ The public API is served under `/v1` on your Failproof AI dashboard origin.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Open **Administration → Keys**.
-    2. Select **Create key**, choose the narrowest permission preset that covers the integration, and add individual grants only when needed.
-    3. Copy the secret when it is displayed. It cannot be recovered later.
-    4. Make a test request to `/v1/sessions`.
-    5. Return to Keys to confirm the key is active. Rotate or disable it from the key's action menu when the integration changes ownership.
+    1. Open **Administration → Keys**, select **Create key**, and choose the narrowest permission preset that covers the integration.
+    2. Add individual grants only when needed, create the key, and copy its one-time secret.
+    3. Make a test request to `/v1/sessions` and confirm the key remains active in the Keys page.
+    4. Rotate or disable the key from its action menu when the integration changes ownership.
 
-    ![The API Keys page showing scoped credentials and their rotate and disable controls.](/images/dashboard/api-keys.png)
+    ![The new API key drawer with permission presets and individual grants.](/images/dashboard/key-create.png)
 
-    <Info>Screenshot placeholder: Create key drawer and one-time secret.</Info>
+    The creation drawer is shown above. The one-time secret appears only after you select **create**; copy it before closing that confirmation.
   </Tab>
   <Tab title="CLI">
     Create a read key and use it directly with either `fp` or `curl`:
@@ -47,7 +46,6 @@ An organization key acts on its organization automatically. An instance-scoped k
   <Tab title="Dashboard">
     Use the organization switcher in the dashboard header before opening **Administration → Keys**. Keys created there belong to the selected organization. Confirm the organization slug in the URL and key detail before copying the credential into automation.
 
-    <Info>Screenshot placeholder: organization switcher and the selected organization's Keys page.</Info>
   </Tab>
   <Tab title="CLI">
     Use `--org` before the command, or send the organization header for an instance-scoped API key.

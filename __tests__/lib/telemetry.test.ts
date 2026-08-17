@@ -77,12 +77,30 @@ describe("lib/telemetry", () => {
       expect(globalThis.__FAILPROOFAI_POSTHOG__).toBeDefined();
     });
 
-    it("passes custom resilientFetch to PostHog constructor", async () => {
+    // These four assertions are the delivery contract. Each pins a value whose
+    // previous setting dropped events on the floor — see the comment block in
+    // lib/telemetry.ts and __tests__/lib/telemetry-delivery.test.ts, which
+    // proves the same contract end-to-end against the real library.
+    it("configures PostHog to own retries and keep its flush timer armed", async () => {
       delete process.env.FAILPROOFAI_TELEMETRY_DISABLED;
       await initTelemetry();
       expect(lastConstructorOpts).toBeDefined();
-      expect(lastConstructorOpts!.fetch).toBeTypeOf("function");
-      expect(lastConstructorOpts!.fetchRetryCount).toBe(0);
+
+      // No injected fetch. posthog-node races an injected fetch against its own
+      // `requestTimeout` deadline, so any wrapper here is one budget-inversion
+      // away from making the deadline unreachable — which is exactly what the
+      // old `resilientFetch` (5 attempts / ~40s against a 5s deadline) did.
+      expect(lastConstructorOpts!.fetch).toBeUndefined();
+
+      // Retries belong to the library, which knows which errors are retryable.
+      expect(lastConstructorOpts!.fetchRetryCount).toBeGreaterThan(0);
+
+      // 0 is falsy and disables the flush timer outright, stranding the batch
+      // posthog-node deliberately retains after a network error.
+      expect(lastConstructorOpts!.flushInterval).toBeGreaterThan(0);
+
+      // Each attempt needs room to finish; the library's own default is 10s.
+      expect(lastConstructorOpts!.requestTimeout).toBeGreaterThanOrEqual(10_000);
     });
 
     it("reuses existing client on subsequent calls", async () => {

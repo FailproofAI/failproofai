@@ -38,41 +38,6 @@ interface PostHogOptions {
   requestTimeout?: number;
   fetchRetryCount?: number;
   fetchRetryDelay?: number;
-  fetch?: (url: string, options: Record<string, unknown>) => Promise<Response>;
-}
-
-/**
- * Wraps native fetch with retry logic and silent failure for non-critical telemetry.
- * Prevents posthog-node's internal console.error from firing on network errors.
- */
-async function resilientFetch(
-  url: string,
-  options: Record<string, unknown>,
-): Promise<Response> {
-  const MAX_ATTEMPTS = 5;
-  const BASE_DELAY_MS = 1000;
-  const TIMEOUT_MS = 5000;
-
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      const { signal: _, ...rest } = options;
-      const res = await fetch(url, {
-        ...(rest as RequestInit),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
-      if (res.ok) return res;
-      // Non-2xx (e.g. 502) — treat like a transient failure and retry
-    } catch {
-      // Network error (ETIMEDOUT, etc.) — retry
-    }
-    if (attempt < MAX_ATTEMPTS) {
-      const delay = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), 8000);
-      await new Promise((r) => setTimeout(r, delay));
-    }
-  }
-  // All attempts failed — return fake OK so PostHog doesn't log errors.
-  // This is anonymous telemetry; silently dropping events is acceptable.
-  return new Response("{}", { status: 200 });
 }
 
 /**
@@ -101,17 +66,57 @@ export async function initTelemetry(): Promise<void> {
       await import("posthog-node");
     const apiKey = process.env.FAILPROOFAI_POSTHOG_KEY ?? DEFAULT_API_KEY;
     const host = process.env.FAILPROOFAI_POSTHOG_HOST ?? DEFAULT_HOST;
+    // Delivery-critical options. Every one of these was previously set to a
+    // value that lost events; see __tests__/lib/telemetry-delivery.test.ts,
+    // which pins the contract against the REAL library rather than a mock.
+    //
+    // No custom `fetch`. There used to be a `resilientFetch` wrapper here that
+    // retried five times over ~40s and then returned a synthetic 200 so
+    // posthog-node would never log a network error. It could not work: the
+    // library does not merely hand its abort signal to an injected fetch, it
+    // *races* that fetch against its own `requestTimeout` deadline
+    // (`Promise.race([fetchPromise, deadline])`) precisely because an injected
+    // fetch may ignore the signal — which ours did, by stripping it. With a
+    // ~40s budget racing a 5s deadline the wrapper could never return in time,
+    // so the synthetic 200 was unreachable, the `console.error` it existed to
+    // prevent fired anyway, and its retries ran on detached from the client that
+    // had already given up. Plain global fetch is what the library expects.
+    //
+    // `fetchRetryCount` was 0, which disabled retries entirely and left the
+    // wrapper above as the only thing retrying — the wrong layer. The library
+    // retries inside a single flush, knows which errors are retryable, and
+    // keeps its queue coherent while doing it.
+    //
+    // `flushInterval` was 0, which is falsy and therefore disables the flush
+    // timer completely. That is the one that actually stranded events: on a
+    // network error posthog-node deliberately does NOT dequeue the batch (it
+    // treats the failure as transient and keeps it for a later attempt), so
+    // with no timer armed those retained events had nothing scheduled to
+    // resend them and sat in memory until an unrelated later event happened to
+    // trigger a flush.
+    //
+    // `flushAt: 1` is deliberate and stays. Volume here is a handful of events
+    // per process, so batching buys nothing, and posthog-node's queue is
+    // memory-only (`PostHogMemoryStorage`) — anything still queued when the
+    // process dies is gone. Sending immediately is the best available defense.
     globalThis.__FAILPROOFAI_POSTHOG__ = new mod.PostHog(apiKey, {
       host,
       flushAt: 1,
-      flushInterval: 0,
-      requestTimeout: 5000,
-      fetchRetryCount: 0,
-      fetch: resilientFetch,
+      flushInterval: 10_000,
+      requestTimeout: 10_000,
+      fetchRetryCount: 3,
+      fetchRetryDelay: 3_000,
     });
 
-    // Flush pending events when the process exits
+    // Flush pending events when the process exits. This drain is the last line
+    // of defense for the memory-only queue, so it must not fight itself:
+    // `beforeExit` re-fires every time a handler schedules more async work, and
+    // an unguarded handler starts a fresh `shutdown()` — each with its own 30s
+    // budget — on every one of those passes.
+    let draining = false;
     const onExit = () => {
+      if (draining) return;
+      draining = true;
       globalThis.__FAILPROOFAI_POSTHOG__?.shutdown().catch(() => {});
     };
     process.on("beforeExit", onExit);

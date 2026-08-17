@@ -1,6 +1,6 @@
 ---
-title: Di chuyển thư mục chính
-description: "Nâng cấp ~/.failproofai lên bố cục mà phiên bản này hỗ trợ, và xem trước những gì sẽ xảy ra"
+title: Di chuyển thư mục home
+description: "Nâng cấp ~/.failproofai lên bản cục bộ mà phiên bản này hỗ trợ, và xem trước những gì sẽ xảy ra"
 ---
 
 ```bash
@@ -8,107 +8,115 @@ failproofai migrate --dry-run   # in ra kế hoạch, không thay đổi gì
 failproofai migrate             # chạy nó
 ```
 
-Hầu hết mọi người không bao giờ gõ lệnh này. Nó tự chạy trên lệnh đầu tiên sau khi
-nâng cấp, và [`failproofai update`](/vi/cli/update) cũng bao gồm nó. Hãy sử dụng trực tiếp
-khi bạn muốn xem kế hoạch trước khi nó xảy ra, hoặc để chạy quá trình di chuyển
-một cách độc lập.
+Hầu hết mọi người không bao giờ gõ lệnh này. Nó tự chạy trên lệnh đầu tiên sau
+một lần nâng cấp, và [`failproofai update`](/vi/cli/update) cũng bao gồm nó. Sử dụng
+nó trực tiếp khi bạn muốn xem kế hoạch trước khi nó xảy ra, hoặc để chạy quá
+trình di chuyển một cách độc lập.
 
-## Dựa trên bố cục, không phải phiên bản
+## Dựa trên bản cục bộ, không phải phiên bản
 
-`~/.failproofai/VERSION` ghi lại một số **bố cục** — hình dạng của thư mục,
-không phải bản phát hành đã viết nó. Các lần di chuyển được xác định theo con số đó, điều này
-là lý do tại sao khoảng cách dài lại rẻ:
+`~/.failproofai/VERSION` ghi lại một số **bản cục bộ** — hình dạng của thư mục,
+không phải bản phát hành đã ghi nó. Các quá trình di chuyển dựa trên số đó, điều
+này giúp khoảng cách lớn trở nên rẻ tiền:
 
-- Các phiên bản npm thay đổi ở mỗi bản phát hành, hàng chục phiên bản giữa hai bố cục.
-- Vì vậy một máy tính bỏ qua ba mươi bản phát hành với **không có thay đổi bố cục** sẽ chạy **không**
-  lần di chuyển, không phải ba mươi lần không có tác dụng.
-- Và một máy tính bỏ qua nhiều bố cục cùng một lúc sẽ chạy từng bước theo thứ tự, mỗi
-  bước chỉ biết về hai điểm cuối của nó.
+- Các phiên bản npm thay đổi ở mỗi bản phát hành, hàng chục phiên bản giữa hai
+  bản cục bộ khác nhau.
+- Vì vậy, một máy bỏ qua ba mươi bản phát hành với **không có thay đổi bản cục
+  bộ** sẽ chạy **không** quá trình di chuyển, không phải ba mươi thao tác trống.
+- Và một máy bỏ qua nhiều bản cục bộ cùng một lúc sẽ chạy từng bước theo thứ tự,
+  mỗi bước chỉ biết hai điểm cuối của nó.
 
-Điều này quan trọng vì npm không thể tự cập nhật một gói đã cài đặt. Một máy tính
-ở một phiên bản trong vài tháng rồi nhảy qua nhiều bố cục là trường hợp
-bình thường, không phải trường hợp hiếm hoi.
+Điều này quan trọng vì npm không thể tự động cập nhật một gói đã cài đặt. Một máy
+nằm trên một phiên bản trong vài tháng rồi nhảy sang nhiều bản cục bộ cùng một lúc
+là trường hợp bình thường, không phải trường hợp hiếm gặp.
 
-## Lần chạy thử
+## Chạy thử
 
-`--dry-run` in ra chuỗi chính xác và các tệp sẽ được lưu trước tiên, và
-không thay đổi gì cả — không di chuyển, không sao lưu, không mục nhập sổ cái:
+`--dry-run` in ra chuỗi chính xác và các tệp sẽ được lưu đầu tiên, và không thay
+đổi gì cả — không di chuyển, không sao lưu, không mục nhật ký:
 
 ```
-Bố cục 2 trên đĩa; phiên bản này hỗ trợ 3.
-1 bước sẽ chạy:
-  2 → 3  bố cục 2 → 3: chuyển config.toml và credentials.toml thành JSON, di chuyển
-         custom-policies/ trở lại policies/, đặt cấu hình chính sách lồng nhau ở gốc
+Bản cục bộ 2 trên đĩa; phiên bản này hỗ trợ 3.
+Sẽ chạy 1 bước:
+  2 → 3  bản cục bộ 2 → 3: chuyển config.toml và credentials.toml vào JSON,
+         di chuyển custom-policies/ trở lại policies/, lồng cấu hình chính sách
+         ở gốc
 
-Những tệp này sẽ được sao chép vào ~/.failproofai/migrations/backup-layout2 trước:
+Những tệp này sẽ được sao chép đến ~/.failproofai/migrations/backup-layout2
+trước tiên:
   VERSION
   config.toml
   credentials.toml
 ```
 
-## Những gì được chuyển và những gì được xây dựng lại
+## Những gì được mang theo và những gì được xây dựng lại
 
-Mỗi đường dẫn trong thư mục chính khai báo loại dữ liệu nó chứa, và điều đó quyết định
-liệu một lần di chuyển có thể loại bỏ nó hay không. Quy tắc: **những gì dẫn xuất và có thể tìm nạp lại có thể bị loại bỏ; bất cứ điều gì bạn đã gõ, bất cứ điều gì chưa được gửi, và bất cứ điều gì xác định máy tính đều được chuyển.**
+Mỗi đường dẫn trong thư mục home khai báo loại dữ liệu nó chứa, và điều đó quyết
+định xem liệu một quá trình di chuyển có thể loại bỏ nó hay không. Nguyên tắc:
+**những gì dẫn xuất và có thể lấy lại có thể bị bỏ; bất kỳ thứ gì bạn đã nhập,
+bất kỳ thứ gì chưa được gửi, và bất kỳ thứ gì xác định máy đều được mang theo.**
 
-| Được chuyển | Được xây dựng lại hoặc tìm nạp lại |
+| Mang theo | Xây dựng lại hoặc lấy lại |
 |---|---|
-| `config.json` — cài đặt, `daemon.configured`, các đường dẫn thu thập bổ sung | Bộ nhớ cache kiểm toán |
-| `credentials.json` — đăng ký đám mây của bạn | Triển khai được quản lý bởi đám mây (tìm nạp lại và xác minh điều kiện vào lần thăm dò tiếp theo) |
-| `policies-config.json` — lựa chọn và tham số chính sách của bạn | Trạng thái vết gây ra của daemon |
-| `policies/` — các tệp chính sách của riêng bạn và các trình trợ giúp mà chúng nhập | |
+| `config.json` — cài đặt, `daemon.configured`, đường dẫn chụp bổ sung | Bộ đệm kiểm toán |
+| `credentials.json` — ghi danh đám mây của bạn | Triển khai được quản lý bởi đám mây (lấy lại và xác minh tiêu chuẩn tại lần kiểm tra tiếp theo) |
+| `policies-config.json` — lựa chọn chính sách và tham số của bạn | Trạng thái tạm thời daemon |
+| `policies/` — tệp chính sách của riêng bạn và trình trợ giúp mà chúng nhập | |
 | `hook-activity/` — nhật ký quyết định mà bảng điều khiển đọc | |
-| Các sự kiện chưa gửi vẫn còn trong hàng đợi để tải lên | |
-| `cursors/` — dấu nước của bộ sưu tập | |
+| Các sự kiện chưa được gửi vẫn còn trong hàng chờ để tải lên | |
+| `cursors/` — dấu nước trình thu thập | |
 | Daemon nhị phân trong `bin/` | |
 
 <Note>
-  Các sự kiện chưa gửi được chuyển thay vì bị loại bỏ vì mất mát sẽ
-  vĩnh viễn, không phải chậm: dấu nước của bộ sưu tập đã tiến quá những gì
-  đang nằm trong spool, vì vậy không có gì sẽ từng đọc lại phạm vi đó của
-  bản ghi lại. Quá trình di chuyển cũng yêu cầu daemon gửi những gì đang trong spool
-  ngay khi nó hoàn tất, vì vậy kết quả thông thường là không còn gì
-  để chuyển.
+  Các sự kiện chưa được gửi được mang theo thay vì bị bỏ vì mất mát sẽ là vĩnh
+  viễn, không phải chậm: dấu nước của trình thu thập đã tiến lên quá bất kỳ thứ
+  gì nằm trong spool, vì vậy không có gì sẽ bao giờ đọc lại phạm vi đó của một
+  bản ghi. Quá trình di chuyển cũng yêu cầu daemon gửi những gì được spool ngay
+  sau khi nó hoàn thành, vì vậy kết quả thông thường là không còn gì để mang theo.
 </Note>
 
-Các khóa mà phiên bản *mới hơn* đã viết vào `config.json`, `credentials.json` hoặc
-`policies-config.json` cũng được bảo tồn, thay vì bị loại bỏ bởi trình đọc cũ hơn.
+Các khóa mà phiên bản *mới hơn* đã ghi vào `config.json`, `credentials.json` hoặc
+`policies-config.json` cũng được giữ lại thay vì bị bỏ bởi một trình đọc cũ hơn.
 
 ## Bản ghi nó để lại
 
 ```
 ~/.failproofai/migrations/
-  applied.json                 một mục nhập cho mỗi bước: bố cục, CLI, dấu thời gian, thời lượng, kết quả
-  backup-layout<n>/            bản sao của các tệp không thể thay thế, được lấy trước bước đầu tiên
+  applied.json                 một mục cho mỗi bước: bản cục bộ, CLI, dấu thời gian,
+                               thời lượng, kết quả
+  backup-layout<n>/            bản sao của các tệp không thể thay thế, được lấy trước
+                               bước đầu tiên
 ```
 
-`applied.json` là những gì trả lời "máy tính này thực sự đã trải qua những gì" — câu hỏi
-đầu tiên đáng được đặt ra khi có gì đó trông không đúng sau khi nâng cấp. Đính kèm nó
-vào báo cáo lỗi.
+`applied.json` là những gì trả lời câu hỏi "máy này thực sự đã trải qua những gì"
+— câu hỏi đầu tiên đáng xem xét khi có gì đó trông sai sau một lần nâng cấp. Đính
+kèm nó vào một báo cáo lỗi.
 
-Bản sao ý định nhỏ chứ không phải bản sao của toàn bộ thư mục: quá trình di chuyển không còn
-xóa bất cứ điều gì không thể thay thế bằng thiết kế, vì vậy những gì đáng bảo hiểm
-là một *lỗi trong một bước*, và những tệp này là nơi lỗi như vậy sẽ gây hại.
+Bản sao lưu được cố ý nhỏ thay vì sao chép toàn bộ thư mục: quá trình di chuyển
+không còn xóa bất kỳ thứ gì không thể thay thế theo thiết kế, vì vậy những gì đáng
+bảo hiểm là *một lỗi trong một bước*, và những tệp ít ỏi này là nơi một lỗi như vậy
+sẽ gây hại.
 
 ## Nếu một bước không thành công
 
-Chuỗi dừng ở đó. `VERSION` chỉ được đánh dấu bởi một bước đã hoàn thành, vì vậy thư mục chính
-vẫn được đánh dấu với bố cục cũ của nó và lệnh tiếp theo sẽ thử lại — một thư mục chính
-không bao giờ được đánh dấu là hiện tại dựa trên quá trình di chuyển một phần. Bước được ghi lại
-trong `applied.json` với `"ok": false`, và bản sao ở nơi nó được lấy.
+Chuỗi dừng ở đó. `VERSION` chỉ được đánh dấu bởi một bước đã hoàn thành, vì vậy
+thư mục home vẫn được đánh dấu bằng bản cục bộ cũ của nó và lệnh tiếp theo sẽ thử
+lại — thư mục home không bao giờ được đánh dấu hiện tại dựa trên một quá trình di
+chuyển một phần. Bước được ghi lại trong `applied.json` với `"ok": false`, và bản
+sao lưu là nơi nó được lấy.
 
-## Một thư mục chính mới hơn bị từ chối, không được di chuyển
+## Thư mục home mới hơn bị từ chối, không được di chuyển
 
-Nếu `~/.failproofai/` được viết bởi một **failproofai mới hơn** so với cái bạn đang
-chạy, lệnh dừng lại và yêu cầu bạn nâng cấp thay vào đó. Dữ liệu đó tốt và
-CLI mới hơn đọc nó; di chuyển "tiến lên" từ nó không phải là điều tồn tại, và
-đặt lại nó sẽ phá hủy điều gì đó có thể phục hồi.
+Nếu `~/.failproofai/` được viết bởi một phiên bản failproofai **mới hơn** so với
+phiên bản bạn đang chạy, lệnh sẽ dừng và bảo bạn nâng cấp thay vào đó. Dữ liệu
+đó là ổn định và một CLI mới hơn đọc nó; di chuyển sang phía trước từ nó không phải
+là thứ tồn tại, và đặt lại nó sẽ phá hủy một thứ có thể phục hồi.
 
 ```
-Thư mục failproofai của máy tính này được viết bởi phiên bản mới hơn (bố cục 4;
-phiên bản này hỗ trợ 3). Nâng cấp thay vì di chuyển:
+Thư mục failproofai của máy này được viết bởi một phiên bản mới hơn (bản cục bộ
+4; phiên bản này hỗ trợ 3). Nâng cấp thay vì di chuyển:
   npm install -g failproofai@latest
 ```
 
-Daemon áp dụng quy tắc tương tự: `failproofaid` từ chối bắt đầu chống lại một bố cục
-nó không hỗ trợ, thay vì đọc và viết các đường dẫn đã di chuyển.
+Daemon áp dụng quy tắc tương tự: `failproofaid` từ chối khởi động đối với một bản
+cục bộ mà nó không hỗ trợ, thay vì đọc và ghi các đường dẫn đã di chuyển.

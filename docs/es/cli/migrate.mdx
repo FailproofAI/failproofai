@@ -1,28 +1,28 @@
 ---
-title: Migrar el directorio de inicio
-description: "Actualiza ~/.failproofai a la estructura que reconoce esta versión, y previsualiza los cambios antes de aplicarlos"
+title: Migrar el directorio home
+description: "Actualiza ~/.failproofai al esquema que esta versión utiliza, y previsualiza los cambios antes de ejecutarlos"
 ---
 
 ```bash
-failproofai migrate --dry-run   # imprime el plan sin modificar nada
+failproofai migrate --dry-run   # muestra el plan sin realizar cambios
 failproofai migrate             # ejecuta la migración
 ```
 
-La mayoría de las personas nunca escribe esto. Se ejecuta automáticamente en el primer comando tras una actualización, y [`failproofai update`](/es/cli/update) lo incluye. Úsalo directamente cuando quieras ver el plan antes de que ocurra, o para ejecutar la migración de forma independiente.
+La mayoría de las personas nunca necesitan escribir esto. Se ejecuta automáticamente con el primer comando tras una actualización, y [`failproofai update`](/es/cli/update) lo incluye. Úsalo directamente cuando quieras ver el plan antes de que ocurra, o para ejecutar la migración de forma independiente.
 
-## Basado en la estructura, no en la versión
+## Basado en el esquema, no en la versión
 
-`~/.failproofai/VERSION` registra un número de **estructura** — la forma del directorio, no la versión que lo escribió. Las migraciones se identifican por ese número, lo que hace que un salto grande sea económico:
+`~/.failproofai/VERSION` registra un número de **esquema** — la estructura del directorio, no la versión que lo creó. Las migraciones están asociadas a ese número, lo que hace que saltar muchas versiones sea económico:
 
-- Las versiones de npm cambian en cada lanzamiento, decenas de ellas entre dos estructuras.
-- Así que una máquina que se salta treinta versiones **sin cambio de estructura** ejecuta **cero** migraciones, no treinta operaciones vacías.
-- Y una máquina que se salta varias estructuras a la vez ejecuta cada paso en orden, donde cada paso solo conoce sus dos extremos.
+- Las versiones de npm cambian en cada lanzamiento, decenas de ellas entre dos esquemas.
+- Así, una máquina que salta treinta versiones **sin cambio de esquema** ejecuta **cero** migraciones, no treinta operaciones vacías.
+- Y una máquina que salta varios esquemas a la vez ejecuta cada paso en orden, donde cada paso solo conoce sus propios dos extremos.
 
-Esto importa porque npm no puede actualizar un paquete instalado por sí solo. Una máquina que lleva meses en una versión y luego salta varias estructuras es el caso habitual, no el excepcional.
+Esto importa porque npm no puede actualizar por sí solo un paquete instalado. Una máquina que permanece en una versión durante meses y luego salta varios esquemas es el caso habitual, no el excepcional.
 
-## La ejecución en seco
+## El simulacro
 
-`--dry-run` imprime la cadena exacta y los archivos que se guardarían primero, sin cambiar absolutamente nada — sin migración, sin copia de seguridad, sin entrada en el registro:
+`--dry-run` muestra la cadena exacta y los archivos que se guardarían primero, sin realizar ningún cambio — ni migración, ni copia de seguridad, ni entrada en el registro:
 
 ```
 Layout 2 on disk; this build speaks 3.
@@ -38,44 +38,44 @@ These would be copied to ~/.failproofai/migrations/backup-layout2 first:
 
 ## Qué se conserva y qué se reconstruye
 
-Cada ruta en el directorio de inicio declara qué tipo de datos contiene, y eso determina si una migración puede descartarla. La regla: **lo derivado y recuperable puede descartarse; todo lo que escribiste, lo que aún no se ha entregado y lo que identifica la máquina se conserva.**
+Cada ruta en el directorio home declara qué tipo de datos contiene, y eso determina si una migración puede descartarla. La regla: **lo derivado y recuperable puede eliminarse; cualquier cosa que hayas escrito, cualquier cosa aún no entregada, y cualquier cosa que identifique la máquina se conserva.**
 
 | Conservado | Reconstruido o recuperado |
 |---|---|
-| `config.json` — configuración, `daemon.configured`, rutas de captura adicionales | La caché de auditoría |
-| `credentials.json` — tu inscripción en la nube | Despliegues gestionados en la nube (recuperados y verificados con resumen en el siguiente sondeo) |
+| `config.json` — ajustes, `daemon.configured`, rutas de captura adicionales | La caché de auditoría |
+| `credentials.json` — tu registro en la nube | Despliegues gestionados en la nube (recuperados y verificados por hash en el siguiente sondeo) |
 | `policies-config.json` — tu selección de políticas y parámetros | Estado temporal del daemon |
-| `policies/` — tus propios archivos de política y los helpers que importan | |
-| `hook-activity/` — el registro de decisiones que lee el panel de control | |
+| `policies/` — tus propios archivos de políticas y los helpers que importan | |
+| `hook-activity/` — el registro de decisiones que lee el panel | |
 | Eventos no entregados aún en cola para subir | |
 | `cursors/` — marcas de agua del colector | |
 | El binario del daemon en `bin/` | |
 
 <Note>
-  Los eventos no entregados se conservan en lugar de descartarse porque la pérdida sería permanente, no solo lenta: la marca de agua del colector ya ha avanzado más allá de cualquier dato en el spool, por lo que nada volvería a leer ese rango de una transcripción. La migración también le pide al daemon que entregue lo que está en el spool en cuanto termine, así que lo habitual es que no quede nada por conservar.
+  Los eventos no entregados se conservan en lugar de descartarse porque la pérdida sería permanente, no simplemente lenta: la marca de agua del colector ya ha avanzado más allá de cualquier cosa en la cola, por lo que nada volvería a leer ese rango de una transcripción. La migración también le pide al daemon que entregue lo que hay en la cola en cuanto termina, así que el resultado habitual es que no queda nada por conservar.
 </Note>
 
-Las claves que una versión *más nueva* haya escrito en `config.json`, `credentials.json` o `policies-config.json` también se preservan, en lugar de ser descartadas por un lector más antiguo.
+Las claves que una versión *más nueva* escribió en `config.json`, `credentials.json` o `policies-config.json` también se preservan, en lugar de ser descartadas por un lector más antiguo.
 
 ## El registro que deja
 
 ```
 ~/.failproofai/migrations/
-  applied.json                 una entrada por paso: estructura, CLI, marca de tiempo, duración, resultado
+  applied.json                 una entrada por paso: esquema, CLI, marca de tiempo, duración, resultado
   backup-layout<n>/            copias de los archivos irremplazables, tomadas antes del primer paso
 ```
 
-`applied.json` es lo que responde a la pregunta «¿qué ha pasado realmente en esta máquina?» — la primera pregunta que vale la pena hacerse cuando algo parece incorrecto tras una actualización. Adjúntalo a un informe de error.
+`applied.json` es lo que responde a la pregunta «¿qué ha pasado realmente en esta máquina?» — la primera pregunta que vale la pena hacer cuando algo parece incorrecto tras una actualización. Adjúntalo a un informe de error.
 
-La copia de seguridad es deliberadamente pequeña en lugar de ser una copia del directorio completo: la migración ya no elimina nada irremplazable por diseño, así que lo que vale la pena asegurar es un *defecto en un paso*, y estos pocos archivos son donde tal defecto causaría daño.
+La copia de seguridad es deliberadamente pequeña en lugar de ser una copia completa del directorio: la migración ya no elimina nada irremplazable por diseño, así que lo que merece asegurarse es un *defecto en un paso*, y estos pocos archivos son donde tal defecto podría causar daño.
 
 ## Si un paso falla
 
-La cadena se detiene ahí. `VERSION` solo se actualiza cuando un paso se completa correctamente, por lo que el directorio de inicio permanece marcado con su estructura anterior y el siguiente comando lo reintenta — un directorio de inicio nunca se marca como actual basándose en una migración parcial. El paso se registra en `applied.json` con `"ok": false`, y la copia de seguridad permanece donde fue tomada.
+La cadena se detiene ahí. `VERSION` solo se actualiza cuando un paso se completa con éxito, por lo que el directorio home permanece marcado con su esquema antiguo y el siguiente comando lo reintenta — un directorio home nunca se marca como actualizado basándose en una migración parcial. El paso se registra en `applied.json` con `"ok": false`, y la copia de seguridad permanece donde se tomó.
 
-## Un directorio de inicio más nuevo se rechaza, no se migra
+## Un directorio home más nuevo se rechaza, no se migra
 
-Si `~/.failproofai/` fue escrito por una versión de failproofai **más nueva** que la que estás ejecutando, el comando se detiene y te indica que actualices. Esos datos están bien y un CLI más nuevo los lee sin problema; migrar «hacia adelante» desde ellos no es algo que exista, y restablecerlos destruiría algo recuperable.
+Si `~/.failproofai/` fue escrito por una versión de failproofai **más reciente** que la que estás ejecutando, el comando se detiene y te indica que actualices. Esos datos están bien y una CLI más nueva los lee sin problemas; migrar «hacia delante» desde ellos no es algo que exista, y restablecerlos destruiría algo recuperable.
 
 ```
 This machine's failproofai directory was written by a newer version (layout 4;
@@ -83,4 +83,4 @@ this build speaks 3). Upgrade rather than migrate:
   npm install -g failproofai@latest
 ```
 
-El daemon aplica la misma regla: `failproofaid` se niega a iniciarse con una estructura que no reconoce, en lugar de leer y escribir rutas que han cambiado de lugar.
+El daemon aplica la misma regla: `failproofaid` se niega a iniciarse con un esquema que no reconoce, en lugar de leer y escribir rutas que han cambiado.

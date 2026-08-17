@@ -1,34 +1,51 @@
 ---
-title: Cập nhật sau nâng cấp
-description: "Hoàn thành nửa phần còn lại mà npm không thể làm: di chuyển thư mục chủ và đồng bộ daemon"
+title: Cập nhật sau khi nâng cấp
+description: "Hoàn thành nửa còn lại của quá trình nâng cấp mà npm không thể thực hiện: di chuyển thư mục home và đồng bộ daemon"
 ---
 
 ```bash
 npm install -g failproofai@latest && failproofai update
 ```
 
-Đó là toàn bộ quá trình nâng cấp. `npm` thay thế CLI; `failproofai update` thực hiện phần còn lại.
+Đó là toàn bộ quá trình nâng cấp. `npm` thay thế CLI; `failproofai update` thực hiện
+phần còn lại.
 
-## Tại sao lệnh thứ hai tồn tại
+## Tại sao lại cần một lệnh thứ hai
 
-`npm install -g` chỉ thay thế một thứ — CLI. Hai thành phần khác của cài đặt failproofai nằm ngoài gói một cách cố ý, và chúng không di chuyển khi npm chạy:
+`npm install -g` chỉ thay thế một thứ — CLI. Hai phần khác của bản cài đặt failproofai
+nằm ngoài package một cách cố ý, và cả hai đều không di chuyển khi npm chạy:
 
-- **`~/.failproofai/`**, cài đặt, đăng ký đám mây, lựa chọn chính sách và lịch sử của bạn. Một phiên bản mới có thể sắp xếp nó khác đi, và việc sắp xếp lại phải được thực hiện bởi mã biết cả hai cấu trúc.
-- **Tệp nhị phân daemon `failproofaid`**, tại `~/.failproofai/bin/failproofaid-<version>`. Nó cố ý *không* nằm trong `node_modules`: một nâng cấp thay đổi tệp dưới một dịch vụ đang chạy sẽ trỏ daemon trực tiếp đến nhị phân được xây dựng từ mã nguồn khác nhau, và xóa gói sẽ xóa nó từ dưới một dịch vụ sau đó bị lặp lại crash ở mỗi lần khởi động.
+- **`~/.failproofai/`**, cài đặt của bạn, đăng ký cloud, lựa chọn chính sách và
+  lịch sử. Một phiên bản mới có thể sắp xếp nó khác đi, và việc sắp xếp lại phải
+  được thực hiện bởi code biết cả hai cách sắp xếp.
+- **Tệp nhị phân daemon `failproofaid`**, tại
+  `~/.failproofai/bin/failproofaid-<version>`. Nó cố ý *không* nằm trong
+  `node_modules`: một nâng cấp tráo đổi tệp dưới một dịch vụ đang chạy sẽ hướng
+  daemon hoạt động đến một tệp nhị phân được xây dựng từ mã nguồn khác, và xóa
+  package sẽ xóa nó khỏi dưới dịch vụ đó, dẫn đến crash-loop ở mỗi lần khởi động.
 
-Vì vậy sau `npm install -g` một mình, CLI là mới nhưng daemon thì không. `failproofaid` từ chối khởi động với bố cục thư mục chủ mà nó không nhận biết — phiên bản lớn tiếng của sự không khớp đó thay vì phiên bản im lặng — vì vậy hai nửa cần được đưa lại với nhau. `failproofai update` là bước đó.
+Vì vậy sau khi chỉ chạy `npm install -g`, CLI là mới nhưng daemon vẫn cũ.
+`failproofaid` từ chối khởi động khi gặp bố cục home mà nó không hiểu — phiên bản
+"to tiếng" của sự không khớp đó hơn là im lặng — vì vậy hai nửa cần được ghép lại
+với nhau. `failproofai update` là bước đó.
 
-## Những gì nó làm
+## Nó làm gì
 
 <Steps>
   <Step title="Chạy bất kỳ di chuyển bố cục nào đang chờ xử lý">
-    Đọc bố cục được ghi lại trong `~/.failproofai/VERSION` và chạy các bước đưa nó đến bố cục mà phiên bản này nhận biết. Thường không có bước nào — xem [`failproofai migrate`](/vi/cli/migrate).
+    Đọc bố cục được ghi lại trong `~/.failproofai/VERSION` và chạy các bước
+    đưa nó đến bố cục mà phiên bản này hiểu. Thường là không có — xem
+    [`failproofai migrate`](/vi/cli/migrate).
   </Step>
-  <Step title="Đặt tệp nhị phân daemon phù hợp tại chỗ">
-    Từ gói nền tảng npm đã tải xuống nếu có thể (không có mạng), nếu không từ tài sản phát hành cho phiên bản chính xác này, xác minh SHA-256 trước khi sử dụng.
+  <Step title="Đặt tệp nhị phân daemon phù hợp vào chỗ">
+    Từ package dành cho nền tảng mà npm đã tải xuống nếu có thể (không cần mạng),
+    nếu không thì từ release asset cho phiên bản chính xác này, được xác minh SHA-256
+    trước khi sử dụng.
   </Step>
   <Step title="Khởi động lại dịch vụ và xác nhận nó đã quay lại">
-    Được kiểm tra chứ không phải được giả định — trình quản lý dịch vụ báo cáo quy trình hoạt động ngay lúc nó fork, điều này không giống với nó hoạt động.
+    Được kiểm tra chứ không phải là giả định — trình quản lý dịch vụ báo cáo
+    một quy trình đang hoạt động ngay khi nó fork, điều này không giống như
+    nó đang hoạt động.
   </Step>
 </Steps>
 
@@ -36,29 +53,43 @@ Vì vậy sau `npm install -g` một mình, CLI là mới nhưng daemon thì kh�
 
 | Cờ | Hiệu ứng |
 |------|--------|
-| `--no-daemon` | Chỉ di chuyển thư mục chủ, giữ nguyên daemon ở phiên bản hiện tại. |
+| `--no-daemon` | Chỉ di chuyển home, giữ daemon ở phiên bản hiện tại. |
 
 <Warning>
-  `--no-daemon` để lại một daemon lệch phiên bản. Trên máy được cấu hình để yêu cầu daemon, mọi sự kiện hook **thất bại đóng** nếu daemon không thể trả lời — và daemon từ chối khởi động với thư mục chủ đã di chuyển không thể trả lời. Nên để phần daemon chạy.
+  `--no-daemon` giữ lại daemon có phiên bản không khớp. Trên máy được cấu hình
+  để yêu cầu daemon, mọi sự kiện hook **thất bại và đóng** nếu daemon không thể
+  trả lời — và daemon từ chối khởi động khi gặp home đã được di chuyển không thể
+  trả lời. Tốt hơn là để nửa daemon chạy.
 </Warning>
 
-## Nếu có điều gì đó không ổn
+## Nếu có sự cố
 
-Lệnh thoát với mã khác không và nói phần nào không thành công. Hai trường hợp đáng biết:
+Lệnh thoát với mã khác không và cho biết nửa nào thất bại. Hai trường hợp đáng
+biết:
 
-- **Bước di chuyển không hoàn tất.** Thư mục chủ được để lại được đánh dấu bằng bố cục *cũ* của nó, vì vậy lệnh tiếp theo sẽ thử lại — thư mục chủ không bao giờ được đánh dấu hiện tại trên cơ sở di chuyển một phần. Bản sao cài đặt và đăng ký của bạn được lưu trước khi bất cứ điều gì chạy, trong `~/.failproofai/migrations/backup-layout<n>/`.
-- **Daemon không thể khởi động lại mà không cần mật khẩu.** `sudo -n` được sử dụng một cách cố ý, vì vậy không bao giờ có gì hiển thị lời nhắc từ dưới màn hình tiến trình. Lệnh in dòng chính xác để bạn chạy yourself.
+- **Một bước di chuyển không hoàn thành.** Home được đánh dấu bằng bố cục *cũ*
+  của nó, vì vậy lệnh tiếp theo sẽ thử lại — home không bao giờ được đánh dấu
+  là hiện tại dựa trên di chuyển một phần. Các bản sao cài đặt và đăng ký của bạn
+  được lưu trước khi bất cứ điều gì chạy, trong `~/.failproofai/migrations/backup-layout<n>/`.
+- **Daemon không thể khởi động lại mà không cần mật khẩu.** `sudo -n` được sử dụng
+  cố ý, vì vậy không bao giờ có gợi ý từ dưới màn hình tiến độ. Lệnh in ra
+  dòng chính xác để bạn tự chạy.
 
 <Note>
-  Không có gì ở đây cần trình hướng dẫn thiết lập tương tác. Cài đặt, đăng ký đám mây và lựa chọn chính sách của bạn vượt qua nâng cấp, vì vậy máy đã di chuyển thực thi chính xác như trước — điều này quan trọng nhất trên các máy không có ai ngồi tại: runner CI, hộp fleet, gateway headless.
+  Không có gì ở đây cần trình hướng dẫn thiết lập tương tác. Cài đặt, đăng ký cloud
+  và lựa chọn chính sách của bạn vẫn còn sau nâng cấp, vì vậy máy đã di chuyển
+  thực thi chính xác như trước — điều này quan trọng nhất trên những máy không
+  có ai ngồi ở đó: CI runner, hộp fleet, gateway không đầu.
 </Note>
 
 ## Tự động hóa nó
 
-`failproofai update` không tương tác và an toàn khi chạy khi không có gì để làm — nó báo cáo "không cần di chuyển" và thoát 0. Đặt nó sau mỗi nâng cấp trong tập lệnh cấp phép hoặc Dockerfile là cách sử dụng dự định:
+`failproofai update` không tương tác và an toàn để chạy khi không có gì phải làm —
+nó báo cáo "không cần di chuyển" và thoát với 0. Đặt nó sau mỗi nâng cấp trong
+script provisioning hoặc Dockerfile là cách sử dụng dự định:
 
 ```dockerfile
 RUN npm install -g failproofai@latest && failproofai update --no-daemon
 ```
 
-(`--no-daemon` trong bản dựng hình ảnh, nơi chưa có dịch vụ để khởi động lại.)
+(`--no-daemon` trong xây dựng image, nơi chưa có dịch vụ để khởi động lại.)

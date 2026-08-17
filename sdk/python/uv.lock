@@ -30,10 +30,14 @@ source = { editable = "." }
 [package.optional-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pytest", marker = "extra == 'dev'", specifier = ">=7" }]
+requires-dist = [
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7" },
+    { name = "tomli", marker = "python_full_version < '3.11' and extra == 'dev'", specifier = ">=2" },
+]
 provides-extras = ["dev"]
 
 [[package]]

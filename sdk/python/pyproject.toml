@@ -39,7 +39,12 @@ Documentation = "https://docs.befailproof.ai/agenteye/python-sdk"
 Source = "https://github.com/FailproofAI/failproofai"
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+# Test-only, and it stays that way — `dependencies` above is empty and
+# `tests/test_zero_dependencies.py` fails if anything lands here without a reason.
+# `tomli` is `tomllib`'s backport: 3.10 has no stdlib TOML parser, and that test
+# reads this file to prove the promise, so on 3.10 it needs one rather than
+# skipping the check on the oldest interpreter we advertise.
+dev = ["pytest>=7", "tomli>=2; python_version<'3.11'"]
 
 [tool.setuptools.dynamic]
 version = { attr = "failproofai_sdk._version.__version__" }

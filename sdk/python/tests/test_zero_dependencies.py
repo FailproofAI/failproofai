@@ -18,8 +18,17 @@ from __future__ import annotations
 
 import ast
 import sys
-import tomllib
 from pathlib import Path
+
+try:  # Python 3.11+
+    import tomllib
+except ModuleNotFoundError:  # 3.10 — `tomli` is the same parser, from the dev extra
+    # Deliberately not a skip. The manifest assertions below are the enforcement
+    # of the zero-dependency promise, and a promise that stops being checked on
+    # the oldest interpreter we advertise is checked where it matters least.
+    # `tomli` is a TEST dependency; `[project.dependencies]` stays empty, which
+    # is the thing actually being promised.
+    import tomli as tomllib
 
 import failproofai_sdk
 
@@ -92,14 +101,33 @@ def test_no_runtime_dependencies_are_declared():
     )
 
 
+#: The only distributions the dev extra may name, each with the reason it is there.
+#: This is an allowlist rather than a count, because the failure it prevents is a
+#: convenience library drifting in — anything here is one `--extra dev` away from a
+#: user's environment, and none of it is covered by the zero-dependency promise.
+ALLOWED_DEV_DEPENDENCIES = {
+    "pytest": "the test runner",
+    "tomli": "tomllib's backport; Python 3.10 has no stdlib TOML parser, and "
+             "test_zero_dependencies.py must not stop checking the manifest there",
+}
+
+
 def test_dev_dependencies_are_test_only_and_stay_out_of_the_install():
     """`[project.optional-dependencies].dev` never reaches a plain install."""
     manifest = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     extras = manifest["project"].get("optional-dependencies", {})
     assert set(extras) == {"dev"}, f"unexpected extras: {sorted(extras)}"
-    assert all(spec.startswith("pytest") for spec in extras["dev"]), (
-        f"the dev extra grew beyond the test runner: {extras['dev']}. Anything "
-        "here is one `--extra dev` away from a user's environment."
+
+    # "pytest>=7" -> "pytest"; "tomli>=2; python_version<'3.11'" -> "tomli"
+    named = {
+        spec.split(";")[0].strip().split("[")[0].split("=")[0].split("<")[0].split(">")[0].strip()
+        for spec in extras["dev"]
+    }
+    unexpected = named - set(ALLOWED_DEV_DEPENDENCIES)
+    assert not unexpected, (
+        f"the dev extra grew beyond the test tooling: {sorted(unexpected)}. Each "
+        "entry needs a reason in ALLOWED_DEV_DEPENDENCIES, because anything here "
+        "is one `--extra dev` away from a user's environment."
     )
 
 

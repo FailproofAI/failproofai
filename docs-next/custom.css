@@ -37,13 +37,15 @@ h1, h2, h3 {
 
 .navbar-link a[href="https://discord.befailproof.ai"],
 .navbar-link a[href="https://x.com/failproofai"],
-.navbar-link a[href="https://github.com/FailproofAI/failproofai"] {
+.navbar-link a[href="https://github.com/FailproofAI/failproofai"],
+#topbar-cta-button a[href="https://app.befailproof.ai"] {
   position: relative;
 }
 
 .navbar-link a[href="https://discord.befailproof.ai"]::after,
 .navbar-link a[href="https://x.com/failproofai"]::after,
-.navbar-link a[href="https://github.com/FailproofAI/failproofai"]::after {
+.navbar-link a[href="https://github.com/FailproofAI/failproofai"]::after,
+#topbar-cta-button a[href="https://app.befailproof.ai"]::after {
   position: absolute;
   top: calc(100% + 0.5rem);
   left: 50%;
@@ -73,12 +75,18 @@ h1, h2, h3 {
   content: "Star us!";
 }
 
+#topbar-cta-button a[href="https://app.befailproof.ai"]::after {
+  content: "Go to Failproof";
+}
+
 .navbar-link a[href="https://discord.befailproof.ai"]:hover::after,
 .navbar-link a[href="https://discord.befailproof.ai"]:focus-visible::after,
 .navbar-link a[href="https://x.com/failproofai"]:hover::after,
 .navbar-link a[href="https://x.com/failproofai"]:focus-visible::after,
 .navbar-link a[href="https://github.com/FailproofAI/failproofai"]:hover::after,
-.navbar-link a[href="https://github.com/FailproofAI/failproofai"]:focus-visible::after {
+.navbar-link a[href="https://github.com/FailproofAI/failproofai"]:focus-visible::after,
+#topbar-cta-button a[href="https://app.befailproof.ai"]:hover::after,
+#topbar-cta-button a[href="https://app.befailproof.ai"]:focus-visible::after {
   opacity: 1;
   transform: translate(-50%, 0);
 }

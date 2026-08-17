@@ -516,9 +516,17 @@ def test_configure_can_be_called_after_events_have_already_been_emitted(spool, t
     assert read_all(spool) == []
 
 
-def test_configure_is_safe_to_call_from_several_threads(spool):
+def test_configure_is_safe_to_call_from_several_threads(spool, tmp_path):
     """Racing configure() calls must not corrupt state or lose queued events."""
     import failproofai_sdk
+
+    # This is the one test that asserts an EXACT count on the process-wide
+    # singleton, so it must not inherit anything another test left queued. Drain
+    # to a throwaway directory first — otherwise the assertion below depends on
+    # test execution order, and an order-dependent test fails for a reason that
+    # has nothing to do with what it checks.
+    failproofai_sdk.configure(base_dir=tmp_path / "drain", flush_interval=3600)
+    failproofai_sdk._writer.flush_now()
 
     failproofai_sdk.configure(base_dir=spool, flush_interval=3600)
     barrier = threading.Barrier(8)

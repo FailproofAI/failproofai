@@ -567,6 +567,16 @@ describe("installer schedules every job it validated", () => {
     expect(installSh).toMatch(/grep -vF "\$marker"/);
   });
 
+  it("upgrades a pre-marker box instead of stacking a second schedule on it", () => {
+    // The marker is younger than some installs: a box set up before it existed
+    // carries a long-form inline `docker run … -e CANARY_JOB=<job> …` line with
+    // no marker, and matching only the marker leaves it in place — six entries,
+    // every job scheduled twice, one on the old image and one on the new. The
+    // flock keeps that from doing damage; it just makes which image runs a coin
+    // toss. Verified against the real box's crontab, which is exactly that shape.
+    expect(installSh).toMatch(/grep -vF "\$marker" \| grep -vF "CANARY_JOB=\$j"/);
+  });
+
   it("passes the job through to the container", () => {
     // The docker invocation moved into run.sh so a crontab entry could be one
     // short line; the installer now passes the job name to that.

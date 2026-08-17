@@ -376,7 +376,17 @@ if [ "$DO_CRON" = 1 ]; then
       # Drop the line we installed before FOR THIS JOB, then add the current
       # one — so a re-install upgrades the schedule instead of stacking, and
       # installing one job never strips the other's line.
-      { crontab -l 2>/dev/null | grep -vF "$marker" || true; echo "$LINE"; } | crontab -
+      #
+      # TWO patterns, because the marker is younger than some installs. Boxes set
+      # up before it existed carry a long-form inline `docker run … -e
+      # CANARY_JOB=<job> …` line with no marker at all, and matching only the
+      # marker would leave it there — six cron entries, each job scheduled twice,
+      # one on the old image and one on the new. The per-job flock keeps that
+      # from doing damage (the loser exits clean) but which image actually runs
+      # becomes a coin toss, which is the hardest kind of wrong to notice.
+      # `CANARY_JOB=<job>` is specific enough that it cannot match anything else
+      # in an operator's crontab.
+      { crontab -l 2>/dev/null | grep -vF "$marker" | grep -vF "CANARY_JOB=$j" || true; echo "$LINE"; } | crontab -
       did "$j — $(describe_cron "$at") $TZ_NAME"
     fi
   done

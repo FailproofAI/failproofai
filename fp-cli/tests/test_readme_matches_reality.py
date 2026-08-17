@@ -48,6 +48,29 @@ def test_every_command_the_readme_documents_actually_exists():
     )
 
 
+def test_every_subcommand_the_readme_documents_actually_exists():
+    """The group-level check above anchors on `^fp <group>` and never looks at the
+    pipe-separated verb lists beside it. `fp audits ... |update|` sat in the README
+    documenting a verb that does not exist (it is `edit`) and passed CI.
+    """
+    cmd = get_command(app)
+    text = _readme()
+    bad = []
+    for line in text.split("\n"):
+        m = re.match(r"^fp ([a-z][a-z-]*) ([a-z][a-z|-]*)", line)
+        if not m:
+            continue
+        group, verbs = m.group(1), m.group(2)
+        sub = cmd.commands.get(group)  # type: ignore[attr-defined]
+        if sub is None or not hasattr(sub, "commands"):
+            continue  # not a group; the group-level test covers it
+        real = set(sub.commands)
+        for verb in verbs.split("|"):
+            if verb and verb not in real:
+                bad.append(f"`fp {group} {verb}` (real verbs: {sorted(real)})")
+    assert not bad, "the README documents subcommands that do not exist:\n  " + "\n  ".join(bad)
+
+
 def test_the_readme_install_instructions_name_the_distribution_not_the_command():
     """`pip install fp` installs somebody else's package. The dist is `fp-cli`."""
     text = _readme()

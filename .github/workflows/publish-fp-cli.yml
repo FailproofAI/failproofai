@@ -39,6 +39,27 @@ jobs:
       # Required for Trusted Publishing. `contents` stays at the default read.
       id-token: write
     steps:
+      # Authentication is OIDC, so there is no token to withhold: repo write access IS
+      # publish access, and `workflow_dispatch` can target ANY ref. Without these two
+      # checks one "Run workflow" click on an unreviewed branch ships that branch to
+      # public PyPI as an official fp-cli release, unreviewable and unrecallable
+      # (PyPI versions cannot be reused). The workflow this replaced
+      # (release-cli.yml in FailproofAI/agenteye) carried both; they were dropped in
+      # the move and are restored here.
+      - name: Authorize actor and branch
+        env:
+          ACTOR: ${{ github.actor }}
+          REF: ${{ github.ref_name }}
+        run: |
+          if [ "$ACTOR" != "NiveditJain" ]; then
+            echo "::error::Unauthorized. Only NiveditJain can publish fp-cli."
+            exit 1
+          fi
+          if [ "$REF" != "main" ]; then
+            echo "::error::Refusing to publish from '$REF'. fp-cli publishes from main only."
+            exit 1
+          fi
+
       - uses: actions/checkout@v7.0.1
 
       - uses: astral-sh/setup-uv@v7
@@ -47,7 +68,7 @@ jobs:
           cache-dependency-glob: fp-cli/uv.lock
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --locked --extra dev
 
       # Never publish a version whose tests do not pass. This duplicates the ci job on
       # purpose: a workflow_dispatch can target any ref, including one CI never ran.
@@ -70,6 +91,21 @@ jobs:
               sys.exit("refusing to publish without a LICENSE in the wheel")
           print(f"{wheel}: {len(modules)} modules, licence present")
           PY
+
+      # The CI job proves the artifact is installable and correctly branded; the publish
+      # path must not prove less than CI does. A wheel whose zip looks right but whose
+      # console script does not resolve is exactly the failure this catches, and it is
+      # unrecallable once uploaded.
+      - name: Smoke-test the artifact exactly as a user would receive it
+        run: |
+          uv venv /tmp/fp-publish-smoke
+          VIRTUAL_ENV=/tmp/fp-publish-smoke uv pip install dist/*.whl
+          /tmp/fp-publish-smoke/bin/fp --version
+          /tmp/fp-publish-smoke/bin/fp help > /tmp/fp-publish-help.txt
+          if grep -qi agenteye /tmp/fp-publish-help.txt; then
+            echo '::error::retired product name present in the fp help output — refusing to publish'
+            exit 1
+          fi
 
       - name: Report the version being published
         run: |

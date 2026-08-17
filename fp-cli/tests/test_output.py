@@ -443,7 +443,7 @@ def test_relative_age():
 # --- orgs: current card + perms + shared panels -----------------------------
 
 _ORGS = [
-    {"is_active": True, "slug": "testsigma", "name": "TestsigmaInc", "role": "admin", "perms": 28},
+    {"is_active": True, "slug": "globex", "name": "Globex Corp", "role": "admin", "perms": 28},
     {"is_active": False, "slug": "acme", "name": "Acme Corp", "role": "admin", "perms": 27},
 ]
 
@@ -453,18 +453,18 @@ def test_render_orgs_list(capsys):
     output.render_orgs_list(_ORGS)
     out = capsys.readouterr().out
     assert "your orgs" in out and "· 2" in out
-    assert "testsigma" in out and "TestsigmaInc" in out and "acme" in out
+    assert "globex" in out and "Globex Corp" in out and "acme" in out
     assert "switch with fp orgs switch <slug>" in out  # generic switch hint
     output.configure(no_color=True, quiet=False)
 
 
 def test_render_current_org_card(capsys):
     _wide_stdout()
-    output.render_current_org(slug="testsigma", name="TestsigmaInc", role="admin",
+    output.render_current_org(slug="globex", name="Globex Corp", role="admin",
                               permission_count=28, email="admin@local.host")
     cap = capsys.readouterr()
     out = cap.out
-    assert "current org" in out and "testsigma" in out and "TestsigmaInc" in out
+    assert "current org" in out and "globex" in out and "Globex Corp" in out
     assert "role admin" in out and "28 permissions" in out
     assert "signed in as admin@local.host" in out
     # footer cross-links the related commands (stderr chrome)
@@ -474,12 +474,12 @@ def test_render_current_org_card(capsys):
 
 def test_render_org_perms(capsys):
     _wide_stdout()
-    output.render_org_perms(slug="testsigma", role="admin", name="TestsigmaInc",
+    output.render_org_perms(slug="globex", role="admin", name="Globex Corp",
                             permissions=["dashboards:read", "dashboards:write", "keys:read", "keys:delete", "agent:use"])
     out = capsys.readouterr().out
     # header leads with the org name + slug + role; the count moved into the box title
-    assert "TestsigmaInc" in out and "testsigma" in out and "role admin" in out
-    assert "permissions · 5 · TestsigmaInc" in out
+    assert "Globex Corp" in out and "globex" in out and "role admin" in out
+    assert "permissions · 5 · Globex Corp" in out
     assert "dashboards" in out and "keys" in out and "agent" in out
     output.configure(no_color=True, quiet=False)
 

@@ -235,7 +235,7 @@ jobs:
           cache-dependency-glob: fp-cli/uv.lock
 
       - name: Install dependencies
-        run: uv sync --extra dev --python ${{ matrix.python-version }}
+        run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
 
       - name: Test
         run: uv run pytest tests/ -q

@@ -52,13 +52,13 @@ def _session(memberships):
 def test_whoami_human_renders_header_and_panels(logged_in, runner):
     respx.get(f"{BASE}/api/auth/session").mock(
         return_value=httpx.Response(200, json=_session([
-            {"org_id": "o1", "org_slug": "testsigma", "org_name": "TestsigmaInc", "permission_set": "admin",
+            {"org_id": "o1", "org_slug": "globex", "org_name": "Globex Corp", "permission_set": "admin",
              "permissions": ["dashboards:read", "dashboards:write", "dashboards:delete", "keys:read", "agent:use"]},
             {"org_id": "o2", "org_slug": "acme", "org_name": "Acme Corp", "permission_set": "admin",
              "permissions": ["events:read"]},
         ]))
     )
-    result = runner.invoke(app, ["--org", "testsigma", "whoami"])
+    result = runner.invoke(app, ["--org", "globex", "whoami"])
     assert result.exit_code == 0, result.output
     out = result.stdout
     # identity header: email, instance role, FULL user id, active org
@@ -70,8 +70,8 @@ def test_whoami_human_renders_header_and_panels(logged_in, runner):
     assert "dashboards" in out and "read" in out and "write" in out and "delete" in out
     # orgs panel + switch hint to the non-active org
     assert "your orgs" in out
-    assert "testsigma" in out and "acme" in out
-    assert "TestsigmaInc" in out  # permissions title shows the active org NAME
+    assert "globex" in out and "acme" in out
+    assert "Globex Corp" in out  # permissions title shows the active org NAME
     assert "fp orgs switch <slug>" in out
 
 

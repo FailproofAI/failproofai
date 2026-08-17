@@ -15,8 +15,14 @@ name: Sync fp-cli skill
 #   • create the label this workflow applies:
 #       gh label create skill-sync-fp-cli --repo FailproofAI/skills \
 #         --color 8A63D2 --description "Automated fp-cli skill mirror PRs from FailproofAI/failproofai"
-#   • delete the now-orphaned skills/agenteye-cli/ folder, which teaches the retired
-#     `agenteye` command and is no longer synced by anything
+#   • eventually delete the orphaned skills/agenteye-cli/ folder, which teaches the
+#     retired `agenteye` command and is no longer synced by anything.
+#
+#     ⚠ NOT YET. `docs/agenteye/cli-skill.mdx:68` still tells readers to run
+#     `npx skills add FailproofAI/skills --skill agenteye-cli`, and that page is live
+#     on the public docs site. Deleting the folder first turns a documented install
+#     command into a not-found error. Order: land the docs rewrite that repoints it at
+#     `fp-cli` (it rides with the /cloud/* docs move), THEN delete the folder.
 # One-time setup on THIS repo (admin):
 #   • add Actions secret SKILLS_SYNC_PAT — a fine-grained PAT scoped to
 #     FailproofAI/skills, Contents: Read and write + Pull requests: Read and write.

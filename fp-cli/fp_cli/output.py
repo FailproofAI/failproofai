@@ -912,7 +912,7 @@ def render_whoami(
         active_line.append("(none)", style=theme.TEXT_DIM)
     c.print(active_line)
 
-    # The permissions panel is titled with the active org's NAME (e.g. "TestsigmaInc"),
+    # The permissions panel is titled with the active org's NAME (e.g. "Globex Corp"),
     # falling back to the slug if the membership has no name.
     active_org_name = next((o["name"] for o in orgs if o.get("is_active") and o.get("name")), active_org)
     c.print()

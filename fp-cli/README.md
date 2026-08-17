@@ -90,7 +90,9 @@ fp users list|show|create|update|disable|enable
 fp settings list|schema|set
 fp alerts list|show|create|update|delete|test
 fp issues list|count|show|ack|assign|resolve|comment-add|comment-list|comment-delete|subscribe|subscribers|unsubscribe|open
-fp audits list|show|create|update|delete|run     # scheduled audits + their findings
+fp audits list|show|create|edit|delete|run|runs|findings|finding    # scheduled audits
+fp audits ack|assign|resolve|dismiss|mute|reopen                    # triage a finding
+fp audits context-show|context-set|context-refresh                  # reference context
 fp usage                                         # org usage for the metering window
 ```
 
@@ -156,7 +158,7 @@ per-action event for mutations (e.g. `api_key_created`, `query_run`) carrying on
 names/enums and coarse counts. **No data, URLs, tokens, emails, ids, SQL, key secrets, or query
 values are ever sent**, and operators are identified only by an opaque id. It's on by default —
 disable it with `FP_ANALYTICS_DISABLED=1` (or the cross-tool `DO_NOT_TRACK=1`). Sending is
-time-bounded, so it never delays a command. See <https://docs.befailproof.ai/cloud/cli> for the full privacy details.
+time-bounded, so it never delays a command. See <https://docs.befailproof.ai/agenteye/cli> for the full privacy details.
 
 ## Exit codes
 

@@ -24,7 +24,7 @@ BASE = "http://dash.test"
 
 
 def _ctx() -> ClientContext:
-    return ClientContext(base_url=BASE, token="t", org="testsigma")
+    return ClientContext(base_url=BASE, token="t", org="globex")
 
 
 # --- paginate: int/str cursor mix must not crash (was a TypeError) ----------

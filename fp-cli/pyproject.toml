@@ -49,7 +49,7 @@ fp = "fp_cli.app:main_entry"
 
 [project.urls]
 Homepage = "https://befailproof.ai"
-Documentation = "https://docs.befailproof.ai/cloud/cli"
+Documentation = "https://docs.befailproof.ai/agenteye/cli"
 Source = "https://github.com/FailproofAI/failproofai"
 
 [project.optional-dependencies]

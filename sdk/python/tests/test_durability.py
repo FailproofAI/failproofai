@@ -20,12 +20,13 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from failproofai_sdk import _resolver
-from failproofai_sdk._events import _PENDING_CAP, EventNamespace
+from failproofai_sdk._events import _PENDING_CAP, EventNamespace, _tool_key
 from failproofai_sdk._writer import EventWriter
 
 
@@ -54,11 +55,42 @@ def read_all(spool_dir: Path) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_two_batches_in_the_same_millisecond_do_not_overwrite_each_other(spool):
+@pytest.fixture
+def frozen_clock(monkeypatch):
+    """Pin `_writer`'s clock so "the same millisecond" is guaranteed, not likely.
+
+    Without this the collision tests below only reproduce the bug when both
+    writes happen to land in one millisecond. They usually do on a fast machine
+    — which is the problem: on a loaded CI runner the clock advances between
+    them, a timestamp-only stem produces two different names, and the test
+    passes against the very implementation it exists to reject.
+    """
+    # NOT `from failproofai_sdk import _writer` — `__init__` binds that name to
+    # the EventWriter SINGLETON, which shadows the submodule of the same name on
+    # the package. Reaching for the module has to go through sys.modules.
+    writer_module = sys.modules["failproofai_sdk._writer"]
+
+    fixed = datetime(2026, 1, 2, 3, 4, 5, 678_000, tzinfo=timezone.utc)
+
+    class _FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed
+
+    monkeypatch.setattr(writer_module, "datetime", _FrozenDatetime)
+    return fixed
+
+
+def test_two_batches_in_the_same_millisecond_do_not_overwrite_each_other(spool, frozen_clock):
     """Regression: the timestamp-only stem lost whichever batch wrote first."""
     writer = EventWriter(flush_interval=3600)
     writer._write_batch([{"id": "first"}])
     writer._write_batch([{"id": "second"}])
+
+    # Same instant for both, so a timestamp-only name could not have differed.
+    stems = sorted(p.name for p in (spool / "events").glob("*.jsonl"))
+    assert len(stems) == 2, f"the two batches collided onto one file: {stems}"
+    assert all(frozen_clock.strftime("%Y-%m-%dT%H-%M-%S") in s for s in stems)
 
     recovered = {e["id"] for e in read_all(spool)}
     assert recovered == {"first", "second"}
@@ -67,12 +99,15 @@ def test_two_batches_in_the_same_millisecond_do_not_overwrite_each_other(spool):
 # The DeprecationWarning about fork() in a multi-threaded process is the
 # hazard under test, not a problem with the test.
 @pytest.mark.filterwarnings("ignore:.*fork.*:DeprecationWarning")
-def test_batch_filenames_are_unique_across_processes(spool):
+def test_batch_filenames_are_unique_across_processes(spool, frozen_clock):
     """Several agents share one spool root. Their batches must not collide.
 
     Nothing in a timestamp-only stem identified the writer, so two processes
     flushing in the same millisecond overwrote each other — and because each one
     saw its own `os.replace` succeed, both would report having written.
+
+    The frozen clock is inherited across `fork()`, so every child computes the
+    same timestamp and the collision is forced rather than hoped for.
     """
     if not hasattr(os, "fork"):
         pytest.skip("requires fork")
@@ -421,8 +456,8 @@ def test_pending_map_is_capped_and_evicts_oldest_first():
         namespace.tool_use(session_id="s", agent_id="a", tool_name="t", tool_call_id=f"c{i}")
 
     assert len(namespace._pending) == _PENDING_CAP
-    assert "c0" not in namespace._pending, "eviction is not FIFO"
-    assert f"c{_PENDING_CAP + 99}" in namespace._pending
+    assert _tool_key("c0") not in namespace._pending, "eviction is not FIFO"
+    assert _tool_key(f"c{_PENDING_CAP + 99}") in namespace._pending
 
 
 def test_an_evicted_pair_completes_without_duration_instead_of_raising():
@@ -439,36 +474,62 @@ def test_an_evicted_pair_completes_without_duration_instead_of_raising():
     assert "duration_ms" not in writer.entries[0]
 
 
-def test_tool_and_hook_ids_share_one_flat_namespace():
-    """Pinned as-is, deliberately, because it is a trap rather than a design.
+def test_a_tool_and_a_hook_sharing_an_id_do_not_cross_correlate():
+    """Regression: they used to share one flat keyspace in `_pending`.
 
-    `tool_use` keys `_pending` on the bare `tool_call_id` and `hook_triggered`
-    on the bare `hook_id`, while the human and pause pairs use composite keys.
-    So a tool call and a hook that happen to share an id cross-correlate, and
-    the resulting `duration_ms` is measured between two unrelated events — a
-    plausible number, silently wrong.
-
-    This asserts the current behaviour so that anyone changing `_pending` sees
-    the collision spelled out. Namespacing these two the way the others already
-    are would be a wire-visible change to `duration_ms` values, so it belongs in
-    its own deliberate change, not a drive-by.
+    An id collision between a tool call and a hook is not exotic — both are
+    routinely the harness's own step id. When the keys were bare, the
+    `hook_completed` consumed the `tool_use` timestamp and reported the interval
+    between two unrelated events, and the real `tool_result` that followed got no
+    duration at all. Two plausible numbers, no error, nothing downstream able to
+    tell.
     """
     writer = _NullWriter()
     namespace = EventNamespace(writer)
 
     namespace.tool_use(session_id="s", agent_id="a", tool_name="t", tool_call_id="shared")
+
+    # The hook never started, so its completion must not borrow the tool's start.
     writer.entries.clear()
     namespace.hook_completed(session_id="s", agent_id="a", hook_name="h", hook_id="shared")
-
-    assert "duration_ms" in writer.entries[0], (
-        "tool and hook ids no longer share a namespace. That is an improvement — "
-        "update this test, and note that recorded durations change for anyone "
-        "who was relying on the collision."
+    assert "duration_ms" not in writer.entries[0], (
+        "hook_completed consumed the tool_use timestamp — the keyspaces are flat again"
     )
-    # And the tool's own entry is gone, so its real result gets no duration.
+
+    # And the tool's own pairing is untouched, so its result still gets a duration.
     writer.entries.clear()
     namespace.tool_result(session_id="s", agent_id="a", tool_name="t", tool_call_id="shared")
-    assert "duration_ms" not in writer.entries[0]
+    assert "duration_ms" in writer.entries[0], (
+        "the tool's pending entry was consumed by the unrelated hook"
+    )
+
+
+def test_every_pairing_is_namespaced_by_what_it_pairs():
+    """The keyspaces are separate in both directions, for all four pair types."""
+    writer = _NullWriter()
+    namespace = EventNamespace(writer)
+    ids = dict(session_id="s", agent_id="a")
+
+    namespace.tool_use(**ids, tool_name="t", tool_call_id="x")
+    namespace.hook_triggered(**ids, hook_name="h", hook_id="x")
+    namespace.human_wait(**ids, input_id="x")
+    namespace.agent_pause(**ids, pause_id="x")
+
+    # Four starts, one shared id, four distinct pending keys.
+    assert len(namespace._pending) == 4, sorted(namespace._pending)
+
+    # Each end event finds its own start and no other.
+    for call in (
+        lambda: namespace.tool_result(**ids, tool_name="t", tool_call_id="x"),
+        lambda: namespace.hook_completed(**ids, hook_name="h", hook_id="x"),
+        lambda: namespace.human_input(**ids, input_id="x"),
+        lambda: namespace.agent_resume(**ids, pause_id="x"),
+    ):
+        writer.entries.clear()
+        call()
+        assert "duration_ms" in writer.entries[0], writer.entries[0]["type"]
+
+    assert namespace._pending == {}, "an end event left its start behind"
 
 
 def test_human_and_pause_pairs_are_namespaced_by_session_and_agent():
@@ -497,6 +558,58 @@ class _NullWriter:
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuration
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "bad", [-1, -0.001, 0, 0.0, float("nan"), float("inf"), float("-inf")]
+)
+def test_an_unusable_flush_interval_is_rejected_at_the_boundary(bad):
+    """`time.sleep` runs OUTSIDE the loop's try, so a bad value kills the thread.
+
+    And a dead writer thread is the worst state this class has: `submit()` keeps
+    accepting events, the queue keeps growing, nothing is ever written, and the
+    caller learns none of it. Negative, NaN and infinite intervals all raise from
+    `sleep`; zero does not raise but busy-loops, pinning a core and rewriting the
+    spool as fast as the disk allows. All of them are refused up front instead.
+    """
+    with pytest.raises(ValueError, match="finite number greater than zero"):
+        EventWriter(flush_interval=bad)
+
+
+@pytest.mark.parametrize("bad", [-1, 0, float("nan"), float("inf")])
+def test_set_flush_interval_rejects_without_changing_the_live_interval(bad):
+    """A refused value must leave the writer on the interval it already had."""
+    writer = EventWriter(flush_interval=3600)
+    with pytest.raises(ValueError):
+        writer.set_flush_interval(bad)
+    assert writer._flush_interval == 3600
+    assert writer._thread.is_alive()
+
+
+@pytest.mark.parametrize("bad", [-1, 0, float("nan"), float("inf")])
+def test_configure_rejects_a_bad_interval_before_applying_anything(bad, spool, tmp_path):
+    """Validation comes first, so a rejected call is not a half-applied one."""
+    import failproofai_sdk
+
+    failproofai_sdk.configure(base_dir=spool, flush_interval=3600)
+
+    with pytest.raises(ValueError, match="finite number greater than zero"):
+        failproofai_sdk.configure(base_dir=tmp_path / "elsewhere", flush_interval=bad)
+
+    # base_dir is set BEFORE the interval in configure(), so validating inside
+    # set_flush_interval alone would have left this pointing at "elsewhere".
+    assert _resolver.get_base_dir() == spool
+    assert failproofai_sdk._writer._flush_interval == 3600
+
+
+def test_a_valid_interval_still_applies():
+    writer = EventWriter(flush_interval=3600)
+    writer.set_flush_interval(0.25)
+    assert writer._flush_interval == 0.25
+    # Ints are accepted and normalised, so `_flush_loop` always sleeps on a float.
+    writer.set_flush_interval(2)
+    assert writer._flush_interval == 2.0
+    assert isinstance(writer._flush_interval, float)
 
 
 def test_configure_can_be_called_after_events_have_already_been_emitted(spool, tmp_path):

@@ -3,6 +3,7 @@ import collections
 import itertools
 import json
 import logging
+import math
 import os
 import threading
 import time
@@ -37,10 +38,38 @@ logger = logging.getLogger(__name__)
 _batch_seq = itertools.count()
 
 
+def _validated_interval(flush_interval: float) -> float:
+    """A flush interval `_flush_loop` can actually sleep on.
+
+    `time.sleep()` is called BEFORE the loop's try/except, deliberately — a flush
+    that raises must be retried next cycle, and wrapping the sleep would mean a
+    bad interval retries forever at full speed instead. The cost of that choice is
+    that an unsleepable interval kills the thread outright, and the thread dying
+    is the worst failure this class has: `submit()` keeps accepting events, the
+    queue keeps growing, nothing is ever written, and the caller sees no error
+    until the process exits and takes everything with it.
+
+    So the value is rejected at the boundary instead, where a caller still has a
+    stack trace pointing at their own `configure()` call:
+
+        -1   -> ValueError from sleep, thread dies
+        nan  -> ValueError from sleep, thread dies
+        inf  -> OverflowError from sleep, thread dies
+        0    -> sleeps not at all; a busy loop pinning a core and rewriting the
+                spool as fast as the disk allows
+    """
+    interval = float(flush_interval)
+    if not math.isfinite(interval) or interval <= 0:
+        raise ValueError(
+            f"flush_interval must be a finite number greater than zero, got {flush_interval!r}"
+        )
+    return interval
+
+
 class EventWriter:
     def __init__(self, flush_interval: float = 0.5) -> None:
         self._queue: collections.deque[dict] = collections.deque()
-        self._flush_interval = flush_interval
+        self._flush_interval = _validated_interval(flush_interval)
         self._thread = threading.Thread(
             target=self._flush_loop, daemon=True, name="failproofai-sdk-flush"
         )
@@ -51,7 +80,9 @@ class EventWriter:
         self._queue.append(entry)
 
     def set_flush_interval(self, interval: float) -> None:
-        self._flush_interval = interval
+        # Validate first, assign second: a rejected value must leave the writer
+        # running on the interval it already had, not on a half-applied one.
+        self._flush_interval = _validated_interval(interval)
 
     def flush_now(self) -> None:
         """Drain and write any buffered entries immediately (for testing)."""

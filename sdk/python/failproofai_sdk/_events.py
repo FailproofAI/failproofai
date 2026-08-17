@@ -31,6 +31,26 @@ _RESERVED = frozenset({"timestamp", "session_id", "agent_id", "type", "environme
 _PENDING_CAP = 10_000
 
 
+# Every pairing in `_pending` is namespaced by what it pairs. It was not always:
+# tool pairs keyed on the bare `tool_call_id` and hook pairs on the bare
+# `hook_id`, sharing one flat keyspace, while human and pause pairs were already
+# namespaced. A caller whose tool call and hook happened to share an id — not
+# exotic, both are frequently the harness's own step id — got a `hook_completed`
+# that consumed the `tool_use` timestamp and reported the interval between two
+# unrelated events, and then a `tool_result` with no duration at all. Both are
+# plausible numbers, neither is an error, and nothing downstream can tell.
+#
+# These are correlation keys only; they are never emitted and never leave the
+# process, so namespacing them changes no wire format. It only changes
+# `duration_ms` in the colliding case, from a fabricated value to a correct one.
+def _tool_key(tool_call_id: str) -> str:
+    return f"tool:{tool_call_id}"
+
+
+def _hook_key(hook_id: str) -> str:
+    return f"hook:{hook_id}"
+
+
 class EventNamespace:
     def __init__(self, writer) -> None:
         self._writer = writer
@@ -67,7 +87,7 @@ class EventNamespace:
     ) -> None:
         self._validate_fields(fields)
         ts = self._now()
-        self._track_pending(tool_call_id, ts)
+        self._track_pending(_tool_key(tool_call_id), ts)
         self._writer.submit(
             ToolUseEvent(
                 timestamp=self._fmt_ts(ts),
@@ -95,7 +115,7 @@ class EventNamespace:
             raise ValueError("duration_ms is auto-computed by the SDK and cannot be passed by the caller")
         self._validate_fields(fields)
         ts = self._now()
-        start_ts = self._pending.pop(tool_call_id, None)
+        start_ts = self._pending.pop(_tool_key(tool_call_id), None)
         # Emit an int: the server stores duration_ms as u32 and its JSON parser
         # drops any float (`as_u64()` -> None), so a bare float silently NULLs the
         # column. Round to whole milliseconds at the source.
@@ -288,7 +308,7 @@ class EventNamespace:
     ) -> None:
         self._validate_fields(fields)
         ts = self._now()
-        self._track_pending(hook_id, ts)
+        self._track_pending(_hook_key(hook_id), ts)
         self._writer.submit(
             HookTriggeredEvent(
                 timestamp=self._fmt_ts(ts),
@@ -318,7 +338,7 @@ class EventNamespace:
             raise ValueError("duration_ms is auto-computed by the SDK and cannot be passed by the caller")
         self._validate_fields(fields)
         ts = self._now()
-        start_ts = self._pending.pop(hook_id, None)
+        start_ts = self._pending.pop(_hook_key(hook_id), None)
         # Emit an int: the server stores duration_ms as u32 and its JSON parser
         # drops any float (`as_u64()` -> None), so a bare float silently NULLs the
         # column. Round to whole milliseconds at the source.

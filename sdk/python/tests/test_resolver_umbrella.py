@@ -2,9 +2,15 @@
 
 The rule these tests exist to hold: a spool is worthless unless a daemon reads
 it, and the presence of the umbrella DIRECTORY does not imply the presence of a
-daemon that watches it. The collector this repository ships
-(``collector/src/config.rs``) reads ``$AGENTEYE_HOME`` or ``~/.agenteye`` and
-nothing else, so choosing the umbrella on a host running it is silent data loss.
+daemon that watches it.
+
+Two daemons read this spool and they do not read the same roots. ``failproofaid``
+— shipped from this repository, ``crates/fpai-collect/src/config.rs`` — watches
+both. The older ``agenteye-collector``, in the private AgentEye repository, reads
+``$AGENTEYE_HOME`` or ``~/.agenteye`` and nothing else. So selecting the umbrella
+on a host running that one is silent data loss, which is why it stays opt-in even
+though the path itself is now verifiable against the daemon next door
+(``test_spool_contract.py``).
 """
 import os
 from pathlib import Path

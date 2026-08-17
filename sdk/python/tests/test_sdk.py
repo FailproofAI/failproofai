@@ -545,7 +545,7 @@ def test_environment_in_human_events(ns, mock_writer):
 def test_pending_dict_is_bounded(ns):
     """Orphaned tool_use calls (no matching tool_result) must not grow
     `_pending` without bound — at the cap, the oldest entry is evicted FIFO."""
-    from failproofai_sdk._events import _PENDING_CAP
+    from failproofai_sdk._events import _PENDING_CAP, _tool_key
 
     for i in range(_PENDING_CAP + 50):
         ns.tool_use(
@@ -556,10 +556,10 @@ def test_pending_dict_is_bounded(ns):
         )
     assert len(ns._pending) == _PENDING_CAP
     # Earliest IDs were evicted.
-    assert "call-0" not in ns._pending
-    assert "call-49" not in ns._pending
+    assert _tool_key("call-0") not in ns._pending
+    assert _tool_key("call-49") not in ns._pending
     # Most-recent IDs are still tracked.
-    assert f"call-{_PENDING_CAP + 49}" in ns._pending
+    assert _tool_key(f"call-{_PENDING_CAP + 49}") in ns._pending
 
 
 # ---------------------------------------------------------------------------

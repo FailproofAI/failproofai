@@ -4,7 +4,7 @@
   "name": "Failproof AI",
   "description": "Trace agent behavior, find failures with audits, and prevent repeat failures with deployed policies.",
   "colors": {
-    "primary": "#002CA7",
+    "primary": "#c92251",
     "light": "#e4587d",
     "dark": "#e4587d"
   },

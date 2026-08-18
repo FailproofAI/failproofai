@@ -1,3 +1,14 @@
+/* Brand pink, resolved per color mode. Light mode needs the deeper shade:
+   the bright #e4587d only reaches 3.2:1 against white and the blockquote
+   grey, under the 4.5:1 AA floor. #c92251 holds the same hue at 5.5:1. */
+:root {
+  --fpai-pink: #c92251;
+}
+
+.dark {
+  --fpai-pink: #e4587d;
+}
+
 h1, h2, h3 {
   letter-spacing: -0.025em;
 }
@@ -6,7 +17,7 @@ h1, h2, h3 {
   position: relative;
   margin: 1.5rem 0;
   padding: 1.25rem 1.5rem 1.25rem 3.75rem !important;
-  border-left: 4px solid #e4587d !important;
+  border-left: 4px solid var(--fpai-pink) !important;
   border-radius: 0 14px 14px 0;
   background: #f3f4f6 !important;
   color: inherit !important;
@@ -17,7 +28,7 @@ h1, h2, h3 {
   position: absolute;
   top: 0.35rem;
   left: 1rem;
-  color: #e4587d;
+  color: var(--fpai-pink);
   font-size: 3rem;
   font-weight: 700;
   line-height: 1;

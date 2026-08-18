@@ -208,6 +208,13 @@ function binaryExists(name: string): boolean {
   }
 }
 
+/** A file an integration owns alongside its settings file. */
+export interface SidecarFile {
+  path: string;
+  /** What we would write there right now. */
+  content: string;
+}
+
 // ── Integration interface ───────────────────────────────────────────────────
 
 export interface Integration {
@@ -245,8 +252,35 @@ export interface Integration {
   /** Whether a hook entry is owned by failproofai. Entry shape varies per CLI (object for Claude/Codex/Copilot/Cursor; string or tuple for OpenCode). */
   isFailproofaiHook(hook: unknown): boolean;
 
-  /** Mutate `settings` in place, registering failproofai across all event types. Idempotent. */
-  writeHookEntries(settings: Record<string, unknown>, binaryPath: string, scope?: HookScope): void;
+  /**
+   * Mutate `settings` in place, registering failproofai across all event types.
+   * Idempotent.
+   *
+   * `opts.pure` asks for the OBJECT mutation only, with no filesystem side
+   * effects. Eleven integrations are pure already and ignore it; OpenCode is
+   * not, because for that CLI the generated plugin shim IS the installation
+   * (see `sidecarFiles`). A read-only caller — drift detection — passes it so
+   * that inspecting a machine cannot write to it.
+   */
+  writeHookEntries(
+    settings: Record<string, unknown>,
+    binaryPath: string,
+    scope?: HookScope,
+    opts?: { pure?: boolean },
+  ): void;
+
+  /**
+   * Files this integration owns BESIDES the settings file, with the exact
+   * contents it would write today.
+   *
+   * Only OpenCode has any: its plugin shim is generated per machine, with the
+   * binary path baked in, rather than shipped in the tarball the way
+   * `pi-extension/` and `openclaw-plugin/` are. That distinction is the whole
+   * reason it needs this — a registration can point at a shim that is stale,
+   * and a check that read only the registration would report a healthy machine
+   * while the shim it names still invokes a binary path that moved.
+   */
+  sidecarFiles?(binaryPath: string, scope: HookScope, settingsPath: string): SidecarFile[];
 
   /** Remove all failproofai hook entries from a settings file. Returns the number removed. */
   removeHooksFromFile(settingsPath: string): number;
@@ -1187,7 +1221,7 @@ export const opencode: Integration = {
    * marker keeps user files safe in removeHooksFromFile); (b) merge our
    * plugin entry into opencode.json's `plugin` array.
    */
-  writeHookEntries(settings, binaryPath, scope) {
+  writeHookEntries(settings, binaryPath, scope, opts) {
     const s = settings as OpenCodeSettingsFile;
     const effectiveScope: HookScope = scope ?? "project";
 
@@ -1204,8 +1238,16 @@ export const opencode: Integration = {
 
     // (a) Write the shim file. mkdirSync is recursive so the plugins/ dir
     // is created on first install.
-    mkdirSync(dirname(pluginPath), { recursive: true });
-    writeFileSync(pluginPath, buildOpenCodePluginShim(binaryPath, effectiveScope), "utf8");
+    //
+    // Skipped for a pure caller. This single `writeFileSync` is what made
+    // OpenCode the one integration a read-only check could not inspect: drift
+    // detection regenerates through this method to compare, and doing so
+    // rewrote a real, tracked shim on disk. The shim is still checked — it is
+    // declared as a sidecar below, so it is compared rather than rewritten.
+    if (!opts?.pure) {
+      mkdirSync(dirname(pluginPath), { recursive: true });
+      writeFileSync(pluginPath, buildOpenCodePluginShim(binaryPath, effectiveScope), "utf8");
+    }
 
     // (b) Merge our entry into the plugin array idempotently. Replace any
     // existing failproofai-marked entry; otherwise append.
@@ -1217,6 +1259,19 @@ export const opencode: Integration = {
     } else {
       s.plugin.push(desired);
     }
+  },
+
+  /**
+   * The generated shim, so drift detection can compare it instead of trusting
+   * that the registration pointing at it is enough.
+   */
+  sidecarFiles(binaryPath, scope, settingsPath) {
+    return [
+      {
+        path: opencodePluginFilePath(settingsPath),
+        content: buildOpenCodePluginShim(binaryPath, scope),
+      },
+    ];
   },
 
   /**

@@ -93,24 +93,6 @@ export interface ConfigDriftReport {
  * doing by hand. `dogfood-configs.test.ts` fails loudly if it ever happens,
  * which is the backstop rather than the guard.
  */
-/**
- * Integrations whose `writeHookEntries` is NOT pure.
- *
- * The whole detector rests on regenerating into a throwaway object and
- * comparing, which assumes `writeHookEntries` only mutates what it is handed.
- * OpenCode breaks that assumption: it also generates its ~190-line plugin shim
- * on disk (`integrations.ts:1138`), because for that CLI the shim IS the
- * installation. Calling it from a read-only check rewrote this repo's own
- * tracked `.opencode/plugins/failproofai.mjs` — a detector causing the class of
- * damage it exists to find.
- *
- * Kept as an explicit list rather than a guess, and backed by a test that
- * asserts `detectConfigDrift` leaves the filesystem byte-identical, so a future
- * integration that grows a side effect fails loudly instead of quietly
- * rewriting someone's files.
- */
-const IMPURE_REGENERATION: ReadonlySet<IntegrationType> = new Set(["opencode"]);
-
 export function isDogfoodCommand(command: string): boolean {
   return command.includes("dev-hook.mjs");
 }
@@ -129,10 +111,20 @@ export function isDogfoodCommand(command: string): boolean {
  *
  * Deliberately a raw-text check rather than a structural one: the whole premise
  * is that we can no longer parse the structure the way we thought.
+ *
+ * The bar is our name appearing at all, not our name next to `--hook`. Three
+ * integrations register a PATH rather than a command — opencode, pi and
+ * openclaw all point at a plugin file — so a `--hook` requirement missed them
+ * entirely: an opencode config whose shim had been deleted read as "never
+ * installed" rather than "installed and broken". Nothing else puts the string
+ * `failproofai` in a vendor's hook config, and the cost of being wrong is
+ * bounded anyway: this only runs when we are NOT properly installed, so a hit
+ * means "there is a trace of us here and we are not working", which is worth
+ * saying whatever put it there.
  */
 function hasFailproofaiTrace(raw: string): boolean {
   if (raw.includes(FAILPROOFAI_HOOK_MARKER)) return true;
-  return raw.includes("failproofai") && raw.includes("--hook");
+  return raw.includes("failproofai");
 }
 
 function containsDogfood(value: unknown, depth = 0): boolean {
@@ -164,7 +156,6 @@ function inspectOne(
   const base: Omit<ConfigDriftReport, "status"> = { cli, scope, settingsPath };
 
   if (!existsSync(settingsPath)) return { ...base, status: "absent" };
-  if (IMPURE_REGENERATION.has(cli)) return { ...base, status: "unsupported" };
 
   let current: Record<string, unknown>;
   let regenerated: Record<string, unknown>;
@@ -193,15 +184,35 @@ function inspectOne(
       return { ...base, status: "unreadable", detail: "read" };
     }
     // Our entry is in there; we just cannot see it through the shape we expect.
-    if (hasFailproofaiTrace(raw)) return { ...base, status: "stale", detail: "unrecognised-shape" };
+    if (hasFailproofaiTrace(raw)) {
+      // Prefer the precise cause when we have it. A registration pointing at a
+      // shim that is missing or stale reads as "not installed" to the
+      // integration's own check, and reporting that as "unrecognised shape"
+      // sends the reader looking at the wrong file.
+      const sidecar = inspectSidecars(integration, binaryPath, scope, settingsPath);
+      if (sidecar) return { ...base, ...sidecar };
+      return { ...base, status: "stale", detail: "unrecognised-shape" };
+    }
     return { ...base, status: "absent" };
   }
 
   try {
-    integration.writeHookEntries(regenerated, binaryPath, scope);
+    // `pure` matters for exactly one integration and is harmless for the other
+    // eleven: OpenCode's writer also generates its plugin shim on disk, and a
+    // read-only check that called it rewrote a real tracked file. The shim is
+    // still checked — as a sidecar, below.
+    integration.writeHookEntries(regenerated, binaryPath, scope, { pure: true });
   } catch (err) {
     return { ...base, status: "unreadable", detail: errorClass(err) };
   }
+
+  // A settings file can match perfectly while the file it POINTS AT is stale.
+  // OpenCode's registration names a generated shim with the binary path baked
+  // in, so a shim written by a path that has since moved leaves a registration
+  // that still reads correct and an installation that does nothing. Reporting
+  // `ok` there is the comfortable lie this module exists to refuse.
+  const sidecar = inspectSidecars(integration, binaryPath, scope, settingsPath);
+  if (sidecar) return { ...base, ...sidecar };
 
   if (stableStringify(current) === stableStringify(regenerated)) return { ...base, status: "ok" };
   // Shape first. A difference confined to string VALUES is nearly always our
@@ -213,6 +224,37 @@ function inspectOne(
   // where it must not.
   const shapeChanged = structuralSignature(current) !== structuralSignature(regenerated);
   return { ...base, status: shapeChanged ? "stale" : "stale_path" };
+}
+
+/**
+ * Compare every file an integration owns beyond its settings file against what
+ * it would write now. Returns a verdict only when something is wrong.
+ */
+function inspectSidecars(
+  integration: ReturnType<typeof getIntegration>,
+  binaryPath: string,
+  scope: HookScope,
+  settingsPath: string,
+): { status: DriftStatus; detail?: string } | null {
+  let sidecars: { path: string; content: string }[];
+  try {
+    sidecars = integration.sidecarFiles?.(binaryPath, scope, settingsPath) ?? [];
+  } catch {
+    return { status: "unreadable", detail: "sidecar" };
+  }
+
+  for (const file of sidecars) {
+    let actual: string;
+    try {
+      actual = readFileSync(file.path, "utf8");
+    } catch {
+      // Registered but the file it names is gone: the CLI loads nothing.
+      return { status: "stale", detail: "sidecar-missing" };
+    }
+    if (isDogfoodCommand(actual)) return { status: "dogfood" };
+    if (actual !== file.content) return { status: "stale", detail: "sidecar-stale" };
+  }
+  return null;
 }
 
 /** Error CLASS only — never the message, which can quote file contents. */

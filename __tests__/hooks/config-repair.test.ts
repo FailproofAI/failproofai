@@ -6,7 +6,15 @@
  * the original bytes back rather than leaving a file it could not verify.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  readdirSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { repairConfigDrift } from "../../src/hooks/config-repair";
@@ -94,14 +102,15 @@ describe("config-repair: the happy path", () => {
     expect(readFileSync(outcome.backupPath!, "utf8")).toBe(before);
   });
 
-  it("bounds how many backups it keeps", () => {
+  it("bounds how many backups it keeps, pruning whole repairs", () => {
+    // Pruned by repair, not by file: half a backup set cannot restore anything.
     const path = install();
     for (let i = 0; i < 6; i++) {
       makeStale(path);
       repair();
     }
     const dir = join(configBackupsDir(), "claude-project");
-    expect(readdirSync(dir).filter((n) => n.endsWith(".bak")).length).toBe(3);
+    expect(readdirSync(dir).length).toBe(3);
   });
 });
 
@@ -223,5 +232,73 @@ describe("config-repair: it must never throw", () => {
 
   it("does not throw when asked to repair every CLI on an empty machine", () => {
     expect(() => repairConfigDrift({ cwd })).not.toThrow();
+  });
+});
+
+
+describe("config-repair: sidecars are backed up, not just the settings file", () => {
+  /** OpenCode resolves its project paths from process.cwd(). */
+  function inCwd<T>(fn: () => T): T {
+    const prev = process.cwd();
+    process.chdir(cwd);
+    try {
+      return fn();
+    } finally {
+      process.chdir(prev);
+    }
+  }
+
+  function installOpencode(): { settingsPath: string; shimPath: string } {
+    const oc = getIntegration("opencode");
+    const settingsPath = oc.getSettingsPath("project", cwd);
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    const settings = oc.readSettings(settingsPath);
+    oc.writeHookEntries(settings, BINARY, "project");
+    oc.writeSettings(settingsPath, settings);
+    return { settingsPath, shimPath: oc.sidecarFiles!(BINARY, "project", settingsPath)[0].path };
+  }
+
+  it("copies the generated shim too, so a repair can be undone whole", () => {
+    // Repair rewrites BOTH the settings file and the shim. Backing up only the
+    // settings file meant it could write two files and undo one — a bad shim
+    // beside a restored settings file is a mismatched pair, and a machine left
+    // worse than we found it.
+    inCwd(() => {
+      const { shimPath } = installOpencode();
+      writeFileSync(shimPath, "// a shim from an older install\n");
+
+      const outcome = repairConfigDrift({ cwd, clis: ["opencode"], scopes: ["project"] })[0];
+      expect(outcome.action).toBe("repaired");
+
+      const setDir = dirname(outcome.backupPath!);
+      const manifest = JSON.parse(readFileSync(join(setDir, "manifest.json"), "utf8")) as {
+        files: { original: string; existed: boolean }[];
+      };
+      expect(manifest.files.map((f) => f.original)).toContain(shimPath);
+      expect(readFileSync(join(setDir, "sidecar-0.bak"), "utf8")).toBe(
+        "// a shim from an older install\n",
+      );
+    });
+  });
+
+  it("records a sidecar that did not exist, so rollback deletes rather than keeps it", () => {
+    // The inverse operation. A repair that CREATES a file must, on rollback,
+    // remove it — restoring "nothing" by doing nothing leaves the machine
+    // holding a file it never had.
+    inCwd(() => {
+      const { shimPath } = installOpencode();
+      rmSync(shimPath, { force: true });
+
+      const outcome = repairConfigDrift({ cwd, clis: ["opencode"], scopes: ["project"] })[0];
+      expect(outcome.action).toBe("repaired");
+
+      const manifest = JSON.parse(
+        readFileSync(join(dirname(outcome.backupPath!), "manifest.json"), "utf8"),
+      ) as { files: { original: string; existed: boolean }[] };
+      const shim = manifest.files.find((f) => f.original === shimPath);
+      expect(shim?.existed).toBe(false);
+      // And the repair really did put it back.
+      expect(existsSync(shimPath)).toBe(true);
+    });
   });
 });

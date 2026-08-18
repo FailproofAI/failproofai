@@ -242,14 +242,15 @@ describe("config-drift: it must never WRITE", () => {
 
   it("pins exactly which writers touch disk, for all twelve", () => {
     // The detector regenerates via `writeHookEntries` to compare, which is only
-    // safe while that call is pure. OpenCode's is NOT: it also generates its
-    // ~190-line plugin shim, because for that CLI the shim IS the install.
-    // Calling it from a read-only check rewrote this repo's own tracked
-    // `.opencode/plugins/failproofai.mjs`.
+    // safe while that call writes nothing. OpenCode's used to: it also generated
+    // its ~190-line plugin shim, because for that CLI the shim IS the install,
+    // and a read-only check rewrote this repo's own tracked
+    // `.opencode/plugins/failproofai.mjs`. It now honours `pure`, so the set
+    // below is EMPTY and every integration is inspectable.
     //
     // Asserted against the writers directly rather than through
     // detectConfigDrift, so it cannot pass vacuously: a new integration that
-    // grows a side effect fails here and must be added to the gate.
+    // grows a side effect fails here.
     const impure: string[] = [];
     for (const cli of INTEGRATION_TYPES) {
       let integration: ReturnType<typeof getIntegration>;
@@ -270,7 +271,7 @@ describe("config-drift: it must never WRITE", () => {
         const before = snapshot(sandbox);
         try {
           const settings = integration.readSettings(integration.getSettingsPath(scope, sandbox));
-          integration.writeHookEntries(settings, BINARY, scope);
+          integration.writeHookEntries(settings, BINARY, scope, { pure: true });
         } catch {
           // A writer that throws here is not a purity question.
         }
@@ -282,14 +283,74 @@ describe("config-drift: it must never WRITE", () => {
         rmSync(sandbox, { recursive: true, force: true });
       }
     }
-    expect(impure).toEqual(["opencode"]);
+    expect(impure).toEqual([]);
   });
 
-  it("refuses to guess for an integration it cannot regenerate purely", () => {
-    const path = join(cwd, "opencode.json");
-    writeFileSync(path, JSON.stringify({ plugin: ["./x"] }));
-    const reports = detectConfigDrift({ clis: ["opencode"], cwd });
-    for (const r of reports) expect(["unsupported", "absent"]).toContain(r.status);
+  it("now inspects opencode instead of refusing to", () => {
+    // OpenCode derives its project paths from `process.cwd()` rather than the
+    // cwd argument, which is why integrations.test.ts chdirs for it too.
+    const prev = process.cwd();
+    process.chdir(cwd);
+    try {
+    // It was `unsupported` because checking it meant writing to disk. It no
+    // longer does, so "we cannot tell" is no longer an answer we give here.
+    const oc = getIntegration("opencode");
+    const path = oc.getSettingsPath("project", cwd);
+    mkdirSync(dirname(path), { recursive: true });
+    const settings = oc.readSettings(path);
+    oc.writeHookEntries(settings, BINARY, "project");
+    oc.writeSettings(path, settings);
+
+    const reports = detectConfigDrift({ clis: ["opencode"], scopes: ["project"], cwd });
+    expect(reports[0].status).toBe("ok");
+    } finally {
+      process.chdir(prev);
+    }
+  });
+
+  it("catches a shim that no longer matches what we would generate", () => {
+    const prev = process.cwd();
+    process.chdir(cwd);
+    try {
+    // The case that made a half-fix worse than the gate: the registration is
+    // perfect and points at a shim built by a binary path that has moved, so
+    // the CLI loads something inert while the settings file reads healthy.
+    const oc = getIntegration("opencode");
+    const path = oc.getSettingsPath("project", cwd);
+    mkdirSync(dirname(path), { recursive: true });
+    const settings = oc.readSettings(path);
+    oc.writeHookEntries(settings, BINARY, "project");
+    oc.writeSettings(path, settings);
+
+    const shim = oc.sidecarFiles!(BINARY, "project", path)[0];
+    writeFileSync(shim.path, shim.content.replace("failproofai", "failproofai-OLD-PATH"));
+
+    const report = detectConfigDrift({ clis: ["opencode"], scopes: ["project"], cwd })[0];
+    expect(report.status).toBe("stale");
+    expect(report.detail).toBe("sidecar-stale");
+    } finally {
+      process.chdir(prev);
+    }
+  });
+
+  it("catches a registration whose shim has been deleted", () => {
+    const prev = process.cwd();
+    process.chdir(cwd);
+    try {
+    const oc = getIntegration("opencode");
+    const path = oc.getSettingsPath("project", cwd);
+    mkdirSync(dirname(path), { recursive: true });
+    const settings = oc.readSettings(path);
+    oc.writeHookEntries(settings, BINARY, "project");
+    oc.writeSettings(path, settings);
+    rmSync(oc.sidecarFiles!(BINARY, "project", path)[0].path, { force: true });
+
+    const report = detectConfigDrift({ clis: ["opencode"], scopes: ["project"], cwd })[0];
+    expect(report.status).toBe("stale");
+    expect(report.detail).toBe("sidecar-missing");
+    } finally {
+      process.chdir(prev);
+    }
   });
 });
 

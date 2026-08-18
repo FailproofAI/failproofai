@@ -44,7 +44,13 @@ esac
 # publish or pointing a test box at a locally built tag. It is read per job so a
 # pin cannot silently redirect the other two at the same image.
 IMAGE_VAR="CANARY_IMAGE_$(printf '%s' "$JOB" | tr 'a-z-' 'A-Z_')"
-IMAGE="${!IMAGE_VAR:-${CANARY_IMAGE:-ghcr.io/failproofai/failproofai-$JOB:latest}}"
+# `contracts` runs from the CANARY image. It needs exactly what that one has —
+# the baked checkout, the docker client, a compiled failproofaid — and the
+# checkout carries every job script, so CANARY_JOB picks this one out of it. A
+# fourth near-identical image would be a fourth thing to build, publish and keep
+# in step, for no capability the canary image lacks.
+IMAGE_JOB="$JOB"; [ "$JOB" = contracts ] && IMAGE_JOB=canary
+IMAGE="${!IMAGE_VAR:-${CANARY_IMAGE:-ghcr.io/failproofai/failproofai-$IMAGE_JOB:latest}}"
 
 [ -f "$W/secrets.env" ] || { echo "✗ no credentials at $W/secrets.env" >&2; exit 1; }
 

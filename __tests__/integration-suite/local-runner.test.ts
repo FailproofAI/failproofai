@@ -143,10 +143,15 @@ describe("three job images, each baking the commit it runs", () => {
     expect(entrypointSh).toMatch(/-v \\"\\\$HOME\/fp-canary:\\\$HOME\/fp-canary\\"/);
   });
 
-  it("the cron wrapper picks the image per job, and only the canary gets the socket", () => {
-    expect(runJobSh).toMatch(/ghcr\.io\/failproofai\/failproofai-\$JOB:latest/);
+  it("the cron wrapper picks the image per job, and only the jobs that spawn containers get the socket", () => {
+    expect(runJobSh).toMatch(/ghcr\.io\/failproofai\/failproofai-\$IMAGE_JOB:latest/);
     expect(runJobSh).toMatch(/IMAGE_VAR="CANARY_IMAGE_/);
+    // `contracts` is the exception to one-image-per-job: it needs exactly what
+    // the canary image has, and the baked checkout carries every job script, so
+    // CANARY_JOB picks it out of the same image.
+    expect(runJobSh).toMatch(/\[ "\$JOB" = contracts \] && IMAGE_JOB=canary/);
     expect(runJobSh).toMatch(/canary\)\s+SOCK=\(-v \/var\/run\/docker\.sock/);
+    expect(runJobSh).toMatch(/contracts\)\s+SOCK=\(-v \/var\/run\/docker\.sock/);
     expect(runJobSh).toMatch(/translate\)\s+SOCK=\(\)/);
     expect(runJobSh).toMatch(/--pull=always/);
   });

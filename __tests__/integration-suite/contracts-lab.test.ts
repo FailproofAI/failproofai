@@ -126,6 +126,35 @@ describe("one entrypoint, two runners", () => {
 });
 
 describe("the box knows about the job", () => {
+  it("runs from the canary image, which already has everything it needs", () => {
+    // The baked checkout, the docker client and a compiled failproofaid. A
+    // fourth near-identical image would be a fourth thing to build, publish and
+    // keep in step, for no capability the canary image lacks.
+    expect(runJobSh).toMatch(/IMAGE_JOB="\$JOB"; \[ "\$JOB" = contracts \] && IMAGE_JOB=canary/);
+  });
+
+  it("materialises the baked tree exactly as the canary does", () => {
+    // Everything this job spawns is a SIBLING, so the host daemon resolves its
+    // `-v` sources against the HOST filesystem. The image's checkout lives at a
+    // path that exists only inside the job container — mounting it into a probe
+    // silently mounts an empty directory. The two copies of this must not
+    // diverge, so they are compared rather than described.
+    const lift = (src: string) => {
+      const m = /(# Everything this job spawns is a sibling[\s\S]*?\nfi\n)/.exec(src);
+      expect(m, "materialisation block not found").not.toBeNull();
+      return m![1];
+    };
+    expect(lift(jobSh)).toBe(lift(read(path.join(LOCAL, "jobs", "canary.sh"))));
+  });
+
+  it("names the entrypoint that actually exists", () => {
+    // runner-entrypoint.sh was replaced by job-entrypoint.sh when the checkout
+    // moved into the image; a job pointing at the old one is a job written
+    // against a model that is gone.
+    expect(jobSh).toContain("job-entrypoint.sh");
+    expect(jobSh).not.toContain("runner-entrypoint.sh");
+  });
+
   it("gives it the docker socket, because it fans out sibling containers", () => {
     expect(runJobSh).toMatch(/contracts\)\s+SOCK=\(-v \/var\/run\/docker\.sock/);
   });

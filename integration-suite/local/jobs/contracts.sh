@@ -11,8 +11,11 @@
 # live hook contract, shaped exactly like the observation table a customer's own
 # machine keeps, so one comparator reads both.
 #
-# Like the other jobs it lives IN THE REPO rather than the image: adding or
-# changing a job is a checkout away, and nobody rebuilds the boss's image for it.
+# It runs from the CANARY image rather than one of its own: it needs exactly what
+# that image has — the baked checkout, the docker client, and a compiled
+# failproofaid — and a fourth near-identical image is a fourth thing to build,
+# publish and keep in step. `CANARY_JOB=contracts` selects this script out of the
+# same baked tree.
 #
 # WHY IT RUNS AT ALL, given the canary already probes twelve CLIs daily: the
 # canary is version-gated and verdict-shaped. It tells us a CLI went red; it does
@@ -22,7 +25,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
-WORK="${CANARY_WORK:?CANARY_WORK missing — runner-entrypoint.sh sets it}"
+WORK="${CANARY_WORK:?CANARY_WORK missing — job-entrypoint.sh sets it}"
 CLONE="${CANARY_CLONE:-$WORK/clone-contracts}"
 LOGS="$WORK/logs"
 OUT="$WORK/contracts"
@@ -42,10 +45,46 @@ docker info >/dev/null 2>&1 || {
   echo "✗ the docker socket is mounted but the daemon does not answer." >&2; exit 1; }
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
-FP_SHA="$(git -C "$CLONE" rev-parse --short HEAD)"
+# The image is the commit, so the SHA comes from the baked value the entrypoint
+# exported. The git fallback keeps this working when the job is run by hand from
+# a real checkout, which is how it is developed.
+FP_SHA="${CANARY_FP_SHA:-$(git -C "$CLONE" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 LOG="$LOGS/contracts-$TS.log"
 PACK="$OUT/pack.json"
 echo "── contracts run $TS: ${CANARY_REF:-?} @ $FP_SHA ──"
+
+# Everything this job spawns is a sibling, not a child: the HOST daemon resolves
+# their `-v` sources against the HOST filesystem. The image's checkout lives at
+# /opt/failproofai, which exists only inside THIS container — mounting it into a
+# probe container silently mounts an empty directory, and the first thing that
+# goes wrong is `bash: /opt/canary/install-clis.sh: No such file or directory`.
+# (Found exactly that way, running the real job from the built image.)
+#
+# The work dir is the one path that means the same thing on both sides — that is
+# what the identical-path mount is FOR — so the baked tree is materialised there.
+# Keyed by the baked SHA and skipped when it already matches, so this is a copy
+# once per published image rather than once per run, and still no clone, no
+# install and no build. The daemon binary rides along for the same reason: its
+# baked path is equally unreachable from a sibling.
+if [ -n "${CANARY_BAKED_SHA:-}" ]; then
+  HOST_REPO="$WORK/repo"
+  if [ "$(cat "$HOST_REPO/.baked-sha" 2>/dev/null || echo none)" != "$FP_SHA" ]; then
+    echo "materialising the baked tree at $HOST_REPO (first run of $FP_SHA)"
+    rm -rf "$HOST_REPO.tmp"
+    cp -a "$CLONE" "$HOST_REPO.tmp" || { echo "✗ could not copy the baked tree" >&2; exit 1; }
+    if [ -x "${CANARY_DAEMON_BIN:-}" ]; then
+      mkdir -p "$HOST_REPO.tmp/.bin"
+      cp -a "$CANARY_DAEMON_BIN" "$HOST_REPO.tmp/.bin/failproofaid"
+    fi
+    printf '%s\n' "$FP_SHA" > "$HOST_REPO.tmp/.baked-sha"
+    rm -rf "$HOST_REPO"; mv "$HOST_REPO.tmp" "$HOST_REPO"
+  else
+    echo "reusing the materialised tree at $HOST_REPO ($FP_SHA)"
+  fi
+  CLONE="$HOST_REPO"
+  export CANARY_CLONE="$CLONE"
+  [ -x "$HOST_REPO/.bin/failproofaid" ] && export CANARY_DAEMON_BIN="$HOST_REPO/.bin/failproofaid"
+fi
 
 slack_note() { # $1 = text; best-effort, never fails the run
   [ -n "${CANARY_SLACK_WEBHOOK:-}" ] || return 0

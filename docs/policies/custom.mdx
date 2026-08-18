@@ -35,15 +35,17 @@ customPolicies.add({
   description: "Block writes to production configuration",
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
-    if (ctx.toolName !== "Write") return allow();
-    const path = String(ctx.toolInput?.file_path ?? "");
-    if (path.includes("/production/")) {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
       return deny("Writes to production configuration require approval.");
     }
     return allow();
   },
 });
 ```
+
+This matches `production/config.yml`, `/srv/production/config.yml`, `/srv/production`, and `C:\\production\\config.yml` for both `Write` and `Edit`. It does not match names such as `production-backup` because `production` must be a complete path segment.
 
 Validate and install an explicit file:
 

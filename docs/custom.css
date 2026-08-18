@@ -1,6 +1,8 @@
-/* Brand pink, resolved per color mode. Light mode needs the deeper shade:
-   the bright #e4587d only reaches 3.2:1 against white and the blockquote
-   grey, under the 4.5:1 AA floor. #c92251 holds the same hue at 5.5:1. */
+/* Brand pink, resolved per color mode. Light mode needs the deeper shade,
+   because every surface this color lands on is text. Measured per pair:
+   #e4587d is 3.51:1 on white and 3.19:1 on the blockquote's #f3f4f6 — both
+   under the 4.5:1 AA floor — while #c92251 holds the same hue (343°) at
+   5.48:1 on white and 4.98:1 on #f3f4f6. */
 :root {
   --fpai-pink: #c92251;
 }

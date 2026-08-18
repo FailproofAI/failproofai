@@ -167,7 +167,7 @@ def login(
     """Sign in to the dashboard with an emailed one-time code.
 
     You enter your email (or pass `--email`), the dashboard emails a 6-digit code, and you paste
-    it back. The session is saved to `~/.fp/cli.json` (mode 0600) and lasts ~24h — just
+    it back. The session is saved to `~/.failproofai/fpcli/cli-auth.json` (mode 0600) and lasts ~24h — just
     re-run `login` when it expires. Already signed in? `login` shows who you are and exits 0
     without prompting; pass `--force` to re-authenticate anyway.
 
@@ -327,7 +327,8 @@ def login(
 def logout(ctx: typer.Context) -> None:
     """Sign out and clear the saved session from this machine.
 
-    Best-effort server-side revocation, then wipes the session from `~/.fp/cli.json` —
+    Best-effort server-side revocation, then wipes the session from
+    `~/.failproofai/fpcli/cli-auth.json` —
     the token, your email and user id, and the active org — so nothing about who you were or
     which tenant you used is left behind. Your `base_url` and `--insecure` preference are kept,
     so the next `login` is quick. If you are not signed in it is a no-op that reports

@@ -601,3 +601,29 @@ def test_a_fifo_in_the_config_position_is_refused(clean_env):
     cfg.save_config(cfg.CliConfig(session_token="t"))
     assert not stat.S_ISFIFO(os.lstat(cfg.config_path()).st_mode)
     assert cfg.load_config().session_token == "t"
+
+
+# ── The shipped text must not name the old location ──────────────────────────
+
+
+def test_no_shipped_module_names_the_pre_move_path():
+    """Help text is a docstring, so a stale path compiles, ships and passes.
+
+    This is the same failure the `fp.events` example was: prose that describes
+    the product, wrong, with nothing to catch it. Four modules named
+    `~/.fp/cli.json` after the move — `login`, `logout` and `orgs switch` all
+    print theirs to the user.
+
+    `config.py` is exempt: it is where the legacy path is deliberately named, to
+    recognise a pre-move install and say so.
+    """
+    import fp_cli
+
+    pkg = Path(fp_cli.__file__).parent
+    offenders = []
+    for path in sorted(pkg.rglob("*.py")):
+        if path.name == "config.py":
+            continue
+        if "~/.fp/cli.json" in path.read_text(encoding="utf-8"):
+            offenders.append(str(path.relative_to(pkg)))
+    assert offenders == [], f"these still name the pre-move config path: {offenders}"

@@ -2,7 +2,7 @@
 
 Org membership comes from the session (no dedicated list endpoint), so the
 listing reads it via ``GET /api/auth/session``. ``switch`` persists the chosen
-slug to ``~/.fp/cli.json`` so later commands send it as the
+slug to ``~/.failproofai/fpcli/cli-auth.json`` so later commands send it as the
 ``X-AgentEye-Org`` header; ``current`` reports the tenant in effect right now.
 """
 
@@ -229,7 +229,8 @@ def org_switch(
     `fp orgs switch acme` switches straight to `acme`. `fp orgs switch` with no slug
     opens an arrow-key picker (↑↓ to move, ⏎ to select, esc to cancel) starting on your current
     org; if you belong to exactly one org there's nothing to switch to. Either way the result is
-    a boxed `switched org` card, and the choice is persisted to `~/.fp/cli.json` so later
+    a boxed `switched org` card, and the choice is persisted to
+    `~/.failproofai/fpcli/cli-auth.json` so later
     commands send it as the active tenant.
 
     A non-interactive run (piped stdin / CI) falls back to a numbered prompt. With `--json` a slug

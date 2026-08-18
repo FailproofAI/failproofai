@@ -46,6 +46,10 @@
 
 ## 1.0.1-beta.0 — 2026-08-14
 
+### Docs
+
+- Add an implementation-ready plan for a fresh FailproofAI documentation site centered on tracing agent runs, auditing failures, evaluating live quality, and deploying policies that prevent recurring failures.
+
 ### Features
 
 - Add `failproofai audit --schedule [days] --email you@yourdomain.com`, so signing in is one command and then the code. The flag answers the first of the two questions up front; the second still happens at a prompt, because a one-time code has to be read out of a mailbox by a person and no flag changes that. Both `--email addr` and `--email=addr` parse, and the address is validated at the CLI boundary beside the day count — before a frame is drawn or a code is sent, so a typo reads as a usage error rather than as a sign-in that opened and gave up. It is still SHOWN as a settled step, since a flag is exactly where a wrong address hides and that step is the last place to catch it before somebody starts waiting for mail. **A different address on a machine that is already signed in is refused**, naming both and how to switch: where a machine's digests go is not something a flag should change quietly, because nobody notices until they stop arriving. The same address is a no-op that proceeds without prompting, compared case-insensitively as a mail server would. Deliberately NOT added: a `--code` flag. It would land in shell history and sit in `ps` for every other user on the box, and the code is short-lived rather than harmless. The argument parser is positional now, too — it matched values against a set of seen strings, which cannot tell one flag's argument from another's. (#698)

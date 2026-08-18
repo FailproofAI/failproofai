@@ -1,0 +1,198 @@
+---
+title: "Custom agents"
+description: "Instrument traces from custom agents so Failproof AI can reconstruct runs and find failures."
+icon: "python"
+---
+
+Instrument traces from a custom agent with `failproofai-sdk` so Failproof AI can reconstruct each run, audit its behavior, and find evidence-backed failures. The SDK writes structured events for the Failproof daemon to deliver to Cloud. It requires Python 3.10 or newer.
+
+Tracing makes custom agents observable and auditable. Preventing an unsafe action before it executes also requires an enforcement hook in your runtime.
+
+<Info>
+  To enforce policies in a custom agent setup, [contact Failproof AI](mailto:support@befailproof.ai). We will help map your runtime's model, tool, and lifecycle boundaries to policy hooks.
+</Info>
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with the Failproof AI Python SDK" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+## Install `failproofai-sdk`
+
+The SDK is currently distributed as a private wheel. Ask your Failproof AI contact for the current version and download access.
+
+```bash
+VERSION=<sdk-version>
+pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
+python -c "import failproofai; print(failproofai.__version__)"
+```
+
+With `uv`, download the wheel first and run `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`. Pin the wheel in a private artifact repository or dependency lock.
+
+The package is installed as `failproofai-sdk` and imported in Python as `failproofai`.
+
+## Connect the Failproof daemon
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Admin → Keys** and create a key with `events:add`.
+    2. [Connect the Failproof daemon to Cloud](/start/setup#connect-a-machine-to-cloud) on the agent machine.
+    3. Run one instrumented session, then find its exact ID under **Observe → Events**.
+    4. Go to **Observe → Sessions**, select the same environment, and open the reconstructed trace.
+
+    ![A custom Python agent session reconstructed as an execution graph and ordered event trace.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <events-add-key>
+    failproofai config --status
+    ```
+  </Tab>
+</Tabs>
+
+## Instrument a complete run
+
+Call `configure()` once during process startup. Every event call is keyword-only and requires a stable `session_id` and `agent_id`.
+
+```python
+import traceback
+import uuid
+
+import failproofai
+
+failproofai.configure(environment="production")
+
+session_id = uuid.uuid4().hex
+agent_id = "checkout-agent"
+
+failproofai.event.agent_start(
+    session_id=session_id,
+    agent_id=agent_id,
+    goal="Resolve a failed checkout",
+)
+
+try:
+    tool_call_id = uuid.uuid4().hex
+    failproofai.event.tool_use(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        input={"order_id": "ord_8421"},
+    )
+    result = {"status": "payment_failed"}
+    failproofai.event.tool_result(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        output=result,
+    )
+except Exception as exc:
+    failproofai.event.error(
+        session_id=session_id,
+        agent_id=agent_id,
+        error_type=type(exc).__name__,
+        message=str(exc),
+        traceback=traceback.format_exc(),
+    )
+    failproofai.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="failed",
+    )
+    raise
+else:
+    failproofai.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="success",
+        summary="Escalated the failed payment",
+    )
+```
+
+Emit `agent_start` once per actor. For sub-agents, reuse the parent's `session_id`, give each actor a distinct `agent_id`, and set `parent_id` to the parent **agent ID**, not the session ID.
+
+## Configuration reference
+
+```python
+failproofai.configure(
+    base_dir=None,
+    flush_interval=0.5,
+    environment="production",
+)
+```
+
+| Setting | Behavior |
+| --- | --- |
+| `base_dir` | Explicit spool root. Takes precedence over all environment variables. |
+| `flush_interval` | Seconds between background writes from memory to JSONL. Default: `0.5`. |
+| `environment` | Deployment label on every event. Defaults to `dev`. |
+| `FAILPROOFAI_HOME` | Changes the Failproof AI root that contains the `custom-agents` spool. |
+
+The SDK writes to the explicit `base_dir` when set. Otherwise, it uses the Failproof daemon's `custom-agents` spool under `FAILPROOFAI_HOME` or `~/.failproofai`.
+
+The SDK queues calls in memory and writes batches on a background thread. It also attempts a final flush through Python's `atexit` handling. For short-lived workers, allow normal interpreter shutdown; hard process termination can lose events still in memory.
+
+## Event catalog
+
+All methods return `None`. Fields left as `None` are omitted rather than written as JSON `null`.
+
+| Method | Required fields beyond identity | Optional fields |
+| --- | --- | --- |
+| `agent_start` | — | `goal`, `parent_id` |
+| `agent_end` | — | `outcome`, `summary` |
+| `agent_pause` | `pause_id` | `reason`, `user_id` |
+| `agent_resume` | `pause_id` | `reason`, `user_id` |
+| `model_request` | — | `model`, `messages`, `system`, `tools` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role` |
+| `tool_use` | `tool_name`, `tool_call_id` | `input` |
+| `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
+| `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
+| `hook_completed` | `hook_name`, `hook_id` | `outcome`, `output`, `error` |
+| `error` | `error_type`, `message` | `traceback` |
+| `human_wait` | `input_id` | `prompt`, `options`, `reason` |
+| `human_input` | `input_id` | `response` |
+| `human_pause` | — | `reason`, `user_id` |
+| `human_interrupt` | — | `reason`, `user_id`, `at_step` |
+
+Use `outcome="failed"`, `"error"`, `"timeout"`, or `"rejected"` when a completion should count as a failure. Other values, including `"failure"`, are not classified as failures by the current backend.
+
+## Correlation and duration rules
+
+- Reuse the same `tool_call_id`, `hook_id`, `pause_id`, or `input_id` for the matching completion event.
+- The SDK computes `duration_ms` for `tool_result`, `hook_completed`, `agent_resume`, and `human_input`. Passing it yourself to those methods raises `ValueError`.
+- Tool and hook IDs share one process-wide pending map. Make them globally unique across concurrent sessions and across both namespaces; provider IDs or UUIDs are safest.
+- A pair split across processes still correlates downstream, but the SDK cannot compute its in-process duration.
+- The pending map holds at most 10,000 starts and evicts the oldest entry when full.
+
+## Custom fields and payloads
+
+Every event accepts extra keyword fields. Use JSON-compatible values when downstream queries need structure. Unsupported leaves such as UUIDs, datetimes, decimals, sets, bytes, and model objects are stringified by the writer.
+
+Reserved custom names are `timestamp`, `session_id`, `agent_id`, `type`, and `environment`. Optional-field typos are accepted as new custom fields, so review emitted JSON when a standard field does not appear in Cloud.
+
+## Deliver and verify
+
+<Tabs>
+  <Tab title="Dashboard">
+    In **Observe → Events**, verify `agent_start` exists first and `agent_end` exists last. Then open **Observe → Sessions** and confirm model, tool, human, hook, and error events appear in the intended order. Use the session ID as the primary troubleshooting key.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai flush --wait --timeout 60
+    failproofai config --status
+    fp sessions --since 1h --env production --session-id <session-id>
+    fp events --since 1h --session-id <session-id> --full
+    ```
+  </Tab>
+</Tabs>
+
+If Cloud is empty, inspect `$FAILPROOFAI_HOME/custom-agents/events`, otherwise `~/.failproofai/custom-agents/events`. JSONL files prove SDK emission; a growing spool points to daemon configuration or delivery, while an empty spool points to instrumentation or process lifetime.
+
+## Prevent failures in a custom runtime
+
+Use audit findings and linked traces to define the unsafe action, required evidence, and intended response. A custom enforcement integration must expose the action before execution, pass its structured input to the policy engine, and apply the resulting allow, instruct, or deny decision.
+
+Email [support@befailproof.ai](mailto:support@befailproof.ai) to design and validate this integration for your runtime.

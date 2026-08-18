@@ -1,0 +1,41 @@
+---
+title: "Rollback"
+description: "Restore a known policy deployment when a rollout disrupts valid agent work."
+icon: "rotate-ccw"
+---
+
+Rollback changes the deployed version or removes a policy assignment; it does not erase the decision history that explains the incident.
+
+## Roll back a machine
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Admin → enforcement**, expand the affected machine, and identify its last known-good policy set.
+    2. Select **edit**, restore those versions and effects, and apply the new deployment.
+    3. Wait for machine check-in, then verify the reported deployment.
+    4. Open **Observe → policy** and the affected sessions to confirm valid work is no longer blocked.
+
+  </Tab>
+  <Tab title="CLI">
+    Cloud deployment rollback is a dashboard workflow. Use local status to confirm that the corrected deployment has reached the machine:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    `failproofai config --pause` pauses builtin, custom, and convention policies for one local session. It does not pause Cloud-managed policies, so it is not a workaround for a bad Cloud deployment.
+  </Tab>
+</Tabs>
+
+## When to roll back
+
+- A policy blocks an expected production action.
+- Match volume is materially higher than the observed rollout predicted.
+- A policy depends on fields that an integration does not provide.
+- A new version changes behavior outside the intended failure mode.
+
+After rollback, open the affected sessions and identify the condition that caused the false positive. Create a new version, test both the unsafe and legitimate cases, then repeat the observe phase.
+
+<Warning>
+  Pausing enforcement can be appropriate during an incident, but it widens exposure for every active policy in that scope. Prefer rolling back the specific policy version when possible.
+</Warning>

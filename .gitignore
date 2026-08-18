@@ -77,6 +77,9 @@ packages/*/assets/
 # closed-source platform (cloned separately)
 /platform
 
+# FailproofAI Cloud reference source (cloned separately for docs research)
+/agenteye
+
 # rust
 /target
 

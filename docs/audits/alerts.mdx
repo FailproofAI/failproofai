@@ -1,0 +1,62 @@
+---
+title: "Alerts"
+description: "Detect recurrence and route an incident to the right responders."
+icon: "bell-ring"
+---
+
+Alerts watch a measurable condition and create an incident when it triggers. Use them when a failure should produce a timely response, whether or not a policy can block it.
+
+## Create and test an alert
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Analyze → Alerts** and select **new alert**. You can also start from the bell on a representative error.
+    2. Enter the name, severity, trigger kind, condition, evaluation interval, breach count, window, and channels.
+    3. Save the alert, open its detail page, and run **test**.
+    4. Go to **Analyze → Issues** to acknowledge, assign, discuss, subscribe to, and resolve incidents created by the alert.
+
+    The first part of the form identifies the alert and the signal that should trigger it.
+
+    ![The first part of the new-alert form with its name, description, enabled state, and trigger type.](/images/dashboard/alert-new-trigger.png)
+
+    The second part controls how long the condition must persist, how often it is evaluated, and where notifications are sent.
+
+    ![The second part of the new-alert form with breach logic, schedule, severity, delivery channels, and create action.](/images/dashboard/alert-new-routing.png)
+
+    After saving, use the Alerts list to confirm the rule is enabled and that its trigger, window, severity, and channels match what you intended.
+
+    ![The Alerts page showing alert rules with their triggers, evaluation windows, channels, and severity.](/images/dashboard/alerts.png)
+
+    Test the alert before depending on it for production response.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp alerts create high-errors \
+      --trigger-kind metric_threshold \
+      --severity warning \
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+
+    fp alerts show high-errors
+    fp alerts test high-errors
+    fp alerts update high-errors --severity critical --yes
+    ```
+
+    Use `fp alerts list` to review rules and `fp alerts delete <name>` to remove one.
+
+    See the [`fp alerts` reference](/reference/cloud-cli#alerts) for the complete alert command set.
+  </Tab>
+</Tabs>
+
+Alert conditions can be based on errors, evaluation scores, evaluation combinations, or custom SQL. Add recipients, test the rule, and open the resulting incident to acknowledge, assign, comment, subscribe, and resolve it.
+
+## Good alert design
+
+- Name the condition and affected workflow.
+- Scope the environment explicitly.
+- Set a window and threshold that avoid reacting to one harmless event.
+- Include a link or query that leads responders to sessions.
+- Assign an owner before enabling the rule.
+
+<Tip>
+  After resolving an audit finding, add an alert when the same failure could recur outside the policy's coverage.
+</Tip>

@@ -6,10 +6,10 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/failproofai/failproofai/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/failproofai/failproofai/actions)
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
 [![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?style=flat-square&logo=discord)](https://discord.befailproof.ai/)
-[![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/introduction)
+[![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](./LICENSE)
 
-**Translations:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Русский](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
+**Translations:** [简体中文](./docs-old/i18n/README.zh.md) · [日本語](./docs-old/i18n/README.ja.md) · [한국어](./docs-old/i18n/README.ko.md) · [Español](./docs-old/i18n/README.es.md) · [Português](./docs-old/i18n/README.pt-br.md) · [Deutsch](./docs-old/i18n/README.de.md) · [Français](./docs-old/i18n/README.fr.md) · [Руссий](./docs-old/i18n/README.ru.md) · [हिन्दी](./docs-old/i18n/README.hi.md) · [Türkçe](./docs-old/i18n/README.tr.md) · [Tiếng Việt](./docs-old/i18n/README.vi.md) · [Italiano](./docs-old/i18n/README.it.md) · [العربية](./docs-old/i18n/README.ar.md) · [עברית](./docs-old/i18n/README.he.md)
 
 **Runtime failure resolution for coding agents.**
 Hooks into Claude Code and Codex. Catches loops, dangerous actions, and secret leaks
@@ -141,7 +141,7 @@ failproofai
 | `block-rm-rf` | Recursive file deletion |
 | `sanitize-api-keys` | API keys leaking into agent context |
 
-→ [All 30 built-in policies](https://docs.befailproof.ai/built-in-policies)
+→ [All 30 built-in policies](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
@@ -172,7 +172,7 @@ Three decisions available to every policy:
 | `deny(message)` | Block it — message goes back to the agent |
 | `instruct(message)` | Let it through, but add context to the agent's next prompt |
 
-→ [Custom policies guide](https://docs.befailproof.ai/custom-policies)
+→ [Custom policies guide](https://docs.befailproof.ai/policies/custom)
 
 ---
 
@@ -180,7 +180,7 @@ Three decisions available to every policy:
 
 Every tool call your agent makes is logged locally. The dashboard shows what ran,
 what was blocked, and what the policy told the agent — so you're not guessing
-when something goes wrong. → [Dashboard guide](https://docs.befailproof.ai/dashboard)
+when something goes wrong. → [Dashboard guide](https://docs.befailproof.ai/sessions/overview)
 
 ---
 
@@ -188,12 +188,12 @@ when something goes wrong. → [Dashboard guide](https://docs.befailproof.ai/das
 
 | | |
 |---|---|
-| [Getting Started](https://docs.befailproof.ai/getting-started) | Installation and first steps |
-| [Built-in Policies](https://docs.befailproof.ai/built-in-policies) | All 30 policies with parameters |
-| [Custom Policies](https://docs.befailproof.ai/custom-policies) | Write your own |
-| [Configuration](https://docs.befailproof.ai/configuration) | Config scopes and merge rules |
-| [Dashboard](https://docs.befailproof.ai/dashboard) | Session monitor and policy activity |
-| [Architecture](https://docs.befailproof.ai/architecture) | How the hook system works |
+| [Getting Started](https://docs.befailproof.ai/start/quickstart) | Installation and first steps |
+| [Built-in Policies](https://docs.befailproof.ai/policies/builtin) | All 30 policies with parameters |
+| [Custom Policies](https://docs.befailproof.ai/policies/custom) | Write your own |
+| [Configuration](https://docs.befailproof.ai/policies/local-configuration) | Config scopes and merge rules |
+| [Dashboard](https://docs.befailproof.ai/sessions/overview) | Session monitor and policy activity |
+| [Architecture](https://docs.befailproof.ai/start/concepts) | How the hook system works |
 
 ---
 

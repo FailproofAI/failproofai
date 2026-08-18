@@ -1,0 +1,53 @@
+---
+title: "Failproof Assistant"
+description: "Analyze and operate Failproof AI in natural language, from questions and queries to dashboards and audits."
+icon: "message-square-text"
+---
+
+Ask the Failproof Assistant to do anything in Failproof AI in natural language. It can analyze sessions and failures, run queries, build dashboards, investigate evaluations and alerts, and help create and run audits without making you translate the task into product screens or CLI commands.
+
+```text
+Why did production checkout agents regress this week?
+Build a dashboard for tool failures, latency, and evaluation scores.
+Create an audit that finds agents retrying the same failed action without changing approach.
+Show me the sessions behind the most common audit finding.
+```
+
+The assistant works with the data and permissions available in the active organization. Review its evidence and proposed changes before applying actions that affect other users or agents.
+
+## Ask the assistant
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Select **Open agent chat** and describe what you want to understand, create, or operate.
+    2. Review the assistant's tool calls, tables, and query results while it works.
+    3. Open the cited session, alert, or query to verify the result against source data.
+    4. Start a new chat for a different investigation, or use chat history to continue the same line of analysis.
+
+    ![The Cloud assistant answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Open representative sessions" --chat <chat-id>
+    ```
+
+    Use `fp agent rename <chat-id> --title <title>` to keep an investigation recognizable and `fp agent delete <chat-id>` to remove it.
+  </Tab>
+</Tabs>
+
+## Work effectively with the assistant
+
+- Give it a goal first; add an environment, workflow, or time range when those boundaries matter.
+- Treat generated SQL and summaries as an investigation aid, not final evidence.
+- Open representative sessions before creating an audit, issue, alert, or policy.
+- Keep organization, environment, and time filters explicit.
+- Save useful SQL as a query so another operator can reproduce the result.
+
+<Warning>
+  The assistant can read only what your current user can access. Do not broaden permissions to make a question work; ask an authorized operator to run the investigation instead.
+</Warning>

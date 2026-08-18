@@ -146,15 +146,17 @@ Work with these; none of them raise, so none of them show up in testing.
 
   | arg | default resolution |
   |---|---|
-  | `base_dir` | `$AGENTEYE_HOME`, else `~/.agenteye` |
+  | `base_dir` | `$AGENTEYE_HOME`, else `~/.failproofai/custom-agents` |
   | `environment` | `$AGENTEYE_ENVIRONMENT`, else `"dev"` |
   | `flush_interval` | `0.5` (seconds) |
 
-  `base_dir` has one further opt-in: with `AGENTEYE_SPOOL_TO_FAILPROOFAI` set to
-  a truthy value **and** `~/.failproofai/custom-agents` already present, the SDK
-  spools there instead. Set it only on hosts where a daemon that watches that
-  directory is installed — the standard collector does not, and events written
-  somewhere nothing reads simply pile up with no error on either side.
+  The default root moved here from `~/.agenteye`. `failproofaid` watches both,
+  so on a host running it nothing changes but the directory name, and batches
+  already in `~/.agenteye/events` still get collected. On a host running the
+  older `agenteye-collector` — which resolves `$AGENTEYE_HOME` or `~/.agenteye`
+  and nothing else — set `AGENTEYE_HOME=~/.agenteye`, or events pile up where
+  nothing reads with no error on either side. `AGENTEYE_SPOOL_TO_FAILPROOFAI`
+  is retired; it required a directory nothing created, so it never fired.
 
   Each call *sets all three* — omitted arguments are **reset to default
   resolution**, not left alone. So a later `configure(flush_interval=1.0)`

@@ -1,23 +1,27 @@
-"""The spool root selects the failproofai umbrella only on an explicit opt-in.
+"""The spool root defaults to the failproofai umbrella, and legacy stays reachable.
 
-The rule these tests exist to hold: a spool is worthless unless a daemon reads
-it, and the presence of the umbrella DIRECTORY does not imply the presence of a
-daemon that watches it.
+This file used to assert the opposite, and the reason it flipped is worth
+keeping: the umbrella was previously behind an ``AGENTEYE_SPOOL_TO_FAILPROOFAI``
+opt-in that ALSO required ``~/.failproofai/custom-agents`` to already exist.
+Nothing ever created that directory — not this SDK, not ``failproofaid``, not
+either installer — so the second condition was never satisfied and the opt-in
+never fired once. It was documented, tested, and dead.
 
-Two daemons read this spool and they do not read the same roots. ``failproofaid``
-— shipped from this repository, ``crates/fpai-collect/src/config.rs`` — watches
-both. The older ``agenteye-collector``, in the private AgentEye repository, reads
-``$AGENTEYE_HOME`` or ``~/.agenteye`` and nothing else. So selecting the umbrella
-on a host running that one is silent data loss, which is why it stays opt-in even
-though the path itself is now verifiable against the daemon next door
-(``test_spool_contract.py``).
+The rule now: the SDK ships beside ``failproofaid``, which watches BOTH roots,
+so on any host running it the default is a no-op that only changes which
+directory the files appear in. The old root keeps being watched indefinitely, so
+an unupgraded SDK keeps working and batches already spooled there still drain.
+
+The case that genuinely breaks is a host running the OLDER
+``agenteye-collector``, which resolves ``$AGENTEYE_HOME`` or ``~/.agenteye`` and
+nothing else. Its escape hatch is ``AGENTEYE_HOME``, which both daemons honour —
+that is why it is the escape hatch rather than a new variable of our own.
 """
-import os
 from pathlib import Path
-import pytest
-from failproofai_sdk import _resolver
 
-OPT_IN = _resolver.SPOOL_OPT_IN_ENV
+import pytest
+
+from failproofai_sdk import _resolver
 
 
 @pytest.fixture(autouse=True)
@@ -25,78 +29,108 @@ def _clean(monkeypatch):
     _resolver.set_base_dir(None)
     monkeypatch.delenv("AGENTEYE_HOME", raising=False)
     monkeypatch.delenv("FAILPROOFAI_HOME", raising=False)
-    monkeypatch.delenv(OPT_IN, raising=False)
     yield
     _resolver.set_base_dir(None)
 
 
-def test_falls_back_to_agenteye_when_no_failproofai(tmp_path, monkeypatch):
-    # The critical default. Writing to the failproofai home on a machine with
-    # no failproofai would drop events where nothing watches — silent loss,
-    # invisible because an empty spool looks exactly like an idle one.
+# ─────────────────────────────────────────────────────────────────────────────
+# The default
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_the_default_is_the_failproofai_umbrella(tmp_path, monkeypatch):
+    """THE CHANGE. A clean machine writes to the umbrella, with nothing set."""
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    assert _resolver.get_base_dir() == tmp_path / ".agenteye"
-
-
-def test_umbrella_alone_is_not_enough(tmp_path, monkeypatch):
-    """THE REGRESSION TEST. The directory existing must change nothing.
-
-    This is the case that shipped: installing failproofai beside a normal
-    agenteye-collector creates this directory, and the SDK used to follow it —
-    moving every batch somewhere the running collector never looks, with no
-    error on either side.
-    """
-    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    (tmp_path / ".failproofai" / "custom-agents").mkdir(parents=True)
-    assert _resolver.get_base_dir() == tmp_path / ".agenteye"
-
-
-@pytest.mark.parametrize("truthy", ["1", "true", "TRUE", "yes", "on"])
-def test_opt_in_selects_the_umbrella(tmp_path, monkeypatch, truthy):
-    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    (tmp_path / ".failproofai" / "custom-agents").mkdir(parents=True)
-    monkeypatch.setenv(OPT_IN, truthy)
     assert _resolver.get_base_dir() == tmp_path / ".failproofai" / "custom-agents"
 
 
-@pytest.mark.parametrize("falsy", ["", "0", "false", "no", "off", "maybe"])
-def test_non_truthy_opt_in_keeps_the_default(tmp_path, monkeypatch, falsy):
+def test_the_umbrella_does_not_have_to_exist_first(tmp_path, monkeypatch):
+    """The regression that made the old opt-in dead.
+
+    Requiring the directory to pre-exist means it can never be the place a first
+    batch is written — nothing creates it, so the branch is unreachable. The
+    writer mkdirs what it is about to write into, so resolution must not care.
+    """
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    (tmp_path / ".failproofai" / "custom-agents").mkdir(parents=True)
-    monkeypatch.setenv(OPT_IN, falsy)
+    assert not (tmp_path / ".failproofai").exists()
+    assert _resolver.get_base_dir() == tmp_path / ".failproofai" / "custom-agents"
+
+
+def test_an_existing_legacy_root_does_not_drag_the_default_back(tmp_path, monkeypatch):
+    """Presence of ``~/.agenteye`` is not a vote.
+
+    It exists on any machine that merely ran the old CLI once — it holds that
+    CLI's `cli.json` — so treating it as a signal would pin those machines to
+    the old path forever despite no collector ever having watched it.
+    """
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    (tmp_path / ".agenteye" / "events").mkdir(parents=True)
+    assert _resolver.get_base_dir() == tmp_path / ".failproofai" / "custom-agents"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The escape hatch — the whole safety argument for the change above
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_agenteye_home_still_wins_and_is_the_legacy_escape_hatch(tmp_path, monkeypatch):
+    """A host on the old ``agenteye-collector`` sets this and is unaffected.
+
+    Both daemons honour it, which is exactly why it is the escape hatch and why
+    no new variable was invented for the job.
+    """
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path / ".agenteye"))
     assert _resolver.get_base_dir() == tmp_path / ".agenteye"
 
 
-def test_opt_in_without_the_directory_keeps_the_default(tmp_path, monkeypatch):
-    # Opting in on a host where failproofai is not actually installed must not
-    # invent the directory — that would be the original bug with extra steps.
+def test_agenteye_home_may_point_anywhere_not_just_the_legacy_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path / "somewhere" / "else"))
+    assert _resolver.get_base_dir() == tmp_path / "somewhere" / "else"
+
+
+def test_an_empty_agenteye_home_is_ignored_rather_than_resolving_to_cwd(tmp_path, monkeypatch):
+    """``AGENTEYE_HOME=`` in a CI env file must not spool into the repo."""
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    monkeypatch.setenv(OPT_IN, "1")
-    assert _resolver.get_base_dir() == tmp_path / ".agenteye"
+    monkeypatch.setenv("AGENTEYE_HOME", "")
+    assert _resolver.get_base_dir() == tmp_path / ".failproofai" / "custom-agents"
 
 
-def test_env_override_beats_the_umbrella(tmp_path, monkeypatch):
-    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    (tmp_path / ".failproofai" / "custom-agents").mkdir(parents=True)
-    monkeypatch.setenv(OPT_IN, "1")
-    monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path / "explicit"))
-    assert _resolver.get_base_dir() == tmp_path / "explicit"
+# ─────────────────────────────────────────────────────────────────────────────
+# Precedence and the umbrella path itself
+# ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_set_base_dir_beats_everything(tmp_path, monkeypatch):
-    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    (tmp_path / ".failproofai" / "custom-agents").mkdir(parents=True)
-    monkeypatch.setenv(OPT_IN, "1")
+def test_set_base_dir_beats_every_environment_variable(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path / "env"))
     _resolver.set_base_dir(tmp_path / "explicit")
     assert _resolver.get_base_dir() == tmp_path / "explicit"
 
 
-def test_failproofai_home_env_is_honoured(tmp_path, monkeypatch):
-    # Must match fp-home.ts and fpai-collect, or the SDK writes where the
-    # daemon never reads.
+def test_failproofai_home_moves_the_umbrella(tmp_path, monkeypatch):
+    """Mirrors ``FAILPROOFAI_HOME`` in fp-home.ts; containers rely on it."""
+    monkeypatch.setenv("FAILPROOFAI_HOME", str(tmp_path / "elsewhere"))
+    assert _resolver.get_base_dir() == tmp_path / "elsewhere" / "custom-agents"
+
+
+def test_the_retired_opt_in_variable_no_longer_exists():
+    """It was the entry point to the dead branch; leaving it would mislead.
+
+    Anyone who exported it wanted the umbrella and now gets it by default, so
+    removing it changes no behaviour for them — only the docs they read.
+    """
+    assert not hasattr(_resolver, "SPOOL_OPT_IN_ENV")
+
+
+def test_the_retired_opt_in_variable_has_no_effect_if_someone_still_exports_it(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    monkeypatch.setenv(OPT_IN, "1")
-    monkeypatch.setenv("FAILPROOFAI_HOME", str(tmp_path / "custom-fp"))
-    (tmp_path / "custom-fp" / "custom-agents").mkdir(parents=True)
-    assert _resolver.get_base_dir() == tmp_path / "custom-fp" / "custom-agents"
+    monkeypatch.setenv("AGENTEYE_SPOOL_TO_FAILPROOFAI", "0")
+    assert _resolver.get_base_dir() == tmp_path / ".failproofai" / "custom-agents"
+
+
+def test_the_legacy_root_is_still_spelled_somewhere_findable(tmp_path, monkeypatch):
+    """The migration notes and the escape hatch both name it; one definition."""
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    assert _resolver.legacy_agenteye_dir() == tmp_path / ".agenteye"

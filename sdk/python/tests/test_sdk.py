@@ -749,7 +749,8 @@ def test_default_when_neither_set(monkeypatch):
     import failproofai_sdk._resolver as resolver
     monkeypatch.setattr(resolver, "_base_dir", None)
     monkeypatch.delenv("AGENTEYE_HOME", raising=False)
-    assert resolver.get_base_dir() == Path.home() / ".agenteye"
+    monkeypatch.delenv("FAILPROOFAI_HOME", raising=False)
+    assert resolver.get_base_dir() == Path.home() / ".failproofai" / "custom-agents"
 
 
 def test_writer_uses_env_var_base_dir(monkeypatch, tmp_path):

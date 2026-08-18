@@ -70,27 +70,27 @@ def _read_sibling(path: Path) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_sdk_default_is_dot_agenteye(tmp_path, monkeypatch):
-    """No configuration, no umbrella: the legacy root both daemons watch."""
+def test_sdk_default_is_the_umbrella(tmp_path, monkeypatch):
+    """No configuration: the umbrella root, which failproofaid watches."""
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
     monkeypatch.delenv("AGENTEYE_HOME", raising=False)
-    monkeypatch.delenv(_resolver.SPOOL_OPT_IN_ENV, raising=False)
+    monkeypatch.delenv("FAILPROOFAI_HOME", raising=False)
     _resolver.set_base_dir(None)
 
-    assert _resolver.get_base_dir() == tmp_path / ".agenteye"
+    assert _resolver.get_base_dir() == tmp_path / ".failproofai" / "custom-agents"
 
 
-def test_umbrella_present_but_unasked_still_resolves_to_dot_agenteye(tmp_path, monkeypatch):
-    """The exact reported incident: failproofai installed, plain collector running.
+def test_the_legacy_root_stays_reachable_through_agenteye_home(tmp_path, monkeypatch):
+    """The escape hatch for a host still running `agenteye-collector`.
 
-    Before the opt-in, merely creating this directory moved the SDK's spool and
-    stranded every batch under a collector that was watching elsewhere.
+    That collector resolves `$AGENTEYE_HOME` or `~/.agenteye` and nothing else,
+    so on such a host the new default writes where it does not look — silently,
+    since an unread spool is indistinguishable from an idle one. This is the
+    supported way back, and it works because BOTH daemons honour the variable.
     """
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    monkeypatch.delenv("AGENTEYE_HOME", raising=False)
-    monkeypatch.delenv(_resolver.SPOOL_OPT_IN_ENV, raising=False)
+    monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path / ".agenteye"))
     _resolver.set_base_dir(None)
-    (tmp_path / ".failproofai" / "custom-agents").mkdir(parents=True)
 
     assert _resolver.get_base_dir() == tmp_path / ".agenteye"
 
@@ -200,11 +200,14 @@ def test_agenteye_collector_still_reads_only_agenteye_home_and_dot_agenteye():
 
     assert 'var("AGENTEYE_HOME")' in body
     assert '".agenteye"' in body
-    # The load-bearing half: if that collector ever learns the umbrella root,
-    # this fails and the SDK's opt-in can be revisited on purpose.
+    # The load-bearing half. This collector NOT knowing the umbrella is the
+    # entire reason `AGENTEYE_HOME` is documented as the escape hatch for hosts
+    # running it. If it ever learns the umbrella root, that advice becomes
+    # unnecessary and the migration note should be retired — deliberately, not
+    # by someone noticing years later.
     assert "failproofai" not in body.lower(), (
         "the AgentEye collector now mentions failproofai in base_dir(). If it "
-        "genuinely watches ~/.failproofai/custom-agents, the SDK's "
-        f"{_resolver.SPOOL_OPT_IN_ENV} opt-in could become the default — but "
-        "make that an explicit decision, not a silent one."
+        "genuinely watches ~/.failproofai/custom-agents, the AGENTEYE_HOME "
+        "escape hatch this SDK documents for legacy hosts is no longer needed "
+        "— retire it on purpose, not silently."
     )

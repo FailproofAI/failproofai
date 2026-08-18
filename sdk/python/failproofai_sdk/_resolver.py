@@ -4,49 +4,54 @@ from pathlib import Path
 _base_dir: Path | None = None
 
 
-#: Opt-in: "a daemon that watches the failproofai umbrella root is installed here".
-SPOOL_OPT_IN_ENV = "AGENTEYE_SPOOL_TO_FAILPROOFAI"
-
-_TRUTHY = {"1", "true", "yes", "on"}
-
-
 def get_base_dir() -> Path:
     """Where this SDK writes its event spool.
 
     Resolution order, most explicit first:
 
-      1. ``set_base_dir()``          — a caller said so outright
-      2. ``$AGENTEYE_HOME``          — an operator said so
-      3. ``~/.failproofai/custom-agents``  — only with the opt-in below
-      4. ``~/.agenteye``             — the default
+      1. ``set_base_dir()``               — a caller said so outright
+      2. ``$AGENTEYE_HOME``               — an operator said so
+      3. ``~/.failproofai/custom-agents`` — the default
 
-    Step 3 is the failproofai umbrella, and it requires BOTH
-    ``$AGENTEYE_SPOOL_TO_FAILPROOFAI`` to be truthy AND the directory to exist.
+    THE DEFAULT MOVED, AND THE OLD ROOT IS STILL READ.
 
-    THE OPT-IN IS THE WHOLE POINT, so do not "simplify" it back to an
-    existence check. A spool is only useful if something reads it, and the two
-    candidate daemons do not read the same roots:
+    It used to be ``~/.agenteye``, with the umbrella reachable only behind an
+    ``AGENTEYE_SPOOL_TO_FAILPROOFAI`` opt-in that also required the directory to
+    already exist. Nothing created that directory — not this SDK, not
+    ``failproofaid``, not either installer — so the second condition was never
+    true and the opt-in never fired. The umbrella was documented, tested, and
+    unreachable.
 
-      * ``failproofaid`` — the daemon THIS repository ships — watches both
-        roots. ``crates/fpai-collect/src/config.rs`` builds ``spool_dirs`` from
-        ``custom_agents_events_dir()`` AND ``agenteye_events_dir()``, and the
-        comment above that list says both stay watched indefinitely.
-      * ``agenteye-collector`` — the older collector, which lives in the
-        private AgentEye repository — resolves its base from ``$AGENTEYE_HOME``
-        or ``~/.agenteye`` and nothing else (``collector/src/config.rs`` there),
-        and watches that single events directory non-recursively.
+    The daemon this SDK ships beside, ``failproofaid``, watches BOTH roots and
+    always has (``crates/fpai-collect/src/config.rs`` builds ``spool_dirs`` from
+    ``custom_agents_events_dir()`` AND ``agenteye_events_dir()``, and both stay
+    watched indefinitely). So on a host running it, this change moves where the
+    files land and nothing else: they are collected either way.
 
-    So "the umbrella directory exists" does not imply "a daemon watches the
-    umbrella directory". Merely installing failproofai alongside a normal
-    agenteye-collector once created that directory, silently moved this SDK's
-    output into it, and left the collector watching an empty ``~/.agenteye``.
-    Nothing errors: batches accumulate on disk forever, and an unread spool
-    looks exactly like an idle one, so the first sign of trouble is a dashboard
-    with no data and no explanation.
+    **Batches already sitting in ``~/.agenteye/events`` are not orphaned.** They
+    stay where they are and are still drained by whichever collector owns that
+    root. The directory simply stops growing. Nothing needs to be moved by hand.
 
-    Defaulting to ``~/.agenteye`` cannot cause that. The worst case for the
-    default is that a failproofaid host writes to the older of the two roots
-    that failproofaid already watches — which costs nothing.
+    ## The one case that breaks, and its escape hatch
+
+    ``agenteye-collector`` — the older daemon in the private AgentEye repository
+    — resolves its base from ``$AGENTEYE_HOME`` or ``~/.agenteye`` and NOTHING
+    else (``collector/src/config.rs``, ``base_dir()``). It has no idea the
+    umbrella exists. On a host running that collector and this SDK, the default
+    below writes where it does not look, and the failure is silent: no error on
+    either side, batches accumulate forever, and an unread spool is
+    indistinguishable from an idle one.
+
+    That host sets::
+
+        AGENTEYE_HOME=~/.agenteye
+
+    which is step 2 above and predates this change. It is the documented escape
+    hatch precisely because both daemons already honour it, so it cannot itself
+    desynchronise them.
+
+    ``test_spool_contract.py`` reads the Rust and the TypeScript that define
+    these roots and fails if either drifts from what this module resolves.
     """
     if _base_dir is not None:
         return _base_dir
@@ -55,15 +60,10 @@ def get_base_dir() -> Path:
     if env_override:
         return Path(env_override)
 
-    if os.environ.get(SPOOL_OPT_IN_ENV, "").strip().lower() in _TRUTHY:
-        umbrella = failproofai_custom_agents_dir()
-        if umbrella is not None and umbrella.is_dir():
-            return umbrella
-
-    return Path.home() / ".agenteye"
+    return failproofai_custom_agents_dir()
 
 
-def failproofai_custom_agents_dir() -> Path | None:
+def failproofai_custom_agents_dir() -> Path:
     """``~/.failproofai/custom-agents``, honouring ``$FAILPROOFAI_HOME``.
 
     Mirrors ``customAgentsDir()`` in ``src/hooks/fp-home.ts`` and
@@ -71,17 +71,29 @@ def failproofai_custom_agents_dir() -> Path | None:
     three must agree; a divergence would mean this SDK writes somewhere the
     daemon never reads.
 
-    All three now live in THIS repository, so the agreement is checkable rather
-    than hoped for — ``tests/test_spool_contract.py`` reads the Rust and the
-    TypeScript and fails if either drifts from what this module resolves.
+    All three live in THIS repository, so the agreement is checkable rather than
+    hoped for — ``tests/test_spool_contract.py`` reads the Rust and the
+    TypeScript and fails if either drifts.
 
-    Being able to check it does not make the opt-in unnecessary. This path
-    being correct says nothing about whether anything on the *host* is running,
-    which is why :func:`get_base_dir` still will not select it unasked.
+    Returns a path unconditionally and never checks whether it exists. The
+    caller creates it: ``_writer._write_batch`` already does
+    ``mkdir(parents=True, exist_ok=True)`` on the directory it is about to write
+    into. An existence check here is what made the old opt-in dead — a spool
+    root that must pre-exist can never be the place a first batch is written.
     """
     fp_home = os.environ.get("FAILPROOFAI_HOME")
     base = Path(fp_home) if fp_home else Path.home() / ".failproofai"
     return base / "custom-agents"
+
+
+def legacy_agenteye_dir() -> Path:
+    """``~/.agenteye`` — the root this SDK wrote to before the default moved.
+
+    Not part of resolution any more. Kept as a named constant because the
+    migration notes, the tests and the ``AGENTEYE_HOME`` escape hatch all refer
+    to it, and spelling it in four places is how the two sides drift apart.
+    """
+    return Path.home() / ".agenteye"
 
 
 def set_base_dir(path: "str | Path | None") -> None:

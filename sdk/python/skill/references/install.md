@@ -53,12 +53,19 @@ pip install failproofai-sdk
 +failproofai_sdk.event.agent_start(session_id="run-001", agent_id="planner")
 ```
 
-Nothing else moves. Every method name, argument, and emitted field is unchanged,
-and so is everything on disk and in the environment: the spool is still
-`~/.agenteye/`, and `AGENTEYE_HOME`, `AGENTEYE_ENVIRONMENT` and
-`AGENTEYE_SPOOL_TO_FAILPROOFAI` all keep their names. Those are a contract with a
-daemon that releases separately, so renaming them from the SDK's side would send
-events to a directory nothing watches — no error on either side.
+Every method name, argument, and emitted field is unchanged, and so is every
+environment variable: `AGENTEYE_HOME` and `AGENTEYE_ENVIRONMENT` keep their
+names. Those are a contract with a daemon that releases separately, so renaming
+them from the SDK's side would send events to a directory nothing watches — no
+error on either side.
+
+**One thing on disk did move.** The default spool root is now
+`~/.failproofai/custom-agents`, not `~/.agenteye`. `failproofaid` watches both,
+so if that is your daemon there is nothing to do and already-spooled batches
+still get collected. If you run the older `agenteye-collector`, set
+`AGENTEYE_HOME=~/.agenteye` — it reads that variable and nothing else about the
+umbrella. (`AGENTEYE_SPOOL_TO_FAILPROOFAI` is retired: it also required the
+directory to pre-exist, which nothing created, so it never took effect.)
 
 ## Confirm what you have
 

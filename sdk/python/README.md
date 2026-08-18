@@ -78,19 +78,25 @@ failproofai_sdk.configure(
 ```
 
 Call once before any `event.*` call. Safe to omit — defaults work out of the box.
-When `base_dir` is `None`, the SDK reads `$AGENTEYE_HOME` if set, otherwise falls
-back to `~/.agenteye` — matches the collector's resolution so a single env var
-configures both processes.
+When `base_dir` is `None`, the SDK reads `$AGENTEYE_HOME` if set, otherwise
+spools to `~/.failproofai/custom-agents` (honouring `$FAILPROOFAI_HOME`).
 
-**Opt-in: the failproofai umbrella spool.** Set `AGENTEYE_SPOOL_TO_FAILPROOFAI` to
-`1`/`true`/`yes`/`on` and the SDK spools to `~/.failproofai/custom-agents`
-(honouring `$FAILPROOFAI_HOME`) *if that directory already exists*. `$AGENTEYE_HOME`
-and an explicit `base_dir=` still take precedence.
+**The default spool root moved.** It was `~/.agenteye`. The daemon this SDK ships
+beside, `failproofaid`, watches **both** roots and always has, so on a host
+running it this changes which directory the files land in and nothing else.
+Batches already sitting in `~/.agenteye/events` are not orphaned — they stay put
+and are still collected; that directory simply stops growing.
 
-Set it only on hosts running a daemon that watches that root. `agenteye-collector`
-watches `$AGENTEYE_HOME` or `~/.agenteye` and nothing else, so enabling this
-alongside it writes every batch where nothing reads — no upload, no error, and an
-unread spool looks exactly like an idle one.
+> [!IMPORTANT]
+> **If you run the older `agenteye-collector`, set `AGENTEYE_HOME=~/.agenteye`.**
+> That collector resolves `$AGENTEYE_HOME` or `~/.agenteye` and nothing else, so
+> the new default writes where it does not look — no upload, no error, and an
+> unread spool looks exactly like an idle one. `AGENTEYE_HOME` is the documented
+> way back precisely because *both* daemons honour it.
+
+`AGENTEYE_SPOOL_TO_FAILPROOFAI` is **retired**. It selected this root, but also
+required the directory to already exist — and nothing ever created it, so the
+opt-in never fired. Anyone who set it already wanted this and now gets it.
 
 ## Event reference
 

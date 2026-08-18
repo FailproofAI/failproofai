@@ -234,13 +234,28 @@ def test_a_reserved_name_is_rejected_by_every_event_method():
 #: contract deliberately was not, exactly as the `fp` CLI kept `X-AgentEye-Org`
 #: and the `ae_session` cookie through its own rename.
 FROZEN_STRINGS = {
-    "AGENTEYE_HOME": "the operator override both daemons honour",
+    "AGENTEYE_HOME": (
+        "the operator override both daemons honour, and the documented escape "
+        "hatch for a host still running agenteye-collector"
+    ),
     "AGENTEYE_ENVIRONMENT": "the environment label, read at import time",
-    "AGENTEYE_SPOOL_TO_FAILPROOFAI": "the umbrella opt-in",
     "FAILPROOFAI_HOME": "moves the umbrella root, mirrored in fp-home.ts",
-    ".agenteye": "the default spool root every shipped SDK writes to",
-    "custom-agents": "the umbrella spool root",
+    "custom-agents": "the DEFAULT spool root, mirrored in fp-home.ts and config.rs",
 }
+
+#: Deliberately NOT frozen, and each for its own reason.
+#:
+#: ``AGENTEYE_SPOOL_TO_FAILPROOFAI`` was the opt-in that selected the umbrella
+#: root. It also required that directory to already exist, and nothing ever
+#: created it, so the branch never once fired. It is retired rather than frozen:
+#: the umbrella is the default now, so anyone who exported it already has what
+#: they were asking for.
+#:
+#: ``.agenteye`` is no longer a literal this package must contain. It survives
+#: in prose and in `legacy_agenteye_dir()`, but freezing it would make this test
+#: pass on a comment — which is exactly how it passed while the variable above
+#: was being deleted.
+RETIRED_STRINGS = ("AGENTEYE_SPOOL_TO_FAILPROOFAI",)
 
 PACKAGE_DIR = Path(_resolver.__file__).resolve().parent
 
@@ -258,6 +273,23 @@ def test_the_spool_contract_strings_are_still_spelled_the_old_way():
             "rename is genuinely intended, change the daemon FIRST and keep "
             "reading the old name for at least one release."
         )
+
+
+def test_the_retired_opt_in_is_not_read_by_any_module():
+    """Freed, not merely unused — a leftover branch would contradict the docs.
+
+    Checked over `os.environ` lookups rather than the raw text, because the name
+    still appears in `_resolver`'s prose explaining why it went away, and a
+    substring check over source is how the frozen-strings test above was passing
+    for the wrong reason while the variable was being deleted.
+    """
+    import re
+
+    for path in sorted(PACKAGE_DIR.glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        for retired in RETIRED_STRINGS:
+            reads = re.findall(rf"environ(?:\.get)?[\(\[]\s*[\"']{retired}", source)
+            assert not reads, f"{path.name} still reads the retired {retired}"
 
 
 def test_the_spool_layout_is_events_and_failed_under_the_base_dir():

@@ -49,5 +49,9 @@ done
 
 # Assembly, comparison and the verdict all live in contracts-pack.mjs, shared
 # with the box job so a laptop and the cron produce identical packs.
+# CONTRACTS_TEMPLATE is inherited by the probe; the packer needs it named.
+CANDIDATE_ARG=()
+[ -n "${CONTRACTS_TEMPLATE:-}" ] && CANDIDATE_ARG=(--candidates "$CONTRACTS_TEMPLATE")
+
 exec bun "$REPO_DIR/integration-suite/contracts-pack.mjs" \
-  --in "$OUT_DIR" --summary "$SUMMARY_FILE" --out "$PACK" --repo "$REPO_DIR"
+  --in "$OUT_DIR" --summary "$SUMMARY_FILE" --out "$PACK" --repo "$REPO_DIR" "${CANDIDATE_ARG[@]}"

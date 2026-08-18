@@ -32,6 +32,8 @@ const inDir = arg("in");
 const summaryPath = arg("summary");
 const outPath = arg("out");
 const repoDir = arg("repo");
+/** A map of cli -> candidate template that this run was asked to prove. */
+const candidatesPath = arg("candidates", "");
 
 const probes = {};
 try {
@@ -73,8 +75,47 @@ for (const cli of Object.keys(probes).sort()) {
   };
 }
 
-writeFileSync(outPath, `${JSON.stringify({ generatedAt: new Date().toISOString(), clis }, null, 2)}\n`);
-console.log(`pack: ${outPath} (${Object.keys(clis).length} CLIs)`);
+// ── Templates that EARNED their way in ──────────────────────────────────────
+// A candidate is published only when this run installed from it and the vendor
+// then called our hook. Nothing else proves a template: `validateTemplate`
+// proves it is not dangerous, and repair proves the file matches it — but
+// repair regenerates from the SAME template, so a wrong one verifies green and
+// leaves a file the CLI silently ignores. Driving the CLI is the only check
+// that can fail for the right reason.
+const templates = {};
+if (candidatesPath) {
+  const { validateTemplate } = await import(join(repoDir, "src", "hooks", "config-template.ts"));
+  let offered = {};
+  try {
+    offered = JSON.parse(readFileSync(candidatesPath, "utf8"));
+  } catch {
+    console.error(`contracts-pack: could not read ${candidatesPath}`);
+    process.exit(2);
+  }
+  for (const [cli, template] of Object.entries(offered)) {
+    const probe = probes[cli];
+    if (!probe?.candidate) {
+      console.log(`  template ${cli}: NOT published — this run did not test it`);
+      continue;
+    }
+    if (probe.verdict !== "OK") {
+      console.log(`  template ${cli}: NOT published — the probe came back ${probe.verdict}`);
+      continue;
+    }
+    const problems = validateTemplate(template);
+    if (problems.length > 0) {
+      console.log(`  template ${cli}: NOT published — ${problems.join("; ")}`);
+      continue;
+    }
+    templates[cli] = template;
+    console.log(`  template ${cli}: published — the vendor called our hook when installed from it`);
+  }
+}
+
+const pack = { generatedAt: new Date().toISOString(), clis };
+if (Object.keys(templates).length > 0) pack.templates = templates;
+writeFileSync(outPath, `${JSON.stringify(pack, null, 2)}\n`);
+console.log(`pack: ${outPath} (${Object.keys(clis).length} CLIs, ${Object.keys(templates).length} template(s))`);
 
 // ── What it means ────────────────────────────────────────────────────────────
 const { compareContractTable } = await import(join(repoDir, "src", "hooks", "contract-compare.ts"));

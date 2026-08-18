@@ -57,6 +57,32 @@ fi
 
 DEST="$WORK/repo/pack.json"
 
+# ── Carry forward templates already published ────────────────────────────────
+# A template lives in the pack until something replaces it, NOT until the next
+# run. Most runs prove no candidate — they have none to prove — and publishing
+# their pack as-is would drop a live template, sending every machine back to a
+# bundled shape the vendor has already rejected. That would turn a quiet healthy
+# day into an outage, which is the exact opposite of what this is for.
+#
+# New wins over old, per CLI, so proving a replacement is how one changes.
+# Retiring one is a hand-edit of the repo, which is rare and PR-gated anyway.
+MERGED="$WORK/pack.merged.json"
+NEW="$PACK" OLD="$DEST" OUT="$MERGED" bun -e '
+  const fs = require("node:fs");
+  const load = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } };
+  const next = load(process.env.NEW);
+  if (!next) { console.error("contracts-publish: the pack to publish is unreadable"); process.exit(2); }
+  const prev = load(process.env.OLD);
+  const proven = next.templates ?? {};
+  const kept = Object.keys(prev?.templates ?? {}).filter((k) => !(k in proven));
+  const carried = { ...(prev?.templates ?? {}), ...proven };
+  if (Object.keys(carried).length > 0) next.templates = carried;
+  fs.writeFileSync(process.env.OUT, JSON.stringify(next, null, 2) + "\n");
+  if (kept.length) console.log("carried forward templates: " + kept.join(", "));
+  if (Object.keys(proven).length) console.log("newly proven templates: " + Object.keys(proven).join(", "));
+' || { echo "✗ could not merge templates forward" >&2; exit 2; }
+PACK="$MERGED"
+
 # ── Did the contract actually move? ──────────────────────────────────────────
 changed=1
 if [ -f "$DEST" ]; then

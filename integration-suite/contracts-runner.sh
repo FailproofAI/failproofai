@@ -41,6 +41,21 @@ DBIN="${CANARY_DAEMON_BIN:?contracts-runner requires CANARY_DAEMON_BIN — only 
 # docker reads a relative -v source as a NAMED VOLUME — absolutize first.
 DBIN="$(cd "$(dirname "$DBIN")" && pwd)/$(basename "$DBIN")"
 
+# ── A candidate template under test ─────────────────────────────────────────
+# When set, every probe installs from this file instead of the template this
+# build ships, and only a CLI whose vendor then calls our hook gets its template
+# published. The probes run in containers, so the file is mounted rather than
+# merely exported.
+CANDIDATE_FLAGS=()
+CANDIDATE_ARG=()
+if [ -n "${CONTRACTS_TEMPLATE:-}" ]; then
+  [ -f "$CONTRACTS_TEMPLATE" ] || { echo "✗ CONTRACTS_TEMPLATE=$CONTRACTS_TEMPLATE is not a file" >&2; exit 2; }
+  CTPL="$(cd "$(dirname "$CONTRACTS_TEMPLATE")" && pwd)/$(basename "$CONTRACTS_TEMPLATE")"
+  CANDIDATE_FLAGS=(-v "$CTPL:/opt/candidates.json:ro" -e CONTRACTS_TEMPLATE=/opt/candidates.json)
+  CANDIDATE_ARG=(--candidates "$CTPL")
+  echo "proving candidate templates from $CTPL"
+fi
+
 CLIS=("$@")
 if [ ${#CLIS[@]} -eq 0 ]; then
   CLIS=(claude codex copilot cursor factory devin antigravity goose opencode pi hermes openclaw)
@@ -54,7 +69,7 @@ SUMMARY="$OUT/summary.txt"
 echo "── contracts lab: ${#CLIS[@]} CLI(s) ──"
 
 for cli in "${CLIS[@]}"; do
-  line="$(docker run --rm --env-file "$ENVFILE" \
+  line="$(docker run --rm --env-file "$ENVFILE" "${CANDIDATE_FLAGS[@]}" \
       -v "$DBIN:/opt/failproofaid/failproofaid:ro" \
       -v "$REPO:/repo:ro" -v "$SANDBOX:/opt/canary:ro" -v "$VOL:/home/canary" \
       "$IMAGE" bash /opt/canary/contracts-probe.sh "$cli" 2>/dev/null \
@@ -76,4 +91,4 @@ done
 
 echo
 exec bun "$REPO/integration-suite/contracts-pack.mjs" \
-  --in "$OUT" --summary "$SUMMARY" --out "$PACK" --repo "$REPO"
+  --in "$OUT" --summary "$SUMMARY" --out "$PACK" --repo "$REPO" "${CANDIDATE_ARG[@]}"

@@ -62,8 +62,12 @@ PROMPT="Create a file named ${MARKER} in the current directory containing the wo
 EMITTED=0
 verdict() { # $1 = OK|DRIFT|INCONCLUSIVE|ERROR  $2 = note
   EMITTED=1
-  printf 'CONTRACTS_JSON {"cli":"%s","verdict":"%s","note":"%s","events":%s}\n' \
-    "$CLI" "$1" "$2" "${EVENTS_JSON:-[]}"
+  # `candidate` says whether this run installed from a template under test. The
+  # packer needs it: an OK from the shipped template says nothing about a
+  # candidate, and publishing one on that basis would be exactly the unproven
+  # publish the proving step exists to prevent.
+  printf 'CONTRACTS_JSON {"cli":"%s","verdict":"%s","note":"%s","candidate":%s,"events":%s}\n' \
+    "$CLI" "$1" "$2" "$([ -n "${CONTRACTS_TEMPLATE:-}" ] && echo true || echo false)" "${EVENTS_JSON:-[]}"
   [ "$1" = DRIFT ] && exit 1
   [ "$1" = ERROR ] && exit 2
   exit 0

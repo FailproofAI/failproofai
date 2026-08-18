@@ -55,6 +55,17 @@ slack_note() { # $1 = text; best-effort, never fails the run
     -H 'Content-type: application/json' --data "$payload" "$CANARY_SLACK_WEBHOOK" 2>/dev/null || true
 }
 
+# A candidate template to prove, if an operator left one. Dropped at a known
+# path rather than passed as a flag, because cron lines are rewritten by the
+# installer and a one-off argument would not survive the next install.
+CANDIDATES="${CONTRACTS_TEMPLATE:-$WORK/candidates.json}"
+if [ -f "$CANDIDATES" ]; then
+  export CONTRACTS_TEMPLATE="$CANDIDATES"
+  echo "── proving candidate templates from $CANDIDATES ──"
+else
+  unset CONTRACTS_TEMPLATE
+fi
+
 # The daemon is mandatory: `recordHookShape` has one call site, in the warm
 # worker, so an in-process run would probe every CLI and publish an empty pack.
 GITHUB_WORKSPACE="$CLONE" \
@@ -64,6 +75,7 @@ CANARY_DAEMON=1 \
 CANARY_FP_SHA="$FP_SHA" \
 CONTRACTS_OUT_DIR="$OUT" \
 CONTRACTS_PACK="$PACK" \
+CONTRACTS_TEMPLATE="${CONTRACTS_TEMPLATE:-}" \
   timeout -k 60 "$JOB_TIMEOUT" bash "$CLONE/integration-suite/ci-entrypoint.sh" 2>&1 | tee "$LOG"
 rc=${PIPESTATUS[0]}
 

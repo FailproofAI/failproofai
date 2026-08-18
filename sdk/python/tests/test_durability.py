@@ -15,6 +15,7 @@ racing the flush thread, on `flush_now()` from two threads, and — worst — ac
 processes sharing one spool root, which is the ordinary deployment.
 """
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -27,7 +28,7 @@ import pytest
 
 from failproofai_sdk import _resolver
 from failproofai_sdk._events import _PENDING_CAP, EventNamespace, _tool_key
-from failproofai_sdk._writer import EventWriter
+from failproofai_sdk._writer import _QUEUE_CAP, EventWriter
 
 
 @pytest.fixture
@@ -456,8 +457,8 @@ def test_pending_map_is_capped_and_evicts_oldest_first():
         namespace.tool_use(session_id="s", agent_id="a", tool_name="t", tool_call_id=f"c{i}")
 
     assert len(namespace._pending) == _PENDING_CAP
-    assert _tool_key("c0") not in namespace._pending, "eviction is not FIFO"
-    assert _tool_key(f"c{_PENDING_CAP + 99}") in namespace._pending
+    assert _tool_key("s", "a", "c0") not in namespace._pending, "eviction is not FIFO"
+    assert _tool_key("s", "a", f"c{_PENDING_CAP + 99}") in namespace._pending
 
 
 def test_an_evicted_pair_completes_without_duration_instead_of_raising():
@@ -663,3 +664,273 @@ def test_configure_is_safe_to_call_from_several_threads(spool, tmp_path):
 
     assert not errors, errors
     assert len(read_all(spool)) == 8 * 50
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# fork() — the flush thread does not survive it
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_a_forked_child_publishes_through_its_own_restarted_thread(tmp_path):
+    """The realistic shape: the child reuses the INHERITED singleton.
+
+    The sibling test above builds a fresh `EventWriter` in the child and calls
+    `flush_now()` by hand, which proves the child does not hang and nothing else.
+    Nobody writes an agent that way. They `import failproofai_sdk` once, and
+    whatever forks — gunicorn, celery, `multiprocessing` on Linux — inherits that
+    module-level writer.
+
+    Threads do not cross `fork()`, so before `os.register_at_fork` the child got
+    a queue and no drainer: `submit()` kept accepting, nothing was ever
+    published, and the events appeared only if the child happened to exit through
+    a normal interpreter shutdown. A prefork worker is killed instead, so all of
+    the telemetry — the workers are where the work happens — silently vanished.
+
+    The child here ends with `os._exit`, which skips atexit by definition. If the
+    event still lands, a background thread wrote it, which is the whole claim.
+    """
+    result = _run_script(
+        "import os, time\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n"
+        "    failproofai_sdk.configure(base_dir=%r, flush_interval=0.05)\n"
+        "    failproofai_sdk.event.agent_start(session_id='child', agent_id='a', goal='in-child')\n"
+        "    time.sleep(1.5)\n"
+        "    os._exit(0)\n"
+        "os.waitpid(pid, 0)\n" % str(tmp_path),
+        tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+    goals = [e["goal"] for e in read_all(tmp_path)]
+    assert goals == ["in-child"], (
+        f"the child's flush thread never restarted (got {goals!r}); "
+        "os._exit skips atexit, so only a live thread could have written this"
+    )
+
+
+def test_a_fork_does_not_duplicate_the_events_the_parent_had_queued(tmp_path):
+    """The child inherits the parent's undrained queue; only one of them owns it.
+
+    Publishing from both produced a byte-identical duplicate of every event
+    buffered at the instant of the fork. Ingest would most likely collapse those
+    — its dedup key hashes the canonical payload — but relying on the server to
+    tidy up after the SDK is not a property worth shipping.
+    """
+    result = _run_script(
+        "import os\n"
+        "failproofai_sdk.event.agent_start(session_id='p', agent_id='a', goal='queued-before-fork')\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n"
+        "    failproofai_sdk.event.agent_start(session_id='c', agent_id='a', goal='child-only')\n"
+        "    failproofai_sdk._writer.flush_now()\n"
+        "    os._exit(0)\n"
+        "os.waitpid(pid, 0)\n"
+        "failproofai_sdk._writer.flush_now()\n",
+        tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+    goals = sorted(e["goal"] for e in read_all(tmp_path))
+    assert goals == ["child-only", "queued-before-fork"], (
+        f"expected each event exactly once, got {goals!r}"
+    )
+
+
+def test_the_fork_handler_prunes_writers_that_have_been_collected():
+    """`_live_writers` holds weak references, and drops the dead ones.
+
+    Note what this does NOT claim. A writer is not collectable while it exists:
+    its flush thread targets `self._flush_loop`, and a running thread holds its
+    target, so in practice every writer outlives every collection. The weakness
+    matters because a dead referent must be SKIPPED rather than restarted, and
+    because it keeps this list from being a second, independent reason a writer
+    can never be freed — which is what `atexit.register(self._flush)` was.
+
+    So the dead entry is injected rather than produced, because producing one
+    means defeating the thread that keeps it alive.
+    """
+    import gc
+    import sys
+    import weakref
+
+    writer_module = sys.modules["failproofai_sdk._writer"]
+
+    class _Collectable:
+        def _reinit_after_fork(self):  # pragma: no cover - must never be reached
+            raise AssertionError("a collected writer was restarted after fork")
+
+    victim = _Collectable()
+    dead = weakref.ref(victim)
+    writer_module._live_writers.append(dead)
+    del victim
+    gc.collect()
+    assert dead() is None, "the test's own victim outlived it"
+
+    writer_module._reinit_all_after_fork()
+    assert dead not in writer_module._live_writers, "a dead weakref was left registered"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The queue is bounded
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_the_queue_is_capped_and_discards_oldest_first(caplog):
+    """`submit` cannot block or raise, so the only other option is to bound it.
+
+    Unbounded, any condition that stops the spool draining turns a telemetry
+    outage into an OOM kill of the host agent — the SDK taking down the very
+    process it exists to observe.
+    """
+    writer = EventWriter(flush_interval=3600)
+    with caplog.at_level(logging.WARNING, logger="failproofai_sdk._writer"):
+        for i in range(_QUEUE_CAP + 250):
+            writer.submit({"type": "e", "n": i})
+
+    assert len(writer._queue) == _QUEUE_CAP, "the queue is unbounded"
+    ns = [e["n"] for e in writer._queue]
+    assert ns[0] == 250, "eviction is not oldest-first"
+    assert ns[-1] == _QUEUE_CAP + 249, "the newest event was dropped instead of the oldest"
+    assert any("queue is full" in r.getMessage() for r in caplog.records), (
+        "the cap discarded events without saying so"
+    )
+
+
+def test_the_full_queue_warning_does_not_fire_on_every_single_drop(caplog):
+    """A stuck spool must not become the thing that fills the disk."""
+    writer = EventWriter(flush_interval=3600)
+    with caplog.at_level(logging.WARNING, logger="failproofai_sdk._writer"):
+        for i in range(_QUEUE_CAP + 2500):
+            writer.submit({"type": "e", "n": i})
+
+    warnings = [r for r in caplog.records if "queue is full" in r.getMessage()]
+    assert 1 <= len(warnings) <= 5, f"{len(warnings)} warnings for 2500 drops"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The flush interval, and the shutdown race that changing it exposed
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_a_new_flush_interval_applies_to_the_cycle_already_waiting(spool):
+    """Otherwise `configure()` is ignored for one full cycle of the OLD interval.
+
+    The thread starts at import, so its first wait is always the 500 ms default —
+    which a caller asking for 50 ms has no way to know about, and which is long
+    enough for a fork or an exit to land inside it.
+    """
+    writer = EventWriter(flush_interval=3600)
+    writer.submit({"type": "e", "n": 1})
+
+    writer.set_flush_interval(0.05)
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and not list((spool / "events").glob("*.jsonl")):
+        time.sleep(0.02)
+
+    assert [e["n"] for e in read_all(spool)] == [1], (
+        "the writer sat on the hour-long interval it was configured away from"
+    )
+
+
+def test_a_flush_racing_interpreter_shutdown_does_not_lose_the_batch(tmp_path):
+    """A batch is drained from the queue BEFORE it is written.
+
+    So a flush thread stopped part-way through — which is what happens to a
+    daemon thread once the interpreter starts finalising — takes those events
+    with it, leaving at most a stray `.tmp`. The atexit flush has to WAIT on an
+    in-flight batch rather than find an empty queue and return, which is why the
+    emptiness check lives inside `_flush_lock`.
+
+    Waking the thread on `set_flush_interval` is what made this likely enough to
+    reproduce: it puts a flush and the main thread's exit path in the same
+    moment, every run.
+    """
+    for attempt in range(8):
+        target = tmp_path / f"run-{attempt}"
+        result = _run_script(
+            "failproofai_sdk.event.error(session_id='s', agent_id='a', "
+            "error_type='RuntimeError', message='boom')\n"
+            "raise RuntimeError('boom')",
+            target,
+        )
+        assert result.returncode == 1
+        assert [e["type"] for e in read_all(target)] == ["error"], (
+            f"attempt {attempt}: the crashing run's telemetry was lost to the shutdown race"
+        )
+        assert list((target / "events").glob("*.tmp")) == [], (
+            f"attempt {attempt}: a batch was abandoned part-written"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Correlation state — session and agent scoping
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_tool_pairs_are_namespaced_by_session_and_agent():
+    """Two sessions in one process must not share a tool_call_id's timestamp.
+
+    `_pending` lives on a single process-wide `EventNamespace`, and a supervisor
+    running agents concurrently is the ordinary multi-agent shape — so a step id
+    that repeats across sessions (`step-1`, and both ids are frequently the
+    harness's own step counter) collided. Session B's start overwrote A's, A's
+    result reported B's interval, and B's result reported nothing at all.
+    """
+    writer = _NullWriter()
+    namespace = EventNamespace(writer)
+
+    namespace.tool_use(session_id="A", agent_id="a", tool_name="t", tool_call_id="step-1")
+    namespace.tool_use(session_id="B", agent_id="b", tool_name="t", tool_call_id="step-1")
+    assert len(namespace._pending) == 2, "B's start overwrote A's"
+
+    writer.entries.clear()
+    namespace.tool_result(session_id="A", agent_id="a", tool_name="t", tool_call_id="step-1")
+    assert "duration_ms" in writer.entries[0], "A's result could not find A's own start"
+
+    writer.entries.clear()
+    namespace.tool_result(session_id="B", agent_id="b", tool_name="t", tool_call_id="step-1")
+    assert "duration_ms" in writer.entries[0], "B's start had been consumed by A's result"
+
+
+def test_hook_pairs_are_namespaced_by_session_and_agent():
+    """Same lookup pattern, same bug, same fix."""
+    writer = _NullWriter()
+    namespace = EventNamespace(writer)
+
+    namespace.hook_triggered(session_id="A", agent_id="a", hook_name="h", hook_id="step-1")
+    namespace.hook_triggered(session_id="B", agent_id="b", hook_name="h", hook_id="step-1")
+    assert len(namespace._pending) == 2
+
+    for session, agent in (("A", "a"), ("B", "b")):
+        writer.entries.clear()
+        namespace.hook_completed(session_id=session, agent_id=agent, hook_name="h", hook_id="step-1")
+        assert "duration_ms" in writer.entries[0], f"{session} lost its own start"
+
+
+def test_the_same_id_in_the_same_session_but_a_different_agent_does_not_collide():
+    """Both halves of the namespace are load-bearing, not just the session."""
+    writer = _NullWriter()
+    namespace = EventNamespace(writer)
+
+    namespace.tool_use(session_id="S", agent_id="planner", tool_name="t", tool_call_id="x")
+    namespace.tool_use(session_id="S", agent_id="worker", tool_name="t", tool_call_id="x")
+    assert len(namespace._pending) == 2
+
+    writer.entries.clear()
+    namespace.tool_result(session_id="S", agent_id="planner", tool_name="t", tool_call_id="x")
+    assert "duration_ms" in writer.entries[0]
+    assert len(namespace._pending) == 1, "the worker's pending start was consumed too"
+
+
+def test_a_result_from_an_unrelated_session_gets_no_duration_at_all():
+    """The failure the scoping prevents: a duration measured across sessions.
+
+    No duration is the correct answer here. A plausible number would be worse
+    than an absent one, because nothing downstream can tell it is wrong.
+    """
+    writer = _NullWriter()
+    namespace = EventNamespace(writer)
+
+    namespace.tool_use(session_id="A", agent_id="a", tool_name="t", tool_call_id="shared")
+    writer.entries.clear()
+    namespace.tool_result(session_id="B", agent_id="b", tool_name="t", tool_call_id="shared")
+    assert "duration_ms" not in writer.entries[0], "a duration leaked across sessions"

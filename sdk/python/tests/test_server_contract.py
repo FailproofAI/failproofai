@@ -315,3 +315,74 @@ def test_promoted_columns_match_the_server():
         "the server promotes a numeric column this SDK does not know about: "
         f"{sorted(actual_numeric - PROMOTED_NUMERIC)}"
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Promoted numeric columns — the type has to be right, not just the key
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("name", sorted(_events._PROMOTED_NUMERIC))
+@pytest.mark.parametrize("bad", ["many", 12.5, True, -1, 2**32, [1], {"n": 1}])
+def test_a_promoted_numeric_is_refused_rather_than_stored_as_null(name, bad):
+    """`pu32()` returns None on a mismatch, and None is written as NULL at 200 OK.
+
+    Nothing is logged and nothing is rejected — the row still arrives — so the
+    only symptom is a column that is populated for some events and not others.
+    `_RESERVED` never covered this: it blocks five structural keys and lets every
+    other custom field through untouched, whatever type it carries.
+
+    Rejecting rather than coercing, because a float is a mistake worth hearing
+    about: the server drops it whole rather than rounding it, and rounding it
+    here would hide that from the one person able to fix the source.
+    """
+    ns = EventNamespace(_Recorder())
+    with pytest.raises(ValueError, match=name):
+        ns.agent_start(session_id="s", agent_id="a", **{name: bad})
+
+
+@pytest.mark.parametrize("name", ["input_tokens", "output_tokens"])
+def test_model_response_checks_its_own_two_token_counts(name):
+    """They are named parameters, so they never reach `_validate_fields`.
+
+    They are also the likeliest of the three to arrive wrong — a caller reading
+    them straight off a provider's usage object gets whatever that object holds.
+    """
+    ns = EventNamespace(_Recorder())
+    with pytest.raises(ValueError, match=name):
+        ns.model_response(session_id="s", agent_id="a", model="m", **{name: "1024"})
+
+
+@pytest.mark.parametrize("name", sorted(_events._PROMOTED_NUMERIC))
+def test_a_valid_promoted_numeric_still_goes_through_untouched(name):
+    recorder = _Recorder()
+    EventNamespace(recorder).agent_start(session_id="s", agent_id="a", **{name: 4096})
+    assert recorder.entries[0][name] == 4096
+
+
+@pytest.mark.parametrize("name", sorted(_events._PROMOTED_NUMERIC))
+def test_the_boundary_values_of_a_u32_are_accepted(name):
+    """0 and 2**32 - 1 are valid, and an off-by-one here silently rejects real data."""
+    recorder = _Recorder()
+    ns = EventNamespace(recorder)
+    ns.agent_start(session_id="s", agent_id="a", **{name: 0})
+    ns.agent_start(session_id="s", agent_id="a", **{name: 2**32 - 1})
+    assert [e[name] for e in recorder.entries] == [0, 2**32 - 1]
+
+
+def test_none_is_not_treated_as_a_bad_promoted_numeric():
+    """`model_response` passes its optionals straight through as None."""
+    recorder = _Recorder()
+    EventNamespace(recorder).model_response(
+        session_id="s", agent_id="a", model="m", input_tokens=None, output_tokens=None
+    )
+    assert "input_tokens" not in recorder.entries[0]
+
+
+def test_the_promoted_numeric_set_matches_the_one_ingest_lifts():
+    """Two hand-maintained lists, one in the SDK and one in this file's header.
+
+    If they drift, the validator stops covering a column that ingest still
+    promotes, and this file's own assertions stop describing the server.
+    """
+    assert _events._PROMOTED_NUMERIC == PROMOTED_NUMERIC

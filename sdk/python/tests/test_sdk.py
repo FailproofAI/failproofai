@@ -556,10 +556,10 @@ def test_pending_dict_is_bounded(ns):
         )
     assert len(ns._pending) == _PENDING_CAP
     # Earliest IDs were evicted.
-    assert _tool_key("call-0") not in ns._pending
-    assert _tool_key("call-49") not in ns._pending
+    assert _tool_key("s1", "a1", "call-0") not in ns._pending
+    assert _tool_key("s1", "a1", "call-49") not in ns._pending
     # Most-recent IDs are still tracked.
-    assert _tool_key(f"call-{_PENDING_CAP + 49}") in ns._pending
+    assert _tool_key("s1", "a1", f"call-{_PENDING_CAP + 49}") in ns._pending
 
 
 # ---------------------------------------------------------------------------

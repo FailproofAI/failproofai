@@ -36,6 +36,10 @@
 
 - Correct a comment in `hook-telemetry.ts` claiming `isTelemetryEnabled()` is memoised. `lib/telemetry-enabled.ts` documents at length that it is resolved fresh on every call, deliberately — an opt-out a long-lived process ignores until restart is not an opt-out — so the comment described the exact optimisation that file rejects. (#701)
 
+### Docs
+
+- Ignore `/blog/`, so long-form design write-ups can be drafted in the checkout without landing in a diff. These are contributor-local working files — a draft that is one `git add -A` away from being committed is a draft written more cautiously than it should be. Nothing shipped in the package changes. (#717)
+
 ## 1.0.1-beta.0 — 2026-08-14
 
 ### Features

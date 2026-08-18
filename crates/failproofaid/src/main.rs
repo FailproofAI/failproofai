@@ -757,6 +757,8 @@ const HARNESS_KEYS: &[&str] = &[
     "opencode",
     "devin",
     "hermes",
+    "grok",
+    "qwen",
 ];
 
 fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
@@ -954,7 +956,7 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
         };
 
         use fpai_collect::sources::{
-            antigravity, claude, codex, copilot, cursor, factory, openclaw, pi,
+            antigravity, claude, codex, copilot, cursor, factory, grok, openclaw, pi, qwen,
         };
 
         // Claude's two formats share one root and therefore one harness key:
@@ -1054,6 +1056,38 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
             pi_roots.clone(),
             &extras("pi", &pi_roots),
             pi::DEFAULT_AGENT_ID,
+            &spool,
+            &cursors,
+            &env,
+            machine.as_deref(),
+            os_user.as_deref(),
+            redact,
+        );
+
+        let grok_roots = vec![grok_sessions_root()];
+        file_source(
+            &mut tasks,
+            "grok",
+            grok::FORMAT,
+            grok_roots.clone(),
+            &extras("grok", &grok_roots),
+            grok::DEFAULT_AGENT_ID,
+            &spool,
+            &cursors,
+            &env,
+            machine.as_deref(),
+            os_user.as_deref(),
+            redact,
+        );
+
+        let qwen_roots = vec![qwen_projects_root()];
+        file_source(
+            &mut tasks,
+            "qwen",
+            qwen::FORMAT,
+            qwen_roots.clone(),
+            &extras("qwen", &qwen_roots),
+            qwen::DEFAULT_AGENT_ID,
             &spool,
             &cursors,
             &env,
@@ -1602,6 +1636,28 @@ fn codex_sessions_root() -> std::path::PathBuf {
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
     home.join(".codex").join("sessions")
+}
+
+/// `~/.grok/sessions`, honouring the `GROK_HOME` override the audit side uses.
+fn grok_sessions_root() -> std::path::PathBuf {
+    if let Some(p) = std::env::var_os("GROK_HOME") {
+        return std::path::PathBuf::from(p).join("sessions");
+    }
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    home.join(".grok").join("sessions")
+}
+
+/// `~/.qwen/projects`, honouring the `QWEN_HOME` override the audit side uses.
+fn qwen_projects_root() -> std::path::PathBuf {
+    if let Some(p) = std::env::var_os("QWEN_HOME") {
+        return std::path::PathBuf::from(p).join("projects");
+    }
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    home.join(".qwen").join("projects")
 }
 
 /// `~/.factory/sessions`, honouring the `FACTORY_HOME` override the audit

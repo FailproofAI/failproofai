@@ -49,6 +49,15 @@ vi.mock("@/lib/hermes-projects", () => ({
 
 // Antigravity reads the real ~/.gemini/antigravity-cli/brain dir; mock it to []
 // so a developer's local Antigravity sessions don't leak into these assertions.
+// grok and qwen read real session trees with `readdirSync` (which the
+// `fs/promises` mock above does not cover), so a developer machine that has
+// used either CLI would leak its own projects into these assertions.
+vi.mock("@/lib/grok-projects", () => ({
+  getGrokProjects: vi.fn().mockResolvedValue([]),
+}));
+vi.mock("@/lib/qwen-projects", () => ({
+  getQwenProjects: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("@/lib/antigravity-projects", () => ({
   getAntigravityProjects: vi.fn(async () => []),
 }));

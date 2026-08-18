@@ -102,11 +102,18 @@ const CLI_ENTRIES: Record<CliId, CliEntry> = {
   grok: {
     id: "grok",
     label: "grok CLI",
-    badgeClasses: "bg-slate-500/10 text-slate-300 border-slate-500/20",
+    // Neutral zinc, matching the design system's `--color-default`. Deliberately
+    // NOT a status hue: green/amber/red carry health meaning in this dashboard
+    // and must never be spent on identity. Neutral also happens to suit xAI's
+    // monochrome brand, and it is maximally far from qwen's magenta — the two
+    // were previously indistinguishable.
+    badgeClasses: "bg-zinc-500/10 text-zinc-200 border-zinc-500/20",
   },
   qwen: {
     id: "qwen",
     label: "Qwen Code",
+    // Magenta — the opposite pole from grok's neutral, and outside the
+    // status set (success/amber/orange/error) so it reads as identity.
     badgeClasses: "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20",
   },
 };

@@ -183,6 +183,23 @@ describe("publishing", () => {
     expect(promoteSh).not.toMatch(/\/merge|gh pr merge/);
   });
 
+  it("commits as an address that belongs to the account it should credit", () => {
+    // GitHub maps a commit to an account by EMAIL, and getting this wrong is
+    // silent: the commit looks perfectly normal while crediting somebody else
+    // for every pack the lab ever publishes. It happened — `internal@exosphere
+    // .host` belongs to an account called `internal-cpu`, and four commits went
+    // out under it before anyone noticed.
+    //
+    // `users.noreply` is the safe default: it cannot be unlinked from the
+    // account and exposes no real address.
+    const email = /GIT_EMAIL="\$\{CONTRACTS_GIT_EMAIL:-([^}]+)\}"/.exec(publishSh);
+    expect(email).not.toBeNull();
+    expect(email![1]).toMatch(/@users\.noreply\.github\.com$/);
+    // No shared-domain address anywhere in it: on this org those map to other
+    // people's accounts (nivedit@ -> NiveditJain, internal@ -> internal-cpu).
+    expect(publishSh).not.toMatch(/@exosphere\.host/);
+  });
+
   it("keeps the token out of everything it prints", () => {
     // The token is embedded in the remote URL, so no message may echo it.
     expect(publishSh).toMatch(/x-access-token:\$\{TOKEN\}/);

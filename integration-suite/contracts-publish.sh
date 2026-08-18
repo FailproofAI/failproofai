@@ -29,6 +29,18 @@ PACK="${1:?usage: contracts-publish.sh <pack.json>}"
 REPO="${CONTRACTS_REPO:?CONTRACTS_REPO (owner/name) required}"
 TOKEN="${CONTRACTS_TOKEN:?CONTRACTS_TOKEN required}"
 BRANCH="${CONTRACTS_BRANCH:-packs}"
+
+# Who the publish commits are attributed to.
+#
+# GitHub maps a commit to an account by EMAIL, so this is not cosmetic: an
+# address that belongs to somebody else's account silently credits them for
+# every pack this ever publishes, and the commit itself looks perfectly normal
+# while doing it. Overridable because the right answer differs per deployment —
+# a dedicated bot account is the cleaner long-term identity for an automated
+# publisher, and a `users.noreply` address is the safe default because it cannot
+# be unlinked and exposes no real address.
+GIT_NAME="${CONTRACTS_GIT_NAME:-Chetan Raghuvanshi}"
+GIT_EMAIL="${CONTRACTS_GIT_EMAIL:-145042127+chhhee10@users.noreply.github.com}"
 [ -s "$PACK" ] || { echo "✗ no pack at $PACK" >&2; exit 2; }
 
 WORK="$(mktemp -d)"
@@ -66,11 +78,8 @@ if [ "$changed" = 0 ]; then
 fi
 
 cp "$PACK" "$DEST"
-git -C "$WORK/repo" -c user.name="failproofai contracts lab" \
-  -c user.email="contracts@failproof.ai" \
-  add pack.json
-git -C "$WORK/repo" -c user.name="failproofai contracts lab" \
-  -c user.email="contracts@failproof.ai" \
+git -C "$WORK/repo" add pack.json
+git -C "$WORK/repo" -c user.name="$GIT_NAME" -c user.email="$GIT_EMAIL" \
   commit -q -m "Contracts: $(date -u +%Y-%m-%d) — a vendor's hook contract moved" \
   || { echo "contracts: git found nothing to commit"; exit 0; }
 

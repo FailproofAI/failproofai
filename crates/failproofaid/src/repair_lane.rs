@@ -22,9 +22,13 @@
 //! that socket speaks only `hook`, a committed test fails if anyone adds a
 //! second message type, and its 30s cap turns into a machine-wide deny.
 //!
-//! USER scope only. Project scope needs a session cwd, which this daemon does
-//! not have and `PROTOCOL.md` forbids it inventing — that half belongs on the
-//! hook path, where a real cwd arrives with every request.
+//! Project scope is reachable from here after all, without the daemon ever
+//! inventing a cwd — which `PROTOCOL.md` forbids and which was the reason to
+//! think it was not. Every hook event we recorded carries the directory it
+//! fired in, so `doctor` sweeps the projects agents have actually been working
+//! in by reading the newest page of the activity log. The hook path itself does
+//! no work for this: it is fail-closed, and file I/O there would buy latency on
+//! every tool call and risk a denial on a slow disk.
 
 use std::io;
 use std::panic::AssertUnwindSafe;
@@ -232,7 +236,7 @@ fn spawn_child(cli_cmd: &str) -> io::Result<Child> {
     let mut command = Command::new("sh");
     command
         .arg("-c")
-        .arg(format!("{cli_cmd} doctor --fix --scheduled --user"))
+        .arg(format!("{cli_cmd} doctor --fix --scheduled"))
         .stdin(Stdio::null())
         // Piped and drained for the same two reasons the worker's spawn is:
         // inheriting this process's stdout hands the child an fd that may belong

@@ -44,6 +44,7 @@ import {
 } from "./contract-pack-client";
 import { corroborateContractPack } from "./contract-corroborate";
 import { contractTableFile } from "./fp-home";
+import { resolveTemplate } from "./template-source";
 import type { HookScope } from "./types";
 
 /**
@@ -393,6 +394,41 @@ function exitWorthyContract(comparisons: readonly ContractComparison[]): Contrac
     .filter((f) => f.severity === "high" && f.kind !== "unmapped-tool");
 }
 
+/**
+ * Which template each CLI is being written from, when it is not the one this
+ * build shipped.
+ *
+ * Silent by default, because on almost every machine the answer is "the bundled
+ * one" and saying so every time would bury the case that matters. It matters in
+ * two directions: a machine writing from a FETCHED template is doing something
+ * this build's code does not fully describe, which is the first thing to know
+ * when its configs look wrong; and a REFUSED template means somebody published
+ * one this machine would not accept, which nothing else would ever mention.
+ */
+function renderTemplateSources(
+  reports: readonly ConfigDriftReport[],
+  opts: DoctorOptions,
+): string[] {
+  const seen = new Map<string, string>();
+  for (const r of reports) {
+    if (r.status === "absent" || seen.has(r.cli)) continue;
+    try {
+      const resolved = resolveTemplate(r.cli);
+      if (resolved.rejected) {
+        seen.set(r.cli, `refused a published template — ${resolved.rejected}`);
+      } else if (resolved.origin !== "bundled") {
+        seen.set(r.cli, `writing from a ${resolved.origin} template, not the one this build ships`);
+      }
+    } catch {
+      // Not every integration is template-driven; that is not a finding.
+    }
+  }
+  if (seen.size === 0) return [];
+  const lines = opts.scheduled ? [] : [""];
+  for (const [cli, note] of seen) lines.push(`  ${cli.padEnd(14)} ${note}`);
+  return lines;
+}
+
 /** One contract finding, as a line somebody reads in a log hours later. */
 function describeContract(f: ContractFinding): string {
   const where = f.tool ? `${f.tool} ` : "";
@@ -489,7 +525,12 @@ function render(
           ? "\nNo hook-config problems to fix."
           : "\nNothing to fix.",
     );
-    return [...lines, ...renderContracts(contracts, opts), ...renderLab(fromLab, opts)];
+    return [
+      ...lines,
+      ...renderTemplateSources(reports, opts),
+      ...renderContracts(contracts, opts),
+      ...renderLab(fromLab, opts),
+    ];
   }
 
   lines.push("");
@@ -499,7 +540,12 @@ function render(
     // usually looking at this in a log, hours later, out of context.
     lines.push("Run `failproofai doctor --fix` to repair them.");
   }
-  return [...lines, ...renderContracts(contracts, opts), ...renderLab(fromLab, opts)];
+  return [
+    ...lines,
+    ...renderTemplateSources(reports, opts),
+    ...renderContracts(contracts, opts),
+    ...renderLab(fromLab, opts),
+  ];
 }
 
 /** What the lab has seen that this machine has not exercised yet. */

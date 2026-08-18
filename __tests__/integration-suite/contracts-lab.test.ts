@@ -82,6 +82,23 @@ describe("the lab cannot run in a configuration that records nothing", () => {
   });
 });
 
+describe("proving a candidate template", () => {
+  it("installs from the candidate, so the run tests the template and not the build", () => {
+    // The only check that can fail for the right reason. validateTemplate proves
+    // a template is not dangerous; repair proves the file matches the template —
+    // but repair regenerates from the SAME template, so a wrong one verifies
+    // green and leaves a file the CLI silently ignores.
+    expect(probeSh).toMatch(/CONTRACTS_TEMPLATE/);
+    expect(probeSh).toMatch(/export FAILPROOFAI_TEMPLATE_FILE="\$CONTRACTS_TEMPLATE"/);
+  });
+
+  it("refuses to run rather than silently proving the bundled template instead", () => {
+    // A missing candidate file that fell through to the bundled template would
+    // report OK and mean nothing at all.
+    expect(probeSh).toMatch(/\[ -f "\$CONTRACTS_TEMPLATE" \] \|\| verdict ERROR/);
+  });
+});
+
 describe("one entrypoint, two runners", () => {
   it("lets the entrypoint pick a runner, and only a runner it knows", () => {
     // Everything above that line — build, daemon, image, CLI installs, tokens,

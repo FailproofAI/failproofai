@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { parseDocument, type Document } from "yaml";
 import { listHermesProfiles, hermesRoot } from "../../lib/hermes-profiles";
-import { HOOK_TEMPLATES } from "./config-template";
+import { templateFor } from "./template-source";
 import { buildTemplateEntry, renderConfig } from "./config-render";
 import {
   CLAUDE_INSTALL_EVENT_TYPES,
@@ -336,7 +336,7 @@ export const claudeCode: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    return buildTemplateEntry(HOOK_TEMPLATES.claude, eventType, {
+    return buildTemplateEntry(templateFor("claude"), eventType, {
       binaryPath,
       scope: scope ?? "user",
       cli: "claude",
@@ -346,7 +346,7 @@ export const claudeCode: Integration = {
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    renderConfig(HOOK_TEMPLATES.claude, settings as Record<string, unknown>, {
+    renderConfig(templateFor("claude"), settings as Record<string, unknown>, {
       binaryPath,
       scope: scope ?? "user",
       cli: "claude",
@@ -445,7 +445,7 @@ export const codex: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    return buildTemplateEntry(HOOK_TEMPLATES.codex, eventType, {
+    return buildTemplateEntry(templateFor("codex"), eventType, {
       binaryPath,
       scope: scope ?? "user",
       cli: "codex",
@@ -455,7 +455,7 @@ export const codex: Integration = {
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    renderConfig(HOOK_TEMPLATES.codex, settings as Record<string, unknown>, {
+    renderConfig(templateFor("codex"), settings as Record<string, unknown>, {
       binaryPath,
       scope: scope ?? "user",
       cli: "codex",
@@ -581,7 +581,7 @@ export const copilot: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    return buildTemplateEntry(HOOK_TEMPLATES.copilot, eventType, {
+    return buildTemplateEntry(templateFor("copilot"), eventType, {
       binaryPath,
       scope: scope ?? "user",
       cli: "copilot",
@@ -591,7 +591,7 @@ export const copilot: Integration = {
   isFailproofaiHook: isMarkedCopilotHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    renderConfig(HOOK_TEMPLATES.copilot, settings as Record<string, unknown>, {
+    renderConfig(templateFor("copilot"), settings as Record<string, unknown>, {
       binaryPath,
       scope: scope ?? "user",
       cli: "copilot",
@@ -700,7 +700,7 @@ export const cursor: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    return buildTemplateEntry(HOOK_TEMPLATES.cursor, eventType, {
+    return buildTemplateEntry(templateFor("cursor"), eventType, {
       binaryPath,
       scope: scope ?? "user",
       cli: "cursor",
@@ -710,7 +710,7 @@ export const cursor: Integration = {
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    renderConfig(HOOK_TEMPLATES.cursor, settings as Record<string, unknown>, {
+    renderConfig(templateFor("cursor"), settings as Record<string, unknown>, {
       binaryPath,
       scope: scope ?? "user",
       cli: "cursor",
@@ -1737,7 +1737,7 @@ export const factory: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    return buildTemplateEntry(HOOK_TEMPLATES.factory, eventType, {
+    return buildTemplateEntry(templateFor("factory"), eventType, {
       binaryPath,
       scope: scope ?? "user",
       cli: "factory",
@@ -1747,7 +1747,7 @@ export const factory: Integration = {
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    renderConfig(HOOK_TEMPLATES.factory, settings as Record<string, unknown>, {
+    renderConfig(templateFor("factory"), settings as Record<string, unknown>, {
       binaryPath,
       scope: scope ?? "user",
       cli: "factory",
@@ -1845,7 +1845,7 @@ export const devin: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    return buildTemplateEntry(HOOK_TEMPLATES.devin, eventType, {
+    return buildTemplateEntry(templateFor("devin"), eventType, {
       binaryPath,
       scope: scope ?? "user",
       cli: "devin",
@@ -1855,7 +1855,7 @@ export const devin: Integration = {
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    renderConfig(HOOK_TEMPLATES.devin, settings as Record<string, unknown>, {
+    renderConfig(templateFor("devin"), settings as Record<string, unknown>, {
       binaryPath,
       scope: scope ?? "user",
       cli: "devin",
@@ -1969,7 +1969,7 @@ export const antigravity: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    return buildTemplateEntry(HOOK_TEMPLATES.antigravity, eventType, {
+    return buildTemplateEntry(templateFor("antigravity"), eventType, {
       binaryPath,
       scope: scope ?? "user",
       cli: "antigravity",
@@ -1979,7 +1979,7 @@ export const antigravity: Integration = {
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    renderConfig(HOOK_TEMPLATES.antigravity, settings as Record<string, unknown>, {
+    renderConfig(templateFor("antigravity"), settings as Record<string, unknown>, {
       binaryPath,
       scope: scope ?? "user",
       cli: "antigravity",
@@ -2123,7 +2123,7 @@ export const goose: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    return buildTemplateEntry(HOOK_TEMPLATES.goose, eventType, {
+    return buildTemplateEntry(templateFor("goose"), eventType, {
       binaryPath,
       scope: scope ?? "user",
       cli: "goose",
@@ -2133,7 +2133,7 @@ export const goose: Integration = {
   isFailproofaiHook: isGooseFailproofaiHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    renderConfig(HOOK_TEMPLATES.goose, settings as Record<string, unknown>, {
+    renderConfig(templateFor("goose"), settings as Record<string, unknown>, {
       binaryPath,
       scope: scope ?? "user",
       cli: "goose",

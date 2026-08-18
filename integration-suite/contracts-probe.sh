@@ -174,6 +174,22 @@ rm -rf "$BASE"; mkdir -p "$BASE"
 OBSERVED="$HOME/.failproofai/contracts/observed.json"
 rm -f "$OBSERVED"
 
+# ── Proving a CANDIDATE template ─────────────────────────────────────────────
+# With CONTRACTS_TEMPLATE set, the install writes from that candidate instead of
+# the one this build ships, and the run then answers the only question that
+# matters about a template: does the vendor accept what it produces?
+#
+# Nothing else can answer it. `validateTemplate` proves a template is not
+# dangerous and repair proves the file matches the template — but repair
+# regenerates from the SAME template it wrote from, so a wrong one verifies
+# green and leaves a file the CLI silently ignores. Driving the CLI is the only
+# check that can fail for the right reason.
+if [ -n "${CONTRACTS_TEMPLATE:-}" ]; then
+  [ -f "$CONTRACTS_TEMPLATE" ] || verdict ERROR "no candidate template at $CONTRACTS_TEMPLATE"
+  export FAILPROOFAI_TEMPLATE_FILE="$CONTRACTS_TEMPLATE"
+  echo "proving candidate template: $CONTRACTS_TEMPLATE" >&2
+fi
+
 # Kept, not discarded: "could not install hooks" without the reason is a dead
 # end for whoever reads the report tomorrow morning.
 if ! fp policies --install --cli "$CLI" --scope user > "$BASE/install.log" 2>&1; then

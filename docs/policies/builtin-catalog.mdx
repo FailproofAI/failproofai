@@ -1,0 +1,129 @@
+---
+title: "Builtin policy catalog"
+description: "Review every builtin Failproof AI policy, its trigger, recommended state, and configurable parameters."
+icon: "list-checks"
+---
+
+The installed package is the source of truth for policy availability. Run `failproofai policies` after every upgrade because catalog entries and behavior can change with the package version.
+
+## Recommended baseline
+
+The guided setup's recommended selection currently enables secret sanitizers, environment protections, self-protection, catastrophic-command guards, and protected-branch safety:
+
+```text
+sanitize-jwt                 sanitize-api-keys
+sanitize-connection-strings sanitize-private-key-content
+sanitize-bearer-tokens       protect-env-vars
+block-env-files              block-secrets-write
+block-self-pause             block-failproofai-commands
+block-sudo                   block-curl-pipe-sh
+block-rm-rf                  block-push-master
+block-force-push
+```
+
+Recommended is deliberately narrower than **Everything**. Infrastructure and workflow policies can interrupt valid work and should be enabled for the repositories and machines that need them.
+
+## Secrets and environment
+
+| Policy | Trigger | Outcome |
+| --- | --- | --- |
+| `sanitize-jwt` | `PostToolUse` | Redact JWTs from tool output before the model sees them. |
+| `sanitize-api-keys` | `PostToolUse` | Redact common OpenAI, Anthropic, GitHub, AWS, Stripe, and Google keys. |
+| `sanitize-connection-strings` | `PostToolUse` | Redact database connection strings containing credentials. |
+| `sanitize-private-key-content` | `PostToolUse` | Redact PEM private-key bodies. |
+| `sanitize-bearer-tokens` | `PostToolUse` | Redact authorization bearer tokens. |
+| `protect-env-vars` | `PreToolUse` on shell tools | Block commands that dump environment variables. |
+| `block-env-files` | `PreToolUse` | Block reads and writes of `.env` files. |
+| `block-read-outside-cwd` | `PreToolUse` on read, glob, grep, or shell tools | Keep reads inside the session working directory. |
+| `block-secrets-write` | `PreToolUse` on write tools | Block writes to common secret-key and credential filenames. |
+
+## Dangerous commands and infrastructure
+
+| Policy | Trigger | Outcome |
+| --- | --- | --- |
+| `block-self-pause` | `PreToolUse`, `PermissionRequest` | Prevent an agent from pausing its own enforcement. |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` | Block `sudo` unless an allow pattern matches. |
+| `block-curl-pipe-sh` | `PreToolUse` | Block downloaded scripts piped directly to a shell. |
+| `block-rm-rf` | `PreToolUse` | Block catastrophic recursive deletion patterns. |
+| `block-failproofai-commands` | `PreToolUse` | Prevent agents from changing or uninstalling Failproof AI. |
+| `block-kubectl` | `PreToolUse` | Gate Kubernetes commands. |
+| `block-terraform` | `PreToolUse` | Gate Terraform and OpenTofu commands. |
+| `block-aws-cli` | `PreToolUse` | Gate AWS CLI commands. |
+| `block-gcloud` | `PreToolUse` | Gate Google Cloud CLI commands. |
+| `block-az-cli` | `PreToolUse` | Gate Azure CLI commands. |
+| `block-helm` | `PreToolUse` | Gate Helm commands. |
+| `block-gh-pipeline` | `PreToolUse` | Gate mutating GitHub CLI workflow, run, merge, release, cache, and secret operations. |
+
+## Git and database safety
+
+| Policy | Trigger | Outcome |
+| --- | --- | --- |
+| `block-push-master` | `PreToolUse` | Block direct pushes to configured protected branches. |
+| `block-force-push` | `PreToolUse` | Block force-pushes; `--force-with-lease` remains allowed by the current implementation. |
+| `block-work-on-main` | `PreToolUse` | Block commits and merges on protected branches. |
+| `warn-git-amend` | `PreToolUse` | Warn before rewriting a commit with `--amend`. |
+| `warn-git-stash-drop` | `PreToolUse` | Warn before permanently dropping or clearing stashes. |
+| `warn-all-files-staged` | `PreToolUse` | Warn on broad `git add -A`, `git add .`, or `git add --all`. |
+| `warn-destructive-sql` | `PreToolUse` | Warn on `DROP`, `TRUNCATE`, and `DELETE` without `WHERE` through recognized database clients. |
+| `warn-schema-alteration` | `PreToolUse` | Warn on recognized `ALTER TABLE` column and rename operations. |
+
+## Packages, system behavior, and agent loops
+
+| Policy | Trigger | Outcome |
+| --- | --- | --- |
+| `warn-package-publish` | `PreToolUse` | Warn before publishing to package registries. |
+| `warn-global-package-install` | `PreToolUse` | Warn before global package installation. |
+| `prefer-package-manager` | `PreToolUse` | Instruct the agent to use an allowed package manager. |
+| `warn-large-file-write` | `PreToolUse` on write tools | Warn above the configured file-size threshold. |
+| `warn-background-process` | `PreToolUse` | Warn on detached or long-lived background-process patterns. |
+| `warn-repeated-tool-calls` | `PreToolUse` | Warn after three or more identical tool calls. |
+
+## End-of-task workflow
+
+These policies require a harness that emits a compatible `Stop` event.
+
+| Policy | Outcome |
+| --- | --- |
+| `require-commit-before-stop` | Refuse completion while tracked work remains uncommitted. |
+| `require-push-before-stop` | Refuse completion while commits remain local-only. |
+| `require-pr-before-stop` | Require a pull request for the current branch. |
+| `require-no-conflicts-before-stop` | Require a clean merge against the configured base branch. |
+| `require-ci-green-before-stop` | Require current-HEAD CI checks to complete successfully. |
+
+## Parameter reference
+
+Configure parameters under the selected scope's `policyParams` object. Types are validated by each policy.
+
+| Policy | Parameter | Type and default |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; entries contain `regex` and `label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Infrastructure blockers | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+```json
+{
+  "enabledPolicies": ["block-sudo", "block-push-master"],
+  "policyParams": {
+    "block-sudo": {
+      "allowPatterns": ["sudo systemctl status"]
+    },
+    "block-push-master": {
+      "protectedBranches": ["main", "release"]
+    }
+  }
+}
+```
+
+<Warning>
+  An allow pattern broadens what an agent may do. Test the exact tokenization and command variants on the target harness before deploying it across a fleet.
+</Warning>

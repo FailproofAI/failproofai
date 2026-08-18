@@ -1,0 +1,57 @@
+---
+title: "Builtin policies"
+description: "Enable maintained guardrails for common agent failure modes."
+icon: "library"
+---
+
+Builtin policies cover secret handling, environment files, destructive shell commands, protected branches, cloud and infrastructure tools, package publishing, repeated calls, and end-of-task workflow checks.
+
+## Enable and verify a builtin policy
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Install the policy on a connected machine with the local CLI.
+    2. Run a safe test action in the instrumented agent.
+    3. Go to **Observe → policy** and filter by the policy name, machine environment, or decision.
+    4. Open the linked session to confirm the matched tool input and returned reason.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Remove it with `failproofai policy remove block-rm-rf --cli claude --scope project`.
+  </Tab>
+</Tabs>
+
+List the policies available in your installed version:
+
+```bash
+failproofai policies
+```
+
+Enable one policy for a project:
+
+```bash
+failproofai policy add block-rm-rf --scope project
+```
+
+Enable several policies for selected harnesses:
+
+```bash
+failproofai policies --install block-sudo block-force-push \
+  --cli claude codex --scope project
+```
+
+Some policies accept parameters or are marked beta. Review the description, match scope, and default behavior before rollout. A policy that protects one workflow may block valid operations in another.
+
+<Card title="Browse the complete builtin catalog" icon="list-checks" href="/policies/builtin-catalog">
+  Review all 40 current policies, their triggers, recommended baseline, and parameters.
+</Card>
+
+<Tip>
+  Prefer project scope for repository-specific expectations and user scope for machine-wide safety requirements.
+</Tip>

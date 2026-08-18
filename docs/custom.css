@@ -1,0 +1,92 @@
+h1, h2, h3 {
+  letter-spacing: -0.025em;
+}
+
+#content blockquote {
+  position: relative;
+  margin: 1.5rem 0;
+  padding: 1.25rem 1.5rem 1.25rem 3.75rem !important;
+  border-left: 4px solid #e4587d !important;
+  border-radius: 0 14px 14px 0;
+  background: #f3f4f6 !important;
+  color: inherit !important;
+}
+
+#content blockquote::before {
+  content: "“";
+  position: absolute;
+  top: 0.35rem;
+  left: 1rem;
+  color: #e4587d;
+  font-size: 3rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+#content blockquote p:first-child {
+  margin-top: 0;
+}
+
+#content blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.dark #content blockquote {
+  background: rgba(148, 163, 184, 0.12) !important;
+}
+
+.navbar-link a[href="https://discord.befailproof.ai"],
+.navbar-link a[href="https://x.com/failproofai"],
+.navbar-link a[href="https://github.com/FailproofAI/failproofai"],
+#topbar-cta-button a[href="https://app.befailproof.ai"] {
+  position: relative;
+}
+
+.navbar-link a[href="https://discord.befailproof.ai"]::after,
+.navbar-link a[href="https://x.com/failproofai"]::after,
+.navbar-link a[href="https://github.com/FailproofAI/failproofai"]::after,
+#topbar-cta-button a[href="https://app.befailproof.ai"]::after {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 50%;
+  z-index: 50;
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.4rem;
+  background: #111827;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -0.2rem);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.navbar-link a[href="https://discord.befailproof.ai"]::after {
+  content: "Join the community";
+}
+
+.navbar-link a[href="https://x.com/failproofai"]::after {
+  content: "Follow launches";
+}
+
+.navbar-link a[href="https://github.com/FailproofAI/failproofai"]::after {
+  content: "Star us!";
+}
+
+#topbar-cta-button a[href="https://app.befailproof.ai"]::after {
+  content: "Go to Failproof";
+}
+
+.navbar-link a[href="https://discord.befailproof.ai"]:hover::after,
+.navbar-link a[href="https://discord.befailproof.ai"]:focus-visible::after,
+.navbar-link a[href="https://x.com/failproofai"]:hover::after,
+.navbar-link a[href="https://x.com/failproofai"]:focus-visible::after,
+.navbar-link a[href="https://github.com/FailproofAI/failproofai"]:hover::after,
+.navbar-link a[href="https://github.com/FailproofAI/failproofai"]:focus-visible::after,
+#topbar-cta-button a[href="https://app.befailproof.ai"]:hover::after,
+#topbar-cta-button a[href="https://app.befailproof.ai"]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}

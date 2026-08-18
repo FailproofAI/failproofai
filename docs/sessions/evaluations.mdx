@@ -1,0 +1,52 @@
+---
+title: "Online evaluations"
+description: "Score live and completed sessions for quality, compliance, cost, and latency."
+icon: "gauge"
+---
+
+Online evaluations apply consistent judgments to agent sessions. Use them for signals that should be measured continuously rather than investigated only during an audit.
+
+## Review evaluation quality
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Observe → Evaluations**.
+    2. Add a series and choose the agent, environment, evaluation score, statistic, and curve.
+    3. Add series to compare environments, agents, or score keys.
+    4. Select a result to open matching sessions or share the filtered view. Use **Observe → Metrics** for latency, tokens, cost, and other magnitude values.
+
+    ![A quality dashboard showing average evaluation scores and trends over time.](/images/dashboard/dashboard-quality.png)
+
+    Open a session from the drill-down to inspect its per-score reasoning:
+
+    ![A session detail view showing evaluation scores and reasoning beside the complete trace.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Add global `--json` before `evals` for automation, for example `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+An evaluator receives the session identity, environment, timestamps, and ordered events. It can return numeric score keys with optional reasoning and a summary. Long-running evaluators can return a pending job and be polled later.
+
+## Good evaluation targets
+
+- Task completion or correctness
+- Groundedness and hallucination risk
+- Tool selection and tool efficiency
+- Policy or process compliance
+- Cost and latency budgets
+- Required human escalation
+
+## From score to response
+
+Show scores in dashboards to track trends. Create alerts for thresholds or compound conditions. When a score declines across a population, run an audit to investigate why; when the cause is a repeatable action, deploy a policy.
+
+<Card title="Build an evaluator" icon="code-2" href="/reference/evaluator-sdk">
+  Implement synchronous or asynchronous evaluation with the Python evaluator SDK.
+</Card>

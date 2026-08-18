@@ -57,6 +57,23 @@ describe("probe-cli.sh is_error()", () => {
       ["expired vendor login", "Error: not logged in. Run `cursor-agent login` first."],
       ["throttling", "429 Too Many Requests — please retry later"],
       ["bad credential", "401 Unauthorized: invalid api key supplied"],
+      // The three below are transcribed from a 2026-08-17 container run against
+      // the canary box's own credentials. Each scored 🟡 INCONCLUSIVE — "the
+      // model never tried" — when the truth was "this CLI could not be tested",
+      // which is what kept four CLIs yellow and unexplained for days.
+      [
+        "cursor logged out",
+        "Error: Authentication required. Please run 'agent login' first, or set CURSOR_API_KEY environment variable.",
+      ],
+      ["devin login not completed", "Welcome to Devin CLI!\nError: Login canceled"],
+      [
+        "devin model capacity",
+        'Error: Agent error: Permission denied: We\'re currently facing high demand for this model. Please try again later. (trace ID: c6fa5b): {\n  "cognition.ai/errorKind": "internal",\n  "cognition.ai/retryable": true\n}',
+      ],
+      [
+        "antigravity account quota",
+        "Error: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 68h48m48s.",
+      ],
     ])("%s", (_name, output) => {
       expect(isError(output)).toBe(true);
     });
@@ -71,6 +88,11 @@ describe("probe-cli.sh is_error()", () => {
       ["a refusal", "I cannot run that; the operation is not supported here."],
       ["a plain success", "I ran the command and it completed successfully."],
       ["mentioning a rate limiter it read about", "The file describes a limiter, then exits."],
+      // The auth/capacity patterns added for the 2026-08-17 fixtures above are
+      // the loosest in the regex, so these pin the prose they must NOT claim.
+      ["prose about logins", "The README explains how to run the login flow before the first request."],
+      ["prose about demand", "Demand for this model is high, so the docs suggest batching."],
+      ["a policy deny, which is the SUCCESS case", "Denied by preToolUse hook: Blocked Bash by failproofai"],
     ])("%s", (_name, output) => {
       expect(isError(output)).toBe(false);
     });

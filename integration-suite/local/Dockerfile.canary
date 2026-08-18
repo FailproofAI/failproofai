@@ -1,0 +1,89 @@
+# The canary box's INTEGRATION-SUITE image — one job, everything it needs baked in.
+#
+#   docker build -t failproofai-canary -f integration-suite/local/Dockerfile.canary \
+#     --build-arg FP_SHA=$(git rev-parse --short HEAD) .
+#
+# Context is the REPO ROOT (see the repo's .dockerignore), because the whole point
+# is that the image IS the commit. What used to happen at 11:00 in front of nobody
+# — clone, fetch, checkout, `bun install`, two `bun build`s, and a `cargo build` of
+# failproofaid in a sibling rust container — happens here instead, once, in CI,
+# where a failure is a red build rather than a night with no report.
+#
+# What deliberately STAYS at run time: installing the twelve vendor CLIs @latest.
+# That is the measurement, not setup — baking them would test the versions we
+# happened to build against rather than the ones users install today.
+#
+# THIS IS THE ONLY ONE OF THE THREE JOB IMAGES THAT GETS THE DOCKER SOCKET. It
+# builds the probe sandbox and runs the probe containers as siblings; translate
+# and docs-audit spawn nothing, so they carry no docker client and their cron
+# lines mount no socket. That split is the reason for three images rather than one.
+
+# ── failproofaid, built against the same glibc the sandbox runs ─────────────
+# node:22-bookworm-slim and rust:1-bookworm are both Debian 12, so the binary
+# this stage produces loads inside the probe containers. Building it on the host
+# instead is what the old ci-entrypoint.sh did, and it needed a cargo cache dir
+# on the box plus a sibling container per run.
+FROM rust:1-bookworm AS daemon
+WORKDIR /src
+COPY rust-toolchain.toml Cargo.toml Cargo.lock ./
+COPY crates ./crates
+RUN cargo build --release --locked -p failproofaid
+
+FROM node:22-bookworm-slim
+
+COPY --from=oven/bun:latest /usr/local/bin/bun /usr/local/bin/bun
+
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends git ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# docker CLIENT only — the daemon is the host's, reached through the mounted socket.
+ARG DOCKER_VERSION=27.5.1
+RUN arch="$(uname -m)" \
+ && curl -fsSL "https://download.docker.com/linux/static/stable/${arch}/docker-${DOCKER_VERSION}.tgz" \
+    | tar -xz --strip-components=1 -C /usr/local/bin docker/docker
+
+WORKDIR /opt/failproofai
+COPY . .
+
+# The build fails rather than publishing a credential. .dockerignore already
+# excludes these, and this is what catches the day one of them is renamed on the
+# writing side and quietly stops matching — a public image is a bad place to
+# find that out. Cheap, and it runs before anything else touches the tree.
+RUN set -e; \
+    for p in tokens tokens-beta canary.env canary-beta.env secrets.env .env; do \
+      if [ -e "$p" ]; then echo "REFUSING TO BUILD: $p reached the build context" >&2; exit 1; fi; \
+    done
+
+RUN bun install --frozen-lockfile --ignore-scripts \
+ && bun build --target=node --format=cjs --outfile=dist/index.js src/index.ts \
+ && bun run build:cli \
+ && test -s dist/index.js && test -s dist/cli.mjs
+
+COPY --from=daemon /src/target/release/failproofaid /opt/failproofaid/failproofaid
+
+# The commit this image was built from. `git rev-parse` is not available (no .git
+# in the context, deliberately), and this is the value every report prints so a
+# stale image announces itself instead of silently testing week-old code.
+ARG FP_SHA=unknown
+# RFC3339, passed by CI. The entrypoint turns it into an age and refuses to call
+# an image fresh when it cannot parse one.
+ARG BUILT_AT=unknown
+# The FULL object id as well as the short one. `git fetch origin <sha>` rejects an
+# abbreviated id ("couldn't find remote ref"), and translate fetches its own
+# baked commit to get a git identity — verified against github.com, both forms.
+ARG FP_SHA_FULL=unknown
+ENV CANARY_BAKED_AT=${BUILT_AT} \
+    CANARY_BAKED_SHA_FULL=${FP_SHA_FULL} \
+    CANARY_BAKED_SHA=${FP_SHA} \
+    CANARY_JOB=canary \
+    CANARY_CLONE=/opt/failproofai \
+    CANARY_SKIP_BUILD=1 \
+    CANARY_DAEMON_BIN=/opt/failproofaid/failproofaid
+
+COPY integration-suite/local/job-entrypoint.sh /usr/local/bin/job-entrypoint.sh
+RUN chmod +x /usr/local/bin/job-entrypoint.sh \
+ && bun --version && node --version && git --version && docker --version \
+ && /opt/failproofaid/failproofaid --version
+
+ENTRYPOINT ["/usr/local/bin/job-entrypoint.sh"]

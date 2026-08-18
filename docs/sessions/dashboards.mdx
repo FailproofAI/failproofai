@@ -1,0 +1,43 @@
+---
+title: "Dashboards"
+description: "Track the reliability signals that matter to an agent or workflow."
+icon: "layout-dashboard"
+---
+
+Dashboards combine saved queries into an operational view. Build one around a decision you expect someone to make—not around every available metric.
+
+## Build a dashboard
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Go to **Analyze → Queries**, create or open a saved query, and validate its result.
+    2. Select **add to dashboard**, then choose an existing dashboard or create one under **Analyze → Dashboards**.
+    3. Open the dashboard, enter edit mode, arrange tiles, and save the layout.
+    4. Return to the query when you need to change the data or filters behind a tile.
+
+    ![A dashboard composed from saved queries for event volume, errors, latency, and model token use.](/images/dashboard/dashboard-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    Dashboard CRUD is not exposed by the current Cloud CLI. Use the CLI to build and verify the saved query, then add it to a dashboard in the UI.
+
+    ```bash
+    fp query schema
+    fp query create "production error rate" --sql "SELECT ..."
+    fp query run <query-id>
+    ```
+  </Tab>
+</Tabs>
+
+Useful dashboard groups include:
+
+- **Models:** volume, latency, token use, error rate, and evaluation scores.
+- **Evaluations:** success rate and score trends by agent or environment.
+- **Tools:** call volume, failure rate, duration, and repeat calls.
+- **Hooks and policies:** decisions, denials, and policy match rate.
+- **Custom workflow metrics:** results from your own event fields and SQL.
+
+Start with a saved query, validate its result, then add it as a tile. Keep production and development filters explicit so test traffic does not hide a regression.
+
+<Tip>
+  Give every dashboard an owner and a response question, such as “Is checkout-agent reliability worse than last week?”
+</Tip>

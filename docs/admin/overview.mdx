@@ -1,0 +1,40 @@
+---
+title: "Administration"
+description: "Operate access, usage, organizations, and security without mixing them into the reliability workflow."
+icon: "settings-2"
+---
+
+Administration contains the controls needed to run Failproof AI across a team. Most readers can stay in Sessions, Audits, and Policies; administrators use this section to manage access and operating boundaries.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Use the Cloud sidebar's **Admin** section for **policy editor**, **enforcement**, **usage**, **keys**, **users**, and **settings**. A locked item shows that your account is missing its read permission.
+
+    ![The Admin section of the Cloud sidebar with policy editor, enforcement, usage, keys, users, and settings.](/images/dashboard/admin-navigation.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp whoami
+    fp orgs current
+    fp orgs perms
+    fp usage
+    ```
+
+    Put global options before the command, for example `fp --org reliability-team --json usage`.
+  </Tab>
+</Tabs>
+
+<Columns cols={2}>
+  <Card title="Usage" icon="chart-no-axes-combined" href="/admin/usage">
+    Inspect billing windows and organization consumption.
+  </Card>
+  <Card title="Keys and permissions" icon="key-round" href="/admin/keys-and-permissions">
+    Give machines and automation only the permissions they require.
+  </Card>
+  <Card title="Users and organizations" icon="users" href="/admin/users-and-organizations">
+    Manage membership, defaults, and organization boundaries.
+  </Card>
+  <Card title="Settings and security" icon="lock-keyhole" href="/admin/settings-and-security">
+    Configure operational settings, data handling, and deployment security.
+  </Card>
+</Columns>

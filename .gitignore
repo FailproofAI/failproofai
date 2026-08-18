@@ -77,6 +77,9 @@ packages/*/assets/
 # closed-source platform (cloned separately)
 /platform
 
+# FailproofAI Cloud reference source (cloned separately for docs research)
+/agenteye
+
 # rust
 /target
 
@@ -145,3 +148,6 @@ sdk/python/.pytest_cache/
 **/__pycache__/
 *.py[cod]
 *.egg-info/
+
+# blog drafts (local, not for commit yet)
+/blog/

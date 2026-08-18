@@ -784,19 +784,27 @@ EXAMPLES
 failproofai doctor — check that this machine's hook configs are still wired up
 
 USAGE
-  failproofai doctor [--fix] [--json] [--user|--project]
+  failproofai doctor [--fix] [--json] [--refresh] [--user|--project]
 
 WHAT IT CHECKS
-  Whether each agent CLI's hook config still matches what this build installs.
-  When a vendor changes its config format, our entry stops being valid and that
-  CLI runs with NO enforcement — every policy, silently. This is the check for
-  that; it does NOT prove the vendor accepted the file, only the vendor's own
-  behaviour can show that.
+  Two things, with different remedies.
+
+  The hook CONFIG — whether each agent CLI's config still matches what this
+  build installs. When a vendor changes its config format, our entry stops being
+  valid and that CLI runs with NO enforcement, every policy, silently. --fix
+  repairs that here. It does NOT prove the vendor accepted the file; only the
+  vendor's own behaviour can show that.
+
+  The PAYLOADS — whether what those CLIs actually send is still something our
+  policies can read. A renamed key (Copilot once renamed a file path) leaves
+  enforcement installed and answering, while the policies that read it match
+  nothing. Nothing on this machine can repair that; it needs an update.
 
 OPTIONS
   --fix        repair what drifted: back up, rewrite, verify, roll back if it
                did not take
   --json       machine-readable output
+  --refresh    fetch the contracts lab's latest pack before checking
   --user       user-scope configs only
   --project    project-scope configs only (uses the current directory)
 
@@ -809,8 +817,8 @@ EXIT CODES
     }
 
     lastSubcommand = "doctor";
-    const { runDoctorCommand } = await import("../src/hooks/doctor-cli");
-    const result = runDoctorCommand(subArgs);
+    const { runDoctorCommandAsync } = await import("../src/hooks/doctor-cli");
+    const result = await runDoctorCommandAsync(subArgs);
     for (const line of result.lines) {
       if (result.exitCode === 0) console.log(line);
       else console.error(line);

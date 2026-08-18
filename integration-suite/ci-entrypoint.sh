@@ -230,7 +230,18 @@ step "assembling gateway env-file"
 # run.sh word-splits CANARY_CLIS into args; unquoted on purpose. It owns the
 # exit code (non-zero iff a hard FAIL verdict is present), which the trap
 # preserves.
-step "running integration probes + report"
+# Which runner: the canary's verdict machinery (run.sh, the default) or the
+# contracts lab (contracts-runner.sh). Everything above this line — the build,
+# the daemon, the sandbox image, the CLI installs, the tokens, the env file — is
+# identical for both, and duplicating an hour of setup to change the last line
+# is how the two drift into testing different things.
+RUNNER="${CANARY_RUNNER:-run.sh}"
+case "$RUNNER" in
+  run.sh|contracts-runner.sh) ;;
+  *) echo "✗ CANARY_RUNNER=\"$RUNNER\" is not a runner this entrypoint knows" >&2; exit 1 ;;
+esac
+
+step "running integration probes + report ($RUNNER)"
 # shellcheck disable=SC2086
 CANARY_REPO="$REPO" \
 CANARY_SANDBOX="$HERE" \
@@ -243,4 +254,4 @@ CANARY_PEER_STATE="$PEER_STATE" \
 CANARY_DAEMON="${CANARY_DAEMON:-0}" \
 CANARY_DAEMON_DEAD="${CANARY_DAEMON_DEAD:-0}" \
 CANARY_DAEMON_BIN="${CANARY_DAEMON_BIN:-}" \
-  bash "$HERE/run.sh" ${CANARY_CLIS:-}
+  bash "$HERE/$RUNNER" ${CANARY_CLIS:-}

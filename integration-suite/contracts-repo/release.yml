@@ -1,0 +1,63 @@
+# Publish pack.json as a release asset, so a client can fetch it from a URL it
+# constructs rather than one it discovers.
+#
+# Copy into the contracts repo at .github/workflows/release.yml. It does NOT
+# belong to the failproofai repo and does nothing here.
+#
+# It fires on a push to main that touched pack.json — which, because
+# contracts-publish.sh only commits when the contract actually moved, means a
+# release happens when a vendor changed something and not merely when a day
+# passed. Keep it that way: a daily release is a notification nobody reads.
+name: Release pack
+
+on:
+  push:
+    branches: [main]
+    paths: ["pack.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A malformed pack is worse than a stale one: clients cache what they are
+      # served, so publishing garbage costs every machine a fetch to discover
+      # it. Cheap gate, and the only one between the lab and every client.
+      - name: Check the pack is a pack
+        run: |
+          node -e '
+            const p = require("./pack.json");
+            if (!p || typeof p !== "object" || !p.clis || typeof p.clis !== "object") {
+              throw new Error("pack.json has no clis object");
+            }
+            const n = Object.keys(p.clis).length;
+            if (n === 0) throw new Error("pack.json describes no CLIs");
+            console.log(`pack describes ${n} CLI(s)`);
+          '
+
+      # Dated tags, because the pack has no version of its own and inventing one
+      # would be a number nobody increments for a reason. Two moves in a day get
+      # a suffix rather than colliding.
+      - name: Tag
+        id: tag
+        run: |
+          base="pack-$(date -u +%Y-%m-%d)"
+          tag="$base"
+          n=1
+          while git rev-parse "refs/tags/$tag" >/dev/null 2>&1; do
+            n=$((n+1)); tag="$base.$n"
+          done
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" pack.json \
+            --title "${{ steps.tag.outputs.tag }}" \
+            --notes "A vendor's hook contract moved. See pack.json."

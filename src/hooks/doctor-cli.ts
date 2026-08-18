@@ -19,13 +19,26 @@
  * broken" and "I could not check" demand different responses, and collapsing
  * them into one non-zero is how a detector that has silently stopped working
  * gets mistaken for a machine that is merely unhealthy.
+ *
+ * ## Two different questions, deliberately kept apart
+ *
+ * "Is the config still the shape the vendor accepts" is answered by
+ * `config-drift.ts`, and `--fix` repairs it here, on this machine. "Is what the
+ * vendor SENDS still something our maps can read" is answered by
+ * `contract-compare.ts` — and nothing on this machine can fix that one. It
+ * needs a release. Folding them together would make `--fix` look broken on a
+ * box it repaired perfectly, so they get separate sections and separate
+ * remedies.
  */
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { detectConfigDrift, driftFindings, type ConfigDriftReport } from "./config-drift";
 import { repairConfigDrift, type RepairOutcome } from "./config-repair";
 import { getHookActivityPage, getHookActivityPageCount } from "./hook-activity-store";
+import { compareContractTable, type ContractComparison, type ContractFinding } from "./contract-compare";
+import { readCachedPack, refreshContractPack } from "./contract-pack-client";
+import { contractTableFile } from "./fp-home";
 import type { HookScope } from "./types";
 
 /**
@@ -112,18 +125,29 @@ interface DoctorOptions {
   scopes?: readonly HookScope[];
   /** Also sweep the project dirs recent hook activity came from. */
   recentProjects: boolean;
+  /** Fetch the lab's pack before answering. Consumed by the async front door. */
+  refresh: boolean;
 }
 
 function parseArgs(argv: readonly string[]): DoctorOptions | { error: string } {
   // Default: user scope PLUS the projects agents are actually working in.
   // Naming a scope explicitly narrows to it.
-  const opts: DoctorOptions = { fix: false, json: false, scheduled: false, recentProjects: true };
+  const opts: DoctorOptions = {
+    fix: false,
+    json: false,
+    scheduled: false,
+    recentProjects: true,
+    refresh: false,
+  };
   for (const arg of argv) {
     if (arg === "--fix") opts.fix = true;
     else if (arg === "--json") opts.json = true;
     // How the daemon's lane invokes it: same work, output shaped for a log
     // rather than a terminal.
     else if (arg === "--scheduled") opts.scheduled = true;
+    // Handled by runDoctorCommandAsync before the sync pass; accepted here so
+    // the argument parser does not reject it.
+    else if (arg === "--refresh") opts.refresh = true;
     else if (arg === "--user") {
       opts.scopes = ["user"];
       opts.recentProjects = false;
@@ -236,14 +260,31 @@ export function runDoctorCommand(argv: readonly string[] = []): DoctorResult {
   const after = parsed.fix ? dedupeByPath(targets.flatMap((t) => detectConfigDrift(t))) : before;
   const findings = driftFindings(after);
 
+  const contract = contractComparisons();
+  const contractFindings = exitWorthyContract(contract);
+  // Deliberately NOT exit-worthy: the lab may have driven a newer vendor
+  // version than this machine runs, so a finding there is a warning about what
+  // an upgrade will bring, not a statement about this machine right now. The
+  // local table is the only authority for that, and it is already counted.
+  const fromLab = packComparisons(contract);
+
   if (parsed.json) {
     return {
-      lines: [JSON.stringify({ reports: after, repairs: repairs ?? [], findings }, null, 2)],
-      exitCode: exitFor(findings),
+      lines: [
+        JSON.stringify(
+          { reports: after, repairs: repairs ?? [], findings, contracts: contract, lab: fromLab },
+          null,
+          2,
+        ),
+      ],
+      exitCode: exitFor(findings, contractFindings),
     };
   }
 
-  return { lines: render(after, repairs, findings, parsed), exitCode: exitFor(findings) };
+  return {
+    lines: render(after, repairs, findings, parsed, contract, fromLab),
+    exitCode: exitFor(findings, contractFindings),
+  };
 }
 
 /**
@@ -279,8 +320,124 @@ function safeRepair(target: Target): RepairOutcome[] | "failed" {
  * drift, and the caller can tell them apart from the text. What it must not do
  * is exit 0.
  */
-function exitFor(findings: readonly ConfigDriftReport[]): number {
-  return findings.length > 0 ? 1 : 0;
+function exitFor(findings: readonly ConfigDriftReport[], contract: readonly ContractFinding[]): number {
+  return findings.length > 0 || contract.length > 0 ? 1 : 0;
+}
+
+/**
+ * Compare what the CLIs on this machine have actually sent against what this
+ * build can read.
+ *
+ * Absent is the normal case, not an error: the table only exists once a
+ * daemon-configured machine has handled a hook, so a fresh install has none and
+ * this section simply does not appear.
+ */
+function contractComparisons(): ContractComparison[] {
+  try {
+    const raw = readFileSync(contractTableFile(), "utf8");
+    return compareContractTable(JSON.parse(raw));
+  } catch {
+    // No table, unreadable, or not JSON. None of those are findings about a
+    // vendor, and this must never be the reason doctor cannot run.
+    return [];
+  }
+}
+
+/**
+ * What the LAB saw, narrowed to the CLIs this machine actually uses.
+ *
+ * The local table is bounded by what this machine happened to do: an agent that
+ * has never written a file has no Write shape recorded, so a renamed Write key
+ * is invisible here until the moment it matters. The lab drives every CLI
+ * through the same tool call daily, so its pack covers the vendor rather than
+ * the usage — which is the coverage the local table cannot have.
+ *
+ * Filtered to CLIs already in the local table on purpose. Reporting findings
+ * about the nine integrations somebody does not use is noise, and noise is how
+ * the two lines that matter get skipped.
+ */
+function packComparisons(local: readonly ContractComparison[]): ContractComparison[] {
+  const pack = readCachedPack();
+  if (!pack) return [];
+  const used = new Set(local.map((c) => c.cli));
+  try {
+    return compareContractTable(pack).filter((c) => used.has(c.cli) && c.findings.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Which contract findings are worth a non-zero exit.
+ *
+ * `inert-tool-input` and `unroutable-event` are arithmetic on names — a key we
+ * need is not derivable, or an event routes nowhere — so they are true wherever
+ * they are computed. `unmapped-tool` is a heuristic: it reads an untranslated
+ * tool carrying a gated tool's keys as a rename, which is right in a lab that
+ * chose the prompt and wrong on a real machine carrying somebody's custom tool
+ * named `open_file`. It is still shown, because the reader can tell the
+ * difference and we cannot; it just does not fail the run.
+ */
+function exitWorthyContract(comparisons: readonly ContractComparison[]): ContractFinding[] {
+  return comparisons
+    .flatMap((c) => c.findings)
+    .filter((f) => f.severity === "high" && f.kind !== "unmapped-tool");
+}
+
+/** One contract finding, as a line somebody reads in a log hours later. */
+function describeContract(f: ContractFinding): string {
+  const where = f.tool ? `${f.tool} ` : "";
+  const seen = f.observed && f.observed.length > 0 ? `[${f.observed.join(", ")}]` : "no keys";
+  if (f.kind === "inert-tool-input") {
+    return `${where}arrives as ${seen} — no ${(f.missing ?? []).join(" or ")}; ${f.why ?? "policies reading it cannot fire"}`;
+  }
+  if (f.kind === "unroutable-event") return `event "${f.event}" routes to no policy`;
+  // The heuristic case is worth its own wording: "not translated" reads as
+  // housekeeping, and when the keys say it is a renamed gated tool it is the
+  // most serious line on the page.
+  if (f.severity === "high") {
+    return `tool "${f.tool}" ${seen} is not translated, and carries a gated tool's keys — likely renamed`;
+  }
+  return `tool "${f.tool}" is not translated ${seen} (fine if it is third-party)`;
+}
+
+/**
+ * What the CLIs are sending, and whether we can still read it.
+ *
+ * Only CLIs with something to say are listed. A machine has twelve
+ * integrations, most people run two, and a healthy roster printed in full is
+ * how the one broken line gets missed.
+ */
+function renderContracts(
+  comparisons: readonly ContractComparison[],
+  opts: DoctorOptions,
+): string[] {
+  if (comparisons.length === 0) return [];
+  const withFindings = comparisons.filter((c) => c.findings.length > 0);
+
+  if (opts.scheduled) {
+    if (withFindings.length === 0) return [];
+    const total = withFindings.reduce((n, c) => n + c.findings.length, 0);
+    return [`doctor: ${total} payload-translation finding(s) across ${withFindings.length} CLI(s)`];
+  }
+
+  const lines = ["", "Payload translation — what these CLIs actually send", ""];
+  if (withFindings.length === 0) {
+    lines.push(`  every key we read is still where we expect it (${comparisons.length} CLI(s))`);
+    return lines;
+  }
+  for (const c of withFindings) {
+    const version = c.version ? ` ${c.version}` : "";
+    for (const f of c.findings) {
+      lines.push(`  ${(c.cli + version).padEnd(22)} ${describeContract(f)}`);
+    }
+  }
+  // The remedy differs from every other line doctor prints, and saying so is
+  // the difference between a useful report and one that reads as "--fix is
+  // broken".
+  lines.push("");
+  lines.push("These are not repairable here — they need a failproofai update.");
+  return lines;
 }
 
 function render(
@@ -288,6 +445,8 @@ function render(
   repairs: readonly RepairOutcome[] | null,
   findings: readonly ConfigDriftReport[],
   opts: DoctorOptions,
+  contracts: readonly ContractComparison[],
+  fromLab: readonly ContractComparison[] = [],
 ): string[] {
   const lines: string[] = [];
   const acted = (repairs ?? []).filter((r) => r.action !== "skipped");
@@ -311,12 +470,17 @@ function render(
   }
 
   if (findings.length === 0) {
+    // "Nothing to fix." above a list of problems reads as a contradiction, so
+    // it narrows to what it actually covers when the next section has content.
+    const alsoContracts = contracts.some((c) => c.findings.length > 0);
     lines.push(
       opts.scheduled
         ? `doctor: ${reports.filter((r) => r.status === "ok").length} config(s) ok, nothing to repair`
-        : "\nNothing to fix.",
+        : alsoContracts
+          ? "\nNo hook-config problems to fix."
+          : "\nNothing to fix.",
     );
-    return lines;
+    return [...lines, ...renderContracts(contracts, opts), ...renderLab(fromLab, opts)];
   }
 
   lines.push("");
@@ -326,5 +490,41 @@ function render(
     // usually looking at this in a log, hours later, out of context.
     lines.push("Run `failproofai doctor --fix` to repair them.");
   }
+  return [...lines, ...renderContracts(contracts, opts), ...renderLab(fromLab, opts)];
+}
+
+/** What the lab has seen that this machine has not exercised yet. */
+function renderLab(fromLab: readonly ContractComparison[], opts: DoctorOptions): string[] {
+  if (fromLab.length === 0) return [];
+  const total = fromLab.reduce((n, c) => n + c.findings.length, 0);
+  if (opts.scheduled) return [`doctor: ${total} finding(s) the contracts lab saw for CLIs you run`];
+
+  const lines = ["", "Seen by the contracts lab — not (yet) by this machine", ""];
+  for (const c of fromLab) {
+    for (const f of c.findings) {
+      lines.push(`  ${(c.cli + (c.version ? ` ${c.version}` : "")).padEnd(22)} ${describeContract(f)}`);
+    }
+  }
   return lines;
+}
+
+/**
+ * The async front door.
+ *
+ * Everything else here is pure — argv in, lines out — which is what makes it
+ * testable without a CLI or a process. Fetching is the one thing that cannot
+ * be, so it lives here alone, and the sync function stays the one every test
+ * and the daemon lane can reason about.
+ */
+export async function runDoctorCommandAsync(argv: readonly string[] = []): Promise<DoctorResult> {
+  // Only on the paths that asked for it: the scheduled lane, or an explicit
+  // --refresh. An interactive `doctor` must never wait on the network.
+  if (argv.includes("--scheduled") || argv.includes("--refresh")) {
+    try {
+      await refreshContractPack({ force: argv.includes("--refresh") });
+    } catch {
+      // A pack is extra information; failing to get one changes no answer.
+    }
+  }
+  return runDoctorCommand(argv);
 }

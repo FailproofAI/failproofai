@@ -905,8 +905,8 @@ describe("the installer pulls rather than builds", () => {
   });
 
   it("schedules every job by default", () => {
-    // One command, three cron lines. --jobs narrows it; nothing widens it.
-    expect(installSh).toMatch(/ALL_JOBS="canary translate docs-audit"/);
+    // One command, four cron lines. --jobs narrows it; nothing widens it.
+    expect(installSh).toMatch(/ALL_JOBS="canary contracts translate docs-audit"/);
     expect(installSh).toMatch(/JOBS="\$ALL_JOBS"/);
   });
 });
@@ -1041,7 +1041,7 @@ describe("the cron wrapper", () => {
   });
 
   it("refuses an unknown job and a missing credentials file", () => {
-    expect(runJobSh).toMatch(/usage: \$0 canary\|translate\|docs-audit/);
+    expect(runJobSh).toMatch(/usage: \$0 canary\|contracts\|translate\|docs-audit/);
     expect(runJobSh).toMatch(/\[ -f "\$W\/secrets\.env" \] \|\|/);
   });
 });

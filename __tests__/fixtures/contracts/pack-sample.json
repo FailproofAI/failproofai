@@ -1,0 +1,69 @@
+{
+  "generatedAt": "2026-08-18T08:32:11.599Z",
+  "clis": {
+    "goose": {
+      "hooks": {
+        "SessionStart": {
+          "envelope": [
+            "event",
+            "matcher_context",
+            "session_id"
+          ]
+        },
+        "UserPromptSubmit": {
+          "envelope": [
+            "event",
+            "matcher_context",
+            "message",
+            "session_id"
+          ]
+        },
+        "PreToolUse": {
+          "envelope": [
+            "event",
+            "matcher_context",
+            "session_id",
+            "tool_input",
+            "tool_name",
+            "working_dir"
+          ],
+          "tools": {
+            "write": [
+              "content",
+              "path"
+            ]
+          }
+        },
+        "PostToolUse": {
+          "envelope": [
+            "event",
+            "matcher_context",
+            "session_id",
+            "tool_input",
+            "tool_name",
+            "working_dir"
+          ],
+          "tools": {
+            "write": [
+              "content",
+              "path"
+            ]
+          }
+        },
+        "SessionEnd": {
+          "envelope": [
+            "event",
+            "matcher_context",
+            "session_id"
+          ]
+        }
+      },
+      "versionCheckedAt": "2026-08-18T08:32:05.053Z",
+      "version": "1.43.0",
+      "probe": {
+        "verdict": "OK",
+        "note": "tool ran and we were called"
+      }
+    }
+  }
+}

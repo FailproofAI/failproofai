@@ -291,6 +291,18 @@ export const contractTableFile = (home?: string) =>
   atHome(home, "contracts", "observed.json");
 
 /**
+ * The contracts lab's pack: the same shape as the table above, but describing
+ * every CLI at the version the lab drove rather than the ones this machine
+ * happens to run.
+ *
+ * Kept beside `observed.json` and never merged into it. They answer different
+ * questions — "what did MY agents send" versus "what does the vendor send
+ * today" — and a merged file could not distinguish a key this machine observed
+ * from one it was told about.
+ */
+export const contractPackFile = (home?: string) => atHome(home, "contracts", "pack.json");
+
+/**
  * Copies of a CLI's hook config taken immediately before we repaired it.
  *
  * Repair rewrites a file the USER owns and the VENDOR reads, unattended, on
@@ -599,6 +611,9 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // live traffic rebuilds it within a day. Dropping it costs a day of
   // observation, never a fact nothing else holds.
   { path: contractTableFile, class: "derived" },
+  // The contracts lab's pack. The most clearly derived thing in the home: it is
+  // a cache of a file published elsewhere, and one fetch rebuilds it exactly.
+  { path: contractPackFile, class: "derived" },
 
   // ── May be dropped: the server has it ──
   // Re-fetched and digest-verified on the next daemon poll. This is the whole

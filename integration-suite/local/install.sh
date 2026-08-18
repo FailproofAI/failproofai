@@ -13,17 +13,22 @@
 # writes ONE CRON LINE PER JOB. Idempotent: re-running upgrades the image and
 # rewrites those lines rather than adding a second set.
 #
-# THREE JOBS SHARE THIS BOX, one image and one env file between them:
+# FOUR JOBS SHARE THIS BOX, one image and one env file between them:
 #
 #   canary      the daily CLI integration suite  (default 11:00, ~1h first run)
+#   contracts   the daily hook-contract lab      (default 06:00, ~1h first run)
+#               Drives every CLI through one boring tool call and records what
+#               each vendor actually sent, so a renamed payload key is caught
+#               here rather than by a customer whose policies silently stopped
+#               firing. Publishes a pack when — and only when — something moved.
 #   translate   the nightly doc translation      (default 02:00, ~2h first run)
 #   docs-audit  a weekly sweep of the docs       (default Mondays 04:00, ~1 min)
 #               Posts to Slack AND keeps one "[auto] docs audit" tracking issue
 #               current — opened when there is something to do, closed when a
 #               week comes back clean.
 #
-# The first two moved off GitHub Actions, where runner minutes were their entire
-# cost. They are scheduled far apart and hold SEPARATE locks, so none can
+# The canary and translate moved off GitHub Actions, where runner minutes were
+# their entire cost. They are scheduled far apart and hold SEPARATE locks, so none can
 # swallow another: a canary wedged on a vendor CLI must not silently cost a
 # night of translation.
 #
@@ -55,8 +60,9 @@
 #                     five-field cron expression, which is how weekly is said.
 #                       --at canary "0 11"          daily at 11:00
 #                       --at docs-audit "0 4 * * 1" Mondays at 04:00
-#                     --at-canary / --at-translate / --at-docs-audit also work.
-# Defaults: canary "0 11", translate "0 2", docs-audit "0 4 * * 1".
+#                     --at-canary / --at-contracts / --at-translate /
+#                     --at-docs-audit also work.
+# Defaults: canary "0 11", contracts "0 6", translate "0 2", docs-audit "0 4 * * 1".
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -73,7 +79,7 @@ GIT_URL="${CANARY_GIT_URL:-https://github.com/FailproofAI/failproofai.git}"
 # they have to be findable even after the command they contain changes. Per job,
 # or installing one would strip the other's line.
 CRON_MARKER_BASE="# failproofai-canary"
-ALL_JOBS="canary translate docs-audit"
+ALL_JOBS="canary contracts translate docs-audit"
 
 # A job name is a path component (jobs/<name>.sh) and so may carry a dash;
 # a shell variable name may not. One conversion, used everywhere a per-job
@@ -91,9 +97,15 @@ REQUIRED_canary="CANARY_REF CANARY_LLM_API_KEY COPILOT_GITHUB_TOKEN CANARY_SLACK
 # list does not already say.
 REQUIRED_translate="TRANSLATE_REF TRANSLATE_LLM_API_KEY TRANSLATE_LLM_BASE_URL TRANSLATE_GITHUB_TOKEN"
 REQUIRED_docs_audit="DOCS_AUDIT_REF CANARY_SLACK_WEBHOOK DOCS_AUDIT_GITHUB_TOKEN"
+# contracts drives the same CLIs as the canary and needs the same credentials to
+# reach them. CONTRACTS_REPO / CONTRACTS_TOKEN are deliberately NOT required:
+# without them the lab still runs and still reports to Slack, it just does not
+# publish — which is exactly the state to be installable in before the pack repo
+# exists.
+REQUIRED_contracts="CONTRACTS_REF CANARY_LLM_API_KEY COPILOT_GITHUB_TOKEN CANARY_SLACK_WEBHOOK"
 
 SECRETS_SRC="" ; RUN_NOW="" ; DO_CRON=1 ; DRY=0 ; BUILD_LOCAL=0
-JOBS="$ALL_JOBS" ; AT_canary="0 11" ; AT_translate="0 2" ; AT_docs_audit="0 4 * * 1"
+JOBS="$ALL_JOBS" ; AT_canary="0 11" ; AT_contracts="0 6" ; AT_translate="0 2" ; AT_docs_audit="0 4 * * 1"
 while [ $# -gt 0 ]; do
   case "$1" in
     --jobs)          JOBS="$(echo "${2:?--jobs needs a value, e.g. --jobs canary,translate}" | tr ',' ' ')"; shift ;;
@@ -105,6 +117,7 @@ while [ $# -gt 0 ]; do
                      at_job="$(vn "${2:?--at needs a job and a spec, e.g. --at canary \"0 11\"}")"
                      eval "AT_$at_job=\"\${3:?--at needs a spec after the job name}\""; shift 2 ;;
     --at-canary)     AT_canary="${2:?--at-canary needs a value, e.g. --at-canary \"0 11\"}"; shift ;;
+    --at-contracts)  AT_contracts="${2:?--at-contracts needs a value, e.g. --at-contracts \"0 6\"}"; shift ;;
     --at-translate)  AT_translate="${2:?--at-translate needs a value, e.g. --at-translate \"0 2\"}"; shift ;;
     --at-docs-audit) AT_docs_audit="${2:?--at-docs-audit needs a value, e.g. --at-docs-audit \"0 4 * * 1\"}"; shift ;;
     -h|--help)       sed -n '2,58p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;

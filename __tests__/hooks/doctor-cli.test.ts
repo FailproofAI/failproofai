@@ -276,3 +276,167 @@ describe("doctor: the two collisions the sweep can create", () => {
     expect(new Set(paths).size).toBe(paths.length);
   });
 });
+
+describe("doctor: what the CLIs are sending", () => {
+  /** Write an observation table the way the warm worker would have. */
+  function observe(clis: Record<string, unknown>): void {
+    mkdirSync(join(home, "contracts"), { recursive: true });
+    writeFileSync(
+      join(home, "contracts", "observed.json"),
+      JSON.stringify({ schemaVersion: 1, updatedAt: new Date().toISOString(), clis }),
+    );
+  }
+
+  const HEALTHY = {
+    goose: {
+      version: "1.43.0",
+      hooks: { PreToolUse: { envelope: ["event"], tools: { write: ["content", "path"] } } },
+    },
+  };
+
+  it("says nothing when there is no table, which is every fresh install", () => {
+    // The table only exists once a daemon-configured machine has handled a
+    // hook. Absent must not read as broken, and must never be why doctor fails.
+    const r = runDoctorCommand(["--user"]);
+    expect(text(r)).not.toContain("Payload translation");
+    expect(r.exitCode).toBe(0);
+  });
+
+  it("stays quiet and clean for a CLI whose payloads we can still read", () => {
+    observe(HEALTHY);
+    const r = runDoctorCommand(["--user"]);
+    expect(text(r)).toContain("every key we read is still where we expect it");
+    expect(r.exitCode).toBe(0);
+  });
+
+  it("fails the run when a key our policies read is no longer derivable", () => {
+    observe({
+      copilot: {
+        version: "1.0.94",
+        hooks: { PreToolUse: { envelope: [], tools: { read: ["uri"] } } },
+      },
+    });
+    const r = runDoctorCommand(["--user"]);
+    expect(r.exitCode).toBe(1);
+    expect(text(r)).toContain("block-env-files");
+    // The remedy is different from every other line doctor prints, and saying
+    // so is what stops this reading as "--fix is broken".
+    expect(text(r)).toContain("they need a failproofai update");
+  });
+
+  it("reports a suspected tool rename but does not fail the run on it", () => {
+    // Provable findings fail the run. This one is a heuristic — right in a lab
+    // that chose the prompt, wrong on a machine carrying a custom tool that
+    // happens to take a `path`. Shown, because a human can tell; not fatal,
+    // because we cannot.
+    observe({
+      factory: {
+        version: "0.180.0",
+        hooks: { PreToolUse: { envelope: [], tools: { Run: ["command"] } } },
+      },
+    });
+    const r = runDoctorCommand(["--user"]);
+    expect(text(r)).toContain("likely renamed");
+    expect(r.exitCode).toBe(0);
+  });
+
+  it("does not let an unreadable table stop the config check", () => {
+    mkdirSync(join(home, "contracts"), { recursive: true });
+    writeFileSync(join(home, "contracts", "observed.json"), "{ not json");
+    const r = runDoctorCommand(["--user"]);
+    expect(r.exitCode).toBe(0);
+    expect(text(r)).not.toContain("Payload translation");
+  });
+
+  it("carries the comparison in --json for anything consuming it", () => {
+    observe(HEALTHY);
+    const parsed = JSON.parse(text(runDoctorCommand(["--user", "--json"]))) as {
+      contracts: { cli: string; version?: string }[];
+    };
+    expect(parsed.contracts.map((c) => c.cli)).toEqual(["goose"]);
+    expect(parsed.contracts[0].version).toBe("1.43.0");
+  });
+
+  it("gives the scheduled lane one line, and only when there is something to say", () => {
+    observe(HEALTHY);
+    expect(text(runDoctorCommand(["--user", "--scheduled"]))).not.toContain("payload-translation");
+    observe({
+      copilot: { hooks: { PreToolUse: { envelope: [], tools: { read: ["uri"] } } } },
+    });
+    expect(text(runDoctorCommand(["--user", "--scheduled"]))).toContain(
+      "payload-translation finding(s)",
+    );
+  });
+});
+
+describe("doctor: what the lab saw that this machine has not", () => {
+  function write(name: string, body: unknown): void {
+    mkdirSync(join(home, "contracts"), { recursive: true });
+    writeFileSync(join(home, "contracts", name), JSON.stringify(body));
+  }
+
+  /** This machine only ever wrote files, so it has no Read shape recorded. */
+  const LOCAL = {
+    schemaVersion: 1,
+    clis: {
+      goose: {
+        version: "1.43.0",
+        hooks: { PreToolUse: { envelope: ["event"], tools: { write: ["content", "path"] } } },
+      },
+    },
+  };
+
+  it("warns about a key this machine has not exercised yet", () => {
+    // The whole reason the pack exists. The local table is bounded by what the
+    // machine happened to do; a renamed Read key is invisible here until the
+    // day an agent reads a file, which is the day it stops being caught.
+    write("observed.json", LOCAL);
+    write("pack.json", {
+      generatedAt: "2026-08-18T06:00:00Z",
+      clis: {
+        goose: {
+          version: "1.44.0",
+          hooks: { PreToolUse: { envelope: [], tools: { view: ["uri"] } } },
+        },
+      },
+    });
+    const r = runDoctorCommand(["--user"]);
+    expect(text(r)).toContain("Seen by the contracts lab");
+    expect(text(r)).toContain("view arrives as [uri]");
+    // Not exit-worthy: the lab may have driven a newer vendor version than this
+    // machine runs, so it is a warning about an upgrade, not a claim about now.
+    expect(r.exitCode).toBe(0);
+  });
+
+  it("says nothing about CLIs this machine does not use", () => {
+    // Twelve integrations, most people run two. Reporting the other ten is how
+    // the lines that matter get skipped.
+    write("observed.json", LOCAL);
+    write("pack.json", {
+      clis: {
+        devin: { version: "3000.4.0", hooks: { PreToolUse: { envelope: [], tools: { exec: ["cmdline"] } } } },
+      },
+    });
+    expect(text(runDoctorCommand(["--user"]))).not.toContain("Seen by the contracts lab");
+  });
+
+  it("says nothing when there is no pack, which is every machine today", () => {
+    write("observed.json", LOCAL);
+    expect(text(runDoctorCommand(["--user"]))).not.toContain("Seen by the contracts lab");
+  });
+
+  it("is not derailed by a pack that is not a pack", () => {
+    write("observed.json", LOCAL);
+    writeFileSync(join(home, "contracts", "pack.json"), "{ truncated");
+    const r = runDoctorCommand(["--user"]);
+    expect(r.exitCode).toBe(0);
+    expect(text(r)).not.toContain("Seen by the contracts lab");
+  });
+
+  it("accepts --refresh without treating it as an unknown argument", () => {
+    // The async front door consumes it; the parser must still know it, or the
+    // scheduled lane's own flag would make doctor exit 2.
+    write("observed.json", LOCAL);
+    expect(runDoctorCommand(["--user", "--refresh"]).exitCode).toBe(0);
+  });
+});

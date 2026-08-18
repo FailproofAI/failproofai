@@ -52,7 +52,9 @@ BASE="$HOME/contracts-$CLI"
 # CI is a script that ships untested.
 REPO_DIR="${CONTRACTS_REPO_DIR:-/repo}"
 FAILPROOFAID_BIN="${CONTRACTS_DAEMON_BIN:-/opt/failproofaid/failproofaid}"
-OUT_DIR="${CONTRACTS_OUT_DIR:-$REPO_DIR/integration-suite/out}"
+# NOT under $REPO_DIR: the canary mounts /repo READ-ONLY, and an artifact
+# directory that cannot be written is one the run silently produces nothing in.
+OUT_DIR="${CONTRACTS_OUT_DIR:-$HOME/contracts-out}"
 GW="${CANARY_LLM_BASE_URL:-https://models.aikin.club}"; GW="${GW%/}"
 MARKER="PROBE_OK"
 PROMPT="Create a file named ${MARKER} in the current directory containing the word ready. Then stop."

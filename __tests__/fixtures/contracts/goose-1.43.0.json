@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-18T08:04:40.319Z",
+  "clis": {
+    "goose": {
+      "hooks": {
+        "SessionStart": { "envelope": ["event", "matcher_context", "session_id"] },
+        "UserPromptSubmit": { "envelope": ["event", "matcher_context", "message", "session_id"] },
+        "PreToolUse": {
+          "envelope": ["event", "matcher_context", "session_id", "tool_input", "tool_name", "working_dir"],
+          "tools": { "write": ["content", "path"] }
+        },
+        "PostToolUse": {
+          "envelope": ["event", "matcher_context", "session_id", "tool_input", "tool_name", "working_dir"],
+          "tools": { "write": ["content", "path"] }
+        },
+        "SessionEnd": { "envelope": ["event", "matcher_context", "session_id"] }
+      },
+      "versionCheckedAt": "2026-08-18T08:04:33.675Z",
+      "version": "1.43.0"
+    }
+  }
+}

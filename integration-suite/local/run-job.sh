@@ -9,6 +9,7 @@
 # box up. Here the command can breathe, and the crontab reads:
 #
 #   0 11 * * * $HOME/fp-canary/run.sh canary
+#   0  6 * * * $HOME/fp-canary/run.sh contracts
 #   0  2 * * * $HOME/fp-canary/run.sh translate
 #   0  4 * * 1 $HOME/fp-canary/run.sh docs-audit
 #
@@ -23,15 +24,16 @@ JOB="${1:-}"
 W="${CANARY_WORK:-$HOME/fp-canary}"
 
 case "$JOB" in
-  # Only the canary reaches the host's docker — it builds the sandbox image and
-  # runs the 12 probe containers as siblings. The other two are plain
-  # containers, and handing them the daemon would be scope for nothing.
+  # The canary and the contracts lab reach the host's docker — each builds the
+  # sandbox image and runs the 12 probe containers as siblings. The other two are
+  # plain containers, and handing them the daemon would be scope for nothing.
   # Timeouts sit an hour past the slowest observed first run, so a wedged vendor
   # CLI cannot still hold the lock at tomorrow's fire.
   canary)     SOCK=(-v /var/run/docker.sock:/var/run/docker.sock); TMO=9000 ;;
+  contracts)  SOCK=(-v /var/run/docker.sock:/var/run/docker.sock); TMO=9000 ;;
   translate)  SOCK=();                                             TMO=16200 ;;
   docs-audit) SOCK=();                                             TMO=1800 ;;
-  *) echo "usage: $0 canary|translate|docs-audit" >&2; exit 2 ;;
+  *) echo "usage: $0 canary|contracts|translate|docs-audit" >&2; exit 2 ;;
 esac
 
 # ONE IMAGE PER JOB. They used to share a toolchain image that cloned the repo at

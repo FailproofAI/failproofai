@@ -28,6 +28,7 @@ const runnerSh = read(path.join(SUITE, "contracts-runner.sh"));
 const publishSh = read(path.join(SUITE, "contracts-publish.sh"));
 const entrypointSh = read(path.join(SUITE, "ci-entrypoint.sh"));
 const jobSh = read(path.join(LOCAL, "jobs", "contracts.sh"));
+const promoteSh = read(path.join(SUITE, "contracts-promote.sh"));
 const runJobSh = read(path.join(LOCAL, "run-job.sh"));
 const installSh = read(path.join(LOCAL, "install.sh"));
 
@@ -145,11 +146,50 @@ describe("publishing", () => {
     expect(publishSh).toContain("nothing moved");
   });
 
+  it("pushes to the internal branch, never the protected default", () => {
+    // The org ruleset requires a reviewed pull request on main with no bypass
+    // actors. An unattended lab pushing there does not fail loudly — it fails
+    // every night, and the pack silently stops being published.
+    expect(publishSh).toMatch(/BRANCH="\$\{CONTRACTS_BRANCH:-packs\}"/);
+  });
+
+  it("releases from packs as a prerelease, so clients cannot resolve to it", () => {
+    // GitHub's `latest` skips prereleases. That one fact is what keeps a pack
+    // built from a bad lab run away from customer machines, so it is pinned
+    // here rather than left to the workflow's wording.
+    const wf = read(path.join(SUITE, "contracts-repo", "release.yml"));
+    expect(wf).toMatch(/branches: \[packs, main\]/);
+    expect(wf).toMatch(/prerelease=--prerelease/);
+    expect(wf).toMatch(/GITHUB_REF_NAME" = packs/);
+  });
+
+  it("promotes only on corroboration, never on \"could not check\"", () => {
+    // doctor --corroborate exits 0/1/2. Treating anything but 0 as a pass would
+    // make the gate decorative: a machine that compared nothing would wave every
+    // pack through to every customer.
+    expect(promoteSh).toMatch(/doctor --corroborate/);
+    expect(promoteSh).toMatch(/if \[ "\$rc" -ne 0 \]; then/);
+    expect(promoteSh).toContain("not promoting");
+  });
+
+  it("does not open a second pull request when one is already open", () => {
+    // A daily job that raises a pull request every day teaches everyone to
+    // ignore them, which costs exactly the review this design depends on.
+    expect(promoteSh).toMatch(/pulls\?state=open/);
+    expect(promoteSh).toContain("already open");
+  });
+
+  it("never merges — the required review is the promotion decision", () => {
+    expect(promoteSh).not.toMatch(/\/merge|gh pr merge/);
+  });
+
   it("keeps the token out of everything it prints", () => {
     // The token is embedded in the remote URL, so no message may echo it.
     expect(publishSh).toMatch(/x-access-token:\$\{TOKEN\}/);
-    for (const line of publishSh.split("\n")) {
-      if (/^\s*(echo|printf)\b/.test(line)) expect(line).not.toContain("$TOKEN");
+    for (const script of [publishSh, promoteSh]) {
+      for (const line of script.split("\n")) {
+        if (/^\s*(echo|printf)\b/.test(line)) expect(line).not.toContain("$TOKEN");
+      }
     }
   });
 });

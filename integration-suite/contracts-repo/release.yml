@@ -1,18 +1,41 @@
 # Publish pack.json as a release asset, so a client can fetch it from a URL it
 # constructs rather than one it discovers.
 #
-# Copy into the contracts repo at .github/workflows/release.yml. It does NOT
-# belong to the failproofai repo and does nothing here.
+# THIS IS A COPY of what FailproofAI/hook-contracts runs, kept here so the two
+# can be diffed. It does nothing in this repo.
 #
-# It fires on a push to main that touched pack.json — which, because
-# contracts-publish.sh only commits when the contract actually moved, means a
-# release happens when a vendor changed something and not merely when a day
-# passed. Keep it that way: a daily release is a notification nobody reads.
+# TWO CHANNELS, one file.
+#
+#   packs -> a PRERELEASE. The lab pushes here unattended the moment it sees a
+#            vendor move. Our own machines pull this channel first, so a pack
+#            built from a bad run is caught by us and not by a customer.
+#   main  -> the real release, and therefore `releases/latest/download`, which
+#            is what every client machine fetches. Reached only by a pull
+#            request from `packs`.
+#
+# GitHub's `latest` deliberately skips prereleases, so that split needs no extra
+# plumbing: an internal pack simply cannot become the one clients resolve to.
+# And because the org ruleset requires a reviewed pull request on main, the
+# promotion step is a human agreeing that a vendor really moved — the rule that
+# blocked the lab from pushing to main is the same rule that makes this safe.
+#
+# It fires only when pack.json actually CHANGED, which — because
+# contracts-publish.sh commits only when the contract moved — means a release
+# means a vendor changed something, not that a day passed. Keep it that way: a
+# daily release is a notification nobody reads.
+#
+# WHY `packs` AND NOT `main`. The org ruleset requires a pull request with an
+# approving review on the default branch, with no bypass actors — so an
+# unattended lab cannot push there, and turning a daily data update into a daily
+# review request would stop it being unattended. `packs` carries the data and is
+# outside that rule; main carries the documentation and keeps the protection.
+# A workflow triggers from the ref that was pushed, which is why this file lives
+# on `packs` as well.
 name: Release pack
 
 on:
   push:
-    branches: [main]
+    branches: [packs, main]
     paths: ["pack.json"]
   workflow_dispatch:
 
@@ -42,13 +65,20 @@ jobs:
 
       # Dated tags, because the pack has no version of its own and inventing one
       # would be a number nobody increments for a reason. Two moves in a day get
-      # a suffix rather than colliding.
+      # a suffix rather than colliding. Internal tags are named apart so a
+      # promoted pack and the internal one it came from are never confused.
       - name: Tag
         id: tag
         run: |
-          base="pack-$(date -u +%Y-%m-%d)"
-          tag="$base"
-          n=1
+          git fetch --tags --quiet
+          if [ "$GITHUB_REF_NAME" = packs ]; then
+            base="internal-$(date -u +%Y-%m-%d)"
+            echo "prerelease=--prerelease" >> "$GITHUB_OUTPUT"
+          else
+            base="pack-$(date -u +%Y-%m-%d)"
+            echo "prerelease=" >> "$GITHUB_OUTPUT"
+          fi
+          tag="$base"; n=1
           while git rev-parse "refs/tags/$tag" >/dev/null 2>&1; do
             n=$((n+1)); tag="$base.$n"
           done
@@ -58,6 +88,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [ "$GITHUB_REF_NAME" = packs ]; then
+            notes="A vendor's hook contract moved. INTERNAL channel — our own machines pull this first; it is not what \`releases/latest\` resolves to. Promote by opening a pull request from \`packs\` to \`main\`."
+          else
+            notes="A vendor's hook contract moved, and it has been reviewed. This is the release every client machine resolves to via \`releases/latest/download/pack.json\`."
+          fi
           gh release create "${{ steps.tag.outputs.tag }}" pack.json \
             --title "${{ steps.tag.outputs.tag }}" \
-            --notes "A vendor's hook contract moved. See pack.json."
+            ${{ steps.tag.outputs.prerelease }} \
+            --notes "$notes"

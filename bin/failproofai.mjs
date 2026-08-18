@@ -785,6 +785,7 @@ failproofai doctor — check that this machine's hook configs are still wired up
 
 USAGE
   failproofai doctor [--fix] [--json] [--refresh] [--user|--project]
+  failproofai doctor --corroborate
 
 WHAT IT CHECKS
   Two things, with different remedies.
@@ -805,6 +806,11 @@ OPTIONS
                did not take
   --json       machine-readable output
   --refresh    fetch the contracts lab's latest pack before checking
+  --corroborate
+               answer ONLY "does this machine agree with the lab's pack?", for
+               the promotion gate. Exits 0 corroborated, 1 contradicted, 2
+               nothing comparable — 2 rather than 0, because promotion must
+               require evidence and "could not check" is not evidence
   --user       user-scope configs only
   --project    project-scope configs only (uses the current directory)
 

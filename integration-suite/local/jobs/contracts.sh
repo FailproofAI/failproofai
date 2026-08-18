@@ -101,5 +101,11 @@ else
   echo "── publish skipped (CONTRACTS_REPO / CONTRACTS_TOKEN not both set, or untrusted run) ──"
 fi
 
+# Promotion is deliberately NOT done here. `contracts-promote.sh` asks whether a
+# machine that runs these CLIs for real agrees with what the lab recorded, and
+# running it on this box would compare the lab's run against the lab's own
+# leftovers — always agreeing, which is worse than not checking at all. It
+# belongs on a working machine, on its own schedule.
+
 echo "── done (rc=$rc) ──"
 exit "$rc"

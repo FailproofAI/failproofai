@@ -12,7 +12,12 @@ import { createServer, type Server } from "node:http";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { refreshContractPack, readCachedPack, packUrl } from "../../src/hooks/contract-pack-client";
+import {
+  refreshContractPack,
+  readCachedPack,
+  packUrl,
+  packChannel,
+} from "../../src/hooks/contract-pack-client";
 import { contractPackFile } from "../../src/hooks/fp-home";
 
 let home: string;
@@ -30,6 +35,7 @@ beforeEach(async () => {
   home = mkdtempSync(join(tmpdir(), "fpai-pack-"));
   process.env.FAILPROOFAI_HOME = home;
   delete process.env.FAILPROOFAI_NO_DOWNLOAD;
+  delete process.env.FAILPROOFAI_CONTRACTS_CHANNEL;
 
   respond = (send) => send(200, PACK);
   server = createServer((_req, res) => {
@@ -48,6 +54,7 @@ afterEach(async () => {
   delete process.env.FAILPROOFAI_HOME;
   delete process.env.FAILPROOFAI_CONTRACTS_URL;
   delete process.env.FAILPROOFAI_NO_DOWNLOAD;
+  delete process.env.FAILPROOFAI_CONTRACTS_CHANNEL;
   await new Promise<void>((r) => server.close(() => r()));
   rmSync(home, { recursive: true, force: true });
 });
@@ -122,13 +129,44 @@ describe("what it refuses to cache", () => {
 });
 
 describe("when it must do nothing at all", () => {
-  it("skips when no URL is configured", async () => {
-    // Shipping a plausible-looking default would 404 on every machine forever
-    // while looking configured.
+  it("defaults to the promoted channel, and an unknown name cannot move it off", () => {
+    // The lab's unattended pushes cut PRERELEASES, which `releases/latest`
+    // skips — so a pack from a bad run cannot become the one customers fetch.
+    // A typo in the channel name must not be a route onto the unreviewed one.
     delete process.env.FAILPROOFAI_CONTRACTS_URL;
-    expect(packUrl()).toBe("");
-    const out = await refreshContractPack();
-    expect(out).toMatchObject({ status: "skipped", reason: expect.stringContaining("no pack URL") });
+    expect(packChannel()).toBe("stable");
+    process.env.FAILPROOFAI_CONTRACTS_CHANNEL = "nonsense";
+    expect(packChannel()).toBe("stable");
+    expect(packUrl()).toContain("releases/latest/download/pack.json");
+  });
+
+  it("reads the branch directly on the internal channel", () => {
+    // Our own machines take the risk first. It reads the branch rather than the
+    // newest prerelease because "latest prerelease" has no constructible URL —
+    // only an API query, which is the discovery step the stable path avoids.
+    delete process.env.FAILPROOFAI_CONTRACTS_URL;
+    process.env.FAILPROOFAI_CONTRACTS_CHANNEL = "internal";
+    expect(packChannel()).toBe("internal");
+    expect(packUrl()).toBe(
+      "https://raw.githubusercontent.com/FailproofAI/hook-contracts/packs/pack.json",
+    );
+  });
+
+  it("lets an explicit URL win over either channel, for a mirror", () => {
+    process.env.FAILPROOFAI_CONTRACTS_CHANNEL = "internal";
+    process.env.FAILPROOFAI_CONTRACTS_URL = "http://mirror.internal/pack.json";
+    expect(packUrl()).toBe("http://mirror.internal/pack.json");
+  });
+
+  it("falls back to the published release asset, constructed and not discovered", async () => {
+    // `releases/latest/download/<asset>` is a plain redirect: no API call to
+    // rate-limit, and no way to end up holding an artifact from a source we did
+    // not name. It 404s until the lab's first publish, which is the correct
+    // answer while no vendor contract has been measured.
+    delete process.env.FAILPROOFAI_CONTRACTS_URL;
+    expect(packUrl()).toBe(
+      "https://github.com/FailproofAI/hook-contracts/releases/latest/download/pack.json",
+    );
   });
 
   it("skips when downloads are disabled, without touching an existing cache", async () => {

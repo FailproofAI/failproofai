@@ -38,6 +38,7 @@ import { repairConfigDrift, type RepairOutcome } from "./config-repair";
 import { getHookActivityPage, getHookActivityPageCount } from "./hook-activity-store";
 import { compareContractTable, type ContractComparison, type ContractFinding } from "./contract-compare";
 import { readCachedPack, refreshContractPack } from "./contract-pack-client";
+import { corroborateContractPack } from "./contract-corroborate";
 import { contractTableFile } from "./fp-home";
 import type { HookScope } from "./types";
 
@@ -127,6 +128,8 @@ interface DoctorOptions {
   recentProjects: boolean;
   /** Fetch the lab's pack before answering. Consumed by the async front door. */
   refresh: boolean;
+  /** Answer only "does this machine agree with the lab's pack?" and nothing else. */
+  corroborate: boolean;
 }
 
 function parseArgs(argv: readonly string[]): DoctorOptions | { error: string } {
@@ -138,6 +141,7 @@ function parseArgs(argv: readonly string[]): DoctorOptions | { error: string } {
     scheduled: false,
     recentProjects: true,
     refresh: false,
+    corroborate: false,
   };
   for (const arg of argv) {
     if (arg === "--fix") opts.fix = true;
@@ -148,6 +152,7 @@ function parseArgs(argv: readonly string[]): DoctorOptions | { error: string } {
     // Handled by runDoctorCommandAsync before the sync pass; accepted here so
     // the argument parser does not reject it.
     else if (arg === "--refresh") opts.refresh = true;
+    else if (arg === "--corroborate") opts.corroborate = true;
     else if (arg === "--user") {
       opts.scopes = ["user"];
       opts.recentProjects = false;
@@ -509,6 +514,59 @@ function renderLab(fromLab: readonly ContractComparison[], opts: DoctorOptions):
 }
 
 /**
+ * "Does this machine agree with what the lab measured?"
+ *
+ * A separate answer with a separate exit code, because it drives a different
+ * decision from everything else here: whether an internal pack is promoted to
+ * every customer machine. Sharing doctor's output would bury a one-line verdict
+ * under a config report that has nothing to do with it.
+ *
+ * Exit codes follow the same contract as the rest of the command:
+ *   0  corroborated  — an independent machine saw the same thing
+ *   1  contradicted  — the two disagree; something measured wrong
+ *   2  no overlap    — nothing comparable, so nothing was learned
+ *
+ * 2 rather than 0 for no-overlap is the whole point. Promotion must require
+ * evidence, and a machine that could not check has not supplied any.
+ */
+function runCorroborate(): DoctorResult {
+  const pack = readCachedPack();
+  if (!pack) {
+    return { lines: ["No pack to check against — nothing has been published, or the fetch failed."], exitCode: 2 };
+  }
+  let local: unknown;
+  try {
+    local = JSON.parse(readFileSync(contractTableFile(), "utf8"));
+  } catch {
+    return { lines: ["This machine has no observations yet, so it cannot corroborate anything."], exitCode: 2 };
+  }
+
+  const result = corroborateContractPack(pack, local);
+  const lines: string[] = [];
+  switch (result.verdict) {
+    case "corroborated":
+      lines.push(`corroborated: ${result.agreed} shape(s) across ${result.comparedClis.join(", ")} match what the lab recorded`);
+      break;
+    case "contradicted":
+      lines.push(`contradicted: this machine and the lab do not agree`);
+      for (const d of result.disagreements) lines.push(`  ${d.detail}`);
+      break;
+    default:
+      lines.push("no overlap: nothing on this machine was comparable to the pack");
+      break;
+  }
+  // Always say what was skipped and why. A verdict of "no overlap" is useless
+  // without it, and it is the line that tells you the machine is running a
+  // different CLI version from the one the lab drove.
+  for (const s of result.skipped) lines.push(`  skipped ${s.cli}: ${s.reason}`);
+
+  return {
+    lines,
+    exitCode: result.verdict === "corroborated" ? 0 : result.verdict === "contradicted" ? 1 : 2,
+  };
+}
+
+/**
  * The async front door.
  *
  * Everything else here is pure — argv in, lines out — which is what makes it
@@ -519,12 +577,16 @@ function renderLab(fromLab: readonly ContractComparison[], opts: DoctorOptions):
 export async function runDoctorCommandAsync(argv: readonly string[] = []): Promise<DoctorResult> {
   // Only on the paths that asked for it: the scheduled lane, or an explicit
   // --refresh. An interactive `doctor` must never wait on the network.
-  if (argv.includes("--scheduled") || argv.includes("--refresh")) {
+  const corroborate = argv.includes("--corroborate");
+  if (corroborate || argv.includes("--scheduled") || argv.includes("--refresh")) {
     try {
-      await refreshContractPack({ force: argv.includes("--refresh") });
+      await refreshContractPack({ force: corroborate || argv.includes("--refresh") });
     } catch {
       // A pack is extra information; failing to get one changes no answer.
     }
   }
+  // Deliberately not folded into the report: it answers a different question,
+  // for a different reader, with a different exit code.
+  if (corroborate) return runCorroborate();
   return runDoctorCommand(argv);
 }

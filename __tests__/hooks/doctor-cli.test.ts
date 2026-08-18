@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runDoctorCommand } from "../../src/hooks/doctor-cli";
+import { runDoctorCommand, runDoctorCommandAsync } from "../../src/hooks/doctor-cli";
 import { claudeCode } from "../../src/hooks/integrations";
 
 let cwd: string;
@@ -438,5 +438,73 @@ describe("doctor: what the lab saw that this machine has not", () => {
     // scheduled lane's own flag would make doctor exit 2.
     write("observed.json", LOCAL);
     expect(runDoctorCommand(["--user", "--refresh"]).exitCode).toBe(0);
+  });
+});
+
+describe("doctor --corroborate: the promotion gate", () => {
+  // --corroborate forces a pack refresh, and a unit test must never depend on
+  // the network — nor quietly reach the real published pack and assert against
+  // whatever a vendor shipped this week. This exercises exactly the seeded
+  // files, which is what the escape hatch is for.
+  beforeEach(() => {
+    process.env.FAILPROOFAI_NO_DOWNLOAD = "1";
+  });
+  afterEach(() => {
+    delete process.env.FAILPROOFAI_NO_DOWNLOAD;
+  });
+
+  function seed(pack: unknown, local: unknown): void {
+    mkdirSync(join(home, "contracts"), { recursive: true });
+    writeFileSync(join(home, "contracts", "pack.json"), JSON.stringify(pack));
+    writeFileSync(join(home, "contracts", "observed.json"), JSON.stringify(local));
+  }
+  const goose = (version: string, keys: string[]) => ({
+    clis: {
+      goose: { version, hooks: { PreToolUse: { envelope: [], tools: { write: keys } } } },
+    },
+  });
+
+  it("exits 0 when this machine saw what the lab saw", async () => {
+    seed(goose("1.43.0", ["content", "path"]), goose("1.43.0", ["content", "path"]));
+    const r = await runDoctorCommandAsync(["--corroborate"]);
+    expect(r.exitCode).toBe(0);
+    expect(text(r)).toContain("corroborated");
+  });
+
+  it("exits 1 and names the disagreement", async () => {
+    seed(goose("1.43.0", ["content", "uri"]), goose("1.43.0", ["content", "path"]));
+    const r = await runDoctorCommandAsync(["--corroborate"]);
+    expect(r.exitCode).toBe(1);
+    expect(text(r)).toContain("do not lead to the same finding");
+  });
+
+  it("exits 2 rather than 0 when nothing was comparable", async () => {
+    // The load-bearing choice. Promotion must require evidence, and a machine
+    // that could not check has supplied none — returning 0 here would make the
+    // gate decorative while looking like it passed.
+    seed(goose("1.44.0", ["content", "path"]), goose("1.43.0", ["content", "path"]));
+    const r = await runDoctorCommandAsync(["--corroborate"]);
+    expect(r.exitCode).toBe(2);
+    expect(text(r)).toContain("no overlap");
+    // And it must say WHY, or "no overlap" is unactionable.
+    expect(text(r)).toContain("lab drove 1.44.0");
+  });
+
+  it("exits 2 when there is no pack, or no observations", async () => {
+    expect((await runDoctorCommandAsync(["--corroborate"])).exitCode).toBe(2);
+    mkdirSync(join(home, "contracts"), { recursive: true });
+    writeFileSync(join(home, "contracts", "pack.json"), JSON.stringify(goose("1.43.0", ["path"])));
+    const r = await runDoctorCommandAsync(["--corroborate"]);
+    expect(r.exitCode).toBe(2);
+    expect(text(r)).toContain("cannot corroborate");
+  });
+
+  it("answers only that question, with none of the config report", async () => {
+    // It drives a different decision for a different reader; burying a one-line
+    // verdict under a config report would make it unusable in a script.
+    seed(goose("1.43.0", ["content", "path"]), goose("1.43.0", ["content", "path"]));
+    const out = text(await runDoctorCommandAsync(["--corroborate"]));
+    expect(out).not.toContain("hook configs on this machine");
+    expect(out).not.toContain("Payload translation");
   });
 });

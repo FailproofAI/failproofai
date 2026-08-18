@@ -25,16 +25,28 @@ import { dirname, join } from "node:path";
 import { contractPackFile } from "./fp-home";
 
 /**
- * Where the pack is published.
+ * Where the pack comes from, per channel.
  *
- * Empty on purpose. The lab publishes to its own repo under the failproofai
- * org, and that repo does not exist yet — so there is nothing to point at, and
- * a plausible-looking guess would be worse than nothing: it would ship a URL
- * that 404s on every machine, indefinitely, while looking configured. Set this
- * one constant when the repo is created, or point `FAILPROOFAI_CONTRACTS_URL`
- * at a mirror.
+ * Both are CONSTRUCTED, never discovered — no API call to rate-limit, and no
+ * way to end up holding an artifact from a source we did not name.
+ *
+ * `stable` is what every client machine uses. It resolves to the newest
+ * PROMOTED pack: the lab's unattended pushes cut prereleases, and GitHub's
+ * `latest` skips those, so a pack built from a bad lab run cannot become the
+ * one customers fetch. It answers 404 until the first promotion, and that is
+ * the correct answer — no reviewed contract exists yet, and treating "nothing
+ * published" as "nothing to say" is right.
+ *
+ * `internal` is our own machines, which take the risk first. It reads the
+ * branch directly rather than the newest prerelease, because "the latest
+ * prerelease" has no constructible URL — only an API query, which is exactly
+ * the discovery step the stable path is designed to avoid. The branch is
+ * always the newest internal pack by definition.
  */
-const DEFAULT_PACK_URL = "";
+const CHANNEL_URLS: Readonly<Record<string, string>> = {
+  stable: "https://github.com/FailproofAI/hook-contracts/releases/latest/download/pack.json",
+  internal: "https://raw.githubusercontent.com/FailproofAI/hook-contracts/packs/pack.json",
+};
 
 /** One bound for the whole fetch. A pack is tens of kilobytes. */
 const FETCH_TIMEOUT_MS = 20_000;
@@ -51,8 +63,21 @@ export type PackFetchOutcome =
   | { status: "skipped"; reason: string }
   | { status: "failed"; reason: string };
 
+/**
+ * Which pack this machine follows.
+ *
+ * An unknown channel name falls back to `stable` rather than failing: getting
+ * this wrong must never be a way to end up on the unreviewed channel by
+ * accident.
+ */
+export function packChannel(): string {
+  const named = (process.env.FAILPROOFAI_CONTRACTS_CHANNEL || "").trim();
+  return named in CHANNEL_URLS ? named : "stable";
+}
+
 export function packUrl(): string {
-  return (process.env.FAILPROOFAI_CONTRACTS_URL || DEFAULT_PACK_URL).trim();
+  const override = (process.env.FAILPROOFAI_CONTRACTS_URL || "").trim();
+  return override || CHANNEL_URLS[packChannel()];
 }
 
 /**

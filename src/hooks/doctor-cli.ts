@@ -37,7 +37,11 @@ import { detectConfigDrift, driftFindings, type ConfigDriftReport } from "./conf
 import { repairConfigDrift, type RepairOutcome } from "./config-repair";
 import { getHookActivityPage, getHookActivityPageCount } from "./hook-activity-store";
 import { compareContractTable, type ContractComparison, type ContractFinding } from "./contract-compare";
-import { readCachedPack, refreshContractPack } from "./contract-pack-client";
+import {
+  readCachedPack,
+  refreshContractPack,
+  type PackFetchOutcome,
+} from "./contract-pack-client";
 import { corroborateContractPack } from "./contract-corroborate";
 import { contractTableFile } from "./fp-home";
 import type { HookScope } from "./types";
@@ -529,7 +533,17 @@ function renderLab(fromLab: readonly ContractComparison[], opts: DoctorOptions):
  * 2 rather than 0 for no-overlap is the whole point. Promotion must require
  * evidence, and a machine that could not check has not supplied any.
  */
-function runCorroborate(): DoctorResult {
+function runCorroborate(fetched: PackFetchOutcome): DoctorResult {
+  // A stale pack is not evidence. The cache survives a failed refresh — and
+  // survives a CHANGE OF CHANNEL — so without this a machine that once looked
+  // at the internal pack keeps corroborating against it forever, and a GitHub
+  // blip lets the gate pass on data nobody confirmed is current. The pull
+  // request this opens is built from the branch as it is NOW, so agreeing with
+  // yesterday's copy is agreeing with the wrong thing.
+  if (fetched.status !== "fetched") {
+    const why = "reason" in fetched ? fetched.reason : fetched.status;
+    return { lines: [`Could not fetch the current pack (${why}) — refusing to judge a stale one.`], exitCode: 2 };
+  }
   const pack = readCachedPack();
   if (!pack) {
     return { lines: ["No pack to check against — nothing has been published, or the fetch failed."], exitCode: 2 };
@@ -578,15 +592,19 @@ export async function runDoctorCommandAsync(argv: readonly string[] = []): Promi
   // Only on the paths that asked for it: the scheduled lane, or an explicit
   // --refresh. An interactive `doctor` must never wait on the network.
   const corroborate = argv.includes("--corroborate");
+  let fetched: PackFetchOutcome = { status: "skipped", reason: "not requested" };
   if (corroborate || argv.includes("--scheduled") || argv.includes("--refresh")) {
     try {
-      await refreshContractPack({ force: corroborate || argv.includes("--refresh") });
-    } catch {
-      // A pack is extra information; failing to get one changes no answer.
+      fetched = await refreshContractPack({ force: corroborate || argv.includes("--refresh") });
+    } catch (err) {
+      // For the report a pack is extra information, so a failure changes no
+      // answer. For the gate below it changes everything, which is why the
+      // outcome is carried rather than discarded.
+      fetched = { status: "failed", reason: err instanceof Error ? err.message : "fetch threw" };
     }
   }
   // Deliberately not folded into the report: it answers a different question,
   // for a different reader, with a different exit code.
-  if (corroborate) return runCorroborate();
+  if (corroborate) return runCorroborate(fetched);
   return runDoctorCommand(argv);
 }

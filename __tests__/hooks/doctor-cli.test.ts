@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runDoctorCommand, runDoctorCommandAsync } from "../../src/hooks/doctor-cli";
@@ -442,27 +443,45 @@ describe("doctor: what the lab saw that this machine has not", () => {
 });
 
 describe("doctor --corroborate: the promotion gate", () => {
-  // --corroborate forces a pack refresh, and a unit test must never depend on
-  // the network — nor quietly reach the real published pack and assert against
-  // whatever a vendor shipped this week. This exercises exactly the seeded
-  // files, which is what the escape hatch is for.
-  beforeEach(() => {
-    process.env.FAILPROOFAI_NO_DOWNLOAD = "1";
-  });
-  afterEach(() => {
-    delete process.env.FAILPROOFAI_NO_DOWNLOAD;
+  // The pack is SERVED, not seeded on disk. --corroborate now refuses to judge
+  // a pack it could not fetch, because the cache survives both a failed refresh
+  // and a change of channel — so a machine that once looked at the internal
+  // pack would otherwise keep corroborating against it forever. Writing the
+  // fixture straight into the cache would test a path the gate no longer takes.
+  let server: Server;
+  let respond: (send: (status: number, body: string) => void) => void;
+
+  beforeEach(async () => {
+    respond = (send) => send(404, "not found");
+    server = createServer((_req, res) => {
+      respond((status, body) => {
+        res.writeHead(status, { "content-type": "application/json" });
+        res.end(body);
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const addr = server.address();
+    const port = typeof addr === "object" && addr ? addr.port : 0;
+    process.env.FAILPROOFAI_CONTRACTS_URL = `http://127.0.0.1:${port}/pack.json`;
   });
 
-  function seed(pack: unknown, local: unknown): void {
-    mkdirSync(join(home, "contracts"), { recursive: true });
-    writeFileSync(join(home, "contracts", "pack.json"), JSON.stringify(pack));
-    writeFileSync(join(home, "contracts", "observed.json"), JSON.stringify(local));
-  }
+  afterEach(async () => {
+    delete process.env.FAILPROOFAI_CONTRACTS_URL;
+    await new Promise<void>((r) => server.close(() => r()));
+  });
+
   const goose = (version: string, keys: string[]) => ({
     clis: {
       goose: { version, hooks: { PreToolUse: { envelope: [], tools: { write: keys } } } },
     },
   });
+
+  /** The lab's pack comes over the wire; this machine's observations from disk. */
+  function seed(pack: unknown, local: unknown): void {
+    respond = (send) => send(200, JSON.stringify(pack));
+    mkdirSync(join(home, "contracts"), { recursive: true });
+    writeFileSync(join(home, "contracts", "observed.json"), JSON.stringify(local));
+  }
 
   it("exits 0 when this machine saw what the lab saw", async () => {
     seed(goose("1.43.0", ["content", "path"]), goose("1.43.0", ["content", "path"]));
@@ -490,10 +509,22 @@ describe("doctor --corroborate: the promotion gate", () => {
     expect(text(r)).toContain("lab drove 1.44.0");
   });
 
-  it("exits 2 when there is no pack, or no observations", async () => {
-    expect((await runDoctorCommandAsync(["--corroborate"])).exitCode).toBe(2);
-    mkdirSync(join(home, "contracts"), { recursive: true });
-    writeFileSync(join(home, "contracts", "pack.json"), JSON.stringify(goose("1.43.0", ["path"])));
+  it("refuses to judge a pack it could not fetch, even with one cached", async () => {
+    // The failure this exists for: the cache outlives a failed refresh AND a
+    // change of channel, so without this a GitHub blip lets the gate pass on
+    // yesterday's copy — while the pull request it opens is built from the
+    // branch as it is now.
+    seed(goose("1.43.0", ["content", "path"]), goose("1.43.0", ["content", "path"]));
+    expect((await runDoctorCommandAsync(["--corroborate"])).exitCode).toBe(0);
+
+    respond = (send) => send(503, "down");
+    const r = await runDoctorCommandAsync(["--corroborate"]);
+    expect(r.exitCode).toBe(2);
+    expect(text(r)).toContain("refusing to judge a stale one");
+  });
+
+  it("exits 2 when this machine has no observations of its own", async () => {
+    respond = (send) => send(200, JSON.stringify(goose("1.43.0", ["content", "path"])));
     const r = await runDoctorCommandAsync(["--corroborate"]);
     expect(r.exitCode).toBe(2);
     expect(text(r)).toContain("cannot corroborate");

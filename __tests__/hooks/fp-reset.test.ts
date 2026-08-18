@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import * as daemonService from "@/src/hooks/daemon-service";
 import {
   mkdtempSync,
   rmSync,
@@ -540,11 +541,36 @@ describe("checkLayoutForCli", () => {
   // its next reboot, and a daemon-configured machine that cannot reach its
   // daemon denies every tool call.
   describe("the daemon warning on the branch that migrates", () => {
+    /** Collapse the warning's terminal hard-wrapping so a phrase that straddles
+     *  a newline still matches. */
+    function unwrapped(text: string): string {
+      return text.replace(/\s+/g, " ");
+    }
+
     /** A managed install of `ver`, which is what `daemonVersionSkew()` reads. */
     function installedDaemon(ver: string) {
       mkdirSync(binDir(), { recursive: true });
       writeFileSync(resolve(binDir(), `failproofaid-${ver}`), "ELF");
     }
+
+    // `daemonServiceStatus()` reads the HOST's systemd unit, which no
+    // FAILPROOFAI_HOME can sandbox — so on a developer machine that has run
+    // `failproofai config`, `healDaemonFlag()` sees a real running service,
+    // fails its probe against this temp home's absent socket, and prints its
+    // own "cannot evaluate policies" paragraph instead. That both clears
+    // `daemon.configured` and drowns out the skew warning these tests are
+    // about, so they passed or failed depending on whether the developer
+    // happened to have a daemon installed.
+    //
+    // Pinned to "stopped": the one status `healDaemonFlag` deliberately ignores
+    // (a stopped service is usually a restart in progress), which leaves
+    // `staleDaemonHint()` as the only thing writing lines here.
+    beforeEach(() => {
+      vi.spyOn(daemonService, "daemonServiceStatus").mockReturnValue("stopped");
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
 
     it("warns hard when the machine REQUIRES a daemon that will not start", async () => {
       seedLayoutOne();
@@ -557,7 +583,9 @@ describe("checkLayoutForCli", () => {
       expect(text).toContain("0.0.1-old");
       // Must name the consequence, not just the mismatch: the reason to act now
       // rather than at the next reboot is that the next reboot is the failure.
-      expect(text).toMatch(/denies every tool call/i);
+      // Matched on whitespace-normalised text because the warning is
+      // hard-wrapped for the terminal, so the phrase straddles a newline.
+      expect(unwrapped(text)).toMatch(/denies every tool call/i);
       // And the command that actually fixes it. `failproofai config` was the
       // old advice and rebuilds the service rather than updating the binary.
       expect(text).toContain("failproofai update");
@@ -574,7 +602,9 @@ describe("checkLayoutForCli", () => {
       const text = (await checkLayoutForCli()).lines.join("\n");
 
       expect(text).toContain("0.0.1-old");
-      expect(text).not.toMatch(/denies every tool call/i);
+      // Normalised for the same reason as above — a raw-text negative would
+      // pass merely because the phrase happened to wrap.
+      expect(unwrapped(text)).not.toMatch(/denies every tool call/i);
     });
 
     it("says nothing about the daemon when there is no skew", async () => {

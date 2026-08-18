@@ -131,7 +131,7 @@ def query_create(
 
     Examples:
 
-    * `fp query create top-agents --sql "SELECT agent_id, count() FROM fp.events GROUP BY agent_id"`
+    * `fp query create top-agents --sql "SELECT agent_id, count() FROM analytics.events GROUP BY agent_id"`
     * `fp query create errors-by-env --sql @errs.sql --description "errored events per environment"`
     """
     state: AppState = ctx.obj

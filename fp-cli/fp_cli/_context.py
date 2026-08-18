@@ -317,6 +317,6 @@ GLOBALS_EPILOG = (
     "**Global** options come *before* the command — `--json`, `--base-url`, `--token`, "
     "`--api-key`, `--insecure`/`--secure`, `--timeout`, `--quiet`, `--no-color`. A command's (or "
     "subcommand's) own options come *after* it. "
-    "e.g. `fp --json keys create ci-bot -p events:read` — `--json` is global, "
-    "`keys` the command, `create` the subcommand, `-p` its option."
+    "e.g. `fp --json keys create ci-bot --permission-set read-only` — `--json` is global, "
+    "`keys` the command, `create` the subcommand, `--permission-set` its option."
 )

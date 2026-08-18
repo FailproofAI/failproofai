@@ -132,3 +132,6 @@ COMMIT_MSG.tmp
 **/.failproofai/bin/
 **/.failproofai/run/
 **/.failproofai/state/
+
+# blog drafts (local, not for commit yet)
+/blog/

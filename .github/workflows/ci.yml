@@ -81,9 +81,17 @@ jobs:
 
       - name: Check for unresolved PR placeholders in CHANGELOG
         run: |
-          if [ -f CHANGELOG.md ] && grep -qF '(#PR)' CHANGELOG.md; then
-            echo "::error file=CHANGELOG.md::Found unresolved '(#PR)' placeholder(s). Please replace with the actual PR number."
-            exit 1
+          if [ -f CHANGELOG.md ]; then
+            if grep -qF '(#PR)' CHANGELOG.md; then
+              echo "::error file=CHANGELOG.md::Found unresolved '(#PR)' placeholder(s). Please replace with the actual PR number."
+              exit 1
+            else
+              grep_status=$?
+              if [ "$grep_status" -ne 1 ]; then
+                echo "::error file=CHANGELOG.md::Unable to scan CHANGELOG.md."
+                exit "$grep_status"
+              fi
+            fi
           fi
 
       - name: Lint

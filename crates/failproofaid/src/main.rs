@@ -3,6 +3,7 @@ mod cloud_client;
 pub mod cloud_policies;
 mod lock;
 mod paths;
+mod repair_lane;
 mod server;
 mod telemetry;
 #[cfg(test)]
@@ -139,6 +140,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // WITHOUT root, against a system unit — takes effect without a restart.
     let mut audit_lane = audit_lane::spawn(shutdown.clone());
 
+    // Hook-config repair. Same shape as the audit lane and the same reasoning:
+    // its own thread, the same shutdown flag, config re-read every tick, and
+    // nothing propagated to `run()` — a fault in a lane nobody watches must
+    // never take down a daemon that fails closed.
+    let mut repair_lane = repair_lane::spawn(shutdown.clone());
+
     // Handled rather than `?`-ed, because a bare `?` here returns past every
     // join below — including the telemetry flush — so a daemon that cannot bind
     // its socket would buffer `daemon_started` and then take it to the grave.
@@ -181,6 +188,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // waits on its child and kills the process group rather than waiting the
     // scan out, so a `systemctl stop` is never held up by an audit.
     join_lane(&mut audit_lane);
+    join_lane(&mut repair_lane);
 
     // Joined BEFORE the stop event is recorded, so nothing contends with the
     // final send. `run_result` is what distinguishes the two ways this daemon

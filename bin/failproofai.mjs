@@ -271,7 +271,7 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill", "flush", "harness"];
+  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill", "flush", "harness", "doctor"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -771,6 +771,55 @@ EXAMPLES
       // A path is a value the user typed, and `enterprise-docs/product-analytics.md`
       // promises we send shape, never value.
       sub: ["list", "add-path", "remove-path"].includes(subArgs[0]) ? subArgs[0] : "unknown",
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
+  if (args[0] === "doctor") {
+    const subArgs = args.slice(1);
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
+      console.log(`
+failproofai doctor — check that this machine's hook configs are still wired up
+
+USAGE
+  failproofai doctor [--fix] [--json] [--user|--project]
+
+WHAT IT CHECKS
+  Whether each agent CLI's hook config still matches what this build installs.
+  When a vendor changes its config format, our entry stops being valid and that
+  CLI runs with NO enforcement — every policy, silently. This is the check for
+  that; it does NOT prove the vendor accepted the file, only the vendor's own
+  behaviour can show that.
+
+OPTIONS
+  --fix        repair what drifted: back up, rewrite, verify, roll back if it
+               did not take
+  --json       machine-readable output
+  --user       user-scope configs only
+  --project    project-scope configs only (uses the current directory)
+
+EXIT CODES
+  0  nothing wrong, or everything wrong was repaired
+  1  findings remain that a human should look at
+  2  could not check — refusing to answer rather than answering "fine"
+`.trimStart());
+      process.exit(0);
+    }
+
+    lastSubcommand = "doctor";
+    const { runDoctorCommand } = await import("../src/hooks/doctor-cli");
+    const result = runDoctorCommand(subArgs);
+    for (const line of result.lines) {
+      if (result.exitCode === 0) console.log(line);
+      else console.error(line);
+    }
+    await track("cli_doctor", {
+      ok: result.exitCode === 0,
+      exit_code: result.exitCode,
+      fixed: subArgs.includes("--fix"),
+      scheduled: subArgs.includes("--scheduled"),
     });
     lastSubcommand = null;
     await exitAfterFlush(result.exitCode);

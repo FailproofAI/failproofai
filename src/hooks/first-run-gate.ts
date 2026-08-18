@@ -35,6 +35,10 @@ export const FIRST_RUN_EXEMPT_SUBCOMMANDS: readonly string[] = [
   // Same reason: a backfill is an explicit instruction about an already-set-up
   // machine, and interrupting it to offer setup answers a question nobody asked.
   "backfill",
+  // The daemon's repair lane runs `doctor --fix --scheduled` unattended. An
+  // interactive setup prompt there is a lane that hangs until its timeout,
+  // every tick, forever — while the config says repair is on.
+  "doctor",
 ];
 
 export function shouldOfferFirstRun(args: readonly string[]): boolean {

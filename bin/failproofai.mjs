@@ -786,6 +786,7 @@ failproofai doctor — check that this machine's hook configs are still wired up
 USAGE
   failproofai doctor [--fix] [--json] [--refresh] [--user|--project]
   failproofai doctor --corroborate
+  failproofai doctor --template=<cli>
 
 WHAT IT CHECKS
   Two things, with different remedies.
@@ -806,6 +807,10 @@ OPTIONS
                did not take
   --json       machine-readable output
   --refresh    fetch the contracts lab's latest pack before checking
+  --template=<cli>
+               print the template this machine writes that CLI's config from, as
+               the JSON a candidate file wants — edit one field and hand it to
+               the lab rather than rebuilding the object by hand
   --corroborate
                answer ONLY "does this machine agree with the lab's pack?", for
                the promotion gate. Exits 0 corroborated, 1 contradicted, 2

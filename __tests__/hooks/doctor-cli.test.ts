@@ -539,3 +539,37 @@ describe("doctor --corroborate: the promotion gate", () => {
     expect(out).not.toContain("Payload translation");
   });
 });
+
+describe("doctor --template: authoring a candidate", () => {
+  it("prints the resolved template as the JSON a candidate file wants", () => {
+    // Authoring one otherwise means reading TypeScript and hand-copying a
+    // structure — exactly the transcription error templates exist to remove.
+    const r = runDoctorCommand(["--template=copilot"]);
+    expect(r.exitCode).toBe(0);
+    const parsed = JSON.parse(text(r)) as Record<string, { commandFields: string[] }>;
+    // Wrapped by CLI, so the output can be edited and handed straight to the lab.
+    expect(Object.keys(parsed)).toEqual(["copilot"]);
+    expect(parsed.copilot.commandFields).toEqual(["bash", "powershell"]);
+  });
+
+  it("names the CLIs it can print for when asked about one it cannot", () => {
+    const r = runDoctorCommand(["--template=nope"]);
+    expect(r.exitCode).toBe(2);
+    expect(text(r)).toContain("goose");
+  });
+
+  it("prints only that, with none of the report", () => {
+    const out = text(runDoctorCommand(["--template=goose"]));
+    expect(out).not.toContain("hook configs on this machine");
+    expect(() => JSON.parse(out)).not.toThrow();
+  });
+
+  it("answers from disk without reaching for the network", async () => {
+    // The async front door refreshes the pack for other modes; printing a
+    // template must not wait on it.
+    process.env.FAILPROOFAI_CONTRACTS_URL = "http://127.0.0.1:1/nothing-listening";
+    const r = await runDoctorCommandAsync(["--template=goose"]);
+    delete process.env.FAILPROOFAI_CONTRACTS_URL;
+    expect(r.exitCode).toBe(0);
+  });
+});

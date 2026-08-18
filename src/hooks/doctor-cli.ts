@@ -45,6 +45,7 @@ import {
 import { corroborateContractPack } from "./contract-corroborate";
 import { contractTableFile } from "./fp-home";
 import { resolveTemplate } from "./template-source";
+import { HOOK_TEMPLATES } from "./config-template";
 import type { HookScope } from "./types";
 
 /**
@@ -57,6 +58,9 @@ import type { HookScope } from "./types";
  * quietly stops running is the exact failure this feature exists to remove.
  */
 const MAX_RECENT_PROJECTS = 8;
+
+/** CLIs whose config is written from a template, for the error message. */
+const TEMPLATED_CLIS = Object.keys(HOOK_TEMPLATES).sort();
 
 /**
  * How many activity pages to walk back through, newest first.
@@ -135,6 +139,8 @@ interface DoctorOptions {
   refresh: boolean;
   /** Answer only "does this machine agree with the lab's pack?" and nothing else. */
   corroborate: boolean;
+  /** Print the template a CLI's config is written from, and nothing else. */
+  template?: string;
 }
 
 function parseArgs(argv: readonly string[]): DoctorOptions | { error: string } {
@@ -158,6 +164,7 @@ function parseArgs(argv: readonly string[]): DoctorOptions | { error: string } {
     // the argument parser does not reject it.
     else if (arg === "--refresh") opts.refresh = true;
     else if (arg === "--corroborate") opts.corroborate = true;
+    else if (arg.startsWith("--template=")) opts.template = arg.slice("--template=".length);
     else if (arg === "--user") {
       opts.scopes = ["user"];
       opts.recentProjects = false;
@@ -244,6 +251,7 @@ export function runDoctorCommand(argv: readonly string[] = []): DoctorResult {
   if ("error" in parsed) {
     return { lines: [parsed.error, "Run `failproofai doctor --help` for usage."], exitCode: 2 };
   }
+  if (parsed.template !== undefined) return runPrintTemplate(parsed.template);
 
   const targets = targetsFor(parsed);
 
@@ -564,6 +572,30 @@ function renderLab(fromLab: readonly ContractComparison[], opts: DoctorOptions):
 }
 
 /**
+ * Print the template a CLI's config is currently written from.
+ *
+ * Authoring a candidate otherwise means reading TypeScript and hand-copying a
+ * structure, which is exactly the transcription error the templates exist to
+ * remove. This prints the resolved one — bundled, or whatever the machine is
+ * actually using — as the JSON a candidate file wants, so the workflow is edit
+ * one field rather than rebuild the object.
+ */
+function runPrintTemplate(cli: string): DoctorResult {
+  let resolved: ReturnType<typeof resolveTemplate>;
+  try {
+    resolved = resolveTemplate(cli);
+  } catch {
+    return {
+      lines: [`No hook template for "${cli}". Templated CLIs: ${TEMPLATED_CLIS.join(", ")}.`],
+      exitCode: 2,
+    };
+  }
+  // The wrapping object is what a candidate file looks like, so this output can
+  // be edited and handed straight to the lab.
+  return { lines: [JSON.stringify({ [cli]: resolved.template }, null, 2)], exitCode: 0 };
+}
+
+/**
  * "Does this machine agree with what the lab measured?"
  *
  * A separate answer with a separate exit code, because it drives a different
@@ -637,6 +669,9 @@ function runCorroborate(fetched: PackFetchOutcome): DoctorResult {
 export async function runDoctorCommandAsync(argv: readonly string[] = []): Promise<DoctorResult> {
   // Only on the paths that asked for it: the scheduled lane, or an explicit
   // --refresh. An interactive `doctor` must never wait on the network.
+  // Printing a template answers from what is already on disk, so it must not
+  // reach for the network first.
+  if (argv.some((a) => a.startsWith("--template="))) return runDoctorCommand(argv);
   const corroborate = argv.includes("--corroborate");
   let fetched: PackFetchOutcome = { status: "skipped", reason: "not requested" };
   if (corroborate || argv.includes("--scheduled") || argv.includes("--refresh")) {

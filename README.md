@@ -38,9 +38,10 @@ Agents that run in none of them report through the [Python SDK](https://docs.bef
 which gives you tracing, sessions and audits. Enforcement there needs a hook in
 your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map it.
 
-<!-- A 6-column table instead of inline <img> runs: table columns never re-wrap,
-     so the grid stays 2×6 at any window width (scrolling on very narrow screens
-     instead of collapsing into ragged orphan rows). -->
+<!-- A 7-column table instead of inline <img> runs: table columns never re-wrap,
+     so the grid stays 2×7 at any window width (scrolling on very narrow screens
+     instead of collapsing into ragged orphan rows). Kept at exactly two full
+     rows — 14 CLIs is 7×2, where 6 columns would leave a two-cell orphan row. -->
 <table align="center">
   <tr>
     <td align="center" width="96">
@@ -88,6 +89,14 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
         </picture>
       </a>
     </td>
+    <td align="center" width="96">
+      <a href="https://grok.com" title="grok CLI (xAI)">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/logos/grok-dark.svg" />
+          <img src="assets/logos/grok-light.svg" alt="grok CLI" width="56" height="56" />
+        </picture>
+      </a>
+    </td>
   </tr>
   <tr>
     <td align="center" width="96">
@@ -127,6 +136,11 @@ your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map i
           <source media="(prefers-color-scheme: dark)" srcset="assets/logos/goose-dark.svg" />
           <img src="assets/logos/goose-light.svg" alt="Goose" width="56" height="56" />
         </picture>
+      </a>
+    </td>
+    <td align="center" width="96">
+      <a href="https://github.com/QwenLM/qwen-code" title="Qwen Code (qwen)">
+        <img src="assets/logos/qwen.svg" alt="Qwen Code" width="56" height="56" />
       </a>
     </td>
   </tr>

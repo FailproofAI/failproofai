@@ -30,8 +30,16 @@ import pytest
 
 from failproofai_sdk import _resolver
 
-# tests/ -> python/ -> sdk/ -> repo root
-REPO_ROOT = Path(__file__).resolve().parents[3]
+# tests/ -> python/ -> sdk/ -> repo root.
+#
+# Guarded, because `parents[3]` raises IndexError on a shallower tree — and a
+# shallower tree is exactly the packaged-sdist case `_read_sibling` below is
+# written to handle gracefully. Unguarded, it raised at IMPORT, which pytest
+# reports as a collection error and which aborts the WHOLE suite rather than
+# skipping the one file that needs the repo. Reproduced by copying `sdk/python`
+# somewhere on its own and running pytest: 428 passing tests became `1 error`.
+_HERE = Path(__file__).resolve()
+REPO_ROOT = _HERE.parents[3] if len(_HERE.parents) > 3 else _HERE.parent
 FPAI_COLLECT_CONFIG = REPO_ROOT / "crates" / "fpai-collect" / "src" / "config.rs"
 FP_HOME_TS = REPO_ROOT / "src" / "hooks" / "fp-home.ts"
 
@@ -211,3 +219,17 @@ def test_agenteye_collector_still_reads_only_agenteye_home_and_dot_agenteye():
         "escape hatch this SDK documents for legacy hosts is no longer needed "
         "— retire it on purpose, not silently."
     )
+
+
+def test_this_file_can_be_imported_outside_the_repository():
+    """A collection error here aborts the whole suite, not just this file.
+
+    `_read_sibling` is written to skip when the repo is absent — "in a packaged
+    sdist that is expected" — but `parents[3]` raised IndexError at import
+    before any of that could run, so the graceful path was unreachable in the
+    one situation it exists for.
+    """
+    assert REPO_ROOT.is_absolute()
+    # The real repo has these; an sdist does not, and then the guards skip.
+    if FPAI_COLLECT_CONFIG.is_file():
+        assert FP_HOME_TS.is_file(), "half the contract's sources are missing"

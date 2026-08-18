@@ -2,15 +2,19 @@
 
 ## Unreleased
 
-### BREAKING: the session moved to `~/.failproofai/fpcli/cli-auth.json`
+### The session moved to `~/.failproofai/fpcli/cli-auth.json`
 
-- **You will be asked to log in once after upgrading.** The session was at
-  `~/.fp/cli.json`; it is now `~/.failproofai/fpcli/cli-auth.json`, still mode `0600`.
-  The old file is deliberately **not migrated** — a session lives 24h and one `fp login`
-  reissues it, which is cheaper than a credential-rewriting code path that runs once per
-  machine and is never exercised again. It is also **not deleted**: removing a file the
-  user did not ask us to touch is the one irreversible act here. `fp` names the stale
-  file in its not-logged-in message so the sign-out does not read as a bug.
+- **Nothing to do. Nobody is signed out.** The session was at `~/.fp/cli.json`; it is now
+  `~/.failproofai/fpcli/cli-auth.json`, still mode `0600`. A session at the old path is
+  adopted on the next command, so an upgrade is invisible.
+- **Adoption is a COPY.** The old file is left exactly where it is, which keeps a
+  downgrade working — an older `fp` still finds its session where it left it — and means
+  nothing irreversible happens on a machine mid-rollout. Remove `~/.fp/` yourself once
+  you are happy.
+- **It is best-effort on purpose.** If the new location cannot be written (read-only
+  home, full disk, a symlink we refuse) the session found is still returned, so a machine
+  that cannot be migrated keeps working rather than being logged out by our own
+  housekeeping.
 - **Why:** one product owned three top-level dotfiles — `~/.fp` (this CLI),
   `~/.failproofai` (the Enforcement CLI) and `~/.agenteye` (the SDK/collector spool).
   This collapses the first into the second. `~/.agenteye` stays: it is a wire contract
@@ -19,17 +23,15 @@
 - **`FP_HOME` still works and still wins.** Resolution is `FP_HOME` >
   `$FAILPROOFAI_HOME/fpcli` > `~/.failproofai/fpcli`. `FP_HOME` names the CLI's own
   directory and is used as-is, so an existing export addresses the same place it always
-  did; `FAILPROOFAI_HOME` names the shared home root, so `fpcli/` is appended.
-  **But note the FILENAME changed too** (`cli.json` → `cli-auth.json`), so an `FP_HOME`
-  user is logged out exactly like everyone else — their old session sits at
-  `$FP_HOME/cli.json`. The stale-file notice checks that location as well as the
-  default, and names whichever the current invocation would have read, so nobody is
-  told to delete an unrelated file on a machine they may share.
+  did; `FAILPROOFAI_HOME` names the shared home root, so `fpcli/` is appended. The
+  filename changed too (`cli.json` → `cli-auth.json`), so an `FP_HOME` user's old session
+  sits beside the new path and is adopted from there. A redirected config is never
+  reached past: with `FP_HOME` set the CLI does not look in `~/.fp` at all, because that
+  would adopt a session from a context the user explicitly moved away from.
 - **Nothing that authenticates without the config file changed.** `--token` / `FP_TOKEN`
   and `--api-key` / `FP_API_KEY` never touched disk and still do not, so CI that
-  authenticates by environment is unaffected by any of this. Read-only commands still
-  create no file at all. What breaks is exactly one thing: a machine whose session came
-  from the config file needs one `fp login`.
+  authenticates by environment never enters any of this. Read-only commands still create
+  no file at all.
 - **The CLI only ever creates.** It will bring `~/.failproofai` into existence on a
   machine that has never run the Enforcement CLI, and leaves a populated one untouched.
   The new path is registered in that home's layout (`src/hooks/fp-home.ts`) and

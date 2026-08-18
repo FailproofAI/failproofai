@@ -22,6 +22,11 @@ We only ever create. ``mkdir(parents=True, exist_ok=True)`` will bring
 ``~/.failproofai`` into existence on a machine that has never run the
 Enforcement CLI, and leaves a populated one exactly as it found it. Nothing here
 removes or rewrites a path it does not own.
+
+The move is invisible to the user: a session at the old path is adopted on the
+next command, so nobody is signed out by an upgrade. The old file is copied, not
+moved, which keeps a downgrade working — an older `fp` still finds its session
+where it left it.
 """
 
 from __future__ import annotations
@@ -93,8 +98,9 @@ def legacy_config_paths() -> list[Path]:
     own a ``~/.fp`` at all. Checking only the default would hand exactly those
     users an unexplained logout, which is the group least able to shrug at one.
 
-    Deliberately NOT migrated and NOT deleted; see the module docstring. This
-    exists so the CLI can *name* the stale file, nothing more.
+    A session found here is COPIED to the new location on the next command and
+    the original is left alone — see :func:`load_config`. Copying rather than
+    moving keeps a downgrade working: an older `fp` still finds its session.
 
     The relocated path is checked FIRST. When both exist, the one in the
     directory this invocation actually resolved is the one that explains this
@@ -102,9 +108,16 @@ def legacy_config_paths() -> list[Path]:
     set to delete an unrelated file on a machine they may share.
     """
     candidates = [base_dir() / LEGACY_FILE_NAME]
-    default = Path.home() / LEGACY_DIR_NAME / LEGACY_FILE_NAME
-    if default not in candidates:
-        candidates.append(default)
+    # `~/.fp` is only a candidate when the user has NOT redirected the config.
+    # Someone who exported `FP_HOME` said where their config lives; reaching past
+    # that into the home directory would adopt a session from a different context
+    # — a different tenant, or another user's leftovers on a shared box — and is
+    # also how this fallback quietly picked up the developer's own login when the
+    # suite ran.
+    if not os.environ.get("FP_HOME"):
+        default = Path.home() / LEGACY_DIR_NAME / LEGACY_FILE_NAME
+        if default not in candidates:
+            candidates.append(default)
     return candidates
 
 
@@ -145,15 +158,49 @@ class CliConfig:
     anonymous_id: Optional[str] = None  # stable per-machine id for anonymous telemetry
 
 
-def load_config() -> CliConfig:
-    """Load config, tolerating a missing or unreadable file."""
-    path = config_path()
+def _parse(path: Path) -> Optional[CliConfig]:
+    """Read one config file, or ``None`` if it is missing/unreadable/not ours."""
     try:
         data = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return CliConfig()
+    except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return None
     if not isinstance(data, dict):
-        return CliConfig()
+        return None
+    return _from_dict(data)
+
+
+def load_config() -> CliConfig:
+    """Load the session, adopting a pre-move one the first time we see it.
+
+    The move is silent for the user: nobody is signed out, no command changes
+    behaviour, and CI that authenticates by env var never enters this path at
+    all. The adoption is a copy — the old file is left exactly where it is, so
+    downgrading to a previous `fp` finds its session intact and this is
+    reversible on the machine as well as in the release.
+
+    Adoption is best-effort by design. If the new location cannot be written
+    (read-only home, a symlink we refuse, a full disk) the caller still gets the
+    session that was found, so a machine that cannot be migrated keeps working
+    rather than being logged out by our own housekeeping.
+    """
+    current = _parse(config_path())
+    if current is not None:
+        return current
+
+    for legacy in legacy_config_paths():
+        adopted = _parse(legacy)
+        if adopted is None:
+            continue
+        try:
+            save_config(adopted)
+        except OSError:
+            pass  # unwritable target: still hand back the session we found
+        return adopted
+
+    return CliConfig()
+
+
+def _from_dict(data: dict) -> CliConfig:
     return CliConfig(
         base_url=data.get("base_url"),
         session_token=data.get("session_token"),

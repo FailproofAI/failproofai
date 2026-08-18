@@ -157,8 +157,10 @@ keeps a layout migration from dropping it.
 The Python SDK and the collector keep their own spool under `~/.agenteye`. That one is a
 wire contract with the collector rather than a preference, so it did not move.
 
-> **Upgrading from a version that used `~/.fp/cli.json`?** You will be asked to log in
-> once. The old file is not read and not deleted; remove `~/.fp/` when convenient.
+> **Upgrading from a version that used `~/.fp/cli.json`?** Nothing to do — the old
+> session is adopted on your next command, so you are not signed out. It is copied, not
+> moved, so rolling back to an older `fp` still works; remove `~/.fp/` yourself once you
+> are happy.
 
 For a dashboard with a self-signed or internal TLS certificate, add `--insecure` to skip
 certificate verification (saved at login, so you set it once). This disables protection

@@ -217,9 +217,73 @@ def _plant_legacy(home: Path) -> Path:
     return path
 
 
-def test_a_legacy_session_is_not_read(clean_env):
-    """Forced re-login: the old token must not silently keep the user signed in."""
+def test_a_legacy_session_is_adopted(clean_env):
+    """Nobody is signed out by the move. The old session is picked up as-is."""
     _plant_legacy(clean_env)
+    loaded = cfg.load_config()
+    assert loaded.session_token == "legacy"
+    assert loaded.email == "old@x"
+
+
+def test_adoption_writes_the_session_to_the_new_location(clean_env):
+    _plant_legacy(clean_env)
+    assert not cfg.config_path().exists()
+    cfg.load_config()
+    assert json.loads(cfg.config_path().read_text())["session_token"] == "legacy"
+
+
+def test_adoption_is_a_copy_so_a_downgrade_still_works(clean_env):
+    """The old `fp` must still find its session if someone rolls back."""
+    legacy = _plant_legacy(clean_env)
+    cfg.load_config()
+    assert json.loads(legacy.read_text())["session_token"] == "legacy"
+
+
+def test_adoption_does_not_happen_when_a_current_session_exists(clean_env):
+    _plant_legacy(clean_env)
+    cfg.save_config(cfg.CliConfig(session_token="current"))
+    assert cfg.load_config().session_token == "current"
+
+
+def test_a_corrupt_legacy_file_is_skipped_not_adopted(clean_env):
+    old = clean_env / ".fp"
+    old.mkdir()
+    (old / "cli.json").write_text("{ not json")
+    assert cfg.load_config().session_token is None
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_an_unwritable_target_still_hands_back_the_session(clean_env):
+    """Our housekeeping must never be the reason someone is logged out."""
+    _plant_legacy(clean_env)
+    home = clean_env / ".failproofai"
+    home.mkdir()
+    home.chmod(0o500)
+    try:
+        assert cfg.load_config().session_token == "legacy"
+    finally:
+        home.chmod(0o700)
+
+
+def test_a_relocated_legacy_session_is_adopted(clean_env, monkeypatch, tmp_path):
+    """`FP_HOME` users are carried across too — their old file is beside the new."""
+    relocated = tmp_path / "custom"
+    relocated.mkdir()
+    (relocated / "cli.json").write_text(json.dumps({"session_token": "relocated"}))
+    monkeypatch.setenv("FP_HOME", str(relocated))
+    assert cfg.load_config().session_token == "relocated"
+
+
+def test_fp_home_does_not_reach_into_the_home_directory(clean_env, monkeypatch, tmp_path):
+    """Someone who redirected the config said where it lives. Respect that.
+
+    Reaching past `FP_HOME` into `~/.fp` would adopt a session from a different
+    context — another tenant, or another user's leftovers on a shared box.
+    """
+    _plant_legacy(clean_env)  # a session at ~/.fp/cli.json
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    monkeypatch.setenv("FP_HOME", str(empty))
     assert cfg.load_config().session_token is None
 
 

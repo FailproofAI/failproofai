@@ -36,6 +36,10 @@
 
 - Correct a comment in `hook-telemetry.ts` claiming `isTelemetryEnabled()` is memoised. `lib/telemetry-enabled.ts` documents at length that it is resolved fresh on every call, deliberately — an opt-out a long-lived process ignores until restart is not an opt-out — so the comment described the exact optimisation that file rejects. (#701)
 
+### Dependencies
+
+- Bump `h2` 0.4.15 → 0.4.16 in `Cargo.lock`, clearing RUSTSEC-2026-0258, which turned the Supply Chain gate red on `main` and therefore on every branch cut from it — same shape as the `brace-expansion` and `next`/`sharp` incidents before it: the advisory published after main's last green scan, so nothing in this repo changed to cause it. `h2` is transitive through `hyper`, so the fix is a lockfile edit and nothing else. It is applied surgically rather than by `cargo update -p h2 --precise`, which additionally re-resolved six unrelated `windows-sys` edges *downward* (0.61.2 → 0.52.0/0.60.2) — churn that is invisible in CI, since the Rust jobs run on Linux and never compile those crates, and would have ridden into a release lockfile unreviewed. `cargo metadata --locked` accepts the result, so the resolver agrees the lock is complete and will not re-resolve behind it. (#717)
+
 ### Docs
 
 - Ignore `/blog/`, so long-form design write-ups can be drafted in the checkout without landing in a diff. These are contributor-local working files — a draft that is one `git add -A` away from being committed is a draft written more cautiously than it should be. Nothing shipped in the package changes. (#717)

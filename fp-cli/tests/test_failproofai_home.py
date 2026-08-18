@@ -691,3 +691,27 @@ def test_no_shipped_module_names_the_pre_move_path():
         if "~/.fp/cli.json" in path.read_text(encoding="utf-8"):
             offenders.append(str(path.relative_to(pkg)))
     assert offenders == [], f"these still name the pre-move config path: {offenders}"
+
+
+def test_logout_is_not_undone_by_adoption(clean_env):
+    """The sharp edge of adopting: it must not resurrect a session on purpose.
+
+    `logout` writes a config with no token rather than deleting the file, so
+    adoption has to key off the file being ABSENT or unreadable — not off "there
+    is no token here". Keying off the token would make every command after a
+    logout re-adopt `~/.fp/cli.json` and sign the user back in, which is worse
+    than the problem adoption solves.
+    """
+    _plant_legacy(clean_env)
+    assert cfg.load_config().session_token == "legacy"  # adopted
+    cfg.clear_token(cfg.load_config())                  # `fp logout`
+    assert cfg.load_config().session_token is None      # and it stays out
+
+
+def test_a_current_config_without_a_token_blocks_adoption(clean_env):
+    """The same invariant stated directly, without going through logout."""
+    _plant_legacy(clean_env)
+    cfg.save_config(cfg.CliConfig(base_url="https://x"))  # no token
+    loaded = cfg.load_config()
+    assert loaded.session_token is None
+    assert loaded.base_url == "https://x"

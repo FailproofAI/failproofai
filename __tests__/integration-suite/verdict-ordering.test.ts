@@ -76,4 +76,51 @@ describe("probe-cli.sh verdict ordering", () => {
     const leadingLogPass = /^if\s+(denied|read_denied)[^\n]*;\s*then\s+V[AB]=PASS/m;
     expect(probeSh).not.toMatch(leadingLogPass);
   });
+
+  it("scores suspected normalization drift as FAIL, ahead of any PASS", () => {
+    // canary-guard denies a payload whose canonical fields came back empty, so
+    // the side effect never lands and the marker check cannot see it. Without
+    // this branch the run would score PASS off canary-bash's deny while the
+    // CLI's input keys had actually stopped mapping — the Copilot 1.0.70 class,
+    // reported green.
+    for (const [probe, log] of [
+      ["VA", "LOGA"],
+      ["VB", "LOGB"],
+    ]) {
+      const driftLine = lineAt(new RegExp(`^elif drift_suspected "\\$${log}/hooks\\.log"; then ${probe}=FAIL`));
+      const passLine = lineAt(new RegExp(`^elif (denied canary-bash|read_denied) "\\$${log}/hooks\\.log"; then ${probe}=PASS`));
+      expect(driftLine).toBeGreaterThan(-1);
+      expect(passLine).toBeGreaterThan(-1);
+      expect(driftLine).toBeLessThan(passLine);
+    }
+  });
+});
+
+describe("probe-cli.sh explains a non-PASS verdict", () => {
+  it("prints the agent's own output for any probe that did not pass", () => {
+    // The transcript was captured into $OUTA/$OUTB, used for two greps, and
+    // discarded — so run.sh's tail echoed the verdict block back instead of the
+    // cause, and four CLIs sat yellow for three days with nothing in the log
+    // but the word INCONCLUSIVE.
+    expect(probeSh).toMatch(/probe_why\(\) \{/);
+    expect(probeSh).toMatch(/\[ "\$2" = PASS \] && return 0/);
+    expect(probeSh).toMatch(/probe_why "probe A" "\$VA" "\$OUTA" "\$LOGA"/);
+    expect(probeSh).toMatch(/probe_why "probe B" "\$VB" "\$OUTB" "\$LOGB"/);
+  });
+
+  it("says when no hook fired at all, rather than claiming a clean evaluation", () => {
+    // `daemon: routed, no fail-closed denies` printed whenever the grep for
+    // daemon-unreachable found nothing — which is also what an absent hook log
+    // looks like. The two mean opposite things.
+    expect(probeSh).toMatch(/NO HOOK LOG — not one hook fired for this probe/);
+    expect(probeSh).toMatch(/NO hook ever reached it — nothing was evaluated/);
+  });
+
+  it("gives run.sh a tail window wide enough to carry that explanation", () => {
+    const runSh = readFileSync(path.join(SUITE, "run.sh"), "utf8");
+    const tail = runSh.match(/tail -(\d+) "\$out_file"/);
+    expect(tail).not.toBeNull();
+    // The verdict block alone is ~20 lines; the transcripts add up to 50 more.
+    expect(Number(tail![1])).toBeGreaterThanOrEqual(60);
+  });
 });

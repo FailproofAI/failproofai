@@ -1,0 +1,149 @@
+name: build-canary-images
+
+# Builds and pushes the canary box's THREE job images to GHCR.
+#
+#   ghcr.io/failproofai/failproofai-canary        the CLI integration suite
+#   ghcr.io/failproofai/failproofai-translate     the nightly doc translation
+#   ghcr.io/failproofai/failproofai-docs-audit    the weekly docs sweep
+#
+# This replaces build-canary-runner.yml and its single shared toolchain image.
+# Two things changed and they are connected:
+#
+#   ONE IMAGE PER JOB, so only the canary carries a docker client and only its
+#   cron line mounts the host socket. The other two spawn nothing, and an image
+#   that cannot reach the daemon cannot be talked into it.
+#
+#   THE IMAGE IS THE COMMIT. The old image was a toolchain and every run cloned
+#   the repo, installed dependencies, built dist/ twice and compiled failproofaid
+#   in a sibling container — all of it at 02:00 or 11:00, in front of nobody, with
+#   any failure landing as a night with no report. It happens here now, once, per
+#   commit, where a failure is a red build.
+#
+# WHICH IS WHY THIS IS NOT PATH-FILTERED. The old workflow only rebuilt when the
+# Dockerfile or entrypoint changed, because everything else reached the box
+# through a run-time clone. With the tree baked in, ANY commit to main changes
+# what these images should contain, and a path filter would leave the box
+# silently running last week's code. The cost is three builds per push; the GHA
+# layer cache makes all but the first cheap, and the alternative is a canary that
+# tests something other than main without saying so.
+#
+# The staleness that remains is answered rather than prevented: FP_SHA and
+# BUILT_AT are baked in, job-entrypoint.sh turns them into an age, and a stale
+# image announces itself in every report it produces.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag_suffix:
+        description: 'Extra tag alongside :latest and :sha-<short> (e.g. dev). Allowed chars: [A-Za-z0-9._-], max 128. Empty for none.'
+        default: ''
+        required: false
+      push_to_ghcr:
+        description: 'Push to GHCR. Uncheck to build-only (validate the Dockerfiles without publishing).'
+        type: boolean
+        default: true
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-canary-images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      # One leg must not take the other two down: a box with a fresh canary and a
+      # stale translate is a worse outcome than a box that keeps yesterday's
+      # image for the leg that failed, and the failure is visible either way.
+      fail-fast: false
+      matrix:
+        include:
+          - job: canary
+            image: failproofai-canary
+          - job: translate
+            image: failproofai-translate
+          - job: docs-audit
+            image: failproofai-docs-audit
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags and build stamps
+        id: meta
+        env:
+          TAG_SUFFIX: ${{ inputs.tag_suffix }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          if [ -n "$TAG_SUFFIX" ]; then
+            if ! printf '%s' "$TAG_SUFFIX" | grep -qE '^[A-Za-z0-9_.-]{1,128}$'; then
+              echo "::error::tag_suffix '$TAG_SUFFIX' has invalid chars; allowed: [A-Za-z0-9._-], max 128"
+              exit 1
+            fi
+          fi
+          {
+            echo "tags<<EOF"
+            echo "ghcr.io/failproofai/${IMAGE}:latest"
+            echo "ghcr.io/failproofai/${IMAGE}:sha-${short_sha}"
+            if [ -n "$TAG_SUFFIX" ]; then
+              echo "ghcr.io/failproofai/${IMAGE}:${TAG_SUFFIX}"
+            fi
+            echo "EOF"
+            echo "sha=${short_sha}"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          # The repo root, because the image bakes the checkout. The repo's
+          # .dockerignore is what keeps run-time credential files out of it, and
+          # each Dockerfile re-asserts their absence rather than trusting it.
+          context: .
+          file: integration-suite/local/Dockerfile.${{ matrix.job }}
+          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push_to_ghcr }}
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            FP_SHA=${{ steps.meta.outputs.sha }}
+            FP_SHA_FULL=${{ github.sha }}
+            BUILT_AT=${{ steps.meta.outputs.built_at }}
+          cache-from: type=gha,scope=${{ matrix.job }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.job }}
+          provenance: false
+
+      # The first publish creates a package PRIVATE, and a private package turns
+      # the operator's one-line cron into a `docker login` plus a credential that
+      # expires and silently breaks the job when it does. There is nothing in
+      # these layers to protect — public source, public npm dist, public release
+      # binary — so this flips it once and is a no-op on every run after.
+      - name: Make the package public
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.push_to_ghcr }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          gh api -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/orgs/failproofai/packages/container/${IMAGE}" \
+            -f visibility=public \
+            && echo "${IMAGE} is public" \
+            || echo "::warning::could not set visibility for ${IMAGE} — set it once by hand at https://github.com/orgs/FailproofAI/packages, or the box needs a docker login"

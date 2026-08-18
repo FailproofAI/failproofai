@@ -18,13 +18,22 @@ FROM node:22-bookworm-slim
 # bun from the official image — no `curl | bash` needed at build time.
 COPY --from=oven/bun:latest /usr/local/bin/bun /usr/local/bin/bun
 
-# Minimal tooling for the various vendor CLI installers. Deliberately NO sudo.
 # Tooling for the various vendor installers. Deliberately NO sudo.
-#   bzip2/xz-utils : goose extracts its Rust binary with these
-#   libsecret-1-0  : antigravity caches login tokens via libsecret (best-effort)
+#   bzip2/xz-utils      : goose extracts its Rust binary with these
+#   libsecret-1-0       : antigravity caches login tokens via libsecret (best-effort)
+#   python3/make/g++    : hermes. Its installer runs `npm install` for the browser
+#                         tools, which builds node-pty through node-gyp, which needs
+#                         a Python and a C++ toolchain. Upstream made that npm step
+#                         FATAL (hermes-agent #85297) and it runs BEFORE the launcher
+#                         shim is written — so without these three the install aborts
+#                         with no `~/.local/bin/hermes` at all, the probe drives a
+#                         missing command, and hermes reports INCONCLUSIVE every
+#                         single day. Verified: adding them installs hermes v0.20.2
+#                         cleanly in this image.
 RUN apt-get update -qq \
  && apt-get install -y -qq --no-install-recommends \
       git ca-certificates curl unzip bzip2 xz-utils libsecret-1-0 \
+      python3 make g++ \
  && rm -rf /var/lib/apt/lists/*
 
 # Unprivileged user. HOME is the mount point for the persistent named volume;

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# The weekly documentation audit (CANARY_JOB=docs-audit), invoked by the runner
-# image's baked entrypoint AFTER it has locked, cloned and checked out
-# $DOCS_AUDIT_REF into $CANARY_WORK/clone-docs-audit.
+# The weekly documentation audit (CANARY_JOB=docs-audit), invoked by the
+# docs-audit image's baked entrypoint AFTER it has locked. The checkout is baked
+# in at $CANARY_CLONE rather than cloned.
 #
 # It is the cheapest job on the box: no LLM gateway, no push credential, no
 # sibling containers. It reads the docs tree and git history and posts what it
@@ -24,13 +24,16 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
-WORK="${CANARY_WORK:?CANARY_WORK missing — runner-entrypoint.sh sets it}"
+WORK="${CANARY_WORK:?CANARY_WORK missing — job-entrypoint.sh sets it}"
 CLONE="${CANARY_CLONE:-$WORK/clone-docs-audit}"
 CACHE_HOME="$WORK/translate"
 REPO="${DOCS_AUDIT_REPO:-FailproofAI/failproofai}"
 ISSUE_TITLE="[auto] docs audit"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
-FP_SHA="$(git -C "$CLONE" rev-parse --short HEAD)"
+# The image is the commit, so the SHA comes from the baked value the entrypoint
+# exported. The git fallback keeps this working when a job is run by hand from a
+# real checkout, which is how it is developed.
+FP_SHA="${CANARY_FP_SHA:-$(git -C "$CLONE" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 REF_DESC="${DOCS_AUDIT_REF:-origin/main}"
 
 export FAILPROOFAI_TELEMETRY_DISABLED=1
@@ -78,8 +81,39 @@ step "audit"
 REPORT="$(bun run docs:audit)" || die "the audit itself failed to run"
 echo "$REPORT"
 
+# ── did the nightly translation actually run? ────────────────────────────────
+# The translate job is quiet on success by design, which made "failing every
+# night" and "idle every night" the same signal — six days of neither PR nor
+# error went unnoticed until this audit reported 28 cached-but-absent pages.
+# It now stamps every exit; this reads the stamp's AGE, which is the only thing
+# that can catch the failure mode no error handler sees: the job never started.
+step "translate-health"
+TRANSLATE_HEALTH="$(node -e '
+  const fs = require("fs");
+  const p = process.argv[1];
+  let s;
+  try { s = JSON.parse(fs.readFileSync(p, "utf8")); }
+  catch { process.stdout.write("⚠️ *Nightly translation*: no run stamp at all — the job has not run since this check shipped, or is not scheduled"); process.exit(0); }
+  const ageH = (Date.now() - Date.parse(s.at)) / 3.6e6;
+  const age = ageH < 48 ? `${Math.round(ageH)}h ago` : `${Math.round(ageH / 24)} days ago`;
+  if (s.outcome !== "ok") { process.stdout.write(`🔥 *Nightly translation*: last run ${age} FAILED at \`${s.step}\` — ${s.detail || ""}`); process.exit(0); }
+  if (ageH > 48) { process.stdout.write(`⚠️ *Nightly translation*: last successful run was ${age} — it runs daily, so it is not running`); process.exit(0); }
+  process.stdout.write(`✅ *Nightly translation*: last ran ${age} (${s.detail || "ok"})`);
+' "$CACHE_HOME/last-run.json" 2>/dev/null || echo "")"
+[ -n "$TRANSLATE_HEALTH" ] && echo "$TRANSLATE_HEALTH"
+
+# Same reason the canary's report carries it: this runs a published image rather
+# than a fresh clone, so a broken image build leaves the box auditing whatever
+# commit the last good image carried, indefinitely and silently.
+STALE_NOTE=""
+[ "${CANARY_IMAGE_STALE:-0}" = 1 ] && STALE_NOTE="⚠️ _audited from an image built ${CANARY_IMAGE_AGE_DAYS:-?} days ago (\`$FP_SHA\`) — check build-canary-images_"
+
 step "report"
-slack_note "$REPORT"
+slack_note "$REPORT${TRANSLATE_HEALTH:+
+
+$TRANSLATE_HEALTH}${STALE_NOTE:+
+
+$STALE_NOTE}"
 
 # ── tracking issue ───────────────────────────────────────────────────────────
 # Optional: with no token the job is exactly what it was, a Slack post. The

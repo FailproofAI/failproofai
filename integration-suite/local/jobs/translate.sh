@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# The nightly doc-translation job (CANARY_JOB=translate), invoked by the runner
-# image's baked entrypoint AFTER it has locked, cloned and checked out
-# $TRANSLATE_REF into $CANARY_WORK/clone-translate.
+# The nightly doc-translation job (CANARY_JOB=translate), invoked by the translate
+# image's baked entrypoint AFTER it has locked. The checkout is baked in at
+# $CANARY_CLONE; this job reconstitutes the one commit it needs to push (below).
 #
 # It replaces the `prepare` / `translate` / `consolidate` jobs of
 # .github/workflows/translate-docs.yml, which keeps only its workflow_dispatch
@@ -32,7 +32,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 
-WORK="${CANARY_WORK:?CANARY_WORK missing — runner-entrypoint.sh sets it}"
+WORK="${CANARY_WORK:?CANARY_WORK missing — job-entrypoint.sh sets it}"
 CLONE="${CANARY_CLONE:-$WORK/clone-translate}"
 LOGS="$WORK/logs"
 CACHE_HOME="$WORK/translate"
@@ -43,7 +43,10 @@ BASE_BRANCH="${TRANSLATE_BASE:-main}"
 PR_TITLE="[auto] update translations"
 LANGS="${TRANSLATE_LANGUAGES:-zh,ja,ko,es,pt-br,de,fr,ru,hi,tr,vi,it,ar,he}"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
-FP_SHA="$(git -C "$CLONE" rev-parse --short HEAD)"
+# The image is the commit, so the SHA comes from the baked value the entrypoint
+# exported. The git fallback keeps this working when a job is run by hand from a
+# real checkout, which is how it is developed.
+FP_SHA="${CANARY_FP_SHA:-$(git -C "$CLONE" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 
 # The gateway saturated past ~2 in flight pre-scale (#300, #305) and CI settled
 # on a peak of 16: `max-parallel: 4` jobs x cli.ts's default of 4. One process
@@ -57,12 +60,42 @@ export FAILPROOFAI_TELEMETRY_DISABLED=1
 # red-job email for free; a cron line redirected to /dev/null gives nothing.
 STEP="startup"
 REF_DESC="${TRANSLATE_REF:-origin/$BASE_BRANCH}"
-# This job does NOT post to Slack. Its output IS the pull request — a run that
-# did something leaves one, and a run that did nothing leaves the previous one
-# untouched, so there is nothing a chat message would add that the PR list does
-# not already say. Failures go to the run log ($CANARY_LOG) and the exit code.
+# Success stays quiet: a run that did something leaves a pull request and a run
+# that did nothing leaves the previous one untouched, so a nightly "all good"
+# would be pure noise.
+#
+# FAILURE DOES NOT. That was the original reading of this and it was wrong: a run
+# that dies also leaves no PR, so failing and idling produced the identical
+# signal — none. Between 2026-08-11 and 2026-08-17 this job opened nothing while
+# 28 pages sat missing from 14 locales, and the only way anyone found out was a
+# finding in the WEEKLY docs audit. The exit code was right there in
+# ~/fp-canary/logs/ and a cron line reports to nobody.
+#
+# So: loud on failure, quiet on success, plus a status stamp (below) that makes
+# "never ran at all" — the one failure no error handler can catch, because the
+# handler never runs — visible to the weekly audit.
+slack_note() { # $1 = text; best-effort, never fails the run
+  [ -n "${CANARY_SLACK_WEBHOOK:-}" ] || return 0
+  local payload
+  payload="$(printf '%s' "$1" | node -e 'const t=require("fs").readFileSync(0,"utf8");process.stdout.write(JSON.stringify({text:t}))')"
+  curl -sS --connect-timeout 10 --max-time 30 -o /dev/null -X POST \
+    -H 'Content-type: application/json' --data "$payload" "$CANARY_SLACK_WEBHOOK" 2>/dev/null || true
+}
+# Written on EVERY exit, success or failure, so the file's own age answers "did
+# this job run last night?" — a question no in-run check can answer for itself.
+stamp() { # $1 = outcome, $2 = detail
+  mkdir -p "$CACHE_HOME"
+  node -e 'require("fs").writeFileSync(process.argv[1],JSON.stringify({at:new Date().toISOString(),outcome:process.argv[2],step:process.argv[3],detail:process.argv[4],sha:process.argv[5]},null,1))' \
+    "$CACHE_HOME/last-run.json" "$1" "$STEP" "${2:-}" "$FP_SHA" 2>/dev/null || true
+}
 die() { # $1 = human summary
   echo "✗ $STEP: $1" >&2
+  stamp failed "$1"
+  slack_note "🔥 *nightly translation FAILED at \`$STEP\`* — \`$REF_DESC\` @ \`$FP_SHA\`
+$1
+\`\`\`
+$(tail -15 "${CANARY_LOG:-/dev/null}" 2>/dev/null || echo '(no log)')
+\`\`\`"
   exit 1
 }
 step() { STEP="$1"; echo "── $1 ──"; }
@@ -83,6 +116,41 @@ export ANTHROPIC_API_KEY="$TRANSLATE_LLM_API_KEY"
 export ANTHROPIC_BASE_URL="$TRANSLATE_LLM_BASE_URL"
 
 cd "$CLONE" || die "cannot enter $CLONE"
+
+# ── a git identity for exactly one commit ───────────────────────────────────
+# The image bakes the tree and not the history — 100+ MB of packfile to make one
+# commit is not a trade — so when there is no .git this builds the minimum this
+# job needs: the ONE commit the image was built from, fetched shallow, with the
+# baked tree sitting on top of it as uncommitted changes.
+#
+# Fetching the baked SHA rather than origin/main is the whole point. reset --soft
+# onto a NEWER main would leave HEAD claiming commits this tree does not carry,
+# and the `git add -A` below would then stage the REVERSAL of everything that
+# landed since the image was built — an auto-PR that quietly deletes other
+# people's work. Against the baked SHA, HEAD and the tree agree by construction.
+if [ ! -d "$CLONE/.git" ]; then
+  step "git"
+  # The FULL object id: `git fetch origin <short sha>` is rejected outright
+  # ("couldn't find remote ref"), and the failure would land at 02:00.
+  ANCHOR="${CANARY_BAKED_SHA_FULL:-$FP_SHA}"
+  [ "$ANCHOR" != unknown ] || die "no baked SHA to anchor the commit to"
+  git init -q . || die "git init failed"
+  git remote add origin "https://github.com/$REPO.git" 2>/dev/null || true
+  git fetch -q --depth 1 origin "$ANCHOR" || die "could not fetch the baked commit $ANCHOR"
+  # MIXED, never --soft. `git init` leaves an EMPTY index, and --soft does not
+  # touch the index — so every tracked file would read as a staged deletion and
+  # the `git add -A` below would commit the repository being emptied. A mixed
+  # reset sets the index to the commit and leaves the baked tree alone, which is
+  # how "0 changed paths" is the correct starting state.
+  git reset -q FETCH_HEAD || die "could not anchor the index at $ANCHOR"
+  drift="$(git status --short | wc -l | tr -d ' ')"
+  echo "anchored at ${ANCHOR:0:7} (shallow, one commit; $drift paths differ from it)"
+  # The baked tree IS that commit, so anything here is the build context having
+  # dropped a tracked file — which `git add -A` would turn into a deletion in an
+  # auto-merged PR. Refuse rather than publish that.
+  [ "$drift" = 0 ] || die "the baked tree differs from $ANCHOR in $drift tracked paths — refusing to
+       open a PR that would commit those differences. Check .dockerignore."
+fi
 
 # ── the cache lives in the work dir, not the checkout ────────────────────────
 # A symlink rather than a copy-in/copy-out pair, so there is no "where do we
@@ -134,6 +202,7 @@ export TRANSLATE_GITHUB_TOKEN
 git add -A
 if git diff --cached --quiet; then
   echo "no changes — every language is current at $FP_SHA"
+  stamp ok "no changes"
   exit 0
 fi
 CHANGED="$(git diff --cached --name-only | wc -l | tr -d ' ')"
@@ -232,6 +301,7 @@ fi
 git add -A
 if git diff --cached --quiet; then
   echo "nothing new relative to $BRANCH"
+  stamp ok "nothing new relative to $BRANCH"
   exit 0
 fi
 git commit -m "docs: update translations for changed English sources" || die "commit failed"
@@ -253,4 +323,5 @@ else
   echo "pushed $CHANGED files to https://github.com/$REPO/pull/$PR_NUMBER"
 fi
 
+stamp ok "PR #$PR_NUMBER on $BRANCH"
 echo "── done: PR #$PR_NUMBER on $BRANCH ──"

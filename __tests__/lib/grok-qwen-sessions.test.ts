@@ -183,3 +183,28 @@ describe("qwen transcript parsing", () => {
     expect([...times].sort((a, b) => a - b)).toEqual(times);
   });
 });
+
+describe("grok project slugs", () => {
+  it("derives a URL-safe slug from the cwd, not grok's percent-encoded folder", async () => {
+    // Regression: the on-disk folder is `%2Ftmp%2Ffp-prod`, which becomes
+    // `%252F…` once it is a link href, and /project/[name] 404s on it. Every
+    // grok project was unreachable from the projects list.
+    const { encodeFolderName } = await import("@/lib/paths");
+    const slug = encodeFolderName("/tmp/fp-prod");
+    expect(slug).not.toContain("%");
+    // Byte-identical to what Claude/Factory/Qwen derive for the same cwd, which
+    // is what makes those rows MERGE instead of showing up twice.
+    expect(slug).toBe(encodeFolderName("/tmp/fp-prod"));
+    expect(slug).toBe("-tmp-fp-prod");
+  });
+
+  it("does not rely on decoding the slug back to a cwd", async () => {
+    // `decodeFolderName` is lossy whenever the path itself contains a dash —
+    // `-tmp-fp-prod` decodes to `/tmp/fp/prod`, not `/tmp/fp-prod`. That is the
+    // whole reason grok's project page takes its cwd from summary.json's
+    // `info.cwd` and treats the decode as a last resort, exactly as the Claude
+    // and Factory adapters do with their own headers.
+    const { decodeFolderName, encodeFolderName } = await import("@/lib/paths");
+    expect(decodeFolderName(encodeFolderName("/tmp/fp-prod"))).toBe("/tmp/fp/prod");
+  });
+});

@@ -4,16 +4,23 @@
  * grok stores transcripts at
  * `~/.grok/sessions/<percent-encoded-cwd>/<uuid>/chat_history.jsonl`.
  *
- * NOTE the folder encoding differs from every other JSONL store we read:
- * grok percent-encodes the cwd (`%2Fhome%2Fuser%2Frepo`) where Claude, Factory
- * and Qwen dash-encode it (`-home-user-repo`). That means a grok project folder
- * name is NOT interchangeable with the Claude-side slug, so these folders will
- * not merge with a Claude project for the same cwd the way Factory's do
- * (`mergeProjectFolders` in lib/projects.ts matches on `name`). The `path` is
- * still the real decoded cwd, so cwd-based filtering (`audit --project <cwd>`)
- * works correctly — it is only the URL slug that differs.
+ * NOTE the folder encoding differs from every other JSONL store we read: grok
+ * percent-encodes the cwd (`%2Fhome%2Fuser%2Frepo`) where Claude, Factory and
+ * Qwen dash-encode it (`-home-user-repo`).
+ *
+ * So the on-disk folder name is deliberately NOT used as the project `name`.
+ * Two reasons, and the first is a hard bug: `name` becomes the URL slug for
+ * `/project/[name]`, and a percent-encoded name re-encodes to `%252F…` in the
+ * link, which the route cannot resolve — every grok project 404'd. Second, a
+ * name no other CLI can produce merges with nothing, so a cwd driven by both
+ * grok and Claude showed up as two unrelated rows.
+ *
+ * Re-encoding the decoded cwd with `encodeFolderName` fixes both at once: the
+ * slug is URL-safe, and it is byte-identical to the one Claude/Factory/Qwen
+ * derive for the same cwd, so those rows merge as they should.
  */
-import { listGrokTranscripts, getGrokSessionLog, decodeGrokProjectDir } from "./grok-sessions";
+import { encodeFolderName, decodeFolderName } from "./paths";
+import { listGrokTranscripts, getGrokSessionLog } from "./grok-sessions";
 import type { ProjectFolder, SessionFile } from "./projects";
 import { runtimeCache } from "./runtime-cache";
 import { formatDate } from "./format-date";
@@ -32,9 +39,12 @@ export async function getGrokProjects(): Promise<ProjectFolder[]> {
 
   const byName = new Map<string, { latest: number; cwd: string; name: string }>();
   for (const t of transcripts) {
-    const existing = byName.get(t.projectName);
+    // The URL slug is derived from the real cwd, never from grok's
+    // percent-encoded folder — see the module header.
+    const name = encodeFolderName(t.cwd);
+    const existing = byName.get(name);
     if (!existing || t.mtimeMs > existing.latest) {
-      byName.set(t.projectName, { latest: t.mtimeMs, cwd: t.cwd, name: t.projectName });
+      byName.set(name, { latest: t.mtimeMs, cwd: t.cwd, name });
     }
   }
 
@@ -69,7 +79,8 @@ export interface GrokProjectByName {
 export async function getGrokSessionsByEncodedName(name: string): Promise<GrokProjectByName> {
   let transcripts;
   try {
-    transcripts = listGrokTranscripts().filter((t) => t.projectName === name);
+    // Match on the derived slug, since that is what the link carried.
+    transcripts = listGrokTranscripts().filter((t) => encodeFolderName(t.cwd) === name);
   } catch (error) {
     logWarn("Failed to scan grok sessions:", error);
     return { cwd: null, sessions: [] };
@@ -87,7 +98,8 @@ export async function getGrokSessionsByEncodedName(name: string): Promise<GrokPr
       // best-effort — fall back to the decode below
     }
   }
-  if (!cwd) cwd = decodeGrokProjectDir(name);
+  // `name` is a dash-encoded cwd here, so the shared decoder is the right one.
+  if (!cwd) cwd = decodeFolderName(name);
 
   const sessions: SessionFile[] = sorted.map((t) => {
     const lastModified = new Date(t.mtimeMs);

@@ -1033,3 +1033,90 @@ def test_a_crash_between_write_and_rename_leaves_no_half_batch(spool, monkeypatc
 
     assert list((spool / "events").glob("*.jsonl")) == [], "a batch was published anyway"
     assert len(writer._queue) == 1, "the events were dropped rather than retried"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The correlation map is mutated from the caller's own threads
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_evicting_at_the_cap_never_raises_into_the_callers_thread():
+    """Regression: `len()` -> `next(iter())` -> `del` is a read-modify-write.
+
+    Nothing serialised the three, so two threads arriving at a full `_pending`
+    picked the SAME victim and the second `del` raised KeyError — straight out
+    of `event.tool_use()`, in the caller's agent loop. Measured at 24 crashes
+    per 30_000 calls across 10 threads before the fix.
+
+    It only fires once `_pending` is full, which is exactly the long-running
+    multi-agent process the cap exists for, so "rare" here means "only in
+    production".
+    """
+    namespace = EventNamespace(_NullWriter())
+    errors: list[BaseException] = []
+
+    def churn(worker: int):
+        try:
+            for i in range(3000):
+                namespace.tool_use(
+                    session_id="s", agent_id="a", tool_name="t", tool_call_id=f"{worker}-{i}"
+                )
+                if i % 7 == 0:
+                    namespace.tool_result(
+                        session_id="s", agent_id="a", tool_name="t", tool_call_id=f"{worker}-{i}"
+                    )
+        except BaseException as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    threads = [threading.Thread(target=churn, args=(w,)) for w in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"{len(errors)} exception(s) reached the caller: {errors[:3]}"
+    assert len(namespace._pending) <= _PENDING_CAP * 2, (
+        f"the cap stopped bounding anything: {len(namespace._pending)}"
+    )
+
+
+def test_the_cap_still_bounds_the_map_after_the_concurrency_fix():
+    """Tolerant eviction must not become no eviction."""
+    namespace = EventNamespace(_NullWriter())
+    for i in range(_PENDING_CAP + 500):
+        namespace.tool_use(session_id="s", agent_id="a", tool_name="t", tool_call_id=f"c{i}")
+    assert len(namespace._pending) == _PENDING_CAP
+
+
+def test_a_persistent_write_fault_does_not_strand_a_tmp_file_per_cycle(spool, monkeypatch):
+    """Each flush picks a fresh stem, so a stuck rename leaked one file a cycle.
+
+    At the default 500 ms interval that is ~170_000 files a day, on the very
+    disk that is already the problem — and the watcher ignores them by
+    extension, so nothing else would ever notice or collect them.
+
+    The batch itself must survive: `_flush` returns the entries to the queue and
+    the next cycle rewrites them under a new name.
+    """
+    import sys
+
+    writer_module = sys.modules["failproofai_sdk._writer"]
+    real_replace = writer_module.os.replace
+    monkeypatch.setattr(
+        writer_module.os, "replace",
+        lambda *a: (_ for _ in ()).throw(OSError(28, "No space left on device")),
+    )
+
+    writer = EventWriter(flush_interval=3600)
+    for i in range(50):
+        writer.submit({"type": "e", "n": i})
+        with pytest.raises(OSError):
+            writer.flush_now()
+
+    assert list((spool / "events").glob("*.tmp")) == [], "orphaned .tmp files accumulated"
+    assert len(writer._queue) == 50, "events were lost to the failed writes"
+
+    monkeypatch.setattr(writer_module.os, "replace", real_replace)
+    writer.flush_now()
+    assert len(read_all(spool)) == 50, "the recovered batch is incomplete"
+    assert list((spool / "events").glob("*.tmp")) == []

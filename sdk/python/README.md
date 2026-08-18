@@ -43,7 +43,8 @@ does not fail, and your agent does not block.
 ```python
 import failproofai_sdk
 
-# Call once at startup. Omit to use defaults ($AGENTEYE_HOME or ~/.agenteye, 500ms flush interval).
+# Call once at startup. Omit to use defaults ($AGENTEYE_HOME, else
+# ~/.failproofai/custom-agents; 500ms flush interval).
 failproofai_sdk.configure(base_dir=None, flush_interval=0.5)
 
 # Emit events via failproofai_sdk.event.<method>(...)

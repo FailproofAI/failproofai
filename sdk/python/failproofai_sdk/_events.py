@@ -70,6 +70,37 @@ def _validate_promoted_numeric(name: str, value) -> None:
         )
 
 
+def _validate_identity(name: str, value) -> None:
+    """Reject an id the server will skip, at the point the caller can see it.
+
+    `session_id` and `agent_id` are on every one of the 15 event types and are
+    what everything downstream groups by. Ingest requires each to be a JSON
+    string: hand it anything else and the row is SKIPPED — and the response is
+    `200 OK` with `{"accepted": 0, "skipped": 1}`, so nothing upstream learns.
+    The SDK reports success, the collector deletes the batch, and the event is
+    gone. Verified against the live server for int, null and object.
+
+    `None` is the realistic way in — an uninitialised variable, a dict lookup
+    that missed, an id threaded through a code path that forgot to set it. The
+    caller does not get a wrong number here, they get no data at all, and the
+    only symptom is a dashboard that is emptier than it should be.
+
+    Empty and whitespace-only are refused as well, and those the server DOES
+    accept. That is the worse outcome of the two: every event lands, grouped
+    under one blank id, so the data looks present and is silently merged.
+    """
+    if not isinstance(value, str):
+        raise ValueError(
+            f"{name} must be a str — the server skips any event whose {name} is "
+            f"not a JSON string, and answers 200 as though it stored it. "
+            f"Got {type(value).__name__}: {value!r}"
+        )
+    if not value.strip():
+        raise ValueError(
+            f"{name} must not be empty — the server accepts it, so every event "
+            f"sent this way is silently grouped under one blank id."
+        )
+
 def _measured_duration_ms(start_ts, end_ts) -> "int | None":
     """Whole milliseconds between a paired start and end, or None.
 
@@ -154,9 +185,36 @@ class EventNamespace:
         self._pending: dict[str, datetime] = {}
 
     def _track_pending(self, key: str, ts: datetime) -> None:
+        # Evicting has to tolerate another thread doing the same thing, because
+        # this runs on the CALLER'S agent loop and a raise here is a crash in
+        # their code, not a lost measurement.
+        #
+        # `len()` then `next(iter())` then remove is a read-modify-write, and
+        # nothing serialises the three. Two threads arriving at the cap together
+        # pick the SAME victim, and the second `del` raised KeyError straight
+        # out of `event.tool_use()`. Reproduced at 24 crashes per 30_000 calls
+        # across 10 threads — and only once `_pending` is full, which is the
+        # long-running multi-agent process this cap exists for in the first
+        # place. `next(iter())` has two more shapes for the same reason:
+        # StopIteration if the dict was emptied, RuntimeError if it was resized
+        # between the iterator and the first step.
+        #
+        # No lock, deliberately. `_pending` operations are nanoseconds and a
+        # lock held at the instant of a `fork()` is inherited locked by a thread
+        # that does not exist in the child — the exact hazard `_writer` rebuilds
+        # its Event and lock to avoid. Tolerant operations have no such edge.
+        #
+        # The cost is that the cap is approximate under contention: several
+        # threads may insert after each evicting once. That is the same trade
+        # `EventWriter.submit` already makes — a backstop against unbounded
+        # growth, not an exact quota.
         if len(self._pending) >= _PENDING_CAP:
-            oldest = next(iter(self._pending))
-            del self._pending[oldest]
+            try:
+                oldest = next(iter(self._pending))
+            except (StopIteration, RuntimeError):  # emptied or resized under us
+                pass
+            else:
+                self._pending.pop(oldest, None)  # may already be gone
         self._pending[key] = ts
 
     def _validate_fields(self, fields: dict) -> None:
@@ -184,6 +242,8 @@ class EventNamespace:
         input: dict | None = None,
         **fields,
     ) -> None:
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         self._track_pending(_tool_key(session_id, agent_id, tool_call_id), ts)
@@ -212,6 +272,8 @@ class EventNamespace:
     ) -> None:
         if "duration_ms" in fields:
             raise ValueError("duration_ms is auto-computed by the SDK and cannot be passed by the caller")
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         start_ts = self._pending.pop(_tool_key(session_id, agent_id, tool_call_id), None)
@@ -241,6 +303,8 @@ class EventNamespace:
         tools: list[dict] | None = None,
         **fields,
     ) -> None:
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         self._writer.submit(
@@ -274,6 +338,8 @@ class EventNamespace:
         # provider's usage object gets whatever that object holds.
         _validate_promoted_numeric("input_tokens", input_tokens)
         _validate_promoted_numeric("output_tokens", output_tokens)
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         self._writer.submit(
@@ -300,6 +366,8 @@ class EventNamespace:
         parent_id: str | None = None,
         **fields,
     ) -> None:
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         self._writer.submit(
@@ -322,6 +390,8 @@ class EventNamespace:
         summary: str | None = None,
         **fields,
     ) -> None:
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         self._writer.submit(
@@ -345,6 +415,8 @@ class EventNamespace:
         user_id: str | None = None,
         **fields,
     ) -> None:
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         self._track_pending(f"pause:{session_id}:{agent_id}:{pause_id}", ts)
@@ -372,6 +444,8 @@ class EventNamespace:
     ) -> None:
         if "duration_ms" in fields:
             raise ValueError("duration_ms is auto-computed by the SDK and cannot be passed by the caller")
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         start_ts = self._pending.pop(f"pause:{session_id}:{agent_id}:{pause_id}", None)
@@ -400,6 +474,8 @@ class EventNamespace:
         input: Any | None = None,
         **fields,
     ) -> None:
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         self._track_pending(_hook_key(session_id, agent_id, hook_id), ts)
@@ -430,6 +506,8 @@ class EventNamespace:
     ) -> None:
         if "duration_ms" in fields:
             raise ValueError("duration_ms is auto-computed by the SDK and cannot be passed by the caller")
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         start_ts = self._pending.pop(_hook_key(session_id, agent_id, hook_id), None)
@@ -459,6 +537,8 @@ class EventNamespace:
         traceback: str | None = None,
         **fields,
     ) -> None:
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         self._writer.submit(
@@ -484,6 +564,8 @@ class EventNamespace:
         reason: str | None = None,
         **fields,
     ) -> None:
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         self._track_pending(f"human:{session_id}:{agent_id}:{input_id}", ts)
@@ -511,6 +593,8 @@ class EventNamespace:
     ) -> None:
         if "duration_ms" in fields:
             raise ValueError("duration_ms is auto-computed by the SDK and cannot be passed by the caller")
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         start_ts = self._pending.pop(f"human:{session_id}:{agent_id}:{input_id}", None)
@@ -536,6 +620,8 @@ class EventNamespace:
         user_id: str | None = None,
         **fields,
     ) -> None:
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         self._writer.submit(
@@ -559,6 +645,8 @@ class EventNamespace:
         at_step: str | None = None,
         **fields,
     ) -> None:
+        _validate_identity("session_id", session_id)
+        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
         self._writer.submit(

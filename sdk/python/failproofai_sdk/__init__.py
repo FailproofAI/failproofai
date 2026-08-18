@@ -17,9 +17,17 @@ def configure(
     """Configure the SDK. Call once at startup before any event.* calls.
 
     Args:
-        base_dir: Override the default ~/.agenteye root directory.
-                  Pass None to use the default ($AGENTEYE_HOME if set,
-                  else Path.home() / ".agenteye").
+        base_dir: Override the spool root. Pass None to resolve it:
+                  $AGENTEYE_HOME if set, else ~/.failproofai/custom-agents
+                  (honouring $FAILPROOFAI_HOME).
+
+                  The default moved here from ~/.agenteye. `failproofaid`
+                  watches both roots, so on a host running it this only
+                  changes which directory the files appear in, and batches
+                  already spooled under the old root are still collected.
+                  A host running the older `agenteye-collector` — which reads
+                  $AGENTEYE_HOME or ~/.agenteye and nothing else — sets
+                  AGENTEYE_HOME=~/.agenteye.
         flush_interval: Seconds between flush cycles. Default 0.5 (500ms).
         environment: Deployment environment label (e.g. "production", "staging").
                      Can also be set via the AGENTEYE_ENVIRONMENT env var.

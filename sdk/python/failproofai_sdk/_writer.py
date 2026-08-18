@@ -58,6 +58,10 @@ _QUEUE_CAP = 10_000
 #: having a fallback at all.
 _MAX_SANITIZE_DEPTH = 50
 
+#: How `json.dumps(ensure_ascii=True)` writes a lone surrogate. Cheap to scan
+#: for, and the only in-band signal that one is present — encoding never fails.
+_SURROGATE_ESCAPE = "\\ud"
+
 _CYCLE_MARKER = "<circular reference>"
 _DEPTH_MARKER = "<max depth exceeded>"
 
@@ -123,6 +127,15 @@ def _sanitize(value, seen: frozenset, depth: int = 0):
     # field reads as absent rather than as a number that is not one.
     if isinstance(value, float) and not math.isfinite(value):
         return None
+    # Lone surrogates. `os.fsdecode` and `bytes.decode(errors="surrogateescape")`
+    # — the standard way Python carries bytes that are not valid UTF-8, and what
+    # a filesystem path or a truncated tool output arrives as — produce these.
+    # `json.dumps` escapes them happily as \udcff, so nothing fails locally, and
+    # then the SERVER skips the whole event: verified against a live ingest,
+    # `{"accepted":0,"skipped":1}` at 200 OK. `backslashreplace` keeps the byte
+    # visible in the payload instead of dropping it to a `?`.
+    if isinstance(value, str):
+        return value.encode("utf-8", "backslashreplace").decode("utf-8")
     if isinstance(value, dict):
         if id(value) in seen:
             return _CYCLE_MARKER
@@ -170,10 +183,30 @@ def _encode_entry(entry: dict) -> "str | None":
     for every payload that was already valid JSON), fall back to a sanitised
     copy, and only then give up on that ONE event.
     """
+    # `except Exception`, not a list of the three encoder errors. `default=str`
+    # runs the CALLER'S `__repr__`/`__str__`, which can raise anything at all —
+    # a RuntimeError out of a lazy ORM attribute, an OSError out of a property
+    # that touches the network. Those escaped the narrow clause, propagated out
+    # of `_write_batch`, and put the whole batch back on the queue to be retried
+    # identically forever: the exact wedge this function exists to prevent,
+    # reached through a different exception type.
+    #
+    # BaseException is deliberately NOT caught — a KeyboardInterrupt during a
+    # flush must still interrupt.
     try:
-        return json.dumps(entry, default=str, allow_nan=False)
-    except (TypeError, ValueError, RecursionError):
-        pass
+        encoded = json.dumps(entry, default=str, allow_nan=False)
+    except Exception:
+        encoded = None
+
+    if encoded is not None:
+        # `ensure_ascii` is on, so a lone surrogate leaves here as the literal
+        # text \udXXX rather than raising — which is exactly why it needed
+        # finding by inspection. One substring scan per line, and only a line
+        # that actually contains one pays for the rewrite below. A payload whose
+        # own text happens to contain "\ud" trips this too and is merely
+        # re-encoded to the same bytes, so a false positive costs nothing.
+        if _SURROGATE_ESCAPE not in encoded:
+            return encoded
 
     try:
         return json.dumps(_sanitize(entry, frozenset()), default=str, allow_nan=False)
@@ -431,12 +464,25 @@ class EventWriter:
         # writer already calls `sync_all()` here for exactly this reason
         # (`crates/fpai-collect/src/spool.rs`), with the same comment. The
         # Python writer publishing into the same directories was the odd one out.
-        with open(tmp_path, "wb") as handle:
-            handle.write(content.encode("utf-8"))
-            handle.flush()
-            os.fsync(handle.fileno())
+        # Clean up the partial file on ANY failure. Each flush picks a fresh
+        # stem, so without this a persistent fault — a full disk, a read-only
+        # mount, a cross-device rename — strands one `.tmp` per flush cycle:
+        # roughly 170_000 files a day at the default interval, on the very disk
+        # that is already the problem. The watcher ignores them by extension, so
+        # nothing else would ever notice or collect them.
+        #
+        # The batch itself is NOT lost by this: `_flush` returns the entries to
+        # the queue and the next cycle rewrites them under a new name.
+        try:
+            with open(tmp_path, "wb") as handle:
+                handle.write(content.encode("utf-8"))
+                handle.flush()
+                os.fsync(handle.fileno())
 
-        os.replace(tmp_path, final_path)
+            os.replace(tmp_path, final_path)
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
         # And fsync the DIRECTORY, or the rename itself can be lost while the
         # file's contents survive — leaving the batch on disk under its `.tmp`

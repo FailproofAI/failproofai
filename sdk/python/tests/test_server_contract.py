@@ -524,3 +524,74 @@ def test_the_measured_and_the_caller_supplied_paths_enforce_the_same_range():
     ok = base + _dt.timedelta(milliseconds=2**32 - 1)
     assert _events._measured_duration_ms(base, ok) == 2**32 - 1
     _events._validate_promoted_numeric("duration_ms", 2**32 - 1)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# session_id / agent_id — on every event, and skipped silently when wrong
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: Every public event method, with the arguments it needs besides the two ids.
+ALL_METHODS = [
+    ("agent_start", {}), ("agent_end", {}),
+    ("agent_pause", {"pause_id": "p"}), ("agent_resume", {"pause_id": "p"}),
+    ("tool_use", {"tool_name": "t", "tool_call_id": "c"}),
+    ("tool_result", {"tool_name": "t", "tool_call_id": "c"}),
+    ("model_request", {}), ("model_response", {}),
+    ("hook_triggered", {"hook_name": "h", "hook_id": "i"}),
+    ("hook_completed", {"hook_name": "h", "hook_id": "i"}),
+    ("error", {"error_type": "E", "message": "m"}),
+    ("human_wait", {"input_id": "i"}), ("human_input", {"input_id": "i"}),
+    ("human_pause", {}), ("human_interrupt", {}),
+]
+
+
+def test_the_method_list_here_covers_every_public_event():
+    """Or a method added later silently skips the check below."""
+    public = {
+        n for n in dir(EventNamespace)
+        if not n.startswith("_") and callable(getattr(EventNamespace, n))
+    }
+    assert {m for m, _ in ALL_METHODS} == public
+
+
+@pytest.mark.parametrize("method,extra", ALL_METHODS, ids=[m for m, _ in ALL_METHODS])
+@pytest.mark.parametrize("bad", [None, 123, {"x": 1}, ["a"], b"bytes"], ids=lambda v: type(v).__name__)
+def test_a_non_string_session_id_is_refused_on_every_event(method, extra, bad):
+    """Ingest SKIPS these and answers 200 — `{"accepted":0,"skipped":1}`.
+
+    Verified against the live server. Nothing upstream learns: the SDK reports
+    success, the collector deletes the batch, and the event is gone. `None` is
+    the realistic way in — an uninitialised variable, a lookup that missed.
+    """
+    ns = EventNamespace(_Recorder())
+    with pytest.raises(ValueError, match="session_id"):
+        getattr(ns, method)(session_id=bad, agent_id="a", **extra)
+
+
+@pytest.mark.parametrize("method,extra", ALL_METHODS, ids=[m for m, _ in ALL_METHODS])
+def test_a_non_string_agent_id_is_refused_on_every_event(method, extra):
+    ns = EventNamespace(_Recorder())
+    with pytest.raises(ValueError, match="agent_id"):
+        getattr(ns, method)(session_id="s", agent_id=None, **extra)
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n"], ids=["empty", "spaces", "whitespace"])
+def test_a_blank_identity_is_refused_although_the_server_accepts_it(blank):
+    """The worse of the two outcomes, which is why it is refused too.
+
+    A skipped event is at least absent. A blank id is ACCEPTED by the server, so
+    every event sent that way lands and is silently grouped under one id — the
+    data looks present and is quietly merged across unrelated runs.
+    """
+    ns = EventNamespace(_Recorder())
+    with pytest.raises(ValueError, match="empty"):
+        ns.agent_start(session_id=blank, agent_id="a")
+    with pytest.raises(ValueError, match="empty"):
+        ns.agent_start(session_id="s", agent_id=blank)
+
+
+def test_ordinary_identities_are_untouched():
+    recorder = _Recorder()
+    EventNamespace(recorder).agent_start(session_id="run-001", agent_id="planner")
+    assert recorder.entries[0]["session_id"] == "run-001"
+    assert recorder.entries[0]["agent_id"] == "planner"

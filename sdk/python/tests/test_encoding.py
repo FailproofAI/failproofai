@@ -375,3 +375,144 @@ def test_a_non_finite_float_does_not_push_the_event_onto_the_drop_path(spool, ca
         writer.flush_now()
     assert [e["type"] for e in read_all(spool)] == ["recoverable"]
     assert not any("dropped" in r.getMessage() for r in caplog.records), caplog.text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The encoder runs the CALLER'S code, which can raise anything
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class _ReprRaises:
+    """`default=str` calls this, and it does not raise TypeError or ValueError."""
+
+    def __init__(self, exc):
+        self._exc = exc
+
+    def __repr__(self):
+        raise self._exc
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [RuntimeError("boom"), OSError(5, "io in __repr__"), KeyError("k"), AttributeError("a")],
+    ids=lambda e: type(e).__name__,
+)
+def test_an_exploding_repr_drops_one_event_and_never_wedges_the_batch(spool, exc):
+    """Regression: the narrow `except (TypeError, ValueError, RecursionError)`.
+
+    `default=str` runs the caller's `__repr__`, which can raise anything — a
+    RuntimeError from a lazy ORM attribute, an OSError from a property that
+    touches the network. Anything outside those three escaped `_encode_entry`,
+    propagated out of `_write_batch`, and put the whole batch back on the queue
+    to be retried identically forever. That is the same permanent wedge this
+    module exists to prevent, reached through a different exception type.
+    """
+    writer = EventWriter(flush_interval=3600)
+    writer.submit({"type": "before", "n": 1})
+    writer.submit({"type": "poison", "v": _ReprRaises(exc)})
+    writer.submit({"type": "after", "n": 2})
+
+    writer.flush_now()  # must not raise
+
+    assert [e["type"] for e in read_all(spool)] == ["before", "after"]
+    assert len(writer._queue) == 0, "the batch was re-queued and will retry forever"
+
+
+def test_a_keyboard_interrupt_during_encoding_is_not_swallowed(spool):
+    """`except Exception`, never `BaseException`.
+
+    Telemetry must not be able to eat a Ctrl-C — an SDK that makes a process
+    unkillable during a flush is worse than one that loses an event.
+    """
+    writer = EventWriter(flush_interval=3600)
+    writer.submit({"type": "e", "v": _ReprRaises(KeyboardInterrupt())})
+    with pytest.raises(KeyboardInterrupt):
+        writer.flush_now()
+
+
+@pytest.mark.parametrize(
+    "name,payload",
+    [
+        ("lone surrogate", {"s": "bad \ud800 pair"}),
+        ("unpaired low surrogate", {"s": "\udfff"}),
+        ("null byte", {"s": "a\x00b"}),
+        ("int beyond any integer type", {"n": 10**400}),
+        ("bytes", {"b": b"\xff\xfe"}),
+        ("set", {"v": {1, 2, 3}}),
+        ("300-deep nesting", None),
+        ("200KB string", {"s": "x" * 200_000}),
+    ],
+)
+def test_hostile_but_legitimate_payloads_still_publish(spool, name, payload):
+    """None of these are mistakes; agents really hand these to a telemetry call.
+
+    A lone surrogate comes back from a truncated model response, a null byte
+    from a binary tool output, a 10**400 from a numeric library.
+    """
+    if payload is None:  # built here so the parametrize id stays readable
+        payload = cur = {}
+        for _ in range(300):
+            cur["n"] = {}
+            cur = cur["n"]
+
+    writer = EventWriter(flush_interval=3600)
+    EventNamespace(writer).tool_use(
+        session_id="s", agent_id="a", tool_name="t", tool_call_id="c1", input=payload
+    )
+    writer.flush_now()
+
+    published = read_all(spool)
+    assert len(published) == 1, f"{name} was dropped"
+    assert published[0]["tool_call_id"] == "c1"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Lone surrogates — encode cleanly here, get skipped by ingest
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_a_lone_surrogate_is_scrubbed_so_ingest_accepts_the_event(spool):
+    """The whole event was silently skipped, and nothing failed locally.
+
+    `os.fsdecode` and `bytes.decode(errors="surrogateescape")` — how Python
+    carries bytes that are not valid UTF-8, and what a filesystem path or a
+    truncated tool output arrives as — produce lone surrogates. `json.dumps`
+    escapes them to the literal text \\udcff without complaint, so the SDK saw a
+    clean success. The server then skipped the row: verified live, before the
+    fix `{"accepted":0,"skipped":1}` at 200 OK, after it `{"accepted":1}`.
+    """
+    writer = EventWriter(flush_interval=3600)
+    EventNamespace(writer).tool_use(
+        session_id="s", agent_id="a", tool_name="t", tool_call_id="c1",
+        input={"path": "file-\udcff-name", "ok": "kept"},
+    )
+    writer.flush_now()
+
+    (batch,) = list((spool / "events").glob("*.jsonl"))
+    decoded = read_all(spool)[0]
+    assert decoded["input"]["ok"] == "kept", "the sibling field was lost"
+    assert "\udcff" not in json.dumps(decoded), "a lone surrogate survived into the payload"
+    assert "udcff" in decoded["input"]["path"], "the offending byte was silently discarded"
+
+
+def test_the_surrogate_scan_does_not_touch_ordinary_events():
+    """One substring scan per line; a clean event must take the fast path."""
+    entry = {"type": "tool_use", "input": {"cmd": "ls -la", "emoji": "🚀", "n": 1}}
+    assert _encode_entry(entry) == json.dumps(entry, default=str, allow_nan=False)
+
+
+def test_a_payload_whose_text_merely_looks_like_an_escape_still_round_trips():
+    """A false positive on the scan must cost correctness nothing."""
+    entry = {"type": "e", "s": r"literally \ud800 as text"}
+    decoded = json.loads(_encode_entry(entry))
+    assert decoded["s"] == r"literally \ud800 as text"
+
+
+def test_surrogates_nested_anywhere_are_reached(spool):
+    writer = EventWriter(flush_interval=3600)
+    EventNamespace(writer).tool_use(
+        session_id="s", agent_id="a", tool_name="t", tool_call_id="c1",
+        input={"deep": {"list": ["ok", "bad-\udcff"]}},
+    )
+    writer.flush_now()
+    assert "\udcff" not in json.dumps(read_all(spool)[0])

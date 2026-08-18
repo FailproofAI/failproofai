@@ -14,20 +14,23 @@ So each leg below sources its input independently of `client.py`'s own logic:
 1. The set of paths comes from an **AST scan of client.py's string literals**, not
    from any registry the translator reads. Add a call site and it appears here
    whether or not anyone remembered a list.
-2. The set of legal `/v1` paths comes from the **server router's own `.route()`
-   literals**. A path the CLI is happy to build but the server never registered
-   fails here, which is the 404-in-CI this whole feature could otherwise ship.
-3. The unsupported commands are driven through a **real CliRunner**, asserting the
+2. The unsupported commands are driven through a **real CliRunner**, asserting the
    exit code AND that zero HTTP calls happened — the "fails before any network
    call" half is the part a return-value assertion cannot see.
+
+A third leg used to check every translated `/v1` path against the server router's
+own `.route()` literals, read out of an AgentEye checkout. The server now lives in
+a separate private repository, so that leg could only ever run when a checkout
+happened to be on disk and skipped everywhere else — including all of CI, where a
+skip reads as green. It was removed rather than left switched off. Nothing here
+verifies that a translated path is a route the server actually registers; a rename
+on the server side surfaces as a 404 at runtime.
 """
 
 from __future__ import annotations
 
 import ast
-import os
 import pathlib
-import re
 
 import httpx
 import pytest
@@ -139,99 +142,7 @@ def test_the_score_keys_rename_is_applied():
     assert api._FACET_PATHS["score_filters"] == "/api/evaluations/score-keys"
 
 
-# --- leg 2: every produced /v1 path exists in the server router ---------------
-
-
-SERVER_ROUTER = pathlib.Path("server") / "src" / "routes" / "mod.rs"
-
-
-def _repo_root():
-    """The AgentEye monorepo root, or None when it is not on disk.
-
-    The CLI lives in this repo; the Rust server this leg checks against lives in the
-    private AgentEye monorepo. So the anchor is the router file ITSELF, not a marker
-    like AGENTS.md — this repo has its own AGENTS.md at the root, and anchoring on
-    that would resolve to a root with no `server/` under it and fail for the wrong
-    reason. Set FP_AGENTEYE_ROOT to point at a monorepo checkout to run this leg in
-    CI; otherwise it skips.
-    """
-    override = os.environ.get("FP_AGENTEYE_ROOT")
-    if override:
-        return pathlib.Path(override)
-    for parent in [CLIENT_PY, *CLIENT_PY.parents]:
-        if (parent / SERVER_ROUTER).is_file():
-            return parent
-    return None
-
-
-def _versioned_route_templates():
-    """The route path literals inside the server's `versioned_routes()` — i.e. exactly
-    the set that gets nested under `/v1`.
-
-    Parsing the WHOLE file would be wrong in the silent direction: the root-only block
-    in `router()` registers `/auth/session`, `/agent/conversations` and friends, so a
-    CLI path that must never be translated would look perfectly valid.
-    """
-    root = _repo_root()
-    if root is None:
-        pytest.skip(
-            "AgentEye monorepo not on disk — set FP_AGENTEYE_ROOT to a checkout to "
-            "verify CLI paths against the real server router"
-        )
-    mod_rs = root / SERVER_ROUTER
-    # Inside the monorepo a missing router is a real failure. A bare skip here is how
-    # this test would go quietly useless the day the file moves.
-    assert mod_rs.is_file(), f"server router not found at {mod_rs} — this test cannot verify anything"
-    source = mod_rs.read_text()
-    start = source.find("fn versioned_routes")
-    end = source.find("pub fn router")
-    assert 0 <= start < end, (
-        f"{mod_rs} no longer has `fn versioned_routes` before `pub fn router`; the /v1 "
-        "router was reshaped and this test must be re-pointed at the new source of truth"
-    )
-    return set(re.findall(r'\.route\(\s*"([^"]+)"', source[start:end]))
-
-
-def _matches(cli_path: str, server_template: str) -> bool:
-    """`/v1/issues/{}/comments` matches the server's `/issues/{iid}/comments`.
-
-    A `{}` segment on the CLI side is an interpolated id, so it may only line up with a
-    server `{capture}` — never with a literal, or `/queries/{}` would silently "match"
-    `/queries/run`.
-    """
-    cli_parts, server_parts = cli_path.split("/"), server_template.split("/")
-    if len(cli_parts) != len(server_parts):
-        return False
-    for got, want in zip(cli_parts, server_parts):
-        if want.startswith("{") and want.endswith("}"):
-            continue
-        if got != want:
-            return False
-    return True
-
-
-def test_every_translated_path_is_a_real_server_route():
-    templates = _versioned_route_templates()
-    literals = _api_path_literals(CLIENT_PY.read_text())
-    translated = {}
-    for path in literals:
-        if _buckets(path) == ["no-v1"]:
-            continue
-        translated[path] = api._v1_path(path)
-    assert translated, "nothing was translated — the scan or the translator is broken"
-
-    missing = sorted(
-        f"{src} -> {dst}"
-        for src, dst in translated.items()
-        if not any(_matches(dst[len("/v1") :], t) for t in templates)
-    )
-    assert not missing, (
-        "these CLI paths translate to a /v1 route the server does not register — they "
-        f"would 404 with an API key and nothing else would notice: {missing}"
-    )
-
-
-# --- leg 3: unsupported commands fail before any network call -----------------
+# --- leg 2: unsupported commands fail before any network call -----------------
 
 
 UNSUPPORTED = [

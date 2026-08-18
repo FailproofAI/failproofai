@@ -181,6 +181,16 @@ def require_auth(state: AppState) -> ClientContext:
             org=_org_header(state),
         )
     if not state.token:
+        # A pre-move install looks identical to a fresh one from in here — the new
+        # path is simply empty. Say which it is, or the upgrade reads as the CLI
+        # having lost the session for no reason.
+        if cfgmod.legacy_install_detected():
+            raise AuthError(
+                "Not logged in. Run fp login.\n"
+                f"The config moved to {cfgmod.config_path()}; "
+                f"{cfgmod.legacy_config_path()} is left over from an older "
+                "version and is no longer read. Delete it when convenient."
+            )
         raise AuthError("Not logged in. Run fp login.")
     # Only enforce local expiry when the token came from the stored config; an
     # explicit --token / env override has no known expiry, so trust it.

@@ -1,5 +1,62 @@
 # Changelog — `fp` CLI
 
+## Unreleased
+
+### BREAKING: the session moved to `~/.failproofai/fpcli/cli-auth.json`
+
+- **You will be asked to log in once after upgrading.** The session was at
+  `~/.fp/cli.json`; it is now `~/.failproofai/fpcli/cli-auth.json`, still mode `0600`.
+  The old file is deliberately **not migrated** — a session lives 24h and one `fp login`
+  reissues it, which is cheaper than a credential-rewriting code path that runs once per
+  machine and is never exercised again. It is also **not deleted**: removing a file the
+  user did not ask us to touch is the one irreversible act here. `fp` names the stale
+  file in its not-logged-in message so the sign-out does not read as a bug.
+- **Why:** one product owned three top-level dotfiles — `~/.fp` (this CLI),
+  `~/.failproofai` (the Enforcement CLI) and `~/.agenteye` (the SDK/collector spool).
+  This collapses the first into the second. `~/.agenteye` stays: it is a wire contract
+  with the collector, and renaming it from the SDK's side would write events into a
+  directory nothing watches, with no error on either side.
+- **`FP_HOME` still works and still wins.** Resolution is `FP_HOME` >
+  `$FAILPROOFAI_HOME/fpcli` > `~/.failproofai/fpcli`. `FP_HOME` names the CLI's own
+  directory and is used as-is, so an existing export addresses the same place it always
+  did; `FAILPROOFAI_HOME` names the shared home root, so `fpcli/` is appended.
+- **The CLI only ever creates.** It will bring `~/.failproofai` into existence on a
+  machine that has never run the Enforcement CLI, and leaves a populated one untouched.
+  The new path is registered in that home's layout (`src/hooks/fp-home.ts`) and
+  classified `user-typed`, so a layout migration cannot drop it — `resettablePaths()` is
+  a filter over that table, and only `derived` / `refetchable` entries are deleted. No
+  `LAYOUT_VERSION` bump: nothing moved, and a bump would mark every existing home stale
+  and run a reset on machines that have nothing to migrate.
+
+### Two hardenings the shared directory made necessary
+
+Both are consequences of writing next to another product's secrets rather than
+into a directory the CLI owned outright.
+
+- **A symlinked config no longer writes through to whatever it points at.**
+  `O_TRUNC` follows symlinks, so a link at `cli-auth.json` pointing at
+  `../credentials.json` made `fp login` silently truncate the Enforcement CLI's
+  token and write the session over it — no error, nothing in either product's
+  logs. The final component is now opened `O_NOFOLLOW` and a link is refused
+  with a message naming the file. The link is not deleted: a symlink is
+  something a person put there.
+- **`fpcli/` is created `0700` rather than inheriting the umask.** A common
+  `0002` umask made it `0775`. The session file itself was always `0600`, so it
+  was never readable — but a group-writable directory lets anyone in the group
+  replace the file, which is a session swap. The shared parent is untouched: if
+  the CLI is the first to create `~/.failproofai` it leaves it to the umask, as
+  the Enforcement CLI would, and an existing directory is never re-permissioned.
+- **The session is written atomically, to a temp file that is renamed into place.**
+  `O_NOFOLLOW` closed the symlink hole but says nothing about a **hard link** —
+  that is not a link, it is a second name for one inode, so an in-place write
+  went straight through it into the neighbour's file exactly as before. `rename`
+  swaps the directory entry instead, so the other name keeps the old inode. The
+  same change buys three more things: a reader never observes a half-written
+  credential, two racing `fp` processes end with one whole session rather than a
+  splice, and a FIFO left in the config position can no longer hang the CLI
+  forever (`open` on a FIFO blocks for a reader; the previous code sat there
+  indefinitely with no output). The temp file is removed on every failure path.
+
 ## 0.1.7
 
 ### Packaging fix: declare `click` and `pygments` explicitly

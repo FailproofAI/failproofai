@@ -273,6 +273,40 @@ export const auditSessionFile = (home?: string) => resolve(auditDir(home), "sess
 export const auditMachineFile = (home?: string) => resolve(auditDir(home), "machine.json");
 
 
+// ── fp-cli ───────────────────────────────────────────────────────────────────
+
+/**
+ * The Cloud CLI's own directory (`fp-cli` on PyPI, command `fp`).
+ *
+ * Written by PYTHON, not by anything in this repo's TypeScript or Rust — the
+ * CLI resolves it independently in `fp-cli/fp_cli/config.py`. It is declared
+ * here anyway because this file is the register of what may exist in the home,
+ * and a path absent from it is only safe by accident: `resettablePaths()` is a
+ * filter over `HOME_CLASSES`, so an unregistered directory survives today and
+ * survives the next migration only until someone lists its parent.
+ *
+ * Not classified itself — `auditDir`'s rule applies, classify the children. The
+ * directory may grow a cache later; the credential in it must never be dropped.
+ */
+export const fpcliDir = (home?: string) => atHome(home, "fpcli");
+
+/**
+ * The CLI's signed-in session. `0600`, written only by `fp login` / `fp logout`.
+ *
+ * Was `~/.fp/cli.json` — a third top-level dotfile for one product. Moving it
+ * here deliberately did NOT migrate the old file: a session lives 24h and one
+ * `fp login` reissues it, so the upgrade costs a login rather than a
+ * credential-rewriting code path that runs once and is never tested again.
+ *
+ * `user-typed` for the same reason as `auditSessionFile` beside it: nothing
+ * regenerates a session, and dropping it silently signs the machine out.
+ *
+ * TS-side only, like `auditSessionFile`, and absent from `paths.rs` by design —
+ * the daemon has no reason to open a human credential, and mirroring a path
+ * only Python writes would give `paths.rs` an entry nothing there reads.
+ */
+export const fpcliAuthFile = (home?: string) => resolve(fpcliDir(home), "cli-auth.json");
+
 // ── Hook activity ────────────────────────────────────────────────────────────
 
 /** The decision log: page-sized JSONL the dashboard's activity tab reads. */
@@ -498,6 +532,11 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // with no notice, and the machine only finds out the next time it tries to
   // report.
   { path: auditSessionFile, class: "user-typed" },
+  // The Cloud CLI's session, written by Python (`fp-cli/fp_cli/config.py`). The
+  // one entry here whose writer is outside this repo's TS and Rust, which is
+  // exactly why it needs listing: nothing in a migration would otherwise know a
+  // credential lives under `fpcli/`.
+  { path: fpcliAuthFile, class: "user-typed" },
 
   // ── Never deleted: recorded and not yet shipped ──
   // Batches read out of transcripts and queued for upload. The reason losing

@@ -19,7 +19,7 @@ command**, **`--json` to parse**, **branch on exit codes**.
 - [agent](#agent)
 
 ## Global options
-Set on the CLI, **before** the subcommand. Precedence: flag > env var > config file (`~/.fp/cli.json`, mode 0600).
+Set on the CLI, **before** the subcommand. Precedence: flag > env var > config file (`~/.failproofai/fpcli/cli-auth.json`, mode 0600).
 
 | Flag | Env var | Meaning |
 |---|---|---|
@@ -31,7 +31,7 @@ Set on the CLI, **before** the subcommand. Precedence: flag > env var > config f
 | `--insecure` / `--secure` | `FP_INSECURE` | Skip / require TLS verification (for self-signed dev certs; saved at login). |
 | `--version` | | Print version (also `fp version`). |
 
-Config dir honours `FP_HOME`. Telemetry is currently disabled globally while its send path is made fully non-blocking. `FP_ANALYTICS_DISABLED=1` and `DO_NOT_TRACK=1` remain supported opt-out controls for when telemetry is re-enabled.
+Config dir resolves as `FP_HOME` > `$FAILPROOFAI_HOME/fpcli` > `~/.failproofai/fpcli`; `FP_HOME` is used as-is, `FAILPROOFAI_HOME` gets `fpcli/` appended. Telemetry is currently disabled globally while its send path is made fully non-blocking. `FP_ANALYTICS_DISABLED=1` and `DO_NOT_TRACK=1` remain supported opt-out controls for when telemetry is re-enabled.
 
 ### Session or API key
 Exactly one credential is in play per invocation, chosen in this order:
@@ -64,7 +64,7 @@ Exactly one credential is in play per invocation, chosen in this order:
 ## Identity
 
 ### login / logout / whoami
-- `fp login [--email you@x.com] [--org <slug>]` — emails a one-time code; on a real TTY it's a single interactive box, else a plain prompt. Saves the session to `~/.fp/cli.json`. **You cannot complete this for the user** (it needs the emailed code). `--org` picks the tenant at login. **Session-only** — exit 2 under a key.
+- `fp login [--email you@x.com] [--org <slug>]` — emails a one-time code; on a real TTY it's a single interactive box, else a plain prompt. Saves the session to `~/.failproofai/fpcli/cli-auth.json` (was `~/.fp/cli.json`; an old file there is neither read nor deleted, so an upgraded machine needs one `fp login`). **You cannot complete this for the user** (it needs the emailed code). `--org` picks the tenant at login. **Session-only** — exit 2 under a key.
 - `fp logout` — clears the saved session. **Session-only** — exit 2 under a key (a key cannot be "logged out"; revoke it instead).
 - `fp whoami` — active org + your permissions. Run this first; exit 4 = no usable credential.
   **Under a key it answers a different question and still exits 0:** it reports that there is no signed-in user, names the auth mode, and gives the org it will act on. So branch on the auth mode, not on the absence of a user identity — and note that it does not prove the key is accepted or check any permission. Let the first real read do that.

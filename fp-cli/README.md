@@ -39,7 +39,8 @@ an emailed one-time code:
 
 ```bash
 fp login --email you@example.com
-# enter the 6-digit code; the session is stored in ~/.fp/cli.json (mode 0600)
+# enter the 6-digit code; the session is stored in
+# ~/.failproofai/fpcli/cli-auth.json (mode 0600)
 fp whoami
 fp logout
 ```
@@ -131,8 +132,8 @@ fp --json sessions --since 7d --fields session_id,status,scores
 | Setting | Flag | Env var | Default |
 |---|---|---|---|
 | Dashboard URL | `--base-url` | `FP_DASHBOARD_URL` | `https://app.befailproof.ai` |
-| Active org/tenant | `--org` | `FP_ORG` | chosen at login; saved in `~/.fp/cli.json` |
-| Session token | `--token` | `FP_TOKEN` | from `~/.fp/cli.json` |
+| Active org/tenant | `--org` | `FP_ORG` | chosen at login; saved in `~/.failproofai/fpcli/cli-auth.json` |
+| Session token | `--token` | `FP_TOKEN` | from `~/.failproofai/fpcli/cli-auth.json` |
 | API key (CI) | `--api-key` | `FP_API_KEY` | none; never written to disk |
 | JSON output | `--json` | `FP_JSON` | off |
 | Skip TLS verification | `--insecure` / `--secure` | `FP_INSECURE` | off (saved at login) |
@@ -142,9 +143,22 @@ Precedence is **flag > environment variable > config file > built-in default**. 
 install points at the hosted product with no configuration; set `--base-url` or
 `FP_DASHBOARD_URL` for a self-hosted or dev instance and it is saved after `login`.
 
-The config directory honours `FP_HOME` and defaults to `~/.fp`. This is the CLI's own
-namespace: the Python SDK and the collector keep their own spool under `~/.agenteye`,
-and the Enforcement CLI owns `~/.failproofai`.
+The session lives at `~/.failproofai/fpcli/cli-auth.json` (mode `0600`). The directory
+is resolved as `FP_HOME` > `$FAILPROOFAI_HOME/fpcli` > `~/.failproofai/fpcli` — `FP_HOME`
+names the CLI's own directory and is used as-is, so an existing export keeps addressing
+the same place; `FAILPROOFAI_HOME` names the shared home root, so `fpcli/` is appended.
+
+The CLI only ever creates. It will bring `~/.failproofai` into existence on a machine
+that has never run the Enforcement CLI, and leaves a populated one exactly as it found
+it — nothing here removes or rewrites a path it does not own. The file is registered in
+that home's layout (`src/hooks/fp-home.ts`) and classified `user-typed`, which is what
+keeps a layout migration from dropping it.
+
+The Python SDK and the collector keep their own spool under `~/.agenteye`. That one is a
+wire contract with the collector rather than a preference, so it did not move.
+
+> **Upgrading from a version that used `~/.fp/cli.json`?** You will be asked to log in
+> once. The old file is not read and not deleted; remove `~/.fp/` when convenient.
 
 For a dashboard with a self-signed or internal TLS certificate, add `--insecure` to skip
 certificate verification (saved at login, so you set it once). This disables protection

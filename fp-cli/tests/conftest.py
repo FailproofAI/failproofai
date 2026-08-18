@@ -35,8 +35,16 @@ def pinned_terminal(monkeypatch):
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
-    """Isolate ~/.fp to a temp dir and clear FP_* env that would leak in."""
+    """Isolate the CLI config dir to a temp dir, and clear env that would leak in.
+
+    `FP_HOME` names the CLI's own directory, so the config lands directly in
+    `tmp_path`. `FAILPROOFAI_HOME` is cleared rather than set: it is the LOWER
+    precedence of the two, so leaving a developer's real one exported would not
+    change where this fixture points — but it would leave the suite one deleted
+    `setenv` away from writing into a real `~/.failproofai`.
+    """
     monkeypatch.setenv("FP_HOME", str(tmp_path))
+    monkeypatch.delenv("FAILPROOFAI_HOME", raising=False)
     for var in (
         "FP_DASHBOARD_URL",
         "FP_TOKEN",

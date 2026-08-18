@@ -10,26 +10,32 @@ permissions:
   issues: write
 
 jobs:
-  welcome:
-    name: Thank and welcome contributor
+  welcome-external-contributor:
+    name: Thank and welcome external contributor
     runs-on: ubuntu-latest
     steps:
-      - name: Post welcome message
+      - name: Post welcome message for non-members
         uses: actions/github-script@v8
         with:
           script: |
             const author = context.payload.pull_request.user.login;
-            const isDependabot = author === 'dependabot[bot]';
-            const body = isDependabot
-              ? `Thanks @${author} for keeping our dependencies current! 🙌`
-              : `Thanks @${author} for your contribution to Failproof AI! 🙌\n\nWe'd love to discuss your PR and welcome you to our community: https://discord.befailproof.ai/`;
+            if (context.payload.pull_request.user.type === 'Bot') return;
 
-            await github.rest.issues.createComment({
+            const { data: membership } = await github.rest.repos.getCollaboratorPermissionLevel({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              body,
+              username: author,
             });
+
+            // A collaborator is a repository member; bots and members receive no greeting.
+            if (membership.user.permissions === 'none') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: `Thanks @${author} for your contribution to Failproof AI! 🙌\n\nWe'd love to discuss your PR and welcome you to our community: https://discord.befailproof.ai/`,
+              });
+            }
 
   approve-dependabot:
     name: Approve Dependabot PR

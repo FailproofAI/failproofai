@@ -1,0 +1,49 @@
+name: Welcome contributors and approve Dependabot PRs
+
+on:
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  welcome:
+    name: Thank and welcome contributor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post welcome message
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const author = context.payload.pull_request.user.login;
+            const isDependabot = author === 'dependabot[bot]';
+            const body = isDependabot
+              ? `Thanks @${author} for keeping our dependencies current! 🙌`
+              : `Thanks @${author} for your contribution to Failproof AI! 🙌\n\nWe'd love to discuss your PR and welcome you to our community: https://discord.befailproof.ai/`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
+
+  approve-dependabot:
+    name: Approve Dependabot PR
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Approve pull request
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              event: 'APPROVE',
+              body: 'Automated approval for Dependabot dependency update.',
+            });

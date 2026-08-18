@@ -144,7 +144,10 @@ try:
     failproofai_sdk.event.tool_result(session_id=sid, agent_id="planner",
                                tool_name="web_search", tool_call_id="toolu_01",
                                output={"results": ["..."]})
-except Exception as e:
+# BaseException, not Exception: `asyncio.CancelledError` inherits from
+# BaseException, so `except Exception` lets a cancelled run through and the
+# session ends with an `agent_start` and no `agent_end` at all.
+except BaseException as e:
     import traceback
     failproofai_sdk.event.error(session_id=sid, agent_id="planner",
                          error_type=type(e).__name__, message=str(e),

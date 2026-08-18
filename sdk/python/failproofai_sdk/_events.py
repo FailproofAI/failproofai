@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -18,6 +19,8 @@ from failproofai_sdk._schema import (
     ToolResultEvent,
     ToolUseEvent,
 )
+
+logger = logging.getLogger(__name__)
 
 # session_id and agent_id are explicit signature params on every method, so Python raises
 # TypeError before our validator runs if a caller tries to pass them as extra **fields.
@@ -65,6 +68,48 @@ def _validate_promoted_numeric(name: str, value) -> None:
             f"{name} must be between 0 and {_U32_MAX} (an unsigned 32-bit "
             f"integer), got {value!r}"
         )
+
+
+def _measured_duration_ms(start_ts, end_ts) -> "int | None":
+    """Whole milliseconds between a paired start and end, or None.
+
+    The four paired events each computed this inline, and none of them applied
+    the range the SERVER enforces — the same range `_validate_promoted_numeric`
+    refuses a caller for. `pu32()` reads `duration_ms` as an unsigned 32-bit
+    integer and stores NULL for anything outside it, at `200 OK`, so an
+    out-of-range duration is not an error anywhere: the row lands with an empty
+    column and nothing says why.
+
+    Two ways to leave the range, both reachable without anything being wrong
+    with the caller:
+
+    * **over.** 2**32 ms is ~49.7 days. A `human_wait` answered after a long
+      weekend, or an `agent_pause` resumed a month later, is an ordinary
+      lifetime for these pairs, not an abuse of them.
+    * **under.** These are wall-clock readings from `datetime.now()`, so an NTP
+      step backwards between start and end yields a NEGATIVE interval. `round()`
+      keeps the sign, and a negative into an unsigned column is the same silent
+      NULL.
+
+    Omitted rather than clamped. A clamped 49.7 days is indistinguishable from a
+    measurement, and the whole reason `duration_ms` is computed here instead of
+    accepted from the caller is that a reported duration is unfalsifiable. An
+    absent field is at least honest, and the timestamps are still on both events
+    for anyone who wants to do the subtraction themselves.
+    """
+    if start_ts is None:
+        return None
+    ms = round((end_ts - start_ts).total_seconds() * 1000)
+    if not 0 <= ms <= _U32_MAX:
+        logger.warning(
+            "Failproof AI omitted duration_ms=%d: outside the unsigned 32-bit range "
+            "the server stores it in (0..%d). The event is unaffected.",
+            ms,
+            _U32_MAX,
+        )
+        return None
+    return ms
+
 
 # Hard cap on `_pending` correlation map size. Orphaned starts (a `tool_use` with
 # no `tool_result`, a `human_wait` the user never answers, etc.) would otherwise
@@ -170,12 +215,7 @@ class EventNamespace:
         self._validate_fields(fields)
         ts = self._now()
         start_ts = self._pending.pop(_tool_key(session_id, agent_id, tool_call_id), None)
-        # Emit an int: the server stores duration_ms as u32 and its JSON parser
-        # drops any float (`as_u64()` -> None), so a bare float silently NULLs the
-        # column. Round to whole milliseconds at the source.
-        duration_ms = (
-            round((ts - start_ts).total_seconds() * 1000) if start_ts is not None else None
-        )
+        duration_ms = _measured_duration_ms(start_ts, ts)
         self._writer.submit(
             ToolResultEvent(
                 timestamp=self._fmt_ts(ts),
@@ -335,12 +375,7 @@ class EventNamespace:
         self._validate_fields(fields)
         ts = self._now()
         start_ts = self._pending.pop(f"pause:{session_id}:{agent_id}:{pause_id}", None)
-        # Emit an int: the server stores duration_ms as u32 and its JSON parser
-        # drops any float (`as_u64()` -> None), so a bare float silently NULLs the
-        # column. Round to whole milliseconds at the source.
-        duration_ms = (
-            round((ts - start_ts).total_seconds() * 1000) if start_ts is not None else None
-        )
+        duration_ms = _measured_duration_ms(start_ts, ts)
         self._writer.submit(
             AgentResumeEvent(
                 timestamp=self._fmt_ts(ts),
@@ -398,12 +433,7 @@ class EventNamespace:
         self._validate_fields(fields)
         ts = self._now()
         start_ts = self._pending.pop(_hook_key(session_id, agent_id, hook_id), None)
-        # Emit an int: the server stores duration_ms as u32 and its JSON parser
-        # drops any float (`as_u64()` -> None), so a bare float silently NULLs the
-        # column. Round to whole milliseconds at the source.
-        duration_ms = (
-            round((ts - start_ts).total_seconds() * 1000) if start_ts is not None else None
-        )
+        duration_ms = _measured_duration_ms(start_ts, ts)
         self._writer.submit(
             HookCompletedEvent(
                 timestamp=self._fmt_ts(ts),
@@ -484,12 +514,7 @@ class EventNamespace:
         self._validate_fields(fields)
         ts = self._now()
         start_ts = self._pending.pop(f"human:{session_id}:{agent_id}:{input_id}", None)
-        # Emit an int: the server stores duration_ms as u32 and its JSON parser
-        # drops any float (`as_u64()` -> None), so a bare float silently NULLs the
-        # column. Round to whole milliseconds at the source.
-        duration_ms = (
-            round((ts - start_ts).total_seconds() * 1000) if start_ts is not None else None
-        )
+        duration_ms = _measured_duration_ms(start_ts, ts)
         self._writer.submit(
             HumanInputEvent(
                 timestamp=self._fmt_ts(ts),

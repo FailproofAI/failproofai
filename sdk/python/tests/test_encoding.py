@@ -300,3 +300,78 @@ def test_default_str_still_rescues_the_values_it_always_did():
 def test_sanitize_leaves_an_already_clean_payload_alone():
     payload = {"a": 1, "b": [1, 2, {"c": "d"}], "e": None, "f": True}
     assert _sanitize(payload, frozenset()) == payload
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Non-finite floats — valid Python, invalid JSON
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _strict_loads(line):
+    """Parse the way a conforming JSON reader does: NaN/Infinity are not values."""
+    def reject(token):
+        raise ValueError(f"non-standard JSON constant: {token}")
+    return json.loads(line, parse_constant=reject)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_a_non_finite_float_still_produces_standard_json(spool, bad):
+    """`json.dumps` writes NaN / Infinity / -Infinity by default.
+
+    Those are a Python extension, not JSON, and — this is the part that made it
+    dangerous — `json.dumps` does NOT raise on them. The encoder's fallback was
+    never reached, so a malformed line went out looking like a clean success and
+    a strict NDJSON reader on the far side drops it.
+    """
+    writer = EventWriter(flush_interval=3600)
+    EventNamespace(writer).tool_use(
+        session_id="s", agent_id="a", tool_name="t", tool_call_id="c1",
+        input={"score": bad, "label": "kept"},
+    )
+    writer.flush_now()
+
+    (batch,) = list((spool / "events").glob("*.jsonl"))
+    for line in batch.read_text(encoding="utf-8").splitlines():
+        _strict_loads(line)  # raises if NaN/Infinity survived
+
+    published = read_all(spool)[0]
+    assert published["input"]["score"] is None, "the non-finite value was not neutralised"
+    assert published["input"]["label"] == "kept", "the sibling field was collateral damage"
+
+
+def test_the_raw_bytes_contain_no_nan_or_infinity_tokens(spool):
+    writer = EventWriter(flush_interval=3600)
+    EventNamespace(writer).tool_use(
+        session_id="s", agent_id="a", tool_name="t", tool_call_id="c1",
+        input={"a": float("nan"), "b": float("inf"), "c": float("-inf")},
+    )
+    writer.flush_now()
+    raw = next((spool / "events").glob("*.jsonl")).read_text(encoding="utf-8")
+    assert "NaN" not in raw and "Infinity" not in raw, raw
+
+
+def test_non_finite_floats_nested_in_lists_are_neutralised_too(spool):
+    writer = EventWriter(flush_interval=3600)
+    EventNamespace(writer).tool_use(
+        session_id="s", agent_id="a", tool_name="t", tool_call_id="c1",
+        input={"series": [1.0, float("nan"), 3.0]},
+    )
+    writer.flush_now()
+    assert read_all(spool)[0]["input"]["series"] == [1.0, None, 3.0]
+
+
+def test_finite_floats_are_left_exactly_alone():
+    """The fix must not round, reformat or otherwise touch ordinary numbers."""
+    entry = {"type": "e", "a": 0.1, "b": -2.5, "c": 1e300, "d": 0.0}
+    assert _encode_entry(entry) == json.dumps(entry, default=str, allow_nan=False)
+    assert json.loads(_encode_entry(entry))["a"] == 0.1
+
+
+def test_a_non_finite_float_does_not_push_the_event_onto_the_drop_path(spool, caplog):
+    """It is recoverable, so it must be recovered — not logged and discarded."""
+    writer = EventWriter(flush_interval=3600)
+    writer.submit({"type": "recoverable", "x": float("nan")})
+    with caplog.at_level(logging.ERROR, logger="failproofai_sdk._writer"):
+        writer.flush_now()
+    assert [e["type"] for e in read_all(spool)] == ["recoverable"]
+    assert not any("dropped" in r.getMessage() for r in caplog.records), caplog.text

@@ -116,6 +116,13 @@ def _sanitize(value, seen: frozenset, depth: int = 0):
     """
     if depth > _MAX_SANITIZE_DEPTH:
         return _DEPTH_MARKER
+    # NaN / inf / -inf. `json.dumps` writes these as the bare tokens NaN,
+    # Infinity and -Infinity, which are a Python extension and not valid JSON —
+    # a strict NDJSON reader rejects the line, and the whole event is lost for
+    # one field. There is no in-band JSON value for them, so None it is: the
+    # field reads as absent rather than as a number that is not one.
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
     if isinstance(value, dict):
         if id(value) in seen:
             return _CYCLE_MARKER
@@ -152,16 +159,24 @@ def _encode_entry(entry: dict) -> "str | None":
         {"k": {(1, 2): "v"}}  -> TypeError: keys must be str, int, float, ...
         d = {}; d["self"] = d -> ValueError: Circular reference detected
 
-    So: try strict first (the fast path, byte-identical to what shipped before),
-    fall back to a sanitised copy, and only then give up on that ONE event.
+    `allow_nan=False` is part of "strict" here. Left at its default, `json.dumps`
+    emits the bare tokens `NaN`, `Infinity` and `-Infinity` — a Python extension
+    that is NOT valid JSON and that a strict NDJSON reader rejects. Worse, it
+    does not raise, so the fallback below never ran and the malformed line went
+    out looking fine. With it off, a non-finite float raises like any other
+    unencodable value and `_sanitize` maps it to None.
+
+    So: try strict first (the fast path, byte-identical to what shipped before
+    for every payload that was already valid JSON), fall back to a sanitised
+    copy, and only then give up on that ONE event.
     """
     try:
-        return json.dumps(entry, default=str)
+        return json.dumps(entry, default=str, allow_nan=False)
     except (TypeError, ValueError, RecursionError):
         pass
 
     try:
-        return json.dumps(_sanitize(entry, frozenset()), default=str)
+        return json.dumps(_sanitize(entry, frozenset()), default=str, allow_nan=False)
     except Exception:
         # Nothing left to try. Losing this event is the correct outcome; losing
         # the batch around it is not.
@@ -403,5 +418,40 @@ class EventWriter:
         final_path = events_dir / f"{stem}.jsonl"
 
         content = "\n".join(lines) + "\n"
-        tmp_path.write_text(content, encoding="utf-8")
+
+        # fsync BEFORE the rename. `os.replace` is atomic with respect to
+        # readers, but atomic is not durable: it orders nothing against the page
+        # cache, so a power loss or kernel crash can leave a correctly-named,
+        # zero-length or truncated `.jsonl`. The collector reads whatever is
+        # there, POSTs it, and then DELETES the file (`remove_file` in
+        # `crates/fpai-collect/src/uploader.rs`) — so the loss is permanent and
+        # silent, and an empty batch is accepted with a 200.
+        #
+        # This is not a hypothetical asymmetry: this repo's own Rust spool
+        # writer already calls `sync_all()` here for exactly this reason
+        # (`crates/fpai-collect/src/spool.rs`), with the same comment. The
+        # Python writer publishing into the same directories was the odd one out.
+        with open(tmp_path, "wb") as handle:
+            handle.write(content.encode("utf-8"))
+            handle.flush()
+            os.fsync(handle.fileno())
+
         os.replace(tmp_path, final_path)
+
+        # And fsync the DIRECTORY, or the rename itself can be lost while the
+        # file's contents survive — leaving the batch on disk under its `.tmp`
+        # name, which the watcher ignores by design.
+        #
+        # Best-effort: opening a directory for fsync is a POSIX behaviour, and
+        # platforms that refuse it (Windows) still get the content fsync above,
+        # which is the half that prevents a truncated delivery.
+        try:
+            dir_fd = os.open(events_dir, os.O_RDONLY)
+        except OSError:  # pragma: no cover - platform dependent
+            return
+        try:
+            os.fsync(dir_fd)
+        except OSError:  # pragma: no cover - platform dependent
+            pass
+        finally:
+            os.close(dir_fd)

@@ -17,6 +17,7 @@ processes sharing one spool root, which is the ordinary deployment.
 import json
 import logging
 import os
+import stat
 import subprocess
 import sys
 import threading
@@ -934,3 +935,101 @@ def test_a_result_from_an_unrelated_session_gets_no_duration_at_all():
     writer.entries.clear()
     namespace.tool_result(session_id="B", agent_id="b", tool_name="t", tool_call_id="shared")
     assert "duration_ms" not in writer.entries[0], "a duration leaked across sessions"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Durability — atomic is not the same as committed
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _fs_trace(monkeypatch):
+    """Record the order of fsync/replace calls made while writing a batch."""
+    import sys
+
+    writer_module = sys.modules["failproofai_sdk._writer"]
+    order = []
+    real_fsync, real_replace = os.fsync, writer_module.os.replace
+
+    def fsync_spy(fd):
+        try:
+            st = os.fstat(fd)
+            kind = "dir" if stat.S_ISDIR(st.st_mode) else "file"
+        except OSError:  # pragma: no cover
+            kind = "?"
+        order.append(f"fsync:{kind}")
+        return real_fsync(fd)
+
+    def replace_spy(src, dst):
+        order.append("replace")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(writer_module.os, "fsync", fsync_spy)
+    monkeypatch.setattr(writer_module.os, "replace", replace_spy)
+    return order
+
+
+def test_the_batch_is_fsynced_before_the_rename_and_the_dir_after(spool, monkeypatch):
+    """`os.replace` is atomic to READERS; it commits nothing to the platter.
+
+    Without the content fsync, a power loss can leave a correctly-named,
+    zero-length `.jsonl`. The collector reads it, POSTs an empty body, gets a
+    200 and then DELETES the file (`remove_file` in
+    `crates/fpai-collect/src/uploader.rs`) — permanent, silent loss. Without the
+    directory fsync the reverse survives: the bytes are on disk but the rename
+    is not, so the batch sits under a `.tmp` name the watcher ignores by design.
+
+    This repo's own Rust spool writer has called `sync_all()` here from the
+    start (`crates/fpai-collect/src/spool.rs`); the Python writer publishing
+    into the same directories was the odd one out.
+    """
+    order = _fs_trace(monkeypatch)
+    writer = EventWriter(flush_interval=3600)
+    writer.submit({"type": "e", "n": 1})
+    writer.flush_now()
+
+    assert "replace" in order, "no rename happened"
+    assert order.index("fsync:file") < order.index("replace"), (
+        f"content was renamed before it was committed: {order}"
+    )
+    assert any(o == "fsync:dir" for o in order[order.index("replace"):]), (
+        f"the rename itself was never committed: {order}"
+    )
+
+
+def test_a_published_batch_is_complete_on_disk_not_merely_present(spool):
+    """The property the fsync exists to buy, asserted at the file level."""
+    writer = EventWriter(flush_interval=3600)
+    namespace = EventNamespace(writer)
+    for i in range(200):
+        namespace.agent_start(session_id="s", agent_id="a", goal=f"g{i}")
+    writer.flush_now()
+
+    published = read_all(spool)
+    assert len(published) == 200
+    for path in (spool / "events").glob("*.jsonl"):
+        text = path.read_text(encoding="utf-8")
+        assert text.endswith("\n"), f"{path.name} is truncated mid-line"
+        assert all(json.loads(line) for line in text.splitlines())
+
+
+def test_a_crash_between_write_and_rename_leaves_no_half_batch(spool, monkeypatch):
+    """Fault injection: the rename never happens.
+
+    The watcher must see nothing — a `.tmp` is not a `.jsonl` — and the events
+    must go back on the queue rather than being counted as delivered.
+    """
+    import sys
+
+    writer_module = sys.modules["failproofai_sdk._writer"]
+    monkeypatch.setattr(
+        writer_module.os, "replace",
+        lambda *a: (_ for _ in ()).throw(OSError(5, "simulated crash before rename")),
+    )
+    writer = EventWriter(flush_interval=3600)
+    writer.submit({"type": "e", "n": 1})
+
+    with pytest.raises(OSError):
+        writer.flush_now()
+
+    assert list((spool / "events").glob("*.jsonl")) == [], "a batch was published anyway"
+    assert len(writer._queue) == 1, "the events were dropped rather than retried"

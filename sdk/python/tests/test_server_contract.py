@@ -418,3 +418,109 @@ def test_the_promoted_numeric_set_matches_the_one_ingest_lifts():
     promotes, and this file's own assertions stop describing the server.
     """
     assert _events._PROMOTED_NUMERIC == PROMOTED_NUMERIC
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The MEASURED duration is bound by the same u32 range a caller is held to
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: The four events that pair with an earlier one and compute `duration_ms`.
+#: Each takes a start call and an end call against the same id.
+PAIRED = {
+    "tool_result": (
+        lambda ns: ns.tool_use(session_id="s", agent_id="a", tool_name="t", tool_call_id="x"),
+        lambda ns: ns.tool_result(session_id="s", agent_id="a", tool_name="t", tool_call_id="x"),
+    ),
+    "hook_completed": (
+        lambda ns: ns.hook_triggered(session_id="s", agent_id="a", hook_name="h", hook_id="x"),
+        lambda ns: ns.hook_completed(session_id="s", agent_id="a", hook_name="h", hook_id="x"),
+    ),
+    "human_input": (
+        lambda ns: ns.human_wait(session_id="s", agent_id="a", input_id="x"),
+        lambda ns: ns.human_input(session_id="s", agent_id="a", input_id="x"),
+    ),
+    "agent_resume": (
+        lambda ns: ns.agent_pause(session_id="s", agent_id="a", pause_id="x"),
+        lambda ns: ns.agent_resume(session_id="s", agent_id="a", pause_id="x"),
+    ),
+}
+
+
+def _emit_pair_with_gap(event_type, gap_seconds, monkeypatch):
+    """Run one start/end pair with a controlled interval between them."""
+    import datetime as _dt
+
+    start_call, end_call = PAIRED[event_type]
+    recorder = _Recorder()
+    ns = EventNamespace(recorder)
+
+    base = _dt.datetime(2026, 1, 1, tzinfo=_dt.timezone.utc)
+    clock = {"now": base}
+    monkeypatch.setattr(EventNamespace, "_now", staticmethod(lambda: clock["now"]))
+
+    start_call(ns)
+    clock["now"] = base + _dt.timedelta(seconds=gap_seconds)
+    recorder.entries.clear()
+    end_call(ns)
+    return recorder.entries[0]
+
+
+@pytest.mark.parametrize("event_type", sorted(PAIRED))
+def test_a_pair_spanning_more_than_u32_milliseconds_omits_the_duration(event_type, monkeypatch):
+    """~49.7 days is an ordinary lifetime for these pairs, not an abuse.
+
+    A `human_wait` answered after a long weekend, an `agent_pause` resumed a
+    month later. Over the range, `pu32()` stores NULL at 200 OK — so an
+    unbounded value is not an error anywhere, just an empty column.
+    """
+    over = (2**32 / 1000) + 60  # comfortably past 2**32 ms
+    payload = _emit_pair_with_gap(event_type, over, monkeypatch)
+    assert "duration_ms" not in payload, (
+        f"{event_type} emitted {payload.get('duration_ms')}, which the server stores as NULL"
+    )
+
+
+@pytest.mark.parametrize("event_type", sorted(PAIRED))
+def test_a_backwards_clock_omits_the_duration_rather_than_going_negative(event_type, monkeypatch):
+    """`datetime.now()` is wall-clock, so an NTP step back yields a negative gap.
+
+    `round()` keeps the sign, and a negative into an unsigned column is the same
+    silent NULL as an oversized one.
+    """
+    payload = _emit_pair_with_gap(event_type, -5, monkeypatch)
+    assert "duration_ms" not in payload, f"{event_type} emitted a negative duration"
+
+
+@pytest.mark.parametrize("event_type", sorted(PAIRED))
+def test_an_ordinary_gap_still_produces_a_duration(event_type, monkeypatch):
+    """The bound must not swallow the normal case it exists to protect."""
+    payload = _emit_pair_with_gap(event_type, 1.5, monkeypatch)
+    assert payload["duration_ms"] == 1500
+    assert isinstance(payload["duration_ms"], int)
+
+
+@pytest.mark.parametrize("event_type", sorted(PAIRED))
+def test_the_upper_boundary_itself_is_kept(event_type, monkeypatch):
+    """Exactly 2**32 - 1 ms is representable; an off-by-one here drops real data."""
+    payload = _emit_pair_with_gap(event_type, (2**32 - 1) / 1000, monkeypatch)
+    assert payload["duration_ms"] == 2**32 - 1
+
+
+def test_the_measured_and_the_caller_supplied_paths_enforce_the_same_range():
+    """One range, two entry points. They drifted once already.
+
+    `_validate_promoted_numeric` refused a caller anything outside 0..2**32-1
+    while the SDK's own computation was unbounded — the same field, held to two
+    different standards depending on who produced it.
+    """
+    import datetime as _dt
+
+    base = _dt.datetime(2026, 1, 1, tzinfo=_dt.timezone.utc)
+    over = base + _dt.timedelta(milliseconds=2**32)
+    assert _events._measured_duration_ms(base, over) is None
+    with pytest.raises(ValueError):
+        _events._validate_promoted_numeric("duration_ms", 2**32)
+
+    ok = base + _dt.timedelta(milliseconds=2**32 - 1)
+    assert _events._measured_duration_ms(base, ok) == 2**32 - 1
+    _events._validate_promoted_numeric("duration_ms", 2**32 - 1)

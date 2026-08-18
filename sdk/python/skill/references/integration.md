@@ -113,7 +113,15 @@ def tool_call(tool_name: str, *, tool_call_id: str | None = None, input=None):
     box = _Box()
     try:
         yield box
-    except Exception as e:
+    # BaseException, not Exception. `asyncio.CancelledError` inherits straight
+    # from BaseException on every supported Python, so `except Exception` does
+    # NOT see a cancelled tool — and a cancelled tool is a `tool_use` with no
+    # `tool_result` after it: an orphaned pending entry that also holds its
+    # correlation slot until the cap evicts it. Cancellation is the ordinary way
+    # an async tool ends when a timeout fires or a caller gives up, so this is
+    # the common path, not the exotic one. The same reasoning covers
+    # KeyboardInterrupt and SystemExit.
+    except BaseException as e:
         _emit("tool_result", tool_name=tool_name, tool_call_id=tcid,
               error=f"{type(e).__name__}: {e}")
         raise

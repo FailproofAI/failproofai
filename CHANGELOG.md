@@ -48,6 +48,8 @@
 
 - Give the OpenAPI spec an absolute server URL, so the HTTP API reference can generate request examples again. `servers[0].url` was `/v1` — relative, which is legal OpenAPI but useless to Mintlify's playground: it builds each example by joining that value with the operation path, and a value with no scheme or host yields no request to show. Every endpoint under the HTTP API tab rendered *A valid request URL is required to generate request examples* in place of its example. It is now `https://app.befailproof.ai/v1`, the base the prose already documents in `reference/http-api.mdx` and `audits/agent-contracts.mdx` and that `collector-config.ts` posts events to — so the reference and the rest of the docs finally name the same host. (#718)
 
+- Drop the Status link from the docs sidebar. It was a `navigation.global.anchors` entry, which Mintlify pins above the page tree on every page in every tab — permanent real estate for a link that answers a question almost no reader of a docs page is asking. Support stays, since that one is reached from anywhere in the docs by someone who is already stuck. (#718)
+
 ## 1.0.1-beta.0 — 2026-08-14
 
 ### Docs

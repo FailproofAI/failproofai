@@ -178,7 +178,6 @@
     ],
     "global": {
       "anchors": [
-        { "anchor": "Status", "href": "https://status.befailproof.ai", "icon": "activity" },
         { "anchor": "Support", "href": "mailto:support@befailproof.ai", "icon": "mail" }
       ]
     }

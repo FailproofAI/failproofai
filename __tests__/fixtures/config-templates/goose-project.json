@@ -1,0 +1,188 @@
+{
+  "cli": "goose",
+  "scope": "project",
+  "binary": "/usr/bin/failproofai",
+  "empty": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionStart --cli goose"
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook UserPromptSubmit --cli goose"
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PreToolUse --cli goose"
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PostToolUse --cli goose"
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionEnd --cli goose"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "foreign": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionStart --cli goose"
+            }
+          ]
+        },
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "somebody-elses-tool --do-a-thing"
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook UserPromptSubmit --cli goose"
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PreToolUse --cli goose"
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PostToolUse --cli goose"
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionEnd --cli goose"
+            }
+          ]
+        }
+      ]
+    },
+    "somebodyElsesSetting": {
+      "keep": "me"
+    }
+  },
+  "stale": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionStart --cli goose"
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook UserPromptSubmit --cli goose"
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PreToolUse --cli goose"
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PostToolUse --cli goose"
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionEnd --cli goose"
+            }
+          ]
+        }
+      ],
+      "AnEventWeNoLongerInstall": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionStart --cli goose"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

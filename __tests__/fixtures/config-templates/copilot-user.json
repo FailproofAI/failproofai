@@ -1,0 +1,514 @@
+{
+  "cli": "copilot",
+  "scope": "user",
+  "binary": "/usr/bin/failproofai",
+  "empty": {
+    "version": 1,
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook SessionStart --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook SessionStart --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook SessionEnd --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook SessionEnd --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook UserPromptSubmit --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook UserPromptSubmit --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PreToolUse --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PreToolUse --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PostToolUse --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PostToolUse --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook Stop --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook Stop --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook SubagentStop --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook SubagentStop --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUseFailure": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PostToolUseFailure --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PostToolUseFailure --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "ErrorOccurred": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook ErrorOccurred --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook ErrorOccurred --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PreCompact --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PreCompact --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PermissionRequest --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PermissionRequest --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Notification": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook Notification --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook Notification --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "foreign": {
+    "version": 1,
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook SessionStart --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook SessionStart --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        },
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "somebody-elses-tool --do-a-thing",
+              "powershell": "somebody-elses-tool --do-a-thing",
+              "timeoutSec": 60
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook SessionEnd --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook SessionEnd --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook UserPromptSubmit --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook UserPromptSubmit --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PreToolUse --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PreToolUse --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PostToolUse --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PostToolUse --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook Stop --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook Stop --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook SubagentStop --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook SubagentStop --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUseFailure": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PostToolUseFailure --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PostToolUseFailure --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "ErrorOccurred": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook ErrorOccurred --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook ErrorOccurred --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PreCompact --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PreCompact --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PermissionRequest --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PermissionRequest --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Notification": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook Notification --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook Notification --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    },
+    "somebodyElsesSetting": {
+      "keep": "me"
+    }
+  },
+  "stale": {
+    "version": 1,
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook SessionStart --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook SessionStart --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook SessionEnd --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook SessionEnd --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook UserPromptSubmit --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook UserPromptSubmit --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PreToolUse --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PreToolUse --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PostToolUse --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PostToolUse --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook Stop --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook Stop --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook SubagentStop --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook SubagentStop --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUseFailure": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PostToolUseFailure --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PostToolUseFailure --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "ErrorOccurred": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook ErrorOccurred --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook ErrorOccurred --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PreCompact --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PreCompact --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook PermissionRequest --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook PermissionRequest --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Notification": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook Notification --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook Notification --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "AnEventWeNoLongerInstall": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "\"/usr/bin/failproofai\" --hook SessionStart --cli copilot",
+              "powershell": "\"/usr/bin/failproofai\" --hook SessionStart --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

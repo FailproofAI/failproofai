@@ -53,23 +53,26 @@ describe("resetMistypedContainers", () => {
       ],
     };
 
-    // Without the reset, this is the bug — and it is worse than "our entries
-    // are missing": the array keeps the OLD content the vendor already rejects,
-    // while our new entries, set as non-index properties, are thrown away by
-    // serialisation. The file on disk comes back byte-identical to the broken
-    // one it started as.
-    const naive = structuredClone(settings);
-    copilot.writeHookEntries(naive, BINARY, "project");
-    expect(Array.isArray(naive.hooks)).toBe(true);
-    expect(JSON.parse(JSON.stringify(naive)).hooks).toEqual(settings.hooks);
-
-    const reset = resetMistypedContainers(copilot, settings, BINARY, "project");
-    expect(reset).toEqual(["hooks"]);
-    copilot.writeHookEntries(settings, BINARY, "project");
-
-    const roundTripped = JSON.parse(JSON.stringify(settings)) as { hooks: Record<string, unknown> };
+    // The templated writer now recovers this on its own — it coerces a
+    // wrongly-typed container instead of accepting it, so the catastrophic
+    // version of this bug cannot happen for the eight CLIs it drives.
+    //
+    // It used to be able to: `settings.hooks ??= {}` KEPT the array, the
+    // following `hooks["PreToolUse"] = …` set a non-index property,
+    // `JSON.stringify` dropped it, and the file written back was byte-identical
+    // to the broken one — so a user could reinstall forever, stay completely
+    // unenforced, and see success reported every time.
+    const written = structuredClone(settings);
+    copilot.writeHookEntries(written, BINARY, "project");
+    const roundTripped = JSON.parse(JSON.stringify(written)) as { hooks: Record<string, unknown> };
     expect(Array.isArray(roundTripped.hooks)).toBe(false);
     expect(Object.keys(roundTripped.hooks).length).toBeGreaterThan(0);
+
+    // And the helper still reports it, which is what covers the integrations
+    // the template engine does not drive.
+    expect(resetMistypedContainers(copilot, structuredClone(settings), BINARY, "project")).toEqual([
+      "hooks",
+    ]);
   });
 
   it("leaves a correctly-typed container alone", () => {

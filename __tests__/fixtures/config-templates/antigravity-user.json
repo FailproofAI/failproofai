@@ -1,0 +1,169 @@
+{
+  "cli": "antigravity",
+  "scope": "user",
+  "binary": "/usr/bin/failproofai",
+  "empty": {
+    "failproofai": {
+      "PreToolUse": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PreToolUse --cli antigravity",
+              "timeout": 30,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostToolUse --cli antigravity",
+              "timeout": 30,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreInvocation": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook PreInvocation --cli antigravity",
+          "timeout": 30,
+          "__failproofai_hook__": true
+        }
+      ],
+      "Stop": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook Stop --cli antigravity",
+          "timeout": 30,
+          "__failproofai_hook__": true
+        }
+      ]
+    }
+  },
+  "foreign": {
+    "failproofai": {
+      "PreToolUse": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PreToolUse --cli antigravity",
+              "timeout": 30,
+              "__failproofai_hook__": true
+            }
+          ]
+        },
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "somebody-elses-tool --do-a-thing",
+              "timeout": 30
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostToolUse --cli antigravity",
+              "timeout": 30,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreInvocation": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook PreInvocation --cli antigravity",
+          "timeout": 30,
+          "__failproofai_hook__": true
+        }
+      ],
+      "Stop": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook Stop --cli antigravity",
+          "timeout": 30,
+          "__failproofai_hook__": true
+        }
+      ]
+    },
+    "somebodyElsesSetting": {
+      "keep": "me"
+    }
+  },
+  "stale": {
+    "failproofai": {
+      "PreToolUse": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PreToolUse --cli antigravity",
+              "timeout": 30,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostToolUse --cli antigravity",
+              "timeout": 30,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreInvocation": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook PreInvocation --cli antigravity",
+          "timeout": 30,
+          "__failproofai_hook__": true
+        }
+      ],
+      "Stop": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook Stop --cli antigravity",
+          "timeout": 30,
+          "__failproofai_hook__": true
+        }
+      ],
+      "AnEventWeNoLongerInstall": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PreToolUse --cli antigravity",
+              "timeout": 30,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

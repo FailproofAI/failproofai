@@ -1,0 +1,1037 @@
+{
+  "cli": "claude",
+  "scope": "user",
+  "binary": "/usr/bin/failproofai",
+  "empty": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook SessionStart",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook SessionEnd",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook UserPromptSubmit",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PreToolUse",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PermissionRequest",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionDenied": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PermissionDenied",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostToolUse",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUseFailure": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostToolUseFailure",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Notification": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook Notification",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook SubagentStart",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook SubagentStop",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "TaskCreated": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook TaskCreated",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "TaskCompleted": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook TaskCompleted",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook Stop",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "StopFailure": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook StopFailure",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "TeammateIdle": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook TeammateIdle",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "InstructionsLoaded": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook InstructionsLoaded",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "ConfigChange": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook ConfigChange",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "CwdChanged": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook CwdChanged",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "FileChanged": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook FileChanged",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "WorktreeRemove": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook WorktreeRemove",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PreCompact",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostCompact",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Elicitation": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook Elicitation",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "ElicitationResult": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook ElicitationResult",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptExpansion": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook UserPromptExpansion",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolBatch": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostToolBatch",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Setup": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook Setup",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "foreign": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook SessionStart",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        },
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "somebody-elses-tool --do-a-thing",
+              "timeout": 60
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook SessionEnd",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook UserPromptSubmit",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PreToolUse",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PermissionRequest",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionDenied": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PermissionDenied",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostToolUse",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUseFailure": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostToolUseFailure",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Notification": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook Notification",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook SubagentStart",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook SubagentStop",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "TaskCreated": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook TaskCreated",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "TaskCompleted": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook TaskCompleted",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook Stop",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "StopFailure": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook StopFailure",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "TeammateIdle": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook TeammateIdle",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "InstructionsLoaded": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook InstructionsLoaded",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "ConfigChange": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook ConfigChange",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "CwdChanged": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook CwdChanged",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "FileChanged": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook FileChanged",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "WorktreeRemove": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook WorktreeRemove",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PreCompact",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostCompact",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Elicitation": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook Elicitation",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "ElicitationResult": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook ElicitationResult",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptExpansion": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook UserPromptExpansion",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolBatch": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostToolBatch",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Setup": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook Setup",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    },
+    "somebodyElsesSetting": {
+      "keep": "me"
+    }
+  },
+  "stale": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook SessionStart",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook SessionEnd",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook UserPromptSubmit",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PreToolUse",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PermissionRequest",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionDenied": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PermissionDenied",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostToolUse",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUseFailure": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostToolUseFailure",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Notification": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook Notification",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook SubagentStart",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook SubagentStop",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "TaskCreated": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook TaskCreated",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "TaskCompleted": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook TaskCompleted",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook Stop",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "StopFailure": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook StopFailure",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "TeammateIdle": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook TeammateIdle",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "InstructionsLoaded": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook InstructionsLoaded",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "ConfigChange": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook ConfigChange",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "CwdChanged": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook CwdChanged",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "FileChanged": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook FileChanged",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "WorktreeRemove": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook WorktreeRemove",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PreCompact",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostCompact",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Elicitation": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook Elicitation",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "ElicitationResult": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook ElicitationResult",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptExpansion": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook UserPromptExpansion",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolBatch": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook PostToolBatch",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Setup": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook Setup",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

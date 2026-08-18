@@ -24,12 +24,13 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { parseDocument, type Document } from "yaml";
 import { listHermesProfiles, hermesRoot } from "../../lib/hermes-profiles";
+import { HOOK_TEMPLATES } from "./config-template";
+import { buildTemplateEntry, renderConfig } from "./config-render";
 import {
   CLAUDE_INSTALL_EVENT_TYPES,
   HOOK_SCOPES,
   CODEX_HOOK_EVENT_TYPES,
   CODEX_HOOK_SCOPES,
-  CODEX_EVENT_MAP,
   COPILOT_HOOK_EVENT_TYPES,
   COPILOT_HOOK_SCOPES,
   CURSOR_HOOK_EVENT_TYPES,
@@ -57,7 +58,6 @@ import {
   type ClaudeSettings,
   type ClaudeHookMatcher,
   type ClaudeHookEntry,
-  type CodexHookEventType,
 } from "./types";
 
 // ── Generic helpers ─────────────────────────────────────────────────────────
@@ -336,88 +336,21 @@ export const claudeCode: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    // No --cli flag on the Claude command line: the handler defaults to
-    // claude when --cli is omitted, preserving back-compat with hooks
-    // installed before multi-CLI support was added.
-    const command =
-      scope === "project"
-        ? `npx -y failproofai --hook ${eventType}`
-        : `"${binaryPath}" --hook ${eventType}`;
-    return {
-      type: "command",
-      command,
-      // Claude reads `timeout` in SECONDS per https://code.claude.com/docs/en/hooks
-      // ("Seconds before canceling. Defaults: 600 for command ...; 60 for agent"),
-      // NOT milliseconds. 60 = 60s; the old 60000 meant ~16.7h. (#482-class unit fix)
-      timeout: 60,
-      [FAILPROOFAI_HOOK_MARKER]: true,
-    };
+    return buildTemplateEntry(HOOK_TEMPLATES.claude, eventType, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "claude",
+    });
   },
 
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    const s = settings as ClaudeSettings;
-    if (!s.hooks) s.hooks = {};
-
-    // Drop our hook from any event we no longer install. Without this, an
-    // event removed from the list stays in settings.json forever on existing
-    // machines — reinstalling would not repair it — which is exactly the
-    // situation `WorktreeCreate` created: registered, silent on allow, and
-    // therefore breaking `claude --worktree` until hand-edited. Only OUR
-    // marked entries are touched; anyone else's hooks on the same event stay.
-    //
-    // This walks EVERY key the file happens to carry, including ones
-    // failproofai has never written — a newer Claude event, another tool's
-    // entry, a typo. Their values are therefore unvalidated input, and a
-    // non-array one (`"Foo": {}` or `"Foo": "bar"`) makes the iteration below
-    // throw. That aborts the whole install AFTER the policies were recorded as
-    // enabled, so the user is left believing they are covered while no hook was
-    // written at all — the silent non-enforcement this file exists to prevent.
-    // Skip anything not shaped like a matcher list and leave it untouched.
-    const installed = new Set<string>(CLAUDE_INSTALL_EVENT_TYPES);
-    for (const eventType of Object.keys(s.hooks)) {
-      if (installed.has(eventType)) continue;
-      const matchers = s.hooks[eventType];
-      if (!Array.isArray(matchers)) continue;
-      // Drop a matcher group only when WE emptied it. A group we never touched
-      // (no `hooks` array, or one that held nothing of ours) is somebody else's
-      // and is written back exactly as found — pruning is for our own entries,
-      // not a cleanup pass over the user's file.
-      const kept: ClaudeHookMatcher[] = [];
-      for (const matcher of matchers as ClaudeHookMatcher[]) {
-        if (!matcher || !Array.isArray(matcher.hooks)) {
-          if (matcher) kept.push(matcher);
-          continue;
-        }
-        const before = matcher.hooks.length;
-        matcher.hooks = matcher.hooks.filter(
-          (h) => !isMarkedHook(h as Record<string, unknown>),
-        );
-        const weEmptiedIt = matcher.hooks.length === 0 && before > 0;
-        if (!weEmptiedIt) kept.push(matcher);
-      }
-      s.hooks[eventType] = kept;
-      if (kept.length === 0) delete s.hooks[eventType];
-    }
-
-    for (const eventType of CLAUDE_INSTALL_EVENT_TYPES) {
-      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
-      if (!s.hooks[eventType]) s.hooks[eventType] = [];
-      const matchers: ClaudeHookMatcher[] = s.hooks[eventType];
-
-      let found = false;
-      for (const matcher of matchers) {
-        if (!matcher.hooks) continue;
-        const idx = matcher.hooks.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
-        if (idx >= 0) {
-          matcher.hooks[idx] = hookEntry;
-          found = true;
-          break;
-        }
-      }
-      if (!found) matchers.push({ hooks: [hookEntry] });
-    }
+    renderConfig(HOOK_TEMPLATES.claude, settings as Record<string, unknown>, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "claude",
+    });
   },
 
   removeHooksFromFile(settingsPath) {
@@ -512,49 +445,21 @@ export const codex: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    // `eventType` here is the snake_case Codex event name; Codex stores under
-    // PascalCase keys but invokes the command with the snake_case form, which
-    // we canonicalize on the way into policy-evaluator.
-    const command =
-      scope === "project"
-        ? `npx -y failproofai --hook ${eventType} --cli codex`
-        : `"${binaryPath}" --hook ${eventType} --cli codex`;
-    return {
-      type: "command",
-      // Codex reads `timeout` in SECONDS (the field is literally `timeout`,
-      // default 600 per https://developers.openai.com/codex/hooks) — same unit as
-      // Claude/Cursor/Copilot. 60 = 60s.
-      command,
-      timeout: 60,
-      [FAILPROOFAI_HOOK_MARKER]: true,
-    };
+    return buildTemplateEntry(HOOK_TEMPLATES.codex, eventType, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "codex",
+    });
   },
 
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    const s = settings as CodexSettingsFile;
-    stripLegacyVersion(s as Record<string, unknown>);
-    if (!s.hooks) s.hooks = {};
-
-    for (const eventType of CODEX_HOOK_EVENT_TYPES) {
-      const pascalKey = CODEX_EVENT_MAP[eventType as CodexHookEventType];
-      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
-      if (!s.hooks[pascalKey]) s.hooks[pascalKey] = [];
-      const matchers: ClaudeHookMatcher[] = s.hooks[pascalKey];
-
-      let found = false;
-      for (const matcher of matchers) {
-        if (!matcher.hooks) continue;
-        const idx = matcher.hooks.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
-        if (idx >= 0) {
-          matcher.hooks[idx] = hookEntry;
-          found = true;
-          break;
-        }
-      }
-      if (!found) matchers.push({ hooks: [hookEntry] });
-    }
+    renderConfig(HOOK_TEMPLATES.codex, settings as Record<string, unknown>, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "codex",
+    });
   },
 
   removeHooksFromFile(settingsPath) {
@@ -626,13 +531,6 @@ export const codex: Integration = {
 // single `command` field with `timeout` (milliseconds). Top-level wrapper is
 // `{ "version": 1, "hooks": {...} }`, mirroring Codex.
 
-interface CopilotHookEntry {
-  type: "command";
-  bash: string;
-  powershell: string;
-  timeoutSec: number;
-  [FAILPROOFAI_HOOK_MARKER]: true;
-}
 
 interface CopilotSettingsFile {
   version?: number;
@@ -683,43 +581,21 @@ export const copilot: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    const cmd =
-      scope === "project"
-        ? `npx -y failproofai --hook ${eventType} --cli copilot`
-        : `"${binaryPath}" --hook ${eventType} --cli copilot`;
-    return {
-      type: "command",
-      bash: cmd,
-      powershell: cmd,
-      timeoutSec: 60,
-      [FAILPROOFAI_HOOK_MARKER]: true,
-    };
+    return buildTemplateEntry(HOOK_TEMPLATES.copilot, eventType, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "copilot",
+    });
   },
 
   isFailproofaiHook: isMarkedCopilotHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    const s = settings as CopilotSettingsFile;
-    if (s.version === undefined) s.version = 1;
-    if (!s.hooks) s.hooks = {};
-
-    for (const eventType of COPILOT_HOOK_EVENT_TYPES) {
-      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as CopilotHookEntry;
-      if (!s.hooks[eventType]) s.hooks[eventType] = [];
-      const matchers: ClaudeHookMatcher[] = s.hooks[eventType];
-
-      let found = false;
-      for (const matcher of matchers) {
-        if (!matcher.hooks) continue;
-        const idx = matcher.hooks.findIndex((h) => isMarkedCopilotHook(h as Record<string, unknown>));
-        if (idx >= 0) {
-          matcher.hooks[idx] = hookEntry as unknown as ClaudeHookEntry;
-          found = true;
-          break;
-        }
-      }
-      if (!found) matchers.push({ hooks: [hookEntry as unknown as ClaudeHookEntry] });
-    }
+    renderConfig(HOOK_TEMPLATES.copilot, settings as Record<string, unknown>, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "copilot",
+    });
   },
 
   removeHooksFromFile(settingsPath) {
@@ -824,42 +700,21 @@ export const cursor: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    const command =
-      scope === "project"
-        ? `npx -y failproofai --hook ${eventType} --cli cursor`
-        : `"${binaryPath}" --hook ${eventType} --cli cursor`;
-    // `timeout` is documented in SECONDS in Cursor's schema per
-    // https://cursor.com/docs/hooks ("Execution timeout in seconds"; doc examples
-    // use 30 and 10), NOT milliseconds. 60 = 60s; the old 60000 meant ~16.7h.
-    return {
-      type: "command",
-      command,
-      timeout: 60,
-      [FAILPROOFAI_HOOK_MARKER]: true,
-    };
+    return buildTemplateEntry(HOOK_TEMPLATES.cursor, eventType, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "cursor",
+    });
   },
 
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    const s = settings as CursorSettingsFile;
-    if (s.version === undefined) s.version = 1;
-    if (!s.hooks) s.hooks = {};
-
-    for (const eventType of CURSOR_HOOK_EVENT_TYPES) {
-      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
-      const existing = s.hooks[eventType];
-      const entries: Array<ClaudeHookEntry | Record<string, unknown>> = existing ?? [];
-      if (!existing) s.hooks[eventType] = entries;
-
-      // Idempotent: replace an existing failproofai-marked entry; otherwise append.
-      const idx = entries.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
-      if (idx >= 0) {
-        entries[idx] = hookEntry;
-      } else {
-        entries.push(hookEntry);
-      }
-    }
+    renderConfig(HOOK_TEMPLATES.cursor, settings as Record<string, unknown>, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "cursor",
+    });
   },
 
   removeHooksFromFile(settingsPath) {
@@ -1882,46 +1737,21 @@ export const factory: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    const command =
-      scope === "project"
-        ? `npx -y failproofai --hook ${eventType} --cli factory`
-        : `"${binaryPath}" --hook ${eventType} --cli factory`;
-    return {
-      type: "command",
-      command,
-      // droid reads `timeout` in SECONDS (verified against droid v0.171.0). 30s.
-      timeout: 30,
-      [FAILPROOFAI_HOOK_MARKER]: true,
-    };
+    return buildTemplateEntry(HOOK_TEMPLATES.factory, eventType, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "factory",
+    });
   },
 
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    const s = settings as Record<string, FactoryHookMatcher[]>;
-
-    for (const eventType of FACTORY_HOOK_EVENT_TYPES) {
-      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
-      if (!Array.isArray(s[eventType])) s[eventType] = [];
-      const matchers: FactoryHookMatcher[] = s[eventType];
-
-      let found = false;
-      for (const matcher of matchers) {
-        if (!matcher.hooks) continue;
-        const idx = matcher.hooks.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
-        if (idx >= 0) {
-          matcher.hooks[idx] = hookEntry;
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        // Tool events match all tools via `matcher: "*"`; non-tool events carry
-        // no matcher (verified live against droid v0.171.0).
-        const isToolEvent = eventType === "PreToolUse" || eventType === "PostToolUse";
-        matchers.push(isToolEvent ? { matcher: "*", hooks: [hookEntry] } : { hooks: [hookEntry] });
-      }
-    }
+    renderConfig(HOOK_TEMPLATES.factory, settings as Record<string, unknown>, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "factory",
+    });
   },
 
   removeHooksFromFile(settingsPath) {
@@ -2015,42 +1845,21 @@ export const devin: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    const command =
-      scope === "project"
-        ? `npx -y failproofai --hook ${eventType} --cli devin`
-        : `"${binaryPath}" --hook ${eventType} --cli devin`;
-    return {
-      type: "command",
-      command,
-      // Devin reads `timeout` in SECONDS like Claude. 60 = 60s.
-      timeout: 60,
-      [FAILPROOFAI_HOOK_MARKER]: true,
-    };
+    return buildTemplateEntry(HOOK_TEMPLATES.devin, eventType, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "devin",
+    });
   },
 
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    const s = settings as ClaudeSettings;
-    if (!s.hooks) s.hooks = {};
-
-    for (const eventType of DEVIN_HOOK_EVENT_TYPES) {
-      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
-      if (!s.hooks[eventType]) s.hooks[eventType] = [];
-      const matchers: ClaudeHookMatcher[] = s.hooks[eventType];
-
-      let found = false;
-      for (const matcher of matchers) {
-        if (!matcher.hooks) continue;
-        const idx = matcher.hooks.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
-        if (idx >= 0) {
-          matcher.hooks[idx] = hookEntry;
-          found = true;
-          break;
-        }
-      }
-      if (!found) matchers.push({ hooks: [hookEntry] });
-    }
+    renderConfig(HOOK_TEMPLATES.devin, settings as Record<string, unknown>, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "devin",
+    });
   },
 
   removeHooksFromFile(settingsPath) {
@@ -2160,55 +1969,21 @@ export const antigravity: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    const command =
-      scope === "project"
-        ? `npx -y failproofai --hook ${eventType} --cli antigravity`
-        : `"${binaryPath}" --hook ${eventType} --cli antigravity`;
-    return {
-      type: "command",
-      command,
-      // Antigravity reads `timeout` in SECONDS (verified agy v1.1.2). 30s.
-      timeout: 30,
-      [FAILPROOFAI_HOOK_MARKER]: true,
-    };
+    return buildTemplateEntry(HOOK_TEMPLATES.antigravity, eventType, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "antigravity",
+    });
   },
 
   isFailproofaiHook: isMarkedHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    const s = settings as Record<string, unknown>;
-    if (!s[ANTIGRAVITY_HOOK_NAME] || typeof s[ANTIGRAVITY_HOOK_NAME] !== "object") {
-      s[ANTIGRAVITY_HOOK_NAME] = {};
-    }
-    const named = s[ANTIGRAVITY_HOOK_NAME] as AntigravityNamedHook;
-
-    for (const eventType of ANTIGRAVITY_HOOK_EVENT_TYPES) {
-      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope) as unknown as ClaudeHookEntry;
-      const isToolEvent = ANTIGRAVITY_TOOL_EVENTS.has(eventType);
-
-      if (isToolEvent) {
-        if (!Array.isArray(named[eventType])) named[eventType] = [] as AntigravityToolMatcher[];
-        const matchers = named[eventType] as AntigravityToolMatcher[];
-        let found = false;
-        for (const matcher of matchers) {
-          if (!matcher.hooks) continue;
-          const idx = matcher.hooks.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
-          if (idx >= 0) {
-            matcher.hooks[idx] = hookEntry;
-            found = true;
-            break;
-          }
-        }
-        if (!found) matchers.push({ matcher: "*", hooks: [hookEntry] });
-      } else {
-        // Flat array of handler objects (PreInvocation / Stop).
-        if (!Array.isArray(named[eventType])) named[eventType] = [] as Array<ClaudeHookEntry | Record<string, unknown>>;
-        const handlers = named[eventType] as Array<ClaudeHookEntry | Record<string, unknown>>;
-        const idx = handlers.findIndex((h) => isMarkedHook(h as Record<string, unknown>));
-        if (idx >= 0) handlers[idx] = hookEntry;
-        else handlers.push(hookEntry);
-      }
-    }
+    renderConfig(HOOK_TEMPLATES.antigravity, settings as Record<string, unknown>, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "antigravity",
+    });
   },
 
   removeHooksFromFile(settingsPath) {
@@ -2348,40 +2123,21 @@ export const goose: Integration = {
   },
 
   buildHookEntry(binaryPath, eventType, scope) {
-    const command =
-      scope === "project"
-        ? `npx -y failproofai --hook ${eventType} --cli goose`
-        : `"${binaryPath}" --hook ${eventType} --cli goose`;
-    // Open Plugins command entry: { type, command } only (Goose applies its own
-    // timeout; no marker field — see isGooseFailproofaiHook).
-    return { type: "command", command };
+    return buildTemplateEntry(HOOK_TEMPLATES.goose, eventType, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "goose",
+    });
   },
 
   isFailproofaiHook: isGooseFailproofaiHook,
 
   writeHookEntries(settings, binaryPath, scope) {
-    const s = settings as GooseHooksFile;
-    if (!s.hooks) s.hooks = {};
-
-    for (const eventType of GOOSE_HOOK_EVENT_TYPES) {
-      const hookEntry = this.buildHookEntry(binaryPath, eventType, scope);
-      if (!Array.isArray(s.hooks[eventType])) s.hooks[eventType] = [];
-      const matchers: GooseHookMatcher[] = s.hooks[eventType];
-
-      let found = false;
-      for (const matcher of matchers) {
-        if (!matcher.hooks) continue;
-        const idx = matcher.hooks.findIndex((h) => isGooseFailproofaiHook(h));
-        if (idx >= 0) {
-          matcher.hooks[idx] = hookEntry;
-          found = true;
-          break;
-        }
-      }
-      // matcher OMITTED on every event (a bare "*" matches nothing; omitted =
-      // match all tools — verified live against goose v1.43.0).
-      if (!found) matchers.push({ hooks: [hookEntry] });
-    }
+    renderConfig(HOOK_TEMPLATES.goose, settings as Record<string, unknown>, {
+      binaryPath,
+      scope: scope ?? "user",
+      cli: "goose",
+    });
   },
 
   removeHooksFromFile(settingsPath) {

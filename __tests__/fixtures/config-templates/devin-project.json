@@ -1,0 +1,293 @@
+{
+  "cli": "devin",
+  "scope": "project",
+  "binary": "/usr/bin/failproofai",
+  "empty": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionStart --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook UserPromptSubmit --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PreToolUse --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PostToolUse --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PermissionRequest --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook Stop --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionEnd --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "foreign": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionStart --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        },
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "somebody-elses-tool --do-a-thing",
+              "timeout": 60
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook UserPromptSubmit --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PreToolUse --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PostToolUse --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PermissionRequest --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook Stop --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionEnd --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    },
+    "somebodyElsesSetting": {
+      "keep": "me"
+    }
+  },
+  "stale": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionStart --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook UserPromptSubmit --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PreToolUse --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PostToolUse --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook PermissionRequest --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook Stop --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionEnd --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "AnEventWeNoLongerInstall": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "npx -y failproofai --hook SessionStart --cli devin",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,204 @@
+{
+  "cli": "cursor",
+  "scope": "user",
+  "binary": "/usr/bin/failproofai",
+  "empty": {
+    "version": 1,
+    "hooks": {
+      "sessionStart": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook sessionStart --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "sessionEnd": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook sessionEnd --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "beforeSubmitPrompt": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook beforeSubmitPrompt --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "preToolUse": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook preToolUse --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "postToolUse": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook postToolUse --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "stop": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook stop --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "subagentStop": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook subagentStop --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ]
+    }
+  },
+  "foreign": {
+    "version": 1,
+    "hooks": {
+      "sessionStart": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook sessionStart --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        },
+        {
+          "type": "command",
+          "command": "somebody-elses-tool --do-a-thing",
+          "timeout": 60
+        }
+      ],
+      "sessionEnd": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook sessionEnd --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "beforeSubmitPrompt": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook beforeSubmitPrompt --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "preToolUse": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook preToolUse --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "postToolUse": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook postToolUse --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "stop": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook stop --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "subagentStop": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook subagentStop --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ]
+    },
+    "somebodyElsesSetting": {
+      "keep": "me"
+    }
+  },
+  "stale": {
+    "version": 1,
+    "hooks": {
+      "sessionStart": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook sessionStart --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "sessionEnd": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook sessionEnd --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "beforeSubmitPrompt": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook beforeSubmitPrompt --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "preToolUse": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook preToolUse --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "postToolUse": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook postToolUse --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "stop": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook stop --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "subagentStop": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook subagentStop --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ],
+      "AnEventWeNoLongerInstall": [
+        {
+          "type": "command",
+          "command": "\"/usr/bin/failproofai\" --hook sessionStart --cli cursor",
+          "timeout": 60,
+          "__failproofai_hook__": true
+        }
+      ]
+    }
+  }
+}

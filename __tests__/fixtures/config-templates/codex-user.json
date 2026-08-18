@@ -1,0 +1,401 @@
+{
+  "cli": "codex",
+  "scope": "user",
+  "binary": "/usr/bin/failproofai",
+  "empty": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook session_start --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook pre_tool_use --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook permission_request --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook post_tool_use --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook user_prompt_submit --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook stop --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook subagent_start --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook pre_compact --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook post_compact --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook subagent_stop --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "foreign": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook session_start --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        },
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "somebody-elses-tool --do-a-thing",
+              "timeout": 60
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook pre_tool_use --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook permission_request --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook post_tool_use --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook user_prompt_submit --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook stop --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook subagent_start --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook pre_compact --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook post_compact --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook subagent_stop --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    },
+    "somebodyElsesSetting": {
+      "keep": "me"
+    }
+  },
+  "stale": {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook session_start --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook pre_tool_use --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook permission_request --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook post_tool_use --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook user_prompt_submit --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook stop --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook subagent_start --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook pre_compact --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook post_compact --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook subagent_stop --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "AnEventWeNoLongerInstall": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "\"/usr/bin/failproofai\" --hook session_start --cli codex",
+              "timeout": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

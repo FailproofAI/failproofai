@@ -1,0 +1,514 @@
+{
+  "cli": "copilot",
+  "scope": "project",
+  "binary": "/usr/bin/failproofai",
+  "empty": {
+    "version": 1,
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook SessionStart --cli copilot",
+              "powershell": "npx -y failproofai --hook SessionStart --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook SessionEnd --cli copilot",
+              "powershell": "npx -y failproofai --hook SessionEnd --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook UserPromptSubmit --cli copilot",
+              "powershell": "npx -y failproofai --hook UserPromptSubmit --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PreToolUse --cli copilot",
+              "powershell": "npx -y failproofai --hook PreToolUse --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PostToolUse --cli copilot",
+              "powershell": "npx -y failproofai --hook PostToolUse --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook Stop --cli copilot",
+              "powershell": "npx -y failproofai --hook Stop --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook SubagentStop --cli copilot",
+              "powershell": "npx -y failproofai --hook SubagentStop --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUseFailure": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PostToolUseFailure --cli copilot",
+              "powershell": "npx -y failproofai --hook PostToolUseFailure --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "ErrorOccurred": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook ErrorOccurred --cli copilot",
+              "powershell": "npx -y failproofai --hook ErrorOccurred --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PreCompact --cli copilot",
+              "powershell": "npx -y failproofai --hook PreCompact --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PermissionRequest --cli copilot",
+              "powershell": "npx -y failproofai --hook PermissionRequest --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Notification": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook Notification --cli copilot",
+              "powershell": "npx -y failproofai --hook Notification --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "foreign": {
+    "version": 1,
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook SessionStart --cli copilot",
+              "powershell": "npx -y failproofai --hook SessionStart --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        },
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "somebody-elses-tool --do-a-thing",
+              "powershell": "somebody-elses-tool --do-a-thing",
+              "timeoutSec": 60
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook SessionEnd --cli copilot",
+              "powershell": "npx -y failproofai --hook SessionEnd --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook UserPromptSubmit --cli copilot",
+              "powershell": "npx -y failproofai --hook UserPromptSubmit --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PreToolUse --cli copilot",
+              "powershell": "npx -y failproofai --hook PreToolUse --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PostToolUse --cli copilot",
+              "powershell": "npx -y failproofai --hook PostToolUse --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook Stop --cli copilot",
+              "powershell": "npx -y failproofai --hook Stop --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook SubagentStop --cli copilot",
+              "powershell": "npx -y failproofai --hook SubagentStop --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUseFailure": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PostToolUseFailure --cli copilot",
+              "powershell": "npx -y failproofai --hook PostToolUseFailure --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "ErrorOccurred": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook ErrorOccurred --cli copilot",
+              "powershell": "npx -y failproofai --hook ErrorOccurred --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PreCompact --cli copilot",
+              "powershell": "npx -y failproofai --hook PreCompact --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PermissionRequest --cli copilot",
+              "powershell": "npx -y failproofai --hook PermissionRequest --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Notification": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook Notification --cli copilot",
+              "powershell": "npx -y failproofai --hook Notification --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    },
+    "somebodyElsesSetting": {
+      "keep": "me"
+    }
+  },
+  "stale": {
+    "version": 1,
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook SessionStart --cli copilot",
+              "powershell": "npx -y failproofai --hook SessionStart --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SessionEnd": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook SessionEnd --cli copilot",
+              "powershell": "npx -y failproofai --hook SessionEnd --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook UserPromptSubmit --cli copilot",
+              "powershell": "npx -y failproofai --hook UserPromptSubmit --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PreToolUse --cli copilot",
+              "powershell": "npx -y failproofai --hook PreToolUse --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PostToolUse --cli copilot",
+              "powershell": "npx -y failproofai --hook PostToolUse --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook Stop --cli copilot",
+              "powershell": "npx -y failproofai --hook Stop --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "SubagentStop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook SubagentStop --cli copilot",
+              "powershell": "npx -y failproofai --hook SubagentStop --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PostToolUseFailure": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PostToolUseFailure --cli copilot",
+              "powershell": "npx -y failproofai --hook PostToolUseFailure --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "ErrorOccurred": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook ErrorOccurred --cli copilot",
+              "powershell": "npx -y failproofai --hook ErrorOccurred --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PreCompact": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PreCompact --cli copilot",
+              "powershell": "npx -y failproofai --hook PreCompact --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook PermissionRequest --cli copilot",
+              "powershell": "npx -y failproofai --hook PermissionRequest --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "Notification": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook Notification --cli copilot",
+              "powershell": "npx -y failproofai --hook Notification --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ],
+      "AnEventWeNoLongerInstall": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "bash": "npx -y failproofai --hook SessionStart --cli copilot",
+              "powershell": "npx -y failproofai --hook SessionStart --cli copilot",
+              "timeoutSec": 60,
+              "__failproofai_hook__": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -774,7 +774,7 @@ def test_the_fork_handler_prunes_writers_that_have_been_collected():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_the_queue_is_capped_and_discards_oldest_first(caplog):
+def test_the_queue_is_capped_and_discards_oldest_first(spool, caplog):
     """`submit` cannot block or raise, so the only other option is to bound it.
 
     Unbounded, any condition that stops the spool draining turns a telemetry
@@ -795,7 +795,7 @@ def test_the_queue_is_capped_and_discards_oldest_first(caplog):
     )
 
 
-def test_the_full_queue_warning_does_not_fire_on_every_single_drop(caplog):
+def test_the_full_queue_warning_does_not_fire_on_every_single_drop(spool, caplog):
     """A stuck spool must not become the thing that fills the disk."""
     writer = EventWriter(flush_interval=3600)
     with caplog.at_level(logging.WARNING, logger="failproofai_sdk._writer"):

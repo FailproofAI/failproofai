@@ -138,3 +138,8 @@ COMMIT_MSG.tmp
 
 # blog drafts (local, not for commit yet)
 /blog/
+
+# contracts-probe writes each run's observation table here for the outer job to
+# collect. It is evidence about a vendor, produced fresh every run — never
+# source, and never something a stray local run should offer to commit.
+/integration-suite/out/

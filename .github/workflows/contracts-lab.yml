@@ -1,0 +1,148 @@
+name: Contracts Lab
+
+# What does each agent CLI's hook contract look like TODAY, and does a candidate
+# config template actually work?
+#
+# The sibling of Integration Suite, asking a different question. That one asks
+# "does failproofai still ENFORCE" and needs a deny to observe. This one asks
+# "does the vendor still accept the config we install, and can we still read what
+# it sends" — which needs no deny at all, only a tool call and a look at what
+# arrived. It is the only place one failure class is visible: when a vendor
+# rejects our config outright, nothing reaches us, and silence at our end is
+# indistinguishable from a quiet day.
+#
+# DISPATCH-ONLY, like its sibling, and for the same two reasons: it drives REAL
+# vendor CLIs against real gateway models so it needs credentials, and running
+# only on manual dispatch means a fork PR can never reach them. The DAILY run
+# lives on the local box (integration-suite/local/jobs/contracts.sh); this is the
+# cloud escape hatch — for when the box is down, when a clean reproduction is
+# wanted, and above all for PROVING A CANDIDATE TEMPLATE, which is a thing
+# somebody does by hand a few times a year rather than on a schedule.
+#
+# A THIN TRIGGER on purpose. Everything past the GitHub-specific wiring lives in
+# integration-suite/ci-entrypoint.sh and contracts-runner.sh, so the harness is
+# readable — and runnable — without opening this YAML.
+
+on:
+  workflow_dispatch:
+    inputs:
+      clis:
+        description: "CLIs to probe (space-separated; empty = all 12)"
+        required: false
+        default: ""
+      candidate:
+        description: >-
+          Candidate template(s) to PROVE, as JSON: {"copilot": {...}}.
+          Each probe installs from this instead of the shipped template, and a
+          template is published only if that CLI's vendor then calls our hook.
+        required: false
+        default: ""
+      publish:
+        description: "Publish the pack to the contracts repo if something moved"
+        type: boolean
+        default: false
+
+concurrency:
+  group: contracts-lab
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    # The GitHub *Environment* holding the vendor credentials. Shared with the
+    # integration suite deliberately: both drive the same 12 CLIs, and a second
+    # copy of these secrets is a second thing to rotate.
+    environment: cli-integration
+    # A fresh install of 12 CLIs plus a probe of each. There is no version gate
+    # here — unlike the canary, the artifact IS the current contract, so a gated
+    # run would publish entries dating from different weeks.
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+
+      # Written to a file rather than passed as an environment variable: the
+      # probes run as sibling containers, and contracts-runner.sh mounts this
+      # path into each of them.
+      - name: Stage the candidate template
+        id: candidate
+        env:
+          CANDIDATE: ${{ inputs.candidate }}
+        run: |
+          if [ -z "${CANDIDATE:-}" ]; then
+            echo "none staged — this run proves the templates this build ships"
+            exit 0
+          fi
+          printf '%s' "$CANDIDATE" > "$RUNNER_TEMP/candidates.json"
+          # Refuse early rather than at the first probe: a malformed candidate
+          # that fell through to the bundled template would report OK and mean
+          # nothing at all.
+          node -e '
+            const t = require(process.env.RUNNER_TEMP + "/candidates.json");
+            if (!t || typeof t !== "object" || Array.isArray(t)) throw new Error("not a JSON object");
+            console.log("proving templates for: " + Object.keys(t).join(", "));
+          '
+          echo "path=$RUNNER_TEMP/candidates.json" >> "$GITHUB_OUTPUT"
+
+      - name: Run the contracts lab
+        env:
+          # gateway + PAT credentials, same set the integration suite uses
+          CANARY_LLM_API_KEY: ${{ secrets.CANARY_LLM_API_KEY }}
+          CANARY_LLM_BASE_URL: ${{ secrets.CANARY_LLM_BASE_URL }}
+          CANARY_LLM_MODEL: ${{ secrets.CANARY_LLM_MODEL }}
+          CANARY_CLAUDE_MODEL: ${{ secrets.CANARY_CLAUDE_MODEL }}
+          CANARY_PI_MODEL: ${{ secrets.CANARY_PI_MODEL }}
+          CANARY_CODEX_MODEL: ${{ secrets.CANARY_CODEX_MODEL }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          # OAuth credential trees (base64 gzip-tars rooted at $HOME)
+          CURSOR_TOKEN_TGZ_B64: ${{ secrets.CURSOR_TOKEN_TGZ_B64 }}
+          DEVIN_TOKEN_TGZ_B64: ${{ secrets.DEVIN_TOKEN_TGZ_B64 }}
+          ANTIGRAVITY_TOKEN_TGZ_B64: ${{ secrets.ANTIGRAVITY_TOKEN_TGZ_B64 }}
+          # The contracts runner instead of the canary's, and the daemon is not
+          # optional: recordHookShape has one call site and it is in the warm
+          # worker, so an in-process run would probe 12 CLIs and publish an empty
+          # pack that reads as 12 silent vendors.
+          CANARY_RUNNER: contracts-runner.sh
+          CANARY_DAEMON: "1"
+          CANARY_CHANNEL: stable
+          CANARY_CLIS: ${{ inputs.clis }}
+          CONTRACTS_OUT_DIR: ${{ github.workspace }}/contracts-out
+          CONTRACTS_PACK: ${{ github.workspace }}/contracts-out/pack.json
+          CONTRACTS_TEMPLATE: ${{ steps.candidate.outputs.path }}
+        run: bash integration-suite/ci-entrypoint.sh
+
+      # Always, even on a failing run: a pack from a run that went wrong is still
+      # evidence, and withholding it hides the diff that explains why.
+      - name: Upload the pack
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: contracts-pack
+          path: ${{ github.workspace }}/contracts-out/
+          if-no-files-found: warn
+
+      # Deliberately last, deliberately opt-in, and deliberately skipped when the
+      # run itself failed: publishing a pack assembled from a run that exercised
+      # nothing would overwrite a good one with silence, which is worse than
+      # publishing nothing.
+      - name: Publish to the contracts repo
+        if: ${{ inputs.publish && success() }}
+        env:
+          CONTRACTS_REPO: ${{ vars.CONTRACTS_REPO }}
+          CONTRACTS_TOKEN: ${{ secrets.CONTRACTS_TOKEN }}
+        run: |
+          if [ -z "${CONTRACTS_REPO:-}" ] || [ -z "${CONTRACTS_TOKEN:-}" ]; then
+            echo "::warning::publish requested but CONTRACTS_REPO / CONTRACTS_TOKEN are not both set"
+            exit 0
+          fi
+          bash integration-suite/contracts-publish.sh "$GITHUB_WORKSPACE/contracts-out/pack.json"

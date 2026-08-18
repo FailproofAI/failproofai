@@ -31,6 +31,7 @@ const jobSh = read(path.join(LOCAL, "jobs", "contracts.sh"));
 const promoteSh = read(path.join(SUITE, "contracts-promote.sh"));
 const runJobSh = read(path.join(LOCAL, "run-job.sh"));
 const installSh = read(path.join(LOCAL, "install.sh"));
+const workflow = read(path.join(SUITE, "..", ".github", "workflows", "contracts-lab.yml"));
 
 describe("the lab cannot run in a configuration that records nothing", () => {
   it("refuses to start without the daemon binary", () => {
@@ -146,6 +147,43 @@ describe("the box knows about the job", () => {
 
   it("exists as a job file, since the entrypoint resolves jobs by name", () => {
     expect(existsSync(path.join(LOCAL, "jobs", "contracts.sh"))).toBe(true);
+  });
+});
+
+describe("the cloud escape hatch", () => {
+  it("runs on manual dispatch only, so a fork PR can never reach the credentials", () => {
+    // It drives real vendor CLIs against a real gateway, so the whole secret set
+    // is in reach of anything that can trigger it.
+    expect(workflow).toMatch(/^on:\n  workflow_dispatch:/m);
+    expect(workflow).not.toMatch(/^\s+pull_request:/m);
+  });
+
+  it("asks the entrypoint for the contracts runner, with the daemon on", () => {
+    // Without the daemon it would probe 12 CLIs and publish an empty pack that
+    // reads as 12 silent vendors.
+    expect(workflow).toMatch(/CANARY_RUNNER: contracts-runner\.sh/);
+    expect(workflow).toMatch(/CANARY_DAEMON: "1"/);
+  });
+
+  it("stages a candidate to a FILE, because the probes are sibling containers", () => {
+    // An environment variable naming a runner path would point at nothing
+    // inside them; contracts-runner.sh mounts this file.
+    expect(workflow).toMatch(/RUNNER_TEMP\/candidates\.json/);
+    expect(workflow).toMatch(/CONTRACTS_TEMPLATE: \$\{\{ steps\.candidate\.outputs\.path \}\}/);
+  });
+
+  it("rejects a malformed candidate before any probe runs", () => {
+    // Falling through to the bundled template would report OK and mean nothing.
+    expect(workflow).toContain("not a JSON object");
+  });
+
+  it("never publishes from a failed run, and only when asked", () => {
+    expect(workflow).toMatch(/if: \$\{\{ inputs\.publish && success\(\) \}\}/);
+  });
+
+  it("keeps the pack even when the run failed", () => {
+    // A pack from a run that went wrong is still evidence.
+    expect(workflow).toMatch(/name: Upload the pack\n\s+if: always\(\)/);
   });
 });
 

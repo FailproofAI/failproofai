@@ -231,6 +231,43 @@ def test_a_legacy_session_is_never_deleted(clean_env):
     assert json.loads(legacy.read_text())["session_token"] == "legacy"
 
 
+def test_a_relocated_legacy_session_is_detected_too(clean_env, monkeypatch, tmp_path):
+    """The group most likely to be broken silently: `FP_HOME` users.
+
+    The move changed the FILENAME as well as the directory, so somebody who
+    exported `FP_HOME` has their old session at `$FP_HOME/cli.json` and may own
+    no `~/.fp` at all. Checking only the default hands exactly those users an
+    unexplained logout.
+    """
+    relocated = tmp_path / "custom"
+    relocated.mkdir()
+    (relocated / "cli.json").write_text('{"session_token": "old"}')
+    monkeypatch.setenv("FP_HOME", str(relocated))
+
+    assert cfg.legacy_install_detected() is True
+    assert cfg.legacy_config_path() == relocated / "cli.json"
+
+
+def test_the_relocated_path_is_named_before_the_default(clean_env, monkeypatch, tmp_path):
+    """When both exist, name the one THIS invocation would have read.
+
+    Naming the default instead tells an `FP_HOME` user to delete an unrelated
+    file — on a machine they may share.
+    """
+    _plant_legacy(clean_env)  # the default, ~/.fp/cli.json
+    relocated = tmp_path / "custom"
+    relocated.mkdir()
+    (relocated / "cli.json").write_text('{"session_token": "old"}')
+    monkeypatch.setenv("FP_HOME", str(relocated))
+
+    assert cfg.legacy_config_path() == relocated / "cli.json"
+
+
+def test_no_legacy_anywhere_reports_none(clean_env):
+    assert cfg.legacy_config_path() is None
+    assert cfg.legacy_install_detected() is False
+
+
 def test_legacy_install_detected_only_before_the_first_login(clean_env):
     _plant_legacy(clean_env)
     assert cfg.legacy_install_detected() is True

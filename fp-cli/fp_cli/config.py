@@ -83,33 +83,54 @@ def config_path() -> Path:
     return base_dir() / "cli-auth.json"
 
 
-def legacy_config_path() -> Path:
-    """The pre-move location, ``~/.fp/cli.json``.
+def legacy_config_paths() -> list[Path]:
+    """Every place a pre-move session could still be sitting.
 
-    Deliberately NOT migrated. A session is short-lived (24h) and re-issued by
-    one `fp login`, so carrying one across a directory move buys a few hours of
-    convenience in exchange for reading and rewriting a credential during an
-    upgrade — and for a second code path that only ever runs once, on machines
-    nobody will test again.
+    Two, not one, and the second is the one that is easy to miss. The move
+    changed the FILENAME as well as the directory, so somebody who exported
+    ``FP_HOME`` — the documented way to relocate this config, and the shape CI
+    images use — has their old session at ``$FP_HOME/cli.json`` and will never
+    own a ``~/.fp`` at all. Checking only the default would hand exactly those
+    users an unexplained logout, which is the group least able to shrug at one.
 
-    It is also not deleted. Removing a file the user did not ask us to touch is
-    the one irreversible thing available here, and a token that expires on its
-    own is not worth it. :func:`legacy_install_detected` lets the CLI *say* the
-    file is stale and let the operator remove it.
+    Deliberately NOT migrated and NOT deleted; see the module docstring. This
+    exists so the CLI can *name* the stale file, nothing more.
+
+    The relocated path is checked FIRST. When both exist, the one in the
+    directory this invocation actually resolved is the one that explains this
+    user's logout; naming the default instead sends somebody with ``FP_HOME``
+    set to delete an unrelated file on a machine they may share.
     """
-    return Path.home() / LEGACY_DIR_NAME / LEGACY_FILE_NAME
+    candidates = [base_dir() / LEGACY_FILE_NAME]
+    default = Path.home() / LEGACY_DIR_NAME / LEGACY_FILE_NAME
+    if default not in candidates:
+        candidates.append(default)
+    return candidates
+
+
+def legacy_config_path() -> Optional[Path]:
+    """The first pre-move session file that actually exists, if any."""
+    for path in legacy_config_paths():
+        try:
+            if path.is_file():
+                return path
+        except OSError:
+            continue
+    return None
 
 
 def legacy_install_detected() -> bool:
-    """True when a pre-move session file is still on disk and unmigrated.
+    """True when a pre-move session is on disk and the new one is not.
 
     False once the new config exists, so the notice stops after the first
     successful `fp login` rather than nagging forever.
     """
     try:
-        return legacy_config_path().is_file() and not config_path().is_file()
+        if config_path().is_file():
+            return False
     except OSError:
         return False
+    return legacy_config_path() is not None
 
 
 @dataclass

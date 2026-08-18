@@ -20,6 +20,16 @@
   `$FAILPROOFAI_HOME/fpcli` > `~/.failproofai/fpcli`. `FP_HOME` names the CLI's own
   directory and is used as-is, so an existing export addresses the same place it always
   did; `FAILPROOFAI_HOME` names the shared home root, so `fpcli/` is appended.
+  **But note the FILENAME changed too** (`cli.json` → `cli-auth.json`), so an `FP_HOME`
+  user is logged out exactly like everyone else — their old session sits at
+  `$FP_HOME/cli.json`. The stale-file notice checks that location as well as the
+  default, and names whichever the current invocation would have read, so nobody is
+  told to delete an unrelated file on a machine they may share.
+- **Nothing that authenticates without the config file changed.** `--token` / `FP_TOKEN`
+  and `--api-key` / `FP_API_KEY` never touched disk and still do not, so CI that
+  authenticates by environment is unaffected by any of this. Read-only commands still
+  create no file at all. What breaks is exactly one thing: a machine whose session came
+  from the config file needs one `fp login`.
 - **The CLI only ever creates.** It will bring `~/.failproofai` into existence on a
   machine that has never run the Enforcement CLI, and leaves a populated one untouched.
   The new path is registered in that home's layout (`src/hooks/fp-home.ts`) and

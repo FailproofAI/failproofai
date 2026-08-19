@@ -2,6 +2,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from failproofai_sdk import _context
+
 from failproofai_sdk._schema import (
     AgentEndEvent,
     AgentPauseEvent,
@@ -90,7 +92,11 @@ def _validate_identity(name: str, value) -> None:
     under one blank id, so the data looks present and is silently merged.
     """
     if not isinstance(value, str):
-        raise ValueError(
+        # TypeError, not ValueError: the wrong TYPE was supplied, and this is
+        # also what a caller got before identity became optional — omitting a
+        # required keyword argument has always been a TypeError, so code that
+        # catches one keeps working.
+        raise TypeError(
             f"{name} must be a str — the server skips any event whose {name} is "
             f"not a JSON string, and answers 200 as though it stored it. "
             f"Got {type(value).__name__}: {value!r}"
@@ -100,6 +106,52 @@ def _validate_identity(name: str, value) -> None:
             f"{name} must not be empty — the server accepts it, so every event "
             f"sent this way is silently grouped under one blank id."
         )
+
+def _resolve_identity(session_id, agent_id) -> "tuple[str, str]":
+    """Fill an omitted `session_id`/`agent_id` from the ambient scope, then validate.
+
+    Both arguments were required on all 15 methods, which meant threading them
+    through every function that might emit — the diff nobody wants to review, and
+    the reason the reference integration shipped a contextvars wrapper as markdown
+    for customers to paste in. `session()` / `agent()` bind them instead.
+
+    ORDER MATTERS. The validation runs on the RESOLVED value, not the argument.
+    Validating first would reject every ambient call; resolving without validating
+    would put the silent-skip back: ingest drops an event whose `session_id` is not
+    a JSON string and answers `200 OK` with `{"accepted":0,"skipped":1}`, so a run
+    with nothing bound would vanish rather than fail.
+
+    Called AFTER `_validate_fields`, deliberately. A reserved `**field` is a
+    fault in the call itself and reads identically from anywhere, so reporting it
+    first gives a stable, reproducible message; the identity error depends on
+    where the call was made from, and is the less useful of the two to hear when
+    both are true.
+
+    `agent_id` falls back to `DEFAULT_AGENT_ID` rather than raising — an event
+    emitted inside `session()` with no `agent()` around it lands somewhere sensible,
+    which is the convention the skill already teaches. `session_id` has no such
+    default: inventing one would scatter a run across as many sessions as it has
+    emit sites.
+    """
+    if session_id is None:
+        session_id = _context.session_id()
+    if agent_id is None:
+        agent_id = _context.agent_id()  # DEFAULT_AGENT_ID when no agent scope
+
+    if session_id is None:
+        # TypeError for the same reason: this is a missing required argument,
+        # which is what it literally was until the scopes made it optional.
+        raise TypeError(
+            "session_id is required and nothing is bound. Pass session_id=..., or "
+            "wrap the call in `with failproofai_sdk.session():` / "
+            "`with failproofai_sdk.agent(\"name\"):`. A new thread does not inherit "
+            "the ambient scope — hand work to it with "
+            "`failproofai_sdk.propagate(fn)`."
+        )
+    _validate_identity("session_id", session_id)
+    _validate_identity("agent_id", agent_id)
+    return session_id, agent_id
+
 
 def _measured_duration_ms(start_ts, end_ts) -> "int | None":
     """Whole milliseconds between a paired start and end, or None.
@@ -241,16 +293,15 @@ class EventNamespace:
     def tool_use(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         tool_name: str,
         tool_call_id: str,
         input: dict | None = None,
         **fields,
     ) -> None:
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._track_pending(_tool_key(session_id, tool_call_id), ts)
         self._writer.submit(
@@ -268,8 +319,8 @@ class EventNamespace:
     def tool_result(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         tool_name: str,
         tool_call_id: str,
         output: Any | None = None,
@@ -278,9 +329,8 @@ class EventNamespace:
     ) -> None:
         if "duration_ms" in fields:
             raise ValueError("duration_ms is auto-computed by the SDK and cannot be passed by the caller")
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         start_ts = self._pending.pop(_tool_key(session_id, tool_call_id), None)
         duration_ms = _measured_duration_ms(start_ts, ts)
@@ -301,17 +351,16 @@ class EventNamespace:
     def model_request(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         model: str | None = None,
         messages: list[dict] | None = None,
         system: Any | None = None,
         tools: list[dict] | None = None,
         **fields,
     ) -> None:
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._writer.submit(
             ModelRequestEvent(
@@ -329,8 +378,8 @@ class EventNamespace:
     def model_response(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         model: str | None = None,
         stop_reason: str | None = None,
         input_tokens: int | None = None,
@@ -344,9 +393,8 @@ class EventNamespace:
         # provider's usage object gets whatever that object holds.
         _validate_promoted_numeric("input_tokens", input_tokens)
         _validate_promoted_numeric("output_tokens", output_tokens)
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._writer.submit(
             ModelResponseEvent(
@@ -366,15 +414,14 @@ class EventNamespace:
     def agent_start(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         goal: str | None = None,
         parent_id: str | None = None,
         **fields,
     ) -> None:
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._writer.submit(
             AgentStartEvent(
@@ -390,15 +437,14 @@ class EventNamespace:
     def agent_end(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         outcome: str | None = None,
         summary: str | None = None,
         **fields,
     ) -> None:
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._writer.submit(
             AgentEndEvent(
@@ -414,16 +460,15 @@ class EventNamespace:
     def agent_pause(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         pause_id: str,
         reason: str | None = None,
         user_id: str | None = None,
         **fields,
     ) -> None:
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._track_pending(f"pause:{session_id}:{pause_id}", ts)
         self._writer.submit(
@@ -441,8 +486,8 @@ class EventNamespace:
     def agent_resume(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         pause_id: str,
         reason: str | None = None,
         user_id: str | None = None,
@@ -450,9 +495,8 @@ class EventNamespace:
     ) -> None:
         if "duration_ms" in fields:
             raise ValueError("duration_ms is auto-computed by the SDK and cannot be passed by the caller")
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         start_ts = self._pending.pop(f"pause:{session_id}:{pause_id}", None)
         duration_ms = _measured_duration_ms(start_ts, ts)
@@ -472,17 +516,16 @@ class EventNamespace:
     def hook_triggered(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         hook_name: str,
         hook_id: str,
         trigger_event: str | None = None,
         input: Any | None = None,
         **fields,
     ) -> None:
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._track_pending(_hook_key(session_id, hook_id), ts)
         self._writer.submit(
@@ -501,8 +544,8 @@ class EventNamespace:
     def hook_completed(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         hook_name: str,
         hook_id: str,
         outcome: str | None = None,
@@ -512,9 +555,8 @@ class EventNamespace:
     ) -> None:
         if "duration_ms" in fields:
             raise ValueError("duration_ms is auto-computed by the SDK and cannot be passed by the caller")
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         start_ts = self._pending.pop(_hook_key(session_id, hook_id), None)
         duration_ms = _measured_duration_ms(start_ts, ts)
@@ -536,16 +578,15 @@ class EventNamespace:
     def error(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         error_type: str,
         message: str,
         traceback: str | None = None,
         **fields,
     ) -> None:
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._writer.submit(
             ErrorEvent(
@@ -562,17 +603,16 @@ class EventNamespace:
     def human_wait(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         input_id: str,
         prompt: str | None = None,
         options: list[str] | None = None,
         reason: str | None = None,
         **fields,
     ) -> None:
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._track_pending(f"human:{session_id}:{input_id}", ts)
         self._writer.submit(
@@ -591,17 +631,16 @@ class EventNamespace:
     def human_input(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         input_id: str,
         response: str | None = None,
         **fields,
     ) -> None:
         if "duration_ms" in fields:
             raise ValueError("duration_ms is auto-computed by the SDK and cannot be passed by the caller")
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         start_ts = self._pending.pop(f"human:{session_id}:{input_id}", None)
         duration_ms = _measured_duration_ms(start_ts, ts)
@@ -620,15 +659,14 @@ class EventNamespace:
     def human_pause(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         reason: str | None = None,
         user_id: str | None = None,
         **fields,
     ) -> None:
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._writer.submit(
             HumanPauseEvent(
@@ -644,16 +682,15 @@ class EventNamespace:
     def human_interrupt(
         self,
         *,
-        session_id: str,
-        agent_id: str,
+        session_id: str | None = None,
+        agent_id: str | None = None,
         reason: str | None = None,
         user_id: str | None = None,
         at_step: str | None = None,
         **fields,
     ) -> None:
-        _validate_identity("session_id", session_id)
-        _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
+        session_id, agent_id = _resolve_identity(session_id, agent_id)
         ts = self._now()
         self._writer.submit(
             HumanInterruptEvent(

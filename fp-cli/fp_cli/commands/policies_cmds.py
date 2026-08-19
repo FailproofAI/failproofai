@@ -17,7 +17,8 @@ import typer
 from .. import client as api
 from .. import output
 from .._context import GLOBALS_EPILOG, AppState, deny_in_key_mode, require_auth
-from ..enforcement import RefError, read_source
+from .. import _click_compat as click  # the Click Typer is running; see _click_compat
+from ..enforcement import RefError, RefUsageError, read_source
 from ..policy_check import check_syntax, run_policy
 from ..errors import ApiError, NotFoundError
 from . import _write
@@ -33,12 +34,17 @@ _KEY_MODE_REASON = (
 
 
 def policies_list(ctx: typer.Context) -> None:
-    """List published policies — newest version of each, and its state.
+    """List every published policy version, newest of each policy first.
 
-    Shows `policy · version · state · description`. `state` is active, disabled
-    (kept but not enforced) or archived (deleted; machines already carrying it
-    keep it until redeployed). Needs `policies:read`. With `--json`: the server's
-    policy list verbatim.
+    Shows `policy · version · state · description`, one row per VERSION —
+    versions are immutable and every one stays addressable, so a policy
+    published three times is three rows. The title counts distinct policies and
+    captions the version total, the way the dashboard's library does.
+
+    `state` is active, disabled (kept but not enforced) or archived (deleted;
+    machines already carrying it keep it until redeployed). Needs
+    `policies:read`. With `--json`: the server's policy list verbatim — also
+    every version, so deduplicate on `id` if you want one row per policy.
 
     Example:
 
@@ -69,9 +75,14 @@ def policies_show(
     state: AppState = ctx.obj
     deny_in_key_mode(state, "policies show", _KEY_MODE_REASON)
     cctx = require_auth(state)
-    match = next((p for p in api.list_policies(cctx) if p.id == policy_id), None)
-    if match is None:
+    # Explicitly the newest version, not the first one the server happened to
+    # list. `next(...)` returned whichever came back first, so the source shown
+    # was correct only for as long as the endpoint kept returning descending
+    # versions — and a stale source rendered identically to a current one.
+    versions = [p for p in api.list_policies(cctx) if p.id == policy_id]
+    if not versions:
         raise NotFoundError(f"no policy named {policy_id}")
+    match = max(versions, key=lambda p: p.version)
     if output.is_json():
         output.emit_json(match.to_dict())
         return
@@ -130,6 +141,8 @@ def policies_publish(
 
     try:
         text = read_source(source, prompt=_paste_prompt)
+    except RefUsageError as exc:
+        raise click.UsageError(str(exc))
     except RefError as exc:
         raise ApiError(str(exc))
     if not text.strip():
@@ -312,17 +325,28 @@ def policies_test(
     * `fp policies test ./rule.mjs --command "git push --force"`
     * `fp policies test ./rule.mjs --tool Write --file .env`
     """
-    state: AppState = ctx.obj
+    # No `require_auth` and no `deny_in_key_mode`: this command talks to node,
+    # not to the dashboard, so it works logged out and under an API key alike.
 
     def _paste_prompt() -> None:
         output.hint("paste the policy source, then press Ctrl-D")
 
     try:
         text = read_source(source, prompt=_paste_prompt)
+    except RefUsageError as exc:
+        raise click.UsageError(str(exc))
     except RefError as exc:
         raise ApiError(str(exc))
     if not text.strip():
         raise ApiError("policy source is empty — nothing to test")
+
+    # Checked before the syntax check runs, so a bad --expect reports itself
+    # rather than being masked by whatever node says about the file. A usage
+    # error should never depend on the content of an argument.
+    if expect is not None and expect not in ("allow", "deny", "instruct"):
+        raise typer.BadParameter(
+            f"invalid --expect value {expect!r}; choose one of allow, deny, instruct"
+        )
 
     syn = check_syntax(text)
     if not syn.ok:
@@ -330,11 +354,6 @@ def policies_test(
             output.emit_json({"ok": False, "syntax": syn.to_dict(), "policies": []})
             raise typer.Exit(1)
         raise ApiError(f"the policy is not parseable JavaScript:\n{syn.message}")
-
-    if expect is not None and expect not in ("allow", "deny", "instruct"):
-        raise typer.BadParameter(
-            f"invalid --expect value {expect!r}; choose one of allow, deny, instruct"
-        )
 
     run = run_policy(text, tool=tool, command=command, file_path=file_path, event=event)
 
@@ -393,18 +412,28 @@ def policies_compose(
         )
 
     syn = check_syntax(source)
+
+    # Saved BEFORE anything that can fail. `--out` used to run after the
+    # publish, so a publish that was refused — bad syntax, no `policies:write`,
+    # a network blip — threw away the draft the user had just paid an assistant
+    # to write, with no way to get that same text back.
+    if out:
+        try:
+            with open(out, "w", encoding="utf-8") as fh:
+                fh.write(source)
+        except OSError as exc:
+            raise ApiError(f"cannot write {out}: {exc.strerror or exc}")
+
     published = None
     if publish_as:
         if not syn.ok:
             raise ApiError(
                 f"the drafted policy is not parseable JavaScript — refusing to publish:\n"
                 f"{syn.message}",
-                hint="save it with --out, fix it, then publish",
+                hint=("fix it and publish it with `fp policies publish`"
+                      if out else "save it with --out, fix it, then publish"),
             )
         published = api.publish_policy(cctx, publish_as, source, f"drafted: {prompt}"[:500])
-    if out:
-        with open(out, "w", encoding="utf-8") as fh:
-            fh.write(source)
 
     if output.is_json():
         output.emit_json({

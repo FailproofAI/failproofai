@@ -48,6 +48,20 @@ class RefError(ValueError):
     """A malformed `--add` / `--remove` / `--set` token, with the reason."""
 
 
+class RefUsageError(RefError):
+    """A RefError the caller can fix by retyping the command.
+
+    Split out so the command layer can exit 2 (usage) rather than 1 (API error)
+    for these, which is what the documented exit-code table promises and what
+    `--since` and `--expect` in these same commands already do. A malformed
+    token, two flags that contradict each other, or a path that is not readable
+    text are all "you typed it wrong" — not "the server said no".
+
+    Subclasses ``RefError`` so every existing caller and test that catches the
+    base class keeps working unchanged.
+    """
+
+
 def parse_ref(token: str) -> Tuple[str, Optional[int], Optional[str]]:
     """``"id@2:observe"`` → ``("id", 2, "observe")``; omitted parts are None.
 
@@ -57,16 +71,16 @@ def parse_ref(token: str) -> Tuple[str, Optional[int], Optional[str]]:
     """
     token = token.strip()
     if not token:
-        raise RefError("empty policy reference")
+        raise RefUsageError("empty policy reference")
     m = _REF.match(token)
     if not m:
-        raise RefError(
+        raise RefUsageError(
             f"{token!r} is not a policy reference — expected id, id@version, "
             "id:effect or id@version:effect"
         )
     effect = m.group("effect")
     if effect is not None and effect not in VALID_EFFECTS:
-        raise RefError(
+        raise RefUsageError(
             f"{token!r} has effect {effect!r}; expected one of {', '.join(VALID_EFFECTS)}"
         )
     version = m.group("version")
@@ -186,7 +200,9 @@ def plan_deploy(
 
     if replace is not None:
         if add or remove:
-            raise RefError("--set replaces the whole set; it cannot be combined with --add/--remove")
+            raise RefUsageError(
+                "--set replaces the whole set; it cannot be combined with --add/--remove"
+            )
         result_map = {}
         for token in replace:
             ref = resolve_ref(token, latest=latest, current=current_map, disabled=disabled)
@@ -271,21 +287,46 @@ def read_source(
     tty = stream.isatty() if isatty is None else isatty
 
     if value == "-":
-        return _checked(stream.read())
+        return _checked(_read_stream(stream))
     if value:
         path = value[1:] if value.startswith("@") else value
         try:
             with open(path, "r", encoding="utf-8") as fh:
                 return _checked(fh.read())
         except FileNotFoundError:
-            raise RefError(f"no such file: {path}")
+            raise RefUsageError(f"no such file: {path}")
+        except UnicodeDecodeError:
+            # NOT an OSError, so the handler below never saw it and the
+            # decode error escaped as a raw traceback. `_checked` cannot
+            # catch this either: it inspects text, and there is no text yet.
+            raise RefUsageError(_NOT_TEXT.format(what=path))
         except OSError as exc:
-            raise RefError(f"cannot read {path}: {exc}")
+            raise RefUsageError(f"cannot read {path}: {exc}")
     if not tty:
-        return _checked(stream.read())
+        return _checked(_read_stream(stream))
     if prompt is not None:
         prompt()
-    return _checked(stream.read())
+    return _checked(_read_stream(stream))
+
+
+#: Said the same way whether the bytes arrived by path or down a pipe.
+_NOT_TEXT = (
+    "{what} is not UTF-8 text — this looks like a binary file rather than a policy"
+)
+
+
+def _read_stream(stream) -> str:
+    """Read stdin, turning undecodable bytes into a sentence.
+
+    ``sys.stdin`` decodes as it reads, so piping a binary file raises
+    ``UnicodeDecodeError`` here rather than returning bytes ``_checked`` could
+    inspect — which is how `cat rule.png | fp policies publish x` printed a
+    traceback instead of the NUL-byte message written for exactly that mistake.
+    """
+    try:
+        return stream.read()
+    except UnicodeDecodeError:
+        raise RefUsageError(_NOT_TEXT.format(what="the input"))
 
 
 def _checked(text: str) -> str:
@@ -297,7 +338,7 @@ def _checked(text: str) -> str:
     it; until it does, refusing here turns an unexplained 500 into a sentence.
     """
     if "\x00" in text:
-        raise RefError(
+        raise RefUsageError(
             "policy source contains a NUL byte — this looks like a binary file "
             "rather than a policy"
         )

@@ -5810,9 +5810,20 @@ def _policy_cell(ref: Any) -> Text:
 
 
 def render_policies(items: Sequence[Any]) -> None:
-    """``fp policies`` — every published policy, newest version of each."""
+    """``fp policies`` — every published VERSION, newest of each policy first.
+
+    One row per version, not per policy, because that is what the endpoint
+    returns and what the dashboard's own library shows. The title carries both
+    numbers for the same reason the dashboard does (`policies/page.tsx` counts
+    distinct policies and captions them "N versions"): a policy republished
+    twenty times is one policy and twenty rows, and a bare "policies · 21" over
+    that table is a number nobody can act on.
+    """
     rows = []
-    for p in sorted(items, key=lambda x: x.id):
+    # (id, -version): every version of a policy sits together, newest first.
+    # Sorting on id alone left the versions in whatever order the server
+    # happened to return them.
+    for p in sorted(items, key=lambda x: (x.id, -x.version)):
         state = Text("active", style=theme.SUCCESS)
         if p.archived:
             state = Text("archived", style=theme.FAINT)
@@ -5824,10 +5835,14 @@ def render_policies(items: Sequence[Any]) -> None:
             state,
             Text(p.description or "", style=theme.TEXT_DIM),
         ])
+    distinct = len({p.id for p in items})
     title = Text()
     title.append("policies", style=f"bold {theme.ACCENT}")
     title.append(" · ", style=theme.FAINT)
-    title.append(str(len(rows)), style="bold white")
+    title.append(str(distinct), style="bold white")
+    if len(rows) != distinct:
+        title.append(" · ", style=theme.FAINT)
+        title.append(f"{len(rows)} versions", style=theme.LABEL)
     render_list_panel("policies", header=["policy", "version", "state", "description"],
                       rows=rows, days=set(), order=None,
                       empty_message="no policies published — `fp policies publish <id> <file>`",
@@ -6195,12 +6210,21 @@ def deployment_rolled_back(machine_id: str, restored: int, generation: int) -> N
 def machine_renamed(machine_id: str, label: str) -> None:
     body = Text()
     body.append("✓ ", style=theme.SUCCESS)
-    body.append("labelled ", style=theme.TEXT)
-    body.append(machine_id, style=theme.ACCENT)
-    body.append(" as ", style=theme.TEXT)
-    body.append(label, style=f"bold {theme.TEXT}")
-    body.append("  ·  ", style=theme.FAINT)
-    body.append("the machine id itself is unchanged", style=theme.LABEL)
+    if not label.strip():
+        # An empty label is not a rename to nothing — the server clears the
+        # override, and the machine falls back to its self-asserted label or its
+        # id. Reporting it as `labelled <machine> as ` described neither.
+        body.append("cleared the label on ", style=theme.TEXT)
+        body.append(machine_id, style=theme.ACCENT)
+        body.append("  ·  ", style=theme.FAINT)
+        body.append("it now shows as its own label, or its id", style=theme.LABEL)
+    else:
+        body.append("labelled ", style=theme.TEXT)
+        body.append(machine_id, style=theme.ACCENT)
+        body.append(" as ", style=theme.TEXT)
+        body.append(label, style=f"bold {theme.TEXT}")
+        body.append("  ·  ", style=theme.FAINT)
+        body.append("the machine id itself is unchanged", style=theme.LABEL)
     _notice_box(body, color=theme.SUCCESS, title="renamed")
 
 
@@ -6389,21 +6413,28 @@ def render_deployment_history(machine_id: str, entries: Sequence[dict]) -> None:
     deploy, which is worth being able to see.
     """
     rows = []
-    prev_ids = None
+    prev = None
     # oldest first so each row can be diffed against the one before it, then
     # reversed for display — newest first is how you read a history.
     ordered = sorted(entries, key=lambda e: e.get("deployment") or 0)
     diffs = {}
     for e in ordered:
-        ids = {f"{p.get('id')}@{p.get('version')}" for p in (e.get("policies") or [])}
-        if prev_ids is None:
-            diffs[e.get("deployment")] = [("+", i) for i in sorted(ids)]
+        # Keyed by id, comparing (version, effect). Keying by `id@version`
+        # instead made an effect flip invisible: enforce → observe is a policy
+        # that STOPPED BLOCKING, and it rendered as "no change". It also split a
+        # version bump into a "+x" and a "-x" for the same policy, which reads
+        # as removed-and-re-added rather than moved.
+        cur = {p.get("id"): (p.get("version"), p.get("effect"))
+               for p in (e.get("policies") or [])}
+        if prev is None:
+            diffs[e.get("deployment")] = [("+", i) for i in sorted(cur)]
         else:
             diffs[e.get("deployment")] = (
-                [("+", i) for i in sorted(ids - prev_ids)]
-                + [("-", i) for i in sorted(prev_ids - ids)]
+                [("+", i) for i in sorted(set(cur) - set(prev))]
+                + [("-", i) for i in sorted(set(prev) - set(cur))]
+                + [("~", i) for i in sorted(set(cur) & set(prev)) if cur[i] != prev[i]]
             )
-        prev_ids = ids
+        prev = cur
 
     newest_first = sorted(entries, key=lambda e: e.get("deployment") or 0, reverse=True)
     # The shared time column: clock time, with the date folded in only when the
@@ -6418,8 +6449,10 @@ def render_deployment_history(machine_id: str, entries: Sequence[dict]) -> None:
         for i, (sign, ref) in enumerate(diffs.get(gen) or []):
             if i:
                 change.append("  ")
-            change.append(sign, style=theme.SUCCESS if sign == "+" else theme.ERROR)
-            change.append(ref.split("@")[0], style=theme.TEXT_DIM)
+            # Same vocabulary as the deploy plan: + added, ~ changed, - removed.
+            change.append(sign, style={"+": theme.SUCCESS, "~": theme.AMBER}.get(
+                sign, theme.ERROR))
+            change.append(ref, style=theme.TEXT_DIM)
         if not change.plain:
             change = Text("no change", style=theme.FAINT)
         rows.append([

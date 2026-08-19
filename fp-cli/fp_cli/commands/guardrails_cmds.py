@@ -19,11 +19,26 @@ import typer
 from .. import client as api
 from .. import output
 from .._context import GLOBALS_EPILOG, AppState, deny_in_key_mode, require_auth
+from ..errors import NotFoundError
 
 _KEY_MODE_REASON = (
     "guardrails reads an operator surface that is not exposed on the versioned "
     "API that an API key authenticates against"
 )
+
+
+def _require_machine(cctx, machine_id: Optional[str]) -> None:
+    """Refuse a `--machine` id nobody has ever reported under.
+
+    Both views answer "what happened here", and both answer an unknown machine
+    with an empty window — which reads as "this machine was quiet", not as "you
+    typed the id wrong". `fp fleet` refuses the same mistake everywhere else;
+    the check costs one request, and only when the flag is actually used.
+    """
+    if machine_id is None:
+        return
+    if machine_id not in {m.machine_id for m in api.list_machines(cctx)}:
+        raise NotFoundError(f"no machine {machine_id!r} has checked in")
 
 
 def _hours(since: str) -> int:
@@ -64,6 +79,7 @@ def guardrails_summary(
     deny_in_key_mode(state, "guardrails", _KEY_MODE_REASON)
     cctx = require_auth(state)
     hours = _hours(since)
+    _require_machine(cctx, machine)
     summary = api.enforcement_summary(cctx, hours=hours, machine_id=machine)
     timeline = api.decision_timeline(cctx, hours=hours, machine_id=machine)
     if output.is_json():
@@ -96,7 +112,9 @@ def guardrails_timeline(
     state: AppState = ctx.obj
     deny_in_key_mode(state, "guardrails timeline", _KEY_MODE_REASON)
     cctx = require_auth(state)
-    data = api.decision_timeline(cctx, hours=_hours(since), machine_id=machine)
+    hours = _hours(since)
+    _require_machine(cctx, machine)
+    data = api.decision_timeline(cctx, hours=hours, machine_id=machine)
     if output.is_json():
         output.emit_json(data)
         return

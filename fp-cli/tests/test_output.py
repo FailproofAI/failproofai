@@ -1523,3 +1523,115 @@ def test_agent_ask_chrome_lines(capsys):
     assert "isn't configured" in err and "fp agent health" in err
     output.configure(no_color=True, quiet=False)
 
+
+
+# ── review round: renderers that described the wrong thing ───────────────────
+
+
+def _history(*gens):
+    """`(deployment, [(id, version, effect), ...])` → the server's history shape."""
+    return [{"deployment": g, "updatedAt": "2026-08-19T13:49:%02dZ" % g,
+             "policies": [{"id": i, "version": v, "effect": e} for i, v, e in pols]}
+            for g, pols in gens]
+
+
+def test_history_shows_an_effect_flip_instead_of_no_change(capsys):
+    """enforce → observe is a policy that STOPPED BLOCKING, and history called
+    it "no change".
+
+    The row identity was `id@version`, so a generation that changed only the
+    effect diffed to nothing. Scanning history for "when did this stop
+    blocking?" is one of the two reasons to read it at all.
+    """
+    _wide_stdout()
+    output.render_deployment_history("m", _history(
+        (1, [("guard", 1, "enforce")]),
+        (2, [("guard", 1, "observe")]),
+    ))
+    out = capsys.readouterr().out
+    assert "no change" not in out
+    assert "~guard" in out
+
+
+def test_history_shows_a_version_bump_as_one_change(capsys):
+    """A version bump split into `+guard` and `-guard` on the same row, which
+    reads as removed-and-re-added rather than moved."""
+    _wide_stdout()
+    output.render_deployment_history("m", _history(
+        (1, [("guard", 1, "enforce")]),
+        (2, [("guard", 2, "enforce")]),
+    ))
+    # Scoped to generation 2's row: generation 1 is the machine's first, where
+    # every policy is legitimately a "+".
+    row = [ln for ln in capsys.readouterr().out.splitlines() if "#2" in ln][0]
+    assert "~guard" in row
+    assert "+guard" not in row and "-guard" not in row
+
+
+def test_history_still_reports_plain_adds_and_removes(capsys):
+    """The `~` case must not have eaten the two it was added beside."""
+    _wide_stdout()
+    output.render_deployment_history("m", _history(
+        (1, [("a", 1, "enforce")]),
+        (2, [("a", 1, "enforce"), ("b", 1, "enforce")]),
+        (3, [("b", 1, "enforce")]),
+    ))
+    out = capsys.readouterr().out
+    assert "+b" in out and "-a" in out
+
+
+def test_history_says_no_change_only_when_nothing_moved(capsys):
+    """A reissue that lands on an identical set is real, and should still say so."""
+    _wide_stdout()
+    output.render_deployment_history("m", _history(
+        (1, [("a", 1, "enforce")]),
+        (2, [("a", 1, "enforce")]),
+    ))
+    assert "no change" in capsys.readouterr().out
+
+
+def test_clearing_a_label_is_not_reported_as_renaming_to_blank(capsys):
+    """`fp fleet rename m ""` clears the override server-side, and the card
+    said `labelled m as ` — a sentence with a hole in it, describing neither
+    what was asked nor what happened."""
+    _wide_stdout()
+    output.machine_renamed("m", "")
+    # Notices go to stderr so stdout stays parseable; the box lands there.
+    err = capsys.readouterr().err
+    assert "cleared the label" in err
+    assert "labelled m as" not in err
+
+    output.machine_renamed("m", "CI runner")
+    assert "labelled m as CI runner" in capsys.readouterr().err.replace("\n", " ")
+
+
+def test_policy_list_counts_policies_and_captions_versions(capsys):
+    """The panel said `policies · 4` for three policies, because the endpoint
+    returns one row per immutable VERSION. The dashboard's own library counts
+    distinct policies and captions the version total; this now matches it."""
+    from fp_cli.models import PolicyVersion
+
+    def pv(pid, version):
+        return PolicyVersion(id=pid, version=version, description="", sha256="",
+                             source=None, created_at="", created_by=None,
+                             disabled=False, archived=False)
+
+    _wide_stdout()
+    output.render_policies([pv("a", 1), pv("b", 2), pv("b", 1)])
+    out = capsys.readouterr().out
+    assert "policies · 2 · 3 versions" in out
+    # newest version of each policy first, rather than server order
+    b_rows = [ln for ln in out.splitlines() if "b" in ln and "v" in ln
+              and ("v1" in ln or "v2" in ln)]
+    assert [("v2" in r) for r in b_rows] == [True, False], b_rows
+
+
+def test_policy_list_omits_the_caption_when_each_policy_has_one_version(capsys):
+    from fp_cli.models import PolicyVersion
+
+    _wide_stdout()
+    output.render_policies([PolicyVersion(id="a", version=1, description="", sha256="",
+                                          source=None, created_at="", created_by=None,
+                                          disabled=False, archived=False)])
+    out = capsys.readouterr().out
+    assert "policies · 1" in out and "versions" not in out

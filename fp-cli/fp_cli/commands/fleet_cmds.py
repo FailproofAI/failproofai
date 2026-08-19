@@ -24,8 +24,10 @@ import typer
 from .. import client as api
 from .. import output
 from .._context import GLOBALS_EPILOG, AppState, deny_in_key_mode, require_auth
+from .. import _click_compat as click  # the Click Typer is running; see _click_compat
 from ..enforcement import (
     RefError,
+    RefUsageError,
     check_race,
     disabled_ids,
     latest_versions,
@@ -174,9 +176,12 @@ def fleet_deploy(
     cctx = require_auth(state)
 
     if not add and not remove and replace is None:
-        raise ApiError(
-            "nothing to do — pass --add, --remove, or --set",
-            hint="`fp fleet show <machine>` prints the current set",
+        # Exit 2 for the same reason `--set` with `--add` is: no flag
+        # combination was given that this command can act on. Both are the
+        # caller's command line, not the server's answer.
+        raise click.UsageError(
+            "nothing to do — pass --add, --remove, or --set. "
+            "`fp fleet show <machine>` prints the current set."
         )
 
     # The server accepts a deploy to ANY id — that is how a machine can be
@@ -208,6 +213,11 @@ def fleet_deploy(
             latest=latest,
             disabled=disabled_ids(published),
         )
+    except RefUsageError as exc:
+        # Exit 2, like every other bad flag value in this CLI (`--since`,
+        # `--expect`, `--file`). These are retype-the-command mistakes; exit 1
+        # says "the server refused", which is a different thing to script on.
+        raise click.UsageError(str(exc))
     except RefError as exc:
         raise ApiError(str(exc))
 
@@ -275,6 +285,12 @@ def fleet_diff(
     deny_in_key_mode(state, "fleet diff", _KEY_MODE_REASON)
     cctx = require_auth(state)
     machines = api.list_machines(cctx)
+    # Every other machine-scoped command refuses an id nobody has reported
+    # under; this one filtered to nothing and exited 0 saying "no machines have
+    # checked in yet" — false, and indistinguishable from a healthy fleet. The
+    # list is already in hand, so the check costs no extra request.
+    if machine_id and machine_id not in {m.machine_id for m in machines}:
+        raise NotFoundError(f"no machine {machine_id!r} has checked in")
     rows = []
     for m in sorted(machines, key=lambda x: x.machine_id):
         if machine_id and m.machine_id != machine_id:

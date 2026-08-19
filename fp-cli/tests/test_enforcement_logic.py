@@ -395,3 +395,87 @@ def test_both_label_fields_survive_into_json():
     from fp_cli.models import Machine
     d = Machine.from_dict({"machineId": "m", "label": "a", "labelOverride": "b"}).to_dict()
     assert d["label"] == "a" and d["labelOverride"] == "b"
+
+
+# ── review round: what these commands got wrong ──────────────────────────────
+#
+# Every test below stands for a bug that shipped in the first cut of these
+# commands and passed every test that existed at the time. They are grouped
+# because they share a shape: the command did something defensible and then
+# described it wrongly, or classified its own failure wrongly.
+
+
+def test_a_binary_file_is_refused_by_name_not_by_traceback(tmp_path):
+    """`policies publish x logo.png` printed a Python traceback.
+
+    `read_source` caught `OSError`, but decoding happens inside `read()` and
+    raises `UnicodeDecodeError`, which is a `ValueError` — so it sailed past the
+    handler and out through Click as a rich traceback with internal paths in it.
+    The NUL-byte guard could not save this: it inspects text, and a file that
+    fails to decode never becomes text.
+    """
+    from fp_cli.enforcement import RefUsageError
+
+    f = tmp_path / "logo.png"
+    f.write_bytes(b"\x89PNG\r\n\x1a\n\xff\xfe\x00\x01binary")
+    for value in (str(f), f"@{f}"):
+        with pytest.raises(RefUsageError, match="not UTF-8 text"):
+            read_source(value)
+
+
+def test_a_binary_pipe_is_refused_the_same_way():
+    """`cat logo.png | fp policies publish x` reaches a different branch of
+    `read_source` than a path does, and used to traceback from that one too."""
+    from fp_cli.enforcement import RefUsageError
+
+    class _Undecodable:
+        def isatty(self):
+            return False
+
+        def read(self):
+            raise UnicodeDecodeError("utf-8", b"\xff\xfe", 0, 1, "invalid start byte")
+
+    with pytest.raises(RefUsageError, match="not UTF-8 text"):
+        read_source("-", stdin=_Undecodable())
+    with pytest.raises(RefUsageError, match="not UTF-8 text"):
+        read_source(None, stdin=_Undecodable(), isatty=False)
+
+
+def test_mistyping_a_flag_is_a_usage_error_not_an_api_error():
+    """These all exited 1 ("the server returned an error") for mistakes the
+    server never saw. The CLI documents 2 for usage, and `--since` / `--expect`
+    in these same commands already use it; a script branching on exit codes
+    could not tell a typo from a rejected write."""
+    from fp_cli.enforcement import RefUsageError
+
+    for token in ("", "bad ref!!", "policy:banana"):
+        with pytest.raises(RefUsageError):
+            parse_ref(token)
+
+    with pytest.raises(RefUsageError, match="cannot be combined"):
+        plan_deploy("m", current=[], base=1, add=("a",), replace=("b",))
+
+    with pytest.raises(RefUsageError, match="no such file"):
+        read_source("/nope/definitely-not-here.mjs")
+
+
+def test_usage_errors_are_still_ref_errors():
+    """The split must not break `except RefError`, which is what every call site
+    and every earlier test in this file catches."""
+    from fp_cli.enforcement import RefUsageError
+
+    assert issubclass(RefUsageError, RefError)
+    with pytest.raises(RefError):
+        parse_ref("bad ref!!")
+
+
+def test_a_server_refusal_stays_an_api_error():
+    """The other half of the contract: naming a policy that does not exist is
+    not a typo the caller can fix by re-reading their own command line, and it
+    keeps exit 1. Widening the usage class to cover it would have made every
+    "this does not exist" indistinguishable from a malformed flag."""
+    from fp_cli.enforcement import RefUsageError
+
+    with pytest.raises(RefError) as caught:
+        resolve_ref("ghost", latest={}, current={})
+    assert not isinstance(caught.value, RefUsageError)

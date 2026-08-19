@@ -474,6 +474,7 @@ _TOP_LEVEL_GROUPS = [
         ("evals", "List scored agent evaluations.", "--aggregate"),
         ("errors", "List errored events.", "--aggregate"),
         ("usage", "Show current org usage for the metering window.", ""),
+        ("guardrails", "What enforcement actually blocked.", "summary timeline policies"),
     ]),
     ("MANAGE", [
         ("orgs", "Switch and inspect the active org.", "list switch current perms"),
@@ -489,6 +490,8 @@ _TOP_LEVEL_GROUPS = [
         ("audits", "Schedule audits and triage their findings.", "list show create edit delete run runs findings context-*"),
         ("issues", "Triage and resolve issues.", "list count show ack assign resolve comment subscribe open"),
         ("settings", "View and change org settings.", "list schema set"),
+        ("policies", "Write cloud-managed policies.", "list show publish enable disable delete"),
+        ("fleet", "Deploy policies to machines.", "list show deploy diff history rollback rename"),
     ]),
     ("TOOLS", [
         ("list", "List distinct values behind the filter dropdowns.", ""),
@@ -5769,3 +5772,235 @@ def _field_cell(name: str, value: Any) -> str:
     if isinstance(value, (dict, list)):
         return _json.dumps(value, ensure_ascii=False)
     return _cell(value)
+
+
+# ── Cloud-managed enforcement ────────────────────────────────────────────────
+
+
+_EFFECT_STYLE = {"enforce": theme.SUCCESS, "observe": theme.AMBER}
+
+#: Eight levels is what a terminal row can show without becoming a chart. The
+#: timeline is 24 hourly bins, so the whole day fits on one line beside a label.
+_SPARK = "▁▂▃▄▅▆▇█"
+
+
+def sparkline(values: Sequence[float]) -> str:
+    """A one-line bar strip. Flat-zero renders as the lowest block, not blank —
+    "nothing was blocked" and "no data" are different answers and must not look
+    the same."""
+    vals = [max(0.0, float(v or 0)) for v in values]
+    if not vals:
+        return ""
+    peak = max(vals)
+    if peak <= 0:
+        return _SPARK[0] * len(vals)
+    return "".join(_SPARK[min(len(_SPARK) - 1, int(v / peak * (len(_SPARK) - 1)))] for v in vals)
+
+
+def _effect(effect: str) -> Text:
+    return Text(effect, style=_EFFECT_STYLE.get(effect, theme.TEXT_DIM))
+
+
+def _policy_cell(ref: Any) -> Text:
+    t = Text(ref.id, style=theme.TEXT)
+    t.append(f" v{ref.version}", style=theme.TEXT_DIM)
+    return t
+
+
+def render_policies(items: Sequence[Any]) -> None:
+    """``fp policies`` — every published policy, newest version of each."""
+    rows = []
+    for p in sorted(items, key=lambda x: x.id):
+        state = Text("active", style=theme.SUCCESS)
+        if p.archived:
+            state = Text("archived", style=theme.FAINT)
+        elif p.disabled:
+            state = Text("disabled", style=theme.AMBER)
+        rows.append([
+            Text(p.id, style=theme.TEXT),
+            Text(f"v{p.version}", style=theme.TEXT_DIM),
+            state,
+            Text(p.description or "", style=theme.TEXT_DIM),
+        ])
+    title = Text()
+    title.append("policies", style=f"bold {theme.ACCENT}")
+    title.append(" · ", style=theme.FAINT)
+    title.append(str(len(rows)), style="bold white")
+    render_list_panel("policies", header=["policy", "version", "state", "description"],
+                      rows=rows, days=set(), order=None,
+                      empty_message="no policies published — `fp policies publish <id> <file>`",
+                      last_col="ellipsis", title=title)
+
+
+def render_policy_published(p: Any, *, deployed_to: int = 0) -> None:
+    """``fp policies publish`` — a new VERSION was minted, not an edit.
+
+    The deployed-elsewhere note is the point: publishing changes nothing on any
+    machine until it is deployed, and an author who assumes otherwise ships a
+    policy that is never enforced.
+    """
+    line1 = Text(p.id, style=f"bold {theme.TEXT}")
+    line1.append(f"  v{p.version}", style=theme.ACCENT)
+    line2 = Text()
+    line2.append("sha256 ", style=theme.LABEL)
+    line2.append((p.sha256 or "")[:12] + "…", style=theme.TEXT_DIM)
+    body = [line1, line2]
+    if deployed_to:
+        note = Text()
+        note.append(f"v{p.version} is not deployed anywhere yet", style=theme.AMBER)
+        body.append(note)
+        hint_line = Text()
+        hint_line.append("deploy with ", style=theme.LABEL)
+        hint_line.append(f"fp fleet deploy <machine> --add {p.id}@{p.version}", style=theme.ACCENT)
+        body.append(hint_line)
+    card = Panel(Group(*body), box=ROUNDED, border_style=theme.SUCCESS,
+                 title=Text("policy published", style=f"bold {theme.SUCCESS}"),
+                 title_align="left", padding=(0, 1), expand=False)
+    _stdout.print(); _stdout.print(Padding(card, (0, 0, 0, 2))); _stdout.print()
+
+
+def render_fleet(machines: Sequence[Any], deployments: Sequence[Any]) -> None:
+    """``fp fleet`` — every machine, what it is told to run, and whether it has it.
+
+    ``deployment`` is intent and ``applied`` is delivery. Showing both is the
+    point: a machine can be deployed-to and still enforcing an older set, and
+    nothing else in the CLI surfaces that gap.
+    """
+    rows = []
+    for m in sorted(machines, key=lambda x: x.machine_id):
+        applied = Text(
+            f"#{m.applied_deployment}" if m.applied_deployment is not None else "—",
+            style=theme.AMBER if m.drifted else theme.TEXT_DIM,
+        )
+        rows.append([
+            Text(m.machine_id, style=theme.TEXT),
+            Text(m.label or "-", style=theme.TEXT_DIM),
+            Text(str(m.policy_count), style=theme.TEXT if m.policy_count else theme.FAINT),
+            Text(f"#{m.deployment}" if m.deployment is not None else "—", style=theme.TEXT_DIM),
+            applied,
+            Text("drifted" if m.drifted else ("ok" if m.deployed else "—"),
+                 style=theme.AMBER if m.drifted else (theme.SUCCESS if m.deployed else theme.FAINT)),
+        ])
+    title = Text()
+    title.append("fleet", style=f"bold {theme.ACCENT}")
+    title.append(" · ", style=theme.FAINT)
+    title.append(str(len(rows)), style="bold white")
+    render_list_panel("fleet",
+                      header=["machine", "label", "policies", "intended", "applied", "state"],
+                      rows=rows, days=set(), order=None,
+                      empty_message="no machines have checked in yet",
+                      last_col="ellipsis", title=title)
+
+
+def render_machine_policies(machine_id: str, dep: Any) -> None:
+    """``fp fleet show`` — the set a machine is told to run, and nothing more.
+
+    Deliberately NOT the deploy-plan renderer: that one talks about a change
+    ("2 policies after this change", "first deployment"), which is a lie on a
+    read-only view and exactly the kind of wrong-but-plausible text this repo
+    keeps producing.
+    """
+    lines = []
+    for p in sorted(dep.policies, key=lambda x: x.id):
+        t = Text("  ", style=theme.FAINT)
+        t.append(p.id, style=theme.TEXT)
+        t.append(f" v{p.version}", style=theme.TEXT_DIM)
+        t.append("  ")
+        t.append_text(_effect(p.effect))
+        lines.append(t)
+    if not lines:
+        lines = [Text("  (no policies deployed)", style=theme.FAINT)]
+    head = Text(machine_id, style=f"bold {theme.TEXT}")
+    head.append(f"  ·  deployment #{dep.deployment}", style=theme.TEXT_DIM)
+    card = Panel(Group(head, Text(), *lines), box=ROUNDED, border_style=theme.ACCENT,
+                 title=Text("deployed policies", style=f"bold {theme.ACCENT}"),
+                 title_align="left", padding=(0, 1), expand=False)
+    _stdout.print(); _stdout.print(Padding(card, (0, 0, 0, 2))); _stdout.print()
+
+
+def render_deploy_plan(plan: Any, *, applied: bool = False) -> None:
+    """The signature view: the FULL resulting set, with the diff marked.
+
+    Unchanged rows are shown on purpose. The endpoint replaces everything, so
+    the set on screen is the set that will exist — hiding the untouched rows
+    would hide exactly the ones a mistake silently drops.
+    """
+    lines = []
+    for p in plan.added:
+        t = Text("  + ", style=theme.SUCCESS); t.append_text(_policy_cell(p))
+        t.append("  "); t.append_text(_effect(p.effect)); lines.append(t)
+    for was, now in plan.changed:
+        t = Text("  ~ ", style=theme.AMBER); t.append_text(_policy_cell(now))
+        t.append("  "); t.append_text(_effect(now.effect))
+        t.append(f"   (was v{was.version} {was.effect})", style=theme.FAINT); lines.append(t)
+    for p in plan.removed:
+        t = Text("  - ", style=theme.ERROR)
+        t.append(p.id, style=theme.TEXT_DIM); t.append(f" v{p.version}", style=theme.FAINT)
+        lines.append(t)
+    for p in plan.unchanged:
+        t = Text("  = ", style=theme.FAINT); t.append_text(_policy_cell(p))
+        t.append("  "); t.append_text(_effect(p.effect)); lines.append(t)
+    if not lines:
+        lines = [Text("  (no policies)", style=theme.FAINT)]
+
+    footer = Text()
+    footer.append(f"{len(plan.result)} ", style="bold white")
+    footer.append("policies after this change", style=theme.LABEL)
+    lines.append(Text())
+    lines.append(footer)
+
+    head = Text(plan.machine_id, style=f"bold {theme.TEXT}")
+    if plan.base is not None:
+        head.append(f"  ·  deployment {plan.base} → {plan.base + 1}", style=theme.TEXT_DIM)
+    else:
+        head.append("  ·  first deployment", style=theme.TEXT_DIM)
+    border = theme.SUCCESS if applied else theme.ACCENT
+    card = Panel(Group(head, Text(), *lines), box=ROUNDED, border_style=border,
+                 title=Text("deployed" if applied else "deploy plan", style=f"bold {border}"),
+                 title_align="left", padding=(0, 1), expand=False)
+    _stdout.print(); _stdout.print(Padding(card, (0, 0, 0, 2))); _stdout.print()
+
+
+def render_guardrails(summary: dict, timeline: Optional[dict] = None) -> None:
+    """``fp guardrails`` — what actually happened, as opposed to what was intended."""
+    totals = summary.get("totals") or {}
+    stat = Text()
+    stat.append(str(totals.get("evaluated", 0)), style="bold white")
+    stat.append(" evaluated   ", style=theme.LABEL)
+    stat.append(str(totals.get("blocked", 0)), style=f"bold {theme.ERROR}")
+    stat.append(" blocked   ", style=theme.LABEL)
+    stat.append(f"{totals.get('enforcingMachines', 0)}/{totals.get('reportingMachines', 0)}",
+                style="bold white")
+    stat.append(" machines enforcing", style=theme.LABEL)
+    body = [stat]
+
+    if timeline:
+        series = (timeline.get("series") or [{}])[0].get("points") or []
+        denies = [p.get("deny", 0) for p in series]
+        if denies:
+            spark = Text()
+            spark.append("denies  ", style=theme.LABEL)
+            spark.append(sparkline(denies), style=theme.ERROR)
+            body.append(spark)
+
+    card = Panel(Group(*body), box=ROUNDED, border_style=theme.ACCENT,
+                 title=Text(f"guardrails · {summary.get('hours', 24)}h",
+                            style=f"bold {theme.ACCENT}"),
+                 title_align="left", padding=(0, 1), expand=False)
+    _stdout.print(); _stdout.print(Padding(card, (0, 0, 0, 2)))
+
+    rows = []
+    for p in summary.get("policies") or []:
+        rows.append([
+            Text(str(p.get("policy") or "-"), style=theme.TEXT),
+            Text(str(p.get("fired", 0)), style=theme.TEXT_DIM),
+            Text(str(p.get("blocked", 0)),
+                 style=theme.ERROR if p.get("blocked") else theme.FAINT),
+            Text(str(p.get("instructed", 0)),
+                 style=theme.AMBER if p.get("instructed") else theme.FAINT),
+            Text(f"{p.get('p95Ms', 0)}ms", style=theme.TEXT_DIM),
+        ])
+    render_list_panel("guardrails", header=["policy", "fired", "blocked", "instructed", "p95"],
+                      rows=rows, days=set(), order=None,
+                      empty_message="no decisions recorded in this window",
+                      last_col="ellipsis", title=None)

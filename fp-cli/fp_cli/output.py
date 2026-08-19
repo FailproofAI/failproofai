@@ -6146,3 +6146,102 @@ def render_decision_timeline(data: dict) -> None:
                       rows=rows, days=set(), order=None,
                       empty_message="no decisions recorded in this window", title=title)
     hint("red is the blocked share of each bar · times are UTC")
+
+
+_DECISION_STYLE = {"deny": theme.ERROR, "instruct": theme.AMBER, "allow": theme.SUCCESS}
+_DECISION_GLYPH = {"deny": "✗", "instruct": "!", "allow": "✓"}
+
+
+def render_policy_test(run: Any, *, tool: str, command: Optional[str] = None,
+                       file_path: Optional[str] = None,
+                       expected: Optional[str] = None) -> None:
+    """``fp policies test`` — the verdict, and which policy produced it.
+
+    Leads with the overall decision because that is the question asked. The
+    per-policy rows follow, since a file may register several and only one of
+    them refusing is what matters.
+    """
+    overall = run.decision
+    colour = _DECISION_STYLE.get(overall, theme.TEXT)
+    head = Text()
+    head.append(f"{_DECISION_GLYPH.get(overall, '·')}  ", style=f"bold {colour}")
+    head.append(overall.upper(), style=f"bold {colour}")
+    subject = command or file_path or "(no input)"
+    ctx_line = Text()
+    ctx_line.append(f"{tool}  ", style=theme.LABEL)
+    ctx_line.append(subject, style=theme.TEXT)
+
+    rows = []
+    for r in run.results:
+        if "error" in r:
+            rows.append(Text(f"  ✗ {r.get('name')}: {r['error']}", style=theme.ERROR))
+            continue
+        d = r.get("decision", "allow")
+        line = Text("  ")
+        line.append(_DECISION_GLYPH.get(d, "·"), style=_DECISION_STYLE.get(d, theme.TEXT))
+        line.append(f" {r.get('name')}", style=theme.TEXT)
+        line.append(f"  {d}", style=_DECISION_STYLE.get(d, theme.TEXT_DIM))
+        if r.get("reason"):
+            line.append(f"  ·  {r['reason']}", style=theme.LABEL)
+        rows.append(line)
+
+    if expected is not None:
+        rows.append(Text())
+        verdict = Text("  ")
+        if run.decision == expected:
+            verdict.append("✓ ", style=theme.SUCCESS)
+            verdict.append(f"matched --expect {expected}", style=theme.LABEL)
+        else:
+            verdict.append("✗ ", style=theme.ERROR)
+            verdict.append(f"expected {expected}, got {run.decision}", style=theme.ERROR)
+        rows.append(verdict)
+
+    card = Panel(Group(head, ctx_line, Text(), *rows), box=ROUNDED, border_style=colour,
+                 title=Text("policy test", style=f"bold {colour}"),
+                 title_align="left", padding=(0, 1), expand=False)
+    _stdout.print(); _stdout.print(Padding(card, (0, 0, 0, 2))); _stdout.print()
+    hint("this is a dry run — it does not prove the daemon sends the same context")
+
+
+def render_composed_policy(prompt: str, source: str, syntax: Any,
+                           *, saved_to: Optional[str] = None) -> None:
+    """``fp policies compose`` — the draft, and whether it even parses.
+
+    Prints the source rather than publishing it. A generated policy that
+    deploys itself is a generated policy nobody read.
+    """
+    head = Text()
+    head.append("drafted from  ", style=theme.LABEL)
+    head.append(prompt, style=theme.TEXT)
+    status = Text()
+    if syntax.ok and syntax.checked:
+        status.append("✓ ", style=theme.SUCCESS)
+        status.append("parses as JavaScript", style=theme.LABEL)
+    elif not syntax.checked:
+        status.append("· ", style=theme.FAINT)
+        status.append("not syntax-checked (node not found)", style=theme.LABEL)
+    else:
+        status.append("✗ ", style=theme.ERROR)
+        status.append("does NOT parse — review before publishing", style=theme.ERROR)
+    body = [head, status]
+    if saved_to:
+        saved = Text()
+        saved.append("saved to  ", style=theme.LABEL)
+        saved.append(saved_to, style=theme.ACCENT)
+        body.append(saved)
+    card = Panel(Group(*body), box=ROUNDED, border_style=theme.ACCENT,
+                 title=Text("draft policy", style=f"bold {theme.ACCENT}"),
+                 title_align="left", padding=(0, 1), expand=False)
+    _stdout.print(); _stdout.print(Padding(card, (0, 0, 0, 2))); _stdout.print()
+    _stdout.print(source)
+    _stdout.print()
+    hint("review it, then `fp policies publish <id> <file>` — or re-run with --publish <id>")
+
+
+def policy_published_brief(p: Any) -> None:
+    body = Text()
+    body.append("✓ ", style=theme.SUCCESS)
+    body.append("published ", style=theme.TEXT)
+    body.append(p.id, style=theme.ACCENT)
+    body.append(f" v{p.version}", style=theme.TEXT_DIM)
+    _notice_box(body, color=theme.SUCCESS, title="published")

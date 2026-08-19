@@ -1524,10 +1524,41 @@ def decision_timeline(
     return _get_json(ctx, "/api/enforcement/decisions/timeline", params=params) or {}
 
 
-def compose_policy(ctx: ClientContext, prompt: str) -> Dict[str, Any]:
-    """POST /api/agent/compose-policy — the assistant drafts a policy from a prompt.
+def compose_policy(ctx: ClientContext, intent: str) -> Dict[str, Any]:
+    """POST /api/agent/compose-policy — the assistant drafts a policy source.
 
-    Dashboard-only, like the rest of the assistant: it is implemented by the
-    dashboard rather than the API, so there is no `/v1` route behind it.
+    STREAMS. The route answers `text/event-stream`, not JSON: `delta` frames as
+    tokens arrive, then one `done` carrying the finished source (the dashboard
+    feeds those deltas into a Monaco diff). Reading it as JSON gets a parse
+    error on the first frame, which is how this was written the first time.
+
+    The field is `intent`, not `prompt` — the server rejects anything else with
+    a 400 before the model is ever called.
+
+    Dashboard-only, like the rest of the assistant: there is no `/v1` route
+    behind it.
     """
-    return _post_json(ctx, "/api/agent/compose-policy", {"prompt": prompt}) or {}
+    source = ""
+    for event in _stream_sse(ctx, "/api/agent/compose-policy", {"intent": intent}):
+        kind = event.get("type")
+        if kind == "error":
+            raise ApiError(
+                str(event.get("reason") or "the policy composer hit an error"),
+                hint="check `fp agent health` — the assistant may not be configured here",
+            )
+        if kind == "done":
+            source = str(event.get("source") or "")
+            return {"source": source, "usage": event.get("usage") or {}}
+    # The stream ended without a `done`. Returning "" here would render as an
+    # empty draft; saying so is the difference between a bug and a blank file.
+    #
+    # The overwhelmingly likely cause is the composer's own 30s ceiling —
+    # `agent/src/server.ts` aborts the request at 30_000ms, server-side, and a
+    # slower model or a longer intent simply does not finish. Naming it matters
+    # because the obvious remedy (raise --timeout) does nothing: the cut is not
+    # on this side.
+    raise ApiError(
+        "the assistant stopped before returning a policy — the composer has a "
+        "30s server-side limit and this draft did not finish inside it",
+        hint="try a shorter, more specific description, or run it again",
+    )

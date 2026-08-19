@@ -64,13 +64,18 @@ class ModelRequestEvent:
     messages: list[dict] | None = None
     system: Any | None = None
     tools: list[dict] | None = None
+    #: Pairs this request with its response. Appended LAST in `_build`'s ordered
+    #: list so an event that omits it serialises byte-for-byte as before —
+    #: `test_wire_format.py` freezes those bytes, and the dedup key hashes them.
+    request_id: str | None = None
     extra_fields: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return _build(
             {"timestamp": self.timestamp, "session_id": self.session_id, "agent_id": self.agent_id, "type": "model_request"},
             [("model", self.model), ("messages", self.messages),
-             ("system", self.system), ("tools", self.tools)],
+             ("system", self.system), ("tools", self.tools),
+             ("request_id", self.request_id)],
             self.extra_fields,
         )
 
@@ -86,6 +91,8 @@ class ModelResponseEvent:
     output_tokens: int | None = None
     content: Any | None = None
     role: str | None = None
+    #: The `request_id` of the `model_request` this answers. See above.
+    request_id: str | None = None
     extra_fields: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -93,7 +100,8 @@ class ModelResponseEvent:
             {"timestamp": self.timestamp, "session_id": self.session_id, "agent_id": self.agent_id, "type": "model_response"},
             [("model", self.model), ("stop_reason", self.stop_reason),
              ("input_tokens", self.input_tokens), ("output_tokens", self.output_tokens),
-             ("content", self.content), ("role", self.role)],
+             ("content", self.content), ("role", self.role),
+             ("request_id", self.request_id)],
             self.extra_fields,
         )
 

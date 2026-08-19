@@ -357,6 +357,7 @@ class EventNamespace:
         messages: list[dict] | None = None,
         system: Any | None = None,
         tools: list[dict] | None = None,
+        request_id: str | None = None,
         **fields,
     ) -> None:
         self._validate_fields(fields)
@@ -371,6 +372,7 @@ class EventNamespace:
                 messages=messages,
                 system=system,
                 tools=tools,
+                request_id=request_id,
                 extra_fields=fields,
             ).to_dict()
         )
@@ -386,6 +388,7 @@ class EventNamespace:
         output_tokens: int | None = None,
         content: Any | None = None,
         role: str | None = None,
+        request_id: str | None = None,
         **fields,
     ) -> None:
         # Named parameters, so they never reach `_validate_fields`. They are also
@@ -407,6 +410,7 @@ class EventNamespace:
                 output_tokens=output_tokens,
                 content=content,
                 role=role,
+                request_id=request_id,
                 extra_fields=fields,
             ).to_dict()
         )

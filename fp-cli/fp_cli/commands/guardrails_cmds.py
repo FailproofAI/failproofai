@@ -77,7 +77,15 @@ def guardrails_timeline(
     since: str = typer.Option("24h", "--since", help="Window: 15m, 1h, 6h, 24h, 7d."),
     machine: Optional[str] = typer.Option(None, "--machine", help="Scope to one machine id."),
 ) -> None:
-    """The deny/instruct/paused series on its own, one row per bin.
+    """When enforcement bit, and how hard — one row per time bucket.
+
+    Shows `time · activity · total · denied · instructed`. The bar is scaled to
+    the busiest bucket in the window, with the blocked share drawn in red inside
+    it, so a quiet hour and a heavily-blocked hour are distinguishable at a
+    glance rather than by reading numbers.
+
+    Times are UTC, and the label follows the bucket size the server chose — a
+    clock for hourly buckets, a date for daily ones.
 
     Needs `policies:read`. With `--json`: the server's timeline verbatim.
 
@@ -92,12 +100,7 @@ def guardrails_timeline(
     if output.is_json():
         output.emit_json(data)
         return
-    points = (data.get("series") or [{}])[0].get("points") or []
-    if not points:
-        output.info("no decisions recorded in this window")
-        return
-    output.info("denies  " + output.sparkline([p.get("deny", 0) for p in points]))
-    output.info("total    " + output.sparkline([p.get("total", 0) for p in points]))
+    output.render_decision_timeline(data)
 
 
 def guardrails_policies(

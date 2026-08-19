@@ -6084,3 +6084,65 @@ def deployment_unchanged(machine_id: str) -> None:
     body.append("  ·  ", style=theme.FAINT)
     body.append("nothing deployed", style=theme.LABEL)
     _notice_box(body, color=theme.ACCENT, title="no change")
+
+
+def render_decision_timeline(data: dict) -> None:
+    """``fp guardrails timeline`` — one row per bucket, with the numbers.
+
+    Replaces two bare sparkline strings. A sparkline is a fine *accent* beside a
+    headline number, which is why the summary keeps one — but on its own it has
+    no axis, no scale and no counts, so it cannot answer the question the command
+    exists for: *when* did enforcement bite, and how hard. Two rows of blocks
+    told you a shape and nothing you could act on.
+    """
+    points = (data.get("series") or [{}])[0].get("points") or []
+    if not points:
+        info("no decisions recorded in this window")
+        return
+
+    bucket_ms = data.get("bucketMs") or 3_600_000
+    # Label by what the bucket actually spans: hourly buckets want a clock,
+    # multi-day ones want a date, and printing 09:00 for a 24-hour bucket is how
+    # a chart lies about its own resolution.
+    fmt = "%H:%M" if bucket_ms < 86_400_000 else "%d %b"
+    peak = max((p.get("total", 0) for p in points), default=0)
+    width = 18
+
+    rows = []
+    for p in points:
+        total = p.get("total", 0) or 0
+        deny = p.get("deny", 0) or 0
+        instruct = p.get("instruct", 0) or 0
+        when = datetime.fromtimestamp((p.get("t") or 0) / 1000, tz=timezone.utc).strftime(fmt)
+
+        # Denies are drawn INSIDE the total bar rather than beside it, so the
+        # blocked share is legible without arithmetic.
+        filled = 0 if peak <= 0 else max(1, round(total / peak * width)) if total else 0
+        den_cells = 0 if total <= 0 else min(filled, max(1, round(deny / total * filled)) if deny else 0)
+        bar = Text()
+        bar.append("█" * den_cells, style=theme.ERROR)
+        bar.append("█" * (filled - den_cells), style=theme.ACCENT)
+        bar.append("·" * (width - filled), style=theme.BAR_EMPTY)
+
+        rows.append([
+            Text(when, style=theme.TEXT_DIM),
+            bar,
+            Text(str(total) if total else "—", style=theme.TEXT if total else theme.FAINT),
+            Text(str(deny) if deny else "—", style=theme.ERROR if deny else theme.FAINT),
+            Text(str(instruct) if instruct else "—", style=theme.AMBER if instruct else theme.FAINT),
+        ])
+
+    totals = sum(p.get("total", 0) or 0 for p in points)
+    denies = sum(p.get("deny", 0) or 0 for p in points)
+    title = Text()
+    title.append("decisions", style=f"bold {theme.ACCENT}")
+    title.append(" · ", style=theme.FAINT)
+    title.append(f"{data.get('hours', 24)}h", style="bold white")
+    title.append(" · ", style=theme.FAINT)
+    title.append(f"{totals} evaluated", style=theme.LABEL)
+    title.append(" · ", style=theme.FAINT)
+    title.append(f"{denies} blocked", style=theme.ERROR if denies else theme.LABEL)
+    render_list_panel("timeline", header=["time", "activity", "total", "denied", "instructed"],
+                      rows=rows, days=set(), order=None,
+                      empty_message="no decisions recorded in this window", title=title)
+    hint("red is the blocked share of each bar · times are UTC")

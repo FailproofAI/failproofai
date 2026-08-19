@@ -1,8 +1,13 @@
 # Event catalog
 
-Every method lives on `failproofai_sdk.event`, is **keyword-only**, returns `None`, and
-requires `session_id: str` and `agent_id: str`. Nothing here blocks or does I/O —
-the call queues the event and returns.
+Every method lives on `failproofai_sdk.event`, is **keyword-only**, and returns `None`.
+Nothing here blocks or does I/O — the call queues the event and returns.
+
+`session_id` and `agent_id` are optional on all fifteen: omit them and they come
+from the enclosing `failproofai_sdk.session()` / `failproofai_sdk.agent()` scope. Pass them and
+your value wins. Omit `session_id` with nothing bound and you get a `TypeError`
+naming the fix; `agent_id` falls back to `"main"` and never raises. See
+`integration.md`.
 
 Emit only what fits the agent. There is no requirement to use every type, and no
 penalty for skipping one — except `agent_start`, without which the session does
@@ -10,7 +15,8 @@ not exist at all.
 
 ## The 15 events
 
-Columns: **Required** is beyond the universal `session_id` + `agent_id`.
+Columns: **Required** is beyond `session_id` + `agent_id`, which every event
+carries and which you rarely pass by hand.
 *Optional fields are omitted from the record entirely when left unset* — they are
 not written as `null`.
 
@@ -22,8 +28,8 @@ not written as `null`.
 | `agent_resume` | `pause_id` | `reason`, `user_id` | Emit **instead of a second `agent_start`** when a paused agent continues. `duration_ms` auto-computed — how long it was paused. |
 | `tool_use` | `tool_name`, `tool_call_id` | `input` | Starts the duration clock for this `tool_call_id`. |
 | `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` | `duration_ms` auto-computed from the matching `tool_use`. |
-| `model_request` | — | `model`, `messages`, `system`, `tools` | |
-| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role` | Token counts drive spend reporting. |
+| `model_request` | — | `model`, `messages`, `system`, `tools`, `request_id` | `request_id` is what pairs this with its response. |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role`, `request_id`, `error` | Token counts drive spend reporting. `error` marks a failed call — a 429 or a timeout — without a separate `error` event. |
 | `error` | `error_type`, `message` | `traceback` | Always counts as an error, whatever else is set. |
 | `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` | Starts the clock for this `hook_id`. |
 | `hook_completed` | `hook_name`, `hook_id` | `outcome`, `output`, `error` | `duration_ms` auto-computed. Same `outcome` rule as `agent_end`. |
@@ -69,25 +75,44 @@ on `tool_result`, `hook_completed`, `human_input`, and `agent_resume`, and passi
 it to *those four* raises `ValueError`. On the other eleven there is no guard:
 `agent_end(..., duration_ms=5)` is accepted and stored as an ordinary custom field. Don't.
 
-**Correlation is one flat, process-wide map — not one per type.** The SDK keeps
-open `tool_call_id` and `hook_id` values in a single dict keyed by the bare id.
-Consequences, in order of how much they hurt:
+The one place you *should* pass it is **`model_response`**, where nothing computes
+it for you. Time the call yourself and pass whole milliseconds as an **`int`** —
+`round(seconds * 1000)`. A float is dropped on the way in and the duration comes
+out empty, with nothing anywhere saying so.
 
-- **`tool_call_id` and `hook_id` collide with each other.** A
-  `hook_completed(hook_id="x")` will pair with a pending `tool_use(tool_call_id="x")`
-  and emit a confident, wrong `duration_ms` spanning two unrelated events. Your
-  ids must be unique across all concurrent runs **and across both namespaces**.
+**Set `request_id` on both model events.** The same value on the `model_request`
+and its `model_response` — a `uuid4().hex`, or the provider's own request id if it
+gives you one, so your events line up with your provider logs. It links the pair
+in the event detail view.
+
+It does **not** yet drive the timeline rail or the model latency reports: those
+still match concurrent LLM calls (a parallel fan-out, a sub-agent, a retry racing
+its original) oldest-first, and will keep bracketing the wrong pairs. **Always
+pass `duration_ms` on the `model_response` too** — that is what keeps the reported
+duration right even when the bracketing is wrong.
+
+**Correlation is a process-wide map keyed by your ids.** The SDK holds open
+starts there until their matching end arrives. Consequences, in order of how much
+they hurt:
+
 - **Per-run counters are unsafe.** `call_1`, `call_2` — common in home-grown loops
   — collide across overlapping runs. The failure is not the missing duration the
   docs might lead you to expect; it is a *plausible wrong number attributed to the
   wrong run*, which is worse. Reuse your framework's id (Anthropic and OpenAI
-  tool-call ids are globally unique), or a `uuid4`.
-- **`input_id` and `pause_id` are the exceptions**: both are scoped per
-  session/agent (namespaced internally), so `human_wait`/`human_input` and
-  `agent_pause`/`agent_resume` cannot collide across runs — or with the flat
-  `tool_call_id`/`hook_id` namespace.
+  tool-call ids are globally unique), or a `uuid4`. `failproofai_sdk.tool_call()`
+  generates a `uuid4` for you.
+- **`tool_call_id` and `hook_id` no longer collide with each other.** They live in
+  separate namespaces, so a `hook_completed(hook_id="x")` cannot pair with a
+  pending `tool_use(tool_call_id="x")`. Each still has to be unique *within its
+  own namespace*, across every concurrent run in the process. (If you have read
+  older guidance saying one shared id space, that was true and is not any more —
+  the ids are namespaced by the SDK, so nothing on your side changes.)
+- **`input_id` and `pause_id` are scoped per session/agent**, so
+  `human_wait`/`human_input` and `agent_pause`/`agent_resume` cannot collide
+  across runs at all.
 - **The pair must happen in the same process.** A `tool_use` in one worker and a
-  `tool_result` in another produces two unpaired events and no duration.
+  `tool_result` in another produces two unpaired events and no duration. The same
+  goes for a human pause that resumes in a different process.
 - **The map is capped at 10,000 and evicts oldest-first**, so a long-running
   process that leaks orphaned starts can silently lose the duration on legitimate
   later pairs.
@@ -109,7 +134,7 @@ whatever optional and custom fields you set.
 
 ```json
 {"timestamp": "2026-07-17T09:15:22.123456Z", "session_id": "run-001", "agent_id": "planner", "type": "tool_use", "tool_name": "web_search", "tool_call_id": "toolu_01", "environment": "production", "input": {"query": "latest AI research"}}
-{"timestamp": "2026-07-17T09:15:23.456789Z", "session_id": "run-001", "agent_id": "planner", "type": "tool_result", "tool_name": "web_search", "tool_call_id": "toolu_01", "environment": "production", "output": {"results": ["..."]}, "duration_ms": 1333.6}
+{"timestamp": "2026-07-17T09:15:23.456789Z", "session_id": "run-001", "agent_id": "planner", "type": "tool_result", "tool_name": "web_search", "tool_call_id": "toolu_01", "environment": "production", "output": {"results": ["..."]}, "duration_ms": 1334}
 ```
 
 **Parse it; don't grep it.** The whitespace above is what today's writer happens
@@ -134,8 +159,10 @@ sid = "run-001"
 failproofai_sdk.event.agent_start(session_id=sid, agent_id="planner", goal="answer the user's question")
 try:
     failproofai_sdk.event.model_request(session_id=sid, agent_id="planner", model="claude-opus-4-8",
+                                 request_id="req-1",
                                  messages=[{"role": "user", "content": "..."}])
     failproofai_sdk.event.model_response(session_id=sid, agent_id="planner", model="claude-opus-4-8",
+                                  request_id="req-1", duration_ms=812,
                                   stop_reason="tool_use", input_tokens=1200, output_tokens=95)
 
     failproofai_sdk.event.tool_use(session_id=sid, agent_id="planner",
@@ -163,7 +190,22 @@ Note `outcome="failed"` in the `except` — not `"failure"`, which silently read
 a non-failure.
 
 Threading `sid` through by hand like this is fine for one function and miserable
-across a real codebase. See `integration.md`.
+across a real codebase — which is why you do not have to. The same run, with the
+scopes doing the identity and the bracketing:
+
+```python
+with failproofai_sdk.agent("planner", session_id="run-001", goal="answer the user's question"):
+    failproofai_sdk.event.model_request(model="claude-opus-4-8", request_id="req-1", messages=[...])
+    failproofai_sdk.event.model_response(model="claude-opus-4-8", request_id="req-1", duration_ms=812,
+                                  stop_reason="tool_use", input_tokens=1200, output_tokens=95)
+    with failproofai_sdk.tool_call("web_search", input={"query": "..."}) as t:
+        t.output = {"results": ["..."]}
+```
+
+`agent_start`/`agent_end`, the `error` event, `outcome="failed"` and the tool
+timing all come for free, including on the exception path. See `integration.md`;
+on a supported framework, `frameworks.md` gets you the same events with no call
+sites at all.
 
 ## Pausing and resuming — not ending
 

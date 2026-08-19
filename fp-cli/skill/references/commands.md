@@ -57,6 +57,7 @@ Exactly one credential is in play per invocation, chosen in this order:
 - **`--yes` / `-y`** explicitly skips a confirm prompt. (Confirms are also auto-skipped on a non-TTY — i.e. whenever Claude runs it — so always confirm with the user yourself first.)
 - **`--all` + `--limit`**: `--limit` (`-n`) defaults to **50**; `--all` auto-paginates (client chunks of 200) **up to `--limit`**, NOT without bound. So a bare `--all` still stops at 50 rows. For a full sweep on `events/sessions/evals/errors`, pass a high explicit cap: **`--all --limit 1000`** (or higher). To just get window totals, use `--aggregate` (covers the whole window regardless of row caps).
 - **`--fields a,b,c`** projects only those keys (where supported: sessions/evals, keys, query list).
+- **Policy source** (`policies publish` / `policies test`) comes from a path, `@path`, a pipe, `-`, or an interactive paste. A path that is not readable UTF-8 text — a binary file pointed at by mistake — is refused by name (**exit 2**), as is a missing path; neither reaches the server.
 - **`--since <window>`** relative window — one of `15m`, `1h`, `6h`, `24h`, `7d`, `all` (any other value is a usage error, exit 2). `--from`/`--to` take ISO timestamps **with `T` and a timezone** (e.g. `2026-06-01T00:00:00Z`) — space-separated or tz-less is a usage error (exit 2).
 - **`--file payload.json`** (or `--file -` for stdin) supplies a full JSON request body on `alerts`, `settings set`, and `users create/update` — mutually exclusive with the discrete flags. Saved-query SQL uses `--sql @file.sql`.
 - **Multi-value filters** are CSV → `IN (...)` (union within a filter, AND across filters): `--event-type tool_use,tool_result`. `--search` is repeated/OR (matches ANY term), payload-only.
@@ -209,3 +210,45 @@ Built-in assistant. Chats referenced by a **short chat-id** (first 8 hex; prefix
 - `agent ask "MESSAGE" [--chat <short-id>] [--model <m>]` — starts a new chat (prints its short id) or continues `--chat`. On a TTY the answer renders as Markdown; piped/non-TTY prints the raw answer to stdout.
 - `agent show <short-id>` — transcript. `agent rename <short-id> --title "…"` · `agent delete <short-id>`.
 - Ambiguous prefix → exit 2; unknown chat → exit 6.
+
+## policies · fleet · guardrails
+**Session-only, all three groups** — every subcommand exits 2 under a key, with no request made. These routes are absent from the versioned API an API key authenticates against; they are an operator surface.
+
+Cloud-managed enforcement, split the way the dashboard splits it: `policies` writes a version, `fleet` decides which machines run it, `guardrails` reports what it blocked. Needs `policies:read` to read, `policies:write` to change anything.
+
+### policies
+- `policies list` — one row per published VERSION (versions are immutable and all stay addressable), newest of each policy first; the title counts distinct policies and captions the version total. `state` is active / disabled / archived. JSON `{policies:[…]}` — also every version, so deduplicate on `id` for one row per policy.
+- `policies show <id>` — the NEWEST version, including the full `source`.
+- `policies publish <id> [SOURCE] [--description "…"] [--no-verify]` — mints a **new version**; never edits one. SOURCE is a path, `@path`, `-`, a pipe, or omitted to paste on a TTY (Ctrl-D ends). The source is **parse-checked with node** before it is sent; nothing downstream does this, and a broken policy otherwise fails on the machine at enforcement time. `--no-verify` skips it, and a host without node publishes with a warning rather than a block. **Publishing deploys nothing** — the version is unused until `fleet deploy` puts it on a machine.
+- `policies enable <id>` · `policies disable <id> [-y]` — **disable REMOVES the policy from every deployment carrying it**, reissuing each affected machine at a new generation (visible in `fleet history`). `enable` is the exact inverse — it puts the policy back into every deployment it was removed from, reissuing those machines again. Nothing needs redeploying by hand, and `machinesUpdated` in the JSON reports the count for both directions.
+- `policies test [SOURCE] [--tool Bash] [--command "…"] [--file PATH] [--event PreToolUse] [--expect allow|deny|instruct]` — run a policy LOCALLY and print what it decides. Executes the real file (bare `import { deny } from "failproofai"` and all) against a synthetic context; nothing is published, nothing installed. Needs `node`. `--expect` asserts the decision and exits 1 when it differs — a correct `deny` is a PASSING test, so the decision alone never sets the exit code. JSON `{ok, decision, policies:[{name,decision,reason}], expected, met}`; `decision` is the strictest any registered policy returned.
+- `policies compose "<description>" [--out FILE] [--publish ID]` — the assistant drafts policy source from plain English. Prints it and stops by default: a generated policy that deploys itself is one nobody read. `--publish` still syntax-checks first. Needs `agent:use`. The composer has a **30s server-side limit** — a long or vague description simply does not finish, and raising `--timeout` does not help because the cut is not client-side. Retry with something shorter and more specific.
+- `policies delete <id> [-y]` — archives. **A machine already carrying the policy keeps enforcing it** until redeployed; `disable` is what stops enforcement everywhere.
+
+### fleet
+- `fleet list` — `machine · label · pol · intended · applied · seen · events · state`. `intended` is the generation deployed, `applied` what the machine last collected (they differ until it polls), and `seen` how long since it last reported anything — a machine can be in sync and dead, or alive and behind, which are different problems. JSON `{machines, deployments}` with raw epoch-ms timestamps plus the computed `drifted`.
+- `fleet show <machine>` — the set the machine is told to run, **and whether it has collected it**. Reads both the deployment and the machine record, so it reports `not yet collected` / `machine is on #N` / `collected` alongside who deployed it, when, and last-seen. A machine can be told to run a policy it has never picked up; the policy list alone cannot tell you which. JSON `{machine, deployment}` with raw timestamps and both label fields; `deployment: null` when nothing is deployed.
+- `fleet deploy <machine> [--add REF]… [--remove ID]… [--set REF]… [--create] [-y]`
+
+  **A deploy REPLACES the whole set.** The endpoint takes the full list and does not merge. `--add`/`--remove` are a read-modify-write: the CLI reads the current set, applies the delta, prints the complete result, writes that. `--set` replaces everything and is refused alongside `--add`/`--remove`.
+
+  REF is `id`, `id@version`, `id:effect`, or `id@version:effect`. Effect is `enforce` (default) or `observe`. A bare `--add` of an already-deployed policy **keeps its pinned version** — pass `id@version` to move it.
+
+  Deploying to an id that has never checked in is refused (a typo would mint a machine); `--create` allows it for pre-staging.
+
+  **Races.** No server-side lock. The CLI records the generation it read and exits non-zero if the write does not land at exactly one higher — somebody else deployed, and a replace does not merge. Re-read with `fleet show` and retry.
+
+  **Idempotent.** Re-running the same deploy is a no-op that exits 0 without writing — desired-state semantics, so a retrying harness succeeds rather than errors. `applied` in the JSON is the only way to tell "changed it" from "already matched"; the exit code is 0 for both. The no-op short-circuits before the write, so a reader without `policies:write` also gets 0 there — exit 0 from a no-op is not proof of write access.
+
+  **Exit codes.** A malformed ref (`bad ref!!`, `id:banana`, empty), or `--set` combined with `--add`/`--remove`, is a usage error → **exit 2**, like every other bad flag value. A ref that parses but names something that does not exist (`--add ghost-policy`, an unpublished `@version`) is **exit 1**; an unknown machine is **exit 6**. Branch on these rather than on the message.
+
+  JSON `{plan:{result,added,removed,changed,unchanged,noop}, deployment, applied}` — the plan is included so a harness does not recompute the diff.
+- `fleet diff [machine]` — intent vs delivery per machine, with a `drifted` flag. A machine id nobody has reported under is refused (exit 6), not rendered as an empty fleet.
+- `fleet history <machine>` · `fleet rollback <machine> <generation> [-y]` — rollback mints a NEW generation carrying the old set; history stays append-only. The `change` column uses the deploy plan's vocabulary: `+` added, `-` removed, `~` same policy at a different version or effect (an enforce → observe flip is a policy that stopped blocking, so it is never "no change").
+- `fleet rename <machine> "<label>"` — a human label; the id never changes. The server stores it as an override beside the machine's self-asserted label. An empty label **clears** the override (the machine falls back to its own label, else its id) and the CLI says so rather than reporting a rename to nothing. A machine that has never checked in cannot be renamed → exit 6.
+
+### guardrails
+- `guardrails summary [--since 15m|1h|6h|24h|7d] [--machine ID]` — coverage, blocked/evaluated totals, a deny sparkline, and the per-policy table. Bare `fp guardrails` prints help, like every other group; the flags live on the subcommands.
+- `guardrails timeline [--since …] [--machine ID]` — one row per time bucket: a bar scaled to the busiest bucket with the blocked share in red, plus total / denied / instructed counts. Answers *when* enforcement bit, which the summary's sparkline only sketches.
+- A `(no policy)` row is **normal**: most evaluations are allows nothing objected to, and the row keeps the denominator visible.
+- Coverage comes from the control plane, decision counts from reported telemetry — a machine can be deployed-to and silent, or reporting and undeployed.

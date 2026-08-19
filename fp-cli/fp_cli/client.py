@@ -42,11 +42,15 @@ from .models import (
     AuditFinding,
     AuditRun,
     DashboardUser,
+    Deployment,
     Evaluation,
     Incident,
     IncidentComment,
     IncidentSubscriber,
+    Machine,
     Page,
+    PolicyRef,
+    PolicyVersion,
     QueryResult,
     SavedQuery,
     Session,
@@ -157,6 +161,15 @@ _V1_NO_EQUIVALENT = {
     "agent": (
         "the assistant is implemented by the dashboard, not the API — there is no /v1 "
         "route behind it"
+    ),
+    # ROOT-ONLY on the server, and deliberately so: `/v1` is published on the
+    # dashboard host by the ingress, and publish/deploy/rollback are operator
+    # writes gated on `policies:write`. Exposing them there would put fleet
+    # mutation on the open internet. See the ROOT-ONLY block in
+    # `server/src/routes/mod.rs`.
+    "enforcement": (
+        "cloud-managed policies are an operator surface — the fleet routes are "
+        "deliberately absent from /v1, which is internet-facing"
     ),
 }
 
@@ -1393,3 +1406,159 @@ def paginate(
             return
         seen.add(key)
         cursor = next_cursor
+
+
+# ── Cloud-managed enforcement ────────────────────────────────────────────────
+#
+# Every path here is ROOT-ONLY on the server: deliberately absent from `/v1`,
+# because `/v1` is published on the dashboard host by the ingress and these are
+# operator WRITE paths (publish, deploy, rollback). The commands therefore refuse
+# API-key mode up front via `deny_in_key_mode` rather than translating a path
+# that would 404 — see `server/src/routes/mod.rs`, the ROOT-ONLY block.
+
+
+def list_policies(ctx: ClientContext) -> List[PolicyVersion]:
+    """GET /api/enforcement/policies — every published policy, latest version each."""
+    data = _get_json(ctx, "/api/enforcement/policies")
+    items = data if isinstance(data, list) else data.get("policies", [])
+    return [PolicyVersion.from_dict(p) for p in items]
+
+
+def publish_policy(
+    ctx: ClientContext, policy_id: str, source: str, description: str = ""
+) -> PolicyVersion:
+    """POST /api/enforcement/policies — mints a NEW VERSION; never edits in place."""
+    body = {"id": policy_id, "source": source, "description": description}
+    return PolicyVersion.from_dict(_post_json(ctx, "/api/enforcement/policies", body) or {})
+
+
+def set_policy_enabled(ctx: ClientContext, policy_id: str, enabled: bool) -> Dict[str, Any]:
+    """POST /api/enforcement/policies/{id}/{enable|disable}."""
+    verb = "enable" if enabled else "disable"
+    path = f"/api/enforcement/policies/{policy_id}/{verb}"
+    return _post_json(ctx, path) or {}
+
+
+def delete_policy(ctx: ClientContext, policy_id: str) -> Dict[str, Any]:
+    """DELETE /api/enforcement/policies/{id} — archives it; machines keep what they hold."""
+    return _request_json(ctx, "DELETE", f"/api/enforcement/policies/{policy_id}") or {}
+
+
+def list_machines(ctx: ClientContext) -> List[Machine]:
+    """GET /api/enforcement/machines — every host that has ever checked in."""
+    data = _get_json(ctx, "/api/enforcement/machines")
+    items = data if isinstance(data, list) else data.get("machines", [])
+    return [Machine.from_dict(m) for m in items]
+
+
+def rename_machine(ctx: ClientContext, machine_id: str, label: str) -> Dict[str, Any]:
+    """PATCH /api/enforcement/machines/{id} — a human label, not the id."""
+    path = f"/api/enforcement/machines/{machine_id}"
+    return _request_json(ctx, "PATCH", path, json_body={"label": label}) or {}
+
+
+def list_deployments(ctx: ClientContext) -> List[Deployment]:
+    """GET /api/enforcement/deployments — what every machine is told to run."""
+    data = _get_json(ctx, "/api/enforcement/deployments")
+    items = data if isinstance(data, list) else data.get("deployments", [])
+    return [Deployment.from_dict(d) for d in items]
+
+
+def get_deployment(ctx: ClientContext, machine_id: str) -> Optional[Deployment]:
+    """One machine's deployment, or None when nothing has been deployed to it.
+
+    The read half of every read-modify-write. `deploy` is a FULL REPLACE, so a
+    caller that skips this and sends only what it wants ADDED silently removes
+    everything else.
+    """
+    for dep in list_deployments(ctx):
+        if dep.machine_id == machine_id:
+            return dep
+    return None
+
+
+def deploy_policies(
+    ctx: ClientContext, machine_id: str, policies: Sequence[PolicyRef]
+) -> Deployment:
+    """PUT /api/enforcement/deployments/{id} — REPLACES the machine's whole set."""
+    path = f"/api/enforcement/deployments/{machine_id}"
+    body = {"policies": [p.to_dict() for p in policies]}
+    return Deployment.from_dict(_request_json(ctx, "PUT", path, json_body=body) or {})
+
+
+def deployment_history(ctx: ClientContext, machine_id: str) -> List[Dict[str, Any]]:
+    """GET /api/enforcement/deployments/{id}/history — every generation, newest first."""
+    path = f"/api/enforcement/deployments/{machine_id}/history"
+    data = _get_json(ctx, path)
+    return data if isinstance(data, list) else data.get("history", [])
+
+
+def rollback_deployment(ctx: ClientContext, machine_id: str, deployment: int) -> Deployment:
+    """POST /api/enforcement/deployments/{id}/rollback — reinstate a past generation.
+
+    Note this mints a NEW generation carrying the old set rather than rewinding
+    the counter, so the history stays append-only.
+    """
+    path = f"/api/enforcement/deployments/{machine_id}/rollback"
+    body = {"deployment": deployment}
+    return Deployment.from_dict(_post_json(ctx, path, body) or {})
+
+
+def enforcement_summary(
+    ctx: ClientContext, hours: int = 24, machine_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """GET /api/enforcement/summary — coverage from Postgres, decisions from ClickHouse."""
+    params = {"hours": hours}
+    if machine_id:
+        params["machineId"] = machine_id
+    return _get_json(ctx, "/api/enforcement/summary", params=params) or {}
+
+
+def decision_timeline(
+    ctx: ClientContext, hours: int = 24, machine_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """GET /api/enforcement/decisions/timeline — hourly deny/instruct/paused bins."""
+    params = {"hours": hours}
+    if machine_id:
+        params["machineId"] = machine_id
+    return _get_json(ctx, "/api/enforcement/decisions/timeline", params=params) or {}
+
+
+def compose_policy(ctx: ClientContext, intent: str) -> Dict[str, Any]:
+    """POST /api/agent/compose-policy — the assistant drafts a policy source.
+
+    STREAMS. The route answers `text/event-stream`, not JSON: `delta` frames as
+    tokens arrive, then one `done` carrying the finished source (the dashboard
+    feeds those deltas into a Monaco diff). Reading it as JSON gets a parse
+    error on the first frame, which is how this was written the first time.
+
+    The field is `intent`, not `prompt` — the server rejects anything else with
+    a 400 before the model is ever called.
+
+    Dashboard-only, like the rest of the assistant: there is no `/v1` route
+    behind it.
+    """
+    source = ""
+    for event in _stream_sse(ctx, "/api/agent/compose-policy", {"intent": intent}):
+        kind = event.get("type")
+        if kind == "error":
+            raise ApiError(
+                str(event.get("reason") or "the policy composer hit an error"),
+                hint="check `fp agent health` — the assistant may not be configured here",
+            )
+        if kind == "done":
+            source = str(event.get("source") or "")
+            return {"source": source, "usage": event.get("usage") or {}}
+    # The stream ended without a `done`. Returning "" here would render as an
+    # empty draft; saying so is the difference between a bug and a blank file.
+    #
+    # The overwhelmingly likely cause is the composer's own 30s ceiling —
+    # `agent/src/server.ts` aborts the request at 30_000ms, server-side, and a
+    # slower model or a longer intent simply does not finish. Naming it matters
+    # because the obvious remedy (raise --timeout) does nothing: the cut is not
+    # on this side.
+    raise ApiError(
+        "the assistant stopped before returning a policy — the composer has a "
+        "30s server-side limit and this draft did not finish inside it",
+        hint="try a shorter, more specific description, or run it again",
+    )

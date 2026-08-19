@@ -24,10 +24,13 @@ from .commands import (
     errors_cmds,
     evals_cmds,
     events_cmds,
+    fleet_cmds,
+    guardrails_cmds,
     incidents_cmds,
     keys_cmds,
     list_cmds,
     orgs_cmds,
+    policies_cmds,
     queries_cmds,
     sessions_cmds,
     settings_cmds,
@@ -393,6 +396,9 @@ alerts_cmds.register(app)
 audits_cmds.register(app)
 incidents_cmds.register(app)
 agent_cmds.register(app)
+policies_cmds.register(app)
+fleet_cmds.register(app)
+guardrails_cmds.register(app)
 
 
 def _elapsed_ms(start: float) -> int:

@@ -701,3 +701,191 @@ class AuditFinding:
             assigned_to=d.get("assigned_to"),
             issue_id=d.get("issue_id"),
         )
+
+
+# ── Cloud-managed enforcement ────────────────────────────────────────────────
+#
+# Three nouns, and keeping them apart is the whole model. A POLICY VERSION is
+# written; a DEPLOYMENT says which versions a MACHINE is told to run. The
+# dashboard splits them across three pages for the same reason — authoring is a
+# code task, deploying is a fleet decision, and observing is neither.
+
+
+@dataclass
+class PolicyVersion:
+    """One published version of a policy. Versions are minted, never edited."""
+
+    id: str
+    version: int
+    description: str
+    sha256: str
+    source: Optional[str]
+    created_at: str
+    created_by: Optional[str]
+    disabled: bool
+    archived: bool
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "PolicyVersion":
+        return cls(
+            id=str(d.get("id", "")),
+            version=_as_int(d.get("version"), 0),
+            description=str(d.get("description", "") or ""),
+            sha256=str(d.get("sha256", "") or ""),
+            source=d.get("source"),
+            created_at=str(d.get("createdAt", d.get("created_at", "")) or ""),
+            created_by=d.get("createdBy", d.get("created_by")),
+            disabled=bool(d.get("disabled", False)),
+            archived=bool(d.get("archived", False)),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """The server's own shape. `vars()` would leak Python snake_case into a
+        contract that is camelCase everywhere else, which is a difference a
+        harness discovers at runtime rather than in review."""
+        return {
+            "id": self.id, "version": self.version, "description": self.description,
+            "sha256": self.sha256, "source": self.source, "createdAt": self.created_at,
+            "createdBy": self.created_by, "disabled": self.disabled,
+            "archived": self.archived,
+        }
+
+
+@dataclass
+class PolicyRef:
+    """A policy inside a deployment: which version, and how it acts.
+
+    ``effect`` is ``enforce`` or ``observe``. The server defaults an omitted
+    effect to ``enforce``; the CLI always sends it explicitly so a deployment
+    read back and written again cannot silently change meaning.
+    """
+
+    id: str
+    version: int
+    effect: str = "enforce"
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "PolicyRef":
+        return cls(
+            id=str(d.get("id", "")),
+            version=_as_int(d.get("version"), 0),
+            effect=str(d.get("effect") or "enforce"),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"id": self.id, "version": self.version, "effect": self.effect}
+
+    @property
+    def label(self) -> str:
+        return f"{self.id}@{self.version}:{self.effect}"
+
+
+@dataclass
+class Deployment:
+    """What one machine is told to enforce, and which generation that is.
+
+    ``deployment`` is the generation counter. It is the CLI's only defence
+    against a concurrent write: ``PUT`` is a FULL REPLACE with no server-side
+    lock, so a deploy that returns anything other than ``base + 1`` means
+    somebody else wrote between the read and the write.
+    """
+
+    machine_id: str
+    deployment: int
+    policies: List[PolicyRef]
+    updated_at: str
+    updated_by: Optional[str]
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "Deployment":
+        return cls(
+            machine_id=str(d.get("machineId", d.get("machine_id", "")) or ""),
+            deployment=_as_int(d.get("deployment"), 0),
+            policies=[PolicyRef.from_dict(p) for p in (d.get("policies") or [])],
+            updated_at=str(d.get("updatedAt", d.get("updated_at", "")) or ""),
+            updated_by=d.get("updatedBy", d.get("updated_by")),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "machineId": self.machine_id, "deployment": self.deployment,
+            "policies": [p.to_dict() for p in self.policies],
+            "updatedAt": self.updated_at, "updatedBy": self.updated_by,
+        }
+
+
+@dataclass
+class Machine:
+    """A host that has checked in. Machines enrol themselves on their first poll.
+
+    Two generation numbers, and the gap between them is the whole point of
+    `fleet diff`: ``deployment`` is what the control plane INTENDED for this
+    machine, ``applied_deployment`` is what the machine last actually collected.
+    A machine can sit on an old set indefinitely and nothing else says so.
+    """
+
+    machine_id: str
+    #: What the machine calls itself. May be absent — plenty never report one.
+    label: Optional[str]
+    #: What an operator called it via `fleet rename`. SEPARATE from `label` on
+    #: the server, and the reason a rename appeared to do nothing here: reading
+    #: only `label` showed the machine's own (usually null) name and silently
+    #: ignored the override. `display_label` applies the precedence.
+    label_override: Optional[str]
+    last_seen: Optional[int]          # epoch ms — the server sends a number, not ISO
+    last_check_in: Optional[int]
+    deployment: Optional[int]         # intended
+    applied_deployment: Optional[int]  # delivered
+    applied_at: Optional[int]
+    deployed: bool
+    policy_count: int
+    event_count: int
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "Machine":
+        def _num(key: str) -> Optional[int]:
+            v = d.get(key)
+            return int(v) if isinstance(v, (int, float)) else None
+
+        return cls(
+            machine_id=str(d.get("machineId", d.get("machine_id", "")) or ""),
+            label=d.get("label"),
+            label_override=d.get("labelOverride"),
+            last_seen=_num("lastSeen"),
+            last_check_in=_num("lastCheckIn"),
+            deployment=_num("deployment"),
+            applied_deployment=_num("appliedDeployment"),
+            applied_at=_num("appliedAt"),
+            deployed=bool(d.get("deployed", False)),
+            policy_count=_as_int(d.get("policyCount"), 0),
+            event_count=_as_int(d.get("eventCount"), 0),
+        )
+
+    @property
+    def display_label(self) -> Optional[str]:
+        """The operator's name for the machine, else its own.
+
+        Mirrors `machinePicker.ts`: `labelOverride || label || machineId`. The
+        override wins because it is the deliberate one — a machine's
+        self-asserted label is whatever it happened to send.
+        """
+        return (self.label_override or "").strip() or (self.label or "").strip() or None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Server shape plus `drifted` — the one field the CLI computes."""
+        return {
+            "machineId": self.machine_id, "label": self.label,
+            "labelOverride": self.label_override,
+            "lastSeen": self.last_seen, "lastCheckIn": self.last_check_in,
+            "deployment": self.deployment, "appliedDeployment": self.applied_deployment,
+            "appliedAt": self.applied_at, "deployed": self.deployed,
+            "policyCount": self.policy_count, "eventCount": self.event_count,
+            "drifted": self.drifted,
+        }
+
+    @property
+    def drifted(self) -> bool:
+        """True when the machine has not collected what it was last told to run."""
+        if self.deployment is None:
+            return False
+        return self.applied_deployment is None or self.applied_deployment < self.deployment

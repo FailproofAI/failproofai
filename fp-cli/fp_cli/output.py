@@ -5861,25 +5861,40 @@ def render_policy_published(p: Any, *, deployed_to: int = 0) -> None:
     _stdout.print(); _stdout.print(Padding(card, (0, 0, 0, 2))); _stdout.print()
 
 
-def render_fleet(machines: Sequence[Any], deployments: Sequence[Any]) -> None:
-    """``fp fleet`` — every machine, what it is told to run, and whether it has it.
+def render_fleet(machines: Sequence[Any]) -> None:
+    """``fp fleet`` — every machine, what it is told to run, and whether it is alive.
 
-    ``deployment`` is intent and ``applied`` is delivery. Showing both is the
-    point: a machine can be deployed-to and still enforcing an older set, and
-    nothing else in the CLI surfaces that gap.
+    `intended` is what the control plane decided and `applied` is what the
+    machine collected; showing both is the point, because a machine can be
+    deployed-to and still enforcing an older set.
+
+    `seen` is a separate question from either, and the one the table used to
+    leave out: a host can be perfectly in sync and dead. Without it a machine
+    that last reported seven days ago rendered identically to one that reported
+    a minute ago.
+
+    Takes only the machine records. It used to take the deployments as well and
+    never read them — everything here comes from the machine.
     """
     rows = []
     for m in sorted(machines, key=lambda x: x.machine_id):
-        applied = Text(
-            f"#{m.applied_deployment}" if m.applied_deployment is not None else "—",
-            style=theme.AMBER if m.drifted else theme.TEXT_DIM,
+        seen = _compact_age(m.last_seen)
+        # Stale is a judgement the table can make once, rather than every reader
+        # doing the subtraction: a day is generous for a host that reports on
+        # every hook, and quiet enough to be worth a colour.
+        stale = m.last_seen is None or (
+            datetime.now(timezone.utc).timestamp() - m.last_seen / 1000 > 86_400
         )
         rows.append([
             Text(m.machine_id, style=theme.TEXT),
             Text(m.display_label or "-", style=theme.TEXT_DIM),
             Text(str(m.policy_count), style=theme.TEXT if m.policy_count else theme.FAINT),
             Text(f"#{m.deployment}" if m.deployment is not None else "—", style=theme.TEXT_DIM),
-            applied,
+            Text(f"#{m.applied_deployment}" if m.applied_deployment is not None else "—",
+                 style=theme.AMBER if m.drifted else theme.TEXT_DIM),
+            Text(seen or "never", style=theme.FAINT if stale else theme.TEXT_DIM),
+            Text(f"{m.event_count:,}" if m.event_count else "—",
+                 style=theme.TEXT_DIM if m.event_count else theme.FAINT),
             Text("drifted" if m.drifted else ("ok" if m.deployed else "—"),
                  style=theme.AMBER if m.drifted else (theme.SUCCESS if m.deployed else theme.FAINT)),
         ])
@@ -5888,10 +5903,28 @@ def render_fleet(machines: Sequence[Any], deployments: Sequence[Any]) -> None:
     title.append(" · ", style=theme.FAINT)
     title.append(str(len(rows)), style="bold white")
     render_list_panel("fleet",
-                      header=["machine", "label", "policies", "intended", "applied", "state"],
+                      header=["machine", "label", "pol", "intended", "applied", "seen",
+                              "events", "state"],
                       rows=rows, days=set(), order=None,
-                      empty_message="no machines have checked in yet",
-                      last_col="ellipsis", title=title)
+                      empty_message="no machines have checked in yet", title=title)
+
+
+def _compact_age(ms: Optional[int]) -> str:
+    """`5h`, `7d`, `just now` — the column form of `_epoch_age`.
+
+    A table cell is not a sentence: "7 days ago" spends eleven characters saying
+    what "7d" says in two, and this column sits beside seven others.
+    """
+    if not ms:
+        return ""
+    secs = max(0.0, datetime.now(timezone.utc).timestamp() - ms / 1000)
+    if secs < 90:
+        return "just now"
+    if secs < 3600:
+        return f"{int(round(secs / 60))}m"
+    if secs < 86_400:
+        return f"{int(round(secs / 3600))}h"
+    return f"{int(round(secs / 86_400))}d"
 
 
 def _epoch_age(ms: Optional[int]) -> str:

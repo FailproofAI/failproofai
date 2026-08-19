@@ -56,10 +56,15 @@ def _require_machine(cctx, machine_id: str) -> None:
 def fleet_list(ctx: typer.Context) -> None:
     """List machines and how many policies each is told to run.
 
-    Shows `machine · label · policies · deployment · last seen`. A machine
-    appears from its very first check-in, including the poll that finds nothing
-    deployed — that is exactly the machine you are usually looking for.
-    Needs `policies:read`. With `--json`: `{machines, deployments}`.
+    Shows `machine · label · pol · intended · applied · seen · events · state`.
+    `intended` is the generation deployed, `applied` is the one the machine last
+    collected, and `seen` is when it last reported anything — a machine can be
+    in sync and dead, or alive and behind, and those are different problems.
+
+    A machine appears from its very first check-in, including the poll that
+    finds nothing deployed — that is exactly the machine you are usually looking
+    for. Needs `policies:read`. With `--json`: `{machines, deployments}`, where
+    each machine carries raw timestamps plus the computed `drifted`.
 
     Example:
 
@@ -69,14 +74,16 @@ def fleet_list(ctx: typer.Context) -> None:
     deny_in_key_mode(state, "fleet", _KEY_MODE_REASON)
     cctx = require_auth(state)
     machines = api.list_machines(cctx)
-    deployments = api.list_deployments(cctx)
     if output.is_json():
+        # Only `--json` emits the deployments, and only `--json` pays for them.
+        # The table is built entirely from the machine records; fetching them
+        # for a human render was a second request whose result was discarded.
         output.emit_json({
             "machines": [m.to_dict() for m in machines],
-            "deployments": [d.to_dict() for d in deployments],
+            "deployments": [d.to_dict() for d in api.list_deployments(cctx)],
         })
         return
-    output.render_fleet(machines, deployments)
+    output.render_fleet(machines)
 
 
 def fleet_show(

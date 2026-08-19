@@ -225,7 +225,7 @@ Cloud-managed enforcement, split the way the dashboard splits it: `policies` wri
 - `policies delete <id> [-y]` — archives. **A machine already carrying the policy keeps enforcing it** until redeployed; `disable` is what stops enforcement everywhere.
 
 ### fleet
-- `fleet list` — `machine · label · policies · intended · applied · state`. `intended` is the generation deployed, `applied` is what the machine last collected; they differ until it polls.
+- `fleet list` — `machine · label · pol · intended · applied · seen · events · state`. `intended` is the generation deployed, `applied` what the machine last collected (they differ until it polls), and `seen` how long since it last reported anything — a machine can be in sync and dead, or alive and behind, which are different problems. JSON `{machines, deployments}` with raw epoch-ms timestamps plus the computed `drifted`.
 - `fleet show <machine>` — the set the machine is told to run, **and whether it has collected it**. Reads both the deployment and the machine record, so it reports `not yet collected` / `machine is on #N` / `collected` alongside who deployed it, when, and last-seen. A machine can be told to run a policy it has never picked up; the policy list alone cannot tell you which. JSON `{machine, deployment}` with raw timestamps and both label fields; `deployment: null` when nothing is deployed.
 - `fleet deploy <machine> [--add REF]… [--remove ID]… [--set REF]… [--create] [-y]`
 

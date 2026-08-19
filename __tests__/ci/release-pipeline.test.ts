@@ -566,15 +566,23 @@ describe("publish.yml / the Discord release announcement", () => {
     // curl exits that mean "never left this runner" may be repeated.
     const post = job.steps.find((s: Record<string, any>) => s.name === "Post to the releases channel");
     expect(post.run).toContain("NEVER_SENT=");
-    // Timeout / empty reply / send / recv — the ambiguous ones — must not be
-    // in the retryable set.
     const retryable = /NEVER_SENT="([^"]*)"/.exec(post.run)![1].trim().split(/\s+/);
+
+    // Asserted as an exact ALLOWLIST, not as the absence of the four ambiguous
+    // codes below. Naming what may be retried is the same reason the shell uses
+    // an allowlist: a denylist only rejects the failure modes somebody thought
+    // of, and curl has plenty more that can land after the body went out (18
+    // partial transfer, 56 recv error, …). Widen this deliberately or not at
+    // all. 5 proxy, 6 host, 7 connect, 35 TLS connect, 60 TLS certificate.
+    expect(retryable).toEqual(["5", "6", "7", "35", "60"]);
+    // Named individually too, so a failure says WHICH kind of ambiguity got in.
     for (const ambiguous of ["28", "52", "55", "56"]) {
       expect(retryable).not.toContain(ambiguous);
     }
-    // And a 4xx is deterministic: it stops rather than spending two more posts
-    // on the same rejection.
-    expect(post.run).toContain("break");
+
+    // A 4xx is deterministic, and the `break` has to be inside that branch —
+    // anywhere else it would stop the loop on a retryable outcome instead.
+    expect(post.run).toMatch(/4\*\)[\s\S]*?break/);
   });
 
   it("holds the webhook credential under least privilege", () => {

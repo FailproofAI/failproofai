@@ -5944,8 +5944,9 @@ def render_deploy_plan(plan: Any, *, applied: bool = False) -> None:
         lines = [Text("  (no policies)", style=theme.FAINT)]
 
     footer = Text()
-    footer.append(f"{len(plan.result)} ", style="bold white")
-    footer.append("policies after this change", style=theme.LABEL)
+    n = len(plan.result)
+    footer.append(f"{n} ", style="bold white")
+    footer.append(f"polic{'y' if n == 1 else 'ies'} after this change", style=theme.LABEL)
     lines.append(Text())
     lines.append(footer)
 
@@ -6000,7 +6001,14 @@ def render_guardrails(summary: dict, timeline: Optional[dict] = None) -> None:
                  style=theme.AMBER if p.get("instructed") else theme.FAINT),
             Text(f"{p.get('p95Ms', 0)}ms", style=theme.TEXT_DIM),
         ])
+    # An explicit title: the default one appends "newest first", which is a
+    # claim about ordering this table does not make — it is ranked by policy,
+    # not by time.
+    ptitle = Text()
+    ptitle.append("by policy", style=f"bold {theme.ACCENT}")
+    ptitle.append(" · ", style=theme.FAINT)
+    ptitle.append(str(len(rows)), style="bold white")
     render_list_panel("guardrails", header=["policy", "fired", "blocked", "instructed", "p95"],
                       rows=rows, days=set(), order=None,
                       empty_message="no decisions recorded in this window",
-                      last_col="ellipsis", title=None)
+                      last_col="ellipsis", title=ptitle)

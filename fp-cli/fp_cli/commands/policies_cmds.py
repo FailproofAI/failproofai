@@ -153,7 +153,18 @@ def policies_enable(
     ctx: typer.Context,
     policy_id: str = typer.Argument(..., help="Policy id."),
 ) -> None:
-    """Re-enable a disabled policy. Needs `policies:write`."""
+    """Re-enable a disabled policy.
+
+    Restores the policy, but does NOT redeploy it: machines that lost it when it
+    was disabled need `fp fleet deploy --add` again. Needs `policies:write`.
+    With `--json`: `{id, disabled, archived, machinesUpdated}` —
+    `machinesUpdated` counts the deployments the server rewrote, which is 0 for
+    an enable and non-zero for the disable that preceded it.
+
+    Example:
+
+    * `fp policies enable no-force-push`
+    """
     state: AppState = ctx.obj
     deny_in_key_mode(state, "policies enable", _KEY_MODE_REASON)
     cctx = require_auth(state)
@@ -178,7 +189,13 @@ def policies_disable(
     `policies enable` restores the policy but does NOT redeploy it — the
     machines that lost it need `fp fleet deploy --add` again.
 
-    Needs `policies:write`.
+    Needs `policies:write`. With `--json`: `{id, disabled, archived,
+    machinesUpdated}` — `machinesUpdated` is how many deployments were rewritten
+    to drop it, and is the number to check if you expected this to be a no-op.
+
+    Example:
+
+    * `fp policies disable no-force-push --yes`
     """
     state: AppState = ctx.obj
     deny_in_key_mode(state, "policies disable", _KEY_MODE_REASON)
@@ -212,7 +229,12 @@ def policies_delete(
     machine already carrying it keeps enforcing it until something redeploys —
     deleting is not a way to stop enforcement everywhere, and `disable` is.
 
-    Needs `policies:write`.
+    Needs `policies:write`. With `--json`: `{id, disabled, archived,
+    machinesUpdated}`, or `{"cancelled": true}` if you decline.
+
+    Example:
+
+    * `fp policies delete old-rule --yes`
     """
     state: AppState = ctx.obj
     deny_in_key_mode(state, "policies delete", _KEY_MODE_REASON)

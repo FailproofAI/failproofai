@@ -86,7 +86,9 @@ def fleet_show(
     """Show exactly what one machine is told to enforce.
 
     The set shown is the set that exists — read this before a `--set`, because
-    that flag replaces all of it. Needs `policies:read`.
+    that flag replaces all of it. Needs `policies:read`. With `--json`: the
+    deployment `{machineId, deployment, policies:[{id,version,effect}],
+    updatedAt, updatedBy}`, or `deployment: null` when nothing is deployed.
 
     Example:
 
@@ -242,7 +244,9 @@ def fleet_diff(
 
     The gap is the interesting part: a machine that has not collected its latest
     deployment is not enforcing what the dashboard says it is, and nothing else
-    surfaces that as a single number. Needs `policies:read`.
+    surfaces that as a single number. Needs `policies:read`. With `--json`:
+    `{machines:[{machineId, intended, delivered, drifted}]}` — `drifted` is the
+    field the CLI computes, so a harness need not derive it.
 
     Example:
 
@@ -280,7 +284,16 @@ def fleet_history(
     ctx: typer.Context,
     machine_id: str = typer.Argument(..., help="Machine id."),
 ) -> None:
-    """List a machine's deployment generations, newest first. Needs `policies:read`."""
+    """List a machine's deployment generations, newest first.
+
+    A reissue — the server rewriting a deployment because a policy was disabled
+    — appears as an ordinary entry. Needs `policies:read`. With `--json`:
+    `{machineId, history:[{deployment, policies, updatedAt}]}`.
+
+    Example:
+
+    * `fp fleet history ci-runner-01`
+    """
     state: AppState = ctx.obj
     deny_in_key_mode(state, "fleet history", _KEY_MODE_REASON)
     cctx = require_auth(state)
@@ -308,7 +321,11 @@ def fleet_rollback(
     """Reinstate a past generation's policy set.
 
     This mints a NEW generation carrying the old set rather than rewinding the
-    counter, so history stays append-only. Needs `policies:write`.
+    counter, so history stays append-only. A generation containing a policy that
+    has since been disabled or deleted cannot be reinstated; the server says so.
+
+    Needs `policies:write`. With `--json`: the resulting deployment, or
+    `{"cancelled": true}` if you decline.
 
     Example:
 
@@ -344,7 +361,13 @@ def fleet_rename(
 ) -> None:
     """Give a machine a human label. The id itself never changes.
 
-    Needs `policies:write`.
+    Needs `policies:write`. With `--json`: `{machineId, labelOverride}` — the
+    server stores the label as an override beside the machine's self-asserted
+    one rather than replacing it.
+
+    Example:
+
+    * `fp fleet rename ci-runner-01 "CI runner (eu-west)"`
     """
     state: AppState = ctx.obj
     deny_in_key_mode(state, "fleet rename", _KEY_MODE_REASON)

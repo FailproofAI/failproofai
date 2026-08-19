@@ -108,7 +108,16 @@ def guardrails_policies(
     since: str = typer.Option("24h", "--since", help="Window: 15m, 1h, 6h, 24h, 7d."),
     machine: Optional[str] = typer.Option(None, "--machine", help="Scope to one machine id."),
 ) -> None:
-    """Just the per-policy decision table. Needs `policies:read`."""
+    """Just the per-policy decision table.
+
+    A `(no policy)` row is normal: most evaluations are allows nothing objected
+    to, and the row keeps the denominator visible. Needs `policies:read`.
+    With `--json`: `{policies:[{policy, fired, blocked, instructed, p95Ms}]}`.
+
+    Example:
+
+    * `fp guardrails policies --since 7d`
+    """
     state: AppState = ctx.obj
     deny_in_key_mode(state, "guardrails policies", _KEY_MODE_REASON)
     cctx = require_auth(state)

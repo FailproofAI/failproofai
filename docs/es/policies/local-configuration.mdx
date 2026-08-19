@@ -1,20 +1,20 @@
 ---
 title: "Configuración local"
-description: "Controla el alcance de las políticas, los parámetros, los archivos personalizados y la configuración de Failproof AI a nivel de máquina."
+description: "Controla el alcance de las políticas, los parámetros, los archivos personalizados y los ajustes de Failproof AI a nivel de máquina."
 icon: "file-cog"
 ---
 
-Failproof AI separa la selección de políticas de la configuración de la máquina y del daemon. Esto permite que las decisiones de políticas del repositorio sean auditables, mientras que las credenciales y el estado del daemon permanecen fuera del repositorio.
+Failproof AI separa la selección de políticas de los ajustes de máquina y del daemon. Esto permite que las decisiones de políticas del repositorio sean revisables, mientras que las credenciales y el estado del daemon permanecen fuera del repositorio.
 
 ## Elige un alcance de política
 
 <Tabs>
   <Tab title="Panel de control">
-    Ejecuta `failproofai` sin argumentos para abrir el panel de políticas local. Selecciona el alcance de usuario, proyecto o local antes de habilitar una política, de modo que el cambio se escriba en el archivo de configuración correspondiente.
+    Ejecuta `failproofai` sin argumentos para abrir el panel de políticas local. Selecciona el alcance de usuario, proyecto o local antes de habilitar una política, para que el cambio se escriba en el archivo de configuración correspondiente.
 
-    - **Usuario** se aplica en todos los proyectos de esta máquina.
-    - **Proyecto** pertenece al repositorio y puede ser confirmado en el control de versiones.
-    - **Local** sobreescribe un proyecto para un usuario específico y debe mantenerse en el gitignore.
+    - **Usuario** aplica en todos los proyectos de esta máquina.
+    - **Proyecto** pertenece al repositorio y puede confirmarse (commit).
+    - **Local** sobrescribe un proyecto para un usuario específico y debe mantenerse en el gitignore.
 
   </Tab>
   <Tab title="CLI">
@@ -25,7 +25,7 @@ Failproof AI separa la selección de políticas de la configuración de la máqu
     failproofai policies
     ```
 
-    No todos los adaptadores admiten el alcance local. La CLI rechaza un alcance que el adaptador seleccionado no pueda representar.
+    No todos los entornos de ejecución admiten el alcance local. El CLI rechaza un alcance que el entorno seleccionado no pueda representar.
   </Tab>
 </Tabs>
 
@@ -35,17 +35,17 @@ Failproof AI separa la selección de políticas de la configuración de la máqu
 | Local | `<project>/.failproofai/policies-config.local.json` |
 | Usuario | `~/.failproofai/policies-config.json` |
 
-Las políticas habilitadas se combinan como una unión. Los parámetros de política utilizan el primer alcance que define parámetros para esa política, en el orden proyecto → local → usuario. Las rutas de políticas personalizadas explícitas utilizan el primer alcance que las defina.
+Las políticas habilitadas se combinan como una unión. Los parámetros de las políticas utilizan el primer alcance que define parámetros para esa política, en el orden proyecto → local → usuario. Las rutas de políticas personalizadas explícitas utilizan el primer alcance que las define.
 
 ## Configura los parámetros de las políticas
 
 <Tabs>
   <Tab title="Panel de control">
-    Abre la política en el panel local, edita sus parámetros compatibles y guarda en el alcance seleccionado. Ejecuta una acción del agente que coincida y otra que no coincida, luego inspecciona la decisión en **Observar → política**.
+    Abre la política en el panel local, edita sus parámetros compatibles y guarda en el alcance seleccionado. Ejecuta una acción de agente que coincida y otra que no coincida, luego inspecciona la decisión en **Observar → política**.
 
   </Tab>
   <Tab title="CLI">
-    Edita el archivo `policies-config.json` del alcance seleccionado y luego ejecuta `failproofai policies` para detectar nombres de política o claves de parámetro desconocidos.
+    Edita el archivo `policies-config.json` del alcance seleccionado y luego ejecuta `failproofai policies` para detectar nombres de políticas o claves de parámetros desconocidos.
 
     ```json
     {
@@ -64,21 +64,21 @@ Las políticas habilitadas se combinan como una unión. Los parámetros de polí
   </Tab>
 </Tabs>
 
-## Entiende los archivos de la máquina
+## Comprende los archivos de máquina
 
-`~/.failproofai` contiene archivos separados para diferentes límites de confianza:
+`~/.failproofai` contiene archivos separados para distintos límites de confianza:
 
 | Ruta | Propósito |
 | --- | --- |
-| `config.json` | Configuración del daemon, auditoría y telemetría (sin secretos) |
-| `credentials.json` | Credenciales en la nube; almacenadas con permisos exclusivos del propietario |
-| `policies-config.json` | Selección de funciones integradas de alcance de usuario, parámetros y rutas personalizadas explícitas |
-| `policies/` | Políticas de convención de usuario y artefactos de políticas administrados en la nube |
+| `config.json` | Ajustes del daemon, auditoría y telemetría (sin secretos) |
+| `credentials.json` | Credenciales en la nube; almacenadas con permisos solo para el propietario |
+| `policies-config.json` | Selección de políticas integradas, parámetros y rutas personalizadas explícitas del alcance de usuario |
+| `policies/` | Políticas de convención de usuario y artefactos de políticas gestionadas en la nube |
 | `hook-activity/` | Registro local de decisiones de políticas |
-| `state/` | Cola del daemon, estado de salud, pausa y estado de ejecución |
+| `state/` | Cola del daemon, estado de salud, pausa y estado en tiempo de ejecución |
 
-Usa `FAILPROOFAI_HOME` para reubicar el diseño completo de la máquina en un contenedor o prueba aislada. No reubiques directorios de estado individuales de forma independiente.
+Usa `FAILPROOFAI_HOME` para reubicar el diseño completo de la máquina en un contenedor o prueba aislada. No reubicar directorios de estado individuales de forma independiente.
 
 <Warning>
-  Nunca confirmes `credentials.json` en el control de versiones. Confirma la configuración de políticas del proyecto y las políticas de convención del proyecto únicamente después de revisarlas como código de cumplimiento.
+  Nunca confirmes (commit) `credentials.json`. Confirma la configuración de políticas del proyecto y las políticas de convención del proyecto solo después de revisarlas como código de cumplimiento.
 </Warning>

@@ -1,35 +1,35 @@
 ---
 title: "Benutzerdefinierte Richtlinien"
-description: "JavaScript- oder TypeScript-Richtlinien für agentenspezifische Fehler erstellen, testen und einsetzen."
+description: "Erstellen, testen und deployen Sie JavaScript- oder TypeScript-Richtlinien für agentenspezifische Fehler."
 icon: "shield-plus"
 ---
 
-Benutzerdefinierte Richtlinien wandeln ein Fehlermuster aus Ihren Traces oder Audits in eine Entscheidung um, die während der Arbeit eines Agenten ausgeführt wird. Eine Richtlinie kann eine Aktion erlauben, dem Agenten Anleitung geben oder die Aktion blockieren, bevor sie einen weiteren Vorfall verursacht.
+Benutzerdefinierte Richtlinien verwandeln ein Fehlermuster aus Ihren Traces oder Audits in eine Entscheidung, die während der Arbeit eines Agenten ausgeführt wird. Eine Richtlinie kann eine Aktion erlauben, dem Agenten Hinweise geben oder die Aktion blockieren, bevor sie einen weiteren Vorfall verursacht.
 
-Verwenden Sie eine benutzerdefinierte Richtlinie, wenn das Verhalten von Ihren Tools, Pfaden, Befehlen, Umgebungen oder Betriebsregeln abhängt. Prüfen Sie zuerst den [Katalog der integrierten Richtlinien](/de/policies/builtin-catalog), damit Sie keine vorhandene Kontrolle neu erstellen.
+Verwenden Sie eine benutzerdefinierte Richtlinie, wenn das Verhalten von Ihren Tools, Pfaden, Befehlen, Umgebungen oder Betriebsregeln abhängt. Prüfen Sie zuerst den [Katalog der integrierten Richtlinien](/de/policies/builtin-catalog), um keine bereits vorhandene Kontrolle neu zu erstellen.
 
-## Benutzerdefinierte Richtlinie erstellen
+## Eine benutzerdefinierte Richtlinie erstellen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Admin → Richtlinien-Editor**, wählen Sie **Neue Richtlinie** und beschreiben Sie den Fehler, den Sie verhindern möchten.
+    1. Gehen Sie zu **Admin → policy editor**, wählen Sie **New policy** aus und beschreiben Sie den Fehler, den Sie verhindern möchten.
     2. Fügen Sie den Richtlinienquellcode hinzu und testen Sie erwartete Treffer sowie unbedenkliche Nicht-Treffer im Editor. Beheben Sie alle Validierungsfehler.
-    3. Speichern Sie den Entwurf und wählen Sie **Version veröffentlichen**, um eine unveränderliche Version zu erstellen.
-    4. Gehen Sie zu **Admin → Durchsetzung**, stellen Sie die Version auf einem Testrechner im **Beobachtungs**-Modus bereit und überprüfen Sie die Entscheidungen unter **Beobachten → Richtlinie**, bevor Sie sie durchsetzen.
+    3. Speichern Sie den Entwurf und wählen Sie **Publish version**, um eine unveränderliche Version zu erstellen.
+    4. Gehen Sie zu **Admin → enforcement**, deployen Sie die Version auf einem Testrechner im **observe**-Modus und überprüfen Sie die Entscheidungen unter **Observe → policy**, bevor Sie die Richtlinie durchsetzen.
 
-    ![Der Richtlinien-Editor zum Erstellen und Veröffentlichen einer benutzerdefinierten Richtlinie.](/images/dashboard/policy-editor.png)
+    ![Der Policy-Editor zum Erstellen und Veröffentlichen einer benutzerdefinierten Richtlinie.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
     1. Erstellen Sie `.failproofai/policies/checkout-policies.ts`. Der Dateiname muss auf `policies.js`, `policies.mjs` oder `policies.ts` enden.
     2. Registrieren Sie eine oder mehrere Richtlinien mit `customPolicies.add()`.
     3. Validieren und installieren Sie die Datei mit `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`.
-    4. Lösen Sie eine passende und eine unbedenkliche Aktion aus. Führen Sie `failproofai policies` aus und prüfen Sie anschließend die zugeordneten Entscheidungen unter **Beobachten → Richtlinie**.
+    4. Lösen Sie eine passende Aktion und eine unbedenkliche Aktion aus. Führen Sie `failproofai policies` aus und prüfen Sie dann die zugeordneten Entscheidungen unter **Observe → policy**.
   </Tab>
 </Tabs>
 
 ## Mit einer engen Regel beginnen
 
-Diese Richtlinie blockiert destruktive Kubernetes-Befehle nur, wenn der Befehl auf die Produktionsumgebung abzielt. Alles außerhalb dieses exakten Fehlermusters gibt `allow()` zurück.
+Diese Richtlinie blockiert destruktive Kubernetes-Befehle nur dann, wenn der Befehl auf die Produktionsumgebung abzielt. Alles außerhalb dieses genauen Fehlermusters gibt `allow()` zurück.
 
 ```ts
 import { customPolicies, allow, deny } from "failproofai";
@@ -55,23 +55,23 @@ customPolicies.add({
 });
 ```
 
-Gute Richtlinien sind eng genug, um sie in einem Satz erklären zu können. Prüfen Sie die beobachtbare Aktion – nicht die vermutete Absicht des Agenten – und geben Sie `allow()` zurück, sobald die Regel nicht zutrifft.
+Gute Richtlinien sind eng genug, um sie in einem Satz zu erklären. Treffen Sie auf die beobachtbare Aktion – nicht auf die vermutete Absicht des Agenten – und geben Sie `allow()` zurück, sobald die Regel nicht zutrifft.
 
-## Entscheidung wählen
+## Eine Entscheidung wählen
 
 | Hilfsfunktion | Ergebnis | Verwendung |
 | --- | --- | --- |
-| `allow(reason?)` | Der Vorgang wird fortgesetzt. | Die Richtlinie trifft nicht zu oder die Aktion ist unbedenklich. |
-| `instruct(reason)` | Der Vorgang wird mit Anleitung fortgesetzt, sofern der Harness dies unterstützt. | Sie möchten den Agenten zu einem besseren Ansatz lenken, ohne eine Invariante zu erzwingen. |
-| `deny(reason)` | Der Vorgang wird blockiert, wenn das Ereignis und der Harness die Blockierung unterstützen. | Die Aktion darf nicht fortgesetzt werden. |
+| `allow(reason?)` | Die Operation wird fortgesetzt. | Die Richtlinie gilt nicht oder die Aktion ist unbedenklich. |
+| `instruct(reason)` | Die Operation wird fortgesetzt, mit Hinweisen sofern der Harness dies unterstützt. | Sie möchten den Agenten zu einem besseren Ansatz leiten, ohne eine Invariante durchzusetzen. |
+| `deny(reason)` | Die Operation wird blockiert, wenn das Ereignis und der Harness das Blockieren unterstützen. | Die Aktion darf nicht fortgesetzt werden. |
 
-Schreiben Sie die Begründung für den Agenten, der sich erholen muss. Erklären Sie, was erkannt wurde und was stattdessen getan werden soll.
+Schreiben Sie den Grund für den Agenten, der sich erholen muss. Erläutern Sie, was erkannt wurde und was stattdessen getan werden soll.
 
 <Warning>
-  Verwenden Sie `instruct()` nicht für eine Sicherheitsgrenze. Die Zustellung von Anleitungen variiert je nach Agent-Harness. Verwenden Sie `deny()`, wenn die Aktion verhindert werden muss.
+  Verwenden Sie `instruct()` nicht für eine Sicherheitsgrenze. Die Übermittlung von Hinweisen variiert je nach Agent-Harness. Verwenden Sie `deny()`, wenn die Aktion verhindert werden muss.
 </Warning>
 
-## Richtlinienobjekt
+## Das Policy-Objekt
 
 ```ts
 customPolicies.add({
@@ -85,27 +85,27 @@ customPolicies.add({
 | Feld | Erforderlich | Beschreibung |
 | --- | --- | --- |
 | `name` | Ja | Stabiler Bezeichner für die Richtlinie. Namen müssen dateiübergreifend eindeutig sein. |
-| `description` | Nein | Lesbarer Zweck, der in Richtlinienübersichten und Entscheidungen angezeigt wird. |
-| `match.events` | Nein | Ereignistypen, die die Richtlinie aufrufen. Wird `match` weggelassen, wird die Richtlinie für jedes verfügbare Ereignis aufgerufen. |
+| `description` | Nein | Lesbare Beschreibung des Zwecks, die in Richtlinienübersichten und Entscheidungen angezeigt wird. |
+| `match.events` | Nein | Ereignistypen, die die Richtlinie aufrufen. Wird `match` weggelassen, wird sie für jedes verfügbare Ereignis aufgerufen. |
 | `fn` | Ja | Synchrone oder asynchrone Funktion, die ein `allow`-, `instruct`- oder `deny`-Ergebnis zurückgibt. |
 
-Filtern Sie Tools innerhalb von `fn`. `match.toolNames` ist nicht Teil des öffentlichen Typs für benutzerdefinierte Richtlinien.
+Filtern Sie Tools innerhalb von `fn`. `match.toolNames` ist kein Teil des öffentlichen Typs für benutzerdefinierte Richtlinien.
 
-## Richtlinienkontext
+## Policy-Kontext
 
 Jede Richtlinie erhält einen `PolicyContext`.
 
 | Feld | Typ | Inhalt |
 | --- | --- | --- |
-| `eventType` | `HookEventType` | Normalisiertes Ereignis, das gerade ausgewertet wird. |
-| `toolName` | `string \| undefined` | Kanonischer Tool-Name wie `Bash`, `Read`, `Write` oder `Edit`. |
+| `eventType` | `HookEventType` | Normalisiertes Ereignis, das aktuell ausgewertet wird. |
+| `toolName` | `string \| undefined` | Kanonischer Tool-Name, z. B. `Bash`, `Read`, `Write` oder `Edit`. |
 | `toolInput` | `Record<string, unknown> \| undefined` | Kanonische Eingabe für den aktuellen Tool-Aufruf. |
-| `payload` | `Record<string, unknown>` | Vollständige normalisierte Ereignis-Payload. |
-| `session` | `SessionMetadata \| undefined` | Sitzungs-ID, Arbeitsverzeichnis, Transkriptpfad, Berechtigungsmodus und Harness-Metadaten, sofern verfügbar. |
+| `payload` | `Record<string, unknown>` | Vollständiger normalisierter Ereignis-Payload. |
+| `session` | `SessionMetadata \| undefined` | Sitzungs-ID, Arbeitsverzeichnis, Transcript-Pfad, Berechtigungsmodus und Harness-Metadaten, sofern verfügbar. |
 | `cli` | `string \| undefined` | Quell-Agent-Harness, z. B. `claude`, `codex` oder `cursor`. |
-| `params` | `Record<string, unknown>` | Parameter für integrierte Richtlinien. Benutzerdefinierte Richtlinien erhalten derzeit ein leeres Objekt. |
+| `params` | `Record<string, unknown>` | Parameter integrierter Richtlinien. Benutzerdefinierte Richtlinien erhalten derzeit ein leeres Objekt. |
 
-Behandeln Sie jeden optionalen Wert als tatsächlich optional. Nicht alle Agent-Versionen und Ereignistypen liefern dieselben Felder.
+Behandeln Sie jeden optionalen Wert als tatsächlich optional. Nicht alle Agent-Versionen und Ereignistypen stellen dieselben Felder bereit.
 
 ### Häufige Tool-Eingaben
 
@@ -126,27 +126,27 @@ const command = String(ctx.toolInput?.command ?? "");
 const filePath = String(ctx.toolInput?.file_path ?? "");
 ```
 
-## Ereignis wählen
+## Das Ereignis wählen
 
-| Ereignis | Zeitpunkt | Typische Verwendung |
+| Ereignis | Ausführungszeitpunkt | Typische Verwendung |
 | --- | --- | --- |
-| `PreToolUse` | Vor der Ausführung eines Tools. | Befehle, Schreibvorgänge, Lesevorgänge und externe Aktionen blockieren oder steuern. |
-| `PostToolUse` | Nach der Rückgabe eines Tools. | Ergebnisse prüfen, bevor sie den Agenten erreichen. Ein Deny blockiert das gesamte Ergebnis; einzelne Felder werden nicht ausgeblendet. |
+| `PreToolUse` | Vor der Ausführung eines Tools. | Befehle, Schreibzugriffe, Lesezugriffe und externe Aktionen blockieren oder steuern. |
+| `PostToolUse` | Nachdem ein Tool zurückgekehrt ist. | Ergebnisse prüfen, bevor sie den Agenten erreichen. Ein deny blockiert das gesamte Ergebnis; einzelne Felder werden nicht herausgefiltert. |
 | `PermissionRequest` | Wenn der Agent eine Berechtigung anfordert. | Organisationsspezifische Berechtigungsregeln anwenden. |
-| `UserPromptSubmit` | Bevor ein gesendetes Prompt fortgesetzt wird. | Unzulässige Anweisungen ablehnen oder Workflow-Anleitungen hinzufügen. |
-| `Stop` | Wenn der Agent versucht, die Arbeit zu beenden. | Eine erreichbare Abschlussbedingung erfordern, z. B. einen lokalen Prüfschritt. |
-| `SubagentStop` | Wenn ein Subagent versucht, die Arbeit zu beenden. | Delegierte Arbeit prüfen, bevor sie an den übergeordneten Agenten zurückgegeben wird. |
-| `SessionStart` / `SessionEnd` | An Sitzungsgrenzen. | Sitzungsbezogenen Zustand aufzeichnen oder prüfen. |
+| `UserPromptSubmit` | Bevor ein eingereichter Prompt fortgesetzt wird. | Unzulässige Anweisungen ablehnen oder Workflow-Hinweise hinzufügen. |
+| `Stop` | Wenn der Agent versucht, die Arbeit abzuschließen. | Eine erreichbare Abschlussbedingung voraussetzen, z. B. einen lokalen Verifizierungsschritt. |
+| `SubagentStop` | Wenn ein Subagent versucht, die Arbeit abzuschließen. | Delegierte Arbeit prüfen, bevor sie zum übergeordneten Agenten zurückkehrt. |
+| `SessionStart` / `SessionEnd` | An Sitzungsgrenzen. | Zustand auf Sitzungsebene aufzeichnen oder prüfen. |
 
-Die Verfügbarkeit von Ereignissen und das Blockierungsverhalten hängen vom Agent-Harness ab. Lesen Sie [Agent-Harnesses](/de/reference/harnesses), bevor Sie sich auf ein Ereignis über einen gemischten Gerätepark hinweg verlassen.
+Die Verfügbarkeit von Ereignissen und das Blockierverhalten hängen vom Agent-Harness ab. Lesen Sie [Agent harnesses](/de/reference/harnesses), bevor Sie sich bei einem gemischten Fleet auf ein Ereignis verlassen.
 
-<Accordion title="Alle Richtlinienereignisnamen">
+<Accordion title="Alle Policy-Ereignisnamen">
   `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch` und `Setup`.
 </Accordion>
 
 ## Häufige Richtlinienmuster erstellen
 
-### Schreibvorgänge auf geschützte Pfade blockieren
+### Schreibzugriffe auf geschützte Pfade blockieren
 
 ```ts
 import { customPolicies, allow, deny } from "failproofai";
@@ -166,7 +166,7 @@ customPolicies.add({
 });
 ```
 
-### Nicht-blockierende Anleitung geben
+### Nicht-blockierende Hinweise geben
 
 ```ts
 import { customPolicies, allow, instruct } from "failproofai";
@@ -215,7 +215,7 @@ customPolicies.add({
 ```
 
 <Warning>
-  Ein abgelehntes `Stop`-Ereignis kann dazu führen, dass der Agent es erneut versucht. Prüfen Sie nur auf eine Bedingung, die der Agent in der aktuellen Umgebung erfüllen kann, und begrenzen Sie jeden Subprozess- oder Netzwerkaufruf zeitlich.
+  Ein abgelehntes `Stop`-Ereignis kann dazu führen, dass der Agent es erneut versucht. Sichern Sie nur Bedingungen ab, die der Agent in der aktuellen Umgebung erfüllen kann, und begrenzen Sie jeden Subprocess- oder Netzwerkaufruf.
 </Warning>
 
 ## Richtliniendateien laden
@@ -230,15 +230,15 @@ Konventionsdateien werden automatisch geladen:
 ```
 
 - Projekt- und Benutzer-Richtlinienverzeichnisse werden beide geladen.
-- Dateien werden alphabetisch innerhalb jedes Verzeichnisses geladen.
+- Dateien werden innerhalb jedes Verzeichnisses alphabetisch geladen.
 - Eine Datei muss auf `policies.js`, `policies.mjs` oder `policies.ts` enden.
 - Mehrere `customPolicies.add()`-Aufrufe in einer Datei werden unterstützt.
 - Relative Importe aus lokalen Modulen werden unterstützt.
-- Projektrichtlinien können committet werden, sodass dieselben Regeln dem Repository folgen.
+- Projektrichtlinien können eingecheckt werden, sodass dieselben Regeln dem Repository folgen.
 
 ### Explizite Dateien
 
-Verwenden Sie explizite Pfade, wenn die Validierung oder Konfiguration die Einstiegsdatei direkt benennen soll:
+Verwenden Sie explizite Pfade, wenn die Validierung oder Konfiguration die Eingabedatei direkt benennen soll:
 
 ```bash
 failproofai policies --install \
@@ -251,7 +251,7 @@ Explizite Dateien werden zuerst geladen, gefolgt von Projekt-Konventionsdateien 
 
 ## Validieren und testen
 
-Die Validierung führt das Modul über den Produktions-Loader aus und bestätigt, dass es mindestens eine Richtlinie registriert.
+Die Validierung führt das Modul über den Produktions-Loader aus und bestätigt, dass mindestens eine Richtlinie registriert wird.
 
 ```bash
 failproofai policies --install \
@@ -260,17 +260,17 @@ failproofai policies --install \
 failproofai policies
 ```
 
-Die Validierung erkennt fehlende Dateien, Syntaxfehler, nicht aufgelöste Importe, Ausnahmen auf oberster Ebene und Zeitüberschreitungen beim Modulladen. Sie beweist nicht, dass Ihre Match-Logik korrekt ist.
+Die Validierung erkennt fehlende Dateien, Syntaxfehler, nicht aufgelöste Importe, Ausnahmen auf oberster Ebene und Modul-Lade-Timeouts. Sie beweist jedoch nicht, dass Ihre Match-Logik korrekt ist.
 
 Testen Sie mindestens diese Fälle:
 
-- Eine Aktion, die treffen und den beabsichtigten Richtliniengrund erzeugen muss.
+- Eine Aktion, die treffen muss und den beabsichtigten Richtliniengrund erzeugen soll.
 - Eine ähnliche, aber unbedenkliche Aktion, die `allow()` zurückgeben muss.
 - Fehlende oder fehlerhafte Tool-Felder.
-- Alternative Befehlssyntax, Pfade, Anführungszeichen, Groß-/Kleinschreibung und Leerzeichen.
-- Nicht verfügbarer Subprozess oder Netzwerkabhängigkeit.
+- Abweichende Befehlssyntax, Pfade, Anführungszeichen, Groß-/Kleinschreibung und Leerzeichen.
+- Ein nicht verfügbarer Subprocess oder eine nicht verfügbare Netzwerkabhängigkeit.
 
-Ordnen Sie das Ergebnis Ihrer benutzerdefinierten Richtlinie unter **Beobachten → Richtlinie** zu. Eine blockierte Testoperation ist nicht ausreichend, wenn eine andere integrierte Richtlinie die Entscheidung getroffen hat.
+Ordnen Sie das Ergebnis Ihrer benutzerdefinierten Richtlinie unter **Observe → policy** zu. Ein blockierter Test ist nicht ausreichend, wenn eine andere integrierte Richtlinie die Entscheidung getroffen hat.
 
 ## Laufzeitverhalten
 
@@ -278,10 +278,10 @@ Ordnen Sie das Ergebnis Ihrer benutzerdefinierten Richtlinie unter **Beobachten 
 - Das erste `deny` stoppt die weitere Richtlinienauswertung.
 - Mehrere `instruct`-Ergebnisse können kombiniert werden, wenn keine Richtlinie das Ereignis ablehnt.
 - Eine Richtlinienfunktion hat eine Ausführungsfrist von 10 Sekunden.
-- Eine ausgelöste Ausnahme oder Zeitüberschreitung wird protokolliert und als `allow()` behandelt.
-- Eine Konventionsdatei, die nicht geladen werden kann, wird übersprungen; andere benutzerdefinierte Dateien und integrierte Richtlinien werden weiter ausgeführt.
+- Eine ausgelöste Ausnahme oder ein Timeout wird protokolliert und als `allow()` behandelt.
+- Eine Konventionsdatei, die nicht geladen werden kann, wird übersprungen; andere benutzerdefinierte Dateien und integrierte Richtlinien werden weiterhin ausgeführt.
 - Das Laden von Modulen auf oberster Ebene hat ebenfalls eine Frist von 10 Sekunden.
-- Der Cloud-Beobachtungsmodus führt die Richtlinie aus, zeichnet jedoch eine Nicht-Allow-Entscheidung auf, ohne sie durchzusetzen.
+- Im Cloud-Observe-Modus wird die Richtlinie ausgeführt, aber eine Nicht-allow-Entscheidung wird aufgezeichnet, ohne sie durchzusetzen.
 
 Halten Sie Richtlinienmodule deterministisch und schnell. Vermeiden Sie Netzwerkaufrufe oder Server-Starts auf oberster Ebene. Begrenzen Sie die Arbeit innerhalb von `fn`, fangen Sie Abhängigkeitsfehler ab und entscheiden Sie bewusst, ob ein solcher Fehler die Operation erlauben oder ablehnen soll.
 
@@ -289,15 +289,15 @@ Halten Sie Richtlinienmodule deterministisch und schnell. Vermeiden Sie Netzwerk
 
 | Export | Zweck |
 | --- | --- |
-| `customPolicies.add(policy)` | Benutzerdefinierte Richtlinie beim Laden des Moduls registrieren. |
-| `allow(reason?)` | Vorgang erlauben. |
-| `instruct(reason)` | Vorgang erlauben und Anleitung bereitstellen, sofern unterstützt. |
-| `deny(reason)` | Vorgang blockieren, sofern unterstützt. |
-| `getCustomHooks()` | Die aktuell in der Modulregistrierung registrierten Richtlinien zurückgeben. |
-| `clearCustomHooks()` | Diese Registrierung leeren, hauptsächlich für Tests und Loader. |
+| `customPolicies.add(policy)` | Eine benutzerdefinierte Richtlinie beim Laden des Moduls registrieren. |
+| `allow(reason?)` | Die Operation erlauben. |
+| `instruct(reason)` | Die Operation erlauben und Hinweise bereitstellen, sofern unterstützt. |
+| `deny(reason)` | Die Operation blockieren, sofern unterstützt. |
+| `getCustomHooks()` | Die aktuell im Modul-Registry registrierten Richtlinien zurückgeben. |
+| `clearCustomHooks()` | Das Registry leeren, hauptsächlich für Tests und Loader. |
 
 TypeScript exportiert `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision` und `PolicyFunction`.
 
-<Card title="Benutzerdefinierte Richtlinien einsetzen" icon="server-cog" href="/de/policies/deploy">
-  Eine Version veröffentlichen, im Beobachtungsmodus bereitstellen, Entscheidungen überprüfen und zur Durchsetzung übergehen.
+<Card title="Benutzerdefinierte Richtlinien deployen" icon="server-cog" href="/de/policies/deploy">
+  Veröffentlichen Sie eine Version, deployen Sie sie im Observe-Modus, überprüfen Sie Entscheidungen und wechseln Sie zur Durchsetzung.
 </Card>

@@ -1,24 +1,24 @@
 ---
-title: "審核"
-description: "סקור אוכלוסיית סשנים מוגדרת כדי למצוא כשלים שעקבות לבדם לא יחשפו."
+title: "审核"
+description: "Review a defined population of sessions for failures that traces alone will not reveal."
 icon: "scan-search"
 ---
 
-審核חוקר קבוצה נבחרת של סשנים למטרת כשל מוגדרת. הוא משלב עדויות מעקב, תוצאות הערכה, טביעות מדיניות, והקשר ייחוס כדי להפיק ממצאים שתוכל לפעול עליהם.
+An audit searches a selected set of sessions for a stated failure goal. It combines trace evidence, evaluation results, policy hits, and reference context to produce findings you can act on.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-ראה כיצד審核 עובר מריצה מתוזמנת לכשלים מגובי עדויות שתוכל לתקן.
+See how an audit moves from a scheduled run to evidence-backed failures you can fix.
 
-## פתח審核
+## Open audits
 
 <Tabs>
   <Tab title="Dashboard">
-    עבור אל **Analyze → Audits**. הדף מציג מצב מתוזמן, ממצאים פתוחים, ריצה אחרונה, ריצה הבאה, קדנציה, והאם ל審核 יש דפי brief או reference. בחר בכרטיס לקביעות והיסטוריית ריצות; בחר **new audit** כדי ליצור אחד.
+    Go to **Analyze → Audits**. The page shows scheduled state, open findings, last run, next run, cadence, and whether the audit has a brief or reference pages. Select a card for settings and run history; select **new audit** to create one.
 
-    ![דף Audits המציג審核 חוזרים עם לוח הזמנים, הרגישות, ומצב הריצה שלהם.](/images/dashboard/audits.png)
+    ![The Audits page showing recurring audits with their schedule, sensitivity, and run state.](/images/dashboard/audits.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -30,27 +30,27 @@ icon: "scan-search"
   </Tab>
 </Tabs>
 
-השתמש ב審核 כאשר אתה צריך לענות על שאלה ברמת אוכלוסיה כגון:
+Use an audit when you need to answer a population-level question such as:
 
-- היכן agents מנטשים משימות ללא הסלמה?
-- אילו כשלי כלי מובילים לניסיונות חוזרים לא יעילים?
-- האם agents ניגשים לנתונים מחוץ לתזרים העבודה המיועד?
-- מה השתנה לאחר שחרור מודל, prompt, או כלי?
+- Where do agents abandon tasks without escalating?
+- Which tool failures lead to ineffective retries?
+- Are agents accessing data outside the intended workflow?
+- What changed after a model, prompt, or tool release?
 
-## זרימת תגובת審核
+## Audit response flow
 
 ```text
 Session → Audit → Finding → Issue → Policy
                          ↘ Alert for recurrence
 ```
 
-ממצא צריך לתת שם למצב הכשל ולהצביע על עדות. Issue שולט בתיקון. Policy מונע דפוס פעולה ידוע; alert גוזל חזרה כאשר מניעה אינה אפשרית או זקוקה לניטור.
+A finding should name the failure mode and point to evidence. An issue owns the remediation. A policy prevents a known action pattern; an alert detects recurrence when prevention is not possible or needs monitoring.
 
 <Columns cols={2}>
-  <Card title="הגדר審核" icon="sliders-horizontal" href="/he/audits/setup">
-    הגדר את המטרה, האוכלוסיה, והקשר ייחוס לפני הריצה הראשונה.
+  <Card title="Set up an audit" icon="sliders-horizontal" href="/he/audits/setup">
+    Define the goal, population, and reference context before the first run.
   </Card>
-  <Card title="הוסף הקשר agent" icon="bot" href="/he/audits/agent-contracts">
-    ציין מה כל agent חייב להפיק ומה הוא לעולם לא יעשה.
+  <Card title="Add agent context" icon="bot" href="/he/audits/agent-contracts">
+    State what each agent must produce and what it must never do.
   </Card>
 </Columns>

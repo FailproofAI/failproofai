@@ -8,6 +8,8 @@
 
 <img src="https://d2wq11aau0arks.cloudfront.net/failproof/fa_updated_full.svg" alt="failproof ai" width="220" />
 
+<a href="https://trendshift.io/repositories/69722?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-69722" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/69722/daily?language=TypeScript" alt="FailproofAI%2Ffailproofai | Trendshift" width="250" height="55"/></a>
+
 [![npm](https://img.shields.io/npm/v/failproofai?style=flat-square&color=CB3837)](https://www.npmjs.com/package/failproofai)
 [![CI](https://img.shields.io/github/actions/workflow/status/failproofai/failproofai/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/failproofai/failproofai/actions)
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
@@ -17,7 +19,7 @@
 
 **Traduzioni:** [简体中文](../../docs-old/i18n/README.zh.md) · [日本語](../../docs-old/i18n/README.ja.md) · [한국어](../../docs-old/i18n/README.ko.md) · [Español](../../docs-old/i18n/README.es.md) · [Português](../../docs-old/i18n/README.pt-br.md) · [Deutsch](../../docs-old/i18n/README.de.md) · [Français](../../docs-old/i18n/README.fr.md) · [Руссий](../../docs-old/i18n/README.ru.md) · [हिन्दी](../../docs-old/i18n/README.hi.md) · [Türkçe](../../docs-old/i18n/README.tr.md) · [Tiếng Việt](../../docs-old/i18n/README.vi.md) · [Italiano](../../docs-old/i18n/README.it.md) · [العربية](../../docs-old/i18n/README.ar.md) · [עברית](../../docs-old/i18n/README.he.md)
 
-**Risoluzione degli errori di runtime per gli agenti di programmazione.**
+**Risoluzione dei guasti in tempo reale per gli agenti di codifica.**
 Si integra con Claude Code e Codex. Cattura i loop, le azioni pericolose e le fughe di segreti
 prima che diventino incidenti. Zero latenza. Eseguito localmente.
 
@@ -29,7 +31,7 @@ prima che diventino incidenti. Zero latenza. Eseguito localmente.
 
 ---
 
-## CLI degli agenti supportati
+## CLI di agenti supportati
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -129,32 +131,32 @@ prima che diventino incidenti. Zero latenza. Eseguito localmente.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # oppure esegui `failproofai` e accetta il primo prompt
+failproofai policies --install   # o semplicemente esegui `failproofai` e accetta il prompt del primo avvio
 failproofai
 ```
 
-30 policy integrate si attivano immediatamente. Dashboard su `localhost:8020`. Disabilita il primo prompt con `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 politiche integrate si attivano immediatamente. Dashboard disponibile su `localhost:8020`. Disabilita il prompt del primo avvio con `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
 ## Cosa blocca
 
-| Policy | Cosa blocca |
+| Politica | Cosa blocca |
 |---|---|
-| `block-push-master` | Push diretti a `main` / `master` |
+| `block-push-master` | Push diretti su `main` / `master` |
 | `block-force-push` | `git push --force` |
 | `block-work-on-main` | Commit, merge, rebase su `main` / `master` |
 | `block-rm-rf` | Eliminazione ricorsiva di file |
-| `sanitize-api-keys` | Fuga di chiavi API nel contesto dell'agente |
+| `sanitize-api-keys` | Chiavi API che perdono nel contesto dell'agente |
 
-→ [Tutte le 30 policy integrate](https://docs.befailproof.ai/policies/builtin)
+→ [Tutte le 30 politiche integrate](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
-## Le tue policy personalizzate
+## Le tue politiche
 
-Aggiungi un file in `.failproofai/policies/` — si carica automaticamente, nessun flag necessario.
-Eseguine il commit e l'intero team le avrà al prossimo pull.
+Inserisci un file in `.failproofai/policies/` — viene caricato automaticamente, senza flag necessari.
+Eseguine il commit e l'intero team lo riceverà al prossimo pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -164,29 +166,29 @@ customPolicies.add({
   match: { events: ["PreToolUse"] },
   fn: async (ctx) => {
     if (ctx.toolInput?.file_path?.includes("production"))
-      return deny("Writes to production paths are blocked.");
+      return deny("Le scritture nei percorsi di produzione sono bloccate.");
     return allow();
   },
 });
 ```
 
-Tre decisioni disponibili per ogni policy:
+Tre decisioni disponibili per ogni politica:
 
 | Decisione | Effetto |
 |---|---|
-| `allow()` | Permetti l'operazione |
-| `deny(message)` | Blocca — il messaggio viene restituito all'agente |
+| `allow()` | Consenti l'operazione |
+| `deny(message)` | Blocca — il messaggio torna all'agente |
 | `instruct(message)` | Lascia passare, ma aggiungi contesto al prossimo prompt dell'agente |
 
-→ [Guida alle policy personalizzate](https://docs.befailproof.ai/policies/custom)
+→ [Guida alle politiche personalizzate](https://docs.befailproof.ai/policies/custom)
 
 ---
 
 ## Visibilità della sessione
 
-Ogni tool call che il tuo agente effettua viene registrato localmente. La dashboard mostra cosa è stato eseguito,
-cosa è stato bloccato e cosa la policy ha comunicato all'agente — quindi non stai indovinando
-quando qualcosa va storto. → [Guida alla dashboard](https://docs.befailproof.ai/sessions/overview)
+Ogni chiamata dello strumento effettuata dal tuo agente viene registrata localmente. Il dashboard mostra cosa è stato eseguito,
+cosa è stato bloccato e cosa la politica ha detto all'agente — così non stai indovinando
+quando qualcosa va storto. → [Guida del dashboard](https://docs.befailproof.ai/sessions/overview)
 
 ---
 
@@ -194,11 +196,11 @@ quando qualcosa va storto. → [Guida alla dashboard](https://docs.befailproof.a
 
 | | |
 |---|---|
-| [Iniziare](https://docs.befailproof.ai/start/quickstart) | Installazione e primi passi |
-| [Policy integrate](https://docs.befailproof.ai/policies/builtin) | Tutte le 30 policy con parametri |
-| [Policy personalizzate](https://docs.befailproof.ai/policies/custom) | Scrivi le tue |
+| [Per iniziare](https://docs.befailproof.ai/start/quickstart) | Installazione e primi passi |
+| [Politiche integrate](https://docs.befailproof.ai/policies/builtin) | Tutte le 30 politiche con parametri |
+| [Politiche personalizzate](https://docs.befailproof.ai/policies/custom) | Scrivi le tue |
 | [Configurazione](https://docs.befailproof.ai/policies/local-configuration) | Ambiti di configurazione e regole di merge |
-| [Dashboard](https://docs.befailproof.ai/sessions/overview) | Monitor di sessione e attività della policy |
+| [Dashboard](https://docs.befailproof.ai/sessions/overview) | Monitor della sessione e attività delle politiche |
 | [Architettura](https://docs.befailproof.ai/start/concepts) | Come funziona il sistema di hook |
 
 ---
@@ -209,16 +211,16 @@ MIT con [Commons Clause](https://commonsclause.com/) — gratuito per uso intern
 
 ---
 
-## Contribuire
+## Contributi
 
-Vedi [CONTRIBUTING.md](../../CONTRIBUTING.md). Nuove policy, casi limite e traduzioni sono tutti benvenuti.
+Vedi [CONTRIBUTING.md](../../CONTRIBUTING.md). Nuove politiche, casi limite e traduzioni sono tutti benvenuti.
 
-> **Compila prima di iniziare.** Esegui `bun install && bun run build` per primo. Questo repository esegue
-> i propri hook di failproofai su se stesso e risolvono l'import `failproofai` contro il
-> bundle compilato `dist/` — senza una compilazione otterrai errori hook `Cannot find package 'failproofai'`.
-> Ricompila dopo aver cambiato `src/`. Vedi
-> [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **Build prima di iniziare.** Esegui `bun install && bun run build` per primo. Questo repository esegue
+> i propri hook di failproofai su se stesso, e risolvono l'import `failproofai` rispetto al
+> bundle compilato `dist/` — senza una build riceverai errori di hook `Cannot find package 'failproofai'`.
+> Ricompila dopo aver modificato `src/`. Vedi
+> [Build prima che gli hook di sviluppo in-repo funzionino](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-Costruito con ❤️ da [befailproof.ai](https://befailproof.ai) a SF e Bengaluru.
+Realizzato con ❤️ da [befailproof.ai](https://befailproof.ai) a SF e Bengaluru.

@@ -1,39 +1,39 @@
 ---
-title: "Policies"
-description: "Observe, guide ou bloqueie ações do agente antes que uma falha conhecida se repita."
+title: "Políticas"
+description: "Observe, oriente ou bloqueie ações do agente antes que uma falha conhecida se repita."
 icon: "shield-check"
 ---
 
-Uma policy avalia um evento de hook do agente e retorna uma das três decisões:
+Uma política avalia um evento de hook do agente e retorna uma de três decisões:
 
 - `allow` permite que a ação continue.
 - `instruct` fornece orientação corretiva ao agente.
 - `deny` bloqueia a ação com uma justificativa.
 
-## Use as três superfícies de policy
+## Use as três superfícies de política
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Observe → policy** para filtrar e inspecionar decisões de policy das sessões.
+    1. Acesse **Observe → policy** para filtrar e inspecionar decisões de política das sessões.
     2. Acesse **Admin → policy editor** para criar, validar, publicar, desabilitar ou inspecionar versões imutáveis.
     3. Acesse **Admin → enforcement** para atribuir versões e efeitos às máquinas.
 
-    Use a página de Policy para entender o que já está sendo correspondido antes de criar ou alterar o enforcement.
+    Use a página de Políticas para entender o que já está sendo correspondido antes de criar ou alterar o enforcement.
 
-    ![A página de Policy exibindo totais de decisões e mapeamentos de policy local e gerenciados pela Cloud.](/images/dashboard/policy-observe.png)
+    ![A página de Políticas exibindo totais de decisões e mapeamentos de políticas locais e gerenciadas na nuvem.](/images/dashboard/policy-observe.png)
 
     O editor é onde você transforma uma condição de falha em código-fonte, valida e publica uma versão imutável.
 
-    ![O editor de Policy usado para criar e publicar uma versão imutável de policy.](/images/dashboard/policy-editor.png)
+    ![O editor de Políticas usado para criar e publicar uma versão imutável de política.](/images/dashboard/policy-editor.png)
 
-    O Enforcement então atribui essa versão publicada e seu efeito de observe ou enforce às máquinas.
+    O Enforcement então atribui essa versão publicada e seu efeito de observação ou aplicação às máquinas.
 
-    ![A frota de Enforcement exibindo a cobertura de máquinas e as versões de policy atribuídas.](/images/dashboard/enforcement-fleet.png)
+    ![A frota de Enforcement exibindo cobertura de máquinas e versões de política atribuídas.](/images/dashboard/enforcement-fleet.png)
 
-    Verifique as decisões novamente na página de Policy após a implantação, para que as visualizações de criação e de frota estejam vinculadas à atividade real do agente.
+    Verifique as decisões novamente na página de Políticas após o deploy para que as visões de criação e de frota estejam vinculadas à atividade real do agente.
   </Tab>
   <Tab title="CLI">
-    Use `failproofai` para instalação e validação de policies locais:
+    Use `failproofai` para instalação e validação de políticas locais:
 
     ```bash
     failproofai policies
@@ -41,23 +41,23 @@ Uma policy avalia um evento de hook do agente e retorna uma das três decisões:
     failproofai config --status
     ```
 
-    Use `fp` para encontrar sessões e eventos na Cloud que contenham decisões de policy. A criação de policies na Cloud e a implantação em frota continuam sendo fluxos de trabalho do dashboard.
+    Use `fp` para encontrar sessões e eventos na nuvem que contenham decisões de política. A criação de políticas e o deploy de frota na nuvem continuam sendo fluxos de trabalho do dashboard.
   </Tab>
 </Tabs>
 
-As policies possuem três superfícies distintas no Failproof AI:
+As políticas possuem três superfícies distintas no Failproof AI:
 
 1. **Analise decisões** em sessões, dashboards e auditorias.
-2. **Crie versões** com regras nativas, código ou o editor de policies.
+2. **Crie versões** com regras embutidas, código ou o editor de políticas.
 3. **Implante e aplique** versões em máquinas selecionadas.
 
-Comece a partir de um modo de falha confirmado. Defina o menor evento e correspondência de ferramenta que o identifique, teste exemplos legítimos e inseguros e, em seguida, observe antes de aplicar o enforcement.
+Comece a partir de um modo de falha confirmado. Defina o menor evento e correspondência de ferramenta que o identifique, teste exemplos legítimos e não seguros e, então, observe antes de aplicar.
 
 <Columns cols={2}>
-  <Card title="Use uma policy nativa" icon="library" href="/pt-br/policies/builtin">
-    Ative uma regra revisada para riscos comuns de segredos, shell, Git, cloud e workflows.
+  <Card title="Usar uma política embutida" icon="library" href="/pt-br/policies/builtin">
+    Ative uma regra revisada para riscos comuns de segredos, shell, Git, nuvem e fluxo de trabalho.
   </Card>
-  <Card title="Escreva uma policy personalizada" icon="code-2" href="/pt-br/policies/custom">
-    Expresse uma decisão específica do seu workflow em JavaScript ou TypeScript.
+  <Card title="Escrever uma política personalizada" icon="code-2" href="/pt-br/policies/custom">
+    Expresse uma decisão específica de fluxo de trabalho em JavaScript ou TypeScript.
   </Card>
 </Columns>

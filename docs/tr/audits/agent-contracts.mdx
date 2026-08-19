@@ -1,28 +1,28 @@
 ---
-title: "Agent bağlamı"
-description: "Denetlemelere her ajanın ne yapması gerektiğini, ne üretmesi gerektiğini ve asla ne yapmaması gerektiğini söyleyin."
+title: "Agent konteksti"
+description: "Denetimlere her ajanın ne yapması, ne üretmesi ve asla ne yapmaması gerektiğini söyleyin."
 icon: "bot"
 ---
 
-Agent bağlamı, denetlemelere her ajanın ne için var olduğunu, ne üretmesi gerektiğini ve asla ne yapmaması gerektiğini söyler. Failproof AI bu bağlamı agent başına bir agent kontratı olarak depolar.
+Agent konteksti denetimlere her ajanın ne için var olduğunu, ne üretmesi gerektiğini ve ne yapmaması gerektiğini söyler. Failproof AI bu konteksti ajan başına bir ajan sözleşmesi olarak depolar.
 
-Agent bağlamı kuruluşa aittir, tek bir denetlemeye değil. Bunu agent başına bir kez yazarsınız ve kapsamı bu ajanı içeren her model destekli denetleme bunu kullanır.
+Agent konteksti kuruluşa aittir, tek bir denetimi değil. Bunu ajan başına bir kez yazarsınız ve kapsamı o ajana dahil olan her model destekli denetim bunu kullanır.
 
-## Agent bağlamı ekleyin
+## Agent konteksti ekleme
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Analyze → audits** bölümüne gidin, **agents** seçeneğini belirleyin ve oturumları tarafından bildirilen agent kimliğini seçin.
-    2. **add content** veya **edit** seçeneğini belirleyin.
-    3. Ajanın ne için olduğunu, ne üretmesi gerektiğini, "tamamlandı" nın ne anlama geldiğini, ne sıklıkta çalışması gerektiğini ve asla ne yapmaması gerektiğini açıklayın.
-    4. Bağlamı kaydedin, denetleme formuna dönün ve seçilen ajanın kapsanan olarak gösterildiğini onaylayın.
+  <Tab title="Kontrol Paneli">
+    1. **Analiz → denetimler**'e gidin, **ajanlar**ı seçin ve oturumlarından bildirilen ajan kimliğini seçin.
+    2. **İçerik ekle** veya **düzenle**'yi seçin.
+    3. Ajanın ne için olduğunu, ne üretmesi gerektiğini, "tamamlandı"nın ne anlama geldiğini, ne sıklıkta çalışması gerektiğini ve asla ne yapmaması gerektiğini açıklayın.
+    4. Konteksti kaydedin, sonra denetim formuna dönün ve seçilen ajanın kapsanmış olarak gösterildiğini doğrulayın.
 
-    ![Agent amacı, kadansı, çıktıları, tamamlama koşulları ve yasak davranışları eklemek için kullanılan denetleme Agents çekmecesi.](/images/dashboard/agent-context.png)
+    ![Bir ajan için amaç, çalışma sıklığı, çıktılar, tamamlanma koşulları ve yasaklı davranışları eklemek için kullanılan denetim Ajanları çekmecesi.](/images/dashboard/agent-context.png)
 
-    Ayrıca denetleme oluştururken veya düzenlerken **agents** çekmecesinden agent bağlamını ekleyebilir veya düzenleyebilirsiniz. Bağımsız olarak kaydedilir ve hemen her uygulanabilir denetleme için kullanılabilir.
+    Denetim oluştururken veya düzenlerken **ajanlar** çekmecesinden agent konteksti ekleyebilir veya düzenleyebilirsiniz. Bağımsız olarak kaydedilir ve hemen her uygulanabilir denetim için kullanılabilir.
   </Tab>
   <Tab title="CLI">
-    Cloud CLI henüz kontrat komutlarını sunmamaktadır. `audits:read` ve `audits:write` özelliklerine sahip bir anahtarla genel API'yi kullanın:
+    Cloud CLI henüz sözleşme komutlarını göstermemektedir. `audits:read` ve `audits:write` taşıyan bir anahtarla genel API'yi kullanın:
 
     ```bash
     curl -X POST "https://app.befailproof.ai/v1/audits/contracts" \
@@ -31,23 +31,23 @@ Agent bağlamı kuruluşa aittir, tek bir denetlemeye değil. Bunu agent başın
       -d '{
         "agent_id": "nightly-reconciler",
         "enabled": true,
-        "body": "# Purpose\nReconcile yesterday'\''s payouts.\n\n## Outputs\nPublish a signed summary.\n\n## Must not\nNever modify ledger entries."
+        "body": "# Purpose\nReconcile yesterday's payouts.\n\n## Outputs\nPublish a signed summary.\n\n## Must not\nNever modify ledger entries."
       }'
     ```
 
-    `GET /v1/audits/contracts` ile kontratları listeleyin; `GET /v1/audits/contracts/{id}` ile bir kontratı alın. `PUT` ile güncelleme tam bir değiştirmedir ve hem `agent_id` hem de `body` gerektirir.
+    Sözleşmeleri `GET /v1/audits/contracts` ile listeleyin; tek bir sözleşmeyi `GET /v1/audits/contracts/{id}` ile alın. `PUT` ile güncelleme tam bir değişikliktir ve hem `agent_id` hem de `body` gerektirir.
   </Tab>
 </Tabs>
 
-## Faydalı bağlam yazın
+## Yararlı kontekst yazma
 
-Bağlamı 5.000 karakterin altında tutun ve test edilebilir yapın. Faydalı bağlam normalde şunları içerir:
+Konteksti 5.000 karakterin altında tutun ve test edilebilir yapın. Yararlı kontekst normalde aşağıdakileri içerir:
 
-- **Purpose:** ajanın neden var olduğu
-- **Outputs:** üretmesi gereken yapıtlar veya eylemler
-- **Done when:** bir çalıştırmayı başarılı kılan koşul
-- **Cadence:** ne sıklıkta veya ne zaman çalışması gerektiği
-- **Must not:** her zaman kabul edilemez olan eylemler ve sonuçlar
+- **Amaç:** ajanın neden var olduğu
+- **Çıktılar:** üretmesi gereken yapıtlar veya eylemler
+- **Tamamlandı şu zaman:** bir çalışmayı başarılı kılan koşul
+- **Çalışma sıklığı:** ne sıklıkta veya ne zaman çalışması gerektiği
+- **Yapmaması gereken:** her zaman kabul edilemez eylemler ve sonuçlar
 
 ```markdown
 ---
@@ -66,17 +66,17 @@ cadence: Once daily after 02:00 UTC. Never more than once.
 - Modify ledger entries. Report discrepancies instead.
 ```
 
-Agent bağlamı beklenen davranışı belirtir; analize hangi sonuca varması gerektiğini söyleyemez veya hangi kanıtları incelemesi gerektiğini kısıtlayamaz. Bağlamsız ajanlar normal şekilde denetlenir, ancak Failproof AI davranışlarını kuruluşa özgü amaçla değerlendiremez.
+Agent konteksti beklenen davranışı belirtir; analizi sonuca ne ulaşması gerektiğini söyleyemez veya hangi kanıtları inceleyeceğini kısıtlayamaz. Konteksti olmayan ajanlar normalde denetlenir, ancak Failproof AI davranışlarını kuruluşa özgü niyet ile yargılayamaz.
 
-## Agent bağlamını duraklatın veya değiştirin
+## Agent kontekstini duraklatma veya değiştirme
 
-- Denetlemeler onu geçici olarak göz ardı etmesi gerektiğinde agent bağlamını duraklatın. Duraklatma geri alınabilir.
-- Ajanın sorumluluğu değiştiğinde bağlamı düzenleyin. Yeni metin gelecek çalıştırmalara uygulanır.
-- Çalışan bir ajan bağlamını asla kullanıyor gibi görünmediğinde **last matched** seçeneğini kontrol edin. Bu genellikle agent kimliğinin telemetriyle eşleşmediği anlamına gelir.
-- Metni kalıcı olarak yok edilmesi gerektiğinde yalnızca API aracılığıyla silin. Dashboard kasıtlı olarak silme yerine duraklatma sunmaktadır.
+- Denetimler geçici olarak bunu yoksayması gerektiğinde agent kontekstini duraklatın. Duraklatma tersine çevrilebilir.
+- Ajanın sorumluluğu değiştiğinde konteksti düzenleyin. Yeni metin gelecek çalışmalara uygulanır.
+- Çalışan bir ajan hiçbir zaman kontekstini kullanmıyor gibi görünüyorsa **son eşleşme** kontrolü yapın. Bu genellikle ajan kimliğinin telemetri ile eşleşmediği anlamına gelir.
+- Metin kalıcı olarak silinmesi gerektiğinde API aracılığıyla silin. Kontrol paneli kasıtlı olarak silme yerine duraklatmayı sunar.
 
-Her denetleme çalıştırması, kullandığı tam agent-bağlamı anlık görüntüsünü depolar. Mevcut kontrat kaynağını düzenlemek, duraklatmak veya silmek, önceki bulguların temelini yeniden yazmaz.
+Her denetim çalışması, kullanılan tam agent-kontekst anlık görüntüsünü depolar. Geçerli sözleşme kaynağını düzenlemek, duraklatmak veya silmek, önceki bulguların temelini yeniden yazmaz.
 
 <Info>
-  Kontratları okumak için `audits:read` gerekir. Bunları oluşturmak, düzenlemek, duraklatmak veya silmek için `audits:write` gerekir.
+  Sözleşmeleri okumak `audits:read` gerektirir. Bunları oluşturmak, düzenlemek, duraklatmak veya silmek `audits:write` gerektirir.
 </Info>

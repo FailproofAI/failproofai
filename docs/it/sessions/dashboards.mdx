@@ -1,24 +1,24 @@
 ---
 title: "Dashboard"
-description: "Traccia i segnali di affidabilità che contano per un agente o un workflow."
+description: "Traccia i segnali di affidabilità che contano per un agente o un flusso di lavoro."
 icon: "layout-dashboard"
 ---
 
-I dashboard combinano query salvate in una vista operazionale. Costruiscine uno intorno a una decisione che ti aspetti che qualcuno prenda, non intorno a ogni metrica disponibile.
+I dashboard combinano query salvate in una visualizzazione operativa. Costruiscine uno intorno a una decisione che ti aspetti che qualcuno prenda, non intorno a ogni metrica disponibile.
 
-## Costruire un dashboard
+## Crea un dashboard
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Analyze → Queries**, crea o apri una query salvata e convalida il suo risultato.
+    1. Vai su **Analyze → Queries**, crea o apri una query salvata e convalida il risultato.
     2. Seleziona **add to dashboard**, quindi scegli un dashboard esistente o creane uno sotto **Analyze → Dashboards**.
-    3. Apri il dashboard, accedi alla modalità di modifica, disponi i riquadri e salva il layout.
-    4. Ritorna alla query quando hai bisogno di modificare i dati o i filtri dietro un riquadro.
+    3. Apri il dashboard, accedi alla modalità di modifica, disponi le tessere e salva il layout.
+    4. Ritorna alla query quando hai bisogno di cambiare i dati o i filtri dietro una tessera.
 
-    ![Un dashboard composto da query salvate per volume di eventi, errori, latenza e uso di token del modello.](/images/dashboard/dashboard-fleet.png)
+    ![Un dashboard composto da query salvate per volume di eventi, errori, latenza e utilizzo dei token del modello.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    Le operazioni CRUD del dashboard non sono esposte dalla Cloud CLI attuale. Usa la CLI per costruire e verificare la query salvata, quindi aggiungila a un dashboard nell'interfaccia utente.
+    Le operazioni CRUD del dashboard non sono esposte dalla CLI Cloud attuale. Usa la CLI per costruire e verificare la query salvata, quindi aggiungila a un dashboard nell'interfaccia utente.
 
     ```bash
     fp query schema
@@ -28,16 +28,16 @@ I dashboard combinano query salvate in una vista operazionale. Costruiscine uno 
   </Tab>
 </Tabs>
 
-Utili gruppi di dashboard includono:
+I gruppi di dashboard utili includono:
 
-- **Models:** volume, latenza, uso di token, tasso di errore e punteggi di valutazione.
+- **Models:** volume, latenza, utilizzo dei token, tasso di errore e punteggi di valutazione.
 - **Evaluations:** tasso di successo e tendenze dei punteggi per agente o ambiente.
 - **Tools:** volume di chiamate, tasso di errore, durata e chiamate ripetute.
-- **Hooks and policies:** decisioni, negazioni e tasso di corrispondenza delle policy.
-- **Custom workflow metrics:** risultati dai tuoi campi evento personalizzati e SQL.
+- **Hooks and policies:** decisioni, rifiuti e tasso di corrispondenza delle policy.
+- **Custom workflow metrics:** risultati dai tuoi campi di evento personalizzati e SQL.
 
-Inizia con una query salvata, convalida il suo risultato, quindi aggiungilo come riquadro. Mantieni espliciti i filtri di produzione e sviluppo in modo che il traffico di test non nasconda una regressione.
+Inizia con una query salvata, convalida il risultato, quindi aggiungila come tessera. Mantieni i filtri di produzione e sviluppo espliciti in modo che il traffico di test non nasconda una regressione.
 
 <Tip>
-  Assegna a ogni dashboard un proprietario e una domanda di risposta, ad esempio "L'affidabilità di checkout-agent è peggiore rispetto alla settimana scorsa?"
+  Assegna a ogni dashboard un proprietario e una domanda di risposta, come ad esempio "L'affidabilità di checkout-agent è peggiore rispetto a la settimana scorsa?"
 </Tip>

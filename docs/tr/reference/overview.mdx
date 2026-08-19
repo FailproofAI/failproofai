@@ -1,6 +1,6 @@
 ---
 title: "Entegrasyonlar ve referans"
-description: "Desteklenen agent harness'ları, SDK'ları, CLI'ları ve HTTP API'sini bağlayın."
+description: "Desteklenen agent harness'ları, SDK'ları, CLI'ları ve HTTP API'yi bağlayın."
 icon: "braces"
 ---
 
@@ -8,54 +8,54 @@ Agentnizin zaten çalıştığı yere en yakın entegrasyonu seçin.
 
 <Columns cols={2}>
   <Card title="Agent harness'ları" icon="plug-zap" href="/tr/reference/harnesses">
-    Desteklenen kodlama ve otonom agent CLI'ları için hook'ları yükleyin.
+    Desteklenen kodlama ve otonom agent CLI'ları için hook'ları kurun.
   </Card>
   <Card title="Özel agenler" icon="python" href="/tr/reference/python-sdk">
-    Özel agentlerdeki hataları bulmak için izlemeleri enstrüment edin, ardından çalışma zamanınıza önleme eklemek için bize başvurun.
+    Özel agentlerdeki hataları bulacak şekilde trace'leri enstrüman edin, ardından çalışma zamanınıza önleme eklemek için bizimle iletişime geçin.
   </Card>
   <Card title="Yerel dashboard" icon="monitor-cog" href="/tr/reference/local-dashboard">
-    Yerel projeleri, oturumları, politika etkinliğini ve çevrimdışı denetimleri inceleyin.
+    Yerel projeleri, oturumları, politika aktivitesini ve çevrimdışı denetimleri gözden geçirin.
   </Card>
-  <Card title="failproofai CLI" icon="terminal" href="/tr/reference/failproof-cli">
-    Yerel yakalama, hook'lar, politikalar, denetimler, teslimat ve makine durumunu yapılandırın.
+  <Card title="Failproof AI CLI" icon="terminal" href="/tr/reference/failproof-cli">
+    Yerel yakalamaları, hook'ları, politikaları, denetimleri, teslimatı ve makine durumunu yapılandırın.
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/tr/reference/cloud-cli#cli-commands">
     Cloud oturumlarını, denetimleri, sorunları, uyarıları, anahtarları, kullanıcıları ve ayarları sorgulayın ve yönetin.
   </Card>
   <Card title="Evaluator SDK" icon="gauge" href="/tr/reference/evaluator-sdk">
-    FastAPI hizmetiyle tam veya inaktif oturumları puanlayın.
+    Tamamlanmış veya inaktif oturumları FastAPI hizmeti ile puanlayın.
   </Card>
   <Card title="Özel politikalar" icon="shield-plus" href="/tr/reference/policy-sdk">
     İş akışına özgü allow, instruct ve deny kararlarını yazın ve test edin.
   </Card>
-  <Card title="Kendi kendine barındırma" icon="cloud-cog" href="/tr/reference/self-hosting">
+  <Card title="Kendi kendini barındırma" icon="cloud-cog" href="/tr/reference/self-hosting">
     Cloud kontrol düzlemini müşteri tarafından yönetilen bir Kubernetes kümesine dağıtın.
   </Card>
 </Columns>
 
-Oluşturulan [HTTP API referansı](/tr/reference/http-api), genel `/v1` yüzeyini kapsar. El yazısı sayfalar, birden çok uç noktaya yayılan veya bu genel yüzeyin dışındaki yönetim arayüzlerini kullanan iş akışlarını açıklar.
+Oluşturulan [HTTP API referansı](/tr/reference/http-api), genel `/v1` yüzeyini kapsar. El ile yazılmış sayfalar birden çok uç noktaya yayılan veya bu genel yüzeyin dışındaki yönetim arayüzlerini kullanan iş akışlarını açıklar.
 
 ## Bir agent bağlayın ve verileri doğrulayın
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Administration → Keys** (Yönetim → Anahtarlar) açın, `events:add` ve `policies:pull` ile bir anahtar oluşturun ve sırrı kopyalayın.
+    1. **Administration → Keys** sayfasını açın, `events:add` ve `policies:pull` izinlerine sahip bir anahtar oluşturun ve gizli anahtarı kopyalayın.
     2. Entegrasyonu yukarıdaki eşleşen sayfayı kullanarak yapılandırın.
-    3. **Observe → Events** (Gözlemle → Olaylar) açarak olayların geldiğini doğrulayın, ardından **Observe → Sessions** (Gözlemle → Oturumlar) açarak tam çalışımlar oluşturduğunu doğrulayın.
-    4. Entegrasyonun ortamına filtreleyin ve denetimler için gereken model, tool, error ve policy alanları için bir oturumu inceleyin.
+    3. **Observe → Events** sayfasını açarak olayların geldiğini doğrulayın, ardından **Observe → Sessions** sayfasını açarak tam çalışmaları oluşturduğunu doğrulayın.
+    4. Entegrasyonun ortamına göre filtreleyin ve denetimler tarafından gereken model, tool, error ve policy alanlarının bulunduğu bir oturumu inceleyin.
 
-    Anahtar çekmecesiyle başlayın. Seçilen izinler, makinenin etkinlikleri göndermesi ve Cloud tarafından yönetilen politikaları alması gerekip gerekmediğini belirler.
+    Anahtar bölmesi ile başlayın. Seçilen izinler, makinenin olayları gönderebildiğini ve Cloud tarafından yönetilen politikaları alabileceğini belirler.
 
-    ![Etkinlik alımı ve politika teslimat izinleri vermek için kullanılan yeni API anahtar çekmecesi.](/images/dashboard/key-create.png)
+    ![Etkinlik alımı ve politika teslimatı izinleri verilen yeni API anahtar çekmeceği.](/images/dashboard/key-create.png)
 
-    Entegrasyonu bağladıktan sonra, olaylarının beklenen ortamda tam çalışımlara gruplanıp gruplanmadığını doğrulamak için Sessions listesini kullanın.
+    Entegrasyonu bağladıktan sonra, olaylarının beklenen ortamda tam çalışmalara gruplandırıldığını doğrulamak için Sessions listesini kullanın.
 
-    ![Yeni bağlanan bir entegrasyonun tam agent çalışımlarını raporladığını doğrulamak için kullanılan Sessions listesi.](/images/dashboard/sessions-list.png)
+    ![Yeni bağlanan bir entegrasyonun tam agent çalışmaları bildirdiğini doğrulamak için kullanılan Sessions listesi.](/images/dashboard/sessions-list.png)
 
-    Entegrasyonu tam olarak tamamlanmış olarak düşünmeden önce bu oturumlardan birini açın; izleme, denetimlerinizin ihtiyaç duyduğu model, tool, error ve policy kanıtlarını içermelidir.
+    Entegrasyonu tamamlandığı için değerlendirmeden önce bu oturumlardan birini açın; izleme, denetimlerinizin ihtiyaç duyduğu model, tool, error ve policy kanıtlarını içermelidir.
   </Tab>
   <Tab title="CLI">
-    Bir makine anahtarı oluşturun, failproofai daemon'ını bağlayın ve ilk oturumu doğrulayın.
+    Bir makine anahtarı oluşturun, Failproof daemon'ını bağlayın ve ilk oturumu doğrulayın.
 
     ```bash
     fp keys create agent-production \
@@ -71,8 +71,8 @@ Oluşturulan [HTTP API referansı](/tr/reference/http-api), genel `/v1` yüzeyin
     fp events --since 1h --env production --limit 20
     ```
 
-    Başka bir araç sonucu tüketecekse `fp --json sessions ...` kullanın. `--json`, `--org` ve `--base-url` gibi global flag'ler komuttan önce gelmelidir.
+    Başka bir araç sonucu tüketecek olduğunda `fp --json sessions ...` kullanın. `--json`, `--org` ve `--base-url` gibi global bayraklar komuttan önce gelmelidir.
 
-    Yerel komutlar için [failproofai CLI referansına](/tr/reference/failproof-cli) ve `fp` komutları için [Failproof Cloud CLI referansına](/tr/reference/cloud-cli#cli-commands) bakın.
+    Yerel komutlar için [Failproof AI CLI referansını](/tr/reference/failproof-cli), `fp` komutları için [Failproof Cloud CLI referansını](/tr/reference/cloud-cli#cli-commands) görmek için bkz.
   </Tab>
 </Tabs>

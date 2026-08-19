@@ -1,39 +1,39 @@
 ---
 title: "Policies"
-description: "알려진 실패가 반복되기 전에 에이전트 동작을 관찰하고, 안내하거나 차단합니다."
+description: "에이전트 동작을 관찰하고, 안내하거나, 알려진 오류가 반복되기 전에 차단합니다."
 icon: "shield-check"
 ---
 
-정책은 에이전트 훅 이벤트를 평가하고 세 가지 결정 중 하나를 반환합니다:
+Policy는 에이전트 훅 이벤트를 평가하고 세 가지 결정 중 하나를 반환합니다:
 
-- `allow`는 동작을 계속 진행합니다.
-- `instruct`는 에이전트에게 수정 안내를 제공합니다.
-- `deny`는 이유와 함께 동작을 차단합니다.
+- `allow`는 작업을 계속 진행합니다.
+- `instruct`는 에이전트에게 수정 지침을 제공합니다.
+- `deny`는 사유와 함께 작업을 차단합니다.
 
-## 세 가지 정책 인터페이스 활용하기
+## 세 가지 Policy 인터페이스 활용하기
 
 <Tabs>
   <Tab title="대시보드">
-    1. **Observe → policy**로 이동하여 세션의 정책 결정을 필터링하고 검사합니다.
-    2. **Admin → policy editor**로 이동하여 정책을 작성, 검증, 게시, 비활성화하거나 변경 불가능한 버전을 확인합니다.
+    1. **Observe → policy**로 이동하여 세션의 policy 결정을 필터링하고 검토합니다.
+    2. **Admin → policy editor**로 이동하여 policy를 작성, 검증, 게시, 비활성화하거나 변경 불가능한 버전을 검토합니다.
     3. **Admin → enforcement**로 이동하여 머신에 버전과 효과를 할당합니다.
 
-    정책 페이지를 활용하면 정책을 작성하거나 적용 방식을 변경하기 전에 이미 매칭되고 있는 항목을 파악할 수 있습니다.
+    Policy 페이지를 활용해 작성하거나 적용을 변경하기 전에 이미 매칭되고 있는 항목을 파악하세요.
 
-    ![정책 결정 총계와 로컬 및 클라우드 관리 정책 매핑을 보여주는 Policy 페이지.](/images/dashboard/policy-observe.png)
+    ![결정 총계와 로컬 및 클라우드 관리 policy 매핑을 보여주는 Policy 페이지.](/images/dashboard/policy-observe.png)
 
-    에디터는 실패 조건을 소스 코드로 변환하고, 검증한 뒤 변경 불가능한 버전으로 게시하는 곳입니다.
+    편집기는 실패 조건을 소스로 전환하고, 검증한 뒤 변경 불가능한 버전으로 게시하는 곳입니다.
 
-    ![변경 불가능한 정책 버전을 작성하고 게시하는 데 사용되는 Policy 에디터.](/images/dashboard/policy-editor.png)
+    ![변경 불가능한 policy 버전을 작성하고 게시하는 데 사용되는 Policy 편집기.](/images/dashboard/policy-editor.png)
 
-    그런 다음 Enforcement에서 게시된 버전과 observe 또는 enforce 효과를 머신에 할당합니다.
+    Enforcement는 게시된 버전과 관찰 또는 적용 효과를 머신에 할당합니다.
 
-    ![머신 적용 범위와 할당된 정책 버전을 보여주는 Enforcement 플릿.](/images/dashboard/enforcement-fleet.png)
+    ![머신 커버리지와 할당된 policy 버전을 보여주는 Enforcement 플릿.](/images/dashboard/enforcement-fleet.png)
 
-    배포 후 Policy 페이지에서 결정을 다시 확인하여 작성 및 플릿 뷰가 실제 에이전트 활동과 연결되도록 합니다.
+    배포 후 Policy 페이지에서 결정을 다시 확인하여 작성 뷰와 플릿 뷰가 실제 에이전트 활동과 연결되어 있는지 검증하세요.
   </Tab>
   <Tab title="CLI">
-    로컬 정책 설치 및 검증에는 `failproofai`를 사용하세요:
+    로컬 policy 설치 및 검증에는 `failproofai`를 사용하세요:
 
     ```bash
     failproofai policies
@@ -41,23 +41,23 @@ icon: "shield-check"
     failproofai config --status
     ```
 
-    클라우드 세션과 정책 결정이 포함된 이벤트를 찾으려면 `fp`를 사용하세요. 클라우드 정책 작성 및 플릿 배포는 대시보드 워크플로우로 진행됩니다.
+    `fp`를 사용하면 policy 결정이 포함된 클라우드 세션과 이벤트를 찾을 수 있습니다. 클라우드 작성 및 플릿 배포는 대시보드 워크플로우로 유지됩니다.
   </Tab>
 </Tabs>
 
-Failproof AI에서 정책은 세 가지 고유한 인터페이스를 가집니다:
+Failproof AI에서 Policy는 세 가지 독립적인 인터페이스를 가집니다:
 
-1. **결정 분석** — 세션, 대시보드, 감사 기록에서 확인합니다.
-2. **버전 작성** — 내장 규칙, 코드, 또는 정책 에디터를 사용합니다.
-3. **배포 및 적용** — 선택한 머신 전체에 버전을 배포하고 적용합니다.
+1. **결정 분석**: 세션, 대시보드, 감사 로그에서 결정을 확인합니다.
+2. **버전 작성**: 내장 규칙, 코드, 또는 policy 편집기로 버전을 만듭니다.
+3. **배포 및 적용**: 선택한 머신 전체에 버전을 배포하고 적용합니다.
 
-확인된 실패 모드에서 시작하세요. 해당 실패를 식별하는 가장 작은 이벤트 및 도구 매칭을 정의하고, 정상적인 예시와 안전하지 않은 예시를 테스트한 뒤, 적용하기 전에 먼저 관찰하세요.
+확인된 실패 모드에서 시작하세요. 해당 실패를 식별하는 최소한의 이벤트 및 도구 매칭을 정의하고, 정상적인 예시와 위험한 예시를 테스트한 뒤, 적용하기 전에 먼저 관찰하세요.
 
 <Columns cols={2}>
-  <Card title="내장 정책 사용하기" icon="library" href="/ko/policies/builtin">
+  <Card title="내장 policy 사용하기" icon="library" href="/ko/policies/builtin">
     시크릿, 셸, Git, 클라우드, 워크플로우 등 일반적인 위험에 대한 검토된 규칙을 활성화합니다.
   </Card>
-  <Card title="커스텀 정책 작성하기" icon="code-2" href="/ko/policies/custom">
-    JavaScript 또는 TypeScript로 워크플로우에 특화된 결정 로직을 작성합니다.
+  <Card title="커스텀 policy 작성하기" icon="code-2" href="/ko/policies/custom">
+    워크플로우에 특화된 결정을 JavaScript 또는 TypeScript로 표현합니다.
   </Card>
 </Columns>

@@ -1,15 +1,16 @@
 ---
+---
 title: "अपना सेटअप चुनें"
-description: "स्थानीय enforcement, Failproof AI Cloud, या enterprise deployment चुनें।"
+description: "Local enforcement, Failproof AI Cloud, या enterprise deployment चुनें।"
 icon: "waypoints"
 ---
 
 <CardGroup cols={3}>
   <Card title="Local enforcement" icon="laptop">
-    किसी मशीन पर hooks और policies इंस्टॉल करें। इसका उपयोग तब करें जब आपको Cloud में session data भेजे बिना तुरंत guardrails की जरूरत हो।
+    किसी मशीन पर hooks और policies इंस्टॉल करें। इसका उपयोग तब करें जब आपको सेशन डेटा को Cloud में भेजे बिना तत्काल guardrails की आवश्यकता हो।
   </Card>
   <Card title="Failproof AI Cloud" icon="cloud">
-    केंद्रीकृत sessions, audits, ऑनलाइन evaluations, dashboards, alerts, और fleet policy deployment जोड़ें।
+    केंद्रीकृत sessions, audits, online evaluations, dashboards, alerts, और fleet policy deployment जोड़ें।
   </Card>
   <Card title="Enterprise deployment" icon="building-2">
     organization controls, scoped keys, private infrastructure, और deployment-specific security requirements का उपयोग करें।
@@ -18,34 +19,34 @@ icon: "waypoints"
 
 ## अनुशंसित production path
 
-1. transcript capture सक्षम के साथ एक non-production मशीन को कनेक्ट करें।
+1. Transcript capture सक्षम के साथ एक non-production मशीन को कनेक्ट करें।
 2. Cloud में sessions और evaluations को verify करें।
-3. एक ज्ञात failure mode के लिए एक audit बनाएं।
+3. एक ज्ञात failure mode के लिए audit बनाएं।
 4. पहली policy को observe mode में deploy करें।
-5. matches और false positives की समीक्षा करने के बाद production में expand करें।
+5. Matches और false positives की समीक्षा के बाद production में विस्तार करें।
 
-## मशीन को Cloud से कनेक्ट करें
+## एक मशीन को Cloud से कनेक्ट करें
 
 <Tabs>
   <Tab title="Dashboard">
     1. **Administration → Keys** पर जाएं और `events:add` और `policies:pull` के साथ एक key बनाएं।
     2. one-time secret को target मशीन पर कॉपी करें।
-    3. CLI connection command चलाने के बाद, **Admin → enforcement** पर जाएं और पुष्टि करें कि मशीन दिखाई दे रही है।
-    4. **Observe → Events** पर जाएं और पुष्टि करें कि इसका पहला event आ गया है।
+    3. CLI connection command चलाने के बाद, **Admin → enforcement** पर जाएं और पुष्टि करें कि मशीन दिखाई देती है।
+    4. **Observe → Events** पर जाएं और पुष्टि करें कि इसकी पहली event आ गई है।
 
-    key drawer event ingestion और policy delivery के लिए आवश्यक दो grants को दिखाता है।
+    Key drawer उन दो grants को दिखाता है जिनकी एक connected मशीन को आवश्यकता है: event ingestion और policy delivery।
 
-    ![The new API key drawer used to grant event ingestion and policy delivery permissions.](/images/dashboard/key-create.png)
+    ![API key drawer जिसका उपयोग event ingestion और policy delivery permissions को grant करने के लिए किया जाता है।](/images/dashboard/key-create.png)
 
-    कनेक्शन के बाद, मशीन enforcement में अपनी desired और reported policy state के साथ दिखाई देनी चाहिए।
+    Connection के बाद, मशीन को enforcement में अपनी desired और reported policy state के साथ दिखाई देना चाहिए।
 
-    ![The Enforcement fleet with an enrolled machine expanded to show its desired policy state and deployment status.](/images/dashboard/enforcement-fleet.png)
+    ![Enforcement fleet में एक enrolled मशीन को expand किया गया है जो इसकी desired policy state और deployment status को दिखाता है।](/images/dashboard/enforcement-fleet.png)
 
-    पहला आने वाला event पुष्टि करता है कि daemon policy deployment के independently Cloud को data deliver कर सकता है।
+    पहली आने वाली event पुष्टि करती है कि daemon, policy deployment से स्वतंत्र रूप से, Cloud को डेटा deliver कर सकता है।
 
-    ![The live event stream showing recent agent, model, and tool events.](/images/dashboard/events-stream-current.png)
+    ![Live event stream जो हाल के agent, model, और tool events को दिखाता है।](/images/dashboard/events-stream-current.png)
 
-    केवल मशीन और इसके पहले event दोनों दिखाई देने के बाद ही आगे बढ़ें।
+    केवल तब आगे बढ़ें जब मशीन और इसकी पहली event दोनों visible हों।
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -57,12 +58,12 @@ icon: "waypoints"
     failproofai config --status
     ```
 
-    जब transcript content स्थानीय रहना चाहिए तो `--no-transcripts` जोड़ें।
+    जब transcript content को local में रहना चाहिए तो `--no-transcripts` जोड़ें।
   </Tab>
 </Tabs>
 
-Cloud से कनेक्ट करना event ingestion और policy delivery को independently verify करता है। एक key इसलिए valid हो सकता है लेकिन एक आवश्यक permission missing हो सकता है। यह देखने के लिए `failproofai config --status` का उपयोग करें कि कौन सी capability configured है।
+Cloud से कनेक्ट करने से event ingestion और policy delivery को स्वतंत्र रूप से verify किया जाता है। एक key इसलिए valid हो सकती है लेकिन एक आवश्यक permission की कमी हो सकती है। कौन सी capability configured है, यह देखने के लिए `failproofai config --status` का उपयोग करें।
 
 <Info>
-  Cloud setup local credentials केवल तभी लिखता है जब relevant capability सफल हो। एक failed verification मशीन को connected दिखता नहीं छोड़ता जब यह connected न हो।
+  Cloud setup local credentials केवल तब लिखता है जब प्रासंगिक capability सफल हो जाती है। एक failed verification एक मशीन को ऐसा दिखने नहीं देता कि वह connected है जब यह नहीं है।
 </Info>

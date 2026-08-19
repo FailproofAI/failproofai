@@ -1,19 +1,20 @@
 ---
+---
 title: "Politiche personalizzate"
-description: "Scrivi una politica per una modalità di errore unica nel flusso di lavoro del tuo agente."
+description: "Scrivi una policy per una modalità di errore unica nel flusso di lavoro del tuo agente."
 icon: "shield-plus"
 ---
 
-Crea un file che termina con `policies.js`, `policies.mjs` o `policies.ts` sotto `.failproofai/policies/`. I file di convenzione si caricano automaticamente a livello di progetto e utente.
+Crea un file che termina con `policies.js`, `policies.mjs`, o `policies.ts` under `.failproofai/policies/`. I file di convention si caricano automaticamente a livello di progetto e utente.
 
-## Testa la politica prima della pubblicazione su Cloud
+## Testa la policy prima della pubblicazione su Cloud
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Installa la politica personalizzata su una macchina di test e attiva sia un'azione corrispondente che un non-match legittimo.
+    1. Installa la policy personalizzata su una macchina di test e attiva sia un'azione corrispondente che una non-corrispondenza legittima.
     2. Vai a **Observe → policy** e confronta le due decisioni.
     3. Apri ogni sessione collegata e verifica che il payload dell'evento contenga prove sufficienti per la regola.
-    4. Quando il comportamento è corretto, sposta il codice sorgente esaminato in **Admin → policy editor** e pubblica una versione.
+    4. Quando il comportamento è corretto, sposta il codice revisionato in **Admin → policy editor** e pubblica una versione.
 
   </Tab>
   <Tab title="CLI">
@@ -23,7 +24,7 @@ Crea un file che termina con `policies.js`, `policies.mjs` o `policies.ts` sotto
     failproofai policies
     ```
 
-    I file di convenzione sotto `.failproofai/policies/` si caricano senza `--custom`. Mantieni un comando di installazione esplicito in CI quando la convalida deve non riuscire su un modulo non valido.
+    I file di convention under `.failproofai/policies/` si caricano senza `--custom`. Mantieni un comando di installazione esplicito in CI quando la validazione deve fallire su un modulo rotto.
   </Tab>
 </Tabs>
 
@@ -45,28 +46,28 @@ customPolicies.add({
 });
 ```
 
-Questo corrisponde a `production/config.yml`, `/srv/production/config.yml`, `/srv/production` e `C:\\production\\config.yml` sia per `Write` che per `Edit`. Non corrisponde a nomi come `production-backup` perché `production` deve essere un segmento di percorso completo.
+Questo corrisponde a `production/config.yml`, `/srv/production/config.yml`, `/srv/production`, e `C:\\production\\config.yml` sia per `Write` che per `Edit`. Non corrisponde a nomi come `production-backup` perché `production` deve essere un segmento di percorso completo.
 
-Convalida e installa un file esplicito:
+Valida e installa un file esplicito:
 
 ```bash
 failproofai policies --install --custom ./security.policies.ts
 ```
 
-Il contesto della politica include il tipo di evento, il payload normalizzato, il nome e l'input dello strumento, i metadati della sessione, i parametri e la CLI di origine quando disponibile.
+Il contesto della policy include il tipo di evento, il payload normalizzato, il nome e l'input dello strumento, i metadati della sessione, i parametri e la CLI di origine quando disponibile.
 
-## Testa i percorsi di errore
+## Testa i percorsi di fallimento
 
-Esegui la convalida dopo aver modificato il file di entry o qualsiasi modulo locale che importa:
+Esegui la validazione dopo aver modificato il file di entry o qualsiasi modulo locale che importa:
 
 ```bash
 failproofai policies --install --custom ./security.policies.ts --scope project
 ```
 
-Il percorso CLI rigoroso non riesce per file mancanti, errori di sintassi, importazioni non risolte, eccezioni di livello superiore e timeout del caricamento del modulo. Al momento dell'applicazione, un file personalizzato non valido viene registrato e ignorato in modo che le politiche integrate possano continuare. Tratta qualsiasi avviso di caricamento come una perdita dell'applicazione prevista e inviail una notifica di allarme nel caso.
+Il percorso CLI strict fallisce per file mancanti, errori di sintassi, import non risolti, eccezioni di livello superiore e timeout di caricamento del modulo. Al momento dell'enforcement, un file personalizzato rotto viene registrato e saltato in modo che le policy built-in possano continuare. Considera qualsiasi avviso di caricamento come una perdita dell'enforcement atteso e avvisa su di esso nei log di produzione.
 
-Usa nomi univoci a livello globale tra politiche esplicite, di convenzione e gestite da Cloud. Mantieni le funzioni di politica deterministiche, associa le chiamate esterne con timeout brevi e restituisci un `allow`, `instruct` o `deny` intenzionale su ogni percorso.
+Usa nomi globalmente unici tra le policy esplicite, di convention e gestite da Cloud. Mantieni le funzioni di policy deterministiche, limita le chiamate esterne con timeout brevi e restituisci un `allow`, `instruct`, o `deny` intenzionale su ogni percorso.
 
 <Warning>
-  Una politica personalizzata è codice di applicazione. Testa campi mancanti, nomi di strumenti alternativi e input non valido—non solo la corrispondenza prevista.
+  Una policy personalizzata è codice di enforcement. Testa i campi mancanti, i nomi di strumenti alternativi e gli input malformati—non solo la corrispondenza attesa.
 </Warning>

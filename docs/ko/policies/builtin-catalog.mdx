@@ -1,14 +1,14 @@
 ---
 title: "내장 정책 카탈로그"
-description: "Failproof AI의 모든 내장 정책과 각 정책의 트리거, 권장 상태, 설정 가능한 파라미터를 확인하세요."
+description: "Failproof AI의 모든 내장 정책, 트리거, 권장 상태 및 설정 가능한 파라미터를 확인하세요."
 icon: "list-checks"
 ---
 
-설치된 패키지가 정책 가용성의 기준입니다. 업그레이드할 때마다 `failproofai policies`를 실행하세요. 카탈로그 항목과 동작은 패키지 버전에 따라 변경될 수 있습니다.
+설치된 패키지가 정책 가용성의 기준이 됩니다. 카탈로그 항목과 동작이 패키지 버전에 따라 변경될 수 있으므로, 업그레이드할 때마다 `failproofai policies`를 실행하세요.
 
-## 권장 기본 설정
+## 권장 기준 설정
 
-가이드 설정의 권장 항목을 선택하면 시크릿 마스킹, 환경 변수 보호, 자기 보호, 치명적 명령 차단, 보호 브랜치 안전 정책이 활성화됩니다.
+가이드 설정의 권장 선택 항목은 현재 시크릿 새니타이저, 환경 보호, 자기 보호, 치명적 명령 차단, 보호 브랜치 안전 기능을 활성화합니다:
 
 ```text
 sanitize-jwt                 sanitize-api-keys
@@ -21,78 +21,78 @@ block-rm-rf                  block-push-master
 block-force-push
 ```
 
-권장 항목은 의도적으로 **전체 활성화**보다 범위가 좁습니다. 인프라 및 워크플로 정책은 정상적인 작업을 방해할 수 있으므로, 필요한 저장소와 머신에 한해 선택적으로 활성화하세요.
+권장 항목은 의도적으로 **전체** 설정보다 좁게 구성되어 있습니다. 인프라 및 워크플로 정책은 유효한 작업을 방해할 수 있으므로, 필요한 저장소와 머신에 한해 활성화해야 합니다.
 
-## 시크릿 및 환경 변수
+## 시크릿 및 환경
 
-| 정책 | 트리거 | 동작 |
+| 정책 | 트리거 | 결과 |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | 모델이 보기 전에 도구 출력에서 JWT를 마스킹합니다. |
-| `sanitize-api-keys` | `PostToolUse` | OpenAI, Anthropic, GitHub, AWS, Stripe, Google의 일반적인 API 키를 마스킹합니다. |
-| `sanitize-connection-strings` | `PostToolUse` | 자격증명이 포함된 데이터베이스 연결 문자열을 마스킹합니다. |
-| `sanitize-private-key-content` | `PostToolUse` | PEM 형식의 개인 키 본문을 마스킹합니다. |
-| `sanitize-bearer-tokens` | `PostToolUse` | Authorization Bearer 토큰을 마스킹합니다. |
-| `protect-env-vars` | 셸 도구에 대한 `PreToolUse` | 환경 변수를 덤프하는 명령을 차단합니다. |
+| `sanitize-jwt` | `PostToolUse` | 모델이 보기 전에 도구 출력에서 JWT를 제거합니다. |
+| `sanitize-api-keys` | `PostToolUse` | OpenAI, Anthropic, GitHub, AWS, Stripe, Google의 주요 키를 제거합니다. |
+| `sanitize-connection-strings` | `PostToolUse` | 자격 증명이 포함된 데이터베이스 연결 문자열을 제거합니다. |
+| `sanitize-private-key-content` | `PostToolUse` | PEM 프라이빗 키 본문을 제거합니다. |
+| `sanitize-bearer-tokens` | `PostToolUse` | 인증 bearer 토큰을 제거합니다. |
+| `protect-env-vars` | 셸 도구에서 `PreToolUse` | 환경 변수를 출력하는 명령을 차단합니다. |
 | `block-env-files` | `PreToolUse` | `.env` 파일의 읽기 및 쓰기를 차단합니다. |
-| `block-read-outside-cwd` | 읽기, glob, grep 또는 셸 도구에 대한 `PreToolUse` | 세션 작업 디렉토리 외부의 읽기를 차단합니다. |
-| `block-secrets-write` | 쓰기 도구에 대한 `PreToolUse` | 일반적인 시크릿 키 및 자격증명 파일명에 대한 쓰기를 차단합니다. |
+| `block-read-outside-cwd` | 읽기, glob, grep 또는 셸 도구에서 `PreToolUse` | 읽기 작업을 세션 작업 디렉토리 내로 제한합니다. |
+| `block-secrets-write` | 쓰기 도구에서 `PreToolUse` | 일반적인 시크릿 키 및 자격 증명 파일명에 대한 쓰기를 차단합니다. |
 
-## 위험한 명령 및 인프라
+## 위험 명령 및 인프라
 
-| 정책 | 트리거 | 동작 |
+| 정책 | 트리거 | 결과 |
 | --- | --- | --- |
-| `block-self-pause` | `PreToolUse`, `PermissionRequest` | 에이전트가 자체 실행 제어를 일시 중지하는 것을 방지합니다. |
-| `block-sudo` | `PreToolUse`, `PermissionRequest` | allow 패턴이 일치하지 않는 한 `sudo`를 차단합니다. |
-| `block-curl-pipe-sh` | `PreToolUse` | 다운로드된 스크립트를 셸로 직접 파이프하는 것을 차단합니다. |
+| `block-self-pause` | `PreToolUse`, `PermissionRequest` | 에이전트가 자체 적용을 일시 중지하지 못하도록 방지합니다. |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` | 허용 패턴이 일치하지 않는 한 `sudo`를 차단합니다. |
+| `block-curl-pipe-sh` | `PreToolUse` | 다운로드한 스크립트를 셸에 직접 파이프하는 것을 차단합니다. |
 | `block-rm-rf` | `PreToolUse` | 치명적인 재귀 삭제 패턴을 차단합니다. |
-| `block-failproofai-commands` | `PreToolUse` | 에이전트가 Failproof AI를 변경하거나 제거하는 것을 방지합니다. |
-| `block-kubectl` | `PreToolUse` | Kubernetes 명령을 제어합니다. |
-| `block-terraform` | `PreToolUse` | Terraform 및 OpenTofu 명령을 제어합니다. |
-| `block-aws-cli` | `PreToolUse` | AWS CLI 명령을 제어합니다. |
-| `block-gcloud` | `PreToolUse` | Google Cloud CLI 명령을 제어합니다. |
-| `block-az-cli` | `PreToolUse` | Azure CLI 명령을 제어합니다. |
-| `block-helm` | `PreToolUse` | Helm 명령을 제어합니다. |
-| `block-gh-pipeline` | `PreToolUse` | GitHub CLI의 워크플로, 실행, 병합, 릴리스, 캐시, 시크릿 변경 작업을 제어합니다. |
+| `block-failproofai-commands` | `PreToolUse` | 에이전트가 Failproof AI를 변경하거나 제거하지 못하도록 방지합니다. |
+| `block-kubectl` | `PreToolUse` | Kubernetes 명령을 제한합니다. |
+| `block-terraform` | `PreToolUse` | Terraform 및 OpenTofu 명령을 제한합니다. |
+| `block-aws-cli` | `PreToolUse` | AWS CLI 명령을 제한합니다. |
+| `block-gcloud` | `PreToolUse` | Google Cloud CLI 명령을 제한합니다. |
+| `block-az-cli` | `PreToolUse` | Azure CLI 명령을 제한합니다. |
+| `block-helm` | `PreToolUse` | Helm 명령을 제한합니다. |
+| `block-gh-pipeline` | `PreToolUse` | GitHub CLI 워크플로, 실행, 병합, 릴리스, 캐시, 시크릿 등 변경 작업을 제한합니다. |
 
 ## Git 및 데이터베이스 안전
 
-| 정책 | 트리거 | 동작 |
+| 정책 | 트리거 | 결과 |
 | --- | --- | --- |
 | `block-push-master` | `PreToolUse` | 설정된 보호 브랜치로의 직접 푸시를 차단합니다. |
 | `block-force-push` | `PreToolUse` | 강제 푸시를 차단합니다. 현재 구현에서 `--force-with-lease`는 허용됩니다. |
 | `block-work-on-main` | `PreToolUse` | 보호 브랜치에서의 커밋 및 병합을 차단합니다. |
-| `warn-git-amend` | `PreToolUse` | `--amend`로 커밋을 덮어쓰기 전에 경고합니다. |
+| `warn-git-amend` | `PreToolUse` | `--amend`로 커밋을 재작성하기 전에 경고합니다. |
 | `warn-git-stash-drop` | `PreToolUse` | 스태시를 영구적으로 삭제하거나 초기화하기 전에 경고합니다. |
-| `warn-all-files-staged` | `PreToolUse` | `git add -A`, `git add .`, `git add --all`과 같이 광범위한 스테이징 전에 경고합니다. |
-| `warn-destructive-sql` | `PreToolUse` | 인식된 데이터베이스 클라이언트를 통해 `WHERE` 없이 `DROP`, `TRUNCATE`, `DELETE`를 실행할 때 경고합니다. |
-| `warn-schema-alteration` | `PreToolUse` | 인식된 `ALTER TABLE` 컬럼 변경 및 이름 변경 작업 시 경고합니다. |
+| `warn-all-files-staged` | `PreToolUse` | `git add -A`, `git add .`, `git add --all`과 같이 광범위한 스테이징 시 경고합니다. |
+| `warn-destructive-sql` | `PreToolUse` | 인식된 데이터베이스 클라이언트를 통해 `WHERE` 없이 `DROP`, `TRUNCATE`, `DELETE` 실행 시 경고합니다. |
+| `warn-schema-alteration` | `PreToolUse` | 인식된 `ALTER TABLE` 컬럼 및 이름 변경 작업 시 경고합니다. |
 
-## 패키지, 시스템 동작, 에이전트 루프
+## 패키지, 시스템 동작 및 에이전트 루프
 
-| 정책 | 트리거 | 동작 |
+| 정책 | 트리거 | 결과 |
 | --- | --- | --- |
-| `warn-package-publish` | `PreToolUse` | 패키지 레지스트리에 배포하기 전에 경고합니다. |
+| `warn-package-publish` | `PreToolUse` | 패키지 레지스트리에 게시하기 전에 경고합니다. |
 | `warn-global-package-install` | `PreToolUse` | 전역 패키지 설치 전에 경고합니다. |
 | `prefer-package-manager` | `PreToolUse` | 허용된 패키지 매니저를 사용하도록 에이전트에 지시합니다. |
-| `warn-large-file-write` | 쓰기 도구에 대한 `PreToolUse` | 설정된 파일 크기 임계값을 초과할 때 경고합니다. |
+| `warn-large-file-write` | 쓰기 도구에서 `PreToolUse` | 설정된 파일 크기 임계값을 초과할 경우 경고합니다. |
 | `warn-background-process` | `PreToolUse` | 분리되거나 장시간 실행되는 백그라운드 프로세스 패턴 시 경고합니다. |
-| `warn-repeated-tool-calls` | `PreToolUse` | 동일한 도구 호출이 세 번 이상 반복될 때 경고합니다. |
+| `warn-repeated-tool-calls` | `PreToolUse` | 동일한 도구 호출이 세 번 이상 반복될 경우 경고합니다. |
 
 ## 작업 종료 워크플로
 
-이 정책들은 호환되는 `Stop` 이벤트를 방출하는 하네스가 필요합니다.
+이 정책들은 호환 가능한 `Stop` 이벤트를 발생시키는 하네스가 필요합니다.
 
-| 정책 | 동작 |
+| 정책 | 결과 |
 | --- | --- |
-| `require-commit-before-stop` | 추적된 변경 사항이 커밋되지 않은 상태에서 완료를 거부합니다. |
-| `require-push-before-stop` | 로컬에만 존재하는 커밋이 있을 때 완료를 거부합니다. |
+| `require-commit-before-stop` | 추적된 작업이 커밋되지 않은 상태로 남아 있으면 완료를 거부합니다. |
+| `require-push-before-stop` | 커밋이 로컬에만 존재하는 경우 완료를 거부합니다. |
 | `require-pr-before-stop` | 현재 브랜치에 대한 풀 리퀘스트를 요구합니다. |
-| `require-no-conflicts-before-stop` | 설정된 베이스 브랜치와의 클린 머지를 요구합니다. |
+| `require-no-conflicts-before-stop` | 설정된 베이스 브랜치와의 충돌 없는 병합을 요구합니다. |
 | `require-ci-green-before-stop` | 현재 HEAD의 CI 검사가 성공적으로 완료되어야 합니다. |
 
 ## 파라미터 참조
 
-선택한 스코프의 `policyParams` 객체 아래에 파라미터를 설정합니다. 타입은 각 정책에서 검증됩니다.
+선택된 스코프의 `policyParams` 객체 아래에서 파라미터를 설정합니다. 타입은 각 정책에서 유효성 검사합니다.
 
 | 정책 | 파라미터 | 타입 및 기본값 |
 | --- | --- | --- |
@@ -125,5 +125,5 @@ block-force-push
 ```
 
 <Warning>
-  allow 패턴은 에이전트가 수행할 수 있는 작업의 범위를 넓힙니다. 플릿 전체에 배포하기 전에 대상 하네스에서 정확한 토큰화 및 명령 변형을 테스트하세요.
+  허용 패턴은 에이전트가 수행할 수 있는 작업 범위를 넓힙니다. 플릿 전체에 배포하기 전에 대상 하네스에서 정확한 토큰화 및 명령 변형을 테스트하세요.
 </Warning>

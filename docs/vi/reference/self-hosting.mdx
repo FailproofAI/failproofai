@@ -1,69 +1,69 @@
 ---
 title: "Tự lưu trữ Failproof AI Cloud"
-description: "Triển khai mặt phẳng điều khiển Failproof AI trên một cụm Kubernetes do khách hàng quản lý."
+description: "Triển khai mặt phẳng điều khiển Failproof AI trên cụm Kubernetes được quản lý bởi khách hàng."
 icon: "cloud-cog"
 ---
 
 <Note>
-  Tự lưu trữ là một triển khai Enterprise. [Liên hệ với Failproof AI](mailto:support@befailproof.ai) để lấy giấy phép enterprise.
+  Tự lưu trữ là một triển khai Enterprise. [Liên hệ với Failproof AI](mailto:support@befailproof.ai) để nhận giấy phép enterprise.
 </Note>
 
-## Yêu cầu tiên quyết
+## Điều kiện tiên quyết
 
 - Kubernetes 1.27 hoặc mới hơn với quyền truy cập cluster-admin
-- `kubectl` có hỗ trợ Kustomize
+- `kubectl` với hỗ trợ Kustomize
 - Helm 3
-- Quyền truy cập vào các image riêng tư `ghcr.io/agenteye-enterprise`
+- Quyền truy cập vào các hình ảnh riêng tư `ghcr.io/agenteye-enterprise`
 - Hai tên miền DNS: một cho bảng điều khiển và một cho ingest
-- Bộ nhớ lưu trữ liên tục cho PostgreSQL và ClickHouse
-- cert-manager và Traefik, hoặc cơ sở hạ tầng nhập và chứng chỉ tương đương được điều chỉnh vào overlay của bạn
+- Bộ lưu trữ bền vững cho PostgreSQL và ClickHouse
+- cert-manager và Traefik, hoặc cơ sở hạ tầng ingress và chứng chỉ tương đương được điều chỉnh vào overlay của bạn
 - SMTP cho đăng nhập OTP sản xuất và thông báo
 
-Cây mã nguồn cung cấp một overlay hướng tới AWS/EKS và một overlay GCP/GKE riêng biệt. Không kết hợp các hướng dẫn chứng chỉ, bộ cân bằng tải hoặc sao lưu của chúng: GKE sử dụng DNS-01, GCS và cấu hình tự động mở rộng riêng của nó.
+Cây mã nguồn cung cấp một overlay hướng tới AWS/EKS và một overlay GCP/GKE riêng biệt. Không kết hợp các hướng dẫn chứng chỉ, cân bằng tải hoặc sao lưu của chúng: GKE sử dụng cấu hình DNS-01, GCS và tự động mở rộng riêng của nó.
 
-## Trình tự triển khai
+## Chuỗi triển khai
 
 <Steps>
   <Step title="Chuẩn bị cụm">
-    Cài đặt cert-manager và các bộ điều khiển ingress công khai/bảng điều khiển, xác minh các bộ cân bằng tải của chúng, sau đó tạo không gian tên, thông tin xác thực kéo image, thông tin xác thực cơ sở dữ liệu, khóa admin khởi động và bí mật xác thực/SMTP.
+    Cài đặt cert-manager và các bộ điều khiển ingress công khai/bảng điều khiển, xác minh các bộ cân bằng tải của chúng, sau đó tạo không gian tên, thông tin xác thực kéo hình ảnh, thông tin xác thực cơ sở dữ liệu, khóa bootstrap admin và bí mật xác thực/SMTP.
   </Step>
-  <Step title="Cấu hình các miền công khai">
-    Đặt `INGEST_DOMAIN` và `DASHBOARD_DOMAIN` trong tệp môi trường miền được tạo của overlay và tạo bản ghi DNS trỏ đến các bộ cân bằng tải phù hợp.
+  <Step title="Cấu hình miền công khai">
+    Đặt `INGEST_DOMAIN` và `DASHBOARD_DOMAIN` trong tệp môi trường miền được tạo của overlay và tạo bản ghi DNS trỏ tới các bộ cân bằng tải phù hợp.
   </Step>
   <Step title="Áp dụng và xác minh một overlay nền tảng">
-    Sử dụng overlay customer/EKS hoặc GCP. Kiểm tra đầu ra Kustomize được hiển thị, áp dụng nó và xác nhận tất cả các khối lượng công việc và chứng chỉ đạt đến trạng thái dự kiến trước khi đăng ký máy.
+    Sử dụng overlay customer/EKS hoặc GCP. Kiểm tra đầu ra Kustomize được hiển thị, áp dụng nó và xác nhận tất cả các khối lượng công việc và chứng chỉ đạt trạng thái dự định trước khi đăng ký máy.
   </Step>
   <Step title="Khởi động quyền truy cập và ingest">
-    Đăng nhập với tư cách là admin được bảo vệ, tạo khóa máy phạm vi tổ chức và gửi một phiên kiểm tra nhỏ thông qua điểm cuối ingest công khai.
+    Đăng nhập với tư cách là quản trị viên được bảo vệ, tạo khóa máy có phạm vi tổ chức và gửi một phiên kiểm tra nhỏ qua điểm cuối ingest công khai.
   </Step>
 </Steps>
 
-## Các dịch vụ bắt buộc và tùy chọn
+## Dịch vụ bắt buộc và tùy chọn
 
 | Thành phần | Yêu cầu |
 | --- | --- |
-| ClickHouse | Bắt buộc. Máy chủ từ chối khởi động mà không có kho sự kiện chuẩn của nó. |
-| PostgreSQL | Bắt buộc cho người dùng, tổ chức, các đối tượng được lưu và trạng thái mặt phẳng điều khiển. |
+| ClickHouse | Bắt buộc. Máy chủ từ chối khởi động mà không có kho sự kiện chính tắc của nó. |
+| PostgreSQL | Bắt buộc cho người dùng, tổ chức, các đối tượng đã lưu và trạng thái mặt phẳng điều khiển. |
 | Redis | Tùy chọn. Máy chủ và bảng điều khiển giảm xuống hành vi được hỗ trợ bởi cơ sở dữ liệu khi không khả dụng. |
-| SMTP | Tùy chọn cho phát triển, bắt buộc cho OTP email sản xuất và phân phối thông báo. |
+| SMTP | Tùy chọn cho phát triển, bắt buộc cho OTP email sản xuất và giao hàng thông báo. |
 | Evaluator | Tùy chọn. Đánh giá tự động vẫn bị vô hiệu hóa mà không có `EVALUATOR_ENDPOINT`. |
-| Assistant/audit LLM | Tùy chọn. Các tính năng hỗ trợ và kiểm toán được hỗ trợ LLM vẫn ở chế độ trơ khi không có kết nối LLM được định cấu hình. |
-| Sao lưu bộ nhớ đối tượng | Được đề xuất mạnh mẽ cho các lưu trữ sao lưu PostgreSQL và ClickHouse. |
+| Assistant/audit LLM | Tùy chọn. Các tính năng hỗ trợ và kiểm toán được hỗ trợ LLM vẫn ở trạng thái không hoạt động cho đến khi kết nối LLM được cấu hình. |
+| Sao lưu lưu trữ đối tượng | Được đề xuất mạnh mẽ cho các lưu trữ sao lưu PostgreSQL và ClickHouse. |
 
-### Dung lượng kiểm toán và phân phối lỗi
+### Dung lượng kiểm toán và giao hàng thất bại
 
-Chạy kiểm toán trên triển khai audit-agent chuyên dụng khi có sẵn. Mỗi pod audit-agent chấp nhận một cuộc điều tra theo mặc định; mở rộng quy mô thông lượng với bản sao thay vì tăng tính đồng quy trên mỗi pod mà không cũng tăng bộ nhớ. Máy chủ có thể gửi kiểm toán đồng thời `server replicas × AUDIT_WORKERS`, vì vậy dung lượng người gửi phải đủ lớn để lấp đầy hạm đội audit-agent.
+Chạy kiểm toán trên triển khai audit-agent chuyên dụng khi có sẵn. Mỗi pod audit-agent chấp nhận một cuộc điều tra theo mặc định; quy mô thông lượng với các bản sao thay vì tăng đồng thời trên mỗi pod mà không tăng bộ nhớ. Máy chủ có thể gửi các kiểm toán `server replicas × AUDIT_WORKERS` đồng thời, vì vậy dung lượng dispatcher phải đủ lớn để lấp đầy đội audit-agent.
 
-Khi mọi vị trí audit-agent bận, một cuộc kiểm toán chờ và thử lại lên tới một phần tư chu kỳ của nó, giới hạn ở sáu giờ. Nếu không có vị trí nào trở nên khả dụng, lần chạy hoàn thành mà không có kết quả và gửi email lỗi. Các lỗi "bận" lặp đi lặp lại gọi để có thêm bản sao audit-agent hoặc các cố gắng lịch được phân tách rộng hơn. Các lỗi "đang tắt" lặp lại cho biết các pod không ổn định hoặc một rollout vòng lặp thay vì dung lượng không đủ.
+Khi mọi khe audit-agent bận rộn, một kiểm toán chờ và thử lại lên tới một phần tư chu kỳ của nó, có giới hạn là sáu giờ. Nếu không có khe nào trở nên khả dụng, bài chạy hoàn tất mà không có phát hiện và gửi email lỗi. Các lỗi "bận rộn" lặp lại gọi cho nhiều bản sao audit-agent hoặc các neo lịch biểu cách xa nhau hơn. Các lỗi "tắt xuống" lặp lại cho biết các pod không ổn định hoặc một rollout vòng lặp thay vì dung lượng không đủ.
 
-Thông báo lỗi yêu cầu kênh email được bật và SMTP. Chúng sử dụng người nhận kiểm toán, sau đó quay lại `alerts.email_default_recipients` khi kiểm toán không có kênh email.
+Thông báo lỗi yêu cầu một kênh email được bật và SMTP. Chúng sử dụng những người nhận kiểm toán, sau đó quay lại `alerts.email_default_recipients` khi kiểm toán không có kênh email.
 
 ## Xác minh triển khai
 
 <Tabs>
   <Tab title="Bảng điều khiển">
-    1. Mở miền bảng điều khiển đã cấu hình, hoàn thành luồng OTP admin và xác nhận tên và slug tổ chức.
-    2. Đi tới **Administration → Keys** và tạo khóa máy có phạm vi hẹp.
+    1. Mở miền bảng điều khiển được cấu hình, hoàn thành luồng OTP quản trị viên và xác nhận tên và slug tổ chức.
+    2. Chuyển đến **Administration → Keys** và tạo khóa máy có phạm vi hẹp.
     3. Gửi một phiên kiểm tra, sau đó xác nhận nó trong **Observe → Events** và **Observe → Sessions**.
     4. Kiểm tra một kênh cảnh báo và, khi được cấu hình, một đánh giá thủ công và kiểm toán.
   </Tab>
@@ -84,21 +84,21 @@ Thông báo lỗi yêu cầu kênh email được bật và SMTP. Chúng sử d�
 
 ## Xác thực và email
 
-Bảng điều khiển sử dụng email và mã một lần. Khi SMTP không có, các triển khai phát triển ghi mã OTP vào đầu ra máy chủ. Khi `SMTP_HOST` được đặt, tên người dùng, mật khẩu và người gửi được yêu cầu như một nhóm hoặc máy chủ từ chối khởi động.
+Bảng điều khiển sử dụng email và mã một lần. Khi SMTP không có, các triển khai phát triển ghi các mã OTP vào đầu ra máy chủ. Khi `SMTP_HOST` được đặt, tên người dùng, mật khẩu và người gửi được yêu cầu như một nhóm hoặc máy chủ từ chối khởi động.
 
-`SMTP_TLS` là một boolean. Giao vận được mã hóa được hỗ trợ là STARTTLS, thường ở cổng 587; SMTPS ngầm trên cổng 465 không được hỗ trợ bởi vận chuyển máy chủ hiện tại.
+`SMTP_TLS` là một giá trị boolean. Vận chuyển được mã hóa được hỗ trợ là STARTTLS, thường là cổng 587; SMTPS ngầm trên cổng 465 không được hỗ trợ bởi vận chuyển máy chủ hiện tại.
 
-Đặt URL bảng điều khiển công khai một cách chính xác vì OTP, cảnh báo, sự cố và email kiểm toán sử dụng nó cho các liên kết sâu. Thành viên tổ chức kiểm soát ai có thể yêu cầu mã; mỗi tổ chức có thể hạn chế thêm đăng nhập thành viên của riêng nó trong **Administration → Settings**.
+Đặt URL bảng điều khiển công khai chính xác vì OTP, cảnh báo, sự cố và email kiểm toán sử dụng nó cho các liên kết sâu. Kỳ lạ về thành viên tổ chức kiểm soát người có thể yêu cầu mã; mỗi tổ chức có thể hạn chế thêm nữa đăng nhập thành viên của riêng nó trong **Administration → Settings**.
 
-## Yêu cầu đa thuê
+## Yêu cầu đa người thuê
 
-Trước khi tạo một tổ chức thứ hai, hãy cấu hình một bí mật dẫn xuất ClickHouse tổ chức mạnh mẽ và ổn định, và giữ nó giống hệt nhau trên tất cả các bản sao máy chủ. Xoay nó mà không có một cuộc di chuyển được phối hợp có thể làm mồ côi người dùng ClickHouse dành riêng cho tổ chức.
+Trước khi tạo tổ chức thứ hai, hãy cấu hình một chìa khóa dẫn xuất ClickHouse tổ chức mạnh mẽ và ổn định và giữ nó giống nhau trên tất cả các bản sao máy chủ. Xoay nó mà không cần di chuyển được phối hợp có thể làm mồ côi các người dùng ClickHouse dành riêng cho tổ chức.
 
-Giữ trình nghe admin instance ở bên trong. Bảng điều khiển toán tử được cung cấp là opt-in và được thiết kế cho `kubectl port-forward`, không phải ingress công khai. Kích hoạt nó yêu cầu khóa API mạnh riêng của nó, hộp thư siêu quản trị viên và phân phối thừa số thứ hai SMTP đang hoạt động.
+Giữ trình nghe quản trị viên instance ở bên trong. Bảng điều khiển toán tử được cung cấp là tùy chọn và được thiết kế cho `kubectl port-forward`, không phải ingress công khai. Bật nó yêu cầu khóa API mạnh riêng của nó, hộp thư siêu quản trị viên và giao hàng xác thực hai yếu tố SMTP hoạt động.
 
-### CLI tổ chức break-glass
+### Tổ chức Break-glass CLI
 
-`agenteye-orgctl` được vận chuyển bên trong image máy chủ và nói chuyện trực tiếp với PostgreSQL và ClickHouse. Nó vẫn có sẵn khi máy chủ công khai hoặc bảng điều khiển toán tử không lành mạnh.
+`agenteye-orgctl` được gửi bên trong hình ảnh máy chủ và nói chuyện trực tiếp với PostgreSQL và ClickHouse. Nó vẫn khả dụng khi máy chủ công khai hoặc bảng điều khiển toán tử không khỏe.
 
 ```bash
 kubectl -n agenteye exec deploy/server -- \
@@ -108,21 +108,21 @@ kubectl -n agenteye exec deploy/server -- \
   agenteye-orgctl member add --org acme --email ops@acme.com --set admin --protected
 ```
 
-Các hoạt động tổ chức được hỗ trợ bao gồm tạo, danh sách, đổi tên, xóa mềm, khôi phục, cấp phát lại người dùng ClickHouse, quản lý ngày thanh toán, cờ tính năng và xóa không thể đảo ngược. Các hoạt động thành viên bao gồm thêm, liệt kê, cập nhật, xóa, ghi đè quyền và trạng thái admin được bảo vệ.
+Các hoạt động tổ chức được hỗ trợ bao gồm tạo, liệt kê, đổi tên, xóa mềm, khôi phục, cấp phát lại người dùng ClickHouse, quản lý ngày thanh toán, cờ tính năng và xóa không thể đảo ngược. Các hoạt động thành viên bao gồm thêm, liệt kê, cập nhật, xóa, ghi đè quyền và trạng thái quản trị viên được bảo vệ.
 
-Sử dụng xóa mềm trước khi xóa. `org purge` là không thể đảo ngược và yêu cầu tổ chức bị xóa trước tiên. Các thành viên được bảo vệ không thể bị xóa hoặc hạ cấp thông qua trang Người dùng thông thường của tổ chức cho đến khi một toán tử rõ ràng bỏ bảo vệ chúng.
+Sử dụng soft-delete trước khi xóa. `org purge` là không thể đảo ngược và yêu cầu tổ chức được xóa trước. Các thành viên được bảo vệ không thể bị xóa hoặc hạ cấp thông qua trang Người dùng thông thường của tổ chức cho đến khi một toán tử rõ ràng bỏ bảo vệ chúng.
 
 ## Danh sách kiểm tra sẵn sàng sản xuất
 
-- Ingest và DNS bảng điều khiển phân giải thành các đường dẫn ingress dự kiến khác nhau.
-- TLS là hợp lệ; sử dụng TLS lẫn nhau trên ingest nếu triển khai của bạn yêu cầu.
+- Ingest và DNS bảng điều khiển phân giải thành các đường dẫn ingress dự định khác nhau.
+- TLS hợp lệ; sử dụng TLS lẫn nhau trên ingest nơi triển khai của bạn yêu cầu nó.
 - Các khối lượng PostgreSQL và ClickHouse có cảnh báo dung lượng.
-- Sao lưu bao gồm cả kho dữ liệu và có thủ tục khôi phục được kiểm tra.
-- Kiểm tra sức khỏe cảnh báo về im lặng ingest, các khối lượng công việc không thành công, hết hạn chứng chỉ, áp lực bộ nhớ và sao lưu cũ.
-- Nhật ký có cấu trúc được thu thập mà không lặp lại đường ống nhật ký cụm hiện có.
-- Tính đồng quy worker evaluator, kiểm toán và cảnh báo không được thay đổi mà không có bằng chứng hàng đợi được đo.
-- Phiên bản ứng dụng được ghim và thủ tục hoàn lại được ghi lại trước khi nâng cấp.
+- Sao lưu bao gồm cả kho dữ liệu và có quy trình khôi phục được kiểm tra.
+- Kiểm tra sức khỏe cảnh báo về im lặng ingest, khối lượng công việc không thành công, hết hạn chứng chỉ, áp lực lưu trữ và sao lưu cũ.
+- Các nhật ký có cấu trúc được thu thập mà không cần trùng lặp đường ống nhật ký cụm hiện có.
+- Đánh giá, kiểm toán và đồng thời công nhân cảnh báo không được thay đổi mà không có bằng chứng hàng đợi đo lường.
+- Một bản phát hành ứng dụng được ghim và quy trình quay lại được ghi lại trước khi nâng cấp.
 
 <Warning>
-  Các bản kê khai triển khai chứa các giả định bảo mật và khả dụng dành riêng cho nền tảng. Xem xét các tài nguyên được hiển thị, chính sách mạng, tiếp xúc ingress, tham chiếu bí mật, các lớp bộ nhớ, ngân sách gián đoạn và các đích sao lưu với nhóm nền tảng của bạn trước khi áp dụng chúng.
+  Các bản kê khai triển khai chứa các giả định bảo mật và khả dụng dành riêng cho nền tảng. Xem xét các tài nguyên được hiển thị, chính sách mạng, tiếp xúc ingress, tham chiếu bí mật, các lớp lưu trữ, ngân sách gián đoạn và điểm đến sao lưu với nhóm nền tảng của bạn trước khi áp dụng chúng.
 </Warning>

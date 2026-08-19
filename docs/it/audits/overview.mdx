@@ -1,24 +1,24 @@
 ---
 title: "Audit"
-description: "Esamina una popolazione definita di sessioni per individuare errori che le tracce da sole non riusciranno a rivelare."
+description: "Esamina una popolazione definita di sessioni per individuare errori che le tracce da sole non riveleranno."
 icon: "scan-search"
 ---
 
-Un audit ricerca un insieme selezionato di sessioni per uno specifico obiettivo di errore dichiarato. Combina evidenze da tracce, risultati di valutazione, rilevamenti di policy e contesto di riferimento per produrre risultati su cui agire.
+Un audit ricerca in un insieme selezionato di sessioni un obiettivo di errore dichiarato. Combina prove di traccia, risultati di valutazione, policy hit e contesto di riferimento per produrre risultati su cui puoi agire.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Trova automaticamente i fallimenti degli agenti con gli audit di Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-Scopri come un audit procede da un'esecuzione pianificata a errori supportati da evidenze che puoi risolvere.
+Scopri come un audit passa da un'esecuzione pianificata a errori supportati da prove che puoi correggere.
 
 ## Apri gli audit
 
 <Tabs>
   <Tab title="Dashboard">
-    Vai su **Analizza → Audit**. La pagina mostra lo stato pianificato, i risultati aperti, l'ultima esecuzione, la prossima esecuzione, la cadenza e se l'audit dispone di pagine di riepilogo o riferimento. Seleziona una scheda per le impostazioni e la cronologia esecuzioni; seleziona **nuovo audit** per crearne uno.
+    Vai a **Analyze → Audits**. La pagina mostra lo stato pianificato, i risultati aperti, l'ultima esecuzione, la prossima esecuzione, la cadenza e se l'audit ha pagine di sintesi o di riferimento. Seleziona una scheda per le impostazioni e la cronologia delle esecuzioni; seleziona **new audit** per crearne uno.
 
-    ![La pagina Audit che mostra gli audit ricorrenti con la loro pianificazione, sensibilità e stato di esecuzione.](/images/dashboard/audits.png)
+    ![La pagina Audits che mostra i ricorrenti audit con il loro programma, sensibilità e stato di esecuzione.](/images/dashboard/audits.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -30,12 +30,12 @@ Scopri come un audit procede da un'esecuzione pianificata a errori supportati da
   </Tab>
 </Tabs>
 
-Utilizza un audit quando hai necessità di rispondere a una domanda a livello di popolazione come:
+Utilizza un audit quando hai bisogno di rispondere a una domanda a livello di popolazione come:
 
-- Dove gli agenti abbandonano i compiti senza escalation?
-- Quali errori di strumento portano a retry inefficaci?
-- Gli agenti accedono a dati al di fuori del flusso di lavoro previsto?
-- Cosa è cambiato dopo una versione di modello, prompt o strumento?
+- Dove gli agenti abbandonano i compiti senza escalare?
+- Quali errori di strumento portano a nuovi tentativi inefficaci?
+- Gli agenti accedono ai dati al di fuori del flusso di lavoro previsto?
+- Cosa è cambiato dopo un rilascio di modello, prompt o strumento?
 
 ## Flusso di risposta dell'audit
 
@@ -44,13 +44,13 @@ Session → Audit → Finding → Issue → Policy
                          ↘ Alert for recurrence
 ```
 
-Un risultato deve nominare la modalità di errore e puntare a evidenze. Un'issue possiede la rimediazione. Una policy previene un modello di azione noto; un avviso rileva ricorrenze quando la prevenzione non è possibile o necessita monitoraggio.
+Un risultato deve nominare la modalità di errore e puntare alle prove. Un problema possiede la correzione. Una policy previene uno schema di azione noto; un alert rileva la ricorrenza quando la prevenzione non è possibile o ha bisogno di monitoraggio.
 
 <Columns cols={2}>
   <Card title="Configura un audit" icon="sliders-horizontal" href="/it/audits/setup">
     Definisci l'obiettivo, la popolazione e il contesto di riferimento prima della prima esecuzione.
   </Card>
   <Card title="Aggiungi contesto agente" icon="bot" href="/it/audits/agent-contracts">
-    Specifica cosa ogni agente deve produrre e cosa non deve mai fare.
+    Dichiara cosa ogni agente deve produrre e cosa non deve mai fare.
   </Card>
 </Columns>

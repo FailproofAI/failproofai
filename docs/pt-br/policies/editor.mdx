@@ -4,44 +4,44 @@ description: "Crie e revise políticas versionadas a partir de um modo de falha 
 icon: "file-pen-line"
 ---
 
-Use o editor de políticas para transformar um achado ou problema em uma regra implementável. Mantenha a criação separada da implantação para que um rascunho não possa alterar silenciosamente o comportamento em produção.
+Use o editor de políticas para transformar um achado ou problema em uma regra implantável. Mantenha a autoria separada da implantação para que um rascunho não possa alterar silenciosamente o comportamento em produção.
 
-Quando um problema apresenta um padrão de ação repetível, abra-o em **Analyze → issues** e selecione **generate policy**. O Failproof AI primeiro explica se uma política consegue expressar o problema e, em seguida, leva a intenção revisada e o contexto do achado para o editor. O código gerado permanece como rascunho até que você o publique.
+Quando um problema tem um padrão de ação repetível, abra-o em **Analyze → issues** e selecione **generate policy**. O Failproof AI primeiro explica se uma política consegue expressar o problema e, em seguida, leva o contexto do achado e a intenção revisada para o editor. O código-fonte gerado permanece como rascunho até que você o publique.
 
 ## Publicar uma versão de política
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Admin → policy editor** e, em **compose**, descreva o modo de falha ou cole o código-fonte da política em JavaScript.
-    2. Valide o código e corrija todos os erros reportados.
-    3. Informe a identidade da política e publique-a; em seguida, use **library** para comparar ou desativar versões.
+    1. Vá para **Admin → policy editor** e, em **compose**, descreva o modo de falha ou cole o código-fonte JavaScript da política.
+    2. Valide o código-fonte e corrija todos os erros reportados.
+    3. Informe a identidade da política e publique-a; use **library** para comparar ou desativar versões.
     4. Selecione **enforcement** quando a versão estiver pronta para implantação em máquinas.
 
-    ![A visão compose do editor de políticas, com identidade da política, criação assistida por IA, validação do código-fonte e controles de publicação.](/images/dashboard/policy-editor.png)
+    ![A visão de composição do editor de políticas, com identidade da política, elaboração assistida por IA, validação do código-fonte e controles de publicação.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    O CLI Cloud não publica versões de políticas. Valide o código localmente antes de copiá-lo para o editor:
+    O CLI na nuvem não publica versões de política. Valide o código-fonte localmente antes de copiá-lo para o editor:
 
     ```bash
     failproofai policies --install --custom ./checkout.policies.ts \
       --cli claude --scope project
     ```
 
-    Publique a versão revisada em **Admin → policy editor**.
+    Publique a versão revisada a partir de **Admin → policy editor**.
   </Tab>
 </Tabs>
 
-## Lista de verificação para criação
+## Lista de verificação para autoria
 
-1. Nomeie o modo de falha em linguagem operacional.
-2. Selecione os eventos de hook e as ferramentas que contêm evidências suficientes para tomar uma decisão.
+1. Nomeie o modo de falha com linguagem operacional.
+2. Selecione os eventos de hook e as ferramentas que contêm evidências suficientes para decidir.
 3. Escreva a condição mais restrita possível que corresponda ao comportamento inseguro.
-4. Retorne um motivo que indique ao agente ou operador qual ação tomar a seguir.
-5. Adicione exemplos que devem corresponder e exemplos que devem continuar sendo permitidos.
+4. Retorne uma justificativa que indique ao agente ou operador qual é o próximo passo.
+5. Adicione exemplos que devem corresponder e exemplos que precisam continuar permitidos.
 6. Salve uma nova versão e solicite revisão.
 
 Use `instruct` quando o agente puder corrigir o curso com segurança. Use `deny` quando permitir a ação criaria um risco inaceitável ou irreversível.
 
 <Info>
-  Versões de políticas são entradas de implantação imutáveis. Editar um rascunho cria uma nova versão; isso não deve reescrever a versão já atribuída às máquinas.
+  Versões de política são entradas de implantação imutáveis. Editar um rascunho cria uma nova versão; isso não deve reescrever a versão já atribuída às máquinas.
 </Info>

@@ -1,6 +1,6 @@
 ---
 title: "Políticas personalizadas"
-description: "Escreva uma política para um modo de falha exclusivo do seu fluxo de trabalho com agentes."
+description: "Escreva uma política para um modo de falha exclusivo do seu fluxo de trabalho de agente."
 icon: "shield-plus"
 ---
 
@@ -10,7 +10,7 @@ Crie um arquivo com extensão `policies.js`, `policies.mjs` ou `policies.ts` den
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Instale a política personalizada em uma máquina de teste e acione tanto uma ação que corresponda à regra quanto uma ação legítima que não corresponda.
+    1. Instale a política personalizada em uma máquina de teste e acione tanto uma ação correspondente quanto uma não correspondente legítima.
     2. Vá em **Observe → policy** e compare as duas decisões.
     3. Abra cada sessão vinculada e verifique se o payload do evento contém evidências suficientes para a regra.
     4. Quando o comportamento estiver correto, mova o código revisado para **Admin → policy editor** e publique uma versão.
@@ -23,7 +23,7 @@ Crie um arquivo com extensão `policies.js`, `policies.mjs` ou `policies.ts` den
     failproofai policies
     ```
 
-    Arquivos de convenção em `.failproofai/policies/` são carregados sem `--custom`. Mantenha um comando de instalação explícito no CI quando a validação precisar falhar em caso de módulo com erro.
+    Arquivos de convenção em `.failproofai/policies/` são carregados sem `--custom`. Mantenha um comando de instalação explícito no CI quando a validação deve falhar em caso de módulo inválido.
   </Tab>
 </Tabs>
 
@@ -53,7 +53,7 @@ Valide e instale um arquivo explícito:
 failproofai policies --install --custom ./security.policies.ts
 ```
 
-O contexto da política inclui o tipo de evento, payload normalizado, nome e entrada da ferramenta, metadados da sessão, parâmetros e a CLI de origem quando disponível.
+O contexto da política inclui o tipo de evento, payload normalizado, nome e entrada da ferramenta, metadados da sessão, parâmetros e o CLI de origem quando disponível.
 
 ## Teste os caminhos de falha
 
@@ -63,10 +63,10 @@ Execute a validação após alterar o arquivo de entrada ou qualquer módulo loc
 failproofai policies --install --custom ./security.policies.ts --scope project
 ```
 
-O caminho do CLI com --strict falha em caso de arquivos ausentes, erros de sintaxe, importações não resolvidas, exceções no nível superior e timeouts no carregamento do módulo. No momento da aplicação, um arquivo personalizado com erro é registrado e ignorado para que as políticas internas possam continuar. Trate qualquer aviso de carregamento como uma perda de aplicação esperada e configure alertas para isso nos logs de produção.
+O caminho de CLI estrito falha para arquivos ausentes, erros de sintaxe, importações não resolvidas, exceções em nível superior e timeouts de carregamento de módulo. No momento da aplicação, um arquivo personalizado inválido é registrado em log e ignorado para que as políticas integradas possam continuar. Trate qualquer aviso de carregamento como uma perda de aplicação esperada e monitore-o nos logs de produção.
 
-Use nomes globalmente únicos entre políticas explícitas, de convenção e gerenciadas pela nuvem. Mantenha as funções de política determinísticas, limite chamadas externas com timeouts curtos e retorne explicitamente allow, instruct ou deny em todos os caminhos.
+Use nomes globalmente únicos em políticas explícitas, de convenção e gerenciadas pela nuvem. Mantenha as funções de política determinísticas, limite chamadas externas com timeouts curtos e retorne um `allow`, `instruct` ou `deny` intencional em todos os caminhos.
 
 <Warning>
-  Uma política personalizada é código de aplicação. Teste campos ausentes, nomes alternativos de ferramentas e entradas malformadas — não apenas a correspondência esperada.
+  Uma política personalizada é código de aplicação. Teste campos ausentes, nomes de ferramentas alternativos e entradas malformadas — não apenas a correspondência esperada.
 </Warning>

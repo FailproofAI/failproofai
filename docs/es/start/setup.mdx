@@ -6,46 +6,46 @@ icon: "waypoints"
 
 <CardGroup cols={3}>
   <Card title="Aplicación local" icon="laptop">
-    Instala hooks y políticas en una máquina. Úsalo cuando necesites controles inmediatos sin enviar datos de sesión a Cloud.
+    Instala hooks y políticas en una máquina. Úsalo cuando necesites controles inmediatos sin enviar datos de sesión a la nube.
   </Card>
   <Card title="Failproof AI Cloud" icon="cloud">
-    Añade sesiones centralizadas, auditorías, evaluaciones en línea, paneles de control, alertas y despliegue de políticas para toda la flota.
+    Añade sesiones centralizadas, auditorías, evaluaciones en línea, paneles de control, alertas y despliegue de políticas en toda la flota.
   </Card>
   <Card title="Implementación empresarial" icon="building-2">
-    Usa controles organizacionales, claves con ámbito, infraestructura privada y requisitos de seguridad específicos del despliegue.
+    Utiliza controles organizacionales, claves con alcance definido, infraestructura privada y requisitos de seguridad específicos por despliegue.
   </Card>
 </CardGroup>
 
-## Ruta recomendada para producción
+## Ruta de producción recomendada
 
 1. Conecta una máquina que no sea de producción con la captura de transcripciones habilitada.
 2. Verifica las sesiones y evaluaciones en Cloud.
 3. Crea una auditoría para un modo de fallo conocido.
-4. Despliega la primera política en modo observación.
-5. Amplía a producción tras revisar las coincidencias y los falsos positivos.
+4. Despliega la primera política en modo de observación.
+5. Expande a producción tras revisar las coincidencias y los falsos positivos.
 
 ## Conectar una máquina a Cloud
 
 <Tabs>
-  <Tab title="Panel de control">
+  <Tab title="Dashboard">
     1. Ve a **Administración → Claves** y crea una clave con `events:add` y `policies:pull`.
     2. Copia el secreto de un solo uso en la máquina de destino.
-    3. Tras ejecutar el comando de conexión de la CLI, ve a **Admin → aplicación** y confirma que la máquina aparece.
-    4. Ve a **Observar → Eventos** y confirma que llega su primer evento.
+    3. Tras ejecutar el comando de conexión de la CLI, ve a **Admin → enforcement** y confirma que la máquina aparece.
+    4. Ve a **Observe → Events** y confirma que llega su primer evento.
 
-    El panel de claves muestra los dos permisos que necesita una máquina conectada: ingesta de eventos y entrega de políticas.
+    El panel de la clave muestra los dos permisos necesarios para una máquina conectada: ingesta de eventos y entrega de políticas.
 
-    ![El panel de nueva clave de API utilizado para otorgar permisos de ingesta de eventos y entrega de políticas.](/images/dashboard/key-create.png)
+    ![El panel de nueva clave de API utilizado para conceder permisos de ingesta de eventos y entrega de políticas.](/images/dashboard/key-create.png)
 
-    Tras la conexión, la máquina debería aparecer en aplicación con su estado de política deseado y reportado.
+    Tras la conexión, la máquina debería aparecer en enforcement con su estado de política deseado y el estado reportado.
 
-    ![La flota de aplicación con una máquina registrada expandida para mostrar su estado de política deseado y el estado del despliegue.](/images/dashboard/enforcement-fleet.png)
+    ![La flota de Enforcement con una máquina inscrita expandida para mostrar su estado de política deseado y el estado de despliegue.](/images/dashboard/enforcement-fleet.png)
 
-    El primer evento que llega confirma que el daemon puede enviar datos a Cloud, con independencia del despliegue de políticas.
+    El primer evento que llega confirma que el daemon puede enviar datos a Cloud, independientemente del despliegue de políticas.
 
-    ![El flujo de eventos en vivo que muestra los eventos recientes de agente, modelo y herramienta.](/images/dashboard/events-stream-current.png)
+    ![El flujo de eventos en vivo mostrando eventos recientes de agente, modelo y herramienta.](/images/dashboard/events-stream-current.png)
 
-    Continúa solo cuando tanto la máquina como su primer evento sean visibles.
+    Continúa solo después de que tanto la máquina como su primer evento sean visibles.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -61,8 +61,8 @@ icon: "waypoints"
   </Tab>
 </Tabs>
 
-La conexión a Cloud verifica la ingesta de eventos y la entrega de políticas de forma independiente. Por tanto, una clave puede ser válida pero carecer de alguno de los permisos requeridos. Usa `failproofai config --status` para ver qué capacidad está configurada.
+La conexión a Cloud verifica la ingesta de eventos y la entrega de políticas de forma independiente. Por ello, una clave puede ser válida pero carecer de algún permiso requerido. Usa `failproofai config --status` para ver qué capacidad está configurada.
 
 <Info>
-  La configuración de Cloud solo guarda las credenciales locales tras completarse correctamente la capacidad correspondiente. Una verificación fallida no deja a la máquina con apariencia de estar conectada cuando no lo está.
+  La configuración de Cloud solo escribe las credenciales locales tras completar con éxito la verificación de la capacidad correspondiente. Una verificación fallida no dejará a la máquina con apariencia de estar conectada cuando no lo está.
 </Info>

@@ -1,21 +1,22 @@
 ---
-title: "Politikaları makinelere dağıtma"
-description: "Hangi makinelerin kayıtlı, güncel ve amaçlanan politika sürümlerini zorunlu kıldığını bilin."
+---
+title: "İlkeleri makinelere dağıt"
+description: "Hangi makinelerin kayıtlı, güncel ve amaçlanan ilke sürümlerini uyguladığını bilin."
 icon: "network"
 ---
 
-Filo kapsamı, politikanın risk olduğu yerde var olup olmadığını yanıtlar. Makineleri kararlı kimlik ve insan tarafından okunabilir etiketle izleyin, ardından atanan ve bildirilen dağıtım durumlarını karşılaştırın.
+Fleet kapsamı, riskin olduğu yerde bir ilkenin bulunup bulunmadığını yanıtlar. Makineleri kararlı kimlik ve insan tarafından okunabilir etiketle izleyin, ardından atanan ve bildirilen dağıtım durumlarını karşılaştırın.
 
-## Kapsamı kontrol edin
+## Kapsamı kontrol et
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Admin → enforcement** bölümüne gidin ve zorunlu kılma ve gözlemleme toplamlarını inceleyin.
-    2. Bir makineyi kimlik veya etiketle arayın ya da politikası eksik olan makineleri filtrelemek için arama yapın.
-    3. Atanan politikaları, bildirilen dağıtımı, son check-in zamanını ve geçmişi karşılaştırmak için bir satırı genişletin.
-    4. Uygulanan bir dağıtım beklemede kaldığında makinenin polling aralığından sonra yenileyin.
+    1. **Admin → enforcement** bölümüne gidin ve zorlama ve gözlemleme toplamlarını inceleyin.
+    2. Bir makineyı kimlik veya etiketle arayın veya ilkesi olmayan makineler için filtreleyin.
+    3. Atanan ilkeleri, bildirilen dağıtımı, son kontrol girişini ve geçmişi karşılaştırmak için bir satırı genişletin.
+    4. Uygulanan bir dağıtım beklemede kalırsa, makinenin yoklama aralığından sonra yenileyin.
 
-    ![Filo kapsamını, makine dağıtım durumunu ve gözlemleme ile zorunlu kılma atamalarını gösteren Enforcement filosu.](/images/dashboard/enforcement-fleet.png)
+    ![Enforcement fleet gösterimi, ilke kapsamı, makine dağıtım durumu ve gözlemleme ile zorlama atamalarını göstermektedir.](/images/dashboard/enforcement-fleet.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,29 +25,29 @@ Filo kapsamı, politikanın risk olduğu yerde var olup olmadığını yanıtlar
     failproofai flush --wait
     ```
 
-    Makinenin agent etkinliğinin Bulut'a ulaştığını doğrulamak için `fp events --agent-id <agent-id> --since 24h` kullanın.
+    Makinenin aracı etkinliğinin Cloud'a ulaştığını doğrulamak için `fp events --agent-id <agent-id> --since 24h` kullanın.
   </Tab>
 </Tabs>
 
-Kapsamı şunları bulmak için görünümleri kullanın:
+Kapsamı bulmak için kullanın:
 
-- En son dağıtımı hiçbir zaman çekmeyen makineler
-- Rapor vermeyi bırakmış kayıtlı makineler
-- Yanlış ortama veya kohorta atanan bir politika
-- Kesintiye uğramış bir güncellemenin ardından sürüm kayması
+- En son dağıtımı asla çekmeyen makineler
+- Etkinlik bildirmeyi durduran kayıtlı makineler
+- Yanlış ortam veya kohort'a atanan ilkeler
+- Kesintiye uğrayan bir güncellemenin ardından sürüm kayması
 
-Bir makinenin adını yeniden bağlanmadan değiştirin:
+Bir makineyi yeniden bağlanmadan yeniden adlandırın:
 
 ```bash
 failproofai config --machine-label checkout-runner-03
 ```
 
-Yerel durumu kontrol edin:
+Yerel durumu kontrol et:
 
 ```bash
 failproofai config --status
 ```
 
 <Tip>
-  İş yükü ve ortamı tanımlayan etiketler kullanın. Otomatik ölçekleme veya makine değişikliğinden sonra yalnızca ana bilgisayar adları genellikle yeterli değildir.
+  İş yükü ve ortamı tanımlayan etiketler kullanın. Otomatik ölçeklendirme veya makine değişikliğinden sonra hostname'ler genellikle yetersizdir.
 </Tip>

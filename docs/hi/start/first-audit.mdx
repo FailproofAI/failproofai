@@ -1,28 +1,28 @@
 ---
-title: "अपना पहला failure check चलाएँ"
-description: "Cloud dashboard या fp CLI से एक audit बनाएँ और इसके पहले findings की समीक्षा करें।"
+title: "अपनी पहली विफलता जांच चलाएं"
+description: "क्लाउड डैशबोर्ड या fp CLI से ऑडिट बनाएं और इसकी पहली खोजें देखें।"
 icon: "scan-search"
 ---
 
-एक audit सत्रों के एक सेट को ranked, evidence-backed failure findings में बदल देता है। एक संकीर्ण failure question से शुरू करें।
+एक ऑडिट सत्रों के एक समूह को रैंक किए गए, साक्ष्य-समर्थित विफलता निष्कर्षों में बदल देता है। एक संकीर्ण विफलता प्रश्न से शुरू करें।
 
 <Tabs>
   <Tab title="Dashboard">
     <Steps>
-      <Step title="Audits खोलें">
-        Cloud sidebar में, **Analyze → Audits** पर जाएँ। **new audit** चुनें।
+      <Step title="ऑडिट खोलें">
+        क्लाउड साइडबार में, **विश्लेषण → ऑडिट** पर जाएं। **नया ऑडिट** चुनें।
       </Step>
-      <Step title="Audit सेट करें">
-        एक नाम और एक direct failure goal दर्ज करें, जैसे "production sessions खोजें जो input बदले बिना या escalate किए बिना एक ही failed payment call को retry करते हैं।" Agent, environment, time window, और schedule चुनें। जब auditor को आपके workflow rules की आवश्यकता हो तो एक brief summary और reference URLs जोड़ें।
+      <Step title="ऑडिट सेट अप करें">
+        एक नाम और सीधा विफलता लक्ष्य दर्ज करें, जैसे "उत्पादन सत्र खोजें जो इनपुट बदले बिना या बढ़ाए बिना एक ही विफल भुगतान कॉल को फिर से प्रयास करते हैं।" एजेंट, वातावरण, समय विंडो और शेड्यूल चुनें। एक संक्षिप्त विवरण और संदर्भ URLs जोड़ें जब ऑडिटर को आपके वर्कफ़्लो नियमों की आवश्यकता हो।
       </Step>
-      <Step title="Audit बनाएँ और चलने का प्रतीक्षा करें">
-        **create audit** चुनें। पहला run तुरंत queued हो जाता है। Audit card को खोलें ताकि आप इसे queued से running और फिर complete होते देख सकें।
+      <Step title="ऑडिट बनाएं और प्रतीक्षा करें">
+        **ऑडिट बनाएं** चुनें। पहला रन तुरंत कतार में डाल दिया जाता है। इसे कतारबद्ध से चल रहे से पूर्ण तक जाते हुए देखने के लिए ऑडिट कार्ड खोलें।
       </Step>
     </Steps>
 
-    Run पूरा होने के बाद, एक finding को खोलें और इसके session evidence की समीक्षा करें। आप तब इसे acknowledge, assign, dismiss, mute, या resolve कर सकते हैं।
+    चलने के बाद, एक खोज खोलें और इसके सत्र साक्ष्य की समीक्षा करें। आप इसे स्वीकार, असाइन, खारिज, म्यूट या हल कर सकते हैं।
 
-    ![एक completed audit finding जो इसकी failure description, recommended action, supporting evidence, और affected sessions दिखा रहा है।](/images/dashboard/audit-finding.png)
+    ![एक पूर्ण ऑडिट खोज जो इसके विफलता विवरण, अनुशंसित कार्रवाई, समर्थन साक्ष्य और प्रभावित सत्र दिखाता है।](/images/dashboard/audit-finding.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,7 +37,7 @@ icon: "scan-search"
     fp audits finding <finding-id>
     ```
 
-    Reference context जोड़ें, फिर जब स्रोत बदले तो इसे refresh करें:
+    संदर्भ संदर्भ जोड़ें, फिर इसे तब ताज़ा करें जब स्रोत बदले:
 
     ```bash
     fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
@@ -45,8 +45,8 @@ icon: "scan-search"
     fp audits run payment-retry-failures
     ```
 
-    एक finding को triage के माध्यम से move करने के लिए `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, या `fp audits reopen <finding-id>` का उपयोग करें।
+    एक खोज को त्रिया के माध्यम से ले जाने के लिए `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, या `fp audits reopen <finding-id>` का उपयोग करें।
   </Tab>
 </Tabs>
 
-अगला, एक confirmed repeatable action के लिए [एक policy के साथ अपनी पहली failure को रोकें](/hi/start/first-policy)।
+अगला, [एक पुष्टि किए गए दोहराए जाने वाले कार्य के लिए नीति के साथ अपनी पहली विफलता को रोकें](/hi/start/first-policy)।

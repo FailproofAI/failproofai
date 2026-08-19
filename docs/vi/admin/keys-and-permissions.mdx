@@ -1,29 +1,29 @@
 ---
 title: "Khóa và quyền hạn"
-description: "Tạo khóa API có phạm vi cho máy, tự động hóa và người điều hành."
+description: "Tạo khóa API có phạm vi cho máy, tự động hóa và người vận hành."
 icon: "key-round"
 ---
 
-Khóa API thuộc về một tổ chức và mang các quyền hạn rõ ràng. Sử dụng các khóa riêng biệt cho ingestion agent, cung cấp chính sách, bộ đánh giá, tự động hóa CI và các script hành chính.
+Khóa API thuộc về một tổ chức và mang theo các quyền hạn rõ ràng. Sử dụng các khóa riêng biệt cho nhập liệu agent, phân phối chính sách, bộ đánh giá, tự động hóa CI và các tập lệnh quản trị.
 
-## Tạo và xoay vòng một khóa
+## Tạo và xoay vòng khóa
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Administration → Keys**, chọn **new key** và nhập tên khối lượng công việc.
-    2. Chọn một bộ quyền hạn và chỉ điều chỉnh các quyền riêng lẻ khi bộ cài sẵn không đủ.
+    1. Chuyển đến **Administration → Keys**, chọn **new key** và nhập tên khối lượng công việc.
+    2. Chọn một bộ quyền hạn và chỉ điều chỉnh từng quyền hạn khi bộ cài sẵn không đủ.
     3. Tạo khóa và sao chép bí mật một lần của nó ngay lập tức.
-    4. Mở khóa sau đó để cập nhật các cấp, vô hiệu hóa nó hoặc tạo lại bí mật.
+    4. Mở khóa sau này để cập nhật các grant, vô hiệu hóa nó hoặc tạo lại bí mật.
 
-    Ngăn tạo là nơi bạn chọn các cấp hẹp nhất cần thiết bởi khối lượng công việc.
+    Ngăn kéo tạo là nơi bạn chọn các grant hẹp nhất cần thiết cho khối lượng công việc.
 
-    ![Ngăn kéo khóa API mới với bộ quyền cài sẵn và các cấp riêng lẻ.](/images/dashboard/key-create.png)
+    ![Ngăn kéo khóa API mới với bộ quyền hạn cài sẵn và các grant riêng lẻ.](/images/dashboard/key-create.png)
 
-    Sau khi tạo, trang Keys hiển thị siêu dữ liệu không đổi và các hành động quản lý. Bí mật một lần không được hiển thị lại.
+    Sau khi tạo, trang Keys hiển thị siêu dữ liệu và các hành động quản lý bền vững. Bí mật một lần không được hiển thị lại.
 
-    ![Trang Khóa API hiển thị quyền khóa, thời gian tạo và các hành động tái tạo và vô hiệu hóa.](/images/dashboard/api-keys.png)
+    ![Trang Khóa API hiển thị quyền hạn khóa, thời gian tạo và các hành động tạo lại và vô hiệu hóa.](/images/dashboard/api-keys.png)
 
-    Sử dụng danh sách này để xem xét các cấp thường xuyên và vô hiệu hóa các khóa không còn ánh xạ tới khối lượng công việc đang hoạt động.
+    Sử dụng danh sách này để xem xét các grant thường xuyên và vô hiệu hóa các khóa không còn ánh xạ tới khối lượng công việc hoạt động.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -36,16 +36,16 @@ Khóa API thuộc về một tổ chức và mang các quyền hạn rõ ràng. 
     fp keys disable production-agents
     ```
 
-    Chuyển hướng hoặc lưu trữ đầu ra tạo/tái tạo một cách an toàn; bí mật được trả về một lần.
+    Chuyển hướng hoặc ghi lại kết quả tạo/tạo lại một cách an toàn; bí mật được trả về một lần.
   </Tab>
 </Tabs>
 
-Hai quyền hạn cần thiết bởi máy Failproof AI được kết nối là độc lập:
+Hai quyền hạn cần thiết bởi máy Failproof AI kết nối là độc lập:
 
 - `events:add` gửi các sự kiện và dữ liệu phiên.
 - `policies:pull` truy xuất các triển khai chính sách được gán.
 
-Bí mật khóa được hiển thị khi tạo hoặc tái tạo. Lưu trữ chúng trong một trình quản lý bí mật và xoay vòng chúng mà không tái sử dụng thông tin xác thực tương tác của người điều hành.
+Các bí mật khóa được hiển thị khi tạo hoặc tạo lại. Lưu trữ chúng trong trình quản lý bí mật và xoay vòng chúng mà không sử dụng lại thông tin đăng nhập tương tác của người vận hành.
 
 ## Danh mục quyền hạn
 
@@ -65,10 +65,10 @@ Bí mật khóa được hiển thị khi tạo hoặc tái tạo. Lưu trữ ch
 | Chính sách | `policies:read`, `policies:write`, `policies:pull` |
 | Sử dụng | `usage:read` |
 
-`orgs:admin` được dành riêng cho người điều hành phiên bản và không thể được cấp cho khóa tổ chức hoặc thành viên thông thường. Các token `incidents:*` và `alerts:ack` đã loại bỏ được chấp nhận để tương thích và chuẩn hóa thành quyền hạn `issues:*` hiện tại.
+`orgs:admin` được dành riêng cho người vận hành instance và không thể được cấp cho khóa tổ chức hoặc thành viên bình thường. Các token `incidents:*` và `alerts:ack` đã loại bỏ được chấp nhận để tương thích và chuẩn hóa thành quyền hạn `issues:*` hiện tại.
 
-Các bộ quyền hạn tích hợp là `read-only`, `standard` và `admin`. `standard` thêm kích hoạt đánh giá, thực thi truy vấn, phản hồi vấn đề và sử dụng trợ lý để đọc quyền hạn. Tạo khóa loại bỏ các cấp chỉ dành cho con người ngay cả khi một bộ quyền hạn chứa chúng.
+Các bộ quyền hạn tích hợp sẵn là `read-only`, `standard` và `admin`. `standard` thêm kích hoạt đánh giá, thực thi truy vấn, phản hồi vấn đề và sử dụng trợ lý cho các quyền hạn đọc. Tạo khóa loại bỏ các grant chỉ dành cho con người ngay cả khi một bộ quyền hạn chứa chúng.
 
 <Warning>
-  Các khóa có phạm vi phiên bản có thể chọn một tổ chức với tiêu đề `X-AgentEye-Org`. Đặt nó một cách rõ ràng trên các triển khai đa tổ chức; việc bỏ qua có thể chọn tổ chức mặc định.
+  Các khóa có phạm vi instance có thể chọn một tổ chức bằng tiêu đề `X-AgentEye-Org`. Đặt nó một cách rõ ràng trên các triển khai đa tổ chức; bỏ qua có thể chọn tổ chức mặc định.
 </Warning>

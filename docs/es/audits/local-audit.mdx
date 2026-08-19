@@ -1,20 +1,20 @@
 ---
-title: "Auditar historial local del agente"
-description: "Escanea los historiales de CLI de agentes compatibles sin conexión y revisa comportamientos de riesgo o ineficientes de forma local."
+title: "Auditar el historial local del agente"
+description: "Analiza los historiales de las CLI de agentes compatibles sin conexión y revisa comportamientos arriesgados o ineficientes de forma local."
 icon: "laptop-minimal-check"
 ---
 
-Utiliza una auditoría local para una revisión inmediata y privada antes de conectar un equipo a Failproof AI Cloud. Escanea los historiales de agentes ya almacenados en tu máquina, reproduce la actividad de herramientas a través de políticas integradas y abre un panel de resultados local.
+Usa una auditoría local para realizar una revisión inmediata y privada antes de conectar una máquina a Failproof AI Cloud. Analiza los historiales de agentes ya almacenados en tu máquina, reproduce la actividad de herramientas a través de las políticas integradas y abre un panel de resultados local.
 
 ## Ejecutar una auditoría interactiva
 
 <Tabs>
   <Tab title="Panel de control">
-    La auditoría local se inicia desde la CLI porque debe descubrir los historiales en la máquina actual. Ejecuta `failproofai audit`; tras el escaneo, Failproof AI inicia el panel incluido y abre **http://localhost:8020/audit**.
+    La auditoría local se inicia desde la CLI porque debe descubrir los historiales en la máquina actual. Ejecuta `failproofai audit`; tras el análisis, Failproof AI inicia el panel incluido y abre **http://localhost:8020/audit**.
 
-    En la vista de auditoría, revisa el número de sesiones, llamadas a herramientas, proyectos y coincidencias de políticas. Comienza con los hallazgos más frecuentes, luego inspecciona el proyecto afectado y el historial del agente antes de habilitar la aplicación de políticas.
+    En la vista de auditoría, revisa el número de sesiones, llamadas a herramientas, proyectos y coincidencias de políticas. Comienza por los hallazgos más frecuentes y luego inspecciona el proyecto afectado y el historial del agente antes de habilitar la aplicación de políticas.
 
-    <Info>El panel de auditoría local es independiente de **Analyze → Audits** en Failproof AI Cloud. Las auditorías locales permanecen en el equipo y no requieren cuenta ni conexión a la red.</Info>
+    <Info>El panel de auditoría local es independiente de **Analizar → Auditorías** en Failproof AI Cloud. Las auditorías locales permanecen en la máquina y no requieren cuenta ni conexión a la red.</Info>
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -22,19 +22,19 @@ Utiliza una auditoría local para una revisión inmediata y privada antes de con
     failproofai audit
     ```
 
-    El comando realiza un escaneo completo de todos los historiales compatibles que encuentre. El comando actual no acepta filtros como `--since`, `--cli`, `--project`, `--port` ni `--no-open`.
+    El comando realiza un análisis completo de todos los historiales compatibles que encuentra. El comando actual no acepta filtros como `--since`, `--cli`, `--project`, `--port` ni `--no-open`.
 
     Mantén el proceso en ejecución mientras usas el panel local. Pulsa <kbd>Ctrl</kbd>+<kbd>C</kbd> cuando hayas terminado.
   </Tab>
 </Tabs>
 
-Los adaptadores de auditoría actuales pueden leer historiales de Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity y Goose. Solo se escanean los historiales disponibles localmente.
+Los adaptadores de auditoría actuales pueden leer historiales de Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity y Goose. Solo se analizan los historiales disponibles localmente.
 
 ## Programar auditorías locales periódicas
 
 <Tabs>
   <Tab title="Panel de control">
-    Abre **Settings** en el panel local, habilita las auditorías programadas, elige el intervalo y establece la dirección de correo electrónico que debe recibir los hallazgos. El panel y la CLI actualizan la misma configuración del equipo.
+    Abre **Configuración** en el panel local, habilita las auditorías programadas, elige el intervalo y establece la dirección de correo electrónico que debe recibir los hallazgos. El panel y la CLI actualizan la misma configuración de la máquina.
   </Tab>
   <Tab title="CLI">
     Habilita una auditoría semanal y envía los hallazgos a la dirección indicada:
@@ -44,7 +44,7 @@ Los adaptadores de auditoría actuales pueden leer historiales de Claude Code, C
     failproofai audit --status
     ```
 
-    El intervalo acepta entre 1 y 90 días y tiene un valor predeterminado de 7 si se omite. La primera configuración inicia sesión cuando es necesario; `--email` proporciona la dirección del informe sin solicitar confirmación.
+    El intervalo acepta entre 1 y 90 días y tiene como valor predeterminado 7 cuando se omite. La primera configuración inicia sesión cuando es necesario; `--email` proporciona la dirección del informe sin solicitar confirmación.
 
     Detén la programación sin eliminar el historial de auditorías local:
 
@@ -54,21 +54,21 @@ Los adaptadores de auditoría actuales pueden leer historiales de Claude Code, C
   </Tab>
 </Tabs>
 
-El demonio ejecuta escaneos programados en segundo plano, actualiza el resultado en caché utilizado por el panel local y envía el informe configurado por correo electrónico. Usa `failproofai audit` cuando quieras ejecutar un escaneo interactivo de forma inmediata.
+El demonio ejecuta análisis programados en segundo plano, actualiza el resultado en caché utilizado por el panel local y envía el informe configurado por correo electrónico. Usa `failproofai audit` cuando quieras ejecutar un análisis interactivo de inmediato.
 
 ## Pasar de la evidencia local a las operaciones en Cloud
 
-Una auditoría local es una base de referencia rápida. Conecta el equipo a Failproof AI Cloud cuando necesites trazas compartidas, auditorías periódicas de población, hallazgos e incidencias, alertas, despliegue de políticas a nivel de organización o el estado de la flota.
+Una auditoría local es una base de referencia rápida. Conecta la máquina a Failproof AI Cloud cuando necesites trazas compartidas, auditorías de población periódicas, hallazgos e incidencias, alertas, implementación de políticas a nivel organizacional o supervisión del estado de la flota.
 
 <CardGroup cols={2}>
   <Card title="Crear una auditoría en Cloud" icon="scan-search" href="/es/audits/setup">
-    Define un objetivo recurrente, población, ventana de evidencia y canales de respuesta.
+    Define un objetivo recurrente, una población, una ventana de evidencia y canales de respuesta.
   </Card>
   <Card title="Habilitar una política" icon="shield-check" href="/es/start/first-policy">
-    Valida localmente, publica de forma deliberada y despliega primero en un grupo reducido de máquinas.
+    Valida localmente, publica de forma deliberada e impleméntala primero en un grupo reducido de máquinas.
   </Card>
 </CardGroup>
 
 <Warning>
-  El resultado de una auditoría es evidencia para revisar, no una prueba de que cada acción marcada sea insegura. Confirma el contexto antes de convertir un hallazgo en una aplicación de políticas bloqueante.
+  El resultado de la auditoría es evidencia para revisión, no una prueba de que cada acción marcada sea insegura. Confirma el contexto antes de convertir un hallazgo en una aplicación de políticas de bloqueo.
 </Warning>

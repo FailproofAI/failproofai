@@ -1,20 +1,20 @@
 ---
-title: "审计本地代理历史记录"
-description: "离线扫描受支持的代理 CLI 历史记录，在本地审查风险或低效行为。"
+title: "审计本地 Agent 历史"
+description: "离线扫描受支持的 Agent CLI 历史记录，在本地审查高风险或低效行为。"
 icon: "laptop-minimal-check"
 ---
 
-在将计算机连接到 Failproof AI Cloud 之前，可使用本地审计进行即时的私密审查。它会扫描已存储在本机上的代理历史记录，通过内置策略重放工具活动，并打开本地结果仪表板。
+在将机器接入 Failproof AI Cloud 之前，使用本地审计可以快速进行私密审查。它会扫描已存储在本机的 Agent 历史记录，通过内置策略重放工具活动，并打开本地结果仪表板。
 
 ## 运行交互式审计
 
 <Tabs>
   <Tab title="仪表板">
-    本地审计从 CLI 启动，因为它需要在当前计算机上发现历史记录。运行 `failproofai audit`；扫描完成后，Failproof AI 会启动内置仪表板并打开 **http://localhost:8020/audit**。
+    本地审计从 CLI 启动，因为它需要发现当前机器上的历史记录。运行 `failproofai audit`；扫描完成后，Failproof AI 会启动内置仪表板并打开 **http://localhost:8020/audit**。
 
-    在审计视图中，查看会话数量、工具调用次数、项目和策略命中情况。从高频发现开始，然后在启用强制执行前检查受影响的项目和代理历史记录。
+    在审计视图中，查看会话数、工具调用数、项目数以及策略命中情况。建议先从高频发现入手，然后在启用强制执行之前检查受影响的项目和 Agent 历史记录。
 
-    <Info>本地审计仪表板与 Failproof AI Cloud 中的**分析 → 审计**相互独立。本地审计保留在本机上，无需账户或网络连接。</Info>
+    <Info>本地审计仪表板与 Failproof AI Cloud 中的**分析 → 审计**是独立的。本地审计数据保留在本机，无需账号或网络连接。</Info>
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -22,31 +22,31 @@ icon: "laptop-minimal-check"
     failproofai audit
     ```
 
-    该命令会对找到的所有受支持历史记录执行完整扫描。当前命令不接受 `--since`、`--cli`、`--project`、`--port` 或 `--no-open` 等过滤参数。
+    该命令会对找到的所有受支持历史记录执行完整扫描。当前命令不支持 `--since`、`--cli`、`--project`、`--port` 或 `--no-open` 等过滤参数。
 
     使用本地仪表板期间请保持进程运行。完成后按 <kbd>Ctrl</kbd>+<kbd>C</kbd> 退出。
   </Tab>
 </Tabs>
 
-当前审计适配器可读取以下来源的历史记录：Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Hermes、OpenClaw、Factory、Devin、Antigravity 和 Goose。仅扫描本地可用的历史记录。
+当前审计适配器可读取来自 Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Hermes、OpenClaw、Factory、Devin、Antigravity 和 Goose 的历史记录。仅扫描本地可用的历史记录。
 
 ## 安排定期本地审计
 
 <Tabs>
   <Tab title="仪表板">
-    在本地仪表板中打开**设置**，启用计划审计，选择间隔时间，并设置接收审计发现的电子邮件地址。仪表板和 CLI 更新的是同一份计算机配置。
+    在本地仪表板中打开**设置**，启用定时审计，选择执行间隔，并设置接收发现结果的电子邮件地址。仪表板和 CLI 更新的是同一份机器配置。
   </Tab>
   <Tab title="CLI">
-    启用每周审计并将发现发送到指定地址：
+    启用每周审计并将发现结果发送至指定地址：
 
     ```bash
     failproofai audit --schedule 7 --email reliability@example.com
     failproofai audit --status
     ```
 
-    间隔时间接受 1–90 天，省略时默认为 7 天。首次设置时会在需要时引导您登录；`--email` 可直接提供报告地址，无需额外提示。
+    间隔天数可设置为 1–90 天，省略时默认为 7 天。首次配置时会在需要时引导您登录；`--email` 可直接指定报告地址，无需交互提示。
 
-    停止计划而不删除本地审计历史记录：
+    停止定时任务但保留本地审计历史记录：
 
     ```bash
     failproofai audit --no-schedule
@@ -54,21 +54,21 @@ icon: "laptop-minimal-check"
   </Tab>
 </Tabs>
 
-守护进程在后台运行计划扫描，刷新本地仪表板使用的缓存结果，并通过电子邮件发送已配置的报告。若需立即运行交互式扫描，请使用 `failproofai audit`。
+守护进程在后台运行定时扫描，刷新本地仪表板使用的缓存结果，并发送已配置的报告邮件。如需立即运行交互式扫描，请使用 `failproofai audit`。
 
-## 从本地证据迁移到云端运营
+## 从本地证据迁移至 Cloud 运营
 
-本地审计是快速建立基线的方式。当您需要共享追踪记录、定期规模审计、发现与问题跟踪、告警、组织级策略部署或机群健康监控时，请将计算机连接到 Failproof AI Cloud。
+本地审计是快速建立基线的方式。当您需要共享追踪记录、周期性群体审计、发现与问题跟踪、告警、组织级策略部署或机群健康监控时，请将机器接入 Failproof AI Cloud。
 
 <CardGroup cols={2}>
-  <Card title="创建云端审计" icon="scan-search" href="/zh/audits/setup">
-    定义定期目标、审计对象、证据时间窗口和响应渠道。
+  <Card title="创建 Cloud 审计" icon="scan-search" href="/zh/audits/setup">
+    定义周期性目标、覆盖范围、证据时间窗口和响应渠道。
   </Card>
   <Card title="启用策略" icon="shield-check" href="/zh/start/first-policy">
-    在本地验证，谨慎发布，并优先部署到小范围的计算机组。
+    在本地验证，有计划地发布，并首先部署到小范围机器组。
   </Card>
 </CardGroup>
 
 <Warning>
-  审计输出是供审查的证据，并不代表所有被标记的操作都是不安全的。在将发现转化为阻断性强制措施之前，请先确认具体上下文。
+  审计输出是供审查的证据，并不代表所有被标记的操作均存在安全风险。在将某项发现转化为阻断性强制措施之前，请先确认其上下文。
 </Warning>

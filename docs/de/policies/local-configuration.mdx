@@ -1,20 +1,20 @@
 ---
 title: "Lokale Konfiguration"
-description: "Richtlinien-Scope, Parameter, benutzerdefinierte Dateien und maschinenweite Failproof AI-Einstellungen verwalten."
+description: "Steuerung von Policy-Scope, Parametern, benutzerdefinierten Dateien und maschinenbezogenen Failproof AI-Einstellungen."
 icon: "file-cog"
 ---
 
-Failproof AI trennt die Richtlinienauswahl von Maschinen- und Daemon-Einstellungen. Dadurch bleiben Repository-Richtlinien überprüfbar, während Zugangsdaten und Daemon-Status außerhalb des Repositorys verbleiben.
+Failproof AI trennt die Policy-Auswahl von Maschinen- und Daemon-Einstellungen. So bleiben Repository-Policy-Entscheidungen überprüfbar, während Anmeldedaten und Daemon-Zustand außerhalb des Repositorys gespeichert werden.
 
-## Einen Richtlinien-Scope wählen
+## Einen Policy-Scope wählen
 
 <Tabs>
   <Tab title="Dashboard">
-    Führen Sie `failproofai` ohne Argumente aus, um das lokale Richtlinien-Dashboard zu öffnen. Wählen Sie den Benutzer-, Projekt- oder lokalen Scope, bevor Sie eine Richtlinie aktivieren, damit die Änderung in die vorgesehene Konfigurationsdatei geschrieben wird.
+    Führen Sie `failproofai` ohne Argumente aus, um das lokale Policy-Dashboard zu öffnen. Wählen Sie den User-, Project- oder Local-Scope, bevor Sie eine Policy aktivieren, damit die Änderung in die richtige Konfigurationsdatei geschrieben wird.
 
-    - **Benutzer** gilt projektübergreifend auf dieser Maschine.
-    - **Projekt** gehört zum Repository und kann committet werden.
-    - **Lokal** überschreibt ein Projekt für einen einzelnen Benutzer und sollte in der `.gitignore` eingetragen bleiben.
+    - **User** gilt projektübergreifend auf dieser Maschine.
+    - **Project** gehört zum Repository und kann committet werden.
+    - **Local** überschreibt ein Projekt für einen einzelnen Benutzer und sollte gitignored bleiben.
 
   </Tab>
   <Tab title="CLI">
@@ -25,27 +25,27 @@ Failproof AI trennt die Richtlinienauswahl von Maschinen- und Daemon-Einstellung
     failproofai policies
     ```
 
-    Nicht jeder Harness unterstützt den lokalen Scope. Die CLI lehnt einen Scope ab, den der gewählte Harness nicht abbilden kann.
+    Nicht jedes Harness unterstützt den Local-Scope. Die CLI lehnt einen Scope ab, den das gewählte Harness nicht abbilden kann.
   </Tab>
 </Tabs>
 
-| Scope | Richtlinien-Konfigurationsdatei |
+| Scope | Policy-Konfigurationsdatei |
 | --- | --- |
-| Projekt | `<project>/.failproofai/policies-config.json` |
-| Lokal | `<project>/.failproofai/policies-config.local.json` |
-| Benutzer | `~/.failproofai/policies-config.json` |
+| Project | `<project>/.failproofai/policies-config.json` |
+| Local | `<project>/.failproofai/policies-config.local.json` |
+| User | `~/.failproofai/policies-config.json` |
 
-Aktivierte Richtlinien werden als Vereinigungsmenge zusammengeführt. Richtlinienparameter verwenden den ersten Scope, der Parameter für die jeweilige Richtlinie definiert – in der Reihenfolge Projekt → Lokal → Benutzer. Explizite benutzerdefinierte Richtlinienpfade verwenden ebenfalls den ersten Scope, der sie definiert.
+Aktivierte Policies werden als Vereinigungsmenge zusammengeführt. Policy-Parameter verwenden den ersten Scope, der Parameter für die jeweilige Policy definiert, in der Reihenfolge Project → Local → User. Explizite benutzerdefinierte Policy-Pfade verwenden den ersten Scope, der sie definiert.
 
-## Richtlinienparameter konfigurieren
+## Policy-Parameter konfigurieren
 
 <Tabs>
   <Tab title="Dashboard">
-    Öffnen Sie die Richtlinie im lokalen Dashboard, bearbeiten Sie die unterstützten Parameter und speichern Sie im gewählten Scope. Führen Sie dann eine passende und eine nicht passende Agent-Aktion aus, und prüfen Sie die Entscheidung unter **Beobachten → Richtlinie**.
+    Öffnen Sie die Policy im lokalen Dashboard, bearbeiten Sie die unterstützten Parameter und speichern Sie im gewählten Scope. Führen Sie eine passende und eine nicht passende Agent-Aktion aus und überprüfen Sie die Entscheidung unter **Observe → policy**.
 
   </Tab>
   <Tab title="CLI">
-    Bearbeiten Sie die `policies-config.json` des gewählten Scopes und führen Sie anschließend `failproofai policies` aus, um unbekannte Richtliniennamen oder Parameterschlüssel zu erkennen.
+    Bearbeiten Sie die `policies-config.json` des gewählten Scopes und führen Sie anschließend `failproofai policies` aus, um unbekannte Policy-Namen oder Parameter-Keys zu erkennen.
 
     ```json
     {
@@ -66,19 +66,19 @@ Aktivierte Richtlinien werden als Vereinigungsmenge zusammengeführt. Richtlinie
 
 ## Die Maschinendateien verstehen
 
-`~/.failproofai` enthält separate Dateien für separate Vertrauensbereiche:
+`~/.failproofai` enthält separate Dateien für separate Vertrauensgrenzen:
 
 | Pfad | Zweck |
 | --- | --- |
 | `config.json` | Nicht-geheime Daemon-, Audit- und Telemetrie-Einstellungen |
-| `credentials.json` | Cloud-Zugangsdaten; gespeichert mit Berechtigungen nur für den Eigentümer |
-| `policies-config.json` | Benutzer-Scope: integrierte Auswahl, Parameter und explizite benutzerdefinierte Pfade |
-| `policies/` | Benutzerkonventions-Richtlinien und Cloud-verwaltete Richtlinien-Artefakte |
-| `hook-activity/` | Lokales Protokoll der Richtlinienentscheidungen |
-| `state/` | Daemon-Spool, Gesundheitsstatus, Pause und Laufzeitzustand |
+| `credentials.json` | Cloud-Anmeldedaten; mit Nur-Eigentümer-Berechtigungen gespeichert |
+| `policies-config.json` | User-Scope-Builtin-Auswahl, Parameter und explizite benutzerdefinierte Pfade |
+| `policies/` | Benutzerkonvention-Policies und Cloud-verwaltete Policy-Artefakte |
+| `hook-activity/` | Lokales Policy-Entscheidungsprotokoll |
+| `state/` | Daemon-Spool, Health-, Pause- und Laufzeitzustand |
 
-Verwenden Sie `FAILPROOFAI_HOME`, um das gesamte Maschinen-Layout für einen Container oder isolierten Test zu verschieben. Verschieben Sie keine einzelnen Statusverzeichnisse unabhängig voneinander.
+Verwenden Sie `FAILPROOFAI_HOME`, um das gesamte Maschinen-Layout für einen Container oder isolierten Test zu verschieben. Verschieben Sie einzelne Zustandsverzeichnisse nicht unabhängig voneinander.
 
 <Warning>
-  Committen Sie niemals `credentials.json`. Committen Sie Projektkonfigurations- und Projektkonventions-Richtlinien erst, nachdem Sie sie als Durchsetzungscode überprüft haben.
+  Committen Sie niemals `credentials.json`. Committen Sie Project-Policy-Konfigurationen und Projektkonvention-Policies nur, nachdem Sie diese als Durchsetzungscode überprüft haben.
 </Warning>

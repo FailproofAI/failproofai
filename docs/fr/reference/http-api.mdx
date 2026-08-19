@@ -1,26 +1,26 @@
 ---
-title: "HTTP API"
-description: "Authentifiez-vous à l'API publique Failproof AI Cloud `/v1` et utilisez la référence des points de terminaison générée."
+title: "API HTTP"
+description: "Authentifiez-vous à l'API publique Failproof AI Cloud `/v1` et utilisez la référence des endpoints générée."
 icon: "braces"
 ---
 
-L'API publique est accessible sous `/v1` sur l'origine de votre tableau de bord Failproof AI.
+L'API publique est exposée sous `/v1` sur l'origine de votre tableau de bord Failproof AI.
 
 ## Créer une clé et effectuer une requête
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Ouvrez **Administration → Clés**, sélectionnez **Créer une clé** et choisissez le préréglage de permission le plus restrictif adapté à l'intégration.
-    2. Ajoutez des autorisations individuelles uniquement si nécessaire, créez la clé et copiez le secret unique affiché.
-    3. Effectuez une requête de test sur `/v1/sessions` et confirmez que la clé est toujours active sur la page Clés.
+    1. Ouvrez **Administration → Clés**, sélectionnez **Créer une clé** et choisissez le profil de permissions le plus restrictif couvrant l'intégration.
+    2. Ajoutez des autorisations individuelles uniquement si nécessaire, créez la clé et copiez son secret à usage unique.
+    3. Effectuez une requête de test vers `/v1/sessions` et confirmez que la clé reste active sur la page Clés.
     4. Faites pivoter ou désactivez la clé depuis son menu d'actions en cas de changement de propriétaire de l'intégration.
 
-    ![Le panneau de création de clé API avec les préréglages de permission et les autorisations individuelles.](/images/dashboard/key-create.png)
+    ![Le panneau de création de clé API avec les profils de permissions et les autorisations individuelles.](/images/dashboard/key-create.png)
 
-    Le panneau de création est illustré ci-dessus. Le secret unique n'apparaît qu'après avoir sélectionné **créer** ; copiez-le avant de fermer cette confirmation.
+    Le panneau de création est illustré ci-dessus. Le secret à usage unique n'apparaît qu'après avoir sélectionné **créer** ; copiez-le avant de fermer cette confirmation.
   </Tab>
   <Tab title="CLI">
-    Créez une clé en lecture seule et utilisez-la directement avec `fp` ou `curl` :
+    Créez une clé de lecture et utilisez-la directement avec `fp` ou `curl` :
 
     ```bash
     fp keys create reliability-reader \
@@ -36,7 +36,7 @@ L'API publique est accessible sous `/v1` sur l'origine de votre tableau de bord 
   </Tab>
 </Tabs>
 
-Les clés sont limitées à une organisation et à un ensemble de permissions. Une requête ne disposant pas de la permission requise par le point de terminaison renvoie `403` et identifie la permission manquante.
+Les clés sont limitées à une organisation et à un profil de permissions. Une requête sans la permission requise par l'endpoint retourne `403` et identifie la permission manquante.
 
 ## Sélection de l'organisation
 
@@ -44,7 +44,7 @@ Une clé d'organisation agit automatiquement sur son organisation. Une clé à p
 
 <Tabs>
   <Tab title="Tableau de bord">
-    Utilisez le sélecteur d'organisation dans l'en-tête du tableau de bord avant d'ouvrir **Administration → Clés**. Les clés créées à cet endroit appartiennent à l'organisation sélectionnée. Confirmez le slug de l'organisation dans l'URL et les détails de la clé avant de copier les identifiants dans vos automatisations.
+    Utilisez le sélecteur d'organisation dans l'en-tête du tableau de bord avant d'ouvrir **Administration → Clés**. Les clés créées à cet endroit appartiennent à l'organisation sélectionnée. Confirmez le slug de l'organisation dans l'URL et les détails de la clé avant de copier l'identifiant dans vos automatisations.
 
   </Tab>
   <Tab title="CLI">
@@ -63,12 +63,12 @@ Une clé d'organisation agit automatiquement sur son organisation. Une clé à p
   </Tab>
 </Tabs>
 
-Consultez les pages de points de terminaison générées dans cette section pour connaître les chemins actuels, les paramètres, les exigences de permission et les codes de statut. La spécification est générée à partir des annotations de routes du serveur et vérifiée par rapport au routeur `/v1`.
+Consultez les pages d'endpoints générées dans cette section pour les chemins actuels, les paramètres, les exigences de permission et les codes de statut. La spécification est générée à partir des annotations des routes serveur et vérifiée par rapport au routeur `/v1`.
 
-La spécification actuelle couvre intégralement les routes, méthodes, paramètres, permissions et codes de statut. Certains corps de réponse restent intentionnellement non typés, car le serveur les construit encore sous forme de JSON dynamique. Inspectez une vraie réponse avant de générer un client fortement typé autour d'un point de terminaison ne disposant pas de schéma de réponse.
+La spécification actuelle offre une couverture complète des routes, méthodes, paramètres, permissions et codes de statut. Certains corps de réponse restent intentionnellement non typés car le serveur les construit encore sous forme de JSON dynamique. Inspectez une vraie réponse avant de générer un client fortement typé autour d'un endpoint sans schéma de réponse.
 
-Utilisez `Content-Type: application/json` pour les écritures JSON. Interprétez `401` comme une authentification manquante ou invalide, `403` comme une identité valide sans la permission requise, `404` comme une ressource absente ou inaccessible pour l'organisation, `409` comme un conflit d'état, et `422` comme un champ ou une valeur de permission invalide. Les réponses d'erreur incluent un message lisible par l'humain ; les échecs de permission précisent également l'autorisation requise.
+Utilisez `Content-Type: application/json` pour les écritures JSON. Traitez `401` comme une authentification absente ou invalide, `403` comme une identité valide sans la permission requise, `404` comme une ressource inexistante ou inaccessible à l'organisation, `409` comme un conflit d'état, et `422` comme un champ ou une valeur de permission invalide. Les réponses d'erreur incluent un message lisible par un humain ; les échecs de permission mentionnent également l'autorisation requise.
 
 <Warning>
-  Le déploiement de l'application des politiques est intentionnellement géré en dehors de la surface publique `/v1` ordinaire. Utilisez le workflow de déploiement Cloud supporté.
+  Le déploiement de l'application des politiques est intentionnellement géré en dehors de la surface publique ordinaire `/v1`. Utilisez le workflow de déploiement Cloud supporté.
 </Warning>

@@ -1,19 +1,19 @@
 ---
 title: "Các chính sách tích hợp sẵn"
-description: "Bật các biện pháp bảo vệ được duy trì cho các chế độ lỗi phổ biến của agent."
+description: "Kích hoạt các hành lang bảo vệ được duy trì cho các chế độ lỗi phổ biến của agent."
 icon: "library"
 ---
 
-Các chính sách tích hợp sẵn bao gồm xử lý bí mật, tệp môi trường, lệnh shell phá hủy, nhánh được bảo vệ, công cụ đám mây và cơ sở hạ tầng, xuất bản gói, các lệnh gọi lặp lại, và kiểm tra quy trình kết thúc tác vụ.
+Các chính sách tích hợp sẵn bao gồm xử lý bí mật, tệp môi trường, lệnh shell phá huỷ, nhánh được bảo vệ, các công cụ đám mây và cơ sở hạ tầng, công bố gói, các lệnh gọi lặp lại, và kiểm tra quy trình làm việc kết thúc tác vụ.
 
-## Bật và xác minh một chính sách tích hợp sẵn
+## Kích hoạt và xác minh một chính sách tích hợp sẵn
 
 <Tabs>
   <Tab title="Dashboard">
     1. Cài đặt chính sách trên một máy được kết nối bằng CLI cục bộ.
-    2. Chạy một hành động thử nghiệm an toàn trong agent được thiết bị đo.
-    3. Chuyển đến **Observe → policy** và lọc theo tên chính sách, môi trường máy hoặc quyết định.
-    4. Mở phiên liên kết để xác nhận đầu vào công cụ phù hợp và lý do được trả về.
+    2. Chạy một hành động kiểm tra an toàn trong agent được cấu trúc.
+    3. Đi tới **Observe → policy** và lọc theo tên chính sách, môi trường máy hoặc quyết định.
+    4. Mở phiên được liên kết để xác nhận đầu vào công cụ phù hợp và lý do được trả về.
 
   </Tab>
   <Tab title="CLI">
@@ -23,33 +23,33 @@ Các chính sách tích hợp sẵn bao gồm xử lý bí mật, tệp môi tr�
     failproofai config --status
     ```
 
-    Xóa nó bằng `failproofai policy remove block-rm-rf --cli claude --scope project`.
+    Xoá nó bằng `failproofai policy remove block-rm-rf --cli claude --scope project`.
   </Tab>
 </Tabs>
 
-Liệt kê các chính sách có sẵn trong phiên bản đã cài đặt:
+Liệt kê các chính sách có sẵn trong phiên bản đã cài đặt của bạn:
 
 ```bash
 failproofai policies
 ```
 
-Bật một chính sách cho một dự án:
+Kích hoạt một chính sách cho một dự án:
 
 ```bash
 failproofai policy add block-rm-rf --scope project
 ```
 
-Bật nhiều chính sách cho các thiết bị được chọn:
+Kích hoạt nhiều chính sách cho các harness được chọn:
 
 ```bash
 failproofai policies --install block-sudo block-force-push \
   --cli claude codex --scope project
 ```
 
-Một số chính sách chấp nhận tham số hoặc được đánh dấu là beta. Kiểm tra mô tả, phạm vi phù hợp, và hành vi mặc định trước khi triển khai. Một chính sách bảo vệ một quy trình công việc có thể chặn các hoạt động hợp lệ trong một quy trình khác.
+Một số chính sách chấp nhận các tham số hoặc được đánh dấu là beta. Hãy xem lại mô tả, phạm vi khớp, và hành vi mặc định trước khi triển khai. Một chính sách bảo vệ một quy trình làm việc có thể chặn các hoạt động hợp lệ trong hoạt động khác.
 
 <Card title="Duyệt danh mục chính sách tích hợp sẵn đầy đủ" icon="list-checks" href="/vi/policies/builtin-catalog">
-  Xem tất cả 40 chính sách hiện tại, các kích hoạt của chúng, cơ sở được đề xuất, và tham số.
+  Xem lại tất cả 40 chính sách hiện tại, các kích hoạt của chúng, đường cơ sở được đề xuất, và các tham số.
 </Card>
 
 <Tip>

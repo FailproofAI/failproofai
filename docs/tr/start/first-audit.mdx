@@ -1,28 +1,28 @@
 ---
 title: "İlk başarısızlık kontrolünü çalıştırın"
-description: "Cloud panodan veya fp CLI'den bir denetim oluşturun ve ilk bulgularını gözden geçirin."
+description: "Cloud panosundan veya fp CLI'dan bir denetim oluşturun ve ilk bulgularını inceleyin."
 icon: "scan-search"
 ---
 
-Bir denetim, bir dizi oturumu sıralanmış, kanıtla desteklenmiş başarısızlık bulgularına dönüştürür. Dar kapsamlı bir başarısızlık sorusuyla başlayın.
+Bir denetim, bir dizi oturumu sıralanmış, kanıtlarla desteklenen başarısızlık bulgularına dönüştürür. Dar kapsamlı bir başarısızlık sorusundan başlayın.
 
 <Tabs>
   <Tab title="Pano">
     <Steps>
-      <Step title="Denetimleri Aç">
-        Cloud kenar çubuğunda **Analiz → Denetimler**'e gidin. **Yeni denetim**'i seçin.
+      <Step title="Denetimleri Açın">
+        Cloud kenar çubuğunda **Analiz → Denetimler**'e gidin. **yeni denetim**'i seçin.
       </Step>
       <Step title="Denetimi ayarlayın">
-        Bir ad ve doğrudan başarısızlık hedefi girin; örneğin "girişi değiştirmeden veya yükseltmeden aynı başarısız ödeme çağrısını yeniden deneyen üretim oturumlarını bulun." Aracı, ortamı, zaman penceresini ve zamanlamayı seçin. Denetçinin iş akışı kurallarınıza ihtiyaç duyması durumunda kısa bir özet ve referans URL'leri ekleyin.
+        Bir ad ve doğrudan başarısızlık hedefi girin; örneğin, "girişi değiştirmeden veya yükseltmeden aynı başarısız ödeme çağrısını yeniden deneyen üretim oturumlarını bulun." Aracı, ortamı, zaman penceresini ve zamanlamayı seçin. Denetçinin iş akışı kurallarınıza ihtiyaç duyduğunda kısa bir bilgilendirme ve referans URL'leri ekleyin.
       </Step>
-      <Step title="Oluşturun ve çalıştırmanın bitmesini bekleyin">
-        **Denetim oluştur**'u seçin. İlk çalıştırma hemen sıraya alınır. Denetim kartını açarak kuyruğa alındıdan çalışmaya sonra tamamlandıya geçişini izleyebilirsiniz.
+      <Step title="Denetimi oluşturun ve çalışmasını bekleyin">
+        **denetim oluştur**'u seçin. İlk çalışma hemen sıraya alınır. Denetim kartını açarak sırada beklemekten çalışmaya, ardından tamamlanmaya geçişini izleyin.
       </Step>
     </Steps>
 
-    Çalıştırma tamamlandıktan sonra bir bulguyu açın ve oturum kanıtını gözden geçirin. Ardından bunu kabul edebilir, atayabilir, reddedebilir, sessize alabilir veya çözebilirsiniz.
+    Çalışma tamamlandıktan sonra, bir bulguyu açın ve oturum kanıtını inceleyin. Daha sonra onaylayabilir, atayabilir, reddedebilir, susturabilir veya çözebilirsiniz.
 
-    ![Başarısızlık açıklaması, önerilen işlem, destekleyici kanıt ve etkilenen oturumları gösteren tamamlanmış bir denetim bulgusu.](/images/dashboard/audit-finding.png)
+    ![Başarısızlık açıklaması, önerilen eylem, destekleyici kanıt ve etkilenen oturumları gösteren tamamlanmış bir denetim bulgusu.](/images/dashboard/audit-finding.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -45,8 +45,8 @@ Bir denetim, bir dizi oturumu sıralanmış, kanıtla desteklenmiş başarısız
     fp audits run payment-retry-failures
     ```
 
-    Bir bulguyu triyaj yoluyla taşımak için `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` veya `fp audits reopen <finding-id>` kullanın.
+    Bir bulguyu değerlendirmede ilerletmek için `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` veya `fp audits reopen <finding-id>` kullanın.
   </Tab>
 </Tabs>
 
-Sonra, doğrulanmış tekrarlanabilir bir işlem için [ilk başarısızlığı bir ilkeyle önleyin](/tr/start/first-policy).
+Ardından, [ilk başarısızlığı bir politika ile önleyin](/tr/start/first-policy) doğrulanmış tekrarlanabilir bir eylem için.

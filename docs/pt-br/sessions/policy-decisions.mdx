@@ -4,16 +4,16 @@ description: "Veja quais políticas foram avaliadas, bloqueadas, instruídas ou 
 icon: "shield-check"
 ---
 
-Decisões de política explica o que o enforcement fez. Use-o para verificar um rollout, medir a taxa de bloqueios e encontrar atividades desprotegidas.
+Decisões de política explica o que a aplicação de regras fez. Use para verificar um rollout, medir a taxa de bloqueio e encontrar atividades sem proteção.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vá para **Observe → policy** e escolha o intervalo de tempo e, opcionalmente, uma máquina.
-    2. Revise as ações avaliadas, bloqueios, taxa de bloqueios, decisões Cloud, ações desprotegidas e atividade enquanto pausado.
+    1. Acesse **Observe → policy** e escolha o intervalo de tempo e, opcionalmente, uma máquina.
+    2. Revise as ações avaliadas, bloqueios, taxa de bloqueio, decisões na nuvem, ações sem proteção e atividade durante a pausa.
     3. Filtre a tabela de mapeamento de políticas e inspecione as atribuições implantadas.
     4. Selecione um ponto no gráfico para abrir as decisões e suas sessões.
 
-    ![A página de política mostrando totais de decisões, um filtro de máquina, atividade de enforcement ao longo do tempo e a tabela de mapeamento de políticas.](/images/dashboard/policy-observe.png)
+    ![A página Policy exibindo totais de decisões, um filtro por máquina, atividade de aplicação ao longo do tempo e a tabela de mapeamento de políticas.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -22,6 +22,6 @@ Decisões de política explica o que o enforcement fez. Use-o para verificar um 
     failproofai config --status
     ```
 
-    Use `failproofai` para o estado de enforcement local da máquina e `fp` para investigação de eventos Cloud.
+    Use `failproofai` para o estado de aplicação local da máquina e `fp` para investigação de eventos na nuvem.
   </Tab>
 </Tabs>

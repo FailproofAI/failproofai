@@ -1,21 +1,21 @@
 ---
 title: "Tần suất kiểm toán"
-description: "Chọn khi nào các kiểm toán định kỳ chạy và chúng xem xét bao nhiêu dữ liệu."
+description: "Chọn khi nào kiểm toán định kỳ chạy và bao nhiêu dữ liệu chúng xem xét."
 icon: "calendar-clock"
 ---
 
-Sử dụng các kiểm toán định kỳ cho các chế độ lỗi có thể tái diễn khi các agent, prompt, công cụ và mô hình thay đổi.
+Sử dụng kiểm toán định kỳ cho các chế độ lỗi có thể tái xuất hiện khi agents, prompts, tools và models thay đổi.
 
 ## Thay đổi lịch trình
 
 <Tabs>
   <Tab title="Dashboard">
     1. Đi tới **Analyze → Audits** và mở kiểm toán.
-    2. Mở cài đặt của nó và thay đổi trạng thái bật/tắt, khoảng thời gian, điểm neo UTC, chế độ cửa sổ hoặc lookback.
+    2. Mở cài đặt của nó và thay đổi trạng thái bật/tắt, khoảng thời gian, neo UTC, chế độ cửa sổ hoặc lookback.
     3. Lưu kiểm toán và xác nhận thời gian chạy tiếp theo trên thẻ kiểm toán.
-    4. Sử dụng **run now** một lần sau khi có thay đổi phạm vi hoặc ngữ cảnh lớn.
+    4. Sử dụng **run now** một lần sau khi thay đổi phạm vi hoặc bối cảnh lớn.
 
-    ![Trình chỉnh sửa kiểm toán hiển thị tần suất, cửa sổ quét, phạm vi, cài đặt phân tích, ngữ cảnh và các kênh thông báo.](/images/dashboard/audit-edit.png)
+    ![Trình chỉnh sửa kiểm toán hiển thị tần suất, cửa sổ quét, phạm vi, cài đặt phân tích, bối cảnh và kênh thông báo.](/images/dashboard/audit-edit.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -33,17 +33,17 @@ Sử dụng các kiểm toán định kỳ cho các chế độ lỗi có thể 
   </Tab>
 </Tabs>
 
-Chọn tần suất dựa trên tốc độ và chi phí của rủi ro:
+Chọn tần suất từ tốc độ và chi phí của rủi ro:
 
-| Mẫu rủi ro | Tần suất bắt đầu |
+| Mô hình rủi ro | Tần suất bắt đầu |
 | --- | --- |
-| Hoạt động sản xuất tác động cao | Hàng ngày |
-| Hồi quy quy trình hoặc mô hình | Hàng tuần |
-| Đánh giá quản trị hoặc truy cập | Hàng tháng |
+| Hành động sản xuất có tác động cao | Hàng ngày |
+| Hồi quy quy trình công việc hoặc mô hình | Hàng tuần |
+| Xem xét quản lý hoặc truy cập | Hàng tháng |
 | Điều tra phát hành một lần | Chạy một lần |
 
-Căn chỉnh cửa sổ lookback với tần suất để các lần chạy không để lại khoảng trống hoặc không xem xét lặp lại một cách không cần thiết một dân số lớn. Sau khi thay đổi mục tiêu hoặc ngữ cảnh của kiểm toán, hãy chạy nó thủ công một lần trước khi dựa vào kết quả được lên lịch tiếp theo.
+Sắp xếp cửa sổ lookback theo tần suất để các lần chạy không bỏ sót khoảng trống cũng như không kiểm tra lại một nhóm quá lớn một cách không cần thiết. Sau khi thay đổi mục tiêu hoặc bối cảnh của kiểm toán, hãy chạy thủ công một lần trước khi dựa vào kết quả được lên lịch tiếp theo.
 
 <Note>
-  Các kiểm toán được lên lịch cục bộ được cấu hình trên máy và quét lịch sử agent cục bộ. Lịch trình kiểm toán Cloud hoạt động trên các phiên Cloud. Hãy xem xét kết quả và quyền sở hữu của chúng một cách riêng biệt.
+  Kiểm toán được lên lịch cục bộ được cấu hình trên máy và quét lịch sử agent cục bộ. Lịch trình kiểm toán Cloud hoạt động trên các phiên Cloud. Coi kết quả và quyền sở hữu của chúng một cách riêng biệt.
 </Note>

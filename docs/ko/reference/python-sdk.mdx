@@ -1,15 +1,15 @@
 ---
 title: "커스텀 에이전트"
-description: "커스텀 에이전트의 트레이스를 계측하여 Failproof AI가 실행 내역을 재구성하고 장애를 찾을 수 있도록 합니다."
+description: "커스텀 에이전트의 트레이스를 계측하여 Failproof AI가 실행을 재구성하고 장애를 발견할 수 있도록 합니다."
 icon: "python"
 ---
 
-`failproofai-sdk`를 사용하여 커스텀 에이전트의 트레이스를 계측하면, Failproof AI가 각 실행을 재구성하고, 동작을 감사하며, 근거 기반의 장애를 찾을 수 있습니다. SDK는 Failproof 데몬이 Cloud에 전달할 구조화된 이벤트를 기록하며, Python 3.10 이상이 필요합니다.
+`failproofai-sdk`를 사용해 커스텀 에이전트의 트레이스를 계측하면 Failproof AI가 각 실행을 재구성하고, 동작을 감사하며, 근거 기반의 장애를 발견할 수 있습니다. SDK는 Failproof 데몬이 Cloud로 전달할 구조화된 이벤트를 기록합니다. Python 3.10 이상이 필요합니다.
 
-트레이싱은 커스텀 에이전트를 관측 가능하고 감사 가능하게 만듭니다. 실행 전에 안전하지 않은 작업을 방지하려면 런타임에 enforcement hook도 필요합니다.
+트레이싱을 통해 커스텀 에이전트를 관측 가능하고 감사 가능한 상태로 만들 수 있습니다. 실행 전에 안전하지 않은 동작을 차단하려면 런타임에 별도의 강제 실행 훅도 필요합니다.
 
 <Info>
-  커스텀 에이전트 환경에서 정책을 적용하려면 [Failproof AI에 문의](mailto:support@befailproof.ai)하세요. 런타임의 모델, 도구, 라이프사이클 경계를 정책 훅에 매핑하는 작업을 도와드립니다.
+  커스텀 에이전트 설정에서 정책을 적용하려면 [Failproof AI에 문의](mailto:support@befailproof.ai)하세요. 런타임의 모델, 도구, 라이프사이클 경계를 정책 훅에 매핑하는 작업을 도와드립니다.
 </Info>
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
@@ -18,7 +18,7 @@ icon: "python"
 
 ## `failproofai-sdk` 설치
 
-SDK는 현재 비공개 wheel로 배포됩니다. 최신 버전과 다운로드 방법은 Failproof AI 담당자에게 문의하세요.
+SDK는 현재 프라이빗 휠로 배포됩니다. 현재 버전 및 다운로드 접근 권한은 Failproof AI 담당자에게 문의하세요.
 
 ```bash
 VERSION=<sdk-version>
@@ -26,9 +26,9 @@ pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
 python -c "import failproofai; print(failproofai.__version__)"
 ```
 
-`uv`를 사용하는 경우, wheel을 먼저 다운로드한 후 `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`을 실행하세요. 비공개 아티팩트 저장소나 의존성 잠금 파일에 wheel을 고정하세요.
+`uv`를 사용하는 경우, 먼저 휠을 다운로드한 후 `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`을 실행하세요. 프라이빗 아티팩트 저장소 또는 의존성 잠금 파일에 휠을 고정하세요.
 
-패키지는 `failproofai-sdk`로 설치되며, Python에서 `failproofai`로 임포트합니다.
+패키지는 `failproofai-sdk`로 설치되며, Python에서는 `failproofai`로 임포트합니다.
 
 ## Failproof 데몬 연결
 
@@ -37,9 +37,9 @@ python -c "import failproofai; print(failproofai.__version__)"
     1. **Admin → Keys**로 이동하여 `events:add` 권한이 있는 키를 생성합니다.
     2. 에이전트 머신에서 [Failproof 데몬을 Cloud에 연결](/ko/start/setup#connect-a-machine-to-cloud)합니다.
     3. 계측된 세션을 한 번 실행한 후, **Observe → Events**에서 정확한 ID를 확인합니다.
-    4. **Observe → Sessions**으로 이동하여 동일한 환경을 선택하고, 재구성된 트레이스를 엽니다.
+    4. **Observe → Sessions**로 이동하여 동일한 환경을 선택하고 재구성된 트레이스를 엽니다.
 
-    ![실행 그래프와 정렬된 이벤트 트레이스로 재구성된 커스텀 Python 에이전트 세션.](/images/dashboard/session-detail.png)
+    ![실행 그래프와 순서화된 이벤트 트레이스로 재구성된 커스텀 Python 에이전트 세션.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -53,7 +53,7 @@ python -c "import failproofai; print(failproofai.__version__)"
 
 ## 전체 실행 계측
 
-프로세스 시작 시 `configure()`를 한 번 호출하세요. 모든 이벤트 호출은 키워드 전용이며, 안정적인 `session_id`와 `agent_id`가 필요합니다.
+프로세스 시작 시 `configure()`를 한 번 호출합니다. 모든 이벤트 호출은 키워드 전용이며, 안정적인 `session_id`와 `agent_id`가 필요합니다.
 
 ```python
 import traceback
@@ -112,9 +112,9 @@ else:
     )
 ```
 
-`agent_start`는 액터당 한 번만 발생시키세요. 서브 에이전트의 경우, 부모의 `session_id`를 재사용하고 각 액터에 고유한 `agent_id`를 부여하며, `parent_id`는 세션 ID가 아닌 부모 **에이전트 ID**로 설정하세요.
+액터당 `agent_start`를 한 번 발행합니다. 서브 에이전트의 경우 부모의 `session_id`를 재사용하고, 각 액터에 고유한 `agent_id`를 부여하며, `parent_id`는 세션 ID가 아닌 부모 **에이전트 ID**로 설정합니다.
 
-## 설정 참조
+## 설정 레퍼런스
 
 ```python
 failproofai.configure(
@@ -126,20 +126,20 @@ failproofai.configure(
 
 | 설정 | 동작 |
 | --- | --- |
-| `base_dir` | 명시적인 스풀 루트 경로. 모든 환경 변수보다 우선합니다. |
-| `flush_interval` | 메모리에서 JSONL로 백그라운드 쓰기 간격(초). 기본값: `0.5`. |
+| `base_dir` | 명시적 스풀 루트. 모든 환경 변수보다 우선합니다. |
+| `flush_interval` | 메모리에서 JSONL로의 백그라운드 쓰기 간격(초). 기본값: `0.5`. |
 | `environment` | 모든 이벤트에 붙는 배포 레이블. 기본값은 `dev`. |
-| `FAILPROOFAI_HOME` | `custom-agents` 스풀이 포함된 Failproof AI 루트 경로를 변경합니다. |
+| `FAILPROOFAI_HOME` | `custom-agents` 스풀이 포함된 Failproof AI 루트를 변경합니다. |
 
-SDK는 `base_dir`이 설정된 경우 해당 경로에 기록합니다. 그렇지 않으면 `FAILPROOFAI_HOME` 또는 `~/.failproofai` 아래 Failproof 데몬의 `custom-agents` 스풀을 사용합니다.
+`base_dir`가 설정된 경우 SDK는 해당 경로에 기록합니다. 그렇지 않으면 `FAILPROOFAI_HOME` 또는 `~/.failproofai` 아래 Failproof 데몬의 `custom-agents` 스풀을 사용합니다.
 
-SDK는 호출을 메모리에 큐에 넣고 백그라운드 스레드에서 배치로 씁니다. Python의 `atexit` 핸들링을 통해 최종 플러시도 시도합니다. 짧게 실행되는 워커의 경우, 인터프리터가 정상적으로 종료되도록 하세요. 프로세스를 강제 종료하면 메모리에 남아 있는 이벤트가 손실될 수 있습니다.
+SDK는 메모리에 호출을 큐에 저장하고 백그라운드 스레드에서 배치를 기록합니다. Python의 `atexit` 핸들링을 통해 최종 플러시도 시도합니다. 수명이 짧은 워커의 경우 정상적인 인터프리터 종료를 허용하세요. 강제 프로세스 종료 시 메모리에 남아있는 이벤트가 손실될 수 있습니다.
 
 ## 이벤트 카탈로그
 
-모든 메서드는 `None`을 반환합니다. `None`으로 남겨진 필드는 JSON `null`로 기록되는 대신 생략됩니다.
+모든 메서드는 `None`을 반환합니다. `None`으로 남겨진 필드는 JSON `null`로 기록되지 않고 생략됩니다.
 
-| 메서드 | identity 외 필수 필드 | 선택 필드 |
+| 메서드 | 식별 필드 외 필수 필드 | 선택 필드 |
 | --- | --- | --- |
 | `agent_start` | — | `goal`, `parent_id` |
 | `agent_end` | — | `outcome`, `summary` |
@@ -157,27 +157,27 @@ SDK는 호출을 메모리에 큐에 넣고 백그라운드 스레드에서 배�
 | `human_pause` | — | `reason`, `user_id` |
 | `human_interrupt` | — | `reason`, `user_id`, `at_step` |
 
-완료가 실패로 분류되어야 하는 경우 `outcome="failed"`, `"error"`, `"timeout"`, 또는 `"rejected"`를 사용하세요. `"failure"`를 포함한 다른 값들은 현재 백엔드에서 실패로 분류되지 않습니다.
+완료가 실패로 분류되어야 하는 경우 `outcome="failed"`, `"error"`, `"timeout"`, 또는 `"rejected"`를 사용하세요. `"failure"`를 포함한 다른 값은 현재 백엔드에서 실패로 분류되지 않습니다.
 
 ## 상관관계 및 지속 시간 규칙
 
 - 매칭되는 완료 이벤트에는 동일한 `tool_call_id`, `hook_id`, `pause_id`, 또는 `input_id`를 재사용하세요.
-- SDK는 `tool_result`, `hook_completed`, `agent_resume`, `human_input`에 대해 `duration_ms`를 계산합니다. 이 메서드들에 직접 값을 전달하면 `ValueError`가 발생합니다.
-- 도구 ID와 훅 ID는 프로세스 전역 펜딩 맵을 공유합니다. 동시 세션 및 두 네임스페이스 모두에서 전역적으로 고유하게 만드세요. 공급자 ID나 UUID가 가장 안전합니다.
-- 프로세스를 넘나드는 페어도 다운스트림에서 상관관계가 연결되지만, SDK는 프로세스 내 지속 시간을 계산할 수 없습니다.
-- 펜딩 맵은 최대 10,000개의 시작 항목을 보유하며, 가득 차면 가장 오래된 항목을 제거합니다.
+- SDK는 `tool_result`, `hook_completed`, `agent_resume`, `human_input`의 `duration_ms`를 자동으로 계산합니다. 해당 메서드에 직접 전달하면 `ValueError`가 발생합니다.
+- 도구 및 훅 ID는 프로세스 전체의 단일 대기 맵을 공유합니다. 동시 세션과 두 네임스페이스 모두에서 전역적으로 고유하게 만드세요. 프로바이더 ID나 UUID를 사용하는 것이 가장 안전합니다.
+- 프로세스가 분리된 쌍도 다운스트림에서는 상관관계가 유지되지만, SDK는 프로세스 내 지속 시간을 계산할 수 없습니다.
+- 대기 맵은 최대 10,000개의 시작 항목을 보유하며, 가득 차면 가장 오래된 항목을 제거합니다.
 
-## 커스텀 필드와 페이로드
+## 커스텀 필드 및 페이로드
 
-모든 이벤트는 추가 키워드 필드를 허용합니다. 다운스트림 쿼리에서 구조가 필요한 경우 JSON 호환 값을 사용하세요. UUID, datetime, decimal, set, bytes, 모델 객체 등 지원되지 않는 리프 타입은 작성기에 의해 문자열로 변환됩니다.
+모든 이벤트는 추가 키워드 필드를 받을 수 있습니다. 다운스트림 쿼리에서 구조가 필요한 경우 JSON 호환 값을 사용하세요. UUID, datetime, decimal, set, bytes, 모델 객체 등 지원되지 않는 리프 타입은 작성기가 문자열로 변환합니다.
 
-예약된 커스텀 이름은 `timestamp`, `session_id`, `agent_id`, `type`, `environment`입니다. 선택 필드의 오타는 새 커스텀 필드로 수용되므로, 표준 필드가 Cloud에 나타나지 않을 경우 발생된 JSON을 검토하세요.
+예약된 커스텀 이름은 `timestamp`, `session_id`, `agent_id`, `type`, `environment`입니다. 선택 필드의 오타는 새로운 커스텀 필드로 허용되므로, 표준 필드가 Cloud에 표시되지 않을 때는 발행된 JSON을 확인하세요.
 
 ## 전달 및 검증
 
 <Tabs>
   <Tab title="대시보드">
-    **Observe → Events**에서 `agent_start`가 처음에 있고 `agent_end`가 마지막에 있는지 확인하세요. 그런 다음 **Observe → Sessions**을 열어 모델, 도구, 휴먼, 훅, 오류 이벤트가 의도한 순서로 나타나는지 확인하세요. 세션 ID를 주요 문제 해결 키로 사용하세요.
+    **Observe → Events**에서 처음에 `agent_start`가, 마지막에 `agent_end`가 있는지 확인합니다. 그런 다음 **Observe → Sessions**를 열어 모델, 도구, 휴먼, 훅, 오류 이벤트가 의도한 순서대로 나타나는지 확인합니다. 세션 ID를 주요 트러블슈팅 키로 사용하세요.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -189,10 +189,10 @@ SDK는 호출을 메모리에 큐에 넣고 백그라운드 스레드에서 배�
   </Tab>
 </Tabs>
 
-Cloud가 비어 있다면 `$FAILPROOFAI_HOME/custom-agents/events`를, 그렇지 않으면 `~/.failproofai/custom-agents/events`를 확인하세요. JSONL 파일은 SDK가 이벤트를 발생시켰음을 증명합니다. 스풀이 계속 증가하면 데몬 설정이나 전달 문제를, 스풀이 비어 있으면 계측 또는 프로세스 수명 문제를 의심하세요.
+Cloud가 비어 있는 경우, `$FAILPROOFAI_HOME/custom-agents/events`를 확인하거나 해당 경로가 없으면 `~/.failproofai/custom-agents/events`를 확인하세요. JSONL 파일이 존재하면 SDK가 이벤트를 발행한 것이고, 스풀이 계속 증가하면 데몬 설정 또는 전달 문제를, 스풀이 비어 있으면 계측 또는 프로세스 수명 문제를 의심하세요.
 
 ## 커스텀 런타임에서 장애 방지
 
-감사 결과와 연결된 트레이스를 사용하여 안전하지 않은 작업, 필요한 근거, 의도된 응답을 정의하세요. 커스텀 enforcement 통합은 실행 전에 작업을 노출하고, 구조화된 입력을 정책 엔진에 전달하며, 결과로 나오는 allow, instruct, 또는 deny 결정을 적용해야 합니다.
+감사 결과와 연결된 트레이스를 활용하여 안전하지 않은 동작, 필요한 근거, 의도된 응답을 정의합니다. 커스텀 강제 실행 통합은 실행 전에 동작을 노출하고, 구조화된 입력을 정책 엔진에 전달하며, 결과로 나오는 allow, instruct, 또는 deny 결정을 적용해야 합니다.
 
-이 통합을 런타임에 맞게 설계하고 검증하려면 [support@befailproof.ai](mailto:support@befailproof.ai)로 이메일을 보내세요.
+런타임에 맞는 통합을 설계하고 검증하려면 [support@befailproof.ai](mailto:support@befailproof.ai)로 이메일을 보내세요.

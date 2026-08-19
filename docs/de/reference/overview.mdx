@@ -1,26 +1,26 @@
 ---
 title: "Integrationen und Referenz"
-description: "Unterstützte Agent-Harnesses, SDKs, CLIs und die HTTP-API verbinden."
+description: "Unterstützte Agent-Harnesses, SDKs, CLIs und die HTTP API verbinden."
 icon: "braces"
 ---
 
-Wählen Sie die Integration, die am besten zu Ihrer bestehenden Agent-Umgebung passt.
+Wählen Sie die Integration, die am nächsten an der Umgebung liegt, in der Ihr Agent bereits läuft.
 
 <Columns cols={2}>
   <Card title="Agent-Harnesses" icon="plug-zap" href="/de/reference/harnesses">
     Hooks für unterstützte Coding- und autonome Agent-CLIs installieren.
   </Card>
   <Card title="Eigene Agenten" icon="python" href="/de/reference/python-sdk">
-    Traces instrumentieren, um Fehler in eigenen Agenten zu finden, und uns anschließend kontaktieren, um eine Absicherung zur Laufzeit hinzuzufügen.
+    Traces instrumentieren, um Fehler in eigenen Agenten zu finden, und uns anschließend kontaktieren, um Prävention in Ihre Runtime einzubinden.
   </Card>
   <Card title="Lokales Dashboard" icon="monitor-cog" href="/de/reference/local-dashboard">
     Lokale Projekte, Sitzungen, Policy-Aktivitäten und Offline-Audits einsehen.
   </Card>
   <Card title="Failproof AI CLI" icon="terminal" href="/de/reference/failproof-cli">
-    Lokale Erfassung, Hooks, Policies, Audits, Übermittlung und Maschinenstatus konfigurieren.
+    Lokale Erfassung, Hooks, Policies, Audits, Delivery und Maschinenstatus konfigurieren.
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/de/reference/cloud-cli#cli-commands">
-    Cloud-Sitzungen, Audits, Issues, Alerts, Schlüssel, Benutzer und Einstellungen abfragen und verwalten.
+    Cloud-Sitzungen, Audits, Issues, Alerts, Keys, Benutzer und Einstellungen abfragen und verwalten.
   </Card>
   <Card title="Evaluator SDK" icon="gauge" href="/de/reference/evaluator-sdk">
     Abgeschlossene oder inaktive Sitzungen mit einem FastAPI-Dienst bewerten.
@@ -29,33 +29,33 @@ Wählen Sie die Integration, die am besten zu Ihrer bestehenden Agent-Umgebung p
     Workflow-spezifische allow-, instruct- und deny-Entscheidungen erstellen und testen.
   </Card>
   <Card title="Self-Hosting" icon="cloud-cog" href="/de/reference/self-hosting">
-    Die Cloud-Steuerungsebene auf einem kundenverwalteten Kubernetes-Cluster bereitstellen.
+    Die Cloud-Control-Plane auf einem kundenverwalteten Kubernetes-Cluster betreiben.
   </Card>
 </Columns>
 
-Die generierte [HTTP-API-Referenz](/de/reference/http-api) deckt die öffentliche `/v1`-Oberfläche ab. Manuell erstellte Seiten erklären Workflows, die mehrere Endpunkte umfassen oder administrative Schnittstellen außerhalb dieser öffentlichen Oberfläche nutzen.
+Die generierte [HTTP-API-Referenz](/de/reference/http-api) deckt die öffentliche `/v1`-Oberfläche ab. Manuell verfasste Seiten erläutern Workflows, die mehrere Endpunkte umfassen oder administrative Schnittstellen außerhalb dieser öffentlichen Oberfläche nutzen.
 
-## Einen Agenten verbinden und Daten prüfen
+## Agenten verbinden und Daten verifizieren
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Öffnen Sie **Administration → Keys**, erstellen Sie einen Schlüssel mit `events:add` und `policies:pull`, und kopieren Sie das Secret.
-    2. Konfigurieren Sie die Integration über die entsprechende Seite oben.
-    3. Öffnen Sie **Observe → Events**, um zu bestätigen, dass Events ankommen, und anschließend **Observe → Sessions**, um zu überprüfen, ob sie vollständige Läufe bilden.
-    4. Filtern Sie nach der Umgebung der Integration und prüfen Sie eine Sitzung auf die Modell-, Tool-, Fehler- und Policy-Felder, die für Audits benötigt werden.
+    1. Öffnen Sie **Administration → Keys**, erstellen Sie einen Key mit `events:add` und `policies:pull`, und kopieren Sie das Secret.
+    2. Konfigurieren Sie die Integration anhand der passenden Seite oben.
+    3. Öffnen Sie **Observe → Events**, um zu bestätigen, dass Events ankommen, und dann **Observe → Sessions**, um zu prüfen, ob sie vollständige Runs bilden.
+    4. Filtern Sie nach der Umgebung der Integration und prüfen Sie eine Sitzung auf die Felder für Modell, Tool, Fehler und Policy, die für Audits benötigt werden.
 
-    Beginnen Sie mit dem Schlüssel-Drawer. Die ausgewählten Berechtigungen bestimmen, ob die Maschine Events senden und Cloud-verwaltete Policies empfangen kann.
+    Beginnen Sie mit dem Key-Drawer. Die ausgewählten Berechtigungen bestimmen, ob die Maschine Events senden und Cloud-verwaltete Policies empfangen kann.
 
-    ![Das neue API-Schlüssel-Drawer zum Erteilen von Berechtigungen für Event-Ingestion und Policy-Übermittlung.](/images/dashboard/key-create.png)
+    ![Das neue API-Key-Drawer zum Erteilen von Berechtigungen für Event-Ingestion und Policy-Delivery.](/images/dashboard/key-create.png)
 
-    Verwenden Sie nach dem Verbinden der Integration die Sessions-Liste, um zu bestätigen, dass die Events in vollständige Läufe in der erwarteten Umgebung gruppiert werden.
+    Nach dem Verbinden der Integration können Sie die Sitzungsliste verwenden, um zu bestätigen, dass die Events in der erwarteten Umgebung zu vollständigen Runs zusammengefasst werden.
 
-    ![Die Sessions-Liste zum Verifizieren, dass eine neu verbundene Integration vollständige Agent-Läufe meldet.](/images/dashboard/sessions-list.png)
+    ![Die Sitzungsliste zur Überprüfung, ob eine neu verbundene Integration vollständige Agent-Runs meldet.](/images/dashboard/sessions-list.png)
 
-    Öffnen Sie eine dieser Sitzungen, bevor Sie die Integration als abgeschlossen betrachten; der Trace sollte das Modell, Tool, Fehler und die Policy-Belege enthalten, die Ihre Audits benötigen.
+    Öffnen Sie eine dieser Sitzungen, bevor Sie die Integration als abgeschlossen betrachten; der Trace sollte das Modell, das Tool, den Fehler sowie die Policy-Nachweise enthalten, die Ihre Audits benötigen.
   </Tab>
   <Tab title="CLI">
-    Erstellen Sie einen Maschinenschlüssel, verbinden Sie den Failproof-Daemon und verifizieren Sie die erste Sitzung.
+    Erstellen Sie einen Machine-Key, verbinden Sie den Failproof-Daemon und verifizieren Sie die erste Sitzung.
 
     ```bash
     fp keys create agent-production \
@@ -71,7 +71,7 @@ Die generierte [HTTP-API-Referenz](/de/reference/http-api) deckt die öffentlich
     fp events --since 1h --env production --limit 20
     ```
 
-    Verwenden Sie `fp --json sessions ...`, wenn das Ergebnis von einem anderen Tool verarbeitet werden soll. Globale Flags wie `--json`, `--org` und `--base-url` müssen vor dem Befehl angegeben werden.
+    Verwenden Sie `fp --json sessions ...`, wenn das Ergebnis von einem anderen Tool weiterverarbeitet wird. Globale Flags wie `--json`, `--org` und `--base-url` müssen vor dem Befehl angegeben werden.
 
     Weitere Informationen zu lokalen Befehlen finden Sie in der [Failproof AI CLI-Referenz](/de/reference/failproof-cli) und zu `fp`-Befehlen in der [Failproof Cloud CLI-Referenz](/de/reference/cloud-cli#cli-commands).
   </Tab>

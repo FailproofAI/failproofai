@@ -1,14 +1,14 @@
 ---
-title: "ビルトインポリシーカタログ"
-description: "Failproof AI のすべてのビルトインポリシー、そのトリガー、推奨状態、および設定可能なパラメーターを確認します。"
+title: "組み込みポリシーカタログ"
+description: "Failproof AI の全組み込みポリシー、そのトリガー、推奨状態、設定可能なパラメーターを確認してください。"
 icon: "list-checks"
 ---
 
-インストール済みパッケージがポリシーの可用性に関する信頼できる情報源です。カタログのエントリや動作はパッケージバージョンによって変わる可能性があるため、アップグレードのたびに `failproofai policies` を実行してください。
+インストールされたパッケージがポリシーの利用可否に関する唯一の正確な情報源です。カタログのエントリや動作はパッケージバージョンによって変わる場合があるため、アップグレードのたびに `failproofai policies` を実行してください。
 
 ## 推奨ベースライン
 
-ガイド付きセットアップの推奨選択では、現在、シークレットサニタイザー、環境保護、自己保護、壊滅的コマンドガード、および保護ブランチの安全機能が有効化されます。
+ガイド付きセットアップの推奨選択では、現在シークレットのサニタイズ、環境の保護、自己保護、壊滅的コマンドのガード、保護ブランチの安全性が有効になっています。
 
 ```text
 sanitize-jwt                 sanitize-api-keys
@@ -21,51 +21,51 @@ block-rm-rf                  block-push-master
 block-force-push
 ```
 
-推奨セットは意図的に **Everything**（全て）より絞り込まれています。インフラストラクチャおよびワークフロー関連のポリシーは正当な作業を妨げる可能性があるため、それらが必要なリポジトリやマシンに対してのみ有効化してください。
+推奨設定は意図的に **Everything**（すべて）より範囲を絞っています。インフラストラクチャおよびワークフローのポリシーは正当な作業を中断させる可能性があるため、必要なリポジトリやマシンに限定して有効にしてください。
 
 ## シークレットと環境
 
 | ポリシー | トリガー | 結果 |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | モデルに届く前にツール出力から JWT を削除します。 |
-| `sanitize-api-keys` | `PostToolUse` | 一般的な OpenAI、Anthropic、GitHub、AWS、Stripe、Google のキーを削除します。 |
-| `sanitize-connection-strings` | `PostToolUse` | 認証情報を含むデータベース接続文字列を削除します。 |
-| `sanitize-private-key-content` | `PostToolUse` | PEM 秘密鍵の本文を削除します。 |
-| `sanitize-bearer-tokens` | `PostToolUse` | Authorization ベアラートークンを削除します。 |
-| `protect-env-vars` | シェルツールに対する `PreToolUse` | 環境変数をダンプするコマンドをブロックします。 |
+| `sanitize-jwt` | `PostToolUse` | モデルに渡る前にツール出力から JWT を編集（マスク）します。 |
+| `sanitize-api-keys` | `PostToolUse` | OpenAI、Anthropic、GitHub、AWS、Stripe、Google の一般的なキーを編集します。 |
+| `sanitize-connection-strings` | `PostToolUse` | 認証情報を含むデータベース接続文字列を編集します。 |
+| `sanitize-private-key-content` | `PostToolUse` | PEM 形式の秘密鍵本文を編集します。 |
+| `sanitize-bearer-tokens` | `PostToolUse` | 認可 Bearer トークンを編集します。 |
+| `protect-env-vars` | シェルツールへの `PreToolUse` | 環境変数をダンプするコマンドをブロックします。 |
 | `block-env-files` | `PreToolUse` | `.env` ファイルの読み取りおよび書き込みをブロックします。 |
-| `block-read-outside-cwd` | 読み取り・glob・grep・シェルツールに対する `PreToolUse` | セッションの作業ディレクトリ内への読み取りを制限します。 |
-| `block-secrets-write` | 書き込みツールに対する `PreToolUse` | 一般的なシークレットキーや認証情報のファイル名への書き込みをブロックします。 |
+| `block-read-outside-cwd` | 読み取り・glob・grep・シェルツールへの `PreToolUse` | セッションの作業ディレクトリ外への読み取りを防止します。 |
+| `block-secrets-write` | 書き込みツールへの `PreToolUse` | 一般的なシークレットキーや認証情報のファイル名への書き込みをブロックします。 |
 
 ## 危険なコマンドとインフラストラクチャ
 
 | ポリシー | トリガー | 結果 |
 | --- | --- | --- |
-| `block-self-pause` | `PreToolUse`、`PermissionRequest` | エージェントが自身の実行制御を一時停止するのを防ぎます。 |
-| `block-sudo` | `PreToolUse`、`PermissionRequest` | allow パターンに一致しない限り `sudo` をブロックします。 |
-| `block-curl-pipe-sh` | `PreToolUse` | ダウンロードしたスクリプトをシェルに直接パイプするのをブロックします。 |
+| `block-self-pause` | `PreToolUse`、`PermissionRequest` | エージェントが自身の強制適用を一時停止するのを防止します。 |
+| `block-sudo` | `PreToolUse`、`PermissionRequest` | 許可パターンに一致しない限り `sudo` をブロックします。 |
+| `block-curl-pipe-sh` | `PreToolUse` | シェルに直接パイプされるダウンロードスクリプトをブロックします。 |
 | `block-rm-rf` | `PreToolUse` | 壊滅的な再帰削除パターンをブロックします。 |
-| `block-failproofai-commands` | `PreToolUse` | エージェントが Failproof AI を変更またはアンインストールするのを防ぎます。 |
-| `block-kubectl` | `PreToolUse` | Kubernetes コマンドを制御します。 |
-| `block-terraform` | `PreToolUse` | Terraform および OpenTofu コマンドを制御します。 |
-| `block-aws-cli` | `PreToolUse` | AWS CLI コマンドを制御します。 |
-| `block-gcloud` | `PreToolUse` | Google Cloud CLI コマンドを制御します。 |
-| `block-az-cli` | `PreToolUse` | Azure CLI コマンドを制御します。 |
-| `block-helm` | `PreToolUse` | Helm コマンドを制御します。 |
-| `block-gh-pipeline` | `PreToolUse` | GitHub CLI のワークフロー、実行、マージ、リリース、キャッシュ、シークレット操作などの変更系コマンドを制御します。 |
+| `block-failproofai-commands` | `PreToolUse` | エージェントが Failproof AI を変更またはアンインストールするのを防止します。 |
+| `block-kubectl` | `PreToolUse` | Kubernetes コマンドをゲートします。 |
+| `block-terraform` | `PreToolUse` | Terraform および OpenTofu コマンドをゲートします。 |
+| `block-aws-cli` | `PreToolUse` | AWS CLI コマンドをゲートします。 |
+| `block-gcloud` | `PreToolUse` | Google Cloud CLI コマンドをゲートします。 |
+| `block-az-cli` | `PreToolUse` | Azure CLI コマンドをゲートします。 |
+| `block-helm` | `PreToolUse` | Helm コマンドをゲートします。 |
+| `block-gh-pipeline` | `PreToolUse` | GitHub CLI のワークフロー、実行、マージ、リリース、キャッシュ、シークレット操作など、変更を伴う操作をゲートします。 |
 
 ## Git とデータベースの安全性
 
 | ポリシー | トリガー | 結果 |
 | --- | --- | --- |
 | `block-push-master` | `PreToolUse` | 設定された保護ブランチへの直接プッシュをブロックします。 |
-| `block-force-push` | `PreToolUse` | フォースプッシュをブロックします。現在の実装では `--force-with-lease` は引き続き許可されます。 |
+| `block-force-push` | `PreToolUse` | 強制プッシュをブロックします。現在の実装では `--force-with-lease` は引き続き許可されます。 |
 | `block-work-on-main` | `PreToolUse` | 保護ブランチへのコミットおよびマージをブロックします。 |
 | `warn-git-amend` | `PreToolUse` | `--amend` でコミットを書き換える前に警告します。 |
-| `warn-git-stash-drop` | `PreToolUse` | スタッシュを永続的にドロップまたはクリアする前に警告します。 |
-| `warn-all-files-staged` | `PreToolUse` | 広範囲な `git add -A`、`git add .`、`git add --all` に対して警告します。 |
+| `warn-git-stash-drop` | `PreToolUse` | スタッシュを永続的に破棄またはクリアする前に警告します。 |
+| `warn-all-files-staged` | `PreToolUse` | `git add -A`、`git add .`、`git add --all` など広範なステージングに対して警告します。 |
 | `warn-destructive-sql` | `PreToolUse` | 認識されたデータベースクライアントを通じた `WHERE` 句なしの `DROP`、`TRUNCATE`、`DELETE` に対して警告します。 |
-| `warn-schema-alteration` | `PreToolUse` | 認識された `ALTER TABLE` のカラム操作およびリネーム操作に対して警告します。 |
+| `warn-schema-alteration` | `PreToolUse` | 認識された `ALTER TABLE` のカラム操作やリネーム操作に対して警告します。 |
 
 ## パッケージ、システム動作、エージェントループ
 
@@ -74,29 +74,29 @@ block-force-push
 | `warn-package-publish` | `PreToolUse` | パッケージレジストリへの公開前に警告します。 |
 | `warn-global-package-install` | `PreToolUse` | グローバルパッケージのインストール前に警告します。 |
 | `prefer-package-manager` | `PreToolUse` | 許可されたパッケージマネージャーを使用するようエージェントに指示します。 |
-| `warn-large-file-write` | 書き込みツールに対する `PreToolUse` | 設定されたファイルサイズしきい値を超えた場合に警告します。 |
-| `warn-background-process` | `PreToolUse` | デタッチされた、または長期実行されるバックグラウンドプロセスのパターンに対して警告します。 |
-| `warn-repeated-tool-calls` | `PreToolUse` | 同一ツールが3回以上連続して呼び出された場合に警告します。 |
+| `warn-large-file-write` | 書き込みツールへの `PreToolUse` | 設定されたファイルサイズのしきい値を超えた場合に警告します。 |
+| `warn-background-process` | `PreToolUse` | デタッチされた、または長時間稼働するバックグラウンドプロセスのパターンに対して警告します。 |
+| `warn-repeated-tool-calls` | `PreToolUse` | 同一のツール呼び出しが3回以上発生した後に警告します。 |
 
 ## タスク終了時のワークフロー
 
-これらのポリシーには、互換性のある `Stop` イベントを発行するハーネスが必要です。
+これらのポリシーは、互換性のある `Stop` イベントを発行するハーネスが必要です。
 
 | ポリシー | 結果 |
 | --- | --- |
-| `require-commit-before-stop` | トラッキングされた作業にコミットされていないものが残っている場合、完了を拒否します。 |
-| `require-push-before-stop` | ローカルのみのコミットが残っている場合、完了を拒否します。 |
-| `require-pr-before-stop` | 現在のブランチに対してプルリクエストを要求します。 |
-| `require-no-conflicts-before-stop` | 設定されたベースブランチに対してクリーンなマージを要求します。 |
+| `require-commit-before-stop` | トラッキングされた作業がコミットされていない間は完了を拒否します。 |
+| `require-push-before-stop` | コミットがローカルのみの状態では完了を拒否します。 |
+| `require-pr-before-stop` | 現在のブランチのプルリクエストを要求します。 |
+| `require-no-conflicts-before-stop` | 設定されたベースブランチとのクリーンなマージを要求します。 |
 | `require-ci-green-before-stop` | 現在の HEAD の CI チェックが正常に完了することを要求します。 |
 
 ## パラメーターリファレンス
 
-選択したスコープの `policyParams` オブジェクト配下でパラメーターを設定します。型は各ポリシーによって検証されます。
+選択したスコープの `policyParams` オブジェクトの下にパラメーターを設定します。型は各ポリシーによって検証されます。
 
 | ポリシー | パラメーター | 型とデフォルト値 |
 | --- | --- | --- |
-| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`、`[]`；エントリには `regex` と `label` が含まれます |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`、`[]`；エントリには `regex` と `label` を含む |
 | `block-read-outside-cwd` | `allowPaths` | `string[]`、`[]` |
 | `block-sudo` | `allowPatterns` | `string[]`、`[]` |
 | `block-rm-rf` | `allowPaths` | `string[]`、`[]` |
@@ -125,5 +125,5 @@ block-force-push
 ```
 
 <Warning>
-  allow パターンはエージェントが実行できる操作を拡張します。フリートへの展開前に、対象ハーネス上でトークン化の詳細とコマンドのバリアントを必ず検証してください。
+  許可パターンはエージェントが実行できる範囲を広げます。フリート全体に展開する前に、対象ハーネス上で正確なトークン化とコマンドの変形をテストしてください。
 </Warning>

@@ -1,21 +1,21 @@
 ---
-title: "Cadencia de auditorías"
+title: "Cadencia de auditoría"
 description: "Elige cuándo se ejecutan las auditorías recurrentes y cuántos datos revisan."
 icon: "calendar-clock"
 ---
 
-Usa auditorías recurrentes para patrones de fallo que pueden reaparecer a medida que cambian los agentes, prompts, herramientas y modelos.
+Usa auditorías recurrentes para patrones de fallos que pueden reaparecer a medida que cambian los agentes, prompts, herramientas y modelos.
 
-## Cambiar la programación
+## Cambiar el horario
 
 <Tabs>
   <Tab title="Dashboard">
     1. Ve a **Analyze → Audits** y abre la auditoría.
-    2. Abre su configuración y cambia el estado habilitado, el intervalo, el ancla UTC, el modo de ventana o el período de revisión.
-    3. Guarda la auditoría y confirma la hora de la próxima ejecución en la tarjeta de auditoría.
-    4. Usa **run now** una vez tras un cambio importante en el alcance o el contexto.
+    2. Abre su configuración y cambia el estado de activación, el intervalo, el ancla UTC, el modo de ventana o el lookback.
+    3. Guarda la auditoría y confirma la próxima ejecución en la tarjeta de auditoría.
+    4. Usa **run now** una vez después de un cambio mayor en el alcance o el contexto.
 
-    ![El editor de auditorías mostrando cadencia, ventana de barrido, alcance, configuración de análisis, contexto y canales de notificación.](/images/dashboard/audit-edit.png)
+    ![El editor de auditoría mostrando la cadencia, la ventana de análisis, el alcance, la configuración de análisis, el contexto y los canales de notificación.](/images/dashboard/audit-edit.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,21 +29,21 @@ Usa auditorías recurrentes para patrones de fallo que pueden reaparecer a medid
     fp audits edit checkout-reliability --enabled --yes
     ```
 
-    Consulta la [referencia de `fp audits`](/es/reference/cloud-cli#audits) para conocer los límites de programación, el comportamiento de la ventana y todos los comandos de auditoría.
+    Consulta la [referencia de `fp audits`](/es/reference/cloud-cli#audits) para conocer los límites de horario, el comportamiento de las ventanas y todos los comandos de auditoría.
   </Tab>
 </Tabs>
 
-Elige la cadencia en función de la velocidad y el coste del riesgo:
+Elige la cadencia según la velocidad y el costo del riesgo:
 
 | Patrón de riesgo | Cadencia inicial |
 | --- | --- |
 | Acción de producción de alto impacto | Diaria |
 | Regresión de flujo de trabajo o modelo | Semanal |
 | Revisión de gobernanza o acceso | Mensual |
-| Investigación puntual de una versión | Ejecución única |
+| Investigación de lanzamiento único | Ejecutar una vez |
 
-Alinea la ventana de revisión con la cadencia para que las ejecuciones no dejen huecos ni examinen repetidamente una población innecesariamente grande. Después de cambiar el objetivo o el contexto de una auditoría, ejecútala manualmente una vez antes de confiar en el próximo resultado programado.
+Alinea la ventana de lookback con la cadencia para que las ejecuciones no dejen vacíos ni examinen repetidamente una población innecesariamente grande. Después de cambiar el objetivo o el contexto de una auditoría, ejecútala manualmente una vez antes de confiar en el próximo resultado programado.
 
 <Note>
-  Las auditorías programadas locales se configuran en la máquina y escanean el historial de agentes local. Las programaciones de auditorías en la nube operan sobre sesiones de la nube. Trata sus resultados y su propiedad de forma independiente.
+  Las auditorías programadas locales se configuran en la máquina y analizan el historial de agentes local. Los horarios de auditorías en la nube operan sobre sesiones en la nube. Trata sus resultados y su propiedad por separado.
 </Note>

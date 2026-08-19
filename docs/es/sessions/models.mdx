@@ -1,19 +1,19 @@
 ---
 title: "Modelos"
-description: "Compara latencia, tokens, uso de contexto y distribución de tráfico por modelo."
+description: "Compara latencia, tokens, uso de contexto y distribución de tráfico entre modelos."
 icon: "cpu"
 ---
 
-Usa Modelos para ver si la fiabilidad o el coste cambiaron con un modelo, agente, entorno o rango de tiempo determinado.
+Usa Modelos para ver si la fiabilidad o el coste cambiaron con un modelo, agente, entorno o rango de tiempo.
 
 <Tabs>
   <Tab title="Panel de control">
     1. Ve a **Observe → Models**.
-    2. Establece el rango de tiempo y filtra por entorno, modelo, agente o ID de sesión.
+    2. Establece el rango de tiempo y luego filtra por entorno, modelo, agente o ID de sesión.
     3. Revisa la latencia, el consumo de tokens, el uso de la ventana de contexto y la distribución de modelos.
     4. Selecciona un punto del gráfico o un segmento de distribución para abrir los eventos correspondientes.
 
-    ![La página de Modelos mostrando vistas de latencia, percentil, tokens, coste, ventana de contexto y distribución de modelos.](/images/dashboard/models.png)
+    ![La página de Modelos que muestra vistas de latencia, percentiles, tokens, coste, ventana de contexto y distribución de modelos.](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -22,6 +22,6 @@ Usa Modelos para ver si la fiabilidad o el coste cambiaron con un modelo, agente
     fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
     ```
 
-    Usa una consulta guardada para obtener agregados a nivel de modelo que no están disponibles como un comando CLI dedicado.
+    Usa una consulta guardada para agregados a nivel de modelo que no están disponibles como comando CLI dedicado.
   </Tab>
 </Tabs>

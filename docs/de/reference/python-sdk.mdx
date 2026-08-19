@@ -1,15 +1,15 @@
 ---
 title: "Benutzerdefinierte Agenten"
-description: "Traces von benutzerdefinierten Agenten instrumentieren, damit Failproof AI Ausführungen rekonstruieren und Fehler finden kann."
+description: "Instrumentiere Traces von benutzerdefinierten Agenten, damit Failproof AI Ausführungen rekonstruieren und Fehler finden kann."
 icon: "python"
 ---
 
-Instrumentiere Traces eines benutzerdefinierten Agenten mit `failproofai-sdk`, damit Failproof AI jede Ausführung rekonstruieren, das Verhalten prüfen und belegbare Fehler finden kann. Das SDK schreibt strukturierte Events, die der Failproof-Daemon an Cloud übermittelt. Es setzt Python 3.10 oder neuer voraus.
+Instrumentiere Traces eines benutzerdefinierten Agenten mit `failproofai-sdk`, damit Failproof AI jeden Lauf rekonstruieren, sein Verhalten prüfen und belegbare Fehler finden kann. Das SDK schreibt strukturierte Ereignisse, die der Failproof-Daemon an Cloud weiterleitet. Es setzt Python 3.10 oder neuer voraus.
 
-Tracing macht benutzerdefinierte Agenten beobachtbar und auditierbar. Um eine unsichere Aktion vor ihrer Ausführung zu verhindern, ist zusätzlich ein Enforcement-Hook in deiner Runtime erforderlich.
+Tracing macht benutzerdefinierte Agenten beobachtbar und auditierbar. Um eine unsichere Aktion vor ihrer Ausführung zu verhindern, ist zusätzlich ein Enforcement-Hook in deiner Laufzeitumgebung erforderlich.
 
 <Info>
-  Um Richtlinien in einer benutzerdefinierten Agenten-Umgebung durchzusetzen, [kontaktiere Failproof AI](mailto:support@befailproof.ai). Wir helfen dabei, die Modell-, Tool- und Lifecycle-Grenzen deiner Runtime auf Policy-Hooks abzubilden.
+  Um Richtlinien in einer benutzerdefinierten Agenten-Umgebung durchzusetzen, [kontaktiere Failproof AI](mailto:support@befailproof.ai). Wir helfen dabei, die Modell-, Tool- und Lifecycle-Grenzen deiner Laufzeitumgebung auf Policy-Hooks abzubilden.
 </Info>
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
@@ -18,7 +18,7 @@ Tracing macht benutzerdefinierte Agenten beobachtbar und auditierbar. Um eine un
 
 ## `failproofai-sdk` installieren
 
-Das SDK wird derzeit als privates Wheel ausgeliefert. Wende dich an deine Failproof AI-Kontaktperson für die aktuelle Version und den Download-Zugang.
+Das SDK wird derzeit als privates Wheel vertrieben. Wende dich an deinen Failproof AI-Ansprechpartner, um die aktuelle Version und Zugang zum Download zu erhalten.
 
 ```bash
 VERSION=<sdk-version>
@@ -26,20 +26,20 @@ pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
 python -c "import failproofai; print(failproofai.__version__)"
 ```
 
-Mit `uv` lädst du das Wheel zunächst herunter und führst dann `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl` aus. Verankere das Wheel in einem privaten Artefakt-Repository oder einem Dependency-Lock.
+Mit `uv` lade das Wheel zunächst herunter und führe `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl` aus. Fixiere das Wheel in einem privaten Artefakt-Repository oder einer Dependency-Lock-Datei.
 
 Das Paket wird als `failproofai-sdk` installiert und in Python als `failproofai` importiert.
 
-## Den Failproof-Daemon verbinden
+## Failproof-Daemon verbinden
 
 <Tabs>
   <Tab title="Dashboard">
     1. Gehe zu **Admin → Keys** und erstelle einen Schlüssel mit `events:add`.
     2. [Verbinde den Failproof-Daemon mit Cloud](/de/start/setup#connect-a-machine-to-cloud) auf der Agenten-Maschine.
-    3. Führe eine instrumentierte Session aus und finde die zugehörige ID unter **Observe → Events**.
+    3. Führe eine instrumentierte Sitzung aus und suche dann deren genaue ID unter **Observe → Events**.
     4. Gehe zu **Observe → Sessions**, wähle dieselbe Umgebung und öffne den rekonstruierten Trace.
 
-    ![Eine benutzerdefinierte Python-Agenten-Session, rekonstruiert als Ausführungsgraph und geordneter Event-Trace.](/images/dashboard/session-detail.png)
+    ![Eine benutzerdefinierte Python-Agenten-Sitzung, rekonstruiert als Ausführungsgraph und geordneter Ereignis-Trace.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -51,9 +51,9 @@ Das Paket wird als `failproofai-sdk` installiert und in Python als `failproofai`
   </Tab>
 </Tabs>
 
-## Eine vollständige Ausführung instrumentieren
+## Einen vollständigen Lauf instrumentieren
 
-Rufe `configure()` einmalig beim Prozessstart auf. Jeder Event-Aufruf verwendet ausschließlich Keyword-Argumente und erfordert eine stabile `session_id` sowie eine `agent_id`.
+Rufe `configure()` einmal beim Prozessstart auf. Jeder Ereignisaufruf ist keyword-only und erfordert eine stabile `session_id` und `agent_id`.
 
 ```python
 import traceback
@@ -112,7 +112,7 @@ else:
     )
 ```
 
-Emittiere `agent_start` einmal pro Akteur. Für Sub-Agenten wird die `session_id` des übergeordneten Agenten wiederverwendet, jeder Akteur erhält eine eindeutige `agent_id`, und `parent_id` wird auf die **agent ID** des übergeordneten Agenten gesetzt – nicht auf die Session-ID.
+Sende `agent_start` einmal pro Akteur. Für Sub-Agenten verwende die `session_id` des Elternagenten erneut, weise jedem Akteur eine eigene `agent_id` zu und setze `parent_id` auf die **Agent-ID** des Elternagenten – nicht auf die Session-ID.
 
 ## Konfigurationsreferenz
 
@@ -127,19 +127,19 @@ failproofai.configure(
 | Einstellung | Verhalten |
 | --- | --- |
 | `base_dir` | Explizites Spool-Verzeichnis. Hat Vorrang vor allen Umgebungsvariablen. |
-| `flush_interval` | Sekunden zwischen Hintergrund-Schreibvorgängen von Speicher nach JSONL. Standard: `0.5`. |
-| `environment` | Deployment-Label für jeden Event. Standardwert: `dev`. |
-| `FAILPROOFAI_HOME` | Ändert das Failproof AI-Stammverzeichnis, das das `custom-agents`-Spool enthält. |
+| `flush_interval` | Sekunden zwischen Hintergrundschreibvorgängen aus dem Speicher in JSONL. Standard: `0.5`. |
+| `environment` | Deployment-Label für jedes Ereignis. Standard: `dev`. |
+| `FAILPROOFAI_HOME` | Ändert das Failproof AI-Stammverzeichnis, das den `custom-agents`-Spool enthält. |
 
-Das SDK schreibt in das explizit angegebene `base_dir`, sofern gesetzt. Andernfalls verwendet es das `custom-agents`-Spool des Failproof-Daemons unter `FAILPROOFAI_HOME` oder `~/.failproofai`.
+Das SDK schreibt in das explizite `base_dir`, falls gesetzt. Andernfalls verwendet es den `custom-agents`-Spool des Failproof-Daemons unter `FAILPROOFAI_HOME` oder `~/.failproofai`.
 
-Das SDK reiht Aufrufe im Speicher ein und schreibt Batches in einem Hintergrund-Thread. Außerdem wird beim Beenden des Prozesses ein abschließender Flush über Pythons `atexit`-Mechanismus versucht. Für kurzlebige Worker sollte der normale Interpreter-Shutdown abgewartet werden; ein erzwungener Prozessabbruch kann Events verlieren, die sich noch im Speicher befinden.
+Das SDK reiht Aufrufe im Speicher ein und schreibt Batches in einem Hintergrund-Thread. Es versucht außerdem einen abschließenden Flush über Pythons `atexit`-Mechanismus. Für kurzlebige Worker sollte ein normales Interpreter-Shutdown ermöglicht werden; ein harter Prozessabbruch kann Ereignisse verlieren, die sich noch im Speicher befinden.
 
-## Event-Katalog
+## Ereigniskatalog
 
-Alle Methoden geben `None` zurück. Felder, die als `None` belassen werden, werden ausgelassen statt als JSON `null` geschrieben.
+Alle Methoden geben `None` zurück. Felder, die als `None` belassen werden, werden weggelassen statt als JSON `null` geschrieben.
 
-| Methode | Pflichtfelder (zusätzlich zu Identitätsfeldern) | Optionale Felder |
+| Methode | Pflichtfelder (über Identität hinaus) | Optionale Felder |
 | --- | --- | --- |
 | `agent_start` | — | `goal`, `parent_id` |
 | `agent_end` | — | `outcome`, `summary` |
@@ -161,23 +161,23 @@ Verwende `outcome="failed"`, `"error"`, `"timeout"` oder `"rejected"`, wenn eine
 
 ## Korrelations- und Dauerregeln
 
-- Dieselbe `tool_call_id`, `hook_id`, `pause_id` oder `input_id` für das zugehörige Abschluss-Event wiederverwenden.
-- Das SDK berechnet `duration_ms` für `tool_result`, `hook_completed`, `agent_resume` und `human_input`. Wird dieser Wert manuell an diese Methoden übergeben, wird ein `ValueError` ausgelöst.
-- Tool- und Hook-IDs teilen sich eine prozessweit gültige Pending-Map. Sie müssen global eindeutig sein – über gleichzeitige Sessions hinweg und über beide Namespaces hinweg; Provider-IDs oder UUIDs sind am sichersten.
-- Ein über Prozesse aufgeteiltes Paar korreliert nachgelagert trotzdem, aber das SDK kann seine prozessinterne Dauer nicht berechnen.
-- Die Pending-Map hält maximal 10.000 Starts vor und entfernt den ältesten Eintrag, wenn sie voll ist.
+- Verwende dieselbe `tool_call_id`, `hook_id`, `pause_id` oder `input_id` für das zugehörige Abschlussereignis.
+- Das SDK berechnet `duration_ms` für `tool_result`, `hook_completed`, `agent_resume` und `human_input`. Wenn du diesen Wert selbst an diese Methoden übergibst, wird ein `ValueError` ausgelöst.
+- Tool- und Hook-IDs teilen sich eine prozessweite Pending-Map. Mache sie global eindeutig – über gleichzeitige Sitzungen hinweg und über beide Namespaces; Provider-IDs oder UUIDs sind die sicherste Wahl.
+- Ein Paar, das über Prozesse hinweg aufgeteilt ist, korreliert trotzdem nachgelagert, aber das SDK kann seine prozessinterne Dauer nicht berechnen.
+- Die Pending-Map hält maximal 10.000 Einträge und verdrängt den ältesten Eintrag, wenn sie voll ist.
 
-## Benutzerdefinierte Felder und Payloads
+## Benutzerdefinierte Felder und Nutzdaten
 
-Jedes Event akzeptiert zusätzliche Keyword-Felder. Für Felder, die in nachgelagerten Abfragen strukturiert auswertbar sein sollen, JSON-kompatible Werte verwenden. Nicht unterstützte Typen wie UUIDs, Datetimes, Decimals, Sets, Bytes und Model-Objekte werden vom Writer in Strings umgewandelt.
+Jedes Ereignis akzeptiert zusätzliche Keyword-Felder. Verwende JSON-kompatible Werte, wenn nachgelagerte Abfragen Struktur benötigen. Nicht unterstützte Typen wie UUIDs, Datetimes, Decimals, Sets, Bytes und Modellobjekte werden vom Writer in Strings umgewandelt.
 
-Reservierte benutzerdefinierte Namen sind `timestamp`, `session_id`, `agent_id`, `type` und `environment`. Tippfehler in optionalen Feldern werden als neue benutzerdefinierte Felder akzeptiert; daher sollte der emittierte JSON überprüft werden, wenn ein Standardfeld in Cloud nicht erscheint.
+Reservierte benutzerdefinierte Namen sind `timestamp`, `session_id`, `agent_id`, `type` und `environment`. Tippfehler bei optionalen Feldern werden als neue benutzerdefinierte Felder akzeptiert – überprüfe daher das ausgegebene JSON, wenn ein Standardfeld nicht in Cloud erscheint.
 
-## Zustellung und Überprüfung
+## Zustellen und überprüfen
 
 <Tabs>
   <Tab title="Dashboard">
-    Prüfe unter **Observe → Events**, ob `agent_start` als erstes und `agent_end` als letztes Event vorhanden ist. Öffne anschließend **Observe → Sessions** und überprüfe, ob Modell-, Tool-, Human-, Hook- und Error-Events in der erwarteten Reihenfolge erscheinen. Verwende die Session-ID als primären Troubleshooting-Schlüssel.
+    Überprüfe unter **Observe → Events**, ob `agent_start` als erstes und `agent_end` als letztes Ereignis vorhanden ist. Öffne dann **Observe → Sessions** und bestätige, dass Modell-, Tool-, Human-, Hook- und Fehlerereignisse in der vorgesehenen Reihenfolge erscheinen. Verwende die Session-ID als primären Schlüssel bei der Fehlersuche.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -189,10 +189,10 @@ Reservierte benutzerdefinierte Namen sind `timestamp`, `session_id`, `agent_id`,
   </Tab>
 </Tabs>
 
-Wenn Cloud leer ist, prüfe `$FAILPROOFAI_HOME/custom-agents/events`, andernfalls `~/.failproofai/custom-agents/events`. JSONL-Dateien belegen, dass das SDK Events emittiert; ein wachsendes Spool deutet auf ein Problem mit der Daemon-Konfiguration oder der Zustellung hin, während ein leeres Spool auf ein Instrumentierungs- oder Prozesslebensdauer-Problem hindeutet.
+Wenn Cloud leer ist, überprüfe `$FAILPROOFAI_HOME/custom-agents/events`, andernfalls `~/.failproofai/custom-agents/events`. JSONL-Dateien belegen die SDK-Ausgabe; ein wachsender Spool deutet auf ein Problem mit der Daemon-Konfiguration oder Zustellung hin, während ein leerer Spool auf ein Problem mit der Instrumentierung oder der Prozesslebensdauer hindeutet.
 
-## Fehler in einer benutzerdefinierten Runtime verhindern
+## Fehler in einer benutzerdefinierten Laufzeitumgebung verhindern
 
-Nutze Audit-Befunde und verknüpfte Traces, um die unsichere Aktion, die erforderlichen Belege und die beabsichtigte Reaktion zu definieren. Eine benutzerdefinierte Enforcement-Integration muss die Aktion vor der Ausführung offenlegen, ihre strukturierten Eingaben an die Policy-Engine übergeben und die resultierende allow-, instruct- oder deny-Entscheidung anwenden.
+Nutze Audit-Ergebnisse und verknüpfte Traces, um die unsichere Aktion, die erforderlichen Belege und die beabsichtigte Reaktion zu definieren. Eine benutzerdefinierte Enforcement-Integration muss die Aktion vor ihrer Ausführung offenlegen, ihre strukturierten Eingaben an die Policy-Engine übergeben und die resultierende allow-, instruct- oder deny-Entscheidung anwenden.
 
-Schreibe an [support@befailproof.ai](mailto:support@befailproof.ai), um diese Integration für deine Runtime zu entwerfen und zu validieren.
+Schreibe an [support@befailproof.ai](mailto:support@befailproof.ai), um diese Integration für deine Laufzeitumgebung zu entwerfen und zu validieren.

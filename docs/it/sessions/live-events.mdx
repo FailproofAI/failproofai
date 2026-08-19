@@ -1,21 +1,22 @@
 ---
-title: "Eventi in tempo reale"
-description: "Osserva l'attività dell'agente mentre una sessione è in corso."
+---
+title: "Eventi in diretta"
+description: "Guarda l'attività degli agenti arrivare in tempo reale durante una sessione in corso."
 icon: "radio"
 ---
 
-Gli eventi in tempo reale ti aiutano a confermare la strumentazione e a monitorare un'esecuzione rischiosa senza aspettare che la sessione finisca.
+Gli eventi in diretta ti aiutano a confermare la strumentazione e a monitorare un'esecuzione rischiosa senza attendere il termine della sessione.
 
-## Monitorare l'attività
+## Guarda l'attività
 
 <Tabs>
   <Tab title="Dashboard">
     1. Vai a **Observe → Events**.
-    2. Inizia con la finestra temporale attuale e senza filtri per confermare che i dati stanno arrivando.
+    2. Inizia con la finestra temporale corrente e nessun filtro per confermare che i dati stanno arrivando.
     3. Filtra per ambiente, tipo di evento, agente o sessione. Usa la ricerca per il testo del payload.
-    4. Seleziona un evento per ispezionarne il riepilogo e i dettagli. Seguici il collegamento alla sessione per la traccia completa.
+    4. Seleziona un evento per ispezionarne il riepilogo e i dettagli. Segui il link della sessione per la traccia completa.
 
-    ![Il flusso di eventi in tempo reale con filtri per ora, ambiente, tipo di evento, agente, modello, contesto, sessione e testo.](/images/dashboard/events-stream-current.png)
+    ![Il flusso di eventi in diretta con filtri per ora, ambiente, tipo di evento, agente, modello, contesto, sessione e testo.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,20 +25,20 @@ Gli eventi in tempo reale ti aiutano a confermare la strumentazione e a monitora
     fp --json events --full --session-id <session-id> --all
     ```
 
-    Il feed predefinito omette i payload grezzi. Usa `--full` solo per un'indagine di sessione limitata.
+    Il feed predefinito omette i payload grezzi. Usa `--full` solo per un'indagine di sessione delimitata.
   </Tab>
 </Tabs>
 
 Usa il flusso di eventi per rispondere a tre domande immediate:
 
 - L'agente previsto sta segnalando all'ambiente corretto?
-- Le chiamate ai modelli, le chiamate ai tool e le decisioni di policy arrivano nell'ordine corretto?
+- Le chiamate al modello, le chiamate agli strumenti e le decisioni delle policy stanno arrivando in ordine?
 - La sessione ha smesso di fare progressi o ha iniziato a ripetere un'azione?
 
-I tipi di evento includono eventi del ciclo di vita dell'agente, richieste e risposte del modello, uso dei tool e risultati, esecuzione di hook, attese umane e interruzioni, ed errori espliciti. Gli ID di correlazione collegano gli eventi associati, ad esempio una chiamata ai tool e il suo risultato.
+I tipi di evento includono eventi del ciclo di vita dell'agente, richieste e risposte del modello, utilizzo e risultati degli strumenti, esecuzione degli hook, attese e interruzioni umane ed errori espliciti. Gli ID di correlazione collegano gli eventi accoppiati come una chiamata a uno strumento e il suo risultato.
 
 <Tip>
-  Mantieni la vista in tempo reale ampia durante la verifica di una nuova integrazione. Aggiungi filtri solo dopo aver visto il primo evento; un filtro errato può sembrare un'acquisizione non riuscita.
+  Mantieni la visualizzazione in diretta ampia durante la verifica di una nuova integrazione. Aggiungi filtri solo dopo aver visto il primo evento; un filtro non corretto può sembrare un'acquisizione fallita.
 </Tip>
 
-Se non vengono visualizzati eventi, esegui `failproofai config --status`, quindi [risolvi i problemi di acquisizione](/it/reference/troubleshooting).
+Se non compaiono eventi, esegui `failproofai config --status`, quindi [risolvi i problemi di acquisizione](/it/reference/troubleshooting).

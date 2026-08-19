@@ -1,21 +1,21 @@
 ---
 title: "Canlı etkinlikler"
-description: "Bir oturum çalışırken aracı etkinliğini gerçek zamanlı izleyin."
+description: "Oturum çalışırken aracı etkinliğini gerçek zamanlı olarak izleyin."
 icon: "radio"
 ---
 
-Canlı etkinlikler, enstrümantasyonunuzu doğrulamanıza ve oturum bitene kadar beklemeden riskli bir çalışmayı izlemenize yardımcı olur.
+Canlı etkinlikler, enstrümantasyonunuzu doğrulamanıza ve oturum bitene kadar beklemeden riskli bir çalıştırmayı izlemenize yardımcı olur.
 
 ## Etkinliği izleyin
 
 <Tabs>
-  <Tab title="Pano">
-    1. **Observe → Events** sayfasına gidin.
-    2. Verilerin geldiğini doğrulamak için mevcut zaman penceresiyle başlayın ve filtre kullanmayın.
-    3. Ortam, etkinlik türü, ajan veya oturum ile filtreleyin. Yük metni için arama kullanın.
-    4. Bir etkinliği seçerek özetini ve ayrıntılarını inceleyin. Tam izleme için oturum bağlantısını takip edin.
+  <Tab title="Gösterge Paneli">
+    1. **Gözlemle → Etkinlikler** bölümüne gidin.
+    2. Verilerin geldiğini doğrulamak için mevcut zaman penceresinden başlayın ve hiçbir filtre kullanmayın.
+    3. Ortam, etkinlik türü, aracı veya oturum ile filtreleyin. Yük metni için arama kullanın.
+    4. Özet ve detaylarını incelemek için bir etkinliği seçin. Tam iz için oturum bağlantısını takip edin.
 
-    ![Zaman, ortam, etkinlik türü, ajan, model, bağlam, oturum ve metin filtreleriyle birlikte canlı Etkinlikler akışı.](/images/dashboard/events-stream-current.png)
+    ![Zaman, ortam, etkinlik türü, aracı, model, bağlam, oturum ve metin filtrelerine sahip canlı Etkinlikler akışı.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,20 +24,20 @@ Canlı etkinlikler, enstrümantasyonunuzu doğrulamanıza ve oturum bitene kadar
     fp --json events --full --session-id <session-id> --all
     ```
 
-    Varsayılan akış ham yükleri hariç tutar. `--full` yalnızca sınırlandırılmış bir oturum araştırması için kullanın.
+    Varsayılan akış ham yükleri hariç tutar. `--full` seçeneğini yalnızca sınırlı bir oturum araştırması için kullanın.
   </Tab>
 </Tabs>
 
-Etkinlik akışını kullanarak üç temel soruyu yanıtlayın:
+Üç temel soruya yanıt vermek için etkinlik akışını kullanın:
 
-- Beklenen ajan doğru ortama rapor veriyor mu?
-- Model çağrıları, araç çağrıları ve politika kararları sırasında geliyorlar mı?
-- Oturum ilerlemeyi durdurdu mu veya aynı eylemi tekrarlamaya başladı mı?
+- Beklenen aracı doğru ortama rapor veriyor mu?
+- Model çağrıları, araç çağrıları ve politika kararları sıra ile gelmekte midir?
+- Oturum ilerlemeyi durdurdu mu yoksa bir eylemi tekrarlamaya mı başladı?
 
-Etkinlik türleri ajan yaşam döngüsü etkinlikleri, model istekleri ve yanıtları, araç kullanımı ve sonuçları, hook yürütme, insan beklemeleri ve kesintileri ve açık hatalarını içerir. Korelasyon kimlikleri, araç çağrısı ve sonucu gibi eşleştirilmiş etkinlikleri birleştirir.
+Etkinlik türleri, aracı yaşam döngüsü etkinlikleri, model istekleri ve yanıtları, araç kullanımı ve sonuçları, kancı yürütme, insan beklemeleri ve kesintileri ile açık hataları içerir. Korelasyon kimlikleri, araç çağrısı ve sonucu gibi eşleştirilmiş etkinlikleri birleştirir.
 
 <Tip>
-  Yeni bir entegrasyonu doğrularken canlı görünümü geniş tutun. İlk etkinliği gördükten sonra filtre ekleyin; yanlış bir filtre başarısız alım gibi görünebilir.
+  Yeni bir entegrasyon doğrularken canlı görünümü geniş tutun. Yalnızca ilk etkinliği gördükten sonra filtre ekleyin; hatalı bir filtre başarısız bir alımı andıran bir görünüm oluşturabilir.
 </Tip>
 
-Hiçbir etkinlik görünmüyorsa, `failproofai config --status` komutunu çalıştırın, ardından [alım sorunlarını giderin](/tr/reference/troubleshooting).
+Hiçbir etkinlik görünmüyorsa `failproofai config --status` komutunu çalıştırın, ardından [alımı sorun gider](/tr/reference/troubleshooting) bölümünü okuyun.

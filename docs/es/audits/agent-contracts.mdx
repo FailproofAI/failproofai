@@ -4,25 +4,25 @@ description: "Indica a las auditorías qué debe hacer cada agente, qué debe pr
 icon: "bot"
 ---
 
-El contexto del agente indica a las auditorías para qué existe cada agente, qué debe producir y qué nunca debe hacer. Failproof AI almacena este contexto como un contrato de agente por cada agente.
+El contexto del agente indica a las auditorías para qué existe cada agente, qué debe producir y qué nunca debe hacer. Failproof AI almacena este contexto como un contrato de agente por agente.
 
-El contexto del agente pertenece a la organización, no a una auditoría concreta. Se escribe una sola vez por agente, y todas las auditorías respaldadas por un modelo cuyo alcance incluya ese agente lo utilizarán.
+El contexto del agente pertenece a la organización, no a una auditoría individual. Se escribe una vez por agente, y cada auditoría respaldada por un modelo cuyo ámbito incluya ese agente lo utiliza.
 
-## Añadir contexto de agente
+## Añadir contexto del agente
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. Ve a **Analyze → audits**, selecciona **agents** y elige el ID del agente que aparece en sus sesiones.
+  <Tab title="Panel de control">
+    1. Ve a **Analyze → audits**, selecciona **agents** y elige el ID de agente reportado por sus sesiones.
     2. Selecciona **add content** o **edit**.
-    3. Describe para qué sirve el agente, qué debe producir, qué significa que una tarea esté "terminada", con qué frecuencia debe ejecutarse y qué nunca debe hacer.
-    4. Guarda el contexto, luego regresa al formulario de auditoría y confirma que el agente seleccionado aparece como cubierto.
+    3. Describe para qué sirve el agente, qué debe producir, qué significa "completado", con qué frecuencia debe ejecutarse y qué nunca debe hacer.
+    4. Guarda el contexto, luego vuelve al formulario de auditoría y confirma que el agente seleccionado aparece como cubierto.
 
-    ![El panel Agents de la auditoría, usado para añadir propósito, cadencia, resultados, condiciones de finalización y comportamiento prohibido de un agente.](/images/dashboard/agent-context.png)
+    ![El cajón de Agents de la auditoría, usado para añadir propósito, cadencia, salidas, condiciones de finalización y comportamiento prohibido de un agente.](/images/dashboard/agent-context.png)
 
-    También puedes añadir o editar el contexto del agente desde el panel **agents** mientras creas o editas una auditoría. Se guarda de forma independiente y queda disponible de inmediato para todas las auditorías aplicables.
+    También puedes añadir o editar el contexto del agente desde el cajón **agents** mientras creas o editas una auditoría. Se guarda de forma independiente y está disponible de inmediato para todas las auditorías aplicables.
   </Tab>
   <Tab title="CLI">
-    El Cloud CLI todavía no expone comandos para contratos. Usa la API pública con una clave que tenga los permisos `audits:read` y `audits:write`:
+    La CLI de Cloud todavía no expone comandos de contrato. Usa la API pública con una clave que tenga `audits:read` y `audits:write`:
 
     ```bash
     curl -X POST "https://app.befailproof.ai/v1/audits/contracts" \
@@ -35,19 +35,19 @@ El contexto del agente pertenece a la organización, no a una auditoría concret
       }'
     ```
 
-    Lista los contratos con `GET /v1/audits/contracts`; recupera un contrato específico con `GET /v1/audits/contracts/{id}`. La actualización con `PUT` es un reemplazo completo y requiere tanto `agent_id` como `body`.
+    Lista los contratos con `GET /v1/audits/contracts`; recupera un contrato concreto con `GET /v1/audits/contracts/{id}`. La actualización con `PUT` es un reemplazo completo y requiere tanto `agent_id` como `body`.
   </Tab>
 </Tabs>
 
-## Cómo escribir un contexto útil
+## Escribir contexto útil
 
-Mantén el contexto por debajo de los 5.000 caracteres y asegúrate de que sea verificable. Un contexto útil normalmente contiene:
+Mantén el contexto por debajo de 5.000 caracteres y hazlo verificable. Un contexto útil normalmente incluye:
 
-- **Purpose:** por qué existe el agente
-- **Outputs:** artefactos o acciones que debe producir
-- **Done when:** la condición que determina que una ejecución fue exitosa
-- **Cadence:** con qué frecuencia o cuándo debe ejecutarse
-- **Must not:** acciones y resultados que son siempre inaceptables
+- **Propósito:** por qué existe el agente
+- **Salidas:** artefactos o acciones que debe producir
+- **Completado cuando:** la condición que hace que una ejecución sea exitosa
+- **Cadencia:** con qué frecuencia o cuándo debe ejecutarse
+- **No debe:** acciones y resultados que siempre son inaceptables
 
 ```markdown
 ---
@@ -66,16 +66,16 @@ cadence: Once daily after 02:00 UTC. Never more than once.
 - Modify ledger entries. Report discrepancies instead.
 ```
 
-El contexto del agente define el comportamiento esperado; no puede indicarle al análisis qué conclusión debe alcanzar ni restringir qué evidencia examina. Los agentes sin contexto se auditan con normalidad, pero Failproof AI no puede juzgar su comportamiento frente a los objetivos específicos de la organización.
+El contexto del agente establece el comportamiento esperado; no puede indicarle al análisis qué conclusión debe alcanzar ni restringir qué evidencia examina. Los agentes sin contexto se auditan con normalidad, pero Failproof AI no puede juzgar su comportamiento en relación con la intención específica de la organización.
 
 ## Pausar o modificar el contexto del agente
 
 - Pausa el contexto del agente cuando las auditorías deban ignorarlo temporalmente. La pausa es reversible.
 - Edita el contexto cuando cambien las responsabilidades del agente. El nuevo texto se aplica a las ejecuciones futuras.
-- Consulta **last matched** cuando un agente en ejecución nunca parezca utilizar su contexto. Esto suele significar que su ID de agente no coincide con los datos de telemetría.
-- Elimina a través de la API solo cuando el texto deba destruirse de forma permanente. El dashboard ofrece intencionalmente la opción de pausar en lugar de eliminar.
+- Revisa **last matched** cuando un agente en ejecución nunca parece usar su contexto. Normalmente esto significa que su ID de agente no coincide con la telemetría.
+- Elimina a través de la API solo cuando el texto deba destruirse de forma permanente. El panel de control ofrece intencionalmente la opción de pausar en lugar de eliminar.
 
-Cada ejecución de auditoría almacena la instantánea exacta del contexto del agente que utilizó. Editar, pausar o eliminar el recurso de contrato actual no reescribe la base de los hallazgos anteriores.
+Cada ejecución de auditoría almacena el snapshot exacto del contexto del agente que utilizó. Editar, pausar o eliminar el recurso de contrato actual no reescribe la base de hallazgos anteriores.
 
 <Info>
   Leer contratos requiere `audits:read`. Crearlos, editarlos, pausarlos o eliminarlos requiere `audits:write`.

@@ -4,18 +4,18 @@ description: "Configurez les paramètres opérationnels et faites des choix dél
 icon: "lock-keyhole"
 ---
 
-Utilisez les paramètres pour les valeurs opérationnelles spécifiques au déploiement et les remplacements de fenêtre de contexte des modèles. Inspectez le schéma des paramètres avant de modifier une valeur via l'API ou la CLI.
+Utilisez les paramètres pour les valeurs opérationnelles spécifiques au déploiement et les remplacements de la fenêtre de contexte du modèle. Consultez le schéma des paramètres avant de modifier une valeur via l'API ou la CLI.
 
 ## Modifier un paramètre d'organisation
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Administration → Paramètres**, trouvez le groupe de paramètres et lisez sa description ainsi que sa source actuelle.
-    2. Modifiez la valeur et enregistrez-la.
+    1. Accédez à **Administration → Paramètres**, trouvez le groupe de paramètres et lisez sa description ainsi que la source actuelle.
+    2. Modifiez la valeur et enregistrez.
     3. Pour les fenêtres de contexte des modèles, ajoutez ou mettez à jour le remplacement du modèle et confirmez la limite effective.
     4. Revérifiez les sessions et les métriques qui dépendent de la valeur modifiée.
 
-    ![La page Paramètres affichant les paramètres d'authentification et opérationnels de l'organisation.](/images/dashboard/settings.png)
+    ![La page Paramètres affichant les paramètres d'authentification et les paramètres opérationnels de l'organisation.](/images/dashboard/settings.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -26,23 +26,23 @@ Utilisez les paramètres pour les valeurs opérationnelles spécifiques au dépl
       --json-value '["oncall@example.com"]'
     ```
 
-    Exécutez `fp settings set --help` pour le type de valeur et les indicateurs de confirmation utilisés par la CLI installée.
+    Exécutez `fp settings set --help` pour connaître le type de valeur et les indicateurs de confirmation utilisés par la CLI installée.
   </Tab>
 </Tabs>
 
-## Choix de traitement des données
+## Choix relatifs au traitement des données
 
-Par défaut, la connexion de la CLI Failproof AI envoie les transcriptions, car les traces et les audits dépendent de leur contenu. Utilisez `--no-transcripts` lorsque les invites, le contenu des fichiers ou les entrées terminal doivent rester locaux ; l'activité des hooks et les décisions de politique peuvent toujours être rapportées.
+La connexion de la CLI Failproof AI envoie des transcriptions par défaut, car les traces et les audits dépendent de leur contenu. Utilisez `--no-transcripts` lorsque les invites, le contenu des fichiers ou les entrées du terminal doivent rester en local ; l'activité des hooks et les décisions de politique peuvent toujours être rapportées.
 
-Les identifiants d'ingestion locale sont stockés séparément des paramètres du daemon non secrets et écrits avec des permissions restrictives. Les clés API doivent toujours être gérées comme des secrets de production.
+Les identifiants d'ingestion locale sont stockés séparément des paramètres du daemon non secrets et écrits avec des permissions restrictives. Les clés API doivent tout de même être gérées comme des secrets de production.
 
 ## Référence des paramètres d'organisation
 
 Tous les paramètres modifiables depuis le tableau de bord sont limités à l'organisation. Le comportement à l'échelle du déploiement reste une configuration de l'environnement serveur.
 
-| Clé | Défaut | Objectif |
+| Clé | Valeur par défaut | Objectif |
 | --- | --- | --- |
-| `allowed_sign_ins` | `[]` | Restreint les membres existants à des adresses e-mail exactes ou à `*@domaine` ; une liste vide signifie qu'aucune restriction supplémentaire n'est appliquée. |
+| `allowed_sign_ins` | `[]` | Restreindre les membres existants à des e-mails exacts ou à `*@domain` ; une liste vide signifie aucune restriction supplémentaire. |
 | `session_ttl_secs` | `86400` | Durée de vie de la session du tableau de bord ; la plage acceptée est de 60 secondes à 30 jours. |
 | `otp_ttl_secs` | `600` | Durée de vie des OTP et des liens magiques ; la plage acceptée est de 60 à 1800 secondes. |
 | `alerts.email_default_recipients` | `[]` | Destinataires par défaut lorsqu'un canal d'alerte e-mail ne les remplace pas. |
@@ -52,17 +52,17 @@ Tous les paramètres modifiables depuis le tableau de bord sont limités à l'or
 | `alerts.enabled_channels` | e-mail, Slack, webhook | Types de canaux à l'échelle de l'organisation que les règles d'alerte peuvent utiliser. |
 | `default_user_permissions` | `standard` | Ensemble de permissions nommé présélectionné pour les nouvelles invitations. |
 
-`allowed_sign_ins` est un filtre, pas une autorisation : une personne doit déjà être membre de l'organisation. Utilisez une liste vide pour autoriser tous les membres ; la valeur brute `*` est rejetée. Les URLs d'alerte doivent utiliser HTTPS, sauf pour les adresses de développement en boucle locale.
+`allowed_sign_ins` est un filtre, pas un droit d'accès : la personne doit déjà être membre de l'organisation. Utilisez une liste vide pour autoriser tous les membres ; la valeur brute `*` est refusée. Les URL d'alerte doivent utiliser HTTPS, sauf pour les adresses de développement en loopback.
 
 ## Liste de contrôle de sécurité
 
 - Utilisez HTTPS pour les connexions Cloud.
-- Limitez les clés au jeu de permissions minimal.
+- Limitez les clés au plus petit ensemble de permissions possible.
 - Séparez les environnements de production et hors production.
 - Vérifiez les paramètres de transcription et de rédaction avant le déploiement.
-- Auditez les modifications d'utilisateurs, de clés et d'organisation.
+- Auditez les modifications des utilisateurs, des clés et de l'organisation.
 - Testez les exigences de sauvegarde, de rétention et de réponse aux incidents pour votre déploiement.
 
 <Warning>
-  Désactiver la capture des transcriptions modifie ce que les audits et les investigations peuvent prouver. Enregistrez la décision et ses limitations attendues.
+  Désactiver la capture des transcriptions modifie ce que les audits et les enquêtes peuvent établir. Documentez la décision et ses limitations attendues.
 </Warning>

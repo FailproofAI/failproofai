@@ -4,23 +4,23 @@ description: "Crea una auditoría desde el panel de Cloud o la CLI fp y revisa s
 icon: "scan-search"
 ---
 
-Una auditoría convierte un conjunto de sesiones en hallazgos de fallos priorizados y respaldados por evidencia. Empieza con una pregunta de fallo concreta y acotada.
+Una auditoría convierte un conjunto de sesiones en hallazgos de fallos priorizados y respaldados por evidencia. Comienza con una pregunta de fallo concreta y acotada.
 
 <Tabs>
   <Tab title="Panel de control">
     <Steps>
-      <Step title="Abre Auditorías">
+      <Step title="Abrir Auditorías">
         En la barra lateral de Cloud, ve a **Analyze → Audits**. Selecciona **new audit**.
       </Step>
-      <Step title="Configura la auditoría">
-        Introduce un nombre y un objetivo de fallo directo, como "encontrar sesiones de producción que reintenten la misma llamada de pago fallida sin cambiar la entrada ni escalar". Selecciona el agente, el entorno, la ventana de tiempo y la programación. Añade un breve resumen y URLs de referencia cuando el auditor necesite conocer las reglas de tu flujo de trabajo.
+      <Step title="Configurar la auditoría">
+        Ingresa un nombre y un objetivo de fallo directo, como «encontrar sesiones de producción que reintenten la misma llamada de pago fallida sin cambiar la entrada ni escalar». Selecciona el agente, el entorno, el período de tiempo y la programación. Agrega un resumen breve y URLs de referencia cuando el auditor necesite conocer las reglas de tu flujo de trabajo.
       </Step>
-      <Step title="Crea la auditoría y espera la ejecución">
-        Selecciona **create audit**. La primera ejecución se pone en cola de inmediato. Abre la tarjeta de la auditoría para ver cómo avanza de en cola a en ejecución y luego a completada.
+      <Step title="Crear y esperar la ejecución">
+        Selecciona **create audit**. La primera ejecución se pone en cola de inmediato. Abre la tarjeta de auditoría para seguir su progreso: de en cola a en ejecución y luego a completado.
       </Step>
     </Steps>
 
-    Una vez completada la ejecución, abre un hallazgo y revisa la evidencia de la sesión. Puedes reconocerlo, asignarlo, descartarlo, silenciarlo o resolverlo.
+    Una vez completada la ejecución, abre un hallazgo y revisa la evidencia de sesión asociada. Puedes reconocerlo, asignarlo, descartarlo, silenciarlo o resolverlo.
 
     ![Un hallazgo de auditoría completado que muestra su descripción del fallo, la acción recomendada, la evidencia de respaldo y las sesiones afectadas.](/images/dashboard/audit-finding.png)
   </Tab>
@@ -37,7 +37,7 @@ Una auditoría convierte un conjunto de sesiones en hallazgos de fallos prioriza
     fp audits finding <finding-id>
     ```
 
-    Añade contexto de referencia y actualízalo cuando cambie la fuente:
+    Agrega contexto de referencia y actualízalo cuando cambie la fuente:
 
     ```bash
     fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
@@ -45,8 +45,8 @@ Una auditoría convierte un conjunto de sesiones en hallazgos de fallos prioriza
     fp audits run payment-retry-failures
     ```
 
-    Usa `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` o `fp audits reopen <finding-id>` para mover un hallazgo a través del proceso de triaje.
+    Usa `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` o `fp audits reopen <finding-id>` para gestionar el triaje de un hallazgo.
   </Tab>
 </Tabs>
 
-A continuación, [previene tu primer fallo con una política](/es/start/first-policy) para una acción repetible confirmada.
+A continuación, [prevén tu primer fallo con una política](/es/start/first-policy) para una acción repetible confirmada.

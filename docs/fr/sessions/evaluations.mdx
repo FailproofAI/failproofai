@@ -1,25 +1,25 @@
 ---
 title: "Évaluations en ligne"
-description: "Scorez les sessions en direct et terminées pour la qualité, la conformité, le coût et la latence."
+description: "Évaluez les sessions en cours et terminées selon la qualité, la conformité, le coût et la latence."
 icon: "gauge"
 ---
 
-Les évaluations en ligne appliquent des jugements cohérents aux sessions d'agents. Utilisez-les pour des signaux qui doivent être mesurés en continu plutôt qu'examinés uniquement lors d'un audit.
+Les évaluations en ligne appliquent des jugements cohérents aux sessions d'agents. Utilisez-les pour les signaux qui doivent être mesurés en continu plutôt qu'examinés uniquement lors d'un audit.
 
 ## Examiner la qualité des évaluations
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Rendez-vous dans **Observe → Evaluations**.
+    1. Accédez à **Observe → Evaluations**.
     2. Ajoutez une série et choisissez l'agent, l'environnement, le score d'évaluation, la statistique et la courbe.
     3. Ajoutez des séries pour comparer des environnements, des agents ou des clés de score.
-    4. Sélectionnez un résultat pour ouvrir les sessions correspondantes ou partager la vue filtrée. Utilisez **Observe → Metrics** pour la latence, les tokens, le coût et autres valeurs de magnitude.
+    4. Sélectionnez un résultat pour ouvrir les sessions correspondantes ou partager la vue filtrée. Utilisez **Observe → Metrics** pour la latence, les tokens, le coût et autres valeurs quantitatives.
 
-    ![Un tableau de bord de qualité affichant les scores moyens d'évaluation et les tendances au fil du temps.](/images/dashboard/dashboard-quality.png)
+    ![Un tableau de bord qualité affichant les scores d'évaluation moyens et les tendances dans le temps.](/images/dashboard/dashboard-quality.png)
 
-    Ouvrez une session depuis l'exploration détaillée pour inspecter le raisonnement par score :
+    Ouvrez une session depuis le détail pour inspecter le raisonnement par score :
 
-    ![Une vue détaillée de session affichant les scores d'évaluation et le raisonnement à côté de la trace complète.](/images/dashboard/session-detail.png)
+    ![Une vue détaillée d'une session montrant les scores d'évaluation et le raisonnement associé, à côté de la trace complète.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -28,7 +28,7 @@ Les évaluations en ligne appliquent des jugements cohérents aux sessions d'age
     fp evals --score helpfulness:0.8.. --since 7d
     ```
 
-    Ajoutez l'option globale `--json` avant `evals` pour l'automatisation, par exemple `fp --json evals --aggregate --env production`.
+    Ajoutez le flag global `--json` avant `evals` pour l'automatisation, par exemple `fp --json evals --aggregate --env production`.
   </Tab>
 </Tabs>
 
@@ -36,17 +36,17 @@ Un évaluateur reçoit l'identité de la session, l'environnement, les horodatag
 
 ## Bonnes cibles d'évaluation
 
-- Accomplissement de tâche ou exactitude
-- Ancrage et risque d'hallucination
-- Sélection d'outils et efficacité des outils
+- Accomplissement des tâches ou exactitude
+- Fondement et risque d'hallucination
+- Sélection et efficacité des outils
 - Conformité aux politiques ou aux processus
 - Budgets de coût et de latence
 - Escalade humaine requise
 
 ## Du score à la réponse
 
-Affichez les scores dans des tableaux de bord pour suivre les tendances. Créez des alertes pour des seuils ou des conditions composées. Lorsqu'un score diminue au sein d'une population, lancez un audit pour en comprendre la cause ; lorsque la cause est une action reproductible, déployez une politique.
+Affichez les scores dans des tableaux de bord pour suivre les tendances. Créez des alertes pour des seuils ou des conditions combinées. Lorsqu'un score baisse sur une population, lancez un audit pour en comprendre la cause ; lorsque la cause est une action reproductible, déployez une politique.
 
 <Card title="Créer un évaluateur" icon="code-2" href="/fr/reference/evaluator-sdk">
-  Implémentez une évaluation synchrone ou asynchrone avec le SDK d'évaluateur Python.
+  Implémentez une évaluation synchrone ou asynchrone avec le SDK Python pour évaluateurs.
 </Card>

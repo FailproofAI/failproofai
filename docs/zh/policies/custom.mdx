@@ -4,16 +4,16 @@ description: "为您的 Agent 工作流中特有的故障模式编写策略。"
 icon: "shield-plus"
 ---
 
-在 `.failproofai/policies/` 目录下创建以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾的文件。约定文件会在项目和用户作用域下自动加载。
+在 `.failproofai/policies/` 目录下创建以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾的文件。约定文件会在项目和用户范围内自动加载。
 
 ## 发布到云端前先测试策略
 
 <Tabs>
-  <Tab title="仪表盘">
-    1. 在一台测试机器上安装自定义策略，分别触发一次匹配操作和一次合法的不匹配操作。
-    2. 进入 **Observe → policy**，对比两次决策结果。
-    3. 打开每个关联会话，验证事件载荷中包含足够的规则判断依据。
-    4. 行为确认正确后，将已审查的源码迁移至 **Admin → policy editor** 并发布一个版本。
+  <Tab title="控制台">
+    1. 在一台测试机器上安装自定义策略，分别触发一次匹配操作和一次合法的非匹配操作。
+    2. 前往 **Observe → policy**，对比两次决策结果。
+    3. 打开每个关联的会话，验证事件载荷中包含足够的规则判断依据。
+    4. 确认行为正确后，将审查通过的源代码移至 **Admin → policy editor** 并发布版本。
 
   </Tab>
   <Tab title="CLI">
@@ -23,7 +23,7 @@ icon: "shield-plus"
     failproofai policies
     ```
 
-    `.failproofai/policies/` 下的约定文件无需 `--custom` 即可加载。当模块损坏时需要验证失败的场景，请在 CI 中保留显式安装命令。
+    `.failproofai/policies/` 下的约定文件无需 `--custom` 即可加载。当验证需要在模块损坏时失败，请在 CI 中保留显式的安装命令。
   </Tab>
 </Tabs>
 
@@ -45,28 +45,28 @@ customPolicies.add({
 });
 ```
 
-该策略会匹配 `production/config.yml`、`/srv/production/config.yml`、`/srv/production` 以及 `C:\\production\\config.yml`，对 `Write` 和 `Edit` 均生效。它不会匹配 `production-backup` 这类名称，因为 `production` 必须是一个完整的路径段。
+此规则匹配 `production/config.yml`、`/srv/production/config.yml`、`/srv/production` 以及 `C:\\production\\config.yml`，对 `Write` 和 `Edit` 均生效。它不会匹配 `production-backup` 这类名称，因为 `production` 必须是完整的路径段。
 
-验证并安装显式指定的文件：
+验证并安装指定文件：
 
 ```bash
 failproofai policies --install --custom ./security.policies.ts
 ```
 
-策略上下文包含事件类型、规范化载荷、工具名称与输入、会话元数据、参数，以及来源 CLI（如果可用）。
+策略上下文包含：事件类型、规范化载荷、工具名称和输入、会话元数据、参数，以及可用时的来源 CLI 信息。
 
 ## 测试失败路径
 
-修改入口文件或其导入的任何本地模块后，请重新运行验证：
+修改入口文件或其导入的任何本地模块后，运行验证：
 
 ```bash
 failproofai policies --install --custom ./security.policies.ts --scope project
 ```
 
-在严格模式下，CLI 路径会在以下情况下失败：文件缺失、语法错误、导入无法解析、顶层异常以及模块加载超时。在执行阶段，损坏的自定义文件会被记录日志并跳过，以确保内置策略可以继续运行。请将任何加载警告视为预期执行能力的丢失，并在生产日志中对其发出告警。
+严格 CLI 路径会在以下情况下失败：文件缺失、语法错误、导入无法解析、顶层异常以及模块加载超时。在执行阶段，损坏的自定义文件会被记录日志并跳过，以便内置策略可以继续运行。请将任何加载警告视为预期执行的缺失，并在生产日志中对其进行告警。
 
-在显式策略、约定策略和云托管策略之间使用全局唯一的名称。保持策略函数的确定性，为外部调用设置较短的超时时间，并在每条执行路径上都明确返回 allow、instruct 或 deny。
+在显式策略、约定策略和云端管理策略之间使用全局唯一的名称。保持策略函数的确定性，对外部调用设置较短的超时时间，并在每条执行路径上明确返回 `allow`、`instruct` 或 `deny`。
 
 <Warning>
-  自定义策略是执行层代码。请测试字段缺失、工具名称变体和格式异常的输入——而不仅仅是预期的匹配场景。
+  自定义策略是执行代码。请测试字段缺失、工具名称变体和格式错误的输入——而不仅仅是预期的匹配场景。
 </Warning>

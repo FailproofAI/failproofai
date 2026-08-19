@@ -1,33 +1,33 @@
 ---
-title: "通过策略预防首次故障"
+title: "通过策略预防第一次失败"
 description: "编写策略版本，以观察模式部署，然后执行。"
 icon: "shield-check"
 ---
 
-只有在能够明确描述不安全操作以及必须保持允许的合法操作之后，才应使用策略。
+只有在能够描述不安全操作以及必须保持允许的合法操作之后，才可使用策略。
 
 <Tabs>
-  <Tab title="仪表板">
+  <Tab title="控制台">
     <Steps>
       <Step title="编写策略">
-        前往 **Admin → policy editor**。从演示策略开始，查看或编辑其源码，然后选择 **publish version**。发布操作会创建不可变版本，该版本可部署到机器上。
+        前往 **Admin → 策略编辑器**。从演示策略开始，查看或编辑其源代码，然后选择 **发布版本**。发布后将创建不可更改的版本，可部署到各台机器。
 
         ![策略编辑器的编写视图，演示策略已准备好发布为不可变版本。](/images/dashboard/policy-editor.png)
       </Step>
       <Step title="将其部署到机器">
-        前往 **Admin → enforcement**，展开目标机器，然后选择 **edit this machine**。添加已发布的演示策略，固定其版本，选择 **observe** 模式，并应用部署。
+        前往 **Admin → 执行**，展开目标机器，选择 **编辑此机器**。添加已发布的演示策略，固定其版本，选择 **观察**模式，然后应用部署。
 
-        ![机器部署编辑器，已发布的策略版本在应用部署前以观察模式选中。](/images/dashboard/enforcement-editor.png)
+        ![机器部署编辑器，其中已选择已发布的策略版本并处于观察模式，准备应用部署。](/images/dashboard/enforcement-editor.png)
       </Step>
       <Step title="验证策略">
-        在该机器上运行一个新的 Agent 会话，然后打开 **Observe → policy**。选择该机器，确认演示策略出现在策略映射和决策时间线中。观察模式会记录策略本会执行的操作，而不会阻止实际操作。
+        在该机器上运行新的 agent 会话，然后打开 **Observe → 策略**。选择该机器，确认演示策略出现在策略映射和决策时间线中。观察模式会记录策略的预期行为，但不会阻止操作。
 
-        ![策略页面，显示决策总计、随时间变化的执行活动以及本地和云端管理的策略映射。](/images/dashboard/policy-observe.png)
+        ![策略页面，显示决策总计、随时间变化的执行活动，以及本地和云端管理的策略映射。](/images/dashboard/policy-observe.png)
       </Step>
     </Steps>
   </Tab>
   <Tab title="CLI">
-    云端策略编写和机群部署属于管理工作流。在发布之前，可使用本地 CLI 验证相同的策略：
+    云端策略编写与机群部署属于管理员工作流。在发布之前，可使用本地 CLI 对同一策略进行验证：
 
     ```bash
     failproofai policies --install --custom ./payment-retry.policies.ts \
@@ -42,6 +42,6 @@ icon: "shield-check"
     fp sessions --env production --since 24h
     ```
 
-    Cloud CLI 不提供仅限管理员的执行部署路由。请从 **Admin → policy editor** 发布版本，并从 **Admin → enforcement** 部署它们。
+    云端 CLI 不开放仅限 root 用户的执行部署路由。请从 **Admin → 策略编辑器** 发布版本，并从 **Admin → 执行** 进行部署。
   </Tab>
 </Tabs>

@@ -1,6 +1,6 @@
 ---
 title: "故障排查"
-description: "诊断会话缺失、策略缺失、投递失败以及代理操作被阻止等问题。"
+description: "诊断会话缺失、策略缺失、事件投递失败以及 Agent 操作被拦截等问题。"
 icon: "wrench"
 ---
 
@@ -8,9 +8,9 @@ icon: "wrench"
   <Accordion title="Cloud 中未显示任何会话">
     <Tabs>
       <Tab title="控制台">
-        打开 **Administration → Keys**，确认机器密钥处于激活状态且具有 `events:add` 权限。然后打开 **Observe → Events**，拉宽时间范围，并清除环境和代理筛选器。若事件存在，搜索会话 ID，再到 **Observe → Sessions** 查看分组情况。若不存在任何事件，请通过 CLI 诊断 Failproof 守护进程。
+        打开 **Administration → Keys**，确认机器密钥处于激活状态且具有 `events:add` 权限。然后打开 **Observe → Events**，扩大时间范围，并清除环境和 Agent 过滤器。若存在事件，搜索会话 ID，再前往 **Observe → Sessions** 查看分组情况。若不存在任何事件，请通过 CLI 诊断 Failproof 守护进程。
 
-        ![实时事件流，显示主要筛选器及最新代理事件。](/images/dashboard/events-stream-current.png)
+        ![实时事件流，显示主要过滤器及近期 Agent 事件。](/images/dashboard/events-stream-current.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -21,14 +21,14 @@ icon: "wrench"
         fp sessions --since 24h --limit 20
         ```
 
-        确认采集功能已启用、所配置的密钥具有 `events:add` 权限，以及控制台筛选器与已发出的环境相匹配。
+        确认已启用数据采集、所配置的密钥具有 `events:add` 权限，并且控制台中的过滤器与实际发出的环境相匹配。
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="Python SDK 事件仍留在磁盘上">
+  <Accordion title="Python SDK 事件停留在磁盘上">
     <Tabs>
       <Tab title="控制台">
-        清除 **Observe → Events** 中的筛选器，并按确切的 SDK 会话 ID 搜索。若无结果，请在源机器上检查 SDK 缓冲池和 Failproof 守护进程。
+        清除 **Observe → Events** 中的过滤器，并搜索确切的 SDK 会话 ID。若未找到任何结果，请在源机器上检查 SDK 缓冲目录和 Failproof 守护进程。
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -36,14 +36,14 @@ icon: "wrench"
         failproofai flush --wait
         ```
 
-        确认代理进程设置了 `AGENTEYE_SPOOL_TO_FAILPROOFAI=1`，并且 `$FAILPROOFAI_HOME/custom-agents`（或默认路径 `~/.failproofai/custom-agents`）在 SDK 启动前已存在。
+        确认 Agent 进程已设置 `AGENTEYE_SPOOL_TO_FAILPROOFAI=1`，并且在 SDK 启动前 `$FAILPROOFAI_HOME/custom-agents`（或默认路径 `~/.failproofai/custom-agents`）已存在。
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="机器未收到策略">
     <Tabs>
       <Tab title="控制台">
-        打开 **Admin → enforcement**，选择该机器，比较其已分配版本、已上报版本和之前版本。确认部署范围包含该机器，且其密钥具有 `policies:pull` 权限。即使策略投递失败，事件采集仍可正常工作。
+        打开 **Admin → enforcement**，选中该机器，对比其已分配版本、已上报版本和上一版本。确认部署范围包含该机器，且其密钥具有 `policies:pull` 权限。即使策略下发失败，事件采集仍可正常工作。
 
       </Tab>
       <Tab title="CLI">
@@ -53,14 +53,14 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        确认机器 ID 和标签与控制台目标匹配。若现有凭据仅授予事件采集权限，请使用支持策略的密钥重新连接。
+        确认机器 ID 和标签与控制台中的目标一致。若现有凭据仅具备事件采集权限，请使用支持策略功能的密钥重新连接。
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="因守护进程不可用导致操作被拒绝">
     <Tabs>
       <Tab title="控制台">
-        打开 **Admin → enforcement**，查看机器的最后在线时间和已上报版本。若机器状态已过期，应将其视为本地守护进程问题。不要仅为绕过不可用的守护进程而降低已部署的策略强度。
+        打开 **Admin → enforcement**，查看该机器的最后在线时间和已上报版本。若机器状态已过期，应将其视为本地守护进程问题处理。不要仅为绕过不可用的守护进程而降低已部署策略的限制级别。
 
       </Tab>
       <Tab title="CLI">
@@ -71,18 +71,18 @@ icon: "wrench"
         failproofai config --status
         ```
 
-        重启或更新 `failproofaid`；若 CLI 与守护进程协议版本不一致，请重新运行配置。所配置的守护进程路径在设计上采用失效关闭（fail-closed）策略。
+        重启或更新 `failproofaid`；当 CLI 与守护进程协议版本不一致时，重新运行配置命令。已配置的守护进程路径在设计上采用失效关闭（fail-closed）策略。
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="自定义策略未加载">
+  <Accordion title="自定义策略未能加载">
     <Tabs>
       <Tab title="控制台">
-        对于在 Cloud 中编写的策略，打开 **Admin → policy editor**，选择草稿，在发布前查看验证错误。对于本地策略，使用 CLI 进行验证，然后在执行测试操作后打开 **Observe → policy**，确认决策已到达。
+        对于在 Cloud 中编写的策略，打开 **Admin → policy editor**，选中草稿，在发布前查看验证错误信息。对于本地策略，使用 CLI 对其进行验证，然后在执行测试操作后打开 **Observe → policy**，确认决策已正常到达。
 
       </Tab>
       <Tab title="CLI">
-        确认文件名以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾，模块调用了 `customPolicies.add(...)`，且导入路径可从策略文件中正确解析。
+        确认文件名以 `policies.js`、`policies.mjs` 或 `policies.ts` 结尾，模块中调用了 `customPolicies.add(...)`，并且所有 import 均可从策略文件中正确解析。
 
         ```bash
         failproofai policies --install --custom ./checkout.policies.ts
@@ -94,11 +94,11 @@ icon: "wrench"
   <Accordion title="审计未返回任何发现">
     <Tabs>
       <Tab title="控制台">
-        打开 **Analyze → audits**，选择运行记录，检查模型分析是否已执行。然后将其范围和时间窗口与 **Observe → sessions** 进行比对，并查看该样本中具有代表性的追踪记录。
+        打开 **Analyze → audits**，选中本次运行，检查模型分析是否已执行。然后将其范围和时间窗口与 **Observe → sessions** 进行对比，并打开该样本集中具有代表性的追踪记录。
 
-        只有在分析成功运行后，零结果才具有实际意义。若分析被跳过或失败，本次运行将不产生任何发现，且未分析的时间窗口将保留，等待未来的成功运行。若模型分析已被禁用，审计同样不会产生任何发现，因为确定性凭据和 PII 扫描仅记录统计数据，不再生成发现项。
+        只有在分析成功执行的前提下，零结果才具有实际意义。若分析被跳过或失败，本次运行将不产生任何发现，且未分析的时间窗口将保持开放，等待下一次成功运行。若模型分析已被禁用，审计同样不会产生任何发现，因为确定性凭据和 PII 扫描仅记录统计数据，不再触发发现。
 
-        ![审计表单，通过环境、代理、频次和扫描窗口定义会话样本。](/images/dashboard/audit-new.png)
+        ![审计配置表单，通过环境、Agent、周期和扫描窗口定义会话样本集。](/images/dashboard/audit-new.png)
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -110,31 +110,31 @@ icon: "wrench"
         fp audits findings --audit <audit-name>
         ```
 
-        若运行一直处于排队状态，请等待审计代理容量释放，或请求部署运维人员检查审计集群。排队中的审计会自动重试，不会被立即跳过。
+        若运行持续处于排队状态，请等待审计 Agent 容量释放，或联系部署运维人员检查审计集群。排队中的审计会自动重试，不会被立即跳过。
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="在线评估未自动运行">
     <Tabs>
       <Tab title="控制台">
-        打开一个已完成的会话，检查手动评估是否能成功执行。托管 Cloud 目前在控制台中没有评估器端点控制功能，服务器运维人员需自行配置。
+        打开一个已完成的会话，检查手动评估是否能够成功执行。当前托管 Cloud 版本的控制台不支持配置评估器端点，需由服务器运维人员进行配置。
       </Tab>
       <Tab title="CLI">
-        先验证评估器本身是否正常，再检查近期的评估状态：
+        先验证评估器本身，再检查近期评估状态：
 
         ```bash
         curl https://evaluator.example.com/health
         fp evals --since 1h
         ```
 
-        在自托管 Cloud 上，确认服务器已设置 `EVALUATOR_ENDPOINT`，且 `EVALUATOR_TOKEN` 与评估器一致。若端点缺失，自动评估将被禁用。
+        在自托管 Cloud 环境中，确认服务器上已配置 `EVALUATOR_ENDPOINT`，且 `EVALUATOR_TOKEN` 与评估器匹配。若端点缺失，自动评估将被禁用。
       </Tab>
     </Tabs>
   </Accordion>
   <Accordion title="Cloud CLI 认证指向了错误的组织">
     <Tabs>
       <Tab title="控制台">
-        使用组织切换器，在与 CLI 结果进行比对前，确认预期的 slug 和权限是否正确。
+        使用组织切换器，确认预期的 slug 和权限，再与 CLI 的结果进行对比。
       </Tab>
       <Tab title="CLI">
         ```bash
@@ -143,18 +143,18 @@ icon: "wrench"
         fp orgs perms
         ```
 
-        在 API 密钥模式下，通过 `fp --org <slug> --api-key <key> ...` 指定组织，或设置 `AGENTEYE_ORG` 环境变量。API 密钥请求会有意忽略已保存的人工会话组织状态。
+        在 API 密钥模式下，请指定 `fp --org <slug> --api-key <key> ...` 或设置 `AGENTEYE_ORG`。对于 API 密钥请求，已保存的人工会话组织状态会被有意忽略。
       </Tab>
     </Tabs>
   </Accordion>
-  <Accordion title="策略阻止了合法操作">
+  <Accordion title="策略拦截了合法操作">
     <Tabs>
       <Tab title="控制台">
-        打开 **Observe → policy**，保留该决策及关联的会话，并确定误报条件。然后打开 **Admin → enforcement**，将受影响的机器回滚至之前的版本。在 **Policy editor** 中创建范围更窄的版本，在小范围内测试，待合法操作成功通过后再逐步扩大范围。
+        打开 **Observe → policy**，保存该决策及关联会话，并定位误报条件。然后打开 **Admin → enforcement**，将受影响的机器回滚至上一版本。在 **Policy editor** 中创建范围更窄的新版本，先在小范围内测试，仅在合法操作通过后再扩大范围。
 
       </Tab>
       <Tab title="CLI">
-        Cloud 部署回滚仅支持通过控制台操作。本地会话暂停不会禁用 Cloud 管理的策略。若控制台不可用，请记录机器和部署状态，优先恢复控制台访问，而非反复重试被阻止的操作。
+        Cloud 部署回滚仅支持通过控制台操作。暂停本地会话不会禁用由 Cloud 管理的策略。若控制台不可用，请记录机器和部署状态，优先恢复控制台访问权限，而非反复重试被拦截的操作。
 
         ```bash
         failproofai config --status
@@ -164,4 +164,4 @@ icon: "wrench"
   </Accordion>
 </AccordionGroup>
 
-联系支持时，请提供 CLI 版本、运行环境（harness）、所在环境、相关的会话或部署 ID，以及去除敏感信息后的 `failproofai config --status` 输出结果。
+联系支持团队时，请提供 CLI 版本、运行框架、环境信息、相关会话或部署 ID，以及去除敏感信息后的 `failproofai config --status` 输出内容。

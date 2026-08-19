@@ -1,17 +1,17 @@
 ---
 title: "Cadência de auditoria"
-description: "Escolha quando as auditorias recorrentes serão executadas e quanta quantidade de dados elas analisarão."
+description: "Escolha quando as auditorias recorrentes são executadas e quanta quantidade de dados elas revisam."
 icon: "calendar-clock"
 ---
 
-Use auditorias recorrentes para modos de falha que podem retornar conforme agentes, prompts, ferramentas e modelos mudam.
+Use auditorias recorrentes para padrões de falha que podem reaparecer à medida que agentes, prompts, ferramentas e modelos mudam.
 
 ## Alterar o agendamento
 
 <Tabs>
   <Tab title="Dashboard">
     1. Acesse **Analyze → Audits** e abra a auditoria.
-    2. Abra as configurações e altere o estado de ativação, o intervalo, a âncora UTC, o modo de janela ou o lookback.
+    2. Abra as configurações e altere o estado de ativação, o intervalo, a âncora UTC, o modo de janela ou o período de retroatividade.
     3. Salve a auditoria e confirme o horário da próxima execução no cartão da auditoria.
     4. Use **run now** uma vez após uma alteração significativa de escopo ou contexto.
 
@@ -40,10 +40,10 @@ Escolha a cadência com base na velocidade e no custo do risco:
 | Ação de produção de alto impacto | Diária |
 | Regressão de fluxo de trabalho ou modelo | Semanal |
 | Revisão de governança ou acesso | Mensal |
-| Investigação pontual de release | Executar uma vez |
+| Investigação pontual de lançamento | Executar uma vez |
 
-Alinhe a janela de lookback com a cadência para que as execuções não deixem lacunas nem examinem repetidamente uma população desnecessariamente grande. Após alterar o objetivo ou o contexto de uma auditoria, execute-a manualmente uma vez antes de confiar no próximo resultado agendado.
+Alinhe a janela de retroatividade com a cadência para que as execuções não deixem lacunas nem examinem repetidamente uma população desnecessariamente grande. Após alterar o objetivo ou o contexto de uma auditoria, execute-a manualmente uma vez antes de depender do próximo resultado agendado.
 
 <Note>
-  As auditorias agendadas localmente são configuradas na máquina e examinam o histórico local do agente. Os agendamentos de auditoria na nuvem operam sobre sessões na nuvem. Trate seus resultados e sua responsabilidade separadamente.
+  Auditorias agendadas localmente são configuradas na máquina e analisam o histórico local de agentes. Os agendamentos de auditorias na nuvem operam sobre sessões na nuvem. Trate os resultados e a responsabilidade de cada um de forma separada.
 </Note>

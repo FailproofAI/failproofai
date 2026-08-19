@@ -4,18 +4,18 @@ description: "Lancez un audit, vérifiez sa couverture et inspectez les résulta
 icon: "play"
 ---
 
-Lancez un audit une fois que son objectif et sa population sont suffisamment précis pour qu'un autre opérateur sache à quoi ressemble un résultat valide.
+Lancez un audit lorsque son objectif et sa population sont suffisamment précis pour qu'un autre opérateur sache à quoi ressemble un résultat valide.
 
-## Lancer et inspecter
+## Lancer et inspecter l'audit
 
 <Tabs>
-  <Tab title="Tableau de bord">
-    1. Accédez à **Analyser → Audits**, ouvrez l'audit et sélectionnez **lancer maintenant**. Une réponse en file d'attente signifie que le répartiteur le démarrera sous peu.
-    2. Ouvrez la nouvelle exécution pour consulter son statut, sa fenêtre, sa durée, le nombre de résultats et le rapport.
-    3. Sélectionnez une session de preuves pour ouvrir la trace exacte.
-    4. Revenez à la page de l'audit pour modifier les paramètres, désactiver la planification ou consulter les exécutions précédentes.
+  <Tab title="Dashboard">
+    1. Accédez à **Analyze → Audits**, ouvrez l'audit et sélectionnez **run now**. Une réponse en file d'attente signifie que le dispatcher le démarrera sous peu.
+    2. Ouvrez la nouvelle exécution pour consulter son statut, sa fenêtre temporelle, sa durée, le nombre de résultats et le rapport.
+    3. Sélectionnez une session d'évidences pour ouvrir la trace exacte.
+    4. Revenez à la page de l'audit pour modifier les paramètres, désactiver la planification ou inspecter les exécutions précédentes.
 
-    ![Page de détail d'un audit avec les résultats ouverts, l'état de la dernière et prochaine exécution, la fenêtre d'analyse, le contexte, le contrôle d'exécution immédiate et les résultats classés.](/images/dashboard/audit-detail.png)
+    ![Page de détail d'un audit avec les résultats ouverts, l'état de la dernière et prochaine exécution, la fenêtre de balayage, le contexte, le contrôle d'exécution immédiate et les résultats classés.](/images/dashboard/audit-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,39 +29,39 @@ Lancez un audit une fois que son objectif et sa population sont suffisamment pr�
   </Tab>
 </Tabs>
 
-## Avant de lancer
+## Avant de lancer l'audit
 
-- Vérifiez que des sessions existent dans la fenêtre temporelle sélectionnée.
+- Confirmez que des sessions existent dans la fenêtre temporelle sélectionnée.
 - Vérifiez les filtres d'environnement et d'agent.
 - Assurez-vous que le contexte de référence est à jour.
-- Veillez à ce que l'objectif décrive un mode de défaillance, et non une conclusion souhaitée.
+- Vérifiez que l'objectif décrit un mode de défaillance et non une conclusion souhaitée.
 
 ## Examiner l'exécution
 
-Commencez par le statut de l'exécution, la couverture des sessions et vérifiez si l'analyse par modèle a été exécutée. Inspectez ensuite la sévérité, la description, les sessions de preuves, les requêtes associées et le chemin de prévention suggéré pour chaque résultat.
+Commencez par le statut de l'exécution, la couverture des sessions et si l'analyse par le modèle s'est bien déroulée. Inspectez ensuite la sévérité, la description, les sessions d'évidences, les requêtes associées et le chemin de prévention suggéré pour chaque résultat.
 
-Utilisez le statut des résultats pour les accuser réception, les mettre en sourdine, les ignorer, les résoudre, les rouvrir ou les affecter à des tâches. Conservez les preuves même lorsqu'un résultat est ignoré ; elles expliquent pourquoi cette décision a été prise.
+Utilisez le statut des résultats pour les accuser de réception, les ignorer, les rejeter, les résoudre, les rouvrir ou les attribuer. Conservez les évidences même lorsqu'un résultat est rejeté ; elles expliquent pourquoi la décision a été prise.
 
 ## Interpréter une exécution vide ou retardée
 
-| État de l'exécution | Ce que cela signifie | Que faire |
+| Condition d'exécution | Ce que cela signifie | Que faire |
 | --- | --- | --- |
-| L'analyse s'est exécutée et n'a produit aucun résultat | Les preuves sélectionnées n'ont pas permis d'établir un résultat à la sensibilité configurée. | Vérifiez que la portée contient des sessions représentatives, puis considérez le résultat comme sain, sauf si l'objectif ou le contexte était trop vague. |
-| L'analyse par modèle a été ignorée ou a échoué | L'exécution se termine sans résultat, mais l'investigation agentique n'a pas été effectuée. L'analyse déterministe des identifiants et des informations personnelles rapporte toujours le nombre de correspondances dans les statistiques d'exécution, mais ne crée pas de résultats. | Corrigez le service d'analyse ou la configuration et relancez. N'interprétez pas le résultat vide comme la preuve que la population est saine. |
-| L'analyse par modèle est désactivée | L'exécution réussit sans résultat. L'analyse déterministe ne remplace pas l'analyse par modèle et n'ouvre pas de résultats. | Activez l'analyse par modèle ou désactivez l'audit plutôt que de vous fier à un audit incapable de produire des résultats. |
-| Aucune capacité d'analyse n'est immédiatement disponible | L'audit reste en file d'attente et effectue de nouvelles tentatives au lieu d'ignorer la population. | Attendez que la capacité soit disponible ou répartissez les ancres d'audit. Les opérateurs auto-hébergés doivent faire évoluer les réplicas de l'agent d'audit et la capacité du répartiteur correspondante. |
-| La capacité reste indisponible pendant la fenêtre de nouvelles tentatives | L'exécution abandonne sans résultat et envoie une notification d'échec lorsque la distribution par e-mail est disponible. | Vérifiez si la flotte d'audit est saturée ou redémarre en boucle. |
+| L'analyse s'est exécutée et n'a produit aucun résultat | Les évidences sélectionnées ne justifiaient pas un résultat à la sensibilité configurée. | Confirmez que le périmètre contient des sessions représentatives, puis considérez le résultat comme sain, sauf si l'objectif ou le contexte était trop vague. |
+| L'analyse par le modèle a été ignorée ou a échoué | L'exécution se termine sans résultat, mais l'investigation agentique n'a pas eu lieu. Le scan déterministe des identifiants et des données personnelles rapporte toujours les correspondances dans les statistiques d'exécution, mais ne crée pas de résultats. | Corrigez le service d'analyse ou la configuration, puis relancez. N'interprétez pas le résultat vide comme une preuve que la population est saine. |
+| L'analyse par le modèle est désactivée | L'exécution réussit sans résultat. Le scan déterministe ne remplace pas l'analyse par le modèle et ne génère pas de résultats. | Activez l'analyse par le modèle ou désactivez l'audit plutôt que de vous fier à un audit incapable de produire des résultats. |
+| Aucune capacité d'analyse n'est immédiatement disponible | L'audit reste en file d'attente et tente à nouveau au lieu de sauter la population. | Attendez que de la capacité soit disponible ou répartissez les ancres d'audit. Les opérateurs auto-hébergés doivent faire évoluer les réplicas d'audit-agent et la capacité du dispatcher correspondante. |
+| La capacité reste indisponible pendant toute la fenêtre de nouvelle tentative | L'exécution abandonne sans résultat et envoie une notification d'échec lorsque la remise par e-mail est disponible. | Vérifiez si la flotte d'audits est saturée ou redémarre de manière répétée. |
 
-Lorsque l'analyse ne s'exécute pas, les audits `since_last` conservent cette fenêtre non analysée pour la prochaine exécution réussie. Les résultats existants ne sont pas retirés, car une analyse ignorée ne prouve pas que la défaillance a disparu.
+Lorsque l'analyse ne s'exécute pas, les audits `since_last` conservent cette fenêtre non analysée pour la prochaine exécution réussie. Les résultats existants ne sont pas clôturés, car une analyse ignorée ne prouve pas que la défaillance a disparu.
 
 ## Comprendre les notifications d'échec
 
-Une exécution échouée ou une étape d'analyse par modèle échouée utilise les destinataires e-mail de l'audit. Si l'audit ne dispose d'aucun canal e-mail, Failproof AI se rabat sur le paramètre `alerts.email_default_recipients` de l'organisation, afin qu'un audit silencieusement défaillant dispose toujours d'un chemin d'escalade.
+Une exécution ayant échoué ou une étape d'analyse par le modèle ayant échoué utilise les destinataires e-mail de l'audit. Si l'audit n'a pas de canal e-mail, Failproof AI utilise en repli le paramètre `alerts.email_default_recipients` de l'organisation, afin qu'un audit silencieusement défaillant dispose tout de même d'un chemin d'escalade.
 
-L'e-mail doit être activé pour l'organisation et le SMTP doit être configuré. Sinon, l'échec est consigné mais aucun e-mail ne peut être envoyé. Les échecs d'exécution ne déplacent pas l'ancre de planification fixe de l'audit.
+L'e-mail doit être activé pour l'organisation et le SMTP doit être configuré. Sans cela, l'échec est consigné mais aucun e-mail ne peut être envoyé. Les échecs d'exécution ne modifient pas l'ancre de planification fixe de l'audit.
 
-Chaque exécution stocke également le [contexte d'agent](/fr/audits/agent-contracts) exact utilisé pour chaque agent sous forme d'instantané de contrat. Les modifications ultérieures ne changent pas le standard de preuve enregistré avec une exécution antérieure.
+Chaque exécution enregistre également le [contexte d'agent](/fr/audits/agent-contracts) exact utilisé pour chaque agent sous forme d'instantané de contrat. Les modifications ultérieures ne changent pas le standard d'évidences enregistré avec une exécution antérieure.
 
 <Warning>
-  Ne déployez pas directement une politique de blocage à partir d'un résultat non vérifié. Ouvrez les traces citées et confirmez que la règle distingue bien un comportement dangereux d'un travail légitime.
+  Ne déployez pas de politique bloquante directement à partir d'un résultat non vérifié. Ouvrez les traces citées et confirmez que la règle distingue bien les comportements non sécurisés des usages légitimes.
 </Warning>

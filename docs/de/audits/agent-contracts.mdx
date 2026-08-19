@@ -1,28 +1,28 @@
 ---
-title: "Agenten-Kontext"
-description: "Teile Audits mit, was jeder Agent tun muss, produzieren soll und niemals tun darf."
+title: "Agentenkontext"
+description: "Teilen Sie Audits mit, was jeder Agent tun muss, was er produzieren soll und was er niemals tun darf."
 icon: "bot"
 ---
 
-Der Agenten-Kontext teilt Audits mit, wofür jeder Agent existiert, was er produzieren muss und was er niemals tun darf. Failproof AI speichert diesen Kontext als einen Agenten-Vertrag pro Agent.
+Der Agentenkontext teilt Audits mit, wofür ein Agent existiert, was er produzieren muss und was er niemals tun darf. Failproof AI speichert diesen Kontext als einen Agenten-Vertrag pro Agent.
 
-Der Agenten-Kontext gehört zur Organisation, nicht zu einem einzelnen Audit. Du schreibst ihn einmal pro Agent, und jedes modellgestützte Audit, dessen Umfang diesen Agenten einschließt, verwendet ihn.
+Der Agentenkontext gehört zur Organisation, nicht zu einem einzelnen Audit. Sie schreiben ihn einmal pro Agent, und jedes modellgestützte Audit, dessen Umfang diesen Agenten einschließt, verwendet ihn.
 
-## Agenten-Kontext hinzufügen
+## Agentenkontext hinzufügen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Analyse → Audits**, wähle **Agents** und wähle die Agent-ID aus, die von seinen Sitzungen gemeldet wird.
-    2. Wähle **Inhalt hinzufügen** oder **Bearbeiten**.
-    3. Beschreibe, wofür der Agent gedacht ist, was er produzieren muss, was „fertig" bedeutet, wie oft er ausgeführt werden soll und was er niemals tun darf.
-    4. Speichere den Kontext, kehre dann zum Audit-Formular zurück und bestätige, dass der ausgewählte Agent als abgedeckt angezeigt wird.
+    1. Gehen Sie zu **Analyze → audits**, wählen Sie **agents** und wählen Sie die Agenten-ID aus, die von seinen Sitzungen gemeldet wird.
+    2. Wählen Sie **add content** oder **edit**.
+    3. Beschreiben Sie, wofür der Agent gedacht ist, was er produzieren muss, was „abgeschlossen" bedeutet, wie oft er ausgeführt werden soll und was er niemals tun darf.
+    4. Speichern Sie den Kontext, kehren Sie dann zum Audit-Formular zurück und bestätigen Sie, dass der ausgewählte Agent als abgedeckt angezeigt wird.
 
-    ![Das Agents-Drawer des Audits, mit dem Zweck, Kadenz, Ausgaben, Abschlussbedingungen und verbotenes Verhalten für einen Agenten hinzugefügt werden.](/images/dashboard/agent-context.png)
+    ![Die Agents-Schublade des Audits, mit der Zweck, Häufigkeit, Ausgaben, Abschlussbedingungen und verbotenes Verhalten für einen Agenten hinzugefügt werden können.](/images/dashboard/agent-context.png)
 
-    Du kannst den Agenten-Kontext auch über das **Agents**-Drawer hinzufügen oder bearbeiten, während du ein Audit erstellst oder bearbeitest. Er wird unabhängig gespeichert und ist sofort für jedes zutreffende Audit verfügbar.
+    Sie können den Agentenkontext auch über die **agents**-Schublade hinzufügen oder bearbeiten, während Sie ein Audit erstellen oder bearbeiten. Er wird unabhängig gespeichert und ist sofort für jedes anwendbare Audit verfügbar.
   </Tab>
   <Tab title="CLI">
-    Die Cloud-CLI stellt noch keine Vertrags-Befehle bereit. Verwende die öffentliche API mit einem Schlüssel, der `audits:read` und `audits:write` besitzt:
+    Das Cloud CLI stellt noch keine Vertragsbefehle bereit. Verwenden Sie die öffentliche API mit einem Schlüssel, der `audits:read` und `audits:write` besitzt:
 
     ```bash
     curl -X POST "https://app.befailproof.ai/v1/audits/contracts" \
@@ -35,19 +35,19 @@ Der Agenten-Kontext gehört zur Organisation, nicht zu einem einzelnen Audit. Du
       }'
     ```
 
-    Verträge auflisten mit `GET /v1/audits/contracts`; einen einzelnen Vertrag abrufen mit `GET /v1/audits/contracts/{id}`. Das Aktualisieren mit `PUT` ist ein vollständiger Ersatz und erfordert sowohl `agent_id` als auch `body`.
+    Listen Sie Verträge mit `GET /v1/audits/contracts` auf; rufen Sie einen einzelnen Vertrag mit `GET /v1/audits/contracts/{id}` ab. Eine Aktualisierung mit `PUT` ist ein vollständiger Ersatz und erfordert sowohl `agent_id` als auch `body`.
   </Tab>
 </Tabs>
 
 ## Nützlichen Kontext schreiben
 
-Halte den Kontext unter 5.000 Zeichen und gestalte ihn überprüfbar. Nützlicher Kontext enthält in der Regel:
+Halten Sie den Kontext unter 5.000 Zeichen und gestalten Sie ihn testbar. Nützlicher Kontext enthält in der Regel:
 
 - **Zweck:** warum der Agent existiert
 - **Ausgaben:** Artefakte oder Aktionen, die er produzieren muss
-- **Fertig, wenn:** die Bedingung, die eine Ausführung erfolgreich macht
-- **Kadenz:** wie oft oder wann er ausgeführt werden soll
-- **Darf nicht:** Aktionen und Ergebnisse, die immer inakzeptabel sind
+- **Abgeschlossen, wenn:** die Bedingung, die einen Lauf als erfolgreich einstuft
+- **Häufigkeit:** wie oft oder wann er ausgeführt werden soll
+- **Darf nicht:** Aktionen und Ergebnisse, die immer unakzeptabel sind
 
 ```markdown
 ---
@@ -66,17 +66,17 @@ cadence: Once daily after 02:00 UTC. Never more than once.
 - Modify ledger entries. Report discrepancies instead.
 ```
 
-Der Agenten-Kontext beschreibt das erwartete Verhalten; er kann der Analyse nicht vorschreiben, zu welchem Schluss sie kommen soll, oder einschränken, welche Belege sie untersucht. Agents ohne Kontext werden normal geprüft, aber Failproof AI kann ihr Verhalten nicht an organisationsspezifischen Absichten messen.
+Der Agentenkontext beschreibt das erwartete Verhalten; er kann der Analyse nicht vorschreiben, zu welchem Ergebnis sie gelangen soll oder welche Beweise sie untersuchen darf. Agenten ohne Kontext werden normal auditiert, aber Failproof AI kann ihr Verhalten nicht anhand organisationsspezifischer Absichten beurteilen.
 
-## Agenten-Kontext pausieren oder ändern
+## Agentenkontext pausieren oder ändern
 
-- Pausiere den Agenten-Kontext, wenn Audits ihn vorübergehend ignorieren sollen. Das Pausieren ist umkehrbar.
-- Bearbeite den Kontext, wenn sich die Verantwortlichkeit des Agenten ändert. Der neue Text gilt für zukünftige Ausführungen.
-- Überprüfe **Zuletzt abgeglichen**, wenn ein laufender Agent seinen Kontext scheinbar nie verwendet. Dies bedeutet normalerweise, dass seine Agent-ID nicht mit der Telemetrie übereinstimmt.
-- Lösche über die API nur dann, wenn der Text dauerhaft vernichtet werden muss. Das Dashboard bietet absichtlich „Pausieren" statt „Löschen" an.
+- Pausieren Sie den Agentenkontext, wenn Audits ihn vorübergehend ignorieren sollen. Das Pausieren ist umkehrbar.
+- Bearbeiten Sie den Kontext, wenn sich die Verantwortung des Agenten ändert. Der neue Text gilt für zukünftige Läufe.
+- Prüfen Sie **last matched**, wenn ein laufender Agent seinen Kontext scheinbar nie verwendet. Dies bedeutet in der Regel, dass seine Agenten-ID nicht mit der Telemetrie übereinstimmt.
+- Löschen Sie über die API nur dann, wenn der Text dauerhaft vernichtet werden muss. Das Dashboard bietet absichtlich „Pausieren" statt „Löschen" an.
 
-Jede Audit-Ausführung speichert den genauen Agenten-Kontext-Snapshot, den sie verwendet hat. Das Bearbeiten, Pausieren oder Löschen der aktuellen Vertrags-Ressource überschreibt nicht die Grundlage früherer Erkenntnisse.
+Jeder Audit-Lauf speichert die genaue Agentenkontext-Momentaufnahme, die er verwendet hat. Das Bearbeiten, Pausieren oder Löschen der aktuellen Vertragsressource überschreibt nicht die Grundlage früherer Erkenntnisse.
 
 <Info>
-  Das Lesen von Verträgen erfordert `audits:read`. Das Erstellen, Bearbeiten, Pausieren oder Löschen erfordert `audits:write`.
+  Für das Lesen von Verträgen ist `audits:read` erforderlich. Für das Erstellen, Bearbeiten, Pausieren oder Löschen wird `audits:write` benötigt.
 </Info>

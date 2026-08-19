@@ -1,56 +1,56 @@
 ---
 title: "Intégrations et référence"
-description: "Connectez les agents, SDKs, CLIs et l'API HTTP pris en charge."
+description: "Connectez les harnais d'agents, les SDKs, les CLIs et l'API HTTP pris en charge."
 icon: "braces"
 ---
 
-Choisissez l'intégration la plus adaptée à l'environnement dans lequel votre agent s'exécute.
+Choisissez l'intégration la plus proche de l'environnement dans lequel votre agent s'exécute déjà.
 
 <Columns cols={2}>
-  <Card title="Agents supportés" icon="plug-zap" href="/fr/reference/harnesses">
-    Installez des hooks pour les CLIs d'agents de codage et d'agents autonomes pris en charge.
+  <Card title="Harnais d'agents" icon="plug-zap" href="/fr/reference/harnesses">
+    Installez des hooks pour les CLIs d'agents de codage et autonomes pris en charge.
   </Card>
   <Card title="Agents personnalisés" icon="python" href="/fr/reference/python-sdk">
-    Instrumentez des traces pour identifier les défaillances dans vos agents personnalisés, puis contactez-nous pour ajouter la prévention à votre environnement d'exécution.
+    Instrumentez des traces pour identifier les échecs dans vos agents personnalisés, puis contactez-nous pour ajouter une prévention à votre runtime.
   </Card>
   <Card title="Tableau de bord local" icon="monitor-cog" href="/fr/reference/local-dashboard">
     Consultez les projets locaux, les sessions, l'activité des politiques et les audits hors ligne.
   </Card>
-  <Card title="CLI Failproof AI" icon="terminal" href="/fr/reference/failproof-cli">
+  <Card title="Failproof AI CLI" icon="terminal" href="/fr/reference/failproof-cli">
     Configurez la capture locale, les hooks, les politiques, les audits, la livraison et l'état de la machine.
   </Card>
-  <Card title="CLI Failproof Cloud" icon="cloud-cog" href="/fr/reference/cloud-cli#cli-commands">
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/fr/reference/cloud-cli#cli-commands">
     Interrogez et administrez les sessions Cloud, les audits, les problèmes, les alertes, les clés, les utilisateurs et les paramètres.
   </Card>
   <Card title="SDK Évaluateur" icon="gauge" href="/fr/reference/evaluator-sdk">
     Évaluez des sessions complètes ou inactives avec un service FastAPI.
   </Card>
   <Card title="Politiques personnalisées" icon="shield-plus" href="/fr/reference/policy-sdk">
-    Créez et testez des décisions allow, instruct et deny spécifiques à vos workflows.
+    Rédigez et testez des décisions allow, instruct et deny spécifiques à votre flux de travail.
   </Card>
   <Card title="Auto-hébergement" icon="cloud-cog" href="/fr/reference/self-hosting">
     Déployez le plan de contrôle Cloud sur un cluster Kubernetes géré par le client.
   </Card>
 </Columns>
 
-La [référence de l'API HTTP](/fr/reference/http-api) générée couvre la surface publique `/v1`. Les pages rédigées manuellement expliquent les workflows qui s'étendent sur plusieurs endpoints ou qui utilisent des interfaces d'administration en dehors de cette surface publique.
+La [référence de l'API HTTP](/fr/reference/http-api) générée couvre la surface publique `/v1`. Les pages rédigées manuellement expliquent les flux de travail qui s'étendent sur plusieurs endpoints ou utilisent des interfaces d'administration en dehors de cette surface publique.
 
 ## Connecter un agent et vérifier les données
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Ouvrez **Administration → Clés**, créez une clé avec les permissions `events:add` et `policies:pull`, puis copiez le secret.
-    2. Configurez l'intégration en suivant la page correspondante ci-dessus.
+    1. Ouvrez **Administration → Clés**, créez une clé avec `events:add` et `policies:pull`, puis copiez le secret.
+    2. Configurez l'intégration en utilisant la page correspondante ci-dessus.
     3. Ouvrez **Observer → Événements** pour confirmer que les événements arrivent, puis **Observer → Sessions** pour confirmer qu'ils forment des exécutions complètes.
-    4. Filtrez selon l'environnement de l'intégration et inspectez une session pour vérifier la présence des champs modèle, outil, erreur et politique nécessaires aux audits.
+    4. Filtrez par l'environnement de l'intégration et inspectez une session pour y trouver les champs de modèle, d'outil, d'erreur et de politique requis par les audits.
 
-    Commencez par le panneau de clé. Les permissions sélectionnées déterminent si la machine peut envoyer des événements et recevoir des politiques gérées par le Cloud.
+    Commencez par le tiroir des clés. Les autorisations sélectionnées déterminent si la machine peut envoyer des événements et recevoir des politiques gérées par le Cloud.
 
-    ![Le panneau de création de clé API utilisé pour accorder les permissions d'ingestion d'événements et de livraison de politiques.](/images/dashboard/key-create.png)
+    ![Le tiroir de création de clé API permettant d'accorder les permissions d'ingestion d'événements et de livraison de politiques.](/images/dashboard/key-create.png)
 
     Après avoir connecté l'intégration, utilisez la liste des Sessions pour confirmer que ses événements sont regroupés en exécutions complètes dans l'environnement attendu.
 
-    ![La liste des Sessions utilisée pour vérifier qu'une intégration nouvellement connectée rapporte des exécutions d'agent complètes.](/images/dashboard/sessions-list.png)
+    ![La liste des Sessions permettant de vérifier qu'une intégration nouvellement connectée signale des exécutions d'agents complètes.](/images/dashboard/sessions-list.png)
 
     Ouvrez l'une de ces sessions avant de considérer l'intégration comme terminée ; la trace doit contenir le modèle, l'outil, l'erreur et les preuves de politique dont vos audits ont besoin.
   </Tab>
@@ -71,8 +71,8 @@ La [référence de l'API HTTP](/fr/reference/http-api) générée couvre la surf
     fp events --since 1h --env production --limit 20
     ```
 
-    Utilisez `fp --json sessions ...` lorsqu'un autre outil doit consommer le résultat. Les options globales telles que `--json`, `--org` et `--base-url` doivent être placées avant la commande.
+    Utilisez `fp --json sessions ...` lorsqu'un autre outil doit consommer le résultat. Les drapeaux globaux tels que `--json`, `--org` et `--base-url` doivent être placés avant la commande.
 
-    Consultez la [référence du CLI Failproof AI](/fr/reference/failproof-cli) pour les commandes locales et la [référence du CLI Failproof Cloud](/fr/reference/cloud-cli#cli-commands) pour les commandes `fp`.
+    Consultez la [référence du Failproof AI CLI](/fr/reference/failproof-cli) pour les commandes locales et la [référence du Failproof Cloud CLI](/fr/reference/cloud-cli#cli-commands) pour les commandes `fp`.
   </Tab>
 </Tabs>

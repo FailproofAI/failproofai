@@ -1,61 +1,61 @@
 ---
-title: "समन्वय और संदर्भ"
-description: "समर्थित agent harnesses, SDKs, CLIs, और HTTP API को कनेक्ट करें।"
+title: "एकीकरण और संदर्भ"
+description: "समर्थित एजेंट हार्नेस, SDK, CLI, और HTTP API को कनेक्ट करें।"
 icon: "braces"
 ---
 
-अपने agent के चलने की जगह के सबसे करीब का एकीकरण चुनें।
+वह एकीकरण चुनें जो आपके एजेंट के वर्तमान स्थान के सबसे करीब हो।
 
 <Columns cols={2}>
   <Card title="Agent harnesses" icon="plug-zap" href="/hi/reference/harnesses">
-    समर्थित कोडिंग और autonomous agent CLIs के लिए hooks इंस्टॉल करें।
+    समर्थित कोडिंग और स्वायत्त एजेंट CLI के लिए हुक इंस्टॉल करें।
   </Card>
   <Card title="Custom agents" icon="python" href="/hi/reference/python-sdk">
-    कस्टम agents में विफलताओं को खोजने के लिए traces को instrument करें, फिर अपने runtime में prevention जोड़ने के लिए हमसे संपर्क करें।
+    कस्टम एजेंट में विफलता खोजने के लिए ट्रेस को इंस्ट्रूमेंट करें, फिर अपने रनटाइम में रोकथाम जोड़ने के लिए हमसे संपर्क करें।
   </Card>
   <Card title="Local dashboard" icon="monitor-cog" href="/hi/reference/local-dashboard">
-    स्थानीय projects, sessions, policy activity, और offline audits की समीक्षा करें।
+    स्थानीय प्रोजेक्ट, सेशन, नीति गतिविधि और ऑफ़लाइन ऑडिट की समीक्षा करें।
   </Card>
   <Card title="Failproof AI CLI" icon="terminal" href="/hi/reference/failproof-cli">
-    स्थानीय capture, hooks, policies, audits, delivery, और machine state को कॉन्फ़िगर करें।
+    स्थानीय कैप्चर, हुक, नीति, ऑडिट, डिलीवरी और मशीन स्थिति को कॉन्फ़िगर करें।
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/hi/reference/cloud-cli#cli-commands">
-    Cloud sessions, audits, issues, alerts, keys, users, और settings को क्वेरी करें और प्रबंधित करें।
+    Cloud सेशन, ऑडिट, समस्या, अलर्ट, कुंजी, उपयोगकर्ता और सेटिंग को क्वेरी और प्रशासित करें।
   </Card>
   <Card title="Evaluator SDK" icon="gauge" href="/hi/reference/evaluator-sdk">
-    FastAPI service के साथ पूर्ण या निष्क्रिय sessions को स्कोर करें।
+    FastAPI सेवा के साथ पूर्ण या निष्क्रिय सेशन को स्कोर करें।
   </Card>
   <Card title="Custom policies" icon="shield-plus" href="/hi/reference/policy-sdk">
-    workflow-specific allow, instruct, और deny निर्णयों को तैयार और परीक्षण करें।
+    वर्कफ़्लो-विशिष्ट allow, instruct, और deny निर्णय लिखें और परीक्षण करें।
   </Card>
   <Card title="Self-hosting" icon="cloud-cog" href="/hi/reference/self-hosting">
-    Cloud control plane को customer-managed Kubernetes cluster पर तैनात करें।
+    Cloud नियंत्रण विमान को ग्राहक-प्रबंधित Kubernetes क्लस्टर पर परिनियोजित करें।
   </Card>
 </Columns>
 
-उत्पन्न [HTTP API reference](/hi/reference/http-api) सार्वजनिक `/v1` surface को कवर करता है। हाथ से लिखे गए पृष्ठ उन workflows को समझाते हैं जो कई endpoints में फैले हुए हैं या उस सार्वजनिक surface के बाहर administrative interfaces का उपयोग करते हैं।
+जेनरेट किया गया [HTTP API संदर्भ](/hi/reference/http-api) सार्वजनिक `/v1` सतह को कवर करता है। हाथ से लिखित पृष्ठ वर्कफ़्लो की व्याख्या करते हैं जो कई एंडपॉइंट में फैले हुए हैं या उस सार्वजनिक सतह के बाहर प्रशासकीय इंटरफेस का उपयोग करते हैं।
 
-## एक agent को कनेक्ट करें और डेटा सत्यापित करें
+## एजेंट को कनेक्ट करें और डेटा सत्यापित करें
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Administration → Keys** खोलें, `events:add` और `policies:pull` के साथ एक key बनाएं, और secret को कॉपी करें।
-    2. ऊपर दिए गए मिलान पृष्ठ का उपयोग करके integration को कॉन्फ़िगर करें।
-    3. **Observe → Events** खोलें यह पुष्टि करने के लिए कि events आ रहे हैं, फिर **Observe → Sessions** खोलें यह पुष्टि करने के लिए कि वे पूर्ण runs बनाते हैं।
-    4. integration के environment के लिए फ़िल्टर करें और audits के लिए आवश्यक model, tool, error, और policy fields के लिए एक session की जांच करें।
+    1. **Administration → Keys** खोलें, `events:add` और `policies:pull` के साथ एक कुंजी बनाएं, और गोपनीय को कॉपी करें।
+    2. ऊपर दिए गए मिलान पृष्ठ का उपयोग करके एकीकरण को कॉन्फ़िगर करें।
+    3. **Observe → Events** खोलें यह पुष्टि करने के लिए कि घटनाएं आती हैं, फिर **Observe → Sessions** खोलें यह पुष्टि करने के लिए कि वे पूर्ण रन बनाती हैं।
+    4. एकीकरण के पर्यावरण में फ़िल्टर करें और ऑडिट के लिए आवश्यक मॉडल, टूल, त्रुटि और नीति फ़ील्ड के लिए एक सेशन की जांच करें।
 
-    key drawer से शुरुआत करें। चयनित grants निर्धारित करते हैं कि machine क्या events भेज सकता है और Cloud-managed policies प्राप्त कर सकता है।
+    कुंजी ड्रॉअर से शुरू करें। चयनित अनुदान यह निर्धारित करते हैं कि क्या मशीन घटनाएं भेज सकती है और Cloud-प्रबंधित नीति प्राप्त कर सकती है।
 
-    ![नया API key drawer जिसका उपयोग event ingestion और policy delivery permissions देने के लिए किया जाता है।](/images/dashboard/key-create.png)
+    ![नई API कुंजी ड्रॉअर जिसका उपयोग घटना सेवन और नीति वितरण अनुमति प्रदान करने के लिए किया जाता है।](/images/dashboard/key-create.png)
 
-    integration को कनेक्ट करने के बाद, Sessions list का उपयोग करके पुष्टि करें कि इसके events अपेक्षित environment में पूर्ण runs में grouped हो रहे हैं।
+    एकीकरण को कनेक्ट करने के बाद, यह पुष्टि करने के लिए सेशन सूची का उपयोग करें कि इसकी घटनाएं अपेक्षित पर्यावरण में पूर्ण रन में समूहीकृत की जा रही हैं।
 
-    ![Sessions list जिसका उपयोग यह सत्यापित करने के लिए किया जाता है कि एक नया कनेक्ट किया गया integration पूर्ण agent runs की रिपोर्ट कर रहा है।](/images/dashboard/sessions-list.png)
+    ![सेशन सूची जिसका उपयोग यह सत्यापित करने के लिए किया जाता है कि नव जुड़ा हुआ एकीकरण पूर्ण एजेंट रन की रिपोर्ट कर रहा है।](/images/dashboard/sessions-list.png)
 
-    integration को पूर्ण मानने से पहले इनमें से एक session खोलें; trace में वह model, tool, error, और policy evidence होना चाहिए जो आपके audits को चाहिए।
+    एकीकरण को पूर्ण मानने से पहले इनमें से एक सेशन खोलें; ट्रेस में मॉडल, टूल, त्रुटि और नीति साक्ष्य होना चाहिए जो आपके ऑडिट को चाहिए।
   </Tab>
   <Tab title="CLI">
-    एक machine key बनाएं, Failproof daemon को कनेक्ट करें, और पहले session को सत्यापित करें।
+    एक मशीन कुंजी बनाएं, Failproof डेमन को कनेक्ट करें, और पहला सेशन सत्यापित करें।
 
     ```bash
     fp keys create agent-production \
@@ -71,8 +71,8 @@ icon: "braces"
     fp events --since 1h --env production --limit 20
     ```
 
-    जब कोई अन्य tool परिणाम का उपभोग करेगा तो `fp --json sessions ...` का उपयोग करें। Global flags जैसे `--json`, `--org`, और `--base-url` को command से पहले आना चाहिए।
+    जब कोई अन्य टूल परिणाम का उपभोग करेगा तो `fp --json sessions ...` का उपयोग करें। `--json`, `--org`, और `--base-url` जैसे वैश्विक फ़्लैग कमांड से पहले आने चाहिए।
 
-    स्थानीय commands के लिए [Failproof AI CLI reference](/hi/reference/failproof-cli) और `fp` commands के लिए [Failproof Cloud CLI reference](/hi/reference/cloud-cli#cli-commands) देखें।
+    स्थानीय कमांड के लिए [Failproof AI CLI संदर्भ](/hi/reference/failproof-cli) और `fp` कमांड के लिए [Failproof Cloud CLI संदर्भ](/hi/reference/cloud-cli#cli-commands) देखें।
   </Tab>
 </Tabs>

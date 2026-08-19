@@ -4,18 +4,18 @@ description: "Defina um objetivo de auditoria, população de sessões e context
 icon: "sliders-horizontal"
 ---
 
-A qualidade de uma auditoria começa pelo seu escopo. Uma solicitação ampla como "encontre problemas" produz resultados menos úteis do que uma pergunta objetiva sobre falhas específicas.
+A qualidade de uma auditoria começa pelo seu escopo. Uma solicitação ampla como "encontre problemas" produz resultados menos úteis do que uma pergunta de falha concreta.
 
 ## Configurar a auditoria
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Analyze → Audits → New audit**, insira o nome e a descrição.
-    2. Defina a cadência, a janela de tempo, o escopo de agente/ambiente, os erros ignorados, a sensibilidade e o número máximo de descobertas.
-    3. Em **agents**, adicione ou revise o contexto do agente, depois adicione o resumo do operador e quaisquer URLs de referência HTTPS públicas.
+    1. Acesse **Analyze → Audits → New audit** e insira o nome e a descrição.
+    2. Defina a cadência, a janela de tempo, o escopo de agente/ambiente, erros ignorados, sensibilidade e número máximo de achados.
+    3. Em **agents**, adicione ou revise o contexto do agente, depois adicione o briefing do operador e quaisquer URLs de referência HTTPS públicas.
     4. Escolha os canais de notificação e selecione **create audit**. A primeira execução é enfileirada imediatamente.
 
-    ![O formulário de nova auditoria com nome, descrição, cadência, janela, escopo de ambiente e agente, erros ignorados, configurações de análise, resumo, páginas de referência e canais de notificação.](/images/dashboard/audit-new.png)
+    ![O formulário de nova auditoria com nome, descrição, cadência, janela, escopo de ambiente e agente, erros ignorados, configurações de análise, briefing, páginas de referência e canais de notificação.](/images/dashboard/audit-new.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,9 +29,9 @@ A qualidade de uma auditoria começa pelo seu escopo. Uma solicitação ampla co
       --url https://runbooks.example.com/checkout
     ```
 
-    A primeira execução é enfileirada imediatamente. Inclua o resumo e as URLs de referência durante a criação para que a execução os receba.
+    A primeira execução é enfileirada imediatamente. Inclua o briefing e as URLs de referência durante a criação para que a execução os receba.
 
-    Consulte a referência completa do [`fp audits create`](/pt-br/reference/cloud-cli#audits).
+    Consulte a referência completa de [`fp audits create`](/pt-br/reference/cloud-cli#audits).
   </Tab>
 </Tabs>
 
@@ -40,5 +40,5 @@ A qualidade de uma auditoria começa pelo seu escopo. Uma solicitação ampla co
 </Tip>
 
 <Info>
-  O contexto da auditoria é armazenado como um recurso próprio, portanto editar uma auditoria não remove acidentalmente o material de referência.
+  O contexto da auditoria é armazenado como um recurso próprio, de modo que editar uma auditoria não remove acidentalmente o material de referência.
 </Info>

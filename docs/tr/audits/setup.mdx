@@ -1,21 +1,21 @@
 ---
-title: "Bir denetim ayarla"
-description: "Denetim hedefini, oturum popülasyonunu ve kanıt bağlamını tanımla."
+title: "Bir denetimi ayarla"
+description: "Denetim hedefini, oturum popülasyonunu ve kanıt bağlamını tanımlayın."
 icon: "sliders-horizontal"
 ---
 
-Bir denetimin kalitesi, kapsamı ile başlar. "Sorunları bul" gibi geniş bir istek, somut bir hata sorusundan daha az faydalı sonuçlar üretir.
+Bir denetimin kalitesi, kapsamı ile başlar. "Sorunları bul" gibi geniş bir istek, somut bir başarısızlık sorusundan daha az faydalı sonuçlar üretir.
 
 ## Denetimi yapılandır
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Analyze → Audits → New audit** sayfasına git ve adı ve açıklamayı gir.
-    2. Sıklığı, zaman penceresini, agent/ortam kapsamını, yoksayılan hataları, hassasiyeti ve maksimum bulguları ayarla.
-    3. **agents** bölümünde agent bağlamını ekle veya gözden geçir, ardından operatör özetini ve genel HTTPS referans URL'lerini ekle.
-    4. Bildirim kanallarını seç ve **create audit** öğesini tıkla. İlk çalışma hemen sıraya alınır.
+    1. **Analyze → Audits → New audit** bölümüne gidin ve adı ile açıklamayı girin.
+    2. Sıklığı, zaman penceresini, ajan/ortam kapsamını, göz ardı edilen hataları, hassasiyeti ve maksimum bulguları ayarlayın.
+    3. **agents** bölümünde ajan bağlamını ekleyin veya gözden geçirin, ardından operatör brifinizi ve halka açık HTTPS referans URL'lerini ekleyin.
+    4. Bildirim kanallarını seçin ve **create audit** seçeneğini tıklayın. İlk çalıştırma hemen sıraya alınır.
 
-    ![Ad, açıklama, sıklık, pencere, ortam ve agent kapsamı, yoksayılan hatalar, analiz ayarları, özet, referans sayfaları ve bildirim kanallarını içeren yeni denetim formu.](/images/dashboard/audit-new.png)
+    ![Ad, açıklama, sıklık, pencere, ortam ve ajan kapsamı, göz ardı edilen hatalar, analiz ayarları, brief, referans sayfaları ve bildirim kanallarını içeren yeni denetim formu.](/images/dashboard/audit-new.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,16 +29,16 @@ Bir denetimin kalitesi, kapsamı ile başlar. "Sorunları bul" gibi geniş bir i
       --url https://runbooks.example.com/checkout
     ```
 
-    İlk çalışma hemen sıraya alınır. Özeti ve referans URL'lerini oluşturma sırasında ekle ki çalışma onları alabilsin.
+    İlk çalıştırma hemen sıraya alınır. Oluşturma sırasında brief ve referans URL'lerini ekleyin, böylece bu çalıştırma onları alır.
 
-    Tam [`fp audits create` referansını](/tr/reference/cloud-cli#audits) görmek için tıkla.
+    Tam [`fp audits create` referansını](/tr/reference/cloud-cli#audits) görmek için bağlantıyı izleyin.
   </Tab>
 </Tabs>
 
 <Tip>
-  Bilinen bir başarısız oturumla ve birkaç normal oturumla başla. Bu, denetim için hem pozitif bir örnek hem de bir karşılaştırma seti sağlar.
+  Bilinen başarısız bir oturumla başlayın ve birkaç normal oturuma sahip olun. Bu, denetim sistemine hem pozitif bir örnek hem de karşılaştırma seti sağlar.
 </Tip>
 
 <Info>
-  Denetim bağlamı kendi kaynağı olarak depolanır, bu nedenle bir denetimi düzenlemek yanlışlıkla referans materyalini kaldırmaz.
+  Denetim bağlamı kendi kaynağı olarak depolanır, bu nedenle bir denetimi düzenlemek referans materyalini yanlışlıkla kaldırmaz.
 </Info>

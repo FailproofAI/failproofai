@@ -1,6 +1,6 @@
 ---
 title: "Utilisateurs et organisations"
-description: "Gérez les membres et gardez les données et actions de chaque organisation bien délimitées."
+description: "Gérez les membres et assurez que les données et actions de chaque organisation restent bien isolées."
 icon: "users"
 ---
 
@@ -13,7 +13,7 @@ Les organisations isolent les sessions, évaluations, audits, problèmes, alerte
     1. Utilisez le sélecteur d'organisation en haut de la barre latérale Cloud pour changer d'organisation.
     2. Accédez à **Administration → Utilisateurs** pour rechercher des membres ou filtrer par état actif et rôle.
     3. Sélectionnez **nouvel utilisateur**, saisissez l'adresse e-mail, choisissez un ensemble de permissions et ajustez les remplacements si nécessaire.
-    4. Ouvrez un utilisateur ultérieurement pour mettre à jour ses droits, désactiver sa connexion ou réactiver son compte.
+    4. Ouvrez un utilisateur ultérieurement pour mettre à jour les droits, désactiver la connexion ou réactiver le compte.
 
     ![La page Utilisateurs affichant les adresses e-mail des membres, les ensembles de permissions ainsi que les contrôles de modification et de désactivation.](/images/dashboard/users.png)
   </Tab>
@@ -36,9 +36,9 @@ Les organisations isolent les sessions, évaluations, audits, problèmes, alerte
 Les administrateurs peuvent créer, mettre à jour, désactiver et réactiver des utilisateurs, puis leur attribuer l'ensemble de permissions adapté à leur rôle. L'API utilise une opération de suppression pour la désactivation, mais elle ne supprime ni le compte ni son enregistrement d'appartenance.
 
 <Warning>
-  La désactivation d'un utilisateur empêche cette identité de se connecter à toutes les organisations, et pas seulement à l'organisation actuellement sélectionnée. La réactivation rétablit la connexion globale ainsi que les permissions du membre dans cette organisation.
+  La désactivation d'un utilisateur l'empêche de se connecter à toutes les organisations, et pas seulement à l'organisation actuellement sélectionnée. La réactivation restaure la connexion globale ainsi que les permissions du membre dans cette organisation.
 </Warning>
 
 <Tip>
-  Donnez aux comptes de service des noms descriptifs liés à une charge de travail et à un responsable. Évitez de partager des clés entre organisations ou entre personnes et machines.
+  Donnez aux comptes de service des noms descriptifs liés à une charge de travail et à un propriétaire. Évitez de partager des clés entre organisations ou entre personnes et machines.
 </Tip>

@@ -5,7 +5,7 @@ icon: "cloud-cog"
 ---
 
 <Note>
-  L'hosting autonomo è un'implementazione Enterprise. [Contatta Failproof AI](mailto:support@befailproof.ai) per ottenere una licenza enterprise.
+  L'auto-hosting è un deployment Enterprise. [Contatta Failproof AI](mailto:support@befailproof.ai) per ottenere una licenza enterprise.
 </Note>
 
 ## Prerequisiti
@@ -14,27 +14,27 @@ icon: "cloud-cog"
 - `kubectl` con supporto Kustomize
 - Helm 3
 - Accesso alle immagini private `ghcr.io/agenteye-enterprise`
-- Due nomi DNS: uno per il dashboard e uno per l'ingest
-- Archiviazione persistente per PostgreSQL e ClickHouse
-- cert-manager e Traefik, o infrastruttura equivalente di ingress e certificati adattata nel tuo overlay
-- SMTP per l'accesso OTP di produzione e le notifiche
+- Due nomi DNS: uno per la dashboard e uno per l'ingest
+- Storage persistente per PostgreSQL e ClickHouse
+- cert-manager e Traefik, o infrastruttura equivalente di ingress e certificati adattata al tuo overlay
+- SMTP per il login OTP di produzione e le notifiche
 
-L'albero dei sorgenti fornisce un overlay orientato a AWS/EKS e un overlay GCP/GKE separato. Non combinare le loro istruzioni per certificati, load balancer o backup: GKE utilizza la propria configurazione DNS-01, GCS e autoscaling.
+L'albero dei sorgenti fornisce un overlay orientato a AWS/EKS e un overlay separato per GCP/GKE. Non combinare le loro istruzioni per certificati, load-balancer o backup: GKE utilizza la propria configurazione DNS-01, GCS e autoscaling.
 
-## Sequenza di implementazione
+## Sequenza di deployment
 
 <Steps>
   <Step title="Prepara il cluster">
-    Installa cert-manager e i controller di ingress pubblici/dashboard, verifica i loro load balancer, quindi crea lo spazio dei nomi, le credenziali di pull dell'immagine, le credenziali del database, la chiave admin di bootstrap e i segreti di autenticazione/SMTP.
+    Installa cert-manager e i controller di ingress pubblici/dashboard, verifica i loro load balancer, quindi crea lo spazio dei nomi, le credenziali image-pull, le credenziali del database, la chiave admin di bootstrap e i segreti di autenticazione/SMTP.
   </Step>
   <Step title="Configura i domini pubblici">
-    Imposta `INGEST_DOMAIN` e `DASHBOARD_DOMAIN` nel file dell'ambiente di dominio generato dall'overlay e crea record DNS che puntano ai load balancer corrispondenti.
+    Imposta `INGEST_DOMAIN` e `DASHBOARD_DOMAIN` nel file di ambiente dei domini generato dall'overlay e crea record DNS che puntano ai load balancer corrispondenti.
   </Step>
   <Step title="Applica e verifica un overlay di piattaforma">
-    Utilizza l'overlay customer/EKS o GCP. Ispeziona l'output Kustomize renderizzato, applicalo e conferma che tutti i carichi di lavoro e i certificati raggiungono lo stato previsto prima di iscrivere le macchine.
+    Utilizza l'overlay customer/EKS o GCP. Ispeziona l'output Kustomize renderizzato, applicalo e conferma che tutti i workload e i certificati raggiungano lo stato previsto prima di iscrivere le macchine.
   </Step>
-  <Step title="Bootstrap dell'accesso e dell'ingest">
-    Accedi come admin protetto, crea una chiave macchina a livello di organizzazione e invia una piccola sessione di test attraverso l'endpoint ingest pubblico.
+  <Step title="Avvia l'accesso e l'ingest">
+    Accedi come admin protetto, crea una chiave macchina con ambito organizzazione e invia una piccola sessione di test attraverso l'endpoint di ingest pubblico.
   </Step>
 </Steps>
 
@@ -42,30 +42,30 @@ L'albero dei sorgenti fornisce un overlay orientato a AWS/EKS e un overlay GCP/G
 
 | Componente | Requisito |
 | --- | --- |
-| ClickHouse | Obbligatorio. Il server rifiuta di avviarsi senza il suo archivio eventi canonico. |
+| ClickHouse | Obbligatorio. Il server rifiuta di avviarsi senza il suo event store canonico. |
 | PostgreSQL | Obbligatorio per utenti, organizzazioni, oggetti salvati e stato del piano di controllo. |
-| Redis | Facoltativo. Il server e il dashboard si degradano a comportamento supportato dal database quando non disponibile. |
-| SMTP | Facoltativo per lo sviluppo, obbligatorio per l'OTP email di produzione e la distribuzione delle notifiche. |
+| Redis | Facoltativo. Il server e la dashboard si riducono al comportamento basato su database quando non disponibile. |
+| SMTP | Facoltativo per lo sviluppo, obbligatorio per la produzione per l'OTP via email e la consegna delle notifiche. |
 | Evaluator | Facoltativo. La valutazione automatica rimane disabilitata senza `EVALUATOR_ENDPOINT`. |
-| LLM assistente/audit | Facoltativo. Le funzionalità di assistente e audit supportate da LLM rimangono inattive fino a quando non viene configurata una connessione LLM. |
-| Backup dell'archiviazione oggetti | Fortemente consigliato per gli archivi di backup di PostgreSQL e ClickHouse. |
+| Assistant/audit LLM | Facoltativo. Le funzionalità di assistant e audit basate su LLM rimangono inerte finché non viene configurata una connessione LLM. |
+| Backup dell'object storage | Fortemente consigliato per gli archivi di backup di PostgreSQL e ClickHouse. |
 
-### Capacità di audit e distribuzione dei guasti
+### Capacità di audit e consegna degli errori
 
-Esegui i controlli sulla distribuzione audit-agent dedicata quando disponibile. Ogni pod audit-agent accetta un'indagine per impostazione predefinita; scala il throughput con repliche piuttosto che aumentare la concorrenza per pod senza aumentare anche la memoria. Il server può inviare `server replicas × AUDIT_WORKERS` controlli contemporaneamente, quindi la capacità del dispatcher dovrebbe essere abbastanza grande da riempire la flotta audit-agent.
+Esegui i controlli di audit sul deployment dedicato audit-agent quando disponibile. Ogni pod audit-agent accetta un'indagine per impostazione predefinita; scala la velocità effettiva con le repliche piuttosto che aumentare la concorrenza per pod senza aumentare anche la memoria. Il server può inviare `server replicas × AUDIT_WORKERS` audit contemporaneamente, quindi la capacità del dispatcher dovrebbe essere abbastanza grande da riempire la flotta audit-agent.
 
-Quando ogni slot audit-agent è occupato, un controllo attende e riprova fino a un quarto della sua cadenza, con limite massimo di sei ore. Se non diventa disponibile alcuno slot, l'esecuzione si completa senza risultati e invia un'email di errore. I ripetuti errori "occupato" richiedono più repliche audit-agent o ancore di pianificazione più ampiamente separate. I ripetuti errori "spegnimento in corso" indicano pod instabili o un rollout a loop anziché capacità insufficiente.
+Quando tutti gli slot audit-agent sono occupati, un audit attende e ritenta per un massimo di un quarto della sua cadenza, limitato a sei ore. Se nessuno slot diventa disponibile, l'esecuzione si completa senza risultati e invia un'email di errore. I ripetuti errori "busy" richiedono più repliche audit-agent o ancoraggi di pianificazione più distanziati. I ripetuti errori "shutting down" indicano pod instabili o un rollout in loop piuttosto che una capacità insufficiente.
 
-Le notifiche di errore richiedono un canale email abilitato e SMTP. Utilizzano i destinatari del controllo, quindi fallback a `alerts.email_default_recipients` quando il controllo non ha canale email.
+Le notifiche di errore richiedono un canale email abilitato e SMTP. Utilizzano i destinatari dell'audit, quindi ricadono in `alerts.email_default_recipients` quando l'audit non dispone di un canale email.
 
-## Verifica l'implementazione
+## Verifica il deployment
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Apri il dominio dashboard configurato, completa il flusso OTP admin e conferma il nome e lo slug dell'organizzazione.
+    1. Apri il dominio della dashboard configurato, completa il flusso OTP dell'admin e conferma il nome e lo slug dell'organizzazione.
     2. Vai a **Administration → Keys** e crea una chiave macchina con ambito ristretto.
     3. Invia una sessione di test, quindi confermala in **Observe → Events** e **Observe → Sessions**.
-    4. Prova un canale di avviso e, se configurato, una valutazione manuale e un controllo.
+    4. Testa un canale di avviso e, se configurato, una valutazione manuale e un audit.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -78,27 +78,27 @@ Le notifiche di errore richiedono un canale email abilitato e SMTP. Utilizzano i
     fp --base-url https://failproof.example.com usage
     ```
 
-    Verifica l'endpoint di integrità pubblico e una richiesta `/v1` autenticata prima di iscrivere le macchine di produzione.
+    Verifica l'endpoint di salute pubblica e una richiesta `/v1` autenticata prima di iscrivere le macchine di produzione.
   </Tab>
 </Tabs>
 
 ## Autenticazione e email
 
-Il dashboard utilizza email e codici monouso. Senza SMTP, le distribuzioni di sviluppo registrano i codici OTP nell'output del server. Quando `SMTP_HOST` è impostato, nome utente, password e mittente sono richiesti come gruppo oppure il server rifiuta di avviarsi.
+La dashboard utilizza email e codici monouso. In assenza di SMTP, i deployment di sviluppo registrano i codici OTP nell'output del server. Quando `SMTP_HOST` è impostato, nome utente, password e mittente sono obbligatori come gruppo o il server rifiuta di avviarsi.
 
-`SMTP_TLS` è un booleano. Il trasporto crittografato supportato è STARTTLS, normalmente sulla porta 587; SMTPS implicito sulla porta 465 non è supportato dal trasporto server attuale.
+`SMTP_TLS` è un booleano. Il trasporto crittografato supportato è STARTTLS, normalmente sulla porta 587; l'SMTPS implicito sulla porta 465 non è supportato dal trasporto server attuale.
 
-Imposta correttamente l'URL del dashboard pubblico perché email OTP, avviso, incidente e controllo lo utilizzano per deep link. L'appartenenza all'organizzazione controlla chi può richiedere un codice; ogni organizzazione può ulteriormente limitare i propri accessi dei membri in **Administration → Settings**.
+Imposta correttamente l'URL della dashboard pubblica perché i messaggi di posta di OTP, avviso, incidente e audit lo utilizzano per i deep link. L'appartenenza all'organizzazione controlla chi può richiedere un codice; ogni organizzazione può ulteriormente limitare i propri accessi dei membri in **Administration → Settings**.
 
 ## Requisiti multi-tenant
 
-Prima di creare una seconda organizzazione, configura un segreto di derivazione ClickHouse dell'organizzazione forte e stabile e mantienilo identico su tutte le repliche del server. La sua rotazione senza una migrazione coordinata può orfanare gli utenti ClickHouse specifici dell'organizzazione.
+Prima di creare una seconda organizzazione, configura un segreto di derivazione ClickHouse dell'organizzazione forte e stabile e mantienilo identico su tutte le repliche del server. Ruotarlo senza una migrazione coordinata può lasciare orfani gli utenti ClickHouse specifici dell'organizzazione.
 
-Mantieni il listener instance-admin interno. La console operatore fornita è facoltativa ed è progettata per `kubectl port-forward`, non per l'ingress pubblico. L'abilitazione richiede la propria chiave API forte, una cassetta postale super-admin e la consegna del secondo fattore SMTP funzionante.
+Mantieni il listener instance-admin interno. La console operatore fornita è opt-in ed è progettata per `kubectl port-forward`, non per l'ingress pubblico. L'abilitazione richiede la propria chiave API forte, una cassetta postale super-admin e una consegna di secondo fattore SMTP funzionante.
 
-### CLI dell'organizzazione di break-glass
+### CLI organizzazione break-glass
 
-`agenteye-orgctl` è incluso nell'immagine del server e comunica direttamente con PostgreSQL e ClickHouse. Rimane disponibile quando il server pubblico o la console operatore non sono integri.
+`agenteye-orgctl` è fornito nell'immagine del server e comunica direttamente con PostgreSQL e ClickHouse. Rimane disponibile quando il server pubblico o la console operatore sono non funzionanti.
 
 ```bash
 kubectl -n agenteye exec deploy/server -- \
@@ -108,21 +108,21 @@ kubectl -n agenteye exec deploy/server -- \
   agenteye-orgctl member add --org acme --email ops@acme.com --set admin --protected
 ```
 
-Le operazioni dell'organizzazione supportate includono create, list, rename, soft-delete, restore, reprovisioning utente ClickHouse, gestione data fatturazione, flag funzionalità e purge irreversibile. Le operazioni membro includono add, list, update, remove, override autorizzazioni e stato admin protetto.
+Le operazioni organizzative supportate includono create, list, rename, soft-delete, restore, reprovisioning dell'utente ClickHouse, gestione della data di fatturazione, feature flag e purge irreversibile. Le operazioni sui membri includono add, list, update, remove, override delle autorizzazioni e stato di admin protetto.
 
-Utilizza soft-delete prima di purge. `org purge` è irreversibile e richiede che l'organizzazione sia eliminata per prima. I membri protetti non possono essere rimossi o retrocessi attraverso la pagina Utenti ordinaria dell'organizzazione fino a quando un operatore non li scherma esplicitamente.
+Utilizza soft-delete prima di purge. `org purge` è irreversibile e richiede che l'organizzazione sia prima eliminata. I membri protetti non possono essere rimossi o declassati attraverso la pagina Users ordinaria dell'organizzazione finché un operatore non li estrae esplicitamente.
 
-## Elenco di controllo della preparazione per la produzione
+## Checklist di preparazione per la produzione
 
-- DNS di ingest e dashboard si risolvono in percorsi di ingress diversi previsti.
-- TLS è valido; utilizza TLS mutuo su ingest dove la tua distribuzione lo richiede.
+- DNS di ingest e dashboard si risolvono in diversi percorsi di ingress previsti.
+- TLS è valido; utilizza TLS reciproco su ingest dove il tuo deployment lo richiede.
 - I volumi PostgreSQL e ClickHouse hanno avvisi di capacità.
-- I backup includono entrambi gli archivi dati e hanno una procedura di ripristino testata.
-- I controlli di integrità avvisano sul silenzio dell'ingest, carichi di lavoro non riusciti, scadenza del certificato, pressione di archiviazione e backup obsoleti.
+- I backup includono entrambi i datastore e hanno una procedura di ripristino testata.
+- I controlli di salute inviano avvisi su silenzio dell'ingest, workload non riusciti, scadenza certificati, pressione dello storage e backup non aggiornati.
 - I log strutturati vengono raccolti senza duplicare una pipeline di log del cluster esistente.
 - La concorrenza di evaluator, audit e alert worker non è stata modificata senza prove misurate della coda.
-- Un rilascio dell'applicazione bloccato e una procedura di rollback sono registrati prima degli aggiornamenti.
+- Una versione dell'applicazione fissata e una procedura di rollback sono registrate prima degli aggiornamenti.
 
 <Warning>
-  I manifesti di distribuzione contengono ipotesi di sicurezza e disponibilità specifiche della piattaforma. Rivedi le risorse renderizzate, i criteri di rete, l'esposizione dell'ingress, i riferimenti ai segreti, le classi di archiviazione, i budget di interruzione e le destinazioni di backup con il tuo team della piattaforma prima di applicarli.
+  I manifesti di deployment contengono ipotesi di sicurezza e disponibilità specifiche della piattaforma. Rivedi le risorse renderizzate, i criteri di rete, l'esposizione dell'ingress, i riferimenti ai segreti, le classi di storage, i budget di interruzione e i destinatari del backup con il tuo team di piattaforma prima di applicarli.
 </Warning>

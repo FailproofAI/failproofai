@@ -1,21 +1,21 @@
 ---
 title: "Sự kiện trực tiếp"
-description: "Xem hoạt động của agent diễn ra trong khi phiên làm việc đang chạy."
+description: "Theo dõi hoạt động của agent khi một phiên đang chạy."
 icon: "radio"
 ---
 
-Sự kiện trực tiếp giúp bạn xác nhận công cụ đo lường và theo dõi một lần chạy có rủi ro mà không cần chờ phiên làm việc kết thúc.
+Sự kiện trực tiếp giúp bạn xác nhận khả năng đo lường và theo dõi một lần chạy có rủi ro mà không cần chờ phiên kết thúc.
 
-## Xem hoạt động
+## Theo dõi hoạt động
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Observe → Events**.
-    2. Bắt đầu với cửa sổ thời gian hiện tại và không có bộ lọc để xác nhận dữ liệu đang được nhận.
-    3. Lọc theo môi trường, loại sự kiện, agent hoặc phiên. Sử dụng tìm kiếm để tìm văn bản trong payload.
-    4. Chọn một sự kiện để kiểm tra tóm tắt và chi tiết của nó. Theo liên kết phiên của nó để xem toàn bộ trace.
+    1. Đi đến **Observe → Events**.
+    2. Bắt đầu với cửa sổ thời gian hiện tại và không có bộ lọc để xác nhận dữ liệu đang đến.
+    3. Lọc theo môi trường, loại sự kiện, agent hoặc phiên. Sử dụng tìm kiếm cho văn bản payload.
+    4. Chọn một sự kiện để kiểm tra bản tóm tắt và chi tiết của nó. Theo dõi liên kết phiên để xem dấu vết đầy đủ.
 
-    ![Luồng Events trực tiếp với các bộ lọc theo thời gian, môi trường, loại sự kiện, agent, mô hình, ngữ cảnh, phiên và văn bản.](/images/dashboard/events-stream-current.png)
+    ![Luồng Events trực tiếp với các bộ lọc thời gian, môi trường, loại sự kiện, agent, mô hình, ngữ cảnh, phiên và văn bản.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,20 +24,20 @@ Sự kiện trực tiếp giúp bạn xác nhận công cụ đo lường và th
     fp --json events --full --session-id <session-id> --all
     ```
 
-    Luồng mặc định sẽ bỏ qua các payload thô. Chỉ sử dụng `--full` khi điều tra một phiên được xác định.
+    Luồng mặc định bỏ qua các payload thô. Chỉ sử dụng `--full` cho việc điều tra phiên bị ràng buộc.
   </Tab>
 </Tabs>
 
 Sử dụng luồng sự kiện để trả lời ba câu hỏi ngay lập tức:
 
-- Agent dự kiến có đang báo cáo đến môi trường chính xác không?
+- Agent mong đợi có báo cáo đến môi trường chính xác không?
 - Các lệnh gọi mô hình, lệnh gọi công cụ và quyết định chính sách có đến theo thứ tự không?
-- Phiên có ngừng tiến triển hoặc bắt đầu lặp lại một hành động không?
+- Phiên có ngừng tiến hành hay bắt đầu lặp lại một hành động không?
 
-Các loại sự kiện bao gồm các sự kiện vòng đời của agent, các yêu cầu và phản hồi của mô hình, sử dụng công cụ và kết quả, thực thi hook, các lần chờ đợi con người và gián đoạn, cũng như các lỗi rõ ràng. ID tương quan kết nối các sự kiện được ghép đôi, chẳng hạn như một lệnh gọi công cụ và kết quả của nó.
+Các loại sự kiện bao gồm sự kiện vòng đời agent, yêu cầu và phản hồi mô hình, sử dụng công cụ và kết quả, thực thi hook, chờ đợi con người và gián đoạn, và các lỗi rõ ràng. ID tương quan nối các sự kiện được ghép như một lệnh gọi công cụ và kết quả của nó.
 
 <Tip>
-  Giữ chế độ xem trực tiếp rộng trong khi xác minh một tích hợp mới. Chỉ thêm bộ lọc sau khi bạn thấy sự kiện đầu tiên; một bộ lọc không chính xác có thể trông giống như việc tiếp nhận dữ liệu thất bại.
+  Giữ chế độ xem trực tiếp rộng trong khi xác minh một tích hợp mới. Chỉ thêm bộ lọc sau khi bạn thấy sự kiện đầu tiên; một bộ lọc không chính xác có thể trông giống như việc nhập dữ liệu không thành công.
 </Tip>
 
-Nếu không có sự kiện nào xuất hiện, hãy chạy `failproofai config --status`, sau đó [khắc phục sự cố tiếp nhận](/vi/reference/troubleshooting).
+Nếu không có sự kiện nào xuất hiện, hãy chạy `failproofai config --status`, sau đó [khắc phục sự cố nhập dữ liệu](/vi/reference/troubleshooting).

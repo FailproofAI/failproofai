@@ -1,21 +1,21 @@
 ---
-title: "Déployer des politiques sur des machines"
-description: "Savoir quelles machines sont enrôlées, à jour et appliquant les versions de politique prévues."
+title: "Déployer des politiques sur les machines"
+description: "Savoir quelles machines sont inscrites, à jour et appliquent les versions de politiques prévues."
 icon: "network"
 ---
 
-La couverture de flotte répond à la question : une politique existe-t-elle là où le risque existe ? Suivez les machines par identifiant stable et libellé lisible, puis comparez leur état de déploiement assigné et rapporté.
+La couverture de flotte permet de vérifier si une politique existe là où le risque existe. Suivez les machines par identifiant stable et par libellé lisible, puis comparez leur état de déploiement assigné et rapporté.
 
 ## Vérifier la couverture
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Allez dans **Admin → enforcement** et examinez les totaux en mode application et observation.
-    2. Recherchez une machine par identifiant ou libellé, ou filtrez pour afficher les machines sans politique.
-    3. Développez une ligne pour comparer les politiques assignées, le déploiement rapporté, le dernier check-in et l'historique.
+    1. Accédez à **Admin → application** et consultez les totaux en mode application et observation.
+    2. Recherchez une machine par identifiant ou libellé, ou filtrez les machines sans politique.
+    3. Développez une ligne pour comparer les politiques assignées, le déploiement rapporté, le dernier enregistrement et l'historique.
     4. Actualisez après l'intervalle d'interrogation de la machine lorsqu'un déploiement appliqué reste en attente.
 
-    ![La flotte Enforcement affichant la couverture des politiques, l'état de déploiement des machines, et les assignations en observation et en application.](/images/dashboard/enforcement-fleet.png)
+    ![La flotte d'application affichant la couverture des politiques, l'état de déploiement des machines, et les assignations en observation et en application.](/images/dashboard/enforcement-fleet.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,29 +24,29 @@ La couverture de flotte répond à la question : une politique existe-t-elle là
     failproofai flush --wait
     ```
 
-    Utilisez `fp events --agent-id <agent-id> --since 24h` pour confirmer que l'activité de l'agent de la machine atteint bien le Cloud.
+    Utilisez `fp events --agent-id <agent-id> --since 24h` pour confirmer que l'activité de l'agent de la machine atteint le Cloud.
   </Tab>
 </Tabs>
 
 Utilisez les vues de couverture pour identifier :
 
 - Les machines qui n'ont jamais récupéré le dernier déploiement
-- Les machines enrôlées qui ont cessé de rapporter leur activité
+- Les machines inscrites qui ont cessé de remonter de l'activité
 - Une politique assignée au mauvais environnement ou cohorte
-- Une dérive de version après une mise à jour interrompue
+- La dérive de version après une mise à jour interrompue
 
-Renommer une machine sans la reconnecter :
+Renommez une machine sans la reconnecter :
 
 ```bash
 failproofai config --machine-label checkout-runner-03
 ```
 
-Vérifier l'état local :
+Vérifiez l'état local :
 
 ```bash
 failproofai config --status
 ```
 
 <Tip>
-  Utilisez des libellés qui identifient la charge de travail et l'environnement. Les noms d'hôte seuls sont souvent insuffisants après un autoscaling ou un remplacement de machine.
+  Utilisez des libellés qui identifient la charge de travail et l'environnement. Les noms d'hôtes seuls sont souvent insuffisants après une mise à l'échelle automatique ou un remplacement de machine.
 </Tip>

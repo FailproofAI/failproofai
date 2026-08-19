@@ -1,11 +1,11 @@
 ---
-title: "Autoalojar Failproof AI Cloud"
-description: "Despliega el plano de control de Failproof AI en un clúster de Kubernetes administrado por el cliente."
+title: "Autoaloja Failproof AI Cloud"
+description: "Despliega el plano de control de Failproof AI en un clúster de Kubernetes gestionado por el cliente."
 icon: "cloud-cog"
 ---
 
 <Note>
-  El autoalojamiento es un despliegue Enterprise. [Contacta con Failproof AI](mailto:support@befailproof.ai) para obtener una licencia empresarial.
+  El autoalojamiento es un despliegue Enterprise. [Contacta con Failproof AI](mailto:support@befailproof.ai) para obtener una licencia enterprise.
 </Note>
 
 ## Requisitos previos
@@ -17,24 +17,24 @@ icon: "cloud-cog"
 - Dos nombres DNS: uno para el panel de control y otro para la ingesta
 - Almacenamiento persistente para PostgreSQL y ClickHouse
 - cert-manager y Traefik, o una infraestructura equivalente de ingress y certificados adaptada a tu overlay
-- SMTP para el inicio de sesión por OTP en producción y las notificaciones
+- SMTP para login OTP en producción y notificaciones
 
-El árbol de fuentes proporciona un overlay orientado a AWS/EKS y un overlay separado para GCP/GKE. No combines sus instrucciones de certificados, balanceadores de carga o copias de seguridad: GKE utiliza su propia configuración de DNS-01, GCS y autoescalado.
+El árbol de fuentes incluye un overlay orientado a AWS/EKS y otro separado para GCP/GKE. No combines sus instrucciones de certificados, balanceadores de carga o copias de seguridad: GKE usa su propia configuración de DNS-01, GCS y autoescalado.
 
 ## Secuencia de despliegue
 
 <Steps>
   <Step title="Preparar el clúster">
-    Instala cert-manager y los controladores de ingress público/panel de control, verifica sus balanceadores de carga y luego crea el namespace, las credenciales de extracción de imágenes, las credenciales de base de datos, la clave de administrador de arranque y los secretos de autenticación/SMTP.
+    Instala cert-manager y los controladores de ingress público/panel de control, verifica sus balanceadores de carga y, a continuación, crea el namespace, las credenciales de extracción de imágenes, las credenciales de base de datos, la clave de administrador de arranque y los secretos de autenticación/SMTP.
   </Step>
   <Step title="Configurar los dominios públicos">
-    Define `INGEST_DOMAIN` y `DASHBOARD_DOMAIN` en el archivo de entorno de dominio generado del overlay y crea registros DNS que apunten a los balanceadores de carga correspondientes.
+    Establece `INGEST_DOMAIN` y `DASHBOARD_DOMAIN` en el archivo de entorno de dominio generado por el overlay y crea los registros DNS apuntando a los balanceadores de carga correspondientes.
   </Step>
   <Step title="Aplicar y verificar un overlay de plataforma">
-    Utiliza el overlay de customer/EKS o GCP. Inspecciona la salida renderizada de Kustomize, aplícala y confirma que todas las cargas de trabajo y certificados alcanzan el estado previsto antes de incorporar máquinas.
+    Usa el overlay de customer/EKS o GCP. Inspecciona la salida renderizada de Kustomize, aplícala y confirma que todas las cargas de trabajo y certificados alcanzan el estado deseado antes de incorporar máquinas.
   </Step>
   <Step title="Inicializar el acceso y la ingesta">
-    Inicia sesión como administrador protegido, crea una clave de máquina con ámbito de organización y envía una pequeña sesión de prueba a través del endpoint de ingesta público.
+    Inicia sesión como administrador protegido, crea una clave de máquina con ámbito organizacional y envía una pequeña sesión de prueba a través del endpoint público de ingesta.
   </Step>
 </Steps>
 
@@ -42,30 +42,30 @@ El árbol de fuentes proporciona un overlay orientado a AWS/EKS y un overlay sep
 
 | Componente | Requisito |
 | --- | --- |
-| ClickHouse | Obligatorio. El servidor se niega a arrancar sin su almacén de eventos canónico. |
-| PostgreSQL | Obligatorio para usuarios, organizaciones, objetos guardados y el estado del plano de control. |
-| Redis | Opcional. El servidor y el panel de control degradan su comportamiento al respaldo basado en base de datos cuando no está disponible. |
-| SMTP | Opcional para desarrollo, obligatorio para la entrega de OTP por correo electrónico y notificaciones en producción. |
-| Evaluator | Opcional. La evaluación automática permanece deshabilitada sin `EVALUATOR_ENDPOINT`. |
-| Assistant/audit LLM | Opcional. Las funciones de asistente y auditoría respaldadas por LLM permanecen inactivas hasta que se configure una conexión LLM. |
-| Copia de seguridad en almacenamiento de objetos | Muy recomendada para los archivos de copia de seguridad de PostgreSQL y ClickHouse. |
+| ClickHouse | Requerido. El servidor se niega a iniciar sin su almacén de eventos canónico. |
+| PostgreSQL | Requerido para usuarios, organizaciones, objetos guardados y estado del plano de control. |
+| Redis | Opcional. El servidor y el panel de control se degradan a comportamiento respaldado por base de datos cuando no está disponible. |
+| SMTP | Opcional para desarrollo, requerido para OTP por email en producción y entrega de notificaciones. |
+| Evaluator | Opcional. La evaluación automática permanece desactivada sin `EVALUATOR_ENDPOINT`. |
+| LLM asistente/auditoría | Opcional. Las funciones de asistente y auditoría respaldadas por LLM permanecen inactivas hasta que se configure una conexión LLM. |
+| Copia de seguridad en almacenamiento de objetos | Muy recomendado para los archivos de copia de seguridad de PostgreSQL y ClickHouse. |
 
 ### Capacidad de auditoría y entrega de fallos
 
-Ejecuta las auditorías en el despliegue dedicado de audit-agent cuando esté disponible. Cada pod de audit-agent acepta una investigación de forma predeterminada; escala el rendimiento con réplicas en lugar de aumentar la concurrencia por pod sin incrementar también la memoria. El servidor puede despachar `réplicas del servidor × AUDIT_WORKERS` auditorías de forma concurrente, por lo que la capacidad del despachador debe ser suficientemente grande para cubrir toda la flota de audit-agent.
+Ejecuta las auditorías en el despliegue dedicado de audit-agent cuando esté disponible. Cada pod de audit-agent acepta una investigación por defecto; escala el rendimiento con réplicas en lugar de aumentar la concurrencia por pod sin incrementar también la memoria. El servidor puede despachar `réplicas del servidor × AUDIT_WORKERS` auditorías de forma concurrente, por lo que la capacidad del despachador debe ser suficientemente grande para abastecer a toda la flota de audit-agent.
 
-Cuando todos los slots de audit-agent están ocupados, una auditoría espera y reintenta durante hasta un cuarto de su cadencia, con un máximo de seis horas. Si no queda disponible ningún slot, la ejecución se completa sin hallazgos y envía un correo de fallo. Los fallos repetidos por "ocupado" requieren más réplicas de audit-agent o anclajes de programación más separados. Los fallos repetidos por "apagando" indican pods inestables o un rollout en bucle en lugar de capacidad insuficiente.
+Cuando todas las ranuras del audit-agent están ocupadas, una auditoría espera y reintenta durante hasta un cuarto de su cadencia, con un máximo de seis horas. Si no queda ninguna ranura disponible, la ejecución finaliza sin hallazgos y envía un email de fallo. Los fallos repetidos por "busy" requieren más réplicas de audit-agent o anclas de programación más separadas. Los fallos repetidos por "shutting down" indican pods inestables o un rollout en bucle, no capacidad insuficiente.
 
-Las notificaciones de fallo requieren un canal de correo electrónico habilitado y SMTP. Utilizan los destinatarios de la auditoría y, en su defecto, recurren a `alerts.email_default_recipients` cuando la auditoría no tiene canal de correo electrónico.
+Las notificaciones de fallos requieren un canal de email habilitado y SMTP. Usan los destinatarios de la auditoría y, si la auditoría no tiene canal de email, recurren a `alerts.email_default_recipients`.
 
 ## Verificar el despliegue
 
 <Tabs>
   <Tab title="Panel de control">
-    1. Abre el dominio del panel de control configurado, completa el flujo de OTP de administrador y confirma el nombre y slug de la organización.
+    1. Abre el dominio del panel de control configurado, completa el flujo OTP de administrador y confirma el nombre y slug de la organización.
     2. Ve a **Administración → Claves** y crea una clave de máquina con ámbito restringido.
-    3. Envía una sesión de prueba y luego confírmala en **Observar → Eventos** y **Observar → Sesiones**.
-    4. Prueba un canal de alertas y, cuando esté configurado, una evaluación manual y una auditoría.
+    3. Envía una sesión de prueba y confírmala en **Observe → Events** y **Observe → Sessions**.
+    4. Prueba un canal de alertas y, si está configurado, una evaluación manual y una auditoría.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -82,23 +82,23 @@ Las notificaciones de fallo requieren un canal de correo electrónico habilitado
   </Tab>
 </Tabs>
 
-## Autenticación y correo electrónico
+## Autenticación y email
 
-El panel de control utiliza correo electrónico y códigos de un solo uso. Sin SMTP, los despliegues de desarrollo registran los códigos OTP en la salida del servidor. Cuando `SMTP_HOST` está definido, el nombre de usuario, la contraseña y el remitente son obligatorios como grupo; de lo contrario, el servidor se niega a arrancar.
+El panel de control usa email y códigos de un solo uso. Si no hay SMTP configurado, los despliegues de desarrollo registran los códigos OTP en la salida del servidor. Cuando se establece `SMTP_HOST`, el nombre de usuario, la contraseña y el remitente son requeridos como grupo o el servidor se niega a iniciar.
 
-`SMTP_TLS` es un booleano. El transporte cifrado admitido es STARTTLS, normalmente en el puerto 587; SMTPS implícito en el puerto 465 no está soportado por el transporte actual del servidor.
+`SMTP_TLS` es un booleano. El transporte cifrado soportado es STARTTLS, normalmente en el puerto 587; el transporte SMTPS implícito en el puerto 465 no está soportado por el transporte del servidor actual.
 
-Configura correctamente la URL pública del panel de control, ya que los correos de OTP, alertas, incidentes y auditorías la utilizan para los enlaces directos. La pertenencia a la organización controla quién puede solicitar un código; cada organización puede restringir aún más los inicios de sesión de sus propios miembros en **Administración → Configuración**.
+Configura correctamente la URL pública del panel de control, ya que los emails de OTP, alertas, incidentes y auditorías la utilizan para los enlaces profundos. La membresía en la organización controla quién puede solicitar un código; cada organización puede restringir adicionalmente los inicios de sesión de sus propios miembros en **Administración → Configuración**.
 
-## Requisitos multiusuario
+## Requisitos multi-tenant
 
-Antes de crear una segunda organización, configura un secreto de derivación de ClickHouse para la organización robusto y estable, y mantenlo idéntico en todas las réplicas del servidor. Rotarlo sin una migración coordinada puede dejar huérfanos a los usuarios de ClickHouse específicos de la organización.
+Antes de crear una segunda organización, configura un secreto de derivación de ClickHouse fuerte y estable para la organización, y mantenlo idéntico en todas las réplicas del servidor. Rotarlo sin una migración coordinada puede dejar huérfanos a los usuarios de ClickHouse específicos de cada organización.
 
-Mantén el listener del administrador de instancia como interno. La consola de operador proporcionada es opcional y está diseñada para `kubectl port-forward`, no para ingress público. Habilitarla requiere su propia clave de API robusta, un buzón de superadministrador y una entrega funcional del segundo factor por SMTP.
+Mantén el listener del administrador de instancia de forma interna. La consola de operador proporcionada es opcional y está diseñada para `kubectl port-forward`, no para ingress público. Habilitarla requiere su propia clave API fuerte, un buzón de super-administrador y una entrega funcional del segundo factor por SMTP.
 
 ### CLI de organización de emergencia
 
-`agenteye-orgctl` se incluye dentro de la imagen del servidor y se comunica directamente con PostgreSQL y ClickHouse. Permanece disponible cuando el servidor público o la consola de operador no están en buen estado.
+`agenteye-orgctl` se incluye dentro de la imagen del servidor y se comunica directamente con PostgreSQL y ClickHouse. Permanece disponible cuando el servidor público o la consola de operador no están disponibles.
 
 ```bash
 kubectl -n agenteye exec deploy/server -- \
@@ -108,21 +108,21 @@ kubectl -n agenteye exec deploy/server -- \
   agenteye-orgctl member add --org acme --email ops@acme.com --set admin --protected
 ```
 
-Las operaciones de organización admitidas incluyen crear, listar, renombrar, eliminación temporal, restaurar, reaprovisionamiento de usuario de ClickHouse, gestión de fechas de facturación, indicadores de funcionalidad y purga irreversible. Las operaciones de miembro incluyen añadir, listar, actualizar, eliminar, anulaciones de permisos y estado de administrador protegido.
+Las operaciones de organización soportadas incluyen: crear, listar, renombrar, eliminación suave, restaurar, reaprovisionamiento de usuario de ClickHouse, gestión de fecha de facturación, indicadores de funcionalidades y purga irreversible. Las operaciones de miembros incluyen: añadir, listar, actualizar, eliminar, anulaciones de permisos y estado de administrador protegido.
 
-Usa la eliminación temporal antes de la purga. `org purge` es irreversible y requiere que la organización haya sido eliminada previamente. Los miembros protegidos no pueden ser eliminados ni degradados a través de la página ordinaria de Usuarios de la organización hasta que un operador los desproteja explícitamente.
+Usa la eliminación suave antes de la purga. `org purge` es irreversible y requiere que la organización esté eliminada primero. Los miembros protegidos no pueden ser eliminados ni degradados a través de la página de Usuarios ordinaria de la organización hasta que un operador los desproteja explícitamente.
 
 ## Lista de verificación de preparación para producción
 
-- El DNS de ingesta y del panel de control resuelve a las rutas de ingress previstas y distintas.
-- TLS es válido; utiliza TLS mutuo en la ingesta donde lo requiera tu despliegue.
+- El DNS de ingesta y del panel de control resuelve a las rutas de ingress previstas, que son diferentes entre sí.
+- TLS es válido; usa TLS mutuo en la ingesta si tu despliegue lo requiere.
 - Los volúmenes de PostgreSQL y ClickHouse tienen alertas de capacidad.
 - Las copias de seguridad incluyen ambos almacenes de datos y cuentan con un procedimiento de restauración probado.
-- Las verificaciones de estado alertan sobre el silencio en la ingesta, cargas de trabajo fallidas, caducidad de certificados, presión en el almacenamiento y copias de seguridad desactualizadas.
-- Los registros estructurados se recopilan sin duplicar una canalización de registros de clúster existente.
-- La concurrencia del Evaluator, la auditoría y los trabajadores de alertas no se ha modificado sin evidencia medida de la cola.
-- Se registran una versión de la aplicación fijada y un procedimiento de reversión antes de realizar actualizaciones.
+- Las comprobaciones de salud alertan sobre silencio en la ingesta, cargas de trabajo fallidas, expiración de certificados, presión en el almacenamiento y copias de seguridad desactualizadas.
+- Los logs estructurados se recopilan sin duplicar un pipeline de logs del clúster existente.
+- La concurrencia de workers de Evaluator, auditoría y alertas no se ha modificado sin evidencia medida de la cola.
+- Se registra una versión de aplicación fijada y un procedimiento de rollback antes de las actualizaciones.
 
 <Warning>
-  Los manifiestos de despliegue contienen suposiciones específicas de la plataforma sobre seguridad y disponibilidad. Revisa los recursos renderizados, las políticas de red, la exposición del ingress, las referencias a secretos, las clases de almacenamiento, los presupuestos de interrupción y los destinos de copia de seguridad con tu equipo de plataforma antes de aplicarlos.
+  Los manifiestos de despliegue contienen suposiciones de seguridad y disponibilidad específicas de la plataforma. Revisa los recursos renderizados, las políticas de red, la exposición del ingress, las referencias a secretos, las clases de almacenamiento, los presupuestos de interrupción y los destinos de copia de seguridad con tu equipo de plataforma antes de aplicarlos.
 </Warning>

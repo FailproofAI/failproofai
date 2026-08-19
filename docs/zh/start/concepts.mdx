@@ -1,26 +1,26 @@
 ---
 title: "核心概念"
-description: "贯穿 Failproof AI 的一组核心概念。"
+description: "Failproof AI 中使用的一组核心概念。"
 icon: "boxes"
 ---
 
 | 概念 | 含义 | 可实现的目标 |
 | --- | --- | --- |
-| Session | 单次 agent 任务或运行 | 重建某个具体结果的完整过程 |
-| Event | session 中记录的单个操作 | 检查模型调用、工具使用、错误、人工操作或策略决策 |
-| Trace | 有序且嵌套的 session 视图 | 理解因果关系，而非阅读零散的日志 |
-| Evaluation | 对 session 的评分或判断 | 持续追踪质量、合规性、成本或延迟 |
-| Audit | 对特定 session 群体的审查 | 以明确目标和节奏搜索故障模式 |
-| Finding | 由 audit 发现的有据可查的故障 | 查看故障模式、严重程度及受影响的 session |
-| Issue | 持久化的响应记录 | 分配、讨论并解决某个 finding 或告警事件 |
-| Alert | 用于检测复发情况的规则 | 在已知条件再次出现时通知响应人员 |
-| Policy | 在 agent 活动期间评估的规则 | 观察、拦截或重定向存在风险的行为 |
-| Deployment | 向机器推送的版本化策略 | 控制策略的运行范围并安全回滚 |
+| Session | 一次 Agent 任务或运行 | 重现单次执行结果 |
+| Event | Session 中记录的一次操作 | 查看模型调用、工具使用、错误、人工操作或策略决策 |
+| Trace | 有序且嵌套的 Session 视图 | 理解因果关系，而非阅读零散日志 |
+| Evaluation | 对 Session 的评分或判断 | 持续追踪质量、合规性、成本或延迟 |
+| Audit | 对所选 Session 群体的审查 | 以明确目标和节奏搜索失败模式 |
+| Finding | 由 Audit 发现的有证据支撑的故障 | 查看故障模式、严重程度及受影响的 Session |
+| Issue | 持久的响应记录 | 分配、讨论并解决 Finding 或告警事件 |
+| Alert | 检测问题复发的规则 | 在已知条件再次出现时通知响应人员 |
+| Policy | 在 Agent 活动期间评估的规则 | 观察、拦截或重定向风险行为 |
+| Deployment | 向机器推送的版本化 Policy | 控制 Policy 的运行范围并安全回滚 |
 
 ## 可靠性闭环
 
-从证据出发。Session 呈现了发生了什么；Audit 判断这是个例失误还是规律性问题；Finding 识别故障模式，Issue 负责跟进响应；Policy 阻止相同行为再次发生，而 Alert 则在该条件复现时及时通知你。
+从证据出发。Session 展示了发生了什么；Audit 判断这是个例错误还是普遍模式；Finding 识别故障模式，Issue 负责跟进响应；Policy 防止相同行为再次发生，而 Alert 则在条件重现时及时通知你。
 
 <Warning>
-  本地 `failproofai audit` 扫描本地 agent 历史记录。云端定期 Audit 则审查存储在 Failproof AI Cloud 中的 session。两者是相互独立的工作流，作用范围和调度方式各不相同。
+  本地 `failproofai audit` 扫描本地 Agent 历史记录；周期性的云端 Audit 则审查存储在 Failproof AI Cloud 中的 Session。二者是独立的工作流，具有不同的范围和调度方式。
 </Warning>

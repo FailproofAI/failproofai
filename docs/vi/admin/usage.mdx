@@ -1,21 +1,21 @@
 ---
-title: "Cách sử dụng"
+title: "Sử dụng"
 description: "Kiểm tra mức tiêu thụ của tổ chức và cửa sổ thanh toán đang hoạt động."
 icon: "chart-no-axes-combined"
 ---
 
-Cách sử dụng hiển thị mức tiêu thụ cho tổ chức hiện tại và các cửa sổ thanh toán của nó. Sử dụng nó để hiểu cách triển khai sản xuất, khối lượng bản ghi, đánh giá và tần suất kiểm tra ảnh hưởng đến gói của bạn.
+Sử dụng hiển thị mức tiêu thụ cho tổ chức hiện tại và các cửa sổ thanh toán của nó. Sử dụng nó để hiểu cách triển khai sản xuất, khối lượng phiên ghi âm, đánh giá và tần suất kiểm toán ảnh hưởng đến gói của bạn.
 
 ## Xem xét mức sử dụng
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi đến **Administration → Usage**.
+    1. Đi tới **Administration → Usage**.
     2. Xác nhận tổ chức và cửa sổ đo lường.
-    3. Xem xét lượng nhập vào, phiên, đánh giá, chỉ số, kiểm tra, phát hiện, cảnh báo, người dùng và khóa.
-    4. So sánh công việc kiểm tra đã bắt đầu và hoàn thành khi mức sử dụng kiểm tra trông bất thường.
+    3. Xem xét tiếp nhận, phiên, đánh giá, chỉ số, kiểm toán, phát hiện, cảnh báo, người dùng và khóa.
+    4. So sánh công việc kiểm toán đã bắt đầu và hoàn thành khi mức sử dụng kiểm toán có vẻ bất thường.
 
-    ![Trang Usage hiển thị cửa sổ đo lường, sự kiện được ghi lại, đánh giá và đường ống kiểm tra, tài nguyên không gian làm việc, thành viên và khóa API.](/images/dashboard/usage-overview.png)
+    ![Trang Usage hiển thị cửa sổ đo lường, sự kiện được ghi lại, đường ống đánh giá và kiểm toán, tài nguyên không gian làm việc, thành viên và khóa API.](/images/dashboard/usage-overview.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -28,10 +28,10 @@ Cách sử dụng hiển thị mức tiêu thụ cho tổ chức hiện tại v�
 
 ## Điều tra một thay đổi
 
-1. Xác nhận tổ chức và cửa sổ đang hoạt động.
+1. Xác nhận tổ chức đang hoạt động và cửa sổ.
 2. So sánh mức tăng với khối lượng phiên theo môi trường.
-3. Kiểm tra xem liệu một tích hợp mới đã bắt đầu gửi bản ghi.
-4. Xem xét các thay đổi về tần suất đánh giá và kiểm tra.
-5. So sánh với giới hạn trên gói giá hiện tại.
+3. Kiểm tra xem một tích hợp mới có bắt đầu gửi phiên ghi âm hay không.
+4. Xem xét các thay đổi trong tần suất đánh giá viên và kiểm toán.
+5. So sánh với các giới hạn trong gói giá hiện tại.
 
-CLI trả về tóm tắt tương tự cho các tập lệnh.
+CLI trả về cùng một bản tóm tắt cho các tập lệnh.

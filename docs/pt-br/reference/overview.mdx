@@ -1,14 +1,14 @@
 ---
 title: "Integrações e referência"
-description: "Conecte agentes suportados, SDKs, CLIs e a API HTTP."
+description: "Conecte harnesses de agentes, SDKs, CLIs e a API HTTP compatíveis."
 icon: "braces"
 ---
 
 Escolha a integração mais próxima de onde seu agente já está sendo executado.
 
 <Columns cols={2}>
-  <Card title="Agentes suportados" icon="plug-zap" href="/pt-br/reference/harnesses">
-    Instale hooks para CLIs de agentes de código e agentes autônomos suportados.
+  <Card title="Harnesses de agentes" icon="plug-zap" href="/pt-br/reference/harnesses">
+    Instale hooks para CLIs de agentes autônomos e de codificação compatíveis.
   </Card>
   <Card title="Agentes personalizados" icon="python" href="/pt-br/reference/python-sdk">
     Instrumente traces para encontrar falhas em agentes personalizados e entre em contato conosco para adicionar prevenção ao seu runtime.
@@ -20,20 +20,20 @@ Escolha a integração mais próxima de onde seu agente já está sendo executad
     Configure captura local, hooks, políticas, auditorias, entrega e estado da máquina.
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/pt-br/reference/cloud-cli#cli-commands">
-    Consulte e administre sessões, auditorias, problemas, alertas, chaves, usuários e configurações na Cloud.
+    Consulte e administre sessões, auditorias, problemas, alertas, chaves, usuários e configurações do Cloud.
   </Card>
-  <Card title="Evaluator SDK" icon="gauge" href="/pt-br/reference/evaluator-sdk">
-    Avalie sessões completas ou inativas com um serviço FastAPI.
+  <Card title="SDK do avaliador" icon="gauge" href="/pt-br/reference/evaluator-sdk">
+    Pontue sessões completas ou inativas com um serviço FastAPI.
   </Card>
   <Card title="Políticas personalizadas" icon="shield-plus" href="/pt-br/reference/policy-sdk">
     Crie e teste decisões de allow, instruct e deny específicas para seu fluxo de trabalho.
   </Card>
   <Card title="Self-hosting" icon="cloud-cog" href="/pt-br/reference/self-hosting">
-    Implante o plano de controle da Cloud em um cluster Kubernetes gerenciado pelo cliente.
+    Implante o plano de controle do Cloud em um cluster Kubernetes gerenciado pelo cliente.
   </Card>
 </Columns>
 
-A [referência da API HTTP](/pt-br/reference/http-api) gerada cobre a superfície pública `/v1`. As páginas escritas manualmente explicam fluxos de trabalho que abrangem múltiplos endpoints ou utilizam interfaces administrativas fora dessa superfície pública.
+A [referência da API HTTP](/pt-br/reference/http-api) gerada cobre a superfície pública `/v1`. Páginas escritas manualmente explicam fluxos de trabalho que abrangem múltiplos endpoints ou utilizam interfaces administrativas fora dessa superfície pública.
 
 ## Conectar um agente e verificar dados
 
@@ -44,15 +44,15 @@ A [referência da API HTTP](/pt-br/reference/http-api) gerada cobre a superfíci
     3. Abra **Observar → Eventos** para confirmar que os eventos chegam, depois **Observar → Sessões** para confirmar que eles formam execuções completas.
     4. Filtre pelo ambiente da integração e inspecione uma sessão para verificar os campos de modelo, ferramenta, erro e política necessários pelas auditorias.
 
-    Comece pelo painel de chaves. As permissões selecionadas determinam se a máquina pode enviar eventos e receber políticas gerenciadas pela Cloud.
+    Comece pelo painel de chaves. As permissões selecionadas determinam se a máquina pode enviar eventos e receber políticas gerenciadas pelo Cloud.
 
-    ![O painel de criação de chave de API usado para conceder permissões de ingestão de eventos e entrega de políticas.](/images/dashboard/key-create.png)
+    ![O painel de nova chave de API usado para conceder permissões de ingestão de eventos e entrega de políticas.](/images/dashboard/key-create.png)
 
     Após conectar a integração, use a lista de Sessões para confirmar que os eventos estão sendo agrupados em execuções completas no ambiente esperado.
 
     ![A lista de Sessões usada para verificar que uma integração recém-conectada está reportando execuções completas do agente.](/images/dashboard/sessions-list.png)
 
-    Abra uma dessas sessões antes de considerar a integração concluída; o trace deve conter o modelo, ferramenta, erro e evidências de política que suas auditorias precisam.
+    Abra uma dessas sessões antes de considerar a integração concluída; o trace deve conter o modelo, a ferramenta, o erro e as evidências de política necessárias para suas auditorias.
   </Tab>
   <Tab title="CLI">
     Crie uma chave de máquina, conecte o daemon do Failproof e verifique a primeira sessão.
@@ -71,7 +71,7 @@ A [referência da API HTTP](/pt-br/reference/http-api) gerada cobre a superfíci
     fp events --since 1h --env production --limit 20
     ```
 
-    Use `fp --json sessions ...` quando outra ferramenta for consumir o resultado. Flags globais como `--json`, `--org` e `--base-url` devem vir antes do comando.
+    Use `fp --json sessions ...` quando outro utilitário consumir o resultado. Flags globais como `--json`, `--org` e `--base-url` devem vir antes do comando.
 
     Consulte a [referência do Failproof AI CLI](/pt-br/reference/failproof-cli) para comandos locais e a [referência do Failproof Cloud CLI](/pt-br/reference/cloud-cli#cli-commands) para comandos `fp`.
   </Tab>

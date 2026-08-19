@@ -1,6 +1,6 @@
 ---
 title: "Politiques"
-description: "Observez, guidez ou bloquez les actions de l'agent avant qu'une défaillance connue ne se reproduise."
+description: "Observez, guidez ou bloquez les actions des agents avant qu'une défaillance connue ne se reproduise."
 icon: "shield-check"
 ---
 
@@ -8,21 +8,21 @@ Une politique évalue un événement de hook d'agent et retourne l'une des trois
 
 - `allow` laisse l'action se poursuivre.
 - `instruct` fournit des conseils correctifs à l'agent.
-- `deny` bloque l'action en indiquant une raison.
+- `deny` bloque l'action avec une raison.
 
 ## Utiliser les trois surfaces de politique
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Allez dans **Observer → politique** pour filtrer et inspecter les décisions de politique issues des sessions.
+    1. Allez dans **Observe → politique** pour filtrer et inspecter les décisions de politique issues des sessions.
     2. Allez dans **Admin → éditeur de politique** pour composer, valider, publier, désactiver ou inspecter des versions immuables.
-    3. Allez dans **Admin → application** pour assigner des versions et des effets à des machines.
+    3. Allez dans **Admin → application** pour assigner des versions et des effets aux machines.
 
     Utilisez la page Politique pour comprendre ce qui correspond déjà avant de créer ou de modifier l'application.
 
-    ![La page Politique affichant les totaux de décisions et les mappings de politiques locales et gérées dans le Cloud.](/images/dashboard/policy-observe.png)
+    ![La page Politique affichant les totaux de décisions et les mappages de politiques locales et gérées dans le Cloud.](/images/dashboard/policy-observe.png)
 
-    L'éditeur est l'endroit où vous transformez une condition de défaillance en code source, la validez et publiez une version immuable.
+    L'éditeur est l'endroit où vous transformez une condition d'échec en source, la validez et publiez une version immuable.
 
     ![L'éditeur de politique utilisé pour composer et publier une version de politique immuable.](/images/dashboard/policy-editor.png)
 
@@ -30,10 +30,10 @@ Une politique évalue un événement de hook d'agent et retourne l'une des trois
 
     ![La flotte d'application affichant la couverture des machines et les versions de politique assignées.](/images/dashboard/enforcement-fleet.png)
 
-    Vérifiez les décisions sur la page Politique après le déploiement afin que les vues de création et de flotte soient liées à l'activité réelle de l'agent.
+    Vérifiez les décisions sur la page Politique après le déploiement afin que les vues de création et de flotte soient liées à l'activité réelle des agents.
   </Tab>
   <Tab title="CLI">
-    Utilisez `failproofai` pour l'installation et la validation des politiques locales :
+    Utilisez `failproofai` pour l'installation et la validation de politiques locales :
 
     ```bash
     failproofai policies

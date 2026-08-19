@@ -1,26 +1,26 @@
 ---
 title: "HTTP API"
-description: "Failproof AI Cloud `/v1` API'sine kimlik doğrulaması yapın ve oluşturulan endpoint referansını kullanın."
+description: "Failproof AI Cloud `/v1` API'sine kimlik doğrulaması yapın ve oluşturulan uç nokta referansını kullanın."
 icon: "braces"
 ---
 
-Genel API, Failproof AI panonuz orijininde `/v1` altında sunulur.
+Genel API, Failproof AI panonuzu üzerinde `/v1` altında sunulur.
 
-## Anahtar oluşturun ve istek gönderin
+## Anahtar oluşturun ve istek yapın
 
 <Tabs>
-  <Tab title="Pano">
-    1. **Administration → Keys** sayfasını açın, **Create key** seçeneğini seçin ve entegrasyonu karşılayan en dar izin ön ayarını seçin.
-    2. Gerektiğinde yalnızca bireysel izinler ekleyin, anahtarı oluşturun ve bunun tek seferlik parolasını kopyalayın.
-    3. `/v1/sessions` adresine bir test isteği yapın ve anahtarın Keys sayfasında aktif kalması yı doğrulayın.
-    4. Entegrasyon mülkiyeti değiştiğinde, anahtarı kendi eylem menüsünden döndürün veya devre dışı bırakın.
+  <Tab title="Dashboard">
+    1. **Yönetim → Anahtarlar** kısmını açın, **Anahtar oluştur** seçeneğini seçin ve entegrasyonunuzu kapsayan en dar izin ön ayarını seçin.
+    2. Gerekli olduğunda yalnızca bireysel izinler ekleyin, anahtarı oluşturun ve tek seferlik sırrını kopyalayın.
+    3. `/v1/sessions` adresine test isteği yapın ve anahtarın Anahtarlar sayfasında etkin kalıp kalmadığını onaylayın.
+    4. Entegrasyon sahipliği değiştiğinde, anahtarı eylem menüsünden döndürün veya devre dışı bırakın.
 
-    ![Yeni API anahtar çekmeceği izin ön ayarları ve bireysel izinlerle birlikte.](/images/dashboard/key-create.png)
+    ![İzin ön ayarları ve bireysel izinlerle yeni API anahtarı çekmeçesi.](/images/dashboard/key-create.png)
 
-    Yukarıda oluşturma çekmecesi gösterilmektedir. Tek seferlik parola yalnızca **create** seçeneğini belirledikten sonra görünür; o onayı kapatmadan önce kopyalayın.
+    Yukarıda oluşturma çekmeçesi gösterilmektedir. Tek seferlik sırrı yalnızca **oluştur** seçeneğini seçtikten sonra gösterilir; bu onayı kapatmadan önce kopyalayın.
   </Tab>
   <Tab title="CLI">
-    Okuma anahtarı oluşturun ve `fp` veya `curl` ile doğrudan kullanın:
+    Okuma anahtarı oluşturun ve bunu `fp` veya `curl` ile doğrudan kullanın:
 
     ```bash
     fp keys create reliability-reader \
@@ -36,19 +36,19 @@ Genel API, Failproof AI panonuz orijininde `/v1` altında sunulur.
   </Tab>
 </Tabs>
 
-Anahtarlar bir kuruluşa ve izin kümesine kapsamlıdır. Endpoint'in gerekli izni olmayan bir istek `403` döndürür ve eksik izni tanımlar.
+Anahtarlar bir kuruluş ve izin seti kapsamındadır. Uç noktanın gerekli iznine sahip olmayan bir istek `403` döndürür ve eksik olan izni tanımlar.
 
 ## Kuruluş seçimi
 
-Bir kuruluş anahtarı otomatik olarak kendi kuruluşu üzerinde işlem yapar. Örnek kapsamlı bir anahtar, istek başına bir kuruluş seçebilir:
+Bir kuruluş anahtarı, kuruluşuna otomatik olarak etki eder. Bir örnek kapsamlı anahtar, istek başına bir kuruluş seçebilir:
 
 <Tabs>
-  <Tab title="Pano">
-    **Administration → Keys** sayfasını açmadan önce pano başlığındaki kuruluş değiştiriciyi kullanın. Orada oluşturulan anahtarlar seçili kuruluşa aittir. URL'deki kuruluş slug'ını ve kimlik bilgisini otomasyona kopyalamadan önce anahtar ayrıntısını doğrulayın.
+  <Tab title="Dashboard">
+    Pano başlığındaki kuruluş değiştiricisini kullanın ve ardından **Yönetim → Anahtarlar** kısmını açın. Orada oluşturulan anahtarlar, seçilen kuruluşa aittir. URL'deki ve anahtar ayrıntısındaki kuruluş slug'ını onaylayın ve kimlik bilgisini otomasyon içine kopyalamadan önce doğrulayın.
 
   </Tab>
   <Tab title="CLI">
-    Komuttan önce `--org` kullanın veya örnek kapsamlı bir API anahtarı için kuruluş başlığı gönderin.
+    Komuttan önce `--org` kullanın veya bir örnek kapsamlı API anahtarı için kuruluş başlığı gönderin.
 
     ```bash
     fp orgs list
@@ -63,12 +63,12 @@ Bir kuruluş anahtarı otomatik olarak kendi kuruluşu üzerinde işlem yapar. �
   </Tab>
 </Tabs>
 
-Geçerli yollar, parametreler, izin gereksinimleri ve durum kodları için bu bölümdeki oluşturulan endpoint sayfalarını kullanın. Belirtim, sunucu rota ek açıklamalarından oluşturulur ve `/v1` yönlendiricisine karşı kontrol edilir.
+Bu bölümdeki oluşturulan uç nokta sayfalarını geçerli yollar, parametreler, izin gereksinimleri ve durum kodları için kullanın. Belirtim, sunucu rota ek açıklamalarından oluşturulur ve `/v1` yönlendiricisine karşı kontrol edilir.
 
-Geçerli belirtim, tam rota, yöntem, parametre, izin ve durum kodu kapsamına sahiptir. Sunucu hala bazı yanıt gövdelerini dinamik JSON olarak yapılandırdığından bazı yanıt gövdeleri kasıtlı olarak yazılmamıştır. Yanıt şeması olmayan bir endpoint etrafında kesin olarak yazılmış bir istemci oluşturmadan önce gerçek bir yanıtı inceleyin.
+Geçerli belirtim, tam rota, yöntem, parametre, izin ve durum kodu kapsamına sahiptir. Sunucu hala bazı yanıt gövdelerini dinamik JSON olarak oluşturduğu için, bazı yanıt gövdeleri kasıtlı olarak yazılmamış durumdadır. Yanıt şeması olmayan bir uç nokta etrafında kesin olarak yazılmış bir istemci oluşturmadan önce gerçek bir yanıtı inceleyin.
 
-JSON yazmaları için `Content-Type: application/json` kullanın. `401` öğesini eksik veya geçersiz kimlik doğrulamaya, `403` öğesini gerekli izin olmayan geçerli bir kimliğe, `404` öğesini eksik veya kuruluşa erişilemeyen kaynağa, `409` öğesini durum çakışmasına ve `422` öğesini geçersiz alan veya izin değerine karşılık olarak değerlendirin. Hata yanıtları okunabilir bir ileti içerir; izin hataları ayrıca gerekli izni de adlandırır.
+JSON yazmaları için `Content-Type: application/json` kullanın. `401` öğesini eksik veya geçersiz kimlik doğrulama olarak, `403` öğesini gerekli izne sahip olmayan geçerli bir kimlik olarak, `404` öğesini eksik veya kuruluşun erişemediği kaynak olarak, `409` öğesini durum çakışması olarak ve `422` öğesini geçersiz alan veya izin değeri olarak değerlendirin. Hata yanıtları, insan tarafından okunabilir bir mesaj içerir; izin hataları ayrıca gerekli izni adlandırır.
 
 <Warning>
-  İlke yürürlüğe koyma dağıtımı, kasıtlı olarak olağan genel `/v1` yüzeyinin dışında yönetilir. Desteklenen Bulut dağıtım iş akışını kullanın.
+  İlke uygulama dağıtımı, kasıtlı olarak sıradan genel `/v1` yüzeyinin dışında yönetilir. Desteklenen Cloud dağıtım iş akışını kullanın.
 </Warning>

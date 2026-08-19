@@ -1,47 +1,47 @@
 ---
-title: "Politika dağıtma"
+title: "Politikaları dağıtma"
 description: "İncelenen bir politika sürümünü hedeflenen makinelere dağıtın."
 icon: "cloud-upload"
 ---
 
-Bir dağıtım, bir veya daha fazla politika sürümünü kayıtlı makinelerin hedef kümesine bağlar.
+Bir dağıtım, bir veya daha fazla politika sürümünü, kaydedilmiş makinelerin hedef kümesine bağlar.
 
-## Dağıtım uygulama
+## Dağıtımı uygulama
 
 <Tabs>
   <Tab title="Dashboard">
     1. **Admin → enforcement** bölümüne gidin, makineyi bulun ve satırını genişletin.
-    2. **edit** seçeneğini seçin, incelenen politika sürümünü ekleyin ve **observe** veya zorlama etkisini seçin.
-    3. Değişikliği uygulayın, ardından makinenin sonraki check-in'i için bekleyin ve dağıtım ile kapsama durumunu onaylayın.
+    2. **edit** seçeneğini seçin, incelenen politika sürümünü ekleyin ve **observe** veya uygulama etkisini seçin.
+    3. Değişikliği uygulayın, ardından makinenin bir sonraki check-in işlemini bekleyin ve dağıtım ile kapsama durumunu onaylayın.
     4. Canlı kararları incelemek için **Observe → policy** bölümüne gidin.
 
-    ![Politika sürümleri, enforce ve observe efektleri ile dağıtım editörü ve dağıtım uygula eylemi.](/images/dashboard/enforcement-editor.png)
+    ![Politika sürümleri, enforce ve observe etkileri ve dağıtım uygulama eylemiyle makine dağıtım editörü.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Bulut dağıtım uç noktaları kasıtlı olarak sıradan `fp` komutları olarak açığa çıkarılmaz. Makineyi yerel olarak kontrol edin, ardından dashboard üzerinden dağıtın:
+    Bulut dağıtım uç noktaları kasıtlı olarak sıradan `fp` komutları olarak sunulmaz. Makineyi yerel olarak kontrol edin, ardından dashboard aracılığıyla dağıtın:
 
     ```bash
     failproofai config --status
     ```
 
-    Dağıtımdan sonra aktivitenin Buluta ulaştığını doğrulamak için `fp sessions --env production --since 24h` ve `fp events --event-type hook_completed` kullanın.
+    Dağıtımdan sonra aktivitenin Bulut'a ulaştığını doğrulamak için `fp sessions --env production --since 24h` ve `fp events --event-type hook_completed` komutlarını kullanın.
   </Tab>
 </Tabs>
 
 <Steps>
-  <Step title="Sürüm ve hedefleri seçin">
-    Değişken bir taslak değil, incelenen bir sürümü dağıtın; oturumları inceleyebileceğiniz üretim dışı bir makine veya küçük bir grupla başlayın.
+  <Step title="Sürümü ve hedefleri seçin">
+    Değişken bir taslak değil, incelenen bir sürümü dağıtın; oturumlarını inceleyebileceğiniz üretim dışı bir makine veya küçük bir kohortla başlayın.
   </Step>
   <Step title="Kararları gözlemleyin">
-    Çalışmayı engellemeden eşleşmeleri, nedenleri, etkilenen araçları ve yanlış pozitifleri gözden geçirin.
+    İşi engellememek için eşleşmeleri, nedenleri, etkilenen araçları ve yanlış pozitifleri gözden geçirin.
   </Step>
-  <Step title="Zorlayın ve kapsama alanını doğrulayın">
-    Gözlemlenen eşleşmeler güvensiz eylemleri geçerli olanlardan ayırdıktan sonra yükseltme yapın, ardından her amaçlanan makinenin dağıtımı çekerek kararları bildirdiğini onaylayın.
+  <Step title="Uygulama ve kapsama doğrulayın">
+    Gözlemlenen eşleşmeler güvensiz eylemleri geçerli olanlardan ayırdıktan sonra yükseltin, ardından her hedeflenen makinenin dağıtımı çektiğini ve kararları rapor ettiğini onaylayın.
   </Step>
 </Steps>
 
-Makinelerin `policies:pull` yeteneğine ihtiyacı vardır. Olay raporlaması ayrıca `events:add` tarafından kontrol edilir; Bulut analizi ve zorlama beklediğinizde her ikisini de doğrulayın.
+Makinelerin `policies:pull` yeteneğine ihtiyacı vardır. Olay raporlaması ayrı olarak `events:add` tarafından kontrol edilir; Bulut analizi ve uygulaması beklediğinizde her ikisini de doğrulayın.
 
 <Warning>
-  Zorlama yönetimi, idari bir Bulut iş akışıdır. Yalnızca kök zorlama rotalarını sıradan müşteri `/v1` API uç noktaları olarak değerlendirmeyin.
+  Uygulamayı yönetme, bir yönetici Bulut iş akışıdır. Yalnızca kök erişimi gerektiren uygulamayı yönetme rotalarını sıradan müşteri `/v1` API uç noktaları olarak değerlendirmeyin.
 </Warning>

@@ -10,7 +10,7 @@ O rollback altera a versão implantada ou remove uma atribuição de política; 
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Admin → enforcement**, expanda a máquina afetada e identifique seu último conjunto de políticas conhecido como bom.
+    1. Acesse **Admin → enforcement**, expanda a máquina afetada e identifique o último conjunto de políticas em bom estado.
     2. Selecione **edit**, restaure essas versões e efeitos e aplique a nova implantação.
     3. Aguarde o check-in da máquina e verifique a implantação reportada.
     4. Abra **Observe → policy** e as sessões afetadas para confirmar que o trabalho válido não está mais sendo bloqueado.
@@ -23,19 +23,19 @@ O rollback altera a versão implantada ou remove uma atribuição de política; 
     failproofai config --status
     ```
 
-    `failproofai config --pause` pausa as políticas builtin, custom e de convenção para uma sessão local. Ele não pausa as políticas gerenciadas pela nuvem, portanto não é uma solução alternativa para uma implantação Cloud com problemas.
+    O `failproofai config --pause` pausa as políticas builtin, custom e de convenção para uma sessão local. Ele não pausa políticas gerenciadas pela nuvem, portanto não é uma solução alternativa para uma implantação Cloud com problemas.
   </Tab>
 </Tabs>
 
-## Quando reverter
+## Quando fazer rollback
 
 - Uma política bloqueia uma ação de produção esperada.
-- O volume de correspondências é materialmente maior do que o rollout observado previa.
+- O volume de correspondências é materialmente maior do que o previsto pelo rollout observado.
 - Uma política depende de campos que uma integração não fornece.
-- Uma nova versão muda o comportamento fora do modo de falha pretendido.
+- Uma nova versão altera o comportamento fora do modo de falha pretendido.
 
-Após o rollback, abra as sessões afetadas e identifique a condição que causou o falso positivo. Crie uma nova versão, teste tanto os casos inseguros quanto os legítimos e repita a fase de observação.
+Após o rollback, abra as sessões afetadas e identifique a condição que causou o falso positivo. Crie uma nova versão, teste os casos de uso inseguro e legítimo, e então repita a fase de observação.
 
 <Warning>
-  Pausar o enforcement pode ser apropriado durante um incidente, mas isso amplia a exposição para todas as políticas ativas naquele escopo. Prefira reverter a versão específica da política quando possível.
+  Pausar a aplicação de políticas pode ser apropriado durante um incidente, mas amplia a exposição para todas as políticas ativas naquele escopo. Prefira reverter a versão específica da política quando possível.
 </Warning>

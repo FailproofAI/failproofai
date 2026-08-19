@@ -1,61 +1,61 @@
 ---
-title: "통합 및 참조"
-description: "지원되는 에이전트 하네스, SDK, CLI 및 HTTP API를 연결합니다."
+title: "통합 및 레퍼런스"
+description: "지원되는 에이전트 하네스, SDK, CLI, HTTP API를 연결하세요."
 icon: "braces"
 ---
 
-에이전트가 이미 실행되는 환경에 가장 적합한 통합 방식을 선택하세요.
+에이전트가 이미 실행 중인 환경에 가장 적합한 통합을 선택하세요.
 
 <Columns cols={2}>
   <Card title="에이전트 하네스" icon="plug-zap" href="/ko/reference/harnesses">
-    지원되는 코딩 및 자율 에이전트 CLI용 훅을 설치합니다.
+    지원되는 코딩 및 자율 에이전트 CLI에 훅을 설치하세요.
   </Card>
   <Card title="커스텀 에이전트" icon="python" href="/ko/reference/python-sdk">
-    커스텀 에이전트의 장애를 찾기 위해 트레이스를 계측하고, 런타임에 방지 기능을 추가하려면 저희에게 문의하세요.
+    커스텀 에이전트의 실패를 찾기 위해 트레이스를 계측하고, 런타임에 방지 기능을 추가하려면 저희에게 문의하세요.
   </Card>
   <Card title="로컬 대시보드" icon="monitor-cog" href="/ko/reference/local-dashboard">
-    로컬 프로젝트, 세션, 정책 활동 및 오프라인 감사를 검토합니다.
+    로컬 프로젝트, 세션, 정책 활동, 오프라인 감사를 검토하세요.
   </Card>
   <Card title="Failproof AI CLI" icon="terminal" href="/ko/reference/failproof-cli">
-    로컬 캡처, 훅, 정책, 감사, 전달 및 머신 상태를 구성합니다.
+    로컬 캡처, 훅, 정책, 감사, 전송, 머신 상태를 구성하세요.
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/ko/reference/cloud-cli#cli-commands">
-    Cloud 세션, 감사, 이슈, 알림, 키, 사용자 및 설정을 조회하고 관리합니다.
+    Cloud 세션, 감사, 이슈, 알림, 키, 사용자, 설정을 조회하고 관리하세요.
   </Card>
-  <Card title="Evaluator SDK" icon="gauge" href="/ko/reference/evaluator-sdk">
-    FastAPI 서비스로 완료되거나 비활성화된 세션을 평가합니다.
+  <Card title="평가자 SDK" icon="gauge" href="/ko/reference/evaluator-sdk">
+    FastAPI 서비스를 사용해 완료되었거나 비활성 상태인 세션을 평가하세요.
   </Card>
   <Card title="커스텀 정책" icon="shield-plus" href="/ko/reference/policy-sdk">
-    워크플로우별 allow, instruct, deny 결정을 작성하고 테스트합니다.
+    워크플로우에 특화된 allow, instruct, deny 결정을 작성하고 테스트하세요.
   </Card>
   <Card title="셀프 호스팅" icon="cloud-cog" href="/ko/reference/self-hosting">
-    고객 관리형 Kubernetes 클러스터에 Cloud 컨트롤 플레인을 배포합니다.
+    고객이 관리하는 Kubernetes 클러스터에 Cloud 컨트롤 플레인을 배포하세요.
   </Card>
 </Columns>
 
-생성된 [HTTP API 참조](/ko/reference/http-api)는 공개 `/v1` 인터페이스를 다룹니다. 수동으로 작성된 페이지는 여러 엔드포인트에 걸친 워크플로우나 해당 공개 인터페이스 외부의 관리 인터페이스를 사용하는 경우를 설명합니다.
+자동 생성된 [HTTP API 레퍼런스](/ko/reference/http-api)는 공개 `/v1` 표면을 다룹니다. 직접 작성된 페이지들은 여러 엔드포인트에 걸친 워크플로우나 해당 공개 표면 외부의 관리 인터페이스를 사용하는 경우를 설명합니다.
 
 ## 에이전트 연결 및 데이터 확인
 
 <Tabs>
   <Tab title="대시보드">
-    1. **Administration → Keys**를 열고, `events:add` 및 `policies:pull` 권한으로 키를 생성한 후 시크릿을 복사합니다.
-    2. 위의 해당 페이지를 참조하여 통합을 구성합니다.
-    3. **Observe → Events**를 열어 이벤트가 수신되는지 확인한 후, **Observe → Sessions**에서 완전한 실행으로 그룹화되는지 확인합니다.
-    4. 통합의 환경으로 필터링하고 세션 하나를 열어 감사에 필요한 모델, 도구, 오류 및 정책 필드를 검토합니다.
+    1. **Administration → Keys**를 열고, `events:add`와 `policies:pull` 권한으로 키를 생성한 뒤 시크릿을 복사하세요.
+    2. 위의 해당 페이지를 참고하여 통합을 구성하세요.
+    3. **Observe → Events**를 열어 이벤트가 도착하는지 확인하고, **Observe → Sessions**에서 이벤트가 완전한 실행으로 구성되는지 확인하세요.
+    4. 통합 환경으로 필터링하고, 감사에 필요한 모델, 도구, 오류, 정책 필드를 확인하기 위해 세션 하나를 열어보세요.
 
-    키 드로어부터 시작하세요. 선택한 권한에 따라 머신이 이벤트를 전송하고 Cloud 관리형 정책을 수신할 수 있는지 결정됩니다.
+    키 드로어에서 시작하세요. 선택한 권한에 따라 머신이 이벤트를 전송하고 Cloud 관리 정책을 수신할 수 있는지 여부가 결정됩니다.
 
     ![이벤트 수집 및 정책 전달 권한을 부여하는 데 사용되는 새 API 키 드로어.](/images/dashboard/key-create.png)
 
-    통합을 연결한 후, Sessions 목록을 사용하여 해당 이벤트가 예상 환경에서 완전한 실행으로 그룹화되고 있는지 확인하세요.
+    통합을 연결한 후, Sessions 목록을 사용하여 이벤트가 예상 환경에서 완전한 실행으로 그룹화되고 있는지 확인하세요.
 
-    ![새로 연결된 통합이 완전한 에이전트 실행을 보고하는지 확인하는 데 사용되는 Sessions 목록.](/images/dashboard/sessions-list.png)
+    ![새로 연결된 통합이 완전한 에이전트 실행을 보고하고 있는지 확인하는 데 사용되는 Sessions 목록.](/images/dashboard/sessions-list.png)
 
-    통합이 완료된 것으로 간주하기 전에 이러한 세션 중 하나를 여세요. 트레이스에는 감사에 필요한 모델, 도구, 오류 및 정책 증거가 포함되어 있어야 합니다.
+    통합이 완료되었다고 판단하기 전에 이 세션 중 하나를 열어보세요. 트레이스에는 감사에 필요한 모델, 도구, 오류, 정책 근거가 포함되어 있어야 합니다.
   </Tab>
   <Tab title="CLI">
-    머신 키를 생성하고, Failproof 데몬을 연결한 후 첫 번째 세션을 확인합니다.
+    머신 키를 생성하고, Failproof 데몬을 연결한 뒤, 첫 번째 세션을 확인하세요.
 
     ```bash
     fp keys create agent-production \
@@ -71,8 +71,8 @@ icon: "braces"
     fp events --since 1h --env production --limit 20
     ```
 
-    다른 도구가 결과를 처리해야 할 경우 `fp --json sessions ...`를 사용하세요. `--json`, `--org`, `--base-url`과 같은 전역 플래그는 명령어 앞에 위치해야 합니다.
+    다른 도구가 결과를 사용하는 경우 `fp --json sessions ...`를 사용하세요. `--json`, `--org`, `--base-url` 같은 전역 플래그는 반드시 명령어 앞에 와야 합니다.
 
-    로컬 명령어는 [Failproof AI CLI 참조](/ko/reference/failproof-cli)를, `fp` 명령어는 [Failproof Cloud CLI 참조](/ko/reference/cloud-cli#cli-commands)를 참조하세요.
+    로컬 명령어는 [Failproof AI CLI 레퍼런스](/ko/reference/failproof-cli)를, `fp` 명령어는 [Failproof Cloud CLI 레퍼런스](/ko/reference/cloud-cli#cli-commands)를 참고하세요.
   </Tab>
 </Tabs>

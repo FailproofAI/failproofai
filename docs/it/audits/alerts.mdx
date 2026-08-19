@@ -1,19 +1,20 @@
 ---
+---
 title: "Avvisi"
-description: "Rileva la ricorrenza e instrada un incidente ai responder giusti."
+description: "Rileva ricorrenze e indirizza un incidente ai responder appropriati."
 icon: "bell-ring"
 ---
 
-Gli avvisi monitorano una condizione misurabile e creano un incidente quando si attiva. Usali quando un errore dovrebbe produrre una risposta tempestiva, indipendentemente dal fatto che una policy possa bloccarlo.
+Gli avvisi controllano una condizione misurabile e creano un incidente quando si attiva. Usali quando un errore deve generare una risposta tempestiva, indipendentemente dal fatto che una policy possa bloccarlo.
 
 ## Creare e testare un avviso
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Analyze → Alerts** e seleziona **new alert**. Puoi anche iniziare dalla campana su un errore rappresentativo.
+    1. Vai su **Analyze → Alerts** e seleziona **new alert**. Puoi anche iniziare dalla campana su un errore rappresentativo.
     2. Inserisci il nome, la gravità, il tipo di trigger, la condizione, l'intervallo di valutazione, il conteggio delle violazioni, la finestra e i canali.
-    3. Salva l'avviso, apri la sua pagina di dettaglio ed esegui il **test**.
-    4. Vai a **Analyze → Issues** per riconoscere, assegnare, discutere, sottoscrivere e risolvere gli incidenti creati dall'avviso.
+    3. Salva l'avviso, apri la sua pagina di dettaglio ed esegui **test**.
+    4. Vai su **Analyze → Issues** per riconoscere, assegnare, discutere, iscriverti e risolvere gli incidenti creati dall'avviso.
 
     La prima parte del modulo identifica l'avviso e il segnale che dovrebbe attivarlo.
 
@@ -23,11 +24,11 @@ Gli avvisi monitorano una condizione misurabile e creano un incidente quando si 
 
     ![La seconda parte del modulo new-alert con logica di violazione, pianificazione, gravità, canali di consegna e azione di creazione.](/images/dashboard/alert-new-routing.png)
 
-    Dopo il salvataggio, usa l'elenco Alerts per confermare che la regola è abilitata e che il suo trigger, la finestra, la gravità e i canali corrispondono a quanto previsto.
+    Dopo il salvataggio, utilizza l'elenco degli Avvisi per confermare che la regola è abilitata e che il suo trigger, la finestra, la gravità e i canali corrispondono a quanto previsto.
 
-    ![La pagina Alerts che mostra le regole di avviso con i loro trigger, finestre di valutazione, canali e gravità.](/images/dashboard/alerts.png)
+    ![La pagina Alerts che mostra le regole di avviso con trigger, finestre di valutazione, canali e gravità.](/images/dashboard/alerts.png)
 
-    Testa l'avviso prima di dipenderne per la risposta in produzione.
+    Testa l'avviso prima di dipendere da esso per la risposta in produzione.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -47,16 +48,16 @@ Gli avvisi monitorano una condizione misurabile e creano un incidente quando si 
   </Tab>
 </Tabs>
 
-Le condizioni di avviso possono essere basate su errori, punteggi di valutazione, combinazioni di valutazioni o SQL personalizzato. Aggiungi destinatari, testa la regola e apri l'incidente risultante per riconoscerlo, assegnarlo, commentare, sottoscrivere e risolverlo.
+Le condizioni di avviso possono essere basate su errori, punteggi di valutazione, combinazioni di valutazioni o SQL personalizzato. Aggiungi destinatari, testa la regola e apri l'incidente risultante per riconoscerlo, assegnarlo, commentarlo, iscriverti e risolverlo.
 
 ## Buon design degli avvisi
 
-- Dai un nome alla condizione e al flusso di lavoro interessato.
+- Nomina la condizione e il flusso di lavoro interessato.
 - Specifica esplicitamente l'ambiente.
 - Imposta una finestra e una soglia che evitino di reagire a un singolo evento innocuo.
-- Includi un link o una query che guidi i responder alle sessioni.
+- Includi un collegamento o una query che conduca i responder alle sessioni.
 - Assegna un proprietario prima di abilitare la regola.
 
 <Tip>
-  Dopo aver risolto un'osservazione di audit, aggiungi un avviso quando lo stesso errore potrebbe ricorrere al di fuori della copertura della policy.
+  Dopo aver risolto un risultato di audit, aggiungi un avviso quando lo stesso errore potrebbe ripetersi al di fuori della copertura della policy.
 </Tip>

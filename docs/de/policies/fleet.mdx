@@ -1,10 +1,10 @@
 ---
 title: "Richtlinien auf Maschinen bereitstellen"
-description: "Behalten Sie den Überblick, welche Maschinen registriert sind, aktuelle Richtlinien verwenden und die gewünschten Policy-Versionen durchsetzen."
+description: "Behalten Sie den Überblick, welche Maschinen eingebunden sind, aktuell sind und die vorgesehenen Richtlinienversionen durchsetzen."
 icon: "network"
 ---
 
-Die Fleet-Abdeckung beantwortet, ob eine Richtlinie dort vorhanden ist, wo das Risiko besteht. Verfolgen Sie Maschinen anhand einer stabilen ID und eines menschenlesbaren Labels, und vergleichen Sie dann den zugewiesenen und gemeldeten Bereitstellungsstatus.
+Die Fleet-Abdeckung beantwortet die Frage, ob eine Richtlinie dort vorhanden ist, wo das Risiko besteht. Verfolgen Sie Maschinen anhand einer stabilen ID und einem lesbaren Label, und vergleichen Sie dann den zugewiesenen und gemeldeten Bereitstellungsstatus.
 
 ## Abdeckung prüfen
 
@@ -12,10 +12,10 @@ Die Fleet-Abdeckung beantwortet, ob eine Richtlinie dort vorhanden ist, wo das R
   <Tab title="Dashboard">
     1. Gehen Sie zu **Admin → Durchsetzung** und überprüfen Sie die Gesamtzahlen für „Durchsetzend" und „Beobachtend".
     2. Suchen Sie nach einer Maschine anhand von ID oder Label, oder filtern Sie nach Maschinen, denen eine Richtlinie fehlt.
-    3. Klappen Sie eine Zeile auf, um zugewiesene Richtlinien, gemeldete Bereitstellung, letzten Check-in und Verlauf zu vergleichen.
-    4. Aktualisieren Sie nach dem Polling-Intervall der Maschine, wenn eine angewendete Bereitstellung ausstehend bleibt.
+    3. Klappen Sie eine Zeile auf, um zugewiesene Richtlinien, gemeldete Bereitstellung, letzten Check-in und den Verlauf zu vergleichen.
+    4. Aktualisieren Sie die Ansicht nach dem Abfrageintervall der Maschine, wenn eine angewendete Bereitstellung noch aussteht.
 
-    ![Das Enforcement-Fleet mit Policy-Abdeckung, Maschinenbereitstellungsstatus sowie Beobachtungs- und Durchsetzungszuweisungen.](/images/dashboard/enforcement-fleet.png)
+    ![Das Enforcement-Fleet mit Richtlinienabdeckung, Bereitstellungsstatus der Maschine sowie Beobachtungs- und Durchsetzungszuweisungen.](/images/dashboard/enforcement-fleet.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,18 +24,18 @@ Die Fleet-Abdeckung beantwortet, ob eine Richtlinie dort vorhanden ist, wo das R
     failproofai flush --wait
     ```
 
-    Verwenden Sie `fp events --agent-id <agent-id> --since 24h`, um zu bestätigen, dass die Agent-Aktivität der Maschine die Cloud erreicht.
+    Verwenden Sie `fp events --agent-id <agent-id> --since 24h`, um zu bestätigen, dass die Agentenaktivität der Maschine die Cloud erreicht.
   </Tab>
 </Tabs>
 
 Nutzen Sie die Abdeckungsansichten, um Folgendes zu finden:
 
 - Maschinen, die die neueste Bereitstellung nie abgerufen haben
-- Registrierte Maschinen, die keine Aktivitäten mehr melden
+- Eingebundene Maschinen, die keine Aktivität mehr melden
 - Eine Richtlinie, die der falschen Umgebung oder Gruppe zugewiesen wurde
-- Versions-Drift nach einem unterbrochenen Update
+- Versionsabweichungen nach einem unterbrochenen Update
 
-Benennen Sie eine Maschine um, ohne sie erneut zu verbinden:
+Umbenennen einer Maschine ohne erneute Verbindung:
 
 ```bash
 failproofai config --machine-label checkout-runner-03
@@ -48,5 +48,5 @@ failproofai config --status
 ```
 
 <Tip>
-  Verwenden Sie Labels, die Workload und Umgebung kennzeichnen. Hostnamen allein sind nach Autoscaling oder Maschinenaustausch häufig nicht ausreichend.
+  Verwenden Sie Labels, die Workload und Umgebung identifizieren. Hostnamen allein sind nach automatischer Skalierung oder Maschinenaustausch oft nicht ausreichend.
 </Tip>

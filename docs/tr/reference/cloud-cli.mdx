@@ -1,12 +1,12 @@
 ---
 title: "Failproof Cloud CLI"
-description: "Failproof AI Cloud ile fp kullanarak telemetri sorgulama ve denetim, bulguları, sorunları, uyarıları, anahtarları, kullanıcıları, sorguları ve ayarları yönetme için eksiksiz başvuru."
+description: "Failproof AI Cloud ile sorgulamak ve yönetmek için fp komut satırı arabiriminin tam başvurusu."
 icon: "cloud-cog"
 ---
 
-`fp` kullanarak Cloud telemetrisini inceleyin ve denetimler, bulgular, sorunlar, uyarılar, anahtarlar, kullanıcılar, sorgular ve ayarları yönetin. Yerel hook'lar, ilkeler, yakalama ve makine kaydı için [`failproofai`](/tr/reference/failproof-cli) kullanın.
+Bulut telemetrisini incelemek ve denetimler, bulgular, sorunlar, uyarılar, anahtarlar, kullanıcılar, sorgular ve ayarları yönetmek için `fp` kullanın. Yerel kancalar, politikalar, yakalama ve makine kaydı için [`failproofai`](/tr/reference/failproof-cli) komutunu kullanın.
 
-Yayınlanan Cloud CLI'yi bağımsız bir araç olarak yükleyin:
+Yayınlanan Bulut CLI'yi izole bir araç olarak yükleyin:
 
 ```bash
 uv tool install fp-cli
@@ -20,30 +20,30 @@ fp login
 fp whoami
 ```
 
-## Sözdizimi
+## Söz dizimi
 
 ```text
 fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
 ```
 
-Genel seçenekler komuttan önce gelmelidir:
+Global seçenekler komuttan önce gelmelidir:
 
 ```bash
 fp --json sessions --since 24h
 ```
 
-Terminal yardımı için `fp COMMAND --help` veya `fp COMMAND SUBCOMMAND --help` komutunu çalıştırın.
+Terminal yardımı için `fp COMMAND --help` veya `fp COMMAND SUBCOMMAND --help` komutlarını çalıştırın.
 
 ## CLI komutları
 
-### Kimlik Doğrulama
+### Kimlik doğrulama
 
 | Komut | Amaç | Seçenekler |
 | --- | --- | --- |
-| `fp login` | E-posta ile gönderilen tek kullanımlık kod ve bir kuruluş seçin. | `--email`, `-e`; `--org`; `--force` |
-| `fp logout` | Kaydedilmiş kullanıcı oturumunu iptal edin ve kaldırın. | — |
+| `fp login` | E-posta ile gönderilen tek kullanımlık kod ile oturum açın ve kuruluş seçin. | `--email`, `-e`; `--org`; `--force` |
+| `fp logout` | Kaydedilen kullanıcı oturumunu iptal edin ve kaldırın. | — |
 | `fp whoami` | Geçerli kimliği, kimlik doğrulama modunu, kuruluşu ve izinleri gösterin. | — |
-| `fp version` | Yüklenmiş CLI sürümünü gösterin. | — |
+| `fp version` | Yüklü CLI sürümünü gösterin. | — |
 | `fp help` | Üst düzey komut yardımını gösterin. | — |
 
 ```bash
@@ -51,30 +51,30 @@ fp login --email you@example.com --org reliability-team
 fp whoami
 ```
 
-### Etkinlikler
+### Olaylar
 
 ```text
 fp events [OPTIONS]
 ```
 
-Bireysel agent etkinliklerini listeler. Varsayılan hafif feed ham yükleri hariç tutar; `--full` seçeneğini yalnızca sınırlı bir araştırma için kullanın.
+Bireysel aracı olaylarını listeler. Varsayılan hafif akış ham yükleri hariç tutar; `--full` seçeneğini yalnızca sınırlı bir araştırma için kullanın.
 
 | Seçenek | Açıklama |
 | --- | --- |
 | `--limit`, `-n <n>` | Maksimum toplam satır. Varsayılan: `50`. |
 | `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h` veya `7d`. |
-| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC aralığı; `--since` parametresini geçersiz kılar. |
-| `--env <value>` | Ortam filtresi; tekrarlayın veya virgülle ayırın. |
-| `--event-type <value>` | Etkinlik türü filtresi; tekrarlayın veya virgülle ayırın. |
-| `--agent-id <value>` | Agent filtresi; tekrarlayın veya virgülle ayırın. |
-| `--session-id <value>` | Oturum filtresi; tekrarlayın veya virgülle ayırın. |
+| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC aralığı; `--since` seçeneğini geçersiz kılar. |
+| `--env <value>` | Ortam filtresi; değerleri tekrar edin veya virgülle ayırın. |
+| `--event-type <value>` | Olay türü filtresi; tekrar edin veya virgülle ayırın. |
+| `--agent-id <value>` | Aracı filtresi; tekrar edin veya virgülle ayırın. |
+| `--session-id <value>` | Oturum filtresi; tekrar edin veya virgülle ayırın. |
 | `--search <text>` | Yük metni araması; tekrarlanabilir, herhangi bir terim eşleşir. |
-| `--order asc\|desc` | Zaman sırası. Varsayılan: önce en yeniler. |
-| `--all` | `--limit` değerine kadar otomatik sayfalandır. |
-| `--cursor <token>` | Opak bir imlecden devam edin. |
-| `--page-size <n>` | `--all` ile istek başına satırlar; maksimum `200`. |
-| `--full` | Daha ağır etkinlik uç noktasından ham yükleri dahil edin. |
-| `--fields <csv>` | Yalnızca seçili alanları döndürün; `payload` istenmesi tam modu etkinleştirir. |
+| `--order asc\|desc` | Zaman sırası. Varsayılan: en yeniler önce. |
+| `--all` | `--limit` ile otomatik sayfalandırma. |
+| `--cursor <token>` | Opak imleyiciden devam edin. |
+| `--page-size <n>` | `--all` ile istek başına satır; maksimum `200`. |
+| `--full` | Daha ağır olay uç noktası aracılığıyla ham yükleri ekleyin. |
+| `--fields <csv>` | Yalnızca seçilen alanları döndürün; `payload` istemek tam modu etkinleştirir. |
 
 ```bash
 fp events --session-id <session-id> --order asc --all
@@ -91,17 +91,17 @@ fp sessions [OPTIONS]
 | --- | --- |
 | `--limit`, `-n <n>` | Maksimum toplam satır. Varsayılan: `50`. |
 | `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h` veya `7d`. |
-| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC aralığı; `--since` parametresini geçersiz kılar. |
-| `--env <value>` | Ortam filtresi; tekrarlayın veya virgülle ayırın. |
-| `--status <value>` | `done`, `error` veya `timeout`; tekrarlayın veya virgülle ayırın. |
-| `--agent-id <value>` | Seçili agent'i içeren oturumları eşleştirin. |
-| `--session-id <value>` | Oturum filtresi; tekrarlayın veya virgülle ayırın. |
-| `--all` | `--limit` değerine kadar otomatik sayfalandır. |
-| `--cursor <token>` | Opak bir imlecden devam edin. |
-| `--page-size <n>` | `--all` ile istek başına satırlar; maksimum `200`. |
-| `--fields <csv>` | Yalnızca seçili alanları döndürün. |
-| `--full-ids` | Terminal çıkışında oturum ID'lerini kısaltmayın. |
-| `--agents` | Çok agent'li oturumlar için agent rosteri genişletin. |
+| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC aralığı; `--since` seçeneğini geçersiz kılar. |
+| `--env <value>` | Ortam filtresi; tekrar edin veya virgülle ayırın. |
+| `--status <value>` | `done`, `error` veya `timeout`; tekrar edin veya virgülle ayırın. |
+| `--agent-id <value>` | Seçilen herhangi bir aracıyı içeren oturumları eşleştirin. |
+| `--session-id <value>` | Oturum filtresi; tekrar edin veya virgülle ayırın. |
+| `--all` | `--limit` ile otomatik sayfalandırma. |
+| `--cursor <token>` | Opak imleyiciden devam edin. |
+| `--page-size <n>` | `--all` ile istek başına satır; maksimum `200`. |
+| `--fields <csv>` | Yalnızca seçilen alanları döndürün. |
+| `--full-ids` | Terminal çıktısında oturum kimliklerini kısaltmayın. |
+| `--agents` | Çoklu aracılı oturumlar için aracı listesini genişletin. |
 
 ### Değerlendirmeler
 
@@ -111,15 +111,15 @@ fp evals [OPTIONS]
 
 | Seçenek | Açıklama |
 | --- | --- |
-| `--aggregate` | Bireysel değerlendirmeler yerine toplamlar ve puan başına istatistikleri gösterin. |
+| `--aggregate` | Bireysel değerlendirmeler yerine toplamları ve puan başına istatistikleri gösterin. |
 | `--limit`, `-n <n>` | Maksimum liste satırları. Varsayılan: `50`. |
 | `--since`, `--from`, `--to` | Zaman aralığını seçin. |
 | `--env`, `--status`, `--agent-id`, `--session-id` | Filtre başına bir tam değere daraltın. |
 | `--score KEY:MIN..MAX` | Puan aralığı; tekrarlanabilir ve tüm aralıklar eşleşmelidir. |
 | `--all`, `--cursor`, `--page-size` | Liste sayfalandırmasını kontrol edin. |
-| `--fields <csv>` | Yalnızca seçili alanları döndürün. |
-| `--full-ids` | Tam oturum ID'lerini gösterin. |
-| `--scores-full` | Terminal çıkışında her puanı gösterin. |
+| `--fields <csv>` | Yalnızca seçilen alanları döndürün. |
+| `--full-ids` | Tam oturum kimliklerini gösterin. |
+| `--scores-full` | Terminal çıktısında her puanı gösterin. |
 
 ### Hatalar
 
@@ -133,11 +133,11 @@ fp errors [OPTIONS]
 | `--limit`, `-n <n>` | Maksimum liste satırları. Varsayılan: `50`. |
 | `--since`, `--from`, `--to` | Zaman aralığını seçin. |
 | `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | Hata popülasyonunu daraltın. |
-| `--search <text>` | Yük metni arayın; tekrarlanabilir. |
+| `--search <text>` | Yük metni araması; tekrarlanabilir. |
 | `--order asc\|desc` | Zaman sırası. |
 | `--all`, `--cursor`, `--page-size` | Liste sayfalandırmasını kontrol edin. |
-| `--fields <csv>` | Yalnızca seçili alanları döndürün. |
-| `--full-ids` | Tam oturum ID'lerini gösterin. |
+| `--fields <csv>` | Yalnızca seçilen alanları döndürün. |
+| `--full-ids` | Tam oturum kimliklerini gösterin. |
 
 ### Kullanım ve filtre değerleri
 
@@ -145,11 +145,11 @@ fp errors [OPTIONS]
 | --- | --- |
 | `fp usage` | Geçerli ölçüm penceresi için kullanımı gösterin. |
 | `fp list envs` | Gözlemlenen ortamları listeleyin. |
-| `fp list agents` | Gözlemlenen agent ID'lerini listeleyin. |
-| `fp list event_types` | Etkinlik türlerini listeleyin. |
-| `fp list score_filters` | Değerlendirme puanı anahtarlarını listeleyin. |
+| `fp list agents` | Gözlemlenen aracı kimliklerini listeleyin. |
+| `fp list event_types` | Olay türlerini listeleyin. |
+| `fp list score_filters` | Değerlendirme puan anahtarlarını listeleyin. |
 | `fp list models` | Model adlarını listeleyin. |
-| `fp list hooks` | Hook adlarını listeleyin. |
+| `fp list hooks` | Kanca adlarını listeleyin. |
 | `fp list tools` | Araç adlarını listeleyin. |
 | `fp list error_types` | Hata türlerini listeleyin. |
 
@@ -158,9 +158,9 @@ fp errors [OPTIONS]
 | Komut | Amaç |
 | --- | --- |
 | `fp orgs list` | Erişilebilir kuruluşları listeleyin. |
-| `fp orgs switch [SLUG]` | Etkin bir kuruluş kaydedin; atlanırsa uyarır. |
+| `fp orgs switch [SLUG]` | Etkin kuruluş kaydedin; atlanırsa sorar. |
 | `fp orgs current` | Etkin kuruluşu gösterin. |
-| `fp orgs perms` | Etkin kuruluşunuzdaki izinleri gösterin. |
+| `fp orgs perms` | Etkin kuruluştaki izinlerinizi gösterin. |
 
 ### API anahtarları
 
@@ -168,12 +168,12 @@ fp errors [OPTIONS]
 | --- | --- | --- |
 | `fp keys list` | Kuruluş anahtarlarını listeleyin. | `--show-id`; `--fields <csv>` |
 | `fp keys show NAME` | Bir anahtarı ve izinlerini gösterin. | — |
-| `fp keys create NAME` | Bir anahtar oluşturun ve gizlisini bir kez ortaya çıkarın. | `--permission-set`; `--add`; `--remove` |
-| `fp keys update NAME` | İzin setini değiştirin veya izinleri ayarlayın. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
-| `fp keys regenerate NAME` | Gizliyi döndürün ve değiştirileni bir kez ortaya çıkarın. | `--yes`, `-y` |
+| `fp keys create NAME` | Bir anahtar oluşturun ve gizli bilgisini bir kez ortaya çıkarın. | `--permission-set`; `--add`; `--remove` |
+| `fp keys update NAME` | İzin kümesini değiştirin veya izinleri ayarlayın. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp keys regenerate NAME` | Gizli bilgiyi döndürün ve değiştirileni bir kez ortaya çıkarın. | `--yes`, `-y` |
 | `fp keys disable NAME` | Bir anahtarı kalıcı olarak iptal edin. | `--yes`, `-y` |
 
-İzin token'ları `resource:action` biçimini kullanır, örneğin `events:add`. `--add` seçeneğini tekrarlayın, virgülle ayırın veya `events:read.add` gibi noktalı işlemler kullanın.
+İzin tokenleri `resource:action` biçimini (örneğin `events:add`) kullanır. `--add` seçeneğini tekrarlayın, tokenleri virgülle ayırın veya `events:read.add` gibi noktalı eylemler kullanın.
 
 ### Sorgular
 
@@ -184,7 +184,7 @@ fp errors [OPTIONS]
 | `fp query create NAME` | Bir sorgu kaydedin. | `--sql <text\|@file>`; `--description` |
 | `fp query update NAME` | Bir sorguyu güncelleyin veya yeniden adlandırın. | `--name`; `--sql`; `--description`; `--yes`, `-y` |
 | `fp query delete NAME` | Kaydedilmiş bir sorguyu silin. | `--yes`, `-y` |
-| `fp query run [NAME]` | Kaydedilmiş bir sorguyu veya ad-hoc SQL'i çalıştırın. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
+| `fp query run [NAME]` | Kaydedilmiş bir sorguyu veya ad hoc SQL'i çalıştırın. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
 | `fp query schema [TABLE]` | Sorgulanabilir tabloları listeleyin veya bir tabloyu inceleyin. | — |
 
 ### Kullanıcılar
@@ -202,9 +202,9 @@ fp errors [OPTIONS]
 
 | Komut | Amaç | Seçenekler |
 | --- | --- | --- |
-| `fp settings list` | Kuruluş ayarlarını ve mevcut değerleri listeleyin. | — |
+| `fp settings list` | Kuruluş ayarlarını ve geçerli değerleri listeleyin. | — |
 | `fp settings schema` | Kabul edilen değerleri ve açıklamaları gösterin. | — |
-| `fp settings set KEY` | Varolan bir ayarı değiştirin. | `--value`, `--json-value`, `--file` seçeneklerinden tam olarak bir tanesi; isteğe bağlı `--yes`, `-y` |
+| `fp settings set KEY` | Mevcut bir ayarı değiştirin. | `--value`, `--json-value`, `--file` seçeneklerinden tam olarak biri; isteğe bağlı `--yes`, `-y` |
 
 ### Uyarılar
 
@@ -213,32 +213,32 @@ fp errors [OPTIONS]
 | `fp alerts list` | Uyarı kurallarını listeleyin. | `--show-id` |
 | `fp alerts show NAME` | Bir uyarıyı gösterin. | — |
 | `fp alerts create NAME` | Bir uyarı oluşturun. | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
-| `fp alerts update NAME` | Bir uyarıyı güncelleyin veya yeniden adlandırın. | oluşturma seçenekleri artı `--name`; `--yes`, `-y` |
+| `fp alerts update NAME` | Bir uyarıyı güncelleyin veya yeniden adlandırın. | oluşturma seçenekleri ile `--name`; `--yes`, `-y` |
 | `fp alerts delete NAME` | Bir uyarıyı silin. | `--yes`, `-y` |
-| `fp alerts test NAME` | Test bildirimi gönderin. | `--channels`; `--yes`, `-y` |
+| `fp alerts test NAME` | Test bildirimini gönderin. | `--channels`; `--yes`, `-y` |
 
-Uyarı şiddetleri `info`, `warning` ve `critical` olabilir. Tetikleyici türleri `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound` ve `per_event` olabilir. Değerlendirme aralıkları 30 ile 86.400 saniye arasında olmalıdır.
+Uyarı önem dereceleri `info`, `warning` ve `critical` olur. Tetikleme türleri `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound` ve `per_event` dir. Değerlendirme aralıkları 30 ile 86.400 saniye arasında olmalıdır.
 
 ### Denetimler
 
 | Komut | Amaç | Seçenekler |
 | --- | --- | --- |
 | `fp audits list` | Denetimleri listeleyin. | `--enabled-only`; `--show-id` |
-| `fp audits show NAME` | Bir denetim tanımını ve durumunu gösterin. | — |
-| `fp audits create NAME` | Bir denetim oluşturun ve hemen ilk çalıştırmasını sıraya alın. | Bkz. [oluşturma seçenekleri](#audit-create-options). |
-| `fp audits edit NAME` | Belirtilmeyen değerleri koruyarak denetim ayarlarını değiştirin. | tanım seçeneklerini oluşturun; `--name`; `--yes`, `-y` |
+| `fp audits show NAME` | Bir denetim tanımı ve durumunu gösterin. | — |
+| `fp audits create NAME` | Bir denetim oluşturun ve ilk çalıştırmasını hemen kuyruğa alın. | Bkz. [oluşturma seçenekleri](#audit-create-options). |
+| `fp audits edit NAME` | Denetim ayarlarını değiştirirken belirtilmemiş değerleri koruyun. | tanım seçeneklerini oluşturun; `--name`; `--yes`, `-y` |
 | `fp audits delete NAME` | Bir denetimi, bulgularını ve çalıştırma geçmişini silin. | `--yes`, `-y` |
-| `fp audits run NAME` | Manuel çalıştırma sıraya alın. | — |
+| `fp audits run NAME` | Manuel çalıştırma kuyruğu. | — |
 | `fp audits runs NAME` | Çalıştırma geçmişini listeleyin. | `--limit`, `-n`; `--show-id` |
-| `fp audits context-show NAME` | Özeti ve referans URL getirme durumunu gösterin. | — |
+| `fp audits context-show NAME` | Özet ve referans URL getirme durumunu gösterin. | — |
 | `fp audits context-set NAME` | Özeti veya referans URL'lerini değiştirin. | `--text`; `--text-file`; `--url`; `--clear-urls` |
 | `fp audits context-refresh NAME` | Referans URL'lerini yeniden getirin. | — |
 | `fp audits findings` | Bulguları listeleyin. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
-| `fp audits finding FINDING_ID` | Bir bulguyı ve kanıtını gösterin. | — |
-| `fp audits ack FINDING_ID` | Bir bulguyu onaylayın. | `--reason` |
-| `fp audits mute FINDING_ID` | Tekrarlayan bir deseni bastırın. | `--reason`; `--yes`, `-y` |
-| `fp audits dismiss FINDING_ID` | Bir deseni işlem yapılamaz olarak işaretleyin ve bastırın. | `--reason`; `--yes`, `-y` |
-| `fp audits resolve FINDING_ID` | Bir bulguyu düzeltilmiş olarak işaretleyin ve bastırmayın. | `--yes`, `-y` |
+| `fp audits finding FINDING_ID` | Bir bulguyu ve kanıtlarını gösterin. | — |
+| `fp audits ack FINDING_ID` | Bir bulguyu kabul edin. | `--reason` |
+| `fp audits mute FINDING_ID` | Yinelenen deseni bastırın. | `--reason`; `--yes`, `-y` |
+| `fp audits dismiss FINDING_ID` | Deseni işlem yapılabilir olmayan olarak işaretleyin ve bastırın. | `--reason`; `--yes`, `-y` |
+| `fp audits resolve FINDING_ID` | Bir bulguyu düzeltilmiş olarak işaretleyin ve gelecekteki bastırmayı yapılmayın. | `--yes`, `-y` |
 | `fp audits reopen FINDING_ID` | Bir bulguyu canlı kuyruğa döndürün ve bastırmayı temizleyin. | — |
 | `fp audits assign FINDING_ID` | Bulgu sahibini ayarlayın. | gerekli `--to <email>` |
 
@@ -258,26 +258,26 @@ fp audits create checkout-reliability \
 | Seçenek | Açıklama |
 | --- | --- |
 | `--file <path>` | Tanımı JSON'a dayandırın veya stdin için `-` kullanın. Açık bayraklar dosya değerlerini geçersiz kılar. |
-| `--description <text>` | Başarısızlık sorusunu veya amacını belirtin. |
-| `--enabled` / `--disabled` | Planlama başlatmayı açın veya kapatın. Varsayılan: etkinleştirilmiş. |
+| `--description <text>` | Hata sorusunu veya amacı belirtin. |
+| `--enabled` / `--disabled` | Planlamayı açık veya kapalı başlatın. Varsayılan: etkin. |
 | `--schedule-interval-secs <n>` | `3600`–`604800`. Varsayılan: `86400`. |
-| `--schedule-anchor <timestamp>` | ISO 8601 biçiminde sabit UTC fazı. Varsayılan: sonraki 09:00 UTC. |
-| `--window-mode since_last\|fixed` | Son tam olarak analiz edilen pencereden sonra devam edin veya tekrar tekrar kayan pencereyi inceleyin. Varsayılan: `since_last`. |
+| `--schedule-anchor <timestamp>` | ISO 8601 biçiminde sabit UTC aşaması. Varsayılan: sonraki 09:00 UTC. |
+| `--window-mode since_last\|fixed` | Son tam analiz edilen pencereden sonra devam edin veya tekrar tekrar haddeleme penceresini inceleyin. Varsayılan: `since_last`. |
 | `--lookback-window-secs <n>` | `3600`–`7776000`. Varsayılan: `604800`. |
 | `--scope '<json>'` | `environments`, `agent_ids` veya diğer desteklenen kapsam alanlarına göre filtreleyin. |
-| `--ignore-error-type <type>` | Hata türlerini hariç tutun; tekrarlayın veya virgülle ayırın. |
-| `--llm` / `--no-llm` | Agent analitiklerini etkinleştirin veya devre dışı bırakın. Varsayılan: etkinleştirilmiş. |
-| `--top-k <n>` | `1`–`500` bulguyu saklayın. Varsayılan: `50`. |
+| `--ignore-error-type <type>` | Hata türlerini hariç tutun; tekrar edin veya virgülle ayırın. |
+| `--llm` / `--no-llm` | Aracı analizi etkinleştirin veya devre dışı bırakın. Varsayılan: etkin. |
+| `--top-k <n>` | `1`–`500` bulguyu tutun. Varsayılan: `50`. |
 | `--sensitivity low\|medium\|high` | Raporlama hassasiyetini ayarlayın. Varsayılan: `medium`. |
 | `--channels '<json>'` | Bildirim kanalı dizisi. |
 | `--text <brief>` | Satır içi özet, maksimum 8.192 karakter. |
-| `--text-file <path>` | Özeti bir dosyadan okuyun; `--text` ile karşılıklı olarak özel. |
-| `--url <https-url>` | Genel HTTPS referansı ekleyin; beş kez kadar tekrarlayın. |
+| `--text-file <path>` | Özeti bir dosyadan okuyun; `--text` ile karşılıklı olarak birbirini dışlar. |
+| `--url <https-url>` | Genel HTTPS referansı ekleyin; en fazla beş kez tekrarlayın. |
 
-Oluşturma sırasında ilk çalıştırmanın ihtiyacı olduğunda bağlam ekleyin. Oluşturma, sıraya alınan çalıştırma başlamadan önce tanımı ve bağlamı birlikte kaydeder.
+İlk çalıştırmaya ihtiyacı olduğunda oluşturma sırasında bağlam ekleyin. Oluşturma tanımı ve bağlamı kuyruğa alınan çalıştırma başlamadan önce birlikte kaydeder.
 
 <Note>
-  `fp audits run` asenkrondur. Bulguları okumadan önce en son çalıştırma başarılı veya başarısız olana kadar `fp audits runs NAME` sorgusu yapın.
+  `fp audits run` asenkrondur. Bulgularını okumadan önce en son çalıştırmanın başarılı veya başarısız olmasını `fp audits runs NAME` ile yoklayın.
 </Note>
 
 ### Sorunlar
@@ -285,54 +285,54 @@ Oluşturma sırasında ilk çalıştırmanın ihtiyacı olduğunda bağlam ekley
 | Komut | Amaç | Seçenekler |
 | --- | --- | --- |
 | `fp issues list` | Sorunları listeleyin. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
-| `fp issues count` | Açık veya seçili sorun durumlarını sayın. | `--state` |
-| `fp issues show INCIDENT_ID` | Sorun ayrıntılarını, yorumları, abone'leri ve etkinliği gösterin. | — |
-| `fp issues open` | Manuel veya uyarı bağlantılı sorun açın. | gerekli `--summary`; isteğe bağlı `--title`, `--alert-id`, `--severity` |
-| `fp issues ack INCIDENT_ID` | Bir sorunu onaylayın. | — |
+| `fp issues count` | Açık veya seçilen sorun durumlarını sayın. | `--state` |
+| `fp issues show INCIDENT_ID` | Sorun ayrıntılarını, açıklamaları, abone üyeleri ve etkinliği gösterin. | — |
+| `fp issues open` | Manuel veya uyarıya bağlı sorun açın. | gerekli `--summary`; isteğe bağlı `--title`, `--alert-id`, `--severity` |
+| `fp issues ack INCIDENT_ID` | Bir sorunu kabul edin. | — |
 | `fp issues assign INCIDENT_ID` | Atanmışları değiştirin; temizlemek için seçeneği atlayın. | tekrarlanabilir `--assignee` |
 | `fp issues resolve INCIDENT_ID` | Bir sorunu çözün. | `--yes`, `-y` |
-| `fp issues comment-list INCIDENT_ID` | Yorumları listeleyin. | — |
-| `fp issues comment-add INCIDENT_ID` | Yorum ekleyin. | `--body`, `--file` seçeneklerinden tam olarak bir tanesi |
-| `fp issues comment-delete INCIDENT_ID COMMENT_ID` | Bir yorumu silin. | `--yes`, `-y` |
-| `fp issues subscribers INCIDENT_ID` | Aboneleri listeleyin. | — |
+| `fp issues comment-list INCIDENT_ID` | Açıklamaları listeleyin. | — |
+| `fp issues comment-add INCIDENT_ID` | Bir açıklama ekleyin. | `--body`, `--file` seçeneklerinden tam olarak biri |
+| `fp issues comment-delete INCIDENT_ID COMMENT_ID` | Bir açıklamayı silin. | `--yes`, `-y` |
+| `fp issues subscribers INCIDENT_ID` | Abone üyeleri listeleyin. | — |
 | `fp issues subscribe INCIDENT_ID` | Kendinizi veya başka bir operatörü abone yapın. | `--email` |
-| `fp issues unsubscribe INCIDENT_ID` | Bir aboneliği kaldırın. | `--email` |
+| `fp issues unsubscribe INCIDENT_ID` | Abone üyeliğini kaldırın. | `--email` |
 
-Geçerli sorun durumları `firing`, `acknowledged` ve `resolved` olabilir. Bağımsız sorun şiddetleri `info`, `warning` ve `critical` olabilir.
+Geçerli sorun durumları `firing`, `acknowledged` ve `resolved` dir. Bağımsız sorun önem dereceleri `info`, `warning` ve `critical` dir.
 
-### Cloud asistanı
+### Bulut yardımcısı
 
 | Komut | Amaç | Seçenekler |
 | --- | --- | --- |
-| `fp agent health` | Asistan kullanılabilirliğini ve yapılandırmasını kontrol edin. | — |
-| `fp agent models` | Kullanılabilir asistan modellerini listeleyin. | — |
+| `fp agent health` | Yardımcı kullanılabilirliğini ve yapılandırmasını kontrol edin. | — |
+| `fp agent models` | Mevcut yardımcı modellerini listeleyin. | — |
 | `fp agent chats` | Kaydedilmiş sohbetleri listeleyin. | — |
-| `fp agent ask [MESSAGE]` | Sohbet başlatın veya devam ettirin; mesaj atlanırsa stdin'den okuyun. | `--chat`; `--model`; `--page-context` |
-| `fp agent show CHAT_ID` | Kaydedilmiş konuşmayı gösterin. | — |
-| `fp agent rename CHAT_ID` | Konuşmayı yeniden adlandırın. | gerekli `--title` |
-| `fp agent delete CHAT_ID` | Konuşmayı silin. | `--yes`, `-y` |
+| `fp agent ask [MESSAGE]` | Bir sohbeti başlatın veya devam edin; ileti atlanırsa stdin'i okuyun. | `--chat`; `--model`; `--page-context` |
+| `fp agent show CHAT_ID` | Kaydedilmiş bir konuşmayı gösterin. | — |
+| `fp agent rename CHAT_ID` | Bir konuşmayı yeniden adlandırın. | gerekli `--title` |
+| `fp agent delete CHAT_ID` | Bir konuşmayı silin. | `--yes`, `-y` |
 
-## Genel Bayraklar
+## Genel bayraklar
 
 | Bayrak | Açıklama |
 | --- | --- |
 | `--json` | Makine tarafından okunabilir JSON yayın. |
-| `--base-url <url>` | Kendi kendine barındırılan veya geliştirme panosunu kullanın. |
-| `--org <slug>` | Bu çağırma için bir kuruluş seçin. |
-| `--token <token>` | Kaydedilmiş kullanıcı oturumu token'ını geçersiz kılın. |
-| `--api-key <key>` | Otomasyon kimlik doğrulamasını API anahtarı ile yapın; asla kaydedilmez. |
-| `--timeout <seconds>` | HTTP zaman aşımı; pozitif olmalıdır. Varsayılan: `30`. |
-| `--quiet`, `-q` | stderr üzerinde durum çıkışını bastırın. |
-| `--no-color` | Renkli çıkışı devre dışı bırakın. |
-| `--insecure` / `--secure` | TLS sertifikası doğrulamasını devre dışı bırakın veya geri yükleyin. |
-| `--version` | Kutulamayan sürümü yazdırın ve çıkın. |
+| `--base-url <url>` | Kendi barındırılan veya geliştirme panosunu kullanın. |
+| `--org <slug>` | Bu çalıştırma için bir kuruluş seçin. |
+| `--token <token>` | Kaydedilen kullanıcı oturumu tokenini geçersiz kılın. |
+| `--api-key <key>` | Otomasyon ile kimlik doğrulayın bir API anahtarı ile; asla kaydedilmez. |
+| `--timeout <seconds>` | HTTP zaman aşımı; pozitif olmalı. Varsayılan: `30`. |
+| `--quiet`, `-q` | stderr'de durum çıktısını bastırın. |
+| `--no-color` | Renkli çıktıyı devre dışı bırakın. |
+| `--insecure` / `--secure` | TLS sertifika doğrulamasını devre dışı bırakın veya geri yükleyin. |
+| `--version` | Kutulu sürümü yazdırın ve çıkın. |
 | `--help`, `-h` | Yardımı gösterin. |
 
-`--api-key` otomasyon için tasarlanmıştır. Oturum açma, kuruluş değiştirme ve asistan komutları bir kullanıcı oturumu gerektirir.
+`--api-key` otomasyon için tasarlanmıştır. Oturum açma, kuruluş geçişi ve yardımcı komutları bir kullanıcı oturumu gerektirir.
 
-## Ortam Değişkenleri
+## Ortam değişkenleri
 
-| Değişken | Eşdeğeri veya Amacı |
+| Değişken | Eşdeğer veya amaç |
 | --- | --- |
 | `AGENTEYE_DASHBOARD_URL` | `--base-url` |
 | `AGENTEYE_ORG` | `--org` |
@@ -340,12 +340,12 @@ Geçerli sorun durumları `firing`, `acknowledged` ve `resolved` olabilir. Bağ�
 | `AGENTEYE_CLI_API_KEY` | `--api-key` |
 | `AGENTEYE_CLI_JSON` | `--json` |
 | `AGENTEYE_INSECURE` | `--insecure` |
-| `AGENTEYE_HOME` | Geçerli CLI yapılandırma dizinini taşıyın. |
+| `AGENTEYE_HOME` | Geçerli CLI yapılandırma dizinini yeniden konumlandırın. |
 | `AGENTEYE_ANALYTICS_DISABLED` veya `DO_NOT_TRACK` | Anonim CLI analitiğini devre dışı bırakın. |
-| `NO_COLOR` | Renkli çıkışı devre dışı bırakın. |
+| `NO_COLOR` | Renkli çıktıyı devre dışı bırakın. |
 
-Açık bayraklar ortam değişkenlerini geçersiz kılar, bu da kaydedilmiş yapılandırmayı geçersiz kılar. API anahtarı modunda, `--org` veya `AGENTEYE_ORG` ile kiracıyı açıkça seçin.
+Açık bayraklar ortam değişkenlerini geçersiz kılar, ortam değişkenleri kaydedilen yapılandırmayı geçersiz kılar. API anahtarı modunda, kiracıyı `--org` veya `AGENTEYE_ORG` ile açıkça seçin.
 
 <Warning>
-  Silme, iptal etme, bastırma, çözme veya yapılandırmayı değiştiren komutlar varsayılan olarak sorar. `--yes` seçeneğini yalnızca etkin kuruluş ve hedefi doğruladıktan sonra kullanın.
+  Yapılandırmayı silen, iptal eden, bastıran, çözen veya değiştiren komutlar varsayılan olarak sor. Etkin kuruluşu ve hedefi doğruladıktan sonra `--yes` kullanın.
 </Warning>

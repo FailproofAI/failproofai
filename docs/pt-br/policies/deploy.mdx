@@ -1,47 +1,47 @@
 ---
-title: "Implantar políticas"
-description: "Distribua uma versão de política revisada para as máquinas desejadas."
+title: "Fazer deploy de políticas"
+description: "Publique uma versão de política revisada para as máquinas desejadas."
 icon: "cloud-upload"
 ---
 
-Uma implantação conecta uma ou mais versões de política a um conjunto de máquinas cadastradas.
+Um deployment conecta uma ou mais versões de política a um conjunto de máquinas registradas.
 
-## Aplicar uma implantação
+## Aplicar um deployment
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Admin → enforcement**, encontre a máquina e expanda sua linha.
-    2. Selecione **edit**, adicione a versão de política revisada e escolha **observe** ou o efeito de imposição desejado.
-    3. Aplique a alteração, aguarde o próximo check-in da máquina e confirme o estado de implantação e cobertura.
-    4. Acesse **Observe → policy** para inspecionar decisões em tempo real.
+    1. Acesse **Admin → enforcement**, localize a máquina e expanda sua linha.
+    2. Selecione **edit**, adicione a versão de política revisada e escolha **observe** ou seu efeito de aplicação.
+    3. Aplique a alteração, aguarde o próximo check-in da máquina e confirme o estado de deployment e cobertura.
+    4. Acesse **Observe → policy** para inspecionar as decisões em tempo real.
 
-    ![O editor de implantação de máquina com versões de política, efeitos de enforce e observe, e a ação de aplicar implantação.](/images/dashboard/enforcement-editor.png)
+    ![O editor de deployment de máquinas com versões de política, efeitos de enforce e observe, e a ação de aplicar deployment.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Os endpoints de implantação na nuvem não são expostos intencionalmente como comandos `fp` comuns. Verifique a máquina localmente e depois faça a implantação pelo dashboard:
+    Os endpoints de deployment na nuvem não são expostos intencionalmente como comandos `fp` comuns. Verifique a máquina localmente e faça o deploy pelo dashboard:
 
     ```bash
     failproofai config --status
     ```
 
-    Use `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` após a implantação para verificar se a atividade chega ao Cloud.
+    Use `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` após o deployment para verificar se a atividade chega ao Cloud.
   </Tab>
 </Tabs>
 
 <Steps>
   <Step title="Escolha a versão e os alvos">
-    Implante uma versão revisada, não um rascunho mutável, começando com uma máquina fora de produção ou um pequeno grupo cujas sessões você possa inspecionar.
+    Faça o deploy de uma versão revisada, não de um rascunho mutável, começando por uma máquina fora de produção ou um grupo pequeno cujas sessões você possa inspecionar.
   </Step>
   <Step title="Observe as decisões">
-    Revise correspondências, motivos, ferramentas afetadas e falsos positivos sem bloquear o trabalho.
+    Revise correspondências, razões, ferramentas afetadas e falsos positivos sem bloquear o trabalho.
   </Step>
-  <Step title="Imponha e verifique a cobertura">
-    Promova após as correspondências observadas separarem ações inseguras das válidas, depois confirme que cada máquina pretendida recebeu a implantação e está reportando decisões.
+  <Step title="Aplique e verifique a cobertura">
+    Promova após as correspondências observadas separarem ações inseguras das válidas e, em seguida, confirme que cada máquina pretendida obteve o deployment e está reportando decisões.
   </Step>
 </Steps>
 
-As máquinas precisam da capacidade `policies:pull`. O reporte de eventos é controlado separadamente por `events:add`; verifique ambos quando você espera análise e imposição no Cloud.
+As máquinas precisam da capacidade `policies:pull`. O reporte de eventos é controlado separadamente por `events:add`; verifique ambos quando esperar análise e aplicação no Cloud.
 
 <Warning>
-  O gerenciamento de imposição é um fluxo de trabalho administrativo do Cloud. Não trate as rotas de imposição exclusivas de root como endpoints comuns `/v1` da API para clientes.
+  O gerenciamento de enforcement é um fluxo administrativo do Cloud. Não trate as rotas de enforcement restritas ao root como endpoints comuns de `/v1` da API para clientes.
 </Warning>

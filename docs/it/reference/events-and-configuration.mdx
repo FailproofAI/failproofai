@@ -1,38 +1,38 @@
 ---
 title: "Eventi e configurazione"
-description: "Consulta il modello di evento, gli ambienti, l'archiviazione locale e i limiti di configurazione."
+description: "Consulta il modello di evento, gli ambienti, l'archiviazione locale e i confini di configurazione."
 icon: "list-tree"
 ---
 
 ## Famiglie di eventi
 
-- Avvio, arresto, pausa e ripresa dell'agente
+- Avvio, fine, pausa e ripresa dell'agente
 - Richiesta e risposta del modello
-- Uso dello strumento e risultato
+- Utilizzo dello strumento e risultato
 - Hook attivato e completato
 - Attesa umana, input, pausa e interruzione
 - Errori espliciti
 
-Ogni evento contiene un timestamp, un ID di sessione, un ID agente, un tipo di evento e un ambiente. I campi specifici dell'evento contengono dati relativi al modello, allo strumento, alla correlazione, al risultato, al contenuto, alla durata o all'errore.
+Ogni evento contiene un timestamp, un ID di sessione, un ID di agente, un tipo di evento e un ambiente. I campi specifici dell'evento contengono dati relativi a modello, strumento, correlazione, risultato, contenuto, durata o errore.
 
-## Ispeziona un contratto di evento
+## Ispezionare un contratto di evento
 
 <Tabs>
   <Tab title="Dashboard">
     1. Apri **Observe → Events**.
     2. Imposta una finestra temporale breve e filtra per ambiente, agente e tipo di evento.
-    3. Seleziona un evento per ispezionare i suoi campi normalizzati e il payload non elaborato, quindi apri la sua sessione per visualizzare il contesto di esecuzione.
-    4. Se manca una durata associata, verifica che gli eventi di avvio e completamento utilizzino lo stesso ID di correlazione.
+    3. Seleziona un evento per ispezionare i suoi campi normalizzati e il payload grezzo, quindi apri la sua sessione per vedere il contesto di esecuzione.
+    4. Se manca una durata accoppiata, verifica che gli eventi di inizio e completamento utilizzino lo stesso ID di correlazione.
 
-    Utilizza il flusso Events per ridurre i dati a un'esecuzione di un agente e ispeziona i campi dell'evento normalizzati.
+    Utilizza il flusso Events per restringere i dati a un'esecuzione di un agente e ispezionare i campi di evento normalizzati.
 
-    ![Il flusso Events in diretta con filtri per ambiente, agente, sessione e tipo di evento.](/images/dashboard/events-stream.png)
+    ![Il flusso live Events con filtri per ambiente, agente, sessione e tipo di evento.](/images/dashboard/events-stream.png)
 
-    Quindi segui l'evento nella sua sessione. La traccia mostra cosa è accaduto immediatamente prima e dopo, necessario quando il payload da solo è ambiguo.
+    Quindi segui l'evento nella sua sessione. La traccia mostra cosa è accaduto immediatamente prima e dopo, il che è necessario quando il payload da solo è ambiguo.
 
-    ![La traccia della sessione collegata utilizzata per ispezionare l'evento nel contesto di esecuzione.](/images/dashboard/session-detail.png)
+    ![La traccia di sessione collegata utilizzata per ispezionare l'evento nel contesto di esecuzione.](/images/dashboard/session-detail.png)
 
-    Confronta gli ID di correlazione e i timestamp tra entrambe le visualizzazioni quando manca un evento associato o una durata.
+    Confronta gli ID di correlazione e i timestamp in entrambe le visualizzazioni quando manca un evento accoppiato o una durata.
   </Tab>
   <Tab title="CLI">
     Scopri i valori di filtro validi, quindi recupera i payload completi degli eventi per una sessione:
@@ -53,26 +53,26 @@ Ogni evento contiene un timestamp, un ID di sessione, un ID agente, un tipo di e
 
 ## Campi SDK riservati
 
-Non utilizzare `timestamp`, `session_id`, `agent_id`, `type` o `environment` come campi personalizzati dell'SDK Python. Le durate degli eventi associati, come la durata del risultato dello strumento, vengono calcolate dall'SDK e non possono essere fornite manualmente.
+Non utilizzare `timestamp`, `session_id`, `agent_id`, `type` o `environment` come campi personalizzati dell'SDK Python. Le durate degli eventi accoppiati come la durata del risultato dello strumento vengono calcolate dall'SDK e non possono essere fornite manualmente.
 
-## Limiti locali
+## Confini locali
 
-- Lo stato di Failproof AI si trova in `~/.failproofai` a meno che non sia configurato diversamente.
-- `failproofai-sdk` utilizza `AGENTEYE_HOME` per il suo override della directory di base legacy.
-- Le etichette di ambiente possono essere impostate tramite la configurazione dell'SDK o `AGENTEYE_ENVIRONMENT`.
+- Lo stato di Failproof AI risiede in `~/.failproofai` a meno che non sia esplicitamente configurato diversamente.
+- `failproofai-sdk` utilizza `AGENTEYE_HOME` per l'override della directory di base legacy.
+- Le etichette di ambiente possono essere impostate tramite la configurazione SDK o `AGENTEYE_ENVIRONMENT`.
 - Le credenziali del daemon vengono archiviate separatamente dalle impostazioni non segrete.
 
-Utilizza nomi di ambiente stabili e con bassa cardinalità. Le virgole non sono supportate nelle etichette di ambiente del daemon.
+Utilizza nomi di ambiente stabili e a bassa cardinalità. Le virgole non sono supportate nelle etichette di ambiente del daemon.
 
-## Cambia un'etichetta di ambiente
+## Modificare un'etichetta di ambiente
 
 <Tabs>
   <Tab title="Dashboard">
-    Le etichette di ambiente sono assegnate dall'SDK emittente o dal daemon Failproof. Dopo averne modificato una, apri **Observe → Sessions** e utilizza il filtro di ambiente per confermare che le nuove sessioni riportino il nuovo valore. Le sessioni esistenti mantengono il loro ambiente originale.
+    Le etichette di ambiente vengono assegnate dall'SDK o dal daemon Failproof che emette. Dopo aver modificato un'etichetta, apri **Observe → Sessions** e utilizza il filtro dell'ambiente per confermare che le nuove sessioni contengono il nuovo valore. Le sessioni esistenti mantengono l'ambiente originale.
 
   </Tab>
   <Tab title="CLI">
-    Per `failproofai-sdk`, configura l'ambiente nel codice o con la sua variabile di ambiente legacy. Esegui nuovamente la configurazione del daemon quando modifichi le impostazioni a livello di macchina.
+    Per `failproofai-sdk`, configura l'ambiente nel codice o con la sua variabile di ambiente legacy. Esegui di nuovo la configurazione del daemon quando modifichi le impostazioni a livello di macchina.
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east

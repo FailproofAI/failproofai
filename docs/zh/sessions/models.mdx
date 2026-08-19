@@ -1,19 +1,19 @@
 ---
 title: "模型"
-description: "比较模型延迟、Token 数量、上下文使用情况和流量分布。"
+description: "比较模型的延迟、Token 数量、上下文使用情况和流量分布。"
 icon: "cpu"
 ---
 
-使用模型视图，了解可靠性或成本是否随模型、Agent、环境或时间范围的变化而改变。
+使用「模型」页面，查看可靠性或成本是否随模型、Agent、环境或时间范围的变化而改变。
 
 <Tabs>
-  <Tab title="控制台">
+  <Tab title="仪表板">
     1. 前往 **Observe → Models**。
     2. 设置时间范围，然后按环境、模型、Agent 或会话 ID 进行筛选。
     3. 查看延迟、Token 消耗、上下文窗口使用情况和模型分布。
-    4. 选择图表中的某个数据点或分布区段，以打开对应的事件详情。
+    4. 选择图表中的某个数据点或分布区段，以打开对应的事件。
 
-    ![模型页面，展示延迟、百分位数、Token 数量、成本、上下文窗口和模型分布视图。](/images/dashboard/models.png)
+    ![模型页面，展示延迟、百分位、Token、成本、上下文窗口和模型分布视图。](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -22,6 +22,6 @@ icon: "cpu"
     fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
     ```
 
-    对于未作为专用 CLI 命令开放的模型级聚合数据，可使用已保存的查询来获取。
+    对于未作为独立 CLI 命令公开的模型级聚合数据，可使用已保存的查询。
   </Tab>
 </Tabs>

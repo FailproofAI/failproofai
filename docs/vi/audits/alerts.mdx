@@ -1,31 +1,31 @@
 ---
 title: "Cảnh báo"
-description: "Phát hiện tình huống lặp lại và định tuyến sự cố đến những người phản hồi phù hợp."
+description: "Phát hiện sự lặp lại và định tuyến sự cố đến những người phản hồi thích hợp."
 icon: "bell-ring"
 ---
 
-Cảnh báo theo dõi một điều kiện có thể đo lường và tạo một sự cố khi nó được kích hoạt. Sử dụng chúng khi một lỗi cần có phản hồi kịp thời, bất kể chính sách có thể chặn nó hay không.
+Cảnh báo giám sát một điều kiện có thể đo lường được và tạo một sự cố khi nó được kích hoạt. Sử dụng chúng khi một lỗi phải tạo ra phản hồi kịp thời, cho dù liệu một chính sách có thể chặn nó hay không.
 
 ## Tạo và kiểm tra cảnh báo
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi tới **Analyze → Alerts** và chọn **new alert**. Bạn cũng có thể bắt đầu từ biểu tượng chuông trên một lỗi tiêu biểu.
-    2. Nhập tên, mức độ nghiêm trọng, loại kích hoạt, điều kiện, khoảng đánh giá, số lần vi phạm, cửa sổ và kênh.
+    1. Chuyển đến **Analyze → Alerts** và chọn **new alert**. Bạn cũng có thể bắt đầu từ biểu tượng chuông trên một lỗi tiêu biểu.
+    2. Nhập tên, mức độ nghiêm trọng, loại kích hoạt, điều kiện, khoảng thời gian đánh giá, số lần vi phạm, cửa sổ và các kênh.
     3. Lưu cảnh báo, mở trang chi tiết của nó và chạy **test**.
-    4. Đi tới **Analyze → Issues** để xác nhận, gán, thảo luận, đăng ký và giải quyết các sự cố được tạo bởi cảnh báo.
+    4. Chuyển đến **Analyze → Issues** để xác nhận, gán, thảo luận, đăng ký và giải quyết các sự cố được tạo bởi cảnh báo.
 
     Phần đầu tiên của biểu mẫu xác định cảnh báo và tín hiệu sẽ kích hoạt nó.
 
     ![Phần đầu tiên của biểu mẫu new-alert với tên, mô tả, trạng thái bật và loại kích hoạt.](/images/dashboard/alert-new-trigger.png)
 
-    Phần thứ hai kiểm soát thời gian điều kiện phải tồn tại, tần suất đánh giá và nơi gửi thông báo.
+    Phần thứ hai kiểm soát thời gian điều kiện phải kéo dài, tần suất đánh giá và nơi gửi thông báo.
 
-    ![Phần thứ hai của biểu mẫu new-alert với logic vi phạm, lịch biểu, mức độ nghiêm trọng, kênh gửi và hành động tạo.](/images/dashboard/alert-new-routing.png)
+    ![Phần thứ hai của biểu mẫu new-alert với logic vi phạm, lịch trình, mức độ nghiêm trọng, kênh phân phối và hành động tạo.](/images/dashboard/alert-new-routing.png)
 
-    Sau khi lưu, sử dụng danh sách Alerts để xác nhận quy tắc được bật và kích hoạt, cửa sổ, mức độ nghiêm trọng và kênh của nó khớp với ý định của bạn.
+    Sau khi lưu, sử dụng danh sách Cảnh báo để xác nhận rằng quy tắc được bật và các kích hoạt, cửa sổ, mức độ nghiêm trọng và kênh của nó phù hợp với ý định của bạn.
 
-    ![Trang Alerts hiển thị các quy tắc cảnh báo với kích hoạt, cửa sổ đánh giá, kênh và mức độ nghiêm trọng của chúng.](/images/dashboard/alerts.png)
+    ![Trang Alerts hiển thị các quy tắc cảnh báo với các kích hoạt, cửa sổ đánh giá, kênh và mức độ nghiêm trọng của chúng.](/images/dashboard/alerts.png)
 
     Kiểm tra cảnh báo trước khi dựa vào nó để phản hồi sản xuất.
   </Tab>
@@ -41,9 +41,9 @@ Cảnh báo theo dõi một điều kiện có thể đo lường và tạo mộ
     fp alerts update high-errors --severity critical --yes
     ```
 
-    Sử dụng `fp alerts list` để xem lại quy tắc và `fp alerts delete <name>` để xóa một quy tắc.
+    Sử dụng `fp alerts list` để xem lại các quy tắc và `fp alerts delete <name>` để xóa một quy tắc.
 
-    Xem [`fp alerts` reference](/vi/reference/cloud-cli#alerts) để biết bộ lệnh cảnh báo hoàn chỉnh.
+    Xem [tham chiếu `fp alerts`](/vi/reference/cloud-cli#alerts) để có bộ lệnh cảnh báo đầy đủ.
   </Tab>
 </Tabs>
 
@@ -51,12 +51,12 @@ Các điều kiện cảnh báo có thể dựa trên lỗi, điểm đánh giá
 
 ## Thiết kế cảnh báo tốt
 
-- Đặt tên cho điều kiện và quy trình làm việc bị ảnh hưởng.
-- Phạm vi môi trường một cách rõ ràng.
-- Đặt cửa sổ và ngưỡng tránh phản ứng với một sự kiện vô hại.
-- Bao gồm một liên kết hoặc truy vấn dẫn những người phản hồi đến các phiên.
+- Đặt tên cho điều kiện và quy trình công việc bị ảnh hưởng.
+- Xác định phạm vi môi trường một cách rõ ràng.
+- Đặt một cửa sổ và ngưỡng tránh phản ứng với một sự kiện vô hại.
+- Bao gồm một liên kết hoặc truy vấn dẫn những người phản hồi đến các phiên làm việc.
 - Gán một chủ sở hữu trước khi bật quy tắc.
 
 <Tip>
-  Sau khi giải quyết một phát hiện kiểm toán, hãy thêm một cảnh báo khi cùng một lỗi có thể tái diễn ngoài phạm vi của chính sách.
+  Sau khi giải quyết một phát hiện kiểm toán, hãy thêm một cảnh báo khi cùng một lỗi có thể xảy ra lại bên ngoài phạm vi bảo hiểm của chính sách.
 </Tip>

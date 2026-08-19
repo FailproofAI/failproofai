@@ -1,58 +1,58 @@
 ---
-title: "Tích hợp và tài liệu tham khảo"
-description: "Kết nối các agent harness được hỗ trợ, SDK, CLI và HTTP API."
+title: "Tích hợp và tham chiếu"
+description: "Kết nối các harness agent được hỗ trợ, SDK, CLI và HTTP API."
 icon: "braces"
 ---
 
-Chọn tích hợp gần nhất với nơi agent của bạn đang chạy.
+Chọn tích hợp phù hợp nhất với nơi agent của bạn đã chạy.
 
 <Columns cols={2}>
   <Card title="Agent harnesses" icon="plug-zap" href="/vi/reference/harnesses">
-    Cài đặt hooks cho các CLI agent tự trị và lập trình được hỗ trợ.
+    Cài đặt hook cho các CLI agent coding và autonomous được hỗ trợ.
   </Card>
   <Card title="Custom agents" icon="python" href="/vi/reference/python-sdk">
-    Theo dõi các traces để tìm lỗi trong agent tùy chỉnh, sau đó liên hệ với chúng tôi để thêm phòng chống vào runtime của bạn.
+    Instrumentation traces để tìm lỗi trong custom agent, sau đó liên hệ với chúng tôi để thêm ngăn chặn vào runtime của bạn.
   </Card>
   <Card title="Local dashboard" icon="monitor-cog" href="/vi/reference/local-dashboard">
-    Xem lại các dự án cục bộ, phiên làm việc, hoạt động chính sách và kiểm toán ngoại tuyến.
+    Xem xét các dự án cục bộ, phiên làm việc, hoạt động chính sách và audit ngoại tuyến.
   </Card>
   <Card title="Failproof AI CLI" icon="terminal" href="/vi/reference/failproof-cli">
-    Cấu hình thu thập cục bộ, hooks, chính sách, kiểm toán, phân phối và trạng thái máy.
+    Cấu hình ghi lại cục bộ, hook, chính sách, audit, phân phối và trạng thái máy.
   </Card>
   <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/vi/reference/cloud-cli#cli-commands">
-    Truy vấn và quản lý các phiên Cloud, kiểm toán, vấn đề, cảnh báo, khóa, người dùng và cài đặt.
+    Truy vấn và quản trị các phiên Cloud, audit, vấn đề, cảnh báo, khóa, người dùng và cài đặt.
   </Card>
   <Card title="Evaluator SDK" icon="gauge" href="/vi/reference/evaluator-sdk">
-    Đánh giá các phiên hoàn chỉnh hoặc không hoạt động bằng dịch vụ FastAPI.
+    Đánh giá các phiên hoàn chỉnh hoặc không hoạt động với dịch vụ FastAPI.
   </Card>
   <Card title="Custom policies" icon="shield-plus" href="/vi/reference/policy-sdk">
-    Soạn thảo và kiểm tra các quyết định allow, instruct và deny dành riêng cho quy trình.
+    Tạo và kiểm tra quyết định allow, instruct và deny dành riêng cho quy trình làm việc.
   </Card>
   <Card title="Self-hosting" icon="cloud-cog" href="/vi/reference/self-hosting">
-    Triển khai mặt phẳng điều khiển Cloud trên cụm Kubernetes do khách hàng quản lý.
+    Triển khai control plane Cloud trên cụm Kubernetes do khách hàng quản lý.
   </Card>
 </Columns>
 
-[Tài liệu tham khảo HTTP API](/vi/reference/http-api) được tạo ra bao gồm các bề mặt công khai `/v1`. Các trang viết tay giải thích các quy trình công việc trải dài trên nhiều endpoint hoặc sử dụng các giao diện hành chính bên ngoài bề mặt công khai đó.
+[Tham chiếu HTTP API](/vi/reference/http-api) được tạo bao gồm bề mặt công khai `/v1`. Các trang được viết tay giải thích các quy trình làm việc trải dài nhiều endpoint hoặc sử dụng các giao diện quản trị bên ngoài bề mặt công khai đó.
 
 ## Kết nối một agent và xác minh dữ liệu
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Mở **Administration → Keys**, tạo một khóa với `events:add` và `policies:pull`, và sao chép bí mật.
-    2. Cấu hình tích hợp bằng cách sử dụng trang phù hợp ở trên.
-    3. Mở **Observe → Events** để xác nhận sự kiện đến, sau đó **Observe → Sessions** để xác nhận chúng tạo thành các lần chạy hoàn chỉnh.
-    4. Lọc theo môi trường của tích hợp và kiểm tra một phiên để tìm các trường model, tool, error và policy cần thiết cho kiểm toán.
+    1. Mở **Administration → Keys**, tạo khóa với `events:add` và `policies:pull`, và sao chép bí mật.
+    2. Cấu hình tích hợp bằng trang phù hợp ở trên.
+    3. Mở **Observe → Events** để xác nhận các sự kiện đến, sau đó **Observe → Sessions** để xác nhận chúng tạo thành các lần chạy hoàn chỉnh.
+    4. Lọc theo môi trường tích hợp và kiểm tra một phiên làm việc để tìm các trường model, tool, error và policy cần thiết cho audit.
 
     Bắt đầu với ngăn kéo khóa. Các quyền được chọn xác định xem máy có thể gửi sự kiện và nhận chính sách do Cloud quản lý hay không.
 
     ![Ngăn kéo tạo khóa API mới được sử dụng để cấp quyền nhập sự kiện và phân phối chính sách.](/images/dashboard/key-create.png)
 
-    Sau khi kết nối tích hợp, sử dụng danh sách Sessions để xác nhận rằng các sự kiện của nó đang được nhóm lại thành các lần chạy hoàn chỉnh trong môi trường dự kiến.
+    Sau khi kết nối tích hợp, sử dụng danh sách Sessions để xác nhận rằng các sự kiện của nó được nhóm thành các lần chạy hoàn chỉnh trong môi trường dự kiến.
 
     ![Danh sách Sessions được sử dụng để xác minh rằng tích hợp mới được kết nối đang báo cáo các lần chạy agent hoàn chỉnh.](/images/dashboard/sessions-list.png)
 
-    Mở một trong những phiên này trước khi coi tích hợp là hoàn chỉnh; dấu vết phải chứa bằng chứng về model, tool, error và policy mà kiểm toán của bạn cần.
+    Mở một trong các phiên làm việc này trước khi coi tích hợp là hoàn thành; trace phải chứa các bằng chứng model, tool, error và policy mà audit của bạn cần.
   </Tab>
   <Tab title="CLI">
     Tạo khóa máy, kết nối daemon Failproof và xác minh phiên đầu tiên.
@@ -71,8 +71,8 @@ Chọn tích hợp gần nhất với nơi agent của bạn đang chạy.
     fp events --since 1h --env production --limit 20
     ```
 
-    Sử dụng `fp --json sessions ...` khi một công cụ khác sẽ sử dụng kết quả. Các cờ toàn cục như `--json`, `--org` và `--base-url` phải đứng trước lệnh.
+    Sử dụng `fp --json sessions ...` khi một công cụ khác sẽ tiêu thụ kết quả. Các cờ toàn cục như `--json`, `--org` và `--base-url` phải đặt trước lệnh.
 
-    Xem [tài liệu tham khảo Failproof AI CLI](/vi/reference/failproof-cli) để tìm các lệnh cục bộ và [tài liệu tham khảo Failproof Cloud CLI](/vi/reference/cloud-cli#cli-commands) để tìm các lệnh `fp`.
+    Xem [tham chiếu Failproof AI CLI](/vi/reference/failproof-cli) để biết các lệnh cục bộ và [tham chiếu Failproof Cloud CLI](/vi/reference/cloud-cli#cli-commands) để biết các lệnh `fp`.
   </Tab>
 </Tabs>

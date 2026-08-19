@@ -4,26 +4,26 @@ description: "Explora datos de sesiones, eventos y evaluaciones con SQL reutiliz
 icon: "database"
 ---
 
-Las consultas son la capa flexible que subyace a los paneles, auditorías e investigaciones. Usa SQL ad-hoc para probar una idea y luego guarda la consulta cuando se convierta en parte de un flujo de trabajo recurrente.
+Las consultas son la capa flexible que sustenta los dashboards, las auditorías y las investigaciones. Usa SQL ad-hoc para probar una idea y guarda la consulta cuando pase a formar parte de un flujo de trabajo recurrente.
 
 ## Crear y ejecutar una consulta
 
 <Tabs>
-  <Tab title="Panel de control">
+  <Tab title="Dashboard">
     1. Ve a **Analyze → Queries** y selecciona **new query**.
-    2. Abre el explorador de esquema y elige campos de los datos de eventos, sesiones o evaluaciones.
-    3. Escribe el SQL, agrega parámetros cuando sea necesario y ejecuta la consulta.
-    4. Guárdala con un nombre y descripción claros, y luego usa **add to dashboard** cuando el resultado deba monitorizarse.
+    2. Abre el explorador de esquemas y elige campos de los datos de eventos, sesiones o evaluaciones.
+    3. Escribe el SQL, añade parámetros si es necesario y ejecuta la consulta.
+    4. Guárdala con un nombre y una descripción claros y, si el resultado debe monitorizarse, usa **add to dashboard**.
 
-    El editor de consultas combina el esquema de eventos, SQL, parámetros y una vista previa de resultados para que puedas validar la pregunta antes de guardarla.
+    El editor de consultas combina el esquema de eventos, el SQL, los parámetros y una vista previa de los resultados para que puedas validar la pregunta antes de guardarla.
 
-    ![El editor de consultas SQL con un explorador de esquema y una cuadrícula de resultados en vivo.](/images/dashboard/query-lab.png)
+    ![El editor de consultas SQL con un explorador de esquemas y una cuadrícula de resultados en tiempo real.](/images/dashboard/query-lab.png)
 
-    Las consultas guardadas aparecen en la biblioteca compartida, donde los compañeros de equipo pueden volver a ejecutarlas o agregar sus resultados a los paneles.
+    Las consultas guardadas aparecen en la biblioteca compartida, donde los compañeros de equipo pueden volver a ejecutarlas o añadir sus resultados a los dashboards.
 
-    ![La biblioteca de consultas guardadas que contiene consultas integradas y personalizadas reutilizables.](/images/dashboard/queries.png)
+    ![La biblioteca de consultas guardadas con consultas integradas y personalizadas reutilizables.](/images/dashboard/queries.png)
 
-    Usa un nombre y descripción claros para que el resultado sea comprensible sin necesidad de abrir de nuevo el SQL.
+    Usa un nombre y una descripción claros para que el resultado siga siendo comprensible sin necesidad de abrir el SQL.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -34,15 +34,15 @@ Las consultas son la capa flexible que subyace a los paneles, auditorías e inve
     fp query update <query-id> --sql "SELECT ..."
     ```
 
-    Usa `fp query list` para encontrar IDs y `fp query delete <query-id>` para eliminar una consulta guardada.
+    Usa `fp query list` para encontrar los IDs y `fp query delete <query-id>` para eliminar una consulta guardada.
   </Tab>
 </Tabs>
 
-## Usos comunes
+## Usos habituales
 
 - Encontrar sesiones con llamadas repetidas a la misma herramienta.
 - Comparar puntuaciones de evaluación entre modelos o entornos.
-- Medir el tiempo entre una espera humana y la reanudación.
+- Medir el tiempo entre una espera humana y su reanudación.
 - Identificar denegaciones de políticas seguidas de una alternativa exitosa.
 - Construir una cohorte para una auditoría.
 

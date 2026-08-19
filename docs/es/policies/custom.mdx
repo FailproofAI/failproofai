@@ -1,18 +1,18 @@
 ---
 title: "Políticas personalizadas"
-description: "Escribe una política para un modo de fallo único en tu flujo de trabajo de agente."
+description: "Escribe una política para un modo de fallo específico de tu flujo de trabajo de agente."
 icon: "shield-plus"
 ---
 
-Crea un archivo que termine en `policies.js`, `policies.mjs` o `policies.ts` dentro de `.failproofai/policies/`. Los archivos de convención se cargan automáticamente en el ámbito de proyecto y de usuario.
+Crea un archivo con extensión `policies.js`, `policies.mjs` o `policies.ts` dentro de `.failproofai/policies/`. Los archivos de convención se cargan automáticamente en el ámbito del proyecto y del usuario.
 
 ## Prueba la política antes de publicarla en la nube
 
 <Tabs>
   <Tab title="Panel de control">
-    1. Instala la política personalizada en una máquina de prueba y activa tanto una acción que coincida como una que no lo haga legítimamente.
+    1. Instala la política personalizada en una máquina de prueba y activa tanto una acción que coincida como una legítima que no coincida.
     2. Ve a **Observar → política** y compara las dos decisiones.
-    3. Abre cada sesión vinculada y verifica que el payload del evento contenga evidencia suficiente para la regla.
+    3. Abre cada sesión vinculada y verifica que el payload del evento contenga suficiente evidencia para la regla.
     4. Cuando el comportamiento sea correcto, mueve el código revisado a **Admin → editor de políticas** y publica una versión.
 
   </Tab>
@@ -23,7 +23,7 @@ Crea un archivo que termine en `policies.js`, `policies.mjs` o `policies.ts` den
     failproofai policies
     ```
 
-    Los archivos de convención dentro de `.failproofai/policies/` se cargan sin `--custom`. Mantén un comando de instalación explícito en CI cuando la validación deba fallar ante un módulo roto.
+    Los archivos de convención dentro de `.failproofai/policies/` se cargan sin `--custom`. Mantén un comando de instalación explícito en CI cuando la validación deba fallar con un módulo roto.
   </Tab>
 </Tabs>
 
@@ -53,20 +53,20 @@ Valida e instala un archivo explícito:
 failproofai policies --install --custom ./security.policies.ts
 ```
 
-El contexto de la política incluye el tipo de evento, el payload normalizado, el nombre e input de la herramienta, los metadatos de la sesión, los parámetros y el CLI de origen cuando está disponible.
+El contexto de la política incluye el tipo de evento, el payload normalizado, el nombre e input de la herramienta, los metadatos de sesión, los parámetros y el CLI de origen cuando está disponible.
 
-## Prueba los caminos de fallo
+## Prueba las rutas de fallo
 
-Ejecuta la validación después de cambiar el archivo de entrada o cualquier módulo local que importe:
+Ejecuta la validación después de modificar el archivo de entrada o cualquier módulo local que importe:
 
 ```bash
 failproofai policies --install --custom ./security.policies.ts --scope project
 ```
 
-La ruta estricta del CLI falla ante archivos inexistentes, errores de sintaxis, importaciones no resueltas, excepciones en el nivel superior y tiempos de espera en la carga del módulo. En el momento de la aplicación, un archivo personalizado roto se registra y se omite para que las políticas integradas puedan continuar. Trata cualquier advertencia de carga como una pérdida de la aplicación esperada y genera una alerta en los registros de producción.
+La ruta CLI con --strict falla ante archivos faltantes, errores de sintaxis, importaciones no resueltas, excepciones en el nivel superior y tiempos de espera de carga del módulo. En el momento de aplicación de la política, un archivo personalizado roto se registra y se omite para que las políticas integradas puedan continuar. Trata cualquier advertencia de carga como una pérdida de la aplicación esperada y genera una alerta en los registros de producción.
 
-Usa nombres globalmente únicos en las políticas explícitas, de convención y gestionadas por la nube. Mantén las funciones de política deterministas, limita las llamadas externas con tiempos de espera cortos y devuelve un `allow`, `instruct` o `deny` intencional en cada camino.
+Usa nombres únicos globalmente entre políticas explícitas, de convención y gestionadas en la nube. Mantén las funciones de política deterministas, limita las llamadas externas con tiempos de espera cortos, y devuelve un `allow`, `instruct` o `deny` intencional en cada ruta de ejecución.
 
 <Warning>
-  Una política personalizada es código de aplicación. Prueba campos faltantes, nombres de herramientas alternativos e inputs malformados, no solo la coincidencia esperada.
+  Una política personalizada es código de aplicación. Prueba campos faltantes, nombres de herramienta alternativos y entradas con formato incorrecto, no solo la coincidencia esperada.
 </Warning>

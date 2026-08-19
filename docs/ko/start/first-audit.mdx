@@ -1,10 +1,10 @@
 ---
-title: "첫 번째 실패 검사 실행"
+title: "첫 번째 실패 검사 실행하기"
 description: "Cloud 대시보드 또는 fp CLI에서 감사를 생성하고 첫 번째 결과를 검토합니다."
 icon: "scan-search"
 ---
 
-감사는 일련의 세션을 우선순위가 지정된 증거 기반 실패 발견 사항으로 변환합니다. 하나의 구체적인 실패 질문부터 시작하세요.
+감사는 세션 집합을 우선순위가 매겨진, 증거 기반의 실패 결과로 변환합니다. 하나의 구체적인 실패 질문부터 시작하세요.
 
 <Tabs>
   <Tab title="대시보드">
@@ -13,16 +13,16 @@ icon: "scan-search"
         Cloud 사이드바에서 **분석 → 감사**로 이동합니다. **새 감사**를 선택합니다.
       </Step>
       <Step title="감사 설정">
-        이름과 직접적인 실패 목표를 입력합니다. 예: "입력을 변경하거나 에스컬레이션 없이 동일한 실패한 결제 호출을 재시도하는 프로덕션 세션 찾기." 에이전트, 환경, 시간 범위, 일정을 선택합니다. 감사자가 워크플로우 규칙을 파악할 수 있도록 간략한 설명과 참조 URL을 추가합니다.
+        이름과 직접적인 실패 목표를 입력합니다. 예: "입력값을 변경하거나 에스컬레이션 없이 동일한 결제 호출을 재시도하는 프로덕션 세션 찾기". 에이전트, 환경, 시간 범위, 일정을 선택합니다. 감사자가 워크플로우 규칙을 이해해야 하는 경우 간단한 설명과 참고 URL을 추가합니다.
       </Step>
-      <Step title="감사 생성 및 실행 대기">
-        **감사 생성**을 선택합니다. 첫 번째 실행은 즉시 대기열에 추가됩니다. 감사 카드를 열어 대기 중 → 실행 중 → 완료 상태로 변화하는 과정을 확인합니다.
+      <Step title="생성 후 실행 대기">
+        **감사 생성**을 선택합니다. 첫 번째 실행은 즉시 대기열에 추가됩니다. 감사 카드를 열어 대기 중 → 실행 중 → 완료로 상태가 변경되는 과정을 확인합니다.
       </Step>
     </Steps>
 
-    실행이 완료되면 발견 사항을 열고 세션 증거를 검토합니다. 이후 확인, 할당, 무시, 음소거 또는 해결 처리를 할 수 있습니다.
+    실행이 완료되면 결과를 열고 세션 증거를 검토합니다. 이후 결과를 확인, 할당, 기각, 음소거, 또는 해결 처리할 수 있습니다.
 
-    ![실패 설명, 권장 조치, 지원 증거, 영향받은 세션을 보여주는 완료된 감사 발견 사항.](/images/dashboard/audit-finding.png)
+    ![실패 설명, 권장 조치, 지원 증거 및 영향받은 세션을 보여주는 완료된 감사 결과.](/images/dashboard/audit-finding.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,7 +37,7 @@ icon: "scan-search"
     fp audits finding <finding-id>
     ```
 
-    참조 컨텍스트를 추가한 후 소스가 변경되면 새로 고칩니다:
+    참고 컨텍스트를 추가하고 소스가 변경될 때 갱신합니다:
 
     ```bash
     fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
@@ -45,8 +45,8 @@ icon: "scan-search"
     fp audits run payment-retry-failures
     ```
 
-    `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, 또는 `fp audits reopen <finding-id>`를 사용하여 발견 사항을 트리아지 과정에서 처리합니다.
+    `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, 또는 `fp audits reopen <finding-id>`를 사용하여 결과를 트리아지 단계별로 이동합니다.
   </Tab>
 </Tabs>
 
-다음으로, 확인된 반복 가능한 작업에 대해 [정책으로 첫 번째 실패를 방지](/ko/start/first-policy)합니다.
+다음으로, 반복 가능하다고 확인된 작업에 대해 [정책으로 첫 번째 실패를 방지하기](/ko/start/first-policy)를 진행하세요.

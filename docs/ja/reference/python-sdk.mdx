@@ -1,15 +1,15 @@
 ---
 title: "カスタムエージェント"
-description: "カスタムエージェントのトレースを計装し、Failproof AI が実行を再構成して障害を発見できるようにします。"
+description: "カスタムエージェントのトレースをインストルメント化し、Failproof AI が実行を再構築して障害を検出できるようにします。"
 icon: "python"
 ---
 
-`failproofai-sdk` を使ってカスタムエージェントのトレースを計装することで、Failproof AI が各実行を再構成し、その動作を監査し、証拠に基づいた障害を発見できるようになります。SDK は構造化されたイベントを書き込み、Failproof デーモンが Cloud に配信します。Python 3.10 以降が必要です。
+`failproofai-sdk` を使用してカスタムエージェントのトレースをインストルメント化することで、Failproof AI が各実行を再構築し、その動作を監査し、根拠に基づく障害を検出できるようになります。SDK は構造化イベントを書き込み、Failproof デーモンがそれをクラウドに配信します。Python 3.10 以上が必要です。
 
-トレースにより、カスタムエージェントを観測可能かつ監査可能にできます。安全でないアクションの実行前に防止するには、ランタイムにエンフォースメントフックも必要です。
+トレースによってカスタムエージェントを観測可能かつ監査可能にできます。安全でないアクションが実行される前に防止するには、ランタイムに enforcement hook も必要です。
 
 <Info>
-  カスタムエージェント構成でポリシーを適用するには、[Failproof AI にお問い合わせください](mailto:support@befailproof.ai)。ランタイムのモデル、ツール、ライフサイクルの境界をポリシーフックにマッピングするお手伝いをします。
+  カスタムエージェント環境でポリシーを適用するには、[Failproof AI にお問い合わせください](mailto:support@befailproof.ai)。ランタイムのモデル、ツール、ライフサイクルの境界をポリシーフックにマッピングするお手伝いをします。
 </Info>
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
@@ -18,7 +18,7 @@ icon: "python"
 
 ## `failproofai-sdk` のインストール
 
-SDK は現在、プライベートな wheel として配布されています。現在のバージョンとダウンロードアクセスについては、Failproof AI の担当者にお問い合わせください。
+SDK は現在プライベートホイールとして配布されています。最新バージョンとダウンロードアクセスについては、Failproof AI の担当者にお問い合わせください。
 
 ```bash
 VERSION=<sdk-version>
@@ -26,20 +26,20 @@ pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
 python -c "import failproofai; print(failproofai.__version__)"
 ```
 
-`uv` を使用する場合は、wheel を先にダウンロードし、`uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl` を実行してください。プライベートアーティファクトリポジトリまたは依存関係ロックに wheel を固定してください。
+`uv` を使用する場合は、まずホイールをダウンロードしてから `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl` を実行してください。ホイールはプライベートアーティファクトリポジトリまたは依存関係ロックファイルに固定してください。
 
 パッケージは `failproofai-sdk` としてインストールされ、Python では `failproofai` としてインポートします。
 
-## Failproof デーモンの接続
+## Failproof デーモンへの接続
 
 <Tabs>
   <Tab title="ダッシュボード">
     1. **Admin → Keys** に移動し、`events:add` 権限を持つキーを作成します。
-    2. エージェントマシンで [Failproof デーモンを Cloud に接続します](/ja/start/setup#connect-a-machine-to-cloud)。
-    3. 計装済みのセッションを 1 回実行し、その正確な ID を **Observe → Events** で確認します。
-    4. **Observe → Sessions** に移動し、同じ環境を選択して、再構成されたトレースを開きます。
+    2. エージェントマシンで [Failproof デーモンをクラウドに接続します](/ja/start/setup#connect-a-machine-to-cloud)。
+    3. インストルメント化されたセッションを 1 回実行し、その正確な ID を **Observe → Events** で確認します。
+    4. **Observe → Sessions** に移動し、同じ環境を選択して、再構築されたトレースを開きます。
 
-    ![カスタム Python エージェントのセッションが実行グラフと順序付きイベントトレースとして再構成されています。](/images/dashboard/session-detail.png)
+    ![カスタム Python エージェントセッションが実行グラフと順序付きイベントトレースとして再構築されている様子。](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -51,9 +51,9 @@ python -c "import failproofai; print(failproofai.__version__)"
   </Tab>
 </Tabs>
 
-## 完全な実行の計装
+## 完全な実行のインストルメント化
 
-プロセス起動時に `configure()` を一度呼び出します。すべてのイベント呼び出しはキーワード引数のみで、安定した `session_id` と `agent_id` が必要です。
+プロセス起動時に `configure()` を一度呼び出します。すべてのイベント呼び出しはキーワード専用で、安定した `session_id` と `agent_id` が必要です。
 
 ```python
 import traceback
@@ -112,7 +112,7 @@ else:
     )
 ```
 
-`agent_start` はアクターごとに 1 回だけ発行します。サブエージェントの場合は、親の `session_id` を再利用し、各アクターに固有の `agent_id` を割り当て、`parent_id` にはセッション ID ではなく親の **エージェント ID** を設定します。
+`agent_start` はアクターごとに一度だけ発行してください。サブエージェントの場合は、親の `session_id` を再利用し、各アクターに異なる `agent_id` を与え、`parent_id` にはセッション ID ではなく親の **エージェント ID** を設定します。
 
 ## 設定リファレンス
 
@@ -126,20 +126,20 @@ failproofai.configure(
 
 | 設定 | 動作 |
 | --- | --- |
-| `base_dir` | 明示的なスプールルートです。すべての環境変数より優先されます。 |
-| `flush_interval` | メモリから JSONL へのバックグラウンド書き込みの間隔（秒）。デフォルト: `0.5`。 |
+| `base_dir` | 明示的なスプールルート。すべての環境変数より優先されます。 |
+| `flush_interval` | メモリから JSONL へのバックグラウンド書き込み間隔（秒）。デフォルト: `0.5`。 |
 | `environment` | すべてのイベントに付与されるデプロイメントラベル。デフォルトは `dev`。 |
-| `FAILPROOFAI_HOME` | `custom-agents` スプールを含む Failproof AI のルートを変更します。 |
+| `FAILPROOFAI_HOME` | `custom-agents` スプールを含む Failproof AI ルートを変更します。 |
 
-`base_dir` が設定されている場合、SDK はその明示的なパスに書き込みます。それ以外の場合は、`FAILPROOFAI_HOME` または `~/.failproofai` 配下の Failproof デーモンの `custom-agents` スプールを使用します。
+SDK は `base_dir` が設定されている場合はそこに書き込みます。それ以外は、`FAILPROOFAI_HOME` または `~/.failproofai` 配下にある Failproof デーモンの `custom-agents` スプールを使用します。
 
-SDK は呼び出しをメモリにキューイングし、バックグラウンドスレッドでバッチ書き込みを行います。また、Python の `atexit` ハンドリングを通じて最終フラッシュも試みます。短命なワーカーの場合は、通常のインタープリタシャットダウンを許可してください。プロセスの強制終了により、メモリ内のイベントが失われる可能性があります。
+SDK は呼び出しをメモリにキューイングし、バックグラウンドスレッドでバッチ書き込みを行います。また、Python の `atexit` ハンドリングを通じて最終フラッシュも試みます。短命なワーカーの場合は、通常のインタープリタシャットダウンを許容してください。プロセスの強制終了を行うと、メモリ上のイベントが失われる可能性があります。
 
 ## イベントカタログ
 
 すべてのメソッドは `None` を返します。`None` のままのフィールドは、JSON の `null` として書き込まれるのではなく省略されます。
 
-| メソッド | identity 以外の必須フィールド | オプションフィールド |
+| メソッド | ID 以外の必須フィールド | オプションフィールド |
 | --- | --- | --- |
 | `agent_start` | — | `goal`, `parent_id` |
 | `agent_end` | — | `outcome`, `summary` |
@@ -159,25 +159,25 @@ SDK は呼び出しをメモリにキューイングし、バックグラウン�
 
 完了を失敗としてカウントする場合は、`outcome="failed"`、`"error"`、`"timeout"`、または `"rejected"` を使用してください。`"failure"` を含むその他の値は、現在のバックエンドでは失敗として分類されません。
 
-## 相関と期間のルール
+## 相関とデュレーションのルール
 
 - 対応する完了イベントには、同じ `tool_call_id`、`hook_id`、`pause_id`、または `input_id` を再利用してください。
-- SDK は `tool_result`、`hook_completed`、`agent_resume`、`human_input` の `duration_ms` を計算します。これらのメソッドに自身で渡すと `ValueError` が発生します。
-- ツールとフックの ID はプロセス全体で共有する保留マップを使用します。並行セッションおよび両方の名前空間を通じてグローバルに一意になるようにしてください。プロバイダー ID や UUID が最も安全です。
-- プロセスをまたいで分割されたペアはダウンストリームで相関付けられますが、SDK はプロセス内の期間を計算できません。
-- 保留マップは最大 10,000 件の開始を保持し、満杯になると最も古いエントリを削除します。
+- SDK は `tool_result`、`hook_completed`、`agent_resume`、`human_input` の `duration_ms` を自動計算します。これらのメソッドに自分で渡すと `ValueError` が発生します。
+- ツールとフックの ID はプロセス全体の pending マップを共有します。並行セッション間および両方の名前空間をまたいでグローバルに一意にしてください。プロバイダー ID や UUID が最も安全です。
+- ペアがプロセスをまたいで分割されている場合でも、ダウンストリームで相関は行われますが、SDK はプロセス内のデュレーションを計算できません。
+- pending マップは最大 10,000 件の開始エントリを保持し、満杯になると最も古いエントリを退出させます。
 
 ## カスタムフィールドとペイロード
 
-すべてのイベントは追加のキーワードフィールドを受け付けます。ダウンストリームのクエリで構造が必要な場合は、JSON 互換の値を使用してください。UUID、datetime、decimal、set、bytes、モデルオブジェクトなど、サポートされていない型はライターによって文字列化されます。
+すべてのイベントは追加のキーワードフィールドを受け付けます。ダウンストリームクエリで構造が必要な場合は、JSON 互換の値を使用してください。UUID、datetime、Decimal、set、bytes、モデルオブジェクトなど、サポートされていないリーフ型はライターによって文字列化されます。
 
-予約済みのカスタム名は `timestamp`、`session_id`、`agent_id`、`type`、`environment` です。オプションフィールドのタイポは新しいカスタムフィールドとして受け付けられるため、標準フィールドが Cloud に表示されない場合は、出力された JSON を確認してください。
+予約済みのカスタム名は `timestamp`、`session_id`、`agent_id`、`type`、`environment` です。オプションフィールドのタイプミスは新しいカスタムフィールドとして受け入れられるため、標準フィールドがクラウドに表示されない場合は、発行された JSON を確認してください。
 
-## 配信と確認
+## 配信と検証
 
 <Tabs>
   <Tab title="ダッシュボード">
-    **Observe → Events** で、最初に `agent_start` が存在し、最後に `agent_end` が存在することを確認します。次に **Observe → Sessions** を開き、モデル、ツール、ヒューマン、フック、エラーイベントが意図した順序で表示されていることを確認します。トラブルシューティングの主なキーとしてセッション ID を使用してください。
+    **Observe → Events** で、最初に `agent_start` が存在し、最後に `agent_end` が存在することを確認します。次に **Observe → Sessions** を開き、モデル、ツール、ヒューマン、フック、エラーイベントが意図した順序で表示されていることを確認します。セッション ID をトラブルシューティングの主要キーとして使用してください。
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -189,10 +189,10 @@ SDK は呼び出しをメモリにキューイングし、バックグラウン�
   </Tab>
 </Tabs>
 
-Cloud が空の場合は、`$FAILPROOFAI_HOME/custom-agents/events` を確認するか、なければ `~/.failproofai/custom-agents/events` を確認してください。JSONL ファイルは SDK の出力を証明します。スプールが増え続けている場合はデーモンの設定または配信の問題を、スプールが空の場合は計装またはプロセスの存続期間の問題を示しています。
+クラウドが空の場合は、`$FAILPROOFAI_HOME/custom-agents/events`、それ以外は `~/.failproofai/custom-agents/events` を確認してください。JSONL ファイルは SDK の発行を証明します。スプールが増加している場合はデーモンの設定や配信の問題、スプールが空の場合はインストルメント化またはプロセスライフタイムの問題を示しています。
 
 ## カスタムランタイムでの障害防止
 
-監査結果とリンクされたトレースを使用して、安全でないアクション、必要な証拠、および意図するレスポンスを定義します。カスタムエンフォースメント統合は、実行前にアクションを公開し、その構造化された入力をポリシーエンジンに渡し、結果として得られる allow、instruct、または deny の決定を適用する必要があります。
+監査結果とリンクされたトレースを使用して、安全でないアクション、必要な証拠、および意図した応答を定義します。カスタム enforcement インテグレーションは、実行前にアクションを公開し、その構造化された入力をポリシーエンジンに渡し、結果として得られる allow、instruct、または deny の決定を適用する必要があります。
 
-このインテグレーションをランタイム向けに設計・検証するには、[support@befailproof.ai](mailto:support@befailproof.ai) までメールでお問い合わせください。
+[support@befailproof.ai](mailto:support@befailproof.ai) にメールを送り、お使いのランタイムに合わせたインテグレーションの設計と検証を依頼してください。

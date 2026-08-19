@@ -5,7 +5,7 @@ icon: "cloud-cog"
 ---
 
 <Note>
-  O auto-hospedagem é uma implantação Enterprise. [Entre em contato com o Failproof AI](mailto:support@befailproof.ai) para obter uma licença empresarial.
+  O self-hosting é uma implantação Enterprise. [Entre em contato com o Failproof AI](mailto:support@befailproof.ai) para obter uma licença empresarial.
 </Note>
 
 ## Pré-requisitos
@@ -14,27 +14,27 @@ icon: "cloud-cog"
 - `kubectl` com suporte a Kustomize
 - Helm 3
 - Acesso às imagens privadas `ghcr.io/agenteye-enterprise`
-- Dois nomes DNS: um para o dashboard e outro para ingestão
+- Dois nomes DNS: um para o dashboard e outro para ingest
 - Armazenamento persistente para PostgreSQL e ClickHouse
 - cert-manager e Traefik, ou infraestrutura equivalente de ingress e certificados adaptada ao seu overlay
 - SMTP para login OTP em produção e notificações
 
-A árvore de fontes fornece um overlay orientado a AWS/EKS e um overlay separado para GCP/GKE. Não combine as instruções de certificado, balanceador de carga ou backup entre eles: o GKE utiliza sua própria configuração de DNS-01, GCS e autoescalonamento.
+A árvore de fontes fornece um overlay orientado para AWS/EKS e um overlay separado para GCP/GKE. Não combine as instruções de certificado, balanceador de carga ou backup entre eles: o GKE utiliza sua própria configuração de DNS-01, GCS e autoescalonamento.
 
 ## Sequência de implantação
 
 <Steps>
   <Step title="Preparar o cluster">
-    Instale o cert-manager e os controllers de ingress público/dashboard, verifique seus balanceadores de carga e, em seguida, crie o namespace, as credenciais de pull de imagem, as credenciais do banco de dados, a chave de bootstrap de administrador e os segredos de autenticação/SMTP.
+    Instale o cert-manager e os controladores de ingress público/dashboard, verifique seus balanceadores de carga e, em seguida, crie o namespace, as credenciais de pull de imagem, as credenciais do banco de dados, a chave de bootstrap do administrador e os secrets de autenticação/SMTP.
   </Step>
   <Step title="Configurar domínios públicos">
     Defina `INGEST_DOMAIN` e `DASHBOARD_DOMAIN` no arquivo de ambiente de domínio gerado pelo overlay e crie registros DNS apontando para os balanceadores de carga correspondentes.
   </Step>
   <Step title="Aplicar e verificar um overlay de plataforma">
-    Use o overlay customer/EKS ou GCP. Inspecione o output renderizado pelo Kustomize, aplique-o e confirme que todas as cargas de trabalho e certificados atingiram o estado pretendido antes de registrar máquinas.
+    Use o overlay customer/EKS ou GCP. Inspecione a saída renderizada do Kustomize, aplique-a e confirme que todas as cargas de trabalho e certificados atingiram o estado desejado antes de registrar máquinas.
   </Step>
-  <Step title="Inicializar acesso e ingestão">
-    Faça login como o administrador protegido, crie uma chave de máquina com escopo de organização e envie uma pequena sessão de teste pelo endpoint público de ingestão.
+  <Step title="Inicializar o acesso e a ingestão">
+    Faça login como administrador protegido, crie uma chave de máquina com escopo de organização e envie uma pequena sessão de teste pelo endpoint de ingest público.
   </Step>
 </Steps>
 
@@ -42,30 +42,30 @@ A árvore de fontes fornece um overlay orientado a AWS/EKS e um overlay separado
 
 | Componente | Requisito |
 | --- | --- |
-| ClickHouse | Obrigatório. O servidor se recusa a iniciar sem seu armazenamento de eventos canônico. |
+| ClickHouse | Obrigatório. O servidor recusa a inicialização sem seu armazenamento de eventos canônico. |
 | PostgreSQL | Obrigatório para usuários, organizações, objetos salvos e estado do plano de controle. |
 | Redis | Opcional. O servidor e o dashboard degradam para comportamento baseado em banco de dados quando indisponível. |
-| SMTP | Opcional para desenvolvimento, obrigatório para entrega de OTP por e-mail e notificações em produção. |
+| SMTP | Opcional para desenvolvimento, obrigatório para OTP por e-mail e entrega de notificações em produção. |
 | Evaluator | Opcional. A avaliação automática permanece desabilitada sem `EVALUATOR_ENDPOINT`. |
-| Assistant/audit LLM | Opcional. Os recursos de Assistant e auditoria baseados em LLM permanecem inativos até que uma conexão LLM seja configurada. |
-| Backup em armazenamento de objetos | Fortemente recomendado para arquivos de backup do PostgreSQL e do ClickHouse. |
+| LLM de assistente/auditoria | Opcional. Os recursos de assistente e auditoria baseados em LLM permanecem inativos até que uma conexão LLM seja configurada. |
+| Backup de armazenamento de objetos | Fortemente recomendado para arquivos de backup do PostgreSQL e ClickHouse. |
 
-### Capacidade de auditoria e entrega de falhas
+### Capacidade de auditoria e entrega em caso de falha
 
-Execute auditorias no deployment dedicado de audit-agent quando disponível. Cada pod de audit-agent aceita uma investigação por padrão; escale o throughput com réplicas em vez de aumentar a concorrência por pod sem também aumentar a memória. O servidor pode despachar `réplicas do servidor × AUDIT_WORKERS` auditorias simultaneamente, portanto, a capacidade do dispatcher deve ser grande o suficiente para preencher a frota de audit-agents.
+Execute auditorias no deployment dedicado de audit-agent quando disponível. Cada pod de audit-agent aceita uma investigação por padrão; escalone o throughput com réplicas em vez de aumentar a concorrência por pod sem também aumentar a memória. O servidor pode despachar `réplicas do servidor × AUDIT_WORKERS` auditorias concorrentemente, portanto, a capacidade do dispatcher deve ser grande o suficiente para preencher a frota de audit-agents.
 
-Quando todos os slots do audit-agent estão ocupados, uma auditoria aguarda e tenta novamente por até um quarto de sua cadência, com limite máximo de seis horas. Se nenhum slot ficar disponível, a execução é concluída sem descobertas e envia um e-mail de falha. Falhas repetidas por "ocupado" indicam a necessidade de mais réplicas de audit-agent ou âncoras de agendamento com maior espaçamento. Falhas repetidas por "encerrando" indicam pods instáveis ou um rollout em loop, em vez de capacidade insuficiente.
+Quando todos os slots do audit-agent estão ocupados, uma auditoria aguarda e tenta novamente por até um quarto de sua cadência, limitado a seis horas. Se nenhum slot ficar disponível, a execução é concluída sem resultados e envia um e-mail de falha. Falhas recorrentes do tipo "ocupado" indicam a necessidade de mais réplicas de audit-agent ou âncoras de agendamento mais espaçadas. Falhas recorrentes do tipo "encerrando" indicam pods instáveis ou um rollout em loop, e não capacidade insuficiente.
 
-As notificações de falha exigem um canal de e-mail habilitado e SMTP. Elas utilizam os destinatários da auditoria e, na ausência de um canal de e-mail configurado, recorrem a `alerts.email_default_recipients`.
+As notificações de falha exigem um canal de e-mail habilitado e SMTP. Elas usam os destinatários da auditoria e, na ausência de um canal de e-mail configurado na auditoria, recorrem a `alerts.email_default_recipients`.
 
 ## Verificar a implantação
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse o domínio do dashboard configurado, complete o fluxo de OTP do administrador e confirme o nome e o slug da organização.
-    2. Vá para **Administração → Chaves** e crie uma chave de máquina com escopo restrito.
-    3. Envie uma sessão de teste e, em seguida, confirme-a em **Observar → Eventos** e **Observar → Sessões**.
-    4. Teste um canal de alerta e, quando configurado, uma avaliação manual e auditoria.
+    1. Abra o domínio do dashboard configurado, conclua o fluxo OTP do administrador e confirme o nome e o slug da organização.
+    2. Acesse **Administração → Chaves** e crie uma chave de máquina com escopo restrito.
+    3. Envie uma sessão de teste e confirme-a em **Observar → Eventos** e **Observar → Sessões**.
+    4. Teste um canal de alerta e, quando configurado, uma avaliação manual e uma auditoria.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -78,27 +78,27 @@ As notificações de falha exigem um canal de e-mail habilitado e SMTP. Elas uti
     fp --base-url https://failproof.example.com usage
     ```
 
-    Verifique o endpoint de saúde público e uma requisição autenticada `/v1` antes de registrar máquinas de produção.
+    Verifique o endpoint de saúde público e uma requisição autenticada `/v1` antes de registrar máquinas em produção.
   </Tab>
 </Tabs>
 
 ## Autenticação e e-mail
 
-O dashboard utiliza e-mail e códigos de uso único. Sem SMTP configurado, implantações de desenvolvimento registram os códigos OTP na saída do servidor. Quando `SMTP_HOST` está definido, nome de usuário, senha e remetente são obrigatórios como um grupo, caso contrário o servidor se recusa a iniciar.
+O dashboard utiliza e-mail e códigos de uso único. Sem SMTP, implantações de desenvolvimento registram os códigos OTP na saída do servidor. Quando `SMTP_HOST` está definido, nome de usuário, senha e remetente são obrigatórios em conjunto; caso contrário, o servidor recusa a inicialização.
 
 `SMTP_TLS` é um booleano. O transporte criptografado suportado é STARTTLS, normalmente na porta 587; SMTPS implícito na porta 465 não é suportado pelo transporte atual do servidor.
 
-Configure corretamente a URL pública do dashboard porque os e-mails de OTP, alerta, incidente e auditoria utilizam-na para deep links. A associação à organização controla quem pode solicitar um código; cada organização pode restringir ainda mais os logins de seus próprios membros em **Administração → Configurações**.
+Configure corretamente a URL pública do dashboard, pois os e-mails de OTP, alerta, incidente e auditoria utilizam-na para deep links. A associação à organização controla quem pode solicitar um código; cada organização pode restringir ainda mais os logins de seus próprios membros em **Administração → Configurações**.
 
 ## Requisitos para multi-tenant
 
-Antes de criar uma segunda organização, configure um segredo de derivação ClickHouse de organização forte e estável, e mantenha-o idêntico em todas as réplicas do servidor. Rotacioná-lo sem uma migração coordenada pode tornar órfãos os usuários ClickHouse específicos de cada organização.
+Antes de criar uma segunda organização, configure um secret de derivação ClickHouse forte e estável para a organização e mantenha-o idêntico em todas as réplicas do servidor. Rotacioná-lo sem uma migração coordenada pode tornar os usuários ClickHouse específicos da organização inacessíveis.
 
-Mantenha o listener de administrador da instância interno. O console do operador fornecido é opt-in e foi projetado para `kubectl port-forward`, não para ingress público. Habilitá-lo requer sua própria chave de API forte, uma caixa de correio de super-administrador e entrega funcional do segundo fator via SMTP.
+Mantenha o listener do administrador de instância interno. O console do operador fornecido é opcional e foi projetado para `kubectl port-forward`, não para ingress público. Habilitá-lo requer sua própria chave de API forte, uma caixa de correio de super-admin e entrega funcional do segundo fator via SMTP.
 
-### CLI de organização para emergências
+### CLI de organização para acesso de emergência
 
-`agenteye-orgctl` é distribuído dentro da imagem do servidor e se comunica diretamente com o PostgreSQL e o ClickHouse. Permanece disponível quando o servidor público ou o console do operador estão indisponíveis.
+`agenteye-orgctl` é incluído na imagem do servidor e se comunica diretamente com o PostgreSQL e o ClickHouse. Permanece disponível quando o servidor público ou o console do operador está indisponível.
 
 ```bash
 kubectl -n agenteye exec deploy/server -- \
@@ -108,21 +108,21 @@ kubectl -n agenteye exec deploy/server -- \
   agenteye-orgctl member add --org acme --email ops@acme.com --set admin --protected
 ```
 
-As operações de organização suportadas incluem: criar, listar, renomear, soft-delete, restaurar, reprovisionar usuário ClickHouse, gerenciar data de faturamento, feature flags e purga irreversível. As operações de membro incluem: adicionar, listar, atualizar, remover, substituições de permissão e estado de administrador protegido.
+As operações de organização suportadas incluem: criar, listar, renomear, exclusão lógica, restaurar, reprovisionamento de usuário ClickHouse, gerenciamento de data de faturamento, feature flags e exclusão irreversível. As operações de membros incluem: adicionar, listar, atualizar, remover, substituições de permissão e estado de administrador protegido.
 
-Use o soft-delete antes da purga. `org purge` é irreversível e exige que a organização esteja excluída primeiro. Membros protegidos não podem ser removidos ou rebaixados pela página comum de Usuários da organização até que um operador os desproteja explicitamente.
+Use a exclusão lógica antes da exclusão definitiva. `org purge` é irreversível e exige que a organização seja excluída primeiro. Membros protegidos não podem ser removidos ou rebaixados pela página comum de Usuários da organização até que um operador os desproteja explicitamente.
 
-## Lista de verificação para produção
+## Checklist de prontidão para produção
 
-- O DNS de ingestão e dashboard resolve para caminhos de ingress distintos e corretos.
-- O TLS é válido; use TLS mútuo na ingestão onde sua implantação exigir.
-- Os volumes do PostgreSQL e do ClickHouse têm alertas de capacidade.
+- DNS de ingest e dashboard resolve para os caminhos de ingress pretendidos diferentes.
+- O TLS é válido; use TLS mútuo no ingest onde sua implantação exigir.
+- Os volumes do PostgreSQL e ClickHouse possuem alertas de capacidade.
 - Os backups incluem ambos os datastores e possuem um procedimento de restauração testado.
-- As verificações de saúde alertam sobre silêncio de ingestão, cargas de trabalho com falha, vencimento de certificados, pressão de armazenamento e backups desatualizados.
-- Os logs estruturados são coletados sem duplicar um pipeline de logs de cluster existente.
-- A concorrência dos workers de Evaluator, auditoria e alertas não foi alterada sem evidências mensuradas de fila.
-- Uma versão da aplicação fixada e um procedimento de rollback estão registrados antes de atualizações.
+- Os health checks alertam sobre silêncio no ingest, cargas de trabalho com falha, expiração de certificados, pressão de armazenamento e backups desatualizados.
+- Os logs estruturados são coletados sem duplicar um pipeline de logs existente no cluster.
+- A concorrência do Evaluator, auditoria e workers de alerta não foi alterada sem evidências mensuradas de fila.
+- Uma release de aplicação fixada e um procedimento de rollback estão registrados antes das atualizações.
 
 <Warning>
-  Os manifestos de implantação contêm premissas de segurança e disponibilidade específicas de plataforma. Revise os recursos renderizados, políticas de rede, exposição de ingress, referências de segredos, classes de armazenamento, orçamentos de interrupção e destinos de backup com sua equipe de plataforma antes de aplicá-los.
+  Os manifestos de implantação contêm suposições de segurança e disponibilidade específicas da plataforma. Revise os recursos renderizados, as políticas de rede, a exposição do ingress, as referências a secrets, as classes de armazenamento, os orçamentos de interrupção e os destinos de backup com sua equipe de plataforma antes de aplicá-los.
 </Warning>

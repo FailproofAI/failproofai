@@ -1,15 +1,15 @@
 ---
-title: "Quickstart"
-description: "Ghi lại phiên làm việc của agent, tìm lỗi và bắt đầu ngăn chặn nó."
+title: "Bắt đầu nhanh"
+description: "Capture một phiên làm việc của agent, tìm kiếm lỗi, và bắt đầu ngăn chặn nó."
 icon: "zap"
 ---
 
-Quickstart này giúp một máy báo cáo phiên làm việc, chạy kiểm toán và triển khai chính sách. Sử dụng kỹ năng để thiết lập Failproof AI hoặc làm theo các bước thủ công. Bạn cần Node.js 20.9 hoặc mới hơn.
+Hướng dẫn bắt đầu nhanh này sẽ giúp bạn đưa một máy tính vào báo cáo phiên làm việc, chạy kiểm toán, và triển khai một chính sách. Sử dụng kỹ năng để thiết lập Failproof AI, hoặc thực hiện các bước thủ công. Bạn cần Node.js 20.9 hoặc mới hơn.
 
 <Tabs>
   <Tab title="Sử dụng kỹ năng">
     <Steps>
-      <Step title="Cài đặt Failproof AI skills">
+      <Step title="Cài đặt các kỹ năng Failproof AI">
         ```bash
         npx skills add FailproofAI/skills
         ```
@@ -19,7 +19,7 @@ Quickstart này giúp một máy báo cáo phiên làm việc, chạy kiểm to�
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        Agent của bạn sẽ kiểm tra dự án, chọn tích hợp phù hợp, thực hiện thiết lập và xác minh. Xem [kho lưu trữ FailproofAI skills](https://github.com/FailproofAI/skills) để xem các kỹ năng riêng lẻ và các tùy chọn cài đặt nâng cao.
+        Agent của bạn sẽ kiểm tra dự án, chọn tích hợp phù hợp, thực hiện thiết lập, và xác minh nó. Xem [kho lưu trữ kỹ năng FailproofAI](https://github.com/FailproofAI/skills) để biết các kỹ năng riêng lẻ và các tùy chọn cài đặt nâng cao.
       </Step>
     </Steps>
   </Tab>
@@ -27,8 +27,8 @@ Quickstart này giúp một máy báo cáo phiên làm việc, chạy kiểm to�
     ## Trước khi bắt đầu
 
 1. Mở [bảng điều khiển Failproof AI](https://app.befailproof.ai) và tạo tài khoản hoặc đăng nhập bằng email công việc của bạn.
-2. Đi tới **Administration → Keys** và tạo một khóa với `events:add` và `policies:pull`.
-3. Sao chép mã bí mật một lần và lưu trữ nó trên máy đích:
+2. Đi đến **Administration → Keys** và tạo một khóa với `events:add` và `policies:pull`.
+3. Sao chép bí mật một lần và lưu trữ nó trên máy tính mục tiêu:
 
 ```bash
 export FAILPROOFAI_KEY="<one-time-secret>"
@@ -43,9 +43,9 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
     ```
 
-    Các bản ghi phiên được gửi theo mặc định. Thêm `--no-transcripts` để báo cáo hoạt động hook và quyết định chính sách mà không có nội dung bản ghi.
+    Các bản ghi phiên làm việc được gửi theo mặc định. Thêm `--no-transcripts` để báo cáo hoạt động hook và các quyết định chính sách mà không có nội dung bản ghi.
 
-    Nếu máy này đã có lịch sử agent, hãy xem trước và nhập bảy ngày qua, sau đó chờ quá trình gửi hoàn tất. Bỏ qua bước này trên máy mới.
+    Nếu máy tính này đã có lịch sử agent, xem trước và nhập bảy ngày cuối cùng, sau đó chờ quá trình gửi hoàn tất. Bỏ qua bước này trên một máy tính mới.
 
     ```bash
     failproofai backfill --since 7d --dry-run
@@ -53,27 +53,27 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai flush --wait
     ```
 
-    Mở **Sessions** trong Failproof AI và chọn một phiên đã nhập.
+    Mở **Sessions** trong Failproof AI và chọn một phiên làm việc được nhập.
   </Step>
   <Step title="Cài đặt agent hooks và chính sách">
-    Điều này gắn Failproof AI vào CLI agent của bạn và cài đặt các chính sách tích hợp sẵn. Sử dụng chúng để xem các quyết định chính sách cục bộ và thử thực thi trước khi Failproof AI kiểm toán phiên của bạn và viết chính sách cho agent của bạn.
+    Điều này sẽ gắn Failproof AI vào CLI agent của bạn và cài đặt các chính sách được tích hợp sẵn. Sử dụng chúng để xem các quyết định chính sách cục bộ và thử thực thi trước khi Failproof AI kiểm toán phiên làm việc của bạn và viết chính sách cho các agent của bạn.
 
-    Để trình cài đặt tự động phát hiện CLI agent của bạn hoặc chỉ định một cách rõ ràng.
+    Để trình cài đặt phát hiện CLI agent của bạn, hoặc chỉ định một CLI một cách rõ ràng.
 
     ```bash
     failproofai policies --install --cli claude --scope user
     ```
   </Step>
   <Step title="Kiểm toán hành vi">
-    Làm theo [Chạy kiểm tra lỗi đầu tiên của bạn](/vi/start/first-audit). Sử dụng một mục tiêu cụ thể như "tìm các phiên nơi agent thử lại công cụ bị lỗi mà không thay đổi cách tiếp cận của nó."
+    Làm theo [Chạy kiểm tra lỗi đầu tiên của bạn](/vi/start/first-audit). Sử dụng một mục tiêu cụ thể chẳng hạn như "tìm các phiên làm việc nơi agent thử lại một công cụ không thành công mà không thay đổi cách tiếp cận của nó."
   </Step>
   <Step title="Ngăn chặn lỗi">
-    Làm theo [Ngăn chặn lỗi đầu tiên của bạn bằng chính sách](/vi/start/first-policy). Bắt đầu ở chế độ quan sát, kiểm tra các kết quả khớp, sau đó thực thi phiên bản đã xem xét.
+    Làm theo [Ngăn chặn lỗi đầu tiên của bạn bằng một chính sách](/vi/start/first-policy). Bắt đầu ở chế độ quan sát, kiểm tra các kết quả khớp, sau đó thực thi phiên bản đã được xem xét.
   </Step>
 </Steps>
 
 <Check>
-  Chạy `failproofai config --status`. Thiết lập lành mạnh sẽ báo cáo kết nối đám mây, trạng thái daemon và liệu việc thực thi có bị tạm dừng hay không.
+  Chạy `failproofai config --status`. Một thiết lập lành mạnh sẽ báo cáo kết nối đám mây, trạng thái daemon, và liệu thực thi có bị tạm dừng hay không.
 </Check>
   </Tab>
 </Tabs>

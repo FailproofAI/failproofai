@@ -1,10 +1,10 @@
 ---
 title: "Errori"
-description: "Raggruppa gli errori ripetuti e apri le sessioni sottostanti."
+description: "Raggruppa gli errori ripetuti e apri le sessioni correlate."
 icon: "circle-alert"
 ---
 
-Errori ti offre una vista incentrata sui problemi attraverso le sessioni. Raggruppa per tipo di errore, agente, ambiente, modello, strumento o finestra temporale per trovare i problemi operativi ricorrenti.
+Errors ti offre una visualizzazione focalizzata sui fallimenti tra le sessioni. Raggruppa per tipo di errore, agente, ambiente, modello, strumento o intervallo di tempo per trovare i problemi operativi ricorrenti.
 
 ## Investigare gli errori
 
@@ -12,10 +12,10 @@ Errori ti offre una vista incentrata sui problemi attraverso le sessioni. Raggru
   <Tab title="Dashboard">
     1. Vai a **Observe → Errors**.
     2. Filtra per ambiente, tipo di evento, tipo di errore, agente, ID sessione o testo di ricerca.
-    3. Espandi un errore raggruppato per visualizzare le occorrenze. Seleziona una riga per aprire l'evento esatto nella sua sessione.
-    4. Seleziona il controllo della campana su un errore rappresentativo per avviare un avviso per errori simili.
+    3. Espandi un errore raggruppato per vedere gli eventi. Seleziona una riga per aprire l'evento esatto nella sua sessione.
+    4. Seleziona il controllo della campana su un errore rappresentativo per iniziare un avviso per errori simili.
 
-    ![Pagina Errori che mostra un istogramma di guasti, errori raggruppati e il controllo per la creazione di un avviso.](/images/dashboard/errors.png)
+    ![La pagina Errors che mostra un istogramma dei fallimenti, errori raggruppati e il controllo per la creazione di un avviso.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,11 +24,11 @@ Errori ti offre una vista incentrata sui problemi attraverso le sessioni. Raggru
     fp errors --aggregate --env production --since 7d
     ```
 
-    Usa `fp events --full --session-id <id>` quando hai bisogno del payload grezzo dietro a un riepilogo degli errori.
+    Usa `fp events --full --session-id <id>` quando hai bisogno del payload grezzo dietro un riepilogo degli errori.
   </Tab>
 </Tabs>
 
-## Usa Errori quando hai bisogno di
+## Usa Errors quando devi
 
 - Trovare la classe di errore più frequente in produzione.
 - Determinare se uno strumento o un modello causa un picco.
@@ -36,7 +36,7 @@ Errori ti offre una vista incentrata sui problemi attraverso le sessioni. Raggru
 - Creare un avviso per la ricorrenza.
 - Includere la popolazione interessata in un audit.
 
-Un errore è un evento osservato. Una valutazione fallita è un giudizio sulla qualità, e un risultato di audit è un pattern di guasto investigato. Mantieni queste distinzioni quando decidi quale flusso di lavoro di risposta utilizzare.
+Un errore è un evento osservato. Una valutazione non riuscita è un giudizio di qualità, e un risultato di audit è un modello di fallimento investigato. Mantieni queste distinzioni quando decidi quale workflow di risposta utilizzare.
 
 <Card title="Crea un avviso" icon="bell-ring" href="/it/audits/alerts">
   Notifica ai responsabili quando un errore o una condizione di qualità supera una soglia.

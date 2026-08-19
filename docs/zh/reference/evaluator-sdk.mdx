@@ -1,10 +1,10 @@
 ---
-title: "评估器 SDK"
-description: "构建一个同步或异步为 Failproof AI 会话评分的服务。"
+title: "Evaluator SDK"
+description: "构建一个对 Failproof AI 会话进行同步或异步评分的服务。"
 icon: "gauge"
 ---
 
-评估器接收已完成的 Agent 会话，并返回您关注的质量信号：数值分数、每项分数的解释以及可选的摘要。Failproof AI 会将这些结果与追踪记录一起存储，并在不同 Agent 和环境之间进行图表展示。
+评估器接收已完成的 Agent 会话，并返回您关注的质量信号：数值分数、每项分数的说明以及可选的摘要。Failproof AI 将这些结果与追踪记录一同存储，并在各 Agent 和环境之间进行图表化展示。
 
 ## 设置评估器
 
@@ -18,7 +18,7 @@ icon: "gauge"
   </Step>
 
   <Step title="定义评分内容">
-    创建 `evaluator.py`。以下示例检查会话中是否存在失败的工具调用。
+    创建 `evaluator.py`。此示例检查会话中是否包含任何失败的工具调用。
 
     ```python
     import os
@@ -61,25 +61,25 @@ icon: "gauge"
 
 ## 将评估器连接到 Failproof AI
 
-1. 将评估器部署到可被 Failproof AI Cloud 访问的 HTTPS URL。
-2. 将 `EVALUATOR_ENDPOINT` 配置为该 URL，并将 `EVALUATOR_TOKEN` 设置为与评估器相同的令牌。对于托管版 Cloud，请联系 [support@befailproof.ai](mailto:support@befailproof.ai) 完成连接配置。
-3. 运行评估并确认分数已显示在 Failproof AI 中。
+1. 将评估器部署在 Failproof AI Cloud 可访问的 HTTPS URL 上。
+2. 使用该 URL 配置 `EVALUATOR_ENDPOINT`，并将 `EVALUATOR_TOKEN` 设置为与评估器相同的令牌。对于托管 Cloud，请联系 [support@befailproof.ai](mailto:support@befailproof.ai) 配置连接。
+3. 运行评估并确认分数出现在 Failproof AI 中。
 
 <Tabs>
-  <Tab title="控制台">
-    在 **Observe → Sessions** 下打开已完成的会话，如果未自动评估，请选择 **Run evaluation**。在会话的 **Evaluation** 面板中查看状态、分数、推理过程和摘要。
+  <Tab title="仪表盘">
+    在 **Observe → Sessions** 下打开已完成的会话，如果未自动进行评估，请选择 **Run evaluation**。在会话的 **Evaluation** 面板中查看状态、分数、推理过程和摘要。
 
-    使用 **Observe → Evaluations** 跨 Agent 或环境比较分数。使用 **Observe → Metrics** 查看延迟、成本、Token 用量及其他数值指标。
+    使用 **Observe → Evaluations** 跨 Agent 或环境比较分数。使用 **Observe → Metrics** 查看延迟、费用、令牌及其他数值指标。
 
-    从单个会话开始，确认评估器为该次运行返回了预期的分数键和有用的推理内容。
+    从单个会话开始，确认评估器为该特定运行返回了预期的分数键和有用的推理内容。
 
-    ![显示评估分数和推理内容的会话详情视图，与追踪记录并列展示。](/images/dashboard/session-detail.png)
+    ![显示评估分数和推理过程（位于追踪记录旁边）的会话详情视图。](/images/dashboard/session-detail.png)
 
-    确认单个结果看起来正确后，使用评估控制台随时间推移及跨 Agent 或环境比较这些分数。
+    当单个结果看起来正确后，使用评估仪表盘随时间推移以及跨 Agent 或环境比较这些分数。
 
-    ![展示评估器分数随时间变化趋势的质量控制台。](/images/dashboard/dashboard-quality.png)
+    ![按时间绘制评估器分数的质量仪表盘。](/images/dashboard/dashboard-quality.png)
 
-    健康的图表应使用稳定的分数名称；更改某个键会创建一个独立的数据系列。
+    健康的图表应使用稳定的分数名称；更改键名会创建独立的数据系列。
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -89,11 +89,11 @@ icon: "gauge"
   </Tab>
 </Tabs>
 
-对于自托管的 Cloud 实例，在服务器进程上设置 `EVALUATOR_ENDPOINT` 之前，自动评估功能处于禁用状态。更改评估器环境变量后，请重启服务器。
+对于自托管 Cloud 实例，在服务器进程上设置 `EVALUATOR_ENDPOINT` 之前，自动评估功能处于禁用状态。更改评估器环境变量后，请重启服务器。
 
-该服务对外暴露 `GET /health`、`GET /config`、`POST /evaluate`，以及可选的 `GET /evaluate/{job_id}`。对于异步工作，返回 `JobPending` 并注册 `@app.job_lookup`，以便 Failproof AI 进行轮询。
+该服务暴露 `GET /health`、`GET /config`、`POST /evaluate`，以及可选的 `GET /evaluate/{job_id}`。对于异步工作，返回 `JobPending` 并注册 `@app.job_lookup`，以便 Failproof AI 能够轮询它。
 
-配置令牌后，除健康检查外的所有路由都需要与 Failproof AI 发送的 `EVALUATOR_TOKEN` 相同的 Bearer 令牌。
+配置令牌后，除健康检查以外的所有路由均需要 Failproof AI 以 `EVALUATOR_TOKEN` 发送的同一 Bearer 令牌。
 
 ## SDK 类型
 
@@ -107,17 +107,17 @@ icon: "gauge"
 
 ## 装饰器与路由
 
-| 装饰器 | 路由 | 是否必须 |
+| 装饰器 | 路由 | 是否必需 |
 | --- | --- | --- |
 | `@app.evaluator` | `POST /evaluate` | 是 |
-| `@app.job_lookup` | `GET /evaluate/{job_id}` | 当返回 `JobPending` 时 |
+| `@app.job_lookup` | `GET /evaluate/{job_id}` | 返回 `JobPending` 时必需 |
 | `@app.config` | `GET /config` | 否 |
 
-SDK 将评估请求体的大小上限设为 25 MiB。未知请求字段会被忽略，因此服务在事件协议扩展时仍能保持兼容。
+SDK 将评估请求体大小上限设为 25 MiB。未知请求字段将被忽略，因此随着事件契约的扩展，服务仍能保持兼容性。
 
 ## 返回异步工作
 
-当评估无法在单次请求内完成时，请使用 `JobPending`。任务 ID 对 Failproof AI 是不透明的，您的服务必须保证该 ID 在结果被收集或服务器超时前始终可被解析。
+当评估无法在单次请求内完成时，请使用 `JobPending`。Job ID 对 Failproof AI 而言是不透明的，在结果被收集或服务器超时到期之前，您的服务必须始终能够解析该 ID。
 
 ```python
 from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
@@ -141,14 +141,14 @@ def lookup(job_id: str):
     )
 ```
 
-轮询间隔按以下优先级选择：`JobPending.next_poll_secs`、`EvaluatorConfig.default_poll_interval_secs`，最后是服务器的 `EVALUATOR_POLLING_INTERVAL_SECS`。该值被限制在 1 秒到 1 小时之间。服务器默认的挂钟时间轮询上限为 1 小时。
+轮询频率按以下顺序确定：`JobPending.next_poll_secs`、`EvaluatorConfig.default_poll_interval_secs`，然后是服务器的 `EVALUATOR_POLLING_INTERVAL_SECS`。取值范围限制在 1 秒到 1 小时之间。服务器默认的挂钟轮询上限为 1 小时。
 
 ## 请求与响应字段
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `EvalRequest.schema_version` | `str` | 当前值为 `"1"`。 |
-| `session_id`, `agent_id`, `environment` | `str` | 会话标识和环境信息。 |
+| `EvalRequest.schema_version` | `str` | 当前为 `"1"`。 |
+| `session_id`, `agent_id`, `environment` | `str` | 会话标识与环境。 |
 | `started_at` | `datetime` | 第一个事件的时间戳。 |
 | `ended_at` | `datetime \| None` | 当会话发出结束事件时存在。 |
 | `events` | `list[AgentEvent]` | 完整的有序事件流。 |
@@ -157,10 +157,10 @@ def lookup(job_id: str):
 | `AgentEvent.event_type` | `str` | 事件类别，例如 `tool_use`。 |
 | `AgentEvent.payload` | `dict[str, Any]` | 完整的事件载荷。 |
 | `EvalResponse.scores` | `dict[str, float] \| None` | 在评估中以图表展示的数值维度。 |
-| `EvalResponse.reasoning` | `dict[str, str] \| None` | 每项分数的解释，键应与 `scores` 保持一致。 |
-| `EvalResponse.summary` | `str \| None` | 整体评估叙述。 |
+| `EvalResponse.reasoning` | `dict[str, str] \| None` | 各分数的说明；键应与 `scores` 保持一致。 |
+| `EvalResponse.summary` | `str \| None` | 总体评估叙述。 |
 
-## 服务器运维配置
+## 服务器运维设置
 
 自动评估为全部署范围生效，当 `EVALUATOR_ENDPOINT` 未设置时保持禁用状态。
 
@@ -168,23 +168,23 @@ def lookup(job_id: str):
 | --- | --- | --- |
 | `EVALUATOR_ENDPOINT` | 未设置 | 评估器服务的基础 URL。 |
 | `EVALUATOR_TOKEN` | 未设置 | 与 `Evaluator(token=...)` 共享的 Bearer 令牌。 |
-| `EVALUATOR_WORKERS` | `2` | 并发调度器工作进程数。 |
-| `EVALUATOR_CLAIM_BATCH` | `4` | 每次调度器轮次认领的会话数。 |
-| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | 异步轮询的备用间隔。 |
-| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | 单次评估器请求的超时时间。 |
+| `EVALUATOR_WORKERS` | `2` | 并发调度工作线程数。 |
+| `EVALUATOR_CLAIM_BATCH` | `4` | 每次调度轮次声明的会话数。 |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | 异步轮询的兜底频率。 |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | 单次请求的评估器超时时间。 |
 | `EVALUATOR_MAX_ATTEMPTS` | `5` | 终止失败前的投递重试次数。 |
-| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | `/config` 的刷新间隔。 |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | `/config` 的刷新频率。 |
 | `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | 异步轮询的最大挂钟时间。 |
 
-服务器还可以限制哪些组织使用全局部署的评估器。请将端点、令牌、重试策略和组织访问控制的变更视为运维配置，并在更改后重启或滚动更新服务器。
+服务器还可以限制哪些组织使用部署级全局评估器。请将端点、令牌、重试及组织访问控制的变更视为运维配置，更改后需重启或滚动更新服务器。
 
 ## 安全与运维
 
-- 当流量跨越可信网络边界时，请为评估器配置 HTTPS。
-- 配置非空的 Bearer 令牌，并确保两个服务上的令牌完全一致。
+- 当流量跨越受信网络边界时，请将评估器部署在 HTTPS 之后。
+- 配置非空 Bearer 令牌，并确保两个服务使用相同的令牌。
 - 不要在日志中记录令牌或请求载荷中的完整敏感提示词。
-- 使同步处理器具备幂等性；重试可能会重复发送请求。
-- 在生产环境中，将异步任务状态持久化到进程内存之外。
-- 保持分数键的稳定性。重命名某个键会创建新的图表数据系列，而不是修改原有数据系列。
+- 使同步处理器具有幂等性；重试可能会重复发送请求。
+- 在生产环境中，将异步 Job 状态持久化到进程内存之外。
+- 保持分数键的稳定性。重命名键会创建新的图表系列，而不是修改旧的系列。
 
-SDK 会输出结构化的生命周期日志，例如 `eval received`、`eval responded`、`job lookup`、`config returned`、`auth rejected` 以及处理器异常信息。SDK 不配置日志处理器；请使用宿主应用的日志配置。
+SDK 会发出结构化的生命周期日志，例如 `eval received`、`eval responded`、`job lookup`、`config returned`、`auth rejected` 以及处理器异常信息。SDK 不配置日志处理器；请使用宿主应用的日志配置。

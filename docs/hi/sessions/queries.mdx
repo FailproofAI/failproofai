@@ -1,29 +1,29 @@
 ---
-title: "Queries"
-description: "Reusable SQL के साथ session, event, और evaluation डेटा का अन्वेषण करें।"
+title: "क्वेरीज़"
+description: "पुनः उपयोग योग्य SQL के साथ सेशन, इवेंट और मूल्यांकन डेटा की खोज करें।"
 icon: "database"
 ---
 
-Queries डैशबोर्ड, audits, और investigations के तहत एक लचकदार layer है। एक विचार को परीक्षण करने के लिए ad-hoc SQL का उपयोग करें, फिर जब यह एक recurring workflow का हिस्सा बन जाए तो query को सहेजें।
+क्वेरीज़ डैशबोर्ड, ऑडिट और जांच के नीचे का लचीला परत है। एक विचार को परीक्षण करने के लिए ad-hoc SQL का उपयोग करें, फिर जब यह एक आवर्ती वर्कफ़्लो का हिस्सा बन जाए तो क्वेरी को सहेजें।
 
-## Query बनाएँ और चलाएँ
+## क्वेरी बनाएं और चलाएं
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Analyze → Queries** पर जाएँ और **new query** का चयन करें।
-    2. Schema browser खोलें और event, session, या evaluation डेटा से fields चुनें।
-    3. SQL लिखें, जरूरत पड़ने पर parameters जोड़ें, और query चलाएँ।
-    4. इसे एक स्पष्ट नाम और विवरण के साथ सहेजें, फिर जब परिणाम को monitor करना चाहिए तो **add to dashboard** का उपयोग करें।
+    1. **Analyze → Queries** पर जाएं और **new query** चुनें।
+    2. स्कीमा ब्राउज़र खोलें और इवेंट, सेशन या मूल्यांकन डेटा से फ़ील्ड चुनें।
+    3. SQL लिखें, जरूरत पड़ने पर पैरामीटर जोड़ें और क्वेरी चलाएं।
+    4. इसे एक स्पष्ट नाम और विवरण के साथ सहेजें, फिर जब परिणाम की निगरानी करनी हो तो **add to dashboard** का उपयोग करें।
 
-    Query editor event schema, SQL, parameters, और एक result preview को एकत्रित करता है ताकि आप इसे सहेजने से पहले प्रश्न को validate कर सकें।
+    क्वेरी एडिटर इवेंट स्कीमा, SQL, पैरामीटर और एक परिणाम पूर्वावलोकन को जोड़ता है ताकि आप इसे सहेजने से पहले सवाल को सत्यापित कर सकें।
 
-    ![SQL query editor जिसमें एक schema browser और live result grid है।](/images/dashboard/query-lab.png)
+    ![SQL क्वेरी एडिटर स्कीमा ब्राउज़र और लाइव परिणाम ग्रिड के साथ।](/images/dashboard/query-lab.png)
 
-    सहेजे गए queries फिर shared library में दिखाई देते हैं, जहाँ teammates उन्हें फिर से चला सकते हैं या अपने परिणाम dashboards में जोड़ सकते हैं।
+    सहेजी गई क्वेरीज़ तब साझा लाइब्रेरी में दिखाई देती हैं, जहां टीम के सदस्य उन्हें फिर से चला सकते हैं या अपने परिणामों को डैशबोर्ड में जोड़ सकते हैं।
 
-    ![Saved Queries library जिसमें reusable built-in और custom queries हैं।](/images/dashboard/queries.png)
+    ![पुनः उपयोग योग्य निर्मित और कस्टम क्वेरीज़ युक्त सहेजी गई Queries लाइब्रेरी।](/images/dashboard/queries.png)
 
-    एक स्पष्ट नाम और विवरण का उपयोग करें ताकि परिणाम SQL को फिर से खोले बिना समझदारी में रहे।
+    एक स्पष्ट नाम और विवरण का उपयोग करें ताकि परिणाम इसके SQL को फिर से खोले बिना समझने योग्य रहे।
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -34,20 +34,20 @@ Queries डैशबोर्ड, audits, और investigations के तहत
     fp query update <query-id> --sql "SELECT ..."
     ```
 
-    IDs ढूंढने के लिए `fp query list` का उपयोग करें और सहेजे गए query को हटाने के लिए `fp query delete <query-id>` का उपयोग करें।
+    IDs खोजने के लिए `fp query list` का उपयोग करें और सहेजी गई क्वेरी को हटाने के लिए `fp query delete <query-id>` का उपयोग करें।
   </Tab>
 </Tabs>
 
-## Common uses
+## सामान्य उपयोग
 
-- ऐसे sessions खोजें जिनमें एक ही tool के लिए repeated calls हैं।
-- Models या environments में evaluation scores की तुलना करें।
-- एक human wait और resume के बीच का समय मापें।
-- Policy denials की पहचान करें जिसके बाद एक successful alternative आया हो।
-- एक audit के लिए एक cohort बनाएँ।
+- एक ही टूल के लिए बार-बार कॉल वाले सेशन खोजें।
+- मॉडल या वातावरण में मूल्यांकन स्कोर की तुलना करें।
+- किसी मानव प्रतीक्षा और पुनः शुरुआत के बीच का समय मापें।
+- नीति इनकार के बाद एक सफल विकल्प की पहचान करें।
+- ऑडिट के लिए एक समूह बनाएं।
 
-अपरिचित fields के विरुद्ध लिखने से पहले **Queries → Schema** खोलें। Explicit time और environment filters को प्राथमिकता दें, और exploration के दौरान result limits रखें।
+अपरिचित फ़ील्ड के विरुद्ध लिखने से पहले **Queries → Schema** खोलें। स्पष्ट समय और पर्यावरण फ़िल्टर को प्राथमिकता दें, और अन्वेषण के दौरान परिणाम सीमा रखें।
 
 <Warning>
-  एक query एक suspicious pattern की पहचान कर सकता है, लेकिन यह failure mode को अपने आप से स्थापित नहीं करता है। Representative traces खोलें या परिणाम को एक policy में बदलने से पहले एक audit चलाएँ।
+  एक क्वेरी एक संदिग्ध पैटर्न की पहचान कर सकती है, लेकिन यह अपने आप से विफलता मोड स्थापित नहीं करती है। प्रतिनिधि ट्रेस खोलें या परिणाम को नीति में बदलने से पहले ऑडिट चलाएं।
 </Warning>

@@ -1,19 +1,19 @@
 ---
-title: "Politika kararları"
-description: "Hangi politikaların değerlendirildiğini, engellediğini, talimat verdiğini veya izin verdiğini görün."
+title: "İlke kararları"
+description: "Hangi ilkelerin değerlendirildiğini, engellendiğini, talimat verdiğini veya izin verdiğini görün."
 icon: "shield-check"
 ---
 
-Politika kararları, zorlama işleminin ne yaptığını açıklar. Bunu, bir dağıtımı doğrulamak, engelleme oranını ölçmek ve korunmamış aktiviteleri bulmak için kullanın.
+İlke kararları, zorunlu kılınan şeyleri açıklar. Bunu bir dağıtımı doğrulamak, engelleme oranını ölçmek ve korunmayan aktiviteleri bulmak için kullanın.
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. **Observe → policy** bölümüne gidin ve zaman aralığını ve isteğe bağlı olarak bir makineyi seçin.
-    2. Değerlendirilen eylemleri, engelleri, engelleme oranını, Bulut kararlarını, korunmamış eylemleri ve duraklatılmış durumdaki aktiviteyi gözden geçirin.
-    3. Politika eşleme tablosunu filtreleyip dağıtılan atamalarını inceleyin.
-    4. Bir grafik noktasını seçerek kararları ve bunların oturumlarını açın.
+  <Tab title="Kontrol Paneli">
+    1. **Gözlemle → ilke** bölümüne gidin ve zaman aralığını ve isteğe bağlı olarak bir makineyi seçin.
+    2. Değerlendirilen işlemleri, engellenen işlemleri, engelleme oranını, Bulut kararlarını, korunmayan işlemleri ve duraklatılmış olduğu sıradaki aktiviteyi gözden geçirin.
+    3. İlke eşleme tablosunu filtreleyin ve dağıtılan atamalarını inceleyin.
+    4. Kararları ve oturumlarını açmak için bir grafik noktasını seçin.
 
-    ![Karar toplamlarını, makine filtresini, zaman içindeki zorlama aktivitesini ve politika eşleme tablosunu gösteren Politika sayfası.](/images/dashboard/policy-observe.png)
+    ![İlke kaydı, karar toplamlarını, bir makine filtresini, zaman içindeki zorlama aktivitesini ve ilke eşleme tablosunu gösteren sayfa.](/images/dashboard/policy-observe.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -22,6 +22,6 @@ Politika kararları, zorlama işleminin ne yaptığını açıklar. Bunu, bir da
     failproofai config --status
     ```
 
-    Makinenin yerel zorlama durumu için `failproofai` kullanın ve Bulut olay araştırması için `fp` kullanın.
+    Makinenin yerel zorlama durumu için `failproofai` kullanın ve Bulut olayı araştırması için `fp` kullanın.
   </Tab>
 </Tabs>

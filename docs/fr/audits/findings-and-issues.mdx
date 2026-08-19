@@ -1,35 +1,35 @@
 ---
 title: "Constats et problèmes"
-description: "Transformez les preuves d'audit en travaux de remédiation attribués et suivis."
+description: "Transformez les preuves d'audit en travaux de remédiation attribués et suivables."
 icon: "clipboard-check"
 ---
 
-Un constat est l'énoncé étayé par des preuves concernant un échec identifié lors de l'audit. Un problème est le flux de travail durable permettant d'y répondre.
+Un constat est l'énoncé, étayé par des preuves, qu'un audit formule à propos d'une défaillance. Un problème est le flux de travail durable permettant d'y répondre.
 
 ## Trier et attribuer le travail
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Ouvrez **Analyser → Audits**, choisissez une exécution terminée et sélectionnez un constat pour examiner son analyse, sa recommandation, ses sessions et ses requêtes de preuves.
-    2. Accusez réception, attribuez, rejetez, masquez, résolvez ou rouvrez le constat après avoir vérifié ses preuves.
-    3. Accédez à **Analyser → Problèmes** et filtrez la boîte de réception durable par statut, gravité ou responsable.
+    1. Ouvrez **Analyser → Audits**, choisissez une exécution terminée et sélectionnez un constat pour en examiner l'analyse, la recommandation, les sessions et les requêtes de preuves.
+    2. Accusez réception, attribuez, ignorez, mettez en sourdine, résolvez ou rouvrez le constat après avoir vérifié ses preuves.
+    3. Accédez à **Analyser → Problèmes** et filtrez la boîte de réception durable par statut, sévérité ou responsable.
     4. Ouvrez le problème pour l'attribuer, ajouter des commentaires ou des abonnés, et le résoudre une fois le correctif vérifié.
 
-    Commencez par le résumé du constat. Vérifiez que la description de l'échec, la réponse recommandée, la gravité et le classement correspondent aux sessions que l'audit était censé examiner.
+    Commencez par le résumé du constat. Vérifiez que la description de la défaillance, la réponse recommandée, la sévérité et le classement correspondent aux sessions que vous attendiez de l'audit.
 
-    ![Un constat d'audit avec sa gravité, son nombre d'occurrences, l'analyse des causes profondes, l'action recommandée, les facteurs de classement et les preuves.](/images/dashboard/audit-finding.png)
+    ![Un constat d'audit avec sa sévérité, le nombre d'occurrences, l'analyse de la cause racine, l'action recommandée, les facteurs de classement et les preuves.](/images/dashboard/audit-finding.png)
 
-    Ensuite, ouvrez une session concernée plutôt que de décider uniquement à partir du résumé. La trace liée doit afficher l'événement exact et la charge utile qui étayent le constat.
+    Ensuite, ouvrez une session affectée plutôt que de décider à partir du seul résumé. La trace liée doit montrer l'événement exact et la charge utile qui appuient le constat.
 
-    ![Une session liée depuis un constat d'audit, ouverte au niveau de l'erreur concernée avec ses métadonnées d'événement et sa charge utile brute.](/images/dashboard/audit-linked-session.png)
+    ![Une session liée depuis un constat d'audit, ouverte à l'erreur pertinente avec ses métadonnées d'événement et sa charge utile brute.](/images/dashboard/audit-linked-session.png)
 
-    Après avoir vérifié les preuves, utilisez les Problèmes pour attribuer la réponse à un responsable et la suivre indépendamment des futures exécutions d'audit.
+    Après avoir vérifié les preuves, utilisez les Problèmes pour attribuer un responsable à la réponse et en assurer le suivi indépendamment des exécutions d'audit futures.
 
-    ![La boîte de réception des Problèmes affichant les travaux en cours, accusés de réception et résolus, avec leur gravité et leur responsable.](/images/dashboard/incidents.png)
+    ![La boîte de réception des Problèmes affichant les travaux en cours, accusés de réception et résolus, avec leur sévérité et leur responsable.](/images/dashboard/incidents.png)
 
-    Ouvrez le problème pour consigner les notes d'investigation, notifier les abonnés et conserver l'historique des réponses. Résolvez-le uniquement après que la remédiation a été déployée et vérifiée.
+    Ouvrez le problème pour consigner les notes d'investigation, notifier les abonnés et conserver l'historique des réponses. Ne le résolvez qu'une fois la remédiation déployée et vérifiée.
 
-    ![Vue détaillée d'un problème avec sa source, les preuves de violation, les responsables, les abonnés, la chronologie et les commentaires.](/images/dashboard/incident-detail.png)
+    ![La vue détaillée d'un problème avec sa source, les preuves de violation, les personnes assignées, les abonnés, la chronologie et les commentaires.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -47,7 +47,7 @@ Un constat est l'énoncé étayé par des preuves concernant un échec identifi�
 
     Utilisez `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` et `fp issues subscribers <issue-id>` pour gérer les observateurs.
 
-    Consultez la [référence CLI Cloud pour les audits et problèmes](/fr/reference/cloud-cli#audits) pour les constats d'audit et [`fp issues`](/fr/reference/cloud-cli#issues) pour la gestion des problèmes.
+    Consultez la [référence CLI Cloud pour les audits et les problèmes](/fr/reference/cloud-cli#audits) pour les constats d'audit et [`fp issues`](/fr/reference/cloud-cli#issues) pour la gestion des problèmes.
   </Tab>
 </Tabs>
 
@@ -55,31 +55,31 @@ Un constat est l'énoncé étayé par des preuves concernant un échec identifi�
 
 Vérifiez qu'il contient :
 
-- Un mode d'échec stable, pas seulement un titre ponctuel
-- La gravité et l'impact opérationnel
-- Les identifiants de sessions concernées ou les requêtes de support
-- Un contexte suffisant pour reproduire le comportement
+- Un mode de défaillance stable, et pas seulement un titre ponctuel
+- La sévérité et l'impact opérationnel
+- Les identifiants de sessions affectées ou les requêtes de support
+- Suffisamment de contexte pour reproduire le comportement
 - Une réponse proposée cohérente avec les preuves
 
 ## Utiliser un problème pour gérer la réponse
 
-Créez ou liez un problème lorsque le constat nécessite une attribution, une discussion, des changements de statut, des commentaires ou des abonnés. Les problèmes peuvent également représenter des incidents d'alerte et des signalements manuels, c'est pourquoi ils relèvent de la réponse aux audits plutôt que de la navigation principale.
+Créez ou associez un problème lorsque le constat nécessite une attribution, une discussion, des changements de statut, des commentaires ou des abonnés. Les problèmes peuvent également représenter des incidents d'alerte et des signalements manuels, c'est pourquoi ils se trouvent dans la réponse aux audits plutôt que dans la navigation principale.
 
-Résolvez le problème lorsque la remédiation est déployée et vérifiée. Résolvez le constat lorsque le mode d'échec a été traité pour la population d'audit concernée. Ces deux moments peuvent différer.
+Résolvez le problème lorsque la remédiation est déployée et vérifiée. Résolvez le constat lorsque le mode de défaillance a été traité pour la population d'audit. Ces deux moments peuvent différer.
 
-## Transformer un problème en brouillon de politique
+## Transformer un problème en ébauche de politique
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Ouvrez le problème et vérifiez son constat, les sessions citées, la cause profonde et la recommandation.
-    2. Sélectionnez **générer une politique** et examinez le résultat d'admissibilité ainsi que l'intention d'application proposée. Un résultat **aucune politique** signifie que le comportement peut nécessiter une alerte, un changement de flux de travail ou une réponse humaine à la place.
-    3. Sélectionnez **écrire cette politique**, puis examinez et testez le code source généré dans **Admin → éditeur de politique** avant de sélectionner **publier la version**. Utilisez **ouvrir l'éditeur quand même** si vous n'êtes pas d'accord avec la vérification d'admissibilité.
-    4. Accédez à **Admin → application**, déployez la version en mode **observer** et vérifiez ses décisions sous **Observer → politique** avant de l'appliquer.
+    1. Ouvrez le problème et vérifiez son constat, les sessions citées, la cause racine et la recommandation.
+    2. Sélectionnez **générer une politique** et examinez le résultat de candidature et l'intention d'application proposée. Un résultat **aucune politique** signifie que le comportement peut nécessiter une alerte, un changement de flux de travail ou une intervention humaine.
+    3. Sélectionnez **écrire cette politique**, puis examinez et testez le code source généré dans **Admin → éditeur de politique** avant de sélectionner **publier la version**. Utilisez **ouvrir l'éditeur quand même** si vous êtes en désaccord avec la vérification de candidature.
+    4. Accédez à **Admin → application**, déployez la version en mode **observe** et vérifiez ses décisions sous **Observer → politique** avant de l'appliquer.
 
-    Le titre du problème, la description du constat, la cause profonde, la recommandation et l'intention d'admissibilité contribuent à la composition du brouillon. Rien n'est publié ni déployé automatiquement.
+    Le titre du problème, la description du constat, la cause racine, la recommandation et l'intention de candidature contribuent à la rédaction de l'ébauche. Rien n'est publié ni déployé automatiquement.
   </Tab>
   <Tab title="CLI">
-    Utilisez la CLI pour examiner les preuves avant d'ouvrir le problème dans le tableau de bord :
+    Utilisez la CLI pour inspecter les preuves avant d'ouvrir le problème dans le tableau de bord :
 
     ```bash
     fp issues show <issue-id>
@@ -87,10 +87,10 @@ Résolvez le problème lorsque la remédiation est déployée et vérifiée. Ré
     fp events --session-id <session-id> --full --all
     ```
 
-    L'admissibilité des politiques, la publication dans le Cloud et le déploiement sur la flotte sont des flux de travail du tableau de bord. Utilisez `failproofai policies --install --custom <file>` si vous souhaitez d'abord valider localement le code source d'une politique équivalente.
+    La candidature de politique, la publication Cloud et le déploiement sur la flotte sont des flux de travail du tableau de bord. Utilisez `failproofai policies --install --custom <file>` si vous souhaitez valider d'abord un code source de politique équivalent en local.
   </Tab>
 </Tabs>
 
-<Card title="Rédiger une politique" icon="shield-plus" href="/fr/policies/editor">
-  Convertissez un schéma d'action confirmé et répétable en une version de politique.
+<Card title="Créer une politique" icon="shield-plus" href="/fr/policies/editor">
+  Convertissez un schéma d'action confirmé et reproductible en une version de politique.
 </Card>

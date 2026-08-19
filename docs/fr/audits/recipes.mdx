@@ -4,19 +4,19 @@ description: "Points de départ pour les investigations courantes sur les défai
 icon: "book-open-check"
 ---
 
-Utilisez ces exemples comme points de départ, puis ajoutez votre agent, votre environnement et le workflow attendu.
+Utilisez ces éléments comme points de départ, puis ajoutez votre agent, votre environnement et le flux de travail attendu.
 
 <Tabs>
   <Tab title="Tableau de bord">
-    Accédez à **Analyser → Audits → Nouvel audit**, copiez une recette dans la description ou le résumé, puis ajoutez l'environnement, l'agent, la période de référence et les URLs concernés. Créez l'audit et examinez la première exécution avant de le planifier.
+    Accédez à **Analyser → Audits → Nouvel audit**, copiez une recette dans la description ou le résumé, puis ajoutez l'environnement, l'agent, la période de référence et les URL pertinents. Créez l'audit et inspectez la première exécution avant de le planifier.
 
-    Le formulaire de création d'audit transforme une recette en vérification de défaillance exécutable en y ajoutant la portée, le contexte, la cadence et les notifications.
+    Le formulaire de création d'audit transforme une recette en vérification exécutable des défaillances en y ajoutant une portée, un contexte, une cadence et des notifications.
 
-    ![Le formulaire de création d'audit configuré avec un objectif ciblé, un calendrier, la portée de l'agent et de l'environnement, le contexte et les canaux de notification.](/images/dashboard/audit-new.png)
+    ![Le formulaire de nouvel audit configuré avec un objectif ciblé, un calendrier, une portée d'agent et d'environnement, un contexte et des canaux de notification.](/images/dashboard/audit-new.png)
 
-    Après la création, vérifiez que l'audit apparaît dans la liste avec le statut et le calendrier attendus avant de vous fier aux exécutions récurrentes.
+    Après la création, confirmez que l'audit apparaît dans la liste avec le statut et le calendrier attendus avant de vous fier aux exécutions récurrentes.
 
-    ![La page Audits où une recette d'audit spécifique au workflow apparaît après sa création.](/images/dashboard/audits.png)
+    ![La page Audits où une recette d'audit spécifique à un flux de travail apparaît après la création.](/images/dashboard/audits.png)
 
     Ouvrez la première exécution et affinez la recette si ses résultats sont plus larges ou plus étroits que le mode de défaillance visé.
   </Tab>
@@ -33,22 +33,22 @@ Utilisez ces exemples comme points de départ, puis ajoutez votre agent, votre e
 </Tabs>
 
 <AccordionGroup>
-  <Accordion title="Boucles de nouvelle tentative répétées">
-    Identifiez les sessions où l'agent répète le même appel d'outil en échec sans modifier les entrées, sans sélectionner un outil alternatif, ni escalader vers un humain.
+  <Accordion title="Boucles de réessai répétées">
+    Trouvez les sessions où l'agent répète le même appel d'outil en échec sans modifier les paramètres d'entrée, sélectionner un outil alternatif ou escalader vers un humain.
   </Accordion>
-  <Accordion title="Utilisation incorrecte des outils">
-    Identifiez les sessions où l'outil choisi ne correspond pas à la tâche déclarée, ou où les entrées de l'outil ne respectent pas les préconditions requises par le workflow.
+  <Accordion title="Utilisation incorrecte d'un outil">
+    Trouvez les sessions où l'outil choisi ne correspond pas à la tâche déclarée, ou où les paramètres d'entrée de l'outil ne respectent pas les préconditions requises par le flux de travail.
   </Accordion>
   <Accordion title="Accès non autorisé aux données">
-    Identifiez les sessions qui lisent, écrivent ou transmettent des données sensibles en dehors des chemins et services approuvés pour cet agent.
+    Trouvez les sessions qui lisent, écrivent ou transmettent des données sensibles en dehors des chemins et services approuvés pour cet agent.
   </Accordion>
   <Accordion title="Abandon de tâche">
-    Identifiez les sessions qui se terminent sans le résultat demandé, sans erreur claire, ni transfert explicite vers un humain.
+    Trouvez les sessions qui se terminent sans le résultat demandé, sans erreur claire ni transfert explicite à un humain.
   </Accordion>
-  <Accordion title="Dépassement de coût ou de latence">
-    Identifiez les sessions dont la durée liée au modèle, aux outils ou au total dépasse le budget prévu, et déterminez le schéma d'événements responsable.
+  <Accordion title="Régression de coût ou de latence">
+    Trouvez les sessions dont la durée du modèle, des outils ou la durée totale dépasse le budget prévu, et identifiez le schéma d'événements responsable.
   </Accordion>
   <Accordion title="Escalade humaine manquée">
-    Identifiez les sessions où le niveau de confiance, les échecs répétés ou les directives de politique nécessitaient une décision humaine, mais où l'agent a continué de manière autonome.
+    Trouvez les sessions où le niveau de confiance, les échecs répétés ou les directives de politique nécessitaient une décision humaine, mais où l'agent a continué de manière autonome.
   </Accordion>
 </AccordionGroup>

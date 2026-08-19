@@ -1,29 +1,29 @@
 ---
 title: "Claves y permisos"
-description: "Crea claves API con alcance definido para máquinas, automatización y operadores."
+description: "Crea claves de API con alcance específico para máquinas, automatización y operadores."
 icon: "key-round"
 ---
 
-Las claves API pertenecen a una organización y llevan permisos explícitos. Usa claves separadas para la ingesta de agentes, la entrega de políticas, los evaluadores, la automatización de CI y los scripts administrativos.
+Las claves de API pertenecen a una organización y llevan permisos explícitos. Usa claves separadas para la ingesta de agentes, la entrega de políticas, los evaluadores, la automatización de CI y los scripts administrativos.
 
 ## Crear y rotar una clave
 
 <Tabs>
   <Tab title="Panel de control">
     1. Ve a **Administración → Claves**, selecciona **nueva clave** e introduce un nombre para la carga de trabajo.
-    2. Elige un conjunto de permisos y ajusta los permisos individuales solo cuando el preajuste sea insuficiente.
-    3. Crea la clave y copia su secreto de un solo uso inmediatamente.
-    4. Abre la clave más tarde para actualizar los permisos, deshabilitarla o regenerar el secreto.
+    2. Elige un conjunto de permisos y ajusta los permisos individuales solo cuando el preset no sea suficiente.
+    3. Crea la clave y copia su secreto de un solo uso de inmediato.
+    4. Abre la clave más adelante para actualizar permisos, desactivarla o regenerar el secreto.
 
     El panel de creación es donde eliges los permisos mínimos necesarios para la carga de trabajo.
 
-    ![El panel de nueva clave API con preajustes de permisos y permisos individuales.](/images/dashboard/key-create.png)
+    ![El panel de nueva clave de API con presets de permisos y permisos individuales.](/images/dashboard/key-create.png)
 
     Tras la creación, la página de Claves muestra los metadatos persistentes y las acciones de gestión. El secreto de un solo uso no se vuelve a mostrar.
 
-    ![La página de Claves API que muestra los permisos de la clave, la fecha de creación y las acciones de regenerar y deshabilitar.](/images/dashboard/api-keys.png)
+    ![La página de claves de API con los permisos, la fecha de creación y las acciones de regenerar y desactivar.](/images/dashboard/api-keys.png)
 
-    Usa esta lista para revisar los permisos regularmente y deshabilitar las claves que ya no correspondan a una carga de trabajo activa.
+    Usa esta lista para revisar los permisos regularmente y desactivar las claves que ya no correspondan a una carga de trabajo activa.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -36,11 +36,11 @@ Las claves API pertenecen a una organización y llevan permisos explícitos. Usa
     fp keys disable production-agents
     ```
 
-    Redirige o captura la salida de creación/regeneración de forma segura; el secreto se devuelve una sola vez.
+    Redirige o captura de forma segura la salida de create/regenerate; el secreto se devuelve una sola vez.
   </Tab>
 </Tabs>
 
-Los dos permisos que requiere una máquina Failproof AI conectada son independientes:
+Los dos permisos que requiere una máquina de Failproof AI conectada son independientes:
 
 - `events:add` envía eventos y datos de sesión.
 - `policies:pull` recupera los despliegues de políticas asignados.
@@ -65,10 +65,10 @@ Los secretos de las claves se muestran al crearlas o regenerarlas. Guárdalos en
 | Políticas | `policies:read`, `policies:write`, `policies:pull` |
 | Uso | `usage:read` |
 
-`orgs:admin` está reservado para el operador de la instancia y no puede otorgarse a una clave de organización ni a un miembro ordinario. Los tokens obsoletos `incidents:*` y `alerts:ack` se aceptan por compatibilidad y se normalizan a los permisos actuales de `issues:*`.
+`orgs:admin` está reservado para el operador de la instancia y no puede otorgarse a una clave de organización ni a un miembro ordinario. Los tokens retirados `incidents:*` y `alerts:ack` se aceptan por compatibilidad y se normalizan a los permisos actuales de `issues:*`.
 
-Los conjuntos de permisos integrados son `read-only`, `standard` y `admin`. `standard` añade a los permisos de lectura la capacidad de activar evaluaciones, ejecutar consultas, gestionar incidencias y usar el asistente. La creación de claves elimina los permisos exclusivos de humanos aunque el conjunto de permisos los incluya.
+Los conjuntos de permisos integrados son `read-only`, `standard` y `admin`. `standard` añade a los permisos de lectura la activación de evaluaciones, la ejecución de consultas, la gestión de incidencias y el uso del asistente. Al crear una clave, se eliminan los permisos exclusivos de sesión humana aunque el conjunto de permisos los incluya.
 
 <Warning>
-  Las claves con alcance de instancia pueden seleccionar una organización mediante el encabezado `X-AgentEye-Org`. Establécelo explícitamente en despliegues con múltiples organizaciones; omitirlo puede seleccionar la organización predeterminada.
+  Las claves con ámbito de instancia pueden seleccionar una organización mediante la cabecera `X-AgentEye-Org`. Establécela de forma explícita en despliegues con múltiples organizaciones; omitirla puede hacer que se seleccione la organización predeterminada.
 </Warning>

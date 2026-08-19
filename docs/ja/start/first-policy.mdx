@@ -1,6 +1,6 @@
 ---
 title: "ポリシーで最初の失敗を防ぐ"
-description: "ポリシーバージョンを作成し、オブザーブモードでデプロイしてから適用します。"
+description: "ポリシーのバージョンを作成し、オブザーブモードでデプロイしてから適用します。"
 icon: "shield-check"
 ---
 
@@ -10,24 +10,24 @@ icon: "shield-check"
   <Tab title="ダッシュボード">
     <Steps>
       <Step title="ポリシーを作成する">
-        **Admin → policy editor** に移動します。デモポリシーから始め、ソースを確認または編集したら、**publish version** を選択します。公開すると、マシンにデプロイできる不変バージョンが作成されます。
+        **Admin → policy editor** に移動します。デモポリシーから始め、ソースを確認または編集してから、**publish version** を選択します。公開すると、マシンにデプロイできる不変のバージョンが作成されます。
 
-        ![デモポリシーが不変バージョンとして公開される準備ができた、Policy editor の作成ビュー。](/images/dashboard/policy-editor.png)
+        ![公開済みの不変バージョンとしてデモポリシーが準備されたポリシーエディタの作成ビュー。](/images/dashboard/policy-editor.png)
       </Step>
       <Step title="マシンにデプロイする">
         **Admin → enforcement** に移動し、対象マシンを展開して **edit this machine** を選択します。公開済みのデモポリシーを追加し、バージョンを固定して **observe** を選択し、デプロイを適用します。
 
-        ![デプロイを適用する前に、公開済みポリシーバージョンがオブザーブモードで選択されたマシンデプロイメントエディター。](/images/dashboard/enforcement-editor.png)
+        ![デプロイを適用する前に、オブザーブモードで公開済みポリシーバージョンが選択されたマシンデプロイメントエディタ。](/images/dashboard/enforcement-editor.png)
       </Step>
-      <Step title="ポリシーを検証する">
-        そのマシンで新しいエージェントセッションを実行し、**Observe → policy** を開きます。マシンを選択し、デモポリシーがポリシーマッピングと決定タイムラインに表示されていることを確認します。オブザーブモードでは、アクションをブロックすることなく、ポリシーが実行するであろう内容を記録します。
+      <Step title="ポリシーを確認する">
+        そのマシンで新しいエージェントセッションを実行し、**Observe → policy** を開きます。マシンを選択し、デモポリシーがポリシーマッピングと決定タイムラインに表示されることを確認します。オブザーブモードでは、アクションをブロックせずにポリシーが行う処理を記録します。
 
-        ![決定の合計、時間経過に伴う適用アクティビティ、ローカルおよびCloud管理のポリシーマッピングを表示するPolicyページ。](/images/dashboard/policy-observe.png)
+        ![決定の合計数、経時的な適用アクティビティ、ローカルおよびクラウド管理のポリシーマッピングを表示するポリシーページ。](/images/dashboard/policy-observe.png)
       </Step>
     </Steps>
   </Tab>
   <Tab title="CLI">
-    Cloudポリシーの作成とフリートデプロイメントは管理者向けのワークフローです。公開前に同じポリシーをローカルCLIで検証するには次のコマンドを使用します：
+    クラウドのポリシー作成とフリートデプロイメントは管理者向けのワークフローです。公開前に同じポリシーを検証するには、ローカル CLI を使用してください：
 
     ```bash
     failproofai policies --install --custom ./payment-retry.policies.ts \
@@ -35,13 +35,13 @@ icon: "shield-check"
     failproofai config --status
     ```
 
-    Cloudで確認できるポリシー決定を調査するには `fp` を使用します：
+    クラウドで確認できるポリシーの決定を検査するには `fp` を使用してください：
 
     ```bash
     fp events --event-type hook_completed --env production --since 24h
     fp sessions --env production --since 24h
     ```
 
-    Cloud CLIはルート専用の適用デプロイメントルートを公開していません。バージョンの公開は **Admin → policy editor** から、デプロイは **Admin → enforcement** から行ってください。
+    クラウド CLI はルート専用の適用デプロイメントルートを公開していません。**Admin → policy editor** からバージョンを公開し、**Admin → enforcement** からデプロイしてください。
   </Tab>
 </Tabs>

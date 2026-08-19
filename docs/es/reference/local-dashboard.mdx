@@ -1,34 +1,34 @@
 ---
-title: "Panel de control local"
-description: "Revisa proyectos locales, sesiones, actividad de políticas, configuración, auditorías y análisis programados."
+title: "Panel local"
+description: "Revisa proyectos locales, sesiones, actividad de políticas, configuración, auditorías y escaneos programados."
 icon: "monitor-cog"
 ---
 
-Ejecuta `failproofai` sin argumentos para iniciar el panel de control incluido en `http://localhost:8020`. Lee los historiales de agentes locales, la configuración de políticas, los resultados de auditorías y la actividad de hooks directamente desde la máquina.
+Ejecuta `failproofai` sin argumentos para iniciar el panel incluido en `http://localhost:8020`. Lee historiales locales de agentes, configuración de políticas, resultados de auditorías y actividad de hooks directamente desde la máquina.
 
-El panel de control local es independiente de Failproof AI Cloud. Funciona sin una cuenta de Cloud y no garantiza que los eventos se hayan entregado a tu organización.
+El panel local es independiente de Failproof AI Cloud. Funciona sin una cuenta en la nube y no garantiza que los eventos hayan sido entregados a tu organización.
 
-## Secciones del panel de control
+## Áreas del panel
 
-| Sección | Lo que puedes hacer |
+| Área | Qué puedes hacer |
 | --- | --- |
-| Políticas → Actividad | Inspecciona las decisiones locales de allow, instruct y deny; filtra por decisión, evento, CLI, herramienta, origen, política y sesión. |
-| Políticas → Configurar | Activa políticas integradas, edita parámetros compatibles, activa o desactiva políticas personalizadas descubiertas y selecciona los harnesses de destino. |
-| Proyectos | Explora los proyectos descubiertos en los historiales de agentes compatibles y compara sus sesiones más recientes. |
-| Sesiones de proyecto | Abre una transcripción local, revisa entradas ordenadas sin procesar y subagentes, descárgala y correlaciona la actividad de políticas. |
-| Auditoría | Revisa el último análisis sin conexión, patrones de riesgo, puntos fuertes, proyectos afectados y políticas integradas sugeridas. |
-| Configuración | Configura análisis locales programados e informes de auditoría por correo electrónico cuando el daemon o la plataforma lo admitan. |
+| Políticas → Actividad | Inspeccionar decisiones locales de allow, instruct y deny; filtrar por decisión, evento, CLI, herramienta, origen, política y sesión. |
+| Políticas → Configurar | Habilitar funciones integradas, editar parámetros compatibles, activar o desactivar políticas personalizadas descubiertas y seleccionar los harnesses de destino. |
+| Proyectos | Explorar proyectos descubiertos en los historiales de agentes compatibles y comparar sus sesiones más recientes. |
+| Sesiones de proyecto | Abrir una transcripción local, revisar entradas ordenadas sin procesar y subagentes, descargarla y correlacionar la actividad de políticas. |
+| Auditoría | Revisar el último escaneo sin conexión, patrones riesgosos, puntos fuertes, proyectos afectados y políticas integradas sugeridas. |
+| Configuración | Configurar escaneos locales programados e informes de auditoría por correo electrónico cuando el daemon o la plataforma los admita. |
 
 ## Revisar la actividad de políticas
 
 <Tabs>
-  <Tab title="Panel de control">
+  <Tab title="Panel">
     1. Abre **Políticas → Actividad** y establece los filtros de decisión y origen.
-    2. Acota la búsqueda por evento, harness, herramienta o nombre de política.
+    2. Filtra por evento, harness, herramienta o nombre de política.
     3. Expande una fila para inspeccionar su motivo, políticas coincidentes, origen, modo de ejecución y duración.
-    4. Sigue el enlace de sesión para contextualizar la decisión dentro de la transcripción.
+    4. Sigue el enlace de sesión para ubicar la decisión en el contexto de la transcripción.
 
-    Una fila que parece denegada puede seguir siendo observacional en un par harness/evento que no consume veredictos de bloqueo. La vista de detalle indica la capacidad de aplicación verificada.
+    Una fila con apariencia de denegación puede ser meramente observacional en un par harness/evento que no consume veredictos de bloqueo. La vista de detalle indica la capacidad de aplicación verificada.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -37,20 +37,20 @@ El panel de control local es independiente de Failproof AI Cloud. Funciona sin u
     failproofai
     ```
 
-    La actividad local se almacena en `~/.failproofai/hook-activity`. Usa el panel de control en lugar de editar estos archivos directamente.
+    La actividad local se almacena en `~/.failproofai/hook-activity`. Usa el panel en lugar de editar estos archivos directamente.
   </Tab>
 </Tabs>
 
 ## Configurar políticas localmente
 
 <Tabs>
-  <Tab title="Panel de control">
+  <Tab title="Panel">
     1. Abre **Políticas → Configurar** y elige los harnesses y el ámbito de configuración.
-    2. Activa una política integrada o una política personalizada descubierta.
+    2. Habilita una política integrada o una política personalizada descubierta.
     3. Para una política integrada con parámetros, abre su control de configuración y guarda los valores admitidos.
-    4. Vuelve a Actividad y ejecuta acciones que coincidan y que no coincidan.
+    4. Regresa a Actividad y ejecuta acciones que coincidan y que no coincidan con la política.
 
-    Las políticas de convención muestran su origen de proyecto o usuario. Los cambios explícitos de ruta personalizada pueden requerir volver a ejecutar la configuración del CLI para que la ruta seleccionada quede registrada.
+    Las políticas de convención muestran su origen de proyecto o usuario. Los cambios explícitos de rutas personalizadas pueden requerir volver a ejecutar la configuración de la CLI para que la ruta seleccionada quede registrada.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -63,15 +63,15 @@ El panel de control local es independiente de Failproof AI Cloud. Funciona sin u
 
 ## Explorar proyectos y sesiones
 
-La página de Proyectos combina los almacenes de historial local compatibles. Selecciona un proyecto para listar sus sesiones y luego abre una sesión para acceder al visor de registros sin procesar, los segmentos de subagentes, la acción de descarga y la actividad de políticas con ámbito de sesión.
+La página de Proyectos combina los almacenes de historial local compatibles. Selecciona un proyecto para listar sus sesiones, luego abre una sesión para acceder al visor de registros sin procesar, los segmentos de subagentes, la acción de descarga y la actividad de políticas en el ámbito de la sesión.
 
-Si falta un proyecto o una sesión, confirma que el harness usa su ubicación de historial predeterminada o registra una raíz adicional con `failproofai harness add-path`.
+Si falta un proyecto o sesión, confirma que el harness utiliza su ubicación de historial predeterminada o registra una raíz adicional con `failproofai harness add-path`.
 
 ## Programar auditorías sin conexión
 
 <Tabs>
-  <Tab title="Panel de control">
-    Abre **Configuración**, activa el análisis programado, elige el intervalo admitido y configura la entrega de informes cuando esté disponible. La página muestra la próxima ejecución, la última ejecución, el código de salida y si el daemon en segundo plano es compatible con la plataforma.
+  <Tab title="Panel">
+    Abre **Configuración**, habilita el escaneo programado, elige el intervalo compatible y configura la entrega de informes cuando esté disponible. La página muestra la próxima ejecución, la última ejecución, el código de salida y si el daemon en segundo plano es compatible con la plataforma.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -79,10 +79,10 @@ Si falta un proyecto o una sesión, confirma que el harness usa su ubicación de
     failproofai audit --status
     ```
 
-    Cambia el número de días para establecer un intervalo diferente entre 1 y 90 días. Desactiva los análisis recurrentes con `failproofai audit --no-schedule`; ejecuta `failproofai audit` para realizar un análisis interactivo inmediato.
+    Cambia el número de días para establecer un intervalo diferente entre 1 y 90 días. Deshabilita los escaneos recurrentes con `failproofai audit --no-schedule`; ejecuta `failproofai audit` para un escaneo interactivo inmediato.
   </Tab>
 </Tabs>
 
 <Warning>
-  El panel de control local puede mostrar prompts, entradas de herramientas, contenido de archivos y salida de terminal provenientes de los historiales de agentes locales. Vincúlalo únicamente a interfaces de confianza y detén el proceso cuando hayas terminado la revisión.
+  El panel local puede mostrar prompts, entradas de herramientas, contenido de archivos y salidas de terminal provenientes de los historiales locales de agentes. Vincúlalo únicamente a interfaces de confianza y detén el proceso cuando la revisión haya concluido.
 </Warning>

@@ -1,33 +1,33 @@
 ---
-title: "Prevén tu primer fallo con una política"
+title: "Evita tu primer fallo con una política"
 description: "Crea una versión de política, despliégala en modo observación y luego aplícala."
 icon: "shield-check"
 ---
 
-Usa una política solo cuando puedas describir la acción insegura y las acciones legítimas que deben seguir permitidas.
+Utiliza una política solo cuando puedas describir la acción no segura y las acciones legítimas que deben seguir permitidas.
 
 <Tabs>
   <Tab title="Panel de control">
     <Steps>
       <Step title="Crea la política">
-        Ve a **Admin → editor de políticas**. Comienza con la política de demostración, revisa o edita su código fuente y luego selecciona **publicar versión**. Al publicar se crea la versión inmutable que podrás desplegar en las máquinas.
+        Ve a **Admin → editor de políticas**. Empieza con la política de demostración, revisa o edita su código fuente y luego selecciona **publicar versión**. Al publicar se crea la versión inmutable que podrás desplegar en las máquinas.
 
-        ![Vista de composición del editor de políticas con una política de demostración lista para publicarse como versión inmutable.](/images/dashboard/policy-editor.png)
+        ![La vista de composición del editor de políticas con una política de demostración lista para publicarse como versión inmutable.](/images/dashboard/policy-editor.png)
       </Step>
       <Step title="Despliégala en una máquina">
         Ve a **Admin → aplicación**, expande la máquina de destino y selecciona **editar esta máquina**. Añade la política de demostración publicada, fija su versión, elige **observar** y aplica el despliegue.
 
-        ![Editor de despliegue de máquina con una versión de política publicada seleccionada en modo observación antes de aplicar el despliegue.](/images/dashboard/enforcement-editor.png)
+        ![El editor de despliegue de máquina con una versión de política publicada seleccionada en modo observación antes de aplicar el despliegue.](/images/dashboard/enforcement-editor.png)
       </Step>
       <Step title="Verifica la política">
-        Ejecuta una nueva sesión de agente en esa máquina y luego abre **Observar → política**. Selecciona la máquina y confirma que la política de demostración aparece en el mapa de políticas y en la línea de tiempo de decisiones. El modo observación registra lo que haría la política sin bloquear la acción.
+        Ejecuta una nueva sesión de agente en esa máquina y luego abre **Observar → política**. Selecciona la máquina y confirma que la política de demostración aparece en el mapeo de políticas y en la línea de tiempo de decisiones. El modo observación registra lo que haría la política sin bloquear la acción.
 
-        ![Página de política que muestra totales de decisiones, actividad de aplicación a lo largo del tiempo y asignaciones de políticas locales y gestionadas en la nube.](/images/dashboard/policy-observe.png)
+        ![La página de políticas mostrando totales de decisiones, actividad de aplicación a lo largo del tiempo y mappings de políticas locales y gestionadas en la nube.](/images/dashboard/policy-observe.png)
       </Step>
     </Steps>
   </Tab>
   <Tab title="CLI">
-    La creación de políticas en la nube y el despliegue en flota son flujos de trabajo administrativos. Usa el CLI local para validar la misma política antes de publicarla:
+    La creación de políticas en la nube y el despliegue en flota son flujos de trabajo administrativos. Usa la CLI local para validar la misma política antes de publicarla:
 
     ```bash
     failproofai policies --install --custom ./payment-retry.policies.ts \
@@ -42,6 +42,6 @@ Usa una política solo cuando puedas describir la acción insegura y las accione
     fp sessions --env production --since 24h
     ```
 
-    El CLI de la nube no expone rutas de despliegue de aplicación exclusivas para administradores. Publica versiones desde **Admin → editor de políticas** y despliégalas desde **Admin → aplicación**.
+    La CLI de la nube no expone las rutas de despliegue de aplicación exclusivas del administrador. Publica versiones desde **Admin → editor de políticas** y despliégalas desde **Admin → aplicación**.
   </Tab>
 </Tabs>

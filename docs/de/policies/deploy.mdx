@@ -1,47 +1,47 @@
 ---
-title: "Richtlinien bereitstellen"
+title: "Richtlinien deployen"
 description: "Eine geprüfte Richtlinienversion auf die vorgesehenen Maschinen ausrollen."
 icon: "cloud-upload"
 ---
 
-Eine Bereitstellung verbindet eine oder mehrere Richtlinienversionen mit einer Zielgruppe registrierter Maschinen.
+Ein Deployment verbindet eine oder mehrere Richtlinienversionen mit einer Zielgruppe eingetragener Maschinen.
 
-## Eine Bereitstellung anwenden
+## Ein Deployment anwenden
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehen Sie zu **Admin → Durchsetzung**, suchen Sie die Maschine und klappen Sie deren Zeile auf.
-    2. Wählen Sie **Bearbeiten**, fügen Sie die geprüfte Richtlinienversion hinzu und wählen Sie **Beobachten** oder den erzwingenden Effekt.
-    3. Wenden Sie die Änderung an, warten Sie dann auf den nächsten Check-in der Maschine und bestätigen Sie deren Bereitstellungs- und Abdeckungsstatus.
-    4. Gehen Sie zu **Beobachten → Richtlinie**, um Live-Entscheidungen einzusehen.
+    1. Gehe zu **Admin → Durchsetzung**, suche die Maschine und klappe ihre Zeile auf.
+    2. Wähle **Bearbeiten**, füge die geprüfte Richtlinienversion hinzu und wähle **Beobachten** oder den durchsetzenden Effekt.
+    3. Wende die Änderung an, warte dann auf das nächste Check-in der Maschine und bestätige ihren Deployment- und Coverage-Status.
+    4. Gehe zu **Beobachten → Richtlinie**, um Live-Entscheidungen einzusehen.
 
-    ![Der Maschinen-Bereitstellungseditor mit Richtlinienversionen, Erzwingen- und Beobachten-Effekten sowie der Aktion zum Anwenden der Bereitstellung.](/images/dashboard/enforcement-editor.png)
+    ![Der Maschinen-Deployment-Editor mit Richtlinienversionen, Durchsetzungs- und Beobachtungseffekten sowie der Aktion zum Anwenden des Deployments.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Cloud-Bereitstellungsendpunkte sind absichtlich nicht als gewöhnliche `fp`-Befehle verfügbar. Überprüfen Sie die Maschine lokal und stellen Sie dann über das Dashboard bereit:
+    Cloud-Deployment-Endpunkte sind bewusst nicht als gewöhnliche `fp`-Befehle verfügbar. Überprüfe die Maschine lokal und deploye dann über das Dashboard:
 
     ```bash
     failproofai config --status
     ```
 
-    Verwenden Sie `fp sessions --env production --since 24h` und `fp events --event-type hook_completed` nach der Bereitstellung, um zu verifizieren, dass Aktivitäten die Cloud erreichen.
+    Verwende nach dem Deployment `fp sessions --env production --since 24h` und `fp events --event-type hook_completed`, um zu überprüfen, ob Aktivität die Cloud erreicht.
   </Tab>
 </Tabs>
 
 <Steps>
   <Step title="Version und Ziele auswählen">
-    Stellen Sie eine geprüfte Version bereit, kein veränderbares Entwurfsdokument – beginnen Sie mit einer Nicht-Produktionsmaschine oder einer kleinen Gruppe, deren Sitzungen Sie einsehen können.
+    Deploye eine geprüfte Version – keinen veränderbaren Entwurf – und beginne mit einer Nicht-Produktionsmaschine oder einer kleinen Gruppe, deren Sitzungen du einsehen kannst.
   </Step>
   <Step title="Entscheidungen beobachten">
-    Überprüfen Sie Treffer, Begründungen, betroffene Tools und falsch-positive Ergebnisse, ohne die Arbeit zu blockieren.
+    Überprüfe Treffer, Begründungen, betroffene Tools und Falsch-Positive, ohne die Arbeit zu blockieren.
   </Step>
-  <Step title="Durchsetzung aktivieren und Abdeckung verifizieren">
-    Führen Sie ein Upgrade durch, sobald beobachtete Treffer unsichere Aktionen von gültigen trennen, und bestätigen Sie dann, dass jede vorgesehene Maschine die Bereitstellung abgerufen hat und Entscheidungen meldet.
+  <Step title="Durchsetzung aktivieren und Coverage prüfen">
+    Stufe hoch, sobald beobachtete Treffer unsichere Aktionen von gültigen trennen, und bestätige dann, dass jede vorgesehene Maschine das Deployment abgerufen hat und Entscheidungen meldet.
   </Step>
 </Steps>
 
-Maschinen benötigen die Berechtigung `policies:pull`. Die Ereignismeldung wird separat durch `events:add` gesteuert; überprüfen Sie beides, wenn Sie Cloud-Analyse und -Durchsetzung erwarten.
+Maschinen benötigen die Berechtigung `policies:pull`. Das Ereignis-Reporting wird separat durch `events:add` gesteuert; überprüfe beides, wenn du Cloud-Analyse und Durchsetzung erwartest.
 
 <Warning>
-  Die Verwaltung der Durchsetzung ist ein administrativer Cloud-Workflow. Behandeln Sie nur-Root-Durchsetzungsrouten nicht als gewöhnliche Kunden-API-Endpunkte unter `/v1`.
+  Die Verwaltung der Durchsetzung ist ein administrativer Cloud-Workflow. Behandle Root-Only-Durchsetzungsrouten nicht als gewöhnliche Kunden-Endpunkte unter `/v1`.
 </Warning>

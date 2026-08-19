@@ -1,21 +1,21 @@
 ---
 title: "Configurar una auditoría"
-description: "Define el objetivo de una auditoría, la población de sesiones y el contexto de evidencia."
+description: "Define el objetivo, la población de sesiones y el contexto de evidencia de una auditoría."
 icon: "sliders-horizontal"
 ---
 
-La calidad de una auditoría depende de su alcance. Una solicitud amplia como "encontrar problemas" produce resultados menos útiles que una pregunta de fallo concreta.
+La calidad de una auditoría comienza con su alcance. Una solicitud amplia como "encontrar problemas" produce resultados menos útiles que una pregunta de fallo concreta.
 
 ## Configurar la auditoría
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Ve a **Analizar → Auditorías → Nueva auditoría** e introduce el nombre y la descripción.
+    1. Ve a **Analyze → Audits → New audit** e introduce el nombre y la descripción.
     2. Establece la cadencia, la ventana de tiempo, el alcance de agente/entorno, los errores ignorados, la sensibilidad y el número máximo de hallazgos.
-    3. En **agentes**, añade o revisa el contexto del agente, luego añade el resumen del operador y cualquier URL de referencia HTTPS pública.
-    4. Elige los canales de notificación y selecciona **crear auditoría**. La primera ejecución se pone en cola de inmediato.
+    3. En **agents**, añade o revisa el contexto del agente, luego añade el brief del operador y cualquier URL de referencia HTTPS pública.
+    4. Elige los canales de notificación y selecciona **create audit**. La primera ejecución se pone en cola inmediatamente.
 
-    ![El formulario de nueva auditoría con nombre, descripción, cadencia, ventana, entorno y alcance del agente, errores ignorados, configuración de análisis, resumen, páginas de referencia y canales de notificación.](/images/dashboard/audit-new.png)
+    ![El formulario de nueva auditoría con nombre, descripción, cadencia, ventana, entorno y alcance del agente, errores ignorados, configuración de análisis, brief, páginas de referencia y canales de notificación.](/images/dashboard/audit-new.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,14 +29,14 @@ La calidad de una auditoría depende de su alcance. Una solicitud amplia como "e
       --url https://runbooks.example.com/checkout
     ```
 
-    La primera ejecución se pone en cola de inmediato. Incluye el resumen y las URLs de referencia durante la creación para que esa ejecución los reciba.
+    La primera ejecución se pone en cola inmediatamente. Incluye el brief y las URLs de referencia durante la creación para que esa ejecución los reciba.
 
     Consulta la referencia completa de [`fp audits create`](/es/reference/cloud-cli#audits).
   </Tab>
 </Tabs>
 
 <Tip>
-  Comienza con una sesión fallida conocida y varias sesiones normales. Esto proporciona a la auditoría tanto un ejemplo positivo como un conjunto de comparación.
+  Empieza con una sesión fallida conocida y varias sesiones normales. Esto le proporciona a la auditoría tanto un ejemplo positivo como un conjunto de comparación.
 </Tip>
 
 <Info>

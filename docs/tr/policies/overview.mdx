@@ -1,39 +1,39 @@
 ---
-title: "Politikalar"
-description: "Aracı işlemlerini gözlemleyin, yönlendirin veya bilinen bir hatanın tekrar oluşmasını engelleyin."
+title: "İlkeler"
+description: "Agent eylemlerini gözlemleyin, yönlendirin veya bilinen bir hata tekrarlanmadan önce engelleyin."
 icon: "shield-check"
 ---
 
-Bir politika, aracı kanca olayını değerlendirir ve üç karardan birini döndürür:
+Bir ilke, bir agent hook olayını değerlendirir ve üç karardan birini döndürür:
 
-- `allow` işlemin devam etmesine izin verir.
-- `instruct` aracıya düzeltici rehberlik sağlar.
-- `deny` işlemi bir nedenle engeller.
+- `allow` eylemin devam etmesini sağlar.
+- `instruct` agent'a düzeltici rehberlik verir.
+- `deny` eylemi bir nedenle engeller.
 
-## Üç politika yüzeyini kullanın
+## Üç ilke yüzeyini kullanın
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Oturumlardan politika kararlarını filtrelemek ve incelemek için **Observe → policy** bölümüne gidin.
-    2. Bir politika oluşturmak, doğrulamak, yayınlamak, devre dışı bırakmak veya değişmez sürümleri incelemek için **Admin → policy editor** bölümüne gidin.
-    3. Sürümleri ve etkileri makinelere atamak için **Admin → enforcement** bölümüne gidin.
+    1. **Observe → policy** sayfasına giderek oturumlardan ilke kararlarını filtreleyip inceleyin.
+    2. **Admin → policy editor** sayfasına giderek bir ilke oluşturun, doğrulayın, yayınlayın, devre dışı bırakın veya değişmez sürümleri inceleyin.
+    3. **Admin → enforcement** sayfasına giderek sürümleri ve efektleri makinelere atayın.
 
-    Yazar olmadan veya zorlama değişikliğinden önce nelerin eşleştiğini anlamak için Policy sayfasını kullanın.
+    Yazarlık yapmadan veya zorlama ayarlarını değiştirmeden önce zaten nelerin eşleştiğini anlamak için İlke sayfasını kullanın.
 
-    ![Policy sayfası, karar toplamlarını ve yerel ve Bulut tarafından yönetilen politika eşlemelerini göstermektedir.](/images/dashboard/policy-observe.png)
+    ![Karar toplamlarını ve yerel ile Bulut tarafından yönetilen ilke eşlemelerini gösteren İlke sayfası.](/images/dashboard/policy-observe.png)
 
-    Editör, bir hata koşulunu kaynağa dönüştürdüğünüz, doğruladığınız ve değişmez bir sürüm yayınladığınız yerdir.
+    Editör, bir hata koşulunu kaynağa dönüştürdüğünüz, doğruladığınız ve değişmez bir sürümü yayınladığınız yerdir.
 
-    ![Bir değişmez politika sürümü oluşturmak ve yayınlamak için kullanılan Policy editörü.](/images/dashboard/policy-editor.png)
+    ![Değişmez bir ilke sürümü oluşturmak ve yayınlamak için kullanılan İlke editörü.](/images/dashboard/policy-editor.png)
 
-    Zorlama daha sonra yayınlanmış olan sürümü ve gözlem veya zorlama etkisini makinelere atar.
+    Zorlama daha sonra yayınlanan o sürümü ve onun gözlemle veya zorla efektini makinelere atar.
 
-    ![Makine kapsamını ve atanmış politika sürümlerini gösteren Enforcement filosu.](/images/dashboard/enforcement-fleet.png)
+    ![Makine kapsaması ve atanmış ilke sürümlerini gösteren Zorlama filosu.](/images/dashboard/enforcement-fleet.png)
 
-    Dağıtımdan sonra Policy sayfasında kararları doğrulayın, böylece yazar ve filo görünümleri gerçek aracı etkinliğine bağlı olur.
+    Dağıtımdan sonra kararları İlke sayfasında doğrulayın, böylece yazarlık ve filo görünümleri gerçek agent etkinliğine bağlı olur.
   </Tab>
   <Tab title="CLI">
-    Yerel politika yüklemesi ve doğrulaması için `failproofai` kullanın:
+    Yerel ilke kurulumu ve doğrulaması için `failproofai` kullanın:
 
     ```bash
     failproofai policies
@@ -41,23 +41,23 @@ Bir politika, aracı kanca olayını değerlendirir ve üç karardan birini dön
     failproofai config --status
     ```
 
-    Politika kararları içeren Bulut oturumlarını ve olaylarını bulmak için `fp` kullanın. Bulut yazarlığı ve filo dağıtımı, pano iş akışları olmaya devam eder.
+    İlke kararlarını içeren Bulut oturumlarını ve olaylarını bulmak için `fp` kullanın. Bulut yazarlığı ve filo dağıtımı dashboard iş akışları olarak kalır.
   </Tab>
 </Tabs>
 
-Politikaların Failproof AI'da üç farklı yüzeyi vardır:
+İlkeler Failproof AI'da üç farklı yüzeye sahiptir:
 
-1. **Kararları analiz edin** oturumlarda, panolarda ve denetimlerde.
-2. **Sürümleri yazar** yerleşik kurallar, kod veya politika editörü ile.
-3. **Sürümleri dağıtın ve zorlayın** seçilen makineler arasında.
+1. **Kararları analiz edin** oturumlar, panolar ve denetimler içinde.
+2. **Sürümleri yazın** yerleşik kurallar, kod veya ilke editörü ile.
+3. **Sürümleri dağıtın ve uygulayın** seçili makinelerde.
 
-Doğrulanmış bir hata modundan başlayın. Bunu tanımlayan en küçük olayı ve araç eşleşmesini tanımlayın, meşru ve güvensiz örnekleri test edin, ardından zorlama yapmadan önce gözlemleyin.
+Doğrulanmış bir hata modundan başlayın. Bunu tanımlayan en küçük olay ve araç eşlemesini tanımlayın, meşru ve güvenli olmayan örnekleri test edin, ardından zorlama yapmadan önce gözlemleyin.
 
 <Columns cols={2}>
-  <Card title="Yerleşik bir politika kullanın" icon="library" href="/tr/policies/builtin">
-    Yaygın gizli bilgi, kabuk, Git, bulut ve iş akışı riskleri için incelenen bir kuralı etkinleştirin.
+  <Card title="Yerleşik ilke kullanın" icon="library" href="/tr/policies/builtin">
+    Yaygın gizli, kabuk, Git, bulut ve iş akışı riskleri için incelenen bir kuralı etkinleştirin.
   </Card>
-  <Card title="Özel bir politika yazın" icon="code-2" href="/tr/policies/custom">
-    JavaScript veya TypeScript'te iş akışına özgü bir kararı ifade edin.
+  <Card title="Özel ilke yazın" icon="code-2" href="/tr/policies/custom">
+    İş akışına özgü bir kararı JavaScript veya TypeScript'te ifade edin.
   </Card>
 </Columns>

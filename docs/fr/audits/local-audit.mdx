@@ -1,16 +1,16 @@
 ---
 title: "Auditer l'historique local de l'agent"
-description: "Analysez hors ligne les historiques des CLI d'agents pris en charge et examinez localement les comportements risqués ou superflus."
+description: "Analysez hors ligne les historiques des CLI d'agents pris en charge et examinez localement les comportements risqués ou inutiles."
 icon: "laptop-minimal-check"
 ---
 
-Utilisez un audit local pour une revue immédiate et confidentielle avant de connecter une machine à Failproof AI Cloud. Il analyse les historiques d'agents déjà stockés sur votre machine, rejoue l'activité des outils à travers les politiques intégrées, et ouvre un tableau de bord des résultats en local.
+Effectuez un audit local pour une revue immédiate et privée avant de connecter une machine à Failproof AI Cloud. Il analyse les historiques d'agents déjà stockés sur votre machine, rejoue l'activité des outils via les politiques intégrées, et ouvre un tableau de bord de résultats en local.
 
 ## Lancer un audit interactif
 
 <Tabs>
   <Tab title="Tableau de bord">
-    L'audit local démarre depuis la CLI, car il doit découvrir les historiques sur la machine courante. Exécutez `failproofai audit` ; une fois l'analyse terminée, Failproof AI lance le tableau de bord intégré et ouvre **http://localhost:8020/audit**.
+    L'audit local démarre depuis le CLI car il doit découvrir les historiques sur la machine en cours. Exécutez `failproofai audit` ; après l'analyse, Failproof AI lance le tableau de bord intégré et ouvre **http://localhost:8020/audit**.
 
     Dans la vue d'audit, examinez le nombre de sessions, d'appels d'outils, de projets et de correspondances de politiques. Commencez par les résultats les plus fréquents, puis inspectez le projet concerné et l'historique de l'agent avant d'activer l'application des politiques.
 
@@ -22,9 +22,9 @@ Utilisez un audit local pour une revue immédiate et confidentielle avant de con
     failproofai audit
     ```
 
-    La commande effectue une analyse complète de tous les historiques pris en charge qu'elle trouve. La commande actuelle n'accepte pas de filtres tels que `--since`, `--cli`, `--project`, `--port` ou `--no-open`.
+    La commande effectue une analyse complète de chaque historique pris en charge qu'elle trouve. La commande actuelle n'accepte pas de filtres tels que `--since`, `--cli`, `--project`, `--port` ou `--no-open`.
 
-    Laissez le processus en cours d'exécution pendant que vous utilisez le tableau de bord local. Appuyez sur <kbd>Ctrl</kbd>+<kbd>C</kbd> lorsque vous avez terminé.
+    Laissez le processus s'exécuter pendant l'utilisation du tableau de bord local. Appuyez sur <kbd>Ctrl</kbd>+<kbd>C</kbd> lorsque vous avez terminé.
   </Tab>
 </Tabs>
 
@@ -34,7 +34,7 @@ Les adaptateurs d'audit actuels peuvent lire les historiques de Claude Code, Cod
 
 <Tabs>
   <Tab title="Tableau de bord">
-    Ouvrez **Paramètres** dans le tableau de bord local, activez les audits planifiés, choisissez l'intervalle et saisissez l'adresse e-mail qui doit recevoir les résultats. Le tableau de bord et la CLI mettent à jour la même configuration machine.
+    Ouvrez **Paramètres** dans le tableau de bord local, activez les audits planifiés, choisissez l'intervalle et renseignez l'adresse e-mail qui doit recevoir les résultats. Le tableau de bord et le CLI mettent à jour la même configuration machine.
   </Tab>
   <Tab title="CLI">
     Activez un audit hebdomadaire et envoyez les résultats à l'adresse indiquée :
@@ -44,7 +44,7 @@ Les adaptateurs d'audit actuels peuvent lire les historiques de Claude Code, Cod
     failproofai audit --status
     ```
 
-    L'intervalle accepte des valeurs de 1 à 90 jours et prend la valeur 7 par défaut si omis. La première configuration vous connecte si nécessaire ; `--email` fournit l'adresse du rapport sans invite.
+    L'intervalle accepte des valeurs de 1 à 90 jours et vaut 7 par défaut si omis. La première configuration vous connecte si nécessaire ; `--email` fournit l'adresse du rapport sans demande de confirmation.
 
     Arrêtez la planification sans supprimer l'historique d'audit local :
 
@@ -54,21 +54,21 @@ Les adaptateurs d'audit actuels peuvent lire les historiques de Claude Code, Cod
   </Tab>
 </Tabs>
 
-Le démon exécute les analyses planifiées en arrière-plan, actualise le résultat mis en cache utilisé par le tableau de bord local, et envoie le rapport configuré par e-mail. Utilisez `failproofai audit` lorsque vous souhaitez lancer immédiatement une analyse interactive.
+Le démon exécute les analyses planifiées en arrière-plan, actualise le résultat mis en cache utilisé par le tableau de bord local, et envoie le rapport configuré par e-mail. Utilisez `failproofai audit` pour lancer immédiatement une analyse interactive.
 
-## Passer des données locales aux opérations Cloud
+## Passer des preuves locales aux opérations Cloud
 
-Un audit local constitue une base de référence rapide. Connectez la machine à Failproof AI Cloud lorsque vous avez besoin de traces partagées, d'audits de population récurrents, de résultats et de problèmes, d'alertes, d'un déploiement de politiques à l'échelle de l'organisation, ou d'une visibilité sur la santé de votre parc.
+Un audit local constitue une base de référence rapide. Connectez la machine à Failproof AI Cloud lorsque vous avez besoin de traces partagées, d'audits de population récurrents, de résultats et de problèmes, d'alertes, de déploiement de politiques à l'échelle de l'organisation ou d'une vue de la santé du parc.
 
 <CardGroup cols={2}>
   <Card title="Créer un audit Cloud" icon="scan-search" href="/fr/audits/setup">
     Définissez un objectif récurrent, une population, une fenêtre de preuves et des canaux de réponse.
   </Card>
   <Card title="Activer une politique" icon="shield-check" href="/fr/start/first-policy">
-    Validez localement, publiez délibérément et déployez d'abord sur un groupe de machines restreint.
+    Validez localement, publiez de manière réfléchie, et déployez d'abord sur un groupe de machines restreint.
   </Card>
 </CardGroup>
 
 <Warning>
-  Les résultats d'un audit constituent des éléments à examiner, et non la preuve que chaque action signalée est dangereuse. Confirmez le contexte avant de transformer un résultat en règle de blocage.
+  Le résultat d'un audit constitue des éléments à examiner, non la preuve que chaque action signalée est dangereuse. Confirmez le contexte avant de transformer un résultat en règle bloquante.
 </Warning>

@@ -1,21 +1,21 @@
 ---
-title: "Thiết lập kiểm toán"
-description: "Xác định mục tiêu kiểm toán, phần dân số phiên làm việc và ngữ cảnh bằng chứng."
+title: "Thiết lập một cuộc kiểm toán"
+description: "Xác định mục tiêu kiểm toán, dân số phiên làm việc và bối cảnh bằng chứng."
 icon: "sliders-horizontal"
 ---
 
-Chất lượng của một cuộc kiểm toán bắt đầu từ phạm vi của nó. Một yêu cầu rộng như "tìm vấn đề" sẽ cho kết quả ít hữu ích hơn so với một câu hỏi thất bại cụ thể.
+Chất lượng của một cuộc kiểm toán bắt đầu từ phạm vi của nó. Một yêu cầu rộng như "tìm các vấn đề" sẽ cho ra kết quả ít hữu ích hơn so với một câu hỏi về lỗi cụ thể.
 
-## Cấu hình kiểm toán
+## Cấu hình cuộc kiểm toán
 
 <Tabs>
   <Tab title="Dashboard">
     1. Đi tới **Analyze → Audits → New audit** và nhập tên và mô tả.
-    2. Đặt tần suất, cửa sổ thời gian, phạm vi agent/môi trường, lỗi được bỏ qua, độ nhạy cảm và số lượng phát hiện tối đa.
-    3. Trong **agents**, thêm hoặc xem xét ngữ cảnh agent, sau đó thêm tóm tắt của người điều hành và bất kỳ URL tham chiếu HTTPS công khai nào.
+    2. Đặt tần suất, cửa sổ thời gian, phạm vi agent/môi trường, lỗi bị bỏ qua, độ nhạy cảm và số lượng phát hiện tối đa.
+    3. Trong **agents**, thêm hoặc xem lại bối cảnh agent, sau đó thêm tóm tắt điều hành và bất kỳ URL tham khảo HTTPS công khai nào.
     4. Chọn các kênh thông báo và chọn **create audit**. Lần chạy đầu tiên sẽ được xếp hàng ngay lập tức.
 
-    ![Biểu mẫu kiểm toán mới với tên, mô tả, tần suất, cửa sổ, phạm vi môi trường và agent, lỗi bỏ qua, cài đặt phân tích, tóm tắt, trang tham chiếu và các kênh thông báo.](/images/dashboard/audit-new.png)
+    ![Biểu mẫu kiểm toán mới với tên, mô tả, tần suất, cửa sổ, phạm vi môi trường và agent, lỗi bị bỏ qua, cài đặt phân tích, tóm tắt, trang tham khảo và các kênh thông báo.](/images/dashboard/audit-new.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,16 +29,16 @@ Chất lượng của một cuộc kiểm toán bắt đầu từ phạm vi củ
       --url https://runbooks.example.com/checkout
     ```
 
-    Lần chạy đầu tiên sẽ được xếp hàng ngay lập tức. Bao gồm tóm tắt và URL tham chiếu trong quá trình tạo để lần chạy đó nhận được chúng.
+    Lần chạy đầu tiên sẽ được xếp hàng ngay lập tức. Hãy bao gồm tóm tắt và các URL tham khảo trong quá trình tạo để lần chạy đó nhận được chúng.
 
-    Xem tham chiếu [`fp audits create`](/vi/reference/cloud-cli#audits) đầy đủ.
+    Xem tài liệu tham khảo đầy đủ [`fp audits create`](/vi/reference/cloud-cli#audits).
   </Tab>
 </Tabs>
 
 <Tip>
-  Bắt đầu với một phiên làm việc đã biết thất bại và một số phiên làm việc bình thường. Điều này cung cấp cho kiểm toán cả một ví dụ tích cực và một bộ so sánh.
+  Bắt đầu với một phiên làm việc đã biết thất bại và một số phiên làm việc bình thường. Điều này cung cấp cho cuộc kiểm toán cả một ví dụ tích cực và một tập hợp so sánh.
 </Tip>
 
 <Info>
-  Ngữ cảnh kiểm toán được lưu trữ như một tài nguyên riêng để chỉnh sửa kiểm toán không vô tình xóa tài liệu tham chiếu.
+  Bối cảnh kiểm toán được lưu trữ như một tài nguyên riêng, vì vậy chỉnh sửa một cuộc kiểm toán sẽ không vô tình xóa tài liệu tham khảo.
 </Info>

@@ -1,24 +1,24 @@
 ---
-title: "감사"
-description: "트레이스만으로는 드러나지 않는 실패를 찾기 위해 정의된 세션 집합을 검토합니다."
+title: "감사(Audits)"
+description: "트레이스만으로는 발견하기 어려운 장애를 파악하기 위해 정의된 세션 집합을 검토합니다."
 icon: "scan-search"
 ---
 
-감사는 선택된 세션 집합에서 명시된 실패 목표를 탐색합니다. 트레이스 증거, 평가 결과, 정책 히트, 참조 컨텍스트를 결합하여 실행 가능한 결과를 생성합니다.
+감사(audit)는 선택한 세션 집합에서 명시된 장애 목표를 탐색합니다. 트레이스 증거, 평가 결과, 정책 적중 사항, 참조 컨텍스트를 결합하여 실행 가능한 결과를 도출합니다.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Failproof AI 감사로 에이전트 실패를 자동으로 찾기" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-감사가 예약된 실행부터 수정 가능한 증거 기반 실패까지 어떻게 진행되는지 확인하세요.
+감사가 예약 실행에서 증거 기반의 수정 가능한 장애로 이어지는 과정을 확인해 보세요.
 
 ## 감사 열기
 
 <Tabs>
   <Tab title="대시보드">
-    **분석 → 감사**로 이동합니다. 페이지에는 예약 상태, 열린 결과, 마지막 실행, 다음 실행, 주기, 감사에 브리프 또는 참조 페이지가 있는지 여부가 표시됩니다. 카드를 선택하면 설정과 실행 기록을 볼 수 있고, **새 감사**를 선택하면 감사를 생성할 수 있습니다.
+    **Analyze → Audits**로 이동합니다. 페이지에는 예약 상태, 열린 결과, 마지막 실행, 다음 실행, 주기, 그리고 감사에 브리프 또는 참조 페이지가 있는지 여부가 표시됩니다. 카드를 선택하면 설정 및 실행 기록을 확인할 수 있으며, **new audit**을 선택하여 새 감사를 생성합니다.
 
-    ![예약, 민감도, 실행 상태가 표시된 반복 감사 목록의 감사 페이지.](/images/dashboard/audits.png)
+    ![예약 일정, 민감도, 실행 상태가 표시된 반복 감사 목록 페이지.](/images/dashboard/audits.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -30,10 +30,10 @@ icon: "scan-search"
   </Tab>
 </Tabs>
 
-다음과 같은 집단 수준의 질문에 답해야 할 때 감사를 사용하세요:
+다음과 같은 집단 수준의 질문에 답해야 할 때 감사를 사용하세요.
 
-- 에이전트가 에스컬레이션 없이 작업을 포기하는 경우는 어디인가?
-- 어떤 도구 실패가 비효율적인 재시도로 이어지는가?
+- 에이전트가 에스컬레이션 없이 작업을 포기하는 지점은 어디인가?
+- 어떤 도구 장애가 비효율적인 재시도로 이어지는가?
 - 에이전트가 의도된 워크플로 외부의 데이터에 접근하고 있는가?
 - 모델, 프롬프트, 또는 도구 릴리스 이후 무엇이 변경되었는가?
 
@@ -44,13 +44,13 @@ Session → Audit → Finding → Issue → Policy
                          ↘ Alert for recurrence
 ```
 
-결과는 실패 모드를 명시하고 증거를 가리켜야 합니다. 이슈는 수정 조치를 담당합니다. 정책은 알려진 액션 패턴을 방지하고, 알림은 방지가 불가능하거나 모니터링이 필요한 경우 재발을 감지합니다.
+결과(finding)는 장애 유형을 명시하고 증거를 가리켜야 합니다. 이슈(issue)는 수정 사항을 담당합니다. 정책(policy)은 알려진 동작 패턴을 방지하고, 알림(alert)은 방지가 불가능하거나 모니터링이 필요한 경우 재발을 감지합니다.
 
 <Columns cols={2}>
-  <Card title="감사 설정" icon="sliders-horizontal" href="/ko/audits/setup">
-    첫 번째 실행 전에 목표, 대상 집합, 참조 컨텍스트를 정의하세요.
+  <Card title="감사 설정하기" icon="sliders-horizontal" href="/ko/audits/setup">
+    첫 번째 실행 전에 목표, 대상 집합, 참조 컨텍스트를 정의합니다.
   </Card>
-  <Card title="에이전트 컨텍스트 추가" icon="bot" href="/ko/audits/agent-contracts">
-    각 에이전트가 반드시 생성해야 하는 것과 절대 해서는 안 되는 것을 명시하세요.
+  <Card title="에이전트 컨텍스트 추가하기" icon="bot" href="/ko/audits/agent-contracts">
+    각 에이전트가 반드시 생성해야 하는 것과 절대 해서는 안 되는 것을 명시합니다.
   </Card>
 </Columns>

@@ -4,26 +4,26 @@ description: "Makineler, otomasyon ve operatörler için kapsamlı API anahtarla
 icon: "key-round"
 ---
 
-API anahtarları bir kuruluşa ait olup açık izinler içerir. Ajan alımı, politika teslimi, değerlendiriciler, CI otomasyonu ve yönetimsel betikler için ayrı anahtarlar kullanın.
+API anahtarları bir organizasyona aittir ve açık izinler taşır. Ajan alımı, politika dağıtımı, değerlendiriciler, CI otomasyonu ve yönetim betikleri için ayrı anahtarlar kullanın.
 
 ## Anahtar oluşturma ve döndürme
 
 <Tabs>
-  <Tab title="Gösterge Paneli">
-    1. **Yönetim → Anahtarlar** sayfasına gidin, **yeni anahtar** seçin ve bir iş yükü adı girin.
-    2. Bir izin seti seçin ve ön ayarın yetersiz olduğu durumlarda yalnızca bireysel izinleri ayarlayın.
+  <Tab title="Dashboard">
+    1. **Administration → Keys** bölümüne gidin, **new key** seçeneğini tıklayın ve iş yükü adını girin.
+    2. Bir izin seti seçin ve önceden tanımlanmış izinler yetersiz olduğunda yalnızca bireysel izinleri ayarlayın.
     3. Anahtarı oluşturun ve tek seferlik sırrını hemen kopyalayın.
-    4. Anahtarı daha sonra açarak izinleri güncelleyin, devre dışı bırakın veya sırrı yeniden oluşturun.
+    4. Anahtarı daha sonra açarak yetkilendirmeleri güncelleyin, devre dışı bırakın veya sırrı yeniden oluşturun.
 
-    Oluşturma çekmeceği, iş yükü tarafından gereken en dar izinleri seçtiğiniz yerdir.
+    Oluşturma çekmeceği, iş yükü tarafından gerekli olan en dar yetkilendirmeleri seçebileceğiniz yerdir.
 
-    ![İzin ön ayarları ve bireysel izinleri gösteren yeni API anahtar çekmecesi.](/images/dashboard/key-create.png)
+    ![İzin ön ayarları ve bireysel yetkilendirmeler ile yeni API anahtar çekmecesi.](/images/dashboard/key-create.png)
 
-    Oluşturulduktan sonra, Anahtarlar sayfası kalıcı meta verileri ve yönetim işlemlerini gösterir. Tek seferlik sır tekrar gösterilmez.
+    Oluşturulduktan sonra, Keys sayfası kalıcı meta verileri ve yönetim eylemlerini gösterir. Tek seferlik sır bir daha gösterilmez.
 
-    ![Anahtar izinlerini, oluşturma saatini ve yeniden oluştur ile devre dışı bırak işlemlerini gösteren API Anahtarları sayfası.](/images/dashboard/api-keys.png)
+    ![API Keys sayfası, anahtar izinleri, oluşturma zamanı ve yeniden oluştur ile devre dışı bırak eylemlerini gösteriyor.](/images/dashboard/api-keys.png)
 
-    Bu listeyi kullanarak izinleri düzenli olarak inceleyin ve artık etkin bir iş yüküne karşılık gelmeyen anahtarları devre dışı bırakın.
+    İzinleri düzenli olarak gözden geçirmek ve artık etkin bir iş yüküne karşılık gelmeyen anahtarları devre dışı bırakmak için bu listeyi kullanın.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -45,17 +45,17 @@ Bağlı bir Failproof AI makinesi tarafından gereken iki izin bağımsızdır:
 - `events:add` olayları ve oturum verilerini gönderir.
 - `policies:pull` atanan politika dağıtımlarını alır.
 
-Anahtar sırları oluşturulduğunda veya yeniden oluşturulduğunda gösterilir. Bunları bir sır yöneticisinde saklayın ve bir operatörün etkileşimli kimlik bilgilerini yeniden kullanmadan döndürün.
+Anahtar sırları oluşturma veya yeniden oluşturma sırasında gösterilir. Bunları bir sır yöneticisinde saklayın ve bir operatörün etkileşimli kimlik bilgilerini yeniden kullanmadan döndürün.
 
 ## İzin kataloğu
 
 | Alan | İzinler |
 | --- | --- |
 | Olaylar | `events:add`, `events:read` |
-| Anahtarlar | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` yalnızca insan oturumu için |
+| Anahtarlar | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` yalnızca insan oturumu |
 | Kullanıcılar | `users:create`, `users:read`, `users:update`, `users:delete` |
 | Değerlendirmeler | `evaluations:read`, `evaluations:trigger` |
-| Gösterge Panelleri | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
+| Panolar | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
 | Sorgular | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
 | Asistan | `agent:use` |
 | Ayarlar | `settings:read`, `settings:write` |
@@ -65,10 +65,10 @@ Anahtar sırları oluşturulduğunda veya yeniden oluşturulduğunda gösterilir
 | Politikalar | `policies:read`, `policies:write`, `policies:pull` |
 | Kullanım | `usage:read` |
 
-`orgs:admin` örnek operatörü için ayrılmıştır ve bir kuruluş anahtarına veya sıradan üyeye verilemez. Kullanımdan kaldırılan `incidents:*` ve `alerts:ack` belirteçleri uyumluluk için kabul edilir ve mevcut `issues:*` izinlerine normalleştirilir.
+`orgs:admin` örnek operatörü için ayrılmıştır ve bir organizasyon anahtarına veya sıradan üyeye verilemez. Emekli `incidents:*` ve `alerts:ack` belirteçleri uyumluluk için kabul edilir ve mevcut `issues:*` izinlerine normalleştirilir.
 
-Yerleşik izin setleri `read-only`, `standard` ve `admin` konumundadır. `standard` okuma izinlerine değerlendirme tetikleme, sorgu yürütme, sorun yanıtı ve asistan kullanımını ekler. Anahtar oluşturma, bir izin seti bunları içerse bile yalnızca insan için geçerli olan izinleri kaldırır.
+Yerleşik izin setleri `read-only`, `standard` ve `admin` dır. `standard`, oku izinlerine değerlendirme tetikleme, sorgu yürütme, sorun yanıtı ve asistan kullanımını ekler. Anahtar oluşturma, bir izin seti bunları içerse bile yalnızca insan izinlerini kaldırır.
 
 <Warning>
-  Örnek kapsamlı anahtarlar, `X-AgentEye-Org` başlığı ile bir kuruluş seçebilir. Çok kuruluşlu dağıtımlarda açıkça ayarlayın; atlama varsayılan kuruluşu seçebilir.
+  Örnek kapsamlı anahtarlar `X-AgentEye-Org` üstbilgisiyle bir organizasyon seçebilir. Çok organizasyonlu dağıtımlarda bunu açıkça ayarlayın; atlama varsayılan organizasyonu seçebilir.
 </Warning>

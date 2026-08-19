@@ -1,15 +1,15 @@
 ---
 title: "Agents personnalisés"
-description: "Instrumentez les traces d'agents personnalisés pour que Failproof AI puisse reconstruire les exécutions et identifier les défaillances."
+description: "Instrumentez les traces de vos agents personnalisés afin que Failproof AI puisse reconstruire les exécutions et identifier les défaillances."
 icon: "python"
 ---
 
-Instrumentez les traces d'un agent personnalisé avec `failproofai-sdk` pour que Failproof AI puisse reconstruire chaque exécution, auditer son comportement et identifier les défaillances étayées par des preuves. Le SDK écrit des événements structurés que le daemon Failproof transmet au Cloud. Il nécessite Python 3.10 ou une version plus récente.
+Instrumentez les traces d'un agent personnalisé avec `failproofai-sdk` afin que Failproof AI puisse reconstruire chaque exécution, auditer son comportement et détecter les défaillances avec preuves à l'appui. Le SDK écrit des événements structurés que le daemon Failproof transmet au Cloud. Il requiert Python 3.10 ou une version ultérieure.
 
-L'instrumentation des traces rend les agents personnalisés observables et auditables. Pour empêcher l'exécution d'une action non sécurisée, un hook d'application est également nécessaire dans votre runtime.
+Le traçage rend les agents personnalisés observables et auditables. Pour bloquer une action non sécurisée avant son exécution, il faut également un hook d'application dans votre runtime.
 
 <Info>
-  Pour appliquer des politiques dans un environnement d'agent personnalisé, [contactez Failproof AI](mailto:support@befailproof.ai). Nous vous aiderons à mapper les frontières de modèle, d'outil et de cycle de vie de votre runtime sur des hooks de politique.
+  Pour appliquer des politiques dans une configuration d'agent personnalisé, [contactez Failproof AI](mailto:support@befailproof.ai). Nous vous aiderons à mapper les frontières de modèle, d'outil et de cycle de vie de votre runtime sur des hooks de politique.
 </Info>
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
@@ -18,7 +18,7 @@ L'instrumentation des traces rend les agents personnalisés observables et audit
 
 ## Installer `failproofai-sdk`
 
-Le SDK est actuellement distribué sous forme de wheel privé. Contactez votre interlocuteur Failproof AI pour obtenir la version actuelle et les accès en téléchargement.
+Le SDK est actuellement distribué sous forme de wheel privé. Contactez votre interlocuteur Failproof AI pour obtenir la version actuelle et l'accès au téléchargement.
 
 ```bash
 VERSION=<sdk-version>
@@ -26,7 +26,7 @@ pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
 python -c "import failproofai; print(failproofai.__version__)"
 ```
 
-Avec `uv`, téléchargez d'abord le wheel et exécutez `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`. Épinglez le wheel dans un dépôt d'artefacts privé ou dans un fichier de verrouillage des dépendances.
+Avec `uv`, téléchargez d'abord le wheel puis exécutez `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`. Épinglez le wheel dans un dépôt d'artefacts privé ou un fichier de verrouillage des dépendances.
 
 Le package est installé sous le nom `failproofai-sdk` et importé en Python sous le nom `failproofai`.
 
@@ -35,11 +35,11 @@ Le package est installé sous le nom `failproofai-sdk` et importé en Python sou
 <Tabs>
   <Tab title="Tableau de bord">
     1. Accédez à **Admin → Clés** et créez une clé avec `events:add`.
-    2. [Connectez le daemon Failproof au Cloud](/fr/start/setup#connect-a-machine-to-cloud) sur la machine hébergeant l'agent.
-    3. Exécutez une session instrumentée, puis trouvez son identifiant exact sous **Observer → Événements**.
+    2. [Connectez le daemon Failproof au Cloud](/fr/start/setup#connect-a-machine-to-cloud) sur la machine de l'agent.
+    3. Exécutez une session instrumentée, puis retrouvez son identifiant exact dans **Observer → Événements**.
     4. Accédez à **Observer → Sessions**, sélectionnez le même environnement et ouvrez la trace reconstruite.
 
-    ![Une session d'agent Python personnalisé reconstruite sous forme de graphe d'exécution et de trace d'événements ordonnée.](/images/dashboard/session-detail.png)
+    ![Session d'un agent Python personnalisé reconstruite sous forme de graphe d'exécution et de trace d'événements ordonnée.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -53,7 +53,7 @@ Le package est installé sous le nom `failproofai-sdk` et importé en Python sou
 
 ## Instrumenter une exécution complète
 
-Appelez `configure()` une seule fois au démarrage du processus. Chaque appel d'événement est exclusivement par mot-clé et nécessite un `session_id` et un `agent_id` stables.
+Appelez `configure()` une seule fois au démarrage du processus. Chaque appel d'événement est exclusivement par mot-clé et requiert un `session_id` et un `agent_id` stables.
 
 ```python
 import traceback
@@ -112,7 +112,7 @@ else:
     )
 ```
 
-Émettez `agent_start` une fois par acteur. Pour les sous-agents, réutilisez le `session_id` du parent, attribuez à chaque acteur un `agent_id` distinct et définissez `parent_id` sur l'**identifiant d'agent** parent, et non sur l'identifiant de session.
+Émettez `agent_start` une seule fois par acteur. Pour les sous-agents, réutilisez le `session_id` du parent, attribuez un `agent_id` distinct à chaque acteur et définissez `parent_id` sur l'**identifiant d'agent** du parent, et non sur l'identifiant de session.
 
 ## Référence de configuration
 
@@ -126,20 +126,20 @@ failproofai.configure(
 
 | Paramètre | Comportement |
 | --- | --- |
-| `base_dir` | Répertoire racine du spool explicite. Prend le dessus sur toutes les variables d'environnement. |
-| `flush_interval` | Intervalle en secondes entre les écritures en arrière-plan de la mémoire vers JSONL. Par défaut : `0.5`. |
-| `environment` | Libellé de déploiement ajouté à chaque événement. Par défaut : `dev`. |
-| `FAILPROOFAI_HOME` | Modifie la racine Failproof AI contenant le spool `custom-agents`. |
+| `base_dir` | Racine de spool explicite. Prioritaire sur toutes les variables d'environnement. |
+| `flush_interval` | Secondes entre les écritures en arrière-plan de la mémoire vers le JSONL. Par défaut : `0.5`. |
+| `environment` | Libellé de déploiement sur chaque événement. Par défaut : `dev`. |
+| `FAILPROOFAI_HOME` | Modifie la racine Failproof AI qui contient le spool `custom-agents`. |
 
 Le SDK écrit dans le `base_dir` explicite lorsqu'il est défini. Sinon, il utilise le spool `custom-agents` du daemon Failproof sous `FAILPROOFAI_HOME` ou `~/.failproofai`.
 
-Le SDK met les appels en file d'attente en mémoire et écrit des lots sur un thread en arrière-plan. Il tente également un vidage final via le mécanisme `atexit` de Python. Pour les workers de courte durée, laissez l'interpréteur s'arrêter normalement ; une terminaison brutale du processus peut entraîner la perte des événements encore en mémoire.
+Le SDK met les appels en file d'attente en mémoire et écrit des lots sur un thread en arrière-plan. Il tente également un vidage final via le mécanisme `atexit` de Python. Pour les workers à courte durée de vie, autorisez l'arrêt normal de l'interpréteur ; une terminaison brutale du processus peut entraîner la perte des événements encore en mémoire.
 
-## Catalogue des événements
+## Catalogue d'événements
 
-Toutes les méthodes retournent `None`. Les champs laissés à `None` sont omis plutôt qu'écrits comme `null` en JSON.
+Toutes les méthodes retournent `None`. Les champs laissés à `None` sont omis plutôt qu'écrits comme JSON `null`.
 
-| Méthode | Champs obligatoires au-delà de l'identité | Champs optionnels |
+| Méthode | Champs requis au-delà de l'identité | Champs optionnels |
 | --- | --- | --- |
 | `agent_start` | — | `goal`, `parent_id` |
 | `agent_end` | — | `outcome`, `summary` |
@@ -162,22 +162,22 @@ Utilisez `outcome="failed"`, `"error"`, `"timeout"` ou `"rejected"` lorsqu'une c
 ## Règles de corrélation et de durée
 
 - Réutilisez le même `tool_call_id`, `hook_id`, `pause_id` ou `input_id` pour l'événement de complétion correspondant.
-- Le SDK calcule `duration_ms` pour `tool_result`, `hook_completed`, `agent_resume` et `human_input`. Passer cette valeur vous-même à ces méthodes lève une `ValueError`.
-- Les identifiants d'outils et de hooks partagent une même table de suivi à l'échelle du processus. Rendez-les globalement uniques entre les sessions concurrentes et entre les deux espaces de noms ; les identifiants de fournisseur ou les UUIDs sont les plus sûrs.
-- Une paire répartie sur plusieurs processus sera tout de même corrélée en aval, mais le SDK ne pourra pas calculer sa durée intra-processus.
-- La table de suivi contient au maximum 10 000 démarrages et expulse l'entrée la plus ancienne lorsqu'elle est pleine.
+- Le SDK calcule `duration_ms` pour `tool_result`, `hook_completed`, `agent_resume` et `human_input`. Le passer manuellement à ces méthodes lève une `ValueError`.
+- Les identifiants d'outils et de hooks partagent une même table de correspondance des starts en attente au niveau du processus. Rendez-les globalement uniques entre les sessions concurrentes et entre les deux espaces de noms ; les identifiants de fournisseur ou les UUID sont les plus sûrs.
+- Une paire répartie sur plusieurs processus reste corrélée en aval, mais le SDK ne peut pas calculer sa durée interne au processus.
+- La table de correspondance conserve au maximum 10 000 démarrages et évince l'entrée la plus ancienne lorsqu'elle est pleine.
 
-## Champs personnalisés et charges utiles
+## Champs personnalisés et payloads
 
-Chaque événement accepte des champs par mot-clé supplémentaires. Utilisez des valeurs compatibles JSON lorsque les requêtes en aval nécessitent une structure. Les types non pris en charge tels que les UUIDs, les datetimes, les decimals, les sets, les bytes et les objets modèles sont convertis en chaînes par l'écrivain.
+Chaque événement accepte des champs de mot-clé supplémentaires. Utilisez des valeurs compatibles JSON lorsque les requêtes en aval nécessitent une structure. Les types non pris en charge tels que les UUID, les datetime, les decimals, les ensembles, les bytes et les objets de modèle sont convertis en chaîne par le writer.
 
-Les noms personnalisés réservés sont `timestamp`, `session_id`, `agent_id`, `type` et `environment`. Les fautes de frappe dans les noms de champs optionnels sont acceptées comme nouveaux champs personnalisés ; vérifiez donc le JSON émis lorsqu'un champ standard n'apparaît pas dans Cloud.
+Les noms personnalisés réservés sont `timestamp`, `session_id`, `agent_id`, `type` et `environment`. Les fautes de frappe sur les champs optionnels sont acceptées comme de nouveaux champs personnalisés ; vérifiez donc le JSON émis lorsqu'un champ standard n'apparaît pas dans le Cloud.
 
 ## Livrer et vérifier
 
 <Tabs>
   <Tab title="Tableau de bord">
-    Dans **Observer → Événements**, vérifiez que `agent_start` apparaît en premier et `agent_end` en dernier. Ouvrez ensuite **Observer → Sessions** et confirmez que les événements de modèle, d'outil, humains, de hook et d'erreur apparaissent dans l'ordre prévu. Utilisez l'identifiant de session comme clé principale pour le dépannage.
+    Dans **Observer → Événements**, vérifiez que `agent_start` apparaît en premier et `agent_end` en dernier. Ouvrez ensuite **Observer → Sessions** et confirmez que les événements de modèle, d'outil, humains, de hook et d'erreur apparaissent dans l'ordre prévu. Utilisez l'identifiant de session comme clé de dépannage principale.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -189,10 +189,10 @@ Les noms personnalisés réservés sont `timestamp`, `session_id`, `agent_id`, `
   </Tab>
 </Tabs>
 
-Si Cloud est vide, inspectez `$FAILPROOFAI_HOME/custom-agents/events`, sinon `~/.failproofai/custom-agents/events`. Les fichiers JSONL attestent de l'émission par le SDK ; un spool en croissance indique un problème de configuration du daemon ou de livraison, tandis qu'un spool vide indique un problème d'instrumentation ou de durée de vie du processus.
+Si le Cloud est vide, inspectez `$FAILPROOFAI_HOME/custom-agents/events`, sinon `~/.failproofai/custom-agents/events`. Les fichiers JSONL confirment l'émission par le SDK ; un spool qui grossit indique un problème de configuration ou de livraison du daemon, tandis qu'un spool vide pointe vers l'instrumentation ou la durée de vie du processus.
 
-## Empêcher les défaillances dans un runtime personnalisé
+## Prévenir les défaillances dans un runtime personnalisé
 
-Utilisez les résultats d'audit et les traces associées pour définir l'action non sécurisée, les preuves requises et la réponse attendue. Une intégration d'application personnalisée doit exposer l'action avant son exécution, transmettre son entrée structurée au moteur de politique et appliquer la décision allow, instruct ou deny qui en résulte.
+Utilisez les résultats d'audit et les traces associées pour définir l'action non sécurisée, les preuves requises et la réponse prévue. Une intégration d'application personnalisée doit exposer l'action avant son exécution, transmettre son entrée structurée au moteur de politiques et appliquer la décision allow, instruct ou deny qui en résulte.
 
-Envoyez un e-mail à [support@befailproof.ai](mailto:support@befailproof.ai) pour concevoir et valider cette intégration pour votre runtime.
+Envoyez un email à [support@befailproof.ai](mailto:support@befailproof.ai) pour concevoir et valider cette intégration pour votre runtime.

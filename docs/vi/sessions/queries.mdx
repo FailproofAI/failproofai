@@ -1,29 +1,29 @@
 ---
 title: "Truy vấn"
-description: "Khám phá dữ liệu phiên, sự kiện và đánh giá bằng SQL có thể tái sử dụng."
+description: "Khám phá dữ liệu phiên, sự kiện và đánh giá bằng SQL tái sử dụng được."
 icon: "database"
 ---
 
-Truy vấn là lớp linh hoạt nằm bên dưới bảng điều khiển, kiểm toàn và điều tra. Sử dụng SQL ad-hoc để kiểm tra một ý tưởng, sau đó lưu truy vấn khi nó trở thành một phần của quy trình làm việc định kỳ.
+Truy vấn là lớp linh hoạt nằm dưới các bảng điều khiển, kiểm toán và điều tra. Sử dụng SQL ad-hoc để kiểm tra một ý tưởng, sau đó lưu truy vấn khi nó trở thành một phần của quy trình làm việc định kỳ.
 
 ## Tạo và chạy truy vấn
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Đi đến **Analyze → Queries** và chọn **new query**.
-    2. Mở trình duyệt lược đồ và chọn các trường từ dữ liệu sự kiện, phiên hoặc đánh giá.
-    3. Viết SQL, thêm tham số khi cần thiết, và chạy truy vấn.
-    4. Lưu nó với tên và mô tả rõ ràng, sau đó sử dụng **add to dashboard** khi cần theo dõi kết quả.
+    1. Đi tới **Analyze → Queries** và chọn **new query**.
+    2. Mở trình duyệt schema và chọn các trường từ dữ liệu event, session hoặc evaluation.
+    3. Viết SQL, thêm các tham số khi cần thiết và chạy truy vấn.
+    4. Lưu nó với một tên và mô tả rõ ràng, sau đó sử dụng **add to dashboard** khi kết quả cần được theo dõi.
 
-    Trình soạn thảo truy vấn kết hợp lược đồ sự kiện, SQL, tham số và bản xem trước kết quả để bạn có thể xác thực câu hỏi trước khi lưu.
+    Trình soạn thảo truy vấn kết hợp schema event, SQL, các tham số và bản xem trước kết quả để bạn có thể xác thực câu hỏi trước khi lưu nó.
 
-    ![Trình soạn thảo truy vấn SQL với trình duyệt lược đồ và lưới kết quả trực tiếp.](/images/dashboard/query-lab.png)
+    ![Trình soạn thảo truy vấn SQL với trình duyệt schema và lưới kết quả trực tiếp.](/images/dashboard/query-lab.png)
 
-    Các truy vấn đã lưu sau đó sẽ xuất hiện trong thư viện dùng chung, nơi các đồng nghiệp có thể chạy lại chúng hoặc thêm kết quả của chúng vào bảng điều khiển.
+    Các truy vấn đã lưu sau đó xuất hiện trong thư viện được chia sẻ, nơi các đồng nghiệp có thể chạy lại chúng hoặc thêm kết quả của chúng vào các bảng điều khiển.
 
-    ![Thư viện Queries đã lưu chứa các truy vấn tích hợp và tùy chỉnh có thể tái sử dụng.](/images/dashboard/queries.png)
+    ![Thư viện Queries đã lưu chứa các truy vấn được xây dựng sẵn và tùy chỉnh có thể tái sử dụng.](/images/dashboard/queries.png)
 
-    Sử dụng tên và mô tả rõ ràng để kết quả vẫn dễ hiểu mà không cần phải mở lại SQL của nó.
+    Sử dụng một tên và mô tả rõ ràng để kết quả vẫn có thể hiểu được mà không cần mở lại SQL của nó.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -40,14 +40,14 @@ Truy vấn là lớp linh hoạt nằm bên dưới bảng điều khiển, ki�
 
 ## Các cách sử dụng phổ biến
 
-- Tìm các phiên có các lệnh gọi lặp lại đến cùng một công cụ.
-- So sánh điểm đánh giá trên các mô hình hoặc môi trường khác nhau.
-- Đo thời gian giữa khi con người chờ đợi và tiếp tục.
-- Xác định các quyết định từ chối chính sách theo sau là một lựa chọn thay thế thành công.
-- Xây dựng một nhóm đối tượng cho một cuộc kiểm toán.
+- Tìm các phiên với các lệnh gọi lặp lại đến cùng một công cụ.
+- So sánh điểm đánh giá giữa các mô hình hoặc môi trường.
+- Đo thời gian giữa việc chờ đợi của con người và tiếp tục.
+- Xác định các mục từ chối của chính sách theo sau bởi một phương án thay thế thành công.
+- Xây dựng một nhóm để kiểm toán.
 
-Mở **Queries → Schema** trước khi viết dựa trên các trường không quen thuộc. Ưu tiên các bộ lọc thời gian và môi trường rõ ràng, và giữ giới hạn kết quả trong quá trình khám phá.
+Mở **Queries → Schema** trước khi viết lại các trường không quen thuộc. Ưu tiên các bộ lọc thời gian và môi trường rõ ràng, và giữ giới hạn kết quả trong quá trình khám phá.
 
 <Warning>
-  Một truy vấn có thể xác định một mô hình đáng ngờ, nhưng nó không tự xác lập chế độ lỗi. Mở các dấu vết đại diện hoặc chạy kiểm toán trước khi biến kết quả thành một chính sách.
+  Một truy vấn có thể xác định một mẫu đáng ngờ, nhưng nó không tự thiết lập chế độ lỗi. Mở các trace đại diện hoặc chạy một kiểm toán trước khi chuyển kết quả thành chính sách.
 </Warning>

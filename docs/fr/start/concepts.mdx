@@ -6,21 +6,21 @@ icon: "boxes"
 
 | Concept | Signification | Ce que vous pouvez accomplir |
 | --- | --- | --- |
-| Session | Une tâche ou exécution d'agent | Reconstituer un résultat individuel |
-| Événement | Une action enregistrée dans une session | Inspecter un appel de modèle, une utilisation d'outil, une erreur, une action humaine ou une décision de politique |
-| Trace | La vue ordonnée et imbriquée de la session | Comprendre la causalité plutôt que de lire des journaux déconnectés |
-| Évaluation | Un score ou un jugement sur une session | Suivre en continu la qualité, la conformité, le coût ou la latence |
-| Audit | Une revue d'une population de sessions sélectionnée | Rechercher des schémas d'échec avec un objectif et une cadence définis |
-| Finding | Un échec étayé par des preuves découvert lors d'un audit | Voir le mode de défaillance, la gravité et les sessions affectées |
-| Issue | Un enregistrement de réponse durable | Assigner, discuter et résoudre un finding ou un incident d'alerte |
-| Alerte | Une règle qui détecte une récurrence | Notifier les intervenants lorsqu'une condition connue réapparaît |
-| Policy | Une règle évaluée pendant l'activité de l'agent | Observer, bloquer ou rediriger un comportement risqué |
-| Deployment | Un déploiement de policy versionné sur des machines | Contrôler où une policy s'exécute et la restaurer en toute sécurité |
+| Session | Une tâche ou exécution d'agent | Reconstruire un résultat individuel |
+| Event | Une action enregistrée dans une session | Inspecter un appel de modèle, une utilisation d'outil, une erreur, une action humaine ou une décision de politique |
+| Trace | La vue ordonnée et imbriquée d'une session | Comprendre la causalité plutôt que de lire des journaux déconnectés |
+| Evaluation | Un score ou un jugement sur une session | Suivre en continu la qualité, la conformité, le coût ou la latence |
+| Audit | Une revue d'une population de sessions sélectionnée | Rechercher des patterns d'échec avec un objectif et une cadence définis |
+| Finding | Un échec étayé par des preuves, découvert lors d'un audit | Voir le mode de défaillance, la sévérité et les sessions affectées |
+| Issue | Un enregistrement de réponse durable | Attribuer, discuter et résoudre un finding ou un incident d'alerte |
+| Alert | Une règle qui détecte une récurrence | Notifier les intervenants lorsqu'une condition connue réapparaît |
+| Policy | Une règle évaluée durant l'activité de l'agent | Observer, bloquer ou rediriger un comportement à risque |
+| Deployment | Un déploiement versionné de politique vers des machines | Contrôler où une politique s'exécute et la revenir en arrière en toute sécurité |
 
 ## La boucle de fiabilité
 
-Commencez par les preuves. Une session montre ce qui s'est passé. Un audit détermine s'il s'agit d'une erreur isolée ou d'un schéma récurrent. Un finding identifie le mode de défaillance ; une issue prend en charge la réponse. Une policy prévient le même comportement, tandis que les alertes vous informent si la condition réapparaît.
+Partez des preuves. Une session montre ce qui s'est passé. Un audit détermine s'il s'agit d'une erreur isolée ou d'un pattern. Un finding identifie le mode de défaillance ; un issue prend en charge la réponse. Une policy prévient le même comportement, tandis que les alerts vous informent si la condition réapparaît.
 
 <Warning>
-  Un `failproofai audit` local analyse l'historique local de l'agent. Un audit Cloud récurrent examine les sessions stockées dans Failproof AI Cloud. Ce sont des workflows distincts avec des portées et des planifications différentes.
+  Un `failproofai audit` local analyse l'historique local de l'agent. Un audit Cloud récurrent examine les sessions stockées dans Failproof AI Cloud. Ce sont des workflows distincts avec des périmètres et des planifications différents.
 </Warning>

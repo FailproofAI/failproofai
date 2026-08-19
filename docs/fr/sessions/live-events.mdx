@@ -12,10 +12,10 @@ Les événements en direct vous permettent de confirmer l'instrumentation et de 
   <Tab title="Tableau de bord">
     1. Accédez à **Observe → Events**.
     2. Commencez avec la fenêtre temporelle actuelle et sans filtres pour confirmer que les données arrivent.
-    3. Filtrez par environnement, type d'événement, agent ou session. Utilisez la recherche pour le contenu des payloads.
+    3. Filtrez par environnement, type d'événement, agent ou session. Utilisez la recherche pour filtrer par contenu de payload.
     4. Sélectionnez un événement pour inspecter son résumé et ses détails. Suivez le lien de sa session pour accéder à la trace complète.
 
-    ![Le flux d'événements en direct avec des filtres par heure, environnement, type d'événement, agent, modèle, contexte, session et texte.](/images/dashboard/events-stream-current.png)
+    ![Le flux d'événements en direct avec des filtres sur l'heure, l'environnement, le type d'événement, l'agent, le modèle, le contexte, la session et le texte.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -30,14 +30,14 @@ Les événements en direct vous permettent de confirmer l'instrumentation et de 
 
 Utilisez le flux d'événements pour répondre à trois questions immédiates :
 
-- L'agent attendu envoie-t-il des rapports vers le bon environnement ?
-- Les appels de modèle, les appels d'outil et les décisions de politique arrivent-ils dans le bon ordre ?
-- La session a-t-elle cessé de progresser ou commencé à répéter une action ?
+- L'agent attendu rapporte-t-il bien à l'environnement correct ?
+- Les appels de modèle, les appels d'outils et les décisions de politique arrivent-ils dans l'ordre ?
+- La session a-t-elle cessé de progresser ou a-t-elle commencé à répéter une action ?
 
-Les types d'événements comprennent les événements du cycle de vie de l'agent, les requêtes et réponses de modèle, l'utilisation des outils et leurs résultats, l'exécution des hooks, les attentes humaines et les interruptions, ainsi que les erreurs explicites. Les identifiants de corrélation relient les événements appariés, tels qu'un appel d'outil et son résultat.
+Les types d'événements comprennent les événements du cycle de vie de l'agent, les requêtes et réponses du modèle, l'utilisation des outils et leurs résultats, l'exécution des hooks, les attentes humaines et les interruptions, ainsi que les erreurs explicites. Les identifiants de corrélation relient les événements associés, comme un appel d'outil et son résultat.
 
 <Tip>
   Gardez la vue en direct large lors de la vérification d'une nouvelle intégration. N'ajoutez des filtres qu'après avoir vu le premier événement ; un filtre incorrect peut ressembler à un échec d'ingestion.
 </Tip>
 
-Si aucun événement n'apparaît, exécutez `failproofai config --status`, puis [résolvez les problèmes d'ingestion](/fr/reference/troubleshooting).
+Si aucun événement n'apparaît, exécutez `failproofai config --status`, puis [dépannez l'ingestion](/fr/reference/troubleshooting).

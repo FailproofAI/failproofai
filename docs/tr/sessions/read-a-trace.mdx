@@ -1,21 +1,21 @@
 ---
-title: "İz okuma"
-description: "Agent oturumunun seyrini değiştiren olayı bulun."
+title: "İzlemeyi oku"
+description: "Bir aracı oturumunun seyrini değiştiren olayı bulun."
 icon: "route"
 ---
 
-İz, düz bir olay akışını çalıştırmanın nedensel hikayesine dönüştürür. Bunu ilk sapmanın yerinden okuyun, son hatadan geriye doğru değil.
+İzleme, düz bir olay akışını çalışmanın nedensel hikayesine dönüştürür. Bunu son hatadan geriye değil, ilk sapma noktasından okuyun.
 
-## İzı aç
+## İzlemeyi aç
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Sessions** bölümüne gidin ve bir oturumu açın.
+    1. **Observe → Sessions** bölümüne gidin ve bir oturum açın.
     2. Sonuç, zamanlama, hatalar ve değerlendirme puanlarını kontrol etmek için profil özetini kullanın.
-    3. Zaman çizelgesini ve mini haritayı tarayın. Oturum büyükse olay türlerini veya zamanı filtreleyin.
-    4. Bir olayı incelemek için seçin. Değerlendirici JSON için **export** kullanın veya seçili kanıta derin bağlantı paylaşmak için sayfa URL'sini kopyalayın.
+    3. Zaman çizelgesini ve mini haritayı tarayın. Oturum büyük olduğunda olay türlerini veya zamanı filtreleyin.
+    4. Bir olayı incelemek için seçin. Değerlendirici JSON için **export** kullanın veya seçilen kanıta derin bağlantı paylaşmak için sayfa URL'sini kopyalayın.
 
-    ![Yürütme grafiği, olay zaman çizelgesi, değerlendirme paneli ve araç, model ve hook dökümü içeren bir oturum detay görünümü.](/images/dashboard/session-detail.png)
+    ![Yürütme grafiği, olay zaman çizelgesi, değerlendirme paneli ve araç, model ve kanca analizi içeren bir oturum detay görünümü.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -29,20 +29,20 @@ icon: "route"
 </Tabs>
 
 <Steps>
-  <Step title="Kendinizi yönlendirin">
-    Agent, ortam, zamanlama, sonuç ve süreyi doğrulayın, ardından hatalar, uzun zaman dilimleri, tekrarlanan araçlar, insan beklemeleri ve reddedilen politika kararları için tarayın.
+  <Step title="Kendinizi konumlandırın">
+    Aracı, ortam, zamanlama, sonuç ve süreyi onaylayın, ardından hataları, uzun zaman aralıklarını, tekrarlanan araçları, insan beklentilerini ve reddedilen politika kararlarını tarayın.
   </Step>
   <Step title="İlk şüpheli olayı genişletin">
-    Talebini, yanıtını, araç girdisini, çıkışını ve korelasyon ID'sini inceleyin. Hassas içerik yalnızca transkript yakalama etkinleştirildiğinde ve izinleriniz buna izin verdiğinde görünür.
+    İsteğini, yanıtını, araç girişini, çıkışını ve korelasyon kimliğini inceleyin. Hassas içerik, yalnızca transkript yakalama etkinleştirildiğinde ve izinleriniz bunu sağladığında görünür.
   </Step>
   <Step title="Önceki bağlamı inceleyin">
-    Nedeni çoğu zaman bir olay öncesinde bulunur: yanlış model yanıtı, eksik araç sonucu veya eski varsayım.
+    Neden genellikle bir olay öncesinde yer alır: yanlış bir model yanıtı, eksik araç sonucu veya eski bir varsayım.
   </Step>
   <Step title="Kanıtı eyleme dönüştürün">
-    Oturumu bir denetim kapsamına ekleyin, onu bir soruna bağlayın veya hata modunu kullanarak bir politika yazın.
+    Oturumu bir denetim kapsamına ekleyin, bunu bir soruna bağlayın veya hata modunu kullanarak bir politika yazın.
   </Step>
 </Steps>
 
 <Warning>
-  Uzun süre her zaman model gecikmesi anlamına gelmez. Ne düzeltileceğine karar vermeden önce model, araç, hook ve insan bekleme süresini ayırın.
+  Uzun süre her zaman model gecikmesi anlamına gelmez. Ne düzeltileceğine karar vermeden önce model, araç, kanca ve insan bekleme süresini ayırt edin.
 </Warning>

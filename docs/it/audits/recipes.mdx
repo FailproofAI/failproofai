@@ -1,6 +1,6 @@
 ---
-title: "Recipe di audit"
-description: "Obiettivi iniziali per le indagini comuni sui fallimenti degli agent."
+title: "Ricette di audit"
+description: "Obiettivi iniziali per indagini comuni su errori degli agent."
 icon: "book-open-check"
 ---
 
@@ -8,20 +8,20 @@ Usa questi come obiettivi iniziali, quindi aggiungi il tuo agent, ambiente e flu
 
 <Tabs>
   <Tab title="Dashboard">
-    Vai a **Analyze → Audits → New audit**, copia una recipe nella descrizione o nel brief, quindi aggiungi l'ambiente, l'agent, il lookback e gli URL di riferimento rilevanti. Crea l'audit e ispeziona la prima esecuzione prima di pianificarla.
+    Vai a **Analyze → Audits → New audit**, copia una ricetta nella descrizione o nel riassunto, quindi aggiungi l'ambiente rilevante, l'agent, il lookback e gli URL di riferimento. Crea l'audit e ispeziona la prima esecuzione prima di pianificarlo.
 
-    Il modulo di nuovo audit trasforma una recipe in un controllo di fallimento eseguibile aggiungendo ambito, contesto, cadenza e notifiche.
+    Il modulo nuovo audit trasforma una ricetta in un controllo di errore eseguibile aggiungendo ambito, contesto, cadenza e notifiche.
 
-    ![Il modulo di nuovo audit configurato con un obiettivo mirato, pianificazione, ambito di agent e ambiente, contesto e canali di notifica.](/images/dashboard/audit-new.png)
+    ![Il modulo nuovo audit configurato con un obiettivo mirato, pianificazione, ambito dell'agent e dell'ambiente, contesto e canali di notifica.](/images/dashboard/audit-new.png)
 
-    Dopo la creazione, conferma che l'audit appaia nell'elenco con lo stato e la pianificazione previsti prima di fare affidamento su esecuzioni ricorrenti.
+    Dopo la creazione, conferma che l'audit appaia nell'elenco con lo stato e la pianificazione previsti prima di affidarti alle esecuzioni ricorrenti.
 
-    ![La pagina Audits dove appare una recipe di audit specifica per il flusso di lavoro dopo la creazione.](/images/dashboard/audits.png)
+    ![La pagina Audits dove una ricetta di audit specifica del flusso di lavoro appare dopo la creazione.](/images/dashboard/audits.png)
 
-    Apri la prima esecuzione e perfeziona la recipe se i suoi risultati sono più ampi o più stretti della modalità di fallimento prevista.
+    Apri la prima esecuzione e raffina la ricetta se i suoi risultati sono più ampi o più ristretti della modalità di errore prevista.
   </Tab>
   <Tab title="CLI">
-    Salva una recipe come file di testo e allegala durante la creazione:
+    Salva una ricetta come file di testo e allegala durante la creazione:
 
     ```bash
     fp audits create retry-loop-review \
@@ -33,20 +33,20 @@ Usa questi come obiettivi iniziali, quindi aggiungi il tuo agent, ambiente e flu
 </Tabs>
 
 <AccordionGroup>
-  <Accordion title="Cicli di retry ripetuti">
-    Trova sessioni in cui l'agent ripete la stessa chiamata di tool fallita senza cambiare input, selezionare uno strumento alternativo o escalare a un operatore umano.
+  <Accordion title="Loop di retry ripetuti">
+    Trova sessioni in cui l'agent ripete la stessa chiamata di tool che fallisce senza cambiare input, selezionare un tool alternativo o escalare a un umano.
   </Accordion>
-  <Accordion title="Uso scorretto dello strumento">
-    Trova sessioni in cui lo strumento scelto non corrisponde all'attività dichiarata, o dove l'input dello strumento viola le precondizioni richieste dal flusso di lavoro.
+  <Accordion title="Uso scorretto di tool">
+    Trova sessioni in cui il tool scelto non corrisponde all'attività dichiarata, o dove l'input del tool viola i precondizioni richiesti dal flusso di lavoro.
   </Accordion>
-  <Accordion title="Accesso unsafe ai dati">
-    Trova sessioni che leggono, scrivono o trasmettono dati sensibili al di fuori dei percorsi e servizi approvati per questo agent.
+  <Accordion title="Accesso non sicuro ai dati">
+    Trova sessioni che leggono, scrivono o trasmettono dati sensibili al di fuori dei percorsi e dei servizi approvati per questo agent.
   </Accordion>
   <Accordion title="Abbandono dell'attività">
-    Trova sessioni che terminano senza il risultato richiesto, un errore chiaro o un handoff esplicito a un operatore umano.
+    Trova sessioni che terminano senza il risultato richiesto, un errore chiaro o un handoff esplicito a un umano.
   </Accordion>
-  <Accordion title="Regressione di costi o latenza">
-    Trova sessioni il cui modello, strumento o durata totale supera il budget previsto, e identifica il pattern di eventi responsabile.
+  <Accordion title="Regressione di costo o latenza">
+    Trova sessioni il cui modello, tool o durata totale supera il budget previsto e identifica il pattern di evento responsabile.
   </Accordion>
   <Accordion title="Escalation umana mancata">
     Trova sessioni in cui la confidenza, il fallimento ripetuto o la guida della policy richiedevano una decisione umana ma l'agent ha continuato autonomamente.

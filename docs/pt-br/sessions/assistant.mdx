@@ -4,7 +4,7 @@ description: "Analise e opere o Failproof AI em linguagem natural, desde pergunt
 icon: "message-square-text"
 ---
 
-Peça ao Failproof Assistant para fazer qualquer coisa no Failproof AI em linguagem natural. Ele pode analisar sessões e falhas, executar consultas, construir dashboards, investigar avaliações e alertas, e ajudar a criar e executar auditorias sem que você precise traduzir a tarefa em telas do produto ou comandos de CLI.
+Peça ao Failproof Assistant para fazer qualquer coisa no Failproof AI em linguagem natural. Ele pode analisar sessões e falhas, executar consultas, criar dashboards, investigar avaliações e alertas, e ajudar a criar e executar auditorias sem que você precise traduzir a tarefa em telas do produto ou comandos CLI.
 
 ```text
 Why did production checkout agents regress this week?
@@ -19,12 +19,12 @@ O assistente trabalha com os dados e permissões disponíveis na organização a
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Selecione **Abrir chat do agente** e descreva o que você quer entender, criar ou operar.
+    1. Selecione **Open agent chat** e descreva o que você quer entender, criar ou operar.
     2. Revise as chamadas de ferramentas, tabelas e resultados de consultas do assistente enquanto ele trabalha.
     3. Abra a sessão, alerta ou consulta citada para verificar o resultado em relação aos dados de origem.
-    4. Inicie um novo chat para uma investigação diferente, ou use o histórico de chat para continuar a mesma linha de análise.
+    4. Inicie um novo chat para uma investigação diferente, ou use o histórico de chats para continuar a mesma linha de análise.
 
-    ![O assistente Cloud respondendo a uma pergunta de observabilidade com análise de suporte e consultas.](/images/dashboard/assistant.png)
+    ![The Cloud assistant answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -36,18 +36,18 @@ O assistente trabalha com os dados e permissões disponíveis na organização a
     fp agent ask "Open representative sessions" --chat <chat-id>
     ```
 
-    Use `fp agent rename <chat-id> --title <title>` para manter uma investigação reconhecível e `fp agent delete <chat-id>` para removê-la.
+    Use `fp agent rename <chat-id> --title <title>` para manter uma investigação identificável e `fp agent delete <chat-id>` para removê-la.
   </Tab>
 </Tabs>
 
-## Trabalhe de forma eficaz com o assistente
+## Trabalhe de forma eficiente com o assistente
 
-- Forneça um objetivo primeiro; adicione um ambiente, fluxo de trabalho ou intervalo de tempo quando essas restrições forem relevantes.
+- Forneça um objetivo primeiro; adicione um ambiente, fluxo de trabalho ou intervalo de tempo quando esses limites forem relevantes.
 - Trate o SQL gerado e os resumos como um auxílio à investigação, não como evidência definitiva.
-- Abra sessões representativas antes de criar uma auditoria, problema, alerta ou política.
+- Abra sessões representativas antes de criar uma auditoria, issue, alerta ou policy.
 - Mantenha os filtros de organização, ambiente e tempo explícitos.
 - Salve SQL útil como uma consulta para que outro operador possa reproduzir o resultado.
 
 <Warning>
-  O assistente pode ler apenas o que seu usuário atual tem acesso. Não amplie as permissões para fazer uma pergunta funcionar; peça a um operador autorizado para executar a investigação.
+  O assistente pode ler apenas o que o seu usuário atual tem acesso. Não amplie as permissões para fazer uma pergunta funcionar; peça a um operador autorizado para executar a investigação.
 </Warning>

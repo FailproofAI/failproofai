@@ -1,24 +1,24 @@
 ---
 title: "Auditorías"
-description: "Revisa una población definida de sesiones para detectar fallos que los rastros por sí solos no revelarán."
+description: "Revisa una población definida de sesiones en busca de fallos que los trazos por sí solos no revelarán."
 icon: "scan-search"
 ---
 
-Una auditoría examina un conjunto seleccionado de sesiones en busca de un objetivo de fallo definido. Combina evidencia de rastros, resultados de evaluaciones, coincidencias de políticas y contexto de referencia para producir hallazgos sobre los que puedes actuar.
+Una auditoría busca en un conjunto seleccionado de sesiones un objetivo de fallo definido. Combina evidencia de trazos, resultados de evaluaciones, coincidencias de políticas y contexto de referencia para generar hallazgos sobre los que puedes actuar.
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-Descubre cómo una auditoría va desde una ejecución programada hasta fallos respaldados por evidencia que puedes corregir.
+Descubre cómo una auditoría pasa de una ejecución programada a fallos respaldados por evidencia que puedes corregir.
 
 ## Abrir auditorías
 
 <Tabs>
   <Tab title="Dashboard">
-    Ve a **Analyze → Audits**. La página muestra el estado programado, los hallazgos abiertos, la última ejecución, la próxima ejecución, la cadencia y si la auditoría tiene un resumen o páginas de referencia. Selecciona una tarjeta para ver la configuración e historial de ejecuciones; selecciona **new audit** para crear una.
+    Ve a **Analyze → Audits**. La página muestra el estado programado, los hallazgos abiertos, la última ejecución, la próxima ejecución, la cadencia y si la auditoría cuenta con un resumen o páginas de referencia. Selecciona una tarjeta para ver la configuración y el historial de ejecuciones; selecciona **new audit** para crear una.
 
-    ![La página de Audits mostrando auditorías recurrentes con su programación, sensibilidad y estado de ejecución.](/images/dashboard/audits.png)
+    ![La página de Audits muestra auditorías recurrentes con su programación, sensibilidad y estado de ejecución.](/images/dashboard/audits.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -30,12 +30,12 @@ Descubre cómo una auditoría va desde una ejecución programada hasta fallos re
   </Tab>
 </Tabs>
 
-Usa una auditoría cuando necesites responder una pregunta a nivel de población, como:
+Usa una auditoría cuando necesites responder una pregunta a nivel de población, como por ejemplo:
 
 - ¿Dónde abandonan los agentes las tareas sin escalar?
 - ¿Qué fallos de herramientas conducen a reintentos ineficaces?
 - ¿Están los agentes accediendo a datos fuera del flujo de trabajo previsto?
-- ¿Qué cambió después de una actualización de modelo, prompt o herramienta?
+- ¿Qué cambió tras una actualización de modelo, prompt o herramienta?
 
 ## Flujo de respuesta de auditoría
 
@@ -44,13 +44,13 @@ Session → Audit → Finding → Issue → Policy
                          ↘ Alert for recurrence
 ```
 
-Un hallazgo debe nombrar el modo de fallo y apuntar a la evidencia. Un issue gestiona la remediación. Una política previene un patrón de acción conocido; una alerta detecta la recurrencia cuando la prevención no es posible o requiere monitoreo.
+Un hallazgo debe identificar el modo de fallo y apuntar a la evidencia. Un issue gestiona la remediación. Una política previene un patrón de acción conocido; una alerta detecta la recurrencia cuando la prevención no es posible o requiere monitoreo.
 
 <Columns cols={2}>
   <Card title="Configurar una auditoría" icon="sliders-horizontal" href="/es/audits/setup">
     Define el objetivo, la población y el contexto de referencia antes de la primera ejecución.
   </Card>
-  <Card title="Agregar contexto del agente" icon="bot" href="/es/audits/agent-contracts">
+  <Card title="Añadir contexto de agente" icon="bot" href="/es/audits/agent-contracts">
     Especifica qué debe producir cada agente y qué nunca debe hacer.
   </Card>
 </Columns>

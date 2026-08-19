@@ -1,35 +1,35 @@
 ---
 title: "Bulgular ve sorunlar"
-description: "Denetim kanıtlarını sahip olunan, izlenebilir iyileştirme çalışmasına dönüştürün."
+description: "Denetim kanıtlarını sahip olunan, izlenebilir düzeltme çalışmalarına dönüştürün."
 icon: "clipboard-check"
 ---
 
-Bulgu, denetimin bir başarısızlık hakkında kanıt destekli bir ifadesidir. Sorun, buna yanıt vermek için kalıcı iş akışıdır.
+Bulgu, denetimin bir hataya ilişkin kanıta dayalı ifadesidir. Sorun, buna yanıt vermenin kalıcı iş akışıdır.
 
-## İşleri sınıflandırın ve atayın
+## Çalışmaları sınıflandırın ve atayın
 
 <Tabs>
-  <Tab title="Pano">
-    1. **Analiz → Denetimler**'i açın, tamamlanan bir çalıştırmayı seçin ve analizini, önerisini, oturumlarını ve kanıt sorgularını incelemek için bir bulguyu seçin.
-    2. Kanıtını kontrol ettikten sonra buluşu onaylayın, atayın, reddedin, sessiz hale getirin, çözün veya yeniden açın.
-    3. **Analiz → Sorunlar**'a gidin ve kalıcı gelen kutuyu duruma, önem derecesine veya atanana göre filtreleyin.
-    4. Sorunu açın, atayın, yorum veya abone ekleyin ve düzeltme doğrulandıktan sonra çözün.
+  <Tab title="Kontrol Paneli">
+    1. **Analiz → Denetimler** sayfasını açın, tamamlanan bir çalıştırmayı seçin ve bir bulguyu seçerek analizi, tavsiyeyi, oturumları ve kanıt sorgularını inceleyebilirsiniz.
+    2. Bulgunun kanıtını kontrol ettikten sonra kabul edin, atayın, reddedin, susturun, çözün veya yeniden açın.
+    3. **Analiz → Sorunlar** sayfasına gidin ve kalıcı gelen kutusu filtresini durum, önem derecesi veya sorumlu kişiye göre uygulayın.
+    4. Sorunu açın, atayın, yorum ekleyin veya abone olun ve düzeltme doğrulandıktan sonra çözün.
 
-    Bulgu özeti ile başlayın. Başarısızlık açıklaması, önerilen yanıt, önem derecesi ve sıralandırmanın denetimin incelemesini beklediğiniz oturumlarla uyuştuğunu doğrulayın.
+    Bulgu özetinden başlayın. Hata açıklaması, önerilen yanıt, önem derecesi ve sıralamanın denetimin incelemesi gereken oturumlarla uyumlu olduğunu doğrulayın.
 
-    ![Önem derecesi, oluşum sayısı, temel neden analizi, önerilen eylem, sıralama faktörleri ve kanıt içeren denetim buluşu.](/images/dashboard/audit-finding.png)
+    ![Önem derecesi, oluşum sayısı, temel neden analizi, önerilen eylem, sıralama faktörleri ve kanıt içeren denetim bulgusu.](/images/dashboard/audit-finding.png)
 
-    Daha sonra, yalnızca özetten karar vermek yerine etkilenen bir oturumu açın. Bağlı izleme, buluşu destekleyen tam olayı ve yükü göstermelidir.
+    Ardından, yalnızca özetten karar vermek yerine etkilenen bir oturumu açın. Bağlı izleme, bulguyu destekleyen tam olayı ve yükü göstermelidir.
 
-    ![Denetim bulgudan bağlantılı, ilgili hata üzerinde açılmış oturum, olay meta verileri ve ham yükü ile.](/images/dashboard/audit-linked-session.png)
+    ![Denetim bulgusu ile bağlantılı olan ve ilgili hata ve olay meta verileri ile ham yükü gösteren bir oturum.](/images/dashboard/audit-linked-session.png)
 
-    Kanıtı doğruladıktan sonra, yanıta bir sahip vermek ve bunu gelecekteki denetim çalıştırmalarından bağımsız olarak izlemek için Sorunları kullanın.
+    Kanıtı doğruladıktan sonra, yanıta bir sahip vermek ve gelecekteki denetim çalıştırmalarından bağımsız olarak izlemek için Sorunlar'ı kullanın.
 
-    ![Sorunlar gelen kutusu, durumunu, önem derecesi ve sahipliğini gösteren çalışmayı tetikleyerek, onaylayarak ve çözerek.](/images/dashboard/incidents.png)
+    ![Önem derecesi ve sahipliği ile birlikte etkin, kabul edilmiş ve çözümlenen çalışmaları gösteren Sorunlar gelen kutusu.](/images/dashboard/incidents.png)
 
-    Araştırma notlarını kaydetmek, abone bildirmek ve yanıt geçmişini korumak için sorunu açın. Iyileştirme dağıtıldı ve doğrulandıktan sonra bunu çözün.
+    Araştırma notlarını kaydetmek, abone olanlara bildirmek ve yanıt geçmişini korumak için sorunu açın. Yalnızca düzeltme dağıtılıp doğrulandıktan sonra çözün.
 
-    ![Kaynağı, ihlal kanıtı, atananları, abone üyelerini, zaman çizelgesini ve açıklamaları gösteren sorun ayrıntı görünümü.](/images/dashboard/incident-detail.png)
+    ![Kaynağı, ihlal kanıtı, atanmış kişiler, abone olanlar, zaman çizelgesi ve yorumları gösteren sorun ayrıntı görünümü.](/images/dashboard/incident-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -45,41 +45,41 @@ Bulgu, denetimin bir başarısızlık hakkında kanıt destekli bir ifadesidir. 
     fp issues resolve <issue-id> --yes
     ```
 
-    İzleyenleri yönetmek için `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` ve `fp issues subscribers <issue-id>` kullanın.
+    İzleyicileri yönetmek için `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` ve `fp issues subscribers <issue-id>` komutlarını kullanın.
 
-    Denetim bulguları için [Cloud CLI denetim ve sorun referansı](/tr/reference/cloud-cli#audits) ve sorun yönetimi için [`fp issues`](/tr/reference/cloud-cli#issues) bölümüne bakın.
+    Denetim bulguları için [Cloud CLI denetim ve sorun başvurusuna](/tr/reference/cloud-cli#audits) ve sorun yönetimi için [`fp issues`](/tr/reference/cloud-cli#issues) bölümüne bakın.
   </Tab>
 </Tabs>
 
-## Bir buluşu gözden geçirin
+## Bir bulguyu gözden geçirin
 
-Şunları içerdiğini doğrulayın:
+Bulgunun şunları içerdiğini doğrulayın:
 
-- Yalnızca tek seferlik bir başlık değil, kararlı bir başarısızlık modu
-- Önem derecesi ve işletimsel etki
+- Sadece bir kerelik bir başlık değil, kararlı bir hata modu
+- Önem derecesi ve operasyonel etki
 - Etkilenen oturum kimlikleri veya destekleyici sorgular
-- Davranışı yeniden oluşturmak için yeterli bağlam
+- Davranışı yeniden üretmek için yeterli bağlam
 - Kanıtla eşleşen önerilen yanıt
 
-## Yanıta yanıt vermeyi yönetmek için bir sorun kullanın
+## Yanıta yönetmek için bir sorun kullanın
 
-Bulguya atama, tartışma, durum değişiklikleri, açıklamalar veya abone üyeleri gerektiğinde bir sorun oluşturun veya bağlayın. Sorunlar ayrıca uyarı olaylarını ve manuel olarak bildirilen sorunları temsil edebilir; bu nedenle birincil gezintide değil, denetim yanıtında yer alırlar.
+Bulgunun atanması, tartışılması, durum değiştirilmesi, yorum eklenmesi veya abone olunması gerektiğinde bir sorun oluşturun veya bağlayın. Sorunlar ayrıca uyarı olaylarını ve manuel olarak bildirilen sorunları temsil edebilir. Bu nedenle birincil navigasyon altında değil, denetim yanıtı altında yer alırlar.
 
-Iyileştirme dağıtıldığında ve doğrulandığında sorunu çözün. Başarısızlık modu denetim nüfusu için ele alındığında buluşu çözün. Bu anlar farklı olabilir.
+Düzeltme dağıtılıp doğrulandığında sorunu çözün. Hata modu denetim popülasyonu için ele alındığında bulguyu çözün. Bu anlar farklı olabilir.
 
-## Bir sorunu bir ilke taslağına dönüştürün
+## Bir sorunu ilke taslağına dönüştürün
 
 <Tabs>
-  <Tab title="Pano">
-    1. Sorunu açın ve bulgusu, alıntı yapılan oturumları, temel nedenini ve önerisini doğrulayın.
-    2. **İlke oluştur**'u seçin ve aday sonucunu ve önerilen uygulama amacını gözden geçirin. **İlke yok** sonucu davranışın bunun yerine bir uyarı, iş akışı değişikliği veya insan yanıtı gerektirebileceği anlamına gelir.
-    3. **Bu ilkeyi yaz**'ı seçin, ardından **Admin → ilke düzenleyici**'de oluşturulan kaynağı gözden geçirin ve test edin ve ardından **yayın sürümü**'nü seçin. Aday kontrolünü katıldığınızda **düzenleyiciyi yine de aç**'ı kullanın.
-    4. **Admin → uygulama**'ya gidin, sürümü **gözlemle** modunda dağıtın ve zorlamadan önce **Gözlemle → ilke**'nin altındaki kararlarını doğrulayın.
+  <Tab title="Kontrol Paneli">
+    1. Sorunu açın ve bulgusu, alıntı yapılan oturumları, temel nedeni ve tavsiyesini doğrulayın.
+    2. **İlke oluştur**'u seçin ve aday olmayı sonuçlandırın ve önerilen zorlama amacını gözden geçirin. **İlke yok** sonucu, davranışın bunun yerine uyarı, iş akışı değişikliği veya insan yanıtı gerektirebileceği anlamına gelir.
+    3. **Bu ilkeyi yaz**'ı seçin, ardından **Admin → ilke editörü** sayfasında oluşturulan kaynağı gözden geçirin ve test edin ve **yayın sürümü** seçmeden önce. Aday kontrol noktasıyla anlaşmadığınız zaman **editörü yine de aç**ı kullanın.
+    4. **Admin → zorlama** sayfasına gidin, sürümü **gözlemle** modunda dağıtın ve **Gözlemle → ilke** sayfasında kararlarını doğruladıktan sonra zorlayın.
 
-    Sorun başlığı, bulgu açıklaması, temel neden, tavsiye ve aday amacı taslagı oluşturmaya yardımcı olur. Hiçbir şey otomatik olarak yayınlanmaz veya dağıtılmaz.
+    Sorun başlığı, bulgu açıklaması, temel neden, tavsiye ve aday amacı taslağın oluşturulmasına yardımcı olur. Hiçbir şey otomatik olarak yayımlanmaz veya dağıtılmaz.
   </Tab>
   <Tab title="CLI">
-    Sorunu panoda açmadan önce kanıtı incelemek için CLI kullanın:
+    Sorunu kontrol panelinde açmadan önce kanıtı incelemek için CLI'yi kullanın:
 
     ```bash
     fp issues show <issue-id>
@@ -87,10 +87,10 @@ Iyileştirme dağıtıldığında ve doğrulandığında sorunu çözün. Başar
     fp events --session-id <session-id> --full --all
     ```
 
-    İlke adaylığı, Cloud yayını ve filo dağıtımı pano iş akışlarıdır. Eşdeğer ilke kaynağını yerel olarak önce doğrulamak istediğinizde `failproofai policies --install --custom <file>` kullanın.
+    İlke adaylığı, Cloud yayını ve filo dağıtımı kontrol paneli iş akışlarıdır. Önce eşdeğer ilke kaynağını yerel olarak doğrulamak istediğiniz zaman `failproofai policies --install --custom <file>` komutunu kullanın.
   </Tab>
 </Tabs>
 
 <Card title="İlke yazın" icon="shield-plus" href="/tr/policies/editor">
-  Doğrulanan, tekrarlanabilir bir eylem deseni ilke sürümüne dönüştürün.
+  Doğrulanmış, tekrarlanabilir bir eylem modelini bir ilke sürümüne dönüştürün.
 </Card>

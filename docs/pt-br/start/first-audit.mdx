@@ -1,10 +1,10 @@
 ---
 title: "Execute sua primeira verificação de falha"
-description: "Crie uma auditoria pelo painel do Cloud ou pela CLI fp e revise suas primeiras descobertas."
+description: "Crie uma auditoria pelo painel Cloud ou pela CLI fp e revise suas primeiras descobertas."
 icon: "scan-search"
 ---
 
-Uma auditoria transforma um conjunto de sessões em descobertas de falha classificadas e respaldadas por evidências. Comece com uma pergunta de falha bem delimitada.
+Uma auditoria transforma um conjunto de sessões em descobertas de falhas classificadas e respaldadas por evidências. Comece com uma pergunta de falha bem delimitada.
 
 <Tabs>
   <Tab title="Dashboard">
@@ -13,16 +13,16 @@ Uma auditoria transforma um conjunto de sessões em descobertas de falha classif
         Na barra lateral do Cloud, vá para **Analyze → Audits**. Selecione **new audit**.
       </Step>
       <Step title="Configurar a auditoria">
-        Insira um nome e um objetivo de falha direto, como "encontrar sessões de produção que repetem a mesma chamada de pagamento com falha sem alterar a entrada ou escalar." Selecione o agente, o ambiente, a janela de tempo e o agendamento. Adicione um breve resumo e URLs de referência quando o auditor precisar das suas regras de fluxo de trabalho.
+        Insira um nome e um objetivo de falha direto, como "encontrar sessões de produção que repetem a mesma chamada de pagamento com falha sem alterar a entrada ou escalar." Selecione o agente, o ambiente, a janela de tempo e o agendamento. Adicione um breve resumo e URLs de referência quando o auditor precisar das regras do seu fluxo de trabalho.
       </Step>
       <Step title="Criar e aguardar a execução">
-        Selecione **create audit**. A primeira execução é enfileirada imediatamente. Abra o cartão da auditoria para acompanhar a transição de enfileirado para em execução e, em seguida, para concluído.
+        Selecione **create audit**. A primeira execução é enfileirada imediatamente. Abra o card da auditoria para acompanhar a progressão de enfileirado para em execução e, em seguida, para concluído.
       </Step>
     </Steps>
 
-    Após a conclusão da execução, abra uma descoberta e revise as evidências de sessão correspondentes. Você pode então reconhecer, atribuir, descartar, silenciar ou resolver a descoberta.
+    Após a conclusão da execução, abra uma descoberta e revise suas evidências de sessão. Em seguida, você pode confirmar, atribuir, descartar, silenciar ou resolver a descoberta.
 
-    ![Uma descoberta de auditoria concluída mostrando sua descrição de falha, ação recomendada, evidências de suporte e sessões afetadas.](/images/dashboard/audit-finding.png)
+    ![Uma descoberta de auditoria concluída exibindo sua descrição de falha, ação recomendada, evidências de suporte e sessões afetadas.](/images/dashboard/audit-finding.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -49,4 +49,4 @@ Uma auditoria transforma um conjunto de sessões em descobertas de falha classif
   </Tab>
 </Tabs>
 
-Em seguida, [previna sua primeira falha com uma política](/pt-br/start/first-policy) para uma ação repetível confirmada.
+Em seguida, [previna sua primeira falha com uma política](/pt-br/start/first-policy) para uma ação recorrente confirmada.

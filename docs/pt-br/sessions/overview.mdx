@@ -10,16 +10,16 @@ Uma sessão é o melhor ponto de partida quando um agente se comporta de forma i
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-Acompanhe uma execução do agente desde seu objetivo até as chamadas ao modelo, ferramentas e resposta final.
+Acompanhe uma execução do agente desde seu objetivo, passando pelas chamadas ao modelo e ferramentas, até a resposta final.
 
 ## Encontrar uma sessão
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Na barra lateral do Cloud, acesse **Observe → Sessions**.
+    1. Na barra lateral do Cloud, vá para **Observe → Sessions**.
     2. Defina o intervalo de tempo e filtre por ambiente, status, agente ou ID de sessão.
     3. Adicione intervalos de pontuação ou métricas quando precisar de um recorte por qualidade, custo, tokens ou latência.
-    4. Selecione uma linha para abrir seu trace. Use o controle de cópia ao lado do ID da sessão ao compartilhá-la.
+    4. Selecione uma linha para abrir seu trace. Use o controle de cópia ao lado do ID de sessão ao compartilhá-lo.
 
     ![A lista de Sessions exibindo uma linha por execução com filtros de ambiente, agente, status e pontuação de avaliação.](/images/dashboard/sessions-list.png)
   </Tab>
@@ -30,7 +30,7 @@ Acompanhe uma execução do agente desde seu objetivo até as chamadas ao modelo
     fp --json sessions --session-id <session-id>
     ```
 
-    Adicione `--agents` para expandir execuções com múltiplos agentes, `--all` para paginar, ou `--fields` para escolher as colunas de saída.
+    Adicione `--agents` para expandir execuções multi-agente, `--all` para paginar ou `--fields` para escolher as colunas de saída.
   </Tab>
 </Tabs>
 
@@ -39,17 +39,17 @@ Acompanhe uma execução do agente desde seu objetivo até as chamadas ao modelo
 - Encontrar uma execução por agente, ambiente, tempo, modelo, tipo de evento ou estado de erro.
 - Acompanhar a sequência exata que produziu um resultado.
 - Comparar execuções bem-sucedidas e com falha.
-- Abrir as evidências usadas por uma descoberta de auditoria ou incidente de alerta.
+- Abrir as evidências usadas por uma conclusão de auditoria ou incidente de alerta.
 - Exportar uma sessão quando precisar de um registro offline.
 
 ## Uma ordem de investigação confiável
 
 1. Confirme o objetivo da sessão e o ambiente.
 2. Encontre o primeiro erro ou decisão inesperada — não apenas a falha final.
-3. Inspecione o contexto do modelo e a entrada da ferramenta imediatamente antes do problema.
+3. Inspecione o contexto do modelo e a entrada da ferramenta imediatamente antes disso.
 4. Verifique tentativas repetidas, latência e interrupções humanas.
 5. Revise as pontuações de avaliação e as decisões de políticas.
 
 <Card title="Ler um trace" icon="route" href="/pt-br/sessions/read-a-trace">
-  Aprenda como navegar do resumo da sessão até o evento que causou o resultado.
+  Aprenda como ir do resumo da sessão até o evento que causou o resultado.
 </Card>

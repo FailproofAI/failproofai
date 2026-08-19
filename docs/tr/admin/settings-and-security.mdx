@@ -1,21 +1,21 @@
 ---
 title: "Ayarlar ve güvenlik"
-description: "İşletimsel ayarları yapılandırın ve agent verileri hakkında bilinçli seçimler yapın."
+description: "Operasyonel ayarları yapılandırın ve agent verileri hakkında bilinçli seçimler yapın."
 icon: "lock-keyhole"
 ---
 
-Ayarları, dağıtıma özgü işletimsel değerler ve model bağlam penceresi geçersiz kılmaları için kullanın. API veya CLI aracılığıyla bir değeri değiştirmeden önce ayarlar şemasını inceleyin.
+Ayarları dağıtıma özgü operasyonel değerler ve model bağlam penceresi geçersiz kılmaları için kullanın. API veya CLI aracılığıyla bir değer değiştirmeden önce ayarlar şemasını inceleyin.
 
 ## Bir kuruluş ayarını değiştirme
 
 <Tabs>
-  <Tab title="Pano">
-    1. **Yönetim → Ayarlar** seçeneğine gidin, ayar grubunu bulun ve açıklamasını ile geçerli kaynağını okuyun.
+  <Tab title="Dashboard">
+    1. **Yönetim → Ayarlar** bölümüne gidin, ayar grubunu bulun ve açıklamasını ile mevcut kaynağını okuyun.
     2. Değeri değiştirin ve kaydedin.
-    3. Model bağlam pencereleri için, model geçersiz kılmasını ekleyin veya güncelleyin ve geçerli sınırı onaylayın.
-    4. Değiştirilen değere bağlı oturumları ve metrikleri yeniden kontrol edin.
+    3. Model bağlam pencereleri için, model geçersiz kılmasını ekleyin veya güncelleyin ve etkili sınırı onaylayın.
+    4. Değiştirilmiş değere bağlı oturumları ve metrikleri yeniden kontrol edin.
 
-    ![Kuruluş kimlik doğrulaması ve işletimsel ayarlarını gösteren Ayarlar sayfası.](/images/dashboard/settings.png)
+    ![Kuruluş kimlik doğrulaması ve operasyonel ayarları gösteren Ayarlar sayfası.](/images/dashboard/settings.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -26,43 +26,43 @@ Ayarları, dağıtıma özgü işletimsel değerler ve model bağlam penceresi g
       --json-value '["oncall@example.com"]'
     ```
 
-    Yüklü CLI tarafından kullanılan değer türü ve onay bayraklarını görmek için `fp settings set --help` komutunu çalıştırın.
+    Yüklü CLI tarafından kullanılan değer türü ve onay bayrakları için `fp settings set --help` komutunu çalıştırın.
   </Tab>
 </Tabs>
 
 ## Veri işleme seçimleri
 
-Failproof AI CLI'yi bağlamak, izler ve denetimler içeriklerine bağlı olduğu için varsayılan olarak transkriptleri gönderir. İstemler, dosya içerikleri veya terminal girişinin yerel kalması gerektiğinde `--no-transcripts` kullanın; hook aktivitesi ve politika kararları yine de raporlanabilir.
+Failproof AI CLI bağlantısı, izler ve denetimler içeriklerine bağlı olduğu için varsayılan olarak transkriptleri gönderir. İstemlerin, dosya içeriklerinin veya terminal girdisinin yerel kalması gerekiyorsa `--no-transcripts` kullanın; hook etkinliği ve politika kararları yine de bildirilebilir.
 
-Yerel alım kimlik bilgileri, gizli olmayan daemon ayarlarından ayrı olarak saklanır ve kısıtlayıcı izinlerle yazılır. API anahtarları yine de üretim gizli dizileri olarak yönetilmelidir.
+Yerel alım kimlik bilgileri, gizli olmayan daemon ayarlarından ayrı olarak depolanır ve kısıtlayıcı izinlerle yazılır. API anahtarları yine de üretim sırları olarak yönetilmelidir.
 
 ## Kuruluş ayarı referansı
 
-Pano tarafından düzenlenebilen tüm ayarlar kuruluş kapsamındadır. Dağıtım genelindeki davranış sunucu ortamı yapılandırması olarak kalır.
+Tüm dashboard tarafından düzenlenebilir ayarlar kuruluş kapsamındadır. Dağıtım genelindeki davranış sunucu ortamı yapılandırmasında kalır.
 
 | Anahtar | Varsayılan | Amaç |
 | --- | --- | --- |
-| `allowed_sign_ins` | `[]` | Mevcut üyeleri tam e-postalar veya `*@domain` ile sınırlandırın; boş bir liste ek kısıtlama olmadığı anlamına gelir. |
-| `session_ttl_secs` | `86400` | Pano oturumu ömrü; kabul edilen aralık 60 saniyeden 30 güne kadardır. |
-| `otp_ttl_secs` | `600` | OTP ve sihirli bağlantı ömrü; kabul edilen aralık 60–1800 saniyedir. |
+| `allowed_sign_ins` | `[]` | Mevcut üyeleri tam e-postalar veya `*@domain` ile sınırlayın; boş bir liste ek sınırlama olmadığı anlamına gelir. |
+| `session_ttl_secs` | `86400` | Dashboard oturumu ömrü; kabul edilen aralık 60 saniye ile 30 gün arasıdır. |
+| `otp_ttl_secs` | `600` | OTP ve magic-link ömrü; kabul edilen aralık 60–1800 saniyedir. |
 | `alerts.email_default_recipients` | `[]` | Bir uyarı e-posta kanalı bunları geçersiz kılmadığında varsayılan alıcılar. |
 | `alerts.slack_default_webhook` | boş | Varsayılan Slack gelen webhook URL'si. |
 | `alerts.webhook_default_url` | boş | Varsayılan genel JSON webhook URL'si. |
-| `alerts.webhook_signing_secret` | boş | `X-AgentEye-Signature` başlığı için kullanılan HMAC-SHA256 anahtarı; okumalar maskelenmiştir. |
-| `alerts.enabled_channels` | e-posta, Slack, webhook | Uyarı kurallarının gönderebileceği kuruluş genelindeki kanal türleri. |
+| `alerts.webhook_signing_secret` | boş | `X-AgentEye-Signature` başlığı için kullanılan HMAC-SHA256 anahtarı; okumalar maskelenir. |
+| `alerts.enabled_channels` | email, Slack, webhook | Uyarı kurallarının gönderebileceği kuruluş genelindeki kanal türleri. |
 | `default_user_permissions` | `standard` | Yeni davetler için önceden seçilen adlandırılmış izin seti. |
 
-`allowed_sign_ins` bir hibe değil, bir filtreldir: bir kişi zaten bir kuruluş üyesi olmalıdır. Her üyeye izin vermek için boş bir liste kullanın; `*` değeri reddedilir. Uyarı URL'leri, loopback geliştirme adresleri hariç HTTPS kullanmalıdır.
+`allowed_sign_ins` bir izin değil, bir filtredir: bir kişi zaten kuruluş üyesi olmalıdır. Her üyeye izin vermek için boş bir liste kullanın; basit `*` değeri reddedilir. Uyarı URL'leri loopback geliştirme adresleri hariç HTTPS kullanmalıdır.
 
 ## Güvenlik kontrol listesi
 
 - Cloud bağlantıları için HTTPS kullanın.
-- Anahtarları en küçük izin setine kapsam yapın.
+- Anahtarları en küçük izin setine kapsamlandırın.
 - Üretim ve üretim dışı ortamları ayırın.
-- Dağıtımdan önce transkript ve redaksiyon ayarlarını gözden geçirin.
+- Dağıtılmadan önce transkript ve redaksiyon ayarlarını gözden geçirin.
 - Kullanıcı, anahtar ve kuruluş değişikliklerini denetleyin.
-- Dağıtımınız için yedekleme, saklama ve olay yanıtı gereksinimlerini test edin.
+- Dağıtımınız için yedekleme, saklama ve olay yanıtlama gereksinimlerini test edin.
 
 <Warning>
-  Transkript yakalamayı kapatmak, denetimlerin ve araştırmaların ne kanıt olabileceğini değiştirir. Kararı ve beklenen sınırlamalarını kaydedin.
+  Transkript yakalamayı kapatmak, denetimlerin ve araştırmaların kanıtlayabileceği şeyleri değiştirir. Kararı ve beklenen sınırlamalarını kaydedin.
 </Warning>

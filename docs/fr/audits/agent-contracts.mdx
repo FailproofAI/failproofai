@@ -1,28 +1,28 @@
 ---
 title: "Contexte d'agent"
-description: "Indiquez aux audits ce que chaque agent doit faire, produire et ne jamais faire."
+description: "Indiquez aux audits ce que chaque agent doit faire, produire, et ne jamais faire."
 icon: "bot"
 ---
 
-Le contexte d'agent indique aux audits pourquoi chaque agent existe, ce qu'il doit produire et ce qu'il ne doit jamais faire. Failproof AI stocke ce contexte sous la forme d'un contrat d'agent par agent.
+Le contexte d'agent indique aux audits à quoi sert chaque agent, ce qu'il doit produire et ce qu'il ne doit jamais faire. Failproof AI stocke ce contexte sous forme d'un contrat d'agent par agent.
 
-Le contexte d'agent appartient à l'organisation, et non à un audit particulier. Vous le rédigez une seule fois par agent, et chaque audit s'appuyant sur un modèle dont le périmètre inclut cet agent l'utilise.
+Le contexte d'agent appartient à l'organisation, pas à un seul audit. Vous le rédigez une fois par agent, et chaque audit piloté par un modèle dont le périmètre inclut cet agent l'utilise.
 
 ## Ajouter un contexte d'agent
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Accédez à **Analyze → audits**, sélectionnez **agents**, puis choisissez l'identifiant d'agent rapporté par ses sessions.
+    1. Accédez à **Analyze → audits**, sélectionnez **agents**, puis choisissez l'identifiant d'agent signalé par ses sessions.
     2. Sélectionnez **add content** ou **edit**.
     3. Décrivez à quoi sert l'agent, ce qu'il doit produire, ce que signifie « terminé », à quelle fréquence il doit s'exécuter et ce qu'il ne doit jamais faire.
-    4. Enregistrez le contexte, puis revenez au formulaire d'audit et confirmez que l'agent sélectionné apparaît comme couvert.
+    4. Sauvegardez le contexte, puis revenez au formulaire d'audit et vérifiez que l'agent sélectionné est bien indiqué comme couvert.
 
-    ![Le tiroir Agents de l'audit, utilisé pour ajouter l'objectif, la cadence, les sorties, les conditions d'achèvement et les comportements interdits d'un agent.](/images/dashboard/agent-context.png)
+    ![Le panneau Agents de l'audit, permettant d'ajouter l'objectif, la cadence, les sorties, les conditions d'achèvement et les comportements interdits pour un agent.](/images/dashboard/agent-context.png)
 
-    Vous pouvez également ajouter ou modifier le contexte d'un agent depuis le tiroir **agents** lors de la création ou de la modification d'un audit. Il est enregistré indépendamment et est immédiatement disponible pour tous les audits applicables.
+    Vous pouvez également ajouter ou modifier le contexte d'agent depuis le panneau **agents** lors de la création ou de la modification d'un audit. La sauvegarde est indépendante et le contexte est immédiatement disponible pour tous les audits applicables.
   </Tab>
   <Tab title="CLI">
-    Le Cloud CLI n'expose pas encore les commandes de contrat. Utilisez l'API publique avec une clé disposant des droits `audits:read` et `audits:write` :
+    Le Cloud CLI n'expose pas encore les commandes de contrat. Utilisez l'API publique avec une clé disposant des permissions `audits:read` et `audits:write` :
 
     ```bash
     curl -X POST "https://app.befailproof.ai/v1/audits/contracts" \
@@ -35,7 +35,7 @@ Le contexte d'agent appartient à l'organisation, et non à un audit particulier
       }'
     ```
 
-    Listez les contrats avec `GET /v1/audits/contracts` ; récupérez un contrat spécifique avec `GET /v1/audits/contracts/{id}`. La mise à jour via `PUT` est un remplacement complet et nécessite à la fois `agent_id` et `body`.
+    Listez les contrats avec `GET /v1/audits/contracts` ; récupérez un contrat spécifique avec `GET /v1/audits/contracts/{id}`. La mise à jour avec `PUT` est un remplacement complet et requiert à la fois `agent_id` et `body`.
   </Tab>
 </Tabs>
 
@@ -45,8 +45,8 @@ Limitez le contexte à 5 000 caractères et rendez-le testable. Un contexte util
 
 - **Objectif :** pourquoi l'agent existe
 - **Sorties :** artefacts ou actions qu'il doit produire
-- **Terminé quand :** la condition qui rend une exécution réussie
-- **Cadence :** à quelle fréquence ou à quel moment il doit s'exécuter
+- **Terminé lorsque :** la condition qui rend une exécution réussie
+- **Cadence :** à quelle fréquence ou quand il doit s'exécuter
 - **Ne doit pas :** actions et résultats toujours inacceptables
 
 ```markdown
@@ -66,17 +66,17 @@ cadence: Once daily after 02:00 UTC. Never more than once.
 - Modify ledger entries. Report discrepancies instead.
 ```
 
-Le contexte d'agent définit le comportement attendu ; il ne peut pas indiquer à l'analyse quelle conclusion tirer ni restreindre les preuves qu'elle examine. Les agents sans contexte sont audités normalement, mais Failproof AI ne peut pas évaluer leur comportement par rapport à l'intention propre à l'organisation.
+Le contexte d'agent définit le comportement attendu ; il ne peut pas indiquer à l'analyse quelle conclusion atteindre ni restreindre les preuves qu'elle examine. Les agents sans contexte sont audités normalement, mais Failproof AI ne peut pas évaluer leur comportement par rapport à l'intention propre à l'organisation.
 
-## Suspendre ou modifier le contexte d'agent
+## Mettre en pause ou modifier le contexte d'agent
 
-- Suspendez le contexte d'agent lorsque les audits doivent temporairement l'ignorer. La suspension est réversible.
+- Mettez en pause le contexte d'agent lorsque les audits doivent temporairement l'ignorer. La mise en pause est réversible.
 - Modifiez le contexte lorsque la responsabilité de l'agent change. Le nouveau texte s'applique aux exécutions futures.
 - Vérifiez **last matched** lorsqu'un agent en cours d'exécution ne semble jamais utiliser son contexte. Cela signifie généralement que son identifiant d'agent ne correspond pas à la télémétrie.
-- Supprimez via l'API uniquement lorsque le texte doit être définitivement détruit. Le tableau de bord propose intentionnellement la suspension plutôt que la suppression.
+- Supprimez via l'API uniquement lorsque le texte doit être définitivement effacé. Le tableau de bord propose intentionnellement la mise en pause plutôt que la suppression.
 
-Chaque exécution d'audit stocke l'instantané exact du contexte d'agent utilisé. La modification, la suspension ou la suppression de la ressource de contrat actuelle ne réécrit pas la base des conclusions antérieures.
+Chaque exécution d'audit stocke l'instantané exact du contexte d'agent qu'elle a utilisé. Modifier, mettre en pause ou supprimer la ressource de contrat actuelle ne réécrit pas la base des conclusions antérieures.
 
 <Info>
-  La lecture des contrats nécessite `audits:read`. Leur création, modification, suspension ou suppression nécessite `audits:write`.
+  La lecture des contrats nécessite `audits:read`. Leur création, modification, mise en pause ou suppression nécessite `audits:write`.
 </Info>

@@ -1,47 +1,47 @@
 ---
-title: "Distribuire policy"
-description: "Rollout di una versione di policy revisionata sulle macchine interessate."
+title: "Distribuire i criteri"
+description: "Implementa una versione di criterio revisione sulle macchine designate."
 icon: "cloud-upload"
 ---
 
-Una distribuzione collega una o più versioni di policy a un insieme mirato di macchine registrate.
+Una distribuzione collega una o più versioni di criterio a un set di macchine iscritte designate.
 
 ## Applicare una distribuzione
 
 <Tabs>
   <Tab title="Dashboard">
     1. Vai a **Admin → enforcement**, trova la macchina ed espandi la sua riga.
-    2. Seleziona **edit**, aggiungi la versione di policy revisionata e scegli **observe** o il suo effetto di enforcement.
-    3. Applica il cambiamento, quindi attendi il prossimo check-in della macchina e conferma il suo stato di distribuzione e copertura.
+    2. Seleziona **edit**, aggiungi la versione di criterio revisionata e scegli **observe** o il suo effetto di applicazione.
+    3. Applica la modifica, quindi attendi il prossimo check-in della macchina e conferma lo stato della sua distribuzione e copertura.
     4. Vai a **Observe → policy** per ispezionare le decisioni in tempo reale.
 
-    ![L'editor di distribuzione della macchina con versioni di policy, effetti enforce e observe, e l'azione di applicazione della distribuzione.](/images/dashboard/enforcement-editor.png)
+    ![L'editor di distribuzione della macchina con versioni di criteri, effetti enforce e observe, e l'azione di applicazione della distribuzione.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Gli endpoint di distribuzione Cloud non sono intenzionalmente esposti come comandi `fp` ordinari. Controlla la macchina localmente, quindi distribuisci tramite il dashboard:
+    Gli endpoint di distribuzione Cloud non sono intenzionalmente esposti come comandi `fp` ordinari. Controlla la macchina localmente, quindi esegui la distribuzione tramite il dashboard:
 
     ```bash
     failproofai config --status
     ```
 
-    Usa `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` dopo la distribuzione per verificare che l'attività raggiunga Cloud.
+    Utilizza `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` dopo la distribuzione per verificare che l'attività raggiunga Cloud.
   </Tab>
 </Tabs>
 
 <Steps>
   <Step title="Scegli la versione e i target">
-    Distribuisci una versione revisionata, non una bozza mutabile, iniziando con una macchina non di produzione o un piccolo gruppo di cui puoi ispezionare le sessioni.
+    Distribuisci una versione revisionata, non una bozza mutabile, iniziando da una macchina non in produzione o un piccolo gruppo le cui sessioni puoi ispezionare.
   </Step>
   <Step title="Osserva le decisioni">
     Esamina i match, i motivi, gli strumenti interessati e i falsi positivi senza bloccare il lavoro.
   </Step>
-  <Step title="Applica enforcement e verifica la copertura">
-    Promuovi dopo che i match osservati separano le azioni non sicure da quelle valide, quindi conferma che ogni macchina interessata ha ricevuto la distribuzione e sta segnalando le decisioni.
+  <Step title="Applica e verifica la copertura">
+    Promuovi dopo che i match osservati separano le azioni non sicure da quelle valide, quindi conferma che ogni macchina designata ha scaricato la distribuzione e sta segnalando le decisioni.
   </Step>
 </Steps>
 
-Le macchine richiedono la capacità `policies:pull`. La segnalazione degli eventi è controllata separatamente da `events:add`; verifica entrambi quando prevedi analisi e enforcement Cloud.
+Le macchine necessitano della capacità `policies:pull`. La segnalazione degli eventi è controllata separatamente da `events:add`; verifica entrambe quando prevedi analisi e applicazione Cloud.
 
 <Warning>
-  La gestione dell'enforcement è un flusso di lavoro Cloud amministrativo. Non trattare le route di enforcement solo root come endpoint API `/v1` ordinari per clienti.
+  La gestione dell'applicazione è un flusso di lavoro Cloud amministrativo. Non trattare le route di applicazione solo root come endpoint API `/v1` ordinari dei clienti.
 </Warning>

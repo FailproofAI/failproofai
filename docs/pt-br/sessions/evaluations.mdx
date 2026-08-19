@@ -1,23 +1,23 @@
 ---
 title: "Avaliações online"
-description: "Pontue sessões ativas e concluídas por qualidade, conformidade, custo e latência."
+description: "Avalie sessões ao vivo e concluídas quanto a qualidade, conformidade, custo e latência."
 icon: "gauge"
 ---
 
-As avaliações online aplicam julgamentos consistentes às sessões de agentes. Use-as para sinais que devem ser medidos continuamente, em vez de investigados apenas durante uma auditoria.
+As avaliações online aplicam julgamentos consistentes às sessões do agente. Use-as para sinais que devem ser medidos continuamente, em vez de investigados apenas durante uma auditoria.
 
 ## Revisar a qualidade das avaliações
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vá para **Observe → Evaluations**.
-    2. Adicione uma série e escolha o agente, ambiente, pontuação de avaliação, estatística e curva.
+    1. Acesse **Observe → Evaluations**.
+    2. Adicione uma série e escolha o agente, o ambiente, a pontuação da avaliação, a estatística e a curva.
     3. Adicione séries para comparar ambientes, agentes ou chaves de pontuação.
     4. Selecione um resultado para abrir as sessões correspondentes ou compartilhar a visualização filtrada. Use **Observe → Metrics** para latência, tokens, custo e outros valores de magnitude.
 
     ![Um dashboard de qualidade exibindo pontuações médias de avaliação e tendências ao longo do tempo.](/images/dashboard/dashboard-quality.png)
 
-    Abra uma sessão a partir do detalhamento para inspecionar o raciocínio por pontuação:
+    Abra uma sessão no drill-down para inspecionar o raciocínio por pontuação:
 
     ![Uma visualização detalhada de sessão exibindo pontuações de avaliação e raciocínio ao lado do trace completo.](/images/dashboard/session-detail.png)
   </Tab>
@@ -32,21 +32,21 @@ As avaliações online aplicam julgamentos consistentes às sessões de agentes.
   </Tab>
 </Tabs>
 
-Um avaliador recebe a identidade da sessão, ambiente, timestamps e eventos ordenados. Ele pode retornar chaves de pontuação numéricas com raciocínio opcional e um resumo. Avaliadores de longa duração podem retornar um job pendente e ser consultados posteriormente.
+Um avaliador recebe a identidade da sessão, o ambiente, os timestamps e os eventos ordenados. Ele pode retornar chaves de pontuação numéricas com raciocínio opcional e um resumo. Avaliadores de longa duração podem retornar um job pendente e ser consultados posteriormente.
 
 ## Bons alvos de avaliação
 
-- Conclusão de tarefas ou correção
+- Conclusão de tarefas ou precisão
 - Fundamentação e risco de alucinação
 - Seleção e eficiência de ferramentas
 - Conformidade com políticas ou processos
 - Orçamentos de custo e latência
-- Escalonamento humano necessário
+- Escalada humana obrigatória
 
 ## Da pontuação à resposta
 
-Exiba pontuações em dashboards para acompanhar tendências. Crie alertas para limites ou condições compostas. Quando uma pontuação cair em uma população, execute uma auditoria para investigar o motivo; quando a causa for uma ação repetível, implante uma política.
+Exiba pontuações em dashboards para acompanhar tendências. Crie alertas para limites ou condições compostas. Quando uma pontuação declina em uma população, execute uma auditoria para investigar o motivo; quando a causa for uma ação repetível, implante uma política.
 
 <Card title="Construir um avaliador" icon="code-2" href="/pt-br/reference/evaluator-sdk">
-  Implemente avaliação síncrona ou assíncrona com o SDK de avaliadores Python.
+  Implemente avaliações síncronas ou assíncronas com o SDK Python para avaliadores.
 </Card>

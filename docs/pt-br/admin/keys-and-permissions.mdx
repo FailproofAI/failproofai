@@ -1,29 +1,29 @@
 ---
 title: "Chaves e permissões"
-description: "Crie chaves de API com escopo definido para máquinas, automações e operadores."
+description: "Crie chaves de API com escopo definido para máquinas, automação e operadores."
 icon: "key-round"
 ---
 
-As chaves de API pertencem a uma organização e carregam permissões explícitas. Use chaves separadas para ingestão de agentes, entrega de políticas, avaliadores, automação de CI e scripts administrativos.
+As chaves de API pertencem a uma organização e carregam permissões explícitas. Utilize chaves separadas para ingestão de agentes, entrega de políticas, avaliadores, automação de CI e scripts administrativos.
 
 ## Criar e rotacionar uma chave
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Acesse **Administração → Chaves**, selecione **nova chave** e insira um nome para a carga de trabalho.
-    2. Escolha um conjunto de permissões e ajuste permissões individuais apenas quando o preset não for suficiente.
-    3. Crie a chave e copie seu segredo de uso único imediatamente.
+    1. Vá para **Administration → Keys**, selecione **new key** e informe um nome para a carga de trabalho.
+    2. Escolha um conjunto de permissões e ajuste as permissões individuais somente quando o preset for insuficiente.
+    3. Crie a chave e copie o segredo de uso único imediatamente.
     4. Abra a chave posteriormente para atualizar concessões, desativá-la ou regenerar o segredo.
 
-    O painel de criação é onde você escolhe as concessões mínimas necessárias para a carga de trabalho.
+    O painel de criação é onde você escolhe as concessões mínimas exigidas pela carga de trabalho.
 
     ![O painel de nova chave de API com presets de permissão e concessões individuais.](/images/dashboard/key-create.png)
 
-    Após a criação, a página de Chaves exibe os metadados persistentes e as ações de gerenciamento. O segredo de uso único não é exibido novamente.
+    Após a criação, a página de Keys exibe os metadados persistentes e as ações de gerenciamento. O segredo de uso único não é exibido novamente.
 
-    ![A página de Chaves de API mostrando permissões, horário de criação e ações de regeneração e desativação.](/images/dashboard/api-keys.png)
+    ![A página de API Keys exibindo permissões da chave, data de criação e ações de regenerar e desativar.](/images/dashboard/api-keys.png)
 
-    Use essa lista para revisar concessões regularmente e desativar chaves que não correspondem mais a uma carga de trabalho ativa.
+    Utilize essa lista para revisar as concessões regularmente e desativar chaves que não correspondam mais a uma carga de trabalho ativa.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -36,39 +36,39 @@ As chaves de API pertencem a uma organização e carregam permissões explícita
     fp keys disable production-agents
     ```
 
-    Redirecione ou capture a saída de criação/regeneração com segurança; o segredo é retornado apenas uma vez.
+    Redirecione ou capture a saída dos comandos create/regenerate de forma segura; o segredo é retornado apenas uma vez.
   </Tab>
 </Tabs>
 
-As duas permissões exigidas por uma máquina Failproof AI conectada são independentes:
+As duas permissões necessárias para uma máquina Failproof AI conectada são independentes:
 
 - `events:add` envia eventos e dados de sessão.
-- `policies:pull` recupera os deployments de políticas atribuídos.
+- `policies:pull` recupera os deployments de política atribuídos.
 
-Os segredos das chaves são exibidos no momento da criação ou regeneração. Armazene-os em um gerenciador de segredos e os rotacione sem reutilizar as credenciais interativas de um operador.
+Os segredos das chaves são exibidos no momento da criação ou regeneração. Armazene-os em um gerenciador de segredos e faça a rotação sem reutilizar as credenciais interativas de um operador.
 
 ## Catálogo de permissões
 
 | Área | Permissões |
 | --- | --- |
-| Eventos | `events:add`, `events:read` |
-| Chaves | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` é exclusivo para sessões humanas |
-| Usuários | `users:create`, `users:read`, `users:update`, `users:delete` |
-| Avaliações | `evaluations:read`, `evaluations:trigger` |
+| Events | `events:add`, `events:read` |
+| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` é exclusivo para sessão humana |
+| Users | `users:create`, `users:read`, `users:update`, `users:delete` |
+| Evaluations | `evaluations:read`, `evaluations:trigger` |
 | Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
-| Consultas | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
-| Assistente | `agent:use` |
-| Configurações | `settings:read`, `settings:write` |
-| Alertas | `alerts:read`, `alerts:write` |
-| Problemas | `issues:read`, `issues:create`, `issues:close` |
-| Auditorias | `audits:read`, `audits:write` |
-| Políticas | `policies:read`, `policies:write`, `policies:pull` |
-| Uso | `usage:read` |
+| Queries | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
+| Assistant | `agent:use` |
+| Settings | `settings:read`, `settings:write` |
+| Alerts | `alerts:read`, `alerts:write` |
+| Issues | `issues:read`, `issues:create`, `issues:close` |
+| Audits | `audits:read`, `audits:write` |
+| Policies | `policies:read`, `policies:write`, `policies:pull` |
+| Usage | `usage:read` |
 
-`orgs:admin` é reservado para o operador da instância e não pode ser concedido a uma chave de organização ou a um membro comum. Tokens `incidents:*` e `alerts:ack` descontinuados são aceitos por compatibilidade e são normalizados para as permissões atuais de `issues:*`.
+`orgs:admin` é reservado para o operador da instância e não pode ser concedido a uma chave de organização ou a um membro comum. Tokens descontinuados `incidents:*` e `alerts:ack` são aceitos por compatibilidade e são normalizados para as permissões atuais de `issues:*`.
 
-Os conjuntos de permissões integrados são `read-only`, `standard` e `admin`. O conjunto `standard` adiciona acionamento de avaliações, execução de consultas, resposta a problemas e uso do assistente às permissões de leitura. A criação de chaves remove concessões exclusivas para humanos, mesmo quando um conjunto de permissões as contém.
+Os conjuntos de permissões integrados são `read-only`, `standard` e `admin`. O `standard` adiciona disparo de avaliações, execução de queries, resposta a issues e uso do assistente às permissões de leitura. A criação de chaves remove as concessões exclusivas para humanos, mesmo quando um conjunto de permissões as contém.
 
 <Warning>
-  Chaves com escopo de instância podem selecionar uma organização usando o cabeçalho `X-AgentEye-Org`. Defina-o explicitamente em implantações com múltiplas organizações; omiti-lo pode selecionar a organização padrão.
+  Chaves com escopo de instância podem selecionar uma organização por meio do cabeçalho `X-AgentEye-Org`. Defina-o explicitamente em deployments com múltiplas organizações; omiti-lo pode resultar na seleção da organização padrão.
 </Warning>

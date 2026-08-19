@@ -1,29 +1,29 @@
 ---
 title: "Schlüssel und Berechtigungen"
-description: "Erstelle bereichsbegrenzte API-Schlüssel für Maschinen, Automatisierung und Operatoren."
+description: "Erstellen Sie bereichsbegrenzte API-Schlüssel für Maschinen, Automatisierung und Operatoren."
 icon: "key-round"
 ---
 
-API-Schlüssel gehören einer Organisation und verfügen über explizite Berechtigungen. Verwende separate Schlüssel für Agent-Ingestion, Policy-Auslieferung, Evaluatoren, CI-Automatisierung und administrative Skripte.
+API-Schlüssel gehören einer Organisation und tragen explizite Berechtigungen. Verwenden Sie separate Schlüssel für die Agent-Erfassung, Richtlinienübermittlung, Evaluatoren, CI-Automatisierung und administrative Skripte.
 
 ## Schlüssel erstellen und rotieren
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Gehe zu **Verwaltung → Schlüssel**, wähle **Neuer Schlüssel** und gib einen Namen für die Arbeitslast ein.
-    2. Wähle ein Berechtigungsset und passe einzelne Berechtigungen nur dann an, wenn das Preset nicht ausreicht.
-    3. Erstelle den Schlüssel und kopiere das einmalig angezeigte Secret sofort.
-    4. Öffne den Schlüssel später, um Berechtigungen zu ändern, ihn zu deaktivieren oder das Secret neu zu generieren.
+    1. Gehen Sie zu **Verwaltung → Schlüssel**, wählen Sie **Neuer Schlüssel** und geben Sie einen Workload-Namen ein.
+    2. Wählen Sie einen Berechtigungssatz und passen Sie einzelne Berechtigungen nur an, wenn das Voreinstellung nicht ausreicht.
+    3. Erstellen Sie den Schlüssel und kopieren Sie sein einmalig angezeigtes Geheimnis sofort.
+    4. Öffnen Sie den Schlüssel später, um Berechtigungen zu aktualisieren, ihn zu deaktivieren oder das Geheimnis neu zu generieren.
 
-    Im Erstellungs-Drawer wählst du die minimal notwendigen Berechtigungen für die jeweilige Arbeitslast aus.
+    Im Erstellungsdialog wählen Sie die minimalen Berechtigungen, die der Workload benötigt.
 
-    ![Der Drawer zur Erstellung eines neuen API-Schlüssels mit Berechtigungs-Presets und individuellen Grants.](/images/dashboard/key-create.png)
+    ![Der neue API-Schlüssel-Dialog mit Berechtigungsvoreinstellungen und individuellen Grants.](/images/dashboard/key-create.png)
 
-    Nach der Erstellung zeigt die Schlüssel-Seite die dauerhaften Metadaten und Verwaltungsaktionen. Das einmalige Secret wird nicht erneut angezeigt.
+    Nach der Erstellung zeigt die Schlüsselseite die dauerhaften Metadaten und Verwaltungsaktionen. Das einmalige Geheimnis wird nicht erneut angezeigt.
 
-    ![Die API-Schlüssel-Seite mit Schlüsselberechtigungen, Erstellungszeitpunkt sowie Aktionen zum Regenerieren und Deaktivieren.](/images/dashboard/api-keys.png)
+    ![Die API-Schlüssel-Seite mit Schlüsselberechtigungen, Erstellungszeit sowie Aktionen zum Neu-Generieren und Deaktivieren.](/images/dashboard/api-keys.png)
 
-    Verwende diese Liste, um Berechtigungen regelmäßig zu überprüfen und Schlüssel zu deaktivieren, die keiner aktiven Arbeitslast mehr zugeordnet sind.
+    Nutzen Sie diese Liste, um Berechtigungen regelmäßig zu überprüfen und Schlüssel zu deaktivieren, die keinem aktiven Workload mehr zugeordnet sind.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -36,39 +36,39 @@ API-Schlüssel gehören einer Organisation und verfügen über explizite Berecht
     fp keys disable production-agents
     ```
 
-    Leite die Ausgabe von create/regenerate sicher um oder speichere sie; das Secret wird nur einmal zurückgegeben.
+    Leiten Sie die Ausgabe von create/regenerate sicher um oder erfassen Sie sie; das Geheimnis wird nur einmal zurückgegeben.
   </Tab>
 </Tabs>
 
-Die zwei Berechtigungen, die eine verbundene Failproof AI-Maschine benötigt, sind voneinander unabhängig:
+Die beiden Berechtigungen, die eine verbundene Failproof AI-Maschine benötigt, sind unabhängig voneinander:
 
-- `events:add` sendet Events und Session-Daten.
-- `policies:pull` ruft zugewiesene Policy-Deployments ab.
+- `events:add` sendet Ereignisse und Sitzungsdaten.
+- `policies:pull` ruft zugewiesene Richtlinien-Deployments ab.
 
-Schlüssel-Secrets werden bei der Erstellung oder Regenerierung angezeigt. Speichere sie in einem Secret-Manager und rotiere sie, ohne dabei interaktive Credentials eines Operators wiederzuverwenden.
+Schlüsselgeheimnisse werden bei der Erstellung oder Neu-Generierung angezeigt. Speichern Sie sie in einem Secret-Manager und rotieren Sie sie, ohne die interaktiven Anmeldedaten eines Operators wiederzuverwenden.
 
 ## Berechtigungskatalog
 
 | Bereich | Berechtigungen |
 | --- | --- |
-| Events | `events:add`, `events:read` |
-| Schlüssel | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` ist nur für menschliche Sitzungen verfügbar |
+| Ereignisse | `events:add`, `events:read` |
+| Schlüssel | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` ist nur für menschliche Sitzungen |
 | Benutzer | `users:create`, `users:read`, `users:update`, `users:delete` |
 | Evaluierungen | `evaluations:read`, `evaluations:trigger` |
 | Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
 | Abfragen | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
 | Assistent | `agent:use` |
 | Einstellungen | `settings:read`, `settings:write` |
-| Warnmeldungen | `alerts:read`, `alerts:write` |
-| Issues | `issues:read`, `issues:create`, `issues:close` |
+| Benachrichtigungen | `alerts:read`, `alerts:write` |
+| Probleme | `issues:read`, `issues:create`, `issues:close` |
 | Audits | `audits:read`, `audits:write` |
-| Policies | `policies:read`, `policies:write`, `policies:pull` |
+| Richtlinien | `policies:read`, `policies:write`, `policies:pull` |
 | Nutzung | `usage:read` |
 
-`orgs:admin` ist dem Instanz-Operator vorbehalten und kann weder einem Organisationsschlüssel noch einem gewöhnlichen Mitglied gewährt werden. Veraltete `incidents:*`- und `alerts:ack`-Token werden aus Kompatibilitätsgründen akzeptiert und auf die aktuellen `issues:*`-Berechtigungen normalisiert.
+`orgs:admin` ist dem Instanz-Operator vorbehalten und kann weder einem Organisations-Schlüssel noch einem gewöhnlichen Mitglied gewährt werden. Veraltete `incidents:*`- und `alerts:ack`-Token werden aus Kompatibilitätsgründen akzeptiert und auf aktuelle `issues:*`-Berechtigungen normalisiert.
 
-Die integrierten Berechtigungssets sind `read-only`, `standard` und `admin`. `standard` ergänzt die Leseberechtigungen um das Auslösen von Evaluierungen, die Ausführung von Abfragen, die Bearbeitung von Issues und die Nutzung des Assistenten. Bei der Schlüsselerstellung werden ausschließlich für Menschen vorgesehene Berechtigungen entfernt, auch wenn ein Berechtigungsset diese enthält.
+Eingebaute Berechtigungssätze sind `read-only`, `standard` und `admin`. `standard` ergänzt die Leseberechtigungen um das Auslösen von Evaluierungen, die Ausführung von Abfragen, das Bearbeiten von Problemen und die Nutzung des Assistenten. Bei der Schlüsselerstellung werden ausschließlich für Menschen gültige Berechtigungen entfernt, auch wenn ein Berechtigungssatz diese enthält.
 
 <Warning>
-  Instanz-bezogene Schlüssel können eine Organisation über den `X-AgentEye-Org`-Header auswählen. Setze diesen Header bei Deployments mit mehreren Organisationen explizit; wird er weggelassen, wird möglicherweise die Standardorganisation ausgewählt.
+  Instanz-bezogene Schlüssel können eine Organisation über den `X-AgentEye-Org`-Header auswählen. Setzen Sie diesen bei Multi-Organisations-Deployments explizit; wird er weggelassen, kann die Standardorganisation ausgewählt werden.
 </Warning>

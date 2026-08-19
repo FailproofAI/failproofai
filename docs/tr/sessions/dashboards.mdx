@@ -1,12 +1,12 @@
 ---
 title: "Panolar"
-description: "Bir aracı veya iş akışının önem taşıyan güvenilirlik sinyallerini izleyin."
+description: "Bir aracı veya iş akışı için önemli olan güvenilirlik sinyallerini izleyin."
 icon: "layout-dashboard"
 ---
 
-Panolar, kaydedilmiş sorguları operasyonel bir görünüme dönüştürür. Biri etrafında birinin almasını beklediğiniz bir kararın etrafında oluşturun—tüm mevcut metriklerin etrafında değil.
+Panolar, kaydedilmiş sorguları operasyonel bir görünümde birleştirir. Bir pano, her kullanılabilir metrik etrafında değil, birinin vermesini beklediğiniz bir karar etrafında oluşturun.
 
-## Pano oluşturun
+## Pano oluşturma
 
 <Tabs>
   <Tab title="Pano">
@@ -15,10 +15,10 @@ Panolar, kaydedilmiş sorguları operasyonel bir görünüme dönüştürür. Bi
     3. Panoyu açın, düzenleme moduna girin, kutucukları düzenleyin ve düzeni kaydedin.
     4. Bir kutucuğun arkasındaki verileri veya filtreleri değiştirmeniz gerektiğinde sorguya geri dönün.
 
-    ![Olay hacmi, hatalar, gecikme süresi ve model token kullanımı için kaydedilmiş sorgulardan oluşan bir pano.](/images/dashboard/dashboard-fleet.png)
+    ![Olay hacmi, hatalar, gecikme süresi ve model jeton kullanımı için kaydedilmiş sorgulardan oluşturulan bir pano.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    Pano CRUD işlemleri mevcut Cloud CLI tarafından açığa çıkarılmamıştır. Kaydedilmiş sorguyu oluşturmak ve doğrulamak için CLI'yi kullanın, ardından UI'da panoya ekleyin.
+    Pano CRUD işlemleri geçerli Cloud CLI tarafından açığa çıkarılmamıştır. Kaydedilmiş sorguyu oluşturmak ve doğrulamak için CLI'yı kullanın, ardından UI'da bir panoya ekleyin.
 
     ```bash
     fp query schema
@@ -28,16 +28,16 @@ Panolar, kaydedilmiş sorguları operasyonel bir görünüme dönüştürür. Bi
   </Tab>
 </Tabs>
 
-Yararlı pano grupları şunları içerir:
+Yararlı pano grupları şunlardır:
 
-- **Modeller:** hacim, gecikme süresi, token kullanımı, hata oranı ve değerlendirme puanları.
-- **Değerlendirmeler:** aracı veya ortama göre başarı oranı ve puan trendleri.
-- **Araçlar:** çağrı hacmi, hata oranı, süre ve tekrarlanan çağrılar.
-- **Hook'lar ve politikalar:** kararlar, reddedilmeler ve politika eşleşme oranı.
-- **Özel iş akışı metrikleri:** kendi olay alanlarınızdan ve SQL'den sonuçlar.
+- **Models:** hacim, gecikme süresi, jeton kullanımı, hata oranı ve değerlendirme puanları.
+- **Evaluations:** başarı oranı ve aracı veya ortama göre puan eğilimleri.
+- **Tools:** çağrı hacmi, başarısızlık oranı, süre ve tekrarlanan çağrılar.
+- **Hooks and policies:** kararlar, reddetmeler ve politika eşleşme oranı.
+- **Custom workflow metrics:** kendi olay alanlarınızdan ve SQL'den sonuçlar.
 
-Kaydedilmiş bir sorguyla başlayın, sonucunu doğrulayın, ardından kutucuk olarak ekleyin. Üretim ve geliştirme filtrelerini açık tutun, böylece test trafiği bir regresyonu gizlemez.
+Kaydedilmiş bir sorgudan başlayın, sonucunu doğrulayın, ardından bir kutucuk olarak ekleyin. Üretim ve geliştirme filtreleri açık tutun, böylece test trafiği bir regresyonu gizlemesin.
 
 <Tip>
-  Her panoya bir sahip ve bir yanıt sorusu verin; örneğin, "checkout-agent güvenilirliği geçen haftadan daha kötü mü?"
+  Her panoya bir sahip ve "checkout-agent güvenilirliği geçen haftadan daha kötü mü?" gibi bir yanıt sorusu verin.
 </Tip>

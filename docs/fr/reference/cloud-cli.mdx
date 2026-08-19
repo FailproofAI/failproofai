@@ -4,9 +4,9 @@ description: "Référence complète pour interroger et administrer Failproof AI 
 icon: "cloud-cog"
 ---
 
-Utilisez `fp` pour inspecter la télémétrie Cloud et gérer les audits, résultats, incidents, alertes, clés, utilisateurs, requêtes et paramètres. Utilisez [`failproofai`](/fr/reference/failproof-cli) pour les hooks locaux, les politiques, la capture et l'enrôlement des machines.
+Utilisez `fp` pour inspecter la télémétrie Cloud et gérer les audits, les résultats, les incidents, les alertes, les clés, les utilisateurs, les requêtes et les paramètres. Utilisez [`failproofai`](/fr/reference/failproof-cli) pour les hooks locaux, les politiques, la capture et l'enrôlement des machines.
 
-Installez le Cloud CLI publié en tant qu'outil isolé :
+Installez la version publiée du Cloud CLI en tant qu'outil isolé :
 
 ```bash
 uv tool install fp-cli
@@ -23,16 +23,16 @@ fp whoami
 ## Syntaxe
 
 ```text
-fp [OPTIONS_GLOBALES] COMMANDE [SOUS-COMMANDE] [ARGUMENTS] [OPTIONS]
+fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
 ```
 
-Les options globales doivent précéder la commande :
+Les options globales doivent être placées avant la commande :
 
 ```bash
 fp --json sessions --since 24h
 ```
 
-Exécutez `fp COMMANDE --help` ou `fp COMMANDE SOUS-COMMANDE --help` pour obtenir l'aide dans le terminal.
+Exécutez `fp COMMAND --help` ou `fp COMMAND SUBCOMMAND --help` pour obtenir l'aide dans le terminal.
 
 ## Commandes CLI
 
@@ -43,8 +43,8 @@ Exécutez `fp COMMANDE --help` ou `fp COMMANDE SOUS-COMMANDE --help` pour obteni
 | `fp login` | Se connecter avec un code à usage unique envoyé par e-mail et sélectionner une organisation. | `--email`, `-e` ; `--org` ; `--force` |
 | `fp logout` | Révoquer et supprimer la session utilisateur enregistrée. | — |
 | `fp whoami` | Afficher l'identité actuelle, le mode d'authentification, l'organisation et les permissions. | — |
-| `fp version` | Afficher la version CLI installée. | — |
-| `fp help` | Afficher l'aide des commandes de niveau supérieur. | — |
+| `fp version` | Afficher la version du CLI installée. | — |
+| `fp help` | Afficher l'aide des commandes de premier niveau. | — |
 
 ```bash
 fp login --email you@example.com --org reliability-team
@@ -57,23 +57,23 @@ fp whoami
 fp events [OPTIONS]
 ```
 
-Liste les événements d'agent individuels. Le flux léger par défaut exclut les charges utiles brutes ; utilisez `--full` uniquement pour une investigation délimitée.
+Liste les événements individuels des agents. Le flux léger par défaut exclut les charges utiles brutes ; n'utilisez `--full` que pour une investigation délimitée.
 
 | Option | Description |
 | --- | --- |
-| `--limit`, `-n <n>` | Nombre maximum de lignes. Par défaut : `50`. |
+| `--limit`, `-n <n>` | Nombre total maximum de lignes. Par défaut : `50`. |
 | `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h` ou `7d`. |
-| `--from <timestamp>` / `--to <timestamp>` | Plage UTC ISO 8601 ; remplace `--since`. |
-| `--env <value>` | Filtre d'environnement ; répétable ou avec valeurs séparées par des virgules. |
-| `--event-type <value>` | Filtre de type d'événement ; répétable ou avec valeurs séparées par des virgules. |
-| `--agent-id <value>` | Filtre d'agent ; répétable ou avec valeurs séparées par des virgules. |
-| `--session-id <value>` | Filtre de session ; répétable ou avec valeurs séparées par des virgules. |
-| `--search <text>` | Recherche dans la charge utile ; répétable, toute correspondance suffit. |
-| `--order asc\|desc` | Ordre chronologique. Par défaut : du plus récent au plus ancien. |
+| `--from <timestamp>` / `--to <timestamp>` | Plage ISO 8601 UTC ; remplace `--since`. |
+| `--env <value>` | Filtre d'environnement ; répétable ou séparé par des virgules. |
+| `--event-type <value>` | Filtre de type d'événement ; répétable ou séparé par des virgules. |
+| `--agent-id <value>` | Filtre d'agent ; répétable ou séparé par des virgules. |
+| `--session-id <value>` | Filtre de session ; répétable ou séparé par des virgules. |
+| `--search <text>` | Recherche dans le texte des charges utiles ; répétable, avec correspondance sur n'importe quel terme. |
+| `--order asc\|desc` | Ordre chronologique. Par défaut : plus récent en premier. |
 | `--all` | Pagination automatique jusqu'à `--limit`. |
 | `--cursor <token>` | Reprendre depuis un curseur opaque. |
 | `--page-size <n>` | Lignes par requête avec `--all` ; maximum `200`. |
-| `--full` | Inclure les charges utiles brutes via le point de terminaison d'événements complet. |
+| `--full` | Inclure les charges utiles brutes via le point de terminaison d'événements plus lourd. |
 | `--fields <csv>` | Retourner uniquement les champs sélectionnés ; demander `payload` active le mode complet. |
 
 ```bash
@@ -89,13 +89,13 @@ fp sessions [OPTIONS]
 
 | Option | Description |
 | --- | --- |
-| `--limit`, `-n <n>` | Nombre maximum de lignes. Par défaut : `50`. |
+| `--limit`, `-n <n>` | Nombre total maximum de lignes. Par défaut : `50`. |
 | `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h` ou `7d`. |
-| `--from <timestamp>` / `--to <timestamp>` | Plage UTC ISO 8601 ; remplace `--since`. |
-| `--env <value>` | Filtre d'environnement ; répétable ou avec valeurs séparées par des virgules. |
-| `--status <value>` | `done`, `error` ou `timeout` ; répétable ou avec valeurs séparées par des virgules. |
-| `--agent-id <value>` | Correspond aux sessions impliquant l'un des agents sélectionnés. |
-| `--session-id <value>` | Filtre de session ; répétable ou avec valeurs séparées par des virgules. |
+| `--from <timestamp>` / `--to <timestamp>` | Plage ISO 8601 UTC ; remplace `--since`. |
+| `--env <value>` | Filtre d'environnement ; répétable ou séparé par des virgules. |
+| `--status <value>` | `done`, `error` ou `timeout` ; répétable ou séparé par des virgules. |
+| `--agent-id <value>` | Faire correspondre les sessions impliquant l'un des agents sélectionnés. |
+| `--session-id <value>` | Filtre de session ; répétable ou séparé par des virgules. |
 | `--all` | Pagination automatique jusqu'à `--limit`. |
 | `--cursor <token>` | Reprendre depuis un curseur opaque. |
 | `--page-size <n>` | Lignes par requête avec `--all` ; maximum `200`. |
@@ -111,11 +111,11 @@ fp evals [OPTIONS]
 
 | Option | Description |
 | --- | --- |
-| `--aggregate` | Afficher les totaux et les statistiques par score plutôt que les évaluations individuelles. |
-| `--limit`, `-n <n>` | Nombre maximum de lignes. Par défaut : `50`. |
-| `--since`, `--from`, `--to` | Sélectionner la plage temporelle. |
+| `--aggregate` | Afficher les totaux et les statistiques par score au lieu des évaluations individuelles. |
+| `--limit`, `-n <n>` | Nombre maximum de lignes dans la liste. Par défaut : `50`. |
+| `--since`, `--from`, `--to` | Sélectionner la plage de temps. |
 | `--env`, `--status`, `--agent-id`, `--session-id` | Restreindre à une valeur exacte par filtre. |
-| `--score KEY:MIN..MAX` | Plage de score ; répétable, toutes les plages doivent correspondre. |
+| `--score KEY:MIN..MAX` | Plage de scores ; répétable et toutes les plages doivent correspondre. |
 | `--all`, `--cursor`, `--page-size` | Contrôler la pagination de la liste. |
 | `--fields <csv>` | Retourner uniquement les champs sélectionnés. |
 | `--full-ids` | Afficher les identifiants de session complets. |
@@ -129,11 +129,11 @@ fp errors [OPTIONS]
 
 | Option | Description |
 | --- | --- |
-| `--aggregate` | Résumer les erreurs correspondantes plutôt que de lister les lignes. |
-| `--limit`, `-n <n>` | Nombre maximum de lignes. Par défaut : `50`. |
-| `--since`, `--from`, `--to` | Sélectionner la plage temporelle. |
+| `--aggregate` | Résumer les erreurs correspondantes au lieu de lister les lignes. |
+| `--limit`, `-n <n>` | Nombre maximum de lignes dans la liste. Par défaut : `50`. |
+| `--since`, `--from`, `--to` | Sélectionner la plage de temps. |
 | `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | Restreindre la population d'erreurs. |
-| `--search <text>` | Rechercher dans la charge utile ; répétable. |
+| `--search <text>` | Rechercher dans le texte des charges utiles ; répétable. |
 | `--order asc\|desc` | Ordre chronologique. |
 | `--all`, `--cursor`, `--page-size` | Contrôler la pagination de la liste. |
 | `--fields <csv>` | Retourner uniquement les champs sélectionnés. |
@@ -147,10 +147,10 @@ fp errors [OPTIONS]
 | `fp list envs` | Lister les environnements observés. |
 | `fp list agents` | Lister les identifiants d'agents observés. |
 | `fp list event_types` | Lister les types d'événements. |
-| `fp list score_filters` | Lister les clés de score d'évaluation. |
-| `fp list models` | Lister les noms de modèles. |
-| `fp list hooks` | Lister les noms de hooks. |
-| `fp list tools` | Lister les noms d'outils. |
+| `fp list score_filters` | Lister les clés de scores d'évaluation. |
+| `fp list models` | Lister les noms des modèles. |
+| `fp list hooks` | Lister les noms des hooks. |
+| `fp list tools` | Lister les noms des outils. |
 | `fp list error_types` | Lister les types d'erreurs. |
 
 ### Organisations
@@ -158,7 +158,7 @@ fp errors [OPTIONS]
 | Commande | Objectif |
 | --- | --- |
 | `fp orgs list` | Lister les organisations accessibles. |
-| `fp orgs switch [SLUG]` | Enregistrer une organisation active ; invite si omis. |
+| `fp orgs switch [SLUG]` | Enregistrer une organisation active ; invite à en choisir une si omise. |
 | `fp orgs current` | Afficher l'organisation active. |
 | `fp orgs perms` | Afficher vos permissions dans l'organisation active. |
 
@@ -169,11 +169,11 @@ fp errors [OPTIONS]
 | `fp keys list` | Lister les clés de l'organisation. | `--show-id` ; `--fields <csv>` |
 | `fp keys show NAME` | Afficher une clé et ses autorisations. | — |
 | `fp keys create NAME` | Créer une clé et révéler son secret une seule fois. | `--permission-set` ; `--add` ; `--remove` |
-| `fp keys update NAME` | Remplacer le jeu de permissions ou ajuster les autorisations. | `--permission-set` ; `--add` ; `--remove` ; `--yes`, `-y` |
-| `fp keys regenerate NAME` | Faire pivoter le secret et révéler le remplacement une seule fois. | `--yes`, `-y` |
+| `fp keys update NAME` | Remplacer l'ensemble de permissions ou ajuster les autorisations. | `--permission-set` ; `--add` ; `--remove` ; `--yes`, `-y` |
+| `fp keys regenerate NAME` | Faire tourner le secret et révéler le remplacement une seule fois. | `--yes`, `-y` |
 | `fp keys disable NAME` | Révoquer définitivement une clé. | `--yes`, `-y` |
 
-Les jetons de permission utilisent le format `ressource:action`, par exemple `events:add`. Répétez `--add`, séparez les jetons par des virgules ou utilisez des actions pointées telles que `events:read.add`.
+Les jetons de permission utilisent le format `resource:action`, par exemple `events:add`. Répétez `--add`, séparez les jetons par des virgules, ou utilisez des actions pointées telles que `events:read.add`.
 
 ### Requêtes
 
@@ -203,8 +203,8 @@ Les jetons de permission utilisent le format `ressource:action`, par exemple `ev
 | Commande | Objectif | Options |
 | --- | --- | --- |
 | `fp settings list` | Lister les paramètres de l'organisation et leurs valeurs actuelles. | — |
-| `fp settings schema` | Afficher les valeurs acceptées et leurs descriptions. | — |
-| `fp settings set KEY` | Modifier un paramètre existant. | exactement l'un de `--value`, `--json-value`, `--file` ; optionnel `--yes`, `-y` |
+| `fp settings schema` | Afficher les valeurs acceptées et les descriptions. | — |
+| `fp settings set KEY` | Modifier un paramètre existant. | exactement l'une des options `--value`, `--json-value`, `--file` ; `--yes`, `-y` en option |
 
 ### Alertes
 
@@ -217,7 +217,7 @@ Les jetons de permission utilisent le format `ressource:action`, par exemple `ev
 | `fp alerts delete NAME` | Supprimer une alerte. | `--yes`, `-y` |
 | `fp alerts test NAME` | Envoyer une notification de test. | `--channels` ; `--yes`, `-y` |
 
-Les niveaux de sévérité des alertes sont `info`, `warning` et `critical`. Les types de déclencheurs sont `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound` et `per_event`. Les intervalles d'évaluation doivent être compris entre 30 et 86 400 secondes.
+Les niveaux de gravité des alertes sont `info`, `warning` et `critical`. Les types de déclencheur sont `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound` et `per_event`. Les intervalles d'évaluation doivent être compris entre 30 et 86 400 secondes.
 
 ### Audits
 
@@ -225,19 +225,19 @@ Les niveaux de sévérité des alertes sont `info`, `warning` et `critical`. Les
 | --- | --- | --- |
 | `fp audits list` | Lister les audits. | `--enabled-only` ; `--show-id` |
 | `fp audits show NAME` | Afficher une définition d'audit et son état. | — |
-| `fp audits create NAME` | Créer un audit et planifier immédiatement sa première exécution. | Voir [options de création](#audit-create-options). |
+| `fp audits create NAME` | Créer un audit et mettre immédiatement en file d'attente sa première exécution. | Voir [options de création](#audit-create-options). |
 | `fp audits edit NAME` | Remplacer les paramètres d'audit en conservant les valeurs non spécifiées. | options de définition de création ; `--name` ; `--yes`, `-y` |
-| `fp audits delete NAME` | Supprimer un audit, ses résultats et l'historique d'exécution. | `--yes`, `-y` |
-| `fp audits run NAME` | Planifier une exécution manuelle. | — |
+| `fp audits delete NAME` | Supprimer un audit, ses résultats et son historique d'exécution. | `--yes`, `-y` |
+| `fp audits run NAME` | Mettre en file d'attente une exécution manuelle. | — |
 | `fp audits runs NAME` | Lister l'historique des exécutions. | `--limit`, `-n` ; `--show-id` |
-| `fp audits context-show NAME` | Afficher le résumé et l'état de récupération des URLs de référence. | — |
-| `fp audits context-set NAME` | Modifier le résumé ou les URLs de référence. | `--text` ; `--text-file` ; `--url` ; `--clear-urls` |
-| `fp audits context-refresh NAME` | Récupérer à nouveau les URLs de référence. | — |
+| `fp audits context-show NAME` | Afficher le résumé et l'état de récupération des URL de référence. | — |
+| `fp audits context-set NAME` | Modifier le résumé ou les URL de référence. | `--text` ; `--text-file` ; `--url` ; `--clear-urls` |
+| `fp audits context-refresh NAME` | Re-récupérer les URL de référence. | — |
 | `fp audits findings` | Lister les résultats. | `--audit` ; `--run-id` ; `--status` ; `--limit`, `-n` ; `--offset` ; `--show-id` |
 | `fp audits finding FINDING_ID` | Afficher un résultat et ses preuves. | — |
 | `fp audits ack FINDING_ID` | Accuser réception d'un résultat. | `--reason` |
 | `fp audits mute FINDING_ID` | Supprimer un motif récurrent. | `--reason` ; `--yes`, `-y` |
-| `fp audits dismiss FINDING_ID` | Marquer un motif comme non actionnable et le supprimer. | `--reason` ; `--yes`, `-y` |
+| `fp audits dismiss FINDING_ID` | Marquer un motif comme non exploitable et le supprimer. | `--reason` ; `--yes`, `-y` |
 | `fp audits resolve FINDING_ID` | Marquer un résultat comme corrigé sans suppression future. | `--yes`, `-y` |
 | `fp audits reopen FINDING_ID` | Remettre un résultat dans la file active et effacer la suppression. | — |
 | `fp audits assign FINDING_ID` | Définir le responsable du résultat. | `--to <email>` requis |
@@ -257,24 +257,24 @@ fp audits create checkout-reliability \
 
 | Option | Description |
 | --- | --- |
-| `--file <path>` | Baser la définition sur du JSON, ou utiliser `-` pour stdin. Les indicateurs explicites remplacent les valeurs du fichier. |
-| `--description <text>` | Décrire la question d'échec ou l'objectif. |
+| `--file <path>` | Baser la définition sur du JSON, ou utiliser `-` pour stdin. Les options explicites remplacent les valeurs du fichier. |
+| `--description <text>` | Énoncer la question d'échec ou l'objectif. |
 | `--enabled` / `--disabled` | Démarrer la planification activée ou désactivée. Par défaut : activée. |
 | `--schedule-interval-secs <n>` | `3600`–`604800`. Par défaut : `86400`. |
 | `--schedule-anchor <timestamp>` | Phase UTC fixe au format ISO 8601. Par défaut : prochain 09:00 UTC. |
 | `--window-mode since_last\|fixed` | Continuer après la dernière fenêtre entièrement analysée ou inspecter répétitivement une fenêtre glissante. Par défaut : `since_last`. |
 | `--lookback-window-secs <n>` | `3600`–`7776000`. Par défaut : `604800`. |
-| `--scope '<json>'` | Filtrer par `environments`, `agent_ids` ou d'autres champs de portée pris en charge. |
-| `--ignore-error-type <type>` | Exclure des types d'erreurs ; répétable ou séparés par des virgules. |
+| `--scope '<json>'` | Filtrer par `environments`, `agent_ids` ou autres champs de portée pris en charge. |
+| `--ignore-error-type <type>` | Exclure des types d'erreurs ; répétable ou séparé par des virgules. |
 | `--llm` / `--no-llm` | Activer ou désactiver l'analyse agentique. Par défaut : activée. |
 | `--top-k <n>` | Conserver `1`–`500` résultats. Par défaut : `50`. |
-| `--sensitivity low\|medium\|high` | Définir la sensibilité de reporting. Par défaut : `medium`. |
+| `--sensitivity low\|medium\|high` | Définir la sensibilité du rapport. Par défaut : `medium`. |
 | `--channels '<json>'` | Tableau de canaux de notification. |
 | `--text <brief>` | Résumé en ligne, maximum 8 192 caractères. |
 | `--text-file <path>` | Lire le résumé depuis un fichier ; mutuellement exclusif avec `--text`. |
 | `--url <https-url>` | Ajouter une référence HTTPS publique ; répétable jusqu'à cinq fois. |
 
-Incluez le contexte lors de la création si la première exécution en a besoin. La création valide la définition et le contexte ensemble avant que l'exécution planifiée ne commence.
+Incluez le contexte lors de la création si la première exécution en a besoin. La création valide la définition et le contexte ensemble avant le début de l'exécution mise en file d'attente.
 
 <Note>
   `fp audits run` est asynchrone. Interrogez `fp audits runs NAME` jusqu'à ce que la dernière exécution réussisse ou échoue avant de lire ses résultats.
@@ -285,20 +285,20 @@ Incluez le contexte lors de la création si la première exécution en a besoin.
 | Commande | Objectif | Options |
 | --- | --- | --- |
 | `fp issues list` | Lister les incidents. | `--state` ; `--alert-id` ; `--limit`, `-n` ; `--show-id` |
-| `fp issues count` | Compter les incidents ouverts ou dans les états sélectionnés. | `--state` |
-| `fp issues show INCIDENT_ID` | Afficher les détails, commentaires, abonnés et activité d'un incident. | — |
-| `fp issues open` | Ouvrir un incident manuel ou lié à une alerte. | `--summary` requis ; optionnel `--title`, `--alert-id`, `--severity` |
+| `fp issues count` | Compter les incidents ouverts ou selon les états sélectionnés. | `--state` |
+| `fp issues show INCIDENT_ID` | Afficher les détails d'un incident, ses commentaires, abonnés et activité. | — |
+| `fp issues open` | Ouvrir un incident manuel ou lié à une alerte. | `--summary` requis ; `--title`, `--alert-id`, `--severity` en option |
 | `fp issues ack INCIDENT_ID` | Accuser réception d'un incident. | — |
-| `fp issues assign INCIDENT_ID` | Remplacer les assignés ; omettre l'option pour les effacer. | `--assignee` répétable |
+| `fp issues assign INCIDENT_ID` | Remplacer les responsables ; omettre l'option pour les effacer. | `--assignee` répétable |
 | `fp issues resolve INCIDENT_ID` | Résoudre un incident. | `--yes`, `-y` |
 | `fp issues comment-list INCIDENT_ID` | Lister les commentaires. | — |
-| `fp issues comment-add INCIDENT_ID` | Ajouter un commentaire. | exactement l'un de `--body`, `--file` |
+| `fp issues comment-add INCIDENT_ID` | Ajouter un commentaire. | exactement l'une des options `--body`, `--file` |
 | `fp issues comment-delete INCIDENT_ID COMMENT_ID` | Supprimer un commentaire. | `--yes`, `-y` |
 | `fp issues subscribers INCIDENT_ID` | Lister les abonnés. | — |
 | `fp issues subscribe INCIDENT_ID` | S'abonner soi-même ou un autre opérateur. | `--email` |
 | `fp issues unsubscribe INCIDENT_ID` | Supprimer un abonnement. | `--email` |
 
-Les états d'incident valides sont `firing`, `acknowledged` et `resolved`. Les niveaux de sévérité des incidents autonomes sont `info`, `warning` et `critical`.
+Les états d'incident valides sont `firing`, `acknowledged` et `resolved`. Les niveaux de gravité des incidents autonomes sont `info`, `warning` et `critical`.
 
 ### Assistant Cloud
 
@@ -321,14 +321,14 @@ Les états d'incident valides sont `firing`, `acknowledged` et `resolved`. Les n
 | `--org <slug>` | Sélectionner une organisation pour cette invocation. |
 | `--token <token>` | Remplacer le jeton de session utilisateur enregistré. |
 | `--api-key <key>` | Authentifier l'automatisation avec une clé API ; jamais enregistrée. |
-| `--timeout <seconds>` | Délai d'attente HTTP ; doit être positif. Par défaut : `30`. |
-| `--quiet`, `-q` | Supprimer la sortie de statut sur stderr. |
+| `--timeout <seconds>` | Délai d'expiration HTTP ; doit être positif. Par défaut : `30`. |
+| `--quiet`, `-q` | Supprimer la sortie d'état sur stderr. |
 | `--no-color` | Désactiver la sortie colorée. |
 | `--insecure` / `--secure` | Désactiver ou restaurer la vérification du certificat TLS. |
 | `--version` | Afficher la version et quitter. |
 | `--help`, `-h` | Afficher l'aide. |
 
-`--api-key` est destiné à l'automatisation. La connexion, le changement d'organisation et les commandes d'assistant nécessitent une session utilisateur.
+`--api-key` est destiné à l'automatisation. Les commandes de connexion, de changement d'organisation et d'assistant nécessitent une session utilisateur.
 
 ## Variables d'environnement
 
@@ -341,11 +341,11 @@ Les états d'incident valides sont `firing`, `acknowledged` et `resolved`. Les n
 | `AGENTEYE_CLI_JSON` | `--json` |
 | `AGENTEYE_INSECURE` | `--insecure` |
 | `AGENTEYE_HOME` | Déplacer le répertoire de configuration CLI actuel. |
-| `AGENTEYE_ANALYTICS_DISABLED` ou `DO_NOT_TRACK` | Désactiver les analyses CLI anonymes. |
+| `AGENTEYE_ANALYTICS_DISABLED` ou `DO_NOT_TRACK` | Désactiver l'analytique CLI anonyme. |
 | `NO_COLOR` | Désactiver la sortie colorée. |
 
-Les indicateurs explicites remplacent les variables d'environnement, qui remplacent la configuration enregistrée. En mode clé API, sélectionnez explicitement le tenant avec `--org` ou `AGENTEYE_ORG`.
+Les options explicites remplacent les variables d'environnement, qui remplacent la configuration enregistrée. En mode clé API, sélectionnez le tenant explicitement avec `--org` ou `AGENTEYE_ORG`.
 
 <Warning>
-  Les commandes qui suppriment, révoquent, réduisent au silence, résolvent ou remplacent une configuration demandent confirmation par défaut. N'utilisez `--yes` qu'après avoir vérifié l'organisation active et la cible.
+  Les commandes qui suppriment, révoquent, masquent, résolvent ou remplacent une configuration demandent une confirmation par défaut. N'utilisez `--yes` qu'après avoir vérifié l'organisation active et la cible.
 </Warning>

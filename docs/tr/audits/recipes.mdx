@@ -1,27 +1,27 @@
 ---
-title: "Denetim tarifleri"
-description: "Yaygın ajan başarısızlık araştırmaları için başlangıç hedefleri."
+title: "Denetim tarifeleri"
+description: "Yaygın aracı hatası araştırmaları için başlangıç hedefleri."
 icon: "book-open-check"
 ---
 
-Bunları başlangıç hedefleri olarak kullanın, ardından ajanınızı, ortamınızı ve beklenen iş akışınızı ekleyin.
+Bunları başlangıç hedefleri olarak kullanın, ardından aracınızı, ortamınızı ve beklenen iş akışınızı ekleyin.
 
 <Tabs>
   <Tab title="Dashboard">
-    **Analyze → Audits → New audit** sayfasına gidin, bir tarifini açıklama veya özette kopyalayın, ardından ilgili ortamı, ajanı, geriye bakış periyodunu ve referans URL'lerini ekleyin. Denetimi oluşturun ve planlamadan önce ilk çalışmayı inceleyin.
+    **Analyze → Audits → New audit** seçeneğine gidin, bir tarifenin açıklamasını veya özetini kopyalayın, ardından ilgili ortamı, aracıyı, geriye doğru bakış aralığını ve referans URL'lerini ekleyin. Denetimi oluşturun ve zamanlamadan önce ilk çalıştırmayı inceleyin.
 
-    Yeni denetim formu, kapsam, bağlam, periyot ve bildirimler ekleyerek bir tarifleri yürütülebilir bir başarısızlık denetimine dönüştürür.
+    Yeni denetim formu, kapsam, bağlam, sıklık ve bildirimler ekleyerek bir tarifenin yürütülebilir bir hata kontrolüne dönüştürülmesini sağlar.
 
-    ![Odaklanmış bir hedef, zamanlama, ajan ve ortam kapsamı, bağlam ve bildirim kanalları ile yapılandırılmış yeni denetim formu.](/images/dashboard/audit-new.png)
+    ![Odaklanmış bir hedef, zamanlama, aracı ve ortam kapsamı, bağlam ve bildirim kanalları ile yapılandırılan yeni denetim formu.](/images/dashboard/audit-new.png)
 
-    Oluşturulduktan sonra, denetimin listede beklenen durum ve zamanlama ile göründüğünü doğrulamadan önce yinelenen çalışmalara güvenmek için doğrulayın.
+    Oluşturulduktan sonra, denetimin listede beklenen durum ve programla birlikte görünüp görünmediğini onaylayın.
 
-    ![Oluşturulduktan sonra iş akışına özgü bir denetim tarifi görünen Audits sayfası.](/images/dashboard/audits.png)
+    ![Oluşturulduktan sonra iş akışına özgü bir denetim tarifesinin göründüğü Denetimler sayfası.](/images/dashboard/audits.png)
 
-    İlk çalışmayı açın ve bulguları amaçlanan başarısızlık modundan daha geniş veya dar ise tarifleri ayarlayın.
+    İlk çalıştırmayı açın ve bulguları amaçlanan hata modundan daha geniş veya daha dar ise tarifesini iyileştirin.
   </Tab>
   <Tab title="CLI">
-    Bir tarifleri metin dosyası olarak kaydedin ve oluşturma sırasında ekleyin:
+    Bir tarifesini metin dosyası olarak kaydedin ve oluşturma sırasında ekleyin:
 
     ```bash
     fp audits create retry-loop-review \
@@ -34,21 +34,21 @@ Bunları başlangıç hedefleri olarak kullanın, ardından ajanınızı, ortam�
 
 <AccordionGroup>
   <Accordion title="Tekrarlanan yeniden deneme döngüleri">
-    Ajanın girişi değiştirmeden, alternatif bir araç seçmeden veya bir insana yönlendirmeden aynı başarısız araç çağrısını tekrarladığı oturumları bulun.
+    Aracının girdisini değiştirmeden, alternatif bir araç seçmeden veya bir insana yükseltmeden aynı başarısız araç çağrısını tekrarladığı oturumları bulun.
   </Accordion>
-  <Accordion title="Yanlış araç kullanımı">
-    Seçilen aracın belirtilen görevle eşleşmediği veya araç girdisinin iş akışının gerekli ön koşullarını ihlal ettiği oturumları bulun.
+  <Accordion title="Hatalı araç kullanımı">
+    Seçilen aracının belirtilen görevle eşleşmediği veya araç girişinin iş akışının gerekli ön koşullarını ihlal ettiği oturumları bulun.
   </Accordion>
-  <Accordion title="Güvensiz veri erişimi">
-    Bu ajan için onaylanmış yollar ve hizmetler dışında hassas verileri okuyan, yazan veya ileten oturumları bulun.
+  <Accordion title="Güvenli olmayan veri erişimi">
+    Bu aracı için onaylanan yollar ve hizmetlerin dışında hassas verileri okuyan, yazan veya ileten oturumları bulun.
   </Accordion>
-  <Accordion title="Görev terk etme">
-    İstenen sonuç, açık bir hata veya bir insana açık bir devir olmadan sona eren oturumları bulun.
+  <Accordion title="Görev terk edilmesi">
+    İstenen sonuç olmadan, açık bir hata olmadan veya bir insana açık bir devredilme olmadan sonlanan oturumları bulun.
   </Accordion>
-  <Accordion title="Maliyet veya gecikme gerileme">
-    Model, araç veya toplam süresi beklenen bütçeyi aşan oturumları bulun ve sorumlu olay modelini belirleyin.
+  <Accordion title="Maliyet veya gecikme gerillemesi">
+    Model, araç veya toplam süresi beklenen bütçeyi aşan oturumları bulun ve sorumlu olan olay desenini belirleyin.
   </Accordion>
-  <Accordion title="Kaçırılan insan yönlendirmesi">
-    Güven, tekrarlanan başarısızlık veya politika rehberliğinin bir insan kararı gerektirdiği ancak ajanın özerk olarak devam ettiği oturumları bulun.
+  <Accordion title="Kaçırılan insan yükseltmesi">
+    Güven, tekrarlanan başarısızlık veya politika rehberliğinin insan kararı gerektirdiği ancak aracının otonom olarak devam ettiği oturumları bulun.
   </Accordion>
 </AccordionGroup>

@@ -1,16 +1,16 @@
 ---
 title: "管理"
-description: "管理访问权限、使用情况、组织和安全，而不影响可靠性工作流。"
+description: "管理访问权限、使用情况、组织及安全设置，而不干扰可靠性工作流程。"
 icon: "settings-2"
 ---
 
-管理模块包含在团队中运行 Failproof AI 所需的控制项。大多数用户只需使用会话、审计和策略功能；管理员则通过此模块管理访问权限和操作边界。
+管理模块包含在团队中运行 Failproof AI 所需的各项控制功能。大多数用户可以留在会话、审计和策略页面；管理员使用本模块来管理访问权限和操作边界。
 
 <Tabs>
   <Tab title="仪表板">
-    在 Cloud 侧边栏的 **Admin** 部分可访问**策略编辑器**、**执行**、**使用情况**、**密钥**、**用户**和**设置**。锁定的项目表示您的账户缺少相应的读取权限。
+    使用云端侧边栏的 **Admin** 区域访问**策略编辑器**、**执行**、**使用情况**、**密钥**、**用户**和**设置**。若某项显示为锁定状态，表示您的账户缺少相应的读取权限。
 
-    ![Cloud 侧边栏的 Admin 部分，包含策略编辑器、执行、使用情况、密钥、用户和设置。](/images/dashboard/admin-navigation.png)
+    ![云端侧边栏的 Admin 区域，包含策略编辑器、执行、使用情况、密钥、用户和设置。](/images/dashboard/admin-navigation.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -26,15 +26,15 @@ icon: "settings-2"
 
 <Columns cols={2}>
   <Card title="使用情况" icon="chart-no-axes-combined" href="/zh/admin/usage">
-    查看计费周期和组织资源消耗情况。
+    查看计费周期和组织资源消耗。
   </Card>
   <Card title="密钥与权限" icon="key-round" href="/zh/admin/keys-and-permissions">
-    为机器和自动化任务仅授予所需的最小权限。
+    为机器和自动化流程仅授予所需的最小权限。
   </Card>
   <Card title="用户与组织" icon="users" href="/zh/admin/users-and-organizations">
-    管理成员资格、默认设置和组织边界。
+    管理成员资格、默认设置及组织边界。
   </Card>
   <Card title="设置与安全" icon="lock-keyhole" href="/zh/admin/settings-and-security">
-    配置操作设置、数据处理和部署安全。
+    配置操作设置、数据处理及部署安全策略。
   </Card>
 </Columns>

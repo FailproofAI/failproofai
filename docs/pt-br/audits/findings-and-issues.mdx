@@ -1,31 +1,31 @@
 ---
-title: "Achados e problemas"
-description: "Transforme evidências de auditoria em trabalho de remediação rastreável e com responsáveis definidos."
+title: "Descobertas e problemas"
+description: "Transforme evidências de auditoria em trabalho de remediação rastreável e com responsável definido."
 icon: "clipboard-check"
 ---
 
-Um achado é a declaração baseada em evidências da auditoria sobre uma falha. Um problema é o fluxo de trabalho duradouro para responder a ela.
+Uma descoberta é a declaração baseada em evidências da auditoria sobre uma falha. Um problema é o fluxo de trabalho durável para responder a ela.
 
 ## Triagem e atribuição do trabalho
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Abra **Analyze → Audits**, escolha uma execução concluída e selecione um achado para inspecionar sua análise, recomendação, sessões e consultas de evidências.
-    2. Confirme, atribua, descarte, silencie, resolva ou reabra o achado após verificar suas evidências.
-    3. Acesse **Analyze → Issues** e filtre a caixa de entrada durável por status, severidade ou responsável.
-    4. Abra o problema para atribuí-lo, adicionar comentários ou assinantes e resolvê-lo após a verificação da correção.
+    1. Abra **Analyze → Audits**, escolha uma execução concluída e selecione uma descoberta para inspecionar sua análise, recomendação, sessões e consultas de evidência.
+    2. Reconheça, atribua, descarte, silencie, resolva ou reabra a descoberta após verificar suas evidências.
+    3. Vá para **Analyze → Issues** e filtre a caixa de entrada durável por status, severidade ou responsável.
+    4. Abra o problema para atribuí-lo, adicionar comentários ou assinantes, e resolva-o após a correção ser verificada.
 
-    Comece pelo resumo do achado. Confirme se a descrição da falha, a resposta recomendada, a severidade e a classificação estão de acordo com as sessões que você esperava que a auditoria examinasse.
+    Comece pelo resumo da descoberta. Confirme se a descrição da falha, a resposta recomendada, a severidade e o ranking estão de acordo com as sessões que você esperava que a auditoria examinasse.
 
-    ![Um achado de auditoria com severidade, contagem de ocorrências, análise de causa raiz, ação recomendada, fatores de classificação e evidências.](/images/dashboard/audit-finding.png)
+    ![Uma descoberta de auditoria com severidade, contagem de ocorrências, análise de causa raiz, ação recomendada, fatores de ranking e evidências.](/images/dashboard/audit-finding.png)
 
-    Em seguida, abra uma sessão afetada em vez de decidir apenas com base no resumo. O trace vinculado deve mostrar o evento exato e o payload que suportam o achado.
+    Em seguida, abra uma sessão afetada em vez de decidir apenas com base no resumo. O rastreamento vinculado deve mostrar o evento exato e o payload que sustentam a descoberta.
 
-    ![Uma sessão vinculada a um achado de auditoria, aberta no erro relevante com seus metadados de evento e payload bruto.](/images/dashboard/audit-linked-session.png)
+    ![Uma sessão vinculada a uma descoberta de auditoria, aberta no erro relevante com seus metadados de evento e payload bruto.](/images/dashboard/audit-linked-session.png)
 
-    Após verificar as evidências, use Issues para atribuir um responsável à resposta e acompanhá-la independentemente de execuções futuras de auditoria.
+    Após verificar as evidências, use Issues para atribuir um responsável à resposta e acompanhá-la de forma independente de execuções futuras de auditoria.
 
-    ![A caixa de entrada de Issues mostrando trabalhos em andamento, confirmados e resolvidos, com severidade e responsabilidade.](/images/dashboard/incidents.png)
+    ![A caixa de entrada de Issues mostrando trabalhos em andamento, reconhecidos e resolvidos, com severidade e responsável.](/images/dashboard/incidents.png)
 
     Abra o problema para registrar notas de investigação, notificar assinantes e preservar o histórico da resposta. Resolva-o somente após a remediação ser implantada e verificada.
 
@@ -45,38 +45,38 @@ Um achado é a declaração baseada em evidências da auditoria sobre uma falha.
     fp issues resolve <issue-id> --yes
     ```
 
-    Use `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` e `fp issues subscribers <issue-id>` para gerenciar os observadores.
+    Use `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` e `fp issues subscribers <issue-id>` para gerenciar observadores.
 
-    Consulte a [referência de auditoria e problemas do Cloud CLI](/pt-br/reference/cloud-cli#audits) para achados de auditoria e [`fp issues`](/pt-br/reference/cloud-cli#issues) para gerenciamento de problemas.
+    Consulte a [referência de auditoria e problemas do Cloud CLI](/pt-br/reference/cloud-cli#audits) para descobertas de auditoria e [`fp issues`](/pt-br/reference/cloud-cli#issues) para gerenciamento de problemas.
   </Tab>
 </Tabs>
 
-## Revisar um achado
+## Revisão de uma descoberta
 
-Confirme que ele contém:
+Confirme que ela contém:
 
-- Um modo de falha estável, não apenas um título pontual
+- Um modo de falha estável, não apenas um título isolado
 - Severidade e impacto operacional
 - IDs de sessões afetadas ou consultas de suporte
 - Contexto suficiente para reproduzir o comportamento
-- Uma resposta proposta que corresponda às evidências
+- Uma resposta proposta compatível com as evidências
 
-## Usar um problema para gerenciar a resposta
+## Usando um problema para gerenciar a resposta
 
-Crie ou vincule um problema quando o achado precisar de atribuição, discussão, mudanças de status, comentários ou assinantes. Problemas também podem representar incidentes de alerta e ocorrências reportadas manualmente, por isso ficam sob a resposta de auditoria em vez de na navegação principal.
+Crie ou vincule um problema quando a descoberta precisar de atribuição, discussão, mudanças de status, comentários ou assinantes. Problemas também podem representar incidentes de alerta e ocorrências relatadas manualmente, por isso ficam em resposta a auditorias e não na navegação principal.
 
-Resolva o problema quando a remediação estiver implantada e verificada. Resolva o achado quando o modo de falha tiver sido tratado para a população auditada. Esses momentos podem ser diferentes.
+Resolva o problema quando a remediação for implantada e verificada. Resolva a descoberta quando o modo de falha tiver sido tratado para a população da auditoria. Esses momentos podem ser diferentes.
 
-## Transformar um problema em um rascunho de política
+## Transformando um problema em rascunho de política
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Abra o problema e verifique seu achado, sessões citadas, causa raiz e recomendação.
-    2. Selecione **generate policy** e revise o resultado de elegibilidade e a intenção de aplicação proposta. Um resultado **no policy** significa que o comportamento pode exigir um alerta, mudança de fluxo de trabalho ou resposta humana.
-    3. Selecione **write this policy**, depois revise e teste o código-fonte gerado em **Admin → policy editor** antes de selecionar **publish version**. Use **open the editor anyway** quando discordar da verificação de elegibilidade.
-    4. Acesse **Admin → enforcement**, implante a versão no modo **observe** e verifique suas decisões em **Observe → policy** antes de aplicá-la.
+    1. Abra o problema e verifique sua descoberta, sessões citadas, causa raiz e recomendação.
+    2. Selecione **generate policy** e revise o resultado de candidatura e a intenção de aplicação proposta. Um resultado **no policy** significa que o comportamento pode exigir um alerta, mudança de fluxo de trabalho ou resposta humana.
+    3. Selecione **write this policy**, depois revise e teste o código gerado em **Admin → policy editor** antes de selecionar **publish version**. Use **open the editor anyway** quando discordar da verificação de candidatura.
+    4. Vá para **Admin → enforcement**, implante a versão no modo **observe** e verifique suas decisões em **Observe → policy** antes de aplicá-la.
 
-    O título do problema, a descrição do achado, a causa raiz, a recomendação e a intenção de elegibilidade ajudam a compor o rascunho. Nada é publicado ou implantado automaticamente.
+    O título do problema, a descrição da descoberta, a causa raiz, a recomendação e a intenção de candidatura ajudam a compor o rascunho. Nada é publicado ou implantado automaticamente.
   </Tab>
   <Tab title="CLI">
     Use o CLI para inspecionar as evidências antes de abrir o problema no dashboard:
@@ -87,10 +87,10 @@ Resolva o problema quando a remediação estiver implantada e verificada. Resolv
     fp events --session-id <session-id> --full --all
     ```
 
-    Elegibilidade de política, publicação no Cloud e implantação em frota são fluxos de trabalho do dashboard. Use `failproofai policies --install --custom <file>` quando quiser validar o código-fonte de política equivalente localmente primeiro.
+    Candidatura de política, publicação no Cloud e implantação em frota são fluxos de trabalho do dashboard. Use `failproofai policies --install --custom <file>` quando quiser validar o código de política equivalente localmente primeiro.
   </Tab>
 </Tabs>
 
 <Card title="Criar uma política" icon="shield-plus" href="/pt-br/policies/editor">
-  Converta um padrão de ação confirmado e repetível em uma versão de política.
+  Converta um padrão de ação confirmado e recorrente em uma versão de política.
 </Card>

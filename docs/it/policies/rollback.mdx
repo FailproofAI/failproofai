@@ -4,38 +4,38 @@ description: "Ripristina una distribuzione di policy nota quando un rollout inte
 icon: "rotate-ccw"
 ---
 
-Il rollback cambia la versione distribuita o rimuove un'assegnazione di policy; non cancella la cronologia delle decisioni che spiega l'incidente.
+Il rollback modifica la versione distribuita o rimuove un'assegnazione di policy; non cancella la cronologia delle decisioni che spiega l'incidente.
 
 ## Eseguire il rollback di una macchina
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Admin → enforcement**, espandi la macchina interessata e identifica il suo ultimo set di policy funzionante.
-    2. Seleziona **edit**, ripristina quelle versioni ed effetti, e applica la nuova distribuzione.
+    1. Vai a **Admin → enforcement**, espandi la macchina interessata e identifica il suo ultimo set di policy noto e funzionante.
+    2. Seleziona **edit**, ripristina quelle versioni e i loro effetti, e applica la nuova distribuzione.
     3. Attendi il check-in della macchina, quindi verifica la distribuzione segnalata.
-    4. Apri **Observe → policy** e le sessioni interessate per confermare che il lavoro valido non sia più bloccato.
+    4. Apri **Observe → policy** e le sessioni interessate per confermare che il lavoro valido non è più bloccato.
 
   </Tab>
   <Tab title="CLI">
-    Il rollback della distribuzione Cloud è un flusso di lavoro del dashboard. Usa lo stato locale per confermare che la distribuzione corretta ha raggiunto la macchina:
+    Il rollback della distribuzione cloud è un flusso di lavoro del dashboard. Usa lo stato locale per confermare che la distribuzione corretta ha raggiunto la macchina:
 
     ```bash
     failproofai config --status
     ```
 
-    `failproofai config --pause` sospende le policy builtin, custom e convention per una sessione locale. Non sospende le policy gestite da Cloud, quindi non è una soluzione alternativa per una distribuzione Cloud difettosa.
+    `failproofai config --pause` pausa le policy builtin, custom e convention per una sessione locale. Non pausa le policy gestite da Cloud, quindi non è una soluzione alternativa per una distribuzione cloud non corretta.
   </Tab>
 </Tabs>
 
 ## Quando eseguire il rollback
 
 - Una policy blocca un'azione di produzione prevista.
-- Il volume dei match è materialmente superiore a quello previsto dal rollout osservato.
+- Il volume di match è materialmente superiore a quanto previsto dal rollout osservato.
 - Una policy dipende da campi che un'integrazione non fornisce.
-- Una nuova versione cambia il comportamento al di fuori della modalità di errore prevista.
+- Una nuova versione modifica il comportamento al di fuori della modalità di errore prevista.
 
 Dopo il rollback, apri le sessioni interessate e identifica la condizione che ha causato il falso positivo. Crea una nuova versione, testa sia i casi non sicuri che quelli legittimi, quindi ripeti la fase di osservazione.
 
 <Warning>
-  La sospensione dell'enforcement può essere appropriata durante un incidente, ma amplia l'esposizione per ogni policy attiva in quel scope. Preferisci eseguire il rollback della versione di policy specifica quando possibile.
+  Sospendere l'enforcement può essere appropriato durante un incidente, ma amplia l'esposizione per ogni policy attiva in questo ambito. Preferisci eseguire il rollback della versione della policy specifica quando possibile.
 </Warning>

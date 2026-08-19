@@ -4,56 +4,56 @@ description: "在支持的 Agent CLI 中捕获会话并执行策略。"
 icon: "plug-zap"
 ---
 
-Failproof AI 支持 Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Hermes、OpenClaw、Factory Droid、Devin CLI、Antigravity CLI 和 Goose。
+Failproof AI 支持 Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Hermes、OpenClaw、Factory Droid、Devin CLI、Antigravity CLI 以及 Goose。
 
-| Harness | 支持的 hook 作用域 |
+| Harness | 支持的 hook 范围 |
 | --- | --- |
 | Claude Code | User、project、local |
 | Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi | User、project |
 | Factory Droid、Devin CLI、Antigravity CLI、Goose | User、project |
 | Hermes、OpenClaw | User |
 
-每个集成在策略运行之前，会对其原生 hook 事件名称、工具名称和工具输入字段进行标准化处理。策略只能作用于 harness 所暴露的事件；请在实际部署的 harness 版本上测试轮次结束和指令行为。
+每个集成在策略执行前，会将其原生 hook 事件名称、工具名称及工具输入字段进行规范化处理。策略只能对 harness 所暴露的事件产生作用；请在实际部署所用的 harness 和版本上测试轮次结束及指令行为。
 
 ## 执行能力
 
-"Block"表示当前适配器返回的判决结果会被对应 harness 消费。Post-tool blocking 可能会替换展示给模型的结果，但无法撤销已经发生的工具副作用。
+"阻断"指当前适配器返回的裁决结果会被指定 harness 所采用。工具后置阻断可能会替换呈现给模型的结果，但无法撤销已经发生的工具副作用。
 
 | Harness | 已验证的阻断事件 | 仅观察或非阻断说明 |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PreCompact` 及若干任务/配置事件 | `PostToolUse`、会话生命周期、通知和失败后事件仅供观察。 |
-| Codex | `PreToolUse`、`PermissionRequest`、`UserPromptSubmit`、`Stop`、`SubagentStop`、`PostToolUse` | Post-tool blocking 在执行后替换结果；当前适配器中会话启动和紧凑事件仅供观察。 |
-| GitHub Copilot CLI | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PostToolUse` | Post-tool blocking 在执行后替换结果；会话和通知事件仅供观察。 |
-| Cursor | `PreToolUse`、`UserPromptSubmit`、`Stop` | `PostToolUse` 和会话事件仅供观察。 |
-| OpenCode | `PreToolUse` | Post-tool 和生命周期事件仅供观察；当前的 stop 处理是对后续轮次的引导，而非已验证的阻断门控。 |
-| Pi | `PreToolUse`、`UserPromptSubmit` | Post-tool 和生命周期事件仅供观察；stop 引导适用于后续轮次。 |
-| Hermes | `PreToolUse` | Post-tool、会话和 subagent-stop 判决不是门控。 |
-| OpenClaw | `PreToolUse`、`UserPromptSubmit`、`Stop` | Post-tool、会话、subagent-stop 和压缩事件仅供观察。 |
-| Factory Droid | `PreToolUse`、`UserPromptSubmit`、`Stop`、`PreCompact` | Post-tool 和 subagent-stop 判决仅供观察。 |
-| Devin CLI | `PreToolUse`、`UserPromptSubmit`、`Stop`、条件性 `PermissionRequest` | Permission hook 并非在所有权限模式下都会运行；post-tool 和会话事件仅供观察。 |
-| Antigravity CLI | `PreToolUse`、`Stop` | User-prompt 和 post-tool 判决仅供观察；prompt 指令仍可被注入。 |
-| Goose | `PreToolUse` | User-prompt、post-tool 和会话事件仅供观察。上游存在原生阻断 stop hook，但当前适配器未安装。 |
+| Claude Code | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PreCompact` 及若干任务/配置事件 | `PostToolUse`、会话生命周期、通知及后续失败事件仅供观察。 |
+| Codex | `PreToolUse`、`PermissionRequest`、`UserPromptSubmit`、`Stop`、`SubagentStop`、`PostToolUse` | 工具后置阻断在执行后替换结果；会话启动和压缩事件在当前适配器中仅供观察。 |
+| GitHub Copilot CLI | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PostToolUse` | 工具后置阻断在执行后替换结果；会话和通知事件仅供观察。 |
+| Cursor | `PreToolUse`、`UserPromptSubmit`、`Stop` | `PostToolUse` 及会话事件仅供观察。 |
+| OpenCode | `PreToolUse` | 工具后置和生命周期事件仅供观察；当前的停止处理是对后续轮次的指导，而非已验证的门控。 |
+| Pi | `PreToolUse`、`UserPromptSubmit` | 工具后置和生命周期事件仅供观察；停止指导适用于后续轮次。 |
+| Hermes | `PreToolUse` | 工具后置、会话和子代理停止裁决不作为门控。 |
+| OpenClaw | `PreToolUse`、`UserPromptSubmit`、`Stop` | 工具后置、会话、子代理停止及压缩事件仅供观察。 |
+| Factory Droid | `PreToolUse`、`UserPromptSubmit`、`Stop`、`PreCompact` | 工具后置和子代理停止裁决仅供观察。 |
+| Devin CLI | `PreToolUse`、`UserPromptSubmit`、`Stop`、有条件的 `PermissionRequest` | 并非所有权限模式下都会触发权限 hook；工具后置和会话事件仅供观察。 |
+| Antigravity CLI | `PreToolUse`、`Stop` | 用户提示和工具后置裁决仅供观察；提示指令仍可注入。 |
+| Goose | `PreToolUse` | 用户提示、工具后置和会话事件仅供观察。上游存在原生的阻断停止 hook，但当前适配器未安装。 |
 
-能力对版本敏感。升级 Agent CLI 后请重新测试，尤其是当策略依赖 prompt、stop、permission 或 post-tool 行为而非通用 pre-tool 门控时。
+各项能力对版本敏感。升级 Agent CLI 后请重新测试，尤其是当策略依赖提示、停止、权限或工具后置行为而非通用的工具前置门控时。
 
-## 安装捕获和策略 hook
+## 安装捕获与策略 hook
 
 <Tabs>
-  <Tab title="控制台">
+  <Tab title="Dashboard">
     1. 打开 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥，并以机器或环境命名。
     2. 在目标机器上，使用显示的密钥连接本地 CLI 并安装 harness hook。
     3. 启动一个新的 Agent 会话，然后在 **Observe → Events** 下确认其 hook 和会话事件。
-    4. 打开同一时间窗口的 **Observe → policy**，确认策略决策已归因到该机器。
+    4. 打开同一时间窗口下的 **Observe → policy**，确认策略决策已归属到该机器。
 
-    连接从机器密钥开始。在复制其 secret 之前，请确认它同时包含事件摄取和策略分发权限。
+    连接从机器密钥开始。在复制其密钥前，请确认它同时包含摄取和策略下发权限。
 
-    ![用于授予事件摄取和策略分发权限的新 API 密钥抽屉。](/images/dashboard/key-create.png)
+    ![用于授予事件摄取和策略下发权限的新 API 密钥抽屉。](/images/dashboard/key-create.png)
 
-    安装 hook 后，Events 流应显示来自已连接机器和环境的新事件。
+    安装 hook 后，事件流应显示来自所连接机器和环境的新事件。
 
-    ![用于确认新安装的 harness 正在上报的实时 Events 流。](/images/dashboard/events-stream.png)
+    ![用于确认新安装 harness 正在上报的实时事件流。](/images/dashboard/events-stream.png)
 
-    最后，验证策略决策是否归因到同一台机器。这可确认 harness 正在上报策略活动以及追踪事件。
+    最后，验证策略决策已归属到同一台机器。这可以确认 harness 正在上报策略活动以及追踪事件。
 
     ![用于验证新连接 harness 策略决策的 Policy 页面。](/images/dashboard/policy-observe.png)
   </Tab>
@@ -67,7 +67,7 @@ Failproof AI 支持 Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode
     failproofai policies --install
     ```
 
-    或针对指定的 harness 和配置作用域：
+    或者指定 harness 名称和配置范围：
 
     ```bash
     failproofai policies --install \
@@ -75,7 +75,7 @@ Failproof AI 支持 Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode
       --scope user
     ```
 
-    Project 作用域将 hook 配置保存在代码仓库中。User 作用域覆盖跨仓库的工作。Claude Code 还支持 local 作用域；各 harness 的支持情况不同，CLI 会拒绝不支持的组合。
+    project 范围将 hook 配置保存在仓库中。user 范围覆盖跨仓库的工作。Claude Code 还支持 local 范围；支持情况因 harness 而异，CLI 会拒绝不支持的组合。
 
     验证机器及其事件：
 
@@ -90,13 +90,13 @@ Failproof AI 支持 Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode
 ## 添加非默认会话路径
 
 <Tabs>
-  <Tab title="控制台">
-    额外路径注册在机器上，而非云端。添加路径后，打开 **Observe → Sessions**，过滤到该机器的环境，确认来自新路径的会话已出现。打开一个会话，在正式用于审计之前，检查 agent、harness 和事件时间戳。
+  <Tab title="Dashboard">
+    额外路径注册在机器本地，而非云端。添加后，打开 **Observe → Sessions**，按机器所属环境过滤，确认来自新路径的会话已出现。打开某个会话，在将其用于审计前，检查 Agent、harness 及事件时间戳。
 
-    ![过滤到从附加捕获路径接收数据的环境的 Sessions 列表。](/images/dashboard/sessions-list.png)
+    ![过滤至接收额外捕获路径数据的环境的 Sessions 列表。](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
-    添加带有可选标签的路径，然后查看已配置的路径：
+    添加带可选标签的路径，然后查看已配置的路径：
 
     ```bash
     failproofai harness add-path claude checkout=/srv/checkout/.claude
@@ -105,10 +105,10 @@ Failproof AI 支持 Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode
     failproofai backfill --since 7d
     ```
 
-    使用 `failproofai harness remove-path claude checkout` 删除路径。
+    使用 `failproofai harness remove-path claude checkout` 移除路径。
   </Tab>
 </Tabs>
 
 <Tip>
-  安装后运行一个新会话。在扩大部署范围之前，请同时验证实时事件流和实际策略决策。
+  安装后运行一次新会话。在扩大部署范围之前，请同时验证实时事件流和实际的策略决策。
 </Tip>

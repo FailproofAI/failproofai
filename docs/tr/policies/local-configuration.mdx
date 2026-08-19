@@ -1,19 +1,19 @@
 ---
 title: "Yerel yapılandırma"
-description: "Policy kapsamını, parametrelerini, özel dosyaları ve makine düzeyindeki Failproof AI ayarlarını kontrol edin."
+description: "Policy kapsamını, parametrelerini, özel dosyaları ve makine düzeyinde Failproof AI ayarlarını kontrol edin."
 icon: "file-cog"
 ---
 
-Failproof AI, policy seçimini makine ve daemon ayarlarından ayırır. Bu, depo policy seçimlerinin gözden geçirilebilir kalmasını sağlarken kimlik bilgileri ve daemon durumu depo dışında kalır.
+Failproof AI, policy seçimini makine ve daemon ayarlarından ayırır. Bu, depo policy seçimlerini gözden geçirilebilir tutar ve kimlik bilgileri ile daemon durumu depo dışında kalır.
 
 ## Policy kapsamı seçin
 
 <Tabs>
   <Tab title="Dashboard">
-    Policy dashboard'unu açmak için `failproofai` komutunu bağımsız değişken olmadan çalıştırın. Bir policy'yi etkinleştirmeden önce kullanıcı, proje veya yerel kapsamı seçin; böylece değişiklik istenen yapılandırma dosyasına yazılır.
+    Policy dashboard'unu açmak için `failproofai` komutunu argüman olmadan çalıştırın. Bir policy'i etkinleştirmeden önce kullanıcı, proje veya yerel kapsamı seçin, böylece değişiklik amaçlanan yapılandırma dosyasına yazılır.
 
-    - **User** bu makinedeki tüm projeler arasında geçerlidir.
-    - **Project** depoya aittir ve commit edilebilir.
+    - **User** bu makinedeki tüm projelere uygulanır.
+    - **Project** depoya ait olur ve commit edilebilir.
     - **Local** bir projeyi bir kullanıcı için geçersiz kılar ve gitignore'da kalmalıdır.
 
   </Tab>
@@ -35,17 +35,17 @@ Failproof AI, policy seçimini makine ve daemon ayarlarından ayırır. Bu, depo
 | Local | `<project>/.failproofai/policies-config.local.json` |
 | User | `~/.failproofai/policies-config.json` |
 
-Etkinleştirilen policy'ler birleşim olarak birleştirilir. Policy parametreleri, bu policy için parametreleri tanımlayan ilk kapsamı kullanır; sıra project → local → user şeklindedir. Açık özel policy yolları, bunları tanımlayan ilk kapsamı kullanır.
+Etkinleştirilen policy'ler bir birleşim olarak birleştirilir. Policy parametreleri, bu policy için parametreleri tanımlayan ilk kapsamı kullanır (project → local → user sırasında). Açık özel policy yolları, bunları tanımlayan ilk kapsamı kullanır.
 
 ## Policy parametrelerini yapılandırın
 
 <Tabs>
   <Tab title="Dashboard">
-    Policy'yi yerel dashboard'ta açın, desteklenen parametrelerini düzenleyin ve seçilen kapsamda kaydedin. Eşleşen ve eşleşmeyen bir agent eylemini çalıştırın, ardından kararı **Observe → policy** bölümünde inceleyin.
+    Policy'i yerel dashboard'ta açın, desteklenen parametrelerini düzenleyin ve seçilen kapsamda kaydedin. Eşleşen ve eşleşmeyen bir agent eylemi çalıştırın, ardından kararı **Observe → policy**'de inceleyin.
 
   </Tab>
   <Tab title="CLI">
-    Seçilen kapsamın `policies-config.json` dosyasını düzenleyin, ardından bilinmeyen policy adlarını veya parametre anahtarlarını ortaya çıkarmak için `failproofai policies` komutunu çalıştırın.
+    Seçilen kapsamın `policies-config.json` dosyasını düzenleyin, ardından bilinmeyen policy adlarını veya parametre anahtarlarını yüzeye çıkarmak için `failproofai policies` komutunu çalıştırın.
 
     ```json
     {
@@ -71,14 +71,14 @@ Etkinleştirilen policy'ler birleşim olarak birleştirilir. Policy parametreler
 | Yol | Amaç |
 | --- | --- |
 | `config.json` | Gizli olmayan daemon, denetim ve telemetri ayarları |
-| `credentials.json` | Bulut kimlik bilgileri; yalnızca sahibin erişimine sahip izinlerle depolanır |
-| `policies-config.json` | Kullanıcı kapsamı builtin seçimi, parametreleri ve açık özel yolları |
-| `policies/` | Kullanıcı kural policy'leri ve Bulut tarafından yönetilen policy yapıtları |
+| `credentials.json` | Bulut kimlik bilgileri; yalnızca sahip izinleriyle depolanır |
+| `policies-config.json` | Kullanıcı kapsamı yerleşik seçim, parametreler ve açık özel yollar |
+| `policies/` | Kullanıcı convention policy'leri ve Cloud tarafından yönetilen policy yapıları |
 | `hook-activity/` | Yerel policy karar günlüğü |
-| `state/` | Daemon spool, sağlık, duraklatma ve çalışma zamanı durumu |
+| `state/` | Daemon spool, sağlık, duraklama ve çalışma zamanı durumu |
 
-Bir container veya yalıtılmış test için makine düzeninin tamamını yeniden konumlandırmak üzere `FAILPROOFAI_HOME` kullanın. Durumu dizinlerini bağımsız olarak yeniden konumlandırmayın.
+Bir konteyner veya izole edilmiş test için tam makine düzenini yeniden konumlandırmak üzere `FAILPROOFAI_HOME` kullanın. Durum dizinlerini bağımsız olarak yeniden konumlandırmayın.
 
 <Warning>
-  `credentials.json` dosyasını hiçbir zaman commit etmeyin. Proje policy yapılandırması ve proje kural policy'lerini yalnızca bunları uygulama kodu olarak gözden geçirdikten sonra commit edin.
+  `credentials.json` asla commit etmeyin. Proje policy yapılandırmasını ve proje convention policy'lerini yalnızca zorlama kodu olarak gözden geçirdikten sonra commit edin.
 </Warning>

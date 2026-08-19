@@ -1,21 +1,21 @@
 ---
 title: "Utenti e organizzazioni"
-description: "Controlla l'appartenenza e mantieni i dati e le azioni di ogni organizzazione in ambiti isolati."
+description: "Controlla l'appartenenza e mantieni i dati e le azioni di ogni organizzazione isolati."
 icon: "users"
 ---
 
 Le organizzazioni isolano sessioni, valutazioni, audit, problemi, avvisi, query, dashboard, utenti e chiavi. Conferma l'organizzazione attiva prima di modificare le risorse amministrative.
 
-## Gestire i membri e le organizzazioni
+## Gestisci membri e organizzazioni
 
 <Tabs>
   <Tab title="Dashboard">
     1. Utilizza il selettore dell'organizzazione in cima alla barra laterale Cloud per cambiare organizzazione.
     2. Vai a **Amministrazione → Utenti** per cercare i membri o filtrare per stato attivo e ruolo.
-    3. Seleziona **nuovo utente**, inserisci l'email, scegli un set di autorizzazioni e adatta gli override se necessario.
-    4. Apri un utente in seguito per aggiornare i permessi, disabilitare l'accesso o abilitare di nuovo l'account.
+    3. Seleziona **nuovo utente**, inserisci l'email, scegli un set di permessi e regola gli override se necessario.
+    4. Apri un utente in seguito per aggiornare i grant, disabilitare l'accesso o abilitare di nuovo l'account.
 
-    ![La pagina Utenti che mostra gli indirizzi email dei membri, i set di autorizzazioni e i controlli di modifica e disabilitazione.](/images/dashboard/users.png)
+    ![La pagina Utenti che mostra indirizzi email dei membri, set di permessi e controlli di modifica e disabilitazione.](/images/dashboard/users.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -33,12 +33,12 @@ Le organizzazioni isolano sessioni, valutazioni, audit, problemi, avvisi, query,
   </Tab>
 </Tabs>
 
-Gli amministratori possono creare, aggiornare, disabilitare e riabilitare gli utenti, quindi assegnare il set di autorizzazioni appropriato per il loro ruolo. L'API utilizza un'operazione di eliminazione per la disabilitazione, ma non rimuove l'account o il suo record di appartenenza.
+Gli amministratori possono creare, aggiornare, disabilitare e riabilitare gli utenti, quindi assegnare il set di permessi appropriato per il loro ruolo. L'API utilizza un'operazione di eliminazione per disabilitare, ma non rimuove l'account o il suo record di appartenenza.
 
 <Warning>
-  La disabilitazione di un utente blocca quell'identità dall'accesso a ogni organizzazione, non solo all'organizzazione attualmente selezionata. La riabilitazione ripristina l'accesso globale e i permessi del membro in questa organizzazione.
+  La disabilitazione di un utente impedisce a quell'identità di accedere a ogni organizzazione, non solo all'organizzazione attualmente selezionata. La riabilitazione ripristina l'accesso globale e i permessi del membro in questa organizzazione.
 </Warning>
 
 <Tip>
-  Dai ai service account nomi descrittivi legati a un carico di lavoro e a un proprietario. Evita di condividere chiavi tra organizzazioni o tra persone e macchine.
+  Assegna ai service account nomi descrittivi legati a un carico di lavoro e a un proprietario. Evita di condividere chiavi tra organizzazioni o tra persone e macchine.
 </Tip>

@@ -1,28 +1,28 @@
 ---
 title: "Agent context"
-description: "audits को बताएं कि प्रत्येक agent को क्या करना चाहिए, क्या produce करना चाहिए, और कभी क्या नहीं करना चाहिए।"
+description: "audits को बताएं कि प्रत्येक agent को क्या करना है, क्या produce करना है, और कभी नहीं करना है।"
 icon: "bot"
 ---
 
-Agent context audits को बताता है कि प्रत्येक agent किस लिए मौजूद है, उसे क्या produce करना चाहिए, और क्या कभी नहीं करना चाहिए। Failproof AI इस context को प्रति agent के एक agent contract के रूप में store करता है।
+Agent context audits को बताता है कि प्रत्येक agent क्यों मौजूद है, उसे क्या produce करना चाहिए, और उसे कभी नहीं करना चाहिए। Failproof AI इस context को प्रत्येक agent के लिए एक agent contract के रूप में store करता है।
 
-Agent context organization का है, किसी एक audit का नहीं। आप इसे प्रति agent एक बार लिखते हैं, और हर model-backed audit जिसके scope में वह agent शामिल है, इसका उपयोग करता है।
+Agent context organization का है, किसी एक audit का नहीं। आप इसे प्रत्येक agent के लिए एक बार लिखते हैं, और हर model-backed audit जिसके scope में वह agent है, इसका उपयोग करता है।
 
 ## Agent context जोड़ें
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Analyze → audits** पर जाएं, **agents** को चुनें, और agent ID को चुनें जो इसके sessions द्वारा reported है।
-    2. **add content** या **edit** को चुनें।
-    3. वर्णन करें कि agent किस लिए है, उसे क्या produce करना चाहिए, "done" का मतलब क्या है, इसे कितनी बार चलना चाहिए, और यह क्या कभी नहीं कर सकता।
-    4. context को save करें, फिर audit form पर वापस जाएं और confirm करें कि चुना गया agent covered के रूप में दिखाया जा रहा है।
+    1. **Analyze → audits** पर जाएं, **agents** चुनें, और agent ID चुनें जो इसके sessions द्वारा रिपोर्ट किया जाता है।
+    2. **add content** या **edit** चुनें।
+    3. बताएं कि agent किसके लिए है, इसे क्या produce करना चाहिए, done होने का मतलब क्या है, यह कितनी बार चलना चाहिए, और इसे कभी नहीं करना चाहिए।
+    4. Context को save करें, फिर audit form पर वापस जाएं और confirm करें कि चयनित agent को covered के रूप में दिखाया जा रहा है।
 
-    ![The audit Agents drawer used to add purpose, cadence, outputs, completion conditions, and prohibited behavior for an agent.](/images/dashboard/agent-context.png)
+    ![audit Agents drawer का उपयोग करके agent के purpose, cadence, outputs, completion conditions, और prohibited behavior को जोड़ने के लिए।](/images/dashboard/agent-context.png)
 
-    आप audit बनाते या edit करते समय **agents** drawer से agent context को add या edit कर सकते हैं। यह independently save होता है और तुरंत हर applicable audit के लिए उपलब्ध होता है।
+    आप audit बनाते या edit करते समय **agents** drawer से भी agent context को जोड़ या edit कर सकते हैं। यह independently save होता है और तुरंत हर applicable audit के लिए उपलब्ध होता है।
   </Tab>
   <Tab title="CLI">
-    Cloud CLI अभी तक contract commands को expose नहीं करता। `audits:read` और `audits:write` ले जाने वाली key के साथ public API का उपयोग करें:
+    Cloud CLI अभी तक contract commands को expose नहीं करता है। `audits:read` और `audits:write` वाली key के साथ public API का उपयोग करें:
 
     ```bash
     curl -X POST "https://app.befailproof.ai/v1/audits/contracts" \
@@ -35,18 +35,18 @@ Agent context organization का है, किसी एक audit का न�
       }'
     ```
 
-    Contracts को `GET /v1/audits/contracts` के साथ list करें; एक contract को `GET /v1/audits/contracts/{id}` के साथ retrieve करें। `PUT` के साथ update करना एक full replacement है और `agent_id` और `body` दोनों की आवश्यकता है।
+    `GET /v1/audits/contracts` के साथ contracts को list करें; एक contract को `GET /v1/audits/contracts/{id}` से प्राप्त करें। `PUT` के साथ update पूर्ण replacement है और `agent_id` और `body` दोनों की आवश्यकता है।
   </Tab>
 </Tabs>
 
 ## उपयोगी context लिखें
 
-Context को 5,000 characters के तहत रखें और इसे testable बनाएं। उपयोगी context में आमतौर पर शामिल होता है:
+Context को 5,000 characters से कम रखें और इसे testable बनाएं। उपयोगी context आमतौर पर शामिल करता है:
 
 - **Purpose:** agent क्यों मौजूद है
 - **Outputs:** artifacts या actions जो इसे produce करने चाहिए
-- **Done when:** वह condition जो एक run को successful बनाती है
-- **Cadence:** कितनी बार या कब चलना चाहिए
+- **Done when:** वह condition जो एक run को सफल बनाती है
+- **Cadence:** यह कितनी बार या कब चलना चाहिए
 - **Must not:** actions और outcomes जो हमेशा स्वीकार्य नहीं हैं
 
 ```markdown
@@ -66,17 +66,17 @@ cadence: Once daily after 02:00 UTC. Never more than once.
 - Modify ledger entries. Report discrepancies instead.
 ```
 
-Agent context expected behavior को बताता है; यह analysis को यह नहीं बता सकता कि किस निष्कर्ष पर पहुंचना है या restrict कर सकता है कि वह कौन सा evidence examine करता है। Agents बिना context के normally audited होते हैं, लेकिन Failproof AI उनके behavior को organization-specific intent के विरुद्ध judge नहीं कर सकता।
+Agent context expected behavior को state करता है; यह analysis को यह नहीं बता सकता कि किस निष्कर्ष तक पहुंचना है या कौन से evidence की जांच करने को restrict कर सकता है। Context के बिना agents normally audit होते हैं, लेकिन Failproof AI उनके behavior का organization-specific intent के विरुद्ध judge नहीं कर सकता है।
 
 ## Agent context को pause या change करें
 
 - Agent context को pause करें जब audits को temporarily इसे ignore करना चाहिए। Pausing reversible है।
-- Context को edit करें जब agent की responsibility change हो। नया text future runs के लिए apply होता है।
-- **last matched** को check करें जब एक running agent कभी अपने context का उपयोग करता हुआ दिखाई न दे। इसका आमतौर पर मतलब है कि इसका agent ID telemetry से match नहीं करता।
-- API के through ही delete करें जब text को permanently destroy करना हो। Dashboard intentionally pause की जगह delete को offer नहीं करता है।
+- Context को edit करें जब agent की responsibility बदले। नया text भविष्य के runs पर लागू होता है।
+- **last matched** की जांच करें जब एक running agent अपने context का उपयोग करने के लिए कभी प्रकट नहीं होता है। इसका आमतौर पर मतलब है कि इसका agent ID telemetry से मेल नहीं खाता है।
+- API के माध्यम से केवल delete करें जब text को permanently destroy किया जाना चाहिए। Dashboard intentionally pause की पेशकश करता है न कि delete की।
 
-हर audit run उस exact agent-context snapshot को store करता है जिसे वह use करता है। Current contract resource को editing, pausing, या deleting करने से earlier findings के basis को rewrite नहीं किया जाता है।
+हर audit run उस exact agent-context snapshot को store करता है जिसका उपयोग किया गया था। Current contract resource को edit, pause, या delete करना पहले के findings के basis को rewrite नहीं करता है।
 
 <Info>
-  Contracts को read करने के लिए `audits:read` की जरूरत है। Creating, editing, pausing, या deleting करने के लिए `audits:write` की जरूरत है।
+  Contracts को पढ़ने के लिए `audits:read` की आवश्यकता है। उन्हें बनाने, edit करने, pause करने, या delete करने के लिए `audits:write` की आवश्यकता है।
 </Info>

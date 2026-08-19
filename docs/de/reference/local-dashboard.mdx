@@ -4,31 +4,31 @@ description: "Lokale Projekte, Sitzungen, Policy-Aktivitäten, Konfiguration, Au
 icon: "monitor-cog"
 ---
 
-Führe `failproofai` ohne Argumente aus, um das integrierte Dashboard unter `http://localhost:8020` zu starten. Es liest lokale Agent-Historien, Policy-Konfigurationen, Audit-Ergebnisse und Hook-Aktivitäten direkt vom Gerät.
+Führe `failproofai` ohne Argumente aus, um das mitgelieferte Dashboard unter `http://localhost:8020` zu starten. Es liest lokale Agent-Historien, Policy-Konfiguration, Audit-Ergebnisse und Hook-Aktivitäten direkt vom Rechner.
 
 Das lokale Dashboard ist von Failproof AI Cloud getrennt. Es funktioniert ohne Cloud-Konto und bestätigt nicht, dass Ereignisse an deine Organisation übermittelt wurden.
 
 ## Dashboard-Bereiche
 
-| Bereich | Was du tun kannst |
+| Bereich | Was du erledigen kannst |
 | --- | --- |
 | Policies → Activity | Lokale allow-, instruct- und deny-Entscheidungen einsehen; filtern nach Entscheidung, Ereignis, CLI, Tool, Quelle, Policy und Sitzung. |
-| Policies → Configure | Builtins aktivieren, unterstützte Parameter bearbeiten, gefundene benutzerdefinierte Policies ein-/ausschalten und Ziel-Harnesses auswählen. |
-| Projects | Gefundene Projekte aus unterstützten Agent-Historien durchsuchen und deren aktuellste Sitzungen vergleichen. |
-| Project sessions | Ein lokales Transkript öffnen, rohe geordnete Einträge und Subagenten einsehen, es herunterladen und Policy-Aktivitäten korrelieren. |
+| Policies → Configure | Builtins aktivieren, unterstützte Parameter bearbeiten, erkannte benutzerdefinierte Policies umschalten und Ziel-Harnesses auswählen. |
+| Projects | Erkannte Projekte aus unterstützten Agent-Historien durchsuchen und deren aktuellste Sitzungen vergleichen. |
+| Project sessions | Ein lokales Transkript öffnen, rohe geordnete Einträge und Subagenten einsehen, herunterladen und Policy-Aktivitäten korrelieren. |
 | Audit | Den letzten Offline-Scan, riskante Muster, Stärken, betroffene Projekte und vorgeschlagene Builtin-Policies einsehen. |
-| Settings | Geplante lokale Scans und E-Mail-Audit-Berichte konfigurieren, sofern der Daemon/die Plattform dies unterstützt. |
+| Settings | Geplante lokale Scans und per E-Mail versendete Audit-Berichte konfigurieren, sofern der Daemon/die Plattform dies unterstützt. |
 
 ## Policy-Aktivitäten einsehen
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Policies → Activity** öffnen und die Entscheidungs- und Quellfilter setzen.
-    2. Nach Ereignis, Harness, Tool oder Policy-Name eingrenzen.
-    3. Eine Zeile aufklappen, um Begründung, übereinstimmende Policies, Quelle, Ausführungsmodus und Dauer einzusehen.
-    4. Dem Sitzungslink folgen, um die Entscheidung im Transkript-Kontext einzuordnen.
+    1. Öffne **Policies → Activity** und setze die Entscheidungs- und Quellfilter.
+    2. Schränke nach Ereignis, Harness, Tool oder Policy-Name ein.
+    3. Klappe eine Zeile auf, um Grund, übereinstimmende Policies, Quelle, Ausführungsmodus und Dauer einzusehen.
+    4. Folge dem Sitzungslink, um die Entscheidung im Transkript-Kontext einzuordnen.
 
-    Eine Zeile, die wie eine Ablehnung aussieht, kann auf einem Harness/Ereignis-Paar, das keine blockierenden Urteile verarbeitet, dennoch beobachtend sein. Die Detailansicht weist auf die verifizierte Durchsetzungsfähigkeit hin.
+    Eine abgelehnt wirkende Zeile kann auf einem Harness/Ereignis-Paar, das keine blockierenden Verdicts verarbeitet, dennoch nur beobachtend sein. Die Detailansicht weist auf die verifizierte Durchsetzungsfähigkeit hin.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -45,12 +45,12 @@ Das lokale Dashboard ist von Failproof AI Cloud getrennt. Es funktioniert ohne C
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Policies → Configure** öffnen und die Harnesses sowie den Konfigurationsbereich auswählen.
-    2. Eine eingebaute oder gefundene benutzerdefinierte Policy aktivieren.
-    3. Bei einem parametrisierten Builtin das Konfigurationssteuerelement öffnen und unterstützte Werte speichern.
-    4. Zu Activity zurückkehren und übereinstimmende sowie nicht übereinstimmende Aktionen ausführen.
+    1. Öffne **Policies → Configure** und wähle die Harnesses sowie den Konfigurationsbereich.
+    2. Aktiviere eine Builtin- oder eine erkannte benutzerdefinierte Policy.
+    3. Öffne für eine parametrisierte Builtin das zugehörige Konfigurationssteuerelement und speichere die unterstützten Werte.
+    4. Kehre zu Activity zurück und führe passende und nicht passende Aktionen aus.
 
-    Convention-Policies zeigen ihre Projekt- oder Benutzerquelle an. Explizite Änderungen an benutzerdefinierten Pfaden erfordern möglicherweise ein erneutes Ausführen der CLI-Konfiguration, damit der gewählte Pfad gespeichert wird.
+    Convention-Policies zeigen ihren Projekt- oder Benutzer-Ursprung. Explizite Änderungen an benutzerdefinierten Pfaden erfordern möglicherweise das erneute Ausführen der CLI-Konfiguration, damit der gewählte Pfad gespeichert wird.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -63,15 +63,15 @@ Das lokale Dashboard ist von Failproof AI Cloud getrennt. Es funktioniert ohne C
 
 ## Projekte und Sitzungen durchsuchen
 
-Die Seite „Projects" fasst unterstützte lokale Historienspeicher zusammen. Wähle ein Projekt aus, um seine Sitzungen aufzulisten, und öffne dann eine Sitzung für den Roh-Log-Viewer, Subagenten-Segmente, die Download-Funktion und sitzungsbezogene Policy-Aktivitäten.
+Die Seite Projects kombiniert unterstützte lokale Historienspeicher. Wähle ein Projekt aus, um seine Sitzungen aufzulisten, und öffne dann eine Sitzung für den Roh-Log-Viewer, Subagenten-Segmente, die Download-Aktion und sitzungsbezogene Policy-Aktivitäten.
 
-Falls ein Projekt oder eine Sitzung fehlt, stelle sicher, dass der Harness seinen Standard-Historienpfad verwendet, oder registriere einen zusätzlichen Stammpfad mit `failproofai harness add-path`.
+Fehlt ein Projekt oder eine Sitzung, überprüfe, ob der Harness seinen Standard-Speicherort für die Historie verwendet, oder registriere einen zusätzlichen Stammordner mit `failproofai harness add-path`.
 
 ## Offline-Audits planen
 
 <Tabs>
   <Tab title="Dashboard">
-    **Settings** öffnen, geplante Scans aktivieren, das unterstützte Intervall auswählen und die Berichtsübermittlung konfigurieren, sofern verfügbar. Die Seite zeigt den nächsten Lauf, den letzten Lauf, den Exit-Code und ob der Hintergrund-Daemon auf der Plattform unterstützt wird.
+    Öffne **Settings**, aktiviere den geplanten Scan, wähle das unterstützte Intervall und konfiguriere die Berichtszustellung, sofern verfügbar. Die Seite zeigt den nächsten Lauf, den letzten Lauf, den Exit-Code und ob der Hintergrunddaemon auf der Plattform unterstützt wird.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -84,5 +84,5 @@ Falls ein Projekt oder eine Sitzung fehlt, stelle sicher, dass der Harness seine
 </Tabs>
 
 <Warning>
-  Das lokale Dashboard kann Prompts, Tool-Eingaben, Dateiinhalte und Terminal-Ausgaben aus lokalen Agent-Historien anzeigen. Binde es nur an vertrauenswürdige Schnittstellen und beende den Prozess, wenn die Überprüfung abgeschlossen ist.
+  Das lokale Dashboard kann Eingabeaufforderungen, Tool-Eingaben, Dateiinhalte und Terminalausgaben aus lokalen Agent-Historien anzeigen. Binde es nur an vertrauenswürdige Interfaces und beende den Prozess, wenn die Überprüfung abgeschlossen ist.
 </Warning>

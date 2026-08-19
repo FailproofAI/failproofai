@@ -1,19 +1,19 @@
 ---
-title: "Chính sách tùy chỉnh"
-description: "Viết một chính sách cho một chế độ lỗi duy nhất trong quy trình làm việc của agent của bạn."
+title: "Custom policies"
+description: "Viết một policy cho một chế độ lỗi duy nhất trong quy trình làm việc của agent của bạn."
 icon: "shield-plus"
 ---
 
-Tạo một tệp có tên kết thúc bằng `policies.js`, `policies.mjs` hoặc `policies.ts` dưới thư mục `.failproofai/policies/`. Các tệp quy ước tải tự động ở phạm vi dự án và người dùng.
+Tạo một tệp kết thúc bằng `policies.js`, `policies.mjs`, hoặc `policies.ts` dưới `.failproofai/policies/`. Các tệp quy ước sẽ tải tự động ở phạm vi dự án và người dùng.
 
-## Kiểm tra chính sách trước khi xuất bản lên Cloud
+## Kiểm tra policy trước khi xuất bản lên Cloud
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Cài đặt chính sách tùy chỉnh trên một máy kiểm tra và kích hoạt cả hành động khớp và một hành động hợp pháp không khớp.
-    2. Chuyển đến **Observe → policy** và so sánh hai quyết định.
-    3. Mở từng phiên được liên kết và xác minh rằng tải trọng sự kiện chứa đủ bằng chứng cho quy tắc.
-    4. Khi hành vi chính xác, di chuyển nguồn đã được xem xét vào **Admin → policy editor** và xuất bản một phiên bản.
+    1. Cài đặt custom policy trên một máy test và kích hoạt cả một hành động khớp và một hành động không khớp hợp lệ.
+    2. Đi tới **Observe → policy** và so sánh hai quyết định.
+    3. Mở từng phiên liên kết và xác minh rằng payload sự kiện chứa đủ bằng chứng cho quy tắc.
+    4. Khi hành vi đúng, chuyển mã nguồn đã xem xét vào **Admin → policy editor** và xuất bản một phiên bản.
 
   </Tab>
   <Tab title="CLI">
@@ -23,7 +23,7 @@ Tạo một tệp có tên kết thúc bằng `policies.js`, `policies.mjs` ho�
     failproofai policies
     ```
 
-    Các tệp quy ước dưới `.failproofai/policies/` tải mà không cần `--custom`. Giữ lệnh cài đặt rõ ràng trong CI khi xác thực sẽ không thành công trên một mô-đun bị hỏng.
+    Các tệp quy ước dưới `.failproofai/policies/` sẽ tải mà không cần `--custom`. Giữ một lệnh cài đặt rõ ràng trong CI khi xác thực sẽ thất bại trên một mô-đun bị hỏng.
   </Tab>
 </Tabs>
 
@@ -45,7 +45,7 @@ customPolicies.add({
 });
 ```
 
-Điều này khớp với `production/config.yml`, `/srv/production/config.yml`, `/srv/production` và `C:\\production\\config.yml` cho cả `Write` và `Edit`. Nó không khớp với các tên như `production-backup` vì `production` phải là một phần đường dẫn hoàn chỉnh.
+Điều này khớp với `production/config.yml`, `/srv/production/config.yml`, `/srv/production`, và `C:\\production\\config.yml` cho cả `Write` và `Edit`. Nó không khớp với các tên như `production-backup` vì `production` phải là một phân đoạn đường dẫn hoàn chỉnh.
 
 Xác thực và cài đặt một tệp rõ ràng:
 
@@ -53,20 +53,20 @@ Xác thực và cài đặt một tệp rõ ràng:
 failproofai policies --install --custom ./security.policies.ts
 ```
 
-Bối cảnh chính sách bao gồm loại sự kiện, tải trọng được chuẩn hóa, tên và đầu vào công cụ, siêu dữ liệu phiên, tham số và CLI nguồn khi có sẵn.
+Ngữ cảnh policy bao gồm loại sự kiện, payload chuẩn hóa, tên công cụ và đầu vào, siêu dữ liệu phiên, tham số, và CLI nguồn khi có sẵn.
 
-## Kiểm tra các đường dẫn lỗi
+## Kiểm tra đường dẫn lỗi
 
-Chạy xác thực sau khi thay đổi tệp mục nhập hoặc bất kỳ mô-đun cục bộ nào mà nó nhập:
+Chạy xác thực sau khi thay đổi tệp entry hoặc bất kỳ mô-đun cục bộ nào mà nó nhập:
 
 ```bash
 failproofai policies --install --custom ./security.policies.ts --scope project
 ```
 
-Đường dẫn CLI nghiêm ngặt không thành công cho các tệp bị thiếu, lỗi cú pháp, nhập không được giải quyết, ngoại lệ cấp cao nhất và thời gian chờ tải mô-đun. Tại thời điểm thực thi, một tệp tùy chỉnh bị hỏng được ghi lại và bỏ qua để các chính sách tích hợp có thể tiếp tục. Coi bất kỳ cảnh báo tải nào là mất enforcement dự kiến và cảnh báo về nó trong nhật ký production.
+Đường dẫn CLI nghiêm ngặt không thành công cho các tệp bị thiếu, lỗi cú pháp, nhập không được giải quyết, ngoại lệ cấp cao, và hết thời gian tải mô-đun. Tại thời điểm thực thi, một tệp custom bị hỏng được ghi lại và bỏ qua để các policy tích hợp sẵn có thể tiếp tục. Xem bất kỳ cảnh báo tải nào là mất thực thi mong đợi và cảnh báo nó trong nhật ký sản xuất.
 
-Sử dụng các tên duy nhất trên toàn cầu trong các chính sách rõ ràng, quy ước và được quản lý bởi Cloud. Giữ các hàm chính sách xác định, ràng buộc các cuộc gọi bên ngoài với thời gian chờ ngắn, và trả về `allow`, `instruct` hoặc `deny` có chủ đích trên mỗi đường dẫn.
+Sử dụng các tên duy nhất trên toàn cầu trên các policy rõ ràng, quy ước và được quản lý bởi Cloud. Giữ các hàm policy tất định, ràng buộc các lệnh gọi bên ngoài với hết thời gian ngắn, và trả về một `allow`, `instruct`, hoặc `deny` có ý định trên mọi đường dẫn.
 
 <Warning>
-  Một chính sách tùy chỉnh là mã thực thi. Kiểm tra các trường bị thiếu, tên công cụ thay thế và đầu vào được định dạng sai—không chỉ lần khớp dự kiến.
+  Một custom policy là mã thực thi. Kiểm tra các trường bị thiếu, tên công cụ thay thế, và đầu vào bị sai định dạng—không chỉ những khớp mong đợi.
 </Warning>

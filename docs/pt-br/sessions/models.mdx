@@ -4,16 +4,16 @@ description: "Compare latência, tokens, uso de contexto e distribuição de tr�
 icon: "cpu"
 ---
 
-Use a seção Modelos para verificar se a confiabilidade ou o custo mudou com um modelo, agente, ambiente ou intervalo de tempo.
+Use Modelos para verificar se a confiabilidade ou o custo mudou com um modelo, agente, ambiente ou intervalo de tempo.
 
 <Tabs>
   <Tab title="Dashboard">
     1. Acesse **Observe → Models**.
     2. Defina o intervalo de tempo e filtre por ambiente, modelo, agente ou ID de sessão.
     3. Analise latência, consumo de tokens, uso da janela de contexto e distribuição de modelos.
-    4. Selecione um ponto do gráfico ou um segmento da distribuição para abrir os eventos correspondentes.
+    4. Selecione um ponto no gráfico ou um segmento de distribuição para abrir os eventos correspondentes.
 
-    ![A página de Modelos exibindo visualizações de latência, percentil, tokens, custo, janela de contexto e distribuição de modelos.](/images/dashboard/models.png)
+    ![A página Models exibindo visualizações de latência, percentil, tokens, custo, janela de contexto e distribuição de modelos.](/images/dashboard/models.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -22,6 +22,6 @@ Use a seção Modelos para verificar se a confiabilidade ou o custo mudou com um
     fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
     ```
 
-    Use uma consulta salva para agregados no nível de modelo que não estão disponíveis como um comando CLI dedicado.
+    Use uma consulta salva para agregações no nível de modelo que não estão disponíveis como um comando dedicado na CLI.
   </Tab>
 </Tabs>

@@ -1,15 +1,15 @@
 ---
 title: "סוכנים מותאמים"
-description: "Instrument traces from custom agents so Failproof AI can reconstruct runs and find failures."
+description: "מכוונן עקבות מסוכנים מותאמים כדי ש-Failproof AI יוכל לשחזר הרצות ולמצוא כשלים."
 icon: "python"
 ---
 
-Instrument traces from a custom agent with `failproofai-sdk` so Failproof AI can reconstruct each run, audit its behavior, and find evidence-backed failures. The SDK writes structured events for the Failproof daemon to deliver to Cloud. It requires Python 3.10 or newer.
+כוונן עקבות מסוכן מותאם באמצעות `failproofai-sdk` כדי ש-Failproof AI יוכל לשחזר כל הרצה, לבדוק את ההתנהגות שלה ולמצוא כשלים מסומכים בראיות. ה-SDK כותב אירועים מובנים עבור Failproof daemon להעביר ל-Cloud. זה דורש Python 3.10 או חדש יותר.
 
-Tracing makes custom agents observable and auditable. Preventing an unsafe action before it executes also requires an enforcement hook in your runtime.
+Tracing הופך סוכנים מותאמים לניתני תצפית ולביקורת. מניעת פעולה לא בטוחה לפני שהיא מתבצעת דורשת גם hook אכיפה בזמן ריצה שלך.
 
 <Info>
-  To enforce policies in a custom agent setup, [contact Failproof AI](mailto:support@befailproof.ai). We will help map your runtime's model, tool, and lifecycle boundaries to policy hooks.
+  כדי אכוף מדיניויות בהגדרת סוכן מותאמת, [צור קשר עם Failproof AI](mailto:support@befailproof.ai). אנחנו נעזור למפות את גבולות המודל, הכלים וחיי המחזור של זמן הריצה שלך לאגוזי מדיניות.
 </Info>
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
@@ -18,7 +18,7 @@ Tracing makes custom agents observable and auditable. Preventing an unsafe actio
 
 ## התקן את `failproofai-sdk`
 
-The SDK is currently distributed as a private wheel. Ask your Failproof AI contact for the current version and download access.
+ה-SDK מופץ כרגע כגלגל פרטי. בקש מאחד ה-Failproof AI שלך את הגרסה הנוכחית וגישה להורדה.
 
 ```bash
 VERSION=<sdk-version>
@@ -26,20 +26,20 @@ pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
 python -c "import failproofai; print(failproofai.__version__)"
 ```
 
-With `uv`, download the wheel first and run `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`. Pin the wheel in a private artifact repository or dependency lock.
+עם `uv`, הורד את הגלגל תחילה והרץ `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`. קבע את הגלגל במאגר חפצים פרטי או בנעילת תלות.
 
-The package is installed as `failproofai-sdk` and imported in Python as `failproofai`.
+החבילה מותקנת כ-`failproofai-sdk` ומיובאת בפייתון כ-`failproofai`.
 
-## התחבר ל-Failproof daemon
+## חבר את Failproof daemon
 
 <Tabs>
-  <Tab title="Dashboard">
+  <Tab title="לוח בקרה">
     1. עבור אל **Admin → Keys** וצור מפתח עם `events:add`.
-    2. [התחבר ל-Failproof daemon אל Cloud](/he/start/setup#connect-a-machine-to-cloud) במכונת הסוכן.
-    3. הפעל הפעלה אחת מעוקבת, ואז מצא את המזהה המדויק שלה תחת **Observe → Events**.
-    4. עבור אל **Observe → Sessions**, בחר את אותה סביבה, ופתח את ה-trace שנבנה מחדש.
+    2. [חבר את Failproof daemon לCloud](/he/start/setup#connect-a-machine-to-cloud) על מכונת הסוכן.
+    3. הרץ הפעלה מכוונת אחת, ואז מצא את המזהה המדויק שלה תחת **Observe → Events**.
+    4. עבור אל **Observe → Sessions**, בחר באותה סביבה ופתח את העקבה שחוזרה.
 
-    ![A custom Python agent session reconstructed as an execution graph and ordered event trace.](/images/dashboard/session-detail.png)
+    ![הפעלה של סוכן Python מותאמת שחוזרה כגרף ביצוע ועקבה של אירועים מסודרת.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -51,9 +51,9 @@ The package is installed as `failproofai-sdk` and imported in Python as `failpro
   </Tab>
 </Tabs>
 
-## עקוב אחר הפעלה שלמה
+## כוונן הרצה שלמה
 
-קרא ל-`configure()` פעם אחת בעת הפעלת התהליך. כל קריאת event היא keyword-only ודורשת `session_id` ו-`agent_id` יציבים.
+קרא ל-`configure()` פעם אחת בעת התחלת התהליך. כל קריאת אירוע היא keyword-only ודורשת `session_id` ו-`agent_id` יציבים.
 
 ```python
 import traceback
@@ -112,9 +112,9 @@ else:
     )
 ```
 
-פלוט `agent_start` פעם אחת לכל שחקן. לסוכנים משניים, השתמש מחדש ב-`session_id` של ההורה, תן לכל שחקן `agent_id` ייחודי, וקבע את `parent_id` ל-**agent ID** של ההורה, לא ל-session ID.
+פלוט `agent_start` פעם אחת לכל שחקן. עבור תת-סוכנים, השתמש חוזר ב-`session_id` של ההורה, תן לכל שחקן `agent_id` מובחן, והגדר `parent_id` ל-**agent ID** של ההורה, לא למזהה ההפעלה.
 
-## הפניה לתצורה
+## התייחסות תצורה
 
 ```python
 failproofai.configure(
@@ -124,22 +124,22 @@ failproofai.configure(
 )
 ```
 
-| Setting | Behavior |
+| הגדרה | התנהגות |
 | --- | --- |
-| `base_dir` | Explicit spool root. Takes precedence over all environment variables. |
-| `flush_interval` | Seconds between background writes from memory to JSONL. Default: `0.5`. |
-| `environment` | Deployment label on every event. Defaults to `dev`. |
-| `FAILPROOFAI_HOME` | Changes the Failproof AI root that contains the `custom-agents` spool. |
+| `base_dir` | שורש ספול מפורש. קודם לכל משתנים של סביבה. |
+| `flush_interval` | שניות בין כתיבות רקע מזיכרון ל-JSONL. ברירת מחדל: `0.5`. |
+| `environment` | תווית פריסה בכל אירוע. ברירת מחדל ל-`dev`. |
+| `FAILPROOFAI_HOME` | משנה את שורש Failproof AI המכיל את ה-`custom-agents` spool. |
 
-The SDK writes to the explicit `base_dir` when set. Otherwise, it uses the Failproof daemon's `custom-agents` spool under `FAILPROOFAI_HOME` or `~/.failproofai`.
+ה-SDK כותב ל-`base_dir` המפורש כשהוא מוגדר. אחרת, הוא משתמש בספול `custom-agents` של Failproof daemon תחת `FAILPROOFAI_HOME` או `~/.failproofai`.
 
-The SDK queues calls in memory and writes batches on a background thread. It also attempts a final flush through Python's `atexit` handling. For short-lived workers, allow normal interpreter shutdown; hard process termination can lose events still in memory.
+ה-SDK תוור קריאות בזיכרון וכותב אצווות בחוט רקע. הוא גם מנסה flush סופי דרך טיפול `atexit` של Python. עבור עובדים קצרי חיים, אפשר כיבוי מתורגם רגיל; סיום תהליך קשה יכול לאבד אירועים עדיין בזיכרון.
 
-## קטלוג ה-Event
+## קטלוג אירועים
 
-All methods return `None`. Fields left as `None` are omitted rather than written as JSON `null`.
+כל השיטות מחזירות `None`. שדות שנותרו כ-`None` מושמטים ולא כתובים כ-JSON `null`.
 
-| Method | Required fields beyond identity | Optional fields |
+| שיטה | שדות נדרשים מעבר לזהות | שדות אופציונליים |
 | --- | --- | --- |
 | `agent_start` | — | `goal`, `parent_id` |
 | `agent_end` | — | `outcome`, `summary` |
@@ -157,27 +157,27 @@ All methods return `None`. Fields left as `None` are omitted rather than written
 | `human_pause` | — | `reason`, `user_id` |
 | `human_interrupt` | — | `reason`, `user_id`, `at_step` |
 
-Use `outcome="failed"`, `"error"`, `"timeout"`, or `"rejected"` when a completion should count as a failure. Other values, including `"failure"`, are not classified as failures by the current backend.
+השתמש ב-`outcome="failed"`, `"error"`, `"timeout"`, או `"rejected"` כאשר השלמה צריכה להיספר ככישלון. ערכים אחרים, כולל `"failure"`, אינם מסווגים ככשלים על ידי ה-backend הנוכחי.
 
-## כללי מתאם ומשך
+## כללי קורלציה ומשך זמן
 
-- Reuse the same `tool_call_id`, `hook_id`, `pause_id`, or `input_id` for the matching completion event.
-- The SDK computes `duration_ms` for `tool_result`, `hook_completed`, `agent_resume`, and `human_input`. Passing it yourself to those methods raises `ValueError`.
-- Tool and hook IDs share one process-wide pending map. Make them globally unique across concurrent sessions and across both namespaces; provider IDs or UUIDs are safest.
-- A pair split across processes still correlates downstream, but the SDK cannot compute its in-process duration.
-- The pending map holds at most 10,000 starts and evicts the oldest entry when full.
+- השתמש חוזר באותו `tool_call_id`, `hook_id`, `pause_id`, או `input_id` עבור אירוע ההשלמה המתאים.
+- ה-SDK מחשב `duration_ms` עבור `tool_result`, `hook_completed`, `agent_resume`, ו-`human_input`. העברתו בעצמך לשיטות אלה מעלה `ValueError`.
+- זיהויים של כלים וחישוקים חולקים מפת pending אחת בחוץ תהליך. הפוך אותם ייחודיים בעולם על פני הפעלות בו-זמנית ועל פני שני מרחבי השמות; זיהויים מספקי או UUIDs הם בטוחים ביותר.
+- זוג מפוצל על פני תהליכים עדיין מתייחסות במורד הזרם, אך ה-SDK אינו יכול לחשב את משך ה-in-process שלו.
+- מפת ההמתנה מחזיקה לכל היותר 10,000 התחלות וסילוקי הכניסה הישנה ביותר כשהיא מלאה.
 
-## שדות וטעימות מותאמות
+## שדות וטעימות מותאמים
 
-Every event accepts extra keyword fields. Use JSON-compatible values when downstream queries need structure. Unsupported leaves such as UUIDs, datetimes, decimals, sets, bytes, and model objects are stringified by the writer.
+כל אירוע מקבל שדות keyword נוספים. השתמש בערכים תואמים JSON כאשר שאילתות במורד הזרם צריכות מבנה. עלים לא נתמכים כגון UUIDs, datetimes, decimals, sets, bytes, and model objects מחרוזים על ידי הכותב.
 
-Reserved custom names are `timestamp`, `session_id`, `agent_id`, `type`, and `environment`. Optional-field typos are accepted as new custom fields, so review emitted JSON when a standard field does not appear in Cloud.
+שמות מותאמים שמורים הם `timestamp`, `session_id`, `agent_id`, `type`, ו-`environment`. שגיאות באות field אופציונלית מתקבלות כשדות מותאמים חדשים, לכן בדוק את ה-JSON המופץ כאשר שדה סטנדרטי לא מופיע בCloud.
 
-## הספק ואמת
+## העבר ובדוק
 
 <Tabs>
-  <Tab title="Dashboard">
-    In **Observe → Events**, verify `agent_start` exists first and `agent_end` exists last. Then open **Observe → Sessions** and confirm model, tool, human, hook, and error events appear in the intended order. Use the session ID as the primary troubleshooting key.
+  <Tab title="לוח בקרה">
+    ב-**Observe → Events**, בדוק תחילה שקיים `agent_start` ו-`agent_end` קיים אחרון. לאחר מכן פתח **Observe → Sessions** ובדוק שמודל, כלים, אנוש, חישוק ואירועי שגיאה מופיעים בסדר הנדרש. השתמש במזהה ההפעלה כמפתח בעיות עיקרי.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -189,10 +189,10 @@ Reserved custom names are `timestamp`, `session_id`, `agent_id`, `type`, and `en
   </Tab>
 </Tabs>
 
-If Cloud is empty, inspect `$FAILPROOFAI_HOME/custom-agents/events`, otherwise `~/.failproofai/custom-agents/events`. JSONL files prove SDK emission; a growing spool points to daemon configuration or delivery, while an empty spool points to instrumentation or process lifetime.
+אם Cloud ריק, בדוק `$FAILPROOFAI_HOME/custom-agents/events`, אחרת `~/.failproofai/custom-agents/events`. קבצי JSONL מוכיחים פליטת SDK; ספול גדל מצביע על תצורת daemon או מסירה, בעוד שספול ריק מצביע על כיוונון או חיי תהליך.
 
 ## מנע כשלים בזמן ריצה מותאם
 
-Use audit findings and linked traces to define the unsafe action, required evidence, and intended response. A custom enforcement integration must expose the action before execution, pass its structured input to the policy engine, and apply the resulting allow, instruct, or deny decision.
+השתמש בממצאי ביקורת ובעקבות משובצות להגדרת הפעולה הלא בטוחה, ההוכחה הנדרשת והתגובה המכוונת. אינטגרציה אכיפה מותאמת חייבת לחשוף את הפעולה לפני ביצוע, להעביר את הקלט המובנה שלה לנוע המדיניות, וליישם את ההחלטה המותרת, הוראה, או סירוב.
 
-שלח דוא"ל ל-[support@befailproof.ai](mailto:support@befailproof.ai) כדי לעצב ולאמת את האינטגרציה הזו עבור זמן ההרצה שלך.
+שלח דוא"ל [support@befailproof.ai](mailto:support@befailproof.ai) כדי לעצב ולאמת אינטגרציה זו עבור זמן הריצה שלך.

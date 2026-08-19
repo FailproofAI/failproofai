@@ -1,26 +1,27 @@
 ---
-title: "Các khái niệm cốt lõi"
-description: "Tập hợp nhỏ các khái niệm được sử dụng trong suốt Failproof AI."
+---
+title: "Các khái niệm cơ bản"
+description: "Tập hợp các khái niệm nhỏ được sử dụng trong Failproof AI."
 icon: "boxes"
 ---
 
 | Khái niệm | Ý nghĩa | Những gì bạn có thể đạt được |
 | --- | --- | --- |
-| Session | Một nhiệm vụ hoặc lần chạy của agent | Tái tạo một kết quả riêng lẻ |
-| Event | Một hành động được ghi lại trong một session | Kiểm tra một lệnh gọi mô hình, cách sử dụng công cụ, lỗi, hành động của người dùng, hoặc quyết định chính sách |
-| Trace | Chế độ xem session được sắp xếp và lồng nhau | Hiểu mối quan hệ nhân quả thay vì đọc các bản ghi không liên kết |
-| Evaluation | Một điểm số hoặc phán xét về một session | Theo dõi chất lượng, tuân thủ, chi phí hoặc độ trễ liên tục |
-| Audit | Một đánh giá của một quần thể session được lựa chọn | Tìm kiếm các mẫu lỗi với một mục tiêu và tần suất xác định |
-| Finding | Một lỗi được phát hiện bởi một audit và được hỗ trợ bằng bằng chứng | Xem chế độ lỗi, mức độ nghiêm trọng, và các session bị ảnh hưởng |
-| Issue | Một bản ghi phản ứng bền vững | Gán, thảo luận, và giải quyết một finding hoặc sự cố alert |
-| Alert | Một quy tắc phát hiện sự tái diễn | Thông báo cho những người phản ứng khi một điều kiện đã biết trở lại |
-| Policy | Một quy tắc được đánh giá trong quá trình hoạt động của agent | Quan sát, chặn, hoặc chuyển hướng hành vi rủi ro |
-| Deployment | Một triển khai chính sách được phiên bản cho các máy | Kiểm soát nơi một chính sách chạy và khôi phục nó một cách an toàn |
+| Session | Một tác vụ hoặc lần chạy của agent | Tái thiết lập một kết quả riêng lẻ |
+| Event | Một hành động được ghi lại trong một session | Kiểm tra một cuộc gọi mô hình, sử dụng công cụ, lỗi, hành động con người hoặc quyết định chính sách |
+| Trace | Chế độ xem session có thứ tự và lồng nhau | Hiểu rõ nhân quả thay vì đọc các bản ghi disconnected |
+| Evaluation | Một điểm số hoặc đánh giá trên một session | Theo dõi chất lượng, tuân thủ, chi phí hoặc độ trễ một cách liên tục |
+| Audit | Một đánh giá của một nhóm session được chọn | Tìm kiếm các mẫu lỗi với một mục tiêu và chu kỳ được nêu rõ |
+| Finding | Một lỗi được phát hiện bằng bằng chứng thông qua kiểm toán | Xem chế độ lỗi, mức độ nghiêm trọng và các session bị ảnh hưởng |
+| Issue | Một bản ghi phản hồi bền vững | Gán, thảo luận và giải quyết một finding hoặc sự cố cảnh báo |
+| Alert | Một quy tắc phát hiện sự lặp lại | Thông báo cho những người phản ứng khi một điều kiện đã biết quay trở lại |
+| Policy | Một quy tắc được đánh giá trong quá trình hoạt động của agent | Quan sát, chặn hoặc chuyển hướng hành vi rủi ro |
+| Deployment | Triển khai chính sách được phiên bản cho các máy | Kiểm soát nơi chính sách chạy và quay lại một cách an toàn |
 
 ## Vòng lặp độ tin cậy
 
-Bắt đầu từ bằng chứng. Một session cho thấy những gì đã xảy ra. Một audit xác định xem đó có phải là một sai lầm cô lập hay một mẫu. Một finding xác định chế độ lỗi; một issue sở hữu phản ứng. Một policy ngăn chặn hành vi tương tự, trong khi các alert cho bạn biết nếu điều kiện trở lại.
+Bắt đầu từ bằng chứng. Một session cho thấy những gì đã xảy ra. Một audit xác định xem đó là một sai lầm cô lập hay một mẫu. Một finding xác định chế độ lỗi; một issue sở hữu phản hồi. Một policy ngăn chặn hành vi tương tự, trong khi các alert cho bạn biết nếu điều kiện quay trở lại.
 
 <Warning>
-  Một `failproofai audit` cục bộ quét lịch sử agent cục bộ. Một audit Cloud định kỳ xem xét các session được lưu trữ trong Failproof AI Cloud. Chúng là các quy trình riêng biệt với phạm vi và lịch biểu khác nhau.
+  Một `failproofai audit` cục bộ quét lịch sử agent cục bộ. Một audit Cloud định kỳ xem xét các session được lưu trữ trong Failproof AI Cloud. Chúng là những quy trình công việc riêng biệt với phạm vi và lịch trình khác nhau.
 </Warning>

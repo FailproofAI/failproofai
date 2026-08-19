@@ -1,6 +1,6 @@
 ---
 title: "Benutzerdefinierte Richtlinien"
-description: "Schreibe eine Richtlinie für einen Fehlerfall, der spezifisch für deinen Agenten-Workflow ist."
+description: "Schreibe eine Richtlinie für einen Fehlerfall, der spezifisch für deinen Agent-Workflow ist."
 icon: "shield-plus"
 ---
 
@@ -10,10 +10,10 @@ Erstelle eine Datei mit der Endung `policies.js`, `policies.mjs` oder `policies.
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Installiere die benutzerdefinierte Richtlinie auf einem Testrechner und löse sowohl eine übereinstimmende Aktion als auch eine legitime Nicht-Übereinstimmung aus.
-    2. Gehe zu **Beobachten → Richtlinie** und vergleiche die beiden Entscheidungen.
-    3. Öffne jede verknüpfte Sitzung und überprüfe, ob der Event-Payload ausreichend Belege für die Regel enthält.
-    4. Sobald das Verhalten korrekt ist, übertrage den geprüften Quellcode in **Admin → Richtlinien-Editor** und veröffentliche eine Version.
+    1. Installiere die benutzerdefinierte Richtlinie auf einer Testmaschine und löse sowohl eine passende Aktion als auch eine legitime Nicht-Übereinstimmung aus.
+    2. Gehe zu **Observe → policy** und vergleiche die beiden Entscheidungen.
+    3. Öffne jede verlinkte Sitzung und überprüfe, ob das Ereignis-Payload ausreichend Belege für die Regel enthält.
+    4. Wenn das Verhalten korrekt ist, verschiebe den geprüften Quellcode in **Admin → policy editor** und veröffentliche eine Version.
 
   </Tab>
   <Tab title="CLI">
@@ -23,7 +23,7 @@ Erstelle eine Datei mit der Endung `policies.js`, `policies.mjs` oder `policies.
     failproofai policies
     ```
 
-    Konventionsdateien unter `.failproofai/policies/` werden ohne `--custom` geladen. Behalte einen expliziten Installationsbefehl in CI, wenn die Validierung bei einem fehlerhaften Modul fehlschlagen soll.
+    Konventionsdateien unter `.failproofai/policies/` werden ohne `--custom` geladen. Behalte einen expliziten Installationsbefehl in CI, wenn die Validierung bei einem fehlerhaften Modul scheitern soll.
   </Tab>
 </Tabs>
 
@@ -45,28 +45,28 @@ customPolicies.add({
 });
 ```
 
-Dies trifft auf `production/config.yml`, `/srv/production/config.yml`, `/srv/production` und `C:\\production\\config.yml` für sowohl `Write` als auch `Edit` zu. Namen wie `production-backup` werden nicht erfasst, da `production` ein vollständiges Pfadsegment sein muss.
+Dies trifft auf `production/config.yml`, `/srv/production/config.yml`, `/srv/production` und `C:\\production\\config.yml` sowohl für `Write` als auch für `Edit` zu. Namen wie `production-backup` werden nicht erfasst, da `production` ein vollständiges Pfadsegment sein muss.
 
-Eine explizite Datei validieren und installieren:
+Explizite Datei validieren und installieren:
 
 ```bash
 failproofai policies --install --custom ./security.policies.ts
 ```
 
-Der Richtlinienkontext enthält den Event-Typ, normalisierten Payload, Tool-Namen und -Eingabe, Sitzungsmetadaten, Parameter und die Quell-CLI, sofern verfügbar.
+Der Richtlinienkontext umfasst den Ereignistyp, den normalisierten Payload, den Tool-Namen und -Input, Sitzungsmetadaten, Parameter sowie die Quell-CLI, sofern verfügbar.
 
 ## Fehlerpfade testen
 
-Führe die Validierung nach dem Ändern der Einstiegsdatei oder eines lokalen Moduls aus, das sie importiert:
+Führe die Validierung nach dem Ändern der Einstiegsdatei oder eines lokalen Moduls durch, das sie importiert:
 
 ```bash
 failproofai policies --install --custom ./security.policies.ts --scope project
 ```
 
-Der strikte CLI-Pfad schlägt fehl bei fehlenden Dateien, Syntaxfehlern, nicht aufgelösten Importen, Ausnahmen auf oberster Ebene und Modul-Lade-Timeouts. Zum Durchsetzungszeitpunkt wird eine fehlerhafte benutzerdefinierte Datei protokolliert und übersprungen, damit die eingebauten Richtlinien weiter ausgeführt werden können. Behandle jede Ladewarnung als Verlust der erwarteten Durchsetzung und löse in Produktionsprotokollen einen Alarm aus.
+Der strikte CLI-Pfad schlägt bei fehlenden Dateien, Syntaxfehlern, unaufgelösten Importen, Ausnahmen auf oberster Ebene und Modul-Lade-Timeouts fehl. Zum Zeitpunkt der Durchsetzung wird eine fehlerhafte benutzerdefinierte Datei protokolliert und übersprungen, sodass die eingebauten Richtlinien weiter ausgeführt werden können. Behandle jede Ladewarnung als Verlust der erwarteten Durchsetzung und erstelle dafür Alarme in den Produktionsprotokollen.
 
-Verwende global eindeutige Namen für explizite, Konventions- und Cloud-verwaltete Richtlinien. Halte Richtlinienfunktionen deterministisch, begrenze externe Aufrufe mit kurzen Timeouts, und gib auf jedem Pfad ein bewusstes `allow`, `instruct` oder `deny` zurück.
+Verwende global eindeutige Namen für explizite, konventionsbasierte und Cloud-verwaltete Richtlinien. Halte Richtlinienfunktionen deterministisch, begrenze externe Aufrufe mit kurzen Timeouts, und gib auf jedem Pfad ein beabsichtigtes `allow`, `instruct` oder `deny` zurück.
 
 <Warning>
-  Eine benutzerdefinierte Richtlinie ist Durchsetzungscode. Teste fehlende Felder, alternative Tool-Namen und fehlerhafte Eingaben – nicht nur den erwarteten Übereinstimmungsfall.
+  Eine benutzerdefinierte Richtlinie ist Durchsetzungscode. Teste fehlende Felder, alternative Tool-Namen und fehlerhafte Eingaben – nicht nur die erwartete Übereinstimmung.
 </Warning>

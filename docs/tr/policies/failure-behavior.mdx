@@ -4,16 +4,16 @@ description: "İlke değerlendirmesi veya yerel daemon kullanılamadığında ne
 icon: "shield-alert"
 ---
 
-Failproof AI, bir zorlama hatası görünür olacak şekilde tasarlanmıştır; riskli işler sessizce izin verilmez.
+Failproof AI, bir zorlama hatasının görünür olması için tasarlanmıştır; riskli çalışmaya sessizce izin verilmez.
 
-## Hata-kapalı bir bloğu tanılayın
+## Başarısız-kapalı bir engeli tanıla
 
 <Tabs>
   <Tab title="Gösterge Paneli">
-    1. **Admin → enforcement** bölümüne gidin ve makineyi açın.
-    2. Son kontrol zamanını, atanan dağıtımını ve bildirilen dağıtımını kontrol edin.
-    3. **Observe → policy** bölümüne gidin ve reddedilen kararın oturumunu açın.
-    4. Nedenin daemon erişilebilirliğini, sürüm uyumsuzluğunu veya ilkenin kendisini bildirip bildirmediğini doğrulayın.
+    1. **Admin → enforcement** seçeneğine gidin ve makineyi açın.
+    2. Son check-in, atanan dağıtım ve bildirilen dağıtımını kontrol edin.
+    3. **Observe → policy** seçeneğine gidin ve reddedilen kararın oturumunu açın.
+    4. Nedenin daemon erişilebilirliği, sürüm uyumsuzluğu veya ilkenin kendisini bildirip bildirmediğini doğrulayın.
 
   </Tab>
   <Tab title="CLI">
@@ -23,21 +23,21 @@ Failproof AI, bir zorlama hatası görünür olacak şekilde tasarlanmıştır; 
     failproofai config
     ```
 
-    `failproofai config` komutunu yeniden çalıştırmak, paket yükseltmesinden sonra daemon'u günceller ve yeniden başlatır.
+    `failproofai config` komutunu yeniden çalıştırmak, paket yükseltmesinden sonra daemon'u güncelleştirir ve yeniden başlatır.
   </Tab>
 </Tabs>
 
-`failproofaid` kullanacak şekilde yapılandırılmış bir makinede, daemon tek değerlendiriciydir. Erişilemez olması veya protokol sürümü CLI ile eşleşmemesi durumunda, kanca değerlendirmesi kapalı şekilde başarısız olur. İşlem, operatörü daemon'u kontrol etmeye veya güncellemeye yönlendiren bir nedenle reddedilir.
+`failproofaid` kullanacak şekilde yapılandırılmış bir makinede, daemon tek değerlendiricisidir. Erişilemezse veya protokol sürümü CLI ile eşleşmezse, hook değerlendirmesi başarısız-kapalı olur. İşlem, operatörü daemon'u kontrol etmeye veya güncellemeye yönlendiren bir nedenle reddedilir.
 
-Daemon yapılandırmasından önce, kancalar ilkeleri işlem içinde değerlendirir. Daemon yapılandırması kaydedildikten sonra, Failproof AI daemon başarısız olduğunda sessizce ikinci bir değerlendiriciye geri dönmez.
+Daemon yapılandırmasından önce, hook'lar ilkeleri işlem içinde değerlendirir. Daemon yapılandırması kaydedildikten sonra, Failproof AI daemon başarısız olduğunda sessizce ikinci bir değerlendiriciye geri dönmez.
 
-## Hata-kapalı bir karara yanıt verin
+## Başarısız-kapalı bir kararla yanıt ver
 
 1. `failproofai config --status` komutunu çalıştırın.
 2. Sürümler farklıysa, paketi güncelledikten sonra `failproofai config` komutunu yeniden çalıştırın.
-3. Daemon erişilemez durumda ise, hizmet durumunu ve yerel günlükleri kontrol edin.
-4. Bilinen bir ilke değerlendirme yolu sağlıklı olduktan sonra aracı işini sürdürün.
+3. Daemon erişilemezse, hizmet durumunu ve yerel günlükleri inceleyin.
+4. Bilinen bir ilke değerlendirme yolu sağlıklı olduktan sonra, agent çalışmasını sürdürün.
 
 <Warning>
-  Engellenen işlemi tekrar tekrar denemeyin. Hata-kapalı bir yanıt, sistemin işlemin güvenli olduğunu belirleyemediği anlamına gelir.
+  Engellenen işlemi tekrar tekrar denemeyin. Başarısız-kapalı bir yanıt, sistemin işlemin güvenli olduğunu tespit edemediği anlamına gelir.
 </Warning>

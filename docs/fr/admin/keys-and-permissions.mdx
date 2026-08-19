@@ -1,10 +1,10 @@
 ---
 title: "Clés et permissions"
-description: "Créez des clés API à portée limitée pour les machines, l'automatisation et les opérateurs."
+description: "Créez des clés API à périmètre restreint pour les machines, l'automatisation et les opérateurs."
 icon: "key-round"
 ---
 
-Les clés API appartiennent à une organisation et portent des permissions explicites. Utilisez des clés distinctes pour l'ingestion d'agents, la livraison de politiques, les évaluateurs, l'automatisation CI et les scripts d'administration.
+Les clés API appartiennent à une organisation et portent des permissions explicites. Utilisez des clés distinctes pour l'ingestion d'agents, la distribution de politiques, les évaluateurs, l'automatisation CI et les scripts d'administration.
 
 ## Créer et faire tourner une clé
 
@@ -21,7 +21,7 @@ Les clés API appartiennent à une organisation et portent des permissions expli
 
     Après la création, la page Clés affiche les métadonnées persistantes et les actions de gestion. Le secret à usage unique n'est plus affiché.
 
-    ![La page Clés API affichant les permissions des clés, l'heure de création, ainsi que les actions de régénération et de désactivation.](/images/dashboard/api-keys.png)
+    ![La page Clés API affichant les permissions des clés, la date de création, ainsi que les actions de régénération et de désactivation.](/images/dashboard/api-keys.png)
 
     Utilisez cette liste pour examiner régulièrement les autorisations et désactiver les clés qui ne correspondent plus à une charge de travail active.
   </Tab>
@@ -36,16 +36,16 @@ Les clés API appartiennent à une organisation et portent des permissions expli
     fp keys disable production-agents
     ```
 
-    Redirigez ou capturez le résultat des commandes create/regenerate de manière sécurisée ; le secret n'est retourné qu'une seule fois.
+    Redirigez ou capturez de manière sécurisée la sortie des commandes create/regenerate ; le secret n'est retourné qu'une seule fois.
   </Tab>
 </Tabs>
 
 Les deux permissions requises par une machine Failproof AI connectée sont indépendantes :
 
-- `events:add` envoie les événements et les données de session.
-- `policies:pull` récupère les déploiements de politiques assignées.
+- `events:add` envoie des événements et des données de session.
+- `policies:pull` récupère les déploiements de politiques assignés.
 
-Les secrets de clé sont affichés lors de leur création ou régénération. Stockez-les dans un gestionnaire de secrets et faites-les tourner sans réutiliser les identifiants interactifs d'un opérateur.
+Les secrets de clés sont affichés lors de leur création ou régénération. Stockez-les dans un gestionnaire de secrets et faites-les tourner sans réutiliser les identifiants interactifs d'un opérateur.
 
 ## Catalogue des permissions
 
@@ -65,10 +65,10 @@ Les secrets de clé sont affichés lors de leur création ou régénération. St
 | Politiques | `policies:read`, `policies:write`, `policies:pull` |
 | Utilisation | `usage:read` |
 
-`orgs:admin` est réservé à l'opérateur de l'instance et ne peut pas être accordé à une clé d'organisation ou à un membre ordinaire. Les jetons `incidents:*` et `alerts:ack` retirés sont acceptés pour des raisons de compatibilité et se normalisent vers les permissions `issues:*` actuelles.
+`orgs:admin` est réservé à l'opérateur de l'instance et ne peut pas être accordé à une clé d'organisation ni à un membre ordinaire. Les tokens `incidents:*` et `alerts:ack` retirés sont acceptés pour des raisons de compatibilité et sont normalisés vers les permissions `issues:*` actuelles.
 
 Les ensembles de permissions intégrés sont `read-only`, `standard` et `admin`. `standard` ajoute le déclenchement d'évaluations, l'exécution de requêtes, la gestion des incidents et l'utilisation de l'assistant aux permissions de lecture. La création de clés supprime les autorisations réservées aux humains, même lorsqu'un ensemble de permissions en contient.
 
 <Warning>
-  Les clés à portée d'instance peuvent sélectionner une organisation via l'en-tête `X-AgentEye-Org`. Définissez-le explicitement sur les déploiements multi-organisations ; son omission peut entraîner la sélection de l'organisation par défaut.
+  Les clés à périmètre instance peuvent sélectionner une organisation via l'en-tête `X-AgentEye-Org`. Définissez-le explicitement sur les déploiements multi-organisations ; son omission peut entraîner la sélection de l'organisation par défaut.
 </Warning>

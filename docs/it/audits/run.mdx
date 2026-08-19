@@ -1,21 +1,21 @@
 ---
-title: "Eseguire e revisionare un audit"
-description: "Eseguire un audit, verificarne la copertura e ispezionare i risultati."
+title: "Eseguire e rivedere un audit"
+description: "Esegui un audit, verifica la sua copertura e ispeziona i risultati trovati."
 icon: "play"
 ---
 
-Esegui un audit dopo che il suo obiettivo e la sua popolazione sono sufficientemente specifici da consentire a un altro operatore di riconoscere un risultato valido.
+Esegui un audit dopo che il suo obiettivo e la sua popolazione sono sufficientemente specifici affinché un altro operatore sappia come appare un risultato valido.
 
-## Eseguire e ispezionare
+## Eseguire e ispezionarlo
 
 <Tabs>
   <Tab title="Dashboard">
     1. Vai a **Analyze → Audits**, apri l'audit e seleziona **run now**. Una risposta in coda significa che il dispatcher lo avvierà a breve.
-    2. Apri la nuova esecuzione per revisionare il suo stato, la finestra, la durata, i conteggi dei risultati e il report.
-    3. Seleziona una sessione di evidenza per aprire la traccia esatta.
-    4. Ritorna alla pagina dell'audit per modificare le impostazioni, disabilitare la pianificazione o ispezionare esecuzioni precedenti.
+    2. Apri la nuova esecuzione per rivedere il suo stato, finestra, durata, conteggi dei risultati e report.
+    3. Seleziona una sessione di prova per aprire la traccia esatta.
+    4. Ritorna alla pagina dell'audit per modificare le impostazioni, disabilitare la pianificazione o ispezionare le esecuzioni precedenti.
 
-    ![Una pagina di dettaglio dell'audit con risultati aperti, stato ultimo e prossimo esecuzione, finestra di scansione, contesto, controllo run-now e risultati classificati.](/images/dashboard/audit-detail.png)
+    ![Una pagina di dettaglio dell'audit con risultati aperti, stato dell'ultima e prossima esecuzione, finestra di sweep, contesto, controllo run-now e risultati classificati.](/images/dashboard/audit-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -25,43 +25,43 @@ Esegui un audit dopo che il suo obiettivo e la sua popolazione sono sufficientem
     fp audits findings --audit checkout-reliability
     ```
 
-    Consulta il [riferimento `fp audits`](/it/reference/cloud-cli#audits) per i comandi di cronologia esecuzioni, risultati e triage.
+    Consulta il [riferimento `fp audits`](/it/reference/cloud-cli#audits) per la cronologia delle esecuzioni, i risultati e i comandi di triage.
   </Tab>
 </Tabs>
 
 ## Prima di eseguire
 
 - Conferma che le sessioni esistono nella finestra temporale selezionata.
-- Verifica i filtri di ambiente e agente.
+- Verifica i filtri di ambiente e agent.
 - Controlla che il contesto di riferimento sia aggiornato.
 - Assicurati che l'obiettivo descriva una modalità di errore, non una conclusione desiderata.
 
-## Revisionare l'esecuzione
+## Rivedere l'esecuzione
 
-Inizia con lo stato dell'esecuzione, la copertura della sessione e se l'analisi del modello è stata eseguita. Quindi ispeziona la gravità, la descrizione, le sessioni di evidenza, le query di supporto e il percorso di prevenzione suggerito di ogni risultato.
+Inizia con lo stato dell'esecuzione, la copertura della sessione e se l'analisi del modello è stata eseguita. Quindi ispeziona la gravità di ogni risultato, la descrizione, le sessioni di prova, le query di supporto e il percorso di prevenzione suggerito.
 
-Usa lo stato del risultato per riconoscere, silenziare, scartare, risolvere, riaprire o assegnare lavoro. Preserva l'evidenza anche quando il risultato viene scartato; spiega il motivo della decisione.
+Utilizza lo stato del risultato per riconoscere, silenziare, scartare, risolvere, riaprire o assegnare lavoro. Conserva la prova anche quando il risultato viene scartato; spiega il motivo della decisione.
 
 ## Interpretare un'esecuzione vuota o ritardata
 
-| Condizione di esecuzione | Significato | Azione |
+| Condizione di esecuzione | Cosa significa | Cosa fare |
 | --- | --- | --- |
-| L'analisi è stata eseguita e ha prodotto zero risultati | L'evidenza selezionata non ha supportato un risultato con la sensibilità configurata. | Conferma che l'ambito contiene sessioni rappresentative, quindi considera il risultato come sano a meno che l'obiettivo o il contesto fosse troppo vago. |
-| L'analisi del modello è stata saltata o non riuscita | L'esecuzione si completa con zero risultati, ma non ha eseguito l'indagine agenziale. La scansione deterministica di credenziali e PII riporta comunque i conteggi delle corrispondenze nelle statistiche di esecuzione ma non crea risultati. | Correggi il servizio di analisi o la configurazione e riesegui. Non interpretare il risultato vuoto come prova che la popolazione sia sana. |
-| L'analisi del modello è disabilitata | L'esecuzione riesce con zero risultati. La scansione deterministica non sostituisce l'analisi del modello né apre risultati. | Abilita l'analisi del modello o disabilita l'audit piuttosto che affidarsi a un audit che non può produrre risultati. |
-| Nessuna capacità di analisi è immediatamente disponibile | L'audit rimane in coda e riprova invece di saltare la popolazione. | Attendi la capacità o distribuisci gli ancoraggi dell'audit. Gli operatori self-hosted devono aumentare le repliche audit-agent e la capacità dispatcher corrispondente. |
-| La capacità rimane non disponibile per la finestra di retry | L'esecuzione si interrompe con zero risultati e invia una notifica di errore quando la consegna della posta è disponibile. | Verifica se la flotta di audit è satura o si riavvia ripetutamente. |
+| L'analisi è stata eseguita e ha prodotto zero risultati | Le prove selezionate non hanno supportato un risultato alla sensibilità configurata. | Conferma che l'ambito contiene sessioni rappresentative, quindi tratta il risultato come sano a meno che l'obiettivo o il contesto non fossero troppo vaghi. |
+| L'analisi del modello è stata saltata o non ha avuto esito positivo | L'esecuzione si completa con zero risultati, ma non ha eseguito l'indagine agenziale. La scansione deterministica delle credenziali e dei dati PII segnala comunque i conteggi delle corrispondenze nelle statistiche di esecuzione ma non crea risultati. | Ripara il servizio di analisi o la configurazione e riesegui. Non interpretare il risultato vuoto come prova che la popolazione è sana. |
+| L'analisi del modello è disabilitata | L'esecuzione riesce con zero risultati. La scansione deterministica non sostituisce l'analisi del modello né apre risultati. | Abilita l'analisi del modello o disabilita l'audit piuttosto che basarsi su un audit che non può produrre risultati. |
+| Nessuna capacità di analisi è immediatamente disponibile | L'audit rimane in coda e ritenta invece di saltare la popolazione. | Attendi la capacità o distribuisci gli ancoraggi dell'audit. Gli operatori auto-ospitati devono scalare le repliche audit-agent e la corrispondente capacità del dispatcher. |
+| La capacità rimane non disponibile per la finestra di retry | L'esecuzione si interrompe con zero risultati e invia una notifica di errore quando la consegna della posta è disponibile. | Controlla se la flotta di audit è satura o si sta riavviando ripetutamente. |
 
-Quando l'analisi non viene eseguita, gli audit `since_last` mantengono quella finestra non analizzata aperta per la prossima esecuzione riuscita. I risultati esistenti non vengono ritirati perché un'analisi saltata non è una prova che l'errore sia scomparso.
+Quando l'analisi non viene eseguita, gli audit `since_last` mantengono aperta quella finestra non analizzata per la prossima esecuzione riuscita. I risultati esistenti non vengono ritirati perché un'analisi saltata non è una prova che l'errore sia scomparso.
 
 ## Comprendere le notifiche di errore
 
-Un'esecuzione non riuscita o un passaggio di analisi del modello non riuscito utilizza i destinatari di posta elettronica dell'audit. Se l'audit non dispone di un canale di posta elettronica, Failproof AI ricorre all'impostazione `alerts.email_default_recipients` dell'organizzazione in modo che un audit silenziosamente rotto abbia comunque un percorso di escalation.
+Un'esecuzione non riuscita o un passaggio di analisi del modello non riuscito utilizza i destinatari di posta dell'audit. Se l'audit non ha un canale di posta, Failproof AI ricade sui `alerts.email_default_recipients` dell'organizzazione in modo che un audit silenziosamente non funzionante abbia comunque un percorso di escalation.
 
-La posta elettronica deve essere abilitata per l'organizzazione e SMTP deve essere configurato. Altrimenti l'errore viene registrato ma nessuna e-mail può essere consegnata. Gli errori di esecuzione non spostano l'ancoraggio della pianificazione fissa dell'audit.
+La posta deve essere abilitata per l'organizzazione e SMTP deve essere configurato. Altrimenti l'errore viene registrato ma nessuna posta può essere consegnata. Gli errori di esecuzione non spostano l'ancoraggio della pianificazione fissa dell'audit.
 
-Ogni esecuzione memorizza inoltre il [contesto dell'agente](/it/audits/agent-contracts) esatto utilizzato per ogni agente come snapshot del contratto. Gli edit successivi non modificano lo standard di evidenza registrato con un'esecuzione precedente.
+Ogni esecuzione archivia anche il contesto esatto dell'[agent](/it/audits/agent-contracts) utilizzato per ogni agent come snapshot del contratto. Le modifiche successive non cambiano lo standard di prova registrato con un'esecuzione precedente.
 
 <Warning>
-  Non distribuire una policy di blocco direttamente da un risultato non verificato. Apri le tracce citate e conferma che la regola separa il comportamento non sicuro dal lavoro legittimo.
+  Non distribuire una politica di blocco direttamente da un risultato non verificato. Apri le tracce citate e conferma che la regola separa il comportamento non sicuro dal lavoro legittimo.
 </Warning>

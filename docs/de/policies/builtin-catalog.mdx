@@ -1,14 +1,14 @@
 ---
-title: "Integrierter Richtlinienkatalog"
-description: "Übersicht aller integrierten Failproof AI-Richtlinien mit Auslöser, empfohlenem Status und konfigurierbaren Parametern."
+title: "Integrierter Policy-Katalog"
+description: "Übersicht aller integrierten Failproof AI Policies mit Auslöser, empfohlenem Zustand und konfigurierbaren Parametern."
 icon: "list-checks"
 ---
 
-Das installierte Paket ist die maßgebliche Quelle für die verfügbaren Richtlinien. Führen Sie nach jedem Upgrade `failproofai policies` aus, da sich Katalogeinträge und Verhalten mit der Paketversion ändern können.
+Das installierte Paket ist die maßgebliche Quelle für die verfügbaren Policies. Führen Sie nach jedem Upgrade `failproofai policies` aus, da sich Katalogeinträge und Verhalten mit der Paketversion ändern können.
 
 ## Empfohlene Basiskonfiguration
 
-Die beim geführten Setup empfohlene Auswahl aktiviert derzeit Secret-Sanitizer, Umgebungsschutz, Selbstschutz, Schutz vor katastrophalen Befehlen sowie Sicherheit für geschützte Branches:
+Die empfohlene Auswahl des geführten Setups aktiviert derzeit Secret-Sanitizer, Umgebungsschutz, Selbstschutz, Schutz vor katastrophalen Befehlen sowie Sicherheit für geschützte Branches:
 
 ```text
 sanitize-jwt                 sanitize-api-keys
@@ -21,80 +21,80 @@ block-rm-rf                  block-push-master
 block-force-push
 ```
 
-Die Empfehlung ist bewusst schmaler als **Alles**. Infrastruktur- und Workflow-Richtlinien können legitime Arbeit unterbrechen und sollten nur für die Repositories und Maschinen aktiviert werden, die sie benötigen.
+Die empfohlene Auswahl ist bewusst schmaler als **Alles**. Infrastruktur- und Workflow-Policies können legitime Arbeit unterbrechen und sollten nur für die Repositories und Maschinen aktiviert werden, die sie tatsächlich benötigen.
 
 ## Secrets und Umgebung
 
-| Richtlinie | Auslöser | Ergebnis |
+| Policy | Auslöser | Ergebnis |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | Entfernt JWTs aus der Tool-Ausgabe, bevor das Modell sie sieht. |
-| `sanitize-api-keys` | `PostToolUse` | Entfernt gängige OpenAI-, Anthropic-, GitHub-, AWS-, Stripe- und Google-Schlüssel. |
-| `sanitize-connection-strings` | `PostToolUse` | Entfernt Datenbankverbindungszeichenfolgen, die Zugangsdaten enthalten. |
-| `sanitize-private-key-content` | `PostToolUse` | Entfernt PEM-Private-Key-Inhalte. |
-| `sanitize-bearer-tokens` | `PostToolUse` | Entfernt Authorization-Bearer-Tokens. |
-| `protect-env-vars` | `PreToolUse` bei Shell-Tools | Blockiert Befehle, die Umgebungsvariablen ausgeben. |
-| `block-env-files` | `PreToolUse` | Blockiert das Lesen und Schreiben von `.env`-Dateien. |
-| `block-read-outside-cwd` | `PreToolUse` bei Lese-, Glob-, Grep- oder Shell-Tools | Beschränkt Lesezugriffe auf das Arbeitsverzeichnis der Sitzung. |
-| `block-secrets-write` | `PreToolUse` bei Schreib-Tools | Blockiert Schreibzugriffe auf bekannte Secret-Key- und Anmeldedatei-Namen. |
+| `sanitize-jwt` | `PostToolUse` | JWTs aus der Tool-Ausgabe entfernen, bevor das Modell sie sieht. |
+| `sanitize-api-keys` | `PostToolUse` | Gängige OpenAI-, Anthropic-, GitHub-, AWS-, Stripe- und Google-Schlüssel entfernen. |
+| `sanitize-connection-strings` | `PostToolUse` | Datenbankverbindungszeichenfolgen mit Zugangsdaten entfernen. |
+| `sanitize-private-key-content` | `PostToolUse` | PEM-Private-Key-Inhalte entfernen. |
+| `sanitize-bearer-tokens` | `PostToolUse` | Authorization-Bearer-Token entfernen. |
+| `protect-env-vars` | `PreToolUse` auf Shell-Tools | Befehle blockieren, die Umgebungsvariablen ausgeben. |
+| `block-env-files` | `PreToolUse` | Lese- und Schreibzugriffe auf `.env`-Dateien blockieren. |
+| `block-read-outside-cwd` | `PreToolUse` auf Lese-, Glob-, Grep- oder Shell-Tools | Lesezugriffe auf das Arbeitsverzeichnis der Sitzung beschränken. |
+| `block-secrets-write` | `PreToolUse` auf Schreib-Tools | Schreibzugriffe auf bekannte Secret-Key- und Credential-Dateinamen blockieren. |
 
 ## Gefährliche Befehle und Infrastruktur
 
-| Richtlinie | Auslöser | Ergebnis |
+| Policy | Auslöser | Ergebnis |
 | --- | --- | --- |
 | `block-self-pause` | `PreToolUse`, `PermissionRequest` | Verhindert, dass ein Agent seine eigene Durchsetzung pausiert. |
-| `block-sudo` | `PreToolUse`, `PermissionRequest` | Blockiert `sudo`, sofern kein Allow-Pattern übereinstimmt. |
-| `block-curl-pipe-sh` | `PreToolUse` | Blockiert heruntergeladene Skripte, die direkt an eine Shell weitergeleitet werden. |
-| `block-rm-rf` | `PreToolUse` | Blockiert katastrophale rekursive Löschmuster. |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` | `sudo` blockieren, sofern kein Allow-Muster übereinstimmt. |
+| `block-curl-pipe-sh` | `PreToolUse` | Heruntergeladene Skripte blockieren, die direkt an eine Shell weitergeleitet werden. |
+| `block-rm-rf` | `PreToolUse` | Katastrophale rekursive Löschmuster blockieren. |
 | `block-failproofai-commands` | `PreToolUse` | Verhindert, dass Agents Failproof AI ändern oder deinstallieren. |
-| `block-kubectl` | `PreToolUse` | Kontrolliert Kubernetes-Befehle. |
-| `block-terraform` | `PreToolUse` | Kontrolliert Terraform- und OpenTofu-Befehle. |
-| `block-aws-cli` | `PreToolUse` | Kontrolliert AWS-CLI-Befehle. |
-| `block-gcloud` | `PreToolUse` | Kontrolliert Google-Cloud-CLI-Befehle. |
-| `block-az-cli` | `PreToolUse` | Kontrolliert Azure-CLI-Befehle. |
-| `block-helm` | `PreToolUse` | Kontrolliert Helm-Befehle. |
-| `block-gh-pipeline` | `PreToolUse` | Kontrolliert mutierende GitHub-CLI-Operationen für Workflows, Runs, Merges, Releases, Caches und Secrets. |
+| `block-kubectl` | `PreToolUse` | Kubernetes-Befehle absichern. |
+| `block-terraform` | `PreToolUse` | Terraform- und OpenTofu-Befehle absichern. |
+| `block-aws-cli` | `PreToolUse` | AWS-CLI-Befehle absichern. |
+| `block-gcloud` | `PreToolUse` | Google-Cloud-CLI-Befehle absichern. |
+| `block-az-cli` | `PreToolUse` | Azure-CLI-Befehle absichern. |
+| `block-helm` | `PreToolUse` | Helm-Befehle absichern. |
+| `block-gh-pipeline` | `PreToolUse` | Mutierende GitHub-CLI-Operationen für Workflow, Run, Merge, Release, Cache und Secrets absichern. |
 
 ## Git- und Datenbanksicherheit
 
-| Richtlinie | Auslöser | Ergebnis |
+| Policy | Auslöser | Ergebnis |
 | --- | --- | --- |
-| `block-push-master` | `PreToolUse` | Blockiert direkte Pushes auf konfigurierte geschützte Branches. |
-| `block-force-push` | `PreToolUse` | Blockiert Force-Pushes; `--force-with-lease` bleibt in der aktuellen Implementierung erlaubt. |
-| `block-work-on-main` | `PreToolUse` | Blockiert Commits und Merges auf geschützten Branches. |
-| `warn-git-amend` | `PreToolUse` | Warnt vor dem Überschreiben eines Commits mit `--amend`. |
-| `warn-git-stash-drop` | `PreToolUse` | Warnt vor dem dauerhaften Löschen oder Leeren von Stashes. |
-| `warn-all-files-staged` | `PreToolUse` | Warnt bei breitem `git add -A`, `git add .` oder `git add --all`. |
-| `warn-destructive-sql` | `PreToolUse` | Warnt bei `DROP`, `TRUNCATE` und `DELETE` ohne `WHERE` über erkannte Datenbankclients. |
-| `warn-schema-alteration` | `PreToolUse` | Warnt bei erkannten `ALTER TABLE`-Spalten- und Umbenennungsoperationen. |
+| `block-push-master` | `PreToolUse` | Direkte Pushes auf konfigurierte geschützte Branches blockieren. |
+| `block-force-push` | `PreToolUse` | Force-Pushes blockieren; `--force-with-lease` bleibt in der aktuellen Implementierung erlaubt. |
+| `block-work-on-main` | `PreToolUse` | Commits und Merges auf geschützten Branches blockieren. |
+| `warn-git-amend` | `PreToolUse` | Warnung vor dem Überschreiben eines Commits mit `--amend`. |
+| `warn-git-stash-drop` | `PreToolUse` | Warnung vor dem dauerhaften Löschen oder Leeren von Stashes. |
+| `warn-all-files-staged` | `PreToolUse` | Warnung bei umfassendem `git add -A`, `git add .` oder `git add --all`. |
+| `warn-destructive-sql` | `PreToolUse` | Warnung bei `DROP`, `TRUNCATE` und `DELETE` ohne `WHERE` über bekannte Datenbankclients. |
+| `warn-schema-alteration` | `PreToolUse` | Warnung bei erkannten `ALTER TABLE`-Spalten- und Umbenennungsoperationen. |
 
-## Pakete, Systemverhalten und Agentenschleifen
+## Pakete, Systemverhalten und Agent-Schleifen
 
-| Richtlinie | Auslöser | Ergebnis |
+| Policy | Auslöser | Ergebnis |
 | --- | --- | --- |
-| `warn-package-publish` | `PreToolUse` | Warnt vor dem Veröffentlichen in Paket-Registries. |
-| `warn-global-package-install` | `PreToolUse` | Warnt vor der globalen Installation von Paketen. |
-| `prefer-package-manager` | `PreToolUse` | Weist den Agenten an, einen erlaubten Paketmanager zu verwenden. |
-| `warn-large-file-write` | `PreToolUse` bei Schreib-Tools | Warnt oberhalb des konfigurierten Dateigrößen-Schwellenwerts. |
-| `warn-background-process` | `PreToolUse` | Warnt bei abgekoppelten oder langlebigen Hintergrundprozess-Mustern. |
-| `warn-repeated-tool-calls` | `PreToolUse` | Warnt nach drei oder mehr identischen Tool-Aufrufen. |
+| `warn-package-publish` | `PreToolUse` | Warnung vor dem Veröffentlichen in Paket-Registries. |
+| `warn-global-package-install` | `PreToolUse` | Warnung vor der globalen Paketinstallation. |
+| `prefer-package-manager` | `PreToolUse` | Den Agent anweisen, einen erlaubten Paketmanager zu verwenden. |
+| `warn-large-file-write` | `PreToolUse` auf Schreib-Tools | Warnung bei Überschreiten des konfigurierten Dateigrößen-Schwellenwerts. |
+| `warn-background-process` | `PreToolUse` | Warnung bei abgetrennten oder langlebigen Hintergrundprozess-Mustern. |
+| `warn-repeated-tool-calls` | `PreToolUse` | Warnung nach drei oder mehr identischen Tool-Aufrufen. |
 
 ## Aufgabenabschluss-Workflow
 
-Diese Richtlinien erfordern ein Harness, das ein kompatibles `Stop`-Ereignis auslöst.
+Diese Policies erfordern ein Harness, das ein kompatibles `Stop`-Ereignis ausgibt.
 
-| Richtlinie | Ergebnis |
+| Policy | Ergebnis |
 | --- | --- |
-| `require-commit-before-stop` | Verweigert den Abschluss, solange noch nicht committete Änderungen vorhanden sind. |
-| `require-push-before-stop` | Verweigert den Abschluss, solange Commits nur lokal vorhanden sind. |
-| `require-pr-before-stop` | Erfordert einen Pull Request für den aktuellen Branch. |
-| `require-no-conflicts-before-stop` | Erfordert einen konfliktfreien Merge gegenüber dem konfigurierten Basis-Branch. |
-| `require-ci-green-before-stop` | Erfordert, dass die CI-Prüfungen für den aktuellen HEAD erfolgreich abgeschlossen werden. |
+| `require-commit-before-stop` | Abschluss verweigern, solange nachverfolgbare Arbeit nicht committed wurde. |
+| `require-push-before-stop` | Abschluss verweigern, solange Commits nur lokal vorhanden sind. |
+| `require-pr-before-stop` | Einen Pull Request für den aktuellen Branch erfordern. |
+| `require-no-conflicts-before-stop` | Einen sauberen Merge gegen den konfigurierten Basis-Branch erfordern. |
+| `require-ci-green-before-stop` | Erfordern, dass CI-Checks für den aktuellen HEAD erfolgreich abgeschlossen werden. |
 
-## Parameterreferenz
+## Parameter-Referenz
 
-Parameter werden im `policyParams`-Objekt des gewählten Scopes konfiguriert. Die Typen werden von jeder Richtlinie einzeln validiert.
+Parameter werden im `policyParams`-Objekt des gewählten Scopes konfiguriert. Typen werden von jeder Policy validiert.
 
-| Richtlinie | Parameter | Typ und Standard |
+| Policy | Parameter | Typ und Standard |
 | --- | --- | --- |
 | `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; Einträge enthalten `regex` und `label` |
 | `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
@@ -125,5 +125,5 @@ Parameter werden im `policyParams`-Objekt des gewählten Scopes konfiguriert. Di
 ```
 
 <Warning>
-  Ein Allow-Pattern erweitert die Handlungsmöglichkeiten eines Agenten. Testen Sie die genaue Tokenisierung und Befehlsvarianten auf dem Zielsystem, bevor Sie es flächendeckend einsetzen.
+  Ein Allow-Muster erweitert den Handlungsspielraum eines Agents. Testen Sie die genaue Tokenisierung und Befehlsvarianten auf dem Ziel-Harness, bevor Sie es flächendeckend einsetzen.
 </Warning>

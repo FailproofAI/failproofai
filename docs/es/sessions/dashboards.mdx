@@ -1,10 +1,10 @@
 ---
 title: "Dashboards"
-description: "Supervisa las señales de confiabilidad que importan para un agente o flujo de trabajo."
+description: "Monitorea las señales de confiabilidad que importan para un agente o flujo de trabajo."
 icon: "layout-dashboard"
 ---
 
-Los dashboards combinan consultas guardadas en una vista operativa. Constrúyelos en torno a una decisión que esperas que alguien tome, no en torno a cada métrica disponible.
+Los dashboards combinan consultas guardadas en una vista operativa. Construye uno en torno a una decisión que alguien deba tomar, no en torno a todas las métricas disponibles.
 
 ## Crear un dashboard
 
@@ -12,13 +12,13 @@ Los dashboards combinan consultas guardadas en una vista operativa. Constrúyelo
   <Tab title="Dashboard">
     1. Ve a **Analyze → Queries**, crea o abre una consulta guardada y valida su resultado.
     2. Selecciona **add to dashboard**, luego elige un dashboard existente o crea uno en **Analyze → Dashboards**.
-    3. Abre el dashboard, activa el modo de edición, organiza los tiles y guarda el diseño.
-    4. Regresa a la consulta cuando necesites cambiar los datos o filtros de un tile.
+    3. Abre el dashboard, entra en modo de edición, organiza los tiles y guarda el diseño.
+    4. Vuelve a la consulta cuando necesites modificar los datos o los filtros detrás de un tile.
 
     ![Un dashboard compuesto por consultas guardadas para volumen de eventos, errores, latencia y uso de tokens del modelo.](/images/dashboard/dashboard-fleet.png)
   </Tab>
   <Tab title="CLI">
-    Las operaciones CRUD de dashboards no están disponibles en el CLI de Cloud actual. Usa el CLI para crear y verificar la consulta guardada y luego agrégala a un dashboard desde la interfaz.
+    El CRUD de dashboards no está disponible en el Cloud CLI actual. Usa el CLI para crear y verificar la consulta guardada, luego agrégala a un dashboard desde la interfaz.
 
     ```bash
     fp query schema
@@ -36,8 +36,8 @@ Algunos grupos de dashboards útiles incluyen:
 - **Hooks y políticas:** decisiones, denegaciones y tasa de coincidencia de políticas.
 - **Métricas de flujo de trabajo personalizadas:** resultados de tus propios campos de eventos y SQL.
 
-Comienza con una consulta guardada, valida su resultado y agrégala como tile. Mantén los filtros de producción y desarrollo explícitos para que el tráfico de prueba no oculte una regresión.
+Comienza con una consulta guardada, valida su resultado y luego agrégala como tile. Mantén los filtros de producción y desarrollo explícitos para que el tráfico de pruebas no oculte una regresión.
 
 <Tip>
-  Asigna a cada dashboard un responsable y una pregunta de referencia, como «¿La confiabilidad del checkout-agent es peor que la semana pasada?»
+  Asigna a cada dashboard un responsable y una pregunta de respuesta, como "¿La confiabilidad de checkout-agent es peor que la semana pasada?"
 </Tip>

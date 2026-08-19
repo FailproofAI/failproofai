@@ -4,38 +4,38 @@ description: "Tham khảo mô hình sự kiện, môi trường, lưu trữ cụ
 icon: "list-tree"
 ---
 
-## Các nhóm sự kiện
+## Các họ sự kiện
 
 - Agent bắt đầu, kết thúc, tạm dừng và tiếp tục
-- Yêu cầu và phản hồi của mô hình
+- Yêu cầu và phản hồi từ mô hình
 - Sử dụng công cụ và kết quả
-- Hook được kích hoạt và hoàn thành
+- Hook được kích hoạt và hoàn tất
 - Chờ đợi con người, nhập liệu, tạm dừng và ngắt
 - Lỗi rõ ràng
 
-Mỗi sự kiện mang theo dấu thời gian, ID phiên, ID agent, loại sự kiện và môi trường. Các trường cụ thể của sự kiện chứa dữ liệu mô hình, công cụ, tương quan, kết quả, nội dung, khoảng thời gian hoặc lỗi.
+Mỗi sự kiện mang theo một dấu thời gian, ID phiên, ID agent, loại sự kiện và môi trường. Các trường riêng cho từng sự kiện chứa dữ liệu về mô hình, công cụ, tương quan, kết quả, nội dung, thời lượng hoặc lỗi.
 
 ## Kiểm tra hợp đồng sự kiện
 
 <Tabs>
   <Tab title="Dashboard">
     1. Mở **Observe → Events**.
-    2. Đặt cửa sổ thời gian ngắn và lọc theo môi trường, agent và loại sự kiện.
-    3. Chọn một sự kiện để kiểm tra các trường được chuẩn hóa và tải trọng thô, sau đó mở phiên của nó để xem bối cảnh thực thi.
-    4. Nếu thiếu khoảng thời gian được ghép nối, hãy xác minh rằng các sự kiện bắt đầu và hoàn thành sử dụng cùng một ID tương quan.
+    2. Đặt một cửa sổ thời gian ngắn và lọc theo môi trường, agent và loại sự kiện.
+    3. Chọn một sự kiện để kiểm tra các trường đã chuẩn hóa và payload thô của nó, sau đó mở phiên của nó để xem bối cảnh thực thi.
+    4. Nếu thiếu một thời lượng được ghép đôi, hãy xác minh rằng các sự kiện bắt đầu và hoàn tất sử dụng cùng một ID tương quan.
 
-    Sử dụng luồng Sự kiện để thu hẹp dữ liệu thành một lần chạy agent và kiểm tra các trường sự kiện được chuẩn hóa.
+    Sử dụng luồng Events để thu hẹp dữ liệu thành một lần chạy agent và kiểm tra các trường sự kiện đã chuẩn hóa.
 
-    ![Luồng Sự kiện trực tiếp với các bộ lọc cho môi trường, agent, phiên và loại sự kiện.](/images/dashboard/events-stream.png)
+    ![Luồng Events trực tiếp với bộ lọc cho môi trường, agent, phiên và loại sự kiện.](/images/dashboard/events-stream.png)
 
-    Sau đó theo dõi sự kiện vào phiên của nó. Dấu vết hiển thị những gì xảy ra ngay trước và sau nó, điều này cần thiết khi tải trọng một mình không rõ ràng.
+    Sau đó, theo dõi sự kiện vào phiên của nó. Dấu vết hiển thị những gì đã xảy ra ngay trước và sau nó, điều này là cần thiết khi payload một mình là không rõ ràng.
 
     ![Dấu vết phiên được liên kết được sử dụng để kiểm tra sự kiện trong bối cảnh thực thi.](/images/dashboard/session-detail.png)
 
-    So sánh ID tương quan và dấu thời gian trên cả hai chế độ xem khi sự kiện được ghép nối hoặc khoảng thời gian bị thiếu.
+    So sánh ID tương quan và dấu thời gian trên cả hai chế độ xem khi một sự kiện được ghép đôi hoặc thời lượng bị thiếu.
   </Tab>
   <Tab title="CLI">
-    Khám phá các giá trị bộ lọc hợp lệ, sau đó lấy tải trọng sự kiện đầy đủ cho một phiên:
+    Khám phá các giá trị bộ lọc hợp lệ, sau đó tìm nạp payload sự kiện đầy đủ cho một phiên:
 
     ```bash
     fp list event_types
@@ -51,16 +51,16 @@ Mỗi sự kiện mang theo dấu thời gian, ID phiên, ID agent, loại sự 
   </Tab>
 </Tabs>
 
-## Các trường SDK được đặt trước
+## Trường SDK được bảo lưu
 
-Không sử dụng `timestamp`, `session_id`, `agent_id`, `type` hoặc `environment` làm các trường tùy chỉnh của Python SDK. Khoảng thời gian sự kiện được ghép nối như thời gian kết quả công cụ được tính bằng SDK và không thể được cung cấp theo cách thủ công.
+Không sử dụng `timestamp`, `session_id`, `agent_id`, `type` hoặc `environment` làm trường SDK Python tùy chỉnh. Các thời lượng sự kiện được ghép đôi như thời lượng kết quả công cụ được tính toán bởi SDK và không thể được cung cấp theo cách thủ công.
 
 ## Ranh giới cục bộ
 
 - Trạng thái Failproof AI nằm dưới `~/.failproofai` trừ khi được cấu hình rõ ràng khác.
-- `failproofai-sdk` sử dụng `AGENTEYE_HOME` để ghi đè thư mục cơ sở của phiên bản cũ.
+- `failproofai-sdk` sử dụng `AGENTEYE_HOME` để ghi đè thư mục cơ sở kế thừa.
 - Nhãn môi trường có thể được đặt thông qua cấu hình SDK hoặc `AGENTEYE_ENVIRONMENT`.
-- Thông tin xác thực daemon được lưu trữ riêng biệt với các cài đặt không bí mật.
+- Thông tin xác thực daemon được lưu trữ riêng từ các cài đặt không bí mật.
 
 Sử dụng tên môi trường ổn định, cardinality thấp. Dấu phẩy không được hỗ trợ trong nhãn môi trường daemon.
 
@@ -68,11 +68,11 @@ Sử dụng tên môi trường ổn định, cardinality thấp. Dấu phẩy k
 
 <Tabs>
   <Tab title="Dashboard">
-    Nhãn môi trường được gán bởi SDK phát thải hoặc daemon Failproof. Sau khi thay đổi một cái, mở **Observe → Sessions** và sử dụng bộ lọc môi trường để xác nhận các phiên mới mang giá trị mới. Các phiên hiện có giữ lại môi trường ban đầu của chúng.
+    Nhãn môi trường được gán bởi SDK phát hành hoặc daemon Failproof. Sau khi thay đổi, mở **Observe → Sessions** và sử dụng bộ lọc môi trường để xác nhận các phiên mới mang giá trị mới. Các phiên hiện tại giữ lại môi trường ban đầu của chúng.
 
   </Tab>
   <Tab title="CLI">
-    Đối với `failproofai-sdk`, cấu hình môi trường trong mã hoặc với biến môi trường cũ của nó. Chạy lại cấu hình daemon khi thay đổi cài đặt cấp máy.
+    Đối với `failproofai-sdk`, cấu hình môi trường trong mã hoặc với biến môi trường kế thừa của nó. Chạy lại cấu hình daemon khi thay đổi cài đặt cấp máy.
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east

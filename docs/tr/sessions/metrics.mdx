@@ -1,23 +1,22 @@
 ---
----
 title: "Metrikler"
 description: "Gecikme, maliyet ve token kullanımı gibi büyüklük metriklerini çizin."
 icon: "ruler"
 ---
 
-Metrikler birimli değerler içindir. Değerlendirmeler puanlar ve yargılar içindir.
+Metrikler, birimleri olan değerler içindir. Değerlendirmeler, puanlar ve yargılar içindir.
 
 <Tabs>
-  <Tab title="Kontrol Paneli">
+  <Tab title="Dashboard">
     1. **Observe → Metrics** sayfasına gidin.
-    2. **add series** seçeneğini tıklayın ve bir agent, ortam, metrik, istatistik ve eğri seçin.
-    3. Agent'ları veya ortamları karşılaştırmak için seriler ekleyin; farklı birimler ayrı eksenlere sahip olur.
-    4. Eşleşen değerlendirmeleri ve oturumları açmak için bir noktayı seçin veya tam görünümü kopyalamak için **share** seçeneğini tıklayın.
+    2. **add series** seçeneğini seçin ve bir ajan, ortam, metrik, istatistik ve eğri seçin.
+    3. Ajanları veya ortamları karşılaştırmak için seriler ekleyin; farklı birimler ayrı eksenler alır.
+    4. Eşleşen değerlendirmeleri ve oturumları açmak için bir noktayı seçin veya tam görünümü kopyalamak için **share** seçeneğini seçin.
 
-    ![Zaman kontrolleri, toplama seçicileri, eğriler ve paylaşım işlemi ile iki maliyet-çıktı-birim serisini karşılaştıran Metrikler sayfası.](/images/dashboard/metrics-series.png)
+    ![Zaman kontrolleri, toplama seçicileri, eğriler ve bir paylaşma eylemi ile iki maliyet başına çıktı birimi serisini karşılaştıran Metrikler sayfası.](/images/dashboard/metrics-series.png)
   </Tab>
   <Tab title="CLI">
-    Henüz ayrılmış bir büyüklük-metrikler komutu yok. Kullanılabilir anahtarları keşfedin ve oturumları veya değerlendirmeleri inceleyin:
+    Henüz ayrılmış bir büyüklük-metrikler komutu yoktur. Mevcut anahtarları keşfedin ve oturumları veya değerlendirmeleri inceleyin:
 
     ```bash
     fp list score_filters
@@ -25,6 +24,6 @@ Metrikler birimli değerler içindir. Değerlendirmeler puanlar ve yargılar iç
     fp --json sessions --since 24h
     ```
 
-    Özel metrik toplama için `fp query` kullanın.
+    Özel metrik toplaması için `fp query` kullanın.
   </Tab>
 </Tabs>

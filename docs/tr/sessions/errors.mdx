@@ -1,21 +1,21 @@
 ---
 title: "Hatalar"
-description: "Tekrarlanan hataları gruplandırın ve bunların arkasındaki oturumları açın."
+description: "Tekrarlanan hataları gruplandırın ve arkalarındaki oturumları açın."
 icon: "circle-alert"
 ---
 
-Hatalar, oturumlar arasında hata odaklı bir görünüm sağlar. Tekrarlanan operasyonel sorunları bulmak için hata türü, ajan, ortam, model, araç veya zaman penceresi ile gruplandırın.
+Hatalar size oturumlar arasında başarısızlık odaklı bir görünüm sunar. Tekrarlanan operasyonel sorunları bulmak için hata türü, ajan, ortam, model, araç veya zaman penceresine göre gruplandırın.
 
-## Hataları araştırma
+## Hataları araştırın
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Errors** sayfasına gidin.
-    2. Ortam, olay türü, hata türü, ajan, oturum ID veya arama metni ile filtreleyin.
-    3. Gruplandırılmış bir hatayı genişleterek oluşumları görün. Satırı seçerek tam olayı oturumunda açın.
-    4. Benzer hatalar için bir uyarı başlatmak üzere temsili bir hatadaki zil kontrolünü seçin.
+    1. **Observe → Errors** bölümüne gidin.
+    2. Ortam, olay türü, hata türü, ajan, oturum kimliği veya arama metniyle filtreleyin.
+    3. Gruplandırılmış bir hatayı genişleterek oluşumları görün. Tam olayı oturumunda açmak için bir satır seçin.
+    4. Benzer hatalar için uyarı başlatmak üzere temsili bir hatadaki zil denetimini seçin.
 
-    ![Hata histogramı, gruplandırılmış hatalar ve uyarı oluşturma kontrolünü gösteren Hatalar sayfası.](/images/dashboard/errors.png)
+    ![Hata histogramı, gruplandırılmış hatalar ve uyarı oluşturma denetimini gösteren Hatalar sayfası.](/images/dashboard/errors.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,20 +24,20 @@ Hatalar, oturumlar arasında hata odaklı bir görünüm sağlar. Tekrarlanan op
     fp errors --aggregate --env production --since 7d
     ```
 
-    Bir hata özeti arkasındaki ham yükü gerektiğinde `fp events --full --session-id <id>` komutunu kullanın.
+    Bir hata özetinin arkasındaki ham yükü almanız gerektiğinde `fp events --full --session-id <id>` komutunu kullanın.
   </Tab>
 </Tabs>
 
-## Aşağıdaki durumlarda Hatalar özelliğini kullanın
+## Şu durumlarda Hatalar'ı kullanın
 
 - Üretimde en sık görülen hata sınıfını bulun.
-- Tek bir aracın veya modelin ani artışa neden olup olmadığını belirleyin.
-- Bir toplam sayıdan temsili oturumlara atlayın.
+- Tek bir aracın veya modelin bir artışa neden olup olmadığını belirleyin.
+- Toplam sayımdan temsili oturumlara atla.
 - Tekrarlanması için bir uyarı oluşturun.
-- Etkilenen popülasyonu bir denetim raporuna dahil edin.
+- Etkilenen popülasyonu bir denetimin içine dahil edin.
 
-Bir hata, gözlenen bir olayıdır. Başarısız bir değerlendirme kalite yargısıdır ve bir denetim bulgusu araştırılmış bir hata modelidir. Hangi yanıt iş akışını kullanacağına karar verirken bu ayrımları göz önünde bulundurun.
+Hata, gözlemlenen bir olaydır. Başarısız bir değerlendirme bir kalite yargısı ve denetim bulgusu araştırılan bir başarısızlık kalıbıdır. Hangi yanıt iş akışını kullanacağına karar verirken bu ayrımları göz önünde bulundurun.
 
 <Card title="Uyarı oluştur" icon="bell-ring" href="/tr/audits/alerts">
-  Bir hata veya kalite koşulu eşik değeri aştığında müdahale edenleri bilgilendirin.
+  Bir hata veya kalite koşulu bir eşiği aştığında yanıtlayanları bilgilendirin.
 </Card>

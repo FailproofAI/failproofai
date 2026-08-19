@@ -1,21 +1,20 @@
 ---
----
-title: "Audit della cronologia dell'agente locale"
-description: "Scansiona le cronologie CLI dell'agente supportate offline e rivedi il comportamento rischioso o inefficiente localmente."
+title: "Audit della cronologia dell'agent locale"
+description: "Scansiona le cronologie CLI dell'agent supportate offline e rivedi il comportamento rischioso o inefficiente localmente."
 icon: "laptop-minimal-check"
 ---
 
-Utilizza un audit locale per una revisione immediata e privata prima di connettere una macchina a Failproof AI Cloud. Esegue la scansione delle cronologie dell'agente già archiviate sulla tua macchina, riproduce l'attività dei tool attraverso le politiche integrate e apre un dashboard dei risultati locale.
+Utilizza un audit locale per una revisione immediata e privata prima di connettere una macchina a Failproof AI Cloud. Esegue la scansione delle cronologie dell'agent già archiviate sulla tua macchina, riproduce l'attività degli strumenti attraverso le policy integrate e apre una dashboard dei risultati locale.
 
-## Esegui un audit interattivo
+## Eseguire un audit interattivo
 
 <Tabs>
   <Tab title="Dashboard">
-    L'audit locale inizia dalla CLI perché deve scoprire le cronologie sulla macchina corrente. Esegui `failproofai audit`; dopo la scansione, Failproof AI avvia il dashboard incluso e apre **http://localhost:8020/audit**.
+    L'audit locale inizia dalla CLI perché deve scoprire le cronologie sulla macchina corrente. Esegui `failproofai audit`; dopo la scansione, Failproof AI avvia la dashboard integrata e apre **http://localhost:8020/audit**.
 
-    Nella vista di audit, rivedi il numero di sessioni, chiamate ai tool, progetti e riscontri di politiche. Inizia con i risultati più frequenti, quindi ispeziona il progetto interessato e la cronologia dell'agente prima di abilitare l'applicazione.
+    Nella vista dell'audit, rivedi il numero di sessioni, chiamate a strumenti, progetti e policy hit. Inizia con i risultati più frequenti, quindi ispeziona il progetto interessato e la cronologia dell'agent prima di abilitare l'enforcement.
 
-    <Info>Il dashboard di audit locale è separato da **Analyze → Audits** in Failproof AI Cloud. Gli audit locali rimangono sulla macchina e non richiedono account o connessione di rete.</Info>
+    <Info>La dashboard dell'audit locale è separata da **Analyze → Audits** in Failproof AI Cloud. Gli audit locali rimangono sulla macchina e non richiedono un account o una connessione di rete.</Info>
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -25,17 +24,17 @@ Utilizza un audit locale per una revisione immediata e privata prima di connette
 
     Il comando esegue una scansione completa di ogni cronologia supportata che trova. Il comando attuale non accetta filtri come `--since`, `--cli`, `--project`, `--port` o `--no-open`.
 
-    Mantieni il processo in esecuzione mentre utilizzi il dashboard locale. Premi <kbd>Ctrl</kbd>+<kbd>C</kbd> quando hai finito.
+    Mantieni il processo in esecuzione mentre utilizzi la dashboard locale. Premi <kbd>Ctrl</kbd>+<kbd>C</kbd> quando hai finito.
   </Tab>
 </Tabs>
 
-Gli attuali adattatori di audit possono leggere le cronologie da Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity e Goose. Solo le cronologie disponibili localmente vengono scansionate.
+Gli attuali adapter di audit possono leggere cronologie da Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity e Goose. Vengono scansionate solo le cronologie disponibili localmente.
 
-## Pianifica audit locali ricorrenti
+## Pianificare audit locali ricorrenti
 
 <Tabs>
   <Tab title="Dashboard">
-    Apri **Settings** nel dashboard locale, abilita gli audit pianificati, scegli l'intervallo e imposta l'indirizzo email che dovrebbe ricevere i risultati. Il dashboard e la CLI aggiornano la stessa configurazione della macchina.
+    Apri **Settings** nella dashboard locale, abilita gli audit pianificati, scegli l'intervallo e imposta l'indirizzo email che deve ricevere i risultati. La dashboard e la CLI aggiornano la stessa configurazione della macchina.
   </Tab>
   <Tab title="CLI">
     Abilita un audit settimanale e invia i risultati all'indirizzo specificato:
@@ -45,9 +44,9 @@ Gli attuali adattatori di audit possono leggere le cronologie da Claude Code, Co
     failproofai audit --status
     ```
 
-    L'intervallo accetta 1–90 giorni e il valore predefinito è 7 quando omesso. La prima configurazione ti accede quando necessario; `--email` fornisce l'indirizzo del report senza richiedere input.
+    L'intervallo accetta 1–90 giorni e predefinito a 7 quando omesso. La prima configurazione ti accede quando necessario; `--email` fornisce l'indirizzo del report senza chiedere conferma.
 
-    Interrompi la pianificazione senza eliminare la cronologia di audit locale:
+    Interrompi la pianificazione senza eliminare la cronologia dell'audit locale:
 
     ```bash
     failproofai audit --no-schedule
@@ -55,21 +54,21 @@ Gli attuali adattatori di audit possono leggere le cronologie da Claude Code, Co
   </Tab>
 </Tabs>
 
-Il daemon esegue scansioni pianificate in background, aggiorna il risultato memorizzato nella cache utilizzato dal dashboard locale e invia il report configurato. Utilizza `failproofai audit` quando desideri eseguire una scansione interattiva immediatamente.
+Il daemon esegue le scansioni pianificate in background, aggiorna il risultato memorizzato nella cache utilizzato dalla dashboard locale e invia un email del report configurato. Utilizza `failproofai audit` quando desideri eseguire una scansione interattiva immediatamente.
 
-## Passa da prove locali a operazioni Cloud
+## Passare da evidenze locali a operazioni Cloud
 
-Un audit locale è una base veloce. Connetti la macchina a Failproof AI Cloud quando hai bisogno di tracce condivise, audit periodici della popolazione, risultati e problemi, avvisi, distribuzione di politiche a livello organizzativo o salute della flotta.
+Un audit locale è una baseline veloce. Connetti la macchina a Failproof AI Cloud quando hai bisogno di tracce condivise, audit ricorrenti della popolazione, risultati e problemi, avvisi, distribuzione di policy a livello organizzativo o salute della flotta.
 
 <CardGroup cols={2}>
-  <Card title="Crea un audit Cloud" icon="scan-search" href="/it/audits/setup">
-    Definisci un obiettivo ricorrente, una popolazione, una finestra temporale di prove e canali di risposta.
+  <Card title="Creare un audit Cloud" icon="scan-search" href="/it/audits/setup">
+    Definisci un obiettivo ricorrente, una popolazione, una finestra di evidenza e canali di risposta.
   </Card>
-  <Card title="Abilita una politica" icon="shield-check" href="/it/start/first-policy">
-    Valida localmente, pubblica deliberatamente e distribuisci prima a un gruppo ristretto di macchine.
+  <Card title="Abilitare una policy" icon="shield-check" href="/it/start/first-policy">
+    Convalida localmente, pubblica deliberatamente e distribuisci prima a un gruppo ristretto di macchine.
   </Card>
 </CardGroup>
 
 <Warning>
-  L'output dell'audit è una prova per la revisione, non la prova che ogni azione segnalata sia unsafe. Conferma il contesto prima di trasformare un risultato in un'applicazione bloccante.
+  L'output dell'audit è evidenza per la revisione, non prova che ogni azione segnalata sia non sicura. Conferma il contesto prima di trasformare un risultato in enforcement bloccante.
 </Warning>

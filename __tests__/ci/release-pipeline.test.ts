@@ -646,3 +646,91 @@ describe("pipeline / CLI agreement", () => {
     },
   );
 });
+
+/**
+ * CI cost guards.
+ *
+ * Four regressions, each a one-line edit away, none of which turns CI red. They
+ * only make it slower — and nothing watches that, which is why they need a test
+ * rather than a convention:
+ *
+ *   - package.json's `prepare` is `bun run build`, so any `bun install` without
+ *     `--ignore-scripts` fires a full Next.js production build as an install
+ *     lifecycle hook. That was ~28s in six of ci.yml's eight jobs plus twice
+ *     more per release, every second of it discarded;
+ *   - a job with no `timeout-minutes` inherits GitHub's six-hour default. On
+ *     2026-08-19 the linux-x64 daemon leg sat in `apt-get update` against a
+ *     stalled Azure mirror through three runner re-dispatches, with a release
+ *     blocked behind it, because nothing bounded it;
+ *   - `path: target` in a cargo cache archives the entire build directory. One
+ *     such entry reached 5,727 MB — 57% of the repo's whole 10 GiB quota, which
+ *     keeps the store in permanent LRU eviction — and took 127s to restore
+ *     against the 74s of compilation it was there to save;
+ *   - cancel-in-progress on build-daemon must stay scoped to `pull_request`,
+ *     because the `workflow_call` legs ARE the release's binaries.
+ */
+describe("CI cost guards", () => {
+  const COST_GUARDED = ["ci.yml", "publish.yml", "build-daemon.yml", "osv-scanner.yml", "build-image.yml"];
+
+  /** Every shell command a job runs, including those wrapped by nick-fields/retry. */
+  function shellText(job: Record<string, any>): string {
+    return (job.steps ?? [])
+      .map((s: Record<string, any>) => [s.run ?? "", s.with?.command ?? ""].join("\n"))
+      .join("\n");
+  }
+
+  it.each(COST_GUARDED)("%s gives every job a timeout-minutes", (name) => {
+    const jobs: [string, Record<string, any>][] = Object.entries(workflow(name).jobs);
+    const unbounded = jobs
+      // A `uses:` job calls a reusable workflow and cannot carry a timeout of
+      // its own; that workflow's jobs are covered by their own row here.
+      .filter(([, job]) => !job.uses && typeof job["timeout-minutes"] !== "number")
+      .map(([id]) => id);
+    expect(unbounded).toEqual([]);
+  });
+
+  it.each(["ci.yml", "publish.yml"])("%s never lets an install run the prepare hook", (name) => {
+    const offenders: string[] = [];
+    for (const [id, job] of Object.entries(workflow(name).jobs) as [string, Record<string, any>][]) {
+      for (const line of shellText(job).split("\n")) {
+        if (line.includes("bun install") && !line.includes("--ignore-scripts")) {
+          offenders.push(`${name} / ${id}: ${line.trim()}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it.each(["ci.yml", "build-daemon.yml"])("%s caches cargo without archiving target/", (name) => {
+    const steps: Record<string, any>[] = Object.values(workflow(name).jobs).flatMap(
+      (j: any) => j.steps ?? [],
+    );
+    const archivesTarget = steps
+      .filter((s) => String(s.uses ?? "").startsWith("actions/cache"))
+      .filter((s) =>
+        String(s.with?.path ?? "")
+          .split("\n")
+          .some((line) => line.trim() === "target"),
+      );
+    expect(archivesTarget).toEqual([]);
+    expect(steps.some((s) => String(s.uses ?? "").startsWith("Swatinem/rust-cache"))).toBe(true);
+  });
+
+  it("bounds and retries the musl toolchain install", () => {
+    const step = workflow("build-daemon.yml").jobs.build.steps.find((s: Record<string, any>) =>
+      String(s.name ?? "").includes("musl toolchain"),
+    );
+    // A bare `run:` is what hung: apt's default acquire timeouts are long
+    // enough to be no timeout at all against a stalled mirror.
+    expect(step.run).toBeUndefined();
+    expect(String(step.uses)).toContain("nick-fields/retry");
+    expect(step.with.timeout_minutes).toBeLessThanOrEqual(5);
+    expect(step.with.command).toContain("Acquire::http::Timeout");
+  });
+
+  it("supersedes a superseded daemon build without cancelling a release", () => {
+    const c = workflow("build-daemon.yml").concurrency;
+    expect(c.group).toContain("github.ref");
+    expect(String(c["cancel-in-progress"])).toContain("pull_request");
+  });
+});

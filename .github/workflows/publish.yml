@@ -67,6 +67,7 @@ jobs:
   # cross-compile matrix), and whether this ref even carries the daemon.
   preflight:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       publish_version: ${{ steps.version.outputs.publish_version }}
       pkg_version: ${{ steps.version.outputs.pkg_version }}
@@ -311,6 +312,7 @@ jobs:
   cli-tarball:
     needs: preflight
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -326,12 +328,18 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
+      # `--ignore-scripts` for the reason `npm pack` below already gives: the
+      # `prepare` hook is `bun run build`, so a plain install fires a full
+      # Next.js build. Here it also fired the WRONG one — install runs before
+      # `npm version` sets the publish version, so `prepare` baked the old
+      # version into dist/ and the explicit Build step below then threw that
+      # work away and redid it. One build now, at the right version.
       - name: Install dependencies
         uses: nick-fields/retry@v4
         with:
           max_attempts: 3
           timeout_minutes: 5
-          command: bun install --frozen-lockfile
+          command: bun install --frozen-lockfile --ignore-scripts
 
       - uses: actions/setup-node@v7
         with:
@@ -377,6 +385,7 @@ jobs:
       needs.cli-tarball.result == 'success' &&
       (needs.daemon.result == 'success' || needs.daemon.result == 'skipped')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
@@ -460,6 +469,7 @@ jobs:
       (needs.daemon.result == 'success' || needs.daemon.result == 'skipped') &&
       (needs.release-assets.result == 'success' || needs.release-assets.result == 'skipped')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       id-token: write
@@ -501,12 +511,17 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
+      # `--ignore-scripts`: the explicit Build step below is the one that
+      # matters (it runs after the daemon platform packages are pinned into
+      # package.json), and `npm publish` already passes `--ignore-scripts` too.
+      # Nothing here depended on the `prepare` hook — it was a second full
+      # Next.js build per release.
       - name: Install dependencies
         uses: nick-fields/retry@v4
         with:
           max_attempts: 3
           timeout_minutes: 5
-          command: bun install --frozen-lockfile
+          command: bun install --frozen-lockfile --ignore-scripts
 
       - uses: actions/setup-node@v7
         with:
@@ -789,6 +804,7 @@ jobs:
           - os: macos-14
             platform: darwin-arm64
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       # Deliberately the OLDEST Node this package claims to support
       # (`engines.node: >=20.9.0`), while the build and publish jobs above run
@@ -906,6 +922,7 @@ jobs:
       needs.preflight.outputs.is_prerelease == 'false' &&
       needs.preflight.outputs.dist_tag == 'latest'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # Least privilege, declared rather than inherited. This job reads the tree
     # and POSTs to a webhook — it writes nothing here — while holding a
     # credential that can post to a public channel. Without a block it takes the

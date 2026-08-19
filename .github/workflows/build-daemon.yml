@@ -22,6 +22,15 @@ on:
   workflow_call:
   workflow_dispatch:
 
+# Consecutive pushes to a Rust PR would otherwise stack 4-leg cross-compile
+# matrices that nothing cancels — the most expensive PR-triggered workflow in
+# the repo, started once per push and left running. Superseding is only ever
+# right on `pull_request`: the `workflow_call` legs ARE the release's binaries,
+# and a cancelled one is a release that ships without its daemon.
+concurrency:
+  group: build-daemon-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # The Rust workspace does not exist on every ref this workflow can run
   # against: `main` carries no `Cargo.toml` until the daemon lands, and the
@@ -32,6 +41,7 @@ jobs:
   # no daemon at all.
   detect:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       has_crates: ${{ steps.check.outputs.has_crates }}
     steps:
@@ -87,6 +97,13 @@ jobs:
             os: macos-14
             platform: darwin-arm64
     runs-on: ${{ matrix.os }}
+    # Nothing in this job has a bounded runtime of its own, and GitHub's default
+    # is six hours. On 2026-08-19 the linux-x64 leg sat in `apt-get update`
+    # against a stalled Azure mirror through three runner re-dispatches with a
+    # release blocked behind it, while the arm64 leg ran the same step in
+    # seconds. A cross compile that has not finished in 30 minutes is not going
+    # to, and a bounded failure is re-runnable where a hang is not.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -103,27 +120,51 @@ jobs:
       # without musl-tools the leg fails at link time with
       # `linker 'musl-gcc' not found`. Both Linux runners are native to their
       # own target, so the distro package is the right linker for the triple.
+      # It is not droppable either: `-p failproofaid` reaches `rusqlite` with
+      # `bundled` (compiles sqlite3.c) and `ring` through rustls, so the `cc`
+      # crate resolves `musl-gcc` on both musl legs.
+      #
+      # Retried and bounded, because the failure mode here is a HANG rather than
+      # an error. apt's default acquire timeouts are long enough to be no
+      # timeout at all against a stalled mirror, so without these the leg would
+      # spend the entire job budget above on one bad Azure endpoint instead of
+      # four minutes and a retry against a different one. `-qq` is gone on
+      # purpose too: it suppressed the per-mirror progress that says WHICH
+      # endpoint stalled, which is the one thing worth having in the log.
       - name: Install the musl toolchain
         if: contains(matrix.target, 'musl')
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
-
-      # Split restore/save rather than `actions/cache@v6`, which does both.
-      # This job runs on `pull_request` AND on the release path (via
-      # `workflow_call` from publish.yml, where `github.event_name` is the
-      # caller's `release`/`workflow_dispatch`), and the cache key is shared
-      # between them: a PR branch could otherwise write a poisoned `target/`
-      # entry that a later release run restores straight into a published
-      # binary. PR runs read the cache; only release / manual runs write it.
-      - uses: actions/cache/restore@v6
-        id: cargo-cache
+        uses: nick-fields/retry@v4
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            target
-          key: cargo-build-${{ matrix.target }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
-          restore-keys: cargo-build-${{ matrix.target }}-
+          max_attempts: 3
+          timeout_minutes: 4
+          command: |
+            sudo apt-get update \
+              -o Acquire::Retries=3 \
+              -o Acquire::http::Timeout=20 \
+              -o Acquire::https::Timeout=20 \
+              -o Acquire::Languages=none
+            sudo apt-get install -y --no-install-recommends musl-tools
+
+      # `save-if` rather than a plain cache, for the reason the split
+      # restore/save here used to carry: this job runs on `pull_request` AND on
+      # the release path (via `workflow_call` from publish.yml, where
+      # `github.event_name` is the caller's `release`/`workflow_dispatch`), and
+      # the cache key is shared between them. A PR branch could otherwise write
+      # a poisoned `target/` entry that a later release run restores straight
+      # into a published binary. PR runs read the cache; only release / manual
+      # runs write it.
+      #
+      # rust-cache rather than the hand-rolled `actions/cache` pair, because the
+      # naive `path: target` it replaced is what made ci.yml's sibling entry
+      # 5.7 GB — 57% of the repo's whole 10 GB cache quota in one key, taking
+      # 127s to restore against the 74s of compilation it saved. rust-cache
+      # prunes `target/` to dependency artifacts and drops the workspace's own
+      # output, which is the difference between caching a build and caching a
+      # build directory. `key` keeps the four legs from sharing an entry.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+          save-if: ${{ github.event_name != 'pull_request' }}
 
       # --locked: this job's output is the binary users install, so it must be
       # built from the dependency versions committed in Cargo.lock. Without it
@@ -132,16 +173,6 @@ jobs:
       # from the commit it claims to come from.
       - name: cargo build --release
         run: cargo build --locked --release --target ${{ matrix.target }} -p failproofaid
-
-      - uses: actions/cache/save@v6
-        if: github.event_name != 'pull_request' && steps.cargo-cache.outputs.cache-hit != 'true'
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            target
-          key: cargo-build-${{ matrix.target }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
 
       # Plain gzip, not tar: the CLI decompresses this with `node:zlib` and no
       # dependency, and a single-file stream needs no archive format. It also

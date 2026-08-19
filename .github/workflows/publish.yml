@@ -83,7 +83,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
       - name: Resolve version and dist-tag
@@ -183,6 +183,34 @@ jobs:
             exit 1
           fi
           echo "failproofai@$PUBLISH_VERSION is not on the registry yet."
+
+      # A stable release announces itself in Discord (the `announce` job at the
+      # bottom of this file) from the notes on the GitHub Release, falling back
+      # to CHANGELOG.md. With neither, it posts an announcement with no notes in
+      # it, to the channel where the most people are looking.
+      #
+      # Checked HERE because preflight is the one point in this pipeline where
+      # failing is nearly free: nothing is built, nothing is attached to the
+      # release, and nothing is on npm. The remedy is to write the release
+      # notes, or add the changelog heading, and re-run.
+      #
+      # Prereleases are exempt on purpose — they do not announce, and a beta cut
+      # to test a branch should not be blocked on release notes.
+      #
+      # `--check` rather than a grep: both formats are parsed by the code that
+      # also renders them, so a check here and the message that ships cannot
+      # disagree about what counts as notes.
+      - name: Verify this stable release has notes to announce
+        if: steps.version.outputs.is_prerelease == 'false'
+        env:
+          PUBLISH_VERSION: ${{ steps.version.outputs.publish_version }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+        run: |
+          printf '%s' "$RELEASE_BODY" > "${RUNNER_TEMP}/release-body.md"
+          node scripts/release-announcement.mjs \
+            --version "$PUBLISH_VERSION" \
+            --notes-file "${RUNNER_TEMP}/release-body.md" \
+            --check
 
       # Who may cut a STABLE release. Prereleases are deliberately open: a beta
       # or a `next` build is how anyone with write access ships a branch for
@@ -307,7 +335,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
 
       # The tarball has to be packed at the version being published, not at
       # whatever the ref happens to carry — a release from a tag bumps the
@@ -482,7 +510,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
       - name: Set publish version in package.json
@@ -762,6 +790,12 @@ jobs:
             platform: darwin-arm64
     runs-on: ${{ matrix.os }}
     steps:
+      # Deliberately the OLDEST Node this package claims to support
+      # (`engines.node: >=20.9.0`), while the build and publish jobs above run
+      # on 22. This job is the one that stands in for a user, and the users most
+      # likely to hit a runtime problem are the ones on the floor of that range
+      # — testing the install on the same Node that built it would prove
+      # nothing about them. Move this only when `engines.node` moves.
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
@@ -844,3 +878,182 @@ jobs:
         env:
           PLATFORM: ${{ matrix.platform }}
         run: echo "::notice::$PLATFORM installs from the registry and carries a matching daemon."
+
+  # Tells people the release exists, in the one place they are: the #releases
+  # channel in Discord, pinging the "Notify: Releases" role.
+  #
+  # STABLE ONLY, and both halves of that are required rather than either:
+  #   * a prerelease VERSION is a beta, and `failproofai@beta` is opt-in — the
+  #     people tracking it do not need a role ping per build; and
+  #   * a stable version published at a dist-tag other than `latest` is NOT what
+  #     a bare `npm install failproofai` resolves to, so the announcement's
+  #     install line would be wrong on the one line anybody copies.
+  #
+  # No `always()` in the `if`: every job in `needs` must have SUCCEEDED. That is
+  # the point of announcing last — `verify-install` is what proves the release
+  # is actually installable on all four platforms, and a channel told to install
+  # something that 404s is worse than a channel told nothing.
+  #
+  # Failing this job does NOT unpublish anything and does not mean the release
+  # is broken. It is the last job in the pipeline and nothing depends on it; a
+  # red mark here means the announcement did not go out, and re-running the job
+  # is the whole remedy.
+  announce:
+    name: announce (discord)
+    needs: [preflight, publish, verify-install]
+    if: >-
+      needs.preflight.outputs.dry_run != 'true' &&
+      needs.preflight.outputs.is_prerelease == 'false' &&
+      needs.preflight.outputs.dist_tag == 'latest'
+    runs-on: ubuntu-latest
+    # Least privilege, declared rather than inherited. This job reads the tree
+    # and POSTs to a webhook — it writes nothing here — while holding a
+    # credential that can post to a public channel. Without a block it takes the
+    # repository or organization default, which may carry write scopes it has no
+    # use for.
+    permissions:
+      contents: read
+    steps:
+      # The default ref is right for both entry points: a `release: published`
+      # checks out the TAG, whose tree carries the `## <version>` section this
+      # reads, and a dispatch from main checks out main, which carries the
+      # version being published for the same reason preflight took it from
+      # there. The version-bump commit that lands on main earlier in this run
+      # does not touch CHANGELOG.md.
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      # The notes the maintainer wrote on the Releases page are what this
+      # release SAYS, so they are what gets announced; CHANGELOG.md is the
+      # fallback for an empty body and for a `workflow_dispatch`, which has no
+      # release event at all. See the module header in the script.
+      #
+      # Through the environment and onto disk, never onto a command line: the
+      # body is arbitrary markdown typed into a web form, and interpolating
+      # `${{ github.event.release.body }}` into a `run:` block would let a
+      # backtick or a `$(…)` in somebody's release notes execute in the release
+      # pipeline. `printf %s` also keeps a leading `-` from being read as a flag.
+      - name: Build the announcement
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          # A role id is not a secret — it is visible to every member of the
+          # server — so it lives as a repository VARIABLE, where a wrong value
+          # can be read back off the config page instead of being masked out of
+          # every log that would show it. Read from `secrets` too, because
+          # "which one did I set it in" is otherwise a silent no-mention.
+          ROLE_ID: ${{ vars.DISCORD_RELEASE_ROLE_ID || secrets.DISCORD_RELEASE_ROLE_ID }}
+        run: |
+          printf '%s' "$RELEASE_BODY" > "${RUNNER_TEMP}/release-body.md"
+
+          ARGS=(
+            --version "$PUBLISH_VERSION"
+            --repo "$GITHUB_REPOSITORY"
+            --notes-file "${RUNNER_TEMP}/release-body.md"
+            --release-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+            --out "${RUNNER_TEMP}/discord.json"
+          )
+          if [ -n "$ROLE_ID" ]; then
+            ARGS+=(--role-id "$ROLE_ID")
+          else
+            echo "::notice::No DISCORD_RELEASE_ROLE_ID set — announcing without the release-role mention."
+          fi
+          node scripts/release-announcement.mjs "${ARGS[@]}"
+
+      # The webhook is bound to ONE channel at creation time, so which channel
+      # this lands in is a property of the secret, not of this file: create the
+      # webhook in #releases (Channel -> Integrations -> Webhooks) and store its
+      # URL as DISCORD_RELEASE_WEBHOOK.
+      #
+      # Silently skipping an unset secret keeps a fork's release from going red
+      # over a channel it does not have. An actual POST failure does not skip —
+      # a webhook that was deleted, revoked or rate-limited is a real thing to
+      # fix, and the only way anyone learns it happened is this job.
+      - name: Post to the releases channel
+        env:
+          DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
+        run: |
+          if [ -z "$DISCORD_RELEASE_WEBHOOK" ]; then
+            echo "::notice::No DISCORD_RELEASE_WEBHOOK secret set — release announcement not posted."
+            exit 0
+          fi
+
+          PAYLOAD="${RUNNER_TEMP}/discord.json"
+          BODY="${RUNNER_TEMP}/discord-response.txt"
+          ERRLOG="${RUNNER_TEMP}/discord-curl.txt"
+
+          # A Discord webhook has NO idempotency key: every accepted POST
+          # creates another message, role ping and all. So a retry is only safe
+          # when the previous attempt is known not to have arrived, and the
+          # curl exit codes below are the ones that say so — a name that never
+          # resolved, a connection never made, a TLS handshake that failed
+          # before any body went out.
+          #
+          #    5 could not resolve proxy    6 could not resolve host
+          #    7 failed to connect         35 TLS connect error
+          #   60 TLS certificate problem
+          #
+          # Everything else is AMBIGUOUS — 28 (timeout), 52 (empty reply), 55
+          # and 56 (send/recv errors) can all happen after Discord accepted the
+          # message and only the response was lost — and is treated as final
+          # rather than retried, because a duplicate announcement is worse than
+          # a missing one that a human can re-run deliberately.
+          NEVER_SENT=" 5 6 7 35 60 "
+
+          for attempt in 1 2 3; do
+            rc=0
+            code="$(curl -sS --connect-timeout 10 --max-time 30 \
+                      -o "$BODY" -w '%{http_code}' \
+                      -X POST -H 'Content-Type: application/json' \
+                      --data-binary @"$PAYLOAD" "$DISCORD_RELEASE_WEBHOOK" 2>>"$ERRLOG")" || rc=$?
+
+            if [ "$rc" -ne 0 ]; then
+              case "$NEVER_SENT" in
+                *" $rc "*)
+                  echo "Discord webhook unreachable on attempt $attempt (curl exit $rc) — nothing was sent" >&2
+                  ;;
+                *)
+                  echo "::error::The package published successfully. The Discord announcement failed in a way that does not say whether it arrived (curl exit $rc), so it is NOT retried — a webhook has no idempotency key, and replaying a POST that Discord may already have accepted would announce the release twice with the role ping. Look in the releases channel: if nothing is there, re-run this job."
+                  exit 1
+                  ;;
+              esac
+            else
+              case "$code" in
+                200|204)
+                  echo "announced the release in Discord"
+                  exit 0
+                  ;;
+                429)
+                  # Discord answered, so no message was created. Safe to repeat.
+                  echo "Discord webhook rate-limited (429) on attempt $attempt" >&2
+                  ;;
+                5*)
+                  # Same: an error response means nothing was created.
+                  echo "Discord webhook returned HTTP $code on attempt $attempt" >&2
+                  ;;
+                4*)
+                  # A rejected payload is deterministic — two more identical
+                  # POSTs only delay the same error by ten seconds.
+                  echo "Discord rejected the payload with HTTP $code:" >&2
+                  head -c 500 "$BODY" >&2 || true
+                  echo >&2
+                  break
+                  ;;
+                *)
+                  echo "Discord webhook returned an unexpected HTTP $code on attempt $attempt" >&2
+                  ;;
+              esac
+            fi
+
+            if [ "$attempt" -lt 3 ]; then sleep 5; fi
+          done
+
+          echo "::error::The package published successfully — only the Discord announcement failed, and every attempt was answered in a way that says it was never delivered. Nothing about the release needs re-doing; check DISCORD_RELEASE_WEBHOOK and re-run this job."
+          exit 1

@@ -151,16 +151,21 @@ fp fleet deploy ci-runner-01 \
     --remove old-rule
 ```
 
-Two things worth knowing before you script it:
+Three things worth knowing before you script it:
 
 * A bare `--add` of a policy the machine already runs keeps its **pinned
   version**. Pass `id@version` to move it — a pin is usually deliberate.
 * The endpoint has no lock. The CLI records the deployment generation it read and
   **refuses** if the write does not land at exactly one higher, because that means
   somebody deployed in between and a replace does not merge.
+* The exit code separates your mistake from the server's answer. A malformed ref,
+  `--set` alongside `--add`/`--remove`, or no flags at all is **2**; a ref that
+  parses but names a policy that does not exist is **1**; an unknown machine is
+  **6**. Branch on those rather than on the message.
 
 `fp fleet diff` shows intent versus delivery: a machine can be deployed-to and
-still enforcing an older set until it next polls.
+still enforcing an older set until it next polls. It refuses a machine id nobody
+has reported under rather than rendering it as an empty fleet.
 
 These commands are **session-only** (`fp login`). They are absent from the
 versioned API an API key authenticates against, so `--api-key` exits 2 with the

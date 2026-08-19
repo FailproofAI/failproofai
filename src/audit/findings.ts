@@ -91,6 +91,18 @@ const FINDING_COPY: Record<string, FindingCopy> = {
     body: "attempts to write credential-shaped strings to files that aren't typically credential stores.",
     cost: "could have committed live secrets to the repo.",
   },
+  "block-secret-in-write": {
+    body: "the agent tried to write a recognised API key or token into a file's contents \u2014 a hardcoded credential, not a filename.",
+    cost: "highest exposure of any finding here. a key in a tracked file is one commit from public, and rotation is the only fix.",
+  },
+  "block-credential-files": {
+    body: "reads or writes of SSH private keys, ~/.aws/credentials, keystores and similar. these files exist to hold exactly one thing.",
+    cost: "high. the contents are credentials by definition, and a read puts them in the model's context.",
+  },
+  "warn-assigned-secret": {
+    body: "a credential-named variable assigned a literal value \u2014 the hardcoded-secret shape that no vendor prefix matches.",
+    cost: "medium. some of these are placeholders; the ones that aren't are live credentials sitting in plain text.",
+  },
   "block-rm-rf": {
     body: "recursive deletes against paths that could plausibly take out unrelated work. `rm -rf` is the agent's preferred way of cleaning up — even when it shouldn't be.",
     cost: "irreversible. one wrong path argument = lost work.",
@@ -236,6 +248,18 @@ const POLICY_META: Record<string, { displayTitle: string; impact: string }> = {
   "block-secrets-write": {
     displayTitle: "Tried to write a secret-key file",
     impact: "blocks writes to .pem, id_rsa, credentials.json, and similar.",
+  },
+  "block-secret-in-write": {
+    displayTitle: "Tried to write a live credential into a file",
+    impact: "blocks a recognised API key or token appearing in file contents.",
+  },
+  "block-credential-files": {
+    displayTitle: "Tried to read or write a credential file",
+    impact: "blocks SSH private keys, cloud credentials, keystores and GnuPG material.",
+  },
+  "warn-assigned-secret": {
+    displayTitle: "Assigned a literal credential to a variable",
+    impact: "warns when a credential-named variable is given a literal value.",
   },
   "warn-background-process": {
     displayTitle: "Started a long-lived background process",

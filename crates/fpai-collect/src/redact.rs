@@ -70,6 +70,16 @@ const PREFIX_RULES: &[PrefixRule] = &[
         label: "openai-key",
     },
     PrefixRule {
+        prefix: "sk-svcacct-",
+        min_len: 16,
+        label: "openai-key",
+    },
+    PrefixRule {
+        prefix: "sk-admin-",
+        min_len: 16,
+        label: "openai-key",
+    },
+    PrefixRule {
         prefix: "sk-",
         min_len: 16,
         label: "api-key",
@@ -105,6 +115,11 @@ const PREFIX_RULES: &[PrefixRule] = &[
         label: "github-token",
     },
     PrefixRule {
+        prefix: "glpat-",
+        min_len: 16,
+        label: "gitlab-token",
+    },
+    PrefixRule {
         prefix: "sb_secret_",
         min_len: 16,
         label: "supabase-key",
@@ -125,6 +140,21 @@ const PREFIX_RULES: &[PrefixRule] = &[
         label: "slack-token",
     },
     PrefixRule {
+        prefix: "xoxa-",
+        min_len: 16,
+        label: "slack-token",
+    },
+    PrefixRule {
+        prefix: "xoxr-",
+        min_len: 16,
+        label: "slack-token",
+    },
+    PrefixRule {
+        prefix: "xoxs-",
+        min_len: 16,
+        label: "slack-token",
+    },
+    PrefixRule {
         prefix: "AKIA",
         min_len: 16,
         label: "aws-access-key-id",
@@ -133,6 +163,131 @@ const PREFIX_RULES: &[PrefixRule] = &[
         prefix: "ASIA",
         min_len: 16,
         label: "aws-access-key-id",
+    },
+    PrefixRule {
+        prefix: "AIza",
+        min_len: 30,
+        label: "google-api-key",
+    },
+    PrefixRule {
+        prefix: "GOCSPX-",
+        min_len: 16,
+        label: "google-oauth-secret",
+    },
+    PrefixRule {
+        prefix: "sk_live_",
+        min_len: 20,
+        label: "stripe-key",
+    },
+    PrefixRule {
+        prefix: "sk_test_",
+        min_len: 20,
+        label: "stripe-key",
+    },
+    PrefixRule {
+        prefix: "sq0atp-",
+        min_len: 16,
+        label: "square-token",
+    },
+    PrefixRule {
+        prefix: "sq0csp-",
+        min_len: 16,
+        label: "square-token",
+    },
+    PrefixRule {
+        prefix: "shpat_",
+        min_len: 24,
+        label: "shopify-token",
+    },
+    PrefixRule {
+        prefix: "shpss_",
+        min_len: 24,
+        label: "shopify-token",
+    },
+    PrefixRule {
+        prefix: "shpca_",
+        min_len: 24,
+        label: "shopify-token",
+    },
+    PrefixRule {
+        prefix: "shppa_",
+        min_len: 24,
+        label: "shopify-token",
+    },
+    PrefixRule {
+        prefix: "npm_",
+        min_len: 30,
+        label: "npm-token",
+    },
+    PrefixRule {
+        prefix: "pypi-",
+        min_len: 30,
+        label: "pypi-token",
+    },
+    PrefixRule {
+        prefix: "hvs.",
+        min_len: 20,
+        label: "vault-token",
+    },
+    PrefixRule {
+        prefix: "hvb.",
+        min_len: 20,
+        label: "vault-token",
+    },
+    PrefixRule {
+        prefix: "dp.pt.",
+        min_len: 30,
+        label: "doppler-token",
+    },
+    PrefixRule {
+        prefix: "dp.st.",
+        min_len: 30,
+        label: "doppler-token",
+    },
+    PrefixRule {
+        prefix: "dp.sa.",
+        min_len: 30,
+        label: "doppler-token",
+    },
+    PrefixRule {
+        prefix: "dp.ct.",
+        min_len: 30,
+        label: "doppler-token",
+    },
+    PrefixRule {
+        prefix: "dp.scim.",
+        min_len: 30,
+        label: "doppler-token",
+    },
+    PrefixRule {
+        prefix: "dp.audit.",
+        min_len: 30,
+        label: "doppler-token",
+    },
+    PrefixRule {
+        prefix: "lin_api_",
+        min_len: 30,
+        label: "linear-key",
+    },
+    PrefixRule {
+        prefix: "ntn_",
+        min_len: 30,
+        label: "notion-token",
+    },
+    PrefixRule {
+        prefix: "figd_",
+        min_len: 30,
+        label: "figma-token",
+    },
+    PrefixRule {
+        prefix: "PMAK-",
+        min_len: 30,
+        label: "postman-key",
+    },
+    PrefixRule {
+        prefix: "hf_",
+        min_len: 24,
+        label: "huggingface-token",
     },
 ];
 

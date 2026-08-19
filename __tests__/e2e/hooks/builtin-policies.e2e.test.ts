@@ -330,10 +330,23 @@ describe("block-env-files", () => {
     assertPreToolUseDeny(result);
   });
 
-  it("allows .envrc (different suffix)", () => {
+  // .envrc USED to be allowed here, on the reasoning that it is a different
+  // suffix. It is a direnv file and holds the same credentials .env holds, so
+  // the suffix was the only thing separating it from the rule that exists to
+  // protect exactly this content.
+  it("blocks .envrc, which holds the same thing", () => {
     const env = createFixtureEnv();
     env.writeConfig({ enabledPolicies: ["block-env-files"] });
     const result = runHook("PreToolUse", Payloads.preToolUse.bash("cat .envrc", env.cwd), { homeDir: env.home });
+    assertPreToolUseDeny(result);
+  });
+
+  // The original point of the case above — that the rule does not swallow every
+  // name beginning with .env — still needs holding down.
+  it("allows a file whose name merely starts with .env", () => {
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: ["block-env-files"] });
+    const result = runHook("PreToolUse", Payloads.preToolUse.read(".environment.md", env.cwd), { homeDir: env.home });
     assertAllow(result);
   });
 });

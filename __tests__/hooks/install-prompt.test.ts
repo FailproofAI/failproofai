@@ -34,7 +34,7 @@ describe("hooks/install-prompt", () => {
     expect(selected).not.toContain("block-rm-rf");
     expect(selected).not.toContain("block-force-push");
     expect(selected).not.toContain("block-secrets-write");
-    expect(selected).toHaveLength(12);
+    expect(selected).toHaveLength(14);
   });
 
   it("returns preSelected when stdin is not a TTY and preSelected is provided", async () => {

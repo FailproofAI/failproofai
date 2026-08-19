@@ -131,7 +131,7 @@ const filePath = String(ctx.toolInput?.file_path ?? "");
 | Event | When it runs | Typical use |
 | --- | --- | --- |
 | `PreToolUse` | Before a tool executes. | Block or guide commands, writes, reads, and external actions. |
-| `PostToolUse` | After a tool returns. | Inspect results before they reach the agent. A deny blocks the whole result; it does not redact selected fields. |
+| `PostToolUse` | After a tool returns. | Inspect results after the tool has run. A deny replaces the whole result on Codex and Copilot only; on other CLIs it appends a note and the agent still reads the real output. It never redacts selected fields. To prevent rather than report, use `PreToolUse`. |
 | `PermissionRequest` | When the agent requests permission. | Apply organization-specific permission rules. |
 | `UserPromptSubmit` | Before a submitted prompt continues. | Reject prohibited instructions or add workflow guidance. |
 | `Stop` | When the agent attempts to finish. | Require a reachable completion condition, such as a local verification step. |

@@ -524,10 +524,26 @@ export async function evaluatePolicies(
         // model reads; it does not undo the side effect. That is the only
         // semantic available at PostToolUse, and it is precisely what an
         // output-scrubbing policy needs to keep a secret out of the context.
+        //
+        // `result.message` is the REPLACEMENT TEXT the model reads when a
+        // policy has one — the sanitize-* family sets "[REDACTED: <what> removed
+        // by failproofai]". Sending `blockedMessage` here instead meant the
+        // model read "Blocked Bash by failproofai because: JWT token detected in
+        // tool output", which ANNOUNCES the secret it was scrubbing. On the only
+        // two CLIs where this text actually replaces the result, that is the
+        // whole job done backwards.
+        //
+        // The `??` fallback is not decoration: copilot's guard is
+        // `t?.decision === "block" && typeof t.reason === "string"` and fails
+        // CLOSED on a missing or non-string reason, so this must always be a
+        // non-empty string.
         if (session?.cli === "codex" || session?.cli === "copilot") {
+          const replacement = typeof result.message === "string" && result.message.length > 0
+            ? result.message
+            : blockedMessage;
           return {
             exitCode: 0,
-            stdout: JSON.stringify({ decision: "block", reason: blockedMessage }),
+            stdout: JSON.stringify({ decision: "block", reason: replacement }),
             stderr: "",
             policyName: policy.name,
             reason,

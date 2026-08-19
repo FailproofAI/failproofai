@@ -57,7 +57,7 @@ export function deriveStrengths(result: AuditResult): Strength[] {
     "sanitize-api-keys", "sanitize-jwt", "sanitize-connection-strings",
     "sanitize-private-key-content", "sanitize-bearer-tokens",
     "block-env-files", "block-secrets-write", "block-read-outside-cwd",
-    "protect-env-vars",
+    "protect-env-vars", "block-secret-in-write", "block-credential-files",
   ];
   if (hitsForShort(result, credentialPolicies) === 0) {
     out.push({

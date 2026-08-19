@@ -98,6 +98,50 @@ describe("hooks/policy-evaluator", () => {
     },
   );
 
+  // The point of scrubbing is that the model does not read the secret OR a
+  // description of it. Before `message` had a consumer, codex and copilot users
+  // got "Blocked Read by failproofai because: JWT found" in place of the
+  // result — the scrubber announcing what it scrubbed.
+  it.each(["codex", "copilot"] as const)(
+    "PostToolUse deny on %s uses result.message as the replacement text when set",
+    async (cli) => {
+      registerPolicy("jwt-scrub", "desc", () => ({
+        decision: "deny",
+        reason: "JWT token detected in tool output",
+        message: "[REDACTED: JWT token removed by failproofai]",
+      }), { events: ["PostToolUse"] });
+
+      const result = await evaluatePolicies("PostToolUse", { tool_name: "Read" }, { cli });
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(parsed.decision).toBe("block");
+      expect(parsed.reason).toBe("[REDACTED: JWT token removed by failproofai]");
+      // The unredacted description must not travel with it.
+      expect(parsed.reason).not.toContain("JWT token detected");
+      // `reason` on the RESULT stays the real reason — that is what the hook log
+      // and the audit count on; only the model-facing text is replaced.
+      expect(result.reason).toBe("JWT token detected in tool output");
+    },
+  );
+
+  it.each(["codex", "copilot"] as const)(
+    "PostToolUse deny on %s falls back to a non-empty reason when message is empty",
+    async (cli) => {
+      // copilot's guard fails CLOSED on a non-string or empty reason, so an
+      // empty `message` must not become the emitted text.
+      registerPolicy("blocker", "desc", () => ({
+        decision: "deny",
+        reason: "nope",
+        message: "",
+      }), { events: ["PostToolUse"] });
+
+      const result = await evaluatePolicies("PostToolUse", { tool_name: "Read" }, { cli });
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(typeof parsed.reason).toBe("string");
+      expect((parsed.reason as string).length).toBeGreaterThan(0);
+      expect(parsed.reason).toContain("nope");
+    },
+  );
+
   it("PostToolUse deny on a CLI outside that pair still uses additionalContext", async () => {
     // Guards the blast radius of the branch above: claude reads
     // hookSpecificOutput here and has no top-level `decision` consumer, so

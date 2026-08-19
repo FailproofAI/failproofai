@@ -213,25 +213,50 @@ describe("maskAssignedSecrets — the shape the blocking patterns do not carry",
   // is `export VAR=…`, whose example is the WHOLE command. Every one of these
   // reached the server and the email verbatim before this masking existed:
   // `SECRET_PATTERNS` matches vendor prefixes, not assignments.
+  // Split by which pass is expected to fire, because that is now a real
+  // distinction: several of these vendor prefixes moved INTO SECRET_PATTERNS,
+  // so `maskSecrets` reaches them first and names them specifically. The
+  // invariant both groups share — the value does not survive — is asserted for
+  // every row; only the label differs.
   it("masks the value of an assignment whose name says it is a credential", () => {
-    const cases = [
+    // No recognisable vendor shape, so the name-based pass is the ONLY thing
+    // standing between these and the digest. This is what maskAssignedSecrets
+    // exists for and the group that must keep its specific label.
+    const noVendorShape = [
       "export DATABASE_PASSWORD=hunter2-prod-acme",
-      "export SLACK_BOT_TOKEN=xoxb-2314-4432-aBcDeFgHiJkLmNoPqRsTuVwX",
-      "export HF_TOKEN=hf_AbCdEfGhIjKlMnOpQrStUvWxYz012345",
-      "export NPM_TOKEN=npm_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789",
-      "export GITLAB_TOKEN=glpat-AbCdEfGhIjKlMnOpQr",
+      // 38 chars, not AWS's 40, so the vendor rule correctly declines it.
       "export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY",
       "FOO_SECRET=abc123 ./run.sh",
       "PGPASSWORD=letmein psql -h prod",
       "npm config set _authToken=abcdef123456",
     ];
-    for (const input of cases) {
+    for (const input of noVendorShape) {
       const out = redactExample(input, HOME);
       expect(out, input).toContain("[REDACTED: assigned secret]");
       // The secret itself must be gone; the NAME is kept on purpose, because
       // "which credential" is the actionable half of the finding.
       const value = input.split("=")[1].split(" ")[0];
       expect(out, input).not.toContain(value);
+    }
+  });
+
+  it("masks a vendor-shaped assignment value, naming the vendor", () => {
+    // Same threat, better label. `maskAssignedSecrets` deliberately declines to
+    // re-mask a value an earlier pass already named — re-masking would downgrade
+    // "Slack token" to the generic label and strip the marker's own tail.
+    const vendorShaped: Array<[string, string]> = [
+      ["export SLACK_BOT_TOKEN=xoxb-2314-4432-aBcDeFgHiJkLmNoPqRsTuVwX", "Slack token"],
+      ["export HF_TOKEN=hf_AbCdEfGhIjKlMnOpQrStUvWxYz012345", "Hugging Face token"],
+      ["export NPM_TOKEN=npm_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789", "npm access token"],
+      ["export GITLAB_TOKEN=glpat-AbCdEfGhIjKlMnOpQr", "GitLab personal access token"],
+    ];
+    for (const [input, label] of vendorShaped) {
+      const out = redactExample(input, HOME);
+      expect(out, input).toContain(`[REDACTED: ${label}]`);
+      const value = input.split("=")[1].split(" ")[0];
+      expect(out, input).not.toContain(value);
+      // The variable name survives either way — that is the actionable half.
+      expect(out, input).toContain(input.split("=")[0].split(" ").pop()!);
     }
   });
 

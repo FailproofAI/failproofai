@@ -15,6 +15,7 @@ sanitize-jwt                 sanitize-api-keys
 sanitize-connection-strings sanitize-private-key-content
 sanitize-bearer-tokens       protect-env-vars
 block-env-files              block-secrets-write
+block-secret-in-write        block-credential-files
 block-self-pause             block-failproofai-commands
 block-sudo                   block-curl-pipe-sh
 block-rm-rf                  block-push-master
@@ -27,15 +28,32 @@ Recommended is deliberately narrower than **Everything**. Infrastructure and wor
 
 | Policy | Trigger | Outcome |
 | --- | --- | --- |
-| `sanitize-jwt` | `PostToolUse` | Redact JWTs from tool output before the model sees them. |
-| `sanitize-api-keys` | `PostToolUse` | Redact common OpenAI, Anthropic, GitHub, AWS, Stripe, and Google keys. |
-| `sanitize-connection-strings` | `PostToolUse` | Redact database connection strings containing credentials. |
-| `sanitize-private-key-content` | `PostToolUse` | Redact PEM private-key bodies. |
-| `sanitize-bearer-tokens` | `PostToolUse` | Redact authorization bearer tokens. |
+| `sanitize-jwt` | `PostToolUse` | Detect JWTs in tool output. Replaces the result on Codex and Copilot; elsewhere, reports only \u2014 see the note below. |
+| `sanitize-api-keys` | `PostToolUse` | Detect ~35 vendor key formats (OpenAI, Anthropic, GitHub, GitLab, AWS, Google, Azure, Stripe, Slack, npm, PyPI, Vault, and more). |
+| `sanitize-connection-strings` | `PostToolUse` | Detect database connection strings containing credentials. |
+| `sanitize-private-key-content` | `PostToolUse` | Detect PEM private-key bodies, including OpenSSH and PGP headers. |
+| `sanitize-bearer-tokens` | `PostToolUse` | Detect authorization bearer tokens. |
+| `block-secret-in-write` | `PreToolUse` on write and edit tools | Block a recognised key or token being written into file **contents**. Blocks on every supported CLI. |
+| `block-credential-files` | `PreToolUse` | Block reads and writes of SSH private keys, `~/.aws/credentials`, keystores, and GnuPG material. |
+| `warn-assigned-secret` | `PreToolUse` | Warn when a credential-named variable is assigned a literal value. Off by default. |
 | `protect-env-vars` | `PreToolUse` on shell tools | Block commands that dump environment variables. |
-| `block-env-files` | `PreToolUse` | Block reads and writes of `.env` files. |
+| `block-env-files` | `PreToolUse` | Block reads and writes of `.env` and `.envrc` files. |
 | `block-read-outside-cwd` | `PreToolUse` on read, glob, grep, or shell tools | Keep reads inside the session working directory. |
-| `block-secrets-write` | `PreToolUse` on write tools | Block writes to common secret-key and credential filenames. |
+| `block-secrets-write` | `PreToolUse` on write and edit tools | Block writes to common secret-key and credential filenames. |
+
+<Warning>
+**Where `PostToolUse` actually enforces.** A `PostToolUse` decision only replaces
+the tool result on **Codex** and **Copilot**, and even there the tool has already
+run. On the other supported CLIs \u2014 Claude Code, Cursor, OpenCode, Pi, Hermes,
+OpenClaw, Factory, Devin, Antigravity, and Goose \u2014 the agent still receives the
+real output alongside a note that a secret was detected.
+
+This is a limit of what those CLIs consume, not a configuration mistake. It is
+why `block-secret-in-write` and `block-credential-files` run at `PreToolUse`,
+which blocks on every supported CLI, and why both are in the recommended
+baseline: they prevent the credential from being written or read in the first
+place rather than trying to scrub it afterwards.
+</Warning>
 
 ## Dangerous commands and infrastructure
 
@@ -96,7 +114,10 @@ Configure parameters under the selected scope's `policyParams` object. Types are
 
 | Policy | Parameter | Type and default |
 | --- | --- | --- |
-| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; entries contain `regex` and `label` |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; entries contain `regex` and `label`. Malformed entries and patterns with nested quantifiers are logged and skipped. |
+| `block-secret-in-write` | `allowedSecretHashes` | `string[]`, `[]`; SHA-256 hex digests of literals to allow. Store hashes, never the credential itself. |
+| `block-secret-in-write` | `skipTestFixtures` | `boolean`, `true`; skip `__tests__/`, `fixtures/`, `examples/` and `*.test.*` paths |
+| `block-credential-files` | `strict` | `boolean`, `false`; also block `.npmrc`, `kubeconfig`, `*.tfvars`, `*.tfstate`, `secrets.yaml` |
 | `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
 | `block-sudo` | `allowPatterns` | `string[]`, `[]` |
 | `block-rm-rf` | `allowPaths` | `string[]`, `[]` |

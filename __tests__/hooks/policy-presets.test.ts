@@ -63,11 +63,11 @@ describe("policy-presets", () => {
 });
 
 describe("RECOMMENDED_POLICIES", () => {
-  it("names 15 policies and every one of them is a real non-beta builtin", () => {
+  it("names 17 policies and every one of them is a real non-beta builtin", () => {
     // The count is asserted because it is a product promise the wizard PRINTS
     // ("15 policies · global"). Changing the set is fine; changing it without
     // noticing that the screen now advertises a different number is not.
-    expect(RECOMMENDED_POLICIES).toHaveLength(15);
+    expect(RECOMMENDED_POLICIES).toHaveLength(17);
     for (const name of RECOMMENDED_POLICIES) {
       const policy = BUILTIN_POLICIES.find((p) => p.name === name);
       expect(policy, `${name} is not a builtin policy`).toBeDefined();

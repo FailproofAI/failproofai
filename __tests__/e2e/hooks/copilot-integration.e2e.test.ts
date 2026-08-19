@@ -116,7 +116,12 @@ describe("E2E: Copilot integration — hook protocol", () => {
         ),
         { homeDir: env.home, cli: "copilot" },
       );
-      assertPostToolUseBlockDecision(result);
+      // The replacement text is the redaction marker, NOT "Blocked ... because:
+      // JWT token detected". These are the only two CLIs where this string
+      // replaces the tool result, so sending the diagnosis here would hand the
+      // model a description of the very secret being scrubbed.
+      assertPostToolUseBlockDecision(result, /REDACTED/i);
+      expect(result.parsed?.reason).not.toMatch(/JWT token detected/i);
     } finally {
       env.cleanup();
     }

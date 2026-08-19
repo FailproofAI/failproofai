@@ -37,13 +37,13 @@ describe("hooks/builtin-policies", () => {
   });
 
   describe("BUILTIN_POLICIES", () => {
-    it("has 40 built-in policies", () => {
-      expect(BUILTIN_POLICIES).toHaveLength(40);
+    it("has 43 built-in policies", () => {
+      expect(BUILTIN_POLICIES).toHaveLength(43);
     });
 
-    it("has 12 default-enabled policies", () => {
+    it("has 14 default-enabled policies", () => {
       const defaults = BUILTIN_POLICIES.filter((p) => p.defaultEnabled);
-      expect(defaults).toHaveLength(12);
+      expect(defaults).toHaveLength(14);
     });
   });
 
@@ -113,7 +113,10 @@ describe("hooks/builtin-policies", () => {
       ["sk-proj-AAAAAAAAAAAAAAAAAAAA", "OpenAI project API key"],
       ["sk-AAAAAAAAAAAAAAAAAAAA", "OpenAI API key"],
       ["ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "GitHub personal access token"],
-      ["AKIAIOSFODNN7EXAMPLE", "AWS access key ID"],
+      // NOT AKIAIOSFODNN7EXAMPLE — that is the AWS documentation key and is now
+      // allowlisted on purpose. See the KNOWN_EXAMPLE_SECRETS suite below.
+      ["AKIAAAAAAAAAAAAAAAAA", "AWS access key ID"],
+      [`github_pat_${"A".repeat(82)}`, "GitHub fine-grained token"],
       ["sk_live_AAAAAAAAAAAAAAAAAAAAAAAA", "Stripe live secret key"],
       ["sk_test_AAAAAAAAAAAAAAAAAAAAAAAA", "Stripe test secret key"],
       ["AIzaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "Google API key"],
@@ -147,6 +150,74 @@ describe("hooks/builtin-policies", () => {
       });
       const result = await policy.fn(ctx);
       expect(result.decision).toBe("allow");
+    });
+
+    /**
+     * Every row here denied a real tool call before token boundaries and exact
+     * lengths landed. A deny on this list is not a cosmetic miss — it stops
+     * work the user asked for, on a policy that is on by default.
+     */
+    describe("does not fire on lookalikes", () => {
+      const notSecrets: Array<[string, string]> = [
+        // `sk-` inside an ordinary hyphenated word. `\b` does NOT catch this —
+        // `-` is a non-word char, so \bsk- matches happily inside `risk-`.
+        ["kubectl get pods -n risk-averse-scoring-v2", "sk- inside risk-"],
+        ["df -h && du -sh disk-usage-report-2026-08", "sk- inside disk-"],
+        ["ansible-playbook task-runner-deployment-01", "sk- inside task-"],
+        // Fixed-length formats padded past their real length.
+        [`ghp_${"A".repeat(40)}`, "ghp_ over-length"],
+        [`AKIA${"B".repeat(20)}`, "AKIA over-length"],
+        [`AIza${"C".repeat(39)}`, "AIza over-length"],
+        // Correct length, but glued to a longer token on either side.
+        [`prefix_ghp_${"A".repeat(36)}`, "ghp_ preceded by a token char"],
+        [`ghp_${"A".repeat(36)}_suffix`, "ghp_ followed by a token char"],
+        // Plain base64 of `{"name":"foo"}` — starts eyJ, is not a JWT.
+        ["payload: eyJuYW1lIjoiZm9vIn0=", "base64 JSON that is not a JWT"],
+      ];
+
+      for (const [text, why] of notSecrets) {
+        it(`allows ${why}`, async () => {
+          const ctx = makeCtx({ eventType: "PostToolUse", payload: { output: text } });
+          expect((await policy.fn(ctx)).decision).toBe("allow");
+        });
+      }
+    });
+
+    /**
+     * Vendor documentation keys. Correctly shaped, so boundaries cannot drop
+     * them — they are excluded by exact value instead. They appear in ~every
+     * AWS tutorial, README and test fixture, including this repo's own.
+     */
+    describe("KNOWN_EXAMPLE_SECRETS", () => {
+      for (const example of ["AKIAIOSFODNN7EXAMPLE", "ASIAIOSFODNN7EXAMPLE"]) {
+        it(`allows the AWS documentation key ${example}`, async () => {
+          const ctx = makeCtx({
+            eventType: "PostToolUse",
+            payload: { output: `aws_access_key_id = ${example}` },
+          });
+          expect((await policy.fn(ctx)).decision).toBe("allow");
+        });
+      }
+
+      // The allowlist skips a match and keeps scanning; it must not short-circuit
+      // the whole payload. A digest carrying the docs key AND a live one denies.
+      it("still denies a real key sharing the payload with a documentation key", async () => {
+        const ctx = makeCtx({
+          eventType: "PostToolUse",
+          payload: { output: "example: AKIAIOSFODNN7EXAMPLE\nreal: AKIAAAAAAAAAAAAAAAAA" },
+        });
+        const result = await policy.fn(ctx);
+        expect(result.decision).toBe("deny");
+        expect(result.reason).toContain("AWS access key ID");
+      });
+
+      it("does not allowlist a longer key that merely starts with the example", async () => {
+        const ctx = makeCtx({
+          eventType: "PostToolUse",
+          payload: { output: "AKIAIOSFODNN7EXAMPLX" },
+        });
+        expect((await policy.fn(ctx)).decision).toBe("deny");
+      });
     });
   });
 
@@ -200,6 +271,9 @@ describe("hooks/builtin-policies", () => {
       "-----BEGIN DSA PRIVATE KEY-----",
       "-----BEGIN OPENSSH PRIVATE KEY-----",
       "-----BEGIN ENCRYPTED PRIVATE KEY-----",
+      // The trailing BLOCK sits between KEY and the closing dashes, so this
+      // header fell outside the pattern entirely until `(?: BLOCK)?` landed.
+      "-----BEGIN PGP PRIVATE KEY BLOCK-----",
     ];
 
     for (const header of keyHeaders) {
@@ -491,6 +565,24 @@ describe("hooks/builtin-policies", () => {
 
     it("allows non-.env files", async () => {
       const ctx = makeCtx({ toolName: "Read", toolInput: { file_path: "/app/src/main.ts" } });
+      expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
+    // direnv files hold exactly what .env holds. The old pattern required a `.`
+    // or end-of-string after `.env`, and `r` is neither, so these were readable.
+    it("blocks Read of .envrc", async () => {
+      const ctx = makeCtx({ toolName: "Read", toolInput: { file_path: "/app/.envrc" } });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    it("blocks Bash cat .envrc", async () => {
+      const ctx = makeCtx({ toolName: "Bash", toolInput: { command: "cat .envrc" } });
+      expect((await policy.fn(ctx)).decision).toBe("deny");
+    });
+
+    // `.envrc` must not widen into any name merely starting with `.env`.
+    it("allows a file whose name only starts with .env", async () => {
+      const ctx = makeCtx({ toolName: "Read", toolInput: { file_path: "/app/.environment-notes" } });
       expect((await policy.fn(ctx)).decision).toBe("allow");
     });
   });
@@ -2535,6 +2627,154 @@ describe("hooks/builtin-policies", () => {
           },
         });
         expect((await policy.fn(ctx)).decision).toBe("deny");
+      });
+    });
+
+    /**
+     * The failure mode here is not a missed secret, it is a bricked machine:
+     * a malformed entry used to compile to /(?:)/ and deny EVERY PostToolUse
+     * event, on both CLIs where a PostToolUse deny actually replaces the result.
+     */
+    describe("sanitize-api-keys additionalPatterns — malformed config is inert", () => {
+      const policy = BUILTIN_POLICIES.find((p) => p.name === "sanitize-api-keys")!;
+      const clean = { eventType: "PostToolUse" as const, payload: { output: "nothing to see here" } };
+
+      it("does not deny everything when entries are bare strings", async () => {
+        // The shape block-secrets-write's identically-named param takes, which
+        // is exactly how a user arrives at it. Destructures to regex===undefined,
+        // and `new RegExp(undefined)` is /(?:)/ — it matches every payload.
+        const ctx = makeCtx({ ...clean, params: { additionalPatterns: ["foo"] } });
+        expect((await policy.fn(ctx)).decision).toBe("allow");
+      });
+
+      for (const [entry, why] of [
+        [{}, "entry with no regex"],
+        [{ regex: "", label: "empty" }, "empty regex string"],
+        [{ regex: 42, label: "number" }, "non-string regex"],
+        [null, "null entry"],
+      ] as Array<[unknown, string]>) {
+        it(`ignores a ${why}`, async () => {
+          const ctx = makeCtx({ ...clean, params: { additionalPatterns: [entry] } });
+          expect((await policy.fn(ctx)).decision).toBe("allow");
+        });
+      }
+
+      it("ignores a pattern that matches the empty string", async () => {
+        // `a*` matches "" and therefore matches every payload ever produced.
+        const ctx = makeCtx({ ...clean, params: { additionalPatterns: [{ regex: "a*", label: "greedy" }] } });
+        expect((await policy.fn(ctx)).decision).toBe("allow");
+      });
+
+      it("ignores a non-array additionalPatterns", async () => {
+        const ctx = makeCtx({ ...clean, params: { additionalPatterns: "oops" } });
+        expect((await policy.fn(ctx)).decision).toBe("allow");
+      });
+
+      it("rejects a nested-quantifier pattern instead of running it", async () => {
+        // Catastrophic backtracking: this pattern against a long non-matching
+        // run is the textbook ReDoS. A builtin policy gets no timeout, so the
+        // guard has to be refusal, not interruption.
+        const ctx = makeCtx({
+          eventType: "PostToolUse",
+          payload: { output: `${"a".repeat(2000)}!` },
+          params: { additionalPatterns: [{ regex: "(a+)+$", label: "redos" }] },
+        });
+        const started = performance.now();
+        expect((await policy.fn(ctx)).decision).toBe("allow");
+        expect(performance.now() - started).toBeLessThan(1000);
+      });
+
+      it("ignores an over-long pattern source", async () => {
+        const ctx = makeCtx({ ...clean, params: { additionalPatterns: [{ regex: `x{1}${"y".repeat(300)}`, label: "long" }] } });
+        expect((await policy.fn(ctx)).decision).toBe("allow");
+      });
+
+      it("still denies on a valid entry sitting after several malformed ones", async () => {
+        const ctx = makeCtx({
+          eventType: "PostToolUse",
+          payload: { output: "internal-abc123" },
+          params: {
+            additionalPatterns: [
+              "bare string",
+              {},
+              { regex: "a*", label: "matches everything" },
+              { regex: "internal-[a-z0-9]+", label: "Internal token" },
+            ],
+          },
+        });
+        const result = await policy.fn(ctx);
+        expect(result.decision).toBe("deny");
+        expect(result.reason).toContain("Internal token");
+      });
+
+      it("falls back to a generic label when label is missing", async () => {
+        const ctx = makeCtx({
+          eventType: "PostToolUse",
+          payload: { output: "internal-abc123" },
+          params: { additionalPatterns: [{ regex: "internal-[a-z0-9]+" }] },
+        });
+        const result = await policy.fn(ctx);
+        expect(result.decision).toBe("deny");
+        expect(result.reason).toContain("custom pattern");
+      });
+    });
+
+    describe("block-secrets-write — malformed additionalPatterns is inert", () => {
+      const bsw = BUILTIN_POLICIES.find((p) => p.name === "block-secrets-write")!;
+
+      it("skips non-string entries instead of throwing", async () => {
+        // `filePath.includes(42)` throws, and the evaluator's per-policy catch
+        // would swallow it — silently disabling the policy for the whole event.
+        const ctx = makeCtx({
+          toolName: "Write",
+          toolInput: { file_path: "/app/src/index.ts" },
+          params: { additionalPatterns: [42, null, ""] },
+        });
+        expect((await bsw.fn(ctx)).decision).toBe("allow");
+      });
+
+      it("still blocks on a valid entry after malformed ones", async () => {
+        const ctx = makeCtx({
+          toolName: "Write",
+          toolInput: { file_path: "/app/vault/token.txt" },
+          params: { additionalPatterns: [42, "vault/"] },
+        });
+        expect((await bsw.fn(ctx)).decision).toBe("deny");
+      });
+
+      it("ignores a non-array additionalPatterns", async () => {
+        const ctx = makeCtx({
+          toolName: "Write",
+          toolInput: { file_path: "/app/src/index.ts" },
+          params: { additionalPatterns: "vault/" },
+        });
+        expect((await bsw.fn(ctx)).decision).toBe("allow");
+      });
+    });
+
+    describe("block-secrets-write — Edit and public keys", () => {
+      const bsw = BUILTIN_POLICIES.find((p) => p.name === "block-secrets-write")!;
+
+      it("blocks an Edit to a private key, not only a Write", async () => {
+        const ctx = makeCtx({ toolName: "Edit", toolInput: { file_path: "/home/u/.ssh/id_rsa" } });
+        expect((await bsw.fn(ctx)).decision).toBe("deny");
+      });
+
+      it("registers for both Write and Edit", () => {
+        expect(bsw.match.toolNames).toEqual(["Write", "Edit"]);
+      });
+
+      // A public key is meant to be distributed. `/id_rsa/` matched id_rsa.pub.
+      for (const pub of ["/home/u/.ssh/id_rsa.pub", "/home/u/.ssh/id_ed25519.pub"]) {
+        it(`allows writing ${pub}`, async () => {
+          const ctx = makeCtx({ toolName: "Write", toolInput: { file_path: pub } });
+          expect((await bsw.fn(ctx)).decision).toBe("allow");
+        });
+      }
+
+      it("still blocks the private half next to it", async () => {
+        const ctx = makeCtx({ toolName: "Write", toolInput: { file_path: "/home/u/.ssh/id_ed25519" } });
+        expect((await bsw.fn(ctx)).decision).toBe("deny");
       });
     });
   });

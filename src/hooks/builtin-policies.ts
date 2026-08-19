@@ -6,6 +6,7 @@ import { statSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { execSync, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
+import { createHash } from "node:crypto";
 import type { BuiltinPolicyDefinition, PolicyContext, PolicyResult, PolicyParamsSchema } from "./policy-types";
 import { allow, deny, instruct } from "./policy-helpers";
 import { normalizePolicyName, registerPolicy } from "./policy-registry";
@@ -115,27 +116,173 @@ const SHELL_METACHAR_RE = /[;&<>`$()\\]/;
 
 // -- Pre-compiled regex constants (hoisted to avoid per-call allocation) --
 
-// sanitizeJwt
-const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
+/**
+ * A token must not START inside another token, or `sk-` matches inside
+ * `risk-averse` and `ri` is left dangling in front of the marker.
+ *
+ * The character class is `is_token_char` from the daemon's redactor
+ * (crates/fpai-collect/src/redact.rs) spelled as a regex, so both sides agree on
+ * what a boundary is. `\b` is NOT equivalent: `-` is a non-word character, so
+ * `\bsk-` matches happily at the `sk` inside `risk-averse`, which is the exact
+ * false positive this exists to stop. Measured live: `kubectl get pods -n
+ * risk-scoring` denied a tool call as an "OpenAI API key".
+ */
+const TOK = "[A-Za-z0-9_-]";
+const NOT_AFTER_TOKEN = `(?<!${TOK})`;
+const NOT_BEFORE_TOKEN = `(?!${TOK})`;
 
-// sanitizeApiKeys
+/**
+ * Credentials that appear in vendor DOCUMENTATION, not in anyone's account.
+ *
+ * These are correctly shaped — boundary anchoring cannot drop them and should
+ * not try — and they occur in roughly every AWS tutorial, README and test
+ * fixture. Denying a tool call over one is a pure false positive with no upside.
+ * Compared against the exact matched text, so a real key sharing a prefix is
+ * unaffected.
+ *
+ * Exported so the audit redactor can agree with the engine about what is not a
+ * secret, the same way `SECRET_PATTERNS` makes them agree about what is.
+ */
+export const KNOWN_EXAMPLE_SECRETS: ReadonlySet<string> = new Set([
+  // The canonical AWS docs pair — https://docs.aws.amazon.com/ ... every page.
+  "AKIAIOSFODNN7EXAMPLE",
+  "ASIAIOSFODNN7EXAMPLE",
+  "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+]);
+
+// sanitizeJwt
+const JWT_RE = new RegExp(
+  `${NOT_AFTER_TOKEN}eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}`,
+);
+
+/**
+ * sanitizeApiKeys.
+ *
+ * Every rule carries a leading boundary. A rule whose vendor format has a FIXED
+ * length carries a trailing one too — without it `ghp_` + 40 characters matched
+ * on its first 36, so `.test()` denied a token that is not a GitHub token and
+ * `maskSecrets` left the last 4 characters of a real one in the digest.
+ * Open-ended `{n,}` rules need no trailing guard: the quantifier is greedy and
+ * already runs to the end of the token.
+ */
 const API_KEY_PATTERNS: Array<[RegExp, string]> = [
-  [/sk-ant-[A-Za-z0-9\-_]{20,}/, "Anthropic API key"],
-  [/sk-proj-[A-Za-z0-9\-_]{20,}/, "OpenAI project API key"],
-  [/sk-[A-Za-z0-9]{20,}/, "OpenAI API key"],
-  [/ghp_[A-Za-z0-9]{36}/, "GitHub personal access token"],
-  [/github_pat_[A-Za-z0-9_]{82}/, "GitHub fine-grained token"],
-  [/AKIA[A-Z0-9]{16}/, "AWS access key ID"],
-  [/sk_live_[A-Za-z0-9]{24,}/, "Stripe live secret key"],
-  [/sk_test_[A-Za-z0-9]{24,}/, "Stripe test secret key"],
-  [/AIza[0-9A-Za-z\-_]{35}/, "Google API key"],
+  // -- OpenAI / Anthropic. Specific prefixes MUST precede the generic `sk-`,
+  //    or an Anthropic key is reported as an OpenAI one.
+  [new RegExp(`${NOT_AFTER_TOKEN}sk-ant-[A-Za-z0-9\\-_]{20,}`), "Anthropic API key"],
+  [new RegExp(`${NOT_AFTER_TOKEN}sk-proj-[A-Za-z0-9\\-_]{20,}`), "OpenAI project API key"],
+  [new RegExp(`${NOT_AFTER_TOKEN}sk-svcacct-[A-Za-z0-9\\-_]{20,}`), "OpenAI service account key"],
+  [new RegExp(`${NOT_AFTER_TOKEN}sk-admin-[A-Za-z0-9\\-_]{20,}`), "OpenAI admin key"],
+  [new RegExp(`${NOT_AFTER_TOKEN}sk-[A-Za-z0-9]{20,}`), "OpenAI API key"],
+  // -- GitHub. ghp_ is the classic PAT; gho_/ghu_/ghs_/ghr_ are the OAuth,
+  //    user-to-server, server-to-server and refresh variants. All are 36 after
+  //    the prefix, all leak the same access, and only ghp_ was covered.
+  [new RegExp(`${NOT_AFTER_TOKEN}ghp_[A-Za-z0-9]{36}${NOT_BEFORE_TOKEN}`), "GitHub personal access token"],
+  [new RegExp(`${NOT_AFTER_TOKEN}gho_[A-Za-z0-9]{36}${NOT_BEFORE_TOKEN}`), "GitHub OAuth token"],
+  [new RegExp(`${NOT_AFTER_TOKEN}ghu_[A-Za-z0-9]{36}${NOT_BEFORE_TOKEN}`), "GitHub user-to-server token"],
+  [new RegExp(`${NOT_AFTER_TOKEN}ghs_[A-Za-z0-9]{36}${NOT_BEFORE_TOKEN}`), "GitHub server-to-server token"],
+  [new RegExp(`${NOT_AFTER_TOKEN}ghr_[A-Za-z0-9]{36}${NOT_BEFORE_TOKEN}`), "GitHub refresh token"],
+  [new RegExp(`${NOT_AFTER_TOKEN}github_pat_[A-Za-z0-9_]{82}${NOT_BEFORE_TOKEN}`), "GitHub fine-grained token"],
+  // `glpat-` is a six-character literal that cannot occur in prose or code, so
+  // the minimum length guards format variance, not false positives. Same class
+  // as hf_ / figd_ / lin_api_ — distinctive prefix, no upper bound. The exact
+  // lengths elsewhere (ghp_, AKIA, npm_, AIza, PMAK-) are the other class:
+  // stable documented formats where over-length matching was a measured bug.
+  [new RegExp(`${NOT_AFTER_TOKEN}glpat-[A-Za-z0-9\\-_]{16,}`), "GitLab personal access token"],
+  // -- AWS. ASIA is the temporary/STS form; it grants the same access for its
+  //    lifetime. The secret access key has no prefix of its own, so it is
+  //    anchored on the assignment name instead of matching bare base64.
+  [new RegExp(`${NOT_AFTER_TOKEN}AKIA[A-Z0-9]{16}${NOT_BEFORE_TOKEN}`), "AWS access key ID"],
+  [new RegExp(`${NOT_AFTER_TOKEN}ASIA[A-Z0-9]{16}${NOT_BEFORE_TOKEN}`), "AWS temporary access key ID"],
+  [/aws_secret_access_key\s*[=:]\s*["']?[A-Za-z0-9/+]{40}/i, "AWS secret access key"],
+  // -- Cloud providers.
+  [new RegExp(`${NOT_AFTER_TOKEN}AIza[0-9A-Za-z\\-_]{35}${NOT_BEFORE_TOKEN}`), "Google API key"],
+  [new RegExp(`${NOT_AFTER_TOKEN}GOCSPX-[A-Za-z0-9\\-_]{20,}`), "Google OAuth client secret"],
+  [/AccountKey=[A-Za-z0-9+/]{86}==/, "Azure storage account key"],
+  // -- Payments.
+  [new RegExp(`${NOT_AFTER_TOKEN}sk_live_[A-Za-z0-9]{24,}`), "Stripe live secret key"],
+  [new RegExp(`${NOT_AFTER_TOKEN}sk_test_[A-Za-z0-9]{24,}`), "Stripe test secret key"],
+  [new RegExp(`${NOT_AFTER_TOKEN}sq0(?:atp|csp)-[A-Za-z0-9\\-_]{22,}`), "Square access token"],
+  [new RegExp(`${NOT_AFTER_TOKEN}shp(?:at|ss|ca|pa)_[0-9a-fA-F]{32}${NOT_BEFORE_TOKEN}`), "Shopify access token"],
+  // -- Supabase. The daemon's redactor has carried these since it shipped; the
+  //    engine did not, so a service key was denied nowhere and scrubbed only on
+  //    the way out. That asymmetry is what the prefix-parity test now prevents.
+  [new RegExp(`${NOT_AFTER_TOKEN}sb_secret_[A-Za-z0-9\\-_]{16,}`), "Supabase secret key"],
+  [new RegExp(`${NOT_AFTER_TOKEN}sbp_[A-Za-z0-9]{20,}`), "Supabase access token"],
+  // -- Messaging / chat. The Slack webhook URL is a credential on its own:
+  //    anyone holding it can post to the channel.
+  [new RegExp(`${NOT_AFTER_TOKEN}xox[baprs]-[A-Za-z0-9\\-]{10,}`), "Slack token"],
+  [/hooks\.slack\.com\/services\/T[A-Za-z0-9]+\/B[A-Za-z0-9]+\/[A-Za-z0-9]{20,}/, "Slack webhook URL"],
+  [new RegExp(`${NOT_AFTER_TOKEN}\\d{8,10}:AA[A-Za-z0-9\\-_]{33}${NOT_BEFORE_TOKEN}`), "Telegram bot token"],
+  // -- Package registries.
+  [new RegExp(`${NOT_AFTER_TOKEN}npm_[A-Za-z0-9]{36}${NOT_BEFORE_TOKEN}`), "npm access token"],
+  // `pypi-` plus the body, NOT `pypi-AgEIcHlwaS5vcmc` — that literal is the
+  // base64 macaroon header for pypi.org specifically, so anchoring on it missed
+  // every test.pypi.org token, which carries a different header and the same
+  // publish rights on the index it belongs to. 50 token characters after a
+  // five-character literal is unambiguous on its own.
+  [new RegExp(`${NOT_AFTER_TOKEN}pypi-[A-Za-z0-9\\-_]{50,}`), "PyPI API token"],
+  // -- Secret managers and SaaS.
+  [new RegExp(`${NOT_AFTER_TOKEN}hv[sb]\\.[A-Za-z0-9\\-_]{24,}`), "HashiCorp Vault token"],
+  [new RegExp(`${NOT_AFTER_TOKEN}dp\\.(?:pt|st|sa|ct|scim|audit)\\.[A-Za-z0-9]{40,}`), "Doppler token"],
+  [new RegExp(`${NOT_AFTER_TOKEN}lin_api_[A-Za-z0-9]{40,}`), "Linear API key"],
+  [new RegExp(`${NOT_AFTER_TOKEN}ntn_[A-Za-z0-9]{40,}`), "Notion integration token"],
+  [new RegExp(`${NOT_AFTER_TOKEN}figd_[A-Za-z0-9\\-_]{40,}`), "Figma personal access token"],
+  [new RegExp(`${NOT_AFTER_TOKEN}PMAK-[0-9a-f]{24}-[0-9a-f]{34}${NOT_BEFORE_TOKEN}`), "Postman API key"],
+  // Open-ended rather than the documented 34: `hf_` plus 30+ alphanumerics is
+  // not a plausible English token, so the prefix carries the evidence on its
+  // own, and an upper bound here would buy false NEGATIVES on format drift
+  // (oauth and org tokens) in exchange for precision the prefix already has.
+  // Contrast ghp_/AKIA, where the length is stable AND the over-length false
+  // positive was measured.
+  [new RegExp(`${NOT_AFTER_TOKEN}hf_[A-Za-z0-9]{30,}`), "Hugging Face token"],
+  [/SG\.[A-Za-z0-9\-_]{22}\.[A-Za-z0-9\-_]{43}/, "SendGrid API key"],
+  // -- HTTP. Bearer has its own policy; Basic does not, and carries a password.
+  [/Authorization:\s*Basic\s+[A-Za-z0-9+/=]{16,}/i, "HTTP basic auth credentials"],
+];
+
+/**
+ * Credential shapes that are REAL but too collision-prone to deny on.
+ *
+ * These reach `SECRET_PATTERNS` — so the audit redactor masks them, where the
+ * cost of a false positive is a few characters missing from a digest — and are
+ * deliberately absent from `API_KEY_PATTERNS`, so no blocking policy can ever
+ * reach them. That split is the whole tiering contract described on
+ * `SECRET_PATTERNS`, made structural rather than advisory: a pattern cannot
+ * deny a tool call unless someone moved it into the other array on purpose.
+ *
+ * Each entry is here for a specific collision, named, not because it is
+ * "lower severity":
+ *   • Twilio's SID/key forms are `SK`/`AC` plus 32 hex — indistinguishable from
+ *     a truncated git SHA or any hex digest.
+ *   • A Discord token is shape-only (base64.base64.base64) with no literal
+ *     prefix, so it matches ordinary base64.
+ *   • A Sentry DSN is semi-public by design; it belongs in a digest, not in a
+ *     denial.
+ *   • Vault's legacy `s.` prefix is two characters, which is not evidence.
+ */
+export const REDACT_ONLY_PATTERNS: Array<[RegExp, string]> = [
+  [new RegExp(`${NOT_AFTER_TOKEN}SK[0-9a-fA-F]{32}${NOT_BEFORE_TOKEN}`), "Twilio API key SID"],
+  [new RegExp(`${NOT_AFTER_TOKEN}AC[0-9a-fA-F]{32}${NOT_BEFORE_TOKEN}`), "Twilio account SID"],
+  [new RegExp(`${NOT_AFTER_TOKEN}[MNO][A-Za-z0-9\\-_]{23}\\.[A-Za-z0-9\\-_]{6}\\.[A-Za-z0-9\\-_]{27,}`), "Discord bot token"],
+  [/https:\/\/[0-9a-f]{32}@[a-z0-9.\-]+\/\d+/, "Sentry DSN"],
+  [new RegExp(`${NOT_AFTER_TOKEN}s\\.[A-Za-z0-9]{24}${NOT_BEFORE_TOKEN}`), "HashiCorp Vault legacy token"],
 ];
 
 // sanitizeConnectionStrings
-const CONNECTION_STRING_RE = /(?:postgresql|postgres|mysql|mongodb(?:\+srv)?|redis|amqps?|smtps?):\/\/[^@\s]+@/;
+const CONNECTION_STRING_RE = new RegExp(
+  `${NOT_AFTER_TOKEN}(?:postgresql|postgres|mysql|mongodb(?:\\+srv)?|redis|amqps?|smtps?)://[^@\\s]+@`,
+);
 
-// sanitizePrivateKeyContent
-const PRIVATE_KEY_RE = /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/;
+/**
+ * sanitizePrivateKeyContent.
+ *
+ * `(?:[A-Z0-9]+ )*` rather than `(?:[A-Z]+ )?` so multi-word and digit-bearing
+ * labels are covered, and `(?: BLOCK)?` for PGP — `-----BEGIN PGP PRIVATE KEY
+ * BLOCK-----` was the one PEM header this missed, because the trailing `BLOCK`
+ * sits between `KEY` and the closing dashes. `BEGIN CERTIFICATE` still does not
+ * match: the optional group can match nothing, but `PRIVATE KEY` is required.
+ */
+const PRIVATE_KEY_RE = /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/;
 
 // sanitizeBearerTokens
 const BEARER_TOKEN_RE = /Authorization:\s*Bearer\s+[A-Za-z0-9\-._~+/]{20,}/i;
@@ -164,6 +311,63 @@ export const SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [BEARER_TOKEN_RE, "bearer token"],
   [CONNECTION_STRING_RE, "database credentials"],
   ...API_KEY_PATTERNS,
+  // The redact-only tier is included HERE and nowhere the blocking policies can
+  // reach. See REDACT_ONLY_PATTERNS for why each one cannot carry a deny.
+  ...REDACT_ONLY_PATTERNS,
+];
+
+/**
+ * The literal vendor prefixes the blocking tier recognises.
+ *
+ * Declared rather than derived, because it is one half of a contract with code
+ * in another language: `PREFIX_RULES` in crates/fpai-collect/src/redact.rs is
+ * the daemon's copy, hand-written, with no generator on either side.
+ * `__tests__/hooks/secret-prefix-parity.test.ts` reads the Rust source and
+ * asserts the two agree — the same technique
+ * `__tests__/hooks/harness-extra-paths.test.ts` uses for `HARNESS_KEYS`.
+ *
+ * The two directions fail differently, which is why the test checks both:
+ *   • in the engine, not the daemon → the hook denies a credential in-session
+ *     that still leaves the machine verbatim in telemetry.
+ *   • in the daemon, not the engine → the digest masks something the agent was
+ *     never stopped from using, so the two halves tell the user different
+ *     stories about the same key.
+ *
+ * ONLY single-token literal prefixes belong here. Structural rules (JWT,
+ * bearer, connection strings, the Slack webhook URL, SendGrid's three-segment
+ * form, `AccountKey=`, Telegram's digits-then-colon) have no prefix to compare
+ * and are matched by shape on both sides, or deliberately only on one.
+ */
+export const VENDOR_PREFIXES: readonly string[] = [
+  "sk-ant-", "sk-proj-", "sk-svcacct-", "sk-admin-", "sk-",
+  "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_",
+  "glpat-",
+  "sb_secret_", "sbp_",
+  "xoxb-", "xoxp-", "xoxa-", "xoxr-", "xoxs-",
+  "AKIA", "ASIA",
+  "AIza", "GOCSPX-",
+  "sk_live_", "sk_test_",
+  "sq0atp-", "sq0csp-",
+  "shpat_", "shpss_", "shpca_", "shppa_",
+  "npm_", "pypi-",
+  "hvs.", "hvb.",
+  "dp.pt.", "dp.st.", "dp.sa.", "dp.ct.", "dp.scim.", "dp.audit.",
+  "lin_api_", "ntn_", "figd_", "PMAK-", "hf_",
+];
+
+/**
+ * The subset of `SECRET_PATTERNS` a policy is allowed to DENY on.
+ *
+ * Exported for the test that asserts the two tiers stay disjoint. Without it
+ * the split is a convention, and the failure mode of a broken convention here
+ * is a denied tool call every time an agent reads a git SHA.
+ */
+export const BLOCKING_SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  [PRIVATE_KEY_RE, "private key"],
+  [JWT_RE, "JWT"],
+  [BEARER_TOKEN_RE, "bearer token"],
+  [CONNECTION_STRING_RE, "database credentials"],
+  ...API_KEY_PATTERNS,
 ];
 
 // warnDestructiveSql / warnSchemaAlteration
@@ -186,8 +390,11 @@ const DOTNET_GETENV_RE = /\[Environment\]::GetEnvironment/i;
 const CMD_ECHO_ENV_RE = /echo\s+%[A-Za-z_]/i;
 
 // blockEnvFiles
-const ENV_FILE_PATH_RE = /(?:^|[\\/])\.env(?:\.|$)/;
-const ENV_CMD_RE = /\.env(?:\b|\s|$|\.)/;
+// `rc` is spelled out because the trailing group needs a `.` or end-of-string:
+// `.envrc` (direnv) fell through it and was readable, though it holds exactly
+// what `.env` holds.
+const ENV_FILE_PATH_RE = /(?:^|[\\/])\.env(?:rc)?(?:\.|$)/;
+const ENV_CMD_RE = /\.env(?:rc)?(?:\b|\s|$|\.)/;
 
 // blockSudo
 const PS_ELEVATION_RE = /Start-Process\s+.*-Verb\s+RunAs/i;
@@ -393,8 +600,14 @@ const SAFE_FORCE_PREFIXES = ["--force-with-lease", "--force-if-includes"] as con
 
 // blockSecretsWrite
 const SECRET_FILE_RE = /\.(?:pem|key)$/;
-const SECRET_FILE_ID_RSA_RE = /id_rsa/;
+// `id_rsa` alone predates every key type ssh-keygen actually defaults to.
+// ed25519 has been the recommended choice for years, so the one name matched
+// here was the one least likely to be on disk.
+const SECRET_FILE_ID_RSA_RE = /id_(?:rsa|dsa|ecdsa(?:_sk)?|ed25519(?:_sk)?)/;
 const SECRET_FILE_CREDENTIALS_RE = /credentials/;
+/** Public halves of a keypair. Meant to be distributed; `/id_rsa/` matched
+ *  `id_rsa.pub` and `\.(?:pem|key)$` is one rename from `.pub` too. */
+const PUBLIC_KEY_FILE_RE = /\.pub$/;
 
 // blockWorkOnMain
 const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
@@ -596,10 +809,128 @@ function matchesAllowedPattern(cmd: string, pattern: string): boolean {
 
 // -- Policy implementations --
 
+/**
+ * True when `text` holds a match for `pattern` that is not a documentation example.
+ *
+ * Replaces a bare `pattern.test(text)` so `KNOWN_EXAMPLE_SECRETS` can be
+ * consulted against the MATCHED TEXT — which `.test()` does not expose. The scan
+ * continues past an allowlisted hit rather than returning on it, so a payload
+ * carrying both the AWS docs key and a live one still denies.
+ *
+ * A fresh global clone is built per call rather than putting `g` on the shared
+ * literal. These patterns are module-level constants reused across every hook
+ * event in a long-lived worker (worker-server.ts), and a global regex carries
+ * `lastIndex` between calls — it would skip matches depending on where the
+ * previous string happened to stop, which reads as flakiness rather than logic.
+ * `maskSecrets` in src/audit/redact-example.ts rebuilds for the same reason.
+ */
+function findSecret(
+  text: string,
+  pattern: RegExp,
+  allowedHashes?: ReadonlySet<string>,
+): string | undefined {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  const scanner = new RegExp(pattern.source, flags);
+  let m: RegExpExecArray | null;
+  while ((m = scanner.exec(text)) !== null) {
+    const hit = m[0];
+    const excused = KNOWN_EXAMPLE_SECRETS.has(hit) || allowedHashes?.has(sha256(hit));
+    if (!excused) return hit;
+    // A zero-length match would spin forever; step past it.
+    if (m.index === scanner.lastIndex) scanner.lastIndex++;
+  }
+  return undefined;
+}
+
+function containsSecret(text: string, pattern: RegExp): boolean {
+  return findSecret(text, pattern) !== undefined;
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+/**
+ * Caps on a user-supplied `additionalPatterns` entry.
+ *
+ * A builtin policy gets NO timeout. The 10s `Promise.race` in handler.ts wraps
+ * CUSTOM hooks only, and it could not interrupt a synchronous regex in any case
+ * — the event loop is blocked, so the timer never fires. Bounding the input is
+ * therefore the only hard limit on worst-case work that exists on this path.
+ */
+const USER_PATTERN_MAX_SOURCE = 200;
+const USER_PATTERN_MAX_COUNT = 32;
+const USER_PATTERN_MAX_HAYSTACK = 64 * 1024;
+
+/**
+ * A quantifier applied to a group that itself contains one — `(a+)+`, `(a|a)*`,
+ * `(\d+)*`. This is the classic catastrophic-backtracking shape.
+ *
+ * A conservative screen, not a solver: it rejects the shape that causes trouble
+ * in practice and accepts patterns that are merely complex. Deciding the general
+ * case is not something a regex can do, and pretending otherwise would be worse
+ * than saying plainly what this covers.
+ */
+const NESTED_QUANTIFIER_RE = /\([^()]*[+*}][^()]*\)\s*[+*]|\([^()]*\)\s*\{\d+,\s*\}/;
+
+/** Compiled user patterns, keyed by source. The worker is long-lived and this
+ *  runs on every tool call, so a rejected pattern is re-validated never and a
+ *  valid one is compiled once. `null` caches a rejection. */
+const userPatternCache = new Map<string, RegExp | null>();
+
+/**
+ * Validate and compile one `additionalPatterns` entry, or return null.
+ *
+ * The shape check is the load-bearing part. `additionalPatterns` is declared
+ * `pattern[]` here and `string[]` on block-secrets-write, so a user copying
+ * config between the two writes `["foo"]`, which destructures to
+ * `regex === undefined`. `new RegExp(undefined)` does NOT throw — per spec an
+ * undefined pattern becomes the empty string, producing `/(?:)/`, which matches
+ * EVERYTHING. One malformed entry therefore denied every PostToolUse event on
+ * the machine, and the try/catch never fired because nothing threw.
+ */
+function compileUserPattern(entry: unknown): { re: RegExp; label: string } | null {
+  if (typeof entry !== "object" || entry === null) {
+    hookLogWarn(`additionalPatterns: expected { regex, label }, got ${typeof entry}; skipping`);
+    return null;
+  }
+  const { regex, label } = entry as { regex?: unknown; label?: unknown };
+  if (typeof regex !== "string" || regex.length === 0) {
+    hookLogWarn("additionalPatterns: entry has no string `regex`, skipping");
+    return null;
+  }
+  const name = typeof label === "string" && label.length > 0 ? label : "custom pattern";
+
+  const cached = userPatternCache.get(regex);
+  if (cached !== undefined) return cached === null ? null : { re: cached, label: name };
+
+  const reject = (why: string): null => {
+    hookLogWarn(`additionalPatterns: ${why} "${regex}", skipping`);
+    userPatternCache.set(regex, null);
+    return null;
+  };
+
+  if (regex.length > USER_PATTERN_MAX_SOURCE) return reject("pattern too long");
+  if (NESTED_QUANTIFIER_RE.test(regex)) return reject("nested quantifier (ReDoS risk) in");
+
+  let re: RegExp;
+  try {
+    re = new RegExp(regex);
+  } catch {
+    return reject("invalid regex");
+  }
+  // A pattern that matches the empty string matches every payload. That is
+  // never what anyone configured, and it denies the whole machine.
+  if (re.test("")) return reject("pattern matches everything —");
+
+  userPatternCache.set(regex, re);
+  return { re, label: name };
+}
+
 function sanitizeJwt(ctx: PolicyContext): PolicyResult {
   // PostToolUse: scrub JWT patterns from tool output
   const output = JSON.stringify(ctx.payload);
-  if (JWT_RE.test(output)) {
+  if (containsSecret(output, JWT_RE)) {
     return {
       decision: "deny",
       reason: "JWT token detected in tool output",
@@ -613,7 +944,7 @@ function sanitizeApiKeys(ctx: PolicyContext): PolicyResult {
   // PostToolUse: scrub common API key patterns from tool output
   const output = JSON.stringify(ctx.payload);
   for (const [pattern, label] of API_KEY_PATTERNS) {
-    if (pattern.test(output)) {
+    if (containsSecret(output, pattern)) {
       return {
         decision: "deny",
         reason: `${label} detected in tool output`,
@@ -622,20 +953,33 @@ function sanitizeApiKeys(ctx: PolicyContext): PolicyResult {
     }
   }
 
-  // Check additional user-configured patterns
-  const additional = ((ctx.params?.additionalPatterns ?? []) as Array<{ regex: string; label: string }>);
-  for (const { regex, label } of additional) {
-    try {
-      if (new RegExp(regex).test(output)) {
+  // Check additional user-configured patterns. `compileUserPattern` returns
+  // null for anything that does not validate, and the haystack is bounded —
+  // see the notes on both.
+  const additional = ctx.params?.additionalPatterns;
+  if (Array.isArray(additional)) {
+    const haystack = output.length > USER_PATTERN_MAX_HAYSTACK
+      ? output.slice(0, USER_PATTERN_MAX_HAYSTACK)
+      : output;
+    if (additional.length > USER_PATTERN_MAX_COUNT) {
+      hookLogWarn(
+        `additionalPatterns: ${additional.length} entries exceeds the cap of ` +
+        `${USER_PATTERN_MAX_COUNT}; evaluating the first ${USER_PATTERN_MAX_COUNT}`,
+      );
+    }
+    for (const entry of additional.slice(0, USER_PATTERN_MAX_COUNT)) {
+      const compiled = compileUserPattern(entry);
+      if (!compiled) continue;
+      if (compiled.re.test(haystack)) {
         return {
           decision: "deny",
-          reason: `${label} detected in tool output`,
-          message: `[REDACTED: ${label} removed by failproofai]`,
+          reason: `${compiled.label} detected in tool output`,
+          message: `[REDACTED: ${compiled.label} removed by failproofai]`,
         };
       }
-    } catch {
-      hookLogWarn(`additionalPatterns: invalid regex "${regex}", skipping`);
     }
+  } else if (additional !== undefined) {
+    hookLogWarn("additionalPatterns: expected an array, ignoring");
   }
 
   return allow();
@@ -644,7 +988,7 @@ function sanitizeApiKeys(ctx: PolicyContext): PolicyResult {
 function sanitizeConnectionStrings(ctx: PolicyContext): PolicyResult {
   // PostToolUse: scrub database connection strings with embedded credentials
   const output = JSON.stringify(ctx.payload);
-  if (CONNECTION_STRING_RE.test(output)) {
+  if (containsSecret(output, CONNECTION_STRING_RE)) {
     return {
       decision: "deny",
       reason: "Database connection string with credentials detected in tool output",
@@ -657,7 +1001,7 @@ function sanitizeConnectionStrings(ctx: PolicyContext): PolicyResult {
 function sanitizePrivateKeyContent(ctx: PolicyContext): PolicyResult {
   // PostToolUse: scrub PEM private key blocks from tool output
   const output = JSON.stringify(ctx.payload);
-  if (PRIVATE_KEY_RE.test(output)) {
+  if (containsSecret(output, PRIVATE_KEY_RE)) {
     return {
       decision: "deny",
       reason: "Private key content detected in tool output",
@@ -670,7 +1014,7 @@ function sanitizePrivateKeyContent(ctx: PolicyContext): PolicyResult {
 function sanitizeBearerTokens(ctx: PolicyContext): PolicyResult {
   // PostToolUse: scrub Authorization: Bearer tokens from tool output
   const output = JSON.stringify(ctx.payload);
-  if (BEARER_TOKEN_RE.test(output)) {
+  if (containsSecret(output, BEARER_TOKEN_RE)) {
     return {
       decision: "deny",
       reason: "Bearer token detected in tool output",
@@ -699,6 +1043,245 @@ function warnDestructiveSql(ctx: PolicyContext): PolicyResult {
     );
   }
 
+  return allow();
+}
+
+/**
+ * Tool-input keys holding content that ALREADY EXISTS on disk.
+ *
+ * The deny must never land on these, or the policy blocks the REMEDIATION: an
+ * `Edit` whose `old_string` is the leaked key and whose `new_string` is
+ * `process.env.X` is the fix, and refusing it leaves the credential in the file
+ * with no way to take it out. Same reason Bash is out of scope entirely below —
+ * `git grep AKIA` is how you find the leak.
+ *
+ * Spelled as an exclusion list rather than an inclusion list of content keys on
+ * purpose. Only copilot, opencode and antigravity canonicalise a content field
+ * at all (types.ts) — pi, goose, hermes and openclaw map the path and nothing
+ * else, and their own comments say so ("no builtin inspects the edit body").
+ * An inclusion list would therefore have to enumerate key names for four CLIs
+ * whose payloads have not been captured, and a policy that silently sees
+ * nothing on a third of its CLIs while reading "enabled" in the UI is the exact
+ * failure types.ts:274 records getting burned by. Excluding the few keys that
+ * are definitely OLD content, and scanning whatever else arrives, covers a CLI
+ * whose key names nobody has written down yet.
+ */
+const PRE_EXISTING_CONTENT_KEYS = new Set([
+  "old_string", "old_str", "oldstring", "old", "before", "search", "find",
+]);
+
+/** Keys that are structural rather than content, and never worth scanning. */
+const NON_CONTENT_KEYS = new Set(["replace_all", "replaceall", "encoding", "mode"]);
+
+/**
+ * Paths where a credential-shaped literal is overwhelmingly a fixture.
+ *
+ * This repo is the worked example: its own suites carry `sk-ant-api03-…`,
+ * `AKIA…` and a PEM header as test data, and every one of them tripped the
+ * sanitizers while this policy was being written. A guard that denies the tests
+ * for the guard gets switched off, and a policy switched off protects nothing —
+ * so the default trades a little recall for enough precision to survive.
+ *
+ * Governed by `skipTestFixtures` so a team that would rather take the noise can
+ * turn it off, and narrow on purpose: `src/config.test-utils.ts` is NOT matched,
+ * because "test" appearing somewhere in a name is not evidence of a fixture.
+ */
+const TEST_FIXTURE_PATH_RE =
+  /(?:^|[\\/])(?:__tests__|__fixtures__|__mocks__|tests?|spec|fixtures|examples)[\\/]|\.(?:test|spec)\.[a-z]+$/i;
+
+function blockSecretInWrite(ctx: PolicyContext): PolicyResult {
+  if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+  const input = ctx.toolInput;
+  if (!input) return allow();
+
+  const skipFixtures = ctx.params?.skipTestFixtures !== false;
+  if (skipFixtures && TEST_FIXTURE_PATH_RE.test(getFilePath(ctx))) return allow();
+
+  const raw = ctx.params?.allowedSecretHashes;
+  // Hashes, never literals: a policy config is committed, synced and printed by
+  // `failproofai policies`, so it is the last place a real credential should be
+  // written in order to excuse itself.
+  const allowedHashes = new Set(
+    (Array.isArray(raw) ? raw : []).filter((h): h is string => typeof h === "string")
+      .map((h) => h.trim().toLowerCase()),
+  );
+
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value !== "string" || value.length === 0) continue;
+    const k = key.toLowerCase();
+    if (PRE_EXISTING_CONTENT_KEYS.has(k) || NON_CONTENT_KEYS.has(k)) continue;
+
+    for (const [pattern, label] of BLOCKING_SECRET_PATTERNS) {
+      const hit = findSecret(value, pattern, allowedHashes);
+      if (hit) {
+        // The label is phrased without an article — "a ${label}" produces
+        // "a Anthropic API key" for a third of the catalogue.
+        return deny(
+          `Writing a credential (${label}) to ${getFilePath(ctx) || "a file"} is blocked. ` +
+          `Reference it from the environment or a secret store instead. ` +
+          `If this is a fixture rather than a live credential, add its SHA-256 ` +
+          `to this policy's allowedSecretHashes.`,
+        );
+      }
+    }
+  }
+  return allow();
+}
+
+/**
+ * Credential files whose contents are a secret in every normal case.
+ *
+ * `block-env-files` covered `.env` and nothing else, and `block-secrets-write`
+ * only ever looked at WRITES — so an agent could read `~/.ssh/id_ed25519` or
+ * `~/.aws/credentials` straight into context on a default install.
+ * `block-read-outside-cwd` is not the answer: it is off by default and misses
+ * an in-repo `.npmrc` entirely.
+ *
+ * Split by confidence, because these two groups have different error costs.
+ */
+const CREDENTIAL_FILE_PATTERNS: Array<[RegExp, string]> = [
+  [/(?:^|[\\/])id_(?:rsa|dsa|ecdsa|ed25519)(?:_sk)?$/, "an SSH private key"],
+  [/(?:^|[\\/])\.ssh[\\/][^\\/]*\.pem$/, "an SSH private key"],
+  [/(?:^|[\\/])\.aws[\\/]credentials$/, "AWS credentials"],
+  [/(?:^|[\\/])\.git-credentials$/, "stored git credentials"],
+  [/(?:^|[\\/])_?\.?netrc$/, "netrc credentials"],
+  [/(?:^|[\\/])\.pypirc$/, "PyPI credentials"],
+  [/(?:^|[\\/])\.docker[\\/]config\.json$/, "Docker registry credentials"],
+  [/(?:^|[\\/])service-account[^\\/]*\.json$/, "a GCP service account key"],
+  [/\.(?:p12|pfx|jks|keystore)$/, "a keystore"],
+  [/(?:^|[\\/])\.gnupg[\\/]/, "GnuPG key material"],
+  [/(?:^|[\\/])\.config[\\/]gcloud[\\/]/, "gcloud credentials"],
+];
+
+/**
+ * The same idea, one confidence tier down: these are frequently NOT secret.
+ *
+ * A `.npmrc` is usually just a registry setting, most `*.tfvars` hold region
+ * names, and plenty of `kubeconfig`s point at a local cluster with no token in
+ * them. Blocking those by default denies ordinary work, which is the failure
+ * this codebase already argues against in src/audit/redact-example.ts — so they
+ * are behind `strict` and off unless asked for.
+ */
+const STRICT_CREDENTIAL_FILE_PATTERNS: Array<[RegExp, string]> = [
+  [/(?:^|[\\/])\.npmrc$/, "npm registry credentials"],
+  [/(?:^|[\\/])(?:kubeconfig|\.kube[\\/]config)$/, "a kubeconfig"],
+  [/\.tfvars(?:\.json)?$/, "Terraform variables"],
+  [/\.tfstate(?:\.backup)?$/, "Terraform state"],
+  [/(?:^|[\\/])secrets?\.ya?ml$/, "a secrets file"],
+];
+
+function blockCredentialFiles(ctx: PolicyContext): PolicyResult {
+  const strict = ctx.params?.strict === true;
+  const rules = strict
+    ? [...CREDENTIAL_FILE_PATTERNS, ...STRICT_CREDENTIAL_FILE_PATTERNS]
+    : CREDENTIAL_FILE_PATTERNS;
+
+  const check = (path: string): PolicyResult | undefined => {
+    if (!path) return undefined;
+    // The public half of a keypair is meant to be read.
+    if (PUBLIC_KEY_FILE_RE.test(path)) return undefined;
+    for (const [pattern, what] of rules) {
+      if (pattern.test(path)) {
+        return deny(
+          `Reading or writing ${what} (${path}) is blocked. ` +
+          `Ask the user for the value, or read it from the environment at run time.`,
+        );
+      }
+    }
+    return undefined;
+  };
+
+  const direct = check(getFilePath(ctx));
+  if (direct) return direct;
+
+  if (ctx.toolName === "Bash") {
+    // Reuse the extractor block-read-outside-cwd already uses — it has been
+    // hardened against grep patterns and find globs being read as paths, and a
+    // second implementation here would drift from those fixes.
+    for (const path of extractAbsolutePaths(getCommand(ctx))) {
+      const hit = check(path);
+      if (hit) return hit;
+    }
+    // Relative mentions (`cat .aws/credentials`) never reach the extractor,
+    // which only takes absolute and ~-rooted paths.
+    for (const token of parseArgvTokens(getCommand(ctx))) {
+      const hit = check(stripShellQuoting(token));
+      if (hit) return hit;
+    }
+  }
+  return allow();
+}
+
+/**
+ * Assignment names strong enough to mean "credential" on their own.
+ *
+ * Deliberately copied from crates/fpai-collect/src/redact.rs rather than from
+ * `isSecretName` in src/audit/redact-example.ts. The two disagree on 7 of 12
+ * common names, and the redact-example version fires on a BARE `key=` — which
+ * the Rust comment records measuring against 40 real transcripts, where it
+ * matched React's `key` prop on every JSX list. The redactor can afford that;
+ * a policy the agent has to read cannot.
+ */
+const STRONG_SECRET_NAMES = ["secret", "password", "passwd", "credential"];
+/** Only convincing inside a COMPOUND identifier — `API_KEY` yes, `key` no. */
+const WEAK_SECRET_NAMES = ["key", "token"];
+/** Below this a value is far more likely a placeholder or a flag. */
+const MIN_ASSIGNMENT_VALUE = 12;
+const ASSIGNMENT_RE = /\b([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*("[^"]*"|'[^']*'|[^\s;|&"']+)/g;
+/** A reference is not a literal: `$FOO`, `${FOO}`, `$(cmd)`, `<your-key>`. */
+const EXPRESSION_VALUE_RE = /^[$<]|^\{\{|^%[A-Za-z_]/;
+/** Obvious stand-ins. Warning about these trains the reader to ignore warnings. */
+const PLACEHOLDER_VALUE_RE =
+  /^(?:x+|\.+|-+|changeme|placeholder|your[-_a-z]*|todo|tbd|none|null|undefined|true|false|dummy|example|redacted|\*+)$/i;
+
+function namesACredential(name: string): boolean {
+  const lower = name.toLowerCase();
+  if (STRONG_SECRET_NAMES.some((n) => lower.endsWith(n))) return true;
+  const compound = lower.includes("_") || lower.includes("-");
+  return compound && WEAK_SECRET_NAMES.some((n) => lower.endsWith(n));
+}
+
+/**
+ * A literal assigned to a credential-named variable.
+ *
+ * This is the GENEROUS tier, and it returns `instruct`, never `deny`. The
+ * distinction is the one src/audit/redact-example.ts argues for: a name-based
+ * rule cannot tell `DB_PASSWORD=hunter2correct` from a fixture, and the cost of
+ * being wrong has to stay proportional to that uncertainty. A blocking version
+ * of this rule would deny `export EDITOR=vim` on any machine with the wrong
+ * word in its environment.
+ */
+function warnAssignedSecret(ctx: PolicyContext): PolicyResult {
+  const texts: string[] = [];
+  if (ctx.toolName === "Bash") {
+    texts.push(getCommand(ctx));
+  } else if (ctx.toolName === "Write" || ctx.toolName === "Edit") {
+    for (const [key, value] of Object.entries(ctx.toolInput ?? {})) {
+      if (typeof value !== "string") continue;
+      const k = key.toLowerCase();
+      if (PRE_EXISTING_CONTENT_KEYS.has(k) || NON_CONTENT_KEYS.has(k) || k === "file_path") continue;
+      texts.push(value);
+    }
+  } else {
+    return allow();
+  }
+
+  for (const text of texts) {
+    ASSIGNMENT_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = ASSIGNMENT_RE.exec(text)) !== null) {
+      const name = m[1];
+      const value = m[2].replace(/^["']|["']$/g, "");
+      if (!namesACredential(name)) continue;
+      if (value.length < MIN_ASSIGNMENT_VALUE) continue;
+      if (EXPRESSION_VALUE_RE.test(value) || PLACEHOLDER_VALUE_RE.test(value)) continue;
+      return instruct(
+        `STOP: \`${name}\` is being assigned what looks like a literal credential. ` +
+        `Read it from the environment or a secret store instead of writing the value here. ` +
+        `If it is a placeholder or a fixture, say so and continue.`,
+      );
+    }
+  }
   return allow();
 }
 
@@ -1229,16 +1812,36 @@ function isForcePushFlag(token: string): boolean {
 }
 
 function blockSecretsWrite(ctx: PolicyContext): PolicyResult {
-  if (ctx.toolName !== "Write") return allow();
+  // Edit as well as Write: an Edit to `~/.ssh/id_rsa` is the same act, and
+  // gating only Write left the rename one tool call away.
+  if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
   const filePath = getFilePath(ctx);
-  if (SECRET_FILE_RE.test(filePath) || SECRET_FILE_ID_RSA_RE.test(filePath) || SECRET_FILE_CREDENTIALS_RE.test(filePath)) {
+  // A public key is meant to be readable and writable — `id_rsa.pub` is not a
+  // secret, and `/id_rsa/` alone blocked it.
+  if (!PUBLIC_KEY_FILE_RE.test(filePath) && (
+    SECRET_FILE_RE.test(filePath) ||
+    SECRET_FILE_ID_RSA_RE.test(filePath) ||
+    SECRET_FILE_CREDENTIALS_RE.test(filePath)
+  )) {
     return deny("Writing secret key files is blocked");
   }
-  const additionalPatterns = ((ctx.params?.additionalPatterns ?? []) as string[]);
-  for (const pattern of additionalPatterns) {
-    if (filePath.includes(pattern)) {
-      return deny(`Writing blocked file pattern: ${pattern}`);
+  // Substring match, deliberately — unlike sanitize-api-keys' identically-named
+  // `pattern[]` param, this one is declared `string[]`. Non-strings are skipped
+  // rather than thrown on: `.includes()` on a number throws, and the evaluator's
+  // per-policy catch would swallow it and silently disable the whole policy.
+  const additionalPatterns = ctx.params?.additionalPatterns;
+  if (Array.isArray(additionalPatterns)) {
+    for (const pattern of additionalPatterns) {
+      if (typeof pattern !== "string" || pattern.length === 0) {
+        hookLogWarn(`additionalPatterns: expected a non-empty string, got ${typeof pattern}; skipping`);
+        continue;
+      }
+      if (filePath.includes(pattern)) {
+        return deny(`Writing blocked file pattern: ${pattern}`);
+      }
     }
+  } else if (additionalPatterns !== undefined) {
+    hookLogWarn("additionalPatterns: expected an array, ignoring");
   }
   return allow();
 }
@@ -2347,7 +2950,7 @@ export const BUILTIN_POLICIES: BuiltinPolicyDefinition[] = [
     impact: "Stops the agent from creating `.pem`, `id_rsa`, `credentials.json`, etc.",
     description: "Block writing secret key files",
     fn: blockSecretsWrite,
-    match: { events: ["PreToolUse"], toolNames: ["Write"] },
+    match: { events: ["PreToolUse"], toolNames: ["Write", "Edit"] },
     defaultEnabled: false,
     category: "Dangerous Commands",
     params: {
@@ -2357,6 +2960,61 @@ export const BUILTIN_POLICIES: BuiltinPolicyDefinition[] = [
         default: [],
       },
     } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-secret-in-write",
+    displayTitle: "Tried to write a live credential into a file",
+    impact: "A hardcoded key in a source file is one commit from being public.",
+    description: "Block writing recognised API keys and tokens into file contents",
+    fn: blockSecretInWrite,
+    match: { events: ["PreToolUse"], toolNames: ["Write", "Edit"] },
+    defaultEnabled: true,
+    category: "Sanitize",
+    params: {
+      allowedSecretHashes: {
+        type: "string[]",
+        description:
+          "SHA-256 hex digests of literals to allow (for fixtures and sample keys). Hashes, never the credential itself \u2014 this config is committed and printed.",
+        default: [],
+      },
+      skipTestFixtures: {
+        type: "boolean",
+        description:
+          "Skip files under __tests__/, fixtures/, examples/ and *.test.*/*.spec.* paths, where a credential-shaped literal is almost always a fixture. Set false to scan them too.",
+        default: true,
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "block-credential-files",
+    displayTitle: "Tried to read or write a credential file",
+    impact: "SSH private keys, ~/.aws/credentials and friends were readable straight into context.",
+    description: "Block reading or writing SSH keys, cloud credentials and keystores",
+    fn: blockCredentialFiles,
+    match: { events: ["PreToolUse"] },
+    defaultEnabled: true,
+    category: "Environment",
+    params: {
+      strict: {
+        type: "boolean",
+        description:
+          "Also block .npmrc, kubeconfig, *.tfvars, *.tfstate and secrets.yaml. Off by default because these frequently hold no credential at all.",
+        default: false,
+      },
+    } satisfies PolicyParamsSchema,
+  },
+  {
+    name: "warn-assigned-secret",
+    displayTitle: "Assigned a literal credential to a variable",
+    impact: "Catches hardcoded credentials the vendor-prefix list cannot recognise.",
+    description: "Warn when a credential-named variable is assigned a literal value",
+    fn: warnAssignedSecret,
+    match: { events: ["PreToolUse"], toolNames: ["Bash", "Write", "Edit"] },
+    // Off by default on purpose. A name-based rule cannot distinguish a real
+    // credential from a fixture, so it warns rather than blocks \u2014 and a
+    // warning nobody asked for is noise. `failproofai policies` turns it on.
+    defaultEnabled: false,
+    category: "Sanitize",
   },
   {
     name: "block-push-master",

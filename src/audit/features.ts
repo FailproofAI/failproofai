@@ -69,15 +69,26 @@ export const ARCHITECT_CAUTION_SIGNALS = new Set(["reread-after-edit", "redundan
 
 /**
  * Mapping from policy/detector short-name → which archetype its hits feed,
- * and how heavily (intensity within the cluster). Every one of the 39 builtin
- * policies and 8 audit-only detectors maps exactly once — no overlaps, full
- * coverage. Weights express *severity within* a persona; cross-persona
+ * and how heavily (intensity within the cluster). Every builtin policy and
+ * audit-only detector maps exactly once — no overlaps, full coverage, with the
+ * single documented exception of `block-read-outside-cwd` (see the note in the
+ * explorer block). Weights express *severity within* a persona; cross-persona
  * fairness is handled later by lift normalisation, not by these numbers.
+ *
+ * That coverage claim used to be a count in this sentence, which is exactly the
+ * kind of thing that goes stale silently — a policy added without an entry here
+ * contributes nothing to the classifier and nobody finds out. It is asserted by
+ * `__tests__/audit/signal-map-coverage.test.ts` now, so the sentence can no
+ * longer drift away from the code.
  */
 export const SIGNAL_MAP: Record<string, { archetype: ArchetypeKey; weight: number }> = {
   // ── cowboy ── destructive / forceful / bypasses guardrails (20) ───────────
   "block-rm-rf":               { archetype: "cowboy", weight: 2.0 },
   "block-failproofai-commands":{ archetype: "cowboy", weight: 2.0 },
+  // Was missing entirely until the coverage test above went in: an agent
+  // pausing its own enforcement is the same act as running the CLI to disable
+  // it, and it counted for nothing in the classifier.
+  "block-self-pause":          { archetype: "cowboy", weight: 2.0 },
   "block-sudo":                { archetype: "cowboy", weight: 1.5 },
   "block-curl-pipe-sh":        { archetype: "cowboy", weight: 1.5 },
   "block-force-push":          { archetype: "cowboy", weight: 1.5 },
@@ -109,6 +120,13 @@ export const SIGNAL_MAP: Record<string, { archetype: ArchetypeKey; weight: numbe
   "sanitize-private-key-content":{ archetype: "explorer", weight: 1.5 },
   "block-env-files":           { archetype: "explorer", weight: 1.5 },
   "block-secrets-write":       { archetype: "explorer", weight: 1.5 },
+  // Writing a live credential into a file is the heaviest signal in this
+  // cluster: unlike a read, it survives the session and reaches the repo.
+  "block-secret-in-write":     { archetype: "explorer", weight: 2.0 },
+  "block-credential-files":    { archetype: "explorer", weight: 1.5 },
+  // Name-based and non-blocking, so it carries less evidence than the rules
+  // above it — a hit means "looked like a credential", not "was one".
+  "warn-assigned-secret":      { archetype: "explorer", weight: 0.8 },
   "sanitize-api-keys":         { archetype: "explorer", weight: 1.2 },
   "sanitize-jwt":              { archetype: "explorer", weight: 1.2 },
   "sanitize-connection-strings":{ archetype: "explorer", weight: 1.2 },

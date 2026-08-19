@@ -106,6 +106,13 @@ export const RECOMMENDED_POLICIES: readonly string[] = [
   "protect-env-vars",
   "block-env-files",
   "block-secrets-write",
+  // Prevention, not just scrubbing. PostToolUse is observation-only on 10 of
+  // the 12 CLIs (see enforcement-capability.ts), so a sanitize-* deny does not
+  // keep a secret out of the model's context on most machines. These two run at
+  // PreToolUse, which blocks on all 12 — they are what makes the promise above
+  // this list true rather than aspirational.
+  "block-secret-in-write",
+  "block-credential-files",
   // The agent cannot disable its own guardrails.
   "block-self-pause",
   "block-failproofai-commands",

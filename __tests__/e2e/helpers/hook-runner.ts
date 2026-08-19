@@ -117,10 +117,19 @@ export function assertPostToolUseDeny(result: HookRunResult): void {
  * arrived would go green if a CLI were wired to the wrong one, in either
  * direction, which is precisely the regression these tests exist to catch.
  */
-export function assertPostToolUseBlockDecision(result: HookRunResult): void {
+export function assertPostToolUseBlockDecision(
+  result: HookRunResult,
+  expectedReason?: RegExp,
+): void {
   expect(result.exitCode).toBe(0);
   expect(result.parsed?.decision).toBe("block");
-  expect(result.parsed?.reason).toMatch(/Blocked/i);
+  // On these two CLIs `reason` REPLACES the tool result the model reads, so its
+  // text is policy-specific — a sanitize-* policy sends its redaction marker,
+  // everything else sends the blocked message. What is invariant, and what
+  // copilot's `vK` guard fails closed on, is that it is a non-empty STRING.
+  expect(typeof result.parsed?.reason).toBe("string");
+  expect((result.parsed?.reason as string).length).toBeGreaterThan(0);
+  if (expectedReason) expect(result.parsed?.reason).toMatch(expectedReason);
   // The nested shape must be ABSENT, not merely ignored: copilot's shipped
   // guard reads only the top level, so emitting both would leave the file
   // asserting a contract no consumer actually exercises.

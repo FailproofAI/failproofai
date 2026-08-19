@@ -1,10 +1,11 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getLanguageByCode, NAV_TRANSLATIONS } from "./config";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DOCS_JSON_PATH = join(__dirname, "..", "..", "docs", "docs.json");
+const DOCS_DIR = join(__dirname, "..", "..", "docs");
+const DOCS_JSON_PATH = join(DOCS_DIR, "docs.json");
 
 interface NavGroup {
   group: string;
@@ -85,9 +86,33 @@ export function getNavigationPageReferences(
  * Build a navigation entry for a specific language by transforming the
  * English navigation structure.
  */
+/**
+ * Does the localized file for a nav entry exist on disk?
+ *
+ * Defaults to "yes" so the pure transform stays testable with fixtures, and the
+ * REAL check is injected by updateDocsJson / localizeProductsNavigation, which
+ * are the two paths that write docs.json.
+ */
+export type PageExists = (relativePath: string) => boolean;
+
+const fileOnDisk: PageExists = (rel) => existsSync(join(DOCS_DIR, rel));
+
+/**
+ * Keep a group only if it still carries something to render. Dropping every
+ * missing page can empty a group, and an empty group is its own validation
+ * error — but a group whose content is an `openapi` spec has no pages by
+ * design and must survive.
+ */
+function hasContent(group: NavGroup): boolean {
+  if (Array.isArray(group.pages) && group.pages.length > 0) return true;
+  if (Array.isArray(group.groups) && group.groups.length > 0) return true;
+  return !Array.isArray(group.pages) && !Array.isArray(group.groups);
+}
+
 export function buildLanguageNav(
   englishTabs: NavTab[],
   lang: string,
+  exists: PageExists = () => true,
 ): LanguageNav {
   const t = NAV_TRANSLATIONS[lang];
   if (!t) throw new Error(`No nav translations for language: ${lang}`);
@@ -114,12 +139,25 @@ export function buildLanguageNav(
     const out: NavGroup = { ...group, group: groupNameMap[group.group] || group.group };
     if (Array.isArray(group.pages)) {
       // A page entry is a path to prefix, or a nested group to recurse into.
-      out.pages = group.pages.map((page) =>
-        typeof page === "string" ? `${lang}/${page}` : localizeGroup(page),
-      );
+      //
+      // A path is DROPPED when its localized file is not on disk. The English
+      // tree is the source of the nav, so without this every English page gets
+      // an entry in all fourteen languages whether or not it was translated —
+      // and `mintlify validate` rejects the run. That took down a nightly job
+      // that had already translated 784 pages: one page failed, the nav still
+      // referenced it in that language, and every successful page was discarded
+      // with it. Omitting the entry is the honest state: the page does not
+      // exist in that language yet.
+      out.pages = group.pages
+        .map((page) =>
+          typeof page === "string" ? `${lang}/${page}` : localizeGroup(page),
+        )
+        .filter((page) =>
+          typeof page === "string" ? exists(`${page}.mdx`) : hasContent(page),
+        );
     }
     if (Array.isArray(group.groups)) {
-      out.groups = group.groups.map(localizeGroup);
+      out.groups = group.groups.map(localizeGroup).filter(hasContent);
     }
     // No pages and no groups (an `openapi` group): carried through as-is. The
     // spec is not translated, and dropping the group would remove the API
@@ -127,11 +165,13 @@ export function buildLanguageNav(
     return out;
   };
 
-  const tabs: NavTab[] = englishTabs.map((tab) => ({
-    ...tab,
-    tab: tabNameMap[tab.tab] || tab.tab,
-    groups: (tab.groups ?? []).map(localizeGroup),
-  }));
+  const tabs: NavTab[] = englishTabs
+    .map((tab) => ({
+      ...tab,
+      tab: tabNameMap[tab.tab] || tab.tab,
+      groups: (tab.groups ?? []).map(localizeGroup).filter(hasContent),
+    }))
+    .filter((tab) => tab.groups.length > 0);
 
   return {
     language: getLanguageByCode(lang)?.mintlifyCode ?? lang,
@@ -153,10 +193,11 @@ export function readDocsConfig(): Record<string, unknown> {
 export function generateLanguagesArray(
   englishTabs: NavTab[],
   langCodes: string[],
+  exists: PageExists = () => true,
 ): LanguageNav[] {
   // English first (default)
   const english: LanguageNav = { language: "en", tabs: englishTabs };
-  const others = langCodes.map((code) => buildLanguageNav(englishTabs, code));
+  const others = langCodes.map((code) => buildLanguageNav(englishTabs, code, exists));
   return [english, ...others];
 }
 
@@ -164,6 +205,9 @@ export function generateLanguagesArray(
 export function localizeProductsNavigation(
   products: unknown[],
   langCodes: string[],
+  // Defaults to the real disk check, like updateDocsJson — injectable so the
+  // pure transform can be exercised against fixtures that are not on disk.
+  exists: PageExists = fileOnDisk,
 ): Record<string, unknown>[] {
   return products.map((value) => {
     const product = value as Record<string, unknown>;
@@ -177,7 +221,7 @@ export function localizeProductsNavigation(
     const { tabs: _tabs, ...rest } = product;
     return {
       ...rest,
-      languages: generateLanguagesArray(englishTabs, langCodes),
+      languages: generateLanguagesArray(englishTabs, langCodes, exists),
     };
   });
 }
@@ -205,7 +249,7 @@ export function updateDocsJson(langCodes: string[]): void {
   }
 
   const newNav: Record<string, unknown> = {
-    languages: generateLanguagesArray(englishTabs, langCodes),
+    languages: generateLanguagesArray(englishTabs, langCodes, fileOnDisk),
   };
   if (nav.global) {
     newNav.global = nav.global;

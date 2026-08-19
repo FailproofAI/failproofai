@@ -559,6 +559,12 @@ describe("publish.yml / the Discord release announcement", () => {
     expect(post.run.trimEnd().endsWith("exit 1")).toBe(true);
   });
 
+  it("holds the webhook credential under least privilege", () => {
+    // Declared, not inherited: without a block the job takes the repository or
+    // organization default, which may carry write scopes it has no use for.
+    expect(job.permissions).toEqual({ contents: "read" });
+  });
+
   it("reads the release role from a repository variable or a secret", () => {
     const build = job.steps.find((s: Record<string, any>) => s.name === "Build the announcement");
     expect(build.env.ROLE_ID).toContain("vars.DISCORD_RELEASE_ROLE_ID");

@@ -906,6 +906,13 @@ jobs:
       needs.preflight.outputs.is_prerelease == 'false' &&
       needs.preflight.outputs.dist_tag == 'latest'
     runs-on: ubuntu-latest
+    # Least privilege, declared rather than inherited. This job reads the tree
+    # and POSTs to a webhook — it writes nothing here — while holding a
+    # credential that can post to a public channel. Without a block it takes the
+    # repository or organization default, which may carry write scopes it has no
+    # use for.
+    permissions:
+      contents: read
     steps:
       # The default ref is right for both entry points: a `release: published`
       # checks out the TAG, whose tree carries the `## <version>` section this

@@ -5894,28 +5894,90 @@ def render_fleet(machines: Sequence[Any], deployments: Sequence[Any]) -> None:
                       last_col="ellipsis", title=title)
 
 
-def render_machine_policies(machine_id: str, dep: Any) -> None:
-    """``fp fleet show`` — the set a machine is told to run, and nothing more.
+def _epoch_age(ms: Optional[int]) -> str:
+    """`_relative_age` for the machine record's epoch-ms timestamps.
+
+    The deployment side of this API speaks ISO and the machine side speaks
+    milliseconds; rather than a second humaniser, convert and reuse the one the
+    errors card already uses so "2 hr ago" means the same thing everywhere.
+    """
+    if not ms:
+        return ""
+    return _relative_age(datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat())
+
+
+def render_machine_policies(machine_id: str, dep: Any, machine: Any = None) -> None:
+    """``fp fleet show`` — what a machine is told to run, and whether it has it.
+
+    The first version printed the id, the generation and the policy list, which
+    was a third of what the two endpoints return and quietly implied the machine
+    was running them. It can be told to run a policy it has never collected —
+    `appliedDeployment` is the field that says so, and leaving it out made this
+    view confidently wrong about the only thing it is asked.
 
     Deliberately NOT the deploy-plan renderer: that one talks about a change
-    ("2 policies after this change", "first deployment"), which is a lie on a
-    read-only view and exactly the kind of wrong-but-plausible text this repo
-    keeps producing.
+    ("N policies after this change"), which is a lie on a read-only view.
     """
-    lines = []
-    for p in sorted(dep.policies, key=lambda x: x.id):
-        t = Text("  ", style=theme.FAINT)
-        t.append(p.id, style=theme.TEXT)
-        t.append(f" v{p.version}", style=theme.TEXT_DIM)
-        t.append("  ")
-        t.append_text(_effect(p.effect))
-        lines.append(t)
-    if not lines:
-        lines = [Text("  (no policies deployed)", style=theme.FAINT)]
-    head = Text(machine_id, style=f"bold {theme.TEXT}")
-    head.append(f"  ·  deployment #{dep.deployment}", style=theme.TEXT_DIM)
-    card = Panel(Group(head, Text(), *lines), box=ROUNDED, border_style=theme.ACCENT,
-                 title=Text("deployed policies", style=f"bold {theme.ACCENT}"),
+    body = []
+    if machine is not None and machine.display_label:
+        body.append(Text(machine.display_label, style=f"bold {theme.TEXT}"))
+        body.append(Text())
+
+    def field(label: str, value: Text) -> None:
+        line = Text(f"{label:<13}", style=theme.LABEL)
+        line.append_text(value)
+        body.append(line)
+
+    if dep is not None:
+        gen = Text(f"#{dep.deployment}", style=f"bold {theme.TEXT}")
+        if machine is not None:
+            applied = machine.applied_deployment
+            if applied is None:
+                gen.append("  ·  ", style=theme.FAINT)
+                gen.append("not yet collected", style=theme.AMBER)
+            elif machine.drifted:
+                gen.append("  ·  ", style=theme.FAINT)
+                gen.append(f"machine is on #{applied}", style=theme.AMBER)
+            else:
+                gen.append("  ·  ", style=theme.FAINT)
+                gen.append("collected", style=theme.SUCCESS)
+        field("deployment", gen)
+        who = Text(dep.updated_by or "unknown", style=theme.TEXT_DIM)
+        when = _relative_age(dep.updated_at)
+        if when:
+            who.append(f"  ·  {when}", style=theme.LABEL)
+        field("deployed by", who)
+    else:
+        field("deployment", Text("none", style=theme.FAINT))
+
+    if machine is not None:
+        seen = _epoch_age(machine.last_seen) or "never"
+        act = Text(seen, style=theme.TEXT_DIM if machine.last_seen else theme.FAINT)
+        if machine.event_count:
+            act.append(f"  ·  {machine.event_count} events", style=theme.LABEL)
+        field("last seen", act)
+
+    body.append(Text())
+    pols = sorted(dep.policies, key=lambda x: x.id) if dep is not None else []
+    if pols:
+        width = max(len(p.id) for p in pols)
+        # `ver` is three characters and `v1` is two, so the version cell is
+        # padded to the header's width — otherwise the effect column steps left
+        # by one on every row and the table reads as misaligned.
+        vwidth = max(3, max(len(f"v{p.version}") for p in pols))
+        head = Text(f"  {'policy'.ljust(width)}   {'ver'.ljust(vwidth)}  effect", style=theme.LABEL)
+        body.append(head)
+        for p in pols:
+            row = Text("  ")
+            row.append(p.id.ljust(width), style=theme.TEXT)
+            row.append(f"   {f'v{p.version}'.ljust(vwidth)}  ", style=theme.TEXT_DIM)
+            row.append_text(_effect(p.effect))
+            body.append(row)
+    else:
+        body.append(Text("  no policies deployed", style=theme.FAINT))
+
+    card = Panel(Group(*body), box=ROUNDED, border_style=theme.ACCENT,
+                 title=Text(machine_id, style=f"bold {theme.ACCENT}"),
                  title_align="left", padding=(0, 1), expand=False)
     _stdout.print(); _stdout.print(Padding(card, (0, 0, 0, 2))); _stdout.print()
 

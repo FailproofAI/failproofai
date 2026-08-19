@@ -86,9 +86,16 @@ def fleet_show(
     """Show exactly what one machine is told to enforce.
 
     The set shown is the set that exists — read this before a `--set`, because
-    that flag replaces all of it. Needs `policies:read`. With `--json`: the
-    deployment `{machineId, deployment, policies:[{id,version,effect}],
-    updatedAt, updatedBy}`, or `deployment: null` when nothing is deployed.
+    that flag replaces all of it.
+
+    Also reports whether the machine has actually COLLECTED that deployment. A
+    machine can be told to run a policy and not yet have it; the policy list
+    alone cannot tell you which, and that is usually the question.
+
+    Needs `policies:read`. With `--json`: `{machine, deployment}` — the machine
+    record (including `appliedDeployment`, `drifted`, `lastSeen` and both label
+    fields, with raw timestamps) and the deployment, or `deployment: null` when
+    nothing is deployed.
 
     Example:
 
@@ -97,18 +104,23 @@ def fleet_show(
     state: AppState = ctx.obj
     deny_in_key_mode(state, "fleet show", _KEY_MODE_REASON)
     cctx = require_auth(state)
-    _require_machine(cctx, machine_id)
+    # Two reads on purpose. The deployment says what the machine was TOLD to
+    # run; only the machine record says whether it has collected it. Showing the
+    # first without the second is how this view came to imply a policy was in
+    # force when the host had never picked it up.
+    machines = api.list_machines(cctx)
+    machine = next((m for m in machines if m.machine_id == machine_id), None)
+    if machine is None:
+        raise NotFoundError(f"no machine {machine_id!r} has checked in")
     dep = api.get_deployment(cctx, machine_id)
+
     if output.is_json():
-        output.emit_json(
-            dep.to_dict() if dep
-            else {"machineId": machine_id, "deployment": None, "policies": []}
-        )
+        output.emit_json({
+            "machine": machine.to_dict(),
+            "deployment": dep.to_dict() if dep else None,
+        })
         return
-    if dep is None:
-        output.info(f"{machine_id} has no deployment yet")
-        return
-    output.render_machine_policies(machine_id, dep)
+    output.render_machine_policies(machine_id, dep, machine)
 
 
 def fleet_deploy(

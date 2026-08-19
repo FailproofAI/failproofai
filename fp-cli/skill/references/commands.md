@@ -226,7 +226,7 @@ Cloud-managed enforcement, split the way the dashboard splits it: `policies` wri
 
 ### fleet
 - `fleet list` — `machine · label · policies · intended · applied · state`. `intended` is the generation deployed, `applied` is what the machine last collected; they differ until it polls.
-- `fleet show <machine>` — the exact set that machine is told to run.
+- `fleet show <machine>` — the set the machine is told to run, **and whether it has collected it**. Reads both the deployment and the machine record, so it reports `not yet collected` / `machine is on #N` / `collected` alongside who deployed it, when, and last-seen. A machine can be told to run a policy it has never picked up; the policy list alone cannot tell you which. JSON `{machine, deployment}` with raw timestamps and both label fields; `deployment: null` when nothing is deployed.
 - `fleet deploy <machine> [--add REF]… [--remove ID]… [--set REF]… [--create] [-y]`
 
   **A deploy REPLACES the whole set.** The endpoint takes the full list and does not merge. `--add`/`--remove` are a read-modify-write: the CLI reads the current set, applies the delta, prints the complete result, writes that. `--set` replaces everything and is refused alongside `--add`/`--remove`.

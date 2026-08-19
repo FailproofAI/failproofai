@@ -38,6 +38,62 @@ A daemon on the same host watches that directory and uploads each batch. Either
 spool root. If no daemon is running, batches simply accumulate on disk — the SDK
 does not fail, and your agent does not block.
 
+## Agent frameworks
+
+If your agent runs on LangChain/LangGraph, CrewAI, LlamaIndex or Pydantic AI,
+one line captures it — runs, sub-agents, tools, model calls and their token
+counts — without threading an id through anything:
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # auto-detects what is already imported
+
+graph.invoke({"messages": [...]})     # unchanged
+```
+
+```bash
+pip install 'failproofai-sdk[langgraph]'     # or [langchain] [crewai] [llamaindex] [pydantic-ai]
+```
+
+The adapter code ships in the base wheel and imports its framework lazily, so
+the extras are a convenience — `pip install failproofai-sdk` still declares no
+dependencies at all, and `import failproofai_sdk` loads nothing outside the
+standard library. See `skill/references/frameworks.md` for the per-framework
+mapping, and `examples/` for a runnable quickstart each.
+
+## Scopes
+
+The same identity layer, for code the adapters do not cover. `session_id` and
+`agent_id` are optional on every event method — omitted, they resolve from the
+enclosing scope:
+
+```python
+with failproofai_sdk.session() as sid:
+    with failproofai_sdk.agent("planner", goal=question):
+
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                 # tool_use / tool_result, timed
+
+        with failproofai_sdk.agent("writer"):     # a sub-agent; parent inferred
+            failproofai_sdk.event.model_request(model="...")
+```
+
+`agent()` brackets a run with `agent_start`/`agent_end` and records an `error`
+before the end event when the block raises — a cancellation closes it as
+`cancelled` rather than failed. Every scope works under `async with` too.
+
+Contextvars do **not** cross into a new thread, so hand work over with
+`propagate`:
+
+```python
+pool.submit(failproofai_sdk.propagate(work), item)
+```
+
+Nothing bound and nothing passed raises `TypeError` naming the fix. It is never
+a silent emit: ingest skips an event with no session and answers `200`.
+
 ## Quick start
 
 ```python

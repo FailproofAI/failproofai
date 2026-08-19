@@ -136,10 +136,18 @@ Full field-by-field catalog: `references/events.md`.
 
 Work with these; none of them raise, so none of them show up in testing.
 
-- **There is no ambient session.** No decorator, no context manager, no
-  contextvar, no `set_session()`. Every one of the 13 methods takes `session_id`
-  and `agent_id` as required keyword args, and nothing propagates them for you.
-  This is what §4 exists to solve.
+- **There IS an ambient session, and it is the ergonomic path.** `session()`,
+  `agent()` and `tool_call()` bind identity on contextvars, so `session_id` and
+  `agent_id` are optional on all 15 event methods — omitted, they resolve from
+  the enclosing scope. `current()` reads it; `propagate(fn)` carries it into a
+  new thread, which contextvars do NOT do on their own.
+
+  This section said the opposite until the scopes existed, and the reference
+  integration shipped a contextvars wrapper as markdown for customers to paste
+  into their own code. That is now in the package.
+
+  Nothing bound and nothing passed raises `TypeError` naming the fix — never a
+  silent emit, because ingest skips an event with no session and answers `200`.
 
 - **`configure()` is optional, and every call restates all of it.** It is
   keyword-only with exactly three settings:
@@ -227,7 +235,7 @@ Threading `session_id` and `agent_id` through every call site by hand is the thi
 that makes integrations ugly and abandoned. Don't. Bind identity once per run and
 let the call sites read it.
 
-`references/integration.md` has the canonical `contextvars` wrapper — one small
+`references/frameworks.md` covers the four adapters. `references/integration.md` has the hand-written wrapper — one small
 module, correct under `asyncio` and threads, adaptable to any codebase — plus
 worked shapes for a tool dispatcher, an LLM client wrapper, and framework-specific
 callback layers. Read it before writing your own; the naive version (a module

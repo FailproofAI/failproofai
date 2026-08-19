@@ -1,0 +1,43 @@
+---
+title: "Fehler"
+description: "Gruppierte Fehler anzeigen und die dahinterliegenden Sitzungen öffnen."
+icon: "circle-alert"
+---
+
+Errors bietet eine fehlerorientierte Übersicht über alle Sitzungen. Gruppieren Sie nach Fehlertyp, Agent, Umgebung, Modell, Tool oder Zeitfenster, um wiederkehrende Betriebsprobleme zu identifizieren.
+
+## Fehler untersuchen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Navigieren Sie zu **Observe → Errors**.
+    2. Filtern Sie nach Umgebung, Ereignistyp, Fehlertyp, Agent, Sitzungs-ID oder Suchtext.
+    3. Klappen Sie einen gruppierten Fehler auf, um die einzelnen Vorkommen zu sehen. Wählen Sie eine Zeile aus, um das genaue Ereignis in der zugehörigen Sitzung zu öffnen.
+    4. Wählen Sie das Glocken-Symbol bei einem repräsentativen Fehler aus, um einen Alert für ähnliche Fehler einzurichten.
+
+    ![Die Errors-Seite zeigt ein Fehlerhistogramm, gruppierte Fehler und das Steuerelement zum Erstellen eines Alerts.](/images/dashboard/errors.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp errors --env production --since 24h
+    fp errors --error-type TimeoutError --agent-id checkout-agent
+    fp errors --aggregate --env production --since 7d
+    ```
+
+    Verwenden Sie `fp events --full --session-id <id>`, wenn Sie die rohen Nutzdaten hinter einer Fehlerzusammenfassung benötigen.
+  </Tab>
+</Tabs>
+
+## Wann Sie Errors verwenden sollten
+
+- Die häufigste Fehlerklasse in der Produktionsumgebung ermitteln.
+- Feststellen, ob ein bestimmtes Tool oder Modell einen Anstieg verursacht.
+- Von einer aggregierten Anzahl zu repräsentativen Sitzungen springen.
+- Einen Alert für wiederkehrende Fehler erstellen.
+- Die betroffene Nutzerpopulation in ein Audit einbeziehen.
+
+Ein Fehler ist ein beobachtetes Ereignis. Eine fehlgeschlagene Evaluierung ist ein Qualitätsurteil, und ein Audit-Befund ist ein untersuchtes Fehlermuster. Behalten Sie diese Unterscheidungen im Blick, wenn Sie entscheiden, welchen Reaktions-Workflow Sie verwenden möchten.
+
+<Card title="Alert erstellen" icon="bell-ring" href="/de/audits/alerts">
+  Benachrichtigen Sie Verantwortliche, wenn ein Fehler oder eine Qualitätsbedingung einen Schwellenwert überschreitet.
+</Card>

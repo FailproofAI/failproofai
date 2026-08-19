@@ -1,0 +1,43 @@
+---
+title: "Hatalar"
+description: "Tekrarlanan hataları gruplandırın ve bunların arkasındaki oturumları açın."
+icon: "circle-alert"
+---
+
+Hatalar, oturumlar arasında hata odaklı bir görünüm sağlar. Tekrarlanan operasyonel sorunları bulmak için hata türü, ajan, ortam, model, araç veya zaman penceresi ile gruplandırın.
+
+## Hataları araştırma
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Errors** sayfasına gidin.
+    2. Ortam, olay türü, hata türü, ajan, oturum ID veya arama metni ile filtreleyin.
+    3. Gruplandırılmış bir hatayı genişleterek oluşumları görün. Satırı seçerek tam olayı oturumunda açın.
+    4. Benzer hatalar için bir uyarı başlatmak üzere temsili bir hatadaki zil kontrolünü seçin.
+
+    ![Hata histogramı, gruplandırılmış hatalar ve uyarı oluşturma kontrolünü gösteren Hatalar sayfası.](/images/dashboard/errors.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp errors --env production --since 24h
+    fp errors --error-type TimeoutError --agent-id checkout-agent
+    fp errors --aggregate --env production --since 7d
+    ```
+
+    Bir hata özeti arkasındaki ham yükü gerektiğinde `fp events --full --session-id <id>` komutunu kullanın.
+  </Tab>
+</Tabs>
+
+## Aşağıdaki durumlarda Hatalar özelliğini kullanın
+
+- Üretimde en sık görülen hata sınıfını bulun.
+- Tek bir aracın veya modelin ani artışa neden olup olmadığını belirleyin.
+- Bir toplam sayıdan temsili oturumlara atlayın.
+- Tekrarlanması için bir uyarı oluşturun.
+- Etkilenen popülasyonu bir denetim raporuna dahil edin.
+
+Bir hata, gözlenen bir olayıdır. Başarısız bir değerlendirme kalite yargısıdır ve bir denetim bulgusu araştırılmış bir hata modelidir. Hangi yanıt iş akışını kullanacağına karar verirken bu ayrımları göz önünde bulundurun.
+
+<Card title="Uyarı oluştur" icon="bell-ring" href="/tr/audits/alerts">
+  Bir hata veya kalite koşulu eşik değeri aştığında müdahale edenleri bilgilendirin.
+</Card>

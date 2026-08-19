@@ -1,0 +1,25 @@
+---
+title: "ツール"
+description: "エージェントセッション全体で遅延・失敗・過剰使用のツールを特定します。"
+icon: "wrench"
+---
+
+ツールはセッションをまたいでツール呼び出しをグループ化し、レイテンシや呼び出し分布を比較できます。
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Observe → Tools** に移動します。
+    2. 環境、ツール名、エージェント、またはセッション ID でフィルタリングします。
+    3. レイテンシとツールの分布を確認します。
+    4. チャートのポイントやツールセグメントを選択すると、対応するイベントとセッションが開きます。
+
+    ![レイテンシ、成功・失敗の内訳、ツール呼び出しの分布を表示するツールページ。](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

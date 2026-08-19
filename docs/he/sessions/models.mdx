@@ -1,0 +1,27 @@
+---
+title: "מודלים"
+description: "השווה בין זמן תגובה של מודלים, אסימונים, שימוש בהקשר, והתפלגות תעבורה."
+icon: "cpu"
+---
+
+השתמש ב-Models כדי לראות האם אמינות או עלות השתנו עם מודל, סוכן, סביבה, או טווח זמן.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור אל **Observe → Models**.
+    2. הגדר את טווח הזמן, ואז סנן לפי סביבה, מודל, סוכן, או מזהה session.
+    3. בדוק את זמן התגובה, צריכת אסימונים, שימוש בחלון ההקשר, והתפלגות מודלים.
+    4. בחר נקודת תרשים או קטע התפלגות כדי לפתוח את האירועים התואמים.
+
+    ![עמוד Models המציג תצוגות של זמן תגובה, אחוזון, אסימון, עלות, חלון הקשר והתפלגות מודלים.](/images/dashboard/models.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list models
+    fp events --event-type model_request,model_response --env production --since 24h
+    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    ```
+
+    השתמש בשאילתה שמורה עבור צברים ברמת מודל שאינם חשופים כפקודת CLI ייעודית.
+  </Tab>
+</Tabs>

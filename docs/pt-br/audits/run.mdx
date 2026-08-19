@@ -1,0 +1,67 @@
+---
+title: "Executar e revisar uma auditoria"
+description: "Execute uma auditoria, verifique sua cobertura e inspecione os resultados encontrados."
+icon: "play"
+---
+
+Execute uma auditoria após seu objetivo e população estarem suficientemente específicos para que outro operador saiba como é um resultado válido.
+
+## Executar e inspecionar
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **Analyze → Audits**, abra a auditoria e selecione **run now**. Uma resposta em fila significa que o dispatcher irá iniciá-la em breve.
+    2. Abra a nova execução para revisar seu status, janela, duração, contagem de resultados e relatório.
+    3. Selecione uma sessão de evidência para abrir o rastreamento exato.
+    4. Retorne à página da auditoria para editar configurações, desativar o agendamento ou inspecionar execuções anteriores.
+
+    ![Uma página de detalhes de auditoria com resultados abertos, estado da última e próxima execução, janela de varredura, contexto, controle de execução imediata e resultados classificados.](/images/dashboard/audit-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits run checkout-reliability
+    fp audits runs checkout-reliability --limit 10
+    fp --json audits runs checkout-reliability
+    fp audits findings --audit checkout-reliability
+    ```
+
+    Consulte a [referência do `fp audits`](/pt-br/reference/cloud-cli#audits) para histórico de execuções, resultados e comandos de triagem.
+  </Tab>
+</Tabs>
+
+## Antes de executar
+
+- Confirme que existem sessões na janela de tempo selecionada.
+- Verifique os filtros de ambiente e agente.
+- Verifique se o contexto de referência está atualizado.
+- Certifique-se de que o objetivo descreve um modo de falha, não uma conclusão desejada.
+
+## Revisar a execução
+
+Comece pelo status da execução, cobertura de sessões e se a análise do modelo foi executada. Em seguida, inspecione a severidade, descrição, sessões de evidência, consultas de suporte e o caminho de prevenção sugerido de cada resultado.
+
+Use o status do resultado para reconhecer, silenciar, descartar, resolver, reabrir ou atribuir trabalho. Preserve as evidências mesmo quando o resultado for descartado; elas explicam por que a decisão foi tomada.
+
+## Interpretar uma execução vazia ou atrasada
+
+| Condição da execução | O que significa | O que fazer |
+| --- | --- | --- |
+| A análise foi executada e produziu zero resultados | A evidência selecionada não suportou um resultado com a sensibilidade configurada. | Confirme que o escopo contém sessões representativas e trate o resultado como saudável, a menos que o objetivo ou contexto estivesse vago demais. |
+| A análise do modelo foi ignorada ou falhou | A execução é concluída com zero resultados, mas não realizou a investigação agêntica. A varredura determinística de credenciais e PII ainda reporta contagens de correspondências nas estatísticas da execução, mas não cria resultados. | Corrija o serviço ou configuração de análise e execute novamente. Não interprete o resultado vazio como evidência de que a população está saudável. |
+| A análise do modelo está desativada | A execução é bem-sucedida com zero resultados. A varredura determinística não substitui a análise do modelo nem abre resultados. | Ative a análise do modelo ou desative a auditoria em vez de depender de uma auditoria que não consegue produzir resultados. |
+| Não há capacidade de análise disponível imediatamente | A auditoria permanece em fila e tenta novamente em vez de ignorar a população. | Aguarde por capacidade ou distribua as âncoras de auditoria. Operadores self-hosted devem escalar as réplicas do agente de auditoria e a capacidade correspondente do dispatcher. |
+| A capacidade permanece indisponível durante a janela de novas tentativas | A execução desiste com zero resultados e envia uma notificação de falha quando a entrega por e-mail está disponível. | Verifique se a frota de auditoria está saturada ou reiniciando repetidamente. |
+
+Quando a análise não é executada, auditorias `since_last` mantêm essa janela não analisada aberta para a próxima execução bem-sucedida. Os resultados existentes não são arquivados porque uma análise ignorada não é evidência de que a falha desapareceu.
+
+## Compreender notificações de falha
+
+Uma execução com falha ou uma etapa de análise do modelo com falha utiliza os destinatários de e-mail da auditoria. Se a auditoria não tiver canal de e-mail, o Failproof AI usa como fallback a configuração `alerts.email_default_recipients` da organização, para que uma auditoria silenciosamente quebrada ainda tenha um caminho de escalação.
+
+O e-mail deve estar habilitado para a organização e o SMTP deve estar configurado. Caso contrário, a falha é registrada em log, mas nenhum e-mail pode ser entregue. Falhas de execução não movem a âncora de agendamento fixo da auditoria.
+
+Cada execução também armazena o [contexto do agente](/pt-br/audits/agent-contracts) exato utilizado para cada agente como um snapshot de contrato. Edições posteriores não alteram o padrão de evidência registrado em uma execução anterior.
+
+<Warning>
+  Não implante uma política de bloqueio diretamente a partir de um resultado não verificado. Abra os rastreamentos citados e confirme que a regra separa comportamentos inseguros de trabalhos legítimos.
+</Warning>

@@ -1,0 +1,79 @@
+---
+title: "快速开始"
+description: "捕获一个 Agent 会话，找到故障点，并开始预防。"
+icon: "zap"
+---
+
+本快速开始指南将帮助您让一台机器上报会话、运行审计并部署策略。您可以使用技能包完成配置，也可以按照手动步骤操作。需要 Node.js 20.9 或更高版本。
+
+<Tabs>
+  <Tab title="使用技能包">
+    <Steps>
+      <Step title="安装 Failproof AI 技能包">
+        ```bash
+        npx skills add FailproofAI/skills
+        ```
+      </Step>
+      <Step title="让您的 Agent 完成所有配置">
+        ```text
+        Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
+        ```
+
+        您的 Agent 会检查项目，选择相关集成，执行配置并验证结果。请参阅 [FailproofAI 技能库](https://github.com/FailproofAI/skills) 了解各项技能和高级安装选项。
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="手动配置">
+    ## 开始之前
+
+1. 打开 [Failproof AI 控制台](https://app.befailproof.ai)，创建账户或使用工作邮箱登录。
+2. 进入 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥。
+3. 复制一次性密钥并将其保存到目标机器上：
+
+```bash
+export FAILPROOFAI_KEY="<one-time-secret>"
+```
+
+    ## 安装
+
+<Steps>
+  <Step title="安装并连接 Failproof AI">
+    ```bash
+    npm install -g failproofai
+    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    ```
+
+    默认情况下会发送会话记录。添加 `--no-transcripts` 可在不发送记录内容的情况下上报 hook 活动和策略决策。
+
+    如果该机器上已有 Agent 历史记录，可预览并导入最近七天的数据，然后等待传输完成。新机器可跳过此步骤。
+
+    ```bash
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    failproofai flush --wait
+    ```
+
+    在 Failproof AI 中打开 **Sessions**，选择一个已导入的会话。
+  </Step>
+  <Step title="安装 Agent Hooks 和策略">
+    此步骤将 Failproof AI 附加到您的 Agent CLI 并安装内置策略。在 Failproof AI 审计您的会话并为 Agent 编写策略之前，您可以借此查看本地策略决策并试验策略执行效果。
+
+    让安装程序自动检测您的 Agent CLI，或显式指定一个。
+
+    ```bash
+    failproofai policies --install --cli claude --scope user
+    ```
+  </Step>
+  <Step title="审计行为">
+    按照[运行您的首次故障检查](/zh/start/first-audit)操作。使用具体目标，例如"找出 Agent 在未改变方案的情况下重试失败工具的会话"。
+  </Step>
+  <Step title="预防故障">
+    按照[使用策略预防您的首次故障](/zh/start/first-policy)操作。从观察模式开始，检查匹配项，然后对审查后的版本执行强制。
+  </Step>
+</Steps>
+
+<Check>
+  运行 `failproofai config --status`。配置正常时会显示云连接状态、守护进程状态以及是否已暂停执行。
+</Check>
+  </Tab>
+</Tabs>

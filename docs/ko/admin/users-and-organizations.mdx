@@ -1,0 +1,44 @@
+---
+title: "사용자 및 조직"
+description: "멤버십을 관리하고 각 조직의 데이터와 작업을 범위 내로 유지합니다."
+icon: "users"
+---
+
+조직은 세션, 평가, 감사, 이슈, 알림, 쿼리, 대시보드, 사용자, 키를 서로 격리합니다. 관리 리소스를 변경하기 전에 현재 활성 조직을 확인하세요.
+
+## 멤버 및 조직 관리
+
+<Tabs>
+  <Tab title="대시보드">
+    1. Cloud 사이드바 상단의 조직 전환기를 사용해 조직을 변경합니다.
+    2. **Administration → Users**로 이동하여 멤버를 검색하거나 활성 상태 및 역할별로 필터링합니다.
+    3. **new user**를 선택하고 이메일을 입력한 후 권한 세트를 선택하고 필요에 따라 재정의 항목을 조정합니다.
+    4. 나중에 사용자를 열어 부여된 권한을 업데이트하거나 로그인을 비활성화하거나 계정을 다시 활성화할 수 있습니다.
+
+    ![멤버 이메일 주소, 권한 세트, 편집 및 비활성화 컨트롤을 보여주는 Users 페이지.](/images/dashboard/users.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+
+    fp users create engineer@example.com --permission-set standard
+    fp users show engineer@example.com
+    fp users update engineer@example.com --add audits:write
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+    ```
+  </Tab>
+</Tabs>
+
+관리자는 사용자를 생성, 업데이트, 비활성화, 재활성화할 수 있으며 역할에 맞는 권한 세트를 할당할 수 있습니다. API는 비활성화 시 삭제 작업을 사용하지만, 계정이나 멤버십 레코드 자체를 제거하지는 않습니다.
+
+<Warning>
+  사용자를 비활성화하면 현재 선택된 조직뿐만 아니라 모든 조직에서 해당 계정의 로그인이 차단됩니다. 재활성화하면 전체 로그인이 복원되고 해당 조직에서의 멤버 권한도 복구됩니다.
+</Warning>
+
+<Tip>
+  서비스 계정에는 워크로드와 담당자를 알 수 있는 설명적인 이름을 부여하세요. 조직 간에 또는 사람과 머신 간에 키를 공유하지 않도록 합니다.
+</Tip>

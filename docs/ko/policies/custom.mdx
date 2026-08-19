@@ -1,0 +1,72 @@
+---
+title: "커스텀 정책"
+description: "에이전트 워크플로우에 고유한 실패 모드에 대한 정책을 작성하세요."
+icon: "shield-plus"
+---
+
+`.failproofai/policies/` 하위에 `policies.js`, `policies.mjs`, 또는 `policies.ts`로 끝나는 파일을 생성하세요. 컨벤션 파일은 프로젝트 및 사용자 스코프에서 자동으로 로드됩니다.
+
+## 클라우드 게시 전 정책 테스트
+
+<Tabs>
+  <Tab title="대시보드">
+    1. 하나의 테스트 머신에 커스텀 정책을 설치하고 매칭되는 액션과 정상적인 비매칭 액션을 각각 실행하세요.
+    2. **Observe → policy**로 이동하여 두 결정을 비교하세요.
+    3. 연결된 각 세션을 열고 이벤트 페이로드에 규칙 판단에 충분한 증거가 포함되어 있는지 확인하세요.
+    4. 동작이 올바르면, 검토된 소스를 **Admin → policy editor**로 옮기고 버전을 게시하세요.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies --install --custom ./security.policies.ts \
+      --cli claude --scope project
+    failproofai policies
+    ```
+
+    `.failproofai/policies/` 하위의 컨벤션 파일은 `--custom` 없이 로드됩니다. 손상된 모듈에서 유효성 검사가 실패해야 하는 경우, CI에 명시적인 설치 명령어를 유지하세요.
+  </Tab>
+</Tabs>
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+이 정책은 `Write`와 `Edit` 모두에 대해 `production/config.yml`, `/srv/production/config.yml`, `/srv/production`, `C:\\production\\config.yml`에 매칭됩니다. `production`이 완전한 경로 세그먼트여야 하므로, `production-backup`과 같은 이름에는 매칭되지 않습니다.
+
+명시적인 파일을 유효성 검사하고 설치하려면:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts
+```
+
+정책 컨텍스트에는 이벤트 타입, 정규화된 페이로드, 툴 이름과 입력값, 세션 메타데이터, 파라미터, 그리고 가능한 경우 소스 CLI가 포함됩니다.
+
+## 실패 경로 테스트
+
+엔트리 파일 또는 해당 파일이 임포트하는 로컬 모듈을 변경한 후 유효성 검사를 실행하세요:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+strict CLI 경로는 파일 누락, 구문 오류, 임포트 미해결, 최상위 예외, 모듈 로드 타임아웃 시 실패합니다. 적용 시점에 손상된 커스텀 파일은 로그에 기록되고 건너뛰어져 내장 정책은 계속 동작합니다. 로드 경고는 예상된 적용의 손실로 간주하고 프로덕션 로그에서 알림을 설정하세요.
+
+명시적, 컨벤션, 클라우드 관리 정책 전체에서 전역적으로 고유한 이름을 사용하세요. 정책 함수는 결정론적으로 유지하고, 외부 호출은 짧은 타임아웃으로 제한하며, 모든 경로에서 의도적인 `allow`, `instruct`, 또는 `deny`를 반환하세요.
+
+<Warning>
+  커스텀 정책은 실행 코드입니다. 예상되는 매칭뿐만 아니라 누락된 필드, 다른 툴 이름, 잘못된 형식의 입력도 반드시 테스트하세요.
+</Warning>

@@ -1,0 +1,96 @@
+---
+title: "发现与问题"
+description: "将审计证据转化为有责任人、可追踪的修复工作。"
+icon: "clipboard-check"
+---
+
+发现（finding）是审计基于证据对某项失败所作的陈述。问题（issue）是响应该发现的持久化工作流。
+
+## 分类与分配工作
+
+<Tabs>
+  <Tab title="控制台">
+    1. 打开 **Analyze → Audits**，选择一次已完成的运行，然后选择一个发现，查看其分析、建议、会话和证据查询。
+    2. 查阅证据后，对该发现进行确认、分配、驳回、静默、解决或重新开启操作。
+    3. 前往 **Analyze → Issues**，按状态、严重程度或负责人筛选持久化收件箱。
+    4. 打开问题进行分配、添加评论或订阅者，并在修复验证完成后将其解决。
+
+    从发现摘要开始。确认故障描述、建议响应、严重程度和排名与你预期审计检查的会话一致。
+
+    ![包含严重程度、发生次数、根因分析、建议操作、排名因素和证据的审计发现。](/images/dashboard/audit-finding.png)
+
+    接下来，打开一个受影响的会话，而不要仅凭摘要做出判断。关联的追踪记录应显示支撑该发现的确切事件和载荷。
+
+    ![从审计发现链接的会话，在相关错误处打开，显示其事件元数据和原始载荷。](/images/dashboard/audit-linked-session.png)
+
+    验证证据后，使用 Issues 为响应工作指定负责人，并独立于后续审计运行进行跟踪。
+
+    ![Issues 收件箱，显示触发中、已确认和已解决的工作，以及严重程度和所有者信息。](/images/dashboard/incidents.png)
+
+    打开问题以记录调查笔记、通知订阅者并保留响应历史。仅在修复措施部署并验证完成后才解决问题。
+
+    ![问题详情视图，包含来源、违规证据、负责人、订阅者、时间线和评论。](/images/dashboard/incident-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits findings --audit checkout-reliability --status open
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+
+    fp issues list
+    fp issues show <issue-id>
+    fp issues assign <issue-id> --assignee engineer@example.com
+    fp issues comment-add <issue-id> --body "policy is in observe mode"
+    fp issues resolve <issue-id> --yes
+    ```
+
+    使用 `fp issues subscribe <issue-id>`、`fp issues unsubscribe <issue-id>` 和 `fp issues subscribers <issue-id>` 来管理关注者。
+
+    审计发现请参阅 [Cloud CLI 审计与问题参考](/zh/reference/cloud-cli#audits)，问题管理请参阅 [`fp issues`](/zh/reference/cloud-cli#issues)。
+  </Tab>
+</Tabs>
+
+## 审查发现
+
+确认其包含以下内容：
+
+- 稳定的失败模式，而不仅仅是一次性的标题
+- 严重程度和运营影响
+- 受影响的会话 ID 或支撑查询
+- 足够的上下文以复现该行为
+- 与证据相符的建议响应
+
+## 使用问题管理响应流程
+
+当发现需要分配、讨论、状态变更、评论或订阅者时，创建或关联一个问题。问题也可以代表告警事件和手动上报的问题，这也是它们位于审计响应而非主导航下的原因。
+
+当修复措施部署并验证完成后，解决问题。当失败模式已针对审计群体得到处理后，解决发现。这两个时刻可能并不一致。
+
+## 将问题转化为策略草稿
+
+<Tabs>
+  <Tab title="控制台">
+    1. 打开问题，验证其发现、引用的会话、根因和建议。
+    2. 选择 **generate policy**，查看候选结果和建议的执行意图。**no policy** 结果表示该行为可能需要告警、工作流变更或人工响应。
+    3. 选择 **write this policy**，然后在 **Admin → policy editor** 中审查并测试生成的源代码，再选择 **publish version**。如果你不认同候选检查结果，可使用 **open the editor anyway**。
+    4. 前往 **Admin → enforcement**，在 **observe** 模式下部署该版本，并在执行之前于 **Observe → policy** 下验证其决策。
+
+    问题标题、发现描述、根因、建议和候选意图有助于构建草稿。系统不会自动发布或部署任何内容。
+  </Tab>
+  <Tab title="CLI">
+    在控制台中打开问题之前，使用 CLI 检查证据：
+
+    ```bash
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp events --session-id <session-id> --full --all
+    ```
+
+    策略候选、Cloud 发布和集群部署均为控制台工作流。如需先在本地验证等效策略源，请使用 `failproofai policies --install --custom <file>`。
+  </Tab>
+</Tabs>
+
+<Card title="编写策略" icon="shield-plus" href="/zh/policies/editor">
+  将已确认的、可重复的操作模式转化为策略版本。
+</Card>

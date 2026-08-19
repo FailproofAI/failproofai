@@ -1,0 +1,84 @@
+---
+title: "स्थानीय कॉन्फ़िगरेशन"
+description: "नीति स्कोप, पैरामीटर, कस्टम फ़ाइलें, और मशीन-स्तरीय Failproof AI सेटिंग्स को नियंत्रित करें।"
+icon: "file-cog"
+---
+
+Failproof AI नीति चयन को मशीन और daemon सेटिंग्स से अलग करता है। यह रिपॉजिटरी नीति विकल्पों को समीक्षा योग्य रखता है जबकि क्रेडेंशियल्स और daemon स्थिति रिपॉजिटरी के बाहर रहती है।
+
+## एक नीति स्कोप चुनें
+
+<Tabs>
+  <Tab title="Dashboard">
+    स्थानीय नीति डैशबोर्ड खोलने के लिए बिना किसी तर्क के `failproofai` चलाएं। कोई नीति सक्षम करने से पहले उपयोगकर्ता, प्रोजेक्ट, या स्थानीय स्कोप चुनें ताकि परिवर्तन इच्छित कॉन्फ़िगरेशन फ़ाइल में लिखा जाए।
+
+    - **User** इस मशीन पर सभी प्रोजेक्ट्स में लागू होता है।
+    - **Project** रिपॉजिटरी से संबंधित है और प्रतिबद्ध किया जा सकता है।
+    - **Local** एक प्रोजेक्ट को एक उपयोगकर्ता के लिए ओवरराइड करता है और gitignored रहना चाहिए।
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policy add block-rm-rf --scope user
+    failproofai policy add block-force-push --scope project
+    failproofai policy add warn-large-file-write --scope local
+    failproofai policies
+    ```
+
+    हर हार्नेस स्थानीय स्कोप का समर्थन नहीं करता। CLI एक स्कोप को अस्वीकार करता है जिसे चयनित हार्नेस प्रतिनिधित्व नहीं कर सकता।
+  </Tab>
+</Tabs>
+
+| स्कोप | नीति कॉन्फ़िगरेशन फ़ाइल |
+| --- | --- |
+| Project | `<project>/.failproofai/policies-config.json` |
+| Local | `<project>/.failproofai/policies-config.local.json` |
+| User | `~/.failproofai/policies-config.json` |
+
+सक्षम नीतियों को एक union के रूप में विलीन किया जाता है। नीति पैरामीटर उस नीति के लिए पैरामीटर को परिभाषित करने वाले पहले स्कोप का उपयोग करते हैं, project → local → user क्रम में। स्पष्ट कस्टम नीति पाथ उन्हें परिभाषित करने वाले पहले स्कोप का उपयोग करते हैं।
+
+## नीति पैरामीटर कॉन्फ़िगर करें
+
+<Tabs>
+  <Tab title="Dashboard">
+    स्थानीय डैशबोर्ड में नीति खोलें, इसके समर्थित पैरामीटर संपादित करें, और चयनित स्कोप में सहेजें। एक मेल खाने वाली और न मेल खाने वाली agent कार्रवाई चलाएं, फिर **Observe → policy** में निर्णय का निरीक्षण करें।
+
+  </Tab>
+  <Tab title="CLI">
+    चयनित स्कोप की `policies-config.json` संपादित करें, फिर अज्ञात नीति नामों या पैरामीटर कुंजियों को सामने लाने के लिए `failproofai policies` चलाएं।
+
+    ```json
+    {
+      "enabledPolicies": ["block-rm-rf", "block-force-push"],
+      "policyParams": {
+        "block-rm-rf": {
+          "allowPaths": ["/tmp/build-output"]
+        }
+      }
+    }
+    ```
+
+    ```bash
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+## मशीन फ़ाइलों को समझें
+
+`~/.failproofai` में अलग-अलग विश्वास सीमाओं के लिए अलग-अलग फ़ाइलें हैं:
+
+| पाथ | उद्देश्य |
+| --- | --- |
+| `config.json` | गैर-गोपनीय daemon, audit, और telemetry सेटिंग्स |
+| `credentials.json` | क्लाउड क्रेडेंशियल्स; केवल-मालिक अनुमतियों के साथ संग्रहीत |
+| `policies-config.json` | उपयोगकर्ता-स्कोप builtin चयन, पैरामीटर, और स्पष्ट कस्टम पाथ |
+| `policies/` | उपयोगकर्ता सम्मेलन नीतियां और Cloud-प्रबंधित नीति artifacts |
+| `hook-activity/` | स्थानीय नीति निर्णय लॉग |
+| `state/` | Daemon spool, health, pause, और runtime स्थिति |
+
+एक कंटेनर या isolated परीक्षण के लिए संपूर्ण मशीन लेआउट को स्थानांतरित करने के लिए `FAILPROOFAI_HOME` का उपयोग करें। अलग-अलग state निर्देशिकाओं को स्वतंत्र रूप से स्थानांतरित न करें।
+
+<Warning>
+  कभी भी `credentials.json` को प्रतिबद्ध न करें। प्रोजेक्ट नीति कॉन्फ़िगरेशन और प्रोजेक्ट सम्मेलन नीतियों को केवल तभी प्रतिबद्ध करें जब आपने उन्हें enforcement code के रूप में समीक्षा कर लिया हो।
+</Warning>

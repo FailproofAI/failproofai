@@ -1,0 +1,44 @@
+---
+title: "Người dùng và tổ chức"
+description: "Kiểm soát thành viên và giữ dữ liệu và hành động của mỗi tổ chức trong phạm vi riêng."
+icon: "users"
+---
+
+Các tổ chức cách ly các phiên làm việc, đánh giá, kiểm toán, vấn đề, cảnh báo, truy vấn, bảng điều khiển, người dùng và khóa. Xác nhận tổ chức hoạt động trước khi thay đổi các tài nguyên quản trị.
+
+## Quản lý thành viên và tổ chức
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Sử dụng công cụ chuyển đổi tổ chức ở đầu thanh bên Cloud để thay đổi tổ chức.
+    2. Truy cập **Administration → Users** để tìm kiếm thành viên hoặc lọc theo trạng thái hoạt động và vai trò.
+    3. Chọn **new user**, nhập email, chọn bộ quyền và điều chỉnh các ghi đè nếu cần.
+    4. Mở người dùng sau này để cập nhật quyền cấp, vô hiệu hóa đăng nhập hoặc bật lại tài khoản.
+
+    ![Trang Users hiển thị địa chỉ email thành viên, bộ quyền và các điều khiển chỉnh sửa và vô hiệu hóa.](/images/dashboard/users.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+
+    fp users create engineer@example.com --permission-set standard
+    fp users show engineer@example.com
+    fp users update engineer@example.com --add audits:write
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+    ```
+  </Tab>
+</Tabs>
+
+Những người quản trị có thể tạo, cập nhật, vô hiệu hóa và bật lại người dùng, sau đó gán bộ quyền phù hợp với vai trò của họ. API sử dụng một hoạt động xóa để vô hiệu hóa, nhưng nó không xóa tài khoản hoặc bản ghi thành viên của nó.
+
+<Warning>
+  Vô hiệu hóa người dùng sẽ chặn danh tính đó khỏi việc đăng nhập vào mọi tổ chức, không chỉ tổ chức hiện được chọn. Bật lại sẽ khôi phục quyền đăng nhập toàn cầu và quyền của thành viên trong tổ chức này.
+</Warning>
+
+<Tip>
+  Đặt tên có ý nghĩa cho các tài khoản dịch vụ liên kết với khối lượng công việc và chủ sở hữu. Tránh chia sẻ khóa giữa các tổ chức hoặc giữa mọi người và máy.
+</Tip>

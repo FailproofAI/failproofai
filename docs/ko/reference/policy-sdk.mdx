@@ -1,0 +1,303 @@
+---
+title: "커스텀 정책"
+description: "에이전트에 특화된 오류에 대한 JavaScript 또는 TypeScript 정책을 작성하고 테스트하여 배포하세요."
+icon: "shield-plus"
+---
+
+커스텀 정책은 추적 또는 감사에서 발견된 오류 패턴을 에이전트가 작업하는 동안 실행되는 결정으로 전환합니다. 정책은 작업을 허용하거나, 에이전트에게 지침을 제공하거나, 또 다른 사고가 발생하기 전에 작업을 거부할 수 있습니다.
+
+동작이 여러분의 도구, 경로, 명령어, 환경, 또는 운영 규칙에 따라 달라질 때 커스텀 정책을 사용하세요. 기존 제어를 다시 만들지 않으려면 먼저 [기본 제공 정책 카탈로그](/ko/policies/builtin-catalog)를 확인하세요.
+
+## 커스텀 정책 작성
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Admin → policy editor**로 이동하여 **New policy**를 선택하고, 방지하려는 오류를 설명하세요.
+    2. 정책 소스를 추가한 후 에디터에서 예상 매칭 케이스와 안전한 비매칭 케이스를 테스트하세요. 모든 유효성 검사 오류를 해결하세요.
+    3. 초안을 저장하고 **Publish version**을 선택하여 변경 불가능한 버전을 생성하세요.
+    4. **Admin → enforcement**로 이동하여 **observe** 모드로 테스트 머신에 버전을 배포하고, 적용하기 전에 **Observe → policy**에서 결정 사항을 확인하세요.
+
+    ![커스텀 정책을 작성하고 게시하는 데 사용되는 정책 에디터.](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    1. `.failproofai/policies/checkout-policies.ts`를 생성하세요. 파일명은 반드시 `policies.js`, `policies.mjs`, 또는 `policies.ts`로 끝나야 합니다.
+    2. `customPolicies.add()`로 하나 이상의 정책을 등록하세요.
+    3. `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project` 명령으로 파일을 검증하고 설치하세요.
+    4. 매칭되는 작업 하나와 안전한 작업 하나를 실행하세요. `failproofai policies`를 실행한 후 **Observe → policy**에서 귀속된 결정 사항을 확인하세요.
+  </Tab>
+</Tabs>
+
+## 좁은 규칙부터 시작하기
+
+이 정책은 명령어가 프로덕션을 대상으로 할 때만 파괴적인 Kubernetes 명령어를 차단합니다. 해당 오류 모드에 정확히 해당하지 않는 모든 경우에는 `allow()`를 반환합니다.
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+const DESTRUCTIVE_KUBECTL = /\bkubectl\s+(delete|replace)\b/i;
+const PRODUCTION_TARGET = /(?:--context|--namespace|-n)\s+(prod|production)\b/i;
+
+customPolicies.add({
+  name: "block-destructive-production-kubectl",
+  description: "Block destructive Kubernetes commands against production",
+  match: { events: ["PreToolUse"] },
+  fn: async ({ toolName, toolInput }) => {
+    if (toolName !== "Bash") return allow();
+
+    const command = String(toolInput?.command ?? "");
+    if (!DESTRUCTIVE_KUBECTL.test(command)) return allow();
+    if (!PRODUCTION_TARGET.test(command)) return allow();
+
+    return deny(
+      "Destructive production Kubernetes commands require the approved deployment workflow.",
+    );
+  },
+});
+```
+
+좋은 정책은 한 문장으로 설명할 수 있을 만큼 좁습니다. 에이전트의 의도가 아닌 관찰 가능한 행동을 매칭하고, 규칙이 적용되지 않는 즉시 `allow()`를 반환하세요.
+
+## 결정 선택하기
+
+| 헬퍼 | 결과 | 사용 시점 |
+| --- | --- | --- |
+| `allow(reason?)` | 작업이 계속됩니다. | 정책이 적용되지 않거나 작업이 안전할 때. |
+| `instruct(reason)` | 하네스가 지원하는 경우 안내와 함께 작업이 계속됩니다. | 불변성을 강제하지 않고 에이전트를 더 나은 방향으로 유도하고 싶을 때. |
+| `deny(reason)` | 이벤트와 하네스가 차단을 지원하는 경우 작업이 차단됩니다. | 작업이 진행되어서는 안 될 때. |
+
+복구해야 하는 에이전트를 위해 이유를 작성하세요. 무엇이 감지되었으며 대신 무엇을 해야 하는지 설명하세요.
+
+<Warning>
+  안전 경계에는 `instruct()`를 사용하지 마세요. 지침 전달은 에이전트 하네스에 따라 다릅니다. 작업을 반드시 막아야 할 때는 `deny()`를 사용하세요.
+</Warning>
+
+## 정책 객체
+
+```ts
+customPolicies.add({
+  name: "policy-name",
+  description: "What this policy prevents",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => allow(),
+});
+```
+
+| 필드 | 필수 여부 | 설명 |
+| --- | --- | --- |
+| `name` | 예 | 정책의 안정적인 식별자. 파일 간에 이름이 고유하게 유지하세요. |
+| `description` | 아니오 | 정책 목록과 결정 사항에 표시되는 사람이 읽을 수 있는 목적. |
+| `match.events` | 아니오 | 정책을 호출하는 이벤트 유형. `match`를 생략하면 사용 가능한 모든 이벤트에 대해 호출됩니다. |
+| `fn` | 예 | `allow`, `instruct`, 또는 `deny` 결과를 반환하는 동기 또는 비동기 함수. |
+
+`fn` 내부에서 도구를 필터링하세요. `match.toolNames`는 공개 커스텀 정책 타입의 일부가 아닙니다.
+
+## 정책 컨텍스트
+
+모든 정책은 `PolicyContext`를 받습니다.
+
+| 필드 | 타입 | 포함 내용 |
+| --- | --- | --- |
+| `eventType` | `HookEventType` | 현재 평가 중인 정규화된 이벤트. |
+| `toolName` | `string \| undefined` | `Bash`, `Read`, `Write`, `Edit` 등의 정식 도구 이름. |
+| `toolInput` | `Record<string, unknown> \| undefined` | 현재 도구 호출의 정규화된 입력. |
+| `payload` | `Record<string, unknown>` | 완전히 정규화된 이벤트 페이로드. |
+| `session` | `SessionMetadata \| undefined` | 세션 ID, 작업 디렉토리, 트랜스크립트 경로, 권한 모드, 그리고 사용 가능한 경우 하네스 메타데이터. |
+| `cli` | `string \| undefined` | `claude`, `codex`, `cursor` 등의 소스 에이전트 하네스. |
+| `params` | `Record<string, unknown>` | 기본 제공 정책 파라미터. 커스텀 정책은 현재 빈 객체를 받습니다. |
+
+모든 선택적 값을 실제로 선택적인 것으로 취급하세요. 에이전트 버전과 이벤트 유형이 모두 동일한 필드를 제공하지는 않습니다.
+
+### 일반적인 도구 입력
+
+Failproof AI는 지원되는 하네스 전반에 걸쳐 일반적인 도구를 정규화하므로 정책은 보통 하나의 입력 형태를 사용할 수 있습니다.
+
+| 도구 | 공통 필드 |
+| --- | --- |
+| `Bash` | `command` |
+| `Read` | `file_path` |
+| `Write` | `file_path`, `content` |
+| `Edit` | `file_path`, `old_string`, `new_string` |
+| `Grep` | `pattern`, `path` |
+
+도구 입력 값이 `unknown`으로 타입이 지정되어 있으므로 방어적 강제 변환을 사용하세요:
+
+```ts
+const command = String(ctx.toolInput?.command ?? "");
+const filePath = String(ctx.toolInput?.file_path ?? "");
+```
+
+## 이벤트 선택하기
+
+| 이벤트 | 실행 시점 | 일반적인 용도 |
+| --- | --- | --- |
+| `PreToolUse` | 도구 실행 전. | 명령어, 쓰기, 읽기, 외부 작업 차단 또는 안내. |
+| `PostToolUse` | 도구 반환 후. | 에이전트에게 도달하기 전에 결과 검사. deny는 전체 결과를 차단하며 특정 필드를 수정하지 않습니다. |
+| `PermissionRequest` | 에이전트가 권한을 요청할 때. | 조직별 권한 규칙 적용. |
+| `UserPromptSubmit` | 제출된 프롬프트가 계속되기 전. | 금지된 지침 거부 또는 워크플로우 안내 추가. |
+| `Stop` | 에이전트가 완료하려고 할 때. | 로컬 검증 단계와 같이 도달 가능한 완료 조건 요구. |
+| `SubagentStop` | 서브에이전트가 완료하려고 할 때. | 부모에게 반환되기 전에 위임된 작업 게이팅. |
+| `SessionStart` / `SessionEnd` | 세션 경계에서. | 세션 수준 상태 기록 또는 확인. |
+
+이벤트 가용성과 차단 동작은 에이전트 하네스에 따라 다릅니다. 혼합 플릿 전반에서 이벤트에 의존하기 전에 [에이전트 하네스](/ko/reference/harnesses)를 참조하세요.
+
+<Accordion title="모든 정책 이벤트 이름">
+  `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch`, `Setup`.
+</Accordion>
+
+## 일반적인 정책 패턴 작성
+
+### 보호된 경로에 대한 쓰기 차단
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "block-generated-file-edits",
+  description: "Require generated files to be changed through their generator",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (!["Write", "Edit"].includes(ctx.toolName ?? "")) return allow();
+
+    const filePath = String(ctx.toolInput?.file_path ?? "");
+    if (!/(^|\/)(dist|generated)\//.test(filePath)) return allow();
+
+    return deny("Edit the source and run the generator instead of changing generated output.");
+  },
+});
+```
+
+### 비차단 안내 제공
+
+```ts
+import { customPolicies, allow, instruct } from "failproofai";
+
+customPolicies.add({
+  name: "prefer-reviewed-deploy-command",
+  description: "Guide agents toward the reviewed deployment wrapper",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Bash") return allow();
+
+    const command = String(ctx.toolInput?.command ?? "");
+    if (!/^kubectl\s+apply\b/.test(command.trim())) return allow();
+
+    return instruct("Use ./scripts/deploy-reviewed instead of invoking kubectl directly.");
+  },
+});
+```
+
+### 세션 완료 게이팅
+
+```ts
+import { execFileSync } from "node:child_process";
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "require-clean-typecheck",
+  description: "Require the project typecheck to pass before the agent finishes",
+  match: { events: ["Stop"] },
+  fn: async (ctx) => {
+    const cwd = ctx.session?.cwd;
+    if (!cwd) return allow();
+
+    try {
+      execFileSync("bunx", ["tsc", "--noEmit"], {
+        cwd,
+        stdio: "ignore",
+        timeout: 8_000,
+      });
+      return allow();
+    } catch {
+      return deny("Fix the typecheck errors before finishing the task.");
+    }
+  },
+});
+```
+
+<Warning>
+  거부된 `Stop` 이벤트는 에이전트가 재시도하게 만들 수 있습니다. 현재 환경에서 에이전트가 충족할 수 있는 조건에만 게이팅하고, 모든 서브프로세스나 네트워크 호출에 경계를 설정하세요.
+</Warning>
+
+## 정책 파일 로드
+
+### 컨벤션 파일
+
+컨벤션 파일은 자동으로 로드됩니다:
+
+```text
+<project>/.failproofai/policies/security-policies.ts
+~/.failproofai/policies/personal-policies.mjs
+```
+
+- 프로젝트 및 사용자 정책 디렉토리가 모두 로드됩니다.
+- 파일은 각 디렉토리 내에서 알파벳 순으로 로드됩니다.
+- 파일은 반드시 `policies.js`, `policies.mjs`, 또는 `policies.ts`로 끝나야 합니다.
+- 하나의 파일에서 `customPolicies.add()`를 여러 번 호출하는 것이 지원됩니다.
+- 로컬 모듈에서 상대 임포트가 지원됩니다.
+- 프로젝트 정책은 동일한 규칙이 저장소를 따르도록 커밋할 수 있습니다.
+
+### 명시적 파일
+
+유효성 검사나 설정에서 진입 파일을 직접 지정해야 할 때 명시적 경로를 사용하세요:
+
+```bash
+failproofai policies --install \
+  --custom ./security.policies.ts \
+  --custom ./workflow.policies.ts \
+  --scope project
+```
+
+명시적 파일이 먼저 로드되고, 그 다음 프로젝트 컨벤션 파일, 마지막으로 사용자 컨벤션 파일이 로드됩니다. 두 경로 모두를 통해 발견된 파일은 한 번만 로드됩니다.
+
+## 검증 및 테스트
+
+유효성 검사는 프로덕션 로더를 통해 모듈을 실행하고 최소 하나의 정책이 등록되었는지 확인합니다.
+
+```bash
+failproofai policies --install \
+  --custom ./.failproofai/policies/checkout-policies.ts \
+  --scope project
+failproofai policies
+```
+
+유효성 검사는 누락된 파일, 구문 오류, 해결되지 않은 임포트, 최상위 예외, 그리고 모듈 로드 타임아웃을 잡아냅니다. 하지만 매칭 로직이 올바른지는 증명하지 않습니다.
+
+최소한 다음 케이스를 테스트하세요:
+
+- 반드시 매칭되어 의도한 정책 이유를 생성해야 하는 작업 하나.
+- 반드시 `allow()`를 반환해야 하는 근접하지만 안전한 작업 하나.
+- 누락되거나 잘못된 형식의 도구 필드.
+- 다른 명령어 구문, 경로, 인용, 대소문자, 공백.
+- 사용할 수 없는 서브프로세스 또는 네트워크 의존성.
+
+**Observe → policy**에서 결과를 커스텀 정책에 귀속시키세요. 다른 기본 제공 정책이 결정을 내렸다면 차단된 테스트로는 충분하지 않습니다.
+
+## 런타임 동작
+
+- 기본 제공 정책이 커스텀 정책보다 먼저 평가됩니다.
+- 첫 번째 `deny`가 추가 정책 평가를 중단시킵니다.
+- 어떤 정책도 이벤트를 거부하지 않으면 여러 `instruct` 결과가 결합될 수 있습니다.
+- 정책 함수는 10초 실행 제한이 있습니다.
+- 예외가 발생하거나 타임아웃이 되면 로깅되고 `allow()`로 처리됩니다.
+- 로드에 실패한 컨벤션 파일은 건너뛰어지며, 다른 커스텀 파일과 기본 제공 정책은 계속 실행됩니다.
+- 최상위 모듈 로딩에도 10초 제한이 있습니다.
+- 클라우드 observe 모드는 정책을 실행하지만 비허용 결정을 적용하지 않고 기록합니다.
+
+정책 모듈은 결정론적이고 빠르게 유지하세요. 최상위 네트워크 호출이나 서버 시작을 피하세요. `fn` 내부에서 작업에 경계를 설정하고, 의존성 실패를 포착하며, 해당 실패가 작업을 허용해야 할지 거부해야 할지 신중하게 선택하세요.
+
+## API 내보내기
+
+| 내보내기 | 목적 |
+| --- | --- |
+| `customPolicies.add(policy)` | 모듈이 로드될 때 커스텀 정책을 등록합니다. |
+| `allow(reason?)` | 작업을 허용합니다. |
+| `instruct(reason)` | 작업을 허용하고 지원되는 경우 안내를 제공합니다. |
+| `deny(reason)` | 지원되는 경우 작업을 차단합니다. |
+| `getCustomHooks()` | 모듈 레지스트리에 현재 등록된 정책을 반환합니다. |
+| `clearCustomHooks()` | 해당 레지스트리를 지웁니다. 주로 테스트와 로더에 사용됩니다. |
+
+TypeScript는 `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, `PolicyFunction`을 내보냅니다.
+
+<Card title="커스텀 정책 배포" icon="server-cog" href="/ko/policies/deploy">
+  버전을 게시하고, observe 모드로 배포하며, 결정 사항을 확인한 후 적용으로 이동하세요.
+</Card>

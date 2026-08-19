@@ -1,0 +1,191 @@
+---
+---
+title: "Evaluator SDK"
+description: "Создайте сервис для оценки сессий Failproof AI синхронно или асинхронно."
+icon: "gauge"
+---
+
+Оценщик (evaluator) получает завершённую сессию агента и возвращает интересующие вас показатели качества: числовые оценки, объяснение для каждой оценки и необязательное резюме. Failproof AI сохраняет эти результаты рядом с трассировкой и строит по ним графики для разных агентов и окружений.
+
+## Настройка оценщика
+
+<Steps>
+  <Step title="Установите Evaluator SDK">
+    Установите SDK и сервер для его запуска.
+
+    ```bash
+    pip install failproofai-sdk uvicorn
+    ```
+  </Step>
+
+  <Step title="Определите, что оценивать">
+    Создайте файл `evaluator.py`. Этот пример проверяет, содержит ли сессия ошибки вызова инструментов.
+
+    ```python
+    import os
+    from failproofai.evaluator import Evaluator, EvalResponse
+
+    app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
+
+    @app.config
+    def config():
+        return {"inactivity_timeout_secs": 1800}
+
+    @app.evaluator
+    def evaluate(req):
+        tool_errors = sum(
+            1 for item in req.events
+            if item.event_type == "tool_result" and item.payload.get("error")
+        )
+        return EvalResponse(
+            scores={"tool_reliability": 1.0 if tool_errors == 0 else 0.0},
+            reasoning={"tool_reliability": f"{tool_errors} tool errors"},
+        )
+    ```
+  </Step>
+
+  <Step title="Запустите и протестируйте локально">
+    Установите общий токен, запустите оценщик и убедитесь, что его health-endpoint отвечает.
+
+    ```bash
+    export EVALUATOR_TOKEN=<shared-token>
+    uvicorn evaluator:app --host 0.0.0.0 --port 8080
+    ```
+
+    В другом терминале:
+
+    ```bash
+    curl http://127.0.0.1:8080/health
+    ```
+  </Step>
+</Steps>
+
+## Подключение оценщика к Failproof AI
+
+1. Разверните оценщик по HTTPS URL, доступному для Failproof AI Cloud.
+2. Установите `EVALUATOR_ENDPOINT` с этим URL и задайте `EVALUATOR_TOKEN` с тем же токеном, который используется оценщиком. Для управляемого облака свяжитесь с [support@befailproof.ai](mailto:support@befailproof.ai) для настройки подключения.
+3. Запустите оценку и убедитесь, что её результаты появляются в Failproof AI.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Откройте завершённую сессию в разделе **Observe → Sessions** и нажмите **Run evaluation**, если она ещё не была оценена автоматически. Проверьте статус, оценки, объяснения и резюме в панели **Evaluation** сессии.
+
+    Используйте **Observe → Evaluations** для сравнения оценок между агентами или окружениями. Используйте **Observe → Metrics** для измерения задержки, стоимости, количества токенов и других числовых показателей.
+
+    Начните с одной сессии, чтобы убедиться, что оценщик вернул ожидаемые ключи оценок и полезные объяснения для этого конкретного запуска.
+
+    ![Представление детальной информации сессии, показывающее оценки и объяснения рядом с трассировкой.](/images/dashboard/session-detail.png)
+
+    Когда отдельные результаты будут правильными, используйте панель оценок для сравнения этих оценок во времени и между агентами или окружениями.
+
+    ![Панель качества, отображающая оценки оценщика во времени.](/images/dashboard/dashboard-quality.png)
+
+    Здоровый график должен использовать стабильные имена оценок; изменение ключа создаёт отдельный ряд.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --since 1h --score tool_reliability:0..1
+    fp evals --since 24h --aggregate
+    ```
+  </Tab>
+</Tabs>
+
+Для самостоятельно размещённого облака автоматическая оценка отключена, пока `EVALUATOR_ENDPOINT` не установлен на процессе сервера. Перезагрузите сервер после изменения переменных окружения оценщика.
+
+Сервис предоставляет `GET /health`, `GET /config`, `POST /evaluate` и опционально `GET /evaluate/{job_id}`. Возвращайте `JobPending` для асинхронной работы и регистрируйте `@app.job_lookup`, чтобы Failproof AI мог опрашивать статус.
+
+Когда токен настроен, все маршруты, кроме health, требуют тот же bearer-токен, который Failproof AI отправляет как `EVALUATOR_TOKEN`.
+
+## Типы SDK
+
+| Тип | Поля |
+| --- | --- |
+| `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
+| `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
+| `EvalResponse` | `scores`, `reasoning`, `summary` |
+| `JobPending` | `job_id`, `next_poll_secs` |
+| `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
+
+## Декораторы и маршруты
+
+| Декоратор | Маршрут | Обязательно |
+| --- | --- | --- |
+| `@app.evaluator` | `POST /evaluate` | Да |
+| `@app.job_lookup` | `GET /evaluate/{job_id}` | При возврате `JobPending` |
+| `@app.config` | `GET /config` | Нет |
+
+SDK ограничивает размер тела запроса оценки до 25 МiB. Неизвестные поля запроса игнорируются, чтобы сервисы оставались совместимы по мере развития контракта событий.
+
+## Возврат асинхронной работы
+
+Используйте `JobPending`, когда оценка не может завершиться за один запрос. ID задания непрозрачен для Failproof AI и должен оставаться разрешимым вашим сервисом до тех пор, пока результат не будет собран или не истечёт таймаут сервера.
+
+```python
+from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
+
+app = Evaluator(token="shared-secret")
+
+@app.evaluator
+def start(req: EvalRequest) -> JobPending:
+    job_id = enqueue(req)
+    return JobPending(job_id=job_id, next_poll_secs=30)
+
+@app.job_lookup
+def lookup(job_id: str):
+    result = get_result(job_id)
+    if result is None:
+        return JobPending(job_id=job_id, next_poll_secs=30)
+    return EvalResponse(
+        scores=result.scores,
+        reasoning=result.reasoning,
+        summary=result.summary,
+    )
+```
+
+Интервал опроса выбирается в этом порядке: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, затем `EVALUATOR_POLLING_INTERVAL_SECS` сервера. Значения ограничиваются между 1 секундой и 1 часом. Предельный интервал опроса по стене сервера по умолчанию составляет один час.
+
+## Поля запроса и ответа
+
+| Поле | Тип | Примечания |
+| --- | --- | --- |
+| `EvalRequest.schema_version` | `str` | В настоящее время `1`. |
+| `session_id`, `agent_id`, `environment` | `str` | Идентификация сессии и окружение. |
+| `started_at` | `datetime` | Временная метка первого события. |
+| `ended_at` | `datetime \| None` | Присутствует, когда сессия выпустила событие завершения. |
+| `events` | `list[AgentEvent]` | Полный упорядоченный поток событий. |
+| `AgentEvent.id` | `int` | Идентификатор строки события на бэкенде. |
+| `AgentEvent.ts` | `datetime` | Временная метка события. |
+| `AgentEvent.event_type` | `str` | Семейство событий, например `tool_use`. |
+| `AgentEvent.payload` | `dict[str, Any]` | Полная полезная нагрузка события. |
+| `EvalResponse.scores` | `dict[str, float] \| None` | Числовые измерения, отображаемые в оценках. |
+| `EvalResponse.reasoning` | `dict[str, str] \| None` | Объяснения для каждой оценки; ключи должны совпадать с `scores`. |
+| `EvalResponse.summary` | `str \| None` | Общее описание оценки. |
+
+## Параметры оператора сервера
+
+Автоматическая оценка действует во всём развёртывании и остаётся отключённой, когда `EVALUATOR_ENDPOINT` отсутствует.
+
+| Переменная | По умолчанию | Назначение |
+| --- | --- | --- |
+| `EVALUATOR_ENDPOINT` | не установлено | Базовый URL сервиса оценщика. |
+| `EVALUATOR_TOKEN` | не установлено | Bearer-токен, общий с `Evaluator(token=...)`. |
+| `EVALUATOR_WORKERS` | `2` | Одновременные рабочие диспетчера. |
+| `EVALUATOR_CLAIM_BATCH` | `4` | Сессии, заявленные за один проход диспетчера. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | Резервный интервал опроса асинхронности. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | Таймаут оценщика для каждого запроса. |
+| `EVALUATOR_MAX_ATTEMPTS` | `5` | Попытки доставки до окончательного отказа. |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | Интервал обновления для `/config`. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | Максимальное время опроса асинхронности по стене. |
+
+Сервер также может ограничить, какие организации используют глобальный оценщик развёртывания. Рассматривайте изменения конечной точки, токена, повтора и организационного шлюза как конфигурацию оператора и перезагружайте или переворачивайте сервер после изменений.
+
+## Безопасность и операции
+
+- Поместите оценщик за HTTPS при пересечении трафиком доверенной границы сети.
+- Настройте непустой bearer-токен и держите его одинаковым на обоих сервисах.
+- Не логируйте токен или полные чувствительные подсказки из полезных нагрузок запроса.
+- Сделайте синхронные обработчики идемпотентными; повторы могут повторить запрос.
+- Сохраняйте асинхронное состояние задания вне памяти процесса в продакшене.
+- Возвращайте стабильные ключи оценок. Переименование ключа создаёт новый ряд диаграммы, а не изменяет старый.
+
+SDK выпускает структурированные логи жизненного цикла, такие как `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected` и исключения обработчиков. Он не настраивает обработчики логирования; используйте конфигурацию логирования хост-приложения.

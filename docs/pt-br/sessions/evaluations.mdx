@@ -1,0 +1,52 @@
+---
+title: "Avaliações online"
+description: "Pontue sessões ativas e concluídas por qualidade, conformidade, custo e latência."
+icon: "gauge"
+---
+
+As avaliações online aplicam julgamentos consistentes às sessões de agentes. Use-as para sinais que devem ser medidos continuamente, em vez de investigados apenas durante uma auditoria.
+
+## Revisar a qualidade das avaliações
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vá para **Observe → Evaluations**.
+    2. Adicione uma série e escolha o agente, ambiente, pontuação de avaliação, estatística e curva.
+    3. Adicione séries para comparar ambientes, agentes ou chaves de pontuação.
+    4. Selecione um resultado para abrir as sessões correspondentes ou compartilhar a visualização filtrada. Use **Observe → Metrics** para latência, tokens, custo e outros valores de magnitude.
+
+    ![Um dashboard de qualidade exibindo pontuações médias de avaliação e tendências ao longo do tempo.](/images/dashboard/dashboard-quality.png)
+
+    Abra uma sessão a partir do detalhamento para inspecionar o raciocínio por pontuação:
+
+    ![Uma visualização detalhada de sessão exibindo pontuações de avaliação e raciocínio ao lado do trace completo.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Adicione `--json` globalmente antes de `evals` para automação, por exemplo `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+Um avaliador recebe a identidade da sessão, ambiente, timestamps e eventos ordenados. Ele pode retornar chaves de pontuação numéricas com raciocínio opcional e um resumo. Avaliadores de longa duração podem retornar um job pendente e ser consultados posteriormente.
+
+## Bons alvos de avaliação
+
+- Conclusão de tarefas ou correção
+- Fundamentação e risco de alucinação
+- Seleção e eficiência de ferramentas
+- Conformidade com políticas ou processos
+- Orçamentos de custo e latência
+- Escalonamento humano necessário
+
+## Da pontuação à resposta
+
+Exiba pontuações em dashboards para acompanhar tendências. Crie alertas para limites ou condições compostas. Quando uma pontuação cair em uma população, execute uma auditoria para investigar o motivo; quando a causa for uma ação repetível, implante uma política.
+
+<Card title="Construir um avaliador" icon="code-2" href="/pt-br/reference/evaluator-sdk">
+  Implemente avaliação síncrona ou assíncrona com o SDK de avaliadores Python.
+</Card>

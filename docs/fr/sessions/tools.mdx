@@ -1,0 +1,25 @@
+---
+title: "Outils"
+description: "Identifiez les outils lents, défaillants ou surutilisés dans vos sessions d'agents."
+icon: "wrench"
+---
+
+La section Outils regroupe les appels d'outils entre les sessions afin de vous permettre de comparer la latence et la distribution des appels.
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Observer → Outils**.
+    2. Filtrez par environnement, nom d'outil, agent ou identifiant de session.
+    3. Examinez la latence et la distribution des outils.
+    4. Sélectionnez un point du graphique ou un segment d'outil pour ouvrir les événements et sessions correspondants.
+
+    ![La page Outils affichant la latence, les résumés des succès et des échecs, ainsi que la distribution des appels d'outils.](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

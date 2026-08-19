@@ -1,0 +1,44 @@
+---
+title: "감사 설정"
+description: "감사 목표, 세션 범위, 증거 컨텍스트를 정의합니다."
+icon: "sliders-horizontal"
+---
+
+감사의 품질은 범위 설정에서 시작됩니다. "문제를 찾아라"와 같은 광범위한 요청은 구체적인 실패 질문보다 유용한 결과를 얻기 어렵습니다.
+
+## 감사 구성
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Analyze → Audits → New audit**으로 이동하여 이름과 설명을 입력합니다.
+    2. 주기, 시간 범위, 에이전트/환경 범위, 무시할 오류, 민감도, 최대 발견 건수를 설정합니다.
+    3. **agents**에서 에이전트 컨텍스트를 추가하거나 검토한 후, 운영자 브리프와 공개 HTTPS 참조 URL을 추가합니다.
+    4. 알림 채널을 선택하고 **create audit**을 클릭합니다. 첫 번째 실행은 즉시 대기열에 추가됩니다.
+
+    ![이름, 설명, 주기, 시간 범위, 환경 및 에이전트 범위, 무시할 오류, 분석 설정, 브리프, 참조 페이지, 알림 채널이 포함된 새 감사 양식.](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    첫 번째 실행은 즉시 대기열에 추가됩니다. 브리프와 참조 URL은 생성 시 포함해야 해당 실행에서 사용됩니다.
+
+    전체 [`fp audits create` 참조](/ko/reference/cloud-cli#audits)를 확인하세요.
+  </Tab>
+</Tabs>
+
+<Tip>
+  알려진 실패 세션 하나와 여러 개의 정상 세션으로 시작하세요. 이렇게 하면 감사에 긍정적인 예시와 비교 세트가 모두 제공됩니다.
+</Tip>
+
+<Info>
+  감사 컨텍스트는 별도의 리소스로 저장되므로 감사를 편집해도 참조 자료가 의도치 않게 삭제되지 않습니다.
+</Info>

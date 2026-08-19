@@ -1,0 +1,27 @@
+---
+title: "ポリシーの判定"
+description: "評価、ブロック、指示、または許可されたポリシーを確認する。"
+icon: "shield-check"
+---
+
+ポリシーの判定では、enforcement が何を行ったかを説明します。ロールアウトの検証、ブロック率の測定、保護されていないアクティビティの発見に活用してください。
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Observe → policy** に移動し、時間範囲と必要に応じてマシンを選択します。
+    2. 評価されたアクション、ブロック、ブロック率、Cloud の判定、保護されていないアクション、および一時停止中のアクティビティを確認します。
+    3. ポリシーマッピングテーブルをフィルタリングし、デプロイ済みの割り当てを確認します。
+    4. チャートの点を選択すると、判定とそのセッションが表示されます。
+
+    ![判定の合計、マシンフィルター、時系列の enforcement アクティビティ、およびポリシーマッピングテーブルを表示するポリシーページ。](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp events --search "deny" --since 24h
+    failproofai config --status
+    ```
+
+    マシンのローカル enforcement 状態には `failproofai`、Cloud イベントの調査には `fp` を使用してください。
+  </Tab>
+</Tabs>

@@ -1,0 +1,114 @@
+---
+title: "Harnais d'agents"
+description: "Capturez les sessions et appliquez des politiques dans les CLI d'agents pris en charge."
+icon: "plug-zap"
+---
+
+Failproof AI prend en charge Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin CLI, Antigravity CLI et Goose.
+
+| Harnais | Portées de hooks prises en charge |
+| --- | --- |
+| Claude Code | Utilisateur, projet, local |
+| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | Utilisateur, projet |
+| Factory Droid, Devin CLI, Antigravity CLI, Goose | Utilisateur, projet |
+| Hermes, OpenClaw | Utilisateur |
+
+Chaque intégration normalise ses noms d'événements de hook natifs, ses noms d'outils et ses champs d'entrée d'outils avant l'exécution des politiques. Une politique ne peut agir que sur les événements exposés par le harnais ; testez le comportement de fin de tour et d'instruction sur le harnais et la version exacts que vous déployez.
+
+## Capacité d'application
+
+« Bloquer » signifie que le verdict retourné par l'adaptateur actuel est consommé par le harnais nommé. Le blocage post-outil peut remplacer le résultat présenté au modèle, mais ne peut pas annuler un effet secondaire d'outil déjà produit.
+
+| Harnais | Événements de blocage vérifiés | Observations uniquement ou restrictions non bloquantes |
+| --- | --- | --- |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` et plusieurs événements de tâche/configuration | `PostToolUse`, le cycle de vie des sessions, les notifications et les événements post-échec sont observationnels. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Le blocage post-outil remplace le résultat après exécution ; les événements de démarrage de session et de compactage sont observationnels dans l'adaptateur actuel. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Le blocage post-outil remplace le résultat après exécution ; les événements de session et de notification sont observationnels. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` et les événements de session sont observationnels. |
+| OpenCode | `PreToolUse` | Les événements post-outil et de cycle de vie sont observationnels ; la gestion actuelle des arrêts constitue une guidance pour un tour ultérieur plutôt qu'une barrière vérifiée. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | Les événements post-outil et de cycle de vie sont observationnels ; la guidance d'arrêt s'applique à un tour ultérieur. |
+| Hermes | `PreToolUse` | Les verdicts post-outil, de session et d'arrêt de sous-agent ne constituent pas des barrières. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Les événements post-outil, de session, d'arrêt de sous-agent et de compactage sont observationnels. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Les verdicts post-outil et d'arrêt de sous-agent sont observationnels. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` conditionnel | Les hooks de permission ne s'exécutent pas dans tous les modes de permission ; les événements post-outil et de session sont observationnels. |
+| Antigravity CLI | `PreToolUse`, `Stop` | Les verdicts d'invite utilisateur et post-outil sont observationnels ; les instructions d'invite peuvent toujours être injectées. |
+| Goose | `PreToolUse` | Les événements d'invite utilisateur, post-outil et de session sont observationnels. Un hook d'arrêt bloquant natif existe en amont mais n'est pas installé par l'adaptateur actuel. |
+
+Les capacités dépendent de la version. Retestez après la mise à jour d'une CLI d'agent, notamment lorsqu'une politique repose sur le comportement des invites, des arrêts, des permissions ou du post-outil plutôt que sur la barrière pré-outil commune.
+
+## Installer les hooks de capture et de politique
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Ouvrez **Administration → Clés** et créez une clé avec `events:add` et `policies:pull`, nommée d'après la machine ou l'environnement.
+    2. Sur la machine cible, connectez la CLI locale avec la clé affichée et installez les hooks du harnais.
+    3. Démarrez une nouvelle session d'agent, puis confirmez ses événements de hook et de session sous **Observer → Événements**.
+    4. Ouvrez **Observer → politique** pour la même fenêtre temporelle et confirmez qu'une décision de politique est attribuée à la machine.
+
+    La connexion démarre avec une clé machine. Vérifiez qu'elle inclut les permissions d'ingestion et de livraison de politiques avant de copier son secret.
+
+    ![Le panneau de création de clé API utilisé pour accorder les permissions d'ingestion d'événements et de livraison de politiques.](/images/dashboard/key-create.png)
+
+    Après l'installation des hooks, le flux d'événements devrait afficher de nouveaux événements provenant de la machine et de l'environnement connectés.
+
+    ![Le flux d'événements en direct utilisé pour confirmer qu'un harnais nouvellement installé envoie bien des données.](/images/dashboard/events-stream.png)
+
+    Enfin, vérifiez que les décisions de politique sont attribuées à la même machine. Cela confirme que le harnais rapporte bien l'activité des politiques ainsi que les événements de trace.
+
+    ![La page Politique utilisée pour vérifier les décisions de politique d'un harnais nouvellement connecté.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    Installez les hooks pour chaque harnais détecté :
+
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+    failproofai policies --install
+    ```
+
+    Ou ciblez des harnais spécifiques et une portée de configuration :
+
+    ```bash
+    failproofai policies --install \
+      --cli claude codex cursor \
+      --scope user
+    ```
+
+    La portée projet conserve la configuration des hooks avec un dépôt. La portée utilisateur couvre le travail sur plusieurs dépôts. Claude Code prend également en charge la portée locale ; la prise en charge varie selon le harnais et la CLI rejette les combinaisons non supportées.
+
+    Vérifiez la machine et ses événements :
+
+    ```bash
+    failproofai config --status
+    failproofai flush --wait
+    fp events --since 1h --event-type hook_triggered,hook_completed
+    ```
+  </Tab>
+</Tabs>
+
+## Ajouter un chemin de session non par défaut
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    Les chemins supplémentaires sont enregistrés sur la machine, pas dans le cloud. Après en avoir ajouté un, ouvrez **Observer → Sessions**, filtrez sur l'environnement de la machine et confirmez que les sessions provenant du nouveau chemin apparaissent. Ouvrez une session et vérifiez l'agent, le harnais et les horodatages des événements avant de vous en servir dans un audit.
+
+    ![La liste des sessions filtrée sur l'environnement recevant les données du chemin de capture supplémentaire.](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    Ajoutez un chemin avec un libellé optionnel, puis examinez les chemins configurés :
+
+    ```bash
+    failproofai harness add-path claude checkout=/srv/checkout/.claude
+    failproofai harness list claude
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    ```
+
+    Supprimez un chemin avec `failproofai harness remove-path claude checkout`.
+  </Tab>
+</Tabs>
+
+<Tip>
+  Lancez une nouvelle session après l'installation. Vérifiez à la fois le flux d'événements en direct et une décision de politique réelle avant d'étendre le déploiement.
+</Tip>

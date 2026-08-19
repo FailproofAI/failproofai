@@ -1,0 +1,74 @@
+---
+title: "HTTP API"
+description: "Autentica verso l'API pubblica Failproof AI Cloud `/v1` e utilizza il riferimento endpoint generato."
+icon: "braces"
+---
+
+L'API pubblica viene servita sotto `/v1` sulla provenienza del tuo dashboard Failproof AI.
+
+## Crea una chiave e fai una richiesta
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Apri **Administration → Keys**, seleziona **Create key** e scegli il preset di permessi più restrittivo che copra l'integrazione.
+    2. Aggiungi singoli grant solo quando necessario, crea la chiave e copia il suo secret monouso.
+    3. Fai una richiesta di test a `/v1/sessions` e conferma che la chiave rimane attiva nella pagina Keys.
+    4. Ruota o disabilita la chiave dal suo menu di azioni quando la proprietà dell'integrazione cambia.
+
+    ![Il nuovo cassetto di creazione della chiave API con preset di permessi e grant individuali.](/images/dashboard/key-create.png)
+
+    Il cassetto di creazione è mostrato sopra. Il secret monouso appare solo dopo aver selezionato **create**; copialo prima di chiudere quella conferma.
+  </Tab>
+  <Tab title="CLI">
+    Crea una chiave di lettura e usala direttamente con `fp` o `curl`:
+
+    ```bash
+    fp keys create reliability-reader \
+      --permission-set read-only
+
+    fp --api-key <key> sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY"
+    ```
+  </Tab>
+</Tabs>
+
+Le chiavi sono limitate a un'organizzazione e a un set di permessi. Una richiesta senza il permesso richiesto dall'endpoint restituisce `403` e identifica il permesso mancante.
+
+## Selezione dell'organizzazione
+
+Una chiave di organizzazione agisce sulla sua organizzazione automaticamente. Una chiave con scope di istanza può selezionare un'organizzazione per richiesta:
+
+<Tabs>
+  <Tab title="Dashboard">
+    Usa lo switcher di organizzazione nell'intestazione del dashboard prima di aprire **Administration → Keys**. Le chiavi create lì appartengono all'organizzazione selezionata. Conferma lo slug dell'organizzazione nell'URL e nei dettagli della chiave prima di copiare le credenziali nell'automazione.
+
+  </Tab>
+  <Tab title="CLI">
+    Usa `--org` prima del comando, oppure invia l'intestazione dell'organizzazione per una chiave API con scope di istanza.
+
+    ```bash
+    fp orgs list
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+Usa le pagine di endpoint generate in questa sezione per i percorsi attuali, i parametri, i requisiti di permesso e i codici di stato. La specifica viene generata dalle annotazioni di route del server e verificata rispetto al router `/v1`.
+
+La specifica attuale ha una copertura completa di route, metodo, parametro, permesso e codice di stato. Alcuni corpi di risposta rimangono intenzionalmente non tipizzati perché il server li costruisce ancora come JSON dinamico. Ispeziona una risposta reale prima di generare un client fortemente tipizzato attorno a un endpoint senza uno schema di risposta.
+
+Usa `Content-Type: application/json` per le scritture JSON. Tratta `401` come autenticazione mancante o non valida, `403` come identità valida senza il permesso richiesto, `404` come risorsa mancante o inaccessibile per l'organizzazione, `409` come conflitto di stato e `422` come campo o valore di permesso non valido. Le risposte di errore includono un messaggio leggibile; i fallimenti di permesso nominano anche il grant richiesto.
+
+<Warning>
+  La distribuzione dell'applicazione delle policy è intenzionalmente gestita al di fuori della superficie pubblica `/v1` ordinaria. Utilizza il flusso di distribuzione Cloud supportato.
+</Warning>

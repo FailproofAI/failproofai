@@ -1,0 +1,163 @@
+---
+title: "トラブルシューティング"
+description: "セッションの欠落、ポリシーの欠落、配信の失敗、エージェントアクションのブロックを診断します。"
+icon: "wrench"
+---
+
+<AccordionGroup>
+  <Accordion title="Cloudにセッションが表示されない">
+    <Tabs>
+      <Tab title="ダッシュボード">
+        **Administration → Keys** を開き、マシンキーがアクティブであり `events:add` 権限があることを確認します。次に **Observe → Events** を開き、時間範囲を広げて、環境およびエージェントのフィルターをクリアします。イベントが存在する場合は、セッションIDで検索し、**Observe → Sessions** でグループ化を確認します。イベントが存在しない場合は、CLIからFailproofデーモンを診断してください。
+
+        ![主要フィルターが表示され、最近のエージェントイベントが届いているライブイベントストリーム。](/images/dashboard/events-stream-current.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait --timeout 60
+        fp list envs
+        fp events --since 24h --limit 20
+        fp sessions --since 24h --limit 20
+        ```
+
+        キャプチャが有効になっていること、設定されたキーに `events:add` 権限があること、ダッシュボードのフィルターが送信された環境と一致していることを確認してください。
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Python SDKのイベントがディスクに残っている">
+    <Tabs>
+      <Tab title="ダッシュボード">
+        **Observe → Events** のフィルターをクリアし、SDK セッションIDで正確に検索します。何も表示されない場合は、ソースマシン上のSDKスプールとFailproofデーモンを確認してください。
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait
+        ```
+
+        エージェントプロセスが `AGENTEYE_SPOOL_TO_FAILPROOFAI=1` を設定していること、また SDKが起動する前に `$FAILPROOFAI_HOME/custom-agents`（存在しない場合は `~/.failproofai/custom-agents`）が存在することを確認してください。
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="マシンがポリシーを受信しない">
+    <Tabs>
+      <Tab title="ダッシュボード">
+        **Admin → enforcement** を開き、マシンを選択して、割り当て済み・報告済み・以前のバージョンを比較します。デプロイメントスコープにそのマシンが含まれていること、キーに `policies:pull` 権限があることを確認してください。ポリシーの配信が機能していない場合でも、イベントの取り込みは正常に動作することがあります。
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config --status
+        ```
+
+        マシンIDとラベルがダッシュボードのターゲットと一致していることを確認してください。既存のクレデンシャルがイベントの取り込みのみを許可している場合は、ポリシー対応のキーで再接続してください。
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="デーモンが利用できないためアクションが拒否される">
+    <Tabs>
+      <Tab title="ダッシュボード">
+        **Admin → enforcement** を開き、マシンの最終確認時刻と報告されたバージョンを確認します。マシンが古い状態であれば、ローカルデーモンの問題として扱ってください。利用できないデーモンを回避するためだけにデプロイ済みポリシーを弱めないでください。
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config
+        failproofai config --status
+        ```
+
+        `failproofaid` を再起動またはアップデートし、CLIとデーモンのプロトコルバージョンが異なる場合は設定を再実行してください。設定されたデーモンパスは、設計上フェイルクローズドとして動作します。
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="カスタムポリシーが読み込まれない">
+    <Tabs>
+      <Tab title="ダッシュボード">
+        Cloudで作成したポリシーの場合は、**Admin → policy editor** を開き、ドラフトを選択して公開前にバリデーションエラーを確認してください。ローカルポリシーの場合は、CLIで検証してからテストアクションを実行し、**Observe → policy** で決定が届いていることを確認してください。
+      </Tab>
+      <Tab title="CLI">
+        ファイル名が `policies.js`、`policies.mjs`、または `policies.ts` で終わっていること、モジュールが `customPolicies.add(...)` を呼び出していること、ポリシーファイルからインポートが解決できることを確認してください。
+
+        ```bash
+        failproofai policies --install --custom ./checkout.policies.ts
+        failproofai policies
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="監査で検出結果がない">
+    <Tabs>
+      <Tab title="ダッシュボード">
+        **Analyze → audits** を開き、実行を選択して、モデル分析が実行されたかどうかを確認します。次に、そのスコープとウィンドウを **Observe → sessions** と比較し、その対象となる代表的なトレースを開きます。
+
+        ゼロ結果が意味を持つのは、分析が正常に完了した場合のみです。分析がスキップまたは失敗した場合、その実行では検出結果が生成されず、未分析のウィンドウが将来の正常な実行のために開いたままになります。モデル分析が無効になっている場合も、決定論的なクレデンシャルおよびPIIスキャンは統計を記録するのみで検出結果を生成しなくなるため、監査でも検出結果は生成されません。
+
+        ![環境、エージェント、ケイデンス、スイープウィンドウでセッション対象を定義する監査フォーム。](/images/dashboard/audit-new.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp audits show <audit-name>
+        fp audits runs <audit-name>
+        fp sessions --since 24h --env production
+        fp audits context-show <audit-name>
+        fp audits run <audit-name>
+        fp audits findings --audit <audit-name>
+        ```
+
+        実行がキューに残っている場合は、監査エージェントのキャパシティを待つか、デプロイメントオペレーターに監査フリートの確認を依頼してください。キューに入った監査はリトライされます。すぐにスキップされるわけではありません。
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="オンライン評価が自動的に実行されない">
+    <Tabs>
+      <Tab title="ダッシュボード">
+        完了済みセッションを開き、手動評価が成功するか確認します。ホスト型Cloudでは、現在ダッシュボード上でエバリュエーターエンドポイントを制御する機能はありません。サーバーオペレーターが設定する必要があります。
+      </Tab>
+      <Tab title="CLI">
+        エバリュエーター自体を確認し、最近の評価状態を確認します：
+
+        ```bash
+        curl https://evaluator.example.com/health
+        fp evals --since 1h
+        ```
+
+        セルフホスト型Cloudでは、`EVALUATOR_ENDPOINT` がサーバーに設定されていること、`EVALUATOR_TOKEN` がエバリュエーターと一致していることを確認してください。エンドポイントが存在しない場合、自動評価は無効になります。
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Cloud CLIの認証が誤った組織を対象にしている">
+    <Tabs>
+      <Tab title="ダッシュボード">
+        組織スイッチャーを使用して、CLIと結果を比較する前に、期待するスラッグと権限を確認してください。
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp whoami
+        fp orgs current
+        fp orgs perms
+        ```
+
+        APIキーモードでは、`fp --org <slug> --api-key <key> ...` を指定するか、`AGENTEYE_ORG` を設定してください。保存された人間セッションの組織状態は、APIキーリクエストでは意図的に無視されます。
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="ポリシーが正当な作業をブロックしている">
+    <Tabs>
+      <Tab title="ダッシュボード">
+        **Observe → policy** を開き、決定と関連セッションを保存して、誤検知の条件を特定します。次に **Admin → enforcement** を開き、影響を受けるマシンを以前のバージョンにロールバックします。**Policy editor** でより絞り込んだバージョンを作成し、小さなスコープでテストしてから、正当な作業が成功した場合にのみ適用範囲を拡大してください。
+      </Tab>
+      <Tab title="CLI">
+        Cloudデプロイメントのロールバックはダッシュボードからのみ実施できます。ローカルセッションの一時停止では、Cloudが管理するポリシーは無効になりません。ダッシュボードが利用できない場合は、マシンとデプロイメントの状態をキャプチャし、ブロックされたアクションを繰り返し再試行するのではなく、ダッシュボードへのアクセスを復元してください。
+
+        ```bash
+        failproofai config --status
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+</AccordionGroup>
+
+サポートに問い合わせる際は、CLIのバージョン、ハーネス、環境、関連するセッションまたはデプロイメントID、およびシークレットを除いた `failproofai config --status` の出力を含めてください。

@@ -1,0 +1,47 @@
+---
+title: "Verhindern Sie Ihren ersten Fehler mit einer Policy"
+description: "Erstellen Sie eine Policy-Version, deployen Sie diese im Beobachtungsmodus und erzwingen Sie sie anschließend."
+icon: "shield-check"
+---
+
+Verwenden Sie eine Policy erst, wenn Sie die unsichere Aktion und die legitimen Aktionen, die weiterhin erlaubt sein müssen, klar beschreiben können.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Policy erstellen">
+        Gehen Sie zu **Admin → Policy-Editor**. Beginnen Sie mit der Demo-Policy, prüfen oder bearbeiten Sie deren Quellcode und wählen Sie dann **Version veröffentlichen**. Durch das Veröffentlichen wird eine unveränderliche Version erstellt, die Sie auf Maschinen deployen können.
+
+        ![Die Compose-Ansicht des Policy-Editors mit einer Demo-Policy, die als unveränderliche Version veröffentlicht werden kann.](/images/dashboard/policy-editor.png)
+      </Step>
+      <Step title="Policy auf einer Maschine deployen">
+        Gehen Sie zu **Admin → Durchsetzung**, erweitern Sie die Zielmaschine und wählen Sie **Diese Maschine bearbeiten**. Fügen Sie die veröffentlichte Demo-Policy hinzu, fixieren Sie deren Version, wählen Sie **Beobachten** und übernehmen Sie das Deployment.
+
+        ![Der Maschinen-Deployment-Editor mit einer ausgewählten veröffentlichten Policy-Version im Beobachtungsmodus vor der Übernahme des Deployments.](/images/dashboard/enforcement-editor.png)
+      </Step>
+      <Step title="Policy überprüfen">
+        Starten Sie eine neue Agent-Sitzung auf dieser Maschine und öffnen Sie dann **Beobachten → Policy**. Wählen Sie die Maschine aus und bestätigen Sie, dass die Demo-Policy in der Policy-Zuordnung und der Entscheidungszeitachse erscheint. Der Beobachtungsmodus zeichnet auf, was die Policy tun würde, ohne die Aktion zu blockieren.
+
+        ![Die Policy-Seite zeigt Entscheidungsgesamtzahlen, Durchsetzungsaktivität im Zeitverlauf sowie lokale und Cloud-verwaltete Policy-Zuordnungen.](/images/dashboard/policy-observe.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    Das Erstellen von Cloud-Policies und das Fleet-Deployment sind administrative Workflows. Verwenden Sie die lokale CLI, um dieselbe Policy vor der Veröffentlichung zu validieren:
+
+    ```bash
+    failproofai policies --install --custom ./payment-retry.policies.ts \
+      --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Verwenden Sie `fp`, um Cloud-sichtbare Policy-Entscheidungen einzusehen:
+
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp sessions --env production --since 24h
+    ```
+
+    Die Cloud CLI stellt keine ausschließlich administrativen Routen für das Enforcement-Deployment bereit. Veröffentlichen Sie Versionen über **Admin → Policy-Editor** und deployen Sie diese über **Admin → Durchsetzung**.
+  </Tab>
+</Tabs>

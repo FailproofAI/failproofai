@@ -1,0 +1,47 @@
+---
+title: "Ngăn chặn lỗi đầu tiên của bạn bằng một policy"
+description: "Tạo một phiên bản policy, triển khai nó ở chế độ quan sát, và sau đó thực thi nó."
+icon: "shield-check"
+---
+
+Chỉ sử dụng một policy sau khi bạn có thể mô tả hành động không an toàn và các hành động hợp pháp phải được phép.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Tạo policy">
+        Đi đến **Admin → policy editor**. Bắt đầu với demo policy, xem xét hoặc chỉnh sửa mã nguồn của nó, sau đó chọn **publish version**. Xuất bản tạo ra phiên bản bất biến mà bạn có thể triển khai đến các máy.
+
+        ![Chế độ soạn thảo của Policy editor với một demo policy sẵn sàng để xuất bản dưới dạng một phiên bản bất biến.](/images/dashboard/policy-editor.png)
+      </Step>
+      <Step title="Triển khai nó đến một máy">
+        Đi đến **Admin → enforcement**, mở rộng máy mục tiêu, và chọn **edit this machine**. Thêm demo policy đã xuất bản, ghim phiên bản của nó, chọn **observe**, và áp dụng triển khai.
+
+        ![Trình soạn thảo triển khai máy với một phiên bản policy đã xuất bản được chọn ở chế độ quan sát trước khi áp dụng triển khai.](/images/dashboard/enforcement-editor.png)
+      </Step>
+      <Step title="Xác minh policy">
+        Chạy một phiên làm việc agent mới trên máy đó, sau đó mở **Observe → policy**. Chọn máy và xác nhận rằng demo policy xuất hiện trong mapping policy và dòng thời gian quyết định. Chế độ quan sát ghi lại những gì policy sẽ làm mà không chặn hành động.
+
+        ![Trang Policy hiển thị tổng số quyết định, hoạt động thực thi theo thời gian, và mapping policy do địa phương và Cloud quản lý.](/images/dashboard/policy-observe.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    Tạo policy trên Cloud và triển khai fleet là các quy trình quản trị. Sử dụng CLI địa phương để xác thực cùng một policy trước khi xuất bản nó:
+
+    ```bash
+    failproofai policies --install --custom ./payment-retry.policies.ts \
+      --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Sử dụng `fp` để kiểm tra các quyết định policy có thể nhìn thấy trên Cloud:
+
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp sessions --env production --since 24h
+    ```
+
+    Cloud CLI không công khai các tuyến đường triển khai thực thi chỉ dành cho root. Xuất bản phiên bản từ **Admin → policy editor** và triển khai chúng từ **Admin → enforcement**.
+  </Tab>
+</Tabs>

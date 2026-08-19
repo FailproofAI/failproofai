@@ -1,0 +1,26 @@
+---
+title: "Temel kavramlar"
+description: "Failproof AI genelinde kullanılan küçük bir kavram seti."
+icon: "boxes"
+---
+
+| Kavram | Ne demek | Neler başarabilirsiniz |
+| --- | --- | --- |
+| Session | Bir agent görevi veya çalıştırması | Bireysel bir sonucu yeniden oluşturma |
+| Event | Bir sessionda kaydedilen bir işlem | Model çağrısını, tool kullanımını, hatayı, insan işlemini veya politika kararını inceleme |
+| Trace | Sıralanmış ve iç içe geçmiş session görünümü | Bağlantısız logları okumak yerine nedenselliği anlama |
+| Evaluation | Bir session üzerinde bir puan veya yargı | Kalite, uyum, maliyet veya gecikmeyi sürekli izleme |
+| Audit | Seçilen bir session popülasyonunun incelenmesi | Başarısızlık kalıplarını belirtilen bir hedef ve cadence ile arama |
+| Finding | Bir audit tarafından keşfedilen kanıta dayanan başarısızlık | Başarısızlık modunu, önemini ve etkilenen sessionları görme |
+| Issue | Kalıcı bir yanıt kaydı | Bir finding veya alert olayını atama, tartışma ve çözme |
+| Alert | Yinelenmeyi tespit eden bir kural | Bilinen bir koşul geri döndüğünde responder'ları bilgilendirme |
+| Policy | Agent aktivitesi sırasında değerlendirilen bir kural | Riskli davranışı gözlemleme, engelleme veya yönlendirme |
+| Deployment | Makinelere versiyonlanmış bir politika dağıtımı | Politikanın nerede çalışacağını kontrol etme ve güvenli bir şekilde geri alma |
+
+## Güvenilirlik döngüsü
+
+Kanıttan başlayın. Bir session neler olduğunu gösterir. Bir audit bunun izole bir hata mı yoksa bir örüntü mü olduğunu belirler. Bir finding başarısızlık modunu tanımlar; bir issue yanıt sahibi olur. Bir policy aynı davranışı önlerken, alert'ler koşul geri dönerse sizi bilgilendirir.
+
+<Warning>
+  Yerel bir `failproofai audit` yerel agent geçmişini tarar. Tekrarlanan bir Cloud audit, Failproof AI Cloud'da depolanan sessionları inceler. Bunlar farklı kapsam ve programlama ile ayrı iş akışlarıdır.
+</Warning>

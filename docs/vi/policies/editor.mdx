@@ -1,0 +1,47 @@
+---
+title: "Trình soạn thảo chính sách"
+description: "Tạo và sửa đổi chính sách có phiên bản từ một chế độ lỗi được xác nhận."
+icon: "file-pen-line"
+---
+
+Sử dụng trình soạn thảo chính sách để chuyển một phát hiện hoặc vấn đề thành một quy tắc có thể triển khai. Giữ tách biệt quá trình soạn thảo và triển khai để một bản nháp không thể im lặng thay đổi hành vi đang hoạt động.
+
+Khi một vấn đề có mô hình hành động có thể lặp lại, hãy mở nó trong **Analyze → issues** và chọn **generate policy**. Failproof AI trước tiên giải thích xem một chính sách có thể diễn đạt vấn đề hay không, sau đó đưa ý định được xem xét và bối cảnh phát hiện vào trình soạn thảo. Nguồn được tạo ra vẫn là bản nháp cho đến khi bạn xuất bản nó.
+
+## Xuất bản phiên bản chính sách
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Admin → policy editor** và trong **compose**, mô tả chế độ lỗi hoặc dán nguồn chính sách JavaScript.
+    2. Xác thực nguồn và sửa mọi lỗi được báo cáo.
+    3. Nhập danh tính chính sách và xuất bản nó, sau đó sử dụng **library** để so sánh hoặc vô hiệu hóa các phiên bản.
+    4. Chọn **enforcement** khi phiên bản sẵn sàng cho quá trình triển khai máy.
+
+    ![Chế độ soạn thảo của Trình soạn thảo chính sách với danh tính chính sách, soạn thảo hỗ trợ AI và các kiểm soát xuất bản.](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    Cloud CLI không xuất bản các phiên bản chính sách. Xác thực nguồn cuc bộ trước khi sao chép nó vào trình soạn thảo:
+
+    ```bash
+    failproofai policies --install --custom ./checkout.policies.ts \
+      --cli claude --scope project
+    ```
+
+    Xuất bản phiên bản được xem xét từ **Admin → policy editor**.
+  </Tab>
+</Tabs>
+
+## Danh sách kiểm tra soạn thảo
+
+1. Đặt tên chế độ lỗi bằng ngôn ngữ vận hành.
+2. Chọn các sự kiện hook và công cụ có đủ bằng chứng để quyết định.
+3. Viết điều kiện hẹp nhất phù hợp với hành vi không an toàn.
+4. Trả về một lý do cho agent hoặc toán tử biết phải làm gì tiếp theo.
+5. Thêm các ví dụ phải khớp và các ví dụ phải vẫn được phép.
+6. Lưu một phiên bản mới và yêu cầu xem xét.
+
+Sử dụng `instruct` khi agent có thể an toàn điều chỉnh hướng. Sử dụng `deny` khi cho phép hành động sẽ tạo ra rủi ro không thể chấp nhận hoặc không thể đảo ngược.
+
+<Info>
+  Các phiên bản chính sách là đầu vào triển khai bất biến. Sửa đổi bản nháp tạo ra phiên bản mới; nó không nên viết lại phiên bản đã được gán cho máy.
+</Info>

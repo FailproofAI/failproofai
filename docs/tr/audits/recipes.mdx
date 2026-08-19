@@ -1,0 +1,54 @@
+---
+title: "Denetim tarifleri"
+description: "Yaygın ajan başarısızlık araştırmaları için başlangıç hedefleri."
+icon: "book-open-check"
+---
+
+Bunları başlangıç hedefleri olarak kullanın, ardından ajanınızı, ortamınızı ve beklenen iş akışınızı ekleyin.
+
+<Tabs>
+  <Tab title="Dashboard">
+    **Analyze → Audits → New audit** sayfasına gidin, bir tarifini açıklama veya özette kopyalayın, ardından ilgili ortamı, ajanı, geriye bakış periyodunu ve referans URL'lerini ekleyin. Denetimi oluşturun ve planlamadan önce ilk çalışmayı inceleyin.
+
+    Yeni denetim formu, kapsam, bağlam, periyot ve bildirimler ekleyerek bir tarifleri yürütülebilir bir başarısızlık denetimine dönüştürür.
+
+    ![Odaklanmış bir hedef, zamanlama, ajan ve ortam kapsamı, bağlam ve bildirim kanalları ile yapılandırılmış yeni denetim formu.](/images/dashboard/audit-new.png)
+
+    Oluşturulduktan sonra, denetimin listede beklenen durum ve zamanlama ile göründüğünü doğrulamadan önce yinelenen çalışmalara güvenmek için doğrulayın.
+
+    ![Oluşturulduktan sonra iş akışına özgü bir denetim tarifi görünen Audits sayfası.](/images/dashboard/audits.png)
+
+    İlk çalışmayı açın ve bulguları amaçlanan başarısızlık modundan daha geniş veya dar ise tarifleri ayarlayın.
+  </Tab>
+  <Tab title="CLI">
+    Bir tarifleri metin dosyası olarak kaydedin ve oluşturma sırasında ekleyin:
+
+    ```bash
+    fp audits create retry-loop-review \
+      --scope '{"environments":["production"]}' \
+      --text-file ./retry-loop-audit.txt \
+      --schedule-interval-secs 86400
+    ```
+  </Tab>
+</Tabs>
+
+<AccordionGroup>
+  <Accordion title="Tekrarlanan yeniden deneme döngüleri">
+    Ajanın girişi değiştirmeden, alternatif bir araç seçmeden veya bir insana yönlendirmeden aynı başarısız araç çağrısını tekrarladığı oturumları bulun.
+  </Accordion>
+  <Accordion title="Yanlış araç kullanımı">
+    Seçilen aracın belirtilen görevle eşleşmediği veya araç girdisinin iş akışının gerekli ön koşullarını ihlal ettiği oturumları bulun.
+  </Accordion>
+  <Accordion title="Güvensiz veri erişimi">
+    Bu ajan için onaylanmış yollar ve hizmetler dışında hassas verileri okuyan, yazan veya ileten oturumları bulun.
+  </Accordion>
+  <Accordion title="Görev terk etme">
+    İstenen sonuç, açık bir hata veya bir insana açık bir devir olmadan sona eren oturumları bulun.
+  </Accordion>
+  <Accordion title="Maliyet veya gecikme gerileme">
+    Model, araç veya toplam süresi beklenen bütçeyi aşan oturumları bulun ve sorumlu olay modelini belirleyin.
+  </Accordion>
+  <Accordion title="Kaçırılan insan yönlendirmesi">
+    Güven, tekrarlanan başarısızlık veya politika rehberliğinin bir insan kararı gerektirdiği ancak ajanın özerk olarak devam ettiği oturumları bulun.
+  </Accordion>
+</AccordionGroup>

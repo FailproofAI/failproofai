@@ -1,0 +1,52 @@
+---
+title: "Online-Evaluierungen"
+description: "Bewerte Live- und abgeschlossene Sitzungen hinsichtlich Qualität, Compliance, Kosten und Latenz."
+icon: "gauge"
+---
+
+Online-Evaluierungen wenden konsistente Beurteilungen auf Agentensitzungen an. Verwende sie für Signale, die kontinuierlich gemessen werden sollen, anstatt nur bei einem Audit untersucht zu werden.
+
+## Evaluierungsqualität überprüfen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Observe → Evaluations**.
+    2. Füge eine Reihe hinzu und wähle Agent, Umgebung, Evaluierungspunktzahl, Statistik und Kurve.
+    3. Füge Reihen hinzu, um Umgebungen, Agenten oder Score-Schlüssel zu vergleichen.
+    4. Wähle ein Ergebnis aus, um passende Sitzungen zu öffnen oder die gefilterte Ansicht zu teilen. Verwende **Observe → Metrics** für Latenz, Tokens, Kosten und andere Größenwerte.
+
+    ![Ein Qualitäts-Dashboard mit durchschnittlichen Evaluierungspunktzahlen und Trends über die Zeit.](/images/dashboard/dashboard-quality.png)
+
+    Öffne eine Sitzung aus der Detailansicht, um die sitzungsbezogene Bewertungsbegründung einzusehen:
+
+    ![Eine Sitzungsdetailansicht mit Evaluierungspunktzahlen und Begründungen neben dem vollständigen Trace.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Füge globales `--json` vor `evals` für Automatisierung hinzu, z. B. `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+Ein Evaluator empfängt die Sitzungsidentität, Umgebung, Zeitstempel und geordnete Ereignisse. Er kann numerische Score-Schlüssel mit optionaler Begründung und einer Zusammenfassung zurückgeben. Langläufige Evaluatoren können einen ausstehenden Job zurückgeben und später abgefragt werden.
+
+## Geeignete Evaluierungsziele
+
+- Aufgabenabschluss oder Korrektheit
+- Faktentreue und Halluzinationsrisiko
+- Tool-Auswahl und Tool-Effizienz
+- Richtlinien- oder Prozess-Compliance
+- Kosten- und Latenzbudgets
+- Erforderliche menschliche Eskalation
+
+## Von der Punktzahl zur Reaktion
+
+Zeige Punktzahlen in Dashboards an, um Trends zu verfolgen. Erstelle Benachrichtigungen für Schwellenwerte oder zusammengesetzte Bedingungen. Wenn eine Punktzahl über eine gesamte Population hinweg abnimmt, führe ein Audit durch, um die Ursache zu untersuchen; wenn die Ursache eine wiederholbare Aktion ist, setze eine Policy ein.
+
+<Card title="Einen Evaluator erstellen" icon="code-2" href="/de/reference/evaluator-sdk">
+  Implementiere synchrone oder asynchrone Evaluierung mit dem Python-Evaluator-SDK.
+</Card>

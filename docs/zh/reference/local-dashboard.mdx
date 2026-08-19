@@ -1,0 +1,88 @@
+---
+title: "本地仪表板"
+description: "查看本地项目、会话、策略活动、配置、审计及计划扫描。"
+icon: "monitor-cog"
+---
+
+不带参数运行 `failproofai` 即可在 `http://localhost:8020` 启动内置仪表板。它直接从本机读取本地 Agent 历史记录、策略配置、审计结果和 Hook 活动。
+
+本地仪表板与 Failproof AI Cloud 相互独立。无需 Cloud 账户即可使用，也不能证明事件已传递至您的组织。
+
+## 仪表板功能区
+
+| 功能区 | 可执行操作 |
+| --- | --- |
+| 策略 → 活动 | 查看本地 allow、instruct 和 deny 决策；按决策、事件、CLI、工具、来源、策略和会话进行筛选。 |
+| 策略 → 配置 | 启用内置策略、编辑支持的参数、切换已发现的自定义策略，以及选择目标 Harness。 |
+| 项目 | 浏览各已支持 Agent 历史记录中发现的项目，并比较其最近会话。 |
+| 项目会话 | 打开某条本地转录记录，查看原始有序条目和子 Agent，下载记录，并关联策略活动。 |
+| 审计 | 查看最近一次离线扫描结果、风险模式、优势点、受影响项目及建议启用的内置策略。 |
+| 设置 | 在守护进程/平台支持时，配置计划本地扫描及审计报告的邮件发送。 |
+
+## 查看策略活动
+
+<Tabs>
+  <Tab title="仪表板">
+    1. 打开**策略 → 活动**，设置决策和来源筛选条件。
+    2. 按事件、Harness、工具或策略名称进一步缩小范围。
+    3. 展开某行以查看其原因、匹配策略、来源、执行模式和耗时。
+    4. 点击会话链接，在转录上下文中定位该决策。
+
+    看似被拒绝的行，在不使用阻断判决的 Harness/事件对上仍可能只是观测性的。详情视图会标注已验证的执行能力。
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai policies
+    failproofai
+    ```
+
+    本地活动存储于 `~/.failproofai/hook-activity` 目录下。请使用仪表板而非直接编辑这些文件。
+  </Tab>
+</Tabs>
+
+## 本地配置策略
+
+<Tabs>
+  <Tab title="仪表板">
+    1. 打开**策略 → 配置**，选择 Harness 和配置作用域。
+    2. 启用某个内置或已发现的自定义策略。
+    3. 对于带参数的内置策略，打开其配置控件并保存支持的值。
+    4. 返回活动页，执行匹配和不匹配的操作进行验证。
+
+    约定策略会显示其项目或用户来源。通过显式自定义路径所做的更改，可能需要重新运行 CLI 配置以记录所选路径。
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policy add block-sudo --scope project
+    failproofai policies --install --custom ./security.policies.ts --scope project
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+## 浏览项目与会话
+
+项目页面汇总了各已支持的本地历史存储。选择某个项目可列出其会话，打开某个会话后可访问原始日志查看器、子 Agent 片段、下载操作及会话范围内的策略活动。
+
+如果项目或会话缺失，请确认该 Harness 使用的是默认历史记录位置，或使用 `failproofai harness add-path` 注册额外的根目录。
+
+## 计划离线审计
+
+<Tabs>
+  <Tab title="仪表板">
+    打开**设置**，启用计划扫描，选择支持的扫描间隔，并在可用时配置报告发送方式。该页面会显示下次运行时间、上次运行时间、退出代码，以及后台守护进程是否在当前平台上受支持。
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    修改天数可设置 1–90 天范围内的不同间隔。使用 `failproofai audit --no-schedule` 禁用定期扫描；运行 `failproofai audit` 可立即执行交互式扫描。
+  </Tab>
+</Tabs>
+
+<Warning>
+  本地仪表板可能展示来自本地 Agent 历史记录的提示词、工具输入、文件内容和终端输出。请仅将其绑定至受信任的网络接口，并在审查完成后停止该进程。
+</Warning>

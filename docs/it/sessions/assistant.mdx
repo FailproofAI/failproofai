@@ -1,0 +1,54 @@
+---
+---
+title: "Failproof Assistant"
+description: "Analizza e gestisci Failproof AI in linguaggio naturale, da domande e query a dashboard e audit."
+icon: "message-square-text"
+---
+
+Chiedi al Failproof Assistant di fare qualsiasi cosa in Failproof AI in linguaggio naturale. Può analizzare sessioni e errori, eseguire query, creare dashboard, investigare valutazioni e avvisi, e aiutarti a creare ed eseguire audit senza costringerti a tradurre l'attività in schermate di prodotto o comandi CLI.
+
+```text
+Why did production checkout agents regress this week?
+Build a dashboard for tool failures, latency, and evaluation scores.
+Create an audit that finds agents retrying the same failed action without changing approach.
+Show me the sessions behind the most common audit finding.
+```
+
+L'assistente lavora con i dati e le autorizzazioni disponibili nell'organizzazione attiva. Rivedi le prove e i cambiamenti proposti prima di applicare azioni che interessano altri utenti o agenti.
+
+## Chiedi all'assistente
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Seleziona **Open agent chat** e descrivi cosa vuoi comprendere, creare o gestire.
+    2. Rivedi le tool call, le tabelle e i risultati delle query mentre l'assistente lavora.
+    3. Apri la sessione, l'avviso o la query citati per verificare il risultato rispetto ai dati di origine.
+    4. Avvia una nuova chat per un'investigazione diversa, oppure usa la cronologia della chat per continuare la stessa linea di analisi.
+
+    ![The Cloud assistant answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Open representative sessions" --chat <chat-id>
+    ```
+
+    Usa `fp agent rename <chat-id> --title <title>` per mantenere un'investigazione riconoscibile e `fp agent delete <chat-id>` per rimuoverla.
+  </Tab>
+</Tabs>
+
+## Lavora efficacemente con l'assistente
+
+- Dagli prima un obiettivo; aggiungi un ambiente, un workflow o un intervallo di tempo quando questi limiti sono importanti.
+- Tratta SQL generato e riepiloghi come aiuto per l'investigazione, non come prova definitiva.
+- Apri le sessioni rappresentative prima di creare un audit, un problema, un avviso o una policy.
+- Mantieni espliciti i filtri per organizzazione, ambiente e tempo.
+- Salva le query SQL utili in modo che un altro operatore possa riprodurre il risultato.
+
+<Warning>
+  L'assistente può leggere solo ciò a cui l'utente attuale può accedere. Non ampliare le autorizzazioni per fare funzionare una domanda; chiedi invece a un operatore autorizzato di eseguire l'investigazione.
+</Warning>

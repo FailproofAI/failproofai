@@ -1,0 +1,44 @@
+---
+title: "Configura un audit"
+description: "Definisci un obiettivo di audit, la popolazione della sessione e il contesto delle prove."
+icon: "sliders-horizontal"
+---
+
+La qualità di un audit inizia con il suo ambito. Una richiesta generica come "trova problemi" produce risultati meno utili rispetto a una domanda di errore concreta.
+
+## Configura l'audit
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Analyze → Audits → New audit** e inserisci il nome e la descrizione.
+    2. Imposta la cadenza, la finestra temporale, l'ambito dell'agent/ambiente, gli errori ignorati, la sensibilità e il numero massimo di risultati.
+    3. In **agents**, aggiungi o rivedi il contesto dell'agent, quindi aggiungi il brief dell'operatore e tutti gli URL di riferimento HTTPS pubblici.
+    4. Scegli i canali di notifica e seleziona **create audit**. La prima esecuzione viene messa in coda immediatamente.
+
+    ![Il modulo di nuovo audit con nome, descrizione, cadenza, finestra, ambito dell'ambiente e dell'agent, errori ignorati, impostazioni di analisi, brief, pagine di riferimento e canali di notifica.](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    La prima esecuzione viene messa in coda immediatamente. Includi il brief e gli URL di riferimento durante la creazione in modo che l'esecuzione li riceva.
+
+    Consulta il riferimento completo di [`fp audits create`](/it/reference/cloud-cli#audits).
+  </Tab>
+</Tabs>
+
+<Tip>
+  Inizia con una sessione non riuscita nota e diverse sessioni normali. Questo fornisce all'audit sia un esempio positivo che un insieme di confronto.
+</Tip>
+
+<Info>
+  Il contesto dell'audit è archiviato come risorsa propria, quindi la modifica di un audit non rimuove accidentalmente il materiale di riferimento.
+</Info>

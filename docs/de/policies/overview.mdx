@@ -1,0 +1,63 @@
+---
+title: "Policies"
+description: "Beobachte, steuere oder blockiere Agenten-Aktionen, bevor ein bekannter Fehler sich wiederholt."
+icon: "shield-check"
+---
+
+Eine Policy wertet ein Agenten-Hook-Event aus und gibt eine von drei Entscheidungen zurück:
+
+- `allow` lässt die Aktion fortfahren.
+- `instruct` gibt dem Agenten korrigierende Hinweise.
+- `deny` blockiert die Aktion mit einer Begründung.
+
+## Die drei Policy-Oberflächen nutzen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Observe → policy**, um Policy-Entscheidungen aus Sitzungen zu filtern und zu untersuchen.
+    2. Gehe zu **Admin → policy editor**, um Policies zu verfassen, zu validieren, zu veröffentlichen, zu deaktivieren oder unveränderliche Versionen einzusehen.
+    3. Gehe zu **Admin → enforcement**, um Versionen und Effekte Maschinen zuzuweisen.
+
+    Nutze die Policy-Seite, um zu verstehen, was bereits greift, bevor du Enforcement erstellst oder änderst.
+
+    ![Die Policy-Seite zeigt Entscheidungssummen sowie lokale und Cloud-verwaltete Policy-Zuordnungen.](/images/dashboard/policy-observe.png)
+
+    Im Editor wandelst du eine Fehlerbedingung in Quellcode um, validierst ihn und veröffentlichst eine unveränderliche Version.
+
+    ![Der Policy-Editor zum Verfassen und Veröffentlichen einer unveränderlichen Policy-Version.](/images/dashboard/policy-editor.png)
+
+    Enforcement weist dann die veröffentlichte Version sowie ihren Beobachtungs- oder Durchsetzungseffekt Maschinen zu.
+
+    ![Die Enforcement-Flotte zeigt Maschinenabdeckung und zugewiesene Policy-Versionen.](/images/dashboard/enforcement-fleet.png)
+
+    Überprüfe nach dem Deployment die Entscheidungen erneut auf der Policy-Seite, damit die Authoring- und Flottenansichten mit realer Agenten-Aktivität verknüpft sind.
+  </Tab>
+  <Tab title="CLI">
+    Verwende `failproofai` für lokale Policy-Installation und Validierung:
+
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --scope project
+    failproofai config --status
+    ```
+
+    Verwende `fp`, um Cloud-Sitzungen und Events mit Policy-Entscheidungen zu finden. Das Verfassen von Policies in der Cloud und das Fleet-Deployment bleiben Dashboard-Workflows.
+  </Tab>
+</Tabs>
+
+Policies haben drei eigenständige Oberflächen in Failproof AI:
+
+1. **Entscheidungen analysieren** in Sitzungen, Dashboards und Audits.
+2. **Versionen erstellen** mit integrierten Regeln, Code oder dem Policy-Editor.
+3. **Versionen deployen und durchsetzen** auf ausgewählten Maschinen.
+
+Beginne mit einem bestätigten Fehlermodus. Definiere die kleinstmögliche Event- und Tool-Übereinstimmung, die ihn identifiziert, teste legitime und unsichere Beispiele, und beobachte zunächst, bevor du durchsetzt.
+
+<Columns cols={2}>
+  <Card title="Integrierte Policy verwenden" icon="library" href="/de/policies/builtin">
+    Aktiviere eine geprüfte Regel für häufige Risiken rund um Secrets, Shell, Git, Cloud und Workflows.
+  </Card>
+  <Card title="Eigene Policy schreiben" icon="code-2" href="/de/policies/custom">
+    Formuliere eine workflow-spezifische Entscheidung in JavaScript oder TypeScript.
+  </Card>
+</Columns>

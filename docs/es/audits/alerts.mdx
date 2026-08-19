@@ -1,0 +1,62 @@
+---
+title: "Alertas"
+description: "Detecta recurrencias y dirige un incidente a los responsables adecuados."
+icon: "bell-ring"
+---
+
+Las alertas monitorizan una condición medible y crean un incidente cuando se activa. Úsalas cuando un fallo deba generar una respuesta oportuna, independientemente de si una política puede bloquearlo.
+
+## Crear y probar una alerta
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Ve a **Analyze → Alerts** y selecciona **new alert**. También puedes comenzar desde el ícono de campana en un error representativo.
+    2. Ingresa el nombre, la severidad, el tipo de disparador, la condición, el intervalo de evaluación, el recuento de incumplimientos, la ventana temporal y los canales.
+    3. Guarda la alerta, abre su página de detalles y ejecuta **test**.
+    4. Ve a **Analyze → Issues** para reconocer, asignar, comentar, suscribirte y resolver los incidentes creados por la alerta.
+
+    La primera parte del formulario identifica la alerta y la señal que debe activarla.
+
+    ![La primera parte del formulario de nueva alerta con su nombre, descripción, estado habilitado y tipo de disparador.](/images/dashboard/alert-new-trigger.png)
+
+    La segunda parte controla cuánto tiempo debe persistir la condición, con qué frecuencia se evalúa y a dónde se envían las notificaciones.
+
+    ![La segunda parte del formulario de nueva alerta con la lógica de incumplimiento, programación, severidad, canales de entrega y acción de creación.](/images/dashboard/alert-new-routing.png)
+
+    Después de guardar, usa la lista de Alerts para confirmar que la regla está habilitada y que su disparador, ventana temporal, severidad y canales coinciden con lo que configuraste.
+
+    ![La página de Alerts mostrando las reglas de alerta con sus disparadores, ventanas de evaluación, canales y severidad.](/images/dashboard/alerts.png)
+
+    Prueba la alerta antes de depender de ella para la respuesta en producción.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp alerts create high-errors \
+      --trigger-kind metric_threshold \
+      --severity warning \
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+
+    fp alerts show high-errors
+    fp alerts test high-errors
+    fp alerts update high-errors --severity critical --yes
+    ```
+
+    Usa `fp alerts list` para revisar las reglas y `fp alerts delete <name>` para eliminar una.
+
+    Consulta la [referencia de `fp alerts`](/es/reference/cloud-cli#alerts) para el conjunto completo de comandos de alerta.
+  </Tab>
+</Tabs>
+
+Las condiciones de las alertas pueden basarse en errores, puntuaciones de evaluación, combinaciones de evaluaciones o SQL personalizado. Agrega destinatarios, prueba la regla y abre el incidente resultante para reconocerlo, asignarlo, comentar, suscribirte y resolverlo.
+
+## Buenas prácticas para el diseño de alertas
+
+- Nombra la condición y el flujo de trabajo afectado.
+- Define el entorno de forma explícita.
+- Establece una ventana temporal y un umbral que eviten reaccionar ante un evento inofensivo aislado.
+- Incluye un enlace o consulta que lleve a los responsables a las sesiones relevantes.
+- Asigna un propietario antes de habilitar la regla.
+
+<Tip>
+  Después de resolver un hallazgo de auditoría, agrega una alerta para cuando el mismo fallo pueda repetirse fuera de la cobertura de la política.
+</Tip>

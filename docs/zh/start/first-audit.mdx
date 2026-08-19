@@ -1,0 +1,52 @@
+---
+title: "运行你的首次故障检查"
+description: "通过 Cloud 控制台或 fp CLI 创建审计，并查看其首批发现结果。"
+icon: "scan-search"
+---
+
+审计将一组会话转化为按优先级排列、有证据支撑的故障发现结果。从一个具体的故障问题开始。
+
+<Tabs>
+  <Tab title="控制台">
+    <Steps>
+      <Step title="打开审计">
+        在 Cloud 侧边栏中，前往 **Analyze → Audits**。选择 **new audit**。
+      </Step>
+      <Step title="配置审计">
+        输入名称和明确的故障目标，例如"查找在未更改输入或未上报的情况下重复重试同一失败支付请求的生产环境会话"。选择 Agent、环境、时间窗口和计划。当审计员需要了解你的工作流规则时，添加简短说明和参考 URL。
+      </Step>
+      <Step title="创建并等待运行">
+        选择 **create audit**。首次运行会立即加入队列。打开审计卡片，观察其从排队到运行中再到完成的状态变化。
+      </Step>
+    </Steps>
+
+    运行完成后，打开某条发现结果并查看其会话证据。你可以对其进行确认、分配、忽略、静默或解决等操作。
+
+    ![已完成的审计发现结果，显示其故障描述、建议操作、支撑证据及受影响的会话。](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create payment-retry-failures \
+      --description "Find production sessions that retry a failed payment call without changing input or escalating" \
+      --scope '{"environments":["production"]}' \
+      --text "Escalate after two unchanged payment failures"
+
+    fp audits list
+    fp audits runs payment-retry-failures
+    fp audits findings --audit payment-retry-failures
+    fp audits finding <finding-id>
+    ```
+
+    添加参考上下文，并在来源更新时刷新：
+
+    ```bash
+    fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
+    fp audits context-refresh payment-retry-failures
+    fp audits run payment-retry-failures
+    ```
+
+    使用 `fp audits ack <finding-id>`、`fp audits assign <finding-id> --to <email>`、`fp audits dismiss <finding-id>`、`fp audits mute <finding-id>`、`fp audits resolve <finding-id>` 或 `fp audits reopen <finding-id>` 来推进发现结果的分类处理流程。
+  </Tab>
+</Tabs>
+
+接下来，[通过策略预防首个故障](/zh/start/first-policy)，针对已确认的可重现操作采取措施。

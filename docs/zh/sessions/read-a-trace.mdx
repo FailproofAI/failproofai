@@ -1,0 +1,48 @@
+---
+title: "读取追踪记录"
+description: "找到改变 agent 会话走向的那个关键事件。"
+icon: "route"
+---
+
+追踪记录将扁平的事件流转化为本次运行的因果故事。从第一个分歧点开始阅读，而非从最后一个错误往回推。
+
+## 打开追踪记录
+
+<Tabs>
+  <Tab title="控制台">
+    1. 前往 **Observe → Sessions**，打开一个会话。
+    2. 使用概要摘要查看结果、耗时、错误及评估分数。
+    3. 扫描时间轴和缩略图。当会话数据量较大时，可按事件类型或时间进行过滤。
+    4. 选择一个事件进行检查。使用 **export** 导出评估器 JSON，或复制页面 URL 以分享指向所选证据的深层链接。
+
+    ![展示执行图、事件时间轴、评估面板以及工具、模型和 hook 分类的会话详情视图。](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp --json sessions --session-id <session-id>
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    优先使用轻量事件流。仅当事件摘要中包含的信息不足时，再请求完整载荷。
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="建立整体认知">
+    确认 agent、环境、耗时、结果和持续时长，然后扫描错误、长耗时跨度、重复调用的工具、人工等待以及被策略拒绝的决策。
+  </Step>
+  <Step title="展开第一个可疑事件">
+    检查其请求、响应、工具输入、输出和关联 ID。敏感内容仅在启用了对话记录捕获且您的权限允许时可见。
+  </Step>
+  <Step title="检查前置上下文">
+    根源通常出现在更早的一个事件中：错误的模型响应、缺失的工具结果或过时的假设。
+  </Step>
+  <Step title="将证据转化为行动">
+    将该会话添加到审计范围、关联到某个问题，或根据失败模式编写一条策略。
+  </Step>
+</Steps>
+
+<Warning>
+  持续时间长并不总意味着模型延迟。在决定修复方向之前，请先区分模型耗时、工具耗时、hook 耗时和人工等待时间。
+</Warning>

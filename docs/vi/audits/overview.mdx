@@ -1,0 +1,56 @@
+---
+title: "Kiểm toán"
+description: "Xem xét một tập hợp phiên được xác định để tìm ra các lỗi mà trace riêng lẻ không thể phát hiện."
+icon: "scan-search"
+---
+
+Một kiểm toán tìm kiếm một tập hợp phiên được chọn cho một mục tiêu lỗi cụ thể. Nó kết hợp bằng chứng trace, kết quả đánh giá, lần hit chính sách và ngữ cảnh tham chiếu để tạo ra những phát hiện mà bạn có thể hành động.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+Xem cách một kiểm toán di chuyển từ một lần chạy được lên lịch đến những lỗi được hỗ trợ bằng bằng chứng mà bạn có thể sửa.
+
+## Mở các kiểm toán
+
+<Tabs>
+  <Tab title="Dashboard">
+    Đi tới **Analyze → Audits**. Trang này hiển thị trạng thái được lên lịch, các phát hiện đang mở, lần chạy cuối cùng, lần chạy tiếp theo, tần suất và liệu kiểm toán có các trang brief hoặc reference. Chọn một thẻ để xem cài đặt và lịch sử chạy; chọn **new audit** để tạo một audit.
+
+    ![Trang Audits hiển thị các kiểm toán định kỳ với lịch trình, độ nhạy cảm và trạng thái chạy của chúng.](/images/dashboard/audits.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits list
+    fp audits list --enabled-only --show-id
+    fp audits show <audit-name>
+    fp audits findings --status open --limit 20
+    ```
+  </Tab>
+</Tabs>
+
+Sử dụng một kiểm toán khi bạn cần trả lời một câu hỏi ở cấp độ dân số như:
+
+- Ở đâu các agent từ bỏ tác vụ mà không escalate?
+- Những lỗi công cụ nào dẫn đến các lần thử lại không hiệu quả?
+- Các agent có truy cập dữ liệu ngoài quy trình làm việc dự định không?
+- Điều gì đã thay đổi sau khi phát hành mô hình, prompt hoặc công cụ?
+
+## Quy trình phản hồi kiểm toán
+
+```text
+Session → Audit → Finding → Issue → Policy
+                         ↘ Alert for recurrence
+```
+
+Một phát hiện phải đặt tên cho chế độ lỗi và chỉ ra bằng chứng. Một issue sở hữu công việc khắc phục. Một chính sách ngăn chặn một mô hình hành động đã biết; một cảnh báo phát hiện sự tái diễn khi phòng ngừa không thể hoặc cần giám sát.
+
+<Columns cols={2}>
+  <Card title="Thiết lập một kiểm toán" icon="sliders-horizontal" href="/vi/audits/setup">
+    Xác định mục tiêu, dân số và ngữ cảnh tham chiếu trước lần chạy đầu tiên.
+  </Card>
+  <Card title="Thêm ngữ cảnh agent" icon="bot" href="/vi/audits/agent-contracts">
+    Nêu rõ những gì mỗi agent phải tạo ra và những gì nó không bao giờ được phép làm.
+  </Card>
+</Columns>

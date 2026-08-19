@@ -1,0 +1,53 @@
+---
+title: "Truy vấn"
+description: "Khám phá dữ liệu phiên, sự kiện và đánh giá bằng SQL có thể tái sử dụng."
+icon: "database"
+---
+
+Truy vấn là lớp linh hoạt nằm bên dưới bảng điều khiển, kiểm toàn và điều tra. Sử dụng SQL ad-hoc để kiểm tra một ý tưởng, sau đó lưu truy vấn khi nó trở thành một phần của quy trình làm việc định kỳ.
+
+## Tạo và chạy truy vấn
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi đến **Analyze → Queries** và chọn **new query**.
+    2. Mở trình duyệt lược đồ và chọn các trường từ dữ liệu sự kiện, phiên hoặc đánh giá.
+    3. Viết SQL, thêm tham số khi cần thiết, và chạy truy vấn.
+    4. Lưu nó với tên và mô tả rõ ràng, sau đó sử dụng **add to dashboard** khi cần theo dõi kết quả.
+
+    Trình soạn thảo truy vấn kết hợp lược đồ sự kiện, SQL, tham số và bản xem trước kết quả để bạn có thể xác thực câu hỏi trước khi lưu.
+
+    ![Trình soạn thảo truy vấn SQL với trình duyệt lược đồ và lưới kết quả trực tiếp.](/images/dashboard/query-lab.png)
+
+    Các truy vấn đã lưu sau đó sẽ xuất hiện trong thư viện dùng chung, nơi các đồng nghiệp có thể chạy lại chúng hoặc thêm kết quả của chúng vào bảng điều khiển.
+
+    ![Thư viện Queries đã lưu chứa các truy vấn tích hợp và tùy chỉnh có thể tái sử dụng.](/images/dashboard/queries.png)
+
+    Sử dụng tên và mô tả rõ ràng để kết quả vẫn dễ hiểu mà không cần phải mở lại SQL của nó.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp query schema
+    fp query create "retry loops" --sql "SELECT ..."
+    fp query run <query-id>
+    fp query show <query-id>
+    fp query update <query-id> --sql "SELECT ..."
+    ```
+
+    Sử dụng `fp query list` để tìm ID và `fp query delete <query-id>` để xóa một truy vấn đã lưu.
+  </Tab>
+</Tabs>
+
+## Các cách sử dụng phổ biến
+
+- Tìm các phiên có các lệnh gọi lặp lại đến cùng một công cụ.
+- So sánh điểm đánh giá trên các mô hình hoặc môi trường khác nhau.
+- Đo thời gian giữa khi con người chờ đợi và tiếp tục.
+- Xác định các quyết định từ chối chính sách theo sau là một lựa chọn thay thế thành công.
+- Xây dựng một nhóm đối tượng cho một cuộc kiểm toán.
+
+Mở **Queries → Schema** trước khi viết dựa trên các trường không quen thuộc. Ưu tiên các bộ lọc thời gian và môi trường rõ ràng, và giữ giới hạn kết quả trong quá trình khám phá.
+
+<Warning>
+  Một truy vấn có thể xác định một mô hình đáng ngờ, nhưng nó không tự xác lập chế độ lỗi. Mở các dấu vết đại diện hoặc chạy kiểm toán trước khi biến kết quả thành một chính sách.
+</Warning>

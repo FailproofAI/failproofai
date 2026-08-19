@@ -1,0 +1,151 @@
+---
+title: "Failproof AI CLI"
+description: "훅 설치, 로컬 정책 관리, Cloud 연결, 로컬 데몬 운영."
+icon: "terminal"
+---
+
+`npm install -g failproofai`로 로컬 CLI를 설치하세요. 인수 없이 실행하면 로컬 정책 대시보드가 열립니다.
+
+이 패키지는 Node.js 20.9 이상이 필요합니다. Bun 1.3 이상은 개발 및 소스 설치에서 지원됩니다. `failproofai configure`와 `failproofai setup`은 `failproofai config`의 별칭이며, `failproofai p`는 `failproofai policies`의 별칭입니다.
+
+## 머신 설정
+
+```bash
+npm install -g failproofai
+failproofai config \
+  --connect https://app.befailproof.ai \
+  --token <machine-key> \
+  --machine-label checkout-prod-01
+failproofai policies --install
+failproofai config --status
+```
+
+인수 없이 `failproofai`를 실행하면 로컬 정책 대시보드가 열립니다.
+
+| 명령어 | 결과 |
+| --- | --- |
+| `failproofai config` | 대화형 머신 설정 실행 |
+| `failproofai config --connect <url> --token <key>` | Cloud 수집 및 정책 전달 연결 |
+| `failproofai config --status` | 연결, 데몬, 전달, 일시 정지 상태 표시 |
+| `failproofai policies` | 내장 및 커스텀 정책 목록 표시 |
+| `failproofai policies --install` | 훅 설치 및 정책 활성화 |
+| `failproofai policy add <name>` | 내장 정책 하나 활성화 |
+| `failproofai policy remove <name>` | 내장 정책 하나 비활성화 |
+| `failproofai policies --uninstall` | 정책 비활성화 또는 하네스 훅 제거 |
+| `failproofai audit` | 로컬 에이전트 기록 스캔 및 로컬 감사 뷰 열기 |
+| `failproofai audit --schedule [days] --email <address>` | 정기적 로컬 스캔 예약 및 결과 이메일 발송 |
+| `failproofai audit --status` | 보고서 주소, 주기, 다음 예약 스캔 표시 |
+| `failproofai audit --no-schedule` | 감사 기록 삭제 없이 정기 스캔 중지 |
+| `failproofai harness list` | 추가 캡처 경로 목록 표시 |
+| `failproofai flush --wait` | 현재 이벤트 스풀 전달 |
+| `failproofai backfill --since 30d` | 이전에 처리된 기록 재읽기 |
+| `failproofai config --pause [duration]` | 기본 30분 동안 로컬 세션 일시 정지, 최대 8시간 |
+| `failproofai config --resume` | 일시 정지된 로컬 세션 재개; `--all` 추가 시 모든 일시 정지 해제 |
+| `failproofai update` | 패키지 마이그레이션 완료 및 데몬 업데이트 |
+| `failproofai migrate --dry-run` | 대기 중인 홈 레이아웃 마이그레이션 미리 보기 또는 실행 |
+| `failproofai uninstall` | 패키지 제거 전 훅 및 데몬 삭제 |
+| `failproofai --version` | 설치된 패키지 버전 출력 |
+| `failproofai --help` | 명령어 및 전체 사용법 표시 |
+
+## 설정 플래그
+
+| 플래그 | 용도 |
+| --- | --- |
+| `--connect <url> --token <key>` | 비대화형 방식으로 연결 |
+| `--machine-id <id>` | 고정 머신 ID 설정 |
+| `--machine-label <name>` | 대시보드 레이블 설정 또는 변경 |
+| `--no-transcripts` | 트랜스크립트 내용 없이 결정 사항 전송 |
+| `--disconnect` | Cloud 정책 가져오기 및 이벤트 전달 중지 |
+| `--status` | 현재 머신 상태 표시 |
+| `--pause [duration]` | 현재 디렉터리의 최신 세션 일시 정지; 초, 분, 시간 단위 허용, 기본값 30분 |
+| `--resume` | 일치하는 일시 정지 조기 종료 |
+| `--session <id>` | 일시 정지 또는 재개할 특정 세션 지정 |
+| `--all` | `--resume`과 함께 사용 시 모든 활성 일시 정지 종료 |
+
+로컬 일시 정지는 한 세션의 내장, 커스텀, 규약 정책을 중단합니다. 항상 만료되며 Cloud 관리 정책은 비활성화하지 않습니다. `block-self-pause`는 계측된 에이전트가 이 우회 수단을 스스로 사용하지 못하도록 방지합니다.
+
+## 정책 플래그
+
+| 플래그 | 용도 |
+| --- | --- |
+| `--install`, `-i` | 정책 활성화 및 하네스 훅 설치 |
+| `--uninstall`, `-u` | 정책 비활성화 또는 훅 제거 |
+| `--cli <names...>` | 하나 이상의 지원 하네스 대상 지정 |
+| `--scope user\|project\|local\|all` | 설정 범위 선택; `all`은 제거용 |
+| `--beta` | 베타 정책 포함 |
+| `--custom`, `-c <path>` | 커스텀 정책 파일 유효성 검사 및 로드; 반복 사용 가능 |
+
+## 전달 및 유지 관리 플래그
+
+| 명령어 | 플래그 |
+| --- | --- |
+| `backfill` | `--since <30d\|6m\|YYYY-MM-DD>`, `--dry-run` |
+| `flush` | `--wait`, `--timeout <seconds>` |
+| `update` | `--no-daemon` |
+| `migrate` | `--dry-run` |
+| `uninstall` | `--purge`, `--dry-run`, `--yes` |
+
+`failproofai update`는 `npm install -g failproofai@latest` 실행 후에 사용해야 합니다. 홈 레이아웃 마이그레이션, 매칭 데몬 바이너리 설치, 서비스 재시작을 수행합니다. `--no-daemon`은 레이아웃 마이그레이션만 수행합니다.
+
+## 하네스 경로
+
+```text
+failproofai harness list [harness]
+failproofai harness add-path <harness> [label=]<path>
+failproofai harness remove-path <harness> <path-or-label>
+```
+
+지원되는 하네스 이름은 `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`입니다.
+
+레이블은 두 루트에 동일한 프로젝트 사본이 있을 때 파생된 에이전트 ID의 네임스페이스를 구분합니다. 중복 수집이나 커서 손상을 방지하기 위해 겹치는 루트와 중복 레이블은 거부됩니다. 추가 경로 설정은 데몬 재시작 없이 다시 로드됩니다.
+
+컨테이너 환경에서는 파일로 설정된 추가 경로를 `FAILPROOFAI_<HARNESS>_EXTRA_PATHS`라는 쉼표로 구분된 변수로 대체할 수 있습니다. 예시:
+
+```bash
+export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
+```
+
+## 환경 변수
+
+영구적인 머신 동작에는 설정 파일을 사용하세요. 환경 변수는 컨테이너, 테스트, 단일 프로세스에서 가장 유용합니다.
+
+| 변수 | 용도 |
+| --- | --- |
+| `FAILPROOFAI_HOME` | 전체 `~/.failproofai` 레이아웃 재배치 |
+| `FAILPROOFAI_LOG_LEVEL` | 로컬 로깅 상세도 설정 |
+| `FAILPROOFAI_HOOK_LOG_FILE` | 훅 진단 정보를 선택한 파일에 기록 |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | 이 프로세스의 익명 텔레메트리 비활성화 |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | 대화형 첫 실행 설정 건너뜀 |
+| `FAILPROOFAI_NO_AUTO_AUDIT=1` | 설정 후 자동 로컬 감사 건너뜀 |
+| `FAILPROOFAI_LLM_BASE_URL` | LLM 정책이 사용하는 OpenAI 호환 엔드포인트 재정의 |
+| `FAILPROOFAI_LLM_API_KEY` | LLM 정책이 사용하는 API 키 제공 |
+| `FAILPROOFAI_LLM_MODEL` | LLM 정책이 사용할 모델 선택 |
+| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | 커스텀 정책 모듈 로딩 시간 제한 |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | 특정 하네스의 설정된 추가 캡처 경로 대체 |
+| `NO_COLOR` | 터미널 컬러 출력 비활성화 |
+
+`CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME`, `OPENCLAW_HOME`과 같은 에이전트별 홈 변수는 Failproof AI가 해당 하네스의 로컬 세션을 검색하는 위치를 재정의합니다.
+
+## 머신 안전하게 일시 정지 또는 제거
+
+```bash
+failproofai config --pause
+failproofai config --status
+failproofai config --resume
+```
+
+로컬 세션 일시 정지는 Cloud 관리 정책을 비활성화하지 않습니다. 롤아웃 자체가 문제인 경우 Cloud 집행 워크플로를 통해 Cloud 배포를 복원하세요.
+
+npm 패키지를 제거하기 전에 설치된 훅과 데몬을 먼저 삭제하세요:
+
+```bash
+failproofai uninstall --dry-run
+failproofai uninstall --yes
+npm rm -g failproofai
+```
+
+버전별 세부 정보는 `failproofai <command> --help`를 실행하세요.
+
+<Warning>
+  `npm rm -g failproofai` 전에 반드시 `failproofai uninstall`을 실행하세요. npm은 설치된 에이전트 훅이나 데몬 서비스를 제거하지 않습니다.
+</Warning>

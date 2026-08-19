@@ -1,0 +1,88 @@
+---
+title: "Bảng điều khiển cục bộ"
+description: "Xem xét các dự án cục bộ, phiên làm việc, hoạt động chính sách, cấu hình, kiểm toán và quét theo lịch."
+icon: "monitor-cog"
+---
+
+Chạy `failproofai` mà không có tham số để khởi động bảng điều khiển đi kèm tại `http://localhost:8020`. Nó đọc lịch sử agent cục bộ, cấu hình chính sách, kết quả kiểm toán và hoạt động hook trực tiếp từ máy.
+
+Bảng điều khiển cục bộ riêng biệt với Failproof AI Cloud. Nó hoạt động mà không cần tài khoản Cloud và không chứng minh rằng các sự kiện đã được gửi đến tổ chức của bạn.
+
+## Các khu vực bảng điều khiển
+
+| Khu vực | Những gì bạn có thể thực hiện |
+| --- | --- |
+| Policies → Activity | Kiểm tra các quyết định allow, instruct và deny cục bộ; lọc theo quyết định, sự kiện, CLI, công cụ, nguồn, chính sách và phiên. |
+| Policies → Configure | Bật các tính năng tích hợp, chỉnh sửa các tham số được hỗ trợ, chuyển đổi các chính sách tùy chỉnh được phát hiện và chọn các harness mục tiêu. |
+| Projects | Duyệt các dự án được phát hiện trên các lịch sử agent được hỗ trợ và so sánh các phiên gần đây nhất của chúng. |
+| Project sessions | Mở một bảng ghi thoại cục bộ, xem xét các mục nhập theo thứ tự và subagent, tải xuống và tương quan hoạt động chính sách. |
+| Audit | Xem xét lần quét ngoại tuyến cuối cùng, các mẫu rủi ro, điểm mạnh, các dự án bị ảnh hưởng và các chính sách tích hợp được đề xuất. |
+| Settings | Cấu hình các quét cục bộ theo lịch và báo cáo kiểm toán được gửi qua email khi daemon/nền tảng hỗ trợ. |
+
+## Xem xét hoạt động chính sách
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Mở **Policies → Activity** và đặt bộ lọc quyết định và nguồn.
+    2. Thu hẹp theo sự kiện, harness, công cụ hoặc tên chính sách.
+    3. Mở rộng một hàng để kiểm tra lý do, chính sách đã khớp, nguồn, chế độ thực thi và thời lượng.
+    4. Theo dõi liên kết phiên để đặt quyết định trong bối cảnh bảng ghi thoại.
+
+    Một hàng trông như bị từ chối vẫn có thể chỉ mang tính quan sát trên một cặp harness/sự kiện không sử dụng các phán quyết chặn. Chế độ xem chi tiết sẽ chỉ ra khả năng thực thi được xác minh.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai policies
+    failproofai
+    ```
+
+    Hoạt động cục bộ được lưu trữ trong `~/.failproofai/hook-activity`. Sử dụng bảng điều khiển thay vì chỉnh sửa các tệp này.
+  </Tab>
+</Tabs>
+
+## Cấu hình chính sách cục bộ
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Mở **Policies → Configure** và chọn các harness và phạm vi cấu hình.
+    2. Bật một chính sách tích hợp hoặc chính sách tùy chỉnh được phát hiện.
+    3. Đối với một chính sách tích hợp có tham số, mở điều khiển cấu hình của nó và lưu các giá trị được hỗ trợ.
+    4. Quay lại Activity và chạy các hành động phù hợp và không phù hợp.
+
+    Các chính sách quy ước hiển thị nguồn dự án hoặc người dùng của chúng. Các thay đổi đường dẫn tùy chỉnh rõ ràng có thể yêu cầu chạy lại cấu hình CLI để đường dẫn đã chọn được ghi lại.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policy add block-sudo --scope project
+    failproofai policies --install --custom ./security.policies.ts --scope project
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+## Duyệt các dự án và phiên
+
+Trang Projects kết hợp các kho lịch sử cục bộ được hỗ trợ. Chọn một dự án để liệt kê các phiên của nó, sau đó mở một phiên để xem nhật ký thô, các phân đoạn subagent, hành động tải xuống và hoạt động chính sách có phạm vi phiên.
+
+Nếu một dự án hoặc phiên bị thiếu, hãy xác nhận rằng harness sử dụng vị trí lịch sử mặc định của nó hoặc đăng ký thêm một gốc bằng `failproofai harness add-path`.
+
+## Lên lịch kiểm toán ngoại tuyến
+
+<Tabs>
+  <Tab title="Dashboard">
+    Mở **Settings**, bật quét theo lịch, chọn khoảng thời gian được hỗ trợ của nó và cấu hình phân phối báo cáo khi có sẵn. Trang báo cáo lần chạy tiếp theo, lần chạy cuối cùng, mã thoát và liệu daemon nền được hỗ trợ trên nền tảng hay không.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    Thay đổi số ngày để đặt khoảng thời gian 1–90 ngày khác. Vô hiệu hóa quét định kỳ bằng `failproofai audit --no-schedule`; chạy `failproofai audit` để quét tương tác ngay lập tức.
+  </Tab>
+</Tabs>
+
+<Warning>
+  Bảng điều khiển cục bộ có thể hiển thị các lời nhắc, đầu vào công cụ, nội dung tệp và đầu ra đầu cuối từ lịch sử agent cục bộ. Chỉ liên kết nó với các giao diện được tin tưởng và dừng quy trình khi hoàn thành xem xét.
+</Warning>

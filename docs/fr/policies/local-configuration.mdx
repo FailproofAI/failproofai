@@ -1,0 +1,84 @@
+---
+title: "Configuration locale"
+description: "Contrôlez la portée des politiques, les paramètres, les fichiers personnalisés et les paramètres Failproof AI au niveau de la machine."
+icon: "file-cog"
+---
+
+Failproof AI sépare la sélection des politiques des paramètres de la machine et du daemon. Cela permet de garder les choix de politiques du dépôt consultables, tandis que les identifiants et l'état du daemon restent en dehors du dépôt.
+
+## Choisir une portée de politique
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    Exécutez `failproofai` sans arguments pour ouvrir le tableau de bord des politiques locales. Choisissez la portée utilisateur, projet ou locale avant d'activer une politique, afin que la modification soit écrite dans le fichier de configuration approprié.
+
+    - **Utilisateur** s'applique à tous les projets sur cette machine.
+    - **Projet** appartient au dépôt et peut être versionné.
+    - **Local** remplace un projet pour un seul utilisateur et doit rester ignoré par git.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policy add block-rm-rf --scope user
+    failproofai policy add block-force-push --scope project
+    failproofai policy add warn-large-file-write --scope local
+    failproofai policies
+    ```
+
+    Tous les harnais ne prennent pas en charge la portée locale. Le CLI rejette une portée que le harnais sélectionné ne peut pas représenter.
+  </Tab>
+</Tabs>
+
+| Portée | Fichier de configuration des politiques |
+| --- | --- |
+| Projet | `<project>/.failproofai/policies-config.json` |
+| Local | `<project>/.failproofai/policies-config.local.json` |
+| Utilisateur | `~/.failproofai/policies-config.json` |
+
+Les politiques activées sont fusionnées en une union. Les paramètres des politiques utilisent la première portée qui définit des paramètres pour cette politique, dans l'ordre projet → local → utilisateur. Les chemins de politiques personnalisées explicites utilisent la première portée qui les définit.
+
+## Configurer les paramètres des politiques
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    Ouvrez la politique dans le tableau de bord local, modifiez ses paramètres pris en charge et enregistrez dans la portée sélectionnée. Exécutez une action d'agent correspondante et non correspondante, puis inspectez la décision dans **Observer → politique**.
+
+  </Tab>
+  <Tab title="CLI">
+    Modifiez le fichier `policies-config.json` de la portée sélectionnée, puis exécutez `failproofai policies` pour faire apparaître les noms de politiques ou les clés de paramètres inconnus.
+
+    ```json
+    {
+      "enabledPolicies": ["block-rm-rf", "block-force-push"],
+      "policyParams": {
+        "block-rm-rf": {
+          "allowPaths": ["/tmp/build-output"]
+        }
+      }
+    }
+    ```
+
+    ```bash
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+## Comprendre les fichiers de la machine
+
+`~/.failproofai` contient des fichiers distincts pour des niveaux de confiance distincts :
+
+| Chemin | Rôle |
+| --- | --- |
+| `config.json` | Paramètres du daemon, d'audit et de télémétrie non sensibles |
+| `credentials.json` | Identifiants cloud ; stockés avec des permissions réservées au propriétaire |
+| `policies-config.json` | Sélection des politiques intégrées, paramètres et chemins personnalisés explicites à portée utilisateur |
+| `policies/` | Politiques de convention utilisateur et artefacts de politiques gérés par le cloud |
+| `hook-activity/` | Journal des décisions de politique locale |
+| `state/` | File d'attente du daemon, santé, pause et état d'exécution |
+
+Utilisez `FAILPROOFAI_HOME` pour déplacer l'ensemble de la structure de la machine vers un conteneur ou un environnement de test isolé. Ne déplacez pas les répertoires d'état individuels de manière indépendante.
+
+<Warning>
+  Ne versionnez jamais `credentials.json`. Ne versionnez la configuration des politiques du projet et les politiques de convention du projet qu'après les avoir examinées en tant que code d'application des règles.
+</Warning>

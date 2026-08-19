@@ -1,0 +1,68 @@
+---
+title: "Einstellungen und Sicherheit"
+description: "Betriebliche Einstellungen konfigurieren und bewusste Entscheidungen über Agent-Daten treffen."
+icon: "lock-keyhole"
+---
+
+Verwenden Sie Einstellungen für deployment-spezifische Betriebswerte und Overrides des Modell-Kontextfensters. Prüfen Sie das Einstellungsschema, bevor Sie einen Wert über die API oder CLI ändern.
+
+## Eine Organisationseinstellung ändern
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Administration → Einstellungen**, suchen Sie die Einstellungsgruppe und lesen Sie deren Beschreibung und aktuelle Quelle.
+    2. Ändern Sie den Wert und speichern Sie ihn.
+    3. Fügen Sie bei Modell-Kontextfenstern den Modell-Override hinzu oder aktualisieren Sie ihn und bestätigen Sie das effektive Limit.
+    4. Überprüfen Sie Sitzungen und Metriken erneut, die vom geänderten Wert abhängen.
+
+    ![Die Einstellungsseite mit Organisations-Authentifizierungs- und Betriebseinstellungen.](/images/dashboard/settings.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp settings list
+    fp settings schema
+    fp settings set <key> --value <scalar>
+    fp settings set alerts.email_default_recipients \
+      --json-value '["oncall@example.com"]'
+    ```
+
+    Führen Sie `fp settings set --help` aus, um den Werttyp und die Bestätigungsflags der installierten CLI zu erhalten.
+  </Tab>
+</Tabs>
+
+## Umgang mit Daten
+
+Die Verbindung über die Failproof AI CLI sendet standardmäßig Transkripte, da Traces und Audits auf deren Inhalt angewiesen sind. Verwenden Sie `--no-transcripts`, wenn Prompts, Dateiinhalte oder Terminaleingaben lokal bleiben müssen; Hook-Aktivitäten und Richtlinienentscheidungen können weiterhin gemeldet werden.
+
+Lokale Ingest-Anmeldedaten werden getrennt von nicht geheimen Daemon-Einstellungen gespeichert und mit restriktiven Berechtigungen geschrieben. API-Schlüssel sollten dennoch als Produktionsgeheimnisse verwaltet werden.
+
+## Referenz der Organisationseinstellungen
+
+Alle im Dashboard bearbeitbaren Einstellungen sind auf die Organisation beschränkt. Das deployment-weite Verhalten bleibt eine Serverkonfiguration der Umgebung.
+
+| Schlüssel | Standard | Zweck |
+| --- | --- | --- |
+| `allowed_sign_ins` | `[]` | Schränkt bestehende Mitglieder auf genaue E-Mail-Adressen oder `*@domain` ein; eine leere Liste bedeutet keine zusätzliche Einschränkung. |
+| `session_ttl_secs` | `86400` | Lebensdauer der Dashboard-Sitzung; akzeptierter Bereich ist 60 Sekunden bis 30 Tage. |
+| `otp_ttl_secs` | `600` | Lebensdauer von OTP und Magic-Link; akzeptierter Bereich ist 60–1800 Sekunden. |
+| `alerts.email_default_recipients` | `[]` | Standard-Empfänger, wenn ein Alert-E-Mail-Kanal diese nicht überschreibt. |
+| `alerts.slack_default_webhook` | leer | Standard-Slack-Incoming-Webhook-URL. |
+| `alerts.webhook_default_url` | leer | Standard-generische JSON-Webhook-URL. |
+| `alerts.webhook_signing_secret` | leer | HMAC-SHA256-Schlüssel für den `X-AgentEye-Signature`-Header; Lesevorgänge werden maskiert. |
+| `alerts.enabled_channels` | E-Mail, Slack, Webhook | Organisationsweite Kanaltypen, die Alert-Regeln verwenden dürfen. |
+| `default_user_permissions` | `standard` | Benanntes Berechtigungsset, das für neue Einladungen vorausgewählt wird. |
+
+`allowed_sign_ins` ist ein Filter, keine Berechtigung: Eine Person muss bereits Organisationsmitglied sein. Verwenden Sie eine leere Liste, um allen Mitgliedern den Zugang zu erlauben; der bloße Wert `*` wird abgelehnt. Alert-URLs müssen HTTPS verwenden, außer für Loopback-Entwicklungsadressen.
+
+## Sicherheits-Checkliste
+
+- HTTPS für Cloud-Verbindungen verwenden.
+- Schlüssel auf den kleinstmöglichen Berechtigungsumfang beschränken.
+- Produktions- und Nicht-Produktionsumgebungen trennen.
+- Transkriptions- und Schwärzungseinstellungen vor dem Rollout überprüfen.
+- Benutzer-, Schlüssel- und Organisationsänderungen auditieren.
+- Anforderungen für Backup, Aufbewahrung und Incident Response für das Deployment testen.
+
+<Warning>
+  Das Deaktivieren der Transkripterfassung ändert, was Audits und Untersuchungen belegen können. Halten Sie die Entscheidung und ihre erwarteten Einschränkungen schriftlich fest.
+</Warning>

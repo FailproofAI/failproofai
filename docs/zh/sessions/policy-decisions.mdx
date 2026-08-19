@@ -1,0 +1,27 @@
+---
+title: "策略决策"
+description: "查看哪些策略被评估、拦截、指示或允许。"
+icon: "shield-check"
+---
+
+策略决策说明了执行操作的具体情况。使用它来验证部署情况、衡量拦截率，并发现未受保护的活动。
+
+<Tabs>
+  <Tab title="仪表板">
+    1. 前往 **Observe → policy**，选择时间范围，并可选择某台机器。
+    2. 查看已评估的操作、拦截、拦截率、Cloud 决策、未受保护的操作以及暂停期间的活动。
+    3. 筛选策略映射表并检查已部署的分配。
+    4. 选择图表上的某个点，打开相应决策及其会话。
+
+    ![策略页面显示决策总数、机器筛选器、随时间变化的执行活动以及策略映射表。](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp events --search "deny" --since 24h
+    failproofai config --status
+    ```
+
+    使用 `failproofai` 查看机器的本地执行状态，使用 `fp` 进行 Cloud 事件调查。
+  </Tab>
+</Tabs>

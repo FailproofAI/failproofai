@@ -1,0 +1,44 @@
+---
+title: "用户与组织"
+description: "管理成员关系，并将每个组织的数据和操作限定在其范围内。"
+icon: "users"
+---
+
+组织可以隔离会话、评估、审计、问题、告警、查询、仪表板、用户和密钥。在更改管理资源之前，请确认当前活跃的组织。
+
+## 管理成员与组织
+
+<Tabs>
+  <Tab title="仪表板">
+    1. 使用 Cloud 侧边栏顶部的组织切换器来切换组织。
+    2. 前往 **管理 → 用户**，搜索成员或按活跃状态和角色进行筛选。
+    3. 选择 **新建用户**，输入邮箱，选择权限集，并根据需要调整覆盖项。
+    4. 之后打开某个用户可更新授权、禁用登录或重新启用账号。
+
+    ![用户页面，显示成员邮箱地址、权限集以及编辑和禁用控件。](/images/dashboard/users.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+
+    fp users create engineer@example.com --permission-set standard
+    fp users show engineer@example.com
+    fp users update engineer@example.com --add audits:write
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+    ```
+  </Tab>
+</Tabs>
+
+管理员可以创建、更新、禁用和重新启用用户，并为其分配与角色相匹配的权限集。API 使用删除操作来禁用用户，但不会移除账号或其成员记录。
+
+<Warning>
+  禁用用户会阻止该身份登录所有组织，而不仅仅是当前选中的组织。重新启用将恢复全局登录权限以及该成员在当前组织中的权限。
+</Warning>
+
+<Tip>
+  为服务账号取具有描述性的名称，与特定工作负载和负责人关联。避免在组织之间或在人员与机器之间共享密钥。
+</Tip>

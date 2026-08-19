@@ -1,0 +1,43 @@
+---
+title: "Errori"
+description: "Raggruppa gli errori ripetuti e apri le sessioni sottostanti."
+icon: "circle-alert"
+---
+
+Errori ti offre una vista incentrata sui problemi attraverso le sessioni. Raggruppa per tipo di errore, agente, ambiente, modello, strumento o finestra temporale per trovare i problemi operativi ricorrenti.
+
+## Investigare gli errori
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Observe → Errors**.
+    2. Filtra per ambiente, tipo di evento, tipo di errore, agente, ID sessione o testo di ricerca.
+    3. Espandi un errore raggruppato per visualizzare le occorrenze. Seleziona una riga per aprire l'evento esatto nella sua sessione.
+    4. Seleziona il controllo della campana su un errore rappresentativo per avviare un avviso per errori simili.
+
+    ![Pagina Errori che mostra un istogramma di guasti, errori raggruppati e il controllo per la creazione di un avviso.](/images/dashboard/errors.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp errors --env production --since 24h
+    fp errors --error-type TimeoutError --agent-id checkout-agent
+    fp errors --aggregate --env production --since 7d
+    ```
+
+    Usa `fp events --full --session-id <id>` quando hai bisogno del payload grezzo dietro a un riepilogo degli errori.
+  </Tab>
+</Tabs>
+
+## Usa Errori quando hai bisogno di
+
+- Trovare la classe di errore più frequente in produzione.
+- Determinare se uno strumento o un modello causa un picco.
+- Passare da un conteggio aggregato a sessioni rappresentative.
+- Creare un avviso per la ricorrenza.
+- Includere la popolazione interessata in un audit.
+
+Un errore è un evento osservato. Una valutazione fallita è un giudizio sulla qualità, e un risultato di audit è un pattern di guasto investigato. Mantieni queste distinzioni quando decidi quale flusso di lavoro di risposta utilizzare.
+
+<Card title="Crea un avviso" icon="bell-ring" href="/it/audits/alerts">
+  Notifica ai responsabili quando un errore o una condizione di qualità supera una soglia.
+</Card>

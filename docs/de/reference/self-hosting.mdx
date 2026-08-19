@@ -1,0 +1,128 @@
+---
+title: "Failproof AI Cloud selbst hosten"
+description: "Stellen Sie die Failproof AI Control Plane auf einem kundenseitig verwalteten Kubernetes-Cluster bereit."
+icon: "cloud-cog"
+---
+
+<Note>
+  Das Selbst-Hosting ist eine Enterprise-Bereitstellung. [Kontaktieren Sie Failproof AI](mailto:support@befailproof.ai), um eine Enterprise-Lizenz zu erhalten.
+</Note>
+
+## Voraussetzungen
+
+- Kubernetes 1.27 oder neuer mit Cluster-Admin-Zugriff
+- `kubectl` mit Kustomize-Unterstützung
+- Helm 3
+- Zugriff auf die privaten `ghcr.io/agenteye-enterprise`-Images
+- Zwei DNS-Namen: einer für das Dashboard und einer für die Ingestion
+- Persistenter Speicher für PostgreSQL und ClickHouse
+- cert-manager und Traefik oder eine gleichwertige Ingress- und Zertifikatsinfrastruktur, die in Ihren Overlay integriert ist
+- SMTP für OTP-Login und Benachrichtigungen in der Produktionsumgebung
+
+Der Quellbaum stellt einen AWS/EKS-orientierten Overlay und einen separaten GCP/GKE-Overlay bereit. Kombinieren Sie deren Zertifikat-, Load-Balancer- oder Backup-Anleitungen nicht: GKE verwendet eine eigene Konfiguration für DNS-01, GCS und Autoscaling.
+
+## Bereitstellungsreihenfolge
+
+<Steps>
+  <Step title="Cluster vorbereiten">
+    Installieren Sie cert-manager sowie die Public/Dashboard-Ingress-Controller, überprüfen Sie deren Load Balancer und erstellen Sie anschließend den Namespace, Image-Pull-Credentials, Datenbankzugangsdaten, den Bootstrap-Admin-Schlüssel sowie Authentifizierungs- und SMTP-Secrets.
+  </Step>
+  <Step title="Öffentliche Domains konfigurieren">
+    Setzen Sie `INGEST_DOMAIN` und `DASHBOARD_DOMAIN` in der vom Overlay generierten Domain-Umgebungsdatei und erstellen Sie DNS-Einträge, die auf die entsprechenden Load Balancer zeigen.
+  </Step>
+  <Step title="Einen Platform-Overlay anwenden und verifizieren">
+    Verwenden Sie den Customer/EKS- oder GCP-Overlay. Prüfen Sie die gerenderte Kustomize-Ausgabe, wenden Sie sie an und stellen Sie sicher, dass alle Workloads und Zertifikate den gewünschten Zustand erreicht haben, bevor Sie Maschinen einbinden.
+  </Step>
+  <Step title="Zugang und Ingestion bootstrappen">
+    Melden Sie sich als geschützter Admin an, erstellen Sie einen organisationsspezifischen Machine Key und senden Sie eine kleine Testsitzung durch den öffentlichen Ingest-Endpunkt.
+  </Step>
+</Steps>
+
+## Erforderliche und optionale Dienste
+
+| Komponente | Anforderung |
+| --- | --- |
+| ClickHouse | Erforderlich. Der Server verweigert den Start ohne seinen kanonischen Event Store. |
+| PostgreSQL | Erforderlich für Benutzer, Organisationen, gespeicherte Objekte und den Control-Plane-Zustand. |
+| Redis | Optional. Server und Dashboard fallen auf datenbankgestütztes Verhalten zurück, wenn nicht verfügbar. |
+| SMTP | Optional für die Entwicklung, erforderlich für E-Mail-OTP und Benachrichtigungsübermittlung in der Produktion. |
+| Evaluator | Optional. Die automatische Auswertung bleibt ohne `EVALUATOR_ENDPOINT` deaktiviert. |
+| Assistant/Audit-LLM | Optional. Assistant- und LLM-gestützte Audit-Funktionen bleiben inaktiv, bis eine LLM-Verbindung konfiguriert ist. |
+| Objektspeicher-Backup | Dringend empfohlen für PostgreSQL- und ClickHouse-Backup-Archive. |
+
+### Audit-Kapazität und Fehlerbenachrichtigung
+
+Führen Sie Audits auf dem dedizierten Audit-Agent-Deployment aus, wenn verfügbar. Jeder Audit-Agent-Pod nimmt standardmäßig eine Untersuchung an; skalieren Sie den Durchsatz über Replikas, anstatt die Parallelität pro Pod zu erhöhen, ohne gleichzeitig den Speicher zu vergrößern. Der Server kann `server replicas × AUDIT_WORKERS` Audits gleichzeitig verteilen, daher sollte die Dispatcher-Kapazität groß genug sein, um die gesamte Audit-Agent-Flotte auszulasten.
+
+Wenn alle Audit-Agent-Slots belegt sind, wartet ein Audit und wiederholt den Versuch bis zu einem Viertel seiner Kadenz, maximal sechs Stunden. Wird kein Slot frei, wird der Lauf ohne Ergebnisse abgeschlossen und eine Fehler-E-Mail versendet. Wiederholte „Belegt"-Fehler erfordern mehr Audit-Agent-Replikas oder stärker verteilte Zeitplan-Anker. Wiederholte „Wird heruntergefahren"-Fehler deuten auf instabile Pods oder einen schleifen­den Rollout hin, nicht auf unzureichende Kapazität.
+
+Fehlerbenachrichtigungen erfordern einen aktivierten E-Mail-Kanal und SMTP. Sie verwenden die Empfänger des Audits und fallen auf `alerts.email_default_recipients` zurück, wenn der Audit keinen E-Mail-Kanal hat.
+
+## Bereitstellung überprüfen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Öffnen Sie die konfigurierte Dashboard-Domain, schließen Sie den Admin-OTP-Ablauf ab und bestätigen Sie den Organisationsnamen und den Slug.
+    2. Gehen Sie zu **Administration → Keys** und erstellen Sie einen eng definierten Machine Key.
+    3. Senden Sie eine Testsitzung und bestätigen Sie diese unter **Observe → Events** und **Observe → Sessions**.
+    4. Testen Sie einen Alert-Kanal und, sofern konfiguriert, eine manuelle Auswertung und einen Audit.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    kubectl get pods -n agenteye
+    kubectl get certificates -n agenteye
+    kubectl logs -n agenteye deploy/server --tail=100
+
+    fp --base-url https://failproof.example.com login
+    fp --base-url https://failproof.example.com whoami
+    fp --base-url https://failproof.example.com usage
+    ```
+
+    Überprüfen Sie den öffentlichen Health-Endpunkt und eine authentifizierte `/v1`-Anfrage, bevor Sie Produktionsmaschinen einbinden.
+  </Tab>
+</Tabs>
+
+## Authentifizierung und E-Mail
+
+Das Dashboard verwendet E-Mail und Einmalcodes. Ohne SMTP protokollieren Entwicklungsbereitstellungen OTP-Codes in der Server-Ausgabe. Wenn `SMTP_HOST` gesetzt ist, sind Benutzername, Passwort und Absender als Gruppe erforderlich – andernfalls verweigert der Server den Start.
+
+`SMTP_TLS` ist ein Boolean. Der unterstützte verschlüsselte Transport ist STARTTLS, normalerweise auf Port 587; implizites SMTPS auf Port 465 wird vom aktuellen Server-Transport nicht unterstützt.
+
+Setzen Sie die öffentliche Dashboard-URL korrekt, da OTP-, Alert-, Vorfalls- und Audit-E-Mails diese für Deep Links verwenden. Die Organisationsmitgliedschaft steuert, wer einen Code anfordern darf; jede Organisation kann ihre eigenen Mitglieder-Anmeldungen zusätzlich unter **Administration → Settings** einschränken.
+
+## Mandantenfähigkeitsanforderungen
+
+Bevor Sie eine zweite Organisation erstellen, konfigurieren Sie ein starkes, stabiles ClickHouse-Ableitungsgeheimnis für Organisationen und halten Sie es über alle Server-Replikas hinweg identisch. Eine Rotation ohne koordinierte Migration kann organisationsspezifische ClickHouse-Benutzer verwaisen lassen.
+
+Halten Sie den Instance-Admin-Listener intern. Die bereitgestellte Operator-Konsole ist optional und für `kubectl port-forward` konzipiert, nicht für öffentlichen Ingress. Ihre Aktivierung erfordert einen eigenen starken API-Schlüssel, ein Super-Admin-Postfach und funktionierende SMTP-Zweifaktor-Zustellung.
+
+### Break-Glass-Organisations-CLI
+
+`agenteye-orgctl` ist im Server-Image enthalten und kommuniziert direkt mit PostgreSQL und ClickHouse. Es ist verfügbar, wenn der öffentliche Server oder die Operator-Konsole nicht erreichbar ist.
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org create --slug acme --name "Acme Corp"
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email ops@acme.com --set admin --protected
+```
+
+Unterstützte Organisationsoperationen umfassen: Erstellen, Auflisten, Umbenennen, Soft-Delete, Wiederherstellen, ClickHouse-Benutzer-Reprovisioning, Abrechnungsdatumsverwaltung, Feature-Flags und unwiderrufliches Löschen. Mitgliederoperationen umfassen: Hinzufügen, Auflisten, Aktualisieren, Entfernen, Berechtigungsüberschreibungen und den geschützten Admin-Status.
+
+Verwenden Sie Soft-Delete vor dem endgültigen Löschen. `org purge` ist unwiderruflich und erfordert, dass die Organisation zuvor gelöscht wurde. Geschützte Mitglieder können nicht über die normale Benutzerseite der Organisation entfernt oder herabgestuft werden, bis ein Operator sie explizit aufhebt.
+
+## Checkliste für die Produktionsbereitschaft
+
+- Ingest- und Dashboard-DNS werden zu den jeweils vorgesehenen Ingress-Pfaden aufgelöst.
+- TLS ist gültig; verwenden Sie mutual TLS beim Ingest, sofern Ihre Bereitstellung dies erfordert.
+- PostgreSQL- und ClickHouse-Volumes verfügen über Kapazitätswarnungen.
+- Backups umfassen beide Datenspeicher und verfügen über ein getestetes Wiederherstellungsverfahren.
+- Health Checks alarmieren bei Ingest-Stille, fehlgeschlagenen Workloads, abgelaufenen Zertifikaten, Speicherdruck und veralteten Backups.
+- Strukturierte Logs werden gesammelt, ohne eine bestehende Cluster-Log-Pipeline zu duplizieren.
+- Die Parallelität von Evaluator, Audit und Alert Worker wurde nicht ohne gemessene Queue-Belege geändert.
+- Ein festgelegtes Anwendungsrelease und ein Rollback-Verfahren sind vor Upgrades dokumentiert.
+
+<Warning>
+  Die Bereitstellungsmanifeste enthalten plattformspezifische Sicherheits- und Verfügbarkeitsannahmen. Überprüfen Sie gerenderte Ressourcen, Netzwerkrichtlinien, Ingress-Exposition, Secret-Referenzen, Storage-Klassen, Disruption Budgets und Backup-Ziele gemeinsam mit Ihrem Plattform-Team, bevor Sie diese anwenden.
+</Warning>

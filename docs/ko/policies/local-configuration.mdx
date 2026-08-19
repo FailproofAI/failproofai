@@ -1,0 +1,84 @@
+---
+title: "로컬 설정"
+description: "정책 범위, 파라미터, 커스텀 파일, 그리고 머신 수준의 Failproof AI 설정을 관리합니다."
+icon: "file-cog"
+---
+
+Failproof AI는 정책 선택과 머신 및 데몬 설정을 분리합니다. 이를 통해 저장소 정책 선택 사항은 검토 가능한 상태로 유지되고, 자격 증명과 데몬 상태는 저장소 외부에 보관됩니다.
+
+## 정책 범위 선택
+
+<Tabs>
+  <Tab title="대시보드">
+    인수 없이 `failproofai`를 실행하면 로컬 정책 대시보드가 열립니다. 정책을 활성화하기 전에 user, project, 또는 local 범위를 선택하여 변경 사항이 의도한 설정 파일에 기록되도록 합니다.
+
+    - **User**는 이 머신의 모든 프로젝트에 적용됩니다.
+    - **Project**는 저장소에 속하며 커밋할 수 있습니다.
+    - **Local**은 한 프로젝트를 한 명의 사용자에게만 재정의하며, gitignore에 포함해야 합니다.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policy add block-rm-rf --scope user
+    failproofai policy add block-force-push --scope project
+    failproofai policy add warn-large-file-write --scope local
+    failproofai policies
+    ```
+
+    모든 하니스가 local 범위를 지원하는 것은 아닙니다. 선택한 하니스가 표현할 수 없는 범위를 지정하면 CLI에서 오류가 발생합니다.
+  </Tab>
+</Tabs>
+
+| 범위 | 정책 설정 파일 |
+| --- | --- |
+| Project | `<project>/.failproofai/policies-config.json` |
+| Local | `<project>/.failproofai/policies-config.local.json` |
+| User | `~/.failproofai/policies-config.json` |
+
+활성화된 정책은 합집합으로 병합됩니다. 정책 파라미터는 해당 정책에 대한 파라미터를 정의하는 첫 번째 범위를 project → local → user 순서로 사용합니다. 명시적인 커스텀 정책 경로도 이를 정의하는 첫 번째 범위를 사용합니다.
+
+## 정책 파라미터 설정
+
+<Tabs>
+  <Tab title="대시보드">
+    로컬 대시보드에서 정책을 열고, 지원되는 파라미터를 편집한 후 선택한 범위에 저장합니다. 조건에 맞는 에이전트 액션과 맞지 않는 에이전트 액션을 각각 실행한 뒤, **Observe → policy**에서 결정 사항을 확인합니다.
+
+  </Tab>
+  <Tab title="CLI">
+    선택한 범위의 `policies-config.json`을 편집한 후 `failproofai policies`를 실행하여 알 수 없는 정책 이름이나 파라미터 키를 확인합니다.
+
+    ```json
+    {
+      "enabledPolicies": ["block-rm-rf", "block-force-push"],
+      "policyParams": {
+        "block-rm-rf": {
+          "allowPaths": ["/tmp/build-output"]
+        }
+      }
+    }
+    ```
+
+    ```bash
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+## 머신 파일 이해하기
+
+`~/.failproofai`에는 신뢰 경계별로 분리된 파일들이 포함되어 있습니다.
+
+| 경로 | 목적 |
+| --- | --- |
+| `config.json` | 비밀이 아닌 데몬, 감사, 텔레메트리 설정 |
+| `credentials.json` | 클라우드 자격 증명; 소유자 전용 권한으로 저장됨 |
+| `policies-config.json` | 사용자 범위의 빌트인 선택, 파라미터, 명시적 커스텀 경로 |
+| `policies/` | 사용자 컨벤션 정책 및 클라우드 관리 정책 아티팩트 |
+| `hook-activity/` | 로컬 정책 결정 로그 |
+| `state/` | 데몬 스풀, 상태 확인, 일시 중지, 런타임 상태 |
+
+컨테이너나 격리된 테스트 환경을 위해 전체 머신 레이아웃을 이동할 때는 `FAILPROOFAI_HOME`을 사용합니다. 개별 상태 디렉터리를 독립적으로 이동하지 마십시오.
+
+<Warning>
+  `credentials.json`은 절대로 커밋하지 마십시오. 프로젝트 정책 설정과 프로젝트 컨벤션 정책은 실행 코드로서 검토한 후에만 커밋하십시오.
+</Warning>

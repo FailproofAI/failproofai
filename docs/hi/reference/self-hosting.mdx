@@ -1,0 +1,128 @@
+---
+title: "Failproof AI Cloud को Self-host करें"
+description: "ग्राहक-प्रबंधित Kubernetes क्लस्टर पर Failproof AI कंट्रोल प्लेन को तैनात करें।"
+icon: "cloud-cog"
+---
+
+<Note>
+  Self-hosting एक Enterprise डिप्लॉयमेंट है। enterprise लाइसेंस प्राप्त करने के लिए [Failproof AI से संपर्क करें](mailto:support@befailproof.ai)।
+</Note>
+
+## आवश्यकताएं
+
+- Kubernetes 1.27 या नया, cluster-admin एक्सेस के साथ
+- `kubectl` जिसमें Kustomize सपोर्ट हो
+- Helm 3
+- निजी `ghcr.io/agenteye-enterprise` इमेजों तक एक्सेस
+- दो DNS नाम: एक डैशबोर्ड के लिए और एक ingest के लिए
+- PostgreSQL और ClickHouse के लिए persistent storage
+- cert-manager और Traefik, या आपके overlay में अनुकूलित equivalent ingress और certificate infrastructure
+- production OTP login और notifications के लिए SMTP
+
+सोर्स ट्री एक AWS/EKS-उन्मुख overlay और एक अलग GCP/GKE overlay प्रदान करता है। उनके certificate, load-balancer, या backup निर्देशों को संयोजित न करें: GKE अपने स्वयं के DNS-01, GCS, और autoscaling कॉन्फ़िगरेशन का उपयोग करता है।
+
+## डिप्लॉयमेंट क्रम
+
+<Steps>
+  <Step title="क्लस्टर तैयार करें">
+    cert-manager और public/dashboard ingress controllers को install करें, उनके load balancers को verify करें, फिर namespace, image-pull credentials, database credentials, bootstrap admin key, और authentication/SMTP secrets बनाएं।
+  </Step>
+  <Step title="सार्वजनिक डोमेन कॉन्फ़िगर करें">
+    overlay की generated domain environment फ़ाइल में `INGEST_DOMAIN` और `DASHBOARD_DOMAIN` सेट करें और मेल खाने वाले load balancers की ओर इशारा करते हुए DNS रिकॉर्ड बनाएं।
+  </Step>
+  <Step title="एक प्लेटफॉर्म overlay को apply और verify करें">
+    customer/EKS या GCP overlay का उपयोग करें। rendered Kustomize output को inspect करें, इसे apply करें, और मशीनों को enroll करने से पहले सभी workloads और certificates अपनी intended state तक पहुंचते हैं यह पुष्टि करें।
+  </Step>
+  <Step title="Bootstrap एक्सेस और ingestion">
+    protected admin के रूप में sign in करें, एक organization-scoped machine key बनाएं, और public ingest endpoint के माध्यम से एक छोटा test session भेजें।
+  </Step>
+</Steps>
+
+## आवश्यक और वैकल्पिक सेवाएं
+
+| Component | आवश्यकता |
+| --- | --- |
+| ClickHouse | आवश्यक। सर्वर अपने canonical event store के बिना शुरू होने से इनकार करता है। |
+| PostgreSQL | उपयोगकर्ताओं, संगठनों, saved objects, और control-plane state के लिए आवश्यक। |
+| Redis | वैकल्पिक। server और dashboard unavailable होने पर database-backed behavior में degrade होते हैं। |
+| SMTP | development के लिए वैकल्पिक, production email OTP और notification delivery के लिए आवश्यक। |
+| Evaluator | वैकल्पिक। `EVALUATOR_ENDPOINT` के बिना automatic evaluation disabled रहता है। |
+| Assistant/audit LLM | वैकल्पिक। Assistant और LLM-backed audit features inert रहते हैं जब तक LLM connection कॉन्फ़िगर न हो। |
+| Object storage backup | PostgreSQL और ClickHouse backup archives के लिए दृढ़ता से अनुशंसित। |
+
+### Audit capacity और failure delivery
+
+जब available हो तो dedicated audit-agent deployment पर audits चलाएं। प्रत्येक audit-agent pod डिफ़ॉल्ट रूप से एक investigation स्वीकार करता है; प्रति-pod concurrency बढ़ाए बिना replicas के साथ throughput को scale करें। सर्वर `server replicas × AUDIT_WORKERS` audits को simultaneously dispatch कर सकता है, इसलिए dispatcher capacity audit-agent fleet को भरने के लिए काफी बड़ा होना चाहिए।
+
+जब प्रत्येक audit-agent slot busy हो, तो एक audit अपने cadence के एक-चौथाई तक, छह घंटे की cap के साथ wait और retry करता है। यदि कोई slot available नहीं होता, तो run बिना findings के complete होता है और एक failure email भेजता है। Repeated "busy" failures अधिक audit-agent replicas या अधिक widely separated schedule anchors की मांग करती हैं। Repeated "shutting down" failures unstable pods या insufficient capacity के बजाय एक looping rollout को indicate करते हैं।
+
+Failure notifications को enabled email channel और SMTP की आवश्यकता है। ये audit के recipients का उपयोग करते हैं, फिर जब audit के पास कोई email channel नहीं हो तो `alerts.email_default_recipients` पर fallback करते हैं।
+
+## डिप्लॉयमेंट को verify करें
+
+<Tabs>
+  <Tab title="डैशबोर्ड">
+    1. कॉन्फ़िगर किए गए dashboard domain को खोलें, admin OTP flow को complete करें, और organization name और slug को confirm करें।
+    2. **Administration → Keys** पर जाएं और एक narrowly scoped machine key बनाएं।
+    3. एक test session भेजें, फिर इसे **Observe → Events** और **Observe → Sessions** में confirm करें।
+    4. एक alert channel को test करें और, जब कॉन्फ़िगर किया गया हो, एक manual evaluation और audit को test करें।
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    kubectl get pods -n agenteye
+    kubectl get certificates -n agenteye
+    kubectl logs -n agenteye deploy/server --tail=100
+
+    fp --base-url https://failproof.example.com login
+    fp --base-url https://failproof.example.com whoami
+    fp --base-url https://failproof.example.com usage
+    ```
+
+    production machines को enroll करने से पहले public health endpoint और एक authenticated `/v1` request को verify करें।
+  </Tab>
+</Tabs>
+
+## प्रमाणीकरण और ईमेल
+
+डैशबोर्ड ईमेल और one-time codes का उपयोग करता है। SMTP के बिना, development deployments server output के लिए OTP codes को log करते हैं। जब `SMTP_HOST` सेट होता है, तो username, password, और sender को एक समूह के रूप में आवश्यक होता है या सर्वर शुरू होने से इनकार करता है।
+
+`SMTP_TLS` एक boolean है। समर्थित encrypted transport STARTTLS है, सामान्यतः port 587 पर; implicit SMTPS port 465 पर current server transport द्वारा समर्थित नहीं है।
+
+सार्वजनिक dashboard URL को सही तरीके से सेट करें क्योंकि OTP, alert, incident, और audit ईमेल इसे deep links के लिए उपयोग करते हैं। Organization membership नियंत्रित करता है कि कौन एक code का अनुरोध कर सकता है; प्रत्येक organization अपने स्वयं के member sign-ins को **Administration → Settings** में आगे restrict कर सकता है।
+
+## Multi-tenant requirements
+
+दूसरा organization बनाने से पहले, एक strong, stable organization ClickHouse derivation secret को कॉन्फ़िगर करें और सभी server replicas में इसे identical रखें। इसे एक coordinated migration के बिना rotate करने से organization-specific ClickHouse users orphan हो सकते हैं।
+
+instance-admin listener को internal रखें। प्रदान किया गया operator console opt-in है और `kubectl port-forward` के लिए डिज़ाइन किया गया है, public ingress के लिए नहीं। इसे enable करने के लिए इसके स्वयं के strong API key, एक super-admin mailbox, और working SMTP second-factor delivery की आवश्यकता है।
+
+### Break-glass organization CLI
+
+`agenteye-orgctl` server image के अंदर ships करता है और directly PostgreSQL और ClickHouse से बात करता है। यह available रहता है जब public server या operator console unhealthy हो।
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org create --slug acme --name "Acme Corp"
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email ops@acme.com --set admin --protected
+```
+
+समर्थित organization operations में create, list, rename, soft-delete, restore, ClickHouse-user reprovisioning, billing-date management, feature flags, और irreversible purge शामिल हैं। Member operations में add, list, update, remove, permission overrides, और protected-admin state शामिल हैं।
+
+purge से पहले soft-delete का उपयोग करें। `org purge` irreversible है और organization को पहले deleted होना आवश्यक है। Protected members को organization के ordinary Users page के माध्यम से तब तक remove या demote नहीं किया जा सकता जब तक कि एक operator explicitly उन्हें unprotect न करे।
+
+## Production readiness checklist
+
+- Ingest और dashboard DNS विभिन्न intended ingress paths को resolve करते हैं।
+- TLS valid है; जहां आपकी deployment इसकी आवश्यकता है वहां ingest पर mutual TLS का उपयोग करें।
+- PostgreSQL और ClickHouse volumes में capacity alerts हैं।
+- Backups दोनों datastores को include करते हैं और एक tested restore procedure है।
+- Health checks ingest silence, failed workloads, certificate expiry, storage pressure, और stale backups पर alert करते हैं।
+- Structured logs एक existing cluster log pipeline को duplicate किए बिना collect किए जाते हैं।
+- Evaluator, audit, और alert worker concurrency को measured queue evidence के बिना नहीं बदला गया है।
+- एक pinned application release और rollback procedure upgrades से पहले recorded हैं।
+
+<Warning>
+  डिप्लॉयमेंट manifests में platform-specific security और availability assumptions हैं। उन्हें apply करने से पहले अपनी platform team के साथ rendered resources, network policies, ingress exposure, secret references, storage classes, disruption budgets, और backup destinations की समीक्षा करें।
+</Warning>

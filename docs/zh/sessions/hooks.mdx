@@ -1,0 +1,25 @@
+---
+title: "Hooks"
+description: "独立于策略结果，测量 hook 活动、触发器和延迟。"
+icon: "webhook"
+---
+
+Hooks 显示 agent 生命周期 hook 的运行时机及耗时。策略决策是独立的视图。
+
+<Tabs>
+  <Tab title="仪表板">
+    1. 前往 **Observe → Hooks**。
+    2. 按环境、hook 名称、触发事件、agent 或会话 ID 进行筛选。
+    3. 查看 hook 延迟及其分布情况。
+    4. 选择图表上的某个点或 hook 片段，以打开对应的底层事件。
+
+    ![Hooks 页面，展示按 hook 名称和触发事件分组的延迟信息。](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

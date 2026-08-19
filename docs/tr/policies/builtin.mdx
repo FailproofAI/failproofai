@@ -1,0 +1,57 @@
+---
+title: "Yerleşik politikalar"
+description: "Yaygın agent hata modları için korumalı raya aktarma işlevini etkinleştirin."
+icon: "library"
+---
+
+Yerleşik politikalar gizli bilgi işleme, ortam dosyaları, yıkıcı kabuk komutları, korumalı dallar, bulut ve altyapı araçları, paket yayınlama, tekrarlanan çağrılar ve görev sonu iş akışı kontrollerini kapsar.
+
+## Yerleşik politikayı etkinleştirin ve doğrulayın
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Politikayı yerel CLI ile bağlı bir makineye yükleyin.
+    2. Enstrümante edilmiş agende güvenli bir test eylemi çalıştırın.
+    3. **Observe → policy** adresine gidin ve politika adı, makine ortamı veya karar ile filtreleyin.
+    4. Bağlantılı oturumu açarak eşleşen araç girdisini ve döndürülen nedeni doğrulayın.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --cli claude --scope project
+    failproofai config --status
+    ```
+
+    `failproofai policy remove block-rm-rf --cli claude --scope project` komutuyla kaldırın.
+  </Tab>
+</Tabs>
+
+Yüklü sürümünüzde mevcut olan politikaları listeleyin:
+
+```bash
+failproofai policies
+```
+
+Bir proje için bir politikayı etkinleştirin:
+
+```bash
+failproofai policy add block-rm-rf --scope project
+```
+
+Seçili yapılar için birkaç politikayı etkinleştirin:
+
+```bash
+failproofai policies --install block-sudo block-force-push \
+  --cli claude codex --scope project
+```
+
+Bazı politikalar parametreleri kabul eder veya beta olarak işaretlenmiştir. Dağıtımdan önce açıklamayı, eşleşme kapsamını ve varsayılan davranışı gözden geçirin. Bir iş akışını koruyan bir politika, başka bir iş akışında geçerli işlemleri engelleyebilir.
+
+<Card title="Tam yerleşik kataloğa göz atın" icon="list-checks" href="/tr/policies/builtin-catalog">
+  Mevcut 40 politikanın tümünü, tetikleyicilerini, önerilen temeli ve parametrelerini gözden geçirin.
+</Card>
+
+<Tip>
+  Depoya özgü beklentiler için proje kapsamını, makine genelinde güvenlik gereksinimleri için kullanıcı kapsamını tercih edin.
+</Tip>

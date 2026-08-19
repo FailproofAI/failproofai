@@ -1,0 +1,56 @@
+---
+title: "Audits"
+description: "Überprüfen Sie eine definierte Grundgesamtheit von Sitzungen auf Fehler, die Traces allein nicht aufdecken."
+icon: "scan-search"
+---
+
+Ein Audit durchsucht eine ausgewählte Menge von Sitzungen nach einem definierten Fehlerziel. Dabei werden Trace-Belege, Evaluierungsergebnisse, Policy-Treffer und Referenzkontext kombiniert, um verwertbare Befunde zu erzeugen.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+Sehen Sie, wie ein Audit von einem geplanten Lauf zu belegten Fehlern führt, die Sie beheben können.
+
+## Audits öffnen
+
+<Tabs>
+  <Tab title="Dashboard">
+    Gehen Sie zu **Analyze → Audits**. Die Seite zeigt den geplanten Status, offene Befunde, den letzten und nächsten Lauf, den Rhythmus sowie ob der Audit ein Brief oder Referenzseiten enthält. Wählen Sie eine Karte für Einstellungen und Ausführungsverlauf aus; wählen Sie **new audit**, um einen neuen zu erstellen.
+
+    ![Die Audits-Seite mit wiederkehrenden Audits samt Zeitplan, Sensitivität und Ausführungsstatus.](/images/dashboard/audits.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits list
+    fp audits list --enabled-only --show-id
+    fp audits show <audit-name>
+    fp audits findings --status open --limit 20
+    ```
+  </Tab>
+</Tabs>
+
+Verwenden Sie einen Audit, wenn Sie eine Frage auf Grundgesamtheits-Ebene beantworten müssen, etwa:
+
+- Wo brechen Agenten Aufgaben ab, ohne zu eskalieren?
+- Welche Tool-Fehler führen zu ineffektiven Wiederholungsversuchen?
+- Greifen Agenten auf Daten außerhalb des vorgesehenen Workflows zu?
+- Was hat sich nach einem Modell-, Prompt- oder Tool-Release verändert?
+
+## Audit-Antwortfluss
+
+```text
+Session → Audit → Finding → Issue → Policy
+                         ↘ Alert for recurrence
+```
+
+Ein Befund sollte den Fehlermodus benennen und auf Belege verweisen. Ein Issue ist für die Behebung zuständig. Eine Policy verhindert ein bekanntes Aktionsmuster; ein Alert erkennt das erneute Auftreten, wenn eine Prävention nicht möglich ist oder Überwachung erforderlich ist.
+
+<Columns cols={2}>
+  <Card title="Audit einrichten" icon="sliders-horizontal" href="/de/audits/setup">
+    Definieren Sie Ziel, Grundgesamtheit und Referenzkontext vor dem ersten Lauf.
+  </Card>
+  <Card title="Agentenkontext hinzufügen" icon="bot" href="/de/audits/agent-contracts">
+    Legen Sie fest, was jeder Agent liefern muss und was er niemals tun darf.
+  </Card>
+</Columns>

@@ -1,0 +1,69 @@
+---
+---
+title: "Chọn cách thiết lập của bạn"
+description: "Chọn giữa thực thi cục bộ, Failproof AI Cloud, hoặc triển khai doanh nghiệp."
+icon: "waypoints"
+---
+
+<CardGroup cols={3}>
+  <Card title="Local enforcement" icon="laptop">
+    Cài đặt hooks và policies trên một máy. Sử dụng khi bạn cần các biện pháp bảo vệ ngay lập tức mà không cần gửi dữ liệu phiên làm việc đến Cloud.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud">
+    Thêm các phiên làm việc tập trung, kiểm toán, đánh giá trực tuyến, bảng điều khiển, cảnh báo và triển khai policy cho toàn bộ hạm đội.
+  </Card>
+  <Card title="Enterprise deployment" icon="building-2">
+    Sử dụng các điều khiển tổ chức, khóa phạm vi, cơ sở hạ tầng riêng tư và yêu cầu bảo mật dành riêng cho triển khai.
+  </Card>
+</CardGroup>
+
+## Đường dẫn sản xuất được khuyến nghị
+
+1. Kết nối một máy không phải sản xuất với tính năng ghi lại bản sao được bật.
+2. Xác minh các phiên làm việc và đánh giá trong Cloud.
+3. Tạo một kiểm toán cho một chế độ lỗi đã biết.
+4. Triển khai chính sách đầu tiên ở chế độ quan sát.
+5. Mở rộng đến sản xuất sau khi xem xét các kết quả trùng khớp và tính dương tính giả.
+
+## Kết nối một máy với Cloud
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi đến **Administration → Keys** và tạo một khóa với `events:add` và `policies:pull`.
+    2. Sao chép bí mật một lần đến máy đích.
+    3. Sau khi chạy lệnh kết nối CLI, đi đến **Admin → enforcement** và xác nhận máy xuất hiện.
+    4. Đi đến **Observe → Events** và xác nhận sự kiện đầu tiên của nó đã đến.
+
+    Ngăn kéo khóa hiển thị hai quyền cấp được yêu cầu bởi một máy được kết nối: nhập sự kiện và phân phối policy.
+
+    ![Ngăn kéo khóa API mới được sử dụng để cấp quyền nhập sự kiện và phân phối policy.](/images/dashboard/key-create.png)
+
+    Sau khi kết nối, máy sẽ xuất hiện trong thực thi với trạng thái policy mong muốn và được báo cáo của nó.
+
+    ![Hạm đội Enforcement với một máy đã ghi danh mở rộng để hiển thị trạng thái policy mong muốn và trạng thái triển khai của nó.](/images/dashboard/enforcement-fleet.png)
+
+    Sự kiện đầu tiên đến xác nhận rằng daemon có thể gửi dữ liệu đến Cloud, độc lập với việc triển khai policy.
+
+    ![Luồng sự kiện trực tiếp hiển thị các sự kiện agent, model và tool gần đây.](/images/dashboard/events-stream-current.png)
+
+    Tiếp tục chỉ sau khi máy và sự kiện đầu tiên của nó đều hiển thị.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --connect https://app.befailproof.ai \
+      --token "$FAILPROOFAI_KEY" \
+      --machine-label checkout-runner-01
+
+    failproofai policies --install --cli claude --scope user
+    failproofai config --status
+    ```
+
+    Thêm `--no-transcripts` khi nội dung bản sao phải ở lại cục bộ.
+  </Tab>
+</Tabs>
+
+Kết nối với Cloud xác minh nhập sự kiện và phân phối policy một cách độc lập. Do đó, một khóa có thể có hiệu lực nhưng thiếu một quyền cần thiết. Sử dụng `failproofai config --status` để xem khả năng nào được cấu hình.
+
+<Info>
+  Thiết lập Cloud chỉ ghi thông tin đăng nhập cục bộ sau khi khả năng có liên quan thành công. Xác minh không thành công không để lại một máy trông như được kết nối khi nó không được kết nối.
+</Info>

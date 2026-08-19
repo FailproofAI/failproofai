@@ -1,0 +1,52 @@
+---
+title: "Đánh giá trực tuyến"
+description: "Đánh giá các phiên làm việc trực tiếp và hoàn thành để kiểm soát chất lượng, tuân thủ, chi phí và độ trễ."
+icon: "gauge"
+---
+
+Đánh giá trực tuyến áp dụng các phán xét nhất quán cho các phiên làm việc của agent. Sử dụng chúng để có các tín hiệu nên được đo liên tục thay vì chỉ điều tra trong quá trình kiểm toán.
+
+## Xem xét chất lượng đánh giá
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Chuyển đến **Observe → Evaluations**.
+    2. Thêm một chuỗi và chọn agent, môi trường, điểm đánh giá, thống kê và đường cong.
+    3. Thêm chuỗi để so sánh các môi trường, agent hoặc khóa điểm.
+    4. Chọn một kết quả để mở các phiên làm việc phù hợp hoặc chia sẻ chế độ xem được lọc. Sử dụng **Observe → Metrics** để xem độ trễ, token, chi phí và các giá trị độ lớn khác.
+
+    ![Một bảng điều khiển chất lượng hiển thị điểm đánh giá trung bình và xu hướng theo thời gian.](/images/dashboard/dashboard-quality.png)
+
+    Mở một phiên làm việc từ drill-down để kiểm tra lý do cho từng điểm:
+
+    ![Chế độ xem chi tiết phiên làm việc hiển thị điểm đánh giá và lý do bên cạnh dấu vết hoàn chỉnh.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Thêm `--json` toàn cục trước `evals` để tự động hóa, ví dụ như `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+Một bộ đánh giá nhận được danh tính phiên làm việc, môi trường, dấu thời gian và các sự kiện được sắp xếp. Nó có thể trả về các khóa điểm số với lý do tùy chọn và bản tóm tắt. Các bộ đánh giá chạy dài có thể trả về một công việc đang chờ xử lý và được kiểm tra sau.
+
+## Mục tiêu đánh giá tốt
+
+- Hoàn thành hoặc độ chính xác của tác vụ
+- Tính cơ sở của dữ liệu và rủi ro ảo tưởng
+- Lựa chọn công cụ và hiệu quả công cụ
+- Tuân thủ chính sách hoặc quy trình
+- Ngân sách chi phí và độ trễ
+- Yêu cầu hoạt động con người cần thiết
+
+## Từ điểm số đến phản hồi
+
+Hiển thị điểm số trên bảng điều khiển để theo dõi xu hướng. Tạo cảnh báo cho các ngưỡng hoặc điều kiện phức hợp. Khi một điểm số giảm trong một quần thể, hãy chạy một cuộc kiểm toán để điều tra lý do; khi nguyên nhân là một hành động có thể lặp lại, hãy triển khai một chính sách.
+
+<Card title="Xây dựng một bộ đánh giá" icon="code-2" href="/vi/reference/evaluator-sdk">
+  Triển khai đánh giá đồng bộ hoặc không đồng bộ bằng SDK đánh giá Python.
+</Card>

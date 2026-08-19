@@ -1,0 +1,48 @@
+---
+---
+title: "अपनी पहली विफलता को एक policy के साथ रोकें"
+description: "एक policy संस्करण लिखें, इसे observe मोड में तैनात करें, और फिर इसे लागू करें।"
+icon: "shield-check"
+---
+
+किसी policy का उपयोग केवल तभी करें जब आप असुरक्षित कार्रवाई और वैध कार्रवाइयों का वर्णन कर सकें जिन्हें अनुमति दी जानी चाहिए।
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Policy लिखें">
+        **Admin → policy editor** पर जाएं। Demo policy से शुरुआत करें, इसके स्रोत की समीक्षा करें या संपादित करें, फिर **publish version** चुनें। प्रकाशन एक अपरिवर्तनीय संस्करण बनाता है जिसे आप मशीनों पर तैनात कर सकते हैं।
+
+        ![Policy editor compose view जिसमें एक demo policy प्रकाशन के लिए तैयार है एक अपरिवर्तनीय संस्करण के रूप में।](/images/dashboard/policy-editor.png)
+      </Step>
+      <Step title="इसे एक मशीन पर तैनात करें">
+        **Admin → enforcement** पर जाएं, लक्ष्य मशीन का विस्तार करें, और **edit this machine** चुनें। प्रकाशित demo policy को जोड़ें, इसके संस्करण को pin करें, **observe** चुनें, और तैनाती लागू करें।
+
+        ![Machine deployment editor जिसमें एक प्रकाशित policy संस्करण observe मोड में चुना गया है तैनाती लागू करने से पहले।](/images/dashboard/enforcement-editor.png)
+      </Step>
+      <Step title="Policy को सत्यापित करें">
+        उस मशीन पर एक नया agent session चलाएं, फिर **Observe → policy** खोलें। मशीन चुनें और पुष्टि करें कि demo policy policy mapping और decision timeline में प्रकट होता है। Observe मोड रिकॉर्ड करता है कि policy क्या करेगी बिना कार्रवाई को ब्लॉक किए।
+
+        ![Policy page जो decision totals, समय के साथ enforcement activity, और local और Cloud-managed policy mappings दिखाता है।](/images/dashboard/policy-observe.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    Cloud policy authoring और fleet deployment प्रशासनिक वर्कफ़्लो हैं। इसे प्रकाशित करने से पहले सत्यापित करने के लिए local CLI का उपयोग करें:
+
+    ```bash
+    failproofai policies --install --custom ./payment-retry.policies.ts \
+      --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Cloud-visible policy decisions का निरीक्षण करने के लिए `fp` का उपयोग करें:
+
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp sessions --env production --since 24h
+    ```
+
+    Cloud CLI root-only enforcement deployment routes को उजागर नहीं करता है। **Admin → policy editor** से संस्करण प्रकाशित करें और **Admin → enforcement** से उन्हें तैनात करें।
+  </Tab>
+</Tabs>

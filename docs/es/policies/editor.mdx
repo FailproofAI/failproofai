@@ -1,0 +1,47 @@
+---
+title: "Editor de políticas"
+description: "Crea y revisa políticas con versiones a partir de un modo de fallo confirmado."
+icon: "file-pen-line"
+---
+
+Usa el editor de políticas para convertir un hallazgo o problema en una regla desplegable. Mantén la autoría separada del despliegue para que un borrador no pueda modificar silenciosamente el comportamiento en producción.
+
+Cuando un problema tiene un patrón de acción repetible, ábrelo en **Analyze → issues** y selecciona **generate policy**. Failproof AI primero explica si una política puede expresar el problema, y luego traslada la intención revisada y el contexto del hallazgo al editor. El código fuente generado permanece como borrador hasta que lo publiques.
+
+## Publicar una versión de política
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Ve a **Admin → policy editor** y, en **compose**, describe el modo de fallo o pega el código fuente de la política en JavaScript.
+    2. Valida el código fuente y corrige todos los errores reportados.
+    3. Introduce la identidad de la política y publícala; luego usa **library** para comparar o deshabilitar versiones.
+    4. Selecciona **enforcement** cuando la versión esté lista para un despliegue en máquinas.
+
+    ![Vista de composición del editor de políticas con identidad de política, redacción asistida por IA, validación de código fuente y controles de publicación.](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    El CLI de la nube no publica versiones de políticas. Valida el código fuente localmente antes de copiarlo en el editor:
+
+    ```bash
+    failproofai policies --install --custom ./checkout.policies.ts \
+      --cli claude --scope project
+    ```
+
+    Publica la versión revisada desde **Admin → policy editor**.
+  </Tab>
+</Tabs>
+
+## Lista de verificación para la autoría
+
+1. Nombra el modo de fallo en lenguaje operacional.
+2. Selecciona los eventos de hook y las herramientas que contengan evidencia suficiente para decidir.
+3. Escribe la condición más específica posible que coincida con el comportamiento no seguro.
+4. Devuelve una razón que indique al agente u operador qué hacer a continuación.
+5. Añade ejemplos que deben coincidir y ejemplos que deben seguir siendo permitidos.
+6. Guarda una nueva versión y solicita revisión.
+
+Usa `instruct` cuando el agente pueda corregir el rumbo de forma segura. Usa `deny` cuando permitir la acción supondría un riesgo inaceptable o irreversible.
+
+<Info>
+  Las versiones de políticas son entradas de despliegue inmutables. Editar un borrador crea una nueva versión; no debe reescribir la versión ya asignada a las máquinas.
+</Info>

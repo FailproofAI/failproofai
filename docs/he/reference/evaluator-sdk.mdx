@@ -1,0 +1,191 @@
+---
+---
+title: "Evaluator SDK"
+description: "בנה שירות המעריך סשנים של Failproof AI בצורה סינכרונית או אסינכרונית."
+icon: "gauge"
+---
+
+משערך מקבל סשן סוכן שהושלם ומחזיר את אותות איכות שחשובים לך: ניקוד מספרי, הסבר לכל ניקוד וסיכום אופציונלי. Failproof AI שומר את התוצאות הללו ליד ההעקבות וחוקר אותן בין סוכנים וסביבות.
+
+## הגדר משערך
+
+<Steps>
+  <Step title="התקן את Evaluator SDK">
+    התקן את SDK והשרת המשמש להפעלתו.
+
+    ```bash
+    pip install failproofai-sdk uvicorn
+    ```
+  </Step>
+
+  <Step title="הגדר מה לדרג">
+    צור `evaluator.py`. דוגמה זו בודקת אם סשן מכיל קריאות כלים כושלות.
+
+    ```python
+    import os
+    from failproofai.evaluator import Evaluator, EvalResponse
+
+    app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
+
+    @app.config
+    def config():
+        return {"inactivity_timeout_secs": 1800}
+
+    @app.evaluator
+    def evaluate(req):
+        tool_errors = sum(
+            1 for item in req.events
+            if item.event_type == "tool_result" and item.payload.get("error")
+        )
+        return EvalResponse(
+            scores={"tool_reliability": 1.0 if tool_errors == 0 else 0.0},
+            reasoning={"tool_reliability": f"{tool_errors} tool errors"},
+        )
+    ```
+  </Step>
+
+  <Step title="הפעל ובדוק באופן מקומי">
+    הגדר אסימון משותף, התחל את המשערך ובדוק שנקודת הקצה של הבריאות שלו מגיבה.
+
+    ```bash
+    export EVALUATOR_TOKEN=<shared-token>
+    uvicorn evaluator:app --host 0.0.0.0 --port 8080
+    ```
+
+    בטרמינל נוסף:
+
+    ```bash
+    curl http://127.0.0.1:8080/health
+    ```
+  </Step>
+</Steps>
+
+## חבר את המשערך ל-Failproof AI
+
+1. פרוס את המשערך בכתובת HTTPS שנגישה עבור Failproof AI Cloud.
+2. הגדר את `EVALUATOR_ENDPOINT` עם כתובת זו והגדר את `EVALUATOR_TOKEN` לאותו אסימון בו משתמש המשערך. עבור Cloud מנוהל, צור קשר עם [support@befailproof.ai](mailto:support@befailproof.ai) כדי להגדיר את החיבור.
+3. הרץ הערכה וודא שהניקוד שלה מופיע ב-Failproof AI.
+
+<Tabs>
+  <Tab title="Dashboard">
+    פתח סשן שהושלם תחת **Observe → Sessions** ובחר **Run evaluation** אם הוא לא הוערך באופן אוטומטי. בדוק את הסטטוס, הניקוד, ההנמקה והסיכום בחלונית **Evaluation** של הסשן.
+
+    השתמש ב-**Observe → Evaluations** כדי להשוות ניקודים בין סוכנים או סביבות. השתמש ב-**Observe → Metrics** עבור זמן תגובה, עלות, אסימונים ומדידות מספריות אחרות.
+
+    התחל עם סשן אחד כדי לאמת שהמשערך החזיר את מפתחות הניקוד הצפויים והנמקה שימושית לרץ ספציפי זה.
+
+    ![תצוגת פרטי סשן המציגה ניקודי הערכה והנמקה ליד ההעקבות שלו.](/images/dashboard/session-detail.png)
+
+    כשתוצאות בודדות נראות נכונות, השתמש בלוח הבקרה של ההערכה כדי להשוות את הניקודים הללו לאורך זמן ובין סוכנים או סביבות.
+
+    ![לוח איכות המציג ניקודי משערך לאורך זמן.](/images/dashboard/dashboard-quality.png)
+
+    תרשים בריא צריך להשתמש בשמות ניקוד יציבים; שינוי מפתח יוצר סדרה נפרדת.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --since 1h --score tool_reliability:0..1
+    fp evals --since 24h --aggregate
+    ```
+  </Tab>
+</Tabs>
+
+עבור מופע Cloud מארח עצמי, הערכה אוטומטית מבוטלת עד שיוגדר `EVALUATOR_ENDPOINT` בתהליך השרת. הפעל מחדש את השרת לאחר שינוי משתני סביבה של משערך.
+
+השירות חושף את `GET /health`, `GET /config`, `POST /evaluate` ובאופן אופציונלי `GET /evaluate/{job_id}`. החזר `JobPending` לעבודה אסינכרונית וההרשם `@app.job_lookup` כדי ש-Failproof AI יוכל לחקור אותה.
+
+כשאסימון מוגדר, כל הנתיבים מלבד health דורשים את אותו אסימון בעל הנשא ש-Failproof AI שולח כ-`EVALUATOR_TOKEN`.
+
+## סוגי SDK
+
+| Type | Fields |
+| --- | --- |
+| `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
+| `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
+| `EvalResponse` | `scores`, `reasoning`, `summary` |
+| `JobPending` | `job_id`, `next_poll_secs` |
+| `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
+
+## דקורטורים ונתיבים
+
+| Decorator | Route | Required |
+| --- | --- | --- |
+| `@app.evaluator` | `POST /evaluate` | Yes |
+| `@app.job_lookup` | `GET /evaluate/{job_id}` | When returning `JobPending` |
+| `@app.config` | `GET /config` | No |
+
+ה-SDK מגביל גופי בקשות הערכה ל-25 MiB. שדות בקשה לא ידועים מתעלמים כדי שהשירותים יישארו תואמים כאשר החוזה של האירוע גדל.
+
+## החזר עבודה אסינכרונית
+
+השתמש ב-`JobPending` כאשר הערכה לא יכולה להסתיים בתוך בקשה אחת. מזהה המשרה הוא אטום ל-Failproof AI וחייב להישאר ניתן לפתרון על ידי השירות שלך עד שהתוצאה נאספת או תוקפת השרת פוג.
+
+```python
+from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
+
+app = Evaluator(token="shared-secret")
+
+@app.evaluator
+def start(req: EvalRequest) -> JobPending:
+    job_id = enqueue(req)
+    return JobPending(job_id=job_id, next_poll_secs=30)
+
+@app.job_lookup
+def lookup(job_id: str):
+    result = get_result(job_id)
+    if result is None:
+        return JobPending(job_id=job_id, next_poll_secs=30)
+    return EvalResponse(
+        scores=result.scores,
+        reasoning=result.reasoning,
+        summary=result.summary,
+    )
+```
+
+קצב הסקר נבחר בסדר זה: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, לאחר מכן `EVALUATOR_POLLING_INTERVAL_SECS` של השרת. ערכים מהודקים בין 1 שנייה ל-1 שעה. הגבול הסקר לשעון קיר ברירת המחדל של השרת הוא שעה אחת.
+
+## שדות בקשה ותגובה
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `EvalRequest.schema_version` | `str` | כרגע `"1"`. |
+| `session_id`, `agent_id`, `environment` | `str` | זהות הסשן והסביבה. |
+| `started_at` | `datetime` | חותמת זמן של האירוע הראשון. |
+| `ended_at` | `datetime \| None` | קיים כאשר הסשן פלט אירוע סיום. |
+| `events` | `list[AgentEvent]` | זרם האירוע המלא והמסודר. |
+| `AgentEvent.id` | `int` | מזהה שורת אירוע backend. |
+| `AgentEvent.ts` | `datetime` | חותמת זמן של אירוע. |
+| `AgentEvent.event_type` | `str` | משפחת אירוע כגון `tool_use`. |
+| `AgentEvent.payload` | `dict[str, Any]` | מטענת אירוע מלאה. |
+| `EvalResponse.scores` | `dict[str, float] \| None` | מימדים מספריים המוצגים בהערכות. |
+| `EvalResponse.reasoning` | `dict[str, str] \| None` | הסברים לכל ניקוד; מפתחות צריכים להשקף את `scores`. |
+| `EvalResponse.summary` | `str \| None` | נרטיב הערכה כללי. |
+
+## הגדרות מפעיל שרת
+
+הערכה אוטומטית היא בקנה מידה של פריסה ונשארת מבוטלת כאשר `EVALUATOR_ENDPOINT` חסר.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `EVALUATOR_ENDPOINT` | unset | כתובת URL בסיסית של שירות המשערך. |
+| `EVALUATOR_TOKEN` | unset | אסימון בעל הנשא המשותף עם `Evaluator(token=...)`. |
+| `EVALUATOR_WORKERS` | `2` | עובדי מהפץ בו-זמנים. |
+| `EVALUATOR_CLAIM_BATCH` | `4` | סשנים שנדרשו לכל מעבר מהפץ. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | קצב סקר אסינכרוני חלופי. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | תוקף משערך לכל בקשה. |
+| `EVALUATOR_MAX_ATTEMPTS` | `5` | ניסיונות משלוח לפני כישלון סופי. |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | קצב רענון עבור `/config`. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | זמן סקר אסינכרוני מקסימום לשעון קיר. |
+
+השרת יכול גם להגביל אילו ארגונים משתמשים במשערך העולמי של פריסה. התייחס לנקודת קצה, אסימון, ניסיון ושינויי שער ארגון כהגדרה של מפעיל והפעל מחדש או גלול את השרת לאחר שינויים.
+
+## אבטחה ופעולות
+
+- הנח את המשערך מאחורי HTTPS כאשר התנועה חוצה גבול רשת מהימן.
+- הגדר אסימון בעל הנשא שאינו ריק ושמור אותו זהה בשני השירותים.
+- אל תעד את האסימון או מספרים רגישים מלא מטעני בקשה.
+- הפוך מטפלים סינכרוניים idempotent; ניסיונות חוזרים עשויים לחזור בקשה.
+- הצמד מצב משרה אסינכרוני מחוץ לזיכרון תהליך בייצור.
+- החזר מפתחות ניקוד יציבים. שינוי שם של מפתח יוצר סדרת תרשים חדשה במקום שינוי הישנה.
+
+ה-SDK משחרר רישומי מחזור חיים מובנים כגון `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected` וחריגות מטפל. הוא לא מגדיר מטפלי logging; השתמש בתצורת logging של יישום הארח.

@@ -1,0 +1,56 @@
+---
+title: "監査"
+description: "トレースだけでは明らかにならない障害を見つけるため、定義されたセッション群をレビューします。"
+icon: "scan-search"
+---
+
+監査は、選択したセッション群に対して指定された障害目標を検索します。トレースのエビデンス、評価結果、ポリシーヒット、参照コンテキストを組み合わせて、実際に対処できる調査結果を生成します。
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+スケジュール実行からエビデンスに裏付けられた障害の特定・修正まで、監査の流れをご確認ください。
+
+## 監査を開く
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    **Analyze → Audits** に移動します。ページにはスケジュール状態、未解決の調査結果、最終実行日時、次回実行日時、実行間隔、ブリーフや参照ページの有無が表示されます。カードを選択すると設定と実行履歴を確認でき、**new audit** を選択すると新規作成できます。
+
+    ![スケジュール、感度、実行状態が表示された定期監査の一覧ページ。](/images/dashboard/audits.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits list
+    fp audits list --enabled-only --show-id
+    fp audits show <audit-name>
+    fp audits findings --status open --limit 20
+    ```
+  </Tab>
+</Tabs>
+
+以下のようなポピュレーションレベルの問いに答える必要がある場合に監査を使用してください。
+
+- エージェントはどこでエスカレーションせずにタスクを中断しているか？
+- どのツール障害が非効率なリトライにつながっているか？
+- エージェントは意図したワークフロー外のデータにアクセスしていないか？
+- モデル、プロンプト、またはツールのリリース後に何が変わったか？
+
+## 監査レスポンスフロー
+
+```text
+Session → Audit → Finding → Issue → Policy
+                         ↘ Alert for recurrence
+```
+
+調査結果には障害モードの名称とエビデンスへの参照が含まれている必要があります。Issue が修復作業を担います。Policy は既知のアクションパターンを防止し、Alert は防止が不可能または監視が必要な場合に再発を検知します。
+
+<Columns cols={2}>
+  <Card title="監査を設定する" icon="sliders-horizontal" href="/ja/audits/setup">
+    初回実行前に目標、対象セッション群、参照コンテキストを定義します。
+  </Card>
+  <Card title="エージェントコンテキストを追加する" icon="bot" href="/ja/audits/agent-contracts">
+    各エージェントが必ず生成すべきこと、および絶対に行ってはならないことを定義します。
+  </Card>
+</Columns>

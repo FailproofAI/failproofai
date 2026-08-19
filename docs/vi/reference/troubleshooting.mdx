@@ -1,0 +1,167 @@
+---
+title: "Khắc phục sự cố"
+description: "Chẩn đoán các phiên bản bị thiếu, chính sách bị thiếu, lỗi gửi và hành động tác nhân bị chặn."
+icon: "wrench"
+---
+
+<AccordionGroup>
+  <Accordion title="Không có phiên nào xuất hiện trong Cloud">
+    <Tabs>
+      <Tab title="Dashboard">
+        Mở **Administration → Keys** và xác nhận khóa máy đang hoạt động và có `events:add`. Sau đó mở **Observe → Events**, mở rộng khoảng thời gian và xóa các bộ lọc môi trường và tác nhân. Nếu các sự kiện tồn tại, tìm kiếm ID phiên và sau đó kiểm tra **Observe → Sessions** để phân nhóm. Nếu không có sự kiện nào, hãy chẩn đoán daemon Failproof từ CLI.
+
+        ![Luồng Events trực tiếp với các bộ lọc chính và các sự kiện tác nhân gần đây đến.](/images/dashboard/events-stream-current.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait --timeout 60
+        fp list envs
+        fp events --since 24h --limit 20
+        fp sessions --since 24h --limit 20
+        ```
+
+        Xác nhận rằng chế độ ghi lại được bật, khóa được cấu hình có `events:add`, và bộ lọc dashboard phù hợp với môi trường được phát ra.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Các sự kiện Python SDK vẫn còn trên đĩa">
+    <Tabs>
+      <Tab title="Dashboard">
+        Xóa các bộ lọc trong **Observe → Events** và tìm kiếm ID phiên SDK chính xác. Nếu không có gì xuất hiện, kiểm tra spool SDK và daemon Failproof trên máy nguồn.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait
+        ```
+
+        Xác nhận quy trình tác nhân đặt `AGENTEYE_SPOOL_TO_FAILPROOFAI=1` và `$FAILPROOFAI_HOME/custom-agents`, nếu không thì `~/.failproofai/custom-agents`, tồn tại trước khi SDK khởi động.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Máy không nhận được chính sách">
+    <Tabs>
+      <Tab title="Dashboard">
+        Mở **Admin → enforcement**, chọn máy và so sánh các phiên bản được gán, được báo cáo và phiên bản trước. Xác nhận phạm vi triển khai bao gồm máy và khóa của nó có `policies:pull`. Việc tiếp nhận có thể hoạt động ngay cả khi gửi chính sách không.
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config --status
+        ```
+
+        Xác nhận ID máy và nhãn khớp với mục tiêu dashboard. Kết nối lại bằng khóa có khả năng chính sách nếu thông tin xác thực hiện có chỉ cấp quyền tiếp nhận sự kiện.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Một hành động bị từ chối vì daemon không có sẵn">
+    <Tabs>
+      <Tab title="Dashboard">
+        Mở **Admin → enforcement** và kiểm tra thời gian cuối cùng nhìn thấy và phiên bản được báo cáo của máy. Nếu máy cũ, hãy coi đây là vấn đề daemon cục bộ. Không làm yếu chính sách được triển khai chỉ để bỏ qua daemon không có sẵn.
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config
+        failproofai config --status
+        ```
+
+        Khởi động lại hoặc cập nhật `failproofaid`; chạy lại cấu hình khi phiên bản giao thức CLI và daemon khác nhau. Đường dẫn daemon được cấu hình thất bại một cách có ý bởi thiết kế.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Chính sách tùy chỉnh không tải">
+    <Tabs>
+      <Tab title="Dashboard">
+        Đối với chính sách do Cloud tạo, mở **Admin → policy editor**, chọn bản nháp và xem lỗi xác thực trước khi xuất bản. Đối với chính sách cục bộ, sử dụng CLI để xác thực nó, sau đó mở **Observe → policy** sau một hành động kiểm tra để xác nhận các quyết định đến.
+
+      </Tab>
+      <Tab title="CLI">
+        Xác nhận tên tệp kết thúc bằng `policies.js`, `policies.mjs` hoặc `policies.ts`, mô-đun gọi `customPolicies.add(...)`, và nhập được phân giải từ tệp chính sách.
+
+        ```bash
+        failproofai policies --install --custom ./checkout.policies.ts
+        failproofai policies
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Một kiểm toán không trả lại kết quả nào">
+    <Tabs>
+      <Tab title="Dashboard">
+        Mở **Analyze → audits**, chọn lần chạy và kiểm tra xem phân tích mô hình có chạy không. Sau đó so sánh phạm vi và cửa sổ của nó với **Observe → sessions** và mở các dấu vết đại diện từ dân số đó.
+
+        Kết quả bằng không chỉ có ý nghĩa khi phân tích chạy thành công. Nếu phân tích bị bỏ qua hoặc thất bại, lần chạy không tạo ra kết quả nào và giữ cửa sổ chưa được phân tích mở cho lần chạy thành công trong tương lai. Nếu phân tích mô hình bị vô hiệu hóa, kiểm toán cũng không tạo ra kết quả nào vì quét thông tin xác thực xác định và PII ghi lại thống kê nhưng không còn báo cáo kết quả nữa.
+
+        ![Mẫu kiểm toán trong đó môi trường, tác nhân, tần suất và cửa sổ quét xác định dân số phiên.](/images/dashboard/audit-new.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp audits show <audit-name>
+        fp audits runs <audit-name>
+        fp sessions --since 24h --env production
+        fp audits context-show <audit-name>
+        fp audits run <audit-name>
+        fp audits findings --audit <audit-name>
+        ```
+
+        Nếu lần chạy ở trạng thái hàng đợi, hãy chờ khả năng audit-agent hoặc yêu cầu nhà điều hành triển khai kiểm tra fleet kiểm toán. Một kiểm toán hàng đợi sẽ thử lại; nó không bị bỏ qua ngay lập tức.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Các đánh giá trực tuyến không chạy tự động">
+    <Tabs>
+      <Tab title="Dashboard">
+        Mở một phiên đã hoàn thành và kiểm tra xem đánh giá thủ công có thành công không. Cloud được lưu trữ hiện không có kiểm soát điểm cuối đánh giá trong dashboard; nhà điều hành máy chủ phải định cấu hình nó.
+      </Tab>
+      <Tab title="CLI">
+        Xác minh chính đánh giá, sau đó kiểm tra các trạng thái đánh giá gần đây:
+
+        ```bash
+        curl https://evaluator.example.com/health
+        fp evals --since 1h
+        ```
+
+        Trên Cloud tự lưu trữ, xác nhận `EVALUATOR_ENDPOINT` có trên máy chủ và `EVALUATOR_TOKEN` khớp với đánh giá. Đánh giá tự động bị vô hiệu hóa khi điểm cuối vắng mặt.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Xác thực Cloud CLI nhắm đến tổ chức sai">
+    <Tabs>
+      <Tab title="Dashboard">
+        Sử dụng công tắc tổ chức và xác nhận slug và quyền dự kiến trước khi so sánh kết quả với CLI.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp whoami
+        fp orgs current
+        fp orgs perms
+        ```
+
+        Trong chế độ khóa API, chỉ định `fp --org <slug> --api-key <key> ...` hoặc đặt `AGENTEYE_ORG`. Trạng thái tổ chức phiên con người đã lưu bị bỏ qua một cách có ý đối với các yêu cầu khóa API.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Một chính sách chặn công việc hợp lệ">
+    <Tabs>
+      <Tab title="Dashboard">
+        Mở **Observe → policy**, bảo tồn quyết định và phiên liên kết và xác định điều kiện dương tính giả. Sau đó mở **Admin → enforcement** và khôi phục các máy bị ảnh hưởng về phiên bản trước. Tạo một phiên bản hẹp hơn trong **Policy editor**, kiểm tra nó trên một phạm vi nhỏ và chỉ mở rộng sau khi công việc hợp lệ thành công.
+
+      </Tab>
+      <Tab title="CLI">
+        Khôi phục triển khai Cloud chỉ dành cho dashboard. Một tạm dừng phiên cục bộ không vô hiệu hóa các chính sách do Cloud quản lý. Nếu dashboard không có sẵn, hãy chụp trạng thái máy và triển khai và khôi phục quyền truy cập dashboard thay vì cố gắng lặp lại hành động bị chặn.
+
+        ```bash
+        failproofai config --status
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+</AccordionGroup>
+
+Khi liên hệ với bộ phận hỗ trợ, hãy bao gồm phiên bản CLI, bộ khai thác, môi trường, ID phiên hoặc triển khai liên quan và kết quả của `failproofai config --status` với bí mật bị xóa.

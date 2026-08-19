@@ -1,0 +1,74 @@
+---
+title: "密钥与权限"
+description: "为机器、自动化任务和运营者创建具有限定范围的 API 密钥。"
+icon: "key-round"
+---
+
+API 密钥归属于某个组织，并携带明确的权限信息。请为 Agent 数据采集、策略下发、评估器、CI 自动化及管理脚本分别使用独立的密钥。
+
+## 创建与轮换密钥
+
+<Tabs>
+  <Tab title="控制台">
+    1. 前往 **Administration → Keys**，选择 **new key**，并输入工作负载名称。
+    2. 选择权限预设，仅在预设不满足需求时才单独调整具体权限。
+    3. 创建密钥后立即复制其一次性密文。
+    4. 稍后打开该密钥可更新授权、禁用密钥或重新生成密文。
+
+    创建抽屉是选择工作负载所需最小授权范围的地方。
+
+    ![新建 API 密钥抽屉，包含权限预设和单项授权。](/images/dashboard/key-create.png)
+
+    创建完成后，Keys 页面将显示持久化的元数据及管理操作。一次性密文不会再次展示。
+
+    ![API Keys 页面，显示密钥权限、创建时间以及重新生成和禁用操作。](/images/dashboard/api-keys.png)
+
+    请定期通过此列表审查授权，并禁用不再对应活跃工作负载的密钥。
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp keys create production-agents \
+      --add events:add \
+      --add policies:pull
+    fp keys show production-agents
+    fp keys update production-agents --add events:read
+    fp keys regenerate production-agents --yes
+    fp keys disable production-agents
+    ```
+
+    请以安全方式重定向或捕获创建/重新生成时的输出；密文仅返回一次。
+  </Tab>
+</Tabs>
+
+已连接的 Failproof AI 机器所需的两项权限是相互独立的：
+
+- `events:add` 用于发送事件和会话数据。
+- `policies:pull` 用于拉取已分配的策略部署。
+
+密钥密文仅在创建或重新生成时显示。请将其存储在密钥管理器中，并在轮换时避免复用运营者的交互式凭证。
+
+## 权限目录
+
+| 领域 | 权限 |
+| --- | --- |
+| 事件 | `events:add`、`events:read` |
+| 密钥 | `keys:create`、`keys:read`、`keys:disable`、`keys:regenerate`；`keys:update` 仅限人工会话 |
+| 用户 | `users:create`、`users:read`、`users:update`、`users:delete` |
+| 评估 | `evaluations:read`、`evaluations:trigger` |
+| 仪表盘 | `dashboards:read`、`dashboards:write`、`dashboards:delete` |
+| 查询 | `queries:read`、`queries:write`、`queries:delete`、`queries:run` |
+| 助手 | `agent:use` |
+| 设置 | `settings:read`、`settings:write` |
+| 告警 | `alerts:read`、`alerts:write` |
+| 问题 | `issues:read`、`issues:create`、`issues:close` |
+| 审计 | `audits:read`、`audits:write` |
+| 策略 | `policies:read`、`policies:write`、`policies:pull` |
+| 用量 | `usage:read` |
+
+`orgs:admin` 仅供实例运营者使用，不能授予组织密钥或普通成员。已废弃的 `incidents:*` 和 `alerts:ack` 令牌出于兼容性仍可接受，并会规范化映射至当前的 `issues:*` 权限。
+
+内置权限集包括 `read-only`、`standard` 和 `admin`。`standard` 在只读权限的基础上增加了评估触发、查询执行、问题响应和助手使用功能。密钥创建时会自动移除仅限人工会话的授权，即使权限集中包含此类授权也不例外。
+
+<Warning>
+  实例级密钥可通过 `X-AgentEye-Org` 请求头选择组织。在多组织部署中请显式设置此请求头；若省略，可能会选中默认组织。
+</Warning>

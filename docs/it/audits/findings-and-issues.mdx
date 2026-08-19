@@ -1,0 +1,96 @@
+---
+title: "Risultati e problemi"
+description: "Trasforma le evidenze di audit in lavori di remediation posseduti e tracciabili."
+icon: "clipboard-check"
+---
+
+Un risultato è la dichiarazione supportata da prove dell'audit su un fallimento. Un problema è il flusso di lavoro duraturo per rispondere ad esso.
+
+## Valuta e assegna il lavoro
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Apri **Analyze → Audits**, scegli un'esecuzione completata e seleziona un risultato per ispezionare la sua analisi, raccomandazione, sessioni e query di prove.
+    2. Riconosci, assegna, scarta, silenzia, risolvi o riapri il risultato dopo aver verificato le sue prove.
+    3. Vai a **Analyze → Issues** e filtra la casella di posta durevole per stato, gravità o assegnatario.
+    4. Apri il problema per assegnarlo, aggiungere commenti o sottoscrittori, e risolvilo dopo aver verificato la correzione.
+
+    Inizia con il riepilogo del risultato. Verifica che la descrizione del fallimento, la risposta consigliata, la gravità e la classificazione concordino con le sessioni che ti aspettavi che l'audit esaminasse.
+
+    ![Un risultato di audit con gravità, numero di occorrenze, analisi della causa principale, azione consigliata, fattori di classificazione ed evidenze.](/images/dashboard/audit-finding.png)
+
+    Successivamente, apri una sessione interessata piuttosto che decidere dal riepilogo solo. La traccia collegata dovrebbe mostrare l'evento esatto e il payload che supportano il risultato.
+
+    ![Una sessione collegata da un risultato di audit, aperta all'errore pertinente con i suoi metadati di evento e payload grezzo.](/images/dashboard/audit-linked-session.png)
+
+    Dopo aver verificato le prove, usa Issues per assegnare un proprietario alla risposta e tracciarlo indipendentemente dalle esecuzioni di audit future.
+
+    ![La casella di posta Issues che mostra il lavoro in corso, riconosciuto e risolto con gravità e proprietà.](/images/dashboard/incidents.png)
+
+    Apri il problema per registrare note di indagine, notificare i sottoscrittori e preservare la cronologia della risposta. Risolvilo solo dopo che la remediation è stata distribuita e verificata.
+
+    ![Una vista dettagliata del problema con la sua origine, evidenze di violazione, assegnatari, sottoscrittori, cronologia e commenti.](/images/dashboard/incident-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits findings --audit checkout-reliability --status open
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+
+    fp issues list
+    fp issues show <issue-id>
+    fp issues assign <issue-id> --assignee engineer@example.com
+    fp issues comment-add <issue-id> --body "policy is in observe mode"
+    fp issues resolve <issue-id> --yes
+    ```
+
+    Usa `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` e `fp issues subscribers <issue-id>` per gestire gli osservatori.
+
+    Vedi il [riferimento Cloud CLI audit e issue](/it/reference/cloud-cli#audits) per i risultati dell'audit e [`fp issues`](/it/reference/cloud-cli#issues) per la gestione dei problemi.
+  </Tab>
+</Tabs>
+
+## Esamina un risultato
+
+Verifica che contenga:
+
+- Una modalità di fallimento stabile, non solo un titolo occasionale
+- Gravità e impatto operativo
+- ID sessione interessati o query di supporto
+- Contesto sufficiente per riprodurre il comportamento
+- Una risposta proposta che corrisponda alle prove
+
+## Usa un problema per gestire la risposta
+
+Crea o collega un problema quando il risultato necessita di assegnazione, discussione, cambiamenti di stato, commenti o sottoscrittori. I problemi possono anche rappresentare incidenti di avviso e problemi segnalati manualmente, motivo per cui si trovano sotto la risposta all'audit piuttosto che nella navigazione primaria.
+
+Risolvi il problema quando la remediation è stata distribuita e verificata. Risolvi il risultato quando la modalità di fallimento è stata affrontata per la popolazione di audit. Questi momenti possono differire.
+
+## Trasforma un problema in una bozza di policy
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Apri il problema e verifica il suo risultato, le sessioni citate, la causa principale e la raccomandazione.
+    2. Seleziona **generate policy** e esamina il risultato di idoneità e l'intento di enforcement proposto. Un risultato **no policy** significa che il comportamento potrebbe richiedere un avviso, un cambiamento di flusso di lavoro o una risposta umana.
+    3. Seleziona **write this policy**, quindi esamina e testa il codice generato in **Admin → policy editor** prima di selezionare **publish version**. Usa **open the editor anyway** quando non sei d'accordo con il controllo di idoneità.
+    4. Vai a **Admin → enforcement**, distribuisci la versione in modalità **observe** e verifica le sue decisioni in **Observe → policy** prima di farla rispettare.
+
+    Il titolo del problema, la descrizione del risultato, la causa principale, la raccomandazione e l'intento di idoneità aiutano a comporre la bozza. Nulla viene pubblicato o distribuito automaticamente.
+  </Tab>
+  <Tab title="CLI">
+    Usa la CLI per ispezionare le prove prima di aprire il problema nel dashboard:
+
+    ```bash
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp events --session-id <session-id> --full --all
+    ```
+
+    L'idoneità della policy, la pubblicazione su Cloud e la distribuzione della flotta sono flussi di lavoro del dashboard. Usa `failproofai policies --install --custom <file>` quando desideri convalidare localmente prima il codice policy equivalente.
+  </Tab>
+</Tabs>
+
+<Card title="Scrivi una policy" icon="shield-plus" href="/it/policies/editor">
+  Converti un modello di azione confermato e ripetibile in una versione di policy.
+</Card>

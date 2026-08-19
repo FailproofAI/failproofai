@@ -1,0 +1,80 @@
+---
+---
+title: "התחלה מהירה"
+description: "תפוס הפעלת agent, מצא כשל, והתחל למנוע אותו."
+icon: "zap"
+---
+
+התחלה זו משגרת מכונה אחת דיווח של הפעלות, מפעילה ביקורת, ויישמת מדיניות. השתמש בכישרון להגדרת Failproof AI, או עקוב אחר השלבים היד–ידיים. אתה צריך Node.js 20.9 או חדש יותר.
+
+<Tabs>
+  <Tab title="השתמש בכישרון">
+    <Steps>
+      <Step title="התקן את כישרונות Failproof AI">
+        ```bash
+        npx skills add FailproofAI/skills
+        ```
+      </Step>
+      <Step title="בקש מה-agent שלך להגדיר הכל">
+        ```text
+        Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
+        ```
+
+        ה-agent שלך בודק את הפרויקט, בוחר את ההטמעה הרלוונטית, מבצע הגדרה, ומאמת אותה. ראה את [מאגר כישרונות FailproofAI](https://github.com/FailproofAI/skills) לכישרונות בודדים ואפשרויות התקנה מתקדמות.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="הגדרה ידנית">
+    ## לפני שתתחיל
+
+1. פתח את [לוח הבקרה של Failproof AI](https://app.befailproof.ai) ויצור חשבון או התחבר עם כתובת הדוא״ל שלך בעבודה.
+2. עבור אל **ניהול → מפתחות** ויצור מפתח עם `events:add` ו-`policies:pull`.
+3. העתק את הסוד חד–פעמי ושמור אותו במכונת היעד:
+
+```bash
+export FAILPROOFAI_KEY="<one-time-secret>"
+```
+
+    ## התקנה
+
+<Steps>
+  <Step title="התקן וחבר את Failproof AI">
+    ```bash
+    npm install -g failproofai
+    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    ```
+
+    תמלילי הפעלות נשלחים כברירת מחדל. הוסף `--no-transcripts` כדי לדווח על פעילות hook והחלטות מדיניות ללא תוכן תמלילים.
+
+    אם למכונה זו יש כבר היסטוריה של agent, הצג תצוגה מקדימה וייבא את שבעת הימים האחרונים, ואז המתן לסיום ההעברה. דלג על שלב זה במכונה חדשה.
+
+    ```bash
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    failproofai flush --wait
+    ```
+
+    פתח את **הפעלות** ב-Failproof AI ובחר הפעלה שייובאה.
+  </Step>
+  <Step title="התקן hooks וקישוריות מדיניות של agent">
+    זה מחבר את Failproof AI אל ממשק ה-CLI של ה-agent שלך ומתקין את המדיניויות המובנות. השתמש בהם כדי לראות החלטות מדיניות מקומיות ו לנסות כפיה לפני שFailproof AI מבקר את ההפעלות שלך וכותב מדיניויות לעבור בעדכון agents שלך.
+
+    תן למתקין לגלות את ממשק ה-CLI של ה-agent שלך, או שם אחד במפורש.
+
+    ```bash
+    failproofai policies --install --cli claude --scope user
+    ```
+  </Step>
+  <Step title="בצע ביקורת על ההתנהגות">
+    עקוב אחר [הפעל את ביקורת הכשל הראשונה שלך](/he/start/first-audit). השתמש במטרה קונקרטית כגון "מצא הפעלות שבהן ה-agent ניסה שוב כלי שנכשל מבלי לשנות את הגישה שלו."
+  </Step>
+  <Step title="מנע את הכשל">
+    עקוב אחר [מנע את הכשל הראשון שלך עם מדיניות](/he/start/first-policy). התחל במצב התצפיה, בדוק התאמות, ואז אנוס את הגרסה שנבדקה.
+  </Step>
+</Steps>
+
+<Check>
+  הרץ `failproofai config --status`. הגדרה בריאה מדווחת על חיבור הענן, מצב ה-daemon, והאם כפיה הושהתה.
+</Check>
+  </Tab>
+</Tabs>

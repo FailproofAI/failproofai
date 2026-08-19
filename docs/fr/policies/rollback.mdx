@@ -1,0 +1,41 @@
+---
+title: "Rollback"
+description: "Restaurer un déploiement de politique connu lorsqu'une mise en production perturbe le travail légitime d'un agent."
+icon: "rotate-ccw"
+---
+
+Le rollback modifie la version déployée ou supprime une assignation de politique ; il n'efface pas l'historique des décisions qui explique l'incident.
+
+## Effectuer un rollback sur une machine
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Admin → enforcement**, développez la machine concernée et identifiez son dernier ensemble de politiques connu comme valide.
+    2. Sélectionnez **edit**, restaurez ces versions et effets, puis appliquez le nouveau déploiement.
+    3. Attendez que la machine s'enregistre, puis vérifiez le déploiement signalé.
+    4. Ouvrez **Observe → policy** et les sessions concernées pour confirmer que le travail légitime n'est plus bloqué.
+
+  </Tab>
+  <Tab title="CLI">
+    Le rollback d'un déploiement Cloud s'effectue via le tableau de bord. Utilisez le statut local pour confirmer que le déploiement corrigé a bien atteint la machine :
+
+    ```bash
+    failproofai config --status
+    ```
+
+    `failproofai config --pause` met en pause les politiques intégrées, personnalisées et de convention pour une session locale. Il ne met pas en pause les politiques gérées par le Cloud, ce n'est donc pas une solution de contournement pour un déploiement Cloud défaillant.
+  </Tab>
+</Tabs>
+
+## Quand effectuer un rollback
+
+- Une politique bloque une action de production attendue.
+- Le volume de correspondances est nettement supérieur à ce que la phase d'observation prévoyait.
+- Une politique dépend de champs qu'une intégration ne fournit pas.
+- Une nouvelle version modifie le comportement en dehors du mode d'échec prévu.
+
+Après le rollback, ouvrez les sessions concernées et identifiez la condition à l'origine du faux positif. Créez une nouvelle version, testez les cas non sécurisés et légitimes, puis recommencez la phase d'observation.
+
+<Warning>
+  Mettre en pause l'application des politiques peut être approprié lors d'un incident, mais cela élargit l'exposition pour toutes les politiques actives dans ce périmètre. Préférez effectuer un rollback de la version de politique spécifique lorsque c'est possible.
+</Warning>

@@ -1,0 +1,57 @@
+---
+title: "Políticas integradas"
+description: "Ative proteções mantidas para os modos de falha mais comuns de agentes."
+icon: "library"
+---
+
+As políticas integradas cobrem tratamento de segredos, arquivos de ambiente, comandos shell destrutivos, branches protegidas, ferramentas de cloud e infraestrutura, publicação de pacotes, chamadas repetidas e verificações de fluxo ao final de tarefas.
+
+## Ativar e verificar uma política integrada
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Instale a política em uma máquina conectada com a CLI local.
+    2. Execute uma ação de teste segura no agente instrumentado.
+    3. Acesse **Observe → policy** e filtre pelo nome da política, ambiente da máquina ou decisão.
+    4. Abra a sessão vinculada para confirmar a entrada da ferramenta correspondente e o motivo retornado.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Remova com `failproofai policy remove block-rm-rf --cli claude --scope project`.
+  </Tab>
+</Tabs>
+
+Liste as políticas disponíveis na versão instalada:
+
+```bash
+failproofai policies
+```
+
+Ative uma política para um projeto:
+
+```bash
+failproofai policy add block-rm-rf --scope project
+```
+
+Ative várias políticas para agentes selecionados:
+
+```bash
+failproofai policies --install block-sudo block-force-push \
+  --cli claude codex --scope project
+```
+
+Algumas políticas aceitam parâmetros ou estão marcadas como beta. Revise a descrição, o escopo de correspondência e o comportamento padrão antes de aplicar em produção. Uma política que protege um fluxo de trabalho pode bloquear operações válidas em outro.
+
+<Card title="Explore o catálogo completo de políticas integradas" icon="list-checks" href="/pt-br/policies/builtin-catalog">
+  Consulte todas as 40 políticas atuais, seus gatilhos, linha de base recomendada e parâmetros.
+</Card>
+
+<Tip>
+  Prefira o escopo de projeto para expectativas específicas do repositório e o escopo de usuário para requisitos de segurança em toda a máquina.
+</Tip>

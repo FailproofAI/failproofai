@@ -1,0 +1,85 @@
+---
+---
+title: "Olaylar ve yapılandırma"
+description: "Olay modelini, ortamları, yerel depolamayı ve yapılandırma sınırlarını referans alın."
+icon: "list-tree"
+---
+
+## Olay aileleri
+
+- Aracı başlama, bitirme, duraklatma ve devam ettirme
+- Model isteği ve yanıtı
+- Araç kullanımı ve sonucu
+- Hook tetikleme ve tamamlama
+- İnsan bekleme, giriş, duraklatma ve kesintiye uğratma
+- Açık hatalar
+
+Her olay bir zaman damgası, oturum kimliği, aracı kimliği, olay türü ve ortam taşır. Olaya özgü alanlar model, araç, korelasyon, sonuç, içerik, süre veya hata verilerini içerir.
+
+## Bir olay sözleşmesini inceleyin
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Events** seçeneğini açın.
+    2. Kısa bir zaman penceresi ayarlayın ve ortam, aracı ve olay türüne göre filtreleyin.
+    3. Normalleştirilmiş alanları ve ham yükünü incelemek için bir olayı seçin, ardından yürütme bağlamını görmek için oturumunu açın.
+    4. Eşleştirilmiş bir süre eksikse, başlama ve tamamlama olaylarının aynı korelasyon kimliğini kullandığını doğrulayın.
+
+    Veri alanını bir aracı çalıştırmasına daraltmak ve normalleştirilmiş olay alanlarını incelemek için Events akışını kullanın.
+
+    ![Ortam, aracı, oturum ve olay türü filtrelerine sahip canlı Events akışı.](/images/dashboard/events-stream.png)
+
+    Ardından olayı oturumuna takip edin. İz, hemen önce ve sonrasında olanları gösterir; bu, yükün tek başına belirsiz olduğu durumlarda gereklidir.
+
+    ![Olayı yürütme bağlamında incelemek için kullanılan bağlantılı oturum izi.](/images/dashboard/session-detail.png)
+
+    Eşleştirilmiş bir olay veya süre eksik olduğunda her iki görünümde de korelasyon kimliklerini ve zaman damgalarını karşılaştırın.
+  </Tab>
+  <Tab title="CLI">
+    Geçerli filtre değerlerini bulun, ardından bir oturum için tam olay yüklerini getirin:
+
+    ```bash
+    fp list event_types
+    fp list envs
+    fp events --since 1h \
+      --env production \
+      --event-type tool_use,tool_result \
+      --session-id <session-id> \
+      --full
+    ```
+
+    Makine tarafından okunabilir inceleme için `fp --json events ... --fields ts,event_type,session_id,payload` kullanın.
+  </Tab>
+</Tabs>
+
+## Ayrılmış SDK alanları
+
+Özel Python SDK alanları olarak `timestamp`, `session_id`, `agent_id`, `type` veya `environment` kullanmayın. Araç sonucu süresi gibi eşleştirilmiş olay süreleri SDK tarafından hesaplanır ve el ile sağlanamaz.
+
+## Yerel sınırlar
+
+- Failproof AI durumu, açıkça başka şekilde yapılandırılmadıkça `~/.failproofai` altında bulunur.
+- `failproofai-sdk`, eski taban dizini geçersiz kılması için `AGENTEYE_HOME` kullanır.
+- Ortam etiketleri SDK yapılandırması veya `AGENTEYE_ENVIRONMENT` aracılığıyla ayarlanabilir.
+- Daemon kimlik bilgileri gizli olmayan ayarlardan ayrı olarak saklanır.
+
+Kararlı, düşük kardinaliteli ortam adları kullanın. Daemon ortam etiketlerinde virgüller desteklenmez.
+
+## Bir ortam etiketini değiştirin
+
+<Tabs>
+  <Tab title="Dashboard">
+    Ortam etiketleri, yayımlayan SDK veya Failproof daemon tarafından atanır. Bir etiketi değiştirdikten sonra **Observe → Sessions** seçeneğini açın ve yeni oturumların yeni değeri taşıdığını doğrulamak için ortam filtresini kullanın. Mevcut oturumlar orijinal ortamlarını korur.
+
+  </Tab>
+  <Tab title="CLI">
+    `failproofai-sdk` için ortamı kod içinde veya eski ortam değişkeni ile yapılandırın. Makine düzeyinde ayarları değiştirirken daemon yapılandırmasını yeniden çalıştırın.
+
+    ```bash
+    export AGENTEYE_ENVIRONMENT=production-us-east
+    failproofai config
+    failproofai config --status
+    fp sessions --since 1h --env production-us-east
+    ```
+  </Tab>
+</Tabs>

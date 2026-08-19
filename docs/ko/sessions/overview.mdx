@@ -1,0 +1,55 @@
+---
+title: "세션"
+description: "에이전트 실행의 전체 기록에서 시작하세요."
+icon: "workflow"
+---
+
+세션은 에이전트가 예기치 않게 동작할 때 가장 좋은 시작점입니다. 하나의 실행에 속하는 모델 요청, 응답, 툴 호출, 사람 개입, 오류, 평가, 정책 결정을 한데 모아 보여줍니다.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+에이전트 실행의 목표부터 모델 호출, 툴 사용, 최종 응답까지 전 과정을 추적하세요.
+
+## 세션 찾기
+
+<Tabs>
+  <Tab title="대시보드">
+    1. 클라우드 사이드바에서 **Observe → Sessions**로 이동합니다.
+    2. 시간 범위를 설정한 후 환경, 상태, 에이전트, 세션 ID로 필터링합니다.
+    3. 품질, 비용, 토큰, 지연 시간 기준으로 조회하려면 점수 또는 메트릭 범위를 추가합니다.
+    4. 행을 선택하면 트레이스가 열립니다. 세션 ID 옆의 복사 버튼을 사용해 공유할 수 있습니다.
+
+    ![환경, 에이전트, 상태, 평가 점수 필터와 함께 실행당 한 행씩 표시되는 세션 목록.](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp sessions --env production --since 24h
+    fp sessions --status error,timeout --agent-id checkout-agent
+    fp --json sessions --session-id <session-id>
+    ```
+
+    `--agents`를 추가하면 멀티 에이전트 실행을 펼쳐볼 수 있고, `--all`로 페이지네이션하거나 `--fields`로 출력 컬럼을 선택할 수 있습니다.
+  </Tab>
+</Tabs>
+
+## 할 수 있는 것들
+
+- 에이전트, 환경, 시간, 모델, 이벤트 유형, 오류 상태로 실행 찾기.
+- 특정 결과를 만들어낸 정확한 실행 순서 추적.
+- 성공한 실행과 실패한 실행 비교.
+- 감사 결과나 알림 인시던트에서 사용된 근거 열기.
+- 오프라인 기록이 필요할 때 세션 내보내기.
+
+## 안정적인 조사 순서
+
+1. 세션 목표와 환경을 확인합니다.
+2. 최종 실패만이 아니라, 첫 번째 오류 또는 예상치 못한 결정을 찾습니다.
+3. 그 직전의 모델 컨텍스트와 툴 입력을 살펴봅니다.
+4. 재시도, 지연 시간, 사람 개입을 확인합니다.
+5. 평가 점수와 정책 결정을 검토합니다.
+
+<Card title="트레이스 읽기" icon="route" href="/ko/sessions/read-a-trace">
+  세션 요약에서 결과를 유발한 이벤트까지 이동하는 방법을 알아보세요.
+</Card>

@@ -1,0 +1,43 @@
+---
+title: "Lỗi"
+description: "Nhóm các lỗi lặp lại và mở các phiên làm việc phía sau chúng."
+icon: "circle-alert"
+---
+
+Errors cung cấp cho bạn một góc nhìn theo thứ tự lỗi trên tất cả các phiên. Nhóm theo loại lỗi, agent, môi trường, mô hình, công cụ, hoặc khoảng thời gian để tìm ra các vấn đề vận hành lặp lại.
+
+## Điều tra lỗi
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Observe → Errors**.
+    2. Lọc theo môi trường, loại sự kiện, loại lỗi, agent, ID phiên hoặc văn bản tìm kiếm.
+    3. Mở rộng một lỗi được nhóm để xem các lần xuất hiện. Chọn một hàng để mở sự kiện chính xác trong phiên của nó.
+    4. Chọn biểu tượng chuông trên một lỗi đại diện để bắt đầu cảnh báo cho các lỗi tương tự.
+
+    ![Trang Errors hiển thị biểu đồ lỗi, các lỗi được nhóm, và biểu tượng điều khiển để tạo cảnh báo.](/images/dashboard/errors.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp errors --env production --since 24h
+    fp errors --error-type TimeoutError --agent-id checkout-agent
+    fp errors --aggregate --env production --since 7d
+    ```
+
+    Sử dụng `fp events --full --session-id <id>` khi bạn cần tải trọng thô phía sau tóm tắt lỗi.
+  </Tab>
+</Tabs>
+
+## Sử dụng Errors khi bạn cần
+
+- Tìm lớp lỗi phổ biến nhất trong production.
+- Xác định xem một công cụ hay mô hình nào gây ra sự tăng đột biến.
+- Nhảy từ một số tổng hợp đến các phiên đại diện.
+- Tạo cảnh báo cho sự tái phát.
+- Bao gồm dân số bị ảnh hưởng trong một cuộc kiểm tra.
+
+Một lỗi là một sự kiện được quan sát. Một đánh giá thất bại là một phán xét chất lượng, và một phát hiện kiểm tra là một mẫu lỗi được điều tra. Giữ những sự phân biệt đó khi quyết định quy trình phản ứng nào sẽ sử dụng.
+
+<Card title="Tạo cảnh báo" icon="bell-ring" href="/vi/audits/alerts">
+  Thông báo cho những người phản ứng khi một lỗi hoặc điều kiện chất lượng vượt quá ngưỡng.
+</Card>

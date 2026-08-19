@@ -1,0 +1,52 @@
+---
+title: "הרץ את בדיקת ההכשל הראשונה שלך"
+description: "צור ביקורת מלוח הבקרה של Cloud או מה-fp CLI וסקור את הממצאים הראשונים שלך."
+icon: "scan-search"
+---
+
+ביקורת הופכת קבוצה של סשנים לממצאי כישלון דורגים ומגובים בראיות. התחל עם שאלת כישלון אחת וצרה.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="פתח Audits">
+        בסרגל הצד של Cloud, עבור ל-**Analyze → Audits**. בחר **new audit**.
+      </Step>
+      <Step title="הגדר את הביקורת">
+        הזן שם ומטרת כישלון ישירה, כגון "מצא סשנים בייצור שחוזרים על אותו קריאת תשלום שנכשלה ללא שינוי הקלט או הסלמה." בחר את הסוכן, הסביבה, חלון הזמן וההתוויה. הוסף תיאור קצר וכתובות URL של הפניה כאשר המבקר זקוק לכללי הזרימה שלך.
+      </Step>
+      <Step title="צור והמתן להפעלה">
+        בחר **create audit**. ההפעלה הראשונה מתורנת מיד. פתח את כרטיס הביקורת כדי לצפות בהעברה שלו מתורנות להפעלה להשלמה.
+      </Step>
+    </Steps>
+
+    לאחר השלמת ההפעלה, פתח ממצא וסקור את ראיות הסשן שלו. לאחר מכן תוכל להכיר בו, להקצות, להחמיץ, להשתיק או לפתור אותו.
+
+    ![ממצא ביקורת שהושלם המציג את תיאור הכישלון שלו, הפעולה המומלצת, הראיות התומכות והסשנים המושפעים.](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create payment-retry-failures \
+      --description "Find production sessions that retry a failed payment call without changing input or escalating" \
+      --scope '{"environments":["production"]}' \
+      --text "Escalate after two unchanged payment failures"
+
+    fp audits list
+    fp audits runs payment-retry-failures
+    fp audits findings --audit payment-retry-failures
+    fp audits finding <finding-id>
+    ```
+
+    הוסף הקשר הפניה, ואז רענן אותו כאשר המקור משתנה:
+
+    ```bash
+    fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
+    fp audits context-refresh payment-retry-failures
+    fp audits run payment-retry-failures
+    ```
+
+    השתמש ב-`fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, או `fp audits reopen <finding-id>` כדי להעביר ממצא דרך מיון.
+  </Tab>
+</Tabs>
+
+לאחר מכן, [מנע את הכישלון הראשון שלך עם מדיניות](/he/start/first-policy) לפעולה חוזרת מאומתת.

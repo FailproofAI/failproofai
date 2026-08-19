@@ -1,0 +1,43 @@
+---
+title: "Comportamento em falha"
+description: "Entenda o que acontece quando a avaliação de políticas ou o daemon local está indisponível."
+icon: "shield-alert"
+---
+
+O Failproof AI foi projetado para que uma falha de aplicação seja visível, em vez de permitir silenciosamente trabalhos arriscados.
+
+## Diagnosticar um bloqueio por falha fechada
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vá para **Admin → enforcement** e abra a máquina.
+    2. Verifique o último check-in, o deployment atribuído e o deployment reportado.
+    3. Vá para **Observe → policy** e abra a sessão da decisão negada.
+    4. Confirme se o motivo indica inacessibilidade do daemon, divergência de versão ou a própria política.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    npm install -g failproofai@latest
+    failproofai config
+    ```
+
+    Executar `failproofai config` novamente atualiza e reinicia o daemon após uma atualização do pacote.
+  </Tab>
+</Tabs>
+
+Em uma máquina configurada para usar o `failproofaid`, o daemon é o único avaliador. Se ele estiver inacessível ou se a versão do protocolo não corresponder à da CLI, a avaliação do hook falha de forma fechada. A ação é negada com um motivo que orienta o operador a verificar ou atualizar o daemon.
+
+Antes da configuração do daemon, os hooks avaliam as políticas em processo. Uma vez que a configuração do daemon é registrada, o Failproof AI não reverte silenciosamente para um segundo avaliador caso o daemon falhe.
+
+## Responder a uma decisão de falha fechada
+
+1. Execute `failproofai config --status`.
+2. Se as versões forem diferentes, execute `failproofai config` novamente após atualizar o pacote.
+3. Se o daemon estiver inacessível, inspecione o estado do serviço e os logs locais.
+4. Retome o trabalho do agente somente após confirmar que o caminho de avaliação de políticas está saudável.
+
+<Warning>
+  Não repita a ação bloqueada várias vezes. Uma resposta de falha fechada significa que o sistema não conseguiu determinar que a ação era segura.
+</Warning>

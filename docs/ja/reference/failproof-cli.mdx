@@ -1,0 +1,151 @@
+---
+title: "Failproof AI CLI"
+description: "フックのインストール、ローカルポリシーの管理、Cloudへの接続、ローカルデーモンの操作。"
+icon: "terminal"
+---
+
+`npm install -g failproofai` でローカル CLI をインストールします。引数なしで実行するとローカルポリシーダッシュボードが開きます。
+
+このパッケージには Node.js 20.9 以降が必要です。Bun 1.3 以降は開発用およびソースインストール向けにサポートされています。`failproofai configure` と `failproofai setup` は `failproofai config` のエイリアスです。`failproofai p` は `failproofai policies` のエイリアスです。
+
+## マシンのセットアップ
+
+```bash
+npm install -g failproofai
+failproofai config \
+  --connect https://app.befailproof.ai \
+  --token <machine-key> \
+  --machine-label checkout-prod-01
+failproofai policies --install
+failproofai config --status
+```
+
+引数なしで `failproofai` を実行すると、ローカルポリシーダッシュボードが開きます。
+
+| コマンド | 動作 |
+| --- | --- |
+| `failproofai config` | マシンのインタラクティブセットアップを実行 |
+| `failproofai config --connect <url> --token <key>` | Cloud のインジェストとポリシー配信に接続 |
+| `failproofai config --status` | 接続状態・デーモン・配信・一時停止の状態を表示 |
+| `failproofai policies` | ビルトインおよびカスタムポリシーを一覧表示 |
+| `failproofai policies --install` | フックをインストールしてポリシーを有効化 |
+| `failproofai policy add <name>` | ビルトインポリシーを1件有効化 |
+| `failproofai policy remove <name>` | ビルトインポリシーを1件無効化 |
+| `failproofai policies --uninstall` | ポリシーを無効化、またはハーネスフックを削除 |
+| `failproofai audit` | ローカルエージェント履歴をスキャンしてローカル監査ビューを開く |
+| `failproofai audit --schedule [days] --email <address>` | 定期的なローカルスキャンをスケジュールし、結果をメール送信 |
+| `failproofai audit --status` | レポートアドレス・間隔・次回スキャン予定を表示 |
+| `failproofai audit --no-schedule` | 監査履歴を削除せずに定期スキャンを停止 |
+| `failproofai harness list` | 追加のキャプチャパスを一覧表示 |
+| `failproofai flush --wait` | 現在のイベントスプールを配信 |
+| `failproofai backfill --since 30d` | 過去に処理した履歴を再読み込み |
+| `failproofai config --pause [duration]` | 現在のローカルセッションを一時停止（デフォルト30分、最大8時間） |
+| `failproofai config --resume` | 一時停止中のローカルセッションを再開。`--all` を追加すると全一時停止を解除 |
+| `failproofai update` | パッケージのマイグレーションを完了してデーモンを更新 |
+| `failproofai migrate --dry-run` | ホームレイアウトの保留中マイグレーションをプレビューまたは実行 |
+| `failproofai uninstall` | パッケージ削除前にフックとデーモンを削除 |
+| `failproofai --version` | インストール済みパッケージのバージョンを表示 |
+| `failproofai --help` | コマンドと全体的な使い方を表示 |
+
+## 設定フラグ
+
+| フラグ | 用途 |
+| --- | --- |
+| `--connect <url> --token <key>` | 非インタラクティブで接続 |
+| `--machine-id <id>` | 固定のマシン ID を設定 |
+| `--machine-label <name>` | ダッシュボードのラベルを設定または変更 |
+| `--no-transcripts` | トランスクリプトの内容を除いて決定のみ送信 |
+| `--disconnect` | Cloud ポリシーのプルとイベント配信を停止 |
+| `--status` | 現在のマシン状態を表示 |
+| `--pause [duration]` | 現在のディレクトリで最新のセッションを一時停止。秒・分・時を受け付け、デフォルトは30分 |
+| `--resume` | 対応する一時停止を早期終了 |
+| `--session <id>` | 一時停止または再開の対象セッションを明示的に指定 |
+| `--all` | `--resume` と組み合わせて全アクティブな一時停止を終了 |
+
+ローカルの一時停止は、1セッションにおけるビルトイン・カスタム・規約ポリシーを一時的に停止します。必ず期限切れになり、Cloud が管理するポリシーは無効化されません。`block-self-pause` により、計測済みエージェントがこの回避手段を自ら使用することを防ぎます。
+
+## ポリシーフラグ
+
+| フラグ | 用途 |
+| --- | --- |
+| `--install`, `-i` | ポリシーを有効化してハーネスフックをインストール |
+| `--uninstall`, `-u` | ポリシーを無効化またはフックを削除 |
+| `--cli <names...>` | 対象となるハーネスを1件以上指定 |
+| `--scope user\|project\|local\|all` | 設定スコープを選択。`all` はアンインストール用 |
+| `--beta` | ベータポリシーを含める |
+| `--custom`, `-c <path>` | カスタムポリシーファイルを検証して読み込む（繰り返し指定可） |
+
+## 配信とメンテナンスフラグ
+
+| コマンド | フラグ |
+| --- | --- |
+| `backfill` | `--since <30d\|6m\|YYYY-MM-DD>`, `--dry-run` |
+| `flush` | `--wait`, `--timeout <seconds>` |
+| `update` | `--no-daemon` |
+| `migrate` | `--dry-run` |
+| `uninstall` | `--purge`, `--dry-run`, `--yes` |
+
+`failproofai update` は `npm install -g failproofai@latest` の実行後に行ってください。ホームレイアウトのマイグレーション、対応するデーモンバイナリのインストール、サービスの再起動を実行します。`--no-daemon` はレイアウトのマイグレーションのみ実行します。
+
+## ハーネスパス
+
+```text
+failproofai harness list [harness]
+failproofai harness add-path <harness> [label=]<path>
+failproofai harness remove-path <harness> <path-or-label>
+```
+
+サポートされているハーネス名は `claude`、`codex`、`copilot`、`cursor`、`opencode`、`pi`、`hermes`、`openclaw`、`factory`、`devin`、`antigravity`、`goose` です。
+
+ラベルは、2つのルートに同じプロジェクトのコピーが含まれている場合に、派生エージェント ID の名前空間を分離します。重複するルートやラベルの重複は、二重収集やカーソルの破損を防ぐために拒否されます。追加パスの設定はデーモンを再起動せずにリロードされます。
+
+コンテナ環境では、ファイルで設定した追加パスを `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` という名前のカンマ区切り変数で置き換えることができます。例：
+
+```bash
+export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
+```
+
+## 環境変数
+
+永続的なマシン設定には設定ファイルを使用してください。環境変数はコンテナ・テスト・単一プロセス向けに最も役立ちます。
+
+| 変数 | 用途 |
+| --- | --- |
+| `FAILPROOFAI_HOME` | `~/.failproofai` のレイアウト全体を別の場所に移動 |
+| `FAILPROOFAI_LOG_LEVEL` | ローカルログの詳細度を設定 |
+| `FAILPROOFAI_HOOK_LOG_FILE` | フックの診断情報を指定ファイルに書き込む |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | このプロセスの匿名テレメトリを無効化 |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | インタラクティブな初回セットアップをスキップ |
+| `FAILPROOFAI_NO_AUTO_AUDIT=1` | セットアップ後のローカル監査をスキップ |
+| `FAILPROOFAI_LLM_BASE_URL` | LLM ポリシーが使用する OpenAI 互換エンドポイントを上書き |
+| `FAILPROOFAI_LLM_API_KEY` | LLM ポリシーが使用する API キーを指定 |
+| `FAILPROOFAI_LLM_MODEL` | LLM ポリシーが使用するモデルを選択 |
+| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | カスタムポリシーモジュールの読み込み時間の上限を設定 |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | 特定のハーネスの設定済み追加キャプチャパスを置き換え |
+| `NO_COLOR` | ターミナルのカラー出力を無効化 |
+
+`CLAUDE_PROJECTS_PATH`、`CURSOR_HOME`、`HERMES_HOME`、`OPENCLAW_HOME` などのエージェント固有のホーム変数は、Failproof AI がそのハーネスのローカルセッションを検出する場所を上書きします。
+
+## マシンの安全な一時停止または削除
+
+```bash
+failproofai config --pause
+failproofai config --status
+failproofai config --resume
+```
+
+ローカルセッションの一時停止は、Cloud が管理するポリシーを無効化しません。ロールアウト自体が問題の場合は、Cloud の適用ワークフローを通じて Cloud デプロイを復元してください。
+
+npm パッケージを削除する前に、インストール済みフックとデーモンを削除してください：
+
+```bash
+failproofai uninstall --dry-run
+failproofai uninstall --yes
+npm rm -g failproofai
+```
+
+バージョン固有の詳細については `failproofai <command> --help` を実行してください。
+
+<Warning>
+  `npm rm -g failproofai` の前に `failproofai uninstall` を実行してください。npm はインストール済みエージェントフックやデーモンサービスを削除しません。
+</Warning>

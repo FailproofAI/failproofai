@@ -1,0 +1,43 @@
+---
+title: "Live-Events"
+description: "Agent-Aktivität in Echtzeit beobachten, während eine Session läuft."
+icon: "radio"
+---
+
+Live-Events helfen dir, die Instrumentierung zu bestätigen und einen riskanten Lauf zu überwachen, ohne auf das Ende der Session warten zu müssen.
+
+## Aktivität beobachten
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Observe → Events**.
+    2. Beginne mit dem aktuellen Zeitfenster und ohne Filter, um zu bestätigen, dass Daten ankommen.
+    3. Filtere nach Umgebung, Event-Typ, Agent oder Session. Nutze die Suche für Payload-Text.
+    4. Wähle ein Event aus, um die Zusammenfassung und Details einzusehen. Folge dem Session-Link für den vollständigen Trace.
+
+    ![Der Live-Events-Stream mit Filtern für Zeit, Umgebung, Event-Typ, Agent, Modell, Kontext, Session und Text.](/images/dashboard/events-stream-current.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --env production --event-type tool_use,error --limit 100
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    Der Standard-Feed lässt rohe Payloads weg. Verwende `--full` nur bei einer gezielten Untersuchung einer abgegrenzten Session.
+  </Tab>
+</Tabs>
+
+Nutze den Event-Stream, um drei unmittelbare Fragen zu beantworten:
+
+- Meldet sich der erwartete Agent in der richtigen Umgebung?
+- Kommen Modellaufrufe, Tool-Aufrufe und Policy-Entscheidungen in der richtigen Reihenfolge an?
+- Hat die Session aufgehört, Fortschritte zu machen, oder wiederholt sie eine Aktion?
+
+Zu den Event-Typen gehören Agent-Lifecycle-Events, Modellanfragen und -antworten, Tool-Verwendung und -Ergebnisse, Hook-Ausführung, menschliche Wartezeiten und Unterbrechungen sowie explizite Fehler. Korrelations-IDs verbinden zusammengehörige Events wie einen Tool-Aufruf und sein Ergebnis.
+
+<Tip>
+  Halte die Live-Ansicht zunächst breit, während du eine neue Integration verifizierst. Füge Filter erst hinzu, nachdem du das erste Event gesehen hast – ein falscher Filter kann wie eine fehlgeschlagene Datenerfassung aussehen.
+</Tip>
+
+Falls keine Events erscheinen, führe `failproofai config --status` aus und [behebe Erfassungsprobleme](/de/reference/troubleshooting).

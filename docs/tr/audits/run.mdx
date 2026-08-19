@@ -1,0 +1,67 @@
+---
+title: "Denetim çalıştırın ve gözden geçirin"
+description: "Denetim çalıştırın, kapsamını doğrulayın ve ortaya çıkan bulguları inceleyin."
+icon: "play"
+---
+
+Denetimin amacı ve kapsam yeterince belirli hale geldikten sonra, başka bir operatörün geçerli bir bulguyu nasıl tanıyacağını bilecek şekilde denetim çalıştırın.
+
+## Çalıştırın ve inceleyin
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Analyze → Audits** bölümüne gidin, denetimi açın ve **run now** seçeneğini tıklayın. Kuyrukta beklemesi, gönderici tarafından kısa sürede başlatılacağı anlamına gelir.
+    2. Durumunu, penceresini, süresini, bulgu sayısını ve raporu gözden geçirmek için yeni çalıştırmayı açın.
+    3. Tam izlemeyi açmak için bir kanıt oturumu seçin.
+    4. Ayarları düzenlemek, zamanlamayı devre dışı bırakmak veya eski çalıştırmaları incelemek için denetim sayfasına dönün.
+
+    ![Açık bulgular, son ve sonraki çalıştırma durumu, tarama penceresi, bağlam, şimdi çalıştır kontrolü ve sıralanmış bulgular içeren bir denetim detay sayfası.](/images/dashboard/audit-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits run checkout-reliability
+    fp audits runs checkout-reliability --limit 10
+    fp --json audits runs checkout-reliability
+    fp audits findings --audit checkout-reliability
+    ```
+
+    Çalıştırma geçmişi, bulgular ve önceliklendirme komutları için [`fp audits` başvurusuna](/tr/reference/cloud-cli#audits) bakın.
+  </Tab>
+</Tabs>
+
+## Çalıştırmadan önce
+
+- Seçilen zaman penceresinde oturumların var olduğunu doğrulayın.
+- Ortam ve ajan filtrelerini doğrulayın.
+- Referans bağlamın güncel olduğunu kontrol edin.
+- Amacın istenen bir sonuç değil, bir hata modunu açıkladiğından emin olun.
+
+## Çalıştırmayı gözden geçirin
+
+Çalıştırma durumu, oturum kapsamı ve model analizinin çalışıp çalışmadığı ile başlayın. Sonra her bulgunun önem derecesini, açıklamasını, kanıt oturumlarını, destekleyici sorguları ve önerilen önleme yolunu inceleyin.
+
+Bulgu durumunu kullanarak bilgi almak, sessiz hale getirmek, reddetmek, çözmek, yeniden açmak veya iş atamak için seçin. Bulgu reddedilse bile kanıtı koruyun; neden böyle bir kararın verildiğini açıklar.
+
+## Boş veya gecikmiş çalıştırmayı yorumlayın
+
+| Çalıştırma durumu | Anlamı | Yapılması gerekenler |
+| --- | --- | --- |
+| Analiz çalıştı ve sıfır bulgu üretildi | Seçilen kanıtlar, yapılandırılan duyarlılık düzeyinde bir bulguyu desteklemedi. | Kapsamın temsili oturumlar içerdiğini doğrulayın, ardından amaç veya bağlam çok belirsiz olmadığı sürece sonucu sağlıklı olarak kabul edin. |
+| Model analizi atlandı veya başarısız oldu | Çalıştırma sıfır bulgu ile tamamlanır, ancak aracı araştırmayı gerçekleştirmez. Deterministik kimlik bilgisi ve PII taraması yine de çalıştırma istatistiklerinde eşleşme sayılarını raporlar ancak bulgu oluşturmaz. | Analiz hizmetini veya yapılandırmayı düzeltin ve tekrar çalıştırın. Boş sonucu popülasyonun sağlıklı olduğunun kanıtı olarak yorumlamayın. |
+| Model analizi devre dışı | Çalıştırma sıfır bulgu ile başarılı olur. Deterministik tarama model analizi yerine geçmez veya bulgu açmaz. | Model analizi etkinleştirin veya bulgu üretemeyen bir denetime güvenmek yerine denetimi devre dışı bırakın. |
+| Hemen kullanılabilir analiz kapasitesi yok | Denetim kuyrukta kalır ve popülasyonu atlamak yerine yeniden dener. | Kapasite bekleyin veya denetim sabitlerini yayın. Kendi barındırılan operatörler, denetim-ajan yinelemelerini ve eşleşen gönderici kapasitesini ölçeklendirmelidir. |
+| Kapasite, yeniden deneme penceresi boyunca kullanılamaz kalır | Çalıştırma sıfır bulgu ile bağlantıyı keser ve e-posta teslimi mümkün olduğunda başarısızlık bildirimi gönderir. | Denetim filosunun doymuş olup olmadığını veya sürekli olarak yeniden başlatılıp başlatılmadığını kontrol edin. |
+
+Analiz çalışmadığında, `since_last` denetimleri analiz edilmemiş pencereyi bir sonraki başarılı çalıştırma için açık tutar. Atlanmış bir analiz başarısızlığın kaybolduğunun kanıtı olmadığından, mevcut bulgular emekliye ayrılmaz.
+
+## Başarısızlık bildirimlerini anlayın
+
+Başarısız bir çalıştırma veya başarısız bir model analizi adımı denetimin e-posta alıcılarını kullanır. Denetimin e-posta kanalı yoksa, Failproof AI sessiz bir şekilde bozuk bir denetimin de bir yükseltme yoluna sahip olması için kuruluşun `alerts.email_default_recipients` ayarına döner.
+
+E-posta kuruluş için etkin olmalı ve SMTP yapılandırılmalıdır. Aksi takdirde hata günlüğe kaydedilir ancak e-posta teslim edilemez. Çalıştırma başarısızlıkları denetimin sabit zamanlama sabitini hareket ettirmez.
+
+Her çalıştırma ayrıca her ajan için kullanılan tam [ajan bağlamını](/tr/audits/agent-contracts) sözleşme anlık görüntüsü olarak depolar. Sonraki düzenlemeler, önceki bir çalıştırmayla kaydedilen kanıt standardını değiştirmez.
+
+<Warning>
+  Doğrulanmamış bir bulgudan doğrudan engelleme ilkesi dağıtmayın. Alıntı yapılan izlemeleri açın ve kuralın güvenli olmayan davranışı meşru çalışmadan ayırdığını doğrulayın.
+</Warning>

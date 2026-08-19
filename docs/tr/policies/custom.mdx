@@ -1,0 +1,73 @@
+---
+---
+title: "Özel politikalar"
+description: "Agent iş akışınıza özgü bir hata modu için bir politika yazın."
+icon: "shield-plus"
+---
+
+`.failproofai/policies/` dizini altında `policies.js`, `policies.mjs` veya `policies.ts` ile biten bir dosya oluşturun. Konvansiyon dosyaları proje ve kullanıcı kapsamında otomatik olarak yüklenir.
+
+## Politikayı Cloud yayınlamadan önce test edin
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Özel politikayı bir test makinede yükleyin ve hem eşleşen bir işlemi hem de meşru bir eşleşmeme eylemini tetikleyin.
+    2. **Observe → policy** bölümüne gidin ve iki kararı karşılaştırın.
+    3. Her bağlantılı oturumu açın ve olay yükünün kural için yeterli kanıt içerdiğini doğrulayın.
+    4. Davranış doğru olduğunda, incelenen kaynağı **Admin → policy editor** bölümüne taşıyın ve bir sürüm yayınlayın.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies --install --custom ./security.policies.ts \
+      --cli claude --scope project
+    failproofai policies
+    ```
+
+    `.failproofai/policies/` altındaki konvansiyon dosyaları `--custom` olmadan yüklenir. Doğrulama bozuk bir modülde başarısız olmalıysa CI'de açık bir install komutu tutun.
+  </Tab>
+</Tabs>
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+Bu, `production/config.yml`, `/srv/production/config.yml`, `/srv/production` ve `C:\\production\\config.yml` ile eşleşir ve hem `Write` hem de `Edit` için geçerlidir. `production-backup` gibi adları eşleştirmez çünkü `production` tam bir yol segmenti olmalıdır.
+
+Açık bir dosyayı doğrulayın ve yükleyin:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts
+```
+
+Politika bağlamı olay türünü, normalleştirilmiş yükü, araç adı ve girdisini, oturum meta verilerini, parametreleri ve varsa kaynak CLI'yi içerir.
+
+## Hata yollarını test edin
+
+Giriş dosyasını veya içe aktardığı herhangi bir yerel modülü değiştirdikten sonra doğrulamayı çalıştırın:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+Kesin CLI yolu eksik dosyalar, söz dizimi hataları, çözülmemiş importlar, üst düzey istisnalar ve modül yükleme zaman aşımları için başarısız olur. Zorlama sırasında, bozuk bir özel dosya günlüğe kaydedilir ve atlanır; böylece yerleşik politikalar devam edebilir. Herhangi bir yükleme uyarısını beklenen zorlama kaybı olarak değerlendirin ve üretim günlüklerinde uyarı gönderin.
+
+Açık, konvansiyon ve Cloud tarafından yönetilen politikalar arasında genel olarak benzersiz adlar kullanın. Politika işlevlerini deterministik tutun, harici çağrıları kısa zaman aşımlarıyla sınırlayın ve her yolda kasıtlı olarak `allow`, `instruct` veya `deny` döndürün.
+
+<Warning>
+  Özel bir politika, zorlama kodudur. Eksik alanları, alternatif araç adlarını ve yanlış biçimlendirilmiş girdisini test edin—sadece beklenen eşleşmeyi değil.
+</Warning>

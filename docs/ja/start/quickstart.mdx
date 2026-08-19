@@ -1,0 +1,79 @@
+---
+title: "クイックスタート"
+description: "エージェントセッションをキャプチャし、障害を発見して、それを防止する方法を学びます。"
+icon: "zap"
+---
+
+このクイックスタートでは、1台のマシンでセッションのレポートを開始し、監査を実行して、ポリシーをデプロイします。スキルを使って Failproof AI をセットアップするか、手動の手順に従ってください。Node.js 20.9 以降が必要です。
+
+<Tabs>
+  <Tab title="スキルを使う">
+    <Steps>
+      <Step title="Failproof AI スキルをインストールする">
+        ```bash
+        npx skills add FailproofAI/skills
+        ```
+      </Step>
+      <Step title="エージェントにすべてのセットアップを依頼する">
+        ```text
+        Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
+        ```
+
+        エージェントはプロジェクトを検査し、関連するインテグレーションを選択してセットアップを実行し、動作を確認します。個別のスキルや高度なインストールオプションについては、[FailproofAI スキルリポジトリ](https://github.com/FailproofAI/skills) を参照してください。
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="手動セットアップ">
+    ## 開始前の準備
+
+1. [Failproof AI ダッシュボード](https://app.befailproof.ai) を開き、アカウントを作成するか、仕事用メールアドレスでサインインします。
+2. **管理 → キー** に移動し、`events:add` と `policies:pull` の権限を持つキーを作成します。
+3. ワンタイムシークレットをコピーして、対象マシンに保存します。
+
+```bash
+export FAILPROOFAI_KEY="<one-time-secret>"
+```
+
+    ## インストール
+
+<Steps>
+  <Step title="Failproof AI をインストールして接続する">
+    ```bash
+    npm install -g failproofai
+    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    ```
+
+    セッションのトランスクリプトはデフォルトで送信されます。トランスクリプトの内容を含めずにフックのアクティビティとポリシーの決定のみをレポートする場合は、`--no-transcripts` を追加してください。
+
+    このマシンにすでにエージェントの履歴がある場合は、過去7日間のデータをプレビューしてインポートし、送信が完了するまで待ちます。新しいマシンの場合はこの手順をスキップしてください。
+
+    ```bash
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    failproofai flush --wait
+    ```
+
+    Failproof AI の **セッション** を開き、インポートされたセッションを選択します。
+  </Step>
+  <Step title="エージェントのフックとポリシーをインストールする">
+    これにより Failproof AI がエージェント CLI にアタッチされ、組み込みポリシーがインストールされます。Failproof AI がセッションを監査してエージェント向けのポリシーを作成する前に、ローカルでのポリシー決定の確認や強制適用の試験に活用してください。
+
+    インストーラーにエージェント CLI を自動検出させるか、明示的に指定してください。
+
+    ```bash
+    failproofai policies --install --cli claude --scope user
+    ```
+  </Step>
+  <Step title="動作を監査する">
+    [最初の障害チェックを実行する](/ja/start/first-audit) に従ってください。「エージェントがアプローチを変えずに失敗したツールを再試行したセッションを見つける」といった具体的な目標を設定しましょう。
+  </Step>
+  <Step title="障害を防止する">
+    [ポリシーで最初の障害を防止する](/ja/start/first-policy) に従ってください。まずオブザーブモードで開始し、マッチしたケースを確認してから、レビュー済みのバージョンを強制適用します。
+  </Step>
+</Steps>
+
+<Check>
+  `failproofai config --status` を実行してください。正常なセットアップでは、クラウド接続の状態、デーモンの状態、および強制適用が一時停止されているかどうかが表示されます。
+</Check>
+  </Tab>
+</Tabs>

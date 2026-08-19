@@ -1,0 +1,47 @@
+---
+title: "Policy-Editor"
+description: "Erstellen und überarbeiten Sie versionierte Richtlinien aus einem bestätigten Fehlermodus."
+icon: "file-pen-line"
+---
+
+Verwenden Sie den Policy-Editor, um einen Fund oder ein Problem in eine einsatzfähige Regel umzuwandeln. Halten Sie Authoring und Deployment getrennt, damit ein Entwurf das Live-Verhalten nicht stillschweigend verändern kann.
+
+Wenn ein Problem ein wiederholbares Aktionsmuster aufweist, öffnen Sie es unter **Analyze → Issues** und wählen Sie **Generate Policy**. Failproof AI erklärt zunächst, ob eine Richtlinie das Problem abbilden kann, und überträgt dann den geprüften Intent sowie den Findungskontext in den Editor. Die generierte Quelle bleibt ein Entwurf, bis Sie sie veröffentlichen.
+
+## Eine Richtlinienversion veröffentlichen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Admin → Policy Editor** und beschreiben Sie unter **Compose** den Fehlermodus oder fügen Sie den JavaScript-Richtlinienquellcode ein.
+    2. Validieren Sie den Quellcode und beheben Sie jeden gemeldeten Fehler.
+    3. Geben Sie die Richtlinienidentität ein und veröffentlichen Sie sie. Verwenden Sie anschließend **Library**, um Versionen zu vergleichen oder zu deaktivieren.
+    4. Wählen Sie **Enforcement**, sobald die Version für ein maschinelles Rollout bereit ist.
+
+    ![Die Compose-Ansicht des Policy-Editors mit Richtlinienidentität, KI-gestütztem Entwurf, Quellvalidierung und Veröffentlichungssteuerung.](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    Das Cloud-CLI veröffentlicht keine Richtlinienversionen. Validieren Sie den Quellcode lokal, bevor Sie ihn in den Editor kopieren:
+
+    ```bash
+    failproofai policies --install --custom ./checkout.policies.ts \
+      --cli claude --scope project
+    ```
+
+    Veröffentlichen Sie die geprüfte Version über **Admin → Policy Editor**.
+  </Tab>
+</Tabs>
+
+## Checkliste für das Authoring
+
+1. Benennen Sie den Fehlermodus in operativer Sprache.
+2. Wählen Sie die Hook-Events und Tools, die genügend Beweise für eine Entscheidung liefern.
+3. Schreiben Sie die engste Bedingung, die unsicheres Verhalten abdeckt.
+4. Geben Sie eine Begründung zurück, die dem Agenten oder Operator mitteilt, was als Nächstes zu tun ist.
+5. Fügen Sie Beispiele hinzu, die übereinstimmen sollen, und Beispiele, die weiterhin erlaubt bleiben müssen.
+6. Speichern Sie eine neue Version und fordern Sie eine Überprüfung an.
+
+Verwenden Sie `instruct`, wenn der Agent sicher korrigieren kann. Verwenden Sie `deny`, wenn das Zulassen der Aktion ein inakzeptables oder irreversibles Risiko darstellen würde.
+
+<Info>
+  Richtlinienversionen sind unveränderliche Deployment-Eingaben. Das Bearbeiten eines Entwurfs erstellt eine neue Version; es sollte nicht die Version überschreiben, die bereits Maschinen zugewiesen ist.
+</Info>

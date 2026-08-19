@@ -1,0 +1,57 @@
+---
+title: "内置策略"
+description: "为常见的 Agent 故障模式启用维护中的防护栏。"
+icon: "library"
+---
+
+内置策略涵盖密钥处理、环境文件、破坏性 Shell 命令、受保护分支、云与基础设施工具、包发布、重复调用以及任务结束时的工作流检查。
+
+## 启用并验证内置策略
+
+<Tabs>
+  <Tab title="控制台">
+    1. 使用本地 CLI 在已连接的机器上安装策略。
+    2. 在已接入的 Agent 中运行一个安全的测试操作。
+    3. 前往 **Observe → policy**，按策略名称、机器环境或决策进行筛选。
+    4. 打开关联的会话，确认匹配的工具输入及返回的原因说明。
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --cli claude --scope project
+    failproofai config --status
+    ```
+
+    使用 `failproofai policy remove block-rm-rf --cli claude --scope project` 将其移除。
+  </Tab>
+</Tabs>
+
+列出当前已安装版本中可用的策略：
+
+```bash
+failproofai policies
+```
+
+为项目启用单个策略：
+
+```bash
+failproofai policy add block-rm-rf --scope project
+```
+
+为指定的测试框架启用多个策略：
+
+```bash
+failproofai policies --install block-sudo block-force-push \
+  --cli claude codex --scope project
+```
+
+部分策略支持参数配置或标记为 Beta 状态。在正式推出前，请仔细查阅策略说明、匹配范围及默认行为。适用于某一工作流的防护策略，可能会在另一工作流中阻断合法操作。
+
+<Card title="浏览完整的内置策略目录" icon="list-checks" href="/zh/policies/builtin-catalog">
+  查看全部 40 条当前策略，包括其触发条件、推荐基线配置及可用参数。
+</Card>
+
+<Tip>
+  建议对特定仓库的预期行为使用项目作用域，对全机器的安全要求使用用户作用域。
+</Tip>

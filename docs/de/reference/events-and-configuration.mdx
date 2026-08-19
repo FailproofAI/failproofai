@@ -1,0 +1,84 @@
+---
+title: "Ereignisse und Konfiguration"
+description: "Referenz für das Ereignismodell, Umgebungen, lokalen Speicher und Konfigurationsgrenzen."
+icon: "list-tree"
+---
+
+## Ereignisfamilien
+
+- Agent-Start, -Ende, -Pause und -Fortsetzung
+- Modellanfrage und -antwort
+- Werkzeugnutzung und -ergebnis
+- Hook ausgelöst und abgeschlossen
+- Menschliches Warten, Eingabe, Pause und Unterbrechung
+- Explizite Fehler
+
+Jedes Ereignis enthält einen Zeitstempel, eine Sitzungs-ID, eine Agenten-ID, einen Ereignistyp und eine Umgebung. Ereignisspezifische Felder enthalten Modell-, Werkzeug-, Korrelations-, Ergebnis-, Inhalts-, Dauer- oder Fehlerdaten.
+
+## Einen Ereignisvertrag untersuchen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Öffne **Observe → Events**.
+    2. Setze ein kurzes Zeitfenster und filtere nach Umgebung, Agent und Ereignistyp.
+    3. Wähle ein Ereignis aus, um seine normalisierten Felder und die Rohdaten zu untersuchen, und öffne dann die zugehörige Sitzung, um den Ausführungskontext zu sehen.
+    4. Wenn eine zugehörige Dauer fehlt, überprüfe, ob Start- und Abschlussereignis dieselbe Korrelations-ID verwenden.
+
+    Nutze den Ereignisstream, um die Daten auf einen einzigen Agentenlauf einzugrenzen und die normalisierten Ereignisfelder zu untersuchen.
+
+    ![Der Live-Ereignisstream mit Filtern für Umgebung, Agent, Sitzung und Ereignistyp.](/images/dashboard/events-stream.png)
+
+    Folge dann dem Ereignis in seine Sitzung. Der Trace zeigt, was unmittelbar davor und danach passiert ist – das ist notwendig, wenn die Nutzdaten allein mehrdeutig sind.
+
+    ![Der verknüpfte Sitzungs-Trace zur Untersuchung des Ereignisses im Ausführungskontext.](/images/dashboard/session-detail.png)
+
+    Vergleiche Korrelations-IDs und Zeitstempel in beiden Ansichten, wenn ein zusammengehöriges Ereignis oder eine Dauer fehlt.
+  </Tab>
+  <Tab title="CLI">
+    Gültige Filterwerte ermitteln und anschließend vollständige Ereignis-Nutzdaten für eine Sitzung abrufen:
+
+    ```bash
+    fp list event_types
+    fp list envs
+    fp events --since 1h \
+      --env production \
+      --event-type tool_use,tool_result \
+      --session-id <session-id> \
+      --full
+    ```
+
+    Verwende `fp --json events ... --fields ts,event_type,session_id,payload` für maschinenlesbare Auswertungen.
+  </Tab>
+</Tabs>
+
+## Reservierte SDK-Felder
+
+Verwende `timestamp`, `session_id`, `agent_id`, `type` oder `environment` nicht als benutzerdefinierte Python-SDK-Felder. Zusammengehörige Ereignisdauern wie die Werkzeugergebnis-Dauer werden vom SDK berechnet und können nicht manuell angegeben werden.
+
+## Lokale Grenzen
+
+- Der Failproof AI-Zustand liegt unter `~/.failproofai`, sofern nicht explizit anders konfiguriert.
+- `failproofai-sdk` verwendet `AGENTEYE_HOME` als Legacy-Override für das Basisverzeichnis.
+- Umgebungsbezeichnungen können über die SDK-Konfiguration oder `AGENTEYE_ENVIRONMENT` gesetzt werden.
+- Daemon-Anmeldedaten werden getrennt von nicht-geheimen Einstellungen gespeichert.
+
+Verwende stabile Umgebungsnamen mit geringer Kardinalität. Kommas werden in Daemon-Umgebungsbezeichnungen nicht unterstützt.
+
+## Eine Umgebungsbezeichnung ändern
+
+<Tabs>
+  <Tab title="Dashboard">
+    Umgebungsbezeichnungen werden vom sendenden SDK oder Failproof-Daemon vergeben. Nach einer Änderung öffne **Observe → Sessions** und nutze den Umgebungsfilter, um zu bestätigen, dass neue Sitzungen den neuen Wert tragen. Bestehende Sitzungen behalten ihre ursprüngliche Umgebung.
+
+  </Tab>
+  <Tab title="CLI">
+    Für `failproofai-sdk` konfiguriere die Umgebung im Code oder über die zugehörige Legacy-Umgebungsvariable. Führe die Daemon-Konfiguration erneut aus, wenn Einstellungen auf Maschinenebene geändert werden.
+
+    ```bash
+    export AGENTEYE_ENVIRONMENT=production-us-east
+    failproofai config
+    failproofai config --status
+    fp sessions --since 1h --env production-us-east
+    ```
+  </Tab>
+</Tabs>

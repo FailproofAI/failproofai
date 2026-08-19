@@ -1,0 +1,191 @@
+---
+---
+title: "Evaluator SDK"
+description: "بناء خدمة تقيّم جلسات Failproof AI بشكل متزامن أو غير متزامن."
+icon: "gauge"
+---
+
+يستقبل المُقيِّم جلسة وكيل مكتملة ويعيد إرجاع إشارات الجودة التي تهمك: درجات رقمية، وتفسير لكل درجة، وملخص اختياري. يخزّن Failproof AI هذه النتائج بجانب التتبع ويرسم مخططات لها عبر الوكلاء والبيئات.
+
+## إعداد مُقيِّم
+
+<Steps>
+  <Step title="تثبيت Evaluator SDK">
+    ثبّت SDK والخادم المستخدم لتشغيله.
+
+    ```bash
+    pip install failproofai-sdk uvicorn
+    ```
+  </Step>
+
+  <Step title="تحديد ما يجب تقييمه">
+    أنشئ `evaluator.py`. هذا المثال يتحقق مما إذا كانت الجلسة تحتوي على أي استدعاءات أداة فاشلة.
+
+    ```python
+    import os
+    from failproofai.evaluator import Evaluator, EvalResponse
+
+    app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
+
+    @app.config
+    def config():
+        return {"inactivity_timeout_secs": 1800}
+
+    @app.evaluator
+    def evaluate(req):
+        tool_errors = sum(
+            1 for item in req.events
+            if item.event_type == "tool_result" and item.payload.get("error")
+        )
+        return EvalResponse(
+            scores={"tool_reliability": 1.0 if tool_errors == 0 else 0.0},
+            reasoning={"tool_reliability": f"{tool_errors} tool errors"},
+        )
+    ```
+  </Step>
+
+  <Step title="تشغيله واختباره محليًا">
+    عيّن رمزًا مشتركًا، وابدأ المُقيِّم، وتحقق من استجابة نقطة نهايته الصحية.
+
+    ```bash
+    export EVALUATOR_TOKEN=<shared-token>
+    uvicorn evaluator:app --host 0.0.0.0 --port 8080
+    ```
+
+    في محطة طرفية أخرى:
+
+    ```bash
+    curl http://127.0.0.1:8080/health
+    ```
+  </Step>
+</Steps>
+
+## ربط المُقيِّم بـ Failproof AI
+
+1. انشر المُقيِّم على عنوان URL يستخدم HTTPS ويمكن الوصول إليه بواسطة Failproof AI Cloud.
+2. جهّز `EVALUATOR_ENDPOINT` باستخدام هذا العنوان، وعيّن `EVALUATOR_TOKEN` للرمز نفسه الذي يستخدمه المُقيِّم. للسحابة المُدارة، تواصل مع [support@befailproof.ai](mailto:support@befailproof.ai) لتجهيز الاتصال.
+3. قم بتشغيل تقييم وتأكد من ظهور درجاته في Failproof AI.
+
+<Tabs>
+  <Tab title="لوحة المعلومات">
+    افتح جلسة مكتملة ضمن **Observe → Sessions** وحدّد **Run evaluation** إذا لم تُقيَّم تلقائيًا. راجع الحالة والدرجات والتفسير والملخص في لوحة **Evaluation** الخاصة بالجلسة.
+
+    استخدم **Observe → Evaluations** لمقارنة الدرجات عبر الوكلاء أو البيئات. استخدم **Observe → Metrics** للكمون والتكلفة والرموز والقياسات الرقمية الأخرى.
+
+    ابدأ بجلسة واحدة للتحقق من أن المُقيِّم أرجع مفاتيح الدرجات المتوقعة وتفسيرًا مفيدًا لهذا التشغيل المحدد.
+
+    ![عرض تفاصيل الجلسة يظهر درجات التقييم والتفسير بجانب التتبع الخاص به.](/images/dashboard/session-detail.png)
+
+    بمجرد أن تبدو النتائج الفردية صحيحة، استخدم لوحة معلومات التقييم لمقارنة تلك الدرجات عبر الوقت والوكلاء أو البيئات.
+
+    ![لوحة معلومات جودة ترسم درجات المُقيِّم عبر الوقت.](/images/dashboard/dashboard-quality.png)
+
+    يجب أن يستخدم المخطط الصحي أسماء درجات مستقرة؛ تغيير مفتاح ينشئ سلسلة منفصلة.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --since 1h --score tool_reliability:0..1
+    fp evals --since 24h --aggregate
+    ```
+  </Tab>
+</Tabs>
+
+لنسخة Cloud موزعة ذاتيًا، يتم تعطيل التقييم التلقائي حتى يتم تعيين `EVALUATOR_ENDPOINT` على عملية الخادم. أعد تشغيل الخادم بعد تغيير متغيرات بيئة المُقيِّم.
+
+تعرّض الخدمة `GET /health` و `GET /config` و `POST /evaluate` واختياريًا `GET /evaluate/{job_id}`. أرجع `JobPending` للعمل غير المتزامن وسجّل `@app.job_lookup` بحيث يمكن لـ Failproof AI استطلاعه.
+
+عند تجهيز رمز، تتطلب جميع المسارات ما عدا الصحة الرمز الحامل نفسه الذي يرسله Failproof AI باسم `EVALUATOR_TOKEN`.
+
+## أنواع SDK
+
+| النوع | الحقول |
+| --- | --- |
+| `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
+| `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
+| `EvalResponse` | `scores`, `reasoning`, `summary` |
+| `JobPending` | `job_id`, `next_poll_secs` |
+| `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
+
+## الموصّلات والمسارات
+
+| الموصّل | المسار | مطلوب |
+| --- | --- | --- |
+| `@app.evaluator` | `POST /evaluate` | نعم |
+| `@app.job_lookup` | `GET /evaluate/{job_id}` | عند إرجاع `JobPending` |
+| `@app.config` | `GET /config` | لا |
+
+يحدّ SDK أجسام طلبات التقييم بـ 25 ميجابايت. يتم تجاهل حقول الطلب المجهولة بحيث تبقى الخدمات متوافقة مع نمو عقد الحدث.
+
+## إرجاع عمل غير متزامن
+
+استخدم `JobPending` عندما لا يمكن إكمال التقييم ضمن طلب واحد. معرّف الوظيفة معتم بالنسبة إلى Failproof AI ويجب أن يبقى قابلًا للحل بواسطة خدمتك حتى يتم جمع النتيجة أو ينتهي انتظار الخادم.
+
+```python
+from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
+
+app = Evaluator(token="shared-secret")
+
+@app.evaluator
+def start(req: EvalRequest) -> JobPending:
+    job_id = enqueue(req)
+    return JobPending(job_id=job_id, next_poll_secs=30)
+
+@app.job_lookup
+def lookup(job_id: str):
+    result = get_result(job_id)
+    if result is None:
+        return JobPending(job_id=job_id, next_poll_secs=30)
+    return EvalResponse(
+        scores=result.scores,
+        reasoning=result.reasoning,
+        summary=result.summary,
+    )
+```
+
+يتم اختيار توقيت الاستطلاع بهذا الترتيب: `JobPending.next_poll_secs`، `EvaluatorConfig.default_poll_interval_secs`، ثم `EVALUATOR_POLLING_INTERVAL_SECS` الخاص بالخادم. يتم تحديد القيم بين ثانية واحدة وساعة واحدة. الحد الأقصى الافتراضي للاستطلاع على الساعة الحائطية للخادم هو ساعة واحدة.
+
+## حقول الطلب والاستجابة
+
+| الحقل | النوع | الملاحظات |
+| --- | --- | --- |
+| `EvalRequest.schema_version` | `str` | حاليًا `"1"`. |
+| `session_id`, `agent_id`, `environment` | `str` | هوية الجلسة والبيئة. |
+| `started_at` | `datetime` | الطابع الزمني للحدث الأول. |
+| `ended_at` | `datetime \| None` | موجود عندما تصدر الجلسة حدث النهاية. |
+| `events` | `list[AgentEvent]` | سيل الحدث الكامل المرتب. |
+| `AgentEvent.id` | `int` | معرّف صف حدث الخادم الخلفي. |
+| `AgentEvent.ts` | `datetime` | الطابع الزمني للحدث. |
+| `AgentEvent.event_type` | `str` | عائلة الحدث مثل `tool_use`. |
+| `AgentEvent.payload` | `dict[str, Any]` | حمولة الحدث الكاملة. |
+| `EvalResponse.scores` | `dict[str, float] \| None` | الأبعاد الرقمية المرسومة في التقييمات. |
+| `EvalResponse.reasoning` | `dict[str, str] \| None` | تفسيرات كل درجة؛ يجب أن تعكس المفاتيح `scores`. |
+| `EvalResponse.summary` | `str \| None` | سرد التقييم الشامل. |
+
+## إعدادات مشغّل الخادم
+
+التقييم التلقائي يكون على مستوى النشر ويبقى معطّلًا عند غياب `EVALUATOR_ENDPOINT`.
+
+| المتغير | الافتراضي | الغرض |
+| --- | --- | --- |
+| `EVALUATOR_ENDPOINT` | غير معيّن | عنوان URL الأساسي لخدمة المُقيِّم. |
+| `EVALUATOR_TOKEN` | غير معيّن | رمز حامل مشترك مع `Evaluator(token=...)`. |
+| `EVALUATOR_WORKERS` | `2` | عمّال الموزّع المتزامنة. |
+| `EVALUATOR_CLAIM_BATCH` | `4` | الجلسات المطالب بها لكل مسار موزّع. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | توقيت الاستطلاع غير المتزامن الاحتياطي. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | انتظار طلب المُقيِّم لكل طلب. |
+| `EVALUATOR_MAX_ATTEMPTS` | `5` | محاولات التسليم قبل الفشل النهائي. |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | توقيت تحديث `/config`. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | أقصى وقت استطلاع غير متزامن على الساعة الحائطية. |
+
+يمكن للخادم أيضًا تقييد المؤسسات التي تستخدم المُقيِّم العام على مستوى النشر. تعامل مع تغييرات نقطة النهاية والرمز والإعادة وبوابة المنظمة كتجهيز مشغّل وأعد تشغيل أو دوّر الخادم بعد تغييرها.
+
+## الأمان والعمليات
+
+- ضع المُقيِّم خلف HTTPS عندما يعبر الترافيك حد شبكة موثوقة.
+- جهّز رمز حامل غير فارغ وأبقِه متطابقًا على كلا الخدمتين.
+- لا تسجّل الرمز أو المطالبات الحساسة الكاملة من حمولات الطلب.
+- اجعل معالجات المتزامن آمنة من الأخطاء؛ قد تكرّر الإعادات طلبًا.
+- استمر في حالة الوظيفة غير المتزامنة خارج ذاكرة العملية في الإنتاج.
+- أرجع مفاتيح درجات مستقرة. إعادة تسمية مفتاح تنشئ سلسلة رسم بياني جديدة بدلًا من تغيير القديمة.
+
+ينبعث SDK من سجلات دورة حياة منظمة مثل `eval received` و `eval responded` و `job lookup` و `config returned` و `auth rejected` واستثناءات المعالج. لا يجهّز معالجات التسجيل؛ استخدم تجهيز التسجيل لتطبيق المضيف.

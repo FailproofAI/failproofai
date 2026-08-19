@@ -1,0 +1,128 @@
+---
+title: "Auto-héberger Failproof AI Cloud"
+description: "Déployer le plan de contrôle Failproof AI sur un cluster Kubernetes géré par le client."
+icon: "cloud-cog"
+---
+
+<Note>
+  L'auto-hébergement est un déploiement Entreprise. [Contactez Failproof AI](mailto:support@befailproof.ai) pour obtenir une licence entreprise.
+</Note>
+
+## Prérequis
+
+- Kubernetes 1.27 ou version ultérieure avec accès cluster-admin
+- `kubectl` avec prise en charge de Kustomize
+- Helm 3
+- Accès aux images privées `ghcr.io/agenteye-enterprise`
+- Deux noms DNS : un pour le tableau de bord et un pour l'ingestion
+- Stockage persistant pour PostgreSQL et ClickHouse
+- cert-manager et Traefik, ou une infrastructure d'entrée et de certificats équivalente adaptée à votre overlay
+- SMTP pour la connexion OTP en production et les notifications
+
+L'arborescence source fournit un overlay orienté AWS/EKS et un overlay distinct pour GCP/GKE. Ne mélangez pas leurs instructions de certificat, d'équilibreur de charge ou de sauvegarde : GKE utilise sa propre configuration DNS-01, GCS et de mise à l'échelle automatique.
+
+## Séquence de déploiement
+
+<Steps>
+  <Step title="Préparer le cluster">
+    Installez cert-manager et les contrôleurs d'entrée public/tableau de bord, vérifiez leurs équilibreurs de charge, puis créez l'espace de noms, les identifiants d'extraction d'image, les identifiants de base de données, la clé d'administration d'amorçage et les secrets d'authentification/SMTP.
+  </Step>
+  <Step title="Configurer les domaines publics">
+    Définissez `INGEST_DOMAIN` et `DASHBOARD_DOMAIN` dans le fichier d'environnement de domaine généré par l'overlay et créez des enregistrements DNS pointant vers les équilibreurs de charge correspondants.
+  </Step>
+  <Step title="Appliquer et vérifier un overlay de plateforme">
+    Utilisez l'overlay customer/EKS ou GCP. Inspectez la sortie Kustomize rendue, appliquez-la et confirmez que toutes les charges de travail et tous les certificats atteignent l'état souhaité avant d'enrôler les machines.
+  </Step>
+  <Step title="Amorcer l'accès et l'ingestion">
+    Connectez-vous en tant qu'administrateur protégé, créez une clé machine limitée à l'organisation et envoyez une petite session de test via le point de terminaison d'ingestion public.
+  </Step>
+</Steps>
+
+## Services requis et optionnels
+
+| Composant | Exigence |
+| --- | --- |
+| ClickHouse | Requis. Le serveur refuse de démarrer sans son magasin d'événements canonique. |
+| PostgreSQL | Requis pour les utilisateurs, les organisations, les objets enregistrés et l'état du plan de contrôle. |
+| Redis | Optionnel. Le serveur et le tableau de bord se dégradent vers un comportement basé sur la base de données en son absence. |
+| SMTP | Optionnel pour le développement, requis en production pour la livraison des OTP par e-mail et des notifications. |
+| Evaluator | Optionnel. L'évaluation automatique reste désactivée sans `EVALUATOR_ENDPOINT`. |
+| Assistant/audit LLM | Optionnel. L'assistant et les fonctionnalités d'audit basées sur les LLM restent inactifs jusqu'à ce qu'une connexion LLM soit configurée. |
+| Sauvegarde du stockage d'objets | Fortement recommandé pour les archives de sauvegarde PostgreSQL et ClickHouse. |
+
+### Capacité d'audit et livraison en cas d'échec
+
+Exécutez les audits sur le déploiement audit-agent dédié lorsqu'il est disponible. Chaque pod audit-agent accepte par défaut une investigation ; augmentez le débit en ajoutant des réplicas plutôt qu'en augmentant la simultanéité par pod sans augmenter également la mémoire. Le serveur peut distribuer `server replicas × AUDIT_WORKERS` audits simultanément, de sorte que la capacité du répartiteur doit être suffisamment grande pour alimenter l'ensemble de la flotte audit-agent.
+
+Lorsque tous les créneaux audit-agent sont occupés, un audit attend et effectue des tentatives pendant au plus un quart de sa cadence, avec un plafond de six heures. Si aucun créneau ne se libère, l'exécution se termine sans résultats et envoie un e-mail d'échec. Des échecs répétés de type « occupé » nécessitent davantage de réplicas audit-agent ou des ancres de planification plus espacées. Des échecs répétés de type « arrêt en cours » indiquent des pods instables ou un déploiement en boucle plutôt qu'une capacité insuffisante.
+
+Les notifications d'échec nécessitent un canal e-mail activé et SMTP. Elles utilisent les destinataires de l'audit, puis se replient sur `alerts.email_default_recipients` lorsque l'audit ne dispose pas de canal e-mail.
+
+## Vérifier le déploiement
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Ouvrez le domaine du tableau de bord configuré, effectuez le flux OTP administrateur et confirmez le nom et le slug de l'organisation.
+    2. Accédez à **Administration → Clés** et créez une clé machine avec un périmètre restreint.
+    3. Envoyez une session de test, puis confirmez-la dans **Observer → Événements** et **Observer → Sessions**.
+    4. Testez un canal d'alerte et, si configuré, une évaluation manuelle et un audit.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    kubectl get pods -n agenteye
+    kubectl get certificates -n agenteye
+    kubectl logs -n agenteye deploy/server --tail=100
+
+    fp --base-url https://failproof.example.com login
+    fp --base-url https://failproof.example.com whoami
+    fp --base-url https://failproof.example.com usage
+    ```
+
+    Vérifiez le point de terminaison de santé public et une requête `/v1` authentifiée avant d'enrôler des machines en production.
+  </Tab>
+</Tabs>
+
+## Authentification et e-mail
+
+Le tableau de bord utilise l'e-mail et des codes à usage unique. En l'absence de SMTP, les déploiements de développement consignent les codes OTP dans la sortie du serveur. Lorsque `SMTP_HOST` est défini, le nom d'utilisateur, le mot de passe et l'expéditeur sont requis ensemble, sans quoi le serveur refuse de démarrer.
+
+`SMTP_TLS` est un booléen. Le transport chiffré pris en charge est STARTTLS, normalement sur le port 587 ; le SMTPS implicite sur le port 465 n'est pas pris en charge par le transport serveur actuel.
+
+Définissez correctement l'URL publique du tableau de bord, car les e-mails d'OTP, d'alerte, d'incident et d'audit l'utilisent pour les liens directs. L'appartenance à une organisation détermine qui peut demander un code ; chaque organisation peut en outre restreindre les connexions de ses propres membres dans **Administration → Paramètres**.
+
+## Exigences multi-locataires
+
+Avant de créer une seconde organisation, configurez un secret de dérivation ClickHouse d'organisation robuste et stable, et gardez-le identique sur tous les réplicas du serveur. Le faire pivoter sans migration coordonnée peut rendre orphelins les utilisateurs ClickHouse spécifiques à l'organisation.
+
+Gardez le listener admin d'instance en interne. La console opérateur fournie est optionnelle et conçue pour `kubectl port-forward`, pas pour une entrée publique. Son activation nécessite sa propre clé API robuste, une boîte aux lettres super-administrateur et une livraison du second facteur SMTP fonctionnelle.
+
+### CLI d'organisation de secours
+
+`agenteye-orgctl` est intégré dans l'image du serveur et communique directement avec PostgreSQL et ClickHouse. Il reste disponible lorsque le serveur public ou la console opérateur est indisponible.
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org create --slug acme --name "Acme Corp"
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email ops@acme.com --set admin --protected
+```
+
+Les opérations d'organisation prises en charge comprennent : création, liste, renommage, suppression logique, restauration, reprovision de l'utilisateur ClickHouse, gestion des dates de facturation, indicateurs de fonctionnalités et purge irréversible. Les opérations sur les membres comprennent : ajout, liste, mise à jour, suppression, substitutions de permissions et état d'administrateur protégé.
+
+Effectuez une suppression logique avant la purge. `org purge` est irréversible et nécessite que l'organisation soit d'abord supprimée. Les membres protégés ne peuvent pas être supprimés ou rétrogradés via la page Utilisateurs ordinaire de l'organisation tant qu'un opérateur ne les a pas explicitement déprotégés.
+
+## Liste de contrôle de préparation pour la production
+
+- Les DNS d'ingestion et de tableau de bord pointent vers les chemins d'entrée distincts prévus.
+- Le TLS est valide ; utilisez le TLS mutuel sur l'ingestion si votre déploiement l'exige.
+- Les volumes PostgreSQL et ClickHouse disposent d'alertes de capacité.
+- Les sauvegardes couvrent les deux magasins de données et disposent d'une procédure de restauration testée.
+- Les vérifications de santé alertent sur le silence de l'ingestion, les charges de travail en échec, l'expiration des certificats, la pression sur le stockage et les sauvegardes obsolètes.
+- Les journaux structurés sont collectés sans dupliquer un pipeline de journaux de cluster existant.
+- La simultanéité des workers d'évaluateur, d'audit et d'alerte n'a pas été modifiée sans preuve mesurée des files d'attente.
+- Une version d'application épinglée et une procédure de retour arrière sont enregistrées avant les mises à niveau.
+
+<Warning>
+  Les manifestes de déploiement contiennent des hypothèses de sécurité et de disponibilité spécifiques à la plateforme. Examinez les ressources rendues, les politiques réseau, l'exposition des entrées, les références aux secrets, les classes de stockage, les budgets de perturbation et les destinations de sauvegarde avec votre équipe plateforme avant de les appliquer.
+</Warning>

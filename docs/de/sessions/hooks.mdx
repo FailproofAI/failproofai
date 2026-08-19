@@ -1,0 +1,25 @@
+---
+title: "Hooks"
+description: "Hook-Aktivität, Auslöser und Latenz getrennt von Policy-Ergebnissen messen."
+icon: "webhook"
+---
+
+Hooks zeigt, wann Agent-Lifecycle-Hooks ausgeführt werden und wie lange sie dauern. Policy-Entscheidungen sind eine separate Ansicht.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Observe → Hooks**.
+    2. Filtern nach Umgebung, Hook-Name, Trigger-Ereignis, Agent oder Session-ID.
+    3. Hook-Latenz und Verteilung überprüfen.
+    4. Einen Diagrammpunkt oder Hook-Segment auswählen, um die zugrunde liegenden Ereignisse zu öffnen.
+
+    ![Die Hooks-Seite zeigt die nach Hook-Name und Trigger-Ereignis gruppierte Latenz.](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

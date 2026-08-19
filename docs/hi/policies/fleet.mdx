@@ -1,0 +1,52 @@
+---
+title: "मशीनों पर policies को deploy करें"
+description: "जानें कि कौन सी मशीनें enrolled हैं, current हैं, और intended policy versions को enforce कर रही हैं।"
+icon: "network"
+---
+
+Fleet coverage यह उत्तर देता है कि जहां जोखिम है वहां policy मौजूद है या नहीं। मशीनों को stable ID और human-readable label के साथ track करें, फिर उनकी assigned और reported deployment state की तुलना करें।
+
+## Coverage की जांच करें
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Admin → enforcement** पर जाएं और enforcing और observing totals की समीक्षा करें।
+    2. किसी मशीन को ID या label के आधार पर खोजें, या policy की कमी वाली मशीनों के लिए filter करें।
+    3. assigned policies, reported deployment, last check-in, और history की तुलना करने के लिए एक row को expand करें।
+    4. जब एक applied deployment pending रहे तो मशीन के polling interval के बाद refresh करें।
+
+    ![Enforcement fleet जो policy coverage, machine deployment state, और observe तथा enforce assignments को दिखाता है।](/images/dashboard/enforcement-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai config --machine-label checkout-runner-03
+    failproofai flush --wait
+    ```
+
+    मशीन की agent activity को Cloud तक पहुंचने की पुष्टि करने के लिए `fp events --agent-id <agent-id> --since 24h` का उपयोग करें।
+  </Tab>
+</Tabs>
+
+Coverage views का उपयोग करके खोजें:
+
+- ऐसी मशीनें जिन्होंने कभी latest deployment नहीं खींचा
+- Enrolled मशीनें जिन्होंने activity reporting बंद कर दी
+- कोई policy गलत environment या cohort को assigned किया गया
+- एक interrupted update के बाद version drift
+
+किसी मशीन को बिना reconnect किए rename करें:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
+
+Local state की जांच करें:
+
+```bash
+failproofai config --status
+```
+
+<Tip>
+  ऐसे labels का उपयोग करें जो workload और environment को identify करते हों। Hostnames अकेले autoscaling या मशीन replacement के बाद अक्सर अपर्याप्त होते हैं।
+</Tip>

@@ -1,0 +1,74 @@
+---
+title: "Auditar histórico local do agente"
+description: "Escaneie históricos de CLIs de agentes suportados offline e revise comportamentos arriscados ou ineficientes localmente."
+icon: "laptop-minimal-check"
+---
+
+Use uma auditoria local para uma revisão imediata e privada antes de conectar uma máquina ao Failproof AI Cloud. Ela escaneia os históricos de agentes já armazenados na sua máquina, reproduz a atividade de ferramentas por meio de políticas integradas e abre um painel local de resultados.
+
+## Executar uma auditoria interativa
+
+<Tabs>
+  <Tab title="Dashboard">
+    A auditoria local começa pela CLI porque precisa descobrir os históricos na máquina atual. Execute `failproofai audit`; após o escaneamento, o Failproof AI inicia o painel integrado e abre **http://localhost:8020/audit**.
+
+    Na visão de auditoria, revise o número de sessões, chamadas de ferramentas, projetos e ocorrências de políticas. Comece pelas descobertas mais frequentes, depois inspecione o projeto afetado e o histórico do agente antes de ativar a aplicação de políticas.
+
+    <Info>O painel de auditoria local é separado de **Analyze → Audits** no Failproof AI Cloud. As auditorias locais permanecem na máquina e não exigem conta nem conexão de rede.</Info>
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    npm install -g failproofai
+    failproofai audit
+    ```
+
+    O comando realiza um escaneamento completo de todos os históricos suportados que encontrar. O comando atual não aceita filtros como `--since`, `--cli`, `--project`, `--port` ou `--no-open`.
+
+    Mantenha o processo em execução enquanto usa o painel local. Pressione <kbd>Ctrl</kbd>+<kbd>C</kbd> quando terminar.
+  </Tab>
+</Tabs>
+
+Os adaptadores de auditoria atuais conseguem ler históricos do Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity e Goose. Apenas os históricos disponíveis localmente são escaneados.
+
+## Agendar auditorias locais recorrentes
+
+<Tabs>
+  <Tab title="Dashboard">
+    Abra **Settings** no painel local, ative as auditorias agendadas, escolha o intervalo e defina o endereço de e-mail que deve receber os resultados. O painel e a CLI atualizam a mesma configuração da máquina.
+  </Tab>
+  <Tab title="CLI">
+    Ative uma auditoria semanal e envie os resultados para o endereço indicado:
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    O intervalo aceita de 1 a 90 dias e o padrão é 7 quando omitido. A primeira configuração realiza o login quando necessário; `--email` fornece o endereço do relatório sem solicitar confirmação.
+
+    Interrompa o agendamento sem excluir o histórico de auditorias locais:
+
+    ```bash
+    failproofai audit --no-schedule
+    ```
+  </Tab>
+</Tabs>
+
+O daemon executa escaneamentos agendados em segundo plano, atualiza o resultado em cache utilizado pelo painel local e envia o relatório configurado por e-mail. Use `failproofai audit` quando quiser executar um escaneamento interativo imediatamente.
+
+## Passar de evidências locais para operações no Cloud
+
+Uma auditoria local é uma linha de base rápida. Conecte a máquina ao Failproof AI Cloud quando precisar de rastreamentos compartilhados, auditorias populacionais recorrentes, descobertas e problemas, alertas, implantação de políticas em toda a organização ou saúde da frota.
+
+<CardGroup cols={2}>
+  <Card title="Criar uma auditoria no Cloud" icon="scan-search" href="/pt-br/audits/setup">
+    Defina um objetivo recorrente, população, janela de evidências e canais de resposta.
+  </Card>
+  <Card title="Ativar uma política" icon="shield-check" href="/pt-br/start/first-policy">
+    Valide localmente, publique com cuidado e implante primeiro em um grupo restrito de máquinas.
+  </Card>
+</CardGroup>
+
+<Warning>
+  O resultado da auditoria é evidência para revisão, não prova de que toda ação sinalizada é insegura. Confirme o contexto antes de transformar uma descoberta em aplicação bloqueante.
+</Warning>

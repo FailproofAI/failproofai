@@ -1,0 +1,43 @@
+---
+title: "Tableaux de bord"
+description: "Suivez les signaux de fiabilité qui comptent pour un agent ou un workflow."
+icon: "layout-dashboard"
+---
+
+Les tableaux de bord combinent des requêtes sauvegardées en une vue opérationnelle. Construisez-en un autour d'une décision qu'une personne devra prendre — pas autour de chaque métrique disponible.
+
+## Créer un tableau de bord
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Allez dans **Analyser → Requêtes**, créez ou ouvrez une requête sauvegardée, et validez son résultat.
+    2. Sélectionnez **ajouter au tableau de bord**, puis choisissez un tableau de bord existant ou créez-en un dans **Analyser → Tableaux de bord**.
+    3. Ouvrez le tableau de bord, entrez en mode édition, arrangez les tuiles et sauvegardez la mise en page.
+    4. Retournez à la requête lorsque vous devez modifier les données ou les filtres d'une tuile.
+
+    ![Un tableau de bord composé de requêtes sauvegardées pour le volume d'événements, les erreurs, la latence et l'utilisation des tokens du modèle.](/images/dashboard/dashboard-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    Le CRUD des tableaux de bord n'est pas exposé par le CLI Cloud actuel. Utilisez le CLI pour créer et vérifier la requête sauvegardée, puis ajoutez-la à un tableau de bord dans l'interface.
+
+    ```bash
+    fp query schema
+    fp query create "production error rate" --sql "SELECT ..."
+    fp query run <query-id>
+    ```
+  </Tab>
+</Tabs>
+
+Les groupes de tableaux de bord utiles comprennent :
+
+- **Modèles :** volume, latence, utilisation des tokens, taux d'erreur et scores d'évaluation.
+- **Évaluations :** taux de succès et tendances des scores par agent ou environnement.
+- **Outils :** volume d'appels, taux d'échec, durée et appels répétés.
+- **Hooks et politiques :** décisions, refus et taux de correspondance des politiques.
+- **Métriques de workflow personnalisées :** résultats issus de vos propres champs d'événements et SQL.
+
+Commencez par une requête sauvegardée, validez son résultat, puis ajoutez-la comme tuile. Gardez les filtres de production et de développement explicites pour que le trafic de test ne masque pas une régression.
+
+<Tip>
+  Attribuez à chaque tableau de bord un responsable et une question à laquelle il doit répondre, par exemple : « La fiabilité de checkout-agent est-elle moins bonne que la semaine dernière ? »
+</Tip>

@@ -1,0 +1,29 @@
+---
+title: "Metrics"
+description: "Vẽ biểu đồ các chỉ số độ lớn như độ trễ, chi phí và lượng token sử dụng."
+icon: "ruler"
+---
+
+Metrics dùng cho các giá trị có đơn vị. Evaluations dùng cho các điểm số và đánh giá.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Observe → Metrics**.
+    2. Chọn **add series** và lựa chọn agent, environment, metric, statistic và curve.
+    3. Thêm series để so sánh các agent hoặc environment; các đơn vị khác nhau sẽ được hiển thị trên các trục riêng biệt.
+    4. Chọn một điểm để mở evaluations và sessions tương ứng, hoặc chọn **share** để sao chép chế độ xem chính xác.
+
+    ![Trang Metrics so sánh hai series cost-per-output-unit với các điều khiển thời gian, bộ chọn tổng hợp, đường cong và hành động chia sẻ.](/images/dashboard/metrics-series.png)
+  </Tab>
+  <Tab title="CLI">
+    Hiện chưa có lệnh magnitude-metrics chuyên dụng. Khám phá các khóa sẵn có và kiểm tra sessions hoặc evaluations:
+
+    ```bash
+    fp list score_filters
+    fp --json evals --since 24h
+    fp --json sessions --since 24h
+    ```
+
+    Sử dụng `fp query` để tổng hợp metric tùy chỉnh.
+  </Tab>
+</Tabs>

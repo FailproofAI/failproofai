@@ -1,0 +1,68 @@
+---
+title: "选择您的配置方式"
+description: "选择本地执行、Failproof AI Cloud 或企业级部署。"
+icon: "waypoints"
+---
+
+<CardGroup cols={3}>
+  <Card title="本地执行" icon="laptop">
+    在本机上安装钩子和策略。当您需要即时防护栏且不希望将会话数据发送到 Cloud 时，请使用此方式。
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud">
+    添加集中式会话管理、审计、在线评估、仪表盘、告警以及策略批量部署功能。
+  </Card>
+  <Card title="企业级部署" icon="building-2">
+    使用组织控制、范围密钥、私有基础设施以及特定部署的安全要求。
+  </Card>
+</CardGroup>
+
+## 推荐的生产环境部署路径
+
+1. 连接一台已启用会话记录的非生产环境机器。
+2. 在 Cloud 中验证会话和评估结果。
+3. 针对已知的故障模式创建审计。
+4. 以观察模式部署第一条策略。
+5. 审查匹配结果和误报后，再扩展到生产环境。
+
+## 将机器连接到 Cloud
+
+<Tabs>
+  <Tab title="控制台">
+    1. 前往 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥。
+    2. 将一次性密钥复制到目标机器。
+    3. 运行 CLI 连接命令后，前往 **Admin → enforcement**，确认该机器已出现在列表中。
+    4. 前往 **Observe → Events**，确认其第一个事件已到达。
+
+    密钥抽屉面板会显示已连接机器所需的两项授权：事件采集和策略分发。
+
+    ![用于授予事件采集和策略分发权限的新 API 密钥抽屉面板。](/images/dashboard/key-create.png)
+
+    连接后，该机器应出现在执行列表中，并显示其期望的和实际的策略状态。
+
+    ![执行舰队视图，展示已注册机器及其期望策略状态和部署状态的详细信息。](/images/dashboard/enforcement-fleet.png)
+
+    第一个到达的事件确认守护进程能够将数据发送至 Cloud，这与策略部署相互独立。
+
+    ![实时事件流，显示最近的代理、模型和工具事件。](/images/dashboard/events-stream-current.png)
+
+    请在机器及其第一个事件均可见后再继续操作。
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --connect https://app.befailproof.ai \
+      --token "$FAILPROOFAI_KEY" \
+      --machine-label checkout-runner-01
+
+    failproofai policies --install --cli claude --scope user
+    failproofai config --status
+    ```
+
+    当会话内容必须保留在本地时，请添加 `--no-transcripts` 参数。
+  </Tab>
+</Tabs>
+
+连接到 Cloud 会独立验证事件采集和策略分发两项功能。因此，一个密钥可能是有效的，但缺少某项必需权限。使用 `failproofai config --status` 查看当前已配置的功能。
+
+<Info>
+  Cloud 配置仅在相关功能验证成功后才会在本地写入凭据。验证失败不会让机器显示为已连接状态。
+</Info>

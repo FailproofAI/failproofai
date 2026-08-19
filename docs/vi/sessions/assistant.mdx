@@ -1,0 +1,54 @@
+---
+---
+title: "Failproof Assistant"
+description: "Phân tích và vận hành Failproof AI bằng ngôn ngữ tự nhiên, từ các câu hỏi và truy vấn đến bảng điều khiển và kiểm toán."
+icon: "message-square-text"
+---
+
+Yêu cầu Failproof Assistant thực hiện bất kỳ tác vụ nào trong Failproof AI bằng ngôn ngữ tự nhiên. Nó có thể phân tích các phiên và lỗi, chạy truy vấn, xây dựng bảng điều khiển, điều tra các đánh giá và cảnh báo, và giúp tạo và chạy kiểm toán mà không cần bạn chuyển đổi tác vụ thành các màn hình sản phẩm hoặc lệnh CLI.
+
+```text
+Why did production checkout agents regress this week?
+Build a dashboard for tool failures, latency, and evaluation scores.
+Create an audit that finds agents retrying the same failed action without changing approach.
+Show me the sessions behind the most common audit finding.
+```
+
+Trợ lý hoạt động với dữ liệu và quyền hạn có sẵn trong tổ chức đang hoạt động. Xem xét bằng chứng của nó và những thay đổi được đề xuất trước khi áp dụng các hành động ảnh hưởng đến những người dùng hoặc agent khác.
+
+## Hỏi trợ lý
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Chọn **Open agent chat** và mô tả những gì bạn muốn hiểu, tạo hoặc vận hành.
+    2. Xem xét các lệnh gọi công cụ, bảng và kết quả truy vấn của trợ lý trong khi nó hoạt động.
+    3. Mở phiên, cảnh báo hoặc truy vấn được trích dẫn để xác minh kết quả dựa trên dữ liệu nguồn.
+    4. Bắt đầu cuộc trò chuyện mới cho một cuộc điều tra khác hoặc sử dụng lịch sử trò chuyện để tiếp tục cùng một dòng phân tích.
+
+    ![The Cloud assistant answering an observability question with supporting analysis and queries.](/images/dashboard/assistant.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Open representative sessions" --chat <chat-id>
+    ```
+
+    Sử dụng `fp agent rename <chat-id> --title <title>` để giữ một cuộc điều tra dễ nhận biết và `fp agent delete <chat-id>` để xóa nó.
+  </Tab>
+</Tabs>
+
+## Làm việc hiệu quả với trợ lý
+
+- Đặt mục tiêu trước tiên; thêm môi trường, quy trình làm việc hoặc khoảng thời gian khi những ranh giới đó có ý nghĩa.
+- Coi SQL được tạo và các bản tóm tắt là một công cụ hỗ trợ điều tra, không phải bằng chứng cuối cùng.
+- Mở các phiên đại diện trước khi tạo kiểm toán, vấn đề, cảnh báo hoặc chính sách.
+- Giữ cho các bộ lọc tổ chức, môi trường và thời gian rõ ràng.
+- Lưu SQL hữu ích dưới dạng truy vấn để một nhà điều hành khác có thể tái tạo kết quả.
+
+<Warning>
+  Trợ lý chỉ có thể đọc những gì người dùng hiện tại của bạn có quyền truy cập. Không mở rộng quyền hạn để giải quyết một câu hỏi; thay vào đó, yêu cầu một nhà điều hành được phép chạy cuộc điều tra.
+</Warning>

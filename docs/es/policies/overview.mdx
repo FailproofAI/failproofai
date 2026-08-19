@@ -1,0 +1,63 @@
+---
+title: "Políticas"
+description: "Observa, guía o bloquea acciones del agente antes de que un fallo conocido se repita."
+icon: "shield-check"
+---
+
+Una política evalúa un evento de hook del agente y devuelve una de tres decisiones:
+
+- `allow` permite que la acción continúe.
+- `instruct` proporciona orientación correctiva al agente.
+- `deny` bloquea la acción con una razón.
+
+## Usa las tres superficies de políticas
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Ve a **Observe → policy** para filtrar e inspeccionar las decisiones de políticas de las sesiones.
+    2. Ve a **Admin → policy editor** para redactar, validar, publicar, deshabilitar o inspeccionar versiones inmutables.
+    3. Ve a **Admin → enforcement** para asignar versiones y efectos a las máquinas.
+
+    Usa la página de políticas para entender qué ya está coincidiendo antes de crear o cambiar la aplicación.
+
+    ![La página de políticas mostrando totales de decisiones y mapeos de políticas locales y gestionadas en la nube.](/images/dashboard/policy-observe.png)
+
+    El editor es donde conviertes una condición de fallo en código fuente, la validas y publicas una versión inmutable.
+
+    ![El editor de políticas utilizado para redactar y publicar una versión inmutable de una política.](/images/dashboard/policy-editor.png)
+
+    La aplicación luego asigna esa versión publicada y su efecto de observación o aplicación a las máquinas.
+
+    ![La flota de aplicación mostrando la cobertura de máquinas y las versiones de políticas asignadas.](/images/dashboard/enforcement-fleet.png)
+
+    Verifica las decisiones de nuevo en la página de políticas tras el despliegue para que las vistas de autoría y de flota estén vinculadas a la actividad real del agente.
+  </Tab>
+  <Tab title="CLI">
+    Usa `failproofai` para la instalación y validación de políticas locales:
+
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --scope project
+    failproofai config --status
+    ```
+
+    Usa `fp` para encontrar las sesiones y eventos en la nube que contienen decisiones de políticas. La autoría en la nube y el despliegue en flota siguen siendo flujos de trabajo del dashboard.
+  </Tab>
+</Tabs>
+
+Las políticas tienen tres superficies distintas en Failproof AI:
+
+1. **Analiza decisiones** en sesiones, dashboards y auditorías.
+2. **Crea versiones** con reglas integradas, código o el editor de políticas.
+3. **Despliega y aplica** versiones en las máquinas seleccionadas.
+
+Comienza desde un modo de fallo confirmado. Define el evento más pequeño y la coincidencia de herramienta que lo identifique, prueba ejemplos legítimos e inseguros, y luego observa antes de aplicar.
+
+<Columns cols={2}>
+  <Card title="Usar una política integrada" icon="library" href="/es/policies/builtin">
+    Habilita una regla revisada para riesgos comunes de secretos, shell, Git, nube y flujos de trabajo.
+  </Card>
+  <Card title="Escribir una política personalizada" icon="code-2" href="/es/policies/custom">
+    Expresa una decisión específica del flujo de trabajo en JavaScript o TypeScript.
+  </Card>
+</Columns>

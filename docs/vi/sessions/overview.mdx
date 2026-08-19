@@ -1,0 +1,55 @@
+---
+title: "Sessions"
+description: "Bắt đầu với bản ghi đầy đủ của một lần chạy agent."
+icon: "workflow"
+---
+
+Một session là điểm bắt đầu tốt nhất khi một agent hoạt động không như mong đợi. Nó kết hợp các yêu cầu mô hình, phản hồi, lệnh gọi công cụ, tương tác con người, lỗi, đánh giá và các quyết định chính sách thuộc về một lần chạy.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+Theo dõi một lần chạy agent từ mục tiêu của nó qua các lệnh gọi mô hình, công cụ và phản hồi cuối cùng.
+
+## Tìm một session
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Trong thanh bên Cloud, đi tới **Observe → Sessions**.
+    2. Đặt cửa sổ thời gian, sau đó lọc theo môi trường, trạng thái, agent hoặc ID session.
+    3. Thêm các phạm vi điểm hoặc số liệu khi bạn cần lát chất lượng, chi phí, token hoặc độ trễ.
+    4. Chọn một hàng để mở trace của nó. Sử dụng điều khiển sao chép bên cạnh ID session khi chia sẻ nó.
+
+    ![Danh sách Sessions hiển thị một hàng trên mỗi lần chạy với các bộ lọc môi trường, agent, trạng thái và điểm đánh giá.](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp sessions --env production --since 24h
+    fp sessions --status error,timeout --agent-id checkout-agent
+    fp --json sessions --session-id <session-id>
+    ```
+
+    Thêm `--agents` để mở rộng các lần chạy đa agent, `--all` để phân trang hoặc `--fields` để chọn các cột đầu ra.
+  </Tab>
+</Tabs>
+
+## Những gì bạn có thể làm
+
+- Tìm một lần chạy theo agent, môi trường, thời gian, mô hình, loại sự kiện hoặc trạng thái lỗi.
+- Theo dõi chuỗi chính xác tạo ra một kết quả.
+- So sánh các lần chạy thành công và thất bại.
+- Mở bằng chứng được sử dụng bởi một phát hiện kiểm toán hoặc sự cố cảnh báo.
+- Xuất một session khi bạn cần một bản ghi ngoại tuyến.
+
+## Một thứ tự điều tra đáng tin cậy
+
+1. Xác nhận mục tiêu session và môi trường.
+2. Tìm lỗi đầu tiên hoặc quyết định không mong đợi—không chỉ là lỗi cuối cùng.
+3. Kiểm tra bối cảnh mô hình và đầu vào công cụ ngay trước nó.
+4. Kiểm tra các lần thử lại, độ trễ và các gián đoạn của con người.
+5. Xem xét các điểm đánh giá và quyết định chính sách.
+
+<Card title="Đọc một trace" icon="route" href="/vi/sessions/read-a-trace">
+  Tìm hiểu cách di chuyển từ tóm tắt session đến sự kiện gây ra kết quả.
+</Card>

@@ -1,0 +1,72 @@
+---
+title: "कस्टम पॉलिसीज़"
+description: "अपने एजेंट वर्कफ़्लो के लिए यूनिक फेलियर मोड के लिए एक पॉलिसी लिखें।"
+icon: "shield-plus"
+---
+
+`.failproofai/policies/` के तहत `policies.js`, `policies.mjs`, या `policies.ts` के साथ एक फ़ाइल बनाएँ। कन्वेंशन फ़ाइलें प्रोजेक्ट और यूजर स्कोप में स्वचालित रूप से लोड होती हैं।
+
+## क्लाउड पब्लिकेशन से पहले पॉलिसी का परीक्षण करें
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. कस्टम पॉलिसी को एक टेस्ट मशीन पर इंस्टॉल करें और एक मैचिंग एक्शन और एक लेजिटिमेट नॉन-मैच दोनों को ट्रिगर करें।
+    2. **Observe → policy** पर जाएँ और दोनों निर्णयों की तुलना करें।
+    3. प्रत्येक लिंक किए गए सेशन को खोलें और सत्यापित करें कि इवेंट पेलोड में नियम के लिए पर्याप्त साक्ष्य है।
+    4. जब व्यवहार सही हो, तो समीक्षा की गई सोर्स को **Admin → policy editor** में ले जाएँ और एक वर्जन पब्लिश करें।
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies --install --custom ./security.policies.ts \
+      --cli claude --scope project
+    failproofai policies
+    ```
+
+    `.failproofai/policies/` के तहत कन्वेंशन फ़ाइलें `--custom` के बिना लोड होती हैं। जब सत्यापन टूटे हुए मॉड्यूल पर विफल होना चाहिए, तो CI में एक स्पष्ट इंस्टॉल कमांड रखें।
+  </Tab>
+</Tabs>
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+यह `production/config.yml`, `/srv/production/config.yml`, `/srv/production`, और `C:\\production\\config.yml` दोनों `Write` और `Edit` के लिए मैच करता है। यह `production-backup` जैसे नामों से मैच नहीं करता क्योंकि `production` एक पूर्ण पाथ सेगमेंट होना चाहिए।
+
+एक स्पष्ट फ़ाइल को सत्यापित और इंस्टॉल करें:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts
+```
+
+पॉलिसी कॉन्टेक्स्ट में इवेंट टाइप, नॉर्मलाइज़्ड पेलोड, टूल नाम और इनपुट, सेशन मेटाडेटा, पैरामीटर, और उपलब्ध होने पर सोर्स CLI शामिल है।
+
+## फेलियर पाथ्स का परीक्षण करें
+
+एंट्री फ़ाइल या इसे इंपोर्ट करने वाले किसी भी लोकल मॉड्यूल को बदलने के बाद सत्यापन चलाएँ:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+स्ट्रिक्ट CLI पाथ लापता फ़ाइलों, सिंटैक्स एरर्स, अनरिज़ॉल्व्ड इंपोर्ट्स, टॉप-लेवल एक्सेप्शन्स, और मॉड्यूल-लोड टाइमआउट्स के लिए विफल होता है। एन्फ़ोर्समेंट टाइम पर, एक टूटी हुई कस्टम फ़ाइल लॉग की जाती है और स्किप की जाती है ताकि बिल्टइन पॉलिसीज़ जारी रख सकें। किसी भी लोड वार्निंग को अपेक्षित एन्फ़ोर्समेंट के नुकसान के रूप में माना जाए और प्रोडक्शन लॉग्स में इस पर अलर्ट दें।
+
+स्पष्ट, कन्वेंशन, और क्लाउड-मैनेज्ड पॉलिसीज़ में ग्लोबली यूनिक नामों का उपयोग करें। पॉलिसी फ़ंक्शन्स को डिटर्मिनिस्टिक रखें, बाहरी कॉल्स को शॉर्ट टाइमआउट्स के साथ बाउंड करें, और हर पाथ पर एक इंटेंशनल `allow`, `instruct`, या `deny` रिटर्न करें।
+
+<Warning>
+  एक कस्टम पॉलिसी एन्फ़ोर्समेंट कोड है। लापता फ़ील्ड्स, वैकल्पिक टूल नामों, और खराब इनपुट का परीक्षण करें—केवल अपेक्षित मैच नहीं।
+</Warning>

@@ -1,0 +1,44 @@
+---
+title: "Configurar uma auditoria"
+description: "Defina um objetivo de auditoria, população de sessões e contexto de evidências."
+icon: "sliders-horizontal"
+---
+
+A qualidade de uma auditoria começa pelo seu escopo. Uma solicitação ampla como "encontre problemas" produz resultados menos úteis do que uma pergunta objetiva sobre falhas específicas.
+
+## Configurar a auditoria
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **Analyze → Audits → New audit**, insira o nome e a descrição.
+    2. Defina a cadência, a janela de tempo, o escopo de agente/ambiente, os erros ignorados, a sensibilidade e o número máximo de descobertas.
+    3. Em **agents**, adicione ou revise o contexto do agente, depois adicione o resumo do operador e quaisquer URLs de referência HTTPS públicas.
+    4. Escolha os canais de notificação e selecione **create audit**. A primeira execução é enfileirada imediatamente.
+
+    ![O formulário de nova auditoria com nome, descrição, cadência, janela, escopo de ambiente e agente, erros ignorados, configurações de análise, resumo, páginas de referência e canais de notificação.](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    A primeira execução é enfileirada imediatamente. Inclua o resumo e as URLs de referência durante a criação para que a execução os receba.
+
+    Consulte a referência completa do [`fp audits create`](/pt-br/reference/cloud-cli#audits).
+  </Tab>
+</Tabs>
+
+<Tip>
+  Comece com uma sessão com falha conhecida e várias sessões normais. Isso fornece à auditoria tanto um exemplo positivo quanto um conjunto de comparação.
+</Tip>
+
+<Info>
+  O contexto da auditoria é armazenado como um recurso próprio, portanto editar uma auditoria não remove acidentalmente o material de referência.
+</Info>

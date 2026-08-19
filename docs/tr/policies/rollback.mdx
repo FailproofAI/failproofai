@@ -1,0 +1,41 @@
+---
+title: "Geri Alma"
+description: "Bir dağıtım geçerli aracı çalışmasını bozduğunda bilinen bir politika dağıtımını geri yükleyin."
+icon: "rotate-ccw"
+---
+
+Geri alma, dağıtılan sürümü değiştirir veya bir politika atamasını kaldırır; olayı açıklayan karar geçmişini silmez.
+
+## Bir makineyi geri alın
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Admin → enforcement** bölümüne gidin, etkilenen makineyi genişletin ve son bilinen-iyi politika setini belirleyin.
+    2. **edit** seçeneğini belirleyin, bu sürümleri ve efektleri geri yükleyin ve yeni dağıtımı uygulayın.
+    3. Makine kontrol noktasını bekleyin, ardından bildirilen dağıtımı doğrulayın.
+    4. **Observe → policy** bölümünü açın ve geçerli çalışmanın artık engellenmediğini doğrulamak için etkilenen oturumları açın.
+
+  </Tab>
+  <Tab title="CLI">
+    Bulut dağıtımı geri alması bir dashboard iş akışıdır. Düzeltilen dağıtımın makineye ulaştığını doğrulamak için yerel durumu kullanın:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    `failproofai config --pause`, yerleşik, özel ve konvansiyon politikalarını bir yerel oturum için duraklatır. Bulut tarafından yönetilen politikaları duraklatmaz, bu nedenle kötü bir Bulut dağıtımı için bir çözüm değildir.
+  </Tab>
+</Tabs>
+
+## Geri alma zamanı
+
+- Bir politika beklenen bir üretim eylemini engeller.
+- Eşleşme hacmi, gözlenen dağıtımın tahmin ettiğinden önemli ölçüde daha yüksektir.
+- Bir politika, bir entegrasyonun sağlamadığı alanlara bağlıdır.
+- Yeni bir sürüm, amaçlanan hata modunun dışında davranışı değiştirir.
+
+Geri almadan sonra, etkilenen oturumları açın ve yanlış pozitife neden olan durumu belirleyin. Yeni bir sürüm oluşturun, hem güvensiz hem de meşru durumları test edin, ardından gözlem aşamasını tekrarlayın.
+
+<Warning>
+  Uygulamayı duraklatmak bir olayda uygun olabilir, ancak bu kapsam içindeki her aktif politika için teşhir alanını genişletir. Mümkün olduğunda belirli politika sürümünü geri almayı tercih edin.
+</Warning>

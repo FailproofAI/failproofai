@@ -1,0 +1,29 @@
+---
+title: "指标"
+description: "绘制延迟、成本和 Token 用量等量级指标。"
+icon: "ruler"
+---
+
+指标用于带单位的数值，评估用于分数和判断。
+
+<Tabs>
+  <Tab title="仪表盘">
+    1. 前往 **Observe → Metrics**。
+    2. 选择 **add series**，然后选择 Agent、环境、指标、统计量和曲线。
+    3. 添加系列以比较不同 Agent 或环境；不同单位将使用独立坐标轴。
+    4. 选择某个数据点可打开对应的评估和会话，或选择 **share** 复制当前视图链接。
+
+    ![指标页面展示了两条每输出单位成本系列，包含时间控件、聚合选择器、曲线和分享操作。](/images/dashboard/metrics-series.png)
+  </Tab>
+  <Tab title="CLI">
+    目前尚无专用的量级指标命令。可通过以下命令发现可用键名并查看会话或评估：
+
+    ```bash
+    fp list score_filters
+    fp --json evals --since 24h
+    fp --json sessions --since 24h
+    ```
+
+    使用 `fp query` 进行自定义指标聚合。
+  </Tab>
+</Tabs>

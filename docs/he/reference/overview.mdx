@@ -1,0 +1,78 @@
+---
+title: "אינטגרציות וחומר עיון"
+description: "חבר משקיפי סוכנים נתמכים, SDK-ים, CLI-ים, ו-HTTP API."
+icon: "braces"
+---
+
+בחר את האינטגרציה הקרובה ביותר למקום בו הסוכן שלך כבר פועל.
+
+<Columns cols={2}>
+  <Card title="משקיפי סוכנים" icon="plug-zap" href="/he/reference/harnesses">
+    התקן hooks עבור CLI-ים נתמכים של סוכנים קוד וסוכנים אוטונומיים.
+  </Card>
+  <Card title="סוכנים מותאמים" icon="python" href="/he/reference/python-sdk">
+    תחקר traces כדי למצוא כשלים בסוכנים מותאמים, ואז צור איתנו קשר כדי להוסיף מניעה לזמן הריצה שלך.
+  </Card>
+  <Card title="לוח בקרה מקומי" icon="monitor-cog" href="/he/reference/local-dashboard">
+    בדוק פרויקטים מקומיים, סשנים, פעילות מדיניות, והערכות ביקורת לא מקוונות.
+  </Card>
+  <Card title="failproofai CLI" icon="terminal" href="/he/reference/failproof-cli">
+    הגדר כיסוי מקומי, hooks, מדיניויות, ביקורות, משלוח, ומצב מכונה.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/he/reference/cloud-cli#cli-commands">
+    שאל והנהל סשנים בענן, ביקורות, בעיות, התראות, מפתחות, משתמשים והגדרות.
+  </Card>
+  <Card title="Evaluator SDK" icon="gauge" href="/he/reference/evaluator-sdk">
+    דרג סשנים שלמים או לא פעילים עם שירות FastAPI.
+  </Card>
+  <Card title="מדיניויות מותאמות" icon="shield-plus" href="/he/reference/policy-sdk">
+    כתוב ובדוק החלטות allow, instruct ו-deny ספציפיות לזרימת עבודה.
+  </Card>
+  <Card title="self-hosting" icon="cloud-cog" href="/he/reference/self-hosting">
+    פרוס את מישור הבקרה של Cloud על קלסטר Kubernetes המנוהל על ידי הלקוח.
+  </Card>
+</Columns>
+
+ה-[HTTP API reference](/he/reference/http-api) שנוצר מכסה את פני השטח הציבורי של `/v1`. דפים שנכתבו בעבודה ידנית מסבירים זרימות עבודה החוצות נקודות קצה מרובות או משתמשים בממשקי ניהול מחוץ לפני השטח הציבוריים הללו.
+
+## חבר סוכן ואמת נתונים
+
+<Tabs>
+  <Tab title="לוח בקרה">
+    1. פתח **Administration → Keys**, צור מפתח עם `events:add` ו-`policies:pull`, והעתק את הסוד.
+    2. הגדר את האינטגרציה באמצעות הדף המתאים לעיל.
+    3. פתח **Observe → Events** כדי לאשר שאירועים מגיעים, ולאחר מכן **Observe → Sessions** כדי לאשר שהם יוצרים ריצות שלמות.
+    4. סנן לסביבה של האינטגרציה ובדוק סשן אחד עבור שדות המודל, הכלי, השגיאה והמדיניות הנדרשים על ידי ביקורות.
+
+    התחל עם מגירת המפתחות. ההענקות שנבחרו קובעות אם המכונה יכולה לשלוח אירועים ולקבל מדיניויות המנוהלות בענן.
+
+    ![מגירת מפתח API חדשה המשמשת להענקת הרשאות ספיגת אירועים ומשלוח מדיניות.](/images/dashboard/key-create.png)
+
+    לאחר חיבור האינטגרציה, השתמש ברשימת הסשנים כדי לאשר שהאירועים שלה מקובצים לריצות שלמות בסביבה הצפויה.
+
+    ![רשימת הסשנים המשמשת לאימות שאינטגרציה שנוסרה זה עתה מדווחת על ריצות סוכן שלמות.](/images/dashboard/sessions-list.png)
+
+    פתח את אחד מסשנים אלה לפני שאתה שוקל את האינטגרציה שלמה; ה-trace צריך להכיל את המודל, הכלי, השגיאה וראיות המדיניות שהביקורות שלך צריכות.
+  </Tab>
+  <Tab title="CLI">
+    צור מפתח מכונה, חבר את ה-daemon של Failproof, ואמת את הסשן הראשון.
+
+    ```bash
+    fp keys create agent-production \
+      --add events:add \
+      --add policies:pull
+
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+
+    failproofai flush --wait
+    fp sessions --since 1h --env production
+    fp events --since 1h --env production --limit 20
+    ```
+
+    השתמש ב-`fp --json sessions ...` כאשר כלי אחרת תצרוך את התוצאה. דגלים גלובליים כגון `--json`, `--org` ו-`--base-url` חייבים להיות לפני הפקודה.
+
+    ראה את ה-[Failproof AI CLI reference](/he/reference/failproof-cli) עבור פקודות מקומיות ו-[Failproof Cloud CLI reference](/he/reference/cloud-cli#cli-commands) עבור פקודות `fp`.
+  </Tab>
+</Tabs>

@@ -1,0 +1,27 @@
+---
+title: "Modelli"
+description: "Confronta latenza, token, utilizzo del contesto e distribuzione del traffico."
+icon: "cpu"
+---
+
+Usa Modelli per vedere se l'affidabilità o il costo è cambiato con un modello, un agente, un ambiente o un intervallo di tempo.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Observe → Models**.
+    2. Imposta l'intervallo di tempo, quindi filtra per ambiente, modello, agente o ID sessione.
+    3. Rivedi latenza, consumo di token, utilizzo della finestra di contesto e distribuzione dei modelli.
+    4. Seleziona un punto del grafico o un segmento di distribuzione per aprire gli eventi corrispondenti.
+
+    ![La pagina Models che mostra viste di latenza, percentile, token, costo, finestra di contesto e distribuzione dei modelli.](/images/dashboard/models.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list models
+    fp events --event-type model_request,model_response --env production --since 24h
+    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    ```
+
+    Usa una query salvata per aggregati a livello di modello che non sono esposti come comando CLI dedicato.
+  </Tab>
+</Tabs>

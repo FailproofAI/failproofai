@@ -1,0 +1,303 @@
+---
+title: "מדיניות מותאמות"
+description: "כתוב, בדוק ופרוס מדיניות JavaScript או TypeScript עבור כשלים ספציפיים לאgeneral שלך."
+icon: "shield-plus"
+---
+
+מדיניות מותאמות הופכת דפוס כשל מהעקבות או הביקורות שלך להחלטה המורצה בזמן עבודת הagent. מדיניות יכולה להתיר פעולה, לתת הנחיות לagent, או לחסום את הפעולה לפני שהיא גורמת לתקرית נוספת.
+
+השתמש במדיניות מותאמת כאשר ההתנהגות תלויה בכלים, נתיבים, פקודות, סביבות או כללי תפעול שלך. בדוק את [קטלוג המדיניות המובנה](/he/policies/builtin-catalog) תחילה כדי שלא תיצור בחזרה בקרה קיימת.
+
+## כתיבת מדיניות מותאמת
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור אל **Admin → policy editor**, בחר **New policy** והתאר את הכשל שברצונך למנוע.
+    2. הוסף את קוד המדיניות, ואז בדוק התאמות צפויות ויעדויות בטוחות שאינן עולות בקנה אחד בעורך. פתור כל שגיאת אימות.
+    3. שמור את הטיוטה ובחר **Publish version** ליצירת גרסה בלתי ניתנת לשינוי.
+    4. עבור אל **Admin → enforcement**, פרוס את הגרסה למכונת בדיקה בתא **observe**, וודא את ההחלטות שלה תחת **Observe → policy** לפני אכיפה.
+
+    ![עורך המדיניות המשמש לכתיבה ופרסום של מדיניות מותאמת.](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    1. צור `.failproofai/policies/checkout-policies.ts`. שם הקובץ חייב להסתיים ב-`policies.js`, `policies.mjs` או `policies.ts`.
+    2. רשום מדיניות אחת או יותר עם `customPolicies.add()`.
+    3. אמת והתקן את הקובץ עם `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`.
+    4. הפעל פעולה תואמת אחת ופעולה בטוחה אחת. הפעל `failproofai policies`, ואז בדוק את ההחלטות המיוחסות תחת **Observe → policy**.
+  </Tab>
+</Tabs>
+
+## התחל בכלל צר
+
+מדיניות זו חוסמת פקודות Kubernetes הרסניות רק כאשר הפקודה מכוונת לייצור. הכל מחוץ לדפוס כשל מדויק זה מחזיר `allow()`.
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+const DESTRUCTIVE_KUBECTL = /\bkubectl\s+(delete|replace)\b/i;
+const PRODUCTION_TARGET = /(?:--context|--namespace|-n)\s+(prod|production)\b/i;
+
+customPolicies.add({
+  name: "block-destructive-production-kubectl",
+  description: "Block destructive Kubernetes commands against production",
+  match: { events: ["PreToolUse"] },
+  fn: async ({ toolName, toolInput }) => {
+    if (toolName !== "Bash") return allow();
+
+    const command = String(toolInput?.command ?? "");
+    if (!DESTRUCTIVE_KUBECTL.test(command)) return allow();
+    if (!PRODUCTION_TARGET.test(command)) return allow();
+
+    return deny(
+      "Destructive production Kubernetes commands require the approved deployment workflow.",
+    );
+  },
+});
+```
+
+מדיניות טובה קטנה מספיק להסבר במשפט אחד. התאם את הפעולה הניתנת לצפייה—לא את הכוונה שאתה מקווה שהייתה ללagent—והחזר `allow()` ברגע שהכלל לא חל.
+
+## בחר החלטה
+
+| Helper | תוצאה | השתמש בו כאשר |
+| --- | --- | --- |
+| `allow(reason?)` | הפעולה ממשיכה. | המדיניות לא חלה או הפעולה בטוחה. |
+| `instruct(reason)` | הפעולה ממשיכה עם הנחיות שבהן יש תמיכה של צב. | אתה רוצה לכוון את הagent לגישה טובה יותר מבלי לאכוף חוקה. |
+| `deny(reason)` | הפעולה חסומה כאשר האירוע והצב תומכים בחסימה. | הפעולה חייבת שלא תתמשך. |
+
+כתוב את הסיבה לagent שחייב להתאושש. הסבר מה זוהה ומה זה צריך לעשות במקום זאת.
+
+<Warning>
+  אל תשתמש ב-`instruct()` לגבול בטיחות. מתן הנחיות משתנה לפי צב של agent. השתמש ב-`deny()` כאשר יש חובה למנוע את הפעולה.
+</Warning>
+
+## אובייקט מדיניות
+
+```ts
+customPolicies.add({
+  name: "policy-name",
+  description: "What this policy prevents",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => allow(),
+});
+```
+
+| שדה | נדרש | תיאור |
+| --- | --- | --- |
+| `name` | כן | מזהה יציב למדיניות. שמור על שמות ייחודיים על פני קבצים. |
+| `description` | לא | מטרה קריאה אדם המוצגת בתיאורי מדיניות והחלטות. |
+| `match.events` | לא | סוגי אירועים המפעילים את המדיניות. השמטת `match` מפעילה אותה עבור כל אירוע זמין. |
+| `fn` | כן | פונקציה סינכרונית או אסינכרונית המחזירה תוצאה `allow`, `instruct` או `deny`. |
+
+סנן כלים בתוך `fn`. `match.toolNames` אינו חלק מסוג המדיניות המותאמת הציבורי.
+
+## הקשר מדיניות
+
+כל מדיניות מקבלת `PolicyContext`.
+
+| שדה | סוג | מה הוא מכיל |
+| --- | --- | --- |
+| `eventType` | `HookEventType` | אירוע מנורמל כעת מוערך. |
+| `toolName` | `string \| undefined` | שם כלי קנוני כגון `Bash`, `Read`, `Write` או `Edit`. |
+| `toolInput` | `Record<string, unknown> \| undefined` | קלט קנוני לקריאת הכלי הנוכחית. |
+| `payload` | `Record<string, unknown>` | תאימות אירוע מנורמלת שלמה. |
+| `session` | `SessionMetadata \| undefined` | מזהה הפעה, ספריית עבודה, נתיב תמלול, מצב הרשאה ומטא-נתונים של צב כשזמין. |
+| `cli` | `string \| undefined` | צב agent מקור, כגון `claude`, `codex` או `cursor`. |
+| `params` | `Record<string, unknown>` | פרמטרים של מדיניות מובנית. מדיניות מותאמת כרגע מקבלת אובייקט ריק. |
+
+התייחס לכל ערך אופציונלי כאל באמת אופציונלי. גרסאות agent וסוגי אירועים לא כל פעם מספקות את אותם שדות.
+
+### קלטי כלים נפוצים
+
+Failproof AI מנורמל כלים נפוצים על פני צבים נתמכים כך שמדיניות יכולה בדרך כלל להשתמש בצורת קלט אחת.
+
+| כלי | שדות נפוצים |
+| --- | --- |
+| `Bash` | `command` |
+| `Read` | `file_path` |
+| `Write` | `file_path`, `content` |
+| `Edit` | `file_path`, `old_string`, `new_string` |
+| `Grep` | `pattern`, `path` |
+
+השתמש בכוחת הגנה מכיוון שערכי קלט כלי מוקלדים כ-`unknown`:
+
+```ts
+const command = String(ctx.toolInput?.command ?? "");
+const filePath = String(ctx.toolInput?.file_path ?? "");
+```
+
+## בחר את האירוע
+
+| אירוע | מתי הוא רץ | שימוש טיפוסי |
+| --- | --- | --- |
+| `PreToolUse` | לפני ביצוע כלי. | חסום או הנחה פקודות, כתיבות, קריאות ופעולות חיצוניות. |
+| `PostToolUse` | לאחר שכלי מחזיר. | בדוק תוצאות לפני שהן מגיעות לagent. דחייה חוסמת את כל התוצאה; היא לא משחזרת שדות שנבחרו. |
+| `PermissionRequest` | כאשר ה-agent מבקש הרשאה. | החל כללי הרשאה ספציפיים לארגון. |
+| `UserPromptSubmit` | לפני ביצוע הנושא המוגש. | דחה הוראות אסורות או הוסף הנחיות זרימת עבודה. |
+| `Stop` | כאשר ה-agent מנסה לסיים. | דרוש תנאי סיום שניתן להגיע אליו, כגון שלב אימות מקומי. |
+| `SubagentStop` | כאשר sub-agent מנסה לסיים. | שער עבודה מוטלת לפני שהיא חוזרת להורה. |
+| `SessionStart` / `SessionEnd` | בגבולות הפעה. | רשום או בדוק מצב ברמת הפעה. |
+
+זמינות אירוע והתנהגות חסימה תלויים בצב agent. ראה [Agent harnesses](/he/reference/harnesses) לפני התיישבות על אירוע על פני צי מעורב.
+
+<Accordion title="כל שמות אירועי המדיניות">
+  `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch` ו-`Setup`.
+</Accordion>
+
+## דפוסי מדיניות נפוצים
+
+### חסום כתיבות לנתיבים מוגנים
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "block-generated-file-edits",
+  description: "Require generated files to be changed through their generator",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (!["Write", "Edit"].includes(ctx.toolName ?? "")) return allow();
+
+    const filePath = String(ctx.toolInput?.file_path ?? "");
+    if (!/(^|\/)(dist|generated)\//.test(filePath)) return allow();
+
+    return deny("Edit the source and run the generator instead of changing generated output.");
+  },
+});
+```
+
+### תן הנחיות שאינן חוסמות
+
+```ts
+import { customPolicies, allow, instruct } from "failproofai";
+
+customPolicies.add({
+  name: "prefer-reviewed-deploy-command",
+  description: "Guide agents toward the reviewed deployment wrapper",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Bash") return allow();
+
+    const command = String(ctx.toolInput?.command ?? "");
+    if (!/^kubectl\s+apply\b/.test(command.trim())) return allow();
+
+    return instruct("Use ./scripts/deploy-reviewed instead of invoking kubectl directly.");
+  },
+});
+```
+
+### שער השלמת הפעה
+
+```ts
+import { execFileSync } from "node:child_process";
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "require-clean-typecheck",
+  description: "Require the project typecheck to pass before the agent finishes",
+  match: { events: ["Stop"] },
+  fn: async (ctx) => {
+    const cwd = ctx.session?.cwd;
+    if (!cwd) return allow();
+
+    try {
+      execFileSync("bunx", ["tsc", "--noEmit"], {
+        cwd,
+        stdio: "ignore",
+        timeout: 8_000,
+      });
+      return allow();
+    } catch {
+      return deny("Fix the typecheck errors before finishing the task.");
+    }
+  },
+});
+```
+
+<Warning>
+  אירוע `Stop` מדוחה יכול לגרום לagent לנסות מחדש. שער רק על תנאי שהagent יכול לעמוד בו בסביבה הנוכחית, ותחום כל קריאת תהליך משנה או רשת.
+</Warning>
+
+## טען קבצי מדיניות
+
+### קבצי קונווונציה
+
+קבצי קונווונציה נטענים באופן אוטומטי:
+
+```text
+<project>/.failproofai/policies/security-policies.ts
+~/.failproofai/policies/personal-policies.mjs
+```
+
+- ספריות מדיניות פרויקט וגם משתמש נטענות שתיהן.
+- קבצים נטענים באלפביתי בתוך כל ספריה.
+- קובץ חייב להסתיים ב-`policies.js`, `policies.mjs` או `policies.ts`.
+- קריאות `customPolicies.add()` מרובות בקובץ אחד נתמכות.
+- יבוא יחסי מהמודולים המקומיים נתמך.
+- מדיניות פרויקט יכולה להיות מתובעת כך שאותם כללים עוקבים אחר המחסן.
+
+### קבצים מפורשים
+
+השתמש בנתיבים מפורשים כאשר אימות או קונפיגורציה צריכים לקבוע את קובץ הכניסה ישירות:
+
+```bash
+failproofai policies --install \
+  --custom ./security.policies.ts \
+  --custom ./workflow.policies.ts \
+  --scope project
+```
+
+קבצים מפורשים נטענים תחילה, ואחריהם קבצי קונווונציה של פרויקט ואחריו קבצי קונווונציה של משתמש. קובץ שגוכש דרך שני נתיבים נטען פעם אחת.
+
+## אימות וביקורת
+
+אימות מבצע את המודול דרך המטען של הייצור ומאשר שהוא רושם לפחות מדיניות אחת.
+
+```bash
+failproofai policies --install \
+  --custom ./.failproofai/policies/checkout-policies.ts \
+  --scope project
+failproofai policies
+```
+
+אימות תופס קבצים חסרים, שגיאות תחביר, יבוא לא מופתר, חריגים ברמה עליונה וזמן קצא של טעינת מודול. זה לא מוכיח שהלוגיקה של ההתאמה שלך נכונה.
+
+בדוק לפחות את המקרים הבאים:
+
+- פעולה אחת שחייבת להתאים ולהפיק את הסיבה למדיניות המיוחלת.
+- פעולה קרובה אבל בטוחה אחת שחייבת להחזיר `allow()`.
+- שדות כלי חסרים או מעוותים.
+- תחביר פקודה חלופי, נתיבים, ציטוטים, קייסינג וחצי רווח.
+- תהליך משנה או תלות רשת לא זמינה.
+
+יחס את התוצאה למדיניות המותאמת שלך תחת **Observe → policy**. בדיקה חסומה אינה מספיקה אם מדיניות מובנית שונה קיבלה את ההחלטה.
+
+## התנהגות זמן ריצה
+
+- מדיניות מובנית מעריכה לפני מדיניות מותאמת.
+- הדחייה הראשונה עוצרת הערכת מדיניות נוספת.
+- תוצאות `instruct` מרובות יכולות להיות משולבות כאשר אין מדיניות החוסמת את האירוע.
+- פונקציית מדיניות יש סיום הוצאה של 10 שניות.
+- חריג מזורז או זמן קצא מתועדים ומטופלים כ-`allow()`.
+- קובץ קונווונציה שנכשל בטעינה מדולג; קבצים מותאמים אחרים ומדיניות מובנית ממשיכים.
+- טעינת מודול ברמה עליונה יש גם סיום הוצאה של 10 שניות.
+- מצב צפייה בענן מפעיל את המדיניות אך מתעד החלטה שאינה מאפשרת ללא אכיפה.
+
+שמור על מודולים של מדיניות דטרמיניסטיים ומהירים. הימנע מקריאות רשת ברמה עליונה או התחלת שרת. שער עבודה בתוך `fn`, תופס כשלי תלות, ובחר בכוונה אם הכשל הזה צריך להתיר או לחסום את הפעולה.
+
+## ייצוא API
+
+| ייצוא | מטרה |
+| --- | --- |
+| `customPolicies.add(policy)` | רשום מדיניות מותאמת כאשר המודול טוען. |
+| `allow(reason?)` | הרשה את הפעולה. |
+| `instruct(reason)` | הרשה את הפעולה וספק הנחיות שבהן יש תמיכה. |
+| `deny(reason)` | חסום את הפעולה שבה נתמך. |
+| `getCustomHooks()` | החזר את המדיניות כרגע רשומה בתא התיעוד של המודול. |
+| `clearCustomHooks()` | נקה את התא הזה, בעיקר לבדיקות וטוענים. |
+
+TypeScript ייצוא `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision` ו-`PolicyFunction`.
+
+<Card title="פרוס מדיניות מותאמת" icon="server-cog" href="/he/policies/deploy">
+  פרסם גרסה, פרוסה בצב צפייה, אמת החלטות, והעבר לאכיפה.
+</Card>

@@ -1,0 +1,52 @@
+---
+title: "Çevrimiçi değerlendirmeler"
+description: "Canlı ve tamamlanan oturumları kalite, uyum, maliyet ve gecikme süresi açısından puanlayın."
+icon: "gauge"
+---
+
+Çevrimiçi değerlendirmeler, aracı oturumlarına tutarlı kararlar uygular. Bunları sadece denetim sırasında araştırılması yerine sürekli olarak ölçülmesi gereken sinyaller için kullanın.
+
+## Değerlendirme kalitesini inceleyin
+
+<Tabs>
+  <Tab title="Pano">
+    1. **Observe → Evaluations** bölümüne gidin.
+    2. Bir seri ekleyin ve aracı, ortamı, değerlendirme puanını, istatistiği ve eğriyi seçin.
+    3. Ortamları, aracıları veya puan anahtarlarını karşılaştırmak için seriler ekleyin.
+    4. Eşleşen oturumları açmak veya filtrelenmiş görünümü paylaşmak için bir sonuç seçin. Gecikme süresi, jetonlar, maliyet ve diğer büyüklük değerleri için **Observe → Metrics** bölümünü kullanın.
+
+    ![Ortalama değerlendirme puanlarını ve zaman içindeki eğilimleri gösteren bir kalite panosu.](/images/dashboard/dashboard-quality.png)
+
+    Puan başına akıl yürütmeyi incelemek için detay açılımından bir oturumu açın:
+
+    ![Değerlendirme puanlarını ve akıl yürütmeyi tam izlemenin yanında gösteren bir oturum detay görünümü.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Otomasyon için `evals` öncesinde global `--json` ekleyin, örneğin `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+Bir değerlendiricisi oturum kimliğini, ortamını, zaman damgalarını ve sıralı olayları alır. İsteğe bağlı akıl yürütme ve özet ile sayısal puan anahtarları döndürebilir. Uzun süre çalışan değerlendiriciler bekleyen bir iş döndürebilir ve daha sonra yoklanabilir.
+
+## İyi değerlendirme hedefleri
+
+- Görev tamamlama veya doğruluk
+- Temellendirilmiş olma ve halüsinasyon riski
+- Araç seçimi ve araç verimliliği
+- Politika veya proses uyumluluğu
+- Maliyet ve gecikme süresi bütçeleri
+- Gerekli insan müdahalesi
+
+## Puandan tepkiye
+
+Eğilimleri izlemek için puanları panolarda gösterin. Eşikler veya bileşik koşullar için uyarılar oluşturun. Bir puan bir nüfus genelinde düştüğünde, neden olduğunu araştırmak için bir denetim çalıştırın; neden tekrarlanabilir bir eylem ise bir politika uygulayın.
+
+<Card title="Bir değerlendiricisi oluşturun" icon="code-2" href="/tr/reference/evaluator-sdk">
+  Python değerlendiricisi SDK ile eşzamanlı veya eşzamansız değerlendirme uygulayın.
+</Card>

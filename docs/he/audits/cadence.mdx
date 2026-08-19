@@ -1,0 +1,49 @@
+---
+title: "קצב הביקורת"
+description: "בחר מתי ביקורות חוזרות יופעלו וכמה נתונים הן יסקרו."
+icon: "calendar-clock"
+---
+
+השתמש בביקורות חוזרות עבור אופני כשל שיכולים להופיע מחדש כאשר agents, prompts, tools ו-models משתנים.
+
+## שנה את לוח הזמנים
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור אל **Analyze → Audits** ופתח את הביקורת.
+    2. פתח את ההגדרות שלה ושנה את מצב ההפעלה, המרווח, עוגן UTC, מצב החלון, או lookback.
+    3. שמור את הביקורת וודא את זמן ההפעלה הבא בכרטיס הביקורת.
+    4. השתמש ב-**run now** פעם אחת לאחר שינוי scope או context משמעותי.
+
+    ![עורך הביקורת המציג קצב, חלון sweep, scope, הגדרות ניתוח, context וערוצי התראה.](/images/dashboard/audit-edit.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits edit checkout-reliability \
+      --schedule-interval-secs 86400 \
+      --schedule-anchor 2026-08-15T09:00:00Z \
+      --lookback-window-secs 86400 \
+      --yes
+
+    fp audits edit checkout-reliability --disabled --yes
+    fp audits edit checkout-reliability --enabled --yes
+    ```
+
+    ראה את [ההפניה `fp audits`](/he/reference/cloud-cli#audits) לגבי גבולות לוח זמנים, התנהגות חלון וכל פקודות הביקורת.
+  </Tab>
+</Tabs>
+
+בחר קצב על סמך מהירות ועלות הסיכון:
+
+| דפוס סיכון | קצב התחלה |
+| --- | --- |
+| פעולה בייצור בעלת השפעה גבוהה | יומי |
+| רגרסיה של workflow או model | שבועי |
+| סקירת governance או גישה | חודשי |
+| חקירת שחרור חד-פעמית | הפעל פעם אחת |
+
+כייל את חלון ה-lookback לקצב כך שהריצות לא יוותרו על פערים ולא יסקרו מחדש אוכלוסייה גדולה מדי. לאחר שינוי היעד או ה-context של ביקורת, הפעל אותה ידנית פעם אחת לפני שתסתמך על התוצאה המתוזמנת הבאה.
+
+<Note>
+  ביקורות בלוח זמנים מקומיות מוגדרות במכונה וסורקות היסטוריית agent מקומית. לוחות הזמנים של ביקורות בענן פועלים על Cloud sessions. התייחס לתוצאות ולבעלות שלהם בנפרד.
+</Note>

@@ -1,0 +1,129 @@
+---
+title: "अंतर्निर्मित नीति कैटलॉग"
+description: "प्रत्येक अंतर्निर्मित Failproof AI नीति, इसके ट्रिगर, अनुशंसित स्थिति और कॉन्फ़िगर योग्य पैरामीटर की समीक्षा करें।"
+icon: "list-checks"
+---
+
+स्थापित पैकेज नीति उपलब्धता के लिए सत्य का स्रोत है। प्रत्येक अपग्रेड के बाद `failproofai policies` चलाएं क्योंकि कैटलॉग प्रविष्टियां और व्यवहार पैकेज संस्करण के साथ बदल सकते हैं।
+
+## अनुशंसित आधार
+
+निर्देशित सेटअप का अनुशंसित चयन वर्तमान में गुप्त सैनिटाइजर, पर्यावरण सुरक्षा, आत्म-सुरक्षा, विनाशकारी-कमांड गार्ड और संरक्षित-शाखा सुरक्षा सक्षम करता है:
+
+```text
+sanitize-jwt                 sanitize-api-keys
+sanitize-connection-strings sanitize-private-key-content
+sanitize-bearer-tokens       protect-env-vars
+block-env-files              block-secrets-write
+block-self-pause             block-failproofai-commands
+block-sudo                   block-curl-pipe-sh
+block-rm-rf                  block-push-master
+block-force-push
+```
+
+अनुशंसित जानबूझकर **Everything** की तुलना में संकीर्ण है। बुनियादी ढांचा और वर्कफ़्लो नीतियां वैध कार्य में बाधा डाल सकती हैं और उन रिपॉजिटरी और मशीनों के लिए सक्षम की जानी चाहिए जिन्हें उनकी आवश्यकता है।
+
+## गुप्त और पर्यावरण
+
+| नीति | ट्रिगर | परिणाम |
+| --- | --- | --- |
+| `sanitize-jwt` | `PostToolUse` | मॉडल को देखने से पहले टूल आउटपुट से JWTs को संपादित करें। |
+| `sanitize-api-keys` | `PostToolUse` | सामान्य OpenAI, Anthropic, GitHub, AWS, Stripe और Google कीज़ को संपादित करें। |
+| `sanitize-connection-strings` | `PostToolUse` | क्रेडेंशियल युक्त डेटाबेस कनेक्शन स्ट्रिंग को संपादित करें। |
+| `sanitize-private-key-content` | `PostToolUse` | PEM निजी-कुंजी निकायों को संपादित करें। |
+| `sanitize-bearer-tokens` | `PostToolUse` | प्राधिकरण वाहक टोकन को संपादित करें। |
+| `protect-env-vars` | शेल टूल्स पर `PreToolUse` | पर्यावरण चर डंप करने वाली कमांड को ब्लॉक करें। |
+| `block-env-files` | `PreToolUse` | `.env` फाइलों के पढ़ने और लिखने को ब्लॉक करें। |
+| `block-read-outside-cwd` | पढ़ने, glob, grep या शेल टूल्स पर `PreToolUse` | सत्र कार्यशील निर्देशिका के अंदर पढ़ना रखें। |
+| `block-secrets-write` | लिखने वाले टूल्स पर `PreToolUse` | सामान्य गुप्त-कुंजी और क्रेडेंशियल फाइलनामों में लिखने को ब्लॉक करें। |
+
+## खतरनाक कमांडें और बुनियादी ढांचा
+
+| नीति | ट्रिगर | परिणाम |
+| --- | --- | --- |
+| `block-self-pause` | `PreToolUse`, `PermissionRequest` | एजेंट को अपनी खुद की प्रवर्तन को रोकने से रोकें। |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` | जब तक कोई allow पैटर्न मेल न खाए तब तक `sudo` को ब्लॉक करें। |
+| `block-curl-pipe-sh` | `PreToolUse` | डाउनलोड की गई स्क्रिप्ट को सीधे शेल में पाइप करने को ब्लॉक करें। |
+| `block-rm-rf` | `PreToolUse` | विनाशकारी पुनरावर्ती हटाने वाले पैटर्न को ब्लॉक करें। |
+| `block-failproofai-commands` | `PreToolUse` | एजेंटों को Failproof AI को बदलने या अनइंस्टॉल करने से रोकें। |
+| `block-kubectl` | `PreToolUse` | Kubernetes कमांड को गेट करें। |
+| `block-terraform` | `PreToolUse` | Terraform और OpenTofu कमांड को गेट करें। |
+| `block-aws-cli` | `PreToolUse` | AWS CLI कमांड को गेट करें। |
+| `block-gcloud` | `PreToolUse` | Google Cloud CLI कमांड को गेट करें। |
+| `block-az-cli` | `PreToolUse` | Azure CLI कमांड को गेट करें। |
+| `block-helm` | `PreToolUse` | Helm कमांड को गेट करें। |
+| `block-gh-pipeline` | `PreToolUse` | GitHub CLI वर्कफ़्लो, रन, मर्ज, रिलीज़, कैश और गुप्त संचालन को परिवर्तित करने वाले गेट को गेट करें। |
+
+## Git और डेटाबेस सुरक्षा
+
+| नीति | ट्रिगर | परिणाम |
+| --- | --- | --- |
+| `block-push-master` | `PreToolUse` | कॉन्फ़िगर की गई संरक्षित शाखाओं में सीधे पुश को ब्लॉक करें। |
+| `block-force-push` | `PreToolUse` | फोर्स-पुश को ब्लॉक करें; `--force-with-lease` वर्तमान कार्यान्वयन द्वारा अनुमत रहता है। |
+| `block-work-on-main` | `PreToolUse` | संरक्षित शाखाओं पर कमिट और मर्ज को ब्लॉक करें। |
+| `warn-git-amend` | `PreToolUse` | `--amend` से कमिट को फिर से लिखने से पहले चेतावनी दें। |
+| `warn-git-stash-drop` | `PreToolUse` | स्टैश को स्थायी रूप से छोड़ने या हटाने से पहले चेतावनी दें। |
+| `warn-all-files-staged` | `PreToolUse` | व्यापक `git add -A`, `git add .` या `git add --all` पर चेतावनी दें। |
+| `warn-destructive-sql` | `PreToolUse` | स्वीकृत डेटाबेस क्लाइंट के माध्यम से बिना `WHERE` के `DROP`, `TRUNCATE` और `DELETE` पर चेतावनी दें। |
+| `warn-schema-alteration` | `PreToolUse` | स्वीकृत `ALTER TABLE` कॉलम और नाम बदलने वाले संचालन पर चेतावनी दें। |
+
+## पैकेज, सिस्टम व्यवहार और एजेंट लूप
+
+| नीति | ट्रिगर | परिणाम |
+| --- | --- | --- |
+| `warn-package-publish` | `PreToolUse` | पैकेज रजिस्ट्रियों में प्रकाशित करने से पहले चेतावनी दें। |
+| `warn-global-package-install` | `PreToolUse` | वैश्विक पैकेज स्थापन से पहले चेतावनी दें। |
+| `prefer-package-manager` | `PreToolUse` | एजेंट को अनुमत पैकेज प्रबंधक का उपयोग करने का निर्देश दें। |
+| `warn-large-file-write` | लिखने वाले टूल्स पर `PreToolUse` | कॉन्फ़िगर की गई फाइल-आकार सीमा से ऊपर चेतावनी दें। |
+| `warn-background-process` | `PreToolUse` | अलग या दीर्घकालीन पृष्ठभूमि-प्रक्रिया पैटर्न पर चेतावनी दें। |
+| `warn-repeated-tool-calls` | `PreToolUse` | तीन या अधिक समान टूल कॉल के बाद चेतावनी दें। |
+
+## कार्य के अंत का वर्कफ़्लो
+
+ये नीतियों को एक हार्नेस की आवश्यकता है जो एक संगत `Stop` ईवेंट उत्सर्जित करता है।
+
+| नीति | परिणाम |
+| --- | --- |
+| `require-commit-before-stop` | ट्रैक किए गए कार्य असंबद्ध रहते हुए पूरा होने से इनकार करें। |
+| `require-push-before-stop` | कमिट स्थानीय-केवल रहते हुए पूरा होने से इनकार करें। |
+| `require-pr-before-stop` | वर्तमान शाखा के लिए एक पुल अनुरोध की आवश्यकता है। |
+| `require-no-conflicts-before-stop` | कॉन्फ़िगर की गई आधार शाखा के विरुद्ध स्वच्छ मर्ज की आवश्यकता है। |
+| `require-ci-green-before-stop` | वर्तमान-HEAD CI जांच को सफलतापूर्वक पूरा करने की आवश्यकता है। |
+
+## पैरामीटर संदर्भ
+
+चयनित स्कोप के `policyParams` ऑब्जेक्ट के तहत पैरामीटर कॉन्फ़िगर करें। प्रकारों की प्रत्येक नीति द्वारा पुष्टि की जाती है।
+
+| नीति | पैरामीटर | प्रकार और डिफ़ॉल्ट |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; प्रविष्टियों में `regex` और `label` शामिल हैं |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| बुनियादी ढांचा ब्लॉकर | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+```json
+{
+  "enabledPolicies": ["block-sudo", "block-push-master"],
+  "policyParams": {
+    "block-sudo": {
+      "allowPatterns": ["sudo systemctl status"]
+    },
+    "block-push-master": {
+      "protectedBranches": ["main", "release"]
+    }
+  }
+}
+```
+
+<Warning>
+  एक allow पैटर्न एक एजेंट को क्या कर सकता है यह व्यापक करता है। लक्ष्य हार्नेस पर सटीक टोकनकरण और कमांड वेरिएंट को तैनात करने से पहले पूरे बेड़े में परीक्षण करें।
+</Warning>

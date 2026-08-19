@@ -1,0 +1,96 @@
+---
+title: "Hallazgos y problemas"
+description: "Convierte la evidencia de auditoría en trabajo de remediación asignable y rastreable."
+icon: "clipboard-check"
+---
+
+Un hallazgo es la declaración respaldada por evidencia de la auditoría sobre un fallo. Un problema es el flujo de trabajo duradero para responder a él.
+
+## Triaje y asignación del trabajo
+
+<Tabs>
+  <Tab title="Panel">
+    1. Abre **Analizar → Auditorías**, elige una ejecución completada y selecciona un hallazgo para inspeccionar su análisis, recomendación, sesiones y consultas de evidencia.
+    2. Reconoce, asigna, descarta, silencia, resuelve o reabre el hallazgo después de verificar su evidencia.
+    3. Ve a **Analizar → Problemas** y filtra la bandeja de entrada duradera por estado, gravedad o responsable.
+    4. Abre el problema para asignarlo, agregar comentarios o suscriptores, y resolverlo una vez verificada la corrección.
+
+    Comienza por el resumen del hallazgo. Confirma que la descripción del fallo, la respuesta recomendada, la gravedad y la clasificación coinciden con las sesiones que esperabas que la auditoría examinara.
+
+    ![Un hallazgo de auditoría con gravedad, conteo de ocurrencias, análisis de causa raíz, acción recomendada, factores de clasificación y evidencia.](/images/dashboard/audit-finding.png)
+
+    A continuación, abre una sesión afectada en lugar de decidir únicamente a partir del resumen. El rastro vinculado debe mostrar el evento exacto y el payload que respaldan el hallazgo.
+
+    ![Una sesión vinculada desde un hallazgo de auditoría, abierta en el error relevante con sus metadatos de evento y payload sin procesar.](/images/dashboard/audit-linked-session.png)
+
+    Tras verificar la evidencia, usa Problemas para asignar un responsable a la respuesta y hacer un seguimiento independiente de futuras ejecuciones de auditoría.
+
+    ![La bandeja de entrada de Problemas mostrando trabajo activo, reconocido y resuelto con gravedad y responsabilidad.](/images/dashboard/incidents.png)
+
+    Abre el problema para registrar notas de investigación, notificar a los suscriptores y conservar el historial de respuestas. Resuélvelo solo después de que la remediación esté desplegada y verificada.
+
+    ![Vista detallada de un problema con su origen, evidencia de incumplimiento, responsables, suscriptores, línea de tiempo y comentarios.](/images/dashboard/incident-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits findings --audit checkout-reliability --status open
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+
+    fp issues list
+    fp issues show <issue-id>
+    fp issues assign <issue-id> --assignee engineer@example.com
+    fp issues comment-add <issue-id> --body "policy is in observe mode"
+    fp issues resolve <issue-id> --yes
+    ```
+
+    Usa `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` y `fp issues subscribers <issue-id>` para gestionar los observadores.
+
+    Consulta la [referencia de CLI de Cloud para auditorías y problemas](/es/reference/cloud-cli#audits) para hallazgos de auditoría y [`fp issues`](/es/reference/cloud-cli#issues) para la gestión de problemas.
+  </Tab>
+</Tabs>
+
+## Revisión de un hallazgo
+
+Confirma que contiene:
+
+- Un modo de fallo estable, no solo un título aislado
+- Gravedad e impacto operativo
+- IDs de sesiones afectadas o consultas de respaldo
+- Contexto suficiente para reproducir el comportamiento
+- Una respuesta propuesta que corresponda a la evidencia
+
+## Uso de un problema para gestionar la respuesta
+
+Crea o vincula un problema cuando el hallazgo requiera asignación, discusión, cambios de estado, comentarios o suscriptores. Los problemas también pueden representar incidentes de alerta y problemas reportados manualmente, razón por la cual se encuentran bajo respuesta de auditoría y no en la navegación principal.
+
+Resuelve el problema cuando la remediación esté desplegada y verificada. Resuelve el hallazgo cuando el modo de fallo haya sido abordado para la población de la auditoría. Esos momentos pueden no coincidir.
+
+## Convertir un problema en borrador de política
+
+<Tabs>
+  <Tab title="Panel">
+    1. Abre el problema y verifica su hallazgo, sesiones citadas, causa raíz y recomendación.
+    2. Selecciona **generar política** y revisa el resultado de elegibilidad y la intención de aplicación propuesta. Un resultado de **sin política** significa que el comportamiento puede requerir una alerta, un cambio de flujo de trabajo o una respuesta humana en su lugar.
+    3. Selecciona **escribir esta política**, luego revisa y prueba el código generado en **Admin → editor de políticas** antes de seleccionar **publicar versión**. Usa **abrir el editor de todos modos** si no estás de acuerdo con la verificación de elegibilidad.
+    4. Ve a **Admin → aplicación**, despliega la versión en modo **observación** y verifica sus decisiones en **Observar → política** antes de aplicarla.
+
+    El título del problema, la descripción del hallazgo, la causa raíz, la recomendación y la intención de elegibilidad ayudan a componer el borrador. Nada se publica ni se despliega automáticamente.
+  </Tab>
+  <Tab title="CLI">
+    Usa la CLI para inspeccionar la evidencia antes de abrir el problema en el panel:
+
+    ```bash
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp events --session-id <session-id> --full --all
+    ```
+
+    La elegibilidad de políticas, la publicación en Cloud y el despliegue en flota son flujos de trabajo del panel. Usa `failproofai policies --install --custom <file>` cuando quieras validar primero el código de política equivalente de forma local.
+  </Tab>
+</Tabs>
+
+<Card title="Crear una política" icon="shield-plus" href="/es/policies/editor">
+  Convierte un patrón de acción confirmado y repetible en una versión de política.
+</Card>

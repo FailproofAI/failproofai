@@ -1,0 +1,167 @@
+---
+title: "문제 해결"
+description: "세션 누락, 정책 누락, 전송 실패, 차단된 에이전트 동작을 진단합니다."
+icon: "wrench"
+---
+
+<AccordionGroup>
+  <Accordion title="Cloud에 세션이 표시되지 않음">
+    <Tabs>
+      <Tab title="대시보드">
+        **Administration → Keys**를 열고 머신 키가 활성 상태이며 `events:add` 권한이 있는지 확인합니다. 그런 다음 **Observe → Events**를 열어 시간 범위를 넓히고 환경 및 에이전트 필터를 초기화합니다. 이벤트가 존재하면 세션 ID로 검색한 후 **Observe → Sessions**에서 그룹화 여부를 확인합니다. 이벤트가 없으면 CLI에서 Failproof 데몬을 진단합니다.
+
+        ![주요 필터가 표시되고 최근 에이전트 이벤트가 수신되는 실시간 이벤트 스트림.](/images/dashboard/events-stream-current.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait --timeout 60
+        fp list envs
+        fp events --since 24h --limit 20
+        fp sessions --since 24h --limit 20
+        ```
+
+        캡처가 활성화되어 있는지, 설정된 키에 `events:add` 권한이 있는지, 대시보드 필터가 전송된 환경과 일치하는지 확인합니다.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Python SDK 이벤트가 디스크에 남아 있음">
+    <Tabs>
+      <Tab title="대시보드">
+        **Observe → Events**에서 필터를 초기화하고 정확한 SDK 세션 ID로 검색합니다. 아무것도 표시되지 않으면 소스 머신에서 SDK 스풀과 Failproof 데몬을 점검합니다.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait
+        ```
+
+        에이전트 프로세스가 `AGENTEYE_SPOOL_TO_FAILPROOFAI=1`을 설정하고 있는지, SDK 시작 전에 `$FAILPROOFAI_HOME/custom-agents`(없으면 `~/.failproofai/custom-agents`) 디렉터리가 존재하는지 확인합니다.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="머신이 정책을 수신하지 못함">
+    <Tabs>
+      <Tab title="대시보드">
+        **Admin → enforcement**를 열고 머신을 선택한 후 할당된 버전, 보고된 버전, 이전 버전을 비교합니다. 배포 범위에 해당 머신이 포함되어 있는지, 키에 `policies:pull` 권한이 있는지 확인합니다. 정책 전달이 실패하더라도 이벤트 수집은 정상 동작할 수 있습니다.
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config --status
+        ```
+
+        머신 ID와 레이블이 대시보드 대상과 일치하는지 확인합니다. 기존 자격 증명이 이벤트 수집 권한만 부여하는 경우 정책 권한이 있는 키로 재연결합니다.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="데몬을 사용할 수 없어 동작이 거부됨">
+    <Tabs>
+      <Tab title="대시보드">
+        **Admin → enforcement**를 열고 머신의 마지막 확인 시간과 보고된 버전을 확인합니다. 머신이 오래된 상태라면 로컬 데몬 문제로 간주합니다. 데몬을 사용할 수 없다는 이유만으로 배포된 정책을 약화시키지 마십시오.
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config
+        failproofai config --status
+        ```
+
+        `failproofaid`를 재시작하거나 업데이트합니다. CLI와 데몬의 프로토콜 버전이 다를 경우 설정을 다시 실행합니다. 설정된 데몬 경로는 설계상 실패 시 차단(fail closed) 방식으로 동작합니다.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="커스텀 정책이 로드되지 않음">
+    <Tabs>
+      <Tab title="대시보드">
+        Cloud에서 작성한 정책이라면 **Admin → policy editor**를 열고 해당 초안을 선택한 후 게시 전 유효성 검사 오류를 확인합니다. 로컬 정책이라면 CLI로 유효성을 검사한 뒤 테스트 동작 후 **Observe → policy**를 열어 결정 내역이 도착하는지 확인합니다.
+
+      </Tab>
+      <Tab title="CLI">
+        파일명이 `policies.js`, `policies.mjs`, 또는 `policies.ts`로 끝나는지, 모듈이 `customPolicies.add(...)`를 호출하는지, 그리고 정책 파일에서 임포트가 올바르게 해석되는지 확인합니다.
+
+        ```bash
+        failproofai policies --install --custom ./checkout.policies.ts
+        failproofai policies
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="감사 결과가 없음">
+    <Tabs>
+      <Tab title="대시보드">
+        **Analyze → audits**를 열고 실행을 선택한 후 모델 분석이 실행되었는지 확인합니다. 그런 다음 범위와 기간을 **Observe → sessions**와 비교하고 해당 모집단의 대표적인 트레이스를 엽니다.
+
+        결과가 없다는 것은 분석이 성공적으로 실행된 경우에만 의미가 있습니다. 분석이 건너뛰어지거나 실패한 경우 실행 결과는 없고 분석되지 않은 기간은 이후 성공적인 실행을 위해 열린 상태로 유지됩니다. 모델 분석이 비활성화된 경우에도 감사 결과가 없을 수 있습니다. 이는 결정론적 자격 증명 및 PII 스캔이 통계만 기록하고 더 이상 결과를 도출하지 않기 때문입니다.
+
+        ![환경, 에이전트, 주기, 스윕 기간이 세션 모집단을 정의하는 감사 양식.](/images/dashboard/audit-new.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp audits show <audit-name>
+        fp audits runs <audit-name>
+        fp sessions --since 24h --env production
+        fp audits context-show <audit-name>
+        fp audits run <audit-name>
+        fp audits findings --audit <audit-name>
+        ```
+
+        실행이 대기 중 상태로 유지되면 감사 에이전트 용량이 확보될 때까지 기다리거나 배포 운영자에게 감사 플릿을 점검하도록 요청합니다. 대기 중인 감사는 재시도되며 즉시 건너뛰어지지 않습니다.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="온라인 평가가 자동으로 실행되지 않음">
+    <Tabs>
+      <Tab title="대시보드">
+        완료된 세션을 열고 수동 평가가 성공하는지 확인합니다. 현재 호스팅된 Cloud는 대시보드에서 평가기 엔드포인트를 제어하는 기능을 제공하지 않습니다. 서버 운영자가 직접 설정해야 합니다.
+      </Tab>
+      <Tab title="CLI">
+        평가기 자체를 확인한 후 최근 평가 상태를 점검합니다:
+
+        ```bash
+        curl https://evaluator.example.com/health
+        fp evals --since 1h
+        ```
+
+        자체 호스팅 Cloud에서는 서버에 `EVALUATOR_ENDPOINT`가 설정되어 있는지, `EVALUATOR_TOKEN`이 평가기와 일치하는지 확인합니다. 엔드포인트가 없으면 자동 평가가 비활성화됩니다.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Cloud CLI 인증이 잘못된 조직을 대상으로 함">
+    <Tabs>
+      <Tab title="대시보드">
+        조직 전환기를 사용하여 예상 슬러그와 권한을 확인한 후 CLI 결과와 비교합니다.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp whoami
+        fp orgs current
+        fp orgs perms
+        ```
+
+        API 키 모드에서는 `fp --org <slug> --api-key <key> ...`를 지정하거나 `AGENTEYE_ORG`를 설정합니다. 저장된 휴먼 세션의 조직 상태는 API 키 요청에서 의도적으로 무시됩니다.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="정책이 유효한 작업을 차단함">
+    <Tabs>
+      <Tab title="대시보드">
+        **Observe → policy**를 열고 결정 내역과 연결된 세션을 보존한 후 오탐 조건을 파악합니다. 그런 다음 **Admin → enforcement**를 열고 영향받은 머신을 이전 버전으로 롤백합니다. **Policy editor**에서 더 좁은 범위의 버전을 생성하고 소규모 범위에서 테스트한 후 유효한 작업이 성공적으로 완료된 경우에만 범위를 확장합니다.
+
+      </Tab>
+      <Tab title="CLI">
+        Cloud 배포 롤백은 대시보드에서만 가능합니다. 로컬 세션 일시 중지는 Cloud 관리 정책을 비활성화하지 않습니다. 대시보드를 사용할 수 없는 경우 머신 및 배포 상태를 캡처하고 차단된 동작을 반복적으로 재시도하는 대신 대시보드 접근을 복원합니다.
+
+        ```bash
+        failproofai config --status
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+</AccordionGroup>
+
+지원팀에 문의할 때는 CLI 버전, 하네스, 환경, 관련 세션 또는 배포 ID, 그리고 시크릿이 제거된 `failproofai config --status` 출력 결과를 함께 첨부해 주십시오.

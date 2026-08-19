@@ -1,0 +1,30 @@
+---
+---
+title: "Metrikler"
+description: "Gecikme, maliyet ve token kullanımı gibi büyüklük metriklerini çizin."
+icon: "ruler"
+---
+
+Metrikler birimli değerler içindir. Değerlendirmeler puanlar ve yargılar içindir.
+
+<Tabs>
+  <Tab title="Kontrol Paneli">
+    1. **Observe → Metrics** sayfasına gidin.
+    2. **add series** seçeneğini tıklayın ve bir agent, ortam, metrik, istatistik ve eğri seçin.
+    3. Agent'ları veya ortamları karşılaştırmak için seriler ekleyin; farklı birimler ayrı eksenlere sahip olur.
+    4. Eşleşen değerlendirmeleri ve oturumları açmak için bir noktayı seçin veya tam görünümü kopyalamak için **share** seçeneğini tıklayın.
+
+    ![Zaman kontrolleri, toplama seçicileri, eğriler ve paylaşım işlemi ile iki maliyet-çıktı-birim serisini karşılaştıran Metrikler sayfası.](/images/dashboard/metrics-series.png)
+  </Tab>
+  <Tab title="CLI">
+    Henüz ayrılmış bir büyüklük-metrikler komutu yok. Kullanılabilir anahtarları keşfedin ve oturumları veya değerlendirmeleri inceleyin:
+
+    ```bash
+    fp list score_filters
+    fp --json evals --since 24h
+    fp --json sessions --since 24h
+    ```
+
+    Özel metrik toplama için `fp query` kullanın.
+  </Tab>
+</Tabs>

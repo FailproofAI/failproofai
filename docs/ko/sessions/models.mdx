@@ -1,0 +1,27 @@
+---
+title: "모델"
+description: "모델 지연 시간, 토큰, 컨텍스트 사용량, 트래픽 분포를 비교합니다."
+icon: "cpu"
+---
+
+모델을 사용하여 모델, 에이전트, 환경 또는 시간 범위 변경에 따라 안정성이나 비용이 어떻게 달라지는지 확인하세요.
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Observe → Models**로 이동합니다.
+    2. 시간 범위를 설정한 후 환경, 모델, 에이전트 또는 세션 ID로 필터링합니다.
+    3. 지연 시간, 토큰 소비량, 컨텍스트 윈도우 사용량, 모델 분포를 검토합니다.
+    4. 차트의 특정 지점이나 분포 세그먼트를 선택하면 해당 이벤트가 열립니다.
+
+    ![지연 시간, 백분위수, 토큰, 비용, 컨텍스트 윈도우, 모델 분포 뷰가 표시된 Models 페이지.](/images/dashboard/models.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list models
+    fp events --event-type model_request,model_response --env production --since 24h
+    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    ```
+
+    전용 CLI 명령으로 노출되지 않는 모델 수준 집계에는 저장된 쿼리를 사용하세요.
+  </Tab>
+</Tabs>

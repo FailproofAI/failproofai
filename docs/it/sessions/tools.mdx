@@ -1,0 +1,25 @@
+---
+title: "Strumenti"
+description: "Trova strumenti lenti, non funzionanti o sovrutilizzati nelle sessioni degli agent."
+icon: "wrench"
+---
+
+Strumenti raggruppa le chiamate agli strumenti tra le sessioni in modo da poter confrontare la latenza e la distribuzione delle chiamate.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Observe → Tools**.
+    2. Filtra per ambiente, nome dello strumento, agent o ID della sessione.
+    3. Rivedi la latenza e la distribuzione degli strumenti.
+    4. Seleziona un punto del grafico o un segmento dello strumento per aprire gli eventi e le sessioni corrispondenti.
+
+    ![La pagina Tools che mostra la latenza, i breakdown di successo e fallimento e la distribuzione delle chiamate agli strumenti.](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

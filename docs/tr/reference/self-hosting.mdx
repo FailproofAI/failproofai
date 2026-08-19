@@ -1,0 +1,128 @@
+---
+title: "Failproof AI Cloud Kendi Barındırma"
+description: "Failproof AI kontrol düzlemini müşteri tarafından yönetilen Kubernetes kümesine dağıtın."
+icon: "cloud-cog"
+---
+
+<Note>
+  Kendi barındırma bir Kurumsal dağıtımdır. Kurumsal lisans almak için [Failproof AI ile iletişime geçin](mailto:support@befailproof.ai).
+</Note>
+
+## Ön Koşullar
+
+- Kubernetes 1.27 veya daha yeni sürüm ve cluster-admin erişimi
+- Kustomize desteğine sahip `kubectl`
+- Helm 3
+- `ghcr.io/agenteye-enterprise` özel imajlarına erişim
+- İki DNS adı: biri pano için, biri alım için
+- PostgreSQL ve ClickHouse için kalıcı depolama
+- cert-manager ve Traefik veya yer paylaşımınıza uyarlanmış eşdeğer giriş ve sertifika altyapısı
+- Üretim OTP girişi ve bildirimleri için SMTP
+
+Kaynak ağacı AWS/EKS odaklı bir yer paylaşımı ve ayrı bir GCP/GKE yer paylaşımı sağlar. Bunların sertifika, yük dengeleyici veya yedekleme talimatlarını birleştirmeyin: GKE kendi DNS-01, GCS ve otomatik ölçeklendirme yapılandırmasını kullanır.
+
+## Dağıtım Sırası
+
+<Steps>
+  <Step title="Kümeyi Hazırlayın">
+    cert-manager ve genel/pano giriş denetleyicilerini kurun, yük dengeleyicilerini doğrulayın, ardından ad alanı, imaj çekme kimlik bilgileri, veritabanı kimlik bilgileri, başlangıç yönetici anahtarı ve kimlik doğrulama/SMTP sırlarını oluşturun.
+  </Step>
+  <Step title="Genel Alanları Yapılandırın">
+    Yer paylaşımının oluşturulan alan ortam dosyasında `INGEST_DOMAIN` ve `DASHBOARD_DOMAIN` ayarlayın ve eşleşen yük dengeleyicilerine işaret eden DNS kayıtları oluşturun.
+  </Step>
+  <Step title="Bir Platform Yer Paylaşımını Uygulayın ve Doğrulayın">
+    müşteri/EKS veya GCP yer paylaşımını kullanın. İşlenen Kustomize çıktısını inceleyin, uygulayın ve makineleri kaydolmadan önce tüm iş yüklerinin ve sertifikaların amaçlanan duruma ulaştığını doğrulayın.
+  </Step>
+  <Step title="Erişim ve Alımı Önyükleyin">
+    Korumalı yönetici olarak oturum açın, bir kuruluş kapsamlı makine anahtarı oluşturun ve genel alım uç noktası aracılığıyla küçük bir test oturumu gönderin.
+  </Step>
+</Steps>
+
+## Gerekli ve İsteğe Bağlı Hizmetler
+
+| Bileşen | Gereklilik |
+| --- | --- |
+| ClickHouse | Gerekli. Sunucu kanonik olay deposu olmadan başlamayı reddeder. |
+| PostgreSQL | Kullanıcılar, kuruluşlar, kaydedilmiş nesneler ve kontrol düzlemi durumu için gerekli. |
+| Redis | İsteğe bağlı. Sunucu ve pano kullanılamadığında veritabanı destekli davranışa düşer. |
+| SMTP | Geliştirme için isteğe bağlı, üretim e-postası OTP ve bildirim teslimi için gerekli. |
+| Değerlendirici | İsteğe bağlı. `EVALUATOR_ENDPOINT` olmadan otomatik değerlendirme devre dışı kalır. |
+| Yardımcı/denetim LLM | İsteğe bağlı. Yardımcı ve LLM destekli denetim özellikleri bir LLM bağlantısı yapılandırılana kadar işlevsiz kalır. |
+| Nesne depolama yedeklemesi | PostgreSQL ve ClickHouse yedek arşivleri için güçlü şekilde önerilir. |
+
+### Denetim Kapasitesi ve Başarısızlık Teslimi
+
+Kullanılabilir olduğunda adanmış denetim aracısı dağıtımında denetimler çalıştırın. Her denetim aracısı pod'u varsayılan olarak bir soruşturmayı kabul eder; pod başına eşzamanlılığı yükseltmeden aktarım hızını yinelemelerle ölçeklendirin ve belleği de artırmayın. Sunucu `server replicas × AUDIT_WORKERS` denetimleri eşzamanlı olarak gönderebilir, bu nedenle gönderici kapasitesi denetim aracısı filosunu doldurmak için yeterince büyük olmalıdır.
+
+Her denetim aracısı yuvası meşgul olduğunda, bir denetim altı saate sınırlı olarak kadansının çeyreğine kadar beklemeyi ve yeniden denemeyi dener. Hiçbir yuva kullanılabilir hale gelmezse, çalışma sonuçlar olmadan tamamlanır ve başarısızlık e-postası gönderilir. Tekrarlanan "meşgul" başarısızlıkları daha fazla denetim aracısı yinelemesi veya daha geniş aralıklı program bağlantı noktaları gerektirir. Tekrarlanan "kapatılıyor" başarısızlıkları yetersiz kapasite yerine kararsız pod'lar veya döngüsel bir yeniden başlatmayı gösterir.
+
+Başarısızlık bildirimleri etkinleştirilmiş e-posta kanalı ve SMTP gerektirir. Denetimin alıcılarını kullanırlar, ardından denetimin e-posta kanalı olmadığında `alerts.email_default_recipients` öğesine geri dönerler.
+
+## Dağıtımı Doğrulayın
+
+<Tabs>
+  <Tab title="Pano">
+    1. Yapılandırılan pano alanını açın, yönetici OTP akışını tamamlayın ve kuruluş adı ve slug'unu doğrulayın.
+    2. **Administration → Keys** öğesine gidin ve dar kapsamlı bir makine anahtarı oluşturun.
+    3. Test oturumu gönderin, ardından **Observe → Events** ve **Observe → Sessions** öğelerinde doğrulayın.
+    4. Bir uyarı kanalı ve yapılandırıldığında el ile değerlendirme ve denetim sınayın.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    kubectl get pods -n agenteye
+    kubectl get certificates -n agenteye
+    kubectl logs -n agenteye deploy/server --tail=100
+
+    fp --base-url https://failproof.example.com login
+    fp --base-url https://failproof.example.com whoami
+    fp --base-url https://failproof.example.com usage
+    ```
+
+    Üretim makinelerini kaydolmadan önce genel sağlık uç noktasını ve bir kimliği doğrulanmış `/v1` isteğini doğrulayın.
+  </Tab>
+</Tabs>
+
+## Kimlik Doğrulama ve E-posta
+
+Pano e-posta ve tek seferlik kodları kullanır. SMTP olmadan geliştirme dağıtımları OTP kodlarını sunucu çıktısında günlüğe kaydeder. `SMTP_HOST` ayarlandığında, kullanıcı adı, şifre ve gönderici bir grup olarak gereklidir veya sunucu başlamayı reddeder.
+
+`SMTP_TLS` bir boole değeridir. Desteklenen şifreli aktarım STARTTLS'dir, normalde 465 numaralı bağlantı noktasındaki örtülü SMTPS desteklenmez; geçerli sunucu aktarımı tarafından desteklenmez.
+
+OTP, uyarı, olay ve denetim e-postaları derin bağlantılar için kullandığından genel pano URL'sini doğru ayarlayın. Kuruluş üyeliği, kod isteyebilecek kişileri kontrol eder; her kuruluş, **Administration → Settings** öğesinde kendi üye oturum açmalarını daha da kısıtlayabilir.
+
+## Çok Kiracılı Gereksinimler
+
+İkinci bir kuruluş oluşturmadan önce, güçlü, kararlı bir kuruluş ClickHouse türetilmiş sırını yapılandırın ve tüm sunucu yinelemelerinde aynı tutun. Koordineli bir geçiş olmadan döndürmek kuruluş'a özel ClickHouse kullanıcılarını yetim bırakabilir.
+
+Örnek yönetici dinleyicisini dahili tutun. Sağlanan operatör konsolu opt-in'dir ve `kubectl port-forward` için tasarlanmıştır, genel giriş için değil. Etkinleştirmesi kendi güçlü API anahtarı, bir süper yönetici posta kutusu ve ikinci faktör teslimi için çalışan SMTP gerektirir.
+
+### Acil Durum Kuruluş CLI
+
+`agenteye-orgctl` sunucu imajı içinde gönderilir ve doğrudan PostgreSQL ve ClickHouse'a konuşur. Genel sunucu veya operatör konsolu sağlıksız olduğunda kullanılabilir kalır.
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org create --slug acme --name "Acme Corp"
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email ops@acme.com --set admin --protected
+```
+
+Desteklenen kuruluş işlemleri şunları içerir: oluştur, listele, yeniden adlandır, yumuşak sil, geri yükle, ClickHouse kullanıcısı yeniden hazırlama, faturalandırma tarihi yönetimi, özellik bayrakları ve geri alınamaz temizleme. Üye işlemleri şunları içerir: ekle, listele, güncelle, kaldır, izin geçersiz kılmalar ve korumalı yönetici durumu.
+
+Temizleme öncesinde yumuşak silmeyi kullanın. `org purge` geri alınamaz ve kuruluşun önce silinmesini gerektirir. Korumalı üyeler, bir operatör açıkça bunların korumasını kaldırıncaya kadar kuruluşun olağan Kullanıcılar sayfası aracılığıyla kaldırılamaz veya indirilmez.
+
+## Üretim Hazırlık Kontrol Listesi
+
+- Alım ve pano DNS'i farklı amaçlanan giriş yollarına çözümlenir.
+- TLS geçerlidir; dağıtımınız gerektirdiğinde alımda karşılıklı TLS kullanın.
+- PostgreSQL ve ClickHouse birimleri kapasite uyarılarına sahiptir.
+- Yedeklemeler her iki veri deposunu içerir ve test edilmiş geri yükleme prosedürüne sahiptir.
+- Sağlık kontrolleri alım sessizliğine, başarısız iş yüklerine, sertifika sona ermelerine, depolama basıncına ve eski yedeklemelere uyarı verir.
+- Yapılandırılmış günlükler mevcut bir küme günlük ardışık hattında çoğaltılmadan toplanır.
+- Değerlendirici, denetim ve uyarı çalışan eşzamanlılığı ölçülen sıra kanıtı olmadan değiştirilmemiştir.
+- Sabitlenen bir uygulama sürümü ve yeniden başlatma prosedürü güncellemelerden önce kaydedilir.
+
+<Warning>
+  Dağıtım bildirimleri platform'a özel güvenlik ve kullanılabilirlik varsayımları içerir. İşlenmiş kaynakları, ağ ilkelerini, giriş maruziyetini, gizli başvuruları, depolama sınıflarını, kesinti bütçelerini ve yedekleme hedeflerini uygulamadan önce platform ekibiniz ile gözden geçirin.
+</Warning>

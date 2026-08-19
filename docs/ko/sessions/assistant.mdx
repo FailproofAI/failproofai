@@ -1,0 +1,53 @@
+---
+title: "Failproof Assistant"
+description: "자연어로 Failproof AI를 분석하고 운영하세요. 질문과 쿼리부터 대시보드, 감사까지 모두 지원합니다."
+icon: "message-square-text"
+---
+
+Failproof Assistant에게 Failproof AI에서 수행할 작업을 자연어로 요청하세요. 세션과 오류를 분석하고, 쿼리를 실행하고, 대시보드를 구성하고, 평가와 알림을 조사하고, 제품 화면이나 CLI 명령어로 번역하는 번거로움 없이 감사를 생성하고 실행하는 데 도움을 드립니다.
+
+```text
+Why did production checkout agents regress this week?
+Build a dashboard for tool failures, latency, and evaluation scores.
+Create an audit that finds agents retrying the same failed action without changing approach.
+Show me the sessions behind the most common audit finding.
+```
+
+어시스턴트는 현재 활성화된 조직에서 사용 가능한 데이터와 권한을 기반으로 동작합니다. 다른 사용자나 에이전트에 영향을 미치는 작업을 적용하기 전에 어시스턴트가 제시한 근거와 변경 제안을 반드시 검토하세요.
+
+## 어시스턴트에게 질문하기
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **에이전트 채팅 열기**를 선택하고, 이해하거나 생성하거나 운영하고 싶은 내용을 설명하세요.
+    2. 어시스턴트가 작업하는 동안 도구 호출, 테이블, 쿼리 결과를 검토하세요.
+    3. 인용된 세션, 알림, 또는 쿼리를 열어 원본 데이터와 결과를 대조하여 검증하세요.
+    4. 다른 조사를 위해 새 채팅을 시작하거나, 채팅 기록을 활용해 동일한 분석을 이어가세요.
+
+    ![지원 분석 및 쿼리와 함께 옵저버빌리티 질문에 답하는 클라우드 어시스턴트.](/images/dashboard/assistant.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Open representative sessions" --chat <chat-id>
+    ```
+
+    `fp agent rename <chat-id> --title <title>`을 사용하면 조사 내용을 알아보기 쉽게 이름을 지정할 수 있고, `fp agent delete <chat-id>`로 삭제할 수 있습니다.
+  </Tab>
+</Tabs>
+
+## 어시스턴트를 효과적으로 활용하기
+
+- 먼저 목표를 제시하고, 범위가 중요한 경우 환경, 워크플로, 시간 범위를 추가로 지정하세요.
+- 생성된 SQL과 요약은 최종 근거가 아니라 조사 보조 도구로 활용하세요.
+- 감사, 이슈, 알림, 또는 정책을 생성하기 전에 대표적인 세션을 먼저 열어보세요.
+- 조직, 환경, 시간 필터를 명시적으로 지정하세요.
+- 유용한 SQL은 다른 운영자가 결과를 재현할 수 있도록 쿼리로 저장해 두세요.
+
+<Warning>
+  어시스턴트는 현재 사용자가 접근할 수 있는 데이터만 읽을 수 있습니다. 질문을 해결하기 위해 권한을 확대하지 마세요. 대신 권한이 있는 운영자에게 조사를 요청하세요.
+</Warning>

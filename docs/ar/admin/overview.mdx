@@ -1,0 +1,41 @@
+---
+---
+title: "الإدارة"
+description: "إدارة الوصول والاستخدام والمؤسسات والأمان بشكل منفصل عن سير عمل الموثوقية."
+icon: "settings-2"
+---
+
+تحتوي الإدارة على المراقبات المطلوبة لتشغيل Failproof AI عبر الفريق. يمكن لمعظم المستخدمين البقاء في الجلسات والتدقيقات والسياسات؛ يستخدم المسؤولون هذا القسم لإدارة الوصول والحدود التشغيلية.
+
+<Tabs>
+  <Tab title="Dashboard">
+    استخدم قسم **Admin** في شريط جانب Cloud للوصول إلى **محرر السياسات** و**الفرض** و**الاستخدام** و**المفاتيح** و**المستخدمين** و**الإعدادات**. العنصر المقفل يشير إلى أن حسابك يفتقد إذن القراءة.
+
+    ![قسم الإدارة في شريط جانب Cloud يعرض محرر السياسات والفرض والاستخدام والمفاتيح والمستخدمين والإعدادات.](/images/dashboard/admin-navigation.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp whoami
+    fp orgs current
+    fp orgs perms
+    fp usage
+    ```
+
+    ضع الخيارات العامة قبل الأمر، على سبيل المثال `fp --org reliability-team --json usage`.
+  </Tab>
+</Tabs>
+
+<Columns cols={2}>
+  <Card title="الاستخدام" icon="chart-no-axes-combined" href="/ar/admin/usage">
+    فحص نوافذ الفواتير واستهلاك المؤسسة.
+  </Card>
+  <Card title="المفاتيح والصلاحيات" icon="key-round" href="/ar/admin/keys-and-permissions">
+    منح الأجهزة والأتمتة الصلاحيات المطلوبة فقط.
+  </Card>
+  <Card title="المستخدمون والمؤسسات" icon="users" href="/ar/admin/users-and-organizations">
+    إدارة العضوية والإعدادات الافتراضية وحدود المؤسسة.
+  </Card>
+  <Card title="الإعدادات والأمان" icon="lock-keyhole" href="/ar/admin/settings-and-security">
+    تكوين الإعدادات التشغيلية ومعالجة البيانات وأمان النشر.
+  </Card>
+</Columns>

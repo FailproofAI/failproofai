@@ -1,0 +1,72 @@
+---
+title: "Políticas personalizadas"
+description: "Escribe una política para un modo de fallo único en tu flujo de trabajo de agente."
+icon: "shield-plus"
+---
+
+Crea un archivo que termine en `policies.js`, `policies.mjs` o `policies.ts` dentro de `.failproofai/policies/`. Los archivos de convención se cargan automáticamente en el ámbito de proyecto y de usuario.
+
+## Prueba la política antes de publicarla en la nube
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Instala la política personalizada en una máquina de prueba y activa tanto una acción que coincida como una que no lo haga legítimamente.
+    2. Ve a **Observar → política** y compara las dos decisiones.
+    3. Abre cada sesión vinculada y verifica que el payload del evento contenga evidencia suficiente para la regla.
+    4. Cuando el comportamiento sea correcto, mueve el código revisado a **Admin → editor de políticas** y publica una versión.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies --install --custom ./security.policies.ts \
+      --cli claude --scope project
+    failproofai policies
+    ```
+
+    Los archivos de convención dentro de `.failproofai/policies/` se cargan sin `--custom`. Mantén un comando de instalación explícito en CI cuando la validación deba fallar ante un módulo roto.
+  </Tab>
+</Tabs>
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+Esto coincide con `production/config.yml`, `/srv/production/config.yml`, `/srv/production` y `C:\\production\\config.yml` tanto para `Write` como para `Edit`. No coincide con nombres como `production-backup` porque `production` debe ser un segmento de ruta completo.
+
+Valida e instala un archivo explícito:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts
+```
+
+El contexto de la política incluye el tipo de evento, el payload normalizado, el nombre e input de la herramienta, los metadatos de la sesión, los parámetros y el CLI de origen cuando está disponible.
+
+## Prueba los caminos de fallo
+
+Ejecuta la validación después de cambiar el archivo de entrada o cualquier módulo local que importe:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+La ruta estricta del CLI falla ante archivos inexistentes, errores de sintaxis, importaciones no resueltas, excepciones en el nivel superior y tiempos de espera en la carga del módulo. En el momento de la aplicación, un archivo personalizado roto se registra y se omite para que las políticas integradas puedan continuar. Trata cualquier advertencia de carga como una pérdida de la aplicación esperada y genera una alerta en los registros de producción.
+
+Usa nombres globalmente únicos en las políticas explícitas, de convención y gestionadas por la nube. Mantén las funciones de política deterministas, limita las llamadas externas con tiempos de espera cortos y devuelve un `allow`, `instruct` o `deny` intencional en cada camino.
+
+<Warning>
+  Una política personalizada es código de aplicación. Prueba campos faltantes, nombres de herramientas alternativos e inputs malformados, no solo la coincidencia esperada.
+</Warning>

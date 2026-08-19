@@ -1,0 +1,47 @@
+---
+title: "策略编辑器"
+description: "基于已确认的失败模式创建和修订版本化策略。"
+icon: "file-pen-line"
+---
+
+使用策略编辑器将发现的问题转化为可部署的规则。将编写与部署分离，确保草稿不会悄无声息地改变线上行为。
+
+当某个问题具有可重复的操作模式时，在 **Analyze → issues** 下打开该问题并选择 **generate policy**。Failproof AI 会首先说明策略能否表达该问题，然后将已审核的意图和发现上下文带入编辑器。生成的源码在发布之前始终保持草稿状态。
+
+## 发布策略版本
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. 前往 **Admin → policy editor**，在 **compose** 中描述失败模式或粘贴 JavaScript 策略源码。
+    2. 验证源码并修复所有报告的错误。
+    3. 输入策略标识并发布，然后使用 **library** 比较或禁用各版本。
+    4. 当版本准备好进行机器部署时，选择 **enforcement**。
+
+    ![策略编辑器的 compose 视图，包含策略标识、AI 辅助起草、源码验证和发布控件。](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    Cloud CLI 不支持发布策略版本。请在将源码复制到编辑器之前在本地进行验证：
+
+    ```bash
+    failproofai policies --install --custom ./checkout.policies.ts \
+      --cli claude --scope project
+    ```
+
+    从 **Admin → policy editor** 发布已审核的版本。
+  </Tab>
+</Tabs>
+
+## 编写清单
+
+1. 用操作性语言命名失败模式。
+2. 选择包含足够证据以供判断的 hook 事件和工具。
+3. 编写能匹配不安全行为的最窄条件。
+4. 返回一个原因，告知 agent 或操作员下一步应该做什么。
+5. 添加应当匹配的示例以及必须保持允许的示例。
+6. 保存新版本并请求审核。
+
+当 agent 能够安全地纠正路线时，使用 `instruct`。当允许该操作会带来不可接受或不可逆的风险时，使用 `deny`。
+
+<Info>
+  策略版本是不可变的部署输入。编辑草稿会创建新版本；不应覆盖已分配给机器的版本。
+</Info>

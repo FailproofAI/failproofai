@@ -1,0 +1,53 @@
+---
+title: "Sorgular"
+description: "Oturum, etkinlik ve değerlendirme verilerini yeniden kullanılabilir SQL ile keşfedin."
+icon: "database"
+---
+
+Sorgular, gösterge panellerinin, denetimlerinin ve araştırmaların altında yer alan esnek bir katmandır. Bir fikri test etmek için geçici SQL kullanın, ardından sorgu tekrarlayan bir iş akışının parçası haline geldiğinde kaydedin.
+
+## Sorgu oluşturma ve çalıştırma
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Analyze → Queries** bölümüne gidin ve **new query** seçeneğini seçin.
+    2. Schema tarayıcısını açın ve etkinlik, oturum veya değerlendirme verilerinden alanları seçin.
+    3. SQL yazın, gerektiğinde parametreler ekleyin ve sorguyu çalıştırın.
+    4. Açık bir ad ve açıklama ile kaydedin, sonra sonuç izlenmeliyse **add to dashboard** seçeneğini kullanın.
+
+    Sorgu düzenleyicisi, etkinlik şemasını, SQL'i, parametreleri ve sonuç önizlemesini birleştirerek soruyu kaydetmeden önce doğrulamanıza olanak tanır.
+
+    ![Schema tarayıcısı ve canlı sonuç tablosu ile SQL sorgu düzenleyicisi.](/images/dashboard/query-lab.png)
+
+    Kaydedilen sorgular daha sonra paylaşılan kitaplıkta görünür ve burada takım arkadaşlarınız onları yeniden çalıştırabilir veya sonuçlarını pano eklemelerine olanak tanıyor.
+
+    ![Yeniden kullanılabilir yerleşik ve özel sorgular içeren kaydedilmiş Sorgular kitaplığı.](/images/dashboard/queries.png)
+
+    Sonuç SQL'i yeniden açmadan anlaşılabilir kalacak şekilde açık bir ad ve açıklama kullanın.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp query schema
+    fp query create "retry loops" --sql "SELECT ..."
+    fp query run <query-id>
+    fp query show <query-id>
+    fp query update <query-id> --sql "SELECT ..."
+    ```
+
+    Kimlikleri bulmak için `fp query list` kullanın ve kaydedilen bir sorguyu kaldırmak için `fp query delete <query-id>` kullanın.
+  </Tab>
+</Tabs>
+
+## Yaygın kullanımlar
+
+- Aynı araca yapılan tekrarlanan çağrılar içeren oturumları bulun.
+- Değerlendirme puanlarını modeller veya ortamlar arasında karşılaştırın.
+- İnsan beklentisi ile devam etme arasındaki süreyi ölçün.
+- Başarılı bir alternatif tarafından izlenen politika reddini belirleyin.
+- Bir denetim için bir kohort oluşturun.
+
+Tanınmayan alanlar karşısında yazmadan önce **Queries → Schema** bölümünü açın. Açık zaman ve ortam filtreleri tercih edin ve araştırma sırasında sonuç sınırlarını tutun.
+
+<Warning>
+  Bir sorgu şüpheli bir deseni belirleyebilir, ancak kendi başına arıza modunu belirlemez. Sonucu bir politikaya dönüştürmeden önce temsili izlemeleri açın veya bir denetim çalıştırın.
+</Warning>

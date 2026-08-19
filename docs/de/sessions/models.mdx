@@ -1,0 +1,27 @@
+---
+title: "Modelle"
+description: "Vergleiche Modell-Latenz, Token, Kontextnutzung und Traffic-Verteilung."
+icon: "cpu"
+---
+
+Verwende Modelle, um zu sehen, ob sich Zuverlässigkeit oder Kosten mit einem Modell, Agenten, einer Umgebung oder einem Zeitraum verändert haben.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Observe → Models**.
+    2. Lege den Zeitraum fest und filtere nach Umgebung, Modell, Agent oder Session-ID.
+    3. Überprüfe Latenz, Token-Verbrauch, Kontextfenster-Nutzung und Modellverteilung.
+    4. Wähle einen Diagrammpunkt oder ein Verteilungssegment aus, um die zugehörigen Ereignisse zu öffnen.
+
+    ![Die Models-Seite mit Ansichten für Latenz, Perzentile, Token, Kosten, Kontextfenster und Modellverteilung.](/images/dashboard/models.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list models
+    fp events --event-type model_request,model_response --env production --since 24h
+    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    ```
+
+    Verwende eine gespeicherte Abfrage für Aggregate auf Modellebene, die nicht als dedizierter CLI-Befehl verfügbar sind.
+  </Tab>
+</Tabs>

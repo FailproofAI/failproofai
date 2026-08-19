@@ -1,0 +1,48 @@
+---
+title: "Đọc một trace"
+description: "Tìm sự kiện thay đổi hướng đi của một phiên làm việc của agent."
+icon: "route"
+---
+
+Một trace biến một dòng sự kiện phẳng thành câu chuyện nhân quả của quá trình chạy. Hãy đọc nó từ sự phân nhánh đầu tiên, không phải ngược lại từ lỗi cuối cùng.
+
+## Mở trace
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Observe → Sessions** và mở một phiên làm việc.
+    2. Sử dụng bản tóm tắt hồ sơ để kiểm tra kết quả, thời gian, lỗi và điểm đánh giá.
+    3. Quét thanh thời gian và minimap. Lọc loại sự kiện hoặc thời gian khi phiên làm việc lớn.
+    4. Chọn một sự kiện để kiểm tra nó. Sử dụng **export** để xuất JSON của người đánh giá, hoặc sao chép URL trang để chia sẻ một liên kết sâu đến bằng chứng đã chọn.
+
+    ![Một chế độ xem chi tiết phiên làm việc với biểu đồ thực thi, thanh thời gian sự kiện, bảng đánh giá và phân tích công cụ, mô hình và hook.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp --json sessions --session-id <session-id>
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    Sử dụng dòng sự kiện nhẹ trước tiên. Yêu cầu toàn bộ dữ liệu tải chỉ khi các bản tóm tắt sự kiện không chứa đủ bằng chứng.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Định hướng chính mình">
+    Xác nhận agent, môi trường, thời gian, kết quả và thời lượng, sau đó quét để tìm lỗi, khoảng thời gian dài, công cụ lặp lại, chờ đợi con người và quyết định chính sách bị từ chối.
+  </Step>
+  <Step title="Mở rộng sự kiện đầu tiên đáng ngờ">
+    Kiểm tra yêu cầu, phản hồi, đầu vào công cụ, đầu ra và ID tương quan của nó. Nội dung nhạy cảm chỉ hiển thị khi bắt đầu ghi bản ghi được bật và quyền của bạn cho phép.
+  </Step>
+  <Step title="Kiểm tra ngữ cảnh trước đó">
+    Nguyên nhân thường nằm ở sự kiện trước đó một sự kiện: phản hồi mô hình không chính xác, kết quả công cụ bị thiếu hoặc giả định lỗi thời.
+  </Step>
+  <Step title="Chuyển bằng chứng thành hành động">
+    Thêm phiên làm việc vào phạm vi kiểm tra, liên kết nó với một vấn đề hoặc sử dụng chế độ lỗi để tạo một chính sách.
+  </Step>
+</Steps>
+
+<Warning>
+  Thời lượng dài không phải lúc nào cũng có nghĩa là độ trễ của mô hình. Tách thời gian mô hình, công cụ, hook và chờ đợi con người trước khi quyết định những gì cần sửa.
+</Warning>

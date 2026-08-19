@@ -1,0 +1,43 @@
+---
+title: "Bảng điều khiển"
+description: "Theo dõi các tín hiệu độ tin cậy quan trọng cho một agent hoặc workflow."
+icon: "layout-dashboard"
+---
+
+Bảng điều khiển kết hợp các truy vấn đã lưu thành một chế độ xem hoạt động. Xây dựng một bảng xung quanh một quyết định mà bạn mong đợi ai đó sẽ đưa ra—không phải xung quanh mọi số liệu có sẵn.
+
+## Xây dựng một bảng điều khiển
+
+<Tabs>
+  <Tab title="Bảng điều khiển">
+    1. Đi tới **Analyze → Queries**, tạo hoặc mở một truy vấn đã lưu, và xác thực kết quả của nó.
+    2. Chọn **add to dashboard**, sau đó chọn một bảng điều khiển hiện có hoặc tạo một cái mới trong **Analyze → Dashboards**.
+    3. Mở bảng điều khiển, vào chế độ chỉnh sửa, sắp xếp các ô, và lưu bố cục.
+    4. Quay lại truy vấn khi bạn cần thay đổi dữ liệu hoặc bộ lọc phía sau một ô.
+
+    ![A dashboard composed from saved queries for event volume, errors, latency, and model token use.](/images/dashboard/dashboard-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    CRUD bảng điều khiển không được hiển thị bởi Cloud CLI hiện tại. Sử dụng CLI để xây dựng và xác minh truy vấn đã lưu, sau đó thêm nó vào một bảng điều khiển trong giao diện người dùng.
+
+    ```bash
+    fp query schema
+    fp query create "production error rate" --sql "SELECT ..."
+    fp query run <query-id>
+    ```
+  </Tab>
+</Tabs>
+
+Các nhóm bảng điều khiển hữu ích bao gồm:
+
+- **Models:** volume, latency, token use, error rate, và evaluation scores.
+- **Evaluations:** success rate và score trends theo agent hoặc environment.
+- **Tools:** call volume, failure rate, duration, và repeat calls.
+- **Hooks and policies:** decisions, denials, và policy match rate.
+- **Custom workflow metrics:** results từ các trường sự kiện và SQL của riêng bạn.
+
+Bắt đầu với một truy vấn đã lưu, xác thực kết quả của nó, sau đó thêm nó dưới dạng một ô. Giữ các bộ lọc production và development rõ ràng để traffic test không che giấu một hồi quy.
+
+<Tip>
+  Cấp cho mỗi bảng điều khiển một chủ sở hữu và một câu hỏi phản hồi, chẳng hạn như "Độ tin cậy của checkout-agent có tệ hơn so với tuần trước không?"
+</Tip>

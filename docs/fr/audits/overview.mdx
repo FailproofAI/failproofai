@@ -1,0 +1,56 @@
+---
+title: "Audits"
+description: "Examinez une population définie de sessions pour détecter des défaillances que les traces seules ne révèlent pas."
+icon: "scan-search"
+---
+
+Un audit parcourt un ensemble de sessions sélectionné à la recherche d'un objectif de défaillance défini. Il combine les preuves issues des traces, les résultats d'évaluation, les correspondances de politiques et le contexte de référence pour produire des conclusions sur lesquelles vous pouvez agir.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+Découvrez comment un audit progresse depuis une exécution planifiée jusqu'aux défaillances étayées par des preuves que vous pouvez corriger.
+
+## Ouvrir les audits
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    Accédez à **Analyser → Audits**. La page affiche l'état planifié, les conclusions ouvertes, la dernière exécution, la prochaine exécution, la cadence, et si l'audit possède un résumé ou des pages de référence. Sélectionnez une carte pour accéder aux paramètres et à l'historique des exécutions ; sélectionnez **nouvel audit** pour en créer un.
+
+    ![La page Audits affichant les audits récurrents avec leur planification, leur sensibilité et leur état d'exécution.](/images/dashboard/audits.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits list
+    fp audits list --enabled-only --show-id
+    fp audits show <audit-name>
+    fp audits findings --status open --limit 20
+    ```
+  </Tab>
+</Tabs>
+
+Utilisez un audit lorsque vous devez répondre à une question à l'échelle d'une population, par exemple :
+
+- À quel moment les agents abandonnent-ils des tâches sans escalader ?
+- Quelles défaillances d'outils conduisent à des tentatives de réessai inefficaces ?
+- Les agents accèdent-ils à des données en dehors du flux de travail prévu ?
+- Qu'est-ce qui a changé après la mise à jour d'un modèle, d'une invite ou d'un outil ?
+
+## Flux de réponse d'un audit
+
+```text
+Session → Audit → Finding → Issue → Policy
+                         ↘ Alert for recurrence
+```
+
+Une conclusion doit nommer le mode de défaillance et pointer vers les preuves correspondantes. Un problème prend en charge la remédiation. Une politique empêche un modèle d'action connu ; une alerte détecte une récurrence lorsque la prévention n'est pas possible ou nécessite une surveillance.
+
+<Columns cols={2}>
+  <Card title="Configurer un audit" icon="sliders-horizontal" href="/fr/audits/setup">
+    Définissez l'objectif, la population et le contexte de référence avant la première exécution.
+  </Card>
+  <Card title="Ajouter le contexte des agents" icon="bot" href="/fr/audits/agent-contracts">
+    Précisez ce que chaque agent doit produire et ce qu'il ne doit jamais faire.
+  </Card>
+</Columns>

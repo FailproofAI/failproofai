@@ -1,0 +1,25 @@
+---
+title: "Tools"
+description: "에이전트 세션 전반에서 느리거나 실패하거나 과도하게 사용된 툴을 찾아보세요."
+icon: "wrench"
+---
+
+Tools는 세션 전반의 툴 호출을 그룹화하여 레이턴시와 호출 분포를 비교할 수 있게 해줍니다.
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Observe → Tools**로 이동합니다.
+    2. 환경, 툴 이름, 에이전트, 또는 세션 ID로 필터링합니다.
+    3. 레이턴시와 툴 분포를 검토합니다.
+    4. 차트 포인트 또는 툴 세그먼트를 선택하여 관련 이벤트와 세션을 엽니다.
+
+    ![레이턴시, 성공 및 실패 분포, 툴 호출 분포를 보여주는 Tools 페이지.](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

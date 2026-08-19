@@ -1,0 +1,48 @@
+---
+title: "Leggere una traccia"
+description: "Trova l'evento che ha cambiato il corso di una sessione di agente."
+icon: "route"
+---
+
+Una traccia trasforma un flusso di eventi piatto nella storia causale dell'esecuzione. Leggila dal primo punto di divergenza, non all'indietro dall'ultimo errore.
+
+## Apri la traccia
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai su **Observe → Sessions** e apri una sessione.
+    2. Usa il riepilogo del profilo per controllare il risultato, i tempi, gli errori e i punteggi di valutazione.
+    3. Scansiona la timeline e la minimap. Filtra i tipi di evento o il tempo quando la sessione è grande.
+    4. Seleziona un evento per ispezionarlo. Usa **export** per ottenere il JSON dell'evaluator, oppure copia l'URL della pagina per condividere un collegamento diretto all'evidenza selezionata.
+
+    ![Una vista dei dettagli della sessione con il suo grafico di esecuzione, timeline degli eventi, pannello di valutazione e breakdown di tool, modello e hook.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp --json sessions --session-id <session-id>
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    Usa prima il feed di eventi leggero. Richiedi payload completi solo quando i riepiloghi degli eventi non contengono prove sufficienti.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Orientati">
+    Conferma l'agente, l'ambiente, i tempi, il risultato e la durata, quindi scansiona per errori, span lunghi, tool ripetuti, attese umane e decisioni di policy negate.
+  </Step>
+  <Step title="Espandi il primo evento sospetto">
+    Ispeziona la sua richiesta, risposta, input dello strumento, output e ID di correlazione. Il contenuto sensibile è visibile solo quando l'acquisizione della trascrizione è abilitata e le tue autorizzazioni lo consentono.
+  </Step>
+  <Step title="Ispeziona il contesto precedente">
+    La causa spesso si trova un evento prima: una risposta del modello non corretta, un risultato dello strumento mancante o un'assunzione obsoleta.
+  </Step>
+  <Step title="Trasforma l'evidenza in azione">
+    Aggiungi la sessione a un ambito di audit, collegala a un problema oppure utilizza la modalità di errore per creare una policy.
+  </Step>
+</Steps>
+
+<Warning>
+  La lunga durata non sempre significa latenza del modello. Separa il tempo del modello, dello strumento, dell'hook e dell'attesa umana prima di decidere cosa correggere.
+</Warning>

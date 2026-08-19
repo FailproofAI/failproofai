@@ -1,0 +1,43 @@
+---
+title: "Dashboards"
+description: "Acompanhe os sinais de confiabilidade que importam para um agente ou fluxo de trabalho."
+icon: "layout-dashboard"
+---
+
+Dashboards combinam queries salvas em uma visão operacional. Crie um ao redor de uma decisão que você espera que alguém tome — não ao redor de todas as métricas disponíveis.
+
+## Criar um dashboard
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vá para **Analyze → Queries**, crie ou abra uma query salva e valide o resultado.
+    2. Selecione **add to dashboard**, depois escolha um dashboard existente ou crie um em **Analyze → Dashboards**.
+    3. Abra o dashboard, entre no modo de edição, organize os tiles e salve o layout.
+    4. Volte à query quando precisar alterar os dados ou filtros por trás de um tile.
+
+    ![Um dashboard composto de queries salvas para volume de eventos, erros, latência e uso de tokens do modelo.](/images/dashboard/dashboard-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    O CRUD de dashboards não está exposto pelo Cloud CLI atual. Use o CLI para criar e verificar a query salva e, em seguida, adicione-a a um dashboard pela interface.
+
+    ```bash
+    fp query schema
+    fp query create "production error rate" --sql "SELECT ..."
+    fp query run <query-id>
+    ```
+  </Tab>
+</Tabs>
+
+Grupos de dashboards úteis incluem:
+
+- **Modelos:** volume, latência, uso de tokens, taxa de erros e pontuações de avaliação.
+- **Avaliações:** taxa de sucesso e tendências de pontuação por agente ou ambiente.
+- **Ferramentas:** volume de chamadas, taxa de falhas, duração e chamadas repetidas.
+- **Hooks e políticas:** decisões, negações e taxa de correspondência de políticas.
+- **Métricas de fluxo de trabalho personalizadas:** resultados dos seus próprios campos de eventos e SQL.
+
+Comece com uma query salva, valide o resultado e, em seguida, adicione-a como um tile. Mantenha os filtros de produção e desenvolvimento explícitos para que o tráfego de testes não oculte uma regressão.
+
+<Tip>
+  Dê a cada dashboard um responsável e uma pergunta de resposta, como "A confiabilidade do checkout-agent piorou em relação à semana passada?"
+</Tip>

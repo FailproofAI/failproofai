@@ -1,0 +1,25 @@
+---
+title: "ווקים"
+description: "מדוד פעילות ווק, טריגרים והשהיה בנפרד מתוצאות המדיניות."
+icon: "webhook"
+---
+
+Hooks מציג מתי ווקי מחזור החיים של הסוכן פועלים וכמה זמן הם לוקחים. החלטות מדיניות הן תצוגה נפרדת.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור אל **Observe → Hooks**.
+    2. סנן לפי סביבה, שם ווק, אירוע טריגר, סוכן או מזהה סשן.
+    3. בדוק השהיה והתפלגות של ווקים.
+    4. בחר נקודה בתרשים או קטע ווק כדי לפתוח את האירועים הבסיסיים.
+
+    ![עמוד Hooks המציג השהיה המקובצת לפי שם ווק ואירוע טריגר.](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

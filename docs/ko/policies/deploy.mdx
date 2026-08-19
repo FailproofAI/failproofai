@@ -1,0 +1,47 @@
+---
+title: "정책 배포"
+description: "검토된 정책 버전을 대상 머신에 배포합니다."
+icon: "cloud-upload"
+---
+
+배포는 하나 이상의 정책 버전을 등록된 대상 머신 집합에 연결합니다.
+
+## 배포 적용
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Admin → enforcement**로 이동하여 머신을 찾고 해당 행을 펼칩니다.
+    2. **edit**을 선택하고 검토된 정책 버전을 추가한 뒤, **observe** 또는 강제 적용 효과를 선택합니다.
+    3. 변경 사항을 적용한 후 머신의 다음 체크인을 기다리고, 배포 및 커버리지 상태를 확인합니다.
+    4. **Observe → policy**로 이동하여 실시간 결정을 검토합니다.
+
+    ![정책 버전, enforce 및 observe 효과, 배포 적용 액션이 포함된 머신 배포 편집기.](/images/dashboard/enforcement-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    Cloud 배포 엔드포인트는 의도적으로 일반 `fp` 명령으로 노출되지 않습니다. 머신을 로컬에서 확인한 후 대시보드를 통해 배포하세요:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    배포 후 `fp sessions --env production --since 24h` 및 `fp events --event-type hook_completed`를 사용하여 활동이 Cloud에 도달하는지 확인하세요.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="버전 및 대상 선택">
+    수정 가능한 초안이 아닌 검토된 버전을 배포하며, 세션을 검토할 수 있는 비프로덕션 머신이나 소규모 그룹부터 시작합니다.
+  </Step>
+  <Step title="결정 사항 관찰">
+    작업을 차단하지 않고 매칭 결과, 이유, 영향받은 도구, 오탐지를 검토합니다.
+  </Step>
+  <Step title="강제 적용 및 커버리지 확인">
+    관찰된 매칭이 안전하지 않은 동작과 유효한 동작을 분리한 후 프로모션을 진행하고, 의도한 모든 머신이 배포를 가져와 결정 사항을 보고하고 있는지 확인합니다.
+  </Step>
+</Steps>
+
+머신에는 `policies:pull` 권한이 필요합니다. 이벤트 보고는 `events:add`에 의해 별도로 제어됩니다. Cloud 분석 및 강제 적용을 기대하는 경우 두 가지 모두 확인하세요.
+
+<Warning>
+  강제 적용 관리는 관리자용 Cloud 워크플로우입니다. 루트 전용 강제 적용 경로를 일반 고객용 `/v1` API 엔드포인트로 취급하지 마세요.
+</Warning>

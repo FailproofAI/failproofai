@@ -1,0 +1,25 @@
+---
+title: "Hooks"
+description: "フックのアクティビティ、トリガー、レイテンシーをポリシーの結果とは別に計測します。"
+icon: "webhook"
+---
+
+Hooks では、エージェントライフサイクルフックの実行タイミングと所要時間を確認できます。ポリシーの判定結果は別のビューで表示されます。
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Observe → Hooks** に移動します。
+    2. 環境、フック名、トリガーイベント、エージェント、またはセッション ID でフィルタリングします。
+    3. フックのレイテンシーと分布を確認します。
+    4. チャートのポイントまたはフックセグメントを選択して、対象イベントの詳細を開きます。
+
+    ![フック名とトリガーイベント別にグループ化されたレイテンシーを表示する Hooks ページ。](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

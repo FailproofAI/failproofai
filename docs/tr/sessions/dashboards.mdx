@@ -1,0 +1,43 @@
+---
+title: "Panolar"
+description: "Bir aracı veya iş akışının önem taşıyan güvenilirlik sinyallerini izleyin."
+icon: "layout-dashboard"
+---
+
+Panolar, kaydedilmiş sorguları operasyonel bir görünüme dönüştürür. Biri etrafında birinin almasını beklediğiniz bir kararın etrafında oluşturun—tüm mevcut metriklerin etrafında değil.
+
+## Pano oluşturun
+
+<Tabs>
+  <Tab title="Pano">
+    1. **Analyze → Queries** bölümüne gidin, kaydedilmiş bir sorgu oluşturun veya açın ve sonucunu doğrulayın.
+    2. **add to dashboard** seçeneğini seçin, ardından mevcut bir panoyu seçin veya **Analyze → Dashboards** altında yeni bir pano oluşturun.
+    3. Panoyu açın, düzenleme moduna girin, kutucukları düzenleyin ve düzeni kaydedin.
+    4. Bir kutucuğun arkasındaki verileri veya filtreleri değiştirmeniz gerektiğinde sorguya geri dönün.
+
+    ![Olay hacmi, hatalar, gecikme süresi ve model token kullanımı için kaydedilmiş sorgulardan oluşan bir pano.](/images/dashboard/dashboard-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    Pano CRUD işlemleri mevcut Cloud CLI tarafından açığa çıkarılmamıştır. Kaydedilmiş sorguyu oluşturmak ve doğrulamak için CLI'yi kullanın, ardından UI'da panoya ekleyin.
+
+    ```bash
+    fp query schema
+    fp query create "production error rate" --sql "SELECT ..."
+    fp query run <query-id>
+    ```
+  </Tab>
+</Tabs>
+
+Yararlı pano grupları şunları içerir:
+
+- **Modeller:** hacim, gecikme süresi, token kullanımı, hata oranı ve değerlendirme puanları.
+- **Değerlendirmeler:** aracı veya ortama göre başarı oranı ve puan trendleri.
+- **Araçlar:** çağrı hacmi, hata oranı, süre ve tekrarlanan çağrılar.
+- **Hook'lar ve politikalar:** kararlar, reddedilmeler ve politika eşleşme oranı.
+- **Özel iş akışı metrikleri:** kendi olay alanlarınızdan ve SQL'den sonuçlar.
+
+Kaydedilmiş bir sorguyla başlayın, sonucunu doğrulayın, ardından kutucuk olarak ekleyin. Üretim ve geliştirme filtrelerini açık tutun, böylece test trafiği bir regresyonu gizlemez.
+
+<Tip>
+  Her panoya bir sahip ve bir yanıt sorusu verin; örneğin, "checkout-agent güvenilirliği geçen haftadan daha kötü mü?"
+</Tip>

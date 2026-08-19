@@ -1,0 +1,96 @@
+---
+title: "ファインディングと課題"
+description: "監査エビデンスをオーナーが管理できる追跡可能な改善作業に変換します。"
+icon: "clipboard-check"
+---
+
+ファインディングとは、監査がエビデンスに基づいて記述した障害に関する声明です。課題とは、それに対応するための継続的なワークフローです。
+
+## トリアージと作業の割り当て
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Analyze → Audits** を開き、完了済みの実行を選択して、ファインディングを選択すると、分析・推奨事項・セッション・エビデンスクエリを確認できます。
+    2. エビデンスを確認したうえで、ファインディングを承認・割り当て・却下・ミュート・解決、または再オープンします。
+    3. **Analyze → Issues** に移動し、ステータス・重大度・担当者でフィルタリングして永続的な受信トレイを確認します。
+    4. 課題を開いて担当者を割り当て、コメントやサブスクライバーを追加し、修正が確認できたら解決します。
+
+    まずファインディングのサマリーを確認してください。障害の説明・推奨される対応・重大度・ランキングが、監査で検査されると想定していたセッションと一致しているかどうかを確認します。
+
+    ![重大度、発生回数、根本原因分析、推奨アクション、ランキング要因、エビデンスが表示された監査ファインディング。](/images/dashboard/audit-finding.png)
+
+    次に、サマリーだけで判断するのではなく、影響を受けたセッションを実際に開いてください。リンクされたトレースには、ファインディングを裏付ける正確なイベントとペイロードが表示されているはずです。
+
+    ![監査ファインディングからリンクされたセッション。関連するエラーのイベントメタデータと生のペイロードとともに開かれた状態。](/images/dashboard/audit-linked-session.png)
+
+    エビデンスを確認したら、Issues を使って対応に担当者を割り当て、今後の監査実行とは独立して追跡します。
+
+    ![起動中・承認済み・解決済みの作業を重大度とオーナーシップとともに表示した Issues 受信トレイ。](/images/dashboard/incidents.png)
+
+    課題を開いて調査メモを記録し、サブスクライバーに通知して、対応履歴を保持します。解決するのは、改善策がデプロイされ確認が取れた後にのみ行ってください。
+
+    ![ソース・違反エビデンス・担当者・サブスクライバー・タイムライン・コメントが表示された課題の詳細ビュー。](/images/dashboard/incident-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits findings --audit checkout-reliability --status open
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+
+    fp issues list
+    fp issues show <issue-id>
+    fp issues assign <issue-id> --assignee engineer@example.com
+    fp issues comment-add <issue-id> --body "policy is in observe mode"
+    fp issues resolve <issue-id> --yes
+    ```
+
+    ウォッチャーを管理するには `fp issues subscribe <issue-id>`、`fp issues unsubscribe <issue-id>`、`fp issues subscribers <issue-id>` を使用してください。
+
+    監査ファインディングについては [Cloud CLI 監査・課題リファレンス](/ja/reference/cloud-cli#audits)、課題管理については [`fp issues`](/ja/reference/cloud-cli#issues) を参照してください。
+  </Tab>
+</Tabs>
+
+## ファインディングのレビュー
+
+以下の内容が含まれていることを確認してください:
+
+- 単発のタイトルではなく、安定した障害モード
+- 重大度と運用上の影響
+- 影響を受けたセッション ID またはサポートするクエリ
+- 動作を再現するのに十分なコンテキスト
+- エビデンスと一致した提案された対応
+
+## 課題を使って対応を管理する
+
+ファインディングに割り当て・議論・ステータス変更・コメント・サブスクライバーが必要な場合は、課題を作成またはリンクしてください。課題はアラートインシデントや手動で報告された問題を表すこともできます。そのため、プライマリナビゲーションではなく監査対応の配下に配置されています。
+
+改善策がデプロイされ確認が取れたら課題を解決してください。障害モードが監査対象集団に対して対処されたらファインディングを解決してください。この2つのタイミングは異なる場合があります。
+
+## 課題からポリシードラフトを作成する
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. 課題を開き、関連するファインディング・引用されたセッション・根本原因・推奨事項を確認します。
+    2. **generate policy** を選択し、候補判定の結果と提案された適用意図を確認します。**no policy** という結果は、その動作にはアラート・ワークフロー変更・人間による対応が必要な可能性があることを意味します。
+    3. **write this policy** を選択し、**Admin → policy editor** で生成されたソースをレビューおよびテストしたうえで **publish version** を選択します。候補判定の結果に同意できない場合は **open the editor anyway** を使用してください。
+    4. **Admin → enforcement** に移動し、**observe** モードでバージョンをデプロイして、適用を有効にする前に **Observe → policy** で決定内容を確認します。
+
+    課題のタイトル・ファインディングの説明・根本原因・推奨事項・候補判定の意図がドラフトの作成に使用されます。自動的に公開またはデプロイされることはありません。
+  </Tab>
+  <Tab title="CLI">
+    ダッシュボードで課題を開く前に、CLI を使ってエビデンスを確認してください:
+
+    ```bash
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp events --session-id <session-id> --full --all
+    ```
+
+    ポリシー候補の判定・Cloud への公開・フリートへのデプロイはダッシュボードのワークフローです。同等のポリシーソースをローカルで先に検証したい場合は `failproofai policies --install --custom <file>` を使用してください。
+  </Tab>
+</Tabs>
+
+<Card title="ポリシーを作成する" icon="shield-plus" href="/ja/policies/editor">
+  確認済みの再現性のあるアクションパターンをポリシーバージョンに変換します。
+</Card>

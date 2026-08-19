@@ -1,0 +1,57 @@
+---
+title: "Integrierte Richtlinien"
+description: "Aktiviere gepflegte Schutzmaßnahmen für häufige Fehlerquellen von Agenten."
+icon: "library"
+---
+
+Integrierte Richtlinien decken die Handhabung von Geheimnissen, Umgebungsdateien, destruktive Shell-Befehle, geschützte Branches, Cloud- und Infrastruktur-Tools, Paketveröffentlichungen, wiederholte Aufrufe sowie Workflow-Überprüfungen am Aufgabenende ab.
+
+## Eine integrierte Richtlinie aktivieren und überprüfen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Installiere die Richtlinie auf einem verbundenen Rechner mit der lokalen CLI.
+    2. Führe eine sichere Testaktion im instrumentierten Agenten aus.
+    3. Gehe zu **Observe → policy** und filtere nach Richtlinienname, Maschinenumgebung oder Entscheidung.
+    4. Öffne die verknüpfte Sitzung, um die übereinstimmende Tool-Eingabe und den zurückgegebenen Grund zu bestätigen.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Entferne sie mit `failproofai policy remove block-rm-rf --cli claude --scope project`.
+  </Tab>
+</Tabs>
+
+Die in deiner installierten Version verfügbaren Richtlinien auflisten:
+
+```bash
+failproofai policies
+```
+
+Eine Richtlinie für ein Projekt aktivieren:
+
+```bash
+failproofai policy add block-rm-rf --scope project
+```
+
+Mehrere Richtlinien für ausgewählte Harnesses aktivieren:
+
+```bash
+failproofai policies --install block-sudo block-force-push \
+  --cli claude codex --scope project
+```
+
+Einige Richtlinien akzeptieren Parameter oder sind als Beta markiert. Überprüfe vor dem Rollout die Beschreibung, den Match-Bereich und das Standardverhalten. Eine Richtlinie, die einen Workflow schützt, kann in einem anderen gültige Operationen blockieren.
+
+<Card title="Den vollständigen integrierten Katalog durchsuchen" icon="list-checks" href="/de/policies/builtin-catalog">
+  Alle 40 aktuellen Richtlinien, ihre Auslöser, die empfohlene Baseline und Parameter ansehen.
+</Card>
+
+<Tip>
+  Bevorzuge den Projektbereich für repository-spezifische Anforderungen und den Benutzerbereich für maschinenweite Sicherheitsanforderungen.
+</Tip>

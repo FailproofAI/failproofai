@@ -1,0 +1,53 @@
+---
+title: "Queries"
+description: "Reusable SQL के साथ session, event, और evaluation डेटा का अन्वेषण करें।"
+icon: "database"
+---
+
+Queries डैशबोर्ड, audits, और investigations के तहत एक लचकदार layer है। एक विचार को परीक्षण करने के लिए ad-hoc SQL का उपयोग करें, फिर जब यह एक recurring workflow का हिस्सा बन जाए तो query को सहेजें।
+
+## Query बनाएँ और चलाएँ
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Analyze → Queries** पर जाएँ और **new query** का चयन करें।
+    2. Schema browser खोलें और event, session, या evaluation डेटा से fields चुनें।
+    3. SQL लिखें, जरूरत पड़ने पर parameters जोड़ें, और query चलाएँ।
+    4. इसे एक स्पष्ट नाम और विवरण के साथ सहेजें, फिर जब परिणाम को monitor करना चाहिए तो **add to dashboard** का उपयोग करें।
+
+    Query editor event schema, SQL, parameters, और एक result preview को एकत्रित करता है ताकि आप इसे सहेजने से पहले प्रश्न को validate कर सकें।
+
+    ![SQL query editor जिसमें एक schema browser और live result grid है।](/images/dashboard/query-lab.png)
+
+    सहेजे गए queries फिर shared library में दिखाई देते हैं, जहाँ teammates उन्हें फिर से चला सकते हैं या अपने परिणाम dashboards में जोड़ सकते हैं।
+
+    ![Saved Queries library जिसमें reusable built-in और custom queries हैं।](/images/dashboard/queries.png)
+
+    एक स्पष्ट नाम और विवरण का उपयोग करें ताकि परिणाम SQL को फिर से खोले बिना समझदारी में रहे।
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp query schema
+    fp query create "retry loops" --sql "SELECT ..."
+    fp query run <query-id>
+    fp query show <query-id>
+    fp query update <query-id> --sql "SELECT ..."
+    ```
+
+    IDs ढूंढने के लिए `fp query list` का उपयोग करें और सहेजे गए query को हटाने के लिए `fp query delete <query-id>` का उपयोग करें।
+  </Tab>
+</Tabs>
+
+## Common uses
+
+- ऐसे sessions खोजें जिनमें एक ही tool के लिए repeated calls हैं।
+- Models या environments में evaluation scores की तुलना करें।
+- एक human wait और resume के बीच का समय मापें।
+- Policy denials की पहचान करें जिसके बाद एक successful alternative आया हो।
+- एक audit के लिए एक cohort बनाएँ।
+
+अपरिचित fields के विरुद्ध लिखने से पहले **Queries → Schema** खोलें। Explicit time और environment filters को प्राथमिकता दें, और exploration के दौरान result limits रखें।
+
+<Warning>
+  एक query एक suspicious pattern की पहचान कर सकता है, लेकिन यह failure mode को अपने आप से स्थापित नहीं करता है। Representative traces खोलें या परिणाम को एक policy में बदलने से पहले एक audit चलाएँ।
+</Warning>

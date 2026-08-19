@@ -1,0 +1,47 @@
+---
+title: "Richtlinien bereitstellen"
+description: "Eine geprüfte Richtlinienversion auf die vorgesehenen Maschinen ausrollen."
+icon: "cloud-upload"
+---
+
+Eine Bereitstellung verbindet eine oder mehrere Richtlinienversionen mit einer Zielgruppe registrierter Maschinen.
+
+## Eine Bereitstellung anwenden
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Admin → Durchsetzung**, suchen Sie die Maschine und klappen Sie deren Zeile auf.
+    2. Wählen Sie **Bearbeiten**, fügen Sie die geprüfte Richtlinienversion hinzu und wählen Sie **Beobachten** oder den erzwingenden Effekt.
+    3. Wenden Sie die Änderung an, warten Sie dann auf den nächsten Check-in der Maschine und bestätigen Sie deren Bereitstellungs- und Abdeckungsstatus.
+    4. Gehen Sie zu **Beobachten → Richtlinie**, um Live-Entscheidungen einzusehen.
+
+    ![Der Maschinen-Bereitstellungseditor mit Richtlinienversionen, Erzwingen- und Beobachten-Effekten sowie der Aktion zum Anwenden der Bereitstellung.](/images/dashboard/enforcement-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    Cloud-Bereitstellungsendpunkte sind absichtlich nicht als gewöhnliche `fp`-Befehle verfügbar. Überprüfen Sie die Maschine lokal und stellen Sie dann über das Dashboard bereit:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    Verwenden Sie `fp sessions --env production --since 24h` und `fp events --event-type hook_completed` nach der Bereitstellung, um zu verifizieren, dass Aktivitäten die Cloud erreichen.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Version und Ziele auswählen">
+    Stellen Sie eine geprüfte Version bereit, kein veränderbares Entwurfsdokument – beginnen Sie mit einer Nicht-Produktionsmaschine oder einer kleinen Gruppe, deren Sitzungen Sie einsehen können.
+  </Step>
+  <Step title="Entscheidungen beobachten">
+    Überprüfen Sie Treffer, Begründungen, betroffene Tools und falsch-positive Ergebnisse, ohne die Arbeit zu blockieren.
+  </Step>
+  <Step title="Durchsetzung aktivieren und Abdeckung verifizieren">
+    Führen Sie ein Upgrade durch, sobald beobachtete Treffer unsichere Aktionen von gültigen trennen, und bestätigen Sie dann, dass jede vorgesehene Maschine die Bereitstellung abgerufen hat und Entscheidungen meldet.
+  </Step>
+</Steps>
+
+Maschinen benötigen die Berechtigung `policies:pull`. Die Ereignismeldung wird separat durch `events:add` gesteuert; überprüfen Sie beides, wenn Sie Cloud-Analyse und -Durchsetzung erwarten.
+
+<Warning>
+  Die Verwaltung der Durchsetzung ist ein administrativer Cloud-Workflow. Behandeln Sie nur-Root-Durchsetzungsrouten nicht als gewöhnliche Kunden-API-Endpunkte unter `/v1`.
+</Warning>

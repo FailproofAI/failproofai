@@ -1,0 +1,43 @@
+---
+title: "Eventi in tempo reale"
+description: "Osserva l'attività dell'agente mentre una sessione è in corso."
+icon: "radio"
+---
+
+Gli eventi in tempo reale ti aiutano a confermare la strumentazione e a monitorare un'esecuzione rischiosa senza aspettare che la sessione finisca.
+
+## Monitorare l'attività
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Observe → Events**.
+    2. Inizia con la finestra temporale attuale e senza filtri per confermare che i dati stanno arrivando.
+    3. Filtra per ambiente, tipo di evento, agente o sessione. Usa la ricerca per il testo del payload.
+    4. Seleziona un evento per ispezionarne il riepilogo e i dettagli. Seguici il collegamento alla sessione per la traccia completa.
+
+    ![Il flusso di eventi in tempo reale con filtri per ora, ambiente, tipo di evento, agente, modello, contesto, sessione e testo.](/images/dashboard/events-stream-current.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --env production --event-type tool_use,error --limit 100
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    Il feed predefinito omette i payload grezzi. Usa `--full` solo per un'indagine di sessione limitata.
+  </Tab>
+</Tabs>
+
+Usa il flusso di eventi per rispondere a tre domande immediate:
+
+- L'agente previsto sta segnalando all'ambiente corretto?
+- Le chiamate ai modelli, le chiamate ai tool e le decisioni di policy arrivano nell'ordine corretto?
+- La sessione ha smesso di fare progressi o ha iniziato a ripetere un'azione?
+
+I tipi di evento includono eventi del ciclo di vita dell'agente, richieste e risposte del modello, uso dei tool e risultati, esecuzione di hook, attese umane e interruzioni, ed errori espliciti. Gli ID di correlazione collegano gli eventi associati, ad esempio una chiamata ai tool e il suo risultato.
+
+<Tip>
+  Mantieni la vista in tempo reale ampia durante la verifica di una nuova integrazione. Aggiungi filtri solo dopo aver visto il primo evento; un filtro errato può sembrare un'acquisizione non riuscita.
+</Tip>
+
+Se non vengono visualizzati eventi, esegui `failproofai config --status`, quindi [risolvi i problemi di acquisizione](/it/reference/troubleshooting).

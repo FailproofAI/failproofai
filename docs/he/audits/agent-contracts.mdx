@@ -1,0 +1,82 @@
+---
+title: "הקשר של סוכן"
+description: "ספרו לביקורות מה כל סוכן חייב לעשות, לייצר, ולעולם לא לעשות."
+icon: "bot"
+---
+
+הקשר של סוכן מספר לביקורות מה כל סוכן קיים כדי לעשות, מה הוא חייב לייצר, ומה הוא חייב לעולם לא לעשות. Failproof AI שומר הקשר זה כחוזה סוכן אחד לכל סוכן.
+
+הקשר של סוכן שייך לארגון, לא לביקורת אחת. אתה כותב אותו פעם אחת לכל סוכן, וכל ביקורת שמופעלת על ידי מודל שההיקף שלה כולל את הסוכן הזה משתמשת בו.
+
+## הוסף הקשר של סוכן
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור ל-**Analyze → audits**, בחר **agents**, ובחר את מזהה הסוכן שדווח על ידי ההפעלות שלו.
+    2. בחר **add content** או **edit**.
+    3. תאר למה הסוכן קיים, מה הוא חייב לייצר, מה משמעות "בוצע", כמה לעתים קרובות הוא צריך לפעול, ומה הוא חייב לעולם לא לעשות.
+    4. שמור את ההקשר, ואז חזור לטופס הביקורת וודא שהסוכן שנבחר מוצג כמכוסה.
+
+    ![מגירת הסוכנים של הביקורת המשמשת להוספת מטרה, קדנציה, פלטים, תנאי השלמה והתנהגות אסורה לסוכן.](/images/dashboard/agent-context.png)
+
+    אתה יכול גם להוסיף או לערוך הקשר של סוכן ממגירת **agents** בעת יצירה או עריכה של ביקורת. זה נשמר באופן עצמאי וזמין מיד לכל ביקורת רלוונטית.
+  </Tab>
+  <Tab title="CLI">
+    Cloud CLI עדיין לא חושף פקודות חוזים. השתמש ב-API הציבורי עם מפתח הנושא `audits:read` ו-`audits:write`:
+
+    ```bash
+    curl -X POST "https://app.befailproof.ai/v1/audits/contracts" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "agent_id": "nightly-reconciler",
+        "enabled": true,
+        "body": "# Purpose\nReconcile yesterday's payouts.\n\n## Outputs\nPublish a signed summary.\n\n## Must not\nNever modify ledger entries."
+      }'
+    ```
+
+    רשום חוזים עם `GET /v1/audits/contracts`; אחזור חוזה אחד עם `GET /v1/audits/contracts/{id}`. עדכון עם `PUT` הוא החלפה מלאה ודורש גם `agent_id` וגם `body`.
+  </Tab>
+</Tabs>
+
+## כתוב הקשר שימושי
+
+שמור על ההקשר מתחת ל-5,000 תווים וגרום לו להיות בדיקה. הקשר שימושי בדרך כלל מכיל:
+
+- **Purpose:** למה הסוכן קיים
+- **Outputs:** תוצרים או פעולות שהוא חייב לייצר
+- **Done when:** התנאי שמעניק לריצה הצלחה
+- **Cadence:** כמה לעתים קרובות או מתי הוא צריך לפעול
+- **Must not:** פעולות ותוצאות שתמיד לא מקובלות
+
+```markdown
+---
+agent: nightly-reconciler
+purpose: Reconcile yesterday's payouts and publish a signed summary.
+cadence: Once daily after 02:00 UTC. Never more than once.
+---
+
+## Outputs
+- A signed reconciliation summary in the finance channel.
+
+## Done when
+- Every payout is matched or explicitly flagged.
+
+## Must not
+- Modify ledger entries. Report discrepancies instead.
+```
+
+הקשר של סוכן מצהיר התנהגות צפויה; הוא לא יכול להגיד לניתוח לאיזה מסקנה להגיע או להגביל אילו ראיות הוא בוחן. סוכנים ללא הקשר מבוקרים בדרך כלל, אך Failproof AI לא יכול לשפוט את התנהגותם מול כוונה ארגונית ספציפית.
+
+## השהה או שנה הקשר של סוכן
+
+- השהה הקשר של סוכן כאשר ביקורות צריכות להתעלם זמנית. השהייה הפיכה.
+- ערוך את ההקשר כאשר האחריות של הסוכן משתנה. הטקסט החדש חל על ריצות עתידיות.
+- בדוק **last matched** כאשר סוכן פועל לעולם לא נראה כאילו משתמש בהקשר שלו. זה בדרך כלל אומר שמזהה הסוכן שלו לא תואם טלמטריה.
+- מחק דרך ה-API רק כאשר הטקסט חייב להיהרס לצמיתות. הלוח מתכוונת להציע השהייה במקום מחיקה.
+
+כל ריצת ביקורת שומרת את תמונת ההקשר של הסוכן המדויקת שהשתמשה בה. עריכה, השהייה או מחיקה של משאב החוזה הנוכחי לא כותבת מחדש את בסיס הממצאים המוקדמים.
+
+<Info>
+  קריאת חוזים דורשת `audits:read`. יצירה, עריכה, השהייה או מחיקה דורשות `audits:write`.
+</Info>

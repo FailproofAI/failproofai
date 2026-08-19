@@ -1,0 +1,351 @@
+---
+title: "Failproof Cloud CLI"
+description: "fp를 사용하여 Failproof AI Cloud를 조회하고 관리하는 완전한 참조 문서입니다."
+icon: "cloud-cog"
+---
+
+`fp`를 사용하여 Cloud 텔레메트리를 검사하고, 감사, 발견 항목, 이슈, 알림, 키, 사용자, 쿼리, 설정을 관리하세요. 로컬 훅, 정책, 캡처, 머신 등록에는 [`failproofai`](/ko/reference/failproof-cli)를 사용하세요.
+
+릴리즈된 Cloud CLI를 독립 도구로 설치하는 방법:
+
+```bash
+uv tool install fp-cli
+fp version
+```
+
+## 로그인
+
+```bash
+fp login
+fp whoami
+```
+
+## 문법
+
+```text
+fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
+```
+
+전역 옵션은 명령어 앞에 위치해야 합니다:
+
+```bash
+fp --json sessions --since 24h
+```
+
+터미널 도움말을 보려면 `fp COMMAND --help` 또는 `fp COMMAND SUBCOMMAND --help`를 실행하세요.
+
+## CLI 명령어
+
+### 인증
+
+| 명령어 | 용도 | 옵션 |
+| --- | --- | --- |
+| `fp login` | 이메일 일회용 코드로 로그인하고 조직을 선택합니다. | `--email`, `-e`; `--org`; `--force` |
+| `fp logout` | 저장된 사용자 세션을 취소하고 삭제합니다. | — |
+| `fp whoami` | 현재 ID, 인증 모드, 조직, 권한을 표시합니다. | — |
+| `fp version` | 설치된 CLI 버전을 표시합니다. | — |
+| `fp help` | 최상위 명령어 도움말을 표시합니다. | — |
+
+```bash
+fp login --email you@example.com --org reliability-team
+fp whoami
+```
+
+### 이벤트
+
+```text
+fp events [OPTIONS]
+```
+
+개별 에이전트 이벤트를 나열합니다. 기본 경량 피드는 원시 페이로드를 제외합니다. `--full`은 범위가 제한된 조사에서만 사용하세요.
+
+| 옵션 | 설명 |
+| --- | --- |
+| `--limit`, `-n <n>` | 최대 총 행 수. 기본값: `50`. |
+| `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, 또는 `7d`. |
+| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC 범위; `--since`를 덮어씁니다. |
+| `--env <value>` | 환경 필터; 반복하거나 쉼표로 구분하여 값을 지정합니다. |
+| `--event-type <value>` | 이벤트 유형 필터; 반복하거나 쉼표로 구분하여 값을 지정합니다. |
+| `--agent-id <value>` | 에이전트 필터; 반복하거나 쉼표로 구분하여 값을 지정합니다. |
+| `--session-id <value>` | 세션 필터; 반복하거나 쉼표로 구분하여 값을 지정합니다. |
+| `--search <text>` | 페이로드 텍스트 검색; 반복 가능하며, 조건 중 하나만 일치해도 됩니다. |
+| `--order asc\|desc` | 시간 정렬 순서. 기본값: 최신 항목이 먼저. |
+| `--all` | `--limit`까지 자동 페이지네이션. |
+| `--cursor <token>` | 불투명 커서에서 재개합니다. |
+| `--page-size <n>` | `--all` 사용 시 요청당 행 수; 최대 `200`. |
+| `--full` | 더 무거운 이벤트 엔드포인트를 통해 원시 페이로드를 포함합니다. |
+| `--fields <csv>` | 선택한 필드만 반환합니다; `payload` 요청 시 전체 모드가 활성화됩니다. |
+
+```bash
+fp events --session-id <session-id> --order asc --all
+fp --json events --full --session-id <session-id> --all
+```
+
+### 세션
+
+```text
+fp sessions [OPTIONS]
+```
+
+| 옵션 | 설명 |
+| --- | --- |
+| `--limit`, `-n <n>` | 최대 총 행 수. 기본값: `50`. |
+| `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, 또는 `7d`. |
+| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC 범위; `--since`를 덮어씁니다. |
+| `--env <value>` | 환경 필터; 반복하거나 쉼표로 구분하여 값을 지정합니다. |
+| `--status <value>` | `done`, `error`, 또는 `timeout`; 반복하거나 쉼표로 구분하여 값을 지정합니다. |
+| `--agent-id <value>` | 선택한 에이전트가 포함된 세션을 매칭합니다. |
+| `--session-id <value>` | 세션 필터; 반복하거나 쉼표로 구분하여 값을 지정합니다. |
+| `--all` | `--limit`까지 자동 페이지네이션. |
+| `--cursor <token>` | 불투명 커서에서 재개합니다. |
+| `--page-size <n>` | `--all` 사용 시 요청당 행 수; 최대 `200`. |
+| `--fields <csv>` | 선택한 필드만 반환합니다. |
+| `--full-ids` | 터미널 출력에서 세션 ID를 단축하지 않습니다. |
+| `--agents` | 다중 에이전트 세션의 에이전트 목록을 확장합니다. |
+
+### 평가
+
+```text
+fp evals [OPTIONS]
+```
+
+| 옵션 | 설명 |
+| --- | --- |
+| `--aggregate` | 개별 평가 대신 총계와 점수별 통계를 표시합니다. |
+| `--limit`, `-n <n>` | 최대 목록 행 수. 기본값: `50`. |
+| `--since`, `--from`, `--to` | 시간 범위를 선택합니다. |
+| `--env`, `--status`, `--agent-id`, `--session-id` | 필터당 정확히 하나의 값으로 좁힙니다. |
+| `--score KEY:MIN..MAX` | 점수 범위; 반복 가능하며 모든 범위가 일치해야 합니다. |
+| `--all`, `--cursor`, `--page-size` | 목록 페이지네이션을 제어합니다. |
+| `--fields <csv>` | 선택한 필드만 반환합니다. |
+| `--full-ids` | 완전한 세션 ID를 표시합니다. |
+| `--scores-full` | 터미널 출력에서 모든 점수를 표시합니다. |
+
+### 오류
+
+```text
+fp errors [OPTIONS]
+```
+
+| 옵션 | 설명 |
+| --- | --- |
+| `--aggregate` | 행을 나열하는 대신 일치하는 오류를 요약합니다. |
+| `--limit`, `-n <n>` | 최대 목록 행 수. 기본값: `50`. |
+| `--since`, `--from`, `--to` | 시간 범위를 선택합니다. |
+| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | 오류 범위를 좁힙니다. |
+| `--search <text>` | 페이로드 텍스트를 검색합니다; 반복 가능합니다. |
+| `--order asc\|desc` | 시간 정렬 순서. |
+| `--all`, `--cursor`, `--page-size` | 목록 페이지네이션을 제어합니다. |
+| `--fields <csv>` | 선택한 필드만 반환합니다. |
+| `--full-ids` | 완전한 세션 ID를 표시합니다. |
+
+### 사용량 및 필터 값
+
+| 명령어 | 용도 |
+| --- | --- |
+| `fp usage` | 현재 미터링 윈도우의 사용량을 표시합니다. |
+| `fp list envs` | 관찰된 환경 목록을 표시합니다. |
+| `fp list agents` | 관찰된 에이전트 ID 목록을 표시합니다. |
+| `fp list event_types` | 이벤트 유형 목록을 표시합니다. |
+| `fp list score_filters` | 평가 점수 키 목록을 표시합니다. |
+| `fp list models` | 모델 이름 목록을 표시합니다. |
+| `fp list hooks` | 훅 이름 목록을 표시합니다. |
+| `fp list tools` | 도구 이름 목록을 표시합니다. |
+| `fp list error_types` | 오류 유형 목록을 표시합니다. |
+
+### 조직
+
+| 명령어 | 용도 |
+| --- | --- |
+| `fp orgs list` | 접근 가능한 조직 목록을 표시합니다. |
+| `fp orgs switch [SLUG]` | 활성 조직을 저장합니다; 생략하면 프롬프트가 표시됩니다. |
+| `fp orgs current` | 활성 조직을 표시합니다. |
+| `fp orgs perms` | 활성 조직에서 보유한 권한을 표시합니다. |
+
+### API 키
+
+| 명령어 | 용도 | 옵션 |
+| --- | --- | --- |
+| `fp keys list` | 조직 키 목록을 표시합니다. | `--show-id`; `--fields <csv>` |
+| `fp keys show NAME` | 키 하나와 해당 권한을 표시합니다. | — |
+| `fp keys create NAME` | 키를 생성하고 시크릿을 한 번 공개합니다. | `--permission-set`; `--add`; `--remove` |
+| `fp keys update NAME` | 권한 세트를 교체하거나 권한을 조정합니다. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp keys regenerate NAME` | 시크릿을 교체하고 새 값을 한 번 공개합니다. | `--yes`, `-y` |
+| `fp keys disable NAME` | 키를 영구적으로 취소합니다. | `--yes`, `-y` |
+
+권한 토큰은 `events:add`와 같이 `resource:action` 형식을 사용합니다. `--add`를 반복하거나, 토큰을 쉼표로 구분하거나, `events:read.add`와 같이 점으로 구분된 액션을 사용할 수 있습니다.
+
+### 쿼리
+
+| 명령어 | 용도 | 옵션 |
+| --- | --- | --- |
+| `fp query list` | 저장된 쿼리 목록을 표시합니다. | `--show-id`; `--fields <csv>` |
+| `fp query show NAME` | 쿼리 하나를 표시합니다. | — |
+| `fp query create NAME` | 쿼리를 저장합니다. | `--sql <text\|@file>`; `--description` |
+| `fp query update NAME` | 쿼리를 업데이트하거나 이름을 변경합니다. | `--name`; `--sql`; `--description`; `--yes`, `-y` |
+| `fp query delete NAME` | 저장된 쿼리를 삭제합니다. | `--yes`, `-y` |
+| `fp query run [NAME]` | 저장된 쿼리 또는 임시 SQL을 실행합니다. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
+| `fp query schema [TABLE]` | 쿼리 가능한 테이블을 나열하거나 하나의 테이블을 검사합니다. | — |
+
+### 사용자
+
+| 명령어 | 용도 | 옵션 |
+| --- | --- | --- |
+| `fp users list` | 조직 구성원 목록을 표시합니다. | `--active-only`; `--show-id` |
+| `fp users show EMAIL` | 구성원과 해당 권한을 표시합니다. | — |
+| `fp users create EMAIL` | 구성원을 추가합니다. | `--permission-set`; `--add`; `--remove` |
+| `fp users update EMAIL` | 구성원의 권한을 변경합니다. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp users disable EMAIL` | 로그인을 비활성화합니다. | `--yes`, `-y` |
+| `fp users enable EMAIL` | 로그인을 다시 활성화합니다. | `--yes`, `-y` |
+
+### 설정
+
+| 명령어 | 용도 | 옵션 |
+| --- | --- | --- |
+| `fp settings list` | 조직 설정과 현재 값을 나열합니다. | — |
+| `fp settings schema` | 허용된 값과 설명을 표시합니다. | — |
+| `fp settings set KEY` | 기존 설정을 변경합니다. | `--value`, `--json-value`, `--file` 중 정확히 하나; 선택적으로 `--yes`, `-y` |
+
+### 알림
+
+| 명령어 | 용도 | 옵션 |
+| --- | --- | --- |
+| `fp alerts list` | 알림 규칙 목록을 표시합니다. | `--show-id` |
+| `fp alerts show NAME` | 알림 하나를 표시합니다. | — |
+| `fp alerts create NAME` | 알림을 생성합니다. | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
+| `fp alerts update NAME` | 알림을 업데이트하거나 이름을 변경합니다. | 생성 옵션 외에 `--name`; `--yes`, `-y` |
+| `fp alerts delete NAME` | 알림을 삭제합니다. | `--yes`, `-y` |
+| `fp alerts test NAME` | 테스트 알림을 보냅니다. | `--channels`; `--yes`, `-y` |
+
+알림 심각도는 `info`, `warning`, `critical`입니다. 트리거 종류는 `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound`, `per_event`입니다. 평가 간격은 30초에서 86,400초 사이여야 합니다.
+
+### 감사
+
+| 명령어 | 용도 | 옵션 |
+| --- | --- | --- |
+| `fp audits list` | 감사 목록을 표시합니다. | `--enabled-only`; `--show-id` |
+| `fp audits show NAME` | 감사 정의와 상태를 표시합니다. | — |
+| `fp audits create NAME` | 감사를 생성하고 첫 번째 실행을 즉시 대기열에 추가합니다. | [생성 옵션](#audit-create-options)을 참조하세요. |
+| `fp audits edit NAME` | 지정되지 않은 값을 유지하면서 감사 설정을 교체합니다. | 생성 정의 옵션; `--name`; `--yes`, `-y` |
+| `fp audits delete NAME` | 감사, 발견 항목, 실행 기록을 삭제합니다. | `--yes`, `-y` |
+| `fp audits run NAME` | 수동 실행을 대기열에 추가합니다. | — |
+| `fp audits runs NAME` | 실행 기록을 나열합니다. | `--limit`, `-n`; `--show-id` |
+| `fp audits context-show NAME` | 개요와 참조 URL 가져오기 상태를 표시합니다. | — |
+| `fp audits context-set NAME` | 개요 또는 참조 URL을 변경합니다. | `--text`; `--text-file`; `--url`; `--clear-urls` |
+| `fp audits context-refresh NAME` | 참조 URL을 다시 가져옵니다. | — |
+| `fp audits findings` | 발견 항목 목록을 표시합니다. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
+| `fp audits finding FINDING_ID` | 발견 항목 하나와 증거를 표시합니다. | — |
+| `fp audits ack FINDING_ID` | 발견 항목을 확인합니다. | `--reason` |
+| `fp audits mute FINDING_ID` | 반복 패턴을 억제합니다. | `--reason`; `--yes`, `-y` |
+| `fp audits dismiss FINDING_ID` | 패턴을 조치 불필요로 표시하고 억제합니다. | `--reason`; `--yes`, `-y` |
+| `fp audits resolve FINDING_ID` | 향후 억제 없이 발견 항목을 수정됨으로 표시합니다. | `--yes`, `-y` |
+| `fp audits reopen FINDING_ID` | 발견 항목을 활성 대기열로 되돌리고 억제를 해제합니다. | — |
+| `fp audits assign FINDING_ID` | 발견 항목 담당자를 설정합니다. | 필수 `--to <email>` |
+
+#### 감사 생성 옵션
+
+```bash
+fp audits create checkout-reliability \
+  --description "Find checkout failures that agents do not recover from" \
+  --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+  --schedule-interval-secs 86400 \
+  --window-mode since_last \
+  --sensitivity medium \
+  --text-file ./checkout-audit-brief.txt \
+  --url https://runbooks.example.com/checkout
+```
+
+| 옵션 | 설명 |
+| --- | --- |
+| `--file <path>` | JSON을 기반으로 정의하거나, stdin에는 `-`를 사용합니다. 명시적 플래그는 파일 값을 덮어씁니다. |
+| `--description <text>` | 실패 질문 또는 목적을 기술합니다. |
+| `--enabled` / `--disabled` | 스케줄링을 켜거나 끈 상태로 시작합니다. 기본값: 활성화. |
+| `--schedule-interval-secs <n>` | `3600`–`604800`. 기본값: `86400`. |
+| `--schedule-anchor <timestamp>` | ISO 8601 형식의 고정 UTC 단계. 기본값: 다음 09:00 UTC. |
+| `--window-mode since_last\|fixed` | 마지막으로 완전히 분석된 윈도우 이후를 계속하거나, 롤링 윈도우를 반복적으로 검사합니다. 기본값: `since_last`. |
+| `--lookback-window-secs <n>` | `3600`–`7776000`. 기본값: `604800`. |
+| `--scope '<json>'` | `environments`, `agent_ids`, 또는 지원되는 다른 범위 필드로 필터링합니다. |
+| `--ignore-error-type <type>` | 오류 유형을 제외합니다; 반복하거나 쉼표로 구분합니다. |
+| `--llm` / `--no-llm` | 에이전틱 분석을 활성화하거나 비활성화합니다. 기본값: 활성화. |
+| `--top-k <n>` | `1`–`500`개의 발견 항목을 유지합니다. 기본값: `50`. |
+| `--sensitivity low\|medium\|high` | 보고 민감도를 설정합니다. 기본값: `medium`. |
+| `--channels '<json>'` | 알림 채널 배열. |
+| `--text <brief>` | 인라인 개요, 최대 8,192자. |
+| `--text-file <path>` | 파일에서 개요를 읽습니다; `--text`와 상호 배타적입니다. |
+| `--url <https-url>` | 공개 HTTPS 참조를 추가합니다; 최대 5번 반복할 수 있습니다. |
+
+첫 번째 실행에 컨텍스트가 필요한 경우 생성 시 포함하세요. 생성은 대기열에 추가된 실행이 시작되기 전에 정의와 컨텍스트를 함께 커밋합니다.
+
+<Note>
+  `fp audits run`은 비동기적으로 실행됩니다. 발견 항목을 읽기 전에 최신 실행이 성공하거나 실패할 때까지 `fp audits runs NAME`을 폴링하세요.
+</Note>
+
+### 이슈
+
+| 명령어 | 용도 | 옵션 |
+| --- | --- | --- |
+| `fp issues list` | 이슈 목록을 표시합니다. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
+| `fp issues count` | 열린 이슈 또는 선택된 이슈 상태의 수를 셉니다. | `--state` |
+| `fp issues show INCIDENT_ID` | 이슈 세부 정보, 댓글, 구독자, 활동을 표시합니다. | — |
+| `fp issues open` | 수동 또는 알림 연결 이슈를 엽니다. | 필수 `--summary`; 선택적 `--title`, `--alert-id`, `--severity` |
+| `fp issues ack INCIDENT_ID` | 이슈를 확인합니다. | — |
+| `fp issues assign INCIDENT_ID` | 담당자를 교체합니다; 옵션을 생략하면 담당자를 지웁니다. | 반복 가능한 `--assignee` |
+| `fp issues resolve INCIDENT_ID` | 이슈를 해결합니다. | `--yes`, `-y` |
+| `fp issues comment-list INCIDENT_ID` | 댓글 목록을 표시합니다. | — |
+| `fp issues comment-add INCIDENT_ID` | 댓글을 추가합니다. | `--body`, `--file` 중 정확히 하나 |
+| `fp issues comment-delete INCIDENT_ID COMMENT_ID` | 댓글을 삭제합니다. | `--yes`, `-y` |
+| `fp issues subscribers INCIDENT_ID` | 구독자 목록을 표시합니다. | — |
+| `fp issues subscribe INCIDENT_ID` | 본인 또는 다른 운영자를 구독합니다. | `--email` |
+| `fp issues unsubscribe INCIDENT_ID` | 구독을 제거합니다. | `--email` |
+
+유효한 이슈 상태는 `firing`, `acknowledged`, `resolved`입니다. 독립 이슈 심각도는 `info`, `warning`, `critical`입니다.
+
+### Cloud 어시스턴트
+
+| 명령어 | 용도 | 옵션 |
+| --- | --- | --- |
+| `fp agent health` | 어시스턴트 가용성과 구성을 확인합니다. | — |
+| `fp agent models` | 사용 가능한 어시스턴트 모델을 나열합니다. | — |
+| `fp agent chats` | 저장된 채팅 목록을 표시합니다. | — |
+| `fp agent ask [MESSAGE]` | 채팅을 시작하거나 계속합니다; 메시지가 생략되면 stdin에서 읽습니다. | `--chat`; `--model`; `--page-context` |
+| `fp agent show CHAT_ID` | 저장된 대화를 표시합니다. | — |
+| `fp agent rename CHAT_ID` | 대화 이름을 변경합니다. | 필수 `--title` |
+| `fp agent delete CHAT_ID` | 대화를 삭제합니다. | `--yes`, `-y` |
+
+## 전역 플래그
+
+| 플래그 | 설명 |
+| --- | --- |
+| `--json` | 기계가 읽을 수 있는 JSON을 출력합니다. |
+| `--base-url <url>` | 자체 호스팅 또는 개발 대시보드를 사용합니다. |
+| `--org <slug>` | 이 호출에 사용할 조직을 선택합니다. |
+| `--token <token>` | 저장된 사용자 세션 토큰을 재정의합니다. |
+| `--api-key <key>` | API 키로 자동화를 인증합니다; 저장되지 않습니다. |
+| `--timeout <seconds>` | HTTP 타임아웃; 양수여야 합니다. 기본값: `30`. |
+| `--quiet`, `-q` | stderr의 상태 출력을 억제합니다. |
+| `--no-color` | 색상 출력을 비활성화합니다. |
+| `--insecure` / `--secure` | TLS 인증서 검증을 비활성화하거나 복원합니다. |
+| `--version` | 버전을 출력하고 종료합니다. |
+| `--help`, `-h` | 도움말을 표시합니다. |
+
+`--api-key`는 자동화 용도입니다. 로그인, 조직 전환, 어시스턴트 명령어는 사용자 세션이 필요합니다.
+
+## 환경 변수
+
+| 변수 | 동등한 옵션 또는 용도 |
+| --- | --- |
+| `AGENTEYE_DASHBOARD_URL` | `--base-url` |
+| `AGENTEYE_ORG` | `--org` |
+| `AGENTEYE_CLI_TOKEN` | `--token` |
+| `AGENTEYE_CLI_API_KEY` | `--api-key` |
+| `AGENTEYE_CLI_JSON` | `--json` |
+| `AGENTEYE_INSECURE` | `--insecure` |
+| `AGENTEYE_HOME` | 현재 CLI 구성 디렉토리를 재배치합니다. |
+| `AGENTEYE_ANALYTICS_DISABLED` 또는 `DO_NOT_TRACK` | 익명 CLI 분석을 비활성화합니다. |
+| `NO_COLOR` | 색상 출력을 비활성화합니다. |
+
+명시적 플래그는 환경 변수를 재정의하며, 환경 변수는 저장된 구성을 재정의합니다. API 키 모드에서는 `--org` 또는 `AGENTEYE_ORG`로 테넌트를 명시적으로 선택하세요.
+
+<Warning>
+  삭제, 취소, 억제, 해결 또는 구성 교체 명령어는 기본적으로 확인 프롬프트가 표시됩니다. 활성 조직과 대상을 확인한 후에만 `--yes`를 사용하세요.
+</Warning>

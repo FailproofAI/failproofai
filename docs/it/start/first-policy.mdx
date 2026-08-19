@@ -1,0 +1,48 @@
+---
+---
+title: "Previeni il tuo primo errore con una policy"
+description: "Crea una versione di policy, distribuiscila in modalità osservazione e poi applicala."
+icon: "shield-check"
+---
+
+Utilizza una policy solo dopo aver descritto l'azione non sicura e le azioni legittime che devono rimanere consentite.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Crea la policy">
+        Vai a **Admin → policy editor**. Inizia con la demo policy, rivedi o modifica il suo codice sorgente, quindi seleziona **publish version**. La pubblicazione crea la versione immutabile che puoi distribuire alle macchine.
+
+        ![L'editor di policy nella vista di composizione con una demo policy pronta per essere pubblicata come versione immutabile.](/images/dashboard/policy-editor.png)
+      </Step>
+      <Step title="Distribuiscila a una macchina">
+        Vai a **Admin → enforcement**, espandi la macchina di destinazione e seleziona **edit this machine**. Aggiungi la demo policy pubblicata, fissa la sua versione, scegli **observe** e applica la distribuzione.
+
+        ![L'editor di distribuzione della macchina con una versione di policy pubblicata selezionata in modalità osservazione prima di applicare la distribuzione.](/images/dashboard/enforcement-editor.png)
+      </Step>
+      <Step title="Verifica la policy">
+        Esegui una nuova sessione dell'agente su quella macchina, quindi apri **Observe → policy**. Seleziona la macchina e conferma che la demo policy appare nella mappatura delle policy e nella timeline delle decisioni. La modalità osservazione registra ciò che la policy farebbe senza bloccare l'azione.
+
+        ![La pagina Policy che mostra i totali delle decisioni, l'attività di applicazione nel tempo e le mappature delle policy gestite localmente e nel Cloud.](/images/dashboard/policy-observe.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    La creazione di policy nel Cloud e la distribuzione della flotta sono flussi di lavoro amministrativi. Utilizza la CLI locale per convalidare la stessa policy prima di pubblicarla:
+
+    ```bash
+    failproofai policies --install --custom ./payment-retry.policies.ts \
+      --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Utilizza `fp` per ispezionare le decisioni di policy visibili nel Cloud:
+
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp sessions --env production --since 24h
+    ```
+
+    La CLI del Cloud non espone rotte di distribuzione dell'applicazione solo per root. Pubblica le versioni da **Admin → policy editor** e distribuiscile da **Admin → enforcement**.
+  </Tab>
+</Tabs>

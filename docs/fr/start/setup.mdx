@@ -1,0 +1,68 @@
+---
+title: "Choisir votre configuration"
+description: "Choisissez entre l'application locale, Failproof AI Cloud ou un déploiement en entreprise."
+icon: "waypoints"
+---
+
+<CardGroup cols={3}>
+  <Card title="Application locale" icon="laptop">
+    Installez des hooks et des politiques sur une machine. Utilisez cette option lorsque vous avez besoin de garde-fous immédiats sans envoyer les données de session vers le Cloud.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud">
+    Ajoutez des sessions centralisées, des audits, des évaluations en ligne, des tableaux de bord, des alertes et le déploiement de politiques à l'échelle de votre parc.
+  </Card>
+  <Card title="Déploiement en entreprise" icon="building-2">
+    Utilisez les contrôles organisationnels, les clés à portée limitée, l'infrastructure privée et les exigences de sécurité propres à votre déploiement.
+  </Card>
+</CardGroup>
+
+## Parcours recommandé pour la production
+
+1. Connectez une machine hors production avec la capture de transcripts activée.
+2. Vérifiez les sessions et les évaluations dans Cloud.
+3. Créez un audit pour un mode de défaillance connu.
+4. Déployez la première politique en mode observation.
+5. Étendez à la production après avoir examiné les correspondances et les faux positifs.
+
+## Connecter une machine à Cloud
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Administration → Clés** et créez une clé avec les permissions `events:add` et `policies:pull`.
+    2. Copiez le secret à usage unique sur la machine cible.
+    3. Après avoir exécuté la commande de connexion via la CLI, accédez à **Admin → application** et confirmez que la machine apparaît bien.
+    4. Accédez à **Observer → Événements** et confirmez la réception de son premier événement.
+
+    Le panneau de clé affiche les deux autorisations requises par une machine connectée : l'ingestion d'événements et la distribution des politiques.
+
+    ![Le panneau de création de clé API utilisé pour accorder les permissions d'ingestion d'événements et de distribution des politiques.](/images/dashboard/key-create.png)
+
+    Après la connexion, la machine doit apparaître dans l'application avec l'état de politique souhaité et l'état de déploiement rapporté.
+
+    ![Le parc d'application avec une machine inscrite développée pour afficher l'état de politique souhaité et le statut de déploiement.](/images/dashboard/enforcement-fleet.png)
+
+    Le premier événement reçu confirme que le daemon peut transmettre des données à Cloud, indépendamment du déploiement des politiques.
+
+    ![Le flux d'événements en direct affichant les événements récents liés aux agents, aux modèles et aux outils.](/images/dashboard/events-stream-current.png)
+
+    Continuez uniquement lorsque la machine et son premier événement sont tous deux visibles.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --connect https://app.befailproof.ai \
+      --token "$FAILPROOFAI_KEY" \
+      --machine-label checkout-runner-01
+
+    failproofai policies --install --cli claude --scope user
+    failproofai config --status
+    ```
+
+    Ajoutez `--no-transcripts` si le contenu des transcripts doit rester en local.
+  </Tab>
+</Tabs>
+
+La connexion à Cloud vérifie l'ingestion d'événements et la distribution des politiques de manière indépendante. Une clé peut donc être valide tout en manquant l'une des permissions requises. Utilisez `failproofai config --status` pour vérifier quelle capacité est configurée.
+
+<Info>
+  La configuration Cloud n'enregistre les identifiants locaux qu'après la réussite de la capacité concernée. Un échec de vérification ne laisse pas une machine apparaître comme connectée alors qu'elle ne l'est pas.
+</Info>

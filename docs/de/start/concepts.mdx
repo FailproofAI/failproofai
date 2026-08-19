@@ -1,0 +1,26 @@
+---
+title: "Kernkonzepte"
+description: "Die wichtigsten Konzepte, die in Failproof AI verwendet werden."
+icon: "boxes"
+---
+
+| Konzept | Bedeutung | Was Sie erreichen können |
+| --- | --- | --- |
+| Session | Eine einzelne Agenten-Aufgabe oder -Ausführung | Einzelne Ergebnisse rekonstruieren |
+| Event | Eine aufgezeichnete Aktion in einer Session | Einen Modell-Aufruf, Tool-Einsatz, Fehler, menschliche Aktion oder Policy-Entscheidung untersuchen |
+| Trace | Die geordnete und verschachtelte Session-Ansicht | Kausalitäten verstehen, statt zusammenhangslose Logs zu lesen |
+| Evaluation | Eine Bewertung oder Beurteilung einer Session | Qualität, Compliance, Kosten oder Latenz kontinuierlich verfolgen |
+| Audit | Eine Überprüfung einer ausgewählten Session-Population | Nach Fehlermustern mit einem definierten Ziel und Rhythmus suchen |
+| Finding | Ein durch ein Audit belegter Fehler | Fehlermuster, Schweregrad und betroffene Sessions einsehen |
+| Issue | Ein dauerhafter Reaktionsdatensatz | Ein Finding oder Alert-Incident zuweisen, besprechen und lösen |
+| Alert | Eine Regel zur Erkennung von Wiederholungen | Verantwortliche benachrichtigen, wenn eine bekannte Bedingung erneut auftritt |
+| Policy | Eine Regel, die während der Agenten-Aktivität ausgewertet wird | Riskantes Verhalten beobachten, blockieren oder umleiten |
+| Deployment | Ein versioniertes Policy-Rollout auf Maschinen | Steuern, wo eine Policy ausgeführt wird, und sie sicher zurückrollen |
+
+## Der Zuverlässigkeitskreislauf
+
+Ausgangspunkt ist die Evidenz. Eine Session zeigt, was passiert ist. Ein Audit ermittelt, ob es sich um einen isolierten Fehler oder ein Muster handelt. Ein Finding identifiziert das Fehlermuster; ein Issue übernimmt die Verantwortung für die Reaktion. Eine Policy verhindert dasselbe Verhalten, während Alerts Sie informieren, wenn die Bedingung erneut auftritt.
+
+<Warning>
+  Ein lokaler `failproofai audit` durchsucht den lokalen Agenten-Verlauf. Ein wiederkehrender Cloud-Audit überprüft in Failproof AI Cloud gespeicherte Sessions. Es handelt sich um getrennte Workflows mit unterschiedlichem Umfang und unterschiedlicher Planung.
+</Warning>

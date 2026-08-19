@@ -1,0 +1,54 @@
+---
+title: "Công thức kiểm tra"
+description: "Các mục tiêu ban đầu để điều tra các lỗi agent phổ biến."
+icon: "book-open-check"
+---
+
+Sử dụng các công thức này làm mục tiêu ban đầu, sau đó thêm agent, môi trường và quy trình làm việc dự kiến của bạn.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Đi tới **Analyze → Audits → New audit**, sao chép một công thức vào phần mô tả hoặc tóm tắt, sau đó thêm môi trường, agent, lookback và URL tham chiếu liên quan. Tạo kiểm tra và kiểm tra lần chạy đầu tiên trước khi lên lịch.
+
+    Biểu mẫu kiểm tra mới chuyển đổi một công thức thành kiểm tra lỗi có thể thực thi bằng cách thêm phạm vi, bối cảnh, tần suất và thông báo.
+
+    ![Biểu mẫu kiểm tra mới được cấu hình với mục tiêu tập trung, lịch trình, phạm vi agent và môi trường, bối cảnh và kênh thông báo.](/images/dashboard/audit-new.png)
+
+    Sau khi tạo, hãy xác nhận rằng kiểm tra xuất hiện trong danh sách với trạng thái và lịch trình dự kiến trước khi dựa vào các lần chạy định kỳ.
+
+    ![Trang Audits nơi công thức kiểm tra dành riêng cho quy trình làm việc xuất hiện sau khi tạo.](/images/dashboard/audits.png)
+
+    Mở lần chạy đầu tiên và tinh chỉnh công thức nếu kết quả của nó rộng hơn hoặc hẹp hơn so với chế độ lỗi dự định.
+  </Tab>
+  <Tab title="CLI">
+    Lưu một công thức dưới dạng tệp văn bản và đính kèm nó trong quá trình tạo:
+
+    ```bash
+    fp audits create retry-loop-review \
+      --scope '{"environments":["production"]}' \
+      --text-file ./retry-loop-audit.txt \
+      --schedule-interval-secs 86400
+    ```
+  </Tab>
+</Tabs>
+
+<AccordionGroup>
+  <Accordion title="Vòng lặp thử lại lặp lại">
+    Tìm các phiên nơi agent lặp lại cùng một lệnh gọi công cụ không thành công mà không thay đổi đầu vào, chọn một công cụ thay thế hoặc chuyển lên con người.
+  </Accordion>
+  <Accordion title="Sử dụng công cụ không chính xác">
+    Tìm các phiên nơi công cụ được chọn không phù hợp với nhiệm vụ được nêu, hoặc nơi đầu vào công cụ vi phạm các điều kiện tiên quyết bắt buộc của quy trình làm việc.
+  </Accordion>
+  <Accordion title="Truy cập dữ liệu không an toàn">
+    Tìm các phiên đọc, ghi hoặc truyền dữ liệu nhạy cảm bên ngoài các đường dẫn và dịch vụ được phê duyệt cho agent này.
+  </Accordion>
+  <Accordion title="Từ bỏ nhiệm vụ">
+    Tìm các phiên kết thúc mà không có kết quả được yêu cầu, lỗi rõ ràng hoặc việc chuyển giao rõ ràng cho con người.
+  </Accordion>
+  <Accordion title="Suy thoái chi phí hoặc độ trễ">
+    Tìm các phiên mà mô hình, công cụ hoặc tổng thời lượng vượt quá ngân sách dự kiến và xác định mô hình sự kiện chịu trách nhiệm.
+  </Accordion>
+  <Accordion title="Bỏ sót việc chuyển lên con người">
+    Tìm các phiên nơi độ tin cậy, lỗi lặp lại hoặc hướng dẫn chính sách yêu cầu quyết định của con người nhưng agent vẫn tiếp tục tự động.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,115 @@
+---
+---
+title: "Agent harnesses"
+description: "Capture sessions and enforce policies in supported agent CLIs."
+icon: "plug-zap"
+---
+
+Failproof AI hỗ trợ Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin CLI, Antigravity CLI, và Goose.
+
+| Harness | Phạm vi hook được hỗ trợ |
+| --- | --- |
+| Claude Code | User, project, local |
+| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
+| Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
+| Hermes, OpenClaw | User |
+
+Mỗi tích hợp chuẩn hóa các tên sự kiện hook gốc, tên công cụ và trường đầu vào công cụ trước khi các chính sách chạy. Một chính sách chỉ có thể tác động đến các sự kiện mà harness công khai; hãy kiểm tra hành vi end-of-turn và hướng dẫn trên harness và phiên bản chính xác mà bạn triển khai.
+
+## Khả năng thực thi
+
+"Block" có nghĩa là quyết định được trả về của adapter hiện tại được tiêu thụ bởi harness được đặt tên. Chặn sau công cụ có thể thay thế kết quả hiển thị cho mô hình nhưng không thể hoàn tác hiệu ứng phụ của công cụ đã xảy ra.
+
+| Harness | Sự kiện chặn được xác minh | Cảnh báo chỉ quan sát hoặc không chặn |
+| --- | --- | --- |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, và một số sự kiện task/config | `PostToolUse`, vòng đời phiên, thông báo và các sự kiện sau lỗi là quan sát. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Chặn sau công cụ thay thế kết quả sau khi thực thi; các sự kiện bắt đầu phiên và compact là quan sát trong adapter hiện tại. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Chặn sau công cụ thay thế kết quả sau khi thực thi; các sự kiện phiên và thông báo là quan sát. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` và các sự kiện phiên là quan sát. |
+| OpenCode | `PreToolUse` | Sự kiện sau công cụ và vòng đời là quan sát; xử lý dừng hiện tại là hướng dẫn cho một lượt sau chứ không phải là một cổng được xác minh. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | Sự kiện sau công cụ và vòng đời là quan sát; hướng dẫn dừng áp dụng cho một lượt sau. |
+| Hermes | `PreToolUse` | Quyết định sau công cụ, phiên và subagent-stop không phải là cổng. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Sự kiện sau công cụ, phiên, subagent-stop và nén là quan sát. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Quyết định sau công cụ và subagent-stop là quan sát. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` có điều kiện | Hook quyền không chạy trong mọi chế độ quyền; sự kiện sau công cụ và phiên là quan sát. |
+| Antigravity CLI | `PreToolUse`, `Stop` | Quyết định sau công cụ và user-prompt là quan sát; các hướng dẫn prompt vẫn có thể được chèn. |
+| Goose | `PreToolUse` | Sự kiện sau công cụ, user-prompt và phiên là quan sát. Hook dừng chặn gốc tồn tại ở hạ nguồn nhưng không được cài đặt bởi adapter hiện tại. |
+
+Khả năng phụ thuộc vào phiên bản. Kiểm tra lại sau khi nâng cấp agent CLI, đặc biệt khi chính sách dựa vào hành vi prompt, stop, permission hoặc post-tool chứ không phải là cổng pre-tool thông thường.
+
+## Cài đặt capture và policy hooks
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Mở **Administration → Keys** và tạo một khóa với `events:add` và `policies:pull`, được đặt tên cho máy hoặc môi trường.
+    2. Trên máy mục tiêu, kết nối CLI cục bộ với khóa được hiển thị và cài đặt harness hooks.
+    3. Bắt đầu một phiên agent mới, sau đó xác nhận các sự kiện hook và phiên của nó dưới **Observe → Events**.
+    4. Mở **Observe → policy** cho cửa sổ thời gian tương tự và xác nhận quyết định chính sách được gán cho máy.
+
+    Kết nối bắt đầu với một khóa máy. Xác nhận rằng nó bao gồm cả quyền tiếp nhận và giao chính sách trước khi sao chép bí mật của nó.
+
+    ![Ngăn kéo khóa API mới được sử dụng để cấp quyền tiếp nhận sự kiện và giao chính sách.](/images/dashboard/key-create.png)
+
+    Sau khi cài đặt hooks, luồng Events sẽ hiển thị các sự kiện mới từ máy và môi trường bạn đã kết nối.
+
+    ![Luồng Events trực tiếp được sử dụng để xác nhận harness mới được cài đặt đang báo cáo.](/images/dashboard/events-stream.png)
+
+    Cuối cùng, xác minh rằng các quyết định chính sách được gán cho cùng một máy. Điều này xác nhận harness đang báo cáo cả hoạt động chính sách và các sự kiện trace.
+
+    ![Trang Policy được sử dụng để xác minh các quyết định chính sách từ harness mới được kết nối.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    Cài đặt hooks cho mọi harness được phát hiện:
+
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+    failproofai policies --install
+    ```
+
+    Hoặc nhắm mục tiêu harnesses được đặt tên và phạm vi cấu hình:
+
+    ```bash
+    failproofai policies --install \
+      --cli claude codex cursor \
+      --scope user
+    ```
+
+    Phạm vi project giữ cấu hình hook với một repository. Phạm vi user bao gồm công việc trên các repositories. Claude Code cũng hỗ trợ phạm vi local; hỗ trợ thay đổi tùy thuộc vào harness và CLI từ chối các tổ hợp không được hỗ trợ.
+
+    Xác minh máy và các sự kiện của nó:
+
+    ```bash
+    failproofai config --status
+    failproofai flush --wait
+    fp events --since 1h --event-type hook_triggered,hook_completed
+    ```
+  </Tab>
+</Tabs>
+
+## Thêm đường dẫn phiên không mặc định
+
+<Tabs>
+  <Tab title="Dashboard">
+    Các đường dẫn bổ sung được đăng ký trên máy, không phải trong Cloud. Sau khi thêm một, mở **Observe → Sessions**, lọc theo môi trường của máy và xác nhận các phiên từ đường dẫn mới xuất hiện. Mở một phiên và kiểm tra agent, harness và dấu thời gian sự kiện trước khi dựa vào nó trong kiểm toán.
+
+    ![Danh sách Sessions được lọc theo môi trường nhận dữ liệu từ đường dẫn capture bổ sung.](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    Thêm một đường dẫn với nhãn tùy chọn, sau đó kiểm tra các đường dẫn được cấu hình:
+
+    ```bash
+    failproofai harness add-path claude checkout=/srv/checkout/.claude
+    failproofai harness list claude
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    ```
+
+    Xóa một đường dẫn với `failproofai harness remove-path claude checkout`.
+  </Tab>
+</Tabs>
+
+<Tip>
+  Chạy một phiên mới sau khi cài đặt. Xác minh cả luồng sự kiện trực tiếp và một quyết định chính sách thực tế trước khi mở rộng triển khai.
+</Tip>

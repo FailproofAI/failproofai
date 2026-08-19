@@ -1,0 +1,303 @@
+---
+title: "Пользовательские политики"
+description: "Создавайте, тестируйте и развёртывайте политики на JavaScript или TypeScript для сбоев, специфичных для ваших агентов."
+icon: "shield-plus"
+---
+
+Пользовательские политики превращают шаблон сбоя из ваших трассировок или аудитов в решение, которое выполняется во время работы агента. Политика может разрешить действие, дать агенту указание или заблокировать действие до того, как оно вызовет ещё один инцидент.
+
+Используйте пользовательскую политику, когда поведение зависит от ваших инструментов, путей, команд, окружений или операционных правил. Сначала проверьте [встроенный каталог политик](/ru/policies/builtin-catalog), чтобы не воссоздавать существующий контроль.
+
+## Создание пользовательской политики
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Перейдите в **Admin → policy editor**, выберите **New policy** и опишите сбой, который вы хотите предотвратить.
+    2. Добавьте исходный код политики, затем протестируйте ожидаемые совпадения и безопасные несовпадения в редакторе. Устраните все ошибки валидации.
+    3. Сохраните черновик и выберите **Publish version**, чтобы создать неизменяемую версию.
+    4. Перейдите в **Admin → enforcement**, разверните версию на тестовой машине в режиме **observe**, и проверьте её решения в **Observe → policy** перед её применением.
+
+    ![Редактор политик для создания и публикации пользовательской политики.](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    1. Создайте `.failproofai/policies/checkout-policies.ts`. Имя файла должно заканчиваться на `policies.js`, `policies.mjs` или `policies.ts`.
+    2. Зарегистрируйте одну или несколько политик с помощью `customPolicies.add()`.
+    3. Валидируйте и установите файл с помощью `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`.
+    4. Запустите одно действие, которое соответствует политике, и одно безопасное действие. Запустите `failproofai policies`, затем изучите назначенные решения в **Observe → policy**.
+  </Tab>
+</Tabs>
+
+## Начните с узкого правила
+
+Эта политика блокирует деструктивные команды Kubernetes только при нацеливании на production. Всё остальное, что выходит за рамки этого конкретного шаблона сбоя, возвращает `allow()`.
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+const DESTRUCTIVE_KUBECTL = /\bkubectl\s+(delete|replace)\b/i;
+const PRODUCTION_TARGET = /(?:--context|--namespace|-n)\s+(prod|production)\b/i;
+
+customPolicies.add({
+  name: "block-destructive-production-kubectl",
+  description: "Block destructive Kubernetes commands against production",
+  match: { events: ["PreToolUse"] },
+  fn: async ({ toolName, toolInput }) => {
+    if (toolName !== "Bash") return allow();
+
+    const command = String(toolInput?.command ?? "");
+    if (!DESTRUCTIVE_KUBECTL.test(command)) return allow();
+    if (!PRODUCTION_TARGET.test(command)) return allow();
+
+    return deny(
+      "Destructive production Kubernetes commands require the approved deployment workflow.",
+    );
+  },
+});
+```
+
+Хорошие политики достаточно узки, чтобы объяснить их одним предложением. Соответствуйте наблюдаемому действию — не намерению, на которое вы надеетесь, — и возвращайте `allow()` как только правило перестанет применяться.
+
+## Выберите решение
+
+| Вспомогательная функция | Результат | Когда использовать |
+| --- | --- | --- |
+| `allow(reason?)` | Операция продолжается. | Политика не применяется или действие безопасно. |
+| `instruct(reason)` | Операция продолжается с указанием, где это поддерживается оболочкой. | Вы хотите направить агента к лучшему подходу без применения инварианта. |
+| `deny(reason)` | Операция блокируется, когда событие и оболочка это поддерживают. | Действие не должно продолжаться. |
+
+Напишите причину для агента, который должен восстановиться. Объясните, что было обнаружено, и что он должен делать вместо этого.
+
+<Warning>
+  Не используйте `instruct()` для границы безопасности. Доставка указаний зависит от оболочки агента. Используйте `deny()`, когда действие должно быть предотвращено.
+</Warning>
+
+## Объект политики
+
+```ts
+customPolicies.add({
+  name: "policy-name",
+  description: "What this policy prevents",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => allow(),
+});
+```
+
+| Поле | Обязательно | Описание |
+| --- | --- | --- |
+| `name` | Да | Стабильный идентификатор политики. Сохраняйте уникальные имена между файлами. |
+| `description` | Нет | Понятное для человека назначение, отображаемое в списках политик и решениях. |
+| `match.events` | Нет | Типы событий, которые вызывают политику. Пропуск `match` вызывает её для каждого доступного события. |
+| `fn` | Да | Синхронная или асинхронная функция, которая возвращает результат `allow`, `instruct` или `deny`. |
+
+Фильтруйте инструменты внутри `fn`. `match.toolNames` не входит в публичный тип пользовательской политики.
+
+## Контекст политики
+
+Каждая политика получает `PolicyContext`.
+
+| Поле | Тип | Что оно содержит |
+| --- | --- | --- |
+| `eventType` | `HookEventType` | Нормализованное событие, которое в данный момент оценивается. |
+| `toolName` | `string \| undefined` | Каноническое имя инструмента, такое как `Bash`, `Read`, `Write` или `Edit`. |
+| `toolInput` | `Record<string, unknown> \| undefined` | Каноническое входное значение для текущего вызова инструмента. |
+| `payload` | `Record<string, unknown>` | Полная нормализованная полезная нагрузка события. |
+| `session` | `SessionMetadata \| undefined` | ID сеанса, рабочая директория, путь к стенограмме, режим разрешений и метаданные оболочки, когда доступны. |
+| `cli` | `string \| undefined` | Исходная оболочка агента, такая как `claude`, `codex` или `cursor`. |
+| `params` | `Record<string, unknown>` | Встроенные параметры политики. Пользовательские политики в настоящее время получают пустой объект. |
+
+Рассматривайте каждое необязательное значение как действительно необязательное. Версии агентов и типы событий не предоставляют одинаковые поля.
+
+### Обычные входные параметры инструментов
+
+Failproof AI нормализует обычные инструменты между поддерживаемыми оболочками, поэтому политика обычно может использовать одну форму входного параметра.
+
+| Инструмент | Обычные поля |
+| --- | --- |
+| `Bash` | `command` |
+| `Read` | `file_path` |
+| `Write` | `file_path`, `content` |
+| `Edit` | `file_path`, `old_string`, `new_string` |
+| `Grep` | `pattern`, `path` |
+
+Используйте защитное приведение типов, потому что значения входных параметров инструмента типизированы как `unknown`:
+
+```ts
+const command = String(ctx.toolInput?.command ?? "");
+const filePath = String(ctx.toolInput?.file_path ?? "");
+```
+
+## Выберите событие
+
+| Событие | Когда оно выполняется | Типичное использование |
+| --- | --- | --- |
+| `PreToolUse` | Перед выполнением инструмента. | Блокируйте или направляйте команды, запись, чтение и внешние действия. |
+| `PostToolUse` | После возврата инструмента. | Изучите результаты перед их доставкой агенту. Отказ блокирует весь результат; он не редактирует отдельные поля. |
+| `PermissionRequest` | Когда агент запрашивает разрешение. | Применяйте правила разрешений, специфичные для организации. |
+| `UserPromptSubmit` | Перед тем, как отправленная подсказка продолжится. | Отклоняйте запрещённые инструкции или добавляйте рекомендации рабочего процесса. |
+| `Stop` | Когда агент пытается завершить работу. | Требуйте достижимого условия завершения, такого как локальный этап проверки. |
+| `SubagentStop` | Когда подагент пытается завершить работу. | Контролируйте делегированную работу перед её возвратом к родительскому элементу. |
+| `SessionStart` / `SessionEnd` | На границах сеанса. | Записывайте или проверяйте состояние уровня сеанса. |
+
+Доступность событий и поведение блокировки зависят от оболочки агента. Перед использованием события на смешанном парке см. [Оболочки агентов](/ru/reference/harnesses).
+
+<Accordion title="Все имена событий политики">
+  `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch` и `Setup`.
+</Accordion>
+
+## Создание распространённых шаблонов политик
+
+### Блокировка записей в защищённые пути
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "block-generated-file-edits",
+  description: "Require generated files to be changed through their generator",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (!["Write", "Edit"].includes(ctx.toolName ?? "")) return allow();
+
+    const filePath = String(ctx.toolInput?.file_path ?? "");
+    if (!/(^|\/)(dist|generated)\//.test(filePath)) return allow();
+
+    return deny("Edit the source and run the generator instead of changing generated output.");
+  },
+});
+```
+
+### Предоставление неблокирующих указаний
+
+```ts
+import { customPolicies, allow, instruct } from "failproofai";
+
+customPolicies.add({
+  name: "prefer-reviewed-deploy-command",
+  description: "Guide agents toward the reviewed deployment wrapper",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Bash") return allow();
+
+    const command = String(ctx.toolInput?.command ?? "");
+    if (!/^kubectl\s+apply\b/.test(command.trim())) return allow();
+
+    return instruct("Use ./scripts/deploy-reviewed instead of invoking kubectl directly.");
+  },
+});
+```
+
+### Контроль завершения сеанса
+
+```ts
+import { execFileSync } from "node:child_process";
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "require-clean-typecheck",
+  description: "Require the project typecheck to pass before the agent finishes",
+  match: { events: ["Stop"] },
+  fn: async (ctx) => {
+    const cwd = ctx.session?.cwd;
+    if (!cwd) return allow();
+
+    try {
+      execFileSync("bunx", ["tsc", "--noEmit"], {
+        cwd,
+        stdio: "ignore",
+        timeout: 8_000,
+      });
+      return allow();
+    } catch {
+      return deny("Fix the typecheck errors before finishing the task.");
+    }
+  },
+});
+```
+
+<Warning>
+  Отклонённое событие `Stop` может заставить агента повторить попытку. Контролируйте только условие, которое агент может выполнить в текущей среде, и ограничивайте каждый подпроцесс или сетевой вызов.
+</Warning>
+
+## Загрузка файлов политик
+
+### Файлы соглашения
+
+Файлы соглашения загружаются автоматически:
+
+```text
+<project>/.failproofai/policies/security-policies.ts
+~/.failproofai/policies/personal-policies.mjs
+```
+
+- Загружаются как директория проекта, так и директория пользователя для политик.
+- Файлы загружаются в алфавитном порядке в каждой директории.
+- Файл должен заканчиваться на `policies.js`, `policies.mjs` или `policies.ts`.
+- Множественные вызовы `customPolicies.add()` в одном файле поддерживаются.
+- Относительные импорты из локальных модулей поддерживаются.
+- Политики проекта можно фиксировать, чтобы одни и те же правила следовали репозиторию.
+
+### Явные файлы
+
+Используйте явные пути, когда валидация или конфигурация должны назвать файл входной точки напрямую:
+
+```bash
+failproofai policies --install \
+  --custom ./security.policies.ts \
+  --custom ./workflow.policies.ts \
+  --scope project
+```
+
+Явные файлы загружаются в первую очередь, затем файлы соглашения проекта, а затем файлы соглашения пользователя. Файл, обнаруженный обоими способами, загружается один раз.
+
+## Валидация и тестирование
+
+Валидация выполняет модуль через загрузчик production и подтверждает, что он регистрирует хотя бы одну политику.
+
+```bash
+failproofai policies --install \
+  --custom ./.failproofai/policies/checkout-policies.ts \
+  --scope project
+failproofai policies
+```
+
+Валидация выявляет отсутствующие файлы, синтаксические ошибки, неразрешённые импорты, исключения верхнего уровня и истечения времени загрузки модуля. Она не доказывает, что ваша логика соответствия корректна.
+
+Протестируйте по крайней мере эти случаи:
+
+- Одно действие, которое должно соответствовать политике и выдать предполагаемую причину.
+- Одно похожее, но безопасное действие, которое должно возвращать `allow()`.
+- Отсутствующие или неправильно сформированные поля инструмента.
+- Альтернативный синтаксис команд, пути, кавычки, регистр и пробелы.
+- Недоступная зависимость подпроцесса или сети.
+
+Назначьте результат вашей пользовательской политике в **Observe → policy**. Заблокированный тест недостаточен, если другая встроенная политика приняла решение.
+
+## Поведение во время выполнения
+
+- Встроенные политики оцениваются перед пользовательскими политиками.
+- Первый `deny` останавливает дальнейшую оценку политики.
+- Множественные результаты `instruct` можно комбинировать, когда ни одна политика не отклоняет событие.
+- Функция политики имеет срок выполнения в 10 секунд.
+- Брошенное исключение или истечение времени логируется и рассматривается как `allow()`.
+- Файл соглашения, который не загружается, пропускается; другие пользовательские файлы и встроенные политики продолжают работу.
+- Загрузка модуля верхнего уровня также имеет срок в 10 секунд.
+- Режим облачного наблюдения запускает политику, но записывает решение, не являющееся allow, без его применения.
+
+Держите модули политик детерминированными и быстрыми. Избегайте сетевых вызовов верхнего уровня или запуска сервера. Ограничивайте работу внутри `fn`, обрабатывайте сбои зависимостей и сознательно выбирайте, должен ли этот сбой разрешить или отклонить операцию.
+
+## Экспорты API
+
+| Экспорт | Назначение |
+| --- | --- |
+| `customPolicies.add(policy)` | Зарегистрируйте пользовательскую политику при загрузке модуля. |
+| `allow(reason?)` | Разрешьте операцию. |
+| `instruct(reason)` | Разрешьте операцию и предоставьте указание, где это поддерживается. |
+| `deny(reason)` | Заблокируйте операцию, где это поддерживается. |
+| `getCustomHooks()` | Верните политики, в настоящее время зарегистрированные в реестре модуля. |
+| `clearCustomHooks()` | Очистите этот реестр, в первую очередь для тестов и загрузчиков. |
+
+TypeScript экспортирует `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision` и `PolicyFunction`.
+
+<Card title="Разверните пользовательские политики" icon="server-cog" href="/ru/policies/deploy">
+  Опубликуйте версию, разверните её в режиме наблюдения, проверьте решения и перейдите к применению.
+</Card>

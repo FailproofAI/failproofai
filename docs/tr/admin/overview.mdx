@@ -1,0 +1,40 @@
+---
+title: "Yönetim"
+description: "Erişim, kullanım, organizasyonlar ve güvenliği yönetin — bunları güvenilirlik iş akışıyla karıştırmadan."
+icon: "settings-2"
+---
+
+Yönetim, Failproof AI'ı bir ekip genelinde çalıştırmak için gerekli kontrolleri içerir. Çoğu kullanıcı Oturumlar, Denetimler ve İlkeler bölümlerinde kalabilir; yöneticiler erişim ve işletme sınırlarını yönetmek için bu bölümü kullanır.
+
+<Tabs>
+  <Tab title="Pano">
+    Cloud kenar çubuğunun **Yönetim** bölümünde **ilke editörü**, **zorlama**, **kullanım**, **anahtarlar**, **kullanıcılar** ve **ayarlar**'ı kullanın. Kilitli bir öğe, hesabınızın okuma izni eksik olduğunu gösterir.
+
+    ![Cloud kenar çubuğunun ilke editörü, zorlama, kullanım, anahtarlar, kullanıcılar ve ayarlarıyla Yönetim bölümü.](/images/dashboard/admin-navigation.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp whoami
+    fp orgs current
+    fp orgs perms
+    fp usage
+    ```
+
+    Genel seçenekleri komuttan önce yerleştirin, örneğin `fp --org reliability-team --json usage`.
+  </Tab>
+</Tabs>
+
+<Columns cols={2}>
+  <Card title="Kullanım" icon="chart-no-axes-combined" href="/tr/admin/usage">
+    Faturalandırma pencereleri ve organizasyon tüketimini inceleyin.
+  </Card>
+  <Card title="Anahtarlar ve izinler" icon="key-round" href="/tr/admin/keys-and-permissions">
+    Makinelere ve otomasyona yalnızca gereken izinleri verin.
+  </Card>
+  <Card title="Kullanıcılar ve organizasyonlar" icon="users" href="/tr/admin/users-and-organizations">
+    Üyelikleri, varsayılanları ve organizasyon sınırlarını yönetin.
+  </Card>
+  <Card title="Ayarlar ve güvenlik" icon="lock-keyhole" href="/tr/admin/settings-and-security">
+    İşletme ayarlarını, veri işlemeyi ve dağıtım güvenliğini yapılandırın.
+  </Card>
+</Columns>

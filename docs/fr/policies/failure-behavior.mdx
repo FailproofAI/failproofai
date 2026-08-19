@@ -1,0 +1,43 @@
+---
+title: "Comportement en cas d'échec"
+description: "Comprendre ce qui se passe lorsque l'évaluation des politiques ou le démon local est indisponible."
+icon: "shield-alert"
+---
+
+Failproof AI est conçu de sorte qu'un échec d'application soit visible plutôt que de laisser passer silencieusement des actions risquées.
+
+## Diagnostiquer un blocage en mode fermeture d'urgence
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Admin → enforcement** et ouvrez la machine concernée.
+    2. Vérifiez sa dernière connexion, le déploiement assigné et le déploiement signalé.
+    3. Accédez à **Observe → policy** et ouvrez la session de la décision refusée.
+    4. Confirmez si la raison indique une inaccessibilité du démon, un écart de version ou la politique elle-même.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    npm install -g failproofai@latest
+    failproofai config
+    ```
+
+    Relancer `failproofai config` met à jour et redémarre le démon après une mise à niveau du package.
+  </Tab>
+</Tabs>
+
+Sur une machine configurée pour utiliser `failproofaid`, le démon est le seul évaluateur. S'il est inaccessible ou si sa version de protocole ne correspond pas à celle du CLI, l'évaluation des hooks échoue en mode fermé. L'action est refusée avec un message indiquant à l'opérateur de vérifier ou de mettre à jour le démon.
+
+Avant la configuration du démon, les hooks évaluent les politiques en cours de processus. Une fois la configuration du démon enregistrée, Failproof AI ne bascule pas silencieusement vers un deuxième évaluateur en cas d'échec du démon.
+
+## Réagir à une décision en mode fermeture d'urgence
+
+1. Exécutez `failproofai config --status`.
+2. Si les versions diffèrent, relancez `failproofai config` après avoir mis à jour le package.
+3. Si le démon est inaccessible, inspectez l'état de son service et ses journaux locaux.
+4. Ne reprenez le travail de l'agent qu'une fois qu'un chemin d'évaluation des politiques connu est opérationnel.
+
+<Warning>
+  Ne relancez pas l'action bloquée de manière répétée. Une réponse en mode fermeture d'urgence signifie que le système n'a pas pu établir que l'action était sûre.
+</Warning>

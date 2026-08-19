@@ -1,0 +1,78 @@
+---
+title: "集成与参考"
+description: "连接支持的 Agent 运行框架、SDK、CLI 及 HTTP API。"
+icon: "braces"
+---
+
+选择最接近您现有 Agent 运行环境的集成方式。
+
+<Columns cols={2}>
+  <Card title="Agent 运行框架" icon="plug-zap" href="/zh/reference/harnesses">
+    为支持的编码类和自主 Agent CLI 安装 Hook。
+  </Card>
+  <Card title="自定义 Agent" icon="python" href="/zh/reference/python-sdk">
+    对 Trace 进行埋点以发现自定义 Agent 中的故障，然后联系我们为您的运行时添加预防措施。
+  </Card>
+  <Card title="本地仪表板" icon="monitor-cog" href="/zh/reference/local-dashboard">
+    查看本地项目、会话、策略活动及离线审计。
+  </Card>
+  <Card title="Failproof AI CLI" icon="terminal" href="/zh/reference/failproof-cli">
+    配置本地采集、Hook、策略、审计、数据投递及机器状态。
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/zh/reference/cloud-cli#cli-commands">
+    查询和管理云端会话、审计、问题、告警、密钥、用户及设置。
+  </Card>
+  <Card title="评估器 SDK" icon="gauge" href="/zh/reference/evaluator-sdk">
+    使用 FastAPI 服务对已完成或非活跃会话进行评分。
+  </Card>
+  <Card title="自定义策略" icon="shield-plus" href="/zh/reference/policy-sdk">
+    编写并测试针对特定工作流的 allow、instruct 和 deny 决策。
+  </Card>
+  <Card title="自托管" icon="cloud-cog" href="/zh/reference/self-hosting">
+    在客户自管的 Kubernetes 集群上部署云端控制平面。
+  </Card>
+</Columns>
+
+自动生成的 [HTTP API 参考文档](/zh/reference/http-api) 涵盖公开的 `/v1` 接口。手写页面则说明跨多个端点的工作流，或涉及该公开接口之外的管理界面的使用场景。
+
+## 连接 Agent 并验证数据
+
+<Tabs>
+  <Tab title="仪表板">
+    1. 打开 **Administration → Keys**，创建一个具有 `events:add` 和 `policies:pull` 权限的密钥，并复制密钥值。
+    2. 参照上方对应页面配置集成。
+    3. 打开 **Observe → Events** 确认事件正常到达，然后打开 **Observe → Sessions** 确认事件已组成完整的运行记录。
+    4. 按集成所在环境过滤，并检查某个会话中审计所需的模型、工具、错误及策略字段。
+
+    从密钥抽屉开始操作。所选授权决定了该机器能否发送事件及接收云端管理的策略。
+
+    ![用于授予事件摄入和策略下发权限的新建 API 密钥抽屉。](/images/dashboard/key-create.png)
+
+    连接集成后，使用会话列表确认其事件已按预期环境归组为完整的运行记录。
+
+    ![用于验证新接入集成是否正常上报完整 Agent 运行记录的会话列表。](/images/dashboard/sessions-list.png)
+
+    在确认集成完成前，请打开其中一个会话；Trace 中应包含审计所需的模型、工具、错误和策略相关信息。
+  </Tab>
+  <Tab title="CLI">
+    创建机器密钥，连接 Failproof 守护进程，并验证第一个会话。
+
+    ```bash
+    fp keys create agent-production \
+      --add events:add \
+      --add policies:pull
+
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+
+    failproofai flush --wait
+    fp sessions --since 1h --env production
+    fp events --since 1h --env production --limit 20
+    ```
+
+    当其他工具需要消费输出结果时，请使用 `fp --json sessions ...`。`--json`、`--org`、`--base-url` 等全局标志必须置于子命令之前。
+
+    本地命令请参阅 [Failproof AI CLI 参考文档](/zh/reference/failproof-cli)，`fp` 命令请参阅 [Failproof Cloud CLI 参考文档](/zh/reference/cloud-cli#cli-commands)。
+  </Tab>
+</Tabs>

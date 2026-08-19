@@ -1,0 +1,41 @@
+---
+title: "Rollback"
+description: "Stellen Sie eine bekannte Policy-Bereitstellung wieder her, wenn ein Rollout gültige Agent-Arbeit unterbricht."
+icon: "rotate-ccw"
+---
+
+Ein Rollback ändert die bereitgestellte Version oder entfernt eine Policy-Zuweisung; er löscht nicht den Entscheidungsverlauf, der den Vorfall erklärt.
+
+## Rollback einer Maschine
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Admin → Durchsetzung**, erweitern Sie die betroffene Maschine und identifizieren Sie ihren zuletzt als funktionierend bekannten Policy-Satz.
+    2. Wählen Sie **Bearbeiten**, stellen Sie die entsprechenden Versionen und Effekte wieder her und übernehmen Sie die neue Bereitstellung.
+    3. Warten Sie auf den Check-in der Maschine und überprüfen Sie dann die gemeldete Bereitstellung.
+    4. Öffnen Sie **Observe → Policy** und die betroffenen Sessions, um zu bestätigen, dass gültige Arbeit nicht länger blockiert wird.
+
+  </Tab>
+  <Tab title="CLI">
+    Das Rollback einer Cloud-Bereitstellung ist ein Dashboard-Workflow. Verwenden Sie den lokalen Status, um zu bestätigen, dass die korrigierte Bereitstellung die Maschine erreicht hat:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    `failproofai config --pause` pausiert integrierte, benutzerdefinierte und konventionsbasierte Policies für eine lokale Session. Cloud-verwaltete Policies werden dabei nicht pausiert, daher ist dies keine Umgehungslösung für eine fehlerhafte Cloud-Bereitstellung.
+  </Tab>
+</Tabs>
+
+## Wann ein Rollback durchgeführt werden sollte
+
+- Eine Policy blockiert eine erwartete Produktionsaktion.
+- Das Match-Volumen ist deutlich höher als beim beobachteten Rollout vorhergesagt.
+- Eine Policy ist von Feldern abhängig, die eine Integration nicht bereitstellt.
+- Eine neue Version ändert das Verhalten außerhalb des beabsichtigten Fehlermodus.
+
+Öffnen Sie nach dem Rollback die betroffenen Sessions und identifizieren Sie die Bedingung, die das False Positive verursacht hat. Erstellen Sie eine neue Version, testen Sie sowohl unsichere als auch legitime Fälle und wiederholen Sie dann die Observe-Phase.
+
+<Warning>
+  Das Pausieren der Durchsetzung kann während eines Vorfalls angemessen sein, weitet jedoch die Angriffsfläche für jede aktive Policy in diesem Geltungsbereich aus. Bevorzugen Sie nach Möglichkeit den Rollback der spezifischen Policy-Version.
+</Warning>

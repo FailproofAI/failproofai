@@ -1,0 +1,79 @@
+---
+title: "Hızlı Başlangıç"
+description: "Bir agent oturumunu kaydedin, bir hatayı bulun ve bunu önlemeye başlayın."
+icon: "zap"
+---
+
+Bu hızlı başlangıç, bir makinenin oturumları raporlamasını sağlar, bir denetim çalıştırır ve bir ilke dağıtır. Failproof AI'ı kurmak için skill'i kullanın veya manuel adımları izleyin. Node.js 20.9 veya daha yeni bir sürüme ihtiyacınız vardır.
+
+<Tabs>
+  <Tab title="Skill'i kullan">
+    <Steps>
+      <Step title="Failproof AI skill'lerini yükleyin">
+        ```bash
+        npx skills add FailproofAI/skills
+        ```
+      </Step>
+      <Step title="Agent'inize her şeyi ayarlamasını söyleyin">
+        ```text
+        Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
+        ```
+
+        Agent'iniz projeyi inceleyecek, ilgili entegrasyonu seçecek, kurulumu gerçekleştirecek ve doğrulayacaktır. Bireysel skill'ler ve gelişmiş yükleme seçenekleri için [FailproofAI skill'leri deposuna](https://github.com/FailproofAI/skills) bakın.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Manuel kurulum">
+    ## Başlamadan önce
+
+1. [Failproof AI panosu](https://app.befailproof.ai) açın ve bir hesap oluşturun veya iş e-postanızla oturum açın.
+2. **Administration → Keys** bölümüne gidin ve `events:add` ve `policies:pull` izinlerine sahip bir anahtar oluşturun.
+3. Tek seferlik gizli anahtarı kopyalayın ve hedef makinede saklayın:
+
+```bash
+export FAILPROOFAI_KEY="<one-time-secret>"
+```
+
+    ## Yükleyin
+
+<Steps>
+  <Step title="Failproof AI'ı yükleyin ve bağlayın">
+    ```bash
+    npm install -g failproofai
+    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    ```
+
+    Oturum transkriptleri varsayılan olarak gönderilir. Transkript içeriği olmadan hook etkinliği ve ilke kararlarını raporlamak için `--no-transcripts` ekleyin.
+
+    Bu makinede zaten agent geçmişi varsa, son yedi günü önizleyin ve içeri aktarın, ardından teslimatın tamamlanmasını bekleyin. Yeni bir makinede bu adımı atlayın.
+
+    ```bash
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    failproofai flush --wait
+    ```
+
+    Failproof AI'da **Sessions** bölümünü açın ve içeri aktarılan bir oturumu seçin.
+  </Step>
+  <Step title="Agent kancalarını ve ilkelerini yükleyin">
+    Bu, Failproof AI'ı agent CLI'nıza ekler ve yerleşik ilkeleri yükler. Failproof AI oturumlarınızı denetlemesinden ve agent'leriniz için ilkeler yazmasından önce yerel ilke kararlarını görmek ve uygulamayı denemek için bunları kullanın.
+
+    Yükleyicinin agent CLI'nızı algılamasına izin verin veya açıkça bir tane adlandırın.
+
+    ```bash
+    failproofai policies --install --cli claude --scope user
+    ```
+  </Step>
+  <Step title="Davranışı denetleyin">
+    [İlk hata kontrolünüzü çalıştırın](/tr/start/first-audit) adımını izleyin. "Agent'in başarısız bir aracı, yaklaşımını değiştirmeden yeniden denediği oturumları bul" gibi somut bir hedef kullanın.
+  </Step>
+  <Step title="Hatayı önleyin">
+    [İlk hatanızı bir ilkeyle önleyin](/tr/start/first-policy) adımını izleyin. Gözlem modundan başlayın, eşleşmeleri inceleyin, ardından gözden geçirilmiş sürümü uygulayın.
+  </Step>
+</Steps>
+
+<Check>
+  `failproofai config --status` komutunu çalıştırın. Sağlıklı bir kurulum bulut bağlantısını, daemon durumunu ve uygulamanın duraklatılıp duraklatılmadığını rapor eder.
+</Check>
+  </Tab>
+</Tabs>

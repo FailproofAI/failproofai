@@ -1,0 +1,27 @@
+---
+---
+title: "Concetti fondamentali"
+description: "L'insieme ridotto di concetti utilizzati in Failproof AI."
+icon: "boxes"
+---
+
+| Concetto | Significato | Cosa puoi ottenere |
+| --- | --- | --- |
+| Session | Un'attività o esecuzione dell'agente | Ricostruire un singolo risultato |
+| Event | Un'azione registrata in una session | Ispezionare una chiamata al modello, l'uso di uno strumento, un errore, un'azione umana o una decisione di policy |
+| Trace | La vista della session ordinata e annidada | Comprendere la causalità invece di leggere log disconnessi |
+| Evaluation | Un punteggio o giudizio su una session | Tracciare continuamente la qualità, la conformità, il costo o la latenza |
+| Audit | Una revisione di una popolazione di session selezionata | Cercare pattern di fallimento con un obiettivo e una cadenza dichiarati |
+| Finding | Un fallimento sostenuto da evidenze scoperto da un audit | Visualizzare la modalità di fallimento, la gravità e le session interessate |
+| Issue | Un record di risposta durevole | Assegnare, discutere e risolvere un finding o un incidente di alert |
+| Alert | Una regola che rileva ricorrenza | Notificare i responder quando una condizione nota ritorna |
+| Policy | Una regola valutata durante l'attività dell'agente | Osservare, bloccare o reindirizzare comportamenti rischiosi |
+| Deployment | Un rollout di policy versionato alle macchine | Controllare dove viene eseguita una policy e ripristinarla in sicurezza |
+
+## Il ciclo di affidabilità
+
+Inizia dalle evidenze. Una session mostra cosa è accaduto. Un audit determina se è un errore isolato o un pattern. Un finding identifica la modalità di fallimento; un issue possiede la risposta. Una policy previene lo stesso comportamento, mentre gli alert ti avvisano se la condizione ritorna.
+
+<Warning>
+  Un `failproofai audit` locale scansiona la cronologia dell'agente locale. Un audit Cloud ricorrente rivede le session archiviate in Failproof AI Cloud. Sono flussi di lavoro separati con scope e pianificazione diversi.
+</Warning>

@@ -1,0 +1,56 @@
+---
+title: "Denetimler"
+description: "İzlemeler tek başına ortaya çıkarmayacağı başarısızlıkları bulmak için tanımlı bir oturum popülasyonunu gözden geçirin."
+icon: "scan-search"
+---
+
+Denetim, seçilen bir oturum kümesinde belirtilen bir başarısızlık hedefini arar. İz kanıtı, değerlendirme sonuçları, politika istifleri ve referans bağlamını birleştirerek harekete geçebileceğiniz bulgular üretir.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+Denetimin planlı çalıştırmadan kanıtla desteklenen başarısızlıklara nasıl geçtiğini görün.
+
+## Denetimleri açın
+
+<Tabs>
+  <Tab title="Gösterge Paneli">
+    **Analiz → Denetimler** bölümüne gidin. Sayfa, planlı durumu, açık bulguları, son çalıştırma, sonraki çalıştırma, sıklık ve denetimin bir özet veya referans sayfasına sahip olup olmadığını gösterir. Ayarlar ve çalıştırma geçmişi için bir kartı seçin; yeni bir denetim oluşturmak için **yeni denetim**i seçin.
+
+    ![Denetimler sayfası, yinelenen denetimleri zamanlaması, hassasiyeti ve çalıştırma durumu ile gösteriyor.](/images/dashboard/audits.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits list
+    fp audits list --enabled-only --show-id
+    fp audits show <audit-name>
+    fp audits findings --status open --limit 20
+    ```
+  </Tab>
+</Tabs>
+
+Şu gibi popülasyon düzeyinde sorulara yanıt vermeniz gerektiğinde bir denetim kullanın:
+
+- Ajanlar görevleri nerede yönetmeye vermeden terk ediyor?
+- Hangi araç başarısızlıkları etkisiz yeniden denemelere yol açıyor?
+- Ajanlar amaçlanan iş akışı dışında verilere mi erişiyor?
+- Model, istem veya araç sürümünün ardından ne değişti?
+
+## Denetim yanıt akışı
+
+```text
+Oturum → Denetim → Bulgu → Sorun → Politika
+                         ↘ Yineleme için uyarı
+```
+
+Bir bulgu, başarısızlık modunu adlandırmalı ve kanıta işaret etmelidir. Bir sorun, iyileştirmeye sahip olur. Bir politika bilinen bir eylem modelini engeller; bir uyarı, önleme mümkün olmadığında veya izleme gerektiğinde yinelemeyi algılar.
+
+<Columns cols={2}>
+  <Card title="Denetim Ayarla" icon="sliders-horizontal" href="/tr/audits/setup">
+    İlk çalıştırmadan önce hedefi, popülasyonu ve referans bağlamı tanımlayın.
+  </Card>
+  <Card title="Ajan Bağlamı Ekle" icon="bot" href="/tr/audits/agent-contracts">
+    Her ajanın ne üretmesi gerektiğini ve asla ne yapmaması gerektiğini belirtin.
+  </Card>
+</Columns>

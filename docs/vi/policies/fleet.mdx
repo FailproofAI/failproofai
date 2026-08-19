@@ -1,0 +1,53 @@
+---
+---
+title: "Triển khai chính sách đến các máy"
+description: "Biết máy nào được đăng ký, hiện tại và thực thi các phiên bản chính sách theo ý định."
+icon: "network"
+---
+
+Phạm vi bao phủ của hfleet trả lời câu hỏi liệu chính sách có tồn tại nơi có rủi ro. Theo dõi máy theo ID ổn định và nhãn có thể đọc được của con người, sau đó so sánh trạng thái triển khai được gán và báo cáo của chúng.
+
+## Kiểm tra phạm vi bao phủ
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Admin → enforcement** và xem xét tổng số đang thực thi và quan sát.
+    2. Tìm kiếm máy theo ID hoặc nhãn, hoặc lọc để tìm máy không có chính sách.
+    3. Mở rộng một hàng để so sánh các chính sách được gán, triển khai được báo cáo, lần check-in cuối cùng và lịch sử.
+    4. Làm mới sau khoảng thời gian thăm dò của máy khi triển khai được áp dụng vẫn đang chờ xử lý.
+
+    ![Fleet Enforcement hiển thị phạm vi bao phủ chính sách, trạng thái triển khai máy và các bài tập quan sát và thực thi.](/images/dashboard/enforcement-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai config --machine-label checkout-runner-03
+    failproofai flush --wait
+    ```
+
+    Sử dụng `fp events --agent-id <agent-id> --since 24h` để xác nhận hoạt động tác nhân của máy đạt tới Cloud.
+  </Tab>
+</Tabs>
+
+Sử dụng các chế độ xem phạm vi bao phủ để tìm:
+
+- Máy chưa bao giờ kéo triển khai mới nhất
+- Máy được đăng ký đã ngừng báo cáo hoạt động
+- Chính sách được gán cho môi trường hoặc cohort sai
+- Drift phiên bản sau khi cập nhật bị gián đoạn
+
+Đổi tên máy mà không cần kết nối lại:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
+
+Kiểm tra trạng thái cục bộ:
+
+```bash
+failproofai config --status
+```
+
+<Tip>
+  Sử dụng các nhãn giúp xác định workload và môi trường. Tên máy chủ một mình thường không đủ sau khi tự động mở rộng hoặc thay thế máy.
+</Tip>

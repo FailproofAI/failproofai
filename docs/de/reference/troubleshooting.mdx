@@ -1,0 +1,167 @@
+---
+title: "Fehlerbehebung"
+description: "Diagnose fehlender Sitzungen, fehlender Richtlinien, fehlgeschlagener Zustellung und blockierter Agenten-Aktionen."
+icon: "wrench"
+---
+
+<AccordionGroup>
+  <Accordion title="Im Cloud erscheinen keine Sitzungen">
+    <Tabs>
+      <Tab title="Dashboard">
+        Öffne **Administration → Keys** und bestätige, dass der Maschinenschlüssel aktiv ist und `events:add` besitzt. Öffne dann **Observe → Events**, erweitere den Zeitraum und entferne Umgebungs- und Agenten-Filter. Wenn Ereignisse vorhanden sind, suche nach der Sitzungs-ID und prüfe **Observe → Sessions** auf Gruppierungen. Wenn keine Ereignisse vorhanden sind, diagnostiziere den Failproof-Daemon über die CLI.
+
+        ![Der Live-Ereignis-Stream mit seinen primären Filtern und eingehenden aktuellen Agenten-Ereignissen.](/images/dashboard/events-stream-current.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait --timeout 60
+        fp list envs
+        fp events --since 24h --limit 20
+        fp sessions --since 24h --limit 20
+        ```
+
+        Bestätige, dass die Aufzeichnung aktiviert ist, der konfigurierte Schlüssel `events:add` besitzt und der Dashboard-Filter mit der ausgegebenen Umgebung übereinstimmt.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Python-SDK-Ereignisse verbleiben auf der Festplatte">
+    <Tabs>
+      <Tab title="Dashboard">
+        Entferne Filter unter **Observe → Events** und suche nach der genauen SDK-Sitzungs-ID. Wenn nichts erscheint, überprüfe den SDK-Spool und den Failproof-Daemon auf dem Quellrechner.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait
+        ```
+
+        Bestätige, dass der Agentenprozess `AGENTEYE_SPOOL_TO_FAILPROOFAI=1` setzt und dass `$FAILPROOFAI_HOME/custom-agents`, andernfalls `~/.failproofai/custom-agents`, existiert, bevor das SDK startet.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Der Rechner empfängt keine Richtlinien">
+    <Tabs>
+      <Tab title="Dashboard">
+        Öffne **Admin → enforcement**, wähle den Rechner aus und vergleiche seine zugewiesenen, gemeldeten und vorherigen Versionen. Bestätige, dass der Deployment-Scope den Rechner einschließt und sein Schlüssel `policies:pull` besitzt. Die Datenerfassung kann funktionieren, auch wenn die Richtlinienverteilung nicht funktioniert.
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config --status
+        ```
+
+        Bestätige, dass Maschinen-ID und Label mit dem Dashboard-Ziel übereinstimmen. Verbinde dich erneut mit einem richtlinienfähigen Schlüssel, wenn die vorhandenen Anmeldedaten nur die Ereigniserfassung erlauben.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Eine Aktion wird abgelehnt, weil der Daemon nicht verfügbar ist">
+    <Tabs>
+      <Tab title="Dashboard">
+        Öffne **Admin → enforcement** und überprüfe den letzten gesehenen Zeitpunkt und die gemeldete Version des Rechners. Wenn der Rechner veraltet ist, behandle dies als lokales Daemon-Problem. Schwäche die bereitgestellte Richtlinie nicht allein dazu, einen nicht verfügbaren Daemon zu umgehen.
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config
+        failproofai config --status
+        ```
+
+        Starte `failproofaid` neu oder aktualisiere es; führe die Konfiguration erneut aus, wenn sich CLI- und Daemon-Protokollversionen unterscheiden. Der konfigurierte Daemon-Pfad schlägt absichtlich geschlossen fehl.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Eine benutzerdefinierte Richtlinie wird nicht geladen">
+    <Tabs>
+      <Tab title="Dashboard">
+        Für eine Cloud-erstellte Richtlinie öffne **Admin → policy editor**, wähle den Entwurf und überprüfe Validierungsfehler vor der Veröffentlichung. Für eine lokale Richtlinie verwende die CLI zur Validierung, öffne dann **Observe → policy** nach einer Testaktionen, um zu bestätigen, dass Entscheidungen ankommen.
+
+      </Tab>
+      <Tab title="CLI">
+        Bestätige, dass der Dateiname auf `policies.js`, `policies.mjs` oder `policies.ts` endet, das Modul `customPolicies.add(...)` aufruft und Importe aus der Richtliniendatei aufgelöst werden.
+
+        ```bash
+        failproofai policies --install --custom ./checkout.policies.ts
+        failproofai policies
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Ein Audit liefert keine Ergebnisse">
+    <Tabs>
+      <Tab title="Dashboard">
+        Öffne **Analyze → audits**, wähle den Durchlauf und prüfe, ob die Modellanalyse ausgeführt wurde. Vergleiche dann Scope und Zeitfenster mit **Observe → sessions** und öffne repräsentative Traces aus dieser Population.
+
+        Ein Null-Ergebnis ist nur dann aussagekräftig, wenn die Analyse erfolgreich ausgeführt wurde. Wenn die Analyse übersprungen wurde oder fehlgeschlagen ist, liefert der Durchlauf keine Ergebnisse und hält das nicht analysierte Zeitfenster für einen künftigen erfolgreichen Durchlauf offen. Wenn die Modellanalyse deaktiviert ist, liefert das Audit ebenfalls keine Ergebnisse, da der deterministische Anmeldedaten- und PII-Scan nur Statistiken aufzeichnet, aber keine Ergebnisse mehr meldet.
+
+        ![Das Audit-Formular, bei dem Umgebung, Agent, Kadenz und Sweep-Fenster die Sitzungspopulation definieren.](/images/dashboard/audit-new.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp audits show <audit-name>
+        fp audits runs <audit-name>
+        fp sessions --since 24h --env production
+        fp audits context-show <audit-name>
+        fp audits run <audit-name>
+        fp audits findings --audit <audit-name>
+        ```
+
+        Wenn der Durchlauf in der Warteschlange verblieben ist, warte auf freie Audit-Agent-Kapazität oder bitte den Deployment-Operator, die Audit-Flotte zu überprüfen. Ein in der Warteschlange befindliches Audit wird wiederholt; es wird nicht sofort übersprungen.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Online-Auswertungen laufen nicht automatisch">
+    <Tabs>
+      <Tab title="Dashboard">
+        Öffne eine abgeschlossene Sitzung und prüfe, ob eine manuelle Auswertung erfolgreich ist. Das gehostete Cloud verfügt derzeit über keine Evaluator-Endpunkt-Steuerung im Dashboard; der Server-Operator muss diese konfigurieren.
+      </Tab>
+      <Tab title="CLI">
+        Überprüfe den Evaluator selbst und untersuche dann aktuelle Auswertungszustände:
+
+        ```bash
+        curl https://evaluator.example.com/health
+        fp evals --since 1h
+        ```
+
+        Auf selbst gehostetem Cloud bestätige, dass `EVALUATOR_ENDPOINT` auf dem Server vorhanden ist und `EVALUATOR_TOKEN` mit dem Evaluator übereinstimmt. Die automatische Auswertung ist deaktiviert, wenn der Endpunkt fehlt.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Die Cloud-CLI-Authentifizierung zielt auf die falsche Organisation ab">
+    <Tabs>
+      <Tab title="Dashboard">
+        Verwende den Organisations-Wechsler und bestätige den erwarteten Slug und die Berechtigungen, bevor du die Ergebnisse mit der CLI vergleichst.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp whoami
+        fp orgs current
+        fp orgs perms
+        ```
+
+        Im API-Schlüssel-Modus gib `fp --org <slug> --api-key <key> ...` an oder setze `AGENTEYE_ORG`. Der gespeicherte Organisationsstatus einer menschlichen Sitzung wird bei API-Schlüssel-Anfragen absichtlich ignoriert.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Eine Richtlinie blockiert gültige Arbeit">
+    <Tabs>
+      <Tab title="Dashboard">
+        Öffne **Observe → policy**, bewahre die Entscheidung und die verknüpfte Sitzung und identifiziere die Falsch-Positiv-Bedingung. Öffne dann **Admin → enforcement** und setze die betroffenen Rechner auf die vorherige Version zurück. Erstelle eine engere Version im **Policy editor**, teste sie in einem kleinen Scope und erweitere erst, wenn gültige Arbeit erfolgreich ist.
+
+      </Tab>
+      <Tab title="CLI">
+        Das Cloud-Deployment-Rollback ist nur über das Dashboard möglich. Eine lokale Sitzungspause deaktiviert keine Cloud-verwalteten Richtlinien. Wenn das Dashboard nicht verfügbar ist, erfasse den Maschinen- und Deployment-Zustand und stelle den Dashboard-Zugang wieder her, anstatt die blockierte Aktion wiederholt zu versuchen.
+
+        ```bash
+        failproofai config --status
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+</AccordionGroup>
+
+Gib beim Kontakt mit dem Support die CLI-Version, den Harness, die Umgebung, die relevante Sitzungs- oder Deployment-ID sowie die Ausgabe von `failproofai config --status` mit entfernten Geheimnissen an.

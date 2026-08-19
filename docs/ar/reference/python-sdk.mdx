@@ -1,0 +1,198 @@
+---
+title: "العملاء المخصصون"
+description: "قم بتتبع آثار من العملاء المخصصين باستخدام Failproof AI حتى تتمكن من إعادة بناء التشغيلات والعثور على الأعطال."
+icon: "python"
+---
+
+قم بتتبع آثار من عميل مخصص باستخدام `failproofai-sdk` حتى تتمكن Failproof AI من إعادة بناء كل تشغيل وتدقيق سلوكه والعثور على أعطال مدعومة بالأدلة. يكتب SDK أحداثًا منظمة لخادم Failproof ليسلمها إلى السحابة. يتطلب Python 3.10 أو الأحدث.
+
+يجعل التتبع العملاء المخصصين قابلين للمراقبة والتدقيق. منع إجراء غير آمن قبل تنفيذه يتطلب أيضًا هوك إنفاذ في وقت التشغيل الخاص بك.
+
+<Info>
+  لفرض السياسات في إعداد عميل مخصص، [اتصل بـ Failproof AI](mailto:support@befailproof.ai). سنساعدك في ربط حدود نموذج وأداة ودورة حياة وقت التشغيل الخاص بك بهوكات السياسة.
+</Info>
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with the Failproof AI Python SDK" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+## تثبيت `failproofai-sdk`
+
+يتم توزيع SDK حاليًا كـ wheel خاص. اطلب من جهة الاتصال الخاصة بك في Failproof AI الإصدار الحالي وإمكانية الوصول للتنزيل.
+
+```bash
+VERSION=<sdk-version>
+pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
+python -c "import failproofai; print(failproofai.__version__)"
+```
+
+مع `uv`، قم بتنزيل wheel أولاً ثم قم بتشغيل `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`. ثبّت wheel في مستودع أعمال خاص أو قفل الاعتمادية.
+
+يتم تثبيت الحزمة باسم `failproofai-sdk` واستيرادها في Python باسم `failproofai`.
+
+## توصيل خادم Failproof
+
+<Tabs>
+  <Tab title="لوحة التحكم">
+    1. انتقل إلى **Admin → Keys** وأنشئ مفتاحًا باستخدام `events:add`.
+    2. [قم بتوصيل خادم Failproof بالسحابة](/ar/start/setup#connect-a-machine-to-cloud) على جهاز العميل.
+    3. قم بتشغيل جلسة واحدة مع تتبع، ثم ابحث عن معرّفها الدقيق ضمن **Observe → Events**.
+    4. انتقل إلى **Observe → Sessions**، وحدد نفس البيئة، وافتح الآثار المعاد بناؤها.
+
+    ![جلسة عميل Python مخصصة معاد بناؤها كرسم بياني للتنفيذ وتسلسل الأحداث المرتبة.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <events-add-key>
+    failproofai config --status
+    ```
+  </Tab>
+</Tabs>
+
+## قم بتتبع تشغيل كامل
+
+قم باستدعاء `configure()` مرة واحدة أثناء بدء التشغيل. كل استدعاء حدث يكون من النوع keyword-only ويتطلب `session_id` و `agent_id` مستقرين.
+
+```python
+import traceback
+import uuid
+
+import failproofai
+
+failproofai.configure(environment="production")
+
+session_id = uuid.uuid4().hex
+agent_id = "checkout-agent"
+
+failproofai.event.agent_start(
+    session_id=session_id,
+    agent_id=agent_id,
+    goal="Resolve a failed checkout",
+)
+
+try:
+    tool_call_id = uuid.uuid4().hex
+    failproofai.event.tool_use(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        input={"order_id": "ord_8421"},
+    )
+    result = {"status": "payment_failed"}
+    failproofai.event.tool_result(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        output=result,
+    )
+except Exception as exc:
+    failproofai.event.error(
+        session_id=session_id,
+        agent_id=agent_id,
+        error_type=type(exc).__name__,
+        message=str(exc),
+        traceback=traceback.format_exc(),
+    )
+    failproofai.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="failed",
+    )
+    raise
+else:
+    failproofai.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="success",
+        summary="Escalated the failed payment",
+    )
+```
+
+أصدر `agent_start` مرة واحدة لكل ممثل. بالنسبة للعملاء الفرعيين، أعد استخدام `session_id` الخاص بالعميل الأب، أعطِ كل ممثل `agent_id` مميزًا، وعيّن `parent_id` إلى **معرّف العميل** الخاص بالعميل الأب، وليس معرّف الجلسة.
+
+## مرجع التكوين
+
+```python
+failproofai.configure(
+    base_dir=None,
+    flush_interval=0.5,
+    environment="production",
+)
+```
+
+| الإعداد | السلوك |
+| --- | --- |
+| `base_dir` | جذر مجمع صريح. يأخذ الأولوية على جميع متغيرات البيئة. |
+| `flush_interval` | الثواني بين الكتابات في الخلفية من الذاكرة إلى JSONL. الافتراضي: `0.5`. |
+| `environment` | تسمية النشر على كل حدث. الافتراضي `dev`. |
+| `FAILPROOFAI_HOME` | يغيّر جذر Failproof AI الذي يحتوي على مجمع `custom-agents`. |
+
+يكتب SDK إلى `base_dir` الصريح عند تعيينه. وإلا، فإنه يستخدم مجمع `custom-agents` الخاص بخادم Failproof ضمن `FAILPROOFAI_HOME` أو `~/.failproofai`.
+
+ينتظر SDK الاستدعاءات في الذاكرة ويكتب الدفعات في خيط خلفي. كما يحاول إجراء فلاش نهائي من خلال معالجة `atexit` الخاصة بـ Python. بالنسبة للعمال قصيري العمر، اسمح بإيقاف المترجم العادي؛ يمكن أن يؤدي إنهاء العملية القسري إلى فقدان الأحداث التي لا تزال في الذاكرة.
+
+## فهرس الأحداث
+
+تُرجع جميع الطرق `None`. الحقول التي تُترك كـ `None` يتم حذفها بدلاً من كتابتها كـ JSON `null`.
+
+| الطريقة | الحقول المطلوبة بعيدًا عن الهوية | الحقول الاختيارية |
+| --- | --- | --- |
+| `agent_start` | — | `goal`, `parent_id` |
+| `agent_end` | — | `outcome`, `summary` |
+| `agent_pause` | `pause_id` | `reason`, `user_id` |
+| `agent_resume` | `pause_id` | `reason`, `user_id` |
+| `model_request` | — | `model`, `messages`, `system`, `tools` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role` |
+| `tool_use` | `tool_name`, `tool_call_id` | `input` |
+| `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
+| `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
+| `hook_completed` | `hook_name`, `hook_id` | `outcome`, `output`, `error` |
+| `error` | `error_type`, `message` | `traceback` |
+| `human_wait` | `input_id` | `prompt`, `options`, `reason` |
+| `human_input` | `input_id` | `response` |
+| `human_pause` | — | `reason`, `user_id` |
+| `human_interrupt` | — | `reason`, `user_id`, `at_step` |
+
+استخدم `outcome="failed"`، `"error"`، `"timeout"`، أو `"rejected"` عندما يجب أن يعتبر الإكمال فشلاً. القيم الأخرى، بما في ذلك `"failure"`، لا تُصنف كأعطال من قبل الخلفية الحالية.
+
+## قواعد الارتباط والمدة
+
+- أعد استخدام نفس `tool_call_id`، `hook_id`، `pause_id`، أو `input_id` لحدث الإكمال المطابق.
+- يحسب SDK `duration_ms` لـ `tool_result`، `hook_completed`، `agent_resume`، و `human_input`. تمريره بنفسك إلى تلك الطرق يرفع `ValueError`.
+- معرّفات الأداة والهوك تشترك في خريطة معلقة واحدة على نطاق العملية. اجعلها فريدة عالميًا عبر الجلسات المتزامنة وعبر كلا النطاقين؛ معرّفات المزود أو UUIDs هي الأكثر أمانًا.
+- يرتبط الزوج المقسم عبر العمليات لاحقًا، لكن SDK لا يستطيع حساب مدته في العملية.
+- تحتفظ الخريطة المعلقة بحد أقصى 10,000 بداية وتزيل الإدخال الأقدم عند الامتلاء.
+
+## الحقول والحمولات المخصصة
+
+يقبل كل حدث حقول كلمات رئيسية إضافية. استخدم قيمًا متوافقة مع JSON عندما تحتاج الاستعلامات اللاحقة إلى هيكل. الأوراق غير المدعومة مثل UUIDs والتواريخ والعشريات والمجموعات والبايتات وكائنات النموذج يتم تحويلها إلى أحرف من قبل الكاتب.
+
+الأسماء المخصصة المحجوزة هي `timestamp` و `session_id` و `agent_id` و `type` و `environment`. أخطاء الحقول الاختيارية مقبولة كحقول مخصصة جديدة، لذلك راجع JSON المُصدر عند عدم ظهور الحقل القياسي في السحابة.
+
+## التسليم والتحقق
+
+<Tabs>
+  <Tab title="لوحة التحكم">
+    في **Observe → Events**، تحقق من أن `agent_start` موجود أولاً و `agent_end` موجود أخيرًا. ثم افتح **Observe → Sessions** وأكد أن أحداث النموذج والأداة والعميل والهوك والخطأ تظهر بالترتيب المقصود. استخدم معرّف الجلسة كمفتاح استكشاف الأخطاء الأساسي.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai flush --wait --timeout 60
+    failproofai config --status
+    fp sessions --since 1h --env production --session-id <session-id>
+    fp events --since 1h --session-id <session-id> --full
+    ```
+  </Tab>
+</Tabs>
+
+إذا كانت السحابة فارغة، افحص `$FAILPROOFAI_HOME/custom-agents/events`، وإلا فـ `~/.failproofai/custom-agents/events`. تثبت ملفات JSONL انبعاث SDK؛ يشير المجمع المتنامي إلى تكوين الخادم أو التسليم، بينما يشير المجمع الفارغ إلى التتبع أو عمر العملية.
+
+## منع الأعطال في وقت تشغيل مخصص
+
+استخدم نتائج التدقيق والآثار المرتبطة لتحديد الإجراء غير الآمن والدليل المطلوب والاستجابة المقصودة. يجب على تكامل الإنفاذ المخصص أن يكشف الإجراء قبل التنفيذ ويمرر مدخله المنظم إلى محرك السياسة ويطبق قرار allow أو instruct أو deny الناتج.
+
+أرسل بريدًا إلى [support@befailproof.ai](mailto:support@befailproof.ai) لتصميم والتحقق من صحة هذا التكامل لوقت التشغيل الخاص بك.

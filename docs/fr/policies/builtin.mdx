@@ -1,0 +1,57 @@
+---
+title: "Politiques intégrées"
+description: "Activez des garde-fous maintenus pour les modes d'échec courants des agents."
+icon: "library"
+---
+
+Les politiques intégrées couvrent la gestion des secrets, les fichiers d'environnement, les commandes shell destructives, les branches protégées, les outils cloud et d'infrastructure, la publication de paquets, les appels répétés et les vérifications de flux de travail en fin de tâche.
+
+## Activer et vérifier une politique intégrée
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Installez la politique sur une machine connectée avec la CLI locale.
+    2. Exécutez une action de test sans risque dans l'agent instrumenté.
+    3. Accédez à **Observe → policy** et filtrez par nom de politique, environnement machine ou décision.
+    4. Ouvrez la session liée pour confirmer l'entrée d'outil correspondante et la raison retournée.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Supprimez-la avec `failproofai policy remove block-rm-rf --cli claude --scope project`.
+  </Tab>
+</Tabs>
+
+Listez les politiques disponibles dans votre version installée :
+
+```bash
+failproofai policies
+```
+
+Activez une politique pour un projet :
+
+```bash
+failproofai policy add block-rm-rf --scope project
+```
+
+Activez plusieurs politiques pour des harnais sélectionnés :
+
+```bash
+failproofai policies --install block-sudo block-force-push \
+  --cli claude codex --scope project
+```
+
+Certaines politiques acceptent des paramètres ou sont marquées comme bêta. Examinez la description, la portée de correspondance et le comportement par défaut avant le déploiement. Une politique qui protège un flux de travail peut bloquer des opérations valides dans un autre.
+
+<Card title="Parcourir le catalogue complet des politiques intégrées" icon="list-checks" href="/fr/policies/builtin-catalog">
+  Consultez l'ensemble des 40 politiques actuelles, leurs déclencheurs, la base de référence recommandée et leurs paramètres.
+</Card>
+
+<Tip>
+  Préférez la portée projet pour les exigences spécifiques au dépôt et la portée utilisateur pour les exigences de sécurité à l'échelle de la machine.
+</Tip>

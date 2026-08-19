@@ -1,0 +1,44 @@
+---
+title: "ユーザーと組織"
+description: "メンバーシップを管理し、各組織のデータとアクションのスコープを適切に制御します。"
+icon: "users"
+---
+
+組織はセッション、評価、監査、課題、アラート、クエリ、ダッシュボード、ユーザー、およびキーを分離します。管理リソースを変更する前に、アクティブな組織を確認してください。
+
+## メンバーと組織の管理
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. Cloudサイドバー上部の組織スイッチャーを使用して、組織を切り替えます。
+    2. **管理 → ユーザー** に移動して、メンバーを検索したり、アクティブ状態やロールでフィルタリングします。
+    3. **新規ユーザー** を選択し、メールアドレスを入力して、権限セットを選択し、必要に応じてオーバーライドを調整します。
+    4. 後からユーザーを開いて、付与された権限の更新、サインインの無効化、またはアカウントの再有効化を行います。
+
+    ![メンバーのメールアドレス、権限セット、編集・無効化コントロールが表示されたユーザーページ。](/images/dashboard/users.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+
+    fp users create engineer@example.com --permission-set standard
+    fp users show engineer@example.com
+    fp users update engineer@example.com --add audits:write
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+    ```
+  </Tab>
+</Tabs>
+
+管理者はユーザーの作成、更新、無効化、および再有効化を行い、そのロールに適した権限セットを割り当てることができます。APIは無効化に削除操作を使用しますが、アカウントやメンバーシップレコードは削除されません。
+
+<Warning>
+  ユーザーを無効化すると、現在選択されている組織だけでなく、すべての組織へのそのユーザーのサインインがブロックされます。再有効化すると、グローバルなサインインと、この組織におけるメンバーの権限が復元されます。
+</Warning>
+
+<Tip>
+  サービスアカウントには、ワークロードと担当者に紐付けたわかりやすい名前を付けてください。組織間、または人とマシン間でキーを共有することは避けてください。
+</Tip>

@@ -1,0 +1,53 @@
+---
+title: "Failproof Assistant"
+description: "Failproof AI を自然言語で分析・操作できます。質問やクエリから、ダッシュボードや監査まで対応します。"
+icon: "message-square-text"
+---
+
+Failproof Assistant に対して、Failproof AI で行いたいことを自然言語で伝えるだけで実行できます。セッションや障害の分析、クエリの実行、ダッシュボードの作成、評価やアラートの調査、そして監査の作成・実行まで、製品画面や CLI コマンドへの変換作業なしに対応します。
+
+```text
+Why did production checkout agents regress this week?
+Build a dashboard for tool failures, latency, and evaluation scores.
+Create an audit that finds agents retrying the same failed action without changing approach.
+Show me the sessions behind the most common audit finding.
+```
+
+アシスタントは、アクティブな組織内で利用可能なデータと権限のもとで動作します。他のユーザーやエージェントに影響するアクションを適用する前に、提示された根拠と変更案を必ず確認してください。
+
+## アシスタントに質問する
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Open agent chat** を選択し、理解・作成・操作したい内容を説明します。
+    2. アシスタントが作業を進める間、ツールコール、テーブル、クエリ結果を確認します。
+    3. 引用されたセッション、アラート、またはクエリを開いて、ソースデータと照らし合わせて結果を検証します。
+    4. 別の調査には新しいチャットを開始し、チャット履歴を使って同じ分析を継続することもできます。
+
+    ![クラウドアシスタントが観測性に関する質問に分析とクエリを添えて回答している画面。](/images/dashboard/assistant.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Open representative sessions" --chat <chat-id>
+    ```
+
+    `fp agent rename <chat-id> --title <title>` を使うと調査を識別しやすい名前に変更でき、`fp agent delete <chat-id>` で削除できます。
+  </Tab>
+</Tabs>
+
+## アシスタントを効果的に活用する
+
+- まずゴールを伝え、必要に応じて環境、ワークフロー、時間範囲を追加します。
+- 生成された SQL やサマリーは調査の補助として扱い、最終的な根拠とは見なさないでください。
+- 監査、イシュー、アラート、またはポリシーを作成する前に、代表的なセッションを必ず確認してください。
+- 組織、環境、時間のフィルターは明示的に指定してください。
+- 有用な SQL はクエリとして保存し、他のオペレーターが結果を再現できるようにしてください。
+
+<Warning>
+  アシスタントが読み取れるのは、現在のユーザーがアクセスできるデータのみです。質問を成立させるためにパーミッションを広げることはしないでください。代わりに、権限を持つオペレーターに調査を依頼してください。
+</Warning>

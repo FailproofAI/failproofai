@@ -1,0 +1,29 @@
+---
+title: "Metriken"
+description: "Visualisieren Sie Größenmetriken wie Latenz, Kosten und Token-Verbrauch."
+icon: "ruler"
+---
+
+Metriken dienen für Werte mit Einheiten. Evaluierungen sind für Bewertungen und Urteile.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Observe → Metrics**.
+    2. Wählen Sie **Reihe hinzufügen** und wählen Sie einen Agenten, eine Umgebung, eine Metrik, eine Statistik und eine Kurve.
+    3. Fügen Sie Reihen hinzu, um Agenten oder Umgebungen zu vergleichen; unterschiedliche Einheiten erhalten separate Achsen.
+    4. Wählen Sie einen Punkt aus, um passende Evaluierungen und Sitzungen zu öffnen, oder wählen Sie **Teilen**, um die genaue Ansicht zu kopieren.
+
+    ![Die Metriken-Seite mit dem Vergleich zweier Kosten-pro-Ausgabe-Einheit-Reihen mit Zeitsteuerung, Aggregationsauswahl, Kurven und einer Teilen-Aktion.](/images/dashboard/metrics-series.png)
+  </Tab>
+  <Tab title="CLI">
+    Es gibt noch keinen dedizierten Befehl für Größenmetriken. Entdecken Sie verfügbare Schlüssel und untersuchen Sie Sitzungen oder Evaluierungen:
+
+    ```bash
+    fp list score_filters
+    fp --json evals --since 24h
+    fp --json sessions --since 24h
+    ```
+
+    Verwenden Sie `fp query` für benutzerdefinierte Metrik-Aggregation.
+  </Tab>
+</Tabs>

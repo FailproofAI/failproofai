@@ -1,0 +1,84 @@
+---
+title: "תצורה מקומית"
+description: "שלוט בטווח המדיניות, פרמטרים, קבצים מותאמים, והגדרות Failproof AI ברמת המכונה."
+icon: "file-cog"
+---
+
+Failproof AI מפריד בין בחירת מדיניות למהדר וגדרות daemon. זה שומר על בחירות מדיניות במאגר ניתנות לביקורת בזמן שאישורים ומצב daemon נשארים מחוץ למאגר.
+
+## בחר טווח מדיניות
+
+<Tabs>
+  <Tab title="Dashboard">
+    הרץ את `failproofai` ללא ארגומנטים כדי לפתוח את לוח בקרה המדיניות המקומי. בחר בטווח משתמש, פרויקט או מקומי לפני הפעלת מדיניות כך שהשינוי יישמר בקובץ התצורה המתאים.
+
+    - **משתמש** חל על פני פרויקטים במכונה זו.
+    - **פרויקט** שייך למאגר וניתן לעיתוד.
+    - **מקומי** משנה פרויקט אחד עבור משתמש אחד ויש להישאר בـ gitignored.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policy add block-rm-rf --scope user
+    failproofai policy add block-force-push --scope project
+    failproofai policy add warn-large-file-write --scope local
+    failproofai policies
+    ```
+
+    לא כל harness תומך בטווח מקומי. ה-CLI דוחה טווח שה-harness שנבחר לא יכול לייצג.
+  </Tab>
+</Tabs>
+
+| טווח | קובץ תצורת מדיניות |
+| --- | --- |
+| פרויקט | `<project>/.failproofai/policies-config.json` |
+| מקומי | `<project>/.failproofai/policies-config.local.json` |
+| משתמש | `~/.failproofai/policies-config.json` |
+
+מדיניויות שהופעלו מתמזגות כאיחוד. פרמטרי מדיניות משתמשים בטווח הראשון המגדיר פרמטרים עבור אותה מדיניות, בסדר project → local → user. נתיבי מדיניות מותאמים מפורשים משתמשים בטווח הראשון המגדיר אותם.
+
+## הגדר פרמטרי מדיניות
+
+<Tabs>
+  <Tab title="Dashboard">
+    פתח את המדיניות בלוח הבקרה המקומי, ערוך את הפרמטרים הנתמכים שלה, והשמור בטווח שנבחר. הרץ פעולת agent תואמת ולא תואמת, ואז בדוק את ההחלטה ב-**Observe → policy**.
+
+  </Tab>
+  <Tab title="CLI">
+    ערוך את `policies-config.json` של הטווח שנבחר, ואז הרץ את `failproofai policies` כדי להציג שמות מדיניות או מפתחות פרמטרים לא ידועים.
+
+    ```json
+    {
+      "enabledPolicies": ["block-rm-rf", "block-force-push"],
+      "policyParams": {
+        "block-rm-rf": {
+          "allowPaths": ["/tmp/build-output"]
+        }
+      }
+    }
+    ```
+
+    ```bash
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+## הבן את קבצי המכונה
+
+`~/.failproofai` מכיל קבצים נפרדים לגבולות אמון נפרדים:
+
+| נתיב | מטרה |
+| --- | --- |
+| `config.json` | הגדרות daemon, ביקורת, וטלמטריה שאינן סודיות |
+| `credentials.json` | אישורי ענן; מאוחסנים עם הרשאות בעל בלבד |
+| `policies-config.json` | בחירת builtin בטווח משתמש, פרמטרים, ונתיבים מותאמים מפורשים |
+| `policies/` | מדיניויות קונבנציה משתמש וחפצי מדיניות מנוהלים בענן |
+| `hook-activity/` | יומן החלטות מדיניות מקומי |
+| `state/` | daemon spool, בריאות, השהייה, ומצב runtime |
+
+השתמש ב-`FAILPROOFAI_HOME` כדי להעביר את הפריסה המלאה של המכונה עבור מיכל או בדיקה מבודדת. אל תעביר ספריות מצב בודדות באופן עצמאי.
+
+<Warning>
+  לעולם אל תעיד את `credentials.json`. עיתודו תצורת מדיניות פרויקט ומדיניויות קונבנציה של פרויקט רק לאחר שהוגדו כקוד אכיפה.
+</Warning>

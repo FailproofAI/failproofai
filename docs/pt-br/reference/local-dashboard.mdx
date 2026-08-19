@@ -1,0 +1,88 @@
+---
+title: "Painel local"
+description: "Revise projetos locais, sessões, atividade de políticas, configuração, auditorias e varreduras agendadas."
+icon: "monitor-cog"
+---
+
+Execute `failproofai` sem argumentos para iniciar o painel integrado em `http://localhost:8020`. Ele lê históricos de agentes locais, configuração de políticas, resultados de auditoria e atividade de hooks diretamente da máquina.
+
+O painel local é separado do Failproof AI Cloud. Funciona sem uma conta Cloud e não comprova que os eventos foram entregues à sua organização.
+
+## Áreas do painel
+
+| Área | O que você pode fazer |
+| --- | --- |
+| Políticas → Atividade | Inspecionar decisões locais de allow, instruct e deny; filtrar por decisão, evento, CLI, ferramenta, origem, política e sessão. |
+| Políticas → Configurar | Ativar builtins, editar parâmetros suportados, alternar políticas personalizadas descobertas e selecionar harnesses de destino. |
+| Projetos | Navegar pelos projetos descobertos nos históricos de agentes suportados e comparar suas sessões mais recentes. |
+| Sessões do projeto | Abrir uma transcrição local, revisar entradas ordenadas brutas e subagentes, baixá-la e correlacionar com a atividade de políticas. |
+| Auditoria | Revisar a última varredura offline, padrões de risco, pontos fortes, projetos afetados e políticas builtin sugeridas. |
+| Configurações | Configurar varreduras locais agendadas e relatórios de auditoria por e-mail quando o daemon/plataforma oferecer suporte. |
+
+## Revisar atividade de políticas
+
+<Tabs>
+  <Tab title="Painel">
+    1. Abra **Políticas → Atividade** e defina os filtros de decisão e origem.
+    2. Refine por evento, harness, ferramenta ou nome de política.
+    3. Expanda uma linha para inspecionar o motivo, políticas correspondentes, origem, modo de execução e duração.
+    4. Siga o link da sessão para contextualizar a decisão na transcrição.
+
+    Uma linha com aparência de negação ainda pode ser observacional em um par harness/evento que não consome veredictos de bloqueio. A visualização de detalhes indica a capacidade de aplicação verificada.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai policies
+    failproofai
+    ```
+
+    A atividade local é armazenada em `~/.failproofai/hook-activity`. Use o painel em vez de editar esses arquivos diretamente.
+  </Tab>
+</Tabs>
+
+## Configurar políticas localmente
+
+<Tabs>
+  <Tab title="Painel">
+    1. Abra **Políticas → Configurar** e escolha os harnesses e o escopo de configuração.
+    2. Ative uma política builtin ou uma política personalizada descoberta.
+    3. Para uma builtin com parâmetros, abra o controle de configuração e salve os valores suportados.
+    4. Retorne à Atividade e execute ações que correspondam e não correspondam às políticas.
+
+    Políticas de convenção exibem sua origem de projeto ou usuário. Alterações explícitas de caminho personalizado podem exigir a reexecução da configuração via CLI para que o caminho selecionado seja registrado.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policy add block-sudo --scope project
+    failproofai policies --install --custom ./security.policies.ts --scope project
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+## Navegar por projetos e sessões
+
+A página de Projetos combina os armazenamentos de histórico local suportados. Selecione um projeto para listar suas sessões, depois abra uma sessão para acessar o visualizador de log bruto, segmentos de subagentes, ação de download e atividade de políticas com escopo de sessão.
+
+Se um projeto ou sessão estiver ausente, confirme se o harness usa seu local de histórico padrão ou registre uma raiz adicional com `failproofai harness add-path`.
+
+## Agendar auditorias offline
+
+<Tabs>
+  <Tab title="Painel">
+    Abra **Configurações**, ative a varredura agendada, escolha o intervalo suportado e configure a entrega de relatórios quando disponível. A página exibe a próxima execução, a última execução, o código de saída e se o daemon em segundo plano é suportado na plataforma.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    Altere o número de dias para definir um intervalo diferente de 1 a 90 dias. Desative as varreduras recorrentes com `failproofai audit --no-schedule`; execute `failproofai audit` para uma varredura interativa imediata.
+  </Tab>
+</Tabs>
+
+<Warning>
+  O painel local pode exibir prompts, entradas de ferramentas, conteúdo de arquivos e saída de terminal dos históricos de agentes locais. Vincule-o apenas a interfaces confiáveis e encerre o processo quando a revisão estiver concluída.
+</Warning>

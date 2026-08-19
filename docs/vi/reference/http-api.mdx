@@ -1,0 +1,74 @@
+---
+title: "HTTP API"
+description: "Xác thực với API Failproof AI Cloud công khai `/v1` và sử dụng tham chiếu điểm cuối được tạo."
+icon: "braces"
+---
+
+API công khai được phục vụ dưới `/v1` trên gốc bảng điều khiển Failproof AI của bạn.
+
+## Tạo khóa và thực hiện một yêu cầu
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Mở **Administration → Keys**, chọn **Create key**, và chọn preset quyền hạn chặt nhất bao gồm tích hợp.
+    2. Chỉ thêm các quyền riêng lẻ khi cần thiết, tạo khóa, và sao chép bí mật một lần của nó.
+    3. Thực hiện một yêu cầu kiểm tra tới `/v1/sessions` và xác nhận khóa vẫn hoạt động trong trang Keys.
+    4. Xoay vòng hoặc vô hiệu hóa khóa từ menu hành động của nó khi quyền sở hữu tích hợp thay đổi.
+
+    ![Ngăn tạo khóa API mới với preset quyền hạn và các quyền riêng lẻ.](/images/dashboard/key-create.png)
+
+    Ngăn tạo được hiển thị ở trên. Bí mật một lần chỉ xuất hiện sau khi bạn chọn **create**; sao chép nó trước khi đóng xác nhận đó.
+  </Tab>
+  <Tab title="CLI">
+    Tạo một khóa chỉ đọc và sử dụng nó trực tiếp với `fp` hoặc `curl`:
+
+    ```bash
+    fp keys create reliability-reader \
+      --permission-set read-only
+
+    fp --api-key <key> sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY"
+    ```
+  </Tab>
+</Tabs>
+
+Các khóa được xác định phạm vi cho một tổ chức và bộ quyền. Một yêu cầu mà không có quyền yêu cầu của điểm cuối trả về `403` và xác định quyền bị thiếu.
+
+## Lựa chọn tổ chức
+
+Một khóa tổ chức hoạt động trên tổ chức của nó một cách tự động. Một khóa được xác định phạm vi cho phiên bản có thể chọn một tổ chức cho mỗi yêu cầu:
+
+<Tabs>
+  <Tab title="Dashboard">
+    Sử dụng công tắc chuyển đổi tổ chức trong tiêu đề bảng điều khiển trước khi mở **Administration → Keys**. Các khóa được tạo ở đó thuộc về tổ chức được chọn. Xác nhận slug tổ chức trong URL và chi tiết khóa trước khi sao chép thông tin xác thực vào tự động hóa.
+
+  </Tab>
+  <Tab title="CLI">
+    Sử dụng `--org` trước lệnh, hoặc gửi tiêu đề tổ chức cho một khóa API được xác định phạm vi cho phiên bản.
+
+    ```bash
+    fp orgs list
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+Sử dụng các trang điểm cuối được tạo trong phần này để có đường dẫn, tham số, yêu cầu quyền, và mã trạng thái hiện tại. Thông số kỹ thuật được tạo từ chú thích tuyến đường máy chủ và được kiểm tra dựa trên bộ định tuyến `/v1`.
+
+Thông số kỹ thuật hiện tại có phạm vi tuyến đường, phương thức, tham số, quyền, và mã trạng thái hoàn chỉnh. Một số phần thân phản hồi vẫn được cố ý để không được nhập bởi vì máy chủ vẫn xây dựng chúng dưới dạng JSON động. Kiểm tra phản hồi thực tế trước khi tạo một máy khách được nhập mạnh xung quanh một điểm cuối mà không có lược đồ phản hồi.
+
+Sử dụng `Content-Type: application/json` cho ghi JSON. Coi `401` là xác thực bị thiếu hoặc không hợp lệ, `403` là danh tính hợp lệ mà không có quyền yêu cầu, `404` là tài nguyên bị thiếu hoặc không thể truy cập tổ chức, `409` là xung đột trạng thái, và `422` là giá trị trường hoặc quyền không hợp lệ. Các phản hồi lỗi bao gồm một tin nhắn có thể đọc được; các lỗi quyền cũng đặt tên cho phần cấp yêu cầu.
+
+<Warning>
+  Triển khai thực thi chính sách được cố ý quản lý bên ngoài bề mặt `/v1` công khai thông thường. Sử dụng quy trình triển khai Cloud được hỗ trợ.
+</Warning>

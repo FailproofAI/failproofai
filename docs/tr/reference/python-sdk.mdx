@@ -1,0 +1,198 @@
+---
+title: "Özel ajanlar"
+description: "Özel ajanlardan gelen izlemeleri failproofai-sdk ile gerçekleştirin, böylece Failproof AI çalıştırmaları yeniden oluşturabilir ve hataları bulabilir."
+icon: "python"
+---
+
+`failproofai-sdk` ile özel bir ajandan gelen izlemeleri gerçekleştirin, böylece Failproof AI her çalıştırmayı yeniden oluşturabilir, davranışını denetleyebilir ve kanıta dayalı hataları bulabilir. SDK, Failproof daemon'un Bulut'a iletmesi için yapılandırılmış olaylar yazar. Python 3.10 veya daha yeni bir sürüm gerektirir.
+
+İzleme, özel ajanları gözlemlenebilir ve denetlenebilir hale getirir. Güvensiz bir eylemi çalıştırılmadan önce engellemek, çalışma ortamınızda bir zorlama kancası da gerektirir.
+
+<Info>
+  Özel bir ajan kurulumunda politikaları uygulamak için [Failproof AI ile iletişime geçin](mailto:support@befailproof.ai). Çalışma ortamınızın model, araç ve yaşam döngüsü sınırlarını politika kancalarına eşlemede yardımcı olacağız.
+</Info>
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with the Failproof AI Python SDK" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+## `failproofai-sdk` yükleyin
+
+SDK şu anda özel bir wheel olarak dağıtılmaktadır. Failproof AI kişinizden geçerli sürüm ve indirme erişimi isteyin.
+
+```bash
+VERSION=<sdk-version>
+pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
+python -c "import failproofai; print(failproofai.__version__)"
+```
+
+`uv` ile wheel'i indirin ve `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl` çalıştırın. Wheel'i özel bir artefakt deposunda veya bağımlılık kilidinde sabitleyin.
+
+Paket `failproofai-sdk` olarak yüklenir ve Python'da `failproofai` olarak içeri aktarılır.
+
+## Failproof daemon'unu bağlayın
+
+<Tabs>
+  <Tab title="Kontrol Paneli">
+    1. **Admin → Keys** bölümüne gidin ve `events:add` ile bir anahtar oluşturun.
+    2. [Failproof daemon'unu Bulut'a bağlayın](/tr/start/setup#connect-a-machine-to-cloud) ajan makinesinde.
+    3. Bir izleme oturumu çalıştırın, ardından **Observe → Events** altında kesin kimliğini bulun.
+    4. **Observe → Sessions** bölümüne gidin, aynı ortamı seçin ve yeniden oluşturulmuş izi açın.
+
+    ![Bir özel Python ajan oturumu yürütme grafiği ve sıralı olay izi olarak yeniden oluşturulmuş.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <events-add-key>
+    failproofai config --status
+    ```
+  </Tab>
+</Tabs>
+
+## Tam bir çalıştırmayı gerçekleştirin
+
+İşlem başlangıcı sırasında `configure()` öğesini bir kez çağırın. Her olay çağrısı yalnızca anahtar sözcüklerdir ve kararlı bir `session_id` ve `agent_id` gerektirir.
+
+```python
+import traceback
+import uuid
+
+import failproofai
+
+failproofai.configure(environment="production")
+
+session_id = uuid.uuid4().hex
+agent_id = "checkout-agent"
+
+failproofai.event.agent_start(
+    session_id=session_id,
+    agent_id=agent_id,
+    goal="Resolve a failed checkout",
+)
+
+try:
+    tool_call_id = uuid.uuid4().hex
+    failproofai.event.tool_use(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        input={"order_id": "ord_8421"},
+    )
+    result = {"status": "payment_failed"}
+    failproofai.event.tool_result(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        output=result,
+    )
+except Exception as exc:
+    failproofai.event.error(
+        session_id=session_id,
+        agent_id=agent_id,
+        error_type=type(exc).__name__,
+        message=str(exc),
+        traceback=traceback.format_exc(),
+    )
+    failproofai.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="failed",
+    )
+    raise
+else:
+    failproofai.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="success",
+        summary="Escalated the failed payment",
+    )
+```
+
+Aktör başına bir kez `agent_start` yayınlayın. Alt ajanlar için üst öğenin `session_id` öğesini yeniden kullanın, her aktöre ayrı bir `agent_id` verin ve `parent_id` öğesini üst öğe **ajan kimliğine** ayarlayın, oturum kimliğine değil.
+
+## Yapılandırma başvurusu
+
+```python
+failproofai.configure(
+    base_dir=None,
+    flush_interval=0.5,
+    environment="production",
+)
+```
+
+| Ayar | Davranış |
+| --- | --- |
+| `base_dir` | Açık spool kökü. Tüm ortam değişkenlerine göre önceliklidir. |
+| `flush_interval` | Bellek'ten JSONL'ye arka plan yazmaları arasındaki saniyeler. Varsayılan: `0.5`. |
+| `environment` | Her olay üzerindeki dağıtım etiketi. Varsayılan: `dev`. |
+| `FAILPROOFAI_HOME` | `custom-agents` spool'u içeren Failproof AI kökünü değiştirir. |
+
+SDK, ayarlanmış olduğunda açık `base_dir` öğesine yazar. Aksi takdirde, `FAILPROOFAI_HOME` veya `~/.failproofai` altında Failproof daemon'unun `custom-agents` spool'unu kullanır.
+
+SDK çağrıları bellek içinde sıraya alır ve bir arka plan iş parçacığında toplu işleri yazar. Ayrıca Python'un `atexit` işlemesi aracılığıyla son bir temizleme girişiminde bulunur. Kısa ömürlü çalışanlar için normal tercüman kapanmasına izin verin; hard işlem sonlandırması bellekte hala bulunan olayları kaybedebilir.
+
+## Olay kataloğu
+
+Tüm yöntemler `None` döndürür. `None` olarak bırakılan alanlar JSON `null` olarak yazılmak yerine atlanır.
+
+| Yöntem | Kimlik ötesindeki zorunlu alanlar | İsteğe bağlı alanlar |
+| --- | --- | --- |
+| `agent_start` | — | `goal`, `parent_id` |
+| `agent_end` | — | `outcome`, `summary` |
+| `agent_pause` | `pause_id` | `reason`, `user_id` |
+| `agent_resume` | `pause_id` | `reason`, `user_id` |
+| `model_request` | — | `model`, `messages`, `system`, `tools` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role` |
+| `tool_use` | `tool_name`, `tool_call_id` | `input` |
+| `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
+| `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
+| `hook_completed` | `hook_name`, `hook_id` | `outcome`, `output`, `error` |
+| `error` | `error_type`, `message` | `traceback` |
+| `human_wait` | `input_id` | `prompt`, `options`, `reason` |
+| `human_input` | `input_id` | `response` |
+| `human_pause` | — | `reason`, `user_id` |
+| `human_interrupt` | — | `reason`, `user_id`, `at_step` |
+
+Bir tamamlamanın hata olarak sayılması gerektiğinde `outcome="failed"`, `"error"`, `"timeout"` veya `"rejected"` kullanın. `"failure"` de dahil olmak üzere diğer değerler geçerli arka uç tarafından hata olarak sınıflandırılmaz.
+
+## Korelasyon ve süre kuralları
+
+- Eşleştirilen tamamlama olayı için aynı `tool_call_id`, `hook_id`, `pause_id` veya `input_id` öğesini yeniden kullanın.
+- SDK, `tool_result`, `hook_completed`, `agent_resume` ve `human_input` için `duration_ms` hesaplar. Bunu bu yöntemlere kendiniz iletmek `ValueError` yükseltir.
+- Araç ve kanca kimlikleri bir işlem genelinde beklemede olan haritayı paylaşır. Bunları eşzamanlı oturumlar ve her iki ad alanı arasında genel olarak benzersiz hale getirin; sağlayıcı kimlikleri veya UUID'ler en güvenlidir.
+- İşlemler arasında bölünmüş bir çift yine de aşağı akışta ilişkilidir, ancak SDK işlem içi süresini hesaplayamaz.
+- Beklemede olan harita en fazla 10.000 başlama tutar ve dolu olduğunda en eski girişi çıkarır.
+
+## Özel alanlar ve yükler
+
+Her olay ekstra anahtar sözcük alanlarını kabul eder. Aşağı akış sorguları yapıya ihtiyaç duyduğunda JSON uyumlu değerleri kullanın. UUID'ler, tarihler, ondalıklar, kümeler, baytlar ve model nesneleri gibi desteklenmeyen yapraklar yazar tarafından dizeleştirilir.
+
+Ayrılmış özel adlar `timestamp`, `session_id`, `agent_id`, `type` ve `environment` şeklindedir. İsteğe bağlı alan yazım hatası yeni özel alanlar olarak kabul edilir, bu nedenle standart alan Bulut'ta görünmediğinde yayılan JSON'u gözden geçirin.
+
+## Sunun ve doğrulayın
+
+<Tabs>
+  <Tab title="Kontrol Paneli">
+    **Observe → Events** bölümünde `agent_start` öğesinin ilk olarak ve `agent_end` öğesinin en son olarak var olduğunu doğrulayın. Ardından **Observe → Sessions** bölümünü açın ve model, araç, insan, kanca ve hata olaylarının amaçlanan sırada görünüp görünmediğini onaylayın. Oturum kimliğini birincil sorun giderme anahtarı olarak kullanın.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai flush --wait --timeout 60
+    failproofai config --status
+    fp sessions --since 1h --env production --session-id <session-id>
+    fp events --since 1h --session-id <session-id> --full
+    ```
+  </Tab>
+</Tabs>
+
+Bulut boş ise `$FAILPROOFAI_HOME/custom-agents/events` öğesini, aksi takdirde `~/.failproofai/custom-agents/events` öğesini inceleyin. JSONL dosyaları SDK yayınını kanıtlar; büyüyen bir spool daemon yapılandırması veya teslimatını gösterirken, boş bir spool gerçekleştirme veya işlem ömrünü gösterir.
+
+## Özel bir çalışma ortamında hataları önleyin
+
+Güvensiz eylemi, gerekli kanıtı ve amaçlanan yanıtı tanımlamak için denetim bulgularını ve bağlı izlemeleri kullanın. Özel bir zorlama entegrasyonu eylemi yürütmeden önce açığa çıkarmalı, yapılandırılmış girişini politika motoruna iletmeli ve ortaya çıkan izin ver, yönlendir veya reddet kararını uygulamalıdır.
+
+Çalışma ortamınız için bu entegrasyonu tasarlamak ve doğrulamak üzere [support@befailproof.ai](mailto:support@befailproof.ai) adresine e-posta gönderin.

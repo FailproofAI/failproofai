@@ -1,0 +1,79 @@
+---
+title: "तुरंत शुरुआत करें"
+description: "एक एजेंट सत्र कैप्चर करें, एक विफलता खोजें, और इसे रोकना शुरू करें।"
+icon: "zap"
+---
+
+यह तुरंत शुरुआत गाइड एक मशीन को रिपोर्ट करने वाले सत्रों के साथ सेट अप करता है, एक ऑडिट चलाता है, और एक नीति तैनात करता है। Failproof AI को सेट अप करने के लिए स्किल का उपयोग करें, या मैनुअल चरणों का पालन करें। आपको Node.js 20.9 या बाद का संस्करण चाहिए।
+
+<Tabs>
+  <Tab title="स्किल का उपयोग करें">
+    <Steps>
+      <Step title="Failproof AI स्किल्स इंस्टॉल करें">
+        ```bash
+        npx skills add FailproofAI/skills
+        ```
+      </Step>
+      <Step title="अपने एजेंट से सब कुछ सेट अप करने के लिए कहें">
+        ```text
+        Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
+        ```
+
+        आपका एजेंट प्रोजेक्ट का निरीक्षण करता है, प्रासंगिक इंटीग्रेशन चुनता है, सेटअप करता है, और इसे सत्यापित करता है। [FailproofAI स्किल्स रिपोजिटरी](https://github.com/FailproofAI/skills) में व्यक्तिगत स्किल्स और उन्नत इंस्टॉलेशन विकल्प देखें।
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="मैनुअल सेटअप">
+    ## शुरुआत से पहले
+
+1. [Failproof AI डैशबोर्ड](https://app.befailproof.ai) खोलें और एक खाता बनाएं या अपने कार्य ईमेल से साइन इन करें।
+2. **Administration → Keys** पर जाएं और `events:add` और `policies:pull` के साथ एक कुंजी बनाएं।
+3. एकबारी गुप्त कोड कॉपी करें और इसे लक्ष्य मशीन पर संग्रहीत करें:
+
+```bash
+export FAILPROOFAI_KEY="<one-time-secret>"
+```
+
+    ## इंस्टॉल करें
+
+<Steps>
+  <Step title="Failproof AI इंस्टॉल करें और कनेक्ट करें">
+    ```bash
+    npm install -g failproofai
+    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    ```
+
+    सत्र प्रतिलेख डिफ़ॉल्ट रूप से भेजे जाते हैं। `--no-transcripts` जोड़ें ताकि प्रतिलेख सामग्री के बिना हुक गतिविधि और नीति निर्णयों की रिपोर्ट करें।
+
+    यदि इस मशीन के पास पहले से एजेंट इतिहास है, तो पिछले सात दिनों का पूर्वावलोकन करें और आयात करें, फिर डिलीवरी समाप्त होने का इंतजार करें। नई मशीन पर इस चरण को छोड़ें।
+
+    ```bash
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    failproofai flush --wait
+    ```
+
+    Failproof AI में **Sessions** खोलें और एक आयातित सत्र चुनें।
+  </Step>
+  <Step title="एजेंट हुक्स और नीतियां इंस्टॉल करें">
+    यह Failproof AI को आपके एजेंट CLI से संलग्न करता है और निर्मित नीतियों को इंस्टॉल करता है। उन्हें स्थानीय नीति निर्णय देखने और Failproof AI आपके सत्रों का ऑडिट करने और आपके एजेंटों के लिए नीतियां लिखने से पहले प्रवर्तन का प्रयास करने के लिए उपयोग करें।
+
+    इंस्टॉलर को अपने एजेंट CLI का पता लगाने दें, या एक स्पष्ट नाम दें।
+
+    ```bash
+    failproofai policies --install --cli claude --scope user
+    ```
+  </Step>
+  <Step title="व्यवहार का ऑडिट करें">
+    [अपनी पहली विफलता जांच चलाएं](/hi/start/first-audit) का पालन करें। एक ठोस लक्ष्य का उपयोग करें जैसे कि "ऐसे सत्र खोजें जहां एजेंट ने अपने दृष्टिकोण को बदले बिना एक विफल उपकरण को फिर से दोहराया।"
+  </Step>
+  <Step title="विफलता को रोकें">
+    [एक नीति के साथ अपनी पहली विफलता को रोकें](/hi/start/first-policy) का पालन करें। प्रेक्षण मोड में शुरू करें, मिलान का निरीक्षण करें, फिर समीक्षित संस्करण को लागू करें।
+  </Step>
+</Steps>
+
+<Check>
+  `failproofai config --status` चलाएं। एक स्वस्थ सेटअप क्लाउड कनेक्शन, डेमन स्थिति, और क्या प्रवर्तन को रोका गया है यह रिपोर्ट करता है।
+</Check>
+  </Tab>
+</Tabs>

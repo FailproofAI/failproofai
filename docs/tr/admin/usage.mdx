@@ -1,0 +1,37 @@
+---
+title: "Kullanım"
+description: "Kuruluş tüketimini ve etkin faturalama dönemini inceleyin."
+icon: "chart-no-axes-combined"
+---
+
+Kullanım, mevcut kuruluş ve faturalama dönemleri için tüketimi gösterir. Üretim dağıtımı, transkript hacmi, değerlendirmeler ve denetim sıklığının planınızı nasıl etkilediğini anlamak için kullanın.
+
+## Kullanımı gözden geçirin
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Administration → Usage** bölümüne gidin.
+    2. Kuruluş ve ölçüm penceresini doğrulayın.
+    3. Alım, oturumlar, değerlendirmeler, metrikler, denetimler, bulgular, uyarılar, kullanıcılar ve anahtarları gözden geçirin.
+    4. Denetim kullanımı beklenmedik görünüyorsa, başlatılan ve tamamlanan denetim çalışmasını karşılaştırın.
+
+    ![Ölçüm penceresini, yakalanan olayları, değerlendirme ve denetim hatlarını, çalışma alanı kaynaklarını, üyeleri ve API anahtarlarını gösteren Kullanım sayfası.](/images/dashboard/usage-overview.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp usage
+    fp --json usage
+    fp --org reliability-team --json usage
+    ```
+  </Tab>
+</Tabs>
+
+## Değişikliği araştırın
+
+1. Etkin kuruluş ve pencereyi doğrulayın.
+2. Artışı ortam başına oturum hacmiyle karşılaştırın.
+3. Yeni bir entegrasyonun transkript göndermeye başlayıp başlamadığını kontrol edin.
+4. Değerlendirici ve denetim sıklığı değişikliklerini gözden geçirin.
+5. Mevcut fiyatlandırma planındaki limitlerle karşılaştırın.
+
+CLI betikler için de aynı özeti döndürür.

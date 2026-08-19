@@ -1,0 +1,114 @@
+---
+title: "Arneses de agentes"
+description: "Captura sesiones y aplica políticas en CLIs de agentes compatibles."
+icon: "plug-zap"
+---
+
+Failproof AI es compatible con Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin CLI, Antigravity CLI y Goose.
+
+| Arnes | Ámbitos de hook compatibles |
+| --- | --- |
+| Claude Code | Usuario, proyecto, local |
+| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | Usuario, proyecto |
+| Factory Droid, Devin CLI, Antigravity CLI, Goose | Usuario, proyecto |
+| Hermes, OpenClaw | Usuario |
+
+Cada integración normaliza los nombres de eventos de hook nativos, nombres de herramientas y campos de entrada de herramientas antes de que se ejecuten las políticas. Una política solo puede actuar sobre los eventos que expone el arnes; prueba el comportamiento de fin de turno e instrucciones en el arnes exacto y la versión que vayas a desplegar.
+
+## Capacidad de aplicación
+
+"Bloquear" significa que el veredicto devuelto por el adaptador actual es consumido por el arnes indicado. El bloqueo post-herramienta puede reemplazar el resultado mostrado al modelo, pero no puede deshacer un efecto secundario de una herramienta que ya ocurrió.
+
+| Arnes | Eventos de bloqueo verificados | Advertencias solo de observación o no bloqueantes |
+| --- | --- | --- |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` y varios eventos de tarea/configuración | `PostToolUse`, ciclo de vida de sesión, notificaciones y eventos post-fallo son de observación. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | El bloqueo post-herramienta reemplaza el resultado tras la ejecución; los eventos de inicio de sesión y compactación son de observación en el adaptador actual. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | El bloqueo post-herramienta reemplaza el resultado tras la ejecución; los eventos de sesión y notificación son de observación. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` y los eventos de sesión son de observación. |
+| OpenCode | `PreToolUse` | Los eventos post-herramienta y de ciclo de vida son de observación; el manejo de parada actual es una guía para un turno posterior, no una barrera verificada. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | Los eventos post-herramienta y de ciclo de vida son de observación; la guía de parada aplica a un turno posterior. |
+| Hermes | `PreToolUse` | Los veredictos post-herramienta, de sesión y de parada de subagente no son barreras. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Los eventos post-herramienta, de sesión, de parada de subagente y de compactación son de observación. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Los veredictos post-herramienta y de parada de subagente son de observación. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` condicional | Los hooks de permisos no se ejecutan en todos los modos de permiso; los eventos post-herramienta y de sesión son de observación. |
+| Antigravity CLI | `PreToolUse`, `Stop` | Los veredictos de prompt de usuario y post-herramienta son de observación; las instrucciones de prompt pueden inyectarse igualmente. |
+| Goose | `PreToolUse` | Los eventos de prompt de usuario, post-herramienta y de sesión son de observación. Existe un hook de parada con bloqueo nativo en la capa superior, pero no está instalado por el adaptador actual. |
+
+Las capacidades dependen de la versión. Vuelve a probar después de actualizar un CLI de agente, especialmente cuando una política depende del comportamiento de prompt, parada, permisos o post-herramienta en lugar de la barrera común pre-herramienta.
+
+## Instalar hooks de captura y políticas
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Abre **Administración → Claves** y crea una clave con `events:add` y `policies:pull`, con un nombre que identifique la máquina o el entorno.
+    2. En la máquina de destino, conecta el CLI local con la clave mostrada e instala los hooks del arnes.
+    3. Inicia una nueva sesión de agente y confirma sus eventos de hook y sesión en **Observar → Eventos**.
+    4. Abre **Observar → Política** para el mismo intervalo de tiempo y confirma que se atribuye una decisión de política a la máquina.
+
+    La conexión comienza con una clave de máquina. Confirma que incluye tanto permisos de ingesta como de entrega de políticas antes de copiar su secreto.
+
+    ![El panel de creación de clave API utilizado para conceder permisos de ingesta de eventos y entrega de políticas.](/images/dashboard/key-create.png)
+
+    Tras instalar los hooks, el flujo de Eventos debería mostrar nuevos eventos de la máquina y el entorno que conectaste.
+
+    ![El flujo de Eventos en vivo utilizado para confirmar que un arnes recién instalado está reportando.](/images/dashboard/events-stream.png)
+
+    Por último, verifica que las decisiones de política se atribuyan a la misma máquina. Esto confirma que el arnes está reportando actividad de políticas además de eventos de traza.
+
+    ![La página de Política utilizada para verificar decisiones de política de un arnes recién conectado.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    Instala hooks para todos los arneses detectados:
+
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+    failproofai policies --install
+    ```
+
+    O apunta a arneses específicos y un ámbito de configuración:
+
+    ```bash
+    failproofai policies --install \
+      --cli claude codex cursor \
+      --scope user
+    ```
+
+    El ámbito de proyecto mantiene la configuración de hooks junto a un repositorio. El ámbito de usuario cubre el trabajo a través de repositorios. Claude Code también admite ámbito local; la compatibilidad varía según el arnes y el CLI rechaza las combinaciones no admitidas.
+
+    Verifica la máquina y sus eventos:
+
+    ```bash
+    failproofai config --status
+    failproofai flush --wait
+    fp events --since 1h --event-type hook_triggered,hook_completed
+    ```
+  </Tab>
+</Tabs>
+
+## Añadir una ruta de sesión no predeterminada
+
+<Tabs>
+  <Tab title="Panel de control">
+    Las rutas adicionales se registran en la máquina, no en la nube. Después de añadir una, abre **Observar → Sesiones**, filtra por el entorno de la máquina y confirma que aparecen sesiones de la nueva ruta. Abre una sesión y revisa el agente, el arnes y las marcas de tiempo de los eventos antes de usarla en una auditoría.
+
+    ![La lista de Sesiones filtrada al entorno que recibe datos de la ruta de captura adicional.](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    Añade una ruta con una etiqueta opcional y luego inspecciona las rutas configuradas:
+
+    ```bash
+    failproofai harness add-path claude checkout=/srv/checkout/.claude
+    failproofai harness list claude
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    ```
+
+    Elimina una ruta con `failproofai harness remove-path claude checkout`.
+  </Tab>
+</Tabs>
+
+<Tip>
+  Ejecuta una sesión nueva tras la instalación. Verifica tanto el flujo de eventos en vivo como una decisión de política real antes de ampliar el despliegue.
+</Tip>

@@ -1,0 +1,68 @@
+---
+title: "Configurações e segurança"
+description: "Configure definições operacionais e tome decisões deliberadas sobre os dados dos agentes."
+icon: "lock-keyhole"
+---
+
+Use as Configurações para valores operacionais específicos de implantação e substituições da janela de contexto do modelo. Inspecione o esquema de configurações antes de alterar um valor pela API ou CLI.
+
+## Alterar uma configuração da organização
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **Administração → Configurações**, encontre o grupo de configurações e leia sua descrição e fonte atual.
+    2. Altere o valor e salve.
+    3. Para janelas de contexto de modelos, adicione ou atualize a substituição do modelo e confirme o limite efetivo.
+    4. Verifique novamente as sessões e métricas que dependem do valor alterado.
+
+    ![A página de Configurações exibindo autenticação da organização e configurações operacionais.](/images/dashboard/settings.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp settings list
+    fp settings schema
+    fp settings set <key> --value <scalar>
+    fp settings set alerts.email_default_recipients \
+      --json-value '["oncall@example.com"]'
+    ```
+
+    Execute `fp settings set --help` para ver o tipo de valor e os flags de confirmação utilizados pela CLI instalada.
+  </Tab>
+</Tabs>
+
+## Opções de tratamento de dados
+
+Conectar a CLI do Failproof AI envia transcrições por padrão, pois rastreamentos e auditorias dependem do seu conteúdo. Use `--no-transcripts` quando prompts, conteúdos de arquivos ou entradas de terminal precisarem permanecer locais; atividade de hooks e decisões de políticas ainda podem ser reportadas.
+
+Credenciais de ingestão local são armazenadas separadamente das configurações de daemon não secretas e gravadas com permissões restritivas. Chaves de API ainda devem ser gerenciadas como segredos de produção.
+
+## Referência de configurações da organização
+
+Todas as configurações editáveis pelo dashboard têm escopo de organização. O comportamento em toda a implantação permanece como configuração do ambiente do servidor.
+
+| Chave | Padrão | Finalidade |
+| --- | --- | --- |
+| `allowed_sign_ins` | `[]` | Restringe membros existentes a e-mails exatos ou `*@domínio`; uma lista vazia significa nenhuma restrição adicional. |
+| `session_ttl_secs` | `86400` | Tempo de vida da sessão no dashboard; o intervalo aceito é de 60 segundos a 30 dias. |
+| `otp_ttl_secs` | `600` | Tempo de vida do OTP e do magic link; o intervalo aceito é de 60 a 1800 segundos. |
+| `alerts.email_default_recipients` | `[]` | Destinatários padrão quando um canal de alerta por e-mail não os substitui. |
+| `alerts.slack_default_webhook` | vazio | URL padrão do webhook de entrada do Slack. |
+| `alerts.webhook_default_url` | vazio | URL padrão de webhook JSON genérico. |
+| `alerts.webhook_signing_secret` | vazio | Chave HMAC-SHA256 usada no cabeçalho `X-AgentEye-Signature`; leituras são mascaradas. |
+| `alerts.enabled_channels` | e-mail, Slack, webhook | Tipos de canais em toda a organização que as regras de alerta podem acionar. |
+| `default_user_permissions` | `standard` | Conjunto de permissões nomeado pré-selecionado para novos convites. |
+
+`allowed_sign_ins` é um filtro, não uma concessão: a pessoa já deve ser um membro da organização. Use uma lista vazia para permitir todos os membros; o valor simples `*` é rejeitado. URLs de alertas devem usar HTTPS, exceto para endereços de loopback em desenvolvimento.
+
+## Lista de verificação de segurança
+
+- Use HTTPS para conexões com a Cloud.
+- Limite as chaves ao menor conjunto de permissões possível.
+- Separe os ambientes de produção e não produção.
+- Revise as configurações de transcrição e redação antes da implantação.
+- Audite alterações de usuários, chaves e organizações.
+- Teste os requisitos de backup, retenção e resposta a incidentes para sua implantação.
+
+<Warning>
+  Desativar a captura de transcrições altera o que auditorias e investigações podem comprovar. Registre a decisão e suas limitações esperadas.
+</Warning>

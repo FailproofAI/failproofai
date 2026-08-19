@@ -1,0 +1,55 @@
+---
+title: "会话"
+description: "从一次 Agent 运行的完整记录开始排查。"
+icon: "workflow"
+---
+
+当 Agent 出现意外行为时，会话是最佳的排查起点。它将属于同一次运行的模型请求、响应、工具调用、人工交互、错误、评估结果和策略决策整合在一起。
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+跟踪一次 Agent 运行的完整过程——从目标设定，到模型调用、工具使用，直至最终响应。
+
+## 查找会话
+
+<Tabs>
+  <Tab title="控制台">
+    1. 在云端侧边栏中，前往 **Observe → Sessions**。
+    2. 设置时间范围，然后按环境、状态、Agent 或会话 ID 进行筛选。
+    3. 如需按质量、成本、Token 或延迟进行切片，可添加评分或指标范围。
+    4. 点击某行以打开其追踪详情。分享时可使用会话 ID 旁边的复制按钮。
+
+    ![Sessions 列表，每行显示一次运行，包含环境、Agent、状态和评估评分筛选器。](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp sessions --env production --since 24h
+    fp sessions --status error,timeout --agent-id checkout-agent
+    fp --json sessions --session-id <session-id>
+    ```
+
+    添加 `--agents` 可展开多 Agent 运行，`--all` 可分页查看，`--fields` 可选择输出列。
+  </Tab>
+</Tabs>
+
+## 你可以做什么
+
+- 按 Agent、环境、时间、模型、事件类型或错误状态查找运行记录。
+- 追踪产生某一结果的完整事件序列。
+- 对比成功与失败的运行。
+- 查看审计发现或告警事件所依据的证据。
+- 在需要离线记录时导出会话。
+
+## 推荐的排查顺序
+
+1. 确认会话目标和运行环境。
+2. 找到第一个错误或异常决策——而不仅仅是最终的失败点。
+3. 检查其发生前的模型上下文和工具输入。
+4. 查看重试次数、延迟情况和人工中断记录。
+5. 审查评估分数和策略决策。
+
+<Card title="解读追踪记录" icon="route" href="/zh/sessions/read-a-trace">
+  了解如何从会话摘要定位到导致最终结果的具体事件。
+</Card>

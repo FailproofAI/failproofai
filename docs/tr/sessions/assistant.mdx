@@ -1,0 +1,53 @@
+---
+title: "Failproof Asistanı"
+description: "Failproof AI'ı doğal dille analiz edin ve işletin; sorulardan ve sorgulardan panolara ve denetimlere kadar."
+icon: "message-square-text"
+---
+
+Failproof Asistanı'na Failproof AI'da doğal dille her şeyi yapmasını söyleyin. Oturumları ve hataları analiz edebilir, sorguları çalıştırabilir, panoları oluşturabilir, değerlendirmeleri ve uyarıları araştırabilir ve denetimler oluşturup çalıştırmanıza yardımcı olabilir; görevleri ürün ekranlarına veya CLI komutlarına çevirmenizi gerektirmez.
+
+```text
+Why did production checkout agents regress this week?
+Build a dashboard for tool failures, latency, and evaluation scores.
+Create an audit that finds agents retrying the same failed action without changing approach.
+Show me the sessions behind the most common audit finding.
+```
+
+Asistan, etkin organizasyonda bulunan veriler ve izinlerle çalışır. Diğer kullanıcıları veya ajanları etkileyen işlemleri uygulamadan önce kanıtını ve önerilen değişiklikleri gözden geçirin.
+
+## Asistana soru sorun
+
+<Tabs>
+  <Tab title="Pano">
+    1. **Ajan sohbetini aç** seçeneğini seçin ve anlamak, oluşturmak veya işletmek istediğinizi açıklayın.
+    2. Asistan çalışırken araç çağrılarını, tabloları ve sorgu sonuçlarını gözden geçirin.
+    3. Sonucu kaynak verilerle doğrulamak için alıntı yapılan oturumu, uyarıyı veya sorguyu açın.
+    4. Farklı bir araştırma için yeni bir sohbet başlatın veya aynı analiz hattını sürdürmek için sohbet geçmişini kullanın.
+
+    ![Bulut asistanının destekleyici analiz ve sorgularla bir gözlenebilirlik sorusuna cevap verdiği ekran.](/images/dashboard/assistant.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Open representative sessions" --chat <chat-id>
+    ```
+
+    Bir araştırmayı tanınır durumda tutmak için `fp agent rename <chat-id> --title <title>` komutunu kullanın ve kaldırmak için `fp agent delete <chat-id>` komutunu kullanın.
+  </Tab>
+</Tabs>
+
+## Asistanla etkili bir şekilde çalışın
+
+- Önce ona bir hedef verin; bu sınırlar önemliyse bir ortam, iş akışı veya zaman aralığı ekleyin.
+- Oluşturulan SQL ve özetleri nihai kanıt değil araştırma aracı olarak görün.
+- Denetim, sorun, uyarı veya ilke oluşturmadan önce temsili oturumları açın.
+- Organizasyon, ortam ve zaman filtrelerini açık tutun.
+- Yararlı SQL'leri sorgu olarak kaydedin, böylece başka bir operatör sonucu yeniden üretebilsin.
+
+<Warning>
+  Asistan yalnızca mevcut kullanıcınızın erişebileceği verileri okuyabilir. Bir soruyu çalıştırmak için izinleri genişletmeyin; bunun yerine yetkili bir operatörden araştırmayı çalıştırmasını isteyin.
+</Warning>

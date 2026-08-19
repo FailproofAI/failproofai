@@ -1,0 +1,44 @@
+---
+title: "Audit einrichten"
+description: "Ziel, Sitzungsmenge und Evidenzkontext eines Audits definieren."
+icon: "sliders-horizontal"
+---
+
+Die Qualität eines Audits hängt von seiner Abgrenzung ab. Eine vage Anfrage wie „Probleme finden" liefert weniger nützliche Ergebnisse als eine konkrete Fehlerfrage.
+
+## Audit konfigurieren
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Analyse → Audits → Neues Audit** und geben Sie Name und Beschreibung ein.
+    2. Legen Sie Kadenz, Zeitfenster, Agenten-/Umgebungsbereich, ignorierte Fehler, Empfindlichkeit und maximale Befunde fest.
+    3. Fügen Sie unter **Agenten** den Agentenkontext hinzu oder überprüfen Sie ihn, dann fügen Sie den Operator-Brief und öffentliche HTTPS-Referenz-URLs hinzu.
+    4. Wählen Sie Benachrichtigungskanäle und klicken Sie auf **Audit erstellen**. Der erste Durchlauf wird sofort in die Warteschlange eingereiht.
+
+    ![Das Formular für neue Audits mit Name, Beschreibung, Kadenz, Zeitfenster, Umgebungs- und Agentenbereich, ignorierten Fehlern, Analyseeinstellungen, Brief, Referenzseiten und Benachrichtigungskanälen.](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    Der erste Durchlauf wird sofort in die Warteschlange eingereiht. Fügen Sie Brief und Referenz-URLs bereits bei der Erstellung hinzu, damit dieser Durchlauf sie erhält.
+
+    Siehe die vollständige [`fp audits create`-Referenz](/de/reference/cloud-cli#audits).
+  </Tab>
+</Tabs>
+
+<Tip>
+  Beginnen Sie mit einer bekannten fehlgeschlagenen Sitzung und mehreren normalen Sitzungen. So erhält das Audit sowohl ein positives Beispiel als auch eine Vergleichsmenge.
+</Tip>
+
+<Info>
+  Der Audit-Kontext wird als eigenständige Ressource gespeichert, sodass das Bearbeiten eines Audits das Referenzmaterial nicht versehentlich entfernt.
+</Info>

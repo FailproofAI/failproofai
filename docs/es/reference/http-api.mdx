@@ -1,0 +1,74 @@
+---
+title: "HTTP API"
+description: "Autentícate en la API pública de Failproof AI Cloud `/v1` y utiliza la referencia de endpoints generada."
+icon: "braces"
+---
+
+La API pública se sirve bajo `/v1` en el origen de tu panel de Failproof AI.
+
+## Crear una clave y realizar una solicitud
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Abre **Administración → Claves**, selecciona **Crear clave** y elige el conjunto de permisos más restrictivo que cubra la integración.
+    2. Añade permisos individuales solo cuando sea necesario, crea la clave y copia su secreto de un solo uso.
+    3. Realiza una solicitud de prueba a `/v1/sessions` y confirma que la clave sigue activa en la página de Claves.
+    4. Rota o desactiva la clave desde su menú de acciones cuando la integración cambie de titular.
+
+    ![El panel de creación de nueva clave API con presets de permisos y permisos individuales.](/images/dashboard/key-create.png)
+
+    El panel de creación se muestra arriba. El secreto de un solo uso aparece únicamente después de seleccionar **crear**; cópialo antes de cerrar esa confirmación.
+  </Tab>
+  <Tab title="CLI">
+    Crea una clave de lectura y úsala directamente con `fp` o `curl`:
+
+    ```bash
+    fp keys create reliability-reader \
+      --permission-set read-only
+
+    fp --api-key <key> sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY"
+    ```
+  </Tab>
+</Tabs>
+
+Las claves están limitadas a una organización y a un conjunto de permisos. Una solicitud sin el permiso requerido por el endpoint devuelve `403` e identifica el permiso que falta.
+
+## Selección de organización
+
+Una clave de organización actúa automáticamente sobre su organización. Una clave con alcance de instancia puede seleccionar una organización por solicitud:
+
+<Tabs>
+  <Tab title="Panel de control">
+    Usa el selector de organización en la cabecera del panel antes de abrir **Administración → Claves**. Las claves creadas allí pertenecen a la organización seleccionada. Confirma el slug de la organización en la URL y en el detalle de la clave antes de copiar la credencial en la automatización.
+
+  </Tab>
+  <Tab title="CLI">
+    Usa `--org` antes del comando, o envía el encabezado de organización para una clave API con alcance de instancia.
+
+    ```bash
+    fp orgs list
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+Consulta las páginas de endpoints generadas en esta sección para conocer las rutas actuales, los parámetros, los requisitos de permisos y los códigos de estado. La especificación se genera a partir de las anotaciones de rutas del servidor y se verifica contra el router `/v1`.
+
+La especificación actual tiene cobertura completa de rutas, métodos, parámetros, permisos y códigos de estado. Algunos cuerpos de respuesta permanecen intencionalmente sin tipar porque el servidor aún los construye como JSON dinámico. Inspecciona una respuesta real antes de generar un cliente fuertemente tipado para un endpoint que no tenga esquema de respuesta.
+
+Usa `Content-Type: application/json` para escrituras JSON. Interpreta `401` como autenticación ausente o inválida, `403` como una identidad válida sin el permiso requerido, `404` como un recurso inexistente o inaccesible para la organización, `409` como un conflicto de estado y `422` como un campo o valor de permiso inválido. Las respuestas de error incluyen un mensaje legible por humanos; los errores de permisos también especifican el permiso requerido.
+
+<Warning>
+  El despliegue de la aplicación de políticas se gestiona intencionalmente fuera de la superficie pública ordinaria `/v1`. Utiliza el flujo de despliegue en la nube compatible.
+</Warning>

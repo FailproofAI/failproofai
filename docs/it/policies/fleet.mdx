@@ -1,0 +1,52 @@
+---
+title: "Distribuire le policy sulle macchine"
+description: "Scopri quali macchine sono registrate, aggiornate e applicano le versioni di policy previste."
+icon: "network"
+---
+
+La copertura della flotta risponde alla domanda se esiste una policy dove esiste il rischio. Traccia le macchine tramite ID stabile e un'etichetta leggibile dall'uomo, quindi confronta il loro stato di distribuzione assegnato e segnalato.
+
+## Verificare la copertura
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Admin → enforcement** e rivedi i totali di applicazione e osservazione.
+    2. Cerca una macchina per ID o etichetta, o filtra per le macchine senza policy.
+    3. Espandi una riga per confrontare le policy assegnate, la distribuzione segnalata, l'ultimo check-in e la cronologia.
+    4. Aggiorna dopo l'intervallo di polling della macchina quando una distribuzione applicata rimane in sospeso.
+
+    ![La flotta Enforcement che mostra la copertura della policy, lo stato di distribuzione della macchina, e gli assegnamenti di osservazione e applicazione.](/images/dashboard/enforcement-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai config --machine-label checkout-runner-03
+    failproofai flush --wait
+    ```
+
+    Usa `fp events --agent-id <agent-id> --since 24h` per confermare che l'attività dell'agente della macchina raggiunge il Cloud.
+  </Tab>
+</Tabs>
+
+Utilizza le viste di copertura per trovare:
+
+- Macchine che non hanno mai scaricato l'ultima distribuzione
+- Macchine registrate che hanno smesso di segnalare attività
+- Una policy assegnata all'ambiente o alla coorte sbagliata
+- Deviazione di versione dopo un aggiornamento interrotto
+
+Rinomina una macchina senza riconnetterla:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
+
+Controlla lo stato locale:
+
+```bash
+failproofai config --status
+```
+
+<Tip>
+  Utilizza etichette che identifichino il carico di lavoro e l'ambiente. I nomi host da soli sono spesso insufficienti dopo l'autoscaling o la sostituzione di macchine.
+</Tip>

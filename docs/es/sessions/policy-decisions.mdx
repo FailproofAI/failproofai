@@ -1,0 +1,27 @@
+---
+title: "Decisiones de políticas"
+description: "Consulta qué políticas evaluaron, bloquearon, instruyeron o permitieron."
+icon: "shield-check"
+---
+
+Decisiones de políticas explica qué hizo el cumplimiento. Úsalo para verificar un despliegue, medir la tasa de bloqueo y encontrar actividad sin protección.
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Ve a **Observe → policy** y elige el rango de tiempo y, opcionalmente, una máquina.
+    2. Revisa las acciones evaluadas, bloqueos, tasa de bloqueo, decisiones de Cloud, acciones sin protección y la actividad mientras está en pausa.
+    3. Filtra la tabla de asignación de políticas e inspecciona las asignaciones desplegadas.
+    4. Selecciona un punto del gráfico para abrir las decisiones y sus sesiones.
+
+    ![La página de políticas mostrando totales de decisiones, un filtro de máquina, actividad de cumplimiento a lo largo del tiempo y la tabla de asignación de políticas.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp events --search "deny" --since 24h
+    failproofai config --status
+    ```
+
+    Usa `failproofai` para el estado de cumplimiento local de la máquina y `fp` para la investigación de eventos en Cloud.
+  </Tab>
+</Tabs>

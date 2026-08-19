@@ -1,0 +1,52 @@
+---
+title: "Valutazioni online"
+description: "Valuta sessioni live e completate per qualità, conformità, costo e latenza."
+icon: "gauge"
+---
+
+Le valutazioni online applicano giudizi coerenti alle sessioni degli agenti. Utilizzale per segnali che devono essere misurati continuamente piuttosto che analizzati solo durante un audit.
+
+## Revisione della qualità della valutazione
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Observe → Evaluations**.
+    2. Aggiungi una serie e scegli l'agente, l'ambiente, il punteggio di valutazione, la statistica e la curva.
+    3. Aggiungi serie per confrontare ambienti, agenti o chiavi di punteggio.
+    4. Seleziona un risultato per aprire le sessioni corrispondenti o condividi la visualizzazione filtrata. Usa **Observe → Metrics** per latenza, token, costo e altri valori di grandezza.
+
+    ![Una dashboard di qualità che mostra i punteggi di valutazione medi e le tendenze nel tempo.](/images/dashboard/dashboard-quality.png)
+
+    Apri una sessione dal drill-down per ispezionare il suo ragionamento per punteggio:
+
+    ![Una visualizzazione dettagliata della sessione che mostra i punteggi di valutazione e il ragionamento accanto alla traccia completa.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Aggiungi il flag globale `--json` prima di `evals` per l'automazione, ad esempio `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+Un valutatore riceve l'identità della sessione, l'ambiente, i timestamp e gli eventi ordinati. Può restituire chiavi di punteggio numeriche con ragionamento facoltativo e un riepilogo. I valutatori a lunga esecuzione possono restituire un lavoro in sospeso e essere interrogati in seguito.
+
+## Buoni target di valutazione
+
+- Completamento o correttezza dell'attività
+- Fondatezza e rischio di allucinazione
+- Selezione dello strumento ed efficienza dello strumento
+- Conformità alle politiche o ai processi
+- Budget di costo e latenza
+- Escalation umana richiesta
+
+## Dal punteggio alla risposta
+
+Mostra i punteggi nei dashboard per tracciare le tendenze. Crea avvisi per soglie o condizioni composte. Quando un punteggio declina in una popolazione, esegui un audit per investigare il motivo; quando la causa è un'azione ripetibile, distribuisci una politica.
+
+<Card title="Costruisci un valutatore" icon="code-2" href="/it/reference/evaluator-sdk">
+  Implementa valutazione sincrona o asincrona con l'SDK del valutatore Python.
+</Card>

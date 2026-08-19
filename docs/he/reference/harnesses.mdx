@@ -1,0 +1,115 @@
+---
+---
+title: "חיבורי סוכן"
+description: "לכדו הפעלות והטילו מדיניות בממשקי CLI של סוכנים נתמכים."
+icon: "plug-zap"
+---
+
+Failproof AI תומך ב-Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin CLI, Antigravity CLI, וב-Goose.
+
+| חיבור | הוקי תמך |
+| --- | --- |
+| Claude Code | User, project, local |
+| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
+| Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
+| Hermes, OpenClaw | User |
+
+כל שילוב מנרמל את שמות אירועי ה-hook הנתיבים, שמות הכלים, ושדות הקלט של הכלים לפני הפעלת המדיניות. מדיניות יכולה לפעול רק על אירועים שהחיבור חושף; בדקו התנהגות של סוף-תור והוראה על החיבור והגרסה הספציפיים שתפרסמו.
+
+## יכולת אכיפה
+
+"Block" פירושו שהפסק של המתאם שהוחזר נצרך על ידי החיבור המוקד. חסימה אחרי-כלי עשויה להחליף את התוצאה המוצגת לדגם אך לא יכולה לבטל תופעת-צד של כלי שכבר התרחשה.
+
+| חיבור | אירועי חסימה מאומתים | אזהרות של ניטור בלבד או ללא חסימה |
+| --- | --- | --- |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, ואירועי משימה/הגדרה מרובים | `PostToolUse`, מחזור חיים של הפעלה, התראות, ואירועים לאחר כישלון הם תצפיתיים. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | חסימה אחרי-כלי מחליפה את התוצאה לאחר ביצוע; אירועי התחלת הפעלה וקומפקטיביות הם תצפיתיים במתאם הנוכחי. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | חסימה אחרי-כלי מחליפה את התוצאה לאחר ביצוע; אירועי הפעלה והתראה הם תצפיתיים. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` ואירועי הפעלה הם תצפיתיים. |
+| OpenCode | `PreToolUse` | אירועי אחרי-כלי ומחזור חיים הם תצפיתיים; טיפול ה-stop הנוכחי הוא הדרכה לתור מאוחר יותר ולא שער מאומת. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | אירועי אחרי-כלי ומחזור חיים הם תצפיתיים; הדרכת stop חלה על תור מאוחר יותר. |
+| Hermes | `PreToolUse` | פסקי אחרי-כלי, הפעלה, וסוכן-משנה-stop אינם שערים. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | אירועי אחרי-כלי, הפעלה, סוכן-משנה-stop וקומפקטיביות הם תצפיתיים. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | פסקי אחרי-כלי וסוכן-משנה-stop הם תצפיתיים. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PermissionRequest` מותנה | הוקי הרשאה אינם פועלים בכל מצב הרשאה; אירועי אחרי-כלי והפעלה הם תצפיתיים. |
+| Antigravity CLI | `PreToolUse`, `Stop` | פסקי הנחיה משתמש ואחרי-כלי הם תצפיתיים; הוראות הנחיה יכולות עדיין להיות הוזרקות. |
+| Goose | `PreToolUse` | אירועי הנחיה משתמש, אחרי-כלי והפעלה הם תצפיתיים. יש ווו stop חסימה נתיב קיים במעלה זרם אך לא מותקן על ידי המתאם הנוכחי. |
+
+יכולות רגישות לגרסה. בדקו מחדש לאחר שדרוג של CLI של סוכן, במיוחד כאשר מדיניות מסתמכת על התנהגות של הנחיה, stop, הרשאה, או אחרי-כלי במקום שער ה-pre-tool הנפוץ.
+
+## התקן קלטת וקנס הוקי מדיניות
+
+<Tabs>
+  <Tab title="לוח בקרה">
+    1. פתח **Administration → Keys** ויצור מפתח עם `events:add` ו-`policies:pull`, הנקוב לפי המכונה או הסביבה.
+    2. במכונת היעד, חבר את ה-CLI המקומי עם המפתח המוצג והתקן את הוקי החיבור.
+    3. התחל הפעלה חדשה של סוכן, ואז אשר את הוקיה ואירועי ההפעלה שלה תחת **Observe → Events**.
+    4. פתח **Observe → policy** לאותו חלון זמן ואשר שהחלטת מדיניות מיוחסת למכונה.
+
+    החיבור מתחיל עם מפתח של מכונה. אשר שהוא כולל הן הרשאות של הזרקה והן של משלוח מדיניות לפני העתקת הסוד שלו.
+
+    ![תיבת יצירת מפתח API החדשה המשמשת להענקת הרשאות הזרקת אירועים ומשלוח מדיניות.](/images/dashboard/key-create.png)
+
+    לאחר התקנת הוקים, זרם Events צריך להציג אירועים חדשים מהמכונה והסביבה שחיברת.
+
+    ![זרם Events חי המשמש לאישור חיבור שנותקן לאחרונה דיווח.](/images/dashboard/events-stream.png)
+
+    לבסוף, אמת שהחלטות מדיניות מיוחסות לאותה מכונה. זה מאשר שהחיבור דיווח על פעילות מדיניות כמו גם אירועי זקיפה.
+
+    ![עמוד Policy המשמש לאימות החלטות מדיניות מחיבור שנחבר לאחרונה.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    התקן הוקים לכל חיבור שזוהה:
+
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+    failproofai policies --install
+    ```
+
+    או יעד חיבורים בשם והיקף הגדרה:
+
+    ```bash
+    failproofai policies --install \
+      --cli claude codex cursor \
+      --scope user
+    ```
+
+    היקף project שומר הגדרת hook עם מאגר. היקף user כיסוי עבודה על פני מאגרים. Claude Code תומך גם בהיקף local; התמיכה משתנה לפי חיבור וה-CLI דוחה שילובים בלתי נתמכים.
+
+    אמת את המכונה והאירועים שלה:
+
+    ```bash
+    failproofai config --status
+    failproofai flush --wait
+    fp events --since 1h --event-type hook_triggered,hook_completed
+    ```
+  </Tab>
+</Tabs>
+
+## הוסף נתיב הפעלה שאינו ברירת מחדל
+
+<Tabs>
+  <Tab title="לוח בקרה">
+    נתיבים נוספים רשומים במכונה, לא בענן. לאחר הוספת אחד, פתח **Observe → Sessions**, סנן לסביבת המכונה, ואשר שהפעלות מהנתיב החדש מופיעות. פתח הפעלה וודא את הסוכן, החיבור, וחותמות זמן של אירוע לפני שתסתמך עליה בביקורת.
+
+    ![רשימת Sessions מסוננת לסביבה המקבלת נתונים מנתיב הקלטה נוסף.](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    הוסף נתיב עם תווית אופציונלית, ואז בדוק את הנתיבים המוגדרים:
+
+    ```bash
+    failproofai harness add-path claude checkout=/srv/checkout/.claude
+    failproofai harness list claude
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    ```
+
+    הסר נתיב עם `failproofai harness remove-path claude checkout`.
+  </Tab>
+</Tabs>
+
+<Tip>
+  הפעל הפעלה אחת חדשה לאחר התקנה. אמת הן את זרם האירוע החי והן החלטת מדיניות ממשית לפני הרחבת הגלגול.
+</Tip>

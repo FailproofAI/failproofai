@@ -1,0 +1,97 @@
+---
+---
+title: "Kết quả và sự cố"
+description: "Chuyển đổi bằng chứng kiểm toán thành công việc khắc phục sở hữu và có thể theo dõi."
+icon: "clipboard-check"
+---
+
+Kết quả là tuyên bố được hỗ trợ bằng bằng chứng của kiểm toán về một lỗi. Sự cố là quy trình công việc bền vững để phản ứng với nó.
+
+## Phân loại và gán công việc
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Mở **Analyze → Audits**, chọn một lần chạy đã hoàn thành và chọn một kết quả để kiểm tra phân tích, khuyến nghị, phiên làm việc và truy vấn bằng chứng của nó.
+    2. Xác nhận, gán, bỏ qua, tắt âm, giải quyết hoặc mở lại kết quả sau khi kiểm tra bằng chứng của nó.
+    3. Đi tới **Analyze → Issues** và lọc hộp thư bền vững theo trạng thái, mức độ nghiêm trọng hoặc người được gán.
+    4. Mở sự cố để gán nó, thêm bình luận hoặc người theo dõi, và giải quyết nó sau khi sửa chữa được xác minh.
+
+    Bắt đầu với bản tóm tắt kết quả. Xác nhận rằng mô tả lỗi, phản ứng được đề xuất, mức độ nghiêm trọng và xếp hạng phù hợp với các phiên làm việc mà bạn mong đợi kiểm toán sẽ kiểm tra.
+
+    ![Một kết quả kiểm toán với mức độ nghiêm trọng, số lần xảy ra, phân tích nguyên nhân gốc, hành động được đề xuất, các yếu tố xếp hạng và bằng chứng.](/images/dashboard/audit-finding.png)
+
+    Tiếp theo, mở một phiên làm việc bị ảnh hưởng thay vì chỉ quyết định từ bản tóm tắt. Dấu vết được liên kết sẽ hiển thị sự kiện chính xác và tải trọng hỗ trợ kết quả.
+
+    ![Một phiên làm việc được liên kết từ kết quả kiểm toán, được mở tại lỗi liên quan với siêu dữ liệu sự kiện và tải trọng thô của nó.](/images/dashboard/audit-linked-session.png)
+
+    Sau khi xác minh bằng chứng, hãy sử dụng Issues để gán chủ sở hữu cho phản ứng và theo dõi nó độc lập với các lần chạy kiểm toán trong tương lai.
+
+    ![Hộp thư Issues hiển thị công việc đang xảy ra, được xác nhận và đã giải quyết với mức độ nghiêm trọng và quyền sở hữu.](/images/dashboard/incidents.png)
+
+    Mở sự cố để ghi lại ghi chú điều tra, thông báo cho những người theo dõi và bảo lưu lịch sử phản ứng. Giải quyết nó chỉ sau khi khắc phục được triển khai và xác minh.
+
+    ![Chế độ xem chi tiết sự cố với nguồn gốc, bằng chứng vi phạm, những người được gán, những người theo dõi, dòng thời gian và bình luận của nó.](/images/dashboard/incident-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits findings --audit checkout-reliability --status open
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+
+    fp issues list
+    fp issues show <issue-id>
+    fp issues assign <issue-id> --assignee engineer@example.com
+    fp issues comment-add <issue-id> --body "policy is in observe mode"
+    fp issues resolve <issue-id> --yes
+    ```
+
+    Sử dụng `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>` và `fp issues subscribers <issue-id>` để quản lý những người theo dõi.
+
+    Xem [tham chiếu Cloud CLI kiểm toán và sự cố](/vi/reference/cloud-cli#audits) để tìm hiểu kết quả kiểm toán và [`fp issues`](/vi/reference/cloud-cli#issues) để quản lý sự cố.
+  </Tab>
+</Tabs>
+
+## Xem xét một kết quả
+
+Xác nhận rằng nó chứa:
+
+- Một chế độ lỗi ổn định, không chỉ một tiêu đề một lần
+- Mức độ nghiêm trọng và tác động hoạt động
+- ID phiên làm việc bị ảnh hưởng hoặc truy vấn hỗ trợ
+- Đủ bối cảnh để tái tạo hành vi
+- Phản ứng được đề xuất phù hợp với bằng chứng
+
+## Sử dụng sự cố để quản lý phản ứng
+
+Tạo hoặc liên kết một sự cố khi kết quả cần gán, thảo luận, thay đổi trạng thái, bình luận hoặc những người theo dõi. Các sự cố cũng có thể đại diện cho các sự cố cảnh báo và các vấn đề được báo cáo theo cách thủ công, đó là lý do tại sao chúng nằm dưới phản ứng kiểm toán thay vì trong điều hướng chính.
+
+Giải quyết sự cố khi khắc phục được triển khai và xác minh. Giải quyết kết quả khi chế độ lỗi đã được xử lý cho quần thể kiểm toán. Những thời điểm đó có thể khác nhau.
+
+## Chuyển một sự cố thành bản nháp chính sách
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Mở sự cố và xác minh kết quả, các phiên làm việc được trích dẫn, nguyên nhân gốc và khuyến nghị của nó.
+    2. Chọn **generate policy** và xem xét kết quả tính năng ứng cử viên và ý định thực thi được đề xuất. Kết quả **no policy** có nghĩa là hành vi có thể yêu cầu cảnh báo, thay đổi quy trình làm việc hoặc phản ứng của con người thay thế.
+    3. Chọn **write this policy**, sau đó xem xét và kiểm tra nguồn được tạo trong **Admin → policy editor** trước khi chọn **publish version**. Sử dụng **open the editor anyway** khi bạn không đồng ý với kiểm tra tính năng ứng cử viên.
+    4. Đi tới **Admin → enforcement**, triển khai phiên bản ở chế độ **observe** và xác minh các quyết định của nó dưới **Observe → policy** trước khi thực thi nó.
+
+    Tiêu đề sự cố, mô tả kết quả, nguyên nhân gốc, khuyến nghị và ý định tính năng ứng cử viên giúp soạn bản nháp. Không có gì được xuất bản hoặc triển khai tự động.
+  </Tab>
+  <Tab title="CLI">
+    Sử dụng CLI để kiểm tra bằng chứng trước khi mở sự cố trong bảng điều khiển:
+
+    ```bash
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp events --session-id <session-id> --full --all
+    ```
+
+    Tính năng ứng cử viên chính sách, xuất bản Cloud và triển khai đội là các quy trình bảng điều khiển. Sử dụng `failproofai policies --install --custom <file>` khi bạn muốn xác thực nguồn chính sách tương đương cục bộ trước tiên.
+  </Tab>
+</Tabs>
+
+<Card title="Tác giả một chính sách" icon="shield-plus" href="/vi/policies/editor">
+  Chuyển đổi một mô hình hành động lặp lại được xác nhận thành phiên bản chính sách.
+</Card>

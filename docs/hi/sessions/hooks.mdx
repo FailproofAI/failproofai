@@ -1,0 +1,25 @@
+---
+title: "Hooks"
+description: "एजेंट लाइफसाइकल हुक्स की गतिविधि, ट्रिगर और लेटेंसी को नीति परिणामों से अलग से मापें।"
+icon: "webhook"
+---
+
+Hooks दिखाता है कि एजेंट लाइफसाइकल हुक्स कब चलते हैं और उन्हें कितना समय लगता है। नीति निर्णय एक अलग दृश्य हैं।
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Hooks** पर जाएं।
+    2. पर्यावरण, हुक नाम, ट्रिगर इवेंट, एजेंट या सेशन ID के आधार पर फ़िल्टर करें।
+    3. हुक लेटेंसी और वितरण की समीक्षा करें।
+    4. एक चार्ट बिंदु या हुक सेगमेंट चुनें ताकि अंतर्निहित इवेंट्स खुलें।
+
+    ![Hooks पृष्ठ जो हुक नाम और ट्रिगर इवेंट द्वारा समूहीकृत लेटेंसी दिखाता है।](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

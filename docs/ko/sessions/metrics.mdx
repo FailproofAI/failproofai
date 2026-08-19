@@ -1,0 +1,29 @@
+---
+title: "메트릭"
+description: "지연 시간, 비용, 토큰 사용량 등 크기 메트릭을 시각화합니다."
+icon: "ruler"
+---
+
+메트릭은 단위가 있는 값에 사용합니다. 평가(Evaluations)는 점수와 판단에 사용합니다.
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Observe → Metrics**로 이동합니다.
+    2. **add series**를 선택하고 에이전트, 환경, 메트릭, 통계, 커브를 선택합니다.
+    3. 에이전트 또는 환경을 비교하려면 시리즈를 추가합니다. 단위가 다른 경우 별도의 축이 생성됩니다.
+    4. 특정 지점을 선택하면 해당하는 평가 및 세션이 열리고, **share**를 선택하면 현재 보기의 링크가 복사됩니다.
+
+    ![두 개의 출력 단위당 비용 시리즈를 비교하는 메트릭 페이지. 시간 컨트롤, 집계 선택기, 커브, 공유 기능이 포함되어 있습니다.](/images/dashboard/metrics-series.png)
+  </Tab>
+  <Tab title="CLI">
+    아직 크기 메트릭 전용 명령어는 제공되지 않습니다. 사용 가능한 키를 확인하거나 세션 및 평가를 조회하려면 다음 명령어를 사용하세요:
+
+    ```bash
+    fp list score_filters
+    fp --json evals --since 24h
+    fp --json sessions --since 24h
+    ```
+
+    커스텀 메트릭 집계에는 `fp query`를 사용하세요.
+  </Tab>
+</Tabs>

@@ -1,0 +1,82 @@
+---
+title: "Agent context"
+description: "audits को बताएं कि प्रत्येक agent को क्या करना चाहिए, क्या produce करना चाहिए, और कभी क्या नहीं करना चाहिए।"
+icon: "bot"
+---
+
+Agent context audits को बताता है कि प्रत्येक agent किस लिए मौजूद है, उसे क्या produce करना चाहिए, और क्या कभी नहीं करना चाहिए। Failproof AI इस context को प्रति agent के एक agent contract के रूप में store करता है।
+
+Agent context organization का है, किसी एक audit का नहीं। आप इसे प्रति agent एक बार लिखते हैं, और हर model-backed audit जिसके scope में वह agent शामिल है, इसका उपयोग करता है।
+
+## Agent context जोड़ें
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Analyze → audits** पर जाएं, **agents** को चुनें, और agent ID को चुनें जो इसके sessions द्वारा reported है।
+    2. **add content** या **edit** को चुनें।
+    3. वर्णन करें कि agent किस लिए है, उसे क्या produce करना चाहिए, "done" का मतलब क्या है, इसे कितनी बार चलना चाहिए, और यह क्या कभी नहीं कर सकता।
+    4. context को save करें, फिर audit form पर वापस जाएं और confirm करें कि चुना गया agent covered के रूप में दिखाया जा रहा है।
+
+    ![The audit Agents drawer used to add purpose, cadence, outputs, completion conditions, and prohibited behavior for an agent.](/images/dashboard/agent-context.png)
+
+    आप audit बनाते या edit करते समय **agents** drawer से agent context को add या edit कर सकते हैं। यह independently save होता है और तुरंत हर applicable audit के लिए उपलब्ध होता है।
+  </Tab>
+  <Tab title="CLI">
+    Cloud CLI अभी तक contract commands को expose नहीं करता। `audits:read` और `audits:write` ले जाने वाली key के साथ public API का उपयोग करें:
+
+    ```bash
+    curl -X POST "https://app.befailproof.ai/v1/audits/contracts" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "agent_id": "nightly-reconciler",
+        "enabled": true,
+        "body": "# Purpose\nReconcile yesterday's payouts.\n\n## Outputs\nPublish a signed summary.\n\n## Must not\nNever modify ledger entries."
+      }'
+    ```
+
+    Contracts को `GET /v1/audits/contracts` के साथ list करें; एक contract को `GET /v1/audits/contracts/{id}` के साथ retrieve करें। `PUT` के साथ update करना एक full replacement है और `agent_id` और `body` दोनों की आवश्यकता है।
+  </Tab>
+</Tabs>
+
+## उपयोगी context लिखें
+
+Context को 5,000 characters के तहत रखें और इसे testable बनाएं। उपयोगी context में आमतौर पर शामिल होता है:
+
+- **Purpose:** agent क्यों मौजूद है
+- **Outputs:** artifacts या actions जो इसे produce करने चाहिए
+- **Done when:** वह condition जो एक run को successful बनाती है
+- **Cadence:** कितनी बार या कब चलना चाहिए
+- **Must not:** actions और outcomes जो हमेशा स्वीकार्य नहीं हैं
+
+```markdown
+---
+agent: nightly-reconciler
+purpose: Reconcile yesterday's payouts and publish a signed summary.
+cadence: Once daily after 02:00 UTC. Never more than once.
+---
+
+## Outputs
+- A signed reconciliation summary in the finance channel.
+
+## Done when
+- Every payout is matched or explicitly flagged.
+
+## Must not
+- Modify ledger entries. Report discrepancies instead.
+```
+
+Agent context expected behavior को बताता है; यह analysis को यह नहीं बता सकता कि किस निष्कर्ष पर पहुंचना है या restrict कर सकता है कि वह कौन सा evidence examine करता है। Agents बिना context के normally audited होते हैं, लेकिन Failproof AI उनके behavior को organization-specific intent के विरुद्ध judge नहीं कर सकता।
+
+## Agent context को pause या change करें
+
+- Agent context को pause करें जब audits को temporarily इसे ignore करना चाहिए। Pausing reversible है।
+- Context को edit करें जब agent की responsibility change हो। नया text future runs के लिए apply होता है।
+- **last matched** को check करें जब एक running agent कभी अपने context का उपयोग करता हुआ दिखाई न दे। इसका आमतौर पर मतलब है कि इसका agent ID telemetry से match नहीं करता।
+- API के through ही delete करें जब text को permanently destroy करना हो। Dashboard intentionally pause की जगह delete को offer नहीं करता है।
+
+हर audit run उस exact agent-context snapshot को store करता है जिसे वह use करता है। Current contract resource को editing, pausing, या deleting करने से earlier findings के basis को rewrite नहीं किया जाता है।
+
+<Info>
+  Contracts को read करने के लिए `audits:read` की जरूरत है। Creating, editing, pausing, या deleting करने के लिए `audits:write` की जरूरत है।
+</Info>

@@ -1,0 +1,43 @@
+---
+title: "오류"
+description: "반복적인 오류를 그룹화하고 관련 세션을 확인합니다."
+icon: "circle-alert"
+---
+
+오류(Errors)는 세션 전반에 걸쳐 실패 중심의 뷰를 제공합니다. 오류 유형, 에이전트, 환경, 모델, 도구, 또는 시간 범위별로 그룹화하여 반복적인 운영 문제를 파악할 수 있습니다.
+
+## 오류 조사하기
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Observe → Errors**로 이동합니다.
+    2. 환경, 이벤트 유형, 오류 유형, 에이전트, 세션 ID, 또는 검색어로 필터링합니다.
+    3. 그룹화된 오류를 펼쳐 발생 내역을 확인합니다. 행을 선택하면 해당 세션의 정확한 이벤트로 이동합니다.
+    4. 대표 오류의 벨 아이콘을 선택하면 유사한 오류에 대한 알림을 설정할 수 있습니다.
+
+    ![실패 히스토그램, 그룹화된 오류, 알림 생성 컨트롤이 표시된 오류 페이지.](/images/dashboard/errors.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp errors --env production --since 24h
+    fp errors --error-type TimeoutError --agent-id checkout-agent
+    fp errors --aggregate --env production --since 7d
+    ```
+
+    오류 요약 뒤에 있는 원시 페이로드가 필요한 경우 `fp events --full --session-id <id>`를 사용하세요.
+  </Tab>
+</Tabs>
+
+## 오류(Errors)를 활용해야 하는 경우
+
+- 프로덕션에서 가장 빈번하게 발생하는 오류 유형을 파악할 때.
+- 특정 도구나 모델이 급증의 원인인지 확인할 때.
+- 집계 수치에서 대표 세션으로 바로 이동할 때.
+- 재발에 대한 알림을 설정할 때.
+- 감사(audit)에 영향받은 대상을 포함시킬 때.
+
+오류는 관측된 이벤트입니다. 실패한 평가는 품질 판단이며, 감사 결과는 조사된 실패 패턴입니다. 어떤 대응 워크플로우를 사용할지 결정할 때 이 구분을 명확히 유지하세요.
+
+<Card title="알림 생성" icon="bell-ring" href="/ko/audits/alerts">
+  오류 또는 품질 조건이 임계값을 초과할 때 담당자에게 알림을 보냅니다.
+</Card>

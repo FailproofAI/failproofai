@@ -1,0 +1,191 @@
+---
+---
+title: "Evaluator SDK"
+description: "Failproof AI oturumlarını senkron veya asenkron olarak puanlayan bir hizmet oluşturun."
+icon: "gauge"
+---
+
+Bir evaluator, tamamlanmış bir agent oturumunu alır ve önemsediğiniz kalite sinyallerini döndürür: sayısal puanlar, her puan için açıklama ve isteğe bağlı bir özet. Failproof AI bu sonuçları trace'in yanında depolar ve ajanlar ile ortamlar arasında grafiklendirer.
+
+## Evaluator'ü ayarlayın
+
+<Steps>
+  <Step title="Evaluator SDK'yı yükleyin">
+    SDK'yı ve onu çalıştırmak için kullanılan sunucuyu yükleyin.
+
+    ```bash
+    pip install failproofai-sdk uvicorn
+    ```
+  </Step>
+
+  <Step title="Puanlanacak öğeleri tanımlayın">
+    `evaluator.py` dosyasını oluşturun. Bu örnek, bir oturumda başarısız araç çağrılarının olup olmadığını kontrol eder.
+
+    ```python
+    import os
+    from failproofai.evaluator import Evaluator, EvalResponse
+
+    app = Evaluator(token=os.environ.get("EVALUATOR_TOKEN"))
+
+    @app.config
+    def config():
+        return {"inactivity_timeout_secs": 1800}
+
+    @app.evaluator
+    def evaluate(req):
+        tool_errors = sum(
+            1 for item in req.events
+            if item.event_type == "tool_result" and item.payload.get("error")
+        )
+        return EvalResponse(
+            scores={"tool_reliability": 1.0 if tool_errors == 0 else 0.0},
+            reasoning={"tool_reliability": f"{tool_errors} tool errors"},
+        )
+    ```
+  </Step>
+
+  <Step title="Yerel olarak çalıştırın ve test edin">
+    Paylaşılan bir token ayarlayın, evaluator'ü başlatın ve sağlık uç noktasının yanıt verdiğini doğrulayın.
+
+    ```bash
+    export EVALUATOR_TOKEN=<shared-token>
+    uvicorn evaluator:app --host 0.0.0.0 --port 8080
+    ```
+
+    Başka bir terminalde:
+
+    ```bash
+    curl http://127.0.0.1:8080/health
+    ```
+  </Step>
+</Steps>
+
+## Evaluator'ü Failproof AI'a bağlayın
+
+1. Evaluator'ü Failproof AI Cloud tarafından erişilebilen bir HTTPS URL'sinde konuşlandırın.
+2. `EVALUATOR_ENDPOINT`'i bu URL ile yapılandırın ve `EVALUATOR_TOKEN`'ı evaluator tarafından kullanılan aynı token olarak ayarlayın. Yönetilen Cloud için bağlantıyı yapılandırmak amacıyla [support@befailproof.ai](mailto:support@befailproof.ai) ile iletişime geçin.
+3. Bir değerlendirme çalıştırın ve puanlarının Failproof AI'da göründüğünü doğrulayın.
+
+<Tabs>
+  <Tab title="Kontrol Paneli">
+    **Observe → Sessions** altında tamamlanmış bir oturumu açın ve otomatik olarak değerlendirilmemişse **Run evaluation**'ı seçin. Oturumun **Evaluation** panelinde durumu, puanları, mantığı ve özeti inceleyin.
+
+    Ajanlar veya ortamlar arasında puanları karşılaştırmak için **Observe → Evaluations**'ı kullanın. Gecikme, maliyet, token ve diğer sayısal ölçümler için **Observe → Metrics**'i kullanın.
+
+    Evaluator'ün söz konusu çalışma için beklenen puan anahtarlarını ve yararlı mantığını döndürdüğünü doğrulamak için bir oturumla başlayın.
+
+    ![Değerlendirme puanlarını ve mantığını trace'in yanında gösteren oturum detay görünümü.](/images/dashboard/session-detail.png)
+
+    Bireysel sonuçlar doğru göründükten sonra, bu puanları zaman içinde ve ajanlar veya ortamlar arasında karşılaştırmak için değerlendirme kontrol panelini kullanın.
+
+    ![Evaluator puanlarını zaman içinde grafiklendiren bir kalite kontrol paneli.](/images/dashboard/dashboard-quality.png)
+
+    Sağlıklı bir grafik, kararlı puan adları kullanmalıdır; bir anahtarı değiştirmek yeni bir seri oluşturur.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --since 1h --score tool_reliability:0..1
+    fp evals --since 24h --aggregate
+    ```
+  </Tab>
+</Tabs>
+
+Kendi barındırılan Cloud örneği için, sunucu işleminde `EVALUATOR_ENDPOINT` ayarlanana kadar otomatik değerlendirme devre dışı bırakılır. Evaluator ortam değişkenlerini değiştirdikten sonra sunucuyu yeniden başlatın.
+
+Hizmet `GET /health`, `GET /config`, `POST /evaluate` ve isteğe bağlı olarak `GET /evaluate/{job_id}` sağlar. Asenkron çalışmalar için `JobPending` döndürün ve Failproof AI'ın bunu sorgulaması için `@app.job_lookup` kaydettirin.
+
+Bir token yapılandırıldığında, health dışındaki tüm rotalar Failproof AI'ın `EVALUATOR_TOKEN` olarak gönderdiği aynı bearer token'ı gerektirir.
+
+## SDK türleri
+
+| Tür | Alanlar |
+| --- | --- |
+| `AgentEvent` | `id`, `ts`, `event_type`, `payload` |
+| `EvalRequest` | `schema_version`, `session_id`, `agent_id`, `environment`, `started_at`, `ended_at`, `events` |
+| `EvalResponse` | `scores`, `reasoning`, `summary` |
+| `JobPending` | `job_id`, `next_poll_secs` |
+| `EvaluatorConfig` | `inactivity_timeout_secs`, `default_poll_interval_secs` |
+
+## Dekoratörler ve rotalar
+
+| Dekoratör | Rota | Gerekli |
+| --- | --- | --- |
+| `@app.evaluator` | `POST /evaluate` | Evet |
+| `@app.job_lookup` | `GET /evaluate/{job_id}` | `JobPending` döndürüldüğünde |
+| `@app.config` | `GET /config` | Hayır |
+
+SDK, değerlendirme istek gövdelerini 25 MiB ile sınırlandırır. Bilinmeyen istek alanları göz ardı edilir, böylece hizmetler olay sözleşmesi büyüdükçe uyumlu kalır.
+
+## Asenkron işi döndürün
+
+Değerlendirme bir istek içinde bitirilemediğinde `JobPending`'i kullanın. İş kimliği Failproof AI için opaktır ve sonuç toplanana veya sunucu zaman aşımı sona erene kadar hizmetiniz tarafından çözülebilir kalmalıdır.
+
+```python
+from failproofai.evaluator import EvalRequest, EvalResponse, Evaluator, JobPending
+
+app = Evaluator(token="shared-secret")
+
+@app.evaluator
+def start(req: EvalRequest) -> JobPending:
+    job_id = enqueue(req)
+    return JobPending(job_id=job_id, next_poll_secs=30)
+
+@app.job_lookup
+def lookup(job_id: str):
+    result = get_result(job_id)
+    if result is None:
+        return JobPending(job_id=job_id, next_poll_secs=30)
+    return EvalResponse(
+        scores=result.scores,
+        reasoning=result.reasoning,
+        summary=result.summary,
+    )
+```
+
+Sorgu sıklığı şu sırayla seçilir: `JobPending.next_poll_secs`, `EvaluatorConfig.default_poll_interval_secs`, sonra sunucunun `EVALUATOR_POLLING_INTERVAL_SECS`. Değerler 1 saniye ve 1 saat arasında sınırlandırılır. Sunucunun varsayılan duvar saati sorgu üst sınırı bir saattir.
+
+## İstek ve yanıt alanları
+
+| Alan | Tür | Notlar |
+| --- | --- | --- |
+| `EvalRequest.schema_version` | `str` | Şu an `"1"`. |
+| `session_id`, `agent_id`, `environment` | `str` | Oturum kimliği ve ortamı. |
+| `started_at` | `datetime` | İlk etkinliğin zaman damgası. |
+| `ended_at` | `datetime \| None` | Oturum end etkinliği yayınladığında mevcuttur. |
+| `events` | `list[AgentEvent]` | Tam sıralı etkinlik akışı. |
+| `AgentEvent.id` | `int` | Backend etkinlik satırı tanımlayıcısı. |
+| `AgentEvent.ts` | `datetime` | Etkinlik zaman damgası. |
+| `AgentEvent.event_type` | `str` | `tool_use` gibi etkinlik ailesi. |
+| `AgentEvent.payload` | `dict[str, Any]` | Tam etkinlik yükü. |
+| `EvalResponse.scores` | `dict[str, float] \| None` | Değerlendirmelerde grafiklendiren sayısal boyutlar. |
+| `EvalResponse.reasoning` | `dict[str, str] \| None` | Puan başına açıklamalar; anahtarlar `scores` ile eşleşmelidir. |
+| `EvalResponse.summary` | `str \| None` | Genel değerlendirme anlatısı. |
+
+## Sunucu operatörü ayarları
+
+Otomatik değerlendirme dağıtım genelinde yapılır ve `EVALUATOR_ENDPOINT` yokken devre dışı kalır.
+
+| Değişken | Varsayılan | Amaç |
+| --- | --- | --- |
+| `EVALUATOR_ENDPOINT` | ayarlanmamış | Evaluator hizmetinin temel URL'si. |
+| `EVALUATOR_TOKEN` | ayarlanmamış | `Evaluator(token=...)` ile paylaşılan bearer token. |
+| `EVALUATOR_WORKERS` | `2` | Eşzamanlı dispatcher çalışanları. |
+| `EVALUATOR_CLAIM_BATCH` | `4` | Dispatcher geçişi başına talep edilen oturumlar. |
+| `EVALUATOR_POLLING_INTERVAL_SECS` | `10` | Geri dönüş asenkron sorgu sıklığı. |
+| `EVALUATOR_REQUEST_TIMEOUT_MS` | `30000` | İstek başına evaluator zaman aşımı. |
+| `EVALUATOR_MAX_ATTEMPTS` | `5` | Terminal hatasından önce teslim girişimleri. |
+| `EVALUATOR_CONFIG_REFRESH_SECS` | `300` | `/config` için yenileme sıklığı. |
+| `EVALUATOR_MAX_POLL_DURATION_SECS` | `3600` | Maksimum duvar saati asenkron sorgu süresi. |
+
+Sunucu ayrıca dağıtım geneli evaluator'ü hangi kuruluşların kullanabileceğini kısıtlayabilir. Uç nokta, token, yeniden deneme ve kuruluş kapısı değişikliklerini operatör yapılandırması olarak ele alın ve bunları değiştirdikten sonra sunucuyu yeniden başlatın veya çıkışını yapın.
+
+## Güvenlik ve operasyonlar
+
+- Trafik güvenilen bir ağ sınırını aştığında evaluator'ü HTTPS'nin arkasına koyun.
+- Boş olmayan bir bearer token yapılandırın ve her iki hizmette de aynı tutun.
+- Token'ı veya istek yüklerinden tam hassas istekleri günlüğe kaydetmeyin.
+- Senkron işleyicileri idempotent yapın; yeniden denemeler bir isteği tekrarlayabilir.
+- Asenkron iş durumunu üretim ortamında işlem belleği dışında kalıcı hale getirin.
+- Kararlı puan anahtarları döndürün. Anahtarı yeniden adlandırmak, eski olanı değiştirmek yerine yeni bir grafik serisi oluşturur.
+
+SDK, `eval received`, `eval responded`, `job lookup`, `config returned`, `auth rejected` ve işleyici istisnaları gibi yapılandırılmış yaşam döngüsü günlükleri yayınlar. Günlüğe kaydetme işleyicilerini yapılandırmaz; ana uygulamanın günlüğe kaydetme yapılandırmasını kullanın.

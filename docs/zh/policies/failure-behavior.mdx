@@ -1,0 +1,43 @@
+---
+title: "失败行为"
+description: "了解策略评估或本地守护进程不可用时会发生什么。"
+icon: "shield-alert"
+---
+
+Failproof AI 的设计原则是：强制执行失败时会以可见的方式呈现，而不是静默地放行存在风险的操作。
+
+## 诊断失败关闭阻断
+
+<Tabs>
+  <Tab title="仪表板">
+    1. 前往 **管理员 → 强制执行**，打开对应的机器。
+    2. 检查其最后一次签入时间、分配的部署以及报告的部署。
+    3. 前往 **观察 → 策略**，打开被拒绝决策的会话。
+    4. 确认原因是否报告了守护进程可达性问题、版本偏差，或策略本身的问题。
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    npm install -g failproofai@latest
+    failproofai config
+    ```
+
+    重新运行 `failproofai config` 会在软件包升级后更新并重启守护进程。
+  </Tab>
+</Tabs>
+
+在配置为使用 `failproofaid` 的机器上，守护进程是唯一的评估器。如果它不可达，或其协议版本与 CLI 不匹配，hook 评估将失败关闭。该操作将被拒绝，并附带说明，指引操作员检查或更新守护进程。
+
+在进行守护进程配置之前，hook 会在进程内评估策略。一旦守护进程配置被记录，Failproof AI 不会在守护进程失败时静默回退到第二个评估器。
+
+## 应对失败关闭决策
+
+1. 运行 `failproofai config --status`。
+2. 如果版本不同，请在更新软件包后重新运行 `failproofai config`。
+3. 如果守护进程不可达，请检查其服务状态和本地日志。
+4. 仅在已知的策略评估路径恢复健康后，再继续 agent 工作。
+
+<Warning>
+  请勿反复重试被阻断的操作。失败关闭响应意味着系统无法确认该操作是安全的。
+</Warning>

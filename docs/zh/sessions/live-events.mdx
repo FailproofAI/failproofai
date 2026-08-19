@@ -1,0 +1,43 @@
+---
+title: "实时事件"
+description: "在会话运行时实时查看 Agent 活动。"
+icon: "radio"
+---
+
+实时事件可帮助你确认埋点是否生效，并在无需等待会话结束的情况下监控高风险运行。
+
+## 查看活动
+
+<Tabs>
+  <Tab title="控制台">
+    1. 前往 **Observe → Events**。
+    2. 从当前时间窗口开始，不添加任何过滤条件，确认数据正在正常接收。
+    3. 按环境、事件类型、Agent 或会话进行过滤。可使用搜索功能查找 payload 文本。
+    4. 选择某个事件查看其摘要和详情。点击会话链接可查看完整追踪记录。
+
+    ![实时事件流，包含时间、环境、事件类型、Agent、模型、上下文、会话及文本过滤器。](/images/dashboard/events-stream-current.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --env production --event-type tool_use,error --limit 100
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    默认输出不含原始 payload。仅在针对特定会话进行有界范围排查时使用 `--full`。
+  </Tab>
+</Tabs>
+
+使用事件流可以快速回答以下三个核心问题：
+
+- 预期的 Agent 是否在向正确的环境上报数据？
+- 模型调用、工具调用及策略决策是否按顺序到达？
+- 会话是否已停止推进，或开始重复执行某个操作？
+
+事件类型包括：Agent 生命周期事件、模型请求与响应、工具调用及其结果、Hook 执行、人工等待与中断，以及显式错误。关联 ID 用于连接成对的事件，例如工具调用与其对应的结果。
+
+<Tip>
+  在验证新集成时，建议保持实时视图的较宽范围。仅在看到第一个事件后再添加过滤条件——错误的过滤条件可能看起来像数据接收失败。
+</Tip>
+
+如果没有事件出现，请运行 `failproofai config --status`，然后参阅[接收问题排查](/zh/reference/troubleshooting)。

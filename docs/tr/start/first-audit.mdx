@@ -1,0 +1,52 @@
+---
+title: "İlk başarısızlık kontrolünü çalıştırın"
+description: "Cloud panodan veya fp CLI'den bir denetim oluşturun ve ilk bulgularını gözden geçirin."
+icon: "scan-search"
+---
+
+Bir denetim, bir dizi oturumu sıralanmış, kanıtla desteklenmiş başarısızlık bulgularına dönüştürür. Dar kapsamlı bir başarısızlık sorusuyla başlayın.
+
+<Tabs>
+  <Tab title="Pano">
+    <Steps>
+      <Step title="Denetimleri Aç">
+        Cloud kenar çubuğunda **Analiz → Denetimler**'e gidin. **Yeni denetim**'i seçin.
+      </Step>
+      <Step title="Denetimi ayarlayın">
+        Bir ad ve doğrudan başarısızlık hedefi girin; örneğin "girişi değiştirmeden veya yükseltmeden aynı başarısız ödeme çağrısını yeniden deneyen üretim oturumlarını bulun." Aracı, ortamı, zaman penceresini ve zamanlamayı seçin. Denetçinin iş akışı kurallarınıza ihtiyaç duyması durumunda kısa bir özet ve referans URL'leri ekleyin.
+      </Step>
+      <Step title="Oluşturun ve çalıştırmanın bitmesini bekleyin">
+        **Denetim oluştur**'u seçin. İlk çalıştırma hemen sıraya alınır. Denetim kartını açarak kuyruğa alındıdan çalışmaya sonra tamamlandıya geçişini izleyebilirsiniz.
+      </Step>
+    </Steps>
+
+    Çalıştırma tamamlandıktan sonra bir bulguyu açın ve oturum kanıtını gözden geçirin. Ardından bunu kabul edebilir, atayabilir, reddedebilir, sessize alabilir veya çözebilirsiniz.
+
+    ![Başarısızlık açıklaması, önerilen işlem, destekleyici kanıt ve etkilenen oturumları gösteren tamamlanmış bir denetim bulgusu.](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create payment-retry-failures \
+      --description "Find production sessions that retry a failed payment call without changing input or escalating" \
+      --scope '{"environments":["production"]}' \
+      --text "Escalate after two unchanged payment failures"
+
+    fp audits list
+    fp audits runs payment-retry-failures
+    fp audits findings --audit payment-retry-failures
+    fp audits finding <finding-id>
+    ```
+
+    Referans bağlamı ekleyin, ardından kaynak değiştiğinde yenileyin:
+
+    ```bash
+    fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
+    fp audits context-refresh payment-retry-failures
+    fp audits run payment-retry-failures
+    ```
+
+    Bir bulguyu triyaj yoluyla taşımak için `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` veya `fp audits reopen <finding-id>` kullanın.
+  </Tab>
+</Tabs>
+
+Sonra, doğrulanmış tekrarlanabilir bir işlem için [ilk başarısızlığı bir ilkeyle önleyin](/tr/start/first-policy).

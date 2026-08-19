@@ -1,0 +1,57 @@
+---
+title: "組み込みポリシー"
+description: "エージェントの一般的な障害モードに対する、メンテナンス済みガードレールを有効化します。"
+icon: "library"
+---
+
+組み込みポリシーは、シークレット処理、環境ファイル、破壊的なシェルコマンド、保護されたブランチ、クラウドおよびインフラツール、パッケージ公開、繰り返し呼び出し、タスク終了時のワークフローチェックをカバーします。
+
+## 組み込みポリシーの有効化と確認
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. ローカル CLI を使用して、接続済みマシンにポリシーをインストールします。
+    2. インストルメント済みエージェントで安全なテストアクションを実行します。
+    3. **Observe → policy** に移動し、ポリシー名、マシン環境、または決定でフィルタリングします。
+    4. リンクされたセッションを開いて、マッチしたツール入力と返された理由を確認します。
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --cli claude --scope project
+    failproofai config --status
+    ```
+
+    削除するには `failproofai policy remove block-rm-rf --cli claude --scope project` を実行します。
+  </Tab>
+</Tabs>
+
+インストール済みバージョンで利用可能なポリシーを一覧表示します：
+
+```bash
+failproofai policies
+```
+
+プロジェクトに対して1つのポリシーを有効化します：
+
+```bash
+failproofai policy add block-rm-rf --scope project
+```
+
+選択したハーネスに対して複数のポリシーを有効化します：
+
+```bash
+failproofai policies --install block-sudo block-force-push \
+  --cli claude codex --scope project
+```
+
+一部のポリシーはパラメーターを受け付けたり、ベータ版としてマークされている場合があります。ロールアウト前に、説明、マッチスコープ、デフォルトの動作を確認してください。あるワークフローを保護するポリシーが、別のワークフローでは有効な操作をブロックする可能性があります。
+
+<Card title="組み込みカタログ全体を参照する" icon="list-checks" href="/ja/policies/builtin-catalog">
+  現在の40件のポリシーすべて、そのトリガー、推奨ベースライン、およびパラメーターを確認します。
+</Card>
+
+<Tip>
+  リポジトリ固有の要件にはプロジェクトスコープを、マシン全体の安全要件にはユーザースコープを優先してください。
+</Tip>

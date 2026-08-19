@@ -1,0 +1,55 @@
+---
+---
+title: "ऑडिट रेसिपी"
+description: "सामान्य एजेंट विफलता जांच के लिए शुरुआती लक्ष्य।"
+icon: "book-open-check"
+---
+
+इन्हें शुरुआती लक्ष्यों के रूप में उपयोग करें, फिर अपने एजेंट, पर्यावरण और अपेक्षित वर्कफ़्लो जोड़ें।
+
+<Tabs>
+  <Tab title="Dashboard">
+    **Analyze → Audits → New audit** पर जाएं, एक रेसिपी को विवरण या संक्षिप्त विवरण में कॉपी करें, फिर प्रासंगिक पर्यावरण, एजेंट, लुकबैक और संदर्भ URL जोड़ें। ऑडिट बनाएं और इसे शेड्यूल करने से पहले पहले रन का निरीक्षण करें।
+
+    नई ऑडिट फॉर्म scope, context, cadence और notifications जोड़कर एक रेसिपी को एक executable failure check में बदल देती है।
+
+    ![नई ऑडिट फॉर्म जो एक focused goal, schedule, agent और environment scope, context और notification channels के साथ कॉन्फ़िगर की गई है।](/images/dashboard/audit-new.png)
+
+    निर्माण के बाद, confirm करें कि ऑडिट सूची में अपेक्षित status और schedule के साथ दिखाई दे रहा है इससे पहले कि आप recurring runs पर निर्भर करें।
+
+    ![Audits पृष्ठ जहां एक workflow-specific ऑडिट रेसिपी निर्माण के बाद दिखाई देती है।](/images/dashboard/audits.png)
+
+    पहले रन को खोलें और रेसिपी को refine करें यदि इसके findings का दायरा intended failure mode से व्यापक या संकीर्ण है।
+  </Tab>
+  <Tab title="CLI">
+    एक रेसिपी को text file के रूप में सहेजें और निर्माण के दौरान attach करें:
+
+    ```bash
+    fp audits create retry-loop-review \
+      --scope '{"environments":["production"]}' \
+      --text-file ./retry-loop-audit.txt \
+      --schedule-interval-secs 86400
+    ```
+  </Tab>
+</Tabs>
+
+<AccordionGroup>
+  <Accordion title="Repeated retry loops">
+    ऐसे सत्र खोजें जहां एजेंट input बदले बिना, alternative tool का चयन किए बिना, या किसी मानव को escalate किए बिना एक ही failing tool call को दोहराता है।
+  </Accordion>
+  <Accordion title="Incorrect tool use">
+    ऐसे सत्र खोजें जहां चुना गया tool बताए गए task से मेल नहीं खाता, या जहां tool input workflow की आवश्यक preconditions का उल्लंघन करता है।
+  </Accordion>
+  <Accordion title="Unsafe data access">
+    ऐसे सत्र खोजें जो sensitive data को इस एजेंट के लिए approved paths और services के बाहर read, write या transmit करते हैं।
+  </Accordion>
+  <Accordion title="Task abandonment">
+    ऐसे सत्र खोजें जो बिना requested outcome, स्पष्ट error या किसी मानव को explicit handoff के समाप्त होते हैं।
+  </Accordion>
+  <Accordion title="Cost or latency regression">
+    ऐसे सत्र खोजें जिनका model, tool या कुल duration अपेक्षित budget से अधिक है, और जिम्मेदार event pattern की पहचान करें।
+  </Accordion>
+  <Accordion title="Missed human escalation">
+    ऐसे सत्र खोजें जहां confidence, repeated failure या policy guidance को मानव decision की आवश्यकता थी लेकिन एजेंट स्वायत्तता से जारी रहा।
+  </Accordion>
+</AccordionGroup>

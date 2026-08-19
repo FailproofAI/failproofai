@@ -1,0 +1,55 @@
+---
+title: "セッション"
+description: "エージェントの1回の実行全体の記録から始めましょう。"
+icon: "workflow"
+---
+
+エージェントが予期しない動作をした際、セッションは最適な調査の起点です。1回の実行に属するモデルへのリクエスト、レスポンス、ツール呼び出し、人間とのやり取り、エラー、評価、ポリシーの判断がひとまとめになっています。
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+エージェントの1回の実行を、目標からモデルの呼び出し、ツール、最終レスポンスまで追跡できます。
+
+## セッションを探す
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. クラウドのサイドバーで **Observe → Sessions** に移動します。
+    2. 時間範囲を設定し、環境・ステータス・エージェント・セッションIDでフィルタリングします。
+    3. 品質・コスト・トークン数・レイテンシで絞り込みたい場合は、スコアや指標の範囲を追加します。
+    4. 行を選択してトレースを開きます。共有する際はセッションIDの横にあるコピー用コントロールを使用してください。
+
+    ![環境・エージェント・ステータス・評価スコアのフィルターとともに、1実行あたり1行で表示されるセッション一覧。](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp sessions --env production --since 24h
+    fp sessions --status error,timeout --agent-id checkout-agent
+    fp --json sessions --session-id <session-id>
+    ```
+
+    マルチエージェントの実行を展開するには `--agents`、ページネーションするには `--all`、出力カラムを選択するには `--fields` を追加してください。
+  </Tab>
+</Tabs>
+
+## できること
+
+- エージェント・環境・時刻・モデル・イベントタイプ・エラー状態で実行を検索する。
+- ある結果を生み出した正確なシーケンスを追跡する。
+- 成功した実行と失敗した実行を比較する。
+- 監査の発見事項やアラートインシデントで使用された証拠を開く。
+- オフライン記録が必要な場合にセッションをエクスポートする。
+
+## 信頼性の高い調査手順
+
+1. セッションの目標と環境を確認する。
+2. 最初のエラーまたは予期しない判断を特定する（最終的な失敗だけでなく）。
+3. その直前のモデルコンテキストとツールへの入力を調べる。
+4. リトライ・レイテンシ・人間による割り込みを確認する。
+5. 評価スコアとポリシーの判断をレビューする。
+
+<Card title="トレースを読む" icon="route" href="/ja/sessions/read-a-trace">
+  セッションのサマリーから結果の原因となったイベントへの移動方法を学びましょう。
+</Card>

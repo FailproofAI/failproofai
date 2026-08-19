@@ -1,0 +1,56 @@
+---
+title: "Auditorias"
+description: "Revise uma população definida de sessões em busca de falhas que os traces sozinhos não revelam."
+icon: "scan-search"
+---
+
+Uma auditoria pesquisa um conjunto selecionado de sessões com um objetivo de falha definido. Ela combina evidências de traces, resultados de avaliações, correspondências de políticas e contexto de referência para produzir descobertas sobre as quais você pode agir.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+Veja como uma auditoria vai desde uma execução agendada até falhas embasadas em evidências que você pode corrigir.
+
+## Abrir auditorias
+
+<Tabs>
+  <Tab title="Dashboard">
+    Acesse **Analyze → Audits**. A página exibe o estado do agendamento, descobertas abertas, última execução, próxima execução, cadência e se a auditoria possui um briefing ou páginas de referência. Selecione um card para acessar as configurações e o histórico de execuções; selecione **new audit** para criar uma nova.
+
+    ![A página de Audits exibindo auditorias recorrentes com seu agendamento, sensibilidade e estado de execução.](/images/dashboard/audits.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits list
+    fp audits list --enabled-only --show-id
+    fp audits show <audit-name>
+    fp audits findings --status open --limit 20
+    ```
+  </Tab>
+</Tabs>
+
+Use uma auditoria quando precisar responder a uma pergunta em nível de população, como:
+
+- Em quais pontos os agentes abandonam tarefas sem escalar?
+- Quais falhas de ferramenta levam a novas tentativas ineficazes?
+- Os agentes estão acessando dados fora do fluxo de trabalho previsto?
+- O que mudou após a publicação de um modelo, prompt ou ferramenta?
+
+## Fluxo de resposta de auditoria
+
+```text
+Session → Audit → Finding → Issue → Policy
+                         ↘ Alert for recurrence
+```
+
+Uma descoberta deve nomear o modo de falha e apontar para as evidências. Uma issue gerencia a remediação. Uma política previne um padrão de ação conhecido; um alerta detecta recorrência quando a prevenção não é possível ou requer monitoramento.
+
+<Columns cols={2}>
+  <Card title="Configurar uma auditoria" icon="sliders-horizontal" href="/pt-br/audits/setup">
+    Defina o objetivo, a população e o contexto de referência antes da primeira execução.
+  </Card>
+  <Card title="Adicionar contexto de agente" icon="bot" href="/pt-br/audits/agent-contracts">
+    Especifique o que cada agente deve produzir e o que ele nunca deve fazer.
+  </Card>
+</Columns>

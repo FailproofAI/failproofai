@@ -1,0 +1,52 @@
+---
+title: "अपना पहला failure check चलाएँ"
+description: "Cloud dashboard या fp CLI से एक audit बनाएँ और इसके पहले findings की समीक्षा करें।"
+icon: "scan-search"
+---
+
+एक audit सत्रों के एक सेट को ranked, evidence-backed failure findings में बदल देता है। एक संकीर्ण failure question से शुरू करें।
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Audits खोलें">
+        Cloud sidebar में, **Analyze → Audits** पर जाएँ। **new audit** चुनें।
+      </Step>
+      <Step title="Audit सेट करें">
+        एक नाम और एक direct failure goal दर्ज करें, जैसे "production sessions खोजें जो input बदले बिना या escalate किए बिना एक ही failed payment call को retry करते हैं।" Agent, environment, time window, और schedule चुनें। जब auditor को आपके workflow rules की आवश्यकता हो तो एक brief summary और reference URLs जोड़ें।
+      </Step>
+      <Step title="Audit बनाएँ और चलने का प्रतीक्षा करें">
+        **create audit** चुनें। पहला run तुरंत queued हो जाता है। Audit card को खोलें ताकि आप इसे queued से running और फिर complete होते देख सकें।
+      </Step>
+    </Steps>
+
+    Run पूरा होने के बाद, एक finding को खोलें और इसके session evidence की समीक्षा करें। आप तब इसे acknowledge, assign, dismiss, mute, या resolve कर सकते हैं।
+
+    ![एक completed audit finding जो इसकी failure description, recommended action, supporting evidence, और affected sessions दिखा रहा है।](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create payment-retry-failures \
+      --description "Find production sessions that retry a failed payment call without changing input or escalating" \
+      --scope '{"environments":["production"]}' \
+      --text "Escalate after two unchanged payment failures"
+
+    fp audits list
+    fp audits runs payment-retry-failures
+    fp audits findings --audit payment-retry-failures
+    fp audits finding <finding-id>
+    ```
+
+    Reference context जोड़ें, फिर जब स्रोत बदले तो इसे refresh करें:
+
+    ```bash
+    fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
+    fp audits context-refresh payment-retry-failures
+    fp audits run payment-retry-failures
+    ```
+
+    एक finding को triage के माध्यम से move करने के लिए `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, या `fp audits reopen <finding-id>` का उपयोग करें।
+  </Tab>
+</Tabs>
+
+अगला, एक confirmed repeatable action के लिए [एक policy के साथ अपनी पहली failure को रोकें](/hi/start/first-policy)।

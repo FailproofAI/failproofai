@@ -1,0 +1,74 @@
+---
+title: "로컬 에이전트 기록 감사"
+description: "지원되는 에이전트 CLI 기록을 오프라인으로 스캔하고 위험하거나 낭비적인 동작을 로컬에서 검토합니다."
+icon: "laptop-minimal-check"
+---
+
+Failproof AI Cloud에 머신을 연결하기 전에 즉각적이고 비공개적인 검토가 필요하다면 로컬 감사를 활용하세요. 머신에 이미 저장된 에이전트 기록을 스캔하고, 내장 정책을 통해 도구 활동을 재현하며, 로컬 결과 대시보드를 엽니다.
+
+## 인터랙티브 감사 실행
+
+<Tabs>
+  <Tab title="대시보드">
+    로컬 감사는 현재 머신의 기록을 탐색해야 하므로 CLI에서 시작합니다. `failproofai audit`을 실행하면 스캔 후 Failproof AI가 번들 대시보드를 시작하고 **http://localhost:8020/audit**을 엽니다.
+
+    감사 화면에서 세션 수, 도구 호출, 프로젝트, 정책 적중 횟수를 검토하세요. 빈번한 발견 사항부터 시작하여 영향을 받은 프로젝트와 에이전트 기록을 살펴본 후 적용을 활성화하세요.
+
+    <Info>로컬 감사 대시보드는 Failproof AI Cloud의 **분석 → 감사**와 별개입니다. 로컬 감사는 해당 머신에만 저장되며 계정이나 네트워크 연결이 필요하지 않습니다.</Info>
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    npm install -g failproofai
+    failproofai audit
+    ```
+
+    이 명령은 탐색된 모든 지원 기록에 대해 전체 스캔을 수행합니다. 현재 명령은 `--since`, `--cli`, `--project`, `--port`, `--no-open` 같은 필터를 지원하지 않습니다.
+
+    로컬 대시보드를 사용하는 동안 프로세스를 계속 실행하세요. 완료되면 <kbd>Ctrl</kbd>+<kbd>C</kbd>를 누르세요.
+  </Tab>
+</Tabs>
+
+현재 감사 어댑터는 Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity, Goose의 기록을 읽을 수 있습니다. 로컬에서 사용 가능한 기록만 스캔됩니다.
+
+## 정기 로컬 감사 예약
+
+<Tabs>
+  <Tab title="대시보드">
+    로컬 대시보드에서 **설정**을 열고, 예약 감사를 활성화한 후 간격을 선택하고 발견 사항을 수신할 이메일 주소를 설정하세요. 대시보드와 CLI는 동일한 머신 설정을 업데이트합니다.
+  </Tab>
+  <Tab title="CLI">
+    주간 감사를 활성화하고 발견 사항을 지정된 주소로 전송합니다:
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    간격은 1~90일을 허용하며, 생략 시 기본값은 7입니다. 최초 설정 시 필요한 경우 로그인을 진행하며, `--email`은 프롬프트 없이 보고서 수신 주소를 지정합니다.
+
+    로컬 감사 기록을 삭제하지 않고 예약을 중지합니다:
+
+    ```bash
+    failproofai audit --no-schedule
+    ```
+  </Tab>
+</Tabs>
+
+데몬은 예약된 스캔을 백그라운드에서 실행하고, 로컬 대시보드에서 사용하는 캐시된 결과를 새로 고침하며, 설정된 보고서를 이메일로 전송합니다. 즉시 인터랙티브 스캔을 실행하려면 `failproofai audit`을 사용하세요.
+
+## 로컬 증거에서 Cloud 운영으로 전환
+
+로컬 감사는 빠른 기준선 역할을 합니다. 공유 트레이스, 반복적인 대규모 감사, 발견 사항 및 이슈, 알림, 조직 전체 정책 배포, 또는 플릿 상태 모니터링이 필요하다면 머신을 Failproof AI Cloud에 연결하세요.
+
+<CardGroup cols={2}>
+  <Card title="Cloud 감사 생성" icon="scan-search" href="/ko/audits/setup">
+    반복 목표, 대상 집단, 증거 기간, 응답 채널을 정의하세요.
+  </Card>
+  <Card title="정책 활성화" icon="shield-check" href="/ko/start/first-policy">
+    로컬에서 검증하고, 신중하게 게시한 후, 먼저 소규모 머신 그룹에 배포하세요.
+  </Card>
+</CardGroup>
+
+<Warning>
+  감사 출력은 검토를 위한 증거이지, 플래그된 모든 작업이 안전하지 않다는 증명이 아닙니다. 발견 사항을 차단 적용으로 전환하기 전에 반드시 컨텍스트를 확인하세요.
+</Warning>

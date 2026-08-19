@@ -1,0 +1,44 @@
+---
+title: "監査の設定"
+description: "監査の目標、セッション母集団、エビデンスコンテキストを定義します。"
+icon: "sliders-horizontal"
+---
+
+監査の品質はそのスコープから始まります。「問題を見つける」といった広範なリクエストは、具体的な障害に関する質問に比べて有用性の低い結果しか生み出しません。
+
+## 監査の設定
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Analyze → Audits → New audit** に移動し、名前と説明を入力します。
+    2. ケイデンス、時間ウィンドウ、エージェント/環境スコープ、無視するエラー、感度、および最大検出件数を設定します。
+    3. **agents** にて、エージェントコンテキストを追加または確認し、オペレーターブリーフおよび公開 HTTPS 参照 URL を追加します。
+    4. 通知チャンネルを選択し、**create audit** をクリックします。最初の実行は即座にキューに追加されます。
+
+    ![名前、説明、ケイデンス、ウィンドウ、環境とエージェントのスコープ、無視するエラー、分析設定、ブリーフ、参照ページ、および通知チャンネルを含む新規監査フォーム。](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    最初の実行は即座にキューに追加されます。ブリーフと参照 URL は作成時に含めることで、その実行に反映されます。
+
+    完全なリファレンスは [`fp audits create` リファレンス](/ja/reference/cloud-cli#audits) をご覧ください。
+  </Tab>
+</Tabs>
+
+<Tip>
+  既知の失敗セッションといくつかの正常セッションから始めましょう。これにより、監査に肯定的な例と比較セットの両方が提供されます。
+</Tip>
+
+<Info>
+  監査コンテキストは独自のリソースとして保存されるため、監査を編集しても参照資料が誤って削除されることはありません。
+</Info>

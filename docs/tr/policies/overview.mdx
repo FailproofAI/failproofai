@@ -1,0 +1,63 @@
+---
+title: "Politikalar"
+description: "Aracı işlemlerini gözlemleyin, yönlendirin veya bilinen bir hatanın tekrar oluşmasını engelleyin."
+icon: "shield-check"
+---
+
+Bir politika, aracı kanca olayını değerlendirir ve üç karardan birini döndürür:
+
+- `allow` işlemin devam etmesine izin verir.
+- `instruct` aracıya düzeltici rehberlik sağlar.
+- `deny` işlemi bir nedenle engeller.
+
+## Üç politika yüzeyini kullanın
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Oturumlardan politika kararlarını filtrelemek ve incelemek için **Observe → policy** bölümüne gidin.
+    2. Bir politika oluşturmak, doğrulamak, yayınlamak, devre dışı bırakmak veya değişmez sürümleri incelemek için **Admin → policy editor** bölümüne gidin.
+    3. Sürümleri ve etkileri makinelere atamak için **Admin → enforcement** bölümüne gidin.
+
+    Yazar olmadan veya zorlama değişikliğinden önce nelerin eşleştiğini anlamak için Policy sayfasını kullanın.
+
+    ![Policy sayfası, karar toplamlarını ve yerel ve Bulut tarafından yönetilen politika eşlemelerini göstermektedir.](/images/dashboard/policy-observe.png)
+
+    Editör, bir hata koşulunu kaynağa dönüştürdüğünüz, doğruladığınız ve değişmez bir sürüm yayınladığınız yerdir.
+
+    ![Bir değişmez politika sürümü oluşturmak ve yayınlamak için kullanılan Policy editörü.](/images/dashboard/policy-editor.png)
+
+    Zorlama daha sonra yayınlanmış olan sürümü ve gözlem veya zorlama etkisini makinelere atar.
+
+    ![Makine kapsamını ve atanmış politika sürümlerini gösteren Enforcement filosu.](/images/dashboard/enforcement-fleet.png)
+
+    Dağıtımdan sonra Policy sayfasında kararları doğrulayın, böylece yazar ve filo görünümleri gerçek aracı etkinliğine bağlı olur.
+  </Tab>
+  <Tab title="CLI">
+    Yerel politika yüklemesi ve doğrulaması için `failproofai` kullanın:
+
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --scope project
+    failproofai config --status
+    ```
+
+    Politika kararları içeren Bulut oturumlarını ve olaylarını bulmak için `fp` kullanın. Bulut yazarlığı ve filo dağıtımı, pano iş akışları olmaya devam eder.
+  </Tab>
+</Tabs>
+
+Politikaların Failproof AI'da üç farklı yüzeyi vardır:
+
+1. **Kararları analiz edin** oturumlarda, panolarda ve denetimlerde.
+2. **Sürümleri yazar** yerleşik kurallar, kod veya politika editörü ile.
+3. **Sürümleri dağıtın ve zorlayın** seçilen makineler arasında.
+
+Doğrulanmış bir hata modundan başlayın. Bunu tanımlayan en küçük olayı ve araç eşleşmesini tanımlayın, meşru ve güvensiz örnekleri test edin, ardından zorlama yapmadan önce gözlemleyin.
+
+<Columns cols={2}>
+  <Card title="Yerleşik bir politika kullanın" icon="library" href="/tr/policies/builtin">
+    Yaygın gizli bilgi, kabuk, Git, bulut ve iş akışı riskleri için incelenen bir kuralı etkinleştirin.
+  </Card>
+  <Card title="Özel bir politika yazın" icon="code-2" href="/tr/policies/custom">
+    JavaScript veya TypeScript'te iş akışına özgü bir kararı ifade edin.
+  </Card>
+</Columns>

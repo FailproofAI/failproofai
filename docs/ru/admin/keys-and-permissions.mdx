@@ -1,0 +1,74 @@
+---
+title: "Ключи и разрешения"
+description: "Создавайте ограниченные API-ключи для машин, автоматизации и операторов."
+icon: "key-round"
+---
+
+API-ключи принадлежат организации и содержат явные разрешения. Используйте отдельные ключи для приема событий агента, доставки политик, оценивателей, автоматизации CI и административных скриптов.
+
+## Создание и ротация ключа
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Перейдите в **Administration → Keys**, выберите **new key** и введите имя workload.
+    2. Выберите набор разрешений и корректируйте отдельные разрешения только если предустановки недостаточно.
+    3. Создайте ключ и скопируйте его одноразовый секрет сразу же.
+    4. Откройте ключ позже, чтобы обновить гранты, отключить его или пересгенерировать секрет.
+
+    Drawer создания — это место, где вы выбираете минимально необходимые гранты для workload.
+
+    ![Drawer нового API-ключа с предустановками разрешений и отдельными гранты.](/images/dashboard/key-create.png)
+
+    После создания страница Keys отображает постоянные метаданные и действия управления. Одноразовый секрет больше не показывается.
+
+    ![Страница API Keys, отображающая разрешения ключа, время создания и действия регенерации и отключения.](/images/dashboard/api-keys.png)
+
+    Используйте этот список для регулярной проверки гранты и отключения ключей, которые больше не соответствуют активному workload.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp keys create production-agents \
+      --add events:add \
+      --add policies:pull
+    fp keys show production-agents
+    fp keys update production-agents --add events:read
+    fp keys regenerate production-agents --yes
+    fp keys disable production-agents
+    ```
+
+    Безопасно перенаправляйте или захватывайте вывод create/regenerate; секрет возвращается один раз.
+  </Tab>
+</Tabs>
+
+Два разрешения, требуемые подключённой машиной Failproof AI, независимы друг от друга:
+
+- `events:add` отправляет события и данные сессии.
+- `policies:pull` получает назначенные развёртывания политик.
+
+Секреты ключей показываются при создании или регенерации. Сохраняйте их в менеджере секретов и ротируйте без повторного использования интерактивных учётных данных оператора.
+
+## Каталог разрешений
+
+| Область | Разрешения |
+| --- | --- |
+| Events | `events:add`, `events:read` |
+| Keys | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` только для человеческой сессии |
+| Users | `users:create`, `users:read`, `users:update`, `users:delete` |
+| Evaluations | `evaluations:read`, `evaluations:trigger` |
+| Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
+| Queries | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
+| Assistant | `agent:use` |
+| Settings | `settings:read`, `settings:write` |
+| Alerts | `alerts:read`, `alerts:write` |
+| Issues | `issues:read`, `issues:create`, `issues:close` |
+| Audits | `audits:read`, `audits:write` |
+| Policies | `policies:read`, `policies:write`, `policies:pull` |
+| Usage | `usage:read` |
+
+`orgs:admin` зарезервировано для оператора инстанса и не может быть выдано организационному ключу или обычному члену. Устаревшие токены `incidents:*` и `alerts:ack` принимаются для совместимости и нормализуются в текущие разрешения `issues:*`.
+
+Встроенные наборы разрешений: `read-only`, `standard` и `admin`. `standard` добавляет к разрешениям на чтение триггеринг оценок, выполнение запросов, ответы на проблемы и использование помощника. Создание ключа исключает гранты только для человека, даже если набор разрешений их содержит.
+
+<Warning>
+  Ключи с областью инстанса могут выбрать организацию с помощью заголовка `X-AgentEye-Org`. Устанавливайте его явно при развёртывании с несколькими организациями; его отсутствие может выбрать организацию по умолчанию.
+</Warning>

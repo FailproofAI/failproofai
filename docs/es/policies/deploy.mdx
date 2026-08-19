@@ -1,0 +1,47 @@
+---
+title: "Desplegar políticas"
+description: "Distribuye una versión de política revisada a las máquinas previstas."
+icon: "cloud-upload"
+---
+
+Un despliegue conecta una o más versiones de política con un conjunto objetivo de máquinas inscritas.
+
+## Aplicar un despliegue
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Ve a **Admin → enforcement**, encuentra la máquina y expande su fila.
+    2. Selecciona **edit**, agrega la versión de política revisada y elige **observe** o su efecto de aplicación.
+    3. Aplica el cambio, luego espera el próximo check-in de la máquina y confirma su estado de despliegue y cobertura.
+    4. Ve a **Observe → policy** para inspeccionar decisiones en tiempo real.
+
+    ![El editor de despliegue de máquinas con versiones de política, efectos de enforce y observe, y la acción de aplicar despliegue.](/images/dashboard/enforcement-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    Los endpoints de despliegue en la nube no están expuestos intencionalmente como comandos `fp` ordinarios. Verifica la máquina localmente y luego despliega desde el panel de control:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    Usa `fp sessions --env production --since 24h` y `fp events --event-type hook_completed` después del despliegue para verificar que la actividad llegue a Cloud.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Elige la versión y los objetivos">
+    Despliega una versión revisada, no un borrador mutable, comenzando con una máquina que no sea de producción o un grupo pequeño cuyas sesiones puedas inspeccionar.
+  </Step>
+  <Step title="Observa las decisiones">
+    Revisa coincidencias, razones, herramientas afectadas y falsos positivos sin bloquear el trabajo.
+  </Step>
+  <Step title="Aplica la política y verifica la cobertura">
+    Promueve después de que las coincidencias observadas separen las acciones no seguras de las válidas; luego confirma que cada máquina prevista haya obtenido el despliegue y esté reportando decisiones.
+  </Step>
+</Steps>
+
+Las máquinas necesitan la capacidad `policies:pull`. El reporte de eventos está controlado de forma independiente por `events:add`; verifica ambas cuando esperes análisis y aplicación de políticas en Cloud.
+
+<Warning>
+  La gestión de enforcement es un flujo de trabajo administrativo de Cloud. No trates las rutas de enforcement exclusivas de root como endpoints `/v1` ordinarios para clientes.
+</Warning>

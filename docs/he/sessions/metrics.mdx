@@ -1,0 +1,29 @@
+---
+title: "מדדים"
+description: "צפה במדדי גודל כגון זמן תגובה, עלות והשימוש בטוקנים."
+icon: "ruler"
+---
+
+Metrics משמש לערכים עם יחידות. Evaluations משמש לציונים והערכות שיפוט.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור אל **Observe → Metrics**.
+    2. בחר **add series** ובחר סוכן, סביבה, מדד, סטטיסטיקה וקו.
+    3. הוסף series כדי להשוות בין סוכנים או סביבות; יחידות שונות מקבלות ציריים נפרדים.
+    4. בחר נקודה כדי לפתוח הערכות והפעלות תואמות, או בחר **share** כדי להעתיק את התצוגה המדויקת.
+
+    ![עמוד Metrics המשווה שתי סדרות cost-per-output-unit עם בקרות זמן, בוררי הצבירה, קווים ופעולת שיתוף.](/images/dashboard/metrics-series.png)
+  </Tab>
+  <Tab title="CLI">
+    עדיין אין פקודה ייעודית magnitude-metrics. גלה מפתחות זמינים ובדוק פעלות או הערכות:
+
+    ```bash
+    fp list score_filters
+    fp --json evals --since 24h
+    fp --json sessions --since 24h
+    ```
+
+    השתמש ב-`fp query` לצבירת מדדים מותאמת אישית.
+  </Tab>
+</Tabs>

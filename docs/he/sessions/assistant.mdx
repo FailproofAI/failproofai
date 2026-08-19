@@ -1,0 +1,53 @@
+---
+title: "עוזר Failproof"
+description: "נתח והפעל את Failproof AI בשפה טבעית, מהשאלות ושאילתות לדאשבורדים וביקורות."
+icon: "message-square-text"
+---
+
+בקש מעוזר Failproof לבצע כל משימה ב-Failproof AI בשפה טבעית. הוא יכול לנתח הפעלות וכשלים, להריץ שאילתות, לבנות דאשבורדים, לחקור הערכות והתראות, ולעזור ליצור ולהריץ ביקורות ללא הצורך לתרגם את המשימה למסכי מוצר או פקודות CLI.
+
+```text
+Why did production checkout agents regress this week?
+Build a dashboard for tool failures, latency, and evaluation scores.
+Create an audit that finds agents retrying the same failed action without changing approach.
+Show me the sessions behind the most common audit finding.
+```
+
+העוזר עובד עם הנתונים וההרשאות הזמינים בארגון הפעיל. בדוק את הראיות שלו והשינויים המוצעים לפני יישום פעולות המשפיעות על משתמשים או agents אחרים.
+
+## שאל את העוזר
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. בחר ב-**Open agent chat** ותאר מה אתה רוצה להבין, ליצור או להפעיל.
+    2. בדוק את קריאות הכלים, הטבלאות והתוצאות של השאילתות של העוזר בזמן שהוא עובד.
+    3. פתח את ההפעלה, ההתראה או השאילתה שצוטטו כדי לאמת את התוצאה מול נתוני המקור.
+    4. התחל צ'אט חדש לחקירה שונה, או השתמש בהיסטוריית הצ'אט כדי להמשיך באותו קו ניתוח.
+
+    ![העוזר בענן משיב לשאלת תצפיתיות עם ניתוח תומך ושאילתות.](/images/dashboard/assistant.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Open representative sessions" --chat <chat-id>
+    ```
+
+    השתמש ב-`fp agent rename <chat-id> --title <title>` כדי לשמור על חקירה קריאה ו-`fp agent delete <chat-id>` כדי להסיר אותה.
+  </Tab>
+</Tabs>
+
+## עבוד בעל קור עם העוזר
+
+- תן לו יעד קודם כל; הוסף סביבה, זרימת עבודה או טווח זמן כאשר גבולות אלה חשובים.
+- התייחס ל-SQL וסיכומים שנוצרו כאמצעי חקירה, לא כראיה סופית.
+- פתח הפעלות יציגות לפני יצירת ביקורת, בעיה, התראה או מדיניות.
+- שמור על מסננים של ארגון, סביבה וזמן ברורים.
+- שמור SQL שימושי כשאילתה כך שמפעיל אחר יוכל לשחזור את התוצאה.
+
+<Warning>
+  העוזר יכול לקרוא רק מה שהמשתמש הנוכחי יכול לגשת אליו. אל תרחב הרשאות כדי לגרום לשאלה לעבוד; בקש מאופרטור מורשה להריץ את החקירה במקום זאת.
+</Warning>

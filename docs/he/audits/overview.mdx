@@ -1,0 +1,56 @@
+---
+title: "審核"
+description: "סקור אוכלוסיית סשנים מוגדרת כדי למצוא כשלים שעקבות לבדם לא יחשפו."
+icon: "scan-search"
+---
+
+審核חוקר קבוצה נבחרת של סשנים למטרת כשל מוגדרת. הוא משלב עדויות מעקב, תוצאות הערכה, טביעות מדיניות, והקשר ייחוס כדי להפיק ממצאים שתוכל לפעול עליהם.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+ראה כיצד審核 עובר מריצה מתוזמנת לכשלים מגובי עדויות שתוכל לתקן.
+
+## פתח審核
+
+<Tabs>
+  <Tab title="Dashboard">
+    עבור אל **Analyze → Audits**. הדף מציג מצב מתוזמן, ממצאים פתוחים, ריצה אחרונה, ריצה הבאה, קדנציה, והאם ל審核 יש דפי brief או reference. בחר בכרטיס לקביעות והיסטוריית ריצות; בחר **new audit** כדי ליצור אחד.
+
+    ![דף Audits המציג審核 חוזרים עם לוח הזמנים, הרגישות, ומצב הריצה שלהם.](/images/dashboard/audits.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits list
+    fp audits list --enabled-only --show-id
+    fp audits show <audit-name>
+    fp audits findings --status open --limit 20
+    ```
+  </Tab>
+</Tabs>
+
+השתמש ב審核 כאשר אתה צריך לענות על שאלה ברמת אוכלוסיה כגון:
+
+- היכן agents מנטשים משימות ללא הסלמה?
+- אילו כשלי כלי מובילים לניסיונות חוזרים לא יעילים?
+- האם agents ניגשים לנתונים מחוץ לתזרים העבודה המיועד?
+- מה השתנה לאחר שחרור מודל, prompt, או כלי?
+
+## זרימת תגובת審核
+
+```text
+Session → Audit → Finding → Issue → Policy
+                         ↘ Alert for recurrence
+```
+
+ממצא צריך לתת שם למצב הכשל ולהצביע על עדות. Issue שולט בתיקון. Policy מונע דפוס פעולה ידוע; alert גוזל חזרה כאשר מניעה אינה אפשרית או זקוקה לניטור.
+
+<Columns cols={2}>
+  <Card title="הגדר審核" icon="sliders-horizontal" href="/he/audits/setup">
+    הגדר את המטרה, האוכלוסיה, והקשר ייחוס לפני הריצה הראשונה.
+  </Card>
+  <Card title="הוסף הקשר agent" icon="bot" href="/he/audits/agent-contracts">
+    ציין מה כל agent חייב להפיק ומה הוא לעולם לא יעשה.
+  </Card>
+</Columns>

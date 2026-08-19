@@ -1,0 +1,52 @@
+---
+title: "Richtlinien auf Maschinen bereitstellen"
+description: "Behalten Sie den Überblick, welche Maschinen registriert sind, aktuelle Richtlinien verwenden und die gewünschten Policy-Versionen durchsetzen."
+icon: "network"
+---
+
+Die Fleet-Abdeckung beantwortet, ob eine Richtlinie dort vorhanden ist, wo das Risiko besteht. Verfolgen Sie Maschinen anhand einer stabilen ID und eines menschenlesbaren Labels, und vergleichen Sie dann den zugewiesenen und gemeldeten Bereitstellungsstatus.
+
+## Abdeckung prüfen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Admin → Durchsetzung** und überprüfen Sie die Gesamtzahlen für „Durchsetzend" und „Beobachtend".
+    2. Suchen Sie nach einer Maschine anhand von ID oder Label, oder filtern Sie nach Maschinen, denen eine Richtlinie fehlt.
+    3. Klappen Sie eine Zeile auf, um zugewiesene Richtlinien, gemeldete Bereitstellung, letzten Check-in und Verlauf zu vergleichen.
+    4. Aktualisieren Sie nach dem Polling-Intervall der Maschine, wenn eine angewendete Bereitstellung ausstehend bleibt.
+
+    ![Das Enforcement-Fleet mit Policy-Abdeckung, Maschinenbereitstellungsstatus sowie Beobachtungs- und Durchsetzungszuweisungen.](/images/dashboard/enforcement-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai config --machine-label checkout-runner-03
+    failproofai flush --wait
+    ```
+
+    Verwenden Sie `fp events --agent-id <agent-id> --since 24h`, um zu bestätigen, dass die Agent-Aktivität der Maschine die Cloud erreicht.
+  </Tab>
+</Tabs>
+
+Nutzen Sie die Abdeckungsansichten, um Folgendes zu finden:
+
+- Maschinen, die die neueste Bereitstellung nie abgerufen haben
+- Registrierte Maschinen, die keine Aktivitäten mehr melden
+- Eine Richtlinie, die der falschen Umgebung oder Gruppe zugewiesen wurde
+- Versions-Drift nach einem unterbrochenen Update
+
+Benennen Sie eine Maschine um, ohne sie erneut zu verbinden:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
+
+Lokalen Status prüfen:
+
+```bash
+failproofai config --status
+```
+
+<Tip>
+  Verwenden Sie Labels, die Workload und Umgebung kennzeichnen. Hostnamen allein sind nach Autoscaling oder Maschinenaustausch häufig nicht ausreichend.
+</Tip>

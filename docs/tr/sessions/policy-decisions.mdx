@@ -1,0 +1,27 @@
+---
+title: "Politika kararları"
+description: "Hangi politikaların değerlendirildiğini, engellediğini, talimat verdiğini veya izin verdiğini görün."
+icon: "shield-check"
+---
+
+Politika kararları, zorlama işleminin ne yaptığını açıklar. Bunu, bir dağıtımı doğrulamak, engelleme oranını ölçmek ve korunmamış aktiviteleri bulmak için kullanın.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → policy** bölümüne gidin ve zaman aralığını ve isteğe bağlı olarak bir makineyi seçin.
+    2. Değerlendirilen eylemleri, engelleri, engelleme oranını, Bulut kararlarını, korunmamış eylemleri ve duraklatılmış durumdaki aktiviteyi gözden geçirin.
+    3. Politika eşleme tablosunu filtreleyip dağıtılan atamalarını inceleyin.
+    4. Bir grafik noktasını seçerek kararları ve bunların oturumlarını açın.
+
+    ![Karar toplamlarını, makine filtresini, zaman içindeki zorlama aktivitesini ve politika eşleme tablosunu gösteren Politika sayfası.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp events --search "deny" --since 24h
+    failproofai config --status
+    ```
+
+    Makinenin yerel zorlama durumu için `failproofai` kullanın ve Bulut olay araştırması için `fp` kullanın.
+  </Tab>
+</Tabs>

@@ -1,0 +1,67 @@
+---
+title: "Chạy và xem xét một audit"
+description: "Chạy một audit, xác minh phạm vi bao phủ của nó và kiểm tra các phát hiện kết quả."
+icon: "play"
+---
+
+Chạy một audit sau khi mục tiêu và quần thể của nó đủ cụ thể để một nhà điều hành khác sẽ biết phát hiện hợp lệ sẽ trông như thế nào.
+
+## Chạy và kiểm tra nó
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Analyze → Audits**, mở audit và chọn **run now**. Một phản hồi đã xếp hàng có nghĩa là dispatcher sẽ bắt đầu nó trong thời gian sớm.
+    2. Mở lần chạy mới để xem xét trạng thái, cửa sổ, thời lượng, số lượng phát hiện và báo cáo của nó.
+    3. Chọn một phiên chứng cứ để mở dấu vết chính xác.
+    4. Quay lại trang audit để chỉnh sửa cài đặt, vô hiệu hóa lịch hoặc kiểm tra các lần chạy cũ hơn.
+
+    ![Một trang chi tiết audit với các phát hiện mở, trạng thái lần chạy cuối cùng và tiếp theo, cửa sổ quét, bối cảnh, điều khiển run-now và các phát hiện được xếp hạng.](/images/dashboard/audit-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits run checkout-reliability
+    fp audits runs checkout-reliability --limit 10
+    fp --json audits runs checkout-reliability
+    fp audits findings --audit checkout-reliability
+    ```
+
+    Xem [tham chiếu `fp audits`](/vi/reference/cloud-cli#audits) để biết lịch sử chạy, phát hiện và các lệnh phân loại.
+  </Tab>
+</Tabs>
+
+## Trước khi bạn chạy
+
+- Xác nhận các phiên tồn tại trong cửa sổ thời gian đã chọn.
+- Xác minh các bộ lọc môi trường và agent.
+- Kiểm tra xem bối cảnh tham chiếu có hiện tại không.
+- Đảm bảo mục tiêu mô tả một chế độ lỗi, không phải một kết luận mong muốn.
+
+## Xem xét lần chạy
+
+Bắt đầu với trạng thái chạy, phạm vi bao phủ phiên và liệu phân tích mô hình có chạy hay không. Sau đó kiểm tra mức độ nghiêm trọng, mô tả, phiên chứng cứ, truy vấn hỗ trợ và đường dẫn ngăn chặn được đề xuất của mỗi phát hiện.
+
+Sử dụng trạng thái phát hiện để xác nhận, tắt tiếng, bác bỏ, giải quyết, mở lại hoặc gán công việc. Bảo toàn bằng chứng ngay cả khi phát hiện bị bác bỏ; nó giải thích lý do đưa ra quyết định.
+
+## Diễn giải một lần chạy trống rỗng hoặc bị trì hoãn
+
+| Điều kiện chạy | Ý nghĩa của nó | Phải làm gì |
+| --- | --- | --- |
+| Phân tích đã chạy và không có phát hiện nào | Bằng chứng đã chọn không hỗ trợ phát hiện ở độ nhạy cấu hình. | Xác nhận phạm vi chứa các phiên đại diện, sau đó xem kết quả là lành mạnh trừ khi mục tiêu hoặc bối cảnh quá mơ hồ. |
+| Phân tích mô hình bị bỏ qua hoặc thất bại | Lần chạy hoàn tất với zero phát hiện, nhưng nó không thực hiện cuộc điều tra agentic. Quét thông tin xác thực và PII xác định vẫn báo cáo số lượng trận đấu trong thống kê chạy nhưng không tạo phát hiện. | Khắc phục dịch vụ phân tích hoặc cấu hình và chạy lại. Không diễn giải kết quả trống rỗng như bằng chứng rằng quần thể lành mạnh. |
+| Phân tích mô hình bị vô hiệu hóa | Lần chạy thành công với zero phát hiện. Quét xác định không thay thế phân tích mô hình hoặc mở phát hiện. | Bật phân tích mô hình hoặc vô hiệu hóa audit thay vì dựa vào một audit không thể tạo phát hiện. |
+| Không có dung lượng phân tích nào có sẵn ngay lập tức | Audit vẫn được xếp hàng và thử lại thay vì bỏ qua quần thể. | Chờ dung lượng hoặc trải rộng các anchor audit. Các nhà điều hành tự lưu trữ nên mở rộng các bản sao audit-agent và dung lượng dispatcher phù hợp. |
+| Dung lượng vẫn không có sẵn cho cửa sổ thử lại | Lần chạy từ bỏ với zero phát hiện và gửi thông báo lỗi khi gửi email có sẵn. | Kiểm tra xem fleet audit có bão hòa hay liên tục khởi động lại không. |
+
+Khi phân tích không chạy, các audit `since_last` giữ cho cửa sổ chưa được phân tích mở để lần chạy thành công tiếp theo. Các phát hiện hiện có không được loại bỏ vì phân tích bị bỏ qua không phải là bằng chứng rằng lỗi đã biến mất.
+
+## Hiểu các thông báo lỗi
+
+Một lần chạy thất bại hoặc bước phân tích mô hình thất bại sử dụng các nhận chứng email của audit. Nếu audit không có kênh email, Failproof AI quay lại cài đặt `alerts.email_default_recipients` của tổ chức để một audit bị hỏng im lặng vẫn có đường dẫn tăng cấp.
+
+Email phải được bật cho tổ chức và SMTP phải được cấu hình. Nếu không, lỗi được ghi nhật ký nhưng không thể gửi email nào. Lỗi chạy không di chuyển anchor lịch cố định của audit.
+
+Mỗi lần chạy cũng lưu trữ [bối cảnh agent](/vi/audits/agent-contracts) chính xác được sử dụng cho mỗi agent như một ảnh chụp hợp đồng. Các chỉnh sửa sau không thay đổi tiêu chuẩn bằng chứng được ghi lại với một lần chạy trước đó.
+
+<Warning>
+  Không triển khai chính sách chặn trực tiếp từ một phát hiện chưa được xác minh. Mở các dấu vết được trích dẫn và xác nhận quy tắc tách hành vi không an toàn khỏi công việc hợp pháp.
+</Warning>

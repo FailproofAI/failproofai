@@ -1,0 +1,53 @@
+---
+title: "Consultas"
+description: "Explore dados de sessões, eventos e avaliações com SQL reutilizável."
+icon: "database"
+---
+
+As consultas são a camada flexível por baixo de dashboards, auditorias e investigações. Use SQL ad-hoc para testar uma ideia e, quando ela se tornar parte de um fluxo de trabalho recorrente, salve a consulta.
+
+## Criar e executar uma consulta
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **Analyze → Queries** e selecione **new query**.
+    2. Abra o navegador de esquema e escolha campos dos dados de eventos, sessões ou avaliações.
+    3. Escreva o SQL, adicione parâmetros quando necessário e execute a consulta.
+    4. Salve com um nome e descrição claros e use **add to dashboard** quando o resultado precisar ser monitorado.
+
+    O editor de consultas combina o esquema de eventos, SQL, parâmetros e uma prévia dos resultados para que você possa validar a pergunta antes de salvar.
+
+    ![O editor de consultas SQL com navegador de esquema e grade de resultados ao vivo.](/images/dashboard/query-lab.png)
+
+    As consultas salvas aparecem na biblioteca compartilhada, onde os membros da equipe podem reexecutá-las ou adicionar seus resultados a dashboards.
+
+    ![A biblioteca de Consultas salvas contendo consultas reutilizáveis integradas e personalizadas.](/images/dashboard/queries.png)
+
+    Use um nome e descrição claros para que o resultado permaneça compreensível sem precisar reabrir o SQL.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp query schema
+    fp query create "retry loops" --sql "SELECT ..."
+    fp query run <query-id>
+    fp query show <query-id>
+    fp query update <query-id> --sql "SELECT ..."
+    ```
+
+    Use `fp query list` para encontrar IDs e `fp query delete <query-id>` para remover uma consulta salva.
+  </Tab>
+</Tabs>
+
+## Usos comuns
+
+- Encontrar sessões com chamadas repetidas à mesma ferramenta.
+- Comparar pontuações de avaliação entre modelos ou ambientes.
+- Medir o tempo entre uma espera humana e a retomada.
+- Identificar negações de política seguidas de uma alternativa bem-sucedida.
+- Construir uma coorte para uma auditoria.
+
+Abra **Queries → Schema** antes de escrever consultas contra campos desconhecidos. Prefira filtros explícitos de tempo e ambiente, e mantenha limites nos resultados durante a exploração.
+
+<Warning>
+  Uma consulta pode identificar um padrão suspeito, mas não estabelece o modo de falha por si só. Abra traces representativos ou execute uma auditoria antes de transformar o resultado em uma política.
+</Warning>

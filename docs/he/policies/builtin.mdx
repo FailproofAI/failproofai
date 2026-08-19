@@ -1,0 +1,57 @@
+---
+title: "מדיניות מובנות"
+description: "הפוך מעצורים שמורים לזמינים עבור מצבי כשל נפוצים של סוכנים."
+icon: "library"
+---
+
+מדיניות מובנות כוללות טיפול בסודות, קובצי סביבה, פקודות shell הרסניות, ענפים מוגנים, כלים בענן ותשתיות, פרסום חבילות, קריאות חוזרות, ובדיקות זרימת עבודה בסיום המשימה.
+
+## הפעל וודא מדיניות מובנית
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. התקן את המדיניות על מכונה מחוברת עם ה-CLI המקומי.
+    2. הרץ פעולת בדיקה בטוחה בסוכן המחוברות.
+    3. עבור ל-**Observe → policy** וסנן לפי שם המדיניות, סביבת המכונה, או ההחלטה.
+    4. פתח את ההפעלה המקושרת כדי לאשר את ערך הכלי התואם והסיבה המוחזרת.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --cli claude --scope project
+    failproofai config --status
+    ```
+
+    הסר אותה עם `failproofai policy remove block-rm-rf --cli claude --scope project`.
+  </Tab>
+</Tabs>
+
+רשום את המדיניות הזמינות בגרסה המותקנת שלך:
+
+```bash
+failproofai policies
+```
+
+הפעל מדיניות אחת לפרויקט:
+
+```bash
+failproofai policy add block-rm-rf --scope project
+```
+
+הפעל מספר מדיניות עבור הרתמות שנבחרו:
+
+```bash
+failproofai policies --install block-sudo block-force-push \
+  --cli claude codex --scope project
+```
+
+חלק מהמדיניות קובלות פרמטרים או מסומנות beta. בדוק את התיאור, טווח ההתאמה, והתנהגות ברירת המחדל לפני הטלרול. מדיניות המגנה על זרימת עבודה אחת עשויה לחסום פעולות תקפות בזרימת עבודה אחרת.
+
+<Card title="עיין בקטלוג המובנה השלם" icon="list-checks" href="/he/policies/builtin-catalog">
+  סקור את כל 40 המדיניות הנוכחיות, הטריגרים שלהן, הבסיס המומלץ, והפרמטרים.
+</Card>
+
+<Tip>
+  העדף טווח פרויקט לתוקף ספציפי למאגר ותחום משתמש לדרישות בטיחות כלל-מכונה.
+</Tip>

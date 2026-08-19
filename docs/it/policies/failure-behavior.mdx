@@ -1,0 +1,43 @@
+---
+title: "Comportamento in caso di errore"
+description: "Comprendi cosa accade quando la valutazione delle policy o il daemon locale non sono disponibili."
+icon: "shield-alert"
+---
+
+Failproof AI è progettato affinché un errore di enforcement sia visibile piuttosto che consentire silenziosamente lavori rischiosi.
+
+## Diagnosticare un blocco failure-closed
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Admin → enforcement** e apri la macchina.
+    2. Controlla il suo ultimo check-in, la distribuzione assegnata e la distribuzione segnalata.
+    3. Vai a **Observe → policy** e apri la sessione della decisione negata.
+    4. Conferma se il motivo segnala la raggiungibilità del daemon, lo sfasamento della versione o la policy stessa.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    npm install -g failproofai@latest
+    failproofai config
+    ```
+
+    Rieseguire `failproofai config` aggiorna e riavvia il daemon dopo un aggiornamento del pacchetto.
+  </Tab>
+</Tabs>
+
+Su una macchina configurata per usare `failproofaid`, il daemon è l'unico valutatore. Se non è raggiungibile o la sua versione del protocollo non corrisponde alla CLI, la valutazione dell'hook fallisce in modo chiuso. L'azione viene negata con un motivo che indirizza l'operatore a verificare o aggiornare il daemon.
+
+Prima della configurazione del daemon, gli hook valutano le policy in processo. Una volta registrata la configurazione del daemon, Failproof AI non torna silenziosamente a un secondo valutatore quando il daemon fallisce.
+
+## Rispondere a una decisione failure-closed
+
+1. Esegui `failproofai config --status`.
+2. Se le versioni differiscono, riesegui `failproofai config` dopo aver aggiornato il pacchetto.
+3. Se il daemon non è raggiungibile, ispeziona lo stato del suo servizio e i log locali.
+4. Riprendi il lavoro dell'agent solo dopo che un percorso di valutazione delle policy noto è integro.
+
+<Warning>
+  Non riprovare ripetutamente l'azione bloccata. Una risposta failure-closed significa che il sistema non ha potuto stabilire che l'azione era sicura.
+</Warning>

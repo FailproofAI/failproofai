@@ -1,0 +1,62 @@
+---
+title: "Alertes"
+description: "Détectez les récurrences et acheminez un incident vers les bons intervenants."
+icon: "bell-ring"
+---
+
+Les alertes surveillent une condition mesurable et créent un incident lorsqu'elle se déclenche. Utilisez-les quand une défaillance doit appeler une réponse rapide, qu'une politique puisse ou non la bloquer.
+
+## Créer et tester une alerte
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Analyser → Alertes** et sélectionnez **nouvelle alerte**. Vous pouvez également partir de la cloche sur une erreur représentative.
+    2. Saisissez le nom, la gravité, le type de déclencheur, la condition, l'intervalle d'évaluation, le nombre de dépassements, la fenêtre et les canaux.
+    3. Enregistrez l'alerte, ouvrez sa page de détail et lancez le **test**.
+    4. Accédez à **Analyser → Problèmes** pour acquitter, affecter, discuter, vous abonner et résoudre les incidents créés par l'alerte.
+
+    La première partie du formulaire identifie l'alerte et le signal qui doit la déclencher.
+
+    ![La première partie du formulaire nouvelle alerte avec son nom, sa description, son état d'activation et son type de déclencheur.](/images/dashboard/alert-new-trigger.png)
+
+    La seconde partie contrôle la durée pendant laquelle la condition doit persister, la fréquence d'évaluation et les destinataires des notifications.
+
+    ![La seconde partie du formulaire nouvelle alerte avec la logique de dépassement, le calendrier, la gravité, les canaux de diffusion et l'action de création.](/images/dashboard/alert-new-routing.png)
+
+    Après l'enregistrement, utilisez la liste des alertes pour confirmer que la règle est activée et que son déclencheur, sa fenêtre, sa gravité et ses canaux correspondent à ce que vous souhaitiez.
+
+    ![La page Alertes affichant les règles d'alerte avec leurs déclencheurs, fenêtres d'évaluation, canaux et gravité.](/images/dashboard/alerts.png)
+
+    Testez l'alerte avant de vous en remettre à elle pour la réponse en production.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp alerts create high-errors \
+      --trigger-kind metric_threshold \
+      --severity warning \
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+
+    fp alerts show high-errors
+    fp alerts test high-errors
+    fp alerts update high-errors --severity critical --yes
+    ```
+
+    Utilisez `fp alerts list` pour consulter les règles et `fp alerts delete <name>` pour en supprimer une.
+
+    Consultez la [référence `fp alerts`](/fr/reference/cloud-cli#alerts) pour l'ensemble complet des commandes d'alerte.
+  </Tab>
+</Tabs>
+
+Les conditions d'alerte peuvent reposer sur des erreurs, des scores d'évaluation, des combinaisons d'évaluations ou du SQL personnalisé. Ajoutez des destinataires, testez la règle et ouvrez l'incident résultant pour l'acquitter, l'affecter, le commenter, vous y abonner et le résoudre.
+
+## Bonnes pratiques de conception des alertes
+
+- Nommez la condition et le workflow concerné.
+- Définissez explicitement l'environnement ciblé.
+- Fixez une fenêtre et un seuil pour éviter de réagir à un événement isolé et inoffensif.
+- Incluez un lien ou une requête qui oriente les intervenants vers les sessions.
+- Désignez un responsable avant d'activer la règle.
+
+<Tip>
+  Après la résolution d'un audit, ajoutez une alerte pour le cas où la même défaillance pourrait se reproduire en dehors de la couverture de la politique.
+</Tip>

@@ -1,0 +1,151 @@
+---
+title: "واجهة سطر أوامر Failproof AI"
+description: "تثبيت الخطافات، إدارة السياسات المحلية، الاتصال بـ Cloud، وتشغيل خادم الويب المحلي."
+icon: "terminal"
+---
+
+ثبّت واجهة سطر الأوامر المحلية باستخدام `npm install -g failproofai`. قم بتشغيلها بدون وسيطات لفتح لوحة معلومات السياسات المحلية.
+
+تتطلب الحزمة Node.js 20.9 أو أحدث. يتم دعم Bun 1.3 أو أحدث للتطوير والتثبيت من المصدر. `failproofai configure` و `failproofai setup` هي أسماء مستعارة لـ `failproofai config`؛ `failproofai p` هو اسم مستعار لـ `failproofai policies`.
+
+## إعداد جهاز
+
+```bash
+npm install -g failproofai
+failproofai config \
+  --connect https://app.befailproof.ai \
+  --token <machine-key> \
+  --machine-label checkout-prod-01
+failproofai policies --install
+failproofai config --status
+```
+
+قم بتشغيل `failproofai` بدون وسيطات لفتح لوحة معلومات السياسات المحلية.
+
+| الأمر | النتيجة |
+| --- | --- |
+| `failproofai config` | تشغيل إعداد الجهاز التفاعلي |
+| `failproofai config --connect <url> --token <key>` | الاتصال بـ Cloud لاستيعاب السياسات وتسليمها |
+| `failproofai config --status` | عرض حالة الاتصال والخادم والتسليم والإيقاف المؤقت |
+| `failproofai policies` | قائمة السياسات المدمجة والمخصصة |
+| `failproofai policies --install` | تثبيت الخطافات وتفعيل السياسات |
+| `failproofai policy add <name>` | تفعيل سياسة مدمجة واحدة |
+| `failproofai policy remove <name>` | تعطيل سياسة مدمجة واحدة |
+| `failproofai policies --uninstall` | تعطيل السياسات أو إزالة خطافات الأساس |
+| `failproofai audit` | مسح سجل الوكيل المحلي وفتح عرض التدقيق المحلي |
+| `failproofai audit --schedule [days] --email <address>` | جدولة عمليات مسح محلية متكررة وإرسال نتائجها بالبريد الإلكتروني |
+| `failproofai audit --status` | عرض عنوان التقرير والفاصل الزمني والمسح المجدول التالي |
+| `failproofai audit --no-schedule` | إيقاف عمليات المسح المتكررة دون حذف سجل التدقيق |
+| `failproofai harness list` | قائمة مسارات الالتقاط الإضافية |
+| `failproofai flush --wait` | تسليم ملف الأحداث الحالي |
+| `failproofai backfill --since 30d` | إعادة قراءة السجل الذي تم تمريره مسبقاً |
+| `failproofai config --pause [duration]` | إيقاف جلسة محلية واحدة لمدة 30 دقيقة بشكل افتراضي، حتى 8 ساعات |
+| `failproofai config --resume` | استئناف جلسة محلية مجمدة؛ أضف `--all` لمسح جميع الإيقافات المؤقتة |
+| `failproofai update` | إنهاء ترحيل الحزم وتحديث الخادم |
+| `failproofai migrate --dry-run` | معاينة أو تشغيل ترحيلات تخطيط الصفحة الرئيسية المعلقة |
+| `failproofai uninstall` | إزالة الخطافات والخادم قبل إزالة الحزمة |
+| `failproofai --version` | طباعة إصدار الحزمة المثبتة |
+| `failproofai --help` | عرض الأوامر والاستخدام العام |
+
+## أعلام الإعدادات
+
+| العلم | الاستخدام |
+| --- | --- |
+| `--connect <url> --token <key>` | الاتصال بدون تفاعل |
+| `--machine-id <id>` | تعيين معرّف الجهاز الثابت |
+| `--machine-label <name>` | تعيين أو تغيير تسمية لوحة المعلومات |
+| `--no-transcripts` | إرسال القرارات بدون محتوى النص |
+| `--disconnect` | إيقاف عمليات سحب سياسات Cloud وتسليم الأحداث |
+| `--status` | عرض حالة الجهاز الحالية |
+| `--pause [duration]` | إيقاف أحدث جلسة في الدليل الحالي؛ يقبل ثوان أو دقائق أو ساعات وافتراضياً 30 دقيقة |
+| `--resume` | إنهاء إيقاف مطابق مبكراً |
+| `--session <id>` | استهداف جلسة صريحة للإيقاف المؤقت أو الاستئناف |
+| `--all` | مع `--resume`، إنهاء كل إيقاف نشط |
+
+تعليق الإيقافات المحلية بناء السياسات المدمجة والمخصصة وسياسات الاتفاقية لجلسة واحدة. تنتهي دائماً ولا تعطل سياسات Cloud المدارة. يمنع `block-self-pause` وكيل مجهز من استخدام هذا الباب الخلفي بنفسه.
+
+## أعلام السياسات
+
+| العلم | الاستخدام |
+| --- | --- |
+| `--install`, `-i` | تفعيل السياسات وتثبيت خطافات الأساس |
+| `--uninstall`, `-u` | تعطيل السياسات أو إزالة الخطافات |
+| `--cli <names...>` | استهداف واحد أو أكثر من الأساسيات المدعومة |
+| `--scope user\|project\|local\|all` | اختر نطاق الإعداد؛ `all` للإزالة |
+| `--beta` | تضمين سياسات بيتا |
+| `--custom`, `-c <path>` | التحقق من صحة وتحميل ملف سياسة مخصص؛ قابل للتكرار |
+
+## أعلام التسليم والصيانة
+
+| الأمر | الأعلام |
+| --- | --- |
+| `backfill` | `--since <30d\|6m\|YYYY-MM-DD>`, `--dry-run` |
+| `flush` | `--wait`, `--timeout <seconds>` |
+| `update` | `--no-daemon` |
+| `migrate` | `--dry-run` |
+| `uninstall` | `--purge`, `--dry-run`, `--yes` |
+
+يجب تشغيل `failproofai update` بعد `npm install -g failproofai@latest`؛ فهو ينفذ ترحيلات تخطيط الصفحة الرئيسية، ويثبت ملف الخادم المطابق، ويعيد تشغيل الخدمة. يقوم `--no-daemon` بإجراء ترحيل التخطيط فقط.
+
+## مسارات الأساس
+
+```text
+failproofai harness list [harness]
+failproofai harness add-path <harness> [label=]<path>
+failproofai harness remove-path <harness> <path-or-label>
+```
+
+أسماء الأساس المدعومة هي `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, و `goose`.
+
+تصنف التسميات معرّفات الوكيل المشتقة عندما يحتوي جذران على نسخ من نفس المشروع. يتم رفض الجذور المتداخلة والتسميات المكررة لمنع الجمع المكرر أو فساد المؤشر. يعاد تحميل إعدادات المسار الإضافي بدون إعادة تشغيل الخادم.
+
+يمكن لبيئات الحاوية استبدال المسارات الإضافية المكونة بالملف بمتغير مفصول بفواصل يسمى `FAILPROOFAI_<HARNESS>_EXTRA_PATHS`، على سبيل المثال:
+
+```bash
+export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
+```
+
+## متغيرات البيئة
+
+استخدم ملفات الإعدادات للسلوك المستمر للجهاز. متغيرات البيئة مفيدة للحاويات والاختبارات وعملية واحدة.
+
+| المتغير | الاستخدام |
+| --- | --- |
+| `FAILPROOFAI_HOME` | إعادة تحديد موقع التخطيط الكامل `~/.failproofai` |
+| `FAILPROOFAI_LOG_LEVEL` | تعيين تفاصيل التسجيل المحلي |
+| `FAILPROOFAI_HOOK_LOG_FILE` | كتابة تشخيصات الخطاف إلى ملف مختار |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | تعطيل القياس عن بعد المجهول لهذه العملية |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | تخطي إعداد التشغيل الأول التفاعلي |
+| `FAILPROOFAI_NO_AUTO_AUDIT=1` | تخطي التدقيق المحلي بعد الإعداد |
+| `FAILPROOFAI_LLM_BASE_URL` | تجاوز نقطة النهاية المتوافقة مع OpenAI المستخدمة من قبل سياسات LLM |
+| `FAILPROOFAI_LLM_API_KEY` | توفير مفتاح API المستخدم من قبل سياسات LLM |
+| `FAILPROOFAI_LLM_MODEL` | اختر النموذج المستخدم من قبل سياسات LLM |
+| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | حد تحميل وحدة السياسة المخصصة |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | استبدال مسارات الالتقاط الإضافية المكونة لواحد من الأساس |
+| `NO_COLOR` | تعطيل مخرجات المحطة الملونة |
+
+متغيرات الصفحة الرئيسية الخاصة بالوكيل مثل `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME`, و `OPENCLAW_HOME` تجاوز حيث يكتشف Failproof AI جلسات محلية لذلك الأساس.
+
+## إيقاف أو إزالة جهاز بأمان
+
+```bash
+failproofai config --pause
+failproofai config --status
+failproofai config --resume
+```
+
+الإيقاف المؤقت للجلسة المحلية لا يعطل سياسات Cloud المدارة. استعد انتشارات Cloud من خلال سير عمل إنفاذ Cloud عندما تكون عملية الطرح نفسها هي المشكلة.
+
+قبل إزالة حزمة npm، قم بإزالة الخطافات المثبتة والخادم:
+
+```bash
+failproofai uninstall --dry-run
+failproofai uninstall --yes
+npm rm -g failproofai
+```
+
+قم بتشغيل `failproofai <command> --help` للحصول على تفاصيل خاصة بالإصدار.
+
+<Warning>
+  قم بتشغيل `failproofai uninstall` قبل `npm rm -g failproofai`؛ npm لا يزيل خطافات الوكيل المثبتة أو خدمة الخادم.
+</Warning>

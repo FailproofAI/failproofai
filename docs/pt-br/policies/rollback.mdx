@@ -1,0 +1,41 @@
+---
+title: "Rollback"
+description: "Restaure uma implantação de política conhecida quando um rollout interrompe o trabalho válido do agente."
+icon: "rotate-ccw"
+---
+
+O rollback altera a versão implantada ou remove uma atribuição de política; ele não apaga o histórico de decisões que explica o incidente.
+
+## Reverter uma máquina
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **Admin → enforcement**, expanda a máquina afetada e identifique seu último conjunto de políticas conhecido como bom.
+    2. Selecione **edit**, restaure essas versões e efeitos e aplique a nova implantação.
+    3. Aguarde o check-in da máquina e verifique a implantação reportada.
+    4. Abra **Observe → policy** e as sessões afetadas para confirmar que o trabalho válido não está mais sendo bloqueado.
+
+  </Tab>
+  <Tab title="CLI">
+    O rollback de implantação na nuvem é um fluxo de trabalho do dashboard. Use o status local para confirmar que a implantação corrigida chegou à máquina:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    `failproofai config --pause` pausa as políticas builtin, custom e de convenção para uma sessão local. Ele não pausa as políticas gerenciadas pela nuvem, portanto não é uma solução alternativa para uma implantação Cloud com problemas.
+  </Tab>
+</Tabs>
+
+## Quando reverter
+
+- Uma política bloqueia uma ação de produção esperada.
+- O volume de correspondências é materialmente maior do que o rollout observado previa.
+- Uma política depende de campos que uma integração não fornece.
+- Uma nova versão muda o comportamento fora do modo de falha pretendido.
+
+Após o rollback, abra as sessões afetadas e identifique a condição que causou o falso positivo. Crie uma nova versão, teste tanto os casos inseguros quanto os legítimos e repita a fase de observação.
+
+<Warning>
+  Pausar o enforcement pode ser apropriado durante um incidente, mas isso amplia a exposição para todas as políticas ativas naquele escopo. Prefira reverter a versão específica da política quando possível.
+</Warning>

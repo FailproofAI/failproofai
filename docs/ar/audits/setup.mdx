@@ -1,0 +1,45 @@
+---
+---
+title: "إعداد تدقيق"
+description: "حدد هدف التدقيق وملء الجلسة وسياق الأدلة."
+icon: "sliders-horizontal"
+---
+
+تبدأ جودة التدقيق بنطاقه. طلب عام مثل "ابحث عن المشاكل" ينتج نتائج أقل فائدة من سؤال فشل محدد.
+
+## تكوين التدقيق
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. انتقل إلى **Analyze → Audits → New audit** وأدخل الاسم والوصف.
+    2. اضبط التكرار والإطار الزمني ونطاق الوكيل/البيئة والأخطاء المتجاهلة والحساسية والحد الأقصى للنتائج.
+    3. في **agents**، أضف أو راجع سياق الوكيل، ثم أضف ملخص المشغل وأي عناوين URL مرجعية HTTPS عامة.
+    4. اختر قنوات الإخطار وحدد **create audit**. يتم طلب التشغيل الأول فوراً.
+
+    ![نموذج التدقيق الجديد يتضمن الاسم والوصف والتكرار والإطار الزمني ونطاق البيئة والوكيل والأخطاء المتجاهلة وإعدادات التحليل والملخص والصفحات المرجعية وقنوات الإخطار.](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    يتم طلب التشغيل الأول فوراً. أضف الملخص وعناوين URL المرجعية أثناء الإنشاء حتى يتلقاها التشغيل.
+
+    اطلع على مرجع [`fp audits create` الكامل](/ar/reference/cloud-cli#audits).
+  </Tab>
+</Tabs>
+
+<Tip>
+  ابدأ بجلسة فشل معروفة وعدة جلسات عادية. يعطي هذا التدقيق مثالاً إيجابياً ومجموعة مقارنة.
+</Tip>
+
+<Info>
+  يتم تخزين سياق التدقيق كمورد منفصل بحيث لا يؤدي تحرير التدقيق إلى إزالة المادة المرجعية عن طريق الخطأ.
+</Info>

@@ -1,0 +1,43 @@
+---
+title: "Fehlerverhalten"
+description: "Verstehen Sie, was passiert, wenn die Richtlinienauswertung oder der lokale Daemon nicht verfügbar ist."
+icon: "shield-alert"
+---
+
+Failproof AI ist so konzipiert, dass ein Durchsetzungsfehler sichtbar wird, anstatt riskante Aktionen stillschweigend zuzulassen.
+
+## Einen failure-closed-Block diagnostizieren
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Admin → Durchsetzung** und öffnen Sie den Rechner.
+    2. Überprüfen Sie den letzten Check-in, die zugewiesene Bereitstellung und die gemeldete Bereitstellung.
+    3. Gehen Sie zu **Beobachten → Richtlinie** und öffnen Sie die Sitzung der abgelehnten Entscheidung.
+    4. Bestätigen Sie, ob der Grund auf Daemon-Erreichbarkeit, Versionsabweichung oder die Richtlinie selbst hinweist.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    npm install -g failproofai@latest
+    failproofai config
+    ```
+
+    Durch erneutes Ausführen von `failproofai config` wird der Daemon nach einem Paket-Upgrade aktualisiert und neu gestartet.
+  </Tab>
+</Tabs>
+
+Auf einem Rechner, der für die Verwendung von `failproofaid` konfiguriert ist, ist der Daemon der einzige Auswertungsinstanz. Wenn er nicht erreichbar ist oder seine Protokollversion nicht mit der CLI übereinstimmt, schlägt die Hook-Auswertung geschlossen fehl. Die Aktion wird mit einem Grund abgelehnt, der den Operator anweist, den Daemon zu überprüfen oder zu aktualisieren.
+
+Vor der Daemon-Konfiguration werten Hooks Richtlinien im Prozess aus. Sobald die Daemon-Konfiguration gespeichert ist, greift Failproof AI bei einem Daemon-Ausfall nicht stillschweigend auf einen zweiten Auswertungspfad zurück.
+
+## Auf eine failure-closed-Entscheidung reagieren
+
+1. Führen Sie `failproofai config --status` aus.
+2. Falls die Versionen abweichen, führen Sie `failproofai config` nach der Paketaktualisierung erneut aus.
+3. Falls der Daemon nicht erreichbar ist, überprüfen Sie seinen Dienststatus und die lokalen Protokolle.
+4. Nehmen Sie die Agenten-Arbeit erst wieder auf, wenn ein bekannter Richtlinienauswertungspfad funktionsfähig ist.
+
+<Warning>
+  Wiederholen Sie die blockierte Aktion nicht mehrfach. Eine failure-closed-Antwort bedeutet, dass das System nicht feststellen konnte, dass die Aktion sicher war.
+</Warning>

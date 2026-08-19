@@ -1,0 +1,68 @@
+---
+title: "Escolha sua configuração"
+description: "Escolha entre execução local, Failproof AI Cloud ou uma implantação corporativa."
+icon: "waypoints"
+---
+
+<CardGroup cols={3}>
+  <Card title="Execução local" icon="laptop">
+    Instale hooks e políticas em uma máquina. Use esta opção quando precisar de proteções imediatas sem enviar dados de sessão para a nuvem.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud">
+    Adicione sessões centralizadas, auditorias, avaliações online, dashboards, alertas e implantação de políticas para toda a frota.
+  </Card>
+  <Card title="Implantação corporativa" icon="building-2">
+    Use controles organizacionais, chaves com escopo, infraestrutura privada e requisitos de segurança específicos da implantação.
+  </Card>
+</CardGroup>
+
+## Caminho recomendado para produção
+
+1. Conecte uma máquina fora de produção com a captura de transcrições habilitada.
+2. Verifique sessões e avaliações no Cloud.
+3. Crie uma auditoria para um modo de falha conhecido.
+4. Implante a primeira política em modo de observação.
+5. Expanda para produção após revisar correspondências e falsos positivos.
+
+## Conectar uma máquina ao Cloud
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **Administração → Chaves** e crie uma chave com `events:add` e `policies:pull`.
+    2. Copie o segredo de uso único para a máquina de destino.
+    3. Após executar o comando de conexão da CLI, acesse **Admin → enforcement** e confirme que a máquina aparece.
+    4. Acesse **Observar → Eventos** e confirme que o primeiro evento chega.
+
+    O painel da chave exibe as duas permissões necessárias para uma máquina conectada: ingestão de eventos e entrega de políticas.
+
+    ![O painel de criação de chave de API usado para conceder permissões de ingestão de eventos e entrega de políticas.](/images/dashboard/key-create.png)
+
+    Após a conexão, a máquina deve aparecer no enforcement com o estado de política desejado e o status de implantação reportado.
+
+    ![A frota de Enforcement com uma máquina registrada expandida para mostrar o estado de política desejado e o status de implantação.](/images/dashboard/enforcement-fleet.png)
+
+    O primeiro evento recebido confirma que o daemon consegue entregar dados ao Cloud, independentemente da implantação de políticas.
+
+    ![O fluxo de eventos em tempo real exibindo eventos recentes de agente, modelo e ferramenta.](/images/dashboard/events-stream-current.png)
+
+    Prossiga somente após a máquina e seu primeiro evento estarem visíveis.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --connect https://app.befailproof.ai \
+      --token "$FAILPROOFAI_KEY" \
+      --machine-label checkout-runner-01
+
+    failproofai policies --install --cli claude --scope user
+    failproofai config --status
+    ```
+
+    Adicione `--no-transcripts` quando o conteúdo das transcrições precisar permanecer local.
+  </Tab>
+</Tabs>
+
+A conexão com o Cloud verifica a ingestão de eventos e a entrega de políticas de forma independente. Portanto, uma chave pode ser válida, mas estar sem uma permissão obrigatória. Use `failproofai config --status` para verificar qual capacidade está configurada.
+
+<Info>
+  A configuração do Cloud grava credenciais locais somente após a capacidade relevante ser verificada com sucesso. Uma verificação com falha não deixa a máquina aparentando estar conectada quando não está.
+</Info>

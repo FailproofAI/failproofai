@@ -1,0 +1,167 @@
+---
+title: "Solución de problemas"
+description: "Diagnostica sesiones faltantes, políticas ausentes, entregas fallidas y acciones bloqueadas del agente."
+icon: "wrench"
+---
+
+<AccordionGroup>
+  <Accordion title="No aparecen sesiones en Cloud">
+    <Tabs>
+      <Tab title="Panel de control">
+        Abre **Administración → Claves** y confirma que la clave de máquina está activa y tiene `events:add`. Luego abre **Observar → Eventos**, amplía el rango de tiempo y elimina los filtros de entorno y agente. Si existen eventos, busca el ID de sesión y revisa **Observar → Sesiones** para verificar la agrupación. Si no existen eventos, diagnostica el daemon de Failproof desde la CLI.
+
+        ![El flujo de eventos en vivo con sus filtros principales visibles y eventos de agente recientes llegando.](/images/dashboard/events-stream-current.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait --timeout 60
+        fp list envs
+        fp events --since 24h --limit 20
+        fp sessions --since 24h --limit 20
+        ```
+
+        Confirma que la captura está habilitada, que la clave configurada tiene `events:add` y que el filtro del panel coincide con el entorno emitido.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Los eventos del SDK de Python permanecen en disco">
+    <Tabs>
+      <Tab title="Panel de control">
+        Elimina los filtros en **Observar → Eventos** y busca el ID de sesión exacto del SDK. Si no aparece nada, inspecciona el spool del SDK y el daemon de Failproof en la máquina de origen.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai flush --wait
+        ```
+
+        Confirma que el proceso del agente establece `AGENTEYE_SPOOL_TO_FAILPROOFAI=1` y que `$FAILPROOFAI_HOME/custom-agents`, o en su defecto `~/.failproofai/custom-agents`, existe antes de que el SDK se inicie.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="La máquina no recibe políticas">
+    <Tabs>
+      <Tab title="Panel de control">
+        Abre **Admin → aplicación**, selecciona la máquina y compara sus versiones asignada, reportada y anterior. Confirma que el alcance de despliegue incluye la máquina y que su clave tiene `policies:pull`. La ingesta puede funcionar aunque la entrega de políticas no lo haga.
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config --status
+        ```
+
+        Confirma que el ID y la etiqueta de la máquina coincidan con el objetivo en el panel. Reconéctate con una clave que soporte políticas si la credencial actual solo permite la ingesta de eventos.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Una acción es denegada porque el daemon no está disponible">
+    <Tabs>
+      <Tab title="Panel de control">
+        Abre **Admin → aplicación** e inspecciona la última vez que se vio la máquina y la versión reportada. Si la máquina está desactualizada, trátalo como un problema local del daemon. No debilites la política desplegada solo para evadir un daemon no disponible.
+
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        failproofai config --status
+        failproofai update
+        failproofai config
+        failproofai config --status
+        ```
+
+        Reinicia o actualiza `failproofaid`; vuelve a ejecutar la configuración cuando las versiones de protocolo de la CLI y el daemon difieran. La ruta del daemon configurada falla de forma cerrada por diseño.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Una política personalizada no se carga">
+    <Tabs>
+      <Tab title="Panel de control">
+        Para una política creada en Cloud, abre **Admin → editor de políticas**, selecciona el borrador y revisa los errores de validación antes de publicar. Para una política local, usa la CLI para validarla y luego abre **Observar → política** tras una acción de prueba para confirmar que llegan las decisiones.
+
+      </Tab>
+      <Tab title="CLI">
+        Confirma que el nombre del archivo termina en `policies.js`, `policies.mjs` o `policies.ts`, que el módulo llama a `customPolicies.add(...)` y que las importaciones se resuelven desde el archivo de política.
+
+        ```bash
+        failproofai policies --install --custom ./checkout.policies.ts
+        failproofai policies
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Una auditoría no arroja hallazgos">
+    <Tabs>
+      <Tab title="Panel de control">
+        Abre **Analizar → auditorías**, selecciona la ejecución y verifica si el análisis del modelo se realizó. Luego compara su alcance y ventana con **Observar → sesiones** y abre trazas representativas de esa población.
+
+        Un resultado cero solo es significativo cuando el análisis se ejecutó correctamente. Si el análisis fue omitido o falló, la ejecución no produce hallazgos y mantiene la ventana sin analizar abierta para una ejecución futura exitosa. Si el análisis del modelo está deshabilitado, la auditoría tampoco produce hallazgos porque el análisis determinístico de credenciales y PII registra estadísticas pero ya no genera hallazgos.
+
+        ![El formulario de auditoría donde el entorno, agente, cadencia y ventana de barrido definen la población de sesiones.](/images/dashboard/audit-new.png)
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp audits show <audit-name>
+        fp audits runs <audit-name>
+        fp sessions --since 24h --env production
+        fp audits context-show <audit-name>
+        fp audits run <audit-name>
+        fp audits findings --audit <audit-name>
+        ```
+
+        Si la ejecución quedó en cola, espera a que haya capacidad del agente de auditoría o pide al operador del despliegue que inspeccione la flota de auditoría. Una auditoría en cola reintenta; no se omite de inmediato.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Las evaluaciones en línea no se ejecutan automáticamente">
+    <Tabs>
+      <Tab title="Panel de control">
+        Abre una sesión completada y verifica si una evaluación manual tiene éxito. El Cloud alojado actualmente no tiene control del endpoint del evaluador en el panel; el operador del servidor debe configurarlo.
+      </Tab>
+      <Tab title="CLI">
+        Verifica el evaluador en sí mismo y luego inspecciona los estados de evaluación recientes:
+
+        ```bash
+        curl https://evaluator.example.com/health
+        fp evals --since 1h
+        ```
+
+        En Cloud autoalojado, confirma que `EVALUATOR_ENDPOINT` está presente en el servidor y que `EVALUATOR_TOKEN` coincide con el evaluador. La evaluación automática está deshabilitada cuando el endpoint está ausente.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="La autenticación de Cloud CLI apunta a la organización incorrecta">
+    <Tabs>
+      <Tab title="Panel de control">
+        Usa el selector de organización y confirma el slug y los permisos esperados antes de comparar los resultados con la CLI.
+      </Tab>
+      <Tab title="CLI">
+        ```bash
+        fp whoami
+        fp orgs current
+        fp orgs perms
+        ```
+
+        En modo de clave de API, especifica `fp --org <slug> --api-key <key> ...` o establece `AGENTEYE_ORG`. El estado de organización de sesiones humanas guardadas se ignora intencionalmente para solicitudes con clave de API.
+      </Tab>
+    </Tabs>
+  </Accordion>
+  <Accordion title="Una política bloquea trabajo válido">
+    <Tabs>
+      <Tab title="Panel de control">
+        Abre **Observar → política**, conserva la decisión y la sesión vinculada, e identifica la condición de falso positivo. Luego abre **Admin → aplicación** y revierte las máquinas afectadas a la versión anterior. Crea una versión más restrictiva en el **Editor de políticas**, pruébala en un alcance reducido y amplíala solo después de que el trabajo válido tenga éxito.
+
+      </Tab>
+      <Tab title="CLI">
+        La reversión del despliegue en Cloud solo se realiza desde el panel de control. Pausar una sesión local no deshabilita las políticas gestionadas por Cloud. Si el panel no está disponible, captura el estado de la máquina y del despliegue y restablece el acceso al panel en lugar de reintentar repetidamente la acción bloqueada.
+
+        ```bash
+        failproofai config --status
+        ```
+      </Tab>
+    </Tabs>
+  </Accordion>
+</AccordionGroup>
+
+Al contactar con soporte, incluye la versión de la CLI, el harness, el entorno, el ID de sesión o despliegue relevante y la salida de `failproofai config --status` con los secretos eliminados.

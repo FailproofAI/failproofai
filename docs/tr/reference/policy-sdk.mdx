@@ -1,0 +1,303 @@
+---
+title: "Özel politikalar"
+description: "Aracılarınıza özel başarısızlık senaryoları için JavaScript veya TypeScript politikaları yazın, test edin ve dağıtın."
+icon: "shield-plus"
+---
+
+Özel politikalar, izleme veya denetim izlerinizden bir başarısızlık desenini, bir aracı çalışırken çalışan bir karara dönüştürür. Bir politika bir eyleme izin verebilir, aracıya rehberlik edebilir veya başka bir olaya neden olmadan önce eylemi reddedebilir.
+
+Davranış araçlarınıza, yollara, komutlara, ortamlara veya işletme kurallarınıza bağlı olduğunda özel bir politika kullanın. Mevcut bir denetimi yeniden oluşturmamak için önce [yerleşik politika kataloğunu](/tr/policies/builtin-catalog) kontrol edin.
+
+## Özel bir politika yazın
+
+<Tabs>
+  <Tab title="Pano">
+    1. **Admin → politika editörü**'ne gidin, **Yeni politika**'yı seçin ve önlemek istediğiniz başarısızlığı açıklayın.
+    2. Politika kaynağını ekleyin, ardından editörde beklenen eşleşmeleri ve güvenli eşleşmeyenleri test edin. Her doğrulama hatasını çözün.
+    3. Taslağı kaydedin ve değişmez bir sürüm oluşturmak için **Sürümü yayınla**'yı seçin.
+    4. **Admin → zorlama**'ya gidin, sürümü bir test makinesine **gözlem** modunda dağıtın ve **Gözlem → politika** altında kararlarını doğrulamadan önce zorlayın.
+
+    ![Özel bir politika yazıp yayınlamak için kullanılan politika editörü.](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    1. `.failproofai/policies/checkout-policies.ts` oluşturun. Dosya adı `policies.js`, `policies.mjs` veya `policies.ts` ile bitmelidir.
+    2. `customPolicies.add()` ile bir veya daha fazla politika kaydedin.
+    3. Dosyayı `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project` ile doğrulayın ve kurun.
+    4. Eşleşen bir eylemi ve bir güvenli eylemi tetikleyin. `failproofai policies` çalıştırın, ardından **Gözlem → politika** altında atanan kararları inceleyin.
+  </Tab>
+</Tabs>
+
+## Dar bir kuralla başlayın
+
+Bu politika yalnızca komut üretim hedefini gösterdiğinde yıkıcı Kubernetes komutlarını engeller. Bu tam başarısızlık modunun dışındaki her şey `allow()` döndürür.
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+const DESTRUCTIVE_KUBECTL = /\bkubectl\s+(delete|replace)\b/i;
+const PRODUCTION_TARGET = /(?:--context|--namespace|-n)\s+(prod|production)\b/i;
+
+customPolicies.add({
+  name: "block-destructive-production-kubectl",
+  description: "Block destructive Kubernetes commands against production",
+  match: { events: ["PreToolUse"] },
+  fn: async ({ toolName, toolInput }) => {
+    if (toolName !== "Bash") return allow();
+
+    const command = String(toolInput?.command ?? "");
+    if (!DESTRUCTIVE_KUBECTL.test(command)) return allow();
+    if (!PRODUCTION_TARGET.test(command)) return allow();
+
+    return deny(
+      "Destructive production Kubernetes commands require the approved deployment workflow.",
+    );
+  },
+});
+```
+
+İyi politikalar bir cümleyle açıklanacak kadar dardır. Aracının umutsunduk olduğu niyeti değil, gözlemlenebilir eylemi eşleştirin ve kural geçerli olmadığı anda `allow()` döndürün.
+
+## Bir karar seçin
+
+| Yardımcı | Sonuç | Bunu kullanın |
+| --- | --- | --- |
+| `allow(reason?)` | İşlem devam eder. | Politika geçerli değildir veya eylem güvenlidir. |
+| `instruct(reason)` | İşlem, tutturma onu desteklediğinde rehberlikle devam eder. | Aracıyı bir değişmez zorlamamadan daha iyi bir yaklaşıma yönlendirmek istediğinizde. |
+| `deny(reason)` | Olay ve tutturma bloklemeyi desteklediğinde işlem engellenir. | Eylem ilerlemelidir. |
+
+Aracının kurtarması gereken sebep yazın. Neyin tespit edildiğini ve bunun yerine ne yapması gerektiğini açıklayın.
+
+<Warning>
+  `instruct()` komutunu bir güvenlik sınırı için kullanmayın. Rehberlik sunumu aracı tutturma tarafından değişir. Eylem engellenmelidir durumlarda `deny()` kullanın.
+</Warning>
+
+## Politika nesnesi
+
+```ts
+customPolicies.add({
+  name: "policy-name",
+  description: "What this policy prevents",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => allow(),
+});
+```
+
+| Alan | Gerekli | Açıklama |
+| --- | --- | --- |
+| `name` | Evet | Politika için sabit tanımlayıcı. Dosyalar arasında adları benzersiz tutun. |
+| `description` | Hayır | Politika listelerinde ve kararlarda gösterilen insan tarafından okunabilir amaç. |
+| `match.events` | Hayır | Politikayı çağıran olay türleri. `match` atlanırsa her kullanılabilir olay için çağırır. |
+| `fn` | Evet | `allow`, `instruct` veya `deny` sonucu döndüren eşzamanlı veya eşzamansız işlev. |
+
+`fn` içinde araçları filtreleyin. `match.toolNames` genel özel politika türünün bir parçası değildir.
+
+## Politika bağlamı
+
+Her politika bir `PolicyContext` alır.
+
+| Alan | Tür | İçeriği |
+| --- | --- | --- |
+| `eventType` | `HookEventType` | Şu anda değerlendirilen normalleştirilmiş olay. |
+| `toolName` | `string \| undefined` | `Bash`, `Read`, `Write` veya `Edit` gibi kanonik araç adı. |
+| `toolInput` | `Record<string, unknown> \| undefined` | Mevcut araç çağrısı için kanonik giriş. |
+| `payload` | `Record<string, unknown>` | Tam normalleştirilmiş olay yükü. |
+| `session` | `SessionMetadata \| undefined` | Mevcut olduğunda oturum kimliği, çalışma dizini, transkript yolu, izin modu ve tutturma meta verileri. |
+| `cli` | `string \| undefined` | `claude`, `codex` veya `cursor` gibi kaynak aracı tutturması. |
+| `params` | `Record<string, unknown>` | Yerleşik politika parametreleri. Özel politikalar şu anda boş bir nesne alır. |
+
+Her isteğe bağlı değeri gerçekten isteğe bağlı olarak işleyin. Aracı sürümleri ve olay türleri aynı alanları sağlamaz.
+
+### Ortak araç girdileri
+
+Failproof AI, desteklenen tutturmalar arasında ortak araçları normalleştirir ve böylece bir politika genellikle bir giriş şekli kullanabilir.
+
+| Araç | Ortak alanlar |
+| --- | --- |
+| `Bash` | `command` |
+| `Read` | `file_path` |
+| `Write` | `file_path`, `content` |
+| `Edit` | `file_path`, `old_string`, `new_string` |
+| `Grep` | `pattern`, `path` |
+
+Araç giriş değerleri `unknown` olarak yazıldığından savunmacı zorlama kullanın:
+
+```ts
+const command = String(ctx.toolInput?.command ?? "");
+const filePath = String(ctx.toolInput?.file_path ?? "");
+```
+
+## Olayı seçin
+
+| Olay | Ne zaman çalışır | Tipik kullanım |
+| --- | --- | --- |
+| `PreToolUse` | Bir araç yürütülmeden önce. | Komutları, yazıları, okumaları ve dış eylemleri engelle veya rehberlik et. |
+| `PostToolUse` | Bir araç döndükten sonra. | Sonuçları aracıya ulaşmadan önce incele. Bir deny tüm sonucu engeller; seçili alanları düzenlemez. |
+| `PermissionRequest` | Aracı izin istediğinde. | Organizasyona özgü izin kuralları uygula. |
+| `UserPromptSubmit` | Gönderilen bir istem devam etmeden önce. | Yasaklanmış talimatları reddet veya iş akışı rehberliği ekle. |
+| `Stop` | Aracı bitirmeye çalıştığında. | Yerel doğrulama adımı gibi ulaşılabilir bir tamamlama koşulu gerektir. |
+| `SubagentStop` | Bir alt aracı bitirmeye çalıştığında. | Devredilen işi üst araç döndürülmeden önce geçit değeri. |
+| `SessionStart` / `SessionEnd` | Oturum sınırlarında. | Oturum düzeyindeki durumu kaydet veya kontrol et. |
+
+Olay kullanılabilirliği ve engelleme davranışı aracı tutturmasına bağlıdır. Karışık bir filosu genelinde bir olaya güvenmeden önce [Aracı tutturmaları](/tr/reference/harnesses) bölümüne bakın.
+
+<Accordion title="Tüm politika olay adları">
+  `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch`, ve `Setup`.
+</Accordion>
+
+## Yaygın politika desenlerini yazın
+
+### Korumalı yollara yazıları engelle
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "block-generated-file-edits",
+  description: "Require generated files to be changed through their generator",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (!["Write", "Edit"].includes(ctx.toolName ?? "")) return allow();
+
+    const filePath = String(ctx.toolInput?.file_path ?? "");
+    if (!/(^|\/)(dist|generated)\//.test(filePath)) return allow();
+
+    return deny("Edit the source and run the generator instead of changing generated output.");
+  },
+});
+```
+
+### Engelleyici olmayan rehberlik ver
+
+```ts
+import { customPolicies, allow, instruct } from "failproofai";
+
+customPolicies.add({
+  name: "prefer-reviewed-deploy-command",
+  description: "Guide agents toward the reviewed deployment wrapper",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Bash") return allow();
+
+    const command = String(ctx.toolInput?.command ?? "");
+    if (!/^kubectl\s+apply\b/.test(command.trim())) return allow();
+
+    return instruct("Use ./scripts/deploy-reviewed instead of invoking kubectl directly.");
+  },
+});
+```
+
+### Oturum tamamlamasını geçit değeri
+
+```ts
+import { execFileSync } from "node:child_process";
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "require-clean-typecheck",
+  description: "Require the project typecheck to pass before the agent finishes",
+  match: { events: ["Stop"] },
+  fn: async (ctx) => {
+    const cwd = ctx.session?.cwd;
+    if (!cwd) return allow();
+
+    try {
+      execFileSync("bunx", ["tsc", "--noEmit"], {
+        cwd,
+        stdio: "ignore",
+        timeout: 8_000,
+      });
+      return allow();
+    } catch {
+      return deny("Fix the typecheck errors before finishing the task.");
+    }
+  },
+});
+```
+
+<Warning>
+  Reddedilen `Stop` olayı aracının yeniden denemesine neden olabilir. Yalnızca aracının mevcut ortamda yerine getirebileceği bir koşulu geçit değeri yapın ve her alt işlem veya ağ çağrısını sınırlayın.
+</Warning>
+
+## Politika dosyalarını yükle
+
+### Kural dosyaları
+
+Kural dosyaları otomatik olarak yüklenir:
+
+```text
+<project>/.failproofai/policies/security-policies.ts
+~/.failproofai/policies/personal-policies.mjs
+```
+
+- Proje ve kullanıcı politika dizinleri her ikisi de yüklenir.
+- Dosyalar her dizin içinde alfabetik olarak yüklenir.
+- Bir dosya `policies.js`, `policies.mjs` veya `policies.ts` ile bitmelidir.
+- Bir dosyada birden fazla `customPolicies.add()` çağrısı desteklenir.
+- Yerel modüllerden göreceli alma desteklenir.
+- Proje politikaları aynı kurallar deposu izleyecek şekilde işlenebilir.
+
+### Açık dosyalar
+
+Doğrulama veya yapılandırma giriş dosyasını doğrudan adlandırması gerektiğinde açık yolları kullanın:
+
+```bash
+failproofai policies --install \
+  --custom ./security.policies.ts \
+  --custom ./workflow.policies.ts \
+  --scope project
+```
+
+Açık dosyalar önce yüklenir, ardından proje kural dosyaları ve sonra kullanıcı kural dosyaları gelir. Her iki yolu keşfedilen bir dosya bir kez yüklenir.
+
+## Doğrulayın ve test edin
+
+Doğrulama modülü üretim yükleyicisi aracılığıyla yürütür ve en az bir politika kaydettiğini onaylar.
+
+```bash
+failproofai policies --install \
+  --custom ./.failproofai/policies/checkout-policies.ts \
+  --scope project
+failproofai policies
+```
+
+Doğrulama eksik dosyaları, sözdizimi hatalarını, çözülmemiş almaları, üst düzey özel durumlara ve modül yükleme zaman aşımlarını yakalar. Eşleştirme mantığınızın doğru olduğunu kanıtlamaz.
+
+En az şu durumları test edin:
+
+- Eşleşmeli ve amaçlanan politika nedenini üretmesi gereken bir eylem.
+- Yakın ama güvenli bir eylem `allow()` döndürmelidir.
+- Eksik veya hatalı biçimlendirilmiş araç alanları.
+- Alternatif komut sözdizimi, yollar, tırnak işaretleri, casing ve boşluk.
+- Kullanılamayan bir alt işlem veya ağ bağımlılığı.
+
+Sonucu **Gözlem → politika** altında özel politikanıza atayın. Farklı bir yerleşik politika kararı aldıysa, engellenen bir test yeterli değildir.
+
+## Çalışma zamanı davranışı
+
+- Yerleşik politikalar özel politikalardan önce değerlendirilir.
+- İlk `deny` daha fazla politika değerlendirmesini durdurur.
+- Hiçbir politika olayı reddetmediğinde birden fazla `instruct` sonucu birleştirilebilir.
+- Bir politika işlevinin 10 saniyelik yürütme son tarihi vardır.
+- Atılan bir özel durum veya zaman aşımı günlüğe kaydedilir ve `allow()` olarak işlenir.
+- Başarısız yüklenen kural dosyası atlanır; diğer özel dosyalar ve yerleşik politikalar devam eder.
+- Üst düzey modül yükleme de 10 saniyelik son tarihine sahiptir.
+- Bulut gözlem modu politikayı çalıştırır ancak zorlamadan bir reddet olmayan kararı kaydeder.
+
+Politika modüllerini deterministik ve hızlı tutun. Üst düzey ağ çağrılarından veya sunucu başlatmaktan kaçının. `fn` içinde işi sınırlandırın, bağımlılık başarısızlığını yakalayın ve bu başarısızlığın işlemi izin vermesi veya reddetmesi gerektiğine kasten karar verin.
+
+## API dışa aktarımları
+
+| Dışa aktarım | Amaç |
+| --- | --- |
+| `customPolicies.add(policy)` | Modül yüklendiğinde özel bir politika kaydet. |
+| `allow(reason?)` | İşleme izin ver. |
+| `instruct(reason)` | İşleme izin ver ve desteklenen yerlerde rehberlik sağla. |
+| `deny(reason)` | Desteklenen yerlerde işlemi engelle. |
+| `getCustomHooks()` | Modül kaydında şu anda kayıtlı politikaları döndür. |
+| `clearCustomHooks()` | Kaydı temizle, birincil olarak testler ve yükleyiciler için. |
+
+TypeScript `PolicyContext`, `PolicyResult`, `CustomHook`, `PolicyDecision`, ve `PolicyFunction` dışa aktarır.
+
+<Card title="Özel politikaları dağıt" icon="server-cog" href="/tr/policies/deploy">
+  Bir sürüm yayınla, gözlem modunda dağıt, kararları doğrula ve zorlama haline geçir.
+</Card>

@@ -1,0 +1,78 @@
+---
+title: "Entegrasyonlar ve referans"
+description: "Desteklenen agent harness'ları, SDK'ları, CLI'ları ve HTTP API'sini bağlayın."
+icon: "braces"
+---
+
+Agentnizin zaten çalıştığı yere en yakın entegrasyonu seçin.
+
+<Columns cols={2}>
+  <Card title="Agent harness'ları" icon="plug-zap" href="/tr/reference/harnesses">
+    Desteklenen kodlama ve otonom agent CLI'ları için hook'ları yükleyin.
+  </Card>
+  <Card title="Özel agenler" icon="python" href="/tr/reference/python-sdk">
+    Özel agentlerdeki hataları bulmak için izlemeleri enstrüment edin, ardından çalışma zamanınıza önleme eklemek için bize başvurun.
+  </Card>
+  <Card title="Yerel dashboard" icon="monitor-cog" href="/tr/reference/local-dashboard">
+    Yerel projeleri, oturumları, politika etkinliğini ve çevrimdışı denetimleri inceleyin.
+  </Card>
+  <Card title="failproofai CLI" icon="terminal" href="/tr/reference/failproof-cli">
+    Yerel yakalama, hook'lar, politikalar, denetimler, teslimat ve makine durumunu yapılandırın.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/tr/reference/cloud-cli#cli-commands">
+    Cloud oturumlarını, denetimleri, sorunları, uyarıları, anahtarları, kullanıcıları ve ayarları sorgulayın ve yönetin.
+  </Card>
+  <Card title="Evaluator SDK" icon="gauge" href="/tr/reference/evaluator-sdk">
+    FastAPI hizmetiyle tam veya inaktif oturumları puanlayın.
+  </Card>
+  <Card title="Özel politikalar" icon="shield-plus" href="/tr/reference/policy-sdk">
+    İş akışına özgü allow, instruct ve deny kararlarını yazın ve test edin.
+  </Card>
+  <Card title="Kendi kendine barındırma" icon="cloud-cog" href="/tr/reference/self-hosting">
+    Cloud kontrol düzlemini müşteri tarafından yönetilen bir Kubernetes kümesine dağıtın.
+  </Card>
+</Columns>
+
+Oluşturulan [HTTP API referansı](/tr/reference/http-api), genel `/v1` yüzeyini kapsar. El yazısı sayfalar, birden çok uç noktaya yayılan veya bu genel yüzeyin dışındaki yönetim arayüzlerini kullanan iş akışlarını açıklar.
+
+## Bir agent bağlayın ve verileri doğrulayın
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Administration → Keys** (Yönetim → Anahtarlar) açın, `events:add` ve `policies:pull` ile bir anahtar oluşturun ve sırrı kopyalayın.
+    2. Entegrasyonu yukarıdaki eşleşen sayfayı kullanarak yapılandırın.
+    3. **Observe → Events** (Gözlemle → Olaylar) açarak olayların geldiğini doğrulayın, ardından **Observe → Sessions** (Gözlemle → Oturumlar) açarak tam çalışımlar oluşturduğunu doğrulayın.
+    4. Entegrasyonun ortamına filtreleyin ve denetimler için gereken model, tool, error ve policy alanları için bir oturumu inceleyin.
+
+    Anahtar çekmecesiyle başlayın. Seçilen izinler, makinenin etkinlikleri göndermesi ve Cloud tarafından yönetilen politikaları alması gerekip gerekmediğini belirler.
+
+    ![Etkinlik alımı ve politika teslimat izinleri vermek için kullanılan yeni API anahtar çekmecesi.](/images/dashboard/key-create.png)
+
+    Entegrasyonu bağladıktan sonra, olaylarının beklenen ortamda tam çalışımlara gruplanıp gruplanmadığını doğrulamak için Sessions listesini kullanın.
+
+    ![Yeni bağlanan bir entegrasyonun tam agent çalışımlarını raporladığını doğrulamak için kullanılan Sessions listesi.](/images/dashboard/sessions-list.png)
+
+    Entegrasyonu tam olarak tamamlanmış olarak düşünmeden önce bu oturumlardan birini açın; izleme, denetimlerinizin ihtiyaç duyduğu model, tool, error ve policy kanıtlarını içermelidir.
+  </Tab>
+  <Tab title="CLI">
+    Bir makine anahtarı oluşturun, failproofai daemon'ını bağlayın ve ilk oturumu doğrulayın.
+
+    ```bash
+    fp keys create agent-production \
+      --add events:add \
+      --add policies:pull
+
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+
+    failproofai flush --wait
+    fp sessions --since 1h --env production
+    fp events --since 1h --env production --limit 20
+    ```
+
+    Başka bir araç sonucu tüketecekse `fp --json sessions ...` kullanın. `--json`, `--org` ve `--base-url` gibi global flag'ler komuttan önce gelmelidir.
+
+    Yerel komutlar için [failproofai CLI referansına](/tr/reference/failproof-cli) ve `fp` komutları için [Failproof Cloud CLI referansına](/tr/reference/cloud-cli#cli-commands) bakın.
+  </Tab>
+</Tabs>

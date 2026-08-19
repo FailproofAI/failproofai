@@ -1,0 +1,74 @@
+---
+title: "HTTP API"
+description: "Authentifizieren Sie sich bei der öffentlichen Failproof AI Cloud `/v1` API und nutzen Sie die generierte Endpunkt-Referenz."
+icon: "braces"
+---
+
+Die öffentliche API wird unter `/v1` auf Ihrem Failproof AI Dashboard-Origin bereitgestellt.
+
+## Schlüssel erstellen und Anfrage senden
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Öffnen Sie **Administration → Schlüssel**, wählen Sie **Schlüssel erstellen** und wählen Sie das engste Berechtigungs-Preset, das die Integration abdeckt.
+    2. Fügen Sie individuelle Berechtigungen nur bei Bedarf hinzu, erstellen Sie den Schlüssel und kopieren Sie das einmalig angezeigte Secret.
+    3. Senden Sie eine Testanfrage an `/v1/sessions` und bestätigen Sie, dass der Schlüssel auf der Schlüssel-Seite aktiv bleibt.
+    4. Rotieren oder deaktivieren Sie den Schlüssel über sein Aktionsmenü, wenn die Integration den Eigentümer wechselt.
+
+    ![Der Drawer für neue API-Schlüssel mit Berechtigungs-Presets und individuellen Grants.](/images/dashboard/key-create.png)
+
+    Der Erstellungs-Drawer ist oben dargestellt. Das einmalige Secret erscheint nur, nachdem Sie **Erstellen** ausgewählt haben; kopieren Sie es, bevor Sie die Bestätigung schließen.
+  </Tab>
+  <Tab title="CLI">
+    Erstellen Sie einen Leseschlüssel und verwenden Sie ihn direkt mit `fp` oder `curl`:
+
+    ```bash
+    fp keys create reliability-reader \
+      --permission-set read-only
+
+    fp --api-key <key> sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY"
+    ```
+  </Tab>
+</Tabs>
+
+Schlüssel sind auf eine Organisation und ein Berechtigungs-Set beschränkt. Eine Anfrage ohne die erforderliche Berechtigung des Endpunkts gibt `403` zurück und benennt die fehlende Berechtigung.
+
+## Organisationsauswahl
+
+Ein Organisationsschlüssel agiert automatisch für seine Organisation. Ein instanzweit gültiger Schlüssel kann die Organisation pro Anfrage auswählen:
+
+<Tabs>
+  <Tab title="Dashboard">
+    Verwenden Sie den Organisations-Umschalter im Dashboard-Header, bevor Sie **Administration → Schlüssel** öffnen. Dort erstellte Schlüssel gehören zur ausgewählten Organisation. Bestätigen Sie den Organisations-Slug in der URL und den Schlüsseldetails, bevor Sie die Zugangsdaten in die Automatisierung übernehmen.
+
+  </Tab>
+  <Tab title="CLI">
+    Verwenden Sie `--org` vor dem Befehl oder senden Sie den Organisations-Header für einen instanzweiten API-Schlüssel.
+
+    ```bash
+    fp orgs list
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+Nutzen Sie die generierten Endpunkt-Seiten in diesem Abschnitt für aktuelle Pfade, Parameter, Berechtigungsanforderungen und Statuscodes. Die Spezifikation wird aus den Server-Route-Annotationen generiert und gegen den `/v1`-Router geprüft.
+
+Die aktuelle Spezifikation bietet vollständige Abdeckung für Routen, Methoden, Parameter, Berechtigungen und Statuscodes. Einige Response-Bodies bleiben absichtlich untypisiert, da der Server sie noch als dynamisches JSON konstruiert. Prüfen Sie eine echte Antwort, bevor Sie einen stark typisierten Client um einen Endpunkt ohne Response-Schema generieren.
+
+Verwenden Sie `Content-Type: application/json` für JSON-Schreibvorgänge. Behandeln Sie `401` als fehlende oder ungültige Authentifizierung, `403` als gültige Identität ohne die erforderliche Berechtigung, `404` als fehlende oder für die Organisation nicht zugängliche Ressource, `409` als Zustandskonflikt und `422` als ungültigen Feld- oder Berechtigungswert. Fehlerantworten enthalten eine lesbare Nachricht; bei Berechtigungsfehlern wird zusätzlich der erforderliche Grant genannt.
+
+<Warning>
+  Die Bereitstellung der Policy-Durchsetzung wird bewusst außerhalb der regulären öffentlichen `/v1`-Oberfläche verwaltet. Verwenden Sie den unterstützten Cloud-Deployment-Workflow.
+</Warning>

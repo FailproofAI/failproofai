@@ -1,0 +1,129 @@
+---
+title: "Catálogo de políticas integradas"
+description: "Revisa cada política integrada de Failproof AI, su disparador, estado recomendado y parámetros configurables."
+icon: "list-checks"
+---
+
+El paquete instalado es la fuente de verdad sobre la disponibilidad de políticas. Ejecuta `failproofai policies` después de cada actualización, ya que las entradas del catálogo y el comportamiento pueden cambiar con la versión del paquete.
+
+## Línea base recomendada
+
+La selección recomendada por la configuración guiada actualmente habilita sanitizadores de secretos, protecciones de entorno, autoprotección, guardas contra comandos catastróficos y seguridad en ramas protegidas:
+
+```text
+sanitize-jwt                 sanitize-api-keys
+sanitize-connection-strings sanitize-private-key-content
+sanitize-bearer-tokens       protect-env-vars
+block-env-files              block-secrets-write
+block-self-pause             block-failproofai-commands
+block-sudo                   block-curl-pipe-sh
+block-rm-rf                  block-push-master
+block-force-push
+```
+
+La selección recomendada es deliberadamente más reducida que **Everything**. Las políticas de infraestructura y flujo de trabajo pueden interrumpir trabajo válido, por lo que deben habilitarse solo en los repositorios y máquinas que las necesiten.
+
+## Secretos y entorno
+
+| Política | Disparador | Resultado |
+| --- | --- | --- |
+| `sanitize-jwt` | `PostToolUse` | Redacta los JWT de la salida de herramientas antes de que el modelo los vea. |
+| `sanitize-api-keys` | `PostToolUse` | Redacta claves comunes de OpenAI, Anthropic, GitHub, AWS, Stripe y Google. |
+| `sanitize-connection-strings` | `PostToolUse` | Redacta cadenas de conexión a bases de datos que contienen credenciales. |
+| `sanitize-private-key-content` | `PostToolUse` | Redacta cuerpos de claves privadas PEM. |
+| `sanitize-bearer-tokens` | `PostToolUse` | Redacta tokens de autorización bearer. |
+| `protect-env-vars` | `PreToolUse` en herramientas de shell | Bloquea comandos que vuelcan variables de entorno. |
+| `block-env-files` | `PreToolUse` | Bloquea lecturas y escrituras de archivos `.env`. |
+| `block-read-outside-cwd` | `PreToolUse` en herramientas de lectura, glob, grep o shell | Mantiene las lecturas dentro del directorio de trabajo de la sesión. |
+| `block-secrets-write` | `PreToolUse` en herramientas de escritura | Bloquea escrituras en nombres de archivo comunes de claves secretas y credenciales. |
+
+## Comandos peligrosos e infraestructura
+
+| Política | Disparador | Resultado |
+| --- | --- | --- |
+| `block-self-pause` | `PreToolUse`, `PermissionRequest` | Impide que un agente pause su propio cumplimiento. |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` | Bloquea `sudo` a menos que coincida un patrón permitido. |
+| `block-curl-pipe-sh` | `PreToolUse` | Bloquea scripts descargados que se canalizan directamente a un shell. |
+| `block-rm-rf` | `PreToolUse` | Bloquea patrones de eliminación recursiva catastrófica. |
+| `block-failproofai-commands` | `PreToolUse` | Impide que los agentes modifiquen o desinstalen Failproof AI. |
+| `block-kubectl` | `PreToolUse` | Controla los comandos de Kubernetes. |
+| `block-terraform` | `PreToolUse` | Controla los comandos de Terraform y OpenTofu. |
+| `block-aws-cli` | `PreToolUse` | Controla los comandos de AWS CLI. |
+| `block-gcloud` | `PreToolUse` | Controla los comandos de Google Cloud CLI. |
+| `block-az-cli` | `PreToolUse` | Controla los comandos de Azure CLI. |
+| `block-helm` | `PreToolUse` | Controla los comandos de Helm. |
+| `block-gh-pipeline` | `PreToolUse` | Controla las operaciones mutantes de flujo de trabajo, ejecución, fusión, versión, caché y secretos del CLI de GitHub. |
+
+## Seguridad en Git y bases de datos
+
+| Política | Disparador | Resultado |
+| --- | --- | --- |
+| `block-push-master` | `PreToolUse` | Bloquea los push directos a las ramas protegidas configuradas. |
+| `block-force-push` | `PreToolUse` | Bloquea los force-push; `--force-with-lease` permanece permitido por la implementación actual. |
+| `block-work-on-main` | `PreToolUse` | Bloquea commits y fusiones en ramas protegidas. |
+| `warn-git-amend` | `PreToolUse` | Advierte antes de reescribir un commit con `--amend`. |
+| `warn-git-stash-drop` | `PreToolUse` | Advierte antes de eliminar o limpiar stashes de forma permanente. |
+| `warn-all-files-staged` | `PreToolUse` | Advierte sobre el uso amplio de `git add -A`, `git add .` o `git add --all`. |
+| `warn-destructive-sql` | `PreToolUse` | Advierte sobre `DROP`, `TRUNCATE` y `DELETE` sin `WHERE` a través de clientes de bases de datos reconocidos. |
+| `warn-schema-alteration` | `PreToolUse` | Advierte sobre operaciones reconocidas de `ALTER TABLE` en columnas y renombrados. |
+
+## Paquetes, comportamiento del sistema y bucles de agente
+
+| Política | Disparador | Resultado |
+| --- | --- | --- |
+| `warn-package-publish` | `PreToolUse` | Advierte antes de publicar en registros de paquetes. |
+| `warn-global-package-install` | `PreToolUse` | Advierte antes de la instalación global de paquetes. |
+| `prefer-package-manager` | `PreToolUse` | Instruye al agente para que use un gestor de paquetes permitido. |
+| `warn-large-file-write` | `PreToolUse` en herramientas de escritura | Advierte cuando se supera el umbral de tamaño de archivo configurado. |
+| `warn-background-process` | `PreToolUse` | Advierte sobre patrones de procesos en segundo plano desconectados o de larga duración. |
+| `warn-repeated-tool-calls` | `PreToolUse` | Advierte tras tres o más llamadas a herramientas idénticas. |
+
+## Flujo de trabajo al finalizar la tarea
+
+Estas políticas requieren un arnés que emita un evento `Stop` compatible.
+
+| Política | Resultado |
+| --- | --- |
+| `require-commit-before-stop` | Rechaza la finalización mientras haya trabajo rastreado sin confirmar. |
+| `require-push-before-stop` | Rechaza la finalización mientras haya commits solo en local. |
+| `require-pr-before-stop` | Requiere una pull request para la rama actual. |
+| `require-no-conflicts-before-stop` | Requiere una fusión limpia contra la rama base configurada. |
+| `require-ci-green-before-stop` | Requiere que las comprobaciones de CI del HEAD actual se completen con éxito. |
+
+## Referencia de parámetros
+
+Configura los parámetros en el objeto `policyParams` del ámbito seleccionado. Los tipos son validados por cada política.
+
+| Política | Parámetro | Tipo y valor predeterminado |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; las entradas contienen `regex` y `label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Bloqueadores de infraestructura | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+```json
+{
+  "enabledPolicies": ["block-sudo", "block-push-master"],
+  "policyParams": {
+    "block-sudo": {
+      "allowPatterns": ["sudo systemctl status"]
+    },
+    "block-push-master": {
+      "protectedBranches": ["main", "release"]
+    }
+  }
+}
+```
+
+<Warning>
+  Un patrón permitido amplía lo que un agente puede hacer. Prueba la tokenización exacta y las variantes de comando en el arnés de destino antes de desplegarlo en toda una flota.
+</Warning>

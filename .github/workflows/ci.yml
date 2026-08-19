@@ -296,6 +296,18 @@ jobs:
         with:
           node-version: "22"
 
+      # The custom-policy loader tests resolve `import ... from 'failproofai'`
+      # inside a generated .mjs through findDistIndex(), which needs a real
+      # dist/index.js on disk — so with `--ignore-scripts` above, the `prepare`
+      # hook is no longer there to have built it. Three milliseconds of bun
+      # bundling, against the ~28s full Next build it replaces.
+      #
+      # This is also why running the whole suite is a bad way to check the
+      # dependency: some earlier test writes that file, so the loader tests pass
+      # on ordering alone when run together and fail when run on their own.
+      - name: Build the policy-loader fixture
+        run: bun build src/index.ts --outdir dist --target node --format cjs
+
       - name: Test (${{ matrix.env-config.name }})
         uses: nick-fields/retry@v4
         env: ${{ matrix.env-config.env }}

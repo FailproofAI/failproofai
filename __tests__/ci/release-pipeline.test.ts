@@ -716,16 +716,26 @@ describe("CI cost guards", () => {
     expect(steps.some((s) => String(s.uses ?? "").startsWith("Swatinem/rust-cache"))).toBe(true);
   });
 
-  it("bounds and retries the musl toolchain install", () => {
+  it("bounds and retries the musl toolchain install, with a root-owned killer", () => {
     const step = workflow("build-daemon.yml").jobs.build.steps.find((s: Record<string, any>) =>
       String(s.name ?? "").includes("musl toolchain"),
     );
-    // A bare `run:` is what hung: apt's default acquire timeouts are long
-    // enough to be no timeout at all against a stalled mirror.
-    expect(step.run).toBeUndefined();
-    expect(String(step.uses)).toContain("nick-fields/retry");
-    expect(step.with.timeout_minutes).toBeLessThanOrEqual(5);
-    expect(step.with.command).toContain("Acquire::http::Timeout");
+    const script = String(step.run ?? "");
+
+    // `sudo timeout`, in that order, is the whole point and the reason this
+    // assertion is this specific. The first version of this step used
+    // nick-fields/retry, which bounds a step by killing its process tree AS THE
+    // RUNNER USER — and apt runs as root, so the four-minute timeout fired
+    // correctly and the action then died with `kill EPERM` instead of retrying.
+    // `timeout` inside the sudo is what makes the killer root as well.
+    expect(step.uses).toBeUndefined();
+    expect(script).toMatch(/sudo timeout\b/);
+    expect(script).not.toMatch(/timeout\s+\d+\s+sudo\b/);
+
+    // Bounded per attempt, retried, and loud about which mirror stalled.
+    expect(script).toContain("Acquire::http::Timeout");
+    expect(script).toContain("for attempt in");
+    expect(script).not.toContain("-qq");
   });
 
   it("supersedes a superseded daemon build without cancelling a release", () => {

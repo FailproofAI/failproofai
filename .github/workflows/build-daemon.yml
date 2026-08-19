@@ -125,25 +125,49 @@ jobs:
       # crate resolves `musl-gcc` on both musl legs.
       #
       # Retried and bounded, because the failure mode here is a HANG rather than
-      # an error. apt's default acquire timeouts are long enough to be no
-      # timeout at all against a stalled mirror, so without these the leg would
-      # spend the entire job budget above on one bad Azure endpoint instead of
-      # four minutes and a retry against a different one. `-qq` is gone on
-      # purpose too: it suppressed the per-mirror progress that says WHICH
-      # endpoint stalled, which is the one thing worth having in the log.
+      # an error, and apt's own acquire timeouts do not reliably catch it: on
+      # 2026-08-19 every `azure.archive.ubuntu.com` line came back `Ign`, apt
+      # fell back to `archive.ubuntu.com`, fetched the InRelease files, and then
+      # sat for three and a half minutes emitting nothing.
+      #
+      # `sudo timeout`, NOT `nick-fields/retry` — that was the first attempt and
+      # CI rejected it. The action bounds a step by killing its process tree
+      # from the runner user, and apt runs as root: the timeout fired correctly
+      # at four minutes and the action then died with `kill EPERM` instead of
+      # retrying, turning a recoverable stall into a failed leg. Putting
+      # `timeout` INSIDE the sudo is what makes the killer root too.
+      #
+      # The fast path skips the network altogether. `apt-get update` is the step
+      # that stalls, and it is only needed when the runner image's package lists
+      # cannot satisfy the install — so try the install first and refresh only
+      # on failure. `-qq` is gone on purpose as well: it suppressed the
+      # per-mirror progress that says WHICH endpoint stalled.
       - name: Install the musl toolchain
         if: contains(matrix.target, 'musl')
-        uses: nick-fields/retry@v4
-        with:
-          max_attempts: 3
-          timeout_minutes: 4
-          command: |
-            sudo apt-get update \
+        run: |
+          install_musl() {
+            sudo timeout -k 10 90 apt-get install -y --no-install-recommends musl-tools
+          }
+          if install_musl; then
+            musl-gcc --version | head -1
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            echo "::group::apt-get update (attempt $attempt)"
+            sudo timeout -k 10 120 apt-get update \
               -o Acquire::Retries=3 \
-              -o Acquire::http::Timeout=20 \
-              -o Acquire::https::Timeout=20 \
-              -o Acquire::Languages=none
-            sudo apt-get install -y --no-install-recommends musl-tools
+              -o Acquire::http::Timeout=15 \
+              -o Acquire::https::Timeout=15 \
+              -o Acquire::Languages=none || echo "attempt $attempt timed out or failed"
+            echo "::endgroup::"
+            if install_musl; then
+              musl-gcc --version | head -1
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::musl-tools could not be installed after 3 attempts — see the apt output above for the stalling mirror"
+          exit 1
 
       # `save-if` rather than a plain cache, for the reason the split
       # restore/save here used to carry: this job runs on `pull_request` AND on

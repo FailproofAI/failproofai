@@ -75,7 +75,14 @@ def policies_show(
     if output.is_json():
         output.emit_json(match.to_dict())
         return
-    output.render_policy_published(match)
+    carriers = {
+        d.machine_id: ref.version
+        for d in api.list_deployments(cctx)
+        for ref in d.policies
+        if ref.id == policy_id
+    }
+    output.render_policy_published(match, carriers=carriers,
+                                   source_bytes=len((match.source or "").encode("utf-8")))
     if match.source:
         output.info(match.source)
 
@@ -104,7 +111,9 @@ def policies_publish(
 
     **Publishing deploys nothing.** A new version sits unused until
     `fp fleet deploy` puts it on a machine. Needs `policies:write`.
-    With `--json`: the created version `{id, version, sha256, ...}`.
+    With `--json`: the created version plus `carriers` — a map of machine id to
+    the version of this policy it currently runs, so a harness can tell what a
+    publish left behind without a second call.
 
     Examples:
 
@@ -143,10 +152,22 @@ def policies_publish(
             output.warn(syn.message)
 
     created = api.publish_policy(cctx, policy_id, text, description)
+
+    # Which machines already carry this policy, and at which version. Publishing
+    # deploys nothing, so this is the one thing the card must not guess at: it
+    # used to state "not deployed anywhere" unconditionally, which was wrong for
+    # every policy that already had a version in the field.
+    carriers = {
+        d.machine_id: ref.version
+        for d in api.list_deployments(cctx)
+        for ref in d.policies
+        if ref.id == policy_id
+    }
     if output.is_json():
-        output.emit_json(created.to_dict())
+        output.emit_json({**created.to_dict(), "carriers": carriers})
         return
-    output.render_policy_published(created, deployed_to=1)
+    output.render_policy_published(created, carriers=carriers,
+                                   source_bytes=len(text.encode("utf-8")))
 
 
 def policies_enable(

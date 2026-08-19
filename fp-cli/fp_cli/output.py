@@ -5834,29 +5834,63 @@ def render_policies(items: Sequence[Any]) -> None:
                       last_col="ellipsis", title=title)
 
 
-def render_policy_published(p: Any, *, deployed_to: int = 0) -> None:
-    """``fp policies publish`` — a new VERSION was minted, not an edit.
+def render_policy_published(p: Any, *, carriers: Optional[dict] = None,
+                            source_bytes: int = 0) -> None:
+    """``fp policies publish`` — what was written, and what now runs it.
 
-    The deployed-elsewhere note is the point: publishing changes nothing on any
-    machine until it is deployed, and an author who assumes otherwise ships a
-    policy that is never enforced.
+    The first version showed the id, the version and a sha256, then claimed "not
+    deployed anywhere yet" from a HARDCODED argument — so it said that even when
+    earlier versions were deployed across the fleet. It was also the only thing
+    on screen that was not simply a restatement of the command, which is what
+    made the card hard to read: nothing told you what you had just published.
+
+    Now it shows the description, the size, and the truth about deployment:
+    `carriers` maps machine id -> the version it currently runs, so this can say
+    which machines are on an older version and would need moving.
     """
     line1 = Text(p.id, style=f"bold {theme.TEXT}")
-    line1.append(f"  v{p.version}", style=theme.ACCENT)
-    line2 = Text()
-    line2.append("sha256 ", style=theme.LABEL)
-    line2.append((p.sha256 or "")[:12] + "…", style=theme.TEXT_DIM)
-    body = [line1, line2]
-    if deployed_to:
-        note = Text()
-        note.append(f"v{p.version} is not deployed anywhere yet", style=theme.AMBER)
+    line1.append(f"  v{p.version}", style=f"bold {theme.ACCENT}")
+    body = [line1]
+    if p.description:
+        body.append(Text(p.description, style=theme.TEXT))
+    body.append(Text())
+
+    meta = Text()
+    if source_bytes:
+        meta.append(f"{source_bytes:,} bytes", style=theme.LABEL)
+        meta.append("  ·  ", style=theme.FAINT)
+    meta.append("sha256 ", style=theme.LABEL)
+    meta.append((p.sha256 or "")[:12] + "…", style=theme.TEXT_DIM)
+    body.append(meta)
+    body.append(Text())
+
+    # Publishing changes nothing on any machine. An author who assumes otherwise
+    # ships a policy that is never enforced, so this line is the point of the
+    # card — but it has to be true, which means looking rather than assuming.
+    older = sorted(m for m, v in (carriers or {}).items() if v != p.version)
+    if not carriers:
+        note = Text("published, not deployed", style=theme.AMBER)
+        note.append(" — no machine runs this policy yet", style=theme.LABEL)
         body.append(note)
-        hint_line = Text()
-        hint_line.append("deploy with ", style=theme.LABEL)
-        hint_line.append(f"fp fleet deploy <machine> --add {p.id}@{p.version}", style=theme.ACCENT)
-        body.append(hint_line)
+        cmd = Text("  fp fleet deploy <machine> --add ", style=theme.LABEL)
+        cmd.append(p.id, style=theme.ACCENT)
+        body.append(cmd)
+    elif older:
+        many = len(older) > 1
+        note = Text(f"{len(older)} machine{'s' if many else ''}", style=theme.AMBER)
+        note.append(f" still {'run' if many else 'runs'} an older version: ", style=theme.LABEL)
+        note.append(", ".join(older[:3]) + ("…" if len(older) > 3 else ""), style=theme.TEXT_DIM)
+        body.append(note)
+        cmd = Text("  fp fleet deploy <machine> --add ", style=theme.LABEL)
+        cmd.append(f"{p.id}@{p.version}", style=theme.ACCENT)
+        body.append(cmd)
+    else:
+        note = Text("every machine carrying it is already on ", style=theme.LABEL)
+        note.append(f"v{p.version}", style=theme.SUCCESS)
+        body.append(note)
+
     card = Panel(Group(*body), box=ROUNDED, border_style=theme.SUCCESS,
-                 title=Text("policy published", style=f"bold {theme.SUCCESS}"),
+                 title=Text("published", style=f"bold {theme.SUCCESS}"),
                  title_align="left", padding=(0, 1), expand=False)
     _stdout.print(); _stdout.print(Padding(card, (0, 0, 0, 2))); _stdout.print()
 

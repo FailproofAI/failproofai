@@ -153,13 +153,15 @@ def policies_enable(
     ctx: typer.Context,
     policy_id: str = typer.Argument(..., help="Policy id."),
 ) -> None:
-    """Re-enable a disabled policy.
+    """Re-enable a disabled policy, restoring it to the machines that lost it.
 
-    Restores the policy, but does NOT redeploy it: machines that lost it when it
-    was disabled need `fp fleet deploy --add` again. Needs `policies:write`.
-    With `--json`: `{id, disabled, archived, machinesUpdated}` —
-    `machinesUpdated` counts the deployments the server rewrote, which is 0 for
-    an enable and non-zero for the disable that preceded it.
+    The exact inverse of `disable`: the server puts the policy back into every
+    deployment it was removed from, advancing each machine's generation again.
+    Nothing needs redeploying by hand.
+
+    Needs `policies:write`. With `--json`: `{id, disabled, archived,
+    machinesUpdated}` — `machinesUpdated` counts the deployments rewritten, and
+    matches the count the preceding `disable` reported.
 
     Example:
 
@@ -186,8 +188,8 @@ def policies_disable(
     machine's deployment WITHOUT this policy, advancing that machine's
     generation. `fp fleet history` shows the reissue as an ordinary entry.
 
-    `policies enable` restores the policy but does NOT redeploy it — the
-    machines that lost it need `fp fleet deploy --add` again.
+    `policies enable` is the exact inverse: it puts the policy back into every
+    deployment it was removed from, so nothing needs redeploying by hand.
 
     Needs `policies:write`. With `--json`: `{id, disabled, archived,
     machinesUpdated}` — `machinesUpdated` is how many deployments were rewritten
@@ -203,7 +205,7 @@ def policies_disable(
     if not _write.confirm_destructive(
         state, "disable policy", policy_id,
         consequence=("it is REMOVED from every deployment carrying it, minting a new "
-                     "generation on each — `policies enable` does not put it back"),
+                     "generation on each; `policies enable` puts it back the same way"),
         assume_yes=yes,
     ):
         if output.is_json():

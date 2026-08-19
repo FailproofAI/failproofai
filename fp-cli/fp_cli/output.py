@@ -6028,7 +6028,7 @@ def policy_lifecycle_changed(policy_id: str, action: str) -> None:
         # reversal command. Repeating them here is what pushed this card onto a
         # second line at 100 columns.
         "disabled": "removed from every deployment carrying it",
-        "enabled": "redeploy it — enabling does not put it back",
+        "enabled": "restored to the deployments that lost it",
         "archived": "carriers keep it until redeployed",
     }[action]
     body = Text()

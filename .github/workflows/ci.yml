@@ -237,7 +237,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
 
+      # FP_CLI_REQUIRE_CONTRACT makes test_fp_home_contract.py FAIL rather than skip
+      # when it cannot read src/hooks/fp-home.ts. That file is the register for a
+      # home this CLI writes a credential into, and the assertions against it are
+      # the only thing keeping the two sides from drifting — before they existed, a
+      # rename on either side left both suites green. A guard that can quietly
+      # degrade to a skip is the same guard the SDK's spool contract used to be.
       - name: Test
+        env:
+          FP_CLI_REQUIRE_CONTRACT: "1"
         run: uv run pytest tests/ -q
 
       - name: Build the distribution

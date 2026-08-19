@@ -13,9 +13,14 @@ file" — they are:
     (`HOME_CLASSES`); what is asserted here is the Python half agreeing about
     where the file goes.
 
-The legacy `~/.fp/cli.json` is deliberately neither read nor deleted, and both
-halves of that are tested: reading it would defeat the forced re-login, and
-deleting it is the one irreversible act available to this code.
+The legacy `~/.fp/cli.json` is read once and never deleted: `load_config`
+adopts a pre-move session and copies it to the new path, leaving the original
+so a downgrade still finds it. Both halves are tested below.
+
+This paragraph claimed the file was "neither read nor deleted" and that the
+move forced a re-login. Adoption landed after the move, the tests 200 lines
+down were updated for it, and this header was not — which is how a docstring
+ends up contradicting the assertions in its own file.
 """
 from __future__ import annotations
 

@@ -52,11 +52,19 @@ DEFAULT_BASE_URL = "https://app.befailproof.ai"
 
 
 #: The CLI's own directory inside the failproofai home. Mirrors ``fpcliDir`` in
-#: ``src/hooks/fp-home.ts`` — change one, change the other; nothing checks.
+#: ``src/hooks/fp-home.ts``. Something checks now:
+#: ``tests/test_fp_home_contract.py`` reads that file and fails if the two names
+#: drift. Before it existed, renaming one side left 53 TS tests and 59 Python
+#: tests passing while the credential sat at a path the layout register had
+#: never heard of.
 FPCLI_SUBDIR = "fpcli"
 
-#: Kept only to recognise a pre-move install. Never read, never written, never
-#: deleted: see :func:`legacy_config_path`.
+#: The pre-move location. READ once, to adopt a session that would otherwise be
+#: lost, and never written or deleted — see :func:`load_config`, which copies it
+#: to the new path and leaves the original so a downgrade still finds it.
+#:
+#: This said "never read" until it was checked against the code. Adoption
+#: arrived after the move and the comment did not follow it.
 LEGACY_DIR_NAME = ".fp"
 LEGACY_FILE_NAME = "cli.json"
 

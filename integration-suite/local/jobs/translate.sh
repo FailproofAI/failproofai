@@ -172,8 +172,22 @@ bun install --frozen-lockfile --ignore-scripts || die "bun install failed"
 step "translate"
 FORCE_FLAG=""
 [ "${TRANSLATE_FORCE:-0}" = "1" ] && FORCE_FLAG="--force"
+# --allow-partial: publish what succeeded. Without it ONE failing page exits 1
+# and this job dies before its push — which on 2026-08-18 discarded 782 good
+# translations (2.7M tokens) over a single page that overran the output limit.
+# The failures are not swallowed: cli.ts prints FAILED PAGES + a PARTIAL RUN
+# marker, and both are carried into Slack and the PR body below.
+TR_LOG="$(mktemp)"
 # shellcheck disable=SC2086
-bun run translate --languages "$LANGS" $FORCE_FLAG || die "translation failed"
+bun run translate --languages "$LANGS" $FORCE_FLAG --allow-partial 2>&1 | tee "$TR_LOG"
+# PIPESTATUS, not $? — that would be tee's.
+[ "${PIPESTATUS[0]}" = 0 ] || die "translation failed"
+PARTIAL=""
+if grep -q "^PARTIAL RUN" "$TR_LOG"; then
+  PARTIAL="$(sed -n '/^FAILED PAGES/,/^PARTIAL RUN/p' "$TR_LOG")"
+  echo "⚠ partial run — carrying the failures into the report"
+fi
+rm -f "$TR_LOG"
 
 # Parses every page AND checks image references resolve on disk — a broken
 # image path is valid MDX, so `mintlify validate` passes it to a reader's
@@ -312,7 +326,12 @@ if [ -z "$PR_NUMBER" ]; then
 
 - Only changed pages were re-translated (content-hash cache)
 - All 14 languages across 3 tiers
-- Box run \`$TS\` against \`$REF_DESC\` @ \`$FP_SHA\`"
+- Box run \`$TS\` against \`$REF_DESC\` @ \`$FP_SHA\`${PARTIAL:+
+
+**This run was PARTIAL — the pages below are missing from it and still need a translation:**
+\`\`\`
+$PARTIAL
+\`\`\`}"
     CREATED="$(api POST /pulls "$(node -e 'process.stdout.write(JSON.stringify({title:process.argv[1],body:process.argv[2],base:process.argv[3],head:process.argv[4]}))' \
     "$PR_TITLE" "$BODY" "$BASE_BRANCH" "$BRANCH")" \
     | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const p=JSON.parse(s);process.stdout.write(p.number?String(p.number):"")}catch{process.stdout.write("")}})')"
@@ -323,5 +342,16 @@ else
   echo "pushed $CHANGED files to https://github.com/$REPO/pull/$PR_NUMBER"
 fi
 
-stamp ok "PR #$PR_NUMBER on $BRANCH"
+if [ -n "$PARTIAL" ]; then
+  stamp partial "PR #$PR_NUMBER on $BRANCH, with failures"
+  # Quiet-on-success does not extend to a run that silently dropped pages: the
+  # PR looks complete, and only this line says it is not.
+  slack_note "⚠️ *nightly translation published a PARTIAL run* — \`$REF_DESC\` @ \`$FP_SHA\`
+PR #$PR_NUMBER on \`$BRANCH\` is missing the pages below.
+\`\`\`
+$PARTIAL
+\`\`\`"
+else
+  stamp ok "PR #$PR_NUMBER on $BRANCH"
+fi
 echo "── done: PR #$PR_NUMBER on $BRANCH ──"

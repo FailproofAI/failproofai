@@ -474,6 +474,10 @@ _TOP_LEVEL_GROUPS = [
         ("evals", "List scored agent evaluations.", "--aggregate"),
         ("errors", "List errored events.", "--aggregate"),
         ("usage", "Show current org usage for the metering window.", ""),
+    ]),
+    ("ENFORCE", [
+        ("policies", "Write cloud-managed policies.", "list show publish enable disable delete"),
+        ("fleet", "Deploy policies to machines.", "list show deploy diff history rollback rename"),
         ("guardrails", "What enforcement actually blocked.", "summary timeline policies"),
     ]),
     ("MANAGE", [
@@ -490,8 +494,6 @@ _TOP_LEVEL_GROUPS = [
         ("audits", "Schedule audits and triage their findings.", "list show create edit delete run runs findings context-*"),
         ("issues", "Triage and resolve issues.", "list count show ack assign resolve comment subscribe open"),
         ("settings", "View and change org settings.", "list schema set"),
-        ("policies", "Write cloud-managed policies.", "list show publish enable disable delete"),
-        ("fleet", "Deploy policies to machines.", "list show deploy diff history rollback rename"),
     ]),
     ("TOOLS", [
         ("list", "List distinct values behind the filter dropdowns.", ""),

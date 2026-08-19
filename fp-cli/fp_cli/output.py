@@ -5876,7 +5876,7 @@ def render_fleet(machines: Sequence[Any], deployments: Sequence[Any]) -> None:
         )
         rows.append([
             Text(m.machine_id, style=theme.TEXT),
-            Text(m.label or "-", style=theme.TEXT_DIM),
+            Text(m.display_label or "-", style=theme.TEXT_DIM),
             Text(str(m.policy_count), style=theme.TEXT if m.policy_count else theme.FAINT),
             Text(f"#{m.deployment}" if m.deployment is not None else "—", style=theme.TEXT_DIM),
             applied,
@@ -6245,3 +6245,99 @@ def policy_published_brief(p: Any) -> None:
     body.append(p.id, style=theme.ACCENT)
     body.append(f" v{p.version}", style=theme.TEXT_DIM)
     _notice_box(body, color=theme.SUCCESS, title="published")
+
+
+def render_deployment_history(machine_id: str, entries: Sequence[dict]) -> None:
+    """``fp fleet history`` — one row per generation, newest first.
+
+    Was a bare `print` per line, which put an unaligned wall of timestamps and
+    comma-joined ids on stdout while every other list in the CLI is a panel.
+
+    The `change` column is the point of reading history at all: what moved
+    between this generation and the one below it. A reissue — the server
+    rewriting a deployment because a policy was disabled or re-enabled — shows
+    up as an ordinary +/- and is otherwise indistinguishable from an operator
+    deploy, which is worth being able to see.
+    """
+    rows = []
+    prev_ids = None
+    # oldest first so each row can be diffed against the one before it, then
+    # reversed for display — newest first is how you read a history.
+    ordered = sorted(entries, key=lambda e: e.get("deployment") or 0)
+    diffs = {}
+    for e in ordered:
+        ids = {f"{p.get('id')}@{p.get('version')}" for p in (e.get("policies") or [])}
+        if prev_ids is None:
+            diffs[e.get("deployment")] = [("+", i) for i in sorted(ids)]
+        else:
+            diffs[e.get("deployment")] = (
+                [("+", i) for i in sorted(ids - prev_ids)]
+                + [("-", i) for i in sorted(prev_ids - ids)]
+            )
+        prev_ids = ids
+
+    newest_first = sorted(entries, key=lambda e: e.get("deployment") or 0, reverse=True)
+    # The shared time column: clock time, with the date folded in only when the
+    # rows span more than a day. Generations land seconds apart, so a date-only
+    # cell made twenty-one of them look identical.
+    tcells, days = _row_times([_parse_iso(e.get("updatedAt", "") or "") for e in newest_first])
+
+    for e, tcell in zip(newest_first, tcells):
+        gen = e.get("deployment")
+        pols = sorted(f"{p.get('id')}" for p in (e.get("policies") or []))
+        change = Text()
+        for i, (sign, ref) in enumerate(diffs.get(gen) or []):
+            if i:
+                change.append("  ")
+            change.append(sign, style=theme.SUCCESS if sign == "+" else theme.ERROR)
+            change.append(ref.split("@")[0], style=theme.TEXT_DIM)
+        if not change.plain:
+            change = Text("no change", style=theme.FAINT)
+        rows.append([
+            Text(f"#{gen}", style=theme.TEXT),
+            Text(tcell or (e.get("updatedAt", "") or "-"), style=theme.TEXT_DIM),
+            Text(str(len(pols)), style=theme.TEXT_DIM if pols else theme.FAINT),
+            change,
+            Text(", ".join(pols) or "(none)", style=theme.TEXT_DIM if pols else theme.FAINT),
+        ])
+    title = Text()
+    title.append(machine_id, style=f"bold {theme.ACCENT}")
+    title.append(" · ", style=theme.FAINT)
+    title.append(f"{len(rows)} generations", style=theme.LABEL)
+    render_list_panel("history", header=["gen", "when", "n", "change", "policies"],
+                      rows=rows, days=days, order=None,
+                      empty_message="no deployment history", last_col="ellipsis", title=title)
+
+
+def render_fleet_diff(rows: Sequence[dict]) -> None:
+    """``fp fleet diff`` — intent vs delivery, per machine.
+
+    Was one `info()` line per machine plus a warning, which is fine for two
+    machines and unreadable for twenty. The drifted rows are the whole reason to
+    run it, so they carry the colour and the summary counts them.
+    """
+    out = []
+    for r in rows:
+        drifted = bool(r.get("drifted"))
+        intended = r.get("intended")
+        delivered = r.get("delivered")
+        out.append([
+            Text(str(r.get("machineId") or "-"), style=theme.TEXT),
+            Text(f"#{intended}" if intended is not None else "—",
+                 style=theme.TEXT_DIM if intended is not None else theme.FAINT),
+            Text(f"#{delivered}" if delivered is not None else "—",
+                 style=theme.AMBER if drifted else (theme.TEXT_DIM if delivered is not None else theme.FAINT)),
+            Text("behind" if drifted else ("in sync" if intended is not None else "nothing deployed"),
+                 style=theme.AMBER if drifted else (theme.SUCCESS if intended is not None else theme.FAINT)),
+        ])
+    drifted_n = sum(1 for r in rows if r.get("drifted"))
+    title = Text()
+    title.append("drift", style=f"bold {theme.ACCENT}")
+    title.append(" · ", style=theme.FAINT)
+    title.append(f"{drifted_n}", style=f"bold {theme.AMBER if drifted_n else theme.SUCCESS}")
+    title.append(f" of {len(rows)} behind", style=theme.LABEL)
+    render_list_panel("diff", header=["machine", "intended", "applied", "state"],
+                      rows=out, days=set(), order=None,
+                      empty_message="no machines have checked in yet", title=title)
+    if drifted_n:
+        hint("a machine is 'behind' until it next polls — it is still enforcing its previous set")

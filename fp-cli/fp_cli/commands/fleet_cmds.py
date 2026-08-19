@@ -269,15 +269,7 @@ def fleet_diff(
     if output.is_json():
         output.emit_json({"machines": rows})
         return
-    drifted = [r for r in rows if r["drifted"]]
-    for r in rows:
-        mark = "drifted" if r["drifted"] else "in sync"
-        output.info(
-            f"{r['machineId']}: intended #{r['intended']} · delivered "
-            f"#{r['delivered'] if r['delivered'] is not None else '-'} · {mark}"
-        )
-    if drifted:
-        output.warn(f"{len(drifted)} machine(s) have not collected their latest deployment")
+    output.render_fleet_diff(rows)
 
 
 def fleet_history(
@@ -302,14 +294,7 @@ def fleet_history(
     if output.is_json():
         output.emit_json({"machineId": machine_id, "history": entries})
         return
-    if not entries:
-        output.info(f"{machine_id} has no deployment history")
-        return
-    for e in entries:
-        pols = ", ".join(
-            f"{p.get('id')}@{p.get('version')}" for p in (e.get("policies") or [])
-        ) or "(none)"
-        output.info(f"#{e.get('deployment')}  {e.get('updatedAt', '')}  {pols}")
+    output.render_deployment_history(machine_id, entries)
 
 
 def fleet_rollback(

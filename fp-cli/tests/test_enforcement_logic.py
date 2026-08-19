@@ -361,3 +361,37 @@ def test_disabled_ids_ignores_archived():
     pols[1].disabled = True
     pols[2].disabled = True
     assert disabled_ids(pols) == {"off"}
+
+
+# ── machine labels ───────────────────────────────────────────────────────────
+
+
+def test_an_operator_rename_wins_over_the_machines_own_label():
+    """The bug this fixes: `fleet rename` reported success and `fleet list` kept
+    showing `-`. The server stores the operator's name in `labelOverride`, a
+    DIFFERENT column from the machine's self-asserted `label`, and reading only
+    the latter made the rename invisible. Mirrors `machinePicker.ts`."""
+    from fp_cli.models import Machine
+    m = Machine.from_dict({"machineId": "m", "label": "self-named",
+                           "labelOverride": "operator-named"})
+    assert m.display_label == "operator-named"
+
+
+def test_the_machines_own_label_is_used_when_there_is_no_override():
+    from fp_cli.models import Machine
+    assert Machine.from_dict({"machineId": "m", "label": "self-named"}).display_label == "self-named"
+
+
+def test_no_label_at_all_is_none_not_an_empty_string():
+    """The renderer substitutes a dash; an empty string would print as blank."""
+    from fp_cli.models import Machine
+    assert Machine.from_dict({"machineId": "m"}).display_label is None
+    assert Machine.from_dict({"machineId": "m", "label": "  ",
+                              "labelOverride": ""}).display_label is None
+
+
+def test_both_label_fields_survive_into_json():
+    """A harness may want to know which of the two it is looking at."""
+    from fp_cli.models import Machine
+    d = Machine.from_dict({"machineId": "m", "label": "a", "labelOverride": "b"}).to_dict()
+    assert d["label"] == "a" and d["labelOverride"] == "b"

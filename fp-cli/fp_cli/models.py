@@ -825,7 +825,13 @@ class Machine:
     """
 
     machine_id: str
+    #: What the machine calls itself. May be absent — plenty never report one.
     label: Optional[str]
+    #: What an operator called it via `fleet rename`. SEPARATE from `label` on
+    #: the server, and the reason a rename appeared to do nothing here: reading
+    #: only `label` showed the machine's own (usually null) name and silently
+    #: ignored the override. `display_label` applies the precedence.
+    label_override: Optional[str]
     last_seen: Optional[int]          # epoch ms — the server sends a number, not ISO
     last_check_in: Optional[int]
     deployment: Optional[int]         # intended
@@ -844,6 +850,7 @@ class Machine:
         return cls(
             machine_id=str(d.get("machineId", d.get("machine_id", "")) or ""),
             label=d.get("label"),
+            label_override=d.get("labelOverride"),
             last_seen=_num("lastSeen"),
             last_check_in=_num("lastCheckIn"),
             deployment=_num("deployment"),
@@ -854,10 +861,21 @@ class Machine:
             event_count=_as_int(d.get("eventCount"), 0),
         )
 
+    @property
+    def display_label(self) -> Optional[str]:
+        """The operator's name for the machine, else its own.
+
+        Mirrors `machinePicker.ts`: `labelOverride || label || machineId`. The
+        override wins because it is the deliberate one — a machine's
+        self-asserted label is whatever it happened to send.
+        """
+        return (self.label_override or "").strip() or (self.label or "").strip() or None
+
     def to_dict(self) -> Dict[str, Any]:
         """Server shape plus `drifted` — the one field the CLI computes."""
         return {
             "machineId": self.machine_id, "label": self.label,
+            "labelOverride": self.label_override,
             "lastSeen": self.last_seen, "lastCheckIn": self.last_check_in,
             "deployment": self.deployment, "appliedDeployment": self.applied_deployment,
             "appliedAt": self.applied_at, "deployed": self.deployed,

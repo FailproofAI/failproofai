@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "1.0.1-beta.2"
+version = "1.0.2-beta.0"
 edition = "2024"
 license-file = "LICENSE"
 repository = "https://github.com/FailproofAI/failproofai"

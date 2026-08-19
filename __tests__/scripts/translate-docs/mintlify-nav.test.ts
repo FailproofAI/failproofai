@@ -232,6 +232,7 @@ describe("localizeProductsNavigation", () => {
         },
       ],
       ["es", "ja"],
+      () => true,
     );
 
     expect(product.tabs).toBeUndefined();
@@ -244,15 +245,129 @@ describe("localizeProductsNavigation", () => {
       "es",
       "ja",
     ]);
-    expect(languages[1].tabs[0].groups[0].pages).toEqual([
+    expect(languages[1].tabs[0].groups[0].pages!).toEqual([
       "es/agenteye/overview",
     ]);
+  });
+
+  it("carries a group that has no pages, instead of crashing on it", () => {
+    // The docs rebuild introduced `{group, expanded, openapi}` — a group whose
+    // content is an OpenAPI spec, with no `pages` at all. buildLanguageNav did
+    // `group.pages.map(...)` unconditionally and took the whole nightly
+    // translation down with a TypeError, AFTER 784 pages had been translated.
+    const tabs = [
+      {
+        tab: "Integrations and reference",
+        groups: [
+          { group: "Guides", pages: ["intro"] },
+          { group: "HTTP API", expanded: false, openapi: "reference/openapi.json" },
+        ],
+      },
+    ];
+    const zh = buildLanguageNav(tabs as never, "zh");
+    const groups = zh.tabs[0].groups;
+    expect(groups[0].pages![0]).toBe("zh/intro");
+    // Passed through untouched — the spec is not translated, and dropping the
+    // group would remove the API reference from every non-English nav.
+    expect(groups[1].openapi).toBe("reference/openapi.json");
+    expect(groups[1].pages).toBeUndefined();
+  });
+
+  it("preserves group properties the old builder silently dropped", () => {
+    // It rebuilt each group as {group, pages}, so `expanded`, `icon` and
+    // anything else vanished from every localized nav.
+    const tabs = [{ tab: "Docs", groups: [{ group: "G", expanded: true, icon: "book", pages: ["a"] }] }];
+    const de = buildLanguageNav(tabs as never, "de");
+    expect(de.tabs[0].groups[0].expanded).toBe(true);
+    expect(de.tabs[0].groups[0].icon).toBe("book");
+  });
+
+  it("recurses into nested groups rather than prefixing them as paths", () => {
+    const tabs = [
+      { tab: "Docs", groups: [{ group: "Outer", pages: ["top", { group: "Inner", pages: ["deep"] }] }] },
+    ];
+    const ja = buildLanguageNav(tabs as never, "ja");
+    const outer = ja.tabs[0].groups[0];
+    expect(outer.pages![0]).toBe("ja/top");
+    expect((outer.pages![1] as { pages?: string[] }).pages![0]).toBe("ja/deep");
+  });
+
+  it("recurses through a group's `groups`, not only through its `pages`", () => {
+    // A group may nest via `groups` as well as inside `pages`, and those are two
+    // separate branches in localizeGroup. Deleting the `groups` branch entirely
+    // left the whole suite green, so this covers it independently.
+    const tabs = [
+      {
+        tab: "Docs",
+        groups: [
+          {
+            group: "Outer",
+            pages: ["top"],
+            groups: [{ group: "Nested", pages: ["deep"] }],
+          },
+        ],
+      },
+    ];
+    const ko = buildLanguageNav(tabs as never, "ko");
+    const outer = ko.tabs[0].groups[0];
+    expect(outer.pages![0]).toBe("ko/top");
+    expect(outer.groups![0].pages![0]).toBe("ko/deep");
+  });
+
+  it("omits a page whose localized file is missing, and keeps the rest", () => {
+    // THE PARTIAL-RUN CASE. One page fails to translate for one language; the
+    // English tree still lists it, so the nav used to emit `vi/reference/cloud-cli`
+    // regardless, `mintlify validate` rejected the missing file, and the job died
+    // before its push — discarding 784 pages that HAD translated. The entry is
+    // dropped instead: the page simply does not exist in that language yet.
+    const tabs = [
+      {
+        tab: "Docs",
+        groups: [{ group: "Reference", pages: ["index", "reference/cloud-cli"] }],
+      },
+    ];
+    const missing = "vi/reference/cloud-cli.mdx";
+    const vi = buildLanguageNav(tabs as never, "vi", (rel) => rel !== missing);
+
+    expect(vi.tabs[0].groups[0].pages).toEqual(["vi/index"]);
+    // and the language that DID translate it keeps it
+    const zh = buildLanguageNav(tabs as never, "zh", () => true);
+    expect(zh.tabs[0].groups[0].pages).toEqual(["zh/index", "zh/reference/cloud-cli"]);
+  });
+
+  it("drops a group left with no pages, and a tab left with no groups", () => {
+    // Filtering can empty a group, and an empty group is its own validation
+    // error — so the pruning has to go all the way up.
+    const tabs = [
+      { tab: "Solo", groups: [{ group: "Only", pages: ["gone"] }] },
+      { tab: "Mixed", groups: [{ group: "Kept", pages: ["here"] }, { group: "Empty", pages: ["gone2"] }] },
+    ];
+    const nav = buildLanguageNav(tabs as never, "ja", (rel) => !rel.includes("gone"));
+
+    expect(nav.tabs.map((t) => t.tab)).toEqual(["Mixed"]);
+    expect(nav.tabs[0].groups.map((g) => g.group)).toEqual(["Kept"]);
+  });
+
+  it("keeps an openapi group even though it has no pages to check", () => {
+    // hasContent must not confuse "emptied by filtering" with "never had pages".
+    const tabs = [
+      {
+        tab: "Reference",
+        groups: [
+          { group: "HTTP API", expanded: false, openapi: "reference/openapi.json" },
+          { group: "Guides", pages: ["gone"] },
+        ],
+      },
+    ];
+    const de = buildLanguageNav(tabs as never, "de", () => false);
+    expect(de.tabs[0].groups.map((g) => g.group)).toEqual(["HTTP API"]);
+    expect(de.tabs[0].groups[0].openapi).toBe("reference/openapi.json");
   });
 
   it("uses Mintlify's canonical Portuguese locale with existing paths", () => {
     const portuguese = buildLanguageNav(sampleEnglishTabs, "pt-br");
 
     expect(portuguese.language).toBe("pt-BR");
-    expect(portuguese.tabs[0].groups[0].pages[0]).toBe("pt-br/introduction");
+    expect(portuguese.tabs[0].groups[0].pages![0]).toBe("pt-br/introduction");
   });
 });

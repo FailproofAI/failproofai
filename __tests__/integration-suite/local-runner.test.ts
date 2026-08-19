@@ -546,6 +546,26 @@ describe("translate job", () => {
     expect(translateSh).toMatch(/\[ "\$drift" = 0 \] \|\| die/);
   });
 
+  it("publishes what succeeded instead of discarding it on one bad page", () => {
+    // 2026-08-18: ONE page overran the output limit, cli.ts exited 1, this job
+    // died before its push, and 782 completed translations (2.7M tokens) went
+    // in the bin. --allow-partial makes the run publish and REPORT instead.
+    expect(translateSh).toMatch(/--allow-partial/);
+    // PIPESTATUS, not $? — `bun … | tee` would otherwise report tee's status
+    // and a real failure would sail through as success.
+    expect(translateSh).toMatch(/PIPESTATUS\[0\]/);
+  });
+
+  it("carries a partial run into the PR body and Slack, never silently", () => {
+    // The danger of publishing partial output is that the PR LOOKS complete.
+    // The failed pages have to travel with it.
+    expect(translateSh).toMatch(/grep -q "\^PARTIAL RUN"/);
+    expect(translateSh).toMatch(/This run was PARTIAL/);
+    expect(translateSh).toMatch(/published a PARTIAL run/);
+    // and the stamp says partial, so the weekly audit does not read it as ok
+    expect(translateSh).toMatch(/stamp partial/);
+  });
+
   it("stamps every exit so 'never ran' is detectable from outside", () => {
     // The one failure no error handler can report is the job not starting, so
     // the signal has to be a file whose AGE another job can read.

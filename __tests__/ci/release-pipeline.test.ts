@@ -646,3 +646,112 @@ describe("pipeline / CLI agreement", () => {
     },
   );
 });
+
+/**
+ * CI cost guards.
+ *
+ * Four regressions, each a one-line edit away, none of which turns CI red. They
+ * only make it slower — and nothing watches that, which is why they need a test
+ * rather than a convention:
+ *
+ *   - package.json's `prepare` is `bun run build`, so any `bun install` without
+ *     `--ignore-scripts` fires a full Next.js production build as an install
+ *     lifecycle hook. That was ~28s in six of ci.yml's eight jobs plus twice
+ *     more per release, every second of it discarded;
+ *   - a job with no `timeout-minutes` inherits GitHub's six-hour default. On
+ *     2026-08-19 the linux-x64 daemon leg sat in `apt-get update` against a
+ *     stalled Azure mirror through three runner re-dispatches, with a release
+ *     blocked behind it, because nothing bounded it;
+ *   - `path: target` in a cargo cache archives the entire build directory. One
+ *     such entry reached 5,727 MB — 57% of the repo's whole 10 GiB quota, which
+ *     keeps the store in permanent LRU eviction — and took 127s to restore
+ *     against the 74s of compilation it was there to save;
+ *   - cancel-in-progress on build-daemon must stay scoped to `pull_request`,
+ *     because the `workflow_call` legs ARE the release's binaries.
+ */
+describe("CI cost guards", () => {
+  const COST_GUARDED = ["ci.yml", "publish.yml", "build-daemon.yml", "osv-scanner.yml", "build-image.yml"];
+
+  /** Every shell command a job runs, including those wrapped by nick-fields/retry. */
+  function shellText(job: Record<string, any>): string {
+    return (job.steps ?? [])
+      .map((s: Record<string, any>) => [s.run ?? "", s.with?.command ?? ""].join("\n"))
+      .join("\n");
+  }
+
+  it.each(COST_GUARDED)("%s gives every job a timeout-minutes", (name) => {
+    const jobs: [string, Record<string, any>][] = Object.entries(workflow(name).jobs);
+    const unbounded = jobs
+      // A `uses:` job calls a reusable workflow and cannot carry a timeout of
+      // its own; that workflow's jobs are covered by their own row here.
+      .filter(([, job]) => !job.uses && typeof job["timeout-minutes"] !== "number")
+      .map(([id]) => id);
+    expect(unbounded).toEqual([]);
+  });
+
+  it.each(["ci.yml", "publish.yml"])("%s never lets an install run the prepare hook", (name) => {
+    const offenders: string[] = [];
+    for (const [id, job] of Object.entries(workflow(name).jobs) as [string, Record<string, any>][]) {
+      for (const line of shellText(job).split("\n")) {
+        if (line.includes("bun install") && !line.includes("--ignore-scripts")) {
+          offenders.push(`${name} / ${id}: ${line.trim()}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it.each(["ci.yml", "build-daemon.yml"])("%s caches cargo without archiving target/", (name) => {
+    const steps: Record<string, any>[] = Object.values(workflow(name).jobs).flatMap(
+      (j: any) => j.steps ?? [],
+    );
+    const archivesTarget = steps
+      .filter((s) => String(s.uses ?? "").startsWith("actions/cache"))
+      .filter((s) =>
+        String(s.with?.path ?? "")
+          .split("\n")
+          .some((line) => line.trim() === "target"),
+      );
+    expect(archivesTarget).toEqual([]);
+    expect(steps.some((s) => String(s.uses ?? "").startsWith("Swatinem/rust-cache"))).toBe(true);
+  });
+
+  it("bounds and retries the musl toolchain install, with a root-owned killer", () => {
+    const step = workflow("build-daemon.yml").jobs.build.steps.find((s: Record<string, any>) =>
+      String(s.name ?? "").includes("musl toolchain"),
+    );
+    const script = String(step.run ?? "");
+
+    // `sudo timeout`, in that order, is the whole point and the reason this
+    // assertion is this specific. The first version of this step used
+    // nick-fields/retry, which bounds a step by killing its process tree AS THE
+    // RUNNER USER — and apt runs as root, so the four-minute timeout fired
+    // correctly and the action then died with `kill EPERM` instead of retrying.
+    // `timeout` inside the sudo is what makes the killer root as well.
+    expect(step.uses).toBeUndefined();
+    expect(script).toMatch(/sudo timeout\b/);
+    expect(script).not.toMatch(/timeout\s+\d+\s+sudo\b/);
+
+    // The install is bounded too, not just the update — it is the step that
+    // actually downloads packages, and an unbounded one stalls the same way.
+    expect(script).toMatch(/sudo timeout[^\n]*apt-get install/);
+
+    // Install BEFORE the update loop. `apt-get update` is the part that
+    // stalled; the runner image's package lists usually make it unnecessary,
+    // so reversing these two would put the flaky step back on the fast path
+    // while every assertion above still passed.
+    expect(script.indexOf("if install_musl; then")).toBeGreaterThan(-1);
+    expect(script.indexOf("if install_musl; then")).toBeLessThan(script.indexOf("for attempt in"));
+
+    // Bounded per attempt, retried, and loud about which mirror stalled.
+    expect(script).toContain("Acquire::http::Timeout");
+    expect(script).toContain("for attempt in");
+    expect(script).not.toContain("-qq");
+  });
+
+  it("supersedes a superseded daemon build without cancelling a release", () => {
+    const c = workflow("build-daemon.yml").concurrency;
+    expect(c.group).toContain("github.ref");
+    expect(String(c["cancel-in-progress"])).toContain("pull_request");
+  });
+});

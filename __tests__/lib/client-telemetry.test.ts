@@ -1,3 +1,7 @@
+// @vitest-environment jsdom
+// captureClientEvent reads window.location for $current_url/$pathname, so this
+// one needs a DOM despite being a .ts file. Same per-file opt-in as
+// share-card.test.ts and fetch-with-timeout.test.ts.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   setClientTelemetryConfig,

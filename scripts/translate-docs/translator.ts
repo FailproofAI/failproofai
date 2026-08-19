@@ -48,7 +48,19 @@ const MAX_ATTEMPTS =
 // repetition loop rather than a large page. Translations of the verbose targets
 // (hi, vi, ja) sit near 2x the source's token estimate; 6x is far outside that
 // band and was ~16x in the observed failure.
-const RUNAWAY_RATIO = Number.parseInt(process.env.TRANSLATE_RUNAWAY_RATIO ?? "", 10) || 6;
+// Validated the same way MAX_TOKENS and MAX_ATTEMPTS above are, and for a
+// sharper reason: `parseInt(...) || 6` accepts a NEGATIVE, and a negative ratio
+// makes `output > source * ratio` true for every response — so a genuinely
+// oversized page would be classified as a runaway and burn all three attempts
+// to arrive exactly where it started.
+const parsedRunawayRatio = Number.parseInt(
+  process.env.TRANSLATE_RUNAWAY_RATIO ?? "",
+  10,
+);
+const RUNAWAY_RATIO =
+  Number.isInteger(parsedRunawayRatio) && parsedRunawayRatio > 0
+    ? parsedRunawayRatio
+    : 6;
 
 function getClient(): Anthropic {
   if (!client) {

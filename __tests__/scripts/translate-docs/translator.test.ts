@@ -44,6 +44,37 @@ describe("translateContent", () => {
     streamMock.mockReset();
   });
 
+  it("ignores a non-positive TRANSLATE_RUNAWAY_RATIO", async () => {
+    // `parseInt(...) || 6` accepted a negative, and a negative ratio makes
+    // `output > source * ratio` true for EVERY response — so a genuinely
+    // oversized page would be misread as a runaway and burn all three attempts
+    // arriving exactly where it started. Re-imported under the hostile value:
+    // the guard must fall back to the default and still call this NOT retryable.
+    const prev = process.env.TRANSLATE_RUNAWAY_RATIO;
+    process.env.TRANSLATE_RUNAWAY_RATIO = "-1";
+    vi.resetModules();
+    try {
+      const fresh = await import("@/scripts/translate-docs/translator");
+      mockFinalMessage({
+        stop_reason: "max_tokens",
+        content: [{ type: "text", text: "big…" }],
+        usage: { input_tokens: 60000, output_tokens: 64000 },
+      });
+      let err!: Error & { retryable?: boolean };
+      try {
+        await fresh.translateContent("y".repeat(200000), "vi", "Vietnamese");
+      } catch (e) {
+        err = e as Error & { retryable?: boolean };
+      }
+      expect(err.retryable).toBe(false);
+      expect(err.message).toMatch(/source too large/);
+    } finally {
+      if (prev === undefined) delete process.env.TRANSLATE_RUNAWAY_RATIO;
+      else process.env.TRANSLATE_RUNAWAY_RATIO = prev;
+      vi.resetModules();
+    }
+  });
+
   it("marks a truncation whose output dwarfs the source as retryable", async () => {
     // reference/cloud-cli.mdx [vi], on the box, 2026-08-18: a 16 KB source
     // emitted 64 000 output tokens. That is a repetition loop, not a page too

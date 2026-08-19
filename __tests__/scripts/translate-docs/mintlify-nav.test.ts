@@ -291,6 +291,28 @@ describe("localizeProductsNavigation", () => {
     expect((outer.pages![1] as { pages?: string[] }).pages![0]).toBe("ja/deep");
   });
 
+  it("recurses through a group's `groups`, not only through its `pages`", () => {
+    // A group may nest via `groups` as well as inside `pages`, and those are two
+    // separate branches in localizeGroup. Deleting the `groups` branch entirely
+    // left the whole suite green, so this covers it independently.
+    const tabs = [
+      {
+        tab: "Docs",
+        groups: [
+          {
+            group: "Outer",
+            pages: ["top"],
+            groups: [{ group: "Nested", pages: ["deep"] }],
+          },
+        ],
+      },
+    ];
+    const ko = buildLanguageNav(tabs as never, "ko");
+    const outer = ko.tabs[0].groups[0];
+    expect(outer.pages![0]).toBe("ko/top");
+    expect(outer.groups![0].pages![0]).toBe("ko/deep");
+  });
+
   it("uses Mintlify's canonical Portuguese locale with existing paths", () => {
     const portuguese = buildLanguageNav(sampleEnglishTabs, "pt-br");
 

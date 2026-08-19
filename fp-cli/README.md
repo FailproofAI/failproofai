@@ -131,12 +131,12 @@ fp --json sessions --since 7d --fields session_id,status,scores
 
 Three commands for the three jobs the dashboard splits across three pages —
 `fp policies` writes a policy version, `fp fleet` decides which machines run it,
-`fp guardrails` reports what it actually blocked.
+`fp guardrails summary` reports what it actually blocked.
 
 ```bash
 fp policies publish no-force-push ./rule.mjs   # path, @path, a pipe, - or a paste
 fp fleet deploy ci-runner-01 --add no-force-push
-fp guardrails --since 24h
+fp guardrails summary --since 24h
 ```
 
 **A deploy REPLACES a machine's whole policy set.** The server takes the full

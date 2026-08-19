@@ -245,7 +245,7 @@ Cloud-managed enforcement, split the way the dashboard splits it: `policies` wri
 - `fleet rename <machine> "<label>"` — a human label; the id never changes.
 
 ### guardrails
-- `guardrails [--since 15m|1h|6h|24h|7d] [--machine ID]` — coverage, blocked/evaluated totals, a deny sparkline, and the per-policy table. Bare `fp guardrails` is the summary.
-- `guardrails timeline` · `guardrails policies` — the two halves on their own.
+- `guardrails summary [--since 15m|1h|6h|24h|7d] [--machine ID]` — coverage, blocked/evaluated totals, a deny sparkline, and the per-policy table. Bare `fp guardrails` prints help, like every other group; the flags live on the subcommands.
+- `guardrails timeline [--since …] [--machine ID]` — one row per time bucket: a bar scaled to the busiest bucket with the blocked share in red, plus total / denied / instructed counts. Answers *when* enforcement bit, which the summary's sparkline only sketches.
 - A `(no policy)` row is **normal**: most evaluations are allows nothing objected to, and the row keeps the denominator visible.
 - Coverage comes from the control plane, decision counts from reported telemetry — a machine can be deployed-to and silent, or reporting and undeployed.

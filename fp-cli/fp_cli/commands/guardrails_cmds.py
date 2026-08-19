@@ -1,4 +1,4 @@
-"""Guardrails: what enforcement actually did.
+"""Guardrails: what enforcement actually did — `summary` and `timeline`.
 
 The counterpart to `fp fleet`. That command says what the control plane
 INTENDED; this says what happened — whether the fleet is really covered, what
@@ -103,50 +103,18 @@ def guardrails_timeline(
     output.render_decision_timeline(data)
 
 
-def guardrails_policies(
-    ctx: typer.Context,
-    since: str = typer.Option("24h", "--since", help="Window: 15m, 1h, 6h, 24h, 7d."),
-    machine: Optional[str] = typer.Option(None, "--machine", help="Scope to one machine id."),
-) -> None:
-    """Just the per-policy decision table.
-
-    A `(no policy)` row is normal: most evaluations are allows nothing objected
-    to, and the row keeps the denominator visible. Needs `policies:read`.
-    With `--json`: `{policies:[{policy, fired, blocked, instructed, p95Ms}]}`.
-
-    Example:
-
-    * `fp guardrails policies --since 7d`
-    """
-    state: AppState = ctx.obj
-    deny_in_key_mode(state, "guardrails policies", _KEY_MODE_REASON)
-    cctx = require_auth(state)
-    summary = api.enforcement_summary(cctx, hours=_hours(since), machine_id=machine)
-    if output.is_json():
-        output.emit_json({"policies": summary.get("policies") or []})
-        return
-    output.render_guardrails(summary, None)
-
-
 def register(app: typer.Typer) -> None:
-    def _default(
-        ctx: typer.Context,
-        since: str = typer.Option("24h", "--since", help="Window: 15m, 1h, 6h, 24h, 7d."),
-        machine: Optional[str] = typer.Option(None, "--machine", help="Scope to one machine id."),
-    ) -> None:
-        """What enforcement actually did. Bare `fp guardrails` is the summary."""
-        if ctx.invoked_subcommand is None:
-            guardrails_summary(ctx, since=since, machine=machine)
-
+    # A pure container, like every other group in this CLI: bare `fp guardrails`
+    # prints its help rather than running something. It used to run the summary
+    # from a callback, which made it the only group that did — and put `--since`
+    # in two places, where the group-level copy silently shadowed nothing and
+    # taught the wrong shape.
     guardrails_app = typer.Typer(
-        no_args_is_help=False,
-        invoke_without_command=True,
+        no_args_is_help=True,
         rich_markup_mode="markdown",
         context_settings={"help_option_names": ["-h", "--help"]},
-        help="What enforcement actually did (summary / timeline / policies).",
+        help="What enforcement actually did (summary / timeline).",
     )
-    guardrails_app.callback(invoke_without_command=True)(_default)
     guardrails_app.command("summary", epilog=GLOBALS_EPILOG)(guardrails_summary)
     guardrails_app.command("timeline", epilog=GLOBALS_EPILOG)(guardrails_timeline)
-    guardrails_app.command("policies", epilog=GLOBALS_EPILOG)(guardrails_policies)
     app.add_typer(guardrails_app, name="guardrails")

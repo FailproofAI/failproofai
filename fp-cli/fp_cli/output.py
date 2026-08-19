@@ -476,9 +476,9 @@ _TOP_LEVEL_GROUPS = [
         ("usage", "Show current org usage for the metering window.", ""),
     ]),
     ("ENFORCE", [
-        ("policies", "Write cloud-managed policies.", "list show publish enable disable delete"),
+        ("policies", "Write cloud-managed policies.", "list show publish test compose enable disable delete"),
         ("fleet", "Deploy policies to machines.", "list show deploy diff history rollback rename"),
-        ("guardrails", "What enforcement actually blocked.", "summary timeline policies"),
+        ("guardrails", "What enforcement actually blocked.", "summary timeline"),
     ]),
     ("MANAGE", [
         ("orgs", "Switch and inspect the active org.", "list switch current perms"),

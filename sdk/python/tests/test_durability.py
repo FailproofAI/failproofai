@@ -458,8 +458,8 @@ def test_pending_map_is_capped_and_evicts_oldest_first():
         namespace.tool_use(session_id="s", agent_id="a", tool_name="t", tool_call_id=f"c{i}")
 
     assert len(namespace._pending) == _PENDING_CAP
-    assert _tool_key("s", "a", "c0") not in namespace._pending, "eviction is not FIFO"
-    assert _tool_key("s", "a", f"c{_PENDING_CAP + 99}") in namespace._pending
+    assert _tool_key("s", "c0") not in namespace._pending, "eviction is not FIFO"
+    assert _tool_key("s", f"c{_PENDING_CAP + 99}") in namespace._pending
 
 
 def test_an_evicted_pair_completes_without_duration_instead_of_raising():
@@ -907,19 +907,43 @@ def test_hook_pairs_are_namespaced_by_session_and_agent():
         assert "duration_ms" in writer.entries[0], f"{session} lost its own start"
 
 
-def test_the_same_id_in_the_same_session_but_a_different_agent_does_not_collide():
-    """Both halves of the namespace are load-bearing, not just the session."""
+def test_a_pair_opened_and_closed_under_different_agents_still_pairs():
+    """The key is deliberately NOT agent-scoped, and this is why.
+
+    This test asserted the opposite when the keys were first namespaced: that a
+    tool id repeated under two agents in one session produced two independent
+    pairs. That looked like tightening; it was over-tightening. Once a framework
+    runs tools inside sub-agents — LangGraph and CrewAI both do — a `tool_use`
+    opened under `planner` and closed under `worker` is the ORDINARY case, and an
+    agent-scoped key makes it miss silently, dropping `duration_ms` for exactly
+    the nested runs that most need it.
+
+    The rule that survives both: key on what makes the id unique (kind, session)
+    and never on what can legitimately change between the two events (the agent).
+    """
     writer = _NullWriter()
     namespace = EventNamespace(writer)
 
     namespace.tool_use(session_id="S", agent_id="planner", tool_name="t", tool_call_id="x")
-    namespace.tool_use(session_id="S", agent_id="worker", tool_name="t", tool_call_id="x")
-    assert len(namespace._pending) == 2
-
     writer.entries.clear()
-    namespace.tool_result(session_id="S", agent_id="planner", tool_name="t", tool_call_id="x")
+    namespace.tool_result(session_id="S", agent_id="worker", tool_name="t", tool_call_id="x")
+
+    assert "duration_ms" in writer.entries[0], (
+        "a tool handed from planner to worker lost its duration — the key is "
+        "agent-scoped again"
+    )
+    assert namespace._pending == {}, "the pending entry was left behind"
+
+
+def test_a_hook_opened_and_closed_under_different_agents_still_pairs():
+    """Same rule, same reason, for the other adapter-driven pair type."""
+    writer = _NullWriter()
+    namespace = EventNamespace(writer)
+
+    namespace.hook_triggered(session_id="S", agent_id="planner", hook_name="h", hook_id="x")
+    writer.entries.clear()
+    namespace.hook_completed(session_id="S", agent_id="worker", hook_name="h", hook_id="x")
     assert "duration_ms" in writer.entries[0]
-    assert len(namespace._pending) == 1, "the worker's pending start was consumed too"
 
 
 def test_a_result_from_an_unrelated_session_gets_no_duration_at_all():

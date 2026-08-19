@@ -149,34 +149,40 @@ def _measured_duration_ms(start_ts, end_ts) -> "int | None":
 _PENDING_CAP = 10_000
 
 
-# Every pairing in `_pending` is namespaced by what it pairs AND by whose it is.
-# Neither half was always there, and each missing half produced the same class of
-# wrong answer: a duration measured between two unrelated events.
+# Every pairing in `_pending` is keyed by what it pairs and by the SESSION it
+# belongs to — and deliberately NOT by the agent.
 #
-# The kind prefix came first. Tool pairs keyed on the bare `tool_call_id` and
-# hook pairs on the bare `hook_id`, sharing one flat keyspace, so a caller whose
-# tool call and hook happened to share an id — not exotic, both are frequently
-# the harness's own step id — got a `hook_completed` that consumed the
-# `tool_use` timestamp, and then a `tool_result` with no duration at all.
+# The rule: include what makes the id unique, exclude what can legitimately
+# change between the start event and the end event.
 #
-# The session/agent half was still missing afterwards, and only from these two:
-# human and pause pairs had it from the start. `_pending` lives on one
-# process-wide `EventNamespace`, so two sessions in one process — a supervisor
-# running agents concurrently, the ordinary multi-agent shape — collided on any
-# shared step id. Starting `step-1` in session A then in session B overwrote A's
-# timestamp; A's result then reported B's interval, and B's result reported none.
-# Both are plausible numbers, neither is an error, and nothing downstream can
-# tell which sessions were affected.
+# * KIND belongs in the key. Tool pairs keyed on the bare `tool_call_id` and hook
+#   pairs on the bare `hook_id` shared one flat keyspace, so a caller whose tool
+#   call and hook happened to share an id — not exotic, both are frequently the
+#   harness's own step id — got a `hook_completed` that consumed the `tool_use`
+#   timestamp, and then a `tool_result` with no duration at all.
+#
+# * SESSION belongs in the key. `_pending` lives on one process-wide namespace,
+#   so two sessions in one process — a supervisor running agents concurrently,
+#   the ordinary multi-agent shape — collided on any shared step id. Starting
+#   `step-1` in session A and then in session B overwrote A's timestamp; A's
+#   result reported B's interval and B's reported none.
+#
+# * AGENT DOES NOT. This was the tempting third component and it is wrong. Once a
+#   framework runs tools inside sub-agents, a `tool_use` opened under `planner`
+#   and closed under `worker` is routine — LangGraph and CrewAI both do it — and
+#   an agent-scoped key makes those pairs miss entirely, silently dropping
+#   `duration_ms` for exactly the nested runs that most need it. A session cannot
+#   change under a pair; an agent can.
 #
 # These are correlation keys only; they are never emitted and never leave the
-# process, so namespacing them changes no wire format. It only changes
-# `duration_ms` in the colliding case, from a fabricated value to a correct one.
-def _tool_key(session_id: str, agent_id: str, tool_call_id: str) -> str:
-    return f"tool:{session_id}:{agent_id}:{tool_call_id}"
+# process, so the shape changes no wire format. It only changes `duration_ms` in
+# the colliding cases, from a fabricated or missing value to a correct one.
+def _tool_key(session_id: str, tool_call_id: str) -> str:
+    return f"tool:{session_id}:{tool_call_id}"
 
 
-def _hook_key(session_id: str, agent_id: str, hook_id: str) -> str:
-    return f"hook:{session_id}:{agent_id}:{hook_id}"
+def _hook_key(session_id: str, hook_id: str) -> str:
+    return f"hook:{session_id}:{hook_id}"
 
 
 class EventNamespace:
@@ -246,7 +252,7 @@ class EventNamespace:
         _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
-        self._track_pending(_tool_key(session_id, agent_id, tool_call_id), ts)
+        self._track_pending(_tool_key(session_id, tool_call_id), ts)
         self._writer.submit(
             ToolUseEvent(
                 timestamp=self._fmt_ts(ts),
@@ -276,7 +282,7 @@ class EventNamespace:
         _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
-        start_ts = self._pending.pop(_tool_key(session_id, agent_id, tool_call_id), None)
+        start_ts = self._pending.pop(_tool_key(session_id, tool_call_id), None)
         duration_ms = _measured_duration_ms(start_ts, ts)
         self._writer.submit(
             ToolResultEvent(
@@ -419,7 +425,7 @@ class EventNamespace:
         _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
-        self._track_pending(f"pause:{session_id}:{agent_id}:{pause_id}", ts)
+        self._track_pending(f"pause:{session_id}:{pause_id}", ts)
         self._writer.submit(
             AgentPauseEvent(
                 timestamp=self._fmt_ts(ts),
@@ -448,7 +454,7 @@ class EventNamespace:
         _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
-        start_ts = self._pending.pop(f"pause:{session_id}:{agent_id}:{pause_id}", None)
+        start_ts = self._pending.pop(f"pause:{session_id}:{pause_id}", None)
         duration_ms = _measured_duration_ms(start_ts, ts)
         self._writer.submit(
             AgentResumeEvent(
@@ -478,7 +484,7 @@ class EventNamespace:
         _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
-        self._track_pending(_hook_key(session_id, agent_id, hook_id), ts)
+        self._track_pending(_hook_key(session_id, hook_id), ts)
         self._writer.submit(
             HookTriggeredEvent(
                 timestamp=self._fmt_ts(ts),
@@ -510,7 +516,7 @@ class EventNamespace:
         _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
-        start_ts = self._pending.pop(_hook_key(session_id, agent_id, hook_id), None)
+        start_ts = self._pending.pop(_hook_key(session_id, hook_id), None)
         duration_ms = _measured_duration_ms(start_ts, ts)
         self._writer.submit(
             HookCompletedEvent(
@@ -568,7 +574,7 @@ class EventNamespace:
         _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
-        self._track_pending(f"human:{session_id}:{agent_id}:{input_id}", ts)
+        self._track_pending(f"human:{session_id}:{input_id}", ts)
         self._writer.submit(
             HumanWaitEvent(
                 timestamp=self._fmt_ts(ts),
@@ -597,7 +603,7 @@ class EventNamespace:
         _validate_identity("agent_id", agent_id)
         self._validate_fields(fields)
         ts = self._now()
-        start_ts = self._pending.pop(f"human:{session_id}:{agent_id}:{input_id}", None)
+        start_ts = self._pending.pop(f"human:{session_id}:{input_id}", None)
         duration_ms = _measured_duration_ms(start_ts, ts)
         self._writer.submit(
             HumanInputEvent(

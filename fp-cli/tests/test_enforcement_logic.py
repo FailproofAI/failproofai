@@ -277,3 +277,30 @@ def test_drift_is_intent_ahead_of_delivery():
     assert m(3, None).drifted is True  # never collected anything
     assert m(3, 3).drifted is False    # in sync
     assert m(None, None).drifted is False  # nothing deployed: not drift
+
+
+def test_a_nul_byte_in_source_is_refused_with_a_readable_reason():
+    """Reaching Postgres with a NUL returns a bare "database error" — an internal
+    failure shown to somebody who most likely pointed the command at a binary
+    file. Catching it here turns that into a sentence."""
+    with pytest.raises(RefError, match="NUL byte"):
+        read_source("-", stdin=io.StringIO("export default {}\x00\x01"), isatty=False)
+
+
+def test_the_nul_check_covers_every_input_shape(tmp_path):
+    """A guard on one of five paths is not a guard."""
+    f = tmp_path / "bin.mjs"
+    f.write_text("ok\x00bad")
+    with pytest.raises(RefError, match="NUL byte"):
+        read_source(str(f))
+    with pytest.raises(RefError, match="NUL byte"):
+        read_source(f"@{f}")
+    with pytest.raises(RefError, match="NUL byte"):
+        read_source(None, stdin=io.StringIO("a\x00b"), isatty=False)
+    with pytest.raises(RefError, match="NUL byte"):
+        read_source(None, stdin=io.StringIO("a\x00b"), isatty=True, prompt=lambda: None)
+
+
+def test_ordinary_unicode_is_not_mistaken_for_binary():
+    """Emoji and CJK are legitimate policy content; only NUL is refused."""
+    assert read_source("-", stdin=io.StringIO("// 日本語 🎌\n"), isatty=False) == "// 日本語 🎌\n"

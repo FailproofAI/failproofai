@@ -252,18 +252,34 @@ def read_source(
     tty = stream.isatty() if isatty is None else isatty
 
     if value == "-":
-        return stream.read()
+        return _checked(stream.read())
     if value:
         path = value[1:] if value.startswith("@") else value
         try:
             with open(path, "r", encoding="utf-8") as fh:
-                return fh.read()
+                return _checked(fh.read())
         except FileNotFoundError:
             raise RefError(f"no such file: {path}")
         except OSError as exc:
             raise RefError(f"cannot read {path}: {exc}")
     if not tty:
-        return stream.read()
+        return _checked(stream.read())
     if prompt is not None:
         prompt()
-    return stream.read()
+    return _checked(stream.read())
+
+
+def _checked(text: str) -> str:
+    """Reject bytes the store cannot hold, with a message that says what happened.
+
+    A NUL byte in policy source reaches Postgres and comes back as a bare
+    "database error" — a raw internal failure shown to somebody who most likely
+    pointed the command at a binary file by mistake. The server ought to refuse
+    it; until it does, refusing here turns an unexplained 500 into a sentence.
+    """
+    if "\x00" in text:
+        raise RefError(
+            "policy source contains a NUL byte — this looks like a binary file "
+            "rather than a policy"
+        )
+    return text

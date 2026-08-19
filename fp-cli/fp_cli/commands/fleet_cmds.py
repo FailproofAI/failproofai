@@ -34,6 +34,19 @@ _KEY_MODE_REASON = (
 )
 
 
+def _require_machine(cctx, machine_id: str) -> None:
+    """Refuse an id no machine has ever reported under.
+
+    Without this, a typo is indistinguishable from a real machine that simply
+    has nothing deployed: both render an empty set and exit 0. The id is also
+    interpolated into a URL path further down, so an id containing `/` would
+    address a different route entirely — the server rejects those, but a clear
+    "no machine" beats someone else's 404.
+    """
+    if machine_id not in {m.machine_id for m in api.list_machines(cctx)}:
+        raise NotFoundError(f"no machine {machine_id!r} has checked in")
+
+
 def fleet_list(ctx: typer.Context) -> None:
     """List machines and how many policies each is told to run.
 
@@ -76,6 +89,7 @@ def fleet_show(
     state: AppState = ctx.obj
     deny_in_key_mode(state, "fleet show", _KEY_MODE_REASON)
     cctx = require_auth(state)
+    _require_machine(cctx, machine_id)
     dep = api.get_deployment(cctx, machine_id)
     if output.is_json():
         output.emit_json(
@@ -144,12 +158,14 @@ def fleet_deploy(
     # the only sign is an extra row in `fleet list`. The dashboard cannot hit
     # this because it deploys to a machine picked from a list; a CLI takes free
     # text, so the check has to be here.
-    known = {m.machine_id for m in api.list_machines(cctx)}
-    if machine_id not in known and not create:
-        raise NotFoundError(
-            f"no machine {machine_id!r} has checked in — deploying would create it "
-            "as a new machine id"
-        )
+    if not create:
+        try:
+            _require_machine(cctx, machine_id)
+        except NotFoundError:
+            raise NotFoundError(
+                f"no machine {machine_id!r} has checked in — deploying would create "
+                "it as a new machine id. Pass --create if that is deliberate."
+            )
 
     current = api.get_deployment(cctx, machine_id)
     latest = latest_versions(api.list_policies(cctx))
@@ -254,6 +270,7 @@ def fleet_history(
     state: AppState = ctx.obj
     deny_in_key_mode(state, "fleet history", _KEY_MODE_REASON)
     cctx = require_auth(state)
+    _require_machine(cctx, machine_id)
     entries = api.deployment_history(cctx, machine_id)
     if output.is_json():
         output.emit_json({"machineId": machine_id, "history": entries})
@@ -286,6 +303,7 @@ def fleet_rollback(
     state: AppState = ctx.obj
     deny_in_key_mode(state, "fleet rollback", _KEY_MODE_REASON)
     cctx = require_auth(state)
+    _require_machine(cctx, machine_id)
     current = api.get_deployment(cctx, machine_id)
     _write.confirm(
         state,

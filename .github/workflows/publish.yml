@@ -987,36 +987,73 @@ jobs:
 
           PAYLOAD="${RUNNER_TEMP}/discord.json"
           BODY="${RUNNER_TEMP}/discord-response.txt"
+          ERRLOG="${RUNNER_TEMP}/discord-curl.txt"
+
+          # A Discord webhook has NO idempotency key: every accepted POST
+          # creates another message, role ping and all. So a retry is only safe
+          # when the previous attempt is known not to have arrived, and the
+          # curl exit codes below are the ones that say so — a name that never
+          # resolved, a connection never made, a TLS handshake that failed
+          # before any body went out.
+          #
+          #    5 could not resolve proxy    6 could not resolve host
+          #    7 failed to connect         35 TLS connect error
+          #   60 TLS certificate problem
+          #
+          # Everything else is AMBIGUOUS — 28 (timeout), 52 (empty reply), 55
+          # and 56 (send/recv errors) can all happen after Discord accepted the
+          # message and only the response was lost — and is treated as final
+          # rather than retried, because a duplicate announcement is worse than
+          # a missing one that a human can re-run deliberately.
+          NEVER_SENT=" 5 6 7 35 60 "
 
           for attempt in 1 2 3; do
+            rc=0
             code="$(curl -sS --connect-timeout 10 --max-time 30 \
                       -o "$BODY" -w '%{http_code}' \
                       -X POST -H 'Content-Type: application/json' \
-                      --data-binary @"$PAYLOAD" "$DISCORD_RELEASE_WEBHOOK" 2>/dev/null || echo 000)"
+                      --data-binary @"$PAYLOAD" "$DISCORD_RELEASE_WEBHOOK" 2>>"$ERRLOG")" || rc=$?
 
-            case "$code" in
-              200|204)
-                echo "announced the release in Discord"
-                exit 0
-                ;;
-              429)
-                # Rate limited. Worth another go; anything else in the 4xx range
-                # is not — Discord rejects a malformed payload deterministically
-                # and two more identical POSTs only delay the error by 10s.
-                echo "Discord webhook rate-limited (429)" >&2
-                ;;
-              4*)
-                echo "Discord rejected the payload with HTTP $code:" >&2
-                head -c 500 "$BODY" >&2 || true
-                echo >&2
-                break
-                ;;
-              *)
-                echo "Discord webhook POST attempt $attempt returned HTTP $code" >&2
-                ;;
-            esac
-            [ "$attempt" -lt 3 ] && sleep 5
+            if [ "$rc" -ne 0 ]; then
+              case "$NEVER_SENT" in
+                *" $rc "*)
+                  echo "Discord webhook unreachable on attempt $attempt (curl exit $rc) — nothing was sent" >&2
+                  ;;
+                *)
+                  echo "::error::The package published successfully. The Discord announcement failed in a way that does not say whether it arrived (curl exit $rc), so it is NOT retried — a webhook has no idempotency key, and replaying a POST that Discord may already have accepted would announce the release twice with the role ping. Look in the releases channel: if nothing is there, re-run this job."
+                  exit 1
+                  ;;
+              esac
+            else
+              case "$code" in
+                200|204)
+                  echo "announced the release in Discord"
+                  exit 0
+                  ;;
+                429)
+                  # Discord answered, so no message was created. Safe to repeat.
+                  echo "Discord webhook rate-limited (429) on attempt $attempt" >&2
+                  ;;
+                5*)
+                  # Same: an error response means nothing was created.
+                  echo "Discord webhook returned HTTP $code on attempt $attempt" >&2
+                  ;;
+                4*)
+                  # A rejected payload is deterministic — two more identical
+                  # POSTs only delay the same error by ten seconds.
+                  echo "Discord rejected the payload with HTTP $code:" >&2
+                  head -c 500 "$BODY" >&2 || true
+                  echo >&2
+                  break
+                  ;;
+                *)
+                  echo "Discord webhook returned an unexpected HTTP $code on attempt $attempt" >&2
+                  ;;
+              esac
+            fi
+
+            if [ "$attempt" -lt 3 ]; then sleep 5; fi
           done
 
-          echo "::error::The package published successfully — only the Discord announcement failed. Nothing about the release needs re-doing; check DISCORD_RELEASE_WEBHOOK and re-run this job."
+          echo "::error::The package published successfully — only the Discord announcement failed, and every attempt was answered in a way that says it was never delivered. Nothing about the release needs re-doing; check DISCORD_RELEASE_WEBHOOK and re-run this job."
           exit 1

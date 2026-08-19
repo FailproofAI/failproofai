@@ -559,6 +559,24 @@ describe("publish.yml / the Discord release announcement", () => {
     expect(post.run.trimEnd().endsWith("exit 1")).toBe(true);
   });
 
+  it("never retries a post that may already have arrived", () => {
+    // A Discord webhook has no idempotency key, so every accepted POST creates
+    // another message — retrying a transport failure that happened AFTER the
+    // body went out announces the release twice, role ping and all. Only the
+    // curl exits that mean "never left this runner" may be repeated.
+    const post = job.steps.find((s: Record<string, any>) => s.name === "Post to the releases channel");
+    expect(post.run).toContain("NEVER_SENT=");
+    // Timeout / empty reply / send / recv — the ambiguous ones — must not be
+    // in the retryable set.
+    const retryable = /NEVER_SENT="([^"]*)"/.exec(post.run)![1].trim().split(/\s+/);
+    for (const ambiguous of ["28", "52", "55", "56"]) {
+      expect(retryable).not.toContain(ambiguous);
+    }
+    // And a 4xx is deterministic: it stops rather than spending two more posts
+    // on the same rejection.
+    expect(post.run).toContain("break");
+  });
+
   it("holds the webhook credential under least privilege", () => {
     // Declared, not inherited: without a block the job takes the repository or
     // organization default, which may carry write scopes it has no use for.

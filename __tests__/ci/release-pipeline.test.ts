@@ -749,6 +749,32 @@ describe("CI cost guards", () => {
     expect(script).not.toContain("-qq");
   });
 
+  it("retries every `bun run build` on the release path", () => {
+    // `bun --bun next build` is a demonstrated flake: on 2026-08-19 it took a
+    // SIGSEGV inside bun 1.3.14 during v1.0.1's TypeScript phase, exited 132,
+    // and skipped release-assets/publish/verify-install/announce — a release
+    // lost to a crash in the toolchain rather than anything being released.
+    // The same command had passed on the same commit in ci.yml minutes before.
+    //
+    // ci.yml's `build` job had 3 attempts from the start; publish.yml's two
+    // build steps had none, so the path where a spurious failure costs the most
+    // was the one without a net. Asserted rather than remembered.
+    const unretried: string[] = [];
+    for (const [id, job] of Object.entries(workflow("publish.yml").jobs) as [string, Record<string, any>][]) {
+      for (const step of job.steps ?? []) {
+        const command = String(step.with?.command ?? "");
+        const bare = String(step.run ?? "");
+        if (bare.includes("bun run build")) {
+          unretried.push(`${id}: ${String(step.name ?? "(unnamed)")}`);
+        } else if (command.includes("bun run build")) {
+          expect(String(step.uses)).toContain("nick-fields/retry");
+          expect(step.with.max_attempts).toBeGreaterThanOrEqual(2);
+        }
+      }
+    }
+    expect(unretried).toEqual([]);
+  });
+
   it("supersedes a superseded daemon build without cancelling a release", () => {
     const c = workflow("build-daemon.yml").concurrency;
     expect(c.group).toContain("github.ref");

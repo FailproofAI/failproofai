@@ -355,8 +355,24 @@ jobs:
           PUBLISH_VERSION: ${{ needs.preflight.outputs.publish_version }}
         run: npm version "$PUBLISH_VERSION" --no-git-tag-version
 
+      # Retried, because `bun --bun next build` is a demonstrated flake and this
+      # is a release. On 2026-08-19 it took a SIGSEGV inside bun 1.3.14 during
+      # the TypeScript phase of v1.0.1 — "oh no: Bun has crashed. This indicates
+      # a bug in Bun, not your code" — exited 132, and took the whole release
+      # down with it: release-assets, publish, verify-install and announce all
+      # skipped on a crash that had nothing to do with the code being shipped.
+      # The identical command had passed on the identical commit in ci.yml
+      # minutes earlier, which is the definition of a retryable failure.
+      #
+      # ci.yml's `build` job has wrapped this in 3 attempts since it was
+      # written. The release path — the one where a spurious failure costs the
+      # most — was the half without it.
       - name: Build
-        run: bun run build
+        uses: nick-fields/retry@v4
+        with:
+          max_attempts: 3
+          timeout_minutes: 10
+          command: bun run build
 
       - name: Pack the CLI tarball
         run: |
@@ -590,8 +606,16 @@ jobs:
       # Order is unchanged — this still runs after `npm version` and after the
       # daemon artifacts land in RUNNER_TEMP (never the checkout, so Next's file
       # tracing cannot sweep them into `.next/standalone`).
+      # Retried for the same reason as cli-tarball's Build, and with more at
+      # stake: by this point the release assets are already attached, so a
+      # spurious bun crash here leaves a release advertising binaries whose
+      # package never shipped.
       - name: Build the tarball contents
-        run: bun run build
+        uses: nick-fields/retry@v4
+        with:
+          max_attempts: 3
+          timeout_minutes: 10
+          command: bun run build
 
       - name: Publish
         env:

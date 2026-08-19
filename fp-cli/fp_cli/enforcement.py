@@ -117,11 +117,24 @@ def latest_versions(policies: Iterable[PolicyVersion]) -> Dict[str, int]:
     return out
 
 
+def disabled_ids(policies: Iterable[PolicyVersion]) -> set:
+    """Policies the server will refuse to deploy.
+
+    The server rejects these anyway, but only after the CLI has drawn a plan and
+    asked the operator to confirm it — so the last thing on screen is a change
+    that cannot happen, under a prompt that implied it could. Everything else
+    the plan depends on (the machine exists, the policy exists) is already
+    checked before the plan is built; this was the one gap.
+    """
+    return {p.id for p in policies if p.disabled and not p.archived}
+
+
 def resolve_ref(
     token: str,
     *,
     latest: Dict[str, int],
     current: Dict[str, PolicyRef],
+    disabled: Optional[set] = None,
 ) -> PolicyRef:
     """Turn one `--add`/`--set` token into a concrete `PolicyRef`.
 
@@ -133,6 +146,11 @@ def resolve_ref(
     the server's own default for an omitted effect.
     """
     pid, version, effect = parse_ref(token)
+    if disabled and pid in disabled and pid not in current:
+        raise RefError(
+            f"{pid!r} is disabled — `fp policies enable {pid}` first, or the machine "
+            "would be sent a deployment the server refuses"
+        )
     existing = current.get(pid)
     if version is None:
         version = existing.version if existing else latest.get(pid)
@@ -154,6 +172,7 @@ def plan_deploy(
     remove: Sequence[str] = (),
     replace: Optional[Sequence[str]] = None,
     latest: Optional[Dict[str, int]] = None,
+    disabled: Optional[set] = None,
 ) -> DeployPlan:
     """Compute the full resulting set, plus the diff to show before writing.
 
@@ -170,7 +189,7 @@ def plan_deploy(
             raise RefError("--set replaces the whole set; it cannot be combined with --add/--remove")
         result_map = {}
         for token in replace:
-            ref = resolve_ref(token, latest=latest, current=current_map)
+            ref = resolve_ref(token, latest=latest, current=current_map, disabled=disabled)
             result_map[ref.id] = ref
     else:
         result_map = dict(current_map)
@@ -182,7 +201,7 @@ def plan_deploy(
                 )
             del result_map[pid]
         for token in add:
-            ref = resolve_ref(token, latest=latest, current=current_map)
+            ref = resolve_ref(token, latest=latest, current=current_map, disabled=disabled)
             result_map[ref.id] = ref
 
     result = sorted(result_map.values(), key=lambda p: p.id)

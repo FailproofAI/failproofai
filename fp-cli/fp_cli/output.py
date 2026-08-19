@@ -6027,8 +6027,8 @@ def policy_lifecycle_changed(policy_id: str, action: str) -> None:
         # Terse on purpose: the CONFIRM box already carried the caveat and the
         # reversal command. Repeating them here is what pushed this card onto a
         # second line at 100 columns.
-        "disabled": "machines stop enforcing it",
-        "enabled": "machines enforce it again",
+        "disabled": "removed from every deployment carrying it",
+        "enabled": "redeploy it — enabling does not put it back",
         "archived": "carriers keep it until redeployed",
     }[action]
     body = Text()

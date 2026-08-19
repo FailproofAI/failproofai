@@ -304,3 +304,60 @@ def test_the_nul_check_covers_every_input_shape(tmp_path):
 def test_ordinary_unicode_is_not_mistaken_for_binary():
     """Emoji and CJK are legitimate policy content; only NUL is refused."""
     assert read_source("-", stdin=io.StringIO("// 日本語 🎌\n"), isatty=False) == "// 日本語 🎌\n"
+
+
+# ── disabled policies ────────────────────────────────────────────────────────
+
+
+def test_adding_a_disabled_policy_is_refused_before_the_plan_is_built():
+    """The server rejects it anyway — but only after the CLI has drawn a plan
+    and asked the operator to confirm it, so the last thing on screen is a
+    change that cannot happen under a prompt that implied it could."""
+    with pytest.raises(RefError, match="disabled"):
+        plan_deploy("m", current=[], base=None, add=["a"],
+                    latest={"a": 1}, disabled={"a"})
+
+
+def test_the_refusal_names_the_command_that_fixes_it():
+    with pytest.raises(RefError, match="policies enable a"):
+        plan_deploy("m", current=[], base=None, add=["a"],
+                    latest={"a": 1}, disabled={"a"})
+
+
+def test_set_checks_disabled_too():
+    """`--set` resolves refs by the same path; a gap in one is a gap in both."""
+    with pytest.raises(RefError, match="disabled"):
+        plan_deploy("m", current=[], base=None, replace=["a"],
+                    latest={"a": 1}, disabled={"a"})
+
+
+def test_a_disabled_policy_already_deployed_can_still_be_removed():
+    """Defensive, for a state the server normally prevents.
+
+    Disabling REMOVES a policy from every deployment carrying it (verified
+    against a live server: generation 16 held it, disabling minted 17 without
+    it), so a disabled policy should not appear in `current` at all. If one ever
+    does — a stale read, a server that changes this — refusing the removal would
+    leave it stuck on the machine with no CLI path off."""
+    plan = plan_deploy("m", current=[ref("a")], base=1, remove=["a"], disabled={"a"})
+    assert [p.id for p in plan.removed] == ["a"]
+
+
+def test_an_unrelated_add_does_not_re_resolve_what_is_already_there():
+    """Only the refs you name are resolved. Re-resolving the whole set would
+    make an unrelated `--add` fail because of something already on the machine
+    — the same trap in reverse."""
+    plan = plan_deploy("m", current=[ref("a")], base=1, add=["b"],
+                       latest={"a": 1, "b": 1}, disabled={"a"})
+    assert [p.id for p in plan.result] == ["a", "b"]
+    assert [p.id for p in plan.unchanged] == ["a"]
+
+
+def test_disabled_ids_ignores_archived():
+    """An archived policy is already excluded from `latest`, so listing it here
+    too would produce 'disabled' for something that no longer exists."""
+    from fp_cli.enforcement import disabled_ids
+    pols = [pv("live"), pv("off"), pv("gone", archived=True)]
+    pols[1].disabled = True
+    pols[2].disabled = True
+    assert disabled_ids(pols) == {"off"}

@@ -24,7 +24,13 @@ import typer
 from .. import client as api
 from .. import output
 from .._context import GLOBALS_EPILOG, AppState, deny_in_key_mode, require_auth
-from ..enforcement import RefError, check_race, latest_versions, plan_deploy
+from ..enforcement import (
+    RefError,
+    check_race,
+    disabled_ids,
+    latest_versions,
+    plan_deploy,
+)
 from ..errors import ApiError, NotFoundError
 from . import _write
 
@@ -168,7 +174,8 @@ def fleet_deploy(
             )
 
     current = api.get_deployment(cctx, machine_id)
-    latest = latest_versions(api.list_policies(cctx))
+    published = api.list_policies(cctx)
+    latest = latest_versions(published)
     try:
         plan = plan_deploy(
             machine_id,
@@ -178,6 +185,7 @@ def fleet_deploy(
             remove=remove or (),
             replace=replace,
             latest=latest,
+            disabled=disabled_ids(published),
         )
     except RefError as exc:
         raise ApiError(str(exc))

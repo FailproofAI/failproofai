@@ -169,16 +169,24 @@ def policies_disable(
     policy_id: str = typer.Argument(..., help="Policy id."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
 ) -> None:
-    """Disable a policy — machines stop enforcing it, the versions are kept.
+    """Disable a policy. It is removed from every deployment carrying it.
 
-    Reversible with `policies enable`. Needs `policies:write`.
+    Not just "machines stop enforcing it": the server reissues each affected
+    machine's deployment WITHOUT this policy, advancing that machine's
+    generation. `fp fleet history` shows the reissue as an ordinary entry.
+
+    `policies enable` restores the policy but does NOT redeploy it — the
+    machines that lost it need `fp fleet deploy --add` again.
+
+    Needs `policies:write`.
     """
     state: AppState = ctx.obj
     deny_in_key_mode(state, "policies disable", _KEY_MODE_REASON)
     cctx = require_auth(state)
     if not _write.confirm_destructive(
         state, "disable policy", policy_id,
-        consequence="machines stop enforcing it at their next poll; `policies enable` reverses this",
+        consequence=("it is REMOVED from every deployment carrying it, minting a new "
+                     "generation on each — `policies enable` does not put it back"),
         assume_yes=yes,
     ):
         if output.is_json():

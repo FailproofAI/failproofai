@@ -244,15 +244,57 @@ describe("localizeProductsNavigation", () => {
       "es",
       "ja",
     ]);
-    expect(languages[1].tabs[0].groups[0].pages).toEqual([
+    expect(languages[1].tabs[0].groups[0].pages!).toEqual([
       "es/agenteye/overview",
     ]);
+  });
+
+  it("carries a group that has no pages, instead of crashing on it", () => {
+    // The docs rebuild introduced `{group, expanded, openapi}` — a group whose
+    // content is an OpenAPI spec, with no `pages` at all. buildLanguageNav did
+    // `group.pages.map(...)` unconditionally and took the whole nightly
+    // translation down with a TypeError, AFTER 784 pages had been translated.
+    const tabs = [
+      {
+        tab: "Integrations and reference",
+        groups: [
+          { group: "Guides", pages: ["intro"] },
+          { group: "HTTP API", expanded: false, openapi: "reference/openapi.json" },
+        ],
+      },
+    ];
+    const zh = buildLanguageNav(tabs as never, "zh");
+    const groups = zh.tabs[0].groups;
+    expect(groups[0].pages![0]).toBe("zh/intro");
+    // Passed through untouched — the spec is not translated, and dropping the
+    // group would remove the API reference from every non-English nav.
+    expect(groups[1].openapi).toBe("reference/openapi.json");
+    expect(groups[1].pages).toBeUndefined();
+  });
+
+  it("preserves group properties the old builder silently dropped", () => {
+    // It rebuilt each group as {group, pages}, so `expanded`, `icon` and
+    // anything else vanished from every localized nav.
+    const tabs = [{ tab: "Docs", groups: [{ group: "G", expanded: true, icon: "book", pages: ["a"] }] }];
+    const de = buildLanguageNav(tabs as never, "de");
+    expect(de.tabs[0].groups[0].expanded).toBe(true);
+    expect(de.tabs[0].groups[0].icon).toBe("book");
+  });
+
+  it("recurses into nested groups rather than prefixing them as paths", () => {
+    const tabs = [
+      { tab: "Docs", groups: [{ group: "Outer", pages: ["top", { group: "Inner", pages: ["deep"] }] }] },
+    ];
+    const ja = buildLanguageNav(tabs as never, "ja");
+    const outer = ja.tabs[0].groups[0];
+    expect(outer.pages![0]).toBe("ja/top");
+    expect((outer.pages![1] as { pages?: string[] }).pages![0]).toBe("ja/deep");
   });
 
   it("uses Mintlify's canonical Portuguese locale with existing paths", () => {
     const portuguese = buildLanguageNav(sampleEnglishTabs, "pt-br");
 
     expect(portuguese.language).toBe("pt-BR");
-    expect(portuguese.tabs[0].groups[0].pages[0]).toBe("pt-br/introduction");
+    expect(portuguese.tabs[0].groups[0].pages![0]).toBe("pt-br/introduction");
   });
 });

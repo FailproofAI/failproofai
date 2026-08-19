@@ -8,12 +8,21 @@ const DOCS_JSON_PATH = join(__dirname, "..", "..", "docs", "docs.json");
 
 interface NavGroup {
   group: string;
-  pages: string[];
+  // OPTIONAL, and both of these are why: a Mintlify group may carry `pages`, or
+  // nested `groups`, or neither — the docs rebuild introduced a group whose
+  // content is an `openapi` spec and has no pages at all. `pages` entries are
+  // likewise strings OR nested groups. Typing these as required is what let
+  // `group.pages.map` crash the nightly run.
+  pages?: (string | NavGroup)[];
+  groups?: NavGroup[];
+  // Everything else (expanded, icon, openapi, …) rides along untouched.
+  [key: string]: unknown;
 }
 
 interface NavTab {
   tab: string;
   groups: NavGroup[];
+  [key: string]: unknown;
 }
 
 interface LanguageNav {
@@ -97,12 +106,31 @@ export function buildLanguageNav(
     Examples: t.examples,
   };
 
+  // Rebuilt by SPREADING the English group, not by picking two fields off it.
+  // The old form silently dropped every other key — `expanded`, `icon`,
+  // `openapi` — so a localized nav quietly lost them, and it crashed outright
+  // on the first group that had no `pages` at all.
+  const localizeGroup = (group: NavGroup): NavGroup => {
+    const out: NavGroup = { ...group, group: groupNameMap[group.group] || group.group };
+    if (Array.isArray(group.pages)) {
+      // A page entry is a path to prefix, or a nested group to recurse into.
+      out.pages = group.pages.map((page) =>
+        typeof page === "string" ? `${lang}/${page}` : localizeGroup(page),
+      );
+    }
+    if (Array.isArray(group.groups)) {
+      out.groups = group.groups.map(localizeGroup);
+    }
+    // No pages and no groups (an `openapi` group): carried through as-is. The
+    // spec is not translated, and dropping the group would remove the API
+    // reference from every non-English nav.
+    return out;
+  };
+
   const tabs: NavTab[] = englishTabs.map((tab) => ({
+    ...tab,
     tab: tabNameMap[tab.tab] || tab.tab,
-    groups: tab.groups.map((group) => ({
-      group: groupNameMap[group.group] || group.group,
-      pages: group.pages.map((page) => `${lang}/${page}`),
-    })),
+    groups: (tab.groups ?? []).map(localizeGroup),
   }));
 
   return {

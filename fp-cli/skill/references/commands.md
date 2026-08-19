@@ -235,6 +235,8 @@ Cloud-managed enforcement, split the way the dashboard splits it: `policies` wri
 
   **Races.** No server-side lock. The CLI records the generation it read and exits non-zero if the write does not land at exactly one higher — somebody else deployed, and a replace does not merge. Re-read with `fleet show` and retry.
 
+  **Idempotent.** Re-running the same deploy is a no-op that exits 0 without writing — desired-state semantics, so a retrying harness succeeds rather than errors. `applied` in the JSON is the only way to tell "changed it" from "already matched"; the exit code is 0 for both. The no-op short-circuits before the write, so a reader without `policies:write` also gets 0 there — exit 0 from a no-op is not proof of write access.
+
   JSON `{plan:{result,added,removed,changed,unchanged,noop}, deployment, applied}` — the plan is included so a harness does not recompute the diff.
 - `fleet diff [machine]` — intent vs delivery per machine, with a `drifted` flag.
 - `fleet history <machine>` · `fleet rollback <machine> <generation> [-y]` — rollback mints a NEW generation carrying the old set; history stays append-only.

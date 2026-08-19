@@ -166,6 +166,15 @@ def fleet_deploy(
     except RefError as exc:
         raise ApiError(str(exc))
 
+    # A no-op exits 0 WITHOUT writing, which is desired-state semantics: a
+    # retrying harness re-running the same deploy should succeed, not error.
+    # Two consequences worth knowing rather than discovering:
+    #   * `applied: false` in --json is the only way to tell "I changed it" from
+    #     "it already matched" — the exit code is 0 either way, on purpose.
+    #   * the short-circuit happens BEFORE the write, so a reader without
+    #     `policies:write` also gets 0 here. They have not gained anything (the
+    #     state already held and nothing was written), but the exit code alone
+    #     is not proof of write access.
     if plan.is_noop:
         if output.is_json():
             output.emit_json({"plan": plan.to_dict(), "deployment": None, "applied": False})

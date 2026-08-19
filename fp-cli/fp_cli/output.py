@@ -6014,3 +6014,73 @@ def render_guardrails(summary: dict, timeline: Optional[dict] = None) -> None:
                       rows=rows, days=set(), order=None,
                       empty_message="no decisions recorded in this window",
                       last_col="ellipsis", title=ptitle)
+
+
+def policy_lifecycle_changed(policy_id: str, action: str) -> None:
+    """``✓ disabled policy <id>`` etc, in the shared green notice box.
+
+    The plain ``success()`` line these used to print was the only two-step flow
+    in the CLI whose confirm and result did not match the boxed shape every
+    other destructive action uses.
+    """
+    detail = {
+        # Terse on purpose: the CONFIRM box already carried the caveat and the
+        # reversal command. Repeating them here is what pushed this card onto a
+        # second line at 100 columns.
+        "disabled": "machines stop enforcing it",
+        "enabled": "machines enforce it again",
+        "archived": "carriers keep it until redeployed",
+    }[action]
+    body = Text()
+    body.append("✓ ", style=theme.SUCCESS)
+    body.append(f"{action} policy ", style=theme.TEXT)
+    body.append(policy_id, style=theme.ACCENT)
+    body.append("  ·  ", style=theme.FAINT)
+    body.append(detail, style=theme.LABEL)
+    _notice_box(body, color=theme.SUCCESS, title=action)
+
+
+def deployment_applied(machine_id: str, generation: int, count: int) -> None:
+    """``✓ deployed N policies to <machine> · now on #G``."""
+    body = Text()
+    body.append("✓ ", style=theme.SUCCESS)
+    body.append(f"deployed {count} polic{'y' if count == 1 else 'ies'} to ", style=theme.TEXT)
+    body.append(machine_id, style=theme.ACCENT)
+    body.append("  ·  ", style=theme.FAINT)
+    body.append(f"now on deployment #{generation}", style=theme.LABEL)
+    _notice_box(body, color=theme.SUCCESS, title="deployed")
+
+
+def deployment_rolled_back(machine_id: str, restored: int, generation: int) -> None:
+    body = Text()
+    body.append("✓ ", style=theme.SUCCESS)
+    body.append("restored the set from ", style=theme.TEXT)
+    body.append(f"#{restored}", style=theme.ACCENT)
+    body.append(" on ", style=theme.TEXT)
+    body.append(machine_id, style=theme.ACCENT)
+    body.append("  ·  ", style=theme.FAINT)
+    body.append(f"minted as deployment #{generation}", style=theme.LABEL)
+    _notice_box(body, color=theme.SUCCESS, title="rolled back")
+
+
+def machine_renamed(machine_id: str, label: str) -> None:
+    body = Text()
+    body.append("✓ ", style=theme.SUCCESS)
+    body.append("labelled ", style=theme.TEXT)
+    body.append(machine_id, style=theme.ACCENT)
+    body.append(" as ", style=theme.TEXT)
+    body.append(label, style=f"bold {theme.TEXT}")
+    body.append("  ·  ", style=theme.FAINT)
+    body.append("the machine id itself is unchanged", style=theme.LABEL)
+    _notice_box(body, color=theme.SUCCESS, title="renamed")
+
+
+def deployment_unchanged(machine_id: str) -> None:
+    """A no-op deploy. Calm, not a warning — the desired state already holds."""
+    body = Text()
+    body.append("=  ", style=theme.FAINT)
+    body.append(machine_id, style=theme.ACCENT)
+    body.append(" already matches", style=theme.TEXT)
+    body.append("  ·  ", style=theme.FAINT)
+    body.append("nothing deployed", style=theme.LABEL)
+    _notice_box(body, color=theme.ACCENT, title="no change")

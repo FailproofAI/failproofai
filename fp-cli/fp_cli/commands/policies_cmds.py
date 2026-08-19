@@ -136,7 +136,7 @@ def policies_enable(
     if output.is_json():
         output.emit_json(res)
         return
-    output.success(f"enabled {policy_id}")
+    output.policy_lifecycle_changed(policy_id, "enabled")
 
 
 def policies_disable(
@@ -151,13 +151,21 @@ def policies_disable(
     state: AppState = ctx.obj
     deny_in_key_mode(state, "policies disable", _KEY_MODE_REASON)
     cctx = require_auth(state)
-    _write.confirm(state, f"disable {policy_id} — machines stop enforcing it",
-                   assume_yes=yes)
+    if not _write.confirm_destructive(
+        state, "disable policy", policy_id,
+        consequence="machines stop enforcing it at their next poll; `policies enable` reverses this",
+        assume_yes=yes,
+    ):
+        if output.is_json():
+            output.emit_json({"cancelled": True})
+        else:
+            output.print_cancelled()
+        return
     res = api.set_policy_enabled(cctx, policy_id, False)
     if output.is_json():
         output.emit_json(res)
         return
-    output.success(f"disabled {policy_id}")
+    output.policy_lifecycle_changed(policy_id, "disabled")
 
 
 def policies_delete(
@@ -176,18 +184,22 @@ def policies_delete(
     state: AppState = ctx.obj
     deny_in_key_mode(state, "policies delete", _KEY_MODE_REASON)
     cctx = require_auth(state)
-    _write.confirm(
-        state,
-        f"archive {policy_id} — machines already carrying it keep enforcing until "
-        "redeployed, and `fp policies disable` is what stops enforcement",
+    if not _write.confirm_destructive(
+        state, "archive policy", policy_id,
+        consequence=("machines already carrying it keep enforcing until redeployed — "
+                     "`policies disable` is what stops enforcement"),
         assume_yes=yes,
-        destructive=True,
-    )
+    ):
+        if output.is_json():
+            output.emit_json({"cancelled": True})
+        else:
+            output.print_cancelled()
+        return
     res = api.delete_policy(cctx, policy_id)
     if output.is_json():
         output.emit_json(res)
         return
-    output.success(f"archived {policy_id}")
+    output.policy_lifecycle_changed(policy_id, "archived")
 
 
 def register(app: typer.Typer) -> None:

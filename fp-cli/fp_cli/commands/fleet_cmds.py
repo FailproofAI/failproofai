@@ -195,17 +195,23 @@ def fleet_deploy(
         if output.is_json():
             output.emit_json({"plan": plan.to_dict(), "deployment": None, "applied": False})
             return
-        output.info(f"{machine_id} already matches — nothing to deploy")
+        output.deployment_unchanged(machine_id)
         return
 
     if not output.is_json():
         output.render_deploy_plan(plan)
-    _write.confirm(
-        state,
-        f"replace {machine_id}'s policy set with the {len(plan.result)} above",
+    dropped = len(plan.removed)
+    if not _write.confirm_destructive(
+        state, "replace the policy set on", machine_id,
+        consequence=(f"this REPLACES the whole set with the {len(plan.result)} shown above"
+                     + (f"; {dropped} would be removed" if dropped else "")),
         assume_yes=yes,
-        destructive=bool(plan.removed),
-    )
+    ):
+        if output.is_json():
+            output.emit_json({"plan": plan.to_dict(), "cancelled": True, "applied": False})
+        else:
+            output.print_cancelled()
+        return
 
     result = api.deploy_policies(cctx, machine_id, plan.result)
     check_race(plan.base, result.deployment)
@@ -217,7 +223,7 @@ def fleet_deploy(
             "applied": True,
         })
         return
-    output.success(f"{machine_id} is now on deployment {result.deployment}")
+    output.deployment_applied(machine_id, result.deployment, len(result.policies))
 
 
 def fleet_diff(
@@ -305,18 +311,22 @@ def fleet_rollback(
     cctx = require_auth(state)
     _require_machine(cctx, machine_id)
     current = api.get_deployment(cctx, machine_id)
-    _write.confirm(
-        state,
-        f"reinstate deployment {deployment} on {machine_id} — this replaces its current set",
+    if not _write.confirm_destructive(
+        state, f"reinstate deployment #{deployment} on", machine_id,
+        consequence="this REPLACES the machine's current set with the one from that generation",
         assume_yes=yes,
-        destructive=True,
-    )
+    ):
+        if output.is_json():
+            output.emit_json({"cancelled": True})
+        else:
+            output.print_cancelled()
+        return
     result = api.rollback_deployment(cctx, machine_id, deployment)
     check_race(current.deployment if current else None, result.deployment)
     if output.is_json():
         output.emit_json(result.to_dict())
         return
-    output.success(f"{machine_id} rolled back to the set from #{deployment} (now #{result.deployment})")
+    output.deployment_rolled_back(machine_id, deployment, result.deployment)
 
 
 def fleet_rename(
@@ -335,7 +345,7 @@ def fleet_rename(
     if output.is_json():
         output.emit_json(res)
         return
-    output.success(f"{machine_id} is now labelled {label!r}")
+    output.machine_renamed(machine_id, label)
 
 
 def register(app: typer.Typer) -> None:

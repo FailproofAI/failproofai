@@ -127,6 +127,45 @@ fp --json events --session-id run-001 --all | jq '.events[].payload'
 fp --json sessions --since 7d --fields session_id,status,scores
 ```
 
+### Cloud-managed policies
+
+Three commands for the three jobs the dashboard splits across three pages —
+`fp policies` writes a policy version, `fp fleet` decides which machines run it,
+`fp guardrails` reports what it actually blocked.
+
+```bash
+fp policies publish no-force-push ./rule.mjs   # path, @path, a pipe, - or a paste
+fp fleet deploy ci-runner-01 --add no-force-push
+fp guardrails --since 24h
+```
+
+**A deploy REPLACES a machine's whole policy set.** The server takes the full
+list and does not merge, so `fleet deploy` reads what the machine currently runs,
+applies your `--add`/`--remove`, prints the complete resulting set, and writes
+that. Use `--set` only when you mean "exactly these, drop the rest".
+
+```bash
+fp fleet deploy ci-runner-01 \
+    --add no-force-push \            # keeps its pinned version if already deployed
+    --add prod-guard@1:observe \     # id@version:effect
+    --remove old-rule
+```
+
+Two things worth knowing before you script it:
+
+* A bare `--add` of a policy the machine already runs keeps its **pinned
+  version**. Pass `id@version` to move it — a pin is usually deliberate.
+* The endpoint has no lock. The CLI records the deployment generation it read and
+  **refuses** if the write does not land at exactly one higher, because that means
+  somebody deployed in between and a replace does not merge.
+
+`fp fleet diff` shows intent versus delivery: a machine can be deployed-to and
+still enforcing an older set until it next polls.
+
+These commands are **session-only** (`fp login`). They are absent from the
+versioned API an API key authenticates against, so `--api-key` exits 2 with the
+reason rather than failing at the request.
+
 ## Configuration
 
 | Setting | Flag | Env var | Default |

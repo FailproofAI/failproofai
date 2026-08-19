@@ -27,7 +27,7 @@ from . import _write
 #: path that would 404 with no explanation.
 _KEY_MODE_REASON = (
     "cloud-managed policies are an operator surface and are not exposed on the "
-    "versioned API an key authenticates against"
+    "versioned API that an API key authenticates against"
 )
 
 

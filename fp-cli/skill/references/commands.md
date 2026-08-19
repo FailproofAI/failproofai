@@ -209,3 +209,39 @@ Built-in assistant. Chats referenced by a **short chat-id** (first 8 hex; prefix
 - `agent ask "MESSAGE" [--chat <short-id>] [--model <m>]` — starts a new chat (prints its short id) or continues `--chat`. On a TTY the answer renders as Markdown; piped/non-TTY prints the raw answer to stdout.
 - `agent show <short-id>` — transcript. `agent rename <short-id> --title "…"` · `agent delete <short-id>`.
 - Ambiguous prefix → exit 2; unknown chat → exit 6.
+
+## policies · fleet · guardrails
+**Session-only, all three groups** — every subcommand exits 2 under a key, with no request made. These routes are absent from the versioned API an API key authenticates against; they are an operator surface.
+
+Cloud-managed enforcement, split the way the dashboard splits it: `policies` writes a version, `fleet` decides which machines run it, `guardrails` reports what it blocked. Needs `policies:read` to read, `policies:write` to change anything.
+
+### policies
+- `policies list` — newest version of each; `state` is active / disabled / archived. JSON `{policies:[…]}`.
+- `policies show <id>` — includes the full `source`.
+- `policies publish <id> [SOURCE] [--description "…"]` — mints a **new version**; never edits one. SOURCE is a path, `@path`, `-`, a pipe, or omitted to paste on a TTY (Ctrl-D ends). **Publishing deploys nothing** — the version is unused until `fleet deploy` puts it on a machine.
+- `policies enable <id>` · `policies disable <id> [-y]` — disable stops enforcement and is reversible.
+- `policies delete <id> [-y]` — archives. **A machine already carrying the policy keeps enforcing it** until redeployed; `disable` is what stops enforcement everywhere.
+
+### fleet
+- `fleet list` — `machine · label · policies · intended · applied · state`. `intended` is the generation deployed, `applied` is what the machine last collected; they differ until it polls.
+- `fleet show <machine>` — the exact set that machine is told to run.
+- `fleet deploy <machine> [--add REF]… [--remove ID]… [--set REF]… [--create] [-y]`
+
+  **A deploy REPLACES the whole set.** The endpoint takes the full list and does not merge. `--add`/`--remove` are a read-modify-write: the CLI reads the current set, applies the delta, prints the complete result, writes that. `--set` replaces everything and is refused alongside `--add`/`--remove`.
+
+  REF is `id`, `id@version`, `id:effect`, or `id@version:effect`. Effect is `enforce` (default) or `observe`. A bare `--add` of an already-deployed policy **keeps its pinned version** — pass `id@version` to move it.
+
+  Deploying to an id that has never checked in is refused (a typo would mint a machine); `--create` allows it for pre-staging.
+
+  **Races.** No server-side lock. The CLI records the generation it read and exits non-zero if the write does not land at exactly one higher — somebody else deployed, and a replace does not merge. Re-read with `fleet show` and retry.
+
+  JSON `{plan:{result,added,removed,changed,unchanged,noop}, deployment, applied}` — the plan is included so a harness does not recompute the diff.
+- `fleet diff [machine]` — intent vs delivery per machine, with a `drifted` flag.
+- `fleet history <machine>` · `fleet rollback <machine> <generation> [-y]` — rollback mints a NEW generation carrying the old set; history stays append-only.
+- `fleet rename <machine> "<label>"` — a human label; the id never changes.
+
+### guardrails
+- `guardrails [--since 15m|1h|6h|24h|7d] [--machine ID]` — coverage, blocked/evaluated totals, a deny sparkline, and the per-policy table. Bare `fp guardrails` is the summary.
+- `guardrails timeline` · `guardrails policies` — the two halves on their own.
+- A `(no policy)` row is **normal**: most evaluations are allows nothing objected to, and the row keeps the denominator visible.
+- Coverage comes from the control plane, decision counts from reported telemetry — a machine can be deployed-to and silent, or reporting and undeployed.

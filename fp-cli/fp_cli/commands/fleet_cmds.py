@@ -29,8 +29,8 @@ from ..errors import ApiError, NotFoundError
 from . import _write
 
 _KEY_MODE_REASON = (
-    "the fleet is an operator surface and is not exposed on the versioned API an "
-    "key authenticates against"
+    "the fleet is an operator surface and is not exposed on the versioned API that "
+    "an API key authenticates against"
 )
 
 

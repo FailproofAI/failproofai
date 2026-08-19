@@ -242,3 +242,38 @@ def test_source_from_a_paste_prompts_first():
 def test_a_missing_file_names_the_path():
     with pytest.raises(RefError, match="no such file"):
         read_source("/nope/definitely-not-here.mjs")
+
+
+# ── the JSON contract ────────────────────────────────────────────────────────
+
+
+def test_models_emit_the_server_shape_not_pythons():
+    """`vars()` would leak snake_case into a contract that is camelCase
+    everywhere else — a difference a harness finds at runtime, not in review."""
+    from fp_cli.models import Deployment, Machine, PolicyVersion
+
+    pv_keys = set(PolicyVersion.from_dict({"id": "a", "version": 1}).to_dict())
+    assert "createdAt" in pv_keys and "created_at" not in pv_keys
+
+    dep_keys = set(Deployment.from_dict({"machineId": "m", "deployment": 1}).to_dict())
+    assert "machineId" in dep_keys and "machine_id" not in dep_keys
+
+    m = Machine.from_dict({"machineId": "m", "deployment": 3, "appliedDeployment": 1})
+    keys = set(m.to_dict())
+    assert "appliedDeployment" in keys
+    assert not [k for k in keys if "_" in k], keys
+
+
+def test_drift_is_intent_ahead_of_delivery():
+    """The one field the CLI computes, and the reason `fleet diff` exists: a
+    machine can be deployed-to and still enforcing an older set."""
+    from fp_cli.models import Machine
+
+    def m(intended, delivered):
+        return Machine.from_dict({"machineId": "m", "deployment": intended,
+                                  "appliedDeployment": delivered})
+
+    assert m(3, 1).drifted is True     # behind
+    assert m(3, None).drifted is True  # never collected anything
+    assert m(3, 3).drifted is False    # in sync
+    assert m(None, None).drifted is False  # nothing deployed: not drift

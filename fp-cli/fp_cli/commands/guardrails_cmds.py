@@ -22,7 +22,7 @@ from .._context import GLOBALS_EPILOG, AppState, deny_in_key_mode, require_auth
 
 _KEY_MODE_REASON = (
     "guardrails reads an operator surface that is not exposed on the versioned "
-    "API an key authenticates against"
+    "API that an API key authenticates against"
 )
 
 

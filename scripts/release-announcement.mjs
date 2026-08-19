@@ -593,6 +593,11 @@ export function buildDiscordPayload({
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
+/** `plural(1, "entry", "entries")` -> `"1 entry"`. */
+function plural(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
@@ -637,14 +642,14 @@ export function main(argv = process.argv.slice(2), io = console) {
     if (!notes) {
       io.error(
         `::error file=CHANGELOG.md::Nothing to announce for ${version}: the GitHub Release body is ` +
-          `empty and CHANGELOG.md has no '## ${version}' section. A stable release announces itself ` +
-          `in Discord, so it would post with no release notes in it. Write the release notes, or add ` +
-          `the changelog section, and re-run.`,
+          `empty and CHANGELOG.md has no section for ${version} (or any ${version}-* prerelease). ` +
+          `A stable release announces itself in Discord, so it would post with no release notes in ` +
+          `it. Write the release notes, or add the changelog section, and re-run.`,
       );
       process.exitCode = 1;
       return null;
     }
-    io.error(`${version} has release notes (${notes.total} entries, from ${source}).`);
+    io.error(`${version} has release notes (${plural(notes.total, "entry", "entries")}, from ${source}).`);
     return notes;
   }
 
@@ -654,7 +659,7 @@ export function main(argv = process.argv.slice(2), io = console) {
     // people the version exists and how to install it.
     io.error(`::warning::No release notes for ${version} in the release body or ${changelogPath} — announcing without highlights.`);
   } else {
-    io.error(`Collected ${notes.total} entr${notes.total === 1 ? "y" : "ies"} from ${source}.`);
+    io.error(`Collected ${plural(notes.total, "entry", "entries")} from ${source}.`);
   }
 
   const payload = buildDiscordPayload({

@@ -245,6 +245,18 @@ jobs:
           timeout_minutes: 5
           command: bun install --frozen-lockfile
 
+      # Pinned, because vitest runs under Node and this job had been taking
+      # whatever the runner image happened to ship. That is how the suite came
+      # to pass here and fail on contributors' machines: from Node 24 on, Node
+      # supplies its OWN `localStorage` global, which only works with
+      # `--localstorage-file` and otherwise shadows jsdom's with `undefined` —
+      # fifteen failures in `project-list.test.tsx`, green in CI. The polyfill
+      # in `__tests__/setup.ts` is what actually fixes it; this pin is what
+      # keeps CI from silently drifting onto a different runtime again.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
       - name: Test (${{ matrix.env-config.name }})
         uses: nick-fields/retry@v4
         env: ${{ matrix.env-config.env }}

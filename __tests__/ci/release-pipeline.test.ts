@@ -497,6 +497,86 @@ describe("publish.yml", () => {
   });
 });
 
+/**
+ * The announcement runs once per stable release and nothing else exercises it,
+ * so every guard here is for a change that would look harmless in review and
+ * only show up in a public channel — or not show up at all.
+ */
+describe("publish.yml / the Discord release announcement", () => {
+  const wf = workflow("publish.yml");
+  const job = wf.jobs.announce;
+
+  it("announces only a STABLE release, at the dist-tag a bare install resolves", () => {
+    // Both halves are required. A prerelease version is a beta nobody asked to
+    // be pinged about; a stable version published at `next` is not what
+    // `npm install failproofai` returns, so the announcement's install line
+    // would be wrong on the one line people copy.
+    expect(job.if).toContain("needs.preflight.outputs.is_prerelease == 'false'");
+    expect(job.if).toContain("needs.preflight.outputs.dist_tag == 'latest'");
+    expect(job.if).toContain("needs.preflight.outputs.dry_run != 'true'");
+  });
+
+  it("announces only after the release is published AND verified installable", () => {
+    expect(job.needs).toEqual(expect.arrayContaining(["publish", "verify-install"]));
+    // No `always()`: a job in `needs` that failed must stop the announcement,
+    // or a channel gets told to install something that 404s.
+    expect(job.if).not.toContain("always()");
+  });
+
+  it("cannot hold back the release it announces", () => {
+    // Nothing may depend on `announce`. A red mark there means the message did
+    // not go out; it must never mean a published package is blocked.
+    for (const [name, other] of Object.entries<Record<string, any>>(wf.jobs)) {
+      if (name === "announce") continue;
+      expect([other.needs ?? []].flat()).not.toContain("announce");
+    }
+  });
+
+  it("prefers the GitHub Release body over the changelog", () => {
+    const build = job.steps.find((s: Record<string, any>) => s.name === "Build the announcement");
+    expect(build.env.RELEASE_BODY).toContain("github.event.release.body");
+    expect(build.run).toContain("--notes-file");
+  });
+
+  it("never puts the release body on a command line", () => {
+    // It is arbitrary markdown typed into a web form. Interpolating it into a
+    // `run:` block lets a backtick in somebody's release notes execute inside
+    // the release pipeline.
+    const build = job.steps.find((s: Record<string, any>) => s.name === "Build the announcement");
+    expect(build.run).not.toContain("github.event.release.body");
+    expect(build.run).toContain("printf '%s' \"$RELEASE_BODY\"");
+  });
+
+  it("skips silently without a webhook and fails loudly when a post does not land", () => {
+    const post = job.steps.find((s: Record<string, any>) => s.name === "Post to the releases channel");
+    expect(post.env.DISCORD_RELEASE_WEBHOOK).toContain("secrets.DISCORD_RELEASE_WEBHOOK");
+    // A fork with no webhook must not turn a release red...
+    expect(post.run).toContain('if [ -z "$DISCORD_RELEASE_WEBHOOK" ]');
+    expect(post.run).toContain("::notice::");
+    // ...but a deleted or revoked webhook is a real failure, and this job is
+    // the only place anyone would ever learn it happened.
+    expect(post.run).toContain("::error::");
+    expect(post.run.trimEnd().endsWith("exit 1")).toBe(true);
+  });
+
+  it("reads the release role from a repository variable or a secret", () => {
+    const build = job.steps.find((s: Record<string, any>) => s.name === "Build the announcement");
+    expect(build.env.ROLE_ID).toContain("vars.DISCORD_RELEASE_ROLE_ID");
+    expect(build.env.ROLE_ID).toContain("secrets.DISCORD_RELEASE_ROLE_ID");
+  });
+
+  it("refuses a stable release with nothing to announce, before anything is built", () => {
+    // In PREFLIGHT, the one point in this pipeline where failing costs nothing:
+    // no cross-compile, no release assets, no npm publish.
+    const step = wf.jobs.preflight.steps.find(
+      (s: Record<string, any>) => s.name === "Verify this stable release has notes to announce",
+    );
+    expect(step).toBeDefined();
+    expect(step.if).toContain("is_prerelease == 'false'");
+    expect(step.run).toContain("--check");
+  });
+});
+
 describe("pipeline / CLI agreement", () => {
   const DAEMON_SERVICE = resolve(ROOT, "src/hooks/daemon-service.ts");
 

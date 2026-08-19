@@ -732,6 +732,17 @@ describe("CI cost guards", () => {
     expect(script).toMatch(/sudo timeout\b/);
     expect(script).not.toMatch(/timeout\s+\d+\s+sudo\b/);
 
+    // The install is bounded too, not just the update — it is the step that
+    // actually downloads packages, and an unbounded one stalls the same way.
+    expect(script).toMatch(/sudo timeout[^\n]*apt-get install/);
+
+    // Install BEFORE the update loop. `apt-get update` is the part that
+    // stalled; the runner image's package lists usually make it unnecessary,
+    // so reversing these two would put the flaky step back on the fast path
+    // while every assertion above still passed.
+    expect(script.indexOf("if install_musl; then")).toBeGreaterThan(-1);
+    expect(script.indexOf("if install_musl; then")).toBeLessThan(script.indexOf("for attempt in"));
+
     // Bounded per attempt, retried, and loud about which mirror stalled.
     expect(script).toContain("Acquire::http::Timeout");
     expect(script).toContain("for attempt in");

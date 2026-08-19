@@ -158,9 +158,18 @@ jobs:
             echo "present=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Anything that can change what clippy or the tests see. ci.yml is in
-          # the list so a change to this gate always exercises the gate.
-          if git diff --name-only HEAD^1 HEAD | grep -qE '^(crates/|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|\.github/workflows/ci\.yml$)'; then
+          # Anything that can change what clippy or the tests see — which is
+          # NOT only Rust. `cargo test --workspace` spawns the real TS worker
+          # (`bun bin/failproofai-worker.mjs`, from server.rs's live end-to-end
+          # test), and that worker runs raw TypeScript, resolving src/hooks'
+          # real dependency tree at runtime rather than a bundle's. So a change
+          # under src/hooks, to the worker entrypoint, or to the dependency
+          # graph it resolves against can break this job with no Rust involved
+          # at all — the failure surfaces as "worker process exited before
+          # creating its socket", which is exactly the class a gate that only
+          # matched Rust paths would have let through silently.
+          # ci.yml is in the list so a change to this gate always exercises it.
+          if git diff --name-only HEAD^1 HEAD | grep -qE '^(crates/|src/hooks/|bin/failproofai-worker\.mjs$|package\.json$|bun\.lock$|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|\.github/workflows/ci\.yml$)'; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
@@ -358,6 +367,12 @@ jobs:
           # Depth 2 so the gate below can diff the PR's merge commit against
           # its first parent. See rust-quality for the full reasoning.
           fetch-depth: 2
+          # This job runs `npm install -g mintlify`, which executes package
+          # lifecycle scripts. The default would leave GITHUB_TOKEN sitting in
+          # .git/config where any of them could read it — the same reasoning
+          # rust-quality and build-daemon already carry, and this is the job
+          # where it bites hardest.
+          persist-credentials: false
 
       # Same shape as rust-quality's gate, same reason: this job installs a
       # global npm package and a full dependency tree to validate documentation
@@ -369,7 +384,9 @@ jobs:
             echo "present=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if git diff --name-only HEAD^1 HEAD | grep -qE '^(docs/|scripts/validate-mdx\.ts$|package\.json$|\.github/workflows/ci\.yml$)|\.mdx$'; then
+          # bun.lock alongside package.json: `validate:mdx` runs a bun script,
+          # so a lockfile-only change moves the dependency graph it parses with.
+          if git diff --name-only HEAD^1 HEAD | grep -qE '^(docs/|scripts/validate-mdx\.ts$|package\.json$|bun\.lock$|\.github/workflows/ci\.yml$)|\.mdx$'; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"

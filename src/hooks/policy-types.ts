@@ -45,6 +45,13 @@ export interface PolicyParamsSchema {
   };
 }
 
+/**
+ * A builtin policy minus its implementation — exactly what `policy-catalog.ts`
+ * holds. Derived from {@link BuiltinPolicyDefinition} rather than declared
+ * separately so a field added to one can never be forgotten on the other.
+ */
+export type PolicyCatalogEntry = Omit<BuiltinPolicyDefinition, "fn">;
+
 export interface BuiltinPolicyDefinition {
   name: string;
   description: string;

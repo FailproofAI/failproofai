@@ -505,10 +505,281 @@ def test_a_cancelled_run_is_not_an_error(instrumented, emitted):
     assert of_type(rows, "error") == []
     assert of_type(rows, "agent_end")[0]["outcome"] == "cancelled"
     # Every open leaf still closes — a run that dies with an open tool_use leaves
-    # the session `ongoing` forever. (The tool runs in its own task, so its close
-    # can land just after agent_end; both are present, which is the invariant.)
+    # the session `ongoing` forever. The tool runs in its own task and its own
+    # hook returns *after* `wrap_run` does, so the run closes it on the way out;
+    # see `test_a_cancelled_leaf_closes_before_the_agent_it_belongs_to`.
     assert len(of_type(rows, "tool_use")) == len(of_type(rows, "tool_result")) == 1
     assert of_type(rows, "tool_result")[0].get("error") is None
+
+
+# ---------------------------------------------------------------------------
+# A leaf that outlives its own run
+#
+# Shape A promises the start and the end of a span sit in one frame, and for the
+# run itself that holds. It does not hold *between* frames: the graph awaits a
+# `gather` of tool tasks, so a cancellation unwinds the run body the moment that
+# future is cancelled while each tool task's own `CancelledError` is delivered a
+# loop iteration later. Measured against pydantic-ai 2.32 before the fix, a
+# `wait_for` timeout put `tool_result` 1ms *after* `agent_end`, and a timeout
+# inside the provider call did the same to `model_response` — which is the one
+# thing every other emit in the adapter is careful never to do, because the
+# dashboard closes the agent span at `agent_end`.
+# ---------------------------------------------------------------------------
+
+def test_a_cancelled_leaf_closes_before_the_agent_it_belongs_to(instrumented, emitted):
+    async def main():
+        started = asyncio.Event()
+        agent = Agent(
+            FunctionModel(
+                lambda messages, info: ModelResponse(
+                    parts=[ToolCallPart("hang", {}, tool_call_id="call-hang")]
+                )
+            ),
+            name="late_leaf_agent",
+        )
+
+        @agent.tool_plain
+        async def hang() -> str:  # pragma: no cover - cancelled before it returns
+            started.set()
+            await asyncio.sleep(30)
+            return "never"
+
+        task = asyncio.create_task(agent.run("go"))
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        # Give the tool task's own unwind a chance to run: the whole point is
+        # that it lands after the run, and a duplicate would appear here.
+        await asyncio.sleep(0.05)
+
+    asyncio.run(main())
+    rows = emitted()
+    kinds = types_of(rows)
+
+    assert kinds.index("tool_result") < kinds.index("agent_end")
+    # Exactly one, not two: the tool's own hook still runs afterwards and must
+    # not emit a second close for a span that is already closed.
+    assert kinds.count("tool_result") == 1
+    (result,) = of_type(rows, "tool_result")
+    assert result["tool_call_id"] == of_type(rows, "tool_use")[0]["tool_call_id"]
+    # Marked, so a leaf that never reported its own outcome is distinguishable
+    # from one that completed.
+    assert result["fw_incomplete"] is True
+    # A cancellation is still not a failure.
+    assert result.get("error") is None
+    assert of_type(rows, "agent_end")[0]["outcome"] == "cancelled"
+
+
+def test_a_cancelled_model_request_closes_before_the_agent_it_belongs_to(instrumented, emitted):
+    async def main():
+        started = asyncio.Event()
+
+        async def never(messages, info):  # pragma: no cover - cancelled mid-call
+            started.set()
+            await asyncio.sleep(30)
+            return ModelResponse(parts=[TextPart("never")])
+
+        agent = Agent(FunctionModel(never), name="late_model_agent")
+        task = asyncio.create_task(agent.run("go"))
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await asyncio.sleep(0.05)
+
+    asyncio.run(main())
+    rows = emitted()
+    kinds = types_of(rows)
+
+    assert kinds.index("model_response") < kinds.index("agent_end")
+    assert kinds.count("model_response") == 1
+    (response,) = of_type(rows, "model_response")
+    assert response["request_id"] == of_type(rows, "model_request")[0]["request_id"]
+    assert response["fw_incomplete"] is True
+    # `duration_ms` is still an int on the synthesized close: the server's JSON
+    # parser drops floats, so a float silently NULLs the column.
+    assert type(response["duration_ms"]) is int
+    assert response.get("error") is None
+
+
+def test_a_streamed_model_response_says_it_was_streamed(instrumented, emitted):
+    """`duration_ms` on a streamed response is the whole `async with` block.
+
+    Pydantic AI hands the completed `ModelResponse` back only once the caller
+    leaves `agent.run_stream(...)`, so the consumer's own time is inside the
+    number — measured against a live gateway, 1.5s of `asyncio.sleep` in the
+    consumer moved a 3294ms response to 4677ms. No hook closes the span any
+    earlier, so the flag rides on the response as well as the request: a latency
+    percentile can exclude these rows instead of averaging UI time into a p95.
+    """
+
+    # TestModel, not FunctionModel: only the former can serve a streamed request
+    # without a hand-written `stream_function`.
+    agent = Agent(TestModel(), name="streamed_agent")
+
+    async def main():
+        async with agent.run_stream("go") as result:
+            async for _ in result.stream_text(delta=True):
+                pass
+            await result.get_output()
+
+    asyncio.run(main())
+    rows = emitted()
+
+    responses = of_type(rows, "model_response")
+    assert responses, types_of(rows)
+    assert [r.get("fw_streaming") for r in responses] == [True] * len(responses)
+    assert all(type(r["duration_ms"]) is int for r in responses)
+
+    # ...and a non-streamed run still says so, or the flag means nothing.
+    agent.run_sync("go")
+    later = of_type(emitted(), "model_response")[len(responses):]
+    assert later
+    assert [r.get("fw_streaming") for r in later] == [False] * len(later)
+
+
+def test_a_completed_leaf_is_never_marked_incomplete(instrumented, emitted):
+    """The teardown path must not leak into the ordinary one."""
+    weather_agent_with_tool().run_sync("weather in london?")
+    rows = emitted()
+
+    assert [r for r in rows if r.get("fw_incomplete")] == []
+    assert types_of(rows).index("tool_result") < types_of(rows).index("agent_end")
+
+
+def test_uninstrumenting_mid_run_closes_the_run_exactly_once(instrumented, emitted):
+    """`uninstrument()` and the run's own end are both allowed to go first.
+
+    Before the fix they both went: teardown emitted `agent_end` (`cancelled`)
+    and the run then emitted a second `agent_end` (`success`) against a span the
+    dashboard had already closed, with the tool's `tool_result` stranded between
+    them.
+    """
+
+    async def main():
+        started = asyncio.Event()
+        release = asyncio.Event()
+        agent = Agent(
+            one_shot_tool_model("wait", {}, tool_call_id="call-wait"),
+            name="torn_down_agent",
+        )
+
+        @agent.tool_plain
+        async def wait() -> str:
+            started.set()
+            await release.wait()
+            return "finished"
+
+        task = asyncio.create_task(agent.run("go"))
+        await started.wait()
+        failproofai_sdk.uninstrument("pydantic_ai")
+        release.set()
+        await task
+
+    asyncio.run(main())
+    rows = emitted()
+    kinds = types_of(rows)
+
+    assert kinds.count("agent_start") == 1
+    assert kinds.count("agent_end") == 1, kinds
+    assert of_type(rows, "agent_end")[0]["outcome"] == "cancelled"
+    # ...and the leaf still closed, inside the span it belongs to.
+    assert kinds.count("tool_result") == 1
+    assert kinds.index("tool_result") < kinds.index("agent_end")
+
+
+# ---------------------------------------------------------------------------
+# What `tool_result.output` actually says
+# ---------------------------------------------------------------------------
+
+def _tool_returning(value, *, name="produce"):
+    agent = Agent(one_shot_tool_model(name, {}), name="output_shape_agent")
+    agent.tool_plain(lambda: value, name=name)
+    return agent
+
+
+def test_a_tool_returning_a_pydantic_model_is_recorded_as_its_fields(instrumented, emitted):
+    from pydantic import BaseModel
+
+    class Weather(BaseModel):
+        city: str
+        celsius: int
+
+    _tool_returning(Weather(city="Faro", celsius=21)).run_sync("go")
+
+    (result,) = of_type(emitted(), "tool_result")
+    # Not "Weather(city='Faro', celsius=21)": `truncate` reprs an object with no
+    # JSON shape, and this one has one.
+    assert result["output"] == {"city": "Faro", "celsius": 21}
+
+
+def test_a_tool_returning_a_dataclass_is_recorded_as_its_fields(instrumented, emitted):
+    @dataclasses.dataclass
+    class Point:
+        x: int
+        y: int
+
+    _tool_returning(Point(1, 2)).run_sync("go")
+
+    (result,) = of_type(emitted(), "tool_result")
+    assert result["output"] == {"x": 1, "y": 2}
+
+
+def test_a_tool_returning_ToolReturn_is_recorded_as_its_return_value(instrumented, emitted):
+    """`ToolReturn` is an envelope, and the envelope is not the answer.
+
+    `return_value` is what goes back to the model; `metadata` is documented as
+    never being shown to it at all. Recording the repr of the whole thing buries
+    the one and publishes the other.
+    """
+    from pydantic_ai.messages import ToolReturn
+
+    _tool_returning(
+        ToolReturn(
+            return_value={"answer": 42},
+            content="the model sees this",
+            metadata={"secret": "not for the model"},
+        )
+    ).run_sync("go")
+
+    (result,) = of_type(emitted(), "tool_result")
+    assert result["output"] == {"answer": 42}
+
+
+def test_an_ordinary_tool_return_value_is_untouched(instrumented, emitted):
+    """The unwrapping is narrow: only shapes that have a JSON form."""
+    _tool_returning("sunny in london").run_sync("go")
+
+    (result,) = of_type(emitted(), "tool_result")
+    assert result["output"] == "sunny in london"
+
+
+class _NoJsonShape:
+    def __repr__(self) -> str:
+        return "<opaque handle>"
+
+
+def test_an_object_with_no_json_shape_is_handed_through_untouched():
+    """The unwrapping must not become a second, worse serializer.
+
+    Anything that is not a Pydantic model, a dataclass or a `ToolReturn` comes
+    back byte-identical, so `_core.truncate` keeps deciding what happens to it —
+    including the `repr` fallback it documents for an object with no JSON shape.
+    (Unit-level: pydantic-ai itself refuses to send such a value to a model, so
+    there is no end-to-end run that reaches this line.)
+    """
+    opaque = _NoJsonShape()
+    assert adapter._tool_output(opaque) is opaque
+    assert _core.truncate(adapter._tool_output(opaque)) == "<opaque handle>"
+
+    # A class object is not an instance, and `dataclasses.is_dataclass` is True
+    # for both.
+    @dataclasses.dataclass
+    class Shape:
+        x: int
+
+    assert adapter._tool_output(Shape) is Shape
 
 
 # ---------------------------------------------------------------------------

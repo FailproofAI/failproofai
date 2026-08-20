@@ -35,6 +35,15 @@ themselves with no bookkeeping. `RunTracker` still owns the id/parent/session
 resolution and every emit, so `framework` / `framework_version` /
 `integration_version` land on **every** event, including `agent_end`.
 
+One thing Shape A does **not** give you here, and `_open_runs` is the whole of
+what this module keeps to cover it: a leaf hook can return *after* the run hook
+that contains it. Cancellation is the reliable case — the graph awaits a
+`gather` of tool tasks, so the run body unwinds the moment that future is
+cancelled while each tool task's own `CancelledError` lands a loop iteration
+later. `_close_spans` therefore closes whatever leaves are still open before
+`agent_end`, and `_claim_span` / `_claim_run` make the late handler (and a
+concurrent `uninstall()`) a no-op rather than a duplicate.
+
 How it installs
 ---------------
 There is no supported global capability default in 2.20: `Agent.instrument_all()`
@@ -69,7 +78,9 @@ What is deliberately not captured
   stored rows against a 5-lane rail).
 """
 
+import dataclasses
 import logging
+import threading
 import time
 import traceback as _traceback
 import uuid
@@ -311,31 +322,230 @@ def _token(usage: Any, key: str) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def _tool_output(result: Any) -> Any:
+    """What the tool actually produced, unwrapped and JSON-shaped.
+
+    Two lossy renderings happen without this, and `tool_result.output` is the
+    single most-read field in a tool loop:
+
+    * A tool may return `ToolReturn`, an **envelope** — `return_value` is what
+      goes back to the model, `content` is an extra user-prompt part and
+      `metadata` is deliberately never shown to the model at all. The envelope
+      has no JSON shape, so it rendered as
+      `ToolReturn(return_value={'answer': 42}, content=…, metadata=…)`: the
+      answer buried inside a repr, next to a field the model never saw.
+    * A tool returning a Pydantic model or a dataclass — the documented way to
+      return structured data — rendered as `Weather(city='Faro', celsius=21)`
+      rather than `{"city": "Faro", "celsius": 21}`, so nothing downstream can
+      read a field out of it.
+
+    `_core.truncate` reprs an object with "no JSON shape", which is the right
+    default for an arbitrary object and wrong for these: they have one, and this
+    module is the only place that knows it. It is unwrapped with the object's
+    own `model_dump` / `dataclasses.asdict` rather than `pydantic_core`, because
+    this package declares no runtime dependencies and `tests/test_zero_dependencies.py`
+    reads the AST — a guarded import would still be an import. Anything else is
+    handed through untouched, and every failure falls back to the original value,
+    which `truncate` then reprs exactly as it does today.
+    """
+    value = getattr(result, "return_value", result) if _is_tool_return(result) else result
+    if value is None or isinstance(value, (str, bytes, bool, int, float, list, tuple, dict)):
+        return value
+    if _is_base_model(value):
+        for mode in ("json", None):
+            try:
+                return value.model_dump(mode=mode) if mode else value.model_dump()
+            except Exception:
+                continue
+        return value
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        try:
+            return dataclasses.asdict(value)
+        except Exception:
+            return value
+    return value
+
+
+def _is_tool_return(value: Any) -> bool:
+    return getattr(value, "kind", None) == "tool-return" and hasattr(value, "return_value")
+
+
+def _is_base_model(value: Any) -> bool:
+    """Duck-typed: `model_dump` alone also matches a TypedDict helper or a mock."""
+    return hasattr(value, "model_dump") and hasattr(value, "model_fields_set")
+
+
 # ---------------------------------------------------------------------------
 # Per-hook state
 # ---------------------------------------------------------------------------
 
 class _RunState:
-    __slots__ = ("key", "scope")
+    __slots__ = ("key", "scope", "spans", "closed")
 
     def __init__(self, key: Any) -> None:
         self.key = key
         self.scope: Any = None
+        # Leaf spans this run has opened and not yet closed, newest last. This
+        # exists because a leaf can outlive its own run — see `_close_spans`.
+        self.spans: dict[int, "_SpanState"] = {}
+        self.closed = False
 
 
 class _SpanState:
-    __slots__ = ("key", "correlation_id", "started", "extra")
+    __slots__ = ("key", "kind", "correlation_id", "started", "extra", "managed")
 
-    def __init__(self, key: Any, correlation_id: str, extra: dict | None = None) -> None:
+    def __init__(
+        self, key: Any, kind: str, correlation_id: str, extra: dict | None = None
+    ) -> None:
         self.key = key
+        self.kind = kind
         self.correlation_id = correlation_id
         # perf_counter, not wall clock: a clock adjustment mid-run would
         # otherwise produce a negative duration.
         self.started = time.perf_counter()
         self.extra = extra or {}
+        # True once this span is registered against a live run, i.e. once the
+        # run's teardown is able to close it instead of us.
+        self.managed = False
 
     def elapsed_ms(self) -> int:
         return ms(time.perf_counter() - self.started)
+
+
+# Runs whose `wrap_run` frame is still open, keyed by `_run_key`. The adapter is
+# otherwise stateless — this table exists for one reason, and it is the whole of
+# `_close_spans` below: a leaf can outlive the run that opened it.
+_open_runs: "dict[Any, _RunState]" = {}
+_runs_lock = threading.Lock()
+
+# Bounded for the same reason `RunTracker` is: a `wrap_run` coroutine that is
+# garbage-collected before it resumes runs neither of its end branches, and an
+# unbounded table of those is a leak in a long-lived server. FIFO — dicts keep
+# insertion order.
+_MAX_OPEN_RUNS = 10_000
+
+
+def _register_run(state: _RunState) -> None:
+    with _runs_lock:
+        while len(_open_runs) >= _MAX_OPEN_RUNS:
+            _open_runs.pop(next(iter(_open_runs)), None)
+        _open_runs[state.key] = state
+
+
+def _claim_run(state: _RunState) -> bool:
+    """True for the first caller to close this run; False for every later one.
+
+    Two things close a run — `wrap_run`'s own end, and `uninstall()` tearing
+    down mid-flight — and both must be able to go first. Without this, an
+    `uninstrument()` called while a run is in flight emitted `agent_end`
+    (`cancelled`) and the run then emitted a second `agent_end` (`success`)
+    against a span the dashboard had already closed.
+    """
+    with _runs_lock:
+        _open_runs.pop(state.key, None)
+        if state.closed:
+            return False
+        state.closed = True
+        return True
+
+
+def _register_span(span: _SpanState) -> None:
+    with _runs_lock:
+        run = _open_runs.get(span.key)
+        if run is not None:
+            run.spans[id(span)] = span
+            span.managed = True
+
+
+def _claim_span(span: _SpanState) -> bool:
+    """True if this caller owns the span's closing event.
+
+    False only when the run's teardown already emitted it. A span that was never
+    registered against a run (its `wrap_run` never opened one) is unmanaged and
+    always closes itself, so an adapter half-failure loses no leaf.
+    """
+    if not span.managed:
+        return True
+    with _runs_lock:
+        run = _open_runs.get(span.key)
+        if run is None:
+            return False
+        return run.spans.pop(id(span), None) is not None
+
+
+def _close_spans(state: _RunState, exc: "BaseException | None") -> None:
+    """Close every leaf this run opened and did not close, newest first.
+
+    A leaf can outlive its own run, and on the cancellation path it reliably
+    does. `asyncio.wait_for` cancels the caller's task; the graph is awaiting
+    a `gather` of tool tasks, so the run body unwinds as soon as that future
+    is cancelled while each tool task's own `CancelledError` is delivered on
+    a later loop iteration. `wrap_run` therefore returns *before*
+    `wrap_tool_execute` does, and the same is true of `wrap_model_request`
+    when the cancellation lands inside the provider call. Measured against
+    pydantic-ai 2.32: a `wait_for` timeout produced `agent_end` at
+    `.565709` and the matching `tool_result` at `.566689`, and a timeout
+    during a model request put `model_response` after `agent_end` too — the
+    one thing every other emit in this file is careful never to do, because
+    the dashboard closes the agent span at `agent_end` and anything after it
+    is attributed to nothing. Worse, the ambient identity the late leaf
+    resolves through is unbound by then in some interleavings, and the event
+    is dropped outright: a `tool_use` with no `tool_result` at all.
+
+    So the run closes them, `_claim_span` stops the real handler emitting a
+    duplicate when it finally unwinds, and `fw_incomplete` says the leaf did
+    not report its own outcome.
+    """
+    with _runs_lock:
+        pending = list(state.spans.values())
+        state.spans.clear()
+    if not pending:
+        return
+    # A cancellation is not a failure, exactly as on `agent_end`.
+    error = None if exc is None or _is_control_flow(exc) else _describe(exc)
+    for span in reversed(pending):
+        if span.kind == "tool":
+            _tracker.emit(
+                "tool_result",
+                None,
+                parent_key=span.key,
+                tool_name=span.extra.get("tool_name"),
+                tool_call_id=span.correlation_id,
+                error=error,
+                **fw_fields(incomplete=True),
+            )
+        else:
+            _tracker.emit(
+                "model_response",
+                None,
+                parent_key=span.key,
+                model=span.extra.get("model"),
+                role="assistant",
+                request_id=span.correlation_id,
+                error=error,
+                duration_ms=span.elapsed_ms(),
+                **fw_fields(incomplete=True, streaming=span.extra.get("streaming")),
+            )
+
+
+def _close_open_runs() -> None:
+    """Close every run this adapter still has open, newest first.
+
+    Teardown, not a hot path: `uninstall()` is the only caller. Each run's
+    leaves close before its `agent_end`, and `_claim_run` makes the run's own
+    `wrap_run` frame a no-op when it eventually unwinds.
+    """
+    with _runs_lock:
+        states = list(_open_runs.values())
+    for state in reversed(states):
+        _core.call_safely(_close_run, (state,), {}, f"{__name__}.uninstall")
+
+
+def _close_run(state: _RunState) -> None:
+    if not _claim_run(state):
+        return
+    _close_spans(state, None)
+    _tracker.end_agent(state.key, outcome="cancelled")
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +640,7 @@ class FailproofAI(AbstractCapability):
             ),
         )
         state = _RunState(key)
+        _register_run(state)
         try:
             scope = failproofai_sdk.session(identity.session_id, agent_id=identity.agent_id)
             scope.__enter__()
@@ -446,7 +657,17 @@ class FailproofAI(AbstractCapability):
     def _end_run(self, state: "_RunState | None", result: Any, exc: "BaseException | None") -> None:
         if state is None:
             return
+        if not _claim_run(state):
+            # `uninstall()` tore this run down already and emitted its agent_end.
+            # A second one would close a span the dashboard has already closed.
+            if state.scope is not None:
+                state.scope.__exit__(None, None, None)
+                state.scope = None
+            return
         try:
+            # Strictly before agent_end, for the same reason the `error` event
+            # below is: the dashboard closes the agent span at agent_end.
+            _core.call_safely(_close_spans, (state, exc), {}, f"{__name__}.close_spans")
             usage = _usage_dict(getattr(result, "usage", None)) if result is not None else None
             if exc is None:
                 outcome = "success"
@@ -497,9 +718,13 @@ class FailproofAI(AbstractCapability):
         # `request_id` is generated here and carried onto the response. The
         # dashboard pairs model events FIFO per agent_id when it is absent, which
         # mis-pairs the moment two model calls overlap.
-        state = _SpanState(_run_key(ctx), uuid.uuid4().hex)
+        state = _SpanState(_run_key(ctx), "model", uuid.uuid4().hex)
         model = getattr(request_context, "model", None)
         state.extra["model"] = _model_name(model)
+        # Carried onto the response because that is the event `duration_ms`
+        # rides on — see the note there.
+        state.extra["streaming"] = getattr(request_context, "streaming", None)
+        _register_span(state)
         messages, omitted = _render_messages(
             getattr(request_context, "messages", None), self.capture_content
         )
@@ -525,7 +750,7 @@ class FailproofAI(AbstractCapability):
 
     @safe
     def _end_model(self, ctx, state: "_SpanState | None", response: Any, exc: "BaseException | None") -> None:
-        if state is None:
+        if state is None or not _claim_span(state):
             return
         usage = getattr(response, "usage", None) if response is not None else None
         error = None
@@ -552,12 +777,28 @@ class FailproofAI(AbstractCapability):
             # over end-start, which is what keeps model durations honest even
             # when FIFO pairing brackets the wrong pair. A float would silently
             # NULL the column.
+            #
+            # On a STREAMED request this number is the whole `async with
+            # agent.run_stream(...)` block, consumer included, and not the model
+            # call: Pydantic AI hands `wrap_model_request`'s handler its
+            # `ModelResponse` only once the caller leaves that block, and
+            # `after_model_request` fires later still (measured: 818.7ms vs
+            # 317.6ms for the drain). There is no earlier hook — `stream_text`
+            # is the caller's own loop and `wrap_run_event_stream` cannot be
+            # overridden here without switching `agent.run()` into streaming
+            # mode. Measured against the gateway, 1.5s of `asyncio.sleep` in the
+            # consumer moved a 3294ms response to 4677ms. So the number cannot
+            # be made honest, only made *identifiable*: `fw_streaming` rides on
+            # the response as well as the request, so a latency percentile can
+            # exclude the rows where it is true rather than quietly averaging
+            # somebody's UI render time into the model's p95.
             duration_ms=state.elapsed_ms(),
             usage=_usage_dict(usage),
             **fw_fields(
                 provider=getattr(response, "provider_name", None),
                 provider_response_id=getattr(response, "provider_response_id", None),
                 run_step=getattr(ctx, "run_step", None),
+                streaming=state.extra.get("streaming"),
             ),
         )
 
@@ -583,7 +824,8 @@ class FailproofAI(AbstractCapability):
         # so tool_use and tool_result must agree on it exactly.
         tool_call_id = getattr(call, "tool_call_id", None) or uuid.uuid4().hex
         tool_name = getattr(call, "tool_name", None) or getattr(tool_def, "name", None) or "tool"
-        state = _SpanState(_run_key(ctx), tool_call_id, {"tool_name": tool_name})
+        state = _SpanState(_run_key(ctx), "tool", tool_call_id, {"tool_name": tool_name})
+        _register_span(state)
         _tracker.emit(
             "tool_use",
             None,
@@ -600,7 +842,7 @@ class FailproofAI(AbstractCapability):
 
     @safe
     def _end_tool(self, state: "_SpanState | None", result: Any, exc: "BaseException | None") -> None:
-        if state is None:
+        if state is None or not _claim_span(state):
             return
         error = None
         if exc is not None and not _is_control_flow(exc):
@@ -614,7 +856,7 @@ class FailproofAI(AbstractCapability):
             parent_key=state.key,
             tool_name=state.extra.get("tool_name"),
             tool_call_id=state.correlation_id,
-            output=result if self.capture_content else None,
+            output=_tool_output(result) if self.capture_content else None,
             error=error,
         )
 
@@ -690,7 +932,12 @@ class _Adapter:
         _capability = None
         _patcher.restore_all()
         # Close every agent still open, so a session torn down mid-run does not
-        # render `ongoing` forever.
+        # render `ongoing` forever. Runs this adapter opened go through
+        # `_close_run` — leaves first, and `_claim_run` so the run's own
+        # `wrap_run` frame does not emit a second `agent_end` when it finally
+        # unwinds. `close_open_agents()` stays as the backstop for a key that
+        # reached the tracker without reaching `_open_runs`.
+        _close_open_runs()
         _tracker.close_open_agents()
         _tracker.reset()
 

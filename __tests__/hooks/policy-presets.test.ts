@@ -63,11 +63,12 @@ describe("policy-presets", () => {
 });
 
 describe("RECOMMENDED_POLICIES", () => {
-  it("names 15 policies and every one of them is a real non-beta builtin", () => {
+  it("names 14 policies and every one of them is a real non-beta builtin", () => {
     // The count is asserted because it is a product promise the wizard PRINTS
-    // ("15 policies · global"). Changing the set is fine; changing it without
+    // ("14 policies · global"). Changing the set is fine; changing it without
     // noticing that the screen now advertises a different number is not.
-    expect(RECOMMENDED_POLICIES).toHaveLength(15);
+    // 15 before `block-self-pause` merged into `block-failproofai-commands`.
+    expect(RECOMMENDED_POLICIES).toHaveLength(14);
     for (const name of RECOMMENDED_POLICIES) {
       const policy = BUILTIN_POLICIES.find((p) => p.name === name);
       expect(policy, `${name} is not a builtin policy`).toBeDefined();
@@ -117,5 +118,17 @@ describe("RECOMMENDED_POLICIES", () => {
     expect(RECOMMENDED_POLICIES).toContain("block-rm-rf");
     expect(RECOMMENDED_POLICIES).toContain("block-force-push");
     expect(RECOMMENDED_POLICIES).toContain("block-secrets-write");
+  });
+});
+
+describe("always-on self-protection", () => {
+  it("is in RECOMMENDED_POLICIES even though it does not need to be", () => {
+    // It registers regardless. Listing it keeps the recommended set readable as
+    // the complete picture rather than quietly omitting its most important line.
+    expect(RECOMMENDED_POLICIES).toContain("block-failproofai-commands");
+  });
+
+  it("leaves no default-on policy out of Recommended after the merge", () => {
+    expect(defaultsMissingFromRecommended()).toEqual([]);
   });
 });

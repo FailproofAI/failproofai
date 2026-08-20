@@ -51,6 +51,17 @@ export interface BuiltinPolicyDefinition {
   fn: PolicyFunction;
   match: PolicyMatcher;
   defaultEnabled: boolean;
+  /**
+   * Registered on every evaluation regardless of the user's `enabledPolicies`,
+   * an active session pause, or an unreadable config — and never eligible to
+   * move out of the package into a fetched pack. Reserved for the guard that
+   * stops an agent from disabling failproofai itself; a guard the agent can
+   * switch off by the same means it is meant to prevent is decorative.
+   *
+   * `defaultEnabled` stays `true` alongside it so the policy still appears
+   * enabled everywhere the catalog is listed rather than looking switched off.
+   */
+  alwaysOn?: boolean;
   category: string;
   beta?: boolean;
   params?: PolicyParamsSchema;

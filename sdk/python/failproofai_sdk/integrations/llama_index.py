@@ -81,6 +81,21 @@ can both fall back to it. A model integration that names its counters something
 new will show a populated ``usage`` and blank token columns — that is the
 honest outcome, and much better than a confident wrong number.
 
+**Streaming has no usage at all, and that is the default path.**
+``FunctionAgent`` — the agent api LlamaIndex documents — calls
+``astream_chat``, and llama-index-llms-openai does not send
+``stream_options={"include_usage": True}``, so the provider never emits the
+usage chunk and ``LLMChatEndEvent.response.raw`` has no ``usage`` key to find.
+Verified against llama-index-core 0.14.23 by spying on the dispatcher directly:
+every ``LLMChatEndEvent`` in a ``FunctionAgent`` run arrives with usage absent.
+Nothing in this adapter can recover a number the framework never received. The
+user-side fix is one argument, and it works::
+
+    OpenAI(model=..., additional_kwargs={"stream_options": {"include_usage": True}})
+
+Non-streaming calls (``llm.chat`` / ``llm.achat``) extract usage correctly with
+no extra configuration.
+
 Known gap: human-in-the-loop is only visible when the wait happens **inside a
 tool**. ``ctx.wait_for_event`` in a plain workflow step is caught by the runtime
 before it reaches the dispatcher, so that step simply exits with ``None`` and

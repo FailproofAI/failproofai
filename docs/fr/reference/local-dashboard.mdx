@@ -1,0 +1,88 @@
+---
+title: "Tableau de bord local"
+description: "Consultez les projets locaux, les sessions, l'activité des politiques, la configuration, les audits et les analyses planifiées."
+icon: "monitor-cog"
+---
+
+Exécutez `failproofai` sans arguments pour démarrer le tableau de bord intégré à l'adresse `http://localhost:8020`. Il lit directement depuis la machine les historiques des agents locaux, la configuration des politiques, les résultats d'audit et l'activité des hooks.
+
+Le tableau de bord local est distinct de Failproof AI Cloud. Il fonctionne sans compte Cloud et ne garantit pas que les événements ont été transmis à votre organisation.
+
+## Sections du tableau de bord
+
+| Section | Ce que vous pouvez accomplir |
+| --- | --- |
+| Policies → Activity | Inspecter les décisions allow, instruct et deny locales ; filtrer par décision, événement, CLI, outil, source, politique et session. |
+| Policies → Configure | Activer les politiques intégrées, modifier les paramètres pris en charge, basculer les politiques personnalisées découvertes et sélectionner les harnais cibles. |
+| Projects | Parcourir les projets découverts dans les historiques d'agents pris en charge et comparer leurs sessions les plus récentes. |
+| Project sessions | Ouvrir une transcription locale, consulter les entrées ordonnées brutes et les sous-agents, la télécharger et corréler l'activité des politiques. |
+| Audit | Consulter la dernière analyse hors ligne, les patterns risqués, les points forts, les projets affectés et les politiques intégrées suggérées. |
+| Settings | Configurer les analyses locales planifiées et les rapports d'audit envoyés par e-mail lorsque le démon/la plateforme les prend en charge. |
+
+## Consulter l'activité des politiques
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Ouvrez **Policies → Activity** et définissez les filtres de décision et de source.
+    2. Affinez par événement, harnais, outil ou nom de politique.
+    3. Développez une ligne pour inspecter sa raison, les politiques correspondantes, la source, le mode d'exécution et la durée.
+    4. Suivez le lien de session pour replacer la décision dans le contexte de la transcription.
+
+    Une ligne apparaissant comme refusée peut rester observationnelle sur une paire harnais/événement qui ne consomme pas les verdicts de blocage. La vue détaillée indique la capacité d'application vérifiée.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai policies
+    failproofai
+    ```
+
+    L'activité locale est stockée sous `~/.failproofai/hook-activity`. Utilisez le tableau de bord plutôt que de modifier ces fichiers directement.
+  </Tab>
+</Tabs>
+
+## Configurer les politiques localement
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Ouvrez **Policies → Configure** et choisissez les harnais et la portée de configuration.
+    2. Activez une politique intégrée ou une politique personnalisée découverte.
+    3. Pour une politique intégrée paramétrée, ouvrez son contrôle de configuration et enregistrez les valeurs prises en charge.
+    4. Revenez à Activity et exécutez des actions correspondantes et non correspondantes.
+
+    Les politiques de convention affichent leur source projet ou utilisateur. Les modifications de chemin personnalisé explicite peuvent nécessiter de relancer la configuration CLI pour que le chemin sélectionné soit enregistré.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policy add block-sudo --scope project
+    failproofai policies --install --custom ./security.policies.ts --scope project
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+## Parcourir les projets et les sessions
+
+La page Projects regroupe les historiques locaux pris en charge. Sélectionnez un projet pour lister ses sessions, puis ouvrez une session pour accéder au visualiseur de journal brut, aux segments de sous-agents, à l'action de téléchargement et à l'activité des politiques dans le contexte de la session.
+
+Si un projet ou une session est manquant, vérifiez que le harnais utilise son emplacement d'historique par défaut ou enregistrez une racine supplémentaire avec `failproofai harness add-path`.
+
+## Planifier des audits hors ligne
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    Ouvrez **Settings**, activez l'analyse planifiée, choisissez l'intervalle pris en charge et configurez la distribution des rapports lorsqu'elle est disponible. La page indique la prochaine exécution, la dernière exécution, le code de sortie et si le démon en arrière-plan est pris en charge sur la plateforme.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    Modifiez le nombre de jours pour définir un intervalle différent compris entre 1 et 90 jours. Désactivez les analyses récurrentes avec `failproofai audit --no-schedule` ; exécutez `failproofai audit` pour lancer une analyse interactive immédiate.
+  </Tab>
+</Tabs>
+
+<Warning>
+  Le tableau de bord local peut afficher des invites, des entrées d'outils, du contenu de fichiers et des sorties de terminal provenant des historiques d'agents locaux. Liez-le uniquement à des interfaces de confiance et arrêtez le processus une fois la consultation terminée.
+</Warning>

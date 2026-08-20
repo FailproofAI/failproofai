@@ -1,0 +1,27 @@
+---
+title: "Models"
+description: "השווה בין זמן השהיה של מודלים, טוקנים, שימוש בהקשר וחלוקת תעבורה."
+icon: "cpu"
+---
+
+השתמש ב-Models כדי לראות האם האמינות או העלות השתנו עם מודל, סוכן, סביבה או טווח זמן.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור אל **Observe → Models**.
+    2. הגדר את טווח הזמן, ואז סנן לפי סביבה, מודל, סוכן או מזהה הפעלה.
+    3. בדוק זמן השהיה, צריכת טוקנים, שימוש בחלון הקשר וחלוקת מודלים.
+    4. בחר נקודה בתרשים או קטע חלוקה כדי לפתוח את האירועים המתאימים.
+
+    ![עמוד ה-Models המציג תצוגות של זמן השהיה, אחוזון, טוקן, עלות, חלון קשר וחלוקת מודלים.](/images/dashboard/models.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list models
+    fp events --event-type model_request,model_response --env production --since 24h
+    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    ```
+
+    השתמש בשאילתה שמורה לצבירות ברמת מודל שאינן חשופות כפקודת CLI ייעודית.
+  </Tab>
+</Tabs>

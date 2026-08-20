@@ -1,0 +1,74 @@
+---
+title: "Schlüssel und Berechtigungen"
+description: "Erstellen Sie bereichsbegrenzte API-Schlüssel für Maschinen, Automatisierung und Operatoren."
+icon: "key-round"
+---
+
+API-Schlüssel gehören einer Organisation und tragen explizite Berechtigungen. Verwenden Sie separate Schlüssel für die Agent-Erfassung, Richtlinienübermittlung, Evaluatoren, CI-Automatisierung und administrative Skripte.
+
+## Schlüssel erstellen und rotieren
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Verwaltung → Schlüssel**, wählen Sie **Neuer Schlüssel** und geben Sie einen Workload-Namen ein.
+    2. Wählen Sie einen Berechtigungssatz und passen Sie einzelne Berechtigungen nur an, wenn das Voreinstellung nicht ausreicht.
+    3. Erstellen Sie den Schlüssel und kopieren Sie sein einmalig angezeigtes Geheimnis sofort.
+    4. Öffnen Sie den Schlüssel später, um Berechtigungen zu aktualisieren, ihn zu deaktivieren oder das Geheimnis neu zu generieren.
+
+    Im Erstellungsdialog wählen Sie die minimalen Berechtigungen, die der Workload benötigt.
+
+    ![Der neue API-Schlüssel-Dialog mit Berechtigungsvoreinstellungen und individuellen Grants.](/images/dashboard/key-create.png)
+
+    Nach der Erstellung zeigt die Schlüsselseite die dauerhaften Metadaten und Verwaltungsaktionen. Das einmalige Geheimnis wird nicht erneut angezeigt.
+
+    ![Die API-Schlüssel-Seite mit Schlüsselberechtigungen, Erstellungszeit sowie Aktionen zum Neu-Generieren und Deaktivieren.](/images/dashboard/api-keys.png)
+
+    Nutzen Sie diese Liste, um Berechtigungen regelmäßig zu überprüfen und Schlüssel zu deaktivieren, die keinem aktiven Workload mehr zugeordnet sind.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp keys create production-agents \
+      --add events:add \
+      --add policies:pull
+    fp keys show production-agents
+    fp keys update production-agents --add events:read
+    fp keys regenerate production-agents --yes
+    fp keys disable production-agents
+    ```
+
+    Leiten Sie die Ausgabe von create/regenerate sicher um oder erfassen Sie sie; das Geheimnis wird nur einmal zurückgegeben.
+  </Tab>
+</Tabs>
+
+Die beiden Berechtigungen, die eine verbundene Failproof AI-Maschine benötigt, sind unabhängig voneinander:
+
+- `events:add` sendet Ereignisse und Sitzungsdaten.
+- `policies:pull` ruft zugewiesene Richtlinien-Deployments ab.
+
+Schlüsselgeheimnisse werden bei der Erstellung oder Neu-Generierung angezeigt. Speichern Sie sie in einem Secret-Manager und rotieren Sie sie, ohne die interaktiven Anmeldedaten eines Operators wiederzuverwenden.
+
+## Berechtigungskatalog
+
+| Bereich | Berechtigungen |
+| --- | --- |
+| Ereignisse | `events:add`, `events:read` |
+| Schlüssel | `keys:create`, `keys:read`, `keys:disable`, `keys:regenerate`; `keys:update` ist nur für menschliche Sitzungen |
+| Benutzer | `users:create`, `users:read`, `users:update`, `users:delete` |
+| Evaluierungen | `evaluations:read`, `evaluations:trigger` |
+| Dashboards | `dashboards:read`, `dashboards:write`, `dashboards:delete` |
+| Abfragen | `queries:read`, `queries:write`, `queries:delete`, `queries:run` |
+| Assistent | `agent:use` |
+| Einstellungen | `settings:read`, `settings:write` |
+| Benachrichtigungen | `alerts:read`, `alerts:write` |
+| Probleme | `issues:read`, `issues:create`, `issues:close` |
+| Audits | `audits:read`, `audits:write` |
+| Richtlinien | `policies:read`, `policies:write`, `policies:pull` |
+| Nutzung | `usage:read` |
+
+`orgs:admin` ist dem Instanz-Operator vorbehalten und kann weder einem Organisations-Schlüssel noch einem gewöhnlichen Mitglied gewährt werden. Veraltete `incidents:*`- und `alerts:ack`-Token werden aus Kompatibilitätsgründen akzeptiert und auf aktuelle `issues:*`-Berechtigungen normalisiert.
+
+Eingebaute Berechtigungssätze sind `read-only`, `standard` und `admin`. `standard` ergänzt die Leseberechtigungen um das Auslösen von Evaluierungen, die Ausführung von Abfragen, das Bearbeiten von Problemen und die Nutzung des Assistenten. Bei der Schlüsselerstellung werden ausschließlich für Menschen gültige Berechtigungen entfernt, auch wenn ein Berechtigungssatz diese enthält.
+
+<Warning>
+  Instanz-bezogene Schlüssel können eine Organisation über den `X-AgentEye-Org`-Header auswählen. Setzen Sie diesen bei Multi-Organisations-Deployments explizit; wird er weggelassen, kann die Standardorganisation ausgewählt werden.
+</Warning>

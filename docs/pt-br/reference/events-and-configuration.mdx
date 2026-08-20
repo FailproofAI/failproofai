@@ -1,0 +1,84 @@
+---
+title: "Eventos e configuração"
+description: "Referência do modelo de eventos, ambientes, armazenamento local e limites de configuração."
+icon: "list-tree"
+---
+
+## Famílias de eventos
+
+- Início, fim, pausa e retomada de agente
+- Requisição e resposta do modelo
+- Uso de ferramenta e resultado
+- Hook acionado e concluído
+- Espera humana, entrada, pausa e interrupção
+- Erros explícitos
+
+Todo evento carrega um timestamp, ID de sessão, ID de agente, tipo de evento e ambiente. Campos específicos do evento contêm dados de modelo, ferramenta, correlação, resultado, conteúdo, duração ou erro.
+
+## Inspecionar um contrato de evento
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Abra **Observe → Events**.
+    2. Defina uma janela de tempo curta e filtre por ambiente, agente e tipo de evento.
+    3. Selecione um evento para inspecionar seus campos normalizados e payload bruto, depois abra sua sessão para ver o contexto de execução.
+    4. Se uma duração pareada estiver ausente, verifique se os eventos de início e conclusão usam o mesmo correlation ID.
+
+    Use o stream de Events para restringir os dados a uma execução de agente e inspecione os campos de evento normalizados.
+
+    ![O stream de Events ao vivo com filtros para ambiente, agente, sessão e tipo de evento.](/images/dashboard/events-stream.png)
+
+    Em seguida, siga o evento até sua sessão. O trace mostra o que aconteceu imediatamente antes e depois dele, o que é necessário quando o payload sozinho é ambíguo.
+
+    ![O trace de sessão vinculado usado para inspecionar o evento no contexto de execução.](/images/dashboard/session-detail.png)
+
+    Compare os correlation IDs e timestamps em ambas as visualizações quando um evento pareado ou duração estiver ausente.
+  </Tab>
+  <Tab title="CLI">
+    Descubra os valores de filtro válidos e busque os payloads completos dos eventos de uma sessão:
+
+    ```bash
+    fp list event_types
+    fp list envs
+    fp events --since 1h \
+      --env production \
+      --event-type tool_use,tool_result \
+      --session-id <session-id> \
+      --full
+    ```
+
+    Use `fp --json events ... --fields ts,event_type,session_id,payload` para inspeção legível por máquina.
+  </Tab>
+</Tabs>
+
+## Campos reservados do SDK
+
+Não use `timestamp`, `session_id`, `agent_id`, `type` ou `environment` como campos personalizados do Python SDK. Durações de eventos pareados, como a duração do resultado de ferramenta, são calculadas pelo SDK e não podem ser fornecidas manualmente.
+
+## Limites locais
+
+- O estado do Failproof AI fica em `~/.failproofai`, a menos que configurado explicitamente de outra forma.
+- O `failproofai-sdk` usa `AGENTEYE_HOME` para substituir o diretório base legado.
+- Os rótulos de ambiente podem ser definidos por meio da configuração do SDK ou com `AGENTEYE_ENVIRONMENT`.
+- As credenciais do daemon são armazenadas separadamente das configurações não secretas.
+
+Use nomes de ambiente estáveis e de baixa cardinalidade. Vírgulas não são suportadas nos rótulos de ambiente do daemon.
+
+## Alterar um rótulo de ambiente
+
+<Tabs>
+  <Tab title="Dashboard">
+    Os rótulos de ambiente são atribuídos pelo SDK emissor ou pelo daemon Failproof. Após alterar um, abra **Observe → Sessions** e use o filtro de ambiente para confirmar que as novas sessões carregam o novo valor. As sessões existentes mantêm seu ambiente original.
+
+  </Tab>
+  <Tab title="CLI">
+    Para o `failproofai-sdk`, configure o ambiente no código ou com sua variável de ambiente legada. Execute novamente a configuração do daemon ao alterar configurações no nível da máquina.
+
+    ```bash
+    export AGENTEYE_ENVIRONMENT=production-us-east
+    failproofai config
+    failproofai config --status
+    fp sessions --since 1h --env production-us-east
+    ```
+  </Tab>
+</Tabs>

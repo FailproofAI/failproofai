@@ -1,0 +1,78 @@
+---
+title: "אינטגרציות והפניה"
+description: "חבר harnesses של agents, SDKs, CLIs ו-HTTP API שנתמכים."
+icon: "braces"
+---
+
+בחר את האינטגרציה הקרובה ביותר למקום בו ה-agent שלך כבר רץ.
+
+<Columns cols={2}>
+  <Card title="Agent harnesses" icon="plug-zap" href="/he/reference/harnesses">
+    התקן hooks עבור CLIs של coding ו-autonomous agents שנתמכים.
+  </Card>
+  <Card title="Custom agents" icon="python" href="/he/reference/python-sdk">
+    צור traces כדי למצוא כשלים בـ agents מותאמים אישית, ואז צור קשר איתנו כדי להוסיף prevention לממשקי הזמן שלך.
+  </Card>
+  <Card title="Local dashboard" icon="monitor-cog" href="/he/reference/local-dashboard">
+    בדוק פרויקטים מקומיים, sessions, פעילות policies ו-audits במצב offline.
+  </Card>
+  <Card title="Failproof AI CLI" icon="terminal" href="/he/reference/failproof-cli">
+    הגדר capture מקומי, hooks, policies, audits, delivery ומצב מכונה.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/he/reference/cloud-cli#cli-commands">
+    בצע שאילתות וניהול Cloud sessions, audits, issues, alerts, keys, users והגדרות.
+  </Card>
+  <Card title="Evaluator SDK" icon="gauge" href="/he/reference/evaluator-sdk">
+    הערך sessions שלמות או לא פעילות באמצעות שירות FastAPI.
+  </Card>
+  <Card title="Custom policies" icon="shield-plus" href="/he/reference/policy-sdk">
+    כתוב ובדוק החלטות allow, instruct ו-deny ספציפיות לזרימת העבודה.
+  </Card>
+  <Card title="Self-hosting" icon="cloud-cog" href="/he/reference/self-hosting">
+    פרוס את מישור הבקרה של Cloud על cluster Kubernetes המנוהל על ידי לקוח.
+  </Card>
+</Columns>
+
+[ההפניה HTTP API](/he/reference/http-api) שנוצרה מכסה את פני השטח הציבורי `/v1`. דפים שנכתבו ביד מסבירים זרימות עבודה המשתרעות על פני נקודות קצה מרובות או משתמשים בממשקי ניהול מחוץ לפני השטח הציבורי הזה.
+
+## חבר agent וודא נתונים
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. פתח **Administration → Keys**, צור key עם `events:add` ו-`policies:pull`, והעתק את הסוד.
+    2. הגדר את האינטגרציה באמצעות הדף התואם למעלה.
+    3. פתח **Observe → Events** כדי לאשר שהאירועים הגיעו, ואז **Observe → Sessions** כדי לאשר שהם יוצרים runs שלמות.
+    4. סנן לסביבה של האינטגרציה ובידוק session אחד עבור שדות המודל, כלי, שגיאה ו-policy הדרושים לאודיטים.
+
+    התחל עם מגירת הרכוש. ההענקות שנבחרו קובעות אם המכונה יכולה לשלוח אירועים וקבל policies המנוהלים על ידי Cloud.
+
+    ![מגירת ה-API key החדשה המשמשת להענקת הרשאות של event ingestion ו-policy delivery.](/images/dashboard/key-create.png)
+
+    לאחר חיבור האינטגרציה, השתמש בשימוש ב-Sessions list כדי לאשר שהאירועים שלה מקובצים לתוך runs שלמות בסביבה הצפויה.
+
+    ![רשימת Sessions המשמשת לאימות שאינטגרציה שזה עתה התחברה מדווחת agent runs שלמות.](/images/dashboard/sessions-list.png)
+
+    פתח את אחת מהסעיפים הללו לפני שתשקול את האינטגרציה כשלמה; ה-trace צריך להכיל את הראיות של מודל, כלי, שגיאה ו-policy שאודיטים שלך צריכים.
+  </Tab>
+  <Tab title="CLI">
+    צור machine key, חבר את ה-Failproof daemon, ואמת את ה-session הראשון.
+
+    ```bash
+    fp keys create agent-production \
+      --add events:add \
+      --add policies:pull
+
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+
+    failproofai flush --wait
+    fp sessions --since 1h --env production
+    fp events --since 1h --env production --limit 20
+    ```
+
+    השתמש ב-`fp --json sessions ...` כאשר כלי אחר יצרוך את התוצאה. דגלים גלובליים כגון `--json`, `--org` ו-`--base-url` חייבים להגיע לפני הפקודה.
+
+    ראה [ההפניה Failproof AI CLI](/he/reference/failproof-cli) לפקודות מקומיות ו-[ההפניה Failproof Cloud CLI](/he/reference/cloud-cli#cli-commands) לפקודות `fp`.
+  </Tab>
+</Tabs>

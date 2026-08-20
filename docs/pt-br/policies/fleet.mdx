@@ -1,0 +1,52 @@
+---
+title: "Implantar políticas em máquinas"
+description: "Saiba quais máquinas estão cadastradas, atualizadas e aplicando as versões de política pretendidas."
+icon: "network"
+---
+
+A cobertura de frota responde se uma política existe onde o risco existe. Rastreie máquinas por ID estável e um rótulo legível por humanos, depois compare o estado de implantação atribuído e reportado.
+
+## Verificar cobertura
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **Admin → enforcement** e revise os totais de aplicação e observação.
+    2. Pesquise uma máquina por ID ou rótulo, ou filtre por máquinas sem política.
+    3. Expanda uma linha para comparar políticas atribuídas, implantação reportada, último check-in e histórico.
+    4. Atualize após o intervalo de polling da máquina quando uma implantação aplicada permanecer pendente.
+
+    ![O painel de frota de Enforcement mostrando cobertura de políticas, estado de implantação das máquinas e atribuições de observação e aplicação.](/images/dashboard/enforcement-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai config --machine-label checkout-runner-03
+    failproofai flush --wait
+    ```
+
+    Use `fp events --agent-id <agent-id> --since 24h` para confirmar que a atividade do agente da máquina chega ao Cloud.
+  </Tab>
+</Tabs>
+
+Use as visualizações de cobertura para encontrar:
+
+- Máquinas que nunca baixaram a implantação mais recente
+- Máquinas cadastradas que pararam de reportar atividade
+- Uma política atribuída ao ambiente ou coorte incorreto
+- Desvio de versão após uma atualização interrompida
+
+Renomeie uma máquina sem reconectá-la:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
+
+Verifique o estado local:
+
+```bash
+failproofai config --status
+```
+
+<Tip>
+  Use rótulos que identifiquem a carga de trabalho e o ambiente. Apenas hostnames costumam ser insuficientes após autoscaling ou substituição de máquinas.
+</Tip>

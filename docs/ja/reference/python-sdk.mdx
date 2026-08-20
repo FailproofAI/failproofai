@@ -1,0 +1,198 @@
+---
+title: "カスタムエージェント"
+description: "カスタムエージェントのトレースをインストルメント化し、Failproof AI が実行を再構築して障害を検出できるようにします。"
+icon: "python"
+---
+
+`failproofai-sdk` を使用してカスタムエージェントのトレースをインストルメント化することで、Failproof AI が各実行を再構築し、その動作を監査し、根拠に基づく障害を検出できるようになります。SDK は構造化イベントを書き込み、Failproof デーモンがそれをクラウドに配信します。Python 3.10 以上が必要です。
+
+トレースによってカスタムエージェントを観測可能かつ監査可能にできます。安全でないアクションが実行される前に防止するには、ランタイムに enforcement hook も必要です。
+
+<Info>
+  カスタムエージェント環境でポリシーを適用するには、[Failproof AI にお問い合わせください](mailto:support@befailproof.ai)。ランタイムのモデル、ツール、ライフサイクルの境界をポリシーフックにマッピングするお手伝いをします。
+</Info>
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with the Failproof AI Python SDK" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+## `failproofai-sdk` のインストール
+
+SDK は現在プライベートホイールとして配布されています。最新バージョンとダウンロードアクセスについては、Failproof AI の担当者にお問い合わせください。
+
+```bash
+VERSION=<sdk-version>
+pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
+python -c "import failproofai; print(failproofai.__version__)"
+```
+
+`uv` を使用する場合は、まずホイールをダウンロードしてから `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl` を実行してください。ホイールはプライベートアーティファクトリポジトリまたは依存関係ロックファイルに固定してください。
+
+パッケージは `failproofai-sdk` としてインストールされ、Python では `failproofai` としてインポートします。
+
+## Failproof デーモンへの接続
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Admin → Keys** に移動し、`events:add` 権限を持つキーを作成します。
+    2. エージェントマシンで [Failproof デーモンをクラウドに接続します](/ja/start/setup#connect-a-machine-to-cloud)。
+    3. インストルメント化されたセッションを 1 回実行し、その正確な ID を **Observe → Events** で確認します。
+    4. **Observe → Sessions** に移動し、同じ環境を選択して、再構築されたトレースを開きます。
+
+    ![カスタム Python エージェントセッションが実行グラフと順序付きイベントトレースとして再構築されている様子。](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <events-add-key>
+    failproofai config --status
+    ```
+  </Tab>
+</Tabs>
+
+## 完全な実行のインストルメント化
+
+プロセス起動時に `configure()` を一度呼び出します。すべてのイベント呼び出しはキーワード専用で、安定した `session_id` と `agent_id` が必要です。
+
+```python
+import traceback
+import uuid
+
+import failproofai
+
+failproofai.configure(environment="production")
+
+session_id = uuid.uuid4().hex
+agent_id = "checkout-agent"
+
+failproofai.event.agent_start(
+    session_id=session_id,
+    agent_id=agent_id,
+    goal="Resolve a failed checkout",
+)
+
+try:
+    tool_call_id = uuid.uuid4().hex
+    failproofai.event.tool_use(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        input={"order_id": "ord_8421"},
+    )
+    result = {"status": "payment_failed"}
+    failproofai.event.tool_result(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        output=result,
+    )
+except Exception as exc:
+    failproofai.event.error(
+        session_id=session_id,
+        agent_id=agent_id,
+        error_type=type(exc).__name__,
+        message=str(exc),
+        traceback=traceback.format_exc(),
+    )
+    failproofai.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="failed",
+    )
+    raise
+else:
+    failproofai.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="success",
+        summary="Escalated the failed payment",
+    )
+```
+
+`agent_start` はアクターごとに一度だけ発行してください。サブエージェントの場合は、親の `session_id` を再利用し、各アクターに異なる `agent_id` を与え、`parent_id` にはセッション ID ではなく親の **エージェント ID** を設定します。
+
+## 設定リファレンス
+
+```python
+failproofai.configure(
+    base_dir=None,
+    flush_interval=0.5,
+    environment="production",
+)
+```
+
+| 設定 | 動作 |
+| --- | --- |
+| `base_dir` | 明示的なスプールルート。すべての環境変数より優先されます。 |
+| `flush_interval` | メモリから JSONL へのバックグラウンド書き込み間隔（秒）。デフォルト: `0.5`。 |
+| `environment` | すべてのイベントに付与されるデプロイメントラベル。デフォルトは `dev`。 |
+| `FAILPROOFAI_HOME` | `custom-agents` スプールを含む Failproof AI ルートを変更します。 |
+
+SDK は `base_dir` が設定されている場合はそこに書き込みます。それ以外は、`FAILPROOFAI_HOME` または `~/.failproofai` 配下にある Failproof デーモンの `custom-agents` スプールを使用します。
+
+SDK は呼び出しをメモリにキューイングし、バックグラウンドスレッドでバッチ書き込みを行います。また、Python の `atexit` ハンドリングを通じて最終フラッシュも試みます。短命なワーカーの場合は、通常のインタープリタシャットダウンを許容してください。プロセスの強制終了を行うと、メモリ上のイベントが失われる可能性があります。
+
+## イベントカタログ
+
+すべてのメソッドは `None` を返します。`None` のままのフィールドは、JSON の `null` として書き込まれるのではなく省略されます。
+
+| メソッド | ID 以外の必須フィールド | オプションフィールド |
+| --- | --- | --- |
+| `agent_start` | — | `goal`, `parent_id` |
+| `agent_end` | — | `outcome`, `summary` |
+| `agent_pause` | `pause_id` | `reason`, `user_id` |
+| `agent_resume` | `pause_id` | `reason`, `user_id` |
+| `model_request` | — | `model`, `messages`, `system`, `tools` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role` |
+| `tool_use` | `tool_name`, `tool_call_id` | `input` |
+| `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
+| `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
+| `hook_completed` | `hook_name`, `hook_id` | `outcome`, `output`, `error` |
+| `error` | `error_type`, `message` | `traceback` |
+| `human_wait` | `input_id` | `prompt`, `options`, `reason` |
+| `human_input` | `input_id` | `response` |
+| `human_pause` | — | `reason`, `user_id` |
+| `human_interrupt` | — | `reason`, `user_id`, `at_step` |
+
+完了を失敗としてカウントする場合は、`outcome="failed"`、`"error"`、`"timeout"`、または `"rejected"` を使用してください。`"failure"` を含むその他の値は、現在のバックエンドでは失敗として分類されません。
+
+## 相関とデュレーションのルール
+
+- 対応する完了イベントには、同じ `tool_call_id`、`hook_id`、`pause_id`、または `input_id` を再利用してください。
+- SDK は `tool_result`、`hook_completed`、`agent_resume`、`human_input` の `duration_ms` を自動計算します。これらのメソッドに自分で渡すと `ValueError` が発生します。
+- ツールとフックの ID はプロセス全体の pending マップを共有します。並行セッション間および両方の名前空間をまたいでグローバルに一意にしてください。プロバイダー ID や UUID が最も安全です。
+- ペアがプロセスをまたいで分割されている場合でも、ダウンストリームで相関は行われますが、SDK はプロセス内のデュレーションを計算できません。
+- pending マップは最大 10,000 件の開始エントリを保持し、満杯になると最も古いエントリを退出させます。
+
+## カスタムフィールドとペイロード
+
+すべてのイベントは追加のキーワードフィールドを受け付けます。ダウンストリームクエリで構造が必要な場合は、JSON 互換の値を使用してください。UUID、datetime、Decimal、set、bytes、モデルオブジェクトなど、サポートされていないリーフ型はライターによって文字列化されます。
+
+予約済みのカスタム名は `timestamp`、`session_id`、`agent_id`、`type`、`environment` です。オプションフィールドのタイプミスは新しいカスタムフィールドとして受け入れられるため、標準フィールドがクラウドに表示されない場合は、発行された JSON を確認してください。
+
+## 配信と検証
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    **Observe → Events** で、最初に `agent_start` が存在し、最後に `agent_end` が存在することを確認します。次に **Observe → Sessions** を開き、モデル、ツール、ヒューマン、フック、エラーイベントが意図した順序で表示されていることを確認します。セッション ID をトラブルシューティングの主要キーとして使用してください。
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai flush --wait --timeout 60
+    failproofai config --status
+    fp sessions --since 1h --env production --session-id <session-id>
+    fp events --since 1h --session-id <session-id> --full
+    ```
+  </Tab>
+</Tabs>
+
+クラウドが空の場合は、`$FAILPROOFAI_HOME/custom-agents/events`、それ以外は `~/.failproofai/custom-agents/events` を確認してください。JSONL ファイルは SDK の発行を証明します。スプールが増加している場合はデーモンの設定や配信の問題、スプールが空の場合はインストルメント化またはプロセスライフタイムの問題を示しています。
+
+## カスタムランタイムでの障害防止
+
+監査結果とリンクされたトレースを使用して、安全でないアクション、必要な証拠、および意図した応答を定義します。カスタム enforcement インテグレーションは、実行前にアクションを公開し、その構造化された入力をポリシーエンジンに渡し、結果として得られる allow、instruct、または deny の決定を適用する必要があります。
+
+[support@befailproof.ai](mailto:support@befailproof.ai) にメールを送り、お使いのランタイムに合わせたインテグレーションの設計と検証を依頼してください。

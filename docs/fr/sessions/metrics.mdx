@@ -1,0 +1,29 @@
+---
+title: "Métriques"
+description: "Visualisez des métriques de magnitude telles que la latence, le coût et l'utilisation des tokens."
+icon: "ruler"
+---
+
+Les métriques concernent les valeurs avec des unités. Les évaluations concernent les scores et les jugements.
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Observe → Metrics**.
+    2. Sélectionnez **add series** et choisissez un agent, un environnement, une métrique, une statistique et une courbe.
+    3. Ajoutez des séries pour comparer des agents ou des environnements ; les unités différentes reçoivent des axes séparés.
+    4. Sélectionnez un point pour ouvrir les évaluations et sessions correspondantes, ou sélectionnez **share** pour copier la vue exacte.
+
+    ![La page Metrics comparant deux séries de coût par unité de sortie avec des contrôles temporels, des sélecteurs d'agrégation, des courbes et une action de partage.](/images/dashboard/metrics-series.png)
+  </Tab>
+  <Tab title="CLI">
+    Il n'existe pas encore de commande dédiée aux métriques de magnitude. Découvrez les clés disponibles et inspectez les sessions ou les évaluations :
+
+    ```bash
+    fp list score_filters
+    fp --json evals --since 24h
+    fp --json sessions --since 24h
+    ```
+
+    Utilisez `fp query` pour l'agrégation de métriques personnalisées.
+  </Tab>
+</Tabs>

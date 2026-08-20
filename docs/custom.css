@@ -1,3 +1,16 @@
+/* Brand pink, resolved per color mode. Light mode needs the deeper shade,
+   because every surface this color lands on is text. Measured per pair:
+   #e4587d is 3.51:1 on white and 3.19:1 on the blockquote's #f3f4f6 — both
+   under the 4.5:1 AA floor — while #c92251 holds the same hue (343°) at
+   5.48:1 on white and 4.98:1 on #f3f4f6. */
+:root {
+  --fpai-pink: #c92251;
+}
+
+.dark {
+  --fpai-pink: #e4587d;
+}
+
 h1, h2, h3 {
   letter-spacing: -0.025em;
 }
@@ -6,7 +19,7 @@ h1, h2, h3 {
   position: relative;
   margin: 1.5rem 0;
   padding: 1.25rem 1.5rem 1.25rem 3.75rem !important;
-  border-left: 4px solid #e4587d !important;
+  border-left: 4px solid var(--fpai-pink) !important;
   border-radius: 0 14px 14px 0;
   background: #f3f4f6 !important;
   color: inherit !important;
@@ -17,7 +30,7 @@ h1, h2, h3 {
   position: absolute;
   top: 0.35rem;
   left: 1rem;
-  color: #e4587d;
+  color: var(--fpai-pink);
   font-size: 3rem;
   font-weight: 700;
   line-height: 1;
@@ -36,6 +49,7 @@ h1, h2, h3 {
 }
 
 .navbar-link a[href="https://discord.befailproof.ai"],
+.navbar-link a[href="https://www.reddit.com/r/failproofai/"],
 .navbar-link a[href="https://x.com/failproofai"],
 .navbar-link a[href="https://github.com/FailproofAI/failproofai"],
 #topbar-cta-button a[href="https://app.befailproof.ai"] {
@@ -43,6 +57,7 @@ h1, h2, h3 {
 }
 
 .navbar-link a[href="https://discord.befailproof.ai"]::after,
+.navbar-link a[href="https://www.reddit.com/r/failproofai/"]::after,
 .navbar-link a[href="https://x.com/failproofai"]::after,
 .navbar-link a[href="https://github.com/FailproofAI/failproofai"]::after,
 #topbar-cta-button a[href="https://app.befailproof.ai"]::after {
@@ -67,6 +82,10 @@ h1, h2, h3 {
   content: "Join the community";
 }
 
+.navbar-link a[href="https://www.reddit.com/r/failproofai/"]::after {
+  content: "Join r/failproofai";
+}
+
 .navbar-link a[href="https://x.com/failproofai"]::after {
   content: "Follow launches";
 }
@@ -81,6 +100,8 @@ h1, h2, h3 {
 
 .navbar-link a[href="https://discord.befailproof.ai"]:hover::after,
 .navbar-link a[href="https://discord.befailproof.ai"]:focus-visible::after,
+.navbar-link a[href="https://www.reddit.com/r/failproofai/"]:hover::after,
+.navbar-link a[href="https://www.reddit.com/r/failproofai/"]:focus-visible::after,
 .navbar-link a[href="https://x.com/failproofai"]:hover::after,
 .navbar-link a[href="https://x.com/failproofai"]:focus-visible::after,
 .navbar-link a[href="https://github.com/FailproofAI/failproofai"]:hover::after,

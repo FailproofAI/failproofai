@@ -1,0 +1,52 @@
+---
+title: "Evaluaciones en línea"
+description: "Puntúa sesiones en curso y completadas según calidad, cumplimiento, costo y latencia."
+icon: "gauge"
+---
+
+Las evaluaciones en línea aplican criterios consistentes a las sesiones de agentes. Úsalas para señales que deben medirse de forma continua, en lugar de investigarse únicamente durante una auditoría.
+
+## Revisar la calidad de las evaluaciones
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Ve a **Observe → Evaluations**.
+    2. Añade una serie y elige el agente, el entorno, la puntuación de evaluación, la estadística y la curva.
+    3. Añade series para comparar entornos, agentes o claves de puntuación.
+    4. Selecciona un resultado para abrir las sesiones correspondientes o compartir la vista filtrada. Usa **Observe → Metrics** para latencia, tokens, costo y otros valores de magnitud.
+
+    ![Panel de calidad que muestra puntuaciones de evaluación promedio y tendencias a lo largo del tiempo.](/images/dashboard/dashboard-quality.png)
+
+    Abre una sesión desde el desglose para inspeccionar el razonamiento por puntuación:
+
+    ![Vista detallada de una sesión que muestra puntuaciones de evaluación y razonamiento junto al rastro completo.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Añade `--json` de forma global antes de `evals` para automatización, por ejemplo `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+Un evaluador recibe la identidad de la sesión, el entorno, las marcas de tiempo y los eventos ordenados. Puede devolver claves de puntuación numéricas con razonamiento opcional y un resumen. Los evaluadores de larga duración pueden devolver un trabajo pendiente y ser consultados más tarde.
+
+## Buenos objetivos de evaluación
+
+- Finalización o corrección de tareas
+- Fundamentación y riesgo de alucinación
+- Selección de herramientas y eficiencia en su uso
+- Cumplimiento de políticas o procesos
+- Presupuestos de costo y latencia
+- Escalación humana requerida
+
+## De la puntuación a la respuesta
+
+Muestra las puntuaciones en paneles para rastrear tendencias. Crea alertas para umbrales o condiciones compuestas. Cuando una puntuación disminuye en una población, realiza una auditoría para investigar el motivo; cuando la causa es una acción repetible, despliega una política.
+
+<Card title="Construir un evaluador" icon="code-2" href="/es/reference/evaluator-sdk">
+  Implementa evaluaciones síncronas o asíncronas con el SDK de evaluadores de Python.
+</Card>

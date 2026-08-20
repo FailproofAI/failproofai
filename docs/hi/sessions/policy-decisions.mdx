@@ -1,0 +1,27 @@
+---
+title: "नीति निर्णय"
+description: "देखें कि कौन सी नीतियों का मूल्यांकन किया गया, अवरुद्ध किया गया, निर्दেश दिया गया, या अनुमति दी गई।"
+icon: "shield-check"
+---
+
+Policy decisions यह समझाता है कि enforcement ने क्या किया। इसका उपयोग rollout को verify करने, block rate को मापने और unguarded activity को खोजने के लिए करें।
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → policy** पर जाएं और समय सीमा चुनें और वैकल्पिक रूप से एक मशीन चुनें।
+    2. मूल्यांकित किए गए actions, blocks, block rate, Cloud decisions, unguarded actions और paused रहने के समय की activity की समीक्षा करें।
+    3. policy mapping table को filter करें और deployed assignments का inspection करें।
+    4. एक चार्ट बिंदु का चयन करें decisions और उनके sessions को खोलने के लिए।
+
+    ![Policy page जो decision totals, machine filter, enforcement activity over time, और policy mapping table दिखा रहा है।](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp events --search "deny" --since 24h
+    failproofai config --status
+    ```
+
+    मशीन की local enforcement state के लिए `failproofai` का उपयोग करें और Cloud event investigation के लिए `fp` का उपयोग करें।
+  </Tab>
+</Tabs>

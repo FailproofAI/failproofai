@@ -1,0 +1,47 @@
+---
+title: "Triển khai chính sách"
+description: "Triển khai phiên bản chính sách đã được xem xét tới các máy được chỉ định."
+icon: "cloud-upload"
+---
+
+Một triển khai kết nối một hoặc nhiều phiên bản chính sách tới một tập hợp các máy đã được đăng ký.
+
+## Áp dụng một triển khai
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Admin → enforcement**, tìm máy và mở rộng dòng của nó.
+    2. Chọn **edit**, thêm phiên bản chính sách đã được xem xét, và chọn **observe** hoặc hiệu ứng thực thi của nó.
+    3. Áp dụng thay đổi, sau đó chờ lần check-in tiếp theo của máy và xác nhận trạng thái triển khai và phạm vi bao phủ của nó.
+    4. Đi tới **Observe → policy** để kiểm tra các quyết định trực tiếp.
+
+    ![Trình chỉnh sửa triển khai máy với các phiên bản chính sách, hiệu ứng enforce và observe, và hành động áp dụng triển khai.](/images/dashboard/enforcement-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    Các điểm cuối triển khai Cloud được cố ý không được công khai dưới dạng các lệnh `fp` thông thường. Kiểm tra máy cục bộ, sau đó triển khai qua bảng điều khiển:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    Sử dụng `fp sessions --env production --since 24h` và `fp events --event-type hook_completed` sau triển khai để xác minh hoạt động được gửi tới Cloud.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Chọn phiên bản và mục tiêu">
+    Triển khai một phiên bản đã được xem xét, không phải bản nháp có thể thay đổi, bắt đầu với một máy không phải sản xuất hoặc một nhóm nhỏ có phiên làm việc mà bạn có thể kiểm tra.
+  </Step>
+  <Step title="Quan sát các quyết định">
+    Xem xét các trận đấu, lý do, các công cụ bị ảnh hưởng, và những kết quả sai lệch mà không chặn công việc.
+  </Step>
+  <Step title="Thực thi và xác minh phạm vi bao phủ">
+    Nâng cấp sau khi quan sát các trận đấu tách các hành động không an toàn khỏi các hành động hợp lệ, sau đó xác nhận mọi máy dự định đều đã kéo triển khai và báo cáo quyết định.
+  </Step>
+</Steps>
+
+Máy cần khả năng `policies:pull`. Báo cáo sự kiện được kiểm soát riêng bởi `events:add`; xác minh cả hai khi bạn mong đợi phân tích và thực thi Cloud.
+
+<Warning>
+  Quản lý thực thi là một quy trình làm việc quản trị Cloud. Không coi các tuyến thực thi chỉ dành cho root là các điểm cuối API `/v1` thông thường của khách hàng.
+</Warning>

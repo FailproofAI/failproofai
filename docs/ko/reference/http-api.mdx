@@ -1,0 +1,74 @@
+---
+title: "HTTP API"
+description: "Failproof AI Cloud `/v1` 공개 API에 인증하고 생성된 엔드포인트 레퍼런스를 활용하세요."
+icon: "braces"
+---
+
+공개 API는 Failproof AI 대시보드 오리진의 `/v1` 경로에서 제공됩니다.
+
+## 키 생성 및 요청 전송
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Administration → Keys**를 열고 **Create key**를 선택한 후, 해당 통합에 필요한 최소 권한 프리셋을 선택합니다.
+    2. 필요한 경우에만 개별 권한을 추가하고, 키를 생성한 후 일회성 시크릿을 복사합니다.
+    3. `/v1/sessions`에 테스트 요청을 보내고, Keys 페이지에서 키가 활성 상태인지 확인합니다.
+    4. 통합의 소유권이 변경될 경우 액션 메뉴에서 키를 교체하거나 비활성화합니다.
+
+    ![권한 프리셋과 개별 권한이 표시된 새 API 키 생성 드로어.](/images/dashboard/key-create.png)
+
+    위에 표시된 것이 생성 드로어입니다. 일회성 시크릿은 **create**를 선택한 후에만 표시되므로, 확인 창을 닫기 전에 반드시 복사해 두세요.
+  </Tab>
+  <Tab title="CLI">
+    읽기 전용 키를 생성하고 `fp` 또는 `curl`로 직접 사용합니다:
+
+    ```bash
+    fp keys create reliability-reader \
+      --permission-set read-only
+
+    fp --api-key <key> sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY"
+    ```
+  </Tab>
+</Tabs>
+
+키는 조직과 권한 세트에 범위가 지정됩니다. 엔드포인트에 필요한 권한이 없는 요청은 `403`을 반환하며, 누락된 권한이 무엇인지 알려줍니다.
+
+## 조직 선택
+
+조직 키는 자동으로 해당 조직에서 동작합니다. 인스턴스 범위 키는 요청별로 조직을 선택할 수 있습니다:
+
+<Tabs>
+  <Tab title="대시보드">
+    **Administration → Keys**를 열기 전에 대시보드 헤더의 조직 전환기를 사용하세요. 해당 위치에서 생성된 키는 선택한 조직에 속합니다. 자격 증명을 자동화에 적용하기 전에 URL과 키 상세 정보에서 조직 슬러그를 확인하세요.
+
+  </Tab>
+  <Tab title="CLI">
+    명령 전에 `--org`를 사용하거나, 인스턴스 범위 API 키에 조직 헤더를 포함해 전송합니다.
+
+    ```bash
+    fp orgs list
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+현재 경로, 파라미터, 권한 요구 사항 및 상태 코드는 이 섹션의 생성된 엔드포인트 페이지를 참고하세요. 스펙은 서버 라우트 어노테이션에서 생성되며 `/v1` 라우터에 대해 검증됩니다.
+
+현재 스펙은 라우트, 메서드, 파라미터, 권한, 상태 코드를 완전히 다루고 있습니다. 일부 응답 본문은 서버가 동적 JSON으로 구성하기 때문에 의도적으로 타입이 지정되지 않은 상태로 남아 있습니다. 응답 스키마가 없는 엔드포인트에 대해 강타입 클라이언트를 생성하기 전에 실제 응답을 먼저 확인하세요.
+
+JSON 쓰기 요청에는 `Content-Type: application/json`을 사용하세요. `401`은 인증 정보가 없거나 유효하지 않은 경우, `403`은 유효한 신원이지만 필요한 권한이 없는 경우, `404`는 리소스가 없거나 조직에서 접근할 수 없는 경우, `409`는 상태 충돌, `422`는 잘못된 필드 또는 권한 값으로 처리하세요. 오류 응답에는 사람이 읽을 수 있는 메시지가 포함되며, 권한 오류의 경우 필요한 권한도 함께 명시됩니다.
+
+<Warning>
+  정책 적용 배포는 의도적으로 일반 공개 `/v1` 인터페이스 외부에서 관리됩니다. 지원되는 Cloud 배포 워크플로를 사용하세요.
+</Warning>

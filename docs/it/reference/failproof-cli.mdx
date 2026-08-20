@@ -1,0 +1,151 @@
+---
+title: "Failproof AI CLI"
+description: "Installa hook, gestisci politiche locali, connetti Cloud e gestisci il daemon locale."
+icon: "terminal"
+---
+
+Installa la CLI locale con `npm install -g failproofai`. Eseguila senza argomenti per aprire il dashboard delle politiche locali.
+
+Il pacchetto richiede Node.js 20.9 o versione successiva. Bun 1.3 o versione successiva è supportato per sviluppo e installazioni da sorgente. `failproofai configure` e `failproofai setup` sono alias per `failproofai config`; `failproofai p` è un alias per `failproofai policies`.
+
+## Configura una macchina
+
+```bash
+npm install -g failproofai
+failproofai config \
+  --connect https://app.befailproof.ai \
+  --token <machine-key> \
+  --machine-label checkout-prod-01
+failproofai policies --install
+failproofai config --status
+```
+
+Esegui `failproofai` senza argomenti per aprire il dashboard delle politiche locali.
+
+| Comando | Risultato |
+| --- | --- |
+| `failproofai config` | Esegui la configurazione interattiva della macchina |
+| `failproofai config --connect <url> --token <key>` | Connetti l'acquisizione Cloud e la distribuzione delle politiche |
+| `failproofai config --status` | Mostra lo stato della connessione, del daemon, della consegna e della pausa |
+| `failproofai policies` | Elenca le politiche predefinite e personalizzate |
+| `failproofai policies --install` | Installa gli hook e abilita le politiche |
+| `failproofai policy add <name>` | Abilita una politica predefinita |
+| `failproofai policy remove <name>` | Disabilita una politica predefinita |
+| `failproofai policies --uninstall` | Disabilita le politiche o rimuovi gli hook di harness |
+| `failproofai audit` | Scansiona la cronologia locale dell'agente e apri la vista di audit locale |
+| `failproofai audit --schedule [days] --email <address>` | Pianifica scansioni locali ricorrenti e invia i loro risultati via email |
+| `failproofai audit --status` | Mostra l'indirizzo del rapporto, l'intervallo e la prossima scansione pianificata |
+| `failproofai audit --no-schedule` | Interrompi le scansioni ricorrenti senza eliminare la cronologia di audit |
+| `failproofai harness list` | Elenca i percorsi di acquisizione aggiuntivi |
+| `failproofai flush --wait` | Consegna il spool di eventi corrente |
+| `failproofai backfill --since 30d` | Rileggi la cronologia precedentemente passata |
+| `failproofai config --pause [duration]` | Metti in pausa una sessione locale per 30 minuti per impostazione predefinita, fino a 8 ore |
+| `failproofai config --resume` | Riprendi una sessione locale in pausa; aggiungi `--all` per cancellare tutte le pause |
+| `failproofai update` | Completa le migrazioni dei pacchetti e aggiorna il daemon |
+| `failproofai migrate --dry-run` | Anteprima o esegui le migrazioni del layout home in sospeso |
+| `failproofai uninstall` | Rimuovi gli hook e il daemon prima di rimuovere il pacchetto |
+| `failproofai --version` | Stampa la versione del pacchetto installato |
+| `failproofai --help` | Mostra i comandi e l'utilizzo globale |
+
+## Flag di configurazione
+
+| Flag | Utilizzo |
+| --- | --- |
+| `--connect <url> --token <key>` | Connettiti non in modo interattivo |
+| `--machine-id <id>` | Imposta l'ID stabile della macchina |
+| `--machine-label <name>` | Imposta o modifica l'etichetta del dashboard |
+| `--no-transcripts` | Invia le decisioni senza il contenuto della trascrizione |
+| `--disconnect` | Interrompi i pull delle politiche Cloud e la consegna degli eventi |
+| `--status` | Mostra lo stato attuale della macchina |
+| `--pause [duration]` | Metti in pausa la sessione più recente nella directory corrente; accetta secondi, minuti o ore e per impostazione predefinita è 30 minuti |
+| `--resume` | Termina una pausa corrispondente in anticipo |
+| `--session <id>` | Scegli una sessione esplicita per pausa o ripresa |
+| `--all` | Con `--resume`, termina tutte le pause attive |
+
+Le pause locali sospendono le politiche predefinite, personalizzate e convenzionali per una sessione. Scadono sempre e non disabilitano le politiche gestite da Cloud. `block-self-pause` impedisce a un agente instrumentato di utilizzare questa scappatoia.
+
+## Flag delle politiche
+
+| Flag | Utilizzo |
+| --- | --- |
+| `--install`, `-i` | Abilita le politiche e installa gli hook di harness |
+| `--uninstall`, `-u` | Disabilita le politiche o rimuovi gli hook |
+| `--cli <names...>` | Scegli uno o più harness supportati |
+| `--scope user\|project\|local\|all` | Scegli l'ambito della configurazione; `all` è per uninstall |
+| `--beta` | Includi le politiche beta |
+| `--custom`, `-c <path>` | Convalida e carica un file di politica personalizzato; ripetibile |
+
+## Flag di consegna e manutenzione
+
+| Comando | Flag |
+| --- | --- |
+| `backfill` | `--since <30d\|6m\|YYYY-MM-DD>`, `--dry-run` |
+| `flush` | `--wait`, `--timeout <seconds>` |
+| `update` | `--no-daemon` |
+| `migrate` | `--dry-run` |
+| `uninstall` | `--purge`, `--dry-run`, `--yes` |
+
+`failproofai update` deve essere eseguito dopo `npm install -g failproofai@latest`; esegue le migrazioni del layout home, installa il binario daemon corrispondente e riavvia il servizio. `--no-daemon` esegue solo la migrazione del layout.
+
+## Percorsi di harness
+
+```text
+failproofai harness list [harness]
+failproofai harness add-path <harness> [label=]<path>
+failproofai harness remove-path <harness> <path-or-label>
+```
+
+I nomi di harness supportati sono `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity` e `goose`.
+
+Le etichette namespaziano gli ID dell'agente derivato quando due radici contengono copie dello stesso progetto. Le radici sovrapposte e le etichette duplicate vengono rifiutate per prevenire la raccolta duplicata o la corruzione del cursore. La configurazione del percorso aggiuntivo si ricarica senza un riavvio del daemon.
+
+Gli ambienti container possono sostituire i percorsi aggiuntivi configurati da file con una variabile separata da virgole denominata `FAILPROOFAI_<HARNESS>_EXTRA_PATHS`, ad esempio:
+
+```bash
+export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
+```
+
+## Variabili di ambiente
+
+Utilizza i file di configurazione per il comportamento persistente della macchina. Le variabili di ambiente sono più utili per container, test e un singolo processo.
+
+| Variabile | Utilizzo |
+| --- | --- |
+| `FAILPROOFAI_HOME` | Sposta il layout completo `~/.failproofai` |
+| `FAILPROOFAI_LOG_LEVEL` | Imposta la verbosità della registrazione locale |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Scrivi la diagnostica dell'hook in un file selezionato |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Disabilita la telemetria anonima per questo processo |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Salta la configurazione interattiva della prima esecuzione |
+| `FAILPROOFAI_NO_AUTO_AUDIT=1` | Salta l'audit locale post-configurazione |
+| `FAILPROOFAI_LLM_BASE_URL` | Sovrascrivi l'endpoint compatibile con OpenAI utilizzato dalle politiche LLM |
+| `FAILPROOFAI_LLM_API_KEY` | Fornisci la chiave API utilizzata dalle politiche LLM |
+| `FAILPROOFAI_LLM_MODEL` | Seleziona il modello utilizzato dalle politiche LLM |
+| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | Limita il caricamento del modulo di politica personalizzato |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | Sostituisci i percorsi di acquisizione aggiuntivi configurati per un harness |
+| `NO_COLOR` | Disabilita l'output del terminale colorato |
+
+Le variabili home specifiche dell'agente come `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME` e `OPENCLAW_HOME` scavalcano dove Failproof AI scopre le sessioni locali per quell'harness.
+
+## Metti in pausa o rimuovi una macchina in sicurezza
+
+```bash
+failproofai config --pause
+failproofai config --status
+failproofai config --resume
+```
+
+Una pausa di sessione locale non disabilita le politiche gestite da Cloud. Ripristina le distribuzioni Cloud attraverso il flusso di lavoro di applicazione Cloud quando il rollout stesso è il problema.
+
+Prima di rimuovere il pacchetto npm, rimuovi gli hook installati e il daemon:
+
+```bash
+failproofai uninstall --dry-run
+failproofai uninstall --yes
+npm rm -g failproofai
+```
+
+Esegui `failproofai <command> --help` per i dettagli specifici della versione.
+
+<Warning>
+  Esegui `failproofai uninstall` prima di `npm rm -g failproofai`; npm non rimuove gli hook dell'agente installati o il servizio daemon.
+</Warning>

@@ -1,0 +1,78 @@
+---
+title: "التكاملات والمراجع"
+description: "قم بتوصيل أجهزة التشغيل المدعومة والمكتبات البرمجية وواجهات سطر الأوامر وواجهة HTTP API."
+icon: "braces"
+---
+
+اختر التكامل الأقرب إلى المكان الذي يعمل فيه وكيلك بالفعل.
+
+<Columns cols={2}>
+  <Card title="أجهزة تشغيل الوكلاء" icon="plug-zap" href="/ar/reference/harnesses">
+    قم بتثبيت الخطافات لأجهزة التشغيل المدعومة لوكلاء الترميز والوكلاء المستقلين.
+  </Card>
+  <Card title="الوكلاء المخصصة" icon="python" href="/ar/reference/python-sdk">
+    قم بتتبع الآثار لاكتشاف الأعطال في الوكلاء المخصصة، ثم اتصل بنا لإضافة الوقاية إلى وقت التشغيل الخاص بك.
+  </Card>
+  <Card title="لوحة التحكم المحلية" icon="monitor-cog" href="/ar/reference/local-dashboard">
+    راجع المشاريع المحلية والجلسات ونشاط السياسة والتدقيق دون اتصال.
+  </Card>
+  <Card title="Failproof AI CLI" icon="terminal" href="/ar/reference/failproof-cli">
+    قم بتكوين الالتقاط المحلي والخطافات والسياسات والتدقيق والتسليم وحالة الآلة.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/ar/reference/cloud-cli#cli-commands">
+    الاستعلام عن جلسات Cloud وإدارتها والتدقيق والمشاكل والتنبيهات والمفاتيح والمستخدمين والإعدادات.
+  </Card>
+  <Card title="Evaluator SDK" icon="gauge" href="/ar/reference/evaluator-sdk">
+    قيّم الجلسات المكتملة أو غير النشطة باستخدام خدمة FastAPI.
+  </Card>
+  <Card title="السياسات المخصصة" icon="shield-plus" href="/ar/reference/policy-sdk">
+    قم بتأليف واختبار قرارات allow و instruct و deny خاصة بسير العمل.
+  </Card>
+  <Card title="الاستضافة الذاتية" icon="cloud-cog" href="/ar/reference/self-hosting">
+    نشر لوحة التحكم في Cloud على مجموعة Kubernetes التي يديرها العميل.
+  </Card>
+</Columns>
+
+يغطي [مرجع HTTP API](/ar/reference/http-api) المُنشأ السطح العام `/v1`. تشرح الصفحات المكتوبة يدويًا سير العمل الذي يمتد عبر نقاط نهاية متعددة أو يستخدم واجهات إدارية خارج ذلك السطح العام.
+
+## توصيل وكيل والتحقق من البيانات
+
+<Tabs>
+  <Tab title="لوحة التحكم">
+    1. افتح **Administration → Keys**، وأنشئ مفتاحًا باستخدام `events:add` و `policies:pull`، وانسخ السر.
+    2. قم بتكوين التكامل باستخدام الصفحة المطابقة أعلاه.
+    3. افتح **Observe → Events** للتأكد من وصول الأحداث، ثم **Observe → Sessions** للتأكد من تشكيل عمليات تشغيل كاملة.
+    4. قم بالتصفية بناءً على بيئة التكامل وتفتيش جلسة واحدة للحصول على نموذج وأداة وخطأ وحقول السياسة التي يحتاجها التدقيق.
+
+    ابدأ بدرج المفاتيح. تحدد المنح المحددة ما إذا كانت الآلة يمكنها إرسال الأحداث وتلقي السياسات التي تديرها Cloud.
+
+    ![درج مفتاح API الجديد المستخدم لمنح أذونات الابتلاع وتسليم السياسة.](/images/dashboard/key-create.png)
+
+    بعد توصيل التكامل، استخدم قائمة الجلسات للتأكد من تجميع أحداثه في عمليات تشغيل كاملة في البيئة المتوقعة.
+
+    ![قائمة الجلسات المستخدمة للتحقق من أن التكامل المتصل حديثًا يبلغ عن عمليات تشغيل الوكيل الكاملة.](/images/dashboard/sessions-list.png)
+
+    افتح إحدى هذه الجلسات قبل اعتبار التكامل مكتملًا؛ يجب أن يحتوي الأثر على نموذج وأداة وخطأ وأدلة السياسة التي يحتاجها التدقيق الخاص بك.
+  </Tab>
+  <Tab title="CLI">
+    قم بإنشاء مفتاح آلة، وقم بتوصيل خادم Failproof، والتحقق من الجلسة الأولى.
+
+    ```bash
+    fp keys create agent-production \
+      --add events:add \
+      --add policies:pull
+
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+
+    failproofai flush --wait
+    fp sessions --since 1h --env production
+    fp events --since 1h --env production --limit 20
+    ```
+
+    استخدم `fp --json sessions ...` عندما تستهلك أداة أخرى النتيجة. يجب أن تأتي الأعلام العامة مثل `--json` و `--org` و `--base-url` قبل الأمر.
+
+    راجع [مرجع Failproof AI CLI](/ar/reference/failproof-cli) للأوامر المحلية و [مرجع Failproof Cloud CLI](/ar/reference/cloud-cli#cli-commands) لأوامر `fp`.
+  </Tab>
+</Tabs>

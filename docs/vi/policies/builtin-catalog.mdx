@@ -1,0 +1,129 @@
+---
+title: "Danh mục chính sách tích hợp"
+description: "Xem xét từng chính sách Failproof AI tích hợp, bao gồm kích hoạt, trạng thái được khuyến nghị và các tham số có thể cấu hình."
+icon: "list-checks"
+---
+
+Gói được cài đặt là nguồn chân thực về tính khả dụng của chính sách. Chạy `failproofai policies` sau mỗi lần nâng cấp vì các mục danh mục và hành vi có thể thay đổi theo phiên bản gói.
+
+## Đường cơ sở được khuyến nghị
+
+Lựa chọn được khuyến nghị của hệ thống hướng dẫn hiện tại cho phép các công cụ vệ sinh bí mật, bảo vệ môi trường, tự bảo vệ, bảo vệ chống lệnh thảm họa và bảo mật nhánh được bảo vệ:
+
+```text
+sanitize-jwt                 sanitize-api-keys
+sanitize-connection-strings sanitize-private-key-content
+sanitize-bearer-tokens       protect-env-vars
+block-env-files              block-secrets-write
+block-self-pause             block-failproofai-commands
+block-sudo                   block-curl-pipe-sh
+block-rm-rf                  block-push-master
+block-force-push
+```
+
+Đường cơ sở được khuyến nghị có ý định hẹp hơn **Tất cả**. Các chính sách cơ sở hạ tầng và quy trình công việc có thể làm gián đoạn công việc hợp lệ và chỉ nên được bật cho các kho lưu trữ và máy cần thiết.
+
+## Bí mật và môi trường
+
+| Chính sách | Kích hoạt | Kết quả |
+| --- | --- | --- |
+| `sanitize-jwt` | `PostToolUse` | Che khuất JWT từ đầu ra công cụ trước khi mô hình thấy chúng. |
+| `sanitize-api-keys` | `PostToolUse` | Che khuất các khóa OpenAI, Anthropic, GitHub, AWS, Stripe và Google thông thường. |
+| `sanitize-connection-strings` | `PostToolUse` | Che khuất chuỗi kết nối cơ sở dữ liệu chứa thông tin xác thực. |
+| `sanitize-private-key-content` | `PostToolUse` | Che khuất nội dung phần thân khóa riêng tư PEM. |
+| `sanitize-bearer-tokens` | `PostToolUse` | Che khuất mã thông báo xác thực mang lại. |
+| `protect-env-vars` | `PreToolUse` trên công cụ shell | Chặn các lệnh xả các biến môi trường. |
+| `block-env-files` | `PreToolUse` | Chặn đọc và ghi các tệp `.env`. |
+| `block-read-outside-cwd` | `PreToolUse` trên công cụ đọc, glob, grep hoặc shell | Giữ các lần đọc bên trong thư mục làm việc của phiên. |
+| `block-secrets-write` | `PreToolUse` trên công cụ ghi | Chặn ghi vào tên tệp khóa bí mật và thông tin xác thực thông thường. |
+
+## Lệnh nguy hiểm và cơ sở hạ tầng
+
+| Chính sách | Kích hoạt | Kết quả |
+| --- | --- | --- |
+| `block-self-pause` | `PreToolUse`, `PermissionRequest` | Ngăn chặn đại lý tạm dừng enforcement của riêng nó. |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` | Chặn `sudo` trừ khi mẫu cho phép khớp. |
+| `block-curl-pipe-sh` | `PreToolUse` | Chặn các tập lệnh được tải xuống và đẩy trực tiếp vào shell. |
+| `block-rm-rf` | `PreToolUse` | Chặn các mẫu xóa đệ quy thảm họa. |
+| `block-failproofai-commands` | `PreToolUse` | Ngăn chặn đại lý thay đổi hoặc gỡ cài đặt Failproof AI. |
+| `block-kubectl` | `PreToolUse` | Kiểm soát các lệnh Kubernetes. |
+| `block-terraform` | `PreToolUse` | Kiểm soát các lệnh Terraform và OpenTofu. |
+| `block-aws-cli` | `PreToolUse` | Kiểm soát các lệnh AWS CLI. |
+| `block-gcloud` | `PreToolUse` | Kiểm soát các lệnh Google Cloud CLI. |
+| `block-az-cli` | `PreToolUse` | Kiểm soát các lệnh Azure CLI. |
+| `block-helm` | `PreToolUse` | Kiểm soát các lệnh Helm. |
+| `block-gh-pipeline` | `PreToolUse` | Kiểm soát các thao tác mutating GitHub CLI về quy trình công việc, chạy, hợp nhất, phát hành, bộ đệm và bí mật. |
+
+## An toàn Git và cơ sở dữ liệu
+
+| Chính sách | Kích hoạt | Kết quả |
+| --- | --- | --- |
+| `block-push-master` | `PreToolUse` | Chặn các lần đẩy trực tiếp đến các nhánh được bảo vệ đã cấu hình. |
+| `block-force-push` | `PreToolUse` | Chặn force-push; `--force-with-lease` vẫn được phép bởi triển khai hiện tại. |
+| `block-work-on-main` | `PreToolUse` | Chặn cam kết và hợp nhất trên các nhánh được bảo vệ. |
+| `warn-git-amend` | `PreToolUse` | Cảnh báo trước khi viết lại commit với `--amend`. |
+| `warn-git-stash-drop` | `PreToolUse` | Cảnh báo trước khi vĩnh viễn bỏ hoặc xóa stash. |
+| `warn-all-files-staged` | `PreToolUse` | Cảnh báo trên `git add -A`, `git add .` hoặc `git add --all` rộng rãi. |
+| `warn-destructive-sql` | `PreToolUse` | Cảnh báo trên `DROP`, `TRUNCATE` và `DELETE` không có `WHERE` thông qua các máy khách cơ sở dữ liệu đã biết. |
+| `warn-schema-alteration` | `PreToolUse` | Cảnh báo trên các thao tác `ALTER TABLE` cột được công nhận và đổi tên. |
+
+## Gói, hành vi hệ thống và vòng lặp đại lý
+
+| Chính sách | Kích hoạt | Kết quả |
+| --- | --- | --- |
+| `warn-package-publish` | `PreToolUse` | Cảnh báo trước khi xuất bản vào kho lưu trữ gói. |
+| `warn-global-package-install` | `PreToolUse` | Cảnh báo trước khi cài đặt gói toàn cục. |
+| `prefer-package-manager` | `PreToolUse` | Hướng dẫn đại lý sử dụng trình quản lý gói được phép. |
+| `warn-large-file-write` | `PreToolUse` trên công cụ ghi | Cảnh báo trên ngưỡng kích thước tệp đã cấu hình. |
+| `warn-background-process` | `PreToolUse` | Cảnh báo trên các mẫu quy trình nền tách hoặc lâu dài. |
+| `warn-repeated-tool-calls` | `PreToolUse` | Cảnh báo sau ba hoặc nhiều lệnh công cụ giống hệt nhau. |
+
+## Quy trình công việc cuối nhiệm vụ
+
+Các chính sách này yêu cầu một harness phát ra sự kiện `Stop` tương thích.
+
+| Chính sách | Kết quả |
+| --- | --- |
+| `require-commit-before-stop` | Từ chối hoàn thành trong khi công việc được theo dõi vẫn chưa được cam kết. |
+| `require-push-before-stop` | Từ chối hoàn thành trong khi cam kết vẫn chỉ ở địa phương. |
+| `require-pr-before-stop` | Yêu cầu yêu cầu kéo cho nhánh hiện tại. |
+| `require-no-conflicts-before-stop` | Yêu cầu hợp nhất sạch chống lại nhánh cơ sở đã cấu hình. |
+| `require-ci-green-before-stop` | Yêu cầu kiểm tra CI HEAD hiện tại hoàn thành thành công. |
+
+## Tham chiếu tham số
+
+Cấu hình các tham số dưới đối tượng `policyParams` của phạm vi đã chọn. Các loại được xác nhận bởi từng chính sách.
+
+| Chính sách | Tham số | Loại và mặc định |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; các mục chứa `regex` và `label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Các chặn cơ sở hạ tầng | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+```json
+{
+  "enabledPolicies": ["block-sudo", "block-push-master"],
+  "policyParams": {
+    "block-sudo": {
+      "allowPatterns": ["sudo systemctl status"]
+    },
+    "block-push-master": {
+      "protectedBranches": ["main", "release"]
+    }
+  }
+}
+```
+
+<Warning>
+  Mẫu cho phép mở rộng những gì một đại lý có thể làm. Kiểm tra độ mã hóa chính xác và các biến thể lệnh trên harness đích trước khi triển khai nó trên toàn bộ hạm đội.
+</Warning>

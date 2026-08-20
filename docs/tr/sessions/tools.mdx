@@ -1,0 +1,25 @@
+---
+title: "Araçlar"
+description: "Ajan oturumları arasında yavaş, başarısız veya aşırı kullanılan araçları bulun."
+icon: "wrench"
+---
+
+Araçlar, oturumlardaki araç çağrılarını gruplandırır; böylece gecikme süresi ve çağrı dağılımını karşılaştırabilirsiniz.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Tools** bölümüne gidin.
+    2. Ortam, araç adı, ajan veya oturum kimliğine göre filtreleyin.
+    3. Gecikme süresi ve araç dağılımını gözden geçirin.
+    4. Bir grafik noktasını veya araç segmentini seçerek eşleşen olayları ve oturumları açın.
+
+    ![Gecikme süresi, başarı ve başarısızlık dağılımlarını ve araç çağrısı dağılımını gösteren Araçlar sayfası.](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

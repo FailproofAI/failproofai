@@ -1,0 +1,27 @@
+---
+title: "Modèles"
+description: "Comparez la latence, les tokens, l'utilisation du contexte et la distribution du trafic par modèle."
+icon: "cpu"
+---
+
+Utilisez la vue Modèles pour déterminer si la fiabilité ou le coût a évolué en fonction d'un modèle, d'un agent, d'un environnement ou d'une plage temporelle.
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Observer → Modèles**.
+    2. Définissez la plage temporelle, puis filtrez par environnement, modèle, agent ou identifiant de session.
+    3. Examinez la latence, la consommation de tokens, l'utilisation de la fenêtre de contexte et la distribution des modèles.
+    4. Sélectionnez un point du graphique ou un segment de distribution pour afficher les événements correspondants.
+
+    ![La page Modèles affichant les vues de latence, percentile, tokens, coût, fenêtre de contexte et distribution des modèles.](/images/dashboard/models.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list models
+    fp events --event-type model_request,model_response --env production --since 24h
+    fp --json events --fields ts,agent_id,session_id,event_type,output_tokens,context_fill
+    ```
+
+    Utilisez une requête sauvegardée pour les agrégats au niveau du modèle qui ne sont pas exposés en tant que commande CLI dédiée.
+  </Tab>
+</Tabs>

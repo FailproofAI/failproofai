@@ -1,0 +1,52 @@
+---
+title: "Déployer des politiques sur les machines"
+description: "Savoir quelles machines sont inscrites, à jour et appliquent les versions de politiques prévues."
+icon: "network"
+---
+
+La couverture de flotte permet de vérifier si une politique existe là où le risque existe. Suivez les machines par identifiant stable et par libellé lisible, puis comparez leur état de déploiement assigné et rapporté.
+
+## Vérifier la couverture
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Admin → application** et consultez les totaux en mode application et observation.
+    2. Recherchez une machine par identifiant ou libellé, ou filtrez les machines sans politique.
+    3. Développez une ligne pour comparer les politiques assignées, le déploiement rapporté, le dernier enregistrement et l'historique.
+    4. Actualisez après l'intervalle d'interrogation de la machine lorsqu'un déploiement appliqué reste en attente.
+
+    ![La flotte d'application affichant la couverture des politiques, l'état de déploiement des machines, et les assignations en observation et en application.](/images/dashboard/enforcement-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai config --machine-label checkout-runner-03
+    failproofai flush --wait
+    ```
+
+    Utilisez `fp events --agent-id <agent-id> --since 24h` pour confirmer que l'activité de l'agent de la machine atteint le Cloud.
+  </Tab>
+</Tabs>
+
+Utilisez les vues de couverture pour identifier :
+
+- Les machines qui n'ont jamais récupéré le dernier déploiement
+- Les machines inscrites qui ont cessé de remonter de l'activité
+- Une politique assignée au mauvais environnement ou cohorte
+- La dérive de version après une mise à jour interrompue
+
+Renommez une machine sans la reconnecter :
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
+
+Vérifiez l'état local :
+
+```bash
+failproofai config --status
+```
+
+<Tip>
+  Utilisez des libellés qui identifient la charge de travail et l'environnement. Les noms d'hôtes seuls sont souvent insuffisants après une mise à l'échelle automatique ou un remplacement de machine.
+</Tip>

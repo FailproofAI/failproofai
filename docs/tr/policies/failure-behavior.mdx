@@ -1,0 +1,43 @@
+---
+title: "Hata davranışı"
+description: "İlke değerlendirmesi veya yerel daemon kullanılamadığında ne olacağını anlayın."
+icon: "shield-alert"
+---
+
+Failproof AI, bir zorlama hatasının görünür olması için tasarlanmıştır; riskli çalışmaya sessizce izin verilmez.
+
+## Başarısız-kapalı bir engeli tanıla
+
+<Tabs>
+  <Tab title="Gösterge Paneli">
+    1. **Admin → enforcement** seçeneğine gidin ve makineyi açın.
+    2. Son check-in, atanan dağıtım ve bildirilen dağıtımını kontrol edin.
+    3. **Observe → policy** seçeneğine gidin ve reddedilen kararın oturumunu açın.
+    4. Nedenin daemon erişilebilirliği, sürüm uyumsuzluğu veya ilkenin kendisini bildirip bildirmediğini doğrulayın.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    npm install -g failproofai@latest
+    failproofai config
+    ```
+
+    `failproofai config` komutunu yeniden çalıştırmak, paket yükseltmesinden sonra daemon'u güncelleştirir ve yeniden başlatır.
+  </Tab>
+</Tabs>
+
+`failproofaid` kullanacak şekilde yapılandırılmış bir makinede, daemon tek değerlendiricisidir. Erişilemezse veya protokol sürümü CLI ile eşleşmezse, hook değerlendirmesi başarısız-kapalı olur. İşlem, operatörü daemon'u kontrol etmeye veya güncellemeye yönlendiren bir nedenle reddedilir.
+
+Daemon yapılandırmasından önce, hook'lar ilkeleri işlem içinde değerlendirir. Daemon yapılandırması kaydedildikten sonra, Failproof AI daemon başarısız olduğunda sessizce ikinci bir değerlendiriciye geri dönmez.
+
+## Başarısız-kapalı bir kararla yanıt ver
+
+1. `failproofai config --status` komutunu çalıştırın.
+2. Sürümler farklıysa, paketi güncelledikten sonra `failproofai config` komutunu yeniden çalıştırın.
+3. Daemon erişilemezse, hizmet durumunu ve yerel günlükleri inceleyin.
+4. Bilinen bir ilke değerlendirme yolu sağlıklı olduktan sonra, agent çalışmasını sürdürün.
+
+<Warning>
+  Engellenen işlemi tekrar tekrar denemeyin. Başarısız-kapalı bir yanıt, sistemin işlemin güvenli olduğunu tespit edemediği anlamına gelir.
+</Warning>

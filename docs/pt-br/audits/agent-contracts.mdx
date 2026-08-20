@@ -1,0 +1,82 @@
+---
+title: "Contexto do agente"
+description: "Informe às auditorias o que cada agente deve fazer, produzir e nunca fazer."
+icon: "bot"
+---
+
+O contexto do agente informa às auditorias para que cada agente existe, o que ele deve produzir e o que jamais deve fazer. O Failproof AI armazena esse contexto como um contrato de agente por agente.
+
+O contexto do agente pertence à organização, não a uma auditoria específica. Você o escreve uma vez por agente, e toda auditoria com suporte a modelos cujo escopo inclua aquele agente o utiliza.
+
+## Adicionar contexto do agente
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **Analyze → audits**, selecione **agents** e escolha o ID do agente reportado por suas sessões.
+    2. Selecione **add content** ou **edit**.
+    3. Descreva para que o agente existe, o que ele deve produzir, o que significa "concluído", com que frequência ele deve ser executado e o que jamais deve fazer.
+    4. Salve o contexto, volte ao formulário da auditoria e confirme que o agente selecionado aparece como coberto.
+
+    ![O drawer de Agents da auditoria, usado para adicionar finalidade, cadência, saídas, condições de conclusão e comportamentos proibidos de um agente.](/images/dashboard/agent-context.png)
+
+    Você também pode adicionar ou editar o contexto do agente pelo drawer **agents** ao criar ou editar uma auditoria. O contexto é salvo de forma independente e fica imediatamente disponível para todas as auditorias aplicáveis.
+  </Tab>
+  <Tab title="CLI">
+    O CLI Cloud ainda não expõe comandos de contrato. Use a API pública com uma chave que possua `audits:read` e `audits:write`:
+
+    ```bash
+    curl -X POST "https://app.befailproof.ai/v1/audits/contracts" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "agent_id": "nightly-reconciler",
+        "enabled": true,
+        "body": "# Purpose\nReconcile yesterday's payouts.\n\n## Outputs\nPublish a signed summary.\n\n## Must not\nNever modify ledger entries."
+      }'
+    ```
+
+    Liste contratos com `GET /v1/audits/contracts`; recupere um contrato com `GET /v1/audits/contracts/{id}`. A atualização via `PUT` é uma substituição completa e exige tanto `agent_id` quanto `body`.
+  </Tab>
+</Tabs>
+
+## Escreva um contexto útil
+
+Mantenha o contexto abaixo de 5.000 caracteres e torne-o verificável. Um contexto útil normalmente contém:
+
+- **Finalidade:** por que o agente existe
+- **Saídas:** artefatos ou ações que ele deve produzir
+- **Concluído quando:** a condição que torna uma execução bem-sucedida
+- **Cadência:** com que frequência ou quando ele deve ser executado
+- **Não deve:** ações e resultados que são sempre inaceitáveis
+
+```markdown
+---
+agent: nightly-reconciler
+purpose: Reconcile yesterday's payouts and publish a signed summary.
+cadence: Once daily after 02:00 UTC. Never more than once.
+---
+
+## Outputs
+- A signed reconciliation summary in the finance channel.
+
+## Done when
+- Every payout is matched or explicitly flagged.
+
+## Must not
+- Modify ledger entries. Report discrepancies instead.
+```
+
+O contexto do agente define o comportamento esperado; ele não pode dizer à análise qual conclusão chegar ou restringir quais evidências ela examina. Agentes sem contexto são auditados normalmente, mas o Failproof AI não consegue avaliar o comportamento deles em relação a intenções específicas da organização.
+
+## Pausar ou alterar o contexto do agente
+
+- Pause o contexto do agente quando as auditorias devem ignorá-lo temporariamente. A pausa é reversível.
+- Edite o contexto quando a responsabilidade do agente mudar. O novo texto se aplica às execuções futuras.
+- Verifique **last matched** quando um agente em execução nunca parecer utilizar seu contexto. Isso geralmente significa que o ID do agente não corresponde à telemetria.
+- Exclua pela API somente quando o texto precisar ser destruído permanentemente. O dashboard oferece intencionalmente a opção de pausar em vez de excluir.
+
+Cada execução de auditoria armazena o snapshot exato do contexto do agente que utilizou. Editar, pausar ou excluir o recurso de contrato atual não reescreve a base das conclusões anteriores.
+
+<Info>
+  A leitura de contratos requer `audits:read`. A criação, edição, pausa ou exclusão requer `audits:write`.
+</Info>

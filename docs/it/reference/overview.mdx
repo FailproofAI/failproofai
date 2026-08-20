@@ -1,0 +1,78 @@
+---
+title: "Integrazioni e riferimenti"
+description: "Connetti harness di agenti supportati, SDK, CLI e l'API HTTP."
+icon: "braces"
+---
+
+Scegli l'integrazione più vicina a dove il tuo agente è già in esecuzione.
+
+<Columns cols={2}>
+  <Card title="Harness di agenti" icon="plug-zap" href="/it/reference/harnesses">
+    Installa hook per CLI di agenti autonomi e di codifica supportati.
+  </Card>
+  <Card title="Agenti personalizzati" icon="python" href="/it/reference/python-sdk">
+    Strumenta le tracce per trovare i guasti negli agenti personalizzati, quindi contattaci per aggiungere la prevenzione al tuo runtime.
+  </Card>
+  <Card title="Dashboard locale" icon="monitor-cog" href="/it/reference/local-dashboard">
+    Esamina progetti locali, sessioni, attività delle policy e audit offline.
+  </Card>
+  <Card title="Failproof AI CLI" icon="terminal" href="/it/reference/failproof-cli">
+    Configura cattura locale, hook, policy, audit, distribuzione e stato della macchina.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/it/reference/cloud-cli#cli-commands">
+    Interroga e amministra sessioni Cloud, audit, problemi, avvisi, chiavi, utenti e impostazioni.
+  </Card>
+  <Card title="Evaluator SDK" icon="gauge" href="/it/reference/evaluator-sdk">
+    Valuta sessioni complete o inattive con un servizio FastAPI.
+  </Card>
+  <Card title="Policy personalizzate" icon="shield-plus" href="/it/reference/policy-sdk">
+    Crea e testa decisioni allow, instruct e deny specifiche del flusso di lavoro.
+  </Card>
+  <Card title="Self-hosting" icon="cloud-cog" href="/it/reference/self-hosting">
+    Distribuisci il piano di controllo Cloud su un cluster Kubernetes gestito dal cliente.
+  </Card>
+</Columns>
+
+Il [riferimento API HTTP](/it/reference/http-api) generato copre la superficie pubblica `/v1`. Le pagine scritte manualmente spiegano i flussi di lavoro che si estendono su più endpoint o utilizzano interfacce amministrative al di fuori di quella superficie pubblica.
+
+## Connetti un agente e verifica i dati
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Apri **Administration → Keys**, crea una chiave con `events:add` e `policies:pull`, e copia il secret.
+    2. Configura l'integrazione utilizzando la pagina corrispondente qui sopra.
+    3. Apri **Observe → Events** per confermare che gli eventi arrivano, poi **Observe → Sessions** per confermare che formano esecuzioni complete.
+    4. Filtra per l'ambiente dell'integrazione e ispeziona una sessione per i campi model, tool, error e policy necessari agli audit.
+
+    Inizia con il cassetto delle chiavi. I diritti selezionati determinano se la macchina può inviare eventi e ricevere policy gestite da Cloud.
+
+    ![Il cassetto della nuova chiave API utilizzato per concedere i permessi di inserimento degli eventi e di distribuzione delle policy.](/images/dashboard/key-create.png)
+
+    Dopo aver connesso l'integrazione, utilizza l'elenco Sessions per confermare che i suoi eventi vengono raggruppati in esecuzioni complete nell'ambiente previsto.
+
+    ![L'elenco Sessions utilizzato per verificare che un'integrazione appena connessa stia segnalando esecuzioni complete dell'agente.](/images/dashboard/sessions-list.png)
+
+    Apri una di queste sessioni prima di considerare l'integrazione completata; la traccia dovrebbe contenere le prove di model, tool, error e policy necessarie ai tuoi audit.
+  </Tab>
+  <Tab title="CLI">
+    Crea una chiave macchina, connetti il daemon Failproof e verifica la prima sessione.
+
+    ```bash
+    fp keys create agent-production \
+      --add events:add \
+      --add policies:pull
+
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+
+    failproofai flush --wait
+    fp sessions --since 1h --env production
+    fp events --since 1h --env production --limit 20
+    ```
+
+    Usa `fp --json sessions ...` quando un altro strumento consumerà il risultato. I flag globali come `--json`, `--org` e `--base-url` devono venire prima del comando.
+
+    Consulta il [riferimento Failproof AI CLI](/it/reference/failproof-cli) per i comandi locali e il [riferimento Failproof Cloud CLI](/it/reference/cloud-cli#cli-commands) per i comandi `fp`.
+  </Tab>
+</Tabs>

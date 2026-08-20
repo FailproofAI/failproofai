@@ -1,0 +1,128 @@
+---
+title: "Failproof AI Cloud 자체 호스팅"
+description: "고객 관리형 Kubernetes 클러스터에 Failproof AI 컨트롤 플레인을 배포합니다."
+icon: "cloud-cog"
+---
+
+<Note>
+  자체 호스팅은 엔터프라이즈 배포 옵션입니다. 엔터프라이즈 라이선스를 취득하려면 [Failproof AI에 문의](mailto:support@befailproof.ai)하세요.
+</Note>
+
+## 사전 요구 사항
+
+- cluster-admin 권한이 있는 Kubernetes 1.27 이상
+- Kustomize를 지원하는 `kubectl`
+- Helm 3
+- 프라이빗 `ghcr.io/agenteye-enterprise` 이미지 접근 권한
+- 대시보드용 및 인제스트용 DNS 이름 각각 1개
+- PostgreSQL 및 ClickHouse를 위한 영구 스토리지
+- cert-manager 및 Traefik, 또는 오버레이에 맞게 구성된 동등한 인그레스 및 인증서 인프라
+- 프로덕션 OTP 로그인 및 알림을 위한 SMTP
+
+소스 트리에는 AWS/EKS 지향 오버레이와 별도의 GCP/GKE 오버레이가 포함되어 있습니다. 인증서, 로드 밸런서, 백업 관련 지침을 혼용하지 마세요. GKE는 자체 DNS-01, GCS, 오토스케일링 설정을 사용합니다.
+
+## 배포 순서
+
+<Steps>
+  <Step title="클러스터 준비">
+    cert-manager와 퍼블릭/대시보드 인그레스 컨트롤러를 설치하고 로드 밸런서를 확인한 후, 네임스페이스, 이미지 풀 자격 증명, 데이터베이스 자격 증명, 부트스트랩 관리자 키, 인증/SMTP 시크릿을 생성합니다.
+  </Step>
+  <Step title="퍼블릭 도메인 설정">
+    오버레이의 생성된 도메인 환경 파일에서 `INGEST_DOMAIN`과 `DASHBOARD_DOMAIN`을 설정하고, 해당 로드 밸런서를 가리키는 DNS 레코드를 생성합니다.
+  </Step>
+  <Step title="플랫폼 오버레이 적용 및 검증">
+    customer/EKS 또는 GCP 오버레이를 사용합니다. 렌더링된 Kustomize 출력을 확인하고 적용한 후, 머신을 등록하기 전에 모든 워크로드와 인증서가 의도한 상태에 도달했는지 확인합니다.
+  </Step>
+  <Step title="접근 권한 및 인제스트 부트스트랩">
+    보호된 관리자로 로그인하고 조직 범위의 머신 키를 생성한 다음, 퍼블릭 인제스트 엔드포인트를 통해 소규모 테스트 세션을 전송합니다.
+  </Step>
+</Steps>
+
+## 필수 및 선택 서비스
+
+| 컴포넌트 | 요구 사항 |
+| --- | --- |
+| ClickHouse | 필수. 표준 이벤트 스토어 없이는 서버가 시작되지 않습니다. |
+| PostgreSQL | 사용자, 조직, 저장 객체 및 컨트롤 플레인 상태 관리에 필수입니다. |
+| Redis | 선택 사항. Redis를 사용할 수 없을 때 서버와 대시보드는 데이터베이스 기반 동작으로 저하됩니다. |
+| SMTP | 개발 환경에서는 선택 사항이나, 프로덕션 이메일 OTP 및 알림 전송에는 필수입니다. |
+| Evaluator | 선택 사항. `EVALUATOR_ENDPOINT` 없이는 자동 평가가 비활성화됩니다. |
+| Assistant/audit LLM | 선택 사항. LLM 연결이 설정되기 전까지 어시스턴트 및 LLM 기반 감사 기능은 작동하지 않습니다. |
+| 오브젝트 스토리지 백업 | PostgreSQL 및 ClickHouse 백업 아카이브에 강력히 권장됩니다. |
+
+### 감사 용량 및 실패 전달
+
+가용한 경우 전용 audit-agent 배포에서 감사를 실행하세요. 각 audit-agent 파드는 기본적으로 하나의 조사를 처리합니다. 파드당 동시성을 높이는 대신 레플리카를 늘려 처리량을 확장하되, 메모리도 함께 증가시켜야 합니다. 서버는 `서버 레플리카 수 × AUDIT_WORKERS`만큼의 감사를 동시에 디스패치할 수 있으므로, 디스패처 용량은 audit-agent 플릿을 모두 채울 만큼 충분해야 합니다.
+
+모든 audit-agent 슬롯이 사용 중이면, 감사는 최대 케이던스의 1/4(최대 6시간) 동안 대기 및 재시도합니다. 슬롯이 확보되지 않으면 해당 실행은 발견 사항 없이 완료되고 실패 이메일이 발송됩니다. "busy" 실패가 반복되면 audit-agent 레플리카를 늘리거나 스케줄 앵커 간격을 더 넓게 설정해야 합니다. "shutting down" 실패가 반복되면 용량 부족이 아니라 파드가 불안정하거나 롤아웃이 루프 상태임을 나타냅니다.
+
+실패 알림을 받으려면 이메일 채널과 SMTP가 활성화되어 있어야 합니다. 감사에 설정된 수신자를 우선 사용하며, 이메일 채널이 없는 경우 `alerts.email_default_recipients`로 폴백합니다.
+
+## 배포 검증
+
+<Tabs>
+  <Tab title="대시보드">
+    1. 설정된 대시보드 도메인을 열고 관리자 OTP 흐름을 완료한 후, 조직 이름과 슬러그를 확인합니다.
+    2. **Administration → Keys**로 이동하여 범위가 좁게 설정된 머신 키를 생성합니다.
+    3. 테스트 세션을 전송한 후 **Observe → Events** 및 **Observe → Sessions**에서 확인합니다.
+    4. 알림 채널을 테스트하고, 설정된 경우 수동 평가 및 감사도 테스트합니다.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    kubectl get pods -n agenteye
+    kubectl get certificates -n agenteye
+    kubectl logs -n agenteye deploy/server --tail=100
+
+    fp --base-url https://failproof.example.com login
+    fp --base-url https://failproof.example.com whoami
+    fp --base-url https://failproof.example.com usage
+    ```
+
+    프로덕션 머신을 등록하기 전에 퍼블릭 헬스 엔드포인트와 인증된 `/v1` 요청 1건을 검증하세요.
+  </Tab>
+</Tabs>
+
+## 인증 및 이메일
+
+대시보드는 이메일과 일회용 코드를 사용합니다. SMTP가 없는 경우, 개발 환경 배포에서는 OTP 코드를 서버 출력에 기록합니다. `SMTP_HOST`가 설정된 경우, 사용자 이름, 비밀번호, 발신자는 그룹으로서 모두 필요하며, 그렇지 않으면 서버가 시작되지 않습니다.
+
+`SMTP_TLS`는 불리언 값입니다. 지원되는 암호화 전송 방식은 STARTTLS이며, 일반적으로 포트 587을 사용합니다. 포트 465의 암묵적 SMTPS는 현재 서버 전송 방식에서 지원되지 않습니다.
+
+OTP, 알림, 인시던트, 감사 이메일이 딥 링크에 이를 사용하므로 퍼블릭 대시보드 URL을 올바르게 설정하세요. 조직 멤버십은 코드 요청 가능 대상을 제어하며, 각 조직은 **Administration → Settings**에서 자체 멤버 로그인을 추가로 제한할 수 있습니다.
+
+## 멀티 테넌트 요구 사항
+
+두 번째 조직을 생성하기 전에 강력하고 안정적인 조직 ClickHouse 파생 시크릿을 설정하고, 모든 서버 레플리카에서 동일하게 유지하세요. 조율된 마이그레이션 없이 이를 교체하면 조직별 ClickHouse 사용자가 고아 상태가 될 수 있습니다.
+
+인스턴스 관리자 리스너를 내부용으로 유지하세요. 제공되는 운영자 콘솔은 선택적 기능으로, 퍼블릭 인그레스가 아닌 `kubectl port-forward`용으로 설계되었습니다. 이를 활성화하려면 자체 강력한 API 키, 슈퍼 관리자 메일박스, 그리고 정상 작동하는 SMTP 이중 인증 전달이 필요합니다.
+
+### 비상 조직 CLI
+
+`agenteye-orgctl`은 서버 이미지 내에 포함되어 있으며 PostgreSQL 및 ClickHouse와 직접 통신합니다. 퍼블릭 서버나 운영자 콘솔이 비정상 상태일 때도 사용 가능합니다.
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org create --slug acme --name "Acme Corp"
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email ops@acme.com --set admin --protected
+```
+
+지원되는 조직 작업으로는 생성, 목록 조회, 이름 변경, 소프트 삭제, 복구, ClickHouse 사용자 재프로비저닝, 청구 날짜 관리, 기능 플래그, 비가역적 삭제가 있습니다. 멤버 작업으로는 추가, 목록 조회, 업데이트, 제거, 권한 재정의, 보호된 관리자 상태 관리가 있습니다.
+
+삭제 전에 소프트 삭제를 먼저 사용하세요. `org purge`는 비가역적이며 조직이 먼저 삭제된 상태여야 합니다. 보호된 멤버는 운영자가 명시적으로 보호를 해제하기 전까지 조직의 일반 Users 페이지를 통해 제거하거나 강등할 수 없습니다.
+
+## 프로덕션 준비 체크리스트
+
+- 인제스트 및 대시보드 DNS가 각각 의도된 인그레스 경로로 해석됩니다.
+- TLS가 유효합니다. 배포 환경에서 필요한 경우 인제스트에 상호 TLS를 사용하세요.
+- PostgreSQL 및 ClickHouse 볼륨에 용량 알림이 설정되어 있습니다.
+- 두 데이터 스토어 모두 백업에 포함되어 있으며, 복구 절차가 검증되어 있습니다.
+- 인제스트 무음, 워크로드 실패, 인증서 만료, 스토리지 압박, 오래된 백업에 대한 헬스 체크 알림이 설정되어 있습니다.
+- 기존 클러스터 로그 파이프라인을 중복하지 않고 구조화된 로그가 수집됩니다.
+- 측정된 큐 증거 없이 Evaluator, 감사, 알림 워커 동시성이 변경되지 않았습니다.
+- 업그레이드 전에 고정된 애플리케이션 릴리스와 롤백 절차가 기록되어 있습니다.
+
+<Warning>
+  배포 매니페스트에는 플랫폼별 보안 및 가용성 가정이 포함되어 있습니다. 적용하기 전에 플랫폼 팀과 함께 렌더링된 리소스, 네트워크 정책, 인그레스 노출, 시크릿 참조, 스토리지 클래스, 중단 버짓, 백업 대상을 검토하세요.
+</Warning>

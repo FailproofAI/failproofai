@@ -1,0 +1,40 @@
+---
+title: "관리"
+description: "액세스, 사용량, 조직, 보안을 안정성 워크플로와 분리하여 운영합니다."
+icon: "settings-2"
+---
+
+관리 섹션에는 팀 전체에서 Failproof AI를 운영하는 데 필요한 제어 기능이 포함되어 있습니다. 대부분의 사용자는 Sessions, Audits, Policies에서 작업하면 충분하며, 관리자는 이 섹션을 통해 액세스 권한과 운영 범위를 관리합니다.
+
+<Tabs>
+  <Tab title="대시보드">
+    Cloud 사이드바의 **Admin** 섹션에서 **policy editor**, **enforcement**, **usage**, **keys**, **users**, **settings**를 사용할 수 있습니다. 잠금 표시가 있는 항목은 해당 읽기 권한이 계정에 없음을 의미합니다.
+
+    ![policy editor, enforcement, usage, keys, users, settings가 포함된 Cloud 사이드바의 Admin 섹션.](/images/dashboard/admin-navigation.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp whoami
+    fp orgs current
+    fp orgs perms
+    fp usage
+    ```
+
+    전역 옵션은 명령어 앞에 배치합니다. 예: `fp --org reliability-team --json usage`.
+  </Tab>
+</Tabs>
+
+<Columns cols={2}>
+  <Card title="사용량" icon="chart-no-axes-combined" href="/ko/admin/usage">
+    청구 기간 및 조직별 사용량을 확인합니다.
+  </Card>
+  <Card title="키 및 권한" icon="key-round" href="/ko/admin/keys-and-permissions">
+    머신과 자동화에 필요한 권한만 부여합니다.
+  </Card>
+  <Card title="사용자 및 조직" icon="users" href="/ko/admin/users-and-organizations">
+    멤버십, 기본값, 조직 경계를 관리합니다.
+  </Card>
+  <Card title="설정 및 보안" icon="lock-keyhole" href="/ko/admin/settings-and-security">
+    운영 설정, 데이터 처리, 배포 보안을 구성합니다.
+  </Card>
+</Columns>

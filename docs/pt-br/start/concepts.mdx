@@ -1,0 +1,26 @@
+---
+title: "Conceitos principais"
+description: "O pequeno conjunto de conceitos usados em toda a plataforma Failproof AI."
+icon: "boxes"
+---
+
+| Conceito | O que significa | O que você pode alcançar |
+| --- | --- | --- |
+| Session | Uma tarefa ou execução de agente | Reconstruir um resultado individual |
+| Event | Uma ação registrada em uma session | Inspecionar uma chamada de modelo, uso de ferramenta, erro, ação humana ou decisão de política |
+| Trace | A visão ordenada e aninhada da session | Entender causalidade em vez de ler logs desconectados |
+| Evaluation | Uma pontuação ou julgamento sobre uma session | Acompanhar qualidade, conformidade, custo ou latência continuamente |
+| Audit | Uma revisão de uma população selecionada de sessions | Buscar padrões de falha com um objetivo e cadência definidos |
+| Finding | Uma falha descoberta por um audit com base em evidências | Ver o modo de falha, severidade e sessions afetadas |
+| Issue | Um registro de resposta durável | Atribuir, discutir e resolver um finding ou incidente de alerta |
+| Alert | Uma regra que detecta recorrência | Notificar os responsáveis quando uma condição conhecida voltar a ocorrer |
+| Policy | Uma regra avaliada durante a atividade do agente | Observar, bloquear ou redirecionar comportamentos arriscados |
+| Deployment | Um rollout versionado de policy para máquinas | Controlar onde uma policy é executada e revertê-la com segurança |
+
+## O ciclo de confiabilidade
+
+Comece pelas evidências. Uma session mostra o que aconteceu. Um audit determina se é um erro isolado ou um padrão. Um finding identifica o modo de falha; um issue assume a responsabilidade pela resposta. Uma policy impede o mesmo comportamento, enquanto alerts avisam se a condição voltar a ocorrer.
+
+<Warning>
+  Um `failproofai audit` local escaneia o histórico local do agente. Um Cloud audit recorrente revisa sessions armazenadas no Failproof AI Cloud. São fluxos de trabalho separados, com escopo e agendamento distintos.
+</Warning>

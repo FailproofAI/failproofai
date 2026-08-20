@@ -1,0 +1,43 @@
+---
+title: "Dashboards"
+description: "Verfolge die Zuverlässigkeitssignale, die für einen Agenten oder Workflow relevant sind."
+icon: "layout-dashboard"
+---
+
+Dashboards kombinieren gespeicherte Abfragen zu einer operativen Ansicht. Baue eines rund um eine Entscheidung auf, die jemand treffen soll – nicht rund um alle verfügbaren Metriken.
+
+## Dashboard erstellen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Analyze → Queries**, erstelle oder öffne eine gespeicherte Abfrage und validiere ihr Ergebnis.
+    2. Wähle **add to dashboard**, dann wähle ein bestehendes Dashboard oder erstelle eines unter **Analyze → Dashboards**.
+    3. Öffne das Dashboard, wechsle in den Bearbeitungsmodus, ordne die Kacheln an und speichere das Layout.
+    4. Kehre zur Abfrage zurück, wenn du die Daten oder Filter hinter einer Kachel ändern möchtest.
+
+    ![Ein Dashboard, das aus gespeicherten Abfragen für Event-Volumen, Fehler, Latenz und Modell-Token-Nutzung zusammengestellt ist.](/images/dashboard/dashboard-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    Dashboard-CRUD ist im aktuellen Cloud CLI nicht verfügbar. Verwende die CLI, um die gespeicherte Abfrage zu erstellen und zu überprüfen, und füge sie anschließend über die Benutzeroberfläche einem Dashboard hinzu.
+
+    ```bash
+    fp query schema
+    fp query create "production error rate" --sql "SELECT ..."
+    fp query run <query-id>
+    ```
+  </Tab>
+</Tabs>
+
+Nützliche Dashboard-Gruppen umfassen:
+
+- **Models:** Volumen, Latenz, Token-Nutzung, Fehlerrate und Evaluierungswerte.
+- **Evaluations:** Erfolgsrate und Score-Trends nach Agent oder Umgebung.
+- **Tools:** Aufrufvolumen, Fehlerrate, Dauer und wiederholte Aufrufe.
+- **Hooks and policies:** Entscheidungen, Ablehnungen und Policy-Trefferrate.
+- **Custom workflow metrics:** Ergebnisse aus eigenen Event-Feldern und SQL.
+
+Beginne mit einer gespeicherten Abfrage, validiere ihr Ergebnis und füge sie dann als Kachel hinzu. Halte Produktions- und Entwicklungsfilter explizit, damit Test-Traffic keine Regression verdeckt.
+
+<Tip>
+  Weise jedem Dashboard einen Verantwortlichen und eine Leitfrage zu, z. B. „Ist die Zuverlässigkeit des checkout-agent schlechter als letzte Woche?"
+</Tip>

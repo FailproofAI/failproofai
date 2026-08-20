@@ -1,0 +1,72 @@
+---
+title: "カスタムポリシー"
+description: "エージェントワークフロー固有の障害モードに対してポリシーを作成します。"
+icon: "shield-plus"
+---
+
+`.failproofai/policies/` 配下に `policies.js`、`policies.mjs`、または `policies.ts` で終わるファイルを作成してください。規約ファイルはプロジェクトスコープおよびユーザースコープで自動的に読み込まれます。
+
+## クラウド公開前にポリシーをテストする
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. 1台のテストマシンにカスタムポリシーをインストールし、マッチするアクションと正当な非マッチの両方をトリガーします。
+    2. **Observe → policy** に移動して、2つの判定結果を比較します。
+    3. リンクされた各セッションを開き、イベントペイロードにルールの根拠となる十分な証拠が含まれていることを確認します。
+    4. 動作が正しければ、レビュー済みのソースを **Admin → policy editor** に移動してバージョンを公開します。
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies --install --custom ./security.policies.ts \
+      --cli claude --scope project
+    failproofai policies
+    ```
+
+    `.failproofai/policies/` 配下の規約ファイルは `--custom` なしで読み込まれます。壊れたモジュールでバリデーションが失敗するようにする場合は、CI に明示的なインストールコマンドを記述してください。
+  </Tab>
+</Tabs>
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+これは `production/config.yml`、`/srv/production/config.yml`、`/srv/production`、および `C:\\production\\config.yml` に対して `Write` と `Edit` の両方でマッチします。`production` は完全なパスセグメントである必要があるため、`production-backup` のような名前にはマッチしません。
+
+明示的なファイルのバリデーションとインストール:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts
+```
+
+ポリシーコンテキストには、イベントタイプ、正規化されたペイロード、ツール名と入力、セッションメタデータ、パラメーター、および利用可能な場合はソース CLI が含まれます。
+
+## 失敗パスのテスト
+
+エントリファイルまたはそれがインポートするローカルモジュールを変更した後にバリデーションを実行します:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+strict な CLI パスは、ファイルが存在しない場合、構文エラー、未解決のインポート、トップレベルの例外、およびモジュールロードのタイムアウトで失敗します。強制適用時に壊れたカスタムファイルはログに記録されてスキップされるため、組み込みポリシーは引き続き動作します。ロード警告は期待された強制適用の喪失として扱い、本番ログでアラートを発報してください。
+
+明示的なポリシー、規約ポリシー、クラウド管理ポリシーにわたってグローバルに一意な名前を使用してください。ポリシー関数は決定論的に保ち、外部呼び出しには短いタイムアウトを設け、すべてのパスで意図的な `allow`、`instruct`、または `deny` を返すようにしてください。
+
+<Warning>
+  カスタムポリシーは強制適用コードです。期待されるマッチだけでなく、フィールドの欠落、別のツール名、不正な入力についてもテストしてください。
+</Warning>

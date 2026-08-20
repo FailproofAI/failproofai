@@ -44,6 +44,76 @@ describe("translateContent", () => {
     streamMock.mockReset();
   });
 
+  it("ignores a non-positive TRANSLATE_RUNAWAY_RATIO", async () => {
+    // `parseInt(...) || 6` accepted a negative, and a negative ratio makes
+    // `output > source * ratio` true for EVERY response — so a genuinely
+    // oversized page would be misread as a runaway and burn all three attempts
+    // arriving exactly where it started. Re-imported under the hostile value:
+    // the guard must fall back to the default and still call this NOT retryable.
+    const prev = process.env.TRANSLATE_RUNAWAY_RATIO;
+    process.env.TRANSLATE_RUNAWAY_RATIO = "-1";
+    vi.resetModules();
+    try {
+      const fresh = await import("@/scripts/translate-docs/translator");
+      mockFinalMessage({
+        stop_reason: "max_tokens",
+        content: [{ type: "text", text: "big…" }],
+        usage: { input_tokens: 60000, output_tokens: 64000 },
+      });
+      let err!: Error & { retryable?: boolean };
+      try {
+        await fresh.translateContent("y".repeat(200000), "vi", "Vietnamese");
+      } catch (e) {
+        err = e as Error & { retryable?: boolean };
+      }
+      expect(err.retryable).toBe(false);
+      expect(err.message).toMatch(/source too large/);
+    } finally {
+      if (prev === undefined) delete process.env.TRANSLATE_RUNAWAY_RATIO;
+      else process.env.TRANSLATE_RUNAWAY_RATIO = prev;
+      vi.resetModules();
+    }
+  });
+
+  it("marks a truncation whose output dwarfs the source as retryable", async () => {
+    // reference/cloud-cli.mdx [vi], on the box, 2026-08-18: a 16 KB source
+    // emitted 64 000 output tokens. That is a repetition loop, not a page too
+    // big to translate — and it failed the whole nightly run because the throw
+    // was treated as a size problem no resample could fix.
+    mockFinalMessage({
+      stop_reason: "max_tokens",
+      content: [{ type: "text", text: "loop…" }],
+      usage: { input_tokens: 5000, output_tokens: 64000 },
+    });
+    let err!: Error & { retryable?: boolean };
+    try {
+      await translateContent("x".repeat(16000), "vi", "Vietnamese");
+    } catch (e) {
+      err = e as Error & { retryable?: boolean };
+    }
+    expect(err.message).toMatch(/runaway sample/);
+    expect(err.retryable).toBe(true);
+  });
+
+  it("leaves a genuinely oversized source NOT retryable", async () => {
+    // Output within a small multiple of the source is a page that really does
+    // not fit. Retrying it would burn the whole attempt budget to land in the
+    // same place, so the old fail-loud behaviour stands.
+    mockFinalMessage({
+      stop_reason: "max_tokens",
+      content: [{ type: "text", text: "big…" }],
+      usage: { input_tokens: 60000, output_tokens: 64000 },
+    });
+    let err!: Error & { retryable?: boolean };
+    try {
+      await translateContent("y".repeat(200000), "vi", "Vietnamese");
+    } catch (e) {
+      err = e as Error & { retryable?: boolean };
+    }
+    expect(err.message).toMatch(/source too large/);
+    expect(err.retryable).toBe(false);
+  });
+
   it("throws when the model truncates the output at max_tokens", async () => {
     // A truncated response leaves malformed MDX (unbalanced braces) that would
     // otherwise be written to disk and cached, then fail `mintlify validate`.
@@ -210,24 +280,51 @@ describe("translateValidated", () => {
     expect(result.attempts).toBe(2);
   });
 
-  it("does not retry a response truncated at max_tokens", async () => {
-    // translateContent throws on max_tokens before returning; that is not a
-    // validity failure, so translateValidated must let it propagate uncaught.
+  it("does not retry a truncation caused by a genuinely oversized source", async () => {
+    // Output within a small multiple of the source is a page that really does
+    // not fit; retrying spends the whole budget to land in the same place. Note
+    // `base.source` is what sets the ratio — a large source with a large output
+    // is the not-retryable shape.
     mockFinalMessage({
       stop_reason: "max_tokens",
       content: [{ type: "text", text: "partial…" }],
-      usage: { input_tokens: 1, output_tokens: 64000 },
+      usage: { input_tokens: 60000, output_tokens: 64000 },
     });
 
     await expect(
       translateValidated({
         ...base,
+        source: "z".repeat(200000),
         lang: "he",
         langName: "Hebrew",
         validate: async () => null,
       }),
-    ).rejects.toThrow(/truncated at max_tokens/);
+    ).rejects.toThrow(/source too large/);
     expect(streamMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("DOES retry a truncation whose output dwarfs the source", async () => {
+    // The narrowing of the rule above. A small source that emitted 64k tokens
+    // is a repetition loop, and a resample is exactly what fixes it — the
+    // failure that killed the 2026-08-18 nightly run and discarded 782 good
+    // pages with it. First draw loops, second draw succeeds.
+    streamMock.mockReturnValueOnce({
+      finalMessage: async () => ({
+        stop_reason: "max_tokens",
+        content: [{ type: "text", text: "loop…" }],
+        usage: { input_tokens: 10, output_tokens: 64000 },
+      }),
+    });
+    queueFinalMessage("# translated", { input_tokens: 10, output_tokens: 40 });
+
+    const result = await translateValidated({
+      ...base,
+      lang: "vi",
+      langName: "Vietnamese",
+      validate: async () => null,
+    });
+    expect(result.rendered).toContain("# translated");
+    expect(streamMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not retry when the request itself throws", async () => {

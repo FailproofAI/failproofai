@@ -1,0 +1,351 @@
+---
+title: "Failproof Cloud CLI"
+description: "Failproof AI Cloud के साथ fp का उपयोग करके क्वेरी करने और प्रशासन के लिए संपूर्ण संदर्भ।"
+icon: "cloud-cog"
+---
+
+`fp` का उपयोग Cloud टेलीमेट्री का निरीक्षण करने और ऑडिट, फाइंडिंग, समस्याएं, अलर्ट, कुंजियाँ, उपयोगकर्ता, क्वेरी और सेटिंग्स को प्रबंधित करने के लिए करें। स्थानीय हुक, नीतियां, कैप्चर और मशीन नामांकन के लिए [`failproofai`](/hi/reference/failproof-cli) का उपयोग करें।
+
+रिलीज़ किए गए Cloud CLI को एक अलग उपकरण के रूप में स्थापित करें:
+
+```bash
+uv tool install fp-cli
+fp version
+```
+
+## साइन इन करें
+
+```bash
+fp login
+fp whoami
+```
+
+## सिंटैक्स
+
+```text
+fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
+```
+
+ग्लोबल विकल्प कमांड से पहले आने चाहिए:
+
+```bash
+fp --json sessions --since 24h
+```
+
+टर्मिनल सहायता के लिए `fp COMMAND --help` या `fp COMMAND SUBCOMMAND --help` चलाएं।
+
+## CLI कमांड
+
+### प्रमाणीकरण
+
+| कमांड | उद्देश्य | विकल्प |
+| --- | --- | --- |
+| `fp login` | ईमेल किए गए एक बार के कोड के साथ साइन इन करें और एक संगठन चुनें। | `--email`, `-e`; `--org`; `--force` |
+| `fp logout` | सहेजे गए उपयोगकर्ता सत्र को रद्द करें और हटाएं। | — |
+| `fp whoami` | वर्तमान पहचान, प्रमाणीकरण मोड, संगठन और अनुमतियां दिखाएं। | — |
+| `fp version` | स्थापित CLI संस्करण दिखाएं। | — |
+| `fp help` | शीर्ष-स्तरीय कमांड सहायता दिखाएं। | — |
+
+```bash
+fp login --email you@example.com --org reliability-team
+fp whoami
+```
+
+### घटनाएं
+
+```text
+fp events [OPTIONS]
+```
+
+व्यक्तिगत एजेंट घटनाओं को सूचीबद्ध करता है। डिफ़ॉल्ट light फीड raw पेलोड को बाहर करता है; `--full` का उपयोग केवल सीमित जांच के लिए करें।
+
+| विकल्प | विवरण |
+| --- | --- |
+| `--limit`, `-n <n>` | अधिकतम कुल पंक्तियां। डिफ़ॉल्ट: `50`। |
+| `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, या `7d`। |
+| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC रेंज; `--since` को ओवरराइड करता है। |
+| `--env <value>` | पर्यावरण फ़िल्टर; दोहराएं या कॉमा से अलग करें। |
+| `--event-type <value>` | ईवेंट-प्रकार फ़िल्टर; दोहराएं या कॉमा से अलग करें। |
+| `--agent-id <value>` | एजेंट फ़िल्टर; दोहराएं या कॉमा से अलग करें। |
+| `--session-id <value>` | सत्र फ़िल्टर; दोहराएं या कॉमा से अलग करें। |
+| `--search <text>` | पेलोड टेक्स्ट खोज; दोहराई जा सकती है, कोई भी शब्द मेल खाता है। |
+| `--order asc\|desc` | समय क्रम। डिफ़ॉल्ट: सबसे नया पहले। |
+| `--all` | `--limit` तक स्वचालित पेजिनेशन। |
+| `--cursor <token>` | अपारदर्शी कर्सर से फिर से शुरू करें। |
+| `--page-size <n>` | `--all` के साथ प्रति अनुरोध पंक्तियां; अधिकतम `200`। |
+| `--full` | भारी इवेंट एंडपॉइंट के माध्यम से raw पेलोड शामिल करें। |
+| `--fields <csv>` | केवल चयनित फ़ील्ड लौटाएं; `payload` का अनुरोध full मोड को सक्षम करता है। |
+
+```bash
+fp events --session-id <session-id> --order asc --all
+fp --json events --full --session-id <session-id> --all
+```
+
+### सत्र
+
+```text
+fp sessions [OPTIONS]
+```
+
+| विकल्प | विवरण |
+| --- | --- |
+| `--limit`, `-n <n>` | अधिकतम कुल पंक्तियां। डिफ़ॉल्ट: `50`। |
+| `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, या `7d`। |
+| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC रेंज; `--since` को ओवरराइड करता है। |
+| `--env <value>` | पर्यावरण फ़िल्टर; दोहराएं या कॉमा से अलग करें। |
+| `--status <value>` | `done`, `error`, या `timeout`; दोहराएं या कॉमा से अलग करें। |
+| `--agent-id <value>` | किसी भी चयनित एजेंट को शामिल करने वाले सत्रों से मेल खाएं। |
+| `--session-id <value>` | सत्र फ़िल्टर; दोहराएं या कॉमा से अलग करें। |
+| `--all` | `--limit` तक स्वचालित पेजिनेशन। |
+| `--cursor <token>` | अपारदर्शी कर्सर से फिर से शुरू करें। |
+| `--page-size <n>` | `--all` के साथ प्रति अनुरोध पंक्तियां; अधिकतम `200`। |
+| `--fields <csv>` | केवल चयनित फ़ील्ड लौटाएं। |
+| `--full-ids` | टर्मिनल आउटपुट में सत्र IDs को छोटा न करें। |
+| `--agents` | बहु-एजेंट सत्रों के लिए एजेंट रोस्टर का विस्तार करें। |
+
+### मूल्यांकन
+
+```text
+fp evals [OPTIONS]
+```
+
+| विकल्प | विवरण |
+| --- | --- |
+| `--aggregate` | व्यक्तिगत मूल्यांकन के बजाय कुल और प्रति-स्कोर आंकड़े दिखाएं। |
+| `--limit`, `-n <n>` | अधिकतम सूची पंक्तियां। डिफ़ॉल्ट: `50`। |
+| `--since`, `--from`, `--to` | समय रेंज चुनें। |
+| `--env`, `--status`, `--agent-id`, `--session-id` | एक सटीक मान के लिए प्रत्येक फ़िल्टर तक सीमित करें। |
+| `--score KEY:MIN..MAX` | स्कोर रेंज; दोहराई जा सकती है और सभी रेंज से मेल खानी चाहिए। |
+| `--all`, `--cursor`, `--page-size` | सूची पेजिनेशन को नियंत्रित करें। |
+| `--fields <csv>` | केवल चयनित फ़ील्ड लौटाएं। |
+| `--full-ids` | संपूर्ण सत्र IDs दिखाएं। |
+| `--scores-full` | टर्मिनल आउटपुट में प्रत्येक स्कोर दिखाएं। |
+
+### त्रुटियां
+
+```text
+fp errors [OPTIONS]
+```
+
+| विकल्प | विवरण |
+| --- | --- |
+| `--aggregate` | पंक्तियों को सूचीबद्ध करने के बजाय मेल खाने वाली त्रुटियों को सारांशित करें। |
+| `--limit`, `-n <n>` | अधिकतम सूची पंक्तियां। डिफ़ॉल्ट: `50`। |
+| `--since`, `--from`, `--to` | समय रेंज चुनें। |
+| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | त्रुटि जनसंख्या को सीमित करें। |
+| `--search <text>` | पेलोड टेक्स्ट खोजें; दोहराई जा सकती है। |
+| `--order asc\|desc` | समय क्रम। |
+| `--all`, `--cursor`, `--page-size` | सूची पेजिनेशन को नियंत्रित करें। |
+| `--fields <csv>` | केवल चयनित फ़ील्ड लौटाएं। |
+| `--full-ids` | संपूर्ण सत्र IDs दिखाएं। |
+
+### उपयोग और फ़िल्टर मान
+
+| कमांड | उद्देश्य |
+| --- | --- |
+| `fp usage` | वर्तमान मीटरिंग विंडो के लिए उपयोग दिखाएं। |
+| `fp list envs` | देखे गए पर्यावरणों को सूचीबद्ध करें। |
+| `fp list agents` | देखे गए एजेंट IDs को सूचीबद्ध करें। |
+| `fp list event_types` | ईवेंट प्रकारों को सूचीबद्ध करें। |
+| `fp list score_filters` | मूल्यांकन स्कोर कुंजियों को सूचीबद्ध करें। |
+| `fp list models` | मॉडल नामों को सूचीबद्ध करें। |
+| `fp list hooks` | हुक नामों को सूचीबद्ध करें। |
+| `fp list tools` | उपकरण नामों को सूचीबद्ध करें। |
+| `fp list error_types` | त्रुटि प्रकारों को सूचीबद्ध करें। |
+
+### संगठन
+
+| कमांड | उद्देश्य |
+| --- | --- |
+| `fp orgs list` | सुलभ संगठनों को सूचीबद्ध करें। |
+| `fp orgs switch [SLUG]` | एक सक्रिय संगठन को सहेजें; छोड़ा जाने पर प्रॉम्प्ट करता है। |
+| `fp orgs current` | सक्रिय संगठन दिखाएं। |
+| `fp orgs perms` | सक्रिय संगठन में आपकी अनुमतियां दिखाएं। |
+
+### API कुंजियां
+
+| कमांड | उद्देश्य | विकल्प |
+| --- | --- | --- |
+| `fp keys list` | संगठन कुंजियों को सूचीबद्ध करें। | `--show-id`; `--fields <csv>` |
+| `fp keys show NAME` | एक कुंजी और इसकी अनुदान दिखाएं। | — |
+| `fp keys create NAME` | एक कुंजी बनाएं और इसका रहस्य एक बार प्रकट करें। | `--permission-set`; `--add`; `--remove` |
+| `fp keys update NAME` | अनुमति सेट को बदलें या अनुदान को समायोजित करें। | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp keys regenerate NAME` | रहस्य को घुमाएं और प्रतिस्थापन को एक बार प्रकट करें। | `--yes`, `-y` |
+| `fp keys disable NAME` | एक कुंजी को स्थायी रूप से रद्द करें। | `--yes`, `-y` |
+
+अनुमति टोकन `resource:action` का उपयोग करते हैं, जैसे `events:add`। `--add` को दोहराएं, टोकन को कॉमा से अलग करें, या `events:read.add` जैसी डॉटेड कार्रवाई का उपयोग करें।
+
+### क्वेरीज़
+
+| कमांड | उद्देश्य | विकल्प |
+| --- | --- | --- |
+| `fp query list` | सहेजी गई क्वेरीज़ को सूचीबद्ध करें। | `--show-id`; `--fields <csv>` |
+| `fp query show NAME` | एक क्वेरी दिखाएं। | — |
+| `fp query create NAME` | एक क्वेरी सहेजें। | `--sql <text\|@file>`; `--description` |
+| `fp query update NAME` | क्वेरी को अपडेट या नाम बदलें। | `--name`; `--sql`; `--description`; `--yes`, `-y` |
+| `fp query delete NAME` | एक सहेजी गई क्वेरी हटाएं। | `--yes`, `-y` |
+| `fp query run [NAME]` | सहेजी गई क्वेरी या ad-hoc SQL चलाएं। | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
+| `fp query schema [TABLE]` | क्वेरी योग्य तालिकाओं को सूचीबद्ध करें या एक तालिका का निरीक्षण करें। | — |
+
+### उपयोगकर्ता
+
+| कमांड | उद्देश्य | विकल्प |
+| --- | --- | --- |
+| `fp users list` | संगठन सदस्यों को सूचीबद्ध करें। | `--active-only`; `--show-id` |
+| `fp users show EMAIL` | एक सदस्य और उनकी अनुदान दिखाएं। | — |
+| `fp users create EMAIL` | एक सदस्य जोड़ें। | `--permission-set`; `--add`; `--remove` |
+| `fp users update EMAIL` | सदस्य की अनुदान बदलें। | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp users disable EMAIL` | साइन-इन को अक्षम करें। | `--yes`, `-y` |
+| `fp users enable EMAIL` | साइन-इन को फिर से सक्षम करें। | `--yes`, `-y` |
+
+### सेटिंग्स
+
+| कमांड | उद्देश्य | विकल्प |
+| --- | --- | --- |
+| `fp settings list` | संगठन सेटिंग्स और वर्तमान मान सूचीबद्ध करें। | — |
+| `fp settings schema` | स्वीकृत मान और विवरण दिखाएं। | — |
+| `fp settings set KEY` | मौजूदा सेटिंग बदलें। | `--value`, `--json-value`, `--file` में से बिल्कुल एक; वैकल्पिक `--yes`, `-y` |
+
+### अलर्ट
+
+| कमांड | उद्देश्य | विकल्प |
+| --- | --- | --- |
+| `fp alerts list` | अलर्ट नियमों को सूचीबद्ध करें। | `--show-id` |
+| `fp alerts show NAME` | एक अलर्ट दिखाएं। | — |
+| `fp alerts create NAME` | एक अलर्ट बनाएं। | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
+| `fp alerts update NAME` | अलर्ट को अपडेट या नाम बदलें। | विकल्प बनाएं जमा `--name`; `--yes`, `-y` |
+| `fp alerts delete NAME` | एक अलर्ट हटाएं। | `--yes`, `-y` |
+| `fp alerts test NAME` | एक परीक्षण सूचना भेजें। | `--channels`; `--yes`, `-y` |
+
+अलर्ट गंभीरताएं `info`, `warning`, और `critical` हैं। ट्रिगर प्रकार `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound`, और `per_event` हैं। मूल्यांकन अंतराल 30 और 86,400 सेकंड के बीच होने चाहिए।
+
+### ऑडिट
+
+| कमांड | उद्देश्य | विकल्प |
+| --- | --- | --- |
+| `fp audits list` | ऑडिट सूचीबद्ध करें। | `--enabled-only`; `--show-id` |
+| `fp audits show NAME` | एक ऑडिट परिभाषा और स्थिति दिखाएं। | — |
+| `fp audits create NAME` | एक ऑडिट बनाएं और तुरंत इसका पहला चलाना कतार में डालें। | [बनाएं विकल्प](#audit-create-options) देखें। |
+| `fp audits edit NAME` | अनिर्दिष्ट मान बनाए रखते हुए ऑडिट सेटिंग्स को बदलें। | परिभाषा विकल्प बनाएं; `--name`; `--yes`, `-y` |
+| `fp audits delete NAME` | एक ऑडिट, इसकी फाइंडिंग और चलाने का इतिहास हटाएं। | `--yes`, `-y` |
+| `fp audits run NAME` | एक मैनुअल चलाना कतार में डालें। | — |
+| `fp audits runs NAME` | चलाने का इतिहास सूचीबद्ध करें। | `--limit`, `-n`; `--show-id` |
+| `fp audits context-show NAME` | संक्षिप्त और संदर्भ URL फेच स्थिति दिखाएं। | — |
+| `fp audits context-set NAME` | संक्षिप्त या संदर्भ URLs बदलें। | `--text`; `--text-file`; `--url`; `--clear-urls` |
+| `fp audits context-refresh NAME` | संदर्भ URLs को फिर से फेच करें। | — |
+| `fp audits findings` | फाइंडिंग सूचीबद्ध करें। | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
+| `fp audits finding FINDING_ID` | एक फाइंडिंग और इसका साक्ष्य दिखाएं। | — |
+| `fp audits ack FINDING_ID` | एक फाइंडिंग को स्वीकार करें। | `--reason` |
+| `fp audits mute FINDING_ID` | एक आवर्ती पैटर्न को दबाएं। | `--reason`; `--yes`, `-y` |
+| `fp audits dismiss FINDING_ID` | एक पैटर्न को कार्यशील नहीं के रूप में चिह्नित करें और इसे दबाएं। | `--reason`; `--yes`, `-y` |
+| `fp audits resolve FINDING_ID` | एक फाइंडिंग को भविष्य के दमन के बिना ठीक के रूप में चिह्नित करें। | `--yes`, `-y` |
+| `fp audits reopen FINDING_ID` | एक फाइंडिंग को लाइव कतार में लौटाएं और दमन को साफ करें। | — |
+| `fp audits assign FINDING_ID` | फाइंडिंग मालिक सेट करें। | आवश्यक `--to <email>` |
+
+#### ऑडिट बनाएं विकल्प
+
+```bash
+fp audits create checkout-reliability \
+  --description "Find checkout failures that agents do not recover from" \
+  --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+  --schedule-interval-secs 86400 \
+  --window-mode since_last \
+  --sensitivity medium \
+  --text-file ./checkout-audit-brief.txt \
+  --url https://runbooks.example.com/checkout
+```
+
+| विकल्प | विवरण |
+| --- | --- |
+| `--file <path>` | परिभाषा को JSON पर आधारित करें, या stdin के लिए `-` का उपयोग करें। स्पष्ट फ्लैग फ़ाइल मान को ओवरराइड करते हैं। |
+| `--description <text>` | विफलता प्रश्न या उद्देश्य बताएं। |
+| `--enabled` / `--disabled` | शेड्यूलिंग को चालू या बंद से शुरू करें। डिफ़ॉल्ट: सक्षम। |
+| `--schedule-interval-secs <n>` | `3600`–`604800`। डिफ़ॉल्ट: `86400`। |
+| `--schedule-anchor <timestamp>` | ISO 8601 रूप में निश्चित UTC चरण। डिफ़ॉल्ट: अगला 09:00 UTC। |
+| `--window-mode since_last\|fixed` | अंतिम पूर्ण रूप से विश्लेषण की गई विंडो के बाद जारी रखें या बार-बार एक रोलिंग विंडो का निरीक्षण करें। डिफ़ॉल्ट: `since_last`। |
+| `--lookback-window-secs <n>` | `3600`–`7776000`। डिफ़ॉल्ट: `604800`। |
+| `--scope '<json>'` | `environments`, `agent_ids`, या अन्य समर्थित स्कोप फ़ील्ड द्वारा फ़िल्टर करें। |
+| `--ignore-error-type <type>` | त्रुटि प्रकारों को बाहर करें; दोहराएं या कॉमा से अलग करें। |
+| `--llm` / `--no-llm` | एजेंटिक विश्लेषण को सक्षम या अक्षम करें। डिफ़ॉल्ट: सक्षम। |
+| `--top-k <n>` | `1`–`500` फाइंडिंग रखें। डिफ़ॉल्ट: `50`। |
+| `--sensitivity low\|medium\|high` | रिपोर्टिंग संवेदनशीलता सेट करें। डिफ़ॉल्ट: `medium`। |
+| `--channels '<json>'` | सूचना चैनल सरणी। |
+| `--text <brief>` | इनलाइन संक्षिप्त, अधिकतम 8,192 वर्ण। |
+| `--text-file <path>` | फ़ाइल से संक्षिप्त पढ़ें; `--text` के साथ पारस्परिक रूप से एक्सक्लूसिव। |
+| `--url <https-url>` | एक सार्वजनिक HTTPS संदर्भ जोड़ें; पांच बार तक दोहराएं। |
+
+निर्माण के दौरान संदर्भ शामिल करें जब पहले चलाने को इसकी आवश्यकता हो। निर्माण परिभाषा और संदर्भ को कतार में डाली गई चलाने से पहले एक साथ कमिट करता है।
+
+<Note>
+  `fp audits run` अतुल्यकालिक है। `fp audits runs NAME` तक पोल करें जब तक कि नवीनतम चलाना सफल या विफल न हो जाए इससे पहले इसकी फाइंडिंग पढ़ें।
+</Note>
+
+### समस्याएं
+
+| कमांड | उद्देश्य | विकल्प |
+| --- | --- | --- |
+| `fp issues list` | समस्याओं को सूचीबद्ध करें। | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
+| `fp issues count` | खुली या चयनित समस्या स्थितियों को गिनें। | `--state` |
+| `fp issues show INCIDENT_ID` | समस्या विवरण, टिप्पणी, सदस्य और कार्यकलाप दिखाएं। | — |
+| `fp issues open` | एक मैनुअल या अलर्ट-लिंक्ड समस्या खोलें। | आवश्यक `--summary`; वैकल्पिक `--title`, `--alert-id`, `--severity` |
+| `fp issues ack INCIDENT_ID` | एक समस्या को स्वीकार करें। | — |
+| `fp issues assign INCIDENT_ID` | असाइन करने वाले को प्रतिस्थापित करें; उन्हें साफ करने के लिए विकल्प को छोड़ दें। | दोहराई जा सकने वाली `--assignee` |
+| `fp issues resolve INCIDENT_ID` | एक समस्या को हल करें। | `--yes`, `-y` |
+| `fp issues comment-list INCIDENT_ID` | टिप्पणियों को सूचीबद्ध करें। | — |
+| `fp issues comment-add INCIDENT_ID` | एक टिप्पणी जोड़ें। | `--body`, `--file` में से बिल्कुल एक |
+| `fp issues comment-delete INCIDENT_ID COMMENT_ID` | एक टिप्पणी हटाएं। | `--yes`, `-y` |
+| `fp issues subscribers INCIDENT_ID` | सदस्यों को सूचीबद्ध करें। | — |
+| `fp issues subscribe INCIDENT_ID` | अपने आप या किसी अन्य ऑपरेटर को सदस्य बनाएं। | `--email` |
+| `fp issues unsubscribe INCIDENT_ID` | एक सदस्यता को हटाएं। | `--email` |
+
+मान्य समस्या स्थितियां `firing`, `acknowledged`, और `resolved` हैं। स्टैंडअलोन समस्या गंभीरताएं `info`, `warning`, और `critical` हैं।
+
+### Cloud सहायक
+
+| कमांड | उद्देश्य | विकल्प |
+| --- | --- | --- |
+| `fp agent health` | सहायक उपलब्धता और कॉन्फ़िगरेशन जांचें। | — |
+| `fp agent models` | उपलब्ध सहायक मॉडल सूचीबद्ध करें। | — |
+| `fp agent chats` | सहेजी गई चैट सूचीबद्ध करें। | — |
+| `fp agent ask [MESSAGE]` | चैट शुरू करें या जारी रखें; संदेश छोड़ा जाने पर stdin पढ़ें। | `--chat`; `--model`; `--page-context` |
+| `fp agent show CHAT_ID` | एक सहेजी गई बातचीत दिखाएं। | — |
+| `fp agent rename CHAT_ID` | बातचीत का नाम बदलें। | आवश्यक `--title` |
+| `fp agent delete CHAT_ID` | एक बातचीत हटाएं। | `--yes`, `-y` |
+
+## ग्लोबल फ्लैग
+
+| फ्लैग | विवरण |
+| --- | --- |
+| `--json` | मशीन-पठनीय JSON उत्सर्जित करें। |
+| `--base-url <url>` | स्व-होस्ट किए गए या विकास डैशबोर्ड का उपयोग करें। |
+| `--org <slug>` | इस आह्वान के लिए एक संगठन चुनें। |
+| `--token <token>` | सहेजे गए उपयोगकर्ता-सत्र टोकन को ओवरराइड करें। |
+| `--api-key <key>` | API कुंजी के साथ स्वचालन को प्रमाणित करें; कभी सहेजा नहीं जाता। |
+| `--timeout <seconds>` | HTTP टाइमआउट; सकारात्मक होना चाहिए। डिफ़ॉल्ट: `30`। |
+| `--quiet`, `-q` | stderr पर स्थिति आउटपुट को दबाएं। |
+| `--no-color` | रंगीन आउटपुट को अक्षम करें। |
+| `--insecure` / `--secure` | TLS प्रमाणपत्र सत्यापन को अक्षम या पुनः स्थापित करें। |
+| `--version` | अनबॉक्स किया गया संस्करण प्रिंट करें और बाहर निकलें। |
+| `--help`, `-h` | सहायता दिखाएं। |
+
+`--api-key` स्वचालन के लिए है। लॉगिन, संगठन स्विचिंग, और सहायक कमांड के लिए उपयोगकर्ता सत्र की आवश्यकता है।
+
+## पर्यावरण चर
+
+| चर | समतुल्य या उद्देश्य |
+| --- | --- |
+| `AGENTEYE_DASHBOARD_URL` | `--base-url` |
+| `AGENTEYE_ORG` | `--org` |
+| `AGENTEYE_CLI_TOKEN` | `--token` |
+| `AGENTEYE_CLI_API_KEY` | `--api-key` |
+| `AGENTEYE_CLI_JSON` | `--json` |
+| `AGENTEYE_INSECURE` | `--insecure` |
+| `AGENTEYE_HOME` | वर्तमान CLI कॉन्फ़िगरेशन निर्देशिका को पुनः स्थापित करें। |
+| `AGENTEYE_ANALYTICS_DISABLED` या `DO_NOT_TRACK` | अनाम CLI विश्लेषण को अक्षम करें। |
+| `NO_COLOR` | रंगीन आउटपुट को अक्षम करें। |
+
+स्पष्ट फ्लैग पर्यावरण चर को ओवरराइड करते हैं, जो सहेजे गए कॉन्फ़िगरेशन को ओवरराइड करते हैं। API-कुंजी मोड में, `--org` या `AGENTEYE_ORG` के साथ किरायेदार को स्पष्ट रूप से चुनें।
+
+<Warning>
+  कमांड जो हटाते हैं, रद्द करते हैं, दबाते हैं, हल करते हैं, या कॉन्फ़िगरेशन को बदलते हैं डिफ़ॉल्ट रूप से प्रॉम्प्ट करते हैं। सक्रिय संगठन और लक्ष्य को सत्यापित करने के बाद ही `--yes` का उपयोग करें।
+</Warning>

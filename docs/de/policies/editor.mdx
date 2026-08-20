@@ -1,0 +1,47 @@
+---
+title: "Policy-Editor"
+description: "Erstellen und überarbeiten Sie versionierte Policies aus einem bestätigten Fehlerfall."
+icon: "file-pen-line"
+---
+
+Verwenden Sie den Policy-Editor, um einen Fund oder ein Problem in eine einsatzfähige Regel umzuwandeln. Halten Sie das Erstellen und das Ausrollen voneinander getrennt, damit ein Entwurf das Live-Verhalten nicht unbemerkt verändern kann.
+
+Wenn ein Problem ein wiederholbares Aktionsmuster aufweist, öffnen Sie es unter **Analyze → issues** und wählen Sie **generate policy**. Failproof AI erläutert zunächst, ob sich das Problem als Policy ausdrücken lässt, und überträgt dann den geprüften Anlass sowie den Kontext des Funds in den Editor. Der generierte Quellcode bleibt ein Entwurf, bis Sie ihn veröffentlichen.
+
+## Eine Policy-Version veröffentlichen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Admin → policy editor** und beschreiben Sie unter **compose** den Fehlerfall, oder fügen Sie den JavaScript-Policy-Quellcode ein.
+    2. Validieren Sie den Quellcode und beheben Sie alle gemeldeten Fehler.
+    3. Geben Sie die Policy-Identität ein und veröffentlichen Sie sie. Verwenden Sie anschließend **library**, um Versionen zu vergleichen oder zu deaktivieren.
+    4. Wählen Sie **enforcement**, wenn die Version für ein maschinelles Rollout bereit ist.
+
+    ![Die Compose-Ansicht des Policy-Editors mit Policy-Identität, KI-gestütztem Entwurf, Quellcode-Validierung und Veröffentlichungssteuerung.](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    Die Cloud CLI veröffentlicht keine Policy-Versionen. Validieren Sie den Quellcode lokal, bevor Sie ihn in den Editor kopieren:
+
+    ```bash
+    failproofai policies --install --custom ./checkout.policies.ts \
+      --cli claude --scope project
+    ```
+
+    Veröffentlichen Sie die geprüfte Version über **Admin → policy editor**.
+  </Tab>
+</Tabs>
+
+## Checkliste für die Erstellung
+
+1. Benennen Sie den Fehlerfall in operativer Sprache.
+2. Wählen Sie die Hook-Events und Tools aus, die ausreichend Kontext für eine Entscheidung liefern.
+3. Formulieren Sie die engstmögliche Bedingung, die unsicheres Verhalten erkennt.
+4. Geben Sie eine Begründung zurück, die dem Agent oder Operator mitteilt, wie er als Nächstes vorgehen soll.
+5. Fügen Sie Beispiele hinzu, die übereinstimmen sollen, sowie Beispiele, die weiterhin erlaubt bleiben müssen.
+6. Speichern Sie eine neue Version und fordern Sie eine Überprüfung an.
+
+Verwenden Sie `instruct`, wenn der Agent sicher korrigieren kann. Verwenden Sie `deny`, wenn das Zulassen der Aktion ein inakzeptables oder unumkehrbares Risiko darstellen würde.
+
+<Info>
+  Policy-Versionen sind unveränderliche Deployment-Eingaben. Das Bearbeiten eines Entwurfs erstellt eine neue Version; dabei sollte die bereits Maschinen zugewiesene Version nicht überschrieben werden.
+</Info>

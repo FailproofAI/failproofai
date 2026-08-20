@@ -1,0 +1,88 @@
+---
+title: "로컬 대시보드"
+description: "로컬 프로젝트, 세션, 정책 활동, 구성, 감사 및 예약 스캔을 검토합니다."
+icon: "monitor-cog"
+---
+
+`failproofai`를 인수 없이 실행하면 `http://localhost:8020`에서 번들 대시보드가 시작됩니다. 이 대시보드는 로컬 에이전트 기록, 정책 구성, 감사 결과, 훅 활동을 해당 머신에서 직접 읽어옵니다.
+
+로컬 대시보드는 Failproof AI Cloud와는 별개입니다. Cloud 계정 없이도 작동하며, 이벤트가 조직에 전달되었음을 증명하지 않습니다.
+
+## 대시보드 영역
+
+| 영역 | 수행 가능한 작업 |
+| --- | --- |
+| Policies → Activity | 로컬 allow, instruct, deny 결정을 검사하고, 결정·이벤트·CLI·도구·소스·정책·세션으로 필터링합니다. |
+| Policies → Configure | 기본 제공 정책을 활성화하고, 지원 파라미터를 편집하고, 발견된 커스텀 정책을 토글하고, 대상 하니스를 선택합니다. |
+| Projects | 지원되는 에이전트 기록에서 발견된 프로젝트를 탐색하고 가장 최근 세션을 비교합니다. |
+| Project sessions | 로컬 트랜스크립트 하나를 열고, 원시 순서 항목과 서브에이전트를 검토하고, 다운로드하고, 정책 활동과 연관 지어 분석합니다. |
+| Audit | 마지막 오프라인 스캔, 위험 패턴, 강점, 영향받은 프로젝트, 권장 기본 제공 정책을 검토합니다. |
+| Settings | 데몬/플랫폼이 지원하는 경우 예약된 로컬 스캔과 이메일 감사 보고서를 구성합니다. |
+
+## 정책 활동 검토
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Policies → Activity**를 열고 결정 및 소스 필터를 설정합니다.
+    2. 이벤트, 하니스, 도구 또는 정책 이름으로 범위를 좁힙니다.
+    3. 행을 확장하여 이유, 매칭된 정책, 소스, 실행 모드, 소요 시간을 검사합니다.
+    4. 세션 링크를 따라가 트랜스크립트 컨텍스트 내에서 해당 결정을 확인합니다.
+
+    deny처럼 보이는 행도 블로킹 판정을 소비하지 않는 하니스/이벤트 쌍에서는 관찰 모드로 동작할 수 있습니다. 상세 보기에서 검증된 적용 가능 여부를 명확히 표시합니다.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai policies
+    failproofai
+    ```
+
+    로컬 활동은 `~/.failproofai/hook-activity` 아래에 저장됩니다. 이 파일을 직접 편집하는 대신 대시보드를 사용하세요.
+  </Tab>
+</Tabs>
+
+## 로컬에서 정책 구성
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Policies → Configure**를 열고 하니스와 구성 범위를 선택합니다.
+    2. 기본 제공 정책 또는 발견된 커스텀 정책을 활성화합니다.
+    3. 파라미터가 있는 기본 제공 정책의 경우, 구성 컨트롤을 열고 지원되는 값을 저장합니다.
+    4. Activity로 돌아가 매칭 및 비매칭 작업을 실행합니다.
+
+    컨벤션 정책은 프로젝트 또는 사용자 소스를 표시합니다. 명시적인 커스텀 경로 변경 시 선택한 경로가 기록되도록 CLI 구성을 다시 실행해야 할 수 있습니다.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policy add block-sudo --scope project
+    failproofai policies --install --custom ./security.policies.ts --scope project
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+## 프로젝트 및 세션 탐색
+
+Projects 페이지는 지원되는 로컬 기록 저장소를 통합합니다. 프로젝트를 선택하면 세션 목록이 표시되고, 세션을 열면 원시 로그 뷰어, 서브에이전트 세그먼트, 다운로드 기능, 세션 범위 정책 활동을 확인할 수 있습니다.
+
+프로젝트나 세션이 표시되지 않는다면 하니스가 기본 기록 위치를 사용하고 있는지 확인하거나, `failproofai harness add-path`로 추가 루트를 등록하세요.
+
+## 오프라인 감사 예약
+
+<Tabs>
+  <Tab title="대시보드">
+    **Settings**를 열고 예약 스캔을 활성화한 다음, 지원되는 간격을 선택하고 가능한 경우 보고서 전송을 구성합니다. 이 페이지에서 다음 실행 시간, 마지막 실행 시간, 종료 코드, 플랫폼에서 백그라운드 데몬이 지원되는지 여부를 확인할 수 있습니다.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    일수를 변경하면 1~90일 범위에서 다른 간격을 설정할 수 있습니다. `failproofai audit --no-schedule`로 반복 스캔을 비활성화하고, `failproofai audit`을 실행하면 즉시 대화형 스캔이 시작됩니다.
+  </Tab>
+</Tabs>
+
+<Warning>
+  로컬 대시보드는 로컬 에이전트 기록의 프롬프트, 도구 입력, 파일 내용, 터미널 출력을 표시할 수 있습니다. 신뢰할 수 있는 인터페이스에만 바인딩하고, 검토가 완료되면 프로세스를 종료하세요.
+</Warning>

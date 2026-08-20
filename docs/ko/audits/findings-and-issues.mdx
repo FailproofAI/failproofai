@@ -1,0 +1,96 @@
+---
+title: "발견사항 및 이슈"
+description: "감사 증거를 책임자가 지정된 추적 가능한 개선 작업으로 전환합니다."
+icon: "clipboard-check"
+---
+
+발견사항은 실패에 대한 감사의 증거 기반 진술입니다. 이슈는 이에 대응하기 위한 지속적인 워크플로입니다.
+
+## 작업 분류 및 할당
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **분석 → 감사**를 열고 완료된 실행을 선택한 후, 발견사항을 선택하여 분석, 권고사항, 세션, 증거 쿼리를 검토합니다.
+    2. 증거를 확인한 후 발견사항을 확인, 할당, 기각, 음소거, 해결 또는 재개합니다.
+    3. **분석 → 이슈**로 이동하여 상태, 심각도 또는 담당자별로 지속적인 수신함을 필터링합니다.
+    4. 이슈를 열어 담당자를 지정하고, 댓글이나 구독자를 추가하고, 수정 사항이 검증된 후 해결합니다.
+
+    발견사항 요약부터 시작하세요. 오류 설명, 권고 대응, 심각도, 순위가 감사가 검토할 것으로 예상한 세션과 일치하는지 확인합니다.
+
+    ![심각도, 발생 횟수, 근본 원인 분석, 권고 조치, 순위 요소, 증거가 포함된 감사 발견사항.](/images/dashboard/audit-finding.png)
+
+    다음으로, 요약만으로 판단하지 말고 영향을 받은 세션을 직접 열어보세요. 연결된 추적은 발견사항을 뒷받침하는 정확한 이벤트와 페이로드를 보여줘야 합니다.
+
+    ![관련 오류와 이벤트 메타데이터 및 원시 페이로드가 표시된, 감사 발견사항에서 연결된 세션.](/images/dashboard/audit-linked-session.png)
+
+    증거를 검증한 후 이슈를 사용하여 대응에 담당자를 지정하고, 향후 감사 실행과 독립적으로 추적합니다.
+
+    ![심각도 및 소유권과 함께 발생 중, 확인됨, 해결됨 작업을 보여주는 이슈 수신함.](/images/dashboard/incidents.png)
+
+    이슈를 열어 조사 메모를 기록하고, 구독자에게 알림을 보내고, 대응 이력을 보존합니다. 개선 사항이 배포되고 검증된 후에만 해결합니다.
+
+    ![출처, 위반 증거, 담당자, 구독자, 타임라인, 댓글이 포함된 이슈 상세 보기.](/images/dashboard/incident-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits findings --audit checkout-reliability --status open
+    fp audits finding <finding-id>
+    fp audits ack <finding-id> --reason "owner assigned"
+    fp audits assign <finding-id> --to engineer@example.com
+
+    fp issues list
+    fp issues show <issue-id>
+    fp issues assign <issue-id> --assignee engineer@example.com
+    fp issues comment-add <issue-id> --body "policy is in observe mode"
+    fp issues resolve <issue-id> --yes
+    ```
+
+    `fp issues subscribe <issue-id>`, `fp issues unsubscribe <issue-id>`, `fp issues subscribers <issue-id>`를 사용하여 감시자를 관리합니다.
+
+    감사 발견사항은 [Cloud CLI 감사 및 이슈 참조](/ko/reference/cloud-cli#audits)를, 이슈 관리는 [`fp issues`](/ko/reference/cloud-cli#issues)를 참조하세요.
+  </Tab>
+</Tabs>
+
+## 발견사항 검토
+
+다음 항목이 포함되어 있는지 확인합니다:
+
+- 일회성 제목이 아닌 안정적인 실패 패턴
+- 심각도 및 운영상의 영향
+- 영향을 받은 세션 ID 또는 지원 쿼리
+- 동작을 재현하기에 충분한 컨텍스트
+- 증거와 일치하는 제안된 대응 방안
+
+## 이슈를 사용하여 대응 관리
+
+발견사항에 할당, 논의, 상태 변경, 댓글 또는 구독자가 필요한 경우 이슈를 생성하거나 연결합니다. 이슈는 알림 인시던트와 수동으로 보고된 문제도 나타낼 수 있으므로, 기본 탐색 메뉴가 아닌 감사 대응 아래에 위치합니다.
+
+개선 사항이 배포되고 검증되면 이슈를 해결합니다. 감사 대상 모집단에서 실패 패턴이 해결되면 발견사항을 해결합니다. 두 시점이 다를 수 있습니다.
+
+## 이슈를 정책 초안으로 전환
+
+<Tabs>
+  <Tab title="대시보드">
+    1. 이슈를 열어 발견사항, 인용된 세션, 근본 원인, 권고사항을 확인합니다.
+    2. **정책 생성**을 선택하고 후보 결과와 제안된 시행 의도를 검토합니다. **정책 없음** 결과는 해당 동작이 알림, 워크플로 변경 또는 사람의 대응이 필요할 수 있음을 의미합니다.
+    3. **이 정책 작성**을 선택한 후, **관리자 → 정책 편집기**에서 생성된 소스를 검토하고 테스트한 다음 **버전 게시**를 선택합니다. 후보 검사에 동의하지 않을 경우 **어쨌든 편집기 열기**를 사용합니다.
+    4. **관리자 → 시행**으로 이동하여 **관찰** 모드로 버전을 배포하고, 시행하기 전에 **관찰 → 정책**에서 결정 사항을 확인합니다.
+
+    이슈 제목, 발견사항 설명, 근본 원인, 권고사항, 후보 의도가 초안 작성에 도움이 됩니다. 어떤 것도 자동으로 게시되거나 배포되지 않습니다.
+  </Tab>
+  <Tab title="CLI">
+    대시보드에서 이슈를 열기 전에 CLI를 사용하여 증거를 검토합니다:
+
+    ```bash
+    fp issues show <issue-id>
+    fp audits finding <finding-id>
+    fp events --session-id <session-id> --full --all
+    ```
+
+    정책 후보 선정, Cloud 게시, 플릿 배포는 대시보드 워크플로입니다. 동등한 정책 소스를 먼저 로컬에서 검증하려면 `failproofai policies --install --custom <file>`을 사용합니다.
+  </Tab>
+</Tabs>
+
+<Card title="정책 작성" icon="shield-plus" href="/ko/policies/editor">
+  확인된 반복 가능한 액션 패턴을 정책 버전으로 변환합니다.
+</Card>

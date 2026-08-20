@@ -1,0 +1,52 @@
+---
+title: "Execute sua primeira verificação de falha"
+description: "Crie uma auditoria pelo painel Cloud ou pela CLI fp e revise suas primeiras descobertas."
+icon: "scan-search"
+---
+
+Uma auditoria transforma um conjunto de sessões em descobertas de falhas classificadas e respaldadas por evidências. Comece com uma pergunta de falha bem delimitada.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Abrir Auditorias">
+        Na barra lateral do Cloud, vá para **Analyze → Audits**. Selecione **new audit**.
+      </Step>
+      <Step title="Configurar a auditoria">
+        Insira um nome e um objetivo de falha direto, como "encontrar sessões de produção que repetem a mesma chamada de pagamento com falha sem alterar a entrada ou escalar." Selecione o agente, o ambiente, a janela de tempo e o agendamento. Adicione um breve resumo e URLs de referência quando o auditor precisar das regras do seu fluxo de trabalho.
+      </Step>
+      <Step title="Criar e aguardar a execução">
+        Selecione **create audit**. A primeira execução é enfileirada imediatamente. Abra o card da auditoria para acompanhar a progressão de enfileirado para em execução e, em seguida, para concluído.
+      </Step>
+    </Steps>
+
+    Após a conclusão da execução, abra uma descoberta e revise suas evidências de sessão. Em seguida, você pode confirmar, atribuir, descartar, silenciar ou resolver a descoberta.
+
+    ![Uma descoberta de auditoria concluída exibindo sua descrição de falha, ação recomendada, evidências de suporte e sessões afetadas.](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create payment-retry-failures \
+      --description "Find production sessions that retry a failed payment call without changing input or escalating" \
+      --scope '{"environments":["production"]}' \
+      --text "Escalate after two unchanged payment failures"
+
+    fp audits list
+    fp audits runs payment-retry-failures
+    fp audits findings --audit payment-retry-failures
+    fp audits finding <finding-id>
+    ```
+
+    Adicione contexto de referência e atualize-o quando a fonte mudar:
+
+    ```bash
+    fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
+    fp audits context-refresh payment-retry-failures
+    fp audits run payment-retry-failures
+    ```
+
+    Use `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` ou `fp audits reopen <finding-id>` para mover uma descoberta pelo processo de triagem.
+  </Tab>
+</Tabs>
+
+Em seguida, [previna sua primeira falha com uma política](/pt-br/start/first-policy) para uma ação recorrente confirmada.

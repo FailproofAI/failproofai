@@ -1,0 +1,129 @@
+---
+title: "קטלוג מדיניויות מובנה"
+description: "בדוק כל מדיניות Failproof AI מובנית, את הטריגר שלה, המצב המומלץ, והפרמטרים הניתנים להגדרה."
+icon: "list-checks"
+---
+
+החבילה המותקנת היא מקור האמת לזמינות המדיניויות. הרץ `failproofai policies` אחרי כל שדרוג כי ערכי הקטלוג וההתנהגות עשויים להשתנות עם גרסת החבילה.
+
+## בסיס מומלץ
+
+הבחירה המומלצת של ההגדרה המודרכת כרגע מאפשרת מחטאי סודות, הגנות סביבה, הגנה עצמית, שומרי פקודות קטסטרופליים והגנת ענפים מוגנים:
+
+```text
+sanitize-jwt                 sanitize-api-keys
+sanitize-connection-strings sanitize-private-key-content
+sanitize-bearer-tokens       protect-env-vars
+block-env-files              block-secrets-write
+block-self-pause             block-failproofai-commands
+block-sudo                   block-curl-pipe-sh
+block-rm-rf                  block-push-master
+block-force-push
+```
+
+המומלץ הוא בכוונה צר יותר מ**הכל**. מדיניויות תשתית וזרימת עבודה עשויות להפריע לעבודה תקפה ויש להפעיל אותן במאגרים ובמכונות שצריכים אותן.
+
+## סודות וסביבה
+
+| מדיניות | טריגר | תוצאה |
+| --- | --- | --- |
+| `sanitize-jwt` | `PostToolUse` | הסתר JWTs מפלט כלים לפני שהמודל רואה אותם. |
+| `sanitize-api-keys` | `PostToolUse` | הסתר OpenAI, Anthropic, GitHub, AWS, Stripe, ומפתחות Google נפוצים. |
+| `sanitize-connection-strings` | `PostToolUse` | הסתר מחרוזות חיבור מסד נתונים המכילות כמויות. |
+| `sanitize-private-key-content` | `PostToolUse` | הסתר גופי PEM של מפתח פרטי. |
+| `sanitize-bearer-tokens` | `PostToolUse` | הסתר אסימוני ההרשאה. |
+| `protect-env-vars` | `PreToolUse` בכלים של shell | חסום פקודות שמעדכנות משתני סביבה. |
+| `block-env-files` | `PreToolUse` | חסום קריאה וכתיבה של קבצי `.env`. |
+| `block-read-outside-cwd` | `PreToolUse` בכלים read, glob, grep, או shell | שמור קריאות בתוך ספריית העבודה של הסשן. |
+| `block-secrets-write` | `PreToolUse` בכלים של write | חסום כתיבה לשמות קבצים נפוצים של מפתחות סוד והעמדות בתוקף. |
+
+## פקודות מסוכנות ותשתית
+
+| מדיניות | טריגר | תוצאה |
+| --- | --- | --- |
+| `block-self-pause` | `PreToolUse`, `PermissionRequest` | מנע סוכן מהשהיית אכיפתו שלו. |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` | חסום `sudo` אלא אם קיים שיוך לדפוס allow. |
+| `block-curl-pipe-sh` | `PreToolUse` | חסום סקריפטים שהורדו מופנים ישירות ל-shell. |
+| `block-rm-rf` | `PreToolUse` | חסום דפוסי מחיקה רקורסיבית קטסטרופליים. |
+| `block-failproofai-commands` | `PreToolUse` | מנע סוכנים משינוי או הסרת Failproof AI. |
+| `block-kubectl` | `PreToolUse` | שער פקודות Kubernetes. |
+| `block-terraform` | `PreToolUse` | שער פקודות Terraform וOpenTofu. |
+| `block-aws-cli` | `PreToolUse` | שער פקודות AWS CLI. |
+| `block-gcloud` | `PreToolUse` | שער פקודות Google Cloud CLI. |
+| `block-az-cli` | `PreToolUse` | שער פקודות Azure CLI. |
+| `block-helm` | `PreToolUse` | שער פקודות Helm. |
+| `block-gh-pipeline` | `PreToolUse` | שער פקודות GitHub CLI שמשנות זרימת עבודה, הפעלה, מיזוג, שחרור, cache, וחלקי סוד. |
+
+## בטיחות Git ומסד נתונים
+
+| מדיניות | טריגר | תוצאה |
+| --- | --- | --- |
+| `block-push-master` | `PreToolUse` | חסום דחיפות ישירות לענפים מוגנים שהוגדרו. |
+| `block-force-push` | `PreToolUse` | חסום דחיפות כפויות; `--force-with-lease` נשאר מורשה בהטמעה הנוכחית. |
+| `block-work-on-main` | `PreToolUse` | חסום commits ומיזוגים בענפים מוגנים. |
+| `warn-git-amend` | `PreToolUse` | התרא לפני שכתוב מחדש של commit עם `--amend`. |
+| `warn-git-stash-drop` | `PreToolUse` | התרא לפני הפלת או ניקוי סטאשים קבוע. |
+| `warn-all-files-staged` | `PreToolUse` | התרא על `git add -A`, `git add .`, או `git add --all` רחב. |
+| `warn-destructive-sql` | `PreToolUse` | התרא על `DROP`, `TRUNCATE`, ו`DELETE` ללא `WHERE` דרך לקוחות מסד נתונים מוכרים. |
+| `warn-schema-alteration` | `PreToolUse` | התרא על פעולות `ALTER TABLE` עמודות וביטול שם מוכרות. |
+
+## חבילות, התנהגות מערכת, וזוגות סוכנים
+
+| מדיניות | טריגר | תוצאה |
+| --- | --- | --- |
+| `warn-package-publish` | `PreToolUse` | התרא לפני פרסום לרישומי חבילות. |
+| `warn-global-package-install` | `PreToolUse` | התרא לפני התקנה גלובלית של חבילה. |
+| `prefer-package-manager` | `PreToolUse` | הנחה הסוכן להשתמש במנהל חבילות מותר. |
+| `warn-large-file-write` | `PreToolUse` בכלים של write | התרא מעל סף גודל קובץ שהוגדר. |
+| `warn-background-process` | `PreToolUse` | התרא על דפוסי תהליך רקע מנותקים או ארוכי טווח. |
+| `warn-repeated-tool-calls` | `PreToolUse` | התרא אחרי שלוש או יותר קריאות כלים זהות. |
+
+## זרימת עבודה של סיום משימה
+
+מדיניויות אלה דורשות מנוף שפולט אירוע `Stop` תואם.
+
+| מדיניות | תוצאה |
+| --- | --- |
+| `require-commit-before-stop` | סרב להשלמה בזמן שעבודה מעקב נותרה לא מובילה. |
+| `require-push-before-stop` | סרב להשלמה בזמן שהתחייבויות נשארות מקומיות בלבד. |
+| `require-pr-before-stop` | דרוש בקשת משיכה לענף הנוכחי. |
+| `require-no-conflicts-before-stop` | דרוש מיזוג נקי כנגד ענף הבסיס שהוגדר. |
+| `require-ci-green-before-stop` | דרוש שבדיקות CI של HEAD הנוכחי יושלמו בהצלחה. |
+
+## הפניה פרמטרים
+
+הגדר פרמטרים תחת אובייקט `policyParams` של ההיקף שנבחר. סוגים מאומתים על ידי כל מדיניות.
+
+| מדיניות | פרמטר | סוג וברירת מחדל |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; רשומות מכילות `regex` ו`label` |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Infrastructure blockers | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+```json
+{
+  "enabledPolicies": ["block-sudo", "block-push-master"],
+  "policyParams": {
+    "block-sudo": {
+      "allowPatterns": ["sudo systemctl status"]
+    },
+    "block-push-master": {
+      "protectedBranches": ["main", "release"]
+    }
+  }
+}
+```
+
+<Warning>
+  דפוס allow מרחיב את מה שסוכן עשוי לעשות. בדוק את הטוקניזציה המדויקת וגרסאות פקודה בתוך המנוף המטרה לפני פריסה בחברה.
+</Warning>

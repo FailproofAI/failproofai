@@ -1,0 +1,303 @@
+---
+title: "السياسات المخصصة"
+description: "قم بتأليف واختبار ونشر سياسات JavaScript أو TypeScript لحالات الفشل الخاصة بوكلائك."
+icon: "shield-plus"
+---
+
+تحول السياسات المخصصة نمط فشل من تتبعاتك أو تدقيقاتك إلى قرار يعمل أثناء عمل الوكيل. يمكن للسياسة أن تسمح بإجراء أو توجه الوكيل أو تمنع الإجراء قبل أن يسبب حادثة أخرى.
+
+استخدم سياسة مخصصة عندما يعتمد السلوك على أدواتك أو مساراتك أو أوامرك أو بيئاتك أو قواعد التشغيل. تحقق من [فهرس السياسات المدمجة](/ar/policies/builtin-catalog) أولاً حتى لا تعيد إنشاء عنصر تحكم موجود.
+
+## تأليف سياسة مخصصة
+
+<Tabs>
+  <Tab title="لوحة المعلومات">
+    1. انتقل إلى **Admin → محرر السياسة**، واختر **سياسة جديدة**، واصف حالة الفشل التي تريد منعها.
+    2. أضف مصدر السياسة، ثم اختبر المطابقات المتوقعة والمطابقات الآمنة غير المطابقة في المحرر. حل كل خطأ في التحقق.
+    3. احفظ المسودة واختر **نشر الإصدار** لإنشاء نسخة ثابتة.
+    4. انتقل إلى **Admin → الإنفاذ**، ونشر الإصدار على جهاز اختبار في وضع **المراقبة**، والتحقق من قراراته ضمن **المراقبة → السياسة** قبل فرضه.
+
+    ![محرر السياسة المستخدم لتأليف ونشر سياسة مخصصة.](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    1. أنشئ `.failproofai/policies/checkout-policies.ts`. يجب أن ينتهي اسم الملف بـ `policies.js` أو `policies.mjs` أو `policies.ts`.
+    2. سجل واحدة أو أكثر من السياسات باستخدام `customPolicies.add()`.
+    3. تحقق وثبت الملف باستخدام `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`.
+    4. شغّل إجراء واحد متطابق وإجراء آمن واحد. قم بتشغيل `failproofai policies`، ثم فتش القرارات المنسوبة ضمن **المراقبة → السياسة**.
+  </Tab>
+</Tabs>
+
+## ابدأ بقاعدة ضيقة
+
+تمنع هذه السياسة أوامر Kubernetes المدمرة فقط عندما يستهدف الأمر الإنتاج. كل شيء خارج نمط الفشل الدقيق هذا يعيد `allow()`.
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+const DESTRUCTIVE_KUBECTL = /\bkubectl\s+(delete|replace)\b/i;
+const PRODUCTION_TARGET = /(?:--context|--namespace|-n)\s+(prod|production)\b/i;
+
+customPolicies.add({
+  name: "block-destructive-production-kubectl",
+  description: "Block destructive Kubernetes commands against production",
+  match: { events: ["PreToolUse"] },
+  fn: async ({ toolName, toolInput }) => {
+    if (toolName !== "Bash") return allow();
+
+    const command = String(toolInput?.command ?? "");
+    if (!DESTRUCTIVE_KUBECTL.test(command)) return allow();
+    if (!PRODUCTION_TARGET.test(command)) return allow();
+
+    return deny(
+      "Destructive production Kubernetes commands require the approved deployment workflow.",
+    );
+  },
+});
+```
+
+السياسات الجيدة ضيقة بما يكفي لتوضيحها في جملة واحدة. طابق الإجراء الملحوظ - وليس النية التي تأمل أن يكون لدى الوكيل - وأعد `allow()` بمجرد عدم انطباق القاعدة.
+
+## اختر قرار
+
+| المساعد | النتيجة | استخدمه عندما |
+| --- | --- | --- |
+| `allow(reason?)` | تستمر العملية. | السياسة لا تنطبق أو الإجراء آمن. |
+| `instruct(reason)` | تستمر العملية مع إرشادات حيث يدعمها الجهاز. | تريد توجيه الوكيل نحو نهج أفضل دون فرض ثابت. |
+| `deny(reason)` | يتم حظر العملية عندما يدعمها الحدث والجهاز. | لا يجب أن يتقدم الإجراء. |
+
+اكتب السبب للوكيل الذي يجب أن يتعافى. اشرح ما تم الكشف عنه وما يجب أن يفعله بدلاً من ذلك.
+
+<Warning>
+  لا تستخدم `instruct()` لحد الأمان. يختلف تسليم الإرشادات حسب جهاز الوكيل. استخدم `deny()` عندما يجب منع الإجراء.
+</Warning>
+
+## كائن السياسة
+
+```ts
+customPolicies.add({
+  name: "policy-name",
+  description: "What this policy prevents",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => allow(),
+});
+```
+
+| الحقل | مطلوب | الوصف |
+| --- | --- | --- |
+| `name` | نعم | معرف مستقر للسياسة. احتفظ بأسماء فريدة عبر الملفات. |
+| `description` | لا | الغرض القابل للقراءة من قبل الإنسان الموضح في قوائم السياسات والقرارات. |
+| `match.events` | لا | أنواع الأحداث التي تستدعي السياسة. قد يؤدي حذف `match` إلى استدعائها لكل حدث متاح. |
+| `fn` | نعم | دالة متزامنة أو غير متزامنة تعيد نتيجة `allow` أو `instruct` أو `deny`. |
+
+صفف الأدوات داخل `fn`. `match.toolNames` ليست جزءًا من نوع السياسة المخصصة العام.
+
+## سياق السياسة
+
+تتلقى كل سياسة `PolicyContext`.
+
+| الحقل | النوع | ما يحتويه |
+| --- | --- | --- |
+| `eventType` | `HookEventType` | نوع الحدث المعياري قيد التقييم حاليًا. |
+| `toolName` | `string \| undefined` | اسم الأداة الكنسي مثل `Bash` أو `Read` أو `Write` أو `Edit`. |
+| `toolInput` | `Record<string, unknown> \| undefined` | الإدخال الكنسي لاستدعاء الأداة الحالي. |
+| `payload` | `Record<string, unknown>` | حمولة الحدث المعيارية الكاملة. |
+| `session` | `SessionMetadata \| undefined` | معرف الجلسة والمجلد العامل ومسار النسخة ونمط الإذن وبيانات تعريف الجهاز عند توفرها. |
+| `cli` | `string \| undefined` | جهاز الوكيل المصدر، مثل `claude` أو `codex` أو `cursor`. |
+| `params` | `Record<string, unknown>` | معاملات السياسة المدمجة. حاليًا تتلقى السياسات المخصصة كائنًا فارغًا. |
+
+تعامل مع كل قيمة اختيارية على أنها اختيارية حقًا. لا توفر إصدارات الوكيل وأنواع الأحداث نفس الحقول.
+
+### إدخالات الأدوات الشائعة
+
+يقوم Failproof AI بمعايرة الأدوات الشائعة عبر الأجهزة المدعومة بحيث يمكن للسياسة عادة استخدام شكل إدخال واحد.
+
+| الأداة | الحقول الشائعة |
+| --- | --- |
+| `Bash` | `command` |
+| `Read` | `file_path` |
+| `Write` | `file_path`, `content` |
+| `Edit` | `file_path`, `old_string`, `new_string` |
+| `Grep` | `pattern`, `path` |
+
+استخدم تحويل دفاعي لأن قيم إدخال الأداة مكتوبة كـ `unknown`:
+
+```ts
+const command = String(ctx.toolInput?.command ?? "");
+const filePath = String(ctx.toolInput?.file_path ?? "");
+```
+
+## اختر الحدث
+
+| الحدث | متى يعمل | الاستخدام النموذجي |
+| --- | --- | --- |
+| `PreToolUse` | قبل تنفيذ الأداة. | حظر أو توجيه الأوامر والعمليات الكتابية والعمليات القراءة والإجراءات الخارجية. |
+| `PostToolUse` | بعد عودة الأداة. | فحص النتائج قبل وصولها للوكيل. يحظر deny النتيجة بالكامل؛ لا يحرر حقول محددة. |
+| `PermissionRequest` | عندما يطلب الوكيل الإذن. | تطبيق قواعد الإذن الخاصة بالمؤسسة. |
+| `UserPromptSubmit` | قبل استمرار الطلب المقدم. | رفض التعليمات المحظورة أو إضافة إرشادات سير العمل. |
+| `Stop` | عندما يحاول الوكيل الإنهاء. | اطلب شرط إنهاء قابل للوصول، مثل خطوة التحقق المحلية. |
+| `SubagentStop` | عندما يحاول وكيل فرعي الإنهاء. | بوابة العمل المفوض قبل عودته للأب. |
+| `SessionStart` / `SessionEnd` | عند حدود الجلسة. | تسجيل أو التحقق من الحالة على مستوى الجلسة. |
+
+توفر الحدث وسلوك الحظر يعتمد على جهاز الوكيل. اطلع على [أجهزة الوكيل](/ar/reference/harnesses) قبل الاعتماد على حدث عبر أسطول مختلط.
+
+<Accordion title="جميع أسماء أحداث السياسة">
+  `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch`, و `Setup`.
+</Accordion>
+
+## تأليف أنماط السياسات الشائعة
+
+### حظر الكتابات إلى المسارات المحمية
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "block-generated-file-edits",
+  description: "Require generated files to be changed through their generator",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (!["Write", "Edit"].includes(ctx.toolName ?? "")) return allow();
+
+    const filePath = String(ctx.toolInput?.file_path ?? "");
+    if (!/(^|\/)(dist|generated)\//.test(filePath)) return allow();
+
+    return deny("Edit the source and run the generator instead of changing generated output.");
+  },
+});
+```
+
+### توفير إرشادات غير إجبارية
+
+```ts
+import { customPolicies, allow, instruct } from "failproofai";
+
+customPolicies.add({
+  name: "prefer-reviewed-deploy-command",
+  description: "Guide agents toward the reviewed deployment wrapper",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Bash") return allow();
+
+    const command = String(ctx.toolInput?.command ?? "");
+    if (!/^kubectl\s+apply\b/.test(command.trim())) return allow();
+
+    return instruct("Use ./scripts/deploy-reviewed instead of invoking kubectl directly.");
+  },
+});
+```
+
+### بوابة إنهاء الجلسة
+
+```ts
+import { execFileSync } from "node:child_process";
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "require-clean-typecheck",
+  description: "Require the project typecheck to pass before the agent finishes",
+  match: { events: ["Stop"] },
+  fn: async (ctx) => {
+    const cwd = ctx.session?.cwd;
+    if (!cwd) return allow();
+
+    try {
+      execFileSync("bunx", ["tsc", "--noEmit"], {
+        cwd,
+        stdio: "ignore",
+        timeout: 8_000,
+      });
+      return allow();
+    } catch {
+      return deny("Fix the typecheck errors before finishing the task.");
+    }
+  },
+});
+```
+
+<Warning>
+  يمكن لـ `Stop` المرفوض أن يجعل الوكيل يحاول مرة أخرى. قم بالبوابة فقط على شرط يمكن للوكيل أن يرضيه في البيئة الحالية، وحد كل عملية فرعية أو استدعاء شبكة.
+</Warning>
+
+## تحميل ملفات السياسة
+
+### ملفات الاتفاقية
+
+تحميل ملفات الاتفاقية تلقائيًا:
+
+```text
+<project>/.failproofai/policies/security-policies.ts
+~/.failproofai/policies/personal-policies.mjs
+```
+
+- يتم تحميل مجلدات السياسة على مستوى المشروع والمستخدم.
+- يتم تحميل الملفات أبجديًا داخل كل مجلد.
+- يجب أن ينتهي الملف بـ `policies.js` أو `policies.mjs` أو `policies.ts`.
+- يتم دعم استدعاءات `customPolicies.add()` المتعددة في ملف واحد.
+- يتم دعم الواردات النسبية من الوحدات المحلية.
+- يمكن إيداع سياسات المشروع بحيث تتبع نفس القواعد المستودع.
+
+### الملفات الصريحة
+
+استخدم المسارات الصريحة عندما يجب أن يسمي التحقق أو التكوين ملف الإدخال مباشرة:
+
+```bash
+failproofai policies --install \
+  --custom ./security.policies.ts \
+  --custom ./workflow.policies.ts \
+  --scope project
+```
+
+تحميل الملفات الصريحة أولاً، تليها ملفات اتفاقية المشروع ثم ملفات اتفاقية المستخدم. يتم تحميل الملف المكتشف من خلال كلا المسارين مرة واحدة.
+
+## التحقق والاختبار
+
+يقوم التحقق بتنفيذ الوحدة عبر محمل الإنتاج والتأكد من أنها تسجل سياسة واحدة على الأقل.
+
+```bash
+failproofai policies --install \
+  --custom ./.failproofai/policies/checkout-policies.ts \
+  --scope project
+failproofai policies
+```
+
+يلتقط التحقق الملفات المفقودة وأخطاء بناء الجملة والواردات غير المحلولة والاستثناءات على مستوى أعلى والمهل الزمنية لتحميل الوحدة. لا تثبت أن منطق المطابقة صحيح.
+
+اختبر على الأقل هذه الحالات:
+
+- إجراء واحد يجب أن يطابق وينتج عن سبب السياسة المقصود.
+- إجراء واحد قريب لكن آمن يجب أن يعيد `allow()`.
+- حقول الأداة المفقودة أو المشكلة.
+- بناء جملة الأمر البديل والمسارات والاقتباسات والحالة والمسافات البيضاء.
+- عملية فرعية غير متاحة أو اعتماد شبكة.
+
+انسب النتيجة لسياستك المخصصة ضمن **المراقبة → السياسة**. الاختبار المحظور غير كافٍ إذا كانت سياسة مدمجة مختلفة قد اتخذت القرار.
+
+## السلوك في وقت التشغيل
+
+- تقيم السياسات المدمجة قبل السياسات المخصصة.
+- أول `deny` يوقف تقييم السياسة الإضافية.
+- يمكن دمج نتائج `instruct` المتعددة عندما لا تمنع أي سياسة الحدث.
+- لدى دالة السياسة مهلة تنفيذ مدتها 10 ثوانٍ.
+- يتم تسجيل استثناء مرفوع أو انتهاء المهلة الزمنية والتعامل معه كـ `allow()`.
+- يتم تخطي ملف اتفاقية فشل التحميل؛ تستمر الملفات المخصصة الأخرى والسياسات المدمجة.
+- تحميل الوحدة على مستوى أعلى له أيضًا مهلة زمنية مدتها 10 ثوانٍ.
+- يقوم وضع المراقبة السحابي بتشغيل السياسة لكنه يسجل قرار عدم السماح دون فرضه.
+
+احفظ وحدات السياسة حتمية وسريعة. تجنب استدعاءات الشبكة على مستوى أعلى أو بدء الخادم. قيّد العمل داخل `fn`، واقبض فشل الاعتماد، واختر عن قصد ما إذا كان هذا الفشل يجب أن يسمح أو ينكر العملية.
+
+## تصدرات API
+
+| التصدير | الغرض |
+| --- | --- |
+| `customPolicies.add(policy)` | سجل سياسة مخصصة عند تحميل الوحدة. |
+| `allow(reason?)` | اسمح بالعملية. |
+| `instruct(reason)` | اسمح بالعملية وقدم إرشادات حيث يتم دعمها. |
+| `deny(reason)` | حظر العملية حيث يتم دعمها. |
+| `getCustomHooks()` | أعد السياسات المسجلة حاليًا في سجل الوحدة. |
+| `clearCustomHooks()` | امسح هذا السجل، بشكل أساسي للاختبارات والمحملات. |
+
+تصدرات TypeScript `PolicyContext` و `PolicyResult` و `CustomHook` و `PolicyDecision` و `PolicyFunction`.
+
+<Card title="نشر السياسات المخصصة" icon="server-cog" href="/ar/policies/deploy">
+  انشر إصدارًا، ونشره في وضع المراقبة، والتحقق من القرارات، والانتقال إلى الإنفاذ.
+</Card>

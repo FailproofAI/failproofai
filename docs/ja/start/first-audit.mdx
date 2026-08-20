@@ -1,0 +1,52 @@
+---
+title: "最初の障害チェックを実行する"
+description: "Cloud ダッシュボードまたは fp CLI からオーディットを作成し、最初の検出結果を確認します。"
+icon: "scan-search"
+---
+
+オーディットは一連のセッションを、根拠付きの障害検出結果としてランク付けしてまとめます。まずは1つの絞り込んだ障害の問いからはじめましょう。
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    <Steps>
+      <Step title="オーディットを開く">
+        Cloud のサイドバーで **Analyze → Audits** に移動し、**new audit** を選択します。
+      </Step>
+      <Step title="オーディットを設定する">
+        名前と具体的な障害ゴールを入力します（例：「入力を変えず、エスカレーションもしないまま同じ決済呼び出しを再試行している本番セッションを見つける」）。エージェント、環境、対象期間、スケジュールを選択します。ワークフローのルールが審査担当に必要な場合は、簡潔な説明と参照 URL を追加してください。
+      </Step>
+      <Step title="作成して実行完了を待つ">
+        **create audit** を選択します。最初の実行はすぐにキューに登録されます。オーディットカードを開いて、queued → running → complete と進む状態を確認しましょう。
+      </Step>
+    </Steps>
+
+    実行が完了したら、検出結果を開いてセッションの根拠を確認します。確認済みにする、担当者を割り当てる、却下する、ミュートする、解決済みにするといった操作が可能です。
+
+    ![障害の説明、推奨アクション、根拠となる証拠、影響を受けたセッションが表示された完了済みオーディット検出結果。](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create payment-retry-failures \
+      --description "Find production sessions that retry a failed payment call without changing input or escalating" \
+      --scope '{"environments":["production"]}' \
+      --text "Escalate after two unchanged payment failures"
+
+    fp audits list
+    fp audits runs payment-retry-failures
+    fp audits findings --audit payment-retry-failures
+    fp audits finding <finding-id>
+    ```
+
+    参照コンテキストを追加し、ソースが変更されたときはリフレッシュします。
+
+    ```bash
+    fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
+    fp audits context-refresh payment-retry-failures
+    fp audits run payment-retry-failures
+    ```
+
+    `fp audits ack <finding-id>`、`fp audits assign <finding-id> --to <email>`、`fp audits dismiss <finding-id>`、`fp audits mute <finding-id>`、`fp audits resolve <finding-id>`、または `fp audits reopen <finding-id>` を使って、トリアージの各ステップを進めましょう。
+  </Tab>
+</Tabs>
+
+次は、確認済みの再現可能なアクションに対して[最初のポリシーで障害を防ぐ](/ja/start/first-policy)ステップに進みましょう。

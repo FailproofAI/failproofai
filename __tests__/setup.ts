@@ -1,6 +1,60 @@
 import "@testing-library/jest-dom";
 
 /**
+ * Web Storage, on runtimes that shadow jsdom's.
+ *
+ * Node grew its OWN `localStorage`/`sessionStorage` globals, and from Node 24 on
+ * they are unflagged — but they only work when the process was started with
+ * `--localstorage-file`, and without it the getter answers `undefined` while
+ * printing `ExperimentalWarning: localStorage is not available`. Vitest's jsdom
+ * environment makes `window === globalThis`, so that getter sits exactly where
+ * jsdom's Storage should be and wins.
+ *
+ * The visible effect was fifteen failures in `project-list.test.tsx` — all of
+ * them `Cannot read properties of undefined (reading 'clear')` — on any
+ * developer machine running a current Node, while CI stayed green on the
+ * older Node its runner image happened to ship. A suite that passes or fails on
+ * the runtime rather than on the code is not a suite anyone can trust, and the
+ * divergence hid in the one direction nobody checks: local red, CI green.
+ *
+ * Defined only when the runtime has not supplied a working one, so a real
+ * jsdom Storage (Node 20/22, or any run given `--localstorage-file`) is left
+ * alone. Both keys are `configurable` accessors, which is what makes them
+ * redefinable at all.
+ */
+function installWebStorage(name: "localStorage" | "sessionStorage"): void {
+  let existing: unknown;
+  try {
+    existing = (globalThis as Record<string, unknown>)[name];
+  } catch {
+    // Node's getter throws rather than answering on some configurations.
+    existing = undefined;
+  }
+  if (existing) return;
+
+  const store = new Map<string, string>();
+  const storage: Storage = {
+    get length() {
+      return store.size;
+    },
+    key: (i: number) => [...store.keys()][i] ?? null,
+    getItem: (k: string) => (store.has(String(k)) ? store.get(String(k))! : null),
+    setItem: (k: string, v: string) => void store.set(String(k), String(v)),
+    removeItem: (k: string) => void store.delete(String(k)),
+    clear: () => store.clear(),
+  };
+
+  Object.defineProperty(globalThis, name, {
+    value: storage,
+    writable: true,
+    configurable: true,
+  });
+}
+
+installWebStorage("localStorage");
+installWebStorage("sessionStorage");
+
+/**
  * Unit tests may not reach the public internet.
  *
  * Not a style rule — a correctness one, learned the expensive way. `--connect`

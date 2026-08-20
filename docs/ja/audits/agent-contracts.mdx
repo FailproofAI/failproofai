@@ -1,0 +1,82 @@
+---
+title: "エージェントコンテキスト"
+description: "各エージェントが何をすべきか、何を生成すべきか、何をしてはならないかを監査に伝えます。"
+icon: "bot"
+---
+
+エージェントコンテキストは、各エージェントが何のために存在するか、何を生成しなければならないか、何を絶対にしてはならないかを監査に伝えます。Failproof AI はこのコンテキストをエージェントごとに1つのエージェントコントラクトとして保存します。
+
+エージェントコンテキストは特定の監査ではなく、組織に帰属します。エージェントごとに一度だけ記述すれば、そのエージェントをスコープに含むすべてのモデルベースの監査で使用されます。
+
+## エージェントコンテキストの追加
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Analyze → audits** に移動し、**agents** を選択して、セッションで報告されたエージェント ID を選択します。
+    2. **add content** または **edit** を選択します。
+    3. エージェントの目的、生成すべきもの、「完了」の定義、実行頻度、絶対にしてはならないことを記述します。
+    4. コンテキストを保存し、監査フォームに戻って選択したエージェントが対象として表示されていることを確認します。
+
+    ![監査の Agents ドロワー。エージェントの目的、実行頻度、出力、完了条件、禁止行為を追加するために使用します。](/images/dashboard/agent-context.png)
+
+    監査の作成または編集中に **agents** ドロワーからエージェントコンテキストを追加・編集することもできます。コンテキストは独立して保存され、対象となるすべての監査ですぐに利用可能になります。
+  </Tab>
+  <Tab title="CLI">
+    Cloud CLI はまだコントラクトコマンドを公開していません。`audits:read` と `audits:write` の権限を持つキーを使用して、パブリック API を利用してください。
+
+    ```bash
+    curl -X POST "https://app.befailproof.ai/v1/audits/contracts" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "agent_id": "nightly-reconciler",
+        "enabled": true,
+        "body": "# Purpose\nReconcile yesterday's payouts.\n\n## Outputs\nPublish a signed summary.\n\n## Must not\nNever modify ledger entries."
+      }'
+    ```
+
+    コントラクト一覧は `GET /v1/audits/contracts` で取得できます。個別のコントラクトは `GET /v1/audits/contracts/{id}` で取得してください。`PUT` による更新は完全な置き換えとなり、`agent_id` と `body` の両方が必要です。
+  </Tab>
+</Tabs>
+
+## 有用なコンテキストの書き方
+
+コンテキストは5,000文字以内に収め、テスト可能な内容にしてください。有用なコンテキストには通常、次の要素が含まれます。
+
+- **Purpose（目的）：** エージェントが存在する理由
+- **Outputs（出力）：** 生成しなければならない成果物またはアクション
+- **Done when（完了条件）：** 実行が成功したとみなされる条件
+- **Cadence（実行頻度）：** 実行するタイミングや頻度
+- **Must not（禁止事項）：** 常に許容されないアクションと結果
+
+```markdown
+---
+agent: nightly-reconciler
+purpose: Reconcile yesterday's payouts and publish a signed summary.
+cadence: Once daily after 02:00 UTC. Never more than once.
+---
+
+## Outputs
+- A signed reconciliation summary in the finance channel.
+
+## Done when
+- Every payout is matched or explicitly flagged.
+
+## Must not
+- Modify ledger entries. Report discrepancies instead.
+```
+
+エージェントコンテキストは期待される動作を定義するものです。分析がどのような結論を出すべきかを指示したり、検証する証拠を制限したりすることはできません。コンテキストのないエージェントも通常通り監査されますが、Failproof AI は組織固有の意図に照らしてその動作を評価することができません。
+
+## エージェントコンテキストの一時停止と変更
+
+- 監査で一時的にコンテキストを無視させたい場合は、エージェントコンテキストを一時停止してください。一時停止は元に戻すことができます。
+- エージェントの責務が変わった場合はコンテキストを編集してください。新しいテキストは以降の実行に適用されます。
+- 実行中のエージェントがコンテキストを使用していないように見える場合は、**last matched** を確認してください。通常、エージェント ID がテレメトリと一致していないことが原因です。
+- テキストを完全に削除する必要がある場合のみ、API 経由で削除してください。ダッシュボードは意図的に削除ではなく一時停止を提供しています。
+
+監査の実行ごとに、使用されたエージェントコンテキストの正確なスナップショットが保存されます。現在のコントラクトリソースを編集・一時停止・削除しても、以前の結果の根拠が書き換えられることはありません。
+
+<Info>
+  コントラクトの読み取りには `audits:read` が必要です。作成、編集、一時停止、削除には `audits:write` が必要です。
+</Info>

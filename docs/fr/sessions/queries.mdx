@@ -1,0 +1,53 @@
+---
+title: "Requêtes"
+description: "Explorez les données de sessions, d'événements et d'évaluations avec du SQL réutilisable."
+icon: "database"
+---
+
+Les requêtes constituent la couche flexible qui sous-tend les tableaux de bord, les audits et les investigations. Utilisez du SQL ad-hoc pour tester une idée, puis sauvegardez la requête lorsqu'elle fait partie d'un flux de travail récurrent.
+
+## Créer et exécuter une requête
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Analyser → Requêtes** et sélectionnez **nouvelle requête**.
+    2. Ouvrez l'explorateur de schéma et choisissez des champs parmi les données d'événements, de sessions ou d'évaluations.
+    3. Rédigez le SQL, ajoutez des paramètres si nécessaire, puis exécutez la requête.
+    4. Sauvegardez-la avec un nom et une description clairs, puis utilisez **ajouter au tableau de bord** lorsque le résultat doit être surveillé.
+
+    L'éditeur de requêtes combine le schéma d'événements, le SQL, les paramètres et un aperçu des résultats, ce qui vous permet de valider la question avant de la sauvegarder.
+
+    ![L'éditeur de requêtes SQL avec un explorateur de schéma et une grille de résultats en temps réel.](/images/dashboard/query-lab.png)
+
+    Les requêtes sauvegardées apparaissent ensuite dans la bibliothèque partagée, où les membres de l'équipe peuvent les relancer ou ajouter leurs résultats à des tableaux de bord.
+
+    ![La bibliothèque de requêtes sauvegardées contenant des requêtes intégrées et personnalisées réutilisables.](/images/dashboard/queries.png)
+
+    Utilisez un nom et une description clairs afin que le résultat reste compréhensible sans avoir à rouvrir le SQL.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp query schema
+    fp query create "retry loops" --sql "SELECT ..."
+    fp query run <query-id>
+    fp query show <query-id>
+    fp query update <query-id> --sql "SELECT ..."
+    ```
+
+    Utilisez `fp query list` pour trouver les identifiants et `fp query delete <query-id>` pour supprimer une requête sauvegardée.
+  </Tab>
+</Tabs>
+
+## Usages courants
+
+- Trouver des sessions avec des appels répétés au même outil.
+- Comparer les scores d'évaluation entre différents modèles ou environnements.
+- Mesurer le temps écoulé entre une attente humaine et la reprise.
+- Identifier les refus de politique suivis d'une alternative réussie.
+- Constituer une cohorte pour un audit.
+
+Ouvrez **Requêtes → Schéma** avant d'écrire des requêtes sur des champs inconnus. Privilégiez des filtres explicites sur le temps et l'environnement, et limitez les résultats lors de l'exploration.
+
+<Warning>
+  Une requête peut identifier un schéma suspect, mais elle n'établit pas à elle seule le mode de défaillance. Ouvrez des traces représentatives ou exécutez un audit avant de transformer le résultat en politique.
+</Warning>

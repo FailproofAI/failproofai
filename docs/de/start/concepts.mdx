@@ -1,0 +1,26 @@
+---
+title: "Kernkonzepte"
+description: "Die wenigen Konzepte, die in Failproof AI durchgängig verwendet werden."
+icon: "boxes"
+---
+
+| Konzept | Bedeutung | Was Sie erreichen können |
+| --- | --- | --- |
+| Session | Eine Agenten-Aufgabe oder -Ausführung | Einzelnes Ergebnis nachvollziehen |
+| Event | Eine aufgezeichnete Aktion in einer Session | Modellaufruf, Werkzeugnutzung, Fehler, menschliche Aktion oder Policy-Entscheidung untersuchen |
+| Trace | Die geordnete und verschachtelte Session-Ansicht | Kausalität verstehen statt unzusammenhängende Logs zu lesen |
+| Evaluation | Eine Bewertung oder ein Urteil über eine Session | Qualität, Compliance, Kosten oder Latenz kontinuierlich verfolgen |
+| Audit | Eine Überprüfung einer ausgewählten Session-Population | Mit definiertem Ziel und Rhythmus nach Fehlermustern suchen |
+| Finding | Ein durch ein Audit entdeckter, belegter Fehler | Fehlermodus, Schweregrad und betroffene Sessions einsehen |
+| Issue | Ein dauerhafter Antwortdatensatz | Ein Finding oder einen Alert-Vorfall zuweisen, diskutieren und lösen |
+| Alert | Eine Regel, die Wiederholungen erkennt | Zuständige benachrichtigen, wenn eine bekannte Bedingung erneut auftritt |
+| Policy | Eine Regel, die während der Agentenaktivität ausgewertet wird | Riskantes Verhalten beobachten, blockieren oder umleiten |
+| Deployment | Ein versionierter Policy-Rollout auf Maschinen | Steuern, wo eine Policy ausgeführt wird, und sie sicher zurückrollen |
+
+## Der Zuverlässigkeitskreislauf
+
+Starten Sie mit Belegen. Eine Session zeigt, was passiert ist. Ein Audit bestimmt, ob es sich um einen Einzelfehler oder ein Muster handelt. Ein Finding identifiziert den Fehlermodus; ein Issue übernimmt die Verantwortung für die Reaktion. Eine Policy verhindert dasselbe Verhalten, während Alerts Sie informieren, falls die Bedingung erneut auftritt.
+
+<Warning>
+  Ein lokales `failproofai audit` durchsucht den lokalen Agentenverlauf. Ein wiederkehrendes Cloud-Audit überprüft Sessions, die in Failproof AI Cloud gespeichert sind. Es handelt sich um separate Workflows mit unterschiedlichem Umfang und Zeitplanung.
+</Warning>

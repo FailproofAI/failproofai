@@ -1,0 +1,63 @@
+---
+title: "策略"
+description: "在已知故障重复发生之前，观察、引导或阻止代理操作。"
+icon: "shield-check"
+---
+
+策略评估代理钩子事件并返回三种决策之一：
+
+- `allow` 允许操作继续执行。
+- `instruct` 向代理提供纠正指导。
+- `deny` 以给定原因阻止操作。
+
+## 使用三个策略界面
+
+<Tabs>
+  <Tab title="仪表板">
+    1. 前往 **观察 → 策略**，筛选并查看会话中的策略决策。
+    2. 前往 **管理 → 策略编辑器**，编写、验证、发布、禁用或查看不可变版本。
+    3. 前往 **管理 → 执行**，将版本和效果分配给机器。
+
+    在编写或更改执行策略之前，使用策略页面了解当前已匹配的内容。
+
+    ![策略页面显示决策总数以及本地和云管理策略映射。](/images/dashboard/policy-observe.png)
+
+    编辑器是将故障条件转化为源码、验证并发布不可变版本的地方。
+
+    ![用于编写和发布不可变策略版本的策略编辑器。](/images/dashboard/policy-editor.png)
+
+    执行页面随后将已发布的版本及其观察或执行效果分配给机器。
+
+    ![执行机群显示机器覆盖情况和已分配的策略版本。](/images/dashboard/enforcement-fleet.png)
+
+    部署后在策略页面验证决策，以便将编写视图和机群视图与真实的代理活动关联起来。
+  </Tab>
+  <Tab title="CLI">
+    使用 `failproofai` 进行本地策略安装和验证：
+
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --scope project
+    failproofai config --status
+    ```
+
+    使用 `fp` 查找包含策略决策的云端会话和事件。云端策略编写和机群部署仍属于仪表板工作流。
+  </Tab>
+</Tabs>
+
+策略在 Failproof AI 中有三个独立的界面：
+
+1. **分析决策**——在会话、仪表板和审计中查看。
+2. **编写版本**——使用内置规则、代码或策略编辑器。
+3. **部署和执行**——在选定机器上推送版本。
+
+从已确认的故障模式出发。定义能够识别该故障的最小事件和工具匹配条件，测试合法示例和不安全示例，然后先观察再执行。
+
+<Columns cols={2}>
+  <Card title="使用内置策略" icon="library" href="/zh/policies/builtin">
+    启用针对常见密钥、Shell、Git、云和工作流风险的已审核规则。
+  </Card>
+  <Card title="编写自定义策略" icon="code-2" href="/zh/policies/custom">
+    使用 JavaScript 或 TypeScript 表达特定工作流的决策逻辑。
+  </Card>
+</Columns>

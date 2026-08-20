@@ -1,0 +1,54 @@
+---
+title: "Recetas de auditoría"
+description: "Objetivos iniciales para investigaciones comunes de fallos en agentes."
+icon: "book-open-check"
+---
+
+Úsalos como punto de partida y añade tu agente, entorno y flujo de trabajo esperado.
+
+<Tabs>
+  <Tab title="Panel de control">
+    Ve a **Analizar → Auditorías → Nueva auditoría**, copia una receta en la descripción o resumen, y añade el entorno relevante, el agente, el periodo de análisis y las URLs de referencia. Crea la auditoría e inspecciona la primera ejecución antes de programarla.
+
+    El formulario de nueva auditoría convierte una receta en una verificación de fallos ejecutable añadiendo alcance, contexto, cadencia y notificaciones.
+
+    ![El formulario de nueva auditoría configurado con un objetivo específico, programación, alcance de agente y entorno, contexto y canales de notificación.](/images/dashboard/audit-new.png)
+
+    Tras la creación, confirma que la auditoría aparece en la lista con el estado y la programación esperados antes de depender de las ejecuciones recurrentes.
+
+    ![La página de Auditorías donde aparece una receta de auditoría específica del flujo de trabajo tras su creación.](/images/dashboard/audits.png)
+
+    Abre la primera ejecución y ajusta la receta si sus hallazgos son más amplios o más acotados que el modo de fallo previsto.
+  </Tab>
+  <Tab title="CLI">
+    Guarda una receta como archivo de texto y adjúntala durante la creación:
+
+    ```bash
+    fp audits create retry-loop-review \
+      --scope '{"environments":["production"]}' \
+      --text-file ./retry-loop-audit.txt \
+      --schedule-interval-secs 86400
+    ```
+  </Tab>
+</Tabs>
+
+<AccordionGroup>
+  <Accordion title="Bucles de reintento repetidos">
+    Encuentra sesiones donde el agente repite la misma llamada a herramienta fallida sin cambiar la entrada, seleccionar una herramienta alternativa ni escalar a un humano.
+  </Accordion>
+  <Accordion title="Uso incorrecto de herramientas">
+    Encuentra sesiones donde la herramienta elegida no se corresponde con la tarea indicada, o donde la entrada de la herramienta viola las precondiciones requeridas por el flujo de trabajo.
+  </Accordion>
+  <Accordion title="Acceso inseguro a datos">
+    Encuentra sesiones que leen, escriben o transmiten datos sensibles fuera de las rutas y servicios aprobados para este agente.
+  </Accordion>
+  <Accordion title="Abandono de tareas">
+    Encuentra sesiones que finalizan sin el resultado solicitado, un error claro o una transferencia explícita a un humano.
+  </Accordion>
+  <Accordion title="Regresión de coste o latencia">
+    Encuentra sesiones cuya duración de modelo, herramienta o total supera el presupuesto esperado, e identifica el patrón de eventos responsable.
+  </Accordion>
+  <Accordion title="Escalado humano omitido">
+    Encuentra sesiones donde la confianza, el fallo repetido o las directrices de política requerían una decisión humana pero el agente continuó de forma autónoma.
+  </Accordion>
+</AccordionGroup>

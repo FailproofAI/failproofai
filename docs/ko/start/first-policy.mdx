@@ -1,0 +1,47 @@
+---
+title: "정책으로 첫 번째 장애를 예방하세요"
+description: "정책 버전을 작성하고, 관찰 모드로 배포한 다음, 실제로 적용하세요."
+icon: "shield-check"
+---
+
+안전하지 않은 동작과 반드시 허용되어야 하는 정상적인 동작을 명확히 설명할 수 있을 때에만 정책을 사용하세요.
+
+<Tabs>
+  <Tab title="대시보드">
+    <Steps>
+      <Step title="정책 작성">
+        **Admin → policy editor**로 이동합니다. 데모 정책에서 시작하여 소스를 검토하거나 편집한 다음, **publish version**을 선택합니다. 게시하면 머신에 배포할 수 있는 변경 불가능한 버전이 생성됩니다.
+
+        ![변경 불가능한 버전으로 게시할 준비가 된 데모 정책이 표시된 Policy editor 작성 화면.](/images/dashboard/policy-editor.png)
+      </Step>
+      <Step title="머신에 배포">
+        **Admin → enforcement**로 이동하여 대상 머신을 펼치고 **edit this machine**을 선택합니다. 게시된 데모 정책을 추가하고 버전을 고정한 다음, **observe**를 선택하고 배포를 적용합니다.
+
+        ![배포를 적용하기 전, 관찰 모드에서 게시된 정책 버전이 선택된 머신 배포 편집기.](/images/dashboard/enforcement-editor.png)
+      </Step>
+      <Step title="정책 검증">
+        해당 머신에서 새 에이전트 세션을 실행한 다음, **Observe → policy**를 엽니다. 머신을 선택하고 데모 정책이 정책 매핑 및 결정 타임라인에 표시되는지 확인합니다. 관찰 모드는 실제로 동작을 차단하지 않고 정책이 어떻게 동작할지를 기록합니다.
+
+        ![결정 총계, 시간 경과에 따른 적용 활동, 로컬 및 클라우드 관리 정책 매핑을 보여주는 Policy 페이지.](/images/dashboard/policy-observe.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    클라우드 정책 작성 및 플릿 배포는 관리자 워크플로입니다. 로컬 CLI를 사용하여 게시하기 전에 동일한 정책을 검증할 수 있습니다:
+
+    ```bash
+    failproofai policies --install --custom ./payment-retry.policies.ts \
+      --cli claude --scope project
+    failproofai config --status
+    ```
+
+    `fp`를 사용하여 클라우드에 표시되는 정책 결정을 검사하세요:
+
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp sessions --env production --since 24h
+    ```
+
+    클라우드 CLI는 루트 전용 적용 배포 경로를 노출하지 않습니다. **Admin → policy editor**에서 버전을 게시하고 **Admin → enforcement**에서 배포하세요.
+  </Tab>
+</Tabs>

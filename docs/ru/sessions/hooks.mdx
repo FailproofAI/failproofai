@@ -1,0 +1,25 @@
+---
+title: "Hooks"
+description: "Измеряйте активность hook, триггеры и задержку отдельно от результатов политик."
+icon: "webhook"
+---
+
+Hooks показывает, когда запускаются hook жизненного цикла агента и как долго они выполняются. Решения политик отображаются отдельно.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Перейдите в **Observe → Hooks**.
+    2. Фильтруйте по окружению, названию hook, событию триггера, агенту или ID сеанса.
+    3. Просмотрите задержку hook и распределение.
+    4. Выберите точку на графике или сегмент hook, чтобы открыть основные события.
+
+    ![Страница Hooks с задержкой, сгруппированной по названию hook и событию триггера.](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

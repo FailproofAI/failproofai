@@ -1,0 +1,84 @@
+---
+title: "Configurazione locale"
+description: "Controlla l'ambito delle policy, i parametri, i file personalizzati e le impostazioni di Failproof AI a livello di macchina."
+icon: "file-cog"
+---
+
+Failproof AI separa la selezione delle policy dalle impostazioni di macchina e daemon. Questo mantiene le scelte di policy del repository revisabili mentre le credenziali e lo stato del daemon rimangono al di fuori del repository.
+
+## Scegli l'ambito di una policy
+
+<Tabs>
+  <Tab title="Dashboard">
+    Esegui `failproofai` senza argomenti per aprire il dashboard locale delle policy. Scegli l'ambito utente, progetto o locale prima di abilitare una policy in modo che il cambiamento venga scritto nel file di configurazione desiderato.
+
+    - **Utente** si applica a tutti i progetti su questa macchina.
+    - **Progetto** appartiene al repository e può essere sottoposto a commit.
+    - **Locale** sovrascrive un progetto per un utente e dovrebbe rimanere ignorato da git.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policy add block-rm-rf --scope user
+    failproofai policy add block-force-push --scope project
+    failproofai policy add warn-large-file-write --scope local
+    failproofai policies
+    ```
+
+    Non tutti gli harness supportano l'ambito locale. La CLI rifiuta un ambito che l'harness selezionato non può rappresentare.
+  </Tab>
+</Tabs>
+
+| Ambito | File di configurazione della policy |
+| --- | --- |
+| Progetto | `<project>/.failproofai/policies-config.json` |
+| Locale | `<project>/.failproofai/policies-config.local.json` |
+| Utente | `~/.failproofai/policies-config.json` |
+
+Le policy abilitate vengono unite come un'unione. I parametri della policy utilizzano il primo ambito che definisce i parametri per quella policy, nell'ordine progetto → locale → utente. I percorsi di policy personalizzate espliciti utilizzano il primo ambito che li definisce.
+
+## Configura i parametri della policy
+
+<Tabs>
+  <Tab title="Dashboard">
+    Apri la policy nel dashboard locale, modifica i parametri supportati e salva nell'ambito selezionato. Esegui un'azione dell'agent corrispondente e una non corrispondente, quindi ispeziona la decisione in **Osserva → policy**.
+
+  </Tab>
+  <Tab title="CLI">
+    Modifica il file `policies-config.json` dell'ambito selezionato, quindi esegui `failproofai policies` per evidenziare nomi di policy o chiavi di parametri sconosciuti.
+
+    ```json
+    {
+      "enabledPolicies": ["block-rm-rf", "block-force-push"],
+      "policyParams": {
+        "block-rm-rf": {
+          "allowPaths": ["/tmp/build-output"]
+        }
+      }
+    }
+    ```
+
+    ```bash
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+## Comprendi i file della macchina
+
+`~/.failproofai` contiene file separati per limiti di fiducia distinti:
+
+| Percorso | Scopo |
+| --- | --- |
+| `config.json` | Impostazioni daemon, audit e telemetria non segrete |
+| `credentials.json` | Credenziali cloud; archiviate con permessi solo proprietario |
+| `policies-config.json` | Selezione di policy integrate nell'ambito utente, parametri e percorsi di policy personalizzate esplicite |
+| `policies/` | Policy di convenzione utente e artefatti di policy gestiti dal cloud |
+| `hook-activity/` | Log locale delle decisioni di policy |
+| `state/` | Spool daemon, salute, pausa e stato di runtime |
+
+Usa `FAILPROOFAI_HOME` per spostare il layout completo della macchina per un container o test isolato. Non spostare directory di stato individuali indipendentemente.
+
+<Warning>
+  Non sottoporre mai a commit `credentials.json`. Sottoponi a commit la configurazione di policy del progetto e le policy di convenzione del progetto solo dopo averle revisionate come codice di enforcement.
+</Warning>

@@ -1,0 +1,52 @@
+---
+title: "머신에 정책 배포"
+description: "어떤 머신이 등록되어 있고, 최신 상태이며, 의도한 정책 버전을 적용 중인지 파악합니다."
+icon: "network"
+---
+
+플릿 커버리지는 위험이 존재하는 곳에 정책이 존재하는지 여부를 확인합니다. 안정적인 ID와 사람이 읽을 수 있는 레이블로 머신을 추적하고, 할당된 배포 상태와 보고된 배포 상태를 비교합니다.
+
+## 커버리지 확인
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Admin → enforcement**로 이동하여 적용 중(enforcing)과 관찰 중(observing) 합계를 검토합니다.
+    2. ID 또는 레이블로 머신을 검색하거나, 정책이 누락된 머신을 필터링합니다.
+    3. 행을 펼쳐 할당된 정책, 보고된 배포 상태, 마지막 체크인, 기록을 비교합니다.
+    4. 적용된 배포가 보류 중인 경우 머신의 폴링 간격 이후에 새로 고침합니다.
+
+    ![정책 커버리지, 머신 배포 상태, 관찰 및 적용 할당을 보여주는 Enforcement 플릿 화면.](/images/dashboard/enforcement-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai config --machine-label checkout-runner-03
+    failproofai flush --wait
+    ```
+
+    `fp events --agent-id <agent-id> --since 24h`를 사용하여 머신의 에이전트 활동이 Cloud에 도달하는지 확인합니다.
+  </Tab>
+</Tabs>
+
+커버리지 뷰를 통해 다음을 파악할 수 있습니다:
+
+- 최신 배포를 한 번도 가져오지 않은 머신
+- 등록은 되었지만 활동 보고를 중단한 머신
+- 잘못된 환경 또는 코호트에 할당된 정책
+- 업데이트가 중단된 후 발생한 버전 불일치
+
+머신을 재연결하지 않고 이름 변경하기:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
+
+로컬 상태 확인:
+
+```bash
+failproofai config --status
+```
+
+<Tip>
+  워크로드와 환경을 식별할 수 있는 레이블을 사용하세요. 오토스케일링이나 머신 교체 이후에는 호스트명만으로는 충분하지 않은 경우가 많습니다.
+</Tip>

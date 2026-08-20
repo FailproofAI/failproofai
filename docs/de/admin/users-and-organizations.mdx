@@ -1,0 +1,44 @@
+---
+title: "Benutzer und Organisationen"
+description: "Mitgliedschaften verwalten und Daten sowie Aktionen jeder Organisation isoliert halten."
+icon: "users"
+---
+
+Organisationen isolieren Sitzungen, Auswertungen, Audits, Issues, Warnmeldungen, Abfragen, Dashboards, Benutzer und Schlüssel. Bestätigen Sie die aktive Organisation, bevor Sie administrative Ressourcen ändern.
+
+## Mitglieder und Organisationen verwalten
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Verwenden Sie den Organisationsumschalter oben in der Cloud-Seitenleiste, um die Organisation zu wechseln.
+    2. Gehen Sie zu **Administration → Benutzer**, um Mitglieder zu suchen oder nach Status und Rolle zu filtern.
+    3. Wählen Sie **Neuer Benutzer**, geben Sie die E-Mail-Adresse ein, wählen Sie ein Berechtigungsset aus und passen Sie bei Bedarf Überschreibungen an.
+    4. Öffnen Sie einen Benutzer später, um Berechtigungen zu aktualisieren, die Anmeldung zu deaktivieren oder das Konto wieder zu aktivieren.
+
+    ![Die Benutzerseite mit Mitglieds-E-Mail-Adressen, Berechtigungssets sowie Bearbeiten- und Deaktivieren-Steuerelementen.](/images/dashboard/users.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+
+    fp users create engineer@example.com --permission-set standard
+    fp users show engineer@example.com
+    fp users update engineer@example.com --add audits:write
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+    ```
+  </Tab>
+</Tabs>
+
+Administratoren können Benutzer erstellen, aktualisieren, deaktivieren und wieder aktivieren sowie das für ihre Rolle passende Berechtigungsset zuweisen. Die API verwendet für die Deaktivierung einen Löschvorgang, entfernt jedoch weder das Konto noch den Mitgliedschaftsdatensatz.
+
+<Warning>
+  Das Deaktivieren eines Benutzers blockiert diese Identität in allen Organisationen – nicht nur in der aktuell ausgewählten. Die erneute Aktivierung stellt die globale Anmeldemöglichkeit sowie die Mitgliedsberechtigungen in dieser Organisation wieder her.
+</Warning>
+
+<Tip>
+  Geben Sie Dienstkonten aussagekräftige Namen, die mit einem Workload und einem Verantwortlichen verknüpft sind. Vermeiden Sie die gemeinsame Nutzung von Schlüsseln zwischen Organisationen oder zwischen Personen und Maschinen.
+</Tip>

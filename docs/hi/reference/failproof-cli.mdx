@@ -1,0 +1,151 @@
+---
+title: "Failproof AI CLI"
+description: "हुक इंस्टॉल करें, स्थानीय नीतियों का प्रबंधन करें, क्लाउड से कनेक्ट करें, और स्थानीय डेमन को चलाएं।"
+icon: "terminal"
+---
+
+`npm install -g failproofai` के साथ स्थानीय CLI इंस्टॉल करें। इसे बिना किसी तर्क के चलाएं ताकि स्थानीय नीति डैशबोर्ड खुल जाए।
+
+पैकेज के लिए Node.js 20.9 या नए संस्करण की आवश्यकता है। Bun 1.3 या नए संस्करण विकास और स्रोत इंस्टॉल के लिए समर्थित हैं। `failproofai configure` और `failproofai setup`, `failproofai config` के लिए उपनाम हैं; `failproofai p`, `failproofai policies` के लिए एक उपनाम है।
+
+## एक मशीन सेट अप करें
+
+```bash
+npm install -g failproofai
+failproofai config \
+  --connect https://app.befailproof.ai \
+  --token <machine-key> \
+  --machine-label checkout-prod-01
+failproofai policies --install
+failproofai config --status
+```
+
+बिना किसी तर्क के `failproofai` चलाएं ताकि स्थानीय नीति डैशबोर्ड खुल जाए।
+
+| कमांड | परिणाम |
+| --- | --- |
+| `failproofai config` | इंटरैक्टिव मशीन सेटअप चलाएं |
+| `failproofai config --connect <url> --token <key>` | क्लाउड इंजेशन और नीति डिलीवरी से कनेक्ट करें |
+| `failproofai config --status` | कनेक्शन, डेमन, डिलीवरी और पॉज़ स्थिति दिखाएं |
+| `failproofai policies` | बिल्ट-इन और कस्टम नीतियों की सूची बनाएं |
+| `failproofai policies --install` | हुक इंस्टॉल करें और नीतियों को सक्षम करें |
+| `failproofai policy add <name>` | एक बिल्ट-इन नीति सक्षम करें |
+| `failproofai policy remove <name>` | एक बिल्ट-इन नीति अक्षम करें |
+| `failproofai policies --uninstall` | नीतियों को अक्षम करें या हार्नेस हुक हटाएं |
+| `failproofai audit` | स्थानीय एजेंट इतिहास स्कैन करें और स्थानीय ऑडिट दृश्य खोलें |
+| `failproofai audit --schedule [days] --email <address>` | आवर्ती स्थानीय स्कैन शेड्यूल करें और उनके निष्कर्षों को ईमेल करें |
+| `failproofai audit --status` | रिपोर्ट पता, अंतराल और अगला निर्धारित स्कैन दिखाएं |
+| `failproofai audit --no-schedule` | आवर्ती स्कैन रोकें ऑडिट इतिहास हटाए बिना |
+| `failproofai harness list` | अतिरिक्त कैप्चर पाथ की सूची बनाएं |
+| `failproofai flush --wait` | वर्तमान इवेंट स्पूल डिलीवर करें |
+| `failproofai backfill --since 30d` | पहले से पास किए गए इतिहास को फिर से पढ़ें |
+| `failproofai config --pause [duration]` | एक स्थानीय सत्र को डिफॉल्ट रूप से 30 मिनट के लिए पॉज़ करें, 8 घंटे तक |
+| `failproofai config --resume` | एक पॉज़ किए गए स्थानीय सत्र को फिर से शुरू करें; सभी पॉज़ को स्पष्ट करने के लिए `--all` जोड़ें |
+| `failproofai update` | पैकेज माइग्रेशन पूरा करें और डेमन को अपडेट करें |
+| `failproofai migrate --dry-run` | लंबित होम-लेआउट माइग्रेशन का पूर्वावलोकन या चलाएं |
+| `failproofai uninstall` | हुक और डेमन को हटाएं पैकेज को हटाने से पहले |
+| `failproofai --version` | इंस्टॉल किए गए पैकेज संस्करण को प्रिंट करें |
+| `failproofai --help` | कमांड और वैश्विक उपयोग दिखाएं |
+
+## कॉन्फ़िगरेशन फ़्लैग
+
+| फ़्लैग | उपयोग |
+| --- | --- |
+| `--connect <url> --token <key>` | गैर-इंटरैक्टिव रूप से कनेक्ट करें |
+| `--machine-id <id>` | स्थिर मशीन ID सेट करें |
+| `--machine-label <name>` | डैशबोर्ड लेबल सेट या बदलें |
+| `--no-transcripts` | ट्रांसक्रिप्ट सामग्री के बिना निर्णय भेजें |
+| `--disconnect` | क्लाउड नीति पुल और इवेंट डिलीवरी रोकें |
+| `--status` | वर्तमान मशीन स्थिति दिखाएं |
+| `--pause [duration]` | वर्तमान निर्देशिका में नवीनतम सत्र को पॉज़ करें; सेकंड, मिनट, या घंटे स्वीकार करता है और डिफॉल्ट रूप से 30 मिनट है |
+| `--resume` | मिलान करने वाले पॉज़ को जल्दी समाप्त करें |
+| `--session <id>` | पॉज़ या रिज़्यूम के लिए एक स्पष्ट सत्र लक्ष्य करें |
+| `--all` | `--resume` के साथ, हर सक्रिय पॉज़ को समाप्त करें |
+
+स्थानीय पॉज़ बिल्ट-इन, कस्टम और सम्मेलन नीतियों को एक सत्र के लिए निलंबित करते हैं। वे हमेशा समाप्त होते हैं और क्लाउड-प्रबंधित नीतियों को अक्षम नहीं करते हैं। `block-self-pause` एक साधन एजेंट को इस एस्केप हैच का स्वयं उपयोग करने से रोकता है।
+
+## नीति फ़्लैग
+
+| फ़्लैग | उपयोग |
+| --- | --- |
+| `--install`, `-i` | नीतियों को सक्षम करें और हार्नेस हुक इंस्टॉल करें |
+| `--uninstall`, `-u` | नीतियों को अक्षम करें या हुक हटाएं |
+| `--cli <names...>` | एक या अधिक समर्थित हार्नेस को लक्ष्य करें |
+| `--scope user\|project\|local\|all` | कॉन्फ़िगरेशन स्कोप चुनें; `all` अनइंस्टॉल के लिए है |
+| `--beta` | बीटा नीतियों को शामिल करें |
+| `--custom`, `-c <path>` | एक कस्टम नीति फ़ाइल को मान्य करें और लोड करें; दोहराए जा सकते हैं |
+
+## डिलीवरी और रखरखाव फ़्लैग
+
+| कमांड | फ़्लैग |
+| --- | --- |
+| `backfill` | `--since <30d\|6m\|YYYY-MM-DD>`, `--dry-run` |
+| `flush` | `--wait`, `--timeout <seconds>` |
+| `update` | `--no-daemon` |
+| `migrate` | `--dry-run` |
+| `uninstall` | `--purge`, `--dry-run`, `--yes` |
+
+`failproofai update` को `npm install -g failproofai@latest` के बाद चलाया जाना चाहिए; यह होम-लेआउट माइग्रेशन करता है, मिलान करने वाले डेमन बाइनरी को इंस्टॉल करता है, और सेवा को पुनः शुरू करता है। `--no-daemon` केवल लेआउट माइग्रेशन करता है।
+
+## हार्नेस पाथ
+
+```text
+failproofai harness list [harness]
+failproofai harness add-path <harness> [label=]<path>
+failproofai harness remove-path <harness> <path-or-label>
+```
+
+समर्थित हार्नेस नाम `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, और `goose` हैं।
+
+लेबल व्युत्पन्न एजेंट ID को नेमस्पेस करते हैं जब दो रूट एक ही प्रोजेक्ट की प्रतियां रखते हैं। ओवरलैपिंग रूट और डुप्लिकेट लेबल को अस्वीकार किया जाता है ताकि डुप्लिकेट संग्रह या कर्सर भ्रष्टाचार को रोका जा सके। अतिरिक्त-पाथ कॉन्फ़िगरेशन डेमन पुनरारंभ के बिना पुनः लोड होता है।
+
+कंटेनर पर्यावरण फ़ाइल-कॉन्फ़िगर किए गए अतिरिक्त पाथों को `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` नामक अल्पविराम-अलग किए गए चर से बदल सकते हैं, उदाहरण के लिए:
+
+```bash
+export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
+```
+
+## पर्यावरण चर
+
+स्थायी मशीन व्यवहार के लिए कॉन्फ़िगरेशन फ़ाइलों का उपयोग करें। पर्यावरण चर कंटेनर, परीक्षण और एक प्रक्रिया के लिए सबसे उपयोगी हैं।
+
+| चर | उपयोग |
+| --- | --- |
+| `FAILPROOFAI_HOME` | संपूर्ण `~/.failproofai` लेआउट को स्थानांतरित करें |
+| `FAILPROOFAI_LOG_LEVEL` | स्थानीय लॉगिंग वर्बोसिटी सेट करें |
+| `FAILPROOFAI_HOOK_LOG_FILE` | हुक डायग्नोस्टिक्स को चयनित फ़ाइल में लिखें |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | इस प्रक्रिया के लिए अनाम टेलीमेट्री अक्षम करें |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | इंटरैक्टिव पहली बार सेटअप छोड़ें |
+| `FAILPROOFAI_NO_AUTO_AUDIT=1` | पोस्ट-सेटअप स्थानीय ऑडिट छोड़ें |
+| `FAILPROOFAI_LLM_BASE_URL` | LLM नीतियों द्वारा उपयोग किए गए OpenAI-संगत एंडपॉइंट को ओवरराइड करें |
+| `FAILPROOFAI_LLM_API_KEY` | LLM नीतियों द्वारा उपयोग किए गए API कुंजी की आपूर्ति करें |
+| `FAILPROOFAI_LLM_MODEL` | LLM नीतियों द्वारा उपयोग किए गए मॉडल का चयन करें |
+| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | कस्टम नीति मॉड्यूल लोडिंग को बाउंड करें |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | एक हार्नेस के लिए कॉन्फ़िगर किए गए अतिरिक्त कैप्चर पाथ को बदलें |
+| `NO_COLOR` | रंगीन टर्मिनल आउटपुट अक्षम करें |
+
+एजेंट-विशिष्ट होम चर जैसे `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME`, और `OPENCLAW_HOME` ओवरराइड करते हैं कि Failproof AI उस हार्नेस के लिए स्थानीय सत्र खोज करता है।
+
+## एक मशीन को सुरक्षित रूप से पॉज़ या निकालें
+
+```bash
+failproofai config --pause
+failproofai config --status
+failproofai config --resume
+```
+
+स्थानीय सत्र पॉज़ क्लाउड-प्रबंधित नीतियों को अक्षम नहीं करता है। जब रोलआउट ही समस्या है तो क्लाउड प्रवर्तन वर्कफ़्लो के माध्यम से क्लाउड परिनियोजन को पुनः स्थापित करें।
+
+npm पैकेज को हटाने से पहले, इंस्टॉल किए गए हुक और डेमन को हटाएं:
+
+```bash
+failproofai uninstall --dry-run
+failproofai uninstall --yes
+npm rm -g failproofai
+```
+
+संस्करण-विशिष्ट विवरण के लिए `failproofai <command> --help` चलाएं।
+
+<Warning>
+  `npm rm -g failproofai` से पहले `failproofai uninstall` चलाएं; npm इंस्टॉल किए गए एजेंट हुक या डेमन सेवा को नहीं हटाता है।
+</Warning>

@@ -1,0 +1,49 @@
+---
+title: "Cadencia de auditoría"
+description: "Elige cuándo se ejecutan las auditorías recurrentes y cuántos datos revisan."
+icon: "calendar-clock"
+---
+
+Usa auditorías recurrentes para patrones de fallos que pueden reaparecer a medida que cambian los agentes, prompts, herramientas y modelos.
+
+## Cambiar el horario
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Ve a **Analyze → Audits** y abre la auditoría.
+    2. Abre su configuración y cambia el estado de activación, el intervalo, el ancla UTC, el modo de ventana o el lookback.
+    3. Guarda la auditoría y confirma la próxima ejecución en la tarjeta de auditoría.
+    4. Usa **run now** una vez después de un cambio mayor en el alcance o el contexto.
+
+    ![El editor de auditoría mostrando la cadencia, la ventana de análisis, el alcance, la configuración de análisis, el contexto y los canales de notificación.](/images/dashboard/audit-edit.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits edit checkout-reliability \
+      --schedule-interval-secs 86400 \
+      --schedule-anchor 2026-08-15T09:00:00Z \
+      --lookback-window-secs 86400 \
+      --yes
+
+    fp audits edit checkout-reliability --disabled --yes
+    fp audits edit checkout-reliability --enabled --yes
+    ```
+
+    Consulta la [referencia de `fp audits`](/es/reference/cloud-cli#audits) para conocer los límites de horario, el comportamiento de las ventanas y todos los comandos de auditoría.
+  </Tab>
+</Tabs>
+
+Elige la cadencia según la velocidad y el costo del riesgo:
+
+| Patrón de riesgo | Cadencia inicial |
+| --- | --- |
+| Acción de producción de alto impacto | Diaria |
+| Regresión de flujo de trabajo o modelo | Semanal |
+| Revisión de gobernanza o acceso | Mensual |
+| Investigación de lanzamiento único | Ejecutar una vez |
+
+Alinea la ventana de lookback con la cadencia para que las ejecuciones no dejen vacíos ni examinen repetidamente una población innecesariamente grande. Después de cambiar el objetivo o el contexto de una auditoría, ejecútala manualmente una vez antes de confiar en el próximo resultado programado.
+
+<Note>
+  Las auditorías programadas locales se configuran en la máquina y analizan el historial de agentes local. Los horarios de auditorías en la nube operan sobre sesiones en la nube. Trata sus resultados y su propiedad por separado.
+</Note>

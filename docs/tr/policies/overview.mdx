@@ -1,0 +1,63 @@
+---
+title: "İlkeler"
+description: "Agent eylemlerini gözlemleyin, yönlendirin veya bilinen bir hata tekrarlanmadan önce engelleyin."
+icon: "shield-check"
+---
+
+Bir ilke, bir agent hook olayını değerlendirir ve üç karardan birini döndürür:
+
+- `allow` eylemin devam etmesini sağlar.
+- `instruct` agent'a düzeltici rehberlik verir.
+- `deny` eylemi bir nedenle engeller.
+
+## Üç ilke yüzeyini kullanın
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → policy** sayfasına giderek oturumlardan ilke kararlarını filtreleyip inceleyin.
+    2. **Admin → policy editor** sayfasına giderek bir ilke oluşturun, doğrulayın, yayınlayın, devre dışı bırakın veya değişmez sürümleri inceleyin.
+    3. **Admin → enforcement** sayfasına giderek sürümleri ve efektleri makinelere atayın.
+
+    Yazarlık yapmadan veya zorlama ayarlarını değiştirmeden önce zaten nelerin eşleştiğini anlamak için İlke sayfasını kullanın.
+
+    ![Karar toplamlarını ve yerel ile Bulut tarafından yönetilen ilke eşlemelerini gösteren İlke sayfası.](/images/dashboard/policy-observe.png)
+
+    Editör, bir hata koşulunu kaynağa dönüştürdüğünüz, doğruladığınız ve değişmez bir sürümü yayınladığınız yerdir.
+
+    ![Değişmez bir ilke sürümü oluşturmak ve yayınlamak için kullanılan İlke editörü.](/images/dashboard/policy-editor.png)
+
+    Zorlama daha sonra yayınlanan o sürümü ve onun gözlemle veya zorla efektini makinelere atar.
+
+    ![Makine kapsaması ve atanmış ilke sürümlerini gösteren Zorlama filosu.](/images/dashboard/enforcement-fleet.png)
+
+    Dağıtımdan sonra kararları İlke sayfasında doğrulayın, böylece yazarlık ve filo görünümleri gerçek agent etkinliğine bağlı olur.
+  </Tab>
+  <Tab title="CLI">
+    Yerel ilke kurulumu ve doğrulaması için `failproofai` kullanın:
+
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --scope project
+    failproofai config --status
+    ```
+
+    İlke kararlarını içeren Bulut oturumlarını ve olaylarını bulmak için `fp` kullanın. Bulut yazarlığı ve filo dağıtımı dashboard iş akışları olarak kalır.
+  </Tab>
+</Tabs>
+
+İlkeler Failproof AI'da üç farklı yüzeye sahiptir:
+
+1. **Kararları analiz edin** oturumlar, panolar ve denetimler içinde.
+2. **Sürümleri yazın** yerleşik kurallar, kod veya ilke editörü ile.
+3. **Sürümleri dağıtın ve uygulayın** seçili makinelerde.
+
+Doğrulanmış bir hata modundan başlayın. Bunu tanımlayan en küçük olay ve araç eşlemesini tanımlayın, meşru ve güvenli olmayan örnekleri test edin, ardından zorlama yapmadan önce gözlemleyin.
+
+<Columns cols={2}>
+  <Card title="Yerleşik ilke kullanın" icon="library" href="/tr/policies/builtin">
+    Yaygın gizli, kabuk, Git, bulut ve iş akışı riskleri için incelenen bir kuralı etkinleştirin.
+  </Card>
+  <Card title="Özel ilke yazın" icon="code-2" href="/tr/policies/custom">
+    İş akışına özgü bir kararı JavaScript veya TypeScript'te ifade edin.
+  </Card>
+</Columns>

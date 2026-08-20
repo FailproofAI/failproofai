@@ -1,0 +1,43 @@
+---
+title: "Eventos en vivo"
+description: "Observa la actividad del agente en tiempo real mientras se ejecuta una sesión."
+icon: "radio"
+---
+
+Los eventos en vivo te permiten confirmar la instrumentación y supervisar una ejecución arriesgada sin esperar a que la sesión finalice.
+
+## Ver la actividad
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Ve a **Observe → Events**.
+    2. Comienza con la ventana de tiempo actual y sin filtros para confirmar que los datos están llegando.
+    3. Filtra por entorno, tipo de evento, agente o sesión. Usa la búsqueda para encontrar texto en el payload.
+    4. Selecciona un evento para inspeccionar su resumen y detalles. Sigue el enlace de sesión para ver la traza completa.
+
+    ![El flujo de eventos en vivo con filtros de tiempo, entorno, tipo de evento, agente, modelo, contexto, sesión y texto.](/images/dashboard/events-stream-current.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --env production --event-type tool_use,error --limit 100
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    El feed predeterminado omite los payloads en bruto. Usa `--full` solo para investigar una sesión con límites definidos.
+  </Tab>
+</Tabs>
+
+Usa el flujo de eventos para responder tres preguntas inmediatas:
+
+- ¿El agente esperado está reportando al entorno correcto?
+- ¿Las llamadas al modelo, las llamadas a herramientas y las decisiones de política están llegando en orden?
+- ¿La sesión ha dejado de avanzar o ha empezado a repetir una acción?
+
+Los tipos de eventos incluyen eventos del ciclo de vida del agente, solicitudes y respuestas del modelo, uso de herramientas y resultados, ejecución de hooks, esperas e interrupciones humanas, y errores explícitos. Los IDs de correlación vinculan eventos relacionados, como una llamada a una herramienta y su resultado.
+
+<Tip>
+  Mantén la vista en vivo sin filtros mientras verificas una nueva integración. Añade filtros solo después de ver el primer evento; un filtro incorrecto puede parecer un fallo de ingesta.
+</Tip>
+
+Si no aparece ningún evento, ejecuta `failproofai config --status` y luego [soluciona problemas de ingesta](/es/reference/troubleshooting).

@@ -1,0 +1,79 @@
+---
+title: "Quickstart"
+description: "Zeichne eine Agentensitzung auf, finde einen Fehler und verhindere ihn künftig."
+icon: "zap"
+---
+
+Dieser Quickstart sorgt dafür, dass eine Maschine Sitzungen meldet, führt ein Audit durch und stellt eine Richtlinie bereit. Nutze dazu den Skill oder folge den manuellen Schritten. Du benötigst Node.js 20.9 oder neuer.
+
+<Tabs>
+  <Tab title="Skill verwenden">
+    <Steps>
+      <Step title="Failproof AI Skills installieren">
+        ```bash
+        npx skills add FailproofAI/skills
+        ```
+      </Step>
+      <Step title="Agent alles einrichten lassen">
+        ```text
+        Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
+        ```
+
+        Dein Agent analysiert das Projekt, wählt die passende Integration aus, führt die Einrichtung durch und verifiziert sie. Einzelne Skills und erweiterte Installationsoptionen findest du im [FailproofAI Skills-Repository](https://github.com/FailproofAI/skills).
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Manuelle Einrichtung">
+    ## Bevor du beginnst
+
+1. Öffne das [Failproof AI Dashboard](https://app.befailproof.ai) und erstelle ein Konto oder melde dich mit deiner Arbeits-E-Mail an.
+2. Gehe zu **Administration → Keys** und erstelle einen Schlüssel mit `events:add` und `policies:pull`.
+3. Kopiere das einmalige Secret und speichere es auf der Zielmaschine:
+
+```bash
+export FAILPROOFAI_KEY="<one-time-secret>"
+```
+
+    ## Installation
+
+<Steps>
+  <Step title="Failproof AI installieren und verbinden">
+    ```bash
+    npm install -g failproofai
+    failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
+    ```
+
+    Sitzungstranskripte werden standardmäßig übermittelt. Füge `--no-transcripts` hinzu, um Hook-Aktivitäten und Richtlinienentscheidungen ohne Transkriptinhalt zu melden.
+
+    Wenn diese Maschine bereits Agentenhistorie besitzt, kannst du die letzten sieben Tage vorab anzeigen und importieren — warte anschließend, bis die Übertragung abgeschlossen ist. Auf einer neuen Maschine kannst du diesen Schritt überspringen.
+
+    ```bash
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    failproofai flush --wait
+    ```
+
+    Öffne **Sessions** in Failproof AI und wähle eine importierte Sitzung aus.
+  </Step>
+  <Step title="Agent-Hooks und Richtlinien installieren">
+    Damit wird Failproof AI an deine Agenten-CLI angebunden und die integrierten Richtlinien werden installiert. Nutze sie, um lokale Richtlinienentscheidungen einzusehen und die Durchsetzung auszuprobieren, bevor Failproof AI deine Sitzungen prüft und Richtlinien für deine Agenten erstellt.
+
+    Lass den Installer deine Agenten-CLI automatisch erkennen oder gib sie explizit an.
+
+    ```bash
+    failproofai policies --install --cli claude --scope user
+    ```
+  </Step>
+  <Step title="Verhalten prüfen">
+    Folge der Anleitung unter [Erste Fehlerprüfung durchführen](/de/start/first-audit). Verwende ein konkretes Ziel, z. B. „Sitzungen finden, in denen der Agent ein fehlgeschlagenes Tool ohne Änderung seines Vorgehens erneut ausgeführt hat."
+  </Step>
+  <Step title="Fehler verhindern">
+    Folge der Anleitung unter [Ersten Fehler mit einer Richtlinie verhindern](/de/start/first-policy). Beginne im Beobachtungsmodus, prüfe Treffer und setze dann die überprüfte Version durch.
+  </Step>
+</Steps>
+
+<Check>
+  Führe `failproofai config --status` aus. Eine funktionierende Einrichtung meldet die Cloud-Verbindung, den Daemon-Status und ob die Durchsetzung pausiert ist.
+</Check>
+  </Tab>
+</Tabs>

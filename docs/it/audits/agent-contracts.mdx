@@ -1,0 +1,83 @@
+---
+---
+title: "Contesto dell'agente"
+description: "Indica ai controlli cosa deve fare, produrre e non fare mai ogni agente."
+icon: "bot"
+---
+
+Il contesto dell'agente comunica ai controlli cosa esiste per fare ogni agente, cosa deve produrre e cosa non deve mai fare. Failproof AI memorizza questo contesto come un contratto di agente per agente.
+
+Il contesto dell'agente appartiene all'organizzazione, non a un singolo controllo. Lo scrivi una volta per agente, e ogni controllo supportato da un modello il cui ambito include quell'agente lo utilizza.
+
+## Aggiungi contesto dell'agente
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Analyze → audits**, seleziona **agents** e scegli l'ID agente riportato dalle sue sessioni.
+    2. Seleziona **add content** o **edit**.
+    3. Descrivi a cosa serve l'agente, cosa deve produrre, cosa significa "completato", quanto spesso deve essere eseguito e cosa non deve mai fare.
+    4. Salva il contesto, quindi torna al modulo di controllo e conferma che l'agente selezionato è mostrato come coperto.
+
+    ![Il cassetto Agents del controllo utilizzato per aggiungere scopo, cadenza, output, condizioni di completamento e comportamento vietato per un agente.](/images/dashboard/agent-context.png)
+
+    Puoi anche aggiungere o modificare il contesto dell'agente dal cassetto **agents** mentre crei o modifichi un controllo. Viene salvato indipendentemente ed è immediatamente disponibile per ogni controllo applicabile.
+  </Tab>
+  <Tab title="CLI">
+    Cloud CLI non espone ancora i comandi di contratto. Utilizza l'API pubblica con una chiave che dispone di `audits:read` e `audits:write`:
+
+    ```bash
+    curl -X POST "https://app.befailproof.ai/v1/audits/contracts" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "agent_id": "nightly-reconciler",
+        "enabled": true,
+        "body": "# Purpose\nReconcile yesterday's payouts.\n\n## Outputs\nPublish a signed summary.\n\n## Must not\nNever modify ledger entries."
+      }'
+    ```
+
+    Elenca i contratti con `GET /v1/audits/contracts`; recupera un contratto con `GET /v1/audits/contracts/{id}`. L'aggiornamento con `PUT` è una sostituzione completa e richiede sia `agent_id` che `body`.
+  </Tab>
+</Tabs>
+
+## Scrivi un contesto utile
+
+Mantieni il contesto sotto 5.000 caratteri e rendilo testabile. Il contesto utile normalmente contiene:
+
+- **Purpose:** perché esiste l'agente
+- **Outputs:** artefatti o azioni che deve produrre
+- **Done when:** la condizione che rende un'esecuzione riuscita
+- **Cadence:** quanto spesso o quando deve essere eseguito
+- **Must not:** azioni e risultati che sono sempre inaccettabili
+
+```markdown
+---
+agent: nightly-reconciler
+purpose: Reconcile yesterday's payouts and publish a signed summary.
+cadence: Once daily after 02:00 UTC. Never more than once.
+---
+
+## Outputs
+- A signed reconciliation summary in the finance channel.
+
+## Done when
+- Every payout is matched or explicitly flagged.
+
+## Must not
+- Modify ledger entries. Report discrepancies instead.
+```
+
+Il contesto dell'agente descrive il comportamento atteso; non può dire all'analisi quale conclusione raggiungere o limitare quali prove esamina. Gli agenti senza contesto vengono controllati normalmente, ma Failproof AI non può giudicare il loro comportamento rispetto all'intento specifico dell'organizzazione.
+
+## Metti in pausa o modifica il contesto dell'agente
+
+- Metti in pausa il contesto dell'agente quando i controlli dovrebbero ignorarlo temporaneamente. La pausa è reversibile.
+- Modifica il contesto quando la responsabilità dell'agente cambia. Il nuovo testo si applica alle esecuzioni future.
+- Controlla **last matched** quando un agente in esecuzione non sembra mai utilizzare il suo contesto. Di solito significa che il suo ID agente non corrisponde ai dati di telemetria.
+- Elimina tramite l'API solo quando il testo deve essere distrutto permanentemente. Il dashboard intenzionalmente offre la pausa invece dell'eliminazione.
+
+Ogni esecuzione di controllo memorizza l'istantanea esatta del contesto dell'agente che ha utilizzato. La modifica, la pausa o l'eliminazione della risorsa del contratto attuale non riscrittono la base dei risultati precedenti.
+
+<Info>
+  La lettura dei contratti richiede `audits:read`. La creazione, la modifica, la pausa o l'eliminazione richiedono `audits:write`.
+</Info>

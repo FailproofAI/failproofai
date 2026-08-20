@@ -1,0 +1,43 @@
+---
+title: "대시보드"
+description: "에이전트 또는 워크플로우에서 중요한 신뢰성 신호를 추적합니다."
+icon: "layout-dashboard"
+---
+
+대시보드는 저장된 쿼리를 운영 뷰로 통합합니다. 사용 가능한 모든 지표가 아닌, 누군가가 내려야 할 결정을 중심으로 구성하세요.
+
+## 대시보드 만들기
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Analyze → Queries**로 이동하여 저장된 쿼리를 새로 만들거나 열고, 결과를 검증합니다.
+    2. **add to dashboard**를 선택한 후 기존 대시보드를 선택하거나 **Analyze → Dashboards**에서 새로 만듭니다.
+    3. 대시보드를 열고 편집 모드로 진입하여 타일을 배치한 뒤 레이아웃을 저장합니다.
+    4. 타일의 데이터나 필터를 변경해야 할 때는 해당 쿼리로 돌아갑니다.
+
+    ![이벤트 볼륨, 오류, 지연 시간, 모델 토큰 사용량에 대한 저장된 쿼리로 구성된 대시보드.](/images/dashboard/dashboard-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    대시보드 CRUD는 현재 Cloud CLI에서 지원되지 않습니다. CLI를 사용하여 저장된 쿼리를 빌드하고 검증한 후, UI에서 대시보드에 추가하세요.
+
+    ```bash
+    fp query schema
+    fp query create "production error rate" --sql "SELECT ..."
+    fp query run <query-id>
+    ```
+  </Tab>
+</Tabs>
+
+유용한 대시보드 그룹 예시:
+
+- **Models:** 볼륨, 지연 시간, 토큰 사용량, 오류율, 평가 점수.
+- **Evaluations:** 에이전트 또는 환경별 성공률 및 점수 추이.
+- **Tools:** 호출 볼륨, 실패율, 소요 시간, 반복 호출.
+- **Hooks and policies:** 결정 내역, 거부 내역, 정책 매칭율.
+- **Custom workflow metrics:** 사용자 정의 이벤트 필드 및 SQL에서 나온 결과.
+
+저장된 쿼리부터 시작하여 결과를 검증한 후 타일로 추가하세요. 프로덕션과 개발 필터를 명확히 구분하여 테스트 트래픽이 회귀를 숨기지 않도록 하세요.
+
+<Tip>
+  모든 대시보드에 담당자와 응답 질문을 지정하세요. 예: "checkout-agent의 신뢰성이 지난주보다 나빠졌는가?"
+</Tip>

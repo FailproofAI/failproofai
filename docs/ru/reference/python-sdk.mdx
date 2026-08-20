@@ -1,0 +1,198 @@
+---
+title: "Пользовательские агенты"
+description: "Инструментируйте трассировки пользовательских агентов, чтобы Failproof AI мог восстановить их выполнение и найти сбои."
+icon: "python"
+---
+
+Инструментируйте трассировки пользовательского агента с помощью `failproofai-sdk`, чтобы Failproof AI мог восстановить каждое выполнение, проверить его поведение и найти подтвержденные доказательства сбоев. SDK записывает структурированные события, которые демон Failproof доставляет в Cloud. Требуется Python 3.10 или новее.
+
+Трассировка делает пользовательские агенты наблюдаемыми и проверяемыми. Для предотвращения небезопасного действия перед его выполнением также требуется хук принудительного применения в вашей среде выполнения.
+
+<Info>
+  Чтобы применить политики в пользовательской установке агента, [свяжитесь с Failproof AI](mailto:support@befailproof.ai). Мы поможем отобразить границы модели, инструментов и жизненного цикла вашей среды выполнения на хуки политик.
+</Info>
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with the Failproof AI Python SDK" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+## Установите `failproofai-sdk`
+
+SDK в настоящее время распространяется как приватный wheel. Попросите текущую версию и доступ к загрузке у вашего контакта в Failproof AI.
+
+```bash
+VERSION=<sdk-version>
+pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
+python -c "import failproofai; print(failproofai.__version__)"
+```
+
+С `uv` сначала загрузите wheel и выполните `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`. Зафиксируйте wheel в приватном репозитории артефактов или в блокировке зависимостей.
+
+Пакет устанавливается как `failproofai-sdk` и импортируется в Python как `failproofai`.
+
+## Подключите демон Failproof
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Перейдите в **Admin → Keys** и создайте ключ с `events:add`.
+    2. [Подключите демон Failproof к Cloud](/ru/start/setup#connect-a-machine-to-cloud) на машине агента.
+    3. Запустите один инструментированный сеанс, затем найдите его точный ID в **Observe → Events**.
+    4. Перейдите в **Observe → Sessions**, выберите ту же среду и откройте восстановленную трассировку.
+
+    ![Пользовательский сеанс агента Python, восстановленный как граф выполнения и упорядоченная трассировка событий.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <events-add-key>
+    failproofai config --status
+    ```
+  </Tab>
+</Tabs>
+
+## Инструментируйте полное выполнение
+
+Вызовите `configure()` один раз при запуске процесса. Каждый вызов события требует только именованные аргументы и требует стабильных `session_id` и `agent_id`.
+
+```python
+import traceback
+import uuid
+
+import failproofai
+
+failproofai.configure(environment="production")
+
+session_id = uuid.uuid4().hex
+agent_id = "checkout-agent"
+
+failproofai.event.agent_start(
+    session_id=session_id,
+    agent_id=agent_id,
+    goal="Resolve a failed checkout",
+)
+
+try:
+    tool_call_id = uuid.uuid4().hex
+    failproofai.event.tool_use(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        input={"order_id": "ord_8421"},
+    )
+    result = {"status": "payment_failed"}
+    failproofai.event.tool_result(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        output=result,
+    )
+except Exception as exc:
+    failproofai.event.error(
+        session_id=session_id,
+        agent_id=agent_id,
+        error_type=type(exc).__name__,
+        message=str(exc),
+        traceback=traceback.format_exc(),
+    )
+    failproofai.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="failed",
+    )
+    raise
+else:
+    failproofai.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="success",
+        summary="Escalated the failed payment",
+    )
+```
+
+Выпускайте `agent_start` один раз за участника. Для подагентов повторно используйте `session_id` родителя, дайте каждому участнику отдельный `agent_id` и установите `parent_id` на **ID агента** родителя, а не на ID сеанса.
+
+## Справочник по конфигурации
+
+```python
+failproofai.configure(
+    base_dir=None,
+    flush_interval=0.5,
+    environment="production",
+)
+```
+
+| Параметр | Поведение |
+| --- | --- |
+| `base_dir` | Явный корень очереди. Имеет приоритет над всеми переменными окружения. |
+| `flush_interval` | Секунды между фоновыми записями из памяти в JSONL. По умолчанию: `0.5`. |
+| `environment` | Метка развертывания для каждого события. По умолчанию `dev`. |
+| `FAILPROOFAI_HOME` | Изменяет корень Failproof AI, который содержит очередь `custom-agents`. |
+
+SDK записывает в явный `base_dir` при его установке. В противном случае используется очередь `custom-agents` демона Failproof в `FAILPROOFAI_HOME` или `~/.failproofai`.
+
+SDK ставит вызовы в очередь в памяти и записывает пакеты на фоновом потоке. Он также пытается выполнить финальную промывку через обработку `atexit` Python. Для недолгоживущих рабочих процессов позвольте нормальному завершению интерпретатора; принудительное завершение процесса может привести к потере событий, оставшихся в памяти.
+
+## Каталог событий
+
+Все методы возвращают `None`. Поля, оставленные как `None`, опускаются вместо того, чтобы быть написанными как JSON `null`.
+
+| Метод | Обязательные поля кроме идентификации | Необязательные поля |
+| --- | --- | --- |
+| `agent_start` | — | `goal`, `parent_id` |
+| `agent_end` | — | `outcome`, `summary` |
+| `agent_pause` | `pause_id` | `reason`, `user_id` |
+| `agent_resume` | `pause_id` | `reason`, `user_id` |
+| `model_request` | — | `model`, `messages`, `system`, `tools` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role` |
+| `tool_use` | `tool_name`, `tool_call_id` | `input` |
+| `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
+| `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
+| `hook_completed` | `hook_name`, `hook_id` | `outcome`, `output`, `error` |
+| `error` | `error_type`, `message` | `traceback` |
+| `human_wait` | `input_id` | `prompt`, `options`, `reason` |
+| `human_input` | `input_id` | `response` |
+| `human_pause` | — | `reason`, `user_id` |
+| `human_interrupt` | — | `reason`, `user_id`, `at_step` |
+
+Используйте `outcome="failed"`, `"error"`, `"timeout"` или `"rejected"` когда завершение должно считаться сбоем. Другие значения, включая `"failure"`, не классифицируются как сбои текущим бэкендом.
+
+## Правила корреляции и длительности
+
+- Повторно используйте один и тот же `tool_call_id`, `hook_id`, `pause_id` или `input_id` для соответствующего события завершения.
+- SDK вычисляет `duration_ms` для `tool_result`, `hook_completed`, `agent_resume` и `human_input`. Передача его самостоятельно этим методам вызывает `ValueError`.
+- ID инструментов и хуков используют один глобальный процесс-широкий map ожидающих. Сделайте их уникальными по всем параллельным сеансам и во всех пространствах имен; ID поставщиков или UUID безопаснее всего.
+- Пара, разделенная между процессами, по-прежнему коррелирует в нижестоящем направлении, но SDK не может вычислить его длительность внутри процесса.
+- Карта ожидания содержит не более 10000 начал и вытесняет самую старую запись при заполнении.
+
+## Пользовательские поля и полезные нагрузки
+
+Каждое событие принимает дополнительные поля ключевых слов. Используйте значения, совместимые с JSON, когда нижестоящим запросам требуется структура. Неподдерживаемые листья, такие как UUID, даты-времени, десятичные числа, наборы, байты и объекты модели, преобразуются в строки средством записи.
+
+Зарезервированные пользовательские имена: `timestamp`, `session_id`, `agent_id`, `type` и `environment`. Опечатки в необязательных полях принимаются как новые пользовательские поля, поэтому проверьте выпущенный JSON, когда стандартное поле не появляется в Cloud.
+
+## Доставка и проверка
+
+<Tabs>
+  <Tab title="Dashboard">
+    В **Observe → Events** сначала убедитесь, что `agent_start` существует, а `agent_end` существует последним. Затем откройте **Observe → Sessions** и убедитесь, что события модели, инструмента, человека, хука и ошибки появляются в предполагаемом порядке. Используйте ID сеанса как основной ключ для поиска и устранения неисправностей.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai flush --wait --timeout 60
+    failproofai config --status
+    fp sessions --since 1h --env production --session-id <session-id>
+    fp events --since 1h --session-id <session-id> --full
+    ```
+  </Tab>
+</Tabs>
+
+Если Cloud пусто, проверьте `$FAILPROOFAI_HOME/custom-agents/events`, иначе `~/.failproofai/custom-agents/events`. Файлы JSONL доказывают выпуск SDK; растущая очередь указывает на конфигурацию или доставку демона, а пустая очередь указывает на инструментацию или время жизни процесса.
+
+## Предотвращайте сбои в пользовательской среде выполнения
+
+Используйте выводы аудита и связанные трассировки для определения небезопасного действия, требуемых доказательств и предполагаемого ответа. Пользовательская интеграция принудительного применения должна предоставить действие перед выполнением, передать его структурированный вход механизму политик и применить полученное решение allow, instruct или deny.
+
+Отправьте письмо на адрес [support@befailproof.ai](mailto:support@befailproof.ai) для разработки и проверки этой интеграции для вашей среды выполнения.

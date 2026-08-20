@@ -34,6 +34,13 @@ on:
     - cron: "17 4 * * *" # daily, 04:17 UTC
   workflow_dispatch:
 
+# Supersede a superseded PR push: the scan re-reads both lockfiles from
+# scratch every run, so a stale one has nothing to contribute. Scheduled and
+# main runs key on their own ref and so never cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Least privilege: the scan only needs to read the checked-out source.
 # contents:read is also available to Dependabot PRs (read-only token), so the
 # gate enforces on dependency-bump PRs too.
@@ -44,6 +51,7 @@ jobs:
   osv-scanner:
     name: OSV-Scanner
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

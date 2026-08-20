@@ -1,0 +1,57 @@
+---
+title: "기본 제공 정책"
+description: "일반적인 에이전트 오류 모드에 대한 관리형 가드레일을 활성화합니다."
+icon: "library"
+---
+
+기본 제공 정책은 시크릿 처리, 환경 파일, 파괴적인 셸 명령, 보호된 브랜치, 클라우드 및 인프라 도구, 패키지 게시, 반복 호출, 작업 종료 시 워크플로 검사를 포함합니다.
+
+## 기본 제공 정책 활성화 및 확인
+
+<Tabs>
+  <Tab title="대시보드">
+    1. 로컬 CLI를 사용하여 연결된 머신에 정책을 설치합니다.
+    2. 계측된 에이전트에서 안전한 테스트 작업을 실행합니다.
+    3. **Observe → policy**로 이동하여 정책 이름, 머신 환경, 또는 결정으로 필터링합니다.
+    4. 연결된 세션을 열어 매칭된 도구 입력과 반환된 이유를 확인합니다.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --cli claude --scope project
+    failproofai config --status
+    ```
+
+    `failproofai policy remove block-rm-rf --cli claude --scope project`로 제거합니다.
+  </Tab>
+</Tabs>
+
+설치된 버전에서 사용 가능한 정책 목록 확인:
+
+```bash
+failproofai policies
+```
+
+프로젝트에 정책 하나 활성화:
+
+```bash
+failproofai policy add block-rm-rf --scope project
+```
+
+선택한 하네스에 여러 정책 활성화:
+
+```bash
+failproofai policies --install block-sudo block-force-push \
+  --cli claude codex --scope project
+```
+
+일부 정책은 파라미터를 허용하거나 베타로 표시되어 있습니다. 배포 전에 설명, 매칭 범위, 기본 동작을 검토하세요. 특정 워크플로를 보호하는 정책이 다른 워크플로에서 유효한 작업을 차단할 수 있습니다.
+
+<Card title="전체 기본 제공 카탈로그 보기" icon="list-checks" href="/ko/policies/builtin-catalog">
+  현재 제공되는 40개의 모든 정책, 트리거, 권장 기준선 및 파라미터를 검토하세요.
+</Card>
+
+<Tip>
+  저장소별 기대치에는 프로젝트 범위를, 머신 전체 보안 요구사항에는 사용자 범위를 사용하는 것을 권장합니다.
+</Tip>

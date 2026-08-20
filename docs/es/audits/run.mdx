@@ -1,0 +1,67 @@
+---
+title: "Ejecutar y revisar una auditoría"
+description: "Ejecuta una auditoría, verifica su cobertura e inspecciona los hallazgos resultantes."
+icon: "play"
+---
+
+Ejecuta una auditoría cuando su objetivo y población sean lo suficientemente específicos como para que otro operador sepa qué aspecto tiene un hallazgo válido.
+
+## Ejecutar e inspeccionar
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Ve a **Analyze → Audits**, abre la auditoría y selecciona **run now**. Una respuesta en cola significa que el despachador la iniciará en breve.
+    2. Abre la nueva ejecución para revisar su estado, ventana de tiempo, duración, conteo de hallazgos e informe.
+    3. Selecciona una sesión de evidencia para abrir el rastro exacto.
+    4. Vuelve a la página de la auditoría para editar la configuración, deshabilitar el programa o inspeccionar ejecuciones anteriores.
+
+    ![Una página de detalle de auditoría con hallazgos abiertos, estado de la última y próxima ejecución, ventana de barrido, contexto, control de ejecución inmediata y hallazgos clasificados.](/images/dashboard/audit-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits run checkout-reliability
+    fp audits runs checkout-reliability --limit 10
+    fp --json audits runs checkout-reliability
+    fp audits findings --audit checkout-reliability
+    ```
+
+    Consulta la [referencia de `fp audits`](/es/reference/cloud-cli#audits) para ver el historial de ejecuciones, hallazgos y comandos de clasificación.
+  </Tab>
+</Tabs>
+
+## Antes de ejecutar
+
+- Confirma que existen sesiones en la ventana de tiempo seleccionada.
+- Verifica los filtros de entorno y agente.
+- Comprueba que el contexto de referencia esté actualizado.
+- Asegúrate de que el objetivo describe un modo de fallo, no una conclusión deseada.
+
+## Revisar la ejecución
+
+Comienza con el estado de la ejecución, la cobertura de sesiones y si se ejecutó el análisis del modelo. Luego inspecciona la severidad de cada hallazgo, su descripción, las sesiones de evidencia, las consultas de soporte y la ruta de prevención sugerida.
+
+Usa el estado del hallazgo para reconocer, silenciar, descartar, resolver, reabrir o asignar trabajo. Preserva la evidencia incluso cuando el hallazgo sea descartado; explica por qué se tomó la decisión.
+
+## Interpretar una ejecución vacía o retrasada
+
+| Condición de ejecución | Qué significa | Qué hacer |
+| --- | --- | --- |
+| El análisis se ejecutó y produjo cero hallazgos | La evidencia seleccionada no fue suficiente para generar un hallazgo con la sensibilidad configurada. | Confirma que el alcance contiene sesiones representativas y trata el resultado como saludable, a menos que el objetivo o el contexto hayan sido demasiado vagos. |
+| El análisis del modelo fue omitido o falló | La ejecución se completa con cero hallazgos, pero no realizó la investigación agéntica. El análisis determinístico de credenciales y PII sigue reportando conteos de coincidencias en las estadísticas de ejecución, pero no crea hallazgos. | Corrige el servicio de análisis o la configuración y vuelve a ejecutar. No interpretes el resultado vacío como evidencia de que la población está saludable. |
+| El análisis del modelo está deshabilitado | La ejecución se completa con cero hallazgos. El análisis determinístico no reemplaza al análisis del modelo ni abre hallazgos. | Habilita el análisis del modelo o deshabilita la auditoría en lugar de depender de una que no puede producir hallazgos. |
+| No hay capacidad de análisis disponible de inmediato | La auditoría permanece en cola y reintenta en lugar de omitir la población. | Espera a que haya capacidad o distribuye los anclajes de auditoría. Los operadores autoalojados deben escalar las réplicas del agente de auditoría y la capacidad del despachador correspondiente. |
+| La capacidad sigue no disponible durante la ventana de reintentos | La ejecución abandona con cero hallazgos y envía una notificación de fallo cuando la entrega por correo electrónico está disponible. | Verifica si la flota de auditorías está saturada o reiniciándose repetidamente. |
+
+Cuando el análisis no se ejecuta, las auditorías `since_last` mantienen esa ventana sin analizar abierta para la próxima ejecución exitosa. Los hallazgos existentes no se retiran porque un análisis omitido no es evidencia de que el fallo haya desaparecido.
+
+## Comprender las notificaciones de fallo
+
+Una ejecución fallida o un paso de análisis del modelo fallido utiliza los destinatarios de correo electrónico de la auditoría. Si la auditoría no tiene un canal de correo electrónico, Failproof AI recurre a la configuración `alerts.email_default_recipients` de la organización, de modo que una auditoría silenciosamente rota siga teniendo una ruta de escalación.
+
+El correo electrónico debe estar habilitado para la organización y SMTP debe estar configurado. De lo contrario, el fallo se registra pero no se puede entregar ningún correo. Los fallos de ejecución no mueven el anclaje de programación fija de la auditoría.
+
+Cada ejecución también almacena el [contexto del agente](/es/audits/agent-contracts) exacto utilizado para cada agente como una instantánea de contrato. Las ediciones posteriores no modifican el estándar de evidencia registrado con una ejecución anterior.
+
+<Warning>
+  No implementes una política de bloqueo directamente a partir de un hallazgo no verificado. Abre los rastros citados y confirma que la regla separa el comportamiento inseguro del trabajo legítimo.
+</Warning>

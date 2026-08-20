@@ -409,6 +409,7 @@ LINKS
   ⭐ Star us:      https://github.com/failproofai/failproofai
   📖 Docs:         https://docs.befailproof.ai/introduction
   💬 Discord:      https://discord.befailproof.ai/
+  👽 Reddit:       https://www.reddit.com/r/failproofai/
 `.trimStart());
     process.exit(0);
   }

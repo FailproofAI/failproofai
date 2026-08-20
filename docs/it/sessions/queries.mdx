@@ -1,0 +1,53 @@
+---
+title: "Query"
+description: "Esplora i dati di sessione, eventi e valutazioni con SQL riutilizzabile."
+icon: "database"
+---
+
+Le query sono il livello flessibile sottostante ai dashboard, agli audit e alle indagini. Usa SQL ad hoc per testare un'idea, quindi salva la query quando diventa parte di un workflow ricorrente.
+
+## Creare ed eseguire una query
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai su **Analyze → Queries** e seleziona **new query**.
+    2. Apri il browser dello schema e scegli i campi dai dati di eventi, sessioni o valutazioni.
+    3. Scrivi SQL, aggiungi parametri se necessario ed esegui la query.
+    4. Salvala con un nome e una descrizione chiari, quindi usa **add to dashboard** quando il risultato deve essere monitorato.
+
+    L'editor di query combina lo schema degli eventi, SQL, parametri e un'anteprima dei risultati in modo da poter convalidare la domanda prima di salvarla.
+
+    ![L'editor di query SQL con un browser dello schema e una griglia di risultati in tempo reale.](/images/dashboard/query-lab.png)
+
+    Le query salvate appaiono quindi nella libreria condivisa, dove i tuoi colleghi possono rieseguirle o aggiungere i loro risultati ai dashboard.
+
+    ![La libreria Queries salvate contenente query riutilizzabili integrate e personalizzate.](/images/dashboard/queries.png)
+
+    Usa un nome e una descrizione chiari in modo che il risultato rimanga comprensibile senza riaprire il suo SQL.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp query schema
+    fp query create "retry loops" --sql "SELECT ..."
+    fp query run <query-id>
+    fp query show <query-id>
+    fp query update <query-id> --sql "SELECT ..."
+    ```
+
+    Usa `fp query list` per trovare gli ID e `fp query delete <query-id>` per rimuovere una query salvata.
+  </Tab>
+</Tabs>
+
+## Usi comuni
+
+- Trova sessioni con chiamate ripetute allo stesso strumento.
+- Confronta i punteggi di valutazione tra modelli o ambienti.
+- Misura il tempo tra un'attesa umana e la ripresa.
+- Identifica negazioni di policy seguite da un'alternativa riuscita.
+- Costruisci una coorte per un audit.
+
+Apri **Queries → Schema** prima di scrivere query su campi non familiari. Preferisci filtri di tempo e ambiente espliciti e mantieni limiti di risultati durante l'esplorazione.
+
+<Warning>
+  Una query può identificare un modello sospetto, ma non stabilisce da sola la modalità di errore. Apri tracce rappresentative o esegui un audit prima di trasformare il risultato in una policy.
+</Warning>

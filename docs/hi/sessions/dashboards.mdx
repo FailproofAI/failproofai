@@ -1,0 +1,43 @@
+---
+title: "डैशबोर्ड"
+description: "एजेंट या वर्कफ़्लो के लिए महत्वपूर्ण विश्वसनीयता संकेतों को ट्रैक करें।"
+icon: "layout-dashboard"
+---
+
+डैशबोर्ड सहेजी गई क्वेरीज़ को एक ऑपरेशनल दृश्य में संयोजित करते हैं। एक ऐसे निर्णय के चारों ओर एक बनाएं जो आप किसी को लेने की अपेक्षा करते हैं—हर उपलब्ध मेट्रिक के चारों ओर नहीं।
+
+## डैशबोर्ड बनाएं
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Analyze → Queries** पर जाएं, एक सहेजी गई क्वेरी बनाएं या खोलें, और इसके परिणाम को मान्य करें।
+    2. **add to dashboard** चुनें, फिर एक मौजूदा डैशबोर्ड चुनें या **Analyze → Dashboards** के अंतर्गत एक नया बनाएं।
+    3. डैशबोर्ड खोलें, संपादन मोड में प्रवेश करें, टाइलों को व्यवस्थित करें, और लेआउट को सहेजें।
+    4. जब आपको टाइल के पीछे डेटा या फ़िल्टर बदलने की आवश्यकता हो तो क्वेरी पर वापस जाएं।
+
+    ![event volume, errors, latency, और model token use के लिए सहेजी गई क्वेरीज़ से बना एक डैशबोर्ड।](/images/dashboard/dashboard-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    डैशबोर्ड CRUD वर्तमान Cloud CLI द्वारा उजागर नहीं किया गया है। सहेजी गई क्वेरी को बनाने और सत्यापित करने के लिए CLI का उपयोग करें, फिर इसे UI में एक डैशबोर्ड में जोड़ें।
+
+    ```bash
+    fp query schema
+    fp query create "production error rate" --sql "SELECT ..."
+    fp query run <query-id>
+    ```
+  </Tab>
+</Tabs>
+
+उपयोगी डैशबोर्ड समूहों में शामिल हैं:
+
+- **Models:** volume, latency, token use, error rate, और evaluation scores।
+- **Evaluations:** agent या environment के आधार पर success rate और score trends।
+- **Tools:** call volume, failure rate, duration, और repeat calls।
+- **Hooks and policies:** decisions, denials, और policy match rate।
+- **Custom workflow metrics:** आपके अपने event fields और SQL से परिणाम।
+
+एक सहेजी गई क्वेरी से शुरू करें, इसके परिणाम को मान्य करें, फिर इसे एक टाइल के रूप में जोड़ें। production और development फ़िल्टर को स्पष्ट रखें ताकि test traffic एक regression को छुपा न दे।
+
+<Tip>
+  हर डैशबोर्ड को एक owner और एक response question दें, जैसे "क्या checkout-agent की विश्वसनीयता पिछले हफ़्ते से बदतर है?"
+</Tip>

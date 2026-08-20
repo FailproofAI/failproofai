@@ -2,6 +2,10 @@
 
 ## 1.0.2-beta.0 — 2026-08-19
 
+### Docs
+
+- Put the new `r/failproofai` subreddit everywhere the Discord invite already lives, so the second community channel is discoverable from the same places as the first: the README community badges (English + the 28 translated copies under `docs/i18n/` and `docs-old/i18n/`), the docs-site navbar (with its own hover tooltip in `custom.css`), the `failproofai --help` LINKS banner, the dashboard launch banner, the dashboard's "Reach Us" dropdown, and the comment the contributor-welcome workflow posts on every outside PR. (#732)
+
 ### Fixes
 
 - Stop the localized navigation referencing pages that were never translated, which is what still discarded a partial run. `--allow-partial` published what succeeded — and then `--update-nav` regenerated the nav from the ENGLISH tree, emitting an entry for the failed page in the language that failed it, so `mintlify validate` rejected the missing file and the job died before its push anyway. The 784 pages that HAD translated went with it, which is precisely the loss `--allow-partial` exists to prevent. Nav generation now omits any localized page whose file is not on disk, prunes a group left with no pages and a tab left with no groups, and keeps an `openapi` group that never had pages to begin with. The check is injected rather than hardcoded, so the pure transform stays testable and the two paths that actually write `docs.json` get the real one. This also closes the same hazard from every other direction it can arrive from — a pruned page, or a translation that only exists on an unmerged branch — because the nav is now derived from what is present rather than from what English says should be. (#725)

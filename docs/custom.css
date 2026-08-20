@@ -49,6 +49,7 @@ h1, h2, h3 {
 }
 
 .navbar-link a[href="https://discord.befailproof.ai"],
+.navbar-link a[href="https://www.reddit.com/r/failproofai/"],
 .navbar-link a[href="https://x.com/failproofai"],
 .navbar-link a[href="https://github.com/FailproofAI/failproofai"],
 #topbar-cta-button a[href="https://app.befailproof.ai"] {
@@ -56,6 +57,7 @@ h1, h2, h3 {
 }
 
 .navbar-link a[href="https://discord.befailproof.ai"]::after,
+.navbar-link a[href="https://www.reddit.com/r/failproofai/"]::after,
 .navbar-link a[href="https://x.com/failproofai"]::after,
 .navbar-link a[href="https://github.com/FailproofAI/failproofai"]::after,
 #topbar-cta-button a[href="https://app.befailproof.ai"]::after {
@@ -80,6 +82,10 @@ h1, h2, h3 {
   content: "Join the community";
 }
 
+.navbar-link a[href="https://www.reddit.com/r/failproofai/"]::after {
+  content: "Join r/failproofai";
+}
+
 .navbar-link a[href="https://x.com/failproofai"]::after {
   content: "Follow launches";
 }
@@ -94,6 +100,8 @@ h1, h2, h3 {
 
 .navbar-link a[href="https://discord.befailproof.ai"]:hover::after,
 .navbar-link a[href="https://discord.befailproof.ai"]:focus-visible::after,
+.navbar-link a[href="https://www.reddit.com/r/failproofai/"]:hover::after,
+.navbar-link a[href="https://www.reddit.com/r/failproofai/"]:focus-visible::after,
 .navbar-link a[href="https://x.com/failproofai"]:hover::after,
 .navbar-link a[href="https://x.com/failproofai"]:focus-visible::after,
 .navbar-link a[href="https://github.com/FailproofAI/failproofai"]:hover::after,

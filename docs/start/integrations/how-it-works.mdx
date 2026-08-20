@@ -57,7 +57,11 @@ So a session ends when every pair is closed. The adapters emit `agent_end` for y
 
 Adapters resolve `session_id` in a defined order — an explicit option, then per-call metadata, then the enclosing scope, then framework metadata, then the framework's own run id. It is never invented when one of those exists, because a synthesized id splits one run across several sessions.
 
-Keep `agent_id` low cardinality. It is the primary facet on every dashboard surface.
+Keep `agent_id` low cardinality. It is the primary facet on every dashboard surface, and it is a `LowCardinality(String)` column — a per-run value in it degrades the column and fills the filter dropdown with one entry per run.
+
+Adapters defend that column for you: a label that is a UUID or a long bare hex string becomes `main`, and a readable name carrying a per-run id is stripped back to the readable part, so `agent-3f9a1c2b-…` records as `agent`. The real id is kept on `fw_agent_id` / `fw_run_id`, where it is queryable without being a facet. A name that merely contains short segments like `agent-v2` or `step-3` is left alone.
+
+The guard is for labels the *framework* chose. An `agent_id` you pass yourself — to `event.*`, or to `failproofai_sdk.agent(...)` — is taken exactly as given, because silently rewriting an explicit argument would be worse than the cardinality it prevents. Name your own spans accordingly.
 
 ## How events reach Cloud
 

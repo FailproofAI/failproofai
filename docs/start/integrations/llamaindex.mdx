@@ -76,9 +76,11 @@ Non-streaming calls (`llm.chat`, `llm.achat`) report usage with no configuration
 | Retrieval start and end | `tool_use`, `tool_result`, output summarized |
 | Embeddings | Nothing, unless `embeddings=True` |
 | A tool waiting on a person | `human_wait`, `agent_pause`, then `agent_resume`, `human_input` |
-| Exception | `error`, then `agent_end` with outcome `failed` |
+| `AgentWorkflow` handoff | A nested `agent_start`, `agent_end` per agent, parented to the workflow |
+| Exception | `error`, then `agent_end` with outcome `failed`, and `agent_end.summary` naming it |
+| `handler.cancel_run()` | `agent_end` with outcome `cancelled` and no `error` — a stop button is not a failure |
 
-`agent_id` is the `FunctionAgent.name` when you set one, and the workflow class name otherwise.
+`agent_id` is the `FunctionAgent.name` when you set one, and the workflow class name otherwise. Under an `AgentWorkflow`, each agent that takes a turn gets its own nested span under the workflow, so a handoff reads as two agents rather than one.
 
 Retrieval output is summarized rather than dumped. A retriever returns documents, and storing them in the payload would put your corpus in the events store once per query. The count, score range, and truncated snippets are kept instead.
 
@@ -140,6 +142,8 @@ The agent loop appears in the trace as hook pairs: `init_run`, `setup_agent`, `r
 ```python
 FunctionAgent(name="city_analyst", tools=[...], llm=llm)   # agent_id = "city_analyst"
 ```
+
+In an `AgentWorkflow`, that name is also what the handoff is recorded under: the workflow is the parent span and each agent that takes a turn opens its own nested one, so `agent_id` tells you which agent did the work and `parent_id` tells you which workflow it belonged to. An agent handed control back later opens a second turn rather than reopening the first.
 
 Wrap the run to override it, or to group several agents under one parent:
 

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execSync, execFileSync } from "node:child_process";
 import { BUILTIN_POLICIES, registerBuiltinPolicies, clearGitBranchCache } from "../../src/hooks/builtin-policies";
-import { getPoliciesForEvent, clearPolicies } from "../../src/hooks/policy-registry";
+import { getPoliciesForEvent, clearPolicies, getAllPolicies } from "../../src/hooks/policy-registry";
 import type { PolicyContext } from "../../src/hooks/policy-types";
 
 vi.mock("node:fs/promises", () => ({
@@ -37,13 +37,21 @@ describe("hooks/builtin-policies", () => {
   });
 
   describe("BUILTIN_POLICIES", () => {
-    it("has 40 built-in policies", () => {
-      expect(BUILTIN_POLICIES).toHaveLength(40);
+    // 40 before `block-self-pause` was merged into `block-failproofai-commands`.
+    it("has 39 built-in policies", () => {
+      expect(BUILTIN_POLICIES).toHaveLength(39);
     });
 
-    it("has 12 default-enabled policies", () => {
+    it("has 11 default-enabled policies", () => {
       const defaults = BUILTIN_POLICIES.filter((p) => p.defaultEnabled);
-      expect(defaults).toHaveLength(12);
+      expect(defaults).toHaveLength(11);
+    });
+
+    it("has exactly one alwaysOn policy — the self-protection guard", () => {
+      // A second one would be a policy nobody can switch off that nobody
+      // decided to make unswitchable. The flag is deliberately not general.
+      const always = BUILTIN_POLICIES.filter((p) => p.alwaysOn);
+      expect(always.map((p) => p.name)).toEqual(["block-failproofai-commands"]);
     });
   });
 
@@ -51,8 +59,10 @@ describe("hooks/builtin-policies", () => {
     it("registers only specified policies (canonicalized to default namespace)", () => {
       registerBuiltinPolicies(["block-sudo", "block-rm-rf"]);
       const policies = getPoliciesForEvent("PreToolUse", "Bash");
-      expect(policies).toHaveLength(2);
+      // The alwaysOn self-protection guard rides along with every registration.
+      expect(policies).toHaveLength(3);
       expect(policies.map((p) => p.name).sort()).toEqual([
+        "failproofai/block-failproofai-commands",
         "failproofai/block-rm-rf",
         "failproofai/block-sudo",
       ]);
@@ -61,8 +71,9 @@ describe("hooks/builtin-policies", () => {
     it("accepts qualified names in enabledPolicies (forward compat)", () => {
       registerBuiltinPolicies(["failproofai/block-sudo", "failproofai/block-rm-rf"]);
       const policies = getPoliciesForEvent("PreToolUse", "Bash");
-      expect(policies).toHaveLength(2);
+      expect(policies).toHaveLength(3);
       expect(policies.map((p) => p.name).sort()).toEqual([
+        "failproofai/block-failproofai-commands",
         "failproofai/block-rm-rf",
         "failproofai/block-sudo",
       ]);
@@ -71,12 +82,15 @@ describe("hooks/builtin-policies", () => {
     it("treats flat and qualified names as equivalent (mixed config works)", () => {
       registerBuiltinPolicies(["block-sudo", "failproofai/block-rm-rf"]);
       const policies = getPoliciesForEvent("PreToolUse", "Bash");
-      expect(policies).toHaveLength(2);
+      expect(policies).toHaveLength(3);
     });
 
-    it("registers nothing for empty array", () => {
+    it("registers ONLY the alwaysOn guard for an empty array", () => {
+      // An empty array is what a session pause and an unparseable config both
+      // produce. Everything else must go; the self-protection guard must not.
       registerBuiltinPolicies([]);
-      expect(getPoliciesForEvent("PreToolUse", "Bash")).toHaveLength(0);
+      const policies = getPoliciesForEvent("PreToolUse", "Bash");
+      expect(policies.map((p) => p.name)).toEqual(["failproofai/block-failproofai-commands"]);
     });
   });
 
@@ -509,8 +523,12 @@ describe("hooks/builtin-policies", () => {
     });
   });
 
-  describe("block-self-pause", () => {
-    const policy = BUILTIN_POLICIES.find((p) => p.name === "block-self-pause")!;
+  // `block-self-pause` was merged into `block-failproofai-commands`. Every
+  // red-team spelling it was hardened against is kept verbatim below, now
+  // asserted against the merged policy — the hardened matcher is the half of
+  // the merge that had to survive.
+  describe("block-failproofai-commands (self-pause half)", () => {
+    const policy = BUILTIN_POLICIES.find((p) => p.name === "block-failproofai-commands")!;
     const decide = async (command: string) =>
       (await policy.fn(makeCtx({ toolName: "Bash", toolInput: { command } }))).decision;
 
@@ -607,23 +625,24 @@ describe("hooks/builtin-policies", () => {
       expect(await decide("p=proof; failp${p}ai config --pause")).toBe("allow");
     });
 
-    it("still allows resume and status in those same spellings", async () => {
-      // The widened match must not start denying the two commands that restore
-      // or merely report enforcement — that would make the policy costly to
-      // keep on, and a policy people switch off protects nobody.
-      expect(await decide("npx failproofai@latest config --resume")).toBe("allow");
-      expect(await decide("/usr/local/bin/failproofai config  --status")).toBe("allow");
-      expect(await decide("node /path/to/failproofai.mjs config --resume")).toBe("allow");
+    // These three asserted `allow` under the former `block-self-pause`, which
+    // narrowed itself to `--pause` so it would stay cheap to keep enabled. That
+    // reasoning does not survive the merge, and it never described a real
+    // machine: `block-failproofai-commands` was `defaultEnabled` too and denied
+    // every one of them first, so the allow was unreachable in production. The
+    // merged policy is `alwaysOn` and cannot be switched off, which removes the
+    // only argument for the narrower surface.
+    it("denies resume and status — the merged surface is every self-invocation", async () => {
+      expect(await decide("failproofai config --resume")).toBe("deny");
+      expect(await decide("failproofai config --status")).toBe("deny");
+      expect(await decide("npx failproofai@latest config --resume")).toBe("deny");
+      expect(await decide("/usr/local/bin/failproofai config  --status")).toBe("deny");
+      expect(await decide("node /path/to/failproofai.mjs config --resume")).toBe("deny");
     });
 
-    it("allows resume and status — neither removes enforcement", async () => {
-      expect(await decide("failproofai config --resume")).toBe("allow");
-      expect(await decide("failproofai config --status")).toBe("allow");
-    });
-
-    it("allows ordinary failproofai use and unrelated commands", async () => {
-      expect(await decide("failproofai config")).toBe("allow");
-      expect(await decide("failproofai policies --install block-sudo")).toBe("allow");
+    it("denies ordinary failproofai use, and still allows unrelated commands", async () => {
+      expect(await decide("failproofai config")).toBe("deny");
+      expect(await decide("failproofai policies --install block-sudo")).toBe("deny");
       expect(await decide("git commit -m 'pause the rollout'")).toBe("allow");
     });
 
@@ -1325,6 +1344,32 @@ describe("hooks/builtin-policies", () => {
     it("allows non-Bash tools", async () => {
       const ctx = makeCtx({ toolName: "Read", toolInput: { command: "failproofai --remove-policies" } });
       expect((await policy.fn(ctx)).decision).toBe("allow");
+    });
+
+    // The half inherited from `block-self-pause`: the old regex here anchored on
+    // start-of-string or a shell operator, so ANY runner or prefix in front of
+    // the binary walked straight through a `defaultEnabled` self-protection
+    // guard. Each line below was allowed before the merge.
+    it("blocks the prefixes the old anchor let through", async () => {
+      const decide = async (command: string) =>
+        (await policy.fn(makeCtx({ toolName: "Bash", toolInput: { command } }))).decision;
+      expect(await decide("sudo failproofai config --pause")).toBe("deny");
+      expect(await decide("npx failproofai policies --uninstall")).toBe("deny");
+      expect(await decide("env X=1 failproofai config --pause")).toBe("deny");
+      expect(await decide("/usr/local/bin/failproofai --remove-policies")).toBe("deny");
+      expect(await decide("timeout 30 failproofai --cache-clear")).toBe("deny");
+      expect(await decide("doas failproofai config --pause")).toBe("deny");
+    });
+
+    it("is alwaysOn, and registers with an empty enabled set", () => {
+      expect(policy.alwaysOn).toBe(true);
+      clearPolicies();
+      // What `handler.ts` passes during a session pause, and what
+      // `hooks-config.ts` soft-fails to when the config will not parse.
+      registerBuiltinPolicies([]);
+      const names = getAllPolicies().map((r) => r.name);
+      expect(names).toContain("failproofai/block-failproofai-commands");
+      expect(names).toHaveLength(1);
     });
   });
 

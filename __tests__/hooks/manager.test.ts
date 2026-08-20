@@ -857,6 +857,29 @@ describe("hooks/manager", () => {
       expect(written.someOtherSetting).toBe(true);
     });
 
+    it("refuses to disable the alwaysOn self-protection policy", async () => {
+      // Stripping it from enabledPolicies writes fine and changes nothing:
+      // `registerBuiltinPolicies` registers it regardless. Reporting success
+      // would tell the operator a policy is off while it keeps denying.
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+
+      const { removeHooks } = await import("../../src/hooks/manager");
+
+      await expect(removeHooks(["block-failproofai-commands"])).rejects.toThrow(
+        "Cannot disable: block-failproofai-commands",
+      );
+      expect(writeFileSync).not.toHaveBeenCalled();
+    });
+
+    it("still disables an ordinary policy alongside the refusal check", async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue("{}");
+
+      const { removeHooks } = await import("../../src/hooks/manager");
+      await expect(removeHooks(["block-sudo"])).resolves.not.toThrow();
+    });
+
     it("handles missing settings file gracefully", async () => {
       vi.mocked(existsSync).mockReturnValue(false);
 

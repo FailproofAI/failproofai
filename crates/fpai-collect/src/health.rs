@@ -55,6 +55,37 @@ pub struct SourceHealth {
     pub errors: u64,
 }
 
+/// What delivery reports about itself, across every source AND the SDK spool.
+///
+/// The source map above cannot answer "is anything actually arriving", because
+/// a source's job ends when it writes a batch to the spool. Everything after
+/// that — the POST, the server's verdict, the parking of what would not go — is
+/// invisible to it, and the SDK's own batches have no source entry at all: the
+/// `failproofai-sdk` writes them straight into the spool from the user's
+/// process, so a machine shipping nothing but SDK events reports a perfectly
+/// healthy, entirely empty `sources` map.
+///
+/// `skipped` is the one worth staring at. Ingest answers `200` with
+/// `{"accepted":N,"skipped":M}` and the daemon deletes the batch either way, so
+/// a systematically malformed field — an `environment` containing a comma, say
+/// — discards every event on the machine while every layer reports success.
+/// Before this, the only trace was a line in the daemon's log.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct DeliveryHealth {
+    /// Events the server said it stored, since this daemon started.
+    pub accepted: u64,
+    /// Events the server refused as malformed. Non-zero means data loss that
+    /// nothing else on the machine will tell you about.
+    pub skipped: u64,
+    /// Batches answered `200` while storing NONE of their events — the shape a
+    /// systematic problem takes, as opposed to one bad line.
+    pub batches_fully_skipped: u64,
+    /// Unix seconds of the last upload the server accepted. Zero means not one
+    /// has succeeded since startup, which on a machine that is producing events
+    /// is the loudest thing in this file.
+    pub last_ok_ts: u64,
+}
+
 /// The whole record, as written.
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct HealthFile {
@@ -62,6 +93,11 @@ pub struct HealthFile {
     /// current one — a daemon that died leaves its last record behind.
     pub ts: u64,
     pub sources: BTreeMap<String, SourceHealth>,
+    /// Absent when this daemon has no uploader, which is every daemon with no
+    /// credential. Skipped rather than zeroed: all-zero counters and "delivery
+    /// is not configured" are different facts and must not render the same.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<DeliveryHealth>,
 }
 
 /// Shared, cheap-to-update health state.
@@ -73,6 +109,9 @@ pub struct HealthFile {
 pub struct Health {
     sources: Mutex<BTreeMap<String, SourceHealth>>,
     writes: AtomicU64,
+    /// Set once at startup when there is an uploader. Read, never written, so
+    /// the counters stay owned by the `Uploader` that survives a task restart.
+    delivery: Mutex<Option<std::sync::Arc<crate::UploadMetrics>>>,
 }
 
 impl Health {
@@ -109,12 +148,28 @@ impl Health {
         entry.last_error = Some(truncate(error, MAX_ERROR_LEN));
     }
 
+    /// Report delivery counters alongside the sources. Called once, at startup.
+    pub fn attach_delivery(&self, metrics: std::sync::Arc<crate::UploadMetrics>) {
+        if let Ok(mut slot) = self.delivery.lock() {
+            *slot = Some(metrics);
+        }
+    }
+
     /// Snapshot for writing.
     pub fn snapshot(&self) -> HealthFile {
         let sources = self.sources.lock().map(|m| m.clone()).unwrap_or_default();
+        let delivery = self.delivery.lock().ok().and_then(|slot| {
+            slot.as_ref().map(|m| DeliveryHealth {
+                accepted: m.accepted_total.load(Ordering::Relaxed),
+                skipped: m.skipped_total.load(Ordering::Relaxed),
+                batches_fully_skipped: m.batches_fully_skipped.load(Ordering::Relaxed),
+                last_ok_ts: m.last_ok_ts.load(Ordering::Relaxed),
+            })
+        });
         HealthFile {
             ts: now_secs(),
             sources,
+            delivery,
         }
     }
 

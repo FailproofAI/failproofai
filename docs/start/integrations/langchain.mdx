@@ -1,0 +1,220 @@
+---
+title: "LangChain and LangGraph"
+sidebarTitle: "LangChain and LangGraph"
+description: "Instrument graphs, nodes, tools, retrievers, and model calls with one call."
+icon: "share-2"
+---
+
+One adapter serves both. LangGraph runs on `langchain-core`'s callback manager, so instrumenting one instruments the other.
+
+## Install
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+For LangChain without LangGraph, use `failproofai-sdk[langchain]`.
+
+Supported: `langchain-core` 1.4.7 to 2.0, `langgraph` 1.2 to 2.0. Outside that range the adapter still installs and warns once.
+
+## Instrument
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+`instrument()` registers a tracer through `langchain_core.tracers.context.register_configure_hook`. LangChain injects it into every callback manager it builds, so graphs, tools, and models are captured without changing a call site — including ones inside libraries you did not write.
+
+## What gets recorded
+
+| LangChain or LangGraph | Failproof event |
+| --- | --- |
+| Root run | `agent_start`, `agent_end` |
+| LangGraph node | `hook_triggered`, `hook_completed` |
+| Compiled subgraph | Nested `agent_start`, `agent_end` |
+| Tool run | `tool_use`, `tool_result` |
+| Retriever run | `tool_use`, `tool_result`, output summarized |
+| Chat model or LLM run | `model_request`, `model_response`, with token usage |
+| Streamed tokens | Folded into the response as chunk count and time to first token. Token counts need `ChatOpenAI(stream_usage=True)` — see below |
+| `interrupt()` | `human_wait`, `agent_pause` |
+| `Command(resume=...)` | `agent_resume`, `human_input`, correlated on the `Interrupt.id` — including when the resume happens in a different process against the same checkpointer |
+| Unhandled exception | `error`, then `agent_end` with outcome `failed` |
+
+A node becomes a hook rather than a nested agent. `agent_id` is the primary facet across every dashboard surface, so promoting `retrieve`, `grade_documents`, and `should_continue` to agents would drown that facet and label the session after whichever node ran first. Hook spans render the same way and give you a per-node latency view.
+
+<Note>
+  **Name your nodes whatever you like.** A node's own run is identified by its shape — a non-leaf run carrying LangGraph's own step tag — not by its name, so `add_node("lookup_population", ToolNode([...]))` records the tool, and `add_node("ChatOpenAI", ...)` records the model call. Naming a node after the thing it runs used to make that thing's events disappear.
+</Note>
+
+<Note>
+  **Streaming and token counts.** `.stream()` / `.astream()` do not emit per-token events — they fold into the closing `model_response` as `fw_chunks` and `fw_ttft_ms`. Token counts are a separate matter: OpenAI only sends usage on a streamed response when asked, so `model_response` carries no tokens unless you construct the model as `ChatOpenAI(..., stream_usage=True)`. The adapter records what the framework gives it; without that flag there is nothing to record.
+</Note>
+
+## Example
+
+```python
+import failproofai_sdk
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import ToolNode, create_react_agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+@tool
+def price_of(item: str) -> float:
+    """Return the unit price of an item in USD."""
+    return {"widget": 42.0, "gadget": 17.5}[item.lower().strip()]
+
+
+@tool
+def stock_of(item: str) -> int:
+    """Return the units of an item currently in stock."""
+    return {"widget": 120, "gadget": 0}[item.lower().strip()]
+
+
+tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+graph = create_react_agent(ChatOpenAI(model="gpt-4o-mini"), tools)
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        result = graph.invoke({
+            "messages": [HumanMessage("Price and stock for widget and gadget?")]
+        })
+```
+
+## Name your spans
+
+By default the root span takes the graph's own name. Wrap it to get a label you chose:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        graph.invoke(...)
+```
+
+For multi-agent setups, nest the scopes. Each worker becomes a child span carrying `parent_id`:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("supervisor"):
+        with failproofai_sdk.agent("researcher"):
+            research_graph.invoke(...)
+        with failproofai_sdk.agent("writer"):
+            writer_graph.invoke(...)
+```
+
+Keep `agent_id` low cardinality. Use a role or node name, never a UUID or a per-run string.
+
+## Control the session
+
+The session id resolves in this order, first match winning:
+
+1. `instrument("langchain", session_id=...)`
+2. `config={"metadata": {"failproofai_sdk_session_id": ...}}`
+3. The enclosing `failproofai_sdk.session()` scope
+4. `metadata["session_id"]`, `metadata["conversation_id"]`, or `metadata["thread_id"]`
+5. The root run id
+
+It is never generated from scratch, because a synthesized id splits one run across several sessions.
+
+```python
+graph.invoke(
+    {"messages": [...]},
+    config={"metadata": {"failproofai_sdk_session_id": f"chat-{user_id}"}},
+)
+```
+
+## Options
+
+```python
+failproofai_sdk.instrument(
+    "langchain",
+    session_id=None,          # pin every run to one session id
+    include_chains=set(),     # allowlist intermediate chains as hook pairs
+    capture_content=True,     # False drops prompts and completions from payloads
+    graph_callbacks=True,     # first-class interrupt and resume, needs langgraph 1.2+
+)
+```
+
+Set `capture_content=False` for regulated data. Structure, timings, token counts, tool names, and outcomes are still recorded; message bodies are not.
+
+`include_chains` applies to **nested** runs only. A runnable you invoke at the top level is the session's root, so it becomes the agent span rather than a hook pair, and naming it here has no effect.
+
+## Human in the loop
+
+`interrupt()` produces four events, and neither pair is redundant:
+
+```python
+from langgraph.types import Command, interrupt
+
+def approve(state):
+    decision = interrupt({"prompt": "Ship it?", "options": ["yes", "no"]})
+    return {"approved": decision == "yes"}
+
+with failproofai_sdk.session():
+    graph.invoke(state, config)                    # human_wait, agent_pause
+    graph.invoke(Command(resume="yes"), config)    # agent_resume, human_input
+```
+
+`human_wait` to `human_input` carries the prompt and the answer. `agent_pause` to `agent_resume` is the only pair that feeds paused time, so without it a ten-minute human wait is billed as active agent time. The root span stays open across the gap, keeping both calls in one session.
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="A raising tool aborts the whole graph">
+    `create_react_agent` propagates the exception. To let the model see the failure and continue, build the tool node explicitly:
+
+    ```python
+    from langgraph.prebuilt import ToolNode, create_react_agent
+
+    tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+    graph = create_react_agent(model, tools)
+    ```
+
+    The failure is recorded as a `tool_result` carrying an error either way. This only decides whether the run survives it.
+  </Accordion>
+
+  <Accordion title="An agent named after the model class appears in the trace">
+    A direct `llm.invoke()` outside any graph has no parent run, so it opens a root span and emits its model pair inside it. The dashboard parents leaves to an open agent, so the span is deliberate. Name it:
+
+    ```python
+    with failproofai_sdk.agent("summariser"):
+        summary = ChatOpenAI(model="gpt-4o-mini").invoke([HumanMessage(text)])
+    ```
+  </Accordion>
+
+  <Accordion title="Every event appears twice">
+    You passed a Failproof handler in `config={"callbacks": [...]}` as well as calling `instrument()`. Remove it. The configure hook already covers every callback manager in the process.
+  </Accordion>
+
+  <Accordion title="Human approvals show as errors">
+    They do not. LangGraph raises `GraphInterrupt` through the same path as a real exception, so every pause reaches the tracer as an error callback. Any `GraphBubbleUp` subclass is treated as control flow instead, so an approval does not paint a red error.
+  </Accordion>
+
+  <Accordion title="Nothing is recorded">
+    Check in this order: `instrument()` ran before the graph executed; there is a `with failproofai_sdk.session():` around the call; `FAILPROOFAI_SDK_STRICT=1` set, so a degraded hook raises instead of being swallowed.
+  </Accordion>
+</AccordionGroup>
+
+## Next
+
+<Columns cols={3}>
+  <Card title="How it works" icon="workflow" href="/start/integrations/how-it-works">
+    Pairs, ids, session lifecycle, and delivery.
+  </Card>
+  <Card title="Read a trace" icon="route" href="/sessions/read-a-trace">
+    Follow causality through the session you just captured.
+  </Card>
+  <Card title="Other frameworks" icon="plug" href="/start/integrations">
+    CrewAI, LlamaIndex, Pydantic AI, and custom agents.
+  </Card>
+</Columns>

@@ -1,0 +1,274 @@
+---
+title: "Custom agents"
+sidebarTitle: "Custom agents"
+description: "Instrument an agent you wrote yourself, or a framework without an adapter."
+icon: "wrench"
+---
+
+For an agent you wrote yourself, or a framework Failproof AI has no adapter for. There is nothing to instrument: you emit the events.
+
+This is the same API the four framework adapters call underneath. They are translation tables over it.
+
+## Install
+
+```bash
+pip install failproofai-sdk
+```
+
+No extras, and no dependencies.
+
+## The three scopes
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+
+with failproofai_sdk.session():                 # identity only, emits nothing
+    with failproofai_sdk.agent("planner"):      # agent_start, agent_end
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)                # tool_use, tool_result
+```
+
+| Scope | Emits | Purpose |
+| --- | --- | --- |
+| `session()` | Nothing | Binds a session id, grouping one run |
+| `agent()` | `agent_start`, `agent_end` | Brackets a unit of work |
+| `tool_call()` | `tool_use`, `tool_result` | Brackets one tool and measures it |
+
+Everything inside can omit `session_id` and `agent_id`. The scopes bind identity on context variables and every event call reads it back, so you never thread ids through your functions.
+
+All three work under `async with` as well as `with`.
+
+Nesting agents builds the tree. `parent_id` and depth are computed from the stack:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("supervisor"):
+        with failproofai_sdk.agent("researcher"):    # parent_id = "supervisor"
+            ...
+```
+
+## How a scope closes
+
+`agent()` handles exceptions for you:
+
+| What happened | Events | Outcome |
+| --- | --- | --- |
+| Nothing raised | `agent_end` | `success` |
+| `Exception` | `error`, then `agent_end` | `failed` |
+| `KeyboardInterrupt`, `SystemExit` | `error`, then `agent_end` | `failed` |
+| `CancelledError`, `GeneratorExit` | `agent_end` only | `cancelled` |
+
+The error is emitted before `agent_end`, because the dashboard closes the span at `agent_end` and anything after it is attributed to nothing. A cancellation is not a failure, so cancelled runs do not pollute the errors surface. The exception is always re-raised: a scope never swallows.
+
+## The event methods
+
+<CodeGroup>
+```python Agents
+failproofai_sdk.event.agent_start(agent_id="planner", goal="find the cheapest flight")
+failproofai_sdk.event.agent_end(agent_id="planner", outcome="success", summary="...")
+failproofai_sdk.event.agent_pause(pause_id="p1", reason="awaiting approval")
+failproofai_sdk.event.agent_resume(pause_id="p1")
+```
+
+```python Models
+failproofai_sdk.event.model_request(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "..."}],
+    request_id="req-1",
+)
+failproofai_sdk.event.model_response(
+    model="gpt-4o-mini",
+    response="...",
+    input_tokens=139,
+    output_tokens=21,
+    request_id="req-1",
+    duration_ms=5202,
+)
+```
+
+```python Tools
+failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1", input={"q": "..."})
+failproofai_sdk.event.tool_result(tool_name="search", tool_call_id="c1", output="...")
+```
+
+```python Hooks
+failproofai_sdk.event.hook_triggered(hook_name="retrieve", hook_id="h1", trigger_event="node")
+failproofai_sdk.event.hook_completed(hook_name="retrieve", hook_id="h1", outcome="success")
+```
+
+```python Humans
+failproofai_sdk.event.human_wait(input_id="i1", prompt="Approve?", options=["yes", "no"])
+failproofai_sdk.event.human_input(input_id="i1", response="yes")
+failproofai_sdk.event.human_pause(reason="operator paused the run", user_id="dana")
+failproofai_sdk.event.human_interrupt(reason="operator stopped the run", at_step="step_3")
+```
+
+```python Failures
+failproofai_sdk.event.error(
+    error_type="TimeoutError",
+    message="provider timed out after 30s",
+    traceback="...",
+)
+```
+</CodeGroup>
+
+`human_wait` and `human_input` mean the agent asked a person. `human_pause` and `human_interrupt` mean a person acted on the agent, such as a stop button. No framework signals the second pair, so it is always yours to emit.
+
+Pass `request_id` when you make concurrent model calls. Without it, requests and responses pair in order per agent, and concurrent calls mispair.
+
+## Example
+
+A tool-calling loop against the OpenAI API, with no agent framework:
+
+```python
+import json
+
+import failproofai_sdk
+from openai import OpenAI
+
+failproofai_sdk.configure(environment="production")
+client = OpenAI()
+MODEL = "gpt-4o-mini"
+
+
+def turn(messages: list):
+    """One model call, bracketed by the pair."""
+    failproofai_sdk.event.model_request(model=MODEL, messages=messages)
+    reply = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)
+    usage = reply.usage
+    failproofai_sdk.event.model_response(
+        model=MODEL,
+        response=reply.choices[0].message.content or "",
+        input_tokens=usage.prompt_tokens,
+        output_tokens=usage.completion_tokens,
+    )
+    return reply.choices[0].message
+
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("inventory", goal="price report"):
+        for _ in range(4):          # bounded; an unbounded agent loop is its own bug
+            message = turn(messages)
+            if not message.tool_calls:
+                break
+            messages.append(message.model_dump(exclude_none=True))
+            for call in message.tool_calls:
+                args = json.loads(call.function.arguments or "{}")
+                with failproofai_sdk.tool_call(
+                    call.function.name, tool_call_id=call.id, input=args
+                ) as handle:
+                    handle.output = run_tool(call.function.name, args)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": call.id,
+                    "content": str(handle.output),
+                })
+```
+
+That produces the same six event types an adapter would give you. The complete
+runnable version, with the tool definitions, ships in the SDK repository under
+`docs/manual/examples/`.
+
+## Threads and async
+
+Context variables propagate into asyncio tasks automatically. They do not propagate into new threads, because a thread starts with an empty context.
+
+```python
+# asyncio: nothing to do
+async with failproofai_sdk.session():
+    await asyncio.gather(worker(1), worker(2))
+
+# threads: wrap the callable
+pool.submit(failproofai_sdk.propagate(work), x)
+threading.Thread(target=failproofai_sdk.propagate(work)).start()
+loop.run_in_executor(None, failproofai_sdk.propagate(work), x)
+```
+
+Without `propagate()`, the worker's events raise a `TypeError` naming the fix rather than landing on no session. That is deliberate: an event with no session is skipped by ingest and answered `200`, which is the silent failure the identity layer exists to prevent.
+
+## Instrument a framework without an adapter
+
+Most agent frameworks give you three seams. Map them and you have a complete trace.
+
+<Steps>
+  <Step title="Bracket the run">
+    ```python
+    with failproofai_sdk.session():
+        with failproofai_sdk.agent(agent_name, goal=task):
+            result = framework.run(task)
+    ```
+  </Step>
+  <Step title="Bracket each tool">
+    In whatever the framework calls a tool wrapper or middleware.
+
+    ```python
+    with failproofai_sdk.tool_call(name, input=args) as call:
+        call.output = original(**args)
+    ```
+  </Step>
+  <Step title="Pair each model call">
+    ```python
+    failproofai_sdk.event.model_request(model=model, messages=messages)
+    reply = provider.complete(...)
+    failproofai_sdk.event.model_response(
+        model=model,
+        response=text,
+        input_tokens=usage.prompt_tokens,
+        output_tokens=usage.completion_tokens,
+    )
+    ```
+  </Step>
+</Steps>
+
+If the framework has a node, step, or middleware boundary worth seeing, add a hook pair around it rather than a nested `agent()`. `agent_id` is a low-cardinality facet, and one entry per node drowns it.
+
+<Note>
+  AutoGen has no adapter for two reasons. `autogen-core` has been unmaintained since September 2025, and AG2 exposes no process-wide registration point equivalent to the other frameworks' hooks — instrumenting it means wrapping each agent at each construction site. The three seams above record the same events at the same fidelity.
+</Note>
+
+<Note>
+  **Manual and automatic compose.** An adapter running inside a hand-written
+  scope joins that session and parents to that agent, so you get one tree rather
+  than two — useful when you instrument a framework yourself alongside a
+  supported one.
+</Note>
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="A span never finishes">
+    An opening event has no closing one: a `model_request` with no `model_response`, or a `tool_use` with no `tool_result`. Use the scopes, which guarantee the pair even when the body raises. If you call the event methods directly, use `try` and `finally`.
+  </Accordion>
+
+  <Accordion title="Passing duration_ms raises a ValueError">
+    It is measured from the matching opening event, so it is rejected on `tool_result`, `hook_completed`, `agent_resume`, and `human_input`. It is accepted on `model_response`, because only you know the real provider latency, and it must be an integer.
+  </Accordion>
+
+  <Accordion title="Events from a worker thread raise a TypeError">
+    The thread never inherited the context. Wrap the callable in `failproofai_sdk.propagate()`. See [Threads and async](#threads-and-async).
+  </Accordion>
+
+  <Accordion title="An extra field disappeared or overwrote something">
+    Extra fields merge last, so one named like a real field such as `model` or `outcome` would overwrite it and change a stored column. Namespace yours; the adapters use an `fw_` prefix.
+  </Accordion>
+
+  <Accordion title="The agent filter has thousands of entries">
+    `agent_id` is a low-cardinality facet and you put a run id in it. Use a role or node name and put the real id in a payload field.
+  </Accordion>
+</AccordionGroup>
+
+## Next
+
+<Columns cols={3}>
+  <Card title="How it works" icon="workflow" href="/start/integrations/how-it-works">
+    Pairs, ids, session lifecycle, and delivery.
+  </Card>
+  <Card title="Read a trace" icon="route" href="/sessions/read-a-trace">
+    Follow causality through the session you just captured.
+  </Card>
+  <Card title="Framework adapters" icon="plug" href="/start/integrations">
+    LangGraph, CrewAI, LlamaIndex, and Pydantic AI.
+  </Card>
+</Columns>

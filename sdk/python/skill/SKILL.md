@@ -136,10 +136,18 @@ Full field-by-field catalog: `references/events.md`.
 
 Work with these; none of them raise, so none of them show up in testing.
 
-- **There is no ambient session.** No decorator, no context manager, no
-  contextvar, no `set_session()`. Every one of the 13 methods takes `session_id`
-  and `agent_id` as required keyword args, and nothing propagates them for you.
-  This is what §4 exists to solve.
+- **There IS an ambient session, and it is the ergonomic path.** `session()`,
+  `agent()` and `tool_call()` bind identity on contextvars, so `session_id` and
+  `agent_id` are optional on all 15 event methods — omitted, they resolve from
+  the enclosing scope. `current()` reads it; `propagate(fn)` carries it into a
+  new thread, which contextvars do NOT do on their own.
+
+  This section said the opposite until the scopes existed, and the reference
+  integration shipped a contextvars wrapper as markdown for customers to paste
+  into their own code. That is now in the package.
+
+  Nothing bound and nothing passed raises `TypeError` naming the fix — never a
+  silent emit, because ingest skips an event with no session and answers `200`.
 
 - **`configure()` is optional, and every call restates all of it.** It is
   keyword-only with exactly three settings:
@@ -214,12 +222,30 @@ Work with these; none of them raise, so none of them show up in testing.
   silently.
 
   **`SIGTERM` deserves its own line, because it is not exotic — it is every
-  rolling deploy**, every `docker stop`, every Kubernetes eviction. Python's
-  default handler exits, so `atexit` *does* run; but if your app installs its own
-  handler and calls `os._exit`, or takes longer than the grace period, the queue
-  dies with it. What is in flight at shutdown is disproportionately `agent_end`,
-  so runs never close and never reach the evaluator. If you handle `SIGTERM`,
-  flush before you exit.
+  rolling deploy**, every `docker stop`, every Kubernetes eviction, and every
+  plain `kill`. CPython installs **no** handler for it: `signal.getsignal(SIGTERM)`
+  is `SIG_DFL`, the OS terminates the process where it stands, and **`atexit`
+  does not run**. Whatever is queued is gone — and what is in flight at shutdown
+  is disproportionately `agent_end`, so runs never close and never reach the
+  evaluator. The 0.5s flush interval is what bounds the loss, not the exit path.
+
+  So if your process can receive `SIGTERM`, handle it — the SDK will not install
+  a handler in your process behind your back:
+
+      import signal, sys, failproofai_sdk
+
+      def _flush_and_exit(signum, frame):
+          failproofai_sdk._writer.flush_now()
+          sys.exit(128 + signum)
+
+      signal.signal(signal.SIGTERM, _flush_and_exit)
+
+  (`sys.exit` here rather than `os._exit`: it unwinds, so any `agent()` scope
+  still open emits its `agent_end` before the flush. That scope closes
+  `outcome="failed"` with an `error` naming `SystemExit`, because an evicted run
+  did not finish — which is the thing you want to be able to see.) `SIGKILL`,
+  `os._exit` and a container OOM cannot be handled by anything, and drop the
+  queue silently.
 
 ## 4. Write it
 
@@ -227,7 +253,7 @@ Threading `session_id` and `agent_id` through every call site by hand is the thi
 that makes integrations ugly and abandoned. Don't. Bind identity once per run and
 let the call sites read it.
 
-`references/integration.md` has the canonical `contextvars` wrapper — one small
+`references/frameworks.md` covers the four adapters. `references/integration.md` has the hand-written wrapper — one small
 module, correct under `asyncio` and threads, adaptable to any codebase — plus
 worked shapes for a tool dispatcher, an LLM client wrapper, and framework-specific
 callback layers. Read it before writing your own; the naive version (a module

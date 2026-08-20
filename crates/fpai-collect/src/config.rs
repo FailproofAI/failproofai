@@ -261,11 +261,25 @@ pub struct CollectorConfig {
 }
 
 impl CollectorConfig {
-    /// True when there is a usable credential AND at least one stream enabled.
-    /// This is what `collector_tasks()` keys off, so an unconfigured machine
-    /// starts no thread and no runtime.
+    /// True when there is a usable credential. This is what `collector_tasks()`
+    /// keys off, so an unconfigured machine starts no thread and no runtime.
+    ///
+    /// Deliberately NOT `&& (sessions || hooks)`. Those two gate the daemon's
+    /// OWN capture sources — CLI session transcripts and hook activity — and
+    /// each is checked again where its source is registered, so leaving them
+    /// off still starts neither. What they must not gate is DELIVERY, because
+    /// the spool also carries batches this daemon did not produce: the
+    /// `failproofai-sdk` writes its own events into `custom-agents/events/`,
+    /// and the spool watcher is the only thing that ships them.
+    ///
+    /// While they did gate it, `collector.hooks = false` — a documented
+    /// privacy choice, and the only one available to somebody who wants their
+    /// instrumented agents shipped and nothing else — silently disabled the
+    /// SDK too: no task started, no line logged, and batches accumulated in
+    /// the spool forever. An unread spool is indistinguishable from an idle
+    /// one, which is the exact failure this project exists to remove.
     pub fn is_enabled(&self) -> bool {
-        self.ingest.is_some() && (self.settings.sessions || self.settings.hooks)
+        self.ingest.is_some()
     }
 }
 

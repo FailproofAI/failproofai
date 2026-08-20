@@ -1,0 +1,232 @@
+---
+title: "LlamaIndex"
+sidebarTitle: "LlamaIndex"
+description: "Instrument workflows, steps, function agents, and retrievers."
+icon: "database"
+---
+
+## Install
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+Supported: `llama-index-core` 0.14.23 to 0.15. 0.14.23 is the release where the workflow stream started carrying the typed agent events this adapter reads. Below it, model names and agent structure both go missing.
+
+## Instrument
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+LlamaIndex's agent API is async. Every scope works under `async with` as well as `with` and produces identical events.
+
+`instrument()` attaches an event handler and a span handler to LlamaIndex's global dispatcher. Together they make the agent loop visible, not just its model calls.
+
+<Warning>
+  Without one extra argument on your LLM, every token count in your trace is null. See [Token counts](#token-counts) below.
+</Warning>
+
+## Token counts
+
+`FunctionAgent` calls `astream_chat`, and `llama-index-llms-openai` does not send `stream_options={"include_usage": True}` when it streams. The provider therefore never sends the usage chunk, and there is nothing for any instrumentation to read.
+
+This is upstream LlamaIndex behavior. Opt in on your LLM:
+
+```python
+from llama_index.llms.openai import OpenAI
+
+llm = OpenAI(
+    model="gpt-4o-mini",
+    additional_kwargs={"stream_options": {"include_usage": True}},
+)
+```
+
+Measured on the same run and model:
+
+| | Input tokens | Output tokens |
+| --- | --- | --- |
+| Without | `null` | `null` |
+| With | 148 | 17 |
+
+Non-streaming calls (`llm.chat`, `llm.achat`) report usage with no configuration. Only the streaming path, which is the default agent path, needs this.
+
+## What gets recorded
+
+| LlamaIndex | Failproof event |
+| --- | --- |
+| `Workflow.run` root span | Session, `agent_start`, `agent_end` |
+| Nested `Workflow.run` span | Nested `agent_start`, `agent_end` |
+| Workflow step span | `hook_triggered`, `hook_completed` |
+| LLM chat start and end | `model_request`, `model_response` |
+| `FunctionTool.call` span | `tool_use`, `tool_result` |
+| Retrieval start and end | `tool_use`, `tool_result`, output summarized |
+| Embeddings | Nothing, unless `embeddings=True` |
+| A tool waiting on a person | `human_wait`, `agent_pause`, then `agent_resume`, `human_input` |
+| `AgentWorkflow` handoff | A nested `agent_start`, `agent_end` per agent, parented to the workflow |
+| Exception | `error`, then `agent_end` with outcome `failed`, and `agent_end.summary` naming it |
+| `handler.cancel_run()` | `agent_end` with outcome `cancelled` and no `error` — a stop button is not a failure |
+
+`agent_id` is the `FunctionAgent.name` when you set one, and the workflow class name otherwise. Under an `AgentWorkflow`, each agent that takes a turn gets its own nested span under the workflow, so a handoff reads as two agents rather than one.
+
+Retrieval output is summarized rather than dumped. A retriever returns documents, and storing them in the payload would put your corpus in the events store once per query. The count, score range, and truncated snippets are kept instead.
+
+## Example
+
+```python
+import asyncio
+
+import failproofai_sdk
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.openai import OpenAI
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+POP = {"tokyo": "37M", "delhi": "33M"}
+AREA = {"tokyo": "2,194 km2", "delhi": "1,484 km2"}
+
+
+def population(city: str) -> str:
+    """Population of a city. Valid: tokyo, delhi."""
+    return POP.get(city.lower().strip(), "unknown")
+
+
+def area(city: str) -> str:
+    """Land area of a city. Valid: tokyo, delhi."""
+    return AREA.get(city.lower().strip(), "unknown")
+
+
+async def main():
+    agent = FunctionAgent(
+        name="city_analyst",
+        tools=[
+            FunctionTool.from_defaults(fn=population),
+            FunctionTool.from_defaults(fn=area),
+        ],
+        llm=OpenAI(
+            model="gpt-4o-mini",
+            additional_kwargs={"stream_options": {"include_usage": True}},
+        ),
+        system_prompt="Use the tools. Be terse.",
+    )
+
+    async with failproofai_sdk.session():
+        async with failproofai_sdk.agent("city_analyst", goal="compare two cities"):
+            print(await agent.run("Compare Tokyo and Delhi on population and area."))
+
+
+asyncio.run(main())
+```
+
+The agent loop appears in the trace as hook pairs: `init_run`, `setup_agent`, `run_agent_step`, `parse_agent_output`, `call_tool`, and `aggregate_tool_results`. They are the framework's own loop, so they are hooks rather than agents, which keeps `agent_id` meaningful.
+
+## Name your spans
+
+`agent_id` is the `FunctionAgent.name` when you set one, and the workflow class name otherwise.
+
+```python
+FunctionAgent(name="city_analyst", tools=[...], llm=llm)   # agent_id = "city_analyst"
+```
+
+In an `AgentWorkflow`, that name is also what the handoff is recorded under: the workflow is the parent span and each agent that takes a turn opens its own nested one, so `agent_id` tells you which agent did the work and `parent_id` tells you which workflow it belonged to. An agent handed control back later opens a second turn rather than reopening the first.
+
+Wrap the run to override it, or to group several agents under one parent:
+
+```python
+async with failproofai_sdk.agent("research", goal="compare two cities"):
+    await agent.run(...)
+```
+
+Keep `agent_id` low cardinality. It is the primary facet on every dashboard surface, so use a role or workflow name, never a UUID or per-run string.
+
+## Control the session
+
+This adapter takes **no `session_id` option**. The session comes from the enclosing scope, and otherwise a generated `uuid4().hex` per workflow run:
+
+```python
+async with failproofai_sdk.session(f"chat-{user_id}"):
+    await agent.run(...)
+```
+
+## Options
+
+```python
+failproofai_sdk.instrument(
+    "llama_index",
+    embeddings=False,         # True records embedding calls as tool pairs
+    steps=True,               # False drops workflow-step hook pairs
+    capture_messages=True,    # False drops prompts and system text from payloads
+    stale_after=600.0,        # seconds before an abandoned span is force-closed
+    reaper_interval=30.0,     # how often the reaper sweeps; 0 disables it
+)
+```
+
+| Option | Why you would change it |
+| --- | --- |
+| `embeddings` | Turn on only when debugging embedding latency or cost. A bulk index build is thousands of calls and will bury the timeline. |
+| `steps` | Turn off if you only want model and tool events and find the agent loop noisy. |
+| `capture_messages` | Turn off for regulated data. Structure, timings, tokens, and outcomes are still recorded. |
+| `stale_after` | A workflow that never finishes leaves an open span. The reaper force-closes it after this many seconds so the session settles instead of reading `ongoing` forever. |
+| `reaper_interval` | Sweep frequency. Set to `0` to disable the reaper entirely. |
+
+## Human in the loop
+
+Captured when the wait happens inside a tool:
+
+```python
+async def ask_human(question: str) -> str:
+    """Ask a person and wait for their answer."""
+    response = await ctx.wait_for_event(HumanResponseEvent)
+    return response.answer
+```
+
+`ctx.wait_for_event` in a plain workflow step is not captured. The runtime catches the drop before it reaches the dispatcher, so the step exits and re-runs later with no signal to key a pause on. The FunctionAgent pattern, which LlamaIndex documents, waits inside a tool and is captured in full.
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="Every token count is null">
+    Add `additional_kwargs={"stream_options": {"include_usage": True}}` to your LLM. See [Token counts](#token-counts).
+  </Accordion>
+
+  <Accordion title="Usage is populated but the token columns are empty">
+    There is no standard usage field in LlamaIndex. The adapter tries several known shapes, and an integration naming its counters something new will not match. The raw dict always ships, so look at `usage` in the payload to see what your provider called them. A populated `usage` with empty token columns is deliberate: it beats a confident wrong number.
+  </Accordion>
+
+  <Accordion title="The timeline is full of setup_agent and parse_agent_output">
+    That is the FunctionAgent loop, one set per iteration. Filter by hook name on the dashboard. These step timings are usually the reason to use this adapter rather than a model-only one.
+  </Accordion>
+
+  <Accordion title="Nothing is recorded">
+    Check in this order: `instrument()` ran before the run; there is an `async with failproofai_sdk.session():` around the `await`; `llama-index-core` is 0.14.23 or newer; `FAILPROOFAI_SDK_STRICT=1` set, so a degraded hook raises instead of being swallowed.
+  </Accordion>
+</AccordionGroup>
+
+## Next
+
+<Columns cols={3}>
+  <Card title="How it works" icon="workflow" href="/start/integrations/how-it-works">
+    Pairs, ids, session lifecycle, and delivery.
+  </Card>
+  <Card title="Read a trace" icon="route" href="/sessions/read-a-trace">
+    Follow causality through the session you just captured.
+  </Card>
+  <Card title="Other frameworks" icon="plug" href="/start/integrations">
+    LangGraph, CrewAI, Pydantic AI, and custom agents.
+  </Card>
+</Columns>

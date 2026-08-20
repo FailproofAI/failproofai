@@ -458,8 +458,8 @@ def test_pending_map_is_capped_and_evicts_oldest_first():
         namespace.tool_use(session_id="s", agent_id="a", tool_name="t", tool_call_id=f"c{i}")
 
     assert len(namespace._pending) == _PENDING_CAP
-    assert _tool_key("s", "a", "c0") not in namespace._pending, "eviction is not FIFO"
-    assert _tool_key("s", "a", f"c{_PENDING_CAP + 99}") in namespace._pending
+    assert _tool_key("s", "c0") not in namespace._pending, "eviction is not FIFO"
+    assert _tool_key("s", f"c{_PENDING_CAP + 99}") in namespace._pending
 
 
 def test_an_evicted_pair_completes_without_duration_instead_of_raising():
@@ -907,19 +907,43 @@ def test_hook_pairs_are_namespaced_by_session_and_agent():
         assert "duration_ms" in writer.entries[0], f"{session} lost its own start"
 
 
-def test_the_same_id_in_the_same_session_but_a_different_agent_does_not_collide():
-    """Both halves of the namespace are load-bearing, not just the session."""
+def test_a_pair_opened_and_closed_under_different_agents_still_pairs():
+    """The key is deliberately NOT agent-scoped, and this is why.
+
+    This test asserted the opposite when the keys were first namespaced: that a
+    tool id repeated under two agents in one session produced two independent
+    pairs. That looked like tightening; it was over-tightening. Once a framework
+    runs tools inside sub-agents — LangGraph and CrewAI both do — a `tool_use`
+    opened under `planner` and closed under `worker` is the ORDINARY case, and an
+    agent-scoped key makes it miss silently, dropping `duration_ms` for exactly
+    the nested runs that most need it.
+
+    The rule that survives both: key on what makes the id unique (kind, session)
+    and never on what can legitimately change between the two events (the agent).
+    """
     writer = _NullWriter()
     namespace = EventNamespace(writer)
 
     namespace.tool_use(session_id="S", agent_id="planner", tool_name="t", tool_call_id="x")
-    namespace.tool_use(session_id="S", agent_id="worker", tool_name="t", tool_call_id="x")
-    assert len(namespace._pending) == 2
-
     writer.entries.clear()
-    namespace.tool_result(session_id="S", agent_id="planner", tool_name="t", tool_call_id="x")
+    namespace.tool_result(session_id="S", agent_id="worker", tool_name="t", tool_call_id="x")
+
+    assert "duration_ms" in writer.entries[0], (
+        "a tool handed from planner to worker lost its duration — the key is "
+        "agent-scoped again"
+    )
+    assert namespace._pending == {}, "the pending entry was left behind"
+
+
+def test_a_hook_opened_and_closed_under_different_agents_still_pairs():
+    """Same rule, same reason, for the other adapter-driven pair type."""
+    writer = _NullWriter()
+    namespace = EventNamespace(writer)
+
+    namespace.hook_triggered(session_id="S", agent_id="planner", hook_name="h", hook_id="x")
+    writer.entries.clear()
+    namespace.hook_completed(session_id="S", agent_id="worker", hook_name="h", hook_id="x")
     assert "duration_ms" in writer.entries[0]
-    assert len(namespace._pending) == 1, "the worker's pending start was consumed too"
 
 
 def test_a_result_from_an_unrelated_session_gets_no_duration_at_all():
@@ -1120,3 +1144,85 @@ def test_a_persistent_write_fault_does_not_strand_a_tmp_file_per_cycle(spool, mo
     writer.flush_now()
     assert len(read_all(spool)) == 50, "the recovered batch is incomplete"
     assert list((spool / "events").glob("*.tmp")) == []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SIGTERM — the exit path the docs got wrong
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _run_child(tmp_path: Path, body: str) -> subprocess.CompletedProcess:
+    """Run `body` in a fresh interpreter spooling into `tmp_path`.
+
+    A subprocess rather than a fork: the point is CPython's *default* signal
+    disposition in a process this test did not otherwise touch, and pytest's own
+    handlers are inherited across a fork.
+    """
+    src = (
+        "import os, signal, sys\n"
+        "import failproofai_sdk as fp\n"
+        "from failproofai_sdk import event\n"
+        f"fp.configure(base_dir={str(tmp_path)!r}, flush_interval=3600.0)\n" + body
+    )
+    return subprocess.run(
+        [sys.executable, "-c", src],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=str(Path(__file__).resolve().parents[1]),
+    )
+
+
+def test_sigterm_drops_the_queue_because_cpython_runs_no_atexit_for_it(tmp_path):
+    """The claim this replaces said `atexit` *does* run on `SIGTERM`. It does not.
+
+    CPython installs no handler for `SIGTERM` — `signal.getsignal(SIGTERM)` is
+    `SIG_DFL` — so the OS terminates the process where it stands and the atexit
+    flush never runs. `SKILL.md` told readers the opposite, under a heading
+    naming rolling deploys and `docker stop`, which is exactly the population
+    that would have believed it and shipped nothing.
+
+    The long flush interval isolates the exit path: in real use the 0.5s default
+    is what bounds the loss, and that bound is the whole mitigation.
+    """
+    proc = _run_child(
+        tmp_path,
+        "with fp.session('sigterm-bare'):\n"
+        "    for i in range(20):\n"
+        "        event.agent_start(agent_id='a', goal=str(i))\n"
+        "os.kill(os.getpid(), signal.SIGTERM)\n",
+    )
+    assert proc.returncode == -15, proc.stderr
+    assert read_all(tmp_path) == [], (
+        "SIGTERM must be shown losing the queue; if this now passes events "
+        "through, the SDK grew a handler and SKILL.md's recipe is obsolete"
+    )
+
+
+def test_the_documented_sigterm_handler_saves_the_queue_and_closes_the_run(tmp_path):
+    """The recipe SKILL.md now ships, executed rather than described.
+
+    `sys.exit` and not `os._exit`: it unwinds, so an open `agent()` scope emits
+    its `agent_end` before the flush — the events most likely to be in flight at
+    shutdown are exactly the ones that close a run.
+    """
+    proc = _run_child(
+        tmp_path,
+        "def _flush_and_exit(signum, frame):\n"
+        "    fp._writer.flush_now()\n"
+        "    sys.exit(128 + signum)\n"
+        "signal.signal(signal.SIGTERM, _flush_and_exit)\n"
+        "with fp.agent('worker', session_id='sigterm-handled', goal='survive'):\n"
+        "    for i in range(20):\n"
+        "        event.tool_use(tool_name='t', tool_call_id=str(i), input={'i': i})\n"
+        "    os.kill(os.getpid(), signal.SIGTERM)\n",
+    )
+    assert proc.returncode == 128 + 15, proc.stderr
+    events = read_all(tmp_path)
+    kinds = {e["type"] for e in events}
+    assert len([e for e in events if e["type"] == "tool_use"]) == 20
+    assert "agent_start" in kinds and "agent_end" in kinds
+    # The interrupted run closes as failed, carrying the SystemExit — an evicted
+    # run did not finish, and that is the thing an operator needs to see.
+    end = next(e for e in events if e["type"] == "agent_end")
+    assert end["outcome"] == "failed"

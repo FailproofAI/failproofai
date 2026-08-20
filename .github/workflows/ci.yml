@@ -3,8 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
+  # `main` AND the long-lived branches other PRs stack onto. A pull request is
+  # tested against the branch it will actually merge into, and a stacked PR
+  # targeting anything but `main` matched nothing here — so #730, thirty commits
+  # of SDK work, ran no unit tests, no build and no lint at all. The only signal
+  # it produced was the daemon cross-compile, and only because it touched
+  # `crates/`. A PR that cannot go red is not a reviewed PR.
   pull_request:
-    branches: [main]
+    branches: [main, feat/fp-cli]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -263,6 +269,9 @@ jobs:
   # claiming >=3.10 and testing only one of them is how a 3.10 user finds the break.
   fp-cli:
     runs-on: ubuntu-latest
+    # a uv sync plus pytest across two interpreters; the bound exists so a stalled
+    # package mirror cannot hold a release for six hours (#726).
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: fp-cli
@@ -334,6 +343,9 @@ jobs:
   # requires-python advertises is tested.
   failproofai-sdk:
     runs-on: ubuntu-latest
+    # the same, across five — every version requires-python advertises; the bound exists so a stalled
+    # package mirror cannot hold a release for six hours (#726).
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: sdk/python

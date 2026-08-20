@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from failproofai_sdk import _events, _resolver, _schema
+from failproofai_sdk import _context, _events, _resolver, _schema
 from failproofai_sdk._events import EventNamespace
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -564,15 +564,61 @@ def test_a_non_string_session_id_is_refused_on_every_event(method, extra, bad):
     the realistic way in — an uninitialised variable, a lookup that missed.
     """
     ns = EventNamespace(_Recorder())
-    with pytest.raises(ValueError, match="session_id"):
+    with pytest.raises(TypeError, match="session_id"):
         getattr(ns, method)(session_id=bad, agent_id="a", **extra)
 
 
 @pytest.mark.parametrize("method,extra", ALL_METHODS, ids=[m for m, _ in ALL_METHODS])
 def test_a_non_string_agent_id_is_refused_on_every_event(method, extra):
+    """`None` is no longer invalid — it means "resolve from scope" (below).
+
+    `TypeError`, because the wrong TYPE was supplied — and because omitting a
+    required keyword argument was always a TypeError, so code catching one keeps
+    working now that identity is optional.
+    """
     ns = EventNamespace(_Recorder())
-    with pytest.raises(ValueError, match="agent_id"):
-        getattr(ns, method)(session_id="s", agent_id=None, **extra)
+    with pytest.raises(TypeError, match="agent_id"):
+        getattr(ns, method)(session_id="s", agent_id=12345, **extra)
+
+
+@pytest.mark.parametrize("method,extra", ALL_METHODS, ids=[m for m, _ in ALL_METHODS])
+def test_an_omitted_agent_id_resolves_rather_than_raising(method, extra):
+    """Omitting it is the ergonomic path the scopes exist for, not an error.
+
+    With no `agent()` scope open it lands on `DEFAULT_AGENT_ID` — the convention
+    the skill already teaches — rather than raising. Inventing a *session* that
+    way would scatter one run across as many sessions as it has emit sites, so
+    only the agent has a default.
+    """
+    recorder = _Recorder()
+    getattr(EventNamespace(recorder), method)(session_id="s", **extra)
+    assert recorder.entries[0]["agent_id"] == _context.DEFAULT_AGENT_ID
+
+
+def test_an_unresolvable_session_id_raises_rather_than_emitting():
+    """Nothing passed and nothing bound must be loud.
+
+    Ingest skips an event whose `session_id` is not a JSON string and answers
+    `200 OK` with `{"accepted":0,"skipped":1}`, so emitting here would lose the
+    event with no error on either side — the exact failure the validation exists
+    to prevent, reached through the new ergonomic path instead of a bad argument.
+    """
+    ns = EventNamespace(_Recorder())
+    with pytest.raises(TypeError, match="session_id is required"):
+        ns.agent_start()
+
+
+def test_an_ambient_scope_satisfies_both_ids():
+    import failproofai_sdk
+
+    recorder = _Recorder()
+    ns = EventNamespace(recorder)
+    with failproofai_sdk.session("sess-x"):
+        with failproofai_sdk.agent("planner"):
+            ns.agent_start(goal="from ambient scope")
+    entry = recorder.entries[-1]
+    assert entry["session_id"] == "sess-x"
+    assert entry["agent_id"] == "planner"
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\t\n"], ids=["empty", "spaces", "whitespace"])

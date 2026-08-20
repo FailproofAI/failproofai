@@ -7,6 +7,7 @@ proofread.
 """
 import ast
 import re
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -16,9 +17,17 @@ SNIPPET_FILES = sorted(SKILL.rglob("*.md"))
 
 
 def python_blocks(path):
-    """Every ```python fenced block in a markdown file."""
+    """Every ```python fenced block in a markdown file, dedented.
+
+    Dedented because a fenced block nested inside a list item is indented in the
+    source and is still valid Python once that common prefix is removed. Without
+    this the only way to keep a snippet testable was to hoist it out of the list
+    it belongs to — so the guard was quietly shaping the prose. `test_site_docs.py`
+    already dedents; these two scans should not disagree about what a block is.
+    """
     text = path.read_text(encoding="utf-8")
-    return re.findall(r"```python\n(.*?)```", text, re.DOTALL)
+    blocks = re.findall(r"```python[^\n]*\n(.*?)```", text, re.DOTALL)
+    return [textwrap.dedent(b) for b in blocks]
 
 
 def test_there_are_snippets_to_check():
@@ -69,3 +78,84 @@ def test_lifecycle_brackets_catch_baseexception_not_exception(path):
                 f"{path.name} block {i}: `except {caught}` wraps an emit — a cancelled "
                 "tool or run would skip its closing event. Use BaseException."
             )
+
+
+# --- The prose is a contract too -------------------------------------------
+#
+# Everything above checks that snippets PARSE and handle cancellation. Nothing
+# checked that what the skill SAYS is true, and three claims had gone stale
+# undetected: a correlation bug described as current after it was fixed, a float
+# `duration_ms` described as silently dropped after it started raising, and a
+# verify step pointing at the pre-migration spool root. An agent following that
+# last one looks in an empty directory and reports the integration broken.
+#
+# These are the checks that would have caught each class.
+
+import failproofai_sdk
+from failproofai_sdk import _resolver
+
+SKILL_TEXT = {p.name: p.read_text(encoding="utf-8") for p in SNIPPET_FILES}
+
+
+def test_the_skill_only_names_event_methods_that_exist():
+    """A method renamed in the SDK leaves the skill teaching a call that raises."""
+    named = set()
+    for text in SKILL_TEXT.values():
+        named |= set(re.findall(r"(?:failproofai_sdk\.)?event\.([a-z_]+)\s*\(", text))
+    assert named, "no event.* calls found — the scan stopped working"
+    missing = sorted(n for n in named if not hasattr(failproofai_sdk.event, n))
+    assert not missing, f"the skill names event methods that do not exist: {missing}"
+
+
+def test_the_skill_only_names_public_api_that_exists():
+    """Same, for the top-level surface an agent is told to import and call."""
+    named = set(re.findall(r"failproofai_sdk\.([a-z_]+[a-z_0-9]*)\s*\(", "\n".join(SKILL_TEXT.values())))
+    named -= {"event"}  # a namespace, reached as failproofai_sdk.event.<method>
+    assert named, "no failproofai_sdk.* calls found — the scan stopped working"
+    missing = sorted(n for n in named if not hasattr(failproofai_sdk, n))
+    assert not missing, f"the skill names public API that does not exist: {missing}"
+
+
+def test_the_skill_verifies_against_the_current_spool_root():
+    """The verify step must send a reader to the directory the SDK actually writes.
+
+    `~/.agenteye` is still allowed in the migration notes — that is what the
+    older `agenteye-collector` reads, and the skill has to say so. What is not
+    allowed is presenting it as the path to CHECK, which is what it did: a fresh
+    integration with no env vars writes to `~/.failproofai/custom-agents/events`,
+    so the documented `ls` found nothing and read as total failure.
+    """
+    default = str(_resolver.failproofai_custom_agents_dir())
+    assert default.endswith("/.failproofai/custom-agents"), default
+
+    skill = SKILL_TEXT["SKILL.md"]
+    assert "~/.failproofai/custom-agents/events" in skill, (
+        "SKILL.md never names the current default spool directory"
+    )
+    offenders = [
+        line.strip()
+        for line in skill.splitlines()
+        if re.search(r"(ls|cat)\b[^\n]*~/\.agenteye/events", line)
+    ]
+    assert not offenders, (
+        "SKILL.md tells the reader to inspect the pre-migration spool root; "
+        f"that directory is empty on a default install: {offenders}"
+    )
+
+
+def test_the_skill_does_not_brand_the_product_with_the_retired_name():
+    """The H1 and the description are what an agent reads before anything else.
+
+    `agenteye` stays legal in migration notes and in the collector's own name;
+    naming the PRODUCT that is what this catches.
+    """
+    skill = SKILL_TEXT["SKILL.md"]
+    heading = next(line for line in skill.splitlines() if line.startswith("# "))
+    assert "agenteye" not in heading.lower(), f"retired product name in the H1: {heading}"
+
+    front = skill.split("---")[1] if skill.startswith("---") else ""
+    description = re.search(r"description:.*?(?=\n[a-z_]+:|\Z)", front, re.S)
+    assert description, "SKILL.md has no frontmatter description"
+    assert "to agenteye" not in description.group(0).lower(), (
+        "the frontmatter description still says events are reported to AgentEye"
+    )

@@ -1,7 +1,7 @@
 ---
 name: failproofai-sdk
 description: |-
-  The way to make an AI agent report what it did to AgentEye — planning what to record, writing the instrumentation, and proving the events land. Reach for it on vague phrasing too: "add observability to my agent", "why isn't my agent showing up?"
+  The way to make an AI agent report what it did to Failproof AI — planning what to record, writing the instrumentation, and proving the events land. Reach for it on vague phrasing too: "add observability to my agent", "why isn't my agent showing up?"
 
   Trigger when the user wants to:
   • plan an integration — which points in their agent loop to record, and what the platform must see before sessions, errors, and evals work at all;
@@ -13,7 +13,7 @@ description: |-
   NOT for reading telemetry that already landed or operating a deployment (that's `fp-cli`), or building the evaluator service that scores runs (that's `agenteye-evaluator`).
 ---
 
-# AgentEye Python SDK
+# Failproof AI Python SDK
 
 The SDK records what your agent did, from inside your agent. You call it at points
 you choose; it appends structured events to local `.jsonl` files. A separate
@@ -149,6 +149,13 @@ Work with these; none of them raise, so none of them show up in testing.
   Nothing bound and nothing passed raises `TypeError` naming the fix — never a
   silent emit, because ingest skips an event with no session and answers `200`.
 
+  Two more shapes raise, for the same reason:
+
+  | You pass | Raises | Why it cannot be allowed through |
+  | --- | --- | --- |
+  | A non-`str` id | `TypeError` | Ingest skips the event and still answers `200` |
+  | `""` or `"   "` | `ValueError` | Worse — ingest *accepts* it, and every event merges under one blank id |
+
 - **`configure()` is optional, and every call restates all of it.** It is
   keyword-only with exactly three settings:
 
@@ -179,6 +186,10 @@ Work with these; none of them raise, so none of them show up in testing.
   `AGENTEYE_ENVIRONMENT` env var. This is a favourite: everything works, in the
   wrong bucket.
 
+  **A comma raises `ValueError`.** `configure(environment="prod,eu")` is rejected
+  at the call site: ingest splits this field on commas to build filter facets, so
+  a comma would discard the whole event server-side with nothing said.
+
 - **Non-JSON payload leaves are stringified.** Events are serialized on a
   background thread. Ordinary structured JSON retains its types; unsupported
   leaves such as `datetime`, `UUID`, `Decimal`, `set`, `bytes`, or a Pydantic
@@ -198,18 +209,22 @@ Work with these; none of them raise, so none of them show up in testing.
   (case-insensitive). `"failure"` is the natural antonym of the `"success"` in
   every example — and it silently counts as *not a failure*. The run shows green.
 
-- **You own correlation, and `tool_call_id` + `hook_id` share ONE flat map.**
-  They are keyed bare, process-wide — not per session, not per type. So they must
-  be unique across every concurrent run **and across each other**: a
-  `hook_completed(hook_id="x")` will happily pair with a pending
-  `tool_use(tool_call_id="x")` and report a confident, wrong duration. (`input_id`
-  and `pause_id` are the exceptions — they *are* scoped per session/agent, so
-  `human_wait`/`human_input` and `agent_pause`/`agent_resume` can't collide.)
+- **You own correlation, and ids are scoped per session AND per kind.**
+  Pending spans are keyed `tool:<session_id>:<tool_call_id>` and
+  `hook:<session_id>:<hook_id>`, so a `hook_completed(hook_id="x")` cannot pair
+  with a pending `tool_use(tool_call_id="x")`, and two concurrent sessions both
+  using `call_1` cannot cross-pair either. `input_id` and `pause_id` are scoped
+  the same way.
 
-  Reusing your framework's id is safe (Anthropic and OpenAI ids are globally
-  unique). Per-run counters — `call_1`, `call_2`, common in home-grown loops — are
-  **not**, and the failure is a plausible wrong number attributed to the wrong
-  run, not a missing one. A wrong duration is worse than a null.
+  What must still be unique is an id **within one session, for one kind**. The
+  pending map is a plain assignment, so emitting `tool_use(tool_call_id="call_1")`
+  twice in one session overwrites the first entry and the first `tool_result`
+  measures from the wrong start. Reusing your framework's id is always safe
+  (Anthropic and OpenAI ids are globally unique); a per-run counter is safe only
+  if you do not reset it inside a session.
+
+  If you have read older guidance describing one flat, process-wide map shared
+  between tools and hooks: that was true, and is not any more.
 
 - **`duration_ms` is computed for you on four methods only** — `tool_result`,
   `hook_completed`, `human_input`, `agent_resume` — from the matching earlier event.
@@ -268,17 +283,28 @@ has a request context or a trace id, bind to that instead of inventing one.
 **This is the whole point of the file boundary: you can prove the integration
 without a server.** Run the agent and look.
 
+Resolve the spool the way the SDK does, rather than guessing at a path:
+
 ```bash
-ls -la ~/.agenteye/events/          # or "$AGENTEYE_HOME"/events/ if you set it
+python -c "import failproofai_sdk._resolver as r; print(r.get_base_dir() / 'events')"
 ```
 
-You are looking for `event-<UTC timestamp>.jsonl` files. Each line is one event.
-Read them with a JSON parser, not `grep` — the exact spacing of the output is not
-a contract, and a grep for `"type":"agent_start"` returns nothing on a perfectly
-healthy integration:
+With no environment variables set that prints `~/.failproofai/custom-agents/events`.
+It is `$AGENTEYE_HOME/events` when that variable is set — which is what a host still
+running the older `agenteye-collector` sets, to `~/.agenteye`.
 
 ```bash
-cat ~/.agenteye/events/*.jsonl | python -m json.tool --json-lines | head -20
+ls -la ~/.failproofai/custom-agents/events/
+```
+
+You are looking for `event-<UTC timestamp>-<pid>-<seq>.jsonl` files — the pid and
+sequence number are what keep two processes flushing in the same millisecond from
+overwriting each other. Each line is one event. Read them with a JSON parser, not
+`grep` — the exact spacing is not a contract, and a grep for `"type":"agent_start"`
+returns nothing on a perfectly healthy integration:
+
+```bash
+cat ~/.failproofai/custom-agents/events/*.jsonl | python -m json.tool --json-lines | head -20
 ```
 
 Then check, in this order — the first failure explains everything downstream:

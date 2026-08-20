@@ -194,8 +194,8 @@ def call_model(messages, **kw):
     return resp
 ```
 
-`duration_ms` must be a whole-millisecond **`int`** — a float is dropped on the
-way in and the duration comes out empty.
+`duration_ms` must be a whole-millisecond **`int`** — a float raises `ValueError`
+at the call site rather than silently emptying the column.
 
 **Sub-agents.** One session, several actors. Nest the scopes and the wiring is
 automatic — the inner `agent()` inherits the session and takes the outer agent as

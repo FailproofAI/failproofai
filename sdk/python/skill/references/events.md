@@ -77,8 +77,10 @@ it to *those four* raises `ValueError`. On the other eleven there is no guard:
 
 The one place you *should* pass it is **`model_response`**, where nothing computes
 it for you. Time the call yourself and pass whole milliseconds as an **`int`** —
-`round(seconds * 1000)`. A float is dropped on the way in and the duration comes
-out empty, with nothing anywhere saying so.
+`round(seconds * 1000)`. A float raises `ValueError` at the call site, naming the
+argument: the server reads this as an unsigned 32-bit integer and would store NULL
+for anything else, so the SDK refuses it rather than letting the duration vanish.
+The same guard covers `input_tokens` and `output_tokens`.
 
 **Set `request_id` on both model events.** The same value on the `model_request`
 and its `model_response` — a `uuid4().hex`, or the provider's own request id if it
@@ -103,8 +105,11 @@ they hurt:
   generates a `uuid4` for you.
 - **`tool_call_id` and `hook_id` no longer collide with each other.** They live in
   separate namespaces, so a `hook_completed(hook_id="x")` cannot pair with a
-  pending `tool_use(tool_call_id="x")`. Each still has to be unique *within its
-  own namespace*, across every concurrent run in the process. (If you have read
+  pending `tool_use(tool_call_id="x")`. The key is `<kind>:<session_id>:<id>`, so
+  each id only has to be unique *within one session, for one kind* — two sessions
+  reusing `call_1` measure independently. Reuse it twice in the SAME session and
+  the second `tool_use` overwrites the first pending entry, so the first
+  `tool_result` measures from the wrong start. (If you have read
   older guidance saying one shared id space, that was true and is not any more —
   the ids are namespaced by the SDK, so nothing on your side changes.)
 - **`input_id` and `pause_id` are scoped per session/agent**, so

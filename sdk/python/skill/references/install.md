@@ -4,6 +4,16 @@
 pip install failproofai-sdk        # or: uv add failproofai-sdk
 ```
 
+The SDK has no dependencies, so that is all it installs. Optional extras pull in
+the **framework**, never the adapter — all four adapters ship in the box:
+
+```bash
+pip install 'failproofai-sdk[langchain]'     # also: langgraph, crewai, pydantic-ai
+pip install 'failproofai-sdk[llamaindex]'    # note: no hyphen, unlike the dist name
+```
+
+Most agents already have their framework installed and never need one of these.
+
 Then `import failproofai_sdk`. There is no token, no private index, and no wheel to
 download by hand — the distribution is on public PyPI. It has no dependencies, so
 it cannot conflict with anything already in the agent's environment.

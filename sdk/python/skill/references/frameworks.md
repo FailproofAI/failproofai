@@ -30,7 +30,8 @@ failproofai_sdk.uninstrument()                     # put everything back
   deliberate — a library that imports LangChain to find out whether you use it
   costs you a second of startup for nothing. The consequence is an ordering rule:
   `configure()` → import the framework → `instrument()` → run. Calling
-  `instrument()` too early instruments nothing and returns `()`, silently.
+  `instrument()` too early instruments nothing and returns `()` — no exception,
+  but it does log a warning, so check stderr when a run records nothing.
 - **It returns the names it newly instrumented**, as a tuple. Assert on it in
   startup code if you want a loud failure: `assert failproofai_sdk.instrument()`.
 - **Instrumenting something already active is a no-op** returning `()`. Calling
@@ -42,6 +43,17 @@ failproofai_sdk.uninstrument()                     # put everything back
   (`pydantic-ai`, `pydanticai`).
 - **One adapter failing does not cost you the others.** With no argument, an
   adapter whose install fails is logged and skipped and the rest still install.
+- **Ask what is wired up** rather than guessing, when a run records nothing:
+
+  ```python
+  from failproofai_sdk.integrations import available, active
+
+  available()   # ('crewai', 'langchain', 'llama_index', 'pydantic_ai') — every adapter that ships
+  active()      # ('langchain',) — what is instrumented in THIS process right now
+  ```
+
+  An empty `active()` after you called `instrument()` is the ordering bug above:
+  the framework was not in `sys.modules` yet.
 - **`uninstrument()` never raises**, restores the original objects it replaced,
   and closes anything still open with `outcome="cancelled"` so teardown does not
   leave a session reported as ongoing forever.
@@ -58,6 +70,8 @@ adapter, so an option meant for one is ignored by the others rather than raising
 | `graph_callbacks=False` | langchain | Turn off LangGraph interrupt/resume wiring. Default on. |
 | `steps=False` | llama_index | Stop emitting a hook pair per workflow step. Default on. |
 | `embeddings=True` | llama_index | Record embedding calls. Default off — they are high volume and low signal. |
+| `stale_after=600.0` | llama_index | Seconds before the background reaper closes a span the workflow never finished. |
+| `reaper_interval=30.0` | llama_index | How often that reaper runs. |
 
 ## The rule the mappings follow
 

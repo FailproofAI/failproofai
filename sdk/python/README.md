@@ -61,7 +61,8 @@ The adapter code ships in the base wheel and imports its framework lazily, so
 the extras are a convenience — `pip install failproofai-sdk` still declares no
 dependencies at all, and `import failproofai_sdk` loads nothing outside the
 standard library. See `skill/references/frameworks.md` for the per-framework
-mapping, and `examples/` for a runnable quickstart each.
+mapping, and `docs/` for a per-framework integration guide with runnable
+examples beside it.
 
 ## Scopes
 

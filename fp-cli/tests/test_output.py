@@ -1635,3 +1635,98 @@ def test_policy_list_omits_the_caption_when_each_policy_has_one_version(capsys):
                                           disabled=False, archived=False)])
     out = capsys.readouterr().out
     assert "policies · 1" in out and "versions" not in out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Decision timeline: every policy source, not just the first
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# `GET /enforcement/decisions/timeline` returns ONE SERIES PER `policy_source`,
+# built server-side from a `BTreeMap<String, …>` — so they arrive alphabetically
+# (`builtin`, `cloud`, `convention`, `custom`). The renderer read `series[0]`,
+# which meant the builtin row was shown and every cloud-managed decision was
+# dropped: the exact half an operator opens this command to see.
+#
+# The failure had no tell. Header counts were summed from the same truncated
+# list, so the panel agreed with itself while disagreeing with the fleet.
+
+
+def _two_source_payload():
+    return {
+        "bucketMs": 3_600_000,
+        "hours": 24,
+        "series": [
+            {"source": "builtin", "points": [{"t": 1_787_250_000_000, "total": 3, "deny": 1, "instruct": 0}]},
+            {
+                "source": "cloud",
+                "points": [
+                    {"t": 1_787_250_000_000, "total": 900, "deny": 400, "instruct": 50},
+                    {"t": 1_787_253_600_000, "total": 12, "deny": 2, "instruct": 1},
+                ],
+            },
+        ],
+    }
+
+
+def test_timeline_merge_sums_every_series_not_just_the_first():
+    from fp_cli.output import _merge_timeline_series
+
+    points = _merge_timeline_series(_two_source_payload())
+
+    # Two distinct buckets: the second exists only in the `cloud` series, so a
+    # truncating implementation loses it entirely rather than under-counting it.
+    assert [p["t"] for p in points] == [1_787_250_000_000, 1_787_253_600_000]
+    assert points[0] == {"t": 1_787_250_000_000, "total": 903, "deny": 401, "instruct": 50}
+    assert points[1] == {"t": 1_787_253_600_000, "total": 12, "deny": 2, "instruct": 1}
+
+    # The regression, stated as the number it produced: series[0] alone.
+    assert points[0]["total"] != 3, "series[0] only — the cloud source was dropped"
+
+
+def test_timeline_header_counts_cover_every_source(capsys):
+    """The header is summed from the same list, so it lied consistently."""
+    from fp_cli.output import render_decision_timeline
+
+    render_decision_timeline(_two_source_payload())
+    out = capsys.readouterr().out
+    assert "915 evaluated" in out, out
+    assert "403 blocked" in out, out
+    assert "3 evaluated" not in out
+
+
+def test_timeline_merge_tolerates_missing_and_empty_series():
+    from fp_cli.output import _merge_timeline_series
+
+    assert _merge_timeline_series({}) == []
+    assert _merge_timeline_series({"series": []}) == []
+    assert _merge_timeline_series({"series": [{}]}) == []
+    assert _merge_timeline_series({"series": [{"points": None}]}) == []
+
+
+def test_guardrails_sparkline_uses_every_source(capsys):
+    """The sparkline sat beside a headline number computed from ALL sources.
+
+    Asserted on the SPARKLINE GLYPHS, not on the headline counts. Those come
+    from `summary["totals"]` and are correct either way, so asserting them
+    passes whether or not the sparkline was built from a truncated series —
+    a guard that cannot fail.
+
+    One cell per bucket: `series[0]` alone yields denies=[1] -> a single cell,
+    the merge yields denies=[401, 2] -> two.
+    """
+    from fp_cli.output import render_guardrails, sparkline
+
+    summary = {
+        "analyticsAvailable": True,
+        "hours": 24,
+        "policies": [],
+        "deployed": [],
+        "totals": {"evaluated": 915, "blocked": 403, "enforcingMachines": 2, "reportingMachines": 2},
+    }
+    render_guardrails(summary, _two_source_payload())
+    out = capsys.readouterr().out
+
+    merged_spark = sparkline([401, 2])
+    truncated_spark = sparkline([1])
+    assert merged_spark != truncated_spark, "the fixture no longer distinguishes the two paths"
+    assert merged_spark in out, f"sparkline is not drawn from every source: {out!r}"

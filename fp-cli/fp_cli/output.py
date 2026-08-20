@@ -6122,7 +6122,10 @@ def render_guardrails(summary: dict, timeline: Optional[dict] = None) -> None:
     body = [stat]
 
     if timeline:
-        series = (timeline.get("series") or [{}])[0].get("points") or []
+        # Every source, summed — a sparkline drawn from series[0] alone sat
+        # beside a headline number computed from ALL sources, so the shape and
+        # the count described different fleets.
+        series = _merge_timeline_series(timeline)
         denies = [p.get("deny", 0) for p in series]
         if denies:
             spark = Text()
@@ -6239,6 +6242,38 @@ def deployment_unchanged(machine_id: str) -> None:
     _notice_box(body, color=theme.ACCENT, title="no change")
 
 
+def _merge_timeline_series(data: dict) -> list:
+    """Every series summed per bucket — NOT ``series[0]``.
+
+    ``GET /enforcement/decisions/timeline`` returns ONE SERIES PER
+    ``policy_source`` (``enforcement.rs`` builds them from a
+    ``BTreeMap<String, …>``, so they arrive alphabetically: ``builtin``,
+    ``cloud``, ``convention``, ``custom``). Reading ``series[0]`` therefore
+    showed the ``builtin`` row and silently dropped every cloud-managed
+    decision — which is the half an operator opened this command to see.
+
+    It was not a visibly partial answer either: the header counts were summed
+    from the same truncated list, so the panel agreed with itself while
+    disagreeing with the fleet. Against two sources carrying 3 and 900
+    decisions it rendered "3 evaluated · 1 blocked" for a window that had 903
+    and 401.
+
+    Summing is the CLI analogue of the dashboard's multi-line chart: the
+    dashboard draws one line per source and the operator reads the stack, and a
+    single-table view has to add them up to answer the same question. Buckets
+    are keyed by ``t``, so sources that report different bucket sets union
+    cleanly rather than truncating to the shortest.
+    """
+    merged: dict = {}
+    for series in data.get("series") or []:
+        for point in (series or {}).get("points") or []:
+            key = point.get("t")
+            slot = merged.setdefault(key, {"t": key, "total": 0, "deny": 0, "instruct": 0})
+            for field in ("total", "deny", "instruct"):
+                slot[field] += point.get(field, 0) or 0
+    return [merged[k] for k in sorted(merged, key=lambda v: (v is None, v))]
+
+
 def render_decision_timeline(data: dict) -> None:
     """``fp guardrails timeline`` — one row per bucket, with the numbers.
 
@@ -6248,7 +6283,7 @@ def render_decision_timeline(data: dict) -> None:
     exists for: *when* did enforcement bite, and how hard. Two rows of blocks
     told you a shape and nothing you could act on.
     """
-    points = (data.get("series") or [{}])[0].get("points") or []
+    points = _merge_timeline_series(data)
     if not points:
         info("no decisions recorded in this window")
         return

@@ -134,6 +134,10 @@ active()      # ('langchain',)
   `instrument("crewai")` on a machine without CrewAI raises an `ImportError` whose message contains the exact install command. Instrumenting is an explicit request, so silently doing nothing would be the wrong answer.
 </Note>
 
+<Warning>
+  **Call `instrument()` after you import your framework, not before.** Because auto-detection reads `sys.modules`, a bare `instrument()` above the `import langchain` line finds nothing, installs nothing and returns `()` — the process then runs with the SDK imported, the adapter apparently installed, and not one event emitted. It logs a warning saying exactly this, so check your logs if a run records nothing; naming the framework explicitly, `instrument("langchain")`, works from anywhere because it imports the adapter on request.
+</Warning>
+
 ## When instrumentation fails
 
 Every callback runs inside a wrapper whose only job is to re-raise, so your call sits in exactly one `try` and everything the SDK does happens outside it.

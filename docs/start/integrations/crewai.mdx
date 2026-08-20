@@ -32,8 +32,9 @@ with failproofai_sdk.session():
 | CrewAI | Failproof event |
 | --- | --- |
 | Crew kickoff | `agent_start`, `agent_end` |
-| Flow start and finish | `agent_start`, `agent_end` |
-| Agent execution | Nested `agent_start`, `agent_end`, with `agent_id` from the role |
+| `Agent.kickoff()` (a lite agent, no crew) | `agent_start`, `agent_end`, with `agent_id` from the role |
+| Flow start and finish | `agent_start`, `agent_end`; a crew kicked off inside a flow method nests under it |
+| Agent execution | Nested `agent_start`, `agent_end`, with `agent_id` from the role. Under a hierarchical process a delegated coworker nests under the manager, not beside it |
 | Task | Nothing; recorded as a link so children resolve to the crew |
 | Flow method, guardrail | `hook_triggered`, `hook_completed` |
 | Tool usage | `tool_use`, `tool_result` |
@@ -47,6 +48,8 @@ with failproofai_sdk.session():
 A task emits nothing on purpose. A CrewAI task is a subset of the agent execution that runs it, so emitting both would double every row and render them as siblings. The task id and name ride along on the agent's own events instead.
 
 Memory and knowledge operations are recorded as tools, named for the surface they hit, so they appear next to your real tools where you can compare their latency.
+
+The nesting is what makes the trace readable on a hierarchical crew: the manager sits under the crew, and each coworker it delegates to sits under the manager. CrewAI parents a delegated execution on the `delegate_work_to_coworker` tool event rather than on the manager directly, so the adapter follows that link — otherwise every agent comes out a sibling of every other and the delegation structure is lost.
 
 ## Example
 
@@ -143,7 +146,13 @@ failproofai_sdk.instrument(
 
 ## Human in the loop
 
-CrewAI's flow runtime emits an event before it blocks on a person and another after the answer. Both are recorded as four events:
+CrewAI has **two** human-in-the-loop surfaces, and both are recorded as the same four events.
+
+`@human_feedback` on a flow method goes through CrewAI's event bus: the runtime emits an event before it blocks on a person and another after the answer.
+
+`Task(human_input=True)` does not. It calls `input()` inside CrewAI's own input provider and emits no event of any kind, so the adapter wraps that provider directly — without it the entire human wait was invisible and billed as active agent time.
+
+Either way you get:
 
 ```text
 human_wait      the prompt and its options
@@ -156,6 +165,10 @@ human_input     the answer, with the wait measured
 
 <Note>
   CrewAI sets no correlation id on either human-feedback event, so the adapter pairs them on the flow and method name, falling back to the most recently opened pause. That is sound because a console prompt blocks. If you build a concurrent feedback provider, set `request_id` on both events.
+</Note>
+
+<Note>
+  Because the `Task(human_input=True)` path is a wrapper around CrewAI's input provider rather than an event subscription, it is restored on `uninstrument()` and re-raises whatever `input()` raises, `KeyboardInterrupt` included, unchanged.
 </Note>
 
 ## Common problems

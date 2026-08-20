@@ -68,13 +68,31 @@ failproofai_sdk.configure(
 | --- | --- |
 | `base_dir` | Explicit spool root. Takes precedence over all environment variables. |
 | `flush_interval` | Seconds between background writes from memory to JSONL. Default: `0.5`. |
-| `environment` | Deployment label on every event. Defaults to `dev`. |
+| `environment` | Deployment label on every event. Defaults to `dev`. Must not contain a comma — ingest splits this field on commas to build its filter facets and skips any event whose label has one, so `configure()` raises rather than let a run vanish. Use `prod-eu`, not `prod,eu`. |
 | `FAILPROOFAI_HOME` | Changes the Failproof AI root that contains the `custom-agents` spool. |
 | `FAILPROOFAI_SDK_STRICT` | Set to `1` to re-raise instrumentation errors instead of logging them. |
 
 The SDK writes to the explicit `base_dir` when set. Otherwise it uses the Failproof daemon's `custom-agents` spool under `FAILPROOFAI_HOME` or `~/.failproofai`.
 
 The SDK queues calls in memory and writes batches on a background thread, with a final flush through Python's `atexit` handling. For short-lived workers, allow normal interpreter shutdown; hard process termination can lose events still in memory.
+
+<Warning>
+  `SIGTERM` is one of those hard terminations, and it is the one you will actually meet: every rolling deploy, every `docker stop`, every Kubernetes eviction. CPython installs no handler for it, so the process ends where it stands and the `atexit` flush never runs. What is in flight at shutdown is disproportionately `agent_end`, so runs stay open and never close.
+
+  If your process can receive `SIGTERM`, handle it. The SDK will not install a handler in your process on your behalf.
+
+  ```python
+  import signal, sys, failproofai_sdk
+
+  def _flush_and_exit(signum, frame):
+      failproofai_sdk._writer.flush_now()
+      sys.exit(128 + signum)
+
+  signal.signal(signal.SIGTERM, _flush_and_exit)
+  ```
+
+  `sys.exit` rather than `os._exit`: it unwinds, so an open `agent()` scope still emits its `agent_end` before the flush. That scope closes `outcome="failed"` — an evicted run did not finish, which is the thing worth being able to see. `SIGKILL` and a container OOM cannot be handled by anything.
+</Warning>
 
 ## Identity
 

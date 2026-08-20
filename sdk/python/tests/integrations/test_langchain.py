@@ -1765,3 +1765,448 @@ def test_reinstrumenting_after_that_teardown_records_again(tmp_path, monkeypatch
     finally:
         failproofai_sdk.uninstrument("langchain")
     assert types_of(read_events(tmp_path)).count("agent_start") == 1
+
+
+# ---------------------------------------------------------------------------
+# The node key and the run name are BOTH the user's to choose
+# ---------------------------------------------------------------------------
+#
+# `_node_of` matched on `run.name == metadata["langgraph_node"]` alone, and both
+# sides of that comparison are strings a user picks. Every inner run of a node
+# inherits `langgraph_node`, so the moment an inner run happens to carry the
+# node's name it was recorded as a second visit to the node instead of as what
+# it is — and the event that was actually worth having never got emitted.
+#
+# Verified against langgraph 1.2.11: whatever you hand `add_node`, the node's
+# OWN run is always a `chain` run tagged `graph:step:N`, and the thing you
+# passed runs beneath it tagged `seq:step:N`. Those two facts are the fix.
+
+
+def test_a_node_named_after_its_tool_still_records_the_tool(tmp_path, instrumented):
+    """`add_node("adder", ToolNode([adder]))` — the obvious naming — used to
+    delete the tool call: no `tool_use`, no `tool_result`, no `tool_call_id`,
+    and `/tools` showing the call had never happened."""
+
+    def plan(state):
+        return {"messages": [tool_calling_message()], "vals": ["plan"]}
+
+    graph = StateGraph(State)
+    graph.add_node("plan", plan)
+    graph.add_node("adder", ToolNode([adder]))  # node key == tool name
+    graph.add_edge(START, "plan")
+    graph.add_edge("plan", "adder")
+    graph.add_edge("adder", END)
+    graph.compile(name="collide").invoke(
+        empty_state(), config={"configurable": {"thread_id": "tool-collision"}}
+    )
+
+    rows = read_events(tmp_path)
+    tools = only(rows, "tool_use", "tool_result")
+    assert types_of(tools) == ["tool_use", "tool_result"], (
+        "the tool run was misfiled as a second visit to the node of the same name"
+    )
+    assert tools[0]["tool_name"] == tools[1]["tool_name"] == "adder"
+    assert tools[0]["tool_call_id"] == tools[1]["tool_call_id"] == "call_abc"
+    assert tools[1]["output"] == "3"
+    # ...and the node itself is still exactly one hook, not two.
+    assert [r["hook_name"] for r in only(rows, "hook_triggered")] == ["plan", "adder"]
+
+
+def test_a_node_named_after_its_model_still_records_the_model(tmp_path, instrumented):
+    """Same collision one run type over: the model name, both token counts and
+    the latency were dropped while the trace still looked populated."""
+    model = fake_model(tool_calling_message())
+
+    def call(state):
+        return {"messages": [model.invoke(state["messages"])], "vals": ["x"]}
+
+    # `GenericFakeChatModel`'s run name is its class name.
+    app = build_simple([("GenericFakeChatModel", call)], name="model-collide")
+    app.invoke(empty_state(), config={"configurable": {"thread_id": "model-collision"}})
+
+    rows = read_events(tmp_path)
+    assert types_of(only(rows, "model_request", "model_response")) == [
+        "model_request",
+        "model_response",
+    ], "the chat model run was misfiled as a second visit to the node of the same name"
+    response = only(rows, "model_response")[0]
+    assert response["input_tokens"] == 11
+    assert response["output_tokens"] == 5
+    assert isinstance(response["duration_ms"], int)
+    assert len(only(rows, "hook_triggered")) == 1
+
+
+def test_an_inner_runnable_sharing_the_node_name_is_not_a_second_visit(
+    tmp_path, instrumented
+):
+    """`add_node("same", something.with_config(run_name="same"))` produced TWO
+    `hook_triggered`/`hook_completed` pairs for one visit, doubling that node's
+    count on `/hooks` and halving its apparent latency."""
+    inner = RunnableLambda(lambda state: {"vals": ["same"]}).with_config(run_name="same")
+    app = build_simple([("same", inner)], name="dup")
+    app.invoke(empty_state(), config={"configurable": {"thread_id": "dup"}})
+
+    rows = read_events(tmp_path)
+    assert types_of(only(rows, "hook_triggered", "hook_completed")) == [
+        "hook_triggered",
+        "hook_completed",
+    ]
+
+
+def test_the_node_exclusions_do_not_swallow_real_nodes(tmp_path, instrumented):
+    """The counterweight. Both new conditions are exclusions, and `_node_of`
+    gates `hook_triggered` AND `_ensure_subgraph_agent` — over-tighten it and
+    the timeline loses every node and every subgraph agent at once."""
+    app = build_graph()
+    app.invoke(empty_state(), config={"configurable": {"thread_id": "counterweight"}})
+
+    rows = read_events(tmp_path)
+    names = [r["hook_name"] for r in only(rows, "hook_triggered")]
+    # A plain function node, a ToolNode, a compiled subgraph as a node, two
+    # Send-dispatched copies of one node: all still hooks.
+    assert names.count("plan") == 1
+    assert names.count("tools") == 1
+    assert names.count("child") == 1
+    assert names.count("worker") == 2
+    assert names.count("sub_step") == 1
+    # And the subgraph is still a nested agent, which only happens from inside
+    # the node branch of `_on_start`.
+    assert [r["agent_id"] for r in only(rows, "agent_start")] == [
+        "root_graph",
+        "root_graph/child",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# A run that merely OVERLAPS a pause is not the approval
+# ---------------------------------------------------------------------------
+
+
+def test_an_unrelated_run_during_a_pause_is_not_read_as_the_approval(
+    tmp_path, instrumented
+):
+    """A HITL turn sits paused on a human for minutes. Any other run carrying
+    the same session id in that window — a second request on one conversation
+    id, a background summariser, a different graph entirely — was read as the
+    answer: it got no `agent_start` of its own, its work was folded into the
+    paused span, and the adapter emitted `agent_resume` + `human_input` for a
+    human who had answered nothing. Fabricating an approval is the worst wrong
+    answer a human-approval product can give."""
+    session = {"metadata": {adapter.SESSION_METADATA_KEY: "one-conversation"}}
+    paused = build_graph(checkpointer=InMemorySaver())
+    paused.invoke(
+        empty_state(), config={"configurable": {"thread_id": "held"}, **session}
+    )
+    assert types_of(only(read_events(tmp_path), "agent_pause")) == ["agent_pause"]
+
+    unrelated = build_simple([("summarise", lambda s: {"vals": ["s"]})], name="other")
+    unrelated.invoke(empty_state(), config=dict(session))
+
+    rows = read_events(tmp_path)
+    assert not only(rows, "agent_resume"), "an unrelated run closed the human's pause"
+    assert not only(rows, "human_input"), "an approval was recorded that never happened"
+    # The unrelated run is its own agent, with its own span, not a relabelled
+    # continuation of the paused one.
+    assert "other" in [r["agent_id"] for r in only(rows, "agent_start")]
+    assert "other" in [r["agent_id"] for r in only(rows, "agent_end")]
+
+
+def test_a_none_input_is_still_a_continuation_of_the_pause(tmp_path, instrumented):
+    """The counterweight for `_is_continuation`: `invoke(None, config)` is
+    langgraph's other documented way to resume, and narrowing the test to
+    `Command` alone would split that run in two."""
+    app = build_graph(checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "none-resume"}}
+    app.invoke(empty_state(), config=config)
+    app.invoke(None, config=config)
+
+    rows = read_events(tmp_path)
+    roots = [r for r in only(rows, "agent_start") if not r.get("parent_id")]
+    assert len(roots) == 1, "invoke(None) opened a second root span"
+    # No answer was supplied, so the node interrupts again and the pause
+    # reopens — but the FIRST one was closed, on the same span.
+    assert types_of(only(rows, "agent_pause", "agent_resume"))[:3] == [
+        "agent_pause",
+        "agent_resume",
+        "agent_pause",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# The resume arrives in a DIFFERENT PROCESS
+# ---------------------------------------------------------------------------
+#
+# Every pause above is keyed on the `Interrupt` object the pausing process saw,
+# which assumes the process that paused is the process that resumes. Real HITL
+# is not shaped like that: one worker serves the request that interrupts, a
+# human answers minutes later, and whichever worker picks that request up
+# resumes against the shared checkpointer. `_STATE` is per process, so the
+# resuming worker had no `_Session` and no `open_pauses` — it emitted no
+# `agent_resume` and no `human_input` at all, and the `human_wait` /
+# `agent_pause` from the first worker stayed open FOREVER. Every cross-process
+# approval left its session reporting "still waiting on a human" after the human
+# had answered.
+#
+# `_STATE.reset()` between the two `.invoke()` calls is exactly a fresh process:
+# it is the same clear the adapter does at `install()`, and the events the first
+# "process" wrote are already on disk.
+
+
+def _forget_everything_this_process_knows():
+    adapter._STATE.reset()
+
+
+def test_a_resume_from_another_process_still_closes_the_pause(tmp_path, instrumented):
+    saver = InMemorySaver()
+    config = {"configurable": {"thread_id": "xproc"}}
+
+    build_graph(checkpointer=saver).invoke(empty_state(), config=config)
+    opened = only(read_events(tmp_path), "human_wait")
+    assert len(opened) == 1
+
+    _forget_everything_this_process_knows()
+    build_graph(checkpointer=saver).invoke(Command(resume="approved"), config=config)
+
+    rows = read_events(tmp_path)
+    resumes = only(rows, "agent_resume")
+    answers = only(rows, "human_input")
+    assert len(resumes) == 1 and len(answers) == 1, (
+        "the pause opened by the other process was never closed"
+    )
+    # Correlated on the id the FIRST process reported, with no shared state:
+    # langgraph derives `Interrupt.id` from the interrupted task's checkpoint
+    # namespace, which is byte-identical across the two invocations.
+    assert resumes[0]["pause_id"] == opened[0]["input_id"]
+    assert answers[0]["input_id"] == opened[0]["input_id"]
+    assert answers[0]["response"] == "approved"
+
+
+def test_a_remote_resume_credits_the_interrupted_node_not_the_subgraph_host(
+    tmp_path, instrumented
+):
+    """The subgraph host node re-runs too, at a shallower namespace, and it
+    starts *before* the lifecycle event that unmasks it. Crediting the pause to
+    it would emit an id that correlates with nothing and leave the real pause
+    open — the exact failure being fixed, wearing a fix."""
+    saver = InMemorySaver()
+    config = {"configurable": {"thread_id": "xproc-sub"}}
+
+    def build():
+        inner = StateGraph(State)
+        inner.add_node("sub_pre", lambda state: {"vals": ["pre"]})
+        inner.add_node("ask", lambda state: {"answer": str(interrupt({"prompt": "ok?"}))})
+        inner.add_edge(START, "sub_pre")
+        inner.add_edge("sub_pre", "ask")
+        inner.add_edge("ask", END)
+        outer = StateGraph(State)
+        outer.add_node("before", lambda state: {"vals": ["b"]})
+        outer.add_node("child", inner.compile(name="child_graph"))
+        outer.add_node("after", lambda state: {"vals": ["a"]})
+        outer.add_edge(START, "before")
+        outer.add_edge("before", "child")
+        outer.add_edge("child", "after")
+        outer.add_edge("after", END)
+        return outer.compile(name="root_graph", checkpointer=saver)
+
+    build().invoke(empty_state(), config=config)
+    opened = only(read_events(tmp_path), "human_wait")
+    assert len(opened) == 1
+
+    _forget_everything_this_process_knows()
+    build().invoke(Command(resume="yes"), config=config)
+
+    rows = read_events(tmp_path)
+    # Exactly one pair — not one per node that re-ran, and not one for the
+    # subgraph host.
+    assert len(only(rows, "agent_resume")) == 1
+    assert len(only(rows, "human_input")) == 1
+    assert only(rows, "agent_resume")[0]["pause_id"] == opened[0]["input_id"]
+
+
+def test_a_remote_resume_invents_no_pause_for_downstream_nodes(tmp_path, instrumented):
+    """Only the level's FIRST superstep re-runs interrupted tasks; every node
+    after it is ordinary downstream work at the same namespace depth. Without
+    that guard the resumed run manufactures one `agent_resume` + `human_input`
+    per node it visits, each with an id that matches no pause — and the real
+    pause still never closes."""
+    saver = InMemorySaver()
+    config = {"configurable": {"thread_id": "xproc-downstream"}}
+
+    def build():
+        return build_simple(
+            [
+                ("ask", lambda state: {"answer": str(interrupt({"prompt": "ok?"}))}),
+                ("after_one", lambda state: {"vals": ["a"]}),
+                ("after_two", lambda state: {"vals": ["b"]}),
+            ],
+            name="downstream",
+            checkpointer=saver,
+        )
+
+    build().invoke(empty_state(), config=config)
+    opened = only(read_events(tmp_path), "human_wait")
+    assert len(opened) == 1
+
+    _forget_everything_this_process_knows()
+    build().invoke(Command(resume="yes"), config=config)
+
+    rows = read_events(tmp_path)
+    assert [r["hook_name"] for r in only(rows, "hook_triggered")][1:] == [
+        "ask",
+        "after_one",
+        "after_two",
+    ]
+    assert len(only(rows, "agent_resume")) == 1
+    assert len(only(rows, "human_input")) == 1
+    assert only(rows, "agent_resume")[0]["pause_id"] == opened[0]["input_id"]
+    assert len(only(rows, "human_wait")) == 1
+    assert not only(rows, "error")
+
+
+def test_a_fresh_turn_in_a_fresh_process_is_not_a_remote_resume(tmp_path, instrumented):
+    """The counterweight. `_RemoteResume` is armed off the root input alone, so
+    a graph that simply runs — no interrupt anywhere, no `Command` — must never
+    manufacture a resume for a human who was never asked."""
+    build_graph().invoke(empty_state(), config={"configurable": {"thread_id": "plain"}})
+    rows = read_events(tmp_path)
+    assert not only(rows, "agent_resume")
+    assert not only(rows, "human_input")
+
+
+def test_a_remote_rerun_with_no_answer_records_no_approval(tmp_path, instrumented):
+    """The sharp counterweight for the arming condition.
+
+    `invoke(None, config)` re-runs an interrupted thread WITHOUT answering it —
+    the task interrupts again and no human said anything. Widening the arming
+    test from "a `Command` carrying a resume value" to "anything that continues
+    a thread" would record an approval, with an empty response, for a human who
+    is still waiting. The pause must simply stay open."""
+    saver = InMemorySaver()
+    config = {"configurable": {"thread_id": "xproc-noanswer"}}
+    build_graph(checkpointer=saver).invoke(empty_state(), config=config)
+
+    _forget_everything_this_process_knows()
+    build_graph(checkpointer=saver).invoke(None, config=config)
+
+    rows = read_events(tmp_path)
+    assert not only(rows, "agent_resume"), "an approval was recorded for a re-run"
+    assert not only(rows, "human_input")
+    # Still waiting, and said so twice — once per attempt.
+    assert len(only(rows, "human_wait")) == 2
+
+
+def test_an_in_process_resume_emits_exactly_one_resume_pair(tmp_path, instrumented):
+    """The other counterweight: the remote path must stay inert whenever this
+    process owns the pause, or every ordinary approval is recorded twice."""
+    app = build_graph(checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "in-process"}}
+    app.invoke(empty_state(), config=config)
+    app.invoke(Command(resume="yes"), config=config)
+
+    rows = read_events(tmp_path)
+    assert len(only(rows, "agent_resume")) == 1
+    assert len(only(rows, "human_input")) == 1
+    assert only(rows, "agent_resume")[0].get("fw_resumed_elsewhere") is None
+
+
+def test_the_interrupt_id_is_still_derived_from_the_checkpoint_namespace():
+    """The whole cross-process fix rests on one langgraph invariant: an
+    interrupt's id is `xxh3_128` of the interrupted task's checkpoint namespace,
+    not a random value. If upstream makes it random, `_close_remote_pause` goes
+    on emitting ids that correlate with nothing and every behavioural test above
+    keeps passing, because they all compare our derived id against itself."""
+    from langgraph.types import Interrupt
+
+    ns = "ask:0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0"
+    assert Interrupt.from_ns("value", ns).id == adapter._interrupt_id_of(ns)
+    assert Interrupt.from_ns("a different value", ns).id == adapter._interrupt_id_of(ns)
+    assert adapter._interrupt_id_of(ns) != adapter._interrupt_id_of(ns + "x")
+
+
+def test_a_subgraph_compiled_under_its_node_name_is_one_hook_not_two(
+    tmp_path, instrumented
+):
+    """`sub.compile(name="child")` added as `add_node("child", sub)` is the
+    natural way to name a subgraph, and it makes the subgraph's own Pregel run
+    match the node too. That produced a duplicate `hook_triggered` for the node
+    AND turned the Pregel run into a node, which then also opened and closed a
+    nested agent on the same run — one visit rendering as four spans."""
+    inner = StateGraph(State)
+    inner.add_node("deep", lambda state: {"vals": ["deep"]})
+    inner.add_edge(START, "deep")
+    inner.add_edge("deep", END)
+
+    outer = StateGraph(State)
+    outer.add_node("child", inner.compile(name="child"))
+    outer.add_edge(START, "child")
+    outer.add_edge("child", END)
+    outer.compile(name="root_graph").invoke(
+        empty_state(), config={"configurable": {"thread_id": "sub-name"}}
+    )
+
+    rows = read_events(tmp_path)
+    assert [r["hook_name"] for r in only(rows, "hook_triggered")] == ["child", "deep"]
+    assert [r["hook_name"] for r in only(rows, "hook_completed")] == ["deep", "child"]
+    assert [r["agent_id"] for r in only(rows, "agent_start")] == [
+        "root_graph",
+        "root_graph/child",
+    ]
+
+
+def test_a_leaf_run_is_never_the_nodes_own_run(tmp_path):
+    """The second exclusion, pinned directly.
+
+    langgraph 1.2.11 happens to tag the inner run `seq:step:N` as well, so the
+    behavioural tests above would still pass with this condition removed — and
+    that is exactly why it is here. It states the invariant that does not depend
+    on a tag convention: whatever you hand `add_node`, the node's OWN run is the
+    `chain` run langgraph builds around it, and a `tool` / `llm` / `chat_model` /
+    `retriever` run carrying the node's name is the thing you passed, running
+    underneath. Lose this and a tag rename silently deletes tool and model
+    events again, which is a wrong answer with no symptom.
+    """
+    import types as _types
+
+    meta = {"langgraph_node": "adder"}
+
+    def run(run_type, tags=()):
+        return _types.SimpleNamespace(name="adder", run_type=run_type, tags=list(tags))
+
+    assert adapter._node_of(run("chain"), meta) == "adder"
+    for leaf in ("tool", "llm", "chat_model", "retriever"):
+        assert adapter._node_of(run(leaf), meta) is None, (
+            f"a {leaf} run named after its node was claimed as the node itself"
+        )
+
+
+def test_an_overlapping_run_cannot_strand_the_pause_it_did_not_answer(
+    tmp_path, instrumented
+):
+    """The two fixes above meeting in the shape that produced both.
+
+    `_State.sessions` is keyed by session id, so a second root under the same id
+    overwrites the paused run's entry and then pops it on the way out. The real
+    approval, arriving afterwards, finds nothing — which is the same position a
+    fresh worker is in, and is why the remote path is the backstop rather than a
+    special case. The pause must still close, on the id the human was asked
+    under, carrying what they actually said."""
+    session = {"metadata": {adapter.SESSION_METADATA_KEY: "shared-conversation"}}
+    app = build_graph(checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "stranded"}, **session}
+
+    app.invoke(empty_state(), config=config)
+    opened = only(read_events(tmp_path), "human_wait")
+    assert len(opened) == 1
+
+    build_simple([("other", lambda state: {"vals": ["o"]})], name="other").invoke(
+        empty_state(), config=dict(session)
+    )
+    app.invoke(Command(resume="approved"), config=config)
+
+    rows = read_events(tmp_path)
+    assert {r["session_id"] for r in rows} == {"shared-conversation"}
+    assert len(only(rows, "agent_resume")) == 1
+    answers = only(rows, "human_input")
+    assert len(answers) == 1
+    assert answers[0]["input_id"] == opened[0]["input_id"]
+    assert answers[0]["response"] == "approved"

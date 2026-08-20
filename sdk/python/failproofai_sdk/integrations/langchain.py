@@ -170,6 +170,13 @@ try:
 except ImportError:  # pragma: no cover
     _GraphBubbleUp = None
 
+try:  # `Command` tells a resume from a fresh turn; `Interrupt` derives a pause id
+    from langgraph.types import Command as _Command
+    from langgraph.types import Interrupt as _Interrupt
+except ImportError:  # pragma: no cover
+    _Command = None
+    _Interrupt = None
+
 # Name-based fallback for the case where `langgraph.errors` moved. Getting this
 # wrong is expensive and silent (a red error on every human approval), so it is
 # worth a belt-and-braces check rather than a bare `isinstance`.
@@ -240,6 +247,27 @@ class _Session:
 
 
 @dataclasses.dataclass
+class _RemoteResume:
+    """Bookkeeping for a resume whose pause was opened in ANOTHER process.
+
+    Set on the ROOT `_RunInfo` only, and only when this process has no open
+    pause of its own to close — i.e. exactly the deployment shape where the
+    interrupt was served by one worker and the approval by another. See
+    `_close_remote_pause` for how the pause id is recovered.
+    """
+
+    value: Any = None
+    # checkpoint-ns tuple -> the `langgraph_step` of the first node seen at that
+    # level. Only that first superstep re-runs interrupted tasks; everything
+    # after it is ordinary downstream work.
+    levels: dict = dataclasses.field(default_factory=dict)
+    # The deepest level langgraph has told us is resuming. A subgraph host node
+    # sits at a shallower level than the task that actually interrupted.
+    deepest: tuple | None = None
+    done: set = dataclasses.field(default_factory=set)
+
+
+@dataclasses.dataclass
 class _RunInfo:
     """What we need about a LangChain run after its start callback returns."""
 
@@ -262,6 +290,7 @@ class _RunInfo:
     messages: list | None = None
     ttft_ms: int | None = None
     chunks: int = 0
+    remote: _RemoteResume | None = None  # root only
 
 
 class _State:
@@ -365,6 +394,18 @@ def _shrink(value: Any) -> Any:
     return truncate(value, _FIELD_LIMIT)
 
 
+# A run of one of these types is a leaf — a model call, a tool call, a
+# retrieval. It is never the LangGraph node's *own* run. Verified against
+# langgraph 1.2.11: whatever you hand `add_node` (a function, a Runnable, a
+# `BaseTool`, a compiled subgraph), the node's own run is always a **chain**
+# run tagged `graph:step:N`, and the thing you passed runs as a child of it.
+_LEAF_RUN_TYPES = frozenset({"llm", "chat_model", "tool", "retriever"})
+
+# LangChain tags every step of a `RunnableSequence` `seq:step:N`. LangGraph tags
+# a node's own run `graph:step:N`. Only the second is a node.
+_INNER_STEP_TAG = "seq:step:"
+
+
 def _node_of(run: Any, meta: dict) -> str | None:
     """The LangGraph node name **iff this run is the node's own run**.
 
@@ -375,11 +416,38 @@ def _node_of(run: Any, meta: dict) -> str | None:
     node's own run has it equal to `langgraph_node`. Verified against
     langgraph 1.2.10: an inner `cond`/`fan` edge function reports
     `name="cond"` with `langgraph_node="act"` and is correctly excluded.
+
+    The name alone is not enough, because **the name is the user's to choose on
+    both sides**. Two collisions were verified on langgraph 1.2.11, and each one
+    silently deleted the most valuable event in the trace:
+
+    * ``add_node("lookup_population", ToolNode([lookup_population]))`` — naming a
+      node after the tool it runs, which is the obvious thing to do — made the
+      *tool's* run match too. It was recorded as a second node visit, so
+      `tool_use`/`tool_result` were never emitted: the arguments, the result and
+      the LLM's `tool_call_id` all vanished, and `/tools` showed the call had
+      never happened.
+    * ``add_node("ChatOpenAI", ...)`` did the same to the chat model run:
+      no `model_request`/`model_response`, so the model name, both token counts
+      and the latency were dropped while the trace still looked populated.
+    * an inner Runnable carrying `run_name` equal to the node key produced
+      **two** `hook_triggered`/`hook_completed` pairs for one node visit, which
+      doubles that node's visit count and halves its apparent latency.
+
+    So the run must also be shaped like a node's own run: a non-leaf run type,
+    and not an inner step of a `RunnableSequence`. Both are *exclusions* — if
+    langgraph ever stops emitting `seq:step:` tags this degrades to the old
+    duplicate span rather than to no spans at all, which is the safe direction
+    for a check that gates `hook_triggered` **and** `_ensure_subgraph_agent`.
     """
     node = meta.get("langgraph_node")
-    if node and node == (getattr(run, "name", None) or ""):
-        return str(node)
-    return None
+    if not node or node != (getattr(run, "name", None) or ""):
+        return None
+    if str(getattr(run, "run_type", "") or "") in _LEAF_RUN_TYPES:
+        return None
+    if any(str(tag).startswith(_INNER_STEP_TAG) for tag in _tags(run)):
+        return None
+    return str(node)
 
 
 def _ns_parts(meta: dict) -> list:
@@ -557,6 +625,7 @@ def _start_root(run: Any, info: _RunInfo, meta: dict) -> None:
         existing is not None
         and existing.open_pauses
         and existing.agent_key in state.tracker.open_agents()
+        and _is_continuation(run)
     ):
         # A resume: the previous `.invoke()` interrupted, we deliberately did
         # not close its agent, and this is the continuation. Reuse the identity
@@ -578,6 +647,22 @@ def _start_root(run: Any, info: _RunInfo, meta: dict) -> None:
         # `session.open_pauses` is non-empty, which is the only way the agent
         # stays open past its root, and `_suspend` is the only thing that fills
         # it. So this distinguishes the two cases precisely.
+        #
+        # `_is_continuation` is the second half of that test and it is not
+        # redundant: an open pause bounds how long the window lasts, but it
+        # does not close it. A HITL turn can sit paused on a human for
+        # **minutes**, and any other run that happens to carry the same session
+        # id during that window — a second web request on one conversation id,
+        # a background summariser, a different graph entirely — was read as the
+        # approval. VERIFIED against langgraph 1.2.11: the second run got no
+        # `agent_start`, its nodes were folded into the paused run's span, and
+        # the adapter emitted `agent_resume` + `human_input` for a human who
+        # had answered nothing — `human_input.response` empty, the pause closed,
+        # and the paused run's `agent_end` reporting `success`. On a product
+        # whose whole job is to gate an action on human approval, fabricating
+        # the approval is the worst wrong answer available. LangGraph only ever
+        # continues an interrupted thread through `Command(...)` or a `None`
+        # input; a fresh state dict is a NEW turn, not an answer.
         info.session = existing
         state.tracker.link(info.id, existing.agent_key)
         _resume(existing, run)
@@ -597,6 +682,20 @@ def _start_root(run: Any, info: _RunInfo, meta: dict) -> None:
     )
     info.session = session
     state.sessions[session.session_id] = session
+
+    # This is a resume, but nothing in THIS process is paused — so the pause was
+    # opened somewhere else. That is not an edge case, it is the deployment
+    # shape: one worker serves the request that interrupts, a human answers
+    # minutes later, and whichever worker picks up that request resumes against
+    # the shared checkpointer. Before this, such a resume emitted no
+    # `agent_resume` and no `human_input` at all, so the `human_wait` and
+    # `agent_pause` from the first process stayed open FOREVER — every
+    # cross-process approval left its session reporting "still waiting on a
+    # human" after the human had answered, and `pausedMs` never closed.
+    # `_close_remote_pause` recovers the id the other process used.
+    answer = _resume_values(run)
+    if answer is not None:
+        info.remote = _RemoteResume(value=answer)
 
     # A root run that is ITSELF a leaf still has to be recorded as one.
     #
@@ -643,6 +742,14 @@ def _start_node(run: Any, info: _RunInfo, meta: dict) -> None:
     parts = _ns_parts(meta)
     if len(parts) > 1 and info.parent is not None:
         _ensure_subgraph_agent(info, parts[:-1])
+
+    remote = _remote_of(info)
+    if remote is not None:
+        # First node seen at this level wins: langgraph re-runs the interrupted
+        # tasks in the level's first superstep and nothing else (VERIFIED on
+        # 1.2.11 — a sibling that had already succeeded in the same superstep
+        # does NOT re-run), so anything at a later step is downstream work.
+        remote.levels.setdefault(tuple(parts[:-1]), meta.get("langgraph_step"))
 
     if info.hidden:
         return
@@ -872,6 +979,13 @@ def _on_end(run: Any) -> None:
             _end_retriever(run, info, meta, exc)
         elif info.kind == "model":
             _end_model(run, info, meta, exc, response)
+
+        if info.kind == "node":
+            # Strictly BEFORE the `_suspend` below: a node that answers one
+            # interrupt and immediately raises the next must close the old pause
+            # before opening the new one, and on langgraph 1.2 both carry the
+            # same id (it is derived from the task's namespace, not the call).
+            _close_remote_pause(info, meta)
 
         # The exception-path HITL fallback, deliberately outside the span
         # handling above so that it still fires for a `langsmith:hidden` node
@@ -1340,6 +1454,45 @@ def _resume(session: _Session, run: Any) -> None:
         )
 
 
+_MISSING = object()
+
+
+def _steering_value(run: Any) -> Any:
+    """The object `.invoke()` was called with, when it was **not** fresh state.
+
+    Verified on langgraph 1.2.11: a fresh turn arrives as the state mapping
+    itself (``{'trail': []}``), while anything that is not a mapping is wrapped
+    under a single ``input`` key — ``{'input': Command(resume='yes')}`` for a
+    resume, ``{'input': None}`` for ``invoke(None, config)``. So the presence of
+    that key is what separates "steering an existing checkpointed run" from
+    "starting a new one", and it is a *positive* test rather than a guess at
+    which state schemas happen to look like a Command.
+    """
+    inputs = getattr(run, "inputs", None)
+    if isinstance(inputs, dict):
+        return inputs.get("input", _MISSING)
+    return inputs if inputs is not None else _MISSING
+
+
+def _is_continuation(run: Any) -> bool:
+    """True when this root run continues an interrupted thread.
+
+    LangGraph has exactly two of these — ``Command(...)`` and ``None`` — and
+    both are shaped unlike fresh state (see `_steering_value`). Everything else
+    starts a new run even when it lands on a thread that is mid-interrupt: a
+    fresh input discards the pending tasks rather than answering them.
+    """
+    value = _steering_value(run)
+    if value is _MISSING:
+        return False
+    if value is None:
+        return True
+    if _Command is not None and isinstance(value, _Command):
+        return True
+    # Duck-typed fallback for a moved/renamed `Command`.
+    return all(hasattr(value, name) for name in ("resume", "goto", "update"))
+
+
 def _resume_values(run: Any) -> Any:
     """The value handed to `Command(resume=...)`, read off the root run's input.
 
@@ -1348,12 +1501,8 @@ def _resume_values(run: Any) -> Any:
     from the caller. `Command(resume={interrupt_id: value})` (the multi-
     interrupt form) is handled by `_answer_for`.
     """
-    inputs = getattr(run, "inputs", None)
-    if isinstance(inputs, dict):
-        candidate = inputs.get("input", inputs)
-    else:
-        candidate = inputs
-    return getattr(candidate, "resume", None)
+    value = _steering_value(run)
+    return getattr(value, "resume", None) if value is not _MISSING else None
 
 
 def _answer_for(answers: Any, pause_id: str) -> str | None:
@@ -1367,6 +1516,94 @@ def _answer_for(answers: Any, pause_id: str) -> str | None:
 def _session_for_run(run_id: Any) -> _Session | None:
     info = _STATE.runs.get(str(run_id)) if run_id is not None else None
     return info.session if info is not None else None
+
+
+# ---------------------------------------------------------------------------
+# Human in the loop, resumed by a DIFFERENT PROCESS
+# ---------------------------------------------------------------------------
+#
+# Everything above assumes the process that paused is the process that resumes,
+# because it keys the pause on the `Interrupt` object it saw. Real HITL is not
+# shaped like that: the interrupt is served by one worker, a human answers
+# minutes or hours later, and any worker may pick that request up. The resuming
+# process has no `_Session`, no `open_pauses`, and langgraph's `GraphResumeEvent`
+# carries a checkpoint id but no interrupt ids — so there was nothing to
+# correlate on and the pause simply stayed open forever.
+#
+# It is recoverable, exactly, because `Interrupt.id` is not random. langgraph
+# 1.2's `interrupt()` builds it with `Interrupt.from_ns(value, ns)`, i.e.
+# `xxh3_128(checkpoint_ns)` — a pure function of the interrupted task's
+# namespace. That namespace is `metadata["langgraph_checkpoint_ns"]`, which this
+# adapter already reads on every node run, and it is **byte-identical across the
+# two invocations** (VERIFIED on langgraph 1.2.11: `approve:49c9e42f-…` in both
+# the interrupting and the resuming process, hashing to the id the first process
+# reported). So the resuming process can reconstruct the id the pausing process
+# used without any shared state at all.
+#
+# The remaining question is *which* node re-ran because it was interrupted, and
+# langgraph answers that too, in two parts:
+#
+# * `on_resume` fires once per Pregel level, in order, each naming the level's
+#   checkpoint namespace, and always **before** the node runs at that level. An
+#   interrupt inside a subgraph therefore produces `ns=()` then
+#   `ns=('child:…',)`, and the deepest of those is the graph that actually
+#   paused — which is how the subgraph HOST node (a normal node at the shallower
+#   level) is excluded.
+# * only the level's first superstep re-runs interrupted tasks. A sibling that
+#   had already succeeded in that superstep does not re-run at all, and
+#   downstream nodes are at later steps.
+#
+# Deliberately decided at node **end** rather than start: a subgraph host node
+# starts before the deeper `on_resume` that unmasks it, so at start time it is
+# indistinguishable from the interrupted task. The cost is that `agent_resume`
+# lands after the resumed node's own body, which adds that node's duration to
+# the measured wait — a rounding error against a human, and the only alternative
+# is guessing.
+
+
+def _remote_of(info: _RunInfo) -> _RemoteResume | None:
+    """The `_RemoteResume` of this run's root, if the root is one."""
+    root = _STATE.runs.get(info.root) if info.root else None
+    return root.remote if root is not None else None
+
+
+def _interrupt_id_of(ns: str) -> str | None:
+    if _Interrupt is None or not ns:
+        return None
+    try:
+        return str(_Interrupt.from_ns(None, ns).id)
+    except Exception:  # pragma: no cover - a future langgraph changing the shape
+        logger.debug("failproofai_sdk: could not derive an interrupt id", exc_info=True)
+        return None
+
+
+def _close_remote_pause(info: _RunInfo, meta: dict) -> None:
+    """`agent_resume` + `human_input` for a pause this process never opened."""
+    remote = _remote_of(info)
+    session = info.session
+    if remote is None or session is None or remote.deepest is None:
+        return
+    parts = _ns_parts(meta)
+    level = tuple(parts[:-1])
+    if level != remote.deepest:
+        return
+    if meta.get("langgraph_step") != remote.levels.get(level):
+        return
+    pause_id = _interrupt_id_of(meta.get("langgraph_checkpoint_ns") or "")
+    if pause_id is None or pause_id in remote.done:
+        return
+    remote.done.add(pause_id)
+    marker = fw_fields(interrupt_id=pause_id, resumed_elsewhere=True)
+    _emit_on_agent(
+        session, "agent_resume", pause_id=pause_id, reason="langgraph_resume", **marker
+    )
+    _emit_on_agent(
+        session,
+        "human_input",
+        input_id=pause_id,
+        response=_answer_for(remote.value, pause_id),
+        **marker,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1543,15 +1780,28 @@ def _on_interrupt(event: Any) -> None:
 
 @safe
 def _on_resume(event: Any) -> None:
-    # Normally a no-op: the resuming root run starts *before* langgraph drains
-    # its lifecycle queue, so `_start_root` has already closed the pause. This
-    # is here for the ordering not holding in some future version, and
-    # `_resume` returns immediately when there is nothing open.
+    # Two jobs. The first is normally a no-op: the resuming root run starts
+    # *before* langgraph drains its lifecycle queue, so `_start_root` has
+    # already closed a pause this process opened. That is here for the ordering
+    # not holding in some future version, and `_resume` returns immediately when
+    # there is nothing open.
+    #
+    # The second is load-bearing, and is the only signal that separates the
+    # subgraph HOST node from the task that actually paused: this event names
+    # the Pregel level that is resuming, and fires once per level, deepest last.
     with _STATE.lock:
-        session = _session_for_run(getattr(event, "run_id", None))
-        if session is None:
+        info = _STATE.runs.get(str(getattr(event, "run_id", None) or ""))
+        if info is None:
             return
-        _resume(session, None)
+        # `_remote_of` resolves through `info.root`, which a root run sets to
+        # its own id, so this covers both the root's event and a subgraph's.
+        remote = _remote_of(info)
+        if remote is not None:
+            level = tuple(getattr(event, "checkpoint_ns", ()) or ())
+            if remote.deepest is None or len(level) >= len(remote.deepest):
+                remote.deepest = level
+        if info.session is not None:
+            _resume(info.session, None)
 
 
 # ---------------------------------------------------------------------------

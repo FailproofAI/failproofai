@@ -46,15 +46,39 @@ with failproofai_sdk.session():
 | `Command(resume=...)` | `agent_resume`, `human_input`, correlated on the `Interrupt.id` — including when the resume happens in a different process against the same checkpointer |
 | Unhandled exception | `error`, then `agent_end` with outcome `failed` |
 
-A node becomes a hook rather than a nested agent. `agent_id` is the primary facet across every dashboard surface, so promoting `retrieve`, `grade_documents`, and `should_continue` to agents would drown that facet and label the session after whichever node ran first. Hook spans render the same way and give you a per-node latency view.
+**A node becomes a hook, not a nested agent.** `agent_id` is the primary facet across every dashboard surface — promoting `retrieve`, `grade_documents` and `should_continue` to agents would drown it, and label the session after whichever node happened to run first.
+
+Hook spans render the same way and still give you a per-node latency view.
 
 <Note>
-  **Name your nodes whatever you like.** A node's own run is identified by its shape — a non-leaf run carrying LangGraph's own step tag — not by its name, so `add_node("lookup_population", ToolNode([...]))` records the tool, and `add_node("ChatOpenAI", ...)` records the model call. Naming a node after the thing it runs used to make that thing's events disappear.
+  **Name your nodes whatever you like.** A node's run is identified by its *shape* — a non-leaf run carrying LangGraph's own step tag — never by its name.
 </Note>
 
-<Note>
-  **Streaming and token counts.** `.stream()` / `.astream()` do not emit per-token events — they fold into the closing `model_response` as `fw_chunks` and `fw_ttft_ms`. Token counts are a separate matter: OpenAI only sends usage on a streamed response when asked, so `model_response` carries no tokens unless you construct the model as `ChatOpenAI(..., stream_usage=True)`. The adapter records what the framework gives it; without that flag there is nothing to record.
-</Note>
+| You write | What gets recorded |
+| --- | --- |
+| `add_node("lookup_population", ToolNode([...]))` | The tool |
+| `add_node("ChatOpenAI", ...)` | The model call |
+
+Naming a node after the thing it runs used to make that thing's events disappear. It no longer does.
+
+### Streaming
+
+`.stream()` and `.astream()` emit no per-token events. They fold into the closing `model_response`:
+
+| Field | Carries |
+| --- | --- |
+| `fw_chunks` | How many chunks arrived |
+| `fw_ttft_ms` | Time to first token |
+
+### Token counts on a streamed response
+
+Separate matter, and easy to miss: OpenAI only sends usage on a streamed response **when asked**.
+
+```python
+ChatOpenAI(model="gpt-4o-mini", stream_usage=True)   # without this, no tokens
+```
+
+The adapter records what the framework hands it. Without that flag there is nothing to record, and `model_response` arrives with no token counts.
 
 ## Example
 

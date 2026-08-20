@@ -49,7 +49,16 @@ A task emits nothing on purpose. A CrewAI task is a subset of the agent executio
 
 Memory and knowledge operations are recorded as tools, named for the surface they hit, so they appear next to your real tools where you can compare their latency.
 
-The nesting is what makes the trace readable on a hierarchical crew: the manager sits under the crew, and each coworker it delegates to sits under the manager. CrewAI parents a delegated execution on the `delegate_work_to_coworker` tool event rather than on the manager directly, so the adapter follows that link — otherwise every agent comes out a sibling of every other and the delegation structure is lost.
+On a hierarchical crew, the nesting is what makes the trace readable:
+
+```text
+crew
+└─ manager
+   ├─ researcher      delegated
+   └─ writer          delegated
+```
+
+CrewAI parents a delegated execution on the `delegate_work_to_coworker` **tool event**, not on the manager directly, so the adapter follows that link. Without it every agent comes out a sibling of every other and the delegation structure is lost.
 
 ## Example
 

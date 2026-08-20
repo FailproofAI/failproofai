@@ -380,16 +380,16 @@ _FULL_INCIDENT = {
     "alert_severity": "critical",
     "state": "acknowledged",
     "opened_at": "2026-06-28T00:00:00Z",
-    "acknowledged_by": "ops@corp.com",
-    "assignees": ["a@corp.com"],
+    "acknowledged_by": "ops@example.com",
+    "assignees": ["a@example.com"],
     "breach_summary": "p95 = 1240ms > 1000ms",
     "comments": [
-        {"id": "c1", "author_email": "ops@corp.com", "body": "looking into it", "created_at": "2026-06-28T00:01:00Z"},
-        {"id": "c2", "author_email": "x@corp.com", "body": None, "created_at": "2026-06-28T00:02:00Z", "deleted_at": "2026-06-28T00:03:00Z"},
+        {"id": "c1", "author_email": "ops@example.com", "body": "looking into it", "created_at": "2026-06-28T00:01:00Z"},
+        {"id": "c2", "author_email": "x@example.com", "body": None, "created_at": "2026-06-28T00:02:00Z", "deleted_at": "2026-06-28T00:03:00Z"},
     ],
-    "subscribers": [{"email": "ops@corp.com", "source": "ack", "subscribed_at": "2026-06-28T00:01:00Z"}],
+    "subscribers": [{"email": "ops@example.com", "source": "ack", "subscribed_at": "2026-06-28T00:01:00Z"}],
     "activity": [{"kind": "opened", "actor": "system", "at": "2026-06-28T00:00:00Z"},
-                 {"kind": "acknowledged", "actor": "ops@corp.com", "at": "2026-06-28T00:01:00Z"}],
+                 {"kind": "acknowledged", "actor": "ops@example.com", "at": "2026-06-28T00:01:00Z"}],
 }
 
 
@@ -397,7 +397,7 @@ _FULL_INCIDENT = {
 def test_incidents_list_human_boxed(logged_in, runner):
     respx.get(f"{BASE}/api/issues").mock(return_value=httpx.Response(200, json=[
         {"id": "1f5803aaaaaabbbbcccc000000009826", "alert_name": "p95", "alert_severity": "critical",
-         "state": "firing", "opened_at": "2026-06-28T00:00:00Z", "assignees": ["a@corp.com"]},
+         "state": "firing", "opened_at": "2026-06-28T00:00:00Z", "assignees": ["a@example.com"]},
         {"id": "z", "alert_name": None, "alert_severity": "info", "state": "resolved",
          "opened_at": "2026-06-20T00:00:00Z", "assignees": []},
     ]))
@@ -441,7 +441,7 @@ def test_incidents_show_human_cards(logged_in, runner):
     assert "p95 latency" in out and "critical" in out and "acknowledged" in out
     assert "breach" in out and "1240ms" in out
     assert "comments" in out and "looking into it" in out and "(deleted)" in out
-    assert "subscribers" in out and "ops@corp.com" in out
+    assert "subscribers" in out and "ops@example.com" in out
     assert "activity" in out and "opened" in out and "system" in out
 
 
@@ -579,8 +579,8 @@ def test_incidents_comment_delete_json(logged_in, runner):
 @respx.mock
 def test_incidents_comment_list_human(logged_in, runner):
     respx.get(f"{BASE}/api/issues/i1/comments").mock(return_value=httpx.Response(200, json=[
-        {"id": "c1", "author_email": "ops@corp.com", "body": "db pool exhausted", "created_at": "2026-06-28T00:00:00Z"},
-        {"id": "c2", "author_email": "x@corp.com", "body": None, "created_at": "2026-06-28T00:01:00Z", "deleted_at": "t"},
+        {"id": "c1", "author_email": "ops@example.com", "body": "db pool exhausted", "created_at": "2026-06-28T00:00:00Z"},
+        {"id": "c2", "author_email": "x@example.com", "body": None, "created_at": "2026-06-28T00:01:00Z", "deleted_at": "t"},
     ]))
     result = runner.invoke(app, ["issues", "comment-list", "i1"])
     assert result.exit_code == 0, result.output
@@ -591,11 +591,11 @@ def test_incidents_comment_list_human(logged_in, runner):
 @respx.mock
 def test_incidents_subscribers_human(logged_in, runner):
     respx.get(f"{BASE}/api/issues/i1/subscribers").mock(return_value=httpx.Response(200, json=[
-        {"email": "ops@corp.com", "source": "creator", "subscribed_at": "2026-06-28T00:00:00Z"}]))
+        {"email": "ops@example.com", "source": "creator", "subscribed_at": "2026-06-28T00:00:00Z"}]))
     result = runner.invoke(app, ["issues", "subscribers", "i1"])
     assert result.exit_code == 0, result.output
     out = result.stdout
-    assert "subscribers" in out and "ops@corp.com" in out and "creator" in out
+    assert "subscribers" in out and "ops@example.com" in out and "creator" in out
 
 
 @respx.mock

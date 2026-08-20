@@ -751,7 +751,7 @@ def test_render_queries_box(capsys):
     _wide_stdout()
     qs = [
         _sq(name="q_eval_score_avg", description="Average value for each score key. " * 6, created_by="system"),
-        _sq(name="q_eval_total", description="Count by KPI tiles.", created_by="alice@corp.com"),
+        _sq(name="q_eval_total", description="Count by KPI tiles.", created_by="alice@example.com"),
     ]
     output.render_queries(qs)
     cap = capsys.readouterr()
@@ -1223,7 +1223,7 @@ def test_assignees_cell_overflow():
 def test_render_incidents_box_and_footer(capsys):
     _wide_stdout()
     incs = [
-        _incident(state="firing", assignees=["a@corp.com"]),
+        _incident(state="firing", assignees=["a@example.com"]),
         _incident(id="2266", alert_name=None, alert_severity="warning", state="acknowledged"),
         _incident(id="3399", alert_severity="info", state="resolved", opened_at="2026-06-18T00:00:00Z"),
     ]
@@ -1262,17 +1262,17 @@ def test_render_incident_count_card(capsys):
 def test_render_incident_show_sections(capsys):
     _wide_stdout()
     inc = _incident(
-        state="acknowledged", acknowledged_by="ops@corp.com", assignees=["a@corp.com"],
+        state="acknowledged", acknowledged_by="ops@example.com", assignees=["a@example.com"],
         breach_summary="p95 = 1240ms > 1000ms",
-        comments=[{"author_email": "ops@corp.com", "body": "on it", "created_at": "2026-06-20T00:01:00Z"},
-                  {"author_email": "x@corp.com", "body": None, "created_at": "t", "deleted_at": "t"}],
-        subscribers=[{"email": "ops@corp.com", "source": "ack", "subscribed_at": "2026-06-20T00:01:00Z"}],
+        comments=[{"author_email": "ops@example.com", "body": "on it", "created_at": "2026-06-20T00:01:00Z"},
+                  {"author_email": "x@example.com", "body": None, "created_at": "t", "deleted_at": "t"}],
+        subscribers=[{"email": "ops@example.com", "source": "ack", "subscribed_at": "2026-06-20T00:01:00Z"}],
         activity=[{"kind": "opened", "actor": "system", "at": "2026-06-20T00:00:00Z"}],
     )
     output.render_incident_show(inc)
     out = capsys.readouterr().out
     assert "p95 latency" in out and "1f58…9826" in out
-    assert "acknowledged by ops@corp.com" in out and "assigned to a@corp.com" in out
+    assert "acknowledged by ops@example.com" in out and "assigned to a@example.com" in out
     assert "breach" in out and "1240ms" in out
     assert "comments · 2" in out and "on it" in out and "(deleted)" in out
     assert "subscribers · 1" in out
@@ -1332,23 +1332,23 @@ def test_render_incident_opened_and_comment_added_cards(capsys):
 def test_render_incident_comment_delete_preview(capsys):
     _wide_stdout()
     output.render_incident_comment_delete_preview(IncidentComment.from_dict(
-        {"id": "c1", "author_email": "x@corp.com", "body": "wrong incident", "created_at": "2026-06-20T00:00:00Z"}))
+        {"id": "c1", "author_email": "x@example.com", "body": "wrong incident", "created_at": "2026-06-20T00:00:00Z"}))
     err = capsys.readouterr().err                      # preview is stderr chrome
-    assert "delete comment" in err and "x@corp.com" in err and "wrong incident" in err
+    assert "delete comment" in err and "x@example.com" in err and "wrong incident" in err
     output.configure(no_color=True, quiet=False)
 
 
 def test_render_incident_comments_and_subscribers_boxes(capsys):
     _wide_stdout()
     output.render_incident_comments([
-        IncidentComment.from_dict({"id": "c1", "author_email": "ops@corp.com", "body": "db pool", "created_at": "2026-06-20T00:00:00Z"}),
-        IncidentComment.from_dict({"id": "c2", "author_email": "x@corp.com", "body": None, "created_at": "t", "deleted_at": "t"}),
+        IncidentComment.from_dict({"id": "c1", "author_email": "ops@example.com", "body": "db pool", "created_at": "2026-06-20T00:00:00Z"}),
+        IncidentComment.from_dict({"id": "c2", "author_email": "x@example.com", "body": None, "created_at": "t", "deleted_at": "t"}),
     ])
     output.render_incident_subscribers([
-        IncidentSubscriber.from_dict({"email": "ops@corp.com", "source": "creator", "subscribed_at": "2026-06-20T00:00:00Z"})])
+        IncidentSubscriber.from_dict({"email": "ops@example.com", "source": "creator", "subscribed_at": "2026-06-20T00:00:00Z"})])
     out = capsys.readouterr().out
     assert "comments · 2" in out and "db pool" in out and "(deleted)" in out
-    assert "subscribers · 1" in out and "ops@corp.com" in out and "creator" in out
+    assert "subscribers · 1" in out and "ops@example.com" in out and "creator" in out
     output.configure(no_color=True, quiet=False)
 
 
@@ -1365,7 +1365,7 @@ def test_incident_plain_feedback_lines(capsys):
     iid = "1f5803aaaaaabbbbcccc000000009826"
     output.incident_acked(iid)
     output.incident_resolved(iid)
-    output.incident_assigned(iid, ["a@corp.com", "b@corp.com"])
+    output.incident_assigned(iid, ["a@example.com", "b@example.com"])
     output.incident_assigned(iid, [])
     output.incident_subscribed(iid, None)
     output.incident_unsubscribed(iid, "x@y.z")
@@ -1376,7 +1376,7 @@ def test_incident_plain_feedback_lines(capsys):
     err = capsys.readouterr().err
     assert "acknowledged issue 1f58…9826" in err
     assert "resolved issue 1f58…9826" in err
-    assert "assigned 1f58…9826" in err and "a@corp.com, b@corp.com" in err
+    assert "assigned 1f58…9826" in err and "a@example.com, b@example.com" in err
     assert "cleared assignees on 1f58…9826" in err
     assert "subscribed you to issue" in err and "unsubscribed x@y.z from issue" in err
     assert "deleted comment" in err

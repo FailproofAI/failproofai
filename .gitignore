@@ -142,6 +142,7 @@ COMMIT_MSG.tmp
 fp-cli/dist/
 fp-cli/.venv/
 fp-cli/.pytest_cache/
+.ruff_cache/
 sdk/python/dist/
 sdk/python/.venv/
 sdk/python/.pytest_cache/

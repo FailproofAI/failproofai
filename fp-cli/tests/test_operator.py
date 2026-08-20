@@ -90,25 +90,25 @@ def test_users_list_human_renders_boxed(logged_in, runner):
 def test_users_show_by_email(logged_in, runner):
     respx.get(f"{BASE}/api/users").mock(
         return_value=httpx.Response(200, json=[
-            _user(id="u1", email="dev@corp.com", permissions=["events:read", "keys:create"],
+            _user(id="u1", email="dev@example.com", permissions=["events:read", "keys:create"],
                   permission_set="standard"),
         ])
     )
-    result = runner.invoke(app, ["--json", "users", "show", "dev@corp.com"])
+    result = runner.invoke(app, ["--json", "users", "show", "dev@example.com"])
     assert result.exit_code == 0, result.output
     body = json.loads(result.stdout)
-    assert body["email"] == "dev@corp.com"
+    assert body["email"] == "dev@example.com"
     assert sorted(body["permissions"]) == ["events:read", "keys:create"]
 
 
 @respx.mock
 def test_users_show_by_id(logged_in, runner):
     respx.get(f"{BASE}/api/users").mock(
-        return_value=httpx.Response(200, json=[_user(id="abc-123", email="dev@corp.com")])
+        return_value=httpx.Response(200, json=[_user(id="abc-123", email="dev@example.com")])
     )
     result = runner.invoke(app, ["--json", "users", "show", "abc-123"])  # id handle still works
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout)["email"] == "dev@corp.com"
+    assert json.loads(result.stdout)["email"] == "dev@example.com"
 
 
 @respx.mock
@@ -125,14 +125,14 @@ def test_users_show_not_found_exits_6(logged_in, runner):
 def test_users_create_positional_email_and_set(logged_in, runner):
     respx.get(f"{BASE}/api/users").mock(return_value=httpx.Response(200, json=[]))  # no collision
     route = respx.post(f"{BASE}/api/users").mock(
-        return_value=httpx.Response(201, json=_user(id="u9", email="dev@corp.com",
+        return_value=httpx.Response(201, json=_user(id="u9", email="dev@example.com",
                                                     permissions=["events:read"], permission_set="standard"))
     )
-    result = runner.invoke(app, ["--json", "users", "create", "dev@corp.com",
+    result = runner.invoke(app, ["--json", "users", "create", "dev@example.com",
                                  "--permission-set", "standard", "--add", "keys:create"])
     assert result.exit_code == 0, result.output
     body = json.loads(route.calls.last.request.content)
-    assert body["email"] == "dev@corp.com"
+    assert body["email"] == "dev@example.com"
     assert body["permission_set"] == "standard"
     assert body["permission_added"] == ["keys:create"]
 
@@ -141,9 +141,9 @@ def test_users_create_positional_email_and_set(logged_in, runner):
 def test_users_create_dotted_tokens_expand(logged_in, runner):
     respx.get(f"{BASE}/api/users").mock(return_value=httpx.Response(200, json=[]))
     route = respx.post(f"{BASE}/api/users").mock(
-        return_value=httpx.Response(201, json=_user(id="u9", email="dev@corp.com"))
+        return_value=httpx.Response(201, json=_user(id="u9", email="dev@example.com"))
     )
-    result = runner.invoke(app, ["--json", "users", "create", "dev@corp.com",
+    result = runner.invoke(app, ["--json", "users", "create", "dev@example.com",
                                  "--add", "keys:create.regenerate", "--remove", "alerts:read"])
     assert result.exit_code == 0, result.output
     body = json.loads(route.calls.last.request.content)
@@ -170,9 +170,9 @@ def test_users_create_requires_email(logged_in, runner):
 @respx.mock
 def test_users_create_email_collision_exits_2(logged_in, runner):
     respx.get(f"{BASE}/api/users").mock(
-        return_value=httpx.Response(200, json=[_user(id="u1", email="dev@corp.com")])
+        return_value=httpx.Response(200, json=[_user(id="u1", email="dev@example.com")])
     )
-    result = runner.invoke(app, ["--json", "users", "create", "dev@corp.com", "--permission-set", "standard"])
+    result = runner.invoke(app, ["--json", "users", "create", "dev@example.com", "--permission-set", "standard"])
     assert result.exit_code == 2
     assert "already exists" in json.loads(result.stdout)["error"]
 
@@ -284,10 +284,10 @@ def test_users_update_not_found_exits_6(logged_in, runner):
 @respx.mock
 def test_users_disable_then_json(logged_in, runner):
     respx.get(f"{BASE}/api/users").mock(return_value=httpx.Response(200, json=[
-        _user(id="u1", email="dev@corp.com"),
+        _user(id="u1", email="dev@example.com"),
     ]))
     route = respx.delete(f"{BASE}/api/users/u1").mock(return_value=httpx.Response(200, json={"disabled": True}))
-    result = runner.invoke(app, ["--json", "users", "disable", "dev@corp.com", "--yes"])
+    result = runner.invoke(app, ["--json", "users", "disable", "dev@example.com", "--yes"])
     assert result.exit_code == 0, result.output
     assert route.called
     assert json.loads(result.stdout)["status"] == "disabled"
@@ -296,10 +296,10 @@ def test_users_disable_then_json(logged_in, runner):
 @respx.mock
 def test_users_disable_protected_refused(logged_in, runner):
     respx.get(f"{BASE}/api/users").mock(return_value=httpx.Response(200, json=[
-        _user(id="u1", email="root@corp.com", is_protected=True),
+        _user(id="u1", email="root@example.com", is_protected=True),
     ]))
     delete = respx.delete(f"{BASE}/api/users/u1").mock(return_value=httpx.Response(200, json={}))
-    result = runner.invoke(app, ["users", "disable", "root@corp.com", "--yes"])
+    result = runner.invoke(app, ["users", "disable", "root@example.com", "--yes"])
     assert result.exit_code == 5
     assert not delete.called  # refused client-side, never hit the server
 
@@ -319,10 +319,10 @@ def test_users_disable_self_refused(logged_in, runner):
 @respx.mock
 def test_users_disable_already_disabled_noop(logged_in, runner):
     respx.get(f"{BASE}/api/users").mock(return_value=httpx.Response(200, json=[
-        _user(id="u1", email="off@corp.com", disabled_at="2026-01-01T00:00:00Z"),
+        _user(id="u1", email="off@example.com", disabled_at="2026-01-01T00:00:00Z"),
     ]))
     delete = respx.delete(f"{BASE}/api/users/u1").mock(return_value=httpx.Response(200, json={}))
-    result = runner.invoke(app, ["--json", "users", "disable", "off@corp.com", "--yes"])
+    result = runner.invoke(app, ["--json", "users", "disable", "off@example.com", "--yes"])
     assert result.exit_code == 0, result.output
     assert not delete.called  # no-op
 
@@ -337,12 +337,12 @@ def test_users_disable_not_found_exits_6(logged_in, runner):
 @respx.mock
 def test_users_enable(logged_in, runner):
     respx.get(f"{BASE}/api/users").mock(return_value=httpx.Response(200, json=[
-        _user(id="u1", email="off@corp.com", disabled_at="2026-01-01T00:00:00Z"),
+        _user(id="u1", email="off@example.com", disabled_at="2026-01-01T00:00:00Z"),
     ]))
     respx.post(f"{BASE}/api/users/u1/enable").mock(
-        return_value=httpx.Response(200, json=_user(id="u1", email="off@corp.com", disabled_at=None))
+        return_value=httpx.Response(200, json=_user(id="u1", email="off@example.com", disabled_at=None))
     )
-    result = runner.invoke(app, ["--json", "users", "enable", "off@corp.com", "--yes"])
+    result = runner.invoke(app, ["--json", "users", "enable", "off@example.com", "--yes"])
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["status"] == "active"
 
@@ -350,10 +350,10 @@ def test_users_enable(logged_in, runner):
 @respx.mock
 def test_users_enable_already_active_noop(logged_in, runner):
     respx.get(f"{BASE}/api/users").mock(return_value=httpx.Response(200, json=[
-        _user(id="u1", email="on@corp.com", disabled_at=None),
+        _user(id="u1", email="on@example.com", disabled_at=None),
     ]))
     enable = respx.post(f"{BASE}/api/users/u1/enable").mock(return_value=httpx.Response(200, json=_user()))
-    result = runner.invoke(app, ["--json", "users", "enable", "on@corp.com", "--yes"])
+    result = runner.invoke(app, ["--json", "users", "enable", "on@example.com", "--yes"])
     assert result.exit_code == 0, result.output
     assert not enable.called  # no-op
 

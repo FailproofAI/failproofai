@@ -998,7 +998,7 @@ def findings_assign(
 
     Example:
 
-    * `fp audits assign <finding-id> --to alice@corp.com`
+    * `fp audits assign <finding-id> --to alice@example.com`
     """
     _triage(ctx, "assign", finding_id, assigned_to=assignee)
 

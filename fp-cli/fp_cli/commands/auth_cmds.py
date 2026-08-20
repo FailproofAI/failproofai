@@ -188,7 +188,7 @@ def login(
 
     * `fp login` — fully interactive: prompts for your email, then the org picker
     * `fp --base-url https://fp.example.com login` — first time: set the dashboard URL, then sign in interactively
-    * `fp login --email you@corp.com --org acme` — skip both prompts (email + org up front)
+    * `fp login --email you@example.com --org acme` — skip both prompts (email + org up front)
     * `fp --base-url https://dash.internal --insecure login` — self-signed / internal dashboard
     """
     state: AppState = ctx.obj

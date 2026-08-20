@@ -175,7 +175,7 @@ def incidents_assign(
 
     Example:
 
-    * `fp issues assign <id> --assignee a@corp.com --assignee b@corp.com`
+    * `fp issues assign <id> --assignee a@example.com --assignee b@example.com`
     """
     state: AppState = ctx.obj
     cctx = require_auth(state)

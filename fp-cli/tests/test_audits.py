@@ -27,7 +27,7 @@ _FULL_AUDIT = {
     "top_k": 50,
     "sensitivity": "medium",
     "channels": [{"kind": "slack"}],
-    "created_by": "ops@corp.com",
+    "created_by": "ops@example.com",
     "created_at": "2026-06-28T00:00:00Z",
     "updated_at": "2026-06-28T00:00:00Z",
     "open_findings": 3,
@@ -661,11 +661,11 @@ def test_finding_assign_sends_assignee(logged_in, runner):
     fid = _FULL_FINDING["id"]
     route = respx.post(f"{BASE}/api/audits/findings/{fid}/status").mock(
         return_value=httpx.Response(200, json={"id": fid, "action": "assign", "ok": True}))
-    result = runner.invoke(app, ["audits", "assign", fid, "--to", "alice@corp.com"])
+    result = runner.invoke(app, ["audits", "assign", fid, "--to", "alice@example.com"])
     assert result.exit_code == 0, result.output
     assert json.loads(route.calls.last.request.content) == {
-        "action": "assign", "assigned_to": "alice@corp.com"}
-    assert "assigned finding" in result.stderr and "alice@corp.com" in result.stderr
+        "action": "assign", "assigned_to": "alice@example.com"}
+    assert "assigned finding" in result.stderr and "alice@example.com" in result.stderr
 
 
 def test_finding_assign_without_to_exits_2(logged_in, runner):

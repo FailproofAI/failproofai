@@ -94,7 +94,7 @@ def users_show(
 
     Example:
 
-    * `fp users show dev@corp.com`
+    * `fp users show dev@example.com`
     """
     state: AppState = ctx.obj
     cctx = require_auth(state)
@@ -140,9 +140,9 @@ def users_create(
 
     Examples:
 
-    * `fp users create dev@corp.com --permission-set standard` — invite with the standard role
-    * `fp users create ci@corp.com --permission-set read-only --add keys:create.regenerate` — read-only plus key management
-    * `fp users create lead@corp.com --permission-set admin --remove settings:write` — admin minus settings writes
+    * `fp users create dev@example.com --permission-set standard` — invite with the standard role
+    * `fp users create ci@example.com --permission-set read-only --add keys:create.regenerate` — read-only plus key management
+    * `fp users create lead@example.com --permission-set admin --remove settings:write` — admin minus settings writes
     """
     state: AppState = ctx.obj
     parsed_add = _parse_user_tokens_or_exit(state, add)
@@ -189,10 +189,10 @@ def users_update(
 
     Examples:
 
-    * `fp users update dev@corp.com --add keys:create.regenerate` — grant on top of current grants
-    * `fp users update dev@corp.com --remove alerts:read,incidents:ack` — revoke a couple of grants
-    * `fp users update dev@corp.com --add events:read --remove keys:delete` — add and remove at once
-    * `fp users update dev@corp.com --permission-set admin --yes` — reassign the role (no prompt)
+    * `fp users update dev@example.com --add keys:create.regenerate` — grant on top of current grants
+    * `fp users update dev@example.com --remove alerts:read,incidents:ack` — revoke a couple of grants
+    * `fp users update dev@example.com --add events:read --remove keys:delete` — add and remove at once
+    * `fp users update dev@example.com --permission-set admin --yes` — reassign the role (no prompt)
     """
     state: AppState = ctx.obj
     if permission_set is None and not add and not remove:
@@ -277,7 +277,7 @@ def users_disable(
 
     Example:
 
-    * `fp users disable dev@corp.com`
+    * `fp users disable dev@example.com`
     """
     state: AppState = ctx.obj
     cctx = require_auth(state)
@@ -322,7 +322,7 @@ def users_enable(
 
     Example:
 
-    * `fp users enable dev@corp.com`
+    * `fp users enable dev@example.com`
     """
     state: AppState = ctx.obj
     cctx = require_auth(state)
@@ -361,10 +361,10 @@ set (role) plus optional per-member `--add` / `--remove` overrides.
 **Examples:**
 
 * `fp users list --active-only` — current members, active first
-* `fp users show dev@corp.com` — one member's identity + full grants
-* `fp users create dev@corp.com --permission-set standard` — invite with a role
-* `fp users update dev@corp.com --add keys:create --remove alerts:read` — tweak grants
-* `fp users disable dev@corp.com` / `fp users enable dev@corp.com` — revoke / restore sign-in
+* `fp users show dev@example.com` — one member's identity + full grants
+* `fp users create dev@example.com --permission-set standard` — invite with a role
+* `fp users update dev@example.com --add keys:create --remove alerts:read` — tweak grants
+* `fp users disable dev@example.com` / `fp users enable dev@example.com` — revoke / restore sign-in
 """
 
 

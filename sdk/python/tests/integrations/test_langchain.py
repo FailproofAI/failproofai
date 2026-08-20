@@ -1394,3 +1394,75 @@ def test_usage_metadata_survives_to_on_llm_end():
     model = fake_model(tool_calling_message())
     model.invoke([HumanMessage("hi")], config={"callbacks": [Probe()]})
     assert seen == [{"input_tokens": 11, "output_tokens": 5, "total_tokens": 16}]
+
+
+# ---------------------------------------------------------------------------
+# A root run that is itself a leaf
+# ---------------------------------------------------------------------------
+#
+# `ChatOpenAI(...).invoke(...)` outside any graph arrives as ONE run with no
+# parent and `run_type="chat_model"`. Handled only as a root it produced
+# `agent_start`/`agent_end` and nothing else: no `model_request`, no
+# `model_response`, so the model name, both token counts and the latency of a
+# direct model call were dropped while the trace still looked populated.
+#
+# Direct `.invoke()` is not an edge case — a classifier, a summariser and a
+# one-shot rewrite are all shaped exactly like this.
+
+
+def test_a_bare_model_call_still_emits_its_model_pair(tmp_path, instrumented):
+    with failproofai_sdk.session():
+        fake_model(AIMessage("hi", usage_metadata={
+            "input_tokens": 7, "output_tokens": 3, "total_tokens": 10,
+        })).invoke("say hi")
+
+    rows = read_events(tmp_path)
+    kinds = types_of(rows)
+    assert "model_request" in kinds, (
+        f"a bare model call emitted {kinds} — the model pair is missing, so the "
+        f"model name, token counts and latency of every direct .invoke() are lost"
+    )
+    assert "model_response" in kinds
+
+
+def test_a_bare_model_call_records_tokens_and_an_int_duration(tmp_path, instrumented):
+    with failproofai_sdk.session():
+        fake_model(AIMessage("hi", usage_metadata={
+            "input_tokens": 7, "output_tokens": 3, "total_tokens": 10,
+        })).invoke("say hi")
+
+    response = only(read_events(tmp_path), "model_response")[0]
+    assert response["input_tokens"] == 7
+    assert response["output_tokens"] == 3
+    # u32 column: a float silently NULLs it server-side.
+    assert isinstance(response["duration_ms"], int)
+    assert response["model"]
+
+
+def test_a_bare_model_calls_pair_sits_inside_its_agent_span(tmp_path, instrumented):
+    """Order matters: the dashboard closes the agent span at `agent_end`, so a
+    `model_response` after it is attributed to nothing."""
+    with failproofai_sdk.session():
+        fake_model(AIMessage("hi")).invoke("say hi")
+
+    kinds = types_of(read_events(tmp_path))
+    assert kinds.index("agent_start") < kinds.index("model_request")
+    assert kinds.index("model_response") < kinds.index("agent_end")
+
+
+def test_a_bare_model_pair_shares_one_request_id(tmp_path, instrumented):
+    with failproofai_sdk.session():
+        fake_model(AIMessage("hi")).invoke("say hi")
+
+    rows = read_events(tmp_path)
+    request = only(rows, "model_request")[0]
+    response = only(rows, "model_response")[0]
+    assert request["request_id"] == response["request_id"]
+
+
+def test_a_graph_run_is_not_treated_as_a_leaf(tmp_path, instrumented):
+    """The fix is additive and must not fire for a chain-typed root."""
+    build_simple([("only", lambda state: {"vals": ["x"]})]).invoke(empty_state())
+    rows = read_events(tmp_path)
+    # A graph root emits no model pair of its own — only its nodes do.
+    assert types_of(rows).count("agent_start") == 1

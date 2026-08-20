@@ -250,6 +250,10 @@ class _RunInfo:
     started: datetime = dataclasses.field(default_factory=_now)
     hidden: bool = False
     kind: str = ""  # "" | "root" | "node" | "tool" | "retriever" | "model" | "chain"
+    # Set only on a ROOT run that is itself a leaf — a bare `llm.invoke()`, a
+    # standalone tool. Such a run is both the session's agent and a model/tool
+    # call, and it needs both pairs. See `_start_root`.
+    leaf_kind: str = ""
     root: str | None = None
     session: _Session | None = None
     node: str | None = None
@@ -557,6 +561,25 @@ def _start_root(run: Any, info: _RunInfo, meta: dict) -> None:
     info.session = session
     state.sessions[session.session_id] = session
 
+    # A root run that is ITSELF a leaf still has to be recorded as one.
+    #
+    # `ChatOpenAI(...).invoke(...)` outside any graph is a single run with no
+    # parent and `run_type="chat_model"`. Handled only as a root it produced an
+    # `agent_start`/`agent_end` pair and NOTHING ELSE — no `model_request`, no
+    # `model_response`, so the model name, both token counts and the latency of
+    # a direct model call were dropped on the floor, silently, while the trace
+    # still looked populated. Direct `.invoke()` is not an edge case: a
+    # classifier, a summariser, a one-shot rewrite are all shaped like this.
+    #
+    # The agent span stays (the dashboard parents leaves to an open agent with
+    # the same `agent_id` and synthesises a never-ending root span when there is
+    # none), so this is purely additive: the same run now emits its leaf pair
+    # INSIDE its own agent span.
+    starter = _ROOT_LEAF_STARTERS.get(info.run_type)
+    if starter is not None:
+        info.leaf_kind = _LEAF_KIND_OF[info.run_type]
+        starter(run, info, meta)
+
 
 def _goal_of(run: Any) -> str | None:
     inputs = getattr(run, "inputs", None)
@@ -742,6 +765,22 @@ def _normalize_messages(batches: Any) -> list | None:
     return out
 
 
+# A root run whose own `run_type` is one of these is a leaf as well as the
+# session's agent. Keyed by LangChain's `run_type` string.
+_LEAF_KIND_OF = {
+    "llm": "model",
+    "chat_model": "model",
+    "tool": "tool",
+    "retriever": "retriever",
+}
+_ROOT_LEAF_STARTERS = {
+    "llm": _start_model,
+    "chat_model": _start_model,
+    "tool": _start_tool,
+    "retriever": _start_retriever,
+}
+
+
 # ---------------------------------------------------------------------------
 # End
 # ---------------------------------------------------------------------------
@@ -758,6 +797,11 @@ def _on_end(run: Any) -> None:
         meta = _meta(run)
 
         if info.kind == "root":
+            # Close the leaf pair first when the root was also a leaf: the
+            # dashboard closes the agent span at `agent_end`, so a
+            # `model_response` emitted after it is attributed to nothing.
+            if info.leaf_kind:
+                _ROOT_LEAF_ENDERS[info.leaf_kind](run, info, meta, exc, response)
             _end_root(run, info, meta, exc)
             return
 
@@ -1044,6 +1088,16 @@ def _end_root(run: Any, info: _RunInfo, meta: dict, exc: BaseException | None) -
         **_fw_common(run, info, meta),
     )
     state.sessions.pop(session.session_id, None)
+
+
+# Mirrors `_ROOT_LEAF_STARTERS`. `_end_tool`/`_end_retriever` take no response
+# argument, so they are adapted to one signature here rather than at the call
+# site — a mismatch would be swallowed by `safe()` and read as "no events".
+_ROOT_LEAF_ENDERS = {
+    "model": _end_model,
+    "tool": lambda run, info, meta, exc, response: _end_tool(run, info, meta, exc),
+    "retriever": lambda run, info, meta, exc, response: _end_retriever(run, info, meta, exc),
+}
 
 
 def _close_open_leaves(root_id: str) -> None:

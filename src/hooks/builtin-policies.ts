@@ -2199,7 +2199,7 @@ export function registerBuiltinPolicies(enabledNames: string[]): void {
     // A guard against the agent disabling failproofai that any of those can
     // switch off is not a guard.
     if (policy.alwaysOn || enabledSet.has(normalizePolicyName(policy.name))) {
-      registerPolicy(policy.name, policy.description, policy.fn, policy.match);
+      registerPolicy(policy.name, policy.description, policy.fn, policy.match, 0, policy.params);
     }
   }
 }

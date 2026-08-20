@@ -35,6 +35,14 @@ export interface RegisteredPolicy {
   fn: PolicyFunction;
   match: PolicyMatcher;
   priority: number;
+  /**
+   * The policy's declared params, carried HERE rather than looked up in a map
+   * built from the builtin catalog. That map could only ever describe policies
+   * compiled into this build, so anything arriving from a pack, a cloud
+   * assignment or a custom file fell through to `params: {}` — which discarded
+   * the user's OWN configured `policyParams` for it, not merely the defaults.
+   */
+  params?: PolicyParamsSchema;
 }
 
 export interface PolicyParamsSchema {

@@ -456,6 +456,11 @@ export async function evaluateHookEvent(
           fn,
           hook.match ?? {},
           -1, // Custom hooks run after builtins (priority 0)
+          // A pack declares its policies' params in its manifest, so they work
+          // exactly like a builtin's — defaults merged under whatever the user
+          // configured. Matched by the pack's own name for the policy, which is
+          // the name before the `pack/<id>@<version>/` prefix is applied.
+          pack?.policies.find((p) => p.name === hook.name)?.params,
         );
       }
 

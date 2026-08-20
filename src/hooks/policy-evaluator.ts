@@ -4,8 +4,7 @@
  */
 import type { HookEventType, SessionMetadata } from "./types";
 import type { PolicyContext, HooksConfig } from "./policy-types";
-import { BUILTIN_POLICIES } from "./builtin-policies";
-import { DEFAULT_POLICY_NAMESPACE, getPoliciesForEvent, normalizePolicyName } from "./policy-registry";
+import { DEFAULT_POLICY_NAMESPACE, getPoliciesForEvent } from "./policy-registry";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
@@ -28,11 +27,6 @@ export interface EvaluationResult {
   decision: "allow" | "deny" | "instruct";
 }
 
-// Build a map from canonical policy name to its params schema (for injecting defaults).
-// Keyed by canonical name because registered policies always carry the canonical form.
-const POLICY_PARAMS_MAP = new Map(
-  BUILTIN_POLICIES.filter((p) => p.params).map((p) => [normalizePolicyName(p.name), p.params!]),
-);
 
 /**
  * Look up policy params for a canonical policy name in the user config,
@@ -91,18 +85,25 @@ export async function evaluatePolicies(
     // Inject params: merge policyParams[policy.name] over schema defaults.
     // policy.name is canonical (e.g. "failproofai/block-force-push"); user
     // config keys may be flat or canonical — getConfigParamsFor accepts both.
-    const schema = POLICY_PARAMS_MAP.get(policy.name);
+    // The schema comes off the REGISTERED policy, so a pack's or a cloud
+    // assignment's declared params work exactly like a builtin's. It used to be
+    // looked up in a map built from the builtin catalog, which could only ever
+    // describe policies compiled into this build.
+    const schema = policy.params;
+    const userParams = getConfigParamsFor(config, policy.name) ?? {};
     let ctx: PolicyContext;
     if (schema) {
-      const userParams = getConfigParamsFor(config, policy.name) ?? {};
       const resolvedParams: Record<string, unknown> = {};
       for (const [key, spec] of Object.entries(schema)) {
         resolvedParams[key] = key in userParams ? userParams[key] : spec.default;
       }
       ctx = { ...baseCtx, params: resolvedParams };
     } else {
-      // Custom hooks and policies without schema get empty params
-      ctx = { ...baseCtx, params: {} };
+      // No schema means no defaults to merge — but the user may still have
+      // configured params for it, and silently dropping what they wrote is how
+      // a policy ends up ignoring its own configuration. Absent config still
+      // yields `{}`, which is what every schema-less policy saw before.
+      ctx = { ...baseCtx, params: userParams };
     }
 
     let result: Awaited<ReturnType<typeof policy.fn>>;

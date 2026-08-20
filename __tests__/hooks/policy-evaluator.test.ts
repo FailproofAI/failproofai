@@ -588,16 +588,50 @@ describe("hooks/policy-evaluator", () => {
       const { BUILTIN_POLICIES } = await import("../../src/hooks/builtin-policies");
       const orig = BUILTIN_POLICIES.find((p) => p.name === "block-sudo")!;
 
-      // Wrap the original fn to capture params
+      // The schema is passed AT REGISTRATION now, not looked up by name. That
+      // is what lets a pack or cloud policy declare params at all — and it
+      // closes a hole: a name-keyed lookup handed `block-sudo`'s schema to
+      // ANYTHING registered under that name, including a pack that took it.
       registerPolicy("block-sudo", orig.description, async (ctx) => {
         capturedParams = ctx.params;
         return { decision: "allow" };
-      }, orig.match);
+      }, orig.match, 0, orig.params);
 
       await evaluatePolicies("PreToolUse", { tool_name: "Bash", tool_input: { command: "ls" } }, undefined, { enabledPolicies: ["block-sudo"] });
 
       expect(capturedParams).toBeDefined();
       expect((capturedParams as Record<string, unknown>).allowPatterns).toEqual([]);
+    });
+
+    it("gives a policy that declares NO schema the user's configured params", async () => {
+      // Previously every schema-less policy — every custom hook, every cloud
+      // assignment, and every pack policy — received `{}`, so a user who
+      // configured params for one had them silently discarded. Not just the
+      // defaults: what they had explicitly written.
+      let captured: unknown = null;
+      registerPolicy("failproofai/no-schema", "d", async (ctx) => {
+        captured = ctx.params;
+        return { decision: "allow" };
+      }, { events: ["PreToolUse"] });
+
+      await evaluatePolicies("PreToolUse", { tool_name: "Bash" }, undefined, {
+        enabledPolicies: [],
+        policyParams: { "no-schema": { threshold: 7 } },
+      } as never);
+
+      expect(captured).toEqual({ threshold: 7 });
+    });
+
+    it("still gives a schema-less policy {} when nothing is configured", async () => {
+      // The overwhelmingly common case must be unchanged.
+      let captured: unknown = null;
+      registerPolicy("failproofai/no-schema-2", "d", async (ctx) => {
+        captured = ctx.params;
+        return { decision: "allow" };
+      }, { events: ["PreToolUse"] });
+
+      await evaluatePolicies("PreToolUse", { tool_name: "Bash" }, undefined, { enabledPolicies: [] });
+      expect(captured).toEqual({});
     });
 
     it("overrides schema defaults with policyParams from config", async () => {

@@ -810,6 +810,44 @@ def test_configure_overrides_env_var(ns, mock_writer, monkeypatch):
     assert mock_writer.last()["environment"] == "staging"
 
 
+def test_a_comma_in_configure_environment_is_refused_rather_than_dropped(
+    ns, mock_writer
+):
+    # Ingest splits `environment` on commas to build its facets, so a line whose
+    # environment contains one is discarded WHOLE: 200 with
+    # `{"accepted":0,"skipped":N}`, the daemon deletes the delivered batch, and
+    # the run is simply never in the dashboard. Measured against the running
+    # stack before this check existed. `failproofaid` already refuses a comma in
+    # `collector.environment`; the SDK writes the same field and did not.
+    import failproofai_sdk._environment as env_mod
+
+    with pytest.raises(ValueError, match="comma"):
+        env_mod.set_environment("prod,eu")
+    # And the rejected call must not have taken effect.
+    env_mod._environment = None
+    ns.agent_start(session_id="s1", agent_id="a1")
+    assert "," not in mock_writer.last()["environment"]
+
+
+def test_a_comma_in_the_env_var_warns_and_falls_back_instead_of_raising(
+    ns, mock_writer, monkeypatch, caplog
+):
+    # An env var is read lazily, inside `to_dict()` on whatever event happens to
+    # be next — raising there would take the caller's agent down from a line of
+    # telemetry, which a library in someone else's process must not do. Warn,
+    # and land the events under a visibly wrong environment rather than nowhere.
+    import logging
+
+    import failproofai_sdk._environment as env_mod
+
+    env_mod._environment = None
+    monkeypatch.setenv("AGENTEYE_ENVIRONMENT", "prod,eu")
+    with caplog.at_level(logging.WARNING, logger="failproofai_sdk"):
+        ns.agent_start(session_id="s1", agent_id="a1")
+    assert mock_writer.last()["environment"] == "dev"
+    assert "comma" in caplog.text
+
+
 def test_environment_is_reserved(ns):
     with pytest.raises(ValueError, match="Reserved field"):
         ns.agent_start(session_id="s1", agent_id="a1", environment="bad")

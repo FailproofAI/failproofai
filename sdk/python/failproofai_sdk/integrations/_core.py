@@ -395,10 +395,58 @@ def _truncate(value: Any, limit: int, cut: _Cut, depth: int) -> Any:
             cut.hit = True
             out_list.append(f"[{len(items) - _MAX_ITEMS} more items truncated]")
         return out_list
+    # A dataclass or a pydantic model is DATA, and every framework hands us
+    # them: a tool's argument model, its structured return, a settings object on
+    # a model request. They have no JSON shape by the checks above, so they were
+    # rendered — `Weather(city='Faro', celsius=21)` — which is a Python repr
+    # sitting inside a JSON string, unqueryable by `JSONExtract` and unfilterable
+    # in the dashboard. Each adapter was starting to unwrap them itself; doing it
+    # once here means an adapter that has not thought about it still records
+    # something readable.
+    shaped = _as_mapping(value)
+    if shaped is not None:
+        # Same depth, not depth + 1: the object is REPLACED by its mapping
+        # rather than nested inside one, and the Mapping branch above does the
+        # descending (and the per-field limits) from here.
+        return _truncate(shaped, limit, cut, depth)
+
     # An object with no JSON shape is rendered, not cut — `fw_truncated` means
     # "data was lost", and a repr that fits has lost nothing a JSON encoder
     # would have kept.
     return _truncate(repr(value), limit, cut, _MAX_DEPTH)
+
+
+def _as_mapping(value: Any) -> "dict | None":
+    """A dataclass instance or pydantic model as a plain dict, or None.
+
+    Shallow on purpose. `dataclasses.asdict` and `model_dump` both recurse and
+    both COPY, so on a large object they duplicate the whole tree before
+    `_truncate` gets to decide it only wanted the first 8 KB. Reading the top
+    level and handing it back lets the existing walk apply the field limit, the
+    item cap and the depth cap on the way down, as it does for a dict.
+
+    Everything here can execute the caller's own code — a pydantic validator, a
+    property behind `getattr` — so all of it is guarded, and a failure falls
+    through to `repr`, which is what happened before this existed.
+    """
+    if isinstance(value, type):  # the CLASS, not an instance of it
+        return None
+    if dataclasses.is_dataclass(value):
+        try:
+            return {f.name: getattr(value, f.name) for f in dataclasses.fields(value)}
+        except Exception:
+            return None
+    # `model_dump` and not `dict`: pydantic v2 names it distinctively, whereas
+    # half the objects in a typical process have some attribute called `dict`
+    # and calling it would be a coin flip.
+    dump = getattr(value, "model_dump", None)
+    if callable(dump):
+        try:
+            dumped = dump()
+        except Exception:
+            return None
+        return dumped if isinstance(dumped, Mapping) else None
+    return None
 
 
 def _size(value: Any, _depth: int = 0) -> int:

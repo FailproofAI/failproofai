@@ -12,6 +12,7 @@ right thing" — and an adapter that swallows `BaseException` passes the first
 test while silently breaking cancellation in every async app that installs it.
 """
 
+import dataclasses
 import collections
 import logging
 import sys
@@ -517,6 +518,53 @@ def test_truncate_expands_a_mapping_that_is_not_a_dict():
         "from_unit": {"title": "From Unit", "type": "string"}
     }
     assert _core.truncate({"p": collections.ChainMap({"a": 1})}) == {"p": {"a": 1}}
+
+
+def test_truncate_expands_a_dataclass_and_a_pydantic_model():
+    # Every framework hands us these — a tool's argument model, its structured
+    # return, a settings object on a request — and they have no JSON shape by
+    # the container checks, so they were rendered: `Point(x=1, y=2)`, a Python
+    # repr inside a JSON string that `JSONExtract` cannot read and the dashboard
+    # cannot filter on.
+    @dataclasses.dataclass
+    class Point:
+        x: int
+        y: int
+
+    class Model:  # duck-typed pydantic v2: what matters is `model_dump`
+        def model_dump(self):
+            return {"city": "Faro", "celsius": 21}
+
+    assert _core.truncate({"p": Point(1, 2)}) == {"p": {"x": 1, "y": 2}}
+    assert _core.truncate({"m": Model()}) == {"m": {"city": "Faro", "celsius": 21}}
+    # and nested inside a container, which is where they actually arrive
+    assert _core.truncate([Point(1, 2)]) == [{"x": 1, "y": 2}]
+
+
+def test_truncate_falls_back_to_repr_when_unwrapping_raises():
+    # `model_dump` and `getattr` both run the CALLER'S code — a validator, a
+    # property that touches the network. A telemetry library must not turn that
+    # into an exception in someone's agent loop, and `repr` is exactly what
+    # would have happened before any of this existed.
+    class Exploding:
+        def model_dump(self):
+            raise RuntimeError("boom")
+
+        def __repr__(self):
+            return "<Exploding>"
+
+    assert _core.truncate({"e": Exploding()}) == {"e": "<Exploding>"}
+
+
+def test_truncate_does_not_mistake_a_class_for_an_instance():
+    # `dataclasses.is_dataclass` is true of the CLASS as well as its instances,
+    # and `fields()` on the class would render a type as though it were data.
+    @dataclasses.dataclass
+    class Point:
+        x: int
+
+    out = _core.truncate({"c": Point})
+    assert isinstance(out["c"], str) and "class" in out["c"]
 
 
 def test_truncate_still_reprs_an_object_with_no_json_shape():

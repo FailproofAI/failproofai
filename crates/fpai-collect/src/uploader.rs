@@ -70,6 +70,12 @@ pub enum UploadError {
         attempts: u32,
         detail: String,
     },
+    /// A 2xx whose ack says the server stored NONE of the batch. Not a
+    /// success: the events are not on the server and this file is their last
+    /// copy, so it is parked rather than deleted.
+    StoredNothing {
+        skipped: u64,
+    },
     Io(std::io::Error),
 }
 
@@ -79,6 +85,12 @@ impl std::fmt::Display for UploadError {
             UploadError::Client { status } => write!(f, "client error {status}: not retried"),
             UploadError::Server { status, attempts } => {
                 write!(f, "server error {status} after {attempts} attempt(s)")
+            }
+            UploadError::StoredNothing { skipped } => {
+                write!(
+                    f,
+                    "the server stored none of this batch ({skipped} skipped)"
+                )
             }
             UploadError::Network { attempts, detail } => {
                 write!(f, "network error after {attempts} attempt(s): {detail}")
@@ -246,7 +258,27 @@ impl Uploader {
                         // identically until the URL is fixed.
                         match resp.json::<IngestAck>().await {
                             Ok(ack) => {
-                                self.record_ack(path, &ack);
+                                // `record_ack`'s own contract: "A 200 that stored
+                                // nothing is an error, not a success." It said so
+                                // and then returned Ok anyway, so `upload_file`
+                                // deleted the file — the module's stated invariant
+                                // is that `failed/` is a retry queue and a batch
+                                // the server does not have is "never deleted", and
+                                // this was the one path that broke it.
+                                //
+                                // Parked retryable (client_status None), not
+                                // poison-on-sight: the observed cause was an
+                                // intermediary mangling an oversized body, which a
+                                // retry can survive. `park_inner` bounds that —
+                                // attempt is encoded in the filename and becomes
+                                // `.poison` at `failed_retries_max`, after which it
+                                // is kept forever and never retried again.
+                                if self.record_ack(path, &ack) {
+                                    self.park(path, None, attempt).await;
+                                    return Err(UploadError::StoredNothing {
+                                        skipped: ack.skipped,
+                                    });
+                                }
                                 return Ok(());
                             }
                             Err(_) => {
@@ -293,7 +325,7 @@ impl Uploader {
     /// Interpret the ack body. A 200 that stored nothing is an error, not a
     /// success — it is the shape a systematically malformed transform takes,
     /// and without this it looks identical to a healthy upload.
-    fn record_ack(&self, path: &Path, ack: &IngestAck) {
+    fn record_ack(&self, path: &Path, ack: &IngestAck) -> bool {
         self.metrics
             .accepted_total
             .fetch_add(ack.accepted, Ordering::Relaxed);
@@ -322,6 +354,8 @@ impl Uploader {
                 "the server skipped some events in this batch"
             );
         }
+
+        ack.accepted == 0 && ack.skipped > 0
     }
 
     /// `base * 2^(attempt-1)` plus jitter.

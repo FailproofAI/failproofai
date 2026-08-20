@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use fpai_collect::Uploader;
+use fpai_collect::{UploadError, Uploader};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -106,12 +106,29 @@ async fn a_200_that_stored_nothing_is_counted_as_fully_skipped() {
     let batch = write_batch(&spool, "claude-s-1-0.jsonl", 5);
 
     let up = uploader(&server, &failed);
-    up.upload_file(&batch).await.unwrap();
+    // It used to return Ok here, so `upload_file` deleted the batch: the events
+    // were not on the server, this file was their last copy, and it went in the
+    // bin behind one ERROR line in the daemon's own log. That contradicted this
+    // module's stated invariant — `failed/` is a retry queue and such a batch is
+    // "never deleted" — and it is the whole reason the ack body is read at all.
+    let err = up.upload_file(&batch).await.unwrap_err();
+    assert!(
+        matches!(err, UploadError::StoredNothing { skipped: 5 }),
+        "expected StoredNothing, got {err:?}"
+    );
 
     let m = up.metrics();
     assert_eq!(m.batches_fully_skipped.load(Ordering::Relaxed), 1);
     assert_eq!(m.skipped_total.load(Ordering::Relaxed), 5);
     assert_eq!(m.accepted_total.load(Ordering::Relaxed), 0);
+
+    // The data survives, in failed/, rather than being deleted.
+    assert!(
+        !batch.exists(),
+        "the batch should have moved out of the spool"
+    );
+    let parked: Vec<_> = fs::read_dir(&failed).unwrap().flatten().collect();
+    assert_eq!(parked.len(), 1, "the batch should be parked, not deleted");
 
     fs::remove_dir_all(&spool).ok();
     fs::remove_dir_all(&failed).ok();

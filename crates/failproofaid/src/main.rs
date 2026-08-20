@@ -1709,7 +1709,10 @@ mod tests {
 
     #[test]
     fn help_wins_over_a_later_unknown_option() {
-        assert_eq!(parse_args(&argv(&["--help", "--nonsense"])), Invocation::Help);
+        assert_eq!(
+            parse_args(&argv(&["--help", "--nonsense"])),
+            Invocation::Help
+        );
     }
 
     use super::*;

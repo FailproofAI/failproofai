@@ -55,8 +55,11 @@ LlamaIndex                    Failproof AI
 ============================  ==========================================
 ``Workflow.run`` root span    session + ``agent_start``/``agent_end``
 nested ``Workflow.run`` span  nested ``agent_start``/``agent_end``
+``AgentWorkflow`` handoff     nested ``agent_start``/``agent_end`` per
+                              ``current_agent_name`` (see ``_sub_agent``)
 workflow step span            ``hook_triggered``/``hook_completed``
                               (``trigger_event="workflow_step"``)
+``SpanCancelledEvent``        ``outcome="cancelled"`` on the run or the step
 ``LLMChatStart/EndEvent``     ``model_request``/``model_response``
                               (``request_id=event.span_id``)
 ``FunctionTool.call`` span    ``tool_use``/``tool_result``
@@ -69,6 +72,16 @@ embeddings                    nothing, unless ``embeddings=True``
 ``agent_id`` is the ``FunctionAgent.name`` when there is one and the workflow
 class name otherwise — never a span id. It is a ``LowCardinality`` column and
 the primary dashboard facet; a uuid in it poisons that facet permanently.
+
+``AgentWorkflow`` needs one more step to keep that promise. It does **not** run
+its agents as nested workflows — there is a single ``AgentWorkflow.run`` span
+and the agents are steps inside it — so read off the span tree alone a two-agent
+crew lands as one ``agent_id="AgentWorkflow"`` and the handoff is invisible. The
+runtime does say who holds the turn, on every ``AgentInput``/``AgentSetup``/
+``AgentOutput`` a step is invoked with: ``current_agent_name``. Each distinct
+name therefore opens a nested agent under the workflow and a handoff closes the
+previous one, which is what puts ``researcher`` and ``analyst`` in the facet
+rather than in a payload extra nobody can group by.
 
 Token fidelity is genuinely lower on LlamaIndex than on the other frameworks
 -----------------------------------------------------------------------------
@@ -378,6 +391,12 @@ class _Run:
     pauses: dict[str, str] = field(default_factory=dict)  # waiter_id -> pause_id
     used_tool_ids: dict[str, int] = field(default_factory=dict)
     errors: int = 0
+    # The `AgentWorkflow` sub-agent currently holding the turn, if any. See
+    # `_sub_agent`. Only ever set on a workflow run's own `_Run`; a sub-agent's
+    # `_Run` never opens a sub-agent of its own.
+    sub_key: str | None = None
+    sub_name: str | None = None
+    sub_seq: int = 0
 
 
 class _State:
@@ -413,6 +432,14 @@ class _State:
         # span tree — without this, every streaming model_response would be
         # deferred to teardown and report the whole run as its duration.
         self._leaf_run: dict[str, str] = {}
+        # Span ids the runtime told us were CANCELLED. `SpanCancelledEvent` is
+        # dispatched immediately before the matching `span_exit`, which the
+        # runtime deliberately performs with `result=None` and no error ("exit
+        # the span cleanly so it shows as OK rather than ERROR in traces" —
+        # workflows/runtime/types/step_function.py). Without this mark a
+        # user-pressed stop button is indistinguishable from a completed run,
+        # and every cancellation is reported as a success.
+        self._cancelled: set[str] = set()
         self._stop = threading.Event()
         self._reaper: threading.Thread | None = None
 
@@ -463,16 +490,27 @@ class _State:
         kind = self._classify(method, instance, parent_span_id)
 
         with self._lock:
+            parent = self._spans.get(parent_span_id) if parent_span_id else None
+            run_id = span_id if kind == "agent" else (parent.run_id if parent else None)
+            # An `AgentWorkflow` step belongs to the sub-agent holding the turn,
+            # not to the workflow. Resolving that BEFORE the span is remembered
+            # is what makes everything underneath it — the step's own hook pair,
+            # its tool calls, its LLM calls — resolve to the sub-agent too,
+            # because they all reach identity through this span's parent chain.
+            parent_key = parent_span_id
+            if kind == "step":
+                sub = self._sub_agent(parent, arguments)
+                if sub is not None:
+                    parent_key = sub
+                    run_id = sub
             # Link every span, including the ones we emit nothing for: a chain
             # of "other" spans between a leaf and its agent must not break
             # identity resolution.
-            self.tracker.link(span_id, parent_span_id)
-            parent = self._spans.get(parent_span_id) if parent_span_id else None
-            run_id = span_id if kind == "agent" else (parent.run_id if parent else None)
+            self.tracker.link(span_id, parent_key)
             self._remember(
                 _Span(
                     span_id=span_id,
-                    parent_id=parent_span_id,
+                    parent_id=parent_key,
                     run_id=run_id,
                     kind=kind,
                     cls=cls_name,
@@ -483,7 +521,7 @@ class _State:
             if kind == "agent":
                 self._start_agent(span_id, parent_span_id, instance, cls_name, arguments)
             elif kind == "step":
-                self._start_step(span_id, parent_span_id, method, arguments)
+                self._start_step(span_id, parent_key, method, arguments)
             elif kind == "tool":
                 self._start_tool(span_id, parent_span_id, instance, arguments)
             elif kind == "model":
@@ -496,12 +534,18 @@ class _State:
     def span_exit(self, span_id: str, bound_args: Any, instance: Any, result: Any) -> None:
         with self._lock:
             span = self._spans.pop(span_id, None)
+            cancelled = span_id in self._cancelled
+            self._cancelled.discard(span_id)
             if span is None:
                 return
             if span.kind == "agent":
-                self._end_agent(span, result=result, outcome="success")
+                self._end_agent(
+                    span,
+                    result=result,
+                    outcome="cancelled" if cancelled else "success",
+                )
             elif span.kind == "step":
-                self._end_step(span, result=result)
+                self._end_step(span, result=result, cancelled=cancelled)
             elif span.kind == "tool":
                 self._close_leaf(span, output=result)
             # A streaming LLM span exits the moment the generator is created,
@@ -511,6 +555,7 @@ class _State:
     def span_drop(self, span_id: str, bound_args: Any, instance: Any, err: BaseException | None) -> None:
         with self._lock:
             span = self._spans.pop(span_id, None)
+            self._cancelled.discard(span_id)
             if span is None:
                 return
             if _is_waiting(err):
@@ -613,6 +658,11 @@ class _State:
     ) -> None:
         run = self._runs.pop(span.span_id, None)
         if run is not None:
+            # Inner-first: a sub-agent still holding the turn is closed (and its
+            # error count folded into ours) before we decide whether this run
+            # owns the failure, or it would outlive the workflow that opened it
+            # and render `ongoing` forever.
+            self._close_sub_agent(run, outcome=outcome)
             # Invariant 4: `agent_end` force-closes open pauses but NOT open
             # tools or models. A run that dies holding one leaves the session
             # `ongoing` forever.
@@ -638,11 +688,80 @@ class _State:
                 message=str(error) or type(error).__name__,
             )
         summary = _summarize(getattr(result, "result", None) if result is not None else None)
+        if summary is None and error is not None:
+            # `summary` is a promoted column and `agent_end` is where the
+            # dashboard reads a run's outcome. Without this a failed run says
+            # only "failed": the reason lives on the failing step's
+            # `hook_completed`, which is payload-only, and is gone entirely when
+            # `steps=False`. The sibling LangChain adapter already does this.
+            summary = _error_text(error)
         self.tracker.end_agent(
             span.span_id,
             outcome=outcome,
             summary=summary,
             **_core.fw_fields(span_id=span.span_id),
+        )
+
+    # -- AgentWorkflow sub-agents -------------------------------------------
+
+    def _sub_agent(self, parent: _Span | None, arguments: dict) -> str | None:
+        """The nested agent an `AgentWorkflow` step belongs to, or `None`.
+
+        `AgentWorkflow` does NOT run its `FunctionAgent`s as nested workflows —
+        there is one `AgentWorkflow.run` span and the agents are steps inside
+        it. Read off the span tree alone, a handoff is therefore invisible: a
+        two-agent crew lands as one `agent_id="AgentWorkflow"` and the names the
+        user actually facets by (`researcher`, `analyst`) never reach the
+        column. The framework does tell us, on every `AgentInput`/`AgentSetup`/
+        `AgentOutput` the steps are invoked with: `current_agent_name`.
+
+        So each distinct `current_agent_name` opens a nested agent under the
+        workflow, and a handoff closes the previous one. The name is **sticky**:
+        `ToolCall` carries no `current_agent_name`, so a `call_tool` step keeps
+        whichever agent asked for the tool, which is the correct attribution.
+
+        A standalone `FunctionAgent.run` runs those same steps with its own name
+        in `current_agent_name`, which is already this run's `agent_id` — hence
+        the `name != root.agent_id` guard, without which every single-agent run
+        would nest an agent inside an identically-named agent.
+        """
+        if parent is None or parent.kind != "agent" or parent.run_id is None:
+            return None
+        root = self._runs.get(parent.run_id)
+        if root is None:
+            return None
+        name = getattr(arguments.get("ev"), "current_agent_name", None)
+        if isinstance(name, str) and name and name != root.agent_id and name != root.sub_name:
+            self._close_sub_agent(root)
+            root.sub_seq += 1
+            # Keyed per turn, not per name: an A -> B -> A handoff must not
+            # reuse the key of the A we already ended.
+            key = f"{root.span_id}#sub{root.sub_seq}"
+            identity = self.tracker.start_agent(
+                key,
+                agent_id=name,
+                parent_key=root.span_id,
+                **_core.fw_fields(
+                    span_id=root.span_id, agent_name=name, workflow=root.agent_id
+                ),
+            )
+            self._runs[key] = _Run(span_id=key, agent_id=identity.agent_id or name)
+            root.sub_key, root.sub_name = key, name
+        return root.sub_key
+
+    def _close_sub_agent(self, root: _Run, *, outcome: str = "success") -> None:
+        key, root.sub_key, root.sub_name = root.sub_key, None, None
+        if key is None:
+            return
+        sub = self._runs.pop(key, None)
+        if sub is not None:
+            self._close_all_leaves(sub, reason="agent_switch")
+            # The workflow still has to know something below it failed, or
+            # `_end_agent` would emit a second `error` event for a failure a
+            # sub-agent's leaf already reported.
+            root.errors += sub.errors
+        self.tracker.end_agent(
+            key, outcome=outcome, **_core.fw_fields(span_id=root.span_id)
         )
 
     # -- steps ------------------------------------------------------------
@@ -666,19 +785,34 @@ class _State:
             ),
         )
 
-    def _end_step(self, span: _Span, *, result: Any, error: BaseException | None = None) -> None:
+    def _end_step(
+        self,
+        span: _Span,
+        *,
+        result: Any,
+        error: BaseException | None = None,
+        cancelled: bool = False,
+    ) -> None:
         if not self.steps:
             return
         run = self._runs.get(span.run_id) if span.run_id else None
         if error is not None and run is not None:
             run.errors += 1
+        if error is not None:
+            outcome = "failed"
+        elif cancelled:
+            # A cancelled step exits with `result=None` and no error, so without
+            # the mark it reports `success` with an empty output.
+            outcome = "cancelled"
+        else:
+            outcome = "success"
         self.tracker.emit(
             "hook_completed",
             span.span_id,
             parent_key=span.parent_id,
             hook_name=span.name,
             hook_id=span.span_id,
-            outcome="failed" if error is not None else "success",
+            outcome=outcome,
             output=_summarize(result),
             error=_error_text(error) if error is not None else None,
             **_core.fw_fields(
@@ -977,6 +1111,15 @@ class _State:
                 return
             self._emit_leaf_close(leaf, output=nodes, error=None)
 
+    def cancel(self, span_id: str | None) -> None:
+        """`SpanCancelledEvent` — remember it for the `span_exit` right behind it."""
+        if span_id is None:
+            return
+        with self._lock:
+            while len(self._cancelled) >= _MAX_SPANS:
+                self._cancelled.discard(next(iter(self._cancelled)))
+            self._cancelled.add(span_id)
+
     def exception(self, span_id: str | None, exc: Any) -> None:
         """`ExceptionEvent` — close whatever leaf that span owns.
 
@@ -1053,11 +1196,14 @@ class _State:
         with self._lock:
             for run in list(self._runs.values()):
                 self._close_all_leaves(run, reason="uninstrument")
-            for span_id in list(self._runs):
+            # Newest first, so a sub-agent closes before the workflow that
+            # opened it rather than after it.
+            for span_id in reversed(list(self._runs)):
                 self.tracker.end_agent(span_id, outcome="cancelled")
             self._runs.clear()
             self._spans.clear()
             self._leaf_run.clear()
+            self._cancelled.clear()
             self._step_inputs.clear()
             self._model_names.clear()
             self.tracker.reset()
@@ -1122,6 +1268,11 @@ RETRIEVAL_END_EVENTS = ("RetrievalEndEvent",)
 EMBEDDING_START_EVENTS = ("EmbeddingStartEvent",)
 EMBEDDING_END_EVENTS = ("EmbeddingEndEvent",)
 EXCEPTION_EVENTS = ("ExceptionEvent",)
+# NOT part of `_HANDLED_EVENTS`: this one is dispatched by the workflows runtime
+# (`workflows.runtime.types.step_function`), not from
+# `llama_index.core.instrumentation.events.*` like every name above it, so the
+# drift test that walks those modules cannot cover it.
+CANCEL_EVENTS = ("SpanCancelledEvent",)
 
 _HANDLED_EVENTS = (
     MODEL_START_EVENTS
@@ -1201,6 +1352,8 @@ def handler_classes() -> tuple[Any, Any]:
                 state.retrieval_end(span_id, getattr(event, "embeddings", None))
             elif name in EXCEPTION_EVENTS:
                 state.exception(span_id, getattr(event, "exception", None))
+            elif name in CANCEL_EVENTS:
+                state.cancel(span_id)
 
     class FailproofAISpanHandler(BaseSpanHandler):
         """The span tree: agents, workflow steps, tools, retrievers.

@@ -245,6 +245,28 @@ def instrumented(tmp_path):
         _core.reset_failures()
 
 
+@pytest.fixture()
+def instrumented_without_steps(tmp_path):
+    """`instrumented`, with the workflow-step hooks switched off.
+
+    Spelled out rather than parameterising the fixture above: `instrumented` is
+    used by nearly every test in this file, and a signature change there is a
+    change to all of them.
+    """
+    _core.set_strict(False)
+    _compat.set_strict_integrations(False)
+    _core.reset_failures()
+    _runtime.writer.set_flush_interval(3600)
+    assert failproofai_sdk.instrument("llama_index", steps=False) == ("llama_index",)
+    try:
+        yield adapter_module.adapter
+    finally:
+        failproofai_sdk.uninstrument("llama_index")
+        _core.set_strict(None)
+        _compat.set_strict_integrations(None)
+        _core.reset_failures()
+
+
 @pytest.fixture(autouse=True)
 def _isolate_writer_queue():
     """Start and end every test with an empty writer queue.
@@ -584,6 +606,46 @@ def test_a_run_level_failure_nobody_owns_gets_one_error_event(instrumented, tmp_
     assert_rendering_invariants(events)
 
 
+def test_a_failed_agent_end_says_what_killed_the_run(instrumented, tmp_path):
+    """`outcome="failed"` is not a reason, and `summary` is a promoted column.
+
+    The failing step's `hook_completed` does carry the error, but that is
+    payload-only — and with `steps=False` it is not emitted at all, which leaves
+    a failed run with its cause recorded precisely nowhere.
+    """
+    from llama_index.core.workflow import StartEvent, StopEvent, Workflow, step
+
+    class Bad(Workflow):
+        @step
+        async def go(self, ev: StartEvent) -> StopEvent:
+            raise ValueError("workflow blew up")
+
+    with pytest.raises(ValueError):
+        run_workflow(Bad(timeout=5))
+
+    end = only(read_events(tmp_path), "agent_end")[0]
+    assert end["outcome"] == "failed"
+    assert end["summary"] == "ValueError: workflow blew up"
+
+
+def test_a_timed_out_agent_end_says_what_killed_the_run(instrumented, tmp_path):
+    """Same promise on the other failure path, where there IS an error event."""
+    from llama_index.core.workflow import StartEvent, StopEvent, Workflow, step
+
+    class Slow(Workflow):
+        @step
+        async def go(self, ev: StartEvent) -> StopEvent:
+            await asyncio.sleep(5)
+            return StopEvent(result="never")
+
+    with pytest.raises(Exception):
+        run_workflow(Slow(timeout=0.3))
+
+    end = only(read_events(tmp_path), "agent_end")[0]
+    assert end["outcome"] == "failed"
+    assert end["summary"].startswith("WorkflowTimeoutError:")
+
+
 def test_a_translator_that_raises_on_every_call_does_not_break_the_run(
     instrumented, tmp_path, monkeypatch, caplog
 ):
@@ -755,6 +817,168 @@ def test_a_nested_workflow_becomes_a_nested_agent(instrumented, tmp_path):
     assert "parent_id" not in starts[0]
     assert starts[1]["parent_id"] == "Outer"
     assert len({event["session_id"] for event in events}) == 1
+    assert_rendering_invariants(events)
+
+
+# ---------------------------------------------------------------------------
+# AgentWorkflow handoffs
+#
+# `AgentWorkflow` does NOT run its agents as nested workflows: there is one
+# `AgentWorkflow.run` span and the agents are steps inside it. Read off the span
+# tree alone a two-agent crew is one flat `agent_id="AgentWorkflow"` and the
+# handoff is invisible, so the adapter keys nested agents off the
+# `current_agent_name` the runtime puts on every AgentInput/AgentSetup/
+# AgentOutput instead.
+# ---------------------------------------------------------------------------
+
+HANDOFF_TO_ANALYST = ("handoff", {"to_agent": "analyst", "reason": "over to you"})
+HANDOFF_TO_RESEARCHER = ("handoff", {"to_agent": "researcher", "reason": "back to you"})
+
+
+def crew(researcher_llm, analyst_llm, *, handoff_back=False):
+    """A real two-agent `AgentWorkflow` — the API LlamaIndex documents."""
+    from llama_index.core.agent.workflow import AgentWorkflow, FunctionAgent
+
+    researcher = FunctionAgent(
+        name="researcher",
+        description="looks numbers up",
+        tools=[add],
+        llm=researcher_llm,
+        streaming=False,
+        can_handoff_to=["analyst"],
+    )
+    analyst = FunctionAgent(
+        name="analyst",
+        description="does the maths",
+        tools=[add],
+        llm=analyst_llm,
+        streaming=False,
+        # `None` here would mean "may hand off to anyone", which loops.
+        can_handoff_to=["researcher"] if handoff_back else [],
+    )
+    return AgentWorkflow(agents=[researcher, analyst], root_agent="researcher")
+
+
+def test_an_agent_workflow_handoff_is_two_nested_agents_not_one_flat_one(
+    instrumented, tmp_path
+):
+    """The names a customer facets by are `researcher` and `analyst`.
+
+    Flattened, every event in the session carries `agent_id="AgentWorkflow"` and
+    the two agents are distinguishable only by a payload extra, which
+    `agent_id`-keyed surfaces cannot group by at all.
+    """
+    workflow = crew(
+        StubLLM(script=[("add", {"a": 1, "b": 1}), HANDOFF_TO_ANALYST]),
+        StubLLM(script=[("add", {"a": 2, "b": 3})], final="5"),
+    )
+    assert str(run_workflow(workflow, user_msg="add things")) == "5"
+
+    events = read_events(tmp_path)
+    starts = only(events, "agent_start")
+    assert [start["agent_id"] for start in starts] == [
+        "AgentWorkflow",
+        "researcher",
+        "analyst",
+    ]
+    assert "parent_id" not in starts[0]
+    assert starts[1]["parent_id"] == "AgentWorkflow"
+    assert starts[2]["parent_id"] == "AgentWorkflow"
+    assert len({event["session_id"] for event in events}) == 1
+
+    # Sticky, and this is the subtle half: `ToolCall` carries no
+    # `current_agent_name`, so a `call_tool` step has to keep whichever agent
+    # asked for the tool.
+    assert [(e["agent_id"], e["tool_name"]) for e in only(events, "tool_use")] == [
+        ("researcher", "add"),
+        ("researcher", "handoff"),
+        ("analyst", "add"),
+    ]
+    assert {e["agent_id"] for e in only(events, "model_request")} == {
+        "researcher",
+        "analyst",
+    }
+    assert_rendering_invariants(events)
+
+
+def test_a_standalone_function_agent_does_not_nest_inside_itself(instrumented, tmp_path):
+    """The guard on the rule above, and the reason it is `name != agent_id`.
+
+    A standalone `FunctionAgent.run` drives those same `AgentWorkflow` steps
+    with its OWN name in `current_agent_name`. Without the guard every
+    single-agent run would open a `calc` nested inside a `calc` — doubling the
+    agent count on every LlamaIndex session in the product.
+    """
+    llm = StubLLM(script=[("add", {"a": 2, "b": 3})], final="5")
+    run_agent(calculator(llm), "2+3?")
+
+    events = read_events(tmp_path)
+    assert [start["agent_id"] for start in only(events, "agent_start")] == ["calc"]
+    assert types_of(events) == ONE_TOOL_SEQUENCE
+    assert_rendering_invariants(events)
+
+
+def test_a_handoff_back_opens_the_first_agent_again_as_a_second_turn(
+    instrumented, tmp_path
+):
+    """A -> B -> A: two turns for `researcher`, each opened and closed on its own.
+
+    The nested agent is keyed per turn rather than per name. Reusing the key of
+    the `researcher` we already ended would collide in the tracker, and one of
+    the two `agent_start`s would never be closed.
+    """
+    workflow = crew(
+        StubLLM(script=[HANDOFF_TO_ANALYST], final="done"),
+        StubLLM(script=[HANDOFF_TO_RESEARCHER]),
+        handoff_back=True,
+    )
+    assert str(run_workflow(workflow, user_msg="round trip")) == "done"
+
+    events = read_events(tmp_path)
+    assert [start["agent_id"] for start in only(events, "agent_start")] == [
+        "AgentWorkflow",
+        "researcher",
+        "analyst",
+        "researcher",
+    ]
+    # Inner-first, and every open closed: the invariant check below fails on an
+    # agent left open, which is what a key collision would produce.
+    assert [end["agent_id"] for end in only(events, "agent_end")] == [
+        "researcher",
+        "analyst",
+        "researcher",
+        "AgentWorkflow",
+    ]
+    assert_rendering_invariants(events)
+
+
+def test_sub_agents_are_still_attributed_with_the_step_hooks_off(
+    instrumented_without_steps, tmp_path
+):
+    """`steps=False` drops the hook pairs, not the agents.
+
+    The sub-agent is resolved when the step span OPENS, which is a different
+    code path from the `hook_triggered` the option suppresses — so it is worth
+    proving rather than assuming.
+    """
+    workflow = crew(
+        StubLLM(script=[HANDOFF_TO_ANALYST]),
+        StubLLM(script=[("add", {"a": 2, "b": 3})], final="5"),
+    )
+    assert str(run_workflow(workflow, user_msg="add things")) == "5"
+
+    events = read_events(tmp_path)
+    assert only(events, "hook_triggered") == []
+    assert only(events, "hook_completed") == []
+    assert [start["agent_id"] for start in only(events, "agent_start")] == [
+        "AgentWorkflow",
+        "researcher",
+        "analyst",
+    ]
+    assert [(e["agent_id"], e["tool_name"]) for e in only(events, "tool_use")] == [
+        ("researcher", "handoff"),
+        ("analyst", "add"),
+    ]
     assert_rendering_invariants(events)
 
 
@@ -1004,6 +1228,65 @@ def test_the_reaper_closes_a_stale_parked_stream(instrumented, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Cancellation
+#
+# `handler.cancel_run()` does NOT drop the run span. The runtime catches its own
+# `WorkflowCancelledByUser` and exits the span cleanly, with `result=None` and
+# no error — "so it shows as OK rather than ERROR in traces". Read off the span
+# alone, a user pressing stop is indistinguishable from a completed run, which
+# is why the adapter listens for `SpanCancelledEvent`.
+# ---------------------------------------------------------------------------
+
+def _cancel_a_run_mid_step() -> None:
+    """Cancel a real run while a step is in flight, the way a stop button does."""
+    from llama_index.core.workflow import StartEvent, StopEvent, Workflow, step
+
+    started = asyncio.Event()
+
+    class Slow(Workflow):
+        @step
+        async def go(self, ev: StartEvent) -> StopEvent:
+            started.set()
+            await asyncio.sleep(30)
+            return StopEvent(result="never")
+
+    async def _main() -> None:
+        handler = Slow(timeout=30).run()
+        await asyncio.wait_for(started.wait(), timeout=5)
+        await handler.cancel_run()
+        with pytest.raises(BaseException):
+            await handler
+
+    asyncio.run(_main())
+
+
+def test_a_cancelled_run_is_not_reported_as_a_success(instrumented, tmp_path):
+    """Reporting a cancellation as success inflates the completion rate.
+
+    `cancelled` is deliberately not `failed` either: the server counts only
+    `error|failed|timeout|rejected` as a failure, and a stop button is neither.
+    """
+    _cancel_a_run_mid_step()
+
+    events = read_events(tmp_path)
+    assert only(events, "agent_end")[0]["outcome"] == "cancelled"
+    # A cancellation is not an error, so nothing may report one.
+    assert only(events, "error") == []
+    assert_rendering_invariants(events)
+
+
+def test_a_step_cancelled_mid_flight_is_not_reported_as_a_success(
+    instrumented, tmp_path
+):
+    """Same signal one level down: the step exits with `result=None`, no error."""
+    _cancel_a_run_mid_step()
+
+    completed = only(read_events(tmp_path), "hook_completed")
+    assert completed, "the in-flight step still has to close"
+    assert [hook["outcome"] for hook in completed] == ["cancelled"]
+
+
+# ---------------------------------------------------------------------------
 # Structural anti-drift — the one that catches a silently dead adapter
 # ---------------------------------------------------------------------------
 
@@ -1088,6 +1371,35 @@ def test_every_dispatcher_event_class_we_dispatch_on_still_exists():
         assert any(hasattr(module, name) for module in modules), (
             f"{name} no longer exists in llama_index.core.instrumentation.events"
         )
+
+
+def test_the_cancel_event_we_dispatch_on_still_exists_where_we_expect_it():
+    """`CANCEL_EVENTS` has no other guard in this file, by construction.
+
+    Every other name we dispatch on lives under
+    `llama_index.core.instrumentation.events.*`, which the test above walks.
+    This one is dispatched by the workflows RUNTIME, so that test cannot see it
+    — and if it is renamed or moved, nothing raises: cancelled runs quietly go
+    back to being reported as successes.
+    """
+    import importlib
+
+    from llama_index.core.instrumentation.events.base import BaseEvent
+
+    module = importlib.import_module("workflows.runtime.types.step_function")
+    for name in adapter_module.CANCEL_EVENTS:
+        cls = getattr(module, name, None)
+        assert cls is not None, f"{name} is gone from {module.__name__}"
+        assert issubclass(cls, BaseEvent), f"{name} is no longer a dispatcher event"
+        # We match on the class name and pair the mark with the span_exit behind
+        # it using `span_id`, which the dispatcher stamps from the active span.
+        assert cls.class_name() == name
+        assert "span_id" in cls.model_fields
+
+    # And the exception that path exists to serve, which `cancel_run()` raises.
+    from workflows.errors import WorkflowCancelledByUser
+
+    assert issubclass(WorkflowCancelledByUser, BaseException)
 
 
 @pytest.mark.parametrize(

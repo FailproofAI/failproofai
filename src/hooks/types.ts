@@ -4,9 +4,10 @@
  * A harness is whatever an agent runs inside — a coding CLI (Claude Code, Codex,
  * Copilot, Cursor, OpenCode, Pi, Factory, Devin, Antigravity, Goose), a chat or
  * assistant gateway (Hermes, OpenClaw), or an agent instrumented directly via
- * the SDK. INTEGRATION_TYPES below is the authoritative list, and it is the list
- * every count in user-facing copy is asserted against by
- * __tests__/scripts/copy-counts.test.ts.
+ * the SDK. INTEGRATION_TYPES below is the authoritative list:
+ * __tests__/scripts/copy-counts.test.ts pins its length, and the policy, event
+ * and enforcement counts, against the harness and policy counts stated in
+ * README.md, package.json and docs/index.mdx.
  */
 
 export const HOOK_SCOPES = ["user", "project", "local"] as const;

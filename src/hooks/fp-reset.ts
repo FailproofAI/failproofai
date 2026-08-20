@@ -1344,8 +1344,12 @@ function staleDaemonHint(): string[] {
         `[failproofai] daemon is ${skew.installed}, CLI is ${skew.expected}.`,
         `This machine is configured to REQUIRE the daemon. A daemon built against a`,
         `different on-disk layout refuses to start, and this version moved it — so the`,
-        `next reboot or restart can leave the service down, which denies every tool`,
-        `call until it is fixed.`,
+        // The wrap is load-bearing: "denies every tool call" is the consequence
+        // this message exists to state, and splitting it across two lines is
+        // what made the test asserting that phrase fail while the text looked
+        // perfectly correct to a human reading it.
+        `next reboot or restart can leave the service down, which`,
+        `denies every tool call until it is fixed.`,
         `Run \`failproofai update\` now to bring the daemon in line.`,
         ``,
       ];

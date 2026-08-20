@@ -33,7 +33,17 @@ def _resolve_user_or_exit(state: AppState, users, handle: str):
     typed error the central chokepoint renders (JSON envelope under ``--json``, red box
     otherwise): none → exit 6, several → exit 2."""
     return _write.resolve_one(
-        users, handle, kind="user", ref="with email", key="email", list_cmd="users list"
+        users,
+        handle,
+        kind="user",
+        ref="with email",
+        key="email",
+        list_cmd="users list",
+        # The server lowercases on create, so the address the caller typed is not the address
+        # stored. Without this, `fp users create Alice.Chen@Example.com` succeeds and every
+        # subsequent show/update/disable/enable on that same string reports "no user with
+        # email" — the member is reachable only via a lowercased form nothing told them about.
+        casefold=True,
     )
 
 

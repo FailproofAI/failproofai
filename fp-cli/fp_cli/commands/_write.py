@@ -43,6 +43,7 @@ def resolve_one(
     ref: str = "named",
     match_id: bool = True,
     plural: Optional[str] = None,
+    casefold: bool = False,
 ):
     """Find the single ``items`` entry whose ``key`` (or, as a fallback, ``id``) equals ``handle``.
 
@@ -53,8 +54,21 @@ def resolve_one(
 
     The single error chokepoint (app.py) renders the raised exception — JSON envelope under
     ``--json`` (stdout), red box otherwise — so callers never branch on ``state.json`` themselves.
+
+    ``casefold`` compares case-insensitively. Opt-in rather than the default because it is only
+    correct where the server itself normalises: emails are lowercased on create, so
+    ``fp users create Alice.Chen@Example.com`` stores ``alice.chen@example.com`` and every
+    later ``fp users show Alice.Chen@Example.com`` answered "no user with email" — the CLI
+    denying a member it had just created, with the exact string the caller had just typed.
+    Key and query names are stored verbatim, so folding them would let ``PROD`` resolve
+    ``prod`` and silently act on the wrong object.
     """
-    matches = [it for it in items if getattr(it, key, None) == handle]
+
+    def norm(value):
+        return value.casefold() if casefold and isinstance(value, str) else value
+
+    target = norm(handle)
+    matches = [it for it in items if norm(getattr(it, key, None)) == target]
     if not matches and match_id:
         matches = [it for it in items if str(getattr(it, "id", "")) == handle]
     if len(matches) == 1:

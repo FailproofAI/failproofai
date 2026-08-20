@@ -473,3 +473,20 @@ def test_settings_set_invalid_value_clean_error(logged_in, runner):
     result = runner.invoke(app, ["settings", "set", "session_ttl_secs", "--value", "5", "--yes"])
     assert result.exit_code == 1
     assert "value must be between 60 and 2592000" in result.stderr
+
+
+@respx.mock
+def test_users_show_finds_a_member_whose_email_the_server_lowercased(logged_in, runner):
+    """`users create` is normalised server-side; the lookup commands were not.
+
+    `fp users create Alice.Chen@Example.com` stores `alice.chen@example.com`, so every later
+    show/update/disable/enable on the exact string the caller had just typed answered
+    `no user with email "Alice.Chen@Example.com"` (exit 6) — the CLI denying a member it had
+    itself just created, reachable only via a lowercased form nothing told them about.
+    """
+    respx.get(f"{BASE}/api/users").mock(
+        return_value=httpx.Response(200, json=[_user(id="u1", email="alice.chen@example.com")])
+    )
+    result = runner.invoke(app, ["--json", "users", "show", "Alice.Chen@Example.com"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["email"] == "alice.chen@example.com"

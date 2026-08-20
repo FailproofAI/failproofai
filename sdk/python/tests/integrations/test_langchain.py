@@ -47,9 +47,9 @@ from langchain_core.language_models.fake_chat_models import (  # noqa: E402
     FakeListChatModel,
     GenericFakeChatModel,
 )
-from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage  # noqa: E402
 from langchain_core.retrievers import BaseRetriever  # noqa: E402
-from langchain_core.runnables import RunnableConfig  # noqa: E402
+from langchain_core.runnables import RunnableConfig, RunnableLambda  # noqa: E402
 from langchain_core.tools import tool  # noqa: E402
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 from langgraph.graph import END, START, StateGraph  # noqa: E402
@@ -1466,3 +1466,302 @@ def test_a_graph_run_is_not_treated_as_a_leaf(tmp_path, instrumented):
     rows = read_events(tmp_path)
     # A graph root emits no model pair of its own — only its nodes do.
     assert types_of(rows).count("agent_start") == 1
+
+
+# ---------------------------------------------------------------------------
+# Two roots that merely OVERLAP are not a resume
+# ---------------------------------------------------------------------------
+#
+# `_start_root` reuses an existing session's agent when that agent is still
+# open, because that is what an interrupt/resume looks like: the paused
+# `.invoke()` deliberately did not close its agent and the resuming one must not
+# open a second root span for the same logical run.
+#
+# "Still open" is ALSO true of two roots that merely overlap in time under one
+# session id, and that is not exotic — langchain-core opens one root run **per
+# input** for `.batch()`, and any two requests carrying the same conversation id
+# through `SESSION_METADATA_KEY` do the same. Read as a resume, the second root
+# got no `agent_start` at all, its work was relabelled with the first root's
+# `agent_id`, the first root to finish closed the shared agent, and everything
+# the other root emitted afterwards resolved to nothing and was DROPPED.
+#
+# The discriminator is `open_pauses`: `_end_root` skips `agent_end` exactly when
+# it is non-empty, which is the only way an agent outlives its root, and
+# `_suspend` is the only thing that fills it.
+
+
+def test_two_overlapping_roots_in_one_session_are_two_agents(tmp_path, instrumented):
+    import threading
+
+    # The barrier is the whole point: both roots are guaranteed to be OPEN at
+    # the same time, which is the state that used to be misread as a resume.
+    # Without it this races and passes against the bug about half the time.
+    barrier = threading.Barrier(2, timeout=10)
+
+    def hold(state):
+        barrier.wait()
+        return {"vals": ["x"]}
+
+    app = build_simple([("n", hold)], name="overlap")
+
+    def run():
+        app.invoke(
+            empty_state(),
+            config={"metadata": {adapter.SESSION_METADATA_KEY: "one-session"}},
+        )
+
+    threads = [threading.Thread(target=run) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    rows = read_events(tmp_path)
+    assert {r["session_id"] for r in rows} == {"one-session"}
+    starts = only(rows, "agent_start")
+    ends = only(rows, "agent_end")
+    assert len(starts) == 2, (
+        f"two overlapping roots produced {len(starts)} agent_start(s): the second "
+        f"root was read as a resume of the first"
+    )
+    assert len(ends) == 2
+    # Distinct runs, not one run reported twice.
+    assert len({r["fw_run_id"] for r in starts}) == 2
+    # Nothing was dropped on the way: each root ran the node once.
+    assert types_of(rows).count("hook_triggered") == 2
+    assert types_of(rows).count("hook_completed") == 2
+    # `sink` (autouse) fails this test on the "could not resolve a session for
+    # run ... and is dropping its events" warning the old behaviour produced,
+    # which is the other half of the regression and the half that was silent.
+
+
+def test_a_genuine_interrupt_resume_is_still_one_agent_not_two(tmp_path, instrumented):
+    """The counterweight: `open_pauses` must not disable the resume path.
+
+    Deleting the resume branch would also "fix" the overlap bug above, at the
+    cost of splitting every human approval into two root spans and zeroing the
+    `agent_pause` -> `agent_resume` interval that is the only measure of how
+    long the human took.
+    """
+    app = build_graph(checkpointer=InMemorySaver())
+    config = {"configurable": {"thread_id": "resume-one"}}
+    app.invoke(empty_state(), config=config)
+    app.invoke(Command(resume="yes"), config=config)
+
+    rows = read_events(tmp_path)
+    roots = [r for r in only(rows, "agent_start") if not r.get("parent_id")]
+    assert len(roots) == 1, "the resuming .invoke() opened a second root span"
+    assert len([r for r in only(rows, "agent_end") if r["agent_id"] == "root_graph"]) == 1
+    assert types_of(only(rows, "agent_pause", "agent_resume")) == [
+        "agent_pause",
+        "agent_resume",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# A failing root-run-that-is-a-leaf owns its failure exactly once
+# ---------------------------------------------------------------------------
+#
+# `_on_end` returns straight after `_end_root` for a root, so the line at the
+# bottom of the function that marks the failure as owned by the span below never
+# ran for a root that was ALSO a leaf. The same exception was then reported
+# twice — once as `tool_result.error` / `model_response.error` and again as a
+# standalone `error` event — and the server derives `is_error` from both, so one
+# failure counted as two on `sessionSummary.errorCount`. The identical failure
+# one Runnable deeper counted as one.
+
+
+def test_a_failing_bare_tool_reports_its_error_once(tmp_path, instrumented):
+    with failproofai_sdk.session():
+        with pytest.raises(RuntimeError, match="tool boom"):
+            exploder.invoke({"x": 1})
+
+    rows = read_events(tmp_path)
+    result = only(rows, "tool_result")[0]
+    assert "tool boom" in result["error"]
+    # The span that owns the failure has reported it; a standalone `error` event
+    # on top is the same failure counted twice.
+    assert not only(rows, "error"), (
+        "a top-level tool failure was reported both on tool_result and as a "
+        "standalone error event"
+    )
+    assert only(rows, "agent_end")[0]["outcome"] == "failed"
+
+
+def test_a_failing_bare_model_call_reports_its_error_once(tmp_path, instrumented):
+    class _BoomModel(GenericFakeChatModel):
+        def _generate(self, *args, **kwargs):
+            raise RuntimeError("model boom")
+
+    with failproofai_sdk.session():
+        with pytest.raises(RuntimeError, match="model boom"):
+            _BoomModel(messages=iter([])).invoke("say hi")
+
+    rows = read_events(tmp_path)
+    response = only(rows, "model_response")[0]
+    assert "model boom" in response["error"]
+    assert response["stop_reason"] == "error"
+    assert not only(rows, "error")
+    assert only(rows, "agent_end")[0]["outcome"] == "failed"
+
+
+def test_a_failure_below_the_root_still_produces_its_one_error_event(
+    tmp_path, instrumented
+):
+    """The other side of the same line: a root nothing below reported must still
+    get exactly one standalone `error`, or the failure reaches no surface."""
+
+    def boom(_payload):
+        raise RuntimeError("chain boom")
+
+    with failproofai_sdk.session():
+        with pytest.raises(RuntimeError, match="chain boom"):
+            RunnableLambda(boom).with_config(run_name="boomer").invoke({"x": 1})
+
+    rows = read_events(tmp_path)
+    assert len(only(rows, "error")) == 1
+    assert only(rows, "agent_end")[0]["outcome"] == "failed"
+
+
+# ---------------------------------------------------------------------------
+# `tool_result.output` is the tool's result, not a repr of the envelope
+# ---------------------------------------------------------------------------
+#
+# A tool handed the LLM's `ToolCall` dict — what `bind_tools` produces and what
+# every modern tool loop passes — returns a `ToolMessage`. `truncate` has no
+# JSON shape for one, so the single most-read field in a tool loop rendered as
+# `ToolMessage(content='3', name='adder', tool_call_id='call_zz', ...)`.
+#
+# `status` is the second half: a `ToolMessage` carries `status="error"` when the
+# tool failed but the framework turned the exception into a message for the
+# model instead of raising. `run.error` is empty on that path, so the failure
+# had no representation at all — `is_error` 0, a green span, and the text of the
+# failure sitting in an output field nobody filters on.
+
+
+def test_a_tool_called_with_a_tool_call_records_its_content_not_a_repr(
+    tmp_path, instrumented
+):
+    with failproofai_sdk.session():
+        adder.invoke(
+            {"name": "adder", "args": {"a": 1, "b": 2}, "id": "call_zz", "type": "tool_call"}
+        )
+
+    result = only(read_events(tmp_path), "tool_result")[0]
+    assert result["output"] == "3", (
+        f"tool_result.output is {result['output']!r} — the ToolMessage envelope "
+        f"leaked instead of the tool's own result"
+    )
+    assert "ToolMessage(" not in str(result["output"])
+    assert result["tool_call_id"] == "call_zz"
+
+
+def test_a_tool_that_fails_without_raising_is_still_an_error(tmp_path, instrumented):
+    @tool
+    def quiet_failer(x: int) -> str:
+        """Fails without raising: returns an error-status ToolMessage."""
+        return ToolMessage(content="upstream 503", tool_call_id="unused", status="error")
+
+    with failproofai_sdk.session():
+        quiet_failer.invoke(
+            {"name": "quiet_failer", "args": {"x": 1}, "id": "call_q", "type": "tool_call"}
+        )
+
+    result = only(read_events(tmp_path), "tool_result")[0]
+    assert result.get("error"), (
+        "a tool that reported failure through ToolMessage(status='error') was "
+        "recorded as a success"
+    )
+    assert "upstream 503" in result["error"]
+
+
+def test_a_successful_tool_message_carries_no_error(tmp_path, instrumented):
+    """The `status` read must not turn every ToolMessage into a failure."""
+    with failproofai_sdk.session():
+        adder.invoke(
+            {"name": "adder", "args": {"a": 1, "b": 2}, "id": "call_ok", "type": "tool_call"}
+        )
+    assert only(read_events(tmp_path), "tool_result")[0].get("error") is None
+
+
+# ---------------------------------------------------------------------------
+# The `error` event does not repeat its own type
+# ---------------------------------------------------------------------------
+#
+# `error` is the one event that carries `error_type` as its OWN field, and the
+# server builds the row's `summary` as "<error_type>: <message>". Feeding it
+# `_error_text` — which prefixes the type because `tool_result.error` and
+# `agent_end.summary` have nowhere else to say it — rendered every entry on the
+# Errors surface as `ValueError: ValueError: denominator must be non-zero`.
+# CrewAI, LlamaIndex and Pydantic AI all pass a bare `str(exc)` here.
+
+
+def test_the_error_events_message_does_not_repeat_its_own_type(tmp_path, instrumented):
+    def boom(_payload):
+        raise RuntimeError("chain boom")
+
+    with failproofai_sdk.session():
+        with pytest.raises(RuntimeError, match="chain boom"):
+            RunnableLambda(boom).with_config(run_name="boomer").invoke({"x": 1})
+
+    rows = read_events(tmp_path)
+    event = only(rows, "error")[0]
+    assert event["error_type"] == "RuntimeError"
+    assert event["message"] == "chain boom", (
+        f"message is {event['message']!r} — the server renders summary as "
+        f"'<error_type>: <message>', so a prefixed message says it twice"
+    )
+    # Scoped to the `error` event: `agent_end.summary` has no `error_type`
+    # field beside it, so it keeps naming the exception type itself.
+    assert only(rows, "agent_end")[0]["summary"] == "RuntimeError: chain boom"
+
+
+# ---------------------------------------------------------------------------
+# `uninstrument()` when the trace env var was exported by somebody else
+# ---------------------------------------------------------------------------
+#
+# A configure hook cannot be deregistered, so removal is "make the hook produce
+# nothing" — and neither of the two levers `uninstall()` had actually does that
+# in every process. Clearing `_HANDLER_VAR` only reaches contexts derived from
+# the caller's, and the env var is unset only when `install()` was the one that
+# set it (it must not clobber somebody else's environment). Exported by a
+# Dockerfile or a CI job, it left `_configure` constructing a live zero-arg
+# tracer per callback manager, and a fully torn-down adapter went on recording
+# every event forever.
+
+
+def test_uninstrument_stops_recording_when_the_env_var_was_already_set(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(adapter.ENV_VAR, "1")
+    failproofai_sdk.instrument("langchain")
+    app = build_simple([("n", lambda s: {"vals": ["x"]})], name="s")
+    app.invoke(empty_state(), config={"configurable": {"thread_id": "on"}})
+    before = len(read_events(tmp_path))
+    assert before
+
+    assert failproofai_sdk.uninstrument("langchain") == ("langchain",)
+    # Deliberately still set: `install()` did not set it, so `uninstall()` does
+    # not get to remove it. That is exactly why it cannot be the kill switch.
+    assert os.environ.get(adapter.ENV_VAR) == "1"
+
+    app.invoke(empty_state(), config={"configurable": {"thread_id": "off"}})
+    assert len(read_events(tmp_path)) == before, (
+        "the adapter kept recording after uninstrument() because the trace env "
+        "var was set before instrument() ran"
+    )
+
+
+def test_reinstrumenting_after_that_teardown_records_again(tmp_path, monkeypatch):
+    """The kill switch must be a switch, not a one-way fuse."""
+    monkeypatch.setenv(adapter.ENV_VAR, "1")
+    failproofai_sdk.instrument("langchain")
+    failproofai_sdk.uninstrument("langchain")
+    failproofai_sdk.instrument("langchain")
+    try:
+        build_simple([("n", lambda s: {"vals": ["x"]})], name="s").invoke(
+            empty_state(), config={"configurable": {"thread_id": "again"}}
+        )
+    finally:
+        failproofai_sdk.uninstrument("langchain")
+    assert types_of(read_events(tmp_path)).count("agent_start") == 1

@@ -280,6 +280,20 @@ class _State:
     def __init__(self) -> None:
         # RLock because a handler body can re-enter through a nested helper.
         self.lock = threading.RLock()
+        # The kill switch `uninstall()` needs and neither of its two other
+        # levers actually provides. A configure hook cannot be deregistered, so
+        # removal is "make the hook produce nothing" — but clearing the
+        # ContextVar only reaches contexts derived from the one calling
+        # `uninstall()`, and unsetting the env var is skipped whenever the
+        # process already had it set (`self._set_env` is False then, so we do
+        # not clobber somebody else's environment). Either hole leaves
+        # `_configure` constructing a live zero-arg tracer per callback manager
+        # — VERIFIED: with FAILPROOFAI_SDK_TRACE_LANGCHAIN=1 exported before
+        # `instrument()`, every event was still recorded after `uninstrument()`.
+        # Checked at the two entry points that gate everything else: no
+        # `_RunInfo` is registered, so `_on_end`, `_count_token`,
+        # `_on_interrupt` and `_on_resume` all fall out on their own lookups.
+        self.enabled = False
         self.options = _Options()
         self.tracker = RunTracker(NAME, base_fields=_base_fields())
         self.runs: dict[str, _RunInfo] = {}
@@ -457,6 +471,8 @@ def _fw_common(run: Any, info: _RunInfo, meta: dict) -> dict:
 
 def _on_start(run: Any) -> None:
     state = _STATE
+    if not state.enabled:
+        return
     rid = str(run.id)
     parent = str(run.parent_run_id) if getattr(run, "parent_run_id", None) else None
     meta = _meta(run)
@@ -537,10 +553,31 @@ def _start_root(run: Any, info: _RunInfo, meta: dict) -> None:
     session_id = _resolve_session_id(run, meta)
 
     existing = state.sessions.get(session_id)
-    if existing is not None and existing.agent_key in state.tracker.open_agents():
+    if (
+        existing is not None
+        and existing.open_pauses
+        and existing.agent_key in state.tracker.open_agents()
+    ):
         # A resume: the previous `.invoke()` interrupted, we deliberately did
         # not close its agent, and this is the continuation. Reuse the identity
         # instead of opening a second root span for the same logical run.
+        #
+        # `open_pauses` is the whole test, and leaving it out was a silent
+        # data-loss bug rather than a cosmetic one. "The session's agent is
+        # still open" is ALSO true of two roots that merely OVERLAP IN TIME
+        # under one session id — `.batch()` (langchain-core opens one root run
+        # per input), a top-level `RunnableParallel` of chains, or two web
+        # requests carrying the same conversation id. Those were read as
+        # resumes: the second root got no `agent_start` at all, its work was
+        # relabelled with the first root's `agent_id`, the first root to finish
+        # closed the shared agent, and every event the other root emitted after
+        # that resolved to nothing and was DROPPED — a real model call, with
+        # its tokens and its latency, gone with one "could not resolve a
+        # session" line at WARNING. A run that is genuinely paused always has an
+        # open pause: `_end_root` returns without `agent_end` exactly when
+        # `session.open_pauses` is non-empty, which is the only way the agent
+        # stays open past its root, and `_suspend` is the only thing that fills
+        # it. So this distinguishes the two cases precisely.
         info.session = existing
         state.tracker.link(info.id, existing.agent_key)
         _resume(existing, run)
@@ -802,6 +839,18 @@ def _on_end(run: Any) -> None:
             # `model_response` emitted after it is attributed to nothing.
             if info.leaf_kind:
                 _ROOT_LEAF_ENDERS[info.leaf_kind](run, info, meta, exc, response)
+                # ...and the leaf pair we just closed OWNS the failure, exactly
+                # as it does for a nested tool or model run (see the matching
+                # line at the bottom of this function). Without this, a failing
+                # `tool.invoke()` or `llm.invoke()` at the top level reported
+                # the same exception twice — once as `tool_result.error` and
+                # again as a standalone `error` event — so one failure counted
+                # as two on `sessionSummary.errorCount`, while the identical
+                # failure one Runnable deeper counted as one.
+                if info.session is not None and not _is_control_flow(exc) and (
+                    exc is not None or getattr(run, "error", None)
+                ):
+                    info.session.reported_error = True
             _end_root(run, info, meta, exc)
             return
 
@@ -863,6 +912,27 @@ def _error_text(run: Any, exc: BaseException | None) -> str | None:
     return None
 
 
+def _error_message(run: Any, exc: BaseException | None) -> str | None:
+    """`_error_text` minus the type prefix, for the `error` event only.
+
+    `error` is the one event that carries `error_type` as its OWN field, and the
+    server builds the row's `summary` as ``"<error_type>: <message>"``. Feeding
+    it `_error_text` — which prefixes the type because `tool_result.error` and
+    `agent_end.summary` have nowhere else to say it — rendered every entry on
+    the Errors surface as ``ValueError: ValueError: denominator must be
+    non-zero``. The CrewAI, LlamaIndex and Pydantic AI adapters all pass a bare
+    `str(exc)` here; this makes the fourth agree with them.
+    """
+    if _is_control_flow(exc):
+        return None
+    if exc is not None:
+        return truncate(str(exc), _FIELD_LIMIT) or type(exc).__name__
+    error = getattr(run, "error", None)
+    if error:
+        return truncate(str(error).splitlines()[0], _FIELD_LIMIT)
+    return None
+
+
 def _end_hook(run: Any, info: _RunInfo, meta: dict, exc: BaseException | None) -> None:
     _emit(
         "hook_completed",
@@ -882,15 +952,42 @@ def _end_hook(run: Any, info: _RunInfo, meta: dict, exc: BaseException | None) -
 def _end_tool(run: Any, info: _RunInfo, meta: dict, exc: BaseException | None) -> None:
     outputs = getattr(run, "outputs", None)
     output = outputs.get("output") if isinstance(outputs, dict) else outputs
+    output, failed = _tool_output(output)
     _emit(
         "tool_result",
         info,
         tool_name=info.name or "tool",
         tool_call_id=info.tool_call_id or info.id,
         output=_shrink(output),
-        error=_error_text(run, exc),
+        error=_error_text(run, exc) or failed,
         **_fw_common(run, info, meta),
     )
+
+
+def _tool_output(output: Any) -> tuple:
+    """The tool's actual result, plus an error string when it failed quietly.
+
+    A tool invoked the way every modern tool loop invokes one — handed the
+    LLM's `ToolCall` dict rather than a bare argument dict, which is what
+    `bind_tools` produces and what the docs show — returns a **`ToolMessage`**,
+    not a string. `truncate` has no JSON shape for one, so it fell back to
+    `repr` and the single most-read field in a tool loop rendered as
+    ``ToolMessage(content='37000000', name='lookup_population', tool_call_id=…)``
+    instead of ``37000000``.
+
+    `status` is the second half. A `ToolMessage` carries `status="error"` when
+    the tool failed but the framework converted the exception into a message
+    for the model instead of raising — `run.error` is empty on that path, so the
+    failure had NO representation at all: `is_error` 0, a green span, and the
+    text of the exception sitting in an output field nobody filters on.
+    """
+    if getattr(output, "type", None) != "tool":
+        return output, None
+    content = getattr(output, "content", None)
+    failed = None
+    if getattr(output, "status", None) == "error":
+        failed = truncate(content if isinstance(content, str) else str(content), _FIELD_LIMIT)
+    return content, failed
 
 
 def _end_retriever(run: Any, info: _RunInfo, meta: dict, exc: BaseException | None) -> None:
@@ -1076,7 +1173,7 @@ def _end_root(run: Any, info: _RunInfo, meta: dict, exc: BaseException | None) -
             session,
             "error",
             error_type=type(exc).__name__ if exc is not None else "RunError",
-            message=_error_text(run, exc) or "run failed",
+            message=_error_message(run, exc) or "run failed",
             traceback=truncate(str(getattr(run, "error", "") or ""), _core.FIELD_LIMIT) or None,
             **_fw_common(run, info, meta),
         )
@@ -1407,6 +1504,12 @@ def _stash(run_id: Any, response: Any) -> None:
 
 @safe
 def _stash_messages(run_id: Any, messages: Any) -> None:
+    # The one stash `_on_end` does not clean up after itself: it pops `rid` and
+    # `messages:` is a different key, drained only by `_start_model`. So it is
+    # the one that has to honour the kill switch too, or a torn-down adapter
+    # grows a dict forever.
+    if not _STATE.enabled:
+        return
     with _STATE.lock:
         _STATE.responses["messages:" + str(run_id)] = _normalize_messages(messages)
 
@@ -1563,6 +1666,7 @@ class _Adapter:
         _STATE.options = _read_options(options)
         _STATE.reset()
         _STATE.tracker = RunTracker(NAME, base_fields=_base_fields())
+        _STATE.enabled = True
 
         global _ACTIVE_HANDLER
         _register_hook()
@@ -1585,8 +1689,13 @@ class _Adapter:
     def uninstall(self) -> None:
         # There is no deregister API for a configure hook — `_configure_hooks`
         # is append-only and private — so removal is "make the hook produce
-        # nothing": clear the ContextVar and unset the env var.
+        # nothing": flip the kill switch, clear the ContextVar, unset the env
+        # var. The switch goes FIRST and is the only one of the three that
+        # cannot be routed around (see `_State.enabled`); it is flipped before
+        # `_close_everything()` because that path emits through the tracker
+        # directly and never re-enters `_on_start`.
         global _ACTIVE_HANDLER
+        _STATE.enabled = False
         _ACTIVE_HANDLER = None
         _HANDLER_VAR.set(None)
         if self._set_env:

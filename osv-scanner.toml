@@ -14,6 +14,14 @@
 # ignoreUntil = 2026-07-01
 # reason = "No upstream fix yet; transitive via <pkg>; not reachable in our usage. Re-review by 2026-07-01."
 #
+# Both identifiers for the same advisory. The scanner matches `id` against the
+# record's PRIMARY id, which for a PyPI advisory is the PYSEC one — ignoring only
+# the GHSA alias loaded cleanly, changed nothing, and left the gate red.
+[[IgnoredVulns]]
+id = "PYSEC-2026-311"
+ignoreUntil = 2026-11-20
+reason = "Alias of GHSA-f4j7-r4q5-qw2c; see the entry below for the full justification. Re-review by 2026-11-20."
+
 [[IgnoredVulns]]
 id = "GHSA-f4j7-r4q5-qw2c"
 ignoreUntil = 2026-11-20

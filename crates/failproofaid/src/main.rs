@@ -734,6 +734,9 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
     // One `Delivery` shared by both tasks, so they share an upload semaphore
     // and an in-flight set. Separate ones would let the watcher and a
     // concurrent sweep POST the same batch twice.
+    // Grabbed before the uploader moves into `Delivery`. The counters live on
+    // the `Uploader` itself so a supervised task restart never rewinds them.
+    let upload_metrics = uploader.metrics();
     let delivery = std::sync::Arc::new(fpai_collect::Delivery::new(uploader));
 
     let watch_delivery = delivery.clone();
@@ -750,6 +753,12 @@ fn collector_tasks() -> Vec<fpai_collect::TaskSpec> {
     // daemon", where a stale file makes a stopped daemon look like a running
     // one whose sources all went quiet.
     let health = std::sync::Arc::new(fpai_collect::Health::new());
+    // Before `install`, so the first snapshot already carries delivery. The
+    // source map alone cannot say whether anything is ARRIVING — a source's job
+    // ends at the spool — and the SDK's batches have no source entry at all, so
+    // a machine shipping only SDK events reported an empty, healthy-looking file
+    // whether ingest was storing every event or discarding all of them.
+    health.attach_delivery(upload_metrics);
     fpai_collect::health::install(health.clone());
     let health_file = fpai_collect::health_path(&home);
     tasks.push(fpai_collect::TaskSpec::new("health", move |sd| {

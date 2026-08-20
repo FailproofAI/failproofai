@@ -624,3 +624,21 @@ def test_incidents_open_human_card(logged_in, runner):
 def test_incidents_open_bad_severity_exits_2(logged_in, runner):
     result = runner.invoke(app, ["issues", "open", "--summary", "x", "--severity", "bogus"])
     assert result.exit_code == 2
+
+
+@respx.mock
+def test_issues_show_malformed_id_is_not_found(logged_in, runner):
+    """The mirror of test_audits_finding_malformed_id_is_not_found, and it did not pass.
+
+    The server's path extractor answers a non-UUID id with a 400 and a PLAIN-TEXT body, which
+    the dashboard converts to the generic {"error": "upstream returned non-JSON response"}.
+    `_fail` tested `status >= 500`, so the remap never fired: this exited 1 carrying that
+    internal phrase, while the audits sibling — the same code with `>= 400` — exited 6 with a
+    usable message. Anything branching on exit 6 to mean not-found took the wrong arm silently.
+    """
+    respx.get(f"{BASE}/api/issues/not-a-uuid").mock(
+        return_value=httpx.Response(400, json={"error": "upstream returned non-JSON response"})
+    )
+    result = runner.invoke(app, ["--json", "issues", "show", "not-a-uuid"])
+    assert result.exit_code == 6
+    assert "no issue not-a-uuid" in json.loads(result.stdout)["error"]

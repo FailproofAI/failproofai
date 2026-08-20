@@ -40,13 +40,25 @@ def _validate_states(value: Optional[str]) -> None:
 def _fail(state: AppState, exc: Exception, *, incident_id: str = "") -> None:
     """Re-raise as a typed error for the central chokepoint to render (JSON envelope under
     ``--json`` on stdout, red box otherwise). A 404 — or a **malformed (non-UUID) id**, which the
-    server answers with a 500 instead of a 404 (BE-1) — becomes the friendlier ``no incident <id>``
-    (exit 6); every other ApiError/ForbiddenError keeps the server's message and exit code."""
-    # Only a 5xx on a malformed id counts: a real 4xx (a 422 "not an operator", a 403) reached the
-    # handler with a usable id and should surface as-is.
+    server's path extractor answers with a 400 rather than a 404 — becomes the friendlier
+    ``no issue <id>`` (exit 6); every other ApiError/ForbiddenError keeps the server's message
+    and exit code."""
+    # EXACTLY 400, not a range. This read `>= 500` on the belief that the server answers a
+    # malformed id with a 500, and it does not: axum's path extractor rejects it at 400 with a
+    # plain-text body, which the dashboard turns into the generic "upstream returned non-JSON
+    # response". So the remap never fired — `fp issues show not-a-uuid` exited 1 carrying that
+    # internal phrase while `fp audits show not-a-uuid` exited 6 with a usable message, and
+    # anything branching on exit 6 to mean not-found silently took the wrong arm.
+    #
+    # `>= 400` is the obvious fix and it is WRONG, which is why this is spelled out. Issue ids
+    # are not required to be UUIDs — `fp issues assign i1 --assignee ...` is a documented call —
+    # so a non-UUID id reaches real handlers and collects real 4xx answers. A 422 "a@x.com is
+    # not an operator" would then be rewritten as "no issue i1", replacing the one sentence that
+    # explains the failure with a claim that is false. Only 400 means "the router refused to
+    # parse this id"; every other 4xx got past the extractor and has something to say.
     status = getattr(exc, "status", None) or 0
-    malformed_5xx = bool(incident_id) and not _UUID_RE.match(incident_id) and status >= 500
-    if incident_id and (malformed_5xx or isinstance(exc, NotFoundError)):
+    malformed = bool(incident_id) and not _UUID_RE.match(incident_id) and status == 400
+    if incident_id and (malformed or isinstance(exc, NotFoundError)):
         raise NotFoundError(
             f"no issue {incident_id}", hint="run `fp issues list` to see open issues"
         )

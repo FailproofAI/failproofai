@@ -4,9 +4,10 @@
     python docs/crewai/examples/quickstart.py
 
 `instrument()` registers a listener on crewai's event bus, so the crew, each
-agent, each task and each tool call are recorded. `agent_id` comes from the
-agent's `role`, which is what makes it a useful dashboard facet rather than a
-uuid nobody can read.
+agent and each tool call are recorded. The task gets no span of its own — it is
+the agent execution that runs it, and rides along on that agent's events as
+`fw_task_id`/`fw_task_name`. `agent_id` comes from the agent's `role`, which is
+what makes it a useful dashboard facet rather than a uuid nobody can read.
 """
 import sys
 from pathlib import Path

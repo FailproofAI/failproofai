@@ -7,9 +7,10 @@ What this demonstrates that the quickstart does not:
 
 * two `agent_id` values in one session, taken from each agent's `role`, so the
   dashboard can break latency and token spend down per role;
-* task boundaries as `hook_triggered`/`hook_completed` pairs — crewai tasks are
-  hooks, not nested agents, deliberately: promoting every task to an agent would
-  flood `agent_id`, which is a LowCardinality column and the primary facet;
+* two tasks that add no spans of their own — a crewai task *is* the agent
+  execution that runs it, so recording both would double every row and render
+  them as siblings. Each task rides along on its agent's events instead, as
+  `fw_task_id`/`fw_task_name`, which you can still filter by;
 * a second task consuming the first one's output, so the handoff is visible in
   the trace rather than implied.
 """

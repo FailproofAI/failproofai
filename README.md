@@ -29,9 +29,13 @@ tool calls before they execute. 40 built-in policies. Zero latency. Runs locally
 
 ## Supported harnesses
 
-Twelve harnesses across three classes — coding CLIs, chat and assistant gateways
-(Hermes, OpenClaw), and your own agents through the Python SDK. Same events, same
-policies, same session history, whichever one your agent runs in.
+Twelve harnesses in two classes — ten coding CLIs, and two chat and assistant
+gateways (Hermes, OpenClaw). Same events, same policies, same session history,
+whichever one your agent runs in.
+
+Agents that run in none of them report through the [Python SDK](https://docs.befailproof.ai/reference/python-sdk),
+which gives you tracing, sessions and audits. Enforcement there needs a hook in
+your own runtime — [talk to us](mailto:support@befailproof.ai) and we'll map it.
 
 <!-- A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens

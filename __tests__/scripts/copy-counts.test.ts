@@ -17,12 +17,18 @@
  * __tests__/hooks/dogfood-configs.test.ts was written to catch for the dogfood
  * configs.
  *
+ * It also guards the two claims most likely to be caught out by a reader: that
+ * the twelve are TWO classes (ten coding CLIs, two gateways) with the Python SDK
+ * as a separate door rather than a third class, and that the SDK is never
+ * described as carrying policies — it reports events, it does not sit in the
+ * tool-call path, so it observes without enforcing.
+ *
  * SCOPE: this repo only. The landing site (befailproof.ai) lives in a different
  * repo and carries the same counts in app/layout.js and app/llms.txt/route.js;
  * it needs its own check. See FailproofAI/agenteye#629.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { INTEGRATION_TYPES, HOOK_EVENT_TYPES } from "@/src/hooks/types";
 import { ENFORCEMENT_CAPABILITY } from "@/src/hooks/enforcement-capability";
@@ -99,5 +105,64 @@ describe("copy counts match source", () => {
     // translation workflow writes docs/i18n/. Linking the frozen copies means
     // non-English readers get a README that is never updated again.
     expect(read("README.md")).not.toContain("docs-old/i18n/");
+  });
+
+  it("every translation link resolves to a file on disk", () => {
+    // The bug this guards was a link pointing at a real file in the WRONG tree,
+    // so "not docs-old" alone would not have caught a typo'd locale either.
+    const links = [...read("README.md").matchAll(/\]\((\.\/docs\/i18n\/[^)]+)\)/g)].map(
+      (m) => m[1],
+    );
+    expect(links.length).toBe(14);
+    for (const href of links) {
+      expect({ href, exists: existsSync(resolve(ROOT, href)) }).toEqual({ href, exists: true });
+    }
+  });
+
+  it("README names every shipped harness, in the class it belongs to", () => {
+    // The twelve are TWO classes: ten coding CLIs and two gateways. The Python
+    // SDK is a separate door, not a third class of the twelve — and it reports
+    // events rather than sitting in the tool-call path, so it observes without
+    // enforcing. Copy that folds it in overstates what it does, which is the
+    // single easiest way for a reader to catch us out.
+    const text = read("README.md");
+    expect(text).toMatch(/Twelve harnesses in two classes/);
+    expect(text).toMatch(/ten coding CLIs/);
+    expect(text).toMatch(/Hermes, OpenClaw/);
+    // The SDK must never be described as carrying policies.
+    const sdkClaim = /Python SDK[^.]*same polic/i;
+    expect(sdkClaim.test(text)).toBe(false);
+  });
+
+  it("the harnesses page agrees with the source list, harness for harness", () => {
+    const page = read("docs/reference/harnesses.mdx");
+    const NAMES: Record<(typeof INTEGRATION_TYPES)[number], string> = {
+      claude: "Claude Code",
+      codex: "Codex",
+      copilot: "GitHub Copilot CLI",
+      cursor: "Cursor",
+      opencode: "OpenCode",
+      pi: "Pi",
+      hermes: "Hermes",
+      openclaw: "OpenClaw",
+      factory: "Factory Droid",
+      devin: "Devin CLI",
+      antigravity: "Antigravity CLI",
+      goose: "Goose",
+    };
+    // Adding an integration without documenting it is the drift this catches.
+    expect(Object.keys(NAMES).sort()).toEqual([...INTEGRATION_TYPES].sort());
+    for (const display of Object.values(NAMES)) expect(page).toContain(display);
+  });
+
+  it("the enforcement split stated in the docs matches the capability matrix", () => {
+    // README and quickstart print these flat, without hedging, which is only
+    // defensible because enforcement-capability.ts carries the probed version on
+    // every row. If a re-probe moves a row, the prose has to move with it.
+    const quickstart = read("docs/start/quickstart.mdx");
+    expect(quickstart).toContain("verified on all 12");
+    expect(TRUTH.preToolUseBlocks).toBe(12);
+    expect(quickstart).toMatch(/verified on 8\b/);
+    expect(TRUTH.stopBlocks).toBe(8);
   });
 });

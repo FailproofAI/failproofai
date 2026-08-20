@@ -8,6 +8,8 @@
 
 - Correct three counts that had rotted silently, and add the test that stops it recurring. README advertised "30 built-in policies" in three places; the real number is 40, and had been for some time. `__tests__/scripts/copy-counts.test.ts` now derives every count in copy — harnesses, policies, canonical events, and the harnesses on which `PreToolUse` and `Stop` blocking is verified — from `types.ts`, `builtin-policies.ts` and `enforcement-capability.ts`, and fails when prose disagrees. It also asserts that the README names no harness absent from `INTEGRATION_TYPES`, which is what makes the twelve-harness claim checkable by the engineer most likely to check it. (#731)
 
+- Stop the harness copy folding the Python SDK into the twelve. The twelve are TWO classes — ten coding CLIs and two chat/assistant gateways — and an SDK-instrumented agent is a separate door, not a third class of the twelve. Worse, the copy said "same events, same policies" of all three: the SDK reports events, it does not sit in the tool-call path, so it delivers observability, sessions and audits **without** enforcement, exactly as `reference/python-sdk` has always said. Blocking an unsafe action on that path needs a hook at the runtime's tool boundary. The drift guard now asserts both the two-class split and that no copy describes the SDK as carrying policies. (#731)
+
 - Point the fourteen translation links at the tree the translation pipeline actually maintains. They resolved to `docs-old/i18n/`, frozen when the Mintlify site replaced it, while `.github/workflows/translate-docs.yml` writes `docs/i18n/` — so every non-English reader got a README that would never be updated again, and the two sets had already diverged. The drift guard asserts the link target. (#731)
 
 ### Fixes

@@ -13,8 +13,8 @@ readable: they are already in LICENSE, SECURITY.md and package.json, so there is
 nothing to withhold, and a contributor who trips over one needs to see which it was.
 
 The match is over SUBSTRINGS of each token, not whole tokens, because the original
-leak was a slug (`testsigma`-shaped) *and* a company name (`TestsigmaInc`-shaped) —
-one name inside a longer one. To add an identifier:
+leak was both a bare tenant slug and a longer company name built from that same slug
+— one name inside the other. To add an identifier:
 
     python3 -c 'import hashlib,sys;print(hashlib.sha256(sys.argv[1].lower().encode()).hexdigest())' NAME
 """
@@ -132,6 +132,28 @@ def test_the_hashed_scan_matches_substrings_and_only_them():
     assert _hashed_hits("host: quuxcorp-prod.example.com", planted) == planted
     assert not _hashed_hits("slug: acme, name: Globex Corp", planted)    # sanctioned fixtures
     assert not _hashed_hits("quux corp", planted)                        # not one token
+
+
+def test_this_file_does_not_name_the_customers_it_denies():
+    """The deny-list must not restate, in the clear, what it holds as a digest.
+
+    ``_scannable()`` skips this file so the ``FORBIDDEN_OWN`` literals above do not
+    trip the scan on themselves. That exemption is about OUR names, which are public
+    in this repo already. It must never extend to a customer's: this file ships in
+    the sdist, so a name written here is published exactly like the fixture that
+    started all this. It needs its own test precisely because the exemption is what
+    blinds the main scan to it.
+    """
+    src = pathlib.Path(__file__)
+    hits = [
+        f"{src.name}:{i}: {FORBIDDEN_DIGESTS[digest]}"
+        for i, line in enumerate(src.read_text(encoding="utf-8", errors="replace").split("\n"), 1)
+        for digest in _hashed_hits(line)
+    ]
+    assert not hits, (
+        "this file names, in the clear, an identifier it exists to keep out of a "
+        "public package:\n  " + "\n  ".join(hits)
+    )
 
 
 def test_no_internal_hostnames_leaked():

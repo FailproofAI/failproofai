@@ -10,8 +10,8 @@ four ways, and every one of them has bitten this package.
    pytest has torn its fixtures down. Whatever redirection a test applied is
    already undone by then, so `get_base_dir()` resolves to the real spool again.
    One run of the queue-cap tests deposited over 160,000 synthetic events into a
-   live `~/.agenteye`, where a configured collector would have shipped them to a
-   real dashboard as though an agent had emitted them.
+   live spool, where a configured collector would have shipped them to a real
+   dashboard as though an agent had emitted them.
 
    A fixture cannot fix that, because the write happens after the last fixture
    is gone. So the redirection is applied at IMPORT, straight into `os.environ`
@@ -42,12 +42,22 @@ import pytest
 
 # ── (1) survives to interpreter exit ─────────────────────────────────────────
 #
-# `setdefault`, so a developer who exports `AGENTEYE_HOME` to point at a scratch
-# spool of their own keeps it. `test_resolver_umbrella.py` deletes this variable
-# per test through monkeypatch, so the resolution rules themselves are still
-# tested against a clean environment.
+# `FAILPROOFAI_HOME`, not `AGENTEYE_HOME`: the latter no longer resolves the
+# spool at all (see `_resolver.get_base_dir`), so setting it here would isolate
+# nothing and the exit-time flush described above would land in the developer's
+# REAL `~/.failproofai/custom-agents`.
+#
+# `setdefault`, so a developer who exports `FAILPROOFAI_HOME` to point at a
+# scratch home of their own keeps it. `test_resolver_umbrella.py` deletes this
+# variable per test through monkeypatch, so the resolution rules themselves are
+# still tested against a clean environment.
+#
+# Deliberately NOT deleted by the per-test fixture below: that fixture pins the
+# spool with `set_base_dir(tmp_path)`, but a test which calls
+# `set_base_dir(None)` mid-run would then fall through to the real home. Keeping
+# this set at all times means the floor under every test is still the sandbox.
 _SANDBOX = tempfile.mkdtemp(prefix="failproofai-sdk-tests-")
-os.environ.setdefault("AGENTEYE_HOME", _SANDBOX)
+os.environ.setdefault("FAILPROOFAI_HOME", _SANDBOX)
 
 # Registered before `failproofai_sdk._writer` is imported, so it lands EARLIER in
 # atexit's LIFO order and therefore runs LAST — after the final flush has written
@@ -79,7 +89,6 @@ class RecordingWriter:
 @pytest.fixture(autouse=True)
 def _sdk_global_state(tmp_path, monkeypatch):
     """(2) and (3): a private spool per test, and process globals restored."""
-    monkeypatch.delenv("AGENTEYE_HOME", raising=False)
     monkeypatch.delenv("AGENTEYE_ENVIRONMENT", raising=False)
 
     base_dir = _resolver._base_dir

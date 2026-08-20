@@ -161,17 +161,26 @@ Work with these; none of them raise, so none of them show up in testing.
 
   | arg | default resolution |
   |---|---|
-  | `base_dir` | `$AGENTEYE_HOME`, else `~/.failproofai/custom-agents` |
+  | `base_dir` | `~/.failproofai/custom-agents` (honours `$FAILPROOFAI_HOME`) |
   | `environment` | `$AGENTEYE_ENVIRONMENT`, else `"dev"` |
   | `flush_interval` | `0.5` (seconds) |
+
+  **No environment variable can move the spool out of the umbrella.**
+  `$FAILPROOFAI_HOME` relocates the umbrella itself, but `custom-agents` is
+  appended unconditionally, so the spool is always inside it. `base_dir` is the
+  only way to write anywhere else, and it is an explicit argument at the call
+  site rather than something inherited from the environment.
 
   The default root moved here from `~/.agenteye`. `failproofaid` watches both,
   so on a host running it nothing changes but the directory name, and batches
   already in `~/.agenteye/events` still get collected. On a host running the
   older `agenteye-collector` — which resolves `$AGENTEYE_HOME` or `~/.agenteye`
-  and nothing else — set `AGENTEYE_HOME=~/.agenteye`, or events pile up where
-  nothing reads with no error on either side. `AGENTEYE_SPOOL_TO_FAILPROOFAI`
-  is retired; it required a directory nothing created, so it never fired.
+  and nothing else — point **the collector** at this SDK with
+  `AGENTEYE_HOME=~/.failproofai/custom-agents`, or pass `base_dir` here.
+  Setting `AGENTEYE_HOME` no longer moves the SDK: it used to, which meant
+  exporting it for the collector silently relocated the SDK too.
+  `AGENTEYE_SPOOL_TO_FAILPROOFAI` is retired; it required a directory nothing
+  created, so it never fired.
 
   Each call *sets all three* — omitted arguments are **reset to default
   resolution**, not left alone. So a later `configure(flush_interval=1.0)`
@@ -289,9 +298,10 @@ Resolve the spool the way the SDK does, rather than guessing at a path:
 python -c "import failproofai_sdk._resolver as r; print(r.get_base_dir() / 'events')"
 ```
 
-With no environment variables set that prints `~/.failproofai/custom-agents/events`.
-It is `$AGENTEYE_HOME/events` when that variable is set — which is what a host still
-running the older `agenteye-collector` sets, to `~/.agenteye`.
+That prints `~/.failproofai/custom-agents/events` unless the application called
+`configure(base_dir=...)`. `$FAILPROOFAI_HOME` moves the `~/.failproofai` part
+and nothing else. `$AGENTEYE_HOME` does **not** affect it — that variable belongs
+to the older `agenteye-collector`, which reads it to decide what to WATCH.
 
 ```bash
 ls -la ~/.failproofai/custom-agents/events/
@@ -338,15 +348,19 @@ Then check, in this order — the first failure explains everything downstream:
 A test-mode loop that costs nothing:
 
 ```bash
-export AGENTEYE_HOME=/tmp/failproofai-sdk-test
+export FAILPROOFAI_HOME=/tmp/failproofai-sdk-test
 rm -rf /tmp/failproofai-sdk-test && python your_agent.py
-cat /tmp/failproofai-sdk-test/events/*.jsonl | python -m json.tool --json-lines
+cat /tmp/failproofai-sdk-test/custom-agents/events/*.jsonl | python -m json.tool --json-lines
 ```
 
-`AGENTEYE_HOME` sends events somewhere disposable, so you can iterate on the
+`FAILPROOFAI_HOME` sends events somewhere disposable, so you can iterate on the
 integration without touching the real directory or shipping test runs to the
-platform. Note the SDK reads it late, per flush — so set it before you start the
-process, not halfway through.
+platform. Note the `custom-agents` segment in the read path — the SDK appends it
+unconditionally. Note too that the SDK reads the variable late, per flush, so set
+it before you start the process, not halfway through.
+
+`AGENTEYE_HOME` used to do this job and no longer does anything to the SDK; using
+it here would write to your REAL spool while you read an empty temp directory.
 
 **Do not verify by installing the CLI into your agent's environment.** It will
 uninstall the SDK you just integrated (§1). Reading back what landed on the
@@ -362,9 +376,12 @@ the SDK is writing to**. That is the whole contract, and both halves fail
 silently:
 
 - Collector not running → files pile up in `events/` forever. The SDK is fine.
-- Collector reading a different base dir than the agent writes to — a different
-  `AGENTEYE_HOME`, a different user's `~`, a container path that isn't mounted —
-  → files pile up in a directory nobody reads. The SDK is fine.
+- Collector reading a different base dir than the agent writes to — the
+  collector's own `AGENTEYE_HOME` pointing somewhere else, a different user's
+  `~`, a container path that isn't mounted → files pile up in a directory nobody
+  reads. The SDK is fine. (`failproofaid` watches both
+  `~/.failproofai/custom-agents/events` and `~/.agenteye/events`, so it is the
+  half of this pair least likely to be misconfigured.)
 
 So when events are on disk but not on the platform, the SDK is not the suspect.
 Compare the two paths first: print the directory your agent is actually writing to

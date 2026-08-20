@@ -260,7 +260,11 @@ import json, pathlib, pytest
 
 @pytest.fixture
 def events(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path))
+    # `configure(base_dir=...)` below is what actually redirects the spool.
+    # Do NOT reach for AGENTEYE_HOME here: the SDK no longer reads it, so it
+    # would leave events going to the real ~/.failproofai/custom-agents while
+    # this fixture read an empty tmp_path.
+    monkeypatch.setenv("FAILPROOFAI_HOME", str(tmp_path))
     import failproofai_sdk
     # flush_interval is huge on purpose: it parks the background thread so it
     # cannot race our explicit flush. Both paths write a file named only to the

@@ -135,7 +135,7 @@ jobs:
           # --no-deps is the assertion, not an optimisation: this package must
           # install and work with nothing else present.
           VIRTUAL_ENV=/tmp/sdk-publish-smoke uv pip install --no-deps dist/*.whl
-          AGENTEYE_HOME=/tmp/sdk-publish-spool /tmp/sdk-publish-smoke/bin/python -c "
+          FAILPROOFAI_HOME=/tmp/sdk-publish-spool /tmp/sdk-publish-smoke/bin/python -c "
           import failproofai_sdk as s
           print(s.__version__)
           s.event.agent_start(session_id='smoke', agent_id='a', goal='publish check')
@@ -144,7 +144,8 @@ jobs:
           "
           python3 - <<'PY'
           import glob, json, sys
-          batches = glob.glob("/tmp/sdk-publish-spool/events/*.jsonl")
+          # $FAILPROOFAI_HOME/custom-agents/events — see the resolver.
+          batches = glob.glob("/tmp/sdk-publish-spool/custom-agents/events/*.jsonl")
           if not batches:
               sys.exit("the installed wheel wrote no event batch")
           events = [json.loads(l) for p in batches for l in open(p) if l.strip()]

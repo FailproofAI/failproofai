@@ -218,7 +218,14 @@ export const cloudPoliciesDir = (home?: string) => resolve(policiesDir(home), "c
 export const cursorsDir = (source?: string, home?: string) =>
   source ? resolve(atHome(home, "cursors"), source) : atHome(home, "cursors");
 
-/** The SDK spool root. Mirrors `~/.agenteye/`, which stays supported. */
+/** The SDK spool root, and the ONLY root `failproofai-sdk` writes to.
+ *
+ *  The daemon additionally watches `~/.agenteye/events` (see `spool_dirs` in
+ *  `crates/fpai-collect/src/config.rs`) so that SDKs old enough to write there,
+ *  and batches already sitting there, keep being collected. But no current SDK
+ *  puts anything in it: `$AGENTEYE_HOME` used to redirect the spool and no
+ *  longer does, precisely so that exporting it for the older
+ *  `agenteye-collector` cannot relocate the SDK as a side effect. */
 export const customAgentsDir = (home?: string) => atHome(home, "custom-agents");
 export const customAgentsEventsDir = (home?: string) => resolve(customAgentsDir(home), "events");
 export const customAgentsFailedDir = (home?: string) => resolve(customAgentsDir(home), "failed");

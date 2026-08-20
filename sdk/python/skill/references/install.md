@@ -63,19 +63,23 @@ pip install failproofai-sdk
 +failproofai_sdk.event.agent_start(session_id="run-001", agent_id="planner")
 ```
 
-Every method name, argument, and emitted field is unchanged, and so is every
-environment variable: `AGENTEYE_HOME` and `AGENTEYE_ENVIRONMENT` keep their
-names. Those are a contract with a daemon that releases separately, so renaming
-them from the SDK's side would send events to a directory nothing watches — no
-error on either side.
+Every method name, argument, and emitted field is unchanged, and so is
+`AGENTEYE_ENVIRONMENT` — a contract with a daemon that releases separately.
 
-**One thing on disk did move.** The default spool root is now
-`~/.failproofai/custom-agents`, not `~/.agenteye`. `failproofaid` watches both,
-so if that is your daemon there is nothing to do and already-spooled batches
-still get collected. If you run the older `agenteye-collector`, set
-`AGENTEYE_HOME=~/.agenteye` — it reads that variable and nothing else about the
-umbrella. (`AGENTEYE_SPOOL_TO_FAILPROOFAI` is retired: it also required the
-directory to pre-exist, which nothing created, so it never took effect.)
+**Two things changed on disk.** The default spool root is now
+`~/.failproofai/custom-agents`, not `~/.agenteye`; and **`AGENTEYE_HOME` no
+longer moves the SDK's spool at all.** It used to sit above the default, so
+exporting it for `agenteye-collector` — the component that genuinely reads it —
+relocated this SDK as an unasked-for side effect. Resolution is now exactly
+`configure(base_dir=...)`, else `~/.failproofai/custom-agents` (with
+`$FAILPROOFAI_HOME` moving the umbrella, never the spool out of it).
+
+`failproofaid` watches both roots, so if that is your daemon there is nothing to
+do and already-spooled batches still get collected. If you run the older
+`agenteye-collector`, point **it** at the SDK with
+`AGENTEYE_HOME=~/.failproofai/custom-agents`, or pass `base_dir` explicitly.
+(`AGENTEYE_SPOOL_TO_FAILPROOFAI` is retired: it also required the directory to
+pre-exist, which nothing created, so it never took effect.)
 
 ## Confirm what you have
 

@@ -116,7 +116,7 @@ def test_the_skill_only_names_public_api_that_exists():
     assert not missing, f"the skill names public API that does not exist: {missing}"
 
 
-def test_the_skill_verifies_against_the_current_spool_root():
+def test_the_skill_verifies_against_the_current_spool_root(monkeypatch):
     """The verify step must send a reader to the directory the SDK actually writes.
 
     `~/.agenteye` is still allowed in the migration notes — that is what the
@@ -125,6 +125,10 @@ def test_the_skill_verifies_against_the_current_spool_root():
     integration with no env vars writes to `~/.failproofai/custom-agents/events`,
     so the documented `ls` found nothing and read as total failure.
     """
+    # The suite sets FAILPROOFAI_HOME to a sandbox (conftest), and this
+    # assertion is about the SHAPE of the default rather than where this run
+    # happens to spool — so it resolves with that pointer removed.
+    monkeypatch.delenv("FAILPROOFAI_HOME", raising=False)
     default = str(_resolver.failproofai_custom_agents_dir())
     assert default.endswith("/.failproofai/custom-agents"), default
 

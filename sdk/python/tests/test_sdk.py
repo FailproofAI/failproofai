@@ -723,21 +723,33 @@ def test_timestamp_format(ns, mock_writer):
 
 
 # ---------------------------------------------------------------------------
-# Base dir resolution — set_base_dir() > $AGENTEYE_HOME > ~/.agenteye
+# Base dir resolution — set_base_dir() > ~/.failproofai/custom-agents
 # ---------------------------------------------------------------------------
 
-def test_base_dir_from_env_var(monkeypatch, tmp_path):
+def test_base_dir_from_env_var_is_ignored(monkeypatch, tmp_path):
+    """`AGENTEYE_HOME` no longer resolves the spool; see `_resolver`."""
+    import failproofai_sdk._resolver as resolver
+    from pathlib import Path
+    monkeypatch.setattr(resolver, "_base_dir", None)
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.delenv("FAILPROOFAI_HOME", raising=False)
+    monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path / "ignored"))
+    assert resolver.get_base_dir() == tmp_path / ".failproofai" / "custom-agents"
+
+
+def test_base_dir_from_failproofai_home(monkeypatch, tmp_path):
+    """The one variable that moves it — and it stays inside the umbrella."""
     import failproofai_sdk._resolver as resolver
     monkeypatch.setattr(resolver, "_base_dir", None)
-    monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path))
-    assert resolver.get_base_dir() == tmp_path
+    monkeypatch.setenv("FAILPROOFAI_HOME", str(tmp_path))
+    assert resolver.get_base_dir() == tmp_path / "custom-agents"
 
 
 def test_set_base_dir_overrides_env_var(monkeypatch, tmp_path):
     import failproofai_sdk._resolver as resolver
     other = tmp_path / "explicit"
     monkeypatch.setattr(resolver, "_base_dir", None)
-    monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path / "from-env"))
+    monkeypatch.setenv("FAILPROOFAI_HOME", str(tmp_path / "from-env"))
     resolver.set_base_dir(other)
     try:
         assert resolver.get_base_dir() == other
@@ -753,17 +765,35 @@ def test_default_when_neither_set(monkeypatch):
     assert resolver.get_base_dir() == Path.home() / ".failproofai" / "custom-agents"
 
 
-def test_writer_uses_env_var_base_dir(monkeypatch, tmp_path):
-    """End-to-end: SDK writer respects AGENTEYE_HOME for events/ path."""
+def test_writer_uses_failproofai_home_base_dir(monkeypatch, tmp_path):
+    """End-to-end: the writer spools under $FAILPROOFAI_HOME/custom-agents."""
     import failproofai_sdk._resolver as resolver
     monkeypatch.setattr(resolver, "_base_dir", None)
-    monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path))
+    monkeypatch.setenv("FAILPROOFAI_HOME", str(tmp_path))
     writer = EventWriter(flush_interval=60)
     writer.submit({"timestamp": "t", "session_id": "s1", "agent_id": "a1", "type": "agent_start"})
     writer.flush_now()
 
-    jsonl_files = list((tmp_path / "events").glob("*.jsonl"))
+    jsonl_files = list((tmp_path / "custom-agents" / "events").glob("*.jsonl"))
     assert len(jsonl_files) == 1
+
+
+def test_writer_ignores_agenteye_home(monkeypatch, tmp_path):
+    """End-to-end counterpart: the retired variable moves nothing on disk.
+
+    Asserting the batch's real location, not just what `get_base_dir()` returns
+    — the resolver could be right while the writer still resolved separately.
+    """
+    import failproofai_sdk._resolver as resolver
+    monkeypatch.setattr(resolver, "_base_dir", None)
+    monkeypatch.setenv("FAILPROOFAI_HOME", str(tmp_path / "umbrella"))
+    monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path / "legacy"))
+    writer = EventWriter(flush_interval=60)
+    writer.submit({"timestamp": "t", "session_id": "s1", "agent_id": "a1", "type": "agent_start"})
+    writer.flush_now()
+
+    assert not (tmp_path / "legacy").exists(), "the retired variable still steered the writer"
+    assert len(list((tmp_path / "umbrella" / "custom-agents" / "events").glob("*.jsonl"))) == 1
 
 
 # ---------------------------------------------------------------------------

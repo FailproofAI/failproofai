@@ -12,7 +12,8 @@ Two daemons read this SDK's spool, and only one of them is in this repository:
   * ``failproofaid`` — here, in ``crates/fpai-collect``. Watches BOTH roots.
     Checkable, and checked below without skipping.
   * ``agenteye-collector`` — in the private AgentEye repository. Watches only
-    ``$AGENTEYE_HOME`` / ``~/.agenteye``. Checkable only when a checkout is on
+    ``$AGENTEYE_HOME`` / ``~/.agenteye`` (which this SDK no longer resolves,
+    but the daemon still WATCHES). Checkable only when a checkout is on
     disk, so it is opt-in via ``FP_AGENTEYE_ROOT``.
 
 The predecessor of this file gated EVERY test in it on a source file from that
@@ -88,28 +89,32 @@ def test_sdk_default_is_the_umbrella(tmp_path, monkeypatch):
     assert _resolver.get_base_dir() == tmp_path / ".failproofai" / "custom-agents"
 
 
-def test_the_legacy_root_stays_reachable_through_agenteye_home(tmp_path, monkeypatch):
-    """The escape hatch for a host still running `agenteye-collector`.
+def test_the_legacy_root_is_not_reachable_through_agenteye_home(tmp_path, monkeypatch):
+    """The SDK side of the contract: this package writes to the umbrella, period.
 
-    That collector resolves `$AGENTEYE_HOME` or `~/.agenteye` and nothing else,
-    so on such a host the new default writes where it does not look — silently,
-    since an unread spool is indistinguishable from an idle one. This is the
-    supported way back, and it works because BOTH daemons honour the variable.
+    `$AGENTEYE_HOME` used to sit above the default here, so exporting it for
+    `agenteye-collector` — the component below that genuinely reads it — moved
+    this SDK's spool too, as an unasked-for side effect. It no longer resolves
+    anything in this package. The daemon assertions further down still require
+    `failproofaid` to WATCH `~/.agenteye/events`, which is what keeps already
+    written batches and unupgraded SDKs collected.
     """
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.delenv("FAILPROOFAI_HOME", raising=False)
     monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path / ".agenteye"))
     _resolver.set_base_dir(None)
 
-    assert _resolver.get_base_dir() == tmp_path / ".agenteye"
+    assert _resolver.get_base_dir() == tmp_path / ".failproofai" / "custom-agents"
 
 
-def test_agenteye_home_overrides_everything_below_it(tmp_path, monkeypatch):
-    """$AGENTEYE_HOME is the one override every component honours."""
+def test_agenteye_home_overrides_nothing_in_this_package(tmp_path, monkeypatch):
+    """It is still the collector's variable; it is no longer ours."""
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.delenv("FAILPROOFAI_HOME", raising=False)
     monkeypatch.setenv("AGENTEYE_HOME", str(tmp_path / "shared"))
     _resolver.set_base_dir(None)
 
-    assert _resolver.get_base_dir() == tmp_path / "shared"
+    assert _resolver.get_base_dir() == tmp_path / ".failproofai" / "custom-agents"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -100,8 +100,8 @@ a silent emit: ingest skips an event with no session and answers `200`.
 ```python
 import failproofai_sdk
 
-# Call once at startup. Omit to use defaults ($AGENTEYE_HOME, else
-# ~/.failproofai/custom-agents; 500ms flush interval).
+# Call once at startup. Omit to use defaults (~/.failproofai/custom-agents;
+# 500ms flush interval).
 failproofai_sdk.configure(base_dir=None, flush_interval=0.5)
 
 # Emit events via failproofai_sdk.event.<method>(...)
@@ -130,7 +130,7 @@ failproofai_sdk.event.agent_end(session_id="run-001", agent_id="planner", outcom
 
 ```python
 failproofai_sdk.configure(
-    base_dir=None,        # Path | str | None. Default: $AGENTEYE_HOME, else
+    base_dir=None,        # Path | str | None. Default:
                           #   ~/.failproofai/custom-agents (honours $FAILPROOFAI_HOME)
     flush_interval=0.5,   # float, seconds between flush cycles
     environment=None,     # str | None. Else $AGENTEYE_ENVIRONMENT, else "dev"
@@ -138,8 +138,12 @@ failproofai_sdk.configure(
 ```
 
 Call once before any `event.*` call. Safe to omit — defaults work out of the box.
-When `base_dir` is `None`, the SDK reads `$AGENTEYE_HOME` if set, otherwise
-spools to `~/.failproofai/custom-agents` (honouring `$FAILPROOFAI_HOME`).
+When `base_dir` is `None`, the SDK spools to `~/.failproofai/custom-agents`
+(honouring `$FAILPROOFAI_HOME`, which moves the umbrella; the `custom-agents`
+segment is always appended, so the spool is always inside it).
+
+**`base_dir` is the only way to spool anywhere else.** No environment variable
+redirects it.
 
 **The default spool root moved.** It was `~/.agenteye`. The daemon this SDK ships
 beside, `failproofaid`, watches **both** roots and always has, so on a host
@@ -148,11 +152,21 @@ Batches already sitting in `~/.agenteye/events` are not orphaned — they stay p
 and are still collected; that directory simply stops growing.
 
 > [!IMPORTANT]
-> **If you run the older `agenteye-collector`, set `AGENTEYE_HOME=~/.agenteye`.**
-> That collector resolves `$AGENTEYE_HOME` or `~/.agenteye` and nothing else, so
-> the new default writes where it does not look — no upload, no error, and an
-> unread spool looks exactly like an idle one. `AGENTEYE_HOME` is the documented
-> way back precisely because *both* daemons honour it.
+> **If you run the older `agenteye-collector`, point IT at this SDK — not the
+> other way round.** That collector resolves `$AGENTEYE_HOME` or `~/.agenteye`
+> and nothing else, so it does not watch where this SDK writes: no upload, no
+> error, and an unread spool looks exactly like an idle one.
+>
+> `AGENTEYE_HOME` used to be the way back, and is not any more — this SDK no
+> longer reads it, so exporting it moves the collector and leaves the SDK where
+> it was. Pick one of:
+>
+> * run `failproofaid` instead — it watches **both** roots, so nothing needs
+>   configuring; or
+> * set **the collector's** `AGENTEYE_HOME=~/.failproofai/custom-agents`, so it
+>   watches `~/.failproofai/custom-agents/events` — where this SDK writes; or
+> * `configure(base_dir="~/.agenteye")` in the application, which is explicit
+>   and visible at the call site.
 
 `AGENTEYE_SPOOL_TO_FAILPROOFAI` is **retired**. It selected this root, but also
 required the directory to already exist — and nothing ever created it, so the

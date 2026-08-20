@@ -235,16 +235,23 @@ def test_an_unwritable_home_raises_and_keeps_the_events_queued(home):
         fp.chmod(0o700)
 
 
-def test_agenteye_home_still_bypasses_the_umbrella_entirely(home, monkeypatch):
-    """The legacy escape hatch must create the legacy tree and nothing else."""
+def test_agenteye_home_no_longer_bypasses_the_umbrella(home, monkeypatch):
+    """Emitting with it exported must build the umbrella and NOT the legacy tree.
+
+    The observable half of the resolver change: not just "resolution returns a
+    different path", but "the batch is on disk under ~/.failproofai and nothing
+    was created under ~/.agenteye".
+    """
     legacy = home / ".agenteye"
     monkeypatch.setenv("AGENTEYE_HOME", str(legacy))
     _resolver.set_base_dir(None)
 
     emit_one()
 
-    assert not (home / ".failproofai").exists(), "the umbrella was created anyway"
-    assert tree(legacy) == sorted(["events", *[f"events/{p.name}" for p in (legacy / "events").iterdir()]])
+    assert not legacy.exists(), "the legacy root was created despite the change"
+    umbrella = home / ".failproofai" / "custom-agents"
+    assert umbrella.exists(), "the umbrella was not created"
+    assert list((umbrella / "events").glob("*.jsonl")), "no batch landed in the umbrella"
 
 
 def test_the_batch_written_is_readable_and_carries_the_event(home):

@@ -50,17 +50,24 @@ def configure(
     """Configure the SDK. Call once at startup before any event.* calls.
 
     Args:
-        base_dir: Override the spool root. Pass None to resolve it:
-                  $AGENTEYE_HOME if set, else ~/.failproofai/custom-agents
-                  (honouring $FAILPROOFAI_HOME).
+        base_dir: Override the spool root. Pass None to resolve it to
+                  ~/.failproofai/custom-agents (honouring $FAILPROOFAI_HOME,
+                  which moves the umbrella but cannot take the spool outside
+                  it — the `custom-agents` segment is always appended).
+
+                  This is the ONLY way to spool anywhere else. No environment
+                  variable redirects it; $AGENTEYE_HOME used to and no longer
+                  does, because exporting it for the one component that still
+                  reads it (the older `agenteye-collector`) moved this SDK's
+                  spool as an unasked-for side effect.
 
                   The default moved here from ~/.agenteye. `failproofaid`
                   watches both roots, so on a host running it this only
                   changes which directory the files appear in, and batches
                   already spooled under the old root are still collected.
-                  A host running the older `agenteye-collector` — which reads
-                  $AGENTEYE_HOME or ~/.agenteye and nothing else — sets
-                  AGENTEYE_HOME=~/.agenteye.
+                  On a host running only `agenteye-collector`, give that
+                  collector AGENTEYE_HOME=~/.failproofai/custom-agents so it
+                  watches where this SDK writes — or pass base_dir here.
         flush_interval: Seconds between flush cycles. Default 0.5 (500ms).
         environment: Deployment environment label (e.g. "production", "staging").
                      Can also be set via the AGENTEYE_ENVIRONMENT env var.

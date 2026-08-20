@@ -234,10 +234,6 @@ def test_a_reserved_name_is_rejected_by_every_event_method():
 #: contract deliberately was not, exactly as the `fp` CLI kept `X-AgentEye-Org`
 #: and the `ae_session` cookie through its own rename.
 FROZEN_STRINGS = {
-    "AGENTEYE_HOME": (
-        "the operator override both daemons honour, and the documented escape "
-        "hatch for a host still running agenteye-collector"
-    ),
     "AGENTEYE_ENVIRONMENT": "the environment label, read at import time",
     "FAILPROOFAI_HOME": "moves the umbrella root, mirrored in fp-home.ts",
     "custom-agents": "the DEFAULT spool root, mirrored in fp-home.ts and config.rs",
@@ -255,7 +251,18 @@ FROZEN_STRINGS = {
 #: in prose and in `legacy_agenteye_dir()`, but freezing it would make this test
 #: pass on a comment — which is exactly how it passed while the variable above
 #: was being deleted.
-RETIRED_STRINGS = ("AGENTEYE_SPOOL_TO_FAILPROOFAI",)
+#: ``AGENTEYE_HOME`` was frozen here as "the operator override both daemons
+#: honour". It no longer resolves the spool in THIS package: it could aim the
+#: SDK at any directory from the environment, including as an unintended side
+#: effect of exporting it for `agenteye-collector`, which is the one component
+#: that still reads it. `failproofaid` keeps watching `~/.agenteye/events`, so
+#: nothing already written there is stranded — but this SDK writes to the
+#: umbrella and nothing can redirect it off.
+#:
+#: It is RETIRED rather than dropped from the file, because the name still
+#: appears in `_resolver`'s prose explaining why it went away, and a frozen
+#: substring check would happily pass on that comment.
+RETIRED_STRINGS = ("AGENTEYE_SPOOL_TO_FAILPROOFAI", "AGENTEYE_HOME")
 
 PACKAGE_DIR = Path(_resolver.__file__).resolve().parent
 

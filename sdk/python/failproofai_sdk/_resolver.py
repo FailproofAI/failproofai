@@ -10,55 +10,61 @@ def get_base_dir() -> Path:
     Resolution order, most explicit first:
 
       1. ``set_base_dir()``               — a caller said so outright
-      2. ``$AGENTEYE_HOME``               — an operator said so
-      3. ``~/.failproofai/custom-agents`` — the default
+      2. ``~/.failproofai/custom-agents`` — always
 
-    THE DEFAULT MOVED, AND THE OLD ROOT IS STILL READ.
+    There is no environment variable that redirects the spool off the umbrella,
+    and that is the point. ``FAILPROOFAI_HOME`` (honoured by
+    ``failproofai_custom_agents_dir()`` below) MOVES the umbrella; it cannot
+    take you outside it, because the ``custom-agents`` segment is appended
+    unconditionally. Wherever the home is, the spool is inside it.
 
-    It used to be ``~/.agenteye``, with the umbrella reachable only behind an
-    ``AGENTEYE_SPOOL_TO_FAILPROOFAI`` opt-in that also required the directory to
-    already exist. Nothing created that directory — not this SDK, not
-    ``failproofaid``, not either installer — so the second condition was never
-    true and the opt-in never fired. The umbrella was documented, tested, and
-    unreachable.
+    ## Why ``$AGENTEYE_HOME`` no longer resolves here
 
-    The daemon this SDK ships beside, ``failproofaid``, watches BOTH roots and
-    always has (``crates/fpai-collect/src/config.rs`` builds ``spool_dirs`` from
-    ``custom_agents_events_dir()`` AND ``agenteye_events_dir()``, and both stay
-    watched indefinitely). So on a host running it, this change moves where the
-    files land and nothing else: they are collected either way.
+    It used to sit at step 2 and win over the default, which made it possible to
+    aim this SDK at ``~/.agenteye`` — or anywhere else — from the environment.
+    That is a redirect with no confirmation and no error: batches land in a
+    directory, something may or may not read it, and an unread spool is
+    indistinguishable from an idle one. A variable named for a product this
+    package no longer belongs to is a poor thing to have that power, and an
+    operator who exports it for the OTHER component that reads it (the older
+    ``agenteye-collector``, which resolves ``$AGENTEYE_HOME`` or ``~/.agenteye``
+    and nothing else) moved this SDK's spool as a side effect they never asked
+    for.
 
-    **Batches already sitting in ``~/.agenteye/events`` are not orphaned.** They
-    stay where they are and are still drained by whichever collector owns that
-    root. The directory simply stops growing. Nothing needs to be moved by hand.
+    So it is gone from resolution. The variable itself still exists and still
+    means something — just not here.
 
-    ## The one case that breaks, and its escape hatch
+    ## Nothing is stranded by this
 
-    ``agenteye-collector`` — the older daemon in the private AgentEye repository
-    — resolves its base from ``$AGENTEYE_HOME`` or ``~/.agenteye`` and NOTHING
-    else (``collector/src/config.rs``, ``base_dir()``). It has no idea the
-    umbrella exists. On a host running that collector and this SDK, the default
-    below writes where it does not look, and the failure is silent: no error on
-    either side, batches accumulate forever, and an unread spool is
-    indistinguishable from an idle one.
+    ``failproofaid``, the daemon this SDK ships beside, watches BOTH
+    ``~/.failproofai/custom-agents/events`` AND ``~/.agenteye/events``, and
+    keeps doing so (``crates/fpai-collect/src/config.rs``, ``spool_dirs``). An
+    SDK old enough to write only the legacy root is still collected. Batches
+    already sitting there still drain. What changed is only that THIS version
+    has no way to be pointed at that root by accident — it writes to the
+    umbrella, and the daemon reads both.
 
-    That host sets::
+    ## The one case that needs a deliberate choice
 
-        AGENTEYE_HOME=~/.agenteye
+    A host running the older ``agenteye-collector`` and nothing else. That
+    collector never learned the umbrella, so it does not watch where this SDK
+    now writes. Setting ``AGENTEYE_HOME`` no longer bridges that gap from this
+    side; the supported bridges are, in order of preference:
 
-    which is step 2 above and predates this change. It is the documented escape
-    hatch precisely because both daemons already honour it, so it cannot itself
-    desynchronise them.
+      * run ``failproofaid`` instead — it watches both roots, so nothing is
+        configured at all; or
+      * point the collector AT the SDK by setting its own
+        ``AGENTEYE_HOME=~/.failproofai/custom-agents``, which makes it watch
+        ``~/.failproofai/custom-agents/events``; or
+      * ``set_base_dir("~/.agenteye")`` in the application, which is explicit,
+        visible at the call site, and cannot happen by inheriting somebody
+        else's environment.
 
     ``test_spool_contract.py`` reads the Rust and the TypeScript that define
     these roots and fails if either drifts from what this module resolves.
     """
     if _base_dir is not None:
         return _base_dir
-
-    env_override = os.environ.get("AGENTEYE_HOME")
-    if env_override:
-        return Path(env_override)
 
     return failproofai_custom_agents_dir()
 
@@ -89,9 +95,11 @@ def failproofai_custom_agents_dir() -> Path:
 def legacy_agenteye_dir() -> Path:
     """``~/.agenteye`` — the root this SDK wrote to before the default moved.
 
-    Not part of resolution any more. Kept as a named constant because the
-    migration notes, the tests and the ``AGENTEYE_HOME`` escape hatch all refer
-    to it, and spelling it in four places is how the two sides drift apart.
+    Not part of resolution any more, and no environment variable can put it
+    back — see ``get_base_dir``. Kept as a named constant because the migration
+    notes and the tests still refer to it, and because ``failproofaid`` goes on
+    watching ``~/.agenteye/events`` for SDKs old enough to write there. Spelling
+    it in four places is how the two sides drift apart.
     """
     return Path.home() / ".agenteye"
 

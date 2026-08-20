@@ -405,7 +405,7 @@ jobs:
         run: |
           uv venv /tmp/sdk-smoke
           VIRTUAL_ENV=/tmp/sdk-smoke uv pip install --no-deps dist/*.whl
-          AGENTEYE_HOME=/tmp/sdk-spool /tmp/sdk-smoke/bin/python -c "
+          FAILPROOFAI_HOME=/tmp/sdk-spool /tmp/sdk-smoke/bin/python -c "
           import failproofai_sdk as s
           print(s.__version__)
           s.event.agent_start(session_id='smoke', agent_id='a', goal='ci')
@@ -414,7 +414,10 @@ jobs:
           "
           python3 - <<'PY'
           import glob, json, sys
-          batches = glob.glob("/tmp/sdk-spool/events/*.jsonl")
+          # $FAILPROOFAI_HOME/custom-agents/events — the `custom-agents` segment
+          # is appended unconditionally by the resolver, which is what makes the
+          # spool impossible to place outside the umbrella.
+          batches = glob.glob("/tmp/sdk-spool/custom-agents/events/*.jsonl")
           if not batches:
               sys.exit("the installed wheel wrote no event batch")
           events = [json.loads(line) for p in batches for line in open(p) if line.strip()]

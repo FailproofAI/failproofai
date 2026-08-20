@@ -604,6 +604,21 @@ def test_guard_extras_raises_under_strict(monkeypatch):
         (None, "main"),
         ("Researcher", "Researcher"),
         ("node_" * 40, ("node_" * 40)[:64]),
+        # A readable name carrying a per-run id. `_looks_like_id` fires only on
+        # a value that is an id all the way through, so these went in untouched
+        # — one distinct value per run, into the LowCardinality column that is
+        # the primary dashboard facet. That is the same poisoning the
+        # whole-string guard exists to prevent, reached by the shape frameworks
+        # actually produce and the docs already warn about.
+        ("agent-550e8400e29b41d4a716446655440000", "agent"),
+        ("task-550e8400-e29b-41d4-a716-446655440000", "task"),
+        ("crew_550e8400-e29b-41d4-a716-446655440000_worker", "crew worker"),
+        # ...and the counterweight: stripping must not eat a readable name that
+        # merely contains short hex-ish or numeric segments.
+        ("agent-v2", "agent-v2"),
+        ("step-3", "step-3"),
+        ("node_a1b2", "node_a1b2"),
+        ("deadbeef", "deadbeef"),
     ],
 )
 def test_normalize_agent_id(raw, expected):

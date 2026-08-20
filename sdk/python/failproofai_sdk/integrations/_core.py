@@ -22,6 +22,7 @@ Three things in here are load-bearing and easy to "fix" into a bug:
 import dataclasses
 import functools
 import logging
+import re
 import threading
 import uuid
 from collections.abc import Mapping, Sequence
@@ -539,6 +540,9 @@ def framework_fields(name: str, dist: str | None = None) -> dict:
     return out
 
 
+_ID_SEPARATORS = re.compile(r"[\s\-_.:/]+")
+_EMBEDDED_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+                            r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _HEX = frozenset("0123456789abcdefABCDEF")
 _AGENT_ID_LIMIT = 64
 
@@ -559,6 +563,9 @@ def normalize_agent_id(raw: Any, default: str = DEFAULT_AGENT_ID) -> str:
         return default
     if _looks_like_id(text):
         return default
+    text = _strip_embedded_id(text)
+    if not text:
+        return default
     return text[:_AGENT_ID_LIMIT]
 
 
@@ -571,6 +578,42 @@ def _looks_like_id(text: str) -> bool:
         pass
     bare = text.replace("-", "").replace("_", "")
     return len(bare) >= 16 and all(c in _HEX for c in bare)
+
+
+def _strip_embedded_id(text: str) -> str:
+    """Drop a per-run id that a readable prefix is carrying.
+
+    `_looks_like_id` only fires on a value that is an id ALL THE WAY THROUGH, so
+    it caught a bare UUID and missed `agent-<uuid>`, `crew_<uuid>`,
+    `task-3f9a1c…` — a readable name with a per-run suffix, which is the shape
+    frameworks actually produce and precisely the one the docs warn against
+    ("a role containing a UUID, timestamp, or per-run suffix"). Those went
+    through untouched, one distinct value per run, into a
+    `LowCardinality(String)` column that is the primary facet on every dashboard
+    surface. That is the same poisoning the whole-string guard exists to stop,
+    reached by the more common route.
+
+    Stripping rather than falling back to `default`: `agent-<uuid>` still knows
+    it is an agent, and collapsing every such label to `main` would throw away
+    the one readable thing in it. A segment is dropped only if it is a UUID or a
+    hex run of 16+ characters, so a name like `agent-v2` or `step-3` is
+    untouched — and a value with nothing left after stripping falls back, which
+    is what the caller wanted for a bare id anyway.
+    """
+    # Dashed UUIDs first, and as a substring: splitting on separators would
+    # break `task-3f9a1c2b-...` into five segments none of which is an id on its
+    # own, so the most standard shape of all would survive the segment pass.
+    stripped = _EMBEDDED_UUID.sub(" ", text)
+    parts = [p for p in _ID_SEPARATORS.split(stripped) if p]
+    kept = [p for p in parts if not _looks_like_id(p)]
+    # Nothing was an id: hand back the ORIGINAL, separators and all. Rejoining
+    # on spaces would rewrite every `node_a_b` in the process into `node a b`,
+    # which is a rename of the primary facet in exchange for nothing. (The
+    # empty segments a leading or trailing separator produces are dropped
+    # before the comparison, or `node_x_` alone would look like a change.)
+    if stripped == text and len(kept) == len(parts):
+        return text
+    return " ".join(kept).strip()
 
 
 def ms(delta_seconds: Any) -> int:

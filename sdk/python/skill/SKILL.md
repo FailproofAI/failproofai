@@ -222,12 +222,30 @@ Work with these; none of them raise, so none of them show up in testing.
   silently.
 
   **`SIGTERM` deserves its own line, because it is not exotic — it is every
-  rolling deploy**, every `docker stop`, every Kubernetes eviction. Python's
-  default handler exits, so `atexit` *does* run; but if your app installs its own
-  handler and calls `os._exit`, or takes longer than the grace period, the queue
-  dies with it. What is in flight at shutdown is disproportionately `agent_end`,
-  so runs never close and never reach the evaluator. If you handle `SIGTERM`,
-  flush before you exit.
+  rolling deploy**, every `docker stop`, every Kubernetes eviction, and every
+  plain `kill`. CPython installs **no** handler for it: `signal.getsignal(SIGTERM)`
+  is `SIG_DFL`, the OS terminates the process where it stands, and **`atexit`
+  does not run**. Whatever is queued is gone — and what is in flight at shutdown
+  is disproportionately `agent_end`, so runs never close and never reach the
+  evaluator. The 0.5s flush interval is what bounds the loss, not the exit path.
+
+  So if your process can receive `SIGTERM`, handle it — the SDK will not install
+  a handler in your process behind your back:
+
+      import signal, sys, failproofai_sdk
+
+      def _flush_and_exit(signum, frame):
+          failproofai_sdk._writer.flush_now()
+          sys.exit(128 + signum)
+
+      signal.signal(signal.SIGTERM, _flush_and_exit)
+
+  (`sys.exit` here rather than `os._exit`: it unwinds, so any `agent()` scope
+  still open emits its `agent_end` before the flush. That scope closes
+  `outcome="failed"` with an `error` naming `SystemExit`, because an evicted run
+  did not finish — which is the thing you want to be able to see.) `SIGKILL`,
+  `os._exit` and a container OOM cannot be handled by anything, and drop the
+  queue silently.
 
 ## 4. Write it
 

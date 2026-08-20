@@ -1144,3 +1144,85 @@ def test_a_persistent_write_fault_does_not_strand_a_tmp_file_per_cycle(spool, mo
     writer.flush_now()
     assert len(read_all(spool)) == 50, "the recovered batch is incomplete"
     assert list((spool / "events").glob("*.tmp")) == []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SIGTERM — the exit path the docs got wrong
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _run_child(tmp_path: Path, body: str) -> subprocess.CompletedProcess:
+    """Run `body` in a fresh interpreter spooling into `tmp_path`.
+
+    A subprocess rather than a fork: the point is CPython's *default* signal
+    disposition in a process this test did not otherwise touch, and pytest's own
+    handlers are inherited across a fork.
+    """
+    src = (
+        "import os, signal, sys\n"
+        "import failproofai_sdk as fp\n"
+        "from failproofai_sdk import event\n"
+        f"fp.configure(base_dir={str(tmp_path)!r}, flush_interval=3600.0)\n" + body
+    )
+    return subprocess.run(
+        [sys.executable, "-c", src],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=str(Path(__file__).resolve().parents[1]),
+    )
+
+
+def test_sigterm_drops_the_queue_because_cpython_runs_no_atexit_for_it(tmp_path):
+    """The claim this replaces said `atexit` *does* run on `SIGTERM`. It does not.
+
+    CPython installs no handler for `SIGTERM` — `signal.getsignal(SIGTERM)` is
+    `SIG_DFL` — so the OS terminates the process where it stands and the atexit
+    flush never runs. `SKILL.md` told readers the opposite, under a heading
+    naming rolling deploys and `docker stop`, which is exactly the population
+    that would have believed it and shipped nothing.
+
+    The long flush interval isolates the exit path: in real use the 0.5s default
+    is what bounds the loss, and that bound is the whole mitigation.
+    """
+    proc = _run_child(
+        tmp_path,
+        "with fp.session('sigterm-bare'):\n"
+        "    for i in range(20):\n"
+        "        event.agent_start(agent_id='a', goal=str(i))\n"
+        "os.kill(os.getpid(), signal.SIGTERM)\n",
+    )
+    assert proc.returncode == -15, proc.stderr
+    assert read_all(tmp_path) == [], (
+        "SIGTERM must be shown losing the queue; if this now passes events "
+        "through, the SDK grew a handler and SKILL.md's recipe is obsolete"
+    )
+
+
+def test_the_documented_sigterm_handler_saves_the_queue_and_closes_the_run(tmp_path):
+    """The recipe SKILL.md now ships, executed rather than described.
+
+    `sys.exit` and not `os._exit`: it unwinds, so an open `agent()` scope emits
+    its `agent_end` before the flush — the events most likely to be in flight at
+    shutdown are exactly the ones that close a run.
+    """
+    proc = _run_child(
+        tmp_path,
+        "def _flush_and_exit(signum, frame):\n"
+        "    fp._writer.flush_now()\n"
+        "    sys.exit(128 + signum)\n"
+        "signal.signal(signal.SIGTERM, _flush_and_exit)\n"
+        "with fp.agent('worker', session_id='sigterm-handled', goal='survive'):\n"
+        "    for i in range(20):\n"
+        "        event.tool_use(tool_name='t', tool_call_id=str(i), input={'i': i})\n"
+        "    os.kill(os.getpid(), signal.SIGTERM)\n",
+    )
+    assert proc.returncode == 128 + 15, proc.stderr
+    events = read_all(tmp_path)
+    kinds = {e["type"] for e in events}
+    assert len([e for e in events if e["type"] == "tool_use"]) == 20
+    assert "agent_start" in kinds and "agent_end" in kinds
+    # The interrupted run closes as failed, carrying the SystemExit — an evicted
+    # run did not finish, and that is the thing an operator needs to see.
+    end = next(e for e in events if e["type"] == "agent_end")
+    assert end["outcome"] == "failed"

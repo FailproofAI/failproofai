@@ -24,10 +24,11 @@ describe("ReachDevelopers", () => {
 
     // Dropdown should now be visible with the current items
     expect(screen.getByText("Join our Discord")).toBeInTheDocument();
+    expect(screen.getByText("Join r/failproofai")).toBeInTheDocument();
     expect(screen.getByText("Feedback & Issues")).toBeInTheDocument();
   });
 
-  it("Discord link and the combined feedback/issues link point to the right places", async () => {
+  it("the community links and the combined feedback/issues link point to the right places", async () => {
     const user = userEvent.setup();
     render(<ReachDevelopers />);
 
@@ -36,6 +37,9 @@ describe("ReachDevelopers", () => {
 
     const discordLink = screen.getByText("Join our Discord").closest("a");
     expect(discordLink).toHaveAttribute("href", "https://discord.befailproof.ai/");
+
+    const redditLink = screen.getByText("Join r/failproofai").closest("a");
+    expect(redditLink).toHaveAttribute("href", "https://www.reddit.com/r/failproofai/");
 
     const feedbackLink = screen.getByText("Feedback & Issues").closest("a");
     expect(feedbackLink).toHaveAttribute(
@@ -94,8 +98,8 @@ describe("ReachDevelopers", () => {
     const btn = screen.getAllByRole("button")[0];
     await user.click(btn);
     const menuItems = screen.getAllByRole("menuitem");
-    // Star, Documentation, Join our Discord, Feedback & Issues
-    expect(menuItems).toHaveLength(4);
+    // Star, Documentation, Join our Discord, Join r/failproofai, Feedback & Issues
+    expect(menuItems).toHaveLength(5);
   });
 
   it("Escape key closes dropdown", async () => {

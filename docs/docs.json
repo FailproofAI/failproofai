@@ -42,6 +42,11 @@
       },
       {
         "label": "",
+        "href": "https://www.reddit.com/r/failproofai/",
+        "icon": "reddit"
+      },
+      {
+        "label": "",
         "href": "https://x.com/failproofai",
         "icon": "x-twitter"
       },

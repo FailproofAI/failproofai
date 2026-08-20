@@ -22,7 +22,7 @@ jobs:
             const isDependabot = author === 'dependabot[bot]';
             const body = isDependabot
               ? `Thanks @${author} for keeping our dependencies current! 🙌`
-              : `Thanks @${author} for your contribution to Failproof AI! 🙌\n\nWe'd love to discuss your PR and welcome you to our community: https://discord.befailproof.ai/`;
+              : `Thanks @${author} for your contribution to Failproof AI! 🙌\n\nWe'd love to discuss your PR and welcome you to our community.\n\nDiscord: https://discord.befailproof.ai/\nReddit: https://www.reddit.com/r/failproofai/`;
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,

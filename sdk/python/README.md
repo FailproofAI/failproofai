@@ -30,7 +30,7 @@ The SDK never opens a network connection. It appends events to an in-memory queu
 and a background thread writes them to local JSONL batches:
 
 ```
-your agent  →  failproofai_sdk  →  ~/.agenteye/events/*.jsonl  →  daemon  →  platform
+your agent  →  failproofai_sdk  →  ~/.failproofai/custom-agents/events/*.jsonl  →  daemon  →  platform
 ```
 
 A daemon on the same host watches that directory and uploads each batch. Either
@@ -130,8 +130,10 @@ failproofai_sdk.event.agent_end(session_id="run-001", agent_id="planner", outcom
 
 ```python
 failproofai_sdk.configure(
-    base_dir=None,        # Path | str | None. Default: $AGENTEYE_HOME or ~/.agenteye
+    base_dir=None,        # Path | str | None. Default: $AGENTEYE_HOME, else
+                          #   ~/.failproofai/custom-agents (honours $FAILPROOFAI_HOME)
     flush_interval=0.5,   # float, seconds between flush cycles
+    environment=None,     # str | None. Else $AGENTEYE_ENVIRONMENT, else "dev"
 )
 ```
 
@@ -402,7 +404,7 @@ Events are buffered in-process and flushed to disk every `flush_interval` second
 Each flush writes one JSONL file:
 
 ```
-~/.agenteye/events/event-2026-04-01T12-00-00-000Z-48213-7.jsonl
+~/.failproofai/custom-agents/events/event-2026-04-01T12-00-00-000Z-48213-7.jsonl
 ```
 
 Each line is one JSON object. Example:

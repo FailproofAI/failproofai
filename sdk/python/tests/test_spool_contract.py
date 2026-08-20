@@ -233,3 +233,50 @@ def test_this_file_can_be_imported_outside_the_repository():
     # The real repo has these; an sdist does not, and then the guards skip.
     if FPAI_COLLECT_CONFIG.is_file():
         assert FP_HOME_TS.is_file(), "half the contract's sources are missing"
+
+
+# --- The README is part of the contract too -----------------------------------
+#
+# The three assertions above pin the spool root across Python, Rust and
+# TypeScript, so the code cannot drift. Nothing pinned the README, and it drifted
+# on its own: after the default moved to ~/.failproofai/custom-agents, the
+# architecture diagram, the configure() comment and the JSONL example were all
+# still showing ~/.agenteye/events — contradicted by correct prose two lines away.
+#
+# That is not a cosmetic miss. A reader follows the code sample, tails a
+# directory nothing writes to, sees an empty spool, and concludes the SDK is
+# broken — which is the same "an unread spool is indistinguishable from an idle
+# one" failure this whole file exists to make loud, just relocated into the docs.
+
+README = Path(__file__).resolve().parents[1] / "README.md"
+
+# ~/.agenteye is still allowed to appear in the migration notes, which exist to
+# tell legacy hosts what to set. What is NOT allowed is presenting it as where
+# batches land today.
+_SPOOL_FILE_LINE = re.compile(r"events/(\*|event-)[^\s`]*\.jsonl")
+
+
+def test_readme_shows_the_current_spool_root_wherever_it_shows_a_batch_path():
+    offenders = [
+        f"README.md:{i}: {line.strip()}"
+        for i, line in enumerate(README.read_text(encoding="utf-8").split("\n"), 1)
+        if _SPOOL_FILE_LINE.search(line) and "custom-agents" not in line
+    ]
+    assert not offenders, (
+        "the README shows a spool batch path that is not the current default "
+        f"({_resolver.failproofai_custom_agents_dir()}); a reader will tail a "
+        "directory nothing writes to:\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_readme_documents_the_current_default_for_base_dir():
+    """The `configure(base_dir=...)` comment must not name the retired root as the default."""
+    text = README.read_text(encoding="utf-8")
+    assert "~/.failproofai/custom-agents" in text, (
+        "the README never spells the current default spool root"
+    )
+    for i, line in enumerate(text.split("\n"), 1):
+        if "Default:" in line and ".agenteye" in line:
+            assert "custom-agents" in line, (
+                f"README.md:{i} gives the retired root as the default: {line.strip()}"
+            )

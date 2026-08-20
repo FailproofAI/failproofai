@@ -164,7 +164,12 @@ def instrument(framework: str | None = None, **options: Any) -> tuple[str, ...]:
             logger.warning(
                 "failproofai_sdk: instrument() found no supported framework in sys.modules, "
                 "so NOTHING was instrumented. Import your framework before calling "
-                "instrument(), or name it explicitly: failproofai_sdk.instrument('crewai')."
+                "instrument(), or name one explicitly: %s.",
+                # The names this call would have accepted, rather than one
+                # hardcoded example. A reader who is not using CrewAI has to
+                # work out for themselves whether the message is a suggestion
+                # or a diagnosis, which is a poor use of the one line they get.
+                ", ".join(f"instrument({name!r})" for name in sorted(_REGISTRY)),
             )
     else:
         names = [_canonical(framework)]

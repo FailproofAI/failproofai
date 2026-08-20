@@ -189,15 +189,26 @@ def test_bare_instrument_with_nothing_imported_warns_rather_than_going_quiet(
     # shows it, so the one mistake that costs a user all of their telemetry was
     # the one mistake the SDK said nothing about.
     #
-    # The registry is emptied for the duration rather than trusting that no
-    # earlier test imported a real framework: tests/integrations/ runs first
-    # and imports all four, which would make `instrument()` here install them
-    # for real and leak `_ACTIVE` into every test after this one.
-    monkeypatch.setattr(integrations, "_REGISTRY", {})
+    # Detection is pointed at modules that cannot be imported, rather than the
+    # registry being emptied: tests/integrations/ runs first and imports all
+    # four frameworks, so without this `instrument()` would install them for
+    # real and leak `_ACTIVE` into every test after this one — but an empty
+    # registry would also render the message's list of valid names as nothing,
+    # which is the half of it most worth asserting.
+    monkeypatch.setattr(
+        integrations,
+        "_DETECT",
+        {name: ("failproofai_sdk_no_such_framework",) for name in integrations._REGISTRY},
+    )
     with caplog.at_level(logging.WARNING, logger=INTEGRATIONS_LOGGER):
         assert integrations.instrument() == ()
     assert "NOTHING was instrumented" in caplog.text
     assert [r for r in caplog.records if r.levelno >= logging.WARNING]
+    # It must name what this call WOULD have accepted. Suggesting one hardcoded
+    # framework leaves a reader who is not using it unsure whether the message
+    # is a suggestion or a diagnosis.
+    for name in integrations._REGISTRY:
+        assert f"instrument({name!r})" in caplog.text
 
 
 def test_uninstrument_all_removes_everything(monkeypatch):

@@ -14,4 +14,9 @@
 # ignoreUntil = 2026-07-01
 # reason = "No upstream fix yet; transitive via <pkg>; not reachable in our usage. Re-review by 2026-07-01."
 #
-# There are currently no ignored vulnerabilities — the dependency tree is clean.
+[[IgnoredVulns]]
+id = "GHSA-f4j7-r4q5-qw2c"
+ignoreUntil = 2026-11-20
+reason = """
+chromadb 1.1.1, transitive via crewai, in sdk/python/uv.lock. No fixed version exists — OSV reports "0 vulnerabilities can be fixed" and an empty FIXED VERSION — so there is nothing to bump to. It is not reachable from anything we ship: failproofai-sdk declares NO unconditional dependencies (every Requires-Dist in the built wheel is gated behind an extra, and CI installs it with --no-deps), so `pip install failproofai-sdk` never brings chromadb. It arrives only via `failproofai-sdk[crewai]`, which installs CrewAI — and anyone installing CrewAI has chromadb from CrewAI regardless of us. sdk/python/uv.lock is the dev/test lockfile that pins every extra so CI can exercise the adapters; it is not a published artifact. The lockfile stays in the scan on purpose, so a FIXABLE finding here still blocks. Re-review by 2026-11-20, by which point either chromadb has a patched release or crewai has moved off it.
+"""

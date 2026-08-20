@@ -102,7 +102,12 @@ function parseManifest(value: unknown): ActiveManifest {
   return { schemaVersion: raw.schemaVersion as number, deployment: deployment as number, policies };
 }
 
-function resolveManagedPath(root: string, candidate: string): string {
+/**
+ * Shared with `pack-manifest.ts` deliberately. This is a path-escape guard on a
+ * file that is about to be IMPORTED; two copies of it would be two things to
+ * harden and one to forget.
+ */
+export function resolveManagedPath(root: string, candidate: string): string {
   if (!candidate || isAbsolute(candidate)) throw new Error(`unsafe managed policy path ${JSON.stringify(candidate)}`);
   const absolute = resolve(root, candidate);
   const lexicalRelative = relative(root, absolute);

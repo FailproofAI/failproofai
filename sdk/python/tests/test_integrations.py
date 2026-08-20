@@ -177,6 +177,27 @@ def test_uninstrument_of_an_unknown_name_does_not_raise(caplog):
     assert "nope" in caplog.text
 
 
+def test_bare_instrument_with_nothing_imported_warns_rather_than_going_quiet(
+    monkeypatch, caplog
+):
+    # The import-order mistake — calling instrument() above the `import
+    # langchain` line — instruments nothing and is otherwise indistinguishable
+    # from working: no exception, no events, adapter "installed". The message
+    # naming the fix existed at debug level, where no default logging config
+    # shows it, so the one mistake that costs a user all of their telemetry was
+    # the one mistake the SDK said nothing about.
+    #
+    # The registry is emptied for the duration rather than trusting that no
+    # earlier test imported a real framework: tests/integrations/ runs first
+    # and imports all four, which would make `instrument()` here install them
+    # for real and leak `_ACTIVE` into every test after this one.
+    monkeypatch.setattr(integrations, "_REGISTRY", {})
+    with caplog.at_level(logging.WARNING, logger=INTEGRATIONS_LOGGER):
+        assert integrations.instrument() == ()
+    assert "NOTHING was instrumented" in caplog.text
+    assert [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
 def test_uninstrument_all_removes_everything(monkeypatch):
     one = register(monkeypatch, FakeAdapter(name="fake1", module="fw1"))
     two = register(monkeypatch, FakeAdapter(name="fake2", module="fw2"))

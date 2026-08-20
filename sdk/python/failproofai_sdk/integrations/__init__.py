@@ -153,10 +153,18 @@ def instrument(framework: str | None = None, **options: Any) -> tuple[str, ...]:
     if framework is None:
         names = _detected()
         if not names:
-            logger.debug(
-                "failproofai_sdk: instrument() found no supported framework in sys.modules. "
-                "Import your framework before calling instrument(), or name it "
-                "explicitly: failproofai_sdk.instrument('crewai')."
+            # WARNING, not debug. This fires only when somebody explicitly asked
+            # for instrumentation and got none — the import-order mistake of
+            # calling instrument() above the `import langchain` line — and the
+            # result is a process that records nothing at all, with the adapter
+            # installed and the docs followed. At debug level the message that
+            # names the exact fix was invisible under every default logging
+            # config, which made the one mistake that costs you all your
+            # telemetry the one mistake we said nothing about.
+            logger.warning(
+                "failproofai_sdk: instrument() found no supported framework in sys.modules, "
+                "so NOTHING was instrumented. Import your framework before calling "
+                "instrument(), or name it explicitly: failproofai_sdk.instrument('crewai')."
             )
     else:
         names = [_canonical(framework)]

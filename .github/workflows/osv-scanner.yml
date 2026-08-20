@@ -66,7 +66,15 @@ jobs:
         id: scan
         uses: google/osv-scanner-action/osv-scanner-action@f4cfcc01edc9c8b756a9b873b7a623ca674da51e # v2.3.8
         with:
+          # `--config` is load-bearing, not tidiness. Without it the scanner
+          # resolves a config PER SCANNED FILE, relative to that file — so the
+          # root `osv-scanner.toml` governed `bun.lock` and `Cargo.lock` and
+          # reached neither `uv.lock`. An ignore written for a finding in
+          # `sdk/python/uv.lock` loaded, filtered nothing, and was reported as
+          # an "unused ignore" while the gate stayed red. Naming it once makes
+          # one allow-list authoritative for every lockfile below.
           scan-args: |-
+            --config=osv-scanner.toml
             --lockfile=bun.lock
             --lockfile=Cargo.lock
             --lockfile=fp-cli/uv.lock

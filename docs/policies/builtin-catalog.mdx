@@ -15,11 +15,15 @@ sanitize-jwt                 sanitize-api-keys
 sanitize-connection-strings sanitize-private-key-content
 sanitize-bearer-tokens       protect-env-vars
 block-env-files              block-secrets-write
-block-self-pause             block-failproofai-commands
-block-sudo                   block-curl-pipe-sh
-block-rm-rf                  block-push-master
-block-force-push
+block-failproofai-commands   block-sudo
+block-curl-pipe-sh           block-rm-rf
+block-push-master            block-force-push
 ```
+
+`block-failproofai-commands` is **always on**. It is listed above for
+completeness, but it registers on every evaluation whether or not it appears in
+your enabled set, and it cannot be disabled or paused — a guard against the
+agent switching off enforcement that the agent can switch off is not a guard.
 
 Recommended is deliberately narrower than **Everything**. Infrastructure and workflow policies can interrupt valid work and should be enabled for the repositories and machines that need them.
 
@@ -41,11 +45,10 @@ Recommended is deliberately narrower than **Everything**. Infrastructure and wor
 
 | Policy | Trigger | Outcome |
 | --- | --- | --- |
-| `block-self-pause` | `PreToolUse`, `PermissionRequest` | Prevent an agent from pausing its own enforcement. |
 | `block-sudo` | `PreToolUse`, `PermissionRequest` | Block `sudo` unless an allow pattern matches. |
 | `block-curl-pipe-sh` | `PreToolUse` | Block downloaded scripts piped directly to a shell. |
 | `block-rm-rf` | `PreToolUse` | Block catastrophic recursive deletion patterns. |
-| `block-failproofai-commands` | `PreToolUse` | Prevent agents from changing or uninstalling Failproof AI. |
+| `block-failproofai-commands` | `PreToolUse`, `PermissionRequest` | **Always on, cannot be disabled.** Block every Failproof AI CLI invocation, self-pause, and package-manager uninstall. |
 | `block-kubectl` | `PreToolUse` | Gate Kubernetes commands. |
 | `block-terraform` | `PreToolUse` | Gate Terraform and OpenTofu commands. |
 | `block-aws-cli` | `PreToolUse` | Gate AWS CLI commands. |

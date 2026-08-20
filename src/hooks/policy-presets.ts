@@ -106,8 +106,10 @@ export const RECOMMENDED_POLICIES: readonly string[] = [
   "protect-env-vars",
   "block-env-files",
   "block-secrets-write",
-  // The agent cannot disable its own guardrails.
-  "block-self-pause",
+  // The agent cannot disable its own guardrails. `block-failproofai-commands`
+  // is `alwaysOn` and registers with or without this entry; it is listed anyway
+  // so Recommended reads as the complete set rather than quietly omitting the
+  // most important line in it.
   "block-failproofai-commands",
   // Commands that are unrecoverable when they are wrong.
   "block-sudo",

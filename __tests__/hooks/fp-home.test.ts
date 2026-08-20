@@ -99,6 +99,23 @@ describe("fp-home layout", () => {
     expect(H.globalPolicyConfigFile().startsWith(`${H.policiesDir()}/`)).toBe(false);
   });
 
+  it("hides pack artifacts from the convention loader", () => {
+    // Same property as the cloud case below, and the same reason it must be
+    // proven against a real directory: a pack artifact picked up by the
+    // convention loader would be loaded with NO digest check — the one thing
+    // pinning a pack by sha256 exists to prevent.
+    const artifacts = H.packArtifactsDir();
+    mkdirSync(artifacts, { recursive: true });
+    // Maximally attractive to both filters: the convention suffix on a loadable
+    // extension, so only the non-recursion keeps them out.
+    writeFileSync(resolve(artifacts, "aaa-policies.mjs"), "export default {}");
+    writeFileSync(resolve(H.packsDir(), "installed-policies.mjs"), "export default {}");
+    mkdirSync(resolve(H.policiesDir(), "packs-policies.mjs"), { recursive: true });
+
+    expect(discoverPolicyFiles(H.policiesDir())).toEqual([]);
+    expect(findSkippedPolicyFiles(H.policiesDir())).toEqual([]);
+  });
+
   it("hides cloud artifacts from the convention loader", () => {
     // THE property that makes nesting the fleet's policies inside the user's
     // directory safe. `discoverPolicyFiles` walking subdirectories would turn
@@ -209,6 +226,8 @@ describe("HOME_CLASSES", () => {
     // point a `user-typed` parent would protect a cache and a `derived` parent
     // would delete a session. Classify the children.
     fpcliDir: "fpcliDir",
+    packsInstalledFile: "packsDir",
+    packArtifactsDir: "packsDir",
   };
 
   /** Every exported function that returns a path inside the home. */

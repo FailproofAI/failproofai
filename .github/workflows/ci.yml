@@ -428,6 +428,52 @@ jobs:
           print(f"{len(events)} events written by the installed artifact")
           PY
 
+  # The adapters' ONLY automated evidence. It is a separate job, not a leg of the
+  # matrix above, because installing five agent frameworks costs minutes and gains
+  # nothing from being repeated across five interpreters — the adapters bind to
+  # framework APIs, not to interpreter version.
+  #
+  # WHY THIS EXISTS: tests/integrations/* already honour
+  # AGENTEYE_TESTS_REQUIRE_FRAMEWORKS, and their comments say "CI leg sets
+  # AGENTEYE_TESTS_REQUIRE_FRAMEWORKS=1". No such leg was ever added, and the
+  # frameworks live in extras that `--extra dev` does not pull, so all four
+  # modules skipped at import in every run: 168 test functions across 6,071 lines,
+  # green, never executed. An adapter could break against a new framework release
+  # and nothing here would say so. That is the same "a guard that can silently
+  # degrade to a skip is not a guard" this file already hardened
+  # test_spool_contract.py against — the integration suites were simply missed.
+  failproofai-sdk-integrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: sdk/python
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: sdk/python/uv.lock
+
+      # Every framework extra. `--locked` keeps this honest: the lockfile already
+      # resolves all five, so a drift here fails rather than silently re-resolving.
+      - name: Install dependencies (all framework extras)
+        run: >-
+          uv sync --locked --extra dev
+          --extra langchain --extra langgraph --extra crewai
+          --extra llamaindex --extra pydantic-ai
+          --python 3.12
+
+      # AGENTEYE_TESTS_REQUIRE_FRAMEWORKS turns each module's import skip into a
+      # hard failure. Without it a botched install above would read as "4 skipped"
+      # and the job would pass having tested nothing — which is exactly the state
+      # this job was added to end.
+      - name: Test the framework adapters
+        env:
+          AGENTEYE_TESTS_REQUIRE_FRAMEWORKS: "1"
+        run: uv run pytest tests/integrations -q
+
   test:
     runs-on: ubuntu-latest
     # The retry above nominally allows 3 attempts x 10 minutes. Capping the job

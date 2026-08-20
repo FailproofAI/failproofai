@@ -194,6 +194,46 @@ describe("sync-failproofai-sdk-skill.yml", () => {
   });
 });
 
+describe("the failproofai-sdk-integrations CI job", () => {
+  // This job is the adapters' only automated evidence, and every invariant below
+  // is one a tidy-up would plausibly remove. Before it existed, all four
+  // integration modules skipped at import in every CI run — 168 test functions,
+  // green, never executed — because the frameworks live in extras that
+  // `--extra dev` does not install.
+  const job = () => workflow("ci.yml").jobs["failproofai-sdk-integrations"];
+
+  it("exists at all", () => {
+    expect(job()).toBeDefined();
+  });
+
+  it("installs every framework extra", () => {
+    // Each adapter has exactly one extra. A missing one does not fail the install;
+    // it makes that adapter's module skip, which the env var below then catches —
+    // but only if the extra was meant to be there in the first place.
+    const install = job().steps.map((s: any) => s.run ?? "").join("\n");
+    for (const extra of ["langchain", "langgraph", "crewai", "llamaindex", "pydantic-ai"]) {
+      expect(install).toContain(`--extra ${extra}`);
+    }
+  });
+
+  it("installs with --locked", () => {
+    // Without it, uv silently re-resolves and the job stops testing the versions
+    // the lockfile pins — the same drift `uv sync --locked` was adopted for.
+    const install = job().steps.map((s: any) => s.run ?? "").join("\n");
+    expect(install).toContain("uv sync --locked");
+  });
+
+  it("sets AGENTEYE_TESTS_REQUIRE_FRAMEWORKS so a skip is a failure", () => {
+    // THE load-bearing line. Drop it and a botched install reads as "4 skipped",
+    // the job passes having tested nothing, and the gap this job closed reopens
+    // in exactly the form that hid it the first time.
+    const step = job().steps.find((s: any) => s.env?.AGENTEYE_TESTS_REQUIRE_FRAMEWORKS);
+    expect(step, "no step sets AGENTEYE_TESTS_REQUIRE_FRAMEWORKS").toBeDefined();
+    expect(String(step.env.AGENTEYE_TESTS_REQUIRE_FRAMEWORKS)).toBe("1");
+    expect(step.run).toContain("tests/integrations");
+  });
+});
+
 describe("supply-chain registration", () => {
   it("scans the SDK lockfile for vulnerabilities", () => {
     // A lockfile absent from the scan args is silently unscanned — osv-scanner does

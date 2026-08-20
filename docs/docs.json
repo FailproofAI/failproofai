@@ -56,7 +56,20 @@
               "start/first-audit",
               "start/first-policy",
               "start/setup",
-              "start/concepts"
+              "start/concepts",
+              "start/integrations",
+              {
+                "group": "Plug in your agents",
+                "expanded": false,
+                "pages": [
+                  "start/integrations/how-it-works",
+                  "start/integrations/custom-agents",
+                  "start/integrations/langchain",
+                  "start/integrations/crewai",
+                  "start/integrations/llamaindex",
+                  "start/integrations/pydantic-ai"
+                ]
+              }
             ]
           }
         ]

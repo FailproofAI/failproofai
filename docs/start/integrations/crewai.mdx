@@ -1,0 +1,202 @@
+---
+title: "CrewAI"
+sidebarTitle: "CrewAI"
+description: "Instrument crews, flows, agents by role, tools, memory, and human feedback."
+icon: "users"
+---
+
+## Install
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+Supported: `crewai` 1.13 to 2.0. 1.13 is the release that added `started_event_id` and normalized token usage, both of which the adapter relies on to pair events and report tokens.
+
+## Instrument
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+`instrument()` registers a listener on CrewAI's module-level event bus and subscribes one handler per event class. Nothing about your crew, agents, tasks, or tools changes.
+
+## What gets recorded
+
+| CrewAI | Failproof event |
+| --- | --- |
+| Crew kickoff | `agent_start`, `agent_end` |
+| Flow start and finish | `agent_start`, `agent_end` |
+| Agent execution | Nested `agent_start`, `agent_end`, with `agent_id` from the role |
+| Task | Nothing; recorded as a link so children resolve to the crew |
+| Flow method, guardrail | `hook_triggered`, `hook_completed` |
+| Tool usage | `tool_use`, `tool_result` |
+| Memory and knowledge operations | `tool_use`, `tool_result`, named for the surface hit |
+| LLM call | `model_request`, `model_response`, with token usage |
+| Stream chunk | Folded into the response as chunk count and time to first token |
+| Human feedback requested | `human_wait`, `agent_pause` |
+| Human feedback received | `agent_resume`, `human_input` |
+| Agent execution error | `error`, then `agent_end` with outcome `failed` |
+
+A task emits nothing on purpose. A CrewAI task is a subset of the agent execution that runs it, so emitting both would double every row and render them as siblings. The task id and name ride along on the agent's own events instead.
+
+Memory and knowledge operations are recorded as tools, named for the surface they hit, so they appear next to your real tools where you can compare their latency.
+
+## Example
+
+```python
+import failproofai_sdk
+from crewai import Agent, Crew, Process, Task
+from crewai.tools import tool
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+MODEL = "openai/gpt-4o-mini"
+METRICS = {"revenue": "$4.2M ARR, up 12% QoQ", "churn": "3.1% monthly, up from 2.4%"}
+
+
+@tool("lookup_metric")
+def lookup_metric(name: str) -> str:
+    """Look up a business metric by name. Valid: revenue, churn."""
+    return METRICS.get(name.lower().strip(), "unknown metric")
+
+
+analyst = Agent(
+    role="analyst",                     # becomes agent_id
+    goal="pull the numbers that matter and state them plainly",
+    backstory="You read dashboards for a living.",
+    tools=[lookup_metric],
+    llm=MODEL,
+)
+writer = Agent(
+    role="writer",
+    goal="turn numbers into three lines an exec will read",
+    backstory="You write board updates. You never pad.",
+    llm=MODEL,
+)
+
+gather = Task(
+    description="Look up 'revenue' and 'churn' with the tool.",
+    expected_output="Two lines, one metric each.",
+    agent=analyst,
+)
+summarise = Task(
+    description="Using the metrics above, write a three-line exec summary.",
+    expected_output="Exactly three lines.",
+    agent=writer,
+    context=[gather],
+)
+
+with failproofai_sdk.session():
+    result = Crew(
+        agents=[analyst, writer],
+        tasks=[gather, summarise],
+        process=Process.sequential,
+    ).kickoff()
+```
+
+The handoff is visible in the trace: the `analyst` span closes, the `writer` span opens, and both sit inside one `crew` span.
+
+## Name your spans
+
+`agent_id` comes from `Agent(role=...)`, which is what makes it a readable dashboard facet.
+
+```python
+Agent(role="analyst", ...)          # agent_id = "analyst"
+Agent(role="analyst-7f3a2b", ...)   # one facet entry per run
+```
+
+`agent_id` is a low-cardinality column. A role containing a run id or timestamp degrades it for every query anyone runs. If a role looks like an id, the adapter refuses it and puts the real value in a payload field instead.
+
+## Control the session
+
+Resolved in this order, first match winning:
+
+1. `instrument("crewai", session_id=...)`
+2. The enclosing `failproofai_sdk.session()` scope
+3. A generated `uuid4().hex`, once per crew or flow
+
+Wrap the kickoff to control it per run:
+
+```python
+with failproofai_sdk.session(f"support-{ticket_id}"):
+    Crew(agents=[...], tasks=[...]).kickoff()
+```
+
+## Options
+
+```python
+failproofai_sdk.instrument(
+    "crewai",
+    session_id=None,          # pin every run to one session id
+)
+```
+
+`session_id` is the only option this adapter reads. Prompts and completions are always recorded, truncated to the payload budget.
+
+## Human in the loop
+
+CrewAI's flow runtime emits an event before it blocks on a person and another after the answer. Both are recorded as four events:
+
+```text
+human_wait      the prompt and its options
+agent_pause     starts the paused-time clock
+agent_resume    stops it
+human_input     the answer, with the wait measured
+```
+
+`agent_pause` to `agent_resume` is the only pair that feeds paused time. Without it, a ten-minute human wait is billed as ten minutes of active agent time.
+
+<Note>
+  CrewAI sets no correlation id on either human-feedback event, so the adapter pairs them on the flow and method name, falling back to the most recently opened pause. That is sound because a console prompt blocks. If you build a concurrent feedback provider, set `request_id` on both events.
+</Note>
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="The agent filter has thousands of entries">
+    A `role` contains a UUID, timestamp, or per-run suffix. Use a stable human role and put the run-specific id in the task description instead.
+  </Accordion>
+
+  <Accordion title="A test reads zero events, but the dashboard shows them">
+    The event bus is asynchronous, and `kickoff()` returns before the last handlers run. Drain it first:
+
+    ```python
+    from crewai.events.event_bus import crewai_event_bus
+
+    crew.kickoff()
+    crewai_event_bus.flush(timeout=30)
+    ```
+
+    This is a property of CrewAI, not of the SDK.
+  </Accordion>
+
+  <Accordion title="A session shows as ongoing forever">
+    `agent_end` force-closes open pauses but not tools or models, so a run that dies inside a tool call leaves that span open. Normal teardown closes whatever is still open and marks it incomplete. Only a `SIGKILL` leaves it hanging, because nothing can run.
+  </Accordion>
+
+  <Accordion title="Nothing is recorded">
+    Check in this order: `instrument()` ran before `kickoff()`; there is a `with failproofai_sdk.session():` around it; `crewai` is 1.13 or newer; `FAILPROOFAI_SDK_STRICT=1` set, so a degraded hook raises instead of being swallowed.
+  </Accordion>
+</AccordionGroup>
+
+## Next
+
+<Columns cols={3}>
+  <Card title="How it works" icon="workflow" href="/start/integrations/how-it-works">
+    Pairs, ids, session lifecycle, and delivery.
+  </Card>
+  <Card title="Read a trace" icon="route" href="/sessions/read-a-trace">
+    Follow causality through the session you just captured.
+  </Card>
+  <Card title="Other frameworks" icon="plug" href="/start/integrations">
+    LangGraph, LlamaIndex, Pydantic AI, and custom agents.
+  </Card>
+</Columns>

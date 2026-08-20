@@ -4,7 +4,9 @@ description: "Capture an agent session, find a failure, and start preventing it.
 icon: "zap"
 ---
 
-This quickstart gets one machine reporting sessions, runs an audit, and deploys a policy. Use the skill to set Failproof up, or follow the manual steps. You need Node.js 20.9 or later.
+This quickstart gets one machine reporting sessions, runs an audit, and deploys a policy. Use the skill to set Failproof up, or follow the manual steps.
+
+**Which path is yours?** If your agent runs in one of the 12 supported [harnesses](/reference/harnesses) — a coding CLI, or a gateway like Hermes or OpenClaw — follow the steps below; you need Node.js 20.9 or later. If your agent has no harness, instrument it directly with the [Python SDK](/reference/python-sdk) and then rejoin at [Run your first failure check](/start/first-audit).
 
 <Tabs>
   <Tab title="Use the skill">
@@ -56,13 +58,16 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     Open **Sessions** in Failproof AI and select an imported session.
   </Step>
   <Step title="Install agent hooks and policies">
-    This attaches Failproof AI to your agent CLI and installs the built-in policies. Use them to see local policy decisions and try enforcement before Failproof AI audits your sessions and writes policies for your agents.
+    This attaches Failproof AI to your harness and installs the 40 built-in policies. Use them to see local policy decisions and try enforcement before Failproof AI audits your sessions and writes policies for your agents.
 
-    Let the installer detect your agent CLI, or name one explicitly.
+    Let the installer detect your harness, or name one explicitly. Every one of the 12 is a valid `--cli` value — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
 
     ```bash
-    failproofai policies --install --cli claude --scope user
+    failproofai policies --install --cli claude --scope user     # a coding CLI
+    failproofai policies --install --cli hermes --scope user     # a Slack/Telegram gateway
     ```
+
+    Blocking a tool call before it runs is verified on all 12. Turn-end gates are verified on 8 — see [enforcement capability](/reference/harnesses#enforcement-capability) for the per-harness matrix.
   </Step>
   <Step title="Audit the behavior">
     Follow [Run your first failure check](/start/first-audit). Use a concrete goal such as “find sessions where the agent retried a failing tool without changing its approach.”

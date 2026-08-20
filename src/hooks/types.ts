@@ -1,5 +1,12 @@
 /**
- * Constants and interfaces for agent CLI hooks integrations (Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, …).
+ * Constants and interfaces for agent harness hook integrations.
+ *
+ * A harness is whatever an agent runs inside — a coding CLI (Claude Code, Codex,
+ * Copilot, Cursor, OpenCode, Pi, Factory, Devin, Antigravity, Goose), a chat or
+ * assistant gateway (Hermes, OpenClaw), or an agent instrumented directly via
+ * the SDK. INTEGRATION_TYPES below is the authoritative list, and it is the list
+ * every count in user-facing copy is asserted against by
+ * __tests__/scripts/copy-counts.test.ts.
  */
 
 export const HOOK_SCOPES = ["user", "project", "local"] as const;

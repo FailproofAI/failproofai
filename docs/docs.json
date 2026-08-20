@@ -71,6 +71,7 @@
                 "pages": [
                   "index",
                   "start/quickstart",
+                  "reference/harnesses",
                   "sessions/assistant",
                   "start/first-audit",
                   "start/first-policy",
@@ -208,6 +209,7 @@
                 "pages": [
                   "zh/index",
                   "zh/start/quickstart",
+                  "zh/reference/harnesses",
                   "zh/sessions/assistant",
                   "zh/start/first-audit",
                   "zh/start/first-policy",
@@ -345,6 +347,7 @@
                 "pages": [
                   "ja/index",
                   "ja/start/quickstart",
+                  "ja/reference/harnesses",
                   "ja/sessions/assistant",
                   "ja/start/first-audit",
                   "ja/start/first-policy",
@@ -482,6 +485,7 @@
                 "pages": [
                   "ko/index",
                   "ko/start/quickstart",
+                  "ko/reference/harnesses",
                   "ko/sessions/assistant",
                   "ko/start/first-audit",
                   "ko/start/first-policy",
@@ -619,6 +623,7 @@
                 "pages": [
                   "es/index",
                   "es/start/quickstart",
+                  "es/reference/harnesses",
                   "es/sessions/assistant",
                   "es/start/first-audit",
                   "es/start/first-policy",
@@ -756,6 +761,7 @@
                 "pages": [
                   "pt-br/index",
                   "pt-br/start/quickstart",
+                  "pt-br/reference/harnesses",
                   "pt-br/sessions/assistant",
                   "pt-br/start/first-audit",
                   "pt-br/start/first-policy",
@@ -893,6 +899,7 @@
                 "pages": [
                   "de/index",
                   "de/start/quickstart",
+                  "de/reference/harnesses",
                   "de/sessions/assistant",
                   "de/start/first-audit",
                   "de/start/first-policy",
@@ -1030,6 +1037,7 @@
                 "pages": [
                   "fr/index",
                   "fr/start/quickstart",
+                  "fr/reference/harnesses",
                   "fr/sessions/assistant",
                   "fr/start/first-audit",
                   "fr/start/first-policy",
@@ -1167,6 +1175,7 @@
                 "pages": [
                   "ru/index",
                   "ru/start/quickstart",
+                  "ru/reference/harnesses",
                   "ru/sessions/assistant",
                   "ru/start/first-audit",
                   "ru/start/first-policy",
@@ -1304,6 +1313,7 @@
                 "pages": [
                   "hi/index",
                   "hi/start/quickstart",
+                  "hi/reference/harnesses",
                   "hi/sessions/assistant",
                   "hi/start/first-audit",
                   "hi/start/first-policy",
@@ -1441,6 +1451,7 @@
                 "pages": [
                   "tr/index",
                   "tr/start/quickstart",
+                  "tr/reference/harnesses",
                   "tr/sessions/assistant",
                   "tr/start/first-audit",
                   "tr/start/first-policy",
@@ -1578,6 +1589,7 @@
                 "pages": [
                   "vi/index",
                   "vi/start/quickstart",
+                  "vi/reference/harnesses",
                   "vi/sessions/assistant",
                   "vi/start/first-audit",
                   "vi/start/first-policy",
@@ -1715,6 +1727,7 @@
                 "pages": [
                   "it/index",
                   "it/start/quickstart",
+                  "it/reference/harnesses",
                   "it/sessions/assistant",
                   "it/start/first-audit",
                   "it/start/first-policy",
@@ -1852,6 +1865,7 @@
                 "pages": [
                   "ar/index",
                   "ar/start/quickstart",
+                  "ar/reference/harnesses",
                   "ar/sessions/assistant",
                   "ar/start/first-audit",
                   "ar/start/first-policy",
@@ -1989,6 +2003,7 @@
                 "pages": [
                   "he/index",
                   "he/start/quickstart",
+                  "he/reference/harnesses",
                   "he/sessions/assistant",
                   "he/start/first-audit",
                   "he/start/first-policy",

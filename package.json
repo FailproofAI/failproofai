@@ -1,7 +1,7 @@
 {
   "name": "failproofai",
   "version": "1.0.2-beta.0",
-  "description": "The easiest way to manage policies that keep your AI agents reliable, on-task, and running autonomously — for Claude Code & the Agents SDK",
+  "description": "Observability and enforcement for AI agent harnesses. 40 built-in policies hooked into 12 of them — Claude Code, Codex, Cursor, Hermes, OpenClaw and more — blocking the tool call before it runs. Local dashboard included, no account needed.",
   "bin": {
     "failproofai": "./dist/cli.mjs",
     "failproofaid": "./bin/failproofaid-shim.mjs"
@@ -44,21 +44,26 @@
     "docs:audit": "bun scripts/docs-audit.ts"
   },
   "keywords": [
-    "claude",
-    "claude-code",
-    "claude-agents-sdk",
-    "anthropic",
-    "ai-agent",
-    "agent-reliability",
+    "agent-observability",
+    "llm-observability",
+    "agent-tracing",
     "agent-monitoring",
+    "agent-harness",
+    "guardrails",
+    "enforcement",
+    "policies",
+    "evals",
+    "ai-agent",
     "autonomous-agent",
+    "agent-reliability",
     "failure-prevention",
-    "developer-tools",
-    "devtools",
+    "claude-code",
+    "codex",
+    "hermes",
+    "openclaw",
     "cli",
     "local-first",
-    "hooks",
-    "policies"
+    "hooks"
   ],
   "author": "ExosphereHost Inc. <failproofai@exosphere.host>",
   "license": "SEE LICENSE IN LICENSE",

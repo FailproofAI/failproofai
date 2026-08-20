@@ -1,10 +1,16 @@
 ---
 title: "Agent harnesses"
-description: "Capture sessions and enforce policies in supported agent CLIs."
+description: "Capture sessions and enforce policies across all 12 supported agent harnesses."
 icon: "plug-zap"
 ---
 
-Failproof AI supports Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin CLI, Antigravity CLI, and Goose.
+A harness is whatever your agent actually runs inside. Failproof AI supports twelve of them, across three classes:
+
+- **Coding CLIs** — Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Factory Droid, Devin CLI, Antigravity CLI, Goose
+- **Chat and assistant gateways** — Hermes (Slack, Telegram, cron), OpenClaw (self-hosted assistant)
+- **Your own agents** — anything instrumented with the [Python SDK](/reference/python-sdk)
+
+The same policies and the same session history apply whichever one an agent runs in. One adapter layer maps each harness's native event names, tool names, and tool-input fields onto 29 canonical events before any policy runs.
 
 | Harness | Supported hook scopes |
 | --- | --- |

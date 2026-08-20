@@ -1951,7 +1951,7 @@ export default function HooksClient({ initialTab = "activity" }: { initialTab?: 
               margin: "0 0 24px",
             }}
           >
-            switch policies on or off across your installed agent CLIs.
+            switch policies on or off across your installed harnesses.
           </p>
         )}
 

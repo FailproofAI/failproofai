@@ -263,10 +263,10 @@ export function formatMarkdown(result: AuditResult): string {
   out.push("## TL;DR");
   out.push("");
   if (totalHits === 0) {
-    out.push("Clean run — the AI coding agent didn't do anything `failproofai` catches in this window.");
+    out.push("Clean run — the agent didn't do anything `failproofai` catches in this window.");
   } else {
     out.push(
-      `Over ${result.transcripts.scanned} sessions, my AI coding agent did **${totalHits} things \`failproofai\` would have stopped**: ` +
+      `Over ${result.transcripts.scanned} sessions, my agent did **${totalHits} things \`failproofai\` would have stopped**: ` +
       `${totalProtected} were already blocked in real time by my current config; ` +
       `**${totalSlipping} slipped through** (would've been caught if more policies were on).`,
     );

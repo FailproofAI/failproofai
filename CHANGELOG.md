@@ -1,6 +1,14 @@
 # Changelog
 
-## 1.0.2-beta.0 — 2026-08-19
+## 1.0.2-beta.0 — 2026-08-20
+
+### Docs
+
+- Reposition the project from "runtime failure resolution for coding agents" to observability and enforcement for agent harnesses, across the surfaces that render its identity. The product was never coding-only — `INTEGRATION_TYPES` holds twelve harnesses and two of them (Hermes, a Slack/Telegram gateway; OpenClaw, a self-hosted assistant) were never coding tools — but the strings a stranger reads said otherwise, and the breadth evidence sat under labels that converted it back: README's twelve-logo grid, containing both gateways, was headed "Supported agent CLIs". The README hero, `package.json`'s description and keywords, `SECURITY.md`, `types.ts`, the docs index and quickstart, `reference/harnesses`, the sessions captions, the local dashboard, and the audit share templates now name the harness and define it ostensively on first use, with coding CLIs framed as the class covered deepest rather than the category. `reference/harnesses` is promoted onto the onboarding path in all fifteen locale navs, since it is the only page that answers which kinds of agent are covered and it sat in the last tab. (#TBD)
+
+- Correct three counts that had rotted silently, and add the test that stops it recurring. README advertised "30 built-in policies" in three places; the real number is 40, and had been for some time. `__tests__/scripts/copy-counts.test.ts` now derives every count in copy — harnesses, policies, canonical events, and the harnesses on which `PreToolUse` and `Stop` blocking is verified — from `types.ts`, `builtin-policies.ts` and `enforcement-capability.ts`, and fails when prose disagrees. It also asserts that the README names no harness absent from `INTEGRATION_TYPES`, which is what makes the twelve-harness claim checkable by the engineer most likely to check it. (#TBD)
+
+- Point the fourteen translation links at the tree the translation pipeline actually maintains. They resolved to `docs-old/i18n/`, frozen when the Mintlify site replaced it, while `.github/workflows/translate-docs.yml` writes `docs/i18n/` — so every non-English reader got a README that would never be updated again, and the two sets had already diverged. The drift guard asserts the link target. (#TBD)
 
 ### Fixes
 

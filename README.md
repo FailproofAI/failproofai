@@ -11,11 +11,13 @@
 [![Docs](https://img.shields.io/badge/docs-befailproof.ai-002CA7?style=flat-square)](https://docs.befailproof.ai/)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-blue?style=flat-square)](./LICENSE)
 
-**Translations:** [简体中文](./docs-old/i18n/README.zh.md) · [日本語](./docs-old/i18n/README.ja.md) · [한국어](./docs-old/i18n/README.ko.md) · [Español](./docs-old/i18n/README.es.md) · [Português](./docs-old/i18n/README.pt-br.md) · [Deutsch](./docs-old/i18n/README.de.md) · [Français](./docs-old/i18n/README.fr.md) · [Руссий](./docs-old/i18n/README.ru.md) · [हिन्दी](./docs-old/i18n/README.hi.md) · [Türkçe](./docs-old/i18n/README.tr.md) · [Tiếng Việt](./docs-old/i18n/README.vi.md) · [Italiano](./docs-old/i18n/README.it.md) · [العربية](./docs-old/i18n/README.ar.md) · [עברית](./docs-old/i18n/README.he.md)
+**Translations:** [简体中文](./docs/i18n/README.zh.md) · [日本語](./docs/i18n/README.ja.md) · [한국어](./docs/i18n/README.ko.md) · [Español](./docs/i18n/README.es.md) · [Português](./docs/i18n/README.pt-br.md) · [Deutsch](./docs/i18n/README.de.md) · [Français](./docs/i18n/README.fr.md) · [Руссий](./docs/i18n/README.ru.md) · [हिन्दी](./docs/i18n/README.hi.md) · [Türkçe](./docs/i18n/README.tr.md) · [Tiếng Việt](./docs/i18n/README.vi.md) · [Italiano](./docs/i18n/README.it.md) · [العربية](./docs/i18n/README.ar.md) · [עברית](./docs/i18n/README.he.md)
 
-**Runtime failure resolution for coding agents.**
-Hooks into Claude Code and Codex. Catches loops, dangerous actions, and secret leaks
-before they become incidents. Zero latency. Runs locally.
+**Observability and enforcement for every harness your agents run in.**
+Wherever your agents run, we see it — and we can say no. Failproof hooks 12 agent
+harnesses — coding CLIs like Claude Code and Codex, chat gateways like Hermes,
+self-hosted assistants like OpenClaw — capturing every run and blocking dangerous
+tool calls before they execute. 40 built-in policies. Zero latency. Runs locally.
 
 </div>
 
@@ -25,7 +27,12 @@ before they become incidents. Zero latency. Runs locally.
 
 ---
 
-## Supported agent CLIs
+## Supported harnesses
+
+Twelve harnesses across three classes — coding CLIs, chat and assistant gateways
+(Hermes, OpenClaw), and agent runtimes. Same events, same policies, same session
+history, whichever one your agent runs in. Not on the list? Instrument your own
+agent with the Python SDK.
 
 <!-- A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -129,7 +136,7 @@ failproofai policies --install   # or just run `failproofai` and accept the firs
 failproofai
 ```
 
-30 built-in policies activate immediately. Dashboard at `localhost:8020`. Disable the first-run prompt with `FAILPROOFAI_NO_FIRST_RUN=1`.
+40 built-in policies activate immediately. Dashboard at `localhost:8020`. Disable the first-run prompt with `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
@@ -137,13 +144,19 @@ failproofai
 
 | Policy | What it blocks |
 |---|---|
-| `block-push-master` | Direct pushes to `main` / `master` |
-| `block-force-push` | `git push --force` |
-| `block-work-on-main` | Commits, merges, rebases on `main` / `master` |
+| `sanitize-api-keys` | API keys leaking into the agent's context |
+| `block-env-files` | Reads of `.env` and other secret files |
+| `warn-repeated-tool-calls` | The agent looping on the same call |
+| `block-sudo` | Privilege escalation |
+| `warn-destructive-sql` | `DROP`, `TRUNCATE`, unbounded `DELETE` |
+| `block-terraform` / `block-kubectl` | Unreviewed changes to live infrastructure |
 | `block-rm-rf` | Recursive file deletion |
-| `sanitize-api-keys` | API keys leaking into agent context |
+| `block-force-push` / `block-push-master` | `git push --force`, direct pushes to `main` |
 
-→ [All 30 built-in policies](https://docs.befailproof.ai/policies/builtin)
+The first five apply to any agent that can call a tool. The last three are the
+developer favourites — coding CLIs are the harness class we cover deepest.
+
+→ [All 40 built-in policies](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
@@ -178,24 +191,61 @@ Three decisions available to every policy:
 
 ---
 
-## Session visibility
+## Observability
 
-Every tool call your agent makes is logged locally. The dashboard shows what ran,
-what was blocked, and what the policy told the agent — so you're not guessing
-when something goes wrong. → [Dashboard guide](https://docs.befailproof.ai/sessions/overview)
+Enforcement is one half. The other half is seeing what the agent actually did.
+
+Run `failproofai` with no arguments and it serves a dashboard on `localhost:8020`
+reading the run history already on your machine — no account, no signup, nothing
+leaving the box. You get the session list, the sequence of model calls, tool calls
+and hook decisions inside each run, what was blocked and what the policy told the
+agent, and an offline audit (`failproofai audit`) that scans your history for risky
+patterns and suggests policies to stop them.
+
+→ [Local dashboard](https://docs.befailproof.ai/reference/local-dashboard) ·
+[Read a trace](https://docs.befailproof.ai/sessions/read-a-trace) ·
+[Local audit](https://docs.befailproof.ai/audits/local-audit)
+
+**Failproof AI Observability** is the hosted side of the same data model, for teams
+running agents across a fleet: every run from every harness in one place, an
+execution graph with parallel sub-agents on their own lanes, p50/p95/p99 latency
+for models, tools and hooks, per-model cost and context-window tracking, error
+tracking, SQL over your own traces with shareable dashboards, evaluations scored by
+your own service, scheduled audits that turn recurring failures into evidence-backed
+findings, and alerts routed to Slack, email or a signed webhook. Self-hosting in your
+own cluster is available on the Enterprise plan.
+
+→ [Sessions](https://docs.befailproof.ai/sessions/overview) ·
+[Audits](https://docs.befailproof.ai/audits/overview) ·
+[Book a demo](https://befailproof.ai/get-a-demo)
 
 ---
 
 ## Documentation
 
-| | |
+| Start | |
 |---|---|
-| [Getting Started](https://docs.befailproof.ai/start/quickstart) | Installation and first steps |
-| [Built-in Policies](https://docs.befailproof.ai/policies/builtin) | All 30 policies with parameters |
-| [Custom Policies](https://docs.befailproof.ai/policies/custom) | Write your own |
+| [Quickstart](https://docs.befailproof.ai/start/quickstart) | Install, connect a harness, see the first run |
+| [Concepts](https://docs.befailproof.ai/start/concepts) | How the hook system works |
+| [Supported harnesses](https://docs.befailproof.ai/reference/harnesses) | All 12, and what each one can enforce |
+
+| Observe | |
+|---|---|
+| [Sessions](https://docs.befailproof.ai/sessions/overview) | Follow a run: models, tools, errors, latency |
+| [Read a trace](https://docs.befailproof.ai/sessions/read-a-trace) | What the execution graph is telling you |
+| [Audits](https://docs.befailproof.ai/audits/overview) | Find failure patterns across many sessions |
+| [Local dashboard](https://docs.befailproof.ai/reference/local-dashboard) | `localhost:8020`, no account needed |
+
+| Enforce | |
+|---|---|
+| [Built-in policies](https://docs.befailproof.ai/policies/builtin) | All 40 policies with parameters |
+| [Custom policies](https://docs.befailproof.ai/policies/custom) | Write your own |
 | [Configuration](https://docs.befailproof.ai/policies/local-configuration) | Config scopes and merge rules |
-| [Dashboard](https://docs.befailproof.ai/sessions/overview) | Session monitor and policy activity |
-| [Architecture](https://docs.befailproof.ai/start/concepts) | How the hook system works |
+
+| Instrument your own agent | |
+|---|---|
+| [Python SDK](https://docs.befailproof.ai/reference/python-sdk) | Report runs from an agent with no harness |
+| [Policy SDK](https://docs.befailproof.ai/reference/policy-sdk) | `allow` / `deny` / `instruct` reference |
 
 ---
 

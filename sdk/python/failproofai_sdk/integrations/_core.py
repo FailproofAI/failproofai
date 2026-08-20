@@ -24,6 +24,8 @@ import functools
 import logging
 import threading
 import uuid
+from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbcSet
 from typing import Any, Callable, Protocol
 
 from failproofai_sdk import _context, _runtime, _schema
@@ -364,7 +366,17 @@ def _truncate(value: Any, limit: int, cut: _Cut, depth: int) -> Any:
     if depth >= _MAX_DEPTH:
         cut.hit = True
         return _truncate(repr(value), limit, cut, _MAX_DEPTH)
-    if isinstance(value, dict):
+    # `Mapping`/`Sequence`, not `dict`/`list`. The concrete types missed every
+    # mapping a framework actually hands us that is not literally a dict —
+    # `MappingProxyType` (what `model_json_schema()` and any frozen config
+    # returns), `ChainMap`, and every third-party mapping — and those fell
+    # through to the repr branch at the bottom. A tool's JSON schema then
+    # reached the events store as the STRING
+    # `"mappingproxy({'title': 'From Unit', 'type': 'string'})"`: valid JSON
+    # holding a Python repr, so `JSONExtract` over it returns nothing and the
+    # field is unqueryable rather than merely ugly. Verified in a real stored
+    # row — a crewai `model_request.tools[0]…properties.from_unit`.
+    if isinstance(value, Mapping):
         out = {}
         for i, (k, v) in enumerate(value.items()):
             if i >= _MAX_ITEMS:
@@ -373,7 +385,9 @@ def _truncate(value: Any, limit: int, cut: _Cut, depth: int) -> Any:
                 break
             out[str(k)] = _truncate(v, limit, cut, depth + 1)
         return out
-    if isinstance(value, (list, tuple, set, frozenset)):
+    # `str`/`bytes` are Sequences too and are handled above, so they cannot
+    # reach here; `Set` is a separate ABC and is not a `Sequence`.
+    if isinstance(value, (Sequence, AbcSet)):
         items = list(value)
         out_list = [_truncate(v, limit, cut, depth + 1) for v in items[:_MAX_ITEMS]]
         if len(items) > _MAX_ITEMS:
@@ -393,9 +407,12 @@ def _size(value: Any, _depth: int = 0) -> int:
         return len(value)
     if _depth >= _MAX_DEPTH:
         return len(repr(value))
-    if isinstance(value, dict):
+    # Same ABCs as `_truncate`, for the same reason: a size computed off `repr`
+    # for a value that `_truncate` will expand into JSON budgets the wrong
+    # number, and the budget is what decides which fields survive.
+    if isinstance(value, Mapping):
         return sum(len(str(k)) + _size(v, _depth + 1) for k, v in value.items())
-    if isinstance(value, (list, tuple, set, frozenset)):
+    if isinstance(value, (Sequence, AbcSet)):
         return sum(_size(v, _depth + 1) for v in value)
     return len(repr(value))
 

@@ -12,6 +12,7 @@ right thing" — and an adapter that swallows `BaseException` passes the first
 test while silently breaking cancellation in every async app that installs it.
 """
 
+import collections
 import logging
 import sys
 import threading
@@ -499,6 +500,38 @@ def test_truncate_recurses_into_containers():
 def test_truncate_leaves_small_values_alone():
     value = {"a": 1, "b": "short", "c": None, "d": True}
     assert _core.truncate(value) == value
+
+
+def test_truncate_expands_a_mapping_that_is_not_a_dict():
+    # `isinstance(value, dict)` missed every mapping a framework actually hands
+    # us that is not literally a dict, and those fell through to the repr
+    # branch. A tool's JSON schema then reached the events store as the STRING
+    # "mappingproxy({'title': 'From Unit', 'type': 'string'})" — valid JSON
+    # holding a Python repr, so `JSONExtract` over it finds nothing and the
+    # field is unqueryable rather than merely ugly. Seen in a real stored row:
+    # a crewai `model_request.tools[0]…properties.from_unit`.
+    # `MappingProxyType` is what `model_json_schema()` and any frozen config
+    # hands back, so this is the common case, not an exotic one.
+    schema = types.MappingProxyType({"title": "From Unit", "type": "string"})
+    assert _core.truncate({"from_unit": schema}) == {
+        "from_unit": {"title": "From Unit", "type": "string"}
+    }
+    assert _core.truncate({"p": collections.ChainMap({"a": 1})}) == {"p": {"a": 1}}
+
+
+def test_truncate_still_reprs_an_object_with_no_json_shape():
+    # The counterweight: widening to the ABCs must not turn the repr branch
+    # into dead code. An object that is neither a mapping nor a sequence has no
+    # JSON shape and rendering it is the only thing left to do.
+    class Opaque:
+        def __repr__(self):
+            return "<Opaque>"
+
+    assert _core.truncate({"o": Opaque()}) == {"o": "<Opaque>"}
+    # And a str is a Sequence — it must keep taking the string path, not be
+    # exploded into a list of characters.
+    assert _core.truncate("hello") == "hello"
+    assert _core.truncate(b"raw") == "raw"
 
 
 def test_payload_flags_truncation():

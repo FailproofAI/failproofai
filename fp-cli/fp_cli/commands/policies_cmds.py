@@ -389,7 +389,12 @@ def policies_compose(
     deploys itself is a generated policy nobody read.
 
     `--out` saves it; `--publish <id>` publishes it, still syntax-checked first.
-    Needs `agent:use`, and `policies:write` to publish. Session-only.
+    Needs `policies:write` — for the draft as well as the publish. The route is
+    `POST /api/agent/compose-policy`, which the dashboard exports as
+    `withAuth("policies:write", …)`; `agent:use` gates the assistant's other
+    routes (chat, answer, conversations) and is NOT checked on this one. So a
+    role holding only `agent:use` is refused here, and one holding
+    `policies:write` without it works. Session-only.
 
     With `--json`: `{prompt, source, syntax, published}`.
 

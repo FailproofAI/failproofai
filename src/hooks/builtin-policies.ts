@@ -290,7 +290,17 @@ const RUNNER_OPERAND_RE = /^\d+[a-z]*$/i;
  * and denies. That is a far narrower miss than matching every mention, and it
  * errs toward refusing rather than toward silently suspending enforcement.
  */
-function namesSelfPause(command: string): boolean {
+type SelfInvocation = "pause" | "cli";
+
+/**
+ * Classify a command by what it does to failproofai itself, or null when it
+ * does nothing to failproofai at all.
+ *
+ * `pause` outranks `cli` wherever both appear, because the pause verdict is the
+ * one whose message has to explain that suspending enforcement is a human call.
+ */
+function classifySelfInvocation(command: string): SelfInvocation | null {
+  let found: SelfInvocation | null = null;
   for (const segment of command.split(SEGMENT_SEPARATORS)) {
     const tokens = segment.split(/\s+/).filter(Boolean);
     let i = 0;
@@ -311,14 +321,16 @@ function namesSelfPause(command: string): boolean {
     if (i >= tokens.length) continue;
     if (!SELF_BINARY_TOKEN_RE.test(tokens[i])) continue;
 
-    // The binary IS the command here. Now require `config … --pause` in the
-    // argument order the CLI actually accepts.
+    // The binary IS the command here. `config … --pause` is singled out only for
+    // its message; every other subcommand is denied just the same.
     const args = tokens.slice(i + 1);
     const configAt = args.findIndex((a) => CONFIG_SUBCOMMAND_RE.test(a));
-    if (configAt === -1) continue;
-    if (args.slice(configAt + 1).some((a) => PAUSE_FLAG_RE.test(a))) return true;
+    if (configAt !== -1 && args.slice(configAt + 1).some((a) => PAUSE_FLAG_RE.test(a))) {
+      return "pause";
+    }
+    found = "cli";
   }
-  return false;
+  return found;
 }
 
 /**
@@ -400,7 +412,6 @@ const SECRET_FILE_CREDENTIALS_RE = /credentials/;
 const GIT_COMMIT_MERGE_RE = /git\s+(commit|merge|rebase|cherry-pick)\b/;
 
 // blockFailproofaiCommands
-const FAILPROOFAI_CLI_RE = /(?:^|;|&&|\|\||\|)\s*failproofai(?:\s|$)/;
 const FAILPROOFAI_UNINSTALL_RE = /(?:npm\s+(?:uninstall|remove|un|r)\s.*failproofai|bun\s+remove\s.*failproofai|yarn\s+global\s+remove\s+failproofai|pnpm\s+(?:remove|uninstall|un)\s.*failproofai)/;
 
 // warnGitAmend
@@ -968,20 +979,6 @@ function blockSudo(ctx: PolicyContext): PolicyResult {
  * can run `failproofai audit`. Neither gap should leave pausing reachable, so
  * this stays narrow, matches the runner forms, and survives that one being off.
  */
-function blockSelfPause(ctx: PolicyContext): PolicyResult {
-  if (ctx.toolName !== "Bash") return allow();
-  const cmd = getCommand(ctx);
-  // The raw command AND its shell-unescaped form: a shell strips quotes and
-  // backslashes before running the binary, so `fail\proofai config --pause`
-  // reaches the pause CLI even though the literal name is broken.
-  if (namesSelfPause(cmd) || namesSelfPause(stripShellQuoting(cmd))) {
-    return deny(
-      "Pausing failproofai enforcement is a human action, not an agent one. " +
-        "If a policy is blocking legitimate work, say so and let the operator decide.",
-    );
-  }
-  return allow();
-}
 
 function blockCurlPipeSh(ctx: PolicyContext): PolicyResult {
   if (ctx.toolName !== "Bash") return allow();
@@ -1386,20 +1383,49 @@ function blockWorkOnMain(ctx: PolicyContext): PolicyResult {
   return allow();
 }
 
+/**
+ * The one policy that cannot be turned off — see `alwaysOn` on its definition.
+ *
+ * Merged from the former `block-self-pause` and `block-failproofai-commands`,
+ * which were two halves of one guard that disagreed with each other.
+ *
+ * `block-self-pause` had the hardened matcher: it walks off runner prefixes and
+ * re-checks the shell-unescaped form, so `sudo failproofai …`, `npx failproofai
+ * …` and `fail\proofai …` do not get through. But it only ever looked for
+ * `config --pause`. `block-failproofai-commands` had the whole surface — any CLI
+ * call, plus package-manager uninstall — on a regex a single `sudo` defeated.
+ * Keeping the broad surface and dropping the weak matcher is the only
+ * combination stronger than either half.
+ *
+ * They also contradicted each other: `block-self-pause` deliberately ALLOWED
+ * `config --resume`, `config --status` and `policies --install`, while
+ * `block-failproofai-commands` denied them. Both were `defaultEnabled`, so the
+ * deny is what actually happened on every machine and the allow never ran. The
+ * merge keeps the behaviour users have.
+ */
 function blockFailproofaiCommands(ctx: PolicyContext): PolicyResult {
   if (ctx.toolName !== "Bash") return allow();
   const cmd = getCommand(ctx);
+  // The raw command AND its shell-unescaped form: a shell strips quotes and
+  // backslashes before running the binary, so `fail\proofai config --pause`
+  // reaches the pause CLI even though the literal name is broken.
+  const unescaped = stripShellQuoting(cmd);
+  const kind = classifySelfInvocation(cmd) ?? classifySelfInvocation(unescaped);
 
-  // Block direct failproofai CLI invocations
-  if (FAILPROOFAI_CLI_RE.test(cmd)) {
+  if (kind === "pause") {
+    return deny(
+      "Pausing failproofai enforcement is a human action, not an agent one. " +
+        "If a policy is blocking legitimate work, say so and let the operator decide.",
+    );
+  }
+  if (kind === "cli") {
     return deny("Running failproofai CLI commands is blocked");
   }
-
-  // Block package-manager uninstallation of failproofai
-  if (FAILPROOFAI_UNINSTALL_RE.test(cmd)) {
+  // Package-manager removal puts the manager in command position, not the
+  // binary, so the walk above never reaches it.
+  if (FAILPROOFAI_UNINSTALL_RE.test(cmd) || FAILPROOFAI_UNINSTALL_RE.test(unescaped)) {
     return deny("Uninstalling failproofai is blocked");
   }
-
   return allow();
 }
 
@@ -2157,16 +2183,6 @@ export const BUILTIN_POLICIES: BuiltinPolicyDefinition[] = [
     } satisfies PolicyParamsSchema,
   },
   {
-    name: "block-self-pause",
-    displayTitle: "Tried to pause failproofai enforcement",
-    impact: "An agent that can pause enforcement can switch off every other policy.",
-    description: "Block agents from pausing failproofai enforcement",
-    fn: blockSelfPause,
-    match: { events: ["PreToolUse", "PermissionRequest"], toolNames: ["Bash"] },
-    defaultEnabled: true,
-    category: "Dangerous Commands",
-  },
-  {
     name: "block-sudo",
     displayTitle: "Tried to run a command with sudo",
     impact: "Sudo gives the agent root — blocked unless explicitly allow-listed.",
@@ -2214,12 +2230,16 @@ export const BUILTIN_POLICIES: BuiltinPolicyDefinition[] = [
   },
   {
     name: "block-failproofai-commands",
-    displayTitle: "Tried to disable or modify failproofai itself",
-    impact: "Prevents the agent from turning off the policies that protect you.",
-    description: "Block failproofai CLI commands and uninstallation",
+    displayTitle: "Tried to disable, pause or modify failproofai itself",
+    impact: "An agent that can pause or remove enforcement can switch off every other policy.",
+    description: "Block failproofai CLI commands, self-pause and uninstallation",
     fn: blockFailproofaiCommands,
-    match: { events: ["PreToolUse"], toolNames: ["Bash"] },
+    // PermissionRequest is carried over from the merged-in `block-self-pause`.
+    // It is a real enforcement point on Copilot and Devin, and dropping it would
+    // have left this guard blind on both.
+    match: { events: ["PreToolUse", "PermissionRequest"], toolNames: ["Bash"] },
     defaultEnabled: true,
+    alwaysOn: true,
     category: "Dangerous Commands",
   },
   {
@@ -2614,7 +2634,13 @@ export function registerBuiltinPolicies(enabledNames: string[]): void {
   // forms in the user's enabledPolicies config — canonicalize both sides.
   const enabledSet = new Set(enabledNames.map(normalizePolicyName));
   for (const policy of BUILTIN_POLICIES) {
-    if (enabledSet.has(normalizePolicyName(policy.name))) {
+    // `alwaysOn` deliberately bypasses the enabled set, and the caller's three
+    // ways of producing an empty one with it: a policy the user never enabled,
+    // an active session pause (`handler.ts` passes `[]`), and a config file that
+    // failed to parse (`hooks-config.ts` soft-fails to `{enabledPolicies: []}`).
+    // A guard against the agent disabling failproofai that any of those can
+    // switch off is not a guard.
+    if (policy.alwaysOn || enabledSet.has(normalizePolicyName(policy.name))) {
       registerPolicy(policy.name, policy.description, policy.fn, policy.match);
     }
   }

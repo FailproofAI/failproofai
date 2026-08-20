@@ -74,6 +74,28 @@ function validatePolicyNames(names: string[]): void {
   }
 }
 
+/**
+ * Refuse to "disable" a policy that will register anyway.
+ *
+ * Removing an `alwaysOn` name from `enabledPolicies` succeeds at the file level
+ * and changes nothing at the enforcement level, so without this the CLI reports
+ * a policy disabled while it keeps denying — the operator's mental model and the
+ * machine's behaviour diverge silently, which is the failure this policy exists
+ * to prevent in the first place.
+ */
+function rejectAlwaysOnPolicies(names: string[]): void {
+  const alwaysOn = new Set(BUILTIN_POLICIES.filter((p) => p.alwaysOn).map((p) => p.name));
+  const refused = names.filter((n) => alwaysOn.has(n));
+  if (refused.length > 0) {
+    throw new CliError(
+      `Cannot disable: ${refused.join(", ")}\n` +
+      `This policy stops an agent from switching off failproofai itself, so it ` +
+      `is always on and ships with the package. A guard the agent can disable ` +
+      `by the means it is meant to prevent is not a guard.`
+    );
+  }
+}
+
 /** Return only scopes whose settings paths are unique (first wins). */
 function deduplicateScopes(scopes: readonly HookScope[], cwd?: string): HookScope[] {
   const seen = new Set<string>();
@@ -435,6 +457,7 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
   // Remove specific policies from config (keep hooks installed)
   if (policyNames && policyNames.length > 0 && !(policyNames.length === 1 && policyNames[0] === "all")) {
     validatePolicyNames(policyNames);
+    rejectAlwaysOnPolicies(policyNames);
     const config = readScopedHooksConfig(configScope, cwd);
     const removeSet = new Set(policyNames);
     const remaining = config.enabledPolicies.filter((p) => !removeSet.has(p));

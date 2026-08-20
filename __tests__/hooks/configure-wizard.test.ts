@@ -418,7 +418,7 @@ describe("configure-wizard pure builders", () => {
   });
 
   it("reviewLines gives a taste of the policies without listing them all", () => {
-    // Two names say what KIND of thing these are; naming all fifteen turned a
+    // Two names say what KIND of thing these are; naming all fourteen turned a
     // four-line review into a thirteen-line one, and a screen nobody reads to
     // the bottom conveys less than a short one.
     const lines = reviewLines({
@@ -428,8 +428,8 @@ describe("configure-wizard pure builders", () => {
       cwd: "/tmp/proj",
     });
     const joined = lines.join("\n");
-    expect(joined).toContain("15 enabled");
-    expect(joined).toContain("block-curl-pipe-sh, block-env-files +13");
+    expect(joined).toContain("14 enabled");
+    expect(joined).toContain("block-curl-pipe-sh, block-env-files +12");
     // The other thirteen are NOT on screen.
     expect(joined).not.toContain("sanitize-private-key-content");
     // One line for the count, one for the taste — never a paragraph.

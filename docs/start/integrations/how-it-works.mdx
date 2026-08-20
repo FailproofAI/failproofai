@@ -94,6 +94,12 @@ Each flush writes one batch file, `.tmp` first, then `fsync`, then an atomic ren
 The daemon only picks up `.jsonl`, so it can never read a half-written file. The stem carries a timestamp, process id and sequence number, so two processes flushing in the same millisecond cannot collide. The queue is capped at 10,000 events; past that it drops the oldest and logs.
 
 <Warning>
+  **The daemon ships your batches; it does not rewrite them.** `collector.redact` scrubs credential-shaped strings out of the events the daemon captures *itself* — CLI session transcripts and hook activity — and it is applied where those events are written, not where batches are shipped. A batch the SDK wrote goes to Cloud exactly as your process produced it, so a prompt or a tool argument that contains a key still contains it on arrival.
+
+  That is deliberate: these are your own instrumentation calls, and rewriting their payloads in transit would mean the events you receive are not the events you emitted. It does mean the SDK is where you control payload contents — `capture_content=False` on the adapter, or simply not passing the secret to `input=` — and that setting `collector.redact` is not a substitute for either.
+</Warning>
+
+<Warning>
   Do not inspect the spool to confirm delivery while the daemon is running. It deletes each batch within milliseconds, so a listing races the collector and shows far fewer events than were emitted — which looks exactly like an SDK that recorded nothing.
 </Warning>
 

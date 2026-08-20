@@ -1,0 +1,43 @@
+---
+title: "Bảng Điều Khiển"
+description: "Theo dõi các tín hiệu độ tin cậy quan trọng cho agent hoặc workflow."
+icon: "layout-dashboard"
+---
+
+Bảng điều khiển kết hợp các truy vấn đã lưu thành một khung nhìn hoạt động. Xây dựng một bảng xung quanh quyết định bạn mong đợi ai đó sẽ đưa ra—không phải xung quanh tất cả các chỉ số có sẵn.
+
+## Xây dựng bảng điều khiển
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Truy cập **Analyze → Queries**, tạo hoặc mở một truy vấn đã lưu, và xác thực kết quả của nó.
+    2. Chọn **add to dashboard**, sau đó chọn một bảng điều khiển hiện có hoặc tạo một bảng mới trong **Analyze → Dashboards**.
+    3. Mở bảng điều khiển, vào chế độ chỉnh sửa, sắp xếp các ô, và lưu bố cục.
+    4. Quay lại truy vấn khi bạn cần thay đổi dữ liệu hoặc bộ lọc đằng sau một ô.
+
+    ![Một bảng điều khiển được tạo thành từ các truy vấn đã lưu về khối lượng sự kiện, lỗi, độ trễ và sử dụng token mô hình.](/images/dashboard/dashboard-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    CRUD bảng điều khiển hiện không được công khai bởi Cloud CLI. Sử dụng CLI để xây dựng và xác minh truy vấn đã lưu, sau đó thêm nó vào bảng điều khiển trong UI.
+
+    ```bash
+    fp query schema
+    fp query create "production error rate" --sql "SELECT ..."
+    fp query run <query-id>
+    ```
+  </Tab>
+</Tabs>
+
+Các nhóm bảng điều khiển hữu ích bao gồm:
+
+- **Models:** khối lượng, độ trễ, sử dụng token, tỷ lệ lỗi và điểm đánh giá.
+- **Evaluations:** tỷ lệ thành công và xu hướng điểm theo agent hoặc môi trường.
+- **Tools:** khối lượng cuộc gọi, tỷ lệ lỗi, thời lượng và cuộc gọi lặp lại.
+- **Hooks and policies:** quyết định, từ chối và tỷ lệ khớp chính sách.
+- **Custom workflow metrics:** kết quả từ các trường sự kiện và SQL của riêng bạn.
+
+Bắt đầu với một truy vấn đã lưu, xác thực kết quả của nó, sau đó thêm nó dưới dạng một ô. Giữ cho các bộ lọc sản xuất và phát triển rõ ràng để lưu lượng truy cập kiểm tra không che giấu một hồi quy.
+
+<Tip>
+  Gán cho mọi bảng điều khiển một chủ sở hữu và một câu hỏi phản hồi, chẳng hạn như "Độ tin cậy của checkout-agent có tệ hơn tuần trước không?"
+</Tip>

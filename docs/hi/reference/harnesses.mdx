@@ -1,0 +1,114 @@
+---
+title: "Agent harnesses"
+description: "समर्थित agent CLIs में सेशन कैप्चर करें और नीतियों को लागू करें।"
+icon: "plug-zap"
+---
+
+Failproof AI Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory Droid, Devin CLI, Antigravity CLI, और Goose को सपोर्ट करता है।
+
+| Harness | समर्थित hook scopes |
+| --- | --- |
+| Claude Code | User, project, local |
+| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
+| Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
+| Hermes, OpenClaw | User |
+
+प्रत्येक एकीकरण अपनी native hook event names, tool names, और tool-input fields को सामान्य बनाता है इससे पहले कि नीतियां चलें। एक नीति केवल उन्हीं events पर कार्य कर सकती है जिन्हें harness expose करता है; अपने द्वारा तैनात किए जाने वाले सटीक harness और संस्करण पर end-of-turn और instruction behavior का परीक्षण करें।
+
+## Enforcement क्षमता
+
+"Block" का अर्थ है कि वर्तमान adapter का रिटर्न किया गया verdict नामित harness द्वारा consume किया जाता है। Post-tool blocking से परिणाम को मॉडल को दिखाया जाने वाला परिणाम बदला जा सकता है लेकिन एक tool side effect को पूर्ववत नहीं किया जा सकता जो पहले से ही हुआ है।
+
+| Harness | सत्यापित blocking events | Observe-only या non-blocking caveats |
+| --- | --- | --- |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact`, और कई task/config events | `PostToolUse`, session lifecycle, notifications, और post-failure events observational हैं। |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | Post-tool blocking execution के बाद परिणाम को बदलता है; session-start और compact events वर्तमान adapter में observational हैं। |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | Post-tool blocking execution के बाद परिणाम को बदलता है; session और notification events observational हैं। |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` और session events observational हैं। |
+| OpenCode | `PreToolUse` | Post-tool और lifecycle events observational हैं; वर्तमान stop handling एक सत्यापित gate के बजाय बाद की turn के लिए guidance है। |
+| Pi | `PreToolUse`, `UserPromptSubmit` | Post-tool और lifecycle events observational हैं; stop guidance बाद की turn पर लागू होती है। |
+| Hermes | `PreToolUse` | Post-tool, session, और subagent-stop verdicts gates नहीं हैं। |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | Post-tool, session, subagent-stop, और compaction events observational हैं। |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | Post-tool और subagent-stop verdicts observational हैं। |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, conditional `PermissionRequest` | Permission hooks हर permission mode में नहीं चलते; post-tool और session events observational हैं। |
+| Antigravity CLI | `PreToolUse`, `Stop` | User-prompt और post-tool verdicts observational हैं; prompt instructions अभी भी inject किए जा सकते हैं। |
+| Goose | `PreToolUse` | User-prompt, post-tool, और session events observational हैं। एक native blocking stop hook upstream में मौजूद है लेकिन वर्तमान adapter द्वारा इंस्टॉल नहीं किया गया है। |
+
+क्षमताएं version-sensitive हैं। Agent CLI को upgrade करने के बाद फिर से परीक्षण करें, विशेष रूप से जब कोई नीति prompt, stop, permission, या post-tool behavior के बजाय common pre-tool gate पर निर्भर हो।
+
+## कैप्चर और policy hooks इंस्टॉल करें
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Administration → Keys** खोलें और `events:add` और `policies:pull` के साथ एक key बनाएं, machine या environment के नाम पर।
+    2. लक्ष्य machine पर, प्रदर्शित key के साथ स्थानीय CLI को कनेक्ट करें और harness hooks को इंस्टॉल करें।
+    3. एक नया agent सेशन शुरू करें, फिर **Observe → Events** के तहत इसके hook और session events की पुष्टि करें।
+    4. समान समय window के लिए **Observe → policy** खोलें और पुष्टि करें कि एक policy decision machine को जिम्मेदार ठहराया गया है।
+
+    कनेक्शन एक machine key के साथ शुरू होता है। इसके secret की प्रतिलिपि बनाने से पहले पुष्टि करें कि इसमें ingestion और policy-delivery दोनों अनुमतियां हैं।
+
+    ![नई API key drawer जिसका उपयोग event ingestion और policy delivery अनुमतियां प्रदान करने के लिए किया जाता है।](/images/dashboard/key-create.png)
+
+    Hooks को इंस्टॉल करने के बाद, Events stream को machine और environment से नई events दिखानी चाहिए जिसे आपने कनेक्ट किया है।
+
+    ![Live Events stream जिसका उपयोग नई तरह से इंस्टॉल किए गए harness की रिपोर्टिंग की पुष्टि करने के लिए किया जाता है।](/images/dashboard/events-stream.png)
+
+    अंत में, सत्यापित करें कि policy decisions उसी machine को जिम्मेदार ठहराए गए हैं। यह पुष्टि करता है कि harness trace events के साथ-साथ policy activity की रिपोर्ट कर रहा है।
+
+    ![Policy page जिसका उपयोग नई तरह से कनेक्ट किए गए harness से policy decisions को सत्यापित करने के लिए किया जाता है।](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    हर detect किए गए harness के लिए hooks को इंस्टॉल करें:
+
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+    failproofai policies --install
+    ```
+
+    या नामित harnesses और configuration scope को लक्षित करें:
+
+    ```bash
+    failproofai policies --install \
+      --cli claude codex cursor \
+      --scope user
+    ```
+
+    Project scope hook configuration को repository के साथ रखता है। User scope repositories के पार काम को कवर करता है। Claude Code local scope को भी सपोर्ट करता है; support harness के आधार पर भिन्न होता है और CLI unsupported combinations को अस्वीकार करता है।
+
+    Machine और इसके events को verify करें:
+
+    ```bash
+    failproofai config --status
+    failproofai flush --wait
+    fp events --since 1h --event-type hook_triggered,hook_completed
+    ```
+  </Tab>
+</Tabs>
+
+## एक गैर-default सेशन path जोड़ें
+
+<Tabs>
+  <Tab title="Dashboard">
+    अतिरिक्त paths machine पर register हैं, Cloud में नहीं। एक को add करने के बाद, **Observe → Sessions** खोलें, machine के environment के लिए फ़िल्टर करें, और पुष्टि करें कि नई path से sessions दिखाई देते हैं। एक session खोलें और इसे audit में उपयोग करने पर निर्भर करने से पहले agent, harness, और event timestamps की जांच करें।
+
+    ![Sessions list जो environment के लिए फ़िल्टर किया गया है जो additional capture path से डेटा प्राप्त कर रहा है।](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    एक optional label के साथ एक path जोड़ें, फिर configured paths को inspect करें:
+
+    ```bash
+    failproofai harness add-path claude checkout=/srv/checkout/.claude
+    failproofai harness list claude
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    ```
+
+    `failproofai harness remove-path claude checkout` के साथ एक path को हटाएं।
+  </Tab>
+</Tabs>
+
+<Tip>
+  इंस्टॉलेशन के बाद एक नया सेशन चलाएं। Rollout को expand करने से पहले live event stream और एक actual policy decision दोनों को verify करें।
+</Tip>

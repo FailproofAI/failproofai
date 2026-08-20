@@ -1,0 +1,43 @@
+---
+title: "Eventos ao vivo"
+description: "Acompanhe a atividade do agente enquanto uma sessão está em execução."
+icon: "radio"
+---
+
+Os eventos ao vivo ajudam você a confirmar a instrumentação e acompanhar uma execução arriscada sem esperar a sessão terminar.
+
+## Monitorar atividade
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **Observe → Events**.
+    2. Comece com a janela de tempo atual e sem filtros para confirmar que os dados estão chegando.
+    3. Filtre por ambiente, tipo de evento, agente ou sessão. Use a busca para texto no payload.
+    4. Selecione um evento para inspecionar seu resumo e detalhes. Siga o link da sessão para o rastreamento completo.
+
+    ![O stream de eventos ao vivo com filtros de tempo, ambiente, tipo de evento, agente, modelo, contexto, sessão e texto.](/images/dashboard/events-stream-current.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --env production --event-type tool_use,error --limit 100
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    O feed padrão omite os payloads brutos. Use `--full` apenas para investigações em sessões com escopo definido.
+  </Tab>
+</Tabs>
+
+Use o stream de eventos para responder três perguntas imediatas:
+
+- O agente esperado está reportando para o ambiente correto?
+- As chamadas de modelo, chamadas de ferramentas e decisões de política estão chegando na ordem certa?
+- A sessão parou de progredir ou começou a repetir uma ação?
+
+Os tipos de evento incluem eventos do ciclo de vida do agente, requisições e respostas de modelo, uso de ferramentas e resultados, execução de hooks, esperas e interrupções humanas, e erros explícitos. IDs de correlação associam eventos pareados, como uma chamada de ferramenta e seu resultado.
+
+<Tip>
+  Mantenha a visualização ao vivo ampla enquanto verifica uma nova integração. Adicione filtros somente após ver o primeiro evento; um filtro incorreto pode parecer uma falha na ingestão de dados.
+</Tip>
+
+Se nenhum evento aparecer, execute `failproofai config --status` e depois [solucione problemas de ingestão](/pt-br/reference/troubleshooting).

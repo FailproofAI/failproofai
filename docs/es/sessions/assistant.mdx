@@ -1,0 +1,53 @@
+---
+title: "Asistente de Failproof"
+description: "Analiza y opera Failproof AI en lenguaje natural, desde preguntas y consultas hasta dashboards y auditorías."
+icon: "message-square-text"
+---
+
+Pídele al Asistente de Failproof que realice cualquier tarea en Failproof AI usando lenguaje natural. Puede analizar sesiones y fallos, ejecutar consultas, crear dashboards, investigar evaluaciones y alertas, y ayudarte a diseñar y ejecutar auditorías sin necesidad de traducir la tarea en pantallas del producto o comandos CLI.
+
+```text
+Why did production checkout agents regress this week?
+Build a dashboard for tool failures, latency, and evaluation scores.
+Create an audit that finds agents retrying the same failed action without changing approach.
+Show me the sessions behind the most common audit finding.
+```
+
+El asistente trabaja con los datos y permisos disponibles en la organización activa. Revisa sus evidencias y los cambios propuestos antes de aplicar acciones que afecten a otros usuarios o agentes.
+
+## Consulta al asistente
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Selecciona **Open agent chat** y describe qué quieres entender, crear u operar.
+    2. Revisa las llamadas a herramientas, tablas y resultados de consultas del asistente mientras trabaja.
+    3. Abre la sesión, alerta o consulta citada para verificar el resultado frente a los datos de origen.
+    4. Inicia un nuevo chat para una investigación diferente, o usa el historial de chats para continuar la misma línea de análisis.
+
+    ![El asistente de Cloud respondiendo una pregunta de observabilidad con análisis de apoyo y consultas.](/images/dashboard/assistant.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Open representative sessions" --chat <chat-id>
+    ```
+
+    Usa `fp agent rename <chat-id> --title <title>` para mantener una investigación identificable y `fp agent delete <chat-id>` para eliminarla.
+  </Tab>
+</Tabs>
+
+## Trabaja de forma efectiva con el asistente
+
+- Primero indícale un objetivo; añade un entorno, flujo de trabajo o rango temporal cuando esos límites sean relevantes.
+- Trata el SQL generado y los resúmenes como una ayuda para la investigación, no como evidencia definitiva.
+- Abre sesiones representativas antes de crear una auditoría, incidencia, alerta o política.
+- Mantén explícitos los filtros de organización, entorno y tiempo.
+- Guarda el SQL útil como una consulta para que otro operador pueda reproducir el resultado.
+
+<Warning>
+  El asistente solo puede leer lo que tu usuario actual tiene acceso. No amplíes los permisos para que una pregunta funcione; pide a un operador autorizado que realice la investigación en su lugar.
+</Warning>

@@ -1,0 +1,84 @@
+---
+title: "Événements et configuration"
+description: "Référence du modèle d'événements, des environnements, du stockage local et des limites de configuration."
+icon: "list-tree"
+---
+
+## Familles d'événements
+
+- Démarrage, fin, pause et reprise d'un agent
+- Requête et réponse du modèle
+- Utilisation d'outil et résultat
+- Déclenchement et complétion d'un hook
+- Attente humaine, saisie, pause et interruption
+- Erreurs explicites
+
+Chaque événement comporte un horodatage, un ID de session, un ID d'agent, un type d'événement et un environnement. Les champs spécifiques à l'événement contiennent des données relatives au modèle, à l'outil, à la corrélation, au résultat, au contenu, à la durée ou à l'erreur.
+
+## Inspecter un contrat d'événement
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Ouvrez **Observer → Événements**.
+    2. Définissez une fenêtre temporelle courte et filtrez par environnement, agent et type d'événement.
+    3. Sélectionnez un événement pour inspecter ses champs normalisés et sa charge utile brute, puis ouvrez sa session pour visualiser le contexte d'exécution.
+    4. Si une durée associée est manquante, vérifiez que les événements de début et de fin utilisent le même ID de corrélation.
+
+    Utilisez le flux d'événements pour restreindre les données à une seule exécution d'agent et inspecter les champs d'événement normalisés.
+
+    ![Le flux d'événements en direct avec des filtres pour l'environnement, l'agent, la session et le type d'événement.](/images/dashboard/events-stream.png)
+
+    Suivez ensuite l'événement dans sa session. La trace indique ce qui s'est passé immédiatement avant et après, ce qui est indispensable lorsque la charge utile seule est ambiguë.
+
+    ![La trace de session liée utilisée pour inspecter l'événement dans son contexte d'exécution.](/images/dashboard/session-detail.png)
+
+    Comparez les ID de corrélation et les horodatages dans les deux vues lorsqu'un événement associé ou une durée est manquant.
+  </Tab>
+  <Tab title="CLI">
+    Découvrez les valeurs de filtre valides, puis récupérez les charges utiles complètes d'une session :
+
+    ```bash
+    fp list event_types
+    fp list envs
+    fp events --since 1h \
+      --env production \
+      --event-type tool_use,tool_result \
+      --session-id <session-id> \
+      --full
+    ```
+
+    Utilisez `fp --json events ... --fields ts,event_type,session_id,payload` pour une inspection lisible par machine.
+  </Tab>
+</Tabs>
+
+## Champs réservés du SDK
+
+N'utilisez pas `timestamp`, `session_id`, `agent_id`, `type` ou `environment` comme champs personnalisés du SDK Python. Les durées d'événements associés, telles que la durée du résultat d'outil, sont calculées par le SDK et ne peuvent pas être fournies manuellement.
+
+## Limites locales
+
+- L'état de Failproof AI réside sous `~/.failproofai`, sauf configuration explicite contraire.
+- `failproofai-sdk` utilise `AGENTEYE_HOME` pour son remplacement hérité du répertoire de base.
+- Les étiquettes d'environnement peuvent être définies via la configuration du SDK ou `AGENTEYE_ENVIRONMENT`.
+- Les identifiants du daemon sont stockés séparément des paramètres non confidentiels.
+
+Utilisez des noms d'environnement stables à faible cardinalité. Les virgules ne sont pas prises en charge dans les étiquettes d'environnement du daemon.
+
+## Modifier une étiquette d'environnement
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    Les étiquettes d'environnement sont assignées par le SDK émetteur ou le daemon Failproof. Après en avoir modifié une, ouvrez **Observer → Sessions** et utilisez le filtre d'environnement pour confirmer que les nouvelles sessions portent bien la nouvelle valeur. Les sessions existantes conservent leur environnement d'origine.
+
+  </Tab>
+  <Tab title="CLI">
+    Pour `failproofai-sdk`, configurez l'environnement dans le code ou avec sa variable d'environnement héritée. Relancez la configuration du daemon lors de la modification des paramètres au niveau de la machine.
+
+    ```bash
+    export AGENTEYE_ENVIRONMENT=production-us-east
+    failproofai config
+    failproofai config --status
+    fp sessions --since 1h --env production-us-east
+    ```
+  </Tab>
+</Tabs>

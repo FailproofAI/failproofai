@@ -1,0 +1,25 @@
+---
+title: "Tools"
+description: "एजेंट सेशन के पार धीमे, विफल, या अत्यधिक उपयोग किए जाने वाले टूल्स खोजें।"
+icon: "wrench"
+---
+
+Tools सेशन के पार टूल कॉल को समूहीकृत करता है ताकि आप लेटेंसी और कॉल वितरण की तुलना कर सकें।
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Tools** पर जाएं।
+    2. पर्यावरण, टूल नाम, एजेंट, या सेशन ID के आधार पर फ़िल्टर करें।
+    3. लेटेंसी और टूल वितरण की समीक्षा करें।
+    4. मेलिंग इवेंट्स और सेशन खोलने के लिए चार्ट पॉइंट या टूल सेगमेंट चुनें।
+
+    ![लेटेंसी, सफलता और विफलता ब्रेकडाउन, और टूल-कॉल वितरण दिखाने वाला Tools पेज।](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

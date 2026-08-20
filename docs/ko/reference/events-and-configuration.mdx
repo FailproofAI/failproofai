@@ -1,0 +1,84 @@
+---
+title: "이벤트 및 구성"
+description: "이벤트 모델, 환경, 로컬 스토리지, 구성 경계에 대한 참조 문서입니다."
+icon: "list-tree"
+---
+
+## 이벤트 패밀리
+
+- 에이전트 시작, 종료, 일시 중지, 재개
+- 모델 요청 및 응답
+- 도구 사용 및 결과
+- 훅 트리거 및 완료
+- 사람 대기, 입력, 일시 중지, 중단
+- 명시적 오류
+
+모든 이벤트에는 타임스탬프, 세션 ID, 에이전트 ID, 이벤트 유형, 환경 정보가 포함됩니다. 이벤트별 필드에는 모델, 도구, 상관 관계, 결과, 콘텐츠, 지속 시간, 오류 데이터가 담깁니다.
+
+## 이벤트 계약 검사
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Observe → Events**를 엽니다.
+    2. 짧은 시간 범위를 설정하고 환경, 에이전트, 이벤트 유형으로 필터링합니다.
+    3. 이벤트를 선택하여 정규화된 필드와 원시 페이로드를 검사한 다음, 해당 세션을 열어 실행 컨텍스트를 확인합니다.
+    4. 페어링된 지속 시간이 누락된 경우, 시작 및 완료 이벤트가 동일한 상관 관계 ID를 사용하는지 확인합니다.
+
+    Events 스트림을 사용하여 데이터를 단일 에이전트 실행으로 좁히고 정규화된 이벤트 필드를 검사합니다.
+
+    ![환경, 에이전트, 세션, 이벤트 유형 필터가 적용된 실시간 Events 스트림.](/images/dashboard/events-stream.png)
+
+    그런 다음 이벤트에서 해당 세션으로 이동합니다. 트레이스는 이벤트 직전과 직후에 발생한 내용을 보여주며, 페이로드만으로는 판단이 모호할 때 필요합니다.
+
+    ![실행 컨텍스트에서 이벤트를 검사하는 데 사용되는 연결된 세션 트레이스.](/images/dashboard/session-detail.png)
+
+    페어링된 이벤트 또는 지속 시간이 누락된 경우, 두 뷰 간의 상관 관계 ID와 타임스탬프를 비교하세요.
+  </Tab>
+  <Tab title="CLI">
+    유효한 필터 값을 확인한 다음, 특정 세션의 전체 이벤트 페이로드를 가져옵니다:
+
+    ```bash
+    fp list event_types
+    fp list envs
+    fp events --since 1h \
+      --env production \
+      --event-type tool_use,tool_result \
+      --session-id <session-id> \
+      --full
+    ```
+
+    머신이 읽을 수 있는 형식으로 검사하려면 `fp --json events ... --fields ts,event_type,session_id,payload`를 사용하세요.
+  </Tab>
+</Tabs>
+
+## 예약된 SDK 필드
+
+Python SDK의 커스텀 필드로 `timestamp`, `session_id`, `agent_id`, `type`, `environment`는 사용하지 마세요. 도구 결과 지속 시간과 같은 페어링된 이벤트 지속 시간은 SDK가 계산하며, 수동으로 지정할 수 없습니다.
+
+## 로컬 경계
+
+- Failproof AI 상태는 명시적으로 다르게 구성하지 않는 한 `~/.failproofai` 아래에 저장됩니다.
+- `failproofai-sdk`는 레거시 기본 디렉터리 재정의를 위해 `AGENTEYE_HOME`을 사용합니다.
+- 환경 레이블은 SDK 구성 또는 `AGENTEYE_ENVIRONMENT`를 통해 설정할 수 있습니다.
+- 데몬 자격 증명은 비밀이 아닌 설정과 별도로 저장됩니다.
+
+안정적이고 카디널리티가 낮은 환경 이름을 사용하세요. 데몬 환경 레이블에는 쉼표가 지원되지 않습니다.
+
+## 환경 레이블 변경
+
+<Tabs>
+  <Tab title="대시보드">
+    환경 레이블은 이벤트를 내보내는 SDK 또는 Failproof 데몬이 할당합니다. 레이블을 변경한 후 **Observe → Sessions**를 열고 환경 필터를 사용하여 새 세션에 새 값이 반영되는지 확인합니다. 기존 세션은 원래 환경을 그대로 유지합니다.
+
+  </Tab>
+  <Tab title="CLI">
+    `failproofai-sdk`의 경우, 코드에서 환경을 구성하거나 레거시 환경 변수를 사용하세요. 머신 수준 설정을 변경할 때는 데몬 구성을 다시 실행하세요.
+
+    ```bash
+    export AGENTEYE_ENVIRONMENT=production-us-east
+    failproofai config
+    failproofai config --status
+    fp sessions --since 1h --env production-us-east
+    ```
+  </Tab>
+</Tabs>

@@ -1,0 +1,303 @@
+---
+title: "カスタムポリシー"
+description: "エージェント固有の障害に対応するJavaScriptまたはTypeScriptポリシーを作成・テスト・デプロイする。"
+icon: "shield-plus"
+---
+
+カスタムポリシーは、トレースや監査から検出された障害パターンを、エージェントの実行中に評価される判断ロジックに変換します。ポリシーはアクションを許可したり、エージェントにガイダンスを提供したり、別のインシデントが発生する前にアクションを拒否したりできます。
+
+ツール・パス・コマンド・環境・運用ルールに依存する動作には、カスタムポリシーを使用してください。既存のコントロールを再作成しないよう、まず[組み込みポリシーカタログ](/ja/policies/builtin-catalog)を確認してください。
+
+## カスタムポリシーを作成する
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Admin → ポリシーエディタ**に移動し、**新規ポリシー**を選択して、防止したい障害を説明します。
+    2. ポリシーのソースを追加し、エディタで期待されるマッチと安全な非マッチをテストします。すべてのバリデーションエラーを解消してください。
+    3. ドラフトを保存し、**バージョンを公開**を選択してイミュータブルなバージョンを作成します。
+    4. **Admin → 適用**に移動し、**observe**モードでテストマシンにバージョンをデプロイして、適用前に**Observe → ポリシー**で判断内容を確認します。
+
+    ![カスタムポリシーの作成と公開に使用するポリシーエディタ。](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    1. `.failproofai/policies/checkout-policies.ts`を作成します。ファイル名は`policies.js`、`policies.mjs`、または`policies.ts`で終わる必要があります。
+    2. `customPolicies.add()`で1つ以上のポリシーを登録します。
+    3. `failproofai policies --install --custom ./.failproofai/policies/checkout-policies.ts --scope project`でファイルを検証・インストールします。
+    4. マッチするアクションと安全なアクションをそれぞれ1つトリガーします。`failproofai policies`を実行し、**Observe → ポリシー**で帰属する判断内容を確認します。
+  </Tab>
+</Tabs>
+
+## 狭いルールから始める
+
+このポリシーは、コマンドがプロダクション環境を対象とする場合にのみ、破壊的なKubernetesコマンドをブロックします。その障害モード以外はすべて`allow()`を返します。
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+const DESTRUCTIVE_KUBECTL = /\bkubectl\s+(delete|replace)\b/i;
+const PRODUCTION_TARGET = /(?:--context|--namespace|-n)\s+(prod|production)\b/i;
+
+customPolicies.add({
+  name: "block-destructive-production-kubectl",
+  description: "Block destructive Kubernetes commands against production",
+  match: { events: ["PreToolUse"] },
+  fn: async ({ toolName, toolInput }) => {
+    if (toolName !== "Bash") return allow();
+
+    const command = String(toolInput?.command ?? "");
+    if (!DESTRUCTIVE_KUBECTL.test(command)) return allow();
+    if (!PRODUCTION_TARGET.test(command)) return allow();
+
+    return deny(
+      "Destructive production Kubernetes commands require the approved deployment workflow.",
+    );
+  },
+});
+```
+
+良いポリシーは1文で説明できるほど狭く絞られています。エージェントの意図ではなく、観察可能なアクションにマッチさせ、ルールが適用されなくなったらすぐに`allow()`を返してください。
+
+## 判断を選択する
+
+| ヘルパー | 結果 | 使用場面 |
+| --- | --- | --- |
+| `allow(reason?)` | 操作を続行する。 | ポリシーが適用されない場合、またはアクションが安全な場合。 |
+| `instruct(reason)` | ハーネスがサポートしている場合、ガイダンス付きで操作を続行する。 | 不変条件を強制せずにより良いアプローチへ誘導したい場合。 |
+| `deny(reason)` | イベントとハーネスがブロッキングをサポートしている場合、操作をブロックする。 | アクションを進めてはならない場合。 |
+
+リカバリーが必要なエージェント向けに理由を記述してください。検出された内容と代わりに行うべきことを説明します。
+
+<Warning>
+  安全境界には`instruct()`を使用しないでください。ガイダンスの配信はエージェントハーネスによって異なります。アクションを防止する必要がある場合は`deny()`を使用してください。
+</Warning>
+
+## ポリシーオブジェクト
+
+```ts
+customPolicies.add({
+  name: "policy-name",
+  description: "What this policy prevents",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => allow(),
+});
+```
+
+| フィールド | 必須 | 説明 |
+| --- | --- | --- |
+| `name` | はい | ポリシーの安定した識別子。ファイル間で名前が一意になるようにしてください。 |
+| `description` | いいえ | ポリシー一覧や判断内容に表示される人間が読める目的の説明。 |
+| `match.events` | いいえ | ポリシーを呼び出すイベントタイプ。`match`を省略すると、利用可能なすべてのイベントに対して呼び出されます。 |
+| `fn` | はい | `allow`、`instruct`、または`deny`の結果を返す同期または非同期関数。 |
+
+ツールのフィルタリングは`fn`の内部で行ってください。`match.toolNames`はパブリックなカスタムポリシー型には含まれていません。
+
+## ポリシーコンテキスト
+
+すべてのポリシーは`PolicyContext`を受け取ります。
+
+| フィールド | 型 | 内容 |
+| --- | --- | --- |
+| `eventType` | `HookEventType` | 現在評価中の正規化されたイベント。 |
+| `toolName` | `string \| undefined` | `Bash`、`Read`、`Write`、`Edit`などの正規ツール名。 |
+| `toolInput` | `Record<string, unknown> \| undefined` | 現在のツール呼び出しの正規化された入力。 |
+| `payload` | `Record<string, unknown>` | 完全な正規化済みイベントペイロード。 |
+| `session` | `SessionMetadata \| undefined` | セッションID、作業ディレクトリ、トランスクリプトパス、権限モード、および利用可能な場合のハーネスメタデータ。 |
+| `cli` | `string \| undefined` | `claude`、`codex`、`cursor`などのソースエージェントハーネス。 |
+| `params` | `Record<string, unknown>` | 組み込みポリシーのパラメータ。カスタムポリシーは現在空のオブジェクトを受け取ります。 |
+
+オプショナルな値はすべて本当にオプショナルとして扱ってください。エージェントのバージョンやイベントタイプによって、提供されるフィールドが異なります。
+
+### 一般的なツール入力
+
+Failproof AI はサポートされているハーネス全体で一般的なツールを正規化するため、ポリシーは通常1つの入力形式を使用できます。
+
+| ツール | 共通フィールド |
+| --- | --- |
+| `Bash` | `command` |
+| `Read` | `file_path` |
+| `Write` | `file_path`, `content` |
+| `Edit` | `file_path`, `old_string`, `new_string` |
+| `Grep` | `pattern`, `path` |
+
+ツール入力値は`unknown`型であるため、防御的な型変換を使用してください：
+
+```ts
+const command = String(ctx.toolInput?.command ?? "");
+const filePath = String(ctx.toolInput?.file_path ?? "");
+```
+
+## イベントを選択する
+
+| イベント | 実行タイミング | 典型的な用途 |
+| --- | --- | --- |
+| `PreToolUse` | ツール実行前。 | コマンド、書き込み、読み込み、外部アクションのブロックまたはガイダンス。 |
+| `PostToolUse` | ツールが結果を返した後。 | エージェントに届く前に結果を検査する。denyは結果全体をブロックし、選択したフィールドを編集するわけではない。 |
+| `PermissionRequest` | エージェントが権限を要求したとき。 | 組織固有の権限ルールを適用する。 |
+| `UserPromptSubmit` | 送信されたプロンプトが続行される前。 | 禁止された指示を拒否したり、ワークフローのガイダンスを追加したりする。 |
+| `Stop` | エージェントが完了しようとしたとき。 | ローカルの検証ステップなど、到達可能な完了条件を要求する。 |
+| `SubagentStop` | サブエージェントが完了しようとしたとき。 | 親に返る前に委任された作業をゲートする。 |
+| `SessionStart` / `SessionEnd` | セッション境界。 | セッションレベルの状態を記録または確認する。 |
+
+イベントの可用性とブロッキング動作はエージェントハーネスによって異なります。混合フリートでイベントを利用する前に[エージェントハーネス](/ja/reference/harnesses)を参照してください。
+
+<Accordion title="すべてのポリシーイベント名">
+  `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PermissionDenied`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`, `Elicitation`, `ElicitationResult`, `UserPromptExpansion`, `PostToolBatch`, `Setup`
+</Accordion>
+
+## 一般的なポリシーパターンを作成する
+
+### 保護されたパスへの書き込みをブロックする
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "block-generated-file-edits",
+  description: "Require generated files to be changed through their generator",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (!["Write", "Edit"].includes(ctx.toolName ?? "")) return allow();
+
+    const filePath = String(ctx.toolInput?.file_path ?? "");
+    if (!/(^|\/)(dist|generated)\//.test(filePath)) return allow();
+
+    return deny("Edit the source and run the generator instead of changing generated output.");
+  },
+});
+```
+
+### ノンブロッキングガイダンスを提供する
+
+```ts
+import { customPolicies, allow, instruct } from "failproofai";
+
+customPolicies.add({
+  name: "prefer-reviewed-deploy-command",
+  description: "Guide agents toward the reviewed deployment wrapper",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Bash") return allow();
+
+    const command = String(ctx.toolInput?.command ?? "");
+    if (!/^kubectl\s+apply\b/.test(command.trim())) return allow();
+
+    return instruct("Use ./scripts/deploy-reviewed instead of invoking kubectl directly.");
+  },
+});
+```
+
+### セッション完了をゲートする
+
+```ts
+import { execFileSync } from "node:child_process";
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "require-clean-typecheck",
+  description: "Require the project typecheck to pass before the agent finishes",
+  match: { events: ["Stop"] },
+  fn: async (ctx) => {
+    const cwd = ctx.session?.cwd;
+    if (!cwd) return allow();
+
+    try {
+      execFileSync("bunx", ["tsc", "--noEmit"], {
+        cwd,
+        stdio: "ignore",
+        timeout: 8_000,
+      });
+      return allow();
+    } catch {
+      return deny("Fix the typecheck errors before finishing the task.");
+    }
+  },
+});
+```
+
+<Warning>
+  `Stop`イベントを拒否するとエージェントがリトライする可能性があります。現在の環境でエージェントが満たせる条件のみをゲートし、すべてのサブプロセスやネットワーク呼び出しには必ず上限を設けてください。
+</Warning>
+
+## ポリシーファイルを読み込む
+
+### コンベンションファイル
+
+コンベンションファイルは自動的に読み込まれます：
+
+```text
+<project>/.failproofai/policies/security-policies.ts
+~/.failproofai/policies/personal-policies.mjs
+```
+
+- プロジェクトとユーザーのポリシーディレクトリは両方読み込まれます。
+- ファイルは各ディレクトリ内でアルファベット順に読み込まれます。
+- ファイル名は`policies.js`、`policies.mjs`、または`policies.ts`で終わる必要があります。
+- 1つのファイル内で複数の`customPolicies.add()`呼び出しがサポートされています。
+- ローカルモジュールからの相対インポートがサポートされています。
+- プロジェクトポリシーはコミットできるため、同じルールがリポジトリに従います。
+
+### 明示的なファイル
+
+バリデーションや設定でエントリーファイルを直接指定する場合は、明示的なパスを使用してください：
+
+```bash
+failproofai policies --install \
+  --custom ./security.policies.ts \
+  --custom ./workflow.policies.ts \
+  --scope project
+```
+
+明示的なファイルが最初に読み込まれ、続いてプロジェクトのコンベンションファイル、ユーザーのコンベンションファイルの順に読み込まれます。両方のパスで検出されたファイルは1度だけ読み込まれます。
+
+## バリデーションとテスト
+
+バリデーションはプロダクションローダーを通じてモジュールを実行し、少なくとも1つのポリシーが登録されることを確認します。
+
+```bash
+failproofai policies --install \
+  --custom ./.failproofai/policies/checkout-policies.ts \
+  --scope project
+failproofai policies
+```
+
+バリデーションは、ファイルの欠如、構文エラー、未解決のインポート、トップレベルの例外、モジュールロードのタイムアウトを検出します。ただし、マッチロジックの正確性は保証されません。
+
+少なくとも以下のケースをテストしてください：
+
+- マッチして意図したポリシー理由を生成するアクション1つ。
+- `allow()`を返す必要がある、類似しているが安全なアクション1つ。
+- ツールフィールドの欠如または不正な形式。
+- コマンド構文、パス、クォート、大文字小文字、空白の代替パターン。
+- 利用不可能なサブプロセスまたはネットワーク依存関係。
+
+**Observe → ポリシー**で結果がカスタムポリシーに帰属していることを確認してください。別の組み込みポリシーが判断を行った場合、ブロックされたテストだけでは十分ではありません。
+
+## ランタイムの動作
+
+- 組み込みポリシーはカスタムポリシーより先に評価されます。
+- 最初の`deny`でそれ以降のポリシー評価が停止します。
+- いずれのポリシーもイベントを拒否しない場合、複数の`instruct`結果を組み合わせることができます。
+- ポリシー関数には10秒の実行期限があります。
+- スローされた例外またはタイムアウトはログに記録され、`allow()`として扱われます。
+- 読み込みに失敗したコンベンションファイルはスキップされ、他のカスタムファイルと組み込みポリシーは続行されます。
+- トップレベルのモジュール読み込みにも10秒の期限があります。
+- クラウドのobserveモードはポリシーを実行しますが、non-allowの判断を適用せずに記録します。
+
+ポリシーモジュールは決定論的かつ高速に保ってください。トップレベルのネットワーク呼び出しやサーバー起動は避けてください。`fn`内の処理に上限を設け、依存関係の失敗をキャッチし、その失敗がアクションを許可するか拒否するかを意図的に選択してください。
+
+## APIエクスポート
+
+| エクスポート | 目的 |
+| --- | --- |
+| `customPolicies.add(policy)` | モジュール読み込み時にカスタムポリシーを登録する。 |
+| `allow(reason?)` | 操作を許可する。 |
+| `instruct(reason)` | 操作を許可し、サポートされている場合はガイダンスを提供する。 |
+| `deny(reason)` | サポートされている場合、操作をブロックする。 |
+| `getCustomHooks()` | モジュールレジストリに現在登録されているポリシーを返す。 |
+| `clearCustomHooks()` | そのレジストリをクリアする。主にテストとローダー向け。 |
+
+TypeScriptは`PolicyContext`、`PolicyResult`、`CustomHook`、`PolicyDecision`、`PolicyFunction`をエクスポートします。
+
+<Card title="カスタムポリシーをデプロイする" icon="server-cog" href="/ja/policies/deploy">
+  バージョンを公開し、observeモードでデプロイして、判断内容を確認してから適用に移行する。
+</Card>

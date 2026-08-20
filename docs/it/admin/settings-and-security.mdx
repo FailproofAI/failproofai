@@ -1,0 +1,68 @@
+---
+title: "Impostazioni e sicurezza"
+description: "Configura i valori operativi specifici della distribuzione e prendi scelte consapevoli sui dati degli agent."
+icon: "lock-keyhole"
+---
+
+Usa le Impostazioni per i valori operativi specifici della distribuzione e gli override della finestra di contesto del modello. Ispeziona lo schema delle impostazioni prima di modificare un valore tramite l'API o la CLI.
+
+## Modificare un'impostazione dell'organizzazione
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai su **Amministrazione → Impostazioni**, trova il gruppo di impostazioni e leggi la sua descrizione e fonte attuale.
+    2. Cambia il valore e salvalo.
+    3. Per le finestre di contesto del modello, aggiungi o aggiorna l'override del modello e conferma il limite effettivo.
+    4. Riconta le sessioni e le metriche che dipendono dal valore modificato.
+
+    ![La pagina Impostazioni mostra l'autenticazione dell'organizzazione e le impostazioni operative.](/images/dashboard/settings.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp settings list
+    fp settings schema
+    fp settings set <key> --value <scalar>
+    fp settings set alerts.email_default_recipients \
+      --json-value '["oncall@example.com"]'
+    ```
+
+    Esegui `fp settings set --help` per il tipo di valore e i flag di conferma utilizzati dalla CLI installata.
+  </Tab>
+</Tabs>
+
+## Scelte di gestione dei dati
+
+Collegare la CLI di Failproof AI invia trascrizioni per impostazione predefinita perché le tracce e i controlli dipendono dal loro contenuto. Usa `--no-transcripts` quando i prompt, i contenuti dei file o l'input del terminale devono rimanere locali; l'attività dell'hook e le decisioni sulle policy possono comunque essere segnalate.
+
+Le credenziali di ingest locali sono archiviate separatamente dalle impostazioni del daemon non segrete e scritte con autorizzazioni restrittive. Le chiavi API devono comunque essere gestite come segreti di produzione.
+
+## Riferimento impostazioni dell'organizzazione
+
+Tutte le impostazioni modificabili dal dashboard sono nell'ambito dell'organizzazione. Il comportamento a livello di distribuzione rimane una configurazione dell'ambiente server.
+
+| Chiave | Predefinito | Scopo |
+| --- | --- | --- |
+| `allowed_sign_ins` | `[]` | Limita i membri esistenti a email esatte o `*@domain`; un elenco vuoto significa nessuna restrizione aggiuntiva. |
+| `session_ttl_secs` | `86400` | Durata della sessione del dashboard; l'intervallo accettato è da 60 secondi a 30 giorni. |
+| `otp_ttl_secs` | `600` | Durata di OTP e magic-link; l'intervallo accettato è 60–1800 secondi. |
+| `alerts.email_default_recipients` | `[]` | Destinatari predefiniti quando un canale di avviso email non li sostituisce. |
+| `alerts.slack_default_webhook` | vuoto | URL webhook in entrata Slack predefinito. |
+| `alerts.webhook_default_url` | vuoto | URL webhook JSON generico predefinito. |
+| `alerts.webhook_signing_secret` | vuoto | Chiave HMAC-SHA256 utilizzata per l'intestazione `X-AgentEye-Signature`; le letture sono mascherate. |
+| `alerts.enabled_channels` | email, Slack, webhook | Tipi di canale a livello di organizzazione che le regole di avviso possono inviare. |
+| `default_user_permissions` | `standard` | Set di autorizzazioni denominato preselezionato per i nuovi inviti. |
+
+`allowed_sign_ins` è un filtro, non una concessione: una persona deve già essere membro dell'organizzazione. Usa un elenco vuoto per consentire a ogni membro; il valore nudo `*` viene rifiutato. Gli URL di avviso devono utilizzare HTTPS tranne per gli indirizzi di loopback di sviluppo.
+
+## Elenco di controllo della sicurezza
+
+- Usa HTTPS per le connessioni Cloud.
+- Limita le chiavi al set di autorizzazioni più piccolo.
+- Separa gli ambienti di produzione e non di produzione.
+- Esamina le impostazioni di trascrizione e redazione prima del rollout.
+- Controlla i cambiamenti di utenti, chiavi e organizzazione.
+- Prova i requisiti di backup, conservazione e risposta agli incidenti per la tua distribuzione.
+
+<Warning>
+  Disattivare la cattura delle trascrizioni cambia ciò che i controlli e le indagini possono provare. Registra la decisione e le sue limitazioni previste.
+</Warning>

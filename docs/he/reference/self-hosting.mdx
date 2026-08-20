@@ -1,0 +1,129 @@
+---
+---
+title: "Self-host Failproof AI Cloud"
+description: "פרוס את מישור הבקרה של Failproof AI על קלסטר Kubernetes המנוהל על ידי הלקוח."
+icon: "cloud-cog"
+---
+
+<Note>
+  Self-hosting הוא פריסה בחבילת Enterprise. [צור קשר עם Failproof AI](mailto:support@befailproof.ai) כדי לקבל רישיון enterprise.
+</Note>
+
+## דרישות מוקדמות
+
+- Kubernetes 1.27 ומעלה עם גישת cluster-admin
+- `kubectl` עם תמיכה ב-Kustomize
+- Helm 3
+- גישה לתמונות פרטיות `ghcr.io/agenteye-enterprise`
+- שני שמות DNS: אחד לדאשבורד ואחד ל-ingest
+- אחסון קבוע עבור PostgreSQL ו-ClickHouse
+- cert-manager ו-Traefik, או תשתית ingress ותעודות שוות ערך המותאמות לשכבת ה-overlay שלך
+- SMTP לכניסה OTP בייצור וכן להודעות
+
+עץ המקור מספק overlay מכוונה לפי AWS/EKS ו-overlay נפרדה לפי GCP/GKE. אל תשלב את הוראות התעודה, מאזן העומס או הגיבוי שלהם: GKE משתמשת בתצורה DNS-01, GCS וקנה מידה אוטומטי משלה.
+
+## רצף הפריסה
+
+<Steps>
+  <Step title="הכן את הקלסטר">
+    התקן את cert-manager וויקומי ingress הציבורי/דאשבורד, אמת את מאזני העומס שלהם, ואז צור את ה-namespace, אישורי pull של תמונה, אישורי מסד נתונים, מפתח bootstrap של admin, וסודות אימות/SMTP.
+  </Step>
+  <Step title="הגדר דומיינים ציבוריים">
+    הגדר את `INGEST_DOMAIN` ו-`DASHBOARD_DOMAIN` בקובץ הסביבה של הדומיין שנוצר של ה-overlay וצור רשומות DNS המצביעות על מאזני העומס התואמים.
+  </Step>
+  <Step title="החל וחשב overlay של פלטפורמה אחת">
+    השתמש ב-overlay של customer/EKS או GCP. בדוק את פלט Kustomize המעורבב, החלה אותו, ואשר שכל עומס העבודה והתעודות מגיעים למצב הרצוי לפני הרישום של מכונות.
+  </Step>
+  <Step title="Bootstrap גישה וניצול">
+    התחבר כ-admin המוגן, צור מפתח מכונה בהיקף ארגון, ושלח סשן בדיקה קטן דרך נקודת ה-ingest הציבורית.
+  </Step>
+</Steps>
+
+## שירותים נדרשים ואופציונליים
+
+| רכיב | דרישה |
+| --- | --- |
+| ClickHouse | נדרש. השרת מסרב להתחיל ללא חנות האירועים הקנוני שלו. |
+| PostgreSQL | נדרש עבור משתמשים, ארגונים, אובייקטים שמורים וזכות בקרה. |
+| Redis | אופציונלי. שרת ודאשבורד מופחתים להתנהגות תומכת בסיס נתונים כאשר לא זמינים. |
+| SMTP | אופציונלי לפיתוח, נדרש לדוא״ל OTP ייצור והחזקת הודעות. |
+| Evaluator | אופציונלי. הערכה אוטומטית נשארת מנוטרלת ללא `EVALUATOR_ENDPOINT`. |
+| Assistant/audit LLM | אופציונלי. תכונות המסייע וה-LLM-backed audit נשארות אינעיליות עד שחיבור LLM מוגדר. |
+| גיבוי אחסון אובייקטים | מומלץ מאוד עבור ארכיונים גיבוי PostgreSQL ו-ClickHouse. |
+
+### קיבולת audit והחזקת כישלון
+
+הפעל audits על הפריסה audit-agent ייעודית כאשר זמינה. כל audit-agent pod מקבל חקירה אחת כברירת מחדל; קנה מידה של throughput עם replicas ולא הגברה של concurrency לכל pod ללא הגדלה גם של זיכרון. השרת יכול להפיץ `server replicas × AUDIT_WORKERS` audits בו-זמנית, כך שקיבולת dispatcher צריכה להיות גדולה מספיק למלא את fleet ה-audit-agent.
+
+כאשר כל audit-agent slot עסוק, audit מחכה וחוזר על עצמו עד לרבע מהקדנס שלו, בגובה מרבי של שש שעות. אם לא משבצת זמינה, ההרצה מסתיימת ללא ממצאים ושולחת דוא״ל כישלון. כישלונות חוזרים על החזיקו בקריאה לרעיוני audit-agent נוספים או לעוגנים שעבור במרווח יותר רחב. כישלונות חוזרים על החזיקו בקריאה "shutting down" מציינים pods לא יציבים או looping rollout במקום קיבולת לא מספקת.
+
+הודעות כישלון דורשות ערוץ דוא״ל מופעל ו-SMTP. הם משתמשים בנמענים של ה-audit, ואז חוזרים ל-`alerts.email_default_recipients` כאשר ל-audit אין ערוץ דוא״ל.
+
+## אמת את הפריסה
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. פתח את דומיין הדאשבורד שהוגדר, השלם את זרימת ה-OTP של admin, ואשר את שם הארגון ו-slug.
+    2. עבור ל-**Administration → Keys** וצור מפתח מכונה בהיקף צר.
+    3. שלח סשן בדיקה, ואז אשר אותו ב-**Observe → Events** וב-**Observe → Sessions**.
+    4. בדוק ערוץ alert ובעת ההגדרה, הערכה ידנית ו-audit.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    kubectl get pods -n agenteye
+    kubectl get certificates -n agenteye
+    kubectl logs -n agenteye deploy/server --tail=100
+
+    fp --base-url https://failproof.example.com login
+    fp --base-url https://failproof.example.com whoami
+    fp --base-url https://failproof.example.com usage
+    ```
+
+    אמת את נקודת הבריאות הציבורית וריקס אחד מבוא `/v1` מאומת לפני הרישום של מכונות ייצור.
+  </Tab>
+</Tabs>
+
+## אימות ודוא״ל
+
+הדאשבורד משתמש בדוא״ל וקודים חד-פעמיים. ללא SMTP, פריסות פיתוח רישומות קודי OTP לפלט שרת. כאשר `SMTP_HOST` מוגדר, שם משתמש, סיסמה ושולח נדרשים כקבוצה או השרת מסרב להתחיל.
+
+`SMTP_TLS` הוא בוליאני. התעבורה המוצפנת הנתמכת היא STARTTLS, בדרך כלל על יציאה 587; SMTPS מרומז על יציאה 465 אינו נתמך על ידי תעבורת השרת הנוכחית.
+
+הגדר את כתובת ה-URL של הדאשבורד הציבוריים בצורה נכונה מכיוון שדוא״ל OTP, alert, incident ו-audit משתמשים בו עבור קישורים עמוקים. חברות ארגון שולטות מי עשוי להבקש קוד; כל ארגון יכול להגביל עוד יותר את כניסות החברים שלו בתוך **Administration → Settings**.
+
+## דרישות מולטי-טנאנט
+
+לפני יצירת ארגון שני, הגדר סודי derivation ClickHouse חזק ויציב של ארגון והשאר אותו זהה בכל server replicas. סיבוב זה ללא הגירה מתואמת יכול להיתום משתמשי ClickHouse ספציפיים לארגון.
+
+שמור את ה-listener של admin-instance פנימי. קונסול operator שסופק הוא opt-in ותוכנן עבור `kubectl port-forward`, לא public ingress. הפעלה שלו דורשת את המפתח API החזק שלו, תיבת דוא״ל super-admin, והחזקת second-factor SMTP.
+
+### Break-glass organization CLI
+
+`agenteye-orgctl` משלנו בתוך תמונת השרת ומדברת ישירות ל-PostgreSQL ו-ClickHouse. הוא נשאר זמין כאשר השרת הציבורי או קונסול operator לא בריא.
+
+```bash
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl org create --slug acme --name "Acme Corp"
+kubectl -n agenteye exec deploy/server -- agenteye-orgctl org list
+kubectl -n agenteye exec deploy/server -- \
+  agenteye-orgctl member add --org acme --email ops@acme.com --set admin --protected
+```
+
+פעולות ארגון נתמכות כוללות יצירה, רשימה, שינוי שם, soft-delete,복원, reprovisioning משתמש ClickHouse, ניהול תאריך חיוב, דגלי תכונה, וניקוי בלתי הפיך. פעולות חברים כוללות הוספה, רשימה, עדכון, הסרה, עקיפות הרשאה וזכות מוגנת של admin.
+
+השתמש ב-soft-delete לפני purge. `org purge` בלתי הפיך וודורש למחוק את הארגון תחילה. חברים מוגנים לא יכולים להיות מוסרים או מוצנעים דרך דף Users רגיל של הארגון עד שמפעיל ביטל בפירוש את הגנתם.
+
+## רשימת בדיקת מוכנות ייצור
+
+- Ingest ודוא״ל דאשבורד מתפרחים לנתיבי ingress בעלי כוונה שונים.
+- TLS תקף; השתמש ב-mutual TLS על ingest כאשר הפריסה שלך דורשת זאת.
+- PostgreSQL וקלעים של ClickHouse צפויים לקיבולת.
+- גיבויים כוללים שני datastores וכן הנוהל restore שבדוק.
+- בדיקות בריאות alert על ingest silence, כישלונות עומס, תוקף תעודה, לחץ אחסון וגיבויים ישנים.
+- יומנים מובנים נאספים ללא הדפסה דו-פעמית של צינור יומן קלסטר קיים.
+- Evaluator, audit ו-alert worker concurrency לא שוונה ללא ראיות queue שנמדדו.
+- שחרור יישום מוצמד וטיוטת rollback מתועדים לפני שדרוג.
+
+<Warning>
+  מניפסטי הפריסה מכילים הנחות אבטחה וזמינות ספציפיות לפלטפורמה. בדוק משאבים מעורבבים, מדיניות רשת, חשיפה ingress, התייחסות סוד, מחלקות אחסון, תקציבי הפרעה וחלומות גיבוי עם צוות הפלטפורמה שלך לפני החלתם.
+</Warning>

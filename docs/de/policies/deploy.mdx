@@ -1,0 +1,47 @@
+---
+title: "Richtlinien deployen"
+description: "Eine geprüfte Richtlinienversion auf die vorgesehenen Maschinen ausrollen."
+icon: "cloud-upload"
+---
+
+Ein Deployment verbindet eine oder mehrere Richtlinienversionen mit einer Zielgruppe eingetragener Maschinen.
+
+## Ein Deployment anwenden
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Admin → Durchsetzung**, suche die Maschine und klappe ihre Zeile auf.
+    2. Wähle **Bearbeiten**, füge die geprüfte Richtlinienversion hinzu und wähle **Beobachten** oder den durchsetzenden Effekt.
+    3. Wende die Änderung an, warte dann auf das nächste Check-in der Maschine und bestätige ihren Deployment- und Coverage-Status.
+    4. Gehe zu **Beobachten → Richtlinie**, um Live-Entscheidungen einzusehen.
+
+    ![Der Maschinen-Deployment-Editor mit Richtlinienversionen, Durchsetzungs- und Beobachtungseffekten sowie der Aktion zum Anwenden des Deployments.](/images/dashboard/enforcement-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    Cloud-Deployment-Endpunkte sind bewusst nicht als gewöhnliche `fp`-Befehle verfügbar. Überprüfe die Maschine lokal und deploye dann über das Dashboard:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    Verwende nach dem Deployment `fp sessions --env production --since 24h` und `fp events --event-type hook_completed`, um zu überprüfen, ob Aktivität die Cloud erreicht.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Version und Ziele auswählen">
+    Deploye eine geprüfte Version – keinen veränderbaren Entwurf – und beginne mit einer Nicht-Produktionsmaschine oder einer kleinen Gruppe, deren Sitzungen du einsehen kannst.
+  </Step>
+  <Step title="Entscheidungen beobachten">
+    Überprüfe Treffer, Begründungen, betroffene Tools und Falsch-Positive, ohne die Arbeit zu blockieren.
+  </Step>
+  <Step title="Durchsetzung aktivieren und Coverage prüfen">
+    Stufe hoch, sobald beobachtete Treffer unsichere Aktionen von gültigen trennen, und bestätige dann, dass jede vorgesehene Maschine das Deployment abgerufen hat und Entscheidungen meldet.
+  </Step>
+</Steps>
+
+Maschinen benötigen die Berechtigung `policies:pull`. Das Ereignis-Reporting wird separat durch `events:add` gesteuert; überprüfe beides, wenn du Cloud-Analyse und Durchsetzung erwartest.
+
+<Warning>
+  Die Verwaltung der Durchsetzung ist ein administrativer Cloud-Workflow. Behandle Root-Only-Durchsetzungsrouten nicht als gewöhnliche Kunden-Endpunkte unter `/v1`.
+</Warning>

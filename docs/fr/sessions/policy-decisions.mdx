@@ -1,0 +1,27 @@
+---
+title: "Décisions de politique"
+description: "Consultez ce que les politiques ont évalué, bloqué, instruit ou autorisé."
+icon: "shield-check"
+---
+
+Les décisions de politique expliquent ce qu'a fait l'application des règles. Utilisez-les pour vérifier un déploiement, mesurer le taux de blocage et identifier les activités non protégées.
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Observer → politique** et choisissez la plage de temps et éventuellement une machine.
+    2. Consultez les actions évaluées, les blocages, le taux de blocage, les décisions Cloud, les actions non protégées et l'activité pendant la pause.
+    3. Filtrez le tableau de correspondance des politiques et inspectez les affectations déployées.
+    4. Sélectionnez un point du graphique pour ouvrir les décisions et leurs sessions associées.
+
+    ![La page Politique affichant les totaux de décisions, un filtre par machine, l'activité d'application des règles dans le temps et le tableau de correspondance des politiques.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp events --search "deny" --since 24h
+    failproofai config --status
+    ```
+
+    Utilisez `failproofai` pour l'état d'application local de la machine et `fp` pour l'investigation des événements Cloud.
+  </Tab>
+</Tabs>

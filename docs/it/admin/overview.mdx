@@ -1,0 +1,40 @@
+---
+title: "Amministrazione"
+description: "Gestisci accesso, utilizzo, organizzazioni e sicurezza senza mescolarli nel flusso di lavoro di affidabilità."
+icon: "settings-2"
+---
+
+L'Amministrazione contiene i controlli necessari per eseguire Failproof AI in un team. La maggior parte dei lettori può restare in Sessions, Audits e Policies; gli amministratori utilizzano questa sezione per gestire l'accesso e i limiti operativi.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Utilizza la sezione **Admin** della barra laterale Cloud per **editor delle policy**, **enforcement**, **usage**, **keys**, **users** e **settings**. Un elemento bloccato indica che il tuo account non dispone del permesso di lettura.
+
+    ![La sezione Admin della barra laterale Cloud con editor delle policy, enforcement, usage, keys, users e settings.](/images/dashboard/admin-navigation.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp whoami
+    fp orgs current
+    fp orgs perms
+    fp usage
+    ```
+
+    Inserisci le opzioni globali prima del comando, ad esempio `fp --org reliability-team --json usage`.
+  </Tab>
+</Tabs>
+
+<Columns cols={2}>
+  <Card title="Utilizzo" icon="chart-no-axes-combined" href="/it/admin/usage">
+    Ispeziona le finestre di fatturazione e il consumo dell'organizzazione.
+  </Card>
+  <Card title="Keys e permessi" icon="key-round" href="/it/admin/keys-and-permissions">
+    Concedi a macchine e automazioni solo i permessi di cui hanno bisogno.
+  </Card>
+  <Card title="Utenti e organizzazioni" icon="users" href="/it/admin/users-and-organizations">
+    Gestisci l'appartenenza, i valori predefiniti e i limiti dell'organizzazione.
+  </Card>
+  <Card title="Impostazioni e sicurezza" icon="lock-keyhole" href="/it/admin/settings-and-security">
+    Configura le impostazioni operative, la gestione dei dati e la sicurezza della distribuzione.
+  </Card>
+</Columns>

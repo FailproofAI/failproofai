@@ -1,0 +1,55 @@
+---
+title: "Oturumlar"
+description: "Bir aracı çalışmasının tam kaydıyla başlayın."
+icon: "workflow"
+---
+
+Bir oturum, bir aracı beklenmedik şekilde davrandığında başlamanız gereken en iyi noktadır. Bir çalışmaya ait olan model isteklerini, yanıtlarını, araç çağrılarını, insan etkileşimlerini, hataları, değerlendirmeleri ve politika kararlarını bir araya getirir.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+Bir aracı çalışmasını hedefinizden model çağrıları, araçlar ve nihai yanıta kadar takip edin.
+
+## Bir oturumu bulun
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Cloud kenar çubuğunda **Observe → Sessions** öğesine gidin.
+    2. Zaman penceresini ayarlayın, ardından ortam, durum, aracı veya oturum kimliğine göre filtreleyin.
+    3. Kalite, maliyet, token veya gecikme dilimi gerektiğinde puan veya metrik aralıkları ekleyin.
+    4. İzini açmak için bir satırı seçin. Oturumu paylaşırken oturum kimliğinin yanındaki kopyalama denetimini kullanın.
+
+    ![Ortam, aracı, durum ve değerlendirme puanı filtreleriyle her çalışma için bir satır gösteren Oturumlar listesi.](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp sessions --env production --since 24h
+    fp sessions --status error,timeout --agent-id checkout-agent
+    fp --json sessions --session-id <session-id>
+    ```
+
+    Çok aracılı çalışmaları genişletmek için `--agents` ekleyin, sayfalamak için `--all` ekleyin veya çıktı sütunlarını seçmek için `--fields` ekleyin.
+  </Tab>
+</Tabs>
+
+## Yapabilecekleriniz
+
+- Bir çalışmayı aracı, ortam, zaman, model, olay türü veya hata durumuna göre bulun.
+- Bir sonuç üreten tam sırayı takip edin.
+- Başarılı ve başarısız çalışmaları karşılaştırın.
+- Bir denetim bulgusu veya uyarı olayı tarafından kullanılan kanıtları açın.
+- Çevrimdışı bir kayda ihtiyacınız olduğunda bir oturumu dışa aktarın.
+
+## Güvenilir bir araştırma sırası
+
+1. Oturum hedefini ve ortamını onaylayın.
+2. İlk hatayı veya beklenmedik kararı bulun—yalnızca son başarısızlığı değil.
+3. Model bağlamını ve araç girdisini hemen öncesinde inceleyin.
+4. Yeniden denemeleri, gecikmeyi ve insan müdahalelerini kontrol edin.
+5. Değerlendirme puanlarını ve politika kararlarını gözden geçirin.
+
+<Card title="Bir izi okuyun" icon="route" href="/tr/sessions/read-a-trace">
+  Oturum özetinden sonucu ortaya çıkaran olaya nasıl geçileceğini öğrenin.
+</Card>

@@ -1,0 +1,25 @@
+---
+title: "도구"
+description: "에이전트 세션에서 느리거나 실패하거나 과도하게 사용된 도구를 찾습니다."
+icon: "wrench"
+---
+
+도구 페이지는 세션 전반에 걸쳐 도구 호출을 그룹화하여 지연 시간과 호출 분포를 비교할 수 있게 해줍니다.
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Observe → Tools**로 이동합니다.
+    2. 환경, 도구 이름, 에이전트 또는 세션 ID로 필터링합니다.
+    3. 지연 시간과 도구 분포를 검토합니다.
+    4. 차트 포인트나 도구 세그먼트를 선택하면 관련 이벤트와 세션이 열립니다.
+
+    ![지연 시간, 성공 및 실패 분류, 도구 호출 분포를 보여주는 도구 페이지.](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

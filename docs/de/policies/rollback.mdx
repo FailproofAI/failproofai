@@ -1,0 +1,41 @@
+---
+title: "Rollback"
+description: "Stellen Sie eine bekannte Richtlinienversion wieder her, wenn ein Rollout gültige Agent-Aufgaben beeinträchtigt."
+icon: "rotate-ccw"
+---
+
+Rollback ändert die eingesetzte Version oder entfernt eine Richtlinienzuweisung; die Entscheidungshistorie, die den Vorfall erklärt, wird dabei nicht gelöscht.
+
+## Rollback einer Maschine
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Admin → enforcement**, erweitern Sie die betroffene Maschine und identifizieren Sie deren zuletzt bekannte funktionierende Richtliniensammlung.
+    2. Wählen Sie **edit**, stellen Sie die betreffenden Versionen und Effekte wieder her, und wenden Sie das neue Deployment an.
+    3. Warten Sie auf den Check-in der Maschine und überprüfen Sie anschließend das gemeldete Deployment.
+    4. Öffnen Sie **Observe → policy** sowie die betroffenen Sitzungen, um zu bestätigen, dass gültige Aufgaben nicht länger blockiert werden.
+
+  </Tab>
+  <Tab title="CLI">
+    Ein Cloud-Deployment-Rollback ist ein Dashboard-Workflow. Verwenden Sie den lokalen Status, um zu bestätigen, dass das korrigierte Deployment die Maschine erreicht hat:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    `failproofai config --pause` pausiert integrierte, benutzerdefinierte und konventionsbasierte Richtlinien für eine lokale Sitzung. Cloud-verwaltete Richtlinien werden dabei nicht pausiert – dieser Befehl ist daher kein Workaround für ein fehlerhaftes Cloud-Deployment.
+  </Tab>
+</Tabs>
+
+## Wann ein Rollback durchgeführt werden sollte
+
+- Eine Richtlinie blockiert eine erwartete Produktionsoperation.
+- Das Match-Volumen ist deutlich höher als beim beobachteten Rollout vorhergesagt.
+- Eine Richtlinie hängt von Feldern ab, die eine Integration nicht bereitstellt.
+- Eine neue Version ändert das Verhalten außerhalb des beabsichtigten Fehlerbereichs.
+
+Öffnen Sie nach dem Rollback die betroffenen Sitzungen und identifizieren Sie die Bedingung, die den False Positive verursacht hat. Erstellen Sie eine neue Version, testen Sie sowohl den unsicheren als auch den legitimen Fall, und wiederholen Sie anschließend die Observe-Phase.
+
+<Warning>
+  Das Pausieren der Durchsetzung kann während eines Vorfalls angemessen sein, vergrößert jedoch die Angriffsfläche für jede aktive Richtlinie in diesem Scope. Bevorzugen Sie nach Möglichkeit den Rollback der spezifischen Richtlinienversion.
+</Warning>

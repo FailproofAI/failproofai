@@ -1,0 +1,25 @@
+---
+title: "Hooks"
+description: "Meça a atividade de hooks, gatilhos e latência separadamente dos resultados de políticas."
+icon: "webhook"
+---
+
+Hooks mostra quando os hooks do ciclo de vida do agente são executados e quanto tempo levam. As decisões de política são uma visualização separada.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **Observe → Hooks**.
+    2. Filtre por ambiente, nome do hook, evento de gatilho, agente ou ID de sessão.
+    3. Revise a latência e a distribuição dos hooks.
+    4. Selecione um ponto do gráfico ou segmento de hook para abrir os eventos subjacentes.
+
+    ![A página Hooks exibindo a latência agrupada por nome de hook e evento de gatilho.](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

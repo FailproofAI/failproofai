@@ -1,0 +1,151 @@
+---
+title: "Failproof AI CLI"
+description: "Yerel kancaları yükleyin, yerel politikaları yönetin, Bulut'a bağlanın ve yerel daemon'u işletin."
+icon: "terminal"
+---
+
+Yerel CLI'yi `npm install -g failproofai` ile yükleyin. Yerel politika panosunu açmak için argümansız çalıştırın.
+
+Paket Node.js 20.9 veya daha yeni bir sürümü gerektirir. Geliştirme ve kaynak yüklemeleri için Bun 1.3 veya daha yeni bir sürüm desteklenir. `failproofai configure` ve `failproofai setup` komutları `failproofai config` için takma adlardır; `failproofai p` ise `failproofai policies` için takma addır.
+
+## Makinayı ayarla
+
+```bash
+npm install -g failproofai
+failproofai config \
+  --connect https://app.befailproof.ai \
+  --token <machine-key> \
+  --machine-label checkout-prod-01
+failproofai policies --install
+failproofai config --status
+```
+
+Yerel politika panosunu açmak için `failproofai` komutunu argümansız çalıştırın.
+
+| Komut | Sonuç |
+| --- | --- |
+| `failproofai config` | Etkileşimli makine kurulumunu çalıştır |
+| `failproofai config --connect <url> --token <key>` | Bulut alımını ve politika teslimatını bağla |
+| `failproofai config --status` | Bağlantı, daemon, teslimat ve duraklatma durumunu göster |
+| `failproofai policies` | Yerleşik ve özel politikaları listele |
+| `failproofai policies --install` | Kancaları yükle ve politikaları etkinleştir |
+| `failproofai policy add <name>` | Bir yerleşik politikayı etkinleştir |
+| `failproofai policy remove <name>` | Bir yerleşik politikayı devre dışı bırak |
+| `failproofai policies --uninstall` | Politikaları devre dışı bırak veya harness kancalarını kaldır |
+| `failproofai audit` | Yerel ajan geçmişini tara ve yerel denetim görünümünü aç |
+| `failproofai audit --schedule [days] --email <address>` | Yinelenen yerel taramaları planla ve bulgularını e-postayla gönder |
+| `failproofai audit --status` | Rapor adresini, aralığı ve sonraki planlanmış taramanın zamanını göster |
+| `failproofai audit --no-schedule` | Yinelenen taramaları durdur, denetim geçmişini silme |
+| `failproofai harness list` | Ek yakalama yollarını listele |
+| `failproofai flush --wait` | Geçerli olay bobinini teslimat et |
+| `failproofai backfill --since 30d` | Önceden geçen geçmişi yeniden oku |
+| `failproofai config --pause [duration]` | Bir yerel oturumu varsayılan olarak 30 dakika, en fazla 8 saat için duraklat |
+| `failproofai config --resume` | Duraklatılmış bir yerel oturumu devam ettir; tüm duraklamaları temizlemek için `--all` ekle |
+| `failproofai update` | Paket göçlerini tamamla ve daemon'u güncelle |
+| `failproofai migrate --dry-run` | Bekleyen ana dizin düzeni göçlerini önizle veya çalıştır |
+| `failproofai uninstall` | Paketi kaldırmadan önce kancaları ve daemon'u kaldır |
+| `failproofai --version` | Yüklü paket sürümünü yazdır |
+| `failproofai --help` | Komutları ve genel kullanımı göster |
+
+## Yapılandırma bayrakları
+
+| Bayrak | Kullanım |
+| --- | --- |
+| `--connect <url> --token <key>` | Etkileşimsiz olarak bağla |
+| `--machine-id <id>` | Sabit makine kimliğini ayarla |
+| `--machine-label <name>` | Pano etiketini ayarla veya değiştir |
+| `--no-transcripts` | Kararları transkript içeriği olmadan gönder |
+| `--disconnect` | Bulut politika çekişlerini ve olay teslimatını durdur |
+| `--status` | Geçerli makine durumunu göster |
+| `--pause [duration]` | Geçerli dizindeki en yeni oturumu duraklat; saniye, dakika veya saat kabul eder ve varsayılan olarak 30 dakikaya ayarlanır |
+| `--resume` | Eşleşen bir duraklamayı erken sonlandır |
+| `--session <id>` | Duraklatma veya devam etme için açık bir oturumu hedefle |
+| `--all` | `--resume` ile beraber, aktif tüm duraklamaları sonlandır |
+
+Yerel duraklamalar, bir oturum için yerleşik, özel ve konvansiyon politikalarını askıya alır. Her zaman sona erer ve Bulut tarafından yönetilen politikaları devre dışı bırakmaz. `block-self-pause` enstrümente edilmiş bir ajanın bu kaçış kapısını kendi başına kullanmasını önler.
+
+## Politika bayrakları
+
+| Bayrak | Kullanım |
+| --- | --- |
+| `--install`, `-i` | Politikaları etkinleştir ve harness kancalarını yükle |
+| `--uninstall`, `-u` | Politikaları devre dışı bırak veya kancaları kaldır |
+| `--cli <names...>` | Desteklenen bir veya daha fazla harness'i hedefle |
+| `--scope user\|project\|local\|all` | Yapılandırma kapsamını seç; kaldırma için `all` seçeneği kullan |
+| `--beta` | Beta politikalarını dahil et |
+| `--custom`, `-c <path>` | Özel politika dosyasını doğrula ve yükle; tekrarlanabilir |
+
+## Teslimat ve bakım bayrakları
+
+| Komut | Bayraklar |
+| --- | --- |
+| `backfill` | `--since <30d\|6m\|YYYY-MM-DD>`, `--dry-run` |
+| `flush` | `--wait`, `--timeout <seconds>` |
+| `update` | `--no-daemon` |
+| `migrate` | `--dry-run` |
+| `uninstall` | `--purge`, `--dry-run`, `--yes` |
+
+`failproofai update` komutu `npm install -g failproofai@latest` komutundan sonra çalıştırılmalıdır; ana dizin düzeni göçlerini gerçekleştirir, eşleşen daemon ikili dosyasını yükler ve hizmeti yeniden başlatır. `--no-daemon` yalnızca düzen göçünü gerçekleştirir.
+
+## Harness yolları
+
+```text
+failproofai harness list [harness]
+failproofai harness add-path <harness> [label=]<path>
+failproofai harness remove-path <harness> <path-or-label>
+```
+
+Desteklenen harness adları `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity` ve `goose` dir.
+
+Etiketler, iki kök aynı projenin kopyalarını içerdiğinde türetilen ajan kimliklerini ad alanına koyar. Çakışan kökler ve yinelenen etiketler, yinelenen toplanmayı veya imleç bozulmasını önlemek için reddedilir. Ek yol yapılandırması daemon yeniden başlatması olmadan yeniden yüklenir.
+
+Kapsayıcı ortamları dosya yapılandırılmış ek yolları `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` adlı virgülle ayrılmış bir değişkenle değiştirebilir, örneğin:
+
+```bash
+export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
+```
+
+## Ortam değişkenleri
+
+Kalıcı makine davranışı için yapılandırma dosyalarını kullanın. Ortam değişkenleri kapsayıcılar, testler ve tek işlem için en faydalıdır.
+
+| Değişken | Kullanım |
+| --- | --- |
+| `FAILPROOFAI_HOME` | Tamamen `~/.failproofai` düzenini yeniden konumlandır |
+| `FAILPROOFAI_LOG_LEVEL` | Yerel günlükleme ayrıntılılığını ayarla |
+| `FAILPROOFAI_HOOK_LOG_FILE` | Kanca tanılamalarını seçilen bir dosyaya yaz |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | Bu işlem için anonim telemetriyi devre dışı bırak |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | Etkileşimli ilk çalıştırma kurulumunu atla |
+| `FAILPROOFAI_NO_AUTO_AUDIT=1` | Kurulum sonrası yerel denetimi atla |
+| `FAILPROOFAI_LLM_BASE_URL` | LLM politikaları tarafından kullanılan OpenAI uyumlu uç noktayı geçersiz kıl |
+| `FAILPROOFAI_LLM_API_KEY` | LLM politikaları tarafından kullanılan API anahtarını sağla |
+| `FAILPROOFAI_LLM_MODEL` | LLM politikaları tarafından kullanılan modeli seç |
+| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | Özel politika modülü yüklemesini sınırla |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | Yapılandırılmış ek yakalama yollarını bir harness için değiştir |
+| `NO_COLOR` | Renkli terminal çıktısını devre dışı bırak |
+
+`CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME` ve `OPENCLAW_HOME` gibi ajena özgü ana dizin değişkenleri, Failproof AI'nin bu harness için yerel oturumları nerede keşfettiğini geçersiz kılar.
+
+## Bir makinayı güvenle duraklat veya kaldır
+
+```bash
+failproofai config --pause
+failproofai config --status
+failproofai config --resume
+```
+
+Yerel bir oturum duraklaması, Bulut tarafından yönetilen politikaları devre dışı bırakmaz. Rollout'ın kendisi sorun olduğunda Bulut enforasyon iş akışı aracılığıyla Bulut dağıtımlarını geri yükleyin.
+
+npm paketini kaldırmadan önce yüklü kancaları ve daemon'u kaldırın:
+
+```bash
+failproofai uninstall --dry-run
+failproofai uninstall --yes
+npm rm -g failproofai
+```
+
+Sürüme özgü ayrıntılar için `failproofai <command> --help` komutunu çalıştırın.
+
+<Warning>
+  `npm rm -g failproofai` komutundan önce `failproofai uninstall` komutunu çalıştırın; npm yüklü ajan kancalarını veya daemon hizmetini kaldırmaz.
+</Warning>

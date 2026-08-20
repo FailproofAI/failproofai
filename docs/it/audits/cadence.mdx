@@ -1,0 +1,49 @@
+---
+title: "Cadenza di audit"
+description: "Scegli quando eseguire gli audit ricorrenti e quanti dati esaminare."
+icon: "calendar-clock"
+---
+
+Utilizza gli audit ricorrenti per le modalità di errore che possono ripresentarsi al variare di agenti, prompt, strumenti e modelli.
+
+## Cambia la pianificazione
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Analyze → Audits** e apri l'audit.
+    2. Apri le impostazioni e modifica lo stato di abilitazione, l'intervallo, l'ancoraggio UTC, la modalità della finestra o il lookback.
+    3. Salva l'audit e conferma l'ora della prossima esecuzione sulla scheda dell'audit.
+    4. Usa **run now** una volta dopo una modifica importante di ambito o contesto.
+
+    ![L'editor dell'audit che mostra cadenza, finestra di sweep, ambito, impostazioni di analisi, contesto e canali di notifica.](/images/dashboard/audit-edit.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits edit checkout-reliability \
+      --schedule-interval-secs 86400 \
+      --schedule-anchor 2026-08-15T09:00:00Z \
+      --lookback-window-secs 86400 \
+      --yes
+
+    fp audits edit checkout-reliability --disabled --yes
+    fp audits edit checkout-reliability --enabled --yes
+    ```
+
+    Consulta il riferimento [`fp audits`](/it/reference/cloud-cli#audits) per i limiti della pianificazione, il comportamento della finestra e tutti i comandi di audit.
+  </Tab>
+</Tabs>
+
+Scegli la cadenza in base alla velocità e al costo del rischio:
+
+| Modello di rischio | Cadenza iniziale |
+| --- | --- |
+| Azione di produzione ad alto impatto | Giornaliera |
+| Regressione del flusso di lavoro o del modello | Settimanale |
+| Revisione di governance o accesso | Mensile |
+| Indagine di rilascio una tantum | Esegui una volta |
+
+Allinea la finestra di lookback con la cadenza in modo che le esecuzioni non lascino vuoti né esaminino ripetutamente una popolazione inutilmente grande. Dopo aver modificato l'obiettivo o il contesto di un audit, eseguilo manualmente una volta prima di affidarti al prossimo risultato pianificato.
+
+<Note>
+  Gli audit pianificati locali sono configurati sulla macchina e scansionano la cronologia dell'agente locale. Le pianificazioni degli audit Cloud operano sulle sessioni Cloud. Tratta i loro risultati e la loro proprietà separatamente.
+</Note>

@@ -1,0 +1,43 @@
+---
+title: "Erreurs"
+description: "Regroupez les erreurs répétées et ouvrez les sessions associées."
+icon: "circle-alert"
+---
+
+Erreurs vous offre une vue centrée sur les échecs à travers toutes les sessions. Regroupez par type d'erreur, agent, environnement, modèle, outil ou fenêtre temporelle pour identifier les problèmes opérationnels récurrents.
+
+## Analyser les erreurs
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Accédez à **Observe → Errors**.
+    2. Filtrez par environnement, type d'événement, type d'erreur, agent, ID de session ou texte de recherche.
+    3. Développez une erreur groupée pour voir ses occurrences. Sélectionnez une ligne pour ouvrir l'événement exact dans sa session.
+    4. Sélectionnez la commande de cloche sur une erreur représentative pour créer une alerte pour les erreurs similaires.
+
+    ![La page Errors affichant un histogramme des échecs, les erreurs groupées et la commande de création d'alerte.](/images/dashboard/errors.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp errors --env production --since 24h
+    fp errors --error-type TimeoutError --agent-id checkout-agent
+    fp errors --aggregate --env production --since 7d
+    ```
+
+    Utilisez `fp events --full --session-id <id>` lorsque vous avez besoin du contenu brut derrière un résumé d'erreur.
+  </Tab>
+</Tabs>
+
+## Utilisez Erreurs lorsque vous devez
+
+- Trouver la classe d'erreur la plus fréquente en production.
+- Déterminer si un outil ou un modèle est à l'origine d'un pic.
+- Passer d'un comptage agrégé à des sessions représentatives.
+- Créer une alerte pour les récurrences.
+- Inclure la population affectée dans un audit.
+
+Une erreur est un événement observé. Un échec d'évaluation est un jugement de qualité, et un constat d'audit est un motif d'échec investigué. Gardez ces distinctions à l'esprit au moment de choisir le processus de réponse approprié.
+
+<Card title="Créer une alerte" icon="bell-ring" href="/fr/audits/alerts">
+  Notifiez les intervenants lorsqu'une erreur ou une condition de qualité dépasse un seuil.
+</Card>

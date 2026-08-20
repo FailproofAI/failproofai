@@ -1,0 +1,52 @@
+---
+title: "在线评估"
+description: "对实时和已完成的会话进行质量、合规性、成本和延迟评分。"
+icon: "gauge"
+---
+
+在线评估对 Agent 会话应用一致的判断标准。适用于需要持续监测而非仅在审计时才进行调查的信号。
+
+## 查看评估质量
+
+<Tabs>
+  <Tab title="仪表盘">
+    1. 前往 **Observe → Evaluations**。
+    2. 添加一个系列，选择 Agent、环境、评估分数、统计指标和曲线。
+    3. 添加多个系列以比较不同环境、Agent 或分数键。
+    4. 选择一条结果以打开匹配的会话，或分享已过滤的视图。使用 **Observe → Metrics** 查看延迟、Token 数、成本及其他数值指标。
+
+    ![质量仪表盘，展示平均评估分数和随时间变化的趋势。](/images/dashboard/dashboard-quality.png)
+
+    从下钻视图中打开会话，查看各项分数的推理过程：
+
+    ![会话详情视图，在完整追踪记录旁显示评估分数和推理内容。](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    在 `evals` 前添加全局 `--json` 参数可用于自动化场景，例如 `fp --json evals --aggregate --env production`。
+  </Tab>
+</Tabs>
+
+评估器接收会话标识、环境、时间戳和有序事件。它可以返回带有可选推理说明和摘要的数值分数键。长时间运行的评估器可以返回一个待处理的任务，并在稍后进行轮询。
+
+## 良好的评估目标
+
+- 任务完成度或正确性
+- 事实依据与幻觉风险
+- 工具选择与工具使用效率
+- 策略或流程合规性
+- 成本与延迟预算
+- 必要的人工升级处理
+
+## 从分数到响应
+
+在仪表盘中展示分数以追踪趋势。为阈值或复合条件创建告警。当某项分数在整体层面出现下滑时，运行审计以调查原因；当原因是某个可重复的操作时，部署相应的策略。
+
+<Card title="构建评估器" icon="code-2" href="/zh/reference/evaluator-sdk">
+  使用 Python 评估器 SDK 实现同步或异步评估。
+</Card>

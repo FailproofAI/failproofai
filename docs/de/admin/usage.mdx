@@ -1,0 +1,37 @@
+---
+title: "Nutzung"
+description: "Organisationsverbrauch und das aktive Abrechnungsfenster einsehen."
+icon: "chart-no-axes-combined"
+---
+
+Unter „Nutzung" wird der Verbrauch der aktuellen Organisation sowie die zugehörigen Abrechnungsfenster angezeigt. Nutzen Sie diese Ansicht, um zu verstehen, wie produktiver Rollout, Transkriptvolumen, Evaluierungen und Audit-Kadenz Ihren Plan beeinflussen.
+
+## Nutzung überprüfen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Administration → Nutzung**.
+    2. Bestätigen Sie die Organisation und das Messfenster.
+    3. Überprüfen Sie Erfassung, Sitzungen, Evaluierungen, Metriken, Audits, Befunde, Warnmeldungen, Benutzer und Schlüssel.
+    4. Vergleichen Sie gestartete und abgeschlossene Audit-Arbeiten, wenn die Audit-Nutzung unerwartet erscheint.
+
+    ![Die Nutzungsseite mit dem Messfenster, erfassten Ereignissen, Evaluierungs- und Audit-Pipelines, Workspace-Ressourcen, Mitgliedern und API-Schlüsseln.](/images/dashboard/usage-overview.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp usage
+    fp --json usage
+    fp --org reliability-team --json usage
+    ```
+  </Tab>
+</Tabs>
+
+## Eine Änderung untersuchen
+
+1. Bestätigen Sie die aktive Organisation und das aktive Fenster.
+2. Vergleichen Sie den Anstieg mit dem Sitzungsvolumen nach Umgebung.
+3. Prüfen Sie, ob eine neue Integration begonnen hat, Transkripte zu senden.
+4. Überprüfen Sie Änderungen an der Evaluierungs- und Audit-Kadenz.
+5. Vergleichen Sie die Werte mit den Limits des aktuellen Preisplans.
+
+Die CLI gibt dieselbe Zusammenfassung für Skripte zurück.

@@ -1,0 +1,48 @@
+---
+---
+title: "İlke editörü"
+description: "Onaylı bir hata modundan sürümlendirilmiş ilkeler oluşturun ve gözden geçirin."
+icon: "file-pen-line"
+---
+
+İlke editörünü kullanarak bir bulguyu veya sorunu dağıtılabilir bir kurala dönüştürün. Yazarlık işlemini dağıtımdan ayrı tutun, böylece taslak sessizce canlı davranışı değiştiremez.
+
+Bir sorun tekrarlanabilir bir işlem desenine sahip olduğunda, **Analyze → issues** altında açın ve **generate policy** seçeneğini tıklayın. Failproof AI öncelikle bir ilkenin sorunu ifade edip edemeyeceğini açıklar, ardından gözden geçirilen amacı ve bulgu bağlamını editöre taşır. Oluşturulan kaynak, yayınlayana kadar taslak olarak kalır.
+
+## İlke sürümü yayınlayın
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Admin → policy editor** sayfasına gidin ve **compose** bölümünde hata modunu açıklayın veya JavaScript ilkesi kaynağını yapıştırın.
+    2. Kaynağı doğrulayın ve bildirilen her hatayı düzeltin.
+    3. İlke kimliğini girin ve yayınlayın, ardından sürümleri karşılaştırmak veya devre dışı bırakmak için **library** kullanın.
+    4. Sürüm makine dağıtımı için hazır olduğunda **enforcement** seçeneğini belirleyin.
+
+    ![İlke kimliği, yapay zeka destekli taslak yazarlığı, kaynak doğrulama ve yayınlama kontrolleri ile birlikte İlke editörü oluşturma görünümü.](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    Cloud CLI ilke sürümlerini yayınlamaz. Editöre kopyalamadan önce kaynağı yerel olarak doğrulayın:
+
+    ```bash
+    failproofai policies --install --custom ./checkout.policies.ts \
+      --cli claude --scope project
+    ```
+
+    Gözden geçirilen sürümü **Admin → policy editor** sayfasından yayınlayın.
+  </Tab>
+</Tabs>
+
+## Yazarlık kontrol listesi
+
+1. Hata modunu operasyonel dilde adlandırın.
+2. Karar vermek için yeterli kanıt içeren kanca olaylarını ve araçları seçin.
+3. Güvensiz davranışla eşleşen en dar koşulu yazın.
+4. Aracıya veya operatöre sonra ne yapacağını söyleyen bir neden döndürün.
+5. Eşleşmesi gereken örnekler ve izin verilmiş kalması gereken örnekler ekleyin.
+6. Yeni bir sürüm kaydedin ve inceleme isteyin.
+
+Ajan güvenli bir şekilde düzeltebildiğinde `instruct` kullanın. İşleme izin verilmesi kabul edilemez veya geri döndürülemez bir risk oluşturacaksa `deny` kullanın.
+
+<Info>
+  İlke sürümleri değişmez dağıtım girdileridir. Taslağı düzenlemek yeni bir sürüm oluşturur; zaten makinelere atanmış olan sürümü yeniden yazmamalıdır.
+</Info>

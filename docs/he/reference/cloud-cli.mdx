@@ -1,0 +1,351 @@
+---
+title: "Failproof Cloud CLI"
+description: "מדריך התייחסות מלא לשאילתה וניהול Failproof AI Cloud עם fp."
+icon: "cloud-cog"
+---
+
+השתמש ב-`fp` לבחינת טלמטריה בענן וניהול ביקורות, ממצאים, בעיות, התראות, מפתחות, משתמשים, שאילתות והגדרות. השתמש ב-[`failproofai`](/he/reference/failproof-cli) לוו-קישורים מקומיים, מדיניות, לכידה ורישום מכונות.
+
+התקן את Cloud CLI המשוחרר ככלי מבודד:
+
+```bash
+uv tool install fp-cli
+fp version
+```
+
+## התחברות
+
+```bash
+fp login
+fp whoami
+```
+
+## תחביר
+
+```text
+fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
+```
+
+אפשרויות גלובליות חייבות לבוא לפני הפקודה:
+
+```bash
+fp --json sessions --since 24h
+```
+
+הרץ `fp COMMAND --help` או `fp COMMAND SUBCOMMAND --help` לעזרה בטרמינל.
+
+## פקודות CLI
+
+### אימות
+
+| פקודה | מטרה | אפשרויות |
+| --- | --- | --- |
+| `fp login` | התחברות עם קוד חד-פעמי שנשלח בדוא"ל ובחירת ארגון. | `--email`, `-e`; `--org`; `--force` |
+| `fp logout` | שחזור והסרת הפעלת המשתמש המשומרת. | — |
+| `fp whoami` | הצגת הזהות הנוכחית, מצב אימות, ארגון והרשאות. | — |
+| `fp version` | הצגת גרסת CLI המותקנת. | — |
+| `fp help` | הצגת עזרת פקודה ברמה עליונה. | — |
+
+```bash
+fp login --email you@example.com --org reliability-team
+fp whoami
+```
+
+### אירועים
+
+```text
+fp events [OPTIONS]
+```
+
+מפרט אירועי סוכן בודדים. ההזנה הקלה המוגדרת כברירת מחדל אינה כוללת עומסי עבודה גולמיים; השתמש ב-`--full` רק לחקירה מוגבלת.
+
+| אפשרות | תיאור |
+| --- | --- |
+| `--limit`, `-n <n>` | סך הכל שורות מקסימום. ברירת מחדל: `50`. |
+| `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, או `7d`. |
+| `--from <timestamp>` / `--to <timestamp>` | טווח ISO 8601 UTC; משבית `--since`. |
+| `--env <value>` | סנן סביבה; חזור או הפרד בפסיק. |
+| `--event-type <value>` | סנן סוג אירוע; חזור או הפרד בפסיק. |
+| `--agent-id <value>` | סנן סוכן; חזור או הפרד בפסיק. |
+| `--session-id <value>` | סנן הפעלה; חזור או הפרד בפסיק. |
+| `--search <text>` | חיפוש טקסט עומס; חוזר, כל מונח תואם. |
+| `--order asc\|desc` | סדר זמן. ברירת מחדל: החדש ביותר ראשון. |
+| `--all` | עימוד אוטומטי עד `--limit`. |
+| `--cursor <token>` | המשך מסמן אטום. |
+| `--page-size <n>` | שורות לבקשה עם `--all`; מקסימום `200`. |
+| `--full` | כלול עומסי עבודה גולמיים דרך נקודת הקצה של אירוע כבדה יותר. |
+| `--fields <csv>` | החזר רק שדות נבחרים; בקשה `payload` מאפשרת מצב מלא. |
+
+```bash
+fp events --session-id <session-id> --order asc --all
+fp --json events --full --session-id <session-id> --all
+```
+
+### הפעלות
+
+```text
+fp sessions [OPTIONS]
+```
+
+| אפשרות | תיאור |
+| --- | --- |
+| `--limit`, `-n <n>` | סך הכל שורות מקסימום. ברירת מחדל: `50`. |
+| `--since <window>` | `all`, `15m`, `1h`, `6h`, `24h`, או `7d`. |
+| `--from <timestamp>` / `--to <timestamp>` | טווח ISO 8601 UTC; משבית `--since`. |
+| `--env <value>` | סנן סביבה; חזור או הפרד בפסיק. |
+| `--status <value>` | `done`, `error`, או `timeout`; חזור או הפרד בפסיק. |
+| `--agent-id <value>` | התאם הפעלות המעורבות בסוכן נבחר כלשהו. |
+| `--session-id <value>` | סנן הפעלה; חזור או הפרד בפסיק. |
+| `--all` | עימוד אוטומטי עד `--limit`. |
+| `--cursor <token>` | המשך מסמן אטום. |
+| `--page-size <n>` | שורות לבקשה עם `--all`; מקסימום `200`. |
+| `--fields <csv>` | החזר רק שדות נבחרים. |
+| `--full-ids` | אל תקצר מזהי הפעלה בפלט טרמינל. |
+| `--agents` | הרחב את רשימת הסוכנים לעבור הפעלות מרובות סוכנים. |
+
+### הערכות
+
+```text
+fp evals [OPTIONS]
+```
+
+| אפשרות | תיאור |
+| --- | --- |
+| `--aggregate` | הצג סכומים וסטטיסטיקות לפי ניקוד במקום הערכות בודדות. |
+| `--limit`, `-n <n>` | סך הכל שורות רשימה. ברירת מחדל: `50`. |
+| `--since`, `--from`, `--to` | בחר את טווח הזמן. |
+| `--env`, `--status`, `--agent-id`, `--session-id` | צמצום לערך מדויק אחד לכל סנן. |
+| `--score KEY:MIN..MAX` | טווח ניקוד; חוזר והכל טווחים חייבים להיות תואמים. |
+| `--all`, `--cursor`, `--page-size` | בקרה על עימוד רשימה. |
+| `--fields <csv>` | החזר רק שדות נבחרים. |
+| `--full-ids` | הצג מזהי הפעלה שלמים. |
+| `--scores-full` | הצג כל ניקוד בפלט טרמינל. |
+
+### שגיאות
+
+```text
+fp errors [OPTIONS]
+```
+
+| אפשרות | תיאור |
+| --- | --- |
+| `--aggregate` | סכם שגיאות תואמות במקום רשימת שורות. |
+| `--limit`, `-n <n>` | סך הכל שורות רשימה. ברירת מחדל: `50`. |
+| `--since`, `--from`, `--to` | בחר את טווח הזמן. |
+| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | צמצום אוכלוסיית השגיאות. |
+| `--search <text>` | חיפוש טקסט עומס; חוזר. |
+| `--order asc\|desc` | סדר זמן. |
+| `--all`, `--cursor`, `--page-size` | בקרה על עימוד רשימה. |
+| `--fields <csv>` | החזר רק שדות נבחרים. |
+| `--full-ids` | הצג מזהי הפעלה שלמים. |
+
+### שימוש וערכי סינון
+
+| פקודה | מטרה |
+| --- | --- |
+| `fp usage` | הצג שימוש לחלון המדידה הנוכחי. |
+| `fp list envs` | רשום סביבות שנצפו. |
+| `fp list agents` | רשום מזהי סוכנים שנצפו. |
+| `fp list event_types` | רשום סוגי אירועים. |
+| `fp list score_filters` | רשום מפתחות ניקוד הערכה. |
+| `fp list models` | רשום שמות דגמים. |
+| `fp list hooks` | רשום שמות וו-קישור. |
+| `fp list tools` | רשום שמות כלים. |
+| `fp list error_types` | רשום סוגי שגיאות. |
+
+### ארגונים
+
+| פקודה | מטרה |
+| --- | --- |
+| `fp orgs list` | רשום ארגונים שניתן לגשת אליהם. |
+| `fp orgs switch [SLUG]` | שמור ארגון פעיל; מכריח כשהוא מושמט. |
+| `fp orgs current` | הצג את הארגון הפעיל. |
+| `fp orgs perms` | הצג את ההרשאות שלך בארגון הפעיל. |
+
+### מפתחות API
+
+| פקודה | מטרה | אפשרויות |
+| --- | --- | --- |
+| `fp keys list` | רשום מפתחות ארגון. | `--show-id`; `--fields <csv>` |
+| `fp keys show NAME` | הצג מפתח אחד והנחות שלו. | — |
+| `fp keys create NAME` | צור מפתח וחשוף את הסודי שלו פעם אחת. | `--permission-set`; `--add`; `--remove` |
+| `fp keys update NAME` | החלף את מערכת ההרשאות או התאם הנחות. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp keys regenerate NAME` | סובב את הסודי וחשוף את ההחלפה פעם אחת. | `--yes`, `-y` |
+| `fp keys disable NAME` | שחזר לצמיתות מפתח. | `--yes`, `-y` |
+
+אסימוני הרשאות משתמשים `resource:action`, כגון `events:add`. חזור `--add`, הפרד בפסיק או השתמש בפעולות מנוקדות כגון `events:read.add`.
+
+### שאילתות
+
+| פקודה | מטרה | אפשרויות |
+| --- | --- | --- |
+| `fp query list` | רשום שאילתות משומרות. | `--show-id`; `--fields <csv>` |
+| `fp query show NAME` | הצג שאילתה אחת. | — |
+| `fp query create NAME` | שמור שאילתה. | `--sql <text\|@file>`; `--description` |
+| `fp query update NAME` | עדכן או שנה שם שאילתה. | `--name`; `--sql`; `--description`; `--yes`, `-y` |
+| `fp query delete NAME` | מחק שאילתה משומרת. | `--yes`, `-y` |
+| `fp query run [NAME]` | הרץ שאילתה משומרת או SQL אד-הוק. | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
+| `fp query schema [TABLE]` | רשום טבלאות הניתנות לשאילתה או בדוק טבלה אחת. | — |
+
+### משתמשים
+
+| פקודה | מטרה | אפשרויות |
+| --- | --- | --- |
+| `fp users list` | רשום חברי ארגון. | `--active-only`; `--show-id` |
+| `fp users show EMAIL` | הצג חבר וההנחות שלהם. | — |
+| `fp users create EMAIL` | הוסף חבר. | `--permission-set`; `--add`; `--remove` |
+| `fp users update EMAIL` | שנה הנחות של חבר. | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp users disable EMAIL` | השבת התחברות. | `--yes`, `-y` |
+| `fp users enable EMAIL` | הפעל מחדש את התחברות. | `--yes`, `-y` |
+
+### הגדרות
+
+| פקודה | מטרה | אפשרויות |
+| --- | --- | --- |
+| `fp settings list` | רשום הגדרות ארגון וערכים נוכחיים. | — |
+| `fp settings schema` | הצג ערכים וערכים מקובלים. | — |
+| `fp settings set KEY` | שנה הגדרה קיימת. | בדיוק אחד מ-`--value`, `--json-value`, `--file`; `--yes`, `-y` אופציונלי |
+
+### התראות
+
+| פקודה | מטרה | אפשרויות |
+| --- | --- | --- |
+| `fp alerts list` | רשום כללי התראה. | `--show-id` |
+| `fp alerts show NAME` | הצג התראה אחת. | — |
+| `fp alerts create NAME` | צור התראה. | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
+| `fp alerts update NAME` | עדכן או שנה שם התראה. | בחר אפשרויות בתוספת `--name`; `--yes`, `-y` |
+| `fp alerts delete NAME` | מחק התראה. | `--yes`, `-y` |
+| `fp alerts test NAME` | שלח הודעת בדיקה. | `--channels`; `--yes`, `-y` |
+
+חומרות התראה הן `info`, `warning`, ו-`critical`. סוגי הדלקה הם `metric_threshold`, `custom_sql`, `evaluation_score`, `eval_compound`, ו-`per_event`. מרווחי הערכה חייבים להיות בין 30 ל-86,400 שניות.
+
+### ביקורות
+
+| פקודה | מטרה | אפשרויות |
+| --- | --- | --- |
+| `fp audits list` | רשום ביקורות. | `--enabled-only`; `--show-id` |
+| `fp audits show NAME` | הצג הגדרת ביקורת אחת וסטטוס. | — |
+| `fp audits create NAME` | צור ביקורת וקבע בתור את הריצה הראשונה שלה מיד. | ראה [אפשרויות יצירה](#audit-create-options). |
+| `fp audits edit NAME` | החלף הגדרות ביקורת תוך שמירת ערכים לא מצוינים. | אפשרויות הגדרה יצירה; `--name`; `--yes`, `-y` |
+| `fp audits delete NAME` | מחק ביקורת, ממצאים והיסטוריית ריצה. | `--yes`, `-y` |
+| `fp audits run NAME` | קבע בתור ריצה ידנית. | — |
+| `fp audits runs NAME` | רשום היסטוריית ריצה. | `--limit`, `-n`; `--show-id` |
+| `fp audits context-show NAME` | הצג קצר וסטטוס הלבשת כתובת URL ייחוס. | — |
+| `fp audits context-set NAME` | שנה את הקצר או כתובות URL ייחוס. | `--text`; `--text-file`; `--url`; `--clear-urls` |
+| `fp audits context-refresh NAME` | קבל מחדש כתובות URL ייחוס. | — |
+| `fp audits findings` | רשום ממצאים. | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
+| `fp audits finding FINDING_ID` | הצג ממצא אחד והראיות שלו. | — |
+| `fp audits ack FINDING_ID` | הכר בממצא. | `--reason` |
+| `fp audits mute FINDING_ID` | דכא דפוס חוזר. | `--reason`; `--yes`, `-y` |
+| `fp audits dismiss FINDING_ID` | סמן דפוס לא פעיל וחסימה. | `--reason`; `--yes`, `-y` |
+| `fp audits resolve FINDING_ID` | סמן ממצא קבוע ללא דיכוי עתידי. | `--yes`, `-y` |
+| `fp audits reopen FINDING_ID` | החזר ממצא לתור הלייב וחסום דיכוי. | — |
+| `fp audits assign FINDING_ID` | קבע את בעל הממצא. | נדרש `--to <email>` |
+
+#### אפשרויות יצירת ביקורת
+
+```bash
+fp audits create checkout-reliability \
+  --description "Find checkout failures that agents do not recover from" \
+  --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+  --schedule-interval-secs 86400 \
+  --window-mode since_last \
+  --sensitivity medium \
+  --text-file ./checkout-audit-brief.txt \
+  --url https://runbooks.example.com/checkout
+```
+
+| אפשרות | תיאור |
+| --- | --- |
+| `--file <path>` | בסיס ההגדרה על JSON, או השתמש ב-`-` עבור stdin. דגלים מפורשים מעקפים ערכי קובץ. |
+| `--description <text>` | ציין את שאלת ההכשל או המטרה. |
+| `--enabled` / `--disabled` | התחל תזמון או מחוזק. ברירת מחדל: מופעל. |
+| `--schedule-interval-secs <n>` | `3600`–`604800`. ברירת מחדל: `86400`. |
+| `--schedule-anchor <timestamp>` | שלב UTC קבוע בצורת ISO 8601. ברירת מחדל: 09:00 UTC הבא. |
+| `--window-mode since_last\|fixed` | המשך לאחר החלון המנותח לאחרונה או בדוק שוב ושוב חלון מתגלגל. ברירת מחדל: `since_last`. |
+| `--lookback-window-secs <n>` | `3600`–`7776000`. ברירת מחדל: `604800`. |
+| `--scope '<json>'` | סנן לפי `environments`, `agent_ids`, או שדות טווח נתמכים אחרים. |
+| `--ignore-error-type <type>` | אל תכלול סוגי שגיאות; חזור או הפרד בפסיק. |
+| `--llm` / `--no-llm` | הפוך או השבת ניתוח סוכן. ברירת מחדל: מופעל. |
+| `--top-k <n>` | שמור `1`–`500` ממצאים. ברירת מחדל: `50`. |
+| `--sensitivity low\|medium\|high` | קבע רגישות דיווח. ברירת מחדל: `medium`. |
+| `--channels '<json>'` | מערך ערוץ הודעה. |
+| `--text <brief>` | קצר מובנה, מקסימום 8,192 תווים. |
+| `--text-file <path>` | קרא את הקצר מקובץ; בלעדי הדדי עם `--text`. |
+| `--url <https-url>` | הוסף ייחוס ציבורי HTTPS; חזור עד חמש פעמים. |
+
+כלול הקשר במהלך יצירה כאשר הריצה הראשונה זקוקה לה. יצירה מחייבת את ההגדרה וההקשר יחדיו לפני תחילת הריצה בתור.
+
+<Note>
+  `fp audits run` הוא אסינכרוני. סקור `fp audits runs NAME` עד שהריצה האחרונה תצליח או תיכשל לפני קריאת הממצאים שלה.
+</Note>
+
+### בעיות
+
+| פקודה | מטרה | אפשרויות |
+| --- | --- | --- |
+| `fp issues list` | רשום בעיות. | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
+| `fp issues count` | ספור פתוח או סטטוסי בעיה נבחרים. | `--state` |
+| `fp issues show INCIDENT_ID` | הצג פרטי בעיה, הערות, מנויים ופעילות. | — |
+| `fp issues open` | פתח בעיה ידנית או קשורה להתראה. | דרוש `--summary`; אופציונלי `--title`, `--alert-id`, `--severity` |
+| `fp issues ack INCIDENT_ID` | הכר בבעיה. | — |
+| `fp issues assign INCIDENT_ID` | החלף מוקצים; הכל אפשרות לחיסול. | חוזר `--assignee` |
+| `fp issues resolve INCIDENT_ID` | פתור בעיה. | `--yes`, `-y` |
+| `fp issues comment-list INCIDENT_ID` | רשום הערות. | — |
+| `fp issues comment-add INCIDENT_ID` | הוסף הערה. | בדיוק אחד מ-`--body`, `--file` |
+| `fp issues comment-delete INCIDENT_ID COMMENT_ID` | מחק הערה. | `--yes`, `-y` |
+| `fp issues subscribers INCIDENT_ID` | רשום מנויים. | — |
+| `fp issues subscribe INCIDENT_ID` | הירשם לעצמך או למפעיל אחר. | `--email` |
+| `fp issues unsubscribe INCIDENT_ID` | הסר מנוי. | `--email` |
+
+סטטוסי בעיה תקפים הם `firing`, `acknowledged`, ו-`resolved`. חומרות בעיה עצמאות הן `info`, `warning`, ו-`critical`.
+
+### עוזר בענן
+
+| פקודה | מטרה | אפשרויות |
+| --- | --- | --- |
+| `fp agent health` | בדוק זמינות ותצורת עוזר. | — |
+| `fp agent models` | רשום דגמי עוזר זמינים. | — |
+| `fp agent chats` | רשום שיחות משומרות. | — |
+| `fp agent ask [MESSAGE]` | התחל או המשך שיחה; קרא stdin כשההודעה מושמטת. | `--chat`; `--model`; `--page-context` |
+| `fp agent show CHAT_ID` | הצג שיחה משומרת. | — |
+| `fp agent rename CHAT_ID` | שנה שם שיחה. | דרוש `--title` |
+| `fp agent delete CHAT_ID` | מחק שיחה. | `--yes`, `-y` |
+
+## דגלים גלובליים
+
+| דגל | תיאור |
+| --- | --- |
+| `--json` | פלוט JSON הניתן לקריאת מכונה. |
+| `--base-url <url>` | השתמש במעצב המארח או בפיתוח. |
+| `--org <slug>` | בחר ארגון לזימון זה. |
+| `--token <token>` | עקוף את אסימון ההפעלה המשומר של המשתמש. |
+| `--api-key <key>` | אימות אוטומציה עם מפתח API; אף פעם לא שמור. |
+| `--timeout <seconds>` | פגיעה ב-HTTP; חייב להיות חיובי. ברירת מחדל: `30`. |
+| `--quiet`, `-q` | דכא פלט סטטוס ב-stderr. |
+| `--no-color` | השבת פלט צבעוני. |
+| `--insecure` / `--secure` | השבת או שחזר אימות תעודת TLS. |
+| `--version` | הדפס את הגרסה הלא מעוטפת וצא. |
+| `--help`, `-h` | הצג עזרה. |
+
+`--api-key` מיועד לאוטומציה. התחברות, עברת ארגון, ופקודות עוזר דורשות הפעלת משתמש.
+
+## משתנים סביבה
+
+| משתנה | שקול או מטרה |
+| --- | --- |
+| `AGENTEYE_DASHBOARD_URL` | `--base-url` |
+| `AGENTEYE_ORG` | `--org` |
+| `AGENTEYE_CLI_TOKEN` | `--token` |
+| `AGENTEYE_CLI_API_KEY` | `--api-key` |
+| `AGENTEYE_CLI_JSON` | `--json` |
+| `AGENTEYE_INSECURE` | `--insecure` |
+| `AGENTEYE_HOME` | העבר מחדש את ספריית תצורת CLI הנוכחית. |
+| `AGENTEYE_ANALYTICS_DISABLED` או `DO_NOT_TRACK` | השבת ניתוח CLI אנונימי. |
+| `NO_COLOR` | השבת פלט צבעוני. |
+
+דגלים מפורשים משבים משתנים סביבה, המשבים תצורה משומרת. במצב מפתח API, בחר את השוכר מפורשות עם `--org` או `AGENTEYE_ORG`.
+
+<Warning>
+  פקודות המחקות, שוחרר, דוכאות, מתרבות או החלפות תצורה מהווה בברירת מחדל. השתמש ב-`--yes` רק לאחר אימות הארגון הפעיל ויעד.
+</Warning>

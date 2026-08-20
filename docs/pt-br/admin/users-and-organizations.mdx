@@ -1,0 +1,44 @@
+---
+title: "Usuários e organizações"
+description: "Controle o acesso de membros e mantenha os dados e ações de cada organização isolados."
+icon: "users"
+---
+
+As organizações isolam sessões, avaliações, auditorias, issues, alertas, consultas, dashboards, usuários e chaves. Confirme a organização ativa antes de alterar recursos administrativos.
+
+## Gerenciar membros e organizações
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Use o seletor de organização no topo da barra lateral do Cloud para trocar de organização.
+    2. Vá para **Administração → Usuários** para pesquisar membros ou filtrar por status ativo e função.
+    3. Selecione **novo usuário**, informe o e-mail, escolha um conjunto de permissões e ajuste as substituições se necessário.
+    4. Abra um usuário posteriormente para atualizar concessões, desativar o login ou reativar a conta.
+
+    ![A página de Usuários exibindo endereços de e-mail dos membros, conjuntos de permissões e controles de edição e desativação.](/images/dashboard/users.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+
+    fp users create engineer@example.com --permission-set standard
+    fp users show engineer@example.com
+    fp users update engineer@example.com --add audits:write
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+    ```
+  </Tab>
+</Tabs>
+
+Os administradores podem criar, atualizar, desativar e reativar usuários, atribuindo o conjunto de permissões adequado para cada função. A API utiliza uma operação de exclusão para desativação, mas isso não remove a conta nem o registro de membro.
+
+<Warning>
+  Desativar um usuário impede que essa identidade faça login em todas as organizações, não apenas na organização atualmente selecionada. Reativar o usuário restaura o login global e as permissões do membro nesta organização.
+</Warning>
+
+<Tip>
+  Dê nomes descritivos às contas de serviço, vinculados a uma carga de trabalho e a um responsável. Evite compartilhar chaves entre organizações ou entre pessoas e sistemas automatizados.
+</Tip>

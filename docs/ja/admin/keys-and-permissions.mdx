@@ -1,0 +1,74 @@
+---
+title: "キーと権限"
+description: "マシン、自動化、オペレーター向けにスコープ付きAPIキーを作成する。"
+icon: "key-round"
+---
+
+APIキーは組織に属し、明示的な権限を持ちます。エージェントの取り込み、ポリシー配信、評価器、CI自動化、管理スクリプトにはそれぞれ専用のキーを使用してください。
+
+## キーの作成とローテーション
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **管理 → キー** に移動し、**新規キー** を選択してワークロード名を入力します。
+    2. 権限セットを選択し、プリセットが不十分な場合のみ個別の権限を調整します。
+    3. キーを作成し、ワンタイムシークレットをすぐにコピーします。
+    4. 後でキーを開いて、付与内容の更新、無効化、またはシークレットの再生成を行います。
+
+    作成ドロワーでは、ワークロードに必要な最小限の権限を選択します。
+
+    ![権限プリセットと個別の付与設定が表示された新規APIキードロワー](/images/dashboard/key-create.png)
+
+    作成後、キーページには永続的なメタデータと管理アクションが表示されます。ワンタイムシークレットは再表示されません。
+
+    ![キーの権限、作成日時、再生成および無効化アクションが表示されたAPIキーページ](/images/dashboard/api-keys.png)
+
+    このリストを使用して付与内容を定期的に確認し、有効なワークロードに対応しなくなったキーを無効化してください。
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp keys create production-agents \
+      --add events:add \
+      --add policies:pull
+    fp keys show production-agents
+    fp keys update production-agents --add events:read
+    fp keys regenerate production-agents --yes
+    fp keys disable production-agents
+    ```
+
+    作成・再生成時の出力は安全にリダイレクトまたはキャプチャしてください。シークレットは一度だけ返されます。
+  </Tab>
+</Tabs>
+
+接続された Failproof AI マシンに必要な2つの権限は独立しています。
+
+- `events:add` はイベントとセッションデータを送信します。
+- `policies:pull` は割り当てられたポリシーデプロイメントを取得します。
+
+キーシークレットは作成時または再生成時に表示されます。シークレットマネージャーに保存し、オペレーターのインタラクティブな認証情報を再利用せずにローテーションしてください。
+
+## 権限カタログ
+
+| エリア | 権限 |
+| --- | --- |
+| イベント | `events:add`、`events:read` |
+| キー | `keys:create`、`keys:read`、`keys:disable`、`keys:regenerate`；`keys:update` はヒューマンセッション専用 |
+| ユーザー | `users:create`、`users:read`、`users:update`、`users:delete` |
+| 評価 | `evaluations:read`、`evaluations:trigger` |
+| ダッシュボード | `dashboards:read`、`dashboards:write`、`dashboards:delete` |
+| クエリ | `queries:read`、`queries:write`、`queries:delete`、`queries:run` |
+| アシスタント | `agent:use` |
+| 設定 | `settings:read`、`settings:write` |
+| アラート | `alerts:read`、`alerts:write` |
+| 課題 | `issues:read`、`issues:create`、`issues:close` |
+| 監査 | `audits:read`、`audits:write` |
+| ポリシー | `policies:read`、`policies:write`、`policies:pull` |
+| 使用状況 | `usage:read` |
+
+`orgs:admin` はインスタンスオペレーター専用に予約されており、組織キーや一般メンバーには付与できません。廃止された `incidents:*` および `alerts:ack` トークンは互換性のために受け入れられ、現在の `issues:*` 権限に正規化されます。
+
+組み込みの権限セットは `read-only`、`standard`、`admin` です。`standard` は読み取り権限に加えて、評価のトリガー、クエリの実行、課題への対応、アシスタントの使用が追加されます。キー作成時に権限セットにヒューマン専用の付与が含まれていても、それらは除外されます。
+
+<Warning>
+  インスタンススコープのキーは `X-AgentEye-Org` ヘッダーで組織を選択できます。マルチ組織デプロイメントでは明示的に設定してください。省略した場合、デフォルトの組織が選択される可能性があります。
+</Warning>

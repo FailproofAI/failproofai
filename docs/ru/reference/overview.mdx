@@ -1,0 +1,78 @@
+---
+title: "Интеграции и справочник"
+description: "Подключите поддерживаемые harness'ы агентов, SDK, CLI и HTTP API."
+icon: "braces"
+---
+
+Выберите интеграцию, которая лучше всего соответствует месту запуска вашего агента.
+
+<Columns cols={2}>
+  <Card title="Agent harnesses" icon="plug-zap" href="/ru/reference/harnesses">
+    Установите hooks для поддерживаемых CLI для кодирования и автономных агентов.
+  </Card>
+  <Card title="Custom agents" icon="python" href="/ru/reference/python-sdk">
+    Инструментируйте traces для выявления ошибок в пользовательских агентах, затем свяжитесь с нами, чтобы добавить предотвращение в вашу среду выполнения.
+  </Card>
+  <Card title="Local dashboard" icon="monitor-cog" href="/ru/reference/local-dashboard">
+    Просматривайте локальные проекты, сессии, активность политик и автономные аудиты.
+  </Card>
+  <Card title="Failproof AI CLI" icon="terminal" href="/ru/reference/failproof-cli">
+    Настройте локальное захватывание, hooks, политики, аудиты, доставку и состояние машины.
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/ru/reference/cloud-cli#cli-commands">
+    Запрашивайте и администрируйте облачные сессии, аудиты, проблемы, оповещения, ключи, пользователей и параметры.
+  </Card>
+  <Card title="Evaluator SDK" icon="gauge" href="/ru/reference/evaluator-sdk">
+    Оценивайте полные или неактивные сессии с помощью сервиса FastAPI.
+  </Card>
+  <Card title="Custom policies" icon="shield-plus" href="/ru/reference/policy-sdk">
+    Создавайте и тестируйте решения allow, instruct и deny для конкретных рабочих процессов.
+  </Card>
+  <Card title="Self-hosting" icon="cloud-cog" href="/ru/reference/self-hosting">
+    Разверните плоскость управления Cloud на управляемом клиентом кластере Kubernetes.
+  </Card>
+</Columns>
+
+Сгенерированный [справочник HTTP API](/ru/reference/http-api) охватывает общедоступную поверхность `/v1`. Написанные вручную страницы объясняют рабочие процессы, охватывающие несколько конечных точек или использующие административные интерфейсы, находящиеся вне этой общедоступной поверхности.
+
+## Подключите агента и проверьте данные
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Откройте **Administration → Keys**, создайте ключ с разрешениями `events:add` и `policies:pull`, и скопируйте секрет.
+    2. Настройте интеграцию, используя соответствующую страницу выше.
+    3. Откройте **Observe → Events**, чтобы подтвердить получение событий, затем **Observe → Sessions**, чтобы подтвердить, что они образуют полные запуски.
+    4. Отфильтруйте по окружению интеграции и проверьте одну сессию на наличие полей модели, инструмента, ошибки и политики, необходимых для аудитов.
+
+    Начните с ящика ключей. Выбранные разрешения определяют, может ли машина отправлять события и получать управляемые облаком политики.
+
+    ![Новое окно создания API ключа для предоставления разрешений на приём событий и доставку политик.](/images/dashboard/key-create.png)
+
+    После подключения интеграции используйте список Sessions, чтобы подтвердить, что её события группируются в полные запуски в ожидаемом окружении.
+
+    ![Список Sessions, используемый для проверки того, что вновь подключённая интеграция сообщает полные запуски агента.](/images/dashboard/sessions-list.png)
+
+    Откройте одну из этих сессий перед тем, как считать интеграцию завершённой; трасса должна содержать доказательства модели, инструмента, ошибки и политики, которые нужны вашим аудитам.
+  </Tab>
+  <Tab title="CLI">
+    Создайте машинный ключ, подключите демон Failproof и проверьте первую сессию.
+
+    ```bash
+    fp keys create agent-production \
+      --add events:add \
+      --add policies:pull
+
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+
+    failproofai flush --wait
+    fp sessions --since 1h --env production
+    fp events --since 1h --env production --limit 20
+    ```
+
+    Используйте `fp --json sessions ...`, когда другой инструмент будет обрабатывать результат. Глобальные флаги, такие как `--json`, `--org` и `--base-url`, должны идти перед командой.
+
+    См. [справочник Failproof AI CLI](/ru/reference/failproof-cli) для локальных команд и [справочник Failproof Cloud CLI](/ru/reference/cloud-cli#cli-commands) для команд `fp`.
+  </Tab>
+</Tabs>

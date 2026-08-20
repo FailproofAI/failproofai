@@ -1,0 +1,52 @@
+---
+title: "Lancer votre premier contrôle d'échec"
+description: "Créez un audit depuis le tableau de bord Cloud ou le CLI fp et examinez ses premiers résultats."
+icon: "scan-search"
+---
+
+Un audit transforme un ensemble de sessions en constats d'échec classés et étayés par des preuves. Commencez par une question d'échec ciblée.
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    <Steps>
+      <Step title="Ouvrir les audits">
+        Dans la barre latérale Cloud, accédez à **Analyser → Audits**. Sélectionnez **nouvel audit**.
+      </Step>
+      <Step title="Configurer l'audit">
+        Saisissez un nom et un objectif d'échec précis, par exemple « trouver les sessions de production qui relancent le même appel de paiement échoué sans modifier les paramètres ni escalader ». Sélectionnez l'agent, l'environnement, la fenêtre temporelle et la planification. Ajoutez une brève description et des URL de référence lorsque l'auditeur a besoin de vos règles de workflow.
+      </Step>
+      <Step title="Créer l'audit et attendre l'exécution">
+        Sélectionnez **créer l'audit**. La première exécution est mise en file d'attente immédiatement. Ouvrez la carte d'audit pour suivre sa progression : en attente, en cours d'exécution, puis terminé.
+      </Step>
+    </Steps>
+
+    Une fois l'exécution terminée, ouvrez un constat et examinez les preuves de session associées. Vous pouvez ensuite l'acquitter, l'assigner, le rejeter, le mettre en sourdine ou le résoudre.
+
+    ![Un constat d'audit terminé affichant sa description d'échec, l'action recommandée, les preuves à l'appui et les sessions concernées.](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create payment-retry-failures \
+      --description "Find production sessions that retry a failed payment call without changing input or escalating" \
+      --scope '{"environments":["production"]}' \
+      --text "Escalate after two unchanged payment failures"
+
+    fp audits list
+    fp audits runs payment-retry-failures
+    fp audits findings --audit payment-retry-failures
+    fp audits finding <finding-id>
+    ```
+
+    Ajoutez du contexte de référence, puis actualisez-le lorsque la source change :
+
+    ```bash
+    fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
+    fp audits context-refresh payment-retry-failures
+    fp audits run payment-retry-failures
+    ```
+
+    Utilisez `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>` ou `fp audits reopen <finding-id>` pour faire progresser un constat dans le processus de triage.
+  </Tab>
+</Tabs>
+
+Ensuite, [prévenez votre premier échec avec une policy](/fr/start/first-policy) pour une action répétable confirmée.

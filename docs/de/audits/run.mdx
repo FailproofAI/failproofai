@@ -1,0 +1,67 @@
+---
+title: "Audit ausführen und überprüfen"
+description: "Einen Audit ausführen, seine Abdeckung verifizieren und die resultierenden Findings inspizieren."
+icon: "play"
+---
+
+Führen Sie einen Audit aus, sobald Ziel und Population so konkret formuliert sind, dass ein anderer Operator weiß, wie ein valides Finding aussieht.
+
+## Ausführen und inspizieren
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Navigieren Sie zu **Analyze → Audits**, öffnen Sie den Audit und wählen Sie **run now**. Eine Meldung über die Einreihung in die Warteschlange bedeutet, dass der Dispatcher ihn in Kürze startet.
+    2. Öffnen Sie den neuen Run, um Status, Zeitfenster, Dauer, Anzahl der Findings und Bericht einzusehen.
+    3. Wählen Sie eine Evidence-Session aus, um den genauen Trace zu öffnen.
+    4. Kehren Sie zur Audit-Seite zurück, um Einstellungen zu bearbeiten, den Zeitplan zu deaktivieren oder ältere Runs zu inspizieren.
+
+    ![Eine Audit-Detailseite mit offenen Findings, Status des letzten und nächsten Runs, Sweep-Fenster, Kontext, Run-now-Steuerung und priorisierten Findings.](/images/dashboard/audit-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits run checkout-reliability
+    fp audits runs checkout-reliability --limit 10
+    fp --json audits runs checkout-reliability
+    fp audits findings --audit checkout-reliability
+    ```
+
+    Siehe die [`fp audits`-Referenz](/de/reference/cloud-cli#audits) für Run-Verlauf, Findings und Triage-Befehle.
+  </Tab>
+</Tabs>
+
+## Vor der Ausführung
+
+- Bestätigen Sie, dass im ausgewählten Zeitfenster Sessions vorhanden sind.
+- Überprüfen Sie die Umgebungs- und Agent-Filter.
+- Stellen Sie sicher, dass der Referenzkontext aktuell ist.
+- Vergewissern Sie sich, dass das Ziel einen Fehlermodus beschreibt und keine gewünschte Schlussfolgerung vorwegnimmt.
+
+## Den Run überprüfen
+
+Beginnen Sie mit Run-Status, Session-Abdeckung und ob die Modellanalyse ausgeführt wurde. Inspizieren Sie anschließend bei jedem Finding den Schweregrad, die Beschreibung, die Evidence-Sessions, die unterstützenden Abfragen und den vorgeschlagenen Präventionspfad.
+
+Verwenden Sie den Finding-Status, um Arbeit zu bestätigen, stummzuschalten, abzulehnen, aufzulösen, wieder zu öffnen oder zuzuweisen. Bewahren Sie die Evidence auch dann auf, wenn das Finding abgelehnt wird – sie erklärt, warum die Entscheidung getroffen wurde.
+
+## Einen leeren oder verzögerten Run interpretieren
+
+| Run-Zustand | Bedeutung | Maßnahme |
+| --- | --- | --- |
+| Analyse wurde ausgeführt und ergab null Findings | Die ausgewählten Beweise unterstützten bei der konfigurierten Empfindlichkeit kein Finding. | Bestätigen Sie, dass der Scope repräsentative Sessions enthält, und behandeln Sie das Ergebnis als unbedenklich – es sei denn, Ziel oder Kontext waren zu vage. |
+| Modellanalyse wurde übersprungen oder ist fehlgeschlagen | Der Run wird mit null Findings abgeschlossen, hat aber keine agentische Untersuchung durchgeführt. Der deterministische Credential- und PII-Scan meldet weiterhin Trefferanzahlen in den Run-Statistiken, erstellt jedoch keine Findings. | Beheben Sie den Analysedienst oder die Konfiguration und führen Sie den Run erneut aus. Interpretieren Sie das leere Ergebnis nicht als Beleg dafür, dass die Population unbedenklich ist. |
+| Modellanalyse ist deaktiviert | Der Run wird mit null Findings erfolgreich abgeschlossen. Der deterministische Scan ersetzt weder die Modellanalyse noch öffnet er Findings. | Aktivieren Sie die Modellanalyse oder deaktivieren Sie den Audit, anstatt sich auf einen Audit zu verlassen, der keine Findings produzieren kann. |
+| Keine Analysekapazität ist unmittelbar verfügbar | Der Audit bleibt in der Warteschlange und wiederholt den Versuch, anstatt die Population zu überspringen. | Warten Sie auf verfügbare Kapazität oder verteilen Sie die Audit-Anker. Betreiber mit Self-Hosting sollten die Audit-Agent-Replikas und die dazu passende Dispatcher-Kapazität skalieren. |
+| Kapazität bleibt während des Retry-Fensters nicht verfügbar | Der Run bricht mit null Findings ab und sendet eine Fehlerbenachrichtigung, sofern E-Mail-Zustellung verfügbar ist. | Prüfen Sie, ob die Audit-Flotte ausgelastet ist oder wiederholt neu startet. |
+
+Wenn die Analyse nicht ausgeführt wird, halten `since_last`-Audits dieses unanalysierte Fenster für den nächsten erfolgreichen Run offen. Bestehende Findings werden nicht zurückgezogen, da eine übersprungene Analyse kein Beleg dafür ist, dass das Problem verschwunden ist.
+
+## Fehlerbenachrichtigungen verstehen
+
+Bei einem fehlgeschlagenen Run oder einem fehlgeschlagenen Modellanalyse-Schritt werden die E-Mail-Empfänger des Audits verwendet. Hat der Audit keinen E-Mail-Kanal, greift Failproof AI auf die Einstellung `alerts.email_default_recipients` der Organisation zurück, damit ein still gebrochener Audit noch einen Eskalationspfad hat.
+
+E-Mail muss für die Organisation aktiviert und SMTP muss konfiguriert sein. Andernfalls wird der Fehler protokolliert, aber keine E-Mail kann zugestellt werden. Run-Fehler verschieben den festen Zeitplananker des Audits nicht.
+
+Jeder Run speichert außerdem den exakten [Agent-Kontext](/de/audits/agent-contracts), der für jeden Agent verwendet wurde, als Contract-Snapshot. Spätere Bearbeitungen ändern den mit einem früheren Run aufgezeichneten Evidence-Standard nicht.
+
+<Warning>
+  Setzen Sie keine blockierende Richtlinie direkt auf Basis eines unverifizierten Findings ein. Öffnen Sie die zitierten Traces und bestätigen Sie, dass die Regel unsicheres Verhalten von legitimer Arbeit trennt.
+</Warning>

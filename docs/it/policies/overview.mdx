@@ -1,0 +1,63 @@
+---
+title: "Policies"
+description: "Osserva, guida o blocca le azioni dell'agente prima che un errore noto si ripeta."
+icon: "shield-check"
+---
+
+Una policy valuta un evento hook dell'agente e restituisce una di tre decisioni:
+
+- `allow` consente all'azione di proseguire.
+- `instruct` fornisce all'agente una guida correttiva.
+- `deny` blocca l'azione con una motivazione.
+
+## Utilizza le tre superfici di policy
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai su **Observe → policy** per filtrare e ispezionare le decisioni di policy dalle sessioni.
+    2. Vai su **Admin → policy editor** per comporre, convalidare, pubblicare, disabilitare o ispezionare versioni immutabili.
+    3. Vai su **Admin → enforcement** per assegnare versioni ed effetti alle macchine.
+
+    Utilizza la pagina Policy per capire cosa sta già corrispondendo prima di creare o modificare l'enforcement.
+
+    ![La pagina Policy che mostra i totali delle decisioni e i mapping di policy gestiti localmente e su Cloud.](/images/dashboard/policy-observe.png)
+
+    L'editor è il luogo in cui converti una condizione di errore in codice, la convalidi e pubblichi una versione immutabile.
+
+    ![L'editor di Policy utilizzato per comporre e pubblicare una versione di policy immutabile.](/images/dashboard/policy-editor.png)
+
+    L'enforcement assegna quindi quella versione pubblicata e il suo effetto di observe o enforce alle macchine.
+
+    ![La flotta di Enforcement che mostra la copertura delle macchine e le versioni di policy assegnate.](/images/dashboard/enforcement-fleet.png)
+
+    Verifica le decisioni di nuovo nella pagina Policy dopo la distribuzione, in modo che le viste di authoring e flotta siano collegate all'attività reale dell'agente.
+  </Tab>
+  <Tab title="CLI">
+    Utilizza `failproofai` per l'installazione e la convalidazione locale delle policy:
+
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --scope project
+    failproofai config --status
+    ```
+
+    Utilizza `fp` per trovare le sessioni Cloud e gli eventi contenenti decisioni di policy. L'authoring Cloud e la distribuzione della flotta rimangono flussi di lavoro del dashboard.
+  </Tab>
+</Tabs>
+
+Le policy hanno tre superfici distinte in Failproof AI:
+
+1. **Analizza decisioni** in sessioni, dashboard e audit.
+2. **Crea versioni** con regole built-in, codice o l'editor di policy.
+3. **Distribuisci e applica** versioni su macchine selezionate.
+
+Inizia da una modalità di errore confermata. Definisci l'evento più piccolo e la corrispondenza dello strumento che l'identifica, testa esempi legittimi e non sicuri, quindi osserva prima di applicare.
+
+<Columns cols={2}>
+  <Card title="Utilizza una policy built-in" icon="library" href="/it/policies/builtin">
+    Abilita una regola controllata per i rischi comuni di segreti, shell, Git, cloud e workflow.
+  </Card>
+  <Card title="Scrivi una policy personalizzata" icon="code-2" href="/it/policies/custom">
+    Esprimi una decisione specifica del workflow in JavaScript o TypeScript.
+  </Card>
+</Columns>

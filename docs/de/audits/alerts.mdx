@@ -1,0 +1,62 @@
+---
+title: "Benachrichtigungen"
+description: "Wiederkehrende Vorfälle erkennen und an die richtigen Verantwortlichen weiterleiten."
+icon: "bell-ring"
+---
+
+Benachrichtigungen überwachen eine messbare Bedingung und erstellen einen Vorfall, wenn diese ausgelöst wird. Verwenden Sie sie, wenn ein Fehler eine zeitnahe Reaktion erfordert – unabhängig davon, ob eine Richtlinie ihn blockieren kann.
+
+## Benachrichtigung erstellen und testen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Navigieren Sie zu **Analysieren → Benachrichtigungen** und wählen Sie **Neue Benachrichtigung**. Sie können auch über die Glocke bei einem repräsentativen Fehler beginnen.
+    2. Geben Sie Name, Schweregrad, Auslösertyp, Bedingung, Auswertungsintervall, Überschreitungsanzahl, Zeitfenster und Kanäle ein.
+    3. Speichern Sie die Benachrichtigung, öffnen Sie die Detailseite und führen Sie **Test** aus.
+    4. Navigieren Sie zu **Analysieren → Vorfälle**, um durch die Benachrichtigung erstellte Vorfälle zu bestätigen, zuzuweisen, zu kommentieren, zu abonnieren und zu lösen.
+
+    Der erste Teil des Formulars identifiziert die Benachrichtigung und das Signal, das sie auslösen soll.
+
+    ![Der erste Teil des Formulars für neue Benachrichtigungen mit Name, Beschreibung, Aktivierungsstatus und Auslösertyp.](/images/dashboard/alert-new-trigger.png)
+
+    Der zweite Teil steuert, wie lange die Bedingung anhalten muss, wie oft sie ausgewertet wird und wohin Benachrichtigungen gesendet werden.
+
+    ![Der zweite Teil des Formulars für neue Benachrichtigungen mit Überschreitungslogik, Zeitplan, Schweregrad, Zustellkanälen und Erstellungsaktion.](/images/dashboard/alert-new-routing.png)
+
+    Überprüfen Sie nach dem Speichern in der Benachrichtigungsliste, ob die Regel aktiviert ist und ob Auslöser, Zeitfenster, Schweregrad und Kanäle Ihren Vorgaben entsprechen.
+
+    ![Die Benachrichtigungsseite mit Benachrichtigungsregeln, deren Auslösern, Auswertungszeitfenstern, Kanälen und Schweregrad.](/images/dashboard/alerts.png)
+
+    Testen Sie die Benachrichtigung, bevor Sie sich im Produktivbetrieb auf sie verlassen.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp alerts create high-errors \
+      --trigger-kind metric_threshold \
+      --severity warning \
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+
+    fp alerts show high-errors
+    fp alerts test high-errors
+    fp alerts update high-errors --severity critical --yes
+    ```
+
+    Verwenden Sie `fp alerts list`, um Regeln zu überprüfen, und `fp alerts delete <name>`, um eine zu entfernen.
+
+    Die vollständige Liste der Befehle finden Sie in der [`fp alerts`-Referenz](/de/reference/cloud-cli#alerts).
+  </Tab>
+</Tabs>
+
+Benachrichtigungsbedingungen können auf Fehlern, Auswertungsbewertungen, Auswertungskombinationen oder benutzerdefiniertem SQL basieren. Fügen Sie Empfänger hinzu, testen Sie die Regel und öffnen Sie den resultierenden Vorfall, um ihn zu bestätigen, zuzuweisen, zu kommentieren, zu abonnieren und zu lösen.
+
+## Gutes Benachrichtigungsdesign
+
+- Benennen Sie die Bedingung und den betroffenen Workflow.
+- Legen Sie die Umgebung explizit fest.
+- Setzen Sie ein Zeitfenster und einen Schwellenwert, um nicht auf einzelne harmlose Ereignisse zu reagieren.
+- Fügen Sie einen Link oder eine Abfrage ein, die Verantwortliche zu den betreffenden Sitzungen führt.
+- Weisen Sie einen Eigentümer zu, bevor Sie die Regel aktivieren.
+
+<Tip>
+  Fügen Sie nach der Behebung eines Audit-Befundes eine Benachrichtigung hinzu, wenn derselbe Fehler außerhalb des Abdeckungsbereichs der Richtlinie erneut auftreten könnte.
+</Tip>

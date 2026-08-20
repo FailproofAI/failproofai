@@ -1,0 +1,44 @@
+---
+title: "Bir denetimi ayarla"
+description: "Denetim hedefini, oturum popülasyonunu ve kanıt bağlamını tanımlayın."
+icon: "sliders-horizontal"
+---
+
+Bir denetimin kalitesi, kapsamı ile başlar. "Sorunları bul" gibi geniş bir istek, somut bir başarısızlık sorusundan daha az faydalı sonuçlar üretir.
+
+## Denetimi yapılandır
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Analyze → Audits → New audit** bölümüne gidin ve adı ile açıklamayı girin.
+    2. Sıklığı, zaman penceresini, ajan/ortam kapsamını, göz ardı edilen hataları, hassasiyeti ve maksimum bulguları ayarlayın.
+    3. **agents** bölümünde ajan bağlamını ekleyin veya gözden geçirin, ardından operatör brifinizi ve halka açık HTTPS referans URL'lerini ekleyin.
+    4. Bildirim kanallarını seçin ve **create audit** seçeneğini tıklayın. İlk çalıştırma hemen sıraya alınır.
+
+    ![Ad, açıklama, sıklık, pencere, ortam ve ajan kapsamı, göz ardı edilen hatalar, analiz ayarları, brief, referans sayfaları ve bildirim kanallarını içeren yeni denetim formu.](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    İlk çalıştırma hemen sıraya alınır. Oluşturma sırasında brief ve referans URL'lerini ekleyin, böylece bu çalıştırma onları alır.
+
+    Tam [`fp audits create` referansını](/tr/reference/cloud-cli#audits) görmek için bağlantıyı izleyin.
+  </Tab>
+</Tabs>
+
+<Tip>
+  Bilinen başarısız bir oturumla başlayın ve birkaç normal oturuma sahip olun. Bu, denetim sistemine hem pozitif bir örnek hem de karşılaştırma seti sağlar.
+</Tip>
+
+<Info>
+  Denetim bağlamı kendi kaynağı olarak depolanır, bu nedenle bir denetimi düzenlemek referans materyalini yanlışlıkla kaldırmaz.
+</Info>

@@ -1,0 +1,49 @@
+---
+title: "Denetim sıklığı"
+description: "Yinelenen denetimlerin ne zaman çalışacağını ve ne kadar veriyi inceleyeceklerini seçin."
+icon: "calendar-clock"
+---
+
+Aracılar, istemler, araçlar ve modeller değiştikçe geri dönebilecek hata modleri için yinelenen denetimleri kullanın.
+
+## Zamanlamayı değiştirin
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Analyze → Audits** sayfasına gidin ve denetimi açın.
+    2. Ayarlarını açın ve etkin durumu, aralığı, UTC bağlantı noktasını, pencere modunu veya geriye dönüş süresini değiştirin.
+    3. Denetimi kaydedin ve denetim kartında sonraki çalışma saatini doğrulayın.
+    4. Büyük bir kapsam veya bağlam değişikliğinden sonra bir kez **run now** kullanın.
+
+    ![Cadence, sweep window, scope, analysis settings, context ve notification channels gösterildiği denetim editörü.](/images/dashboard/audit-edit.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits edit checkout-reliability \
+      --schedule-interval-secs 86400 \
+      --schedule-anchor 2026-08-15T09:00:00Z \
+      --lookback-window-secs 86400 \
+      --yes
+
+    fp audits edit checkout-reliability --disabled --yes
+    fp audits edit checkout-reliability --enabled --yes
+    ```
+
+    Zamanlama sınırları, pencere davranışı ve tüm denetim komutları için [`fp audits` referansına](/tr/reference/cloud-cli#audits) bakın.
+  </Tab>
+</Tabs>
+
+Risk hızı ve maliyetine göre sıklık seçin:
+
+| Risk modeli | Başlangıç sıklığı |
+| --- | --- |
+| Yüksek etkili üretim işlemi | Günlük |
+| İş akışı veya model regresyonu | Haftalık |
+| Yönetim veya erişim incelemesi | Aylık |
+| Tek seferlik yayın araştırması | Bir kez çalıştır |
+
+Geriye dönüş penceresini sıklıkla hizalandırın, böylece çalışmalar boşluk bırakmaz veya gereksiz yere büyük bir popülasyonu tekrar tekrar incelemez. Bir denetimin hedefini veya bağlamını değiştirdikten sonra, bir sonraki planlanmış sonuca güvenmeden önce bunu manuel olarak bir kez çalıştırın.
+
+<Note>
+  Yerel planlanmış denetimler makinede yapılandırılır ve yerel aracı geçmişini tarar. Bulut denetim zamanlamaları Bulut oturumlarında çalışır. Sonuçlarını ve sahipliğini ayrı olarak ele alın.
+</Note>

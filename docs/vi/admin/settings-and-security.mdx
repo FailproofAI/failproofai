@@ -1,0 +1,68 @@
+---
+title: "Cài đặt và bảo mật"
+description: "Định cấu hình các giá trị operasional và đưa ra lựa chọn cẩn thận về dữ liệu agent."
+icon: "lock-keyhole"
+---
+
+Sử dụng Settings cho các giá trị operasional riêng theo triển khai và ghi đè context-window của mô hình. Kiểm tra schema cài đặt trước khi thay đổi giá trị thông qua API hoặc CLI.
+
+## Thay đổi cài đặt tổ chức
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Administration → Settings**, tìm nhóm cài đặt và đọc mô tả cùng nguồn hiện tại của nó.
+    2. Thay đổi giá trị và lưu.
+    3. Đối với context windows của mô hình, thêm hoặc cập nhật ghi đè mô hình và xác nhận giới hạn hiệu quả.
+    4. Kiểm tra lại các phiên làm việc và số liệu phụ thuộc vào giá trị đã thay đổi.
+
+    ![Trang Settings hiển thị cài đặt xác thực và operasional của tổ chức.](/images/dashboard/settings.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp settings list
+    fp settings schema
+    fp settings set <key> --value <scalar>
+    fp settings set alerts.email_default_recipients \
+      --json-value '["oncall@example.com"]'
+    ```
+
+    Chạy `fp settings set --help` để xem loại giá trị và cờ xác nhận được sử dụng bởi CLI đã cài đặt.
+  </Tab>
+</Tabs>
+
+## Lựa chọn xử lý dữ liệu
+
+Kết nối Failproof AI CLI gửi bảng ghi chép theo mặc định vì các trace và audit phụ thuộc vào nội dung của chúng. Sử dụng `--no-transcripts` khi các prompt, nội dung tệp hoặc đầu vào terminal phải giữ ở máy cục bộ; hoạt động hook và quyết định chính sách vẫn có thể được báo cáo.
+
+Thông tin đăng nhập local ingest được lưu trữ riêng biệt từ các cài đặt daemon không phải bí mật và được ghi với quyền hạn chặt chẽ. Các khóa API vẫn nên được quản lý như các bí mật production.
+
+## Tham chiếu cài đặt tổ chức
+
+Tất cả các cài đặt có thể chỉnh sửa trên dashboard đều có phạm vi tổ chức. Hành vi trên toàn triển khai vẫn là cấu hình biến môi trường máy chủ.
+
+| Khóa | Mặc định | Mục đích |
+| --- | --- | --- |
+| `allowed_sign_ins` | `[]` | Hạn chế các thành viên hiện có sử dụng email chính xác hoặc `*@domain`; danh sách trống có nghĩa là không có hạn chế bổ sung. |
+| `session_ttl_secs` | `86400` | Thời gian sống của phiên dashboard; phạm vi chấp nhận là 60 giây đến 30 ngày. |
+| `otp_ttl_secs` | `600` | Thời gian sống của OTP và magic-link; phạm vi chấp nhận là 60–1800 giây. |
+| `alerts.email_default_recipients` | `[]` | Người nhận mặc định khi kênh email cảnh báo không ghi đè chúng. |
+| `alerts.slack_default_webhook` | trống | URL incoming-webhook Slack mặc định. |
+| `alerts.webhook_default_url` | trống | URL webhook JSON chung mặc định. |
+| `alerts.webhook_signing_secret` | trống | Khóa HMAC-SHA256 được sử dụng cho tiêu đề `X-AgentEye-Signature`; các lần đọc bị che dấu. |
+| `alerts.enabled_channels` | email, Slack, webhook | Loại kênh toàn tổ chức mà các quy tắc cảnh báo có thể gửi đi. |
+| `default_user_permissions` | `standard` | Bộ quyền được đặt tên được chọn trước cho các lời mời mới. |
+
+`allowed_sign_ins` là một bộ lọc, không phải một cấp: một người phải đã là thành viên tổ chức. Sử dụng danh sách trống để cho phép mọi thành viên; giá trị `*` được từ chối. URL cảnh báo phải sử dụng HTTPS ngoại trừ các địa chỉ loopback phát triển.
+
+## Danh sách kiểm tra bảo mật
+
+- Sử dụng HTTPS cho các kết nối Cloud.
+- Phạm vi khóa đến bộ quyền nhỏ nhất.
+- Tách các môi trường production và non-production.
+- Xem xét các cài đặt bảo mật chặn và ghi đè trước khi triển khai.
+- Kiểm tra các thay đổi về người dùng, khóa và tổ chức.
+- Kiểm tra yêu cầu sao lưu, lưu giữ và phản ứng sự cố cho triển khai của bạn.
+
+<Warning>
+  Tắt chức năng chụp bảng ghi chép thay đổi những gì các audit và điều tra có thể chứng minh. Ghi lại quyết định và những hạn chế dự kiến của nó.
+</Warning>

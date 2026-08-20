@@ -1,0 +1,44 @@
+---
+title: "ऑडिट सेट अप करें"
+description: "ऑडिट लक्ष्य, सेशन जनसंख्या, और साक्ष्य संदर्भ परिभाषित करें।"
+icon: "sliders-horizontal"
+---
+
+एक ऑडिट की गुणवत्ता इसके दायरे से शुरू होती है। "समस्याएँ खोजें" जैसी व्यापक अनुरोध की तुलना में एक ठोस विफलता प्रश्न अधिक उपयोगी परिणाम देता है।
+
+## ऑडिट कॉन्फ़िगर करें
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Analyze → Audits → New audit** पर जाएँ और नाम तथा विवरण दर्ज करें।
+    2. cadence, time window, agent/environment scope, ignored errors, sensitivity, और maximum findings सेट करें।
+    3. **agents** में, agent context को जोड़ें या समीक्षा करें, फिर operator brief और कोई भी public HTTPS reference URLs जोड़ें।
+    4. notification channels चुनें और **create audit** को चुनें। पहला रन तुरंत कतार में लग जाता है।
+
+    ![नया ऑडिट फॉर्म नाम, विवरण, cadence, window, environment और agent scope, ignored errors, analysis settings, brief, reference pages, और notification channels के साथ।](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    पहला रन तुरंत कतार में लग जाता है। निर्माण के दौरान brief और reference URLs को शामिल करें ताकि रन उन्हें प्राप्त करे।
+
+    संपूर्ण [`fp audits create` संदर्भ](/hi/reference/cloud-cli#audits) देखें।
+  </Tab>
+</Tabs>
+
+<Tip>
+  एक ज्ञात विफल सेशन और कई सामान्य सेशन के साथ शुरू करें। यह ऑडिट को सकारात्मक उदाहरण और तुलना सेट दोनों देता है।
+</Tip>
+
+<Info>
+  ऑडिट संदर्भ अपने स्वयं के संसाधन के रूप में संग्रहीत होता है, इसलिए ऑडिट को संपादित करने से संदर्भ सामग्री गलती से हटाई नहीं जाती है।
+</Info>

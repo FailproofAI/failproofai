@@ -1,0 +1,26 @@
+---
+---
+title: "Hooks"
+description: "מדוד פעילות hook, טריגרים, וזמן השהיה בנפרד מתוצאות המדיניות."
+icon: "webhook"
+---
+
+Hooks מראה מתי hooks של מחזור חיים של agent רצים וכמה זמן הם לוקחים. החלטות מדיניות הן תצוגה נפרדת.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור אל **Observe → Hooks**.
+    2. סנן לפי סביבה, שם hook, אירוע טריגר, agent, או session ID.
+    3. בדוק את זמן השהיה וההתפלגות של hook.
+    4. בחר נקודת תרשים או קטע hook כדי לפתוח את האירועים הבסיסיים.
+
+    ![דף ה-Hooks המציג זמן השהיה מקובץ לפי שם hook ואירוע טריגר.](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

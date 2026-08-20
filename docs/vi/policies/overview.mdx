@@ -1,0 +1,63 @@
+---
+title: "Chính sách"
+description: "Theo dõi, hướng dẫn hoặc chặn các hành động của agent trước khi một lỗi đã biết lặp lại."
+icon: "shield-check"
+---
+
+Một chính sách đánh giá một sự kiện hook của agent và trả về một trong ba quyết định:
+
+- `allow` cho phép hành động tiếp tục.
+- `instruct` cung cấp hướng dẫn sửa chữa cho agent.
+- `deny` chặn hành động với một lý do.
+
+## Sử dụng ba bề mặt chính sách
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi đến **Observe → policy** để lọc và kiểm tra quyết định chính sách từ các phiên làm việc.
+    2. Đi đến **Admin → policy editor** để soạn thảo, xác thực, công bố, vô hiệu hóa hoặc kiểm tra các phiên bản bất biến.
+    3. Đi đến **Admin → enforcement** để gán phiên bản và hiệu ứng cho các máy.
+
+    Sử dụng trang Policy để hiểu rõ những gì đã được khớp trước khi soạn thảo hoặc thay đổi enforcement.
+
+    ![Trang Policy hiển thị tổng số quyết định và ánh xạ chính sách được quản lý cục bộ và trên Cloud.](/images/dashboard/policy-observe.png)
+
+    Trình soạn thảo là nơi bạn chuyển một điều kiện lỗi thành mã nguồn, xác thực nó và công bố một phiên bản bất biến.
+
+    ![Trình soạn thảo Policy được sử dụng để soạn thảo và công bố một phiên bản chính sách bất biến.](/images/dashboard/policy-editor.png)
+
+    Enforcement sau đó gán phiên bản được công bố đó và hiệu ứng observe hoặc enforce của nó cho các máy.
+
+    ![Hệ thống Enforcement hiển thị phạm vi bao phủ máy và các phiên bản chính sách được gán.](/images/dashboard/enforcement-fleet.png)
+
+    Xác minh các quyết định trở lại trang Policy sau khi triển khai để các chế độ xem soạn thảo và hệ thống được liên kết với hoạt động agent thực tế.
+  </Tab>
+  <Tab title="CLI">
+    Sử dụng `failproofai` để cài đặt và xác thực chính sách cục bộ:
+
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --scope project
+    failproofai config --status
+    ```
+
+    Sử dụng `fp` để tìm các phiên làm việc trên Cloud và các sự kiện chứa quyết định chính sách. Soạn thảo trên Cloud và triển khai hệ thống vẫn là các quy trình trên dashboard.
+  </Tab>
+</Tabs>
+
+Chính sách có ba bề mặt riêng biệt trong Failproof AI:
+
+1. **Phân tích quyết định** trong các phiên làm việc, bảng điều khiển và kiểm toán.
+2. **Soạn thảo phiên bản** với các quy tắc tích hợp, mã hoặc trình soạn thảo chính sách.
+3. **Triển khai và thực thi** phiên bản trên các máy được chọn.
+
+Bắt đầu từ một chế độ lỗi được xác nhận. Xác định sự kiện và khớp công cụ nhỏ nhất giúp xác định nó, kiểm tra các ví dụ hợp lệ và không an toàn, sau đó theo dõi trước khi thực thi.
+
+<Columns cols={2}>
+  <Card title="Sử dụng một chính sách tích hợp" icon="library" href="/vi/policies/builtin">
+    Kích hoạt một quy tắc đã được xem xét cho các rủi ro về bí mật, shell, Git, cloud và quy trình công việc phổ biến.
+  </Card>
+  <Card title="Viết một chính sách tùy chỉnh" icon="code-2" href="/vi/policies/custom">
+    Thể hiện một quyết định cụ thể cho quy trình công việc bằng JavaScript hoặc TypeScript.
+  </Card>
+</Columns>

@@ -1,0 +1,114 @@
+---
+title: "エージェントハーネス"
+description: "対応するエージェントCLIでセッションをキャプチャし、ポリシーを適用します。"
+icon: "plug-zap"
+---
+
+Failproof AI は Claude Code、Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi、Hermes、OpenClaw、Factory Droid、Devin CLI、Antigravity CLI、および Goose をサポートしています。
+
+| ハーネス | サポートされるフックスコープ |
+| --- | --- |
+| Claude Code | ユーザー、プロジェクト、ローカル |
+| Codex、GitHub Copilot CLI、Cursor、OpenCode、Pi | ユーザー、プロジェクト |
+| Factory Droid、Devin CLI、Antigravity CLI、Goose | ユーザー、プロジェクト |
+| Hermes、OpenClaw | ユーザー |
+
+各インテグレーションは、ポリシーが実行される前に、ネイティブのフックイベント名、ツール名、ツール入力フィールドを正規化します。ポリシーはハーネスが公開するイベントにのみ作用できます。ターン終了時の動作やインストラクションの挙動は、実際にデプロイするハーネスとバージョンで必ずテストしてください。
+
+## 適用能力
+
+「ブロック」とは、現在のアダプターが返した判定が、指定のハーネスによって消費されることを意味します。ポストツールのブロックはモデルに表示される結果を差し替えることができますが、すでに発生したツールの副作用を元に戻すことはできません。
+
+| ハーネス | 検証済みのブロックイベント | 観察専用または非ブロックの注意事項 |
+| --- | --- | --- |
+| Claude Code | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PreCompact`、およびいくつかのタスク/設定イベント | `PostToolUse`、セッションライフサイクル、通知、および失敗後のイベントは観察専用です。 |
+| Codex | `PreToolUse`、`PermissionRequest`、`UserPromptSubmit`、`Stop`、`SubagentStop`、`PostToolUse` | ポストツールのブロックは実行後に結果を差し替えます。セッション開始とコンパクトイベントは現在のアダプターでは観察専用です。 |
+| GitHub Copilot CLI | `PreToolUse`、`UserPromptSubmit`、`PermissionRequest`、`Stop`、`SubagentStop`、`PostToolUse` | ポストツールのブロックは実行後に結果を差し替えます。セッションと通知イベントは観察専用です。 |
+| Cursor | `PreToolUse`、`UserPromptSubmit`、`Stop` | `PostToolUse` とセッションイベントは観察専用です。 |
+| OpenCode | `PreToolUse` | ポストツールおよびライフサイクルイベントは観察専用です。現在のストップ処理は、検証済みゲートではなく後続ターンへのガイダンスとして機能します。 |
+| Pi | `PreToolUse`、`UserPromptSubmit` | ポストツールおよびライフサイクルイベントは観察専用です。ストップのガイダンスは後続ターンに適用されます。 |
+| Hermes | `PreToolUse` | ポストツール、セッション、サブエージェントストップの判定はゲートとして機能しません。 |
+| OpenClaw | `PreToolUse`、`UserPromptSubmit`、`Stop` | ポストツール、セッション、サブエージェントストップ、およびコンパクションイベントは観察専用です。 |
+| Factory Droid | `PreToolUse`、`UserPromptSubmit`、`Stop`、`PreCompact` | ポストツールおよびサブエージェントストップの判定は観察専用です。 |
+| Devin CLI | `PreToolUse`、`UserPromptSubmit`、`Stop`、条件付き `PermissionRequest` | パーミッションフックはすべてのパーミッションモードで実行されるわけではありません。ポストツールおよびセッションイベントは観察専用です。 |
+| Antigravity CLI | `PreToolUse`、`Stop` | ユーザープロンプトおよびポストツールの判定は観察専用です。プロンプトへのインストラクション注入は引き続き可能です。 |
+| Goose | `PreToolUse` | ユーザープロンプト、ポストツール、およびセッションイベントは観察専用です。ネイティブのブロッキングストップフックが上流に存在しますが、現在のアダプターではインストールされていません。 |
+
+各機能はバージョンに依存します。エージェントCLIをアップグレードした後は、特にポリシーが共通のプリツールゲートではなく、プロンプト・ストップ・パーミッション・ポストツールの挙動に依存している場合は、必ず再テストしてください。
+
+## キャプチャとポリシーフックのインストール
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Administration → Keys** を開き、マシンまたは環境の名前を付けた `events:add` および `policies:pull` 権限を持つキーを作成します。
+    2. 対象マシンで、表示されたキーを使ってローカルCLIを接続し、ハーネスフックをインストールします。
+    3. 新しいエージェントセッションを開始し、**Observe → Events** でフックとセッションイベントを確認します。
+    4. 同じ時間帯の **Observe → policy** を開き、そのマシンに紐付いたポリシー判定を確認します。
+
+    接続はマシンキーから始まります。シークレットをコピーする前に、インジェストとポリシー配信の両方の権限が含まれていることを確認してください。
+
+    ![イベントインジェストとポリシー配信の権限を付与するために使用する新規APIキードロワー。](/images/dashboard/key-create.png)
+
+    フックをインストールした後、Eventsストリームに接続したマシンと環境からの新しいイベントが表示されるはずです。
+
+    ![新たにインストールされたハーネスがレポートしていることを確認するために使用するライブEventsストリーム。](/images/dashboard/events-stream.png)
+
+    最後に、ポリシー判定が同じマシンに紐付いていることを確認します。これにより、ハーネスがトレースイベントだけでなくポリシーアクティビティもレポートしていることが確認できます。
+
+    ![新たに接続されたハーネスからのポリシー判定を確認するために使用するPolicyページ。](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    検出されたすべてのハーネスにフックをインストールします：
+
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+    failproofai policies --install
+    ```
+
+    または、特定のハーネスと設定スコープを指定します：
+
+    ```bash
+    failproofai policies --install \
+      --cli claude codex cursor \
+      --scope user
+    ```
+
+    プロジェクトスコープはリポジトリにフック設定を保持します。ユーザースコープはリポジトリをまたいだ作業をカバーします。Claude Code はローカルスコープもサポートしていますが、サポート状況はハーネスによって異なり、CLIはサポートされていない組み合わせを拒否します。
+
+    マシンとそのイベントを確認します：
+
+    ```bash
+    failproofai config --status
+    failproofai flush --wait
+    fp events --since 1h --event-type hook_triggered,hook_completed
+    ```
+  </Tab>
+</Tabs>
+
+## デフォルト以外のセッションパスの追加
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    追加パスはクラウドではなくマシン上に登録されます。追加後は **Observe → Sessions** を開き、マシンの環境でフィルタリングして、新しいパスからのセッションが表示されることを確認します。セッションを開き、監査で使用する前にエージェント、ハーネス、イベントのタイムスタンプを確認してください。
+
+    ![追加キャプチャパスからデータを受信している環境にフィルタリングされたSessionsリスト。](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    オプションのラベルを付けてパスを追加し、設定済みのパスを確認します：
+
+    ```bash
+    failproofai harness add-path claude checkout=/srv/checkout/.claude
+    failproofai harness list claude
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    ```
+
+    `failproofai harness remove-path claude checkout` でパスを削除します。
+  </Tab>
+</Tabs>
+
+<Tip>
+  インストール後に新しいセッションを1つ実行してください。ロールアウトを拡大する前に、ライブイベントストリームと実際のポリシー判定の両方を確認してください。
+</Tip>

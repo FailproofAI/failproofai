@@ -1,0 +1,129 @@
+---
+title: "Yerleşik politika kataloğu"
+description: "Her Failproof AI yerleşik politikasını, tetikleyicisini, önerilen durumunu ve yapılandırılabilir parametrelerini inceleyin."
+icon: "list-checks"
+---
+
+Kurulan paket, politika kullanılabilirliğinin tek kaynağıdır. Her yükseltmeden sonra `failproofai policies` komutunu çalıştırın, çünkü katalog girişleri ve davranış paket sürümüyle değişebilir.
+
+## Önerilen temel yapılandırma
+
+Kılavuzlu kurulumun önerilen seçimi şu anda gizli sanitizerleri, ortam korumalarını, kendi kendine korumayı, felaket komutu korumasını ve korunan dal güvenliğini etkinleştirir:
+
+```text
+sanitize-jwt                 sanitize-api-keys
+sanitize-connection-strings sanitize-private-key-content
+sanitize-bearer-tokens       protect-env-vars
+block-env-files              block-secrets-write
+block-self-pause             block-failproofai-commands
+block-sudo                   block-curl-pipe-sh
+block-rm-rf                  block-push-master
+block-force-push
+```
+
+Önerilen, **Her Şey** seçeneğinden kasıtlı olarak daha dar kapsamlıdır. Altyapı ve iş akışı politikaları geçerli işleri kesintiye uğratabilir ve bunlara ihtiyaç duyan depolar ve makinelerde etkinleştirilmelidir.
+
+## Gizli anahtarlar ve ortam
+
+| Politika | Tetikleyici | Sonuç |
+| --- | --- | --- |
+| `sanitize-jwt` | `PostToolUse` | Model bunları görmeden önce araç çıktısından JWT'leri temizleyin. |
+| `sanitize-api-keys` | `PostToolUse` | Ortak OpenAI, Anthropic, GitHub, AWS, Stripe ve Google anahtarlarını temizleyin. |
+| `sanitize-connection-strings` | `PostToolUse` | Kimlik bilgileri içeren veritabanı bağlantı dizelerini temizleyin. |
+| `sanitize-private-key-content` | `PostToolUse` | PEM özel anahtar gövdelerini temizleyin. |
+| `sanitize-bearer-tokens` | `PostToolUse` | Yetkilendirme taşıyıcı jetonlarını temizleyin. |
+| `protect-env-vars` | `PreToolUse` (kabuk araçlarında) | Ortam değişkenlerini döküm yapan komutları engelle. |
+| `block-env-files` | `PreToolUse` | `.env` dosyalarının okunması ve yazılmasını engelle. |
+| `block-read-outside-cwd` | `PreToolUse` (okuma, glob, grep veya kabuk araçlarında) | Okumaları oturum çalışma dizini içinde tut. |
+| `block-secrets-write` | `PreToolUse` (yazma araçlarında) | Yaygın gizli anahtar ve kimlik bilgisi dosya adlarına yazılmasını engelle. |
+
+## Tehlikeli komutlar ve altyapı
+
+| Politika | Tetikleyici | Sonuç |
+| --- | --- | --- |
+| `block-self-pause` | `PreToolUse`, `PermissionRequest` | Bir aracının kendi zorlama mekanizmasını duraklatmasını engelle. |
+| `block-sudo` | `PreToolUse`, `PermissionRequest` | İzin deseni eşleşmedikçe `sudo` komutunu engelle. |
+| `block-curl-pipe-sh` | `PreToolUse` | İndirilen betiklerin doğrudan kabuğa aktarılmasını engelle. |
+| `block-rm-rf` | `PreToolUse` | Felaket niteliğinde yinelemeli silme desenlerini engelle. |
+| `block-failproofai-commands` | `PreToolUse` | Aracıların Failproof AI'ı değiştirmesini veya kaldırmasını engelle. |
+| `block-kubectl` | `PreToolUse` | Kubernetes komutlarını kısıtla. |
+| `block-terraform` | `PreToolUse` | Terraform ve OpenTofu komutlarını kısıtla. |
+| `block-aws-cli` | `PreToolUse` | AWS CLI komutlarını kısıtla. |
+| `block-gcloud` | `PreToolUse` | Google Cloud CLI komutlarını kısıtla. |
+| `block-az-cli` | `PreToolUse` | Azure CLI komutlarını kısıtla. |
+| `block-helm` | `PreToolUse` | Helm komutlarını kısıtla. |
+| `block-gh-pipeline` | `PreToolUse` | GitHub CLI iş akışı, çalıştırma, birleştirme, yayın, önbellek ve gizli işlemleri değiştiren komutları kısıtla. |
+
+## Git ve veritabanı güvenliği
+
+| Politika | Tetikleyici | Sonuç |
+| --- | --- | --- |
+| `block-push-master` | `PreToolUse` | Yapılandırılmış korunan dallara doğrudan göndermeyi engelle. |
+| `block-force-push` | `PreToolUse` | Zorlamaya dayalı göndermeyi engelle; `--force-with-lease` mevcut uygulama tarafından izin verilir. |
+| `block-work-on-main` | `PreToolUse` | Korunan dallarda işlemler ve birleştirmeleri engelle. |
+| `warn-git-amend` | `PreToolUse` | `--amend` ile bir işlemi yeniden yazmadan önce uyar. |
+| `warn-git-stash-drop` | `PreToolUse` | Stasları kalıcı olarak bırakmadan veya temizlemeden önce uyar. |
+| `warn-all-files-staged` | `PreToolUse` | Geniş `git add -A`, `git add .` veya `git add --all` konusunda uyar. |
+| `warn-destructive-sql` | `PreToolUse` | Tanınan veritabanı istemcileri aracılığıyla `WHERE` olmayan `DROP`, `TRUNCATE` ve `DELETE` konusunda uyar. |
+| `warn-schema-alteration` | `PreToolUse` | Tanınan `ALTER TABLE` sütun ve yeniden adlandırma işlemleri konusunda uyar. |
+
+## Paketler, sistem davranışı ve ajan döngüleri
+
+| Politika | Tetikleyici | Sonuç |
+| --- | --- | --- |
+| `warn-package-publish` | `PreToolUse` | Paket kayıtlarına yayınlamadan önce uyar. |
+| `warn-global-package-install` | `PreToolUse` | Genel paket kurulumundan önce uyar. |
+| `prefer-package-manager` | `PreToolUse` | Aracıya izin verilen paket yöneticisini kullanmasını öner. |
+| `warn-large-file-write` | `PreToolUse` (yazma araçlarında) | Yapılandırılmış dosya boyutu eşiğinin üstünde uyar. |
+| `warn-background-process` | `PreToolUse` | Ayrılmış veya uzun süreli arka plan süreci desenleri konusunda uyar. |
+| `warn-repeated-tool-calls` | `PreToolUse` | Üç veya daha fazla özdeş araç çağrısından sonra uyar. |
+
+## Görev sonu iş akışı
+
+Bu politikalar uyumlu bir `Stop` olayı yayan bir harness gerektirir.
+
+| Politika | Sonuç |
+| --- | --- |
+| `require-commit-before-stop` | İzlenen işler taahhüt edilmeden tamamlanmayı reddet. |
+| `require-push-before-stop` | Taahhütler yerel kalırken tamamlanmayı reddet. |
+| `require-pr-before-stop` | Mevcut dal için çekme isteği gerektir. |
+| `require-no-conflicts-before-stop` | Yapılandırılmış temel dal karşısında temiz birleştirme gerektir. |
+| `require-ci-green-before-stop` | Geçerli-HEAD CI denetimlerinin başarıyla tamamlanmasını gerektir. |
+
+## Parametre referansı
+
+Seçilen kapsamın `policyParams` nesnesi altında parametreleri yapılandırın. Türler her politika tarafından doğrulanır.
+
+| Politika | Parametre | Tür ve varsayılan |
+| --- | --- | --- |
+| `sanitize-api-keys` | `additionalPatterns` | `pattern[]`, `[]`; girişler `regex` ve `label` içerir |
+| `block-read-outside-cwd` | `allowPaths` | `string[]`, `[]` |
+| `block-sudo` | `allowPatterns` | `string[]`, `[]` |
+| `block-rm-rf` | `allowPaths` | `string[]`, `[]` |
+| Altyapı engelleyicileri | `allowPatterns` | `string[]`, `[]` |
+| `block-secrets-write` | `additionalPatterns` | `string[]`, `[]` |
+| `block-push-master` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `block-work-on-main` | `protectedBranches` | `string[]`, `["main", "master"]` |
+| `prefer-package-manager` | `allowed`, `blocked` | `string[]`, `[]` |
+| `warn-large-file-write` | `thresholdKb` | `number`, `1024` |
+| `require-push-before-stop` | `remote`, `baseBranch` | `string`, `"origin"`; `string`, `"main"` |
+| `require-pr-before-stop` | `baseBranch` | `string`, `"main"` |
+| `require-no-conflicts-before-stop` | `baseBranch` | `string`, `"main"` |
+
+```json
+{
+  "enabledPolicies": ["block-sudo", "block-push-master"],
+  "policyParams": {
+    "block-sudo": {
+      "allowPatterns": ["sudo systemctl status"]
+    },
+    "block-push-master": {
+      "protectedBranches": ["main", "release"]
+    }
+  }
+}
+```
+
+<Warning>
+  İzin deseni, bir aracının yapabileceği işlemleri genişletir. Bunu bir filo genelinde dağıtmadan önce tam jetonlaştırma ve komut varyasyonlarını hedef harness üzerinde test edin.
+</Warning>

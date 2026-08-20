@@ -1,0 +1,43 @@
+---
+title: "错误"
+description: "对重复出现的错误进行分组，并查看其背后的会话。"
+icon: "circle-alert"
+---
+
+错误页面为您提供跨会话的故障优先视图。按错误类型、代理、环境、模型、工具或时间窗口进行分组，以发现反复出现的运营问题。
+
+## 排查错误
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. 前往 **Observe → Errors**。
+    2. 按环境、事件类型、错误类型、代理、会话 ID 或搜索文本进行筛选。
+    3. 展开已分组的错误以查看具体发生记录。选择某一行可在其所属会话中打开对应的精确事件。
+    4. 选择代表性错误上的铃铛控件，为类似错误创建告警。
+
+    ![错误页面，显示故障直方图、已分组的错误以及创建告警的控件。](/images/dashboard/errors.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp errors --env production --since 24h
+    fp errors --error-type TimeoutError --agent-id checkout-agent
+    fp errors --aggregate --env production --since 7d
+    ```
+
+    当您需要查看错误摘要背后的原始数据时，请使用 `fp events --full --session-id <id>`。
+  </Tab>
+</Tabs>
+
+## 适用场景
+
+- 找出生产环境中最频繁出现的错误类别。
+- 判断是否某个工具或模型导致了错误峰值。
+- 从聚合计数跳转至代表性会话。
+- 为重复出现的错误创建告警。
+- 在审计中纳入受影响的用户群体。
+
+错误是一个被观测到的事件，评估失败是一种质量判断，而审计发现则是一种经过调查的故障模式。在决定使用哪种响应工作流时，请注意区分这三者。
+
+<Card title="创建告警" icon="bell-ring" href="/zh/audits/alerts">
+  当错误或质量条件超过阈值时，通知相关响应人员。
+</Card>

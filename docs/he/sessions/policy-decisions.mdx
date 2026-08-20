@@ -1,0 +1,28 @@
+---
+---
+title: "החלטות מדיניות"
+description: "ראה אילו מדיניות הוערכו, חסמו, הוראו או אישרו."
+icon: "shield-check"
+---
+
+Policy decisions מסביר מה עשה האכיפה. השתמש בזה כדי לאמת גלגול, למדוד שיעור חסימה, ולמצוא פעילות לא מוגנת.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור אל **Observe → policy** ובחר את טווח הזמן וכן בחר במכונה אחת (אופציונלי).
+    2. בדוק פעולות מוערכות, חסימות, שיעור חסימה, החלטות Cloud, פעולות לא מוגנות, ופעילות בעת השהייה.
+    3. סנן את טבלת ממפת המדיניות והשקף הקצאות שפורסמו.
+    4. בחר בנקודת גרף כדי לפתוח את ההחלטות ותיקיות הישיבה שלהן.
+
+    ![עמוד Policy המציג סכומי החלטות, מסנן מכונה, פעילות אכיפה לאורך זמן, וטבלת ממפת המדיניות.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp events --search "deny" --since 24h
+    failproofai config --status
+    ```
+
+    השתמש ב-`failproofai` למצב אכיפה מקומי של המכונה וב-`fp` לחקירת אירועי Cloud.
+  </Tab>
+</Tabs>

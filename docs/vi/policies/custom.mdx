@@ -1,0 +1,72 @@
+---
+title: "Custom policies"
+description: "Viết một policy cho một chế độ lỗi duy nhất trong quy trình làm việc của agent của bạn."
+icon: "shield-plus"
+---
+
+Tạo một tệp kết thúc bằng `policies.js`, `policies.mjs`, hoặc `policies.ts` dưới `.failproofai/policies/`. Các tệp quy ước sẽ tải tự động ở phạm vi dự án và người dùng.
+
+## Kiểm tra policy trước khi xuất bản lên Cloud
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Cài đặt custom policy trên một máy test và kích hoạt cả một hành động khớp và một hành động không khớp hợp lệ.
+    2. Đi tới **Observe → policy** và so sánh hai quyết định.
+    3. Mở từng phiên liên kết và xác minh rằng payload sự kiện chứa đủ bằng chứng cho quy tắc.
+    4. Khi hành vi đúng, chuyển mã nguồn đã xem xét vào **Admin → policy editor** và xuất bản một phiên bản.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies --install --custom ./security.policies.ts \
+      --cli claude --scope project
+    failproofai policies
+    ```
+
+    Các tệp quy ước dưới `.failproofai/policies/` sẽ tải mà không cần `--custom`. Giữ một lệnh cài đặt rõ ràng trong CI khi xác thực sẽ thất bại trên một mô-đun bị hỏng.
+  </Tab>
+</Tabs>
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+Điều này khớp với `production/config.yml`, `/srv/production/config.yml`, `/srv/production`, và `C:\\production\\config.yml` cho cả `Write` và `Edit`. Nó không khớp với các tên như `production-backup` vì `production` phải là một phân đoạn đường dẫn hoàn chỉnh.
+
+Xác thực và cài đặt một tệp rõ ràng:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts
+```
+
+Ngữ cảnh policy bao gồm loại sự kiện, payload chuẩn hóa, tên công cụ và đầu vào, siêu dữ liệu phiên, tham số, và CLI nguồn khi có sẵn.
+
+## Kiểm tra đường dẫn lỗi
+
+Chạy xác thực sau khi thay đổi tệp entry hoặc bất kỳ mô-đun cục bộ nào mà nó nhập:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+Đường dẫn CLI nghiêm ngặt không thành công cho các tệp bị thiếu, lỗi cú pháp, nhập không được giải quyết, ngoại lệ cấp cao, và hết thời gian tải mô-đun. Tại thời điểm thực thi, một tệp custom bị hỏng được ghi lại và bỏ qua để các policy tích hợp sẵn có thể tiếp tục. Xem bất kỳ cảnh báo tải nào là mất thực thi mong đợi và cảnh báo nó trong nhật ký sản xuất.
+
+Sử dụng các tên duy nhất trên toàn cầu trên các policy rõ ràng, quy ước và được quản lý bởi Cloud. Giữ các hàm policy tất định, ràng buộc các lệnh gọi bên ngoài với hết thời gian ngắn, và trả về một `allow`, `instruct`, hoặc `deny` có ý định trên mọi đường dẫn.
+
+<Warning>
+  Một custom policy là mã thực thi. Kiểm tra các trường bị thiếu, tên công cụ thay thế, và đầu vào bị sai định dạng—không chỉ những khớp mong đợi.
+</Warning>

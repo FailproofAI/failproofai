@@ -1,0 +1,56 @@
+---
+title: "Kiểm toán"
+description: "Xem xét một tập hợp các phiên được xác định để tìm các lỗi mà các dấu vết riêng lẻ không thể phát hiện được."
+icon: "scan-search"
+---
+
+Một kiểm toán tìm kiếm trong một tập hợp các phiên được chọn để đạt được một mục tiêu lỗi được xác định. Nó kết hợp bằng chứng từ dấu vết, kết quả đánh giá, các chính sách được kích hoạt và bối cảnh tham chiếu để tạo ra những phát hiện mà bạn có thể hành động.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+Xem cách một kiểm toán chuyển từ một lần chạy được lên lịch đến các lỗi được hỗ trợ bằng bằng chứng mà bạn có thể sửa chữa.
+
+## Mở các kiểm toán
+
+<Tabs>
+  <Tab title="Dashboard">
+    Đi tới **Analyze → Audits**. Trang hiển thị trạng thái được lên lịch, những phát hiện đang mở, lần chạy cuối cùng, lần chạy tiếp theo, tần suất và liệu kiểm toán có trang tóm tắt hoặc tham chiếu hay không. Chọn một thẻ để xem cài đặt và lịch sử chạy; chọn **new audit** để tạo một cái mới.
+
+    ![Trang Audits hiển thị các kiểm toán định kỳ với lịch trình, độ nhạy và trạng thái chạy của chúng.](/images/dashboard/audits.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits list
+    fp audits list --enabled-only --show-id
+    fp audits show <audit-name>
+    fp audits findings --status open --limit 20
+    ```
+  </Tab>
+</Tabs>
+
+Sử dụng một kiểm toán khi bạn cần trả lời một câu hỏi ở cấp độ dân số như:
+
+- Các agent bỏ rơi các nhiệm vụ ở đâu mà không leo thang?
+- Những lỗi công cụ nào dẫn đến các lần thử lại không hiệu quả?
+- Các agent có truy cập dữ liệu ngoài quy trình dự kiến không?
+- Điều gì đã thay đổi sau khi phát hành mô hình, lời nhắc hoặc công cụ?
+
+## Luồng phản hồi kiểm toán
+
+```text
+Session → Audit → Finding → Issue → Policy
+                         ↘ Alert for recurrence
+```
+
+Một phát hiện nên đặt tên cho chế độ lỗi và chỉ ra bằng chứng. Một vấn đề sở hữu việc khắc phục. Một chính sách ngăn chặn một mẫu hành động đã biết; một cảnh báo phát hiện sự tái phát khi ngăn chặn không thể thực hiện hoặc cần theo dõi.
+
+<Columns cols={2}>
+  <Card title="Thiết lập một kiểm toán" icon="sliders-horizontal" href="/vi/audits/setup">
+    Xác định mục tiêu, dân số và bối cảnh tham chiếu trước lần chạy đầu tiên.
+  </Card>
+  <Card title="Thêm bối cảnh agent" icon="bot" href="/vi/audits/agent-contracts">
+    Nêu rõ những gì mà mỗi agent phải tạo ra và những gì nó không bao giờ được phép làm.
+  </Card>
+</Columns>

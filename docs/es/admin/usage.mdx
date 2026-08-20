@@ -1,0 +1,37 @@
+---
+title: "Uso"
+description: "Inspecciona el consumo de la organización y la ventana de facturación activa."
+icon: "chart-no-axes-combined"
+---
+
+Uso muestra el consumo de la organización actual y sus ventanas de facturación. Utilízalo para entender cómo el despliegue en producción, el volumen de transcripciones, las evaluaciones y la cadencia de auditorías afectan a tu plan.
+
+## Revisar el uso
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Ve a **Administración → Uso**.
+    2. Confirma la organización y la ventana de medición.
+    3. Revisa la ingesta, sesiones, evaluaciones, métricas, auditorías, hallazgos, alertas, usuarios y claves.
+    4. Compara el trabajo de auditoría iniciado y completado cuando el uso de auditorías sea inesperado.
+
+    ![La página de Uso mostrando la ventana de medición, eventos capturados, pipelines de evaluación y auditoría, recursos del espacio de trabajo, miembros y claves de API.](/images/dashboard/usage-overview.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp usage
+    fp --json usage
+    fp --org reliability-team --json usage
+    ```
+  </Tab>
+</Tabs>
+
+## Investigar un cambio
+
+1. Confirma la organización activa y la ventana.
+2. Compara el incremento con el volumen de sesiones por entorno.
+3. Verifica si una nueva integración comenzó a enviar transcripciones.
+4. Revisa los cambios en la cadencia de evaluadores y auditorías.
+5. Compara con los límites del plan de precios actual.
+
+La CLI devuelve el mismo resumen para scripts.

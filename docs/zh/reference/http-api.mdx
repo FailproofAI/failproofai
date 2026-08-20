@@ -1,0 +1,74 @@
+---
+title: "HTTP API"
+description: "向 Failproof AI Cloud 公共 `/v1` API 进行身份验证，并使用生成的端点参考文档。"
+icon: "braces"
+---
+
+公共 API 托管在您的 Failproof AI 控制台域名的 `/v1` 路径下。
+
+## 创建密钥并发起请求
+
+<Tabs>
+  <Tab title="控制台">
+    1. 打开**管理 → 密钥**，选择**创建密钥**，并选择能覆盖该集成所需的最小权限预设。
+    2. 仅在必要时添加单独授权，创建密钥后复制其一次性密码。
+    3. 向 `/v1/sessions` 发送测试请求，并在密钥页面确认该密钥仍处于活跃状态。
+    4. 当集成更换所有者时，通过其操作菜单轮换或禁用该密钥。
+
+    ![新 API 密钥抽屉，显示权限预设和单独授权选项。](/images/dashboard/key-create.png)
+
+    创建抽屉如上图所示。一次性密码仅在您点击**创建**后显示；请在关闭确认弹窗前复制。
+  </Tab>
+  <Tab title="CLI">
+    创建一个只读密钥，并直接通过 `fp` 或 `curl` 使用：
+
+    ```bash
+    fp keys create reliability-reader \
+      --permission-set read-only
+
+    fp --api-key <key> sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY"
+    ```
+  </Tab>
+</Tabs>
+
+密钥的作用范围限定于某个组织及其权限集。若请求缺少端点所需权限，将返回 `403` 并说明缺失的权限。
+
+## 选择组织
+
+组织密钥会自动作用于其所属组织。实例级密钥可以在每次请求时指定组织：
+
+<Tabs>
+  <Tab title="控制台">
+    在打开**管理 → 密钥**之前，先使用控制台顶部的组织切换器。在此处创建的密钥属于当前选定的组织。在将凭证复制到自动化流程之前，请通过 URL 和密钥详情确认组织的 slug。
+
+  </Tab>
+  <Tab title="CLI">
+    在命令前使用 `--org`，或为实例级 API 密钥在请求中发送组织标头。
+
+    ```bash
+    fp orgs list
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+请参阅本节中生成的端点页面，了解当前路径、参数、权限要求及状态码。该规范由服务器路由注解生成，并已对照 `/v1` 路由器进行校验。
+
+当前规范已完整覆盖路由、方法、参数、权限和状态码。部分响应体有意保持未类型化，因为服务器仍以动态 JSON 方式构建它们。在针对没有响应模式的端点生成强类型客户端之前，请先检查真实响应。
+
+JSON 写入请使用 `Content-Type: application/json`。`401` 表示身份验证缺失或无效，`403` 表示身份有效但缺少所需权限，`404` 表示资源不存在或无法在当前组织内访问，`409` 表示状态冲突，`422` 表示字段或权限值无效。错误响应包含可读的描述信息；权限失败时还会说明所需的授权项。
+
+<Warning>
+  策略执行部署有意管理在普通公共 `/v1` 接口之外。请使用受支持的 Cloud 部署工作流。
+</Warning>

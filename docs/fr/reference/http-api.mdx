@@ -1,0 +1,74 @@
+---
+title: "API HTTP"
+description: "Authentifiez-vous à l'API publique Failproof AI Cloud `/v1` et utilisez la référence des endpoints générée."
+icon: "braces"
+---
+
+L'API publique est exposée sous `/v1` sur l'origine de votre tableau de bord Failproof AI.
+
+## Créer une clé et effectuer une requête
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Ouvrez **Administration → Clés**, sélectionnez **Créer une clé** et choisissez le profil de permissions le plus restrictif couvrant l'intégration.
+    2. Ajoutez des autorisations individuelles uniquement si nécessaire, créez la clé et copiez son secret à usage unique.
+    3. Effectuez une requête de test vers `/v1/sessions` et confirmez que la clé reste active sur la page Clés.
+    4. Faites pivoter ou désactivez la clé depuis son menu d'actions en cas de changement de propriétaire de l'intégration.
+
+    ![Le panneau de création de clé API avec les profils de permissions et les autorisations individuelles.](/images/dashboard/key-create.png)
+
+    Le panneau de création est illustré ci-dessus. Le secret à usage unique n'apparaît qu'après avoir sélectionné **créer** ; copiez-le avant de fermer cette confirmation.
+  </Tab>
+  <Tab title="CLI">
+    Créez une clé de lecture et utilisez-la directement avec `fp` ou `curl` :
+
+    ```bash
+    fp keys create reliability-reader \
+      --permission-set read-only
+
+    fp --api-key <key> sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY"
+    ```
+  </Tab>
+</Tabs>
+
+Les clés sont limitées à une organisation et à un profil de permissions. Une requête sans la permission requise par l'endpoint retourne `403` et identifie la permission manquante.
+
+## Sélection de l'organisation
+
+Une clé d'organisation agit automatiquement sur son organisation. Une clé à portée d'instance peut sélectionner une organisation par requête :
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    Utilisez le sélecteur d'organisation dans l'en-tête du tableau de bord avant d'ouvrir **Administration → Clés**. Les clés créées à cet endroit appartiennent à l'organisation sélectionnée. Confirmez le slug de l'organisation dans l'URL et les détails de la clé avant de copier l'identifiant dans vos automatisations.
+
+  </Tab>
+  <Tab title="CLI">
+    Utilisez `--org` avant la commande, ou envoyez l'en-tête d'organisation pour une clé API à portée d'instance.
+
+    ```bash
+    fp orgs list
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+Consultez les pages d'endpoints générées dans cette section pour les chemins actuels, les paramètres, les exigences de permission et les codes de statut. La spécification est générée à partir des annotations des routes serveur et vérifiée par rapport au routeur `/v1`.
+
+La spécification actuelle offre une couverture complète des routes, méthodes, paramètres, permissions et codes de statut. Certains corps de réponse restent intentionnellement non typés car le serveur les construit encore sous forme de JSON dynamique. Inspectez une vraie réponse avant de générer un client fortement typé autour d'un endpoint sans schéma de réponse.
+
+Utilisez `Content-Type: application/json` pour les écritures JSON. Traitez `401` comme une authentification absente ou invalide, `403` comme une identité valide sans la permission requise, `404` comme une ressource inexistante ou inaccessible à l'organisation, `409` comme un conflit d'état, et `422` comme un champ ou une valeur de permission invalide. Les réponses d'erreur incluent un message lisible par un humain ; les échecs de permission mentionnent également l'autorisation requise.
+
+<Warning>
+  Le déploiement de l'application des politiques est intentionnellement géré en dehors de la surface publique ordinaire `/v1`. Utilisez le workflow de déploiement Cloud supporté.
+</Warning>

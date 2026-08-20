@@ -1,0 +1,43 @@
+---
+title: "Hành vi khi gặp sự cố"
+description: "Hiểu điều gì xảy ra khi đánh giá chính sách hoặc daemon cục bộ không khả dụng."
+icon: "shield-alert"
+---
+
+Failproof AI được thiết kế để một lỗi thực thi là có thể nhìn thấy được thay vì im lặng cho phép công việc rủi ro.
+
+## Chẩn đoán một khối failure-closed
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi đến **Admin → enforcement** và mở máy.
+    2. Kiểm tra lần check-in cuối cùng, deployment được gán và deployment được báo cáo.
+    3. Đi đến **Observe → policy** và mở phiên của quyết định từ chối.
+    4. Xác nhận xem lý do báo cáo liên quan đến khả năng tiếp cận daemon, phiên bản không khớp, hay chính sách đó.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    npm install -g failproofai@latest
+    failproofai config
+    ```
+
+    Chạy lại `failproofai config` sẽ cập nhật và khởi động lại daemon sau khi nâng cấp gói.
+  </Tab>
+</Tabs>
+
+Trên một máy được cấu hình để sử dụng `failproofaid`, daemon là bộ đánh giá duy nhất. Nếu nó không thể tiếp cận được hoặc phiên bản giao thức của nó không khớp với CLI, đánh giá hook sẽ thất bại. Hành động bị từ chối với một lý do hướng dẫn người vận hành kiểm tra hoặc cập nhật daemon.
+
+Trước khi cấu hình daemon, hook đánh giá chính sách trong quá trình. Sau khi cấu hình daemon được ghi lại, Failproof AI không im lặng quay lại bộ đánh giá thứ hai khi daemon gặp sự cố.
+
+## Phản ứng với quyết định failure-closed
+
+1. Chạy `failproofai config --status`.
+2. Nếu các phiên bản khác nhau, chạy lại `failproofai config` sau khi cập nhật gói.
+3. Nếu daemon không thể tiếp cận được, kiểm tra trạng thái dịch vụ và nhật ký cục bộ.
+4. Tiếp tục công việc agent chỉ sau khi một đường dẫn đánh giá chính sách đã biết là khỏe mạnh.
+
+<Warning>
+  Không lặp đi lặp lại hành động bị chặn. Một phản ứng failure-closed có nghĩa là hệ thống không thể xác định rằng hành động là an toàn.
+</Warning>

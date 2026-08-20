@@ -1,0 +1,26 @@
+---
+---
+title: "כלים"
+description: "חפש כלים איטיים, כושלים או שמשמשים יותר מדי בהפעלות של סוכנים."
+icon: "wrench"
+---
+
+כלים מקבצים קריאות כלים בין הפעלות כדי שתוכל להשוות בין זמן התגובה והפצת הקריאות.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. עבור אל **Observe → Tools**.
+    2. סנן לפי סביבה, שם כלי, סוכן או מזהה הפעלה.
+    3. בדוק את זמן התגובה והפצת הכלים.
+    4. בחר נקודה בתרשים או קטע כלי כדי לפתוח אירועים והפעלות תואמות.
+
+    ![דף הכלים המציג פירוקי זמן תגובה, הצלחה וכישלון, והפצת קריאות כלים.](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

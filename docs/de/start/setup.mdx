@@ -1,0 +1,68 @@
+---
+title: "Setup wählen"
+description: "Wählen Sie zwischen lokaler Durchsetzung, Failproof AI Cloud oder einem Enterprise-Deployment."
+icon: "waypoints"
+---
+
+<CardGroup cols={3}>
+  <Card title="Lokale Durchsetzung" icon="laptop">
+    Hooks und Richtlinien auf einem Rechner installieren. Verwenden Sie diese Option, wenn Sie sofortige Schutzmaßnahmen benötigen, ohne Sitzungsdaten in die Cloud zu senden.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud">
+    Zentralisierte Sitzungen, Audits, Online-Auswertungen, Dashboards, Benachrichtigungen und Fleet-Richtlinien-Deployment hinzufügen.
+  </Card>
+  <Card title="Enterprise-Deployment" icon="building-2">
+    Unternehmensweite Steuerung, bereichsbeschränkte Schlüssel, private Infrastruktur und deployment-spezifische Sicherheitsanforderungen nutzen.
+  </Card>
+</CardGroup>
+
+## Empfohlener Weg zur Produktion
+
+1. Verbinden Sie eine Nicht-Produktionsmaschine mit aktivierter Transkripterfassung.
+2. Sitzungen und Auswertungen in der Cloud überprüfen.
+3. Ein Audit für einen bekannten Fehlerfall erstellen.
+4. Die erste Richtlinie im Beobachtungsmodus deployen.
+5. Nach Überprüfung von Treffern und False Positives auf die Produktion ausweiten.
+
+## Maschine mit der Cloud verbinden
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Administration → Keys** und erstellen Sie einen Schlüssel mit `events:add` und `policies:pull`.
+    2. Kopieren Sie das Einmalgeheimnis auf die Zielmaschine.
+    3. Führen Sie den CLI-Verbindungsbefehl aus, gehen Sie dann zu **Admin → enforcement** und bestätigen Sie, dass die Maschine angezeigt wird.
+    4. Gehen Sie zu **Observe → Events** und bestätigen Sie, dass das erste Ereignis eingeht.
+
+    Die Schlüssel-Schublade zeigt die zwei Berechtigungen, die eine verbundene Maschine benötigt: Ereigniserfassung und Richtlinienverteilung.
+
+    ![Die neue API-Schlüssel-Schublade zum Erteilen von Ereigniserfassungs- und Richtlinienverteilungsberechtigungen.](/images/dashboard/key-create.png)
+
+    Nach der Verbindung sollte die Maschine in der Durchsetzungsübersicht mit ihrem gewünschten und gemeldeten Richtlinienstatus erscheinen.
+
+    ![Die Enforcement-Fleet mit einer eingetragenen Maschine, die ihren gewünschten Richtlinienstatus und Deployment-Status anzeigt.](/images/dashboard/enforcement-fleet.png)
+
+    Das erste eingehende Ereignis bestätigt, dass der Daemon Daten unabhängig vom Richtlinien-Deployment an die Cloud übermitteln kann.
+
+    ![Der Live-Ereignisstrom mit aktuellen Agenten-, Modell- und Tool-Ereignissen.](/images/dashboard/events-stream-current.png)
+
+    Fahren Sie erst fort, wenn sowohl die Maschine als auch ihr erstes Ereignis sichtbar sind.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --connect https://app.befailproof.ai \
+      --token "$FAILPROOFAI_KEY" \
+      --machine-label checkout-runner-01
+
+    failproofai policies --install --cli claude --scope user
+    failproofai config --status
+    ```
+
+    Fügen Sie `--no-transcripts` hinzu, wenn Transkriptinhalte lokal bleiben müssen.
+  </Tab>
+</Tabs>
+
+Die Verbindung zur Cloud überprüft Ereigniserfassung und Richtlinienverteilung unabhängig voneinander. Ein Schlüssel kann daher gültig sein, aber eine erforderliche Berechtigung fehlen. Verwenden Sie `failproofai config --status`, um zu sehen, welche Funktion konfiguriert ist.
+
+<Info>
+  Das Cloud-Setup schreibt lokale Anmeldedaten erst, nachdem die jeweilige Funktion erfolgreich war. Eine fehlgeschlagene Überprüfung hinterlässt keine Maschine, die als verbunden erscheint, obwohl sie es nicht ist.
+</Info>

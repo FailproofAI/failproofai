@@ -1,0 +1,68 @@
+---
+title: "설정 방식 선택"
+description: "로컬 적용, Failproof AI Cloud, 또는 엔터프라이즈 배포 중에서 선택하세요."
+icon: "waypoints"
+---
+
+<CardGroup cols={3}>
+  <Card title="로컬 적용" icon="laptop">
+    머신에 훅과 정책을 설치합니다. 세션 데이터를 Cloud에 전송하지 않고 즉시 가드레일이 필요할 때 사용하세요.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud">
+    중앙화된 세션, 감사, 온라인 평가, 대시보드, 알림, 플릿 정책 배포 기능을 추가합니다.
+  </Card>
+  <Card title="엔터프라이즈 배포" icon="building-2">
+    조직 제어, 범위 지정 키, 프라이빗 인프라, 배포별 보안 요구 사항을 활용합니다.
+  </Card>
+</CardGroup>
+
+## 권장 프로덕션 경로
+
+1. 트랜스크립트 캡처를 활성화한 상태로 비프로덕션 머신을 연결합니다.
+2. Cloud에서 세션과 평가를 확인합니다.
+3. 알려진 장애 유형에 대한 감사를 생성합니다.
+4. 관찰 모드로 첫 번째 정책을 배포합니다.
+5. 매칭 결과와 오탐을 검토한 후 프로덕션으로 확장합니다.
+
+## 머신을 Cloud에 연결하기
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Administration → Keys**로 이동하여 `events:add` 및 `policies:pull` 권한이 있는 키를 생성합니다.
+    2. 일회용 시크릿을 대상 머신에 복사합니다.
+    3. CLI 연결 명령을 실행한 후 **Admin → enforcement**로 이동하여 머신이 표시되는지 확인합니다.
+    4. **Observe → Events**로 이동하여 첫 번째 이벤트가 도착하는지 확인합니다.
+
+    키 드로어에는 연결된 머신에 필요한 두 가지 권한(이벤트 수집 및 정책 전달)이 표시됩니다.
+
+    ![이벤트 수집 및 정책 전달 권한을 부여하는 데 사용되는 새 API 키 드로어.](/images/dashboard/key-create.png)
+
+    연결 후 머신은 원하는 정책 상태와 배포 상태를 확인할 수 있는 enforcement에 표시되어야 합니다.
+
+    ![등록된 머신의 원하는 정책 상태와 배포 상태를 확장하여 보여주는 Enforcement 플릿.](/images/dashboard/enforcement-fleet.png)
+
+    첫 번째 이벤트가 도착하면 데몬이 정책 배포와 독립적으로 Cloud에 데이터를 전달할 수 있음을 확인합니다.
+
+    ![최근 에이전트, 모델, 도구 이벤트를 보여주는 실시간 이벤트 스트림.](/images/dashboard/events-stream-current.png)
+
+    머신과 첫 번째 이벤트가 모두 표시된 후에만 계속 진행하세요.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --connect https://app.befailproof.ai \
+      --token "$FAILPROOFAI_KEY" \
+      --machine-label checkout-runner-01
+
+    failproofai policies --install --cli claude --scope user
+    failproofai config --status
+    ```
+
+    트랜스크립트 내용을 로컬에 유지해야 하는 경우 `--no-transcripts`를 추가하세요.
+  </Tab>
+</Tabs>
+
+Cloud에 연결하면 이벤트 수집과 정책 전달이 독립적으로 검증됩니다. 따라서 키가 유효하더라도 필요한 권한 중 하나가 누락될 수 있습니다. `failproofai config --status`를 사용하여 어떤 기능이 구성되어 있는지 확인하세요.
+
+<Info>
+  Cloud 설정은 관련 기능이 성공한 후에만 로컬 자격 증명을 기록합니다. 검증에 실패하더라도 실제로 연결되지 않은 머신이 연결된 것처럼 표시되지 않습니다.
+</Info>

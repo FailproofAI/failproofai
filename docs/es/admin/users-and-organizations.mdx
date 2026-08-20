@@ -1,0 +1,44 @@
+---
+title: "Usuarios y organizaciones"
+description: "Controla la membresía y mantén los datos y acciones de cada organización delimitados."
+icon: "users"
+---
+
+Las organizaciones aíslan sesiones, evaluaciones, auditorías, incidencias, alertas, consultas, paneles, usuarios y claves. Confirma la organización activa antes de modificar recursos administrativos.
+
+## Gestionar miembros y organizaciones
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Usa el selector de organización en la parte superior de la barra lateral de Cloud para cambiar de organización.
+    2. Ve a **Administración → Usuarios** para buscar miembros o filtrar por estado activo y rol.
+    3. Selecciona **nuevo usuario**, introduce el correo electrónico, elige un conjunto de permisos y ajusta las excepciones si es necesario.
+    4. Abre un usuario posteriormente para actualizar permisos, deshabilitar el inicio de sesión o volver a habilitar la cuenta.
+
+    ![La página de Usuarios mostrando direcciones de correo de miembros, conjuntos de permisos y controles de edición y deshabilitación.](/images/dashboard/users.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+
+    fp users create engineer@example.com --permission-set standard
+    fp users show engineer@example.com
+    fp users update engineer@example.com --add audits:write
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+    ```
+  </Tab>
+</Tabs>
+
+Los administradores pueden crear, actualizar, deshabilitar y volver a habilitar usuarios, así como asignar el conjunto de permisos adecuado para su rol. La API utiliza una operación de eliminación para deshabilitar, pero no elimina la cuenta ni su registro de membresía.
+
+<Warning>
+  Deshabilitar un usuario bloquea esa identidad para iniciar sesión en todas las organizaciones, no solo en la organización seleccionada actualmente. Volver a habilitarlo restaura el inicio de sesión global y los permisos del miembro en esta organización.
+</Warning>
+
+<Tip>
+  Asigna a las cuentas de servicio nombres descriptivos vinculados a una carga de trabajo y a un propietario. Evita compartir claves entre organizaciones o entre personas y máquinas.
+</Tip>

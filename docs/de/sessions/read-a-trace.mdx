@@ -1,0 +1,48 @@
+---
+title: "Einen Trace lesen"
+description: "Das Ereignis finden, das den Verlauf einer Agent-Sitzung verändert hat."
+icon: "route"
+---
+
+Ein Trace verwandelt einen flachen Ereignisstrom in die kausale Geschichte eines Durchlaufs. Lesen Sie ihn ab der ersten Abweichung – nicht rückwärts vom letzten Fehler.
+
+## Den Trace öffnen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Observe → Sessions** und öffnen Sie eine Sitzung.
+    2. Nutzen Sie die Profilzusammenfassung, um Ergebnis, Timing, Fehler und Evaluierungswerte zu prüfen.
+    3. Scannen Sie die Timeline und die Minimap. Filtern Sie Ereignistypen oder den Zeitraum, wenn die Sitzung umfangreich ist.
+    4. Wählen Sie ein Ereignis aus, um es zu untersuchen. Verwenden Sie **Export** für Evaluator-JSON oder kopieren Sie die Seiten-URL, um einen Deep-Link zum ausgewählten Beweismittel zu teilen.
+
+    ![Eine Sitzungsdetailansicht mit Ausführungsgraph, Ereignis-Timeline, Evaluierungspanel sowie Tool-, Modell- und Hook-Übersicht.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp --json sessions --session-id <session-id>
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    Verwenden Sie zuerst den kompakten Ereignis-Feed. Fordern Sie vollständige Payloads nur an, wenn die Ereigniszusammenfassungen nicht genügend Beweise enthalten.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Orientierung verschaffen">
+    Bestätigen Sie Agent, Umgebung, Timing, Ergebnis und Dauer, und suchen Sie dann nach Fehlern, langen Spans, wiederholten Tools, menschlichen Wartezeiten und abgelehnten Policy-Entscheidungen.
+  </Step>
+  <Step title="Das erste verdächtige Ereignis aufklappen">
+    Untersuchen Sie dessen Request, Response, Tool-Input, Output und Correlation-ID. Sensible Inhalte sind nur sichtbar, wenn die Transkripterfassung aktiviert ist und Ihre Berechtigungen dies erlauben.
+  </Step>
+  <Step title="Den vorherigen Kontext prüfen">
+    Die Ursache liegt oft ein Ereignis früher: eine fehlerhafte Modellantwort, ein fehlendes Tool-Ergebnis oder eine veraltete Annahme.
+  </Step>
+  <Step title="Die Erkenntnisse in Maßnahmen umsetzen">
+    Fügen Sie die Sitzung einem Audit-Scope hinzu, verknüpfen Sie sie mit einem Issue oder nutzen Sie den Fehlermodus, um eine Policy zu erstellen.
+  </Step>
+</Steps>
+
+<Warning>
+  Lange Laufzeiten bedeuten nicht zwangsläufig Model-Latenz. Trennen Sie Model-, Tool-, Hook- und Human-Wait-Zeiten, bevor Sie entscheiden, was behoben werden soll.
+</Warning>

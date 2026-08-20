@@ -1,0 +1,74 @@
+---
+title: "Yerel ajan geçmişini denetle"
+description: "Desteklenen ajan CLI geçmişlerini çevrimdışı olarak tarayın ve riskli veya israfçı davranışları yerel olarak gözden geçirin."
+icon: "laptop-minimal-check"
+---
+
+Yerel denetim, bir makineyi Failproof AI Cloud'a bağlamadan önce hızlı ve gizli bir inceleme için kullanılır. Makinenizde depolanmış olan ajan geçmişlerini tarar, araç etkinliğini yerleşik politikalar aracılığıyla yeniden oynatır ve yerel bir sonuç panosunu açar.
+
+## Etkileşimli denetim çalıştırın
+
+<Tabs>
+  <Tab title="Pano">
+    Yerel denetim CLI'dan başlar çünkü mevcut makinedeki geçmişleri keşfetmesi gerekir. `failproofai audit` komutunu çalıştırın; tarama sonrası Failproof AI, paketlenmiş panoyu başlatır ve **http://localhost:8020/audit** adresini açar.
+
+    Denetim görünümünde oturum sayısı, araç çağrıları, projeler ve politika eşleşmelerinin sayısını gözden geçirin. Sık bulunan sonuçlarla başlayın, ardından uygulama aktif hale getirmeden önce etkilenen projeyi ve ajan geçmişini inceleyin.
+
+    <Info>Yerel denetim panosu, Failproof AI Cloud'daki **Analiz → Denetimler** bölümünden ayrıdır. Yerel denetimler makinede kalır ve hesap veya ağ bağlantısı gerektirmez.</Info>
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    npm install -g failproofai
+    failproofai audit
+    ```
+
+    Komut, bulduğu her desteklenen geçmişin tam taramasını gerçekleştirir. Mevcut komut `--since`, `--cli`, `--project`, `--port` veya `--no-open` gibi filtreleri kabul etmez.
+
+    Yerel panoyu kullanırken işlemi çalışır durumda tutun. İşiniz bittiğinde <kbd>Ctrl</kbd>+<kbd>C</kbd> tuşlarına basın.
+  </Tab>
+</Tabs>
+
+Mevcut denetim adaptörleri Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity ve Goose'dan geçmişleri okuyabilir. Yalnızca yerel olarak mevcut olan geçmişler taranır.
+
+## Düzenli yerel denetimler zamanlayın
+
+<Tabs>
+  <Tab title="Pano">
+    Yerel panoda **Ayarlar** bölümünü açın, zamanlanan denetimleri etkinleştirin, aralığı seçin ve bulguları alması gereken e-posta adresini ayarlayın. Pano ve CLI, aynı makine yapılandırmasını günceller.
+  </Tab>
+  <Tab title="CLI">
+    Haftalık denetim etkinleştirin ve bulguları belirtilen adrese gönderin:
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    Aralık 1–90 gün arasında değer kabul eder ve atlanırsa 7 gün olarak ayarlanır. İlk kurulum gerektiğinde sizi oturum açtırır; `--email` istem olmadan rapor adresini sağlar.
+
+    Yerel denetim geçmişini silmeden zamanlamayı durdurun:
+
+    ```bash
+    failproofai audit --no-schedule
+    ```
+  </Tab>
+</Tabs>
+
+Daemon, arka planda zamanlanan taramaları çalıştırır, yerel pano tarafından kullanılan önbelleğe alınmış sonucu yeniler ve yapılandırılmış raporu e-postayla gönderir. Hemen etkileşimli bir tarama çalıştırmak istediğinizde `failproofai audit` komutunu kullanın.
+
+## Yerel kanıtlardan Cloud işlemlerine geçin
+
+Yerel denetim hızlı bir başlangıçtır. Paylaşılan izler, yinelenen popülasyon denetimleri, bulgular ve sorunlar, uyarılar, kuruluş genelinde politika dağıtımı veya filo sağlığına ihtiyaç duyduğunuzda makineyi Failproof AI Cloud'a bağlayın.
+
+<CardGroup cols={2}>
+  <Card title="Cloud denetimi oluşturun" icon="scan-search" href="/tr/audits/setup">
+    Yinelenen bir hedef, popülasyon, kanıt penceresi ve yanıt kanalları tanımlayın.
+  </Card>
+  <Card title="Politika etkinleştirin" icon="shield-check" href="/tr/start/first-policy">
+    Yerel olarak doğrulayın, kasıtla yayınlayın ve dar bir makine grubuna önce dağıtın.
+  </Card>
+</CardGroup>
+
+<Warning>
+  Denetim çıktısı, her işaretli eylem hakkında kanıt olup ispat değildir. Bir bulguyu engelleme uygulamasına dönüştürmeden önce bağlamı doğrulayın.
+</Warning>

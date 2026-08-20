@@ -1,0 +1,40 @@
+---
+title: "管理"
+description: "アクセス、使用状況、組織、およびセキュリティを信頼性ワークフローと混在させることなく管理します。"
+icon: "settings-2"
+---
+
+管理セクションには、チーム全体でFailproof AIを運用するために必要なコントロールが含まれています。ほとんどのユーザーはセッション、監査、ポリシーの画面を利用すればよく、管理者はこのセクションでアクセスと運用範囲を管理します。
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    クラウドサイドバーの **Admin** セクションから **policy editor**、**enforcement**、**usage**、**keys**、**users**、**settings** にアクセスできます。ロックされた項目は、そのアカウントに読み取り権限がないことを示しています。
+
+    ![The Admin section of the Cloud sidebar with policy editor, enforcement, usage, keys, users, and settings.](/images/dashboard/admin-navigation.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp whoami
+    fp orgs current
+    fp orgs perms
+    fp usage
+    ```
+
+    グローバルオプションはコマンドの前に指定します。例：`fp --org reliability-team --json usage`
+  </Tab>
+</Tabs>
+
+<Columns cols={2}>
+  <Card title="使用状況" icon="chart-no-axes-combined" href="/ja/admin/usage">
+    請求期間と組織の消費量を確認します。
+  </Card>
+  <Card title="キーと権限" icon="key-round" href="/ja/admin/keys-and-permissions">
+    マシンと自動化に必要最小限の権限のみを付与します。
+  </Card>
+  <Card title="ユーザーと組織" icon="users" href="/ja/admin/users-and-organizations">
+    メンバーシップ、デフォルト設定、組織の境界を管理します。
+  </Card>
+  <Card title="設定とセキュリティ" icon="lock-keyhole" href="/ja/admin/settings-and-security">
+    運用設定、データ処理、デプロイメントセキュリティを構成します。
+  </Card>
+</Columns>

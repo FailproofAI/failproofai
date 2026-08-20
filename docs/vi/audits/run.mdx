@@ -1,0 +1,67 @@
+---
+title: "Chạy và xem xét một cuộc kiểm toán"
+description: "Chạy một cuộc kiểm toán, xác minh phạm vi bao phủ của nó và kiểm tra các phát hiện kết quả."
+icon: "play"
+---
+
+Chạy một cuộc kiểm toán sau khi mục tiêu và quần thể của nó đã cụ thể đến mức một nhà điều hành khác sẽ biết một phát hiện hợp lệ trông như thế nào.
+
+## Chạy và kiểm tra nó
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Analyze → Audits**, mở cuộc kiểm toán và chọn **run now**. Một phản hồi trong hàng chờ có nghĩa là dispatcher sẽ bắt đầu nó sớm.
+    2. Mở lần chạy mới để xem xét trạng thái, cửa sổ, thời lượng, số lượng phát hiện và báo cáo của nó.
+    3. Chọn một phiên bằng chứng để mở dấu vết chính xác.
+    4. Quay lại trang kiểm toán để chỉnh sửa cài đặt, tắt lịch hoặc kiểm tra các lần chạy cũ hơn.
+
+    ![Một trang chi tiết kiểm toán với các phát hiện mở, trạng thái lần chạy cuối cùng và tiếp theo, cửa sổ quét, bối cảnh, kiểm soát chạy ngay bây giờ và các phát hiện được xếp hạng.](/images/dashboard/audit-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits run checkout-reliability
+    fp audits runs checkout-reliability --limit 10
+    fp --json audits runs checkout-reliability
+    fp audits findings --audit checkout-reliability
+    ```
+
+    Xem [tham chiếu `fp audits`](/vi/reference/cloud-cli#audits) để xem lịch sử chạy, phát hiện và các lệnh phân loại.
+  </Tab>
+</Tabs>
+
+## Trước khi bạn chạy
+
+- Xác nhận các phiên tồn tại trong cửa sổ thời gian được chọn.
+- Xác minh các bộ lọc môi trường và agent.
+- Kiểm tra xem bối cảnh tham chiếu có hiện tại không.
+- Đảm bảo mục tiêu mô tả một chế độ lỗi, không phải một kết luận mong muốn.
+
+## Xem xét lần chạy
+
+Bắt đầu với trạng thái chạy, phạm vi bao phủ phiên và liệu phân tích mô hình có chạy hay không. Sau đó kiểm tra mức độ nghiêm trọng, mô tả, phiên bằng chứng, truy vấn hỗ trợ và con đường phòng ngừa được đề xuất của mỗi phát hiện.
+
+Sử dụng trạng thái phát hiện để xác nhận, tắt tiếng, loại bỏ, giải quyết, mở lại hoặc giao công việc. Bảo tồn bằng chứng ngay cả khi phát hiện bị loại bỏ; nó giải thích lý do quyết định được đưa ra.
+
+## Diễn giải một lần chạy trống hoặc bị trễ
+
+| Điều kiện chạy | Ý nghĩa của nó | Những gì cần làm |
+| --- | --- | --- |
+| Phân tích chạy và tạo ra không phát hiện | Bằng chứng được chọn không hỗ trợ phát hiện ở độ nhạy được cấu hình. | Xác nhận phạm vi chứa các phiên đại diện, sau đó coi kết quả là lành mạnh trừ khi mục tiêu hoặc bối cảnh quá mơ hồ. |
+| Phân tích mô hình bị bỏ qua hoặc thất bại | Lần chạy hoàn thành với số phát hiện bằng không, nhưng nó không thực hiện điều tra có tác nhân. Quét xác định thông tin xác thực và PII vẫn báo cáo số lượng kết hợp trong thống kê chạy nhưng không tạo phát hiện. | Sửa dịch vụ phân tích hoặc cấu hình và chạy lại. Không diễn giải kết quả trống rỗng như bằng chứng quần thể lành mạnh. |
+| Phân tích mô hình bị vô hiệu hóa | Lần chạy thành công với không phát hiện. Quét xác định không thay thế phân tích mô hình hoặc mở phát hiện. | Bật phân tích mô hình hoặc vô hiệu hóa kiểm toán thay vì dựa vào kiểm toán không thể tạo phát hiện. |
+| Không có dung lượng phân tích khả dụng ngay lập tức | Kiểm toán vẫn ở hàng chờ và thử lại thay vì bỏ qua quần thể. | Chờ dung lượng hoặc lan tỏa các neo kiểm toán. Các nhà điều hành tự lưu trữ phải mở rộng các bản sao audit-agent và dung lượng dispatcher phù hợp. |
+| Dung lượng vẫn không khả dụng cho cửa sổ thử lại | Lần chạy từ bỏ với không phát hiện và gửi thông báo lỗi khi phân phối email khả dụng. | Kiểm tra xem nhfleet kiểm toán có bão hòa hoặc liên tục khởi động lại hay không. |
+
+Khi phân tích không chạy, `since_last` kiểm toán giữ cửa sổ chưa được phân tích mở cho lần chạy tiếp theo thành công. Các phát hiện hiện có không được loại bỏ vì phân tích bị bỏ qua không phải là bằng chứng cho thấy lỗi đã biến mất.
+
+## Hiểu thông báo lỗi
+
+Một lần chạy thất bại hoặc bước phân tích mô hình thất bại sử dụng các máy nhận email của kiểm toán. Nếu kiểm toán không có kênh email, Failproof AI quay lại cài đặt `alerts.email_default_recipients` của tổ chức để kiểm toán bị hỏng âm thầm vẫn có một con đường ngoài cùng.
+
+Email phải được bật cho tổ chức và SMTP phải được cấu hình. Nếu không, lỗi sẽ được ghi nhật ký nhưng không thể gửi email. Các lỗi chạy không di chuyển neo lịch cố định của kiểm toán.
+
+Mỗi lần chạy cũng lưu trữ chính xác [bối cảnh agent](/vi/audits/agent-contracts) được sử dụng cho mỗi agent như một ảnh chụp hợp đồng. Các chỉnh sửa sau này không thay đổi tiêu chuẩn bằng chứng được ghi lại với lần chạy trước đó.
+
+<Warning>
+  Không triển khai chính sách chặn trực tiếp từ một phát hiện chưa được xác minh. Mở các dấu vết được trích dẫn và xác nhận quy tắc tách hành vi không an toàn khỏi công việc hợp pháp.
+</Warning>

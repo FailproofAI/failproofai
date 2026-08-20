@@ -1,0 +1,151 @@
+---
+title: "Failproof AI CLI"
+description: "התקן hooks, נהל מדיניות מקומית, התחבר לענן והפעל את daemon המקומי."
+icon: "terminal"
+---
+
+התקן את ה-CLI המקומי עם `npm install -g failproofai`. הרץ אותו ללא ארגומנטים כדי לפתוח את לוח הבקרה של המדיניות המקומית.
+
+החבילה דורשת Node.js 20.9 ואילך. Bun 1.3 ואילך נתמך לפיתוח והתקנות מקוד מקור. `failproofai configure` ו-`failproofai setup` הם כינויים ל-`failproofai config`; `failproofai p` הוא כינוי ל-`failproofai policies`.
+
+## הגדר מכונה
+
+```bash
+npm install -g failproofai
+failproofai config \
+  --connect https://app.befailproof.ai \
+  --token <machine-key> \
+  --machine-label checkout-prod-01
+failproofai policies --install
+failproofai config --status
+```
+
+הרץ `failproofai` ללא ארגומנטים כדי לפתוח את לוח הבקרה של המדיניות המקומית.
+
+| פקודה | תוצאה |
+| --- | --- |
+| `failproofai config` | הרץ הגדרת מכונה אינטראקטיבית |
+| `failproofai config --connect <url> --token <key>` | התחבר לספיגת ענן וביצוע מדיניות |
+| `failproofai config --status` | הצג מצב חיבור, daemon, ביצוע והשהיה |
+| `failproofai policies` | רשום מדיניות מובנות ומותאמות |
+| `failproofai policies --install` | התקן hooks והפעל מדיניות |
+| `failproofai policy add <name>` | הפעל מדיניות מובנית אחת |
+| `failproofai policy remove <name>` | כבה מדיניות מובנית אחת |
+| `failproofai policies --uninstall` | כבה מדיניות או הסר hooks של ציוד |
+| `failproofai audit` | סרוק היסטוריית סוכן מקומית ופתח את תצוגת הביקורת המקומית |
+| `failproofai audit --schedule [days] --email <address>` | תזמן סריקות מקומיות חוזרות ושלח את הממצאים לאימייל |
+| `failproofai audit --status` | הצג את כתובת הדוח, המרווח והסריקה המתוזמנת הבאה |
+| `failproofai audit --no-schedule` | עצור סריקות חוזרות ללא מחיקת היסטוריית הביקורת |
+| `failproofai harness list` | רשום נתיבי לכידה נוספים |
+| `failproofai flush --wait` | הספק את ספול האירוע הנוכחי |
+| `failproofai backfill --since 30d` | קרא מחדש היסטוריה שעברה בעבר |
+| `failproofai config --pause [duration]` | השהה הפעלה מקומית אחת למשך 30 דקות כברירת מחדל, עד 8 שעות |
+| `failproofai config --resume` | שחזר הפעלה מקומית מושהית אחת; הוסף `--all` כדי לנקות את כל ההשהיות |
+| `failproofai update` | סיים הגרות חבילות ועדכן את ה-daemon |
+| `failproofai migrate --dry-run` | תצוג קדימה או הרץ הגרות פריסת בית שלא בוצעו |
+| `failproofai uninstall` | הסר hooks ו-daemon לפני הסרת החבילה |
+| `failproofai --version` | הדפס את גרסת החבילה המותקנת |
+| `failproofai --help` | הצג פקודות וגבול שימוש |
+
+## דגלי תצורה
+
+| דגל | שימוש |
+| --- | --- |
+| `--connect <url> --token <key>` | התחבר ללא אינטראקטיביות |
+| `--machine-id <id>` | הגדר את מזהה המכונה היציב |
+| `--machine-label <name>` | הגדר או שנה את תווית לוח הבקרה |
+| `--no-transcripts` | שלח החלטות ללא תוכן תמליל |
+| `--disconnect` | עצור משיכות מדיניות ענן והעברת אירוע |
+| `--status` | הצג את מצב המכונה הנוכחי |
+| `--pause [duration]` | השהה את ההפעלה החדשה ביותר בספריה הנוכחית; קבל שניות, דקות או שעות וברירת מחדל של 30 דקות |
+| `--resume` | סיים השהיה תואמת מוקדם |
+| `--session <id>` | כוון להפעלה מפורשת להשהיה או חידוש |
+| `--all` | עם `--resume`, סיים כל השהיה פעילה |
+
+השהיות מקומיות מושהות מדיניות מובנית, מותאמת וכנס למספר הפעלה אחת. הן תמיד פוקעות ואינן משבתות מדיניות מנוהלת בענן. `block-self-pause` מונע מסוכן מוכשר להשתמש בפתח בריחה זה בעצמו.
+
+## דגלי מדיניות
+
+| דגל | שימוש |
+| --- | --- |
+| `--install`, `-i` | הפעל מדיניות והתקן hooks ציוד |
+| `--uninstall`, `-u` | כבה מדיניות או הסר hooks |
+| `--cli <names...>` | כוון לאחד או יותר ציודים נתמכים |
+| `--scope user\|project\|local\|all` | בחר את ניתוק ההגדרה; `all` הוא להסרה |
+| `--beta` | כלול מדיניות בטא |
+| `--custom`, `-c <path>` | אמת וטען קובץ מדיניות מותאם; חוזר |
+
+## דגלי ביצוע ותחזוקה
+
+| פקודה | דגלים |
+| --- | --- |
+| `backfill` | `--since <30d\|6m\|YYYY-MM-DD>`, `--dry-run` |
+| `flush` | `--wait`, `--timeout <seconds>` |
+| `update` | `--no-daemon` |
+| `migrate` | `--dry-run` |
+| `uninstall` | `--purge`, `--dry-run`, `--yes` |
+
+`failproofai update` צריך להיות מורץ אחרי `npm install -g failproofai@latest`; הוא מבצע הגרות פריסת בית, מתקין את ה-daemon בינארי התואם ומפעיל מחדש את השירות. `--no-daemon` מבצע רק הגרת פריסה.
+
+## נתיבי ציוד
+
+```text
+failproofai harness list [harness]
+failproofai harness add-path <harness> [label=]<path>
+failproofai harness remove-path <harness> <path-or-label>
+```
+
+שמות ציוד נתמכים הם `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity` ו-`goose`.
+
+תוויות משמרות מזהי סוכן נגזרים כאשר שני שורשים מכילים עותקים של אותו פרויקט. שורשים חופפים וכינויים כפולים נדחים כדי למנוע אוסף כפול או קטע. תצורת נתיב נוסף טוענת מחדש ללא הפעלה מחדש של daemon.
+
+סביבות מכולה יכולות להחליף נתיבים נוספים שנוצרו בקובץ בעזרת משתנה המופרד בפסיקים בשם `FAILPROOFAI_<HARNESS>_EXTRA_PATHS`, למשל:
+
+```bash
+export FAILPROOFAI_OPENCLAW_EXTRA_PATHS="user1=/srv/openclaw-a,user2=/srv/openclaw-b"
+```
+
+## משתני סביבה
+
+השתמש בקובצי תצורה לתנהגות מכונה קבועה. משתני סביבה שימושיים ביותר למכולות, בדיקות והפעלה יחידה.
+
+| משתנה | שימוש |
+| --- | --- |
+| `FAILPROOFAI_HOME` | העבר את פריסת `~/.failproofai` המוחלטת |
+| `FAILPROOFAI_LOG_LEVEL` | הגדר את מילולות הרישום המקומי |
+| `FAILPROOFAI_HOOK_LOG_FILE` | כתוב אבחון hook לקובץ נבחר |
+| `FAILPROOFAI_TELEMETRY_DISABLED=1` | כבה טלמטריה אנונימית לתהליך זה |
+| `FAILPROOFAI_NO_FIRST_RUN=1` | דלג על הגדרת הפעלה ראשונה אינטראקטיבית |
+| `FAILPROOFAI_NO_AUTO_AUDIT=1` | דלג על ביקורת מקומית לאחר הגדרה |
+| `FAILPROOFAI_LLM_BASE_URL` | עקוף את נקודת הקצה התואמת OpenAI המשמשת למדיניות LLM |
+| `FAILPROOFAI_LLM_API_KEY` | ספק את מפתח ה-API המשמש למדיניות LLM |
+| `FAILPROOFAI_LLM_MODEL` | בחר את המודל המשמש למדיניות LLM |
+| `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | חוסם טעינת מודול מדיניות מותאמת |
+| `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | החלף נתיבי לכידה נוספים מוגדרים לציוד אחד |
+| `NO_COLOR` | כבה פלט טרמינל צבוע |
+
+משתני בית ספציפיים לסוכן כגון `CLAUDE_PROJECTS_PATH`, `CURSOR_HOME`, `HERMES_HOME` ו-`OPENCLAW_HOME` עוקפים היכן Failproof AI גילה הפעלות מקומיות לציוד זה.
+
+## השהה או הסר מכונה בבטחה
+
+```bash
+failproofai config --pause
+failproofai config --status
+failproofai config --resume
+```
+
+השהיה של הפעלה מקומית אינה משבתת מדיניות מנוהלת בענן. שחזר פריסות ענן דרך זרימת האכיפה של ענן כאשר התצוג עצמו הוא הבעיה.
+
+לפני הסרת חבילת npm, הסר hooks והוקינים daemon:
+
+```bash
+failproofai uninstall --dry-run
+failproofai uninstall --yes
+npm rm -g failproofai
+```
+
+הרץ `failproofai <command> --help` לפרטים ספציפיים לגרסה.
+
+<Warning>
+  הרץ `failproofai uninstall` לפני `npm rm -g failproofai`; npm אינו מסיר hooks סוכן מותקנים או שירות daemon.
+</Warning>

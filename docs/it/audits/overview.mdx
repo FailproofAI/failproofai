@@ -1,0 +1,56 @@
+---
+title: "Audit"
+description: "Esamina una popolazione definita di sessioni per individuare errori che le tracce da sole non riveleranno."
+icon: "scan-search"
+---
+
+Un audit ricerca in un insieme selezionato di sessioni un obiettivo di errore dichiarato. Combina prove di traccia, risultati di valutazione, policy hit e contesto di riferimento per produrre risultati su cui puoi agire.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Trova automaticamente i fallimenti degli agenti con gli audit di Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+Scopri come un audit passa da un'esecuzione pianificata a errori supportati da prove che puoi correggere.
+
+## Apri gli audit
+
+<Tabs>
+  <Tab title="Dashboard">
+    Vai a **Analyze → Audits**. La pagina mostra lo stato pianificato, i risultati aperti, l'ultima esecuzione, la prossima esecuzione, la cadenza e se l'audit ha pagine di sintesi o di riferimento. Seleziona una scheda per le impostazioni e la cronologia delle esecuzioni; seleziona **new audit** per crearne uno.
+
+    ![La pagina Audits che mostra i ricorrenti audit con il loro programma, sensibilità e stato di esecuzione.](/images/dashboard/audits.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits list
+    fp audits list --enabled-only --show-id
+    fp audits show <audit-name>
+    fp audits findings --status open --limit 20
+    ```
+  </Tab>
+</Tabs>
+
+Utilizza un audit quando hai bisogno di rispondere a una domanda a livello di popolazione come:
+
+- Dove gli agenti abbandonano i compiti senza escalare?
+- Quali errori di strumento portano a nuovi tentativi inefficaci?
+- Gli agenti accedono ai dati al di fuori del flusso di lavoro previsto?
+- Cosa è cambiato dopo un rilascio di modello, prompt o strumento?
+
+## Flusso di risposta dell'audit
+
+```text
+Session → Audit → Finding → Issue → Policy
+                         ↘ Alert for recurrence
+```
+
+Un risultato deve nominare la modalità di errore e puntare alle prove. Un problema possiede la correzione. Una policy previene uno schema di azione noto; un alert rileva la ricorrenza quando la prevenzione non è possibile o ha bisogno di monitoraggio.
+
+<Columns cols={2}>
+  <Card title="Configura un audit" icon="sliders-horizontal" href="/it/audits/setup">
+    Definisci l'obiettivo, la popolazione e il contesto di riferimento prima della prima esecuzione.
+  </Card>
+  <Card title="Aggiungi contesto agente" icon="bot" href="/it/audits/agent-contracts">
+    Dichiara cosa ogni agente deve produrre e cosa non deve mai fare.
+  </Card>
+</Columns>

@@ -1,0 +1,53 @@
+---
+title: "Failproof Assistant"
+description: "用自然语言分析和操作 Failproof AI，涵盖问题查询、仪表板和审计等功能。"
+icon: "message-square-text"
+---
+
+通过 Failproof Assistant，你可以用自然语言完成 Failproof AI 中的任何操作。它能分析会话和故障、执行查询、构建仪表板、排查评估和告警，以及帮助创建和运行审计——无需将任务手动转换为产品界面操作或 CLI 命令。
+
+```text
+Why did production checkout agents regress this week?
+Build a dashboard for tool failures, latency, and evaluation scores.
+Create an audit that finds agents retrying the same failed action without changing approach.
+Show me the sessions behind the most common audit finding.
+```
+
+Assistant 在当前组织的数据和权限范围内运行。在执行会影响其他用户或 Agent 的操作之前，请先审阅其提供的依据和建议的变更。
+
+## 向 Assistant 提问
+
+<Tabs>
+  <Tab title="仪表板">
+    1. 选择 **Open agent chat**，描述你想了解、创建或操作的内容。
+    2. 在 Assistant 工作期间，查看其调用的工具、表格和查询结果。
+    3. 打开引用的会话、告警或查询，对照源数据验证结果。
+    4. 针对不同的调查开启新对话，或通过对话历史继续同一条分析线索。
+
+    ![Cloud assistant 回答可观测性问题，并附有支撑分析和查询结果。](/images/dashboard/assistant.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Open representative sessions" --chat <chat-id>
+    ```
+
+    使用 `fp agent rename <chat-id> --title <title>` 为调查任务取一个便于识别的名称，使用 `fp agent delete <chat-id>` 将其删除。
+  </Tab>
+</Tabs>
+
+## 高效使用 Assistant
+
+- 优先描述目标；在边界条件重要时，再补充环境、工作流或时间范围。
+- 将生成的 SQL 和摘要作为调查辅助工具，而非最终证据。
+- 在创建审计、问题、告警或策略之前，先打开具有代表性的会话。
+- 明确指定组织、环境和时间过滤条件。
+- 将有用的 SQL 保存为查询，以便其他运维人员复现结果。
+
+<Warning>
+  Assistant 只能读取当前用户有权访问的内容。请勿为了让某个问题能够运行而扩大权限；应请有授权的运维人员代为执行调查。
+</Warning>

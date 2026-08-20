@@ -1,0 +1,48 @@
+---
+---
+title: "מנע את ההוכחה הראשונה שלך באמצעות מדיניות"
+description: "כתוב גרסת מדיניות, פרוס אותה במצב התבוננות, ואז אכוף אותה."
+icon: "shield-check"
+---
+
+השתמש במדיניות רק לאחר שתוכל לתאר את הפעולה הלא בטוחה ואת הפעולות החוקיות שחייבות להישאר מורשות.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="כתוב את המדיניות">
+        עבור אל **Admin → policy editor**. התחל עם מדיניות הדוגמה, בדוק או ערוך את קוד המקור שלה, ואז בחר **publish version**. הפרסום יוצר גרסה שלא ניתן לשנות שאתה יכול לפרוס על מכונות.
+
+        ![The Policy editor compose view with a demo policy ready to publish as an immutable version.](/images/dashboard/policy-editor.png)
+      </Step>
+      <Step title="פרוס אותה למכונה">
+        עבור אל **Admin → enforcement**, הרחב את המכונה היעד, ובחר **edit this machine**. הוסף את מדיניות הדוגמה המפורסמת, קבע את גרסתה, בחר **observe**, והחל את הפרסום.
+
+        ![The machine deployment editor with a published policy version selected in observe mode before applying the deployment.](/images/dashboard/enforcement-editor.png)
+      </Step>
+      <Step title="אמת את המדיניות">
+        הפעל סשן סוכן חדש על אותה מכונה, ואז פתח **Observe → policy**. בחר את המכונה וודא שמדיניות הדוגמה מופיעה במיפוי המדיניות וציר הזמן של ההחלטות. מצב התבוננות מתעד מה המדיניות הייתה עושה ללא חסימת הפעולה.
+
+        ![The Policy page showing decision totals, enforcement activity over time, and local and Cloud-managed policy mappings.](/images/dashboard/policy-observe.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    כתיבת מדיניות בענן ופרסום לחברה הם זרימות עבודה ניהוליות. השתמש ב-CLI המקומי כדי לאמת את אותה מדיניות לפני הפרסום:
+
+    ```bash
+    failproofai policies --install --custom ./payment-retry.policies.ts \
+      --cli claude --scope project
+    failproofai config --status
+    ```
+
+    השתמש ב-`fp` כדי לבדוק החלטות מדיניות הנראות בענן:
+
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp sessions --env production --since 24h
+    ```
+
+    ה-CLI של ענן לא חושף נתיבי פרסום אכיפה של root בלבד. פרסם גרסות מ-**Admin → policy editor** ופרוס אותן מ-**Admin → enforcement**.
+  </Tab>
+</Tabs>

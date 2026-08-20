@@ -1,0 +1,68 @@
+---
+title: "Configuración y seguridad"
+description: "Configura los ajustes operativos y toma decisiones deliberadas sobre los datos del agente."
+icon: "lock-keyhole"
+---
+
+Utiliza la configuración para valores operativos específicos del despliegue y anulaciones de la ventana de contexto del modelo. Inspecciona el esquema de configuración antes de cambiar un valor a través de la API o la CLI.
+
+## Cambiar un ajuste de organización
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Ve a **Administración → Configuración**, busca el grupo de ajustes y lee su descripción y fuente actual.
+    2. Cambia el valor y guárdalo.
+    3. Para las ventanas de contexto del modelo, añade o actualiza la anulación del modelo y confirma el límite efectivo.
+    4. Vuelve a revisar las sesiones y métricas que dependan del valor modificado.
+
+    ![La página de Configuración mostrando la autenticación de la organización y los ajustes operativos.](/images/dashboard/settings.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp settings list
+    fp settings schema
+    fp settings set <key> --value <scalar>
+    fp settings set alerts.email_default_recipients \
+      --json-value '["oncall@example.com"]'
+    ```
+
+    Ejecuta `fp settings set --help` para ver el tipo de valor y los indicadores de confirmación utilizados por la CLI instalada.
+  </Tab>
+</Tabs>
+
+## Opciones de manejo de datos
+
+Conectar la CLI de Failproof AI envía transcripciones de forma predeterminada porque los registros de seguimiento y las auditorías dependen de su contenido. Usa `--no-transcripts` cuando las instrucciones, el contenido de archivos o la entrada de terminal deban permanecer en local; la actividad de hooks y las decisiones de políticas aún pueden reportarse.
+
+Las credenciales de ingestión local se almacenan de forma independiente a los ajustes no confidenciales del daemon y se escriben con permisos restrictivos. Las claves API deben seguir gestionándose como secretos de producción.
+
+## Referencia de ajustes de organización
+
+Todos los ajustes editables desde el panel de control tienen alcance de organización. El comportamiento a nivel de despliegue permanece como configuración del entorno del servidor.
+
+| Clave | Valor predeterminado | Propósito |
+| --- | --- | --- |
+| `allowed_sign_ins` | `[]` | Restringe los miembros existentes a correos exactos o `*@dominio`; una lista vacía significa que no hay restricción adicional. |
+| `session_ttl_secs` | `86400` | Duración de la sesión en el panel de control; el rango aceptado es de 60 segundos a 30 días. |
+| `otp_ttl_secs` | `600` | Duración del OTP y el enlace mágico; el rango aceptado es de 60 a 1800 segundos. |
+| `alerts.email_default_recipients` | `[]` | Destinatarios predeterminados cuando un canal de alertas por correo no los sobreescribe. |
+| `alerts.slack_default_webhook` | vacío | URL predeterminada del webhook entrante de Slack. |
+| `alerts.webhook_default_url` | vacío | URL predeterminada del webhook JSON genérico. |
+| `alerts.webhook_signing_secret` | vacío | Clave HMAC-SHA256 usada en el encabezado `X-AgentEye-Signature`; las lecturas están enmascaradas. |
+| `alerts.enabled_channels` | email, Slack, webhook | Tipos de canales a nivel de organización que las reglas de alerta pueden utilizar. |
+| `default_user_permissions` | `standard` | Conjunto de permisos predefinido preseleccionado para nuevas invitaciones. |
+
+`allowed_sign_ins` es un filtro, no una concesión: la persona ya debe ser miembro de la organización. Usa una lista vacía para permitir el acceso a todos los miembros; el valor `*` a secas es rechazado. Las URLs de alertas deben usar HTTPS, excepto para direcciones de desarrollo en loopback.
+
+## Lista de verificación de seguridad
+
+- Usa HTTPS para las conexiones en la nube.
+- Limita las claves al conjunto de permisos mínimo necesario.
+- Separa los entornos de producción y los que no son de producción.
+- Revisa la configuración de transcripciones y redacción antes del despliegue.
+- Audita los cambios de usuarios, claves y organización.
+- Comprueba los requisitos de copia de seguridad, retención y respuesta a incidentes para tu despliegue.
+
+<Warning>
+  Desactivar la captura de transcripciones cambia lo que las auditorías e investigaciones pueden demostrar. Registra la decisión y sus limitaciones previstas.
+</Warning>

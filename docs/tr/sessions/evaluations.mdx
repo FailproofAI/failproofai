@@ -1,0 +1,52 @@
+---
+title: "Çevrimiçi değerlendirmeler"
+description: "Canlı ve tamamlanan oturumları kalite, uyum, maliyet ve gecikme açısından puanlayın."
+icon: "gauge"
+---
+
+Çevrimiçi değerlendirmeler, ajan oturumlarına tutarlı değerlendirmeler uygular. Bunları sadece denetim sırasında araştırılmak yerine sürekli olarak ölçülmesi gereken sinyaller için kullanın.
+
+## Değerlendirme kalitesini gözden geçirin
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Evaluations** sayfasına gidin.
+    2. Bir seri ekleyin ve ajanı, ortamı, değerlendirme puanını, istatistiği ve eğriyi seçin.
+    3. Ortamları, ajanları veya puan anahtarlarını karşılaştırmak için seri ekleyin.
+    4. Eşleşen oturumları açmak veya filtrelenmiş görünümü paylaşmak için bir sonuç seçin. Gecikme, belirteçler, maliyet ve diğer büyüklük değerleri için **Observe → Metrics** kullanın.
+
+    ![Ortalama değerlendirme puanlarını ve zaman içindeki eğilimleri gösteren bir kalite panosu.](/images/dashboard/dashboard-quality.png)
+
+    Detaylandırılmış görünümden bir oturumu açarak puan başına gerekçelendirmesini inceleyin:
+
+    ![Oturum ayrıntı görünümü, değerlendirme puanlarını ve gerekçelendirmesini tam izlemenin yanında göstermektedir.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp evals --agent-id checkout-agent --aggregate
+    fp evals --aggregate --env production --status error
+    fp evals --score helpfulness:0.8.. --since 7d
+    ```
+
+    Otomasyon için `evals` öncesinde genel `--json` ekleyin, örneğin `fp --json evals --aggregate --env production`.
+  </Tab>
+</Tabs>
+
+Bir değerlendirici, oturum kimliğini, ortamı, zaman damgalarını ve sıralı olayları alır. İsteğe bağlı gerekçelendirme ve özet ile sayısal puan anahtarları döndürebilir. Uzun süren değerlendirmeciler, beklemede bir iş döndürebilir ve daha sonra sorgulanabilir.
+
+## İyi değerlendirme hedefleri
+
+- Görev tamamlama veya doğruluk
+- Dayanak tutarlılığı ve halüsinasyon riski
+- Araç seçimi ve araç verimliliği
+- İlke veya süreç uyumu
+- Maliyet ve gecikme bütçeleri
+- Gerekli insan eskalasyonu
+
+## Puandan yanıta
+
+Eğilimleri izlemek için puanları panolarda gösterin. Eşikleri veya bileşik koşulları için uyarılar oluşturun. Bir puanın bir popülasyon genelinde düştüğünde, neden olduğunu araştırmak için bir denetim çalıştırın; neden tekrarlanabilir bir eylem olduğunda, bir ilke dağıtın.
+
+<Card title="Bir değerlendirici oluşturun" icon="code-2" href="/tr/reference/evaluator-sdk">
+  Python değerlendirici SDK'sı ile senkron veya asenkron değerlendirme gerçekleştirin.
+</Card>

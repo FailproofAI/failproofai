@@ -1,0 +1,53 @@
+---
+title: "Sorgular"
+description: "Yeniden kullanılabilir SQL ile oturum, etkinlik ve değerlendirme verilerini keşfedin."
+icon: "database"
+---
+
+Sorgular, panolar, denetimler ve araştırmaların altında yer alan esnek katmandır. Bir fikri test etmek için geçici SQL kullanın, ardından sorgu yinelenen bir iş akışının parçası haline geldiğinde kaydedin.
+
+## Sorgu oluşturma ve çalıştırma
+
+<Tabs>
+  <Tab title="Pano">
+    1. **Analiz → Sorgular** bölümüne gidin ve **yeni sorgu** seçin.
+    2. Şema tarayıcısını açın ve etkinlik, oturum veya değerlendirme verilerinden alanlar seçin.
+    3. SQL yazın, gerektiğinde parametreler ekleyin ve sorguyu çalıştırın.
+    4. Açık bir ad ve açıklama ile kaydedin, sonuç izlenmelidir ise **panoya ekle** kullanın.
+
+    Sorgu editörü olay şemasını, SQL'i, parametreleri ve bir sonuç önizlemesini birleştirerek soruyu kaydetmeden önce doğrulamanızı sağlar.
+
+    ![Şema tarayıcısı ve canlı sonuç ızgarası içeren SQL sorgu editörü.](/images/dashboard/query-lab.png)
+
+    Kaydedilen sorgular daha sonra paylaşılan kütüphanede görünür; burada takım arkadaşlarınız bunları yeniden çalıştırabilir veya sonuçlarını panlolara ekleyebilir.
+
+    ![Yeniden kullanılabilir yerleşik ve özel sorgular içeren kaydedilmiş Sorgular kütüphanesi.](/images/dashboard/queries.png)
+
+    SQL'ini yeniden açmadan sonuç anlaşılır kalması için açık bir ad ve açıklama kullanın.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp query schema
+    fp query create "retry loops" --sql "SELECT ..."
+    fp query run <query-id>
+    fp query show <query-id>
+    fp query update <query-id> --sql "SELECT ..."
+    ```
+
+    Kimlikleri bulmak için `fp query list` kullanın ve kaydedilmiş bir sorguyu kaldırmak için `fp query delete <query-id>` kullanın.
+  </Tab>
+</Tabs>
+
+## Yaygın kullanımlar
+
+- Aynı araca yapılan yinelenen çağrıları içeren oturumları bulun.
+- Değerlendirme puanlarını modeller veya ortamlar arasında karşılaştırın.
+- İnsan bekleme ile devam etme arasındaki zamanı ölçün.
+- İlke reddetmelerini başarılı bir alternatifle takip edin.
+- Bir denetim için bir kohorta oluşturun.
+
+Tanımadığınız alanlarla çalışmadan önce **Sorgular → Şema** açın. Açık zaman ve ortam filtreleri tercih edin ve keşif sırasında sonuç sınırlarını koruyun.
+
+<Warning>
+  Bir sorgu şüpheli bir deseni belirleyebilir, ancak tek başına arıza modunu oluşturmaz. Temsilci izleri açın veya sonucu bir ilkeye dönüştürmeden önce bir denetim çalıştırın.
+</Warning>

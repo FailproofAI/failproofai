@@ -1,0 +1,57 @@
+---
+title: "Yerleşik ilkeler"
+description: "Yaygın aracı arıza modları için bakımı yapılan koruyucu mekanizmaları etkinleştirin."
+icon: "library"
+---
+
+Yerleşik ilkeler gizli dizi işleme, ortam dosyaları, yıkıcı kabuk komutları, korumalı dallar, bulut ve altyapı araçları, paket yayınlama, tekrarlanan çağrılar ve görev sonu iş akışı kontrollerini kapsar.
+
+## Yerleşik bir ilkeyi etkinleştirin ve doğrulayın
+
+<Tabs>
+  <Tab title="Pano">
+    1. İlkeyi yerel CLI ile bağlı bir makineye yükleyin.
+    2. İzlenen aracıda güvenli bir test işlemi çalıştırın.
+    3. **Observe → policy** sayfasına gidin ve ilke adı, makine ortamı veya karar ile filtreleyin.
+    4. Eşleşen araç girdisini ve döndürülen nedeni doğrulamak için bağlı oturumu açın.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --cli claude --scope project
+    failproofai config --status
+    ```
+
+    `failproofai policy remove block-rm-rf --cli claude --scope project` ile kaldırın.
+  </Tab>
+</Tabs>
+
+Yüklü sürümünüzde kullanılabilir ilkeleri listeleyin:
+
+```bash
+failproofai policies
+```
+
+Bir proje için bir ilkeyi etkinleştirin:
+
+```bash
+failproofai policy add block-rm-rf --scope project
+```
+
+Seçili araçlar için birkaç ilkeyi etkinleştirin:
+
+```bash
+failproofai policies --install block-sudo block-force-push \
+  --cli claude codex --scope project
+```
+
+Bazı ilkeler parametreleri kabul eder veya beta olarak işaretlenmiş olabilir. Dağıtımdan önce açıklamayı, eşleştirme kapsamını ve varsayılan davranışı gözden geçirin. Bir iş akışını koruyan bir ilke, başka bir iş akışında geçerli işlemleri engelleyebilir.
+
+<Card title="Tam yerleşik kataloğa göz atın" icon="list-checks" href="/tr/policies/builtin-catalog">
+  Mevcut 40 ilkenin tümünü, tetikleme mekanizmalarını, önerilen temel düzeyi ve parametrelerini gözden geçirin.
+</Card>
+
+<Tip>
+  Depoya özgü beklentiler için proje kapsamını, makine çapında güvenlik gereksinimleri için kullanıcı kapsamını tercih edin.
+</Tip>

@@ -1,0 +1,29 @@
+---
+title: "Métricas"
+description: "Visualize métricas de magnitude como latência, custo e uso de tokens."
+icon: "ruler"
+---
+
+Métricas é para valores com unidades. Avaliações é para pontuações e julgamentos.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **Observe → Metrics**.
+    2. Selecione **add series** e escolha um agente, ambiente, métrica, estatística e curva.
+    3. Adicione séries para comparar agentes ou ambientes; unidades diferentes recebem eixos separados.
+    4. Selecione um ponto para abrir avaliações e sessões correspondentes, ou selecione **share** para copiar a visualização exata.
+
+    ![A página de Métricas comparando duas séries de custo por unidade de saída com controles de tempo, seletores de agregação, curvas e uma ação de compartilhamento.](/images/dashboard/metrics-series.png)
+  </Tab>
+  <Tab title="CLI">
+    Ainda não existe um comando dedicado para métricas de magnitude. Descubra as chaves disponíveis e inspecione sessões ou avaliações:
+
+    ```bash
+    fp list score_filters
+    fp --json evals --since 24h
+    fp --json sessions --since 24h
+    ```
+
+    Use `fp query` para agregação de métricas personalizadas.
+  </Tab>
+</Tabs>

@@ -1,0 +1,43 @@
+---
+title: "Panolar"
+description: "Bir aracı veya iş akışı için önemli olan güvenilirlik sinyallerini izleyin."
+icon: "layout-dashboard"
+---
+
+Panolar, kaydedilmiş sorguları operasyonel bir görünümde birleştirir. Bir pano, her kullanılabilir metrik etrafında değil, birinin vermesini beklediğiniz bir karar etrafında oluşturun.
+
+## Pano oluşturma
+
+<Tabs>
+  <Tab title="Pano">
+    1. **Analyze → Queries** bölümüne gidin, kaydedilmiş bir sorgu oluşturun veya açın ve sonucunu doğrulayın.
+    2. **add to dashboard** seçeneğini seçin, ardından mevcut bir panoyu seçin veya **Analyze → Dashboards** altında yeni bir pano oluşturun.
+    3. Panoyu açın, düzenleme moduna girin, kutucukları düzenleyin ve düzeni kaydedin.
+    4. Bir kutucuğun arkasındaki verileri veya filtreleri değiştirmeniz gerektiğinde sorguya geri dönün.
+
+    ![Olay hacmi, hatalar, gecikme süresi ve model jeton kullanımı için kaydedilmiş sorgulardan oluşturulan bir pano.](/images/dashboard/dashboard-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    Pano CRUD işlemleri geçerli Cloud CLI tarafından açığa çıkarılmamıştır. Kaydedilmiş sorguyu oluşturmak ve doğrulamak için CLI'yı kullanın, ardından UI'da bir panoya ekleyin.
+
+    ```bash
+    fp query schema
+    fp query create "production error rate" --sql "SELECT ..."
+    fp query run <query-id>
+    ```
+  </Tab>
+</Tabs>
+
+Yararlı pano grupları şunlardır:
+
+- **Models:** hacim, gecikme süresi, jeton kullanımı, hata oranı ve değerlendirme puanları.
+- **Evaluations:** başarı oranı ve aracı veya ortama göre puan eğilimleri.
+- **Tools:** çağrı hacmi, başarısızlık oranı, süre ve tekrarlanan çağrılar.
+- **Hooks and policies:** kararlar, reddetmeler ve politika eşleşme oranı.
+- **Custom workflow metrics:** kendi olay alanlarınızdan ve SQL'den sonuçlar.
+
+Kaydedilmiş bir sorgudan başlayın, sonucunu doğrulayın, ardından bir kutucuk olarak ekleyin. Üretim ve geliştirme filtreleri açık tutun, böylece test trafiği bir regresyonu gizlemesin.
+
+<Tip>
+  Her panoya bir sahip ve "checkout-agent güvenilirliği geçen haftadan daha kötü mü?" gibi bir yanıt sorusu verin.
+</Tip>

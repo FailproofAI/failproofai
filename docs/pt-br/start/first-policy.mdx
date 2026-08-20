@@ -1,0 +1,47 @@
+---
+title: "Previna sua primeira falha com uma política"
+description: "Crie uma versão de política, implante-a no modo de observação e depois aplique a execução."
+icon: "shield-check"
+---
+
+Use uma política somente depois que você conseguir descrever a ação insegura e as ações legítimas que precisam continuar permitidas.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Crie a política">
+        Acesse **Admin → editor de políticas**. Comece com a política de demonstração, revise ou edite o código-fonte e selecione **publicar versão**. A publicação cria a versão imutável que você pode implantar nas máquinas.
+
+        ![A visão de composição do editor de políticas com uma política de demonstração pronta para ser publicada como uma versão imutável.](/images/dashboard/policy-editor.png)
+      </Step>
+      <Step title="Implante em uma máquina">
+        Acesse **Admin → enforcement**, expanda a máquina de destino e selecione **editar esta máquina**. Adicione a política de demonstração publicada, fixe sua versão, escolha **observe** e aplique a implantação.
+
+        ![O editor de implantação de máquina com uma versão de política publicada selecionada no modo de observação antes de aplicar a implantação.](/images/dashboard/enforcement-editor.png)
+      </Step>
+      <Step title="Verifique a política">
+        Execute uma nova sessão de agente nessa máquina e abra **Observe → política**. Selecione a máquina e confirme que a política de demonstração aparece no mapeamento de políticas e na linha do tempo de decisões. O modo de observação registra o que a política faria sem bloquear a ação.
+
+        ![A página de Política mostrando totais de decisões, atividade de execução ao longo do tempo e mapeamentos de políticas locais e gerenciadas pela nuvem.](/images/dashboard/policy-observe.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    A criação de políticas na nuvem e a implantação em frota são fluxos de trabalho administrativos. Use o CLI local para validar a mesma política antes de publicá-la:
+
+    ```bash
+    failproofai policies --install --custom ./payment-retry.policies.ts \
+      --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Use `fp` para inspecionar as decisões de política visíveis na nuvem:
+
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp sessions --env production --since 24h
+    ```
+
+    O CLI da nuvem não expõe rotas de implantação de execução exclusivas para administradores. Publique versões em **Admin → editor de políticas** e implante-as em **Admin → enforcement**.
+  </Tab>
+</Tabs>

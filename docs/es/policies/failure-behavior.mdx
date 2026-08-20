@@ -1,0 +1,43 @@
+---
+title: "Comportamiento ante fallos"
+description: "Entiende qué ocurre cuando la evaluación de políticas o el daemon local no están disponibles."
+icon: "shield-alert"
+---
+
+Failproof AI está diseñado para que un fallo de aplicación sea visible en lugar de permitir silenciosamente trabajo riesgoso.
+
+## Diagnosticar un bloqueo por fallo cerrado
+
+<Tabs>
+  <Tab title="Panel de administración">
+    1. Ve a **Admin → enforcement** y abre la máquina.
+    2. Verifica su último registro de actividad, el despliegue asignado y el despliegue reportado.
+    3. Ve a **Observe → policy** y abre la sesión de la decisión denegada.
+    4. Confirma si el motivo indica problemas de alcanzabilidad del daemon, diferencia de versiones o la propia política.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    npm install -g failproofai@latest
+    failproofai config
+    ```
+
+    Volver a ejecutar `failproofai config` actualiza y reinicia el daemon tras actualizar el paquete.
+  </Tab>
+</Tabs>
+
+En una máquina configurada para usar `failproofaid`, el daemon es el único evaluador. Si no es alcanzable o su versión de protocolo no coincide con la del CLI, la evaluación de hooks falla de forma cerrada. La acción se deniega con un motivo que indica al operador que verifique o actualice el daemon.
+
+Antes de la configuración del daemon, los hooks evalúan las políticas en proceso. Una vez que la configuración del daemon queda registrada, Failproof AI no recurre silenciosamente a un segundo evaluador cuando el daemon falla.
+
+## Responder ante una decisión de fallo cerrado
+
+1. Ejecuta `failproofai config --status`.
+2. Si las versiones difieren, vuelve a ejecutar `failproofai config` después de actualizar el paquete.
+3. Si el daemon no es alcanzable, inspecciona el estado de su servicio y los registros locales.
+4. Reanuda el trabajo del agente solo después de confirmar que la ruta de evaluación de políticas está funcionando correctamente.
+
+<Warning>
+  No reintentes repetidamente la acción bloqueada. Una respuesta de fallo cerrado significa que el sistema no pudo determinar que la acción era segura.
+</Warning>

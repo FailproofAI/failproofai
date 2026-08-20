@@ -1,0 +1,44 @@
+---
+title: "Configurer un audit"
+description: "Définissez un objectif d'audit, une population de sessions et un contexte de preuves."
+icon: "sliders-horizontal"
+---
+
+La qualité d'un audit dépend avant tout de son périmètre. Une demande vague comme « trouver des problèmes » produit des résultats moins utiles qu'une question de défaillance concrète.
+
+## Configurer l'audit
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Accédez à **Analyser → Audits → Nouvel audit** et saisissez le nom et la description.
+    2. Définissez la cadence, la fenêtre temporelle, le périmètre agent/environnement, les erreurs ignorées, la sensibilité et le nombre maximum de résultats.
+    3. Dans **agents**, ajoutez ou révisez le contexte de l'agent, puis ajoutez le brief opérateur et les éventuelles URLs de référence HTTPS publiques.
+    4. Choisissez les canaux de notification et sélectionnez **créer l'audit**. La première exécution est mise en file d'attente immédiatement.
+
+    ![Le formulaire de nouvel audit avec le nom, la description, la cadence, la fenêtre, le périmètre environnement et agent, les erreurs ignorées, les paramètres d'analyse, le brief, les pages de référence et les canaux de notification.](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    La première exécution est mise en file d'attente immédiatement. Incluez le brief et les URLs de référence lors de la création afin que cette exécution les reçoive.
+
+    Consultez la référence complète [`fp audits create`](/fr/reference/cloud-cli#audits).
+  </Tab>
+</Tabs>
+
+<Tip>
+  Commencez avec une session ayant échoué de manière connue et plusieurs sessions normales. Cela fournit à l'audit à la fois un exemple positif et un ensemble de comparaison.
+</Tip>
+
+<Info>
+  Le contexte d'audit est stocké en tant que ressource propre, de sorte que la modification d'un audit ne supprime pas accidentellement le matériel de référence.
+</Info>

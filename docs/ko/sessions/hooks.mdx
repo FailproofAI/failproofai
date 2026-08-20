@@ -1,0 +1,25 @@
+---
+title: "Hooks"
+description: "정책 결과와 별도로 훅 활동, 트리거, 지연 시간을 측정합니다."
+icon: "webhook"
+---
+
+Hooks는 에이전트 수명 주기 훅이 실행되는 시점과 소요 시간을 보여줍니다. 정책 결정은 별도의 뷰에서 확인할 수 있습니다.
+
+<Tabs>
+  <Tab title="대시보드">
+    1. **Observe → Hooks**로 이동합니다.
+    2. 환경, 훅 이름, 트리거 이벤트, 에이전트, 또는 세션 ID로 필터링합니다.
+    3. 훅 지연 시간과 분포를 확인합니다.
+    4. 차트 포인트나 훅 세그먼트를 선택하면 해당 이벤트의 세부 내용을 볼 수 있습니다.
+
+    ![훅 이름 및 트리거 이벤트별로 지연 시간이 그룹화된 Hooks 페이지.](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

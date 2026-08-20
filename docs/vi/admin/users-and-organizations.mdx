@@ -1,0 +1,44 @@
+---
+title: "Người dùng và tổ chức"
+description: "Kiểm soát thành viên và giữ dữ liệu cũng như hành động của mỗi tổ chức trong phạm vi riêng biệt."
+icon: "users"
+---
+
+Các tổ chức cách ly các phiên, đánh giá, kiểm toán, vấn đề, cảnh báo, truy vấn, bảng điều khiển, người dùng và khóa. Xác nhận tổ chức hoạt động trước khi thay đổi các tài nguyên quản trị.
+
+## Quản lý thành viên và tổ chức
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Sử dụng công cụ chuyển đổi tổ chức ở đầu thanh bên Cloud để thay đổi tổ chức.
+    2. Đi tới **Administration → Users** để tìm kiếm thành viên hoặc lọc theo trạng thái hoạt động và vai trò.
+    3. Chọn **new user**, nhập email, chọn bộ quyền hạn và điều chỉnh ghi đè nếu cần.
+    4. Mở một người dùng sau này để cập nhật quyền cấp, vô hiệu hóa đăng nhập hoặc kích hoạt lại tài khoản.
+
+    ![Trang Users hiển thị địa chỉ email thành viên, bộ quyền hạn, và các điều khiển chỉnh sửa và vô hiệu hóa.](/images/dashboard/users.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+
+    fp users create engineer@example.com --permission-set standard
+    fp users show engineer@example.com
+    fp users update engineer@example.com --add audits:write
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+    ```
+  </Tab>
+</Tabs>
+
+Những người quản trị viên có thể tạo, cập nhật, vô hiệu hóa và kích hoạt lại người dùng, sau đó gán bộ quyền hạn phù hợp với vai trò của họ. API sử dụng một thao tác xóa để vô hiệu hóa, nhưng nó không loại bỏ tài khoản hoặc hồ sơ thành viên của nó.
+
+<Warning>
+  Vô hiệu hóa một người dùng sẽ chặn danh tính đó khỏi việc đăng nhập vào mọi tổ chức, không chỉ tổ chức hiện được chọn. Kích hoạt lại sẽ khôi phục đăng nhập toàn cầu và quyền của thành viên trong tổ chức này.
+</Warning>
+
+<Tip>
+  Cấp cho các tài khoản dịch vụ những tên mô tả được liên kết với một khối lượng công việc và chủ sở hữu. Tránh chia sẻ khóa giữa các tổ chức hoặc giữa con người và máy.
+</Tip>

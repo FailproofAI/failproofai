@@ -1,0 +1,25 @@
+---
+title: "工具"
+description: "在 Agent 会话中发现速度慢、失败或过度调用的工具。"
+icon: "wrench"
+---
+
+工具页面汇总各会话中的工具调用，便于比较延迟和调用分布情况。
+
+<Tabs>
+  <Tab title="控制台">
+    1. 前往 **Observe → Tools**。
+    2. 按环境、工具名称、Agent 或会话 ID 进行筛选。
+    3. 查看延迟及工具分布情况。
+    4. 点击图表上的数据点或工具区段，打开对应的事件和会话。
+
+    ![工具页面，展示延迟、成功与失败分布以及工具调用分布。](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

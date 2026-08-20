@@ -1,0 +1,198 @@
+---
+title: "Custom agents"
+description: "Instrument traces from custom agents so Failproof AI can reconstruct runs and find failures."
+icon: "python"
+---
+
+Instrument traces from a custom agent with `failproofai-sdk` so Failproof AI can reconstruct each run, audit its behavior, and find evidence-backed failures. The SDK writes structured events for the Failproof daemon to deliver to Cloud. It requires Python 3.10 or newer.
+
+Tracing makes custom agents observable and auditable. Preventing an unsafe action before it executes also requires an enforcement hook in your runtime.
+
+<Info>
+  To enforce policies in a custom agent setup, [contact Failproof AI](mailto:support@befailproof.ai). We will help map your runtime's model, tool, and lifecycle boundaries to policy hooks.
+</Info>
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with the Failproof AI Python SDK" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+## Cài đặt `failproofai-sdk`
+
+SDK hiện được phân phối dưới dạng wheel riêng tư. Liên hệ với đối tác Failproof AI của bạn để lấy phiên bản hiện tại và quyền truy cập tải xuống.
+
+```bash
+VERSION=<sdk-version>
+pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
+python -c "import failproofai; print(failproofai.__version__)"
+```
+
+Với `uv`, hãy tải wheel xuống trước và chạy `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`. Ghim wheel trong kho tạo tác riêng hoặc khóa phụ thuộc.
+
+Package được cài đặt dưới dạng `failproofai-sdk` và nhập trong Python dưới dạng `failproofai`.
+
+## Kết nối daemon Failproof
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi đến **Admin → Keys** và tạo khóa với `events:add`.
+    2. [Kết nối daemon Failproof đến Cloud](/vi/start/setup#connect-a-machine-to-cloud) trên máy agent.
+    3. Chạy một phiên được instrumented, sau đó tìm ID chính xác của nó trong **Observe → Events**.
+    4. Đi đến **Observe → Sessions**, chọn cùng môi trường và mở trace được tái cấu trúc.
+
+    ![A custom Python agent session reconstructed as an execution graph and ordered event trace.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <events-add-key>
+    failproofai config --status
+    ```
+  </Tab>
+</Tabs>
+
+## Instrument một lần chạy hoàn chỉnh
+
+Gọi `configure()` một lần trong quá trình khởi động quy trình. Mọi lệnh gọi sự kiện chỉ sử dụng từ khóa và yêu cầu `session_id` và `agent_id` ổn định.
+
+```python
+import traceback
+import uuid
+
+import failproofai
+
+failproofai.configure(environment="production")
+
+session_id = uuid.uuid4().hex
+agent_id = "checkout-agent"
+
+failproofai.event.agent_start(
+    session_id=session_id,
+    agent_id=agent_id,
+    goal="Resolve a failed checkout",
+)
+
+try:
+    tool_call_id = uuid.uuid4().hex
+    failproofai.event.tool_use(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        input={"order_id": "ord_8421"},
+    )
+    result = {"status": "payment_failed"}
+    failproofai.event.tool_result(
+        session_id=session_id,
+        agent_id=agent_id,
+        tool_name="lookup_order",
+        tool_call_id=tool_call_id,
+        output=result,
+    )
+except Exception as exc:
+    failproofai.event.error(
+        session_id=session_id,
+        agent_id=agent_id,
+        error_type=type(exc).__name__,
+        message=str(exc),
+        traceback=traceback.format_exc(),
+    )
+    failproofai.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="failed",
+    )
+    raise
+else:
+    failproofai.event.agent_end(
+        session_id=session_id,
+        agent_id=agent_id,
+        outcome="success",
+        summary="Escalated the failed payment",
+    )
+```
+
+Phát `agent_start` một lần cho mỗi diễn viên. Đối với các sub-agent, tái sử dụng `session_id` của cha mẹ, cung cấp cho mỗi diễn viên một `agent_id` riêng biệt và đặt `parent_id` thành **agent ID** của cha mẹ, không phải session ID.
+
+## Tham chiếu cấu hình
+
+```python
+failproofai.configure(
+    base_dir=None,
+    flush_interval=0.5,
+    environment="production",
+)
+```
+
+| Cài đặt | Hành vi |
+| --- | --- |
+| `base_dir` | Spool root rõ ràng. Ưu tiên hơn tất cả các biến môi trường. |
+| `flush_interval` | Giây giữa các ghi nền từ bộ nhớ đến JSONL. Mặc định: `0.5`. |
+| `environment` | Nhãn triển khai trên mọi sự kiện. Mặc định là `dev`. |
+| `FAILPROOFAI_HOME` | Thay đổi gốc Failproof AI chứa spool `custom-agents`. |
+
+SDK ghi vào `base_dir` rõ ràng khi được đặt. Nếu không, nó sử dụng spool `custom-agents` của daemon Failproof dưới `FAILPROOFAI_HOME` hoặc `~/.failproofai`.
+
+SDK xếp hàng các lệnh gọi trong bộ nhớ và ghi các lô trên một luồng nền. Nó cũng cố gắng flush cuối cùng thông qua xử lý `atexit` của Python. Đối với worker tồn tại ngắn hạn, hãy cho phép tắt trình thông dịch bình thường; kết thúc quy trình cứng có thể làm mất các sự kiện vẫn còn trong bộ nhớ.
+
+## Danh mục sự kiện
+
+Tất cả các phương thức trả về `None`. Các trường để lại là `None` bị bỏ qua chứ không được ghi dưới dạng JSON `null`.
+
+| Phương thức | Trường bắt buộc ngoài danh tính | Trường tùy chọn |
+| --- | --- | --- |
+| `agent_start` | — | `goal`, `parent_id` |
+| `agent_end` | — | `outcome`, `summary` |
+| `agent_pause` | `pause_id` | `reason`, `user_id` |
+| `agent_resume` | `pause_id` | `reason`, `user_id` |
+| `model_request` | — | `model`, `messages`, `system`, `tools` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role` |
+| `tool_use` | `tool_name`, `tool_call_id` | `input` |
+| `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
+| `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
+| `hook_completed` | `hook_name`, `hook_id` | `outcome`, `output`, `error` |
+| `error` | `error_type`, `message` | `traceback` |
+| `human_wait` | `input_id` | `prompt`, `options`, `reason` |
+| `human_input` | `input_id` | `response` |
+| `human_pause` | — | `reason`, `user_id` |
+| `human_interrupt` | — | `reason`, `user_id`, `at_step` |
+
+Sử dụng `outcome="failed"`, `"error"`, `"timeout"` hoặc `"rejected"` khi một hoàn thành nên được tính là lỗi. Các giá trị khác, bao gồm `"failure"`, không được phân loại là lỗi bởi backend hiện tại.
+
+## Quy tắc tương quan và thời lượng
+
+- Tái sử dụng cùng `tool_call_id`, `hook_id`, `pause_id` hoặc `input_id` cho sự kiện hoàn thành phù hợp.
+- SDK tính toán `duration_ms` cho `tool_result`, `hook_completed`, `agent_resume` và `human_input`. Truyền nó riêng cho các phương thức đó sẽ tạo `ValueError`.
+- ID công cụ và hook chia sẻ một bản đồ chờ xử lý trên toàn quy trình. Làm cho chúng toàn cầu duy nhất trong các phiên đồng thời và trong cả hai không gian tên; ID nhà cung cấp hoặc UUID là an toàn nhất.
+- Một cặp phân chia trên các quy trình vẫn tương quan ở phía hạ lưu, nhưng SDK không thể tính toán thời lượng trong quy trình của nó.
+- Bản đồ chờ xử lý chứa tối đa 10.000 lần bắt đầu và xóa mục nhập cũ nhất khi đầy.
+
+## Trường tùy chỉnh và tải trọng
+
+Mỗi sự kiện chấp nhận các trường từ khóa bổ sung. Sử dụng các giá trị tương thích JSON khi các truy vấn ở phía hạ lưu cần cấu trúc. Các lá không được hỗ trợ như UUID, datetimes, decimals, sets, bytes và các đối tượng mô hình được chuỗi hóa bởi writer.
+
+Tên tùy chỉnh được dự trữ là `timestamp`, `session_id`, `agent_id`, `type` và `environment`. Các lỗi đánh máy trường tùy chọn được chấp nhận như các trường tùy chỉnh mới, vì vậy hãy xem xét JSON phát hành khi trường tiêu chuẩn không xuất hiện trong Cloud.
+
+## Cung cấp và xác minh
+
+<Tabs>
+  <Tab title="Dashboard">
+    Trong **Observe → Events**, xác minh `agent_start` tồn tại trước tiên và `agent_end` tồn tại cuối cùng. Sau đó mở **Observe → Sessions** và xác nhận các sự kiện mô hình, công cụ, con người, hook và lỗi xuất hiện theo thứ tự dự kiến. Sử dụng ID phiên làm khóa xử lý sự cố chính.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai flush --wait --timeout 60
+    failproofai config --status
+    fp sessions --since 1h --env production --session-id <session-id>
+    fp events --since 1h --session-id <session-id> --full
+    ```
+  </Tab>
+</Tabs>
+
+Nếu Cloud trống, kiểm tra `$FAILPROOFAI_HOME/custom-agents/events`, nếu không thì `~/.failproofai/custom-agents/events`. Các tệp JSONL chứng minh phát hành SDK; một spool ngày càng tăng chỉ đến cấu hình daemon hoặc cung cấp, trong khi một spool trống chỉ đến instrumentation hoặc thời gian tồn tại của quy trình.
+
+## Ngăn chặn lỗi trong thời gian chạy tùy chỉnh
+
+Sử dụng các phát hiện kiểm tra và trace được liên kết để xác định hành động không an toàn, bằng chứng bắt buộc và phản hồi dự định. Một tích hợp thực thi tùy chỉnh phải hiển thị hành động trước khi thực thi, chuyển đầu vào có cấu trúc của nó cho công cụ chính sách và áp dụng quyết định allow, instruct hoặc deny kết quả.
+
+Email [support@befailproof.ai](mailto:support@befailproof.ai) để thiết kế và xác nhận tích hợp này cho thời gian chạy của bạn.

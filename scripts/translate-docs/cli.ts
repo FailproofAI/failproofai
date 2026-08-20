@@ -39,6 +39,11 @@ const { values: args } = parseArgs({
     validate: { type: "boolean", default: false },
     prune: { type: "boolean", default: false },
     "no-prune": { type: "boolean", default: false },
+    // Publish what succeeded instead of discarding it. One page failing used to
+    // exit 1, which made the box job die before its push — on 2026-08-18 that
+    // threw away 782 good translations (2.7M tokens) because ONE page overran
+    // the output limit. Opt-in, so CI and hand runs keep failing loudly.
+    "allow-partial": { type: "boolean", default: false },
     model: { type: "string", short: "m" },
     help: { type: "boolean", short: "h", default: false },
   },
@@ -56,6 +61,8 @@ Options:
       --readme-only        Only translate the README
       --docs-only          Only translate Mintlify docs
       --dry-run            Show what would be translated without calling the API
+      --allow-partial      Exit 0 when SOME pages translated, listing the failures
+                           (default: any failure exits 1 and publishes nothing)
   -f, --force              Ignore cache, re-translate everything
       --update-nav         Regenerate docs.json navigation after translation
       --validate           Check all nav references resolve to files
@@ -441,6 +448,20 @@ async function main() {
   }
 
   if (errors.length > 0) {
+    // Printed either way — a partial run must never read as a clean one.
+    console.log(`\nFAILED PAGES (${errors.length}):`);
+    for (const e of errors) {
+      console.log(`  ${e.source} [${e.lang}]: ${e.error}`);
+    }
+    if (args["allow-partial"] && translated.length > 0) {
+      // A stable marker the box job greps for, so the failure reaches Slack and
+      // the PR body instead of being buried in a 700-line log.
+      console.log(
+        `\nPARTIAL RUN — ${translated.length} page(s) translated, ${errors.length} failed. ` +
+          `Publishing what succeeded.`,
+      );
+      return;
+    }
     process.exit(1);
   }
 }

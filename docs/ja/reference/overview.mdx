@@ -1,0 +1,78 @@
+---
+title: "インテグレーションとリファレンス"
+description: "対応エージェントハーネス、SDK、CLI、HTTP API の接続方法。"
+icon: "braces"
+---
+
+エージェントがすでに動作している環境に最も近いインテグレーションを選択してください。
+
+<Columns cols={2}>
+  <Card title="エージェントハーネス" icon="plug-zap" href="/ja/reference/harnesses">
+    対応するコーディング・自律エージェント CLI 向けにフックをインストールします。
+  </Card>
+  <Card title="カスタムエージェント" icon="python" href="/ja/reference/python-sdk">
+    カスタムエージェントの障害を検出するためにトレースを計装し、ランタイムへの防止策の追加についてお問い合わせください。
+  </Card>
+  <Card title="ローカルダッシュボード" icon="monitor-cog" href="/ja/reference/local-dashboard">
+    ローカルプロジェクト、セッション、ポリシーアクティビティ、オフライン監査を確認します。
+  </Card>
+  <Card title="Failproof AI CLI" icon="terminal" href="/ja/reference/failproof-cli">
+    ローカルキャプチャ、フック、ポリシー、監査、配信、マシン状態を設定します。
+  </Card>
+  <Card title="Failproof Cloud CLI" icon="cloud-cog" href="/ja/reference/cloud-cli#cli-commands">
+    Cloud のセッション、監査、Issues、アラート、キー、ユーザー、設定をクエリ・管理します。
+  </Card>
+  <Card title="エバリュエーター SDK" icon="gauge" href="/ja/reference/evaluator-sdk">
+    FastAPI サービスを使って完了済みまたは非アクティブなセッションをスコアリングします。
+  </Card>
+  <Card title="カスタムポリシー" icon="shield-plus" href="/ja/reference/policy-sdk">
+    ワークフロー固有の allow、instruct、deny の判定を作成・テストします。
+  </Card>
+  <Card title="セルフホスティング" icon="cloud-cog" href="/ja/reference/self-hosting">
+    顧客管理の Kubernetes クラスター上に Cloud コントロールプレーンをデプロイします。
+  </Card>
+</Columns>
+
+自動生成された [HTTP API リファレンス](/ja/reference/http-api) は公開 `/v1` エンドポイント全体をカバーしています。手書きのページでは、複数のエンドポイントにまたがるワークフローや、その公開サーフェス外の管理インターフェースを使用するワークフローについて説明しています。
+
+## エージェントを接続してデータを検証する
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    1. **Administration → Keys** を開き、`events:add` と `policies:pull` 権限を持つキーを作成してシークレットをコピーします。
+    2. 上記の対応するページを参照してインテグレーションを設定します。
+    3. **Observe → Events** を開いてイベントが届いていることを確認し、続いて **Observe → Sessions** でイベントが完全な実行として形成されていることを確認します。
+    4. インテグレーションの環境でフィルタリングし、監査に必要なモデル、ツール、エラー、ポリシーのフィールドが含まれているセッションを 1 つ確認します。
+
+    まずキードロワーから始めてください。選択した権限によって、マシンがイベントを送信し、Cloud 管理のポリシーを受信できるかどうかが決まります。
+
+    ![イベントインジェストとポリシー配信の権限を付与するための新規 API キードロワー。](/images/dashboard/key-create.png)
+
+    インテグレーションを接続したら、セッションリストを使用して、イベントが期待される環境で完全な実行としてグループ化されていることを確認してください。
+
+    ![新しく接続されたインテグレーションが完全なエージェント実行を報告しているかを確認するためのセッションリスト。](/images/dashboard/sessions-list.png)
+
+    インテグレーションが完了と見なす前にこれらのセッションの 1 つを開いてください。トレースには、監査に必要なモデル、ツール、エラー、ポリシーの証跡が含まれているはずです。
+  </Tab>
+  <Tab title="CLI">
+    マシンキーを作成し、Failproof デーモンを接続して、最初のセッションを検証します。
+
+    ```bash
+    fp keys create agent-production \
+      --add events:add \
+      --add policies:pull
+
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+
+    failproofai flush --wait
+    fp sessions --since 1h --env production
+    fp events --since 1h --env production --limit 20
+    ```
+
+    別のツールで結果を利用する場合は `fp --json sessions ...` を使用してください。`--json`、`--org`、`--base-url` などのグローバルフラグはコマンドの前に指定する必要があります。
+
+    ローカルコマンドについては [Failproof AI CLI リファレンス](/ja/reference/failproof-cli) を、`fp` コマンドについては [Failproof Cloud CLI リファレンス](/ja/reference/cloud-cli#cli-commands) を参照してください。
+  </Tab>
+</Tabs>

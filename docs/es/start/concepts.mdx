@@ -1,0 +1,26 @@
+---
+title: "Conceptos principales"
+description: "El pequeño conjunto de conceptos utilizados en todo Failproof AI."
+icon: "boxes"
+---
+
+| Concepto | Qué significa | Qué puedes lograr |
+| --- | --- | --- |
+| Session | Una tarea o ejecución de agente | Reconstruir un resultado individual |
+| Event | Una acción registrada en una sesión | Inspeccionar una llamada al modelo, uso de herramienta, error, acción humana o decisión de política |
+| Trace | La vista ordenada y anidada de la sesión | Entender la causalidad en lugar de leer registros desconectados |
+| Evaluation | Una puntuación o juicio sobre una sesión | Rastrear calidad, cumplimiento, costo o latencia de forma continua |
+| Audit | Una revisión de una población de sesiones seleccionada | Buscar patrones de fallo con un objetivo y cadencia definidos |
+| Finding | Un fallo con respaldo de evidencia descubierto por una auditoría | Ver el modo de fallo, la gravedad y las sesiones afectadas |
+| Issue | Un registro de respuesta duradero | Asignar, discutir y resolver un hallazgo o incidente de alerta |
+| Alert | Una regla que detecta recurrencias | Notificar a los responsables cuando una condición conocida vuelve a aparecer |
+| Policy | Una regla evaluada durante la actividad del agente | Observar, bloquear o redirigir comportamiento riesgoso |
+| Deployment | Un despliegue de política versionado a máquinas | Controlar dónde se ejecuta una política y revertirla de forma segura |
+
+## El ciclo de confiabilidad
+
+Comienza desde la evidencia. Una sesión muestra lo que ocurrió. Una auditoría determina si es un error aislado o un patrón. Un hallazgo identifica el modo de fallo; un issue gestiona la respuesta. Una política previene el mismo comportamiento, mientras que las alertas te informan si la condición vuelve a aparecer.
+
+<Warning>
+  Un `failproofai audit` local analiza el historial de agentes locales. Una auditoría recurrente en la nube revisa las sesiones almacenadas en Failproof AI Cloud. Son flujos de trabajo separados con distinto alcance y programación.
+</Warning>

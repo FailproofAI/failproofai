@@ -1,0 +1,72 @@
+---
+title: "מדיניות מותאמות"
+description: "כתוב מדיניות לתרחיש כשל ייחודי לזרימת העבודה של הסוכן שלך."
+icon: "shield-plus"
+---
+
+צור קובץ בסיום `policies.js`, `policies.mjs`, או `policies.ts` תחת `.failproofai/policies/`. קובצי קונוונציה נטענים באופן אוטומטי בטווח פרויקט וחשבון משתמש.
+
+## בדוק את המדיניות לפני פרסום בענן
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. התקן את המדיניות המותאמת על מכונת בדיקה אחת והפעל גם פעולה תואמת וגם אי-התאמה לגיטימית.
+    2. עבור אל **Observe → policy** והשווה בין שתי ההחלטות.
+    3. פתח כל סשן מקושר וודא שמטען האירוע מכיל מספיק ראיות לכלל.
+    4. כאשר ההתנהגות נכונה, העבר את הקוד שנבדק אל **Admin → policy editor** והפרסם גרסה.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies --install --custom ./security.policies.ts \
+      --cli claude --scope project
+    failproofai policies
+    ```
+
+    קובצי קונוונציה תחת `.failproofai/policies/` נטענים ללא `--custom`. שמור על פקודת התקנה מפורשת ב-CI כאשר יש לוודא שתרחיש כשל על מודול שבור.
+  </Tab>
+</Tabs>
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+זה תואם `production/config.yml`, `/srv/production/config.yml`, `/srv/production`, ו-`C:\\production\\config.yml` גם עבור `Write` וגם עבור `Edit`. זה לא תואם שמות כמו `production-backup` כי `production` חייב להיות קטע נתיב שלם.
+
+אמת והתקן קובץ מפורש:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts
+```
+
+הקשר המדיניות כולל את סוג האירוע, מטען מנורמל, שם כלי וקלט, מטא-נתונים של סשן, פרמטרים, ו-CLI מקור כשהוא זמין.
+
+## בדוק נתיבי כשל
+
+הפעל אימות לאחר שינוי קובץ הקדימה או כל מודול מקומי שהוא מייבא:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+נתיב ה-CLI הקפדני נכשל עבור קובצים חסרים, שגיאות תחביר, ייבוא שלא נפתר, יוצאים מן הכלל ברמה עליונה, וזמני תגבור טעינת מודול. בזמן אכיפה, קובץ מותאם שבור מוקלט ומדולל כך שמדיניויות מובנות יכולות להמשיך. התייחס לכל אזהרת טעינה כהפסדה של אכיפה צפויה ויידע עליה בגדלי לוגים בייצור.
+
+השתמש בשמות ייחודיים בעולם בכל מדיניויות מפורשות, קונוונציה וממנוהל בענן. שמור על פונקציות מדיניות דטרמיניסטיות, קשור קריאות חיצוניות עם זמני תגבור קצרים, והחזר `allow`, `instruct`, או `deny` מכוונים בכל נתיב.
+
+<Warning>
+  מדיניות מותאמת היא קוד אכיפה. בדוק שדות חסרים, שמות כלים חלופיים, וקלט מעוות—לא רק את ההתאמה הצפויה.
+</Warning>

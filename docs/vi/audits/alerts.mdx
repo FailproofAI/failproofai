@@ -1,0 +1,62 @@
+---
+title: "Cảnh báo"
+description: "Phát hiện sự lặp lại và định tuyến sự cố đến những người phản hồi thích hợp."
+icon: "bell-ring"
+---
+
+Cảnh báo giám sát một điều kiện có thể đo lường được và tạo một sự cố khi nó được kích hoạt. Sử dụng chúng khi một lỗi phải tạo ra phản hồi kịp thời, cho dù liệu một chính sách có thể chặn nó hay không.
+
+## Tạo và kiểm tra cảnh báo
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Chuyển đến **Analyze → Alerts** và chọn **new alert**. Bạn cũng có thể bắt đầu từ biểu tượng chuông trên một lỗi tiêu biểu.
+    2. Nhập tên, mức độ nghiêm trọng, loại kích hoạt, điều kiện, khoảng thời gian đánh giá, số lần vi phạm, cửa sổ và các kênh.
+    3. Lưu cảnh báo, mở trang chi tiết của nó và chạy **test**.
+    4. Chuyển đến **Analyze → Issues** để xác nhận, gán, thảo luận, đăng ký và giải quyết các sự cố được tạo bởi cảnh báo.
+
+    Phần đầu tiên của biểu mẫu xác định cảnh báo và tín hiệu sẽ kích hoạt nó.
+
+    ![Phần đầu tiên của biểu mẫu new-alert với tên, mô tả, trạng thái bật và loại kích hoạt.](/images/dashboard/alert-new-trigger.png)
+
+    Phần thứ hai kiểm soát thời gian điều kiện phải kéo dài, tần suất đánh giá và nơi gửi thông báo.
+
+    ![Phần thứ hai của biểu mẫu new-alert với logic vi phạm, lịch trình, mức độ nghiêm trọng, kênh phân phối và hành động tạo.](/images/dashboard/alert-new-routing.png)
+
+    Sau khi lưu, sử dụng danh sách Cảnh báo để xác nhận rằng quy tắc được bật và các kích hoạt, cửa sổ, mức độ nghiêm trọng và kênh của nó phù hợp với ý định của bạn.
+
+    ![Trang Alerts hiển thị các quy tắc cảnh báo với các kích hoạt, cửa sổ đánh giá, kênh và mức độ nghiêm trọng của chúng.](/images/dashboard/alerts.png)
+
+    Kiểm tra cảnh báo trước khi dựa vào nó để phản hồi sản xuất.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp alerts create high-errors \
+      --trigger-kind metric_threshold \
+      --severity warning \
+      --trigger-spec '{"metric":"error_count","op":">","value":50,"window_secs":900}'
+
+    fp alerts show high-errors
+    fp alerts test high-errors
+    fp alerts update high-errors --severity critical --yes
+    ```
+
+    Sử dụng `fp alerts list` để xem lại các quy tắc và `fp alerts delete <name>` để xóa một quy tắc.
+
+    Xem [tham chiếu `fp alerts`](/vi/reference/cloud-cli#alerts) để có bộ lệnh cảnh báo đầy đủ.
+  </Tab>
+</Tabs>
+
+Các điều kiện cảnh báo có thể dựa trên lỗi, điểm đánh giá, kết hợp đánh giá hoặc SQL tùy chỉnh. Thêm người nhận, kiểm tra quy tắc và mở sự cố kết quả để xác nhận, gán, bình luận, đăng ký và giải quyết nó.
+
+## Thiết kế cảnh báo tốt
+
+- Đặt tên cho điều kiện và quy trình công việc bị ảnh hưởng.
+- Xác định phạm vi môi trường một cách rõ ràng.
+- Đặt một cửa sổ và ngưỡng tránh phản ứng với một sự kiện vô hại.
+- Bao gồm một liên kết hoặc truy vấn dẫn những người phản hồi đến các phiên làm việc.
+- Gán một chủ sở hữu trước khi bật quy tắc.
+
+<Tip>
+  Sau khi giải quyết một phát hiện kiểm toán, hãy thêm một cảnh báo khi cùng một lỗi có thể xảy ra lại bên ngoài phạm vi bảo hiểm của chính sách.
+</Tip>

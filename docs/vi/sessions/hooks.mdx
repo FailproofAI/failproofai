@@ -1,0 +1,25 @@
+---
+title: "Hooks"
+description: "Đo lường hoạt động hook, kích hoạt và độ trễ riêng biệt với kết quả chính sách."
+icon: "webhook"
+---
+
+Hooks hiển thị khi các hook vòng đời của agent chạy và thời gian chúng mất. Các quyết định chính sách là một chế độ xem riêng biệt.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Observe → Hooks**.
+    2. Lọc theo môi trường, tên hook, sự kiện kích hoạt, agent hoặc ID phiên.
+    3. Xem lại độ trễ hook và phân phối.
+    4. Chọn một điểm trên biểu đồ hoặc phân đoạn hook để mở các sự kiện bên dưới.
+
+    ![Trang Hooks hiển thị độ trễ được nhóm theo tên hook và sự kiện kích hoạt.](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

@@ -1,0 +1,42 @@
+---
+---
+title: "Rollback"
+description: "Khôi phục một triển khai chính sách đã biết khi một quá trình triển khai gây gián đoạn công việc hợp lệ của agent."
+icon: "rotate-ccw"
+---
+
+Rollback thay đổi phiên bản được triển khai hoặc xóa một phân công chính sách; nó không xóa lịch sử quyết định giải thích sự cố.
+
+## Rollback một máy
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vào **Admin → enforcement**, mở rộng máy bị ảnh hưởng và xác định bộ chính sách lần cuối được biết là tốt của nó.
+    2. Chọn **edit**, khôi phục các phiên bản và hiệu ứng đó, rồi áp dụng triển khai mới.
+    3. Chờ máy check-in, sau đó xác minh triển khai được báo cáo.
+    4. Mở **Observe → policy** và các phiên làm việc bị ảnh hưởng để xác nhận rằng công việc hợp lệ không còn bị chặn.
+
+  </Tab>
+  <Tab title="CLI">
+    Rollback triển khai trên cloud là quy trình trên dashboard. Sử dụng trạng thái cục bộ để xác nhận rằng triển khai đã được sửa đã đến máy:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    `failproofai config --pause` tạm dừng các chính sách tích hợp, tùy chỉnh và quy ước cho một phiên cục bộ. Nó không tạm dừng các chính sách do cloud quản lý, do đó không phải là giải pháp thay thế cho triển khai cloud xấu.
+  </Tab>
+</Tabs>
+
+## Khi nào nên rollback
+
+- Một chính sách chặn một hành động sản xuất dự kiến.
+- Khối lượng khớp cao hơn đáng kể so với rollout được quan sát dự đoán.
+- Một chính sách phụ thuộc vào các trường mà một tích hợp không cung cấp.
+- Một phiên bản mới thay đổi hành vi ngoài chế độ lỗi dự định.
+
+Sau khi rollback, mở các phiên làm việc bị ảnh hưởng và xác định điều kiện gây ra dương tính giả. Tạo một phiên bản mới, kiểm tra cả các trường hợp không an toàn và hợp pháp, sau đó lặp lại giai đoạn quan sát.
+
+<Warning>
+  Tạm dừng thực thi có thể thích hợp trong quá trình sự cố, nhưng nó mở rộng tiếp xúc cho mọi chính sách hoạt động trong phạm vi đó. Ưu tiên rollback phiên bản chính sách cụ thể khi có thể.
+</Warning>

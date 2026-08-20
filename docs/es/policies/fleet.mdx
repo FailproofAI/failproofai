@@ -1,0 +1,52 @@
+---
+title: "Desplegar políticas en máquinas"
+description: "Conoce qué máquinas están inscritas, actualizadas y aplicando las versiones de política previstas."
+icon: "network"
+---
+
+La cobertura de flota responde si existe una política donde existe el riesgo. Rastrea las máquinas por ID estable y una etiqueta legible, luego compara su estado de despliegue asignado y reportado.
+
+## Verificar cobertura
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Ve a **Admin → enforcement** y revisa los totales de aplicación y observación.
+    2. Busca una máquina por ID o etiqueta, o filtra las máquinas que no tienen política asignada.
+    3. Expande una fila para comparar las políticas asignadas, el despliegue reportado, el último registro de actividad y el historial.
+    4. Actualiza tras el intervalo de sondeo de la máquina cuando un despliegue aplicado permanezca pendiente.
+
+    ![El panel de flota de Enforcement mostrando la cobertura de políticas, el estado de despliegue de máquinas y las asignaciones de observación y aplicación.](/images/dashboard/enforcement-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai config --machine-label checkout-runner-03
+    failproofai flush --wait
+    ```
+
+    Usa `fp events --agent-id <agent-id> --since 24h` para confirmar que la actividad del agente de la máquina llega a Cloud.
+  </Tab>
+</Tabs>
+
+Usa las vistas de cobertura para identificar:
+
+- Máquinas que nunca descargaron el último despliegue
+- Máquinas inscritas que dejaron de reportar actividad
+- Una política asignada al entorno o cohorte equivocado
+- Deriva de versión tras una actualización interrumpida
+
+Renombra una máquina sin reconectarla:
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
+
+Verifica el estado local:
+
+```bash
+failproofai config --status
+```
+
+<Tip>
+  Usa etiquetas que identifiquen la carga de trabajo y el entorno. Los nombres de host por sí solos suelen ser insuficientes tras el autoescalado o el reemplazo de máquinas.
+</Tip>

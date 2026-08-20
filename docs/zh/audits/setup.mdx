@@ -1,0 +1,44 @@
+---
+title: "设置审计"
+description: "定义审计目标、会话范围和证据背景。"
+icon: "sliders-horizontal"
+---
+
+审计的质量取决于其范围界定。像"找出问题"这样宽泛的请求，其结果的实用性远不如一个具体的故障问题。
+
+## 配置审计
+
+<Tabs>
+  <Tab title="控制台">
+    1. 前往 **Analyze → Audits → New audit**，输入名称和描述。
+    2. 设置执行频率、时间窗口、代理/环境范围、忽略的错误、敏感度以及最大发现数量。
+    3. 在 **agents** 中，添加或查看代理上下文，然后添加操作说明及任何公开的 HTTPS 参考 URL。
+    4. 选择通知渠道，然后点击 **create audit**。首次运行将立即排入队列。
+
+    ![新建审计表单，包含名称、描述、执行频率、时间窗口、环境和代理范围、忽略的错误、分析设置、操作说明、参考页面以及通知渠道。](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    首次运行将立即排入队列。请在创建时一并提供操作说明和参考 URL，以便首次运行即可使用这些信息。
+
+    查看完整的 [`fp audits create` 参考文档](/zh/reference/cloud-cli#audits)。
+  </Tab>
+</Tabs>
+
+<Tip>
+  建议从一个已知失败的会话和若干正常会话开始。这样既为审计提供了正向示例，也构成了对比基准。
+</Tip>
+
+<Info>
+  审计上下文作为独立资源存储，因此编辑审计不会意外删除参考材料。
+</Info>

@@ -1,0 +1,56 @@
+---
+title: "ऑडिट्स"
+description: "सत्रों की एक परिभाषित जनसंख्या की समीक्षा करें ताकि विफलताएं मिल सकें जो ट्रेस अकेले नहीं दिखा सकता।"
+icon: "scan-search"
+---
+
+एक ऑडिट सत्रों के चयनित सेट में निर्दिष्ट विफलता लक्ष्य की खोज करता है। यह ट्रेस साक्ष्य, मूल्यांकन परिणाम, नीति हिट और संदर्भ संदर्भ को जोड़कर निष्कर्ष तैयार करता है जिन पर आप कार्य कर सकते हैं।
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+देखें कि कैसे एक ऑडिट एक निर्धारित रन से साक्ष्य-समर्थित विफलताओं तक जाता है जिन्हें आप ठीक कर सकते हैं।
+
+## ऑडिट्स खोलें
+
+<Tabs>
+  <Tab title="Dashboard">
+    **Analyze → Audits** पर जाएं। पृष्ठ निर्धारित स्थिति, खुले निष्कर्ष, अंतिम रन, अगला रन, आवृत्ति और यह दिखाता है कि क्या ऑडिट के पास संक्षिप्त या संदर्भ पृष्ठ हैं। सेटिंग्स और रन इतिहास के लिए एक कार्ड चुनें; एक नया ऑडिट बनाने के लिए **new audit** चुनें।
+
+    ![ऑडिट्स पृष्ठ दोहराए जाने वाले ऑडिट्स को उनके शेड्यूल, संवेदनशीलता और रन स्थिति के साथ दिखा रहा है।](/images/dashboard/audits.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits list
+    fp audits list --enabled-only --show-id
+    fp audits show <audit-name>
+    fp audits findings --status open --limit 20
+    ```
+  </Tab>
+</Tabs>
+
+ऑडिट का उपयोग तब करें जब आपको जनसंख्या-स्तर के प्रश्न का उत्तर देने की आवश्यकता हो जैसे:
+
+- एजेंट्स कहां कार्यों को सीढ़ी-दर-सीढ़ी बढ़ाए बिना परित्यागते हैं?
+- कौन सी टूल विफलताएं अप्रभावी पुनः प्रयासों की ओर ले जाती हैं?
+- क्या एजेंट्स इच्छित वर्कफ़्लो के बाहर डेटा तक पहुंच रहे हैं?
+- मॉडल, प्रॉम्प्ट या टूल रिलीज़ के बाद क्या बदला?
+
+## ऑडिट प्रतिक्रिया प्रवाह
+
+```text
+Session → Audit → Finding → Issue → Policy
+                         ↘ Alert for recurrence
+```
+
+एक निष्कर्ष को विफलता मोड का नाम देना चाहिए और साक्ष्य की ओर इशारा करना चाहिए। एक समस्या उपचार का स्वामित्व रखती है। एक नीति ज्ञात कार्य पैटर्न को रोकती है; एक सतर्कता पुनरावृत्ति का पता लगाती है जब रोकथाम संभव नहीं है या निगरानी की आवश्यकता है।
+
+<Columns cols={2}>
+  <Card title="एक ऑडिट सेट अप करें" icon="sliders-horizontal" href="/hi/audits/setup">
+    पहले रन से पहले लक्ष्य, जनसंख्या और संदर्भ संदर्भ परिभाषित करें।
+  </Card>
+  <Card title="एजेंट संदर्भ जोड़ें" icon="bot" href="/hi/audits/agent-contracts">
+    बताएं कि प्रत्येक एजेंट को क्या उत्पादन करना चाहिए और उसे कभी क्या नहीं करना चाहिए।
+  </Card>
+</Columns>

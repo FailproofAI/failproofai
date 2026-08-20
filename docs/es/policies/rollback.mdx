@@ -1,0 +1,41 @@
+---
+title: "Rollback"
+description: "Restaura un despliegue de políticas conocido cuando un rollout interrumpe el trabajo válido de los agentes."
+icon: "rotate-ccw"
+---
+
+El rollback cambia la versión desplegada o elimina una asignación de política; no borra el historial de decisiones que explica el incidente.
+
+## Revertir una máquina
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Ve a **Admin → enforcement**, expande la máquina afectada e identifica su último conjunto de políticas conocido como válido.
+    2. Selecciona **edit**, restaura esas versiones y efectos, y aplica el nuevo despliegue.
+    3. Espera a que la máquina haga check-in y verifica el despliegue reportado.
+    4. Abre **Observe → policy** y las sesiones afectadas para confirmar que el trabajo válido ya no está bloqueado.
+
+  </Tab>
+  <Tab title="CLI">
+    El rollback de un despliegue en la nube es un flujo de trabajo del panel de control. Usa el estado local para confirmar que el despliegue corregido ha llegado a la máquina:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    `failproofai config --pause` pausa las políticas integradas, personalizadas y de convención durante una sesión local. No pausa las políticas gestionadas por Cloud, por lo que no es una solución alternativa para un despliegue incorrecto en Cloud.
+  </Tab>
+</Tabs>
+
+## Cuándo revertir
+
+- Una política bloquea una acción de producción esperada.
+- El volumen de coincidencias es materialmente mayor de lo que predijo el rollout observado.
+- Una política depende de campos que una integración no proporciona.
+- Una nueva versión cambia el comportamiento fuera del modo de fallo previsto.
+
+Tras el rollback, abre las sesiones afectadas e identifica la condición que causó el falso positivo. Crea una nueva versión, prueba tanto los casos inseguros como los legítimos y repite la fase de observación.
+
+<Warning>
+  Pausar el enforcement puede ser apropiado durante un incidente, pero amplía la exposición para todas las políticas activas en ese ámbito. Siempre que sea posible, prefiere revertir la versión específica de la política.
+</Warning>

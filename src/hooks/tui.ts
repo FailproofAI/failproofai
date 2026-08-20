@@ -357,6 +357,7 @@ export function renderLaunchBanner(version: string, stdout: TTYOut = process.std
     row("star", c.dim("https://github.com/failproofai/failproofai")),
     row("docs", c.dim("https://docs.befailproof.ai/introduction")),
     row("discord", c.dim("https://discord.befailproof.ai/")),
+    row("reddit", c.dim("https://www.reddit.com/r/failproofai/")),
     "",
   ];
 }

@@ -1,0 +1,74 @@
+---
+title: "HTTP API"
+description: "Failproof AI Cloud `/v1` API'sine kimlik doğrulaması yapın ve oluşturulan uç nokta referansını kullanın."
+icon: "braces"
+---
+
+Genel API, Failproof AI panonuzu üzerinde `/v1` altında sunulur.
+
+## Anahtar oluşturun ve istek yapın
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Yönetim → Anahtarlar** kısmını açın, **Anahtar oluştur** seçeneğini seçin ve entegrasyonunuzu kapsayan en dar izin ön ayarını seçin.
+    2. Gerekli olduğunda yalnızca bireysel izinler ekleyin, anahtarı oluşturun ve tek seferlik sırrını kopyalayın.
+    3. `/v1/sessions` adresine test isteği yapın ve anahtarın Anahtarlar sayfasında etkin kalıp kalmadığını onaylayın.
+    4. Entegrasyon sahipliği değiştiğinde, anahtarı eylem menüsünden döndürün veya devre dışı bırakın.
+
+    ![İzin ön ayarları ve bireysel izinlerle yeni API anahtarı çekmeçesi.](/images/dashboard/key-create.png)
+
+    Yukarıda oluşturma çekmeçesi gösterilmektedir. Tek seferlik sırrı yalnızca **oluştur** seçeneğini seçtikten sonra gösterilir; bu onayı kapatmadan önce kopyalayın.
+  </Tab>
+  <Tab title="CLI">
+    Okuma anahtarı oluşturun ve bunu `fp` veya `curl` ile doğrudan kullanın:
+
+    ```bash
+    fp keys create reliability-reader \
+      --permission-set read-only
+
+    fp --api-key <key> sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/sessions?limit=20" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY"
+    ```
+  </Tab>
+</Tabs>
+
+Anahtarlar bir kuruluş ve izin seti kapsamındadır. Uç noktanın gerekli iznine sahip olmayan bir istek `403` döndürür ve eksik olan izni tanımlar.
+
+## Kuruluş seçimi
+
+Bir kuruluş anahtarı, kuruluşuna otomatik olarak etki eder. Bir örnek kapsamlı anahtar, istek başına bir kuruluş seçebilir:
+
+<Tabs>
+  <Tab title="Dashboard">
+    Pano başlığındaki kuruluş değiştiricisini kullanın ve ardından **Yönetim → Anahtarlar** kısmını açın. Orada oluşturulan anahtarlar, seçilen kuruluşa aittir. URL'deki ve anahtar ayrıntısındaki kuruluş slug'ını onaylayın ve kimlik bilgisini otomasyon içine kopyalamadan önce doğrulayın.
+
+  </Tab>
+  <Tab title="CLI">
+    Komuttan önce `--org` kullanın veya bir örnek kapsamlı API anahtarı için kuruluş başlığı gönderin.
+
+    ```bash
+    fp orgs list
+    fp --org reliability-team sessions --since 24h
+    ```
+
+    ```bash
+    curl "https://app.befailproof.ai/v1/usage" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "X-AgentEye-Org: reliability-team"
+    ```
+  </Tab>
+</Tabs>
+
+Bu bölümdeki oluşturulan uç nokta sayfalarını geçerli yollar, parametreler, izin gereksinimleri ve durum kodları için kullanın. Belirtim, sunucu rota ek açıklamalarından oluşturulur ve `/v1` yönlendiricisine karşı kontrol edilir.
+
+Geçerli belirtim, tam rota, yöntem, parametre, izin ve durum kodu kapsamına sahiptir. Sunucu hala bazı yanıt gövdelerini dinamik JSON olarak oluşturduğu için, bazı yanıt gövdeleri kasıtlı olarak yazılmamış durumdadır. Yanıt şeması olmayan bir uç nokta etrafında kesin olarak yazılmış bir istemci oluşturmadan önce gerçek bir yanıtı inceleyin.
+
+JSON yazmaları için `Content-Type: application/json` kullanın. `401` öğesini eksik veya geçersiz kimlik doğrulama olarak, `403` öğesini gerekli izne sahip olmayan geçerli bir kimlik olarak, `404` öğesini eksik veya kuruluşun erişemediği kaynak olarak, `409` öğesini durum çakışması olarak ve `422` öğesini geçersiz alan veya izin değeri olarak değerlendirin. Hata yanıtları, insan tarafından okunabilir bir mesaj içerir; izin hataları ayrıca gerekli izni adlandırır.
+
+<Warning>
+  İlke uygulama dağıtımı, kasıtlı olarak sıradan genel `/v1` yüzeyinin dışında yönetilir. Desteklenen Cloud dağıtım iş akışını kullanın.
+</Warning>

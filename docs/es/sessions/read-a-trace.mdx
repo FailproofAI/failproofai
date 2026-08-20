@@ -1,0 +1,48 @@
+---
+title: "Leer un rastreo"
+description: "Encuentra el evento que cambió el curso de una sesión de agente."
+icon: "route"
+---
+
+Un rastreo convierte un flujo plano de eventos en la historia causal de la ejecución. Léelo desde la primera divergencia, no hacia atrás desde el último error.
+
+## Abrir el rastreo
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Ve a **Observe → Sessions** y abre una sesión.
+    2. Usa el resumen del perfil para revisar el resultado, el tiempo, los errores y las puntuaciones de evaluación.
+    3. Escanea la línea de tiempo y el minimapa. Filtra tipos de eventos o tiempo cuando la sesión sea extensa.
+    4. Selecciona un evento para inspeccionarlo. Usa **export** para obtener el JSON del evaluador, o copia la URL de la página para compartir un enlace directo a la evidencia seleccionada.
+
+    ![Vista de detalle de sesión con su gráfico de ejecución, línea de tiempo de eventos, panel de evaluación y desglose de herramientas, modelos y hooks.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp --json sessions --session-id <session-id>
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    Usa primero el feed de eventos ligero. Solicita los payloads completos solo cuando los resúmenes de eventos no contengan evidencia suficiente.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Oriéntate">
+    Confirma el agente, el entorno, el tiempo, el resultado y la duración; luego busca errores, intervalos largos, herramientas repetidas, esperas humanas y decisiones de política denegadas.
+  </Step>
+  <Step title="Expande el primer evento sospechoso">
+    Inspecciona su solicitud, respuesta, entrada de herramienta, salida e ID de correlación. El contenido sensible solo es visible cuando la captura de transcripciones está habilitada y tus permisos lo permiten.
+  </Step>
+  <Step title="Inspecciona el contexto anterior">
+    La causa suele estar un evento antes: una respuesta incorrecta del modelo, un resultado de herramienta faltante o una suposición obsoleta.
+  </Step>
+  <Step title="Convierte la evidencia en acción">
+    Agrega la sesión a un alcance de auditoría, vincúlala a un problema o usa el modo de fallo para crear una política.
+  </Step>
+</Steps>
+
+<Warning>
+  Una duración larga no siempre significa latencia del modelo. Separa el tiempo del modelo, de las herramientas, de los hooks y de espera humana antes de decidir qué corregir.
+</Warning>

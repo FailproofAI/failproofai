@@ -13,6 +13,7 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       FAILPROOFAI_TELEMETRY_DISABLED: "1"
     steps:
@@ -22,18 +23,38 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: actions/cache@v6
+      # Restore-only here and in every other job; `quality` alone writes, below.
+      # All six jobs used to share one read-write `actions/cache@v6` on this key,
+      # so all six raced to upload the same 401 MB entry and five of them lost
+      # the race — paying the upload to be told the key already existed. One
+      # writer is all a shared key can use.
+      - uses: actions/cache/restore@v6
+        id: bun-cache
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
+      # `--ignore-scripts`, here and in every other job, because package.json's
+      # `prepare` is `bun run build` — so a plain `bun install` runs a full
+      # Next.js production build (~28s: 14s compile + 13s TypeScript) as an
+      # install lifecycle hook, in six of this workflow's eight jobs. Nothing in
+      # this job reads `dist/`: tsconfig.json excludes it, eslint.config.mjs
+      # ignores it, and no app/ file references Next's generated route types.
+      # rust-quality has guarded this way since it landed, and its install takes
+      # one second against the thirty-three this one used to.
       - name: Install dependencies
         uses: nick-fields/retry@v4
         with:
           max_attempts: 3
           timeout_minutes: 5
-          command: bun install --frozen-lockfile
+          command: bun install --frozen-lockfile --ignore-scripts
+
+      - uses: actions/cache/save@v6
+        if: steps.bun-cache.outputs.cache-hit != 'true'
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
       - name: Check version consistency
         run: |
@@ -95,6 +116,7 @@ jobs:
 
   rust-quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -103,21 +125,55 @@ jobs:
           # default (`true`) would leave GITHUB_TOKEN in .git/config where
           # any of them could read it; nothing here needs push access.
           persist-credentials: false
+          # On `pull_request`, actions/checkout builds the merge commit, whose
+          # first parent is the base — so depth 2 is exactly enough for the
+          # diff below, without fetching the branch's history.
+          fetch-depth: 2
 
-      # Stage 1 lands an empty Cargo workspace (zero crates/*/Cargo.toml) so
-      # the CI plumbing itself can go green before any Rust code exists.
-      # `cargo build/clippy/test --workspace` (and even `cargo fmt --all`)
-      # all hard-error on a zero-member workspace ("the workspace has no
-      # members"), so every real step below is gated on at least one crate
-      # being present rather than relying on any of them to no-op cleanly.
-      - name: Detect crates
+      # Two gates in one, both answering "is there Rust work to do here".
+      #
+      # The first is the original: stage 1 landed an empty Cargo workspace so
+      # the CI plumbing could go green before any Rust existed, and
+      # `cargo build/clippy/test --workspace` (and even `cargo fmt --all`) all
+      # hard-error on a zero-member workspace rather than no-opping cleanly.
+      # All three crates exist now, so on its own this always answers true.
+      #
+      # The second is why it is still here. This is the longest job in CI, so it
+      # sets the wall clock for EVERY pull request — including the many that
+      # touch no Rust at all, where it restores a cache and recompiles a
+      # 231-crate dependency tree to check nothing. Gating on the diff leaves
+      # the job reporting a status (no `needs:` edge, no new job, nothing
+      # serialised behind it) while finishing in seconds on a TypeScript-only
+      # branch. `push` is never gated: main always gets the full check, which is
+      # also what keeps the cache warm for everyone else.
+      - name: Detect Rust changes
         id: crates
         run: |
-          if ls crates/*/Cargo.toml >/dev/null 2>&1; then
+          if ! ls crates/*/Cargo.toml >/dev/null 2>&1; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No crates/*/Cargo.toml on this ref — rust-quality has nothing to check."
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Anything that can change what clippy or the tests see — which is
+          # NOT only Rust. `cargo test --workspace` spawns the real TS worker
+          # (`bun bin/failproofai-worker.mjs`, from server.rs's live end-to-end
+          # test), and that worker runs raw TypeScript, resolving src/hooks'
+          # real dependency tree at runtime rather than a bundle's. So a change
+          # under src/hooks, to the worker entrypoint, or to the dependency
+          # graph it resolves against can break this job with no Rust involved
+          # at all — the failure surfaces as "worker process exited before
+          # creating its socket", which is exactly the class a gate that only
+          # matched Rust paths would have let through silently.
+          # ci.yml is in the list so a change to this gate always exercises it.
+          if git diff --name-only HEAD^1 HEAD | grep -qE '^(crates/|src/hooks/|bin/failproofai-worker\.mjs$|package\.json$|bun\.lock$|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|\.github/workflows/ci\.yml$)'; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "No crates/*/Cargo.toml yet — rust-quality has nothing to check."
+            echo "No Rust-affecting paths in this PR — skipping fmt/clippy/test."
           fi
 
       - if: steps.crates.outputs.present == 'true'
@@ -139,7 +195,7 @@ jobs:
       # exited before creating its socket". Production is unaffected, because
       # dist/worker.mjs bundles those deps; only this path needs them on disk.
       - if: steps.crates.outputs.present == 'true'
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -170,17 +226,24 @@ jobs:
       # Restoring without saving costs a PR whose `Cargo.lock` moved a rebuild
       # from a stale-but-close main cache — which is already what `restore-keys`
       # hands it today.
+      #
+      # That fixed the MULTIPLICATION and left the SIZE, and the size was the
+      # bigger half. One entry reached 5,727 MB — 57% of the whole 10 GiB quota
+      # in a single key, so the store stayed in permanent LRU eviction against
+      # the translation cache anyway — and restoring it took 127 SECONDS, more
+      # wall clock than the 74s `cargo test` it was there to avoid. A cache that
+      # costs more to move than the work it replaces is not a cache.
+      #
+      # The cause is `path: target` taken literally: it archives every
+      # intermediate the workspace has ever produced, including this workspace's
+      # own crates, which recompile in seconds and are the artifacts most likely
+      # to be stale. rust-cache caches the dependency artifacts and prunes the
+      # rest. It also handles the save gate directly, so the paired
+      # `cache/save` step below this is gone.
       - if: steps.crates.outputs.present == 'true'
-        id: cargo-cache
-        uses: actions/cache/restore@v6
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            target
-          key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'crates/*/Cargo.toml') }}
-          restore-keys: cargo-${{ runner.os }}-
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       - name: cargo fmt --check
         if: steps.crates.outputs.present == 'true'
@@ -193,25 +256,6 @@ jobs:
       - name: cargo test
         if: steps.crates.outputs.present == 'true'
         run: cargo test --workspace
-
-      # Paired with the restore above. `cache-hit != 'true'` skips the write when
-      # the exact key already exists, so a run that changed nothing does not
-      # re-upload 2 GiB; a push to main whose Cargo.lock moved is the only thing
-      # that writes here.
-      - name: Save cargo cache
-        if: >-
-          steps.crates.outputs.present == 'true'
-          && github.event_name == 'push'
-          && github.ref == 'refs/heads/main'
-          && steps.cargo-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            target
-          key: cargo-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'crates/*/Cargo.toml') }}
 
   # The `fp` CLI (PyPI: fp-cli). The only Python in this repo, and the only job that
   # tests it — none of the bun/cargo jobs above look at fp-cli/ at all. It is matrixed
@@ -374,6 +418,10 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    # The retry above nominally allows 3 attempts x 10 minutes. Capping the job
+    # at 20 is deliberate: a test job deep into a retry storm is a failure worth
+    # surfacing, not one worth waiting out.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -391,7 +439,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: actions/cache@v6
+      - uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -402,7 +450,31 @@ jobs:
         with:
           max_attempts: 3
           timeout_minutes: 5
-          command: bun install --frozen-lockfile
+          command: bun install --frozen-lockfile --ignore-scripts
+
+      # Pinned, because vitest runs under Node and this job had been taking
+      # whatever the runner image happened to ship. That is how the suite came
+      # to pass here and fail on contributors' machines: from Node 24 on, Node
+      # supplies its OWN `localStorage` global, which only works with
+      # `--localstorage-file` and otherwise shadows jsdom's with `undefined` —
+      # fifteen failures in `project-list.test.tsx`, green in CI. The polyfill
+      # in `__tests__/setup.ts` is what actually fixes it; this pin is what
+      # keeps CI from silently drifting onto a different runtime again.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      # The custom-policy loader tests resolve `import ... from 'failproofai'`
+      # inside a generated .mjs through findDistIndex(), which needs a real
+      # dist/index.js on disk — so with `--ignore-scripts` above, the `prepare`
+      # hook is no longer there to have built it. Three milliseconds of bun
+      # bundling, against the ~28s full Next build it replaces.
+      #
+      # This is also why running the whole suite is a bad way to check the
+      # dependency: some earlier test writes that file, so the loader tests pass
+      # on ordering alone when run together and fail when run on their own.
+      - name: Build the policy-loader fixture
+        run: bun build src/index.ts --outdir dist --target node --format cjs
 
       - name: Test (${{ matrix.env-config.name }})
         uses: nick-fields/retry@v4
@@ -414,6 +486,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       FAILPROOFAI_TELEMETRY_DISABLED: "1"
       NEXT_TELEMETRY_DISABLED: "1"
@@ -424,7 +497,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: actions/cache@v6
+      - uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -435,7 +508,7 @@ jobs:
         with:
           max_attempts: 3
           timeout_minutes: 5
-          command: bun install --frozen-lockfile
+          command: bun install --frozen-lockfile --ignore-scripts
 
       - name: Build
         uses: nick-fields/retry@v4
@@ -446,35 +519,74 @@ jobs:
 
   docs:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          # Depth 2 so the gate below can diff the PR's merge commit against
+          # its first parent. See rust-quality for the full reasoning.
+          fetch-depth: 2
+          # This job runs `npm install -g mintlify`, which executes package
+          # lifecycle scripts. The default would leave GITHUB_TOKEN sitting in
+          # .git/config where any of them could read it — the same reasoning
+          # rust-quality and build-daemon already carry, and this is the job
+          # where it bites hardest.
+          persist-credentials: false
 
-      - uses: oven-sh/setup-bun@v2
+      # Same shape as rust-quality's gate, same reason: this job installs a
+      # global npm package and a full dependency tree to validate documentation
+      # that most pull requests do not touch. On `push` it always runs.
+      - name: Detect docs changes
+        id: docs
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # bun.lock alongside package.json: `validate:mdx` runs a bun script,
+          # so a lockfile-only change moves the dependency graph it parses with.
+          if git diff --name-only HEAD^1 HEAD | grep -qE '^(docs/|scripts/validate-mdx\.ts$|package\.json$|bun\.lock$|\.github/workflows/ci\.yml$)|\.mdx$'; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No docs-affecting paths in this PR — skipping validation."
+          fi
+
+      - if: steps.docs.outputs.present == 'true'
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - uses: actions/cache@v6
+      - if: steps.docs.outputs.present == 'true'
+        uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
       - name: Install dependencies
+        if: steps.docs.outputs.present == 'true'
         uses: nick-fields/retry@v4
         with:
           max_attempts: 3
           timeout_minutes: 5
-          command: bun install --frozen-lockfile
+          command: bun install --frozen-lockfile --ignore-scripts
 
-      - uses: actions/setup-node@v7
+      - if: steps.docs.outputs.present == 'true'
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
+      # Pinned to match translate-docs.yml, which has always pinned it. Floating
+      # here meant an upstream Mintlify release could turn the PR gate red on a
+      # branch that changed nothing.
       - name: Install Mintlify CLI
-        run: npm install -g mintlify
+        if: steps.docs.outputs.present == 'true'
+        run: npm install -g mintlify@4.2.680
 
       # Validates docs.json structure + nav-link resolution.
       - name: Validate docs config
+        if: steps.docs.outputs.present == 'true'
         working-directory: docs
         run: mintlify validate
 
@@ -486,10 +598,12 @@ jobs:
       # reference resolves on disk — that class breaks nothing at build time,
       # it just renders as a broken image, so nothing else in CI watches it.
       - name: Validate MDX pages parse and image references resolve
+        if: steps.docs.outputs.present == 'true'
         run: bun run validate:mdx
 
   test-e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       FAILPROOFAI_TELEMETRY_DISABLED: "1"
       NEXT_TELEMETRY_DISABLED: "1"
@@ -500,7 +614,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: actions/cache@v6
+      - uses: actions/cache/restore@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -511,10 +625,19 @@ jobs:
         with:
           max_attempts: 3
           timeout_minutes: 5
-          command: bun install --frozen-lockfile
+          command: bun install --frozen-lockfile --ignore-scripts
 
+      # The vitest e2e suite spawns bin/failproofai.mjs with
+      # FAILPROOFAI_DIST_PATH pointed here, so it needs dist/index.js. cli.mjs
+      # and worker.mjs are for the standalone __tests__/e2e/layout/*.sh
+      # fixtures, which are not in the vitest `include` and so were quietly
+      # relying on the `prepare` hook having built them during install. Two more
+      # bun bundles, ~50ms, and they stay runnable from a CI checkout.
       - name: Build E2E fixtures
-        run: bun build src/index.ts --outdir dist --target node --format cjs
+        run: |
+          bun build src/index.ts --outdir dist --target node --format cjs
+          bun run build:cli
+          bun run build:worker
 
       - name: E2E Hook Tests
         uses: nick-fields/retry@v4

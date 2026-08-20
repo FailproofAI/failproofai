@@ -1,0 +1,25 @@
+---
+title: "Tools"
+description: "Langsame, fehlerhafte oder übermäßig genutzte Tools über Agent-Sessions hinweg finden."
+icon: "wrench"
+---
+
+Tools gruppiert Tool-Aufrufe über Sessions hinweg, damit Sie Latenz und Aufrufverteilung vergleichen können.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Observe → Tools**.
+    2. Filtern Sie nach Umgebung, Tool-Name, Agent oder Session-ID.
+    3. Überprüfen Sie Latenz und Tool-Verteilung.
+    4. Wählen Sie einen Diagrammpunkt oder ein Tool-Segment aus, um passende Events und Sessions zu öffnen.
+
+    ![Die Tools-Seite mit Latenz, Aufschlüsselung nach Erfolg und Fehler sowie Tool-Aufrufverteilung.](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

@@ -1,0 +1,48 @@
+---
+---
+title: "Ngăn chặn lỗi đầu tiên của bạn bằng một chính sách"
+description: "Tạo một phiên bản chính sách, triển khai nó ở chế độ quan sát, rồi thực thi nó."
+icon: "shield-check"
+---
+
+Chỉ sử dụng một chính sách sau khi bạn có thể mô tả hành động không an toàn và những hành động hợp pháp phải được cho phép.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Tạo chính sách">
+        Đi tới **Admin → policy editor**. Bắt đầu với chính sách demo, xem xét hoặc chỉnh sửa mã nguồn của nó, rồi chọn **publish version**. Xuất bản sẽ tạo phiên bản bất biến mà bạn có thể triển khai cho các máy.
+
+        ![Chế độ soạn của trình chỉnh sửa chính sách với chính sách demo sẵn sàng để xuất bản dưới dạng một phiên bản bất biến.](/images/dashboard/policy-editor.png)
+      </Step>
+      <Step title="Triển khai nó cho một máy">
+        Đi tới **Admin → enforcement**, mở rộng máy mục tiêu, và chọn **edit this machine**. Thêm chính sách demo đã xuất bản, ghim phiên bản của nó, chọn **observe**, và áp dụng triển khai.
+
+        ![Trình chỉnh sửa triển khai máy với phiên bản chính sách đã xuất bản được chọn ở chế độ quan sát trước khi áp dụng triển khai.](/images/dashboard/enforcement-editor.png)
+      </Step>
+      <Step title="Xác minh chính sách">
+        Chạy một phiên làm việc agent mới trên máy đó, rồi mở **Observe → policy**. Chọn máy và xác nhận rằng chính sách demo xuất hiện trong ánh xạ chính sách và dòng thời gian quyết định. Chế độ quan sát ghi lại những gì chính sách sẽ làm mà không chặn hành động.
+
+        ![Trang Chính sách hiển thị tổng quyết định, hoạt động thực thi theo thời gian, và ánh xạ chính sách được quản lý cục bộ và trên Cloud.](/images/dashboard/policy-observe.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    Tạo chính sách trên Cloud và triển khai lfleet là các quy trình quản trị. Sử dụng CLI cục bộ để xác thực chính sách tương tự trước khi xuất bản:
+
+    ```bash
+    failproofai policies --install --custom ./payment-retry.policies.ts \
+      --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Sử dụng `fp` để kiểm tra các quyết định chính sách có thể nhìn thấy trên Cloud:
+
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp sessions --env production --since 24h
+    ```
+
+    CLI trên Cloud không hiển thị các tuyến triển khai thực thi chỉ dành cho root. Xuất bản các phiên bản từ **Admin → policy editor** và triển khai chúng từ **Admin → enforcement**.
+  </Tab>
+</Tabs>

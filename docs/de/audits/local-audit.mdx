@@ -1,0 +1,74 @@
+---
+title: "Lokalen Agentenverlauf prüfen"
+description: "Unterstützte Agent-CLI-Verläufe offline scannen und riskantes oder verschwenderisches Verhalten lokal überprüfen."
+icon: "laptop-minimal-check"
+---
+
+Verwende ein lokales Audit für eine sofortige, private Überprüfung, bevor du einen Rechner mit Failproof AI Cloud verbindest. Es scannt die bereits auf deinem Rechner gespeicherten Agentenverläufe, repliziert die Tool-Aktivität durch integrierte Richtlinien und öffnet ein lokales Ergebnis-Dashboard.
+
+## Interaktives Audit ausführen
+
+<Tabs>
+  <Tab title="Dashboard">
+    Das lokale Audit startet über die CLI, da es Verläufe auf dem aktuellen Rechner auffinden muss. Führe `failproofai audit` aus; nach dem Scan startet Failproof AI das mitgelieferte Dashboard und öffnet **http://localhost:8020/audit**.
+
+    Überprüfe in der Audit-Ansicht die Anzahl der Sitzungen, Tool-Aufrufe, Projekte und Richtlinientreffer. Beginne mit häufigen Befunden, und untersuche dann das betroffene Projekt und den Agentenverlauf, bevor du die Durchsetzung aktivierst.
+
+    <Info>Das lokale Audit-Dashboard ist von **Analyze → Audits** in Failproof AI Cloud getrennt. Lokale Audits verbleiben auf dem Rechner und erfordern kein Konto oder keine Netzwerkverbindung.</Info>
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    npm install -g failproofai
+    failproofai audit
+    ```
+
+    Der Befehl führt einen vollständigen Scan aller gefundenen unterstützten Verläufe durch. Der aktuelle Befehl akzeptiert keine Filter wie `--since`, `--cli`, `--project`, `--port` oder `--no-open`.
+
+    Halte den Prozess am Laufen, während du das lokale Dashboard verwendest. Drücke <kbd>Ctrl</kbd>+<kbd>C</kbd>, wenn du fertig bist.
+  </Tab>
+</Tabs>
+
+Die aktuellen Audit-Adapter können Verläufe von Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi, Hermes, OpenClaw, Factory, Devin, Antigravity und Goose lesen. Es werden nur lokal verfügbare Verläufe gescannt.
+
+## Regelmäßige lokale Audits planen
+
+<Tabs>
+  <Tab title="Dashboard">
+    Öffne **Einstellungen** im lokalen Dashboard, aktiviere geplante Audits, wähle das Intervall und gib die E-Mail-Adresse an, die Befunde erhalten soll. Dashboard und CLI aktualisieren dieselbe Rechnerkonfiguration.
+  </Tab>
+  <Tab title="CLI">
+    Ein wöchentliches Audit aktivieren und Befunde an die angegebene Adresse senden:
+
+    ```bash
+    failproofai audit --schedule 7 --email reliability@example.com
+    failproofai audit --status
+    ```
+
+    Das Intervall akzeptiert 1–90 Tage und ist standardmäßig 7, wenn es weggelassen wird. Bei der ersten Einrichtung wirst du bei Bedarf angemeldet; `--email` gibt die Berichtsadresse an, ohne eine Eingabeaufforderung zu zeigen.
+
+    Den Zeitplan deaktivieren, ohne den lokalen Audit-Verlauf zu löschen:
+
+    ```bash
+    failproofai audit --no-schedule
+    ```
+  </Tab>
+</Tabs>
+
+Der Daemon führt geplante Scans im Hintergrund aus, aktualisiert das zwischengespeicherte Ergebnis für das lokale Dashboard und sendet den konfigurierten Bericht per E-Mail. Verwende `failproofai audit`, wenn du sofort einen interaktiven Scan ausführen möchtest.
+
+## Von lokalen Erkenntnissen zu Cloud-Betrieb wechseln
+
+Ein lokales Audit ist eine schnelle Ausgangsbasis. Verbinde den Rechner mit Failproof AI Cloud, wenn du gemeinsame Traces, wiederkehrende Populations-Audits, Befunde und Probleme, Warnmeldungen, organisationsweite Richtlinienbereitstellung oder Fleet-Übersicht benötigst.
+
+<CardGroup cols={2}>
+  <Card title="Cloud-Audit erstellen" icon="scan-search" href="/de/audits/setup">
+    Definiere ein wiederkehrendes Ziel, eine Population, ein Nachweisfenster und Reaktionskanäle.
+  </Card>
+  <Card title="Richtlinie aktivieren" icon="shield-check" href="/de/start/first-policy">
+    Lokal validieren, gezielt veröffentlichen und zunächst für eine kleine Rechnergruppe bereitstellen.
+  </Card>
+</CardGroup>
+
+<Warning>
+  Audit-Ausgabe ist ein Überprüfungsnachweis, kein Beweis dafür, dass jede markierte Aktion unsicher ist. Überprüfe den Kontext, bevor du einen Befund in eine blockierende Durchsetzungsmaßnahme umwandelst.
+</Warning>

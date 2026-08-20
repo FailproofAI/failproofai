@@ -1,0 +1,83 @@
+---
+---
+title: "Ngữ cảnh agent"
+description: "Cho các audit biết mỗi agent phải làm gì, tạo ra cái gì, và không được phép làm gì."
+icon: "bot"
+---
+
+Ngữ cảnh agent cho các audit biết mỗi agent tồn tại để làm gì, nó phải tạo ra cái gì, và nó không được phép làm gì. Failproof AI lưu trữ ngữ cảnh này dưới dạng một hợp đồng agent cho mỗi agent.
+
+Ngữ cảnh agent thuộc về tổ chức, không thuộc về một audit cụ thể. Bạn viết nó một lần cho mỗi agent, và mọi audit được hỗ trợ bởi model có phạm vi bao gồm agent đó đều sử dụng nó.
+
+## Thêm ngữ cảnh agent
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Analyze → audits**, chọn **agents**, và lựa chọn ID agent được báo cáo bởi các phiên của nó.
+    2. Chọn **add content** hoặc **edit**.
+    3. Mô tả agent dùng để làm gì, nó phải tạo ra cái gì, ý nghĩa của "hoàn thành" là gì, nó nên chạy bao thường xuyên, và nó không được phép làm gì.
+    4. Lưu ngữ cảnh, sau đó quay trở lại biểu mẫu audit và xác nhận agent được chọn được hiển thị là đã được bao gồm.
+
+    ![Ngăn kéo Agents trong audit được sử dụng để thêm mục đích, tần suất, kết quả, điều kiện hoàn thành, và hành vi bị cấm cho một agent.](/images/dashboard/agent-context.png)
+
+    Bạn cũng có thể thêm hoặc chỉnh sửa ngữ cảnh agent từ ngăn kéo **agents** khi tạo hoặc chỉnh sửa một audit. Nó được lưu độc lập và ngay lập tức khả dụng cho mọi audit có liên quan.
+  </Tab>
+  <Tab title="CLI">
+    Cloud CLI chưa cung cấp các lệnh hợp đồng. Sử dụng API công khai với một khóa có `audits:read` và `audits:write`:
+
+    ```bash
+    curl -X POST "https://app.befailproof.ai/v1/audits/contracts" \
+      -H "Authorization: Bearer $FAILPROOFAI_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "agent_id": "nightly-reconciler",
+        "enabled": true,
+        "body": "# Purpose\nReconcile yesterday'"'"'s payouts.\n\n## Outputs\nPublish a signed summary.\n\n## Must not\nNever modify ledger entries."
+      }'
+    ```
+
+    Liệt kê các hợp đồng với `GET /v1/audits/contracts`; truy xuất một hợp đồng với `GET /v1/audits/contracts/{id}`. Cập nhật với `PUT` là thay thế toàn bộ và yêu cầu cả `agent_id` và `body`.
+  </Tab>
+</Tabs>
+
+## Viết ngữ cảnh hữu ích
+
+Giữ ngữ cảnh dưới 5.000 ký tự và làm cho nó có thể kiểm tra được. Ngữ cảnh hữu ích thường chứa:
+
+- **Purpose:** tại sao agent tồn tại
+- **Outputs:** các hiện vật hoặc hành động nó phải tạo ra
+- **Done when:** điều kiện làm cho một lần chạy thành công
+- **Cadence:** nó nên chạy bao thường xuyên hoặc khi nào
+- **Must not:** các hành động và kết quả luôn không chấp nhận được
+
+```markdown
+---
+agent: nightly-reconciler
+purpose: Reconcile yesterday's payouts and publish a signed summary.
+cadence: Once daily after 02:00 UTC. Never more than once.
+---
+
+## Outputs
+- A signed reconciliation summary in the finance channel.
+
+## Done when
+- Every payout is matched or explicitly flagged.
+
+## Must not
+- Modify ledger entries. Report discrepancies instead.
+```
+
+Ngữ cảnh agent phát biểu hành vi mong đợi; nó không thể cho phân tích biết kết luận nào cần đạt được hoặc hạn chế nó kiểm tra bằng chứng nào. Các agent không có ngữ cảnh được audit bình thường, nhưng Failproof AI không thể đánh giá hành vi của chúng dựa trên ý định cụ thể của tổ chức.
+
+## Tạm dừng hoặc thay đổi ngữ cảnh agent
+
+- Tạm dừng ngữ cảnh agent khi các audit nên tạm thời bỏ qua nó. Tạm dừng có thể được hoàn nguyên.
+- Chỉnh sửa ngữ cảnh khi trách nhiệm của agent thay đổi. Văn bản mới áp dụng cho các lần chạy trong tương lai.
+- Kiểm tra **last matched** khi một agent đang chạy không bao giờ có vẻ sử dụng ngữ cảnh của nó. Điều này thường có nghĩa là ID agent của nó không khớp với telemetry.
+- Xóa thông qua API chỉ khi văn bản phải được phá hủy vĩnh viễn. Dashboard cố ý cung cấp tạm dừng thay vì xóa.
+
+Mỗi lần chạy audit lưu trữ ảnh chụp ngữ cảnh agent chính xác mà nó sử dụng. Chỉnh sửa, tạm dừng, hoặc xóa tài nguyên hợp đồng hiện tại không viết lại cơ sở của các phát hiện trước đó.
+
+<Info>
+  Đọc hợp đồng yêu cầu `audits:read`. Tạo, chỉnh sửa, tạm dừng, hoặc xóa chúng yêu cầu `audits:write`.
+</Info>

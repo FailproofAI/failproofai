@@ -1,0 +1,55 @@
+---
+title: "Sessioni"
+description: "Inizia con il record completo di un'esecuzione agente."
+icon: "workflow"
+---
+
+Una sessione è il miglior punto di partenza quando un agente si comporta in modo inaspettato. Riunisce le richieste al modello, le risposte, le chiamate agli strumenti, le interazioni umane, gli errori, le valutazioni e le decisioni politiche che appartengono a un'esecuzione.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+Segui un'esecuzione agente dal suo obiettivo attraverso le chiamate al modello, gli strumenti e la risposta finale.
+
+## Trova una sessione
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Nella barra laterale Cloud, vai a **Observe → Sessions**.
+    2. Imposta la finestra temporale, quindi filtra per ambiente, stato, agente o ID sessione.
+    3. Aggiungi intervalli di punteggio o metrica quando hai bisogno di una sezione per qualità, costo, token o latenza.
+    4. Seleziona una riga per aprire la sua traccia. Usa il controllo di copia accanto all'ID sessione quando la condividi.
+
+    ![L'elenco Sessions che mostra una riga per esecuzione con filtri per ambiente, agente, stato e punteggio di valutazione.](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp sessions --env production --since 24h
+    fp sessions --status error,timeout --agent-id checkout-agent
+    fp --json sessions --session-id <session-id>
+    ```
+
+    Aggiungi `--agents` per espandere le esecuzioni multi-agente, `--all` per impaginare, o `--fields` per scegliere le colonne di output.
+  </Tab>
+</Tabs>
+
+## Quello che puoi fare
+
+- Trova un'esecuzione per agente, ambiente, ora, modello, tipo di evento o stato di errore.
+- Segui la sequenza esatta che ha prodotto un risultato.
+- Confronta esecuzioni riuscite e fallite.
+- Apri le prove utilizzate da un risultato di audit o da un incidente di avviso.
+- Esporta una sessione quando hai bisogno di un record offline.
+
+## Un ordine di indagine affidabile
+
+1. Conferma l'obiettivo della sessione e l'ambiente.
+2. Trova il primo errore o la prima decisione inaspettata—non solo il fallimento finale.
+3. Ispeziona il contesto del modello e l'input dello strumento immediatamente prima.
+4. Controlla i tentativi, la latenza e le interruzioni umane.
+5. Rivedi i punteggi di valutazione e le decisioni politiche.
+
+<Card title="Leggi una traccia" icon="route" href="/it/sessions/read-a-trace">
+  Scopri come passare dal riepilogo della sessione all'evento che ha causato il risultato.
+</Card>

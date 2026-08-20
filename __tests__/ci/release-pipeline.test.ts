@@ -497,6 +497,118 @@ describe("publish.yml", () => {
   });
 });
 
+/**
+ * The announcement runs once per stable release and nothing else exercises it,
+ * so every guard here is for a change that would look harmless in review and
+ * only show up in a public channel — or not show up at all.
+ */
+describe("publish.yml / the Discord release announcement", () => {
+  const wf = workflow("publish.yml");
+  const job = wf.jobs.announce;
+
+  it("announces only a STABLE release, at the dist-tag a bare install resolves", () => {
+    // Both halves are required. A prerelease version is a beta nobody asked to
+    // be pinged about; a stable version published at `next` is not what
+    // `npm install failproofai` returns, so the announcement's install line
+    // would be wrong on the one line people copy.
+    expect(job.if).toContain("needs.preflight.outputs.is_prerelease == 'false'");
+    expect(job.if).toContain("needs.preflight.outputs.dist_tag == 'latest'");
+    expect(job.if).toContain("needs.preflight.outputs.dry_run != 'true'");
+  });
+
+  it("announces only after the release is published AND verified installable", () => {
+    expect(job.needs).toEqual(expect.arrayContaining(["publish", "verify-install"]));
+    // No `always()`: a job in `needs` that failed must stop the announcement,
+    // or a channel gets told to install something that 404s.
+    expect(job.if).not.toContain("always()");
+  });
+
+  it("cannot hold back the release it announces", () => {
+    // Nothing may depend on `announce`. A red mark there means the message did
+    // not go out; it must never mean a published package is blocked.
+    for (const [name, other] of Object.entries<Record<string, any>>(wf.jobs)) {
+      if (name === "announce") continue;
+      expect([other.needs ?? []].flat()).not.toContain("announce");
+    }
+  });
+
+  it("prefers the GitHub Release body over the changelog", () => {
+    const build = job.steps.find((s: Record<string, any>) => s.name === "Build the announcement");
+    expect(build.env.RELEASE_BODY).toContain("github.event.release.body");
+    expect(build.run).toContain("--notes-file");
+  });
+
+  it("never puts the release body on a command line", () => {
+    // It is arbitrary markdown typed into a web form. Interpolating it into a
+    // `run:` block lets a backtick in somebody's release notes execute inside
+    // the release pipeline.
+    const build = job.steps.find((s: Record<string, any>) => s.name === "Build the announcement");
+    expect(build.run).not.toContain("github.event.release.body");
+    expect(build.run).toContain("printf '%s' \"$RELEASE_BODY\"");
+  });
+
+  it("skips silently without a webhook and fails loudly when a post does not land", () => {
+    const post = job.steps.find((s: Record<string, any>) => s.name === "Post to the releases channel");
+    expect(post.env.DISCORD_RELEASE_WEBHOOK).toContain("secrets.DISCORD_RELEASE_WEBHOOK");
+    // A fork with no webhook must not turn a release red...
+    expect(post.run).toContain('if [ -z "$DISCORD_RELEASE_WEBHOOK" ]');
+    expect(post.run).toContain("::notice::");
+    // ...but a deleted or revoked webhook is a real failure, and this job is
+    // the only place anyone would ever learn it happened.
+    expect(post.run).toContain("::error::");
+    expect(post.run.trimEnd().endsWith("exit 1")).toBe(true);
+  });
+
+  it("never retries a post that may already have arrived", () => {
+    // A Discord webhook has no idempotency key, so every accepted POST creates
+    // another message — retrying a transport failure that happened AFTER the
+    // body went out announces the release twice, role ping and all. Only the
+    // curl exits that mean "never left this runner" may be repeated.
+    const post = job.steps.find((s: Record<string, any>) => s.name === "Post to the releases channel");
+    expect(post.run).toContain("NEVER_SENT=");
+    const retryable = /NEVER_SENT="([^"]*)"/.exec(post.run)![1].trim().split(/\s+/);
+
+    // Asserted as an exact ALLOWLIST, not as the absence of the four ambiguous
+    // codes below. Naming what may be retried is the same reason the shell uses
+    // an allowlist: a denylist only rejects the failure modes somebody thought
+    // of, and curl has plenty more that can land after the body went out (18
+    // partial transfer, 56 recv error, …). Widen this deliberately or not at
+    // all. 5 proxy, 6 host, 7 connect, 35 TLS connect, 60 TLS certificate.
+    expect(retryable).toEqual(["5", "6", "7", "35", "60"]);
+    // Named individually too, so a failure says WHICH kind of ambiguity got in.
+    for (const ambiguous of ["28", "52", "55", "56"]) {
+      expect(retryable).not.toContain(ambiguous);
+    }
+
+    // A 4xx is deterministic, and the `break` has to be inside that branch —
+    // anywhere else it would stop the loop on a retryable outcome instead.
+    expect(post.run).toMatch(/4\*\)[\s\S]*?break/);
+  });
+
+  it("holds the webhook credential under least privilege", () => {
+    // Declared, not inherited: without a block the job takes the repository or
+    // organization default, which may carry write scopes it has no use for.
+    expect(job.permissions).toEqual({ contents: "read" });
+  });
+
+  it("reads the release role from a repository variable or a secret", () => {
+    const build = job.steps.find((s: Record<string, any>) => s.name === "Build the announcement");
+    expect(build.env.ROLE_ID).toContain("vars.DISCORD_RELEASE_ROLE_ID");
+    expect(build.env.ROLE_ID).toContain("secrets.DISCORD_RELEASE_ROLE_ID");
+  });
+
+  it("refuses a stable release with nothing to announce, before anything is built", () => {
+    // In PREFLIGHT, the one point in this pipeline where failing costs nothing:
+    // no cross-compile, no release assets, no npm publish.
+    const step = wf.jobs.preflight.steps.find(
+      (s: Record<string, any>) => s.name === "Verify this stable release has notes to announce",
+    );
+    expect(step).toBeDefined();
+    expect(step.if).toContain("is_prerelease == 'false'");
+    expect(step.run).toContain("--check");
+  });
+});
+
 describe("pipeline / CLI agreement", () => {
   const DAEMON_SERVICE = resolve(ROOT, "src/hooks/daemon-service.ts");
 
@@ -533,4 +645,139 @@ describe("pipeline / CLI agreement", () => {
       expect(DAEMON_PLATFORMS.map((p: { key: string }) => p.key).sort()).toEqual([...declared].sort());
     },
   );
+});
+
+/**
+ * CI cost guards.
+ *
+ * Four regressions, each a one-line edit away, none of which turns CI red. They
+ * only make it slower — and nothing watches that, which is why they need a test
+ * rather than a convention:
+ *
+ *   - package.json's `prepare` is `bun run build`, so any `bun install` without
+ *     `--ignore-scripts` fires a full Next.js production build as an install
+ *     lifecycle hook. That was ~28s in six of ci.yml's eight jobs plus twice
+ *     more per release, every second of it discarded;
+ *   - a job with no `timeout-minutes` inherits GitHub's six-hour default. On
+ *     2026-08-19 the linux-x64 daemon leg sat in `apt-get update` against a
+ *     stalled Azure mirror through three runner re-dispatches, with a release
+ *     blocked behind it, because nothing bounded it;
+ *   - `path: target` in a cargo cache archives the entire build directory. One
+ *     such entry reached 5,727 MB — 57% of the repo's whole 10 GiB quota, which
+ *     keeps the store in permanent LRU eviction — and took 127s to restore
+ *     against the 74s of compilation it was there to save;
+ *   - cancel-in-progress on build-daemon must stay scoped to `pull_request`,
+ *     because the `workflow_call` legs ARE the release's binaries.
+ */
+describe("CI cost guards", () => {
+  const COST_GUARDED = ["ci.yml", "publish.yml", "build-daemon.yml", "osv-scanner.yml", "build-image.yml"];
+
+  /** Every shell command a job runs, including those wrapped by nick-fields/retry. */
+  function shellText(job: Record<string, any>): string {
+    return (job.steps ?? [])
+      .map((s: Record<string, any>) => [s.run ?? "", s.with?.command ?? ""].join("\n"))
+      .join("\n");
+  }
+
+  it.each(COST_GUARDED)("%s gives every job a timeout-minutes", (name) => {
+    const jobs: [string, Record<string, any>][] = Object.entries(workflow(name).jobs);
+    const unbounded = jobs
+      // A `uses:` job calls a reusable workflow and cannot carry a timeout of
+      // its own; that workflow's jobs are covered by their own row here.
+      .filter(([, job]) => !job.uses && typeof job["timeout-minutes"] !== "number")
+      .map(([id]) => id);
+    expect(unbounded).toEqual([]);
+  });
+
+  it.each(["ci.yml", "publish.yml"])("%s never lets an install run the prepare hook", (name) => {
+    const offenders: string[] = [];
+    for (const [id, job] of Object.entries(workflow(name).jobs) as [string, Record<string, any>][]) {
+      for (const line of shellText(job).split("\n")) {
+        if (line.includes("bun install") && !line.includes("--ignore-scripts")) {
+          offenders.push(`${name} / ${id}: ${line.trim()}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it.each(["ci.yml", "build-daemon.yml"])("%s caches cargo without archiving target/", (name) => {
+    const steps: Record<string, any>[] = Object.values(workflow(name).jobs).flatMap(
+      (j: any) => j.steps ?? [],
+    );
+    const archivesTarget = steps
+      .filter((s) => String(s.uses ?? "").startsWith("actions/cache"))
+      .filter((s) =>
+        String(s.with?.path ?? "")
+          .split("\n")
+          .some((line) => line.trim() === "target"),
+      );
+    expect(archivesTarget).toEqual([]);
+    expect(steps.some((s) => String(s.uses ?? "").startsWith("Swatinem/rust-cache"))).toBe(true);
+  });
+
+  it("bounds and retries the musl toolchain install, with a root-owned killer", () => {
+    const step = workflow("build-daemon.yml").jobs.build.steps.find((s: Record<string, any>) =>
+      String(s.name ?? "").includes("musl toolchain"),
+    );
+    const script = String(step.run ?? "");
+
+    // `sudo timeout`, in that order, is the whole point and the reason this
+    // assertion is this specific. The first version of this step used
+    // nick-fields/retry, which bounds a step by killing its process tree AS THE
+    // RUNNER USER — and apt runs as root, so the four-minute timeout fired
+    // correctly and the action then died with `kill EPERM` instead of retrying.
+    // `timeout` inside the sudo is what makes the killer root as well.
+    expect(step.uses).toBeUndefined();
+    expect(script).toMatch(/sudo timeout\b/);
+    expect(script).not.toMatch(/timeout\s+\d+\s+sudo\b/);
+
+    // The install is bounded too, not just the update — it is the step that
+    // actually downloads packages, and an unbounded one stalls the same way.
+    expect(script).toMatch(/sudo timeout[^\n]*apt-get install/);
+
+    // Install BEFORE the update loop. `apt-get update` is the part that
+    // stalled; the runner image's package lists usually make it unnecessary,
+    // so reversing these two would put the flaky step back on the fast path
+    // while every assertion above still passed.
+    expect(script.indexOf("if install_musl; then")).toBeGreaterThan(-1);
+    expect(script.indexOf("if install_musl; then")).toBeLessThan(script.indexOf("for attempt in"));
+
+    // Bounded per attempt, retried, and loud about which mirror stalled.
+    expect(script).toContain("Acquire::http::Timeout");
+    expect(script).toContain("for attempt in");
+    expect(script).not.toContain("-qq");
+  });
+
+  it("retries every `bun run build` on the release path", () => {
+    // `bun --bun next build` is a demonstrated flake: on 2026-08-19 it took a
+    // SIGSEGV inside bun 1.3.14 during v1.0.1's TypeScript phase, exited 132,
+    // and skipped release-assets/publish/verify-install/announce — a release
+    // lost to a crash in the toolchain rather than anything being released.
+    // The same command had passed on the same commit in ci.yml minutes before.
+    //
+    // ci.yml's `build` job had 3 attempts from the start; publish.yml's two
+    // build steps had none, so the path where a spurious failure costs the most
+    // was the one without a net. Asserted rather than remembered.
+    const unretried: string[] = [];
+    for (const [id, job] of Object.entries(workflow("publish.yml").jobs) as [string, Record<string, any>][]) {
+      for (const step of job.steps ?? []) {
+        const command = String(step.with?.command ?? "");
+        const bare = String(step.run ?? "");
+        if (bare.includes("bun run build")) {
+          unretried.push(`${id}: ${String(step.name ?? "(unnamed)")}`);
+        } else if (command.includes("bun run build")) {
+          expect(String(step.uses)).toContain("nick-fields/retry");
+          expect(step.with.max_attempts).toBeGreaterThanOrEqual(2);
+        }
+      }
+    }
+    expect(unretried).toEqual([]);
+  });
+
+  it("supersedes a superseded daemon build without cancelling a release", () => {
+    const c = workflow("build-daemon.yml").concurrency;
+    expect(c.group).toContain("github.ref");
+    expect(String(c["cancel-in-progress"])).toContain("pull_request");
+  });
 });

@@ -1,0 +1,37 @@
+---
+title: "Uso"
+description: "Inspecione o consumo da organização e a janela de faturamento ativa."
+icon: "chart-no-axes-combined"
+---
+
+Uso exibe o consumo da organização atual e suas janelas de faturamento. Utilize essa seção para entender como o rollout em produção, o volume de transcrições, as avaliações e a cadência de auditorias afetam o seu plano.
+
+## Revisar uso
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Acesse **Administração → Uso**.
+    2. Confirme a organização e a janela de medição.
+    3. Revise ingestão, sessões, avaliações, métricas, auditorias, achados, alertas, usuários e chaves.
+    4. Compare auditorias iniciadas e concluídas quando o uso de auditoria parecer inesperado.
+
+    ![A página de Uso exibindo a janela de medição, eventos capturados, pipelines de avaliação e auditoria, recursos do workspace, membros e chaves de API.](/images/dashboard/usage-overview.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp usage
+    fp --json usage
+    fp --org reliability-team --json usage
+    ```
+  </Tab>
+</Tabs>
+
+## Investigar uma mudança
+
+1. Confirme a organização ativa e a janela de faturamento.
+2. Compare o aumento com o volume de sessões por ambiente.
+3. Verifique se uma nova integração começou a enviar transcrições.
+4. Revise mudanças na cadência de avaliadores e auditorias.
+5. Compare com os limites do plano de preços atual.
+
+O CLI retorna o mesmo resumo para scripts.

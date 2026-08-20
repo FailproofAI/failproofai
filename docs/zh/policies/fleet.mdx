@@ -1,0 +1,52 @@
+---
+title: "将策略部署到机器"
+description: "了解哪些机器已注册、处于最新状态并正在执行预期的策略版本。"
+icon: "network"
+---
+
+机群覆盖情况用于回答风险所在位置是否存在对应策略。通过稳定 ID 和可读标签追踪机器，然后比较其已分配和已上报的部署状态。
+
+## 检查覆盖情况
+
+<Tabs>
+  <Tab title="仪表板">
+    1. 进入 **Admin → enforcement**，查看执行中和观察中的数量汇总。
+    2. 按 ID 或标签搜索机器，或筛选缺少策略的机器。
+    3. 展开某行，比较已分配策略、已上报部署情况、最后签入时间及历史记录。
+    4. 若某次已应用的部署仍处于待处理状态，请在该机器的轮询间隔后刷新。
+
+    ![显示策略覆盖情况、机器部署状态以及观察和执行分配的 Enforcement 机群视图。](/images/dashboard/enforcement-fleet.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    failproofai config --machine-label checkout-runner-03
+    failproofai flush --wait
+    ```
+
+    使用 `fp events --agent-id <agent-id> --since 24h` 确认该机器的 Agent 活动已到达 Cloud。
+  </Tab>
+</Tabs>
+
+使用覆盖视图查找：
+
+- 从未拉取最新部署的机器
+- 已注册但停止上报活动的机器
+- 分配到错误环境或队列的策略
+- 更新中断后产生的版本漂移
+
+无需重新连接即可重命名机器：
+
+```bash
+failproofai config --machine-label checkout-runner-03
+```
+
+检查本地状态：
+
+```bash
+failproofai config --status
+```
+
+<Tip>
+  使用能够标识工作负载和环境的标签。在自动扩缩容或机器替换后，仅靠主机名往往是不够的。
+</Tip>

@@ -1,0 +1,43 @@
+---
+title: "Errores"
+description: "Agrupa errores repetidos y abre las sesiones asociadas."
+icon: "circle-alert"
+---
+
+Errores te ofrece una vista centrada en fallos a través de las sesiones. Agrupa por tipo de error, agente, entorno, modelo, herramienta o ventana de tiempo para identificar problemas operativos recurrentes.
+
+## Investigar errores
+
+<Tabs>
+  <Tab title="Panel">
+    1. Ve a **Observar → Errores**.
+    2. Filtra por entorno, tipo de evento, tipo de error, agente, ID de sesión o texto de búsqueda.
+    3. Expande un error agrupado para ver sus ocurrencias. Selecciona una fila para abrir el evento exacto dentro de su sesión.
+    4. Selecciona el control de campana en un error representativo para configurar una alerta para errores similares.
+
+    ![La página de Errores mostrando un histograma de fallos, errores agrupados y el control para crear una alerta.](/images/dashboard/errors.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp errors --env production --since 24h
+    fp errors --error-type TimeoutError --agent-id checkout-agent
+    fp errors --aggregate --env production --since 7d
+    ```
+
+    Usa `fp events --full --session-id <id>` cuando necesites el payload sin procesar detrás de un resumen de error.
+  </Tab>
+</Tabs>
+
+## Usa Errores cuando necesites
+
+- Encontrar la clase de error más frecuente en producción.
+- Determinar si una herramienta o modelo está causando un pico.
+- Pasar de un conteo agregado a sesiones representativas.
+- Crear una alerta para recurrencias.
+- Incluir la población afectada en una auditoría.
+
+Un error es un evento observado. Una evaluación fallida es un juicio de calidad, y un hallazgo de auditoría es un patrón de fallo investigado. Ten en cuenta estas distinciones al decidir qué flujo de respuesta utilizar.
+
+<Card title="Crear una alerta" icon="bell-ring" href="/es/audits/alerts">
+  Notifica a los responsables cuando un error o una condición de calidad supere un umbral.
+</Card>

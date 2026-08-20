@@ -1,0 +1,73 @@
+---
+---
+title: "कस्टम नीतियां"
+description: "अपने एजेंट वर्कफ़्लो के लिए अद्वितीय विफलता मोड के लिए एक नीति लिखें।"
+icon: "shield-plus"
+---
+
+`.failproofai/policies/` के तहत `policies.js`, `policies.mjs`, या `policies.ts` में समाप्त होने वाली एक फ़ाइल बनाएं। कन्वेंशन फ़ाइलें प्रोजेक्ट और यूजर स्कोप पर स्वचालित रूप से लोड होती हैं।
+
+## Cloud प्रकाशन से पहले नीति का परीक्षण करें
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. कस्टम नीति को एक परीक्षण मशीन पर इंस्टॉल करें और एक मेल खाने वाली क्रिया और एक वैध गैर-मिलान दोनों को ट्रिगर करें।
+    2. **Observe → policy** पर जाएं और दोनों निर्णयों की तुलना करें।
+    3. प्रत्येक लिंक किए गए सेशन को खोलें और सत्यापित करें कि ईवेंट पेलोड में नियम के लिए पर्याप्त साक्ष्य है।
+    4. जब व्यवहार सही हो, तो समीक्षित स्रोत को **Admin → policy editor** में ले जाएं और एक संस्करण प्रकाशित करें।
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies --install --custom ./security.policies.ts \
+      --cli claude --scope project
+    failproofai policies
+    ```
+
+    `.failproofai/policies/` के तहत कन्वेंशन फ़ाइलें `--custom` के बिना लोड होती हैं। CI में एक स्पष्ट इंस्टॉल कमांड रखें जब सत्यापन एक टूटे हुए मॉड्यूल पर विफल होना चाहिए।
+  </Tab>
+</Tabs>
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+यह `production/config.yml`, `/srv/production/config.yml`, `/srv/production`, और `C:\\production\\config.yml` को `Write` और `Edit` दोनों के लिए मेल खाता है। यह `production-backup` जैसे नामों से मेल नहीं खाता क्योंकि `production` एक संपूर्ण पथ खंड होना चाहिए।
+
+एक स्पष्ट फ़ाइल को सत्यापित और इंस्टॉल करें:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts
+```
+
+नीति संदर्भ में ईवेंट प्रकार, सामान्यीकृत पेलोड, टूल नाम और इनपुट, सेशन मेटाडेटा, पैरामीटर, और उपलब्ध होने पर स्रोत CLI शामिल है।
+
+## विफलता पथों का परीक्षण करें
+
+एंट्री फ़ाइल या किसी भी स्थानीय मॉड्यूल को बदलने के बाद सत्यापन चलाएं जिसे यह आयात करता है:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+सख्त CLI पथ अनुपस्थित फ़ाइलों, सिंटैक्स त्रुटियों, अनसुलझे आयातों, शीर्ष-स्तर के अपवादों, और मॉड्यूल-लोड टाइमआउट के लिए विफल हो जाता है। प्रवर्तन समय पर, एक टूटी हुई कस्टम फ़ाइल को लॉग किया जाता है और छोड़ दिया जाता है ताकि बिल्ट-इन नीतियां जारी रह सकें। किसी भी लोड चेतावनी को अपेक्षित प्रवर्तन के नुकसान के रूप में मानें और उत्पादन लॉग में इस पर सतर्क रहें।
+
+स्पष्ट, कन्वेंशन, और Cloud-प्रबंधित नीतियों में विश्व स्तर पर अद्वितीय नाम का उपयोग करें। नीति कार्यों को नियतात्मक रखें, बाहरी कॉल को छोटे टाइमआउट के साथ बांधें, और हर पथ पर एक इरादेमंद `allow`, `instruct`, या `deny` रिटर्न करें।
+
+<Warning>
+  एक कस्टम नीति प्रवर्तन कोड है। अनुपस्थित फ़ील्ड, वैकल्पिक टूल नाम, और विरूपित इनपुट का परीक्षण करें—केवल अपेक्षित मिलान नहीं।
+</Warning>

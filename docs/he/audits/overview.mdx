@@ -1,0 +1,56 @@
+---
+title: "审核"
+description: "Review a defined population of sessions for failures that traces alone will not reveal."
+icon: "scan-search"
+---
+
+An audit searches a selected set of sessions for a stated failure goal. It combines trace evidence, evaluation results, policy hits, and reference context to produce findings you can act on.
+
+<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
+  <iframe src="https://www.youtube.com/embed/C5nHKGQIqZQ?rel=0&playsinline=1" title="Find agent failures automatically with Failproof AI audits" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
+</div>
+
+See how an audit moves from a scheduled run to evidence-backed failures you can fix.
+
+## Open audits
+
+<Tabs>
+  <Tab title="Dashboard">
+    Go to **Analyze → Audits**. The page shows scheduled state, open findings, last run, next run, cadence, and whether the audit has a brief or reference pages. Select a card for settings and run history; select **new audit** to create one.
+
+    ![The Audits page showing recurring audits with their schedule, sensitivity, and run state.](/images/dashboard/audits.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits list
+    fp audits list --enabled-only --show-id
+    fp audits show <audit-name>
+    fp audits findings --status open --limit 20
+    ```
+  </Tab>
+</Tabs>
+
+Use an audit when you need to answer a population-level question such as:
+
+- Where do agents abandon tasks without escalating?
+- Which tool failures lead to ineffective retries?
+- Are agents accessing data outside the intended workflow?
+- What changed after a model, prompt, or tool release?
+
+## Audit response flow
+
+```text
+Session → Audit → Finding → Issue → Policy
+                         ↘ Alert for recurrence
+```
+
+A finding should name the failure mode and point to evidence. An issue owns the remediation. A policy prevents a known action pattern; an alert detects recurrence when prevention is not possible or needs monitoring.
+
+<Columns cols={2}>
+  <Card title="Set up an audit" icon="sliders-horizontal" href="/he/audits/setup">
+    Define the goal, population, and reference context before the first run.
+  </Card>
+  <Card title="Add agent context" icon="bot" href="/he/audits/agent-contracts">
+    State what each agent must produce and what it must never do.
+  </Card>
+</Columns>

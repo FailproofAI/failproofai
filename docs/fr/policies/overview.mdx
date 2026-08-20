@@ -1,0 +1,63 @@
+---
+title: "Politiques"
+description: "Observez, guidez ou bloquez les actions des agents avant qu'une défaillance connue ne se reproduise."
+icon: "shield-check"
+---
+
+Une politique évalue un événement de hook d'agent et retourne l'une des trois décisions suivantes :
+
+- `allow` laisse l'action se poursuivre.
+- `instruct` fournit des conseils correctifs à l'agent.
+- `deny` bloque l'action avec une raison.
+
+## Utiliser les trois surfaces de politique
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Allez dans **Observe → politique** pour filtrer et inspecter les décisions de politique issues des sessions.
+    2. Allez dans **Admin → éditeur de politique** pour composer, valider, publier, désactiver ou inspecter des versions immuables.
+    3. Allez dans **Admin → application** pour assigner des versions et des effets aux machines.
+
+    Utilisez la page Politique pour comprendre ce qui correspond déjà avant de créer ou de modifier l'application.
+
+    ![La page Politique affichant les totaux de décisions et les mappages de politiques locales et gérées dans le Cloud.](/images/dashboard/policy-observe.png)
+
+    L'éditeur est l'endroit où vous transformez une condition d'échec en source, la validez et publiez une version immuable.
+
+    ![L'éditeur de politique utilisé pour composer et publier une version de politique immuable.](/images/dashboard/policy-editor.png)
+
+    L'application assigne ensuite cette version publiée et son effet d'observation ou d'application aux machines.
+
+    ![La flotte d'application affichant la couverture des machines et les versions de politique assignées.](/images/dashboard/enforcement-fleet.png)
+
+    Vérifiez les décisions sur la page Politique après le déploiement afin que les vues de création et de flotte soient liées à l'activité réelle des agents.
+  </Tab>
+  <Tab title="CLI">
+    Utilisez `failproofai` pour l'installation et la validation de politiques locales :
+
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --scope project
+    failproofai config --status
+    ```
+
+    Utilisez `fp` pour trouver les sessions et événements Cloud contenant des décisions de politique. La création de politiques dans le Cloud et le déploiement sur la flotte restent des workflows du tableau de bord.
+  </Tab>
+</Tabs>
+
+Les politiques disposent de trois surfaces distinctes dans Failproof AI :
+
+1. **Analyser les décisions** dans les sessions, les tableaux de bord et les audits.
+2. **Créer des versions** avec des règles intégrées, du code ou l'éditeur de politique.
+3. **Déployer et appliquer** des versions sur les machines sélectionnées.
+
+Commencez par un mode de défaillance confirmé. Définissez la correspondance d'événement et d'outil la plus restreinte qui l'identifie, testez des exemples légitimes et non sécurisés, puis observez avant d'appliquer.
+
+<Columns cols={2}>
+  <Card title="Utiliser une politique intégrée" icon="library" href="/fr/policies/builtin">
+    Activez une règle vérifiée pour les risques courants liés aux secrets, au shell, à Git, au cloud et aux workflows.
+  </Card>
+  <Card title="Écrire une politique personnalisée" icon="code-2" href="/fr/policies/custom">
+    Exprimez une décision spécifique à un workflow en JavaScript ou TypeScript.
+  </Card>
+</Columns>

@@ -1,0 +1,73 @@
+---
+---
+title: "Politiche personalizzate"
+description: "Scrivi una policy per una modalità di errore unica nel flusso di lavoro del tuo agente."
+icon: "shield-plus"
+---
+
+Crea un file che termina con `policies.js`, `policies.mjs`, o `policies.ts` under `.failproofai/policies/`. I file di convention si caricano automaticamente a livello di progetto e utente.
+
+## Testa la policy prima della pubblicazione su Cloud
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Installa la policy personalizzata su una macchina di test e attiva sia un'azione corrispondente che una non-corrispondenza legittima.
+    2. Vai a **Observe → policy** e confronta le due decisioni.
+    3. Apri ogni sessione collegata e verifica che il payload dell'evento contenga prove sufficienti per la regola.
+    4. Quando il comportamento è corretto, sposta il codice revisionato in **Admin → policy editor** e pubblica una versione.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies --install --custom ./security.policies.ts \
+      --cli claude --scope project
+    failproofai policies
+    ```
+
+    I file di convention under `.failproofai/policies/` si caricano senza `--custom`. Mantieni un comando di installazione esplicito in CI quando la validazione deve fallire su un modulo rotto.
+  </Tab>
+</Tabs>
+
+```ts
+import { customPolicies, allow, deny } from "failproofai";
+
+customPolicies.add({
+  name: "protect-production-paths",
+  description: "Block writes to production configuration",
+  match: { events: ["PreToolUse"] },
+  fn: async (ctx) => {
+    if (ctx.toolName !== "Write" && ctx.toolName !== "Edit") return allow();
+    const path = String(ctx.toolInput?.file_path ?? "").replaceAll("\\", "/");
+    if (path.split("/").includes("production")) {
+      return deny("Writes to production configuration require approval.");
+    }
+    return allow();
+  },
+});
+```
+
+Questo corrisponde a `production/config.yml`, `/srv/production/config.yml`, `/srv/production`, e `C:\\production\\config.yml` sia per `Write` che per `Edit`. Non corrisponde a nomi come `production-backup` perché `production` deve essere un segmento di percorso completo.
+
+Valida e installa un file esplicito:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts
+```
+
+Il contesto della policy include il tipo di evento, il payload normalizzato, il nome e l'input dello strumento, i metadati della sessione, i parametri e la CLI di origine quando disponibile.
+
+## Testa i percorsi di fallimento
+
+Esegui la validazione dopo aver modificato il file di entry o qualsiasi modulo locale che importa:
+
+```bash
+failproofai policies --install --custom ./security.policies.ts --scope project
+```
+
+Il percorso CLI strict fallisce per file mancanti, errori di sintassi, import non risolti, eccezioni di livello superiore e timeout di caricamento del modulo. Al momento dell'enforcement, un file personalizzato rotto viene registrato e saltato in modo che le policy built-in possano continuare. Considera qualsiasi avviso di caricamento come una perdita dell'enforcement atteso e avvisa su di esso nei log di produzione.
+
+Usa nomi globalmente unici tra le policy esplicite, di convention e gestite da Cloud. Mantieni le funzioni di policy deterministiche, limita le chiamate esterne con timeout brevi e restituisci un `allow`, `instruct`, o `deny` intenzionale su ogni percorso.
+
+<Warning>
+  Una policy personalizzata è codice di enforcement. Testa i campi mancanti, i nomi di strumenti alternativi e gli input malformati—non solo la corrispondenza attesa.
+</Warning>

@@ -1,0 +1,351 @@
+---
+title: "Failproof Cloud CLI"
+description: "fp を使った Failproof AI Cloud のクエリと管理の完全リファレンス。"
+icon: "cloud-cog"
+---
+
+`fp` を使用して Cloud のテレメトリを確認し、監査・検出事項・課題・アラート・キー・ユーザー・クエリ・設定を管理します。ローカルフック、ポリシー、キャプチャ、マシン登録には [`failproofai`](/ja/reference/failproof-cli) を使用してください。
+
+リリース済みの Cloud CLI をスタンドアロンツールとしてインストールします。
+
+```bash
+uv tool install fp-cli
+fp version
+```
+
+## サインイン
+
+```bash
+fp login
+fp whoami
+```
+
+## 構文
+
+```text
+fp [GLOBAL_OPTIONS] COMMAND [SUBCOMMAND] [ARGUMENTS] [OPTIONS]
+```
+
+グローバルオプションはコマンドの前に指定します。
+
+```bash
+fp --json sessions --since 24h
+```
+
+ターミナルヘルプを表示するには `fp COMMAND --help` または `fp COMMAND SUBCOMMAND --help` を実行してください。
+
+## CLI コマンド
+
+### 認証
+
+| コマンド | 目的 | オプション |
+| --- | --- | --- |
+| `fp login` | メールで受け取るワンタイムコードでサインインし、組織を選択します。 | `--email`, `-e`; `--org`; `--force` |
+| `fp logout` | 保存されたユーザーセッションを失効・削除します。 | — |
+| `fp whoami` | 現在の ID・認証モード・組織・権限を表示します。 | — |
+| `fp version` | インストール済みの CLI バージョンを表示します。 | — |
+| `fp help` | トップレベルのコマンドヘルプを表示します。 | — |
+
+```bash
+fp login --email you@example.com --org reliability-team
+fp whoami
+```
+
+### イベント
+
+```text
+fp events [OPTIONS]
+```
+
+個々のエージェントイベントを一覧表示します。デフォルトの軽量フィードは生ペイロードを除外します。`--full` は対象を絞った調査のみに使用してください。
+
+| オプション | 説明 |
+| --- | --- |
+| `--limit`, `-n <n>` | 最大取得行数。デフォルト: `50`。 |
+| `--since <window>` | `all`、`15m`、`1h`、`6h`、`24h`、または `7d`。 |
+| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC 範囲。`--since` より優先されます。 |
+| `--env <value>` | 環境フィルター。繰り返しまたはカンマ区切りで複数指定可能。 |
+| `--event-type <value>` | イベントタイプフィルター。繰り返しまたはカンマ区切りで複数指定可能。 |
+| `--agent-id <value>` | エージェントフィルター。繰り返しまたはカンマ区切りで複数指定可能。 |
+| `--session-id <value>` | セッションフィルター。繰り返しまたはカンマ区切りで複数指定可能。 |
+| `--search <text>` | ペイロードのテキスト検索。繰り返し可能で、いずれかの語句が一致した場合に該当。 |
+| `--order asc\|desc` | 時間順。デフォルト: 新しい順。 |
+| `--all` | `--limit` まで自動ページネーション。 |
+| `--cursor <token>` | 不透明なカーソルから再開。 |
+| `--page-size <n>` | `--all` 使用時のリクエストあたりの行数。最大 `200`。 |
+| `--full` | より重いイベントエンドポイントから生ペイロードを含めて取得。 |
+| `--fields <csv>` | 指定したフィールドのみを返す。`payload` を指定するとフルモードが有効になります。 |
+
+```bash
+fp events --session-id <session-id> --order asc --all
+fp --json events --full --session-id <session-id> --all
+```
+
+### セッション
+
+```text
+fp sessions [OPTIONS]
+```
+
+| オプション | 説明 |
+| --- | --- |
+| `--limit`, `-n <n>` | 最大取得行数。デフォルト: `50`。 |
+| `--since <window>` | `all`、`15m`、`1h`、`6h`、`24h`、または `7d`。 |
+| `--from <timestamp>` / `--to <timestamp>` | ISO 8601 UTC 範囲。`--since` より優先されます。 |
+| `--env <value>` | 環境フィルター。繰り返しまたはカンマ区切りで複数指定可能。 |
+| `--status <value>` | `done`、`error`、または `timeout`。繰り返しまたはカンマ区切りで複数指定可能。 |
+| `--agent-id <value>` | 選択したエージェントが関与するセッションに一致。 |
+| `--session-id <value>` | セッションフィルター。繰り返しまたはカンマ区切りで複数指定可能。 |
+| `--all` | `--limit` まで自動ページネーション。 |
+| `--cursor <token>` | 不透明なカーソルから再開。 |
+| `--page-size <n>` | `--all` 使用時のリクエストあたりの行数。最大 `200`。 |
+| `--fields <csv>` | 指定したフィールドのみを返す。 |
+| `--full-ids` | ターミナル出力でセッション ID を短縮しない。 |
+| `--agents` | マルチエージェントセッションのエージェント一覧を展開表示。 |
+
+### 評価
+
+```text
+fp evals [OPTIONS]
+```
+
+| オプション | 説明 |
+| --- | --- |
+| `--aggregate` | 個別評価の代わりに合計値とスコアごとの統計を表示。 |
+| `--limit`, `-n <n>` | 最大リスト行数。デフォルト: `50`。 |
+| `--since`, `--from`, `--to` | 時間範囲を選択。 |
+| `--env`, `--status`, `--agent-id`, `--session-id` | 各フィルターで正確な1つの値に絞り込み。 |
+| `--score KEY:MIN..MAX` | スコア範囲。繰り返し可能で、すべての範囲が一致する必要があります。 |
+| `--all`, `--cursor`, `--page-size` | リストのページネーションを制御。 |
+| `--fields <csv>` | 指定したフィールドのみを返す。 |
+| `--full-ids` | セッション ID を完全表示。 |
+| `--scores-full` | ターミナル出力ですべてのスコアを表示。 |
+
+### エラー
+
+```text
+fp errors [OPTIONS]
+```
+
+| オプション | 説明 |
+| --- | --- |
+| `--aggregate` | 行を一覧表示する代わりに、一致するエラーを集計。 |
+| `--limit`, `-n <n>` | 最大リスト行数。デフォルト: `50`。 |
+| `--since`, `--from`, `--to` | 時間範囲を選択。 |
+| `--env`, `--error-type`, `--event-type`, `--agent-id`, `--session-id` | エラーの対象を絞り込み。 |
+| `--search <text>` | ペイロードテキストを検索。繰り返し可能。 |
+| `--order asc\|desc` | 時間順。 |
+| `--all`, `--cursor`, `--page-size` | リストのページネーションを制御。 |
+| `--fields <csv>` | 指定したフィールドのみを返す。 |
+| `--full-ids` | セッション ID を完全表示。 |
+
+### 使用状況とフィルター値
+
+| コマンド | 目的 |
+| --- | --- |
+| `fp usage` | 現在の計測ウィンドウの使用状況を表示。 |
+| `fp list envs` | 検出された環境を一覧表示。 |
+| `fp list agents` | 検出されたエージェント ID を一覧表示。 |
+| `fp list event_types` | イベントタイプを一覧表示。 |
+| `fp list score_filters` | 評価スコアキーを一覧表示。 |
+| `fp list models` | モデル名を一覧表示。 |
+| `fp list hooks` | フック名を一覧表示。 |
+| `fp list tools` | ツール名を一覧表示。 |
+| `fp list error_types` | エラータイプを一覧表示。 |
+
+### 組織
+
+| コマンド | 目的 |
+| --- | --- |
+| `fp orgs list` | アクセス可能な組織を一覧表示。 |
+| `fp orgs switch [SLUG]` | アクティブな組織を保存。省略時はプロンプトが表示されます。 |
+| `fp orgs current` | アクティブな組織を表示。 |
+| `fp orgs perms` | アクティブな組織における自分の権限を表示。 |
+
+### API キー
+
+| コマンド | 目的 | オプション |
+| --- | --- | --- |
+| `fp keys list` | 組織のキーを一覧表示。 | `--show-id`; `--fields <csv>` |
+| `fp keys show NAME` | 1つのキーとそのグラントを表示。 | — |
+| `fp keys create NAME` | キーを作成し、シークレットを1回だけ表示。 | `--permission-set`; `--add`; `--remove` |
+| `fp keys update NAME` | 権限セットを置き換えるかグラントを調整。 | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp keys regenerate NAME` | シークレットをローテーションし、置き換えたものを1回だけ表示。 | `--yes`, `-y` |
+| `fp keys disable NAME` | キーを永久に失効。 | `--yes`, `-y` |
+
+権限トークンは `resource:action` の形式を使用します（例: `events:add`）。`--add` を繰り返すか、トークンをカンマ区切りで指定するか、`events:read.add` のようにドット記法を使用できます。
+
+### クエリ
+
+| コマンド | 目的 | オプション |
+| --- | --- | --- |
+| `fp query list` | 保存済みクエリを一覧表示。 | `--show-id`; `--fields <csv>` |
+| `fp query show NAME` | 1つのクエリを表示。 | — |
+| `fp query create NAME` | クエリを保存。 | `--sql <text\|@file>`; `--description` |
+| `fp query update NAME` | クエリを更新または名前変更。 | `--name`; `--sql`; `--description`; `--yes`, `-y` |
+| `fp query delete NAME` | 保存済みクエリを削除。 | `--yes`, `-y` |
+| `fp query run [NAME]` | 保存済みクエリまたはアドホック SQL を実行。 | `--sql`; `--limit`; `--all`; `--arg`, `--param` |
+| `fp query schema [TABLE]` | クエリ可能なテーブルを一覧表示するか、1つのテーブルを検査。 | — |
+
+### ユーザー
+
+| コマンド | 目的 | オプション |
+| --- | --- | --- |
+| `fp users list` | 組織メンバーを一覧表示。 | `--active-only`; `--show-id` |
+| `fp users show EMAIL` | メンバーとそのグラントを表示。 | — |
+| `fp users create EMAIL` | メンバーを追加。 | `--permission-set`; `--add`; `--remove` |
+| `fp users update EMAIL` | メンバーのグラントを変更。 | `--permission-set`; `--add`; `--remove`; `--yes`, `-y` |
+| `fp users disable EMAIL` | サインインを無効化。 | `--yes`, `-y` |
+| `fp users enable EMAIL` | サインインを再有効化。 | `--yes`, `-y` |
+
+### 設定
+
+| コマンド | 目的 | オプション |
+| --- | --- | --- |
+| `fp settings list` | 組織設定と現在の値を一覧表示。 | — |
+| `fp settings schema` | 許容される値と説明を表示。 | — |
+| `fp settings set KEY` | 既存の設定を変更。 | `--value`、`--json-value`、`--file` のいずれか1つ。オプションで `--yes`, `-y` |
+
+### アラート
+
+| コマンド | 目的 | オプション |
+| --- | --- | --- |
+| `fp alerts list` | アラートルールを一覧表示。 | `--show-id` |
+| `fp alerts show NAME` | 1つのアラートを表示。 | — |
+| `fp alerts create NAME` | アラートを作成。 | `--file`; `--description`; `--severity`; `--trigger-kind`; `--trigger-spec`; `--channels`; `--eval-interval-secs`; `--min-breaches`; `--eval-window` |
+| `fp alerts update NAME` | アラートを更新または名前変更。 | 作成オプションに加えて `--name`; `--yes`, `-y` |
+| `fp alerts delete NAME` | アラートを削除。 | `--yes`, `-y` |
+| `fp alerts test NAME` | テスト通知を送信。 | `--channels`; `--yes`, `-y` |
+
+アラートの重大度は `info`、`warning`、`critical` です。トリガーの種類は `metric_threshold`、`custom_sql`、`evaluation_score`、`eval_compound`、`per_event` です。評価間隔は 30〜86,400 秒の間でなければなりません。
+
+### 監査
+
+| コマンド | 目的 | オプション |
+| --- | --- | --- |
+| `fp audits list` | 監査を一覧表示。 | `--enabled-only`; `--show-id` |
+| `fp audits show NAME` | 1つの監査定義と状態を表示。 | — |
+| `fp audits create NAME` | 監査を作成し、最初の実行を即座にキューに追加。 | [作成オプション](#audit-create-options)を参照。 |
+| `fp audits edit NAME` | 指定しない値を保持しながら監査設定を置き換え。 | 定義作成オプション; `--name`; `--yes`, `-y` |
+| `fp audits delete NAME` | 監査・検出事項・実行履歴を削除。 | `--yes`, `-y` |
+| `fp audits run NAME` | 手動実行をキューに追加。 | — |
+| `fp audits runs NAME` | 実行履歴を一覧表示。 | `--limit`, `-n`; `--show-id` |
+| `fp audits context-show NAME` | ブリーフと参照 URL の取得状態を表示。 | — |
+| `fp audits context-set NAME` | ブリーフまたは参照 URL を変更。 | `--text`; `--text-file`; `--url`; `--clear-urls` |
+| `fp audits context-refresh NAME` | 参照 URL を再取得。 | — |
+| `fp audits findings` | 検出事項を一覧表示。 | `--audit`; `--run-id`; `--status`; `--limit`, `-n`; `--offset`; `--show-id` |
+| `fp audits finding FINDING_ID` | 1つの検出事項とその証拠を表示。 | — |
+| `fp audits ack FINDING_ID` | 検出事項を確認済みにする。 | `--reason` |
+| `fp audits mute FINDING_ID` | 繰り返し発生するパターンを抑制。 | `--reason`; `--yes`, `-y` |
+| `fp audits dismiss FINDING_ID` | パターンをアクション不要とマークして抑制。 | `--reason`; `--yes`, `-y` |
+| `fp audits resolve FINDING_ID` | 将来の抑制なしに検出事項を修正済みとマーク。 | `--yes`, `-y` |
+| `fp audits reopen FINDING_ID` | 検出事項をライブキューに戻し、抑制をクリア。 | — |
+| `fp audits assign FINDING_ID` | 検出事項の担当者を設定。 | 必須: `--to <email>` |
+
+#### 監査作成オプション
+
+```bash
+fp audits create checkout-reliability \
+  --description "Find checkout failures that agents do not recover from" \
+  --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+  --schedule-interval-secs 86400 \
+  --window-mode since_last \
+  --sensitivity medium \
+  --text-file ./checkout-audit-brief.txt \
+  --url https://runbooks.example.com/checkout
+```
+
+| オプション | 説明 |
+| --- | --- |
+| `--file <path>` | JSON をもとに定義するか、stdin には `-` を使用。明示的なフラグがファイルの値を上書きします。 |
+| `--description <text>` | 障害の質問または目的を記述。 |
+| `--enabled` / `--disabled` | スケジューリングをオン/オフで開始。デフォルト: 有効。 |
+| `--schedule-interval-secs <n>` | `3600`〜`604800`。デフォルト: `86400`。 |
+| `--schedule-anchor <timestamp>` | ISO 8601 形式の固定 UTC フェーズ。デフォルト: 次の 09:00 UTC。 |
+| `--window-mode since_last\|fixed` | 最後に完全に分析されたウィンドウ以降を継続するか、ローリングウィンドウを繰り返し検査。デフォルト: `since_last`。 |
+| `--lookback-window-secs <n>` | `3600`〜`7776000`。デフォルト: `604800`。 |
+| `--scope '<json>'` | `environments`、`agent_ids`、またはその他のサポートされているスコープフィールドでフィルター。 |
+| `--ignore-error-type <type>` | エラータイプを除外。繰り返しまたはカンマ区切りで複数指定可能。 |
+| `--llm` / `--no-llm` | エージェント分析を有効/無効化。デフォルト: 有効。 |
+| `--top-k <n>` | `1`〜`500` 件の検出事項を保持。デフォルト: `50`。 |
+| `--sensitivity low\|medium\|high` | レポートの感度を設定。デフォルト: `medium`。 |
+| `--channels '<json>'` | 通知チャンネルの配列。 |
+| `--text <brief>` | インラインブリーフ。最大 8,192 文字。 |
+| `--text-file <path>` | ファイルからブリーフを読み込む。`--text` とは相互排他。 |
+| `--url <https-url>` | 公開 HTTPS 参照を追加。最大5回繰り返し可能。 |
+
+最初の実行にコンテキストが必要な場合は、作成時に含めてください。作成はキューに追加された実行が開始される前に、定義とコンテキストをまとめてコミットします。
+
+<Note>
+  `fp audits run` は非同期です。検出事項を読み取る前に、`fp audits runs NAME` をポーリングして最新の実行が成功または失敗するまで待機してください。
+</Note>
+
+### 課題
+
+| コマンド | 目的 | オプション |
+| --- | --- | --- |
+| `fp issues list` | 課題を一覧表示。 | `--state`; `--alert-id`; `--limit`, `-n`; `--show-id` |
+| `fp issues count` | オープンまたは選択した課題の状態を集計。 | `--state` |
+| `fp issues show INCIDENT_ID` | 課題の詳細・コメント・サブスクライバー・アクティビティを表示。 | — |
+| `fp issues open` | 手動またはアラートに紐付けた課題をオープン。 | 必須: `--summary`; オプション: `--title`, `--alert-id`, `--severity` |
+| `fp issues ack INCIDENT_ID` | 課題を確認済みにする。 | — |
+| `fp issues assign INCIDENT_ID` | 担当者を置き換え。オプションを省略するとクリアされます。 | 繰り返し可能: `--assignee` |
+| `fp issues resolve INCIDENT_ID` | 課題を解決済みにする。 | `--yes`, `-y` |
+| `fp issues comment-list INCIDENT_ID` | コメントを一覧表示。 | — |
+| `fp issues comment-add INCIDENT_ID` | コメントを追加。 | `--body` または `--file` のいずれか1つ |
+| `fp issues comment-delete INCIDENT_ID COMMENT_ID` | コメントを削除。 | `--yes`, `-y` |
+| `fp issues subscribers INCIDENT_ID` | サブスクライバーを一覧表示。 | — |
+| `fp issues subscribe INCIDENT_ID` | 自分または別のオペレーターをサブスクライブ。 | `--email` |
+| `fp issues unsubscribe INCIDENT_ID` | サブスクリプションを解除。 | `--email` |
+
+有効な課題の状態は `firing`、`acknowledged`、`resolved` です。スタンドアロン課題の重大度は `info`、`warning`、`critical` です。
+
+### Cloud アシスタント
+
+| コマンド | 目的 | オプション |
+| --- | --- | --- |
+| `fp agent health` | アシスタントの可用性と設定を確認。 | — |
+| `fp agent models` | 利用可能なアシスタントモデルを一覧表示。 | — |
+| `fp agent chats` | 保存済みチャットを一覧表示。 | — |
+| `fp agent ask [MESSAGE]` | チャットを開始または続行。メッセージを省略すると stdin から読み取ります。 | `--chat`; `--model`; `--page-context` |
+| `fp agent show CHAT_ID` | 保存済み会話を表示。 | — |
+| `fp agent rename CHAT_ID` | 会話の名前を変更。 | 必須: `--title` |
+| `fp agent delete CHAT_ID` | 会話を削除。 | `--yes`, `-y` |
+
+## グローバルフラグ
+
+| フラグ | 説明 |
+| --- | --- |
+| `--json` | 機械可読な JSON を出力。 |
+| `--base-url <url>` | セルフホストまたは開発用ダッシュボードを使用。 |
+| `--org <slug>` | この呼び出しで使用する組織を選択。 |
+| `--token <token>` | 保存されたユーザーセッショントークンを上書き。 |
+| `--api-key <key>` | API キーで自動化を認証。保存されません。 |
+| `--timeout <seconds>` | HTTP タイムアウト。正の値でなければなりません。デフォルト: `30`。 |
+| `--quiet`, `-q` | stderr のステータス出力を抑制。 |
+| `--no-color` | カラー出力を無効化。 |
+| `--insecure` / `--secure` | TLS 証明書の検証を無効化または復元。 |
+| `--version` | バージョンを出力して終了。 |
+| `--help`, `-h` | ヘルプを表示。 |
+
+`--api-key` は自動化用途を想定しています。ログイン・組織切り替え・アシスタントコマンドにはユーザーセッションが必要です。
+
+## 環境変数
+
+| 変数 | 対応するフラグまたは目的 |
+| --- | --- |
+| `AGENTEYE_DASHBOARD_URL` | `--base-url` |
+| `AGENTEYE_ORG` | `--org` |
+| `AGENTEYE_CLI_TOKEN` | `--token` |
+| `AGENTEYE_CLI_API_KEY` | `--api-key` |
+| `AGENTEYE_CLI_JSON` | `--json` |
+| `AGENTEYE_INSECURE` | `--insecure` |
+| `AGENTEYE_HOME` | 現在の CLI 設定ディレクトリを移動。 |
+| `AGENTEYE_ANALYTICS_DISABLED` または `DO_NOT_TRACK` | 匿名 CLI アナリティクスを無効化。 |
+| `NO_COLOR` | カラー出力を無効化。 |
+
+明示的なフラグは環境変数より優先され、環境変数は保存された設定より優先されます。API キーモードでは、`--org` または `AGENTEYE_ORG` でテナントを明示的に選択してください。
+
+<Warning>
+  削除・失効・抑制・解決・設定の置き換えを行うコマンドは、デフォルトで確認プロンプトを表示します。`--yes` は、アクティブな組織とターゲットを確認した後にのみ使用してください。
+</Warning>

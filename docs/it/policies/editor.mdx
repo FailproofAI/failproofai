@@ -1,0 +1,47 @@
+---
+title: "Editor di criteri"
+description: "Crea e rivedi criteri versionati partendo da una modalità di errore confermata."
+icon: "file-pen-line"
+---
+
+Usa l'editor di criteri per trasformare un risultato o un problema in una regola distribuibile. Mantieni la creazione separata dalla distribuzione, in modo che una bozza non possa modificare silenziosamente il comportamento in produzione.
+
+Quando un problema presenta un modello di azione ripetibile, aprilo da **Analyze → issues** e seleziona **generate policy**. Failproof AI spiega innanzitutto se un criterio può esprimere il problema, quindi trasporta l'intento revisionato e il contesto del risultato nell'editor. Il sorgente generato rimane una bozza finché non lo pubblichi.
+
+## Pubblica una versione del criterio
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Admin → policy editor** e, in **compose**, descrivi la modalità di errore o incolla il sorgente della politica JavaScript.
+    2. Valida il sorgente e correggi ogni errore segnalato.
+    3. Inserisci l'identità del criterio e pubblicalo, quindi usa **library** per confrontare o disabilitare versioni.
+    4. Seleziona **enforcement** quando la versione è pronta per un rollout delle macchine.
+
+    ![La vista compose dell'editor di criteri con identità del criterio, redazione assistita da IA, convalida del sorgente e controlli di pubblicazione.](/images/dashboard/policy-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    La Cloud CLI non pubblica versioni dei criteri. Valida il sorgente localmente prima di copiarlo nell'editor:
+
+    ```bash
+    failproofai policies --install --custom ./checkout.policies.ts \
+      --cli claude --scope project
+    ```
+
+    Pubblica la versione revisionata da **Admin → policy editor**.
+  </Tab>
+</Tabs>
+
+## Checklist di creazione
+
+1. Nomina la modalità di errore in linguaggio operativo.
+2. Seleziona gli eventi hook e gli strumenti che contengono prove sufficienti per decidere.
+3. Scrivi la condizione più ristretta che corrisponda al comportamento non sicuro.
+4. Restituisci un motivo che dica all'agente o all'operatore cosa fare dopo.
+5. Aggiungi esempi che dovrebbero corrispondere ed esempi che devono rimanere consentiti.
+6. Salva una nuova versione e richiedi una revisione.
+
+Usa `instruct` quando l'agente può correggere il corso in modo sicuro. Usa `deny` quando consentire l'azione comporterebbe un rischio inaccettabile o irreversibile.
+
+<Info>
+  Le versioni dei criteri sono input di distribuzione immutabili. Modificare una bozza crea una nuova versione; non dovrebbe riscrivere la versione già assegnata alle macchine.
+</Info>

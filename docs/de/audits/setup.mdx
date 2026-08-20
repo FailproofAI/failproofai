@@ -1,0 +1,44 @@
+---
+title: "Audit einrichten"
+description: "Auditzielsetzung, Sitzungspopulation und Evidenzkontext definieren."
+icon: "sliders-horizontal"
+---
+
+Die Qualität eines Audits hängt von seinem Umfang ab. Eine allgemeine Anfrage wie „Probleme finden" liefert weniger nützliche Ergebnisse als eine konkrete Fehlerfrage.
+
+## Das Audit konfigurieren
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehe zu **Analyze → Audits → New audit** und gib Name und Beschreibung ein.
+    2. Lege Takt, Zeitfenster, Agent-/Umgebungsbereich, ignorierte Fehler, Sensitivität und maximale Befunde fest.
+    3. Füge unter **agents** Agentenkontext hinzu oder überprüfe ihn, und ergänze den Operator-Brief sowie öffentliche HTTPS-Referenz-URLs.
+    4. Wähle Benachrichtigungskanäle aus und klicke auf **create audit**. Der erste Durchlauf wird sofort in die Warteschlange gestellt.
+
+    ![Das Formular für ein neues Audit mit Name, Beschreibung, Takt, Zeitfenster, Umgebungs- und Agentenbereich, ignorierten Fehlern, Analyseeinstellungen, Brief, Referenzseiten und Benachrichtigungskanälen.](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    Der erste Durchlauf wird sofort in die Warteschlange gestellt. Füge den Brief und die Referenz-URLs bereits bei der Erstellung hinzu, damit dieser Durchlauf sie erhält.
+
+    Siehe die vollständige [`fp audits create`-Referenz](/de/reference/cloud-cli#audits).
+  </Tab>
+</Tabs>
+
+<Tip>
+  Beginne mit einer bekannten fehlgeschlagenen Sitzung und mehreren normalen Sitzungen. So erhält das Audit sowohl ein positives Beispiel als auch einen Vergleichssatz.
+</Tip>
+
+<Info>
+  Auditkontext wird als eigenständige Ressource gespeichert, sodass das Bearbeiten eines Audits das Referenzmaterial nicht versehentlich entfernt.
+</Info>

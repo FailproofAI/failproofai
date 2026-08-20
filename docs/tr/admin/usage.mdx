@@ -1,0 +1,37 @@
+---
+title: "Kullanım"
+description: "Organizasyon tüketimini ve aktif faturalama dönemini inceleyiniz."
+icon: "chart-no-axes-combined"
+---
+
+Kullanım, mevcut organizasyon ve faturalama dönemleri için tüketimi gösterir. Üretim dağıtımı, transkript hacmi, değerlendirmeler ve denetim sıklığının planınızı nasıl etkilediğini anlamak için kullanınız.
+
+## Kullanımı gözden geçirin
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Yönetim → Kullanım**'a gidiniz.
+    2. Organizasyonu ve ölçüm penceresini onaylayınız.
+    3. Alım, oturumlar, değerlendirmeler, metrikler, denetimler, bulgular, uyarılar, kullanıcılar ve anahtarları gözden geçiriniz.
+    4. Denetim kullanımı beklenmedik görüldüğünde başlatılan ve tamamlanan denetim işini karşılaştırınız.
+
+    ![Ölçüm penceresini, yakalanan olayları, değerlendirme ve denetim ardışık düzenlerini, çalışma alanı kaynaklarını, üyeleri ve API anahtarlarını gösteren Kullanım sayfası.](/images/dashboard/usage-overview.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp usage
+    fp --json usage
+    fp --org reliability-team --json usage
+    ```
+  </Tab>
+</Tabs>
+
+## Bir değişikliği araştırınız
+
+1. Etkin organizasyonu ve pencereyi onaylayınız.
+2. Artışı ortama göre oturum hacmi ile karşılaştırınız.
+3. Yeni bir entegrasyonun transkript göndermeye başladığını kontrol ediniz.
+4. Değerlendirici ve denetim sıklığı değişikliklerini gözden geçiriniz.
+5. Mevcut fiyatlandırma planındaki limitlerle karşılaştırınız.
+
+CLI, komut dosyaları için aynı özeti döndürür.

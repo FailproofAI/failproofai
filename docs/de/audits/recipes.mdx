@@ -1,0 +1,54 @@
+---
+title: "Audit-Rezepte"
+description: "Ausgangsziele für häufige Untersuchungen von Agent-Fehlern."
+icon: "book-open-check"
+---
+
+Verwende diese als Ausgangsziele und ergänze dann deinen Agenten, die Umgebung und den erwarteten Arbeitsablauf.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Gehe zu **Analysieren → Audits → Neues Audit**, kopiere ein Rezept in die Beschreibung oder den Auftrag und füge anschließend die relevante Umgebung, den Agenten, den Betrachtungszeitraum und Referenz-URLs hinzu. Erstelle das Audit und prüfe den ersten Durchlauf, bevor du es planmäßig einrichtest.
+
+    Das Formular für ein neues Audit verwandelt ein Rezept in eine ausführbare Fehlerprüfung, indem es Umfang, Kontext, Zeitplan und Benachrichtigungen hinzufügt.
+
+    ![Das Formular für ein neues Audit, konfiguriert mit einem konkreten Ziel, Zeitplan, Agenten- und Umgebungsumfang, Kontext und Benachrichtigungskanälen.](/images/dashboard/audit-new.png)
+
+    Stelle nach der Erstellung sicher, dass das Audit in der Liste mit dem erwarteten Status und Zeitplan erscheint, bevor du dich auf wiederkehrende Durchläufe verlässt.
+
+    ![Die Audits-Seite, auf der ein workflow-spezifisches Audit-Rezept nach der Erstellung erscheint.](/images/dashboard/audits.png)
+
+    Öffne den ersten Durchlauf und verfeinere das Rezept, wenn seine Ergebnisse breiter oder enger als der beabsichtigte Fehlermodus sind.
+  </Tab>
+  <Tab title="CLI">
+    Speichere ein Rezept als Textdatei und füge es bei der Erstellung hinzu:
+
+    ```bash
+    fp audits create retry-loop-review \
+      --scope '{"environments":["production"]}' \
+      --text-file ./retry-loop-audit.txt \
+      --schedule-interval-secs 86400
+    ```
+  </Tab>
+</Tabs>
+
+<AccordionGroup>
+  <Accordion title="Wiederholte Wiederholungsschleifen">
+    Finde Sitzungen, in denen der Agent denselben fehlschlagenden Tool-Aufruf wiederholt, ohne die Eingabe zu ändern, ein alternatives Tool auszuwählen oder an einen Menschen eskaliert zu werden.
+  </Accordion>
+  <Accordion title="Falsche Tool-Nutzung">
+    Finde Sitzungen, in denen das gewählte Tool nicht zur angegebenen Aufgabe passt oder die Tool-Eingabe gegen die erforderlichen Vorbedingungen des Arbeitsablaufs verstößt.
+  </Accordion>
+  <Accordion title="Unsicherer Datenzugriff">
+    Finde Sitzungen, die sensible Daten außerhalb der genehmigten Pfade und Dienste für diesen Agenten lesen, schreiben oder übertragen.
+  </Accordion>
+  <Accordion title="Aufgabenabbruch">
+    Finde Sitzungen, die ohne das angeforderte Ergebnis, einen klaren Fehler oder eine ausdrückliche Übergabe an einen Menschen enden.
+  </Accordion>
+  <Accordion title="Kosten- oder Latenzregression">
+    Finde Sitzungen, deren Modell-, Tool- oder Gesamtdauer das erwartete Budget überschreitet, und identifiziere das verantwortliche Ereignismuster.
+  </Accordion>
+  <Accordion title="Verpasste Eskalation an einen Menschen">
+    Finde Sitzungen, in denen Unsicherheit, wiederholte Fehler oder Richtlinienvorgaben eine menschliche Entscheidung erforderten, der Agent jedoch autonom weitergemacht hat.
+  </Accordion>
+</AccordionGroup>

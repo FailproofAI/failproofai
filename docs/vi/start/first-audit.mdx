@@ -1,0 +1,52 @@
+---
+title: "Chạy kiểm tra lỗi đầu tiên của bạn"
+description: "Tạo một kiểm toán từ bảng điều khiển Cloud hoặc CLI fp và xem xét những phát hiện đầu tiên của nó."
+icon: "scan-search"
+---
+
+Kiểm toán chuyển đổi một tập hợp các phiên thành những phát hiện lỗi được xếp hạng và hỗ trợ bằng bằng chứng. Bắt đầu với một câu hỏi lỗi hẹp.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Mở Audits">
+        Trong thanh bên Cloud, đi tới **Analyze → Audits**. Chọn **new audit**.
+      </Step>
+      <Step title="Thiết lập kiểm toán">
+        Nhập tên và mục tiêu lỗi trực tiếp, chẳng hạn như "tìm các phiên production thử lại cùng một cuộc gọi thanh toán thất bại mà không thay đổi đầu vào hoặc leo thang." Chọn agent, môi trường, cửa sổ thời gian và lịch trình. Thêm một bản tóm tắt ngắn và các URL tham chiếu khi người kiểm toán cần các quy tắc quy trình làm việc của bạn.
+      </Step>
+      <Step title="Tạo và chờ chạy">
+        Chọn **create audit**. Lần chạy đầu tiên được xếp hàng ngay lập tức. Mở thẻ kiểm toán để theo dõi nó chuyển từ xếp hàng sang chạy sang hoàn tất.
+      </Step>
+    </Steps>
+
+    Sau khi lần chạy hoàn tất, mở một phát hiện và xem xét bằng chứng phiên của nó. Sau đó bạn có thể xác nhận, gán, từ chối, tắt âm hoặc giải quyết nó.
+
+    ![Một phát hiện kiểm toán hoàn tất hiển thị mô tả lỗi, hành động được khuyến nghị, bằng chứng hỗ trợ và các phiên bị ảnh hưởng.](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create payment-retry-failures \
+      --description "Find production sessions that retry a failed payment call without changing input or escalating" \
+      --scope '{"environments":["production"]}' \
+      --text "Escalate after two unchanged payment failures"
+
+    fp audits list
+    fp audits runs payment-retry-failures
+    fp audits findings --audit payment-retry-failures
+    fp audits finding <finding-id>
+    ```
+
+    Thêm ngữ cảnh tham chiếu, sau đó làm mới nó khi nguồn thay đổi:
+
+    ```bash
+    fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
+    fp audits context-refresh payment-retry-failures
+    fp audits run payment-retry-failures
+    ```
+
+    Sử dụng `fp audits ack <finding-id>`, `fp audits assign <finding-id> --to <email>`, `fp audits dismiss <finding-id>`, `fp audits mute <finding-id>`, `fp audits resolve <finding-id>`, hoặc `fp audits reopen <finding-id>` để di chuyển một phát hiện qua triage.
+  </Tab>
+</Tabs>
+
+Tiếp theo, [ngăn chặn lỗi đầu tiên của bạn bằng một chính sách](/vi/start/first-policy) cho một hành động có thể lặp lại được xác nhận.

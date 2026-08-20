@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
-import { GitBranch, ChevronDown, Star, BookOpen, MessageCircle, MessageSquareWarning } from "lucide-react";
+import { GitBranch, ChevronDown, Star, BookOpen, MessageCircle, MessagesSquare, MessageSquareWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const CONTACT_EMAIL = "failproofai@exosphere.host";
@@ -28,6 +28,13 @@ const options = [
     href: "https://discord.befailproof.ai/",
     color: "#5865f2",
     bg: "rgba(88,101,242,0.08)",
+  },
+  {
+    label: "Join r/failproofai",
+    icon: MessagesSquare,
+    href: "https://www.reddit.com/r/failproofai/",
+    color: "#ff4500",
+    bg: "rgba(255,69,0,0.08)",
   },
   {
     label: "Feedback & Issues",

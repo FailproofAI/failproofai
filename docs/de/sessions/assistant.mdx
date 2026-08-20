@@ -1,0 +1,53 @@
+---
+title: "Failproof Assistant"
+description: "Failproof AI in natürlicher Sprache analysieren und bedienen – von Fragen und Abfragen bis hin zu Dashboards und Audits."
+icon: "message-square-text"
+---
+
+Weisen Sie den Failproof Assistant an, beliebige Aufgaben in Failproof AI in natürlicher Sprache auszuführen. Er kann Sitzungen und Fehler analysieren, Abfragen ausführen, Dashboards erstellen, Evaluierungen und Alarme untersuchen sowie Audits erstellen und durchführen – ohne dass Sie die Aufgabe in Produktbildschirme oder CLI-Befehle übersetzen müssen.
+
+```text
+Why did production checkout agents regress this week?
+Build a dashboard for tool failures, latency, and evaluation scores.
+Create an audit that finds agents retrying the same failed action without changing approach.
+Show me the sessions behind the most common audit finding.
+```
+
+Der Assistent arbeitet mit den Daten und Berechtigungen, die in der aktiven Organisation verfügbar sind. Prüfen Sie die Belege und vorgeschlagenen Änderungen, bevor Sie Aktionen anwenden, die andere Benutzer oder Agenten betreffen.
+
+## Den Assistenten verwenden
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Wählen Sie **Open agent chat** aus und beschreiben Sie, was Sie verstehen, erstellen oder bedienen möchten.
+    2. Beobachten Sie die Tool-Aufrufe, Tabellen und Abfrageergebnisse des Assistenten während der Bearbeitung.
+    3. Öffnen Sie die zitierte Sitzung, den Alarm oder die Abfrage, um das Ergebnis anhand der Quelldaten zu überprüfen.
+    4. Starten Sie einen neuen Chat für eine andere Untersuchung oder nutzen Sie den Chatverlauf, um dieselbe Analyse fortzuführen.
+
+    ![Der Cloud-Assistent beantwortet eine Observability-Frage mit unterstützender Analyse und Abfragen.](/images/dashboard/assistant.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp agent health
+    fp agent models
+    fp agent ask "Which production checkout agents had the most tool errors in the last 24 hours?"
+    fp agent chats
+    fp agent show <chat-id>
+    fp agent ask "Open representative sessions" --chat <chat-id>
+    ```
+
+    Verwenden Sie `fp agent rename <chat-id> --title <title>`, um eine Untersuchung leicht wiederauffindbar zu halten, und `fp agent delete <chat-id>`, um sie zu entfernen.
+  </Tab>
+</Tabs>
+
+## Effektiv mit dem Assistenten arbeiten
+
+- Geben Sie zuerst ein Ziel an; fügen Sie eine Umgebung, einen Workflow oder einen Zeitraum hinzu, wenn diese Grenzen relevant sind.
+- Betrachten Sie generierten SQL-Code und Zusammenfassungen als Hilfsmittel bei der Untersuchung, nicht als abschließenden Beweis.
+- Öffnen Sie repräsentative Sitzungen, bevor Sie ein Audit, ein Issue, einen Alarm oder eine Policy erstellen.
+- Halten Sie Filter für Organisation, Umgebung und Zeitraum explizit.
+- Speichern Sie nützlichen SQL-Code als Abfrage, damit andere Operatoren das Ergebnis reproduzieren können.
+
+<Warning>
+  Der Assistent kann nur das lesen, worauf Ihr aktueller Benutzer Zugriff hat. Erweitern Sie keine Berechtigungen, um eine Frage zu beantworten – bitten Sie stattdessen einen autorisierten Operator, die Untersuchung durchzuführen.
+</Warning>

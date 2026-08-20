@@ -1,0 +1,78 @@
+---
+title: "Integraciones y referencia"
+description: "Conecta harnesses de agentes compatibles, SDKs, CLIs y la API HTTP."
+icon: "braces"
+---
+
+Elige la integración más cercana al entorno donde ya se ejecuta tu agente.
+
+<Columns cols={2}>
+  <Card title="Harnesses de agentes" icon="plug-zap" href="/es/reference/harnesses">
+    Instala hooks para CLIs de agentes de codificación y autónomos compatibles.
+  </Card>
+  <Card title="Agentes personalizados" icon="python" href="/es/reference/python-sdk">
+    Instrumenta trazas para encontrar fallos en agentes personalizados y contáctanos para añadir prevención a tu runtime.
+  </Card>
+  <Card title="Panel local" icon="monitor-cog" href="/es/reference/local-dashboard">
+    Revisa proyectos locales, sesiones, actividad de políticas y auditorías sin conexión.
+  </Card>
+  <Card title="CLI de Failproof AI" icon="terminal" href="/es/reference/failproof-cli">
+    Configura la captura local, hooks, políticas, auditorías, entrega y estado de la máquina.
+  </Card>
+  <Card title="CLI de Failproof Cloud" icon="cloud-cog" href="/es/reference/cloud-cli#cli-commands">
+    Consulta y administra sesiones, auditorías, incidencias, alertas, claves, usuarios y configuraciones en la nube.
+  </Card>
+  <Card title="SDK del evaluador" icon="gauge" href="/es/reference/evaluator-sdk">
+    Puntúa sesiones completas o inactivas con un servicio FastAPI.
+  </Card>
+  <Card title="Políticas personalizadas" icon="shield-plus" href="/es/reference/policy-sdk">
+    Crea y prueba decisiones de allow, instruct y deny específicas para tu flujo de trabajo.
+  </Card>
+  <Card title="Autoalojamiento" icon="cloud-cog" href="/es/reference/self-hosting">
+    Despliega el plano de control en la nube sobre un clúster de Kubernetes gestionado por el cliente.
+  </Card>
+</Columns>
+
+La [referencia de la API HTTP](/es/reference/http-api) generada cubre la superficie pública `/v1`. Las páginas escritas a mano explican flujos de trabajo que abarcan múltiples endpoints o utilizan interfaces administrativas fuera de esa superficie pública.
+
+## Conectar un agente y verificar los datos
+
+<Tabs>
+  <Tab title="Panel">
+    1. Abre **Administración → Claves**, crea una clave con `events:add` y `policies:pull`, y copia el secreto.
+    2. Configura la integración utilizando la página correspondiente indicada arriba.
+    3. Abre **Observar → Eventos** para confirmar que llegan eventos y, a continuación, **Observar → Sesiones** para confirmar que se agrupan en ejecuciones completas.
+    4. Filtra por el entorno de la integración e inspecciona una sesión para verificar los campos de modelo, herramienta, error y política que necesitan las auditorías.
+
+    Comienza por el panel de claves. Los permisos seleccionados determinan si la máquina puede enviar eventos y recibir políticas gestionadas en la nube.
+
+    ![El panel de nueva clave de API utilizado para conceder permisos de ingesta de eventos y entrega de políticas.](/images/dashboard/key-create.png)
+
+    Tras conectar la integración, usa la lista de sesiones para confirmar que sus eventos se están agrupando en ejecuciones completas en el entorno esperado.
+
+    ![La lista de sesiones utilizada para verificar que una integración recién conectada está reportando ejecuciones completas del agente.](/images/dashboard/sessions-list.png)
+
+    Abre una de estas sesiones antes de considerar la integración como completada; la traza debe contener el modelo, la herramienta, el error y la evidencia de política que necesitan tus auditorías.
+  </Tab>
+  <Tab title="CLI">
+    Crea una clave de máquina, conecta el demonio de Failproof y verifica la primera sesión.
+
+    ```bash
+    fp keys create agent-production \
+      --add events:add \
+      --add policies:pull
+
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+
+    failproofai flush --wait
+    fp sessions --since 1h --env production
+    fp events --since 1h --env production --limit 20
+    ```
+
+    Usa `fp --json sessions ...` cuando otro programa vaya a consumir el resultado. Las opciones globales como `--json`, `--org` y `--base-url` deben ir antes del comando.
+
+    Consulta la [referencia del CLI de Failproof AI](/es/reference/failproof-cli) para comandos locales y la [referencia del CLI de Failproof Cloud](/es/reference/cloud-cli#cli-commands) para comandos `fp`.
+  </Tab>
+</Tabs>

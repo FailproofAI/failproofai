@@ -1,0 +1,44 @@
+---
+title: "Kullanıcılar ve organizasyonlar"
+description: "Üyeliği kontrol edin ve her organizasyonun verilerini ve işlemlerini sınırlandırın."
+icon: "users"
+---
+
+Organizasyonlar oturumları, değerlendirmeleri, denetim günlüklerini, sorunları, uyarıları, sorguları, panoları, kullanıcıları ve anahtarları izole eder. İdari kaynakları değiştirmeden önce etkin organizasyonu doğrulayın.
+
+## Üyeleri ve organizasyonları yönetin
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Cloud kenar çubuğunun üst kısmındaki organizasyon değiştiricisini kullanarak organizasyonları değiştirin.
+    2. Üyeleri aramak veya aktif duruma ve role göre filtrelemek için **Administration → Users** bölümüne gidin.
+    3. **new user** seçeneğini belirleyin, e-posta adresini girin, bir izin seti seçin ve gerekirse geçersiz kılmaları ayarlayın.
+    4. Bir kullanıcıyı daha sonra açarak yetkiyi güncelleyin, oturum açmayı devre dışı bırakın veya hesabı yeniden etkinleştirin.
+
+    ![Üye e-posta adreslerini, izin setlerini ve düzenleme ve devre dışı bırakma kontrollerini gösteren Users sayfası.](/images/dashboard/users.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp orgs list
+    fp orgs switch reliability-team
+    fp orgs current
+    fp orgs perms
+
+    fp users create engineer@example.com --permission-set standard
+    fp users show engineer@example.com
+    fp users update engineer@example.com --add audits:write
+    fp users disable engineer@example.com
+    fp users enable engineer@example.com
+    ```
+  </Tab>
+</Tabs>
+
+Yöneticiler kullanıcıları oluşturabilir, güncelleyebilir, devre dışı bırakabilir ve yeniden etkinleştirebilir, ardından rollerine uygun izin setini atayabilir. API devre dışı bırakma işlemi için bir silme işlemi kullanır, ancak hesabı veya üyelik kaydını kaldırmaz.
+
+<Warning>
+  Bir kullanıcıyı devre dışı bırakmak o kimliğin yalnızca seçili olan organizasyona değil, her organizasyonda oturum açmasını engeller. Yeniden etkinleştirmek genel oturum açmayı ve üyenin bu organizasyondaki izinlerini geri yükler.
+</Warning>
+
+<Tip>
+  Hizmet hesaplarına bir iş yüküne ve sahibine bağlı açıklayıcı adlar verin. Anahtarları organizasyonlar arasında veya kişiler ve makineler arasında paylaşmaktan kaçının.
+</Tip>

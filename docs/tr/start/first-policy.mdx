@@ -1,0 +1,47 @@
+---
+title: "İlk başarısızlığı bir politika ile önleyin"
+description: "Bir politika versiyonu yazın, gözlem modunda dağıtın ve ardından zorunlu kılın."
+icon: "shield-check"
+---
+
+Bir politikayı yalnızca güvenli olmayan eylem ile meşru olarak kalması gereken eylemleri tanımlayabildikten sonra kullanın.
+
+<Tabs>
+  <Tab title="Dashboard">
+    <Steps>
+      <Step title="Politikayı yazın">
+        **Admin → policy editor** bölümüne gidin. Demo politikasından başlayın, kaynağını gözden geçirin veya düzenleyin, ardından **publish version** seçeneğini seçin. Yayınlama, makinelere dağıtabileceğiniz değişmez versiyonunu oluşturur.
+
+        ![Yayınlanmaya hazır bir demo politikası ile birlikte Policy editor compose görünümü.](/images/dashboard/policy-editor.png)
+      </Step>
+      <Step title="Bir makineye dağıtın">
+        **Admin → enforcement** bölümüne gidin, hedef makineyi genişletin ve **edit this machine** seçeneğini seçin. Yayınlanmış demo politikasını ekleyin, versiyonunu sabitleyin, **observe** seçeneğini seçin ve dağıtımı uygulayın.
+
+        ![Dağıtım uygulanmadan önce gözlem modunda seçilen yayınlanmış bir politika versiyonu ile birlikte makine dağıtım editörü.](/images/dashboard/enforcement-editor.png)
+      </Step>
+      <Step title="Politikayı doğrulayın">
+        Bu makinede yeni bir agent oturumu çalıştırın, ardından **Observe → policy** bölümünü açın. Makineyi seçin ve demo politikasının politika eşlemesi ve karar zaman çizelgesinde göründüğünü doğrulayın. Gözlem modu, politikanın eylemi bloklamadan ne yapacağını kaydeder.
+
+        ![Karar toplamları, zaman içinde zorlama aktivitesi ve yerel ve Cloud tarafından yönetilen politika eşlemelerini gösteren Policy sayfası.](/images/dashboard/policy-observe.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    Cloud politika yazarlığı ve filo dağıtımı idari iş akışlarıdır. Yayınlamadan önce aynı politikayı doğrulamak için yerel CLI'yı kullanın:
+
+    ```bash
+    failproofai policies --install --custom ./payment-retry.policies.ts \
+      --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Cloud tarafında görünen politika kararlarını incelemek için `fp` kullanın:
+
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp sessions --env production --since 24h
+    ```
+
+    Cloud CLI, yalnızca root'a ait zorlama dağıtım rotalarını sunmaz. **Admin → policy editor** bölümünden versiyonları yayınlayın ve **Admin → enforcement** bölümünden dağıtın.
+  </Tab>
+</Tabs>

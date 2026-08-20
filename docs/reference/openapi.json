@@ -11,8 +11,8 @@
   },
   "servers": [
     {
-      "url": "/v1",
-      "description": "This deployment"
+      "url": "https://app.befailproof.ai/v1",
+      "description": "Failproof AI Cloud"
     }
   ],
   "paths": {

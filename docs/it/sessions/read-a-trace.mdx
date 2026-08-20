@@ -1,0 +1,48 @@
+---
+title: "Leggere una traccia"
+description: "Trova l'evento che ha cambiato il corso di una sessione dell'agente."
+icon: "route"
+---
+
+Una traccia trasforma un flusso di eventi lineare nella storia causale dell'esecuzione. Leggila dal primo punto di divergenza, non all'indietro dall'ultimo errore.
+
+## Aprire la traccia
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Observe → Sessions** e apri una sessione.
+    2. Usa il riepilogo del profilo per verificare risultato, timing, errori e punteggi di valutazione.
+    3. Scansiona la timeline e la minimappa. Filtra i tipi di evento o il tempo quando la sessione è grande.
+    4. Seleziona un evento per ispezionarlo. Usa **export** per il JSON dell'evaluator, o copia l'URL della pagina per condividere un deep link alle prove selezionate.
+
+    ![Una visualizzazione dettagliata della sessione con il suo grafo di esecuzione, timeline degli eventi, pannello di valutazione e suddivisione di strumenti, modello e hook.](/images/dashboard/session-detail.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp --json sessions --session-id <session-id>
+    fp events --session-id <session-id> --order asc --all
+    fp --json events --full --session-id <session-id> --all
+    ```
+
+    Usa prima il feed di eventi leggero. Richiedi i payload completi solo quando i riepiloghi degli eventi non contengono prove sufficienti.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Orienta te stesso">
+    Conferma l'agente, l'ambiente, il timing, il risultato e la durata, quindi scansiona per errori, intervalli lunghi, strumenti ripetuti, attese umane e decisioni di policy negate.
+  </Step>
+  <Step title="Espandi il primo evento sospetto">
+    Ispeziona la sua richiesta, risposta, input dello strumento, output e ID di correlazione. Il contenuto sensibile è visibile solo quando l'acquisizione della trascrizione è abilitata e le tue autorizzazioni lo consentono.
+  </Step>
+  <Step title="Ispeziona il contesto precedente">
+    La causa spesso si trova un evento prima: una risposta del modello non corretta, un risultato dello strumento mancante o un'assunzione obsoleta.
+  </Step>
+  <Step title="Trasforma le prove in azione">
+    Aggiungi la sessione a un ambito di audit, collegala a un problema, o usa la modalità di errore per creare una policy.
+  </Step>
+</Steps>
+
+<Warning>
+  Una lunga durata non sempre significa latenza del modello. Separa il tempo di modello, strumento, hook e attesa umana prima di decidere cosa correggere.
+</Warning>

@@ -1,0 +1,68 @@
+---
+title: "Scegli la tua configurazione"
+description: "Scegli tra enforcement locale, Failproof AI Cloud o una distribuzione enterprise."
+icon: "waypoints"
+---
+
+<CardGroup cols={3}>
+  <Card title="Enforcement locale" icon="laptop">
+    Installa hook e policy su una macchina. Usalo quando hai bisogno di protezioni immediate senza inviare i dati della sessione al Cloud.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud">
+    Aggiungi sessioni centralizzate, audit, valutazioni online, dashboard, avvisi e distribuzione di policy per la flotta.
+  </Card>
+  <Card title="Distribuzione enterprise" icon="building-2">
+    Utilizza controlli organizzativi, chiavi con scope limitato, infrastruttura privata e requisiti di sicurezza specifici della distribuzione.
+  </Card>
+</CardGroup>
+
+## Percorso di produzione consigliato
+
+1. Connetti una macchina non-produttiva con acquisizione dei transcript abilitata.
+2. Verifica sessioni e valutazioni nel Cloud.
+3. Crea un audit per una modalità di guasto nota.
+4. Distribuisci la prima policy in modalità osservazione.
+5. Espandi alla produzione dopo aver esaminato i match e i falsi positivi.
+
+## Connetti una macchina al Cloud
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Amministrazione → Chiavi** e crea una chiave con `events:add` e `policies:pull`.
+    2. Copia il segreto monouso sulla macchina target.
+    3. Dopo aver eseguito il comando CLI di connessione, vai a **Admin → enforcement** e conferma che la macchina appare.
+    4. Vai a **Osserva → Eventi** e conferma che arriva il suo primo evento.
+
+    Il pannello delle chiavi mostra i due permessi necessari a una macchina connessa: acquisizione degli eventi e consegna delle policy.
+
+    ![Il nuovo pannello di creazione della chiave API utilizzato per concedere i permessi di acquisizione degli eventi e consegna delle policy.](/images/dashboard/key-create.png)
+
+    Dopo la connessione, la macchina dovrebbe apparire in enforcement con lo stato desiderato della policy e lo stato di distribuzione.
+
+    ![La flotta Enforcement con una macchina iscritta espansa per mostrare lo stato desiderato della policy e lo stato di distribuzione.](/images/dashboard/enforcement-fleet.png)
+
+    Il primo evento che arriva conferma che il daemon può consegnare dati al Cloud, indipendentemente dalla distribuzione della policy.
+
+    ![Il flusso di eventi live che mostra gli eventi recenti di agent, model e tool.](/images/dashboard/events-stream-current.png)
+
+    Continua solo dopo che la macchina e il suo primo evento sono visibili.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --connect https://app.befailproof.ai \
+      --token "$FAILPROOFAI_KEY" \
+      --machine-label checkout-runner-01
+
+    failproofai policies --install --cli claude --scope user
+    failproofai config --status
+    ```
+
+    Aggiungi `--no-transcripts` quando il contenuto dei transcript deve rimanere locale.
+  </Tab>
+</Tabs>
+
+Connettersi al Cloud verifica acquisizione degli eventi e consegna delle policy in modo indipendente. Una chiave può quindi essere valida ma manca di un permesso richiesto. Usa `failproofai config --status` per vedere quale capability è configurata.
+
+<Info>
+  La configurazione del Cloud scrive le credenziali locali solo dopo che la capability rilevante ha successo. Una verifica non riuscita non lascia una macchina che sembra connessa quando non lo è.
+</Info>

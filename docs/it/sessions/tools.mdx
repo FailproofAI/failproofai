@@ -1,0 +1,25 @@
+---
+title: "Tools"
+description: "Trova tool lenti, in errore o sovraccarichi nelle sessioni agente."
+icon: "wrench"
+---
+
+Tools raggruppa le chiamate ai tool tra le sessioni, così puoi confrontare la latenza e la distribuzione delle chiamate.
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Vai a **Observe → Tools**.
+    2. Filtra per ambiente, nome del tool, agente o ID sessione.
+    3. Rivedi la latenza e la distribuzione dei tool.
+    4. Seleziona un punto del grafico o un segmento di tool per aprire gli eventi e le sessioni corrispondenti.
+
+    ![La pagina Tools che mostra latenza, scomposizione dei successi e degli errori, e distribuzione delle chiamate ai tool.](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

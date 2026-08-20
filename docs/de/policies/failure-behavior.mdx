@@ -1,0 +1,43 @@
+---
+title: "Fehlerverhalten"
+description: "Verstehen Sie, was passiert, wenn die Richtlinienauswertung oder der lokale Daemon nicht verfügbar ist."
+icon: "shield-alert"
+---
+
+Failproof AI ist so konzipiert, dass ein Durchsetzungsfehler sichtbar wird, anstatt riskante Aktionen stillschweigend zuzulassen.
+
+## Einen failure-closed-Block diagnostizieren
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Gehen Sie zu **Admin → Durchsetzung** und öffnen Sie die Maschine.
+    2. Überprüfen Sie das letzte Check-in, die zugewiesene Bereitstellung und die gemeldete Bereitstellung.
+    3. Gehen Sie zu **Beobachten → Richtlinie** und öffnen Sie die Sitzung der abgelehnten Entscheidung.
+    4. Bestätigen Sie, ob der Grund auf die Erreichbarkeit des Daemons, einen Versionsunterschied oder die Richtlinie selbst hindeutet.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --status
+    npm install -g failproofai@latest
+    failproofai config
+    ```
+
+    Das erneute Ausführen von `failproofai config` aktualisiert und startet den Daemon nach einem Paket-Upgrade neu.
+  </Tab>
+</Tabs>
+
+Auf einer Maschine, die zur Verwendung von `failproofaid` konfiguriert ist, ist der Daemon der einzige Auswertungsdienst. Ist er nicht erreichbar oder stimmt seine Protokollversion nicht mit der CLI überein, schlägt die Hook-Auswertung failure-closed fehl. Die Aktion wird mit einer Begründung abgelehnt, die den Operator anweist, den Daemon zu überprüfen oder zu aktualisieren.
+
+Vor der Daemon-Konfiguration wertet Failproof AI Richtlinien direkt im Prozess aus. Sobald die Daemon-Konfiguration gespeichert ist, fällt Failproof AI bei einem Daemon-Ausfall nicht stillschweigend auf einen zweiten Auswertungsdienst zurück.
+
+## Auf eine failure-closed-Entscheidung reagieren
+
+1. Führen Sie `failproofai config --status` aus.
+2. Wenn sich die Versionen unterscheiden, führen Sie nach dem Aktualisieren des Pakets erneut `failproofai config` aus.
+3. Wenn der Daemon nicht erreichbar ist, prüfen Sie seinen Dienststatus und die lokalen Protokolle.
+4. Setzen Sie die Agent-Arbeit erst fort, wenn ein bekannter Richtlinienauswertungspfad fehlerfrei funktioniert.
+
+<Warning>
+  Versuchen Sie nicht wiederholt, die blockierte Aktion erneut auszuführen. Eine failure-closed-Antwort bedeutet, dass das System nicht feststellen konnte, ob die Aktion sicher war.
+</Warning>

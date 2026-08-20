@@ -1,0 +1,114 @@
+---
+title: "أدوات التكامل للعملاء (Agent harnesses)"
+description: "التقط الجلسات وفرض السياسات في واجهات سطر الأوامر المدعومة للعملاء."
+icon: "plug-zap"
+---
+
+يدعم Failproof AI Claude Code و Codex و GitHub Copilot CLI و Cursor و OpenCode و Pi و Hermes و OpenClaw و Factory Droid و Devin CLI و Antigravity CLI و Goose.
+
+| أداة التكامل | نطاقات hook المدعومة |
+| --- | --- |
+| Claude Code | User, project, local |
+| Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi | User, project |
+| Factory Droid, Devin CLI, Antigravity CLI, Goose | User, project |
+| Hermes, OpenClaw | User |
+
+يقوم كل تكامل بتطبيع أسماء أحداث hook الأصلية وأسماء الأدوات وحقول مدخلات الأدوات قبل تشغيل السياسات. لا يمكن للسياسة أن تتصرف إلا على الأحداث التي تعرضها أداة التكامل؛ اختبر سلوك نهاية الدور والتعليمات على أداة التكامل والإصدار المحدد الذي تنشره.
+
+## قدرة الفرض
+
+"Block" (حجب) يعني أن الحكم المرجعي للمحول الحالي يتم استهلاكه بواسطة أداة التكامل المسماة. قد يستبدل الحجب بعد الأداة النتيجة المعروضة للنموذج لكن لا يمكنه التراجع عن تأثير جانبي للأداة حدث بالفعل.
+
+| أداة التكامل | أحداث الحجب المتحقق منها | تحذيرات الملاحظة فقط أو عدم الحجب |
+| --- | --- | --- |
+| Claude Code | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PreCompact` وعدة أحداث مهام/إعدادات | `PostToolUse` و دورة حياة الجلسة والإخطارات وأحداث ما بعد الفشل تكون ملاحظة فقط. |
+| Codex | `PreToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `PostToolUse` | يستبدل الحجب بعد الأداة النتيجة بعد التنفيذ؛ أحداث بداية الجلسة والضغط ملاحظة فقط في المحول الحالي. |
+| GitHub Copilot CLI | `PreToolUse`, `UserPromptSubmit`, `PermissionRequest`, `Stop`, `SubagentStop`, `PostToolUse` | يستبدل الحجب بعد الأداة النتيجة بعد التنفيذ؛ أحداث الجلسة والإخطارات ملاحظة فقط. |
+| Cursor | `PreToolUse`, `UserPromptSubmit`, `Stop` | `PostToolUse` وأحداث الجلسة ملاحظة فقط. |
+| OpenCode | `PreToolUse` | أحداث ما بعد الأداة ودورة الحياة ملاحظة فقط؛ معالجة التوقف الحالية توجيه للدور لاحق بدلاً من بوابة محققة. |
+| Pi | `PreToolUse`, `UserPromptSubmit` | أحداث ما بعد الأداة ودورة الحياة ملاحظة فقط؛ يطبق توجيه التوقف على دور لاحق. |
+| Hermes | `PreToolUse` | أحكام ما بعد الأداة والجلسة وتوقف العميل ليست بوابات. |
+| OpenClaw | `PreToolUse`, `UserPromptSubmit`, `Stop` | أحداث ما بعد الأداة والجلسة وتوقف العميل والضغط ملاحظة فقط. |
+| Factory Droid | `PreToolUse`, `UserPromptSubmit`, `Stop`, `PreCompact` | أحكام ما بعد الأداة وتوقف العميل ملاحظة فقط. |
+| Devin CLI | `PreToolUse`, `UserPromptSubmit`, `Stop`, مشروط `PermissionRequest` | لا تعمل hooks الإذن في كل وضع إذن؛ أحداث ما بعد الأداة والجلسة ملاحظة فقط. |
+| Antigravity CLI | `PreToolUse`, `Stop` | أحكام موجه المستخدم وما بعد الأداة ملاحظة فقط؛ يمكن حقن تعليمات الموجه. |
+| Goose | `PreToolUse` | أحداث موجه المستخدم وما بعد الأداة والجلسة ملاحظة فقط. يوجد hook توقف حجب أصلي في المنطقة الأعلى لكن لم يتم تثبيته بواسطة المحول الحالي. |
+
+القدرات حساسة للإصدار. أعد الاختبار بعد ترقية واجهة سطر أوامر العميل، خاصة عندما تعتمد السياسة على سلوك الموجه أو التوقف أو الإذن أو ما بعد الأداة بدلاً من بوابة ما قبل الأداة الشائعة.
+
+## تثبيت hooks الالتقاط والسياسة
+
+<Tabs>
+  <Tab title="لوحة التحكم">
+    1. افتح **Administration → Keys** وأنشئ مفتاحاً باستخدام `events:add` و `policies:pull`، وسمه باسم الجهاز أو البيئة.
+    2. على الجهاز الهدف، اربط واجهة سطر الأوامر المحلية بالمفتاح المعروض وثبت hooks أداة التكامل.
+    3. ابدأ جلسة عميل جديدة، ثم تأكد من أحداث hook والجلسة الخاصة بها تحت **Observe → Events**.
+    4. افتح **Observe → policy** لنفس نطاق الوقت وتأكد من أن قرار السياسة ينسب إلى الجهاز.
+
+    يبدأ الاتصال بمفتاح الجهاز. تأكد من أنه يتضمن أذونات الاستهلاك وتسليم السياسة قبل نسخ سره.
+
+    ![درج مفتاح API الجديد المستخدم لمنح أذونات استهلاك الأحداث وتسليم السياسة.](/images/dashboard/key-create.png)
+
+    بعد تثبيت hooks، يجب أن يعرض دفق الأحداث أحداثاً جديدة من الجهاز والبيئة التي وصلت إليها.
+
+    ![دفق الأحداث المباشر المستخدم لتأكيد أن أداة التكامل المثبتة حديثاً تقدم تقارير.](/images/dashboard/events-stream.png)
+
+    أخيراً، تحقق من أن قرارات السياسة تنسب إلى نفس الجهاز. هذا يؤكد أن أداة التكامل تقدم تقارير عن أنشطة السياسة بالإضافة إلى أحداث التتبع.
+
+    ![صفحة السياسة المستخدمة للتحقق من قرارات السياسة من أداة تكامل متصلة حديثاً.](/images/dashboard/policy-observe.png)
+  </Tab>
+  <Tab title="CLI">
+    ثبت hooks لكل أداة تكامل مكتشفة:
+
+    ```bash
+    failproofai config \
+      --connect https://app.befailproof.ai \
+      --token <machine-key>
+    failproofai policies --install
+    ```
+
+    أو استهدف أدوات التكامل المسماة ونطاق الإعدادات:
+
+    ```bash
+    failproofai policies --install \
+      --cli claude codex cursor \
+      --scope user
+    ```
+
+    يحتفظ نطاق المشروع بإعدادات hook مع مستودع. يغطي نطاق المستخدم العمل عبر المستودعات. يدعم Claude Code أيضاً نطاق local؛ الدعم يختلف حسب أداة التكامل وواجهة سطر الأوامر ترفض المجموعات غير المدعومة.
+
+    تحقق من الجهاز وأحداثه:
+
+    ```bash
+    failproofai config --status
+    failproofai flush --wait
+    fp events --since 1h --event-type hook_triggered,hook_completed
+    ```
+  </Tab>
+</Tabs>
+
+## أضف مسار جلسة غير افتراضي
+
+<Tabs>
+  <Tab title="لوحة التحكم">
+    يتم تسجيل المسارات الإضافية على الجهاز، وليس في السحابة. بعد إضافة واحد، افتح **Observe → Sessions** وصفّي البيئة الخاصة بالجهاز، وتأكد من ظهور الجلسات من المسار الجديد. افتح جلسة وتحقق من العميل و أداة التكامل و طوابع الوقت للأحداث قبل الاعتماد عليها في التدقيق.
+
+    ![قائمة الجلسات مصفاة للبيئة التي تتلقى البيانات من مسار الالتقاط الإضافي.](/images/dashboard/sessions-list.png)
+  </Tab>
+  <Tab title="CLI">
+    أضف مسار مع تسمية اختيارية، ثم افحص المسارات المعدة:
+
+    ```bash
+    failproofai harness add-path claude checkout=/srv/checkout/.claude
+    failproofai harness list claude
+    failproofai backfill --since 7d --dry-run
+    failproofai backfill --since 7d
+    ```
+
+    أزل مسار باستخدام `failproofai harness remove-path claude checkout`.
+  </Tab>
+</Tabs>
+
+<Tip>
+  قم بتشغيل جلسة جديدة واحدة بعد التثبيت. تحقق من كل من دفق الأحداث المباشر وقرار السياسة الفعلي قبل توسيع الطرح.
+</Tip>

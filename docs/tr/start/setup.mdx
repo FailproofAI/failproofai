@@ -1,0 +1,68 @@
+---
+title: "Kurulumunuzu seçin"
+description: "Yerel uygulama, Failproof AI Cloud veya kurumsal dağıtım arasında seçim yapın."
+icon: "waypoints"
+---
+
+<CardGroup cols={3}>
+  <Card title="Yerel uygulama" icon="laptop">
+    Hook'ları ve politikaları bir makinede kurun. Oturum verilerini Cloud'a göndermeden hemen koruma önlemleri gerektiğinde bunu kullanın.
+  </Card>
+  <Card title="Failproof AI Cloud" icon="cloud">
+    Merkezi oturumlar, denetim, çevrimiçi değerlendirmeler, panolar, uyarılar ve filo politikası dağıtımı ekleyin.
+  </Card>
+  <Card title="Kurumsal dağıtım" icon="building-2">
+    Kuruluş kontrolleri, kapsamlı anahtarlar, özel altyapı ve dağıtıma özgü güvenlik gereksinimlerini kullanın.
+  </Card>
+</CardGroup>
+
+## Önerilen üretim yolu
+
+1. Transkripsyon yakalama etkinleştirilerek üretim dışı bir makineyi bağlayın.
+2. Cloud'daki oturumları ve değerlendirmeleri doğrulayın.
+3. Bilinen bir hata modunun denetimini oluşturun.
+4. İlk politikayı gözlem modunda dağıtın.
+5. Eşleşmeleri ve yanlış pozitifleri inceledikten sonra üretime genişletin.
+
+## Bir makineyi Cloud'a bağlayın
+
+<Tabs>
+  <Tab title="Pano">
+    1. **Administration → Keys** bölümüne gidin ve `events:add` ve `policies:pull` izinleriyle bir anahtar oluşturun.
+    2. Tek seferlik sırrı hedef makinaya kopyalayın.
+    3. CLI bağlantı komutunu çalıştırdıktan sonra, **Admin → enforcement** bölümüne gidin ve makinenin görüntülendiğini onaylayın.
+    4. **Observe → Events** bölümüne gidin ve ilk olayının geldiğini onaylayın.
+
+    Anahtar çekmecesi, bağlı bir makine tarafından gereken iki izni gösterir: olay alımı ve politika sunumu.
+
+    ![Olay alımı ve politika sunumu izinleri vermek için kullanılan yeni API anahtar çekmecesi.](/images/dashboard/key-create.png)
+
+    Bağlantıdan sonra makine, istenen ve bildirilen politika durumu ile enforcement'ta görünmelidir.
+
+    ![Kayıtlı bir makinenin istenen politika durumu ve dağıtım durumunu göstermek için genişletilmiş enforcement filosu.](/images/dashboard/enforcement-fleet.png)
+
+    Gelen ilk olay, daemon'ın politika dağıtımından bağımsız olarak Cloud'a veri sunabildiğini onaylar.
+
+    ![Güncel ajan, model ve araç olaylarını gösteren canlı olay akışı.](/images/dashboard/events-stream-current.png)
+
+    Hem makine hem de ilk olayı görebildikten sonra devam edin.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai config --connect https://app.befailproof.ai \
+      --token "$FAILPROOFAI_KEY" \
+      --machine-label checkout-runner-01
+
+    failproofai policies --install --cli claude --scope user
+    failproofai config --status
+    ```
+
+    Transkripsyon içeriğinin yerel kalması gerektiğinde `--no-transcripts` ekleyin.
+  </Tab>
+</Tabs>
+
+Cloud'a bağlanmak olay alımını ve politika sunumunu bağımsız olarak doğrular. Bu nedenle bir anahtar geçerli olabilir ancak gerekli izinlerden birinden yoksun olabilir. Hangi yeteneğin yapılandırıldığını görmek için `failproofai config --status` komutunu kullanın.
+
+<Info>
+  Cloud kurulumu, ilgili yetenek başarılı olduktan sonra yerel kimlik bilgilerini yazar. Başarısız bir doğrulama, bir makineyi bağlı görünmesine neden olmaz, oysa bağlı değildir.
+</Info>

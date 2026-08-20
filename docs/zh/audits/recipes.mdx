@@ -1,0 +1,54 @@
+---
+title: "审计方案"
+description: "常见 Agent 故障排查的起始目标。"
+icon: "book-open-check"
+---
+
+将这些内容作为起始目标，然后添加您的 Agent、环境和预期工作流。
+
+<Tabs>
+  <Tab title="控制台">
+    前往 **分析 → 审计 → 新建审计**，将某个方案复制到描述或简报中，然后添加相关的环境、Agent、回溯时间和参考 URL。创建审计并在安排定期运行之前检查第一次运行结果。
+
+    新建审计表单通过添加范围、上下文、频次和通知，将方案转换为可执行的故障检查。
+
+    ![新建审计表单，已配置明确目标、计划、Agent 和环境范围、上下文及通知渠道。](/images/dashboard/audit-new.png)
+
+    创建后，在依赖定期运行之前，请确认审计已出现在列表中并具有预期的状态和计划。
+
+    ![审计页面，创建后显示特定工作流的审计方案。](/images/dashboard/audits.png)
+
+    打开第一次运行结果，若其发现内容比预期的故障模式范围更广或更窄，请对方案进行优化。
+  </Tab>
+  <Tab title="CLI">
+    将方案保存为文本文件，并在创建时附加：
+
+    ```bash
+    fp audits create retry-loop-review \
+      --scope '{"environments":["production"]}' \
+      --text-file ./retry-loop-audit.txt \
+      --schedule-interval-secs 86400
+    ```
+  </Tab>
+</Tabs>
+
+<AccordionGroup>
+  <Accordion title="重复重试循环">
+    查找 Agent 在不更改输入、不选择备用工具、也不升级至人工处理的情况下，重复调用同一个失败工具的会话。
+  </Accordion>
+  <Accordion title="工具使用不当">
+    查找所选工具与声明任务不匹配，或工具输入违反工作流所需前置条件的会话。
+  </Accordion>
+  <Accordion title="不安全的数据访问">
+    查找在该 Agent 批准的路径和服务范围之外读取、写入或传输敏感数据的会话。
+  </Accordion>
+  <Accordion title="任务中断放弃">
+    查找在未完成请求结果、未给出明确错误，也未显式移交给人工的情况下结束的会话。
+  </Accordion>
+  <Accordion title="成本或延迟回归">
+    查找模型、工具或总耗时超出预期预算的会话，并识别造成该问题的事件模式。
+  </Accordion>
+  <Accordion title="遗漏人工升级">
+    查找因置信度低、反复失败或策略指引需要人工决策，但 Agent 仍自主继续执行的会话。
+  </Accordion>
+</AccordionGroup>

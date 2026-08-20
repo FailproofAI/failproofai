@@ -1,0 +1,84 @@
+---
+title: "ローカル設定"
+description: "ポリシーのスコープ、パラメーター、カスタムファイル、マシンレベルの Failproof AI 設定を管理します。"
+icon: "file-cog"
+---
+
+Failproof AI は、ポリシーの選択とマシン・デーモンの設定を分離しています。これにより、リポジトリのポリシー設定をレビュー可能な状態に保ちながら、認証情報やデーモンの状態をリポジトリ外に置くことができます。
+
+## ポリシースコープを選択する
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    引数なしで `failproofai` を実行するとローカルポリシーダッシュボードが開きます。ポリシーを有効化する前に、user・project・local のいずれかのスコープを選択することで、変更が意図した設定ファイルに書き込まれます。
+
+    - **User** は、このマシン上のすべてのプロジェクトに適用されます。
+    - **Project** はリポジトリに属し、コミットすることができます。
+    - **Local** は特定のユーザーに対してプロジェクトをオーバーライドします。gitignore に追加しておくことを推奨します。
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policy add block-rm-rf --scope user
+    failproofai policy add block-force-push --scope project
+    failproofai policy add warn-large-file-write --scope local
+    failproofai policies
+    ```
+
+    すべてのハーネスが local スコープをサポートしているわけではありません。選択したハーネスが対応できないスコープを指定した場合、CLI はエラーを返します。
+  </Tab>
+</Tabs>
+
+| スコープ | ポリシー設定ファイル |
+| --- | --- |
+| Project | `<project>/.failproofai/policies-config.json` |
+| Local | `<project>/.failproofai/policies-config.local.json` |
+| User | `~/.failproofai/policies-config.json` |
+
+有効なポリシーは和集合としてマージされます。ポリシーパラメーターは、project → local → user の順で最初にパラメーターを定義したスコープが使用されます。明示的なカスタムポリシーパスも、最初に定義したスコープが使用されます。
+
+## ポリシーパラメーターを設定する
+
+<Tabs>
+  <Tab title="ダッシュボード">
+    ローカルダッシュボードでポリシーを開き、サポートされているパラメーターを編集して、選択したスコープに保存します。エージェントの操作に対してマッチするケースとマッチしないケースをそれぞれ実行し、**Observe → policy** で判定結果を確認します。
+
+  </Tab>
+  <Tab title="CLI">
+    選択したスコープの `policies-config.json` を編集し、`failproofai policies` を実行して不明なポリシー名やパラメーターキーを確認します。
+
+    ```json
+    {
+      "enabledPolicies": ["block-rm-rf", "block-force-push"],
+      "policyParams": {
+        "block-rm-rf": {
+          "allowPaths": ["/tmp/build-output"]
+        }
+      }
+    }
+    ```
+
+    ```bash
+    failproofai policies
+    ```
+  </Tab>
+</Tabs>
+
+## マシンファイルについて
+
+`~/.failproofai` には、信頼境界ごとに分離されたファイルが格納されています。
+
+| パス | 用途 |
+| --- | --- |
+| `config.json` | 機密情報を含まないデーモン、監査、テレメトリの設定 |
+| `credentials.json` | クラウド認証情報。オーナーのみが読み取れるパーミッションで保存されます |
+| `policies-config.json` | ユーザースコープの組み込みポリシーの選択、パラメーター、明示的なカスタムパス |
+| `policies/` | ユーザーのコンベンションポリシーおよびクラウド管理ポリシーの成果物 |
+| `hook-activity/` | ローカルポリシーの判定ログ |
+| `state/` | デーモンのスプール、ヘルス、一時停止、ランタイムの状態 |
+
+コンテナや隔離されたテスト環境向けに、`FAILPROOFAI_HOME` を使用してマシンレイアウト全体を別の場所に移動できます。個々のステートディレクトリを独立して移動させることは避けてください。
+
+<Warning>
+  `credentials.json` は絶対にコミットしないでください。プロジェクトのポリシー設定やプロジェクトのコンベンションポリシーは、執行コードとしてレビューした上でのみコミットしてください。
+</Warning>

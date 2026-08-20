@@ -1,0 +1,40 @@
+---
+title: "Администрирование"
+description: "Управляйте доступом, использованием, организациями и безопасностью отдельно от рабочего процесса надежности."
+icon: "settings-2"
+---
+
+Раздел администрирования содержит элементы управления, необходимые для работы Failproof AI в команде. Большинству пользователей достаточно разделов Sessions, Audits и Policies; администраторы используют этот раздел для управления доступом и операционными границами.
+
+<Tabs>
+  <Tab title="Dashboard">
+    Используйте раздел **Admin** боковой панели Cloud для **редактора политик**, **enforcement**, **usage**, **keys**, **users** и **settings**. Заблокированный элемент указывает на отсутствие разрешения на чтение для вашей учетной записи.
+
+    ![Раздел Admin боковой панели Cloud с редактором политик, enforcement, usage, keys, users и settings.](/images/dashboard/admin-navigation.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp whoami
+    fp orgs current
+    fp orgs perms
+    fp usage
+    ```
+
+    Поместите глобальные параметры перед командой, например `fp --org reliability-team --json usage`.
+  </Tab>
+</Tabs>
+
+<Columns cols={2}>
+  <Card title="Использование" icon="chart-no-axes-combined" href="/ru/admin/usage">
+    Просмотрите окна выставления счетов и потребление организацией.
+  </Card>
+  <Card title="Ключи и разрешения" icon="key-round" href="/ru/admin/keys-and-permissions">
+    Предоставьте машинам и автоматизации только необходимые разрешения.
+  </Card>
+  <Card title="Пользователи и организации" icon="users" href="/ru/admin/users-and-organizations">
+    Управляйте членством, параметрами по умолчанию и границами организаций.
+  </Card>
+  <Card title="Параметры и безопасность" icon="lock-keyhole" href="/ru/admin/settings-and-security">
+    Настройте операционные параметры, обработку данных и безопасность развертывания.
+  </Card>
+</Columns>

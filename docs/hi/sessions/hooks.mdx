@@ -1,0 +1,25 @@
+---
+title: "Hooks"
+description: "Agent lifecycle hooks की activity, triggers, और latency को policy outcomes से अलग से measure करें।"
+icon: "webhook"
+---
+
+Hooks दिखाता है कि agent lifecycle hooks कब चलते हैं और उन्हें कितना समय लगता है। Policy decisions एक अलग view हैं।
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Observe → Hooks** पर जाएं।
+    2. Environment, hook name, trigger event, agent, या session ID के आधार पर filter करें।
+    3. Hook latency और distribution की समीक्षा करें।
+    4. किसी chart point या hook segment को select करके underlying events को खोलें।
+
+    ![The Hooks page showing latency grouped by hook name and trigger event.](/images/dashboard/hooks.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list hooks
+    fp events --event-type hook_triggered,hook_completed --env production --since 24h
+    fp events --search "PreToolUse" --since 24h
+    ```
+  </Tab>
+</Tabs>

@@ -1,0 +1,53 @@
+---
+title: "Abfragen"
+description: "Erkunden Sie Sitzungs-, Ereignis- und Auswertungsdaten mit wiederverwendbarem SQL."
+icon: "database"
+---
+
+Abfragen bilden die flexible Schicht unterhalb von Dashboards, Audits und Untersuchungen. Nutzen Sie Ad-hoc-SQL, um eine Idee zu testen, und speichern Sie die Abfrage, sobald sie Teil eines wiederkehrenden Workflows wird.
+
+## Eine Abfrage erstellen und ausführen
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Navigieren Sie zu **Analyze → Queries** und wählen Sie **new query**.
+    2. Öffnen Sie den Schema-Browser und wählen Sie Felder aus den Ereignis-, Sitzungs- oder Auswertungsdaten.
+    3. Schreiben Sie SQL, fügen Sie bei Bedarf Parameter hinzu und führen Sie die Abfrage aus.
+    4. Speichern Sie sie mit einem aussagekräftigen Namen und einer Beschreibung, und verwenden Sie **add to dashboard**, wenn das Ergebnis überwacht werden soll.
+
+    Der Abfrageeditor vereint das Ereignisschema, SQL, Parameter und eine Ergebnisvorschau, damit Sie die Fragestellung validieren können, bevor Sie sie speichern.
+
+    ![Der SQL-Abfrageeditor mit Schema-Browser und Live-Ergebnisgitter.](/images/dashboard/query-lab.png)
+
+    Gespeicherte Abfragen erscheinen anschließend in der gemeinsamen Bibliothek, wo Teammitglieder sie erneut ausführen oder ihre Ergebnisse zu Dashboards hinzufügen können.
+
+    ![Die gespeicherte Abfragebibliothek mit wiederverwendbaren integrierten und benutzerdefinierten Abfragen.](/images/dashboard/queries.png)
+
+    Verwenden Sie einen klaren Namen und eine aussagekräftige Beschreibung, damit das Ergebnis auch ohne erneutes Öffnen des SQL verständlich bleibt.
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp query schema
+    fp query create "retry loops" --sql "SELECT ..."
+    fp query run <query-id>
+    fp query show <query-id>
+    fp query update <query-id> --sql "SELECT ..."
+    ```
+
+    Verwenden Sie `fp query list`, um IDs zu finden, und `fp query delete <query-id>`, um eine gespeicherte Abfrage zu entfernen.
+  </Tab>
+</Tabs>
+
+## Häufige Anwendungsfälle
+
+- Sitzungen mit wiederholten Aufrufen desselben Tools finden.
+- Auswertungsergebnisse über verschiedene Modelle oder Umgebungen hinweg vergleichen.
+- Zeit zwischen einem menschlichen Wartezustand und der Wiederaufnahme messen.
+- Policy-Ablehnungen identifizieren, auf die eine erfolgreiche Alternative folgte.
+- Eine Kohorte für ein Audit erstellen.
+
+Öffnen Sie **Queries → Schema**, bevor Sie gegen unbekannte Felder schreiben. Bevorzugen Sie explizite Zeit- und Umgebungsfilter, und beschränken Sie die Ergebnismenge während der Erkundungsphase.
+
+<Warning>
+  Eine Abfrage kann ein verdächtiges Muster identifizieren, begründet aber für sich allein keinen Fehlermodus. Öffnen Sie repräsentative Traces oder führen Sie ein Audit durch, bevor Sie das Ergebnis in eine Policy überführen.
+</Warning>

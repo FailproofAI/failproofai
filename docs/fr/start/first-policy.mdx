@@ -1,0 +1,47 @@
+---
+title: "Évitez votre premier incident avec une politique"
+description: "Rédigez une version de politique, déployez-la en mode observation, puis appliquez-la."
+icon: "shield-check"
+---
+
+N'utilisez une politique qu'une fois que vous êtes en mesure de décrire l'action non sécurisée et les actions légitimes qui doivent rester autorisées.
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    <Steps>
+      <Step title="Rédigez la politique">
+        Accédez à **Admin → éditeur de politiques**. Commencez par la politique de démonstration, examinez ou modifiez son code source, puis sélectionnez **publier la version**. La publication crée la version immuable que vous pouvez déployer sur les machines.
+
+        ![L'éditeur de politiques en mode composition avec une politique de démonstration prête à être publiée en tant que version immuable.](/images/dashboard/policy-editor.png)
+      </Step>
+      <Step title="Déployez-la sur une machine">
+        Accédez à **Admin → application**, développez la machine cible, puis sélectionnez **modifier cette machine**. Ajoutez la politique de démonstration publiée, épinglez sa version, choisissez **observer**, et appliquez le déploiement.
+
+        ![L'éditeur de déploiement de machine avec une version de politique publiée sélectionnée en mode observation avant l'application du déploiement.](/images/dashboard/enforcement-editor.png)
+      </Step>
+      <Step title="Vérifiez la politique">
+        Lancez une nouvelle session d'agent sur cette machine, puis ouvrez **Observer → politique**. Sélectionnez la machine et confirmez que la politique de démonstration apparaît dans la cartographie des politiques et la chronologie des décisions. Le mode observation enregistre ce que la politique ferait sans bloquer l'action.
+
+        ![La page Politique affichant les totaux de décisions, l'activité d'application dans le temps, ainsi que les cartographies de politiques locales et gérées par le Cloud.](/images/dashboard/policy-observe.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="CLI">
+    La rédaction de politiques Cloud et le déploiement sur une flotte sont des flux de travail d'administration. Utilisez le CLI local pour valider la même politique avant de la publier :
+
+    ```bash
+    failproofai policies --install --custom ./payment-retry.policies.ts \
+      --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Utilisez `fp` pour inspecter les décisions de politique visibles dans le Cloud :
+
+    ```bash
+    fp events --event-type hook_completed --env production --since 24h
+    fp sessions --env production --since 24h
+    ```
+
+    Le CLI Cloud n'expose pas les routes de déploiement d'application réservées aux administrateurs. Publiez les versions depuis **Admin → éditeur de politiques** et déployez-les depuis **Admin → application**.
+  </Tab>
+</Tabs>

@@ -1,0 +1,57 @@
+---
+title: "Policy integrate"
+description: "Abilita guardrail mantenute per comuni modalità di fallimento degli agenti."
+icon: "library"
+---
+
+Le policy integrate coprono la gestione dei segreti, i file di ambiente, i comandi shell distruttivi, i branch protetti, gli strumenti cloud e infrastruttura, la pubblicazione di pacchetti, le chiamate ripetute e i controlli del flusso di lavoro di fine attività.
+
+## Abilitare e verificare una policy integrate
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Installa la policy su una macchina connessa con la CLI locale.
+    2. Esegui un'azione di test sicura nell'agente strumentato.
+    3. Vai a **Observe → policy** e filtra per nome della policy, ambiente della macchina o decisione.
+    4. Apri la sessione collegata per confermare l'input dello strumento corrispondente e il motivo restituito.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Rimuovila con `failproofai policy remove block-rm-rf --cli claude --scope project`.
+  </Tab>
+</Tabs>
+
+Elenca le policy disponibili nella tua versione installata:
+
+```bash
+failproofai policies
+```
+
+Abilita una policy per un progetto:
+
+```bash
+failproofai policy add block-rm-rf --scope project
+```
+
+Abilita più policy per harness selezionati:
+
+```bash
+failproofai policies --install block-sudo block-force-push \
+  --cli claude codex --scope project
+```
+
+Alcune policy accettano parametri o sono contrassegnate come beta. Rivedi la descrizione, l'ambito di corrispondenza e il comportamento predefinito prima del rollout. Una policy che protegge un flusso di lavoro potrebbe bloccare operazioni valide in un altro.
+
+<Card title="Sfoglia il catalogo completo delle policy integrate" icon="list-checks" href="/it/policies/builtin-catalog">
+  Esamina tutte le 40 policy attuali, i loro trigger, la baseline consigliata e i parametri.
+</Card>
+
+<Tip>
+  Preferisci l'ambito di progetto per le aspettative specifiche del repository e l'ambito utente per i requisiti di sicurezza a livello di macchina.
+</Tip>

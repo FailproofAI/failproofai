@@ -1,0 +1,25 @@
+---
+title: "Herramientas"
+description: "Encuentra herramientas lentas, con errores o sobreutilizadas en las sesiones de agentes."
+icon: "wrench"
+---
+
+La sección de herramientas agrupa las llamadas a herramientas entre sesiones para que puedas comparar la latencia y la distribución de llamadas.
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Ve a **Observe → Tools**.
+    2. Filtra por entorno, nombre de herramienta, agente o ID de sesión.
+    3. Revisa la latencia y la distribución de herramientas.
+    4. Selecciona un punto del gráfico o un segmento de herramienta para abrir los eventos y sesiones correspondientes.
+
+    ![La página de herramientas mostrando la latencia, el desglose de éxitos y errores, y la distribución de llamadas a herramientas.](/images/dashboard/tools.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp list tools
+    fp events --event-type tool_use,tool_result --env production --since 24h
+    fp --json events --full --session-id <session-id> --all
+    ```
+  </Tab>
+</Tabs>

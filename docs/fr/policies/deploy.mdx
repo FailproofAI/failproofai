@@ -1,0 +1,47 @@
+---
+title: "Déployer des politiques"
+description: "Déployez une version de politique révisée sur les machines cibles."
+icon: "cloud-upload"
+---
+
+Un déploiement associe une ou plusieurs versions de politique à un ensemble de machines enrollées cibles.
+
+## Appliquer un déploiement
+
+<Tabs>
+  <Tab title="Tableau de bord">
+    1. Allez dans **Admin → enforcement**, trouvez la machine et développez sa ligne.
+    2. Sélectionnez **edit**, ajoutez la version de politique révisée, puis choisissez l'effet **observe** ou un effet d'application.
+    3. Appliquez le changement, puis attendez le prochain check-in de la machine et confirmez son état de déploiement et de couverture.
+    4. Allez dans **Observe → policy** pour inspecter les décisions en temps réel.
+
+    ![L'éditeur de déploiement de machine avec les versions de politique, les effets enforce et observe, et l'action d'application du déploiement.](/images/dashboard/enforcement-editor.png)
+  </Tab>
+  <Tab title="CLI">
+    Les points de terminaison de déploiement Cloud ne sont intentionnellement pas exposés en tant que commandes `fp` ordinaires. Vérifiez la machine localement, puis déployez via le tableau de bord :
+
+    ```bash
+    failproofai config --status
+    ```
+
+    Utilisez `fp sessions --env production --since 24h` et `fp events --event-type hook_completed` après le déploiement pour vérifier que l'activité remonte bien vers Cloud.
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Choisir la version et les cibles">
+    Déployez une version révisée, et non un brouillon modifiable, en commençant par une machine hors production ou un petit groupe dont vous pouvez inspecter les sessions.
+  </Step>
+  <Step title="Observer les décisions">
+    Examinez les correspondances, les raisons, les outils concernés et les faux positifs sans bloquer le travail.
+  </Step>
+  <Step title="Appliquer et vérifier la couverture">
+    Promouvez après que les correspondances observées distinguent les actions non sécurisées des actions valides, puis confirmez que chaque machine ciblée a bien récupéré le déploiement et rapporte les décisions.
+  </Step>
+</Steps>
+
+Les machines nécessitent la capacité `policies:pull`. Le reporting des événements est contrôlé séparément par `events:add` ; vérifiez les deux lorsque vous attendez une analyse et une application Cloud.
+
+<Warning>
+  La gestion de l'application est un workflow Cloud administratif. Ne traitez pas les routes d'application réservées au root comme des points de terminaison API `/v1` ordinaires.
+</Warning>

@@ -1,0 +1,41 @@
+---
+title: "Geri Alma"
+description: "Bir dağıtım geçerli aracı çalışmasını kesintiye uğrattığında bilinen bir ilke dağıtımını geri yükleyin."
+icon: "rotate-ccw"
+---
+
+Geri alma, dağıtılan sürümü değiştirir veya bir ilke atamasını kaldırır; olayı açıklayan karar geçmişini silmez.
+
+## Bir makineyi geri alın
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. **Admin → enforcement** sayfasına gidin, etkilenen makineyi genişletin ve son bilinen iyi ilke setini belirleyin.
+    2. **edit** seçeneğini seçin, bu sürümleri ve etkileri geri yükleyin ve yeni dağıtımı uygulayın.
+    3. Makine check-in'ini bekleyin, ardından raporlanan dağıtımı doğrulayın.
+    4. **Observe → policy** açın ve etkilenen oturumları açarak geçerli çalışmanın artık engellenip engellenmediğini doğrulayın.
+
+  </Tab>
+  <Tab title="CLI">
+    Bulut dağıtımı geri alma işlemi bir dashboard iş akışıdır. Düzeltilen dağıtımın makineye ulaştığını doğrulamak için yerel durumu kullanın:
+
+    ```bash
+    failproofai config --status
+    ```
+
+    `failproofai config --pause` yerleşik, özel ve kural ilkelerini bir yerel oturum için duraklatır. Bulut tarafından yönetilen ilkeleri duraklatmaz, bu nedenle kötü bir Bulut dağıtımı için bir çözüm değildir.
+  </Tab>
+</Tabs>
+
+## Geri alma zamanı
+
+- Bir ilke beklenen bir üretim eylemini engeller.
+- Eşleşme hacmi, gözlenen dağıtımın tahmin ettiğinden önemli ölçüde daha yüksektir.
+- Bir ilke, bir entegrasyonun sağlamadığı alanlara bağlıdır.
+- Yeni bir sürüm, davranışı amaçlanan hata modunun dışında değiştirir.
+
+Geri alma işleminden sonra, etkilenen oturumları açın ve yanlış pozitiflere neden olan koşulu belirleyin. Yeni bir sürüm oluşturun, hem güvensiz hem de yasal kullanım durumlarını test edin, ardından gözlem aşamasını tekrarlayın.
+
+<Warning>
+  Bir olayın ortasında uygulama duraklatılması uygun olabilir, ancak bu, o kapsam içindeki her etkin ilke için riskin genişlemesine neden olur. Mümkün olduğunda belirli ilke sürümünü geri almayı tercih edin.
+</Warning>

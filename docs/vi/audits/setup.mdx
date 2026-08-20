@@ -1,0 +1,44 @@
+---
+title: "Thiết lập một cuộc kiểm toán"
+description: "Xác định mục tiêu kiểm toán, dân số phiên làm việc và bối cảnh bằng chứng."
+icon: "sliders-horizontal"
+---
+
+Chất lượng của một cuộc kiểm toán bắt đầu từ phạm vi của nó. Một yêu cầu rộng như "tìm các vấn đề" sẽ cho ra kết quả ít hữu ích hơn so với một câu hỏi về lỗi cụ thể.
+
+## Cấu hình cuộc kiểm toán
+
+<Tabs>
+  <Tab title="Dashboard">
+    1. Đi tới **Analyze → Audits → New audit** và nhập tên và mô tả.
+    2. Đặt tần suất, cửa sổ thời gian, phạm vi agent/môi trường, lỗi bị bỏ qua, độ nhạy cảm và số lượng phát hiện tối đa.
+    3. Trong **agents**, thêm hoặc xem lại bối cảnh agent, sau đó thêm tóm tắt điều hành và bất kỳ URL tham khảo HTTPS công khai nào.
+    4. Chọn các kênh thông báo và chọn **create audit**. Lần chạy đầu tiên sẽ được xếp hàng ngay lập tức.
+
+    ![Biểu mẫu kiểm toán mới với tên, mô tả, tần suất, cửa sổ, phạm vi môi trường và agent, lỗi bị bỏ qua, cài đặt phân tích, tóm tắt, trang tham khảo và các kênh thông báo.](/images/dashboard/audit-new.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create checkout-reliability \
+      --description "Find checkout failures that agents do not recover from" \
+      --scope '{"environments":["production"],"agent_ids":["checkout-agent"]}' \
+      --schedule-interval-secs 86400 \
+      --window-mode since_last \
+      --sensitivity medium \
+      --text-file ./checkout-audit-brief.txt \
+      --url https://runbooks.example.com/checkout
+    ```
+
+    Lần chạy đầu tiên sẽ được xếp hàng ngay lập tức. Hãy bao gồm tóm tắt và các URL tham khảo trong quá trình tạo để lần chạy đó nhận được chúng.
+
+    Xem tài liệu tham khảo đầy đủ [`fp audits create`](/vi/reference/cloud-cli#audits).
+  </Tab>
+</Tabs>
+
+<Tip>
+  Bắt đầu với một phiên làm việc đã biết thất bại và một số phiên làm việc bình thường. Điều này cung cấp cho cuộc kiểm toán cả một ví dụ tích cực và một tập hợp so sánh.
+</Tip>
+
+<Info>
+  Bối cảnh kiểm toán được lưu trữ như một tài nguyên riêng, vì vậy chỉnh sửa một cuộc kiểm toán sẽ không vô tình xóa tài liệu tham khảo.
+</Info>

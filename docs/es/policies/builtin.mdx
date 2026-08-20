@@ -1,0 +1,57 @@
+---
+title: "Políticas integradas"
+description: "Activa medidas de seguridad mantenidas para modos de fallo comunes en agentes."
+icon: "library"
+---
+
+Las políticas integradas cubren el manejo de secretos, archivos de entorno, comandos shell destructivos, ramas protegidas, herramientas de nube e infraestructura, publicación de paquetes, llamadas repetidas y verificaciones de flujo de trabajo al final de la tarea.
+
+## Activar y verificar una política integrada
+
+<Tabs>
+  <Tab title="Panel de control">
+    1. Instala la política en una máquina conectada con la CLI local.
+    2. Ejecuta una acción de prueba segura en el agente instrumentado.
+    3. Ve a **Observe → policy** y filtra por nombre de política, entorno de máquina o decisión.
+    4. Abre la sesión vinculada para confirmar la entrada de herramienta coincidente y el motivo devuelto.
+
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    failproofai policies
+    failproofai policy add block-rm-rf --cli claude --scope project
+    failproofai config --status
+    ```
+
+    Elimínala con `failproofai policy remove block-rm-rf --cli claude --scope project`.
+  </Tab>
+</Tabs>
+
+Lista las políticas disponibles en tu versión instalada:
+
+```bash
+failproofai policies
+```
+
+Activa una política para un proyecto:
+
+```bash
+failproofai policy add block-rm-rf --scope project
+```
+
+Activa varias políticas para los arneses seleccionados:
+
+```bash
+failproofai policies --install block-sudo block-force-push \
+  --cli claude codex --scope project
+```
+
+Algunas políticas aceptan parámetros o están marcadas como beta. Revisa la descripción, el alcance de coincidencia y el comportamiento predeterminado antes de desplegarlas. Una política que protege un flujo de trabajo puede bloquear operaciones válidas en otro.
+
+<Card title="Explorar el catálogo completo de políticas integradas" icon="list-checks" href="/es/policies/builtin-catalog">
+  Revisa las 40 políticas actuales, sus disparadores, la línea base recomendada y sus parámetros.
+</Card>
+
+<Tip>
+  Prefiere el alcance de proyecto para expectativas específicas del repositorio y el alcance de usuario para requisitos de seguridad a nivel de máquina.
+</Tip>

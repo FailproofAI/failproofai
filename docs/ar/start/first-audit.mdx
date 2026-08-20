@@ -1,0 +1,52 @@
+---
+title: "تشغيل أول فحص فشل لديك"
+description: "أنشئ تدقيقاً من لوحة معلومات Cloud أو باستخدام fp CLI واستعرض نتائجه الأولى."
+icon: "scan-search"
+---
+
+يحول التدقيق مجموعة من الجلسات إلى نتائج فشل مصنفة ومدعومة بالأدلة. ابدأ بسؤال فشل واحد محدد.
+
+<Tabs>
+  <Tab title="لوحة المعلومات">
+    <Steps>
+      <Step title="فتح التدقيقات">
+        في الشريط الجانبي للـ Cloud، انتقل إلى **Analyze → Audits**. حدد **new audit**.
+      </Step>
+      <Step title="إعداد التدقيق">
+        أدخل الاسم والهدف فشل مباشر، مثل "البحث عن جلسات الإنتاج التي تعيد محاولة استدعاء الدفع الفاشل نفسه دون تغيير المدخلات أو التصعيد." حدد الوكيل والبيئة ونطاق الوقت والجدول الزمني. أضف ملخصاً قصيراً وعناوين URL مرجعية عندما يحتاج المدقق إلى قواعد سير العمل لديك.
+      </Step>
+      <Step title="الإنشاء والانتظار للتشغيل">
+        حدد **create audit**. يتم وضع التشغيل الأول في قائمة الانتظار على الفور. افتح بطاقة التدقيق لمراقبتها وهي تنتقل من قائمة الانتظار إلى التشغيل إلى اكتمل.
+      </Step>
+    </Steps>
+
+    بعد اكتمال التشغيل، افتح نتيجة واستعرض دليل الجلسة الخاص بها. يمكنك بعد ذلك الإقرار أو التعيين أو الرفض أو كتم الصوت أو حل النتيجة.
+
+    ![نتيجة تدقيق مكتملة توضح وصفها للفشل والإجراء الموصى به والأدلة الداعمة والجلسات المتأثرة.](/images/dashboard/audit-finding.png)
+  </Tab>
+  <Tab title="CLI">
+    ```bash
+    fp audits create payment-retry-failures \
+      --description "Find production sessions that retry a failed payment call without changing input or escalating" \
+      --scope '{"environments":["production"]}' \
+      --text "Escalate after two unchanged payment failures"
+
+    fp audits list
+    fp audits runs payment-retry-failures
+    fp audits findings --audit payment-retry-failures
+    fp audits finding <finding-id>
+    ```
+
+    أضف السياق المرجعي، ثم حدثه عند تغيير المصدر:
+
+    ```bash
+    fp audits context-set payment-retry-failures --url https://example.com/payment-runbook
+    fp audits context-refresh payment-retry-failures
+    fp audits run payment-retry-failures
+    ```
+
+    استخدم `fp audits ack <finding-id>`، `fp audits assign <finding-id> --to <email>`، `fp audits dismiss <finding-id>`، `fp audits mute <finding-id>`، `fp audits resolve <finding-id>`، أو `fp audits reopen <finding-id>` لنقل النتيجة عبر الفحص.
+  </Tab>
+</Tabs>
+
+بعد ذلك، [منع أول فشل لديك باستخدام سياسة](/ar/start/first-policy) لإجراء مؤكد قابل للتكرار.

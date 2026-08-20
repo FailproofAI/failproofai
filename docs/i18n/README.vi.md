@@ -8,6 +8,8 @@
 
 <img src="https://d2wq11aau0arks.cloudfront.net/failproof/fa_updated_full.svg" alt="failproof ai" width="220" />
 
+<a href="https://trendshift.io/repositories/69722?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-69722" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/69722/daily?language=TypeScript" alt="FailproofAI%2Ffailproofai | Trendshift" width="250" height="55"/></a>
+
 [![npm](https://img.shields.io/npm/v/failproofai?style=flat-square&color=CB3837)](https://www.npmjs.com/package/failproofai)
 [![CI](https://img.shields.io/github/actions/workflow/status/failproofai/failproofai/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/failproofai/failproofai/actions)
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
@@ -18,9 +20,9 @@
 
 **Bản dịch:** [简体中文](../../docs-old/i18n/README.zh.md) · [日本語](../../docs-old/i18n/README.ja.md) · [한국어](../../docs-old/i18n/README.ko.md) · [Español](../../docs-old/i18n/README.es.md) · [Português](../../docs-old/i18n/README.pt-br.md) · [Deutsch](../../docs-old/i18n/README.de.md) · [Français](../../docs-old/i18n/README.fr.md) · [Руссий](../../docs-old/i18n/README.ru.md) · [हिन्दी](../../docs-old/i18n/README.hi.md) · [Türkçe](../../docs-old/i18n/README.tr.md) · [Tiếng Việt](../../docs-old/i18n/README.vi.md) · [Italiano](../../docs-old/i18n/README.it.md) · [العربية](../../docs-old/i18n/README.ar.md) · [עברית](../../docs-old/i18n/README.he.md)
 
-**Xử lý sự cố thời gian chạy cho các tác nhân mã hóa.**
-Tích hợp với Claude Code và Codex. Bắt các vòng lặp, hành động nguy hiểm và rò rỉ bí mật
-trước khi chúng trở thành sự cố. Không độ trễ. Chạy cục bộ.
+**Giải pháp xử lý lỗi thời gian chạy cho các agent lập trình.**
+Kết nối với Claude Code và Codex. Phát hiện vòng lặp, hành động nguy hiểm và rò rỉ bí mật
+trước khi chúng trở thành sự cố. Độ trễ bằng không. Chạy cục bộ.
 
 </div>
 
@@ -30,7 +32,7 @@ trước khi chúng trở thành sự cố. Không độ trễ. Chạy cục b�
 
 ---
 
-## Các CLI tác nhân được hỗ trợ
+## Hỗ trợ Agent CLIs
 
 {/* A 6-column table instead of inline <img> runs: table columns never re-wrap,
      so the grid stays 2×6 at any window width (scrolling on very narrow screens
@@ -130,32 +132,32 @@ trước khi chúng trở thành sự cố. Không độ trễ. Chạy cục b�
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # hoặc chỉ cần chạy `failproofai` và chấp nhận gợi ý lần đầu
+failproofai policies --install   # hoặc chỉ chạy `failproofai` và chấp nhận lời nhắc lần đầu tiên
 failproofai
 ```
 
-30 chính sách tích hợp kích hoạt ngay lập tức. Bảng điều khiển tại `localhost:8020`. Tắt gợi ý lần đầu bằng `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 chính sách tích hợp sẵn kích hoạt ngay lập tức. Bảng điều khiển tại `localhost:8020`. Tắt lời nhắc lần đầu tiên với `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## Những gì nó ngăn chặn
+## Những gì nó dừng lại
 
 | Chính sách | Những gì nó chặn |
 |---|---|
-| `block-push-master` | Đẩy trực tiếp tới `main` / `master` |
+| `block-push-master` | Đẩy trực tiếp đến `main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | Commit, merge, rebase trên `main` / `master` |
+| `block-work-on-main` | Các cam kết, hợp nhất, rebase trên `main` / `master` |
 | `block-rm-rf` | Xóa tệp đệ quy |
-| `sanitize-api-keys` | Các khóa API rò rỉ vào ngữ cảnh tác nhân |
+| `sanitize-api-keys` | Khóa API rò rỉ vào ngữ cảnh agent |
 
-→ [Tất cả 30 chính sách tích hợp](https://docs.befailproof.ai/policies/builtin)
+→ [Tất cả 30 chính sách tích hợp sẵn](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
-## Chính sách của riêng bạn
+## Chính sách của bạn
 
 Thả một tệp vào `.failproofai/policies/` — nó tải tự động, không cần cờ.
-Commit nó và toàn bộ nhóm sẽ nhận được nó khi pull tiếp theo.
+Cam kết nó và toàn bộ nhóm của bạn sẽ nhận được nó vào lần pull tiếp theo.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -173,21 +175,21 @@ customPolicies.add({
 
 Ba quyết định có sẵn cho mọi chính sách:
 
-| Quyết định | Hiệu ứng |
+| Quyết định | Tác dụng |
 |---|---|
 | `allow()` | Cho phép hoạt động |
-| `deny(message)` | Chặn nó — tin nhắn quay trở lại tác nhân |
-| `instruct(message)` | Cho phép nó thông qua, nhưng thêm ngữ cảnh vào gợi ý tiếp theo của tác nhân |
+| `deny(message)` | Chặn nó — thông báo được gửi lại cho agent |
+| `instruct(message)` | Cho phép thông qua, nhưng thêm ngữ cảnh vào lời nhắc tiếp theo của agent |
 
 → [Hướng dẫn chính sách tùy chỉnh](https://docs.befailproof.ai/policies/custom)
 
 ---
 
-## Khả năng hiển thị phiên
+## Hiển thị phiên
 
-Mỗi lệnh gọi công cụ mà tác nhân của bạn thực hiện được ghi lại cục bộ. Bảng điều khiển hiển thị những gì đã chạy,
-những gì bị chặn và những gì chính sách đã cho tác nhân — vì vậy bạn không phải đoán
-khi điều gì đó không hoạt động. → [Hướng dẫn bảng điều khiển](https://docs.befailproof.ai/sessions/overview)
+Mọi lệnh gọi công cụ mà agent của bạn thực hiện đều được ghi lại cục bộ. Bảng điều khiển hiển thị những gì đã chạy,
+những gì bị chặn và những gì chính sách nói với agent — vì vậy bạn không phải đoán
+khi có điều gì đó sai. → [Hướng dẫn bảng điều khiển](https://docs.befailproof.ai/sessions/overview)
 
 ---
 
@@ -196,7 +198,7 @@ khi điều gì đó không hoạt động. → [Hướng dẫn bảng điều k
 | | |
 |---|---|
 | [Bắt đầu](https://docs.befailproof.ai/start/quickstart) | Cài đặt và các bước đầu tiên |
-| [Chính sách tích hợp](https://docs.befailproof.ai/policies/builtin) | Tất cả 30 chính sách với tham số |
+| [Chính sách tích hợp sẵn](https://docs.befailproof.ai/policies/builtin) | Tất cả 30 chính sách với các tham số |
 | [Chính sách tùy chỉnh](https://docs.befailproof.ai/policies/custom) | Viết chính sách của riêng bạn |
 | [Cấu hình](https://docs.befailproof.ai/policies/local-configuration) | Phạm vi cấu hình và quy tắc hợp nhất |
 | [Bảng điều khiển](https://docs.befailproof.ai/sessions/overview) | Trình giám sát phiên và hoạt động chính sách |
@@ -206,17 +208,17 @@ khi điều gì đó không hoạt động. → [Hướng dẫn bảng điều k
 
 ## Giấy phép
 
-MIT với [Commons Clause](https://commonsclause.com/) — miễn phí cho mục đích sử dụng nội bộ và cá nhân; việc bán lại thương mại failproofai yêu cầu thỏa thuận riêng. Xem [LICENSE](../../LICENSE) để biết toàn bộ văn bản.
+MIT với [Commons Clause](https://commonsclause.com/) — miễn phí để sử dụng nội bộ và cá nhân; bán lại thương mại failproofai yêu cầu một thỏa thuận riêng biệt. Xem [LICENSE](../../LICENSE) để biết toàn bộ văn bản.
 
 ---
 
 ## Đóng góp
 
-Xem [CONTRIBUTING.md](../../CONTRIBUTING.md). Chính sách mới, trường hợp biên và bản dịch đều được chào đón.
+Xem [CONTRIBUTING.md](../../CONTRIBUTING.md). Chính sách mới, trường hợp cạnh và bản dịch đều được chào đón.
 
-> **Xây dựng trước khi bắt đầu.** Chạy `bun install && bun run build` trước. Kho này chạy
+> **Xây dựng trước khi bạn bắt đầu.** Chạy `bun install && bun run build` trước tiên. Kho này chạy
 > các hook của failproofai trên chính nó, và chúng giải quyết nhập `failproofai` so với
-> gói được biên dịch `dist/` — nếu không xây dựng bạn sẽ gặp lỗi hook `Cannot find package 'failproofai'`.
+> gói `dist/` được biên dịch — nếu không có bản dựng, bạn sẽ gặp lỗi hook `Cannot find package 'failproofai'`.
 > Xây dựng lại sau khi thay đổi `src/`. Xem
 > [Xây dựng trước khi các hook dev trong kho sẽ hoạt động](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 

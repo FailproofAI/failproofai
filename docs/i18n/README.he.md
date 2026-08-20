@@ -22,9 +22,9 @@
 
 **תרגומים:** [简体中文](../../docs-old/i18n/README.zh.md) · [日本語](../../docs-old/i18n/README.ja.md) · [한국어](../../docs-old/i18n/README.ko.md) · [Español](../../docs-old/i18n/README.es.md) · [Português](../../docs-old/i18n/README.pt-br.md) · [Deutsch](../../docs-old/i18n/README.de.md) · [Français](../../docs-old/i18n/README.fr.md) · [Руссий](../../docs-old/i18n/README.ru.md) · [हिन्दी](../../docs-old/i18n/README.hi.md) · [Türkçe](../../docs-old/i18n/README.tr.md) · [Tiếng Việt](../../docs-old/i18n/README.vi.md) · [Italiano](../../docs-old/i18n/README.it.md) · [العربية](../../docs-old/i18n/README.ar.md) · [עברית](../../docs-old/i18n/README.he.md)
 
-**פתרון כשלים בזמן ריצה עבור סוכנים קוד.**
-מתחבר ל־Claude Code וב־Codex. תופס לולאות, פעולות מסוכנות והדליפות סודיות
-לפני שהם הופכים לתקריות. לא קיים פיגור. פועל באופן מקומי.
+**פתרון כשלים בזמן ריצה עבור סוכני קוד.**
+מתקשרת ל-Claude Code וקודקס. תופסת לולאות, פעולות מסוכנות, וזליגת סודות
+לפני שהם הופכים לתקריות. אפס עיכוב. רץ ברמה המקומית.
 
 </div>
 
@@ -134,11 +134,11 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # או פשוט הרץ את `failproofai` וקבל את ההנחיה בהפעלה ראשונה
+failproofai policies --install   # או פשוט הרץ `failproofai` וקבל את ההנחיה בהרצה הראשונה
 failproofai
 ```
 
-30 מדיניות מובנות מופעלות מיד. לוח בקרה ב־`localhost:8020`. כבה את הנחיית ההפעלה הראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 מדיניויות מובנות מופעלות מיד. לוח בקרה ב-`localhost:8020`. השבת את הנחיית ההרצה הראשונה עם `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
@@ -146,20 +146,20 @@ failproofai
 
 | מדיניות | מה היא חוסמת |
 |---|---|
-| `block-push-master` | דחיפות ישירות ל־`main` / `master` |
+| `block-push-master` | דחיפות ישירות ל-`main` / `master` |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | קומיטים, מיזוגים, rebase ב־`main` / `master` |
+| `block-work-on-main` | התחייבויות, מיזוגים, ריבסים על `main` / `master` |
 | `block-rm-rf` | מחיקת קבצים רקורסיבית |
-| `sanitize-api-keys` | מפתחות API שנדלפו להקשר של סוכן |
+| `sanitize-api-keys` | מפתחות API דוליפים להקשר של סוכן |
 
-→ [כל 30 המדיניות המובנות](https://docs.befailproof.ai/policies/builtin)
+→ [כל 30 המדיניויות המובנות](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
 ## המדיניויות שלך
 
-הטל קובץ ל־`.failproofai/policies/` — הוא נטען באופן אוטומטי, אין צורך בדגלים.
-קומט אותו והצוות כולו מקבל אותו בשליפה הבאה.
+שים קובץ ב-`.failproofai/policies/` — הוא נטען באופן אוטומטי, לא צריך דגלים.
+הקדש אותו וכל הצוות שלך יקבל אותו בבקשת ההמשך הבאה.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -177,20 +177,20 @@ customPolicies.add({
 
 שלוש החלטות זמינות לכל מדיניות:
 
-| החלטה | השפעה |
+| החלטה | אפקט |
 |---|---|
-| `allow()` | התר את הפעולה |
-| `deny(message)` | חסום אותה — ההודעה חוזרת לסוכן |
-| `instruct(message)` | תן לה דרך, אך הוסף הקשר להנחיה הבאה של הסוכן |
+| `allow()` | אישור התהליך |
+| `deny(message)` | חסום אותו — ההודעה חוזרת לסוכן |
+| `instruct(message)` | תן לו לעבור, אבל הוסף הקשר להנחיה הבאה של הסוכן |
 
-→ [מדריך מדיניות מותאמת](https://docs.befailproof.ai/policies/custom)
+→ [מדריך מדיניויות מותאמות אישית](https://docs.befailproof.ai/policies/custom)
 
 ---
 
-## видимость ההפעלה
+## נראות הסשן
 
-כל קריאת כלי שהסוכן שלך ביצע נרשמת מקומית. לוח הבקרה מציג מה הורץ,
-מה היה חסום והחלטת המדיניות שנאמרה לסוכן — אז אתה לא מנחש
+כל קריאת כלי שהסוכן שלך עושה מתועדת ברמה המקומית. לוח הבקרה מציג מה רץ,
+מה חוסם, ומה המדיניות אמרה לסוכן — כך שאתה לא מנחש
 כאשר משהו הולך לא בסדר. → [מדריך לוח בקרה](https://docs.befailproof.ai/sessions/overview)
 
 ---
@@ -199,34 +199,34 @@ customPolicies.add({
 
 | | |
 |---|---|
-| [תחילת עבודה](https://docs.befailproof.ai/start/quickstart) | התקנה וצעדים ראשונים |
+| [תחילת העבודה](https://docs.befailproof.ai/start/quickstart) | התקנה וצעדים ראשונים |
 | [מדיניויות מובנות](https://docs.befailproof.ai/policies/builtin) | כל 30 המדיניויות עם פרמטרים |
-| [מדיניויות מותאמות](https://docs.befailproof.ai/policies/custom) | כתוב שלך |
-| [תצורה](https://docs.befailproof.ai/policies/local-configuration) | הגדרות הטווח וכללי מיזוג |
-| [לוח בקרה](https://docs.befailproof.ai/sessions/overview) | מסך ניטור הפעלה והפעילות מדיניות |
-| [ארכיטקטורה](https://docs.befailproof.ai/start/concepts) | כיצד מערכת ההוק פועלת |
+| [מדיניויות מותאמות אישית](https://docs.befailproof.ai/policies/custom) | כתוב שלך |
+| [תצורה](https://docs.befailproof.ai/policies/local-configuration) | היקפי תצורה וכללי מיזוג |
+| [לוח בקרה](https://docs.befailproof.ai/sessions/overview) | מונה סשן ופעילות מדיניות |
+| [ארכיטקטורה](https://docs.befailproof.ai/start/concepts) | איך מערכת ההוקים עובדת |
 
 ---
 
 ## רישיון
 
-MIT עם [Commons Clause](https://commonsclause.com/) — חופשי לשימוש פנימי ואישי; מכירה מסחרית של failproofai עצמו דורשת הסכם נפרד. ראה [LICENSE](../../LICENSE) לקבלת הטקסט המלא.
+MIT עם [Commons Clause](https://commonsclause.com/) — חינם לשימוש פנימי ואישי; מכירה מחדש מסחרית של failproofai עצמו דורשת הסכם נפרד. ראה [LICENSE](../../LICENSE) לטקסט המלא.
 
 ---
 
 ## תרומה
 
-ראה [CONTRIBUTING.md](../../CONTRIBUTING.md). מדיניויות חדשות, מקרי קצה ותרגומים כולם מוזמנים.
+ראה [CONTRIBUTING.md](../../CONTRIBUTING.md). מדיניויות חדשות, מקרי קצה, ותרגומים כולם מוזמנים.
 
-> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` קודם. ריפו זה מפעיל
-> ה־hooks של failproofai עליו כשלעצמו, והם פותרים את הייבוא של `failproofai` מול
-> חבילת `dist/` המקודמת — ללא בנייה תפגע בשגיאות `Cannot find package 'failproofai'`
-> בוקים. בנה מחדש לאחר שינוי ב־`src/`. ראה
-> [בנה לפני שה־in-repo dev hooks יעבדו](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **בנה לפני שתתחיל.** הרץ `bun install && bun run build` קודם. מאגר זה מריץ
+> את ההוקים של failproofai על עצמו, והם מעבדים את ייבוא `failproofai` כנגד
+> חבילת `dist/` המהודרת — ללא בנייה תקבל שגיאות hoock `Cannot find package 'failproofai'`.
+> בנה מחדש אחרי שינוי `src/`. ראה
+> [בנה לפני שההוקים בין-ריפו יעבדו](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-בנוי עם ❤️ על ידי [befailproof.ai](https://befailproof.ai) ב־SF וב־Bengaluru.
+בנוי עם ❤️ על ידי [befailproof.ai](https://befailproof.ai) בסן פרנסיסקו ובנגלור.
 
 
 </div>

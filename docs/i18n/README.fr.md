@@ -20,9 +20,9 @@
 
 **Traductions :** [简体中文](../../docs-old/i18n/README.zh.md) · [日本語](../../docs-old/i18n/README.ja.md) · [한국어](../../docs-old/i18n/README.ko.md) · [Español](../../docs-old/i18n/README.es.md) · [Português](../../docs-old/i18n/README.pt-br.md) · [Deutsch](../../docs-old/i18n/README.de.md) · [Français](../../docs-old/i18n/README.fr.md) · [Руссий](../../docs-old/i18n/README.ru.md) · [हिन्दी](../../docs-old/i18n/README.hi.md) · [Türkçe](../../docs-old/i18n/README.tr.md) · [Tiếng Việt](../../docs-old/i18n/README.vi.md) · [Italiano](../../docs-old/i18n/README.it.md) · [العربية](../../docs-old/i18n/README.ar.md) · [עברית](../../docs-old/i18n/README.he.md)
 
-**Résolution des erreurs d'exécution pour les agents de développement.**
+**Résolution des erreurs d'exécution pour les agents de code.**
 S'intègre à Claude Code et Codex. Détecte les boucles, les actions dangereuses et les fuites de secrets
-avant qu'elles ne deviennent des incidents. Zéro latence. S'exécute localement.
+avant qu'ils ne deviennent des incidents. Zéro latence. Fonctionne en local.
 
 </div>
 
@@ -132,19 +132,19 @@ avant qu'elles ne deviennent des incidents. Zéro latence. S'exécute localement
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # ou lancez simplement `failproofai` et acceptez l'invite au premier démarrage
+failproofai policies --install   # or just run `failproofai` and accept the first-run prompt
 failproofai
 ```
 
-30 politiques intégrées s'activent immédiatement. Tableau de bord disponible sur `localhost:8020`. Désactivez l'invite au premier démarrage avec `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 politiques intégrées s'activent immédiatement. Tableau de bord disponible sur `localhost:8020`. Désactivez l'invite de premier démarrage avec `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## Ce que ça bloque
+## Ce qu'il bloque
 
 | Politique | Ce qui est bloqué |
 |---|---|
-| `block-push-master` | Les poussées directes vers `main` / `master` |
+| `block-push-master` | Les pushs directs vers `main` / `master` |
 | `block-force-push` | `git push --force` |
 | `block-work-on-main` | Les commits, merges et rebases sur `main` / `master` |
 | `block-rm-rf` | La suppression récursive de fichiers |
@@ -156,8 +156,8 @@ failproofai
 
 ## Vos propres politiques
 
-Déposez un fichier dans `.failproofai/policies/` — il se charge automatiquement, sans aucun paramètre.
-Commitez-le et toute l'équipe en bénéficiera dès le prochain pull.
+Déposez un fichier dans `.failproofai/policies/` — il est chargé automatiquement, aucun paramètre requis.
+Commitez-le et toute l'équipe en bénéficie au prochain pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -179,17 +179,17 @@ Trois décisions disponibles pour chaque politique :
 |---|---|
 | `allow()` | Autoriser l'opération |
 | `deny(message)` | La bloquer — le message est renvoyé à l'agent |
-| `instruct(message)` | La laisser passer, mais ajouter du contexte au prochain prompt de l'agent |
+| `instruct(message)` | La laisser passer, mais ajouter du contexte à la prochaine invite de l'agent |
 
 → [Guide des politiques personnalisées](https://docs.befailproof.ai/policies/custom)
 
 ---
 
-## Visibilité de la session
+## Visibilité de session
 
-Chaque appel d'outil effectué par votre agent est journalisé localement. Le tableau de bord affiche ce qui s'est exécuté,
-ce qui a été bloqué, et ce que la politique a communiqué à l'agent — vous n'avez plus à deviner
-quand quelque chose tourne mal. → [Guide du tableau de bord](https://docs.befailproof.ai/sessions/overview)
+Chaque appel d'outil effectué par votre agent est enregistré localement. Le tableau de bord affiche ce qui a été exécuté,
+ce qui a été bloqué et ce que la politique a indiqué à l'agent — vous n'avez donc plus à deviner
+lorsque quelque chose se passe mal. → [Guide du tableau de bord](https://docs.befailproof.ai/sessions/overview)
 
 ---
 
@@ -208,20 +208,20 @@ quand quelque chose tourne mal. → [Guide du tableau de bord](https://docs.befa
 
 ## Licence
 
-MIT avec [Commons Clause](https://commonsclause.com/) — gratuit pour un usage interne et personnel ; la revente commerciale de failproofai lui-même nécessite un accord séparé. Consultez [LICENSE](../../LICENSE) pour le texte complet.
+MIT avec [Commons Clause](https://commonsclause.com/) — gratuit pour usage interne et personnel ; la revente commerciale de failproofai lui-même nécessite un accord séparé. Voir [LICENSE](../../LICENSE) pour le texte complet.
 
 ---
 
 ## Contribution
 
-Consultez [CONTRIBUTING.md](../../CONTRIBUTING.md). Les nouvelles politiques, cas limites et traductions sont les bienvenus.
+Voir [CONTRIBUTING.md](../../CONTRIBUTING.md). Nouvelles politiques, cas limites et traductions sont les bienvenus.
 
-> **Compilez avant de commencer.** Exécutez d'abord `bun install && bun run build`. Ce dépôt utilise
-> ses propres hooks failproofai sur lui-même, et ils résolvent l'import `failproofai` depuis le
-> bundle compilé `dist/` — sans compilation, vous obtiendrez des erreurs de hook `Cannot find package 'failproofai'`.
+> **Compilez avant de commencer.** Exécutez d'abord `bun install && bun run build`. Ce dépôt fait tourner
+> ses propres hooks failproofai sur lui-même, et ceux-ci résolvent l'import `failproofai` depuis le
+> bundle compilé `dist/` — sans compilation vous obtiendrez l'erreur de hook `Cannot find package 'failproofai'`.
 > Recompilez après avoir modifié `src/`. Voir
 > [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-Fait avec ❤️ par [befailproof.ai](https://befailproof.ai) à SF et Bengaluru.
+Créé avec ❤️ par [befailproof.ai](https://befailproof.ai) à SF et Bengaluru.

@@ -4,10 +4,11 @@
     failproofai_sdk.instrument("crewai")
     crew.kickoff()
 
-Everything here is a translation table over `crewai.events`. Identity,
-correlation, payload budgets and the never-raise policy live in `_core`.
+Everything here is a translation table over `crewai.events`, with exactly one
+exception (6. below). Identity, correlation, payload budgets and the never-raise
+policy live in `_core`.
 
-Five things about CrewAI that this file is shaped by, each verified against the
+Six things about CrewAI that this file is shaped by, each verified against the
 installed package rather than recalled:
 
 1. **The module is `crewai.events`, not `crewai.utilities.events`.** The old
@@ -46,6 +47,20 @@ installed package rather than recalled:
    therefore a pass-through link, not an agent. Its `flow_finished` is also
    *missing* when the agent's LLM call raises, so it can never be relied on to
    close anything.
+
+6. **Not everything CrewAI does is on the bus.** `human_input=True` on a Task
+   goes through `crewai.core.providers.human_input`, which calls `input()` and
+   emits no event of any kind — verified on 1.15.16. That one surface is
+   instrumented by wrapping (`_patch_task_human_input`), which is the only patch
+   in this file; everything else here is a subscription.
+
+**Two kinds of node.** `_nodes` holds more than the spans that become agents:
+tool calls and hook spans are recorded as *links* because CrewAI hangs real work
+underneath them — a `delegate_work_to_coworker` call parents the coworker's whole
+agent execution, and a flow method parents a `Crew.kickoff()` inside it. A leaf
+that is not in `_nodes` is invisible to `_parent_key`, which then falls back to
+the open root; the visible symptom is a flattened tree or a second session, never
+an error.
 
 `agent_id` is the crew name or the agent **role** — `LowCardinality(String)`,
 the primary dashboard facet. CrewAI's `agent.id` is a UUID and goes to
@@ -115,9 +130,24 @@ TABLE: tuple[tuple[str, str], ...] = (
     ("CrewKickoffFailedEvent", "on_crew_failed"),
     ("FlowStartedEvent", "on_flow_started"),
     ("FlowFinishedEvent", "on_flow_finished"),
+    # A flow whose method raises emits `FlowFailedEvent` and NEVER
+    # `FlowFinishedEvent`. Without this row the flow's `agent_start` is never
+    # closed and the session renders `ongoing` forever — the worst outcome
+    # available here, and the one every other `*Failed` row in this table exists
+    # to avoid.
+    ("FlowFailedEvent", "on_flow_failed"),
     ("AgentExecutionStartedEvent", "on_agent_started"),
     ("AgentExecutionCompletedEvent", "on_agent_completed"),
     ("AgentExecutionErrorEvent", "on_agent_error"),
+    # `Agent.kickoff()` — crewai's LiteAgent surface, an agent run with no Crew
+    # and no Task. It emits its OWN execution events, not the AgentExecution
+    # ones, and it is a ROOT: `parent_event_id` is None on it. Without these
+    # rows such a run produces no agent span at all — every LLM and tool event
+    # falls through to whatever ambient scope exists (agent_id "main"), or is
+    # dropped entirely when there is none. Nothing raises either way.
+    ("LiteAgentExecutionStartedEvent", "on_lite_agent_started"),
+    ("LiteAgentExecutionCompletedEvent", "on_agent_completed"),
+    ("LiteAgentExecutionErrorEvent", "on_agent_error"),
     # --- structure we deliberately do NOT turn into spans ------------------
     # A CrewAI Task is a subset of the agent execution that runs it; emitting
     # both would double every row and render them as siblings. The task is
@@ -246,6 +276,9 @@ class _CrewAIAdapter:
         self._lock = threading.RLock()
         self._tracker: RunTracker | None = None
         self._listener: "FailproofAICrewListener | None" = None
+        # (class, attribute, original descriptor, installed function) for the
+        # one wrapped surface — see `_patch_task_human_input`.
+        self._patched: list[tuple] = []
         self._nodes: "OrderedDict[str, _Node]" = OrderedDict()
         self._leaves: "OrderedDict[str, _Leaf]" = OrderedDict()
         self._streams: "OrderedDict[str, list]" = OrderedDict()
@@ -281,11 +314,13 @@ class _CrewAIAdapter:
         # no reference back from the bus other than the bound handlers, so a
         # listener that goes out of scope keeps "working" only by accident.
         self._listener = FailproofAICrewListener(self)
+        self._patch_task_human_input()
 
     def uninstall(self) -> None:
         listener, self._listener = self._listener, None
         if listener is not None:
             listener.teardown()
+        self._restore_patches()
         # A run that is still open when the customer uninstruments would render
         # `ongoing` forever. Close it, then forget everything.
         self._close_everything(outcome="cancelled")
@@ -314,11 +349,13 @@ class _CrewAIAdapter:
     def _parent_key(self, parent_event_id, *, allow_root_fallback: bool = True):
         """Which run a child should hang off.
 
-        CrewAI's `parent_event_id` comes off a contextvar scope stack, and a
-        `ThreadPoolExecutor` does not copy contextvars — so an `async_execution`
-        task's events arrive with `parent_event_id=None`. Falling back to the
-        open root keeps those events inside the session instead of minting a
-        second one, which is the failure that splits one run into many.
+        CrewAI's `parent_event_id` comes off a contextvar scope stack. On 1.15.16
+        it survives crewai's own thread pool — measured: an `async_execution`
+        task's events all arrive with it set — so the fallback is for the events
+        whose parent span is genuinely gone: one that arrives after
+        `_close_span` popped its parent, or after `_MAX_NODES` evicted it.
+        Falling back to the open root keeps those inside the session instead of
+        minting a second one, which is the failure that splits one run into many.
 
         Root-capable events (`crew_kickoff_started`, `flow_started`) pass
         `allow_root_fallback=False`: for them a missing parent genuinely means
@@ -327,9 +364,40 @@ class _CrewAIAdapter:
         with self._lock:
             if parent_event_id is not None and parent_event_id in self._nodes:
                 return parent_event_id
-            if allow_root_fallback and self._roots:
-                return self._roots[-1]
-            return None
+            if not allow_root_fallback or not self._roots:
+                return None
+            roots = list(self._roots)
+        if len(roots) == 1:
+            return roots[0]
+        return self._root_for_current_context(roots)
+
+    def _root_for_current_context(self, roots):
+        """Which open root an orphaned event belongs to, with several open.
+
+        `_roots` is process-global, so two crews kicked off on two threads leave
+        two entries in it and `roots[-1]` is a coin flip — one that files one
+        run's events under the OTHER run's session id. That is silent
+        cross-session corruption, which is strictly worse than a missing row,
+        and it is reachable without any `async_execution`: a late
+        `ToolUsageFinished` whose agent span has already been closed, or an
+        eviction at `_MAX_NODES`, is enough to reach this fallback.
+
+        `CrewAIEventsBus.emit` copies the EMITTING thread's contextvars onto the
+        handler task, so an ambient `failproofai_sdk.session()` is a real signal about
+        which of the open runs we are inside. Prefer the newest root that agrees
+        with it; only guess when there is no ambient session to check against.
+        """
+        tracker = self._tracker
+        if tracker is None:
+            return roots[-1]
+        ambient = tracker.identity(None, None, warn=False)
+        if ambient is None:
+            return roots[-1]
+        for key in reversed(roots):
+            identity = tracker.identity(key, warn=False)
+            if identity is not None and identity.session_id == ambient.session_id:
+                return key
+        return roots[-1]
 
     def _task_of(self, event):
         """(task_id, task_name) for an event, from the event or its ancestors."""
@@ -500,7 +568,13 @@ class _CrewAIAdapter:
             node_id = getattr(event, "started_event_id", None)
             if node_id is not None and node_id in self._nodes:
                 return node_id
-            return self._roots[-1] if self._roots else None
+            roots = list(self._roots)
+        if not roots:
+            return None
+        # Same reasoning as `_root_for_current_context`: closing "the newest
+        # root" while a second crew is open on another thread ends the WRONG
+        # crew, which reads as one run finishing early and one hanging forever.
+        return roots[0] if len(roots) == 1 else self._root_for_current_context(roots)
 
     # -- flows --------------------------------------------------------------
 
@@ -546,17 +620,41 @@ class _CrewAIAdapter:
 
     @safe
     def on_flow_finished(self, source, event) -> None:
-        node_id = event.started_event_id
+        node_id = self._flow_key(event)
+        if node_id is None:
+            return
+        self._close_span(
+            node_id, outcome="success", summary=_text(getattr(event, "result", None))
+        )
+
+    @safe
+    def on_flow_failed(self, source, event) -> None:
+        node_id = self._flow_key(event)
+        if node_id is None:
+            return
+        error = _text(getattr(event, "error", None))
+        self._close_span(
+            node_id,
+            outcome="failed",
+            summary=error,
+            **fw_fields(error=error),
+        )
+
+    def _flow_key(self, event):
+        """The flow span this ending event closes, or None if there is nothing to close.
+
+        `flow_internal` is the AgentExecutor pass-through link (see 5. in the
+        module docstring): it opened no span, so its end just drops the node.
+        """
+        node_id = getattr(event, "started_event_id", None)
         with self._lock:
             node = self._nodes.get(node_id) if node_id else None
             if node is not None and node.kind == "flow_internal":
                 self._nodes.pop(node_id, None)
-                return
+                return None
             if node is None:
-                return
-        self._close_span(
-            node_id, outcome="success", summary=_text(getattr(event, "result", None))
-        )
+                return None
+        return node_id
 
     # -- tasks: recorded, never emitted -------------------------------------
 
@@ -607,6 +705,44 @@ class _CrewAIAdapter:
             ),
         )
         self._note(event.event_id, parent, "agent", task=task, agent_id=agent_id)
+
+    @safe
+    def on_lite_agent_started(self, source, event) -> None:
+        """`Agent.kickoff()`. A root, like a crew or a user-written flow.
+
+        The role is only in `agent_info` here — `agent_role` is None on this
+        event, exactly as it is on `AgentExecutionStartedEvent`, and
+        `agent_info["id"]` is a UUID that must not reach `agent_id`.
+        """
+        tracker = self._tracker
+        if tracker is None:
+            return
+        info = getattr(event, "agent_info", None)
+        info = info if isinstance(info, dict) else {}
+        parent = self._parent_key(
+            getattr(event, "parent_event_id", None), allow_root_fallback=False
+        )
+        role = getattr(event, "agent_role", None) or info.get("role")
+        agent_id = normalize_agent_id(role, default="agent")
+        tracker.start_agent(
+            event.event_id,
+            agent_id=agent_id,
+            parent_key=parent,
+            session_id=self._session_id if parent is None else None,
+            goal=_text(info.get("goal")),
+            **fw_fields(
+                kind="agent",
+                lite=True,
+                agent_id=str(info.get("id") or "") or None,
+                agent_role=role,
+                tools=_tool_names(getattr(event, "tools", None)),
+                event_id=event.event_id,
+            ),
+        )
+        self._note(event.event_id, parent, "agent", agent_id=agent_id)
+        with self._lock:
+            if parent is None:
+                self._roots.append(event.event_id)
 
     @safe
     def on_agent_completed(self, source, event) -> None:
@@ -799,6 +935,191 @@ class _CrewAIAdapter:
             **extra,
         )
 
+    # -- the OTHER human-in-the-loop surface: Task(human_input=True) ---------
+    #
+    # crewai has TWO of them and only one is on the event bus.
+    # `@human_feedback` on a Flow method emits the pair mapped above.
+    # `human_input=True` on a crew Task — the surface crewai's own Crew
+    # documentation teaches, and the one most people mean by "HITL in crewai" —
+    # runs through `crewai.core.providers.human_input.SyncHumanInputProvider`,
+    # which prints a rich panel, calls `input()`, and emits NOTHING. Verified
+    # against crewai 1.15.16: no event class in `crewai.events` fires for it.
+    #
+    # Subscribing therefore cannot reach it, so this one surface is instrumented
+    # by WRAPPING. It is the only patch in this adapter. Three properties keep
+    # that acceptable:
+    #
+    #   * `_prompt_input` is the narrowest possible seam — it is exactly the
+    #     blocking call, so the pause interval is the human's wait and nothing
+    #     else. Wrapping `handle_feedback` instead would fold the agent's
+    #     re-invocation LLM calls into pausedMs.
+    #   * the call is inside one `try` whose only job is to re-raise, and both
+    #     of our own hooks are `@safe`, so nothing here can change what the
+    #     customer's crew returns or raises.
+    #   * if crewai moves it, `_compat.probe` disables this pair and the rest of
+    #     the adapter is untouched.
+
+    _HITL_PROMPT = (
+        "crewai is blocked on human feedback for this task's result "
+        "(an empty answer accepts it)."
+    )
+    _HITL_REASON = "crewai_task_human_input"
+
+    def _patch_task_human_input(self) -> None:
+        try:
+            from crewai.core.providers.human_input import SyncHumanInputProvider
+        except Exception:  # pragma: no cover - exercised by a crewai that moved it
+            _compat.probe(NAME, "Task(human_input=True)", lambda: False)
+            return
+        for attr, is_async in (("_prompt_input", False), ("_prompt_input_async", True)):
+            original = getattr(SyncHumanInputProvider, attr, None)
+            if original is None:
+                _compat.probe(NAME, f"SyncHumanInputProvider.{attr}", lambda: False)
+                continue
+            if getattr(original, "__failproofai_wrapped__", None) is not None:
+                # Already ours — an install that ran without its uninstall.
+                # Wrapping again would emit the pause twice per prompt.
+                continue
+            wrapper = self._wrap_prompt(original, is_async=is_async)
+            wrapper.__failproofai_wrapped__ = original
+            # `staticmethod(...)`, not the bare function: `_prompt_input` is a
+            # staticmethod and the call site is `self._prompt_input(crew)`, so a
+            # plain function would bind and arrive with `self` as `crew`.
+            descriptor = SyncHumanInputProvider.__dict__.get(attr)
+            setattr(SyncHumanInputProvider, attr, staticmethod(wrapper))
+            self._patched.append((SyncHumanInputProvider, attr, descriptor, wrapper))
+
+    def _restore_patches(self) -> None:
+        for klass, attr, descriptor, installed in reversed(self._patched):
+            try:
+                if getattr(klass, attr, None) is not installed:
+                    # Somebody patched on top of us; restoring would delete
+                    # their patch. Same rule as `_core.Patcher`.
+                    logger.warning(
+                        "failproofai_sdk: not restoring %s.%s — it is no longer the object "
+                        "failproofai_sdk installed.",
+                        klass.__name__,
+                        attr,
+                    )
+                    continue
+                if descriptor is not None:
+                    setattr(klass, attr, descriptor)
+                else:
+                    delattr(klass, attr)
+            except Exception:  # pragma: no cover - teardown must never raise
+                logger.warning(
+                    "failproofai_sdk: failed to restore %s.%s", klass, attr, exc_info=True
+                )
+        self._patched.clear()
+
+    def _wrap_prompt(self, original, *, is_async):
+        adapter = self
+
+        if is_async:
+            async def _failproofai_prompt(*args, **kwargs):
+                record = adapter._human_wait_start(args[0] if args else None)
+                try:
+                    answer = await original(*args, **kwargs)
+                except BaseException as exc:  # noqa: BLE001 - re-raised below
+                    adapter._human_wait_end(record, None, exc)
+                    raise
+                adapter._human_wait_end(record, answer, None)
+                return answer
+        else:
+            def _failproofai_prompt(*args, **kwargs):
+                record = adapter._human_wait_start(args[0] if args else None)
+                try:
+                    answer = original(*args, **kwargs)
+                except BaseException as exc:  # noqa: BLE001 - re-raised below
+                    adapter._human_wait_end(record, None, exc)
+                    raise
+                adapter._human_wait_end(record, answer, None)
+                return answer
+
+        _failproofai_prompt.__name__ = getattr(original, "__name__", "_prompt_input")
+        _failproofai_prompt.__qualname__ = "failproofai_sdk.crewai.task_human_input"
+        return _failproofai_prompt
+
+    @safe
+    def _human_wait_start(self, crew):
+        tracker = self._tracker
+        if tracker is None:
+            return None
+        pause_id = uuid.uuid4().hex
+        parent = self._current_agent_key()
+        extra = fw_fields(
+            surface="task_human_input",
+            crew_name=getattr(crew, "name", None),
+        )
+        tracker.emit(
+            "human_wait",
+            pause_id,
+            parent_key=parent,
+            input_id=pause_id,
+            prompt=self._HITL_PROMPT,
+            reason=self._HITL_REASON,
+            **extra,
+        )
+        tracker.emit(
+            "agent_pause",
+            pause_id,
+            parent_key=parent,
+            pause_id=pause_id,
+            reason=self._HITL_REASON,
+            **extra,
+        )
+        return (pause_id, parent)
+
+    @safe
+    def _human_wait_end(self, record, answer, error):
+        tracker = self._tracker
+        if tracker is None or record is None:
+            return
+        pause_id, parent = record
+        extra = fw_fields(surface="task_human_input", error=_text(str(error)) if error else None)
+        # agent_resume FIRST, for the same reason as the flow pair above.
+        tracker.emit(
+            "agent_resume",
+            pause_id,
+            parent_key=parent,
+            pause_id=pause_id,
+            reason=self._HITL_REASON,
+            **extra,
+        )
+        tracker.emit(
+            "human_input",
+            pause_id,
+            parent_key=parent,
+            input_id=pause_id,
+            response=_text(answer),
+            **extra,
+        )
+
+    def _current_agent_key(self):
+        """The innermost open agent span — what a blocking prompt sits inside.
+
+        There is no event to read a parent off here, so it comes from the node
+        table. Newest agent wins (a console prompt cannot interleave with
+        another), except that with two crews open on two threads the newest is a
+        coin flip, so an ambient session narrows it the same way
+        `_root_for_current_context` does.
+        """
+        tracker = self._tracker
+        with self._lock:
+            candidates = [key for key, node in self._nodes.items() if node.kind == "agent"]
+        if not candidates:
+            return self._parent_key(None)
+        if len(candidates) == 1 or tracker is None:
+            return candidates[-1]
+        ambient = tracker.identity(None, None, warn=False)
+        if ambient is None:
+            return candidates[-1]
+        for key in reversed(candidates):
+            identity = tracker.identity(key, warn=False)
+            if identity is not None and identity.session_id == ambient.session_id:
+                return key
+        return candidates[-1]
+
     @safe
     def on_guardrail_started(self, source, event) -> None:
         self._hook_start(
@@ -839,6 +1160,12 @@ class _CrewAIAdapter:
             **extra,
         )
         tracker.emit("hook_triggered", event.event_id, parent_key=parent, **fields)
+        # A flow method is a PARENT: a `Crew.kickoff()` inside one arrives with
+        # `parent_event_id` set to this event. Unless the id is a node,
+        # `_parent_key` cannot see it, `on_crew_started` reads "no parent" and
+        # mints a SECOND ROOT — a whole separate session for a crew that ran
+        # inside the flow. See `_tool_start` for the same rule.
+        self._note(event.event_id, parent, "hook")
         self._open_leaf(
             "hook_completed",
             event.event_id,
@@ -855,6 +1182,8 @@ class _CrewAIAdapter:
         leaf = self._pop_leaf(event.started_event_id, ("hook", _hook_name_of(event)))
         if leaf is None:
             return
+        with self._lock:
+            self._nodes.pop(leaf.key, None)
         # duration_ms is auto-computed by the SDK from the hook_triggered we
         # emitted, and is hard-rejected from callers on hook_completed.
         tracker.emit(
@@ -962,6 +1291,15 @@ class _CrewAIAdapter:
             input=input,
             **extra,
         )
+        # A tool call is a PARENT, not only a leaf. `delegate_work_to_coworker`
+        # and `ask_question_to_coworker` run a whole coworker underneath the
+        # call: verified on crewai 1.15.16, the delegate's
+        # `AgentExecutionStartedEvent.parent_event_id` is exactly this event's id.
+        # Unless that id is a node, `_parent_key` misses it, falls back to the
+        # open root, and every delegated agent is re-parented onto the CREW —
+        # manager and coworker rendered as siblings, which is the whole
+        # hierarchical process flattened into one level.
+        self._note(event.event_id, parent, "tool")
         self._open_leaf(
             "tool_result",
             event.event_id,
@@ -983,6 +1321,8 @@ class _CrewAIAdapter:
         )
         if leaf is None:
             return
+        with self._lock:
+            self._nodes.pop(leaf.key, None)
         # duration_ms is hard-rejected on tool_result and is computed by the SDK
         # from the tool_use we emitted a moment ago.
         tracker.emit(

@@ -982,3 +982,318 @@ class TestHumanInTheLoop:
         self._round_trip()
         events = emitted()
         assert len({e["session_id"] for e in events}) == 1
+
+
+# ---------------------------------------------------------------------------
+# Nesting: the spans CrewAI hangs real work underneath
+# ---------------------------------------------------------------------------
+
+def _flow_event(name, **kw):
+    from failproofai_sdk.integrations.crewai import event_class
+
+    klass = event_class(name)
+    if klass is None:  # pragma: no cover - a crewai that dropped the class
+        pytest.skip(f"this crewai has no {name}")
+    return klass(**kw)
+
+
+class TestNesting:
+    """`_nodes` is what `_parent_key` resolves a `parent_event_id` against, and
+    an id that is not in it falls back to the open ROOT. So every CrewAI span
+    that can parent other spans has to be recorded there, including the two that
+    are not agents:
+
+    * a `delegate_work_to_coworker` **tool call** parents the coworker's entire
+      `AgentExecutionStartedEvent` (measured on 1.15.16: the coworker's
+      `parent_event_id` IS the tool event's id), so a hierarchical crew's whole
+      manager/coworker hierarchy collapses onto the crew without it;
+    * a **flow method** parents a `Crew.kickoff()` made inside it, so the crew
+      becomes a second root — a whole separate session — without it.
+
+    Neither failure raises, and both look plausible in the dashboard.
+    """
+
+    def test_a_delegated_coworker_hangs_off_the_delegating_agent(
+        self, instrumented, emitted
+    ):
+        crew = CrewKickoffStartedEvent(crew_name="Hierarchical Crew", inputs=None)
+        crewai_event_bus.emit(None, crew)
+
+        manager = Agent(role="Crew Manager", goal="Delegate.", backstory="Manages.")
+        worker = Agent(role="Researcher", goal="Research.", backstory="Researches.")
+        task = Task(description="d", expected_output="o", agent=manager)
+
+        manager_span = _flow_event(
+            "AgentExecutionStartedEvent",
+            agent=manager,
+            task=task,
+            tools=[],
+            task_prompt="p",
+            parent_event_id=crew.event_id,
+        )
+        crewai_event_bus.emit(None, manager_span)
+        # CrewAI's own executor flow, which is a pass-through link.
+        executor = _flow_event(
+            "FlowStartedEvent", flow_name="AgentExecutor", parent_event_id=manager_span.event_id
+        )
+        crewai_event_bus.emit(None, executor)
+        delegate = ToolUsageStartedEvent(
+            tool_name="delegate_work_to_coworker",
+            tool_args="{}",
+            agent_role="Crew Manager",
+            parent_event_id=executor.event_id,
+        )
+        crewai_event_bus.emit(None, delegate)
+        coworker_span = _flow_event(
+            "AgentExecutionStartedEvent",
+            agent=worker,
+            task=task,
+            tools=[],
+            task_prompt="p",
+            parent_event_id=delegate.event_id,
+        )
+        crewai_event_bus.emit(None, coworker_span)
+        crewai_event_bus.flush(timeout=30)
+
+        starts = {e["agent_id"]: e for e in emitted() if e["type"] == "agent_start"}
+        assert starts["Crew Manager"]["parent_id"] == "Hierarchical Crew"
+        # The whole point: NOT "Hierarchical Crew".
+        assert starts["Researcher"]["parent_id"] == "Crew Manager"
+
+    def test_a_crew_inside_a_flow_method_stays_in_one_session(self, instrumented, emitted):
+        flow = _flow_event("FlowStartedEvent", flow_name="ReviewFlow")
+        crewai_event_bus.emit(None, flow)
+        method = _flow_event(
+            "MethodExecutionStartedEvent",
+            flow_name="ReviewFlow",
+            method_name="run_crew",
+            state={},
+            parent_event_id=flow.event_id,
+        )
+        crewai_event_bus.emit(None, method)
+        crewai_event_bus.emit(
+            None,
+            CrewKickoffStartedEvent(
+                crew_name="Inner Crew", inputs=None, parent_event_id=method.event_id
+            ),
+        )
+        crewai_event_bus.flush(timeout=30)
+
+        events = emitted()
+        # One session, not two. A detached crew mints its own session id and the
+        # run silently becomes two runs.
+        assert len({e["session_id"] for e in events}) == 1
+        inner = next(
+            e for e in events if e["type"] == "agent_start" and e["agent_id"] == "Inner Crew"
+        )
+        assert inner["parent_id"] == "ReviewFlow"
+
+
+class TestFlowFailure:
+    """A flow whose method raises emits `FlowFailedEvent` and never
+    `FlowFinishedEvent`. Unmapped, the flow's `agent_start` is never closed and
+    the session renders `ongoing` forever — the one outcome this adapter's
+    fallbacks exist to avoid."""
+
+    def test_flow_failed_closes_the_span(self, instrumented, emitted):
+        flow = _flow_event("FlowStartedEvent", flow_name="DoomedFlow")
+        crewai_event_bus.emit(None, flow)
+        crewai_event_bus.emit(
+            None,
+            _flow_event(
+                "FlowFailedEvent",
+                flow_name="DoomedFlow",
+                error=RuntimeError("sink offline"),
+                started_event_id=flow.event_id,
+                parent_event_id=flow.event_id,
+            ),
+        )
+        crewai_event_bus.flush(timeout=30)
+
+        events = emitted()
+        ends = [e for e in events if e["type"] == "agent_end"]
+        assert [e["agent_id"] for e in ends] == ["DoomedFlow"]
+        assert ends[0]["outcome"] == "failed"
+        assert "sink offline" in ends[0]["fw_error"]
+
+    def test_flow_failed_is_in_the_table(self):
+        assert ("FlowFailedEvent", "on_flow_failed") in TABLE
+
+
+class TestConcurrentRoots:
+    """`_roots` is process-global. With two crews open on two threads, an event
+    whose parent span has already been popped resolves through `_roots[-1]` —
+    a coin flip that files one run's events under the OTHER run's session id.
+    That is silent cross-session corruption, strictly worse than a missing row."""
+
+    def test_an_orphan_does_not_land_in_the_other_runs_session(self, instrumented, emitted):
+        # `restore_event_scope(())` between the two kickoffs is what a second
+        # THREAD would give for free: without it crewai's scope stack makes the
+        # second crew a child of the first and there is only ever one root, so
+        # the bug this guards cannot be reached.
+        with failproofai_sdk.session("session-alpha"):
+            crewai_event_bus.emit(None, CrewKickoffStartedEvent(crew_name="Alpha", inputs=None))
+        restore_event_scope(())
+        with failproofai_sdk.session("session-bravo"):
+            crewai_event_bus.emit(None, CrewKickoffStartedEvent(crew_name="Bravo", inputs=None))
+        restore_event_scope(())
+        crewai_event_bus.flush(timeout=30)
+        assert len(adapter._roots) == 2, "the test needs two concurrent roots to mean anything"
+
+        with failproofai_sdk.session("session-alpha"):
+            # Its parent span is gone (closed, or evicted at _MAX_NODES), so
+            # this resolves through the root fallback.
+            crewai_event_bus.emit(
+                None,
+                ToolUsageStartedEvent(
+                    tool_name="orphan_tool",
+                    tool_args="{}",
+                    agent_role="Alpha Worker",
+                    parent_event_id=str(uuid.uuid4()),
+                ),
+            )
+        crewai_event_bus.flush(timeout=30)
+
+        orphan = next(e for e in emitted() if e["type"] == "tool_use")
+        # NOT "session-bravo": `_roots[-1]` is Bravo.
+        assert orphan["session_id"] == "session-alpha"
+        assert orphan["agent_id"] == "Alpha"
+
+
+class TestLiteAgent:
+    """`Agent.kickoff()` is an agent run with no Crew and no Task. It emits its
+    OWN execution events, and it is a ROOT. Unmapped, the run has no agent span
+    at all: its LLM and tool events fall through to whatever ambient scope
+    exists (`agent_id` "main"), or are dropped outright when there is none."""
+
+    @staticmethod
+    def _pair(role="Solo Agent"):
+        info = {"id": str(uuid.uuid4()), "role": role, "goal": "Answer.", "backstory": "b"}
+        started = _flow_event(
+            "LiteAgentExecutionStartedEvent", agent_info=info, tools=[], messages="hi"
+        )
+        crewai_event_bus.emit(None, started)
+        crewai_event_bus.emit(
+            None,
+            _flow_event(
+                "LiteAgentExecutionCompletedEvent",
+                agent_info=info,
+                output="done",
+                started_event_id=started.event_id,
+            ),
+        )
+        crewai_event_bus.flush(timeout=30)
+        return info
+
+    def test_it_gets_its_own_agent_span(self, instrumented, emitted):
+        info = self._pair()
+        events = emitted()
+        assert types_of(events) == ["agent_start", "agent_end"]
+        assert events[0]["agent_id"] == "Solo Agent"
+        assert events[0]["goal"] == "Answer."
+        assert events[0]["fw_lite"] is True
+        # The UUID goes to fw_agent_id and NEVER to the LowCardinality facet.
+        assert events[0]["fw_agent_id"] == info["id"]
+        assert events[1]["outcome"] == "success"
+
+    def test_it_is_a_root_so_it_opens_its_own_session(self, instrumented, emitted):
+        self._pair()
+        events = emitted()
+        assert events[0].get("parent_id") is None
+        assert len({e["session_id"] for e in events}) == 1
+
+    def test_the_three_rows_are_in_the_table(self):
+        mapped = dict(TABLE)
+        assert mapped["LiteAgentExecutionStartedEvent"] == "on_lite_agent_started"
+        assert mapped["LiteAgentExecutionCompletedEvent"] == "on_agent_completed"
+        assert mapped["LiteAgentExecutionErrorEvent"] == "on_agent_error"
+
+
+# ---------------------------------------------------------------------------
+# Task(human_input=True) — the HITL surface that is NOT on the event bus
+# ---------------------------------------------------------------------------
+
+def _provider():
+    try:
+        from crewai.core.providers.human_input import SyncHumanInputProvider
+    except ImportError:  # pragma: no cover - a crewai that moved it
+        pytest.skip("this crewai has no SyncHumanInputProvider")
+    return SyncHumanInputProvider
+
+
+class TestTaskHumanInput:
+    """crewai has two HITL surfaces and only one of them is on the bus.
+    `human_input=True` on a Task runs through
+    `crewai.core.providers.human_input`, which calls `input()` and emits no
+    event of any kind — so the entire human wait is billed as active time on the
+    agent unless this seam is wrapped. It is the only patch in the adapter,
+    which is why install/restore is asserted as hard as the events are.
+    """
+
+    def test_the_four_events_land_on_the_blocked_agent(
+        self, instrumented, emitted, monkeypatch
+    ):
+        crewai_event_bus.emit(None, CrewKickoffStartedEvent(crew_name="C", inputs=None))
+        agent = Agent(role="Blocked Analyst", goal="g", backstory="b")
+        task = Task(description="d", expected_output="o", agent=agent)
+        crewai_event_bus.emit(
+            None,
+            _flow_event(
+                "AgentExecutionStartedEvent",
+                agent=agent,
+                task=task,
+                tools=[],
+                task_prompt="p",
+            ),
+        )
+        crewai_event_bus.flush(timeout=30)
+
+        monkeypatch.setattr("builtins.input", lambda *a: "tighten the wording")
+        assert _provider()._prompt_input(None) == "tighten the wording"
+
+        events = emitted()
+        kinds = types_of(events)
+        for expected in ("human_wait", "agent_pause", "agent_resume", "human_input"):
+            assert expected in kinds, f"{expected} missing from {kinds}"
+        assert kinds.index("human_wait") < kinds.index("agent_pause")
+        assert kinds.index("agent_pause") < kinds.index("agent_resume")
+        assert kinds.index("agent_resume") < kinds.index("human_input")
+
+        by_type = {e["type"]: e for e in events}
+        # On the agent that is actually blocked, not on the crew above it.
+        assert by_type["human_wait"]["agent_id"] == "Blocked Analyst"
+        assert by_type["human_input"]["response"] == "tighten the wording"
+        assert by_type["agent_pause"]["pause_id"] == by_type["agent_resume"]["pause_id"]
+        assert by_type["human_wait"]["fw_surface"] == "task_human_input"
+
+    def test_the_seam_is_restored_on_uninstrument(self):
+        provider = _provider()
+        before = provider.__dict__.get("_prompt_input")
+        before_async = provider.__dict__.get("_prompt_input_async")
+        failproofai_sdk.instrument("crewai")
+        assert provider.__dict__.get("_prompt_input") is not before
+        failproofai_sdk.uninstrument("crewai")
+        assert provider.__dict__.get("_prompt_input") is before
+        assert provider.__dict__.get("_prompt_input_async") is before_async
+
+    def test_installing_twice_does_not_wrap_twice(self, instrumented):
+        # A second install with no restore in between would emit the pause twice
+        # for one prompt.
+        adapter._patch_task_human_input()
+        assert len(adapter._patched) == 2
+
+    def test_it_is_still_a_staticmethod(self, instrumented):
+        # `self._prompt_input(context.crew)` is the call site: a bare function
+        # here would bind and arrive with `self` where `crew` belongs.
+        assert isinstance(_provider().__dict__["_prompt_input"], staticmethod)
+
+    def test_a_raising_prompt_still_raises(self, instrumented, monkeypatch):
+        boom = KeyboardInterrupt()
+
+        def _raise(*args):
+            raise boom
+
+        monkeypatch.setattr("builtins.input", _raise)
+        with pytest.raises(KeyboardInterrupt) as excinfo:
+            _provider()._prompt_input(None)
+        assert excinfo.value is boom

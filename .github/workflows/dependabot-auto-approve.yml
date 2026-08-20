@@ -1,0 +1,35 @@
+# Automatically approve Dependabot dependency-update pull requests.
+# Runs in the base repository context; it never checks out untrusted PR code.
+name: Auto-approve Dependabot pull requests
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  approve:
+    name: Approve Dependabot PRs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Approve open Dependabot pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --paginate \
+            "/repos/${REPOSITORY}/pulls?state=open&per_page=100" \
+            --jq '.[] | select(.user.login == "dependabot[bot]") | .number' \
+          | while read -r pr; do
+              [ -n "$pr" ] || continue
+              echo "Approving Dependabot PR #$pr"
+              gh pr review "$pr" --repo "$REPOSITORY" --approve \
+                --body "Automatically approved by the organization Dependabot policy."
+            done

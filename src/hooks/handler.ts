@@ -43,6 +43,7 @@ import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
 import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
+import { readInstalledPacks, type ResolvedPack } from "./pack-manifest";
 import { readActivePause, type ActivePause } from "./session-pause";
 import { layoutWarningForHook } from "./fp-reset";
 
@@ -334,13 +335,30 @@ export async function evaluateHookEvent(
       // separate question from "what decided", and only the former can tell a
       // rollout that changed nothing from one that never reached the machine.
       cloudDeployment = cloudManagedPolicies[0]?.deployment;
+      // Installed packs. `readInstalledPacks` never throws: a bad manifest or a
+      // tampered artifact yields zero packs and a recorded reason, which is
+      // sound ONLY because the builtins still ship compiled in and keep
+      // enforcing underneath. See the fail-open note in pack-manifest.ts — the
+      // day builtins become a fetched pack this posture has to change with them.
+      let installedPacks: ResolvedPack[] = [];
+      try {
+        const packResult = readInstalledPacks();
+        installedPacks = packResult.packs;
+        for (const err of packResult.errors) {
+          hookLogWarn(`pack ${err.id ?? "(unnamed)"} not loaded: ${err.reason}`);
+        }
+      } catch (err) {
+        hookLogWarn(`pack manifest unreadable: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
       const configuredCustomPaths = config.customPoliciesPaths ?? config.customPoliciesPath;
       const allExplicitPaths =
-        cloudManagedPolicies.length === 0
+        cloudManagedPolicies.length === 0 && installedPacks.length === 0
           ? configuredCustomPaths
           : [
               ...(typeof configuredCustomPaths === "string" ? [configuredCustomPaths] : configuredCustomPaths ?? []),
               ...cloudManagedPolicies.map((policy) => policy.path),
+              ...installedPacks.map((pack) => pack.path),
             ];
 
       // Load and register custom hooks (layer 2, after builtins)
@@ -348,6 +366,7 @@ export async function evaluateHookEvent(
         sessionCwd: session.cwd,
         customPoliciesEnabled: config.customPoliciesEnabled,
         ...(cloudManagedPolicies.length > 0 ? { cloudManagedPolicies } : {}),
+        ...(installedPacks.length > 0 ? { packs: installedPacks } : {}),
       });
       customHooksList = loadResult.hooks;
       const disabledCustomPolicies = new Set(config.disabledCustomPolicies ?? []);
@@ -357,9 +376,11 @@ export async function evaluateHookEvent(
         const taggedHook = hook as CustomHook & {
           __policyId?: string;
           __cloudManaged?: CloudManagedPolicyArtifact;
+          __pack?: ResolvedPack;
         };
         const policyId = taggedHook.__policyId;
         const cloudManaged = taggedHook.__cloudManaged;
+        const pack = taggedHook.__pack;
         // Local config cannot disable a centrally assigned policy merely by
         // copying its generated ID into disabledCustomPolicies.
         if (!cloudManaged && policyId && disabledCustomPolicies.has(policyId)) continue;
@@ -368,16 +389,23 @@ export async function evaluateHookEvent(
         const hookName = hook.name;
         const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
         const isConvention = !!conventionScope;
+        // A pack's prefix carries its id and version, and it always contains a
+        // `/` — which is what keeps a pack policy structurally unable to
+        // normalize into the `failproofai/` namespace and REPLACE a builtin.
+        // pack-manifest.ts refuses a `/` in the declared name for the same
+        // reason; this is the second half of that guard.
         const prefix = cloudManaged
           ? `cloud/${cloudManaged.id}@${cloudManaged.version}`
-          : isConvention
-            ? `.failproofai-${conventionScope}`
-            : "custom";
+          : pack
+            ? `pack/${pack.id}@${pack.version}`
+            : isConvention
+              ? `.failproofai-${conventionScope}`
+              : "custom";
         // Observe mode: run it for real, record what it decided, then hand back
         // an allow. Evaluating and discarding is the whole point — a rollout is
         // measured against real traffic before it can break anyone's work, and
         // a policy that did not actually run would measure nothing.
-        const observeOnly = cloudManaged?.effect === "observe";
+        const observeOnly = cloudManaged?.effect === "observe" || pack?.effect === "observe";
         const fn: PolicyFunction = async (ctx): Promise<PolicyResult> => {
           if (observeOnly) {
             const shadow = await runObserved(hook, ctx, hookName, eventType, cli);

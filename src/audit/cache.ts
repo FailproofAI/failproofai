@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { BUILTIN_POLICIES } from "../hooks/builtin-policies";
+import { readInstalledPacks } from "../hooks/pack-manifest";
 import { AUDIT_DETECTORS } from "./detectors";
 import type { TranscriptAuditResult } from "./types";
 import { auditCacheDir } from "../hooks/fp-home";
@@ -20,14 +21,43 @@ import { auditCacheDir } from "../hooks/fp-home";
 let cachedEngineVersion: string | null = null;
 let cachedDetectorVersion: string | null = null;
 
-/** Hash of every builtin policy's name + function body. Changes when policy
- *  code changes, invalidating downstream caches. */
+/**
+ * Hash of every builtin policy's name + function body, PLUS the identity of every
+ * installed pack. Changes when policy code changes, invalidating downstream
+ * caches.
+ *
+ * Packs belong in this key because they change what a machine would have caught,
+ * which is exactly what a cached audit result claims to know. They are folded in
+ * by `id|version|sha256` rather than by source text: the pack's bytes are already
+ * digest-pinned, and hashing the loaded source instead would drag in the
+ * per-load temporary filename the loader rewrites into every import specifier —
+ * which changes on every single run and would cold-rescan the whole history each
+ * time.
+ *
+ * **A machine with no packs must hash byte-identically to a build with no pack
+ * support at all.** Otherwise merely shipping this feature invalidates every
+ * user's audit cache and forces a ~104-second cold rescan on upgrade, for a
+ * capability they are not using. Hence the empty pack set contributes nothing —
+ * not an empty line, not a separator.
+ */
 function getEngineVersion(): string {
   if (cachedEngineVersion) return cachedEngineVersion;
-  const blob = BUILTIN_POLICIES
+  const builtinBlob = BUILTIN_POLICIES
     .map((p) => `${p.name}|${p.fn.toString()}`)
     .sort()
     .join("\n");
+  // Never throws by contract, but this runs inside the audit's own try/catch-free
+  // path and a cache key is not worth taking the run down for.
+  let packBlob = "";
+  try {
+    packBlob = readInstalledPacks()
+      .packs.map((pack) => `${pack.id}|${pack.version}|${pack.sha256}`)
+      .sort()
+      .join("\n");
+  } catch {
+    packBlob = "";
+  }
+  const blob = packBlob ? `${builtinBlob}\n${packBlob}` : builtinBlob;
   cachedEngineVersion = createHash("sha1").update(blob).digest("hex").slice(0, 16);
   return cachedEngineVersion;
 }
@@ -41,6 +71,13 @@ function getDetectorVersion(): string {
     .join("\n");
   cachedDetectorVersion = createHash("sha1").update(blob).digest("hex").slice(0, 16);
   return cachedDetectorVersion;
+}
+
+/** Exposed for `engine-version-packs.test.ts`, which pins the upgrade-cost
+ *  guarantee: a machine with no packs must hash exactly as it did before packs
+ *  existed. Nothing else should call this. */
+export function getEngineVersionForTest(): string {
+  return getEngineVersion();
 }
 
 function getCachePathFor(transcriptPath: string): string {

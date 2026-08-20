@@ -18,13 +18,17 @@ A deployment connects one or more policy versions to a target set of enrolled ma
     ![The machine deployment editor with policy versions, enforce and observe effects, and the apply deployment action.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Cloud deployment endpoints are intentionally not exposed as ordinary `fp` commands. Check the machine locally, then deploy through the dashboard:
+    Deploy from the CLI with `fp fleet`. Review the resulting set before applying it — `deploy` prints the full plan and asks, unless you pass `--yes`:
 
     ```bash
-    failproofai config --status
+    fp fleet list
+    fp fleet show <machine-id>
+    fp fleet deploy <machine-id> --add no-force-push
     ```
 
-    Use `fp sessions --env production --since 24h` and `fp events --event-type hook_completed` after deployment to verify activity reaches Cloud.
+    `fp fleet diff <machine-id>` shows intent vs delivery (a machine reads as `behind` until it next polls), `fp fleet history <machine-id>` lists the generations, and `fp fleet rollback <machine-id> <generation>` reinstates one — it refuses if that generation names a policy since disabled or deleted.
+
+    Check the machine itself with `failproofai config --status`, and use `fp sessions --env production --since 24h` and `fp events --event-type hook_completed` after deployment to verify activity reaches Cloud.
   </Tab>
 </Tabs>
 

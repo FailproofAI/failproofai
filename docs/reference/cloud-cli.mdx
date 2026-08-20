@@ -334,17 +334,23 @@ Valid issue states are `firing`, `acknowledged`, and `resolved`. Standalone issu
 
 | Variable | Equivalent or purpose |
 | --- | --- |
-| `AGENTEYE_DASHBOARD_URL` | `--base-url` |
-| `AGENTEYE_ORG` | `--org` |
-| `AGENTEYE_CLI_TOKEN` | `--token` |
-| `AGENTEYE_CLI_API_KEY` | `--api-key` |
-| `AGENTEYE_CLI_JSON` | `--json` |
-| `AGENTEYE_INSECURE` | `--insecure` |
-| `AGENTEYE_HOME` | Relocate the current CLI configuration directory. |
-| `AGENTEYE_ANALYTICS_DISABLED` or `DO_NOT_TRACK` | Disable anonymous CLI analytics. |
+| `FP_DASHBOARD_URL` | `--base-url` |
+| `FP_ORG` | `--org` |
+| `FP_TOKEN` | `--token` |
+| `FP_API_KEY` | `--api-key` |
+| `FP_JSON` | `--json` |
+| `FP_INSECURE` | `--insecure` |
+| `FP_HOME` | Relocate the CLI configuration directory (default `~/.failproofai/fpcli`). |
+| `FP_ANALYTICS_DISABLED` or `DO_NOT_TRACK` | Disable anonymous CLI analytics. |
 | `NO_COLOR` | Disable colored output. |
 
-Explicit flags override environment variables, which override saved configuration. In API-key mode, select the tenant explicitly with `--org` or `AGENTEYE_ORG`.
+Explicit flags override environment variables, which override saved configuration. In API-key mode, select the tenant explicitly with `--org` or `FP_ORG`.
+
+<Warning>
+  The `AGENTEYE_*` spellings of these are **not read by `fp`** and never were — the CLI declares `FP_*` (`fp_cli/app.py`), and an unknown variable is not an error. Setting `AGENTEYE_DASHBOARD_URL` does not retarget the CLI; it is ignored and the command silently runs against the saved dashboard instead.
+
+  `AGENTEYE_HOME` and `AGENTEYE_ENVIRONMENT` do still exist, but they belong to the **collector and the telemetry SDK**, not to this CLI.
+</Warning>
 
 <Warning>
   Commands that delete, revoke, suppress, resolve, or replace configuration prompt by default. Use `--yes` only after verifying the active organization and target.

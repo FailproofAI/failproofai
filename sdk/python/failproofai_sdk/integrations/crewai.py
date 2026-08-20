@@ -55,6 +55,7 @@ the primary dashboard facet. CrewAI's `agent.id` is a UUID and goes to
 import json
 import logging
 import threading
+import uuid
 from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Any
@@ -93,6 +94,7 @@ _INSTALL_HINT = (
 
 try:  # only ever executed by `instrument("crewai")` — `import failproofai_sdk` never gets here
     from crewai.events import event_types as _ct
+    from crewai import events as _ce
     from crewai.events.base_event_listener import BaseEventListener
     from crewai.events.event_bus import crewai_event_bus
 except ImportError as _exc:  # pragma: no cover - exercised by uninstalling crewai
@@ -130,6 +132,15 @@ TABLE: tuple[tuple[str, str], ...] = (
     ("MethodExecutionFailedEvent", "on_method_failed"),
     ("LLMGuardrailStartedEvent", "on_guardrail_started"),
     ("LLMGuardrailCompletedEvent", "on_guardrail_completed"),
+    # --- human in the loop -------------------------------------------------
+    # A crew blocked on a person is otherwise an unexplained gap: no event
+    # fires for the whole wait, so the session reads as `ongoing` and its
+    # active duration absorbs however long the human took. The LangChain and
+    # LlamaIndex adapters both map their HITL surface onto the same four
+    # events, and this is the crewai one — `crewai.flow.runtime` emits the
+    # pair around every `@human_feedback` method.
+    ("HumanFeedbackRequestedEvent", "on_human_requested"),
+    ("HumanFeedbackReceivedEvent", "on_human_received"),
     # --- things the agent calls: tool pairs --------------------------------
     ("ToolUsageStartedEvent", "on_tool_started"),
     ("ToolUsageFinishedEvent", "on_tool_finished"),
@@ -238,6 +249,10 @@ class _CrewAIAdapter:
         self._nodes: "OrderedDict[str, _Node]" = OrderedDict()
         self._leaves: "OrderedDict[str, _Leaf]" = OrderedDict()
         self._streams: "OrderedDict[str, list]" = OrderedDict()
+        # pause id -> (emit key, parent key, prompt). Bounded like the rest:
+        # a run that is cancelled while a human is still thinking never sends
+        # the matching `received`, and unbounded that is a leak in a gateway.
+        self._pauses: "OrderedDict[str, tuple]" = OrderedDict()
         self._roots: list[str] = []
         self._session_id: str | None = None
 
@@ -278,6 +293,7 @@ class _CrewAIAdapter:
             self._nodes.clear()
             self._leaves.clear()
             self._streams.clear()
+            self._pauses.clear()
             self._roots.clear()
         if self._tracker is not None:
             self._tracker.reset()
@@ -631,6 +647,158 @@ class _CrewAIAdapter:
             event, outcome="failed", error=_text(getattr(event, "error", None))
         )
 
+    # -- human in the loop --------------------------------------------------
+    #
+    # The same four events, in the same order, as the LangChain and LlamaIndex
+    # adapters. Neither pair is redundant and neither is optional:
+    #
+    #   human_wait  -> human_input   carries the prompt, the answer and the
+    #                                pendingHuman count;
+    #   agent_pause -> agent_resume  is the ONLY thing that feeds pausedMs, so
+    #                                without it the wait is billed as active
+    #                                time on the agent.
+    #
+    # PAIRING is the whole difficulty here. Verified against crewai 1.15.16:
+    # `crewai.flow.runtime` constructs both events with **no correlation id at
+    # all** — `request_id` is None on both and `started_event_id` is None on the
+    # received one, so there is nothing to join on. What they do share is
+    # `(flow_name, method_name)`, and the interaction is strictly sequential:
+    # the runtime emits `requested`, blocks on `input()`, then emits `received`.
+    #
+    # So the lookup is `request_id` -> `(flow_name, method_name)` -> most
+    # recently opened, in that order. The last fallback is sound rather than a
+    # guess, because a blocking console prompt cannot interleave with another.
+    # `request_id` is tried first anyway: the enterprise async provider in
+    # `crewai.flow.async_feedback` does set it, and that one CAN interleave.
+
+    @staticmethod
+    def _pause_lookup_keys(event) -> tuple:
+        """Join keys for one HITL event, most specific first."""
+        keys = []
+        request_id = getattr(event, "request_id", None)
+        if request_id:
+            keys.append(("request", str(request_id)))
+        started = getattr(event, "started_event_id", None)
+        if started:
+            keys.append(("request", str(started)))
+        flow = getattr(event, "flow_name", None)
+        method = getattr(event, "method_name", None)
+        if flow or method:
+            keys.append(("method", str(flow), str(method)))
+        return tuple(keys)
+
+    @safe
+    def on_human_requested(self, source, event) -> None:
+        tracker = self._tracker
+        if tracker is None:
+            return
+        # The id the SDK pairs on. `event_id` is always present and unique;
+        # `request_id` is usually None, so it cannot serve as this.
+        pause_id = str(getattr(event, "event_id", None) or uuid.uuid4().hex)
+        parent = self._parent_key(getattr(event, "parent_event_id", None))
+        prompt = _text(getattr(event, "message", None))
+        record = (pause_id, parent, prompt)
+
+        with self._lock:
+            while len(self._pauses) >= _MAX_NODES:
+                self._pauses.pop(next(iter(self._pauses)), None)
+            for key in self._pause_lookup_keys(event):
+                self._pauses[key] = record
+            # Always keyed by its own id too, so a `received` that does carry an
+            # id finds it even when flow and method are both blank.
+            self._pauses[("request", pause_id)] = record
+
+        options = [str(o) for o in (getattr(event, "emit", None) or [])] or None
+        extra = fw_fields(
+            flow_name=getattr(event, "flow_name", None),
+            method_name=getattr(event, "method_name", None),
+            output=_text(getattr(event, "output", None)),
+        )
+        tracker.emit(
+            "human_wait",
+            pause_id,
+            parent_key=parent,
+            input_id=pause_id,
+            prompt=prompt,
+            options=options,
+            reason="crewai_human_feedback",
+            **extra,
+        )
+        tracker.emit(
+            "agent_pause",
+            pause_id,
+            parent_key=parent,
+            pause_id=pause_id,
+            reason="crewai_human_feedback",
+            **extra,
+        )
+
+    @safe
+    def on_human_received(self, source, event) -> None:
+        tracker = self._tracker
+        if tracker is None:
+            return
+        feedback = _text(getattr(event, "feedback", None))
+        extra = fw_fields(
+            flow_name=getattr(event, "flow_name", None),
+            method_name=getattr(event, "method_name", None),
+            outcome_hint=getattr(event, "outcome", None),
+        )
+
+        record = None
+        with self._lock:
+            for key in self._pause_lookup_keys(event):
+                record = self._pauses.pop(key, None)
+                if record is not None:
+                    break
+            if record is None and self._pauses:
+                # Sequential fallback: the most recently opened pause.
+                _, record = self._pauses.popitem(last=True)
+            if record is not None:
+                # Drop this record's other alias keys so it cannot pair twice.
+                for key in [k for k, v in self._pauses.items() if v is record]:
+                    self._pauses.pop(key, None)
+
+        if record is None:
+            # Feedback for a request we never saw — a flow resumed in another
+            # process, or one that predates instrument(). Record the answer but
+            # NOT agent_resume: closing a pause that never opened subtracts a
+            # pausedMs interval that was never added. `input_id` falls back to
+            # this event's own id and is NEVER None, which is a hard TypeError
+            # on `human_input` rather than a quietly dropped field.
+            own_id = str(getattr(event, "event_id", None) or uuid.uuid4().hex)
+            tracker.emit(
+                "human_input",
+                own_id,
+                parent_key=self._parent_key(getattr(event, "parent_event_id", None)),
+                input_id=own_id,
+                response=feedback,
+                **fw_fields(orphaned=True),
+                **extra,
+            )
+            return
+
+        pause_id, parent, _prompt = record
+        # agent_resume FIRST: the dashboard closes the pause on it, and
+        # `duration_ms` on both closing events is measured from the matching
+        # opening one.
+        tracker.emit(
+            "agent_resume",
+            pause_id,
+            parent_key=parent,
+            pause_id=pause_id,
+            reason="crewai_human_feedback",
+            **extra,
+        )
+        tracker.emit(
+            "human_input",
+            pause_id,
+            parent_key=parent,
+            input_id=pause_id,
+            response=feedback,
+            **extra,
+        )
+
     @safe
     def on_guardrail_started(self, source, event) -> None:
         self._hook_start(
@@ -961,6 +1129,25 @@ class _CrewAIAdapter:
 # The listener
 # ---------------------------------------------------------------------------
 
+def event_class(name: str):
+    """The event class `name`, or None.
+
+    TWO namespaces, because crewai has two and neither is complete.
+    `crewai.events.event_types` is the flat re-export the bulk of the table
+    resolves against, but the flow events — `HumanFeedbackRequestedEvent` among
+    them — are NOT in it; they are reachable only through `crewai.events`, whose
+    module-level `__getattr__` imports them lazily from
+    `crewai.events.types.flow_events`.
+
+    Resolving against `event_types` alone is not an error you would see: the
+    lookup returns None, `probe()` disables that one hook, and the adapter
+    carries on recording everything else. The HITL events were mapped and
+    silently never registered until this existed. `getattr`, never `dir()` —
+    a lazy re-export does not appear in `dir()`.
+    """
+    return getattr(_ct, name, None) or getattr(_ce, name, None)
+
+
 class FailproofAICrewListener(BaseEventListener):
     """Registers one handler per event class on the module-level bus.
 
@@ -981,15 +1168,15 @@ class FailproofAICrewListener(BaseEventListener):
 
     def setup_listeners(self, crewai_event_bus) -> None:
         for class_name, method_name in TABLE:
-            event_class = getattr(_ct, class_name, None)
-            if event_class is None:
+            klass = event_class(class_name)
+            if klass is None:
                 # Tier 3: one missing event class disables one hook, never the
                 # whole adapter — the other 90% of the events are still correct.
                 _compat.probe(NAME, class_name, lambda: False)
                 continue
             handler = self._make_handler(getattr(self._adapter, method_name), method_name)
-            crewai_event_bus.register_handler(event_class, handler)
-            self._registered.append((event_class, handler))
+            crewai_event_bus.register_handler(klass, handler)
+            self._registered.append((klass, handler))
 
     @staticmethod
     def _make_handler(translator, method_name):

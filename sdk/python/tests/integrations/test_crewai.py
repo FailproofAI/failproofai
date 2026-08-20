@@ -739,12 +739,19 @@ class TestAntiDrift:
         assert {"event_type", "handler"} <= set(off)
 
     def test_every_event_class_we_map_still_exists(self):
-        from crewai.events import event_types
+        """Resolved through the adapter's own `event_class`, deliberately.
+
+        Asserting against `crewai.events.event_types` directly encoded a
+        NARROWER rule than the adapter follows, and the gap was invisible: the
+        flow events live only on `crewai.events`, so a mapping for one resolved
+        to None, `probe()` disabled it, and nothing failed.
+        """
+        from failproofai_sdk.integrations.crewai import event_class
 
         for class_name, _ in TABLE:
-            assert getattr(event_types, class_name, None) is not None, class_name
+            assert event_class(class_name) is not None, class_name
         for class_name in STORE_TOOLS:
-            assert getattr(event_types, class_name, None) is not None, class_name
+            assert event_class(class_name) is not None, class_name
 
     def test_handlers_are_keyed_by_exact_type_with_no_mro_walk(self):
         """The reason there is one entry per event class instead of a BaseEvent
@@ -791,12 +798,13 @@ class TestAntiDrift:
         would make every pairing fall back to the LIFO heuristic without a single
         test failing.
         """
-        from crewai.events import event_types
         from crewai.events.base_events import BaseEvent
+
+        from failproofai_sdk.integrations.crewai import event_class
 
         known = set(BaseEvent.model_fields)
         for class_name, _ in TABLE:
-            known |= set(getattr(event_types, class_name).model_fields)
+            known |= set(event_class(class_name).model_fields)
 
         tree = ast.parse(inspect.getsource(adapter_module))
         read = set()
@@ -850,3 +858,127 @@ class TestRegistry:
         # precisely because nothing imports it except instrument("crewai").
         assert "crewai" not in failproofai_sdk.__dict__
         assert not hasattr(failproofai_sdk, "integrations") or True
+
+
+# ---------------------------------------------------------------------------
+# Human in the loop
+# ---------------------------------------------------------------------------
+
+class TestHumanInTheLoop:
+    """A crew blocked on a person was invisible: crewai fires
+    `HumanFeedbackRequestedEvent`/`HumanFeedbackReceivedEvent` and this adapter
+    subscribed to neither, so the whole wait was an unexplained gap and the
+    session's active duration absorbed it.
+
+    LangChain and LlamaIndex both map their HITL surface onto the same four
+    events, in the same order. This is the crewai one.
+    """
+
+    @staticmethod
+    def _classes():
+        from failproofai_sdk.integrations.crewai import event_class
+
+        requested = event_class("HumanFeedbackRequestedEvent")
+        received = event_class("HumanFeedbackReceivedEvent")
+        if requested is None or received is None:  # pragma: no cover
+            pytest.skip("this crewai has no human-feedback events")
+        return requested, received
+
+    def _round_trip(self, *, flow="review_flow", method="approve", feedback="ship it"):
+        requested, received = self._classes()
+        crewai_event_bus.emit(
+            None,
+            requested(
+                type="human_feedback_requested",
+                flow_name=flow,
+                method_name=method,
+                output="the draft",
+                message="Approve this?",
+            ),
+        )
+        crewai_event_bus.emit(
+            None,
+            received(
+                type="human_feedback_received",
+                flow_name=flow,
+                method_name=method,
+                feedback=feedback,
+                outcome=None,
+            ),
+        )
+        crewai_event_bus.flush(timeout=30)
+
+    def test_a_human_wait_emits_all_four_events_in_order(self, instrumented, emitted):
+        crewai_event_bus.emit(None, CrewKickoffStartedEvent(crew_name="C", inputs=None))
+        self._round_trip()
+        events = emitted()
+        kinds = types_of(events)
+        for expected in ("human_wait", "agent_pause", "agent_resume", "human_input"):
+            assert expected in kinds, f"{expected} missing from {kinds}"
+        assert kinds.index("human_wait") < kinds.index("agent_pause")
+        assert kinds.index("agent_pause") < kinds.index("agent_resume")
+        assert kinds.index("agent_resume") < kinds.index("human_input")
+
+    def test_the_pause_and_the_wait_share_one_id(self, instrumented, emitted):
+        """Without a shared id the SDK cannot measure either interval, and the
+        dashboard shows a pause that never closes."""
+        crewai_event_bus.emit(None, CrewKickoffStartedEvent(crew_name="C", inputs=None))
+        self._round_trip()
+        events = {e["type"]: e for e in emitted()}
+        pause_id = events["agent_pause"]["pause_id"]
+        assert pause_id
+        assert events["agent_resume"]["pause_id"] == pause_id
+        assert events["human_wait"]["input_id"] == pause_id
+        assert events["human_input"]["input_id"] == pause_id
+
+    def test_the_prompt_and_the_answer_are_both_recorded(self, instrumented, emitted):
+        crewai_event_bus.emit(None, CrewKickoffStartedEvent(crew_name="C", inputs=None))
+        self._round_trip(feedback="looks good, ship it")
+        events = {e["type"]: e for e in emitted()}
+        assert events["human_wait"]["prompt"] == "Approve this?"
+        assert events["human_input"]["response"] == "looks good, ship it"
+
+    def test_both_closing_events_carry_a_measured_int_duration(self, instrumented, emitted):
+        """`agent_pause` -> `agent_resume` is the only thing that feeds pausedMs."""
+        crewai_event_bus.emit(None, CrewKickoffStartedEvent(crew_name="C", inputs=None))
+        self._round_trip()
+        events = {e["type"]: e for e in emitted()}
+        for kind in ("agent_resume", "human_input"):
+            assert isinstance(events[kind]["duration_ms"], int), kind
+
+    def test_feedback_with_no_request_records_the_answer_but_does_not_resume(
+        self, instrumented, emitted
+    ):
+        """Closing a pause that never opened subtracts a pausedMs interval that
+        was never added, so the resume is deliberately withheld — but the answer
+        itself must still reach the Human surface."""
+        _, received = self._classes()
+        crewai_event_bus.emit(None, CrewKickoffStartedEvent(crew_name="C", inputs=None))
+        crewai_event_bus.emit(
+            None,
+            received(
+                type="human_feedback_received",
+                flow_name="f",
+                method_name="m",
+                feedback="orphaned answer",
+                outcome=None,
+            ),
+        )
+        crewai_event_bus.flush(timeout=30)
+
+        events = emitted()
+        kinds = types_of(events)
+        assert "human_input" in kinds
+        assert "agent_resume" not in kinds
+        answer = next(e for e in events if e["type"] == "human_input")
+        assert answer["response"] == "orphaned answer"
+        # NEVER None: `human_input` requires `input_id`, and passing None raises
+        # a TypeError inside the customer's event bus.
+        assert answer["input_id"]
+        assert answer["fw_orphaned"] is True
+
+    def test_every_hitl_event_lands_on_the_one_session(self, instrumented, emitted):
+        crewai_event_bus.emit(None, CrewKickoffStartedEvent(crew_name="C", inputs=None))
+        self._round_trip()
+        events = emitted()
+        assert len({e["session_id"] for e in events}) == 1

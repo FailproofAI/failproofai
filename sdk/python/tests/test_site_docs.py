@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 
 import failproofai_sdk
+from failproofai_sdk import _events as _events_module
 
 # sdk/python -> sdk -> repo root -> docs/
 _HERE = Path(failproofai_sdk.__file__).resolve().parent.parent
@@ -196,3 +197,74 @@ def test_a_framework_page_is_explicit_about_human_in_the_loop(page):
         f"{page} neither documents human-in-the-loop nor states that the "
         f"framework has none"
     )
+
+
+# --- Keyword arguments, on every page in the directory ----------------------
+#
+# The tests above check that a method NAME exists. Nothing checked the keywords,
+# and `event.*` ends in `**fields` — so a wrong one is accepted, stored as a
+# custom field, and never populates the column the reader wanted. The docs told
+# people to call `model_response(response=...)` for a long time; the parameter is
+# `content`, so every reader who copied it got an event whose `content` column
+# was empty and a stray `response` field they never asked for. Nothing raised.
+#
+# These also widen the net: PAGE_ADAPTER covers only the four framework pages, so
+# `custom-agents.mdx` — which carries the most hand-written event calls on the
+# site — was scanned by nothing at all. That is where the bug survived.
+
+ALL_PAGES = sorted(p.name for p in SITE.glob("*.mdx")) if SITE.is_dir() else []
+
+# Custom fields are legal, and the adapters namespace theirs. A bare unknown
+# keyword on a documented call is the typo case.
+#
+# Two exemptions, both deliberate. `fw_*` is the documented namespace for a
+# framework's own metadata. And `_PROMOTED_NUMERIC` names the keys ingest lifts
+# into real columns — `duration_ms` on `model_response` is the one the docs
+# actively tell you to pass, and it travels through `**fields` by design, so the
+# SDK validates it there rather than declaring it a parameter. Reading the set
+# from the SDK keeps this from drifting the moment a fourth key is promoted.
+_CUSTOM_FIELD_PREFIX = "fw_"
+_PROMOTED = set(_events_module._PROMOTED_NUMERIC)
+
+
+def _event_calls(text: str):
+    """(method, {keywords}) for every failproofai_sdk.event.X(...) in a python block."""
+    for block in re.findall(r"```python[^\n]*\n(.*?)```", text, re.S):
+        try:
+            tree = ast.parse(textwrap.dedent(block))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                continue
+            value = node.func.value
+            if not (isinstance(value, ast.Attribute) and value.attr == "event"):
+                continue
+            yield node.func.attr, {kw.arg for kw in node.keywords if kw.arg}
+
+
+@pytest.mark.parametrize("page", ALL_PAGES)
+def test_every_documented_event_call_uses_real_keywords(page):
+    import inspect
+
+    bad = []
+    for method, keywords in _event_calls(_page(page)):
+        fn = getattr(failproofai_sdk.event, method, None)
+        if fn is None:
+            continue  # the name test above owns this failure
+        real = set(inspect.signature(fn).parameters) - {"fields"}
+        for kw in sorted(keywords - real):
+            if kw.startswith(_CUSTOM_FIELD_PREFIX) or kw in _PROMOTED:
+                continue
+            bad.append(f"event.{method}({kw}=...)")
+    assert not bad, (
+        f"docs/start/integrations/{page} passes keywords that are not parameters: "
+        f"{bad}. `event.*` ends in **fields, so these are accepted silently and "
+        f"stored as custom fields instead of filling the column the reader wanted."
+    )
+
+
+def test_the_keyword_scan_actually_finds_calls():
+    """Otherwise a change to the block format makes every page above pass vacuously."""
+    found = sum(len(list(_event_calls(_page(p)))) for p in ALL_PAGES)
+    assert found >= 10, f"only {found} event calls found across {len(ALL_PAGES)} pages"

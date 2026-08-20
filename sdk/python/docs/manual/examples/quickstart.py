@@ -47,7 +47,7 @@ def main() -> None:
                 {"role": "user", "content": "population of tokyo?"}
             ])
             failproofai_sdk.event.model_response(
-                model=model(), output_tokens=3, duration_ms=210, response="37M"
+                model=model(), output_tokens=3, duration_ms=210, content="37M"
             )
 
     trace(sid, title="manual quickstart")

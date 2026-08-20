@@ -64,6 +64,22 @@ The error is emitted before `agent_end`, because the dashboard closes the span a
 
 ## The event methods
 
+Fifteen methods in six families. Most come in pairs — you emit the opener, then the closer, and the SDK measures the span between them.
+
+| Family | Opens | Closes | Standalone |
+| --- | --- | --- | --- |
+| **Agents** | `agent_start` | `agent_end` | — |
+| | `agent_pause` | `agent_resume` | — |
+| **Models** | `model_request` | `model_response` | — |
+| **Tools** | `tool_use` | `tool_result` | — |
+| **Hooks** | `hook_triggered` | `hook_completed` | — |
+| **Humans** | `human_wait` | `human_input` | `human_pause`, `human_interrupt` |
+| **Failures** | — | — | `error` |
+
+<Tip>
+  Prefer the scopes — `agent()` and `tool_call()` — wherever they fit. They guarantee the closing event even when the body raises. Reach for these methods directly when your control flow doesn't nest, such as a model call inside a helper.
+</Tip>
+
 <CodeGroup>
 ```python Agents
 failproofai_sdk.event.agent_start(agent_id="planner", goal="find the cheapest flight")
@@ -80,7 +96,7 @@ failproofai_sdk.event.model_request(
 )
 failproofai_sdk.event.model_response(
     model="gpt-4o-mini",
-    response="...",
+    content="...",
     input_tokens=139,
     output_tokens=21,
     request_id="req-1",
@@ -114,9 +130,20 @@ failproofai_sdk.event.error(
 ```
 </CodeGroup>
 
-`human_wait` and `human_input` mean the agent asked a person. `human_pause` and `human_interrupt` mean a person acted on the agent, such as a stop button. No framework signals the second pair, so it is always yours to emit.
+<Note>
+  **The two human families point in opposite directions.**
 
-Pass `request_id` when you make concurrent model calls. Without it, requests and responses pair in order per agent, and concurrent calls mispair.
+  | Methods | Meaning |
+  | --- | --- |
+  | `human_wait` / `human_input` | The **agent asked a person** — an approval gate, a clarifying question |
+  | `human_pause` / `human_interrupt` | A **person acted on the agent** — a stop button, an operator pause |
+
+  No framework signals the second pair, so it is always yours to emit.
+</Note>
+
+<Warning>
+  **Pass `request_id` when model calls run concurrently.** Without it, requests and responses pair in arrival order per agent — and concurrent calls mispair, attaching each response to the wrong request.
+</Warning>
 
 ## Example
 
@@ -140,7 +167,7 @@ def turn(messages: list):
     usage = reply.usage
     failproofai_sdk.event.model_response(
         model=MODEL,
-        response=reply.choices[0].message.content or "",
+        content=reply.choices[0].message.content or "",
         input_tokens=usage.prompt_tokens,
         output_tokens=usage.completion_tokens,
     )
@@ -190,7 +217,13 @@ Without `propagate()`, the worker's events raise a `TypeError` naming the fix ra
 
 ## Instrument a framework without an adapter
 
-Most agent frameworks give you three seams. Map them and you have a complete trace.
+Every agent framework gives you the same three seams. Map them and you have a complete trace — the four shipped adapters do nothing more than this.
+
+| The seam | What you write | What lands |
+| --- | --- | --- |
+| The run | `session()` + `agent()` | `agent_start`, `agent_end` |
+| Each tool | `tool_call()` | `tool_use`, `tool_result` |
+| Each model call | The `model_*` pair | `model_request`, `model_response` |
 
 <Steps>
   <Step title="Bracket the run">
@@ -214,7 +247,7 @@ Most agent frameworks give you three seams. Map them and you have a complete tra
     reply = provider.complete(...)
     failproofai_sdk.event.model_response(
         model=model,
-        response=text,
+        content=text,
         input_tokens=usage.prompt_tokens,
         output_tokens=usage.completion_tokens,
     )
@@ -222,18 +255,22 @@ Most agent frameworks give you three seams. Map them and you have a complete tra
   </Step>
 </Steps>
 
-If the framework has a node, step, or middleware boundary worth seeing, add a hook pair around it rather than a nested `agent()`. `agent_id` is a low-cardinality facet, and one entry per node drowns it.
+<Tip>
+  **Got a node, step or middleware boundary worth seeing?** Wrap it in a hook pair — `hook_triggered` / `hook_completed` — not a nested `agent()`. `agent_id` is a low-cardinality facet, and one entry per node drowns it. Hook spans render the same way and give you per-node latency.
+</Tip>
 
 <Note>
-  AutoGen has no adapter for two reasons. `autogen-core` has been unmaintained since September 2025, and AG2 exposes no process-wide registration point equivalent to the other frameworks' hooks — instrumenting it means wrapping each agent at each construction site. The three seams above record the same events at the same fidelity.
+  **Manual and automatic compose.** An adapter running inside a hand-written scope joins that session and parents to that agent, so you get one tree rather than two — useful when you instrument one framework yourself alongside a supported one.
 </Note>
 
-<Note>
-  **Manual and automatic compose.** An adapter running inside a hand-written
-  scope joins that session and parents to that agent, so you get one tree rather
-  than two — useful when you instrument a framework yourself alongside a
-  supported one.
-</Note>
+<Accordion title="Why there is no AutoGen adapter">
+  Two reasons, and the three seams above are the answer to both:
+
+  - `autogen-core` has been unmaintained since September 2025.
+  - AG2 exposes no process-wide registration point equivalent to the other frameworks' hooks, so instrumenting it means wrapping every agent at every construction site.
+
+  Mapping the seams by hand records the same events, at the same fidelity, as a shipped adapter would.
+</Accordion>
 
 ## Common problems
 

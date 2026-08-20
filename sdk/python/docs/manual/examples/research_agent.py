@@ -87,7 +87,7 @@ def turn(messages: list) -> object:
     usage = reply.usage
     failproofai_sdk.event.model_response(
         model=model(),
-        response=reply.choices[0].message.content or "",
+        content=reply.choices[0].message.content or "",
         input_tokens=getattr(usage, "prompt_tokens", None),
         output_tokens=getattr(usage, "completion_tokens", None),
     )

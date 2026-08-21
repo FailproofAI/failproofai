@@ -8,6 +8,8 @@
 
 <img src="https://d2wq11aau0arks.cloudfront.net/failproof/fa_updated_full.svg" alt="failproof ai" width="220" />
 
+<a href="https://trendshift.io/repositories/69722?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-69722" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/69722/daily?language=TypeScript" alt="FailproofAI%2Ffailproofai | Trendshift" width="250" height="55"/></a>
+
 [![npm](https://img.shields.io/npm/v/failproofai?style=flat-square&color=CB3837)](https://www.npmjs.com/package/failproofai)
 [![CI](https://img.shields.io/github/actions/workflow/status/failproofai/failproofai/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/failproofai/failproofai/actions)
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
@@ -18,9 +20,9 @@
 
 **Traduções:** [简体中文](../../docs-old/i18n/README.zh.md) · [日本語](../../docs-old/i18n/README.ja.md) · [한국어](../../docs-old/i18n/README.ko.md) · [Español](../../docs-old/i18n/README.es.md) · [Português](../../docs-old/i18n/README.pt-br.md) · [Deutsch](../../docs-old/i18n/README.de.md) · [Français](../../docs-old/i18n/README.fr.md) · [Руссий](../../docs-old/i18n/README.ru.md) · [हिन्दी](../../docs-old/i18n/README.hi.md) · [Türkçe](../../docs-old/i18n/README.tr.md) · [Tiếng Việt](../../docs-old/i18n/README.vi.md) · [Italiano](../../docs-old/i18n/README.it.md) · [العربية](../../docs-old/i18n/README.ar.md) · [עברית](../../docs-old/i18n/README.he.md)
 
-**Resolução de falhas em tempo de execução para agentes de código.**
+**Resolução de falhas em tempo de execução para agentes de codificação.**
 Integra-se ao Claude Code e ao Codex. Detecta loops, ações perigosas e vazamentos de segredos
-antes que se tornem incidentes. Latência zero. Executa localmente.
+antes que se tornem incidentes. Zero latência. Executa localmente.
 
 </div>
 
@@ -130,15 +132,15 @@ antes que se tornem incidentes. Latência zero. Executa localmente.
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # ou simplesmente execute `failproofai` e aceite o prompt de primeira execução
+failproofai policies --install   # ou simplesmente execute `failproofai` e aceite o prompt da primeira execução
 failproofai
 ```
 
-30 políticas integradas são ativadas imediatamente. Dashboard disponível em `localhost:8020`. Desative o prompt de primeira execução com `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 políticas integradas são ativadas imediatamente. Dashboard disponível em `localhost:8020`. Desative o prompt da primeira execução com `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## O que é bloqueado
+## O que ele bloqueia
 
 | Política | O que bloqueia |
 |---|---|
@@ -146,7 +148,7 @@ failproofai
 | `block-force-push` | `git push --force` |
 | `block-work-on-main` | Commits, merges e rebases em `main` / `master` |
 | `block-rm-rf` | Exclusão recursiva de arquivos |
-| `sanitize-api-keys` | Chaves de API vazando para o contexto do agente |
+| `sanitize-api-keys` | Vazamento de chaves de API no contexto do agente |
 
 → [Todas as 30 políticas integradas](https://docs.befailproof.ai/policies/builtin)
 
@@ -154,8 +156,8 @@ failproofai
 
 ## Suas próprias políticas
 
-Coloque um arquivo em `.failproofai/policies/` — ele é carregado automaticamente, sem nenhuma flag.
-Faça o commit e todo o time terá acesso no próximo pull.
+Coloque um arquivo em `.failproofai/policies/` — ele é carregado automaticamente, sem necessidade de flags.
+Faça o commit e toda a equipe recebe na próxima atualização.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -176,8 +178,8 @@ Três decisões disponíveis para cada política:
 | Decisão | Efeito |
 |---|---|
 | `allow()` | Permite a operação |
-| `deny(message)` | Bloqueia — a mensagem é enviada de volta ao agente |
-| `instruct(message)` | Permite a passagem, mas adiciona contexto ao próximo prompt do agente |
+| `deny(message)` | Bloqueia — a mensagem é retornada ao agente |
+| `instruct(message)` | Deixa passar, mas adiciona contexto ao próximo prompt do agente |
 
 → [Guia de políticas personalizadas](https://docs.befailproof.ai/policies/custom)
 
@@ -185,9 +187,9 @@ Três decisões disponíveis para cada política:
 
 ## Visibilidade da sessão
 
-Toda chamada de ferramenta feita pelo seu agente é registrada localmente. O dashboard mostra o que foi executado,
-o que foi bloqueado e o que a política informou ao agente — para que você não precise adivinhar
-quando algo der errado. → [Guia do dashboard](https://docs.befailproof.ai/sessions/overview)
+Cada chamada de ferramenta feita pelo seu agente é registrada localmente. O dashboard mostra o que foi executado,
+o que foi bloqueado e o que a política comunicou ao agente — para que você não fique no escuro
+quando algo der errado. → [Guia do Dashboard](https://docs.befailproof.ai/sessions/overview)
 
 ---
 
@@ -195,7 +197,7 @@ quando algo der errado. → [Guia do dashboard](https://docs.befailproof.ai/sess
 
 | | |
 |---|---|
-| [Primeiros Passos](https://docs.befailproof.ai/start/quickstart) | Instalação e primeiros passos |
+| [Primeiros Passos](https://docs.befailproof.ai/start/quickstart) | Instalação e passos iniciais |
 | [Políticas Integradas](https://docs.befailproof.ai/policies/builtin) | Todas as 30 políticas com parâmetros |
 | [Políticas Personalizadas](https://docs.befailproof.ai/policies/custom) | Escreva as suas próprias |
 | [Configuração](https://docs.befailproof.ai/policies/local-configuration) | Escopos de configuração e regras de mesclagem |
@@ -206,18 +208,18 @@ quando algo der errado. → [Guia do dashboard](https://docs.befailproof.ai/sess
 
 ## Licença
 
-MIT com [Commons Clause](https://commonsclause.com/) — gratuito para uso interno e pessoal; a revenda comercial do próprio failproofai exige um acordo separado. Veja o arquivo [LICENSE](../../LICENSE) para o texto completo.
+MIT com [Commons Clause](https://commonsclause.com/) — gratuito para uso interno e pessoal; a revenda comercial do próprio failproofai requer um acordo separado. Consulte [LICENSE](../../LICENSE) para o texto completo.
 
 ---
 
 ## Contribuindo
 
-Consulte o arquivo [CONTRIBUTING.md](../../CONTRIBUTING.md). Novas políticas, casos extremos e traduções são bem-vindos.
+Consulte [CONTRIBUTING.md](../../CONTRIBUTING.md). Novas políticas, casos extremos e traduções são bem-vindos.
 
-> **Compile antes de começar.** Execute `bun install && bun run build` primeiro. Este repositório executa
-> os próprios hooks do failproofai sobre si mesmo, e eles resolvem o import `failproofai` a partir do
-> bundle compilado em `dist/` — sem uma build, você receberá erros de hook com `Cannot find package 'failproofai'`.
-> Recompile após alterar `src/`. Veja
+> **Faça o build antes de começar.** Execute `bun install && bun run build` primeiro. Este repositório executa
+> os próprios hooks do failproofai sobre si mesmo, e eles resolvem o import `failproofai` contra o
+> bundle compilado em `dist/` — sem um build você terá erros de hook `Cannot find package 'failproofai'`.
+> Refaça o build após alterar `src/`. Consulte
 > [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---

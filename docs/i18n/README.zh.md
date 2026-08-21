@@ -20,8 +20,8 @@
 
 **翻译版本：** [简体中文](../../docs-old/i18n/README.zh.md) · [日本語](../../docs-old/i18n/README.ja.md) · [한국어](../../docs-old/i18n/README.ko.md) · [Español](../../docs-old/i18n/README.es.md) · [Português](../../docs-old/i18n/README.pt-br.md) · [Deutsch](../../docs-old/i18n/README.de.md) · [Français](../../docs-old/i18n/README.fr.md) · [Руссий](../../docs-old/i18n/README.ru.md) · [हिन्दी](../../docs-old/i18n/README.hi.md) · [Türkçe](../../docs-old/i18n/README.tr.md) · [Tiếng Việt](../../docs-old/i18n/README.vi.md) · [Italiano](../../docs-old/i18n/README.it.md) · [العربية](../../docs-old/i18n/README.ar.md) · [עברית](../../docs-old/i18n/README.he.md)
 
-**为编码 Agent 提供运行时故障处理能力。**
-接入 Claude Code 和 Codex，在循环、危险操作和密钥泄露演变为事故之前将其拦截。零延迟，本地运行。
+**为编码 Agent 提供运行时故障解决方案。**
+接入 Claude Code 和 Codex。在循环、危险操作和密钥泄露演变成事故之前将其拦截。零延迟，本地运行。
 
 </div>
 
@@ -131,21 +131,21 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # 或直接运行 `failproofai`，并在首次运行提示时确认
+failproofai policies --install   # 或直接运行 `failproofai` 并接受首次运行提示
 failproofai
 ```
 
-30 条内置策略立即生效。控制台地址为 `localhost:8020`。可通过设置 `FAILPROOFAI_NO_FIRST_RUN=1` 禁用首次运行提示。
+30 条内置策略即时生效。控制台地址：`localhost:8020`。可通过设置 `FAILPROOFAI_NO_FIRST_RUN=1` 禁用首次运行提示。
 
 ---
 
-## 能阻止什么
+## 拦截范围
 
 | 策略 | 拦截内容 |
 |---|---|
 | `block-push-master` | 直接推送到 `main` / `master` 分支 |
 | `block-force-push` | `git push --force` |
-| `block-work-on-main` | 在 `main` / `master` 上提交、合并或变基 |
+| `block-work-on-main` | 在 `main` / `master` 上进行提交、合并、变基 |
 | `block-rm-rf` | 递归删除文件 |
 | `sanitize-api-keys` | API 密钥泄露到 Agent 上下文中 |
 
@@ -155,7 +155,7 @@ failproofai
 
 ## 自定义策略
 
-将文件放入 `.failproofai/policies/` 目录即可自动加载，无需任何额外参数。提交到版本库后，整个团队下次拉取时即可生效。
+将文件放入 `.failproofai/policies/` 目录即可自动加载，无需任何额外参数。提交后，团队所有成员在下次拉取时即可同步生效。
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -171,21 +171,21 @@ customPolicies.add({
 });
 ```
 
-每条策略可做出三种决策：
+每条策略可使用三种决策：
 
 | 决策 | 效果 |
 |---|---|
 | `allow()` | 允许该操作 |
-| `deny(message)` | 阻止操作 — 消息将返回给 Agent |
-| `instruct(message)` | 放行，但在 Agent 的下一条提示中附加上下文信息 |
+| `deny(message)` | 阻止操作——消息将返回给 Agent |
+| `instruct(message)` | 放行操作，但向 Agent 的下一个提示词中追加上下文信息 |
 
 → [自定义策略指南](https://docs.befailproof.ai/policies/custom)
 
 ---
 
-## 会话可见性
+## 会话可视化
 
-Agent 发出的每个工具调用都会在本地记录。控制台会展示执行了哪些操作、哪些被拦截，以及策略向 Agent 传达了什么信息——出了问题不用再靠猜。→ [控制台指南](https://docs.befailproof.ai/sessions/overview)
+Agent 的每次工具调用都会在本地记录日志。控制台展示了哪些操作已执行、哪些被拦截，以及策略告知 Agent 的内容——让你在出现问题时不再一头雾水。→ [控制台指南](https://docs.befailproof.ai/sessions/overview)
 
 ---
 
@@ -193,27 +193,27 @@ Agent 发出的每个工具调用都会在本地记录。控制台会展示执�
 
 | | |
 |---|---|
-| [快速上手](https://docs.befailproof.ai/start/quickstart) | 安装与入门步骤 |
+| [快速开始](https://docs.befailproof.ai/start/quickstart) | 安装与初步使用 |
 | [内置策略](https://docs.befailproof.ai/policies/builtin) | 全部 30 条策略及参数说明 |
-| [自定义策略](https://docs.befailproof.ai/policies/custom) | 编写自己的策略 |
-| [配置说明](https://docs.befailproof.ai/policies/local-configuration) | 配置范围与合并规则 |
+| [自定义策略](https://docs.befailproof.ai/policies/custom) | 编写你自己的策略 |
+| [配置](https://docs.befailproof.ai/policies/local-configuration) | 配置作用域与合并规则 |
 | [控制台](https://docs.befailproof.ai/sessions/overview) | 会话监控与策略活动 |
-| [架构说明](https://docs.befailproof.ai/start/concepts) | Hook 系统的工作原理 |
+| [架构](https://docs.befailproof.ai/start/concepts) | Hook 系统工作原理 |
 
 ---
 
 ## 许可证
 
-MIT 附加 [Commons Clause](https://commonsclause.com/) — 个人及内部使用免费；以 failproofai 本身进行商业转售需另行签订协议。完整条款请参阅 [LICENSE](../../LICENSE)。
+MIT 附加 [Commons Clause](https://commonsclause.com/) ——内部及个人使用免费；将 failproofai 本身进行商业转售需要单独签署协议。完整条款请参阅 [LICENSE](../../LICENSE)。
 
 ---
 
-## 贡献指南
+## 贡献
 
-详见 [CONTRIBUTING.md](../../CONTRIBUTING.md)。欢迎贡献新策略、边界案例处理和翻译内容。
+请参阅 [CONTRIBUTING.md](../../CONTRIBUTING.md)。欢迎贡献新策略、边界用例及翻译内容。
 
-> **开始前请先构建项目。** 首先执行 `bun install && bun run build`。本仓库会将 failproofai 自身的 hook 应用于自身，这些 hook 会从编译后的 `dist/` 包中解析 `failproofai` 导入——如果未先构建，将会遇到 `Cannot find package 'failproofai'` 的 hook 错误。修改 `src/` 后请重新构建。详见 [构建前仓库内开发 hook 无法工作](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)。
+> **开始前请先构建项目。** 首先运行 `bun install && bun run build`。本仓库会在自身上运行 failproofai 的 Hook，这些 Hook 会从编译后的 `dist/` 包中解析 `failproofai` 导入——若未构建，则会触发 `Cannot find package 'failproofai'` 的 Hook 错误。修改 `src/` 后请重新构建。详见 [构建后才能使用仓库内开发 Hook](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work)。
 
 ---
 
-由 [befailproof.ai](https://befailproof.ai) 团队用 ❤️ 打造，来自旧金山和班加罗尔。
+由 [befailproof.ai](https://befailproof.ai) 团队在旧金山与班加罗尔倾心打造 ❤️。

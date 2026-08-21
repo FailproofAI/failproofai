@@ -8,6 +8,8 @@
 
 <img src="https://d2wq11aau0arks.cloudfront.net/failproof/fa_updated_full.svg" alt="failproof ai" width="220" />
 
+<a href="https://trendshift.io/repositories/69722?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-69722" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/69722/daily?language=TypeScript" alt="FailproofAI%2Ffailproofai | Trendshift" width="250" height="55"/></a>
+
 [![npm](https://img.shields.io/npm/v/failproofai?style=flat-square&color=CB3837)](https://www.npmjs.com/package/failproofai)
 [![CI](https://img.shields.io/github/actions/workflow/status/failproofai/failproofai/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/failproofai/failproofai/actions)
 [![Supply Chain](https://img.shields.io/badge/supply%20chain-secure-brightgreen?style=flat-square)](https://github.com/failproofai/failproofai/actions/workflows/osv-scanner.yml)
@@ -18,14 +20,14 @@
 
 **Переводы:** [简体中文](../../docs-old/i18n/README.zh.md) · [日本語](../../docs-old/i18n/README.ja.md) · [한국어](../../docs-old/i18n/README.ko.md) · [Español](../../docs-old/i18n/README.es.md) · [Português](../../docs-old/i18n/README.pt-br.md) · [Deutsch](../../docs-old/i18n/README.de.md) · [Français](../../docs-old/i18n/README.fr.md) · [Руссий](../../docs-old/i18n/README.ru.md) · [हिन्दी](../../docs-old/i18n/README.hi.md) · [Türkçe](../../docs-old/i18n/README.tr.md) · [Tiếng Việt](../../docs-old/i18n/README.vi.md) · [Italiano](../../docs-old/i18n/README.it.md) · [العربية](../../docs-old/i18n/README.ar.md) · [עברית](../../docs-old/i18n/README.he.md)
 
-**Разрешение ошибок времени выполнения для кодирующих агентов.**
-Встраивается в Claude Code и Codex. Перехватывает циклы, опасные действия и утечки секретов
-перед их превращением в инциденты. Нулевая задержка. Работает локально.
+**Разрешение ошибок во время выполнения для кодирующих агентов.**
+Интегрируется с Claude Code и Codex. Перехватывает зацикливания, опасные действия и утечки секретов
+до того, как они станут инцидентами. Нулевая задержка. Работает локально.
 
 </div>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI в действии" width="800" />
+  <img src="https://raw.githubusercontent.com/FailproofAI/failproofai/main/readme-arch-hq.gif" alt="Failproof AI in action" width="800" />
 </p>
 
 ---
@@ -130,32 +132,32 @@
 
 ```sh
 npm install -g failproofai
-failproofai policies --install   # или просто выполните `failproofai` и примите первое предложение
+failproofai policies --install   # или просто запустите `failproofai` и подтвердите приглашение при первом запуске
 failproofai
 ```
 
-30 встроенных политик активируются немедленно. Панель управления находится на `localhost:8020`. Отключите первое предложение с помощью `FAILPROOFAI_NO_FIRST_RUN=1`.
+30 встроенных политик активируются немедленно. Панель управления доступна по адресу `localhost:8020`. Отключите приглашение при первом запуске с помощью `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
-## Что это блокирует
+## Что блокируется
 
-| Политика | Что она блокирует |
+| Политика | Что блокируется |
 |---|---|
-| `block-push-master` | Прямые push-ы в `main` / `master` |
+| `block-push-master` | Прямые отправки в `main` / `master` |
 | `block-force-push` | `git push --force` |
 | `block-work-on-main` | Коммиты, слияния, перебазирования на `main` / `master` |
 | `block-rm-rf` | Рекурсивное удаление файлов |
-| `sanitize-api-keys` | Утечки API ключей в контекст агента |
+| `sanitize-api-keys` | Утечки ключей API в контекст агента |
 
 → [Все 30 встроенных политик](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
-## Ваши собственные политики
+## Собственные политики
 
-Поместите файл в `.failproofai/policies/` — он загружается автоматически, никаких флагов не требуется.
-Сделайте коммит, и вся команда получит его при следующем pull-e.
+Поместите файл в `.failproofai/policies/` — он загружается автоматически без необходимости флагов.
+Зафиксируйте его, и вся команда получит его при следующем pull.
 
 ```js
 import { customPolicies, deny, allow } from "failproofai";
@@ -176,17 +178,17 @@ customPolicies.add({
 | Решение | Эффект |
 |---|---|
 | `allow()` | Разрешить операцию |
-| `deny(message)` | Заблокировать её — сообщение вернётся агенту |
+| `deny(message)` | Заблокировать — сообщение отправляется обратно агенту |
 | `instruct(message)` | Пропустить, но добавить контекст в следующий запрос агента |
 
 → [Руководство по пользовательским политикам](https://docs.befailproof.ai/policies/custom)
 
 ---
 
-## Видимость сессий
+## Видимость сеанса
 
-Каждый вызов инструмента, который делает ваш агент, логируется локально. Панель управления показывает то, что запустилось,
-что было заблокировано и что политика сказала агенту — так что вы не гадаете,
+Каждый вызов инструмента, который делает ваш агент, регистрируется локально. Панель управления показывает, что запускалось,
+что было заблокировано и что политика сообщила агенту — так что вы не гадаете,
 когда что-то идёт не так. → [Руководство по панели управления](https://docs.befailproof.ai/sessions/overview)
 
 ---
@@ -195,11 +197,11 @@ customPolicies.add({
 
 | | |
 |---|---|
-| [Быстрый старт](https://docs.befailproof.ai/start/quickstart) | Установка и первые шаги |
+| [Начало работы](https://docs.befailproof.ai/start/quickstart) | Установка и первые шаги |
 | [Встроенные политики](https://docs.befailproof.ai/policies/builtin) | Все 30 политик с параметрами |
 | [Пользовательские политики](https://docs.befailproof.ai/policies/custom) | Напишите свои собственные |
 | [Конфигурация](https://docs.befailproof.ai/policies/local-configuration) | Области конфигурации и правила слияния |
-| [Панель управления](https://docs.befailproof.ai/sessions/overview) | Монитор сессий и активность политик |
+| [Панель управления](https://docs.befailproof.ai/sessions/overview) | Монитор сеанса и активность политик |
 | [Архитектура](https://docs.befailproof.ai/start/concepts) | Как работает система хуков |
 
 ---
@@ -210,13 +212,13 @@ MIT с [Commons Clause](https://commonsclause.com/) — бесплатно дл�
 
 ---
 
-## Участие в разработке
+## Внесение вклада
 
-См. [CONTRIBUTING.md](../../CONTRIBUTING.md). Новые политики, граничные случаи и переводы всегда приветствуются.
+См. [CONTRIBUTING.md](../../CONTRIBUTING.md). Новые политики, граничные случаи и переводы приветствуются.
 
-> **Собирайте перед началом.** Сначала выполните `bun install && bun run build`. Этот репозиторий запускает собственные хуки failproofai на себе, и они разрешают импорт `failproofai` в отношении скомпилированного бандла `dist/` — без сборки вы получите ошибки хуков `Cannot find package 'failproofai'`. Пересобирайте после изменения `src/`. См.
-> [Собирайте перед тем, как внутридепозиторные хуки разработки начнут работать](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
+> **Соберите перед началом работы.** Сначала запустите `bun install && bun run build`. Этот репозиторий запускает собственные хуки failproofai на себя, и они разрешают импорт `failproofai` относительно скомпилированного пакета `dist/` — без сборки вы столкнётесь с ошибками хуков `Cannot find package 'failproofai'`. Пересоберите после изменений `src/`. См.
+> [Build before the in-repo dev hooks will work](../../CONTRIBUTING.md#build-before-the-in-repo-dev-hooks-will-work).
 
 ---
 
-Создано с ❤️ компанией [befailproof.ai](https://befailproof.ai) в SF и Bengaluru.
+Создано с ❤️ компанией [befailproof.ai](https://befailproof.ai) в Сан-Франциско и Бангалоре.

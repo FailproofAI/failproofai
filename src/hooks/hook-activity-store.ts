@@ -117,7 +117,8 @@ export interface HookActivityEntry {
    */
   observed?: Array<{
     policyId: string;
-    version: number;
+    /** A cloud deployment number, or a pack's version string. */
+    version: string | number;
     decision: "deny" | "instruct";
     reason: string | null;
   }>;

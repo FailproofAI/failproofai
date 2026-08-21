@@ -34,6 +34,12 @@ vi.mock("../../src/hooks/hook-logger", async (importOriginal) => {
     }),
   };
 });
+vi.mock("../../src/hooks/pack-manifest", () => ({
+  // Isolation, not convenience: unmocked, `readInstalledPacks` reads the REAL
+  // ~/.failproofai/policies/packs of whoever runs the suite, so these tests would
+  // pass on a clean machine and behave differently on one with a pack installed.
+  readInstalledPacks: vi.fn(() => ({ packs: [], errors: [] })),
+}));
 
 import { evaluateHookEvent } from "../../src/hooks/handler";
 

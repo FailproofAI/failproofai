@@ -15,7 +15,7 @@ Live events help you confirm instrumentation and watch a risky run without waiti
     3. Filter by environment, event type, agent, or session. Use search for payload text.
     4. Select an event to inspect its summary and details. Follow its session link for the full trace.
 
-    ![The live Events stream with time, environment, event type, agent, model, context, session, and text filters.](/images/dashboard/events-stream-current.png)
+    ![The live Events stream showing traffic from a Hermes chat gateway alongside coding-CLI runs, filtered by time, environment, event type, agent, model, context, and session.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -41,3 +41,5 @@ Event types include agent lifecycle events, model requests and responses, tool u
 </Tip>
 
 If no events appear, run `failproofai config --status`, then [troubleshoot ingestion](/reference/troubleshooting).
+
+Agents that do not run in one of the 12 supported [harnesses](/reference/harnesses) report the same event types through the [Python SDK](/reference/python-sdk), including the human-in-the-loop events (`human_wait`, `human_input`, `human_interrupt`) that gateway and production agents depend on.

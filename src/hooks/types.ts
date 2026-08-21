@@ -1,5 +1,19 @@
 /**
- * Constants and interfaces for agent CLI hooks integrations (Claude Code, OpenAI Codex, GitHub Copilot, Cursor Agent, OpenCode, Pi, …).
+ * Constants and interfaces for agent harness hook integrations.
+ *
+ * A harness is whatever an agent runs inside. The twelve below are two classes:
+ * ten coding CLIs (Claude Code, Codex, Copilot, Cursor, OpenCode, Pi, Factory,
+ * Devin, Antigravity, Goose) and two chat/assistant gateways (Hermes, OpenClaw).
+ *
+ * An agent instrumented directly via the Python SDK is NOT one of these twelve
+ * and is not a third class here: the SDK reports events, it does not sit in the
+ * tool-call path, so it delivers observability without enforcement. Copy that
+ * lists it alongside the twelve overstates what it does.
+ *
+ * INTEGRATION_TYPES below is the authoritative list:
+ * __tests__/scripts/copy-counts.test.ts pins its length, and the policy, event
+ * and enforcement counts, against the harness and policy counts stated in
+ * README.md, package.json and docs/index.mdx.
  */
 
 export const HOOK_SCOPES = ["user", "project", "local"] as const;

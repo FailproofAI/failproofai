@@ -1,10 +1,12 @@
 ---
 title: "Make your agent failproof"
-description: "Failproof AI traces agent behavior, audits sessions for failures, and deploys policies that stop repeat incidents."
+description: "Observability and enforcement for every harness your agents run in — coding CLIs, chat gateways, self-hosted assistants, and your own instrumented agents."
 icon: "shield-check"
 ---
 
 Failproof AI helps teams understand what agents did, find where they failed, and deploy safeguards before the same behavior happens again.
+
+A **harness** is whatever your agent actually runs inside. Failproof AI hooks 12 of them — coding CLIs like Claude Code and Codex, chat gateways like Hermes, self-hosted assistants like OpenClaw — and the same events, the same policies, and the same session history apply to every one. Agents with no harness report in through the [Python SDK](/reference/python-sdk), which traces and audits them; enforcing a policy there needs a hook in your own runtime.
 
 <Columns cols={2}>
   <Card title="Set Failproof up" icon="wand-sparkles" href="/start/quickstart">

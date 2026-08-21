@@ -714,21 +714,28 @@ failproofai pack — install policy packs published as GitHub releases
 
 Usage:
   failproofai pack list
-  failproofai pack add <github:owner/repo@tag> [--only <a,b>]
+  failproofai pack add <source> [--only <a,b>]
   failproofai pack remove <publisher/name>
 
 A pack is one entry artifact plus a manifest, verified against the release's
 SHA256SUMS at install time. The digest is recorded, and re-verified before every
 import — so a pack cannot change under this machine after you installed it.
 
-The tag is required. There is no "latest": a moving source would change what
-this machine enforces whenever the publisher pushed.
+<source> is any of these — paste whichever you have:
+  acme/support-agent                 newest release, pinned to its exact tag
+  acme/support-agent@v2.1.0          that release
+  github:acme/support-agent@v2.1.0   same, explicit
+  https://github.com/acme/support-agent/releases/tag/v2.1.0
+
+Naming no tag installs the newest release AND pins it, so what gets recorded
+always names one version — running the same command later can install something
+different, and it will tell you the tag it chose.
 
   --only a,b   Take only these policies from the pack. Re-adding at a newer
                version keeps your selection rather than switching the rest on.
 
 Examples:
-  failproofai pack add github:FailproofAI/policies@v1.0.0
+  failproofai pack add FailproofAI/policies
   failproofai pack add github:acme/support-agent@v2.1.0 --only block-refunds
   failproofai pack remove acme/support-agent
 

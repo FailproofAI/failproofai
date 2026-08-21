@@ -42,6 +42,8 @@ let prevNoDownload: string | undefined;
 
 /** Mutable per-test release contents. */
 let assets: Record<string, string>;
+/** What `releases/latest` redirects to, or null for a repo with no releases. */
+let latestTag: string | null;
 
 function sha(s: string): string {
   return createHash("sha256").update(s).digest("hex");
@@ -70,13 +72,25 @@ beforeEach(async () => {
   prevNoDownload = process.env.FAILPROOFAI_NO_DOWNLOAD;
   delete process.env.FAILPROOFAI_NO_DOWNLOAD;
   process.env.FAILPROOFAI_PACK_DIR = root;
+  latestTag = "v1.2.0";
   release();
 
   // Serves ONLY the real release path, so a wrong owner/repo/tag 404s the way
   // GitHub would — which also makes these tests prove the URL is constructed
   // correctly rather than merely that some asset was fetched.
   server = createServer((req, res) => {
-    const m = (req.url ?? "").match(/^\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/([^/]+)$/);
+    const url = req.url ?? "";
+    // `releases/latest` is a REDIRECT on github.com, not an API call — which is
+    // how a tagless source resolves without a second origin or a rate limit.
+    if (url === "/acme/finance/releases/latest") {
+      if (latestTag === null) {
+        res.writeHead(404).end("no releases");
+        return;
+      }
+      res.writeHead(302, { location: `/acme/finance/releases/tag/${latestTag}` }).end();
+      return;
+    }
+    const m = url.match(/^\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/([^/]+)$/);
     const body = m && m[1] === "acme" && m[2] === "finance" ? assets[m[4]] : undefined;
     if (body === undefined) {
       res.writeHead(404).end("no such asset");
@@ -109,21 +123,35 @@ describe("parsePackSpec", () => {
     expect(parsePackSpec("acme/finance@v1.2.0")).toEqual({ owner: "acme", repo: "finance", tag: "v1.2.0" });
   });
 
-  it("REQUIRES a tag", () => {
-    // A default of `main` or `latest` makes the URL a moving target, so what a
-    // machine enforces would change whenever the publisher pushed — exactly the
-    // drift the recorded digest exists to prevent.
-    expect(() => parsePackSpec("github:acme/finance")).toThrow(/must name a tag/);
+  it("leaves the tag null when none was named, rather than guessing one", () => {
+    // Resolved to a CONCRETE tag at add time and pinned there. The rule that
+    // matters was never "the user must type a tag" — it is that what the machine
+    // RECORDS names one release, so a reinstall cannot drift.
+    expect(parsePackSpec("github:acme/finance").tag).toBeNull();
+    expect(parsePackSpec("acme/finance").tag).toBeNull();
+  });
+
+  it("accepts the URLs a person actually copies out of a browser", () => {
+    expect(parsePackSpec("https://github.com/acme/finance/releases/tag/v1.2.0"))
+      .toEqual({ owner: "acme", repo: "finance", tag: "v1.2.0" });
+    expect(parsePackSpec("https://github.com/acme/finance/releases/download/v1.2.0/failproofai-pack.mjs"))
+      .toEqual({ owner: "acme", repo: "finance", tag: "v1.2.0" });
+    expect(parsePackSpec("https://github.com/acme/finance")).toEqual({ owner: "acme", repo: "finance", tag: null });
+    expect(parsePackSpec("github.com/acme/finance/releases/latest"))
+      .toEqual({ owner: "acme", repo: "finance", tag: null });
+    // A tag containing slashes survives both URL shapes.
+    expect(parsePackSpec("https://github.com/acme/finance/releases/tag/release/2.1").tag).toBe("release/2.1");
   });
 
   it("refuses owner/repo/tag that could reshape the URL", () => {
     expect(() => parsePackSpec("github:../evil/x@v1")).toThrow(/unsafe owner/);
     expect(() => parsePackSpec("github:acme/../x@v1")).toThrow(/unsafe repo/);
     expect(() => parsePackSpec("github:acme/finance@../../etc")).toThrow(/unsafe tag/);
+    expect(() => parsePackSpec("https://github.com/../evil/x/releases/tag/v1")).toThrow(/unsafe owner/);
   });
 
   it("builds the asset URL by construction, never discovery", () => {
-    const spec = parsePackSpec("github:acme/finance@v1.2.0");
+    const spec = parsePackSpec("github:acme/finance@v1.2.0") as { owner: string; repo: string; tag: string };
     expect(packAssetUrl(spec, "SHA256SUMS")).toBe(
       `${process.env.FAILPROOFAI_PACK_BASE_URL}/acme/finance/releases/download/v1.2.0/SHA256SUMS`,
     );
@@ -154,6 +182,34 @@ describe("addPack", () => {
     const { packs, errors } = readInstalledPacks();
     expect(errors).toEqual([]);
     expect(packs[0].id).toBe("acme/finance");
+  });
+
+  describe("a source with no tag", () => {
+    it("resolves the newest release and PINS the concrete tag", async () => {
+      const result = await addPack("acme/finance");
+      expect(result.resolvedFromLatest).toBe(true);
+      expect(result.tag).toBe("v1.2.0");
+      // The recorded source names one release, not "whatever is newest" — so a
+      // reinstall from this record cannot drift to a different version.
+      expect(installed().packs[0].source).toBe("github:acme/finance@v1.2.0");
+    });
+
+    it("resolves a bare github.com URL the same way", async () => {
+      const result = await addPack("https://github.com/acme/finance");
+      expect(result.tag).toBe("v1.2.0");
+      expect(installed().packs[0].source).toBe("github:acme/finance@v1.2.0");
+    });
+
+    it("does not claim resolution when the tag was typed", async () => {
+      const result = await addPack("github:acme/finance@v1.2.0");
+      expect(result.resolvedFromLatest).toBe(false);
+    });
+
+    it("fails clearly when the repository has no releases", async () => {
+      latestTag = null;
+      await expect(addPack("acme/finance")).rejects.toThrow(/could not resolve the newest release/);
+      expect(existsSync(join(root, "installed.json"))).toBe(false);
+    });
   });
 
   it("takes only the selected policies", async () => {

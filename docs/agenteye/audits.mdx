@@ -46,6 +46,13 @@ Fixing an issue is only half the win. The other half is making sure it cannot qu
 
 Audits live in the dashboard at **`/<org-slug>/audits`** (sidebar to *analyze* to *audits*). Viewing runs and findings needs **`audits:read`**; creating, editing, and triaging audits needs **`audits:write`**. Set an audit's scope and cadence, then hit **Run now** whenever you want results immediately instead of waiting for the next scheduled pass.
 
+<Info>
+  Audit allowances are independent from run allowances. Reaching an audit
+  allowance skips new scheduled and manual audit runs without affecting event
+  ingestion. An administrator can reset or increase the allowance. Contact
+  [nikita@exosphere.host](mailto:nikita@exosphere.host) if you need help.
+</Info>
+
 ## Related
 
 - [Alerts](/agenteye/alerts): get paged the moment a threshold you already know about is crossed.

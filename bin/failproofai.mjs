@@ -271,7 +271,7 @@ if (hookIdx >= 0) {
  */
 async function runCli() {
   // --help / -h  (only when not inside a subcommand that handles its own --help)
-  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill", "flush", "harness"];
+  const SUBCOMMANDS = ["policies", "policy", "audit", "config", "uninstall", "backfill", "flush", "harness", "pack"];
   if ((args.includes("--help") || args.includes("-h")) && !SUBCOMMANDS.includes(args[0])) {
     const extraArgs = args.filter((a) => a !== "--help" && a !== "-h");
     if (extraArgs.length > 0) {
@@ -319,6 +319,9 @@ COMMANDS
 
   policies --help, -h            Show this help for the policies command
 
+  pack list                      Show installed policy packs
+  pack add <owner/repo@tag>      Install a policy pack from a GitHub release
+  pack remove <publisher/name>   Deactivate an installed pack
   harness list                   Show extra capture paths per agent CLI
   harness add-path <h> <path>    Also capture sessions from <path> for harness
                                  <h>. Accepts \`<label>=<path>\`; the label
@@ -698,6 +701,62 @@ OPTIONS
   // nothing else — no root, no daemon call — so it works on a machine whose
   // daemon is stopped, which is when someone is most likely to be fixing what
   // it captures.
+  // pack list | add | remove
+  //
+  // Policies that did not ship compiled into this build. Fetches over the
+  // network, so it is a CLI command only and is never reachable from the hook
+  // path.
+  if (args[0] === "pack") {
+    const subArgs = args.slice(1);
+    if (subArgs[0] === "--help" || subArgs[0] === "-h") {
+      console.log(`
+failproofai pack — install policy packs published as GitHub releases
+
+Usage:
+  failproofai pack list
+  failproofai pack add <github:owner/repo@tag> [--only <a,b>]
+  failproofai pack remove <publisher/name>
+
+A pack is one entry artifact plus a manifest, verified against the release's
+SHA256SUMS at install time. The digest is recorded, and re-verified before every
+import — so a pack cannot change under this machine after you installed it.
+
+The tag is required. There is no "latest": a moving source would change what
+this machine enforces whenever the publisher pushed.
+
+  --only a,b   Take only these policies from the pack. Re-adding at a newer
+               version keeps your selection rather than switching the rest on.
+
+Examples:
+  failproofai pack add github:FailproofAI/policies@v1.0.0
+  failproofai pack add github:acme/support-agent@v2.1.0 --only block-refunds
+  failproofai pack remove acme/support-agent
+
+Offline: FAILPROOFAI_NO_DOWNLOAD=1 refuses to fetch, while packs already
+installed keep enforcing.
+`.trimStart());
+      process.exit(0);
+    }
+
+    lastSubcommand = "pack";
+    const { runPackCommand } = await import("../src/hooks/pack-cli");
+    const result = await runPackCommand(subArgs);
+    for (const line of result.lines) {
+      if (result.exitCode === 0) console.log(line);
+      else console.error(line);
+    }
+    await track("cli_pack", {
+      ok: result.exitCode === 0,
+      // The subcommand only — never the pack id, source or policy names. A pack
+      // source is a value the user typed, and a third-party pack name is a
+      // publisher-controlled string; we send shape, never value.
+      sub: ["list", "add", "remove"].includes(subArgs[0]) ? subArgs[0] : "unknown",
+    });
+    lastSubcommand = null;
+    await exitAfterFlush(result.exitCode);
+    return;
+  }
+
   if (args[0] === "harness") {
     const subArgs = args.slice(1);
     if (subArgs.length === 0 || subArgs.includes("--help") || subArgs.includes("-h")) {

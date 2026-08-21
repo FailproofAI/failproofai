@@ -66,6 +66,16 @@ export interface InstalledPackRecord {
   sha256: string;
   effect?: string;
   policies?: unknown;
+  /**
+   * Which of the pack's policies to register. Absent means ALL of them.
+   *
+   * Stored here rather than as `disabledCustomPolicies` entries because those
+   * are keyed by `pack:<id>@<version>:<name>` — so an upgrade to a new version
+   * stops matching and everything the user opted out of silently comes back on.
+   * A choice about what to take from a pack has to outlive the version it was
+   * made against.
+   */
+  enabled?: string[];
 }
 
 export interface ResolvedPack {
@@ -78,6 +88,8 @@ export interface ResolvedPack {
   effect: PolicyEffect;
   /** The pack's own catalog, in declared order. */
   policies: PolicyCatalogEntry[];
+  /** Selected policy names, or null when the user took the whole pack. */
+  enabled: string[] | null;
 }
 
 export interface PackError {
@@ -103,7 +115,7 @@ function installedFilePath(): string {
 }
 
 /** Validate one serialized catalog entry carried by a pack. */
-function parsePackPolicy(packId: string, value: unknown, index: number): PolicyCatalogEntry {
+export function parsePackPolicy(packId: string, value: unknown, index: number): PolicyCatalogEntry {
   const where = `${packId} policy #${index}`;
   if (!value || typeof value !== "object") throw new Error(`${where} is not an object`);
   const raw = value as Record<string, unknown>;
@@ -172,6 +184,17 @@ function parsePack(root: string, value: unknown): ResolvedPack {
     names.add(p.name);
   }
 
+  let enabled: string[] | null = null;
+  if (raw.enabled !== undefined) {
+    if (!Array.isArray(raw.enabled) || raw.enabled.some((n) => typeof n !== "string")) {
+      throw new Error(`pack ${raw.id} enabled is not an array of names`);
+    }
+    // A name here that the pack no longer declares is not an error — a publisher
+    // may have removed a policy between versions — but it must not silently
+    // become "select nothing", so unknown names are simply dropped.
+    enabled = raw.enabled.filter((n) => names.has(n));
+  }
+
   return {
     id: raw.id,
     version: raw.version,
@@ -180,6 +203,7 @@ function parsePack(root: string, value: unknown): ResolvedPack {
     sha256: raw.sha256,
     effect: (raw.effect as PolicyEffect | undefined) ?? "enforce",
     policies,
+    enabled,
   };
 }
 

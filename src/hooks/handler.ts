@@ -262,7 +262,8 @@ export async function evaluateHookEvent(
     /** What observe-mode policies WOULD have done, had they been enforcing. */
     const observedResults: Array<{
       policyId: string;
-      version: number;
+      /** A cloud deployment counts; a pack carries a version STRING. */
+      version: string | number;
       decision: "deny" | "instruct";
       reason: string | null;
     }> = [];
@@ -414,9 +415,17 @@ export async function evaluateHookEvent(
           if (observeOnly) {
             const shadow = await runObserved(hook, ctx, hookName, eventType, cli);
             if (shadow.decision !== "allow") {
+              // Sourced from whichever layer asked to observe. This read
+              // `cloudManaged!.id` — a non-null assertion that is simply false
+              // for a pack, so an observe-mode PACK threw on its first non-allow
+              // verdict. The throw escapes before the wrapper's own try below,
+              // so policy-evaluator swallowed it and `continue`d: nothing was
+              // recorded, the row read as a clean allow, and the rollout being
+              // trialled measured nothing while reporting healthy.
+              const observer = cloudManaged ?? pack;
               observedResults.push({
-                policyId: cloudManaged!.id,
-                version: cloudManaged!.version,
+                policyId: observer!.id,
+                version: observer!.version,
                 decision: shadow.decision,
                 reason: shadow.reason ?? null,
               });

@@ -63,9 +63,14 @@ pub struct HookRow {
     // is exactly the substring-parsing this data was added to replace: every
     // row arrives unattributed, so "how much is my org's policy actually
     // doing" has no answer.
-    /// `builtin` | `custom` | `convention` | `cloud`. Absent on rows written
-    /// before attribution existed, which is meaningful — see the note in
+    /// `builtin` | `custom` | `convention` | `cloud` | `pack`. Absent on rows
+    /// written before attribution existed, which is meaningful — see the note in
     /// `hook-activity-store.ts` about not guessing a bucket.
+    ///
+    /// Deliberately `Option<String>` and forwarded verbatim rather than a typed
+    /// enum: this side has no opinion about the value, so adding a source on the
+    /// TypeScript side needs no coordinated release here. The doc comment is the
+    /// only thing that goes stale, which is the trade taken on purpose.
     #[serde(rename = "policySource")]
     pub policy_source: Option<String>,
     #[serde(rename = "cloudPolicyId")]

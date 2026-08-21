@@ -420,6 +420,116 @@ export async function addPack(
   };
 }
 
+/**
+ * Install the pack that ships inside the npm package, from disk.
+ *
+ * This is what makes removing the builtins from the bundle survivable. The
+ * tarball carries `policy-pack/` — the builtins as a real, digest-verified pack —
+ * so a machine that has just installed failproofai already HAS them and setup
+ * can enable them with no network at all. Without this, a fresh install with no
+ * connectivity would be a machine enforcing nothing.
+ *
+ * Anchored at `FAILPROOFAI_PACKAGE_ROOT` for the reason `npmPlatformBinaryPath`
+ * documents: `import.meta.url` does not survive the CJS bundle.
+ *
+ * The bytes are COPIED into `packsDir()` rather than loaded where they lie. A
+ * `sudo npm i -g` package directory is root-owned, and the loader writes its
+ * rewritten module tree BESIDE the source it loads — so loading in place gives a
+ * non-root hook EACCES, the pack never loads, and the hook exits 0. Copying is
+ * what avoids that, and it is the same trap CHANGELOG #694 fixed for the shim.
+ *
+ * Idempotent, and never throws: a package without the directory returns null,
+ * which is a normal state for a dev checkout that has not run `build:pack`.
+ */
+export function bundledPackDir(): string | null {
+  const root = process.env.FAILPROOFAI_PACKAGE_ROOT;
+  if (!root) return null;
+  const dir = resolve(root, "policy-pack");
+  return existsSync(resolve(dir, PACK_MANIFEST_ASSET)) ? dir : null;
+}
+
+export interface BundledPackResult {
+  installed: boolean;
+  id?: string;
+  version?: string;
+  enabled?: string[];
+  available?: string[];
+  reason?: string;
+}
+
+export function installBundledPack(opts?: { only?: string[]; categories?: string[]; all?: boolean }): BundledPackResult {
+  const dir = bundledPackDir();
+  if (!dir) return { installed: false, reason: "this build ships no bundled pack" };
+
+  try {
+    const checksums = readFileSync(resolve(dir, PACK_CHECKSUMS_ASSET), "utf8");
+    const manifestBytes = readFileSync(resolve(dir, PACK_MANIFEST_ASSET));
+    const artifact = readFileSync(resolve(dir, PACK_ENTRY_ASSET));
+
+    // Verified even though it never crossed a network. The digest is what the
+    // hook path re-checks before every import, so it has to describe the bytes
+    // actually installed — and a tarball can be corrupted on disk like anything
+    // else.
+    const manifestDigest = digestFor(checksums, PACK_MANIFEST_ASSET);
+    const entryDigest = digestFor(checksums, PACK_ENTRY_ASSET);
+    const artifactDigest = sha256(artifact);
+    if (!manifestDigest || sha256(manifestBytes) !== manifestDigest) {
+      return { installed: false, reason: `${PACK_MANIFEST_ASSET} failed integrity verification` };
+    }
+    if (!entryDigest || artifactDigest !== entryDigest) {
+      return { installed: false, reason: `${PACK_ENTRY_ASSET} failed integrity verification` };
+    }
+
+    const parsed = JSON.parse(manifestBytes.toString("utf8")) as {
+      id?: unknown; version?: unknown; policies?: unknown; effect?: unknown;
+    };
+    if (typeof parsed.id !== "string" || typeof parsed.version !== "string" || !Array.isArray(parsed.policies)) {
+      return { installed: false, reason: "bundled pack manifest is malformed" };
+    }
+    // Same rules the loader applies, so a bundled pack that could never load
+    // fails the install rather than looking fine until the next tool call.
+    const policies = parsed.policies.map((pol, i) => parsePackPolicy(parsed.id as string, pol, i));
+
+    const root = packsRoot();
+    const artifactRel = `artifacts/${artifactDigest}.mjs`;
+    const artifactAbs = resolve(root, artifactRel);
+    if (!existsSync(artifactAbs)) writeAtomic(artifactAbs, artifact);
+
+    const prior = readInstalledPacks().packs.find((pk) => pk.id === parsed.id);
+    const available = policies.map((pol) => pol.name);
+    const { enabled } = resolveSelection(
+      policies,
+      opts,
+      prior?.enabled ? prior.enabled.filter((n) => available.includes(n)) : prior?.enabled,
+      Boolean(prior),
+    );
+
+    upsertInstalled({
+      id: parsed.id,
+      version: parsed.version,
+      // Recorded as `bundled:` rather than a github: source, because it did not
+      // come from one — and `pack add` on this id would otherwise look like a
+      // re-fetch of something that was never fetched.
+      source: `bundled:${parsed.id}@${parsed.version}`,
+      entry: artifactRel,
+      sha256: artifactDigest,
+      policies,
+      ...(typeof parsed.effect === "string" ? { effect: parsed.effect } : {}),
+      ...(enabled ? { enabled } : {}),
+    });
+
+    return {
+      installed: true,
+      id: parsed.id,
+      version: parsed.version,
+      enabled: enabled ?? available,
+      available,
+    };
+  } catch (err) {
+    return { installed: false, reason: errText(err) };
+  }
+}
+
 /** Remove a pack from the activation pointer. Returns false if it was not installed. */
 export function removePack(id: string): boolean {
   const manifestPath = resolve(packsRoot(), "installed.json");

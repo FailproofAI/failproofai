@@ -70,6 +70,10 @@ export interface AddPackResult {
   enabled: string[];
   /** Every policy the pack contains, whether taken or not. */
   available: string[];
+  /** How the selection was arrived at, so the CLI can explain itself. */
+  selection: SelectionReason;
+  /** Category slugs the pack offers, for `--category`. */
+  categories: string[];
   artifact: string;
 }
 
@@ -296,7 +300,69 @@ async function fetchPack(spec: PinnedPackSpec): Promise<FetchedPack> {
  * because upgrading a pack should not quietly switch on the policies someone
  * chose to leave off.
  */
-export async function addPack(source: string, opts?: { only?: string[] }): Promise<AddPackResult> {
+export function slugifyCategory(category: string): string {
+  return category.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Which of a pack's policies to take.
+ *
+ * The default is the pack's OWN `defaultEnabled` set, not everything. A pack
+ * carries an opinion about which of its policies are safe to switch on
+ * unattended — for the builtins that is 10 of 38 — and installing the whole
+ * thing overrode that opinion with one nobody held. `block-kubectl`,
+ * `block-terraform` and `require-ci-green-before-stop` are off by default in the
+ * npm package precisely because they interrupt legitimate work.
+ */
+function resolveSelection(
+  policies: PolicyCatalogEntry[],
+  opts: { only?: string[]; categories?: string[]; all?: boolean } | undefined,
+  previous: string[] | null | undefined,
+  previouslyInstalled: boolean,
+): { enabled: string[] | null; reason: SelectionReason } {
+  const available = policies.map((p) => p.name);
+  if (opts?.all) return { enabled: null, reason: "all" };
+
+  const picked = new Set<string>();
+  if (opts?.categories?.length) {
+    const wanted = new Set(opts.categories.map(slugifyCategory));
+    const known = new Map(policies.map((p) => [slugifyCategory(p.category), p.category]));
+    const unknown = [...wanted].filter((c) => !known.has(c));
+    if (unknown.length > 0) {
+      throw new Error(
+        `no such categor${unknown.length === 1 ? "y" : "ies"}: ${unknown.join(", ")} ` +
+          `(has: ${[...new Set(policies.map((p) => slugifyCategory(p.category)))].join(", ")})`,
+      );
+    }
+    for (const p of policies) if (wanted.has(slugifyCategory(p.category))) picked.add(p.name);
+  }
+  if (opts?.only?.length) {
+    const unknown = opts.only.filter((n) => !available.includes(n));
+    if (unknown.length > 0) {
+      throw new Error(`pack does not contain ${unknown.join(", ")}`);
+    }
+    for (const n of opts.only) picked.add(n);
+  }
+  if (picked.size > 0) {
+    // Kept in the pack's declared order, which is the order everything else
+    // presents them in.
+    return { enabled: available.filter((n) => picked.has(n)), reason: "selected" };
+  }
+
+  // No flags. An upgrade keeps whatever the machine already had — switching a
+  // policy back on because the user did not repeat themselves is not an upgrade.
+  if (previouslyInstalled) {
+    return { enabled: previous === null ? null : (previous ?? null), reason: "carried" };
+  }
+  return { enabled: policies.filter((p) => p.defaultEnabled).map((p) => p.name), reason: "defaults" };
+}
+
+export type SelectionReason = "all" | "selected" | "carried" | "defaults";
+
+export async function addPack(
+  source: string,
+  opts?: { only?: string[]; categories?: string[]; all?: boolean },
+): Promise<AddPackResult> {
   if (process.env.FAILPROOFAI_NO_DOWNLOAD) {
     throw new Error(
       "pack downloads are disabled (FAILPROOFAI_NO_DOWNLOAD). Already-installed packs keep enforcing.",
@@ -313,20 +379,13 @@ export async function addPack(source: string, opts?: { only?: string[] }): Promi
   const fetched = await fetchPack(spec);
   const available = fetched.policies.map((p) => p.name);
 
-  let enabled: string[] | null = null;
-  if (opts?.only && opts.only.length > 0) {
-    const unknown = opts.only.filter((n) => !available.includes(n));
-    if (unknown.length > 0) {
-      throw new Error(
-        `pack ${fetched.id} does not contain ${unknown.join(", ")} (has: ${available.join(", ")})`,
-      );
-    }
-    enabled = [...opts.only];
-  } else {
-    // Carry a previous selection forward across an upgrade.
-    const previous = readInstalledPacks().packs.find((p) => p.id === fetched.id);
-    if (previous?.enabled) enabled = previous.enabled.filter((n) => available.includes(n));
-  }
+  const prior = readInstalledPacks().packs.find((p) => p.id === fetched.id);
+  const { enabled, reason } = resolveSelection(
+    fetched.policies,
+    opts,
+    prior?.enabled ? prior.enabled.filter((n) => available.includes(n)) : prior?.enabled,
+    Boolean(prior),
+  );
 
   const root = packsRoot();
   const artifactRel = `artifacts/${fetched.artifactDigest}.mjs`;
@@ -355,6 +414,8 @@ export async function addPack(source: string, opts?: { only?: string[] }): Promi
     resolvedFromLatest,
     enabled: enabled ?? available,
     available,
+    selection: reason,
+    categories: [...new Set(fetched.policies.map((p) => slugifyCategory(p.category)))],
     artifact: artifactAbs,
   };
 }

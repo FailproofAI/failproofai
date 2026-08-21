@@ -32,7 +32,13 @@ const POLICY = {
   defaultEnabled: true,
   match: { events: ["PreToolUse"] },
 };
-const POLICY_2 = { ...POLICY, name: "require-approval-note" };
+// Deliberately mixed: two categories, and only ONE defaultEnabled — so a test
+// that confuses "the pack's defaults" with "everything" cannot pass.
+const POLICY_2 = { ...POLICY, name: "require-approval-note", defaultEnabled: false };
+const POLICY_3 = {
+  name: "audit-log-writes", description: "Log every write",
+  category: "Audit Trail", defaultEnabled: false, match: { events: ["PostToolUse"] },
+};
 
 let server: Server;
 let root: string;
@@ -54,7 +60,7 @@ function release(over: { policies?: unknown[]; id?: string; version?: string } =
   const manifest = JSON.stringify({
     id: over.id ?? "acme/finance",
     version: over.version ?? "1.2.0",
-    policies: over.policies ?? [POLICY, POLICY_2],
+    policies: over.policies ?? [POLICY, POLICY_2, POLICY_3],
   });
   assets = {
     "failproofai-pack.json": manifest,
@@ -169,8 +175,10 @@ describe("addPack", () => {
   it("fetches, verifies and activates a pack", async () => {
     const result = await addPack("github:acme/finance@v1.2.0");
     expect(result.id).toBe("acme/finance");
-    expect(result.available).toEqual(["block-big-refund", "require-approval-note"]);
-    expect(result.enabled).toEqual(["block-big-refund", "require-approval-note"]);
+    expect(result.available).toEqual(["block-big-refund", "require-approval-note", "audit-log-writes"]);
+    // The pack's OWN defaults, not everything it contains.
+    expect(result.enabled).toEqual(["block-big-refund"]);
+    expect(result.selection).toBe("defaults");
 
     const file = installed();
     expect(file.schemaVersion).toBe(1);
@@ -217,6 +225,54 @@ describe("addPack", () => {
     expect(result.enabled).toEqual(["require-approval-note"]);
     expect(installed().packs[0].enabled).toEqual(["require-approval-note"]);
     expect(readInstalledPacks().packs[0].enabled).toEqual(["require-approval-note"]);
+  });
+
+  describe("how much of the pack you get", () => {
+    it("installs the pack's defaults, NOT everything, when no flag is given", async () => {
+      // A pack carries an opinion about which of its policies are safe to switch
+      // on unattended — for the builtins that is 10 of 38. Enabling all of them
+      // overrode that opinion with one nobody held, switching on things like
+      // block-kubectl that are off by default precisely because they interrupt
+      // legitimate work.
+      const result = await addPack("github:acme/finance@v1.2.0");
+      expect(result.enabled).toEqual(["block-big-refund"]);
+      expect(result.selection).toBe("defaults");
+    });
+
+    it("--all takes everything", async () => {
+      const result = await addPack("github:acme/finance@v1.2.0", { all: true });
+      expect(result.enabled).toEqual(["block-big-refund", "require-approval-note", "audit-log-writes"]);
+      expect(result.selection).toBe("all");
+      // null means "the whole pack", so a later version's new policies are
+      // included rather than frozen to the names that existed at install time.
+      expect(installed().packs[0].enabled).toBeUndefined();
+    });
+
+    it("--category takes whole categories, by slug", async () => {
+      const result = await addPack("github:acme/finance@v1.2.0", { categories: ["finance"] });
+      expect(result.enabled).toEqual(["block-big-refund", "require-approval-note"]);
+      const audit = await addPack("github:acme/finance@v1.2.0", { categories: ["audit-trail"] });
+      expect(audit.enabled).toEqual(["audit-log-writes"]);
+    });
+
+    it("--category and --only union rather than fight", async () => {
+      const result = await addPack("github:acme/finance@v1.2.0", {
+        categories: ["audit-trail"], only: ["block-big-refund"],
+      });
+      // Kept in the pack's declared order, not the order the flags named them.
+      expect(result.enabled).toEqual(["block-big-refund", "audit-log-writes"]);
+    });
+
+    it("names the real categories when given one that does not exist", async () => {
+      await expect(addPack("github:acme/finance@v1.2.0", { categories: ["nonsense"] }))
+        .rejects.toThrow(/no such category: nonsense .*finance, audit-trail/);
+      expect(existsSync(join(root, "installed.json"))).toBe(false);
+    });
+
+    it("reports the categories a pack offers, for --category", async () => {
+      const result = await addPack("github:acme/finance@v1.2.0");
+      expect(result.categories).toEqual(["finance", "audit-trail"]);
+    });
   });
 
   it("refuses a selection the pack does not contain", async () => {

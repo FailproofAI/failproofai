@@ -731,11 +731,19 @@ Naming no tag installs the newest release AND pins it, so what gets recorded
 always names one version — running the same command later can install something
 different, and it will tell you the tag it chose.
 
-  --only a,b   Take only these policies from the pack. Re-adding at a newer
-               version keeps your selection rather than switching the rest on.
+By default you get the pack's OWN defaults — the policies its author marked
+safe to switch on unattended — not everything it contains. Take more, or less:
+
+  --category x,y  Take whole categories (see: failproofai pack list)
+  --only a,b      Take exactly these policies
+  --all           Take everything the pack contains
+
+Re-adding at a newer version keeps whatever you chose rather than switching the
+rest back on.
 
 Examples:
   failproofai pack add FailproofAI/policies
+  failproofai pack add FailproofAI/policies --category secrets,git
   failproofai pack add github:acme/support-agent@v2.1.0 --only block-refunds
   failproofai pack remove acme/support-agent
 

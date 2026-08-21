@@ -2210,3 +2210,60 @@ def test_an_overlapping_run_cannot_strand_the_pause_it_did_not_answer(
     assert len(answers) == 1
     assert answers[0]["input_id"] == opened[0]["input_id"]
     assert answers[0]["response"] == "approved"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# capture_limit — how much of a prompt or a tool output survives
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# This adapter used to pin every captured value at 2048 characters, below the
+# core's 8192, on the grounds that "inputs/outputs are graph state". That is true
+# of a state blob and false of the two values people open this integration to
+# read. A real RAG prompt clears 2 KiB comfortably, so the tightening fired on
+# essentially every production run and showed the first paragraph of the prompt.
+
+
+def test_the_default_capture_limit_is_the_core_field_limit():
+    """Not 2048. The tightening below the core default is gone."""
+    assert adapter._FIELD_LIMIT == _core.FIELD_LIMIT
+    assert adapter._read_options({}).capture_limit == _core.FIELD_LIMIT
+
+
+def test_capture_limit_is_honoured(monkeypatch):
+    monkeypatch.setattr(adapter._STATE, "options", adapter._read_options({"capture_limit": 32_768}))
+    assert adapter._field_limit() == 32_768
+
+
+def test_capture_limit_accepts_a_string(monkeypatch):
+    """`instrument()` options routinely arrive from env plumbing as strings."""
+    monkeypatch.setattr(adapter._STATE, "options", adapter._read_options({"capture_limit": "16384"}))
+    assert adapter._field_limit() == 16_384
+
+
+@pytest.mark.parametrize("bad", [0, -1, "nope", 3.5 + 0j, object()])
+def test_an_unusable_capture_limit_falls_back_rather_than_raising(bad, monkeypatch, sink):
+    """`instrument()` with no name installs EVERY detected adapter with the same
+    options, so a value meant for another framework must not break this one."""
+    sink.allow = True
+    monkeypatch.setattr(adapter._STATE, "options", adapter._read_options({"capture_limit": bad}))
+    assert adapter._field_limit() == _core.FIELD_LIMIT
+
+
+def test_capture_limit_is_not_reported_as_an_unknown_option(sink):
+    """It must be in the known-options set, or every install logs about it."""
+    adapter._read_options({"capture_limit": 4096})
+    assert not [r for r in sink.records if "ignoring options" in r.getMessage()]
+
+
+def test_the_limit_is_read_per_call_not_bound_at_import(monkeypatch):
+    """The trap this adapter must not repeat.
+
+    `_core.FIELD_LIMIT` is exported in `__all__`, but reassigning it does
+    nothing, because `def truncate(value, limit=FIELD_LIMIT)` binds the default
+    at def time. A limit captured into a default argument here would ignore
+    `capture_limit` in exactly the same way.
+    """
+    monkeypatch.setattr(adapter._STATE, "options", adapter._read_options({"capture_limit": 1234}))
+    assert adapter._field_limit() == 1234
+    monkeypatch.setattr(adapter._STATE, "options", adapter._read_options({"capture_limit": 5678}))
+    assert adapter._field_limit() == 5678

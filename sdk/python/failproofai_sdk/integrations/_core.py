@@ -329,7 +329,26 @@ class Patcher:
 
 TRUNCATION_MARKER = "…[truncated]"
 FIELD_LIMIT = 8192
-EVENT_BUDGET = 32 * 1024
+
+#: How many MAX-SIZE fields one event may carry before `payload()` starts
+#: dropping keys. The budget is DERIVED from the field limit rather than being a
+#: second independent number, because the two are not independent: raising one
+#: without the other silently changes how much survives.
+#:
+#: Measured against real traffic before choosing it — a live event from each of
+#: the five framework adapters carries 7-8 `fw_*` fields, so 16 leaves roughly
+#: 2x headroom at the theoretical maximum. It matches the ratio the LangChain
+#: adapter shipped with (32 KiB budget over a 2 KiB field limit), which is where
+#: the number comes from; it is a preserved property, not a fresh guess.
+#:
+#: This matters because of HOW `payload()` runs out: past the budget it does not
+#: shorten the next field, it OMITS THE KEY (see the `remaining <= 0` branch).
+#: A caller raising `field_limit` therefore has to raise the budget in step or
+#: it trades shortened values for missing ones, which is strictly worse — the
+#: event stops saying that anything is absent.
+_FIELDS_PER_EVENT = 16
+
+EVENT_BUDGET = FIELD_LIMIT * _FIELDS_PER_EVENT
 _MAX_ITEMS = 100
 _MAX_DEPTH = 6
 
@@ -703,7 +722,10 @@ class RunTracker:
     callback. Unbounded, that is a memory leak in a long-lived server.
     """
 
-    __slots__ = ("name", "_max_open", "_base_fields", "_runs", "_links", "_lock", "_warned")
+    __slots__ = (
+        "name", "_max_open", "_base_fields", "_runs", "_links", "_lock", "_warned",
+        "_field_limit", "_budget",
+    )
 
     def __init__(
         self,
@@ -711,10 +733,20 @@ class RunTracker:
         *,
         max_open: int = 10_000,
         base_fields: dict | None = None,
+        field_limit: int | None = None,
     ) -> None:
         self.name = name
         self._max_open = max_open
         self._base_fields = dict(base_fields or {})
+        # One place decides how much of a value survives, for both halves of an
+        # event: the declared parameters (`input`, `output`, `messages`) and the
+        # `fw_*` extras. They used to be truncated by two different rules — the
+        # adapter's own constant on the way in, `FIELD_LIMIT` here — so an
+        # adapter that tightened its limit still had its declared fields cut at
+        # the core default, and raising the adapter's constant changed only half
+        # the event.
+        self._field_limit = FIELD_LIMIT if field_limit is None else int(field_limit)
+        self._budget = self._field_limit * _FIELDS_PER_EVENT
         self._runs: dict[Any, _Run] = {}
         self._links: dict[Any, Any] = {}
         # RLock: `start_agent` resolves a parent while already holding it.
@@ -937,8 +969,12 @@ class RunTracker:
             if key.startswith(_FW_PREFIX):
                 extras[key] = value
             else:
-                declared[key] = truncate(value)
-        merged = payload(guard_extras({**self._base_fields, **extras}))
+                declared[key] = truncate(value, self._field_limit)
+        merged = payload(
+            guard_extras({**self._base_fields, **extras}),
+            limit=self._field_limit,
+            budget=self._budget,
+        )
         # A base field named like a real parameter would be a duplicate keyword
         # (TypeError inside the customer's callback); the explicit value wins.
         merged = {k: v for k, v in merged.items() if k not in declared}

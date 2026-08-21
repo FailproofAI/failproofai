@@ -145,7 +145,32 @@ SESSION_METADATA_FALLBACKS = ("session_id", "conversation_id", "thread_id")
 # parent chain so their children still find the agent above them.
 HIDDEN_TAG = "langsmith:hidden"
 
-_FIELD_LIMIT = 2048  # inputs/outputs are graph state; the per-event budget is not the only guard
+#: Default characters kept per captured value in this adapter.
+#:
+#: This was 2048, a deliberate tightening below the core's 8192 on the grounds
+#: that "inputs/outputs are graph state". That reasoning holds for a graph-state
+#: blob and not for the two things people actually come here to read — the
+#: prompt and the completion. A real RAG prompt is well over 2 KiB, so the
+#: tightening cut the payload on essentially every production run, and the
+#: adapter documented as the way to see what your agent said showed the first
+#: paragraph of it.
+#:
+#: It is the core default now, and `capture_limit` moves it per install. The
+#: per-event budget follows it automatically (`_core._FIELDS_PER_EVENT`), so
+#: raising this cannot silently convert shortened fields into missing ones.
+_FIELD_LIMIT = _core.FIELD_LIMIT
+
+
+def _field_limit() -> int:
+    """The active per-value limit — `capture_limit`, else `_FIELD_LIMIT`.
+
+    Read through a function rather than captured at import, because
+    `instrument()` may be called after this module is imported and a module
+    constant bound into a default argument would ignore the option entirely.
+    That is not hypothetical: `_core.FIELD_LIMIT` is exported in `__all__` and
+    reassigning it does nothing, for exactly this reason.
+    """
+    return _STATE.options.capture_limit
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +251,7 @@ class _Options:
     include_chains: frozenset = frozenset()
     capture_content: bool = True
     graph_callbacks: bool = True
+    capture_limit: int = _FIELD_LIMIT
 
 
 @dataclasses.dataclass
@@ -391,7 +417,7 @@ def _shrink(value: Any) -> Any:
     """Payload discipline for the big three: inputs, outputs, graph state."""
     if not _STATE.options.capture_content:
         return None
-    return truncate(value, _FIELD_LIMIT)
+    return truncate(value, _field_limit())
 
 
 # A run of one of these types is a leaf — a model call, a tool call, a
@@ -815,7 +841,7 @@ def _start_retriever(run: Any, info: _RunInfo, meta: dict) -> None:
         info,
         tool_name="retriever:%s" % (info.name or "retriever"),
         tool_call_id=info.tool_call_id,
-        input={"query": truncate(query, _FIELD_LIMIT)} if _STATE.options.capture_content else None,
+        input={"query": truncate(query, _field_limit())} if _STATE.options.capture_content else None,
         **_fw_common(run, info, meta),
     )
 
@@ -868,7 +894,7 @@ def _tools_of(run: Any) -> list | None:
         return None
     tools = params.get("tools")
     if isinstance(tools, (list, tuple)) and tools:
-        return truncate(list(tools), _FIELD_LIMIT)
+        return truncate(list(tools), _field_limit())
     return None
 
 
@@ -884,7 +910,7 @@ def _prompts_as_messages(inputs: Any) -> list | None:
         return None
     prompts = inputs.get("prompts")
     if isinstance(prompts, (list, tuple)):
-        return [{"role": "user", "content": truncate(p, _FIELD_LIMIT)} for p in prompts]
+        return [{"role": "user", "content": truncate(p, _field_limit())} for p in prompts]
     return None
 
 
@@ -900,11 +926,11 @@ def _normalize_messages(batches: Any) -> list | None:
         kind = str(getattr(message, "type", "") or "")
         entry: dict = {
             "role": _ROLES.get(kind, kind or "user"),
-            "content": truncate(getattr(message, "content", ""), _FIELD_LIMIT),
+            "content": truncate(getattr(message, "content", ""), _field_limit()),
         }
         calls = getattr(message, "tool_calls", None)
         if calls:
-            entry["tool_calls"] = truncate(list(calls), _FIELD_LIMIT)
+            entry["tool_calls"] = truncate(list(calls), _field_limit())
         out.append(entry)
     return out
 
@@ -1019,10 +1045,10 @@ def _error_text(run: Any, exc: BaseException | None) -> str | None:
     if _is_control_flow(exc):
         return None
     if exc is not None:
-        return truncate("%s: %s" % (type(exc).__name__, exc), _FIELD_LIMIT)
+        return truncate("%s: %s" % (type(exc).__name__, exc), _field_limit())
     error = getattr(run, "error", None)
     if error:
-        return truncate(str(error).splitlines()[0], _FIELD_LIMIT)
+        return truncate(str(error).splitlines()[0], _field_limit())
     return None
 
 
@@ -1040,10 +1066,10 @@ def _error_message(run: Any, exc: BaseException | None) -> str | None:
     if _is_control_flow(exc):
         return None
     if exc is not None:
-        return truncate(str(exc), _FIELD_LIMIT) or type(exc).__name__
+        return truncate(str(exc), _field_limit()) or type(exc).__name__
     error = getattr(run, "error", None)
     if error:
-        return truncate(str(error).splitlines()[0], _FIELD_LIMIT)
+        return truncate(str(error).splitlines()[0], _field_limit())
     return None
 
 
@@ -1100,7 +1126,7 @@ def _tool_output(output: Any) -> tuple:
     content = getattr(output, "content", None)
     failed = None
     if getattr(output, "status", None) == "error":
-        failed = truncate(content if isinstance(content, str) else str(content), _FIELD_LIMIT)
+        failed = truncate(content if isinstance(content, str) else str(content), _field_limit())
     return content, failed
 
 
@@ -1256,7 +1282,7 @@ def _completion(response: Any) -> tuple:
         response_meta = getattr(message, "response_metadata", None) or {}
         stop = response_meta.get("finish_reason") or response_meta.get("stop_reason")
     role = "assistant" if message is not None else None
-    return truncate(content, _FIELD_LIMIT), role, stop
+    return truncate(content, _field_limit()), role, stop
 
 
 def _end_root(run: Any, info: _RunInfo, meta: dict, exc: BaseException | None) -> None:
@@ -1426,9 +1452,9 @@ def _prompt_of(value: Any) -> tuple:
         else:
             options = [str(o) for o in options]
         if prompt is not None:
-            return truncate(str(prompt), _FIELD_LIMIT), options
-        return truncate(str(value), _FIELD_LIMIT), options
-    return truncate(str(value), _FIELD_LIMIT) if value is not None else None, None
+            return truncate(str(prompt), _field_limit()), options
+        return truncate(str(value), _field_limit()), options
+    return truncate(str(value), _field_limit()) if value is not None else None, None
 
 
 def _resume(session: _Session, run: Any) -> None:
@@ -1509,8 +1535,8 @@ def _answer_for(answers: Any, pause_id: str) -> str | None:
     if answers is None:
         return None
     if isinstance(answers, dict) and pause_id in answers:
-        return truncate(str(answers[pause_id]), _FIELD_LIMIT)
-    return truncate(str(answers), _FIELD_LIMIT)
+        return truncate(str(answers[pause_id]), _field_limit())
+    return truncate(str(answers), _field_limit())
 
 
 def _session_for_run(run_id: Any) -> _Session | None:
@@ -1915,7 +1941,12 @@ class _Adapter:
 
         _STATE.options = _read_options(options)
         _STATE.reset()
-        _STATE.tracker = RunTracker(NAME, base_fields=_base_fields())
+        # `field_limit` reaches the DECLARED parameters too (`input`, `output`,
+        # `messages`), which this adapter never truncated itself — they were cut
+        # at the core default no matter what this module's constant said.
+        _STATE.tracker = RunTracker(
+            NAME, base_fields=_base_fields(), field_limit=_STATE.options.capture_limit
+        )
         _STATE.enabled = True
 
         global _ACTIVE_HANDLER
@@ -1962,7 +1993,9 @@ def _read_options(options: dict) -> _Options:
     include = options.get("include_chains") or ()
     if isinstance(include, str):
         include = (include,)
-    unknown = set(options) - {"session_id", "include_chains", "capture_content", "graph_callbacks"}
+    unknown = set(options) - {
+        "session_id", "include_chains", "capture_content", "graph_callbacks", "capture_limit",
+    }
     if unknown:
         # Not fatal: `instrument()` with no name installs every detected
         # adapter with the same **options, so an option meant for CrewAI
@@ -1973,7 +2006,33 @@ def _read_options(options: dict) -> _Options:
         include_chains=frozenset(str(name) for name in include),
         capture_content=bool(options.get("capture_content", True)),
         graph_callbacks=bool(options.get("graph_callbacks", True)),
+        capture_limit=_capture_limit(options.get("capture_limit")),
     )
+
+
+def _capture_limit(value: Any) -> int:
+    """Validate `capture_limit`, falling back rather than raising.
+
+    A bad value here must not take the integration down — `instrument()` with no
+    name installs every detected adapter with the same options, so a typo'd or
+    wrongly-typed value would otherwise break instrumentation for a framework
+    the option was never meant for. Anything unusable is logged and ignored.
+    """
+    if value is None:
+        return _FIELD_LIMIT
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "failproofai_sdk: langchain capture_limit=%r is not an integer; using %d", value, _FIELD_LIMIT
+        )
+        return _FIELD_LIMIT
+    if limit < 1:
+        logger.warning(
+            "failproofai_sdk: langchain capture_limit=%d must be >= 1; using %d", limit, _FIELD_LIMIT
+        )
+        return _FIELD_LIMIT
+    return limit
 
 
 def _close_everything() -> None:

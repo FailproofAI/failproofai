@@ -996,3 +996,53 @@ def test_a_failing_capability_probe_disables_one_hook_only():
 def test_a_probe_returning_false_warns():
     with pytest.warns(_compat.FailproofAICompatWarning, match="does not provide"):
         assert _compat.probe("langchain", "on_resume", lambda: None) is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Capture fidelity: the field limit, and the budget that has to follow it
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# `payload()` does not shorten the field that overruns the budget — it OMITS THE
+# KEY (`remaining <= 0` -> `continue`). So the per-event budget and the per-field
+# limit are one setting in two halves: raising the limit alone converts shortened
+# values into missing ones, and the event stops recording that anything is gone.
+#
+# The budget is therefore derived, and these tests pin that it stays derived.
+
+
+def test_the_event_budget_is_derived_from_the_field_limit():
+    assert _core.EVENT_BUDGET == _core.FIELD_LIMIT * _core._FIELDS_PER_EVENT
+
+
+def test_raising_the_field_limit_keeps_the_same_headroom():
+    """The property that makes raising it safe: same max-size field count."""
+    for limit in (2048, 8192, 32768):
+        tracker = _core.RunTracker("probe", field_limit=limit)
+        assert tracker._budget // limit == _core._FIELDS_PER_EVENT
+
+
+def test_a_tracker_field_limit_reaches_the_fw_extras():
+    tracker = _core.RunTracker("probe", field_limit=64)
+    out = _core.payload({"fw_prompt": "z" * 5_000}, limit=tracker._field_limit,
+                        budget=tracker._budget)
+    assert len(out["fw_prompt"]) == 64
+
+
+def test_a_tracker_without_a_field_limit_keeps_the_core_default():
+    assert _core.RunTracker("probe")._field_limit == _core.FIELD_LIMIT
+
+
+def test_the_budget_omits_keys_rather_than_shortening_them():
+    """The reason the two settings cannot move independently.
+
+    Documented here because it is the non-obvious half: past the budget a field
+    does not arrive short, it does not arrive at all, and `fw_truncated` names
+    none of the keys that went.
+    """
+    fields = {f"fw_{i:02d}": "q" * _core.FIELD_LIMIT for i in range(40)}
+    out = _core.payload(fields)
+    survivors = [k for k in out if k.startswith("fw_")]
+    assert len(survivors) < len(fields), "nothing was dropped; fixture too small"
+    assert out["fw_truncated"] is True
+    # The flag is the only signal — it does not enumerate what it removed.
+    assert not any("fw_00" in str(v) for k, v in out.items() if k == "fw_truncated")

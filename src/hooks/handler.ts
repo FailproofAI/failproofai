@@ -43,7 +43,8 @@ import { getInstanceId } from "../../lib/telemetry-id";
 import { hookLogInfo, hookLogWarn } from "./hook-logger";
 import { readStdinPayload } from "./read-stdin";
 import { readActiveCloudManagedPolicies, type CloudManagedPolicyArtifact } from "./cloud-managed-policies";
-import { readInstalledPacks, type ResolvedPack } from "./pack-manifest";
+import { readInstalledPacks, type PackError, type ResolvedPack } from "./pack-manifest";
+import { missingGuards, packFailureReason } from "./pack-failclosed";
 import { readActivePause, type ActivePause } from "./session-pause";
 import { layoutWarningForHook } from "./fp-reset";
 
@@ -265,6 +266,9 @@ export async function evaluateHookEvent(
       }
     >();
     let cloudDeployment: number | undefined;
+    /** Policy names each pack actually got registered, for the fail-closed check. */
+    const registeredByPack = new Map<string, Set<string>>();
+    let packErrors: PackError[] = [];
     /** What observe-mode policies WOULD have done, had they been enforcing. */
     const observedResults: Array<{
       policyId: string;
@@ -351,6 +355,7 @@ export async function evaluateHookEvent(
       try {
         const packResult = readInstalledPacks();
         installedPacks = packResult.packs;
+        packErrors = packResult.errors;
         for (const err of packResult.errors) {
           hookLogWarn(`pack ${err.id ?? "(unnamed)"} not loaded: ${err.reason}`);
         }
@@ -397,6 +402,11 @@ export async function evaluateHookEvent(
         // taken only some of it. `enabled: null` means the whole pack, which is
         // what `pack add` writes when no selection was made.
         if (pack?.enabled && !pack.enabled.includes(hook.name)) continue;
+        if (pack) {
+          const seen = registeredByPack.get(pack.id) ?? new Set<string>();
+          seen.add(hook.name);
+          registeredByPack.set(pack.id, seen);
+        }
         const hookName = hook.name;
         const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
         const isConvention = !!conventionScope;
@@ -487,6 +497,60 @@ export async function evaluateHookEvent(
           // the name before the `pack/<id>@<version>/` prefix is applied.
           pack?.policies.find((p) => p.name === hook.name)?.params,
         );
+      }
+
+      // Fail closed on enforcement this machine was told it had and does not.
+      //
+      // Additive, and deliberately NOT a clearPolicies() the way the
+      // daemon-unreachable branch is: `registerBuiltinPolicies` registers the
+      // alwaysOn self-protection guard unconditionally, and clearing here would
+      // let a corrupt third-party download switch off the one policy nothing may
+      // disable.
+      //
+      // Skipped entirely under a session pause. A pause suspends local policy for
+      // a bounded, deliberate window; a check derived from registrations would
+      // fire for every pack on every paused event and convert that into a
+      // machine-wide deny — the exact inversion of what a pause is for.
+      if (!activePause) {
+        const guards = missingGuards({
+          errors: packErrors,
+          packs: installedPacks,
+          registered: registeredByPack,
+          disabled: disabledCustomPolicies,
+        });
+        if (guards.length > 0) {
+          const reason = packFailureReason(guards);
+          const match = guards.length === 1
+            ? guards[0].match
+            : {
+                events: guards.every((g) => g.match.events)
+                  ? [...new Set(guards.flatMap((g) => g.match.events ?? []))]
+                  : undefined,
+              };
+          const name = "pack/failproofai-pack-unavailable";
+          policyAttribution.set(name, {
+            source: "pack",
+            packId: guards[0].packId,
+            ...(guards[0].packVersion ? { packVersion: guards[0].packVersion } : {}),
+          });
+          registerPolicy(
+            name,
+            "A policy pack this machine enforces could not be loaded",
+            async (): Promise<PolicyResult> =>
+              // UserPromptSubmit instructs rather than denies, whatever the
+              // missing policies declared: a deny there locks the user out of
+              // their own agent, which is the one thing that stops them fixing it.
+              canonicalEventType === "UserPromptSubmit"
+                ? { decision: "instruct", reason }
+                : { decision: "deny", reason },
+            match,
+            // Above builtins (0) and custom (-1), so the short-circuit attributes
+            // the deny to the missing pack rather than to whichever surviving
+            // policy happened to fire first.
+            1,
+          );
+          hookLogWarn(reason);
+        }
       }
 
       // Fire telemetry once per invocation for custom hook loads

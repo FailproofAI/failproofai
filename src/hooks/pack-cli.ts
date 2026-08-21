@@ -34,7 +34,9 @@ async function add(rest: string[]): Promise<PackCliResult> {
   try {
     const result = await addPack(source, only ? { only } : undefined);
     const lines = [
-      `Installed ${result.id}@${result.version} from ${result.source}`,
+      result.resolvedFromLatest
+        ? `Installed ${result.id}@${result.version} from ${result.source} (newest release; pinned to ${result.tag})`
+        : `Installed ${result.id}@${result.version} from ${result.source}`,
     ];
     const skipped = result.available.filter((n) => !result.enabled.includes(n));
     lines.push(`  enabled: ${result.enabled.join(", ")}`);

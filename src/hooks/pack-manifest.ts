@@ -43,9 +43,9 @@ const ACCEPTED_PACK_SCHEMA_VERSIONS: readonly number[] = [1];
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
 /** `<publisher>/<name>`, the shape a marketplace id takes. */
-const PACK_ID_RE = /^[A-Za-z0-9._-]{1,64}\/[A-Za-z0-9._-]{1,64}$/;
+export const PACK_ID_RE = /^[A-Za-z0-9._-]{1,64}\/[A-Za-z0-9._-]{1,64}$/;
 /** A version string, kept loose enough for semver and a tag. */
-const PACK_VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
+export const PACK_VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 /**
  * A pack policy's own name. `/` is REFUSED, and that is the important character:
  * `normalizePolicyName` passes any name containing one straight through, and
@@ -124,6 +124,28 @@ export function packsRoot(): string {
   return process.env.FAILPROOFAI_PACK_DIR ?? packsDir();
 }
 
+/** Validate the identity fields shared by installed and incoming manifests. */
+export function parsePackIdentity(value: {
+  id?: unknown;
+  version?: unknown;
+  effect?: unknown;
+}): { id: string; version: string; effect: PolicyEffect } {
+  if (typeof value.id !== "string" || !PACK_ID_RE.test(value.id)) {
+    throw new Error(`unsafe pack id ${JSON.stringify(value.id)}`);
+  }
+  if (typeof value.version !== "string" || !PACK_VERSION_RE.test(value.version)) {
+    throw new Error(`invalid version for pack ${value.id}`);
+  }
+  if (value.effect !== undefined && value.effect !== "enforce" && value.effect !== "observe") {
+    throw new Error(`unknown effect ${JSON.stringify(value.effect)} for pack ${value.id}`);
+  }
+  return {
+    id: value.id,
+    version: value.version,
+    effect: (value.effect as PolicyEffect | undefined) ?? "enforce",
+  };
+}
+
 function installedFilePath(): string {
   return process.env.FAILPROOFAI_PACK_DIR
     ? resolve(process.env.FAILPROOFAI_PACK_DIR, "installed.json")
@@ -166,27 +188,16 @@ function parsePack(root: string, value: unknown): ResolvedPack {
   if (!value || typeof value !== "object") throw new Error("pack entry is not an object");
   const raw = value as InstalledPackRecord;
 
-  if (typeof raw.id !== "string" || !PACK_ID_RE.test(raw.id)) {
-    throw new Error(`unsafe pack id ${JSON.stringify(raw.id)}`);
-  }
-  if (typeof raw.version !== "string" || !PACK_VERSION_RE.test(raw.version)) {
-    throw new Error(`invalid version for pack ${raw.id}`);
-  }
+  const identity = parsePackIdentity(raw);
   if (typeof raw.source !== "string" || raw.source.length === 0) {
     throw new Error(`pack ${raw.id} has no source`);
   }
   if (typeof raw.sha256 !== "string" || !SHA256_RE.test(raw.sha256)) {
     throw new Error(`invalid SHA-256 for pack ${raw.id}`);
   }
-  if (raw.effect !== undefined && raw.effect !== "enforce" && raw.effect !== "observe") {
-    // Same reasoning as cloud: guessing means either enforcing what was not
-    // asked for, or observing what was meant to enforce.
-    throw new Error(`unknown effect ${JSON.stringify(raw.effect)} for pack ${raw.id}`);
-  }
-
   // Recorded before anything that can fail, so a later throw can still say what
   // this pack was for.
-  const effect: PolicyEffect = (raw.effect as PolicyEffect | undefined) ?? "enforce";
+  const effect = identity.effect;
 
   const path = resolveManagedPath(root, raw.entry);
   const actual = createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -216,8 +227,8 @@ function parsePack(root: string, value: unknown): ResolvedPack {
   }
 
   return {
-    id: raw.id,
-    version: raw.version,
+    id: identity.id,
+    version: identity.version,
     source: raw.source,
     path,
     sha256: raw.sha256,

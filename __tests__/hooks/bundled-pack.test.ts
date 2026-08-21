@@ -15,6 +15,8 @@ import { join } from "node:path";
 
 import { installBundledPack, bundledPackDir } from "@/src/hooks/pack-store";
 import { readInstalledPacks } from "@/src/hooks/pack-manifest";
+import { resetHome } from "@/src/hooks/fp-reset";
+import { LAYOUT_VERSION, packsDir } from "@/src/hooks/fp-home";
 
 const POLICIES = [
   { name: "block-alpha", description: "d", category: "Sanitize", defaultEnabled: true, match: { events: ["PreToolUse"] } },
@@ -27,12 +29,19 @@ let pkgRoot: string;
 let prevPackDir: string | undefined;
 let prevRoot: string | undefined;
 
-function writeBundle(over: { policies?: unknown[]; breakDigest?: boolean } = {}): void {
+function writeBundle(over: {
+  policies?: unknown[];
+  breakDigest?: boolean;
+  id?: unknown;
+  version?: unknown;
+  effect?: unknown;
+} = {}): void {
   const dir = join(pkgRoot, "policy-pack");
   mkdirSync(dir, { recursive: true });
   const manifest = JSON.stringify({
-    id: "failproofai/builtins", version: "1.0.0",
+    id: over.id ?? "failproofai/builtins", version: over.version ?? "1.0.0",
     policies: over.policies ?? POLICIES,
+    ...(over.effect !== undefined ? { effect: over.effect } : {}),
   });
   const sha = (s: string) => createHash("sha256").update(s).digest("hex");
   writeFileSync(join(dir, "failproofai-pack.json"), manifest);
@@ -115,6 +124,18 @@ describe("installBundledPack", () => {
     expect(result.reason).toContain("alwaysOn");
   });
 
+  it.each([
+    [{ id: "failproofai/builtins/extra" }, /unsafe pack id/],
+    [{ version: "release/1" }, /invalid version/],
+    [{ effect: "audit" }, /unknown effect/],
+  ])("refuses loader-invalid identity before activation: %j", (over, message) => {
+    writeBundle(over);
+    const result = installBundledPack();
+    expect(result.installed).toBe(false);
+    expect(result.reason).toMatch(message);
+    expect(existsSync(join(packDir, "installed.json"))).toBe(false);
+  });
+
   it("is idempotent, and keeps a selection across a re-run", () => {
     writeBundle();
     installBundledPack({ only: ["block-beta"] });
@@ -137,5 +158,22 @@ describe("installBundledPack", () => {
   it("returns null for the dir when the package root is unknown", () => {
     delete process.env.FAILPROOFAI_PACKAGE_ROOT;
     expect(bundledPackDir()).toBeNull();
+  });
+
+  it("restores the bundled pack after a home reset removes packs", () => {
+    const previousHome = process.env.FAILPROOFAI_HOME;
+    delete process.env.FAILPROOFAI_PACK_DIR;
+    process.env.FAILPROOFAI_HOME = packDir;
+    try {
+      writeBundle();
+      expect(installBundledPack().installed).toBe(true);
+      expect(existsSync(packsDir())).toBe(true);
+      resetHome(LAYOUT_VERSION);
+      expect(readInstalledPacks().packs.map((pack) => pack.id)).toEqual(["failproofai/builtins"]);
+    } finally {
+      process.env.FAILPROOFAI_PACK_DIR = packDir;
+      if (previousHome === undefined) delete process.env.FAILPROOFAI_HOME;
+      else process.env.FAILPROOFAI_HOME = previousHome;
+    }
   });
 });

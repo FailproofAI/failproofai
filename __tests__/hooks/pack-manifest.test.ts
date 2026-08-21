@@ -63,9 +63,9 @@ afterEach(() => {
 });
 
 describe("readInstalledPacks", () => {
-  it("returns nothing, and no error, when no pack was ever installed", () => {
+  it("returns nothing, and no error, when no pack was ever installed", async () => {
     // The overwhelmingly common case. It must not look like a failure.
-    expect(read()).resolves.toEqual({ packs: [], errors: [] });
+    await expect(read()).resolves.toEqual({ packs: [], errors: [] });
   });
 
   it("resolves a valid pack and verifies its digest", async () => {

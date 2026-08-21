@@ -24,6 +24,15 @@ function parseList(rest: string[], flag: string): string[] | undefined {
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
+/** Find the positional source without mistaking a flag's separate value for it. */
+export function packAddSource(rest: string[]): string | undefined {
+  const consumed = new Set<number>();
+  for (let i = 0; i < rest.length; i += 1) {
+    if (rest[i] === "--only" || rest[i] === "--category") consumed.add(i + 1);
+  }
+  return rest.find((arg, index) => !arg.startsWith("--") && !consumed.has(index));
+}
+
 /** Name a handful, then say how many more and where to see them. A 37-name wall
  *  is not information, and a count alone is not either. */
 function summarise(names: string[], limit = 6): string {
@@ -32,7 +41,7 @@ function summarise(names: string[], limit = 6): string {
 }
 
 async function add(rest: string[]): Promise<PackCliResult> {
-  const source = rest.find((a) => !a.startsWith("--"));
+  const source = packAddSource(rest);
   if (!source) {
     return fail(["Usage: failproofai pack add <source> [--only a,b] [--category x,y] [--all]"]);
   }

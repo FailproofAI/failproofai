@@ -45,6 +45,12 @@ export const PACK_CHECKSUMS_ASSET = "SHA256SUMS";
 export interface PackSpec {
   owner: string;
   repo: string;
+  /** null when the user did not name one — resolved to a concrete tag at add time. */
+  tag: string | null;
+}
+
+/** A spec whose tag is known. Everything that builds a URL requires this. */
+export interface PinnedPackSpec extends PackSpec {
   tag: string;
 }
 
@@ -52,6 +58,14 @@ export interface AddPackResult {
   id: string;
   version: string;
   source: string;
+  /** The concrete tag installed, whether typed or resolved. */
+  tag: string;
+  /**
+   * True when the user named no tag and this was the newest release at that
+   * moment. Surfaced so the pin is VISIBLE — re-running the same command later
+   * can install something different, and that should not be a silent surprise.
+   */
+  resolvedFromLatest: boolean;
   /** Names actually registered — the whole pack, or the selected subset. */
   enabled: string[];
   /** Every policy the pack contains, whether taken or not. */
@@ -67,40 +81,106 @@ const OWNER_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const TAG_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
 
 /**
- * Parse `github:owner/repo@tag`, or the same without the scheme.
+ * Parse a pack source into owner, repo and an optional tag.
  *
- * The tag is REQUIRED. Defaulting it to a branch or to "latest" would make the
- * URL a moving target, so what a machine enforces would change whenever the
- * publisher pushed — the exact drift the recorded digest exists to prevent.
+ * Accepts what a person actually has to hand: the shorthand, and the URL they
+ * copied out of the browser.
+ *
+ *   github:acme/finance@v1.2.0
+ *   acme/finance@v1.2.0
+ *   acme/finance                                   (tag resolved at add time)
+ *   https://github.com/acme/finance/releases/tag/v1.2.0
+ *   https://github.com/acme/finance/releases/download/v1.2.0/failproofai-pack.mjs
+ *   https://github.com/acme/finance
+ *
+ * A missing tag is resolved to a CONCRETE one before anything is written, and
+ * that concrete tag is what `installed.json` records. So "no moving sources"
+ * still holds where it matters: what a machine reinstalls is pinned, even when
+ * the person who typed it did not know the version.
  */
-export function parsePackSpec(spec: string): PackSpec {
-  const withoutScheme = spec.trim().replace(/^github:/i, "");
-  const at = withoutScheme.lastIndexOf("@");
-  if (at <= 0) {
-    throw new Error(
-      `pack source must name a tag: expected github:owner/repo@tag, got ${JSON.stringify(spec)}`,
-    );
+export function parsePackSpec(source: string): PackSpec {
+  const raw = source.trim();
+  if (raw.length === 0) throw new Error("pack source is empty");
+
+  const url = raw.match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/(.+)$/i);
+  if (url) {
+    const parts = url[1].replace(/\/+$/, "").split("/");
+    const [owner, repo, ...rest] = parts;
+    // `/releases/tag/<tag>` and `/releases/download/<tag>/<asset>` both carry the
+    // tag in the slot after their keyword; a tag may itself contain slashes
+    // (`release/2.1`), so take everything up to the asset rather than one segment.
+    let tag: string | null = null;
+    if (rest[0] === "releases" && (rest[1] === "tag" || rest[1] === "download")) {
+      const tail = rest.slice(2);
+      tag = (rest[1] === "download" ? tail.slice(0, -1) : tail).join("/") || null;
+    } else if (rest[0] === "releases" && rest[1] === "latest") {
+      tag = null;
+    }
+    return validated(owner, repo, tag);
   }
-  const repoPart = withoutScheme.slice(0, at);
-  const tag = withoutScheme.slice(at + 1);
+
+  const withoutScheme = raw.replace(/^github:/i, "");
+  const at = withoutScheme.lastIndexOf("@");
+  const repoPart = at > 0 ? withoutScheme.slice(0, at) : withoutScheme;
+  const tag = at > 0 ? withoutScheme.slice(at + 1) : null;
   const slash = repoPart.indexOf("/");
   if (slash <= 0 || slash === repoPart.length - 1) {
-    throw new Error(`pack source must be owner/repo@tag, got ${JSON.stringify(spec)}`);
+    throw new Error(
+      `pack source must be owner/repo, owner/repo@tag, or a github.com URL — got ${JSON.stringify(source)}`,
+    );
   }
-  const owner = repoPart.slice(0, slash);
-  const repo = repoPart.slice(slash + 1);
-  if (!OWNER_RE.test(owner)) throw new Error(`unsafe owner ${JSON.stringify(owner)}`);
-  if (!OWNER_RE.test(repo)) throw new Error(`unsafe repo ${JSON.stringify(repo)}`);
-  if (!TAG_RE.test(tag)) throw new Error(`unsafe tag ${JSON.stringify(tag)}`);
+  return validated(repoPart.slice(0, slash), repoPart.slice(slash + 1), tag);
+}
+
+function validated(owner: string, repo: string, tag: string | null): PackSpec {
+  if (!owner || !OWNER_RE.test(owner)) throw new Error(`unsafe owner ${JSON.stringify(owner)}`);
+  if (!repo || !OWNER_RE.test(repo)) throw new Error(`unsafe repo ${JSON.stringify(repo)}`);
+  if (tag !== null && !TAG_RE.test(tag)) throw new Error(`unsafe tag ${JSON.stringify(tag)}`);
   return { owner, repo, tag };
 }
 
-/** The canonical spelling recorded in `installed.json`, and what re-add reads. */
-export function formatPackSpec(spec: PackSpec): string {
+/**
+ * The concrete tag of a repository's newest release, read from the redirect
+ * `releases/latest` issues rather than from the API.
+ *
+ * Deliberately not `api.github.com`: the redirect is on the host we already
+ * fetch the assets from, so it needs no second origin, carries no 60-per-hour
+ * unauthenticated rate limit, and stays pointed at whatever
+ * `FAILPROOFAI_PACK_BASE_URL` names — which is how a mirror, and the tests,
+ * work at all.
+ */
+export async function resolveLatestTag(spec: PackSpec): Promise<string> {
+  const url = `${baseUrl()}/${spec.owner}/${spec.repo}/releases/latest`;
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    redirect: "manual",
+  });
+  const location = response.headers.get("location");
+  if (!location) {
+    throw new Error(
+      `could not resolve the newest release of ${spec.owner}/${spec.repo} ` +
+        `(GET ${url} returned ${response.status} with no redirect). Name a tag explicitly.`,
+    );
+  }
+  const match = location.match(/\/releases\/tag\/(.+)$/);
+  if (!match) throw new Error(`unexpected redirect from ${url}: ${location}`);
+  const tag = decodeURIComponent(match[1]).replace(/\/+$/, "");
+  if (!TAG_RE.test(tag)) throw new Error(`unsafe tag ${JSON.stringify(tag)} from ${url}`);
+  return tag;
+}
+
+/**
+ * The canonical spelling recorded in `installed.json`.
+ *
+ * Always carries the CONCRETE tag, never the tagless form the user may have
+ * typed — otherwise re-adding a pack later would resolve to a different release
+ * and the recorded source would not describe what is installed.
+ */
+export function formatPackSpec(spec: PinnedPackSpec): string {
   return `github:${spec.owner}/${spec.repo}@${spec.tag}`;
 }
 
-export function packAssetUrl(spec: PackSpec, asset: string): string {
+export function packAssetUrl(spec: PinnedPackSpec, asset: string): string {
   return `${baseUrl()}/${spec.owner}/${spec.repo}/releases/download/${spec.tag}/${asset}`;
 }
 
@@ -158,7 +238,7 @@ interface FetchedPack {
 }
 
 /** Fetch and fully validate a pack, without writing anything. */
-async function fetchPack(spec: PackSpec): Promise<FetchedPack> {
+async function fetchPack(spec: PinnedPackSpec): Promise<FetchedPack> {
   const checksums = (await fetchBytes(packAssetUrl(spec, PACK_CHECKSUMS_ASSET))).toString("utf8");
 
   const manifestBytes = await fetchBytes(packAssetUrl(spec, PACK_MANIFEST_ASSET));
@@ -222,7 +302,14 @@ export async function addPack(source: string, opts?: { only?: string[] }): Promi
       "pack downloads are disabled (FAILPROOFAI_NO_DOWNLOAD). Already-installed packs keep enforcing.",
     );
   }
-  const spec = parsePackSpec(source);
+  const parsed = parsePackSpec(source);
+  // Resolve BEFORE anything is written, and pin the concrete result. A tagless
+  // source is a convenience for the person typing; what the machine records must
+  // always name one release.
+  const spec: PinnedPackSpec = parsed.tag
+    ? { ...parsed, tag: parsed.tag }
+    : { ...parsed, tag: await resolveLatestTag(parsed) };
+  const resolvedFromLatest = parsed.tag === null;
   const fetched = await fetchPack(spec);
   const available = fetched.policies.map((p) => p.name);
 
@@ -264,6 +351,8 @@ export async function addPack(source: string, opts?: { only?: string[] }): Promi
     id: fetched.id,
     version: fetched.version,
     source: record.source,
+    tag: spec.tag,
+    resolvedFromLatest,
     enabled: enabled ?? available,
     available,
     artifact: artifactAbs,

@@ -256,7 +256,13 @@ export async function evaluateHookEvent(
     /** Registered policy name → where it came from. See the set() below. */
     const policyAttribution = new Map<
       string,
-      { source: "custom" | "convention" | "cloud"; cloudPolicyId?: string; cloudVersion?: number }
+      {
+        source: "custom" | "convention" | "cloud" | "pack";
+        cloudPolicyId?: string;
+        cloudVersion?: number;
+        packId?: string;
+        packVersion?: string;
+      }
     >();
     let cloudDeployment: number | undefined;
     /** What observe-mode policies WOULD have done, had they been enforcing. */
@@ -460,8 +466,14 @@ export async function evaluateHookEvent(
         // question cloud attribution has to answer, "which rollout produced
         // this decision", could only be answered by re-parsing our own label.
         policyAttribution.set(registeredName, {
-          source: cloudManaged ? "cloud" : isConvention ? "convention" : "custom",
+          // `pack` was in scope here and simply not consulted, so every pack
+          // decision was filed as "custom" — which is also what a user's own
+          // local .mjs gets, making the two indistinguishable without
+          // re-parsing the `pack/` prefix off the display name. That re-parsing
+          // is exactly the practice these fields exist to replace.
+          source: cloudManaged ? "cloud" : pack ? "pack" : isConvention ? "convention" : "custom",
           ...(cloudManaged ? { cloudPolicyId: cloudManaged.id, cloudVersion: cloudManaged.version } : {}),
+          ...(pack ? { packId: pack.id, packVersion: pack.version } : {}),
         });
         registerPolicy(
           registeredName,
@@ -547,6 +559,8 @@ export async function evaluateHookEvent(
               ...(attribution?.cloudVersion !== undefined
                 ? { cloudVersion: attribution.cloudVersion }
                 : {}),
+              ...(attribution?.packId ? { packId: attribution.packId } : {}),
+              ...(attribution?.packVersion ? { packVersion: attribution.packVersion } : {}),
             };
           })()
         : {}),

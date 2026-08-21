@@ -96,11 +96,20 @@ export interface HookActivityEntry {
    * plain allow) and on rows written before this existed — so, like
    * `matchedPolicies`, `undefined` means "unknown", not "builtin".
    */
-  policySource?: "builtin" | "custom" | "convention" | "cloud";
+  policySource?: "builtin" | "custom" | "convention" | "cloud" | "pack";
   /** Cloud policy id of the decider. Present only when `policySource` is "cloud". */
   cloudPolicyId?: string;
   /** Immutable version of that policy — the half of attribution that identifies WHICH version ran. */
   cloudVersion?: number;
+  /**
+   * Pack id and version of the decider. Present only when `policySource` is
+   * "pack", and here for the same reason the cloud pair is: the display name
+   * encodes both ("pack/acme/finance@1.2.0/…") but only as a string, so without
+   * these the question "which pack, which version decided this" could only be
+   * answered by re-parsing our own label.
+   */
+  packId?: string;
+  packVersion?: string;
   /**
    * The cloud deployment active when this event was evaluated, recorded on
    * every row of a managed machine regardless of what decided. "What was
@@ -135,7 +144,7 @@ export interface HookActivityFilters {
    * organization's policies decided" is the question cloud rollout reporting
    * is built on, and it is unanswerable without this.
    */
-  source?: "builtin" | "custom" | "convention" | "cloud";
+  source?: "builtin" | "custom" | "convention" | "cloud" | "pack";
 }
 
 export interface HookActivityStats {

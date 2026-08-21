@@ -96,6 +96,22 @@ export interface PackError {
   /** The pack's id when it was readable enough to have one. */
   id: string | null;
   reason: string;
+  /**
+   * The effect the failed pack asked for, when it got far enough to say.
+   *
+   * Carried because an `observe` pack that fails to load must NOT make the
+   * machine deny: an observe pack evaluates and discards by construction, so
+   * denying on its behalf denies for something that would have allowed. Effect
+   * is validated BEFORE the digest check, so for every failure at or after that
+   * point it was already known — and was previously thrown away with the
+   * exception.
+   */
+  effect?: PolicyEffect;
+  /**
+   * Policy names the entry declared, when it parsed far enough to list them.
+   * Lets the deny name what is missing instead of being blanket.
+   */
+  declared?: PolicyCatalogEntry[];
 }
 
 export interface PackReadResult {
@@ -168,6 +184,10 @@ function parsePack(root: string, value: unknown): ResolvedPack {
     throw new Error(`unknown effect ${JSON.stringify(raw.effect)} for pack ${raw.id}`);
   }
 
+  // Recorded before anything that can fail, so a later throw can still say what
+  // this pack was for.
+  const effect: PolicyEffect = (raw.effect as PolicyEffect | undefined) ?? "enforce";
+
   const path = resolveManagedPath(root, raw.entry);
   const actual = createHash("sha256").update(readFileSync(path)).digest("hex");
   if (actual !== raw.sha256) {
@@ -201,7 +221,7 @@ function parsePack(root: string, value: unknown): ResolvedPack {
     source: raw.source,
     path,
     sha256: raw.sha256,
-    effect: (raw.effect as PolicyEffect | undefined) ?? "enforce",
+    effect,
     policies,
     enabled,
   };
@@ -264,10 +284,32 @@ export function readInstalledPacks(): PackReadResult {
       seen.add(pack.id);
       packs.push(pack);
     } catch (err) {
-      errors.push({ id: declaredId, reason: errText(err) });
+      const rec = entry as InstalledPackRecord | null;
+      const declaredEffect =
+        rec && (rec.effect === "observe" || rec.effect === "enforce") ? rec.effect : "enforce";
+      errors.push({
+        id: declaredId,
+        reason: errText(err),
+        effect: declaredEffect,
+        // Best effort: an entry too malformed to list policies yields nothing
+        // here, and a deny built from it is unavoidably blanket.
+        ...(Array.isArray(rec?.policies) ? { declared: safeDeclared(rec.policies) } : {}),
+      });
     }
   }
   return { packs, errors };
+}
+
+/** Policy entries that at least carry a name and a match, for narrowing a deny. */
+function safeDeclared(raw: unknown[]): PolicyCatalogEntry[] {
+  const out: PolicyCatalogEntry[] = [];
+  for (const value of raw) {
+    if (!value || typeof value !== "object") continue;
+    const p = value as Record<string, unknown>;
+    if (typeof p.name !== "string" || !p.match || typeof p.match !== "object") continue;
+    out.push(p as unknown as PolicyCatalogEntry);
+  }
+  return out;
 }
 
 function errText(err: unknown): string {

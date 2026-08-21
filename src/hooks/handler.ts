@@ -386,6 +386,10 @@ export async function evaluateHookEvent(
         if (!cloudManaged && policyId && disabledCustomPolicies.has(policyId)) continue;
         // Same rule for a session pause — it suspends local policy, never cloud.
         if (!cloudManaged && activePause) continue;
+        // A pack's artifact registers everything it contains; the user may have
+        // taken only some of it. `enabled: null` means the whole pack, which is
+        // what `pack add` writes when no selection was made.
+        if (pack?.enabled && !pack.enabled.includes(hook.name)) continue;
         const hookName = hook.name;
         const conventionScope = (hook as CustomHook & { __conventionScope?: string }).__conventionScope;
         const isConvention = !!conventionScope;

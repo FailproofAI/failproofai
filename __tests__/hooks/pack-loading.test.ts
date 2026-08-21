@@ -47,6 +47,7 @@ function packRecord(over: Partial<ResolvedPack> = {}): ResolvedPack {
     sha256: SHA,
     effect: "enforce",
     policies: [],
+    enabled: null,
     ...over,
   };
 }

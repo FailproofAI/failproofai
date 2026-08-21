@@ -13,6 +13,43 @@ describe("hooks/install-prompt", () => {
     vi.restoreAllMocks();
   });
 
+  /**
+   * `manager.ts` writes whatever this returns straight into `enabledPolicies`,
+   * and then prints only what survived — so anything this function drops is
+   * configuration destroyed with nothing on screen to say so.
+   */
+  describe("never drops a configured policy name it does not recognise", () => {
+    const nonTty = () =>
+      Object.defineProperty(process.stdin, "isTTY", { value: false, writable: true, configurable: true });
+
+    it("carries qualified, beta and pack names through the non-TTY path", async () => {
+      nonTty();
+      const { promptPolicySelection } = await import("../../src/hooks/install-prompt");
+
+      const configured = [
+        "block-sudo",
+        // A form the ENFORCEMENT path explicitly accepts —
+        // `registerBuiltinPolicies` canonicalizes both spellings — yet the
+        // catalog is keyed by the bare name, so an intersection deleted it.
+        "failproofai/block-sudo",
+        "pack/acme/finance@1.2.0/block-refunds",
+        "some-policy-this-build-has-never-heard-of",
+      ];
+
+      expect(await promptPolicySelection(configured)).toEqual(configured);
+    });
+
+    it("still returns the defaults when nothing was configured", async () => {
+      // The path every fresh install takes must be unchanged.
+      nonTty();
+      const { promptPolicySelection } = await import("../../src/hooks/install-prompt");
+      const { BUILTIN_POLICIES } = await import("../../src/hooks/builtin-policies");
+
+      const expected = BUILTIN_POLICIES.filter((p) => p.defaultEnabled && !p.beta).map((p) => p.name);
+      expect(await promptPolicySelection()).toEqual(expected);
+    });
+  });
+
   it("returns default-enabled policies when stdin is not a TTY", async () => {
     Object.defineProperty(process.stdin, "isTTY", {
       value: false,

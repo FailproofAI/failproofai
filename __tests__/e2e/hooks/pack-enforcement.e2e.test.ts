@@ -1,0 +1,136 @@
+// @vitest-environment node
+/**
+ * A pack, denying a real tool call through the real hook binary.
+ *
+ * Everything else about packs is tested at the unit level: the manifest parses,
+ * the loader tags, the digest verifies. None of that answers the only question
+ * that matters to a user — does an installed pack actually STOP the agent — and
+ * the layers between (config merge, registration order, per-CLI response shape)
+ * are exactly where a policy silently becomes decorative.
+ */
+import { describe, it, expect } from "vitest";
+import { createHash } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { runHook, assertAllow, assertPreToolUseDeny } from "../helpers/hook-runner";
+import { createFixtureEnv } from "../helpers/fixture-env";
+import { Payloads } from "../helpers/payloads";
+
+const ENTRY = `
+  import { customPolicies, allow, deny } from "failproofai";
+  customPolicies.add({
+    name: "block-refunds",
+    description: "Block refunds above the approved limit",
+    match: { events: ["PreToolUse"] },
+    fn: async (ctx) => (String(ctx.toolInput?.command ?? "").includes("refund")
+      ? deny("refunds need a human")
+      : allow()),
+  });
+  customPolicies.add({
+    name: "block-payouts",
+    description: "Block payouts",
+    match: { events: ["PreToolUse"] },
+    fn: async (ctx) => (String(ctx.toolInput?.command ?? "").includes("payout")
+      ? deny("payouts need a human")
+      : allow()),
+  });
+`;
+const DIGEST = createHash("sha256").update(ENTRY).digest("hex");
+
+const policy = (name: string) => ({
+  name, description: `d-${name}`, category: "Finance", defaultEnabled: true,
+  match: { events: ["PreToolUse"] },
+});
+
+/** Install a pack into the fixture home, the way `pack add` would leave it. */
+function installPack(home: string, over: Record<string, unknown> = {}): void {
+  const packs = join(home, ".failproofai", "policies", "packs");
+  mkdirSync(join(packs, "artifacts"), { recursive: true });
+  writeFileSync(join(packs, "artifacts", `${DIGEST}.mjs`), ENTRY, "utf8");
+  writeFileSync(
+    join(packs, "installed.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      packs: [{
+        id: "acme/finance", version: "1.2.0", source: "github:acme/finance@v1.2.0",
+        entry: `artifacts/${DIGEST}.mjs`, sha256: DIGEST,
+        policies: [policy("block-refunds"), policy("block-payouts")],
+        ...over,
+      }],
+    }),
+    "utf8",
+  );
+}
+
+const bash = (cmd: string, cwd: string) => Payloads.preToolUse.bash(cmd, cwd);
+
+describe("pack enforcement, end to end", () => {
+  it("denies a tool call a pack policy objects to", () => {
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: [] });
+    installPack(env.home);
+
+    const result = runHook("PreToolUse", bash("issue refund 500", env.cwd), { homeDir: env.home });
+    assertPreToolUseDeny(result);
+    expect(result.stdout + result.stderr).toContain("refunds need a human");
+  });
+
+  it("allows what the pack does not object to", () => {
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: [] });
+    installPack(env.home);
+    assertAllow(runHook("PreToolUse", bash("ls -la", env.cwd), { homeDir: env.home }));
+  });
+
+  it("enforces with NO builtin policies enabled — the pack is the only guard", () => {
+    // The layering claim made explicit: a pack adds enforcement rather than
+    // depending on any builtin being switched on.
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: [] });
+    installPack(env.home);
+    assertPreToolUseDeny(runHook("PreToolUse", bash("send payout now", env.cwd), { homeDir: env.home }));
+  });
+
+  it("registers ONLY the selected policies", () => {
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: [] });
+    installPack(env.home, { enabled: ["block-refunds"] });
+
+    assertPreToolUseDeny(runHook("PreToolUse", bash("issue refund 500", env.cwd), { homeDir: env.home }));
+    // Taken out of the pack, so it must not fire even though the artifact
+    // registers it.
+    assertAllow(runHook("PreToolUse", bash("send payout now", env.cwd), { homeDir: env.home }));
+  });
+
+  it("does not enforce when the artifact no longer matches its recorded digest", () => {
+    // Fails open — correct only while builtins still ship compiled in and keep
+    // enforcing underneath, which is why this asserts a clean allow rather than
+    // a deny, and why that dependency is written at the catch in handler.ts.
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: [] });
+    installPack(env.home);
+    const packs = join(env.home, ".failproofai", "policies", "packs");
+    writeFileSync(join(packs, "artifacts", `${DIGEST}.mjs`), ENTRY + "\n// tampered\n", "utf8");
+
+    assertAllow(runHook("PreToolUse", bash("issue refund 500", env.cwd), { homeDir: env.home }));
+  });
+
+  it("keeps enforcing builtins when the pack manifest is corrupt", () => {
+    // The layering property that makes fail-open defensible at all.
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: ["block-sudo"] });
+    const packs = join(env.home, ".failproofai", "policies", "packs");
+    mkdirSync(packs, { recursive: true });
+    writeFileSync(join(packs, "installed.json"), "not json", "utf8");
+
+    assertPreToolUseDeny(runHook("PreToolUse", bash("sudo rm -rf /", env.cwd), { homeDir: env.home }));
+  });
+
+  it("runs a pack policy in observe mode without denying", () => {
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: [] });
+    installPack(env.home, { effect: "observe" });
+    assertAllow(runHook("PreToolUse", bash("issue refund 500", env.cwd), { homeDir: env.home }));
+  });
+});

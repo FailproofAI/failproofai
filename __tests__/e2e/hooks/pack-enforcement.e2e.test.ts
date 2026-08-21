@@ -103,13 +103,49 @@ describe("pack enforcement, end to end", () => {
     assertAllow(runHook("PreToolUse", bash("send payout now", env.cwd), { homeDir: env.home }));
   });
 
-  it("does not enforce when the artifact no longer matches its recorded digest", () => {
-    // Fails open — correct only while builtins still ship compiled in and keep
-    // enforcing underneath, which is why this asserts a clean allow rather than
-    // a deny, and why that dependency is written at the catch in handler.ts.
+  it("DENIES when the artifact no longer matches its recorded digest", () => {
+    // This asserted a clean allow until the fail-closed contract landed, and the
+    // comment then said why: failing open was defensible only while compiled
+    // builtins enforced underneath. Once a pack can be the only thing standing
+    // between an agent and a machine, "the guard you were promised is not
+    // running" has to refuse rather than proceed quietly.
     const env = createFixtureEnv();
     env.writeConfig({ enabledPolicies: [] });
     installPack(env.home);
+    const packs = join(env.home, ".failproofai", "policies", "packs");
+    writeFileSync(join(packs, "artifacts", `${DIGEST}.mjs`), ENTRY + "\n// tampered\n", "utf8");
+
+    const result = runHook("PreToolUse", bash("issue refund 500", env.cwd), { homeDir: env.home });
+    assertPreToolUseDeny(result);
+    const out = result.stdout + result.stderr;
+    expect(out).toContain("acme/finance");
+    // The message must name the human command, because the agent cannot run it:
+    // block-failproofai-commands denies every failproofai invocation from a tool
+    // call, deliberately and unconditionally.
+    expect(out).toContain("failproofai pack list");
+  });
+
+  it("still denies only where the missing guards applied", () => {
+    // The deny is narrow, unlike the daemon's. An unreachable daemon means no
+    // evaluation happened at all, so nothing can be known safe; an unloadable
+    // pack has an ENUMERABLE set of missing guards, because every declared
+    // policy must carry a match.
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: [] });
+    installPack(env.home);
+    const packs = join(env.home, ".failproofai", "policies", "packs");
+    writeFileSync(join(packs, "artifacts", `${DIGEST}.mjs`), ENTRY + "\n// tampered\n", "utf8");
+
+    // The pack's policies declare PreToolUse only, so a Stop event is untouched.
+    assertAllow(runHook("Stop", { hook_event_name: "Stop", cwd: env.cwd, session_id: "s" } as never, { homeDir: env.home }));
+  });
+
+  it("does NOT deny for a tampered OBSERVE pack", () => {
+    // An observe pack evaluates and discards by construction, so denying on its
+    // behalf denies for something that would have allowed.
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: [] });
+    installPack(env.home, { effect: "observe" });
     const packs = join(env.home, ".failproofai", "policies", "packs");
     writeFileSync(join(packs, "artifacts", `${DIGEST}.mjs`), ENTRY + "\n// tampered\n", "utf8");
 

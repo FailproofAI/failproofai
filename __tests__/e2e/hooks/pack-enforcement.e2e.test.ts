@@ -127,10 +127,20 @@ describe("pack enforcement, end to end", () => {
     assertPreToolUseDeny(runHook("PreToolUse", bash("sudo rm -rf /", env.cwd), { homeDir: env.home }));
   });
 
-  it("runs a pack policy in observe mode without denying", () => {
+  it("runs a pack policy in observe mode without denying, and WITHOUT crashing", () => {
+    // The allow is not enough on its own, and this test proved it: the first
+    // version of this passed against a real bug. The observe path read
+    // `cloudManaged!.id`, which is undefined for a pack, so every non-allow
+    // shadow verdict threw — the throw was swallowed by the evaluator, nothing
+    // was recorded, and the net result was an allow. Exactly what this asserted.
+    // A clean stderr is what separates "observed" from "crashed into an allow".
     const env = createFixtureEnv();
     env.writeConfig({ enabledPolicies: [] });
     installPack(env.home, { effect: "observe" });
-    assertAllow(runHook("PreToolUse", bash("issue refund 500", env.cwd), { homeDir: env.home }));
+
+    const result = runHook("PreToolUse", bash("issue refund 500", env.cwd), { homeDir: env.home });
+    assertAllow(result);
+    expect(result.stderr).not.toMatch(/threw:/);
+    expect(result.stderr).not.toMatch(/cloudManaged/);
   });
 });

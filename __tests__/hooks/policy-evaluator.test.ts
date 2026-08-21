@@ -1,7 +1,14 @@
 // @vitest-environment node
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+vi.mock("../../src/hooks/hook-telemetry", () => ({
+  trackHookEvent: vi.fn(() => Promise.resolve()),
+  flushHookTelemetry: vi.fn(() => Promise.resolve()),
+}));
+
 import { evaluatePolicies } from "../../src/hooks/policy-evaluator";
 import { registerPolicy, clearPolicies } from "../../src/hooks/policy-registry";
+import { trackHookEvent } from "../../src/hooks/hook-telemetry";
 
 describe("hooks/policy-evaluator", () => {
   beforeEach(() => {
@@ -578,6 +585,40 @@ describe("hooks/policy-evaluator", () => {
       const result = await evaluatePolicies("PreToolUse", { tool_name: "Bash" });
       expect(result.decision).toBe("instruct");
       expect(result.policyName).toBe("failproofai/advisor");
+    });
+  });
+
+  describe("crash attribution", () => {
+    // `policy_evaluation_error` is how regressions in OUR compiled policies get
+    // surfaced. Firing it for a third party's pack both pollutes that signal and
+    // sends a publisher-controlled policy name on an event that claims the fault
+    // is ours.
+    const thrower = (name: string) =>
+      registerPolicy(name, "d", async () => { throw new Error("boom"); }, { events: ["PreToolUse"] });
+
+    const errorEvents = () =>
+      vi.mocked(trackHookEvent).mock.calls.filter((c) => c[1] === "policy_evaluation_error");
+
+    it("reports a builtin crash", async () => {
+      vi.mocked(trackHookEvent).mockClear();
+      thrower("failproofai/boomer");
+      await evaluatePolicies("PreToolUse", { tool_name: "Bash" });
+      expect(errorEvents()).toHaveLength(1);
+    });
+
+    it("does NOT report a pack, cloud, custom or convention crash as ours", async () => {
+      for (const name of [
+        "pack/acme/finance@1.2.0/boomer",
+        "cloud/org-guard@7/boomer",
+        "custom/boomer",
+        ".failproofai-project/boomer",
+      ]) {
+        vi.mocked(trackHookEvent).mockClear();
+        clearPolicies();
+        thrower(name);
+        await evaluatePolicies("PreToolUse", { tool_name: "Bash" });
+        expect(errorEvents(), name).toHaveLength(0);
+      }
     });
   });
 

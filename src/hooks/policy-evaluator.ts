@@ -112,11 +112,18 @@ export async function evaluatePolicies(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hookLogWarn(`policy "${policy.name}" threw: ${msg}`);
-      // Custom hooks are wrapped in handler.ts with their own try/catch that
-      // emits custom_hook_error. Anything reaching here is a builtin policy
-      // crash — track separately so we can surface regressions in builtins.
-      const isCustom = policy.name.startsWith("custom/") || policy.name.startsWith(".failproofai-");
-      if (!isCustom) {
+      // `policy_evaluation_error` exists to surface regressions in the policies
+      // WE compile in, so it must fire only for those.
+      //
+      // Tested positively — a builtin is exactly a policy in the `failproofai/`
+      // namespace — rather than by listing the prefixes that are not builtins.
+      // The list version enumerated `custom/` and `.failproofai-` only, so
+      // `cloud/…` and `pack/…` both failed it and reported a third party's
+      // crash as ours, under a publisher-controlled policy name. Reproduced
+      // exactly that way by an observe-mode pack on this branch. A positive test
+      // also means the NEXT source kind cannot re-open this by omission.
+      const isBuiltin = policy.name.startsWith(`${DEFAULT_POLICY_NAMESPACE}/`);
+      if (isBuiltin) {
         void trackHookEvent(getInstanceId(), "policy_evaluation_error", {
           policy_name: policy.name,
           event_type: eventType,

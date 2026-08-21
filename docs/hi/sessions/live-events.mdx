@@ -1,22 +1,21 @@
 ---
----
-title: "लाइव इवेंट्स"
-description: "सेशन चलते समय एजेंट की गतिविधि को देखें।"
+title: "लाइव events"
+description: "किसी सत्र के चलते हुए agent activity को देखें।"
 icon: "radio"
 ---
 
-लाइव इवेंट्स आपको इंस्ट्रूमेंटेशन की पुष्टि करने और सेशन समाप्त होने का इंतज़ार किए बिना जोखिम भरे रन को देखने में मदद करते हैं।
+लाइव events आपको instrumentation की पुष्टि करने और जोखिम भरे run को देखने में मदद करते हैं, बिना सत्र के समाप्त होने का इंतजार किए।
 
-## गतिविधि देखें
+## Activity देखें
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Events** पर जाएँ।
-    2. वर्तमान समय विंडो के साथ शुरू करें और पुष्टि करने के लिए कोई फ़िल्टर न लगाएँ कि डेटा आ रहा है।
-    3. पर्यावरण, इवेंट प्रकार, एजेंट, या सेशन के आधार पर फ़िल्टर करें। पेलोड टेक्स्ट के लिए सर्च का उपयोग करें।
-    4. किसी इवेंट को चुनें और इसके सारांश और विवरण को देखें। पूर्ण ट्रेस के लिए इसके सेशन लिंक का अनुसरण करें।
+    1. **Observe → Events** पर जाएं।
+    2. वर्तमान समय विंडो के साथ शुरू करें और डेटा आने की पुष्टि करने के लिए कोई फ़िल्टर न रखें।
+    3. Environment, event type, agent, या session के आधार पर फ़िल्टर करें। Payload text के लिए search का उपयोग करें।
+    4. एक event चुनें इसके सारांश और विवरण को देखने के लिए। पूरी trace के लिए इसके session link को फॉलो करें।
 
-    ![समय, पर्यावरण, इवेंट प्रकार, एजेंट, मॉडल, कॉन्टेक्स्ट, सेशन और टेक्स्ट फ़िल्टर के साथ लाइव इवेंट्स स्ट्रीम।](/images/dashboard/events-stream-current.png)
+    ![लाइव Events stream जो Hermes chat gateway से traffic दिखा रहा है साथ ही coding-CLI runs, समय, environment, event type, agent, model, context, और session के आधार पर फ़िल्टर किए गए।](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -25,20 +24,22 @@ icon: "radio"
     fp --json events --full --session-id <session-id> --all
     ```
 
-    डिफ़ॉल्ट फीड कच्चे पेलोड को छोड़ देता है। `--full` का उपयोग केवल सीमित सेशन जाँच के लिए करें।
+    डिफ़ॉल्ट feed raw payloads को छोड़ देता है। `--full` का उपयोग केवल bounded session investigation के लिए करें।
   </Tab>
 </Tabs>
 
-तीन तत्काल प्रश्नों का उत्तर देने के लिए इवेंट स्ट्रीम का उपयोग करें:
+तीन तुरंत सवालों के जवाब देने के लिए event stream का उपयोग करें:
 
-- क्या अपेक्षित एजेंट सही पर्यावरण को रिपोर्ट कर रहा है?
-- क्या मॉडल कॉल, टूल कॉल और नीति निर्णय क्रम में आ रहे हैं?
-- क्या सेशन ने प्रगति करना बंद कर दिया है या किसी कार्रवाई को दोहराना शुरू कर दिया है?
+- क्या अपेक्षित agent सही environment को रिपोर्ट कर रहा है?
+- क्या model calls, tool calls, और policy decisions क्रम में आ रहे हैं?
+- क्या सत्र प्रगति करना बंद कर गया है या किसी action को दोहराना शुरू कर दिया है?
 
-इवेंट प्रकारों में एजेंट लाइफसाइकिल इवेंट्स, मॉडल अनुरोध और प्रतिक्रियाएँ, टूल उपयोग और परिणाम, हुक निष्पादन, मानव प्रतीक्षा और रुकावटें, और स्पष्ट त्रुटियाँ शामिल हैं। सहसंबंध IDs जोड़ी गई इवेंट्स को जोड़ते हैं जैसे टूल कॉल और इसका परिणाम।
+Event types में agent lifecycle events, model requests और responses, tool use और results, hook execution, human waits और interrupts, और explicit errors शामिल हैं। Correlation IDs जोड़ी गई events को जोड़ते हैं जैसे कि एक tool call और इसका result।
 
 <Tip>
-  किसी नए इंटीग्रेशन को सत्यापित करते समय लाइव दृश्य को व्यापक रखें। पहली इवेंट देखने के बाद ही फ़िल्टर जोड़ें; एक गलत फ़िल्टर विफल इनजेशन जैसा दिख सकता है।
+  किसी नए integration को सत्यापित करते समय लाइव view को व्यापक रखें। पहले event को देखने के बाद ही फ़िल्टर जोड़ें; एक गलत फ़िल्टर विफल ingestion जैसा दिख सकता है।
 </Tip>
 
-यदि कोई इवेंट्स दिखाई न दें, तो `failproofai config --status` चलाएँ, फिर [इनजेशन समस्याओं को समाधान करें](/hi/reference/troubleshooting)।
+यदि कोई events दिखाई न दें, तो `failproofai config --status` चलाएं, फिर [troubleshoot ingestion](/hi/reference/troubleshooting)।
+
+Agents जो 12 समर्थित [harnesses](/hi/reference/harnesses) में से किसी एक में नहीं चलते हैं, [Python SDK](/hi/reference/python-sdk) के माध्यम से एक ही event types रिपोर्ट करते हैं, जिनमें human-in-the-loop events (`human_wait`, `human_input`, `human_interrupt`) शामिल हैं जो gateway और production agents पर निर्भर हैं।

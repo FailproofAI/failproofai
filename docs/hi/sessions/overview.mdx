@@ -1,27 +1,29 @@
 ---
-title: "Sessions"
-description: "एक agent run का संपूर्ण रिकॉर्ड देखें।"
+title: "सेशन"
+description: "एक एजेंट रन के संपूर्ण रिकॉर्ड के साथ शुरुआत करें।"
 icon: "workflow"
 ---
 
-एक session सबसे अच्छा शुरुआती बिंदु है जब कोई agent अप्रत्याशित रूप से व्यवहार करे। यह मॉडल requests, responses, tool calls, human interactions, errors, evaluations, और policy decisions को जोड़ता है जो एक run से संबंधित हों।
+सेशन सबसे अच्छा शुरुआती बिंदु है जब कोई एजेंट अप्रत्याशित रूप से व्यवहार करता है। यह मॉडल अनुरोधों, प्रतिक्रियाओं, टूल कॉल, मानव इंटरैक्शन, त्रुटियों, मूल्यांकन और नीति निर्णयों को जोड़ता है जो एक रन से संबंधित हैं।
+
+सेशन उसी तरह दिखते हैं भले ही कौन सा हार्नेस उन्हें बनाता है। Claude Code एक रिपॉजिटरी को फिर से लिखता है, Hermes एजेंट Slack में किसी ग्राहक को उत्तर देता है, और SDK के साथ उपकरणीकृत Python सेवा सभी एक ही ट्रेस प्रारूप में आते हैं, इसलिए एक दृश्य पूरे फ्लीट को कवर करता है।
 
 <div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
   <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with Failproof AI" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
 </div>
 
-एक agent run को इसके लक्ष्य से model calls, tools, और अंतिम response के माध्यम से फॉलो करें।
+एक एजेंट रन को इसके लक्ष्य से मॉडल कॉल, टूल और अंतिम प्रतिक्रिया तक फॉलो करें।
 
-## एक session खोजें
+## सेशन खोजें
 
 <Tabs>
-  <Tab title="Dashboard">
-    1. Cloud sidebar में, **Observe → Sessions** पर जाएं।
-    2. समय विंडो सेट करें, फिर environment, status, agent, या session ID के आधार पर फ़िल्टर करें।
-    3. जब आपको quality, cost, token, या latency slice की आवश्यकता हो तो score या metric ranges जोड़ें।
-    4. trace खोलने के लिए एक row चुनें। इसे share करते समय session ID के बगल में copy control का उपयोग करें।
+  <Tab title="डैशबोर्ड">
+    1. क्लाउड साइडबार में, **Observe → Sessions** पर जाएं।
+    2. समय विंडो सेट करें, फिर पर्यावरण, स्थिति, एजेंट या सेशन ID द्वारा फ़िल्टर करें।
+    3. जब आपको गुणवत्ता, लागत, टोकन या विलंबता स्लाइस की आवश्यकता हो तो स्कोर या मेट्रिक रेंज जोड़ें।
+    4. इसके ट्रेस को खोलने के लिए एक पंक्ति चुनें। इसे साझा करते समय सेशन ID के बगल में कॉपी नियंत्रण का उपयोग करें।
 
-    ![Sessions list जो प्रत्येक run के लिए एक row दिखाता है जिसमें environment, agent, status, और evaluation score filters हैं।](/images/dashboard/sessions-list.png)
+    ![सेशन सूची जो पर्यावरण, एजेंट, स्थिति और मूल्यांकन स्कोर फ़िल्टर के साथ प्रति रन एक पंक्ति दिखाती है।](/images/dashboard/sessions-list.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -30,26 +32,26 @@ icon: "workflow"
     fp --json sessions --session-id <session-id>
     ```
 
-    Multi-agent runs को expand करने के लिए `--agents` जोड़ें, paginate करने के लिए `--all`, या output columns चुनने के लिए `--fields`।
+    मल्टी-एजेंट रन का विस्तार करने के लिए `--agents` जोड़ें, पेजिनेट करने के लिए `--all` जोड़ें, या आउटपुट कॉलम चुनने के लिए `--fields` जोड़ें।
   </Tab>
 </Tabs>
 
 ## आप क्या कर सकते हैं
 
-- एक run को agent, environment, समय, मॉडल, event type, या error state के आधार पर खोजें।
-- सटीक sequence को फॉलो करें जिसने एक outcome तैयार किया।
-- सफल और असफल runs की तुलना करें।
-- Audit finding या alert incident द्वारा उपयोग किए गए evidence को खोलें।
-- जब आपको offline record की आवश्यकता हो तो एक session export करें।
+- एजेंट, पर्यावरण, समय, मॉडल, इवेंट प्रकार या त्रुटि स्थिति द्वारा एक रन खोजें।
+- उस सटीक क्रम का पालन करें जिसने एक परिणाम दिया।
+- सफल और विफल रन की तुलना करें।
+- ऑडिट खोज या सतर्कता घटना द्वारा उपयोग किए गए साक्ष्य खोलें।
+- जब आपको ऑफलाइन रिकॉर्ड की आवश्यकता हो तो एक सेशन निर्यात करें।
 
-## एक विश्वसनीय investigation order
+## एक विश्वसनीय जांच क्रम
 
-1. Session goal और environment की पुष्टि करें।
-2. पहली error या unexpected decision खोजें—केवल अंतिम विफलता नहीं।
-3. मॉडल context और tool input को तुरंत इसके पहले inspect करें।
-4. Retries, latency, और human interruptions को check करें।
-5. Evaluation scores और policy decisions की समीक्षा करें।
+1. सेशन लक्ष्य और पर्यावरण की पुष्टि करें।
+2. पहली त्रुटि या अप्रत्याशित निर्णय खोजें—केवल अंतिम विफलता नहीं।
+3. इसके तुरंत पहले मॉडल संदर्भ और टूल इनपुट की जांच करें।
+4. पुनः प्रयास, विलंबता और मानव हस्तक्षेप की जांच करें।
+5. मूल्यांकन स्कोर और नीति निर्णयों की समीक्षा करें।
 
-<Card title="एक trace पढ़ें" icon="route" href="/hi/sessions/read-a-trace">
-  Session summary से लेकर उस event तक जाना सीखें जिसने outcome का कारण बना।
+<Card title="एक ट्रेस पढ़ें" icon="route" href="/hi/sessions/read-a-trace">
+  सेशन सारांश से उस इवेंट तक जाने का तरीका जानें जिसके कारण परिणाम हुआ।
 </Card>

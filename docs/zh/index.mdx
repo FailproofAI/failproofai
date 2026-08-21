@@ -1,39 +1,41 @@
 ---
 title: "让你的 agent 万无一失"
-description: "Failproof AI 追踪 agent 行为、审计会话中的故障，并部署策略以阻止同类事件重复发生。"
+description: "为 agent 运行的每种 harness 提供可观测性与执行保障——包括编码 CLI、聊天网关、自托管助手，以及你自己的插桩 agent。"
 icon: "shield-check"
 ---
 
-Failproof AI 帮助团队了解 agent 的行为、找出故障发生的位置，并在相同行为再次出现之前部署防护措施。
+Failproof AI 帮助团队了解 agent 的行为、找出失败原因，并在同样的问题再次发生前部署防护措施。
+
+**harness** 是 agent 实际运行的环境。Failproof AI 支持接入其中 12 种——包括 Claude Code 和 Codex 等编码 CLI、Hermes 等聊天网关、OpenClaw 等自托管助手——所有事件、策略和会话历史对每种环境一视同仁。没有 harness 的 agent 可通过 [Python SDK](/zh/reference/python-sdk) 上报，该 SDK 提供追踪与审计能力；在自有运行时中执行策略则需要在你的代码中添加 hook。
 
 <Columns cols={2}>
   <Card title="配置 Failproof" icon="wand-sparkles" href="/zh/start/quickstart">
-    使用该技能对你的项目进行插桩、完成连接，并验证 agent 日志是否正常送达。
+    使用技能对你的项目进行插桩、连接并验证 agent 日志是否正常上报。
   </Card>
-  <Card title="使用 Failproof 助手" icon="message-square-text" href="/zh/sessions/assistant">
-    用自然语言分析、查询 agent 日志，构建仪表板并运行审计。
+  <Card title="询问 Failproof 助手" icon="message-square-text" href="/zh/sessions/assistant">
+    用自然语言分析、查询 agent 日志，构建仪表盘并执行审计。
   </Card>
 </Columns>
 
 <Columns cols={3}>
-  <Card title="查看 agent 的操作记录" icon="route" href="/zh/sessions/overview">
-    在单个会话中追踪模型调用、工具使用、错误、人工输入、延迟及策略决策。
+  <Card title="查看 agent 的行为" icon="route" href="/zh/sessions/overview">
+    在单个会话中追踪模型调用、工具使用、错误、人工输入、延迟和策略决策。
   </Card>
-  <Card title="系统性地发现故障" icon="scan-search" href="/zh/audits/overview">
-    对指定的会话集合进行审计，审阅有证据支撑的发现，并将问题作为 issue 进行跟踪。
+  <Card title="系统化地发现故障" icon="scan-search" href="/zh/audits/overview">
+    对指定会话集合进行审计，查看有依据支撑的发现，并以 issue 的形式跟踪修复进度。
   </Card>
-  <Card title="防止故障再次发生" icon="shield-check" href="/zh/policies/overview">
-    将已知的故障模式转化为策略，观察其影响，并将其部署到整个服务集群。
+  <Card title="防止问题复发" icon="shield-check" href="/zh/policies/overview">
+    将已知的失败模式转化为策略，观察其影响，并在整个 fleet 中部署。
   </Card>
 </Columns>
 
 > **会话 → 审计 → 发现 → Issue → 策略**<br />
-> 追踪发生了什么、找出故障、管理响应，然后防止相同行为在后续运行中再次出现。
+> 追踪发生了什么，找出故障，管理响应，然后防止同样的行为在未来的运行中重现。
 
 ## 从这里开始
 
-如果你正在部署第一个经过插桩的 agent，请从[快速入门](/zh/start/quickstart)开始。如果数据已经在接收，请打开[会话](/zh/sessions/overview)，先检查一次真实运行记录，再配置审计或策略。
+如果你正在部署第一个插桩 agent，请从 [快速入门](/zh/start/quickstart) 开始。如果数据已经在上报，请打开 [Sessions](/zh/sessions/overview)，先检查一次真实运行，再配置审计或策略。
 
-<Card title="找出并修复一个故障" icon="arrow-right" href="/zh/start/quickstart">
-  完成从捕获到安全部署策略的端到端工作流。
+<Card title="发现并修复一个故障" icon="arrow-right" href="/zh/start/quickstart">
+  完成从数据采集到安全部署策略的端到端工作流。
 </Card>

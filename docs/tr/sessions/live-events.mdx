@@ -4,18 +4,18 @@ description: "Oturum çalışırken aracı etkinliğini gerçek zamanlı olarak 
 icon: "radio"
 ---
 
-Canlı etkinlikler, enstrümantasyonunuzu doğrulamanıza ve oturum bitene kadar beklemeden riskli bir çalıştırmayı izlemenize yardımcı olur.
+Canlı etkinlikler, enstrümantasyonunuzu doğrulamanıza ve oturumun bitmesini beklemeden riskli bir çalışmayı izlemenize yardımcı olur.
 
-## Etkinliği izleyin
+## Etkinliği izle
 
 <Tabs>
-  <Tab title="Gösterge Paneli">
-    1. **Gözlemle → Etkinlikler** bölümüne gidin.
-    2. Verilerin geldiğini doğrulamak için mevcut zaman penceresinden başlayın ve hiçbir filtre kullanmayın.
-    3. Ortam, etkinlik türü, aracı veya oturum ile filtreleyin. Yük metni için arama kullanın.
-    4. Özet ve detaylarını incelemek için bir etkinliği seçin. Tam iz için oturum bağlantısını takip edin.
+  <Tab title="Dashboard">
+    1. **Observe → Events** bölümüne gidin.
+    2. Verilerin geldiğini doğrulamak için mevcut zaman penceresiyle başlayın ve filtre kullanmayın.
+    3. Ortam, etkinlik türü, aracı veya oturum ile filtreleyin. Yük metni için aramayı kullanın.
+    4. Bir etkinliği seçerek özet ve ayrıntılarını inceleyin. Tam trace için oturum bağlantısını izleyin.
 
-    ![Zaman, ortam, etkinlik türü, aracı, model, bağlam, oturum ve metin filtrelerine sahip canlı Etkinlikler akışı.](/images/dashboard/events-stream-current.png)
+    ![Hermes sohbet ağ geçidinden gelen trafik ile kodlama-CLI çalışmalarını gösteren canlı Events akışı, zaman, ortam, etkinlik türü, aracı, model, bağlam ve oturuma göre filtrelenmiş.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,20 +24,22 @@ Canlı etkinlikler, enstrümantasyonunuzu doğrulamanıza ve oturum bitene kadar
     fp --json events --full --session-id <session-id> --all
     ```
 
-    Varsayılan akış ham yükleri hariç tutar. `--full` seçeneğini yalnızca sınırlı bir oturum araştırması için kullanın.
+    Varsayılan akış ham yüklemleri hariç tutar. `--full` seçeneğini yalnızca sınırlı bir oturum araştırması için kullanın.
   </Tab>
 </Tabs>
 
-Üç temel soruya yanıt vermek için etkinlik akışını kullanın:
+Etkinlik akışını üç acil soruyu cevaplamak için kullanın:
 
-- Beklenen aracı doğru ortama rapor veriyor mu?
-- Model çağrıları, araç çağrıları ve politika kararları sıra ile gelmekte midir?
-- Oturum ilerlemeyi durdurdu mu yoksa bir eylemi tekrarlamaya mı başladı?
+- Beklenen aracı doğru ortama raporlama yapıyor mu?
+- Model çağrıları, araç çağrıları ve ilke kararları sırayla geliyorlar mı?
+- Oturum ilerleme yapmayı durdurdu mu veya bir işlemi tekrar etmeye başladı mı?
 
-Etkinlik türleri, aracı yaşam döngüsü etkinlikleri, model istekleri ve yanıtları, araç kullanımı ve sonuçları, kancı yürütme, insan beklemeleri ve kesintileri ile açık hataları içerir. Korelasyon kimlikleri, araç çağrısı ve sonucu gibi eşleştirilmiş etkinlikleri birleştirir.
+Etkinlik türleri aracı yaşam döngüsü etkinlikleri, model istekleri ve yanıtları, araç kullanımı ve sonuçları, kancacık yürütme, insan bekletme ve kesintileri ve açık hatalar içerir. Korelasyon kimlikleri, araç çağrısı ve sonucu gibi eşleştirilmiş etkinlikleri birleştirir.
 
 <Tip>
-  Yeni bir entegrasyon doğrularken canlı görünümü geniş tutun. Yalnızca ilk etkinliği gördükten sonra filtre ekleyin; hatalı bir filtre başarısız bir alımı andıran bir görünüm oluşturabilir.
+  Yeni bir entegrasyonu doğrularken canlı görünümü geniş tutun. İlk etkinliği gördükten sonra filtreleri ekleyin; hatalı bir filtre başarısız alım gibi görünebilir.
 </Tip>
 
-Hiçbir etkinlik görünmüyorsa `failproofai config --status` komutunu çalıştırın, ardından [alımı sorun gider](/tr/reference/troubleshooting) bölümünü okuyun.
+Hiçbir etkinlik görünmezse, `failproofai config --status` komutunu çalıştırın, ardından [alım sorunlarını giderin](/tr/reference/troubleshooting).
+
+Desteklenen 12 [harness](/tr/reference/harnesses) türünden birinde çalışmayan aracılar, insan-döngüde-etkinlikleri (`human_wait`, `human_input`, `human_interrupt`) dahil olmak üzere aynı etkinlik türlerini [Python SDK](/tr/reference/python-sdk) aracılığıyla raporlar. Bu etkinlikler, ağ geçidi ve üretim aracılarının bağlı olduğu etkinliklerdir.

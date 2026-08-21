@@ -1,40 +1,41 @@
 ---
----
-title: "Rendi il tuo agent a prova di errore"
-description: "Failproof AI traccia il comportamento dell'agent, controlla le sessioni per identificare i malfunzionamenti e distribuisce policy che impediscono il ripetersi degli stessi errori."
+title: "Rendi il tuo agente a prova di errore"
+description: "Osservabilità e enforcement per ogni harness in cui i tuoi agenti vengono eseguiti — coding CLI, gateway di chat, assistenti self-hosted e i tuoi agenti strumentati."
 icon: "shield-check"
 ---
 
-Failproof AI aiuta i team a comprendere cosa hanno fatto gli agent, a identificare dove hanno fallito e a distribuire misure di protezione prima che lo stesso comportamento si ripeta.
+Failproof AI aiuta i team a capire cosa hanno fatto gli agenti, a individuare dove hanno fallito e a distribuire protezioni prima che lo stesso comportamento si ripeta.
+
+Un **harness** è ciò in cui il tuo agente viene effettivamente eseguito. Failproof AI si integra con 12 di essi — coding CLI come Claude Code e Codex, gateway di chat come Hermes, assistenti self-hosted come OpenClaw — e gli stessi eventi, le stesse policy e la stessa cronologia delle sessioni si applicano a tutti. Gli agenti senza harness inviano report attraverso l'[SDK Python](/it/reference/python-sdk), che li traccia e li audita; l'enforcement di una policy lì richiede un hook nel tuo runtime.
 
 <Columns cols={2}>
   <Card title="Configura Failproof" icon="wand-sparkles" href="/it/start/quickstart">
-    Usa lo skill per strumentare il tuo progetto, collegarlo e verificare che i log dell'agent arrivino correttamente.
+    Usa lo skill per strumentare il tuo progetto, collegarlo e verificare che i log degli agenti arrivino.
   </Card>
-  <Card title="Chiedi l'Assistente Failproof" icon="message-square-text" href="/it/sessions/assistant">
-    Analizza, interroga, costruisci dashboard ed esegui audit in linguaggio naturale sui log dell'agent.
+  <Card title="Chiedi all'Assistente Failproof" icon="message-square-text" href="/it/sessions/assistant">
+    Analizza, interroga, crea dashboard ed esegui audit nel linguaggio naturale sui log dei tuoi agenti.
   </Card>
 </Columns>
 
 <Columns cols={3}>
-  <Card title="Guarda cosa ha fatto l'agent" icon="route" href="/it/sessions/overview">
-    Segui le chiamate al modello, gli strumenti, gli errori, l'input umano, la latenza e le decisioni di policy in una singola sessione.
+  <Card title="Vedi cosa ha fatto l'agente" icon="route" href="/it/sessions/overview">
+    Segui le chiamate ai modelli, i tool, gli errori, l'input umano, la latenza e le decisioni delle policy in una sessione.
   </Card>
-  <Card title="Trova i malfunzionamenti sistematicamente" icon="scan-search" href="/it/audits/overview">
-    Controlla un set di sessioni definito, esamina i risultati supportati da prove e traccia la risoluzione come problemi.
+  <Card title="Trova i fallimenti sistematicamente" icon="scan-search" href="/it/audits/overview">
+    Audita una serie definita di sessioni, rivedi i risultati supportati da prove e traccia la remediation come issue.
   </Card>
-  <Card title="Previeni il ripetersi" icon="shield-check" href="/it/policies/overview">
-    Trasforma una modalità di errore nota in una policy, osserva il suo impatto e distribuiscila su tutta la tua flotta.
+  <Card title="Previeni la ricorrenza" icon="shield-check" href="/it/policies/overview">
+    Trasforma una modalità di fallimento nota in una policy, osserva il suo impatto e distribuiscila tra la tua flotta.
   </Card>
 </Columns>
 
-> **Sessione → Audit → Risultato → Problema → Policy**<br />
-> Traccia cosa è accaduto, identifica il malfunzionamento, gestisci la risposta, quindi previeni lo stesso comportamento nelle future esecuzioni.
+> **Sessione → Audit → Risultato → Issue → Policy**<br />
+> Traccia cosa è successo, trova il fallimento, gestisci la risposta, quindi previeni lo stesso comportamento nelle esecuzioni future.
 
 ## Inizia da qui
 
-Se stai distribuendo il tuo primo agent strumentato, inizia con la [guida rapida](/it/start/quickstart). Se i dati stanno già arrivando, apri [Sessioni](/it/sessions/overview) e ispeziona un'esecuzione reale prima di configurare audit o policy.
+Se stai distribuendo il tuo primo agente strumentato, inizia con la [guida rapida](/it/start/quickstart). Se i dati stanno già arrivando, apri [Sessioni](/it/sessions/overview) e ispeziona un'esecuzione reale prima di configurare gli audit o le policy.
 
-<Card title="Trova e previeni un malfunzionamento" icon="arrow-right" href="/it/start/quickstart">
-  Completa il flusso di lavoro end-to-end dall'acquisizione a una policy distribuita in sicurezza.
+<Card title="Trova e previeni un fallimento" icon="arrow-right" href="/it/start/quickstart">
+  Completa il workflow end-to-end dalla cattura a una policy distribuita in modo sicuro.
 </Card>

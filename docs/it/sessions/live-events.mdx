@@ -1,22 +1,21 @@
 ---
----
 title: "Eventi in diretta"
-description: "Guarda l'attività degli agenti arrivare in tempo reale durante una sessione in corso."
+description: "Osserva l'attività dell'agent mentre la sessione è in corso."
 icon: "radio"
 ---
 
-Gli eventi in diretta ti aiutano a confermare la strumentazione e a monitorare un'esecuzione rischiosa senza attendere il termine della sessione.
+Gli eventi in diretta ti aiutano a confermare la strumentazione e a monitorare un'esecuzione rischiosa senza attendere il completamento della sessione.
 
-## Guarda l'attività
+## Monitora l'attività
 
 <Tabs>
   <Tab title="Dashboard">
     1. Vai a **Observe → Events**.
-    2. Inizia con la finestra temporale corrente e nessun filtro per confermare che i dati stanno arrivando.
-    3. Filtra per ambiente, tipo di evento, agente o sessione. Usa la ricerca per il testo del payload.
-    4. Seleziona un evento per ispezionarne il riepilogo e i dettagli. Segui il link della sessione per la traccia completa.
+    2. Inizia con la finestra temporale attuale e nessun filtro per confermare che i dati stanno arrivando.
+    3. Filtra per ambiente, tipo di evento, agent o sessione. Usa la ricerca per il testo del payload.
+    4. Seleziona un evento per ispezionarne il riepilogo e i dettagli. Segui il collegamento della sua sessione per la traccia completa.
 
-    ![Il flusso di eventi in diretta con filtri per ora, ambiente, tipo di evento, agente, modello, contesto, sessione e testo.](/images/dashboard/events-stream-current.png)
+    ![Il flusso Events in diretta che mostra il traffico da un gateway di chat Hermes insieme alle esecuzioni di coding-CLI, filtrato per ora, ambiente, tipo di evento, agent, modello, contesto e sessione.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -25,20 +24,22 @@ Gli eventi in diretta ti aiutano a confermare la strumentazione e a monitorare u
     fp --json events --full --session-id <session-id> --all
     ```
 
-    Il feed predefinito omette i payload grezzi. Usa `--full` solo per un'indagine di sessione delimitata.
+    Il feed predefinito omette i payload grezzi. Usa `--full` solo per un'indagine di sessione limitata.
   </Tab>
 </Tabs>
 
 Usa il flusso di eventi per rispondere a tre domande immediate:
 
-- L'agente previsto sta segnalando all'ambiente corretto?
-- Le chiamate al modello, le chiamate agli strumenti e le decisioni delle policy stanno arrivando in ordine?
+- L'agent previsto sta segnalando all'ambiente corretto?
+- Le chiamate ai modelli, le chiamate agli strumenti e le decisioni sulle policy arrivano in ordine?
 - La sessione ha smesso di fare progressi o ha iniziato a ripetere un'azione?
 
-I tipi di evento includono eventi del ciclo di vita dell'agente, richieste e risposte del modello, utilizzo e risultati degli strumenti, esecuzione degli hook, attese e interruzioni umane ed errori espliciti. Gli ID di correlazione collegano gli eventi accoppiati come una chiamata a uno strumento e il suo risultato.
+I tipi di evento includono eventi del ciclo di vita dell'agent, richieste e risposte dei modelli, utilizzo e risultati degli strumenti, esecuzione degli hook, attese umane e interrupt, ed errori espliciti. Gli ID di correlazione collegano eventi associati come una chiamata a uno strumento e il suo risultato.
 
 <Tip>
-  Mantieni la visualizzazione in diretta ampia durante la verifica di una nuova integrazione. Aggiungi filtri solo dopo aver visto il primo evento; un filtro non corretto può sembrare un'acquisizione fallita.
+  Mantieni la vista in diretta ampia durante la verifica di una nuova integrazione. Aggiungi filtri solo dopo aver visto il primo evento; un filtro errato potrebbe sembrare un'acquisizione fallita.
 </Tip>
 
-Se non compaiono eventi, esegui `failproofai config --status`, quindi [risolvi i problemi di acquisizione](/it/reference/troubleshooting).
+Se non vengono visualizzati eventi, esegui `failproofai config --status`, quindi [risolvi i problemi di acquisizione](/it/reference/troubleshooting).
+
+Gli agent che non vengono eseguiti in uno dei 12 [harness](/it/reference/harnesses) supportati segnalano gli stessi tipi di evento tramite [Python SDK](/it/reference/python-sdk), inclusi gli eventi di interazione umana (`human_wait`, `human_input`, `human_interrupt`) su cui dipendono gli agent del gateway e di produzione.

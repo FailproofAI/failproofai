@@ -1,15 +1,17 @@
 ---
 title: "Bắt đầu nhanh"
-description: "Capture một phiên làm việc của agent, tìm kiếm lỗi, và bắt đầu ngăn chặn nó."
+description: "Ghi lại một phiên làm việc của agent, tìm ra lỗi, và bắt đầu ngăn chặn nó."
 icon: "zap"
 ---
 
-Hướng dẫn bắt đầu nhanh này sẽ giúp bạn đưa một máy tính vào báo cáo phiên làm việc, chạy kiểm toán, và triển khai một chính sách. Sử dụng kỹ năng để thiết lập Failproof AI, hoặc thực hiện các bước thủ công. Bạn cần Node.js 20.9 hoặc mới hơn.
+Hướng dẫn bắt đầu nhanh này giúp một máy báo cáo phiên làm việc, chạy kiểm toán, và triển khai chính sách. Sử dụng skill để thiết lập Failproof AI, hoặc làm theo các bước thủ công.
+
+**Đường dẫn nào là của bạn?** Nếu agent của bạn chạy trong một trong 12 [harnesses](/vi/reference/harnesses) được hỗ trợ — một CLI mã hóa, hoặc một gateway như Hermes hay OpenClaw — hãy làm theo các bước dưới đây; bạn cần Node.js 20.9 hoặc mới hơn. Nếu agent của bạn không có harness, hãy sử dụng [Python SDK](/vi/reference/python-sdk) để tracing và kiểm toán, sau đó quay lại [Chạy kiểm tra lỗi đầu tiên của bạn](/vi/start/first-audit); việc áp dụng trên đường dẫn đó cần một hook trong runtime của bạn.
 
 <Tabs>
-  <Tab title="Sử dụng kỹ năng">
+  <Tab title="Sử dụng skill">
     <Steps>
-      <Step title="Cài đặt các kỹ năng Failproof AI">
+      <Step title="Cài đặt Failproof AI skills">
         ```bash
         npx skills add FailproofAI/skills
         ```
@@ -19,7 +21,7 @@ Hướng dẫn bắt đầu nhanh này sẽ giúp bạn đưa một máy tính v
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        Agent của bạn sẽ kiểm tra dự án, chọn tích hợp phù hợp, thực hiện thiết lập, và xác minh nó. Xem [kho lưu trữ kỹ năng FailproofAI](https://github.com/FailproofAI/skills) để biết các kỹ năng riêng lẻ và các tùy chọn cài đặt nâng cao.
+        Agent của bạn kiểm tra dự án, chọn tích hợp phù hợp, thực hiện thiết lập, và xác minh nó. Xem [kho FailproofAI skills](https://github.com/FailproofAI/skills) để xem các skill riêng lẻ và các tùy chọn cài đặt nâng cao.
       </Step>
     </Steps>
   </Tab>
@@ -27,8 +29,8 @@ Hướng dẫn bắt đầu nhanh này sẽ giúp bạn đưa một máy tính v
     ## Trước khi bắt đầu
 
 1. Mở [bảng điều khiển Failproof AI](https://app.befailproof.ai) và tạo tài khoản hoặc đăng nhập bằng email công việc của bạn.
-2. Đi đến **Administration → Keys** và tạo một khóa với `events:add` và `policies:pull`.
-3. Sao chép bí mật một lần và lưu trữ nó trên máy tính mục tiêu:
+2. Đi tới **Administration → Keys** và tạo một khóa với `events:add` và `policies:pull`.
+3. Sao chép mã bí mật một lần và lưu trữ nó trên máy đích:
 
 ```bash
 export FAILPROOFAI_KEY="<one-time-secret>"
@@ -45,7 +47,7 @@ export FAILPROOFAI_KEY="<one-time-secret>"
 
     Các bản ghi phiên làm việc được gửi theo mặc định. Thêm `--no-transcripts` để báo cáo hoạt động hook và các quyết định chính sách mà không có nội dung bản ghi.
 
-    Nếu máy tính này đã có lịch sử agent, xem trước và nhập bảy ngày cuối cùng, sau đó chờ quá trình gửi hoàn tất. Bỏ qua bước này trên một máy tính mới.
+    Nếu máy này đã có lịch sử agent, hãy xem trước và nhập bảy ngày qua, sau đó chờ quá trình gửi hoàn tất. Bỏ qua bước này trên máy mới.
 
     ```bash
     failproofai backfill --since 7d --dry-run
@@ -53,27 +55,30 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai flush --wait
     ```
 
-    Mở **Sessions** trong Failproof AI và chọn một phiên làm việc được nhập.
+    Mở **Sessions** trong Failproof AI và chọn một phiên làm việc đã nhập.
   </Step>
-  <Step title="Cài đặt agent hooks và chính sách">
-    Điều này sẽ gắn Failproof AI vào CLI agent của bạn và cài đặt các chính sách được tích hợp sẵn. Sử dụng chúng để xem các quyết định chính sách cục bộ và thử thực thi trước khi Failproof AI kiểm toán phiên làm việc của bạn và viết chính sách cho các agent của bạn.
+  <Step title="Cài đặt agent hooks và policies">
+    Cách này gắn Failproof AI vào harness của bạn và cài đặt 40 chính sách tích hợp. Sử dụng chúng để xem các quyết định chính sách cục bộ và thử áp dụng trước khi Failproof AI kiểm toán các phiên làm việc của bạn và viết chính sách cho agent của bạn.
 
-    Để trình cài đặt phát hiện CLI agent của bạn, hoặc chỉ định một CLI một cách rõ ràng.
+    Cho phép trình cài đặt phát hiện harness của bạn, hoặc chỉ định rõ ràng một. Mỗi một trong 12 cái là một giá trị `--cli` hợp lệ — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
 
     ```bash
-    failproofai policies --install --cli claude --scope user
+    failproofai policies --install --cli claude --scope user     # a coding CLI
+    failproofai policies --install --cli hermes --scope user     # a Slack/Telegram gateway
     ```
+
+    Chặn một lệnh gọi công cụ trước khi nó chạy được xác minh trên tất cả 12. Các cổng ở cuối lượt được xác minh trên 8 — xem [khả năng áp dụng](/vi/reference/harnesses#enforcement-capability) để xem ma trận theo harness.
   </Step>
   <Step title="Kiểm toán hành vi">
-    Làm theo [Chạy kiểm tra lỗi đầu tiên của bạn](/vi/start/first-audit). Sử dụng một mục tiêu cụ thể chẳng hạn như "tìm các phiên làm việc nơi agent thử lại một công cụ không thành công mà không thay đổi cách tiếp cận của nó."
+    Làm theo [Chạy kiểm tra lỗi đầu tiên của bạn](/vi/start/first-audit). Sử dụng một mục tiêu cụ thể chẳng hạn như "tìm các phiên làm việc nơi agent thử lại một công cụ đang thất bại mà không thay đổi cách tiếp cận của nó."
   </Step>
   <Step title="Ngăn chặn lỗi">
-    Làm theo [Ngăn chặn lỗi đầu tiên của bạn bằng một chính sách](/vi/start/first-policy). Bắt đầu ở chế độ quan sát, kiểm tra các kết quả khớp, sau đó thực thi phiên bản đã được xem xét.
+    Làm theo [Ngăn chặn lỗi đầu tiên của bạn bằng chính sách](/vi/start/first-policy). Bắt đầu ở chế độ quan sát, kiểm tra các kết quả trùng khớp, sau đó áp dụng phiên bản đã được xem xét.
   </Step>
 </Steps>
 
 <Check>
-  Chạy `failproofai config --status`. Một thiết lập lành mạnh sẽ báo cáo kết nối đám mây, trạng thái daemon, và liệu thực thi có bị tạm dừng hay không.
+  Chạy `failproofai config --status`. Một thiết lập lành mạnh sẽ báo cáo kết nối đám mây, trạng thái daemon, và liệu áp dụng có bị tạm dừng hay không.
 </Check>
   </Tab>
 </Tabs>

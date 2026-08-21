@@ -1,33 +1,35 @@
 ---
-title: "Quickstart"
-description: "Zeichne eine Agentensitzung auf, finde einen Fehler und verhindere ihn künftig."
+title: "Schnellstart"
+description: "Zeichne eine Agent-Session auf, finde einen Fehler und beginne, ihn zu verhindern."
 icon: "zap"
 ---
 
-Dieser Quickstart sorgt dafür, dass eine Maschine Sitzungen meldet, führt ein Audit durch und stellt eine Richtlinie bereit. Nutze dazu den Skill oder folge den manuellen Schritten. Du benötigst Node.js 20.9 oder neuer.
+Dieser Schnellstart bringt eine Maschine dazu, Sessions zu melden, führt ein Audit durch und stellt eine Policy bereit. Nutze die Skill-Methode oder folge den manuellen Schritten.
+
+**Welchen Weg nimmst du?** Wenn dein Agent in einem der 12 unterstützten [Harnesses](/de/reference/harnesses) läuft — einer Coding-CLI oder einem Gateway wie Hermes oder OpenClaw — folge den Schritten unten; du benötigst Node.js 20.9 oder höher. Wenn dein Agent kein Harness hat, instrumentiere ihn mit dem [Python SDK](/de/reference/python-sdk) für Tracing und Audits und steige dann bei [Führe deine erste Fehlerprüfung durch](/de/start/first-audit) wieder ein; Enforcement auf diesem Pfad erfordert einen Hook in deiner Laufzeitumgebung.
 
 <Tabs>
-  <Tab title="Skill verwenden">
+  <Tab title="Mit der Skill-Methode">
     <Steps>
       <Step title="Failproof AI Skills installieren">
         ```bash
         npx skills add FailproofAI/skills
         ```
       </Step>
-      <Step title="Agent alles einrichten lassen">
+      <Step title="Deinen Agent alles einrichten lassen">
         ```text
         Set up Failproof AI for this project, connect this machine, install the right hooks and policies, and verify that a session arrives.
         ```
 
-        Dein Agent analysiert das Projekt, wählt die passende Integration aus, führt die Einrichtung durch und verifiziert sie. Einzelne Skills und erweiterte Installationsoptionen findest du im [FailproofAI Skills-Repository](https://github.com/FailproofAI/skills).
+        Dein Agent untersucht das Projekt, wählt die passende Integration, führt das Setup durch und verifiziert es. Im [FailproofAI Skills-Repository](https://github.com/FailproofAI/skills) findest du einzelne Skills und erweiterte Installationsoptionen.
       </Step>
     </Steps>
   </Tab>
-  <Tab title="Manuelle Einrichtung">
+  <Tab title="Manuelles Setup">
     ## Bevor du beginnst
 
 1. Öffne das [Failproof AI Dashboard](https://app.befailproof.ai) und erstelle ein Konto oder melde dich mit deiner Arbeits-E-Mail an.
-2. Gehe zu **Administration → Keys** und erstelle einen Schlüssel mit `events:add` und `policies:pull`.
+2. Gehe zu **Administration → Keys** und erstelle einen Key mit `events:add` und `policies:pull`.
 3. Kopiere das einmalige Secret und speichere es auf der Zielmaschine:
 
 ```bash
@@ -43,9 +45,9 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai config --connect https://app.befailproof.ai --token "$FAILPROOFAI_KEY"
     ```
 
-    Sitzungstranskripte werden standardmäßig übermittelt. Füge `--no-transcripts` hinzu, um Hook-Aktivitäten und Richtlinienentscheidungen ohne Transkriptinhalt zu melden.
+    Session-Transkripte werden standardmäßig gesendet. Füge `--no-transcripts` hinzu, um Hook-Aktivitäten und Policy-Entscheidungen ohne Transkriptinhalt zu melden.
 
-    Wenn diese Maschine bereits Agentenhistorie besitzt, kannst du die letzten sieben Tage vorab anzeigen und importieren — warte anschließend, bis die Übertragung abgeschlossen ist. Auf einer neuen Maschine kannst du diesen Schritt überspringen.
+    Wenn diese Maschine bereits Agent-Verlauf hat, kannst du die letzten sieben Tage vorab ansehen und importieren — warte dann, bis die Übertragung abgeschlossen ist. Überspringe diesen Schritt auf einer neuen Maschine.
 
     ```bash
     failproofai backfill --since 7d --dry-run
@@ -53,27 +55,30 @@ export FAILPROOFAI_KEY="<one-time-secret>"
     failproofai flush --wait
     ```
 
-    Öffne **Sessions** in Failproof AI und wähle eine importierte Sitzung aus.
+    Öffne **Sessions** in Failproof AI und wähle eine importierte Session aus.
   </Step>
-  <Step title="Agent-Hooks und Richtlinien installieren">
-    Damit wird Failproof AI an deine Agenten-CLI angebunden und die integrierten Richtlinien werden installiert. Nutze sie, um lokale Richtlinienentscheidungen einzusehen und die Durchsetzung auszuprobieren, bevor Failproof AI deine Sitzungen prüft und Richtlinien für deine Agenten erstellt.
+  <Step title="Agent-Hooks und Policies installieren">
+    Damit wird Failproof AI an dein Harness angebunden und die 40 integrierten Policies werden installiert. Nutze sie, um lokale Policy-Entscheidungen zu sehen und Enforcement auszuprobieren, bevor Failproof AI deine Sessions auditiert und Policies für deine Agents schreibt.
 
-    Lass den Installer deine Agenten-CLI automatisch erkennen oder gib sie explizit an.
+    Lass den Installer dein Harness erkennen oder gib eines explizit an. Alle 12 sind gültige `--cli`-Werte — `claude`, `codex`, `copilot`, `cursor`, `opencode`, `pi`, `hermes`, `openclaw`, `factory`, `devin`, `antigravity`, `goose`.
 
     ```bash
-    failproofai policies --install --cli claude --scope user
+    failproofai policies --install --cli claude --scope user     # eine Coding-CLI
+    failproofai policies --install --cli hermes --scope user     # ein Slack/Telegram-Gateway
     ```
+
+    Das Blockieren eines Tool-Calls vor der Ausführung ist auf allen 12 verifiziert. Turn-End-Gates sind auf 8 verifiziert — siehe [Enforcement-Fähigkeiten](/de/reference/harnesses#enforcement-capability) für die harness-spezifische Matrix.
   </Step>
-  <Step title="Verhalten prüfen">
-    Folge der Anleitung unter [Erste Fehlerprüfung durchführen](/de/start/first-audit). Verwende ein konkretes Ziel, z. B. „Sitzungen finden, in denen der Agent ein fehlgeschlagenes Tool ohne Änderung seines Vorgehens erneut ausgeführt hat."
+  <Step title="Das Verhalten auditieren">
+    Folge [Führe deine erste Fehlerprüfung durch](/de/start/first-audit). Verwende ein konkretes Ziel, z. B. „Finde Sessions, in denen der Agent ein fehlgeschlagenes Tool wiederholt hat, ohne seine Vorgehensweise zu ändern."
   </Step>
-  <Step title="Fehler verhindern">
-    Folge der Anleitung unter [Ersten Fehler mit einer Richtlinie verhindern](/de/start/first-policy). Beginne im Beobachtungsmodus, prüfe Treffer und setze dann die überprüfte Version durch.
+  <Step title="Den Fehler verhindern">
+    Folge [Verhindere deinen ersten Fehler mit einer Policy](/de/start/first-policy). Beginne im Beobachtungsmodus, prüfe die Treffer und erzwinge dann die überprüfte Version.
   </Step>
 </Steps>
 
 <Check>
-  Führe `failproofai config --status` aus. Eine funktionierende Einrichtung meldet die Cloud-Verbindung, den Daemon-Status und ob die Durchsetzung pausiert ist.
+  Führe `failproofai config --status` aus. Ein gesundes Setup meldet die Cloud-Verbindung, den Daemon-Status und ob Enforcement pausiert ist.
 </Check>
   </Tab>
 </Tabs>

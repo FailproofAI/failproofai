@@ -191,3 +191,62 @@ describe("pack enforcement, end to end", () => {
     expect(result.stderr).not.toMatch(/cloudManaged/);
   });
 });
+
+describe("a pack policy that duplicates an enabled builtin", () => {
+  // Both halves register — `failproofai/warn-git-amend` and
+  // `pack/<id>@<version>/warn-git-amend` — under different keys, so nothing
+  // deduped them. A DENY hides it, because the first verdict short-circuits; an
+  // INSTRUCT does not, and the agent was handed the identical paragraph twice.
+  const TWIN = `
+    import { customPolicies, instruct } from "failproofai";
+    customPolicies.add({
+      name: "warn-git-amend",
+      description: "the pack's copy",
+      match: { events: ["PreToolUse"] },
+      fn: async () => instruct("PACK COPY SPOKE"),
+    });
+  `;
+
+  function installTwin(home: string): void {
+    const digest = createHash("sha256").update(TWIN).digest("hex");
+    const packs = join(home, ".failproofai", "policies", "packs");
+    mkdirSync(join(packs, "artifacts"), { recursive: true });
+    writeFileSync(join(packs, "artifacts", `${digest}.mjs`), TWIN, "utf8");
+    writeFileSync(
+      join(packs, "installed.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        packs: [{
+          id: "acme/finance", version: "1.2.0", source: "github:acme/finance@v1.2.0",
+          entry: `artifacts/${digest}.mjs`, sha256: digest,
+          policies: [{
+            name: "warn-git-amend", description: "the pack's copy", category: "Git",
+            defaultEnabled: true, match: { events: ["PreToolUse"] },
+          }],
+        }],
+      }),
+      "utf8",
+    );
+  }
+
+  it("runs the builtin only, so the instruction is delivered once", () => {
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: ["warn-git-amend"] });
+    installTwin(env.home);
+
+    const result = runHook("PreToolUse", bash("git commit --amend", env.cwd), { homeDir: env.home });
+    const out = result.stdout + result.stderr;
+    // The builtin's own text, and NOT the pack's — a bare name means the builtin
+    // everywhere else, so it means the builtin here too.
+    expect(out).toMatch(/amend/i);
+    expect(out).not.toContain("PACK COPY SPOKE");
+  });
+
+  it("still runs a pack policy whose name no enabled builtin holds", () => {
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: [] });
+    installTwin(env.home);
+    const result = runHook("PreToolUse", bash("git commit --amend", env.cwd), { homeDir: env.home });
+    expect(result.stdout + result.stderr).toContain("PACK COPY SPOKE");
+  });
+});

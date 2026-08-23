@@ -41,3 +41,27 @@ Before daemon configuration, hooks evaluate policies in process. Once daemon con
 <Warning>
   Do not repeatedly retry the blocked action. A failure-closed response means the system could not establish that the action was safe.
 </Warning>
+
+## A pack will not load
+
+A machine that was told to enforce a pack, and cannot run it, denies rather than continuing quietly. The trigger is a **recorded expectation**, never an empty one: a machine with no packs installed is silent, while a pack that is declared and will not resolve — or that registers less than its manifest declares — denies.
+
+The deny is **narrow**, unlike an unreachable daemon. A daemon that cannot be reached means no evaluation happened at all, so nothing can be known safe. A pack that will not load has an enumerable set of missing guards, because every declared policy carries its own `match` — so it denies only the events and tools those policies covered, and everything else proceeds.
+
+It does not fire for:
+
+- an `observe` pack, which evaluates and discards by construction
+- policies you never took, or explicitly turned off
+- a pack the loader never received, where "no registrations" cannot be told apart from a deliberate skip
+- an active session pause
+- a load timeout, which is transient — one slow disk moment must not deny until a human intervenes
+
+`UserPromptSubmit` **instructs** instead of denying, whatever the missing policy declared. A blanket deny would take it along and lock you out of the agent that could fix the problem.
+
+### What to do
+
+```bash
+failproofai pack list
+```
+
+It names any installed pack that will not load, says why, and exits non-zero. Then either reinstall it (`failproofai pack add <source>`) or remove it (`failproofai pack remove <publisher/name>`) — removing it withdraws the expectation, and the deny stops with it.

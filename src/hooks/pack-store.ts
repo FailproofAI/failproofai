@@ -378,6 +378,68 @@ function resolveSelection(
 
 export type SelectionReason = "all" | "selected" | "carried" | "defaults";
 
+/**
+ * Import the artifact and check it registers what the manifest promised.
+ *
+ * `pack add` used to verify digests and manifest SHAPE and then install without
+ * ever executing the file. Two failures got through, both reproduced: an
+ * artifact that does not parse installed at exit 0 and bricked every later tool
+ * call, and a one-name typo between manifest and artifact — the exact slip a
+ * publisher hand-maintaining two files makes — installed reporting "2/2
+ * enabled" and then converted into a MACHINE-WIDE DENY, because a declared
+ * policy that never registers is precisely what the fail-closed guard denies
+ * for.
+ *
+ * The right place to catch that is here, where nothing has been activated yet
+ * and the publisher's own mistake can be named. This runs only on the CLI path;
+ * the hook path never imports anything it has not already recorded.
+ */
+async function verifyArtifactRegisters(
+  artifactPath: string,
+  declared: readonly string[],
+): Promise<void> {
+  const { loadCustomHooks } = await import("./custom-hooks-loader");
+  let registered: string[];
+  try {
+    registered = (await loadCustomHooks(artifactPath, { strict: true })).map((h) => h.name);
+  } catch (err) {
+    throw new Error(
+      `its artifact could not be loaded: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const missing = declared.filter((name) => !registered.includes(name));
+  const extra = registered.filter((name) => !declared.includes(name));
+  if (missing.length > 0) {
+    throw new Error(
+      `its manifest declares ${missing.join(", ")} but the artifact does not register ` +
+        `${missing.length === 1 ? "it" : "them"} — that would install as protection that never runs`,
+    );
+  }
+  if (extra.length > 0) {
+    throw new Error(
+      `its artifact registers undeclared ${extra.join(", ")} — a policy that enforces but ` +
+        `appears in no listing cannot be reviewed or switched off`,
+    );
+  }
+}
+
+/**
+ * The same check, as a question rather than a refusal — for `pack list`, which
+ * reported a pack whose artifact does not load as fully healthy, on the very
+ * command the fail-closed deny message tells the human to run.
+ */
+export async function checkPackArtifact(
+  artifactPath: string,
+  declared: readonly string[],
+): Promise<string | null> {
+  try {
+    await verifyArtifactRegisters(artifactPath, declared);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
+
 export async function addPack(
   source: string,
   opts?: { only?: string[]; categories?: string[]; all?: boolean },
@@ -412,6 +474,40 @@ export async function addPack(
   // Content-addressed, so a file that already exists has these exact bytes and
   // rewriting it could only ever disturb a pack currently importing it.
   if (!existsSync(artifactAbs)) writeAtomic(artifactAbs, fetched.artifact);
+
+  // Before `installed.json` — the file that activates it — is written. The
+  // artifact on disk is inert until something points at it, so a refusal here
+  // leaves the machine exactly as it was.
+  try {
+    await verifyArtifactRegisters(artifactAbs, available);
+  } catch (err) {
+    throw new Error(
+      `${fetched.id}@${fetched.version} was not installed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // An id is self-declared and nothing owns it, while `upsertInstalled` replaces
+  // by id — so a pack served from any repository could declare
+  // `failproofai/builtins` and silently take the place of the one already
+  // installed. Binding the id to the source it first came from is the cheap half
+  // of the fix: a second source for the same id has to be an explicit removal.
+  // Compared on the REPOSITORY, not the whole source: `github:acme/pack@v1.2.0`
+  // and `@v1.3.0` are the same publisher shipping an upgrade, which is the
+  // ordinary case this must not break.
+  const repoOf = (source: string): string => {
+    const at = source.lastIndexOf("@");
+    return at > source.indexOf(":") ? source.slice(0, at) : source;
+  };
+  if (
+    prior &&
+    !prior.source.startsWith("bundled:") &&
+    repoOf(prior.source) !== repoOf(formatPackSpec(spec))
+  ) {
+    throw new Error(
+      `pack id ${fetched.id} is already installed from ${prior.source}. ` +
+        `Refusing to replace it with ${formatPackSpec(spec)} — remove it first if that is what you mean.`,
+    );
+  }
 
   const record: InstalledPackRecord = {
     id: fetched.id,
@@ -551,6 +647,56 @@ export function installBundledPack(opts?: { only?: string[]; categories?: string
 }
 
 /** Remove a pack from the activation pointer. Returns false if it was not installed. */
+/**
+ * Turn ONE policy of an installed pack on or off.
+ *
+ * The selection in `installed.json` is the lever, not a `disabledCustomPolicies`
+ * entry: those are keyed by `pack:<id>@<version>:<name>`, so an upgrade stops
+ * matching them and silently switches back on everything the user had turned
+ * off. The selection is version-stable and is carried forward by `pack add`.
+ *
+ * Enabling also clears any matching disabled key, or a policy switched off from
+ * the dashboard could not be switched back on from the CLI — the two mechanisms
+ * would disagree and the more obscure one would win.
+ */
+export function setPackPolicyEnabled(
+  packId: string,
+  name: string,
+  on: boolean,
+): { ok: boolean; reason?: string } {
+  const manifestPath = resolve(packsRoot(), "installed.json");
+  if (!existsSync(manifestPath)) return { ok: false, reason: "no packs are installed" };
+  let raw: { schemaVersion?: number; packs?: InstalledPackRecord[] };
+  try {
+    raw = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch {
+    return { ok: false, reason: `pack manifest at ${manifestPath} is unreadable` };
+  }
+  const packs = Array.isArray(raw.packs) ? raw.packs : [];
+  const pack = packs.find((p) => p?.id === packId);
+  if (!pack) return { ok: false, reason: `no installed pack with id ${packId}` };
+  // `policies` is `unknown` on the record — it is validated by the loader, not
+  // here — so read the names defensively rather than trusting the shape.
+  const declared = Array.isArray(pack.policies) ? (pack.policies as Array<{ name?: unknown }>) : [];
+  const available = declared
+    .map((p) => (typeof p?.name === "string" ? p.name : null))
+    .filter((n): n is string => n !== null);
+  if (!available.includes(name)) {
+    return { ok: false, reason: `pack ${packId} declares no policy named ${name}` };
+  }
+  // `enabled` absent means "the whole pack", which is what `--all` records so a
+  // later version's new policies are included. Turning one off has to make that
+  // implicit set explicit, or there is nothing to subtract from.
+  const current = pack.enabled ?? available;
+  const next: string[] = on
+    ? [...new Set([...current, name])]
+    : current.filter((n: string) => n !== name);
+  // Kept in the pack's declared order rather than the order things were toggled.
+  pack.enabled = available.filter((n) => next.includes(n));
+  writeAtomic(manifestPath, JSON.stringify({ schemaVersion: 1, packs }, null, 2) + "\n");
+  return { ok: true };
+}
+
 export function removePack(id: string): boolean {
   const manifestPath = resolve(packsRoot(), "installed.json");
   if (!existsSync(manifestPath)) return false;

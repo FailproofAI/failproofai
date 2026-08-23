@@ -19,10 +19,18 @@ import {
 } from "@/src/hooks/pack-store";
 import { readInstalledPacks } from "@/src/hooks/pack-manifest";
 
+// Registers all three declared policies. `addPack` imports the artifact and
+// refuses any pack whose registrations do not match its manifest, so a fixture
+// that declared three and registered one IS the broken pack that check exists
+// to catch — it cannot also stand in for a healthy one.
 const ENTRY = `
   import { customPolicies, deny } from "failproofai";
   customPolicies.add({ name: "block-big-refund", description: "d",
     match: { events: ["PreToolUse"] }, fn: async () => deny("no") });
+  customPolicies.add({ name: "require-approval-note", description: "d",
+    match: { events: ["PreToolUse"] }, fn: async () => ({ decision: "allow" }) });
+  customPolicies.add({ name: "audit-log-writes", description: "d",
+    match: { events: ["PostToolUse"] }, fn: async () => ({ decision: "allow" }) });
 `;
 
 const POLICY = {

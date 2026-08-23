@@ -27,11 +27,16 @@ Run `failproofai` without arguments to open the local policy dashboard.
 | `failproofai config` | Run interactive machine setup |
 | `failproofai config --connect <url> --token <key>` | Connect Cloud ingestion and policy delivery |
 | `failproofai config --status` | Show connection, daemon, delivery, and pause state |
-| `failproofai policies` | List builtin and custom policies |
+| `failproofai policies` | List builtin, custom, convention, pack, and Cloud-managed policies |
 | `failproofai policies --install` | Install hooks and enable policies |
-| `failproofai policy add <name>` | Enable one builtin policy |
-| `failproofai policy remove <name>` | Disable one builtin policy |
+| `failproofai policy add <name>` | Enable one policy — a builtin, or `<pack-id>:<name>` from an installed pack |
+| `failproofai policy remove <name>` | Disable one policy, same naming |
 | `failproofai policies --uninstall` | Disable policies or remove harness hooks |
+| `failproofai pack list` | List installed policy packs and every policy each one carries |
+| `failproofai pack add <source>` | Install a policy pack from a GitHub release; no tag takes the newest and pins it |
+| `failproofai pack add --bundled` | Install the builtin policies as a pack, from this package, with no network |
+| `failproofai pack build <entry.mjs>` | Build the three release assets for a pack of your own |
+| `failproofai pack remove <publisher/name>` | Deactivate an installed pack |
 | `failproofai audit` | Scan local agent history and open the local audit view |
 | `failproofai audit --schedule [days] --email <address>` | Schedule recurring local scans and email their findings |
 | `failproofai audit --status` | Show the report address, interval, and next scheduled scan |
@@ -121,6 +126,8 @@ Use configuration files for persistent machine behavior. Environment variables a
 | `FAILPROOFAI_LLM_API_KEY` | Supply the API key used by LLM policies |
 | `FAILPROOFAI_LLM_MODEL` | Select the model used by LLM policies |
 | `FAILPROOFAI_POLICY_LOAD_TIMEOUT_MS` | Bound custom policy module loading |
+| `FAILPROOFAI_NO_DOWNLOAD=1` | Refuse to fetch packs and daemon binaries; what is installed keeps enforcing |
+| `FAILPROOFAI_PACK_BASE_URL` | Fetch packs from a mirror instead of `github.com` |
 | `FAILPROOFAI_<HARNESS>_EXTRA_PATHS` | Replace configured extra capture paths for one harness |
 | `NO_COLOR` | Disable colored terminal output |
 

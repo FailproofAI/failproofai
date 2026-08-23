@@ -320,8 +320,15 @@ COMMANDS
   policies --help, -h            Show this help for the policies command
 
   pack list                      Show installed policy packs
-  pack add <owner/repo@tag>      Install a policy pack from a GitHub release
+  pack add <source>              Install a policy pack from a GitHub release.
+                                 <source> is acme/pack, acme/pack@v1.2.0, or a
+                                 release URL; no tag takes the newest and pins it
   pack remove <publisher/name>   Deactivate an installed pack
+  pack add --bundled             Install the builtin policies as a pack, from
+                                 this package — no network
+  pack build <entry.mjs>         Turn your own policy file into the three assets
+                                 a GitHub release needs, so others can install it
+  pack --help, -h                Show this help for the pack command
   harness list                   Show extra capture paths per agent CLI
   harness add-path <h> <path>    Also capture sessions from <path> for harness
                                  <h>. Accepts \`<label>=<path>\`; the label
@@ -403,6 +410,8 @@ EXAMPLES
   failproofai policies --uninstall --cli opencode
   failproofai policies --uninstall --cli pi
   failproofai policies --uninstall --custom
+  failproofai pack add FailproofAI/policies
+  failproofai pack build ./my-policies.mjs --id acme/support --version 1.0.0
   failproofai backfill --since 6m
   failproofai backfill --dry-run
   failproofai flush --wait
@@ -714,8 +723,10 @@ failproofai pack — install policy packs published as GitHub releases
 
 Usage:
   failproofai pack list
-  failproofai pack add <source> [--only <a,b>]
+  failproofai pack add <source> [--only <a,b>] [--category <x,y>] [--all]
+  failproofai pack add --bundled
   failproofai pack remove <publisher/name>
+  failproofai pack build <entry.mjs> --id <publisher/name> --version <v>
 
 A pack is one entry artifact plus a manifest, verified against the release's
 SHA256SUMS at install time. The digest is recorded, and re-verified before every
@@ -743,12 +754,17 @@ rest back on.
 
 Examples:
   failproofai pack add FailproofAI/policies
-  failproofai pack add FailproofAI/policies --category secrets,git
+  failproofai pack add FailproofAI/policies --category sanitize,git
   failproofai pack add github:acme/support-agent@v2.1.0 --only block-refunds
   failproofai pack remove acme/support-agent
 
+Publishing: pack build writes failproofai-pack.json, failproofai-pack.mjs and
+SHA256SUMS. Attach all three to a GitHub release; anyone then runs
+failproofai pack add <owner>/<repo>
+
 Offline: FAILPROOFAI_NO_DOWNLOAD=1 refuses to fetch, while packs already
-installed keep enforcing.
+installed keep enforcing. FAILPROOFAI_PACK_BASE_URL points the whole thing at a
+mirror instead of github.com.
 `.trimStart());
       process.exit(0);
     }
@@ -1251,6 +1267,8 @@ EXAMPLES
   failproofai policies --uninstall --cli pi
   failproofai policies -u
   failproofai policies --uninstall --custom
+  failproofai pack add FailproofAI/policies
+  failproofai pack build ./my-policies.mjs --id acme/support --version 1.0.0
 `.trimStart());
       process.exit(0);
     }

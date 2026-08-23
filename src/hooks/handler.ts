@@ -303,6 +303,10 @@ export async function evaluateHookEvent(
       // centrally assigned policy would make cloud enforcement decorative.
       activePause = readActivePause(session.sessionId);
       registerBuiltinPolicies(activePause ? [] : config.enabledPolicies);
+      // What actually registered, for the pack-duplicate check below. A paused
+      // session registers none, and then a pack twin is not a duplicate of
+      // anything — but a pause already skips every local policy, pack included.
+      const enabledBuiltinNames = new Set(activePause ? [] : config.enabledPolicies);
 
       // Cloud-managed policies are daemon-reconciled artifacts, but they use
       // the same public JS policy API as local custom policies. Verify and add
@@ -402,6 +406,28 @@ export async function evaluateHookEvent(
         // taken only some of it. `enabled: null` means the whole pack, which is
         // what `pack add` writes when no selection was made.
         if (pack?.enabled && !pack.enabled.includes(hook.name)) continue;
+        // A pack policy whose name is an ENABLED BUILTIN is the same guard
+        // twice. The two register under different keys — `failproofai/block-sudo`
+        // and `pack/<id>@<version>/block-sudo` — so nothing deduped them, and
+        // the bundled pack carries the builtins under exactly these names.
+        //
+        // A deny hides it (the first verdict short-circuits) but an INSTRUCT does
+        // not: instructions accumulate and are joined, so the agent received the
+        // identical paragraph twice. Every duplicate also ran its policy function
+        // a second time, inside its own 10s timeout race, against a 150ms daemon
+        // budget.
+        //
+        // The builtin wins, because a bare name means the builtin everywhere else
+        // — `policies --uninstall block-sudo` disables the compiled one, and a
+        // machine that wants the pack's copy instead turns the builtin off.
+        if (pack && enabledBuiltinNames.has(hook.name)) {
+          hookLogWarn(
+            `pack ${pack.id}@${pack.version} ships ${hook.name}, which is also an enabled builtin — ` +
+              `running the builtin only. Disable it with \`failproofai policies --uninstall ${hook.name}\` ` +
+              `to use the pack's copy.`,
+          );
+          continue;
+        }
         if (pack) {
           const seen = registeredByPack.get(pack.id) ?? new Set<string>();
           seen.add(hook.name);

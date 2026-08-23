@@ -161,6 +161,8 @@
                   "policies/builtin",
                   "policies/builtin-catalog",
                   "policies/custom",
+                  "policies/packs",
+                  "policies/publish-a-pack",
                   "policies/local-configuration",
                   "policies/editor",
                   "policies/deploy",

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, useTransition } from
 import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { Check, ChevronDown, Code, Copy, Settings, Shield, ShieldAlert, ShieldCheck, ShieldX, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronDown, Code, Copy, Package, Plus, Settings, Shield, ShieldAlert, ShieldCheck, ShieldX, Trash2, TriangleAlert, X } from "lucide-react";
 import PaginationControls from "@/app/components/pagination-controls";
 import { getHookActivityAction, searchHookActivityAction } from "@/app/actions/get-hook-activity";
 import type { HookActivityPayload } from "@/app/actions/get-hook-activity";
@@ -12,9 +12,15 @@ import { getActivePausesAction } from "@/app/actions/get-active-pauses";
 import type { ActivePause } from "@/src/hooks/session-pause";
 import { PausedBanner, PausedNote, PausedPill } from "@/app/components/pause-notices";
 import { getHooksConfigAction } from "@/app/actions/get-hooks-config";
-import type { HooksConfigPayload, PolicyInfo } from "@/app/actions/get-hooks-config";
+import type { HooksConfigPayload, InstalledPackInfo, PolicyInfo } from "@/app/actions/get-hooks-config";
 import type { IntegrationType } from "@/src/hooks/types";
 import { toggleCustomPolicyAction, togglePolicyAction } from "@/app/actions/update-hooks-config";
+import {
+  addBundledPackWebAction,
+  addPackWebAction,
+  removePackWebAction,
+  togglePackPolicyAction,
+} from "@/app/actions/pack-actions";
 import { installHooksWebAction, removeHooksWebAction } from "@/app/actions/install-hooks-web";
 import { updatePolicyParamsAction } from "@/app/actions/update-policy-params";
 import { useAutoRefresh } from "@/contexts/AutoRefreshContext";
@@ -1792,8 +1798,210 @@ function PoliciesTab({ onHooksInstallChange }: { onHooksInstallChange?: (install
           )}
         </div>
       ))}
+
+      {/* Policy packs — sets of policies published as a GitHub release. Anyone
+          can publish one from their own repository, so this is the surface that
+          makes an installed pack visible and switchable without the CLI. */}
+      <PackSection
+        packs={config.packs ?? []}
+        disabled={isPending}
+        onChanged={reload}
+        onError={(message) => fireActionError("pack_action", message)}
+      />
     </div>
     </>
+  );
+}
+
+/** Install a pack, and manage the ones already installed. */
+function PackSection({
+  packs,
+  disabled,
+  onChanged,
+  onError,
+}: {
+  packs: InstalledPackInfo[];
+  disabled?: boolean;
+  onChanged: () => void;
+  onError: (message: string) => void;
+}) {
+  const [source, setSource] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [installed, setInstalled] = useState<string | null>(null);
+  const { capture } = usePostHog();
+
+  const run = async (label: string, action: () => Promise<{ ok: boolean; id?: string; version?: string; error?: string }>) => {
+    setBusy(label);
+    setInstalled(null);
+    try {
+      const result = await action();
+      if (!result.ok) {
+        // The refusal's own words. Every one of them names what was wrong —
+        // a source that resolves to nothing, a digest that does not match, a
+        // manifest declaring a policy its artifact never registers.
+        onError(result.error ?? "Could not install that pack.");
+        return;
+      }
+      setInstalled(result.version ? `${result.id}@${result.version}` : (result.id ?? null));
+      setSource("");
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Could not install that pack.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20 border-b border-border/50">
+        <span className="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground">
+          Policy Packs
+        </span>
+        <span className="text-[0.7rem] text-muted-foreground">
+          {packs.length === 0 ? "none installed" : `${packs.length} installed`}
+        </span>
+      </div>
+
+      {/* Install by name — any owner/repo on GitHub, not only ours. */}
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border/20">
+        <input
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && source.trim() && !busy) {
+              capture("pack_install_submitted", { via: "input" });
+              void run("input", () => addPackWebAction(source));
+            }
+          }}
+          placeholder="acme/ops  ·  acme/ops@v1.2.0  ·  a release URL"
+          spellCheck={false}
+          disabled={disabled || busy !== null}
+          className="flex-1 min-w-[16rem] rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-xs font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+          aria-label="Pack source"
+        />
+        <Button
+          size="sm"
+          variant="default"
+          disabled={disabled || busy !== null || source.trim().length === 0}
+          onClick={() => {
+            capture("pack_install_submitted", { via: "button" });
+            void run("input", () => addPackWebAction(source));
+          }}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {busy === "input" ? "Installing…" : "Install"}
+        </Button>
+      </div>
+
+      {/* Ours, in one click — both the released pack and the copy that ships
+          inside this package, which needs no network at all. */}
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-border/20 bg-muted/10">
+        <span className="text-[0.7rem] text-muted-foreground/70 mr-1">Failproof AI policies:</span>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={disabled || busy !== null}
+          onClick={() => {
+            capture("pack_install_submitted", { via: "ours" });
+            void run("ours", () => addPackWebAction("FailproofAI/policies"));
+          }}
+        >
+          {busy === "ours" ? "Installing…" : "Install from GitHub"}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={disabled || busy !== null}
+          onClick={() => {
+            capture("pack_install_submitted", { via: "bundled" });
+            void run("bundled", () => addBundledPackWebAction());
+          }}
+        >
+          {busy === "bundled" ? "Installing…" : "Install offline copy"}
+        </Button>
+        {installed && (
+          <span className="text-[0.7rem] text-emerald-500 font-mono">installed {installed}</span>
+        )}
+      </div>
+
+      {packs.map((pack) => (
+        <div key={`${pack.id}@${pack.version}`}>
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-border/20">
+            <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs font-mono text-foreground truncate">
+              {pack.id}{pack.version ? `@${pack.version}` : ""}
+            </span>
+            {pack.effect === "observe" && (
+              <span className="text-[0.65rem] uppercase tracking-wider text-amber-500">observing</span>
+            )}
+            <span className="text-[0.65rem] text-muted-foreground/50 font-mono truncate hidden lg:inline">
+              {pack.source}
+            </span>
+            <button
+              onClick={() => void run(pack.id, () => removePackWebAction(pack.id))}
+              disabled={disabled || busy !== null}
+              className="ml-auto text-muted-foreground/60 hover:text-foreground disabled:opacity-40"
+              aria-label={`Remove ${pack.id}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {pack.error ? (
+            // A pack that will not load is what the machine denies for. Saying
+            // it here is the difference between a fixable problem and a
+            // mysterious one.
+            <div className="flex items-start gap-2 px-4 py-2.5 border-b border-border/20 bg-amber-500/5">
+              <TriangleAlert className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-[0.7rem] text-muted-foreground leading-relaxed">
+                This pack will not load: {pack.error}
+              </p>
+            </div>
+          ) : (
+            pack.policies.map((policy) => (
+              <div
+                key={policy.name}
+                className="flex items-start gap-3 px-4 py-3 border-b border-border/20 hover:bg-muted/20 transition-colors"
+              >
+                <div className="mt-0.5 shrink-0">
+                  <PolicyToggle
+                    enabled={policy.enabled && !policy.shadowedByBuiltin}
+                    disabled={disabled || busy !== null || policy.shadowedByBuiltin}
+                    onChange={() => {
+                      capture("pack_policy_toggled", { enabled: !policy.enabled });
+                      void run(`${pack.id}:${policy.name}`, () =>
+                        togglePackPolicyAction(pack.id, policy.name, !policy.enabled),
+                      );
+                    }}
+                  />
+                </div>
+                <div className="flex items-center gap-1.5 min-w-0 w-56 shrink-0 mt-0.5">
+                  <span className="text-xs font-mono text-foreground truncate">{policy.name}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs text-muted-foreground leading-relaxed">
+                    {policy.description}
+                  </span>
+                  {policy.shadowedByBuiltin ? (
+                    // The same guard exists as an enabled builtin, and that is
+                    // the one that runs. Showing this row as ON would claim
+                    // enforcement this copy is not doing.
+                    <span className="block text-[0.65rem] text-amber-500/80 mt-0.5">
+                      running as the builtin — turn the builtin off to use this copy
+                    </span>
+                  ) : (
+                    <span className="block text-[0.65rem] text-muted-foreground/40 font-mono mt-0.5 hidden lg:block">
+                      {policy.category}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 

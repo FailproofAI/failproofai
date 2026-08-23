@@ -54,6 +54,51 @@ describe("wrap", () => {
   });
 });
 
+/** SGR openers left unclosed at the end of a line bleed into everything after. */
+function unclosedSgr(line: string): boolean {
+  const opens = (line.match(/\x1B\[(?!0?m)[0-9;]*m/g) ?? []).length;
+  const resets = (line.match(/\x1B\[0?m/g) ?? []).length;
+  return opens > resets;
+}
+
+describe("coloured values wrap instead of being clipped", () => {
+  const long =
+    "scans continue; digests need a fresh opt-in — run `--schedule` to turn them on";
+
+  it("keeps every character of a coloured value", () => {
+    const painted = `\x1B[38;2;255;46;136m${long}\x1B[0m`;
+    const out = rows([["reports to", painted]], { cols: 80, color: true });
+    const plain = out.join("\n").replace(/\x1B\[[0-9;]*m/g, "");
+    // The bug: `wrap` counted escape bytes as columns, so a coloured value was
+    // handed back unwrapped and then hard-cut at the terminal edge — losing
+    // " to turn them on" with no ellipsis to admit it.
+    expect(plain).toContain("to turn them on");
+    expect(out.length).toBeGreaterThan(1);
+  });
+
+  it("closes the colour it opened on every line", () => {
+    const painted = `\x1B[38;2;255;46;136m${long}\x1B[0m`;
+    for (const line of rows([["reports to", painted]], { cols: 80, color: true })) {
+      expect(unclosedSgr(line)).toBe(false);
+    }
+  });
+
+  it("closes the colour when a table cell is cut", () => {
+    const painted = `\x1B[38;2;255;46;136m${long}\x1B[0m`;
+    for (const line of table({ head: ["State"], rows: [[painted]] }, { cols: 40, color: true })) {
+      expect(unclosedSgr(line)).toBe(false);
+      expect(visibleWidth(line)).toBeLessThanOrEqual(40);
+    }
+  });
+
+  it("still never splits a single long token", () => {
+    const url = `\x1B[2mhttps://app.befailproof.ai/v1/events/very/long/path\x1B[0m`;
+    const out = rows([["dashboard", url]], { cols: 40, color: true });
+    const plain = out.join("").replace(/\x1B\[[0-9;]*m/g, "");
+    expect(plain).toContain("https://app.befailproof.ai/v1/events/very/long/path");
+  });
+});
+
 describe("rows — the audit --status defect", () => {
   it("puts every value in ONE computed column, whatever the label lengths", () => {
     const out = rows(
@@ -80,11 +125,39 @@ describe("rows — the audit --status defect", () => {
       ],
       COLOR,
     );
-    expect(new Set(withChip.map(valueColumn)).size).toBe(1);
+    const columns = withChip.map(valueColumn);
+    // -1 means "no value column found"; without this the assertion passed
+    // precisely when the column had disappeared, which is the failure it exists
+    // to catch.
+    for (const column of columns) expect(column).toBeGreaterThan(0);
+    expect(new Set(columns).size).toBe(1);
   });
 
   it("returns nothing for no rows rather than an empty frame", () => {
     expect(rows([], PLAIN)).toEqual([]);
+  });
+});
+
+describe("labels are never cut", () => {
+  const sessionId = "01J8ZQ7K3M4N5P6Q7R8S9T0V1W-worktree-checkout";
+
+  it("keeps a long label whole — it is the id --resume needs", () => {
+    const out = rows([[sessionId, "8m left (until 21:14)"]], PLAIN);
+    expect(out.join("\n")).toContain(sessionId);
+    expect(out.join("\n")).not.toContain("…");
+  });
+
+  it("gives an over-long label its own line rather than eating the value column", () => {
+    const out = rows(
+      [
+        [sessionId, "8m left"],
+        ["enforcement", "paused for 1 session"],
+      ],
+      { cols: 60, color: false },
+    );
+    expect(out.some((l) => l.trim() === sessionId)).toBe(true);
+    expect(out.join("\n")).toContain("8m left");
+    expect(out.join("\n")).toContain("paused for 1 session");
   });
 });
 
@@ -162,11 +235,26 @@ describe("table", () => {
   });
 
   it("spends the flex column before any other, so the fact survives the note", () => {
+    // Pinned by comparing the two flex choices on identical input: whichever
+    // column is flex is the one that loses width. Asserting only that the path
+    // survived passed even with the flex-first pass removed entirely.
+    const spec = { head: ["Path", "Agent ids"], rows: [["/srv/team/checkout", "derived from the folder name"]] };
+    const flexLast = table({ ...spec, flex: 1 }, { cols: 36, color: false });
+    const flexFirst = table({ ...spec, flex: 0 }, { cols: 36, color: false });
+    const row = (lines: string[]) => lines[lines.length - 1];
+    expect(row(flexLast)).toContain("/srv/team/checkout");
+    expect(row(flexFirst)).not.toContain("/srv/team/checkout");
+  });
+
+  it("never shrinks a protected column, even when everything else is at its floor", () => {
+    const path = "/srv/team/very/deeply/nested/checkout/sessions/store";
     const out = table(
-      { head: ["Path", "Agent ids"], rows: [["/srv/team", "derived from the folder name"]], flex: 1 },
-      { cols: 34, color: false },
+      { head: ["Path", "Agent ids"], rows: [[path, "derived from the folder name"]], flex: 1, protect: [0] },
+      { cols: 40, color: false },
     );
-    expect(out.some((l) => l.includes("/srv/team"))).toBe(true);
+    // The path is what the listing exists to hand back — it survives whole, and
+    // the line is allowed to be long so the terminal can wrap it.
+    expect(out[out.length - 1]).toContain(path);
   });
 
   it("renders a header and a divider above the rows", () => {
@@ -307,6 +395,15 @@ describe("optsFor / printBlock", () => {
     const out = { isTTY: true, columns: 80, write } as unknown as TTYOut;
     printBlock(out, ["  body"]);
     expect(write).toHaveBeenCalledWith("\n  body\n\n");
+  });
+
+  it("does not truncate — an unbreakable token wraps at the terminal instead", () => {
+    // `writeLines` cut every line to the terminal width, silently and with no
+    // ellipsis. A path or session id lost its tail exactly when it mattered.
+    const write = vi.fn((_chunk: unknown) => true);
+    const path = "/srv/team/very/deeply/nested/checkout/of/a/monorepo/sessions/store/file.jsonl";
+    printBlock({ isTTY: true, columns: 40, write } as unknown as TTYOut, [`  ${path}`]);
+    expect(String(write.mock.calls[0]?.[0])).toContain(path);
   });
 
   it("writes nothing for an empty block", () => {

@@ -378,6 +378,9 @@ export function listPaths(harness?: string): HarnessResult {
             ];
           }),
           flex: 1,
+          // The path is the value this listing exists to hand back; it is never
+          // the column that gives way.
+          protect: [0],
         },
         opts,
       ),
@@ -388,7 +391,10 @@ export function listPaths(harness?: string): HarnessResult {
   // hand-edited config.json runs `list` to check it, and that is the moment the
   // typo is cheapest to find.
   if (unknown.length > 0) {
-    const body = lines.length === 0 ? [...head(0), ""] : lines;
+    const body =
+      configured === 0
+        ? [...head(0), "", ...note("No extra capture paths configured for any known harness.", opts)]
+        : lines;
     return ok([
       ...body,
       "",

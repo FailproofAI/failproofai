@@ -1811,7 +1811,10 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
             // an omitted line answers it with silence.
             rows([...report.rows, ...(result.rows ?? [])], opts),
             report.warnings.length > 0 ? warning(report.warnings, opts) : null,
-            result.rows ? null : result.lines,
+            // The trailer is not rows — it is the note and the resume command.
+            // Rendering only `rows` dropped the one line that tells a paused
+            // user how to get unpaused.
+            result.rows ? (result.trailer ?? null) : result.lines,
           ),
         );
       } else {

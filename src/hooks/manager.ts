@@ -26,6 +26,21 @@ import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { readInstalledPacks } from "./pack-manifest";
+import {
+  chip,
+  note,
+  nextStep,
+  optsFor,
+  printBlock,
+  rule,
+  stack,
+  table,
+  title,
+  warning,
+  type ChipState,
+  type TableRow,
+} from "./tui";
 
 const VALID_POLICY_NAMES = new Set(BUILTIN_POLICIES.map((p) => p.name));
 
@@ -618,6 +633,7 @@ export async function listHooks(cwd?: string): Promise<void> {
   const config = readMergedHooksConfig(cwd);
   const enabledSet = new Set(config.enabledPolicies);
   const disabledCustomSet = new Set(config.disabledCustomPolicies ?? []);
+  const opts = optsFor(process.stdout);
 
   // Determine which scopes have hooks installed (deduplicate when paths overlap, e.g. cwd === home)
   const uniqueScopes = deduplicateScopes(HOOK_SCOPES, cwd);
@@ -627,124 +643,112 @@ export async function listHooks(cwd?: string): Promise<void> {
   const regularPolicies = BUILTIN_POLICIES.filter((p) => !p.beta);
   const betaPolicies = BUILTIN_POLICIES.filter((p) => p.beta);
 
-  // Dynamic name column width based on longest policy name
-  const nameColWidth = Math.max(...BUILTIN_POLICIES.map((p) => p.name.length)) + 2;
-
   // All known builtin policy names (for unknown policyParams key detection)
   const builtinPolicyNames = new Set(BUILTIN_POLICIES.map((p) => p.name));
 
-  // Helper: print params summary lines beneath a policy row
-  const printParamsSummary = (policyName: string, indent: string) => {
+  /** Configured params, as dim lines under their own policy's row. */
+  const notesFor = (policyName: string): string[] => {
     const params = config.policyParams?.[policyName];
-    if (!params) return;
-    for (const [key, val] of Object.entries(params)) {
-      console.log(`${indent}  ${key}: ${JSON.stringify(val)}`);
-    }
+    if (!params) return [];
+    return Object.entries(params).map(([key, val]) => `${key}: ${JSON.stringify(val)}`);
   };
 
-  const statusCol = 8;
-  const printSimpleRow = (policy: { name: string; description: string }) => {
-    const mark = enabledSet.has(policy.name) ? `\x1B[32m\u2713\x1B[0m` : " ";
-    console.log(`  ${mark}${" ".repeat(statusCol - 1)}${policy.name.padEnd(nameColWidth)}${policy.description}`);
-    printParamsSummary(policy.name, `  ${" ".repeat(statusCol)}`);
+  const scopeLabelMap: Record<HookScope, string> = {
+    user: "User",
+    project: "Project",
+    local: "Local",
   };
-  const printBetaSection = (printRow: (p: { name: string; description: string }) => void) => {
-    if (betaPolicies.length > 0) {
-      console.log(`\n  \x1B[2m\u2500\u2500 Beta \u2500\u2500\x1B[0m`);
-      for (const policy of betaPolicies) printRow(policy);
-    }
+  // One status column per installed scope, or a single one when there is
+  // nothing to compare — the three hand-built table variants this replaces
+  // differed only in that, and in nothing a reader would want to be different.
+  const statusHeads =
+    installedScopes.length > 1 ? installedScopes.map((s) => scopeLabelMap[s]) : ["Status"];
+  const policyRow = (policy: { name: string; description: string; alwaysOn?: boolean }) => {
+    // `alwaysOn` reads ON everywhere else, which invites the one question the
+    // listing should answer without being asked: why will `--uninstall` not
+    // turn this off?
+    const state: ChipState = policy.alwaysOn ? "locked" : enabledSet.has(policy.name) ? "on" : "off";
+    return {
+      cells: [...statusHeads.map(() => chip(state, opts)), policy.name, policy.description],
+      notes: notesFor(policy.name),
+    };
   };
+  const policyTable = (policies: typeof BUILTIN_POLICIES) =>
+    table(
+      {
+        // Named when there is more than one, blank when there is one: with two
+        // scopes the reader cannot tell which column is which without the
+        // label, and with one the chip already says ON or OFF.
+        head: [
+          ...(installedScopes.length > 1 ? statusHeads : statusHeads.map(() => "")),
+          "Name",
+          "Description",
+        ],
+        rows: policies.map(policyRow),
+        flex: statusHeads.length + 1,
+      },
+      opts,
+    );
+
+  const groups: Array<string[] | null> = [];
+  const onCount = BUILTIN_POLICIES.filter((p) => enabledSet.has(p.name) || p.alwaysOn).length;
+  groups.push(
+    title(
+      "failproofai policies",
+      installedScopes.length === 0
+        ? "not installed"
+        : `${installedScopes.join(" + ")} · ${onCount}/${BUILTIN_POLICIES.length} on`,
+      opts,
+    ),
+  );
+  groups.push(policyTable(regularPolicies));
+  if (betaPolicies.length > 0) {
+    groups.push(rule("Beta", opts));
+    groups.push(policyTable(betaPolicies));
+  }
 
   if (installedScopes.length === 0) {
-    // State A: No hooks installed — show table with configured state + descriptions
-    console.log("\nFailproof AI Policies \u2014 not installed\n");
+    groups.push(
+      nextStep(
+        "failproofai policies --install",
+        config.enabledPolicies.length > 0
+          ? "These are configured but NOT installed — no hook is running them:"
+          : "Nothing is installed yet. Get started with:",
+        opts,
+      ),
+    );
+  }
+  // Held back to the end rather than printed here. Everything below this point
+  // is another section of the same listing, and a footer in the middle of it
+  // reads as the end of the output — while a warning at the very end is the one
+  // a reader scrolling back from their prompt actually sees.
+  const footer: Array<string[] | null> = [note(`Config: ${globalPolicyConfigFile()}`, opts)];
 
-    console.log(`  ${"Status".padEnd(statusCol)}${"Name".padEnd(nameColWidth)}Description`);
-    console.log(`  ${"\u2500".repeat(6)}  ${"\u2500".repeat(nameColWidth - 2)}  ${"\u2500".repeat(38)}`);
-
-    for (const policy of regularPolicies) printSimpleRow(policy);
-    printBetaSection(printSimpleRow);
-
-    if (config.enabledPolicies.length > 0) {
-      console.log("\n  Policies not installed. Run `failproofai policies --install` to activate.");
-    } else {
-      console.log("\n  Run `failproofai policies --install` to get started.");
-    }
-    console.log(`  Config: ${globalPolicyConfigFile()}\n`);
-  } else if (installedScopes.length === 1) {
-    // State B: Single scope — table with header row
-    const scope = installedScopes[0];
-    console.log(`\nFailproof AI Hook Policies (${scope})\n`);
-
-    console.log(`  ${"Status".padEnd(statusCol)}${"Name".padEnd(nameColWidth)}Description`);
-    console.log(`  ${"\u2500".repeat(6)}  ${"\u2500".repeat(nameColWidth - 2)}  ${"\u2500".repeat(38)}`);
-
-    for (const policy of regularPolicies) printSimpleRow(policy);
-    printBetaSection(printSimpleRow);
-
-    console.log(`\n  Config: ${globalPolicyConfigFile()}\n`);
-  } else {
-    // State C: Multiple scopes — column table
-    const COL = 9;
-    const scopeLabelMap: Record<HookScope, string> = {
-      user: "User",
-      project: "Project",
-      local: "Local",
-    };
-
-    console.log("\nFailproof AI Hook Policies\n");
-
-    // Header with only installed scope columns + separator
-    const buildScopePrefix = () => {
-      let s = "  ";
-      for (const sc of installedScopes) s += scopeLabelMap[sc].padEnd(COL);
-      return s;
-    };
-    const scopeHeaderWidth = installedScopes.length * COL;
-    console.log(`${buildScopePrefix()}${"Name".padEnd(nameColWidth)}Description`);
-    console.log(`  ${"\u2500".repeat(scopeHeaderWidth)}${"\u2500".repeat(nameColWidth)}${"\u2500".repeat(38)}`);
-
-    const printMultiScopeRow = (policy: { name: string; description: string }) => {
-      const enabled = enabledSet.has(policy.name);
-      let row = "  ";
-      for (const _scope of installedScopes) {
-        if (enabled) {
-          row += `\x1B[32m\u2713 ON\x1B[0m` + " ".repeat(COL - 4);
-        } else {
-          row += "  OFF" + " ".repeat(COL - 5);
-        }
-      }
-      row += policy.name.padEnd(nameColWidth) + policy.description;
-      console.log(row);
-      printParamsSummary(policy.name, `  ${" ".repeat(scopeHeaderWidth)}`);
-    };
-
-    for (const policy of regularPolicies) printMultiScopeRow(policy);
-
-    if (betaPolicies.length > 0) {
-      console.log(`\n  \x1B[2m\u2500\u2500 Beta \u2500\u2500\x1B[0m`);
-      for (const policy of betaPolicies) printMultiScopeRow(policy);
-    }
-
-    console.log(`\n  Config: ${globalPolicyConfigFile()}`);
-
-    // Multi-scope warning
-    const scopeNames = installedScopes.join(", ");
-    console.log();
-    console.log(`\x1B[33m\u26A0 Hooks in multiple scopes (${scopeNames}).\x1B[0m`);
-    console.log("  Consider keeping one. Remove with: failproofai policies --uninstall --scope <scope>\n");
+  if (installedScopes.length > 1) {
+    footer.push(
+      warning(
+        [
+          `Hooks in multiple scopes (${installedScopes.join(", ")}).`,
+          "Consider keeping one. Remove with: failproofai policies --uninstall --scope <scope>",
+        ],
+        opts,
+      ),
+    );
   }
 
   // Warn about unknown policyParams keys
   if (config.policyParams) {
     const unknownKeys: string[] = [];
     for (const key of Object.keys(config.policyParams)) {
-      if (!builtinPolicyNames.has(key)) {
-        console.log(`  \x1B[33mWarning: unknown policyParams key "${key}" — possible typo\x1B[0m`);
-        unknownKeys.push(key);
-      }
+      if (!builtinPolicyNames.has(key)) unknownKeys.push(key);
     }
     if (unknownKeys.length > 0) {
+      footer.push(
+        warning(
+          unknownKeys.map((key) => `unknown policyParams key "${key}" — possible typo`),
+          opts,
+        ),
+      );
       try {
         await trackHookEvent(getInstanceId(), "policy_params_validation_warning", {
           unknown_keys_count: unknownKeys.length,
@@ -757,30 +761,38 @@ export async function listHooks(cwd?: string): Promise<void> {
   // Explicit Custom Policies section
   const explicitPaths = configuredCustomPolicyPaths(config);
   if (explicitPaths.length > 0) {
-    console.log(`\n  \u2500\u2500 Custom Policies \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+    groups.push(rule("Custom Policies", opts));
     for (const path of explicitPaths) {
       // Enforcement resolves configured paths from the project config root.
       // Use the same canonical path here so the ID checked by the CLI exactly
       // matches the ID written by the dashboard.
       const absPath = resolve(findProjectConfigDir(cwd ?? process.cwd()), path);
-      console.log(`  ${absPath}`);
+      groups.push(note(absPath, opts));
       if (!existsSync(absPath)) {
-        console.log(`  \x1B[31m\u2717 File not found: ${absPath}\x1B[0m`);
+        groups.push(warning([`file not found: ${absPath}`], opts));
         continue;
       }
       const hooks = await loadCustomHooks(absPath);
       if (hooks.length === 0) {
-        console.log(`  \x1B[31m\u2717 ERR  failed to load (check ~/.failproofai/logs/hooks.log)\x1B[0m`);
+        groups.push(
+          warning(["failed to load (check ~/.failproofai/logs/hooks.log)"], opts),
+        );
       } else {
-        const descColWidth = nameColWidth;
-        for (const hook of hooks) {
-          const disabled = disabledCustomSet.has(`custom:${absPath}:${hook.name}`);
-          const status = disabled ? "\x1B[2m  OFF\x1B[0m" : "\x1B[32m\u2713 ON\x1B[0m";
-          console.log(`  ${status}    ${hook.name.padEnd(descColWidth)}${hook.description ?? ""}`);
-        }
+        groups.push(
+          table(
+            {
+              head: ["", "Name", "Description"],
+              rows: hooks.map((hook) => [
+                chip(disabledCustomSet.has(`custom:${absPath}:${hook.name}`) ? "off" : "on", opts),
+                hook.name,
+                hook.description ?? "",
+              ]),
+            },
+            opts,
+          ),
+        );
       }
     }
-    console.log();
   }
 
   // Convention Policies section (.failproofai/policies/*policies.{js,mjs,ts})
@@ -824,43 +836,82 @@ export async function listHooks(cwd?: string): Promise<void> {
       for (const t of targets) discovered[t].push({ file, hooks });
     };
 
-    console.log(`\n  \u2500\u2500 Convention Policies \u2014 ${label} (${dir}) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
-    // `nameColWidth` is sized to the longest BUILTIN name, but a convention
-    // filename can be longer \u2014 `padEnd` is then a no-op and the hook count runs
-    // straight into the filename with no space
-    // (`enforce-bengaluru-event-links-policies.mjs1 hook(s)`). Widen to fit the
-    // files actually being printed, keeping a two-space gutter.
-    const colWidth = Math.max(nameColWidth, ...files.map((f) => basename(f).length + 2));
+    groups.push(rule(`Convention Policies — ${label}`, opts));
+    groups.push(note(dir, opts));
+    const rows: TableRow[] = [];
     for (const file of files) {
+      const filename = basename(file);
       try {
         const hooks = await loadCustomHooks(file);
-        const filename = basename(file);
         record(filename, hooks.map((h) => h.name));
         if (hooks.length === 0) {
-          console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(colWidth)}\x1B[31mfailed to load\x1B[0m`);
-        } else {
-          const hookStates = hooks.map((hook) => ({
-            hook,
-            disabled: disabledCustomSet.has(`convention:${policyScope}:${filename}:${hook.name}`),
-          }));
-          const disabledCount = hookStates.filter((entry) => entry.disabled).length;
-          const status = disabledCount === 0
-            ? "\x1B[32m\u2713 ON\x1B[0m"
-            : disabledCount === hooks.length
-              ? "\x1B[2m  OFF\x1B[0m"
-              : "\x1B[33m\u25D0 MIXED\x1B[0m";
-          const hookSummary = hookStates
-            .map(({ hook, disabled }) => `${hook.name}${disabled ? " (OFF)" : ""}`)
-            .join(", ");
-          console.log(`  ${status}    ${filename.padEnd(colWidth)}${hooks.length} hook(s): ${hookSummary}`);
+          rows.push({ cells: [chip("failed", opts), filename, "failed to load"] });
+          continue;
         }
+        const hookStates = hooks.map((hook) => ({
+          hook,
+          disabled: disabledCustomSet.has(`convention:${policyScope}:${filename}:${hook.name}`),
+        }));
+        const disabledCount = hookStates.filter((entry) => entry.disabled).length;
+        const state: ChipState =
+          disabledCount === 0 ? "on" : disabledCount === hooks.length ? "off" : "mixed";
+        const hookSummary = hookStates
+          .map(({ hook, disabled }) => `${hook.name}${disabled ? " (OFF)" : ""}`)
+          .join(", ");
+        rows.push({
+          cells: [chip(state, opts), filename, `${hooks.length} hook(s): ${hookSummary}`],
+        });
       } catch {
-        const filename = basename(file);
         record(filename, []);
-        console.log(`  \x1B[31m\u2717\x1B[0m       ${filename.padEnd(colWidth)}\x1B[31merror\x1B[0m`);
+        rows.push({ cells: [chip("failed", opts), filename, "error"] });
       }
     }
-    console.log();
+    groups.push(table({ head: ["", "File", "Hooks"], rows }, opts));
+  }
+
+  // Installed packs. They enforce on this machine exactly like every section
+  // above, and until now the only way to see one was `failproofai pack list` —
+  // so the command that answers "what is enforcing here?" answered it with a
+  // subset, for the one source a person had to go out of their way to install.
+  try {
+    const { packs, errors } = readInstalledPacks();
+    for (const pack of packs) {
+      const taken = pack.enabled ?? pack.policies.map((p) => p.name);
+      groups.push(rule(`Pack — ${pack.id}@${pack.version}`, opts));
+      groups.push(
+        table(
+          {
+            head: ["", "Name", "Description"],
+            rows: pack.policies.map((policy) => {
+              const disabled = disabledCustomSet.has(
+                `pack:${pack.id}@${pack.version}:${policy.name}`,
+              );
+              // `observe` evaluates and discards its verdict, so a row reading
+              // ON would claim enforcement the pack deliberately is not doing.
+              const state: ChipState =
+                pack.effect === "observe"
+                  ? "observe"
+                  : !taken.includes(policy.name) || disabled
+                    ? "off"
+                    : "pack";
+              return [chip(state, opts), policy.name, policy.description];
+            }),
+          },
+          opts,
+        ),
+      );
+    }
+    if (errors.length > 0) {
+      groups.push(
+        warning(
+          errors.map((err) => `pack ${err.id ?? "(unnamed)"} will not load: ${err.reason}`),
+          opts,
+        ),
+      );
+    }
+  } catch {
+    // Same rule as the cloud section below: a listing must not be the thing
+    // that turns an unreadable manifest into a broken command.
   }
 
   // Cloud-managed policies. These enforce on this machine exactly like the two
@@ -875,27 +926,35 @@ export async function listHooks(cwd?: string): Promise<void> {
   try {
     const cloud = readActiveCloudManagedPolicies();
     if (cloud.length > 0) {
-      const gen = cloud[0].deployment;
-      console.log(
-        `\n  \u2500\u2500 Cloud-managed \u2014 deployment ${gen} \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`,
+      groups.push(rule(`Cloud-managed — deployment ${cloud[0].deployment}`, opts));
+      groups.push(
+        table(
+          {
+            head: ["", "Policy", "Version"],
+            rows: cloud.map((artifact) => [
+              // `observe` is evaluated and then has its verdict discarded, so a
+              // row that read "ON" would claim enforcement this policy
+              // deliberately is not doing.
+              chip(artifact.effect === "observe" ? "observe" : "cloud", opts),
+              artifact.id,
+              `v${artifact.version}`,
+            ]),
+            flex: 1,
+          },
+          opts,
+        ),
       );
-      const colWidth = Math.max(nameColWidth, ...cloud.map((c) => c.id.length + 2));
-      for (const artifact of cloud) {
-        // `observe` is evaluated and then has its verdict discarded, so a row
-        // that read "ON" would claim enforcement this policy deliberately is
-        // not doing.
-        const status =
-          artifact.effect === "observe" ? "\x1B[33m\u25D0 OBS\x1B[0m" : "\x1B[32m\u2713 ON\x1B[0m";
-        console.log(`  ${status}    ${artifact.id.padEnd(colWidth)}v${artifact.version}`);
-      }
-      console.log("\n  Managed from the dashboard \u2014 not switchable with `failproofai policies`.");
-      console.log();
+      groups.push(
+        note("Managed from the dashboard — not switchable with `failproofai policies`.", opts),
+      );
     }
   } catch {
     // A machine with no deployment, or an unreadable manifest, simply has no
     // section. The hook path reports its own failures; a listing must not be
     // the thing that turns a bad manifest into a broken command.
   }
+
+  printBlock(process.stdout, stack(...groups, ...footer));
 
   // Mirror what was just listed into the USER config. Safe here because
   // `failproofai policies` is a one-shot command — never do this on the hook

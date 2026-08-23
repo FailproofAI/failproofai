@@ -48,6 +48,7 @@ let prevNoDownload: string | undefined;
 
 /** Mutable per-test release contents. */
 let assets: Record<string, string>;
+let responseHeaders: Record<string, Record<string, string>>;
 /** What `releases/latest` redirects to, or null for a repo with no releases. */
 let latestTag: string | null;
 
@@ -56,11 +57,12 @@ function sha(s: string): string {
 }
 
 /** Build a well-formed release: manifest, entry, and matching SHA256SUMS. */
-function release(over: { policies?: unknown[]; id?: string; version?: string } = {}): void {
+function release(over: { policies?: unknown[]; id?: string; version?: string; effect?: unknown } = {}): void {
   const manifest = JSON.stringify({
     id: over.id ?? "acme/finance",
     version: over.version ?? "1.2.0",
     policies: over.policies ?? [POLICY, POLICY_2, POLICY_3],
+    ...(over.effect !== undefined ? { effect: over.effect } : {}),
   });
   assets = {
     "failproofai-pack.json": manifest,
@@ -79,6 +81,7 @@ beforeEach(async () => {
   delete process.env.FAILPROOFAI_NO_DOWNLOAD;
   process.env.FAILPROOFAI_PACK_DIR = root;
   latestTag = "v1.2.0";
+  responseHeaders = {};
   release();
 
   // Serves ONLY the real release path, so a wrong owner/repo/tag 404s the way
@@ -97,12 +100,13 @@ beforeEach(async () => {
       return;
     }
     const m = url.match(/^\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/([^/]+)$/);
-    const body = m && m[1] === "acme" && m[2] === "finance" ? assets[m[4]] : undefined;
+    const assetName = m?.[4];
+    const body = m && m[1] === "acme" && m[2] === "finance" && assetName ? assets[assetName] : undefined;
     if (body === undefined) {
       res.writeHead(404).end("no such asset");
       return;
     }
-    res.writeHead(200).end(body);
+    res.writeHead(200, responseHeaders[assetName!] ?? {}).end(body);
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   process.env.FAILPROOFAI_PACK_BASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -315,6 +319,29 @@ describe("addPack", () => {
     it("when a policy name would reach the builtin namespace", async () => {
       release({ policies: [{ ...POLICY, name: "failproofai/block-sudo" }] });
       await expect(addPack("github:acme/finance@v1.2.0")).rejects.toThrow(/unsafe name/);
+      wroteNothing();
+    });
+
+    it.each([
+      [{ id: "acme/finance/extra" }, /unsafe pack id/],
+      [{ version: "release/1" }, /invalid version/],
+      [{ effect: "audit" }, /unknown effect/],
+    ])("when manifest identity is loader-invalid: %j", async (over, message) => {
+      release(over);
+      await expect(addPack("github:acme/finance@v1.2.0")).rejects.toThrow(message);
+      wroteNothing();
+    });
+
+    it("when Content-Length declares an oversized response", async () => {
+      responseHeaders.SHA256SUMS = { "content-length": String(8 * 1024 * 1024 + 1) };
+      await expect(addPack("github:acme/finance@v1.2.0")).rejects.toThrow(/declares .* over the .* limit/);
+      wroteNothing();
+    });
+
+    it("when a chunked response crosses the size limit", async () => {
+      assets.SHA256SUMS = "x".repeat(8 * 1024 * 1024 + 1);
+      responseHeaders.SHA256SUMS = { "transfer-encoding": "chunked" };
+      await expect(addPack("github:acme/finance@v1.2.0")).rejects.toThrow(/over the .* byte limit/);
       wroteNothing();
     });
 

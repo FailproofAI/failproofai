@@ -24,7 +24,7 @@ const pack = (over: Partial<ResolvedPack> = {}): ResolvedPack => ({
 });
 
 const call = (over: Partial<Parameters<typeof missingGuards>[0]> = {}) =>
-  missingGuards({ errors: [], packs: [], registered: new Map(), disabled: new Set(), ...over });
+  missingGuards({ errors: [], packs: [], registered: new Map(), failed: new Map(), disabled: new Set(), ...over });
 
 describe("what counts as a failure", () => {
   it("says nothing about a machine with no packs at all", () => {
@@ -60,6 +60,17 @@ describe("what counts as a failure", () => {
     });
     expect(guards).toHaveLength(1);
     expect(guards[0].policies).toEqual(["require-note"]);
+  });
+
+  it("flags a pack whose artifact failed before registering any hooks", () => {
+    const guards = call({
+      packs: [pack()],
+      failed: new Map([["acme/finance", { type: "syntax_error", reason: "Unexpected token" }]]),
+    });
+    expect(guards).toHaveLength(1);
+    expect(guards[0].packVersion).toBe("1.2.0");
+    expect(guards[0].policies).toEqual(["block-refunds", "require-note"]);
+    expect(guards[0].reason).toContain("Unexpected token");
   });
 });
 
@@ -106,6 +117,10 @@ describe("the carve-outs", () => {
     for (const c of ["module_not_found", "syntax_error", "runtime_error", "path_missing"]) {
       expect(PERMANENT_LOAD_FAILURES.has(c), c).toBe(true);
     }
+    expect(call({
+      packs: [pack()],
+      failed: new Map([["acme/finance", { type: "load_timeout", reason: "slow disk" }]]),
+    })).toEqual([]);
   });
 });
 

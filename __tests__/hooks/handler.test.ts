@@ -1145,6 +1145,7 @@ describe("hooks/handler", () => {
           { name: "hook-b", fn: async () => ({ decision: "allow" as const }), match: { events: ["Stop" as never] } },
         ],
         conventionSources: [],
+        packFailures: new Map(),
       });
       mockStdin();
       const { trackHookEvent } = await import("../../src/hooks/hook-telemetry");
@@ -1180,6 +1181,7 @@ describe("hooks/handler", () => {
           { name: "bad-hook", fn: async () => { throw new Error("oops"); } },
         ],
         conventionSources: [],
+        packFailures: new Map(),
       });
       const { registerPolicy } = await import("../../src/hooks/policy-registry");
       const { trackHookEvent } = await import("../../src/hooks/hook-telemetry");
@@ -1209,6 +1211,7 @@ describe("hooks/handler", () => {
           { name: "slow-hook", fn: async () => { throw new Error("timeout"); } },
         ],
         conventionSources: [],
+        packFailures: new Map(),
       });
       const { registerPolicy } = await import("../../src/hooks/policy-registry");
       const { trackHookEvent } = await import("../../src/hooks/hook-telemetry");

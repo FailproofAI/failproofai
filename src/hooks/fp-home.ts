@@ -654,12 +654,13 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // directory holds both the files a person wrote and the ones the fleet sent,
   // and only the second kind may be thrown away.
   { path: cloudPoliciesDir, class: "refetchable" },
-  // Installed packs. Re-fetchable by `failproofai pack add` from the source and
-  // digest recorded in `installed.json`, so this is the fleet's argument again:
-  // one directory holds both what a person wrote and what a command fetched, and
-  // only the second kind may be thrown away. Without this row `packs/` inherits
-  // `policiesDir`'s `user-typed` and survives a reset that is supposed to clear
-  // re-fetchable state.
+  // Installed packs. Third-party packs are re-fetchable by `failproofai pack
+  // add`; the bundled default pack is restored from the package immediately
+  // after reset. So this is the fleet's argument again: one directory holds both
+  // what a person wrote and what a command fetched, and only the second kind may
+  // be thrown away. Without this row `packs/` inherits `policiesDir`'s
+  // `user-typed` and survives a reset that is supposed to clear re-fetchable
+  // state.
   { path: packsDir, class: "refetchable" },
 
   // ── Never touched ──

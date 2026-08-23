@@ -708,7 +708,7 @@ OPTIONS
   // path.
   if (args[0] === "pack") {
     const subArgs = args.slice(1);
-    if (subArgs[0] === "--help" || subArgs[0] === "-h") {
+    if (subArgs.includes("--help") || subArgs.includes("-h")) {
       console.log(`
 failproofai pack — install policy packs published as GitHub releases
 

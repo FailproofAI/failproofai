@@ -51,7 +51,9 @@ afterEach(() => {
 
 import { vi } from "vitest";
 
-function installPack(id: string, version: string): void {
+function installPack(id: string, version: string, artifact = ARTIFACT): void {
+  const digest = createHash("sha256").update(artifact).digest("hex");
+  writeFileSync(join(root, "artifacts", `${digest}.mjs`), artifact);
   writeFileSync(
     join(root, "installed.json"),
     JSON.stringify({
@@ -59,8 +61,8 @@ function installPack(id: string, version: string): void {
       packs: [{
         id, version,
         source: `github:${id}@${version}`,
-        entry: `artifacts/${DIGEST}.mjs`,
-        sha256: DIGEST,
+        entry: `artifacts/${digest}.mjs`,
+        sha256: digest,
         policies: [],
       }],
     }),
@@ -87,6 +89,15 @@ describe("engineVersion with packs", () => {
     installPack("acme/finance", "1.3.0");
     vi.resetModules();
     expect(await engineVersion()).not.toBe(at120);
+  });
+
+  it("changes when only the installed artifact digest changes", async () => {
+    installPack("acme/finance", "1.2.0");
+    vi.resetModules();
+    const original = await engineVersion();
+    installPack("acme/finance", "1.2.0", `${ARTIFACT}// patched\n`);
+    vi.resetModules();
+    expect(await engineVersion()).not.toBe(original);
   });
 
   it("falls back to the builtin-only hash when the manifest is unreadable", async () => {

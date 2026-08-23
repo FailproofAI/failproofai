@@ -90,8 +90,17 @@ describe("pack loading", () => {
     // The manifest read and the import are two moments. This is the one that
     // binds the bytes actually EXECUTED to what was promised.
     writeFileSync(artifact, SRC.replace("deny(", "allow("), "utf8");
-    const hooks = await loadWith([packRecord()]);
-    expect(hooks).toHaveLength(0);
+    const result = await loadAllCustomHooks([artifact], { sessionCwd: root, packs: [packRecord()] });
+    expect(result.hooks).toHaveLength(0);
+    expect(result.packFailures.get("acme/finance")?.type).toBe("runtime_error");
+    expect(result.packFailures.get("acme/finance")?.reason).toContain("integrity");
+  });
+
+  it("reports a pack entry that disappears between manifest read and import", async () => {
+    rmSync(artifact);
+    const result = await loadAllCustomHooks([artifact], { sessionCwd: root, packs: [packRecord()] });
+    expect(result.hooks).toHaveLength(0);
+    expect(result.packFailures.get("acme/finance")?.type).toBe("path_missing");
   });
 
   it("is not tagged as cloud-managed", async () => {

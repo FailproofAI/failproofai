@@ -178,6 +178,14 @@ describe("policies: --help", () => {
   });
 });
 
+describe("pack: --help", () => {
+  it("prints help when the flag follows a nested subcommand", () => {
+    const result = runCli("pack", "add", "--help");
+    assertSuccess(result);
+    expect(result.stdout).toContain("install policy packs");
+  });
+});
+
 // ── policies --install ────────────────────────────────────────────────────────
 
 describe("policies --install: unknown flags", () => {

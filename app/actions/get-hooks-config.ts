@@ -13,6 +13,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { customPoliciesDir } from "@/src/hooks/fp-home";
+import { readInstalledPacks } from "@/src/hooks/pack-manifest";
 
 export interface PolicyParamSpec {
   type: string;
@@ -68,6 +69,32 @@ export interface CliInstallStatus {
   detected: boolean;
 }
 
+/** One policy carried by an installed pack. */
+export interface PackPolicyInfo {
+  name: string;
+  description: string;
+  category: string;
+  enabled: boolean;
+  /**
+   * An enabled BUILTIN holds this name, so the builtin runs and this copy is
+   * skipped. Without saying so the row shows a toggle set to ON for a policy
+   * that does not run — the UI reporting enforcement that is not happening,
+   * which is the one thing this product must never do.
+   */
+  shadowedByBuiltin?: boolean;
+}
+
+export interface InstalledPackInfo {
+  id: string;
+  version: string;
+  /** Where it came from, verbatim — `github:acme/ops@v1.0.0` or `bundled:...`. */
+  source: string;
+  effect: "enforce" | "observe";
+  policies: PackPolicyInfo[];
+  /** Set when the record itself could not be read, e.g. its digest changed. */
+  error?: string;
+}
+
 export interface HooksConfigPayload {
   enabledPolicies: string[];
   /** Claude-only legacy field; kept for back-compat. New UI should consume `clis`. */
@@ -83,6 +110,8 @@ export interface HooksConfigPayload {
   customPolicies?: CustomPolicyInfo[];
   /** Convention-discovered policy files, project scope first. */
   conventionPolicies: ConventionPolicyFile[];
+  /** Installed policy packs, read from `installed.json`. */
+  packs: InstalledPackInfo[];
 }
 
 /**
@@ -232,6 +261,49 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
     new Set(resolvedCustomPaths),
   );
 
+  // Metadata only — deliberately never imported. Same rule as the convention
+  // files above: this runs on every page load, and importing a pack's artifact
+  // would execute a third party's code inside the long-lived dashboard server.
+  // The import check that proves a pack still loads belongs to the CLI and to
+  // the user-initiated install action.
+  // What actually registers as a builtin, which is what shadows a pack's copy.
+  const enabledBuiltinNames = new Set(config.enabledPolicies);
+  const packs: InstalledPackInfo[] = [];
+  try {
+    const { packs: installed, errors } = readInstalledPacks();
+    for (const pack of installed) {
+      const taken = pack.enabled ?? pack.policies.map((p) => p.name);
+      packs.push({
+        id: pack.id,
+        version: pack.version,
+        source: pack.source,
+        effect: pack.effect,
+        policies: pack.policies.map((policy) => ({
+          name: policy.name,
+          description: policy.description,
+          category: policy.category,
+          enabled:
+            taken.includes(policy.name) &&
+            !disabledCustomPolicies.has(`pack:${pack.id}@${pack.version}:${policy.name}`),
+          ...(enabledBuiltinNames.has(policy.name) ? { shadowedByBuiltin: true } : {}),
+        })),
+      });
+    }
+    for (const err of errors) {
+      packs.push({
+        id: err.id ?? "(unnamed pack)",
+        version: "",
+        source: "",
+        effect: "enforce",
+        policies: [],
+        error: err.reason,
+      });
+    }
+  } catch {
+    // A listing must not be the thing that turns an unreadable manifest into a
+    // broken page.
+  }
+
   return {
     enabledPolicies: config.enabledPolicies,
     installedScopes,
@@ -242,5 +314,6 @@ export async function getHooksConfigAction(): Promise<HooksConfigPayload> {
     customPoliciesPath: customPoliciesPaths.length === 1 ? customPoliciesPaths[0] : undefined,
     customPolicies: customPolicies.length ? customPolicies : undefined,
     conventionPolicies,
+    packs,
   };
 }

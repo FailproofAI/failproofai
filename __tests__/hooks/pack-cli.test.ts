@@ -67,8 +67,10 @@ describe("pack list", () => {
     install({ enabled: ["block-big-refund"] });
     const r = await runPackCommand(["list"]);
     expect(r.exitCode).toBe(0);
-    expect(text(r)).toContain("on   block-big-refund");
-    expect(text(r)).toContain("off  require-note");
+    // Chips, not bare words: the state has to survive NO_COLOR, so it carries a
+    // symbol and a word rather than a colour.
+    expect(text(r)).toContain("✓ ON     block-big-refund");
+    expect(text(r)).toContain("· OFF    require-note");
     expect(text(r)).toContain("github:acme/finance@v1.2.0");
   });
 

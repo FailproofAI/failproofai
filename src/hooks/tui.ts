@@ -902,3 +902,402 @@ export function promptText(opts: PromptTextOptions): Promise<string | null> {
     stdin.on("keypress", onKey);
   });
 }
+
+// ── the kit ──────────────────────────────────────────────────────────────────
+/**
+ * The block builders every PRINTED surface is assembled from.
+ *
+ * The prompts above dress the wizard. Everything else the CLI prints grew its
+ * own dialect instead: `policies` renders a table with `── rules ──` and colored
+ * chips, `pack list` and `harness list` print a bare sentence plus an indented
+ * example, `config --status` opens with a prose line and then label/value rows at
+ * label width 9, `audit --status` indents by three and misaligns its own value
+ * column (col 21 on the first row, 18 on the rest, plus a whitespace-only line),
+ * and `uninstall` prints `•` bullets with no header and no color at all. Six
+ * answers to "how does this product state a fact".
+ *
+ * These are the one answer. Every builder is pure — `(spec, opts) => string[]` —
+ * so a surface can be asserted at any width, with color on or off, without a pty;
+ * that is the same shape `renderBrandLogo`, `reviewLines` and `buildSummary`
+ * already have, and the reason they are the only rendering we can currently test.
+ *
+ * Callers pass `optsFor(stdout)` and print with `printBlock`, which owns the
+ * outer margins so no surface has to remember them.
+ */
+
+/** Every printed line starts here. Two spaces, never three. */
+export const INDENT = "  ";
+
+export interface RenderOpts {
+  /** Terminal width. Defaults to 80 so a piped or asserted render is deterministic. */
+  cols?: number;
+  /** Whether to emit ANSI at all. Defaults to OFF — colour is opt-in via `optsFor`. */
+  color?: boolean;
+}
+
+function ctx(opts?: RenderOpts): { cols: number; c: ReturnType<typeof paint> } {
+  return { cols: Math.max(20, opts?.cols ?? 80), c: paint(opts?.color ?? false) };
+}
+
+/** Derive render options from a real stream, honouring NO_COLOR and non-TTY. */
+export function optsFor(stdout: TTYOut = process.stdout): Required<RenderOpts> {
+  return { cols: stdout.columns || 80, color: colorsEnabled(stdout) };
+}
+
+/** Visible width of a line, skipping ANSI CSI sequences — the counterpart to
+ *  `truncate`, needed wherever a column has to line up under coloured content. */
+export function visibleWidth(line: string): number {
+  let width = 0;
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === ESC && line[i + 1] === "[") {
+      let j = i + 2;
+      while (j < line.length && !/[A-Za-z]/.test(line[j])) j++;
+      i = j + 1;
+    } else {
+      width++;
+      i++;
+    }
+  }
+  return width;
+}
+
+/** Wrap PLAIN text to `width`. A single word longer than the budget (a path, a
+ *  URL) overflows its own line rather than being broken — a split path is worse
+ *  than a long one, because it cannot be copied. */
+export function wrap(text: string, width: number): string[] {
+  if (width <= 0) return [text];
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const out: string[] = [];
+  let line = "";
+  for (const word of words) {
+    if (!line) line = word;
+    else if (line.length + 1 + word.length <= width) line += ` ${word}`;
+    else {
+      out.push(line);
+      line = word;
+    }
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+/** Fit one cell to `width`: ANSI-safe hard cut when it carries colour, a proper
+ *  single-ellipsis cut when it is plain. */
+function fit(cell: string, width: number): string {
+  if (visibleWidth(cell) <= width) return cell;
+  return cell.includes(ESC) ? truncate(cell, width) : ellipsize(cell, width);
+}
+
+/** Pad a possibly-coloured cell to `width` visible columns. */
+function pad(cell: string, width: number, align: "left" | "right" = "left"): string {
+  const gap = Math.max(0, width - visibleWidth(cell));
+  return align === "right" ? " ".repeat(gap) + cell : cell + " ".repeat(gap);
+}
+
+/**
+ * Join blocks with exactly one blank line between them.
+ *
+ * This is blank-line discipline as code rather than as a rule people remember:
+ * whitespace-only lines normalise to empty, two blanks never survive next to
+ * each other, and a block cannot open with one. `audit --status` prints a line
+ * containing a single space today; assembled through here it cannot.
+ */
+export function stack(...groups: Array<string[] | null | undefined>): string[] {
+  const out: string[] = [];
+  for (const group of groups) {
+    if (!group || group.length === 0) continue;
+    const body: string[] = [];
+    for (const line of group) {
+      const normalised = line.trim() === "" ? "" : line;
+      if (normalised === "" && (body.length === 0 || body[body.length - 1] === "")) continue;
+      body.push(normalised);
+    }
+    while (body.length > 0 && body[body.length - 1] === "") body.pop();
+    if (body.length === 0) continue;
+    if (out.length > 0) out.push("");
+    out.push(...body);
+  }
+  return out;
+}
+
+/** Print an assembled block with its outer margins. One place decides them. */
+export function printBlock(stdout: TTYOut, lines: string[]): void {
+  if (lines.length === 0) return;
+  writeLines(stdout, ["", ...lines, ""]);
+}
+
+/**
+ * The heading every surface opens with: what you are looking at, and the state
+ * it describes, right-aligned and dim.
+ *
+ * Six of our printed surfaces open with nothing at all, so output arrives with
+ * no statement of what it is — which is survivable on a screen you asked for and
+ * confusing in scrollback next to five other commands.
+ */
+export function title(name: string, meta?: string, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const left = `${INDENT}${c.bold(name)}`;
+  if (!meta) return [left];
+  const right = c.dim(meta);
+  const gap = cols - visibleWidth(left) - visibleWidth(right) - INDENT.length;
+  // Too narrow to sit on one line: drop it under rather than let it wrap into
+  // the middle of the heading, where it reads as a second, broken title.
+  if (gap < 2) return [left, `${INDENT}${c.dim(meta)}`];
+  return [left + " ".repeat(gap) + right];
+}
+
+/** A section divider — the `── Convention Policies ──────` shape `policies`
+ *  already uses, available to every surface instead of one. */
+export function rule(label?: string, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const width = Math.max(4, cols - INDENT.length * 2);
+  if (!label) return [`${INDENT}${c.dim("─".repeat(width))}`];
+  const head = `── ${label} `;
+  const tail = Math.max(3, width - head.length);
+  return [`${INDENT}${c.dim(head + "─".repeat(tail))}`];
+}
+
+export interface Row {
+  label: string;
+  value: string;
+}
+
+/**
+ * Label/value rows on ONE computed column.
+ *
+ * The column is derived from the widest label in the block and never hardcoded,
+ * which is the entire fix for `audit --status` printing its first row's value at
+ * column 21 and the rest at 18 — two hand-counted paddings in one block, in the
+ * same file.
+ */
+export function rows(items: Array<Row | [string, string]>, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const pairs = items.map((item) =>
+    Array.isArray(item) ? { label: item[0], value: item[1] } : item,
+  );
+  if (pairs.length === 0) return [];
+  const labelWidth = Math.min(24, Math.max(...pairs.map((p) => visibleWidth(p.label))));
+  const valueBudget = Math.max(8, cols - INDENT.length * 2 - labelWidth - 2);
+  const out: string[] = [];
+  for (const { label, value } of pairs) {
+    const gutter = `${INDENT}${pad(c.dim(fit(label, labelWidth)), labelWidth)}  `;
+    const hang = " ".repeat(visibleWidth(gutter));
+    // Wrapped with a hanging indent rather than cut. Cutting looks tidier and is
+    // worse: these values are URLs, machine ids and paths, and half of one is
+    // not a shorter fact, it is an unusable one. `wrap` never splits a single
+    // token, so a long URL survives whole on its own line — the only case that
+    // can still pass the right edge, and the right trade.
+    const wrapped = value.includes(ESC) ? [value] : wrap(value, valueBudget);
+    if (wrapped.length === 0) {
+      out.push(gutter.trimEnd());
+      continue;
+    }
+    out.push(gutter + wrapped[0]);
+    for (const extra of wrapped.slice(1)) out.push(hang + extra);
+  }
+  return out;
+}
+
+export interface TableSpec {
+  head: string[];
+  rows: string[][];
+  /** Per-column alignment. Numbers read right, everything else left. */
+  align?: Array<"left" | "right">;
+  /** Which column absorbs the leftover width (default: the last). */
+  flex?: number;
+}
+
+/** The `policies` table, available to every surface that lists things. */
+export function table(spec: TableSpec, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const count = spec.head.length;
+  if (count === 0) return [];
+  const flex = spec.flex ?? count - 1;
+  const natural = spec.head.map((h, i) =>
+    Math.max(visibleWidth(h), ...spec.rows.map((r) => visibleWidth(r[i] ?? ""))),
+  );
+  const budget = cols - INDENT.length * 2 - (count - 1) * 2;
+  // The flex column gives way first, and only when it has nothing left to give
+  // do the others shrink — widest first, so a narrow terminal costs the column
+  // that can most afford it. Without the second pass a single long cell (a path,
+  // a description) pushed the whole row past the terminal edge, which is the
+  // overrun this kit exists to end.
+  let overflow = natural.reduce((a, b) => a + b, 0) - budget;
+  if (overflow > 0) {
+    const give = Math.min(overflow, Math.max(0, natural[flex] - 8));
+    natural[flex] -= give;
+    overflow -= give;
+  }
+  while (overflow > 0) {
+    const widest = natural.indexOf(Math.max(...natural));
+    if (natural[widest] <= 4) break;
+    natural[widest] -= 1;
+    overflow -= 1;
+  }
+  const line = (cells: string[]) =>
+    INDENT +
+    cells
+      .map((cell, i) => pad(fit(cell, natural[i]), natural[i], spec.align?.[i] ?? "left"))
+      .join("  ")
+      .trimEnd();
+  return [
+    line(spec.head.map((h) => c.dim(h))),
+    ...rule(undefined, opts),
+    ...spec.rows.map(line),
+  ];
+}
+
+/** Every state a listed thing can be in. Symbol AND colour, never colour alone,
+ *  so the list still reads under NO_COLOR and for a red/green-blind reader. */
+export type ChipState = "on" | "off" | "locked" | "cloud" | "pack" | "failed" | "observe";
+
+const CHIP_LABELS: Record<ChipState, string> = {
+  on: "✓ ON",
+  off: "· OFF",
+  locked: "✓ LOCK",
+  cloud: "✓ CLOUD",
+  pack: "✓ PACK",
+  failed: "⚠ FAIL",
+  observe: "◉ OBS",
+};
+
+/** Width of the widest chip, so a column of them lines up without the caller
+ *  knowing which states it happens to contain. */
+export const CHIP_WIDTH = Math.max(...Object.values(CHIP_LABELS).map((l) => l.length));
+
+export function chip(state: ChipState, opts?: RenderOpts): string {
+  const { c } = ctx(opts);
+  const label = CHIP_LABELS[state];
+  const painted =
+    state === "on" || state === "pack"
+      ? c.pink(label)
+      : state === "failed"
+        ? c.warn(label)
+        : state === "cloud" || state === "observe"
+          ? c.guide(label)
+          : c.dim(label);
+  return pad(painted, CHIP_WIDTH);
+}
+
+/** A bulleted list, wrapped, with continuation lines aligned under the text —
+ *  `uninstall` prints 200-column bullets today that wrap into column 0. */
+export function bullets(items: string[], opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const budget = Math.max(8, cols - INDENT.length - 4);
+  const out: string[] = [];
+  for (const item of items) {
+    const [first, ...rest] = wrap(item, budget);
+    if (first === undefined) continue;
+    out.push(`${INDENT}${c.pink("•")} ${first}`);
+    for (const line of rest) out.push(`${INDENT}  ${line}`);
+  }
+  return out;
+}
+
+/** A dim aside under a block. */
+export function note(text: string, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  return wrap(text, Math.max(8, cols - INDENT.length * 2)).map((l) => `${INDENT}${c.dim(l)}`);
+}
+
+/**
+ * "Here is the command to run next" — the single most repeated shape in the CLI
+ * and, today, invented separately by `policies`, `pack list` and `harness list`.
+ */
+export function nextStep(cmd: string, why?: string, opts?: RenderOpts): string[] {
+  const { c } = ctx(opts);
+  const out: string[] = [];
+  if (why) out.push(...note(why, opts));
+  out.push(`${INDENT}${INDENT}${c.pink(cmd)}`);
+  return out;
+}
+
+function gutterBlock(symbol: string, lines: string[], opts?: RenderOpts): string[] {
+  const { cols } = ctx(opts);
+  const budget = Math.max(8, cols - INDENT.length - 3);
+  const out: string[] = [];
+  for (const line of lines) {
+    for (const wrapped of wrap(line, budget)) {
+      out.push(out.length === 0 ? `${INDENT}${symbol}  ${wrapped}` : `${INDENT}   ${wrapped}`);
+    }
+  }
+  return out;
+}
+
+/** Amber gutter. One shape for every warning, whether it is two lines about
+ *  scopes or six about the daemon. */
+export function warning(lines: string[], opts?: RenderOpts): string[] {
+  const { c } = ctx(opts);
+  return gutterBlock(c.warn("⚠"), lines, opts);
+}
+
+/** The same, for the ones that destroy something. */
+export function danger(lines: string[], opts?: RenderOpts): string[] {
+  const { c } = ctx(opts);
+  return gutterBlock(c.pink("!"), lines, opts);
+}
+
+/** Nothing to show, said the same way everywhere: what is empty, then the one
+ *  command that changes that. */
+export function emptyState(
+  spec: { what: string; hint?: string; cmd?: string },
+  opts?: RenderOpts,
+): string[] {
+  return stack(note(spec.what, opts), spec.cmd ? nextStep(spec.cmd, spec.hint, opts) : null);
+}
+
+export interface HelpSpec {
+  usage: Array<[string, string?]>;
+  options?: Array<[string, string]>;
+  examples?: string[];
+  /** Free lines under the heading, before USAGE. */
+  lead?: string[];
+}
+
+/**
+ * One shape for all five help screens.
+ *
+ * `policy --help`, `audit --help`, `pack --help`, `harness --help` and the top
+ * level each position their description column differently and indent
+ * differently, so reading two of them in a row feels like two products. The
+ * column is computed here from the widest entry, capped so a long flag cannot
+ * push every description off the right edge.
+ */
+export function helpBlock(spec: HelpSpec, opts?: RenderOpts): string[] {
+  const { cols, c } = ctx(opts);
+  const entries = [...spec.usage.map(([n]) => n), ...(spec.options ?? []).map(([n]) => n)];
+  const nameWidth = Math.min(34, Math.max(12, ...entries.map((n) => n.length)));
+  const section = (heading: string, body: string[]): string[] =>
+    body.length === 0 ? [] : [c.dim(heading), ...body];
+  const entryLines = (items: Array<[string, string?]>): string[] => {
+    const out: string[] = [];
+    for (const [name, description] of items) {
+      if (!description) {
+        out.push(`${INDENT}${name}`);
+        continue;
+      }
+      const budget = Math.max(12, cols - INDENT.length * 2 - nameWidth - 2);
+      const [first, ...rest] = wrap(description, budget);
+      // A name wider than the column takes its own line rather than shoving the
+      // description out — the top-level help has several of these today.
+      if (name.length > nameWidth) {
+        out.push(`${INDENT}${name}`);
+        for (const line of [first, ...rest]) {
+          if (line !== undefined) out.push(`${INDENT}${" ".repeat(nameWidth)}  ${c.dim(line)}`);
+        }
+        continue;
+      }
+      out.push(`${INDENT}${name.padEnd(nameWidth)}  ${c.dim(first ?? "")}`);
+      for (const line of rest) out.push(`${INDENT}${" ".repeat(nameWidth)}  ${c.dim(line)}`);
+    }
+    return out;
+  };
+  return stack(
+    spec.lead ? spec.lead.map((l) => `${INDENT}${l}`) : null,
+    section("USAGE", entryLines(spec.usage)),
+    section("OPTIONS", entryLines(spec.options ?? [])),
+    section("EXAMPLES", (spec.examples ?? []).map((e) => `${INDENT}${e}`)),
+  );
+}

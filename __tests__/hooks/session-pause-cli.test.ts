@@ -121,7 +121,7 @@ describe("--resume", () => {
 describe("--status", () => {
   it("says so plainly when nothing is paused", () => {
     const r = runPauseCommand({ action: "status", cwd: "/tmp/p", now: NOW });
-    expect(r.lines.join("\n")).toMatch(/Enforcement is active/);
+    expect(r.lines.join("\n")).toMatch(/enforcement\s+active — nothing is paused/);
   });
 
   it("lists active pauses with time remaining, and omits expired ones", () => {

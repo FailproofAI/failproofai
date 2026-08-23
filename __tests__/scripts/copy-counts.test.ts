@@ -60,7 +60,10 @@ describe("copy counts match source", () => {
     // copy. Update this block ONLY together with every string it guards.
     expect(TRUTH).toEqual({
       harnesses: 12,
-      policies: 40,
+      // 39, not 40: `block-self-pause` and `block-failproofai-commands` are one
+      // alwaysOn guard now — an agent that can disable either can disable
+      // enforcement, so they were never two decisions.
+      policies: 39,
       events: 29,
       preToolUseBlocks: 12,
       stopBlocks: 8,

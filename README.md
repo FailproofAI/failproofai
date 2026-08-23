@@ -18,7 +18,7 @@
 Wherever your agents run, we see it — and we can say no. Failproof hooks 12 agent
 harnesses — coding CLIs like Claude Code and Codex, chat gateways like Hermes,
 self-hosted assistants like OpenClaw — capturing every run and blocking dangerous
-tool calls before they execute. 40 built-in policies. Zero latency. Runs locally.
+tool calls before they execute. 39 built-in policies. Zero latency. Runs locally.
 
 </div>
 
@@ -140,7 +140,7 @@ failproofai policies --install   # or just run `failproofai` and accept the firs
 failproofai
 ```
 
-40 built-in policies activate immediately. Dashboard at `localhost:8020`. Disable the first-run prompt with `FAILPROOFAI_NO_FIRST_RUN=1`.
+39 built-in policies activate immediately. Dashboard at `localhost:8020`. Disable the first-run prompt with `FAILPROOFAI_NO_FIRST_RUN=1`.
 
 ---
 
@@ -160,7 +160,7 @@ failproofai
 The first five apply to any agent that can call a tool. The last three are the
 developer favourites — coding CLIs are the harness class we cover deepest.
 
-→ [All 40 built-in policies](https://docs.befailproof.ai/policies/builtin)
+→ [All 39 built-in policies](https://docs.befailproof.ai/policies/builtin)
 
 ---
 
@@ -242,7 +242,7 @@ own cluster is available on the Enterprise plan.
 
 | Enforce | |
 |---|---|
-| [Built-in policies](https://docs.befailproof.ai/policies/builtin) | All 40 policies with parameters |
+| [Built-in policies](https://docs.befailproof.ai/policies/builtin) | All 39 policies with parameters |
 | [Custom policies](https://docs.befailproof.ai/policies/custom) | Write your own |
 | [Configuration](https://docs.befailproof.ai/policies/local-configuration) | Config scopes and merge rules |
 

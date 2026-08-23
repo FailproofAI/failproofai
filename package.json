@@ -1,7 +1,7 @@
 {
   "name": "failproofai",
   "version": "1.0.2-beta.0",
-  "description": "Observability and enforcement for AI agent harnesses. 40 built-in policies hooked into 12 of them — Claude Code, Codex, Cursor, Hermes, OpenClaw and more — blocking the tool call before it runs. Local dashboard included, no account needed.",
+  "description": "Observability and enforcement for AI agent harnesses. 39 built-in policies hooked into 12 of them — Claude Code, Codex, Cursor, Hermes, OpenClaw and more — blocking the tool call before it runs. Local dashboard included, no account needed.",
   "bin": {
     "failproofai": "./dist/cli.mjs",
     "failproofaid": "./bin/failproofaid-shim.mjs"

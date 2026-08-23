@@ -249,8 +249,9 @@ describe("status", () => {
   it("shows the endpoint and machine id, with the token masked", () => {
     writeCloudCredentials({ url: "https://be.failproof.ai", machineId: "m-9", token: "abcdefghijkl" });
     const out = connectionStatusLines(() => "running").join("\n");
-    expect(out).toMatch(/connected to https:\/\/be\.failproof\.ai as m-9/);
-    expect(out).toMatch(/\*\*\*\*ijkl/);
+    expect(out).toMatch(/cloud\s+connected to https:\/\/be\.failproof\.ai/);
+    expect(out).toMatch(/machine\s+m-9/);
+    expect(out).toMatch(/token\s+\*\*\*\*ijkl/);
     expect(out).not.toContain("abcdefghijkl");
   });
 
@@ -460,7 +461,7 @@ describe("status shows one connection with two capabilities", () => {
     const verifyIngest = vi.fn(async () => ({ ok: false as const, reason: "403" }));
     await runConnectCommand({ ...base, verifyIngest, machineId: "m-1" });
     const out = connectionStatusLines(() => "running").join("\n");
-    expect(out).toMatch(/Dashboard NOT sending/);
+    expect(out).toMatch(/dashboard\s+NOT sending/);
     expect(out).toMatch(/--connect/);
   });
 
@@ -469,14 +470,14 @@ describe("status shows one connection with two capabilities", () => {
     await runConnectCommand({ ...base, verify, machineId: "m-1" });
     const out = connectionStatusLines(() => "running").join("\n");
     expect(out).toMatch(/reporting only/);
-    expect(out).toMatch(/Policy\s+NOT pulling/);
+    expect(out).toMatch(/policy\s+NOT pulling/);
   });
 
   it("shows both when both are configured", async () => {
     await runConnectCommand({ ...base, machineId: "m-1" });
     const out = connectionStatusLines(() => "running").join("\n");
-    expect(out).toMatch(/Policy\s+pulling/);
-    expect(out).toMatch(/Dashboard sending hook activity/);
+    expect(out).toMatch(/policy\s+pulling/);
+    expect(out).toMatch(/dashboard\s+sending hook activity/);
   });
 });
 

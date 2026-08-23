@@ -1784,16 +1784,41 @@ PAUSING ENFORCEMENT (one session, always time-boxed)
       // `--status` answers "what is this machine's state?", which is both
       // halves: whether enforcement is paused AND whether cloud is connected.
       if (wantsStatus) {
-        const { connectionStatusLines } = await import("../src/hooks/cloud-enrollment-cli");
-        for (const line of connectionStatusLines()) console.log(line);
-        // Always printed, including where reports can never work: "why am I
-        // not getting them?" is the question --status exists to answer, and an
-        // omitted line answers it with silence.
-        console.log("");
-      }
-      for (const line of result.lines) {
-        if (result.exitCode === 0) console.log(line);
-        else console.error(line);
+        const { connectionStatusReport, versionStatusLines } = await import(
+          "../src/hooks/cloud-enrollment-cli"
+        );
+        const { optsFor, printBlock, rows, stack, title, warning } = await import(
+          "../src/hooks/tui"
+        );
+        const opts = optsFor(process.stdout);
+        const report = connectionStatusReport();
+        // The version line was written to be "the only place a user can find out
+        // which daemon they are running" and then never called from anywhere. It
+        // is the right thing for the heading to carry, and it retires a heading
+        // that would otherwise have said the word "status" back to someone who
+        // just typed it.
+        printBlock(
+          process.stdout,
+          stack(
+            title("failproofai config", versionStatusLines()[0], opts),
+            // ONE rows() call over both blocks, so the connection facts and the
+            // enforcement state share a label column. Rendered separately they
+            // computed one column each and the window read as two commands'
+            // output stacked up.
+            //
+            // Always printed, including where reports can never work: "why am I
+            // not getting them?" is the question --status exists to answer, and
+            // an omitted line answers it with silence.
+            rows([...report.rows, ...(result.rows ?? [])], opts),
+            report.warnings.length > 0 ? warning(report.warnings, opts) : null,
+            result.rows ? null : result.lines,
+          ),
+        );
+      } else {
+        for (const line of result.lines) {
+          if (result.exitCode === 0) console.log(line);
+          else console.error(line);
+        }
       }
       await track("cli_pause_invoked", {
         action: pauseIdx >= 0 ? "pause" : wantsResume ? "resume" : "status",

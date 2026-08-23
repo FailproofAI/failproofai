@@ -218,10 +218,12 @@ describe("harness extra paths", () => {
     addPath("claude", "work=/srv/team");
     addPath("hermes", "/srv/hermes-prod/state.db");
     const out = listPaths().lines.join("\n");
-    expect(out).toContain("claude:");
+    // A section rule now, not a `claude:` prose heading — the same shape every
+    // other listing uses.
+    expect(out).toContain("── claude");
     expect(out).toContain("/srv/team");
     expect(out).toContain("work-*");
-    expect(out).toContain("hermes:");
+    expect(out).toContain("── hermes");
     expect(out).toContain("derived from the folder name");
   });
 

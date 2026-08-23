@@ -16,7 +16,17 @@ import { join } from "node:path";
 
 import { packAddSource, runPackCommand } from "@/src/hooks/pack-cli";
 
-const ARTIFACT = "export const hooks = [];\n";
+// Registers exactly what the manifest below declares. `pack list` imports the
+// artifact now — a listing that reports a pack healthy while the machine denies
+// every tool call because of it is worse than no listing — so a stub artifact
+// IS the broken pack, not a stand-in for a working one.
+const ARTIFACT = `
+  import { customPolicies } from "failproofai";
+  customPolicies.add({ name: "block-big-refund", description: "d",
+    match: { events: ["PreToolUse"] }, fn: async () => ({ decision: "allow" }) });
+  customPolicies.add({ name: "require-note", description: "d",
+    match: { events: ["PreToolUse"] }, fn: async () => ({ decision: "allow" }) });
+`;
 const DIGEST = createHash("sha256").update(ARTIFACT).digest("hex");
 const POLICIES = [
   { name: "block-big-refund", description: "Block big refunds", category: "Finance", defaultEnabled: true, match: {} },

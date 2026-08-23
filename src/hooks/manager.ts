@@ -26,6 +26,8 @@ import { CliError } from "../cli-error";
 import { hookLogWarn } from "./hook-logger";
 import { customPoliciesDir, globalPolicyConfigFile } from "./fp-home";
 import { readActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { setPackPolicyEnabled } from "./pack-store";
+import type { ResolvedPack } from "./pack-manifest";
 import { readInstalledPacks } from "./pack-manifest";
 import {
   chip,
@@ -78,13 +80,126 @@ function resolveFailproofaiBinary(): string {
   }
 }
 
-function validatePolicyNames(names: string[]): void {
-  const invalid = names.filter((n) => !VALID_POLICY_NAMES.has(n));
-  if (invalid.length > 0) {
-    const validList = [...VALID_POLICY_NAMES].join(", ");
+/** One policy of one installed pack, resolved from a name the user typed. */
+interface PackPolicyRef {
+  packId: string;
+  packVersion: string;
+  name: string;
+  /** The `disabledCustomPolicies` entry the dashboard writes for it. */
+  disabledKey: string;
+}
+
+/**
+ * Split names the user typed into builtins and installed-pack policies.
+ *
+ * Without this, every name went through `validatePolicyNames`, whose set is the
+ * compiled builtins — so `policies --disable block-big-refund` on a pack the
+ * user had just installed answered "Unknown policy name" and listed 39 names
+ * that were not the one they meant. A pack could be installed and then not
+ * managed at all.
+ *
+ * A builtin wins a bare name, because that is the name people have typed for a
+ * year and a third-party pack must not be able to capture it. Two packs
+ * declaring the same name is the one case that cannot be guessed, so it is
+ * refused with the qualified `<pack-id>:<name>` form spelled out.
+ */
+function resolvePolicyNames(names: string[]): { builtins: string[]; packs: PackPolicyRef[] } {
+  const builtins: string[] = [];
+  const packs: PackPolicyRef[] = [];
+  const unknown: string[] = [];
+
+  let installed: ResolvedPack[] = [];
+  try {
+    installed = readInstalledPacks().packs;
+  } catch {
+    // No packs, or an unreadable manifest: names simply resolve as builtins and
+    // an unknown one gets the ordinary error. A listing-adjacent command must
+    // not fail because a pack manifest is corrupt.
+  }
+
+  const refsFor = (packId: string | null, policyName: string): PackPolicyRef[] =>
+    installed
+      .filter((pack) => (packId === null || pack.id === packId))
+      .filter((pack) => pack.policies.some((p) => p.name === policyName))
+      .map((pack) => ({
+        packId: pack.id,
+        packVersion: pack.version,
+        name: policyName,
+        disabledKey: `pack:${pack.id}@${pack.version}:${policyName}`,
+      }));
+
+  for (const raw of names) {
+    if (VALID_POLICY_NAMES.has(raw)) {
+      builtins.push(raw);
+      continue;
+    }
+    // `acme/finance:block-big-refund` — a pack id holds a slash, never a colon,
+    // so the last colon separates them unambiguously.
+    const colon = raw.lastIndexOf(":");
+    const qualified = colon > 0
+      ? { packId: raw.slice(0, colon), name: raw.slice(colon + 1) }
+      : null;
+    const matches = qualified
+      ? refsFor(qualified.packId, qualified.name)
+      : refsFor(null, raw);
+
+    if (matches.length === 1) {
+      packs.push(matches[0]);
+      continue;
+    }
+    if (matches.length > 1) {
+      throw new CliError(
+        `"${raw}" is declared by ${matches.length} installed packs.\n` +
+          `Name the one you mean:\n` +
+          matches.map((m) => `  ${m.packId}:${m.name}`).join("\n"),
+      );
+    }
+    unknown.push(raw);
+  }
+
+  if (unknown.length > 0) {
+    const packNames = installed.flatMap((pack) =>
+      pack.policies.map((p) => `${pack.id}:${p.name}`),
+    );
     throw new CliError(
-      `Unknown policy name(s): ${invalid.join(", ")}\n` +
-      `Valid policies: ${validList}`
+      `Unknown policy name(s): ${unknown.join(", ")}\n` +
+        `Valid policies: ${[...VALID_POLICY_NAMES].join(", ")}` +
+        (packNames.length > 0 ? `\nFrom installed packs: ${packNames.join(", ")}` : ""),
+    );
+  }
+  return { builtins, packs };
+}
+
+/** Turn pack policies on or off, and say what happened. */
+function applyPackPolicies(
+  refs: PackPolicyRef[],
+  on: boolean,
+  scope: HookScope,
+  cwd?: string,
+): void {
+  if (refs.length === 0) return;
+  for (const ref of refs) {
+    const result = setPackPolicyEnabled(ref.packId, ref.name, on);
+    if (!result.ok) {
+      throw new CliError(`Could not ${on ? "enable" : "disable"} ${ref.name}: ${result.reason}`);
+    }
+  }
+  if (on) {
+    // Clearing the dashboard's key too. The selection and the disabled key are
+    // two different switches for one policy, and leaving the second one set
+    // would report the policy enabled while it stayed off.
+    const config = readScopedHooksConfig(scope, cwd);
+    const keys = new Set(refs.map((r) => r.disabledKey));
+    const remaining = (config.disabledCustomPolicies ?? []).filter((k) => !keys.has(k));
+    if (remaining.length !== (config.disabledCustomPolicies ?? []).length) {
+      const next: HooksConfig = { ...config, disabledCustomPolicies: remaining };
+      if (remaining.length === 0) delete next.disabledCustomPolicies;
+      writeScopedHooksConfig(next, scope, cwd);
+    }
+  }
+  for (const ref of refs) {
+    console.log(
+      `${on ? "Enabled" : "Disabled"} ${ref.name} from pack ${ref.packId}@${ref.packVersion}.`,
     );
   }
 }
@@ -188,8 +303,21 @@ async function installHooksImpl(
   // Validate user input first before any system checks
   if (policyNames !== undefined && policyNames.length > 0) {
     const nonAllNames = policyNames.filter((n) => n !== "all");
-    // Check unknown names first (most actionable error for the user)
-    if (nonAllNames.length > 0) validatePolicyNames(nonAllNames);
+    // Check unknown names first (most actionable error for the user). Pack
+    // policies are applied here and taken out of the list: the rest of this
+    // function writes `enabledPolicies`, which is a builtin-only set.
+    if (nonAllNames.length > 0) {
+      const resolved = resolvePolicyNames(nonAllNames);
+      applyPackPolicies(resolved.packs, true, scope, cwd);
+      if (resolved.packs.length > 0) {
+        policyNames = policyNames.filter((n) => n === "all" || resolved.builtins.includes(n));
+        // Named ONLY pack policies: the work is done. Carrying on would resolve
+        // the failproofai binary and rewrite every CLI's settings to enable a
+        // set of builtins nobody asked about — and would fail outright on a
+        // machine where the binary is not on PATH, AFTER the pack change landed.
+        if (policyNames.length === 0) return;
+      }
+    }
     // Then check if "all" is mixed with valid specific names
     if (policyNames.includes("all") && nonAllNames.length > 0) {
       throw new CliError(
@@ -471,8 +599,18 @@ export async function removeHooks(policyNames?: string[], scope: HookScope | "al
 
   // Remove specific policies from config (keep hooks installed)
   if (policyNames && policyNames.length > 0 && !(policyNames.length === 1 && policyNames[0] === "all")) {
-    validatePolicyNames(policyNames);
+    const resolved = resolvePolicyNames(policyNames);
+    applyPackPolicies(resolved.packs, false, configScope, cwd);
+    policyNames = resolved.builtins;
     rejectAlwaysOnPolicies(policyNames);
+    // Named ONLY pack policies: they are off now and there is nothing else to
+    // do. Falling through would reach the hook-removal path below with an empty
+    // name list, which is the "remove failproofai from every CLI" branch — so
+    // `--uninstall <a-pack-policy>` would have torn out every hook on the
+    // machine.
+    if (resolved.packs.length > 0 && policyNames.length === 0) return;
+  }
+  if (policyNames && policyNames.length > 0 && !(policyNames.length === 1 && policyNames[0] === "all")) {
     const config = readScopedHooksConfig(configScope, cwd);
     const removeSet = new Set(policyNames);
     const remaining = config.enabledPolicies.filter((p) => !removeSet.has(p));

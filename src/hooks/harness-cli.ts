@@ -39,6 +39,16 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { readConfig, updateConfig } from "./fp-config";
 import { configFile } from "./fp-home";
+import {
+  emptyState,
+  note,
+  table,
+  optsFor,
+  rule,
+  stack,
+  title,
+  warning,
+} from "./tui";
 
 /**
  * Harness keys `collector.sources.<key>` accepts.
@@ -314,45 +324,83 @@ export function listPaths(harness?: string): HarnessResult {
     (k) => !(HARNESS_KEYS as readonly string[]).includes(k),
   );
 
+  const opts = optsFor(process.stdout);
+  const head = (extra: number) =>
+    title(
+      "failproofai harness list",
+      `${HARNESS_KEYS.length} harnesses · ${extra} extra path${extra === 1 ? "" : "s"}`,
+      opts,
+    );
+
   if (names.length === 0 && unknown.length === 0) {
-    return ok([
-      "No extra capture paths configured.",
-      "",
-      "Every harness is watching only its default location. Add one with:",
-      "  failproofai harness add-path <harness> [<label>=]<path>",
-      "",
-      `Harnesses: ${HARNESS_KEYS.join(", ")}`,
-    ]);
+    return ok(
+      stack(
+        head(0),
+        emptyState(
+          {
+            what: "No extra capture paths configured. Every harness is watching only its default location.",
+            hint: "Add one with:",
+            cmd: "failproofai harness add-path <harness> [<label>=]<path>",
+          },
+          opts,
+        ),
+        // Wrapped, not joined into one line: twelve names ran off the right edge
+        // of an 80-column terminal, and the twelfth is as real as the first.
+        note(`Harnesses: ${HARNESS_KEYS.join(", ")}`, opts),
+      ),
+    );
   }
 
-  const lines: string[] = [];
+  const configured = names.reduce((n, name) => n + (sources[name]?.extraPaths?.length ?? 0), 0);
+  const groups: Array<string[] | null> = [head(configured)];
   for (const name of names) {
     const entries = sources[name]?.extraPaths ?? [];
     if (entries.length === 0) {
-      if (harness) lines.push(`${name}: no extra paths configured (default location only)`);
+      if (harness) {
+        groups.push(rule(name, opts));
+        groups.push(note("no extra paths configured (default location only)", opts));
+      }
       continue;
     }
-    lines.push(`${name}:`);
-    for (const e of entries) {
-      const label = labelOf(e);
-      lines.push(
-        label
-          ? `  ${pathOf(e)}   → agent ids ${label}-*`
-          : `  ${pathOf(e)}   → label derived from the folder name`,
-      );
-    }
+    groups.push(rule(name, opts));
+    // A table, not label/value rows: the PATH is the fact here, and a row's
+    // label column would have capped it at 24 columns — a truncated path cannot
+    // be copied, which makes the listing useless for the one thing it is for.
+    groups.push(
+      table(
+        {
+          head: ["Path", "Agent ids"],
+          rows: entries.map((e) => {
+            const label = labelOf(e);
+            return [
+              pathOf(e),
+              label ? `${label}-*` : "derived from the folder name",
+            ];
+          }),
+          flex: 1,
+        },
+        opts,
+      ),
+    );
   }
+  const lines: string[] = stack(...groups);
   // Unknown tables are surfaced here as well as by the daemon: a user who
   // hand-edited config.json runs `list` to check it, and that is the moment the
   // typo is cheapest to find.
   if (unknown.length > 0) {
-    if (lines.length === 0) lines.push("No extra capture paths configured for any known harness.");
-    lines.push(
+    const body = lines.length === 0 ? [...head(0), ""] : lines;
+    return ok([
+      ...body,
       "",
-      `⚠ config.json configures ${unknown.length} unknown harness(es): ${unknown.join(", ")}`,
-      "  Nothing is captured from them.",
-      `  Known: ${HARNESS_KEYS.join(", ")}`,
-    );
+      ...warning(
+        [
+          `config.json configures ${unknown.length} unknown harness(es): ${unknown.join(", ")}`,
+          "Nothing is captured from them.",
+          `Known: ${HARNESS_KEYS.join(", ")}`,
+        ],
+        opts,
+      ),
+    ]);
   }
   return ok(lines);
 }

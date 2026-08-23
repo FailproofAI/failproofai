@@ -7,6 +7,18 @@
  */
 import { readInstalledPacks } from "./pack-manifest";
 import { addPack, removePack, slugifyCategory } from "./pack-store";
+import {
+  chip,
+  emptyState,
+  nextStep,
+  optsFor,
+  rows as kitRows,
+  rule,
+  stack,
+  table,
+  title,
+  warning,
+} from "./tui";
 
 export interface PackCliResult {
   lines: string[];
@@ -100,43 +112,89 @@ function remove(rest: string[]): PackCliResult {
 
 function list(): PackCliResult {
   const { packs, errors } = readInstalledPacks();
-  const lines: string[] = [];
+  const opts = optsFor(process.stdout);
+  const policyCount = packs.reduce((n, pack) => n + pack.policies.length, 0);
+  const head = title(
+    "failproofai pack list",
+    packs.length === 0
+      ? undefined
+      : `${packs.length} pack${packs.length === 1 ? "" : "s"} · ${policyCount} policies`,
+    opts,
+  );
+
   if (packs.length === 0 && errors.length === 0) {
-    return ok([
-      "No packs installed.",
-      "",
-      "  failproofai pack add github:owner/repo@tag",
-    ]);
+    return ok(
+      stack(
+        head,
+        emptyState(
+          {
+            what: "No packs installed.",
+            hint: "Install one with:",
+            cmd: "failproofai pack add github:owner/repo@tag",
+          },
+          opts,
+        ),
+      ),
+    );
   }
+
+  const groups: Array<string[] | null> = [head];
   for (const pack of packs) {
     const taken = pack.enabled ?? pack.policies.map((p) => p.name);
-    lines.push(`${pack.id}@${pack.version}  (${pack.effect})`);
-    lines.push(`  source:  ${pack.source}`);
-    lines.push(`  sha256:  ${pack.sha256.slice(0, 16)}…`);
-    lines.push(`  enabled: ${taken.length}/${pack.policies.length}`);
-    // Grouped by category, in first-appearance order, because that is the axis
-    // `--category` selects on — a flat list gives no clue the flag exists.
-    const byCategory = new Map<string, typeof pack.policies>();
-    for (const policy of pack.policies) {
-      const list = byCategory.get(policy.category) ?? [];
-      list.push(policy);
-      byCategory.set(policy.category, list);
-    }
-    for (const [category, group] of byCategory) {
-      const on = group.filter((p) => taken.includes(p.name)).length;
-      lines.push(`  ${category}  (${slugifyCategory(category)}) — ${on}/${group.length} on`);
-      for (const policy of group) {
-        const mark = taken.includes(policy.name) ? "on " : "off";
-        lines.push(`    ${mark}  ${policy.name} — ${policy.description}`);
-      }
+    groups.push(rule(`${pack.id}@${pack.version}`, opts));
+    groups.push(
+      kitRows(
+        [
+          ["source", pack.source],
+          ["digest", `${pack.sha256.slice(0, 16)}…`],
+          ["effect", pack.effect],
+          ["enabled", `${taken.length}/${pack.policies.length}`],
+        ],
+        opts,
+      ),
+    );
+    // The category is a COLUMN rather than a set of sub-headings because it is
+    // what `--category` selects on: seeing the slug next to every policy is what
+    // tells someone the flag exists, and the suggestion below spells it out.
+    groups.push(
+      table(
+        {
+          head: ["", "Policy", "Category", "Description"],
+          rows: pack.policies.map((policy) => [
+            chip(taken.includes(policy.name) ? "on" : "off", opts),
+            policy.name,
+            slugifyCategory(policy.category),
+            policy.description,
+          ]),
+        },
+        opts,
+      ),
+    );
+    const slugs = [...new Set(pack.policies.map((p) => slugifyCategory(p.category)))];
+    if (taken.length < pack.policies.length && slugs.length > 0) {
+      groups.push(
+        nextStep(
+          `failproofai pack add ${pack.id} --category ${slugs.slice(0, 3).join(",")}`,
+          "Take a whole category with:",
+          opts,
+        ),
+      );
     }
   }
+
   // Never silent: a pack that was installed and now refuses to load is exactly
   // the state someone needs told about, since the machine is enforcing less
   // than its manifest says.
-  for (const err of errors) {
-    lines.push(`NOT LOADED  ${err.id ?? "(unnamed)"}: ${err.reason}`);
+  if (errors.length > 0) {
+    groups.push(
+      warning(
+        errors.map((err) => `NOT LOADED  ${err.id ?? "(unnamed)"}: ${err.reason}`),
+        opts,
+      ),
+    );
   }
+
+  const lines = stack(...groups);
   return errors.length > 0 ? fail(lines) : ok(lines);
 }
 

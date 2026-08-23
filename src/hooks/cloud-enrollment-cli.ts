@@ -20,6 +20,7 @@ import {
   daemonVersionSkew,
 } from "./daemon-service";
 import { clearActiveCloudManagedPolicies } from "./cloud-managed-policies";
+import { optsFor, rows as kitRows, stack, warning } from "./tui";
 import { deliveryHealth, deliveryHealthLine } from "./delivery-health";
 import { readVersionFile, readCredentials } from "./fp-config";
 import { version as cliVersion } from "../../package.json";
@@ -380,18 +381,36 @@ export function versionStatusLines(): string[] {
   ];
 }
 
-export function connectionStatusLines(
+export interface ConnectionStatusReport {
+  /** Label/value pairs, unrendered, so a caller printing several blocks in one
+   *  window can align them all to ONE column instead of each block to its own. */
+  rows: Array<[string, string]>;
+  /** Lines for the one warning shape, already stripped of their own gutter. */
+  warnings: string[];
+}
+
+/**
+ * The connection half of `--status`, as data.
+ *
+ * Separate from the rendering because `config --status` prints this block and
+ * the pause block together: rendered independently they computed two different
+ * label columns and the window read as two commands' output stacked up.
+ */
+export function connectionStatusReport(
   daemonStatus = daemonServiceStatus,
-  /** Print the full machine id rather than a short prefix. */
   verbose = false,
-): string[] {
+): ConnectionStatusReport {
   const envUrl = process.env.FAILPROOFAI_CLOUD_URL;
   if (envUrl) {
     // Env wins over the file in the daemon, so reporting the file here would
     // describe a configuration that is not in effect.
-    return [
-      `Cloud: configured by environment (${envUrl}), which takes precedence over ${cloudCredentialPath()}.`,
-    ];
+    return {
+      rows: [
+        ["cloud", `configured by environment (${envUrl})`],
+        ["", `takes precedence over ${cloudCredentialPath()}`],
+      ],
+      warnings: [],
+    };
   }
   const creds = readCloudCredentials();
   const ingest = readIngestCredential();
@@ -400,13 +419,13 @@ export function connectionStatusLines(
   // activity but pulling no policy, or the reverse, is a state worth seeing at
   // a glance — it is exactly the half-configured case this command exists to
   // catch, and two unrelated lines made it easy to miss.
-  if (!creds && !ingest) return ["Cloud: not connected."];
+  if (!creds && !ingest) return { rows: [["cloud", "not connected"]], warnings: [] };
 
   // Recorded at connect time from the server's own answer, never guessed from
   // the URL: one deployment hosts many orgs, so the host says nothing about
   // which one this machine's data lands in. Absent against a server with no
   // introspect endpoint, and on credentials written before this was recorded —
-  // in both cases the line is simply omitted rather than guessed at.
+  // in both cases the row is simply omitted rather than guessed at.
   const org = readCredentials().org;
   const orgLine = org
     ? org.name && org.slug
@@ -414,22 +433,25 @@ export function connectionStatusLines(
       : (org.name ?? org.slug ?? org.id)
     : undefined;
 
-  const lines: string[] = [];
+  // Rows, not a prose lead. The URL, the machine label and the masked token used
+  // to be crammed into one sentence — three separate facts, none of them
+  // scannable, and the two that follow were already a hand-padded column that
+  // agreed with nothing else the CLI prints.
+  const detail: Array<[string, string]> = [];
   if (creds) {
-    // Label first, with a short id to disambiguate; the bare id is the fallback
-    // for credentials written before labels existed.
-    const shownAs = describeMachine(creds.machineId, creds.machineLabel, verbose);
-    lines.push(`Cloud: connected to ${creds.url} as ${shownAs} (token ${maskToken(creds.token)}).`);
-    lines.push(`  Policy    pulling centrally-managed policies.`);
+    detail.push(["cloud", `connected to ${creds.url}`]);
+    detail.push(["machine", describeMachine(creds.machineId, creds.machineLabel, verbose)]);
+    detail.push(["token", maskToken(creds.token)]);
+    detail.push(["policy", "pulling centrally-managed policies"]);
   } else {
-    lines.push(`Cloud: connected to ${cloudBaseFor(ingest!.url)} for reporting only.`);
-    lines.push(`  Policy    NOT pulling — this machine enforces only its local policies.`);
+    detail.push(["cloud", `connected to ${cloudBaseFor(ingest!.url)} for reporting only`]);
+    detail.push(["policy", "NOT pulling — this machine enforces only its local policies"]);
   }
 
-  if (orgLine) lines.push(`  Org       ${orgLine}`);
+  if (orgLine) detail.push(["org", orgLine]);
 
   if (ingest) {
-    // Everything above this line is read from the credential FILE, which
+    // Everything above this row is read from the credential FILE, which
     // records what was true at `--connect` time and is never revisited. A key
     // that has since been revoked, expired, or had its org disabled leaves that
     // file byte-for-byte correct while nothing arrives — which is how a machine
@@ -439,16 +461,33 @@ export function connectionStatusLines(
     // so it overrides the cheerful line rather than being appended after it.
     const health = deliveryHealth();
     const rejection = deliveryHealthLine(health);
-    if (rejection) {
-      lines.push(`  Dashboard ${rejection}`);
-    } else {
-      lines.push(`  Dashboard sending hook activity to ${ingest.url}.`);
-    }
+    detail.push(["dashboard", rejection ?? `sending hook activity to ${ingest.url}`]);
   } else {
-    lines.push(`  Dashboard NOT sending — nothing from this machine appears in the dashboard.`);
-    lines.push(`            Re-run: failproofai config --connect ${creds!.url} --token <key>`);
+    detail.push([
+      "dashboard",
+      "NOT sending — nothing from this machine appears in the dashboard",
+    ]);
+    detail.push(["", `re-run: failproofai config --connect ${creds!.url} --token <key>`]);
   }
 
-  lines.push(...daemonWarning(daemonStatus()).map((l) => (l === "" ? "" : `  ${l.trim()}`)));
-  return lines;
+  // The daemon block is a warning, so it takes the one warning shape rather than
+  // its own indented prose.
+  const daemonLines = daemonWarning(daemonStatus())
+    .map((l) => l.replace(/^[!\s]+/, "").trim())
+    .filter((l) => l.length > 0);
+  return { rows: detail, warnings: daemonLines };
+}
+
+/** The same report, rendered on its own — for any caller printing only this. */
+export function connectionStatusLines(
+  daemonStatus = daemonServiceStatus,
+  /** Print the full machine id rather than a short prefix. */
+  verbose = false,
+): string[] {
+  const opts = optsFor(process.stdout);
+  const report = connectionStatusReport(daemonStatus, verbose);
+  return stack(
+    kitRows(report.rows, opts),
+    report.warnings.length > 0 ? warning(report.warnings, opts) : null,
+  );
 }

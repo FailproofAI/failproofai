@@ -17,6 +17,7 @@ import {
   writePause,
   type ActivePause,
 } from "./session-pause";
+import { note, nextStep, optsFor, rows, stack } from "./tui";
 
 export interface PauseCommandOptions {
   action: "pause" | "resume" | "status";
@@ -33,6 +34,13 @@ export interface PauseCommandOptions {
 export interface PauseCommandResult {
   exitCode: number;
   lines: string[];
+  /**
+   * The `--status` facts unrendered, so `config --status` can align them into
+   * the SAME label column as the connection block above them rather than each
+   * block computing its own. Absent for pause/resume, which are confirmations
+   * rather than readouts.
+   */
+  rows?: Array<[string, string]>;
   /** For telemetry; never the session id itself. */
   affected: number;
 }
@@ -60,7 +68,8 @@ function describe(pause: ActivePause, now: number): string {
   const remaining = formatDuration(Math.max(0, pause.expiresAt - now));
   const at = new Date(pause.expiresAt).toLocaleTimeString();
   const where = pause.cwd ? ` · ${pause.cwd}` : "";
-  return `  ${pause.sessionId}  ${remaining} left (until ${at})${where}`;
+  // The session id is the row LABEL now, so it is not repeated here.
+  return `${remaining} left (until ${at})${where}`;
 }
 
 export function runPauseCommand(opts: PauseCommandOptions): PauseCommandResult {
@@ -69,18 +78,26 @@ export function runPauseCommand(opts: PauseCommandOptions): PauseCommandResult {
 
   if (opts.action === "status") {
     const active = listActivePauses(now);
+    const renderOpts = optsFor(process.stdout);
+    // A row, because this is read as part of `config --status` — a bare sentence
+    // at column 0 under a block of aligned facts reads as output from a
+    // different command.
     if (active.length === 0) {
-      return { exitCode: 0, lines: ["Enforcement is active — nothing is paused."], affected: 0 };
+      const pairs: Array<[string, string]> = [["enforcement", "active — nothing is paused"]];
+      return { exitCode: 0, lines: rows(pairs, renderOpts), rows: pairs, affected: 0 };
     }
+    const pairs: Array<[string, string]> = [
+      ["enforcement", `paused for ${active.length} session${active.length === 1 ? "" : "s"}`],
+      ...active.map((p) => [p.sessionId, describe(p, now).trim()] as [string, string]),
+    ];
     return {
       exitCode: 0,
-      lines: [
-        `Enforcement paused for ${active.length} session${active.length === 1 ? "" : "s"}:`,
-        ...active.map((p) => describe(p, now)),
-        "",
-        "Cloud-managed policies keep enforcing regardless.",
-        "Resume early with: failproofai config --resume",
-      ],
+      rows: pairs,
+      lines: stack(
+        rows(pairs, renderOpts),
+        note("Cloud-managed policies keep enforcing regardless.", renderOpts),
+        nextStep("failproofai config --resume", "Resume early with:", renderOpts),
+      ),
       affected: active.length,
     };
   }

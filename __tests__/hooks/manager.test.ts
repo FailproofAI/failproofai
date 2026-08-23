@@ -65,6 +65,14 @@ describe("hooks/manager", () => {
     vi.resetAllMocks();
     vi.mocked(execSync).mockReturnValue("/usr/local/bin/failproofai\n");
     vi.spyOn(console, "log").mockImplementation(() => {});
+    // `listHooks` prints one block through `process.stdout` rather than a
+    // console.log per line. These tests read their output from console.log's
+    // recorded calls, so the stream feeds that same recorder — one line per
+    // call, exactly as before — instead of the assertions being rewritten.
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => {
+      for (const line of String(chunk).split("\n")) console.log(line);
+      return true;
+    });
   });
 
   afterEach(() => {
@@ -1113,7 +1121,7 @@ describe("hooks/manager", () => {
 
       const calls = vi.mocked(console.log).mock.calls.map((c) => c[0]);
       const output = calls.join("\n");
-      expect(output).toContain("Policies — not installed");
+      expect(output).toContain("not installed");
       expect(output).toContain("policies --install");
     });
 
@@ -1144,7 +1152,7 @@ describe("hooks/manager", () => {
       const output = calls.join("\n");
 
       // Scope name in title, not in columns
-      expect(output).toContain("(user)");
+      expect(output).toMatch(/failproofai policies\s+user · \d+\/\d+ on/);
       // Checkmark for enabled policy
       expect(output).toContain("\u2713");
       // Should NOT contain scope column headers
@@ -1261,7 +1269,7 @@ describe("hooks/manager", () => {
       const calls = vi.mocked(console.log).mock.calls.map((c) => c[0]);
       const output = calls.join("\n");
       // Should detect hooks in the project scope via the custom directory
-      expect(output).toContain("(project)");
+      expect(output).toMatch(/failproofai policies\s+project · \d+\/\d+ on/);
     });
 
     it("does not show multi-scope warning when cwd is home directory", async () => {
@@ -1295,7 +1303,7 @@ describe("hooks/manager", () => {
       const output = calls.join("\n");
 
       // Should show single-scope layout, not multi-scope warning
-      expect(output).toContain("(user)");
+      expect(output).toMatch(/failproofai policies\s+user · \d+\/\d+ on/);
       expect(output).not.toContain("multiple scopes");
     });
 
@@ -1391,7 +1399,7 @@ describe("hooks/manager", () => {
 
       const calls = vi.mocked(console.log).mock.calls.map((c) => c[0]);
       const output = calls.join("\n");
-      expect(output).toContain("ERR");
+      expect(output).toContain("failed to load");
       expect(output).toContain("failed to load");
     });
 

@@ -41,6 +41,12 @@ export interface PauseCommandResult {
    * rather than readouts.
    */
   rows?: Array<[string, string]>;
+  /**
+   * Lines that are NOT rows — the note and the resume command. A caller merging
+   * `rows` into a wider readout must still print these; dropping them took the
+   * only instruction telling a paused user how to get unpaused.
+   */
+  trailer?: string[];
   /** For telemetry; never the session id itself. */
   affected: number;
 }
@@ -90,14 +96,15 @@ export function runPauseCommand(opts: PauseCommandOptions): PauseCommandResult {
       ["enforcement", `paused for ${active.length} session${active.length === 1 ? "" : "s"}`],
       ...active.map((p) => [p.sessionId, describe(p, now).trim()] as [string, string]),
     ];
+    const trailer = stack(
+      note("Cloud-managed policies keep enforcing regardless.", renderOpts),
+      nextStep("failproofai config --resume", "Resume early with:", renderOpts),
+    );
     return {
       exitCode: 0,
       rows: pairs,
-      lines: stack(
-        rows(pairs, renderOpts),
-        note("Cloud-managed policies keep enforcing regardless.", renderOpts),
-        nextStep("failproofai config --resume", "Resume early with:", renderOpts),
-      ),
+      trailer,
+      lines: stack(rows(pairs, renderOpts), trailer),
       affected: active.length,
     };
   }

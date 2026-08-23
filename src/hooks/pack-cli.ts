@@ -10,6 +10,7 @@ import { addPack, removePack, slugifyCategory } from "./pack-store";
 import {
   chip,
   emptyState,
+  note,
   nextStep,
   optsFor,
   rows as kitRows,
@@ -156,21 +157,36 @@ function list(): PackCliResult {
     // The category is a COLUMN rather than a set of sub-headings because it is
     // what `--category` selects on: seeing the slug next to every policy is what
     // tells someone the flag exists, and the suggestion below spells it out.
+    // Four columns leave a description about 24 characters wide on an
+    // 80-column terminal, which is not a description. Below 100 the category
+    // column goes and its slugs are named once underneath instead.
+    const wide = opts.cols >= 100;
     groups.push(
       table(
         {
-          head: ["", "Policy", "Category", "Description"],
-          rows: pack.policies.map((policy) => [
-            chip(taken.includes(policy.name) ? "on" : "off", opts),
-            policy.name,
-            slugifyCategory(policy.category),
-            policy.description,
-          ]),
+          head: wide ? ["", "Policy", "Category", "Description"] : ["", "Policy", "Description"],
+          rows: pack.policies.map((policy) =>
+            wide
+              ? [
+                  chip(taken.includes(policy.name) ? "on" : "off", opts),
+                  policy.name,
+                  policy.category,
+                  policy.description,
+                ]
+              : [
+                  chip(taken.includes(policy.name) ? "on" : "off", opts),
+                  policy.name,
+                  policy.description,
+                ],
+          ),
         },
         opts,
       ),
     );
     const slugs = [...new Set(pack.policies.map((p) => slugifyCategory(p.category)))];
+    if (!wide && slugs.length > 0) {
+      groups.push(note(`Categories: ${slugs.join(", ")}`, opts));
+    }
     if (taken.length < pack.policies.length && slugs.length > 0) {
       groups.push(
         nextStep(

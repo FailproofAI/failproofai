@@ -983,11 +983,100 @@ export function wrap(text: string, width: number): string[] {
   return out;
 }
 
+/** One visible character plus whatever SGR codes are in effect at it. */
+interface AnsiCell {
+  ch: string;
+  active: string;
+}
+
+function toAnsiCells(text: string): AnsiCell[] {
+  const cells: AnsiCell[] = [];
+  let active = "";
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === ESC && text[i + 1] === "[") {
+      let j = i + 2;
+      while (j < text.length && !/[A-Za-z]/.test(text[j])) j++;
+      const code = text.slice(i, j + 1);
+      // A reset clears everything; anything else stacks on top.
+      active = /\[0?m$/.test(code) ? "" : active + code;
+      i = j + 1;
+    } else {
+      cells.push({ ch: text[i], active });
+      i++;
+    }
+  }
+  return cells;
+}
+
+function renderAnsiCells(line: AnsiCell[]): string {
+  let out = "";
+  let active = "";
+  for (const cell of line) {
+    if (cell.active !== active) {
+      if (active) out += ANSI_RESET;
+      out += cell.active;
+      active = cell.active;
+    }
+    out += cell.ch;
+  }
+  // Every produced line closes what it opened. A line that ends mid-SGR bleeds
+  // its colour into everything printed after it.
+  return active ? out + ANSI_RESET : out;
+}
+
+/**
+ * Wrap text that carries colour, on visible width.
+ *
+ * `wrap` counts escape bytes as characters, so a coloured value used to be
+ * handed back unwrapped — and then `writeLines` cut it at the terminal edge with
+ * `truncate`, which stops at the first plain character past the limit. That lost
+ * the tail of the sentence with no ellipsis to say so, AND dropped the closing
+ * reset, so the colour ran on into every line that followed. Both were
+ * reproduced on `audit --status` at 80 columns.
+ */
+export function wrapAnsi(text: string, width: number): string[] {
+  if (width <= 0) return [text];
+  if (!text.includes(ESC)) return wrap(text, width);
+  const words: AnsiCell[][] = [];
+  let word: AnsiCell[] = [];
+  for (const cell of toAnsiCells(text)) {
+    if (/\s/.test(cell.ch)) {
+      if (word.length > 0) words.push(word);
+      word = [];
+    } else {
+      word.push(cell);
+    }
+  }
+  if (word.length > 0) words.push(word);
+
+  const lines: string[] = [];
+  let line: AnsiCell[] = [];
+  for (const next of words) {
+    if (line.length > 0 && line.length + 1 + next.length > width) {
+      lines.push(renderAnsiCells(line));
+      line = [...next];
+      continue;
+    }
+    if (line.length > 0) line.push({ ch: " ", active: line[line.length - 1].active });
+    line.push(...next);
+  }
+  if (line.length > 0) lines.push(renderAnsiCells(line));
+  return lines;
+}
+
+/** Close any SGR a hard cut left open, for the same reason. */
+function closeSgr(text: string): string {
+  const cells = toAnsiCells(text);
+  const last = cells[cells.length - 1];
+  return last && last.active ? text + ANSI_RESET : text;
+}
+
 /** Fit one cell to `width`: ANSI-safe hard cut when it carries colour, a proper
  *  single-ellipsis cut when it is plain. */
 function fit(cell: string, width: number): string {
   if (visibleWidth(cell) <= width) return cell;
-  return cell.includes(ESC) ? truncate(cell, width) : ellipsize(cell, width);
+  return cell.includes(ESC) ? closeSgr(truncate(cell, width)) : ellipsize(cell, width);
 }
 
 /** Pad a possibly-coloured cell to `width` visible columns. */
@@ -1022,10 +1111,19 @@ export function stack(...groups: Array<string[] | null | undefined>): string[] {
   return out;
 }
 
-/** Print an assembled block with its outer margins. One place decides them. */
+/**
+ * Print an assembled block with its outer margins. One place decides them.
+ *
+ * Deliberately NOT `writeLines`, which truncates each line to the terminal
+ * width. Every builder above already fits its content, so the only lines that
+ * can exceed the width are ones holding a token that cannot be broken — a path,
+ * a URL, a session id. Cutting those loses characters silently and with no
+ * ellipsis to admit it; letting the terminal wrap keeps them copyable, which is
+ * the entire reason they are printed.
+ */
 export function printBlock(stdout: TTYOut, lines: string[]): void {
   if (lines.length === 0) return;
-  writeLines(stdout, ["", ...lines, ""]);
+  stdout.write(["", ...lines.map(closeSgr), ""].join("\n") + "\n");
 }
 
 /**
@@ -1078,18 +1176,31 @@ export function rows(items: Array<Row | [string, string]>, opts?: RenderOpts): s
     Array.isArray(item) ? { label: item[0], value: item[1] } : item,
   );
   if (pairs.length === 0) return [];
-  const labelWidth = Math.min(24, Math.max(...pairs.map((p) => visibleWidth(p.label))));
+  // The column grows to the widest label and the label is NEVER cut. It used to
+  // be capped at 24 and ellipsized, which quietly ate the pause session id —
+  // the one string `--resume --session <id>` needs, printed nowhere else. Half
+  // an id is not a shorter fact, it is an unusable one; a label past the cap
+  // takes its own line instead, so the value column survives.
+  const widest = Math.max(...pairs.map((p) => visibleWidth(p.label)));
+  const labelWidth = Math.min(widest, Math.max(12, Math.floor((cols - INDENT.length * 2) / 2)));
   const valueBudget = Math.max(8, cols - INDENT.length * 2 - labelWidth - 2);
   const out: string[] = [];
   for (const { label, value } of pairs) {
-    const gutter = `${INDENT}${pad(c.dim(fit(label, labelWidth)), labelWidth)}  `;
+    if (visibleWidth(label) > labelWidth) {
+      out.push(`${INDENT}${c.dim(label)}`);
+      for (const extra of wrapAnsi(value, valueBudget)) {
+        out.push(" ".repeat(INDENT.length + labelWidth + 2) + extra);
+      }
+      continue;
+    }
+    const gutter = `${INDENT}${pad(c.dim(label), labelWidth)}  `;
     const hang = " ".repeat(visibleWidth(gutter));
     // Wrapped with a hanging indent rather than cut. Cutting looks tidier and is
     // worse: these values are URLs, machine ids and paths, and half of one is
-    // not a shorter fact, it is an unusable one. `wrap` never splits a single
-    // token, so a long URL survives whole on its own line — the only case that
-    // can still pass the right edge, and the right trade.
-    const wrapped = value.includes(ESC) ? [value] : wrap(value, valueBudget);
+    // not a shorter fact, it is an unusable one. Neither `wrap` nor `wrapAnsi`
+    // splits a single token, so a long URL survives whole on its own line — the
+    // only case that can still pass the right edge, and the right trade.
+    const wrapped = wrapAnsi(value, valueBudget);
     if (wrapped.length === 0) {
       out.push(gutter.trimEnd());
       continue;
@@ -1100,13 +1211,26 @@ export function rows(items: Array<Row | [string, string]>, opts?: RenderOpts): s
   return out;
 }
 
+/** A row, optionally with dim continuation lines under it — configured params,
+ *  a policy hint, the reason a file would not load. */
+export interface TableRow {
+  cells: string[];
+  notes?: string[];
+}
+
 export interface TableSpec {
   head: string[];
-  rows: string[][];
+  rows: Array<string[] | TableRow>;
   /** Per-column alignment. Numbers read right, everything else left. */
   align?: Array<"left" | "right">;
   /** Which column absorbs the leftover width (default: the last). */
   flex?: number;
+  /**
+   * Columns the shrink pass may not touch. The second pass takes width from the
+   * WIDEST column, which in a path table is the path — cutting the one value the
+   * listing exists to hand back to the user.
+   */
+  protect?: number[];
 }
 
 /** The `policies` table, available to every surface that lists things. */
@@ -1115,8 +1239,9 @@ export function table(spec: TableSpec, opts?: RenderOpts): string[] {
   const count = spec.head.length;
   if (count === 0) return [];
   const flex = spec.flex ?? count - 1;
+  const body: TableRow[] = spec.rows.map((r) => (Array.isArray(r) ? { cells: r } : r));
   const natural = spec.head.map((h, i) =>
-    Math.max(visibleWidth(h), ...spec.rows.map((r) => visibleWidth(r[i] ?? ""))),
+    Math.max(visibleWidth(h), ...body.map((r) => visibleWidth(r.cells[i] ?? ""))),
   );
   const budget = cols - INDENT.length * 2 - (count - 1) * 2;
   // The flex column gives way first, and only when it has nothing left to give
@@ -1130,9 +1255,16 @@ export function table(spec: TableSpec, opts?: RenderOpts): string[] {
     natural[flex] -= give;
     overflow -= give;
   }
+  const protectedCols = new Set(spec.protect ?? []);
   while (overflow > 0) {
-    const widest = natural.indexOf(Math.max(...natural));
-    if (natural[widest] <= 4) break;
+    let widest = -1;
+    for (let i = 0; i < natural.length; i += 1) {
+      if (protectedCols.has(i) || natural[i] <= 4) continue;
+      if (widest === -1 || natural[i] > natural[widest]) widest = i;
+    }
+    // Everything left is protected or already at its floor: leave the row long
+    // and let the terminal wrap it rather than cut a protected value.
+    if (widest === -1) break;
     natural[widest] -= 1;
     overflow -= 1;
   }
@@ -1142,20 +1274,40 @@ export function table(spec: TableSpec, opts?: RenderOpts): string[] {
       .map((cell, i) => pad(fit(cell, natural[i]), natural[i], spec.align?.[i] ?? "left"))
       .join("  ")
       .trimEnd();
-  return [
-    line(spec.head.map((h) => c.dim(h))),
-    ...rule(undefined, opts),
-    ...spec.rows.map(line),
-  ];
+  // Notes hang under the row's LAST fixed column — i.e. where the name starts —
+  // so a hint reads as belonging to its row rather than to the table.
+  const noteIndent =
+    INDENT.length + natural.slice(0, Math.max(0, flex - 1)).reduce((a, b) => a + b + 2, 0);
+  const out = [line(spec.head.map((h) => c.dim(h))), ...rule(undefined, opts)];
+  for (const row of body) {
+    out.push(line(row.cells));
+    for (const n of row.notes ?? []) {
+      for (const wrapped of wrap(n, Math.max(8, cols - noteIndent - INDENT.length))) {
+        out.push(" ".repeat(noteIndent) + c.dim(wrapped));
+      }
+    }
+  }
+  return out;
 }
 
 /** Every state a listed thing can be in. Symbol AND colour, never colour alone,
  *  so the list still reads under NO_COLOR and for a red/green-blind reader. */
-export type ChipState = "on" | "off" | "locked" | "cloud" | "pack" | "failed" | "observe";
+export type ChipState =
+  | "on"
+  | "off"
+  | "mixed"
+  | "locked"
+  | "cloud"
+  | "pack"
+  | "failed"
+  | "observe";
 
 const CHIP_LABELS: Record<ChipState, string> = {
   on: "✓ ON",
   off: "· OFF",
+  // A convention FILE holds several hooks and some of them can be disabled
+  // individually, so "on" and "off" cannot describe it between them.
+  mixed: "◐ MIXED",
   locked: "✓ LOCK",
   cloud: "✓ CLOUD",
   pack: "✓ PACK",
@@ -1173,7 +1325,7 @@ export function chip(state: ChipState, opts?: RenderOpts): string {
   const painted =
     state === "on" || state === "pack"
       ? c.pink(label)
-      : state === "failed"
+      : state === "failed" || state === "mixed"
         ? c.warn(label)
         : state === "cloud" || state === "observe"
           ? c.guide(label)

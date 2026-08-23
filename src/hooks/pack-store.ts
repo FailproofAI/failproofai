@@ -15,10 +15,10 @@
  *
  * ## Never discovery
  *
- * Every URL is CONSTRUCTED from an owner, repo and tag the user typed. No API
- * call, no `releases/latest` redirect to follow, no rate limit, and no way to end
- * up holding an artifact from a source nobody named. Same rule as
- * `daemon-download.ts` and `contract-pack-client.ts`.
+ * Asset URLs are CONSTRUCTED from an owner, repo and concrete tag. When the
+ * user omits a tag, one `releases/latest` redirect resolves it before any asset
+ * is fetched or written. There is no API lookup or rate-limit dependency, and
+ * the installed record always names the pinned result.
  *
  * ## Never on the hook path
  *
@@ -28,9 +28,10 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { packsRoot, parsePackPolicy, readInstalledPacks } from "./pack-manifest";
+import { packsRoot, parsePackIdentity, parsePackPolicy, readInstalledPacks } from "./pack-manifest";
 import type { InstalledPackRecord } from "./pack-manifest";
 import type { PolicyCatalogEntry } from "./policy-types";
+import type { PolicyEffect } from "./cloud-managed-policies";
 
 const DEFAULT_BASE_URL = "https://github.com";
 const FETCH_TIMEOUT_MS = 30_000;
@@ -194,11 +195,34 @@ async function fetchBytes(url: string): Promise<Buffer> {
     redirect: "follow",
   });
   if (!response.ok) throw new Error(`GET ${url} returned ${response.status}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length > MAX_ARTIFACT_BYTES) {
-    throw new Error(`${url} is ${bytes.length} bytes, over the ${MAX_ARTIFACT_BYTES} limit`);
+  const contentLength = response.headers.get("content-length");
+  if (contentLength !== null) {
+    const declared = Number(contentLength);
+    if (Number.isFinite(declared) && declared > MAX_ARTIFACT_BYTES) {
+      await response.body?.cancel();
+      throw new Error(`${url} declares ${declared} bytes, over the ${MAX_ARTIFACT_BYTES} limit`);
+    }
   }
-  return bytes;
+  if (!response.body) return Buffer.alloc(0);
+
+  const chunks: Buffer[] = [];
+  const reader = response.body.getReader();
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_ARTIFACT_BYTES) {
+        await reader.cancel();
+        throw new Error(`${url} is over the ${MAX_ARTIFACT_BYTES} byte limit`);
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, total);
 }
 
 /**
@@ -236,7 +260,7 @@ interface FetchedPack {
   id: string;
   version: string;
   policies: PolicyCatalogEntry[];
-  effect?: string;
+  effect?: PolicyEffect;
   artifact: Buffer;
   artifactDigest: string;
 }
@@ -268,25 +292,20 @@ async function fetchPack(spec: PinnedPackSpec): Promise<FetchedPack> {
   }
   if (!parsed || typeof parsed !== "object") throw new Error(`${PACK_MANIFEST_ASSET} is not an object`);
   const raw = parsed as { id?: unknown; version?: unknown; policies?: unknown; effect?: unknown };
-  if (typeof raw.id !== "string" || !raw.id.includes("/")) {
-    throw new Error(`pack manifest id must be publisher/name, got ${JSON.stringify(raw.id)}`);
-  }
-  if (typeof raw.version !== "string" || raw.version.length === 0) {
-    throw new Error("pack manifest has no version");
-  }
+  const identity = parsePackIdentity(raw);
   if (!Array.isArray(raw.policies) || raw.policies.length === 0) {
     throw new Error("pack manifest declares no policies");
   }
   // Validated with the SAME rules the loader applies, so a pack that could never
   // load is refused here — while nothing has been written — rather than
   // installing cleanly and failing silently on the next tool call.
-  const policies = raw.policies.map((p, i) => parsePackPolicy(raw.id as string, p, i));
+  const policies = raw.policies.map((p, i) => parsePackPolicy(identity.id, p, i));
 
   return {
-    id: raw.id,
-    version: raw.version,
+    id: identity.id,
+    version: identity.version,
     policies,
-    ...(typeof raw.effect === "string" ? { effect: raw.effect } : {}),
+    ...(raw.effect !== undefined ? { effect: identity.effect } : {}),
     artifact,
     artifactDigest,
   };
@@ -483,19 +502,20 @@ export function installBundledPack(opts?: { only?: string[]; categories?: string
     const parsed = JSON.parse(manifestBytes.toString("utf8")) as {
       id?: unknown; version?: unknown; policies?: unknown; effect?: unknown;
     };
-    if (typeof parsed.id !== "string" || typeof parsed.version !== "string" || !Array.isArray(parsed.policies)) {
+    if (!Array.isArray(parsed.policies)) {
       return { installed: false, reason: "bundled pack manifest is malformed" };
     }
+    const identity = parsePackIdentity(parsed);
     // Same rules the loader applies, so a bundled pack that could never load
     // fails the install rather than looking fine until the next tool call.
-    const policies = parsed.policies.map((pol, i) => parsePackPolicy(parsed.id as string, pol, i));
+    const policies = parsed.policies.map((pol, i) => parsePackPolicy(identity.id, pol, i));
 
     const root = packsRoot();
     const artifactRel = `artifacts/${artifactDigest}.mjs`;
     const artifactAbs = resolve(root, artifactRel);
     if (!existsSync(artifactAbs)) writeAtomic(artifactAbs, artifact);
 
-    const prior = readInstalledPacks().packs.find((pk) => pk.id === parsed.id);
+    const prior = readInstalledPacks().packs.find((pk) => pk.id === identity.id);
     const available = policies.map((pol) => pol.name);
     const { enabled } = resolveSelection(
       policies,
@@ -505,23 +525,23 @@ export function installBundledPack(opts?: { only?: string[]; categories?: string
     );
 
     upsertInstalled({
-      id: parsed.id,
-      version: parsed.version,
+      id: identity.id,
+      version: identity.version,
       // Recorded as `bundled:` rather than a github: source, because it did not
       // come from one — and `pack add` on this id would otherwise look like a
       // re-fetch of something that was never fetched.
-      source: `bundled:${parsed.id}@${parsed.version}`,
+      source: `bundled:${identity.id}@${identity.version}`,
       entry: artifactRel,
       sha256: artifactDigest,
       policies,
-      ...(typeof parsed.effect === "string" ? { effect: parsed.effect } : {}),
+      ...(parsed.effect !== undefined ? { effect: identity.effect } : {}),
       ...(enabled ? { enabled } : {}),
     });
 
     return {
       installed: true,
-      id: parsed.id,
-      version: parsed.version,
+      id: identity.id,
+      version: identity.version,
       enabled: enabled ?? available,
       available,
     };

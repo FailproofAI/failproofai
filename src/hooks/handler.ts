@@ -516,6 +516,7 @@ export async function evaluateHookEvent(
           errors: packErrors,
           packs: installedPacks,
           registered: registeredByPack,
+          failed: loadResult.packFailures,
           disabled: disabledCustomPolicies,
         });
         if (guards.length > 0) {

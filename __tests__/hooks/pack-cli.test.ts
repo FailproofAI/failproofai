@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runPackCommand } from "@/src/hooks/pack-cli";
+import { packAddSource, runPackCommand } from "@/src/hooks/pack-cli";
 
 const ARTIFACT = "export const hooks = [];\n";
 const DIGEST = createHash("sha256").update(ARTIFACT).digest("hex");
@@ -108,6 +108,15 @@ describe("pack remove", () => {
 });
 
 describe("pack add usage", () => {
+  it("does not mistake separate flag values for the source", () => {
+    expect(packAddSource(["--only", "block-refunds", "acme/support-agent"]))
+      .toBe("acme/support-agent");
+    expect(packAddSource(["--category", "finance", "acme/support-agent", "--all"]))
+      .toBe("acme/support-agent");
+    expect(packAddSource(["--only=block-refunds", "acme/support-agent"]))
+      .toBe("acme/support-agent");
+  });
+
   it("needs a source", async () => {
     const r = await runPackCommand(["add"]);
     expect(r.exitCode).toBe(1);

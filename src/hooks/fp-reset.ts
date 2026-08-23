@@ -98,6 +98,7 @@ import {
   isDaemonSupportedPlatform,
   probeDaemonEndToEnd,
 } from "./daemon-service";
+import { installBundledPack } from "./pack-store";
 
 export interface ResetOutcome {
   /** Paths that existed and were removed. */
@@ -964,6 +965,10 @@ export function resetHome(from: number, to: number = LAYOUT_VERSION): ResetOutco
   // straight out of the same file. Both paths end at the same key, and only one
   // of them represents something a person typed.
   if (telemetryOptOut) updateConfig({ telemetry: { enabled: false } });
+  // `packs/` is resettable, but the package's default pack is also the offline
+  // enforcement floor. Restore it from the installed package before declaring
+  // the migration complete; third-party packs remain explicitly re-fetchable.
+  installBundledPack();
   // The step's OWN target, not LAYOUT_VERSION.
   //
   // Every step used to end stamping the current layout, which was harmless

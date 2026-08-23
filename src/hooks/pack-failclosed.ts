@@ -31,6 +31,7 @@
  * that must never deny.
  */
 import type { PackError, ResolvedPack } from "./pack-manifest";
+import type { PolicyLoadFailure } from "./custom-hooks-loader";
 import type { HookEventType } from "./types";
 import type { PolicyMatcher } from "./policy-types";
 
@@ -92,6 +93,8 @@ export function missingGuards(input: {
   packs: ResolvedPack[];
   /** Policy names a pack registered, keyed by pack id. */
   registered: Map<string, Set<string>>;
+  /** Packs handed to the loader whose entry artifact failed to import. */
+  failed: Map<string, PolicyLoadFailure>;
   disabled: ReadonlySet<string>;
 }): MissingGuard[] {
   const out: MissingGuard[] = [];
@@ -116,11 +119,29 @@ export function missingGuards(input: {
   // (c) Resolved, but registered less than it declared.
   for (const pack of input.packs) {
     if (pack.effect === "observe") continue;
+    const loadFailure = input.failed.get(pack.id);
+    if (loadFailure && PERMANENT_LOAD_FAILURES.has(loadFailure.type)) {
+      const taken = pack.enabled ?? pack.policies.map((p) => p.name);
+      const unavailable = pack.policies.filter(
+        (p) =>
+          taken.includes(p.name) &&
+          !input.disabled.has(`pack:${pack.id}@${pack.version}:${p.name}`),
+      );
+      if (unavailable.length > 0) {
+        out.push({
+          packId: pack.id,
+          packVersion: pack.version,
+          policies: unavailable.map((p) => p.name),
+          match: unionMatch(unavailable.map((p) => p.match)),
+          reason: `artifact failed to load: ${loadFailure.reason}`,
+        });
+      }
+      continue;
+    }
     const registered = input.registered.get(pack.id);
-    // A pack absent from the map was never handed to the loader at all — that is
-    // trigger (b), which needs loader plumbing this function does not have, and
-    // guessing it from "no registrations" cannot tell an import failure apart
-    // from a pause skip or a pack that legitimately registers nothing.
+    // A pack absent from both maps was never handed to the loader at all.
+    // Guessing failure from "no registrations" cannot distinguish that from a
+    // pause skip or a pack that legitimately registers nothing.
     if (!registered) continue;
 
     const taken = pack.enabled ?? pack.policies.map((p) => p.name);

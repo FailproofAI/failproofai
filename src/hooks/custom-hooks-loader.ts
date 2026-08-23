@@ -173,6 +173,11 @@ async function importWithDeadline(fileUrl: string): Promise<void> {
  * Load a single policy file into the globalThis custom hooks registry.
  * Does NOT clear the registry — caller is responsible for that.
  */
+export interface PolicyLoadFailure {
+  type: "module_not_found" | "syntax_error" | "load_timeout" | "runtime_error" | "path_missing";
+  reason: string;
+}
+
 async function loadSingleFile(
   absPath: string,
   opts?: {
@@ -181,7 +186,7 @@ async function loadSingleFile(
     /** Cloud-managed policies pass their pinned digest for load-time re-verification. */
     verifyEntrySha?: string;
   },
-): Promise<void> {
+): Promise<PolicyLoadFailure | null> {
   const g = globalThis as Record<string, unknown>;
   g[LOADING_KEY] = true;
 
@@ -209,7 +214,7 @@ async function loadSingleFile(
     const cached = policyModuleCache.get(absPath);
     if (cached?.fingerprint === fingerprint) {
       for (const hook of cached.hooks) customPolicies.add({ ...hook });
-      return;
+      return null;
     }
 
     const entryTmp = absPath + tmpSuffix;
@@ -223,6 +228,7 @@ async function loadSingleFile(
         .slice(hooksBefore)
         .map((hook) => ({ ...hook })),
     });
+    return null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const errorType = /Cannot find module|MODULE_NOT_FOUND|ENOENT/i.test(msg)
@@ -240,6 +246,7 @@ async function loadSingleFile(
     });
     if (opts?.strict) throw new Error(`Failed to load custom hooks from ${absPath}: ${msg}`);
     hookLogError(`failed to load custom hooks from ${absPath}: ${msg}`);
+    return { type: errorType, reason: msg };
   } finally {
     g[LOADING_KEY] = false;
     await cleanupTmpFiles(tmpFiles);
@@ -294,6 +301,8 @@ export interface ConventionSource {
 export interface LoadAllResult {
   hooks: CustomHook[];
   conventionSources: ConventionSource[];
+  /** Import failures keyed by pack id, including artifacts that registered no hooks. */
+  packFailures: Map<string, PolicyLoadFailure>;
 }
 
 export function customPolicyId(file: string, name: string): string {
@@ -377,6 +386,7 @@ export async function loadAllCustomHooks(
   clearCustomHooks();
 
   const conventionSources: ConventionSource[] = [];
+  const packFailures = new Map<string, PolicyLoadFailure>();
 
   const projectRoot = findProjectConfigDir(opts?.sessionCwd ?? process.cwd());
 
@@ -463,6 +473,8 @@ export async function loadAllCustomHooks(
     // resolve() also normalizes absolute paths, so aliases containing `.` or
     // `..` share a dedup key with convention-discovered canonical paths.
     const absPath = resolve(projectRoot, customPoliciesPath);
+    const cloudManaged = cloudManagedByPath.get(absPath);
+    const pack = packByPath.get(absPath);
     if (existsSync(absPath)) {
       if (!loadedPaths.has(absPath)) {
         loadedPaths.add(absPath);
@@ -473,13 +485,12 @@ export async function loadAllCustomHooks(
         // cloud policy does: the manifest read and the import are two moments,
         // and only this one binds the bytes actually executed to what was
         // promised.
-        await loadSingleFile(absPath, {
+        const failure = await loadSingleFile(absPath, {
           verifyEntrySha:
-            cloudManagedByPath.get(absPath)?.sha256 ?? packByPath.get(absPath)?.sha256,
+            cloudManaged?.sha256 ?? pack?.sha256,
         });
+        if (failure && pack) packFailures.set(pack.id, failure);
         for (const hook of getCustomHooks().slice(hooksBefore)) {
-          const cloudManaged = cloudManagedByPath.get(absPath);
-          const pack = packByPath.get(absPath);
           const tagged = hook as CustomHook & {
             __policyId?: string;
             __cloudManaged?: CloudManagedPolicyArtifact;
@@ -495,10 +506,11 @@ export async function loadAllCustomHooks(
             tagged.__policyId = customPolicyId(absPath, hook.name);
           }
         }
-        reconcilePackManifest(packByPath.get(absPath), getCustomHooks().slice(hooksBefore));
+        reconcilePackManifest(pack, getCustomHooks().slice(hooksBefore));
       }
     } else {
       hookLogWarn(`custom policy path not found: ${absPath}`);
+      if (pack) packFailures.set(pack.id, { type: "path_missing", reason: `path missing: ${absPath}` });
     }
   }
 
@@ -640,5 +652,5 @@ export async function loadAllCustomHooks(
     }
   }
 
-  return { hooks: allHooks, conventionSources };
+  return { hooks: allHooks, conventionSources, packFailures };
 }

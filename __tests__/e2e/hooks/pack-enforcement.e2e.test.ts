@@ -44,17 +44,18 @@ const policy = (name: string) => ({
 });
 
 /** Install a pack into the fixture home, the way `pack add` would leave it. */
-function installPack(home: string, over: Record<string, unknown> = {}): void {
+function installPack(home: string, over: Record<string, unknown> = {}, entry = ENTRY): void {
+  const digest = createHash("sha256").update(entry).digest("hex");
   const packs = join(home, ".failproofai", "policies", "packs");
   mkdirSync(join(packs, "artifacts"), { recursive: true });
-  writeFileSync(join(packs, "artifacts", `${DIGEST}.mjs`), ENTRY, "utf8");
+  writeFileSync(join(packs, "artifacts", `${digest}.mjs`), entry, "utf8");
   writeFileSync(
     join(packs, "installed.json"),
     JSON.stringify({
       schemaVersion: 1,
       packs: [{
         id: "acme/finance", version: "1.2.0", source: "github:acme/finance@v1.2.0",
-        entry: `artifacts/${DIGEST}.mjs`, sha256: DIGEST,
+        entry: `artifacts/${digest}.mjs`, sha256: digest,
         policies: [policy("block-refunds"), policy("block-payouts")],
         ...over,
       }],
@@ -138,6 +139,16 @@ describe("pack enforcement, end to end", () => {
 
     // The pack's policies declare PreToolUse only, so a Stop event is untouched.
     assertAllow(runHook("Stop", { hook_event_name: "Stop", cwd: env.cwd, session_id: "s" } as never, { homeDir: env.home }));
+  });
+
+  it("DENIES when a digest-valid artifact cannot be imported", () => {
+    const env = createFixtureEnv();
+    env.writeConfig({ enabledPolicies: [] });
+    installPack(env.home, {}, "export const broken = ;\n");
+
+    const result = runHook("PreToolUse", bash("issue refund 500", env.cwd), { homeDir: env.home });
+    assertPreToolUseDeny(result);
+    expect(result.stdout + result.stderr).toContain("artifact failed to load");
   });
 
   it("does NOT deny for a tampered OBSERVE pack", () => {

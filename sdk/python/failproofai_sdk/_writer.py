@@ -60,14 +60,41 @@ _batch_seq = itertools.count()
 #: bounded by BYTES as well, below.
 _QUEUE_CAP = 10_000
 
-#: The real ceiling. Chosen to sit well under the memory a small container is
-#: given (512 MB is the common floor), because the whole point is that a spool
-#: which has stopped draining must not take the customer's agent down with it.
+#: The ceiling, enforced against MEASURED bytes rather than an estimate. Chosen
+#: to sit well under the memory a small container is given (512 MB is the common
+#: floor), because the whole point is that a spool which has stopped draining
+#: must not take the customer's agent down with it.
+#:
+#: This was briefly derived from a running average of encoded batch sizes, which
+#: is not a bound at all before the first flush has happened: the seed assumed
+#: 1 KB/event, so 10_000 events of 128 KiB queued 1.22 GB before the estimate
+#: caught up — the exact OOM this exists to prevent, just later. `submit` sizes
+#: each entry as it arrives instead. That costs one walk over the entry's NODES
+#: (string lengths are O(1)), not over its characters, which is microseconds for
+#: an event and is paid on the caller's thread only once per event.
 _QUEUE_BYTE_CAP = 64 * 1024 * 1024
 
-#: Seed for the running average below — the 1 KB/event this cap was originally
-#: sized against, so behaviour before the first flush is what it always was.
-_ASSUMED_ENTRY_BYTES = 1024
+#: Per-STRING cap inside one event, mirroring `MAX_FIELD_BYTES` in
+#: `crates/fpai-collect/src/spool.rs`. The Rust spool writer has always enforced
+#: this; the Python writer publishing into the same directories did not.
+_MAX_FIELD_BYTES = 1024 * 1024
+
+#: Roll a batch file once it reaches this, mirroring `DEFAULT_MAX_BATCH_BYTES`
+#: in `spool.rs` and staying under the uploader's `DEFAULT_MAX_UPLOAD_BYTES`.
+#:
+#: `uploader.rs` documents the invariant this restores: "A single line longer
+#: than max is emitted alone rather than dropped: the spool writer already
+#: guarantees no such line exists." No SDK-side writer guaranteed that, and
+#: `split_lines` can only split on newlines — so one oversized event was POSTed
+#: whole, rejected, and the WHOLE spool file (every unrelated event batched with
+#: it) was parked, retried three times and poisoned. Never delivered, and nothing
+#: in the host process ever learned.
+_MAX_BATCH_BYTES = 8 * 1024 * 1024
+
+#: An encoded event above this is over-large on its own and gets its fields
+#: capped. Sits below `_MAX_BATCH_BYTES` so a capped event still leaves room for
+#: the batch framing around it.
+_MAX_EVENT_BYTES = 4 * 1024 * 1024
 
 #: How deep `_sanitize` will walk before giving up on a branch. Guards the
 #: fallback path against a RecursionError, which would defeat the point of
@@ -86,6 +113,8 @@ _MAX_SANITIZE_DEPTH = 50
 #: moment it also contained a Korean character. Real surrogates are U+D800–U+DFFF,
 #: whose escapes all begin `\\ud8`, `\\ud9`, `\\uda`…`\\udf`.
 _SURROGATE_ESCAPES = tuple(f"\\ud{c}" for c in "89abcdefABCDEF")
+
+_FIELD_TRUNCATION_MARKER = "…[truncated]"
 
 _CYCLE_MARKER = "<circular reference>"
 _DEPTH_MARKER = "<max depth exceeded>"
@@ -131,6 +160,66 @@ def _validated_interval(flush_interval: float) -> float:
             f"flush_interval must be a finite number greater than zero, got {flush_interval!r}"
         )
     return interval
+
+
+def _approx_size(value, depth: int = 0) -> int:
+    """Roughly how many bytes `value` will occupy once encoded.
+
+    Walks NODES, not characters: `len()` on a string is O(1), so an ordinary
+    event costs microseconds even though it may carry megabytes of text. That is
+    what makes it affordable on `submit`, which runs on the caller's agent loop.
+
+    Deliberately approximate — it ignores JSON punctuation and escaping — because
+    it backs a backstop against unbounded growth, not an exact quota.
+    """
+    if depth > _MAX_SANITIZE_DEPTH:
+        return 16
+    if value is None or isinstance(value, (bool, int, float)):
+        return 8
+    if isinstance(value, str):
+        return len(value)
+    if isinstance(value, bytes):
+        return len(value)
+    # NOTHING here may raise. `submit` runs on the caller's agent loop, so an
+    # exception escaping this function is a telemetry call taking down the host
+    # agent — the one failure mode this whole module is written to avoid. A key
+    # is measured only when it is ALREADY a `str`: calling `str()` on it would
+    # run the caller's `__str__`, which can raise anything at all (this is not
+    # hypothetical — `tests/test_encoding.py` plants exactly that object).
+    try:
+        if isinstance(value, dict):
+            return sum(
+                (len(k) if isinstance(k, str) else 16) + _approx_size(v, depth + 1)
+                for k, v in value.items()
+            )
+        if isinstance(value, (list, tuple, set, frozenset)):
+            return sum(_approx_size(v, depth + 1) for v in value)
+    except Exception:  # pragma: no cover - a container whose iteration raises
+        return 16
+    return 16
+
+
+def _cap_fields(value, limit: int, depth: int = 0):
+    """Truncate every string in `value` to `limit`, marking what was cut.
+
+    Mirrors `truncate_strings` in `crates/fpai-collect/src/spool.rs`, which has
+    always enforced this on the Rust side of the same spool.
+    """
+    if depth > _MAX_SANITIZE_DEPTH:
+        return value
+    # Same rule as `_approx_size`: never raise. This runs from `_encode_entry`,
+    # whose contract is that ONE bad event is dropped alone rather than taking
+    # the batch beside it down.
+    try:
+        if isinstance(value, str) and len(value) > limit:
+            return value[:limit] + _FIELD_TRUNCATION_MARKER
+        if isinstance(value, dict):
+            return {k: _cap_fields(v, limit, depth + 1) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [_cap_fields(v, limit, depth + 1) for v in value]
+    except Exception:  # pragma: no cover - a container whose iteration raises
+        return value
+    return value
 
 
 def _scrub_key(key) -> str:
@@ -250,10 +339,11 @@ def _encode_entry(entry: dict) -> "str | None":
         # own text happens to contain a real surrogate escape trips this too and
         # is merely re-encoded, which is rare enough to be worth the certainty.
         if not any(esc in encoded for esc in _SURROGATE_ESCAPES):
-            return encoded
+            return _cap_encoded(entry, encoded)
 
     try:
-        return json.dumps(_sanitize(entry, frozenset()), default=str, allow_nan=False)
+        sanitized = _sanitize(entry, frozenset())
+        return _cap_encoded(sanitized, json.dumps(sanitized, default=str, allow_nan=False))
     except Exception:
         # Nothing left to try. Losing this event is the correct outcome; losing
         # the batch around it is not.
@@ -262,6 +352,56 @@ def _encode_entry(entry: dict) -> "str | None":
             entry.get("type") if isinstance(entry, dict) else None,
         )
         return None
+
+
+def _roll(lines: list, limit: int):
+    """Split encoded lines into batches that each stay under `limit` bytes."""
+    chunk, size = [], 0
+    for line in lines:
+        cost = len(line) + 1  # the newline this line will be joined with
+        if chunk and size + cost > limit:
+            yield chunk
+            chunk, size = [], 0
+        chunk.append(line)
+        size += cost
+    if chunk:
+        yield chunk
+
+
+def _cap_encoded(entry: dict, encoded: str) -> str:
+    """Bound ONE event, re-encoding only when it is actually over-large.
+
+    `ensure_ascii` is on, so the encoded string is ASCII and `len` is its byte
+    count exactly. The check is therefore free on the fast path and the walk is
+    paid only by the events that need it.
+
+    Why it has to happen at all: `uploader.rs` states the invariant it relies on
+    — "A single line longer than max is emitted alone rather than dropped: the
+    spool writer already guarantees no such line exists." The Rust spool writer
+    does guarantee it (`truncate_strings` at `MAX_FIELD_BYTES`). The Python
+    writer, publishing into the same directories, did not — so one
+    `tool_result(output=<a large file>)` was written as a single line, POSTed
+    whole because `split_lines` can only split on newlines, rejected, and the
+    ENTIRE spool file was parked, retried three times and poisoned. Every
+    unrelated event batched alongside it went too, and nothing in the host
+    process ever learned.
+    """
+    if len(encoded) <= _MAX_EVENT_BYTES:
+        return encoded
+    capped = _cap_fields(entry, _MAX_FIELD_BYTES)
+    try:
+        recoded = json.dumps(capped, default=str, allow_nan=False)
+    except Exception:  # pragma: no cover - `entry` already encoded once
+        return encoded
+    logger.warning(
+        "Failproof AI truncated an oversized event (type=%r) from %d to %d bytes; "
+        "fields above %d bytes were cut so the batch stays deliverable",
+        entry.get("type") if isinstance(entry, dict) else None,
+        len(encoded),
+        len(recoded),
+        _MAX_FIELD_BYTES,
+    )
+    return recoded
 
 
 def _flush_all_at_exit() -> None:
@@ -354,12 +494,11 @@ class EventWriter:
         # drained its batch into a local list, `_batch_seq` is atomic, and the
         # nested batch simply lands under its own filename.
         self._flush_lock = threading.RLock()
-        # Mean encoded size of an event, smoothed. Measured on the flush path,
-        # which already encodes every entry, so `submit` pays nothing to walk a
-        # payload it would otherwise have to size itself — it just compares
-        # against `_effective_cap`, a plain int.
-        self._avg_entry_bytes = float(_ASSUMED_ENTRY_BYTES)
-        self._effective_cap = _QUEUE_CAP
+        # Measured bytes currently queued. Maintained by `submit` and reset by
+        # `_flush`, which drains under the lock — so it self-corrects every cycle
+        # and any drift from a concurrent lock-free `submit` is bounded by one
+        # flush interval.
+        self._queued_bytes = 0
         self._start_thread()
         _live_writers.append(weakref.ref(self))
 
@@ -391,8 +530,7 @@ class EventWriter:
         # RLock for the same reason as the constructor: the child may install the
         # documented SIGTERM handler too.
         self._flush_lock = threading.RLock()
-        self._avg_entry_bytes = float(_ASSUMED_ENTRY_BYTES)
-        self._effective_cap = _QUEUE_CAP
+        self._queued_bytes = 0
         self._start_thread()
         if inherited:
             logger.debug(
@@ -407,35 +545,33 @@ class EventWriter:
         # loop where a lock is a latency risk and, on the fork path, a deadlock.
         # A momentary overshoot under concurrent submits is fine; the cap is a
         # backstop against unbounded growth, not an exact quota.
-        if len(self._queue) >= self._effective_cap:
+        size = _approx_size(entry)
+        # BOTH bounds, and the byte one against measured sizes. A count alone is
+        # not a memory bound (the adapters budget 128 KiB of extras per event, so
+        # 10_000 of them is ~1.3 GB), and an average-based byte bound is not one
+        # either until the average has been learned.
+        while self._queue and (
+            len(self._queue) >= _QUEUE_CAP
+            or self._queued_bytes + size > _QUEUE_BYTE_CAP
+        ):
             try:
-                self._queue.popleft()
+                evicted = self._queue.popleft()
             except IndexError:  # pragma: no cover - drained concurrently
-                pass
+                break
+            self._queued_bytes = max(0, self._queued_bytes - _approx_size(evicted))
             self._dropped += 1
             # Powers of ten, so a stuck spool says so without becoming the thing
             # that fills the disk it is complaining about.
             if self._dropped == 1 or self._dropped % 1000 == 0:
                 logger.warning(
-                    "Failproof AI event queue is full (%d events, ~%d bytes each); "
-                    "discarding oldest. %d dropped so far — the spool is not draining.",
-                    self._effective_cap,
-                    int(self._avg_entry_bytes),
+                    "Failproof AI event queue is full (%d events, %d bytes); discarding "
+                    "oldest. %d dropped so far — the spool is not draining.",
+                    len(self._queue),
+                    self._queued_bytes,
                     self._dropped,
                 )
         self._queue.append(entry)
-
-    def _observe_entry_size(self, mean_bytes: float) -> None:
-        """Fold one batch's mean encoded size into the queue's byte bound.
-
-        Exponentially smoothed rather than taken raw so one unusual batch cannot
-        collapse the cap; `_effective_cap` is still floored at 1 so a pathological
-        run of huge events degrades to "keep the newest one" rather than to zero.
-        """
-        self._avg_entry_bytes = (self._avg_entry_bytes * 0.7) + (max(1.0, mean_bytes) * 0.3)
-        self._effective_cap = max(
-            1, min(_QUEUE_CAP, int(_QUEUE_BYTE_CAP / self._avg_entry_bytes))
-        )
+        self._queued_bytes += size
 
     def set_flush_interval(self, interval: float) -> None:
         # Validate first, assign second: a rejected value must leave the writer
@@ -480,6 +616,10 @@ class EventWriter:
                     entries.append(self._queue.popleft())
                 except IndexError:
                     break
+            # Authoritative reset: everything the queue held is now in `entries`.
+            # Whatever a concurrent `submit` appended after the drain re-adds
+            # itself, so this both clears the total and corrects any drift.
+            self._queued_bytes = 0
             if entries:
                 try:
                     self._write_batch(entries)
@@ -488,6 +628,7 @@ class EventWriter:
                     # front of entries submitted concurrently during the write.
                     for entry in reversed(entries):
                         self._queue.appendleft(entry)
+                    self._queued_bytes = sum(_approx_size(e) for e in self._queue)
                     raise
 
     def _write_batch(self, entries: list[dict]) -> None:
@@ -514,7 +655,17 @@ class EventWriter:
         if not lines:
             return
 
-        self._observe_entry_size(sum(len(line) for line in lines) / len(lines))
+        # Roll into as many files as the cap needs. `uploader.rs` posts a spool
+        # file whole when it fits and splits it on newlines when it does not, so
+        # oversizing a batch is survivable — but rolling here keeps each POST
+        # within `DEFAULT_MAX_UPLOAD_BYTES` without relying on that, and matches
+        # what the Rust spool writer already does with `DEFAULT_MAX_BATCH_BYTES`.
+        # Every line is individually under `_MAX_EVENT_BYTES` by now, so each
+        # chunk is non-empty and the loop always terminates.
+        for chunk in _roll(lines, _MAX_BATCH_BYTES):
+            self._write_one_file(chunk)
+
+    def _write_one_file(self, lines: list[str]) -> None:
 
         events_dir = get_base_dir() / "events"
         # 0700, and the batch below 0600. These files are not metadata: they

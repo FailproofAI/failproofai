@@ -198,10 +198,13 @@ it — nothing here removes or rewrites a path it does not own. The file is regi
 that home's layout (`src/hooks/fp-home.ts`) and classified `user-typed`, which is what
 keeps a layout migration from dropping it.
 
-The Python SDK writes its spool under `~/.failproofai/custom-agents/events` — it moved
-onto the shared umbrella in the same release that renamed this CLI, and no environment
-variable redirects it (`configure(base_dir=...)` is the only override). `failproofaid`
-still drains `~/.agenteye/events` as well, for SDKs old enough to write there.
+The Python SDK writes its spool under `$FAILPROOFAI_HOME/custom-agents/events`,
+otherwise `~/.failproofai/custom-agents/events` — it moved onto the shared umbrella in
+the same release that renamed this CLI. `FAILPROOFAI_HOME` relocates it the same way it
+relocates this CLI's own directory; what no longer works is `AGENTEYE_HOME`, and nothing
+moves the spool *off* the umbrella except `configure(base_dir=...)` in the application.
+`failproofaid` still drains `~/.agenteye/events` as well, for SDKs old enough to write
+there.
 
 > **Upgrading from a version that used `~/.fp/cli.json`?** Nothing to do — the old
 > session is adopted on your next command, so you are not signed out. It is copied, not

@@ -1268,31 +1268,85 @@ def test_a_second_sigterm_during_the_handlers_flush_does_not_deadlock(tmp_path):
     assert len(read_all(tmp_path)) == 4000
 
 
-def test_the_queue_is_bounded_by_bytes_and_not_only_by_a_count(tmp_path):
-    """`_QUEUE_CAP` alone is not a memory bound, because it says nothing about size.
+def test_the_queue_is_bounded_by_measured_bytes_not_an_estimate(tmp_path):
+    """`_QUEUE_CAP` alone is not a memory bound, and neither is an average.
 
     The adapters budget 128 KiB of `fw_*` extras per event, so 10_000 of those is
-    ~1.3 GB — an OOM kill of the host agent, which is the one outcome the cap
-    exists to prevent. The effective cap has to fall as events get bigger.
+    ~1.3 GB — an OOM kill of the host agent, the one outcome the cap exists to
+    prevent. A first attempt derived the cap from a running average of encoded
+    batch sizes, which is not a bound *until the average has been learned*: the
+    seed assumed 1 KB/event, so the same 10_000 large events still queued 1.22 GB
+    before it caught up. `submit` sizes each entry as it arrives instead.
     """
-    # NOT `from failproofai_sdk import _writer` — `__init__` binds that name to
-    # the writer INSTANCE, not the module.
     writer_mod = sys.modules["failproofai_sdk._writer"]
 
-    w = writer_mod.EventWriter()
+    w = writer_mod.EventWriter(flush_interval=3600)
     try:
-        assert w._effective_cap == writer_mod._QUEUE_CAP
+        assert w._queued_bytes == 0
 
-        # One batch of large events teaches it what an event costs here.
-        w._observe_entry_size(128 * 1024)
-        assert w._effective_cap < writer_mod._QUEUE_CAP
-        assert w._effective_cap * w._avg_entry_bytes <= writer_mod._QUEUE_BYTE_CAP
+        # 128 KiB each — the per-event budget the adapters actually allow.
+        big = "z" * (128 * 1024)
+        # 600 x 128 KiB = 75 MB, comfortably past the 64 MiB cap.
+        for i in range(600):
+            w.submit({"type": "tool_result", "tool_call_id": str(i), "output": big})
 
-        # Small events must not shrink it below the count cap.
-        for _ in range(50):
-            w._observe_entry_size(200)
-        assert w._effective_cap == writer_mod._QUEUE_CAP
+        assert w._queued_bytes <= writer_mod._QUEUE_BYTE_CAP, (
+            f"{w._queued_bytes} bytes queued against a "
+            f"{writer_mod._QUEUE_BYTE_CAP} cap"
+        )
+        # It bit long before the COUNT cap would have: that is the whole point.
+        assert len(w._queue) < writer_mod._QUEUE_CAP
+        assert w._dropped > 0, "nothing was evicted; the fixture is too small"
+
+        # The bound holds from the very first submit — no warm-up window.
+        fresh = writer_mod.EventWriter(flush_interval=3600)
+        try:
+            for i in range(200):
+                fresh.submit({"type": "tool_result", "tool_call_id": str(i), "output": big})
+            assert fresh._queued_bytes <= writer_mod._QUEUE_BYTE_CAP
+        finally:
+            writer_mod._live_writers[:] = [
+                r for r in writer_mod._live_writers if r() is not fresh
+            ]
     finally:
         writer_mod._live_writers[:] = [
-            ref for ref in writer_mod._live_writers if ref() is not w
+            r for r in writer_mod._live_writers if r() is not w
         ]
+
+
+def test_an_oversized_event_is_capped_so_the_batch_stays_deliverable(tmp_path):
+    """`uploader.rs` relies on an invariant the Python writer did not keep.
+
+    "A single line longer than max is emitted alone rather than dropped: the
+    spool writer already guarantees no such line exists." The Rust spool writer
+    does guarantee it; this one did not — so one `tool_result` carrying a large
+    file was written as a single line, POSTed whole (`split_lines` can only split
+    on newlines), rejected, and the ENTIRE spool file was parked, retried three
+    times and poisoned. Every unrelated event batched alongside it went too.
+    """
+    writer_mod = sys.modules["failproofai_sdk._writer"]
+
+    w = EventWriter(flush_interval=3600)
+    ns = EventNamespace(w)
+    ns.tool_result(
+        session_id="s", agent_id="a", tool_name="cat", tool_call_id="c1",
+        output="z" * (9 * 1024 * 1024),
+    )
+    ns.tool_result(
+        session_id="s", agent_id="a", tool_name="ls", tool_call_id="c2", output="small",
+    )
+    w.flush_now()
+
+    batches = sorted((tmp_path / "events").glob("*.jsonl"))
+    assert batches, "nothing was published"
+    for batch in batches:
+        assert batch.stat().st_size <= writer_mod._MAX_BATCH_BYTES, (
+            f"{batch.name} is {batch.stat().st_size} bytes, over the upload cap"
+        )
+        for line in batch.read_text(encoding="utf-8").splitlines():
+            assert len(line) <= writer_mod._MAX_EVENT_BYTES, "a single line exceeds the cap"
+
+    # The neighbouring event is NOT held back by its oversized sibling.
+    events = read_all(tmp_path)
+    assert {e["tool_call_id"] for e in events} == {"c1", "c2"}
+    assert events[0]["output"].endswith(writer_mod._FIELD_TRUNCATION_MARKER)

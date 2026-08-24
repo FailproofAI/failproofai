@@ -123,7 +123,7 @@ describe("pack enforcement, end to end", () => {
     // The message must name the human command, because the agent cannot run it:
     // block-failproofai-commands denies every failproofai invocation from a tool
     // call, deliberately and unconditionally.
-    expect(out).toContain("failproofai pack list");
+    expect(out).toContain("failproofai policies");
   });
 
   it("still denies only where the missing guards applied", () => {

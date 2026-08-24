@@ -14,8 +14,8 @@
 // The property under test is EQUIVALENCE: an alias must not merely work, it must
 // produce byte-identical output to the canonical spelling. A near-copy that
 // drifts is exactly what having three commands cost in the first place.
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { spawnSync } from "node:child_process";
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
+import { spawnSync, execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -27,6 +27,25 @@ const BINARY = resolve(__dirname, "..", "..", "bin", "failproofai.mjs");
 const HOME = mkdtempSync(join(tmpdir(), "fpai-surface-"));
 let fpHome: string;
 
+/**
+ * A package root carrying a freshly built `policy-pack/`.
+ *
+ * `core` reads the pack VENDORED in the package, which `bun run build` writes.
+ * Pointing at the repo root works locally and fails in CI: `test` and `build`
+ * are separate jobs, so `policy-pack/` does not exist when the tests run. The
+ * other pack tests generate it; so does this one.
+ */
+let packageRoot: string;
+
+beforeAll(() => {
+  packageRoot = mkdtempSync(join(tmpdir(), "fpai-surface-pkg-"));
+  execFileSync(
+    "bun",
+    ["scripts/build-policy-pack.mjs", "--out", join(packageRoot, "policy-pack")],
+    { cwd: resolve(__dirname, "../.."), stdio: ["pipe", "pipe", "inherit"] },
+  );
+}, 120_000);
+
 beforeEach(() => {
   fpHome = mkdtempSync(join(tmpdir(), "fpai-surface-home-"));
   mkdirSync(fpHome, { recursive: true });
@@ -34,6 +53,7 @@ beforeEach(() => {
 
 afterAll(() => {
   rmSync(HOME, { recursive: true, force: true });
+  rmSync(packageRoot, { recursive: true, force: true });
 });
 
 interface Run {
@@ -52,6 +72,7 @@ function cli(args: string[], opts: { offline?: boolean } = {}): Run {
       USERPROFILE: HOME,
       FAILPROOFAI_HOME: fpHome,
       FAILPROOFAI_TELEMETRY_DISABLED: "1",
+      FAILPROOFAI_PACKAGE_ROOT: packageRoot,
       ...(opts.offline ? { FAILPROOFAI_NO_DOWNLOAD: "1" } : {}),
     },
     encoding: "utf8",

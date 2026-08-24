@@ -15,6 +15,7 @@ import {
   PACK_MANIFEST_ASSET,
   addPack,
   checkPackArtifact,
+  fetchPackPreview,
   installBundledPack,
   removePack,
   slugifyCategory,
@@ -305,6 +306,64 @@ function remove(rest: string[]): PackCliResult {
   ]);
 }
 
+/**
+ * What a pack CONTAINS, for a pack this machine has not installed.
+ *
+ * `failproofai policies` already lists everything installed, packs included, so
+ * the only thing missing was the pack you are still deciding about. Reading the
+ * manifest answers that without installing it — and deliberately without
+ * downloading or importing the entry artifact, so looking at a stranger's pack
+ * cannot run a stranger's code.
+ */
+async function listRemote(source: string): Promise<PackCliResult> {
+  const opts = optsFor(process.stdout);
+  let preview;
+  try {
+    preview = await fetchPackPreview(source);
+  } catch (err) {
+    return fail([`Could not read ${source}: ${err instanceof Error ? err.message : String(err)}`]);
+  }
+
+  const defaults = preview.policies.filter((p) => p.defaultEnabled);
+  const categories = [...new Set(preview.policies.map((p) => p.category))];
+  const rows: Array<string[] | { section: string }> = [];
+  for (const category of categories) {
+    const inCategory = preview.policies.filter((p) => p.category === category);
+    const on = inCategory.filter((p) => p.defaultEnabled).length;
+    rows.push({
+      section: `${category} — ${on}/${inCategory.length} on by default · ${slugifyCategory(category)}`,
+    });
+    for (const policy of inCategory) {
+      // The publisher's DEFAULTS, not a machine's state — this pack is not
+      // installed, so a row claiming ON would be describing nothing.
+      rows.push([
+        policy.defaultEnabled ? "default" : "opt-in",
+        policy.name,
+        policy.description,
+      ]);
+    }
+  }
+
+  return ok(
+    stack(
+      title(
+        `${preview.id}@${preview.version}`,
+        `${preview.policies.length} policies · ${categories.length} categories`,
+        opts,
+      ),
+      note(
+        `Not installed. ${defaults.length} of ${preview.policies.length} are on by default; the rest are opt-in.` +
+          (preview.effect === "observe" ? " This pack OBSERVES — it records and blocks nothing." : ""),
+        opts,
+      ),
+      preview.resolvedFromLatest ? note(`Newest release: ${preview.source}`, opts) : null,
+      table({ head: ["", "", ""], rows }, opts),
+      nextStep(`failproofai pack add ${source}`, "Install the defaults with:", opts),
+      note("Or take part of it: --policy <a,b>, --category <x,y>, --all", opts),
+    ),
+  );
+}
+
 async function list(): Promise<PackCliResult> {
   const { packs, errors } = readInstalledPacks();
   const opts = optsFor(process.stdout);
@@ -441,8 +500,12 @@ export async function runPackCommand(argv: string[]): Promise<PackCliResult> {
     case "build":
       return build(rest);
     case "list":
-    case undefined:
-      return list();
+    case undefined: {
+      // `pack list` is what is installed here; `pack list <source>` is what a
+      // pack out there contains.
+      const source = packAddSource(rest);
+      return source ? listRemote(source) : list();
+    }
     default:
       return fail([`Unknown pack subcommand ${JSON.stringify(sub)}`, "Try: add, remove, list, build"]);
   }

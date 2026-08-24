@@ -324,6 +324,9 @@ COMMANDS
                                  --policy <a,b> takes only those, --category
                                  <x,y> takes whole categories, --all takes it all
   pack list                      Show installed policy packs
+  pack list <source>             Show what a pack CONTAINS before installing it.
+                                 Reads only its manifest — the code is never
+                                 downloaded, so looking is never running
   pack add <source>              Install someone else's pack from a GitHub release.
                                  <source> is acme/pack, acme/pack@v1.2.0, or a
                                  release URL; no tag takes the newest and pins it
@@ -414,6 +417,7 @@ EXAMPLES
   failproofai policies --uninstall --custom
   failproofai pack add core
   failproofai pack add core --category git,database
+  failproofai pack list acme/support-agent
   failproofai pack build ./my-policies.mjs --id acme/support --version 1.0.0
   failproofai backfill --since 6m
   failproofai backfill --dry-run
@@ -729,7 +733,8 @@ Usage:
   failproofai pack add core --policy <a,b>      just these
   failproofai pack add core --category <x,y>    whole categories
   failproofai pack add core --all               everything in it
-  failproofai pack list
+  failproofai pack list                         packs installed here
+  failproofai pack list <source>                what a pack out there contains
   failproofai pack add <source> [--policy <a,b>] [--category <x,y>] [--all]
   failproofai pack remove <publisher/name>
   failproofai pack build <entry.mjs> --id <publisher/name> --version <v>
@@ -1275,6 +1280,7 @@ EXAMPLES
   failproofai policies --uninstall --custom
   failproofai pack add core
   failproofai pack add core --category git,database
+  failproofai pack list acme/support-agent
   failproofai pack build ./my-policies.mjs --id acme/support --version 1.0.0
 `.trimStart());
       process.exit(0);

@@ -266,6 +266,73 @@ interface FetchedPack {
 }
 
 /** Fetch and fully validate a pack, without writing anything. */
+export interface PackPreview {
+  id: string;
+  version: string;
+  effect: PolicyEffect;
+  policies: PolicyCatalogEntry[];
+  /** The exact source the preview was read from, tag resolved and pinned. */
+  source: string;
+  /** True when the tag was resolved rather than typed. */
+  resolvedFromLatest: boolean;
+}
+
+/**
+ * Read what a pack CONTAINS, without installing it and without running it.
+ *
+ * The only way to see a stranger's policies was to install them, which is the
+ * wrong order: deciding whether to trust a pack should not require already
+ * having trusted it. This fetches the MANIFEST and nothing else — the entry
+ * artifact is never downloaded and never imported, so a preview cannot execute
+ * a line of somebody else's code.
+ *
+ * The manifest is still verified against the release's own SHA256SUMS and parsed
+ * with the loader's rules, so what is shown is what would install — and a pack
+ * that could never load says so here rather than after the download.
+ */
+export async function fetchPackPreview(source: string): Promise<PackPreview> {
+  if (process.env.FAILPROOFAI_NO_DOWNLOAD === "1") {
+    throw new Error("FAILPROOFAI_NO_DOWNLOAD is set, so nothing can be fetched to preview");
+  }
+  const parsed = parsePackSpec(source);
+  const resolvedFromLatest = parsed.tag === null;
+  const spec: PinnedPackSpec =
+    parsed.tag !== null
+      ? { ...parsed, tag: parsed.tag }
+      : { ...parsed, tag: await resolveLatestTag(parsed) };
+
+  const checksums = (await fetchBytes(packAssetUrl(spec, PACK_CHECKSUMS_ASSET))).toString("utf8");
+  const manifestBytes = await fetchBytes(packAssetUrl(spec, PACK_MANIFEST_ASSET));
+  const manifestDigest = digestFor(checksums, PACK_MANIFEST_ASSET);
+  if (!manifestDigest) {
+    throw new Error(`${PACK_CHECKSUMS_ASSET} has no entry for ${PACK_MANIFEST_ASSET}`);
+  }
+  if (sha256(manifestBytes) !== manifestDigest) {
+    throw new Error(`${PACK_MANIFEST_ASSET} failed integrity verification`);
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(manifestBytes.toString("utf8"));
+  } catch (err) {
+    throw new Error(`${PACK_MANIFEST_ASSET} is not valid JSON: ${errText(err)}`);
+  }
+  if (!raw || typeof raw !== "object") throw new Error(`${PACK_MANIFEST_ASSET} is not an object`);
+  const value = raw as { id?: unknown; version?: unknown; policies?: unknown; effect?: unknown };
+  const identity = parsePackIdentity(value);
+  if (!Array.isArray(value.policies) || value.policies.length === 0) {
+    throw new Error("pack manifest declares no policies");
+  }
+  return {
+    id: identity.id,
+    version: identity.version,
+    effect: identity.effect,
+    policies: value.policies.map((policy, i) => parsePackPolicy(identity.id, policy, i)),
+    source: formatPackSpec(spec),
+    resolvedFromLatest,
+  };
+}
+
 async function fetchPack(spec: PinnedPackSpec): Promise<FetchedPack> {
   const checksums = (await fetchBytes(packAssetUrl(spec, PACK_CHECKSUMS_ASSET))).toString("utf8");
 

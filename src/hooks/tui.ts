@@ -1218,9 +1218,16 @@ export interface TableRow {
   notes?: string[];
 }
 
+/** A heading between rows. Widths are computed across the WHOLE table, so the
+ *  columns line up through every section instead of jumping at each one — which
+ *  is what a table-per-section does, along with repeating the column labels. */
+export interface TableSection {
+  section: string;
+}
+
 export interface TableSpec {
   head: string[];
-  rows: Array<string[] | TableRow>;
+  rows: Array<string[] | TableRow | TableSection>;
   /** Per-column alignment. Numbers read right, everything else left. */
   align?: Array<"left" | "right">;
   /** Which column absorbs the leftover width (default: the last). */
@@ -1239,9 +1246,12 @@ export function table(spec: TableSpec, opts?: RenderOpts): string[] {
   const count = spec.head.length;
   if (count === 0) return [];
   const flex = spec.flex ?? count - 1;
-  const body: TableRow[] = spec.rows.map((r) => (Array.isArray(r) ? { cells: r } : r));
+  const body: Array<TableRow | TableSection> = spec.rows.map((r) =>
+    Array.isArray(r) ? { cells: r } : r,
+  );
+  const dataRows = body.filter((r): r is TableRow => "cells" in r);
   const natural = spec.head.map((h, i) =>
-    Math.max(visibleWidth(h), ...body.map((r) => visibleWidth(r.cells[i] ?? ""))),
+    Math.max(visibleWidth(h), ...dataRows.map((r) => visibleWidth(r.cells[i] ?? ""))),
   );
   const budget = cols - INDENT.length * 2 - (count - 1) * 2;
   // The flex column gives way first, and only when it has nothing left to give
@@ -1278,8 +1288,16 @@ export function table(spec: TableSpec, opts?: RenderOpts): string[] {
   // so a hint reads as belonging to its row rather than to the table.
   const noteIndent =
     INDENT.length + natural.slice(0, Math.max(0, flex - 1)).reduce((a, b) => a + b + 2, 0);
-  const out = [line(spec.head.map((h) => c.dim(h))), ...rule(undefined, opts)];
+  // All-empty headings mean a table that does not want a header row: repeating
+  // column labels above every section is chrome, not content.
+  const wantsHead = spec.head.some((h) => h.length > 0);
+  const out = wantsHead ? [line(spec.head.map((h) => c.dim(h))), ...rule(undefined, opts)] : [];
   for (const row of body) {
+    if ("section" in row) {
+      if (out.length > 0) out.push("");
+      out.push(...rule(row.section, opts));
+      continue;
+    }
     out.push(line(row.cells));
     for (const n of row.notes ?? []) {
       for (const wrapped of wrap(n, Math.max(8, cols - noteIndent - INDENT.length))) {

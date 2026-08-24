@@ -22,6 +22,16 @@ failproofai pack add core --all                         # everything in it
 
 `failproofai pack list` names every category the pack offers.
 
+## See what a pack contains, before installing it
+
+```bash
+failproofai pack list acme/support-agent
+```
+
+Lists every policy the pack carries, grouped by category, marking which ones its author switches on by default and which are opt-in. It reads **only the manifest** — the entry artifact is never downloaded and never imported, so looking at a stranger's pack cannot run a stranger's code. The manifest is still checked against the release's own `SHA256SUMS`, so what you are reading is what would install.
+
+`failproofai pack list` with no source lists the packs already installed here.
+
 ## Install somebody else's pack
 
 ```bash

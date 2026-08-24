@@ -10,7 +10,7 @@ description: |-
 
   Served by the `failproofai_sdk` Python SDK, inside the user's own agent.
 
-  NOT for reading telemetry that already landed or operating a deployment (that's `fp-cli`), or building the evaluator service that scores runs (that's `agenteye-evaluator`).
+  NOT for reading telemetry that already landed or operating a deployment (that's `fp-cloud-cli`), or building the evaluator service that scores runs (that's `agenteye-evaluator`).
 ---
 
 # Failproof AI Python SDK
@@ -47,7 +47,7 @@ PyPI, no token, no dependencies.
 
 **One command to never run: `pip install agenteye`.** That name belongs to a
 stranded release of an old CLI — a different product that shipped under it before
-moving to `fp-cli`. PyPI versions cannot be withdrawn, so the name still resolves
+moving to `fp-cloud-cli`. PyPI versions cannot be withdrawn, so the name still resolves
 to that build forever. You get the CLI, `import failproofai_sdk` raises
 `ModuleNotFoundError`, and on a codebase still using the pre-rename SDK (which
 published under `agenteye` too) pip treats it as an upgrade and **removes the SDK**.
@@ -59,7 +59,7 @@ The CLI is a fine thing to want — it is what reads the telemetry back. Install
 separately, never with `pip` into your agent's environment:
 
 ```bash
-pipx install fp-cli        # the command is `fp`
+pipx install fp-cloud-cli        # the command is `fp`
 ```
 
 Confirm what you actually have before writing a line of instrumentation:
@@ -68,7 +68,7 @@ Confirm what you actually have before writing a line of instrumentation:
 python -c "import failproofai_sdk; print(failproofai_sdk.__version__)"
 ```
 
-A version like `0.0.1b14` is the SDK. `ModuleNotFoundError` means it is not
+A version like `0.0.1b1` is the SDK. `ModuleNotFoundError` means it is not
 installed — check `pip show agenteye`, which returning anything means the wrong
 name was installed. `references/install.md` covers migrating an existing
 `import agenteye` integration.
@@ -364,7 +364,7 @@ it here would write to your REAL spool while you read an empty temp directory.
 
 **Do not verify by installing the CLI into your agent's environment.** It will
 uninstall the SDK you just integrated (§1). Reading back what landed on the
-platform is the `fp-cli` skill's job, from a separate environment.
+platform is the `fp-cloud-cli` skill's job, from a separate environment.
 
 ## 6. Production — the collector has to agree with you
 
@@ -390,7 +390,7 @@ agent's own environment, with the agent's own env vars) and check the collector 
 running and pointed at the same one. A `.jsonl` count that only grows is the tell.
 
 Confirming events arrived on the *platform* is deliberately not this skill's job —
-that is the `fp-cli` skill, from a **separate environment** (§1). Collector
+that is the `fp-cloud-cli` skill, from a **separate environment** (§1). Collector
 setup and deployment are your platform's own documentation.
 
 If the files look right (§5) and the collector is running against the same

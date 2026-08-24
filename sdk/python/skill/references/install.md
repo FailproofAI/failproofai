@@ -23,7 +23,7 @@ it cannot conflict with anything already in the agent's environment.
 **`pip install agenteye` does not install this SDK, and can uninstall it.**
 
 `agenteye` was the SDK's distribution name inside the private monorepo, and it is
-also the name an old CLI published under. That CLI has moved to `fp-cli` (command
+also the name an old CLI published under. That CLI has moved to `fp-cloud-cli` (command
 `fp`), but its last release as `agenteye` — version `0.1.22` — is stranded on
 public PyPI permanently. PyPI versions cannot be withdrawn and reused, and pip
 resolves the highest version, so that build is what the name still resolves to.
@@ -42,7 +42,7 @@ If you want the CLI, it is a separate distribution and installing it cannot touc
 `failproofai-sdk` — but give it its own environment anyway:
 
 ```bash
-pipx install fp-cli        # or: uv tool install fp-cli   (the command is `fp`)
+pipx install fp-cloud-cli        # or: uv tool install fp-cloud-cli   (the command is `fp`)
 ```
 
 ## Migrating from the old `agenteye` distribution
@@ -87,7 +87,7 @@ pre-exist, which nothing created, so it never took effect.)
 python -c "import failproofai_sdk; print(failproofai_sdk.__version__)"
 ```
 
-- A version string such as `0.0.1b14` → the SDK. Good.
+- A version string such as `0.0.1b1` → the SDK. Good.
 - `ModuleNotFoundError: No module named 'failproofai_sdk'` → not installed. If
   `pip show agenteye` returns something, you installed the wrong name; see above.
 

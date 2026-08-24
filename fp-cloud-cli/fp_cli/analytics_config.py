@@ -30,7 +30,7 @@ POSTHOG_HOST = "https://us.i.posthog.com"
 # rows and see nothing new. That is deliberate and the discontinuity is harmless
 # here because ``TELEMETRY_DISABLED`` has been ``True`` since well before the
 # rename, so no events were flowing across the boundary in either direction.
-PRODUCT = "fp-cli"
+PRODUCT = "fp-cloud-cli"
 
 # Master kill switch — telemetry is DISABLED for now (kept in the codebase, not removed).
 # When the PostHog host is unreachable the send path blocks the CLI ~5s/command: the

@@ -1,9 +1,9 @@
 // @vitest-environment node
 /**
- * Drift guard for the two fp-cli workflows. Both are hand-maintained, and both hold
+ * Drift guard for the two fp-cloud-cli workflows. Both are hand-maintained, and both hold
  * invariants that a reviewer reading the diff would not see break:
  *
- *   - publish-fp-cli.yml grants `id-token: write` for Trusted Publishing. Naming any
+ *   - publish-fp-cloud-cli.yml grants `id-token: write` for Trusted Publishing. Naming any
  *     scope sets every unnamed one to `none`, so `contents: read` is what lets
  *     actions/checkout read the repo at all — it looks redundant and is not.
  *   - publishing is bound to a GitHub environment. Every other guard in that file (the
@@ -11,7 +11,7 @@
  *     could delete them on a branch and click Run; the environment's rules live in repo
  *     settings and in PyPI's publisher config, where a branch cannot reach them. The
  *     name has to match on both sides, so the header documents the same string.
- *   - sync-fp-cli-skill.yml hands its PAT to git without writing it into
+ *   - sync-fp-cloud-cli-skill.yml hands its PAT to git without writing it into
  *     $WORKDIR/.git/config, because the very next step runs a script fetched from the
  *     repo that PAT can write to.
  */
@@ -35,10 +35,10 @@ function runScripts(job: Record<string, any>): string {
   return (job.steps ?? []).map((s: Record<string, any>) => s.run ?? "").join("\n");
 }
 
-const PYPI_ENVIRONMENT = "pypi-fp-cli";
+const PYPI_ENVIRONMENT = "pypi-fp-cloud-cli";
 
-describe("publish-fp-cli.yml", () => {
-  const FILE = "publish-fp-cli.yml";
+describe("publish-fp-cloud-cli.yml", () => {
+  const FILE = "publish-fp-cloud-cli.yml";
   // The gates all live in the unprivileged build job now; `publish` only uploads.
   const job = workflow(FILE).jobs.build;
   const publishJob = workflow(FILE).jobs.publish;
@@ -58,13 +58,57 @@ describe("publish-fp-cli.yml", () => {
     expect(env).toBe(PYPI_ENVIRONMENT);
     // The same string has to be in PyPI's publisher config; the header is where a
     // maintainer reads it off, so a rename that misses one side is caught here.
-    expect(source("publish-fp-cli.yml")).toContain(`Environment:      ${PYPI_ENVIRONMENT}`);
+    expect(source("publish-fp-cloud-cli.yml")).toContain(`Environment:      ${PYPI_ENVIRONMENT}`);
   });
 
   it("still refuses a non-main ref and a non-maintainer actor", () => {
     const scripts = runScripts(job);
     expect(scripts).toContain('if [ "$REF" != "main" ]');
-    expect(scripts).toContain('if [ "$ACTOR" != "NiveditJain" ]');
+    expect(scripts).toContain('"$RELEASE_ACTORS"');
+  });
+
+  // `github.actor` ALONE is bypassable, and that is what this guard used to read.
+  // On a RE-RUN it stays the user who started the ORIGINAL run, while
+  // `github.triggering_actor` is whoever pressed re-run — so anyone with write
+  // access could re-run a maintainer's FAILED publish (one that died before the
+  // upload, so preflight's "already published" check does not stop it) and ship
+  // from it under the maintainer's attribution. publish.yml has always checked
+  // both; these two checked one.
+  //
+  // Asserted on EVERY job carrying the guard, because one unhardened copy is the
+  // one that gets reached, and on the loop itself rather than only the env — the
+  // variable being present while nothing reads it is exactly how this looks fixed.
+  it("checks the triggering actor as well as the actor, on every guarded job", () => {
+    const wf = workflow(FILE);
+    const guarded = Object.entries<any>(wf.jobs).filter(([, j]) =>
+      (j.steps ?? []).some((s: Record<string, any>) => s.name === "Authorize actor and branch"),
+    );
+    expect(guarded.map(([n]) => n).sort()).toEqual(["build", "preflight", "publish"]);
+
+    for (const [name, j] of guarded) {
+      const step = (j.steps ?? []).find((s: Record<string, any>) => s.name === "Authorize actor and branch");
+      expect(step.env?.ACTOR, name).toBe("${{ github.actor }}");
+      expect(step.env?.TRIGGERING_ACTOR, name).toBe("${{ github.triggering_actor }}");
+      expect(step.env?.RELEASE_ACTORS, name).toBe("NiveditJain");
+      expect(step.run, name).toContain('for WHO in "$ACTOR" "$TRIGGERING_ACTOR"');
+      // Case-insensitive, like publish.yml's — a login differing only in case is
+      // the same account, and an exact-match guard that says otherwise is a guard
+      // whose behaviour nobody can predict from the allowlist.
+      expect(step.run, name).toContain("tr '[:upper:]' '[:lower:]'");
+    }
+  });
+
+  // Betas are locked down too, and that is a DEVIATION from publish.yml, which
+  // leaves npm prereleases open to anyone with write access. If someone loosens
+  // this to match, the header has to stop claiming otherwise.
+  it("restricts every publish, not only a stable one", () => {
+    const text = source(FILE);
+    expect(text).toContain("Every publish — beta or stable — is restricted");
+    // No version- or scheme-conditional escape hatch on the guard.
+    for (const j of Object.values<any>(workflow(FILE).jobs)) {
+      const step = (j.steps ?? []).find((s: Record<string, any>) => s.name === "Authorize actor and branch");
+      if (step) expect(step.if).toBeUndefined();
+    }
   });
 
   it("runs every gate before uploading", () => {
@@ -89,7 +133,7 @@ describe("publish-fp-cli.yml", () => {
   // `on: push: branches: [main]` would turn every merge into a public PyPI
   // release while these tests stayed green.
   it("can only be started by hand", () => {
-    const wf = workflow("publish-fp-cli.yml");
+    const wf = workflow("publish-fp-cloud-cli.yml");
     const triggers = wf.on ?? wf[true as unknown as string];
     expect(Object.keys(triggers)).toEqual(["workflow_dispatch"]);
   });
@@ -139,12 +183,12 @@ describe("publish-fp-cli.yml", () => {
   });
 });
 
-describe("ci.yml — the fp-cli matrix", () => {
+describe("ci.yml — the fp-cloud-cli matrix", () => {
   it("tests every Python version the package's classifiers advertise", () => {
     const ci = workflow("ci.yml");
-    const matrix: string[] = ci.jobs["fp-cli"].strategy.matrix["python-version"].map(String);
+    const matrix: string[] = ci.jobs["fp-cloud-cli"].strategy.matrix["python-version"].map(String);
 
-    const pyproject = readFileSync(resolve(ROOT, "fp-cli", "pyproject.toml"), "utf8");
+    const pyproject = readFileSync(resolve(ROOT, "fp-cloud-cli", "pyproject.toml"), "utf8");
     const advertised = [...pyproject.matchAll(/Programming Language :: Python :: (\d+\.\d+)/g)]
       .map((m) => m[1])
       .sort();
@@ -157,12 +201,12 @@ describe("ci.yml — the fp-cli matrix", () => {
   });
 });
 
-describe("sync-fp-cli-skill.yml", () => {
-  const text = source("sync-fp-cli-skill.yml");
+describe("sync-fp-cloud-cli-skill.yml", () => {
+  const text = source("sync-fp-cloud-cli-skill.yml");
   const job = (() => {
     // The old single `sync` job is now `prepare` + `validate` + `publish`;
     // these assertions are about the git plumbing, wherever it now lives.
-    const wf = workflow("sync-fp-cli-skill.yml");
+    const wf = workflow("sync-fp-cloud-cli-skill.yml");
     return { steps: Object.values<any>(wf.jobs).flatMap((j) => j.steps ?? []) };
   })();
 
@@ -186,7 +230,7 @@ describe("sync-fp-cli-skill.yml", () => {
   });
 
   it("keeps GITHUB_TOKEN read-only — every write goes through the PAT", () => {
-    expect(workflow("sync-fp-cli-skill.yml").permissions).toEqual({ contents: "read" });
+    expect(workflow("sync-fp-cloud-cli-skill.yml").permissions).toEqual({ contents: "read" });
   });
 
   // The clone step keeps the PAT out of $WORKDIR/.git/config because "the NEXT
@@ -194,7 +238,7 @@ describe("sync-fp-cli-skill.yml", () => {
   // that reasoning, which the step ORDER used to defeat: the validator had write
   // access to the same repo the following step runs `git commit` in with the PAT
   // exported, and `git commit` runs .git/hooks/pre-commit.
-  it.each(["sync-fp-cli-skill.yml", "sync-failproofai-sdk-skill.yml"])(
+  it.each(["sync-fp-cloud-cli-skill.yml", "sync-failproofai-sdk-skill.yml"])(
     "%s never runs mirror code in a job that holds a secret",
     (name) => {
       // The real invariant, and a directory copy was not it. Excluding `.git`
@@ -220,7 +264,7 @@ describe("sync-fp-cli-skill.yml", () => {
     },
   );
 
-  it.each(["sync-fp-cli-skill.yml", "sync-failproofai-sdk-skill.yml"])(
+  it.each(["sync-fp-cloud-cli-skill.yml", "sync-failproofai-sdk-skill.yml"])(
     "%s runs the validator on a runner with no permissions at all",
     (name) => {
       const wf = workflow(name);
@@ -235,7 +279,7 @@ describe("sync-fp-cli-skill.yml", () => {
     },
   );
 
-  it.each(["sync-fp-cli-skill.yml", "sync-failproofai-sdk-skill.yml"])(
+  it.each(["sync-fp-cloud-cli-skill.yml", "sync-failproofai-sdk-skill.yml"])(
     "%s does not leave this repo's own token on disk for that script to read",
     (name) => {
       const job: Record<string, any> = Object.values(workflow(name).jobs)[0] as any;

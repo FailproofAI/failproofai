@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "fp-cli"
+name = "fp-cloud-cli"
 dynamic = ["version"]
 requires-python = ">=3.10"
 description = "Command line client for FailproofAI Cloud — sessions, events, evaluations and audits from your terminal"
@@ -54,8 +54,25 @@ dependencies = [
     "posthog>=3.5,<8",
 ]
 
-# The distribution is `fp-cli`; the command is `fp`. They differ on purpose — `fp` is what
-# you type, `fp-cli` is what pip resolves, and `fp` was already taken on PyPI.
+# The distribution is `fp-cloud-cli`; the command is `fp`; the import package is
+# `fp_cli`. All three differ, and each for its own reason:
+#
+#   `fp`            was already registered on PyPI by someone else.
+#   `fp-cli`        was the next choice and is ALSO unusable: PyPI refuses a name
+#                   "too similar to an existing project", and its similarity check
+#                   strips separators — so `fp-cli` collides with `fpcli`, a real
+#                   package with 42 releases. It is not a squat, so there is no
+#                   PEP 541 claim to make; the name simply is not available.
+#   `fp-cloud-cli`  is what pip resolves, and says what this talks to: the Cloud
+#                   dashboard's API, never the Rust server directly.
+#   `fp_cli`        stays as the import package. Nobody imports it — this is an
+#                   application, not a library, and the console script above is the
+#                   entire public surface — so renaming it would churn every module
+#                   and every test to change a string no user ever types.
+#
+# `~/.failproofai/fpcli/` keeps its name for a harder reason: it is an on-disk
+# contract with `src/hooks/fp-home.ts` (`fpcliDir`/`fpcliAuthFile`), and moving it
+# would sign every existing user out.
 [project.scripts]
 fp = "fp_cli.app:main_entry"
 
@@ -67,6 +84,10 @@ Homepage = "https://befailproof.ai"
 # so a wrong one here needs a version bump to correct.
 Documentation = "https://docs.befailproof.ai/reference/cloud-cli"
 Source = "https://github.com/FailproofAI/failproofai"
+# PyPI gives "Changelog" its own sidebar slot and icon. Without it the only
+# thing a visitor to the project page can read is the README, and there is no
+# route at all from an installed version to what changed in it.
+Changelog = "https://github.com/FailproofAI/failproofai/blob/main/fp-cloud-cli/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "respx>=0.21"]

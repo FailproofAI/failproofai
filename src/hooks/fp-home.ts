@@ -280,13 +280,13 @@ export const auditSessionFile = (home?: string) => resolve(auditDir(home), "sess
 export const auditMachineFile = (home?: string) => resolve(auditDir(home), "machine.json");
 
 
-// ── fp-cli ───────────────────────────────────────────────────────────────────
+// ── fp-cloud-cli ───────────────────────────────────────────────────────────────────
 
 /**
- * The Cloud CLI's own directory (`fp-cli` on PyPI, command `fp`).
+ * The Cloud CLI's own directory (`fp-cloud-cli` on PyPI, command `fp`).
  *
  * Written by PYTHON, not by anything in this repo's TypeScript or Rust — the
- * CLI resolves it independently in `fp-cli/fp_cli/config.py`. It is declared
+ * CLI resolves it independently in `fp-cloud-cli/fp_cli/config.py`. It is declared
  * here anyway because this file is the register of what may exist in the home,
  * and a path absent from it is only safe by accident: `resettablePaths()` is a
  * filter over `HOME_CLASSES`, so an unregistered directory survives today and
@@ -302,7 +302,7 @@ export const fpcliDir = (home?: string) => atHome(home, "fpcli");
  *
  * Was `~/.fp/cli.json` — a third top-level dotfile for one product. The old
  * file is deliberately left where it is: `load_config` in
- * `fp-cli/fp_cli/config.py` reads it when nothing is here yet, writes the
+ * `fp-cloud-cli/fp_cli/config.py` reads it when nothing is here yet, writes the
  * session to this path, and does NOT delete the original, so downgrading to a
  * previous `fp` finds its session intact. Adoption is best-effort — an
  * unwritable home hands back the session it found rather than logging the
@@ -310,7 +310,7 @@ export const fpcliDir = (home?: string) => atHome(home, "fpcli");
  *
  * This paragraph said the opposite until it was checked against the code: that
  * there was no migration and the upgrade cost a login. There is one, it is
- * covered by `fp-cli/tests/test_failproofai_home.py`, and the only true half
+ * covered by `fp-cloud-cli/tests/test_failproofai_home.py`, and the only true half
  * was that the old file survives.
  *
  * `user-typed` for the same reason as `auditSessionFile` beside it: nothing
@@ -553,7 +553,7 @@ export const HOME_CLASSES: readonly { path: (home?: string) => string; class: Da
   // with no notice, and the machine only finds out the next time it tries to
   // report.
   { path: auditSessionFile, class: "user-typed" },
-  // The Cloud CLI's session, written by Python (`fp-cli/fp_cli/config.py`). The
+  // The Cloud CLI's session, written by Python (`fp-cloud-cli/fp_cli/config.py`). The
   // one entry here whose writer is outside this repo's TS and Rust, which is
   // exactly why it needs listing: nothing in a migration would otherwise know a
   // credential lives under `fpcli/`.

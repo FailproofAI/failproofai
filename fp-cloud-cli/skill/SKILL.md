@@ -1,5 +1,5 @@
 ---
-name: fp-cli
+name: fp-cloud-cli
 description: |-
   The way to answer "how are my production AI agents doing?" and to run the team's agent-observability deployment — reach for it even on casual phrasing that names no tool.
 
@@ -24,12 +24,12 @@ Resolve this once, then reuse it for every call:
 
 1. If `fp` is on `PATH` (`command -v fp`) → use **`fp`** (it's
    installed via pipx / uv tool / pip). This is the normal case.
-2. Else, if you're in (or under) a repo with an `fp-cli/` directory containing the
+2. Else, if you're in (or under) a repo with an `fp-cloud-cli/` directory containing the
    `fp_cli` package → run it from there with **`uv run fp`** (a local dev
    build). The first run after a code change prints `Building…`/`Installed…` on
    stderr — that's `uv`, not CLI output; ignore it.
 3. Else the CLI isn't available here → tell the user to install it
-   (`pipx install fp-cli` or `uv tool install fp-cli`) and stop. Don't try to
+   (`pipx install fp-cloud-cli` or `uv tool install fp-cloud-cli`) and stop. Don't try to
    reach the dashboard another way.
 
 Don't go spelunking in the CLI source tree for flags — if you're unsure of one,

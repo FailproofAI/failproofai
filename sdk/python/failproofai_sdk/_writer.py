@@ -674,7 +674,7 @@ class EventWriter:
         # 0755 directories, so on any shared host — a build box, a bastion, a
         # container with several service accounts — every other local user could
         # read every agent transcript this SDK spools, for the whole flush+upload
-        # window and forever if no daemon is running. The sibling `fp-cli`
+        # window and forever if no daemon is running. The sibling `fp-cloud-cli`
         # already does exactly this for its credential (`config.py`), and the
         # daemon reads these as the SAME user (the unit is `User=<user>` with
         # `HOME` set to that user's home), so tightening them costs no delivery.

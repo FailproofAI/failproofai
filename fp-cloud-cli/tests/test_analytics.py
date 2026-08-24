@@ -147,7 +147,7 @@ def test_super_properties_tag_product(home, force_enabled):
     sup = analytics._client.kwargs["super_properties"]
     # Must match analytics_config.PRODUCT exactly — it is the discriminator that keeps
     # this CLI's events apart from the Enforcement CLI's in the shared PostHog project.
-    assert sup["product"] == "fp-cli"
+    assert sup["product"] == "fp-cloud-cli"
     assert sup["cli_version"] == __version__
     assert sup["os"] and sup["python_version"]
     # The client is constructed against the direct ingest host, geoip disabled.

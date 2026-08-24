@@ -44,7 +44,7 @@ _TIMEOUT_SECS = 5
 #: policy. Sharing the execution budget made the syntax check fail on a busy
 #: runner and report `the syntax check timed out` — which reads as "your policy
 #: is bad" for what is actually "this box was loaded". Seen on CI once the
-#: fp-cli matrix widened to four concurrent interpreters: three legs passed and
+#: fp-cloud-cli matrix widened to four concurrent interpreters: three legs passed and
 #: the fourth timed out on the same source.
 #:
 #: Generous rather than tight, because nothing here can loop: if `node --check`

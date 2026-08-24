@@ -5,7 +5,7 @@ or the coding agent working alongside them — authenticate and query agent
 sessions, event logs, and evaluations from the terminal, with a `--json` flag on
 every command for scripting.
 
-> **The package is `fp-cli`; the command is `fp`.** They differ because `fp` was
+> **The package is `fp-cloud-cli`; the command is `fp`.** They differ because `fp` was
 > already taken on PyPI. This is also distinct from `failproofai` on npm, which is
 > the Enforcement CLI — that one runs inside the agent loop and decides what an
 > agent may do; this one reads back what it did.
@@ -13,8 +13,8 @@ every command for scripting.
 ## Install
 
 ```bash
-pipx install fp-cli      # recommended (isolated)
-# or: uv tool install fp-cli  /  pip install fp-cli
+pipx install fp-cloud-cli      # recommended (isolated)
+# or: uv tool install fp-cloud-cli  /  pip install fp-cloud-cli
 ```
 
 Then the command is `fp`:
@@ -27,7 +27,7 @@ fp help
 For development in this repo:
 
 ```bash
-cd fp-cli
+cd fp-cloud-cli
 uv sync --extra dev
 uv run fp --help
 ```
@@ -253,7 +253,7 @@ working as an opt-out if it is ever switched back on. See
 ## Tests
 
 ```bash
-cd fp-cli
+cd fp-cloud-cli
 uv run --extra dev pytest
 ```
 

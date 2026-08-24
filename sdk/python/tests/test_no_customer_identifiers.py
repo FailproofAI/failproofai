@@ -3,7 +3,7 @@
 It came out of a private monorepo, where naming a live tenant in a fixture or
 leaving an internal hostname in a docstring was harmless. Here it is permanent:
 a PyPI version cannot be recalled or reused, so anything that ships once ships
-forever. The sibling `fp-cli` hit exactly this during its own move — a real
+forever. The sibling `fp-cloud-cli` hit exactly this during its own move — a real
 customer's slug and company name reached the tree in a bulk copy — which is why
 this tripwire exists on both packages.
 
@@ -41,7 +41,7 @@ FORBIDDEN_OWN = {
 }
 
 # Customer / vendor identifiers, digest → what it is (never the name itself).
-# Kept in step with fp-cli/tests/test_no_customer_identifiers.py.
+# Kept in step with fp-cloud-cli/tests/test_no_customer_identifiers.py.
 FORBIDDEN_DIGESTS = {
     "140bd3c7a8606c97e18fb1f01c3a94f558eab6e2c5b27a56f9c3f5a940d8e2fd": "a customer's tenant slug",
 }
@@ -115,7 +115,7 @@ def _scannable_for_own_names() -> list[pathlib.Path]:
     """As above, minus the one file our own org name legitimately belongs in.
 
     `pyproject.toml`'s `authors` email is the published maintainer contact — it
-    is on the PyPI project page by design, and `fp-cli` publishes the same one.
+    is on the PyPI project page by design, and `fp-cloud-cli` publishes the same one.
     It is still scanned for customer digests and internal artefacts below; only
     the our-own-name rule is lifted, because that rule exists to keep a real
     tenant out of a FIXTURE, not to redact the maintainer.

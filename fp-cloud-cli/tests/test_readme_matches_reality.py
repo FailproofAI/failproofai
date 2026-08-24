@@ -72,10 +72,10 @@ def test_every_subcommand_the_readme_documents_actually_exists():
 
 
 def test_the_readme_install_instructions_name_the_distribution_not_the_command():
-    """`pip install fp` installs somebody else's package. The dist is `fp-cli`."""
+    """`pip install fp` installs somebody else's package. The dist is `fp-cloud-cli`."""
     text = _readme()
     bad = re.findall(r"(?:pipx|pip|uv tool) install fp(?![-\w])", text)
-    assert not bad, f"install instructions must say fp-cli, not fp: {bad}"
+    assert not bad, f"install instructions must say fp-cloud-cli, not fp: {bad}"
 
 
 def test_the_documented_default_base_url_is_the_real_one():

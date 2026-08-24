@@ -7,7 +7,7 @@ name: Sync failproofai-sdk skill
 # which mirrored the same skill from `python-sdk/skill/` to `skills/agenteye-python-sdk/`
 # before the SDK moved here. That workflow was deleted with the SDK.
 #
-# Sibling of sync-fp-cli-skill.yml. The two are deliberately independent: every shared
+# Sibling of sync-fp-cloud-cli-skill.yml. The two are deliberately independent: every shared
 # identifier below (SRC, DEST_SUBDIR, BRANCH, LABEL, concurrency group) differs, because
 # BRANCH is force-pushed on every run — reusing the other skill's branch would overwrite
 # its open PR with this skill's contents.
@@ -28,13 +28,13 @@ name: Sync failproofai-sdk skill
 #   • eventually delete the orphaned skills/agenteye-python-sdk/ folder, which teaches
 #     `import agenteye` and is no longer synced by anything.
 #
-#     ⚠ NOT YET, and for the same reason as its fp-cli sibling: check the live public
+#     ⚠ NOT YET, and for the same reason as its fp-cloud-cli sibling: check the live public
 #     docs first. `docs/agenteye/python-sdk-skill.mdx` tells readers to run
 #     `npx skills add FailproofAI/skills --skill agenteye-python-sdk`. Deleting the
 #     folder before that page is repointed turns a documented install command into a
 #     not-found error. Order: land the docs change, THEN delete the folder.
 # One-time setup on THIS repo (admin):
-#   • Actions secret SKILLS_SYNC_PAT — shared with sync-fp-cli-skill.yml, so it already
+#   • Actions secret SKILLS_SYNC_PAT — shared with sync-fp-cloud-cli-skill.yml, so it already
 #     exists if that one is set up. Fine-grained PAT scoped to FailproofAI/skills,
 #     Contents: Read and write + Pull requests: Read and write. The agenteye repo has a
 #     secret of the same name; this repo needs its own.

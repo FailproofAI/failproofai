@@ -1,26 +1,26 @@
-name: Publish failproofai-sdk to PyPI
+name: Publish fp-cloud-cli to PyPI
 
-# The telemetry SDK (PyPI project: failproofai-sdk) ships on its own cadence, separate
-# from the npm package, the daemon binaries in publish.yml, and its sibling fp-cloud-cli. It
-# is a pure-Python wheel with no platform matrix and no release assets, so it has
-# nothing to share with those pipelines beyond credentials it does not use.
+# The `fp` CLI (PyPI project: fp-cloud-cli) ships on its own cadence, separate from the npm
+# package and the daemon binaries in publish.yml. It is a pure-Python wheel with no
+# platform matrix and no release assets, so it has nothing to share with that pipeline
+# beyond the registry credentials it does not use.
 #
 # AUTHENTICATION IS PyPI TRUSTED PUBLISHING (OIDC) — there is no PYPI_API_TOKEN secret.
 # This requires a one-time, out-of-band setup on PyPI that CANNOT be done from a PR:
 #
 #   https://pypi.org/manage/account/publishing/  ->  Add a new pending publisher
-#     PyPI Project Name: failproofai-sdk
+#     PyPI Project Name: fp-cloud-cli
 #     Owner:            FailproofAI
 #     Repository:       failproofai
-#     Workflow name:    publish-failproofai-sdk.yml
-#     Environment:      pypi-failproofai-sdk      <- REQUIRED, do not leave blank
+#     Workflow name:    publish-fp-cloud-cli.yml
+#     Environment:      pypi-fp-cloud-cli        <- REQUIRED, do not leave blank
 #
 #   The ACCOUNT-level page, not `Project -> Manage -> Publishing`. That per-project
-#   tab only exists once the project does, and `failproofai-sdk` is unregistered —
-#   the first successful upload is what creates it. A "pending" publisher is exactly
-#   the form for that case: it authorises this workflow to create the project on
-#   first publish, and PyPI converts it into a normal project-level publisher
-#   afterwards. Once the project exists, later edits go through the per-project tab.
+#   tab only exists once the project does, and `fp-cloud-cli` is unregistered — the first
+#   successful upload is what creates it. A "pending" publisher is exactly the form
+#   for that case: it authorises this workflow to create the project on first
+#   publish, and PyPI converts it into a normal project-level publisher afterwards.
+#   Once the project exists, later edits go through the per-project tab instead.
 #
 # Until that publisher exists the `publish` job fails at the upload step with an OIDC
 # error. Configure it BEFORE the first release, not after.
@@ -30,15 +30,15 @@ name: Publish failproofai-sdk to PyPI
 # token is minted for whatever the workflow then asks for. Two settings OUTSIDE this file
 # are what a branch edit cannot reach:
 #
-#   1. Repo -> Settings -> Environments -> `pypi-failproofai-sdk`:
+#   1. Repo -> Settings -> Environments -> `pypi-fp-cloud-cli`:
 #        Deployment branches: `main` only (and add required reviewers if you want a
 #        second pair of eyes on every release).
 #      A job referencing this environment from any other ref is refused before it starts.
 #      NOTE: GitHub creates a missing environment implicitly, WITHOUT protection rules —
 #      so this is not self-configuring; set it up by hand.
-#   2. The `Environment: pypi-failproofai-sdk` field above. PyPI then rejects a token
-#      whose `environment` claim is missing or different, which is what stops someone
-#      from simply deleting the `environment:` line below.
+#   2. The `Environment: pypi-fp-cloud-cli` field above. PyPI then rejects a token whose
+#      `environment` claim is missing or different, which is what stops someone from
+#      simply deleting the `environment:` line below.
 
 # WHO MAY PUBLISH. Every publish — beta or stable — is restricted to the logins in
 # `RELEASE_ACTORS`, checked against BOTH `github.actor` and `github.triggering_actor`.
@@ -83,7 +83,7 @@ on:
         default: false
 
 concurrency:
-  group: publish-failproofai-sdk
+  group: publish-fp-cloud-cli
   cancel-in-progress: false
 
 jobs:
@@ -131,13 +131,13 @@ jobs:
               fi
             done
             if [ "$MATCHED" != "true" ]; then
-              printf '%s\n' "::error::Publishing failproofai-sdk is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
+              printf '%s\n' "::error::Publishing fp-cloud-cli is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
               exit 1
             fi
           done
 
           if [ "$REF" != "main" ]; then
-            printf '%s\n' "::error::Refusing to publish from '$REF'. failproofai-sdk publishes from main only."
+            printf '%s\n' "::error::Refusing to publish from '$REF'. fp-cloud-cli publishes from main only."
             exit 1
           fi
 
@@ -153,7 +153,7 @@ jobs:
       - name: Resolve the version and what follows it
         id: resolve
         run: |
-          RESOLVED=$(python3 scripts/python-version.py resolve sdk/python/failproofai_sdk/_version.py failproofai-sdk)
+          RESOLVED=$(python3 scripts/python-version.py resolve fp-cloud-cli/fp_cli/_version.py fp-cloud-cli)
           printf '%s\n' "$RESOLVED"
           printf '%s\n' "$RESOLVED" >> "$GITHUB_OUTPUT"
 
@@ -161,7 +161,7 @@ jobs:
       # reuse, so without this the run installs everything, tests, builds, verifies,
       # smoke-tests, and only then dies at the upload — having proved nothing that
       # bumping one line would not have. A `workflow_dispatch` has no version input:
-      # the version is whatever sdk/python/failproofai_sdk/_version.py carries on main, which is
+      # the version is whatever fp-cloud-cli/fp_cli/_version.py carries on main, which is
       # exactly the value a forgotten bump leaves stale.
       #
       # A non-404/200 answer FAILS rather than assuming "not published". PyPI sits
@@ -173,12 +173,12 @@ jobs:
         run: |
           CODE=$(curl -sS -o /dev/null -w '%{http_code}' \
             --retry 3 --retry-connrefused --max-time 30 \
-            "https://pypi.org/pypi/failproofai-sdk/${VERSION}/json")
+            "https://pypi.org/pypi/fp-cloud-cli/${VERSION}/json")
           case "$CODE" in
-            404) printf '%s\n' "failproofai-sdk ${VERSION} is not on PyPI yet." ;;
-            200) printf '%s\n' "::error::failproofai-sdk ${VERSION} is already published — PyPI will reject it. Bump sdk/python/failproofai_sdk/_version.py on main and dispatch again."
+            404) printf '%s\n' "fp-cloud-cli ${VERSION} is not on PyPI yet." ;;
+            200) printf '%s\n' "::error::fp-cloud-cli ${VERSION} is already published — PyPI will reject it. Bump fp-cloud-cli/fp_cli/_version.py on main and dispatch again."
                  exit 1 ;;
-            *)   printf '%s\n' "::error::PyPI answered HTTP ${CODE} for failproofai-sdk ${VERSION}; refusing to guess whether it is published."
+            *)   printf '%s\n' "::error::PyPI answered HTTP ${CODE} for fp-cloud-cli ${VERSION}; refusing to guess whether it is published."
                  exit 1 ;;
           esac
 
@@ -196,14 +196,14 @@ jobs:
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
         run: |
-          python3 scripts/changelog-section.py sdk/python/CHANGELOG.md "$VERSION" > release-notes.md
+          python3 scripts/changelog-section.py fp-cloud-cli/CHANGELOG.md "$VERSION" > release-notes.md
           printf '%s\n' "----- release notes -----"
           cat release-notes.md
 
       - name: Hand the notes to the release job
         uses: actions/upload-artifact@v7
         with:
-          name: failproofai-sdk-release-notes
+          name: fp-cloud-cli-release-notes
           path: release-notes.md
           if-no-files-found: error
           retention-days: 1
@@ -220,7 +220,7 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
         run: |
           {
-            printf '### `failproofai-sdk` %s\n\n' "${VERSION}"
+            printf '### `fp-cloud-cli` %s\n\n' "${VERSION}"
             printf '| | |\n|---|---|\n'
             printf '| scheme | %s |\n' "${SCHEME}"
             printf '| dry run | %s |\n' "${DRY_RUN}"
@@ -233,21 +233,19 @@ jobs:
   # EVERYTHING that runs third-party code lives here, and this job has NO
   # publishing identity: no `environment:`, no `id-token: write`.
   #
-  # That split is the point, and it matters more here than for fp-cloud-cli. Trusted
-  # Publishing mints its OIDC token on demand from
-  # `ACTIONS_ID_TOKEN_REQUEST_URL`/`_TOKEN` in the job environment, so any code
-  # running in a job that holds `id-token: write` can request it and publish an
-  # attacker-controlled release. This job installs dependencies, runs pytest
-  # (plugins included), installs FIVE framework extras — LangChain, LangGraph,
-  # CrewAI, LlamaIndex, Pydantic AI — and their entire transitive trees, executes
-  # their adapters, then imports the built wheel and runs it. Holding the identity
-  # alongside all of that made every one of those packages publish-capable.
+  # That split is the point. Trusted Publishing mints its OIDC token on demand
+  # from `ACTIONS_ID_TOKEN_REQUEST_URL`/`_TOKEN` in the job environment, so any
+  # code that runs in a job holding `id-token: write` can ask for it and publish
+  # an attacker-controlled release. This job installs dependencies, runs pytest
+  # (plugins included), builds, and imports the built wheel to smoke-test its
+  # console script — every one of which executes code this repo does not review.
+  # Holding the identity here made all of it publish-capable.
   build:
     runs-on: ubuntu-latest
     needs: preflight
     defaults:
       run:
-        working-directory: sdk/python
+        working-directory: fp-cloud-cli
     permissions:
       # Naming ANY scope sets every unnamed one to `none` — it is not an addition to the
       # defaults. `contents: read` is therefore not redundant: without it `actions/checkout`
@@ -257,8 +255,10 @@ jobs:
       # Authentication is OIDC, so there is no token to withhold: repo write access IS
       # publish access, and `workflow_dispatch` can target ANY ref. Without these two
       # checks one "Run workflow" click on an unreviewed branch ships that branch to
-      # public PyPI as an official failproofai-sdk release, unreviewable and
-      # unrecallable (PyPI versions cannot be reused).
+      # public PyPI as an official fp-cloud-cli release, unreviewable and unrecallable
+      # (PyPI versions cannot be reused). The workflow this replaced
+      # (release-cli.yml in FailproofAI/agenteye) carried both; they were dropped in
+      # the move and are restored here.
       #
       # These are the readable guard, not the enforcement: they live on the ref being
       # dispatched, so a writer could delete them on a branch. The `environment:` above
@@ -284,13 +284,13 @@ jobs:
               fi
             done
             if [ "$MATCHED" != "true" ]; then
-              printf '%s\n' "::error::Publishing failproofai-sdk is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
+              printf '%s\n' "::error::Publishing fp-cloud-cli is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
               exit 1
             fi
           done
 
           if [ "$REF" != "main" ]; then
-            printf '%s\n' "::error::Refusing to publish from '$REF'. failproofai-sdk publishes from main only."
+            printf '%s\n' "::error::Refusing to publish from '$REF'. fp-cloud-cli publishes from main only."
             exit 1
           fi
 
@@ -299,42 +299,15 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: sdk/python/uv.lock
+          cache-dependency-glob: fp-cloud-cli/uv.lock
 
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
       # Never publish a version whose tests do not pass. This duplicates the ci job on
       # purpose: a workflow_dispatch can target any ref, including one CI never ran.
-      # FAILPROOFAI_SDK_REQUIRE_CONTRACT turns a missing daemon source into a failure
-      # rather than a skip, so the spool contract cannot go unverified on a release.
       - name: Test
-        env:
-          FAILPROOFAI_SDK_REQUIRE_CONTRACT: "1"
         run: uv run pytest tests/ -q
-
-      # The step above duplicates ci.yml's `failproofai-sdk` job and NOT its
-      # `failproofai-sdk-integrations` job, so it ran zero adapter tests: the
-      # framework extras are not in `--extra dev`, so all four modules skipped at
-      # import and printed "815 passed, 6 skipped" — green, having tested nothing
-      # of `failproofai_sdk/integrations/`, which ships in the base wheel. That is
-      # the largest untested surface on the one path that produces an
-      # unrecallable public artifact, and it is the same skip-instead-of-fail hole
-      # the step above already closes with FAILPROOFAI_SDK_REQUIRE_CONTRACT.
-      #
-      # AGENTEYE_TESTS_REQUIRE_FRAMEWORKS is the load-bearing half: without it a
-      # botched install here reads as "4 skipped" and the gap reopens in exactly
-      # the form that hid it the first time.
-      - name: Install the framework extras
-        run: >-
-          uv sync --locked --extra dev
-          --extra langchain --extra langgraph --extra crewai
-          --extra llamaindex --extra pydantic-ai
-
-      - name: Test the framework adapters
-        env:
-          AGENTEYE_TESTS_REQUIRE_FRAMEWORKS: "1"
-        run: uv run pytest tests/integrations -q
 
       - name: Build
         run: uv build
@@ -356,61 +329,40 @@ jobs:
           if built != expected:
               sys.exit(f"built {built} but preflight cleared {expected}")
           names = zipfile.ZipFile(wheel).namelist()
-          modules = [n for n in names if n.startswith("failproofai_sdk/") and n.endswith(".py")]
-          if len(modules) < 7:
+          modules = [n for n in names if n.startswith("fp_cli/") and n.endswith(".py")]
+          if len(modules) < 20:
               sys.exit(f"refusing to publish an empty wheel ({len(modules)} modules)")
           if not any(n.endswith("LICENSE") for n in names):
               sys.exit("refusing to publish without a LICENSE in the wheel")
-          # py.typed is the only thing that makes the annotations count for a
-          # type checker, and it is absent from the wheel unless package-data
-          # names it — a build that silently drops it looks identical here
-          # otherwise.
-          if not any(n.endswith("py.typed") for n in names):
-              sys.exit("refusing to publish without py.typed in the wheel")
-          print(f"{wheel}: {len(modules)} modules, licence and py.typed present")
+          print(f"{wheel}: {len(modules)} modules, licence present")
           PY
 
-      # The CI job proves the artifact installs with no dependencies and emits real
-      # events; the publish path must not prove less than CI does. A wheel whose zip
-      # looks right but which cannot import, or which quietly acquired a dependency,
-      # is exactly the failure this catches — and it is unrecallable once uploaded.
+      # The CI job proves the artifact is installable and correctly branded; the publish
+      # path must not prove less than CI does. A wheel whose zip looks right but whose
+      # console script does not resolve is exactly the failure this catches, and it is
+      # unrecallable once uploaded.
       - name: Smoke-test the artifact exactly as a user would receive it
         run: |
-          uv venv /tmp/sdk-publish-smoke
-          # --no-deps is the assertion, not an optimisation: this package must
-          # install and work with nothing else present.
-          VIRTUAL_ENV=/tmp/sdk-publish-smoke uv pip install --no-deps dist/*.whl
-          FAILPROOFAI_HOME=/tmp/sdk-publish-spool /tmp/sdk-publish-smoke/bin/python -c "
-          import failproofai_sdk as s
-          print(s.__version__)
-          s.event.agent_start(session_id='smoke', agent_id='a', goal='publish check')
-          s.event.tool_use(session_id='smoke', agent_id='a', tool_name='t', tool_call_id='c')
-          s.event.tool_result(session_id='smoke', agent_id='a', tool_name='t', tool_call_id='c', output='ok')
-          "
-          python3 - <<'PY'
-          import glob, json, sys
-          # $FAILPROOFAI_HOME/custom-agents/events — see the resolver.
-          batches = glob.glob("/tmp/sdk-publish-spool/custom-agents/events/*.jsonl")
-          if not batches:
-              sys.exit("the installed wheel wrote no event batch")
-          events = [json.loads(l) for p in batches for l in open(p) if l.strip()]
-          types = {e["type"] for e in events}
-          if types != {"agent_start", "tool_use", "tool_result"}:
-              sys.exit(f"unexpected events from the installed wheel: {sorted(types)}")
-          print(f"{len(events)} events written by the installed artifact")
-          PY
+          uv venv /tmp/fp-publish-smoke
+          VIRTUAL_ENV=/tmp/fp-publish-smoke uv pip install dist/*.whl
+          /tmp/fp-publish-smoke/bin/fp --version
+          /tmp/fp-publish-smoke/bin/fp help > /tmp/fp-publish-help.txt
+          if grep -qi agenteye /tmp/fp-publish-help.txt; then
+            echo '::error::retired product name present in the fp help output — refusing to publish'
+            exit 1
+          fi
 
       - name: Report the version being published
         run: |
-          VERSION=$(uv run python -c 'from failproofai_sdk._version import __version__; print(__version__)')
-          echo "failproofai-sdk version: ${VERSION}"
-          echo "### Publishing \`failproofai-sdk\` ${VERSION}" >> "${GITHUB_STEP_SUMMARY}"
+          VERSION=$(uv run python -c 'from fp_cli._version import __version__; print(__version__)')
+          echo "fp-cloud-cli version: ${VERSION}"
+          echo "### Publishing \`fp-cloud-cli\` ${VERSION}" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Hand the verified artifact to the publish job
         uses: actions/upload-artifact@v7
         with:
-          name: failproofai-sdk-dist
-          path: sdk/python/dist/
+          name: fp-cloud-cli-dist
+          path: fp-cloud-cli/dist/
           if-no-files-found: error
           retention-days: 1
 
@@ -418,9 +370,8 @@ jobs:
   # dependency code and no package code — it does not even check the repo out.
   # It downloads the artifact the job above already verified and uploads it.
   #
-  # `needs: build` means every gate (unit tests, the framework-adapter tests, the
-  # wheel verification, the installed smoke test that proves the artifact writes
-  # real events) has passed before this job exists at all. Nothing is lost by
+  # `needs: build` means every gate (tests, wheel verification, the installed
+  # smoke test) has passed before this job exists at all, so nothing is lost by
   # moving them out; what changes is that none of them run while the OIDC
   # identity is reachable.
   publish:
@@ -429,7 +380,7 @@ jobs:
     runs-on: ubuntu-latest
     # Gates this job on the repo-level environment rules described in the header, and puts
     # the environment name in the OIDC token PyPI checks. Both halves are outside this file.
-    environment: pypi-failproofai-sdk
+    environment: pypi-fp-cloud-cli
     permissions:
       contents: read
       id-token: write    # required for Trusted Publishing
@@ -458,19 +409,19 @@ jobs:
               fi
             done
             if [ "$MATCHED" != "true" ]; then
-              printf '%s\n' "::error::Publishing failproofai-sdk is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
+              printf '%s\n' "::error::Publishing fp-cloud-cli is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
               exit 1
             fi
           done
 
           if [ "$REF" != "main" ]; then
-            printf '%s\n' "::error::Refusing to publish from '$REF'. failproofai-sdk publishes from main only."
+            printf '%s\n' "::error::Refusing to publish from '$REF'. fp-cloud-cli publishes from main only."
             exit 1
           fi
 
       - uses: actions/download-artifact@v8
         with:
-          name: failproofai-sdk-dist
+          name: fp-cloud-cli-dist
           path: dist/
 
       - name: Publish to PyPI
@@ -534,20 +485,20 @@ jobs:
           git fetch origin main
           git checkout -B main origin/main
 
-          python3 scripts/python-version.py write sdk/python/failproofai_sdk/_version.py "$NEXT_VERSION"
+          python3 scripts/python-version.py write fp-cloud-cli/fp_cli/_version.py "$NEXT_VERSION"
 
           # Nothing moves with it. `pyproject.toml` declares `dynamic = ["version"]`,
           # so `uv.lock` records this project as `source = { editable = "." }` with NO
           # `version =` line, and `uv sync --locked` keeps working across a bump.
           # Giving the package a static version would silently make that false and
           # turn every post-release CI run red.
-          if git diff --quiet -- sdk/python/failproofai_sdk/_version.py; then
+          if git diff --quiet -- fp-cloud-cli/fp_cli/_version.py; then
             printf '%s\n' "::notice::main already carries ${NEXT_VERSION} — nothing to push."
             exit 0
           fi
 
-          git add sdk/python/failproofai_sdk/_version.py
-          git commit -m "chore(failproofai-sdk): open ${NEXT_VERSION} after publishing ${PUBLISHED} [skip ci]"
+          git add fp-cloud-cli/fp_cli/_version.py
+          git commit -m "chore(fp-cloud-cli): open ${NEXT_VERSION} after publishing ${PUBLISHED} [skip ci]"
 
           # Supplied to the single command that needs it rather than persisted, and
           # through a header rather than the remote URL: git echoes the URL in its own
@@ -559,14 +510,14 @@ jobs:
 
           printf '%s\n' "::notice::main now opens ${NEXT_VERSION}."
 
-  # Where a failproofai-sdk release is announced and where its notes live. Separate from
+  # Where a fp-cloud-cli release is announced and where its notes live. Separate from
   # `bump` because that one is skipped for a version outside the beta/stable
   # scheme, and an `rc` that reached PyPI still deserves a tag.
   #
   # FOUR deliberate separations from the npm package's releases, which share this
   # repository's single tag namespace and single release feed:
   #
-  #   1. The tag is `failproofai-sdk-vX.Y.Z`, never a bare `vX.Y.Z`. The bare form is the npm
+  #   1. The tag is `fp-cloud-cli-vX.Y.Z`, never a bare `vX.Y.Z`. The bare form is the npm
   #      package's, and the published CLI builds its `failproofaid` download URLs
   #      out of exactly those tags — a Python release landing on one would be a
   #      release the CLI tries to fetch binaries from.
@@ -576,7 +527,7 @@ jobs:
   #      package. Prereleases are never marked latest anyway, which is exactly why
   #      this cannot be left implicit — it would start being wrong the first time
   #      a stable ships, long after anyone remembers why.
-  #   3. The title names the package (`failproofai-sdk 0.0.1b1`), so the release feed reads
+  #   3. The title names the package (`fp-cloud-cli 0.0.1b1`), so the release feed reads
   #      unambiguously rather than as three interleaved `v...` lines.
   #   4. No assets. The npm release carries the daemon binaries and the CLI
   #      tarball; this one carries notes and a tag, and the wheel lives on PyPI.
@@ -593,7 +544,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: failproofai-sdk-release-notes
+          name: fp-cloud-cli-release-notes
 
       - name: Cut the GitHub Release
         env:
@@ -606,12 +557,12 @@ jobs:
           # `bump` may already have moved main on to the next development version,
           # and a tag pointing at that commit would name source that was never
           # built into the wheel it accompanies.
-          FLAGS=(--target "$GITHUB_SHA" --title "failproofai-sdk ${VERSION}" --repo "$GITHUB_REPOSITORY")
+          FLAGS=(--target "$GITHUB_SHA" --title "fp-cloud-cli ${VERSION}" --repo "$GITHUB_REPOSITORY")
           FLAGS+=(--latest=false)
           if [ "$PRERELEASE" = "true" ]; then FLAGS+=(--prerelease); fi
 
           {
-            printf '`failproofai-sdk %s` is on PyPI: https://pypi.org/project/failproofai-sdk/%s/\n\n' "${VERSION}" "${VERSION}"
+            printf '`fp-cloud-cli %s` is on PyPI: https://pypi.org/project/fp-cloud-cli/%s/\n\n' "${VERSION}" "${VERSION}"
             printf -- '---\n\n'
             cat release-notes.md
           } > body.md

@@ -31,14 +31,18 @@ classifiers = [
 # wheel with `--no-deps` to prove the claim against the artifact.
 
 # No [project.scripts] either — this is a library, not a command. The command is `fp`,
-# which ships from ../../fp-cli.
+# which ships from ../../fp-cloud-cli.
 
 [project.urls]
 Homepage = "https://befailproof.ai"
-# The live route. `/agenteye/python-sdk` is a 404 — see fp-cli's pyproject for
+# The live route. `/agenteye/python-sdk` is a 404 — see fp-cloud-cli's pyproject for
 # the full reasoning; PyPI bakes this into published metadata.
 Documentation = "https://docs.befailproof.ai/reference/custom-agents"
 Source = "https://github.com/FailproofAI/failproofai"
+# PyPI gives "Changelog" its own sidebar slot and icon. Without it the only
+# thing a visitor to the project page can read is the README, and there is no
+# route at all from an installed version to what changed in it.
+Changelog = "https://github.com/FailproofAI/failproofai/blob/main/sdk/python/CHANGELOG.md"
 
 [project.optional-dependencies]
 # Test-only, and it stays that way — `dependencies` above is empty and

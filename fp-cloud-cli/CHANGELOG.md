@@ -1,6 +1,50 @@
 # Changelog — `fp` CLI
 
-## Unreleased
+## 0.0.1b1 — 2026-08-24
+
+### The package is `fp-cloud-cli`; the command is still `fp`
+
+- **What you type to install it changed. What you type to use it did not.**
+
+  ```bash
+  pipx install fp-cloud-cli      # or: uv tool install fp-cloud-cli
+  fp --version
+  ```
+
+- **Why not `fp-cli`.** PyPI refuses a name "too similar to an existing project",
+  and its similarity check strips separators — so `fp-cli` collides with `fpcli`,
+  a real package with 42 releases and uploads as recent as April 2025. It is not
+  a squat, so there is no PEP 541 claim to make: the name simply is not available.
+  (`fp` itself was taken long before that, which is why the command and the
+  distribution never matched in the first place.)
+- **`fp-cloud-cli` also says what this is.** It talks to the FailproofAI Cloud
+  dashboard's `/api` surface and nothing else — never the Rust server directly —
+  and it is not the `failproofai` npm CLI, which enforces inside the agent loop
+  rather than reading back what the loop did.
+- **Nothing else moved.** `~/.failproofai/fpcli/cli-auth.json` keeps its name, so
+  nobody is signed out — it is a contract with the Enforcement CLI's
+  `src/hooks/fp-home.ts`, not a label. `FP_HOME` still works and still wins. The
+  import package stays `fp_cli`, which nobody types: this is an application, and
+  the `fp` command is its entire public surface.
+
+### Versioning restarts at `0.0.1b1`
+
+- **The number was inherited from a distribution this is not.** `0.1.22` was where the
+  CLI had got to under the shared `agenteye` name in the private monorepo. It came over
+  verbatim when the CLI was open-sourced as `fp-cloud-cli` and nothing has moved it since — but
+  `fp-cloud-cli` is a 404 on PyPI, so that number would have opened the project's first release
+  claiming a history that lives entirely on another name.
+- **`0.1.22` also said "stable" where everything else says beta.** It is a plain release
+  version, so `pip install fp-cloud-cli` would resolve it by default while the classifier
+  (`Development Status :: 4 - Beta`) and every doc page call the CLI beta. `0.0.1b1` is a
+  PEP 440 pre-release, which is the only mechanism PyPI has for that distinction — there
+  are no dist-tags here the way there are on npm.
+- **Nothing is stranded and nobody is downgraded.** There is no published `fp-cloud-cli` version
+  to reuse or to fall behind, and pip, pipx and uv all install a pre-release when it is the
+  only release available, so `pipx install fp-cloud-cli` keeps working with no `--pre`.
+- **The `## 0.1.7` and older sections below predate the rename.** They are the `agenteye`
+  CLI's history, kept because the behaviour they describe is this CLI's behaviour. They are
+  not versions of `fp-cloud-cli`, and no `fp-cloud-cli` release will ever carry those numbers.
 
 ### The session moved to `~/.failproofai/fpcli/cli-auth.json`
 
@@ -75,7 +119,7 @@ into a directory the CLI owned outright.
 - **Fixes `ModuleNotFoundError: No module named 'click'` on a fresh install.** The CLI imports
   `click` directly (and `pygments` for SQL highlighting) but only ever got them transitively via
   `typer` / `rich`. Modern `typer` (>=0.13) **no longer installs `click`**, so a clean
-  `pipx install fp-cli` left `click` absent and the CLI crashed on startup. Both are now listed
+  `pipx install fp-cloud-cli` left `click` absent and the CLI crashed on startup. Both are now listed
   as direct dependencies (`click>=8.1`, `pygments>=2.13`) so installs are self-contained.
 - No behaviour change — same code, correct dependency metadata.
 

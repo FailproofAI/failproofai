@@ -65,7 +65,7 @@ def settings_set(
     value: Optional[str] = typer.Option(None, "--value", help="Scalar value (string; a digit-only value is sent as an integer)."),
     json_value: Optional[str] = typer.Option(None, "--json-value", help="Raw JSON value, for arrays/objects (e.g. `[\"a@b.com\"]`)."),
     file: Optional[str] = typer.Option(None, "--file", help="Read a JSON value from a file, or `-` for stdin."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Change one org setting's value, showing the before → after.
 

@@ -201,7 +201,7 @@ def keys_update(
     permission_set: Optional[str] = typer.Option(None, "--permission-set", help="Reseed the key from a permission set: `read-only`, `standard`, `admin`, or a custom org set. REPLACES the key's grants with the set (then applies any --add/--remove). Human-only perms are dropped."),
     add: Optional[List[str]] = typer.Option(None, "--add", help="Grant permissions, same `slug:action.action` token format as `keys create` (dotted actions expand; comma / repeated flag / quoted compose). Incremental — merged into the key's CURRENT grants, unless --permission-set is also given."),
     remove: Optional[List[str]] = typer.Option(None, "--remove", help="Revoke permissions, same `slug:action.action` token format as --add. Incremental — applied to the key's CURRENT grants, unless --permission-set is also given."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Change an API key's permissions and show the diff — like `users update`, by key name.
 
@@ -292,7 +292,7 @@ def keys_update(
 def keys_disable(
     ctx: typer.Context,
     name: str = typer.Argument(..., help="Key name to disable (unique within the org)."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Disable (revoke) an API key by name. This cannot be undone.
 
@@ -334,7 +334,7 @@ def keys_disable(
 def keys_regenerate(
     ctx: typer.Context,
     name: str = typer.Argument(..., help="Key name to rotate the secret for (unique within the org)."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Rotate an API key's secret by name and reveal the new secret **once**.
 

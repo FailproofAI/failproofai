@@ -33,6 +33,7 @@ def _resolve_login_org(
     is_admin: bool,
     saved: Optional[str] = None,
     probe_ctx: Optional[ClientContext] = None,
+    discovery_failed: bool = False,
 ) -> Tuple[Optional[str], bool]:
     """Pick the active org at login. Returns ``(slug_or_None, needs_selection)``.
 
@@ -56,8 +57,13 @@ def _resolve_login_org(
         # Fast path: an org you're a member of is always fine (no server round-trip).
         if requested in slugs:
             return requested, False
-        # Not a membership. A regular user simply cannot use it.
-        if not is_admin:
+        # Not a membership — but only say so if we actually LOOKED. When the
+        # membership fetch failed, `slugs` is empty because nothing answered,
+        # not because the user belongs to nothing, and "You are not a member of
+        # org 'X'. Your orgs: (none)." is then a confident lie that exits 2 on a
+        # tenant they may well have. Fall through to the server probe instead,
+        # which is the only thing that can still give a real answer.
+        if not is_admin and not discovery_failed:
             raise click.BadParameter(
                 f"You are not a member of org '{requested}'. "
                 f"Your orgs: {', '.join(slugs) or '(none)'}.",
@@ -69,6 +75,13 @@ def _resolve_login_org(
         # slug. Same check covers --org and FP_ORG (both feed `requested`).
         if probe_ctx is not None and org_is_accessible(probe_ctx, requested):
             return requested, False
+        if discovery_failed:
+            raise click.BadParameter(
+                f"Could not verify access to org '{requested}' — reading your "
+                "memberships failed, and the direct check did not succeed either. "
+                "You are still signed in; retry once the dashboard is reachable.",
+                param_hint="--org",
+            )
         raise click.BadParameter(
             f"Org '{requested}' does not exist or you do not have access to it.",
             param_hint="--org",
@@ -134,15 +147,32 @@ def _login_interactive(state: AppState, base: str, email_opt: Optional[str], org
             sess_ctx = ClientContext(base_url=base, token=token, timeout=state.timeout, verify=not state.insecure)
             slugs: List[str] = []
             is_admin = False
+            discovery_failed: Optional[str] = None
+            # The token is already persisted, so a discovery failure must NOT
+            # undo the login — but it must not be reported as "no memberships"
+            # either. A timeout, a 500, a malformed body or a permissions
+            # problem all used to collapse into an empty list, which then reads
+            # as a single-org user: the active org is silently cleared, a
+            # previously chosen tenant is dropped, and an explicit `--org` is
+            # rejected as inaccessible when it was never actually checked.
+            # Keeping the session and SAYING so is the honest recovery.
             try:
                 su = get_session_user(sess_ctx)
                 slugs = su.org_slugs
                 is_admin = su.is_instance_admin
-            except Exception:
-                pass
+            except Exception as exc:
+                discovery_failed = str(exc) or exc.__class__.__name__
+                output.cli_warn(
+                    "⚠ signed in, but could not read your organisation memberships "
+                    f"({discovery_failed}). The active org was left unchanged — "
+                    "run `fp orgs list` once the dashboard is reachable."
+                )
             requested = org_opt or state.org_explicit
             if requested:
-                chosen, _ = _resolve_login_org(state, requested, slugs, is_admin, saved=saved, probe_ctx=sess_ctx)
+                chosen, _ = _resolve_login_org(
+                    state, requested, slugs, is_admin, saved=saved, probe_ctx=sess_ctx,
+                    discovery_failed=discovery_failed is not None,
+                )
                 if chosen:
                     box.note("org", chosen)
             elif len(slugs) > 1:
@@ -273,12 +303,20 @@ def login(
     )
     slugs: List[str] = []
     is_admin = False
+    discovery_failed: Optional[str] = None
+    # Same reasoning as the interactive flow above: keep the session, but never
+    # let a discovery failure masquerade as "this user belongs to no orgs".
     try:
         su = get_session_user(sess_ctx)
         slugs = su.org_slugs
         is_admin = su.is_instance_admin
-    except Exception:
-        pass
+    except Exception as exc:
+        discovery_failed = str(exc) or exc.__class__.__name__
+        output.cli_warn(
+            "⚠ signed in, but could not read your organisation memberships "
+            f"({discovery_failed}). The active org was left unchanged — "
+            "run `fp orgs list` once the dashboard is reachable."
+        )
     # The active tenant at login is an EXPLICIT choice only: the `login --org`
     # flag, the global `--org`, or FP_ORG. A previously *saved* tenant must
     # not silently bypass the picker — a multi-org user re-running `login` is shown
@@ -287,7 +325,8 @@ def login(
     requested = org or state.org_explicit
     saved = state.config.org
     chosen, needs_selection = _resolve_login_org(
-        state, requested, slugs, is_admin, saved=saved, probe_ctx=sess_ctx
+        state, requested, slugs, is_admin, saved=saved, probe_ctx=sess_ctx,
+        discovery_failed=discovery_failed is not None,
     )
     state.config.org = chosen  # persist the active tenant (or clear it if unresolved)
     cfgmod.save_config(state.config)

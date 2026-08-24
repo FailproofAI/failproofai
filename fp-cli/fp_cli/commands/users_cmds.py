@@ -189,7 +189,7 @@ def users_update(
     permission_set: Optional[str] = typer.Option(None, "--permission-set", help="Reassign the member's role — a permission set: `read-only`, `standard`, `admin`, or a custom set your org defines in the dashboard. Replaces their per-member overrides (apply fresh ones with --add/--remove)."),
     add: Optional[List[str]] = typer.Option(None, "--add", help="Grant permissions, same `slug:action.action` token format as `users create` (dotted actions expand; comma / repeated flag / quoted group compose). Incremental — merged into the member's CURRENT grants, unless --permission-set is also given."),
     remove: Optional[List[str]] = typer.Option(None, "--remove", help="Revoke permissions, same `slug:action.action` token format as --add. Incremental — applied to the member's CURRENT grants, unless --permission-set is also given."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Change a member's permissions and show the diff. Referenced by **email** (or a UUID id).
 
@@ -287,7 +287,7 @@ def users_update(
 def users_disable(
     ctx: typer.Context,
     email: str = typer.Argument(..., metavar="EMAIL", help="User email (or id) to disable."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Disable a member by email — they can no longer sign in (reversible with `users enable`).
 
@@ -332,7 +332,7 @@ def users_disable(
 def users_enable(
     ctx: typer.Context,
     email: str = typer.Argument(..., metavar="EMAIL", help="User email (or id) to re-enable."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Re-enable a disabled member by email — they can sign in again.
 

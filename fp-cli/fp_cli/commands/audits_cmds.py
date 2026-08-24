@@ -480,7 +480,7 @@ def audits_edit(
     top_k: Optional[int] = typer.Option(None, "--top-k", help="New max findings per run."),
     sensitivity: Optional[str] = typer.Option(None, "--sensitivity", help=f"New sensitivity: {', '.join(_SENSITIVITIES)}."),
     channels: Optional[str] = typer.Option(None, "--channels", help="New channels as a JSON array."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Edit an audit, referenced by **name** (or a UUID-shaped id). Two ways to change it:
 
@@ -541,7 +541,7 @@ def audits_edit(
 def audits_delete(
     ctx: typer.Context,
     name: str = typer.Argument(..., metavar="NAME", help="Audit name (or id) to delete."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Delete an audit, referenced by **name** (or a UUID-shaped id). This cannot be undone.
 
@@ -914,7 +914,7 @@ def findings_mute(
     ctx: typer.Context,
     finding_id: str = typer.Argument(..., metavar="FINDING_ID", help="Finding id."),
     reason: Optional[str] = typer.Option(None, "--reason", help="Why you're muting it (kept as durable feedback)."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Mute a finding — stop future runs surfacing this pattern at all.
 
@@ -934,7 +934,7 @@ def findings_dismiss(
     ctx: typer.Context,
     finding_id: str = typer.Argument(..., metavar="FINDING_ID", help="Finding id."),
     reason: Optional[str] = typer.Option(None, "--reason", help="Why you're dismissing it (kept as durable feedback)."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Dismiss a finding — it's not worth acting on.
 
@@ -953,7 +953,7 @@ def findings_dismiss(
 def findings_resolve(
     ctx: typer.Context,
     finding_id: str = typer.Argument(..., metavar="FINDING_ID", help="Finding id."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Resolve a finding — you fixed it.
 

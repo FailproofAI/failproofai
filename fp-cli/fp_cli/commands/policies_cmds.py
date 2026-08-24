@@ -194,7 +194,7 @@ def policies_publish(
 def policies_enable(
     ctx: typer.Context,
     policy_id: str = typer.Argument(..., help="Policy id."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Re-enable a disabled policy, restoring it to the machines that lost it.
 
@@ -243,7 +243,7 @@ def policies_enable(
 def policies_disable(
     ctx: typer.Context,
     policy_id: str = typer.Argument(..., help="Policy id."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Disable a policy. It is removed from every deployment carrying it.
 
@@ -286,7 +286,7 @@ def policies_disable(
 def policies_delete(
     ctx: typer.Context,
     policy_id: str = typer.Argument(..., help="Policy id."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Archive a policy. This cannot be undone from the CLI.
 

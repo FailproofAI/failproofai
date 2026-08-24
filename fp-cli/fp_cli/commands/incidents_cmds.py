@@ -206,7 +206,7 @@ def incidents_assign(
 def incidents_resolve(
     ctx: typer.Context,
     incident_id: str = typer.Argument(..., help="Incident id."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Resolve (close) an incident, after a calm confirm.
 
@@ -300,7 +300,7 @@ def incidents_comment_delete(
     ctx: typer.Context,
     incident_id: str = typer.Argument(..., help="Incident id."),
     comment_id: str = typer.Argument(..., help="Comment id."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Delete an incident comment, after an amber preview + confirm.
 

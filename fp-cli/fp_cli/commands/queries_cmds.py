@@ -155,7 +155,7 @@ def query_update(
     new_name: Optional[str] = typer.Option(None, "--name", help="Rename the query (defaults to the current name)."),
     sql: Optional[str] = typer.Option(None, "--sql", help="New SQL text, or `@file.sql` (defaults to current)."),
     description: Optional[str] = typer.Option(None, "--description", help="New description (defaults to current)."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Update a saved query, referenced by **name** (or a UUID-shaped id).
 
@@ -228,7 +228,7 @@ def query_update(
 def query_delete(
     ctx: typer.Context,
     name: str = typer.Argument(..., metavar="NAME", help="Saved query name (or id) to delete."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Delete a saved query, referenced by **name** (or a UUID-shaped id). This cannot be undone.
 

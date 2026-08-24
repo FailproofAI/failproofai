@@ -70,7 +70,9 @@ failproofai_sdk.configure(
 | `flush_interval` | Seconds between background writes from memory to JSONL. Default: `0.5`. |
 | `environment` | Deployment label on every event. Defaults to `dev`. Must not contain a comma — ingest splits this field on commas to build its filter facets and skips any event whose label has one, so `configure()` raises rather than let a run vanish. Use `prod-eu`, not `prod,eu`. |
 | `FAILPROOFAI_HOME` | Changes the Failproof AI root that contains the `custom-agents` spool. |
+| `AGENTEYE_ENVIRONMENT` | Sets the deployment label without a code change, for when the label belongs to the deployment rather than the application. `configure(environment=...)` wins over it. A comma here cannot raise the way `configure()` does — nothing is calling you — so the SDK warns once and falls back to `dev` rather than letting every event be skipped at ingest. The name is deliberately not renamed: it is a contract with two separately-released daemons. |
 | `FAILPROOFAI_SDK_STRICT` | Set to `1` to re-raise instrumentation errors instead of logging them. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | Set to `1` to raise on a framework-compatibility problem — an adapter running against a framework version outside its declared range, or a capability probe that failed — instead of warning and instrumenting best-effort. |
 
 The SDK writes to the explicit `base_dir` when set. Otherwise it uses the Failproof daemon's `custom-agents` spool under `FAILPROOFAI_HOME` or `~/.failproofai`.
 

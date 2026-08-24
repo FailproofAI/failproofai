@@ -61,6 +61,13 @@ a session. The key is never written to disk, and the commands that need a *human
 group) exit `2` rather than half-run. Pass `--org
 <slug>` if the key can act for more than one org; nothing is inherited from a saved login.
 
+**Destructive commands confirm only on a terminal.** Anything that creates, updates or
+deletes prompts before acting when it is attached to a TTY — but under `--json`, or with
+stdin redirected, it proceeds **without asking**, so scripts and agents never hang on a
+prompt nobody can answer. Pass `--yes`/`-y` to say so explicitly, and prefer it in
+automation: it makes the intent visible at the call site instead of resting on how stdin
+happened to be wired.
+
 **Multi-tenant:** if you belong to more than one org, pick the active tenant at login
 (`fp login --org <slug>`) or per command with `--org <slug>` (or `FP_ORG`).
 `fp orgs` lists the orgs you can access; `fp orgs switch <slug>` sets the default.

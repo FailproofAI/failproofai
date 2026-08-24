@@ -239,7 +239,7 @@ def agent_rename(
 def agent_delete(
     ctx: typer.Context,
     chat_id: str = typer.Argument(..., metavar="CHAT_ID", help="Chat id to delete (short prefix or full)."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Delete a chat, referenced by its **short chat-id** (a prefix) or full id. Cannot be undone.
 

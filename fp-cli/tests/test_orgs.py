@@ -633,3 +633,60 @@ def test_login_already_signed_in_switches_org_via_flag(home, runner):
     data = json.loads(result.stdout)
     assert data["org"] == "globex" and data.get("switched_org") is True
     assert config.load_config().org == "globex"
+
+
+# --- membership discovery that FAILS is not "no memberships" ----------------
+
+
+@respx.mock
+def test_a_membership_fetch_failure_is_reported_not_silently_emptied(home, runner):
+    """`except Exception: pass` turned every discovery failure into an empty list.
+
+    A timeout, a 500, a malformed body or a permissions problem all collapsed
+    into "this user belongs to no orgs" — which then clears a previously chosen
+    tenant and reads, to anyone looking, like a successful single-org login.
+    """
+    respx.post(f"{BASE}/api/auth/otp/request").mock(return_value=httpx.Response(200, json={"ok": True}))
+    respx.post(f"{BASE}/api/auth/otp/verify").mock(
+        return_value=httpx.Response(
+            200,
+            json={"user": {"id": "u1", "email": "me@test"}, "expires_in_secs": 3600},
+            headers={"set-cookie": "ae_session=tok; Path=/"},
+        )
+    )
+    respx.get(f"{BASE}/api/auth/session").mock(return_value=httpx.Response(503, json={"error": "upstream down"}))
+
+    result = runner.invoke(app, ["--base-url", BASE, "login", "--email", "me@test"], input="123456\n")
+
+    # The token IS kept — losing a good session to a discovery blip would be worse.
+    assert config.load_config().session_token == "tok"
+    # ...but the failure is said out loud rather than presented as "no orgs".
+    assert "could not read your organisation memberships" in result.stderr, result.stderr
+
+
+@respx.mock
+def test_an_explicit_org_is_not_rejected_on_a_check_that_never_ran(home, runner):
+    """"You are not a member of org 'X'. Your orgs: (none)." was a confident lie.
+
+    With discovery failed, `slugs` is empty because nothing answered — not
+    because the user belongs to nothing. Exiting 2 on a tenant they may well
+    have, citing a membership list that was never fetched, is the worst of the
+    available answers.
+    """
+    respx.post(f"{BASE}/api/auth/otp/request").mock(return_value=httpx.Response(200, json={"ok": True}))
+    respx.post(f"{BASE}/api/auth/otp/verify").mock(
+        return_value=httpx.Response(
+            200,
+            json={"user": {"id": "u1", "email": "me@test"}, "expires_in_secs": 3600},
+            headers={"set-cookie": "ae_session=tok; Path=/"},
+        )
+    )
+    respx.get(f"{BASE}/api/auth/session").mock(return_value=httpx.Response(500, json={"error": "boom"}))
+    # The direct check is the only thing that can still answer, so it is consulted.
+    respx.get(f"{BASE}/api/access-granters").mock(return_value=httpx.Response(200, json=[]))
+
+    result = runner.invoke(
+        app, ["--base-url", BASE, "login", "--email", "me@test", "--org", "globex"], input="123456\n"
+    )
+    assert result.exit_code == 0, result.output + result.stderr
+    assert config.load_config().org == "globex"

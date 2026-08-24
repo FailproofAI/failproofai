@@ -148,7 +148,7 @@ def fleet_deploy(
         False, "--create",
         help="Allow deploying to a machine id that has not checked in yet (pre-staging).",
     ),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Change what a machine enforces, showing the full resulting set first.
 
@@ -336,7 +336,7 @@ def fleet_rollback(
     ctx: typer.Context,
     machine_id: str = typer.Argument(..., help="Machine id."),
     deployment: int = typer.Argument(..., help="The generation to reinstate."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Reinstate a past generation's policy set.
 

@@ -271,7 +271,7 @@ def alerts_update(
     eval_interval_secs: Optional[int] = typer.Option(None, "--eval-interval-secs", help="New evaluation interval in seconds (30–86400)."),
     min_breaches: Optional[int] = typer.Option(None, "--min-breaches", help="New breaches-to-fire."),
     eval_window: Optional[int] = typer.Option(None, "--eval-window", help="New evaluation window size."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Update an alert, referenced by **name** (or a UUID-shaped id). Two ways to change it:
 
@@ -329,7 +329,7 @@ def alerts_update(
 def alerts_delete(
     ctx: typer.Context,
     name: str = typer.Argument(..., metavar="NAME", help="Alert name (or id) to delete."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Delete an alert, referenced by **name** (or a UUID-shaped id). This cannot be undone.
 
@@ -379,7 +379,7 @@ def alerts_test(
     ctx: typer.Context,
     name: str = typer.Argument(..., metavar="NAME", help="Alert name (or id) to test."),
     channels: Optional[str] = typer.Option(None, "--channels", help="Channels as a JSON array (else uses the alert's saved channels)."),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt. The prompt only appears on an interactive terminal: under --json, or with stdin redirected, this command proceeds without asking."),
 ) -> None:
     """Fire a test notification for an alert — really sends to its email/Slack/webhook channels.
 

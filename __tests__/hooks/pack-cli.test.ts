@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { packAddSource, runPackCommand } from "@/src/hooks/pack-cli";
 
@@ -35,6 +35,7 @@ const POLICIES = [
 
 let root: string;
 let prev: string | undefined;
+let prevPackageRoot: string | undefined;
 
 function install(over: Record<string, unknown> = {}): void {
   writeFileSync(
@@ -55,15 +56,65 @@ beforeEach(() => {
   writeFileSync(join(root, "artifacts", `${DIGEST}.mjs`), ARTIFACT);
   prev = process.env.FAILPROOFAI_PACK_DIR;
   process.env.FAILPROOFAI_PACK_DIR = root;
+  // `core` reads the pack vendored in the package, so point the package root at
+  // this repo — where `build:pack` puts it.
+  prevPackageRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
+  process.env.FAILPROOFAI_PACKAGE_ROOT = resolve(__dirname, "../..");
 });
 
 afterEach(() => {
   if (prev === undefined) delete process.env.FAILPROOFAI_PACK_DIR;
   else process.env.FAILPROOFAI_PACK_DIR = prev;
+  if (prevPackageRoot === undefined) delete process.env.FAILPROOFAI_PACKAGE_ROOT;
+  else process.env.FAILPROOFAI_PACKAGE_ROOT = prevPackageRoot;
   rmSync(root, { recursive: true, force: true });
 });
 
 const text = (r: { lines: string[] }) => r.lines.join("\n");
+
+describe("the short name for our own policies", () => {
+  // `failproofai pack add FailproofAI/policies` is the honest form and nobody
+  // types it. `core` resolves to the copy inside the package, so it is also the
+  // one install that cannot fail on a proxy.
+  it.each(["core", "failproofai", "official"])("takes `%s` as the source", async (alias) => {
+    const r = await runPackCommand(["add", alias]);
+    expect(r.exitCode).toBe(0);
+    expect(text(r)).toMatch(/no network needed/);
+  });
+
+  it("takes one policy by name, and does not read the flag's value as the source", async () => {
+    const r = await runPackCommand(["add", "core", "--policy", "block-rm-rf"]);
+    expect(r.exitCode).toBe(0);
+    expect(text(r)).toMatch(/enabled \(1\//);
+    expect(text(r)).toContain("block-rm-rf");
+  });
+
+  it("still takes --only, so anything scripted against it keeps working", async () => {
+    const r = await runPackCommand(["add", "core", "--only", "block-rm-rf"]);
+    expect(r.exitCode).toBe(0);
+    expect(text(r)).toMatch(/enabled \(1\//);
+  });
+
+  it("takes a whole category", async () => {
+    const r = await runPackCommand(["add", "core", "--category", "dangerous-commands"]);
+    expect(r.exitCode).toBe(0);
+    expect(text(r)).toContain("block-sudo");
+  });
+
+  it("names the categories that exist when given one that does not", async () => {
+    const r = await runPackCommand(["add", "core", "--category", "nope"]);
+    expect(r.exitCode).toBe(1);
+    expect(text(r)).toMatch(/no such category: nope/);
+    expect(text(r)).toContain("dangerous-commands");
+  });
+
+  it("suggests the selection flags when it did not install everything", async () => {
+    const r = await runPackCommand(["add", "core"]);
+    expect(text(r)).toContain("--policy");
+    expect(text(r)).toContain("--category");
+    expect(text(r)).toContain("--all");
+  });
+});
 
 describe("pack list", () => {
   it("tells a user with no packs how to get one", async () => {

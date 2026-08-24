@@ -6,7 +6,23 @@ icon: "package"
 
 A pack is a set of policies published as a GitHub release. One command installs it, the release's own checksums are verified before anything runs, and the digest is recorded so the pack cannot change under your machine afterwards.
 
-## Install a pack
+## Install the Failproof AI policies
+
+```bash
+failproofai pack add core
+```
+
+That installs the set we publish, from the copy inside the package — so it needs no network and cannot fail behind a proxy. Take part of it:
+
+```bash
+failproofai pack add core --policy block-rm-rf         # one, or a comma-separated few
+failproofai pack add core --category dangerous-commands # a whole category
+failproofai pack add core --all                         # everything in it
+```
+
+`failproofai pack list` names every category the pack offers.
+
+## Install somebody else's pack
 
 ```bash
 failproofai pack add acme/support-agent
@@ -29,11 +45,11 @@ By default you get the pack's **own** defaults — the policies its author marke
 
 ```bash
 failproofai pack add acme/support-agent --category billing,git
-failproofai pack add acme/support-agent --only block-refunds
+failproofai pack add acme/support-agent --policy block-refunds
 failproofai pack add acme/support-agent --all
 ```
 
-`--category` and `--only` combine as a union. Re-adding at a newer version keeps whatever you chose rather than switching the rest back on.
+`--category` and `--policy` combine as a union (`--only` is accepted as a synonym for `--policy`). Re-adding at a newer version keeps whatever you chose rather than switching the rest back on.
 
 ## Manage what is on
 
@@ -55,13 +71,13 @@ failproofai policies --uninstall acme/support-agent:block-refunds
 If a pack ships a policy whose name is also an **enabled builtin**, the builtin runs and the pack's copy is skipped — the same guard would otherwise be evaluated twice. Turn the builtin off to use the pack's copy instead.
 </Note>
 
-## The builtin policies, as a pack
+## Where the Failproof AI policies come from
 
-The policies that ship with failproofai are also published as a pack, and a copy travels inside the npm package:
+`core` reads the copy vendored in the npm package. The same set is published as a GitHub release, which is what you install if you want a specific version:
 
 ```bash
-failproofai pack add --bundled          # from this package, no network
-failproofai pack add FailproofAI/policies   # from GitHub
+failproofai pack add core                    # from this package, no network
+failproofai pack add FailproofAI/policies    # the same set, from its GitHub release
 ```
 
 ## What integrity does and does not buy

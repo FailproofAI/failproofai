@@ -319,13 +319,15 @@ COMMANDS
 
   policies --help, -h            Show this help for the policies command
 
+  pack add core                  Install the Failproof AI policies — from this
+                                 package, so it needs no network.
+                                 --policy <a,b> takes only those, --category
+                                 <x,y> takes whole categories, --all takes it all
   pack list                      Show installed policy packs
-  pack add <source>              Install a policy pack from a GitHub release.
+  pack add <source>              Install someone else's pack from a GitHub release.
                                  <source> is acme/pack, acme/pack@v1.2.0, or a
                                  release URL; no tag takes the newest and pins it
   pack remove <publisher/name>   Deactivate an installed pack
-  pack add --bundled             Install the builtin policies as a pack, from
-                                 this package — no network
   pack build <entry.mjs>         Turn your own policy file into the three assets
                                  a GitHub release needs, so others can install it
   pack --help, -h                Show this help for the pack command
@@ -410,7 +412,8 @@ EXAMPLES
   failproofai policies --uninstall --cli opencode
   failproofai policies --uninstall --cli pi
   failproofai policies --uninstall --custom
-  failproofai pack add FailproofAI/policies
+  failproofai pack add core
+  failproofai pack add core --category git,database
   failproofai pack build ./my-policies.mjs --id acme/support --version 1.0.0
   failproofai backfill --since 6m
   failproofai backfill --dry-run
@@ -722,9 +725,12 @@ OPTIONS
 failproofai pack — install policy packs published as GitHub releases
 
 Usage:
+  failproofai pack add core                     the Failproof AI policies
+  failproofai pack add core --policy <a,b>      just these
+  failproofai pack add core --category <x,y>    whole categories
+  failproofai pack add core --all               everything in it
   failproofai pack list
-  failproofai pack add <source> [--only <a,b>] [--category <x,y>] [--all]
-  failproofai pack add --bundled
+  failproofai pack add <source> [--policy <a,b>] [--category <x,y>] [--all]
   failproofai pack remove <publisher/name>
   failproofai pack build <entry.mjs> --id <publisher/name> --version <v>
 
@@ -732,7 +738,7 @@ A pack is one entry artifact plus a manifest, verified against the release's
 SHA256SUMS at install time. The digest is recorded, and re-verified before every
 import — so a pack cannot change under this machine after you installed it.
 
-<source> is any of these — paste whichever you have:
+<source> is core for the Failproof AI policies, or any of these:
   acme/support-agent                 newest release, pinned to its exact tag
   acme/support-agent@v2.1.0          that release
   github:acme/support-agent@v2.1.0   same, explicit
@@ -754,7 +760,7 @@ rest back on.
 
 Examples:
   failproofai pack add FailproofAI/policies
-  failproofai pack add FailproofAI/policies --category sanitize,git
+  failproofai pack add core --category sanitize,git
   failproofai pack add github:acme/support-agent@v2.1.0 --only block-refunds
   failproofai pack remove acme/support-agent
 
@@ -1267,7 +1273,8 @@ EXAMPLES
   failproofai policies --uninstall --cli pi
   failproofai policies -u
   failproofai policies --uninstall --custom
-  failproofai pack add FailproofAI/policies
+  failproofai pack add core
+  failproofai pack add core --category git,database
   failproofai pack build ./my-policies.mjs --id acme/support --version 1.0.0
 `.trimStart());
       process.exit(0);

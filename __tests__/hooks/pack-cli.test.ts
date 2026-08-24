@@ -138,7 +138,7 @@ describe("pack list", () => {
     const r = await runPackCommand(["list"]);
     expect(r.exitCode).toBe(0);
     expect(text(r)).toContain("No packs installed.");
-    expect(text(r)).toContain("pack add github:owner/repo@tag");
+    expect(text(r)).toContain("policies add github:owner/repo@tag");
   });
 
   it("marks every policy on or off, including the ones not taken", async () => {

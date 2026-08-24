@@ -33,7 +33,6 @@ import { dirname, resolve, sep } from "node:path";
 import {
   selectOne,
   multiSelect,
-  BACK,
   promptText,
   intro,
   outro,
@@ -54,8 +53,7 @@ import {
 } from "./integrations";
 import { INTEGRATION_TYPES, type IntegrationType, type HookScope } from "./types";
 import { installHooks } from "./manager";
-import { getConfigPathForScope, readHooksConfig, readScopedHooksConfig } from "./hooks-config";
-import { POLICY_PRESETS, resolvePreset, resolveEverything, RECOMMENDED_POLICIES } from "./policy-presets";
+import { getConfigPathForScope, readScopedHooksConfig } from "./hooks-config";
 import { discoverPolicyFiles, findSkippedPolicyFiles } from "./custom-hooks-loader";
 import { trackHookEvent } from "./hook-telemetry";
 import { getInstanceId } from "../../lib/telemetry-id";
@@ -226,175 +224,7 @@ export function buildAgentChoices(scope: HookScope, cwd: string): MultiChoice<In
   });
 }
 
-const EVERYTHING = "__everything__";
 const ALL_CLIS = "__all_clis__";
-/** Sentinel for the locked "Custom" row — informational, never resolves to
- *  builtin policy names (custom policies load by convention, not by config). */
-const CUSTOM = "__custom__";
-/**
- * Sentinel for the locked "enabled individually" row.
- *
- * Policies enabled one at a time (`failproofai policies add <name>`) need not map
- * onto any preset, so seeding the preset boxes cannot represent them. The wizard
- * writes with `replace: true`, which makes the ticked set the WHOLE enabled set —
- * so anything this row stands for must be unioned back in, or confirming the
- * wizard would silently drop it. Locked and pre-checked, because it reports a
- * state rather than offering a choice.
- */
-const INDIVIDUAL = "__individual__";
-
-/**
- * Split what is enabled now into the bundles that cover it and the leftovers.
- *
- * A pure function, and the SINGLE definition of that split — `buildPresetChoices`
- * renders it and the wizard writes from it, so the row the user sees and the set
- * that gets written can never disagree. The first version of this derived the
- * leftovers by parsing them back out of the row's hint text, which coupled a
- * display string to enforcement behaviour and would have broken on any policy
- * name containing the separator.
- */
-export function splitEnabled(currentlyEnabled: readonly string[] = []): {
-  /** Preset ids (or `EVERYTHING`) whose policies are all already enabled. */
-  presets: string[];
-  /** Enabled policies no ticked bundle accounts for. */
-  individual: string[];
-} {
-  const current = new Set(currentlyEnabled);
-  // A bundle is ticked when everything it turns on is already on. Not "any", or
-  // one shared policy would tick every bundle containing it and confirming would
-  // enable all of them.
-  const isOn = (policies: string[]) =>
-    policies.length > 0 && policies.every((name) => current.has(name));
-
-  const everything = resolveEverything();
-  const presets = isOn(everything)
-    ? [EVERYTHING]
-    : POLICY_PRESETS.filter((p) => isOn(resolvePreset(p.id))).map((p) => p.id);
-
-  // Against the TICKED bundles, not all of them: a policy belonging only to a
-  // bundle the user has NOT enabled is still enabled, and that is the fact the
-  // locked row exists to make visible.
-  const accounted = new Set(
-    presets.flatMap((id) => (id === EVERYTHING ? everything : resolvePreset(id))),
-  );
-  const individual = [...current].filter((name) => !accounted.has(name)).sort();
-  return { presets, individual };
-}
-
-/** The themed preset bundles for the wizard's multi-select, plus an "Everything"
- *  option that enables the full builtin policy set. */
-export function buildPresetChoices(
-  cwd: string = process.cwd(),
-  enabled = true,
-  /**
-   * What is enabled at this scope RIGHT NOW, used to tick the boxes.
-   *
-   * Without it every row rendered unticked on every run while the wizard wrote
-   * with `replace: true` — so re-running setup showed a blank slate and then made
-   * that blank slate authoritative, discarding the user's selection with nothing
-   * on screen to say it had happened. The comment on the Custom row below has
-   * always described the intended behaviour ("shows the current state rather than
-   * resetting it every run"); it was implemented for that one row out of eight.
-   *
-   * Optional so the first-run call sites stay unchanged: an empty set ticks
-   * nothing, which is the correct rendering for a machine with no selection.
-   */
-  currentlyEnabled: readonly string[] = [],
-) {
-  const { presets: onPresets, individual } = splitEnabled(currentlyEnabled);
-  const on = new Set(onPresets);
-
-  const choices: MultiChoice<string>[] = POLICY_PRESETS.map((p) => ({
-    label: p.label,
-    value: p.id,
-    hint: p.description,
-    checked: on.has(p.id),
-  }));
-  choices.push({
-    label: "Everything",
-    value: EVERYTHING,
-    hint: `all ${resolveEverything().length} policies`,
-    checked: on.has(EVERYTHING),
-  });
-
-  // The Custom row is ALWAYS present, because it is the only place the feature
-  // is discoverable: a user who has never written a policy cannot learn the
-  // capability exists, and one who wrote a badly-named file cannot learn why
-  // nothing happened.
-  //
-  // When there are loadable files it is a REAL checkbox — unticking writes
-  // `customPoliciesEnabled: false`, which switches convention discovery off
-  // without renaming or deleting anything. With nothing to toggle (no files,
-  // or only skipped ones) it falls back to a locked status row.
-  const custom = describeCustomPolicies(cwd);
-  const skipped = custom.warnings.length;
-  const plural = (n: number) => `${n} file${n === 1 ? "" : "s"}`;
-  const skippedNote = skipped > 0 ? ` · ${skipped} skipped, see next screen` : "";
-
-  if (custom.fileCount > 0) {
-    choices.push({
-      label: "Custom",
-      value: CUSTOM,
-      checked: enabled,
-      // Deliberately NOT summaryExclude'd: this one is a real choice, and the
-      // step summary is the only place the user sees what they picked. Hiding
-      // it meant unticking Custom and every bundle showed "none", giving no
-      // way to tell the toggle had registered.
-      hint: `${plural(custom.fileCount)} in ${custom.scopes.join(" + ")}${skippedNote}`,
-    });
-  } else {
-    choices.push({
-      label: "Custom",
-      value: CUSTOM,
-      locked: true,
-      checked: false,
-      summaryExclude: true,
-      hint:
-        skipped > 0
-          ? `${plural(skipped)} found but NOT loaded — see next screen`
-          : "none yet · drop *-policies.mjs in .failproofai/policies/",
-    });
-  }
-  if (individual.length > 0) {
-    choices.push({
-      label: `${individual.length} enabled individually`,
-      value: INDIVIDUAL,
-      locked: true,
-      hint: `kept as-is · ${individual.join(", ")}`,
-      // Not one of the bundles being counted, like the Everything and Custom rows.
-      summaryExclude: true,
-    });
-  }
-  return choices;
-}
-
-
-/**
- * Resolve the ticked options to a concrete policy set. Presets are additive —
- * the deduped union of every selected preset's policies — while "Everything"
- * enables the full policy set and wins over any presets.
- */
-export function resolvePresetSelection(
-  values: string[],
-  /**
-   * What the locked "enabled individually" row stands for. Unioned in whenever
-   * that row is present, INCLUDING under "Everything": `resolveEverything()`
-   * covers the non-beta builtins only, so a beta policy someone enabled by hand
-   * would otherwise be dropped by the very branch meant to enable everything.
-   */
-  individual: readonly string[] = [],
-): string[] {
-  // The Custom row is informational — custom policies are discovered from disk
-  // by the loader, never named in the enabled-policies config — so it must not
-  // reach resolvePreset(), which only knows builtin bundle ids. Same for the
-  // locked individually-enabled row, which carries its policies in `individual`.
-  const selected = values.filter((v) => v !== CUSTOM && v !== INDIVIDUAL);
-  const carried = values.includes(INDIVIDUAL) ? individual : [];
-  if (selected.includes(EVERYTHING)) {
-    return [...new Set([...resolveEverything(), ...carried])];
-  }
-  return [...new Set([...selected.flatMap((id) => resolvePreset(id)), ...carried])];
-}
 
 const DIM_NOTE = "(auto-loaded)";
 
@@ -528,15 +358,6 @@ export function buildCompletionSummary(
   customEnabled: boolean | undefined,
   daemonInstalled: boolean,
   connected: boolean,
-  /**
-   * What was ticked on the policy step, so the summary can NAME the bundles.
-   *
-   * "9 policies" is a number the user cannot check and did not choose — they
-   * picked two named bundles two screens earlier, and the line that confirms
-   * their setup should say which. Optional so the existing callers and tests
-   * that only have a count keep working and keep the old wording.
-   */
-  presetValues?: readonly string[],
 ): string {
   const extras: string[] = [];
   if (customEnabled === true) extras.push("custom");
@@ -554,9 +375,7 @@ export function buildCompletionSummary(
   // full line will not fit, which is checked rather than guessed at: the extras
   // clause grows too ("custom, daemon, reporting" is 25 characters), so a names
   // budget alone was wrong for exactly the combinations that need it most.
-  const named = line(describeSelection(policiesCount, presetValues));
-  if (named.length <= MAX_SUMMARY_COLUMNS) return named;
-  return line(describeSelection(policiesCount, undefined));
+  return line(describeSelection(policiesCount));
 }
 
 /**
@@ -603,42 +422,12 @@ export function policyNamesLine(names: string[]): string[] {
   return [];
 }
 
-/**
- * Name the bundles rather than counting the policies inside them.
- *
- * BOUNDED AT TWO NAMES ON PURPOSE. `writeLines` truncates with a hard cut and no
- * ellipsis, so an over-long line does not lose its tail, it reads as broken
- * output — the same constraint that stopped this summary naming all twelve CLIs.
- * All four bundle labels joined is 57 characters, which with the prefix, the
- * harness clause and the extras clause runs to about 106. Two names plus a count
- * of the rest stays inside 80 for every combination, and two is also the common
- * case, so most runs see every name.
- *
- * Falls back to the old "N policies" when nothing maps to a bundle — a machine
- * whose policies were all enabled one at a time with `policies add` has no bundle
- * to name, and inventing one would be worse than the count.
- */
-function describeSelection(policiesCount: number, presetValues?: readonly string[]): string {
-  const plural = `${policiesCount} polic${policiesCount === 1 ? "y" : "ies"}`;
-  if (!presetValues) return plural;
-
-  // "Everything" is one name for the whole set, and the count is the useful half
-  // of it — "Everything" alone does not say how much that is.
-  if (presetValues.includes(EVERYTHING)) return `Everything (${plural})`;
-
-  const named = POLICY_PRESETS.filter((p) => presetValues.includes(p.id)).map((p) => p.label);
-  // The locked "enabled individually" row stands for policies outside every
-  // bundle, so it is counted among the unnamed rest rather than named.
-  const individual = presetValues.includes(INDIVIDUAL) ? 1 : 0;
-  if (named.length === 0) return plural;
-
-  const shown = named.slice(0, 2);
-  const rest = named.length - shown.length + individual;
-  // `+N` rather than `+N more`: five characters, and they decide whether the
-  // mixed case (two bundles plus a policy added by hand) gets named at all — with
-  // "more" the line is 83 and falls back to a bare count.
-  return rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
+/** The Policies line's value. With policies no longer chosen during setup, this
+ *  reports what is enabled and nothing about how it got that way. */
+function describeSelection(policiesCount: number): string {
+  return `${policiesCount} ${policiesCount === 1 ? "policy" : "policies"}`;
 }
+
 
 export function reviewLines(state: {
   /** What the scope step resolved to. Expands to one or two real scopes. */
@@ -1128,13 +917,13 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
         label: "Recommended",
         value: "recommended",
         hint: recommendedClis.length
-          ? `${recommendedClis.length} detected ${recommendedClis.length === 1 ? "CLI" : "CLIs"} · ${RECOMMENDED_POLICIES.length} policies · global`
-          : `${RECOMMENDED_POLICIES.length} policies · global`,
+          ? `${recommendedClis.length} detected ${recommendedClis.length === 1 ? "CLI" : "CLIs"} · global`
+          : "global",
       },
       {
         label: "Customize",
         value: "customize",
-        hint: "choose scope, policies and harnesses",
+        hint: "choose scope and harnesses",
       },
     ],
     stdin,
@@ -1186,165 +975,65 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
   // merge time, which is exactly the layering the policy loader already does.
   const primaryScope: HookScope = scopes.includes("project") ? "project" : "user";
 
-  // 2 — Which policies? Multi-select of themed presets — additive, so the
-  // enabled set is the union of every ticked bundle.
+  // 2 — Which harnesses?
   //
-  // Before the assistants step, because "what do you want guarded" is the
-  // question the user came here to answer; which CLIs to wire it into is
-  // plumbing that follows from it.
+  // Setup no longer asks which policies to enable, and that is deliberate.
+  // failproofai ships no policies of its own any more: they arrive as packs —
+  // from inside this package (`pack add core`) or from anyone's GitHub release.
+  // A wizard that pre-ticks OUR list makes a product decision on behalf of
+  // somebody who has not seen the list yet, and not everyone wants the set we
+  // would have chosen. So setup wires the hooks, and choosing what they
+  // enforce is a separate act, taken later and on purpose.
   //
-  // Seed the Custom checkbox AND the bundle boxes from whatever the config already
-  // says, so the wizard shows the current state rather than resetting it every run.
-  //
-  // Read at the scope this run will WRITE to, not the merged view. `installHooks`
-  // is called with `replace: true` per scope, so seeding from the merge would tick
-  // a bundle because it is enabled at PROJECT scope and then write it into USER
-  // scope — copying a selection between scopes as a side effect of opening the
-  // wizard. `readHooksConfig()` stays for the custom flag, which is read the same
-  // merged way everywhere else.
-  const customEnabledBefore = readHooksConfig().customPoliciesEnabled !== false;
+  // Whatever is already enabled at THIS scope is read and carried through
+  // untouched. `installHooks` is called with `replace: true`, so passing
+  // anything less would switch OFF policies the user had turned on — running
+  // setup a second time must never reduce protection.
   const enabledHere = readScopedHooksConfig(primaryScope, cwd).enabledPolicies ?? [];
-  const presetChoices = buildPresetChoices(cwd, customEnabledBefore, enabledHere);
-  // The policies no ticked bundle accounts for. Derived from the SAME pure split
-  // the rows are built from, so the locked row and the written set agree.
-  const carriedIndividual = splitEnabled(enabledHere).individual;
-  const hasCustomFiles = describeCustomPolicies(cwd).fileCount > 0;
+  const policies = enabledHere;
 
-  // No minimum. Ticking nothing is a real answer — someone who only wants their
-  // own custom policies, or who intends to pick bundles later from the
-  // dashboard, was previously stuck on this step with no way forward and no
-  // explanation beyond "Select at least 1". An empty set is already supported
-  // end to end: `installHooksImpl` documents its explicit-array path as "may be
-  // empty", `replace: true` makes it the full enabled set, and `summarize([])`
-  // renders "none". Hooks still install, so enforcement can be switched on
-  // later without re-running setup.
+  // Left alone, in both modes. This was a checkbox on the policy step, which is
+  // gone; with no row to read, the only honest value is "do not touch it".
+  // Writing `false` here switched off every convention policy on disk as a side
+  // effect of finishing setup.
+  const customEnabled: boolean | undefined = undefined;
+
+  // An "Everything available" row protects every supported CLI (detected +
+  // set-up-ahead); when ticked it wins over the individual boxes.
   //
-  // The assistants step below keeps its minimum deliberately: an empty CLI list
-  // does NOT mean "no assistants" there — `installHooksImpl` falls back to
-  // ["claude"], so letting it through would silently install for Claude.
-  // Steps 2 and 3 are navigable: ← on the harness step returns to the policy
-  // step with the previous answer still selected. Before this, changing an
-  // earlier answer meant abandoning setup and starting over, because a prompt
-  // had exactly one way out and it was `null`.
-  //
-  // The policy step itself takes no `allowBack`: the only thing before it is
-  // the scope question, which is frequently not asked at all (a single choice
-  // is stated, not prompted), so ← there would sometimes go nowhere.
-  let presets: string[] | null = null;
-  let clisSel: string[] | null = null;
-  /**
-   * What the harness step had ticked when ← was last pressed.
-   *
-   * A SEPARATE variable, because `clisSel` cannot do this job: it is the loop's
-   * own condition (`while (clisSel === null)`), so it is null on every entry into
-   * the body by definition, and it is assigned only on the line that ends the
-   * loop. The restore that read `clisSel` was therefore unreachable — provably
-   * dead, with a comment stating the opposite intent.
-   *
-   * The cost was not cosmetic: deselect a CLI, press ← to fix an earlier answer,
-   * come back, and the step showed the detected defaults again. Pressing ↵ then —
-   * reasonably, having been told the selection was carried back — re-enabled hook
-   * installation for a CLI the user had explicitly turned off.
-   *
-   * `presets` just above works because it is assigned MID-loop and survives to the
-   * next iteration; this mirrors that, filled from the prompt's `onBack`.
-   */
-  const carried: { clis: string[] | null } = { clis: null };
-  // The recommended path answers both questions here, which is what SKIPS the
-  // loop below — its condition is `clisSel === null` and this fills it in.
-  // Written as a pre-fill rather than as an extra clause on the loop condition
-  // so the invariant the rest of the function depends on ("past this loop, both
-  // are assigned") stays provable by the compiler rather than by argument.
+  // No `allowBack`: with the policy step gone there is nothing before this
+  // inside setup to return to — the scope question is frequently not asked at
+  // all (a single choice is stated, not prompted), so a ← here would sometimes
+  // go nowhere. That also retires the loop this step used to sit in, and the
+  // carried-selection machinery the loop needed.
+  let clisSel: string[];
   if (mode === "recommended") {
-    presets = [];
     clisSel = recommendedClis;
-  }
-  while (clisSel === null) {
-    // Re-entering after a ← must show what was picked, not a blank slate.
-    // Selection state lives on each choice, so carry it back in.
-    // Loop-carried: narrowed to `null` on the first pass, repopulated on a ←.
-    const priorPresets = presets as string[] | null;
-    presets = await multiSelect<string>({
-      message: "What should we guard against?",
-      choices: priorPresets
-        ? presetChoices.map((c) => ({ ...c, checked: priorPresets.includes(c.value) }))
-        : presetChoices,
-      summaryNoun: "bundles",
-      hint: "space toggles · combine presets · ↵ confirm · none is fine",
-      stdin,
-      stdout,
-    });
-    if (presets === null) return cancel();
-
-    // 3 — Which harnesses? An "Everything available" row protects every supported
-    // CLI (detected + set-up-ahead); when ticked it wins over the individual boxes.
-    // Read off a HOLDER OBJECT, not a bare `let`, and not through a cast.
-    //
-    // A `let` assigned only inside a callback is narrowed by control-flow analysis
-    // to its initializer, so `priorClis.includes` will not compile — and the
-    // original defeated that with `clisSel as string[] | null`. That cast is
-    // precisely why the dead code type-checked and nobody noticed: it silenced the
-    // compiler making exactly the point the reviewer later made by hand, that the
-    // value could only ever be null. A property read carries the declared type
-    // without suppressing anything.
-    const priorClis = carried.clis;
-    const picked: string[] | typeof BACK | null = await multiSelect<string>({
-    message: "Which harnesses should it protect?",
-    choices: [
-      {
-        label: "Everything available",
-        value: ALL_CLIS,
-        // Counts only what this scope can actually take — expanding to all 12
-        // under project scope is what crashed the apply on Hermes.
-        hint: `protect all ${clisSupportingScope(primaryScope).length} CLIs configurable here`,
-        // A selector, not a harness. Counting it gave "13 harnesses" for
-        // the 12 supported CLIs, and listed "Everything available" among them.
-        summaryExclude: true,
-      },
-      ...buildAgentChoices(primaryScope, cwd),
-    ].map((c) => (priorClis ? { ...c, checked: priorClis.includes(c.value) } : c)),
+  } else {
+    const picked = await multiSelect<string>({
+      message: "Which harnesses should it protect?",
+      choices: [
+        {
+          label: "Everything available",
+          value: ALL_CLIS,
+          // Counts only what this scope can actually take — expanding to all 12
+          // under project scope is what crashed the apply on Hermes.
+          hint: `protect all ${clisSupportingScope(primaryScope).length} CLIs configurable here`,
+          // A selector, not a harness. Counting it gave "13 harnesses" for
+          // the 12 supported CLIs, and listed "Everything available" among them.
+          summaryExclude: true,
+        },
+        ...buildAgentChoices(primaryScope, cwd),
+      ],
       minSelected: 1,
       summaryNoun: "harnesses",
-      hint: "detected CLIs are pre-selected · space toggles · ctrl+a all · ← back · ↵ confirm",
-      allowBack: true as const,
-      // `BACK` is a symbol and cannot carry the selection, so the prompt reports
-      // it here instead — otherwise a ← discards what the user had ticked and the
-      // next pass redraws the detected defaults.
-      onBack: (checkedNow) => {
-        carried.clis = checkedNow;
-      },
+      hint: "detected CLIs are pre-selected · space toggles · ctrl+a all · ↵ confirm",
       stdin,
       stdout,
     });
     if (picked === null) return cancel();
-    // ← re-runs the loop, which re-asks the policy step with its answer intact.
-    if (picked === BACK) continue;
     clisSel = picked;
   }
-  // Non-null by construction: the loop only exits once both are assigned, and
-  // the recommended path assigned both before it, which is why it never ran.
-  const chosenPresets: string[] = presets ?? [];
-  const policies =
-    mode === "recommended"
-      ? // UNION with what is already enabled here, never a replacement for it.
-        // `installHooks` is called with `replace: true`, so writing the bare
-        // recommended list would silently switch OFF anything the user had
-        // added themselves — turning "give me the sensible defaults" into a
-        // reduction in protection, which is the one direction this must never
-        // move. On a fresh machine `enabledHere` is empty and this is exactly
-        // the 15.
-        [...new Set([...RECOMMENDED_POLICIES, ...enabledHere])]
-      : resolvePresetSelection(chosenPresets, carriedIndividual);
-  // Only meaningful when there are files to switch off; with none, the row is
-  // locked-unchecked and must not write a disabling flag.
-  //
-  // `undefined` on the recommended path, which means "leave the flag alone".
-  // The customize expression would read as `false` here — no bundle was ticked,
-  // so `chosenPresets.includes(CUSTOM)` is false — and would write
-  // `customPoliciesEnabled: false`, disabling every convention policy the user
-  // has on disk as a side effect of choosing the default setup.
-  const customEnabled =
-    mode === "recommended" ? undefined : hasCustomFiles ? chosenPresets.includes(CUSTOM) : undefined;
   // Filter to what the chosen scopes support in BOTH branches: "Everything
   // available" must not expand to CLIs that cannot take any selected scope,
   // and a locked row can't be ticked but belt-and-braces keeps the invariant
@@ -1764,7 +1453,6 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
     cli: clis,
     cli_count: clis.length,
     policy_count: policies.length,
-    source: chosenPresets.join("+"),
     connected: connect !== null,
   });
 
@@ -1867,7 +1555,6 @@ export async function runConfigureWizard(io: WizardIO = {}): Promise<WizardResul
       customEnabled,
       daemonInstalled,
       connected,
-      chosenPresets,
     ),
     { ok: true },
     stdout,

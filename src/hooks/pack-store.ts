@@ -18,7 +18,9 @@
  * Asset URLs are CONSTRUCTED from an owner, repo and concrete tag. When the
  * user omits a tag, one `releases/latest` redirect resolves it before any asset
  * is fetched or written. There is no API lookup or rate-limit dependency, and
- * the installed record always names the pinned result.
+ * the installed record always names the pinned result — which has to AGREE with
+ * the version that pack's manifest declares, or nothing is installed at all
+ * (`packTagMatchesVersion`).
  *
  * ## Never on the hook path
  *
@@ -157,6 +159,14 @@ function validated(owner: string, repo: string, tag: string | null): PackSpec {
  * unauthenticated rate limit, and stays pointed at whatever
  * `FAILPROOFAI_PACK_BASE_URL` names — which is how a mirror, and the tests,
  * work at all.
+ *
+ * The price of that, and it is a real one: the redirect is issued only for a
+ * PUBLISHED, non-prerelease release. A repository whose newest release is a
+ * prerelease or a draft therefore either redirects to an OLDER stable tag —
+ * pinning something the publisher has already superseded — or issues no
+ * redirect at all. Only the second is detectable from here, so the error names
+ * the prerelease case explicitly; the first is why naming a tag is the answer
+ * whenever a publisher's newest release is not their newest stable one.
  */
 export async function resolveLatestTag(spec: PackSpec): Promise<string> {
   const url = `${baseUrl()}/${spec.owner}/${spec.repo}/releases/latest`;
@@ -168,7 +178,9 @@ export async function resolveLatestTag(spec: PackSpec): Promise<string> {
   if (!location) {
     throw new Error(
       `could not resolve the newest release of ${spec.owner}/${spec.repo} ` +
-        `(GET ${url} returned ${response.status} with no redirect). Name a tag explicitly.`,
+        `(GET ${url} returned ${response.status} with no redirect). That redirect is issued only ` +
+        `for a published, non-prerelease release, so either the repository has no releases at all ` +
+        `or every release it has is a prerelease or a draft. Name a tag explicitly.`,
     );
   }
   const match = location.match(/\/releases\/tag\/(.+)$/);
@@ -191,6 +203,33 @@ export function formatPackSpec(spec: PinnedPackSpec): string {
 
 export function packAssetUrl(spec: PinnedPackSpec, asset: string): string {
   return `${baseUrl()}/${spec.owner}/${spec.repo}/releases/download/${spec.tag}/${asset}`;
+}
+
+/**
+ * Does a release tag describe the version the pack's own manifest declares?
+ *
+ * These are two independently-typed strings that everything downstream treats as
+ * one fact: the TAG builds every asset URL and is what `installed.json` records
+ * as the source, while the VERSION is read out of the manifest and is what
+ * `pack list` prints and `pack:<id>@<version>:<name>` keys are built from. Left
+ * uncompared, a pack tagged `v2` whose manifest still said `1.0.0` installed
+ * cleanly and recorded a version no release of that repository answers to.
+ *
+ * A leading `v` is accepted because both spellings are in live use for the same
+ * release — `pack build` tells publishers to tag `<version>` while this repo's
+ * own releases are tagged `v<version>` — and refusing that would break packs
+ * that are perfectly coherent.
+ *
+ * Compared on the tag's LAST `/`-delimited segment, so the monorepo shape
+ * `parsePackSpec` deliberately supports (`release/2.1`) still installs:
+ * `PACK_VERSION_RE` forbids `/`, so such a tag could never equal a version and a
+ * whole-string comparison would make the shape uninstallable rather than merely
+ * unusual. Everything else is a genuine disagreement — the release was tagged
+ * without rebuilding the manifest, or the wrong tag was typed.
+ */
+export function packTagMatchesVersion(tag: string, version: string): boolean {
+  const tail = tag.slice(tag.lastIndexOf("/") + 1);
+  return tail === version || tail === `v${version}`;
 }
 
 async function fetchBytes(url: string): Promise<Buffer> {
@@ -607,6 +646,27 @@ export async function addPack(
     : { ...parsed, tag: await resolveLatestTag(parsed) };
   const resolvedFromLatest = parsed.tag === null;
   const fetched = await fetchPack(spec);
+  // Checked here, before a byte is written and before the artifact is imported,
+  // so a refusal leaves the machine exactly as it was — and on the RESOLVED tag
+  // as well as a typed one, because a tagless add pins whatever
+  // `releases/latest` pointed at and lands the same incoherent pair in
+  // `installed.json` with nobody having typed it. Deliberately NOT in
+  // `fetchPackPreview`: looking at a pack has to stay possible precisely so a
+  // publisher can SEE the two values disagree.
+  if (!packTagMatchesVersion(spec.tag, fetched.version)) {
+    const fromTag = spec.tag.slice(spec.tag.lastIndexOf("/") + 1).replace(/^v/, "");
+    const fix =
+      `re-tag the release ${fetched.version} (a leading v is fine), or rebuild the pack with ` +
+      `--version ${fromTag}`;
+    throw new Error(
+      `${fetched.id} was not installed: release tag ${spec.tag} does not match the version its ` +
+        `manifest declares (${fetched.version}). ` +
+        (resolvedFromLatest
+          ? `That is the newest release of ${spec.owner}/${spec.repo}, so the release and the pack ` +
+            `disagree at the source — ask the publisher to ${fix}.`
+          : `Name the tag whose manifest says ${fetched.version}, or fix the pack: ${fix}.`),
+    );
+  }
   const available = fetched.policies.map((p) => p.name);
 
   const prior = priorRecordFor(fetched.id, fetched.artifactDigest);

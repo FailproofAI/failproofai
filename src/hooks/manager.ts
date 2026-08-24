@@ -503,7 +503,7 @@ async function installHooksImpl(
       if (!bundled.installed) {
         console.log(
           `\nWarning: could not install the policy pack (${bundled.reason}).\n` +
-            `Nothing is enforcing yet — run \`failproofai pack add core\` once that is fixed.`,
+            `Nothing is enforcing yet — run \`failproofai policies add core\` once that is fixed.`,
         );
       }
     } else {
@@ -1034,7 +1034,7 @@ export async function listHooks(cwd?: string): Promise<void> {
   }
 
   // Installed packs. They enforce on this machine exactly like every section
-  // above, and until now the only way to see one was `failproofai pack list` —
+  // above, and until now the only way to see one was `failproofai policies` —
   // so the command that answers "what is enforcing here?" answered it with a
   // subset, for the one source a person had to go out of their way to install.
   try {

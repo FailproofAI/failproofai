@@ -183,7 +183,7 @@ export function packFailureReason(guards: MissingGuard[]): string {
   return (
     `Blocked because a policy pack this machine is configured to enforce is not running — ${named}. ` +
     `Enforcement you were told you had is missing, so this is refused rather than allowed silently. ` +
-    `A human needs to run: failproofai pack list, then failproofai pack add <source> (or failproofai config). ` +
+    `A human needs to run: failproofai policies, then failproofai policies add <source> (or failproofai config). ` +
     `The agent cannot run those itself.`
   );
 }

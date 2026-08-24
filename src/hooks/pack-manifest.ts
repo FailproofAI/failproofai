@@ -2,7 +2,7 @@
  * Reads the installed policy packs a machine has on disk.
  *
  * A pack is the delivery unit for policies that did not ship compiled into this
- * build: `failproofai pack add` writes the artifact and records it here, and the
+ * build: `failproofai policies add` writes the artifact and records it here, and the
  * loader imports it through the same path custom policies already use.
  *
  * ## Why this is not `cloud-managed-policies.ts`
@@ -24,11 +24,19 @@
  * ## Fail-open, and the condition that makes it sound
  *
  * An unreadable manifest, a bad digest or a corrupt artifact yields zero packs
- * and a recorded error — it does not deny. That is only defensible **while the
- * builtin policies still ship compiled into the package and keep enforcing
- * underneath**. The day builtins become a fetched pack, this exact behaviour
- * becomes "zero enforcement on a machine reporting healthy", and this comment is
- * the reason that must be revisited rather than inherited.
+ * and a recorded error — this READER does not deny.
+ *
+ * That used to be defensible because the builtin policies shipped compiled in
+ * and kept enforcing underneath. They no longer do: the builtins ARE a pack now,
+ * so a silent zero here would be zero enforcement at exit 0 on a machine that
+ * reports healthy — exactly what the comment that stood here warned about.
+ *
+ * What makes it sound now is that the denying moved rather than disappeared:
+ * `pack-failclosed.ts` reads these same `errors` and refuses the events the
+ * missing policies declared. So this stays a pure reader that reports what it
+ * found, and the layer above decides what a failure means. Do not add a throw
+ * here — per-pack isolation is the reason one bad third-party pack cannot
+ * switch off every other pack on the machine.
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";

@@ -23,8 +23,8 @@ const SRC = (p: string) => resolve(__dirname, "../../src", p);
 
 /** The exact catalog order. Order is not cosmetic: evaluation short-circuits on
  *  the first deny, so this decides which policy name reaches the agent, the
- *  activity log, PostHog and the audit report. Nothing else pins it —
- *  policy-presets.test.ts compares via a Set. */
+ *  activity log, PostHog and the audit report. Nothing else pins it — every
+ *  other consumer looks a policy up by name. */
 const EXPECTED_ORDER = [
   "sanitize-jwt", "sanitize-api-keys", "sanitize-connection-strings",
   "sanitize-private-key-content", "sanitize-bearer-tokens", "protect-env-vars",
@@ -69,9 +69,9 @@ describe("policy catalog / implementation split", () => {
     });
 
     it("has unique names", () => {
-      // resolveEverything() does not dedupe, findBuiltin takes the FIRST match and
-      // registerPolicy takes the LAST — a duplicate silently registers one policy
-      // fewer while the audit title comes from the other copy.
+      // findBuiltin takes the FIRST match and registerPolicy takes the LAST — a
+      // duplicate silently registers one policy fewer while the audit title comes
+      // from the other copy.
       expect(new Set(BUILTIN_POLICIES.map((p) => p.name)).size).toBe(39);
     });
 

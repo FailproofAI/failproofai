@@ -489,9 +489,9 @@ function ActivityTab({
     const v = url.get("cli");
     return isKnownCli(v) ? v : "";
   });
-  const [filterSource, setFilterSource] = useState<"" | "builtin" | "custom" | "convention" | "cloud" | "pack">(() => {
+  const [filterSource, setFilterSource] = useState<"" | "custom" | "convention" | "cloud" | "pack">(() => {
     const v = url.get("source");
-    return v === "builtin" || v === "custom" || v === "convention" || v === "cloud" || v === "pack" ? v : "";
+    return v === "custom" || v === "convention" || v === "cloud" || v === "pack" ? v : "";
   });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filterTelemetryFirstRunRef = useRef(true);
@@ -662,14 +662,13 @@ function ActivityTab({
               onChange={(e) => {
                 const v = e.target.value;
                 setFilterSource(
-                  v === "builtin" || v === "custom" || v === "convention" || v === "cloud" || v === "pack" ? v : "",
+                  v === "custom" || v === "convention" || v === "cloud" || v === "pack" ? v : "",
                 );
               }}
               className="filter-input"
               aria-label="Filter by policy source"
             >
               <option value="">all sources</option>
-              <option value="builtin">builtin</option>
               <option value="custom">custom</option>
               <option value="convention">convention</option>
               <option value="cloud">cloud</option>

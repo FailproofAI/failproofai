@@ -11,7 +11,7 @@ Um harness é o ambiente em que seu agente efetivamente executa. O Failproof AI 
 
 As mesmas políticas e o mesmo histórico de sessões se aplicam independentemente do harness em que o agente é executado. Uma camada de adaptador mapeia os nomes de eventos nativos, nomes de ferramentas e campos de entrada de ferramentas de cada harness para 29 eventos canônicos antes que qualquer política seja executada.
 
-Um agente que não é executado em **nenhum** dos doze é instrumentado diretamente com o [Python SDK](/pt-br/reference/python-sdk). Esse é um contrato diferente, e vale deixar claro: o SDK fornece rastreamento, sessões, avaliações e auditorias — **ele não aplica políticas por conta própria.** Bloquear uma ação insegura antes de sua execução requer um hook de aplicação na fronteira de ferramenta do seu runtime; [entre em contato conosco](mailto:support@befailproof.ai) e faremos o mapeamento.
+Um agente que não é executado em **nenhum** dos doze é instrumentado diretamente com o [Python SDK](/pt-br/reference/custom-agents). Esse é um contrato diferente, e vale deixar claro: o SDK fornece rastreamento, sessões, avaliações e auditorias — **ele não aplica políticas por conta própria.** Bloquear uma ação insegura antes de sua execução requer um hook de aplicação na fronteira de ferramenta do seu runtime; [entre em contato conosco](mailto:support@befailproof.ai) e faremos o mapeamento.
 
 | Harness | Escopos de hook suportados |
 | --- | --- |

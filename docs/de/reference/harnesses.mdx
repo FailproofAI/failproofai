@@ -11,7 +11,7 @@ Ein Harness ist die Umgebung, in der Ihr Agent tatsächlich ausgeführt wird. Fa
 
 Dieselben Richtlinien und dieselbe Sitzungshistorie gelten unabhängig davon, in welchem Harness ein Agent ausgeführt wird. Eine Adapterschicht bildet die nativen Ereignisnamen, Tool-Namen und Tool-Eingabefelder jedes Harnesses auf 29 kanonische Ereignisse ab, bevor eine Richtlinie ausgeführt wird.
 
-Ein Agent, der in **keinem** der zwölf Harnesses läuft, wird direkt mit dem [Python SDK](/de/reference/python-sdk) instrumentiert. Das ist ein anderer Vertrag, und es lohnt sich, dies klar zu benennen: Das SDK liefert Tracing, Sitzungen, Evaluierungen und Audits — **es setzt Richtlinien nicht eigenständig durch.** Um eine unsichere Aktion zu blockieren, bevor sie ausgeführt wird, ist ein Enforcement-Hook an der Tool-Grenze Ihrer Laufzeitumgebung erforderlich. [Kontaktieren Sie uns](mailto:support@befailproof.ai), und wir werden die Zuordnung vornehmen.
+Ein Agent, der in **keinem** der zwölf Harnesses läuft, wird direkt mit dem [Python SDK](/de/reference/custom-agents) instrumentiert. Das ist ein anderer Vertrag, und es lohnt sich, dies klar zu benennen: Das SDK liefert Tracing, Sitzungen, Evaluierungen und Audits — **es setzt Richtlinien nicht eigenständig durch.** Um eine unsichere Aktion zu blockieren, bevor sie ausgeführt wird, ist ein Enforcement-Hook an der Tool-Grenze Ihrer Laufzeitumgebung erforderlich. [Kontaktieren Sie uns](mailto:support@befailproof.ai), und wir werden die Zuordnung vornehmen.
 
 | Harness | Unterstützte Hook-Scopes |
 | --- | --- |

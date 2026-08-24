@@ -335,7 +335,7 @@
                 "pages": [
                   "zh/reference/overview",
                   "zh/reference/harnesses",
-                  "zh/reference/python-sdk",
+                  "zh/reference/custom-agents",
                   "zh/reference/evaluator-sdk",
                   "zh/reference/policy-sdk",
                   "zh/reference/self-hosting"
@@ -473,7 +473,7 @@
                 "pages": [
                   "ja/reference/overview",
                   "ja/reference/harnesses",
-                  "ja/reference/python-sdk",
+                  "ja/reference/custom-agents",
                   "ja/reference/evaluator-sdk",
                   "ja/reference/policy-sdk",
                   "ja/reference/self-hosting"
@@ -611,7 +611,7 @@
                 "pages": [
                   "ko/reference/overview",
                   "ko/reference/harnesses",
-                  "ko/reference/python-sdk",
+                  "ko/reference/custom-agents",
                   "ko/reference/evaluator-sdk",
                   "ko/reference/policy-sdk",
                   "ko/reference/self-hosting"
@@ -749,7 +749,7 @@
                 "pages": [
                   "es/reference/overview",
                   "es/reference/harnesses",
-                  "es/reference/python-sdk",
+                  "es/reference/custom-agents",
                   "es/reference/evaluator-sdk",
                   "es/reference/policy-sdk",
                   "es/reference/self-hosting"
@@ -887,7 +887,7 @@
                 "pages": [
                   "pt-br/reference/overview",
                   "pt-br/reference/harnesses",
-                  "pt-br/reference/python-sdk",
+                  "pt-br/reference/custom-agents",
                   "pt-br/reference/evaluator-sdk",
                   "pt-br/reference/policy-sdk",
                   "pt-br/reference/self-hosting"
@@ -1025,7 +1025,7 @@
                 "pages": [
                   "de/reference/overview",
                   "de/reference/harnesses",
-                  "de/reference/python-sdk",
+                  "de/reference/custom-agents",
                   "de/reference/evaluator-sdk",
                   "de/reference/policy-sdk",
                   "de/reference/self-hosting"
@@ -1163,7 +1163,7 @@
                 "pages": [
                   "fr/reference/overview",
                   "fr/reference/harnesses",
-                  "fr/reference/python-sdk",
+                  "fr/reference/custom-agents",
                   "fr/reference/evaluator-sdk",
                   "fr/reference/policy-sdk",
                   "fr/reference/self-hosting"
@@ -1301,7 +1301,7 @@
                 "pages": [
                   "ru/reference/overview",
                   "ru/reference/harnesses",
-                  "ru/reference/python-sdk",
+                  "ru/reference/custom-agents",
                   "ru/reference/evaluator-sdk",
                   "ru/reference/policy-sdk",
                   "ru/reference/self-hosting"
@@ -1439,7 +1439,7 @@
                 "pages": [
                   "hi/reference/overview",
                   "hi/reference/harnesses",
-                  "hi/reference/python-sdk",
+                  "hi/reference/custom-agents",
                   "hi/reference/evaluator-sdk",
                   "hi/reference/policy-sdk",
                   "hi/reference/self-hosting"
@@ -1577,7 +1577,7 @@
                 "pages": [
                   "tr/reference/overview",
                   "tr/reference/harnesses",
-                  "tr/reference/python-sdk",
+                  "tr/reference/custom-agents",
                   "tr/reference/evaluator-sdk",
                   "tr/reference/policy-sdk",
                   "tr/reference/self-hosting"
@@ -1715,7 +1715,7 @@
                 "pages": [
                   "vi/reference/overview",
                   "vi/reference/harnesses",
-                  "vi/reference/python-sdk",
+                  "vi/reference/custom-agents",
                   "vi/reference/evaluator-sdk",
                   "vi/reference/policy-sdk",
                   "vi/reference/self-hosting"
@@ -1853,7 +1853,7 @@
                 "pages": [
                   "it/reference/overview",
                   "it/reference/harnesses",
-                  "it/reference/python-sdk",
+                  "it/reference/custom-agents",
                   "it/reference/evaluator-sdk",
                   "it/reference/policy-sdk",
                   "it/reference/self-hosting"
@@ -1991,7 +1991,7 @@
                 "pages": [
                   "ar/reference/overview",
                   "ar/reference/harnesses",
-                  "ar/reference/python-sdk",
+                  "ar/reference/custom-agents",
                   "ar/reference/evaluator-sdk",
                   "ar/reference/policy-sdk",
                   "ar/reference/self-hosting"
@@ -2129,7 +2129,7 @@
                 "pages": [
                   "he/reference/overview",
                   "he/reference/harnesses",
-                  "he/reference/python-sdk",
+                  "he/reference/custom-agents",
                   "he/reference/evaluator-sdk",
                   "he/reference/policy-sdk",
                   "he/reference/self-hosting"
@@ -2193,6 +2193,62 @@
     {
       "source": "/reference/python-sdk",
       "destination": "/reference/custom-agents"
+    },
+    {
+      "source": "/zh/reference/python-sdk",
+      "destination": "/zh/reference/custom-agents"
+    },
+    {
+      "source": "/ja/reference/python-sdk",
+      "destination": "/ja/reference/custom-agents"
+    },
+    {
+      "source": "/ko/reference/python-sdk",
+      "destination": "/ko/reference/custom-agents"
+    },
+    {
+      "source": "/es/reference/python-sdk",
+      "destination": "/es/reference/custom-agents"
+    },
+    {
+      "source": "/pt-br/reference/python-sdk",
+      "destination": "/pt-br/reference/custom-agents"
+    },
+    {
+      "source": "/de/reference/python-sdk",
+      "destination": "/de/reference/custom-agents"
+    },
+    {
+      "source": "/fr/reference/python-sdk",
+      "destination": "/fr/reference/custom-agents"
+    },
+    {
+      "source": "/ru/reference/python-sdk",
+      "destination": "/ru/reference/custom-agents"
+    },
+    {
+      "source": "/hi/reference/python-sdk",
+      "destination": "/hi/reference/custom-agents"
+    },
+    {
+      "source": "/tr/reference/python-sdk",
+      "destination": "/tr/reference/custom-agents"
+    },
+    {
+      "source": "/vi/reference/python-sdk",
+      "destination": "/vi/reference/custom-agents"
+    },
+    {
+      "source": "/it/reference/python-sdk",
+      "destination": "/it/reference/custom-agents"
+    },
+    {
+      "source": "/ar/reference/python-sdk",
+      "destination": "/ar/reference/custom-agents"
+    },
+    {
+      "source": "/he/reference/python-sdk",
+      "destination": "/he/reference/custom-agents"
     },
     {
       "source": "/start/integrations/how-it-works",

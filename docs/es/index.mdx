@@ -6,7 +6,7 @@ icon: "shield-check"
 
 Failproof AI ayuda a los equipos a entender qué hicieron los agentes, encontrar dónde fallaron y desplegar salvaguardas antes de que el mismo comportamiento vuelva a ocurrir.
 
-Un **entorno de ejecución** (harness) es el contexto donde tu agente corre realmente. Failproof AI se conecta a 12 de ellos — CLIs de codificación como Claude Code y Codex, gateways de chat como Hermes, asistentes autoalojados como OpenClaw — y los mismos eventos, las mismas políticas y el mismo historial de sesiones se aplican a todos. Los agentes sin harness reportan a través del [SDK de Python](/es/reference/python-sdk), que los rastrea y audita; aplicar una política en ese caso requiere un hook en tu propio entorno de ejecución.
+Un **entorno de ejecución** (harness) es el contexto donde tu agente corre realmente. Failproof AI se conecta a 12 de ellos — CLIs de codificación como Claude Code y Codex, gateways de chat como Hermes, asistentes autoalojados como OpenClaw — y los mismos eventos, las mismas políticas y el mismo historial de sesiones se aplican a todos. Los agentes sin harness reportan a través del [SDK de Python](/es/reference/custom-agents), que los rastrea y audita; aplicar una política en ese caso requiere un hook en tu propio entorno de ejecución.
 
 <Columns cols={2}>
   <Card title="Configura Failproof" icon="wand-sparkles" href="/es/start/quickstart">

@@ -18,9 +18,11 @@ import { toggleCustomPolicyAction, togglePolicyAction } from "@/app/actions/upda
 import {
   addBundledPackWebAction,
   addPackWebAction,
+  previewPackWebAction,
   removePackWebAction,
   togglePackPolicyAction,
 } from "@/app/actions/pack-actions";
+import type { PackPreviewResult } from "@/app/actions/pack-actions";
 import { installHooksWebAction, removeHooksWebAction } from "@/app/actions/install-hooks-web";
 import { updatePolicyParamsAction } from "@/app/actions/update-policy-params";
 import { useAutoRefresh } from "@/contexts/AutoRefreshContext";
@@ -1828,7 +1830,27 @@ function PackSection({
   const [source, setSource] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [installed, setInstalled] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PackPreviewResult | null>(null);
   const { capture } = usePostHog();
+
+  // Reading a pack before installing it. Fetches the manifest only — the entry
+  // artifact is never downloaded, so looking at a stranger's pack cannot run a
+  // stranger's code inside this server.
+  const runPreview = async () => {
+    if (!source.trim()) return;
+    setBusy("preview");
+    setPreview(null);
+    try {
+      const result = await previewPackWebAction(source);
+      if (!result.ok) {
+        onError(result.error ?? "Could not read that pack.");
+        return;
+      }
+      setPreview(result);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const run = async (label: string, action: () => Promise<{ ok: boolean; id?: string; version?: string; error?: string }>) => {
     setBusy(label);
@@ -1874,12 +1896,23 @@ function PackSection({
               void run("input", () => addPackWebAction(source));
             }
           }}
-          placeholder="acme/ops  ·  acme/ops@v1.2.0  ·  a release URL"
+          placeholder="core  ·  acme/ops  ·  acme/ops@v1.2.0  ·  a release URL"
           spellCheck={false}
           disabled={disabled || busy !== null}
           className="flex-1 min-w-[16rem] rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-xs font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
           aria-label="Pack source"
         />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={disabled || busy !== null || source.trim().length === 0}
+          onClick={() => {
+            capture("pack_preview_submitted", {});
+            void runPreview();
+          }}
+        >
+          {busy === "preview" ? "Reading…" : "Preview"}
+        </Button>
         <Button
           size="sm"
           variant="default"
@@ -1893,6 +1926,72 @@ function PackSection({
           {busy === "input" ? "Installing…" : "Install"}
         </Button>
       </div>
+
+      {/* What the pack CONTAINS, read from its manifest before anything is
+          installed. Marks are the publisher's defaults, not this machine's
+          state — nothing is installed, so an "on" would describe no machine. */}
+      {preview?.ok && (
+        <div className="border-b border-border/20 bg-muted/5">
+          <div className="flex items-center gap-3 px-4 py-2.5">
+            <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs font-mono text-foreground">
+              {preview.id}@{preview.version}
+            </span>
+            <span className="text-[0.7rem] text-muted-foreground">
+              {preview.policies?.length ?? 0} policies ·{" "}
+              {preview.policies?.filter((p) => p.defaultEnabled).length ?? 0} on by default
+            </span>
+            {preview.effect === "observe" && (
+              <span className="text-[0.65rem] uppercase tracking-wider text-amber-500">
+                observes only
+              </span>
+            )}
+            <button
+              onClick={() => setPreview(null)}
+              className="ml-auto text-muted-foreground/60 hover:text-foreground"
+              aria-label="Close preview"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {preview.policies?.map((policy) => (
+              <div key={policy.name} className="flex items-start gap-3 px-4 py-2 border-t border-border/10">
+                <span
+                  className={`text-[0.65rem] uppercase tracking-wider w-14 shrink-0 mt-0.5 ${
+                    policy.defaultEnabled ? "text-emerald-500" : "text-muted-foreground/50"
+                  }`}
+                >
+                  {policy.defaultEnabled ? "default" : "opt-in"}
+                </span>
+                <span className="text-xs font-mono text-foreground w-56 shrink-0 truncate">
+                  {policy.name}
+                </span>
+                <span className="text-xs text-muted-foreground leading-relaxed min-w-0">
+                  {policy.description}
+                  <span className="block text-[0.65rem] text-muted-foreground/40 font-mono mt-0.5">
+                    {policy.category}
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="px-4 py-2.5 border-t border-border/20">
+            <Button
+              size="sm"
+              variant="default"
+              disabled={disabled || busy !== null}
+              onClick={() => {
+                capture("pack_install_submitted", { via: "preview" });
+                void run("input", () => addPackWebAction(source)).then(() => setPreview(null));
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Install its defaults
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Ours, in one click — both the released pack and the copy that ships
           inside this package, which needs no network at all. */}

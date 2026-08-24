@@ -266,6 +266,69 @@ interface FetchedPack {
 }
 
 /** Fetch and fully validate a pack, without writing anything. */
+/**
+ * The short names for the pack Failproof AI publishes.
+ *
+ * Lives here, not in the CLI, because the dashboard takes the same typed source
+ * and has to resolve it the same way — `core` worked in the terminal and failed
+ * in the browser for exactly as long as this list sat in `pack-cli.ts`.
+ */
+export const CORE_ALIASES = new Set(["core", "failproofai", "official"]);
+
+export interface PackAddOptions {
+  only?: string[];
+  categories?: string[];
+  all?: boolean;
+}
+
+export interface AddedPack {
+  id: string;
+  version: string;
+  enabled: string[];
+  available: string[];
+  /** True when it came from the copy inside this package rather than a release. */
+  bundled: boolean;
+  source?: string;
+  tag?: string;
+  resolvedFromLatest?: boolean;
+  selection?: string;
+  categories?: string[];
+}
+
+/**
+ * Install a pack from whatever a person typed — the one entry point for both the
+ * CLI and the dashboard, so a source that works in one cannot fail in the other.
+ */
+export async function addPackFromSource(
+  source: string,
+  opts: PackAddOptions = {},
+): Promise<AddedPack> {
+  if (CORE_ALIASES.has(source.trim().toLowerCase())) {
+    const result = installBundledPack(opts);
+    if (!result.installed) throw new Error(result.reason ?? "could not install");
+    return {
+      id: result.id!,
+      version: result.version!,
+      enabled: result.enabled ?? result.available ?? [],
+      available: result.available ?? [],
+      bundled: true,
+    };
+  }
+  const result = await addPack(source, opts);
+  return {
+    id: result.id,
+    version: result.version,
+    enabled: result.enabled,
+    available: result.available,
+    bundled: false,
+    source: result.source,
+    tag: result.tag,
+    resolvedFromLatest: result.resolvedFromLatest,
+    selection: result.selection,
+    categories: result.categories,
+  };
+}
+
 export interface PackPreview {
   id: string;
   version: string;

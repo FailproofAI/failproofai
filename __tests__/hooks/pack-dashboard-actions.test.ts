@@ -12,11 +12,12 @@ import { createServer, type Server } from "node:http";
 import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { AddressInfo } from "node:net";
 
 import {
   addPackWebAction,
+  previewPackWebAction,
   removePackWebAction,
   togglePackPolicyAction,
 } from "@/app/actions/pack-actions";
@@ -115,6 +116,42 @@ describe("installing a pack from the dashboard", () => {
     const result = await addPackWebAction("   ");
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/Enter a pack source/);
+  });
+});
+
+describe("parity with the CLI", () => {
+  it("takes `core` in the dashboard, exactly as the terminal does", async () => {
+    // The alias list lived in pack-cli.ts, so `core` worked in the terminal and
+    // failed in the browser. Both go through one resolver now.
+    const prevRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
+    process.env.FAILPROOFAI_PACKAGE_ROOT = resolve(__dirname, "../..");
+    try {
+      const result = await addPackWebAction("core");
+      expect(result.ok).toBe(true);
+      expect(result.id).toBe("failproofai/builtins");
+    } finally {
+      if (prevRoot === undefined) delete process.env.FAILPROOFAI_PACKAGE_ROOT;
+      else process.env.FAILPROOFAI_PACKAGE_ROOT = prevRoot;
+    }
+  });
+
+  it("previews a pack without installing it, and without fetching its code", async () => {
+    const result = await previewPackWebAction("github:acme/ops@1.0.0");
+    expect(result.ok).toBe(true);
+    expect(result.policies?.map((p) => p.name)).toEqual(["block-prod-deploy", "warn-restart"]);
+    expect(result.policies?.find((p) => p.name === "block-prod-deploy")?.defaultEnabled).toBe(true);
+    // Nothing installed by looking.
+    const config = await getHooksConfigAction();
+    expect(config.packs).toEqual([]);
+  });
+
+  it("hands back the error rather than throwing at the UI", async () => {
+    // A release with no manifest asset — the shape of a repo that has releases
+    // but is not publishing a pack.
+    delete assets["failproofai-pack.json"];
+    const result = await previewPackWebAction("github:acme/ops@1.0.0");
+    expect(result.ok).toBe(false);
+    expect(result.error).toBeTruthy();
   });
 });
 

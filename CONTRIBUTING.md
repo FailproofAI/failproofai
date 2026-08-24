@@ -76,13 +76,13 @@ failproofai/
 ├── scripts/        # Dev/start/build helper scripts
 ├── __tests__/      # Test files
 ├── examples/       # Example custom hook policies
-├── fp-cli/         # The `fp` CLI for FailproofAI Cloud (Python; PyPI: fp-cli)
+├── fp-cloud-cli/         # The `fp` CLI for FailproofAI Cloud (Python; PyPI: fp-cloud-cli)
 ├── sdk/            # Client SDKs, one directory per language
 │   └── python/     # PyPI: failproofai-sdk, imported as `failproofai_sdk`
 └── public/         # Static assets
 ```
 
-> `fp-cli/` and `sdk/python/` are the Python components in an otherwise
+> `fp-cloud-cli/` and `sdk/python/` are the Python components in an otherwise
 > TypeScript + Rust repo. Each is self-contained: its own `pyproject.toml`, its own
 > `uv.lock`, its own pytest suite, its own CI job in `ci.yml`, and its own PyPI
 > project. Neither is part of the npm package, the Next.js build, or the Cargo

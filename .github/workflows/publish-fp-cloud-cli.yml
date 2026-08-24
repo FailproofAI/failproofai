@@ -1,6 +1,6 @@
-name: Publish fp-cli to PyPI
+name: Publish fp-cloud-cli to PyPI
 
-# The `fp` CLI (PyPI project: fp-cli) ships on its own cadence, separate from the npm
+# The `fp` CLI (PyPI project: fp-cloud-cli) ships on its own cadence, separate from the npm
 # package and the daemon binaries in publish.yml. It is a pure-Python wheel with no
 # platform matrix and no release assets, so it has nothing to share with that pipeline
 # beyond the registry credentials it does not use.
@@ -9,14 +9,14 @@ name: Publish fp-cli to PyPI
 # This requires a one-time, out-of-band setup on PyPI that CANNOT be done from a PR:
 #
 #   https://pypi.org/manage/account/publishing/  ->  Add a new pending publisher
-#     PyPI Project Name: fp-cli
+#     PyPI Project Name: fp-cloud-cli
 #     Owner:            FailproofAI
 #     Repository:       failproofai
-#     Workflow name:    publish-fp-cli.yml
-#     Environment:      pypi-fp-cli        <- REQUIRED, do not leave blank
+#     Workflow name:    publish-fp-cloud-cli.yml
+#     Environment:      pypi-fp-cloud-cli        <- REQUIRED, do not leave blank
 #
 #   The ACCOUNT-level page, not `Project -> Manage -> Publishing`. That per-project
-#   tab only exists once the project does, and `fp-cli` is unregistered — the first
+#   tab only exists once the project does, and `fp-cloud-cli` is unregistered — the first
 #   successful upload is what creates it. A "pending" publisher is exactly the form
 #   for that case: it authorises this workflow to create the project on first
 #   publish, and PyPI converts it into a normal project-level publisher afterwards.
@@ -30,13 +30,13 @@ name: Publish fp-cli to PyPI
 # token is minted for whatever the workflow then asks for. Two settings OUTSIDE this file
 # are what a branch edit cannot reach:
 #
-#   1. Repo -> Settings -> Environments -> `pypi-fp-cli`:
+#   1. Repo -> Settings -> Environments -> `pypi-fp-cloud-cli`:
 #        Deployment branches: `main` only (and add required reviewers if you want a
 #        second pair of eyes on every release).
 #      A job referencing this environment from any other ref is refused before it starts.
 #      NOTE: GitHub creates a missing environment implicitly, WITHOUT protection rules —
 #      so this is not self-configuring; set it up by hand.
-#   2. The `Environment: pypi-fp-cli` field above. PyPI then rejects a token whose
+#   2. The `Environment: pypi-fp-cloud-cli` field above. PyPI then rejects a token whose
 #      `environment` claim is missing or different, which is what stops someone from
 #      simply deleting the `environment:` line below.
 
@@ -83,7 +83,7 @@ on:
         default: false
 
 concurrency:
-  group: publish-fp-cli
+  group: publish-fp-cloud-cli
   cancel-in-progress: false
 
 jobs:
@@ -131,13 +131,13 @@ jobs:
               fi
             done
             if [ "$MATCHED" != "true" ]; then
-              printf '%s\n' "::error::Publishing fp-cli is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
+              printf '%s\n' "::error::Publishing fp-cloud-cli is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
               exit 1
             fi
           done
 
           if [ "$REF" != "main" ]; then
-            printf '%s\n' "::error::Refusing to publish from '$REF'. fp-cli publishes from main only."
+            printf '%s\n' "::error::Refusing to publish from '$REF'. fp-cloud-cli publishes from main only."
             exit 1
           fi
 
@@ -153,7 +153,7 @@ jobs:
       - name: Resolve the version and what follows it
         id: resolve
         run: |
-          RESOLVED=$(python3 scripts/python-version.py resolve fp-cli/fp_cli/_version.py fp-cli)
+          RESOLVED=$(python3 scripts/python-version.py resolve fp-cloud-cli/fp_cli/_version.py fp-cloud-cli)
           printf '%s\n' "$RESOLVED"
           printf '%s\n' "$RESOLVED" >> "$GITHUB_OUTPUT"
 
@@ -161,7 +161,7 @@ jobs:
       # reuse, so without this the run installs everything, tests, builds, verifies,
       # smoke-tests, and only then dies at the upload — having proved nothing that
       # bumping one line would not have. A `workflow_dispatch` has no version input:
-      # the version is whatever fp-cli/fp_cli/_version.py carries on main, which is
+      # the version is whatever fp-cloud-cli/fp_cli/_version.py carries on main, which is
       # exactly the value a forgotten bump leaves stale.
       #
       # A non-404/200 answer FAILS rather than assuming "not published". PyPI sits
@@ -173,12 +173,12 @@ jobs:
         run: |
           CODE=$(curl -sS -o /dev/null -w '%{http_code}' \
             --retry 3 --retry-connrefused --max-time 30 \
-            "https://pypi.org/pypi/fp-cli/${VERSION}/json")
+            "https://pypi.org/pypi/fp-cloud-cli/${VERSION}/json")
           case "$CODE" in
-            404) printf '%s\n' "fp-cli ${VERSION} is not on PyPI yet." ;;
-            200) printf '%s\n' "::error::fp-cli ${VERSION} is already published — PyPI will reject it. Bump fp-cli/fp_cli/_version.py on main and dispatch again."
+            404) printf '%s\n' "fp-cloud-cli ${VERSION} is not on PyPI yet." ;;
+            200) printf '%s\n' "::error::fp-cloud-cli ${VERSION} is already published — PyPI will reject it. Bump fp-cloud-cli/fp_cli/_version.py on main and dispatch again."
                  exit 1 ;;
-            *)   printf '%s\n' "::error::PyPI answered HTTP ${CODE} for fp-cli ${VERSION}; refusing to guess whether it is published."
+            *)   printf '%s\n' "::error::PyPI answered HTTP ${CODE} for fp-cloud-cli ${VERSION}; refusing to guess whether it is published."
                  exit 1 ;;
           esac
 
@@ -196,14 +196,14 @@ jobs:
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
         run: |
-          python3 scripts/changelog-section.py fp-cli/CHANGELOG.md "$VERSION" > release-notes.md
+          python3 scripts/changelog-section.py fp-cloud-cli/CHANGELOG.md "$VERSION" > release-notes.md
           printf '%s\n' "----- release notes -----"
           cat release-notes.md
 
       - name: Hand the notes to the release job
         uses: actions/upload-artifact@v7
         with:
-          name: fp-cli-release-notes
+          name: fp-cloud-cli-release-notes
           path: release-notes.md
           if-no-files-found: error
           retention-days: 1
@@ -220,7 +220,7 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
         run: |
           {
-            printf '### `fp-cli` %s\n\n' "${VERSION}"
+            printf '### `fp-cloud-cli` %s\n\n' "${VERSION}"
             printf '| | |\n|---|---|\n'
             printf '| scheme | %s |\n' "${SCHEME}"
             printf '| dry run | %s |\n' "${DRY_RUN}"
@@ -245,7 +245,7 @@ jobs:
     needs: preflight
     defaults:
       run:
-        working-directory: fp-cli
+        working-directory: fp-cloud-cli
     permissions:
       # Naming ANY scope sets every unnamed one to `none` — it is not an addition to the
       # defaults. `contents: read` is therefore not redundant: without it `actions/checkout`
@@ -255,7 +255,7 @@ jobs:
       # Authentication is OIDC, so there is no token to withhold: repo write access IS
       # publish access, and `workflow_dispatch` can target ANY ref. Without these two
       # checks one "Run workflow" click on an unreviewed branch ships that branch to
-      # public PyPI as an official fp-cli release, unreviewable and unrecallable
+      # public PyPI as an official fp-cloud-cli release, unreviewable and unrecallable
       # (PyPI versions cannot be reused). The workflow this replaced
       # (release-cli.yml in FailproofAI/agenteye) carried both; they were dropped in
       # the move and are restored here.
@@ -284,13 +284,13 @@ jobs:
               fi
             done
             if [ "$MATCHED" != "true" ]; then
-              printf '%s\n' "::error::Publishing fp-cli is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
+              printf '%s\n' "::error::Publishing fp-cloud-cli is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
               exit 1
             fi
           done
 
           if [ "$REF" != "main" ]; then
-            printf '%s\n' "::error::Refusing to publish from '$REF'. fp-cli publishes from main only."
+            printf '%s\n' "::error::Refusing to publish from '$REF'. fp-cloud-cli publishes from main only."
             exit 1
           fi
 
@@ -299,7 +299,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: fp-cli/uv.lock
+          cache-dependency-glob: fp-cloud-cli/uv.lock
 
       - name: Install dependencies
         run: uv sync --locked --extra dev
@@ -355,14 +355,14 @@ jobs:
       - name: Report the version being published
         run: |
           VERSION=$(uv run python -c 'from fp_cli._version import __version__; print(__version__)')
-          echo "fp-cli version: ${VERSION}"
-          echo "### Publishing \`fp-cli\` ${VERSION}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "fp-cloud-cli version: ${VERSION}"
+          echo "### Publishing \`fp-cloud-cli\` ${VERSION}" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Hand the verified artifact to the publish job
         uses: actions/upload-artifact@v7
         with:
-          name: fp-cli-dist
-          path: fp-cli/dist/
+          name: fp-cloud-cli-dist
+          path: fp-cloud-cli/dist/
           if-no-files-found: error
           retention-days: 1
 
@@ -380,7 +380,7 @@ jobs:
     runs-on: ubuntu-latest
     # Gates this job on the repo-level environment rules described in the header, and puts
     # the environment name in the OIDC token PyPI checks. Both halves are outside this file.
-    environment: pypi-fp-cli
+    environment: pypi-fp-cloud-cli
     permissions:
       contents: read
       id-token: write    # required for Trusted Publishing
@@ -409,19 +409,19 @@ jobs:
               fi
             done
             if [ "$MATCHED" != "true" ]; then
-              printf '%s\n' "::error::Publishing fp-cli is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
+              printf '%s\n' "::error::Publishing fp-cloud-cli is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
               exit 1
             fi
           done
 
           if [ "$REF" != "main" ]; then
-            printf '%s\n' "::error::Refusing to publish from '$REF'. fp-cli publishes from main only."
+            printf '%s\n' "::error::Refusing to publish from '$REF'. fp-cloud-cli publishes from main only."
             exit 1
           fi
 
       - uses: actions/download-artifact@v8
         with:
-          name: fp-cli-dist
+          name: fp-cloud-cli-dist
           path: dist/
 
       - name: Publish to PyPI
@@ -485,20 +485,20 @@ jobs:
           git fetch origin main
           git checkout -B main origin/main
 
-          python3 scripts/python-version.py write fp-cli/fp_cli/_version.py "$NEXT_VERSION"
+          python3 scripts/python-version.py write fp-cloud-cli/fp_cli/_version.py "$NEXT_VERSION"
 
           # Nothing moves with it. `pyproject.toml` declares `dynamic = ["version"]`,
           # so `uv.lock` records this project as `source = { editable = "." }` with NO
           # `version =` line, and `uv sync --locked` keeps working across a bump.
           # Giving the package a static version would silently make that false and
           # turn every post-release CI run red.
-          if git diff --quiet -- fp-cli/fp_cli/_version.py; then
+          if git diff --quiet -- fp-cloud-cli/fp_cli/_version.py; then
             printf '%s\n' "::notice::main already carries ${NEXT_VERSION} — nothing to push."
             exit 0
           fi
 
-          git add fp-cli/fp_cli/_version.py
-          git commit -m "chore(fp-cli): open ${NEXT_VERSION} after publishing ${PUBLISHED} [skip ci]"
+          git add fp-cloud-cli/fp_cli/_version.py
+          git commit -m "chore(fp-cloud-cli): open ${NEXT_VERSION} after publishing ${PUBLISHED} [skip ci]"
 
           # Supplied to the single command that needs it rather than persisted, and
           # through a header rather than the remote URL: git echoes the URL in its own
@@ -510,24 +510,24 @@ jobs:
 
           printf '%s\n' "::notice::main now opens ${NEXT_VERSION}."
 
-  # Where a fp-cli release is announced and where its notes live. Separate from
+  # Where a fp-cloud-cli release is announced and where its notes live. Separate from
   # `bump` because that one is skipped for a version outside the beta/stable
   # scheme, and an `rc` that reached PyPI still deserves a tag.
   #
   # FOUR deliberate separations from the npm package's releases, which share this
   # repository's single tag namespace and single release feed:
   #
-  #   1. The tag is `fp-cli-vX.Y.Z`, never a bare `vX.Y.Z`. The bare form is the npm
+  #   1. The tag is `fp-cloud-cli-vX.Y.Z`, never a bare `vX.Y.Z`. The bare form is the npm
   #      package's, and the published CLI builds its `failproofaid` download URLs
   #      out of exactly those tags — a Python release landing on one would be a
   #      release the CLI tries to fetch binaries from.
   #   2. `--latest=false`, ALWAYS. GitHub marks one release per repository as
   #      "Latest" and shows it on the repo home page; without this, cutting a
-  #      stable `fp-cli` would move that badge off the npm CLI and onto a Python
+  #      stable `fp-cloud-cli` would move that badge off the npm CLI and onto a Python
   #      package. Prereleases are never marked latest anyway, which is exactly why
   #      this cannot be left implicit — it would start being wrong the first time
   #      a stable ships, long after anyone remembers why.
-  #   3. The title names the package (`fp-cli 0.0.1b1`), so the release feed reads
+  #   3. The title names the package (`fp-cloud-cli 0.0.1b1`), so the release feed reads
   #      unambiguously rather than as three interleaved `v...` lines.
   #   4. No assets. The npm release carries the daemon binaries and the CLI
   #      tarball; this one carries notes and a tag, and the wheel lives on PyPI.
@@ -544,7 +544,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: fp-cli-release-notes
+          name: fp-cloud-cli-release-notes
 
       - name: Cut the GitHub Release
         env:
@@ -557,12 +557,12 @@ jobs:
           # `bump` may already have moved main on to the next development version,
           # and a tag pointing at that commit would name source that was never
           # built into the wheel it accompanies.
-          FLAGS=(--target "$GITHUB_SHA" --title "fp-cli ${VERSION}" --repo "$GITHUB_REPOSITORY")
+          FLAGS=(--target "$GITHUB_SHA" --title "fp-cloud-cli ${VERSION}" --repo "$GITHUB_REPOSITORY")
           FLAGS+=(--latest=false)
           if [ "$PRERELEASE" = "true" ]; then FLAGS+=(--prerelease); fi
 
           {
-            printf '`fp-cli %s` is on PyPI: https://pypi.org/project/fp-cli/%s/\n\n' "${VERSION}" "${VERSION}"
+            printf '`fp-cloud-cli %s` is on PyPI: https://pypi.org/project/fp-cloud-cli/%s/\n\n' "${VERSION}" "${VERSION}"
             printf -- '---\n\n'
             cat release-notes.md
           } > body.md

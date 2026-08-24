@@ -10,7 +10,7 @@ those adapters read, and told readers to verify a Pydantic AI install by printin
 None of that produced an error for a reader — `instrument()` drops unknown option
 keys by design — so only a test can catch it.
 
-Same shape as `test_spool_contract.py` and `fp-cli/tests/test_fp_home_contract.py`:
+Same shape as `test_spool_contract.py` and `fp-cloud-cli/tests/test_fp_home_contract.py`:
 read the other side's source, skip when it is genuinely absent (an installed
 sdist has no docs site), and fail when `FAILPROOFAI_SDK_REQUIRE_CONTRACT` says the
 repository should be there.

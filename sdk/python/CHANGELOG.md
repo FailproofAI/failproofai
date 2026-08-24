@@ -1,7 +1,7 @@
 # Changelog — `failproofai-sdk`
 
 The telemetry SDK, imported as `failproofai_sdk`. Released independently of the
-`failproofai` npm package and of its sibling `fp-cli`, so the versions here line
+`failproofai` npm package and of its sibling `fp-cloud-cli`, so the versions here line
 up with neither.
 
 Headings are `## <version> — <YYYY-MM-DD>`, and the section matching the version

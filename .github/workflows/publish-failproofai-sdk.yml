@@ -1,7 +1,7 @@
 name: Publish failproofai-sdk to PyPI
 
 # The telemetry SDK (PyPI project: failproofai-sdk) ships on its own cadence, separate
-# from the npm package, the daemon binaries in publish.yml, and its sibling fp-cli. It
+# from the npm package, the daemon binaries in publish.yml, and its sibling fp-cloud-cli. It
 # is a pure-Python wheel with no platform matrix and no release assets, so it has
 # nothing to share with those pipelines beyond credentials it does not use.
 #
@@ -233,7 +233,7 @@ jobs:
   # EVERYTHING that runs third-party code lives here, and this job has NO
   # publishing identity: no `environment:`, no `id-token: write`.
   #
-  # That split is the point, and it matters more here than for fp-cli. Trusted
+  # That split is the point, and it matters more here than for fp-cloud-cli. Trusted
   # Publishing mints its OIDC token on demand from
   # `ACTIONS_ID_TOKEN_REQUEST_URL`/`_TOKEN` in the job environment, so any code
   # running in a job that holds `id-token: write` can request it and publish an
@@ -572,7 +572,7 @@ jobs:
   #      release the CLI tries to fetch binaries from.
   #   2. `--latest=false`, ALWAYS. GitHub marks one release per repository as
   #      "Latest" and shows it on the repo home page; without this, cutting a
-  #      stable `fp-cli` would move that badge off the npm CLI and onto a Python
+  #      stable `fp-cloud-cli` would move that badge off the npm CLI and onto a Python
   #      package. Prereleases are never marked latest anyway, which is exactly why
   #      this cannot be left implicit — it would start being wrong the first time
   #      a stable ships, long after anyone remembers why.

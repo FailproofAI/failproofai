@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * Drift guard for the two failproofai-sdk workflows, and a sibling of
- * fp-cli-workflows.test.ts. Both files are hand-maintained and hold invariants a
+ * fp-cloud-cli-workflows.test.ts. Both files are hand-maintained and hold invariants a
  * reviewer reading the diff would not see break:
  *
  *   - publish-failproofai-sdk.yml grants `id-token: write` for Trusted Publishing.
@@ -71,10 +71,10 @@ describe("publish-failproofai-sdk.yml", () => {
     expect(source("publish-failproofai-sdk.yml")).toContain(`Environment:      ${PYPI_ENVIRONMENT}`);
   });
 
-  it("does not reuse fp-cli's PyPI environment", () => {
-    // Two projects sharing one environment means fp-cli's deployment rules would
+  it("does not reuse fp-cloud-cli's PyPI environment", () => {
+    // Two projects sharing one environment means fp-cloud-cli's deployment rules would
     // govern SDK releases, and PyPI would reject the mismatched claim anyway.
-    const fpCli = workflow("publish-fp-cli.yml").jobs.publish;
+    const fpCli = workflow("publish-fp-cloud-cli.yml").jobs.publish;
     const other = typeof fpCli.environment === "string" ? fpCli.environment : fpCli.environment?.name;
     expect(other).not.toBe(PYPI_ENVIRONMENT);
   });
@@ -265,7 +265,7 @@ describe("the failproofai-sdk CI job", () => {
     expect(scripts).toContain("the installed wheel wrote no event batch");
   });
 
-  it("uses its own uv cache key, not fp-cli's", () => {
+  it("uses its own uv cache key, not fp-cloud-cli's", () => {
     const setup = (job.steps ?? []).find((s: Record<string, any>) =>
       (s.uses ?? "").startsWith("astral-sh/setup-uv"),
     );
@@ -311,9 +311,9 @@ describe("sync-failproofai-sdk-skill.yml", () => {
     expect(runScripts(job)).toContain('git status --porcelain -- "$DEST_SUBDIR"');
   });
 
-  it("shares no force-pushed branch, label or concurrency group with the fp-cli sync", () => {
+  it("shares no force-pushed branch, label or concurrency group with the fp-cloud-cli sync", () => {
     const mine = workflow(name);
-    const theirs = workflow("sync-fp-cli-skill.yml");
+    const theirs = workflow("sync-fp-cloud-cli-skill.yml");
     // Each run force-pushes BRANCH. Sharing it would overwrite the sibling's open PR
     // with this skill's contents, and the sibling would never notice.
     expect(mine.env.BRANCH).not.toBe(theirs.env.BRANCH);
@@ -377,7 +377,7 @@ describe("supply-chain registration", () => {
   });
 
   it("gives the SDK its own dependabot entry", () => {
-    // dependabot resolves per directory; fp-cli's `uv` entry does not see this tree.
+    // dependabot resolves per directory; fp-cloud-cli's `uv` entry does not see this tree.
     const config = parse(readFileSync(resolve(ROOT, ".github/dependabot.yml"), "utf8"));
     const directories = config.updates
       .filter((u: Record<string, any>) => u["package-ecosystem"] === "uv")

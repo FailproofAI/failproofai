@@ -28,11 +28,11 @@ const SCRIPT = resolve(ROOT, "scripts/python-version.py");
 /** The two packages, and the workflow that releases each. */
 const PACKAGES = [
   {
-    dist: "fp-cli",
-    workflow: "publish-fp-cli.yml",
-    versionFile: "fp-cli/fp_cli/_version.py",
-    changelog: "fp-cli/CHANGELOG.md",
-    pyproject: "fp-cli/pyproject.toml",
+    dist: "fp-cloud-cli",
+    workflow: "publish-fp-cloud-cli.yml",
+    versionFile: "fp-cloud-cli/fp_cli/_version.py",
+    changelog: "fp-cloud-cli/CHANGELOG.md",
+    pyproject: "fp-cloud-cli/pyproject.toml",
   },
   {
     dist: "failproofai-sdk",

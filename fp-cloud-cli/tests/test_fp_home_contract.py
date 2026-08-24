@@ -9,7 +9,7 @@ file happens to exist.
 Until this file existed, nothing checked that the two sides agreed. `config.py`
 said so itself, in a comment above `FPCLI_SUBDIR`: *"Mirrors ``fpcliDir`` in
 ``src/hooks/fp-home.ts`` — change one, change the other; nothing checks."*
-Verified by experiment: renaming `fpcliDir` to `fp-cli` in the TypeScript and
+Verified by experiment: renaming `fpcliDir` to `fp-cloud-cli` in the TypeScript and
 leaving Python alone left 53 TS tests and 59 Python tests all passing, with the
 register describing a directory nothing writes and the real credential sitting
 at a path the register had never heard of.
@@ -33,7 +33,7 @@ import pytest
 
 from fp_cli import config as cfg
 
-# tests/ -> fp-cli/ -> repo root.
+# tests/ -> fp-cloud-cli/ -> repo root.
 #
 # Guarded: `parents[2]` raises IndexError on a shallower tree, and a shallower
 # tree is exactly the packaged-sdist case `_read_source` below handles. Raising

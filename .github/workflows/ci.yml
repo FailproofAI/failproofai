@@ -263,8 +263,8 @@ jobs:
         if: steps.crates.outputs.present == 'true'
         run: cargo test --workspace
 
-  # The `fp` CLI (PyPI: fp-cli). The only Python in this repo, and the only job that
-  # tests it — none of the bun/cargo jobs above look at fp-cli/ at all. It is matrixed
+  # The `fp` CLI (PyPI: fp-cloud-cli). The only Python in this repo, and the only job that
+  # tests it — none of the bun/cargo jobs above look at fp-cloud-cli/ at all. It is matrixed
   # across the Python versions pyproject.toml's requires-python advertises, because
   # claiming >=3.10 and testing only one of them is how a 3.10 user finds the break.
   #
@@ -272,16 +272,16 @@ jobs:
   # and 3.13 only while the classifiers claimed 3.10–3.13 — so a resolver picking
   # a different transitive set on 3.11 or 3.12 broke those users with fully green
   # CI and a wheel whose own metadata said they were supported. All four now, and
-  # `__tests__/ci/fp-cli-workflows.test.ts` pins the list against the classifiers
+  # `__tests__/ci/fp-cloud-cli-workflows.test.ts` pins the list against the classifiers
   # so the two cannot drift apart again.
-  fp-cli:
+  fp-cloud-cli:
     runs-on: ubuntu-latest
     # a uv sync plus pytest across four interpreters; the bound exists so a stalled
     # package mirror cannot hold a release for six hours (#726).
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: fp-cli
+        working-directory: fp-cloud-cli
     strategy:
       fail-fast: false
       matrix:
@@ -292,7 +292,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: fp-cli/uv.lock
+          cache-dependency-glob: fp-cloud-cli/uv.lock
 
       - name: Install dependencies
         run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
@@ -340,10 +340,10 @@ jobs:
           fi
 
   # The telemetry SDK (PyPI: failproofai-sdk, import failproofai_sdk). Second Python
-  # component, sibling of fp-cli above, and deliberately its own job: it shares no
+  # component, sibling of fp-cloud-cli above, and deliberately its own job: it shares no
   # lockfile, no dependencies and no release cadence with the CLI.
   #
-  # The matrix is wider than fp-cli's two versions on purpose. This package declares
+  # The matrix is wider than fp-cloud-cli's two versions on purpose. This package declares
   # no dependencies at all, so it has no third-party floor quietly constraining which
   # interpreters it is really exercised on — and it is installed into other people's
   # agent processes, whose Python version we do not choose. Every version

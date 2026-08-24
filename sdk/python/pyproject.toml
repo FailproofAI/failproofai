@@ -31,11 +31,11 @@ classifiers = [
 # wheel with `--no-deps` to prove the claim against the artifact.
 
 # No [project.scripts] either — this is a library, not a command. The command is `fp`,
-# which ships from ../../fp-cli.
+# which ships from ../../fp-cloud-cli.
 
 [project.urls]
 Homepage = "https://befailproof.ai"
-# The live route. `/agenteye/python-sdk` is a 404 — see fp-cli's pyproject for
+# The live route. `/agenteye/python-sdk` is a 404 — see fp-cloud-cli's pyproject for
 # the full reasoning; PyPI bakes this into published metadata.
 Documentation = "https://docs.befailproof.ai/reference/python-sdk"
 Source = "https://github.com/FailproofAI/failproofai"

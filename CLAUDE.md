@@ -1208,8 +1208,8 @@ crates/failproofaid/           The daemon binary — socket server + service lif
                               @failproofai/failproofaid-<os>-<arch> npm packages and as
                               GitHub Release assets — see "How the daemon binary reaches
                               users")
-fp-cli/                      The `fp` CLI for FailproofAI Cloud (Python, uv, pytest).
-                              PyPI dist `fp-cli`; the installed command is `fp` —
+fp-cloud-cli/                      The `fp` CLI for FailproofAI Cloud (Python, uv, pytest).
+                              PyPI dist `fp-cloud-cli`; the installed command is `fp` —
                               they differ because `fp` was taken on PyPI. Talks only
                               to the Cloud dashboard's /api surface, never to the
                               Rust server directly. NOT the same thing as the
@@ -1232,8 +1232,8 @@ scripts/python-version.py    The release scheme for BOTH Python packages, and th
                               "Version bumps" below for the scheme itself
 sdk/python/                  The telemetry SDK (Python, uv, pytest). PyPI dist
                               `failproofai-sdk`, imported as `failproofai_sdk`. The
-                              OTHER end of the pipe from fp-cli: this one is called
-                              BY the user's agent to record what it did, while fp-cli
+                              OTHER end of the pipe from fp-cloud-cli: this one is called
+                              BY the user's agent to record what it did, while fp-cloud-cli
                               reads that back. Zero runtime dependencies, by policy —
                               it installs into other people's agent processes, so any
                               dependency we declare is a constraint they inherit.
@@ -1254,7 +1254,7 @@ sdk/python/                  The telemetry SDK (Python, uv, pytest). PyPI dist
                               on either side. tests/test_spool_contract.py checks the
                               Rust and the TypeScript directly and never skips
 __tests__/                   Unit + e2e tests (vitest) — TypeScript only; the Python
-                              components' tests live in fp-cli/tests/ and
+                              components' tests live in fp-cloud-cli/tests/ and
                               sdk/python/tests/ and run under pytest
 examples/                    Sample custom policy files
 ```
@@ -1295,7 +1295,7 @@ check compares `packages/*/package.json` against root — that directory does no
 exist, so no other files need updating.
 
 That is the **npm** version, and it governs the CLI, the daemon and the Cargo workspace.
-The two Python packages version **independently of it and of each other** — `fp-cli` and
+The two Python packages version **independently of it and of each other** — `fp-cloud-cli` and
 `failproofai-sdk` share no version line with the npm package and never have. Do not move
 them to match it.
 

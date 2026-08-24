@@ -40,13 +40,13 @@ updates:
         patterns:
           - "*"
 
-  # The `fp` CLI (PyPI: fp-cli) — the only Python in the repo. Its lockfile is
-  # `fp-cli/uv.lock`, so the ecosystem is `uv`, and the directory is the package
+  # The `fp` CLI (PyPI: fp-cloud-cli) — the only Python in the repo. Its lockfile is
+  # `fp-cloud-cli/uv.lock`, so the ecosystem is `uv`, and the directory is the package
   # root rather than `/`. Grouped for the same reason as the Rust tree: the whole
   # dependency set is verified together by one pytest run, and separate PRs each
   # rebuild the lockfile the others just changed.
   - package-ecosystem: uv
-    directory: /fp-cli
+    directory: /fp-cloud-cli
     schedule:
       interval: weekly
       day: monday
@@ -57,7 +57,7 @@ updates:
           - "*"
 
   # The telemetry SDK (PyPI: failproofai-sdk). Its own lockfile and its own uv
-  # ecosystem entry — dependabot resolves per directory, so fp-cli's entry above
+  # ecosystem entry — dependabot resolves per directory, so fp-cloud-cli's entry above
   # does not see this tree at all. The only things in the lockfile are the test
   # runner and its transitive deps: the package itself declares NO runtime
   # dependencies, and `tests/test_zero_dependencies.py` fails if that changes.

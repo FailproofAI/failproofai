@@ -312,7 +312,7 @@ def test_batches_and_the_events_dir_are_not_readable_by_other_local_users(home):
     every agent transcript this SDK spools, for the whole flush+upload window and
     indefinitely if no daemon is running.
 
-    The sibling `fp-cli` already writes its credential `0600` inside a `0700`
+    The sibling `fp-cloud-cli` already writes its credential `0600` inside a `0700`
     directory, so the asymmetry was an oversight rather than a house style. The
     daemon reads these as the SAME user (its unit is `User=<user>` with `HOME`
     set to that user's home), so tightening them costs no delivery.

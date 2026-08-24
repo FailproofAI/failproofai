@@ -77,7 +77,7 @@ jobs:
             --config=osv-scanner.toml
             --lockfile=bun.lock
             --lockfile=Cargo.lock
-            --lockfile=fp-cli/uv.lock
+            --lockfile=fp-cloud-cli/uv.lock
             --lockfile=sdk/python/uv.lock
       # Only the schedule run notifies — nothing on main touched the lockfile,
       # so nobody is watching it the way a PR author watches their own checks

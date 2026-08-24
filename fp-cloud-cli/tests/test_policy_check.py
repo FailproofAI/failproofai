@@ -155,7 +155,7 @@ def test_a_slow_machine_is_not_reported_as_a_bad_policy(monkeypatch):
     machine, not the file. It used to share the EXECUTION budget (5s, sized so a
     looping policy fails instead of hanging) and report `ok=False` — which reads
     as "your policy is broken" and made `fp policies publish` refuse a perfectly
-    good file because the box was busy. Seen on CI the moment the fp-cli matrix
+    good file because the box was busy. Seen on CI the moment the fp-cloud-cli matrix
     widened to four concurrent interpreters: three legs passed and the fourth
     timed out on this same source.
 

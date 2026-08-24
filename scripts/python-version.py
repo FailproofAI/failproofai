@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Version arithmetic for the two Python packages, `fp-cli` and `failproofai-sdk`.
+"""Version arithmetic for the two Python packages, `fp-cloud-cli` and `failproofai-sdk`.
 
 Both publish workflows call this; it is the ONE place the release scheme is written
 down, so the two pipelines cannot drift into disagreeing about what comes next.
@@ -8,7 +8,7 @@ down, so the two pipelines cannot drift into disagreeing about what comes next.
     write   <version-file> <version>    -> rewrite __version__ in place
 
 Given a dist name, `resolve` also emits the release tag: `<dist>-v<version>`, e.g.
-`fp-cli-v0.0.1b1`. Namespaced rather than the bare `vX.Y.Z` the npm package uses,
+`fp-cloud-cli-v0.0.1b1`. Namespaced rather than the bare `vX.Y.Z` the npm package uses,
 because three release lines share one repository and one tag namespace — a bare
 `v0.0.1b1` would read as a release of `failproofai` itself, and `gh release list`
 would interleave all three with no way to tell them apart.

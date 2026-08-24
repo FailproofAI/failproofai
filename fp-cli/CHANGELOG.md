@@ -1,6 +1,6 @@
 # Changelog — `fp` CLI
 
-## Unreleased
+## 0.0.1b1 — 2026-08-24
 
 ### Versioning restarts at `0.0.1b1`
 

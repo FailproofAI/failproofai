@@ -4,8 +4,14 @@
 Both publish workflows call this; it is the ONE place the release scheme is written
 down, so the two pipelines cannot drift into disagreeing about what comes next.
 
-    resolve <version-file>              -> key=value lines for $GITHUB_OUTPUT
+    resolve <version-file> [<dist>]     -> key=value lines for $GITHUB_OUTPUT
     write   <version-file> <version>    -> rewrite __version__ in place
+
+Given a dist name, `resolve` also emits the release tag: `<dist>-v<version>`, e.g.
+`fp-cli-v0.0.1b1`. Namespaced rather than the bare `vX.Y.Z` the npm package uses,
+because three release lines share one repository and one tag namespace — a bare
+`v0.0.1b1` would read as a release of `failproofai` itself, and `gh release list`
+would interleave all three with no way to tell them apart.
 
 THE SCHEME. It mirrors `publish.yml`'s npm rule, spelled in PEP 440 rather than
 semver, because PyPI has no dist-tags: there is no movable `beta` pointer to
@@ -159,17 +165,32 @@ def is_prerelease(version: str) -> bool:
     return bool(match.group("pre") or match.group("dev"))
 
 
-def resolve(path: str) -> str:
+#: Tag prefixes this repository already uses, and must not be confused with. The
+#: npm package tags bare `vX.Y.Z`; a Python release tag must never be mistakable
+#: for one, in `gh release list`, in the repo's release feed, or by the CLI, which
+#: builds its daemon download URLs out of `v<version>` tags.
+_RESERVED_TAG_PREFIX = "v"
+
+
+def release_tag(dist: str, version: str) -> str:
+    tag = f"{dist}-v{version}"
+    if not dist or dist.startswith(_RESERVED_TAG_PREFIX) and dist[1:2].isdigit():
+        raise VersionError(f"dist name '{dist}' would produce a tag mistakable for an npm release tag")
+    return tag
+
+
+def resolve(path: str, dist: str | None = None) -> str:
     version = read_version(path)
     scheme, following = classify(version)
-    return "\n".join(
-        [
-            f"version={version}",
-            f"scheme={scheme}",
-            f"is_prerelease={'true' if is_prerelease(version) else 'false'}",
-            f"next_version={following}",
-        ]
-    )
+    lines = [
+        f"version={version}",
+        f"scheme={scheme}",
+        f"is_prerelease={'true' if is_prerelease(version) else 'false'}",
+        f"next_version={following}",
+    ]
+    if dist:
+        lines.append(f"tag={release_tag(dist, version)}")
+    return "\n".join(lines)
 
 
 def write(path: str, version: str) -> str:
@@ -194,7 +215,7 @@ def write(path: str, version: str) -> str:
 
 def main(argv: list[str]) -> int:
     if len(argv) >= 3 and argv[1] == "resolve":
-        print(resolve(argv[2]))
+        print(resolve(argv[2], argv[3] if len(argv) >= 4 else None))
         return 0
     if len(argv) >= 4 and argv[1] == "write":
         print(write(argv[2], argv[3]))

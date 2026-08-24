@@ -107,6 +107,7 @@ jobs:
       scheme: ${{ steps.resolve.outputs.scheme }}
       is_prerelease: ${{ steps.resolve.outputs.is_prerelease }}
       next_version: ${{ steps.resolve.outputs.next_version }}
+      tag: ${{ steps.resolve.outputs.tag }}
     steps:
       # The same readable guard as the other jobs, first so it costs nothing.
       - name: Authorize actor and branch
@@ -152,7 +153,7 @@ jobs:
       - name: Resolve the version and what follows it
         id: resolve
         run: |
-          RESOLVED=$(python3 scripts/python-version.py resolve fp-cli/fp_cli/_version.py)
+          RESOLVED=$(python3 scripts/python-version.py resolve fp-cli/fp_cli/_version.py fp-cli)
           printf '%s\n' "$RESOLVED"
           printf '%s\n' "$RESOLVED" >> "$GITHUB_OUTPUT"
 
@@ -180,6 +181,32 @@ jobs:
             *)   printf '%s\n' "::error::PyPI answered HTTP ${CODE} for fp-cli ${VERSION}; refusing to guess whether it is published."
                  exit 1 ;;
           esac
+
+      # Checked HERE for the same reason the PyPI check is: this is the one point
+      # in the pipeline where failing is free. Afterwards it is not fixable —
+      # PyPI never releases a version for reuse, so "publish it again, with notes
+      # this time" is not an available remedy, and the tag would stand against a
+      # version permanently on the index with an empty release body.
+      #
+      # The notes travel as an ARTIFACT rather than a job output. The `release`
+      # job then needs no checkout and runs no repository code, which is the same
+      # split that keeps `publish` from running any — and job outputs mangle
+      # multi-line markdown besides.
+      - name: Extract this version's release notes
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          python3 scripts/changelog-section.py fp-cli/CHANGELOG.md "$VERSION" > release-notes.md
+          printf '%s\n' "----- release notes -----"
+          cat release-notes.md
+
+      - name: Hand the notes to the release job
+        uses: actions/upload-artifact@v7
+        with:
+          name: fp-cli-release-notes
+          path: release-notes.md
+          if-no-files-found: error
+          retention-days: 1
 
       # An `rc`, a `.post` or a `.dev` publishes fine but has no successor this
       # scheme can compute, so `bump` is skipped and main keeps the version it has.
@@ -482,3 +509,63 @@ jobs:
               push "https://github.com/${GITHUB_REPOSITORY}.git" HEAD:main
 
           printf '%s\n' "::notice::main now opens ${NEXT_VERSION}."
+
+  # Where a fp-cli release is announced and where its notes live. Separate from
+  # `bump` because that one is skipped for a version outside the beta/stable
+  # scheme, and an `rc` that reached PyPI still deserves a tag.
+  #
+  # FOUR deliberate separations from the npm package's releases, which share this
+  # repository's single tag namespace and single release feed:
+  #
+  #   1. The tag is `fp-cli-vX.Y.Z`, never a bare `vX.Y.Z`. The bare form is the npm
+  #      package's, and the published CLI builds its `failproofaid` download URLs
+  #      out of exactly those tags — a Python release landing on one would be a
+  #      release the CLI tries to fetch binaries from.
+  #   2. `--latest=false`, ALWAYS. GitHub marks one release per repository as
+  #      "Latest" and shows it on the repo home page; without this, cutting a
+  #      stable `fp-cli` would move that badge off the npm CLI and onto a Python
+  #      package. Prereleases are never marked latest anyway, which is exactly why
+  #      this cannot be left implicit — it would start being wrong the first time
+  #      a stable ships, long after anyone remembers why.
+  #   3. The title names the package (`fp-cli 0.0.1b1`), so the release feed reads
+  #      unambiguously rather than as three interleaved `v...` lines.
+  #   4. No assets. The npm release carries the daemon binaries and the CLI
+  #      tarball; this one carries notes and a tag, and the wheel lives on PyPI.
+  release:
+    needs: [preflight, publish]
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # For the tag and the release. NOT `id-token: write` — this job must never
+      # be able to publish to PyPI, and it runs no repository code either: it
+      # downloads the notes preflight already validated and calls `gh`.
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: fp-cli-release-notes
+
+      - name: Cut the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          PRERELEASE: ${{ needs.preflight.outputs.is_prerelease }}
+        run: |
+          # Pinned to the commit that was actually published, NOT to main's tip:
+          # `bump` may already have moved main on to the next development version,
+          # and a tag pointing at that commit would name source that was never
+          # built into the wheel it accompanies.
+          FLAGS=(--target "$GITHUB_SHA" --title "fp-cli ${VERSION}" --repo "$GITHUB_REPOSITORY")
+          FLAGS+=(--latest=false)
+          if [ "$PRERELEASE" = "true" ]; then FLAGS+=(--prerelease); fi
+
+          {
+            printf '`fp-cli %s` is on PyPI: https://pypi.org/project/fp-cli/%s/\n\n' "${VERSION}" "${VERSION}"
+            printf -- '---\n\n'
+            cat release-notes.md
+          } > body.md
+
+          gh release create "$TAG" "${FLAGS[@]}" --notes-file body.md
+          printf '%s\n' "::notice::Released ${TAG} (prerelease=${PRERELEASE}, latest=false)."

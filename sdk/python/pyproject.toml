@@ -39,6 +39,10 @@ Homepage = "https://befailproof.ai"
 # the full reasoning; PyPI bakes this into published metadata.
 Documentation = "https://docs.befailproof.ai/reference/python-sdk"
 Source = "https://github.com/FailproofAI/failproofai"
+# PyPI gives "Changelog" its own sidebar slot and icon. Without it the only
+# thing a visitor to the project page can read is the README, and there is no
+# route at all from an installed version to what changed in it.
+Changelog = "https://github.com/FailproofAI/failproofai/blob/main/sdk/python/CHANGELOG.md"
 
 [project.optional-dependencies]
 # Test-only, and it stays that way — `dependencies` above is empty and

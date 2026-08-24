@@ -31,13 +31,33 @@ const PACKAGES = [
     dist: "fp-cli",
     workflow: "publish-fp-cli.yml",
     versionFile: "fp-cli/fp_cli/_version.py",
+    changelog: "fp-cli/CHANGELOG.md",
+    pyproject: "fp-cli/pyproject.toml",
   },
   {
     dist: "failproofai-sdk",
     workflow: "publish-failproofai-sdk.yml",
     versionFile: "sdk/python/failproofai_sdk/_version.py",
+    changelog: "sdk/python/CHANGELOG.md",
+    pyproject: "sdk/python/pyproject.toml",
   },
 ] as const;
+
+const SECTION = resolve(ROOT, "scripts/changelog-section.py");
+
+function section(changelog: string, version: string): { ok: boolean; out: string } {
+  try {
+    return {
+      ok: true,
+      out: execFileSync("python3", [SECTION, resolve(ROOT, changelog), version], {
+        cwd: ROOT,
+        encoding: "utf8",
+      }),
+    };
+  } catch (error: any) {
+    return { ok: false, out: `${error.stdout ?? ""}${error.stderr ?? ""}` };
+  }
+}
 
 let dir: string;
 beforeAll(() => {
@@ -320,5 +340,132 @@ describe("the two pipelines stay in step", () => {
       expect(text).not.toMatch(/^version = ["']/m);
       expect(text).toMatch(/^version = \{ attr = /m);
     }
+  });
+});
+
+describe("release tags cannot be confused with the npm package's", () => {
+  // The npm package tags bare `vX.Y.Z` in THIS repository, and the published CLI
+  // builds its `failproofaid` download URLs out of exactly those tags. A Python
+  // release landing on one would be a release the CLI tries to fetch binaries
+  // from — and short of that, three release lines sharing one namespace makes the
+  // repo's release feed unreadable.
+  it.each(PACKAGES)("$dist tags are namespaced, not bare vX.Y.Z", ({ dist, versionFile }) => {
+    const out = execFileSync("python3", [SCRIPT, "resolve", resolve(ROOT, versionFile), dist], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    const tag = /^tag=(.*)$/m.exec(out)?.[1];
+    expect(tag).toBe(`${dist}-v0.0.1b1`);
+    // The property, not just this value: it must not match the npm tag grammar.
+    expect(tag).not.toMatch(/^v\d/);
+    expect(tag!.startsWith(`${dist}-`)).toBe(true);
+  });
+
+  it("no dist name could produce a tag that reads as an npm release", () => {
+    // Guards the generator rather than the two current names.
+    const bad = execFileSync(
+      "python3",
+      ["-c", `import sys; sys.path.insert(0, ${JSON.stringify(resolve(ROOT, "scripts"))});
+import importlib.util, pathlib
+spec = importlib.util.spec_from_file_location("pv", ${JSON.stringify(SCRIPT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+try:
+    m.release_tag("v2", "1.0.0"); print("ACCEPTED")
+except m.VersionError:
+    print("REFUSED")`],
+      { cwd: ROOT, encoding: "utf8" },
+    ).trim();
+    expect(bad).toBe("REFUSED");
+  });
+
+  it.each(PACKAGES)("$dist's release is never marked the repo's latest", ({ workflow }) => {
+    const wf = parse(readFileSync(resolve(ROOT, ".github/workflows", workflow), "utf8")) as Record<string, any>;
+    const text = (wf.jobs.release.steps ?? []).map((s: Record<string, any>) => s.run ?? "").join("\n");
+    // GitHub shows ONE "Latest" release on the repo home page. Today every
+    // Python version is a pre-release and GitHub never marks those latest, which
+    // is exactly why this must be explicit: it would silently start being wrong
+    // the first time a stable ships.
+    expect(text).toContain("--latest=false");
+    // Pinned to the published commit — `bump` may have moved main on by then.
+    expect(text).toContain('--target "$GITHUB_SHA"');
+  });
+
+  it.each(PACKAGES)("$dist's release job holds no publishing identity and runs no repo code", ({ workflow }) => {
+    const wf = parse(readFileSync(resolve(ROOT, ".github/workflows", workflow), "utf8")) as Record<string, any>;
+    const job = wf.jobs.release;
+    expect(job.permissions).toEqual({ contents: "write" });
+    expect(job.permissions?.["id-token"]).toBeUndefined();
+    const uses = (job.steps ?? []).map((s: Record<string, any>) => String(s.uses ?? "")).filter(Boolean);
+    expect(uses).toEqual(["actions/download-artifact@v8"]);
+  });
+});
+
+describe("release notes have somewhere to come from", () => {
+  it.each(PACKAGES)("$dist has a changelog section for its committed version", ({ changelog, versionFile }) => {
+    const version = resolveFile(versionFile).version;
+    const got = section(changelog, version);
+    expect(got.ok, `no '## ${version}' section in ${changelog}`).toBe(true);
+    expect(got.out.trim().length).toBeGreaterThan(0);
+  });
+
+  it.each(PACKAGES)("$dist's changelog uses dated version headings, not Unreleased", ({ changelog }) => {
+    const text = readFileSync(resolve(ROOT, changelog), "utf8");
+    expect(text).not.toMatch(/^## Unreleased/m);
+    // At least one heading in the `## <version> — <date>` form the extractor and
+    // CLAUDE.md both assume.
+    expect(text).toMatch(/^## \d+\.\d+\.\S* — \d{4}-\d{2}-\d{2}/m);
+  });
+
+  it("refuses a missing section, an empty one, and a decimal-boundary near-miss", () => {
+    const text = [
+      "# Changelog",
+      "",
+      "## 0.0.1b10 — 2026-08-24",
+      "",
+      "- the tenth beta",
+      "",
+      "## 0.0.1b2 — 2026-08-20",
+      "",
+      "## 0.0.1b1 — 2026-08-19",
+      "",
+      "- the first",
+      "",
+    ].join("\n");
+    const file = join(dir, "CHANGELOG.md");
+    writeFileSync(file, text);
+    const run1 = (v: string) => {
+      try {
+        return { ok: true, out: execFileSync("python3", [SECTION, file, v], { encoding: "utf8" }) };
+      } catch (e: any) {
+        return { ok: false, out: `${e.stdout ?? ""}${e.stderr ?? ""}` };
+      }
+    };
+    // `0.0.1b1` must NOT be answered by `0.0.1b10`'s section — a real hazard once
+    // a beta counter passes nine, and one that puts the wrong release's notes on
+    // a tag with no error anywhere.
+    expect(run1("0.0.1b1").out).toContain("the first");
+    expect(run1("0.0.1b1").out).not.toContain("the tenth");
+    expect(run1("0.0.1b10").out).toContain("the tenth");
+    // A heading with nothing under it is the same failure as no heading.
+    expect(run1("0.0.1b2").ok).toBe(false);
+    expect(run1("9.9.9").ok).toBe(false);
+  });
+
+  it.each(PACKAGES)("$dist links its changelog from PyPI", ({ pyproject }) => {
+    // PyPI gives "Changelog" its own sidebar slot. Without it the project page is
+    // the README and nothing else, and there is no route from an installed
+    // version to what changed in it.
+    const text = readFileSync(resolve(ROOT, pyproject), "utf8");
+    expect(text).toMatch(/^Changelog = "https:\/\/github\.com\/FailproofAI\/failproofai\/blob\/main\/.*CHANGELOG\.md"$/m);
+  });
+
+  it.each(PACKAGES)("$dist verifies its notes in preflight, before anything is built", ({ workflow }) => {
+    const wf = parse(readFileSync(resolve(ROOT, ".github/workflows", workflow), "utf8")) as Record<string, any>;
+    const steps: Record<string, any>[] = wf.jobs.preflight.steps ?? [];
+    const names = steps.map((s) => s.name ?? "");
+    expect(names).toContain("Extract this version's release notes");
+    // The notes reach `release` as an artifact, so that job needs no checkout.
+    const upload = steps.find((s) => String(s.uses ?? "").startsWith("actions/upload-artifact"));
+    expect(upload?.with?.["if-no-files-found"]).toBe("error");
   });
 });

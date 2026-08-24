@@ -67,6 +67,10 @@ Homepage = "https://befailproof.ai"
 # so a wrong one here needs a version bump to correct.
 Documentation = "https://docs.befailproof.ai/reference/cloud-cli"
 Source = "https://github.com/FailproofAI/failproofai"
+# PyPI gives "Changelog" its own sidebar slot and icon. Without it the only
+# thing a visitor to the project page can read is the README, and there is no
+# route at all from an installed version to what changed in it.
+Changelog = "https://github.com/FailproofAI/failproofai/blob/main/fp-cli/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "respx>=0.21"]

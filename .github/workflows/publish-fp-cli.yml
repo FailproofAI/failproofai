@@ -32,6 +32,20 @@ name: Publish fp-cli to PyPI
 #      `environment` claim is missing or different, which is what stops someone from
 #      simply deleting the `environment:` line below.
 
+# WHO MAY PUBLISH. Every publish — beta or stable — is restricted to the logins in
+# `RELEASE_ACTORS`, checked against BOTH `github.actor` and `github.triggering_actor`.
+# Both, because on a RE-RUN `github.actor` stays the user who started the ORIGINAL run
+# while `triggering_actor` is whoever pressed re-run: a guard reading only the former
+# lets anyone with write access re-run a maintainer's failed publish and ship from it.
+#
+# This is STRICTER than `publish.yml`, which restricts only STABLE npm releases to
+# `STABLE_RELEASE_ACTORS` and leaves prereleases open to anyone GitHub already trusts
+# with write access. The asymmetry is deliberate: an npm prerelease sits behind a
+# `beta`/`next` dist-tag that a bare `npm install` never resolves and that a later
+# publish can move, whereas a PyPI pre-release is a permanent public artifact under the
+# project's real name with no tag to walk it back — and while these packages have no
+# stable release at all, it is the version a bare `pip install` resolves.
+
 # VERSION MANAGEMENT mirrors `publish.yml`'s npm rule, spelled in PEP 440. PyPI has
 # no dist-tags — there is no movable `beta` pointer to publish behind — so the
 # pre-release marker in the version string IS the channel, and the scheme lives in
@@ -89,15 +103,32 @@ jobs:
       # The same readable guard as the other jobs, first so it costs nothing.
       - name: Authorize actor and branch
         env:
+          # Space-separated GitHub logins, compared case-insensitively — the same
+          # shape and the same semantics as publish.yml's STABLE_RELEASE_ACTORS.
+          RELEASE_ACTORS: NiveditJain
           ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
           REF: ${{ github.ref_name }}
         run: |
-          if [ "$ACTOR" != "NiveditJain" ]; then
-            echo "::error::Unauthorized. Only NiveditJain can publish fp-cli."
-            exit 1
-          fi
+          ALLOWED_LC=$(printf '%s' "$RELEASE_ACTORS" | tr '[:upper:]' '[:lower:]')
+
+          for WHO in "$ACTOR" "$TRIGGERING_ACTOR"; do
+            WHO_LC=$(printf '%s' "$WHO" | tr '[:upper:]' '[:lower:]')
+            MATCHED=false
+            for ALLOWED in $ALLOWED_LC; do
+              if [ "$ALLOWED" = "$WHO_LC" ]; then
+                MATCHED=true
+                break
+              fi
+            done
+            if [ "$MATCHED" != "true" ]; then
+              printf '%s\n' "::error::Publishing fp-cli is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
+              exit 1
+            fi
+          done
+
           if [ "$REF" != "main" ]; then
-            echo "::error::Refusing to publish from '$REF'. fp-cli publishes from main only."
+            printf '%s\n' "::error::Refusing to publish from '$REF'. fp-cli publishes from main only."
             exit 1
           fi
 
@@ -199,15 +230,32 @@ jobs:
       # plus its two out-of-file settings (see the header) are what actually hold.
       - name: Authorize actor and branch
         env:
+          # Space-separated GitHub logins, compared case-insensitively — the same
+          # shape and the same semantics as publish.yml's STABLE_RELEASE_ACTORS.
+          RELEASE_ACTORS: NiveditJain
           ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
           REF: ${{ github.ref_name }}
         run: |
-          if [ "$ACTOR" != "NiveditJain" ]; then
-            echo "::error::Unauthorized. Only NiveditJain can publish fp-cli."
-            exit 1
-          fi
+          ALLOWED_LC=$(printf '%s' "$RELEASE_ACTORS" | tr '[:upper:]' '[:lower:]')
+
+          for WHO in "$ACTOR" "$TRIGGERING_ACTOR"; do
+            WHO_LC=$(printf '%s' "$WHO" | tr '[:upper:]' '[:lower:]')
+            MATCHED=false
+            for ALLOWED in $ALLOWED_LC; do
+              if [ "$ALLOWED" = "$WHO_LC" ]; then
+                MATCHED=true
+                break
+              fi
+            done
+            if [ "$MATCHED" != "true" ]; then
+              printf '%s\n' "::error::Publishing fp-cli is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
+              exit 1
+            fi
+          done
+
           if [ "$REF" != "main" ]; then
-            echo "::error::Refusing to publish from '$REF'. fp-cli publishes from main only."
+            printf '%s\n' "::error::Refusing to publish from '$REF'. fp-cli publishes from main only."
             exit 1
           fi
 
@@ -307,15 +355,32 @@ jobs:
       # real enforcement — see the header.
       - name: Authorize actor and branch
         env:
+          # Space-separated GitHub logins, compared case-insensitively — the same
+          # shape and the same semantics as publish.yml's STABLE_RELEASE_ACTORS.
+          RELEASE_ACTORS: NiveditJain
           ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
           REF: ${{ github.ref_name }}
         run: |
-          if [ "$ACTOR" != "NiveditJain" ]; then
-            echo "::error::Unauthorized. Only NiveditJain can publish fp-cli."
-            exit 1
-          fi
+          ALLOWED_LC=$(printf '%s' "$RELEASE_ACTORS" | tr '[:upper:]' '[:lower:]')
+
+          for WHO in "$ACTOR" "$TRIGGERING_ACTOR"; do
+            WHO_LC=$(printf '%s' "$WHO" | tr '[:upper:]' '[:lower:]')
+            MATCHED=false
+            for ALLOWED in $ALLOWED_LC; do
+              if [ "$ALLOWED" = "$WHO_LC" ]; then
+                MATCHED=true
+                break
+              fi
+            done
+            if [ "$MATCHED" != "true" ]; then
+              printf '%s\n' "::error::Publishing fp-cli is restricted to [$RELEASE_ACTORS], but this run is attributed to '$WHO' (actor '$ACTOR', triggering actor '$TRIGGERING_ACTOR')."
+              exit 1
+            fi
+          done
+
           if [ "$REF" != "main" ]; then
-            echo "::error::Refusing to publish from '$REF'. fp-cli publishes from main only."
+            printf '%s\n' "::error::Refusing to publish from '$REF'. fp-cli publishes from main only."
             exit 1
           fi
 

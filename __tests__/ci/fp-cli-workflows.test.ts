@@ -64,7 +64,51 @@ describe("publish-fp-cli.yml", () => {
   it("still refuses a non-main ref and a non-maintainer actor", () => {
     const scripts = runScripts(job);
     expect(scripts).toContain('if [ "$REF" != "main" ]');
-    expect(scripts).toContain('if [ "$ACTOR" != "NiveditJain" ]');
+    expect(scripts).toContain('"$RELEASE_ACTORS"');
+  });
+
+  // `github.actor` ALONE is bypassable, and that is what this guard used to read.
+  // On a RE-RUN it stays the user who started the ORIGINAL run, while
+  // `github.triggering_actor` is whoever pressed re-run — so anyone with write
+  // access could re-run a maintainer's FAILED publish (one that died before the
+  // upload, so preflight's "already published" check does not stop it) and ship
+  // from it under the maintainer's attribution. publish.yml has always checked
+  // both; these two checked one.
+  //
+  // Asserted on EVERY job carrying the guard, because one unhardened copy is the
+  // one that gets reached, and on the loop itself rather than only the env — the
+  // variable being present while nothing reads it is exactly how this looks fixed.
+  it("checks the triggering actor as well as the actor, on every guarded job", () => {
+    const wf = workflow(FILE);
+    const guarded = Object.entries<any>(wf.jobs).filter(([, j]) =>
+      (j.steps ?? []).some((s: Record<string, any>) => s.name === "Authorize actor and branch"),
+    );
+    expect(guarded.map(([n]) => n).sort()).toEqual(["build", "preflight", "publish"]);
+
+    for (const [name, j] of guarded) {
+      const step = (j.steps ?? []).find((s: Record<string, any>) => s.name === "Authorize actor and branch");
+      expect(step.env?.ACTOR, name).toBe("${{ github.actor }}");
+      expect(step.env?.TRIGGERING_ACTOR, name).toBe("${{ github.triggering_actor }}");
+      expect(step.env?.RELEASE_ACTORS, name).toBe("NiveditJain");
+      expect(step.run, name).toContain('for WHO in "$ACTOR" "$TRIGGERING_ACTOR"');
+      // Case-insensitive, like publish.yml's — a login differing only in case is
+      // the same account, and an exact-match guard that says otherwise is a guard
+      // whose behaviour nobody can predict from the allowlist.
+      expect(step.run, name).toContain("tr '[:upper:]' '[:lower:]'");
+    }
+  });
+
+  // Betas are locked down too, and that is a DEVIATION from publish.yml, which
+  // leaves npm prereleases open to anyone with write access. If someone loosens
+  // this to match, the header has to stop claiming otherwise.
+  it("restricts every publish, not only a stable one", () => {
+    const text = source(FILE);
+    expect(text).toContain("Every publish — beta or stable — is restricted");
+    // No version- or scheme-conditional escape hatch on the guard.
+    for (const j of Object.values<any>(workflow(FILE).jobs)) {
+      const step = (j.steps ?? []).find((s: Record<string, any>) => s.name === "Authorize actor and branch");
+      if (step) expect(step.if).toBeUndefined();
+    }
   });
 
   it("runs every gate before uploading", () => {

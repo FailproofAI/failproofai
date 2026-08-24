@@ -1,0 +1,250 @@
+---
+---
+title: "LlamaIndex"
+sidebarTitle: "LlamaIndex"
+description: "Instrument workflows, steps, function agents, and retrievers."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+## התקנה
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+תומך: `llama-index-core` מגרסה 0.14.23 עד 0.15. 0.14.23 היא הגרסה בה stream זרימת workflows התחיל לשאת אירועי agent מסוגים שהמתאם קורא. מתחתיו, שמות מודלים ומבנה agent שניהם חסרים.
+
+## Instrument
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+ממשק ה-agent של LlamaIndex הוא async. כל scope עובד תחת `async with` וגם `with` ומייצר אירועים זהים.
+
+`instrument()` מצרף event handler ו-span handler ל-global dispatcher של LlamaIndex. ביחד הם הופכים את agent loop לנראה, לא רק את קריאות המודל שלו.
+
+<Warning>
+  ללא ארגומנט נוסף אחד ב-LLM שלך, כל ספירת tokens בעקבות שלך היא null. ראה [Token counts](#token-counts) למטה.
+</Warning>
+
+## ספירת Tokens
+
+`FunctionAgent` קורא ל-`astream_chat`, ו-`llama-index-llms-openai` לא שולח `stream_options={"include_usage": True}` כשהוא משדר. ספק זה לכן לעולם לא שולח את usage chunk, ואין לשום instrumentation מה לקרוא.
+
+זו התנהגות upstream של LlamaIndex. הצטרף לשימוש ב-LLM שלך:
+
+```python
+from llama_index.llms.openai import OpenAI
+
+llm = OpenAI(
+    model="gpt-4o-mini",
+    additional_kwargs={"stream_options": {"include_usage": True}},
+)
+```
+
+נמדד באותה הרצה ומודל:
+
+| | Input tokens | Output tokens |
+| --- | --- | --- |
+| Without | `null` | `null` |
+| With | 148 | 17 |
+
+קריאות ללא streaming (`llm.chat`, `llm.achat`) דווחו על usage ללא תצורה. רק נתיב ה-streaming, שהוא נתיב ה-agent ברירת המחדל, זקוק לזה.
+
+## מה מתועד
+
+| LlamaIndex | Failproof event |
+| --- | --- |
+| `Workflow.run` root span | Session, `agent_start`, `agent_end` |
+| Nested `Workflow.run` span | Nested `agent_start`, `agent_end` |
+| Workflow step span | `hook_triggered`, `hook_completed` |
+| LLM chat start and end | `model_request`, `model_response` |
+| `FunctionTool.call` span | `tool_use`, `tool_result` |
+| Retrieval start and end | `tool_use`, `tool_result`, output summarized |
+| Embeddings | Nothing, unless `embeddings=True` |
+| A tool waiting on a person | `human_wait`, `agent_pause`, then `agent_resume`, `human_input` |
+| `AgentWorkflow` handoff | A nested `agent_start`, `agent_end` per agent, parented to the workflow |
+| Exception | `error`, then `agent_end` with outcome `failed`, and `agent_end.summary` naming it |
+| `handler.cancel_run()` | `agent_end` with outcome `cancelled` and no `error` — a stop button is not a failure |
+
+`agent_id` הוא `FunctionAgent.name` כאשר אתה קובע אחד, ושם מחלקת workflow אחרת. תחת `AgentWorkflow`, כל agent שלוקח תור מקבל span nested משלו תחת workflow, כך handoff קורא כשני agents ולא אחד.
+
+פלט retrieval מסוכם ולא מודפס. retriever מחזיר מסמכים, והשמירה שלהם ב-payload תשים את הקורפוס שלך בחנות ארועים פעם אחת לכל שאילתה. הספירה, טווח ציון וקטעי קוד קצוצים נשמרים במקום.
+
+## דוגמה
+
+```python
+import asyncio
+
+import failproofai_sdk
+from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.tools import FunctionTool
+from llama_index.llms.openai import OpenAI
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+POP = {"tokyo": "37M", "delhi": "33M"}
+AREA = {"tokyo": "2,194 km2", "delhi": "1,484 km2"}
+
+
+def population(city: str) -> str:
+    """Population of a city. Valid: tokyo, delhi."""
+    return POP.get(city.lower().strip(), "unknown")
+
+
+def area(city: str) -> str:
+    """Land area of a city. Valid: tokyo, delhi."""
+    return AREA.get(city.lower().strip(), "unknown")
+
+
+async def main():
+    agent = FunctionAgent(
+        name="city_analyst",
+        tools=[
+            FunctionTool.from_defaults(fn=population),
+            FunctionTool.from_defaults(fn=area),
+        ],
+        llm=OpenAI(
+            model="gpt-4o-mini",
+            additional_kwargs={"stream_options": {"include_usage": True}},
+        ),
+        system_prompt="Use the tools. Be terse.",
+    )
+
+    async with failproofai_sdk.session():
+        async with failproofai_sdk.agent("city_analyst", goal="compare two cities"):
+            print(await agent.run("Compare Tokyo and Delhi on population and area."))
+
+
+asyncio.run(main())
+```
+
+agent loop מופיע ב-trace כזוגות hook: `init_run`, `setup_agent`, `run_agent_step`, `parse_agent_output`, `call_tool`, ו-`aggregate_tool_results`. הם הלולאה של הפריימוורק שלו, כך שהם hooks ולא agents, שמשמר את `agent_id` משמעותי.
+
+## שם את Spans שלך
+
+`agent_id` הוא `FunctionAgent.name` כאשר אתה קובע אחד, ושם מחלקת workflow אחרת.
+
+```python
+FunctionAgent(name="city_analyst", tools=[...], llm=llm)   # agent_id = "city_analyst"
+```
+
+ב-`AgentWorkflow`, שם זה הוא גם מה שכל handoff מתועד תחתיו:
+
+```text
+AgentWorkflow            parent span
+├─ city_analyst          turn 1
+├─ cost_analyst          turn 2
+└─ city_analyst          turn 3  — a new turn, not a reopened one
+```
+
+אז `agent_id` אומר לך **איזה agent** עשה את העבודה ו-`parent_id` אומר לך **איזה workflow** הוא שייך. agent שהחזיר שליטה מאוחר יותר פותח תור שני ולא מפתח מחדש את הראשון שלו.
+
+עטף את ההרצה כדי לעקוף זאת, או לקבץ כמה agents תחת parent אחד:
+
+```python
+async with failproofai_sdk.agent("research", goal="compare two cities"):
+    await agent.run(...)
+```
+
+שמור `agent_id` cardinality נמוכה. זה הפן הראשי על כל משטח dashboard, אז השתמש בתפקיד או שם workflow, לעולם לא UUID או per-run string.
+
+## שלוט בסשן
+
+מתאם זה **לא לוקח אפשרות `session_id`**. הסשן מגיע מ-scope המקיף, ואחרת generated `uuid4().hex` לכל workflow run:
+
+```python
+async with failproofai_sdk.session(f"chat-{user_id}"):
+    await agent.run(...)
+```
+
+## אפשרויות
+
+```python
+failproofai_sdk.instrument(
+    "llama_index",
+    embeddings=False,         # True records embedding calls as tool pairs
+    steps=True,               # False drops workflow-step hook pairs
+    capture_messages=True,    # False drops EVERY payload: prompts, completions,
+                              # tool arguments and output, step I/O, retrieval
+                              # queries, the goal and the final answer
+    capture_limit=8192,       # characters kept per captured value
+    stale_after=600.0,        # seconds before an abandoned LEAF is force-closed
+    reaper_interval=30.0,     # how often the reaper sweeps; 0 disables it
+)
+```
+
+| Option | Why you would change it |
+| --- | --- |
+| `embeddings` | הפעל רק כשאתה ניפוי שגיאות latency או עלות embedding. בנייה של bulk index היא אלפים של קריאות וקוברת את ציר הזמן. |
+| `steps` | כבה אם אתה רוצה רק אירועי מודל וכלים ומוצא את agent loop רועש. |
+| `capture_messages` | כבה עבור נתונים מוסדרים. כל payload מפסיק להיות מתועד — prompts, השלמה המודל, ארגומנטי כלים וערכי החזרה, workflow-step input ו-output, sherieval queries, goal של agent ותשובתו הסופית. מבנה, timings, tokens ו-outcomes עדיין מתועדים. |
+| `capture_limit` | תווים שמורים לכל ערך מתועד לפני קיצוץ. הרם אותו כאשר RAG prompt או context שהוחזר הגיע קטום. |
+| `stale_after` | שניות לפני **leaf** שנטוש — תגובה streaming שלא אחד צרך, מודל או tool span ש-close שלו לעולם לא הגיע — force-closed, אז הסשן מתישב בעדו קריאה `ongoing` לנצח. זה **לא** סוגר run שנטוש עצמו: workflow שהמשימה שלו בוטלה ללא dispatcher שרואה exit מישמרת את `agent_start` שלה פתוח עד `uninstrument()`. |
+| `reaper_interval` | תדר כינוס. קבע ל-`0` כדי להשבית את reaper לחלוטין. |
+
+## Human in the loop
+
+מתועד כאשר ההמתנה קורית בתוך כלי:
+
+```python
+async def ask_human(question: str) -> str:
+    """Ask a person and wait for their answer."""
+    response = await ctx.wait_for_event(HumanResponseEvent)
+    return response.answer
+```
+
+`ctx.wait_for_event` בשלב workflow רגיל לא מתועד. runtime תופס את הירידה לפני שהוא מגיע ל-dispatcher, כך שהשלב יוצא וריצה מחדש מאוחר יותר ללא אות לקבוע pause על. דפוס FunctionAgent, שלמי אינדקס תיעוד, מחכה בתוך כלי ומתועד במלואו.
+
+## בעיות נפוצות
+
+<AccordionGroup>
+  <Accordion title="כל ספירת tokens היא null">
+    הוסף `additional_kwargs={"stream_options": {"include_usage": True}}` ל-LLM שלך. ראה [Token counts](#token-counts).
+  </Accordion>
+
+  <Accordion title="Usage מלא אבל עמודות tokens ריקות">
+    LlamaIndex אין שדה usage סטנדרטי. המתאם מנסה כמה צורות ידועות, ואינטגרציה שקוראת לדלפקים שלה משהו חדש לא תתאים לאחד מהם.
+
+    dict גולמי תמיד משלח, אז בדוק `usage` ב-payload כדי לראות מה הספק קרא להם.
+
+    `usage` מלא לצד עמודות token ריקות הוא בכוונה — זה הביס מספר שגוי בטוח.
+  </Accordion>
+
+  <Accordion title="ציר הזמן מלא setup_agent ו-parse_agent_output">
+    זה הלולאה FunctionAgent, סט אחד לכל איטרציה. סנן לפי hook name בדשבורד. timings שלב אלה בדרך כלל הסיבה להשתמש במתאם זה ולא באחד רק-מודל.
+  </Accordion>
+
+  <Accordion title="כלום לא מתועד">
+    בדוק בסדר זה: `instrument()` רץ לפני ההרצה; יש `async with failproofai_sdk.session():` סביב `await`; `llama-index-core` הוא 0.14.23 או יותר חדש; `FAILPROOFAI_SDK_STRICT=1` מוגדר, אז hook משוער מעלה במקום להיבלע.
+  </Accordion>
+</AccordionGroup>
+
+## הבא
+
+<Columns cols={3}>
+  <Card title="How it works" icon="workflow" href="/he/start/integrations/custom-agents#going-deeper">
+    Pairs, ids, session lifecycle, and delivery.
+  </Card>
+  <Card title="Read a trace" icon="route" href="/he/sessions/read-a-trace">
+    עקוב סיבתיות דרך הסשן שזה עתה תפסת.
+  </Card>
+  <Card title="Other frameworks" icon="plug" href="/he/start/integrations">
+    LangGraph, CrewAI, Pydantic AI, and custom agents.
+  </Card>
+</Columns>

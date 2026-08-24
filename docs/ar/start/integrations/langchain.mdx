@@ -1,0 +1,245 @@
+---
+---
+title: "LangChain و LangGraph"
+sidebarTitle: "LangChain و LangGraph"
+description: "قم بتتبع الرسوم البيانية والعقد والأدوات والمسترجعات واستدعاءات النموذج برمز واحد."
+icon: "/images/frameworks/langchain.svg"
+---
+
+محول واحد يخدم كليهما. يعمل LangGraph على مدير الاستدعاءات (callback manager) الخاص بـ `langchain-core`، لذا فإن تتبع أحدهما يتابع الآخر.
+
+## التثبيت
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+للحصول على LangChain بدون LangGraph، استخدم `failproofai-sdk[langchain]`.
+
+المدعوم: `langchain-core` 1.4.7 إلى 2.0، `langgraph` 1.2 إلى 2.0. خارج هذا النطاق، يتم تثبيت المحول وإصدار تحذير مرة واحدة.
+
+## التتبع
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+يسجل `instrument()` محلل التتبع عبر `langchain_core.tracers.context.register_configure_hook`. يقوم LangChain بحقنه في كل مدير استدعاءات يقوم ببنائه، بحيث يتم التقاط الرسوم البيانية والأدوات والنماذج دون تغيير موقع الاستدعاء — بما في ذلك تلك الموجودة داخل المكتبات التي لم تكتبها.
+
+## ما يتم تسجيله
+
+| LangChain أو LangGraph | حدث Failproof |
+| --- | --- |
+| التشغيل الجذري | `agent_start`، `agent_end` |
+| عقدة LangGraph | `hook_triggered`، `hook_completed` |
+| رسم بياني فرعي مترجم | `agent_start` و `agent_end` متداخلة |
+| تشغيل الأداة | `tool_use`، `tool_result` |
+| تشغيل المسترجع | `tool_use`، `tool_result`، الإخراج مختصر |
+| تشغيل نموذج الدردشة أو LLM | `model_request`، `model_response`، مع استخدام الرموز |
+| الرموز المرسلة | مطوية في الاستجابة كعدد القطع والوقت للرمز الأول. تحتاج عدادات الرموز إلى `ChatOpenAI(stream_usage=True)` — انظر أدناه |
+| `interrupt()` | `human_wait`، `agent_pause` |
+| `Command(resume=...)` | `agent_resume`، `human_input`، مرتبطة على `Interrupt.id` — بما في ذلك عند حدوث الاستئناف في عملية مختلفة ضد نفس checkpointer |
+| استثناء غير معالج | `error`، ثم `agent_end` مع نتيجة `failed` |
+
+**تصبح العقدة hook وليس وكيلاً متداخلاً.** `agent_id` هي الجانب الأساسي عبر كل سطح لوحة التحكم — تعزيز `retrieve` و `grade_documents` و `should_continue` إلى وكلاء سيغرقها، ويعنون الجلسة بعد أي عقدة تحدث لتعمل أولاً.
+
+تعرض رسوم Hook بنفس الطريقة وتعطيك عرض الكمون لكل عقدة.
+
+<Note>
+  **سمّ عقدك كما تريد.** يتم تحديد تشغيل العقدة من خلال *شكلها* — تشغيل غير ورقة يحمل LangGraph الخاص بـ step tag — لا من خلال اسمها أبداً.
+</Note>
+
+| ما تكتبه | ما يتم تسجيله |
+| --- | --- |
+| `add_node("lookup_population", ToolNode([...]))` | الأداة |
+| `add_node("ChatOpenAI", ...)` | استدعاء النموذج |
+
+استخدام اسم العقدة بعد الشيء الذي يعمل عليه قد يؤدي إلى اختفاء أحداث الشيء. لم يعد الحال كذلك.
+
+### البث
+
+لا تصدر `.stream()` و `.astream()` أحداث لكل رمز. يتم طيها في `model_response` الختامي:
+
+| الحقل | يحمل |
+| --- | --- |
+| `fw_chunks` | عدد القطع التي وصلت |
+| `fw_ttft_ms` | الوقت للرمز الأول |
+
+### عدادات الرموز على استجابة مرسلة
+
+مسألة منفصلة، وسهلة الإغفال: يرسل OpenAI الاستخدام على استجابة مرسلة **عند طلبها فقط**.
+
+```python
+ChatOpenAI(model="gpt-4o-mini", stream_usage=True)   # بدون هذا، لا توجد رموز
+```
+
+يسجل المحول ما يسلمه الإطار له. بدون هذا الخيار لا يوجد شيء للتسجيل، و `model_response` يصل بدون عدادات الرموز.
+
+## مثال
+
+```python
+import failproofai_sdk
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import ToolNode, create_react_agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+@tool
+def price_of(item: str) -> float:
+    """Return the unit price of an item in USD."""
+    return {"widget": 42.0, "gadget": 17.5}[item.lower().strip()]
+
+
+@tool
+def stock_of(item: str) -> int:
+    """Return the units of an item currently in stock."""
+    return {"widget": 120, "gadget": 0}[item.lower().strip()]
+
+
+tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+graph = create_react_agent(ChatOpenAI(model="gpt-4o-mini"), tools)
+
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        result = graph.invoke({
+            "messages": [HumanMessage("Price and stock for widget and gadget?")]
+        })
+```
+
+## سمّ رسومك البيانية
+
+بشكل افتراضي، تأخذ رسالة الجذر اسم الرسم البياني الخاص به. قم بلفها للحصول على تسمية اخترتها:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("analyst", goal="price and stock report"):
+        graph.invoke(...)
+```
+
+للإعدادات متعددة الوكلاء، أدرج النطاقات. يصبح كل عامل رسمة فرعية تحمل `parent_id`:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("supervisor"):
+        with failproofai_sdk.agent("researcher"):
+            research_graph.invoke(...)
+        with failproofai_sdk.agent("writer"):
+            writer_graph.invoke(...)
+```
+
+حافظ على `agent_id` بقليل من الاختلاف. استخدم دوراً أو اسم عقدة، أبداً UUID أو سلسلة نصية لكل تشغيل.
+
+## التحكم في الجلسة
+
+معرّف الجلسة يتم حله بهذا الترتيب، المطابقة الأولى تفوز:
+
+1. `instrument("langchain", session_id=...)`
+2. `config={"metadata": {"failproofai_sdk_session_id": ...}}`
+3. نطاق `failproofai_sdk.session()` المحيط
+4. `metadata["session_id"]` أو `metadata["conversation_id"]` أو `metadata["thread_id"]`
+5. معرّف التشغيل الجذري
+
+لا يتم إنشاؤها من الصفر أبداً، لأن معرّف صناعي يقسم تشغيل واحد عبر عدة جلسات.
+
+```python
+graph.invoke(
+    {"messages": [...]},
+    config={"metadata": {"failproofai_sdk_session_id": f"chat-{user_id}"}},
+)
+```
+
+## الخيارات
+
+```python
+failproofai_sdk.instrument(
+    "langchain",
+    session_id=None,          # ثبّت كل تشغيل إلى معرّف جلسة واحد
+    include_chains=set(),     # قائمة بيضاء للسلاسل الوسيطة كأزواج hooks
+    capture_content=True,     # False يسقط الأوامر والإكمالات من الحمولات
+    graph_callbacks=True,     # مقاطعة واستئناف من الدرجة الأولى، تحتاج langgraph 1.2+
+)
+```
+
+عيّن `capture_content=False` للبيانات المنظمة. الهيكل والتوقيتات وعدادات الرموز وأسماء الأدوات والنتائج لا تزال مسجلة؛ أجسام الرسائل لا.
+
+`include_chains` ينطبق على التشغيلات **المتداخلة** فقط. runnable الذي تستدعيه على المستوى الأعلى هو جذر الجلسة، بحيث يصبح رسمة الوكيل بدلاً من زوج hook، والتسمية هنا ليس لها تأثير.
+
+## الإنسان في الحلقة
+
+`interrupt()` ينتج أربعة أحداث، وليس أي زوج مكرراً:
+
+```python
+from langgraph.types import Command, interrupt
+
+def approve(state):
+    decision = interrupt({"prompt": "Ship it?", "options": ["yes", "no"]})
+    return {"approved": decision == "yes"}
+
+with failproofai_sdk.session():
+    graph.invoke(state, config)                    # human_wait, agent_pause
+    graph.invoke(Command(resume="yes"), config)    # agent_resume, human_input
+```
+
+يحمل `human_wait` إلى `human_input` الأمر والإجابة (كلاهما مُسقط تحت `capture_content=False`، جنباً إلى جنب مع مصادر وثائق الاسترجاع — ينجو عدد الوثائق). `agent_pause` إلى `agent_resume` هو الزوج الوحيد الذي يعطي الوقت المتوقف، لذا بدونه فإن انتظار إنساني لمدة عشر دقائق يتم تحديده كوقت وكيل نشط. تبقى الرسالة الجذرية مفتوحة عبر الفجوة، مما يبقي كلا الاستدعاءات في جلسة واحدة.
+
+## المشاكل الشائعة
+
+<AccordionGroup>
+  <Accordion title="أداة رفع الأخطاء تحبط الرسم البياني بالكامل">
+    `create_react_agent` تنشر الاستثناء. للسماح للنموذج برؤية الفشل والمتابعة، قم بإنشاء عقدة الأداة بشكل صريح:
+
+    ```python
+    from langgraph.prebuilt import ToolNode, create_react_agent
+
+    tools = ToolNode([price_of, stock_of], handle_tool_errors=True)
+    graph = create_react_agent(model, tools)
+    ```
+
+    يتم تسجيل الفشل كـ `tool_result` يحمل خطأ في كلا الحالتين. هذا يقرر فقط ما إذا كان التشغيل ينجو منه.
+  </Accordion>
+
+  <Accordion title="وكيل مسمى بعد فئة النموذج يظهر في التتبع">
+    `llm.invoke()` مباشر خارج أي رسم بياني ليس له تشغيل أب، لذا فإنه يفتح رسمة جذرية ويصدر زوج النموذج الخاص به داخلها. لوحة التحكم تربط الأوراق بوكيل مفتوح، بحيث تكون الرسمة مقصودة. سمّها:
+
+    ```python
+    with failproofai_sdk.agent("summariser"):
+        summary = ChatOpenAI(model="gpt-4o-mini").invoke([HumanMessage(text)])
+    ```
+  </Accordion>
+
+  <Accordion title="كل حدث يظهر مرتين">
+    لقد مررت معالج Failproof في `config={"callbacks": [...]}` بالإضافة إلى استدعاء `instrument()`. قم بإزالته. يغطي خطاف التكوين بالفعل كل مدير استدعاءات في العملية.
+  </Accordion>
+
+  <Accordion title="الموافقات البشرية تظهر كأخطاء">
+    لا تفعل. يرفع LangGraph `GraphInterrupt` عبر نفس المسار مثل استثناء حقيقي، لذا كل توقف يصل إلى المتتبع كرد استدعاء خطأ. يتم التعامل مع أي فئة فرعية من `GraphBubbleUp` كتدفق تحكم بدلاً من ذلك، لذا فإن موافقة لا تطلي خطأ أحمر.
+  </Accordion>
+
+  <Accordion title="لا شيء مسجل">
+    تحقق بهذا الترتيب: `instrument()` تشغل قبل تنفيذ الرسم البياني؛ هناك `with failproofai_sdk.session():` حول الاستدعاء؛ تم ضبط `FAILPROOFAI_SDK_STRICT=1`، لذا يرفع خطاف منخفض بدلاً من امتصاصه.
+  </Accordion>
+</AccordionGroup>
+
+## التالي
+
+<Columns cols={3}>
+  <Card title="كيف يعمل" icon="workflow" href="/ar/start/integrations/custom-agents#going-deeper">
+    الأزواج والمعرّفات ودورة حياة الجلسة والتسليم.
+  </Card>
+  <Card title="قراءة التتبع" icon="route" href="/ar/sessions/read-a-trace">
+    اتبع السببية عبر الجلسة التي التقطتها للتو.
+  </Card>
+  <Card title="أطر عمل أخرى" icon="plug" href="/ar/start/integrations">
+    CrewAI وLlamaIndex وPydantic AI والوكلاء المخصصون.
+  </Card>
+</Columns>

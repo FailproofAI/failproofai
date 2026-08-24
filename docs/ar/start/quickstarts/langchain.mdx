@@ -1,0 +1,40 @@
+---
+---
+title: "LangChain و LangGraph"
+description: "التثبيت والأداة والحصول على أول تتبع لديك."
+icon: "/images/frameworks/langchain.svg"
+---
+
+ثلاث خطوات للحصول على أول تتبع LangChain أو LangGraph لديك. لمعرفة المزيد عن البث والتدخل البشري وتسمية الامتدادات والخيارات، اطّلع على [الدليل الكامل](/ar/start/integrations/langchain).
+
+## التثبيت
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+لـ LangChain بدون LangGraph، استخدم `failproofai-sdk[langchain]`.
+
+## الأداة
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+لا توجد تغييرات في موقع الاستدعاء. تسجل `instrument()` أداة تتبع يحقنها LangChain في كل مدير استدعاء ينشئه، لذلك يتم التقاط الرسوم البيانية والأدوات والنماذج — بما في ذلك تلك الموجودة داخل المكتبات التي لم تكتبها.
+
+## تحقق من وصولها
+
+قم بتشغيله مرة واحدة، ثم افتح **Observe → Sessions** واختر بيئتك. يظهر التشغيل لديك كأثر معاد بناؤه.
+
+إذا لم يصل شيء، تأكد من أن الجهاز متصل باستخدام `failproofai config --status`.
+
+<Card title="دليل LangChain الكامل" icon="arrow-right" href="/ar/start/integrations/langchain">
+  ما يتم تسجيله والبث وعدد الرموز وتسمية الامتدادات والتحكم في الجلسة والخيارات والتدخل البشري.
+</Card>

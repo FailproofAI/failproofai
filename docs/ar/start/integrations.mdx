@@ -1,0 +1,120 @@
+---
+title: "الاستخدام الكامل لعاملك"
+sidebarTitle: "الأطر"
+description: "قم بتوصيل أي إطار عمل مدعوم للعامل مع Failproof AI باستدعاء واحد."
+icon: "plug"
+---
+
+عاملك ينتج بالفعل كل ما يستحق التسجيل — استدعاءات النموذج، استدعاءات الأدوات، حدود العقد، انتظارات العاملين، الأخطاء. الإطار يتخلص منها. SDK يحتفظ بها.
+
+<Columns cols={3}>
+  <Card title="عوامل مخصصة" icon="wrench" href="/ar/start/quickstarts/custom-agents">
+    عامل كتبته بنفسك، أو واحد غير مدرج هنا.
+  </Card>
+  <Card title="LangChain و LangGraph" icon="share-2" href="/ar/start/quickstarts/langchain">
+    الرسوم البيانية، العقد، الأدوات، أدوات المسترجعات، النماذج.
+  </Card>
+  <Card title="CrewAI" icon="users" href="/ar/start/quickstarts/crewai">
+    الطواقم، التدفقات، العوامل حسب الدور، الأدوات.
+  </Card>
+  <Card title="LlamaIndex" icon="database" href="/ar/start/quickstarts/llamaindex">
+    سير العمل، الخطوات، عوامل الدوال، أدوات المسترجعات.
+  </Card>
+  <Card title="Pydantic AI" icon="badge-check" href="/ar/start/quickstarts/pydantic-ai">
+    عوامل مكتوبة، القدرات، الأدوات، المحاولات الجديدة.
+  </Card>
+</Columns>
+
+## ثلاثة أسطر، أي إطار عمل كان
+
+<CodeGroup>
+```bash LangGraph
+pip install 'failproofai-sdk[langgraph]'
+```
+
+```bash CrewAI
+pip install 'failproofai-sdk[crewai]'
+```
+
+```bash LlamaIndex
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+```bash Pydantic AI
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+```bash Custom agents
+pip install failproofai-sdk
+```
+</CodeGroup>
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # detects the frameworks you imported
+
+with failproofai_sdk.session():
+    ...                               # your existing agent call, unchanged
+```
+
+لا توجد مزخرفات على وظائفك، لا رد نداء يتم تمريره لاستدعاءاتك، لا معرفات يتم خيطها عبر الكود. فقط الاستدعاء داخل الجلسة يختلف:
+
+<Tabs>
+  <Tab title="LangGraph">
+    ```python
+    graph.invoke({"messages": [HumanMessage("...")]})
+    ```
+  </Tab>
+  <Tab title="CrewAI">
+    ```python
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+    ```
+  </Tab>
+  <Tab title="LlamaIndex">
+    ```python
+    await agent.run("...")        # under `async with failproofai_sdk.session():`
+    ```
+  </Tab>
+  <Tab title="Pydantic AI">
+    ```python
+    agent.run_sync("...")
+    ```
+  </Tab>
+  <Tab title="Custom agents">
+    ```python
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)
+    ```
+  </Tab>
+</Tabs>
+
+التثبيت الإضافي يثبت **الإطار**. كل محول يأتي في عجلة النقل الأساسية، لذلك المشروع الذي يمتلك بالفعل إطار العمل لا يحتاج إلى أي شيء إضافي على الإطلاق.
+
+## تحقق من وصوله
+
+قم بتشغيل جلسة واحدة مزودة بالأدوات، ثم افتح **Observe → Sessions** وحدد بيئتك. يظهر التشغيل كتتبع معاد الإنشاء.
+
+إذا لم يصل شيء، تأكد من اتصال الجهاز باستخدام `failproofai config --status`. انظر [إعداد المراقبة](/ar/start/setup).
+
+<Warning>
+  لا تتحقق من دليل الاسطوانة لتأكيد التسليم. يجمع مجند Failproof كل دفعة ويحذفها في غضون ميلي ثانية، لذا يسبق القارئ الجامع ويظهر أحداثًا أقل بكثير من تلك المنبعثة.
+</Warning>
+
+## التالي
+
+كل سريع بدء أعلاه يرتبط بدليله الكامل — ما يتم تسجيله، والخيارات، والبث، وتسمية النطاق، والمشاكل التي يواجهها الناس بالفعل. يعيشون تحت **Trace Agents → Plug in your agent**.
+
+<Columns cols={3}>
+  <Card title="كيف يعمل" icon="workflow" href="/ar/start/integrations/custom-agents#going-deeper">
+    نموذج البيانات، المعرفات، أنواع الأحداث، وكيف تصل الأحداث إلى السحابة.
+  </Card>
+  <Card title="اقرأ تتبعًا" icon="route" href="/ar/sessions/read-a-trace">
+    اتبع السببية عبر جلسة بدلاً من السجلات المنفصلة.
+  </Card>
+  <Card title="ابحث عن فشلك الأول" icon="scan-search" href="/ar/start/first-audit">
+    قم بمراجعة الجلسات التي التقطتها للتو.
+  </Card>
+</Columns>

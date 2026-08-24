@@ -1,48 +1,49 @@
 ---
----
-title: "İlke editörü"
-description: "Onaylı bir hata modundan sürümlendirilmiş ilkeler oluşturun ve gözden geçirin."
+title: "Policy editor"
+description: "Onaylanmış bir hata modundan sürümlü politikalar oluşturun ve gözden geçirin."
 icon: "file-pen-line"
 ---
 
-İlke editörünü kullanarak bir bulguyu veya sorunu dağıtılabilir bir kurala dönüştürün. Yazarlık işlemini dağıtımdan ayrı tutun, böylece taslak sessizce canlı davranışı değiştiremez.
+Policy editor kullanarak bir bulguyu veya sorunu dağıtılabilir bir kurala dönüştürün. Yayımlamayı yazımdan ayrı tutarak, bir taslak canlı davranışı sessizce değiştiremez.
 
-Bir sorun tekrarlanabilir bir işlem desenine sahip olduğunda, **Analyze → issues** altında açın ve **generate policy** seçeneğini tıklayın. Failproof AI öncelikle bir ilkenin sorunu ifade edip edemeyeceğini açıklar, ardından gözden geçirilen amacı ve bulgu bağlamını editöre taşır. Oluşturulan kaynak, yayınlayana kadar taslak olarak kalır.
+Bir sorunun tekrarlanabilir bir eylem deseni varsa, bunu **Analyze → issues** altında açın ve **generate policy** seçeneğini seçin. Failproof AI önce politikanın sorunu ifade edip edemeyeceğini açıklar, ardından gözden geçirilen amacı ve bulgu bağlamını editöre taşır. Oluşturulan kaynak, yayımlayana kadar taslak olarak kalır.
 
-## İlke sürümü yayınlayın
+## Bir politika sürümünü yayımlayın
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Admin → policy editor** sayfasına gidin ve **compose** bölümünde hata modunu açıklayın veya JavaScript ilkesi kaynağını yapıştırın.
+    1. **Admin → policy editor** bölümüne gidin ve **compose** içinde hata modunu açıklayın veya JavaScript politika kaynağını yapıştırın.
     2. Kaynağı doğrulayın ve bildirilen her hatayı düzeltin.
-    3. İlke kimliğini girin ve yayınlayın, ardından sürümleri karşılaştırmak veya devre dışı bırakmak için **library** kullanın.
-    4. Sürüm makine dağıtımı için hazır olduğunda **enforcement** seçeneğini belirleyin.
+    3. Politika kimliğini girin ve yayımlayın, ardından sürümleri karşılaştırmak veya devre dışı bırakmak için **library** kullanın.
+    4. Sürüm bir makine dağıtımı için hazır olduğunda **enforcement** seçeneğini seçin.
 
-    ![İlke kimliği, yapay zeka destekli taslak yazarlığı, kaynak doğrulama ve yayınlama kontrolleri ile birlikte İlke editörü oluşturma görünümü.](/images/dashboard/policy-editor.png)
+    ![Policy editor compose görünümü, politika kimliği, yapay zeka destekli taslaklama, kaynak doğrulama ve yayımlama kontrolleriyle.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    Cloud CLI ilke sürümlerini yayınlamaz. Editöre kopyalamadan önce kaynağı yerel olarak doğrulayın:
+    CLI'dan `fp policies publish` ile yayımlayın. Bu yeni bir **version** oluşturur ve asla mevcut olanı düzenlemez. Kaynak, gönderilmeden önce node ile ayrıştırılıp kontrol edilir — aşağıdaki hiçbir sistem bunu yapmaz, bu nedenle bir sözdizimi hatası uygulanma sırasında makinede ortaya çıkabilir:
 
     ```bash
-    failproofai policies --install --custom ./checkout.policies.ts \
-      --cli claude --scope project
+    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
     ```
 
-    Gözden geçirilen sürümü **Admin → policy editor** sayfasından yayınlayın.
+    Yayımlama hiçbir şey dağıtmaz — yeni bir sürüm `fp fleet deploy` onu makineye koyana kadar kullanılmamış olarak kalır. `fp policies compose "<plain English>"` Cloud asistanı ile kaynak hazırlar ve yayımlamak yerine gözden geçirilmesi için yazdırır.
+
+    Bunun yerine yerel bir aracı CLI'ye (Cloud değil) bir politika yüklemek için `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project` komutunu kullanın.
   </Tab>
 </Tabs>
 
-## Yazarlık kontrol listesi
+## Yazım kontrol listesi
 
-1. Hata modunu operasyonel dilde adlandırın.
-2. Karar vermek için yeterli kanıt içeren kanca olaylarını ve araçları seçin.
+1. Hata modunu operasyonel dilinde adlandırın.
+2. Karar vermek için yeterli kanıt içeren hook olaylarını ve araçlarını seçin.
 3. Güvensiz davranışla eşleşen en dar koşulu yazın.
-4. Aracıya veya operatöre sonra ne yapacağını söyleyen bir neden döndürün.
-5. Eşleşmesi gereken örnekler ve izin verilmiş kalması gereken örnekler ekleyin.
-6. Yeni bir sürüm kaydedin ve inceleme isteyin.
+4. Aracıya veya operatöre ne yapması gerektiğini söyleyen bir neden döndürün.
+5. Eşleşmesi gereken örnekler ve izin verilmesi gereken örnekler ekleyin.
+6. Yeni bir sürüm kaydedin ve gözden geçirilmesini isteyin.
 
-Ajan güvenli bir şekilde düzeltebildiğinde `instruct` kullanın. İşleme izin verilmesi kabul edilemez veya geri döndürülemez bir risk oluşturacaksa `deny` kullanın.
+Aracı güvenli bir şekilde yoluna döndürebiliyorsa `instruct` kullanın. Eyleme izin vermek kabul edilemez veya geri döndürülemez bir risk oluşturursa `deny` kullanın.
 
 <Info>
-  İlke sürümleri değişmez dağıtım girdileridir. Taslağı düzenlemek yeni bir sürüm oluşturur; zaten makinelere atanmış olan sürümü yeniden yazmamalıdır.
+  Policy sürümleri değişmez dağıtım girdileridir. Bir taslağı düzenlemek yeni bir sürüm oluşturur; zaten makinelere atanmış olan sürümü yeniden yazmamalıdır.
 </Info>

@@ -1,41 +1,41 @@
 ---
-title: "Etkinlikler ve yapılandırma"
-description: "Etkinlik modelini, ortamları, yerel depolamayı ve yapılandırma sınırlarını referans alın."
+title: "Olaylar ve yapılandırma"
+description: "Olay modelini, ortamları, yerel depolamayı ve yapılandırma sınırlarını referans alın."
 icon: "list-tree"
 ---
 
-## Etkinlik aileleri
+## Olay aileleri
 
-- Agent başlama, bitme, duraklatma ve devam ettirme
+- Ajan başlama, bitme, duraklatma ve devam ettirme
 - Model isteği ve yanıtı
-- Tool kullanımı ve sonucu
+- Araç kullanımı ve sonucu
 - Hook tetikleme ve tamamlama
-- İnsan bekleme, girdi, duraklatma ve kesme
+- İnsan bekleme, girdi, duraklatma ve kesintiye uğratma
 - Açık hatalar
 
-Her etkinlik bir zaman damgası, oturum kimliği, agent kimliği, etkinlik türü ve ortam taşır. Etkinliğe özgü alanlar model, tool, korelasyon, sonuç, içerik, süre veya hata verilerini içerir.
+Her olay bir zaman damgası, oturum kimliği, ajan kimliği, olay türü ve ortam taşır. Olaya özgü alanlar model, araç, korelasyon, sonuç, içerik, süre veya hata verilerini içerir.
 
-## Bir etkinlik sözleşmesini inceleyin
+## Bir olay sözleşmesini inceleyin
 
 <Tabs>
   <Tab title="Dashboard">
-    1. **Observe → Events** bölümünü açın.
-    2. Kısa bir zaman penceresi ayarlayın ve ortam, agent ve etkinlik türüne göre filtreleyin.
-    3. Bir etkinliği seçerek normalleştirilmiş alanlarını ve ham yükünü inceleyin, ardından yürütme bağlamını görmek için oturumunu açın.
-    4. Eşleştirilmiş bir süre eksikse, başlangıç ve tamamlama etkinliklerinin aynı korelasyon kimliğini kullandığını doğrulayın.
+    1. **Observe → Events** öğesini açın.
+    2. Kısa bir zaman penceresi ayarlayın ve ortam, ajan ve olay türüne göre filtreleyin.
+    3. Normalleştirilmiş alanlarını ve ham yükünü incelemek için bir olayı seçin, ardından yürütme bağlamını görmek için oturumunu açın.
+    4. Eşleştirilmiş bir süre eksikse, başlama ve tamamlama olaylarının aynı korelasyon kimliğini kullandığını doğrulayın.
 
-    Etkinlikler akışını kullanarak verileri bir agent çalışmasına daraltın ve normalleştirilmiş etkinlik alanlarını inceleyin.
+    Verileri tek bir ajan çalışmasına daraltmak ve normalleştirilmiş olay alanlarını incelemek için Events akışını kullanın.
 
-    ![Ortam, agent, oturum ve etkinlik türü için filtreler içeren canlı Events akışı.](/images/dashboard/events-stream.png)
+    ![Ortam, ajan, oturum ve olay türü filtreleriyle birlikte canlı Events akışı.](/images/dashboard/events-stream.png)
 
-    Ardından etkinliği oturumuna takip edin. İz, onun hemen öncesinde ve sonrasında ne olduğunu gösterir; bu, yük tek başına belirsiz olduğunda gereklidir.
+    Ardından olayı oturumunun içine takip edin. İz, bundan hemen önce ve sonra ne olduğunu gösterir; bu, yükün tek başına belirsiz olduğunda gereklidir.
 
-    ![Yürütme bağlamında etkinliği incelemek için kullanılan bağlantılı oturum izlemesi.](/images/dashboard/session-detail.png)
+    ![Olayı yürütme bağlamında incelemek için kullanılan bağlantılı oturum izi.](/images/dashboard/session-detail.png)
 
-    Eşleştirilmiş bir etkinlik veya süre eksik olduğunda her iki görünüm arasında korelasyon kimliklerini ve zaman damgalarını karşılaştırın.
+    Eşleştirilmiş bir olay veya süre eksikse her iki görünümde de korelasyon kimlikleri ve zaman damgalarını karşılaştırın.
   </Tab>
   <Tab title="CLI">
-    Geçerli filtre değerlerini bulun, ardından bir oturum için tam etkinlik yüklerini getirin:
+    Geçerli filtre değerlerini keşfedin, ardından tek bir oturum için tam olay yüklerini getirin:
 
     ```bash
     fp list event_types
@@ -47,32 +47,32 @@ Her etkinlik bir zaman damgası, oturum kimliği, agent kimliği, etkinlik tür�
       --full
     ```
 
-    Makine tarafından okunabilir inceleme için `fp --json events ... --fields ts,event_type,session_id,payload` kullanın.
+    Makine tarafından okunabilir inceleme için `fp --json events ... --fields ts,event_type,session_id,payload` komutunu kullanın.
   </Tab>
 </Tabs>
 
 ## Ayrılmış SDK alanları
 
-`timestamp`, `session_id`, `agent_id`, `type` veya `environment` alanlarını özel Python SDK alanları olarak kullanmayın. Tool sonuç süresi gibi eşleştirilmiş etkinlik süreleri SDK tarafından hesaplanır ve manuel olarak sağlanamaz.
+`timestamp`, `session_id`, `agent_id`, `type` veya `environment` öğelerini özel Python SDK alanları olarak kullanmayın. Tool result süresi gibi eşleştirilmiş olay süreleri SDK tarafından hesaplanır ve el ile sağlanamaz.
 
 ## Yerel sınırlar
 
-- Failproof AI durumu, aksi takdirde açıkça yapılandırılmadığı sürece `~/.failproofai` altında yaşar.
-- `failproofai-sdk`, eski base-directory geçersiz kılması için `AGENTEYE_HOME` kullanır.
+- Failproof AI durumu, açıkça başka şekilde yapılandırılmadığı sürece `~/.failproofai` altında bulunur.
+- `failproofai-sdk` her zaman `~/.failproofai/custom-agents` altında spool yapar. `FAILPROOFAI_HOME` bu ana dizini yeniden konumlandırır; `custom-agents` segmenti her zaman eklenir, bu nedenle spool bunun dışına yerleştirilemez. Yalnızca SDK'nın kendi `configure(base_dir=...)` öğesi başka yerlere yazar. `AGENTEYE_HOME`, eski `agenteye-collector` tarafından izlenecek öğeleri seçmek için okunur ve SDK'nın yazacağı yeri artık etkilemez.
 - Ortam etiketleri SDK yapılandırması veya `AGENTEYE_ENVIRONMENT` aracılığıyla ayarlanabilir.
-- Daemon kimlik bilgileri gizli olmayan ayarlardan ayrı olarak depolanır.
+- Daemon kimlik bilgileri, gizli olmayan ayarlardan ayrı olarak depolanır.
 
-İstikrarlı, düşük kardinaliteli ortam adları kullanın. Daemon ortam etiketlerinde virgüller desteklenmiyor.
+Kararlı, düşük kardinaliteli ortam adlarını kullanın. Daemon ortam etiketlerinde virgüller desteklenmez.
 
 ## Bir ortam etiketini değiştirin
 
 <Tabs>
   <Tab title="Dashboard">
-    Ortam etiketleri, gönderen SDK veya Failproof daemon tarafından atanır. Bir tanesini değiştirdikten sonra **Observe → Sessions** bölümünü açın ve yeni oturumların yeni değeri taşıdığını doğrulamak için ortam filtresini kullanın. Mevcut oturumlar özgün ortamlarını koruyor.
+    Ortam etiketleri, yayan SDK veya Failproof daemon tarafından atanır. Değiştirdikten sonra **Observe → Sessions** öğesini açın ve ortam filtresini kullanarak yeni oturumların yeni değeri taşıdığını onaylayın. Mevcut oturumlar orijinal ortamlarını korurlar.
 
   </Tab>
   <Tab title="CLI">
-    `failproofai-sdk` için ortamı kod içinde veya eski ortam değişkeniyle yapılandırın. Makine düzeyinde ayarları değiştirirken daemon yapılandırmasını yeniden çalıştırın.
+    `failproofai-sdk` için ortamı kodda veya eski ortam değişkeni ile yapılandırın. Makine düzeyindeki ayarları değiştirirken daemon yapılandırmasını yeniden çalıştırın.
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east

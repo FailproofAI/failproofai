@@ -1,0 +1,120 @@
+---
+title: "כלי-עזר לאגנט שלך"
+sidebarTitle: "Frameworks"
+description: "חבר כל framework אגנט נתמך ל-Failproof AI עם קריאה אחת."
+icon: "plug"
+---
+
+האגנט שלך כבר מייצר הכל שכדאי להקליט — קריאות למודל, קריאות לכלים, גבולות צמתים, חיכויים לאדם, כשלים. ה-framework זורק את זה. ה-SDK שומר על זה.
+
+<Columns cols={3}>
+  <Card title="אגנטים מותאמים" icon="wrench" href="/he/start/quickstarts/custom-agents">
+    אגנט שכתבת בעצמך, או אחד שלא רשום כאן.
+  </Card>
+  <Card title="LangChain ו-LangGraph" icon="share-2" href="/he/start/quickstarts/langchain">
+    גרפים, צמתים, כלים, retriever-ים, מודלים.
+  </Card>
+  <Card title="CrewAI" icon="users" href="/he/start/quickstarts/crewai">
+    צוותים, זרימות, אגנטים לפי תפקיד, כלים.
+  </Card>
+  <Card title="LlamaIndex" icon="database" href="/he/start/quickstarts/llamaindex">
+    סדרי עבודה, שלבים, function agents, retriever-ים.
+  </Card>
+  <Card title="Pydantic AI" icon="badge-check" href="/he/start/quickstarts/pydantic-ai">
+    אגנטים מטיפוסים, יכולות, כלים, ניסיונות חוזרים.
+  </Card>
+</Columns>
+
+## שלוש שורות, איזה framework שלא יהיה
+
+<CodeGroup>
+```bash LangGraph
+pip install 'failproofai-sdk[langgraph]'
+```
+
+```bash CrewAI
+pip install 'failproofai-sdk[crewai]'
+```
+
+```bash LlamaIndex
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+```bash Pydantic AI
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+```bash Custom agents
+pip install failproofai-sdk
+```
+</CodeGroup>
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # detects the frameworks you imported
+
+with failproofai_sdk.session():
+    ...                               # your existing agent call, unchanged
+```
+
+אין דקורטורים על הפונקציות שלך, אין callback שעוברת לקריאות שלך, אין ids המשודרים בקוד שלך. רק הקריאה בתוך ה-session שונה:
+
+<Tabs>
+  <Tab title="LangGraph">
+    ```python
+    graph.invoke({"messages": [HumanMessage("...")]})
+    ```
+  </Tab>
+  <Tab title="CrewAI">
+    ```python
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+    ```
+  </Tab>
+  <Tab title="LlamaIndex">
+    ```python
+    await agent.run("...")        # under `async with failproofai_sdk.session():`
+    ```
+  </Tab>
+  <Tab title="Pydantic AI">
+    ```python
+    agent.run_sync("...")
+    ```
+  </Tab>
+  <Tab title="Custom agents">
+    ```python
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)
+    ```
+  </Tab>
+</Tabs>
+
+ההתקנה הנוספת היא ל-**framework**. כל adapter משודר בגלגל הבסיס, כך שפרויקט שכבר יש לו את ה-framework שלו לא צריך שום דבר נוסף בכלל.
+
+## בדוק שהגיע
+
+הפעל session אחד עם כלי-עזר, ואז פתח **Observe → Sessions** ובחר את ה-environment שלך. ה-run מופיע כ-trace שנבנה מחדש.
+
+אם לא הגיע כלום, אשר שהמכונה מחוברת עם `failproofai config --status`. ראה [Set up capture](/he/start/setup).
+
+<Warning>
+  אל תבדוק את ספיריית ה-spool כדי לאשר משלוח. ה-Failproof daemon אוגר ומוחק כל batch תוך אלפיות שנייה, כך שקריאתו מהיר מהאוסף ומראה הרבה פחות אירועים מאלה שנקלטו.
+</Warning>
+
+## הבא
+
+כל quickstart למעלה מקשר להנחיה המלאה שלו — מה מתרשם, אפשרויות, streaming, קביעת שם span, והבעיות שאנשים באמת פוגשים. הם יושבים תחת **Trace Agents → Plug in your agent**.
+
+<Columns cols={3}>
+  <Card title="איך זה עובד" icon="workflow" href="/he/start/integrations/custom-agents#going-deeper">
+    מודל הנתונים, ה-ids, סוגי האירועים, וכיצד אירועים מגיעים ל-Cloud.
+  </Card>
+  <Card title="קרא trace" icon="route" href="/he/sessions/read-a-trace">
+    עקוב אחר סיבתיות דרך session במקום יומנים מנותקים.
+  </Card>
+  <Card title="מצא את הכשל הראשון שלך" icon="scan-search" href="/he/start/first-audit">
+    בדוק את ה-sessions שזה עתה תפסת.
+  </Card>
+</Columns>

@@ -1,47 +1,49 @@
 ---
-title: "Editor di criteri"
-description: "Crea e rivedi criteri versionati partendo da una modalità di errore confermata."
+title: "Editor criteri"
+description: "Crea e rivedi i criteri con versione a partire da una modalità di errore confermata."
 icon: "file-pen-line"
 ---
 
-Usa l'editor di criteri per trasformare un risultato o un problema in una regola distribuibile. Mantieni la creazione separata dalla distribuzione, in modo che una bozza non possa modificare silenziosamente il comportamento in produzione.
+Utilizza l'editor criteri per trasformare un risultato o un problema in una regola distribuibile. Mantieni la creazione separata dalla distribuzione in modo che una bozza non possa modificare silenziosamente il comportamento in produzione.
 
-Quando un problema presenta un modello di azione ripetibile, aprilo da **Analyze → issues** e seleziona **generate policy**. Failproof AI spiega innanzitutto se un criterio può esprimere il problema, quindi trasporta l'intento revisionato e il contesto del risultato nell'editor. Il sorgente generato rimane una bozza finché non lo pubblichi.
+Quando un problema ha un modello di azione ripetibile, aprilo in **Analyze → issues** e seleziona **generate policy**. Failproof AI spiega innanzitutto se un criterio può esprimere il problema, quindi trasporta l'intento rivisto e il contesto del risultato nell'editor. La fonte generata rimane una bozza finché non la pubblichi.
 
 ## Pubblica una versione del criterio
 
 <Tabs>
   <Tab title="Dashboard">
-    1. Vai a **Admin → policy editor** e, in **compose**, descrivi la modalità di errore o incolla il sorgente della politica JavaScript.
-    2. Valida il sorgente e correggi ogni errore segnalato.
-    3. Inserisci l'identità del criterio e pubblicalo, quindi usa **library** per confrontare o disabilitare versioni.
-    4. Seleziona **enforcement** quando la versione è pronta per un rollout delle macchine.
+    1. Vai a **Admin → policy editor** e, in **compose**, descrivi la modalità di errore o incolla la fonte della policy JavaScript.
+    2. Convalida la fonte e correggi ogni errore segnalato.
+    3. Inserisci l'identità del criterio e pubblicalo, quindi utilizza **library** per confrontare o disabilitare le versioni.
+    4. Seleziona **enforcement** quando la versione è pronta per una distribuzione su machine.
 
-    ![La vista compose dell'editor di criteri con identità del criterio, redazione assistita da IA, convalida del sorgente e controlli di pubblicazione.](/images/dashboard/policy-editor.png)
+    ![La vista compose dell'editor criteri con identità del criterio, redazione assistita da IA, convalida della fonte e controlli di pubblicazione.](/images/dashboard/policy-editor.png)
   </Tab>
   <Tab title="CLI">
-    La Cloud CLI non pubblica versioni dei criteri. Valida il sorgente localmente prima di copiarlo nell'editor:
+    Pubblica da CLI con `fp policies publish`. Crea una **nuova versione** e non ne modifica mai una sul posto, inoltre verifica la sintassi della fonte con node prima di inviare — nessun componente downstream lo fa, quindi un errore di sintassi altrimenti emergerebbe sulla machine al momento dell'enforcement:
 
     ```bash
-    failproofai policies --install --custom ./checkout.policies.ts \
-      --cli claude --scope project
+    fp policies test ./checkout.policy.mjs --command "git push --force" --expect deny
+    fp policies publish checkout-guard ./checkout.policy.mjs --description "Block force-push"
     ```
 
-    Pubblica la versione revisionata da **Admin → policy editor**.
+    La pubblicazione non distribuisce nulla — una nuova versione rimane inutilizzata finché `fp fleet deploy` non la mette su una machine. `fp policies compose "<plain English>"` redige la fonte con l'assistente Cloud e la stampa per la revisione piuttosto che pubblicarla.
+
+    Per installare un criterio in un agente CLI locale (non Cloud), utilizza `failproofai policies --install --custom ./checkout.policies.ts --cli claude --scope project`.
   </Tab>
 </Tabs>
 
 ## Checklist di creazione
 
-1. Nomina la modalità di errore in linguaggio operativo.
+1. Assegna un nome alla modalità di errore nel linguaggio operativo.
 2. Seleziona gli eventi hook e gli strumenti che contengono prove sufficienti per decidere.
 3. Scrivi la condizione più ristretta che corrisponda al comportamento non sicuro.
-4. Restituisci un motivo che dica all'agente o all'operatore cosa fare dopo.
+4. Restituisci un motivo che comunichi all'agente o all'operatore cosa fare dopo.
 5. Aggiungi esempi che dovrebbero corrispondere ed esempi che devono rimanere consentiti.
 6. Salva una nuova versione e richiedi una revisione.
 
-Usa `instruct` quando l'agente può correggere il corso in modo sicuro. Usa `deny` quando consentire l'azione comporterebbe un rischio inaccettabile o irreversibile.
+Utilizza `instruct` quando l'agente può correggere il corso in modo sicuro. Utilizza `deny` quando consentire l'azione comporterebbe un rischio inaccettabile o irreversibile.
 
 <Info>
-  Le versioni dei criteri sono input di distribuzione immutabili. Modificare una bozza crea una nuova versione; non dovrebbe riscrivere la versione già assegnata alle macchine.
+  Le versioni dei criteri sono input di distribuzione immutabili. La modifica di una bozza crea una nuova versione; non dovrebbe riscrivere la versione già assegnata alle machine.
 </Info>

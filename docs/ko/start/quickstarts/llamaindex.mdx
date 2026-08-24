@@ -1,0 +1,48 @@
+---
+title: "LlamaIndex"
+description: "설치, 계측, 첫 번째 트레이스 확인."
+icon: "/images/frameworks/llamaindex.svg"
+---
+
+첫 번째 LlamaIndex 트레이스를 위한 세 가지 단계입니다. 워크플로 단계, 검색, reaper, 옵션에 대해서는 [전체 가이드](/ko/start/integrations/llamaindex)를 참고하세요.
+
+## 설치
+
+```bash
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+## 계측
+
+LlamaIndex의 에이전트 API는 비동기입니다. 모든 스코프는 `async with`와 `with` 모두에서 동작합니다.
+
+```python
+import asyncio
+
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+
+async def main():
+    async with failproofai_sdk.session():
+        await agent.run("...")
+
+
+asyncio.run(main())
+```
+
+<Warning>
+  LLM에 인수를 하나 더 추가하지 않으면, 트레이스의 모든 토큰 수가 null이 됩니다 — `llama-index-llms-openai`는 스트리밍 시 사용량을 요청하지 않습니다. [토큰 수](/ko/start/integrations/llamaindex#token-counts)를 참고하세요.
+</Warning>
+
+## 도착 확인
+
+한 번 실행한 후 **Observe → Sessions**를 열고 환경을 선택하세요. 실행 결과가 재구성된 트레이스로 표시됩니다.
+
+아무것도 도착하지 않으면 `failproofai config --status`로 머신이 연결되어 있는지 확인하세요.
+
+<Card title="전체 LlamaIndex 가이드" icon="arrow-right" href="/ko/start/integrations/llamaindex">
+  토큰 수, 기록되는 항목, 워크플로 단계, 검색, 옵션, 일반적인 문제.
+</Card>

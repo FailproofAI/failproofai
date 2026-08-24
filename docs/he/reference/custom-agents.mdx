@@ -1,45 +1,40 @@
 ---
 title: "סוכנים מותאמים"
-description: "מכוונן עקבות מסוכנים מותאמים כדי ש-Failproof AI יוכל לשחזר הרצות ולמצוא כשלים."
+description: "תצורה, קטלוג האירועים, כללי קורלציה והמסירה עבור failproofai-sdk."
 icon: "python"
 ---
 
-כוונן עקבות מסוכן מותאם באמצעות `failproofai-sdk` כדי ש-Failproof AI יוכל לשחזר כל הרצה, לבדוק את ההתנהגות שלה ולמצוא כשלים מסומכים בראיות. ה-SDK כותב אירועים מובנים עבור Failproof daemon להעביר ל-Cloud. זה דורש Python 3.10 או חדש יותר.
+מה שכל הגדרה, שיטה ושדה עושים. אם אתה מבצע קביעה לראשונה, התחל עם המדריך — הדף הזה מיועד לחיפוש מידע.
 
-Tracing הופך סוכנים מותאמים לניתני תצפית ולביקורת. מניעת פעולה לא בטוחה לפני שהיא מתבצעת דורשת גם hook אכיפה בזמן ריצה שלך.
+<Columns cols={2}>
+  <Card title="מדריך סוכנים מותאמים" icon="code" href="/he/start/integrations/custom-agents">
+    התקנה, קביעה, שיטות האירועים, דוגמה מעבודה, ובעיות נפוצות.
+  </Card>
+  <Card title="משתמש בפריימוורק?" icon="plug" href="/he/start/integrations">
+    LangChain, CrewAI, LlamaIndex ו-Pydantic AI מבצעים קביעה עצמית בקריאה אחת.
+  </Card>
+</Columns>
 
-<Info>
-  כדי אכוף מדיניויות בהגדרת סוכן מותאמת, [צור קשר עם Failproof AI](mailto:support@befailproof.ai). אנחנו נעזור למפות את גבולות המודל, הכלים וחיי המחזור של זמן הריצה שלך לאגוזי מדיניות.
-</Info>
+Python 3.10 ומעלה. אין תלויות זמן ריצה.
 
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with the Failproof AI Python SDK" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-## התקן את `failproofai-sdk`
-
-ה-SDK מופץ כרגע כגלגל פרטי. בקש מאחד ה-Failproof AI שלך את הגרסה הנוכחית וגישה להורדה.
+## התקנה
 
 ```bash
-VERSION=<sdk-version>
-pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
-python -c "import failproofai; print(failproofai.__version__)"
+pip install failproofai-sdk
 ```
 
-עם `uv`, הורד את הגלגל תחילה והרץ `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl`. קבע את הגלגל במאגר חפצים פרטי או בנעילת תלות.
+החבילה מותקנת כ-`failproofai-sdk` ומיובאת ב-Python כ-`failproofai_sdk`. הרחבות פריימוורק כמו `failproofai-sdk[langgraph]` מתקינות את הפריימוורק עצמו; המתאמים תמיד משלוחים בגלגל הבסיס.
 
-החבילה מותקנת כ-`failproofai-sdk` ומיובאת בפייתון כ-`failproofai`.
-
-## חבר את Failproof daemon
+## חיבור ל-Failproof daemon
 
 <Tabs>
-  <Tab title="לוח בקרה">
-    1. עבור אל **Admin → Keys** וצור מפתח עם `events:add`.
-    2. [חבר את Failproof daemon לCloud](/he/start/setup#connect-a-machine-to-cloud) על מכונת הסוכן.
-    3. הרץ הפעלה מכוונת אחת, ואז מצא את המזהה המדויק שלה תחת **Observe → Events**.
-    4. עבור אל **Observe → Sessions**, בחר באותה סביבה ופתח את העקבה שחוזרה.
+  <Tab title="לוח הבקרה">
+    1. עבור ל-**Admin → Keys** וצור מפתח עם `events:add`.
+    2. [חבר את Failproof daemon ל-Cloud](/he/start/setup#connect-a-machine-to-cloud) על מכונת הסוכן.
+    3. הפעל סשן אחד עם קביעה, ואז מצא את ה-ID המדויק שלו תחת **Observe → Events**.
+    4. עבור ל-**Observe → Sessions**, בחר את אותה סביבה, ופתח את ה-trace שעוקב מחדש.
 
-    ![הפעלה של סוכן Python מותאמת שחוזרה כגרף ביצוע ועקבה של אירועים מסודרת.](/images/dashboard/session-detail.png)
+    ![סשן סוכן Python מותאם שעוקב מחדש כגרף ביצוע וטבלת אירועים מסודרת.](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -51,102 +46,84 @@ python -c "import failproofai; print(failproofai.__version__)"
   </Tab>
 </Tabs>
 
-## כוונן הרצה שלמה
-
-קרא ל-`configure()` פעם אחת בעת התחלת התהליך. כל קריאת אירוע היא keyword-only ודורשת `session_id` ו-`agent_id` יציבים.
+## תצורה
 
 ```python
-import traceback
-import uuid
+import failproofai_sdk
 
-import failproofai
-
-failproofai.configure(environment="production")
-
-session_id = uuid.uuid4().hex
-agent_id = "checkout-agent"
-
-failproofai.event.agent_start(
-    session_id=session_id,
-    agent_id=agent_id,
-    goal="Resolve a failed checkout",
-)
-
-try:
-    tool_call_id = uuid.uuid4().hex
-    failproofai.event.tool_use(
-        session_id=session_id,
-        agent_id=agent_id,
-        tool_name="lookup_order",
-        tool_call_id=tool_call_id,
-        input={"order_id": "ord_8421"},
-    )
-    result = {"status": "payment_failed"}
-    failproofai.event.tool_result(
-        session_id=session_id,
-        agent_id=agent_id,
-        tool_name="lookup_order",
-        tool_call_id=tool_call_id,
-        output=result,
-    )
-except Exception as exc:
-    failproofai.event.error(
-        session_id=session_id,
-        agent_id=agent_id,
-        error_type=type(exc).__name__,
-        message=str(exc),
-        traceback=traceback.format_exc(),
-    )
-    failproofai.event.agent_end(
-        session_id=session_id,
-        agent_id=agent_id,
-        outcome="failed",
-    )
-    raise
-else:
-    failproofai.event.agent_end(
-        session_id=session_id,
-        agent_id=agent_id,
-        outcome="success",
-        summary="Escalated the failed payment",
-    )
-```
-
-פלוט `agent_start` פעם אחת לכל שחקן. עבור תת-סוכנים, השתמש חוזר ב-`session_id` של ההורה, תן לכל שחקן `agent_id` מובחן, והגדר `parent_id` ל-**agent ID** של ההורה, לא למזהה ההפעלה.
-
-## התייחסות תצורה
-
-```python
-failproofai.configure(
+failproofai_sdk.configure(
     base_dir=None,
     flush_interval=0.5,
     environment="production",
 )
 ```
 
-| הגדרה | התנהגות |
+| ארגומנט | מה זה עושה |
 | --- | --- |
-| `base_dir` | שורש ספול מפורש. קודם לכל משתנים של סביבה. |
-| `flush_interval` | שניות בין כתיבות רקע מזיכרון ל-JSONL. ברירת מחדל: `0.5`. |
-| `environment` | תווית פריסה בכל אירוע. ברירת מחדל ל-`dev`. |
-| `FAILPROOFAI_HOME` | משנה את שורש Failproof AI המכיל את ה-`custom-agents` spool. |
+| `environment` | התווית בכל אירוע — `production`, `staging`, `prod-eu`. ברירת המחדל היא `dev`. |
+| `flush_interval` | כמה קרוב לעתים קרובות ה-thread ברקע כותב לדיסק, בשניות. ברירת המחדל היא `0.5`. |
+| `base_dir` | איפה לכתוב. ברירת המחדל היא ה-spool של ה-daemon, וזה מה שאתה רוצה אלא אם אתה יודע אחרת. |
 
-ה-SDK כותב ל-`base_dir` המפורש כשהוא מוגדר. אחרת, הוא משתמש בספול `custom-agents` של Failproof daemon תחת `FAILPROOFAI_HOME` או `~/.failproofai`.
+הגדר באמצעות משתנה סביבה במקום:
 
-ה-SDK תוור קריאות בזיכרון וכותב אצווות בחוט רקע. הוא גם מנסה flush סופי דרך טיפול `atexit` של Python. עבור עובדים קצרי חיים, אפשר כיבוי מתורגם רגיל; סיום תהליך קשה יכול לאבד אירועים עדיין בזיכרון.
+| משתנה | מה זה עושה |
+| --- | --- |
+| `AGENTEYE_ENVIRONMENT` | קובע את `environment` ללא שינוי קוד, לכאשר התווית שייכת להצגה ולא לאפליקציה. ארגומנט `configure()` מנצח עליו. |
+| `FAILPROOFAI_HOME` | מעביר את שורש Failproof AI שמחזיק את ה-spool. |
+| `FAILPROOFAI_SDK_STRICT` | `1` גורם לשגיאות קביעה להעלות חריגות במקום להיות רשומות. |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` גורם לבעיית תאימות פריימוורק להעלות חריגות במקום להזהיר ולהמשיך הלאה. |
+
+<Warning>
+  **אין פסיקים ב-`environment`.** Ingest מפצל את השדה הזה בפסיקים כדי לבנות את המסננים שלו, ודילג על כל אירוע שהתווית שלו מכילה אחד — אז ריצה שלמה נעלמת בשקט. כתוב `prod-eu`, לא `prod,eu`.
+
+  `configure(environment="prod,eu")` מעלה חריגות כדי שתגלה מיד. `AGENTEYE_ENVIRONMENT` לא יכול להעלות חריגות — שום דבר לא קורא לך — אז זה מזהיר פעם אחת וחוזר ל-`dev`.
+</Warning>
+
+אירועים מעומדים בזיכרון ונכתבים ברקע כל `flush_interval` שניות, עם flush סופי ביציאת המפרש. תהליך שהוכה לחלוטין הולך לאבד כל מה שטרם נכתב.
+
+## זהות
+
+כל אירוע שייך לסשן ולסוכן. **ההיקפים מילאו את שניהם**, אז רק לעתים קרובות אתה עובר אותם:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("planner"):
+        failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
+```
+
+העברה מפורשת של `session_id` או `agent_id` עדיין עובדת ומנצחת. בלי קשור או העברה, הקריאה מעלה `TypeError` במקום פליטת אירוע ש-Cloud יודה בשקט.
+
+<Note>
+  הזהות רוכבת על משתני הקשר. היא עוקבת אחרי משימות `asyncio` באופן אוטומטי, אך **לא** threads חדש — עטוף עובד ב-`failproofai_sdk.propagate()` או האירועים שלו נוחתים בלא חיבור.
+</Note>
 
 ## קטלוג אירועים
 
-כל השיטות מחזירות `None`. שדות שנותרו כ-`None` מושמטים ולא כתובים כ-JSON `null`.
+חמש עשרה שיטות. רובן באים בזוגות — אתה קורא לפותח, ואז לסוגר, וה-SDK מודד את הפער.
 
-| שיטה | שדות נדרשים מעבר לזהות | שדות אופציונליים |
+| | פתיחה | סגירה |
+| --- | --- | --- |
+| **סוכנים** | `agent_start` | `agent_end` |
+| | `agent_pause` | `agent_resume` |
+| **מודלים** | `model_request` | `model_response` |
+| **כלים** | `tool_use` | `tool_result` |
+| **הוקים** | `hook_triggered` | `hook_completed` |
+| **אנשים** | `human_wait` | `human_input` |
+
+שלוש עומדות לבד: `error`, `human_pause`, `human_interrupt`.
+
+<Accordion title="כל שדה, לכל שיטה" icon="table">
+
+כל שיטה גם לוקחת `session_id` ו-`agent_id`, אותם ההיקפים מילאו עבורך. כל דבר שנותר כ-`None` מושמט ולא נשלח כ-JSON `null`, וכל שיטה מחזירה `None`.
+
+| שיטה | נדרש | אופציונלי |
 | --- | --- | --- |
 | `agent_start` | — | `goal`, `parent_id` |
 | `agent_end` | — | `outcome`, `summary` |
 | `agent_pause` | `pause_id` | `reason`, `user_id` |
 | `agent_resume` | `pause_id` | `reason`, `user_id` |
-| `model_request` | — | `model`, `messages`, `system`, `tools` |
-| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role` |
+| `model_request` | — | `model`, `messages`, `system`, `tools`, `request_id` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role`, `request_id`, `duration_ms` |
 | `tool_use` | `tool_name`, `tool_call_id` | `input` |
 | `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
 | `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
@@ -157,27 +134,64 @@ failproofai.configure(
 | `human_pause` | — | `reason`, `user_id` |
 | `human_interrupt` | — | `reason`, `user_id`, `at_step` |
 
-השתמש ב-`outcome="failed"`, `"error"`, `"timeout"`, או `"rejected"` כאשר השלמה צריכה להיספר ככישלון. ערכים אחרים, כולל `"failure"`, אינם מסווגים ככשלים על ידי ה-backend הנוכחי.
+</Accordion>
 
-## כללי קורלציה ומשך זמן
+<Warning>
+  כדי לסמן ריצה כנכשלה, `outcome` חייב להיות אחד מ-`failed`, `error`, `timeout` או `rejected`. כל דבר אחר — כולל הנוער הקרוב `"failure"` — נחשב להצלחה.
+</Warning>
 
-- השתמש חוזר באותו `tool_call_id`, `hook_id`, `pause_id`, או `input_id` עבור אירוע ההשלמה המתאים.
-- ה-SDK מחשב `duration_ms` עבור `tool_result`, `hook_completed`, `agent_resume`, ו-`human_input`. העברתו בעצמך לשיטות אלה מעלה `ValueError`.
-- זיהויים של כלים וחישוקים חולקים מפת pending אחת בחוץ תהליך. הפוך אותם ייחודיים בעולם על פני הפעלות בו-זמנית ועל פני שני מרחבי השמות; זיהויים מספקי או UUIDs הם בטוחים ביותר.
-- זוג מפוצל על פני תהליכים עדיין מתייחסות במורד הזרם, אך ה-SDK אינו יכול לחשב את משך ה-in-process שלו.
-- מפת ההמתנה מחזיקה לכל היותר 10,000 התחלות וסילוקי הכניסה הישנה ביותר כשהיא מלאה.
+## זיווג ומשך
 
-## שדות וטעימות מותאמים
+**כלל אחד: תן לאירוע הסגירה את אותו id כמו לפותח שלו.** זה מה שמזווג אותם, וזה מה שמאפשר ל-SDK למדוד את הפער.
 
-כל אירוע מקבל שדות keyword נוספים. השתמש בערכים תואמים JSON כאשר שאילתות במורד הזרם צריכות מבנה. עלים לא נתמכים כגון UUIDs, datetimes, decimals, sets, bytes, and model objects מחרוזים על ידי הכותב.
+| זוג | התאימו על |
+| --- | --- |
+| `tool_use` → `tool_result` | `tool_call_id` |
+| `hook_triggered` → `hook_completed` | `hook_id` |
+| `agent_pause` → `agent_resume` | `pause_id` |
+| `human_wait` → `human_input` | `input_id` |
+| `model_request` → `model_response` | `request_id` |
 
-שמות מותאמים שמורים הם `timestamp`, `session_id`, `agent_id`, `type`, ו-`environment`. שגיאות באות field אופציונלית מתקבלות כשדות מותאמים חדשים, לכן בדוק את ה-JSON המופץ כאשר שדה סטנדרטי לא מופיע בCloud.
+**אל תעביר `duration_ms` בעצמך.** ה-SDK מודד זאת, והעברה שלו מעלה `ValueError`.
 
-## העבר ובדוק
+היוצא דופן הוא `model_response`, כאשר רק אתה יודע את זמן ההשהיה של הספק האמיתי. העבר מספר שלם של אלפיות שנייה — float מעלה חריגות, כי העמודה היא מספר שלם של 32 ביט והיתה נוחתת ריקה אחרת.
+
+<Accordion title="מקרי קצה" icon="circle-help">
+
+- **Ids רק צריכים להיות ייחודיים לסוג, לכל סשן.** כלי וקוק יכולים לחלוק אחד; שני סשנים הפועלים בו זמנית יכולים לעשות שימוש חוזר בנתונים הלא מתנגשים.
+- **הם לא מתוחמים לסוכן.** זוג שנפתח תחת סוכן אחד וסגור תחת אחר עדיין מתאים — שזו המקרה הנורמלי בקוד רב-סוכן.
+- **`request_id` אופציונלי אבל מומלץ.** בלעדיו, אירועי מודל מזווגים בסדר שהם מגיעים, אז שתי קריאות בו זמנית באותו סוכן יכולות להזדווג בשגיאה.
+- **זוג מחולק בין תהליכים** עדיין תואם בעננן, אבל ה-SDK לא יכול למדוד זאת — שום דבר בשום תהליך ראה את שני החצאים.
+- **לכל היותר 10,000 פותחים מחכים לסוגר בו זמנית.** מעבר לזה הקדום דלק, אז דמות לא יכולה גדלה ללא קשור.
+
+</Accordion>
+
+## השדות שלך
+
+כל מילת מפתח נוספת שאתה עובר מאוחסנת עם האירוע:
+
+```python
+failproofai_sdk.event.tool_use(
+    tool_name="search", tool_call_id="c1",
+    fw_tenant="acme", fw_region="eu-west-1",     # שלך
+)
+```
+
+העדיף סוגי JSON אם אתה רוצה לשאול אותם מאוחר יותר. כל דבר אחר — UUID, datetime, `Decimal`, set, bytes, אובייקט מודל — מאוחסן כמחרוזת.
+
+<Warning>
+  **קדיסה את שמות השדות שלך.** הוספות מיושמות אחרון, אז שדה בשם `model`, `tool_name` או `outcome` דורך בשקט את האמיתי. מתאמי הפריימוורק משתמשים ב-`fw_`; עשה את אותו הדבר ושום דבר לא יכול להתנגש.
+
+  זה גם למה שדה אופציונלי שגוי לעולם לא שגוי — הוא פשוט הופך לשדה מותאם חדש. אם שדה סטנדרטי חסר בעננן, בדוק תחילה את האיות.
+</Warning>
+
+חמש השמות הבאים שמורים ודחוקים לחלוטין: `timestamp`, `session_id`, `agent_id`, `type`, `environment`.
+
+## מסור והאמן
 
 <Tabs>
-  <Tab title="לוח בקרה">
-    ב-**Observe → Events**, בדוק תחילה שקיים `agent_start` ו-`agent_end` קיים אחרון. לאחר מכן פתח **Observe → Sessions** ובדוק שמודל, כלים, אנוש, חישוק ואירועי שגיאה מופיעים בסדר הנדרש. השתמש במזהה ההפעלה כמפתח בעיות עיקרי.
+  <Tab title="לוח הבקרה">
+    ב-**Observe → Events**, אמת ש-`agent_start` קיים תחילה ו-`agent_end` קיים אחרון. ואז פתח **Observe → Sessions** ואשר שמודל, כלי, אדם, תריס ואירועי שגיאה מופיעים בסדר המיועד. השתמש בזהות הסשן כמפתח פתרון בעיות ראשוני.
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -189,10 +203,14 @@ failproofai.configure(
   </Tab>
 </Tabs>
 
-אם Cloud ריק, בדוק `$FAILPROOFAI_HOME/custom-agents/events`, אחרת `~/.failproofai/custom-agents/events`. קבצי JSONL מוכיחים פליטת SDK; ספול גדל מצביע על תצורת daemon או מסירה, בעוד שספול ריק מצביע על כיוונון או חיי תהליך.
+אם ענן ריק, בדוק `$FAILPROOFAI_HOME/custom-agents/events`, אחרת `~/.failproofai/custom-agents/events`. קובצי JSONL מוכיחים פליטת SDK; spool גדל מצביע על תצורת daemon או הפקה, בעוד spool ריק מצביע על קביעה או אורך חיי תהליך.
+
+<Note>
+  בדוק את ה-spool רק כאשר ה-daemon עוצר. בזמן שהוא פועל, הוא אוסף ודל כל קבוצה תוך אלפיות שנייה, אז רשימת ספרייה מתחרה בקולט ומראה הרבה פחות אירועים מאשר פלטו.
+</Note>
 
 ## מנע כשלים בזמן ריצה מותאם
 
-השתמש בממצאי ביקורת ובעקבות משובצות להגדרת הפעולה הלא בטוחה, ההוכחה הנדרשת והתגובה המכוונת. אינטגרציה אכיפה מותאמת חייבת לחשוף את הפעולה לפני ביצוע, להעביר את הקלט המובנה שלה לנוע המדיניות, וליישם את ההחלטה המותרת, הוראה, או סירוב.
+השתמש בממצאי ביקורת ובעקבות מקושרות כדי להגדיר את הפעולה הבלתי בטוחה, הראיות הנדרשות, והתגובה המיועדת. אינטגרציה אכיפה מותאמת חייבת לחשוף את הפעולה לפני ביצוע, להעביר את הקלט המובנה שלה למנוע המדיניות, ולהחיל את החלטת ה-allow, instruct, או deny שהתקבלה.
 
-שלח דוא"ל [support@befailproof.ai](mailto:support@befailproof.ai) כדי לעצב ולאמת אינטגרציה זו עבור זמן הריצה שלך.
+[צור קשר עם Failproof AI](mailto:support@befailproof.ai) וניתן לנו לעזור למפות את גבולות המודל, הכלים וחיי הסוכן של זמן הריצה שלך לתריסי מדיניות, ואז לאמת את האינטגרציה איתך.

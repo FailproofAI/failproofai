@@ -4,27 +4,31 @@ description: "Déployez une version de politique révisée sur les machines cibl
 icon: "cloud-upload"
 ---
 
-Un déploiement associe une ou plusieurs versions de politique à un ensemble de machines enrollées cibles.
+Un déploiement associe une ou plusieurs versions de politique à un ensemble de machines enrôlées cibles.
 
 ## Appliquer un déploiement
 
 <Tabs>
   <Tab title="Tableau de bord">
-    1. Allez dans **Admin → enforcement**, trouvez la machine et développez sa ligne.
-    2. Sélectionnez **edit**, ajoutez la version de politique révisée, puis choisissez l'effet **observe** ou un effet d'application.
-    3. Appliquez le changement, puis attendez le prochain check-in de la machine et confirmez son état de déploiement et de couverture.
-    4. Allez dans **Observe → policy** pour inspecter les décisions en temps réel.
+    1. Accédez à **Admin → application**, trouvez la machine et développez sa ligne.
+    2. Sélectionnez **modifier**, ajoutez la version de politique révisée, puis choisissez l'effet **observer** ou un effet d'application.
+    3. Appliquez la modification, attendez le prochain enregistrement de la machine et confirmez son état de déploiement et de couverture.
+    4. Accédez à **Observer → politique** pour inspecter les décisions en temps réel.
 
-    ![L'éditeur de déploiement de machine avec les versions de politique, les effets enforce et observe, et l'action d'application du déploiement.](/images/dashboard/enforcement-editor.png)
+    ![L'éditeur de déploiement de machine avec les versions de politique, les effets d'application et d'observation, et l'action d'application du déploiement.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Les points de terminaison de déploiement Cloud ne sont intentionnellement pas exposés en tant que commandes `fp` ordinaires. Vérifiez la machine localement, puis déployez via le tableau de bord :
+    Déployez depuis la CLI avec `fp fleet`. Vérifiez l'ensemble résultant avant de l'appliquer — `deploy` affiche le plan complet et demande une confirmation **uniquement sur un terminal interactif sans `--json`**. Avec `--json`, `--yes`, ou avec stdin redirigé (une étape CI, un script, un agent exécutant un shell), l'application est immédiate, sans plan ni invite — exécutez donc `fp fleet show <machine>` au préalable si vous souhaitez réviser :
 
     ```bash
-    failproofai config --status
+    fp fleet list
+    fp fleet show <machine-id>
+    fp fleet deploy <machine-id> --add no-force-push
     ```
 
-    Utilisez `fp sessions --env production --since 24h` et `fp events --event-type hook_completed` après le déploiement pour vérifier que l'activité remonte bien vers Cloud.
+    `fp fleet diff <machine-id>` affiche l'écart entre l'intention et la livraison (une machine apparaît comme `behind` jusqu'à son prochain polling), `fp fleet history <machine-id>` liste les générations, et `fp fleet rollback <machine-id> <generation>` en restaure une — la commande échoue si cette génération référence une politique depuis désactivée ou supprimée.
+
+    Vérifiez la machine elle-même avec `failproofai config --status`, et utilisez `fp sessions --env production --since 24h` ainsi que `fp events --event-type hook_completed` après le déploiement pour confirmer que l'activité remonte bien vers Cloud.
   </Tab>
 </Tabs>
 
@@ -33,15 +37,15 @@ Un déploiement associe une ou plusieurs versions de politique à un ensemble de
     Déployez une version révisée, et non un brouillon modifiable, en commençant par une machine hors production ou un petit groupe dont vous pouvez inspecter les sessions.
   </Step>
   <Step title="Observer les décisions">
-    Examinez les correspondances, les raisons, les outils concernés et les faux positifs sans bloquer le travail.
+    Examinez les correspondances, les motifs, les outils concernés et les faux positifs sans bloquer le travail.
   </Step>
   <Step title="Appliquer et vérifier la couverture">
-    Promouvez après que les correspondances observées distinguent les actions non sécurisées des actions valides, puis confirmez que chaque machine ciblée a bien récupéré le déploiement et rapporte les décisions.
+    Passez en mode application une fois que les correspondances observées permettent de distinguer les actions non sécurisées des actions valides, puis confirmez que chaque machine cible a bien récupéré le déploiement et signale ses décisions.
   </Step>
 </Steps>
 
-Les machines nécessitent la capacité `policies:pull`. Le reporting des événements est contrôlé séparément par `events:add` ; vérifiez les deux lorsque vous attendez une analyse et une application Cloud.
+Les machines ont besoin de la capacité `policies:pull`. Le reporting des événements est contrôlé séparément par `events:add` ; vérifiez les deux lorsque vous attendez une analyse et une application Cloud.
 
 <Warning>
-  La gestion de l'application est un workflow Cloud administratif. Ne traitez pas les routes d'application réservées au root comme des points de terminaison API `/v1` ordinaires.
+  La gestion de l'application est un flux de travail Cloud administratif. Ne traitez pas les routes d'application réservées à root comme des endpoints API `/v1` ordinaires destinés aux clients.
 </Warning>

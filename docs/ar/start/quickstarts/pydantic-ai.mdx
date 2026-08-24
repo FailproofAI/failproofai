@@ -1,0 +1,42 @@
+---
+title: "Pydantic AI"
+description: "ثبّت وأدرج وشاهد أول تتبع لك."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+ثلاث خطوات للوصول إلى أول تتبع Pydantic AI. للأدوات والمحاولات الجديدة والبث والخيارات، انظر [الدليل الكامل](/ar/start/integrations/pydantic-ai).
+
+## التثبيت
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+## الإدراج
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # before constructing any Agent
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  يجب أن يعمل `instrument()` **قبل** أن تقوم بإنشاء `Agent`. تُضاف الإمكانية عند الإنشاء، لذلك الوكيل المبني مسبقاً لن يسجل أي شيء — بدون أخطاء، لأن لا شيء حدث بشكل خاطئ. هذا هو السبب الأكثر شيوعاً لتتبع فارغ مع هذا المحول، والوكلاء في نطاق الوحدة هم حيث يحدث المشكلة: استورد failproofai_sdk واستدعِ `instrument()` قبل استيراد الوحدة التي تبنيهم.
+</Warning>
+
+## تحقق من وصوله
+
+شغّله مرة واحدة، ثم افتح **Observe → Sessions** واختر بيئتك. يظهر تشغيلك كتتبع معاد بناؤه.
+
+إذا لم يصل شيء، تأكد من اتصال الجهاز بـ `failproofai config --status`.
+
+<Card title="دليل Pydantic AI الكامل" icon="arrow-right" href="/ar/start/integrations/pydantic-ai">
+  ما يتم تسجيله والأدوات والمحاولات الجديدة والبث وتسمية الامتدادات والخيارات والمشاكل الشائعة.
+</Card>

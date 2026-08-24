@@ -1,0 +1,225 @@
+---
+---
+title: "CrewAI"
+sidebarTitle: "CrewAI"
+description: "ניהול צוות, זרימות, סוכנים לפי תפקיד, כלים, זיכרון ומשוב אנושי."
+icon: "/images/frameworks/crewai.svg"
+---
+
+## התקנה
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+נתמך: `crewai` גרסאות 1.13 עד 2.0. גרסה 1.13 היא הגרסה שהוספה `started_event_id` והנורמליזציה של שימוש בטוקנים, ששניהם מהם המתאם תלוי כדי להתאים אירועים ולדווח על טוקנים.
+
+## ערוך
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+`instrument()` רושם מאזין על אפיק האירועים ברמת המודול של CrewAI וממנוי מטפל אחד לכל מחלקת אירועים. כלום לגבי הצוות, הסוכנים, המשימות או הכלים שלך לא משתנה.
+
+## מה מתועד
+
+| CrewAI | אירוע Failproof |
+| --- | --- |
+| Crew kickoff | `agent_start`, `agent_end` |
+| `Agent.kickoff()` (סוכן קל, ללא צוות) | `agent_start`, `agent_end`, עם `agent_id` מהתפקיד |
+| Flow start and finish | `agent_start`, `agent_end`; צוות שעלה על אדמה בתוך שיטת זרימה מקננת תחתיו |
+| ביצוע סוכן | `agent_start`, `agent_end` מקונן, עם `agent_id` מהתפקיד. בתהליך היררכי עמית מומנה מקנן תחת המנהל, לא לצדו |
+| משימה | כלום; מתועד כקישור כדי שילדים יתפקדו לצוות |
+| שיטת Flow, guardrail | `hook_triggered`, `hook_completed` |
+| שימוש בכלי | `tool_use`, `tool_result` |
+| פעולות זיכרון וידע | `tool_use`, `tool_result`, בשם לפני השטח שהוכה |
+| קריאת LLM | `model_request`, `model_response`, עם שימוש בטוקנים |
+| Stream chunk | מקופל לתוך התגובה כמספר chunk וזמן לאסימון ראשון |
+| משוב אנושי מבוקש | `human_wait`, `agent_pause` |
+| משוב אנושי התקבל | `agent_resume`, `human_input` |
+| שגיאת ביצוע סוכן | `error`, ואז `agent_end` עם תוצאה `failed` |
+
+משימה לא משדרת כלום בכוונה. משימת CrewAI היא תת-קבוצה של ביצוע הסוכן שמריץ אותה, ולכן פליטה של שניהם תשדר כל שורה פעמיים ותיצור אותם כאחים. מזהה המשימה והשם מיזעקים לאירועים של הסוכן עצמו.
+
+פעולות זיכרון וידע מתועדות ככלים, שנקראו על פני השטח שהם פוגעים בהם, כדי שהם יופיעו ליד הכלים האמיתיים שלך כאשר אתה יכול להשוות את ההשהיית שלהם.
+
+בצוות היררכי, קינון הוא מה שהופך את ההעקבות לקריאות:
+
+```text
+crew
+└─ manager
+   ├─ researcher      delegated
+   └─ writer          delegated
+```
+
+CrewAI הורה לביצוע מומנה על אירוע כלי **`delegate_work_to_coworker`**, לא ישירות על המנהל, ולכן המתאם עוקב אחרי הקישור הזה. ללא זה כל סוכן יוצא אח של כל אחד אחר והמבנה ההנחיה אבוד.
+
+## דוגמה
+
+```python
+import failproofai_sdk
+from crewai import Agent, Crew, Process, Task
+from crewai.tools import tool
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+MODEL = "openai/gpt-4o-mini"
+METRICS = {"revenue": "$4.2M ARR, up 12% QoQ", "churn": "3.1% monthly, up from 2.4%"}
+
+
+@tool("lookup_metric")
+def lookup_metric(name: str) -> str:
+    """Look up a business metric by name. Valid: revenue, churn."""
+    return METRICS.get(name.lower().strip(), "unknown metric")
+
+
+analyst = Agent(
+    role="analyst",                     # becomes agent_id
+    goal="pull the numbers that matter and state them plainly",
+    backstory="You read dashboards for a living.",
+    tools=[lookup_metric],
+    llm=MODEL,
+)
+writer = Agent(
+    role="writer",
+    goal="turn numbers into three lines an exec will read",
+    backstory="You write board updates. You never pad.",
+    llm=MODEL,
+)
+
+gather = Task(
+    description="Look up 'revenue' and 'churn' with the tool.",
+    expected_output="Two lines, one metric each.",
+    agent=analyst,
+)
+summarise = Task(
+    description="Using the metrics above, write a three-line exec summary.",
+    expected_output="Exactly three lines.",
+    agent=writer,
+    context=[gather],
+)
+
+with failproofai_sdk.session():
+    result = Crew(
+        agents=[analyst, writer],
+        tasks=[gather, summarise],
+        process=Process.sequential,
+    ).kickoff()
+```
+
+ההעברה גלויה בעקבות: ה-`analyst` span נסגר, ה-`writer` span נפתח, ושניהם יושבים בתוך span `crew` אחד.
+
+## תן שם ל-spans שלך
+
+`agent_id` מגיע מ-`Agent(role=...)`, זה מה שהופך אותו לפן יוקרה קריא על הלוח.
+
+```python
+Agent(role="analyst", ...)          # agent_id = "analyst"
+Agent(role="analyst-7f3a2b", ...)   # one facet entry per run
+```
+
+`agent_id` הוא עמודה בעלת קרדינליות נמוכה. תפקיד המכיל מזהה ריצה או חותמת זמן מורידו לכל שאילתה שמישהו מריץ. אם תפקיד נראה כמו מזהה, המתאם מסרב אותו ושם את הערך האמיתי בשדה payload במקום.
+
+## שלוט בסדר הישיבה
+
+מסודר בסדר זה, התאמה ראשונה זוכה:
+
+1. `instrument("crewai", session_id=...)`
+2. ההיקף `failproofai_sdk.session()` המקיף
+3. `uuid4().hex` שנוצר, פעם אחת לכל crew או flow
+
+לעטוף את ה-kickoff כדי לשלוט בו לכל ריצה:
+
+```python
+with failproofai_sdk.session(f"support-{ticket_id}"):
+    Crew(agents=[...], tasks=[...]).kickoff()
+```
+
+## אפשרויות
+
+```python
+failproofai_sdk.instrument(
+    "crewai",
+    session_id=None,          # pin every run to one session id
+)
+```
+
+`session_id` היא האפשרות היחידה שמתאם זה קורא. הנושאות והשלמות תמיד מתועדות, מקוצצות לתקציב ה-payload.
+
+## אדם בלולאה
+
+CrewAI יש **שני** משטחי אדם-בלולאה, ושניהם מתועדים כאותם ארבע אירועים.
+
+`@human_feedback` בשיטת זרימה עובר דרך אפיק האירועים של CrewAI: ה-runtime משדר אירוע לפני שהוא חוסם על אדם ועוד אחד לאחר התשובה.
+
+`Task(human_input=True)` לא. זה קוראה `input()` בתוך ספק הקלט של CrewAI עצמו ואינו משדר אירוע מכל סוג, כך המתאם עוטף ישירות את ספק הזה — ללא זה כל ההמתנה האנושית הייתה בלתי נראית וחויבת כזמן סוכן פעיל.
+
+כך או כך אתה מקבל:
+
+```text
+human_wait      the prompt and its options
+agent_pause     starts the paused-time clock
+agent_resume    stops it
+human_input     the answer, with the wait measured
+```
+
+`agent_pause` ל-`agent_resume` היא הזוג היחיד שמזין זמן מושהה. ללא זה, עשר דקות של המתנה אנושית חויבות כעשר דקות של זמן סוכן פעיל.
+
+<Note>
+  CrewAI לא מגדיר מזהה מתאם על שום אירוע משוב אנושי, כך המתאם משדבר אותם בשם הזרימה והשיטה, ונופל בחזרה ללחץ שנפתח לאחרונה. זה סביר כי הנושא של קונסול חוסם. אם אתה בונה ספק משוב במקביל, קבע `request_id` בשני האירועים.
+</Note>
+
+<Note>
+  מכיוון שנתיב `Task(human_input=True)` הוא עטיפה סביב ספק הקלט של CrewAI ולא מנוי על אירועים, הוא מוחזר בעת `uninstrument()` ו-re-raises כל מה ש-`input()` raises, `KeyboardInterrupt` כלול, ללא שינוי.
+</Note>
+
+## בעיות נפוצות
+
+<AccordionGroup>
+  <Accordion title="לסנן הסוכן יש אלפי ערכים">
+    `role` מכיל UUID, חותמת זמן או סיומת לכל ריצה. השתמש בתפקיד אנושי יציב והצב את המזהה הספציפי לריצה בתיאור המשימה במקום.
+  </Accordion>
+
+  <Accordion title="בדיקה קוראת אפס אירועים, אך הלוח מציג אותם">
+    אפיק האירועים אסינכרוני, ו-`kickoff()` חוזר לפני הפעלת המטפלים האחרונים. ניקז אותו קודם:
+
+    ```python
+    from crewai.events.event_bus import crewai_event_bus
+
+    crew.kickoff()
+    crewai_event_bus.flush(timeout=30)
+    ```
+
+    זה תכונה של CrewAI, לא של ה-SDK.
+  </Accordion>
+
+  <Accordion title="סדר ישיבה מוצג כמתמשך לנצח">
+    `agent_end` כופה-סוגר השהיות פתוחות אך לא כלים או דגמים, כך שריצה המתה בתוך קריאת כלי משאירה את ה-span פתוח. הפירוק הרגיל סוגר כל מה שעדיין פתוח ומסמן אותו לא שלם. רק `SIGKILL` משאיר אותו תלוי, כי שום דבר לא יכול להריץ.
+  </Accordion>
+
+  <Accordion title="כלום לא מתועד">
+    בדוק בסדר זה: `instrument()` רץ לפני `kickoff()`; יש `with failproofai_sdk.session():` סביבו; `crewai` הוא 1.13 או חדש יותר; `FAILPROOFAI_SDK_STRICT=1` קבוע, כך ווו מופחת מעלה במקום להיספג.
+  </Accordion>
+</AccordionGroup>
+
+## הבא
+
+<Columns cols={3}>
+  <Card title="איך זה עובד" icon="workflow" href="/he/start/integrations/custom-agents#going-deeper">
+    זוגות, מזהים, מחזור חיים של סדר ישיבה והעברה.
+  </Card>
+  <Card title="קרא עקבות" icon="route" href="/he/sessions/read-a-trace">
+    עקוב אחרי סיבתיות דרך הסדר ישיבה שרק תפסת.
+  </Card>
+  <Card title="מסגרות אחרות" icon="plug" href="/he/start/integrations">
+    LangGraph, LlamaIndex, Pydantic AI, וסוכנים מותאמים אישית.
+  </Card>
+</Columns>

@@ -4,7 +4,7 @@ description: "Observez l'activité de l'agent en temps réel pendant qu'une sess
 icon: "radio"
 ---
 
-Les événements en direct vous permettent de valider l'instrumentation et de surveiller une exécution à risque sans attendre la fin de la session.
+Les événements en direct vous permettent de confirmer l'instrumentation et de surveiller une exécution à risque sans attendre la fin de la session.
 
 ## Surveiller l'activité
 
@@ -13,9 +13,9 @@ Les événements en direct vous permettent de valider l'instrumentation et de su
     1. Accédez à **Observe → Events**.
     2. Commencez avec la fenêtre temporelle actuelle sans filtres pour confirmer que les données arrivent.
     3. Filtrez par environnement, type d'événement, agent ou session. Utilisez la recherche pour le texte des charges utiles.
-    4. Sélectionnez un événement pour inspecter son résumé et ses détails. Suivez le lien de la session pour obtenir la trace complète.
+    4. Sélectionnez un événement pour en inspecter le résumé et les détails. Suivez le lien de sa session pour accéder à la trace complète.
 
-    ![Le flux d'événements en direct affichant le trafic d'une passerelle de chat Hermes aux côtés d'exécutions de l'interface CLI de programmation, filtré par heure, environnement, type d'événement, agent, modèle, contexte et session.](/images/dashboard/events-stream-current.png)
+    ![Le flux d'événements en direct affichant le trafic d'une passerelle de chat Hermes aux côtés d'exécutions de l'interface CLI de codage, filtré par heure, environnement, type d'événement, agent, modèle, contexte et session.](/images/dashboard/events-stream-current.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -24,17 +24,17 @@ Les événements en direct vous permettent de valider l'instrumentation et de su
     fp --json events --full --session-id <session-id> --all
     ```
 
-    Le flux par défaut omet les charges utiles brutes. N'utilisez `--full` que pour l'investigation d'une session délimitée.
+    Le flux par défaut omet les charges utiles brutes. N'utilisez `--full` que pour une investigation ciblée sur une session délimitée.
   </Tab>
 </Tabs>
 
 Utilisez le flux d'événements pour répondre à trois questions immédiates :
 
-- L'agent attendu rapporte-t-il au bon environnement ?
-- Les appels de modèle, les appels d'outils et les décisions de politique arrivent-ils dans l'ordre ?
+- L'agent attendu envoie-t-il ses données au bon environnement ?
+- Les appels de modèle, les appels d'outil et les décisions de politique arrivent-ils dans l'ordre ?
 - La session a-t-elle cessé de progresser ou a-t-elle commencé à répéter une action ?
 
-Les types d'événements comprennent les événements du cycle de vie de l'agent, les requêtes et réponses du modèle, l'utilisation des outils et leurs résultats, l'exécution des hooks, les attentes et interruptions humaines, ainsi que les erreurs explicites. Les identifiants de corrélation relient les événements appariés, comme un appel d'outil et son résultat.
+Les types d'événements incluent les événements du cycle de vie de l'agent, les requêtes et réponses du modèle, l'utilisation des outils et leurs résultats, l'exécution des hooks, les attentes et interruptions humaines, ainsi que les erreurs explicites. Les identifiants de corrélation relient les événements associés, comme un appel d'outil et son résultat.
 
 <Tip>
   Gardez la vue en direct large lors de la vérification d'une nouvelle intégration. N'ajoutez des filtres qu'après avoir vu le premier événement ; un filtre incorrect peut ressembler à un échec d'ingestion.
@@ -42,4 +42,4 @@ Les types d'événements comprennent les événements du cycle de vie de l'agent
 
 Si aucun événement n'apparaît, exécutez `failproofai config --status`, puis [résolvez les problèmes d'ingestion](/fr/reference/troubleshooting).
 
-Les agents qui ne s'exécutent pas dans l'un des 12 [harnais](/fr/reference/harnesses) pris en charge rapportent les mêmes types d'événements via le [SDK Python](/fr/reference/custom-agents), y compris les événements de supervision humaine (`human_wait`, `human_input`, `human_interrupt`) dont dépendent les agents de passerelle et de production.
+Les agents qui ne s'exécutent pas dans l'un des 12 [harnais](/fr/reference/harnesses) pris en charge rapportent les mêmes types d'événements via le [SDK Python](/fr/reference/custom-agents), y compris les événements human-in-the-loop (`human_wait`, `human_input`, `human_interrupt`) dont dépendent les agents de passerelle et de production.

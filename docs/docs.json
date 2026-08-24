@@ -241,7 +241,18 @@
                   "zh/start/first-audit",
                   "zh/start/first-policy",
                   "zh/start/setup",
-                  "zh/start/concepts"
+                  "zh/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "zh/start/quickstarts/custom-agents",
+                      "zh/start/quickstarts/langchain",
+                      "zh/start/quickstarts/crewai",
+                      "zh/start/quickstarts/llamaindex",
+                      "zh/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -265,6 +276,16 @@
                   "zh/sessions/metrics",
                   "zh/sessions/dashboards",
                   "zh/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "zh/start/integrations/custom-agents",
+                  "zh/start/integrations/langchain",
+                  "zh/start/integrations/crewai",
+                  "zh/start/integrations/llamaindex",
+                  "zh/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -352,11 +373,6 @@
                   "zh/reference/events-and-configuration",
                   "zh/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -379,7 +395,18 @@
                   "ja/start/first-audit",
                   "ja/start/first-policy",
                   "ja/start/setup",
-                  "ja/start/concepts"
+                  "ja/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "ja/start/quickstarts/custom-agents",
+                      "ja/start/quickstarts/langchain",
+                      "ja/start/quickstarts/crewai",
+                      "ja/start/quickstarts/llamaindex",
+                      "ja/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -403,6 +430,16 @@
                   "ja/sessions/metrics",
                   "ja/sessions/dashboards",
                   "ja/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "ja/start/integrations/custom-agents",
+                  "ja/start/integrations/langchain",
+                  "ja/start/integrations/crewai",
+                  "ja/start/integrations/llamaindex",
+                  "ja/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -490,11 +527,6 @@
                   "ja/reference/events-and-configuration",
                   "ja/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -517,7 +549,18 @@
                   "ko/start/first-audit",
                   "ko/start/first-policy",
                   "ko/start/setup",
-                  "ko/start/concepts"
+                  "ko/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "ko/start/quickstarts/custom-agents",
+                      "ko/start/quickstarts/langchain",
+                      "ko/start/quickstarts/crewai",
+                      "ko/start/quickstarts/llamaindex",
+                      "ko/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -541,6 +584,16 @@
                   "ko/sessions/metrics",
                   "ko/sessions/dashboards",
                   "ko/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "ko/start/integrations/custom-agents",
+                  "ko/start/integrations/langchain",
+                  "ko/start/integrations/crewai",
+                  "ko/start/integrations/llamaindex",
+                  "ko/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -628,11 +681,6 @@
                   "ko/reference/events-and-configuration",
                   "ko/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -655,7 +703,18 @@
                   "es/start/first-audit",
                   "es/start/first-policy",
                   "es/start/setup",
-                  "es/start/concepts"
+                  "es/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "es/start/quickstarts/custom-agents",
+                      "es/start/quickstarts/langchain",
+                      "es/start/quickstarts/crewai",
+                      "es/start/quickstarts/llamaindex",
+                      "es/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -679,6 +738,16 @@
                   "es/sessions/metrics",
                   "es/sessions/dashboards",
                   "es/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "es/start/integrations/custom-agents",
+                  "es/start/integrations/langchain",
+                  "es/start/integrations/crewai",
+                  "es/start/integrations/llamaindex",
+                  "es/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -766,11 +835,6 @@
                   "es/reference/events-and-configuration",
                   "es/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -793,7 +857,18 @@
                   "pt-br/start/first-audit",
                   "pt-br/start/first-policy",
                   "pt-br/start/setup",
-                  "pt-br/start/concepts"
+                  "pt-br/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "pt-br/start/quickstarts/custom-agents",
+                      "pt-br/start/quickstarts/langchain",
+                      "pt-br/start/quickstarts/crewai",
+                      "pt-br/start/quickstarts/llamaindex",
+                      "pt-br/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -817,6 +892,16 @@
                   "pt-br/sessions/metrics",
                   "pt-br/sessions/dashboards",
                   "pt-br/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "pt-br/start/integrations/custom-agents",
+                  "pt-br/start/integrations/langchain",
+                  "pt-br/start/integrations/crewai",
+                  "pt-br/start/integrations/llamaindex",
+                  "pt-br/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -904,11 +989,6 @@
                   "pt-br/reference/events-and-configuration",
                   "pt-br/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -931,7 +1011,18 @@
                   "de/start/first-audit",
                   "de/start/first-policy",
                   "de/start/setup",
-                  "de/start/concepts"
+                  "de/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "de/start/quickstarts/custom-agents",
+                      "de/start/quickstarts/langchain",
+                      "de/start/quickstarts/crewai",
+                      "de/start/quickstarts/llamaindex",
+                      "de/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -955,6 +1046,16 @@
                   "de/sessions/metrics",
                   "de/sessions/dashboards",
                   "de/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "de/start/integrations/custom-agents",
+                  "de/start/integrations/langchain",
+                  "de/start/integrations/crewai",
+                  "de/start/integrations/llamaindex",
+                  "de/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -1042,11 +1143,6 @@
                   "de/reference/events-and-configuration",
                   "de/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -1069,7 +1165,18 @@
                   "fr/start/first-audit",
                   "fr/start/first-policy",
                   "fr/start/setup",
-                  "fr/start/concepts"
+                  "fr/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "fr/start/quickstarts/custom-agents",
+                      "fr/start/quickstarts/langchain",
+                      "fr/start/quickstarts/crewai",
+                      "fr/start/quickstarts/llamaindex",
+                      "fr/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -1093,6 +1200,16 @@
                   "fr/sessions/metrics",
                   "fr/sessions/dashboards",
                   "fr/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "fr/start/integrations/custom-agents",
+                  "fr/start/integrations/langchain",
+                  "fr/start/integrations/crewai",
+                  "fr/start/integrations/llamaindex",
+                  "fr/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -1180,11 +1297,6 @@
                   "fr/reference/events-and-configuration",
                   "fr/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -1207,7 +1319,18 @@
                   "ru/start/first-audit",
                   "ru/start/first-policy",
                   "ru/start/setup",
-                  "ru/start/concepts"
+                  "ru/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "ru/start/quickstarts/custom-agents",
+                      "ru/start/quickstarts/langchain",
+                      "ru/start/quickstarts/crewai",
+                      "ru/start/quickstarts/llamaindex",
+                      "ru/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -1231,6 +1354,16 @@
                   "ru/sessions/metrics",
                   "ru/sessions/dashboards",
                   "ru/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "ru/start/integrations/custom-agents",
+                  "ru/start/integrations/langchain",
+                  "ru/start/integrations/crewai",
+                  "ru/start/integrations/llamaindex",
+                  "ru/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -1318,11 +1451,6 @@
                   "ru/reference/events-and-configuration",
                   "ru/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -1345,7 +1473,18 @@
                   "hi/start/first-audit",
                   "hi/start/first-policy",
                   "hi/start/setup",
-                  "hi/start/concepts"
+                  "hi/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "hi/start/quickstarts/custom-agents",
+                      "hi/start/quickstarts/langchain",
+                      "hi/start/quickstarts/crewai",
+                      "hi/start/quickstarts/llamaindex",
+                      "hi/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -1369,6 +1508,16 @@
                   "hi/sessions/metrics",
                   "hi/sessions/dashboards",
                   "hi/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "hi/start/integrations/custom-agents",
+                  "hi/start/integrations/langchain",
+                  "hi/start/integrations/crewai",
+                  "hi/start/integrations/llamaindex",
+                  "hi/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -1456,11 +1605,6 @@
                   "hi/reference/events-and-configuration",
                   "hi/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -1483,7 +1627,18 @@
                   "tr/start/first-audit",
                   "tr/start/first-policy",
                   "tr/start/setup",
-                  "tr/start/concepts"
+                  "tr/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "tr/start/quickstarts/custom-agents",
+                      "tr/start/quickstarts/langchain",
+                      "tr/start/quickstarts/crewai",
+                      "tr/start/quickstarts/llamaindex",
+                      "tr/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -1507,6 +1662,16 @@
                   "tr/sessions/metrics",
                   "tr/sessions/dashboards",
                   "tr/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "tr/start/integrations/custom-agents",
+                  "tr/start/integrations/langchain",
+                  "tr/start/integrations/crewai",
+                  "tr/start/integrations/llamaindex",
+                  "tr/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -1594,11 +1759,6 @@
                   "tr/reference/events-and-configuration",
                   "tr/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -1621,7 +1781,18 @@
                   "vi/start/first-audit",
                   "vi/start/first-policy",
                   "vi/start/setup",
-                  "vi/start/concepts"
+                  "vi/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "vi/start/quickstarts/custom-agents",
+                      "vi/start/quickstarts/langchain",
+                      "vi/start/quickstarts/crewai",
+                      "vi/start/quickstarts/llamaindex",
+                      "vi/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -1645,6 +1816,16 @@
                   "vi/sessions/metrics",
                   "vi/sessions/dashboards",
                   "vi/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "vi/start/integrations/custom-agents",
+                  "vi/start/integrations/langchain",
+                  "vi/start/integrations/crewai",
+                  "vi/start/integrations/llamaindex",
+                  "vi/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -1732,11 +1913,6 @@
                   "vi/reference/events-and-configuration",
                   "vi/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -1759,7 +1935,18 @@
                   "it/start/first-audit",
                   "it/start/first-policy",
                   "it/start/setup",
-                  "it/start/concepts"
+                  "it/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "it/start/quickstarts/custom-agents",
+                      "it/start/quickstarts/langchain",
+                      "it/start/quickstarts/crewai",
+                      "it/start/quickstarts/llamaindex",
+                      "it/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -1783,6 +1970,16 @@
                   "it/sessions/metrics",
                   "it/sessions/dashboards",
                   "it/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "it/start/integrations/custom-agents",
+                  "it/start/integrations/langchain",
+                  "it/start/integrations/crewai",
+                  "it/start/integrations/llamaindex",
+                  "it/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -1870,11 +2067,6 @@
                   "it/reference/events-and-configuration",
                   "it/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -1897,7 +2089,18 @@
                   "ar/start/first-audit",
                   "ar/start/first-policy",
                   "ar/start/setup",
-                  "ar/start/concepts"
+                  "ar/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "ar/start/quickstarts/custom-agents",
+                      "ar/start/quickstarts/langchain",
+                      "ar/start/quickstarts/crewai",
+                      "ar/start/quickstarts/llamaindex",
+                      "ar/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -1921,6 +2124,16 @@
                   "ar/sessions/metrics",
                   "ar/sessions/dashboards",
                   "ar/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "ar/start/integrations/custom-agents",
+                  "ar/start/integrations/langchain",
+                  "ar/start/integrations/crewai",
+                  "ar/start/integrations/llamaindex",
+                  "ar/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -2008,11 +2221,6 @@
                   "ar/reference/events-and-configuration",
                   "ar/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }
@@ -2035,7 +2243,18 @@
                   "he/start/first-audit",
                   "he/start/first-policy",
                   "he/start/setup",
-                  "he/start/concepts"
+                  "he/start/concepts",
+                  {
+                    "group": "Starter templates",
+                    "expanded": false,
+                    "pages": [
+                      "he/start/quickstarts/custom-agents",
+                      "he/start/quickstarts/langchain",
+                      "he/start/quickstarts/crewai",
+                      "he/start/quickstarts/llamaindex",
+                      "he/start/quickstarts/pydantic-ai"
+                    ]
+                  }
                 ]
               }
             ]
@@ -2059,6 +2278,16 @@
                   "he/sessions/metrics",
                   "he/sessions/dashboards",
                   "he/sessions/queries"
+                ]
+              },
+              {
+                "group": "Plug in your agent",
+                "pages": [
+                  "he/start/integrations/custom-agents",
+                  "he/start/integrations/langchain",
+                  "he/start/integrations/crewai",
+                  "he/start/integrations/llamaindex",
+                  "he/start/integrations/pydantic-ai"
                 ]
               }
             ]
@@ -2146,11 +2375,6 @@
                   "he/reference/events-and-configuration",
                   "he/reference/troubleshooting"
                 ]
-              },
-              {
-                "group": "HTTP API",
-                "expanded": false,
-                "openapi": "reference/openapi.json"
               }
             ]
           }

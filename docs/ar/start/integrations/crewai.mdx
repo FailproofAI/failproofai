@@ -1,0 +1,225 @@
+---
+---
+title: "CrewAI"
+sidebarTitle: "CrewAI"
+description: "تجهيز الفرق والتدفقات والوكلاء حسب الدور والأدوات والذاكرة وردود الفعل البشرية."
+icon: "/images/frameworks/crewai.svg"
+---
+
+## التثبيت
+
+```bash
+pip install 'failproofai-sdk[crewai]'
+```
+
+الإصدارات المدعومة: `crewai` من 1.13 إلى 2.0. الإصدار 1.13 هو الذي أضاف `started_event_id` وعادّ استخدام الرموز، وكلاهما يعتمد عليه المحول لربط الأحداث والإبلاغ عن الرموز.
+
+## التجهيز
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+```
+
+يسجل `instrument()` مستمعًا على ناقل الأحداث على مستوى الوحدة في CrewAI ويشترك في معالج واحد لكل فئة حدث. لا يتغير شيء حول فريقك أو الوكلاء أو المهام أو الأدوات.
+
+## ما يتم تسجيله
+
+| CrewAI | حدث Failproof |
+| --- | --- |
+| بدء Crew | `agent_start`, `agent_end` |
+| `Agent.kickoff()` (وكيل خفيف بدون فريق) | `agent_start`, `agent_end`، مع `agent_id` من الدور |
+| بدء وإنهاء التدفق | `agent_start`, `agent_end`؛ يتم تداخل فريق تم بدؤه داخل طريقة التدفق تحته |
+| تنفيذ الوكيل | `agent_start`, `agent_end` متداخل، مع `agent_id` من الدور. تحت عملية هرمية يتم تداخل الزميل المفوّض تحت المدير وليس بجانبه |
+| المهمة | لا شيء؛ يتم تسجيله كرابط بحيث تنحل الأطفال للفريق |
+| طريقة التدفق والحماية | `hook_triggered`, `hook_completed` |
+| استخدام الأداة | `tool_use`, `tool_result` |
+| عمليات الذاكرة والمعرفة | `tool_use`, `tool_result`، مسمى للسطح المصاب |
+| استدعاء LLM | `model_request`, `model_response`، مع استخدام الرموز |
+| جزء البث | مدمج في الاستجابة كعدد الأجزاء والوقت للرمز الأول |
+| طلب ردود فعل بشرية | `human_wait`, `agent_pause` |
+| استقبال ردود فعل بشرية | `agent_resume`, `human_input` |
+| خطأ تنفيذ الوكيل | `error`، ثم `agent_end` مع نتيجة `failed` |
+
+المهمة لا تصدر شيئًا بقصد. مهمة CrewAI هي مجموعة فرعية من تنفيذ الوكيل الذي يشغلها، لذا فإن إصدار كليهما سيضاعف كل صف ويجعلها تبدو كأخوات. بدلاً من ذلك، يتم نقل معرف المهمة واسمها على أحداث الوكيل نفسه.
+
+يتم تسجيل عمليات الذاكرة والمعرفة كأدوات، مسماة للسطح الذي يصيبونه، بحيث تظهر بجانب أدواتك الحقيقية حيث يمكنك مقارنة زمن استجابتها.
+
+في الفريق الهرمي، التداخل هو الذي يجعل التتبع قابلاً للقراءة:
+
+```text
+crew
+└─ manager
+   ├─ researcher      delegated
+   └─ writer          delegated
+```
+
+يربط CrewAI التنفيذ المفوّض على حدث أداة **`delegate_work_to_coworker`** وليس على المدير مباشرة، لذا يتبع المحول هذا الرابط. بدونه، كل وكيل يخرج كأخ لكل وكيل آخر وتضيع هيكل التفويض.
+
+## مثال
+
+```python
+import failproofai_sdk
+from crewai import Agent, Crew, Process, Task
+from crewai.tools import tool
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+MODEL = "openai/gpt-4o-mini"
+METRICS = {"revenue": "$4.2M ARR, up 12% QoQ", "churn": "3.1% monthly, up from 2.4%"}
+
+
+@tool("lookup_metric")
+def lookup_metric(name: str) -> str:
+    """Look up a business metric by name. Valid: revenue, churn."""
+    return METRICS.get(name.lower().strip(), "unknown metric")
+
+
+analyst = Agent(
+    role="analyst",                     # becomes agent_id
+    goal="pull the numbers that matter and state them plainly",
+    backstory="You read dashboards for a living.",
+    tools=[lookup_metric],
+    llm=MODEL,
+)
+writer = Agent(
+    role="writer",
+    goal="turn numbers into three lines an exec will read",
+    backstory="You write board updates. You never pad.",
+    llm=MODEL,
+)
+
+gather = Task(
+    description="Look up 'revenue' and 'churn' with the tool.",
+    expected_output="Two lines, one metric each.",
+    agent=analyst,
+)
+summarise = Task(
+    description="Using the metrics above, write a three-line exec summary.",
+    expected_output="Exactly three lines.",
+    agent=writer,
+    context=[gather],
+)
+
+with failproofai_sdk.session():
+    result = Crew(
+        agents=[analyst, writer],
+        tasks=[gather, summarise],
+        process=Process.sequential,
+    ).kickoff()
+```
+
+المرحلة الانتقالية مرئية في التتبع: يغلق امتداد `analyst`، ويفتح امتداد `writer`، وكلاهما يقع داخل امتداد `crew` واحد.
+
+## قم بتسمية امتدادات الشبكة الخاصة بك
+
+يأتي `agent_id` من `Agent(role=...)`، وهذا هو ما يجعله وجهة نظر لوحة معلومات قابلة للقراءة.
+
+```python
+Agent(role="analyst", ...)          # agent_id = "analyst"
+Agent(role="analyst-7f3a2b", ...)   # one facet entry per run
+```
+
+`agent_id` هي عمود منخفض الأساسية. الدور الذي يحتوي على معرف التشغيل أو الطابع الزمني يقلل منه لكل استعلام يشغله أي شخص. إذا بدا الدور كمعرف، فإن المحول يرفضه ويضع القيمة الحقيقية في حقل الحمولة بدلاً من ذلك.
+
+## التحكم في الجلسة
+
+تم حلها بهذا الترتيب، أول تطابق يفوز:
+
+1. `instrument("crewai", session_id=...)`
+2. نطاق `failproofai_sdk.session()` المغلف
+3. معرف `uuid4().hex` تم إنشاؤه، مرة واحدة لكل فريق أو تدفق
+
+لف البدء للتحكم فيه لكل تشغيل:
+
+```python
+with failproofai_sdk.session(f"support-{ticket_id}"):
+    Crew(agents=[...], tasks=[...]).kickoff()
+```
+
+## الخيارات
+
+```python
+failproofai_sdk.instrument(
+    "crewai",
+    session_id=None,          # pin every run to one session id
+)
+```
+
+`session_id` هو الخيار الوحيد الذي يقرأه هذا المحول. يتم تسجيل الطلبات والإكمالات دائمًا، مع القطع إلى ميزانية الحمولة.
+
+## البشر في الحلقة
+
+يحتوي CrewAI على **سطحين** من أسطح البشر في الحلقة، وكلاهما يتم تسجيله نفس الأحداث الأربعة.
+
+يمر `@human_feedback` على طريقة التدفق عبر ناقل أحداث CrewAI: يصدر وقت التشغيل حدثًا قبل انسداده على شخص وآخر بعد الإجابة.
+
+لا يفعل `Task(human_input=True)`. يستدعي `input()` داخل مزود الإدخال الخاص بـ CrewAI ولا يصدر أي حدث من أي نوع، لذا يلف المحول مزود الإدخال هذا مباشرة — بدونه كانت انتظار الإنسان بأكمله غير مرئي وتم محاسبته كوقت وكيل نشط.
+
+بأي طريقة تحصل على:
+
+```text
+human_wait      the prompt and its options
+agent_pause     starts the paused-time clock
+agent_resume    stops it
+human_input     the answer, with the wait measured
+```
+
+`agent_pause` إلى `agent_resume` هو الزوج الوحيد الذي يطعم الوقت المتوقف. بدونه، ينتظر الإنسان لمدة عشر دقائق يتم محاسبته كعشر دقائق من وقت الوكيل النشط.
+
+<Note>
+  لا يقوم CrewAI بتعيين معرف ارتباط على حدث ردود الفعل البشرية، لذا يقرن المحول بينهما على اسم التدفق والطريقة، مع العودة إلى آخر توقف تم فتحه. هذا صحيح لأن موجه وحدة التحكم ينسد. إذا قمت ببناء مزود ردود فعل متزامن، فقم بتعيين `request_id` على كلا الحدثين.
+</Note>
+
+<Note>
+  نظرًا لأن مسار `Task(human_input=True)` هو غلاف حول مزود إدخال CrewAI بدلاً من اشتراك في الأحداث، يتم استعادته على `uninstrument()` وإعادة رفع ما يرفعه `input()`، بما في ذلك `KeyboardInterrupt` بدون تغيير.
+</Note>
+
+## المشاكل الشائعة
+
+<AccordionGroup>
+  <Accordion title="مرشح الوكيل يحتوي على آلاف الإدخالات">
+    يحتوي `role` على معرف UUID أو طابع زمني أو لاحقة لكل تشغيل. استخدم دورًا بشريًا مستقرًا وضع معرف التشغيل المحدد في وصف المهمة بدلاً من ذلك.
+  </Accordion>
+
+  <Accordion title="اختبار يقرأ صفر أحداث، لكن لوحة المعلومات تظهرها">
+    ناقل الأحداث غير متزامن، و `kickoff()` يعود قبل تشغيل آخر المعالجات. استنزف أولاً:
+
+    ```python
+    from crewai.events.event_bus import crewai_event_bus
+
+    crew.kickoff()
+    crewai_event_bus.flush(timeout=30)
+    ```
+
+    هذه خاصية CrewAI وليست خاصية SDK.
+  </Accordion>
+
+  <Accordion title="جلسة تظهر كمستمرة إلى الأبد">
+    يفرض `agent_end` إغلاق التوقفات المفتوحة ولكن ليس الأدوات أو النماذج، لذا فإن التشغيل الذي يموت داخل استدعاء أداة يترك هذا الامتداد مفتوحًا. يغلق الهدم الطبيعي أي شيء لا يزال مفتوحًا ويضع علامة عليه كناقص. فقط `SIGKILL` يتركها معلقة، لأنه لا يمكن لأحد أن يركض.
+  </Accordion>
+
+  <Accordion title="لم يتم تسجيل أي شيء">
+    تحقق بهذا الترتيب: `instrument()` يركض قبل `kickoff()`؛ هناك `with failproofai_sdk.session():` حوله؛ `crewai` هو 1.13 أو أحدث؛ تم تعيين `FAILPROOFAI_SDK_STRICT=1`، بحيث يرفع Hook المتدهور بدلاً من الابتلاع.
+  </Accordion>
+</AccordionGroup>
+
+## التالي
+
+<Columns cols={3}>
+  <Card title="كيف يعمل" icon="workflow" href="/ar/start/integrations/custom-agents#going-deeper">
+    الأزواج والمعرفات ودورة حياة الجلسة والتسليم.
+  </Card>
+  <Card title="اقرأ التتبع" icon="route" href="/ar/sessions/read-a-trace">
+    اتبع السببية عبر الجلسة التي التقطتها للتو.
+  </Card>
+  <Card title="أطر عمل أخرى" icon="plug" href="/ar/start/integrations">
+    LangGraph و LlamaIndex و Pydantic AI والوكلاء المخصصين.
+  </Card>
+</Columns>

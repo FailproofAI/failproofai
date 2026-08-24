@@ -1,45 +1,40 @@
 ---
-title: "कस्टम एजेंट"
-description: "कस्टम एजेंट से ट्रेस इंस्ट्रूमेंट करें ताकि Failproof AI रन को पुनर्निर्मित कर सके और विफलताओं को खोज सके।"
+title: "कस्टम एजेंट्स"
+description: "failproofai-sdk के लिए कॉन्फ़िगरेशन, ईवेंट कैटलॉग, सहसंबंध नियम, और डिलीवरी।"
 icon: "python"
 ---
 
-`failproofai-sdk` के साथ कस्टम एजेंट से ट्रेस इंस्ट्रूमेंट करें ताकि Failproof AI प्रत्येक रन को पुनर्निर्मित कर सके, इसके व्यवहार का ऑडिट कर सके, और साक्ष्य-समर्थित विफलताओं को खोज सके। SDK Failproof डेमॉन को Cloud में डिलीवर करने के लिए संरचित इवेंट लिखता है। इसके लिए Python 3.10 या नए संस्करण की आवश्यकता है।
+हर सेटिंग, मेथड और फील्ड क्या करते हैं। अगर आप पहली बार इंस्ट्रूमेंटेशन कर रहे हैं, तो गाइड से शुरुआत करें — यह पृष्ठ संदर्भ के लिए है।
 
-ट्रेसिंग कस्टम एजेंट को अवलोकनीय और ऑडिट योग्य बनाता है। किसी असुरक्षित कार्य को निष्पादित होने से पहले रोकने के लिए आपके रनटाइम में एक एनफोर्समेंट हुक की भी आवश्यकता है।
+<Columns cols={2}>
+  <Card title="कस्टम एजेंट्स गाइड" icon="code" href="/hi/start/integrations/custom-agents">
+    इंस्टॉल, इंस्ट्रूमेंट, ईवेंट मेथड्स, एक व्यावहारिक उदाहरण, और सामान्य समस्याएं।
+  </Card>
+  <Card title="फ्रेमवर्क का उपयोग कर रहे हैं?" icon="plug" href="/hi/start/integrations">
+    LangChain, CrewAI, LlamaIndex और Pydantic AI एक कॉल के साथ अपने आप को इंस्ट्रूमेंट करते हैं।
+  </Card>
+</Columns>
 
-<Info>
-  कस्टम एजेंट सेटअप में नीतियों को लागू करने के लिए, [Failproof AI से संपर्क करें](mailto:support@befailproof.ai)। हम आपके रनटाइम के मॉडल, टूल, और लाइफसाइकिल सीमाओं को नीति हुक के साथ मैप करने में मदद करेंगे।
-</Info>
+Python 3.10 या नया। कोई रनटाइम डिपेंडेंसीज नहीं।
 
-<div style={{ position: "relative", width: "100%", paddingBottom: "56.25%", height: 0, overflow: "hidden", borderRadius: "12px", margin: "1.5rem 0" }}>
-  <iframe src="https://www.youtube.com/embed/VWxukZc5k7s?rel=0&playsinline=1" title="Agent tracing with the Failproof AI Python SDK" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowFullScreen style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}></iframe>
-</div>
-
-## `failproofai-sdk` इंस्टॉल करें
-
-SDK वर्तमान में एक निजी व्हील के रूप में वितरित किया जाता है। अपने Failproof AI संपर्क से वर्तमान संस्करण और डाउनलोड एक्सेस के लिए पूछें।
+## इंस्टॉल करें
 
 ```bash
-VERSION=<sdk-version>
-pip install "./failproofai_sdk-${VERSION}-py3-none-any.whl"
-python -c "import failproofai; print(failproofai.__version__)"
+pip install failproofai-sdk
 ```
 
-`uv` के साथ, पहले व्हील डाउनलोड करें और `uv add ./failproofai_sdk-${VERSION}-py3-none-any.whl` चलाएं। व्हील को एक निजी आर्टिफैक्ट रिपोजिटरी में या डिपेंडेंसी लॉक में पिन करें।
+पैकेज को `failproofai-sdk` के रूप में इंस्टॉल किया जाता है और Python में `failproofai_sdk` के रूप में इम्पोर्ट किया जाता है। `failproofai-sdk[langgraph]` जैसी फ्रेमवर्क एक्सट्रास फ्रेमवर्क को स्वयं इंस्टॉल करते हैं; एडेप्टर हमेशा बेस व्हील में आते हैं।
 
-पैकेज `failproofai-sdk` के रूप में इंस्टॉल किया जाता है और Python में `failproofai` के रूप में आयात किया जाता है।
-
-## Failproof डेमॉन से कनेक्ट करें
+## Failproof डेमन कनेक्ट करें
 
 <Tabs>
   <Tab title="डैशबोर्ड">
     1. **Admin → Keys** पर जाएं और `events:add` के साथ एक कुंजी बनाएं।
-    2. एजेंट मशीन पर [Failproof डेमॉन को Cloud से कनेक्ट करें](/hi/start/setup#connect-a-machine-to-cloud)।
-    3. एक इंस्ट्रूमेंटेड सेशन चलाएं, फिर **Observe → Events** के अंतर्गत इसका सटीक ID खोजें।
-    4. **Observe → Sessions** पर जाएं, समान वातावरण चुनें, और पुनर्निर्मित ट्रेस खोलें।
+    2. [एजेंट मशीन पर Failproof डेमन को Cloud से कनेक्ट करें](/hi/start/setup#connect-a-machine-to-cloud)।
+    3. एक इंस्ट्रूमेंटेड सेशन चलाएं, फिर **Observe → Events** के तहत इसकी सटीक ID खोजें।
+    4. **Observe → Sessions** पर जाएं, वही वातावरण चुनें, और पुनर्निर्मित ट्रेस खोलें।
 
-    ![एक कस्टम Python एजेंट सेशन एक्सीक्यूशन ग्राफ और ऑर्डर किए गए इवेंट ट्रेस के रूप में पुनर्निर्मित।](/images/dashboard/session-detail.png)
+    ![एक कस्टम Python एजेंट सेशन जो एक्सीक्यूशन ग्राफ और ऑर्डर किए गए ईवेंट ट्रेस के रूप में पुनर्निर्मित है।](/images/dashboard/session-detail.png)
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -51,102 +46,84 @@ python -c "import failproofai; print(failproofai.__version__)"
   </Tab>
 </Tabs>
 
-## एक संपूर्ण रन को इंस्ट्रूमेंट करें
-
-प्रक्रिया स्टार्टअप के दौरान एक बार `configure()` कॉल करें। प्रत्येक इवेंट कॉल केवल कीवर्ड है और एक स्थिर `session_id` और `agent_id` की आवश्यकता है।
+## कॉन्फ़िगरेशन
 
 ```python
-import traceback
-import uuid
+import failproofai_sdk
 
-import failproofai
-
-failproofai.configure(environment="production")
-
-session_id = uuid.uuid4().hex
-agent_id = "checkout-agent"
-
-failproofai.event.agent_start(
-    session_id=session_id,
-    agent_id=agent_id,
-    goal="Resolve a failed checkout",
-)
-
-try:
-    tool_call_id = uuid.uuid4().hex
-    failproofai.event.tool_use(
-        session_id=session_id,
-        agent_id=agent_id,
-        tool_name="lookup_order",
-        tool_call_id=tool_call_id,
-        input={"order_id": "ord_8421"},
-    )
-    result = {"status": "payment_failed"}
-    failproofai.event.tool_result(
-        session_id=session_id,
-        agent_id=agent_id,
-        tool_name="lookup_order",
-        tool_call_id=tool_call_id,
-        output=result,
-    )
-except Exception as exc:
-    failproofai.event.error(
-        session_id=session_id,
-        agent_id=agent_id,
-        error_type=type(exc).__name__,
-        message=str(exc),
-        traceback=traceback.format_exc(),
-    )
-    failproofai.event.agent_end(
-        session_id=session_id,
-        agent_id=agent_id,
-        outcome="failed",
-    )
-    raise
-else:
-    failproofai.event.agent_end(
-        session_id=session_id,
-        agent_id=agent_id,
-        outcome="success",
-        summary="Escalated the failed payment",
-    )
-```
-
-प्रति अभिनेता एक बार `agent_start` उत्सर्जित करें। उप-एजेंट के लिए, माता-पिता के `session_id` का पुनः उपयोग करें, प्रत्येक अभिनेता को एक अलग `agent_id` दें, और `parent_id` को माता-पिता के **agent ID** पर सेट करें, सेशन ID पर नहीं।
-
-## कॉन्फ़िगरेशन संदर्भ
-
-```python
-failproofai.configure(
+failproofai_sdk.configure(
     base_dir=None,
     flush_interval=0.5,
     environment="production",
 )
 ```
 
-| सेटिंग | व्यवहार |
+| आर्गुमेंट | यह क्या करता है |
 | --- | --- |
-| `base_dir` | स्पष्ट स्पूल रूट। सभी पर्यावरण चर को प्राथमिकता देता है। |
-| `flush_interval` | मेमोरी से JSONL तक बैकग्राउंड लेखन के बीच सेकंड। डिफ़ॉल्ट: `0.5`। |
-| `environment` | प्रत्येक इवेंट पर डिप्लॉयमेंट लेबल। डिफ़ॉल्ट `dev` है। |
-| `FAILPROOFAI_HOME` | Failproof AI रूट को बदलता है जिसमें `custom-agents` स्पूल है। |
+| `environment` | हर ईवेंट पर लेबल — `production`, `staging`, `prod-eu`। डिफ़ॉल्ट `dev` है। |
+| `flush_interval` | पृष्ठभूमि थ्रेड कितनी बार डिस्क पर लिखता है, सेकंड में। डिफ़ॉल्ट `0.5` है। |
+| `base_dir` | कहां लिखना है। डिफ़ॉल्ट डेमन के स्पूल, जो आप चाहते हैं जब तक कि आप अन्यथा न जानते हों। |
 
-SDK सेट होने पर स्पष्ट `base_dir` में लिखता है। अन्यथा, यह `FAILPROOFAI_HOME` या `~/.failproofai` के अंतर्गत Failproof डेमॉन के `custom-agents` स्पूल का उपयोग करता है।
+इसके बजाय पर्यावरण चर द्वारा सेट करें:
 
-SDK कॉल को मेमोरी में कतार में रखता है और बैकग्राउंड थ्रेड पर बैच लिखता है। यह Python के `atexit` हैंडलिंग के माध्यम से एक अंतिम फ्लश का भी प्रयास करता है। अल्पकालिक वर्कर के लिए सामान्य दुभाषिया शटडाउन की अनुमति दें; हार्ड प्रक्रिया समाप्ति मेमोरी में अभी भी इवेंट खो सकती है।
+| चर | यह क्या करता है |
+| --- | --- |
+| `AGENTEYE_ENVIRONMENT` | कोड परिवर्तन के बिना `environment` सेट करता है, जब लेबल डिप्लॉयमेंट के बजाय ऐप से संबंधित हो। एक `configure()` आर्गुमेंट इसे जीतता है। |
+| `FAILPROOFAI_HOME` | Failproof AI रूट को स्थानांतरित करता है जो स्पूल को धारण करता है। |
+| `FAILPROOFAI_SDK_STRICT` | `1` इंस्ट्रूमेंटेशन त्रुटियों को लॉग करने के बजाय उठाता है। |
+| `FAILPROOFAI_SDK_STRICT_INTEGRATIONS` | `1` एक फ्रेमवर्क-संगतता समस्या को चेतावनी दिए जाने और जारी रहने के बजाय उठाता है। |
 
-## इवेंट कैटलॉग
+<Warning>
+  **`environment` में कोई अल्पविराम नहीं।** इनजेस्ट अपने फिल्टर बनाने के लिए उस फील्ड को अल्पविराम पर विभाजित करता है, और किसी भी ईवेंट को छोड़ देता है जिसका लेबल एक युक्त है — इसलिए एक पूरा रन चुप चाप गायब हो जाता है। `prod-eu` लिखें, `prod,eu` नहीं।
 
-सभी विधियां `None` लौटाती हैं। `None` के रूप में छोड़े गए फील्ड JSON `null` के रूप में लिखे जाने के बजाय छोड़ दिए जाते हैं।
+  `configure(environment="prod,eu")` उठाता है ताकि आप तुरंत खोज लें। `AGENTEYE_ENVIRONMENT` उठा नहीं सकता — कोई आपको कॉल नहीं कर रहा है — इसलिए यह एक बार चेतावनी देता है और `dev` पर वापस आता है।
+</Warning>
 
-| विधि | पहचान से परे आवश्यक फील्ड | वैकल्पिक फील्ड |
+ईवेंट्स मेमोरी में कतारबद्ध हैं और हर `flush_interval` सेकंड में पृष्ठभूमि में लिखे जाते हैं, इंटरप्रेटर एक्जिट पर एक अंतिम फ्लश के साथ। एक प्रक्रिया जो सीधे मारी जाती है, वह कुछ भी खो देती है जो अभी तक लिखी नहीं गई थी।
+
+## पहचान
+
+हर ईवेंट एक सेशन और एक एजेंट से संबंधित है। **स्कोप दोनों को भरते हैं**, इसलिए आप शायद ही कभी उन्हें पास करते हैं:
+
+```python
+with failproofai_sdk.session():
+    with failproofai_sdk.agent("planner"):
+        failproofai_sdk.event.tool_use(tool_name="search", tool_call_id="c1")
+```
+
+`session_id` या `agent_id` को स्पष्ट रूप से पास करना अभी भी काम करता है और जीतता है। न तो बाउंड और न ही पास के साथ, कॉल `TypeError` उठाता है बजाय एक ईवेंट उत्सर्जित करने के जो Cloud चुप चाप त्यागता है।
+
+<Note>
+  पहचान संदर्भ चर पर सवारी करती है। यह `asyncio` कार्यों को स्वचालित रूप से अनुसरण करता है, लेकिन **नए थ्रेड्स नहीं** — एक वर्कर को `failproofai_sdk.propagate()` में लपेटें या इसके ईवेंट्स अनलगाए रहते हैं।
+</Note>
+
+## ईवेंट कैटलॉग
+
+पंद्रह मेथड्स। अधिकांश **जोड़े** में आते हैं — आप ओपनर को कॉल करते हैं, फिर क्लोजर को, और SDK अंतराल को समय करता है।
+
+| | खुलता है | बंद करता है |
+| --- | --- | --- |
+| **एजेंट्स** | `agent_start` | `agent_end` |
+| | `agent_pause` | `agent_resume` |
+| **मॉडल्स** | `model_request` | `model_response` |
+| **टूल्स** | `tool_use` | `tool_result` |
+| **हुक्स** | `hook_triggered` | `hook_completed` |
+| **मानव** | `human_wait` | `human_input` |
+
+तीन अकेले खड़े हैं: `error`, `human_pause`, `human_interrupt`।
+
+<Accordion title="हर फील्ड, प्रति मेथड" icon="table">
+
+हर मेथड भी `session_id` और `agent_id` लेता है, जिन्हें स्कोप आपके लिए भरते हैं। कुछ भी `None` के रूप में छोड़ दिया गया JSON `null` के रूप में भेजने के बजाय dropped है, और हर मेथड `None` रिटर्न करता है।
+
+| मेथड | आवश्यक | वैकल्पिक |
 | --- | --- | --- |
 | `agent_start` | — | `goal`, `parent_id` |
 | `agent_end` | — | `outcome`, `summary` |
 | `agent_pause` | `pause_id` | `reason`, `user_id` |
 | `agent_resume` | `pause_id` | `reason`, `user_id` |
-| `model_request` | — | `model`, `messages`, `system`, `tools` |
-| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role` |
+| `model_request` | — | `model`, `messages`, `system`, `tools`, `request_id` |
+| `model_response` | — | `model`, `stop_reason`, `input_tokens`, `output_tokens`, `content`, `role`, `request_id`, `duration_ms` |
 | `tool_use` | `tool_name`, `tool_call_id` | `input` |
 | `tool_result` | `tool_name`, `tool_call_id` | `output`, `error` |
 | `hook_triggered` | `hook_name`, `hook_id` | `trigger_event`, `input` |
@@ -157,27 +134,64 @@ SDK कॉल को मेमोरी में कतार में रख�
 | `human_pause` | — | `reason`, `user_id` |
 | `human_interrupt` | — | `reason`, `user_id`, `at_step` |
 
-`outcome="failed"`, `"error"`, `"timeout"`, या `"rejected"` का उपयोग करें जब कोई पूरा होना विफलता के रूप में गिना जाना चाहिए। अन्य मान, `"failure"` सहित, वर्तमान बैकएंड द्वारा विफलता के रूप में वर्गीकृत नहीं हैं।
+</Accordion>
 
-## सहसंबंध और अवधि नियम
+<Warning>
+  एक रन को विफल के रूप में चिह्नित करने के लिए, `outcome` `failed`, `error`, `timeout` या `rejected` में से एक होना चाहिए। कुछ भी अन्य — निकट-मिस `"failure"` सहित — एक सफलता के रूप में गिना जाता है।
+</Warning>
 
-- मिलान पूरा होने वाली इवेंट के लिए समान `tool_call_id`, `hook_id`, `pause_id`, या `input_id` का पुनः उपयोग करें।
-- SDK `tool_result`, `hook_completed`, `agent_resume`, और `human_input` के लिए `duration_ms` की गणना करता है। इसे स्वयं उन विधियों को पास करने से `ValueError` उठता है।
-- टूल और हुक ID एक प्रक्रिया-व्यापी लंबित मानचित्र साझा करते हैं। उन्हें समवर्ती सेशन और दोनों नामस्थानों में विश्व स्तर पर अद्वितीय बनाएं; प्रदाता ID या UUID सबसे सुरक्षित हैं।
-- एक जोड़ी को प्रक्रियाओं में विभाजित करने पर भी डाउनस्ट्रीम सहसंबंध होता है, लेकिन SDK इसकी प्रक्रिया-में अवधि की गणना नहीं कर सकता।
-- लंबित मानचित्र सर्वाधिक 10,000 शुरुआत रखता है और पूर्ण होने पर सबसे पुरानी प्रविष्टि को निष्कासित करता है।
+## पेयरिंग और अवधि
 
-## कस्टम फील्ड और पेलोड
+**एक नियम: क्लोजिंग ईवेंट को अपने ओपनर के समान ID दें।** यह वह है जो उन्हें जोड़ता है, और क्या SDK को अंतराल को समय देता है।
 
-प्रत्येक इवेंट अतिरिक्त कीवर्ड फील्ड स्वीकार करता है। डाउनस्ट्रीम क्वेरी को संरचना की आवश्यकता होने पर JSON-संगत मान का उपयोग करें। UUID, दिनांक, दशमलव, सेट, बाइट, और मॉडल ऑब्जेक्ट जैसे समर्थित नहीं पत्ते लेखक द्वारा स्ट्रिंगिफाई किए जाते हैं।
+| जोड़ी | मिलान किया गया |
+| --- | --- |
+| `tool_use` → `tool_result` | `tool_call_id` |
+| `hook_triggered` → `hook_completed` | `hook_id` |
+| `agent_pause` → `agent_resume` | `pause_id` |
+| `human_wait` → `human_input` | `input_id` |
+| `model_request` → `model_response` | `request_id` |
 
-आरक्षित कस्टम नाम `timestamp`, `session_id`, `agent_id`, `type`, और `environment` हैं। वैकल्पिक-फील्ड टाइपो को नए कस्टम फील्ड के रूप में स्वीकार किया जाता है, इसलिए जब कोई मानक फील्ड Cloud में दिखाई न दे तो उत्सर्जित JSON की समीक्षा करें।
+**`duration_ms` को स्वयं पास न करें।** SDK इसे मापता है, और इसे पास करना `ValueError` उठाता है।
 
-## डिलीवर और सत्यापित करें
+एक अपवाद `model_response` है, जहां केवल आप वास्तविक प्रदाता विलंबता जानते हैं। मिलीसेकंड की एक पूरी संख्या पास करें — एक फ्लोट उठाता है, क्योंकि कॉलम एक 32-बिट पूर्णांक है और अन्यथा खाली रहेगा।
+
+<Accordion title="एज केसेस" icon="circle-help">
+
+- **Ids को केवल प्रति प्रकार, प्रति सेशन में अद्वितीय होने की आवश्यकता है।** एक टूल कॉल और एक हुक एक साझा कर सकते हैं; एक साथ चलने वाले दो सेशन बिना टकराए समान IDs पुन: उपयोग कर सकते हैं।
+- **वे एक एजेंट के लिए स्कोप नहीं हैं।** एक जोड़ी एक एजेंट के तहत खुली और दूसरे के तहत बंद अभी भी मेल खाती है — जो बहु-एजेंट कोड में सामान्य मामला है।
+- **`request_id` वैकल्पिक है लेकिन अनुशंसित है।** इसके बिना, मॉडल ईवेंट्स उस क्रम में जोड़ी बनाते हैं जिस क्रम में वे आते हैं, इसलिए एक ही एजेंट में दो समवर्ती कॉल्स गलत जोड़ी बना सकते हैं।
+- **एक जोड़ी प्रक्रियाओं के पार विभाजित** अभी भी Cloud में मेल खाती है, लेकिन SDK इसे समय नहीं कर सकता — कोई भी प्रक्रिया दोनों आधे नहीं देखे।
+- **अधिकतम 10,000 ओपनर्स एक साथ क्लोजर की प्रतीक्षा करते हैं।** उसके बाद सबसे पुराना dropped है, इसलिए एक रिसाव बिना सीमा के विकसित नहीं हो सकता।
+
+</Accordion>
+
+## आपके अपने फील्ड्स
+
+कोई भी अतिरिक्त कीवर्ड जो आप पास करते हैं ईवेंट के साथ संग्रहीत है:
+
+```python
+failproofai_sdk.event.tool_use(
+    tool_name="search", tool_call_id="c1",
+    fw_tenant="acme", fw_region="eu-west-1",     # आपके अपने
+)
+```
+
+अगर आप बाद में उन्हें क्वेरी करना चाहते हैं तो JSON प्रकारों को वरीयता दें। कुछ भी अन्य — एक UUID, एक datetime, एक `Decimal`, एक सेट, बाइट्स, एक मॉडल ऑब्जेक्ट — एक स्ट्रिंग के रूप में संग्रहीत है।
+
+<Warning>
+  **अपने फील्ड नामों को प्रीफिक्स करें।** एक्सट्रास आखिरी लागू होते हैं, इसलिए `model`, `tool_name` या `outcome` कहा जाने वाला एक फील्ड चुप चाप वास्तविक को ओवरराइट करता है। फ्रेमवर्क एडेप्टर `fw_` का उपयोग करते हैं; वही करें और कुछ भी टकरा नहीं सकता।
+
+  यही कारण है कि एक गलत वर्तनी वाली वैकल्पिक फील्ड कभी त्रुटि नहीं करती — यह सिर्फ एक नया कस्टम फील्ड बन जाती है। अगर एक मानक फील्ड Cloud में लापता है, तो पहले वर्तनी की जांच करें।
+</Warning>
+
+ये पांच नाम आरक्षित हैं और तुरंत अस्वीकार कर दिए गए हैं: `timestamp`, `session_id`, `agent_id`, `type`, `environment`।
+
+## डिलीवर करें और सत्यापित करें
 
 <Tabs>
   <Tab title="डैशबोर्ड">
-    **Observe → Events** में, सत्यापित करें कि `agent_start` सबसे पहले और `agent_end` सबसे अंत में है। फिर **Observe → Sessions** खोलें और पुष्टि करें कि मॉडल, टूल, मानव, हुक, और त्रुटि इवेंट अभीष्ट क्रम में दिखाई देते हैं। ट्रबलशूटिंग की कुंजी के रूप में सेशन ID का उपयोग करें।
+    **Observe → Events** में, पहले `agent_start` मौजूद है और `agent_end` आखिरी मौजूद है यह सत्यापित करें। फिर **Observe → Sessions** खोलें और पुष्टि करें कि मॉडल, टूल, मानव, हुक, और त्रुटि ईवेंट्स इरादे के क्रम में दिखाई देते हैं। समस्या निवारण कुंजी के रूप में सेशन ID का उपयोग करें।
   </Tab>
   <Tab title="CLI">
     ```bash
@@ -189,10 +203,14 @@ SDK कॉल को मेमोरी में कतार में रख�
   </Tab>
 </Tabs>
 
-यदि Cloud खाली है, तो `$FAILPROOFAI_HOME/custom-agents/events` निरीक्षण करें, अन्यथा `~/.failproofai/custom-agents/events`। JSONL फाइलें SDK उत्सर्जन साबित करती हैं; एक बढ़ता हुआ स्पूल डेमॉन कॉन्फ़िगरेशन या डिलीवरी की ओर इशारा करता है, जबकि एक खाली स्पूल इंस्ट्रूमेंटेशन या प्रक्रिया जीवनकाल की ओर इशारा करता है।
+अगर Cloud खाली है, तो `$FAILPROOFAI_HOME/custom-agents/events` की जांच करें, अन्यथा `~/.failproofai/custom-agents/events`। JSONL फाइलें SDK उत्सर्जन साबित करती हैं; एक बढ़ता हुआ स्पूल डेमन कॉन्फ़िगरेशन या डिलीवरी की ओर इशारा करता है, जबकि एक खाली स्पूल इंस्ट्रूमेंटेशन या प्रक्रिया जीवनकाल की ओर इशारा करता है।
 
-## कस्टम रनटाइम में विफलताओं को रोकें
+<Note>
+  स्पूल की जांच केवल तभी करें जब डेमन रुका हो। जब यह चलता है, तो यह मिलीसेकंड के भीतर प्रत्येक बैच को एकत्र और हटाता है, इसलिए एक निर्देशिका सूची कलेक्टर के साथ दौड़ लगाती है और उत्सर्जित की तुलना में बहुत कम ईवेंट्स दिखाती है।
+</Note>
 
-असुरक्षित कार्य, आवश्यक साक्ष्य, और अभीष्ट प्रतिक्रिया को परिभाषित करने के लिए ऑडिट निष्कर्ष और लिंक किए गए ट्रेस का उपयोग करें। एक कस्टम एनफोर्समेंट एकीकरण को निष्पादन से पहले कार्य को उजागर करना चाहिए, इसके संरचित इनपुट को नीति इंजन में पास करना चाहिए, और परिणामी allow, instruct, या deny निर्णय लागू करना चाहिए।
+## एक कस्टम रनटाइम में विफलताओं को रोकें
 
-अपने रनटाइम के लिए इस एकीकरण को डिज़ाइन और मान्य करने के लिए [support@befailproof.ai](mailto:support@befailproof.ai) को ईमेल करें।
+असुरक्षित कार्य, आवश्यक साक्ष्य, और इरादे की प्रतिक्रिया को परिभाषित करने के लिए ऑडिट निष्कर्ष और लिंक किए गए ट्रेस का उपयोग करें। एक कस्टम प्रवर्तन एकीकरण को निष्पादन से पहले कार्रवाई को उजागर करना चाहिए, इसके संरचित इनपुट को नीति इंजन में पास करना चाहिए, और परिणामी allow, instruct, या deny निर्णय लागू करना चाहिए।
+
+[Failproof AI से संपर्क करें](mailto:support@befailproof.ai) और हम आपके रनटाइम के मॉडल, टूल और जीवनचक्र सीमाओं को नीति हुक्स में मैप करने में मदद करेंगे, फिर एकीकरण को आपके साथ सत्यापित करेंगे।

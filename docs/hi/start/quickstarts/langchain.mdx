@@ -1,0 +1,39 @@
+---
+title: "LangChain और LangGraph"
+description: "इंस्टॉल करें, इंस्ट्रूमेंट करें, और अपना पहला ट्रेस देखें।"
+icon: "/images/frameworks/langchain.svg"
+---
+
+आपके पहले LangChain या LangGraph ट्रेस के लिए तीन चरण। स्ट्रीमिंग, मानव-इन-द-लूप, स्पैन नामकरण, और विकल्पों के लिए, [पूर्ण गाइड](/hi/start/integrations/langchain) देखें।
+
+## इंस्टॉल करें
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+LangGraph के बिना LangChain के लिए, `failproofai-sdk[langchain]` का उपयोग करें।
+
+## इंस्ट्रूमेंट करें
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+कोई कॉल साइट परिवर्तन नहीं। `instrument()` एक ट्रेसर पंजीकृत करता है जिसे LangChain हर कॉलबैक मैनेजर में इंजेक्ट करता है जो यह बनाता है, इसलिए ग्राफ़, टूल्स, और मॉडल्स को कैप्चर किया जाता है — उन लोगों सहित जो उन पुस्तकालयों के अंदर हैं जिन्हें आपने नहीं लिखा है।
+
+## जांचें कि यह पहुंचा
+
+इसे एक बार चलाएं, फिर **Observe → Sessions** खोलें और अपने वातावरण को चुनें। आपका रन एक पुनर्निर्मित ट्रेस के रूप में प्रदर्शित होता है।
+
+यदि कुछ नहीं पहुंचता है, तो पुष्टि करें कि मशीन `failproofai config --status` के साथ जुड़ी हुई है।
+
+<Card title="पूर्ण LangChain गाइड" icon="arrow-right" href="/hi/start/integrations/langchain">
+  क्या रिकॉर्ड किया जाता है, स्ट्रीमिंग, टोकन काउंट, स्पैन नामकरण, सत्र नियंत्रण, विकल्प, और मानव इन द लूप।
+</Card>

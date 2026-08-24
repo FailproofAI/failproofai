@@ -1,0 +1,40 @@
+---
+---
+title: "LangChain ve LangGraph"
+description: "Kurun, enstrüman edin ve ilk izinizi görün."
+icon: "/images/frameworks/langchain.svg"
+---
+
+İlk LangChain veya LangGraph izinize ulaşmak için üç adım. Streaming, insan müdahalesi, span adlandırması ve seçenekler için [tam kılavuzu](/tr/start/integrations/langchain) inceleyin.
+
+## Kurun
+
+```bash
+pip install 'failproofai-sdk[langgraph]'
+```
+
+LangGraph olmadan LangChain için `failproofai-sdk[langchain]` kullanın.
+
+## Enstrüman edin
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()
+
+with failproofai_sdk.session():
+    graph.invoke({"messages": [HumanMessage("...")]})
+```
+
+Çağrı sitesinde değişiklik yok. `instrument()`, LangChain'in oluşturduğu her callback yöneticisine enjekte ettiği bir tracer kaydeder, böylece grafikler, araçlar ve modeller (yazmadığınız kütüphanelerin içindekiler dahil) yakalanır.
+
+## Geldiğini kontrol edin
+
+Bir kez çalıştırın, sonra **Observe → Sessions** bölümünü açın ve ortamınızı seçin. Çalışmanız yeniden oluşturulmuş bir iz olarak görüntülenir.
+
+Hiçbir şey gelmezse, `failproofai config --status` komutuyla makinenin bağlı olduğunu doğrulayın.
+
+<Card title="Tam LangChain kılavuzu" icon="arrow-right" href="/tr/start/integrations/langchain">
+  Nelerin kaydedildiği, streaming, token sayıları, span adlandırması, oturum kontrolü, seçenekler ve insan müdahalesi.
+</Card>

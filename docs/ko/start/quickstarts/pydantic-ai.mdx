@@ -1,0 +1,42 @@
+---
+title: "Pydantic AI"
+description: "설치, 계측, 그리고 첫 번째 트레이스 확인."
+icon: "/images/frameworks/pydantic-ai.svg"
+---
+
+세 단계로 첫 번째 Pydantic AI 트레이스를 확인하세요. 툴, 재시도, 스트리밍, 옵션에 대한 자세한 내용은 [전체 가이드](/ko/start/integrations/pydantic-ai)를 참고하세요.
+
+## 설치
+
+```bash
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+## 계측
+
+```python
+import failproofai_sdk
+from pydantic_ai import Agent
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # before constructing any Agent
+
+agent = Agent("openai:gpt-4o-mini", system_prompt="Be terse.")
+
+with failproofai_sdk.session():
+    result = agent.run_sync("...")
+```
+
+<Warning>
+  `instrument()`은 반드시 `Agent`를 생성하기 **전에** 실행되어야 합니다. 계측 기능은 생성 시점에 추가되므로, 그 이전에 만들어진 에이전트는 아무것도 기록하지 않습니다 — 오류도 발생하지 않기 때문에 문제를 인지하기 어렵습니다. 이는 이 어댑터에서 트레이스가 비어 있는 가장 흔한 원인이며, 모듈 스코프에서 에이전트를 생성하는 경우에 특히 주의가 필요합니다. 해당 모듈을 임포트하기 전에 `failproofai_sdk`를 임포트하고 `instrument()`를 호출하세요.
+</Warning>
+
+## 도착 여부 확인
+
+한 번 실행한 뒤 **Observe → Sessions**를 열고 환경을 선택하세요. 실행 결과가 재구성된 트레이스로 표시됩니다.
+
+아무것도 표시되지 않는다면, `failproofai config --status` 명령으로 머신이 연결되어 있는지 확인하세요.
+
+<Card title="Pydantic AI 전체 가이드" icon="arrow-right" href="/ko/start/integrations/pydantic-ai">
+  기록되는 항목, 툴과 재시도, 스트리밍, 스팬 네이밍, 옵션, 그리고 자주 발생하는 문제.
+</Card>

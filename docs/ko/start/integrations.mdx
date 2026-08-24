@@ -1,0 +1,120 @@
+---
+title: "에이전트 계측하기"
+sidebarTitle: "프레임워크"
+description: "지원되는 에이전트 프레임워크를 Failproof AI에 한 번의 호출로 연결하세요."
+icon: "plug"
+---
+
+에이전트는 이미 기록할 가치가 있는 모든 것을 생성합니다 — 모델 호출, 툴 호출, 노드 경계, 사람의 대기, 실패. 프레임워크는 이를 버립니다. SDK는 이를 보존합니다.
+
+<Columns cols={3}>
+  <Card title="커스텀 에이전트" icon="wrench" href="/ko/start/quickstarts/custom-agents">
+    직접 작성한 에이전트이거나 여기에 나열되지 않은 에이전트.
+  </Card>
+  <Card title="LangChain 및 LangGraph" icon="share-2" href="/ko/start/quickstarts/langchain">
+    그래프, 노드, 툴, 리트리버, 모델.
+  </Card>
+  <Card title="CrewAI" icon="users" href="/ko/start/quickstarts/crewai">
+    크루, 플로우, 역할별 에이전트, 툴.
+  </Card>
+  <Card title="LlamaIndex" icon="database" href="/ko/start/quickstarts/llamaindex">
+    워크플로우, 스텝, 함수 에이전트, 리트리버.
+  </Card>
+  <Card title="Pydantic AI" icon="badge-check" href="/ko/start/quickstarts/pydantic-ai">
+    타입 에이전트, 기능, 툴, 재시도.
+  </Card>
+</Columns>
+
+## 어떤 프레임워크든 세 줄이면 됩니다
+
+<CodeGroup>
+```bash LangGraph
+pip install 'failproofai-sdk[langgraph]'
+```
+
+```bash CrewAI
+pip install 'failproofai-sdk[crewai]'
+```
+
+```bash LlamaIndex
+pip install 'failproofai-sdk[llamaindex]'
+```
+
+```bash Pydantic AI
+pip install 'failproofai-sdk[pydantic-ai]'
+```
+
+```bash Custom agents
+pip install failproofai-sdk
+```
+</CodeGroup>
+
+```python
+import failproofai_sdk
+
+failproofai_sdk.configure(environment="production")
+failproofai_sdk.instrument()          # 임포트한 프레임워크를 자동으로 감지합니다
+
+with failproofai_sdk.session():
+    ...                               # 기존 에이전트 호출 코드, 변경 없음
+```
+
+함수에 데코레이터를 달거나, 호출에 콜백을 전달하거나, 코드 전체에 ID를 삽입할 필요가 없습니다. 달라지는 것은 세션 안의 호출뿐입니다:
+
+<Tabs>
+  <Tab title="LangGraph">
+    ```python
+    graph.invoke({"messages": [HumanMessage("...")]})
+    ```
+  </Tab>
+  <Tab title="CrewAI">
+    ```python
+    Crew(agents=[analyst, writer], tasks=[gather, summarise]).kickoff()
+    ```
+  </Tab>
+  <Tab title="LlamaIndex">
+    ```python
+    await agent.run("...")        # `async with failproofai_sdk.session():` 내부에서
+    ```
+  </Tab>
+  <Tab title="Pydantic AI">
+    ```python
+    agent.run_sync("...")
+    ```
+  </Tab>
+  <Tab title="Custom agents">
+    ```python
+    with failproofai_sdk.agent("planner"):
+        with failproofai_sdk.tool_call("search", input={"q": q}) as t:
+            t.output = search(q)
+    ```
+  </Tab>
+</Tabs>
+
+추가 설치는 **프레임워크** 자체를 위한 것입니다. 모든 어댑터는 기본 패키지에 포함되어 있으므로, 이미 프레임워크가 설치된 프로젝트는 추가 패키지가 전혀 필요하지 않습니다.
+
+## 수집 확인하기
+
+계측된 세션을 한 번 실행한 후 **Observe → Sessions**를 열고 환경을 선택하세요. 실행 결과가 재구성된 트레이스로 나타납니다.
+
+아무것도 도착하지 않는다면 `failproofai config --status`로 머신이 연결되어 있는지 확인하세요. [캡처 설정](/ko/start/setup)을 참고하세요.
+
+<Warning>
+  스풀 디렉토리를 확인해서 전달 여부를 판단하지 마세요. Failproof 데몬은 각 배치를 수 밀리초 내에 수집하고 삭제하므로, 이를 읽으면 수집기와 경쟁 상태가 발생해 실제로 생성된 이벤트보다 훨씬 적게 표시됩니다.
+</Warning>
+
+## 다음 단계
+
+위의 각 퀵스타트는 해당 전체 가이드로 연결됩니다 — 기록되는 항목, 옵션, 스트리밍, 스팬 이름 지정, 그리고 실제로 자주 발생하는 문제들을 다룹니다. 이 가이드들은 **Trace Agents → Plug in your agent** 아래에 있습니다.
+
+<Columns cols={3}>
+  <Card title="작동 방식" icon="workflow" href="/ko/start/integrations/custom-agents#going-deeper">
+    데이터 모델, ID, 이벤트 타입, 그리고 이벤트가 Cloud에 도달하는 방법.
+  </Card>
+  <Card title="트레이스 읽기" icon="route" href="/ko/sessions/read-a-trace">
+    단절된 로그 대신 세션 전체의 인과 관계를 따라가세요.
+  </Card>
+  <Card title="첫 번째 실패 찾기" icon="scan-search" href="/ko/start/first-audit">
+    방금 캡처한 세션을 감사하세요.
+  </Card>
+</Columns>

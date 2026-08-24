@@ -1,41 +1,41 @@
 ---
 title: "事件与配置"
-description: "参考事件模型、环境、本地存储及配置边界。"
+description: "事件模型、运行环境、本地存储及配置边界参考。"
 icon: "list-tree"
 ---
 
 ## 事件类型
 
-- Agent 启动、结束、暂停和恢复
+- Agent 启动、结束、暂停与恢复
 - 模型请求与响应
 - 工具调用与结果
 - Hook 触发与完成
-- 人工等待、输入、暂停和中断
+- 人工等待、输入、暂停与中断
 - 显式错误
 
-每个事件都包含时间戳、会话 ID、Agent ID、事件类型和环境信息。事件特定字段包含模型、工具、关联、结果、内容、持续时间或错误数据。
+每个事件均包含时间戳、会话 ID、Agent ID、事件类型及运行环境。事件特定字段包含模型、工具、关联、结果、内容、耗时或错误数据。
 
 ## 检查事件契约
 
 <Tabs>
   <Tab title="控制台">
     1. 打开 **Observe → Events**。
-    2. 设置较短的时间窗口，并按环境、Agent 和事件类型进行过滤。
-    3. 选择一个事件以查看其规范化字段和原始数据，然后进入其会话查看执行上下文。
-    4. 如果缺少配对的持续时间，请验证开始事件和完成事件是否使用相同的关联 ID。
+    2. 设置较短的时间窗口，并按环境、Agent 和事件类型进行筛选。
+    3. 选择一个事件，查看其规范化字段和原始载荷，然后进入其会话以查看执行上下文。
+    4. 如果缺少配对时长，请确认启动事件和完成事件使用了相同的关联 ID。
 
-    使用 Events 流将数据缩小到单次 Agent 运行，并检查规范化的事件字段。
+    使用事件流将数据范围缩小至单个 Agent 运行，并检查规范化事件字段。
 
-    ![实时 Events 流，支持按环境、Agent、会话和事件类型过滤。](/images/dashboard/events-stream.png)
+    ![带有环境、Agent、会话和事件类型筛选器的实时事件流。](/images/dashboard/events-stream.png)
 
-    然后从事件跳转到对应的会话。追踪视图会显示该事件前后发生的内容，在仅凭数据内容难以判断时尤为必要。
+    然后从事件跳转至其会话。执行轨迹会显示该事件前后发生的情况，这在仅凭载荷无法判断时尤为必要。
 
-    ![用于在执行上下文中检查事件的关联会话追踪。](/images/dashboard/session-detail.png)
+    ![用于在执行上下文中检查事件的关联会话轨迹。](/images/dashboard/session-detail.png)
 
-    当缺少配对事件或持续时间时，请在两个视图中对比关联 ID 和时间戳。
+    当配对事件或时长缺失时，可在两个视图中对比关联 ID 和时间戳。
   </Tab>
   <Tab title="CLI">
-    先查找有效的过滤条件值，再获取某个会话的完整事件数据：
+    先获取有效的筛选值，再拉取指定会话的完整事件载荷：
 
     ```bash
     fp list event_types
@@ -53,26 +53,26 @@ icon: "list-tree"
 
 ## 保留的 SDK 字段
 
-请勿将 `timestamp`、`session_id`、`agent_id`、`type` 或 `environment` 用作自定义 Python SDK 字段。工具结果持续时间等配对事件的持续时间由 SDK 自动计算，无法手动提供。
+请勿将 `timestamp`、`session_id`、`agent_id`、`type` 或 `environment` 用作自定义 Python SDK 字段。工具结果耗时等配对事件时长由 SDK 自动计算，不可手动传入。
 
 ## 本地边界
 
-- Failproof AI 的状态默认存储在 `~/.failproofai` 下，除非显式配置了其他路径。
-- `failproofai-sdk` 使用 `AGENTEYE_HOME` 作为其旧版基础目录的覆盖配置。
+- Failproof AI 的状态默认存储于 `~/.failproofai`，除非显式配置为其他路径。
+- `failproofai-sdk` 始终将数据写入 `~/.failproofai/custom-agents`。`FAILPROOFAI_HOME` 可重定位主目录，但 `custom-agents` 段始终会追加在后，因此写入路径不能位于该目录之外。只有 SDK 自身的 `configure(base_dir=...)` 可将数据写到其他位置。旧版 `agenteye-collector` 会读取 `AGENTEYE_HOME` 以决定监听范围，但该变量不再影响 SDK 的写入位置。
 - 环境标签可通过 SDK 配置或 `AGENTEYE_ENVIRONMENT` 进行设置。
-- 守护进程凭证与非敏感设置分开存储。
+- 守护进程凭据与非敏感设置分开存储。
 
-请使用稳定、低基数的环境名称。守护进程环境标签不支持逗号。
+请使用稳定、低基数的环境名称。守护进程的环境标签不支持逗号。
 
-## 更改环境标签
+## 修改环境标签
 
 <Tabs>
   <Tab title="控制台">
-    环境标签由发送方的 SDK 或 Failproof 守护进程分配。更改后，打开 **Observe → Sessions** 并使用环境过滤器确认新会话已携带新的标签值。已有会话将保留其原始环境标签。
+    环境标签由发送方 SDK 或 Failproof 守护进程指定。修改后，请打开 **Observe → Sessions**，使用环境筛选器确认新会话已使用新标签。已有会话将保留原有的环境标签。
 
   </Tab>
   <Tab title="CLI">
-    对于 `failproofai-sdk`，可在代码中或通过其旧版环境变量配置环境。更改机器级别设置时，需重新运行守护进程配置。
+    对于 `failproofai-sdk`，可在代码中配置环境，或使用其旧版环境变量进行设置。修改机器级别的配置后，请重新运行守护进程配置。
 
     ```bash
     export AGENTEYE_ENVIRONMENT=production-us-east

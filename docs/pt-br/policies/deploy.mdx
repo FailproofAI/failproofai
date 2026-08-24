@@ -1,47 +1,51 @@
 ---
-title: "Fazer deploy de políticas"
-description: "Publique uma versão de política revisada para as máquinas desejadas."
+title: "Implantar políticas"
+description: "Publique uma versão de política revisada nas máquinas de destino."
 icon: "cloud-upload"
 ---
 
-Um deployment conecta uma ou mais versões de política a um conjunto de máquinas registradas.
+Uma implantação conecta uma ou mais versões de política a um conjunto alvo de máquinas cadastradas.
 
-## Aplicar um deployment
+## Aplicar uma implantação
 
 <Tabs>
   <Tab title="Dashboard">
     1. Acesse **Admin → enforcement**, localize a máquina e expanda sua linha.
-    2. Selecione **edit**, adicione a versão de política revisada e escolha **observe** ou seu efeito de aplicação.
-    3. Aplique a alteração, aguarde o próximo check-in da máquina e confirme o estado de deployment e cobertura.
+    2. Selecione **edit**, adicione a versão de política revisada e escolha o efeito **observe** ou de imposição.
+    3. Aplique a alteração, aguarde o próximo check-in da máquina e confirme o estado de implantação e cobertura.
     4. Acesse **Observe → policy** para inspecionar as decisões em tempo real.
 
-    ![O editor de deployment de máquinas com versões de política, efeitos de enforce e observe, e a ação de aplicar deployment.](/images/dashboard/enforcement-editor.png)
+    ![O editor de implantação de máquina com versões de política, efeitos enforce e observe, e a ação de aplicar implantação.](/images/dashboard/enforcement-editor.png)
   </Tab>
   <Tab title="CLI">
-    Os endpoints de deployment na nuvem não são expostos intencionalmente como comandos `fp` comuns. Verifique a máquina localmente e faça o deploy pelo dashboard:
+    Implante pela CLI com `fp fleet`. Revise o conjunto resultante antes de aplicar — `deploy` exibe o plano completo e solicita confirmação **apenas em um terminal interativo sem `--json`**. Com `--json`, com `--yes` ou com stdin redirecionado (uma etapa de CI, um script ou um agente executando comandos), a aplicação ocorre imediatamente sem plano nem prompt — portanto, execute `fp fleet show <machine>` primeiro se desejar revisar:
 
     ```bash
-    failproofai config --status
+    fp fleet list
+    fp fleet show <machine-id>
+    fp fleet deploy <machine-id> --add no-force-push
     ```
 
-    Use `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` após o deployment para verificar se a atividade chega ao Cloud.
+    `fp fleet diff <machine-id>` mostra a intenção versus a entrega (uma máquina aparece como `behind` até sua próxima consulta), `fp fleet history <machine-id>` lista as gerações e `fp fleet rollback <machine-id> <generation>` restaura uma delas — a operação é recusada se a geração referenciada nomear uma política que foi desativada ou excluída.
+
+    Verifique a própria máquina com `failproofai config --status` e use `fp sessions --env production --since 24h` e `fp events --event-type hook_completed` após a implantação para confirmar que a atividade está chegando ao Cloud.
   </Tab>
 </Tabs>
 
 <Steps>
   <Step title="Escolha a versão e os alvos">
-    Faça o deploy de uma versão revisada, não de um rascunho mutável, começando por uma máquina fora de produção ou um grupo pequeno cujas sessões você possa inspecionar.
+    Implante uma versão revisada, não um rascunho mutável, começando por uma máquina fora de produção ou um grupo pequeno cujas sessões você possa inspecionar.
   </Step>
   <Step title="Observe as decisões">
-    Revise correspondências, razões, ferramentas afetadas e falsos positivos sem bloquear o trabalho.
+    Analise correspondências, razões, ferramentas afetadas e falsos positivos sem bloquear o trabalho.
   </Step>
-  <Step title="Aplique e verifique a cobertura">
-    Promova após as correspondências observadas separarem ações inseguras das válidas e, em seguida, confirme que cada máquina pretendida obteve o deployment e está reportando decisões.
+  <Step title="Imponha e verifique a cobertura">
+    Promova após as correspondências observadas separarem ações inseguras das válidas e confirme que cada máquina prevista recebeu a implantação e está reportando decisões.
   </Step>
 </Steps>
 
-As máquinas precisam da capacidade `policies:pull`. O reporte de eventos é controlado separadamente por `events:add`; verifique ambos quando esperar análise e aplicação no Cloud.
+As máquinas precisam da capacidade `policies:pull`. O reporte de eventos é controlado separadamente por `events:add`; verifique ambos quando você esperar análise e imposição pelo Cloud.
 
 <Warning>
-  O gerenciamento de enforcement é um fluxo administrativo do Cloud. Não trate as rotas de enforcement restritas ao root como endpoints comuns de `/v1` da API para clientes.
+  O gerenciamento de imposição é um fluxo administrativo do Cloud. Não trate as rotas de imposição exclusivas de root como endpoints comuns da API `/v1` para clientes.
 </Warning>

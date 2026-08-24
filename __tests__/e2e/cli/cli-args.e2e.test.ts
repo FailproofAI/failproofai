@@ -132,19 +132,20 @@ describe("policies: list (default)", () => {
   it("lists policies and exits 0 with no args", () => {
     const result = runCli("policies");
     assertSuccess(result);
-    expect(result.stdout).toContain("block-sudo");
+    expect(result.stdout).toContain("failproofai policies");
+    expect(result.stdout).not.toContain("block-sudo");
   });
 
   it("lists policies when --list alias is used", () => {
     const result = runCli("policies", "--list");
     assertSuccess(result);
-    expect(result.stdout).toContain("block-sudo");
+    expect(result.stdout).toContain("failproofai policies");
   });
 
   it("p shorthand lists policies", () => {
     const result = runCli("p");
     assertSuccess(result);
-    expect(result.stdout).toContain("block-sudo");
+    expect(result.stdout).toContain("failproofai policies");
   });
 
   it("rejects unexpected positional argument", () => {

@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -123,8 +124,16 @@ describe("parity with the CLI", () => {
   it("takes `core` in the dashboard, exactly as the terminal does", async () => {
     // The alias list lived in pack-cli.ts, so `core` worked in the terminal and
     // failed in the browser. Both go through one resolver now.
+    // Generated, not assumed: `test` and `build` are separate CI jobs, so
+    // `policy-pack/` does not exist in the repo when this runs there.
     const prevRoot = process.env.FAILPROOFAI_PACKAGE_ROOT;
-    process.env.FAILPROOFAI_PACKAGE_ROOT = resolve(__dirname, "../..");
+    const pkgRoot = mkdtempSync(join(tmpdir(), "fpai-dash-pkg-"));
+    execFileSync(
+      "bun",
+      ["scripts/build-policy-pack.mjs", "--out", join(pkgRoot, "policy-pack")],
+      { cwd: resolve(__dirname, "../.."), stdio: ["pipe", "pipe", "inherit"] },
+    );
+    process.env.FAILPROOFAI_PACKAGE_ROOT = pkgRoot;
     try {
       const result = await addPackWebAction("core");
       expect(result.ok).toBe(true);
@@ -132,8 +141,9 @@ describe("parity with the CLI", () => {
     } finally {
       if (prevRoot === undefined) delete process.env.FAILPROOFAI_PACKAGE_ROOT;
       else process.env.FAILPROOFAI_PACKAGE_ROOT = prevRoot;
+      rmSync(pkgRoot, { recursive: true, force: true });
     }
-  });
+  }, 120_000);
 
   it("previews a pack without installing it, and without fetching its code", async () => {
     const result = await previewPackWebAction("github:acme/ops@1.0.0");

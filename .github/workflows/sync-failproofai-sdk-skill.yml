@@ -81,6 +81,12 @@ jobs:
 
       - name: Checkout (source of truth)
         uses: actions/checkout@v7.0.1
+        with:
+          # The step below runs a script fetched from the MIRROR repo, inside this
+          # workspace. Without this, actions/checkout leaves the job's GITHUB_TOKEN
+          # in $GITHUB_WORKSPACE/.git/config where that script can read it —
+          # osv-scanner.yml sets this flag with exactly the same reasoning.
+          persist-credentials: false
 
       # The PAT holds Contents write + Pull requests write on the mirror repo, and the
       # NEXT step runs a script fetched FROM that repo, inside this workspace. So the
@@ -102,8 +108,29 @@ jobs:
           mkdir -p "$WORKDIR/$DEST_SUBDIR"
           rsync -a --delete --exclude '.git' "$SRC"/ "$WORKDIR/$DEST_SUBDIR"/
 
+      # Run the mirror repo's own validator in a COPY, not in $WORKDIR.
+      #
+      # The clone step goes to real trouble to keep the PAT out of
+      # $WORKDIR/.git/config because "the NEXT step runs a script fetched FROM
+      # that repo, inside this workspace". The ordering defeated that: this
+      # script had write access to $WORKDIR, and the step after it runs
+      # `git commit` there with GH_TOKEN and SKILLS_SYNC_PAT in the environment —
+      # and `git commit` executes $WORKDIR/.git/hooks/pre-commit, which a fresh
+      # --depth=1 clone does not have and this script could freely create. `git
+      # -C $WORKDIR config core.fsmonitor` or a `diff.external` would do just as
+      # well. Anyone able to land a commit in the mirror's validate-skills.py —
+      # a separate repo with a separate reviewer set — could exfiltrate a
+      # maintainer-owned PAT plus this repo's Actions token.
+      #
+      # A copy has no .git, so there is nothing to hook and nothing to configure.
       - name: Validate (skills repo's own gate)
-        run: python3 "$WORKDIR/scripts/validate-skills.py"
+        run: |
+          VALIDATE_DIR="$RUNNER_TEMP/validate"
+          rm -rf "$VALIDATE_DIR"
+          mkdir -p "$VALIDATE_DIR"
+          rsync -a --exclude '.git' "$WORKDIR"/ "$VALIDATE_DIR"/
+          cd "$VALIDATE_DIR"
+          python3 "$VALIDATE_DIR/scripts/validate-skills.py"
 
       - name: Commit, push branch, open/refresh PR
         env:
@@ -127,7 +154,9 @@ jobs:
           SHORT_SHA="${GITHUB_SHA::7}"
           git switch -c "$BRANCH"
           git add "$DEST_SUBDIR"
-          git commit -m "Sync failproofai-sdk skill from failproofai@${SHORT_SHA}" \
+          # --no-verify + an empty hooksPath: defence in depth against a hook
+          # planted in $WORKDIR by anything that ran before this step.
+          git -c core.hooksPath=/dev/null commit --no-verify -m "Sync failproofai-sdk skill from failproofai@${SHORT_SHA}" \
                      -m "Automated mirror of sdk/python/skill/. Source of truth: FailproofAI/failproofai — do not hand-edit."
           # The clone left no credentials on disk (see the clone step), so the push
           # carries the same in-process header.

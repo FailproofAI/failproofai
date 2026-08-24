@@ -102,6 +102,29 @@ jobs:
           FAILPROOFAI_SDK_REQUIRE_CONTRACT: "1"
         run: uv run pytest tests/ -q
 
+      # The step above duplicates ci.yml's `failproofai-sdk` job and NOT its
+      # `failproofai-sdk-integrations` job, so it ran zero adapter tests: the
+      # framework extras are not in `--extra dev`, so all four modules skipped at
+      # import and printed "815 passed, 6 skipped" — green, having tested nothing
+      # of `failproofai_sdk/integrations/`, which ships in the base wheel. That is
+      # the largest untested surface on the one path that produces an
+      # unrecallable public artifact, and it is the same skip-instead-of-fail hole
+      # the step above already closes with FAILPROOFAI_SDK_REQUIRE_CONTRACT.
+      #
+      # AGENTEYE_TESTS_REQUIRE_FRAMEWORKS is the load-bearing half: without it a
+      # botched install here reads as "4 skipped" and the gap reopens in exactly
+      # the form that hid it the first time.
+      - name: Install the framework extras
+        run: >-
+          uv sync --locked --extra dev
+          --extra langchain --extra langgraph --extra crewai
+          --extra llamaindex --extra pydantic-ai
+
+      - name: Test the framework adapters
+        env:
+          AGENTEYE_TESTS_REQUIRE_FRAMEWORKS: "1"
+        run: uv run pytest tests/integrations -q
+
       - name: Build
         run: uv build
 

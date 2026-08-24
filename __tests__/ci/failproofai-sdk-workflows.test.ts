@@ -77,15 +77,55 @@ describe("publish-failproofai-sdk.yml", () => {
     expect(scripts).toContain('if [ "$ACTOR" != "NiveditJain" ]');
   });
 
-  it("runs the tests and the installed-artifact smoke test before uploading", () => {
+  it("runs every gate before uploading", () => {
     const steps: Record<string, any>[] = job.steps ?? [];
     const names = steps.map((s) => s.name ?? "");
     const upload = steps.findIndex((s) => (s.uses ?? "").startsWith("pypa/gh-action-pypi-publish"));
     expect(upload).toBeGreaterThan(-1);
-    for (const gate of ["Test", "Smoke-test the artifact exactly as a user would receive it"]) {
+    // "Verify the artifacts before uploading" is on this list because deleting
+    // that step outright — the LICENSE / py.typed / non-empty-wheel gate — used
+    // to leave every test in this file green.
+    for (const gate of [
+      "Test",
+      "Test the framework adapters",
+      "Verify the artifacts before uploading",
+      "Smoke-test the artifact exactly as a user would receive it",
+    ]) {
       expect(names.indexOf(gate)).toBeGreaterThan(-1);
       expect(names.indexOf(gate)).toBeLessThan(upload);
     }
+  });
+
+  // The entire security narrative in this workflow's header — "workflow_dispatch
+  // can target ANY ref", the actor check, the ref check — rests on
+  // workflow_dispatch being the ONLY entry point, and nothing asserted it.
+  // Adding `on: push: branches: [main]` turns every merge into a public PyPI
+  // release: the environment's main-only rule passes, REF is main, ACTOR is the
+  // merger, and on a non-dispatch event the `inputs` context is empty so
+  // `if: ${{ !inputs.dry_run }}` evaluates true and the upload runs.
+  it("can only be started by hand", () => {
+    const wf = workflow("publish-failproofai-sdk.yml");
+    // `on` parses as the YAML boolean `true` under some loaders; accept either key.
+    const triggers = wf.on ?? wf[true as unknown as string];
+    expect(Object.keys(triggers)).toEqual(["workflow_dispatch"]);
+  });
+
+  it("gates the upload on dry_run, so a dry run cannot publish", () => {
+    const upload = (job.steps ?? []).find((s: Record<string, any>) =>
+      (s.uses ?? "").startsWith("pypa/gh-action-pypi-publish"),
+    );
+    expect(upload).toBeDefined();
+    expect(String(upload.if ?? "")).toContain("dry_run");
+  });
+
+  it("requires the framework adapters to fail rather than skip", () => {
+    const step = (job.steps ?? []).find(
+      (s: Record<string, any>) => s.name === "Test the framework adapters",
+    );
+    // Without this the adapters — which ship in the base wheel — skip at import
+    // and the job passes having tested none of them, on the one path that
+    // produces an artifact that cannot be recalled.
+    expect(step?.env?.AGENTEYE_TESTS_REQUIRE_FRAMEWORKS).toBe("1");
   });
 
   it("requires the spool contract rather than letting it skip", () => {
